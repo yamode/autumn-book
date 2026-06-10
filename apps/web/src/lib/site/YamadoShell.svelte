@@ -14,12 +14,14 @@
 	// プラン・客室ページでは検索条件バー（共通機能への入口）を出す
 	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname));
 
+	// 原サイトと同じページ構成（客室/お料理/施設/オプション/山人の四季/よくある質問 + アクセス）
 	const nav = $derived([
-		{ href: `${base}#rooms`, label: '客室' },
-		{ href: `${base}#reason`, label: 'お料理' },
-		{ href: `${base}/plans`, label: 'プラン' },
-		{ href: `${base}/news`, label: 'お知らせ' },
-		{ href: `${base}#faq`, label: 'よくある質問' }
+		{ href: `${base}/rooms`, label: '客室' },
+		{ href: `${base}/cuisine`, label: 'お料理' },
+		{ href: `${base}/facility`, label: '施設' },
+		{ href: `${base}/option`, label: 'オプション' },
+		{ href: `${base}/shiki`, label: '山人の四季' },
+		{ href: `${base}/faq`, label: 'よくある質問' }
 	]);
 </script>
 
@@ -33,14 +35,14 @@
 			<nav class="ml-auto hidden items-stretch lg:flex">
 				<div class="flex items-center">
 					{#each nav as item}
-						<a href={item.href} class="ml-[40px] whitespace-nowrap text-[15px] text-black transition-colors hover:text-[#b2b2b2]">{item.label}</a>
+						<a href={item.href} class="ml-[24px] whitespace-nowrap text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">{item.label}</a>
 					{/each}
-					<a href="{base}#access" class="ml-[40px] text-[15px] text-black transition-colors hover:text-[#b2b2b2]">アクセス</a>
-					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="ml-[30px] text-[13px] text-stone-500 hover:text-black">
+					<a href="{base}/access" class="ml-[24px] text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">アクセス</a>
+					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="ml-[20px] text-[14px] text-stone-500 hover:text-black xl:ml-[28px]">
 						{user?.role === 'member' ? `${user.name} 様` : '会員ログイン'}
 					</a>
 				</div>
-				<a href="{base}/plans" class="ml-[40px] flex items-center bg-[#e5e5e5] px-[55px] text-[16px] text-black transition-colors hover:bg-[#4d4d4d] hover:text-white">
+				<a href="{base}/plans" class="ml-[24px] flex items-center bg-[#e5e5e5] px-[40px] text-[16px] text-black transition-colors hover:bg-[#4d4d4d] hover:text-white xl:px-[55px]">
 					<span>ご予約</span>
 				</a>
 			</nav>
@@ -58,11 +60,12 @@
 		<div class="fixed inset-0 z-[60] overflow-y-auto bg-[#4d4d4d]">
 			<button type="button" class="absolute right-5 top-5 text-3xl text-white" onclick={() => (menuOpen = false)} aria-label="閉じる">×</button>
 			<div class="px-[10.5%] pb-10 pt-[70px]">
-				<nav class="flex flex-col gap-6 text-[16px] text-white">
+				<nav class="flex flex-col gap-6 text-[18px] text-white">
 					{#each nav as item}
 						<a href={item.href} onclick={() => (menuOpen = false)}>{item.label}</a>
 					{/each}
-					<a href="{base}#access" onclick={() => (menuOpen = false)}>アクセス</a>
+					<a href="{base}/news" onclick={() => (menuOpen = false)}>お知らせ</a>
+					<a href="{base}/access" onclick={() => (menuOpen = false)}>アクセス</a>
 					<a href="{base}/plans" onclick={() => (menuOpen = false)} class="mt-2 inline-block bg-white/90 px-8 py-3 text-center text-black">ご予約</a>
 					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[14px] text-white/70">{user?.role === 'member' ? 'マイページ' : '会員ログイン'}</a>
 					<a href="/search" class="text-[14px] text-white/70">{m.searchbar_submit()}（全施設）</a>
@@ -92,29 +95,38 @@
 	<footer class="mt-20 border-t border-[#e2e2e2] bg-white">
 		<div class="mx-auto max-w-[980px] px-4 py-10 text-center">
 			<img src="https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/common/logo.png" alt={facility.name} class="mx-auto w-[110px]" />
-			<p class="mt-4 text-[13px] leading-relaxed text-[#333]">{facility.addressPublic}<br />TEL {facility.phone}</p>
+			<p class="mt-4 text-[15px] leading-relaxed text-[#333]">{facility.addressPublic}<br />TEL {facility.phone}</p>
 			<nav class="mt-6 flex flex-wrap justify-center gap-x-[35px] gap-y-2">
 				{#each nav as item}
-					<a href={item.href} class="text-[14px] text-black transition-colors hover:text-[#b2b2b2]">{item.label}</a>
+					<a href={item.href} class="text-[15px] text-black transition-colors hover:text-[#b2b2b2]">{item.label}</a>
 				{/each}
-				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[14px] text-black hover:text-[#b2b2b2]">マイページ</a>
+				<a href="{base}/news" class="text-[15px] text-black hover:text-[#b2b2b2]">お知らせ</a>
+				<a href="{base}/access" class="text-[15px] text-black hover:text-[#b2b2b2]">アクセス</a>
+				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[15px] text-black hover:text-[#b2b2b2]">マイページ</a>
 			</nav>
 			<nav class="mt-4 flex flex-wrap justify-center gap-x-6">
-				<a href="/legal/tokushoho" class="text-[12px] text-stone-400 hover:underline">特定商取引法に基づく表記</a>
-				<a href="/legal/privacy" class="text-[12px] text-stone-400 hover:underline">プライバシーポリシー</a>
-				<a href="/legal/yakkan" class="text-[12px] text-stone-400 hover:underline">宿泊約款</a>
+				<a href="/legal/tokushoho" class="text-[13px] text-stone-400 hover:underline">特定商取引法に基づく表記</a>
+				<a href="/legal/privacy" class="text-[13px] text-stone-400 hover:underline">プライバシーポリシー</a>
+				<a href="/legal/yakkan" class="text-[13px] text-stone-400 hover:underline">宿泊約款</a>
 			</nav>
-			<p class="mt-6 text-[11px] text-stone-400">© Yamado Co., Ltd.</p>
+			<p class="mt-6 text-[12px] text-stone-400">© Yamado Co., Ltd.</p>
 		</div>
 	</footer>
 </div>
 
 <style>
-	/* 原サイト実測: body 16px / line-height 1.6 / 游明朝 / #333 */
+	/* 原サイト実測 16px をベースに、可読性のため 17px へ引き上げ（ユーザー要望） */
 	.yamado-site {
 		font-family: '游明朝', YuMincho, 'Sawarabi Mincho', 'ヒラギノ明朝 ProN W3', 'Hiragino Mincho ProN', 'HG明朝E', serif;
-		font-size: 16px;
-		line-height: 1.6;
+		font-size: 17px;
+		line-height: 1.8;
 		color: #333;
+	}
+	/* 配下コンポーネントの小さめユーティリティも底上げ */
+	.yamado-site :global(.text-sm) {
+		font-size: 15px;
+	}
+	.yamado-site :global(.text-xs) {
+		font-size: 13.5px;
 	}
 </style>

@@ -25,13 +25,16 @@
 		return () => window.removeEventListener('scroll', onScroll);
 	});
 
+	// 原サイトと同じページ構成（自然/料理/レストラン/客室/温泉/館内案内/アクセス/お知らせ）
 	const nav = $derived([
-		{ href: `${base}#nature`, label: '自然', en: 'Nature' },
-		{ href: `${base}#cuisine`, label: '料理', en: 'Cuisine' },
-		{ href: `${base}#stay`, label: '客室', en: 'Stay' },
-		{ href: `${base}/plans`, label: 'プラン', en: 'Plan' },
-		{ href: `${base}/news`, label: 'お知らせ', en: 'News' },
-		{ href: `${base}#access`, label: 'アクセス', en: 'Access' }
+		{ href: `${base}/nature`, label: '自然', en: 'Nature' },
+		{ href: `${base}/cuisine`, label: '料理', en: 'Cuisine' },
+		{ href: `${base}/restaurant`, label: 'レストラン', en: 'Restaurant' },
+		{ href: `${base}/rooms`, label: '客室', en: 'Stay' },
+		{ href: `${base}/onsen`, label: '温泉', en: 'Onsen' },
+		{ href: `${base}/guide`, label: '館内案内', en: 'Facility' },
+		{ href: `${base}/access`, label: 'アクセス', en: 'Access' },
+		{ href: `${base}/news`, label: 'お知らせ', en: 'News' }
 	]);
 </script>
 
@@ -140,14 +143,21 @@
 </div>
 
 <style>
-	/* 原サイト実測: Shippori Mincho B1 / 16px / letter-spacing .05em / line-height 1.75 / palt / #111 */
+	/* 原サイト実測 16px をベースに、可読性のため 17px へ引き上げ（ユーザー要望） */
 	.oga-site {
 		font-family: 'Shippori Mincho B1', serif;
-		font-size: 16px;
+		font-size: 17px;
 		letter-spacing: 0.05em;
-		line-height: 1.75;
+		line-height: 1.85;
 		font-feature-settings: 'palt';
 		color: #111;
+	}
+	/* 配下コンポーネントの小さめユーティリティも底上げ */
+	.oga-site :global(.text-sm) {
+		font-size: 15px;
+	}
+	.oga-site :global(.text-xs) {
+		font-size: 13.5px;
 	}
 	.oga-site :global(.font-cormorant) {
 		font-family: 'Cormorant Garamond', serif;

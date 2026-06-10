@@ -8,7 +8,7 @@ export type Locale = 'ja' | 'en' | 'zh-TW';
 
 /** コンテンツ翻訳行（book.content_translations 対称） */
 export interface ContentTranslation {
-	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal' | 'news';
+	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal' | 'news' | 'site_page';
 	entityId: string;
 	locale: Locale;
 	/** 翻訳対象フィールドのみ部分上書き（空文字は欠落扱い） */
@@ -57,6 +57,31 @@ export interface Facility {
 	/** 施設HPのデザインテンプレート（画面設計：施設ごとに別デザイン運用） */
 	template: 'standard' | 'yamado-v1' | 'oga-v1';
 	isPublished: boolean;
+}
+
+/** 施設サイトの下層コンテンツページ（お料理・施設・温泉等。book.site_pages 対称） */
+export interface SitePageSection {
+	heading: string;
+	headingEn?: string;
+	/** Markdown 原文 */
+	body: string;
+	imageUrl?: string;
+	/** 補足（料金・営業時間・泉質等の小さな表記） */
+	note?: string;
+}
+
+export interface SitePage {
+	id: string;
+	facilityId: string;
+	/** URL スラッグ（cuisine / facility / option / shiki / nature / onsen / restaurant / guide …） */
+	slug: string;
+	title: string;
+	titleEn: string;
+	lead: string;
+	heroUrl: string;
+	sections: SitePageSection[];
+	isPublished: boolean;
+	sortOrder: number;
 }
 
 /** お知らせ（book.news_posts 対称・WP のニュース機能を置換） */

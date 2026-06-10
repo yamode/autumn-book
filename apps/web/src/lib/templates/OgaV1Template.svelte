@@ -10,6 +10,7 @@
 	import OverviewSection from '$lib/components/facility/OverviewSection.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { FacilityPageData } from './types';
+	import { reveal } from '$lib/actions/reveal';
 
 	let { data }: { data: FacilityPageData } = $props();
 	let f = $derived(data.facility);
@@ -27,7 +28,7 @@
 
 <div class="oga-v1 bg-white" style="--fac-heading: #1c1c1c; --fac-accent: #555;">
 	<!-- ヒーロー: フルブリード + 大きなキャッチ -->
-	<section class="relative">
+	<section use:reveal class="relative">
 		<img src={f.photos[0].url} alt={f.name} class="h-[520px] w-full object-cover sm:h-[600px]" />
 		<div class="absolute inset-0 bg-black/25"></div>
 		<div class="absolute inset-0 flex flex-col items-center justify-center text-center text-white">
@@ -45,31 +46,33 @@
 		<NewsSection news={data.news} {base} variant="oga" />
 
 		<!-- コンセプト -->
-		<section class="mx-auto max-w-[600px] text-center">
+		<section use:reveal class="mx-auto max-w-[600px] text-center">
 			<h2 class="text-xl font-light leading-loose tracking-[0.3em]" style="color: var(--fac-heading)">{f.catchCopy}</h2>
 			<p class="mt-8 text-[16px] leading-[1.75] tracking-[0.05em] text-stone-600">{f.description}</p>
 		</section>
 
 		<!-- 3本柱: NATURE / CUISINE / STAY（左右交互の大判写真） -->
 		{#each pillars as pillar, i}
-			<section id={pillar.key.toLowerCase()} class="grid items-center gap-8 md:grid-cols-2 {i % 2 === 1 ? 'md:[&>*:first-child]:order-2' : ''}">
+			<section use:reveal id={pillar.key.toLowerCase()} class="grid items-center gap-8 md:grid-cols-2 {i % 2 === 1 ? 'md:[&>*:first-child]:order-2' : ''}">
 				<div class="overflow-hidden">
 					<img src={pillar.photo!.url} alt={pillar.photo!.caption} class="h-80 w-full object-cover transition duration-700 hover:scale-105" loading="lazy" />
 				</div>
 				<div class="px-2 md:px-8">
 					<h2 class="font-cormorant text-sm font-semibold tracking-[0.5em] text-stone-400">{pillar.key}</h2>
 					<p class="mt-6 text-lg font-light leading-loose tracking-wider" style="color: var(--fac-heading)">{pillar.photo!.caption}</p>
-					{#if pillar.key === 'STAY'}
-						<a href="{base}/rooms/{data.rooms[0]?.slug}" class="mt-6 inline-block text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">VIEW ROOMS →</a>
+					{#if pillar.key === 'NATURE'}
+						<a href="{base}/nature" class="mt-6 inline-block text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">VIEW NATURE →</a>
+					{:else if pillar.key === 'STAY'}
+						<a href="{base}/rooms" class="mt-6 inline-block text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">VIEW ROOMS →</a>
 					{:else if pillar.key === 'CUISINE'}
-						<a href="{base}/plans" class="mt-6 inline-block text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">VIEW PLANS →</a>
+						<a href="{base}/cuisine" class="mt-6 inline-block text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">VIEW PLANS →</a>
 					{/if}
 				</div>
 			</section>
 		{/each}
 
 		<!-- ABOUT グリッド（客室3タイプ + 予約導線） -->
-		<section id="rooms">
+		<section use:reveal id="rooms">
 			<h2 class="font-cormorant mb-8 text-center text-sm font-semibold tracking-[0.5em] text-stone-400">ABOUT</h2>
 			<div class="grid gap-px bg-stone-200 sm:grid-cols-3">
 				{#each data.rooms as room}
@@ -85,7 +88,7 @@
 		</section>
 
 		<!-- プラン -->
-		<section>
+		<section use:reveal>
 			<h2 class="font-cormorant mb-8 text-center text-sm font-semibold tracking-[0.5em] text-stone-400">PLAN</h2>
 			<div class="space-y-4">
 				{#each data.plans.slice(0, 3) as plan}

@@ -19,3 +19,34 @@ html {
 .font-display {
 	font-family: var(--font-serif-jp);
 }
+
+/* スクロールリビール（lib/actions/reveal.ts） */
+.reveal {
+	opacity: 0;
+	transform: translateY(28px);
+	transition:
+		opacity 1s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+		transform 1s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.reveal.is-visible {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+/* ヒーロー画像のゆっくりズームイン */
+@keyframes hero-zoom {
+	from {
+		transform: scale(1.08);
+	}
+	to {
+		transform: scale(1);
+	}
+}
+.hero-zoom {
+	animation: hero-zoom 2.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+@media (prefers-reduced-motion: reduce) {
+	.hero-zoom {
+		animation: none;
+	}
+}

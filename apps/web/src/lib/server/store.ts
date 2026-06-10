@@ -14,7 +14,7 @@ import {
 
 export type * from '$lib/types';
 import type {
-	NewsPost,
+	NewsPost, SitePage,
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
 	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation
@@ -341,6 +341,128 @@ export const faqs: Faq[] = [
 		answer: '現在、直販サイトでは大人のみのご予約を承っています。お子様連れのご宿泊は**お電話（0185-47-7776）**でご相談ください。',
 		isPublished: true,
 		sortOrder: 2
+	}
+];
+
+// ---------------------------------------------------------------- 下層コンテンツページ（現行サイトから移植）
+
+const wpImg = (p: string) => `https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/${p}`;
+const ogaImg = (p: string) => `https://oga.yamado.co.jp/img/${p}`;
+
+export const sitePages: SitePage[] = [
+	// ======== 西和賀（www.yamado.co.jp の下層ページを移植） ========
+	{
+		id: 'sp-nw-cuisine', facilityId: 'f-nishiwaga', slug: 'cuisine',
+		title: 'お料理', titleEn: 'Cuisine',
+		lead: '素材を知り尽くした料理人が奏でる美食のひととき。地場産の厳選食材と自社農園から収穫した安全で新鮮な食材を活用し、創造力あふれた調理法で仕上げたお料理をご堪能ください。',
+		heroUrl: wpImg('cuisine/fig_01.jpg'),
+		sections: [
+			{ heading: '夕食', headingEn: 'Dinner', body: 'お客様ごとにパーテーションで仕切られた半個室感覚の空間で、ゆっくりと時間をかけて料理長渾身のレシピをご堪能ください。厳選した地酒やワインなど、アルコールの品揃えにもこだわりがございます。', imageUrl: wpImg('cuisine/modal_02_01.jpg') },
+			{ heading: '朝食', headingEn: 'Breakfast', body: '炊きたてご飯やほかほかのカンパーニュ、新鮮な野菜など、豊富な種類の料理をご用意しています。優雅な朝のひとときをお過ごしください。', imageUrl: wpImg('cuisine/modal_01_01.jpg') }
+		],
+		isPublished: true, sortOrder: 2
+	},
+	{
+		id: 'sp-nw-facility', facilityId: 'f-nishiwaga', slug: 'facility',
+		title: '施設', titleEn: 'Facility',
+		lead: '大自然ともてなしの心を味わう至福の時間。都会の喧騒や日常から解き放たれる癒やしの空間として、館内を山に見立てて設えました。客室名は季節ごとの山の変化と、樹木・花の名前に由来しています。',
+		heroUrl: wpImg('facility/fig_01.jpg'),
+		sections: [
+			{ heading: 'ロビー・読書室', headingEn: 'Lobby', body: '北欧と和が融合した開放的な空間。窓の外に広がる山の景色を眺めながら、ゆったりとした時間をお過ごしください。', imageUrl: wpImg('facility/fig_01.jpg') },
+			{ heading: '福膳坊', headingEn: 'Dining', body: '朝夕のお食事処。パーテーションで仕切られた半個室感覚の空間で、季節の山人料理をお楽しみいただけます。', imageUrl: wpImg('facility/fig_07.jpg') },
+			{ heading: '湯場一寸', headingEn: 'Onsen', body: '渓流沿いの野趣溢れる野天風呂。源泉かけ流しの湯を、川のせせらぎとともに。貸切利用も承ります（当日予約制）。', imageUrl: wpImg('facility/fig_10.jpg') },
+			{ heading: '客室棟', headingEn: 'Guest Rooms', body: 'メゾネットタイプの靖山樓、清流に面した麓花坊、広々とした麓樹坊。いずれも季節の山の変化と樹木・花の名に由来する全10室です。' }
+		],
+		isPublished: true, sortOrder: 3
+	},
+	{
+		id: 'sp-nw-option', facilityId: 'f-nishiwaga', slug: 'option',
+		title: 'オプション', titleEn: 'Option',
+		lead: 'ご滞在をより豊かにするリラクゼーションとアクティビティをご用意しています。',
+		heroUrl: wpImg('option/fig_01.jpg'),
+		sections: [
+			{ heading: 'リラクゼーション', headingEn: 'Relaxation', body: '女性整体師によるカイロプラクティック、筋肉療法、整体、フットケアなど。整体の技術を取り入れたエステです。', note: '15,000円（税込／60分）｜ 20:30〜22:00 または 9:30〜11:30', imageUrl: wpImg('option/fig_01.jpg') },
+			{ heading: 'リバートレッキング', headingEn: 'River Trekking', body: '夏の清流を歩く爽快な川のトレッキング。', note: '5,000円／人 ｜ 7月下旬〜9月下旬', imageUrl: wpImg('option/flyer_01.jpg') },
+			{ heading: 'ブナと桂の巨樹めぐり', headingEn: 'Giant Trees', body: '西和賀のブナと桂の巨樹を訪ねる森のガイドツアー。', note: '8,000円／人 ｜ 6月上旬〜11月上旬', imageUrl: wpImg('option/flyer_02.jpg') },
+			{ heading: '錦秋湖カンジキスノートレッキング', headingEn: 'Snow Trekking', body: '雪深い西和賀ならではの、カンジキで歩く冬の錦秋湖。', note: '5,000円／人 ｜ 12月下旬〜3月下旬', imageUrl: wpImg('option/flyer_03.jpg') },
+			{ heading: '水没林とカヌー', headingEn: 'Canoe', body: '春の錦秋湖にだけ現れる幻想的な水没林をカヌーでめぐります。', note: '10,000〜17,000円／人 ｜ 4月下旬〜5月下旬' }
+		],
+		isPublished: true, sortOrder: 4
+	},
+	{
+		id: 'sp-nw-shiki', facilityId: 'f-nishiwaga', slug: 'shiki',
+		title: '山人の四季', titleEn: 'Four Seasons',
+		lead: 'ここにしかない四季の魅力。訪れるたび新鮮で懐かしい、西和賀の移ろい。',
+		heroUrl: wpImg('index/top_fig_02.jpg'),
+		sections: [
+			{ heading: '山人の春', headingEn: 'Spring', body: '雪解けの清流と山菜の芽吹き。錦秋湖には水没林が現れ、カヌーの季節が始まります。' },
+			{ heading: '山人の夏', headingEn: 'Summer', body: 'ブナの森の深い緑と川のせせらぎ。リバートレッキングで涼を楽しむ季節です。' },
+			{ heading: '山人の秋', headingEn: 'Autumn', body: '名の由来でもある錦秋湖の紅葉。山の幸が最も豊かになる実りの季節です。' },
+			{ heading: '山人の冬', headingEn: 'Winter', body: '日本有数の豪雪地帯・西和賀の静寂な雪景色。雪見の温泉とカンジキトレッキングを。' }
+		],
+		isPublished: true, sortOrder: 5
+	},
+	// ======== 男鹿（oga.yamado.co.jp の下層ページを移植） ========
+	{
+		id: 'sp-oga-nature', facilityId: 'f-oga', slug: 'nature',
+		title: '自然', titleEn: 'Nature',
+		lead: '荒々しく打ち寄せる波の音が、木々を抜け、深く息づく森へ溶け込んでいく。大地が生んだ地層、潮の香りを孕む空気、そして太古の鼓動。',
+		heroUrl: ogaImg('main/nature_kv@2x.webp'),
+		sections: [
+			{ heading: '悠久の時を越えて 原始の景色が残る、男鹿半島', headingEn: 'Oga Peninsula', body: '神聖な土地として人々に守られてきた男鹿。七千万年にわたる歴史を刻む地層が、訪れる者に太古の記憶を語りかけます。', imageUrl: ogaImg('nature/oga_main@2x.webp') },
+			{ heading: '荒々しくも優しい海に 生命が宿る', headingEn: 'The Sea', body: '希少な生物が息づく豊かな海。荒々しい波の表情の奥に、静かな優しさを湛えています。', imageUrl: ogaImg('nature/sea_main@2x.webp') },
+			{ heading: '何万年もの時を重ねてきた 大地の重み', headingEn: 'The Forest', body: '苔むす木々が原始の調和を保つ森。一歩足を踏み入れれば、生命の物語が聞こえてきます。', imageUrl: ogaImg('nature/forest_main@2x.webp') }
+		],
+		isPublished: true, sortOrder: 1
+	},
+	{
+		id: 'sp-oga-cuisine', facilityId: 'f-oga', slug: 'cuisine',
+		title: '料理', titleEn: 'Cuisine',
+		lead: '男鹿の海と森が育む希少食材を、シェフの研ぎ澄まされた技で一皿に昇華。荒々しくも優しい自然の力を五感で受け止めるとき、そこには新たな発見と感動が待っています。',
+		heroUrl: ogaImg('main/cuisine_kv@2x.webp'),
+		sections: [
+			{ heading: '自然の厳しさが育んだ濃密な旨味を宿した食材を贅沢に使用', headingEn: 'Ingredients', body: '男鹿半島の地形と厳しい環境条件が、海産物と山の恵みに濃密な旨味を与えます。', imageUrl: ogaImg('cuisine/ingredient_main@2x.webp') },
+			{ heading: '男鹿の自然をひと皿に集約する研ぎ澄まされた匠の技術', headingEn: 'Chef', body: '食材の声に耳を澄まし、組み合わせと火入れで男鹿の自然をひと皿に集約します。', imageUrl: ogaImg('cuisine/chef_special_main@2x.webp') },
+			{ heading: '大地と海の息吹が詰まった美食に心が静かに満ちてゆく', headingEn: 'Experience', body: 'ひと皿ごとに広がる大地と海の息吹。食を通じて、心と身体が静かに満ちてゆきます。', imageUrl: ogaImg('cuisine/tableware_main@2x.webp') },
+			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）の3つのコースをご用意しています。', note: 'コースはご予約のプランにより異なります', imageUrl: ogaImg('cuisine/restaurant_main@2x.webp') }
+		],
+		isPublished: true, sortOrder: 2
+	},
+	{
+		id: 'sp-oga-restaurant', facilityId: 'f-oga', slug: 'restaurant',
+		title: 'レストラン', titleEn: 'Restaurant',
+		lead: '食事を待つ時間さえ贅沢に。美しい音と香りが漂う特別な空間。鵜ノ崎海岸の歴史に敬意を込めて、"isana" と名付けました。',
+		heroUrl: ogaImg('main/restaurant_kv@2x.webp'),
+		sections: [
+			{ heading: 'レストラン isana', headingEn: 'isana', body: '全40席・個室1室（6席）。日本海を望む窓際の席で、男鹿の旬をご堪能ください。', note: 'ディナー 17:30〜22:00（L.O. 21:30）／ 朝食 7:30〜10:00（L.O. 9:30）', imageUrl: ogaImg('main/restaurant_kv@2x.webp') },
+			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）。', imageUrl: ogaImg('cuisine/restaurant_main@2x.webp') }
+		],
+		isPublished: true, sortOrder: 3
+	},
+	{
+		id: 'sp-oga-onsen', facilityId: 'f-oga', slug: 'onsen',
+		title: '温泉', titleEn: 'Onsen',
+		lead: '美しい日本海を眺めながら、エメラルド色に輝く湯に心も浸る。源泉掛け流しの鵜ノ崎温泉は、硫黄分を含むエメラルド色の湯です。',
+		heroUrl: ogaImg('main/onsen_kv@2x.webp'),
+		sections: [
+			{ heading: '露天風呂', headingEn: 'Open-air Bath', body: '心を解放してくれる、エメラルド色に輝く湯船と紺碧に輝く日本海。湯船に身を沈めれば、視界には鮮やかな日本海が広がり、エメラルド色の湯が日常の疲れをやさしくほどいてくれます。', imageUrl: ogaImg('onsen/large_public_bath@2x.webp') },
+			{ heading: '貸切露天風呂', headingEn: 'Private Bath', body: '誰にも邪魔されることなく、至福の時を独り占めする貸切の湯。静かな空間で、心をほどくひとときを。', imageUrl: ogaImg('onsen/private_bath@2x.webp') },
+			{ heading: '泉質', headingEn: 'Spring Quality', body: '鵜ノ崎温泉 ｜ 含硫黄ナトリウム・カルシウム塩化物泉（源泉掛け流し）。美肌効果、殺菌・抗炎症作用、血管拡張作用などが期待できます。' }
+		],
+		isPublished: true, sortOrder: 4
+	},
+	{
+		id: 'sp-oga-guide', facilityId: 'f-oga', slug: 'guide',
+		title: '館内案内', titleEn: 'Facility',
+		lead: '洗練された意匠に、やすらぎと感動が溶け合う。緩やかな色調と落ち着いた照明が心を静かにほどき、モダンなアクセントが感性を揺さぶる空間。',
+		heroUrl: ogaImg('facility/facility_pic01@2x.webp'),
+		sections: [
+			{ heading: '自然と心が通う、癒しのエントランス', headingEn: 'Entrance & Reception', body: 'やわらかな光と木の温もり。人と自然が溶け合う穏やかな空気が迎えます。', imageUrl: ogaImg('facility/facility_pic01@2x.webp') },
+			{ heading: '朝露も夕闇も、男鹿の大地に身を委ねるひととき', headingEn: 'Terrace', body: '刻々と変わる空の表情に寄り添い、自然と自身の鼓動が重なる時間を。', imageUrl: ogaImg('facility/facility_pic02@2x.webp') },
+			{ heading: '大地と海の恵みを、至福の一皿で', headingEn: 'Restaurant', body: '男鹿の海と山の素材を、洗練された技で調理してお届けします。', imageUrl: ogaImg('facility/facility_pic03@2x.webp') },
+			{ heading: '海を望む、地酒と共に贅沢な夜を', headingEn: 'Bar & Lounge', body: '秋田の地酒とこだわりの一杯を、海を眺めながら楽しむ空間。', imageUrl: ogaImg('facility/facility_pic04@2x.webp') }
+		],
+		isPublished: true, sortOrder: 5
 	}
 ];
 
@@ -791,6 +913,20 @@ export function getFaqs(facilityId: string, locale: Locale): Faq[] {
 }
 
 /** ロケール付き施設一覧（公開済み） */
+/** 下層コンテンツページ取得（locale オーバーレイ適用） */
+export function getSitePage(facilityId: string, slug: string, locale: Locale): SitePage | undefined {
+	const p = sitePages.find((s) => s.facilityId === facilityId && s.slug === slug && s.isPublished);
+	if (!p) return undefined;
+	return applyTranslation(p, 'site_page', p.id, locale);
+}
+
+export function listSitePages(facilityId: string, locale: Locale): SitePage[] {
+	return sitePages
+		.filter((s) => s.facilityId === facilityId && s.isPublished)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((p) => applyTranslation(p, 'site_page', p.id, locale));
+}
+
 /** お知らせ一覧（公開のみ・新しい順・locale オーバーレイ適用） */
 export function getNews(facilityId: string, locale: Locale, limit?: number): NewsPost[] {
 	const list = newsPosts

@@ -10,6 +10,7 @@
 	import OverviewSection from '$lib/components/facility/OverviewSection.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import type { FacilityPageData } from './types';
+	import { reveal } from '$lib/actions/reveal';
 
 	let { data }: { data: FacilityPageData } = $props();
 	let f = $derived(data.facility);
@@ -25,7 +26,7 @@
 
 <div class="yamado-v1 bg-white" style="--fac-heading: #2e3a2f; --fac-accent: #4a6b52;">
 	<!-- ヒーロー: 縦書きキャッチ -->
-	<section class="relative">
+	<section use:reveal class="relative">
 		<img src={f.photos[0].url} alt={f.name} class="h-[480px] w-full object-cover sm:h-[560px]" />
 		<div class="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/50"></div>
 		<p class="absolute right-6 top-10 hidden text-2xl leading-loose tracking-[0.4em] text-white drop-shadow-md [writing-mode:vertical-rl] sm:block">
@@ -44,7 +45,7 @@
 		<NewsSection news={data.news} {base} variant="yamado" />
 
 		<!-- コンセプト -->
-		<section class="mx-auto max-w-2xl text-center">
+		<section use:reveal class="mx-auto max-w-2xl text-center">
 			<p class="mb-3 text-xs tracking-[0.5em]" style="color: var(--fac-accent)">CONCEPT</p>
 			<h2 class="mb-6 text-2xl leading-relaxed tracking-[0.2em]" style="color: var(--fac-heading)">
 				{f.catchCopy}
@@ -54,7 +55,7 @@
 
 		<!-- 山人に来る理由（温泉・料理・景色） -->
 		{#if reasons.length > 0}
-			<section id="reason">
+			<section use:reveal id="reason">
 				<p class="mb-2 text-center text-xs tracking-[0.5em]" style="color: var(--fac-accent)">REASON</p>
 				<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">
 					{m.tmpl_reasons_title()}
@@ -76,7 +77,7 @@
 		{/if}
 
 		<!-- 客室 -->
-		<section id="rooms">
+		<section use:reveal id="rooms">
 			<p class="mb-2 text-center text-xs tracking-[0.5em]" style="color: var(--fac-accent)">GUEST ROOM</p>
 			<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">
 				{m.facility_rooms()}
@@ -89,7 +90,7 @@
 		</section>
 
 		<!-- プラン -->
-		<section>
+		<section use:reveal>
 			<div class="mb-8 text-center">
 				<p class="mb-2 text-xs tracking-[0.5em]" style="color: var(--fac-accent)">PLAN</p>
 				<h2 class="text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">{m.facility_recommend_plans()}</h2>

@@ -21,6 +21,12 @@
   - 西和賀シェル＝現行 www 実測値（固定白80%ヘッダー・ロゴ130px・ナビ16px・ご予約ボタン #e5e5e5→hover#4d4d4d・本文 游明朝16px lh1.6 #333・コンテナ980px・モバイル全面#4d4d4dメニュー）
   - 男鹿シェル＝現行 oga 実測値（Shippori Mincho B1 16px ls.05em lh1.75 palt #111・Cormorant Garamond/Inter・ロゴsvg+ハンバーガーのみの固定白ヘッダー＝トップはスクロール出現・右中央固定の縦書き「宿泊予約」・ドロワーContents・本文カラム600px）
   - プラン/客室ページには施設ヘッダー直下に検索条件バー（共通機能の入口）
+- **下層コンテンツページ再現（2026-06-12・v0.6.0）**：原サイトと同じマルチページ構成を `/[brand]/[facility]/[page]` 動的ルート + `book.site_pages`（migration 20260612004000）で再現
+  - 西和賀: /rooms /cuisine /facility /option /shiki /faq /access（原文リード・料金・実画像を移植）
+  - 男鹿: /rooms /nature /cuisine /restaurant /onsen /guide /access（泉質・営業時間・コース名等も移植）
+  - スクロールリビール（IntersectionObserver `use:reveal`・prefers-reduced-motion 対応）+ ヒーローズームイン。スマホは縦積み・42vhヒーロー
+  - 文字サイズを底上げ（シェル基準 17px・小サイズユーティリティもスコープ内で +1〜2px）
+  - 下層ページの管理画面編集（site_pages CRUD）は未実装 → 次タスク候補
 - **施設別デザインテンプレート**：`facility.template`（standard / yamado-v1 / oga-v1）で施設HPのデザインを出し分け
   - `yamado-v1`（西和賀）= 現行 www の和モダン再現（明朝・深緑・縦書きキャッチ・「山人に来る理由」）
   - `oga-v1`（男鹿）= 現行 oga のミニマルモダン再現（サンセリフ・NATURE/CUISINE/STAY・ABOUTグリッド）
