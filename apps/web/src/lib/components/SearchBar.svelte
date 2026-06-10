@@ -1,0 +1,59 @@
+<script lang="ts">
+	import { todayStr, addDays } from '$lib/format';
+
+	let {
+		checkin = '',
+		nights = 1,
+		adults = 2,
+		action = '/search',
+		large = false
+	}: { checkin?: string; nights?: number; adults?: number; action?: string; large?: boolean } = $props();
+
+	let ci = $state(checkin);
+	let n = $state(nights);
+	let a = $state(adults);
+	const minDate = todayStr();
+	const maxDate = addDays(todayStr(), 365);
+</script>
+
+<form
+	method="GET"
+	{action}
+	class="flex flex-wrap items-end gap-2 {large ? 'rounded-xl bg-white/95 p-4 shadow-lg' : ''}"
+>
+	<label class="flex flex-col gap-1 text-xs text-stone-500">
+		チェックイン
+		<input
+			type="date"
+			name="checkin"
+			bind:value={ci}
+			min={minDate}
+			max={maxDate}
+			class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-800"
+		/>
+	</label>
+	<label class="flex flex-col gap-1 text-xs text-stone-500">
+		泊数
+		<select name="nights" bind:value={n} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
+			{#each [1, 2, 3, 4, 5] as v}
+				<option value={v}>{v}泊</option>
+			{/each}
+		</select>
+	</label>
+	<label class="flex flex-col gap-1 text-xs text-stone-500">
+		人数
+		<select name="adults" bind:value={a} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
+			{#each [1, 2, 3, 4] as v}
+				<option value={v}>大人{v}名</option>
+			{/each}
+		</select>
+	</label>
+	<button
+		type="submit"
+		class="rounded-md bg-brand-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 {large
+			? 'px-6 py-2'
+			: ''}"
+	>
+		空室を探す
+	</button>
+</form>

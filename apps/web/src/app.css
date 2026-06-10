@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-brand-50: #f6f5f1;
+	--color-brand-100: #e9e6dc;
+	--color-brand-600: #5c5444;
+	--color-brand-700: #44402f;
+	--color-brand-800: #2e2b20;
+	--color-brand-900: #1f1d15;
+	--color-accent-500: #b08d3e;
+	--color-accent-600: #95742c;
+	--font-serif-jp: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
+}
+
+html {
+	font-family: 'Yu Gothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+}
+
+.font-display {
+	font-family: var(--font-serif-jp);
+}
