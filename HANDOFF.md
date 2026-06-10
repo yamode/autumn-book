@@ -30,6 +30,9 @@
   - **⚠ マージ＝PROD 自動適用。マージはユーザーがレビュー後に実施**
 - ✅ アプリ側 Supabase 接続層：`src/lib/server/supabase.ts` + `supabase-data.ts`（RPC/ビューのアダプタ・カットオーバー手順はファイル冒頭コメント）。`.env` の `DATA_SOURCE=demo|supabase` で切替（既定 demo）
 - ✅ adapter-cloudflare へ切替済み（ビルド成功・session cookie の Buffer 依存も除去済み）
+- ✅ **Supabase Advisor の ERROR 3件解消（2026-06-12・migration 20260612001000/001100）**：v_* ビュー3本を security_invoker=true 化＋下位テーブルへ「公開行のみ・必要列のみ」の anon GRANT/RLS（可視範囲は不変・email等の非公開列は遮断を実証）。book-photos の listing 露出 WARN も SELECT ポリシー削除で解消
+  - 残 WARN のうち book の anon 実行可 SECURITY DEFINER RPC（create_hold 等）は**ゲスト予約導線として意図的**（設計書 §5.2）。pg_net / rms_log_activity は rms 由来で対象外
+  - 「Leaked Password Protection Disabled」WARN は Auth 本接続（P5）時にダッシュボードで有効化推奨
 
 ## 残アクション（要ユーザー作業 or 後続セッション）
 
