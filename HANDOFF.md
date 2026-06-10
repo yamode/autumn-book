@@ -6,6 +6,7 @@
 
 - **フェーズ：設計完了・実装未着手（P0 前）**
 - 正式設計書：`autumn_book_design.md`（v2・プラットフォーム統合版）
+- 画面設計書：`autumn_book_ui_design.md`（v1・2026-06-10 追加）— 顧客向け16画面 + 管理画面9画面（予約管理・Markdownプラン作成・メルマガ作成等）。実装増分は同書 §7、新規未決5件は §8
 - 旧仕様 `autumn_book_spec.md` / `autumn_book_full_spec.md` / `autumn_book_erd.md` は設計書 §12 で置き換え済み（参照用に残置）
 - 前提：autumn-pms/docs/02-architecture.md（クラウドPMS設計・2026-06-10）と整合済み。予約の着地形（stay_groups → stays → stay_nights）は PMS 設計に従う
 - コミット未実施（設計書・HANDOFF とも working tree のみ）
@@ -45,6 +46,13 @@
 - [ ] 電子インフォメーションの提供形態（スマホQR前提 vs 客室タブレット）
 - [ ] オプション予約の販売条件（貸切風呂の枠数・開始タイミング・キャンセル規定・料金）
 - [ ] ステップメールの文面・タイミングの現場確認（既定案：7日前/3日前/前日/翌日）
+
+### 画面設計関連（autumn_book_ui_design.md §8）
+- [ ] 管理画面の置き場所（autumn-book 内 `/admin` 提案 vs rms 同居）
+- [ ] 写真ストレージ（Cloudflare Images vs Supabase Storage + 自前リサイズ）
+- [ ] 管理面への Cloudflare Access 追加保護の要否
+- [ ] OTA 予約を管理画面に閲覧表示するか（提案：閲覧のみ表示）
+- [ ] rate_plans 新規作成を book 管理画面に取り込むか（提案：rms 残置）
 
 ## 次のアクション候補
 
