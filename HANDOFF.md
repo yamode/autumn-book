@@ -66,6 +66,7 @@
 2. ~~Cloudflare Pages デプロイ~~ → **✅ 2026-06-11 デプロイ済み（demo モード）**：https://autumn-book.pages.dev（全ルート200確認・ja/en/zh-TW）
    - Pages プロジェクト名 `autumn-book`・production branch `main`。`apps/web/wrangler.jsonc` に `nodejs_compat` フラグ（Paraglide の async_hooks 用・必須）
    - 再デプロイ手順：`cd apps/web && pnpm build && pnpm dlx wrangler pages deploy`
+   - **CI/CD（2026-06-12）**：`.github/workflows/deploy.yml` — main push で build → deploy → ヘルスチェック（5パス200確認）。CF Git接続は使わない方針（Direct Upload + Actions。品質ゲートを組めるため本番運用に採用）。**有効化には GitHub Secrets の登録が必要**：`CLOUDFLARE_API_TOKEN`（Pages編集権限）/ `CLOUDFLARE_ACCOUNT_ID`（=6aa45d1081c1e08d7f1ce6d5aba5c3b7）
    - `DATA_SOURCE=supabase` 等の本番環境変数は Pages の Settings → Environment variables で設定（demo の現状は環境変数不要）
    - カスタムドメイン（www / oga / stay）割当は DNS 移管後（§4.0.1・oga の MX 明示追加が前提）
 3. Supabase Auth 本接続（P5・@supabase/ssr）— デモ session を置換。LINE ログインは §14-5 決定後
