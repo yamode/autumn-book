@@ -39,7 +39,11 @@
 2. **rms 側でデータ投入**：rate_plans / daily_rates / availability が現在 **0件**（room_types は15件あり）。プラン・料金・在庫が入らないと検索 RPC は空を返す
 3. **book 公開コンテンツ投入**：facility_contents / plan_contents / photos。PROD への直接 INSERT は権限ポリシーで不可のため、(a) `DATA_SOURCE=supabase` 切替後に管理画面 `/admin` から入力（Auth 接続が前提）、(b) seed 用 migration を autumn-shared に追加、(c) ユーザー立ち会いで SQL 実行、のいずれか
 4. 1〜3 が揃ったら `.env` の `DATA_SOURCE=supabase` 切替（手順: supabase-data.ts 冒頭）
-2. **Cloudflare Pages デプロイ**：`wrangler login` が未認証（ブラウザ認証が必要）。ログイン後 `pnpm dlx wrangler pages project create autumn-book` → `pages deploy`
+2. ~~Cloudflare Pages デプロイ~~ → **✅ 2026-06-11 デプロイ済み（demo モード）**：https://autumn-book.pages.dev（全ルート200確認・ja/en/zh-TW）
+   - Pages プロジェクト名 `autumn-book`・production branch `main`。`apps/web/wrangler.jsonc` に `nodejs_compat` フラグ（Paraglide の async_hooks 用・必須）
+   - 再デプロイ手順：`cd apps/web && pnpm build && pnpm dlx wrangler pages deploy`
+   - `DATA_SOURCE=supabase` 等の本番環境変数は Pages の Settings → Environment variables で設定（demo の現状は環境変数不要）
+   - カスタムドメイン（www / oga / stay）割当は DNS 移管後（§4.0.1・oga の MX 明示追加が前提）
 3. Supabase Auth 本接続（P5・@supabase/ssr）— デモ session を置換。LINE ログインは §14-5 決定後
 4. Stripe 本接続（P4・APIキー要）・Resend 接続（P3 確定メール→P7 メルマガ。APIキー・送信ドメイン SPF/DKIM 設定要 §14-4）
 5. メルマガ/ステップメールの DB 化（mail_campaigns / email_sequences migration は設計書 §11 の P6 以降分）
