@@ -15,10 +15,11 @@ export default defineConfig({
 			urlPatterns: [
 				{
 					pattern: ':protocol://:domain(.*)::port?/:path(.*)?',
+					// 具体的なパターンを先に置く（ja のキャッチオールが先だと /en/... も ja に一致する）
 					localized: [
-						['ja', ':protocol://:domain(.*)::port?/:path(.*)?'],
 						['en', ':protocol://:domain(.*)::port?/en/:path(.*)?'],
-						['zh-TW', ':protocol://:domain(.*)::port?/zh-TW/:path(.*)?']
+						['zh-TW', ':protocol://:domain(.*)::port?/zh-TW/:path(.*)?'],
+						['ja', ':protocol://:domain(.*)::port?/:path(.*)?']
 					]
 				}
 			]

@@ -10,10 +10,10 @@
 	// 予約フロー中はスティッキー検索バーを出さない（離脱防止・設計書 §7）
 	let showSearch = $derived(!page.url.pathname.startsWith('/booking') && !page.url.pathname.startsWith('/auth'));
 
-	// hreflang 用の各ロケールURL
-	let jaHref = $derived(localizeHref(page.url.pathname + page.url.search, { locale: 'ja' }));
-	let enHref = $derived(localizeHref(page.url.pathname + page.url.search, { locale: 'en' }));
-	let zhTwHref = $derived(localizeHref(page.url.pathname + page.url.search, { locale: 'zh-TW' }));
+	// hreflang 用の各ロケールURL（hreflang は絶対URL必須のため origin を付与）
+	let jaHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'ja' }));
+	let enHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'en' }));
+	let zhTwHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'zh-TW' }));
 </script>
 
 <svelte:head>
