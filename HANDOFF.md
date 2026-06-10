@@ -33,7 +33,11 @@
 
 ## 残アクション（要ユーザー作業 or 後続セッション）
 
-1. **autumn-shared#28 をレビュー → マージ**（PROD 適用）。その後 rms で daily_rates / availability 整備 + book.facility_contents / plan_contents に公開データ投入 → `DATA_SOURCE=supabase` 切替（手順: supabase-data.ts 冒頭）
+0. ~~autumn-shared#28 マージ~~ → **✅ 2026-06-11 マージ・PROD 適用確認済み**（schema_migrations に 20260611100100〜100600 の6本、autumn_booking チャネル・pg_cron 登録済み、anon での RPC/ビュー実行も権限エラーなしを確認）
+1. **【要ユーザー】Supabase ダッシュボードで `book` スキーマを API 公開に追加**：Project Settings → Data API → Exposed schemas に `book` を追加（現状: public, core, ordering, audit, billing, pms のみ。これがないと PostgREST 経由の RPC が `PGRST106` で失敗する）
+2. **rms 側でデータ投入**：rate_plans / daily_rates / availability が現在 **0件**（room_types は15件あり）。プラン・料金・在庫が入らないと検索 RPC は空を返す
+3. **book 公開コンテンツ投入**：facility_contents / plan_contents / photos。PROD への直接 INSERT は権限ポリシーで不可のため、(a) `DATA_SOURCE=supabase` 切替後に管理画面 `/admin` から入力（Auth 接続が前提）、(b) seed 用 migration を autumn-shared に追加、(c) ユーザー立ち会いで SQL 実行、のいずれか
+4. 1〜3 が揃ったら `.env` の `DATA_SOURCE=supabase` 切替（手順: supabase-data.ts 冒頭）
 2. **Cloudflare Pages デプロイ**：`wrangler login` が未認証（ブラウザ認証が必要）。ログイン後 `pnpm dlx wrangler pages project create autumn-book` → `pages deploy`
 3. Supabase Auth 本接続（P5・@supabase/ssr）— デモ session を置換。LINE ログインは §14-5 決定後
 4. Stripe 本接続（P4・APIキー要）・Resend 接続（P3 確定メール→P7 メルマガ。APIキー・送信ドメイン SPF/DKIM 設定要 §14-4）
