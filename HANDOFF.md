@@ -20,13 +20,23 @@
 - Markdown は原文保存・表示時サニタイズ（生HTML不許可）。プラン/施設紹介/FAQ/メール本文で共通
 - staff ロールは閲覧のみ＋連絡先マスク、破壊的操作（キャンセル・ポイント調整・ランク変更）は理由必須＋監査ログ
 
-## 次のアクション候補（Supabase 接続フェーズ）
+## Supabase 接続フェーズの進捗（2026-06-11）
 
-1. `book` スキーマ migration を autumn-shared に PR（設計書 §11。autumn-pms v0.1 の進捗確認後）
-2. store.ts のデモ実装を Supabase RPC / ビューに差し替え（searchAvailability / quote / create_hold / confirm_booking / cancel_booking）
-3. Supabase Auth（メール+Google、LINE は §14-5 決定後）・Storage（写真アップロード）接続
-4. adapter-cloudflare へ切替 + Cloudflare Pages デプロイ
-5. Stripe 本接続（P4）・Resend 接続（確定メール→ステップメール→メルマガ）
+- ✅ **book スキーマ migration 6本を autumn-shared#28 に PR 済み**（https://github.com/yamode/autumn-shared/pull/28）
+  - book_schema（コンテンツ層+ビュー+RLS）/ book_members / book_holds（pg_cron解放）/ book_rpc_search / book_rpc_booking / book_storage（book-photos バケット）
+  - 実 PROD スキーマ実査済み（列名・CHECK制約・private ヘルパー・テナント/施設ID）。既存テーブルへの ALTER なし＝autumn-pms v0.1 の未コミット migration（20260610090xxx）と競合しない
+  - confirm_booking は pms 拡張前のため core.stays + bookings のみ書く移行可能設計（設計書 §8-4）
+  - **⚠ マージ＝PROD 自動適用。マージはユーザーがレビュー後に実施**
+- ✅ アプリ側 Supabase 接続層：`src/lib/server/supabase.ts` + `supabase-data.ts`（RPC/ビューのアダプタ・カットオーバー手順はファイル冒頭コメント）。`.env` の `DATA_SOURCE=demo|supabase` で切替（既定 demo）
+- ✅ adapter-cloudflare へ切替済み（ビルド成功・session cookie の Buffer 依存も除去済み）
+
+## 残アクション（要ユーザー作業 or 後続セッション）
+
+1. **autumn-shared#28 をレビュー → マージ**（PROD 適用）。その後 rms で daily_rates / availability 整備 + book.facility_contents / plan_contents に公開データ投入 → `DATA_SOURCE=supabase` 切替（手順: supabase-data.ts 冒頭）
+2. **Cloudflare Pages デプロイ**：`wrangler login` が未認証（ブラウザ認証が必要）。ログイン後 `pnpm dlx wrangler pages project create autumn-book` → `pages deploy`
+3. Supabase Auth 本接続（P5・@supabase/ssr）— デモ session を置換。LINE ログインは §14-5 決定後
+4. Stripe 本接続（P4・APIキー要）・Resend 接続（P3 確定メール→P7 メルマガ。APIキー・送信ドメイン SPF/DKIM 設定要 §14-4）
+5. メルマガ/ステップメールの DB 化（mail_campaigns / email_sequences migration は設計書 §11 の P6 以降分）
 - 旧仕様 `autumn_book_spec.md` / `autumn_book_full_spec.md` / `autumn_book_erd.md` は設計書 §12 で置き換え済み（参照用に残置）
 - 前提：autumn-pms/docs/02-architecture.md（クラウドPMS設計・2026-06-10）と整合済み。予約の着地形（stay_groups → stays → stay_nights）は PMS 設計に従う
 - コミット未実施（設計書・HANDOFF とも working tree のみ）

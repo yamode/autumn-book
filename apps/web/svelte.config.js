@@ -1,11 +1,11 @@
-import adapter from '@sveltejs/adapter-auto';
+import adapter from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
 	preprocess: vitePreprocess(),
 	kit: {
-		// 本番は @sveltejs/adapter-cloudflare に切替（設計書 §0）。開発中は auto
+		// Cloudflare Pages デプロイ（設計書 §0）
 		adapter: adapter()
 	}
 };

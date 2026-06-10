@@ -13,14 +13,15 @@ export function getSession(cookies: Cookies): SessionUser | null {
 	const raw = cookies.get(COOKIE);
 	if (!raw) return null;
 	try {
-		return JSON.parse(Buffer.from(raw, 'base64').toString('utf-8'));
+		// URI エンコード（Cloudflare Workers に Buffer がないため base64 は使わない）
+		return JSON.parse(decodeURIComponent(raw));
 	} catch {
 		return null;
 	}
 }
 
 export function setSession(cookies: Cookies, user: SessionUser) {
-	cookies.set(COOKIE, Buffer.from(JSON.stringify(user)).toString('base64'), {
+	cookies.set(COOKIE, encodeURIComponent(JSON.stringify(user)), {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
