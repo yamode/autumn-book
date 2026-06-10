@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { todayStr, addDays } from '$lib/format';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		checkin = '',
@@ -22,7 +23,7 @@
 	class="flex flex-wrap items-end gap-2 {large ? 'rounded-xl bg-white/95 p-4 shadow-lg' : ''}"
 >
 	<label class="flex flex-col gap-1 text-xs text-stone-500">
-		チェックイン
+		{m.searchbar_checkin()}
 		<input
 			type="date"
 			name="checkin"
@@ -33,18 +34,18 @@
 		/>
 	</label>
 	<label class="flex flex-col gap-1 text-xs text-stone-500">
-		泊数
+		{m.searchbar_nights()}
 		<select name="nights" bind:value={n} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
 			{#each [1, 2, 3, 4, 5] as v}
-				<option value={v}>{v}泊</option>
+				<option value={v}>{m.searchbar_nights_option({ n: String(v) })}</option>
 			{/each}
 		</select>
 	</label>
 	<label class="flex flex-col gap-1 text-xs text-stone-500">
-		人数
+		{m.searchbar_adults()}
 		<select name="adults" bind:value={a} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
 			{#each [1, 2, 3, 4] as v}
-				<option value={v}>大人{v}名</option>
+				<option value={v}>{m.searchbar_adults_option({ n: String(v) })}</option>
 			{/each}
 		</select>
 	</label>
@@ -54,6 +55,6 @@
 			? 'px-6 py-2'
 			: ''}"
 	>
-		空室を探す
+		{m.searchbar_submit()}
 	</button>
 </form>

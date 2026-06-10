@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { expiresAt, onexpire }: { expiresAt: number; onexpire?: () => void } = $props();
 
@@ -24,8 +25,8 @@
 <div class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm {warning ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'}">
 	<span aria-hidden="true">⏱</span>
 	{#if remaining > 0}
-		<span>お部屋を確保しています — 残り <strong class="tabular-nums">{mm}:{ss}</strong></span>
+		<span>{m.timer_holding({ mm, ss })}</span>
 	{:else}
-		<span>確保時間が終了しました。恐れ入りますが、もう一度お選び直しください。</span>
+		<span>{m.timer_expired()}</span>
 	{/if}
 </div>

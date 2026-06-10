@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { formatYen } from '$lib/format';
+	import { formatPrice } from '$lib/format';
 	import CancelPolicyNote from './CancelPolicyNote.svelte';
 	import type { RatePlan } from '$lib/types';
+	import * as m from '$lib/paraglide/messages';
 
 	let {
 		plan,
@@ -31,7 +32,7 @@
 			{/each}
 			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{plan.mealPlan}</span>
 			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">
-				{plan.paymentMethod === 'card' ? '事前カード決済' : '現地払い'}
+				{plan.paymentMethod === 'card' ? m.plan_card_payment_card() : m.plan_card_payment_local()}
 			</span>
 		</div>
 		<h3 class="font-display text-lg leading-snug text-brand-900 group-hover:underline">{plan.name}</h3>
@@ -40,12 +41,12 @@
 			<div>
 				{#if total !== null && perPerson !== null}
 					<p class="text-xl font-bold text-brand-900">
-						{formatYen(total)}
-						<span class="text-xs font-normal text-stone-500">/ {adults}名1室・税込（1名 {formatYen(perPerson)}）</span>
+						{formatPrice(total)}
+						<span class="text-xs font-normal text-stone-500">{m.plan_card_per_room({ adults: String(adults), perPerson: formatPrice(perPerson) })}</span>
 					</p>
 				{:else}
 					<p class="text-xl font-bold text-brand-900">
-						{formatYen(plan.basePrice)}<span class="text-xs font-normal text-stone-500">〜 / 1名1泊・税込</span>
+						{formatPrice(plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>
 					</p>
 				{/if}
 				{#if checkin}
@@ -53,7 +54,7 @@
 				{/if}
 			</div>
 			{#if remaining !== null && remaining > 0 && remaining <= 2}
-				<span class="shrink-0 rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-600">残り{remaining}室</span>
+				<span class="shrink-0 rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-600">{m.plan_card_remaining({ n: String(remaining) })}</span>
 			{/if}
 		</div>
 	</div>

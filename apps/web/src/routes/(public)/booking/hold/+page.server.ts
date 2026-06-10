@@ -11,6 +11,7 @@ import {
 	memberRanks
 } from '$lib/server/store';
 import { earnedPoints } from '@autumn-book/core';
+import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url, locals }) => {
@@ -45,7 +46,7 @@ export const actions: Actions = {
 		const holdId = String(form.get('holdId'));
 		const hold = getHold(holdId);
 		if (!hold || hold.status !== 'active') {
-			return fail(410, { message: '確保時間が過ぎました。お手数ですが、もう一度お選び直しください。' });
+			return fail(410, { message: m.error_hold_expired() });
 		}
 
 		const guest = {
@@ -58,10 +59,10 @@ export const actions: Actions = {
 			notes: String(form.get('notes') ?? '').trim()
 		};
 		const errors: Record<string, string> = {};
-		if (!guest.name) errors.name = 'お名前を入力してください';
-		if (!guest.kana) errors.kana = 'フリガナを入力してください';
-		if (!/^[0-9\-+ ]{10,}$/.test(guest.phone)) errors.phone = '電話番号の形式を確認してください';
-		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guest.email)) errors.email = 'メールアドレスの形式を確認してください';
+		if (!guest.name) errors.name = m.error_name_required();
+		if (!guest.kana) errors.kana = m.error_kana_required();
+		if (!/^[0-9\-+ ]{10,}$/.test(guest.phone)) errors.phone = m.error_phone_invalid();
+		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guest.email)) errors.email = m.error_email_invalid();
 		if (Object.keys(errors).length > 0) return fail(400, { errors, values: guest });
 
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;
@@ -77,7 +78,7 @@ export const actions: Actions = {
 
 		const result = confirmBooking(hold.id, guest, pointsUsed, memberId);
 		if ('error' in result) {
-			return fail(410, { message: '確保時間が過ぎました。お手数ですが、もう一度お選び直しください。' });
+			return fail(410, { message: m.error_hold_expired() });
 		}
 		redirect(303, `/booking/complete/${result.code}`);
 	},

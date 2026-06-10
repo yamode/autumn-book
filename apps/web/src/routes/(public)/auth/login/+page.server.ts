@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { members } from '$lib/server/store';
 import { setSession } from '$lib/server/session';
+import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -13,9 +14,9 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim();
 		const password = String(form.get('password') ?? '');
-		const member = members.find((m) => m.email === email && m.password === password);
+		const member = members.find((me) => me.email === email && me.password === password);
 		if (!member) {
-			return fail(401, { message: 'メールアドレスまたはパスワードが違います。', email });
+			return fail(401, { message: m.error_login_failed(), email });
 		}
 		setSession(cookies, { id: member.id, role: 'member', name: member.name });
 		redirect(303, url.searchParams.get('next') ?? '/account');

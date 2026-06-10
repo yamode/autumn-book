@@ -1,58 +1,59 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
 </script>
 
-<svelte:head><title>プロフィール ｜ マイページ</title></svelte:head>
+<svelte:head><title>{m.profile_title()}</title></svelte:head>
 
 <div class="max-w-lg space-y-6">
 	{#if form?.saved}
-		<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">保存しました。</p>
+		<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_saved()}</p>
 	{/if}
 	{#if form?.message}
 		<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
 	{/if}
 
 	<form method="POST" action="?/update" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
-		<h2 class="font-medium text-brand-900">会員情報</h2>
+		<h2 class="font-medium text-brand-900">{m.profile_heading()}</h2>
 		<div class="grid grid-cols-2 gap-3">
 			<label class="block text-sm">
-				<span class="text-stone-600">氏名</span>
+				<span class="text-stone-600">{m.profile_name()}</span>
 				<input name="name" value={data.member.name} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 			</label>
 			<label class="block text-sm">
-				<span class="text-stone-600">フリガナ</span>
+				<span class="text-stone-600">{m.profile_kana()}</span>
 				<input name="kana" value={data.member.kana} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 			</label>
 		</div>
 		<label class="block text-sm">
-			<span class="text-stone-600">電話番号</span>
+			<span class="text-stone-600">{m.profile_phone()}</span>
 			<input name="phone" value={data.member.phone} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 		</label>
 		<div class="text-sm">
-			<span class="text-stone-600">メールアドレス</span>
+			<span class="text-stone-600">{m.profile_email()}</span>
 			<p class="mt-1 flex items-center justify-between rounded-md bg-stone-50 px-3 py-2">
 				{data.member.email}
-				<span class="text-xs text-stone-400">変更には再確認が必要です（準備中）</span>
+				<span class="text-xs text-stone-400">{m.profile_email_note()}</span>
 			</p>
 		</div>
 		<label class="flex items-start gap-2 text-sm">
 			<input type="checkbox" name="mailOptIn" checked={data.member.mailOptIn} class="mt-0.5 h-4 w-4" />
-			<span>お得なプランやイベントのご案内メールを受け取る</span>
+			<span>{m.profile_mail_opt_in()}</span>
 		</label>
-		<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+		<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">{m.common_save()}</button>
 	</form>
 
 	<div class="rounded-2xl border border-stone-200 bg-white p-6 text-sm">
-		<p class="text-stone-500">会員番号：{data.member.memberCode} ／ 入会日：{data.member.joinedAt}</p>
+		<p class="text-stone-500">{m.profile_member_info({ code: data.member.memberCode, date: data.member.joinedAt })}</p>
 		<form method="POST" action="/auth/logout" class="mt-4">
-			<button type="submit" class="rounded-lg border border-stone-300 px-5 py-2 hover:bg-stone-50">ログアウト</button>
+			<button type="submit" class="rounded-lg border border-stone-300 px-5 py-2 hover:bg-stone-50">{m.common_logout()}</button>
 		</form>
 	</div>
 
 	<div class="rounded-2xl border border-stone-200 bg-white p-6 text-xs text-stone-500">
-		<p class="font-medium text-stone-600">退会について</p>
-		<p class="mt-1">退会するとポイントは失効します。予約履歴は法令に基づき一定期間保持されます。退会をご希望の場合はお問い合わせください。</p>
+		<p class="font-medium text-stone-600">{m.profile_withdrawal()}</p>
+		<p class="mt-1">{m.profile_withdrawal_note()}</p>
 	</div>
 </div>

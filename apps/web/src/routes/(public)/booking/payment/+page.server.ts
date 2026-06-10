@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getHold, planById, facilityById, roomTypeById, confirmBooking } from '$lib/server/store';
+import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ url }) => {
@@ -22,11 +23,11 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const hold = getHold(String(form.get('holdId')));
 		if (!hold || hold.status !== 'active' || !hold.guestDraft) {
-			return fail(410, { message: '確保時間が過ぎました。お手数ですが、もう一度お選び直しください。' });
+			return fail(410, { message: m.error_hold_expired() });
 		}
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;
 		const result = confirmBooking(hold.id, hold.guestDraft, hold.pointsDraft ?? 0, memberId);
-		if ('error' in result) return fail(410, { message: '予約を確定できませんでした。もう一度お試しください。' });
+		if ('error' in result) return fail(410, { message: m.error_confirm_failed() });
 		redirect(303, `/booking/complete/${result.code}`);
 	}
 };

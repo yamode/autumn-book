@@ -1,15 +1,16 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data, children } = $props();
 
-	const nav = [
-		{ href: '/account', label: '予約', icon: '📅' },
-		{ href: '/account/points', label: 'ポイント', icon: '◆' },
-		{ href: '/account/favorites', label: 'お気に入り', icon: '♥' },
-		{ href: '/account/profile', label: 'プロフィール', icon: '👤' }
-	];
+	const nav = $derived([
+		{ href: '/account', label: m.account_nav_reservations(), icon: '📅' },
+		{ href: '/account/points', label: m.account_nav_points(), icon: '◆' },
+		{ href: '/account/favorites', label: m.account_nav_favorites(), icon: '♥' },
+		{ href: '/account/profile', label: m.account_nav_profile(), icon: '👤' }
+	]);
 
 	function isActive(href: string) {
 		return href === '/account' ? page.url.pathname === '/account' : page.url.pathname.startsWith(href);
@@ -19,12 +20,12 @@
 <div class="mx-auto max-w-5xl px-4 py-8">
 	<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
 		<div>
-			<h1 class="font-display text-2xl text-brand-900">マイページ</h1>
+			<h1 class="font-display text-2xl text-brand-900">{m.account_layout_heading()}</h1>
 			<p class="mt-1 text-sm text-stone-500">{data.member.name} 様（{data.member.memberCode}）</p>
 		</div>
 		<div class="flex items-center gap-3">
 			<RankBadge rank={data.member.rank} />
-			<span class="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">{data.balance.toLocaleString()} pt</span>
+			<span class="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">{data.balance.toLocaleString()} {m.common_point_unit()}</span>
 		</div>
 	</div>
 

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import MapPanel from '$lib/components/MapPanel.svelte';
-	import { formatYen } from '$lib/format';
+	import { formatPrice } from '$lib/format';
 	import { dbg } from '$lib/debug';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 
@@ -13,7 +14,7 @@
 			lat: r.facility.lat,
 			lng: r.facility.lng,
 			name: r.facility.name,
-			label: r.minTotal !== null ? `${formatYen(r.reference ? r.minPerPerson! : r.minTotal)}〜` : '満室',
+			label: r.minTotal !== null ? `${formatPrice(r.reference ? r.minPerPerson! : r.minTotal)}〜` : m.common_sold_out(),
 			soldOut: r.minTotal === null
 		}))
 	);
@@ -33,18 +34,18 @@
 </script>
 
 <svelte:head>
-	<title>空室検索 ｜ 山人 -yamado-</title>
+	<title>{m.search_title()}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-6">
-	<h1 class="font-display mb-1 text-xl text-brand-900">地図から探す</h1>
+	<h1 class="font-display mb-1 text-xl text-brand-900">{m.search_heading()}</h1>
 	{#if !data.params.checkin}
 		<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-			日付が未指定のため<strong>参考最低料金（1名1泊）</strong>を表示しています。上の検索バーで日付を選ぶと、空室と正確な料金が表示されます。
+			{m.search_no_date()}<strong>{m.search_reference_note()}</strong>{m.search_reference_suffix()}
 		</p>
 	{:else}
 		<p class="mb-4 text-sm text-stone-500">
-			{data.params.checkin} から {data.params.nights}泊・大人{data.params.adults}名 ／ 表示料金は1室あたりの税込総額
+			{m.search_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}
 		</p>
 	{/if}
 
@@ -68,19 +69,21 @@
 						<h2 class="font-display text-lg text-brand-900">{r.facility.name}</h2>
 						{#if r.minTotal !== null}
 							<p class="mt-1 font-bold text-brand-900">
-								{formatYen(r.reference ? r.minPerPerson! : r.minTotal)}〜
+								{formatPrice(r.reference ? r.minPerPerson! : r.minTotal)}〜
 								<span class="text-xs font-normal text-stone-500">
-									{r.reference ? '/ 1名1泊（参考）' : `/ ${data.params.adults}名${data.params.nights}泊・税込`}
+									{r.reference
+										? m.search_price_per_person_ref()
+										: m.search_price_total({ adults: String(data.params.adults), nights: String(data.params.nights) })}
 								</span>
 							</p>
 							{#if !r.reference && r.remaining <= 2}
-								<p class="mt-0.5 text-xs font-medium text-red-600">残り{r.remaining}室</p>
+								<p class="mt-0.5 text-xs font-medium text-red-600">{m.search_remaining({ n: String(r.remaining) })}</p>
 							{/if}
-							<a href={plansHref(r)} class="mt-2 block rounded-md bg-brand-800 py-1.5 text-center text-sm text-white hover:bg-brand-700">プランを見る</a>
+							<a href={plansHref(r)} class="mt-2 block rounded-md bg-brand-800 py-1.5 text-center text-sm text-white hover:bg-brand-700">{m.search_plan_link()}</a>
 						{:else}
-							<p class="mt-1 text-sm font-medium text-stone-400">この条件では満室です</p>
-							<p class="mt-1 text-xs text-stone-500">キャンセル待ちはお電話（{r.facility.phone}）でご相談ください</p>
-							<a href="/{r.facility.brandSlug}/{r.facility.slug}" class="mt-2 block rounded-md border border-stone-300 py-1.5 text-center text-sm text-stone-600 hover:bg-stone-50">施設ページへ</a>
+							<p class="mt-1 text-sm font-medium text-stone-400">{m.search_sold_out_msg()}</p>
+							<p class="mt-1 text-xs text-stone-500">{m.search_sold_out_phone({ phone: r.facility.phone })}</p>
+							<a href="/{r.facility.brandSlug}/{r.facility.slug}" class="mt-2 block rounded-md border border-stone-300 py-1.5 text-center text-sm text-stone-600 hover:bg-stone-50">{m.search_facility_link()}</a>
 						{/if}
 					</div>
 				</div>
