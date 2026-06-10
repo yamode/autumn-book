@@ -34,7 +34,8 @@
 ## 残アクション（要ユーザー作業 or 後続セッション）
 
 0. ~~autumn-shared#28 マージ~~ → **✅ 2026-06-11 マージ・PROD 適用確認済み**（schema_migrations に 20260611100100〜100600 の6本、autumn_booking チャネル・pg_cron 登録済み、anon での RPC/ビュー実行も権限エラーなしを確認）
-1. **【要ユーザー】Supabase ダッシュボードで `book` スキーマを API 公開に追加**：Project Settings → Data API → Exposed schemas に `book` を追加（現状: public, core, ordering, audit, billing, pms のみ。これがないと PostgREST 経由の RPC が `PGRST106` で失敗する）
+1. ~~Supabase ダッシュボードで `book` スキーマを API 公開~~ → **✅ 2026-06-11 追加済み**（Exposed schemas に `book`）
+   - migration 運用ルールを `CLAUDE.md` に明文化（開発期間中は Supabase Branching 不使用・明示指示なき限り autumn-shared main へ直接 push＝GitHub Integration 自動適用）
 2. **rms 側でデータ投入**：rate_plans / daily_rates / availability が現在 **0件**（room_types は15件あり）。プラン・料金・在庫が入らないと検索 RPC は空を返す
 3. **book 公開コンテンツ投入**：facility_contents / plan_contents / photos。PROD への直接 INSERT は権限ポリシーで不可のため、(a) `DATA_SOURCE=supabase` 切替後に管理画面 `/admin` から入力（Auth 接続が前提）、(b) seed 用 migration を autumn-shared に追加、(c) ユーザー立ち会いで SQL 実行、のいずれか
 4. 1〜3 が揃ったら `.env` の `DATA_SOURCE=supabase` 切替（手順: supabase-data.ts 冒頭）
