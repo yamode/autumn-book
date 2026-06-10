@@ -1,10 +1,12 @@
 import { error } from '@sveltejs/kit';
-import { facilityBySlug, ratePlans, roomTypes, remainingRooms, quoteFor } from '$lib/server/store';
+import { getFacilityBySlug, getRatePlans, roomTypes, remainingRooms, quoteFor } from '$lib/server/store';
+import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
-	const facility = facilityBySlug(params.brand, params.facility);
+	const locale = getLocale();
+	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
 
 	const checkin = url.searchParams.get('checkin') || undefined;
@@ -12,9 +14,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
 	const tag = url.searchParams.get('tag') || undefined;
 
-	let plans = ratePlans
-		.filter((p) => p.facilityId === facility.id && p.isPublished)
-		.sort((a, b) => a.sortOrder - b.sortOrder);
+	let plans = getRatePlans(facility.id, locale);
 	const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 	if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 

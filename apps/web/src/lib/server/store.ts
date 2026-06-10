@@ -16,7 +16,7 @@ export type * from '$lib/types';
 import type {
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
-	SearchParams, FacilityAvailability, CalendarDay
+	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation
 } from '$lib/types';
 
 // ---------------------------------------------------------------- マスタ（デモ）
@@ -440,21 +440,6 @@ export function nightlyRate(planId: string, date: string): number {
 	return Math.round((plan.basePrice * weekend * seasonal) / 100) * 100;
 }
 
-export interface SearchParams {
-	checkin?: string;
-	nights: number;
-	adults: number;
-	children: number;
-}
-
-export interface FacilityAvailability {
-	facility: Facility;
-	minTotal: number | null; // 1室・滞在総額の最安。null=満室
-	minPerPerson: number | null;
-	remaining: number;
-	reference: boolean; // 日付未指定の参考料金か
-}
-
 /** RPC: book.search_availability 相当 */
 export function searchAvailability(params: SearchParams): FacilityAvailability[] {
 	return facilities
@@ -492,13 +477,6 @@ export function searchAvailability(params: SearchParams): FacilityAvailability[]
 				reference: false
 			};
 		});
-}
-
-export interface CalendarDay {
-	date: string;
-	price: number | null;
-	remaining: number;
-	mark: '◎' | '○' | '△' | '×';
 }
 
 /** RPC: book.get_plan_calendar 相当 */
@@ -667,10 +645,465 @@ export function countSegment(segment: MailCampaign['segment']): number {
 	return Math.round(base * rankFactor) + members.filter((m) => m.mailOptIn && (segment.ranks.length === 0 || segment.ranks.includes(m.rank))).length;
 }
 
-// ---------------------------------------------------------------- 参照ヘルパ
+// ---------------------------------------------------------------- 参照ヘルパ（ロケール未指定＝ja 生データを返す内部用）
 
 export const facilityBySlug = (brand: string, slug: string) => facilities.find((f) => f.brandSlug === brand && f.slug === slug && f.isPublished);
 export const facilityById = (id: string) => facilities.find((f) => f.id === id);
 export const roomTypeById = (id: string) => roomTypes.find((r) => r.id === id);
 export const planById = (id: string) => ratePlans.find((p) => p.id === id);
 export const memberById = (id: string) => members.find((m) => m.id === id);
+
+// ---------------------------------------------------------------- コンテンツ翻訳（§2.2〜§2.4）
+
+/** entity キーを組み立てるユーティリティ */
+function translationKey(entityType: ContentTranslation['entityType'], entityId: string) {
+	return `${entityType}:${entityId}`;
+}
+
+/**
+ * 翻訳データストア（メモリ）。
+ * 構造: entityType:entityId → locale → fields
+ * en / zh-TW のみ保持（ja は常に base）
+ */
+export const translationStore = new Map<string, Map<Locale, ContentTranslation>>();
+
+/** 翻訳を登録する内部ヘルパ */
+function registerTranslation(
+	entityType: ContentTranslation['entityType'],
+	entityId: string,
+	locale: 'en' | 'zh-TW',
+	fields: Record<string, unknown>,
+	isPublished = true
+) {
+	const key = translationKey(entityType, entityId);
+	if (!translationStore.has(key)) translationStore.set(key, new Map());
+	translationStore.get(key)!.set(locale, { entityType, entityId, locale, fields, isPublished });
+}
+
+/**
+ * §2.2 フォールバック規約でマージして返す。
+ * - ja ロケール／未公開翻訳は base をそのまま返す
+ * - 欠落フィールド（undefined / 空文字）は ja 原文を維持
+ * - amenities / access 等の配列・オブジェクトは丸ごと置換
+ */
+export function applyTranslation<T>(
+	base: T,
+	entityType: ContentTranslation['entityType'],
+	entityId: string,
+	locale: Locale
+): T {
+	if (locale === 'ja') return base;
+	const key = translationKey(entityType, entityId);
+	const translation = translationStore.get(key)?.get(locale);
+	if (!translation || !translation.isPublished) return base;
+
+	const merged = { ...(base as object) } as Record<string, unknown>;
+	for (const [field, value] of Object.entries(translation.fields)) {
+		// 空文字は欠落扱い → ja フォールバック
+		if (value === '' || value === null || value === undefined) continue;
+		merged[field] = value;
+	}
+	return merged as T;
+}
+
+// ---------------------------------------------------------------- 翻訳対応の公開取得関数
+
+/** ロケール付き施設取得（§2.2 マージ済み） */
+export function getFacilityBySlug(brand: string, slug: string, locale: Locale): Facility | undefined {
+	const f = facilityBySlug(brand, slug);
+	if (!f) return undefined;
+	return applyTranslation(f, 'facility', f.id, locale);
+}
+
+/** ロケール付き施設取得 by id */
+export function getFacilityById(id: string, locale: Locale): Facility | undefined {
+	const f = facilityById(id);
+	if (!f) return undefined;
+	return applyTranslation(f, 'facility', f.id, locale);
+}
+
+/** ロケール付き部屋タイプ一覧 */
+export function getRoomTypes(facilityId: string, locale: Locale): RoomType[] {
+	return roomTypes
+		.filter((r) => r.facilityId === facilityId)
+		.map((r) => applyTranslation(r, 'room_type', r.id, locale));
+}
+
+/** ロケール付きプラン一覧 */
+export function getRatePlans(facilityId: string, locale: Locale): RatePlan[] {
+	return ratePlans
+		.filter((p) => p.facilityId === facilityId && p.isPublished)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((p) => applyTranslation(p, 'plan', p.id, locale));
+}
+
+/** ロケール付き FAQ 一覧 */
+export function getFaqs(facilityId: string, locale: Locale): Faq[] {
+	return faqs
+		.filter((q) => q.facilityId === facilityId && q.isPublished)
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((q) => applyTranslation(q, 'faq', q.id, locale));
+}
+
+/** ロケール付き施設一覧（公開済み） */
+export function getPublishedFacilities(locale: Locale): Facility[] {
+	return facilities
+		.filter((f) => f.isPublished)
+		.map((f) => applyTranslation(f, 'facility', f.id, locale));
+}
+
+// ---------------------------------------------------------------- 法務ページ（翻訳対応）
+
+const legalPages: Record<string, { title: string; body: string }> = {
+	tokushoho: {
+		title: '特定商取引法に基づく表記',
+		body: '## 販売事業者\n\n株式会社山人\n\n## 所在地\n\n岩手県和賀郡西和賀町湯川52-71-10\n\n## 連絡先\n\n0197-82-2222 ／ info@yamado.co.jp\n\n（正式な文面は公開前に確定します）'
+	},
+	privacy: {
+		title: 'プライバシーポリシー',
+		body: '## 個人情報の取り扱いについて\n\n当社は、ご予約・会員登録を通じてお預かりした個人情報を、宿泊サービスの提供およびご案内の目的にのみ利用します。\n\n（正式な文面は公開前に確定します）'
+	},
+	yakkan: {
+		title: '宿泊約款',
+		body: '## 宿泊約款\n\n旅館業法および国際観光ホテル整備法に基づくモデル宿泊約款に準拠します。\n\n（正式な文面は公開前に確定します）'
+	}
+};
+
+export function getLegalPage(slug: string, locale: Locale): { title: string; body: string } | undefined {
+	const page = legalPages[slug];
+	if (!page) return undefined;
+	return applyTranslation(page, 'legal', slug, locale);
+}
+
+// ---------------------------------------------------------------- 管理画面用 upsert
+
+/** 管理画面から翻訳を保存する（Supabase 接続時は content_translations upsert に差し替え） */
+export function upsertTranslation(
+	entityType: ContentTranslation['entityType'],
+	entityId: string,
+	locale: 'en' | 'zh-TW',
+	fields: Record<string, unknown>,
+	isPublished: boolean
+): void {
+	registerTranslation(entityType, entityId, locale, fields, isPublished);
+}
+
+// ---------------------------------------------------------------- デモ翻訳データ投入
+
+// === 施設: nishiwaga ===
+registerTranslation('facility', 'f-nishiwaga', 'en', {
+	catchCopy: 'Immerse yourself in the changing seasons at this mountain valley hot spring inn.',
+	description:
+		'Nestled in the snowy highlands of Nishiwaga, Iwate, this intimate 10-room inn is surrounded by the bounty of the mountains. Enjoy naturally flowing hot spring baths and mountain cuisine crafted entirely from local ingredients, as you settle into peaceful, unhurried time.',
+	addressPublic: '52-71-10 Yugawa, Nishiwaga-cho, Waga-gun, Iwate',
+	amenities: [
+		'Naturally flowing hot springs',
+		'Private bath',
+		'Free Wi-Fi',
+		'Complimentary shuttle',
+		'Free parking',
+		'Non-smoking throughout'
+	],
+	access: {
+		car: [{ from: 'Akita Expwy Yuda IC', route: 'via National Route 107', minutes: 10 }],
+		train: [{ from: 'JR Hottoyuda Station', via: 'Shuttle (reservation required)', minutes: 10 }],
+		air: [{ from: 'Iwate Hanamaki Airport', minutes: 90 }],
+		shuttle: { available: true, note: 'Free shuttle from Hottoyuda Station — reserve by the day before' },
+		parking: { available: true, capacity: 20, fee: 'Free' }
+	}
+});
+
+registerTranslation('facility', 'f-nishiwaga', 'zh-TW', {
+	catchCopy: '在山間溫泉旅宿，獨享流轉的四季風情。',
+	description:
+		'位於岩手縣西和賀，豐沛的雪水與山珍環繞的小型溫泉旅宿，共10間客房。為您準備了源泉放流式溫泉，以及只使用在地食材精心料理的山人懷石，靜靜等待您的到來。',
+	addressPublic: '岩手縣和賀郡西和賀町湯川52-71-10',
+	amenities: [
+		'源泉放流式溫泉',
+		'包租浴池',
+		'免費Wi-Fi',
+		'免費接送',
+		'免費停車場',
+		'全館禁煙'
+	],
+	access: {
+		car: [{ from: '秋田道 湯田IC', route: '經由國道107號', minutes: 10 }],
+		train: [{ from: 'JR 熱湯站', via: '免費接送（需事先預約）', minutes: 10 }],
+		air: [{ from: '岩手花卷機場', minutes: 90 }],
+		shuttle: { available: true, note: '提供熱湯站免費接送服務，請於前一天前預約' },
+		parking: { available: true, capacity: 20, fee: '免費' }
+	}
+});
+
+// === 施設: oga ===
+registerTranslation('facility', 'f-oga', 'en', {
+	catchCopy: 'Sunsets over the Sea of Japan and the bounty of Oga, all in one panoramic view.',
+	description:
+		'Perched on a hilltop overlooking Unosaki Beach on the Oga Peninsula in Akita, this 8-room auberge invites you to savour the seafood of the Sea of Japan and the culinary traditions of Oga, bathed in a sweeping sunset panorama.',
+	addressPublic: '62-29 Unozaki, Funakawa-ko Tajima, Oga-shi, Akita',
+	amenities: [
+		'Panoramic hot spring',
+		'Ocean view from all rooms',
+		'Free Wi-Fi',
+		'Free parking',
+		'Non-smoking throughout'
+	],
+	access: {
+		car: [{ from: 'Akita Expwy Showa Oga-Hanto IC', route: 'via National Route 101', minutes: 40 }],
+		train: [{ from: 'JR Oga Station', via: 'Taxi', minutes: 15 }],
+		air: [{ from: 'Akita Airport', minutes: 80 }],
+		shuttle: { available: false, note: '' },
+		parking: { available: true, capacity: 15, fee: 'Free' }
+	}
+});
+
+registerTranslation('facility', 'f-oga', 'zh-TW', {
+	catchCopy: '在男鹿日本海的夕陽餘暉下，品味一桌海之饌宴。',
+	description:
+		'位於秋田男鹿半島鵜之崎海岸高台上的全8間客房奧貝奇酒店。在壯闊的夕陽全景中，盡情享受日本海的海鮮與男鹿的飲食文化。',
+	addressPublic: '秋田縣男鹿市船川港台島字鵜之崎62-29',
+	amenities: [
+		'瞭望溫泉',
+		'全室海景',
+		'免費Wi-Fi',
+		'免費停車場',
+		'全館禁煙'
+	],
+	access: {
+		car: [{ from: '秋田道 昭和男鹿半島IC', route: '經由國道101號', minutes: 40 }],
+		train: [{ from: 'JR 男鹿站', via: '計程車', minutes: 15 }],
+		air: [{ from: '秋田機場', minutes: 80 }],
+		shuttle: { available: false, note: '' },
+		parking: { available: true, capacity: 15, fee: '免費' }
+	}
+});
+
+// === 部屋タイプ: 和洋室A（nishiwaga） ===
+registerTranslation('room_type', 'r-nw-wayo', 'en', {
+	headline: 'Japanese-Western room with a private semi-open-air hot spring bath',
+	description: "The inn's most popular room, featuring a naturally flowing semi-open-air hot spring bath beyond the wide veranda.",
+	amenities: ['Semi-open-air private bath', 'Twin bed + Ryukyu tatami', 'Kinshuko lake view']
+});
+registerTranslation('room_type', 'r-nw-wayo', 'zh-TW', {
+	headline: '附設半露天溫泉的和洋室，獨享天然源泉',
+	description: '設有源泉放流式半露天浴池，廣緣延伸而出，是本館最受歡迎的客房。',
+	amenities: ['半露天浴池', '雙人床＋琉球榻榻米', '錦秋湖景']
+});
+
+// === 部屋タイプ: 和室（nishiwaga） ===
+registerTranslation('room_type', 'r-nw-washitsu', 'en', {
+	headline: 'Quiet Japanese-style room facing the beech forest',
+	description: 'A traditional 10-tatami Japanese room with windows filled entirely by the primal beech forest.',
+	amenities: ['10-tatami Japanese room', 'Mountain-facing', 'No private bath (large bath available)']
+});
+registerTranslation('room_type', 'r-nw-washitsu', 'zh-TW', {
+	headline: '面向山毛櫸原生林的靜謐和室',
+	description: '10疊純和室，窗外滿是山毛櫸原生林的翠綠景致。',
+	amenities: ['10疊和室', '山側朝向', '無獨立衛浴（可使用大浴場）']
+});
+
+// === 部屋タイプ: オーシャンツイン（oga） ===
+registerTranslation('room_type', 'r-oga-twin', 'en', {
+	headline: 'Twin room with full-width windows overlooking the Sea of Japan',
+	description: 'A sea-side room with floor-to-ceiling windows where you can gaze at the horizon while lying in bed.',
+	amenities: ['Twin beds', 'Ocean view', 'Shower booth']
+});
+registerTranslation('room_type', 'r-oga-twin', 'zh-TW', {
+	headline: '全面落地窗，將日本海盡收眼底的雙床客房',
+	description: '躺在床上即可望見水平線的海景落地窗客房。',
+	amenities: ['雙人床', '海景', '淋浴間']
+});
+
+// === 部屋タイプ: サンセットスイート（oga） ===
+registerTranslation('room_type', 'r-oga-suite', 'en', {
+	headline: 'Top-floor suite with an open-air bath — the best seat for the sunset',
+	description: 'The top-floor suite featuring a panoramic open-air hot spring bath on the terrace.',
+	amenities: ['Panoramic open-air bath', 'Terrace', 'Top floor']
+});
+registerTranslation('room_type', 'r-oga-suite', 'zh-TW', {
+	headline: '為夕陽而生的頂層套房，附設露天溫泉',
+	description: '頂層套房，露台上設有瞭望露天浴池。',
+	amenities: ['瞭望露天浴池', '露台', '頂層']
+});
+
+// === プラン: 山人料理スタンダード（nishiwaga） ===
+registerTranslation('plan', 'p-nw-standard', 'en', {
+	headline: "Can't decide? This is it. A standard plan featuring Yamado's mountain cuisine.",
+	description: `## Cuisine
+
+A full-course **Yamado cuisine** composed daily from local mountain vegetables, river fish, and Tankaku beef.
+
+- Dinner: Private dining room, choice of 17:30 or 19:30
+- Breakfast: Freshly cooked clay-pot rice and mountain soup
+
+## Hot Springs
+
+The naturally flowing large bath and open-air bath are available from check-in through the next morning. A private bath (45 min) is available on the day by reservation.
+
+## Recommended for
+
+| Who | Why |
+|---|---|
+| First-time Yamado guests | The complete, all-in-one experience |
+| Food lovers | Seasonal menus change throughout the year |`,
+	highlightTags: ['Onsen', 'Private dining']
+});
+registerTranslation('plan', 'p-nw-standard', 'zh-TW', {
+	headline: '初次入住的首選，盡享西和賀山珍的標準方案',
+	description: `## 料理
+
+以在地山菜、溪魚及短角牛為主角，每日依當日食材精心排盤的**山人懷石料理**全套餐。
+
+- 晚餐：獨立包廂，可選擇17:30或19:30入座
+- 早餐：現炊陶鍋飯與山野蔬菜湯品
+
+## 溫泉
+
+源泉放流式大浴場及露天浴場，自入住至隔日早晨均可使用。包租浴池（45分鐘）當日預約制。
+
+## 適合的旅客
+
+| 推薦對象 | 理由 |
+|---|---|
+| 初次入住山人 | 全包式基本體驗 |
+| 注重美食的旅客 | 菜單隨季節更換 |`,
+	highlightTags: ['溫泉', '獨立包廂']
+});
+
+// === プラン: 記念日プラン（nishiwaga） ===
+registerTranslation('plan', 'p-nw-anniv', 'en', {
+	headline: 'Celebrate your special day at this mountain valley hot spring inn.',
+	description: `## Inclusions
+
+- Celebratory sparkling wine (half bottle)
+- Anniversary cake (personalised message)
+- Late check-out until 12:00
+
+## Please Note
+
+Please include your cake message in the notes field at the time of booking.`,
+	highlightTags: ['Anniversary', 'Special gifts', 'Pre-paid by card']
+});
+registerTranslation('plan', 'p-nw-anniv', 'zh-TW', {
+	headline: '在山間溫泉旅宿，共度珍貴的紀念時刻',
+	description: `## 方案特典
+
+- 慶祝用氣泡酒（半瓶）
+- 紀念蛋糕（可客製化留言）
+- 延遲退房至12:00
+
+## 注意事項
+
+蛋糕留言請在預約時填寫於備註欄。`,
+	highlightTags: ['紀念日', '附贈特典', '信用卡預付']
+});
+
+// === プラン: 男鹿の幸スタンダード（oga） ===
+registerTranslation('plan', 'p-oga-standard', 'en', {
+	headline: 'Taste the seasonal catch of the Sea of Japan and the sunset — our standard plan.',
+	description: `## Cuisine
+
+A seafood course centred on the seasonal catch from Oga's harbour and the signature **Ishiyaki (stone-grilling) dish**.
+
+## Sunset Timing
+
+Dinner start times are arranged to align with the sunset.`,
+	highlightTags: ['Ocean view', 'Stone-grilled dish']
+});
+registerTranslation('plan', 'p-oga-standard', 'zh-TW', {
+	headline: '品嚐日本海當季鮮味與夕陽美景的標準方案',
+	description: `## 料理
+
+以男鹿港當季鮮魚及名物**石燒料理**為主角的海鮮全套餐。
+
+## 夕陽用餐時段
+
+晚餐開始時間將配合日落時刻安排。`,
+	highlightTags: ['海景', '石燒料理']
+});
+
+// === プラン: ひとり旅プラン（oga） ===
+registerTranslation('plan', 'p-oga-solo', 'en', {
+	headline: 'The sunset and the sound of the sea, all to yourself — solo travellers welcome.',
+	description: `## Made for Solo Travel
+
+Counter-seat dining, a reading lounge after your bath, and a setting that makes time alone feel truly comfortable.`,
+	highlightTags: ['Solo travel', 'Counter dining']
+});
+registerTranslation('plan', 'p-oga-solo', 'zh-TW', {
+	headline: '獨享夕陽與海潮聲，歡迎一個人的旅行',
+	description: `## 專為一個人的旅行而設
+
+吧檯式晚餐座位、浴後閱讀空間……讓獨旅時光更加惬意舒適。`,
+	highlightTags: ['一人旅', '吧檯座位']
+});
+
+// === FAQ: nishiwaga ===
+registerTranslation('faq', 'q1', 'en', {
+	category: 'Access',
+	question: 'Do you offer a shuttle service?',
+	answer: 'Yes, we offer a **free shuttle** from JR Hottoyuda Station (advance reservation required — by the day before). Please call us or add a note when booking.'
+});
+registerTranslation('faq', 'q1', 'zh-TW', {
+	category: '交通',
+	question: '有提供接送服務嗎？',
+	answer: '提供JR熱湯站的**免費接送**服務（須於前一天前預約）。請來電或在預約備註欄告知。'
+});
+registerTranslation('faq', 'q2', 'en', {
+	category: 'Hot Springs',
+	question: 'Do you offer day-trip bathing?',
+	answer: 'We apologise — our baths are reserved exclusively for overnight guests.'
+});
+registerTranslation('faq', 'q2', 'zh-TW', {
+	category: '溫泉',
+	question: '可以純泡湯嗎？',
+	answer: '非常抱歉，本館溫泉僅供住宿客人使用。'
+});
+
+// === FAQ: oga ===
+registerTranslation('faq', 'q3', 'en', {
+	category: 'Dining',
+	question: 'Can I choose my dinner time?',
+	answer: 'Dinner times are arranged to coincide with the sunset. If you have a preference, please let us know at check-in.'
+});
+registerTranslation('faq', 'q3', 'zh-TW', {
+	category: '餐飲',
+	question: '可以選擇晚餐時間嗎？',
+	answer: '用餐時間將配合日落時刻安排。如有特別需求，請於入住時告知我們。'
+});
+registerTranslation('faq', 'q4', 'en', {
+	category: 'Children',
+	question: 'Can I stay with children?',
+	answer: 'Our direct booking site currently accepts adult-only reservations. For families with children, please **call us at 0185-47-7776**.'
+});
+registerTranslation('faq', 'q4', 'zh-TW', {
+	category: '兒童',
+	question: '可以帶小孩入住嗎？',
+	answer: '本官方網站目前僅接受純大人的預約。攜帶兒童入住請**來電0185-47-7776**洽詢。'
+});
+
+// === 法務ページ ===
+registerTranslation('legal', 'tokushoho', 'en', {
+	title: 'Specified Commercial Transaction Act Disclosure',
+	body: '## Seller\n\nYamado Co., Ltd.\n\n## Address\n\n52-71-10 Yugawa, Nishiwaga-cho, Waga-gun, Iwate, Japan\n\n## Contact\n\n+81-197-82-2222 / info@yamado.co.jp\n\n*Note: This is a reference translation. The Japanese text is legally authoritative.*\n\n(Full text to be finalised before public launch)'
+});
+registerTranslation('legal', 'tokushoho', 'zh-TW', {
+	title: '依特定商交易法之標示',
+	body: '## 販售業者\n\n山人股份有限公司\n\n## 所在地\n\n〒029-5511 岩手縣和賀郡西和賀町湯川52-71-10\n\n## 聯絡方式\n\n0197-82-2222 ／ info@yamado.co.jp\n\n*注意：本頁為參考譯文，法律效力以日文原文為準。*\n\n（正式文面於正式上線前確定）'
+});
+registerTranslation('legal', 'privacy', 'en', {
+	title: 'Privacy Policy',
+	body: '## Handling of Personal Information\n\nWe use personal information collected through reservations and membership registration solely for the purpose of providing accommodation services and related communications.\n\n*Note: This is a reference translation. The Japanese text is legally authoritative.*\n\n(Full text to be finalised before public launch)'
+});
+registerTranslation('legal', 'privacy', 'zh-TW', {
+	title: '個人資料保護政策',
+	body: '## 關於個人資料之處理\n\n我們將透過預約及會員登錄取得的個人資料，僅用於提供住宿服務及相關通知之目的。\n\n*注意：本頁為參考譯文，法律效力以日文原文為準。*\n\n（正式文面於正式上線前確定）'
+});
+registerTranslation('legal', 'yakkan', 'en', {
+	title: 'Terms and Conditions of Stay',
+	body: '## Terms and Conditions of Stay\n\nBased on the model lodging terms and conditions established under the Hotel Business Act and the International Tourism Hotel Development Act.\n\n*Note: This is a reference translation. The Japanese text is legally authoritative.*\n\n(Full text to be finalised before public launch)'
+});
+registerTranslation('legal', 'yakkan', 'zh-TW', {
+	title: '住宿契約條款',
+	body: '## 住宿約款\n\n依據旅館業法及國際觀光旅館整備法之模範住宿約款規定辦理。\n\n*注意：本頁為參考譯文，法律效力以日文原文為準。*\n\n（正式文面於正式上線前確定）'
+});

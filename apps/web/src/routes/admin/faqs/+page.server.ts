@@ -1,10 +1,23 @@
 import { fail } from '@sveltejs/kit';
-import { faqs } from '$lib/server/store';
+import { faqs, upsertTranslation, translationStore } from '$lib/server/store';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { currentFacility } = await parent();
-	return { faqs: faqs.filter((q) => q.facilityId === currentFacility.id).sort((a, b) => a.sortOrder - b.sortOrder) };
+	const facilityFaqs = faqs
+		.filter((q) => q.facilityId === currentFacility.id)
+		.sort((a, b) => a.sortOrder - b.sortOrder);
+
+	// 各 FAQ の翻訳データを読み込む
+	const faqTranslations = Object.fromEntries(
+		facilityFaqs.map((q) => {
+			const key = `faq:${q.id}`;
+			const trMap = translationStore.get(key);
+			return [q.id, { en: trMap?.get('en') ?? null, 'zh-TW': trMap?.get('zh-TW') ?? null }];
+		})
+	);
+
+	return { faqs: facilityFaqs, faqTranslations };
 };
 
 export const actions: Actions = {
@@ -35,5 +48,20 @@ export const actions: Actions = {
 			sortOrder: faqs.filter((q) => q.facilityId === facilityId).length + 1
 		});
 		return { added: true };
+	},
+	saveTranslation: async ({ request, locals }) => {
+		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+		const form = await request.formData();
+		const faqId = String(form.get('faqId'));
+		const locale = String(form.get('locale')) as 'en' | 'zh-TW';
+		if (!['en', 'zh-TW'].includes(locale)) return fail(400, { message: '無効なロケールです' });
+		const isPublished = form.get('isPublished') === 'on';
+		const fields: Record<string, unknown> = {
+			category: String(form.get('category') ?? ''),
+			question: String(form.get('question') ?? ''),
+			answer: String(form.get('answer') ?? '')
+		};
+		upsertTranslation('faq', faqId, locale, fields, isPublished);
+		return { translationSaved: faqId };
 	}
 };

@@ -1,15 +1,15 @@
 import { error } from '@sveltejs/kit';
-import { facilityBySlug, roomTypes, ratePlans, faqs, getPlanCalendar } from '$lib/server/store';
+import { getFacilityBySlug, getRoomTypes, getRatePlans, getFaqs, getPlanCalendar } from '$lib/server/store';
+import { getLocale } from '$lib/paraglide/runtime';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
-	const facility = facilityBySlug(params.brand, params.facility);
+	const locale = getLocale();
+	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
 
-	const rooms = roomTypes.filter((r) => r.facilityId === facility.id);
-	const plans = ratePlans
-		.filter((p) => p.facilityId === facility.id && p.isPublished)
-		.sort((a, b) => a.sortOrder - b.sortOrder);
+	const rooms = getRoomTypes(facility.id, locale);
+	const plans = getRatePlans(facility.id, locale);
 
 	const calMonth = url.searchParams.get('cal') ?? new Date().toISOString().slice(0, 7);
 	const calendar = plans.length > 0 ? getPlanCalendar(plans[0].id, calMonth) : [];
@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		facility,
 		rooms,
 		plans,
-		facilityFaqs: faqs.filter((q) => q.facilityId === facility.id && q.isPublished).sort((a, b) => a.sortOrder - b.sortOrder),
+		facilityFaqs: getFaqs(facility.id, locale),
 		calMonth,
 		calendar,
 		cheapestPlanId: plans[0]?.id ?? null

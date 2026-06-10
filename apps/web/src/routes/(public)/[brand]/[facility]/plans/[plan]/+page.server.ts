@@ -1,20 +1,22 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import {
-	facilityBySlug,
-	ratePlans,
+	getFacilityBySlug,
+	getRatePlans,
 	roomTypes,
 	remainingRooms,
 	quoteFor,
 	getPlanCalendar,
 	createHold
 } from '$lib/server/store';
+import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
-	const facility = facilityBySlug(params.brand, params.facility);
+	const locale = getLocale();
+	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
-	const plan = ratePlans.find((p) => p.facilityId === facility.id && p.slug === params.plan && p.isPublished);
+	const plan = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
 	if (!plan) error(404, 'プランが見つかりません');
 
 	const checkin = url.searchParams.get('checkin') || undefined;

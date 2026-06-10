@@ -1,6 +1,21 @@
 // 共有型定義（クライアント・サーバー両方から import 可）
 import type { CancellationPolicy, Quote } from '@autumn-book/core';
 
+// ---------------------------------------------------------------- i18n 型
+
+/** 対応ロケール（Paraglide runtime の Locale と対称） */
+export type Locale = 'ja' | 'en' | 'zh-TW';
+
+/** コンテンツ翻訳行（book.content_translations 対称） */
+export interface ContentTranslation {
+	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal';
+	entityId: string;
+	locale: Locale;
+	/** 翻訳対象フィールドのみ部分上書き（空文字は欠落扱い） */
+	fields: Record<string, unknown>;
+	isPublished: boolean;
+}
+
 export interface Brand {
 	slug: string;
 	name: string;

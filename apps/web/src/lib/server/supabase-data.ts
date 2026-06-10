@@ -8,6 +8,30 @@
 //      store.ts からこのモジュールへ段階的に切替（検索系 → 予約系 → 会員系の順）
 // 会員系（my_reservations / register_member / point_balance）は Supabase Auth
 // セッション（P5: @supabase/ssr）が前提のため、cookie 連携実装後に接続する。
+//
+// コンテンツ翻訳（i18n フェーズ2）の扱い:
+//   - `book.content_translations` テーブル（autumn-shared PR #28 以降に追加）を使用。
+//   - unique(entity_type, entity_id, locale) で一致する行を entity_id 群で1クエリ取得。
+//   - store.ts の applyTranslation と同じ §2.2 規約でマージ:
+//       merged = { ...baseRow, ...translation.fields }
+//     （空文字は欠落扱い・amenities/access 等の jsonb は丸ごと置換・is_published=false は無視）
+//   - locale 引数は各 load 関数に追加し、getLocale() を渡す（store.ts と対称）。
+//   - 実装例（listFacilities）:
+//       const { data: tr } = await supa()
+//         .from('content_translations')
+//         .select('entity_id, locale, fields, is_published')
+//         .in('entity_id', data.map(r => r.facility_id))
+//         .eq('locale', locale)
+//         .eq('is_published', true);
+//       return data.map(row => {
+//         const t = tr?.find(t => t.entity_id === row.facility_id);
+//         if (!t) return row;
+//         const merged = { ...row };
+//         for (const [k, v] of Object.entries(t.fields)) {
+//           if (v !== '' && v !== null && v !== undefined) merged[k as keyof typeof merged] = v as never;
+//         }
+//         return merged;
+//       });
 import { supa } from './supabase';
 import type { CalendarDay, GuestInfo } from '$lib/types';
 import type { Quote } from '@autumn-book/core';

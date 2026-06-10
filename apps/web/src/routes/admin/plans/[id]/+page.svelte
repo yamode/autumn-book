@@ -6,6 +6,14 @@
 	let { data, form } = $props();
 	let p = $derived(data.plan);
 	let description = $state(data.plan.description);
+
+	// 翻訳タブ
+	let translationLocale = $state<'en' | 'zh-TW'>('en');
+	let trDescription = $state('');
+	$effect(() => {
+		const tr = data.translations[translationLocale];
+		trDescription = (tr?.fields?.description as string) ?? '';
+	});
 </script>
 
 <svelte:head><title>プラン編集 ｜ 山人管理</title></svelte:head>
@@ -13,7 +21,7 @@
 <nav class="mb-3 text-xs text-stone-400"><a href="/admin/plans" class="hover:underline">プラン</a> / {p.name}</nav>
 
 {#if form?.saved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">保存しました。</p>{/if}
-{#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
+{#if (form as { message?: string } | null)?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { message?: string }).message}</p>{/if}
 
 <!-- Step 1: 料金プラン（rms 管理・読み取り専用） -->
 <section class="rounded-xl border border-stone-200 bg-white p-5">
@@ -69,3 +77,79 @@
 
 	<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
 </form>
+
+<!-- 翻訳（i18n フェーズ2） -->
+<section class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
+	<h2 class="mb-3 text-sm font-bold text-stone-700">翻訳（コンテンツ多言語化）</h2>
+	<p class="mb-3 text-xs text-stone-400">en / zh-TW の翻訳を入力・公開すると顧客画面に反映されます。未入力フィールドは日本語がフォールバック表示されます。</p>
+
+	<div class="mb-4 flex gap-2">
+		{#each (['en', 'zh-TW'] as const) as loc}
+			<button
+				type="button"
+				onclick={() => { translationLocale = loc; }}
+				class="rounded-md px-4 py-1.5 text-sm font-medium transition-colors {translationLocale === loc ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-600 hover:bg-stone-50'}"
+			>{loc === 'en' ? 'English (en)' : '繁體中文 (zh-TW)'}</button>
+		{/each}
+	</div>
+
+	{#if form?.translationSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">翻訳を保存しました（{translationLocale}）。</p>{/if}
+
+	<form method="POST" action="?/saveTranslation" use:enhance class="space-y-4">
+		<input type="hidden" name="locale" value={translationLocale} />
+
+		<div class="grid gap-4 lg:grid-cols-2">
+			<div class="space-y-3">
+				<p class="text-xs font-medium text-stone-500">日本語（原文・参照用）</p>
+				<div class="text-sm">
+					<p class="text-xs text-stone-400">headline</p>
+					<p class="mt-1 rounded bg-stone-50 px-3 py-2 text-stone-700">{p.headline}</p>
+				</div>
+				<div class="text-sm">
+					<p class="text-xs text-stone-400">highlightTags</p>
+					<p class="mt-1 rounded bg-stone-50 px-3 py-2 text-stone-700">{p.highlightTags.join('、')}</p>
+				</div>
+				<div class="text-sm">
+					<p class="text-xs text-stone-400">description（Markdown）</p>
+					<pre class="mt-1 overflow-auto rounded bg-stone-50 px-3 py-2 text-xs text-stone-600 whitespace-pre-wrap max-h-40">{p.description}</pre>
+				</div>
+			</div>
+
+			<div class="space-y-3">
+				<p class="text-xs font-medium text-stone-500">{translationLocale === 'en' ? 'English' : '繁體中文'}（翻訳入力）</p>
+				<label class="block text-sm">
+					<span class="text-xs text-stone-400">headline</span>
+					<input
+						name="headline"
+						value={data.translations[translationLocale]?.fields?.headline ?? ''}
+						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+						placeholder="翻訳を入力（空白は日本語で表示）"
+					/>
+				</label>
+				<label class="block text-sm">
+					<span class="text-xs text-stone-400">highlightTags（カンマ区切り）</span>
+					<input
+						name="tags"
+						value={(data.translations[translationLocale]?.fields?.highlightTags as string[] | undefined)?.join(', ') ?? ''}
+						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+						placeholder="Onsen, Private dining, ..."
+					/>
+				</label>
+				<div class="text-sm">
+					<span class="text-xs text-stone-400">description（Markdown）</span>
+					<div class="mt-1">
+						<MarkdownEditor bind:value={trDescription} name="description" rows={10} photos={[...p.photos, ...data.facility.photos]} />
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="flex items-center gap-4 border-t border-stone-100 pt-4">
+			<label class="flex items-center gap-2 text-sm">
+				<input type="checkbox" name="isPublished" checked={data.translations[translationLocale]?.isPublished ?? false} class="h-4 w-4" />
+				<span>公開する（顧客画面に反映）</span>
+			</label>
+			<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">翻訳を保存</button>
+		</div>
+	</form>
+</section>
