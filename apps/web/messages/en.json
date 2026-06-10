@@ -393,5 +393,12 @@
 	"news_more": "All news",
 	"news_back": "Back to news",
 	"news_empty": "No news at the moment.",
-	"tmpl_reasons_title": "Reasons to visit Yamado"
+	"tmpl_reasons_title": "Reasons to visit Yamado",
+	"pay_choose": "Payment method",
+	"pay_onsite": "Pay at the hotel",
+	"pay_card": "Credit card (pay now)",
+	"pay_paypay": "PayPay (pay now)",
+	"pay_prepay_off": "{rate}% off with advance payment",
+	"pay_prepay_note": "Advance payment is charged immediately at booking, with the discount applied.",
+	"pay_discount_line": "Advance payment discount ({rate}% off)"
 }

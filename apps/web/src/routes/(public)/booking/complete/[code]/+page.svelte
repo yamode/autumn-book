@@ -5,7 +5,7 @@
 
 	let { data } = $props();
 	let b = $derived(data.booking);
-	let isCard = $derived(b.payment === 'card');
+	let isCard = $derived(b.payment !== 'onsite');
 
 	let steps = $derived(isCard
 		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
@@ -31,8 +31,15 @@
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_guest()}</dt><dd>{m.complete_guest_val({ name: b.guest.name, adults: String(b.adults) })}</dd></div>
 			<div class="flex justify-between border-t border-stone-200 pt-1.5 font-medium">
 				<dt>{isCard ? m.complete_paid() : m.complete_local_pay()}</dt>
-				<dd>{formatPrice(b.total - b.pointsUsed)}</dd>
+				<dd>
+					{formatPrice(b.total - b.pointsUsed)}
+					{#if b.payment === 'paypay'}<span class="ml-1 rounded bg-[#ff0033] px-1.5 py-0.5 text-[10px] font-bold text-white">PayPay</span>{/if}
+				</dd>
 			</div>
+			{#if b.discountAmount}
+				<div class="flex justify-between text-red-600"><dt>{m.pay_discount_line({ rate: String(Math.round((b.prepayDiscountRate ?? 0) * 100)) })}</dt><dd>-{formatPrice(b.discountAmount)}</dd>
+			</div>
+			{/if}
 			{#if b.pointsEarned > 0}
 				<div class="flex justify-between text-emerald-700"><dt>{m.complete_points_earned()}</dt><dd>+{b.pointsEarned.toLocaleString()}{m.common_point_unit()}</dd></div>
 			{/if}

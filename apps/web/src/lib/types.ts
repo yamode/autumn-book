@@ -110,6 +110,28 @@ export interface RoomType {
 	photos: Photo[];
 }
 
+/** 事前決済の手段 */
+export type PrepayMethod = 'card' | 'paypay';
+
+/** 事前決済割引の上限（20%） */
+export const PREPAY_DISCOUNT_MAX = 0.2;
+
+/**
+ * プランの決済設定。
+ * 事前決済＝ご予約時の「即時決済」（宿泊後請求ではない）。
+ * 事前決済を選んだゲストには prepayDiscountRate（0〜20%）の割引を適用できる。
+ */
+export interface PaymentConfig {
+	/** 現地払いを受け付ける */
+	onsite: boolean;
+	/** 事前決済（即時決済）を受け付ける */
+	prepay: boolean;
+	/** 事前決済の手段（カード / PayPay） */
+	prepayMethods: PrepayMethod[];
+	/** 事前決済割引率 0〜0.2 */
+	prepayDiscountRate: number;
+}
+
 export interface RatePlan {
 	id: string;
 	facilityId: string;
@@ -119,7 +141,7 @@ export interface RatePlan {
 	/** Markdown 原文（A-05 プラン作成画面で編集） */
 	description: string;
 	mealPlan: string;
-	paymentMethod: 'onsite' | 'card';
+	payment: PaymentConfig;
 	basePrice: number;
 	highlightTags: string[];
 	photos: Photo[];
@@ -155,6 +177,7 @@ export interface Hold {
 	/** ②お客様情報 → ③決済 へ引き継ぐ入力ドラフト */
 	guestDraft?: GuestInfo;
 	pointsDraft?: number;
+	paymentDraft?: PrepayMethod;
 }
 
 export interface Booking {
@@ -170,8 +193,11 @@ export interface Booking {
 	total: number;
 	pointsUsed: number;
 	pointsEarned: number;
-	payment: 'onsite' | 'card';
+	payment: 'onsite' | 'card' | 'paypay';
 	paymentStatus: 'unpaid' | 'paid' | 'refunded' | 'partial_refund';
+	/** 事前決済割引（適用時のみ）。total は割引適用後の最終額 */
+	prepayDiscountRate?: number;
+	discountAmount?: number;
 	status: 'reserved' | 'cancelled' | 'stayed';
 	channel: 'autumn_booking' | 'ota';
 	cancellationPolicy: CancellationPolicy;

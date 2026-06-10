@@ -36,6 +36,13 @@
   - ⚠ 写真は現行 WP サーバーへの**暫定ホットリンク**。WP 廃止前に Supabase Storage（book-photos）へ移設必須
 - DB側: `book.news_posts` + `facility_contents.template` を migration 済み（20260612003000・PROD適用）。supabase-data.ts に listNews 追加済み
 
+- **決済設定ロジック（2026-06-12・v0.7.0）**：プラン単位の決済設定 `payment: { onsite, prepay, prepayMethods('card'|'paypay'), prepayDiscountRate(≤20%) }`
+  - **PayPay 追加**（事前決済手段としてカードと並列。決済画面に PayPay デモUI＝本実装は P4 で PayPay for Developers or Stripe 経由）
+  - **事前決済＝予約時の即時決済**（宿泊後請求ではない）。確定時に paymentStatus='paid'
+  - **事前決済割引**：0〜20%（上限バリデーション付き）。ゲストが予約フローで支払い方法を選択→事前決済選択で割引適用・打消線表示。booking.total は割引後最終額、ポイント付与も割引後基準
+  - 管理画面 `/admin/plans/[id]` に「決済設定」セクション（現地/事前トグル・手段・割引率セレクタ）
+  - ⚠ 本実装時はこの設定を `booking.rate_plans.metadata.prepay` に置き、book.quote / confirm_booking RPC に割引ロジックを追加する（rms と要連携・P4）
+
 ## 実装済みの主な決定反映
 
 - 写真ストレージ＝**Supabase Storage で決定（2026-06-11）**。管理画面のアップロード UI は Storage 接続時に有効化

@@ -393,5 +393,12 @@
 	"news_more": "所有消息",
 	"news_back": "返回消息列表",
 	"news_empty": "目前沒有最新消息。",
-	"tmpl_reasons_title": "到訪山人的理由"
+	"tmpl_reasons_title": "到訪山人的理由",
+	"pay_choose": "付款方式",
+	"pay_onsite": "現場付款",
+	"pay_card": "信用卡（立即付款）",
+	"pay_paypay": "PayPay（立即付款）",
+	"pay_prepay_off": "預付折扣{rate}%",
+	"pay_prepay_note": "預付將於訂房時立即扣款，並套用折扣後金額。",
+	"pay_discount_line": "預付折扣（{rate}% off）"
 }

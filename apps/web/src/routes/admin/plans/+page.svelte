@@ -24,7 +24,7 @@
 				<h2 class="text-sm font-medium text-stone-800 group-hover:underline">{plan.name}</h2>
 				<p class="mt-0.5 truncate text-xs text-stone-500">{plan.headline}</p>
 				<p class="mt-1.5 text-xs text-stone-400">
-					{plan.mealPlan} ／ {plan.paymentMethod === 'card' ? '事前決済' : '現地払い'} ／ 基準 {formatYen(plan.basePrice)}
+					{plan.mealPlan} ／ {[plan.payment.onsite ? '現地' : null, plan.payment.prepay ? '事前(' + plan.payment.prepayMethods.map((x) => (x === 'paypay' ? 'PayPay' : 'カード')).join('/') + ')' : null].filter(Boolean).join(' + ')}{plan.payment.prepayDiscountRate > 0 ? ' ' + Math.round(plan.payment.prepayDiscountRate * 100) + '%OFF' : ''} ／ 基準 {formatYen(plan.basePrice)}
 				</p>
 				<div class="mt-1.5 flex flex-wrap gap-1">
 					{#each plan.highlightTags as t}

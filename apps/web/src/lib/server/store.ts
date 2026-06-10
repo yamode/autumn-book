@@ -13,6 +13,8 @@ import {
 } from '@autumn-book/core';
 
 export type * from '$lib/types';
+import { PREPAY_DISCOUNT_MAX } from '$lib/types';
+export { PREPAY_DISCOUNT_MAX };
 import type {
 	NewsPost, SitePage,
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
@@ -227,7 +229,7 @@ export const ratePlans: RatePlan[] = [
 | はじめての山人 | 全部入りの基本形 |
 | 食を楽しみたい | 献立は季節替わり |`,
 		mealPlan: '夕朝食付',
-		paymentMethod: 'onsite',
+		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.1 },
 		basePrice: 23100,
 		highlightTags: ['源泉かけ流し', '個室食'],
 		photos: [{ url: img('nw-plan-std'), caption: '山人料理', category: 'meal' }],
@@ -252,7 +254,7 @@ export const ratePlans: RatePlan[] = [
 
 ケーキのメッセージは予約時の連絡事項欄にご記入ください。`,
 		mealPlan: '夕朝食付',
-		paymentMethod: 'card',
+		payment: { onsite: false, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.05 },
 		basePrice: 27500,
 		highlightTags: ['記念日', '特典付', '事前カード決済'],
 		photos: [{ url: img('nw-plan-anniv'), caption: '記念日の演出', category: 'meal' }],
@@ -275,7 +277,7 @@ export const ratePlans: RatePlan[] = [
 
 夕食の開始時刻は日没に合わせてご案内します。`,
 		mealPlan: '夕朝食付',
-		paymentMethod: 'onsite',
+		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.15 },
 		basePrice: 25300,
 		highlightTags: ['オーシャンビュー', '石焼料理'],
 		photos: [{ url: img('oga-plan-std'), caption: '石焼料理', category: 'meal' }],
@@ -294,7 +296,7 @@ export const ratePlans: RatePlan[] = [
 
 カウンター席での夕食、湯上がりの読書スペースなど、おひとりの時間が心地よい設えです。`,
 		mealPlan: '夕朝食付',
-		paymentMethod: 'onsite',
+		payment: { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0 },
 		basePrice: 29700,
 		highlightTags: ['一人旅', 'カウンター食'],
 		photos: [{ url: img('oga-plan-solo'), caption: 'カウンター席', category: 'meal' }],
@@ -708,12 +710,31 @@ export function getHold(id: string): Hold | undefined {
 }
 
 /** RPC: book.confirm_booking 相当 */
-export function confirmBooking(holdId: string, guest: GuestInfo, pointsUsed: number, memberId?: string): Booking | { error: string } {
+export function confirmBooking(
+	holdId: string,
+	guest: GuestInfo,
+	pointsUsed: number,
+	memberId?: string,
+	paymentChoice: 'onsite' | 'card' | 'paypay' = 'onsite'
+): Booking | { error: string } {
 	const hold = getHold(holdId);
 	if (!hold || hold.status !== 'active') return { error: 'hold_expired' };
 	const plan = ratePlans.find((p) => p.id === hold.planId)!;
+
+	// 支払い方法のバリデーション（プランの決済設定に従う）
+	const isPrepay = paymentChoice !== 'onsite';
+	if (isPrepay && (!plan.payment.prepay || !plan.payment.prepayMethods.includes(paymentChoice))) {
+		return { error: 'payment_not_allowed' };
+	}
+	if (!isPrepay && !plan.payment.onsite) return { error: 'payment_not_allowed' };
+
+	// 事前決済（即時決済）割引: total は割引適用後の最終額
+	const discountRate = isPrepay ? Math.min(plan.payment.prepayDiscountRate, PREPAY_DISCOUNT_MAX) : 0;
+	const discountAmount = Math.round(hold.quote.total * discountRate);
+	const finalTotal = hold.quote.total - discountAmount;
+
 	const member = memberId ? members.find((m) => m.id === memberId) : undefined;
-	const usable = member ? Math.min(pointsUsed, pointBalance(member.id)) : 0;
+	const usable = member ? Math.min(pointsUsed, pointBalance(member.id), finalTotal) : 0;
 	const rank = memberRanks.find((r) => r.code === (member?.rank ?? 'standard'))!;
 	const code = `YB-2026-${String(++seq).padStart(6, '0')}`;
 	const booking: Booking = {
@@ -726,11 +747,14 @@ export function confirmBooking(holdId: string, guest: GuestInfo, pointsUsed: num
 		adults: hold.adults,
 		children: hold.children,
 		guest,
-		total: hold.quote.total,
+		total: finalTotal,
 		pointsUsed: usable,
-		pointsEarned: member ? earnedPoints(hold.quote.total, rank.rewardRate) : 0,
-		payment: plan.paymentMethod,
-		paymentStatus: plan.paymentMethod === 'card' ? 'paid' : 'unpaid',
+		pointsEarned: member ? earnedPoints(finalTotal, rank.rewardRate) : 0,
+		payment: paymentChoice,
+		// 事前決済は予約時の即時決済（宿泊後請求ではない）
+		paymentStatus: isPrepay ? 'paid' : 'unpaid',
+		prepayDiscountRate: discountRate > 0 ? discountRate : undefined,
+		discountAmount: discountAmount > 0 ? discountAmount : undefined,
 		status: 'reserved',
 		channel: 'autumn_booking',
 		cancellationPolicy: plan.cancellationPolicy,
@@ -753,7 +777,7 @@ export function cancelBooking(code: string, opts: { waiveFee?: boolean; actor?: 
 	const fee = opts.waiveFee ? 0 : cancellationFee(b.cancellationPolicy, b.checkin, today(), b.total);
 	b.status = 'cancelled';
 	b.cancelFee = fee;
-	if (b.payment === 'card' && b.paymentStatus === 'paid') {
+	if (b.payment !== 'onsite' && b.paymentStatus === 'paid') {
 		b.paymentStatus = fee === 0 ? 'refunded' : 'partial_refund';
 	}
 	adjustInventory(b.roomTypeId, b.checkin, b.nights, +1);

@@ -9,11 +9,33 @@
 	import { invalidateAll } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
 
+	import { formatPrice } from '$lib/format';
+
 	let { data, form } = $props();
 
 	let expiredNow = $state(false);
-	let isCard = $derived(!data.expired && data.plan.paymentMethod === 'card');
-	let steps = $derived(isCard
+
+	// 支払い方法の選択肢（プランの決済設定から構築。事前決済=即時決済・割引あり）
+	let payOptions = $derived.by(() => {
+		if (data.expired) return [];
+		const opts: { value: 'onsite' | 'card' | 'paypay'; label: string; discount: number }[] = [];
+		const rate = Math.round(data.plan.payment.prepayDiscountRate * 100);
+		if (data.plan.payment.prepay) {
+			for (const mth of data.plan.payment.prepayMethods) {
+				opts.push({ value: mth, label: mth === 'card' ? m.pay_card() : m.pay_paypay(), discount: rate });
+			}
+		}
+		if (data.plan.payment.onsite) opts.push({ value: 'onsite', label: m.pay_onsite(), discount: 0 });
+		return opts;
+	});
+	// 既定は割引のある事前決済（先頭）
+	let selectedPay = $state<'onsite' | 'card' | 'paypay' | null>(null);
+	let payValue = $derived(selectedPay ?? payOptions[0]?.value ?? 'onsite');
+	let isPrepay = $derived(payValue !== 'onsite');
+	let discountRate = $derived(!data.expired && isPrepay ? data.plan.payment.prepayDiscountRate : 0);
+	let discountedTotal = $derived(data.expired ? 0 : Math.round(data.hold.quote.total * (1 - discountRate)));
+
+	let steps = $derived(isPrepay
 		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
 		: [m.steps_plan(), m.steps_info(), m.steps_complete()]);
 </script>
@@ -108,10 +130,37 @@
 						</div>
 					{/if}
 
+					<!-- お支払い方法（事前決済=即時決済・割引適用） -->
+					<fieldset class="rounded-lg border border-stone-200 p-3 text-sm">
+						<legend class="px-1 font-medium text-brand-900">{m.pay_choose()}</legend>
+						<div class="space-y-2">
+							{#each payOptions as opt}
+								<label class="flex items-center gap-2 rounded-md border px-3 py-2.5 transition {payValue === opt.value ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
+									<input type="radio" name="payment" value={opt.value} checked={payValue === opt.value} onchange={() => (selectedPay = opt.value)} class="h-4 w-4" />
+									{#if opt.value === 'paypay'}
+										<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>
+									{/if}
+									<span class="flex-1">{opt.label}</span>
+									{#if opt.discount > 0}
+										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{opt.discount}%OFF</span>
+									{/if}
+								</label>
+							{/each}
+						</div>
+						{#if isPrepay}
+							<p class="mt-2 text-xs text-stone-500">{m.pay_prepay_note()}</p>
+							{#if discountRate > 0}
+								<p class="mt-1 rounded bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+									{m.pay_discount_line({ rate: String(Math.round(discountRate * 100)) })}: <s class="text-stone-400">{formatPrice(data.hold.quote.total)}</s> → <strong>{formatPrice(discountedTotal)}</strong>
+								</p>
+							{/if}
+						{/if}
+					</fieldset>
+
 					<button type="submit" class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500">
-						{isCard ? m.hold_submit_card() : m.hold_submit_local()}
+						{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
 					</button>
-					{#if !isCard}
+					{#if !isPrepay}
 						<p class="text-center text-xs text-stone-400">{m.hold_local_payment_note()}</p>
 					{/if}
 				</form>

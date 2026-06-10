@@ -37,8 +37,8 @@
 			<div>
 				<dt class="text-xs text-stone-400">支払</dt>
 				<dd>
-					{b.payment === 'card' ? 'カード事前決済' : '現地払い'} — {b.paymentStatus}
-					{#if b.payment === 'card'}
+					{b.payment === 'onsite' ? '現地払い' : b.payment === 'paypay' ? 'PayPay 事前決済（即時）' : 'カード事前決済（即時）'} — {b.paymentStatus}{b.discountAmount ? ` ／ 事前割引 -¥${b.discountAmount.toLocaleString()}` : ''}
+					{#if b.payment !== 'onsite'}
 						<a href="https://dashboard.stripe.com" target="_blank" rel="noopener" class="ml-1 text-xs text-accent-600 underline">Stripe ↗</a>
 					{/if}
 				</dd>

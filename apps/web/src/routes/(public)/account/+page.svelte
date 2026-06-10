@@ -46,7 +46,7 @@
 				</div>
 				<h3 class="font-display mt-1 text-lg text-brand-900">{b.facilityName}</h3>
 				<p class="text-sm text-stone-600">{formatDateLong(b.checkin)} から {b.nights}泊 ・ {b.roomName} ・ 大人{b.adults}名</p>
-				<p class="mt-1 text-sm font-medium">{formatPrice(b.total - b.pointsUsed)} <span class="text-xs font-normal text-stone-400">{b.payment === 'card' ? m.account_payment_paid() : m.account_payment_local()}</span></p>
+				<p class="mt-1 text-sm font-medium">{formatPrice(b.total - b.pointsUsed)} <span class="text-xs font-normal text-stone-400">{b.payment !== 'onsite' ? m.account_payment_paid() : m.account_payment_local()}</span></p>
 			</div>
 			<span class="self-center text-stone-300">→</span>
 		</a>

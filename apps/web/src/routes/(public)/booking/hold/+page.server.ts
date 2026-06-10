@@ -68,15 +68,22 @@ export const actions: Actions = {
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;
 		const pointsUsed = memberId ? Math.max(0, Number(form.get('points') ?? 0)) : 0;
 
+		// 支払い方法（プランの決済設定でバリデーション）
 		const plan = planById(hold.planId)!;
-		if (plan.paymentMethod === 'card') {
-			// ③ 決済ステップへ（入力内容を hold に保持）
+		const payment = String(form.get('payment') ?? 'onsite') as 'onsite' | 'card' | 'paypay';
+		const allowed =
+			payment === 'onsite' ? plan.payment.onsite : plan.payment.prepay && plan.payment.prepayMethods.includes(payment);
+		if (!allowed) return fail(400, { errors: { payment: 'お支払い方法を選択してください' }, values: guest });
+
+		if (payment !== 'onsite') {
+			// ③ 決済ステップへ（事前決済=即時決済。入力内容を hold に保持）
 			hold.guestDraft = guest;
 			hold.pointsDraft = pointsUsed;
+			hold.paymentDraft = payment;
 			redirect(303, `/booking/payment?id=${hold.id}`);
 		}
 
-		const result = confirmBooking(hold.id, guest, pointsUsed, memberId);
+		const result = confirmBooking(hold.id, guest, pointsUsed, memberId, 'onsite');
 		if ('error' in result) {
 			return fail(410, { message: m.error_hold_expired() });
 		}

@@ -13,7 +13,7 @@
 		remaining = null,
 		checkin = ''
 	}: {
-		plan: Pick<RatePlan, 'name' | 'headline' | 'mealPlan' | 'paymentMethod' | 'highlightTags' | 'photos' | 'basePrice' | 'cancellationPolicy'>;
+		plan: Pick<RatePlan, 'name' | 'headline' | 'mealPlan' | 'payment' | 'highlightTags' | 'photos' | 'basePrice' | 'cancellationPolicy'>;
 		href: string;
 		total?: number | null;
 		perPerson?: number | null;
@@ -31,9 +31,19 @@
 				<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
 			{/each}
 			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{plan.mealPlan}</span>
-			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">
-				{plan.paymentMethod === 'card' ? m.plan_card_payment_card() : m.plan_card_payment_local()}
-			</span>
+			{#if plan.payment.onsite}
+				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.pay_onsite()}</span>
+			{/if}
+			{#if plan.payment.prepay && plan.payment.prepayDiscountRate > 0}
+				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+					{m.pay_prepay_off({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) })}
+				</span>
+			{:else if plan.payment.prepay}
+				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.plan_card_payment_card()}</span>
+			{/if}
+			{#if plan.payment.prepay && plan.payment.prepayMethods.includes('paypay')}
+				<span class="rounded-full bg-[#ff0033]/10 px-2 py-0.5 text-xs font-medium text-[#d90030]">PayPay</span>
+			{/if}
 		</div>
 		<h3 class="font-display text-lg leading-snug text-brand-900 group-hover:underline">{plan.name}</h3>
 		<p class="text-sm text-stone-600">{plan.headline}</p>

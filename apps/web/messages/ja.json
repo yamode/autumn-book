@@ -393,5 +393,12 @@
 	"news_more": "お知らせ一覧",
 	"news_back": "お知らせ一覧へ戻る",
 	"news_empty": "お知らせはありません。",
-	"tmpl_reasons_title": "山人に来る理由"
+	"tmpl_reasons_title": "山人に来る理由",
+	"pay_choose": "お支払い方法",
+	"pay_onsite": "現地払い",
+	"pay_card": "クレジットカード（事前決済）",
+	"pay_paypay": "PayPay（事前決済）",
+	"pay_prepay_off": "事前決済で{rate}%OFF",
+	"pay_prepay_note": "事前決済はご予約時の即時決済です。割引適用後の金額をその場でお支払いいただきます。",
+	"pay_discount_line": "事前決済割引（{rate}%OFF）"
 }

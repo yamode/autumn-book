@@ -47,7 +47,12 @@
 				<div class="flex justify-between"><dt class="text-stone-500">{m.plan_detail_meal()}</dt><dd>{data.plan.mealPlan}</dd></div>
 				<div class="flex justify-between">
 					<dt class="text-stone-500">{m.plan_detail_payment()}</dt>
-					<dd>{data.plan.paymentMethod === 'card' ? m.plan_detail_payment_card() : m.plan_detail_payment_local()}</dd>
+					<dd class="text-right">
+						{[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : ''].filter(Boolean).join(' ／ ')}
+						{#if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
+							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+						{/if}
+					</dd>
 				</div>
 				{#if data.params.checkin}
 					<div class="flex justify-between text-emerald-700">

@@ -55,7 +55,7 @@
 			{#if b.pointsUsed > 0}
 				<div class="flex justify-between text-emerald-700"><dt>{m.reservation_points_used()}</dt><dd>-{b.pointsUsed.toLocaleString()}{m.common_point_unit()}</dd></div>
 			{/if}
-			<div class="flex justify-between text-stone-500"><dt>{m.reservation_payment()}</dt><dd>{b.payment === 'card' ? `${m.reservation_payment_card()}（${paymentStatusLabel(b.paymentStatus ?? '')}）` : m.reservation_payment_local()}</dd></div>
+			<div class="flex justify-between text-stone-500"><dt>{m.reservation_payment()}</dt><dd>{b.payment !== 'onsite' ? `${m.reservation_payment_card()}（${paymentStatusLabel(b.paymentStatus ?? '')}）` : m.reservation_payment_local()}</dd></div>
 			{#if b.cancelFee !== undefined}
 				<div class="flex justify-between text-red-600"><dt>{m.reservation_cancel_fee()}</dt><dd>{formatPrice(b.cancelFee)}</dd></div>
 			{/if}
@@ -81,7 +81,7 @@
 						<p class="font-medium text-red-700">{m.reservation_cancel_confirm_heading()}</p>
 						<ul class="mt-1 list-disc pl-4 text-xs text-red-600">
 							<li>{m.reservation_cancel_fee_notice({ fee: formatPrice(data.cancelPreview.fee) })}</li>
-							{#if b.payment === 'card'}<li>{m.reservation_cancel_refund_notice()}</li>{/if}
+							{#if b.payment !== 'onsite'}<li>{m.reservation_cancel_refund_notice()}</li>{/if}
 							{#if b.pointsUsed > 0}<li>{m.reservation_cancel_points_notice({ points: String(b.pointsUsed) })}</li>{/if}
 							{#if b.pointsEarned > 0}<li>{m.reservation_cancel_earn_notice()}</li>{/if}
 						</ul>

@@ -55,7 +55,7 @@
 					<td class="text-right">
 						{formatYen(b.total)}
 						<span class="text-xs {b.paymentStatus === 'paid' ? 'text-emerald-600' : 'text-stone-400'}">
-							{b.payment === 'card' ? (b.paymentStatus === 'paid' ? '済' : b.paymentStatus) : '現地'}
+							{b.payment === 'onsite' ? '現地' : (b.paymentStatus === 'paid' ? (b.payment === 'paypay' ? 'PayPay済' : 'カード済') : b.paymentStatus)}
 						</span>
 					</td>
 					<td>
