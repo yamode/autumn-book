@@ -14,6 +14,7 @@ import {
 
 export type * from '$lib/types';
 import type {
+	NewsPost,
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
 	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation
@@ -53,9 +54,9 @@ export const facilities: Facility[] = [
 		brandSlug: 'yamado',
 		slug: 'nishiwaga',
 		name: '山人 -yamado-',
-		catchCopy: '山峡の湯宿で、巡る季節をひとり占め。',
+		catchCopy: '極上のヒーリングリゾートで、巡る季節をひとり占め。',
 		description:
-			'岩手・西和賀。豪雪がもたらす豊かな水と山の幸に抱かれた、全10室の小さな湯宿です。源泉かけ流しの湯と、地のものだけで仕立てる山人料理をご用意して、静かな時間をお待ちしています。',
+			'山人（やまど）―、文字通り「山の人」。岩手・西和賀の山峡で自然と共生し、その季節でなければ決して味わえない味覚を探し出してお出しする、全10室の極上のヒーリングリゾートです。源泉かけ流しの湯とともに、静かな時間をお過ごしください。',
 		lat: 39.3196,
 		lng: 140.7822,
 		prefecture: '岩手県',
@@ -72,12 +73,14 @@ export const facilities: Facility[] = [
 			parking: { available: true, capacity: 20, fee: '無料' }
 		},
 		photos: [
-			{ url: img('nishiwaga-ext'), caption: '雪深い山峡に佇む宿', category: 'exterior' },
-			{ url: img('nishiwaga-room'), caption: '半露天風呂付き客室', category: 'room' },
+			// 現行 WP サイトの実写真（暫定ホットリンク。WP 廃止前に Supabase Storage へ移設）
+			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_fig_01.jpg', caption: '山峡に佇む宿', category: 'exterior' },
+			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_01_02.jpg', caption: '雪椿（シモンズ社製ツイン和風ベッド）', category: 'room' },
 			{ url: img('nishiwaga-bath'), caption: '源泉かけ流しの大浴場', category: 'bath' },
-			{ url: img('nishiwaga-meal'), caption: '山人料理・先付', category: 'meal' },
-			{ url: img('nishiwaga-view'), caption: '錦秋湖の朝霧', category: 'view' }
+			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_link_01.jpg', caption: '山人料理', category: 'meal' },
+			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_fig_02.jpg', caption: '西和賀の四季', category: 'view' }
 		],
+		template: 'yamado-v1',
 		isPublished: true
 	},
 	{
@@ -85,9 +88,9 @@ export const facilities: Facility[] = [
 		brandSlug: 'yamado',
 		slug: 'oga',
 		name: '山人 -oga-',
-		catchCopy: '日本海に沈む夕陽と、男鹿の幸を一望の宿。',
+		catchCopy: 'あるがままに、還る。',
 		description:
-			'秋田・男鹿半島、鵜ノ崎海岸を見下ろす高台に建つ全8室のオーベルジュ。日本海の海の幸と男鹿の食文化を、夕陽のパノラマとともにお楽しみください。',
+			'七千万年にわたる歴史を刻む地層、潮の満ち引きで表情を変える海岸線。男鹿半島が織り成す荘厳な自然は、訪れる者を圧倒する力強さと静けさを持ち合わせています。何もしない、という贅沢を知る。心満ちる休息をあなたに。',
 		lat: 39.8702,
 		lng: 139.8205,
 		prefecture: '秋田県',
@@ -104,68 +107,98 @@ export const facilities: Facility[] = [
 			parking: { available: true, capacity: 15, fee: '無料' }
 		},
 		photos: [
-			{ url: img('oga-ext'), caption: '鵜ノ崎海岸を望む高台の宿', category: 'exterior' },
-			{ url: img('oga-room'), caption: 'オーシャンビューツイン', category: 'room' },
-			{ url: img('oga-bath'), caption: '夕陽を望む展望温泉', category: 'bath' },
-			{ url: img('oga-meal'), caption: '男鹿の海の幸', category: 'meal' },
-			{ url: img('oga-view'), caption: '日本海に沈む夕陽', category: 'view' }
+			// 現行サイトの実写真（暫定ホットリンク。Supabase Storage へ移設予定）
+			{ url: 'https://oga.yamado.co.jp/img/index/kv_pic_left01@2x.webp', caption: '鵜ノ崎海岸を望む宿', category: 'exterior' },
+			{ url: 'https://oga.yamado.co.jp/img/room/ridge_b@2x.webp', caption: '迦具土 — 日本海の絶景を間近に', category: 'room' },
+			{ url: 'https://oga.yamado.co.jp/img/index/about_onsen@2x.webp', caption: '夕陽を望む温泉', category: 'bath' },
+			{ url: img('oga-meal'), caption: '大地の滋味が凝縮された男鹿の幸', category: 'meal' },
+			{ url: 'https://oga.yamado.co.jp/img/index/gallery_pic_main@2x.webp', caption: '潮の満ち引きで表情を変える海岸線', category: 'view' }
 		],
+		template: 'oga-v1',
 		isPublished: true
 	}
 ];
 
 export const roomTypes: RoomType[] = [
+	// ---- 西和賀（現行サイトの実客室名） ----
 	{
 		id: 'r-nw-wayo',
 		facilityId: 'f-nishiwaga',
-		slug: 'wayo-a',
-		name: '和洋室A（半露天風呂付）',
-		headline: '源泉を独り占めする半露天風呂付きの和洋室',
-		description: '広縁の先に源泉かけ流しの半露天風呂を備えた、当館で最も人気の客室です。',
+		slug: 'yukitsubaki',
+		name: '雪椿 Yukitsubaki',
+		headline: 'シモンズ社製のツイン和風ベッドのラグジュアリーなお部屋',
+		description: 'シモンズ社製のツイン和風ベッドを備えたラグジュアリーなお部屋。優雅なテラス付きで、川のせせらぎと四季の移ろいをお楽しみいただけます。',
 		capacity: 4,
-		sizeM2: 52,
-		totalRooms: 4,
-		amenities: ['半露天風呂', 'ツインベッド+琉球畳', '錦秋湖側'],
-		photos: [{ url: img('nw-wayo'), caption: '和洋室A', category: 'room' }]
+		sizeM2: 47.13,
+		totalRooms: 2,
+		amenities: ['ツイン和風ベッド', 'テラス付', 'ラグジュアリークラス'],
+		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_01_02.jpg', caption: '雪椿', category: 'room' }]
 	},
 	{
 		id: 'r-nw-washitsu',
 		facilityId: 'f-nishiwaga',
-		slug: 'washitsu',
-		name: '和室（山側）',
-		headline: 'ブナの森に向き合う静かな和室',
-		description: '10畳の純和室。窓いっぱいにブナの原生林が広がります。',
+		slug: 'buna',
+		name: '椈 Buna',
+		headline: '川のせせらぎが心地良いテラスと広いお風呂',
+		description: 'アッパークラスの広いお風呂付き。川のせせらぎが心地良いテラスを備えた、ゆったりとお過ごしいただけるお部屋です。',
 		capacity: 3,
-		sizeM2: 38,
-		totalRooms: 6,
-		amenities: ['10畳和室', '山側', 'バス無し（大浴場利用）'],
-		photos: [{ url: img('nw-washitsu'), caption: '和室（山側）', category: 'room' }]
+		sizeM2: 52.01,
+		totalRooms: 2,
+		amenities: ['広いお風呂付', 'テラス付', 'アッパークラス'],
+		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_02_01.jpg', caption: '椈', category: 'room' }]
 	},
+	{
+		id: 'r-nw-seizanro',
+		facilityId: 'f-nishiwaga',
+		slug: 'seizanro',
+		name: '靖山樓 Seizanro',
+		headline: '1Fがリビング、ロフトが寝室の開放的なメゾネット',
+		description: 'メゾネットタイプのお部屋。1Fがリビング、ロフトが寝室の開放的な構造で、おこもりステイに最適です。',
+		capacity: 2,
+		sizeM2: 46.21,
+		totalRooms: 2,
+		amenities: ['メゾネット', 'ロフト寝室', '2名様専用'],
+		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_04_01.jpg', caption: '靖山樓', category: 'room' }]
+	},
+	// ---- 男鹿（現行サイトの実客室名・3つの棟） ----
 	{
 		id: 'r-oga-twin',
 		facilityId: 'f-oga',
-		slug: 'ocean-twin',
-		name: 'オーシャンツイン',
-		headline: '全面窓に日本海が広がるツインルーム',
-		description: 'ベッドに横になったまま水平線を眺められる、海side全面窓の客室です。',
+		slug: 'yamazumi',
+		name: '山祇 Yamazumi ジュニアスイート',
+		headline: '秋田平野と海岸線を望む絶好の眺望',
+		description: '秋田平野と海岸線を望む絶好の眺望。ロビー棟と同じ高さで階段の上り下りが不要、車いすにも対応しています。',
 		capacity: 2,
 		sizeM2: 40,
-		totalRooms: 6,
-		amenities: ['ツインベッド', 'オーシャンビュー', 'シャワーブース'],
-		photos: [{ url: img('oga-twin'), caption: 'オーシャンツイン', category: 'room' }]
+		totalRooms: 4,
+		amenities: ['オーシャンビュー', '段差なし', '車いす対応'],
+		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_a@2x.webp', caption: '山祇', category: 'room' }]
 	},
 	{
 		id: 'r-oga-suite',
 		facilityId: 'f-oga',
-		slug: 'sunset-suite',
-		name: 'サンセットスイート',
-		headline: '夕陽のための特等席、露天風呂付スイート',
-		description: 'テラスに展望露天風呂を備えた最上階スイート。',
+		slug: 'kagutsuchi',
+		name: '迦具土 Kagutsuchi オーシャンスイート',
+		headline: '日本海の荒々しい絶景を間近に感じる、客室露天風呂付',
+		description: '日本海の荒々しい絶景を間近に感じられる立地。広々としたオーシャンスイートに客室露天風呂を備えています。',
+		capacity: 4,
+		sizeM2: 55,
+		totalRooms: 2,
+		amenities: ['客室露天風呂', 'オーシャンビュー', '大浴場至近'],
+		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_b@2x.webp', caption: '迦具土', category: 'room' }]
+	},
+	{
+		id: 'r-oga-watatsumi',
+		facilityId: 'f-oga',
+		slug: 'watatsumi',
+		name: '綿津見 Watatsumi ラグジュアリースイート',
+		headline: 'もっとも広い客室とバルコニー。最上級グレード',
+		description: '当館でもっとも広い客室とバルコニーを備えた最上級グレード。海岸線を一望する4室のみの特別なお部屋です。',
 		capacity: 4,
 		sizeM2: 68,
 		totalRooms: 2,
-		amenities: ['展望露天風呂', 'テラス', '最上階'],
-		photos: [{ url: img('oga-suite'), caption: 'サンセットスイート', category: 'room' }]
+		amenities: ['最上級グレード', 'バルコニー', '海岸線一望'],
+		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_c@2x.webp', caption: '綿津見', category: 'room' }]
 	}
 ];
 
@@ -199,7 +232,7 @@ export const ratePlans: RatePlan[] = [
 		highlightTags: ['源泉かけ流し', '個室食'],
 		photos: [{ url: img('nw-plan-std'), caption: '山人料理', category: 'meal' }],
 		cancellationPolicy: stdPolicy,
-		roomTypeIds: ['r-nw-wayo', 'r-nw-washitsu'],
+		roomTypeIds: ['r-nw-wayo', 'r-nw-washitsu', 'r-nw-seizanro'],
 		isPublished: true,
 		sortOrder: 1
 	},
@@ -247,7 +280,7 @@ export const ratePlans: RatePlan[] = [
 		highlightTags: ['オーシャンビュー', '石焼料理'],
 		photos: [{ url: img('oga-plan-std'), caption: '石焼料理', category: 'meal' }],
 		cancellationPolicy: stdPolicy,
-		roomTypeIds: ['r-oga-twin', 'r-oga-suite'],
+		roomTypeIds: ['r-oga-twin', 'r-oga-suite', 'r-oga-watatsumi'],
 		isPublished: true,
 		sortOrder: 1
 	},
@@ -309,6 +342,18 @@ export const faqs: Faq[] = [
 		isPublished: true,
 		sortOrder: 2
 	}
+];
+
+// ---------------------------------------------------------------- お知らせ（WP のニュース機能を置換）
+
+export const newsPosts: NewsPost[] = [
+	// 現行サイトの実ニュース（移植）
+	{ id: 'n-nw-1', facilityId: 'f-nishiwaga', title: 'クマ対策について', body: '当館周辺では春から秋にかけてクマの目撃情報が寄せられることがあります。お散歩の際は遊歩道をご利用いただき、夕方以降の単独での外出はお控えください。クマ鈴の貸出をフロントにて行っております。', publishedAt: '2026-05-15', isPublished: true, createdAt: '2026-05-15' },
+	{ id: 'n-nw-2', facilityId: 'f-nishiwaga', title: '【2026年5月〜7月】JR北上線計画運休のお知らせ', body: 'JR北上線は保守工事のため、2026年5月から7月にかけて一部期間で計画運休が予定されています。ほっとゆだ駅をご利用のお客様は、事前に運行状況をご確認ください。**送迎をご希望のお客様はお気軽にご相談ください**（前日まで要予約）。', publishedAt: '2026-04-11', isPublished: true, createdAt: '2026-04-11' },
+	{ id: 'n-nw-3', facilityId: 'f-nishiwaga', title: 'サービス内容変更のお知らせ', body: 'サービス内容の一部を変更いたしました。詳しくはお電話（0197-82-2222）にてお問い合わせください。', publishedAt: '2026-02-16', isPublished: true, createdAt: '2026-02-16' },
+	{ id: 'n-oga-1', facilityId: 'f-oga', title: 'JR男鹿線の一部列車の運休について（2026年5月・6月）', body: 'JR男鹿線は2026年5月・6月に一部列車の運休が予定されています。電車でお越しのお客様は、事前に運行状況をご確認ください。', publishedAt: '2026-04-14', isPublished: true, createdAt: '2026-04-14' },
+	{ id: 'n-oga-2', facilityId: 'f-oga', title: 'イベントへご参加予定のお客様へ', body: 'イベント開催日は駐車場が混み合う場合がございます。お時間に余裕を持ってお越しください。', publishedAt: '2026-03-10', isPublished: true, createdAt: '2026-03-10' },
+	{ id: 'n-oga-3', facilityId: 'f-oga', title: '秋田県プレミアムチケットについて', body: '秋田県プレミアム宿泊券をご利用いただけます。ご予約時の連絡事項欄にその旨をご記入ください。', publishedAt: '2026-03-02', isPublished: true, createdAt: '2026-03-02' }
 ];
 
 // ---------------------------------------------------------------- 可変データ（メモリ）
@@ -746,6 +791,34 @@ export function getFaqs(facilityId: string, locale: Locale): Faq[] {
 }
 
 /** ロケール付き施設一覧（公開済み） */
+/** お知らせ一覧（公開のみ・新しい順・locale オーバーレイ適用） */
+export function getNews(facilityId: string, locale: Locale, limit?: number): NewsPost[] {
+	const list = newsPosts
+		.filter((n) => n.facilityId === facilityId && n.isPublished)
+		.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+		.map((n) => applyTranslation(n, 'news', n.id, locale));
+	return limit ? list.slice(0, limit) : list;
+}
+
+export function getNewsPost(id: string, locale: Locale): NewsPost | undefined {
+	const n = newsPosts.find((p) => p.id === id && p.isPublished);
+	if (!n) return undefined;
+	return applyTranslation(n, 'news', n.id, locale);
+}
+
+/** 管理画面用: 下書き含む全件 */
+export function listNewsAdmin(facilityId: string): NewsPost[] {
+	return newsPosts
+		.filter((n) => n.facilityId === facilityId)
+		.sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+}
+
+export function addNews(input: Omit<NewsPost, 'id' | 'createdAt'>): NewsPost {
+	const post: NewsPost = { ...input, id: nextId('n'), createdAt: new Date().toISOString().slice(0, 10) };
+	newsPosts.push(post);
+	return post;
+}
+
 export function getPublishedFacilities(locale: Locale): Facility[] {
 	return facilities
 		.filter((f) => f.isPublished)

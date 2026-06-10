@@ -8,7 +8,7 @@ export type Locale = 'ja' | 'en' | 'zh-TW';
 
 /** コンテンツ翻訳行（book.content_translations 対称） */
 export interface ContentTranslation {
-	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal';
+	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal' | 'news';
 	entityId: string;
 	locale: Locale;
 	/** 翻訳対象フィールドのみ部分上書き（空文字は欠落扱い） */
@@ -54,7 +54,21 @@ export interface Facility {
 	amenities: string[];
 	access: AccessInfo;
 	photos: Photo[];
+	/** 施設HPのデザインテンプレート（画面設計：施設ごとに別デザイン運用） */
+	template: 'standard' | 'yamado-v1' | 'oga-v1';
 	isPublished: boolean;
+}
+
+/** お知らせ（book.news_posts 対称・WP のニュース機能を置換） */
+export interface NewsPost {
+	id: string;
+	facilityId: string;
+	title: string;
+	/** Markdown 原文 */
+	body: string;
+	publishedAt: string; // YYYY-MM-DD
+	isPublished: boolean;
+	createdAt: string;
 }
 
 export interface RoomType {

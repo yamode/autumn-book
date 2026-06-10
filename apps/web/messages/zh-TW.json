@@ -388,5 +388,10 @@
 	"error_confirm_failed": "無法確認訂房，請再試一次。",
 	"error_booking_not_found": "找不到訂房紀錄",
 	"error_cannot_cancel": "此訂房無法取消。",
-	"error_login_failed": "電子郵件或密碼錯誤。"
+	"error_login_failed": "電子郵件或密碼錯誤。",
+	"news_title": "最新消息",
+	"news_more": "所有消息",
+	"news_back": "返回消息列表",
+	"news_empty": "目前沒有最新消息。",
+	"tmpl_reasons_title": "到訪山人的理由"
 }

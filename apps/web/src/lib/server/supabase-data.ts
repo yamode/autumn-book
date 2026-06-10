@@ -89,6 +89,18 @@ export async function listPlans(facilityId: string) {
 	return data;
 }
 
+export async function listNews(facilityId: string, limit?: number) {
+	let q = supa()
+		.from('news_posts')
+		.select('id, title, body, published_at')
+		.eq('facility_id', facilityId)
+		.order('published_at', { ascending: false });
+	if (limit) q = q.limit(limit);
+	const { data, error } = await q;
+	if (error) throw error;
+	return data;
+}
+
 export async function listFaqs(facilityId: string) {
 	const { data, error } = await supa()
 		.from('faqs')

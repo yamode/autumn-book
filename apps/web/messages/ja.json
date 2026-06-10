@@ -388,5 +388,10 @@
 	"error_confirm_failed": "予約を確定できませんでした。もう一度お試しください。",
 	"error_booking_not_found": "予約が見つかりません",
 	"error_cannot_cancel": "この予約はキャンセルできません。",
-	"error_login_failed": "メールアドレスまたはパスワードが違います。"
+	"error_login_failed": "メールアドレスまたはパスワードが違います。",
+	"news_title": "お知らせ",
+	"news_more": "お知らせ一覧",
+	"news_back": "お知らせ一覧へ戻る",
+	"news_empty": "お知らせはありません。",
+	"tmpl_reasons_title": "山人に来る理由"
 }

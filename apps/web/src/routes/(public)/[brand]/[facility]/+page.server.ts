@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getFacilityBySlug, getRoomTypes, getRatePlans, getFaqs, getPlanCalendar } from '$lib/server/store';
+import { getFacilityBySlug, getRoomTypes, getRatePlans, getFaqs, getPlanCalendar, getNews } from '$lib/server/store';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { PageServerLoad } from './$types';
 
@@ -21,6 +21,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		facilityFaqs: getFaqs(facility.id, locale),
 		calMonth,
 		calendar,
+		news: getNews(facility.id, locale, 3),
 		cheapestPlanId: plans[0]?.id ?? null
 	};
 };

@@ -388,5 +388,10 @@
 	"error_confirm_failed": "Could not confirm the booking. Please try again.",
 	"error_booking_not_found": "Booking not found",
 	"error_cannot_cancel": "This booking cannot be cancelled.",
-	"error_login_failed": "Incorrect email address or password."
+	"error_login_failed": "Incorrect email address or password.",
+	"news_title": "News",
+	"news_more": "All news",
+	"news_back": "Back to news",
+	"news_empty": "No news at the moment.",
+	"tmpl_reasons_title": "Reasons to visit Yamado"
 }

@@ -15,6 +15,17 @@
 - DEBUG フラグ実装済み（`src/lib/debug.ts`・画面右下 DBG パネル）
 - **i18n 実装済み（2026-06-10・設計書 `autumn_book_i18n_design.md`）**：ja（プレフィックスなし・URL無変更）/ `/en` / `/zh-TW`。Paraglide JS 2（UI文言 約150キー抽出済み）+ コンテンツ翻訳層（デモストアにフィールド単位オーバーレイ・ja フォールバック・管理画面に翻訳セクション）。言語スイッチャ・hreflang 4本・`<html lang>` 連動・日付/通貨のロケール表示対応。DB 側は autumn-shared に `book.content_translations` + `book.members.locale` migration 作成済み（**PR #28 マージ後に適用可**・同一ブランチ）
 
+## 施設別テンプレート・お知らせ機能（2026-06-12 追加・v0.5.0）
+
+- **施設別デザインテンプレート**：`facility.template`（standard / yamado-v1 / oga-v1）で施設HPのデザインを出し分け
+  - `yamado-v1`（西和賀）= 現行 www の和モダン再現（明朝・深緑・縦書きキャッチ・「山人に来る理由」）
+  - `oga-v1`（男鹿）= 現行 oga のミニマルモダン再現（サンセリフ・NATURE/CUISINE/STAY・ABOUTグリッド）
+  - 実装: `src/lib/templates/`（共通セクションは `components/facility/`）。新施設は standard が既定
+- **お知らせ機能**（WP ニュース置換）：公開側 `/[brand]/[facility]/news`（一覧・詳細）+ 施設HPに最新3件、管理側 `/admin/news`（Markdown・下書き/公開）。現行サイトの実ニュース3件×2施設を移植済み
+- **実コンテンツ移植**：コンセプト文（「山人=山の人」「あるがままに、還る」）・実客室名（雪椿/椈/靖山樓・山祇/迦具土/綿津見）・実写真を現行WPサイトから移植
+  - ⚠ 写真は現行 WP サーバーへの**暫定ホットリンク**。WP 廃止前に Supabase Storage（book-photos）へ移設必須
+- DB側: `book.news_posts` + `facility_contents.template` を migration 済み（20260612003000・PROD適用）。supabase-data.ts に listNews 追加済み
+
 ## 実装済みの主な決定反映
 
 - 写真ストレージ＝**Supabase Storage で決定（2026-06-11）**。管理画面のアップロード UI は Storage 接続時に有効化
