@@ -13,6 +13,7 @@
   - デモログイン：会員 demo@yamado.co.jp / demo、管理者はワンクリック（/admin/login）
 - **データ層は `src/lib/server/store.ts`（インメモリ・デモ）**。関数シグネチャは設計書 §5.2 の RPC と対応させており、Supabase 接続時はこのモジュールを差し替える
 - DEBUG フラグ実装済み（`src/lib/debug.ts`・画面右下 DBG パネル）
+- **i18n 実装済み（2026-06-10・設計書 `autumn_book_i18n_design.md`）**：ja（プレフィックスなし・URL無変更）/ `/en` / `/zh-TW`。Paraglide JS 2（UI文言 約150キー抽出済み）+ コンテンツ翻訳層（デモストアにフィールド単位オーバーレイ・ja フォールバック・管理画面に翻訳セクション）。言語スイッチャ・hreflang 4本・`<html lang>` 連動・日付/通貨のロケール表示対応。DB 側は autumn-shared に `book.content_translations` + `book.members.locale` migration 作成済み（**PR #28 マージ後に適用可**・同一ブランチ）
 
 ## 実装済みの主な決定反映
 
@@ -68,7 +69,7 @@
 - [ ] 料金パリティ方針（直販ベストレート保証の打ち出し）
 - [ ] ポイント原資・付与率（ランク別還元率）
 - [ ] 子供料金の直販での受け方（child a〜e 区分は未使用）
-- [ ] 多言語（EN/TW）の実装フェーズ
+- [x] 多言語（EN/TW）→ **実装済み（2026-06-10・ja/en/zh-TW、`autumn_book_i18n_design.md`）**。残: en/zh-TW 文言の人手レビュー（特に法務・キャンセル規定 = i18n-4）と確定メール多言語（P3 Resend 接続時 = i18n-3）
 
 ### 新規サブシステム関連（§15）
 - [ ] メルマガ配信基盤（Resend 統一推奨 vs Benchmark 継続）
