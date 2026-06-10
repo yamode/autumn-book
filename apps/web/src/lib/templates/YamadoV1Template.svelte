@@ -23,43 +23,40 @@
 	);
 </script>
 
-<div class="yamado-v1 bg-[#faf9f6]" style="--fac-heading: #2e3a2f; --fac-accent: #4a6b52;">
+<div class="yamado-v1 bg-white" style="--fac-heading: #2e3a2f; --fac-accent: #4a6b52;">
 	<!-- ヒーロー: 縦書きキャッチ -->
 	<section class="relative">
 		<img src={f.photos[0].url} alt={f.name} class="h-[480px] w-full object-cover sm:h-[560px]" />
 		<div class="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/50"></div>
-		<p
-			class="absolute right-6 top-10 hidden text-2xl leading-loose tracking-[0.4em] text-white drop-shadow-md [writing-mode:vertical-rl] sm:block"
-			style="font-family: 'Yu Mincho', serif;"
-		>
+		<p class="absolute right-6 top-10 hidden text-2xl leading-loose tracking-[0.4em] text-white drop-shadow-md [writing-mode:vertical-rl] sm:block">
 			{f.catchCopy}
 		</p>
-		<div class="absolute inset-x-0 bottom-0 mx-auto max-w-5xl px-4 pb-10 text-white">
+		<div class="absolute inset-x-0 bottom-0 mx-auto max-w-[980px] px-4 pb-10 text-white">
 			<p class="text-xs tracking-[0.3em] opacity-80">{f.prefecture}・西和賀</p>
-			<h1 class="mt-1 text-3xl tracking-[0.25em] sm:text-4xl" style="font-family: 'Yu Mincho', serif;">{f.name}</h1>
+			<h1 class="mt-1 text-3xl tracking-[0.25em] sm:text-4xl">{f.name}</h1>
 			<a href="{base}/plans" class="mt-5 inline-block border border-white/70 px-8 py-2.5 text-sm tracking-widest transition hover:bg-white hover:text-stone-900">
 				{m.facility_see_plans()}
 			</a>
 		</div>
 	</section>
 
-	<div class="mx-auto max-w-5xl space-y-20 px-4 py-16">
+	<div class="mx-auto max-w-[980px] space-y-20 px-4 py-16">
 		<NewsSection news={data.news} {base} variant="yamado" />
 
 		<!-- コンセプト -->
 		<section class="mx-auto max-w-2xl text-center">
 			<p class="mb-3 text-xs tracking-[0.5em]" style="color: var(--fac-accent)">CONCEPT</p>
-			<h2 class="mb-6 text-2xl leading-relaxed tracking-[0.2em]" style="font-family: 'Yu Mincho', serif; color: var(--fac-heading)">
+			<h2 class="mb-6 text-2xl leading-relaxed tracking-[0.2em]" style="color: var(--fac-heading)">
 				{f.catchCopy}
 			</h2>
-			<p class="text-sm leading-[2.2] tracking-wider text-stone-600">{f.description}</p>
+			<p class="text-[16px] leading-[2.2] tracking-wider text-stone-600">{f.description}</p>
 		</section>
 
 		<!-- 山人に来る理由（温泉・料理・景色） -->
 		{#if reasons.length > 0}
-			<section>
+			<section id="reason">
 				<p class="mb-2 text-center text-xs tracking-[0.5em]" style="color: var(--fac-accent)">REASON</p>
-				<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="font-family: 'Yu Mincho', serif; color: var(--fac-heading)">
+				<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">
 					{m.tmpl_reasons_title()}
 				</h2>
 				<div class="grid gap-6 sm:grid-cols-3">
@@ -79,9 +76,9 @@
 		{/if}
 
 		<!-- 客室 -->
-		<section>
+		<section id="rooms">
 			<p class="mb-2 text-center text-xs tracking-[0.5em]" style="color: var(--fac-accent)">GUEST ROOM</p>
-			<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="font-family: 'Yu Mincho', serif; color: var(--fac-heading)">
+			<h2 class="mb-8 text-center text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">
 				{m.facility_rooms()}
 			</h2>
 			<div class="grid gap-6 sm:grid-cols-3">
@@ -95,7 +92,7 @@
 		<section>
 			<div class="mb-8 text-center">
 				<p class="mb-2 text-xs tracking-[0.5em]" style="color: var(--fac-accent)">PLAN</p>
-				<h2 class="text-2xl tracking-[0.2em]" style="font-family: 'Yu Mincho', serif; color: var(--fac-heading)">{m.facility_recommend_plans()}</h2>
+				<h2 class="text-2xl tracking-[0.2em]" style="color: var(--fac-heading)">{m.facility_recommend_plans()}</h2>
 			</div>
 			<div class="space-y-4">
 				{#each data.plans.slice(0, 3) as plan}
@@ -109,13 +106,8 @@
 
 		<CalendarSection calendar={data.calendar} calMonth={data.calMonth} {base} />
 		<AccessSection {f} />
-		<FaqSection faqs={data.facilityFaqs} />
+		<div id="faq"><FaqSection faqs={data.facilityFaqs} /></div>
 		<OverviewSection {f} />
 	</div>
 </div>
 
-<style>
-	.yamado-v1 {
-		font-family: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
-	}
-</style>
