@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-最終更新: 2026-06-11
+> **最終更新**: 2026-06-12（設計→全25画面実装→Supabase/Pages基盤→施設サイト忠実再現→決済ロジックまで一気に構築。v0.8.0）
 
 ## 現在の状態
 
@@ -184,3 +184,38 @@
 ### 共通
 - [ ] DBG パネル（右下）が開閉できる（リリース時 DEBUG=false で非表示化）
 - [ ] スマホ幅で検索バー・地図・予約フローが崩れない
+
+
+## 作業ログ
+
+---
+
+### 2026-06-11〜12
+
+**実施内容:**
+- 画面設計書 v1（25画面）作成 → 全25画面を実装（デモデータ駆動・v0.3.0）
+- book スキーマ migration 一式を autumn-shared へ（#28 マージ・PROD適用確認）。Advisor ERROR 3件解消
+- `book` を Data API 公開・Supabase接続層（supabase-data.ts / DATA_SOURCE切替）・adapter-cloudflare
+- Cloudflare Pages デプロイ（https://autumn-book.pages.dev）+ GitHub Actions 自動デプロイ（build→deploy→ヘルスチェック）
+- 施設サイトを現行デザイン踏襲に再構築：施設別シェル（固有ヘッダー/フッター/実測タイポグラフィ）・共通レイアウト分離・下層14ページ（実コンテンツ移植）・アニメーション・文字サイズ17px
+- hp-yamado / hp-oga の実コード参照でトップページを実マークアップ準拠に再現。画像70点をローカル化（ホットリンク解消）
+- PayPay 対応＋事前決済（即時決済）割引ロジック（プラン単位設定・上限20%・管理画面エディタ）
+- i18n（ja/en/zh-TW・Paraglide）は並行セッションで実装済み
+- プロジェクトルール確定（CLAUDE.md）：Supabase Branching 不使用・autumn-shared main 直 push
+
+**バージョン:** `v0.8.0`
+
+**主要コミット:**
+- `c50aaee` 全25画面実装 (v0.3.0) / `5b38570` Supabase接続層 (v0.4.0)
+- `2a2e5b7` Pages デプロイ (v0.4.3) / `489d7ca` CI/CD (v0.6.1)
+- `44b1ce6` 施設サイト忠実再現 (v0.5.1) / `9b9fdcc` 下層マルチページ (v0.6.0)
+- `e8d15cc` PayPay+事前決済割引 (v0.7.0) / `ab9b9d3` 実コード参照で再現度向上 (v0.8.0)
+
+**残作業（次セッション候補）:**
+- rms 側のデータ投入（rate_plans / daily_rates / availability が0件）→ `DATA_SOURCE=supabase` 切替
+- book 公開コンテンツの PROD 投入（facility_contents / plan_contents / site_pages / news_posts。写真は Supabase Storage へ）
+- Supabase Auth 本接続（P5・@supabase/ssr）— デモ session 置換。Leaked Password Protection 有効化
+- Stripe / PayPay / Resend 本接続（P3-P4・APIキー要。決済設定は rate_plans.metadata.prepay へ移す）
+- 下層ページ（site_pages）の管理画面エディタ
+- 原サイトJS演出の細部（Swiperイージング・blur-in・Lenis・男鹿ローディング画面）
+- カスタムドメイン割当（DNS移管後。oga の明示MX追加が先決）
