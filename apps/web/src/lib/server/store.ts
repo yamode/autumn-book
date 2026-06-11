@@ -76,11 +76,11 @@ export const facilities: Facility[] = [
 		},
 		photos: [
 			// 現行 WP サイトの実写真（暫定ホットリンク。WP 廃止前に Supabase Storage へ移設）
-			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_fig_01.jpg', caption: '山峡に佇む宿', category: 'exterior' },
-			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_01_02.jpg', caption: '雪椿（シモンズ社製ツイン和風ベッド）', category: 'room' },
+			{ url: '/site-assets/yamado/top_fig_01.jpg', caption: '山峡に佇む宿', category: 'exterior' },
+			{ url: '/site-assets/yamado/room_yukitsubaki.jpg', caption: '雪椿（シモンズ社製ツイン和風ベッド）', category: 'room' },
 			{ url: img('nishiwaga-bath'), caption: '源泉かけ流しの大浴場', category: 'bath' },
-			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_link_01.jpg', caption: '山人料理', category: 'meal' },
-			{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/index/top_fig_02.jpg', caption: '西和賀の四季', category: 'view' }
+			{ url: '/site-assets/yamado/link_01.jpg', caption: '山人料理', category: 'meal' },
+			{ url: '/site-assets/yamado/top_fig_02.jpg', caption: '西和賀の四季', category: 'view' }
 		],
 		template: 'yamado-v1',
 		isPublished: true
@@ -110,11 +110,11 @@ export const facilities: Facility[] = [
 		},
 		photos: [
 			// 現行サイトの実写真（暫定ホットリンク。Supabase Storage へ移設予定）
-			{ url: 'https://oga.yamado.co.jp/img/index/kv_pic_left01@2x.webp', caption: '鵜ノ崎海岸を望む宿', category: 'exterior' },
-			{ url: 'https://oga.yamado.co.jp/img/room/ridge_b@2x.webp', caption: '迦具土 — 日本海の絶景を間近に', category: 'room' },
-			{ url: 'https://oga.yamado.co.jp/img/index/about_onsen@2x.webp', caption: '夕陽を望む温泉', category: 'bath' },
+			{ url: '/site-assets/oga/kv_left01.webp', caption: '鵜ノ崎海岸を望む宿', category: 'exterior' },
+			{ url: '/site-assets/oga/room_b.webp', caption: '迦具土 — 日本海の絶景を間近に', category: 'room' },
+			{ url: '/site-assets/oga/about_onsen.webp', caption: '夕陽を望む温泉', category: 'bath' },
 			{ url: img('oga-meal'), caption: '大地の滋味が凝縮された男鹿の幸', category: 'meal' },
-			{ url: 'https://oga.yamado.co.jp/img/index/gallery_pic_main@2x.webp', caption: '潮の満ち引きで表情を変える海岸線', category: 'view' }
+			{ url: '/site-assets/oga/g_main.webp', caption: '潮の満ち引きで表情を変える海岸線', category: 'view' }
 		],
 		template: 'oga-v1',
 		isPublished: true
@@ -134,7 +134,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 47.13,
 		totalRooms: 2,
 		amenities: ['ツイン和風ベッド', 'テラス付', 'ラグジュアリークラス'],
-		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_01_02.jpg', caption: '雪椿', category: 'room' }]
+		photos: [{ url: '/site-assets/yamado/room_yukitsubaki.jpg', caption: '雪椿', category: 'room' }]
 	},
 	{
 		id: 'r-nw-washitsu',
@@ -147,7 +147,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 52.01,
 		totalRooms: 2,
 		amenities: ['広いお風呂付', 'テラス付', 'アッパークラス'],
-		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_02_01.jpg', caption: '椈', category: 'room' }]
+		photos: [{ url: '/site-assets/yamado/room_buna.jpg', caption: '椈', category: 'room' }]
 	},
 	{
 		id: 'r-nw-seizanro',
@@ -160,7 +160,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 46.21,
 		totalRooms: 2,
 		amenities: ['メゾネット', 'ロフト寝室', '2名様専用'],
-		photos: [{ url: 'https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/guestroom/slider_04_01.jpg', caption: '靖山樓', category: 'room' }]
+		photos: [{ url: '/site-assets/yamado/room_seizanro.jpg', caption: '靖山樓', category: 'room' }]
 	},
 	// ---- 男鹿（現行サイトの実客室名・3つの棟） ----
 	{
@@ -174,7 +174,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 40,
 		totalRooms: 4,
 		amenities: ['オーシャンビュー', '段差なし', '車いす対応'],
-		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_a@2x.webp', caption: '山祇', category: 'room' }]
+		photos: [{ url: '/site-assets/oga/room_a.webp', caption: '山祇', category: 'room' }]
 	},
 	{
 		id: 'r-oga-suite',
@@ -187,7 +187,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 55,
 		totalRooms: 2,
 		amenities: ['客室露天風呂', 'オーシャンビュー', '大浴場至近'],
-		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_b@2x.webp', caption: '迦具土', category: 'room' }]
+		photos: [{ url: '/site-assets/oga/room_b.webp', caption: '迦具土', category: 'room' }]
 	},
 	{
 		id: 'r-oga-watatsumi',
@@ -200,7 +200,7 @@ export const roomTypes: RoomType[] = [
 		sizeM2: 68,
 		totalRooms: 2,
 		amenities: ['最上級グレード', 'バルコニー', '海岸線一望'],
-		photos: [{ url: 'https://oga.yamado.co.jp/img/room/ridge_c@2x.webp', caption: '綿津見', category: 'room' }]
+		photos: [{ url: '/site-assets/oga/room_c.webp', caption: '綿津見', category: 'room' }]
 	}
 ];
 
@@ -357,10 +357,10 @@ export const sitePages: SitePage[] = [
 		id: 'sp-nw-cuisine', facilityId: 'f-nishiwaga', slug: 'cuisine',
 		title: 'お料理', titleEn: 'Cuisine',
 		lead: '素材を知り尽くした料理人が奏でる美食のひととき。地場産の厳選食材と自社農園から収穫した安全で新鮮な食材を活用し、創造力あふれた調理法で仕上げたお料理をご堪能ください。',
-		heroUrl: wpImg('cuisine/fig_01.jpg'),
+		heroUrl: '/site-assets/yamado/cuisine_fig01.jpg',
 		sections: [
-			{ heading: '夕食', headingEn: 'Dinner', body: 'お客様ごとにパーテーションで仕切られた半個室感覚の空間で、ゆっくりと時間をかけて料理長渾身のレシピをご堪能ください。厳選した地酒やワインなど、アルコールの品揃えにもこだわりがございます。', imageUrl: wpImg('cuisine/modal_02_01.jpg') },
-			{ heading: '朝食', headingEn: 'Breakfast', body: '炊きたてご飯やほかほかのカンパーニュ、新鮮な野菜など、豊富な種類の料理をご用意しています。優雅な朝のひとときをお過ごしください。', imageUrl: wpImg('cuisine/modal_01_01.jpg') }
+			{ heading: '夕食', headingEn: 'Dinner', body: 'お客様ごとにパーテーションで仕切られた半個室感覚の空間で、ゆっくりと時間をかけて料理長渾身のレシピをご堪能ください。厳選した地酒やワインなど、アルコールの品揃えにもこだわりがございます。', imageUrl: '/site-assets/yamado/cuisine_dinner.jpg' },
+			{ heading: '朝食', headingEn: 'Breakfast', body: '炊きたてご飯やほかほかのカンパーニュ、新鮮な野菜など、豊富な種類の料理をご用意しています。優雅な朝のひとときをお過ごしください。', imageUrl: '/site-assets/yamado/cuisine_breakfast.jpg' }
 		],
 		isPublished: true, sortOrder: 2
 	},
@@ -368,11 +368,11 @@ export const sitePages: SitePage[] = [
 		id: 'sp-nw-facility', facilityId: 'f-nishiwaga', slug: 'facility',
 		title: '施設', titleEn: 'Facility',
 		lead: '大自然ともてなしの心を味わう至福の時間。都会の喧騒や日常から解き放たれる癒やしの空間として、館内を山に見立てて設えました。客室名は季節ごとの山の変化と、樹木・花の名前に由来しています。',
-		heroUrl: wpImg('facility/fig_01.jpg'),
+		heroUrl: '/site-assets/yamado/facility_01.jpg',
 		sections: [
-			{ heading: 'ロビー・読書室', headingEn: 'Lobby', body: '北欧と和が融合した開放的な空間。窓の外に広がる山の景色を眺めながら、ゆったりとした時間をお過ごしください。', imageUrl: wpImg('facility/fig_01.jpg') },
-			{ heading: '福膳坊', headingEn: 'Dining', body: '朝夕のお食事処。パーテーションで仕切られた半個室感覚の空間で、季節の山人料理をお楽しみいただけます。', imageUrl: wpImg('facility/fig_07.jpg') },
-			{ heading: '湯場一寸', headingEn: 'Onsen', body: '渓流沿いの野趣溢れる野天風呂。源泉かけ流しの湯を、川のせせらぎとともに。貸切利用も承ります（当日予約制）。', imageUrl: wpImg('facility/fig_10.jpg') },
+			{ heading: 'ロビー・読書室', headingEn: 'Lobby', body: '北欧と和が融合した開放的な空間。窓の外に広がる山の景色を眺めながら、ゆったりとした時間をお過ごしください。', imageUrl: '/site-assets/yamado/facility_01.jpg' },
+			{ heading: '福膳坊', headingEn: 'Dining', body: '朝夕のお食事処。パーテーションで仕切られた半個室感覚の空間で、季節の山人料理をお楽しみいただけます。', imageUrl: '/site-assets/yamado/facility_07.jpg' },
+			{ heading: '湯場一寸', headingEn: 'Onsen', body: '渓流沿いの野趣溢れる野天風呂。源泉かけ流しの湯を、川のせせらぎとともに。貸切利用も承ります（当日予約制）。', imageUrl: '/site-assets/yamado/facility_10.jpg' },
 			{ heading: '客室棟', headingEn: 'Guest Rooms', body: 'メゾネットタイプの靖山樓、清流に面した麓花坊、広々とした麓樹坊。いずれも季節の山の変化と樹木・花の名に由来する全10室です。' }
 		],
 		isPublished: true, sortOrder: 3
@@ -381,12 +381,12 @@ export const sitePages: SitePage[] = [
 		id: 'sp-nw-option', facilityId: 'f-nishiwaga', slug: 'option',
 		title: 'オプション', titleEn: 'Option',
 		lead: 'ご滞在をより豊かにするリラクゼーションとアクティビティをご用意しています。',
-		heroUrl: wpImg('option/fig_01.jpg'),
+		heroUrl: '/site-assets/yamado/option_01.jpg',
 		sections: [
-			{ heading: 'リラクゼーション', headingEn: 'Relaxation', body: '女性整体師によるカイロプラクティック、筋肉療法、整体、フットケアなど。整体の技術を取り入れたエステです。', note: '15,000円（税込／60分）｜ 20:30〜22:00 または 9:30〜11:30', imageUrl: wpImg('option/fig_01.jpg') },
-			{ heading: 'リバートレッキング', headingEn: 'River Trekking', body: '夏の清流を歩く爽快な川のトレッキング。', note: '5,000円／人 ｜ 7月下旬〜9月下旬', imageUrl: wpImg('option/flyer_01.jpg') },
-			{ heading: 'ブナと桂の巨樹めぐり', headingEn: 'Giant Trees', body: '西和賀のブナと桂の巨樹を訪ねる森のガイドツアー。', note: '8,000円／人 ｜ 6月上旬〜11月上旬', imageUrl: wpImg('option/flyer_02.jpg') },
-			{ heading: '錦秋湖カンジキスノートレッキング', headingEn: 'Snow Trekking', body: '雪深い西和賀ならではの、カンジキで歩く冬の錦秋湖。', note: '5,000円／人 ｜ 12月下旬〜3月下旬', imageUrl: wpImg('option/flyer_03.jpg') },
+			{ heading: 'リラクゼーション', headingEn: 'Relaxation', body: '女性整体師によるカイロプラクティック、筋肉療法、整体、フットケアなど。整体の技術を取り入れたエステです。', note: '15,000円（税込／60分）｜ 20:30〜22:00 または 9:30〜11:30', imageUrl: '/site-assets/yamado/option_01.jpg' },
+			{ heading: 'リバートレッキング', headingEn: 'River Trekking', body: '夏の清流を歩く爽快な川のトレッキング。', note: '5,000円／人 ｜ 7月下旬〜9月下旬', imageUrl: '/site-assets/yamado/option_f1.jpg' },
+			{ heading: 'ブナと桂の巨樹めぐり', headingEn: 'Giant Trees', body: '西和賀のブナと桂の巨樹を訪ねる森のガイドツアー。', note: '8,000円／人 ｜ 6月上旬〜11月上旬', imageUrl: '/site-assets/yamado/option_f2.jpg' },
+			{ heading: '錦秋湖カンジキスノートレッキング', headingEn: 'Snow Trekking', body: '雪深い西和賀ならではの、カンジキで歩く冬の錦秋湖。', note: '5,000円／人 ｜ 12月下旬〜3月下旬', imageUrl: '/site-assets/yamado/option_f3.jpg' },
 			{ heading: '水没林とカヌー', headingEn: 'Canoe', body: '春の錦秋湖にだけ現れる幻想的な水没林をカヌーでめぐります。', note: '10,000〜17,000円／人 ｜ 4月下旬〜5月下旬' }
 		],
 		isPublished: true, sortOrder: 4
@@ -395,7 +395,7 @@ export const sitePages: SitePage[] = [
 		id: 'sp-nw-shiki', facilityId: 'f-nishiwaga', slug: 'shiki',
 		title: '山人の四季', titleEn: 'Four Seasons',
 		lead: 'ここにしかない四季の魅力。訪れるたび新鮮で懐かしい、西和賀の移ろい。',
-		heroUrl: wpImg('index/top_fig_02.jpg'),
+		heroUrl: '/site-assets/yamado/top_fig_02.jpg',
 		sections: [
 			{ heading: '山人の春', headingEn: 'Spring', body: '雪解けの清流と山菜の芽吹き。錦秋湖には水没林が現れ、カヌーの季節が始まります。' },
 			{ heading: '山人の夏', headingEn: 'Summer', body: 'ブナの森の深い緑と川のせせらぎ。リバートレッキングで涼を楽しむ季節です。' },
@@ -409,11 +409,11 @@ export const sitePages: SitePage[] = [
 		id: 'sp-oga-nature', facilityId: 'f-oga', slug: 'nature',
 		title: '自然', titleEn: 'Nature',
 		lead: '荒々しく打ち寄せる波の音が、木々を抜け、深く息づく森へ溶け込んでいく。大地が生んだ地層、潮の香りを孕む空気、そして太古の鼓動。',
-		heroUrl: ogaImg('main/nature_kv@2x.webp'),
+		heroUrl: '/site-assets/oga/kv_nature.webp',
 		sections: [
-			{ heading: '悠久の時を越えて 原始の景色が残る、男鹿半島', headingEn: 'Oga Peninsula', body: '神聖な土地として人々に守られてきた男鹿。七千万年にわたる歴史を刻む地層が、訪れる者に太古の記憶を語りかけます。', imageUrl: ogaImg('nature/oga_main@2x.webp') },
-			{ heading: '荒々しくも優しい海に 生命が宿る', headingEn: 'The Sea', body: '希少な生物が息づく豊かな海。荒々しい波の表情の奥に、静かな優しさを湛えています。', imageUrl: ogaImg('nature/sea_main@2x.webp') },
-			{ heading: '何万年もの時を重ねてきた 大地の重み', headingEn: 'The Forest', body: '苔むす木々が原始の調和を保つ森。一歩足を踏み入れれば、生命の物語が聞こえてきます。', imageUrl: ogaImg('nature/forest_main@2x.webp') }
+			{ heading: '悠久の時を越えて 原始の景色が残る、男鹿半島', headingEn: 'Oga Peninsula', body: '神聖な土地として人々に守られてきた男鹿。七千万年にわたる歴史を刻む地層が、訪れる者に太古の記憶を語りかけます。', imageUrl: '/site-assets/oga/n_oga.webp' },
+			{ heading: '荒々しくも優しい海に 生命が宿る', headingEn: 'The Sea', body: '希少な生物が息づく豊かな海。荒々しい波の表情の奥に、静かな優しさを湛えています。', imageUrl: '/site-assets/oga/n_sea.webp' },
+			{ heading: '何万年もの時を重ねてきた 大地の重み', headingEn: 'The Forest', body: '苔むす木々が原始の調和を保つ森。一歩足を踏み入れれば、生命の物語が聞こえてきます。', imageUrl: '/site-assets/oga/n_forest.webp' }
 		],
 		isPublished: true, sortOrder: 1
 	},
@@ -421,12 +421,12 @@ export const sitePages: SitePage[] = [
 		id: 'sp-oga-cuisine', facilityId: 'f-oga', slug: 'cuisine',
 		title: '料理', titleEn: 'Cuisine',
 		lead: '男鹿の海と森が育む希少食材を、シェフの研ぎ澄まされた技で一皿に昇華。荒々しくも優しい自然の力を五感で受け止めるとき、そこには新たな発見と感動が待っています。',
-		heroUrl: ogaImg('main/cuisine_kv@2x.webp'),
+		heroUrl: '/site-assets/oga/kv_cuisine.webp',
 		sections: [
-			{ heading: '自然の厳しさが育んだ濃密な旨味を宿した食材を贅沢に使用', headingEn: 'Ingredients', body: '男鹿半島の地形と厳しい環境条件が、海産物と山の恵みに濃密な旨味を与えます。', imageUrl: ogaImg('cuisine/ingredient_main@2x.webp') },
-			{ heading: '男鹿の自然をひと皿に集約する研ぎ澄まされた匠の技術', headingEn: 'Chef', body: '食材の声に耳を澄まし、組み合わせと火入れで男鹿の自然をひと皿に集約します。', imageUrl: ogaImg('cuisine/chef_special_main@2x.webp') },
-			{ heading: '大地と海の息吹が詰まった美食に心が静かに満ちてゆく', headingEn: 'Experience', body: 'ひと皿ごとに広がる大地と海の息吹。食を通じて、心と身体が静かに満ちてゆきます。', imageUrl: ogaImg('cuisine/tableware_main@2x.webp') },
-			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）の3つのコースをご用意しています。', note: 'コースはご予約のプランにより異なります', imageUrl: ogaImg('cuisine/restaurant_main@2x.webp') }
+			{ heading: '自然の厳しさが育んだ濃密な旨味を宿した食材を贅沢に使用', headingEn: 'Ingredients', body: '男鹿半島の地形と厳しい環境条件が、海産物と山の恵みに濃密な旨味を与えます。', imageUrl: '/site-assets/oga/c_ingredient.webp' },
+			{ heading: '男鹿の自然をひと皿に集約する研ぎ澄まされた匠の技術', headingEn: 'Chef', body: '食材の声に耳を澄まし、組み合わせと火入れで男鹿の自然をひと皿に集約します。', imageUrl: '/site-assets/oga/c_chef.webp' },
+			{ heading: '大地と海の息吹が詰まった美食に心が静かに満ちてゆく', headingEn: 'Experience', body: 'ひと皿ごとに広がる大地と海の息吹。食を通じて、心と身体が静かに満ちてゆきます。', imageUrl: '/site-assets/oga/c_tableware.webp' },
+			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）の3つのコースをご用意しています。', note: 'コースはご予約のプランにより異なります', imageUrl: '/site-assets/oga/c_restaurant.webp' }
 		],
 		isPublished: true, sortOrder: 2
 	},
@@ -434,10 +434,10 @@ export const sitePages: SitePage[] = [
 		id: 'sp-oga-restaurant', facilityId: 'f-oga', slug: 'restaurant',
 		title: 'レストラン', titleEn: 'Restaurant',
 		lead: '食事を待つ時間さえ贅沢に。美しい音と香りが漂う特別な空間。鵜ノ崎海岸の歴史に敬意を込めて、"isana" と名付けました。',
-		heroUrl: ogaImg('main/restaurant_kv@2x.webp'),
+		heroUrl: '/site-assets/oga/kv_restaurant.webp',
 		sections: [
-			{ heading: 'レストラン isana', headingEn: 'isana', body: '全40席・個室1室（6席）。日本海を望む窓際の席で、男鹿の旬をご堪能ください。', note: 'ディナー 17:30〜22:00（L.O. 21:30）／ 朝食 7:30〜10:00（L.O. 9:30）', imageUrl: ogaImg('main/restaurant_kv@2x.webp') },
-			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）。', imageUrl: ogaImg('cuisine/restaurant_main@2x.webp') }
+			{ heading: 'レストラン isana', headingEn: 'isana', body: '全40席・個室1室（6席）。日本海を望む窓際の席で、男鹿の旬をご堪能ください。', note: 'ディナー 17:30〜22:00（L.O. 21:30）／ 朝食 7:30〜10:00（L.O. 9:30）', imageUrl: '/site-assets/oga/kv_restaurant.webp' },
+			{ heading: 'コース', headingEn: 'Course', body: 'メヌエット（カジュアル）、セレナーデ（スタンダード）、シンフォニア（フルコース）。', imageUrl: '/site-assets/oga/c_restaurant.webp' }
 		],
 		isPublished: true, sortOrder: 3
 	},
@@ -445,10 +445,10 @@ export const sitePages: SitePage[] = [
 		id: 'sp-oga-onsen', facilityId: 'f-oga', slug: 'onsen',
 		title: '温泉', titleEn: 'Onsen',
 		lead: '美しい日本海を眺めながら、エメラルド色に輝く湯に心も浸る。源泉掛け流しの鵜ノ崎温泉は、硫黄分を含むエメラルド色の湯です。',
-		heroUrl: ogaImg('main/onsen_kv@2x.webp'),
+		heroUrl: '/site-assets/oga/kv_onsen.webp',
 		sections: [
-			{ heading: '露天風呂', headingEn: 'Open-air Bath', body: '心を解放してくれる、エメラルド色に輝く湯船と紺碧に輝く日本海。湯船に身を沈めれば、視界には鮮やかな日本海が広がり、エメラルド色の湯が日常の疲れをやさしくほどいてくれます。', imageUrl: ogaImg('onsen/large_public_bath@2x.webp') },
-			{ heading: '貸切露天風呂', headingEn: 'Private Bath', body: '誰にも邪魔されることなく、至福の時を独り占めする貸切の湯。静かな空間で、心をほどくひとときを。', imageUrl: ogaImg('onsen/private_bath@2x.webp') },
+			{ heading: '露天風呂', headingEn: 'Open-air Bath', body: '心を解放してくれる、エメラルド色に輝く湯船と紺碧に輝く日本海。湯船に身を沈めれば、視界には鮮やかな日本海が広がり、エメラルド色の湯が日常の疲れをやさしくほどいてくれます。', imageUrl: '/site-assets/oga/o_public.webp' },
+			{ heading: '貸切露天風呂', headingEn: 'Private Bath', body: '誰にも邪魔されることなく、至福の時を独り占めする貸切の湯。静かな空間で、心をほどくひとときを。', imageUrl: '/site-assets/oga/o_private.webp' },
 			{ heading: '泉質', headingEn: 'Spring Quality', body: '鵜ノ崎温泉 ｜ 含硫黄ナトリウム・カルシウム塩化物泉（源泉掛け流し）。美肌効果、殺菌・抗炎症作用、血管拡張作用などが期待できます。' }
 		],
 		isPublished: true, sortOrder: 4
@@ -457,12 +457,12 @@ export const sitePages: SitePage[] = [
 		id: 'sp-oga-guide', facilityId: 'f-oga', slug: 'guide',
 		title: '館内案内', titleEn: 'Facility',
 		lead: '洗練された意匠に、やすらぎと感動が溶け合う。緩やかな色調と落ち着いた照明が心を静かにほどき、モダンなアクセントが感性を揺さぶる空間。',
-		heroUrl: ogaImg('facility/facility_pic01@2x.webp'),
+		heroUrl: '/site-assets/oga/f_01.webp',
 		sections: [
-			{ heading: '自然と心が通う、癒しのエントランス', headingEn: 'Entrance & Reception', body: 'やわらかな光と木の温もり。人と自然が溶け合う穏やかな空気が迎えます。', imageUrl: ogaImg('facility/facility_pic01@2x.webp') },
-			{ heading: '朝露も夕闇も、男鹿の大地に身を委ねるひととき', headingEn: 'Terrace', body: '刻々と変わる空の表情に寄り添い、自然と自身の鼓動が重なる時間を。', imageUrl: ogaImg('facility/facility_pic02@2x.webp') },
-			{ heading: '大地と海の恵みを、至福の一皿で', headingEn: 'Restaurant', body: '男鹿の海と山の素材を、洗練された技で調理してお届けします。', imageUrl: ogaImg('facility/facility_pic03@2x.webp') },
-			{ heading: '海を望む、地酒と共に贅沢な夜を', headingEn: 'Bar & Lounge', body: '秋田の地酒とこだわりの一杯を、海を眺めながら楽しむ空間。', imageUrl: ogaImg('facility/facility_pic04@2x.webp') }
+			{ heading: '自然と心が通う、癒しのエントランス', headingEn: 'Entrance & Reception', body: 'やわらかな光と木の温もり。人と自然が溶け合う穏やかな空気が迎えます。', imageUrl: '/site-assets/oga/f_01.webp' },
+			{ heading: '朝露も夕闇も、男鹿の大地に身を委ねるひととき', headingEn: 'Terrace', body: '刻々と変わる空の表情に寄り添い、自然と自身の鼓動が重なる時間を。', imageUrl: '/site-assets/oga/f_02.webp' },
+			{ heading: '大地と海の恵みを、至福の一皿で', headingEn: 'Restaurant', body: '男鹿の海と山の素材を、洗練された技で調理してお届けします。', imageUrl: '/site-assets/oga/f_03.webp' },
+			{ heading: '海を望む、地酒と共に贅沢な夜を', headingEn: 'Bar & Lounge', body: '秋田の地酒とこだわりの一杯を、海を眺めながら楽しむ空間。', imageUrl: '/site-assets/oga/f_04.webp' }
 		],
 		isPublished: true, sortOrder: 5
 	}

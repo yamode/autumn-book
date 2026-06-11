@@ -21,6 +21,10 @@
   - 西和賀シェル＝現行 www 実測値（固定白80%ヘッダー・ロゴ130px・ナビ16px・ご予約ボタン #e5e5e5→hover#4d4d4d・本文 游明朝16px lh1.6 #333・コンテナ980px・モバイル全面#4d4d4dメニュー）
   - 男鹿シェル＝現行 oga 実測値（Shippori Mincho B1 16px ls.05em lh1.75 palt #111・Cormorant Garamond/Inter・ロゴsvg+ハンバーガーのみの固定白ヘッダー＝トップはスクロール出現・右中央固定の縦書き「宿泊予約」・ドロワーContents・本文カラム600px）
   - プラン/客室ページには施設ヘッダー直下に検索条件バー（共通機能の入口）
+- **実コード参照での再現度向上（2026-06-12・v0.8.0）**：ユーザーが `C:\Users\yamado\dev\hp-yamado`（WPテーマ一式）/ `hp-oga`（dist+ejs）に現行サイトのコードを配置 → 実マークアップ・実CSSを直接参照して両トップページを再構築
+  - 西和賀＝front-page.php 準拠：KVスライダー／sec-introduction×2（「山人と名乗る宿」「ここに来る理由」原文全文）／sec-links（施設・客室・お料理＝ラベル画像+ホバー切替）／周辺観光バナー／Googleマップ埋込（原サイトと同じembed）／sec-address（ダーク帯+白ロゴ+SNS）
+  - 男鹿＝index.ejs 準拠：左右2面KVスライダー+縦書きコピーSVG／詩的イントロ縦書き全文／ギャラリーコラージュ／01 NATURE・02 CUISINE・03 PURITY（実タイトルSVG+原文+パララックス背景）／ABOUT（温泉・イベント大カード+館内/アクティビティ/アクセス小カード）／NEWS
+  - **画像アセットを `static/site-assets/` にローカル化（約16MB・70ファイル）— WPサーバーへのホットリンク解消済み**
 - **下層コンテンツページ再現（2026-06-12・v0.6.0）**：原サイトと同じマルチページ構成を `/[brand]/[facility]/[page]` 動的ルート + `book.site_pages`（migration 20260612004000）で再現
   - 西和賀: /rooms /cuisine /facility /option /shiki /faq /access（原文リード・料金・実画像を移植）
   - 男鹿: /rooms /nature /cuisine /restaurant /onsen /guide /access（泉質・営業時間・コース名等も移植）

@@ -55,7 +55,7 @@
 	>
 		<div class="flex items-center justify-between">
 			<a href={base} class="block">
-				<img src="https://oga.yamado.co.jp/img/logo.svg" alt={facility.name} width="100" height="51" />
+				<img src="/site-assets/oga/logo.svg" alt={facility.name} width="100" height="51" />
 			</a>
 			<button type="button" class="flex h-10 w-10 flex-col items-end justify-center gap-2" onclick={() => (drawerOpen = true)} aria-label="メニュー">
 				<span class="h-px w-8 bg-[#111]"></span>
@@ -77,7 +77,7 @@
 	{#if drawerOpen}
 		<div class="fixed inset-0 z-[70] overflow-y-auto bg-white">
 			<div class="flex items-center justify-between px-[20px] py-[18px] sm:px-[30px] sm:py-[26px]">
-				<img src="https://oga.yamado.co.jp/img/logo.svg" alt={facility.name} width="100" height="51" />
+				<img src="/site-assets/oga/logo.svg" alt={facility.name} width="100" height="51" />
 				<button type="button" class="text-3xl font-light text-[#111]" onclick={() => (drawerOpen = false)} aria-label="閉じる">×</button>
 			</div>
 			<div class="mx-auto max-w-[600px] px-8 pb-16 pt-8">
@@ -124,7 +124,7 @@
 	<!-- フッター（ミニマル・Inter英字） -->
 	<footer class="mt-24 bg-[#111] text-white">
 		<div class="mx-auto max-w-[980px] px-6 py-14 text-center">
-			<img src="https://oga.yamado.co.jp/img/logo.svg" alt={facility.name} width="110" height="56" class="mx-auto brightness-0 invert" />
+			<img src="/site-assets/oga/logo.svg" alt={facility.name} width="110" height="56" class="mx-auto brightness-0 invert" />
 			<p class="mt-5 text-[13px] leading-relaxed tracking-wider text-white/70">{facility.addressPublic}<br />TEL {facility.phone}</p>
 			<nav class="font-inter mt-8 flex flex-wrap justify-center gap-x-8 gap-y-2">
 				{#each nav as item}

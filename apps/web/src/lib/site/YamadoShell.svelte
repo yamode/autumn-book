@@ -30,7 +30,7 @@
 	<header class="fixed left-0 top-0 z-50 w-full bg-white/80 backdrop-blur-[2px]">
 		<div class="flex items-stretch pl-[20px]">
 			<a href={base} class="block w-[130px] min-w-[130px] py-[14px]">
-				<img src="https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/common/logo.png" alt={facility.name} class="w-full" />
+				<img src="/site-assets/yamado/logo.png" alt={facility.name} class="w-full" />
 			</a>
 			<nav class="ml-auto hidden items-stretch lg:flex">
 				<div class="flex items-center">
@@ -94,7 +94,7 @@
 	<!-- フッター（原サイト: 14px 黒リンク・中央寄せ） -->
 	<footer class="mt-20 border-t border-[#e2e2e2] bg-white">
 		<div class="mx-auto max-w-[980px] px-4 py-10 text-center">
-			<img src="https://yamado.co.jp/yamado/wp/wp-content/themes/yamado/common/img/common/logo.png" alt={facility.name} class="mx-auto w-[110px]" />
+			<img src="/site-assets/yamado/logo.png" alt={facility.name} class="mx-auto w-[110px]" />
 			<p class="mt-4 text-[15px] leading-relaxed text-[#333]">{facility.addressPublic}<br />TEL {facility.phone}</p>
 			<nav class="mt-6 flex flex-wrap justify-center gap-x-[35px] gap-y-2">
 				{#each nav as item}
