@@ -57,6 +57,7 @@
 - 管理側: `/admin/community`（板CRUD=adminのみ・スレpin/lock/削除・投稿削除・ban=staff可。全操作を form action 内で role 再チェック＋監査ログ記帳）
 - デモシード: 板3（announce/travel/qa）・スレ5（pinned/locked 各1含む）・プロフィール5（たろう=会員 demo / やまびと事務局=staff / 山人支配人=admin ほか）
 - DB: `book.forum_profiles / forum_boards / forum_threads / forum_posts` + RPC 12本（migration `20260612070000_book_forum.sql`）。**RPCファースト**＝テーブルは RLS deny-all・anon/authenticated への GRANT なし、読みは anon 可・書きは authenticated（P5 Auth 接続後に有効）。auth.users へのトリガーは作らない（共有 Supabase のため）。supabase-data.ts にアダプタ追記済み
+- **PROD 適用済み（2026-06-12）**: `schema_migrations` に 20260612070000 を確認・板シード3件投入済み。Supabase Advisor の新規指摘は「forum_* テーブル RLS有効・ポリシーなし」INFO 4件（＝deny-all+RPCファーストの意図的設計）と forum RPC の SECURITY DEFINER WARN（読み=anon は公開閲覧、書き=authenticated は内部ガードありで意図的）。**修正不要**
 - 後続: Realtime（P5後）/ Claude モデレーション / 画像添付 / 運営ロール付与オペ（設計書 §11）
 
 ## 実装済みの主な決定反映
