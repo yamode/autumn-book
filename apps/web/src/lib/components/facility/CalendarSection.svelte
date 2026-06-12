@@ -1,19 +1,16 @@
 <script lang="ts">
 	import type { CalendarDay } from '$lib/types';
+	import type { CalendarMonthRange } from '$lib/calendar-range';
 	import PriceCalendar from '$lib/components/PriceCalendar.svelte';
+	import { shiftYearMonth } from '$lib/calendar-range';
 	import * as m from '$lib/paraglide/messages';
 
 	let {
 		calendar,
 		calMonth,
-		base
-	}: { calendar: CalendarDay[]; calMonth: string; base: string } = $props();
-
-	function shiftMonth(ym: string, delta: number): string {
-		const [y, mo] = ym.split('-').map(Number);
-		const d = new Date(y, mo - 1 + delta, 1);
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-	}
+		base,
+		calendarNav
+	}: { calendar: CalendarDay[]; calMonth: string; base: string; calendarNav: CalendarMonthRange } = $props();
 </script>
 
 {#if calendar.length > 0}
@@ -25,8 +22,8 @@
 				days={calendar}
 				yearMonth={calMonth}
 				makeDayHref={(date) => `${base}/plans?checkin=${date}&nights=1&adults=2`}
-				prevHref="{base}?cal={shiftMonth(calMonth, -1)}#cal"
-				nextHref="{base}?cal={shiftMonth(calMonth, 1)}#cal"
+				prevHref={calendarNav.canGoPrev ? `${base}?cal=${shiftYearMonth(calMonth, -1)}#cal` : null}
+				nextHref={calendarNav.canGoNext ? `${base}?cal=${shiftYearMonth(calMonth, 1)}#cal` : null}
 			/>
 		</div>
 	</section>

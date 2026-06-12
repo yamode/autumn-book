@@ -207,7 +207,7 @@
 				<a href="{base}/plans" class="text-xs tracking-[0.3em] text-stone-500 underline-offset-8 hover:underline">{m.facility_all_plans()} →</a>
 			</p>
 		</section>
-		<CalendarSection calendar={data.calendar} calMonth={data.calMonth} {base} />
+		<CalendarSection calendar={data.calendar} calMonth={data.calMonth} calendarNav={data.calendarNav} {base} />
 		<AccessSection {f} />
 		<FaqSection faqs={data.facilityFaqs} />
 		<OverviewSection {f} />

@@ -66,7 +66,7 @@
 		</div>
 	</section>
 
-	<CalendarSection calendar={data.calendar} calMonth={data.calMonth} {base} />
+	<CalendarSection calendar={data.calendar} calMonth={data.calMonth} calendarNav={data.calendarNav} {base} />
 	<AccessSection {f} />
 	<FaqSection faqs={data.facilityFaqs} />
 	<OverviewSection {f} />

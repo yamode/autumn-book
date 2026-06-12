@@ -10,6 +10,7 @@ import {
 } from '$lib/server/store';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
+import { clampCalendarMonth } from '$lib/calendar-range';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -22,7 +23,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
-	const calMonth = url.searchParams.get('cal') ?? (checkin ?? new Date().toISOString().slice(0, 10)).slice(0, 7);
+	const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
+	const calMonth = calendarNav.yearMonth;
 
 	const rooms = plan.roomTypeIds
 		.map((id) => roomTypes.find((r) => r.id === id)!)
@@ -45,6 +47,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		rooms,
 		calendar: getPlanCalendar(plan.id, calMonth),
 		calMonth,
+		calendarNav,
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };

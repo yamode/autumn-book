@@ -5,6 +5,7 @@
 	import PriceCalendar from '$lib/components/PriceCalendar.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import { formatPrice } from '$lib/format';
+	import { shiftYearMonth } from '$lib/calendar-range';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
@@ -12,12 +13,6 @@
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
 	);
-
-	function shiftMonth(ym: string, delta: number): string {
-		const [y, mo] = ym.split('-').map(Number);
-		const d = new Date(y, mo - 1 + delta, 1);
-		return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-	}
 </script>
 
 <svelte:head>
@@ -79,8 +74,12 @@
 				yearMonth={data.calMonth}
 				makeDayHref={(date) =>
 					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&adults=${data.params.adults}#rooms`}
-				prevHref="{base}/plans/{data.plan.slug}?{qs ? qs + '&' : ''}cal={shiftMonth(data.calMonth, -1)}#cal"
-				nextHref="{base}/plans/{data.plan.slug}?{qs ? qs + '&' : ''}cal={shiftMonth(data.calMonth, 1)}#cal"
+				prevHref={data.calendarNav.canGoPrev
+					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, -1)}#cal`
+					: null}
+				nextHref={data.calendarNav.canGoNext
+					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, 1)}#cal`
+					: null}
 			/>
 		</div>
 	</section>

@@ -157,7 +157,7 @@
 		</section>
 
 		<div class="mt-[60px] sm:mt-[100px]">
-			<CalendarSection calendar={data.calendar} calMonth={data.calMonth} {base} />
+			<CalendarSection calendar={data.calendar} calMonth={data.calMonth} calendarNav={data.calendarNav} {base} />
 		</div>
 
 		<div id="faq" class="mt-[60px] sm:mt-[100px]">

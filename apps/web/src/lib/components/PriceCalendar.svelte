@@ -13,8 +13,8 @@
 		days: CalendarDay[];
 		yearMonth: string; // YYYY-MM
 		makeDayHref: (date: string) => string;
-		prevHref: string;
-		nextHref: string;
+		prevHref: string | null;
+		nextHref: string | null;
 	} = $props();
 
 	const [y, mo] = yearMonth.split('-').map(Number);
@@ -24,9 +24,17 @@
 
 <div class="rounded-xl border border-stone-200 bg-white p-4">
 	<div class="mb-3 flex items-center justify-between">
-		<a href={prevHref} class="rounded px-2 py-1 text-sm text-stone-500 hover:bg-stone-100">{m.calendar_prev()}</a>
+		{#if prevHref}
+			<a href={prevHref} rel="nofollow" class="rounded px-2 py-1 text-sm text-stone-500 hover:bg-stone-100">{m.calendar_prev()}</a>
+		{:else}
+			<span class="px-2 py-1 text-sm text-stone-300" aria-hidden="true">{m.calendar_prev()}</span>
+		{/if}
 		<p class="font-medium">{y}年{mo}月</p>
-		<a href={nextHref} class="rounded px-2 py-1 text-sm text-stone-500 hover:bg-stone-100">{m.calendar_next()}</a>
+		{#if nextHref}
+			<a href={nextHref} rel="nofollow" class="rounded px-2 py-1 text-sm text-stone-500 hover:bg-stone-100">{m.calendar_next()}</a>
+		{:else}
+			<span class="px-2 py-1 text-sm text-stone-300" aria-hidden="true">{m.calendar_next()}</span>
+		{/if}
 	</div>
 	<div class="grid grid-cols-7 gap-1 text-center text-xs">
 		{#each dows as d, i}
