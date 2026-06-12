@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-12（設計→全25画面実装→Supabase/Pages基盤→施設サイト忠実再現→決済ロジックまで一気に構築。v0.8.0）
+> **最終更新**: 2026-06-12（コミュニティ掲示板を追加。v0.9.0）
 
 ## 現在の状態
 
@@ -46,6 +46,17 @@
   - **事前決済割引**：0〜20%（上限バリデーション付き）。ゲストが予約フローで支払い方法を選択→事前決済選択で割引適用・打消線表示。booking.total は割引後最終額、ポイント付与も割引後基準
   - 管理画面 `/admin/plans/[id]` に「決済設定」セクション（現地/事前トグル・手段・割引率セレクタ）
   - ⚠ 本実装時はこの設定を `booking.rate_plans.metadata.prepay` に置き、book.quote / confirm_booking RPC に割引ロジックを追加する（rms と要連携・P4）
+
+## コミュニティ掲示板（2026-06-12 追加・v0.9.0）
+
+- **会員だけが書き込める公開掲示板**（閲覧は誰でも）。ファンコミュニティの可視化 → 会員登録（無料）・公式サイト/直販予約への誘導が目的
+- 設計書: `autumn_book_forum_design.md`（元仕様 forum-spec.md をプロジェクト規約に適合。§1 の差分判断が正）
+- **ニックネーム制**: 表示は全員ニックネームのみ（実名・メール・userId 非露出）。staff/admin 投稿に「運営」バッジ。初回投稿前に `/community/settings` で設定（ユニーク・2〜20字）
+- 公開側: `/community`（板一覧）→ `/community/[board]`（スレ一覧・ページネーション）→ `/community/threads/[id]`（投稿一覧＋返信）。未ログインは閲覧＋会員登録CTA。アンカーは `>>n`（スレ内連番）、本文は plain text（エスケープ→>>nリンク→URLリンク→改行。Markdown不採用＝XSS面積最小化）
+- 管理側: `/admin/community`（板CRUD=adminのみ・スレpin/lock/削除・投稿削除・ban=staff可。全操作を form action 内で role 再チェック＋監査ログ記帳）
+- デモシード: 板3（announce/travel/qa）・スレ5（pinned/locked 各1含む）・プロフィール5（たろう=会員 demo / やまびと事務局=staff / 山人支配人=admin ほか）
+- DB: `book.forum_profiles / forum_boards / forum_threads / forum_posts` + RPC 12本（migration `20260612070000_book_forum.sql`）。**RPCファースト**＝テーブルは RLS deny-all・anon/authenticated への GRANT なし、読みは anon 可・書きは authenticated（P5 Auth 接続後に有効）。auth.users へのトリガーは作らない（共有 Supabase のため）。supabase-data.ts にアダプタ追記済み
+- 後続: Realtime（P5後）/ Claude モデレーション / 画像添付 / 運営ロール付与オペ（設計書 §11）
 
 ## 実装済みの主な決定反映
 
@@ -185,8 +196,38 @@
 - [ ] DBG パネル（右下）が開閉できる（リリース時 DEBUG=false で非表示化）
 - [ ] スマホ幅で検索バー・地図・予約フローが崩れない
 
+### コミュニティ掲示板
+- [ ] 未ログインで /community〜スレ詳細まで閲覧でき、投稿フォームの代わりに会員登録CTAが出る
+- [ ] 会員ログイン後、ニックネーム未設定だと投稿前に設定を求められ、設定後に投稿できる
+- [ ] ニックネームの重複・2文字未満・21文字以上はエラーになる
+- [ ] スレ作成→板一覧の先頭（pinned の下）に出る。返信で件数・最終投稿が更新される
+- [ ] >>2 と書くと該当投稿へのページ内リンクになる
+- [ ] 本文に <script> を書いてもそのまま文字として表示される（XSS不可）
+- [ ] 自分の投稿を削除でき、「この投稿は削除されました」のプレースホルダになる
+- [ ] ロックされたスレ（春の感謝企画）には返信フォームが出ない
+- [ ] 運営（staff/admin）の投稿に「運営」バッジが付き、実名・メールはどこにも出ない
+- [ ] /admin/community でスレの pin/lock/削除・投稿削除・ban ができ、監査ログに残る
+- [ ] ban した会員（たろう）でログインすると投稿がエラーになる
+- [ ] 板をアーカイブすると新規スレ作成ボタンが消える（閲覧は可能）
+- [ ] /en /zh-TW で UI 文言が翻訳される（投稿本文・板名は日本語のまま）
+- [ ] スマホ幅でスレ一覧・投稿一覧・フォームが崩れない
+
 
 ## 作業ログ
+
+---
+
+### 2026-06-12（コミュニティ掲示板）
+
+**実施内容:**
+- 掲示板仕様書（forum-spec.md）を受領 → `autumn_book_forum_design.md` として設計（book スキーマ・RPCファースト・auth.users トリガー不採用・>>n アンカー・plain text 本文に適合）
+- 公開5画面（板一覧/スレ一覧/スレ作成/スレ詳細/ニックネーム設定）+ `/admin/community` + 共通ヘッダー/admin/account 導線 + i18n（ja/en/zh-TW forum_* キー）
+- store.ts にデモ実装（プロフィール5・板3・スレ5・投稿群シード）。supabase-data.ts に RPC アダプタ
+- migration `20260612070000_book_forum.sql`（テーブル4 + RPC12 + 板シード3）を autumn-shared へ
+- レビューで2点修正: /admin/community の form action に role 再チェック追加（会員POSTで403を確認）・URL自動リンクがエスケープ済みエンティティ（&gt;等）を巻き込む問題
+- 動作確認: build 成功・dev サーバーで閲覧/CTA/投稿/XSSエスケープ/>>nリンク/URLリンク/ロック拒否/403 を実証
+
+**バージョン:** `v0.9.0`
 
 ---
 

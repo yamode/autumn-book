@@ -13,7 +13,8 @@
 		{ href: '/admin/mail', label: 'メルマガ', icon: '✉' },
 		{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁' },
 		{ href: '/admin/members', label: '会員', icon: '👤' },
-		{ href: '/admin/faqs', label: 'FAQ', icon: '❓' }
+		{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
+		{ href: '/admin/community', label: 'コミュニティ', icon: '💬' }
 	];
 
 	let isLogin = $derived(page.url.pathname === '/admin/login');

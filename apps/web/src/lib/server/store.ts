@@ -19,8 +19,11 @@ import type {
 	NewsPost, SitePage,
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
-	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation
+	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation,
+	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem
 } from '$lib/types';
+import { extractReplyTo } from '$lib/forum-format';
+import { dbg } from '$lib/debug';
 
 // ---------------------------------------------------------------- マスタ（デモ）
 
@@ -1340,3 +1343,383 @@ registerTranslation('legal', 'yakkan', 'zh-TW', {
 	title: '住宿契約條款',
 	body: '## 住宿約款\n\n依據旅館業法及國際觀光旅館整備法之模範住宿約款規定辦理。\n\n*注意：本頁為參考譯文，法律效力以日文原文為準。*\n\n（正式文面於正式上線前確定）'
 });
+
+// ================================================================ コミュニティ掲示板（demo・設計書 §3-4 / §9）
+// 将来 book.forum_* テーブル + RPC（設計書 §5）へ差し替える境界。関数シグネチャは §4 に対応。
+// 表示は常にニックネームのみ。実名・メール・userId は ForumPostView / ForumThreadListItem に一切含めない。
+
+export const forumProfiles: ForumProfile[] = [
+	{ userId: 'm-demo', nickname: 'たろう', role: 'member', isBanned: false, createdAt: addDays(today(), -40) },
+	{ userId: 'staff-demo', nickname: 'やまびと事務局', role: 'staff', isBanned: false, createdAt: addDays(today(), -60) },
+	{ userId: 'admin-demo', nickname: '山人支配人', role: 'admin', isBanned: false, createdAt: addDays(today(), -60) },
+	{ userId: 'm-yuki', nickname: 'ゆきぐに', role: 'member', isBanned: false, createdAt: addDays(today(), -30) },
+	{ userId: 'm-umikaze', nickname: 'うみかぜ', role: 'member', isBanned: false, createdAt: addDays(today(), -25) }
+];
+
+export const forumBoards: ForumBoard[] = [
+	{ id: 'fb-announce', slug: 'announce', title: '運営からのお知らせ', description: '山人からの告知・新着情報はこちら', sortOrder: 0, isArchived: false, createdAt: addDays(today(), -60) },
+	{ id: 'fb-travel', slug: 'travel', title: '旅のはなし', description: '滞在の思い出、季節の見どころ、よもやま話', sortOrder: 1, isArchived: false, createdAt: addDays(today(), -60) },
+	{ id: 'fb-qa', slug: 'qa', title: '質問・相談', description: 'ご宿泊前の疑問やわからないこと、何でもどうぞ', sortOrder: 2, isArchived: false, createdAt: addDays(today(), -60) }
+];
+
+export const forumThreads: ForumThread[] = [];
+export const forumPosts: ForumPost[] = [];
+
+// ---- バリデーション規則（設計書 §4） ----
+const NICK_MIN = 2;
+const NICK_MAX = 20;
+const TITLE_MIN = 1;
+const TITLE_MAX = 80;
+const BODY_MIN = 1;
+const BODY_MAX = 4000;
+
+function validNickname(nickname: string): string | null {
+	const t = nickname.trim();
+	if ([...t].length < NICK_MIN || [...t].length > NICK_MAX) return null;
+	return t;
+}
+
+function nicknameTaken(nickname: string, exceptUserId?: string): boolean {
+	const norm = nickname.trim().toLowerCase();
+	return forumProfiles.some((p) => p.userId !== exceptUserId && p.nickname.trim().toLowerCase() === norm);
+}
+
+function profileOf(userId: string): ForumProfile | undefined {
+	return forumProfiles.find((p) => p.userId === userId);
+}
+
+// ---- シード投入（thread + post を相対日付で生成） ----
+let forumSeq = 0;
+const nextForumId = (p: string) => `${p}-${++forumSeq}`;
+
+/** 1スレッド分のシードを投入するヘルパ。posts は [authorUserId, body, daysAgo] の配列 */
+function seedThread(
+	boardId: string,
+	authorUserId: string,
+	title: string,
+	opts: { pinned?: boolean; locked?: boolean },
+	posts: [string, string, number][]
+) {
+	const threadId = nextForumId('ft');
+	const firstDaysAgo = posts[0][2];
+	const lastDaysAgo = posts[posts.length - 1][2];
+	let postNo = 0;
+	for (const [author, body, daysAgo] of posts) {
+		postNo += 1;
+		forumPosts.push({
+			id: nextForumId('fp'),
+			threadId,
+			authorUserId: author,
+			postNo,
+			body,
+			replyToNo: extractReplyTo(body),
+			isDeleted: false,
+			createdAt: addDays(today(), -daysAgo)
+		});
+	}
+	forumThreads.push({
+		id: threadId,
+		boardId,
+		authorUserId,
+		title,
+		isPinned: !!opts.pinned,
+		isLocked: !!opts.locked,
+		isDeleted: false,
+		replyCount: posts.length,
+		lastPostedAt: addDays(today(), -lastDaysAgo),
+		createdAt: addDays(today(), -firstDaysAgo)
+	});
+}
+
+// 1. announce: 開設のお知らせ（pinned）
+seedThread('fb-announce', 'staff-demo', 'コミュニティ掲示板を開設しました', { pinned: true }, [
+	['staff-demo', 'みなさまこんにちは。山人のコミュニティ掲示板を開設しました。\nこちらはニックネームでご参加いただける場です。どなたでも閲覧でき、書き込みは会員（登録無料）のみとなります。\n宿のことでも旅のことでも、どうぞ気軽にお声がけください。', 14],
+	['m-demo', 'こういう場所が欲しかったです。よろしくお願いします！', 13],
+	['staff-demo', '>>2 ありがとうございます。のんびり育てていきます。', 13]
+]);
+
+// 2. travel: 雪見露天（ゆきぐに）
+seedThread('fb-travel', 'm-yuki', '雪見露天、忘れられません', {}, [
+	['m-yuki', '冬に西和賀の雪見露天に入りました。しんしんと降る雪の中、源泉かけ流しのお湯に浸かる時間は本当に格別でした。', 10],
+	['m-umikaze', '写真はないんですか？いいなあ。', 9],
+	['staff-demo', '>>1 嬉しいです。今年は雪が多く、12月から見頃でした。紅葉の露天もおすすめですよ。', 8],
+	['m-yuki', '紅葉の時期にまた伺います。', 7]
+]);
+
+// 3. travel: 男鹿の夕陽スポット（たろう）
+seedThread('fb-travel', 'm-demo', '男鹿の夕陽スポットを教えてください', {}, [
+	['m-demo', '来月、男鹿に泊まる予定です。夕陽がきれいに見える場所があれば教えてください。', 5],
+	['m-umikaze', '鵜ノ崎海岸の干潮時がおすすめです。「秋田のウユニ塩湖」とも呼ばれていますよ。', 4],
+	['staff-demo', 'お部屋からも海に沈む夕陽をご覧いただけます。日没時刻はフロントでもご案内していますので、お気軽にお尋ねください。', 4]
+]);
+
+// 4. qa: 子ども連れ（うみかぜ）
+seedThread('fb-qa', 'm-umikaze', '子ども連れでも大丈夫ですか？', {}, [
+	['m-umikaze', '小さい子ども（3歳）を連れての宿泊を考えています。大丈夫でしょうか？', 3],
+	['staff-demo', 'お子様連れのご宿泊も承っております。添い寝のご対応、お子様用の浴衣、お食事のご相談（取り分け・アレルギー対応等）も可能です。ご予約時にお気軽にご相談ください。', 2]
+]);
+
+// 5. announce: 受付終了の告知（locked）
+seedThread('fb-announce', 'staff-demo', '【受付終了】春の感謝企画', { locked: true }, [
+	['staff-demo', 'たくさんのお申し込みをありがとうございました。春の感謝企画は受付を終了しました。またの機会をお楽しみに。', 6]
+]);
+
+// ---------------------------------------------------------------- forum: 参照ヘルパ
+
+function forumDisplay(profile: ForumProfile | undefined): { nickname: string | null; isStaff: boolean } {
+	if (!profile) return { nickname: null, isStaff: false };
+	return { nickname: profile.nickname, isStaff: profile.role === 'staff' || profile.role === 'admin' };
+}
+
+// ---------------------------------------------------------------- forum: 読み取り（RPC 相当）
+
+/** RPC: book.forum_set_nickname の参照部 */
+export function getForumProfile(userId: string): ForumProfile | undefined {
+	return profileOf(userId);
+}
+
+/** RPC: book.forum_list_boards 相当。isArchived 含む・sortOrder 順 */
+export function listForumBoards(): (ForumBoard & { threadCount: number; lastPostedAt: string | null })[] {
+	return [...forumBoards]
+		.sort((a, b) => a.sortOrder - b.sortOrder)
+		.map((board) => {
+			const threads = forumThreads.filter((t) => t.boardId === board.id && !t.isDeleted);
+			const lastPostedAt = threads.length ? threads.map((t) => t.lastPostedAt).sort().at(-1)! : null;
+			return { ...board, threadCount: threads.length, lastPostedAt };
+		});
+}
+
+export function getForumBoard(slug: string): ForumBoard | undefined {
+	return forumBoards.find((b) => b.slug === slug);
+}
+
+/** RPC: book.forum_list_threads 相当。is_deleted 除外・pinned desc → last_posted_at desc */
+export function listForumThreads(boardId: string, page = 1, perPage = 20): { threads: ForumThreadListItem[]; total: number } {
+	const all = forumThreads
+		.filter((t) => t.boardId === boardId && !t.isDeleted)
+		.sort((a, b) => {
+			if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+			return b.lastPostedAt.localeCompare(a.lastPostedAt);
+		});
+	const total = all.length;
+	const start = (page - 1) * perPage;
+	const threads = all.slice(start, start + perPage).map((t) => {
+		const { nickname, isStaff } = forumDisplay(profileOf(t.authorUserId));
+		return {
+			id: t.id,
+			title: t.title,
+			isPinned: t.isPinned,
+			isLocked: t.isLocked,
+			replyCount: t.replyCount,
+			lastPostedAt: t.lastPostedAt,
+			createdAt: t.createdAt,
+			authorNickname: nickname ?? '（退会した利用者）',
+			authorIsStaff: isStaff
+		};
+	});
+	return { threads, total };
+}
+
+/** RPC: book.forum_get_thread 相当。is_deleted なら undefined */
+export function getForumThread(id: string): (ForumThread & { boardSlug: string; boardTitle: string }) | undefined {
+	const t = forumThreads.find((th) => th.id === id && !th.isDeleted);
+	if (!t) return undefined;
+	const board = forumBoards.find((b) => b.id === t.boardId)!;
+	return { ...t, boardSlug: board.slug, boardTitle: board.title };
+}
+
+/** RPC: book.forum_list_posts 相当。post_no 昇順・削除済みもプレースホルダ行で返す。author_user_id は返さない */
+export function listForumPosts(threadId: string, viewerUserId?: string): ForumPostView[] {
+	return forumPosts
+		.filter((p) => p.threadId === threadId)
+		.sort((a, b) => a.postNo - b.postNo)
+		.map((p) => {
+			if (p.isDeleted) {
+				return { id: p.id, postNo: p.postNo, body: '', replyToNo: null, createdAt: p.createdAt, isDeleted: true, nickname: null, isStaff: false, isOwn: false };
+			}
+			const { nickname, isStaff } = forumDisplay(profileOf(p.authorUserId));
+			return {
+				id: p.id,
+				postNo: p.postNo,
+				body: p.body,
+				replyToNo: p.replyToNo,
+				createdAt: p.createdAt,
+				isDeleted: false,
+				nickname,
+				isStaff,
+				isOwn: !!viewerUserId && viewerUserId === p.authorUserId
+			};
+		});
+}
+
+// ---------------------------------------------------------------- forum: 書き込み（RPC 相当）
+
+/** RPC: book.forum_set_nickname 相当。既存があれば nickname のみ更新・なければ lazy 作成 */
+export function setForumNickname(userId: string, nickname: string, role: ForumProfile['role']): ForumProfile | { error: 'taken' | 'invalid' } {
+	const valid = validNickname(nickname);
+	if (!valid) return { error: 'invalid' };
+	if (nicknameTaken(valid, userId)) return { error: 'taken' };
+	const existing = profileOf(userId);
+	if (existing) {
+		existing.nickname = valid;
+		dbg('forum_set_nickname update', userId, valid);
+		return existing;
+	}
+	const profile: ForumProfile = { userId, nickname: valid, role, isBanned: false, createdAt: today() };
+	forumProfiles.push(profile);
+	dbg('forum_set_nickname create', userId, valid, role);
+	return profile;
+}
+
+/** RPC: book.forum_create_thread 相当。thread + post_no=1 を同時作成 */
+export function createForumThread(userId: string, boardId: string, title: string, body: string): { thread: ForumThread } | { error: 'banned' | 'no_nickname' | 'invalid' | 'archived' } {
+	const profile = profileOf(userId);
+	if (!profile) return { error: 'no_nickname' };
+	if (profile.isBanned) return { error: 'banned' };
+	const board = forumBoards.find((b) => b.id === boardId);
+	if (!board) return { error: 'invalid' };
+	if (board.isArchived) return { error: 'archived' };
+	const t = title.trim();
+	const b = body.trim();
+	if ([...t].length < TITLE_MIN || [...t].length > TITLE_MAX) return { error: 'invalid' };
+	if ([...b].length < BODY_MIN || [...b].length > BODY_MAX) return { error: 'invalid' };
+	const now = new Date().toISOString();
+	const thread: ForumThread = {
+		id: nextForumId('ft'),
+		boardId,
+		authorUserId: userId,
+		title: t,
+		isPinned: false,
+		isLocked: false,
+		isDeleted: false,
+		replyCount: 1,
+		lastPostedAt: now,
+		createdAt: now
+	};
+	forumThreads.push(thread);
+	forumPosts.push({
+		id: nextForumId('fp'),
+		threadId: thread.id,
+		authorUserId: userId,
+		postNo: 1,
+		body: b,
+		replyToNo: extractReplyTo(b),
+		isDeleted: false,
+		createdAt: now
+	});
+	dbg('forum_create_thread', userId, board.slug, thread.id, JSON.stringify(t));
+	return { thread };
+}
+
+/** RPC: book.forum_create_post 相当。post_no = max+1・replyCount++・lastPostedAt 更新 */
+export function createForumPost(userId: string, threadId: string, body: string): { post: ForumPost } | { error: 'banned' | 'no_nickname' | 'locked' | 'invalid' | 'not_found' } {
+	const profile = profileOf(userId);
+	if (!profile) return { error: 'no_nickname' };
+	if (profile.isBanned) return { error: 'banned' };
+	const thread = forumThreads.find((t) => t.id === threadId && !t.isDeleted);
+	if (!thread) return { error: 'not_found' };
+	if (thread.isLocked) return { error: 'locked' };
+	const b = body.trim();
+	if ([...b].length < BODY_MIN || [...b].length > BODY_MAX) return { error: 'invalid' };
+	const maxNo = forumPosts.filter((p) => p.threadId === threadId).reduce((mx, p) => Math.max(mx, p.postNo), 0);
+	const now = new Date().toISOString();
+	const post: ForumPost = {
+		id: nextForumId('fp'),
+		threadId,
+		authorUserId: userId,
+		postNo: maxNo + 1,
+		body: b,
+		replyToNo: extractReplyTo(b),
+		isDeleted: false,
+		createdAt: now
+	};
+	forumPosts.push(post);
+	thread.replyCount += 1;
+	thread.lastPostedAt = now;
+	dbg('forum_create_post', userId, threadId, `#${post.postNo}`);
+	return { post };
+}
+
+/** RPC: book.forum_delete_own_post / forum_delete_post 相当。soft delete。byStaff は監査ログ */
+export function deleteForumPost(postId: string, actorUserId: string, byStaff: boolean): true | { error: 'forbidden' | 'not_found' } {
+	const post = forumPosts.find((p) => p.id === postId);
+	if (!post || post.isDeleted) return { error: 'not_found' };
+	if (!byStaff && post.authorUserId !== actorUserId) return { error: 'forbidden' };
+	const wasVisible = !post.isDeleted;
+	post.isDeleted = true;
+	if (wasVisible) {
+		const thread = forumThreads.find((t) => t.id === post.threadId);
+		if (thread && thread.replyCount > 0) thread.replyCount -= 1;
+	}
+	if (byStaff) {
+		auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor: actorUserId, action: 'forum_delete_post', detail: `post=${postId} thread=${post.threadId} #${post.postNo}` });
+	}
+	dbg('forum_delete_post', actorUserId, postId, byStaff ? '(staff)' : '(own)');
+	return true;
+}
+
+/** RPC: book.forum_moderate_thread 相当。pin / lock / 削除。監査ログ */
+export function moderateForumThread(threadId: string, patch: { isPinned?: boolean; isLocked?: boolean; isDeleted?: boolean }, actor: string): void {
+	const thread = forumThreads.find((t) => t.id === threadId);
+	if (!thread) return;
+	if (patch.isPinned !== undefined) thread.isPinned = patch.isPinned;
+	if (patch.isLocked !== undefined) thread.isLocked = patch.isLocked;
+	if (patch.isDeleted !== undefined) thread.isDeleted = patch.isDeleted;
+	auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor, action: 'forum_moderate_thread', detail: `thread=${threadId} ${JSON.stringify(patch)}` });
+	dbg('forum_moderate_thread', actor, threadId, JSON.stringify(patch));
+}
+
+/** RPC: book.forum_set_ban 相当。監査ログ */
+export function setForumBan(userId: string, banned: boolean, actor: string): void {
+	const profile = profileOf(userId);
+	if (!profile) return;
+	profile.isBanned = banned;
+	auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor, action: 'forum_set_ban', detail: `user=${userId} banned=${banned}` });
+	dbg('forum_set_ban', actor, userId, String(banned));
+}
+
+/** RPC: book.forum_upsert_board 相当（admin のみ）。slug 重複は error */
+export function upsertForumBoard(input: { id?: string; slug: string; title: string; description: string; sortOrder: number; isArchived: boolean }): ForumBoard | { error: 'slug_taken' } {
+	const slug = input.slug.trim();
+	const clash = forumBoards.find((b) => b.slug === slug && b.id !== input.id);
+	if (clash) return { error: 'slug_taken' };
+	if (input.id) {
+		const board = forumBoards.find((b) => b.id === input.id);
+		if (board) {
+			board.slug = slug;
+			board.title = input.title.trim();
+			board.description = input.description.trim();
+			board.sortOrder = input.sortOrder;
+			board.isArchived = input.isArchived;
+			dbg('forum_upsert_board update', board.id, slug);
+			return board;
+		}
+	}
+	const board: ForumBoard = {
+		id: nextForumId('fb'),
+		slug,
+		title: input.title.trim(),
+		description: input.description.trim(),
+		sortOrder: input.sortOrder,
+		isArchived: input.isArchived,
+		createdAt: today()
+	};
+	forumBoards.push(board);
+	dbg('forum_upsert_board create', board.id, slug);
+	return board;
+}
+
+/** 管理画面用: 全プロフィール一覧（ban 管理）。実名・メールは返さない（nickname のみ） */
+export function listForumProfiles(): ForumProfile[] {
+	return [...forumProfiles].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/** 管理画面用: 板内の全スレ（is_deleted 含む・モデレーション用） */
+export function listForumThreadsAdmin(boardId: string): ForumThread[] {
+	return forumThreads
+		.filter((t) => t.boardId === boardId)
+		.sort((a, b) => {
+			if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+			return b.lastPostedAt.localeCompare(a.lastPostedAt);
+		});
+}

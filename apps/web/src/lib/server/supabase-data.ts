@@ -238,3 +238,182 @@ export async function cancelBooking(bookingCode: string, opts: { waiveFee?: bool
 	if (error) throw error;
 	return data as { booking_code: string; cancellation_fee: number };
 }
+
+// ---------------------------------------------------------------- フォーラム RPC（設計書 §5.3）
+// book スキーマの forum_* RPC を呼ぶ薄いアダプタ。store.ts（demo）と同じ意味論。
+// 読み取り系（forum_list_boards / forum_list_threads / forum_get_thread / forum_list_posts）は
+//   anon キーで即動作する（grant execute = anon, authenticated）。
+// 書き込み系・モデレーション系（forum_set_nickname 以下）は auth.uid() を参照するため、
+//   Supabase Auth 本接続（P5・@supabase/ssr の cookie 連携）後に有効になる。
+//   それまでは anon セッションでは not_authenticated / forbidden が返る（cancelBooking と同じ扱い）。
+// author_user_id は RPC 出力に含まれない（実体 ID 非露出を DB 側で構造的に保証）。
+
+export interface ForumBoardRow {
+	id: string;
+	slug: string;
+	title: string;
+	description: string;
+	sort_order: number;
+	is_archived: boolean;
+	created_at: string;
+	thread_count: number;
+	last_posted_at: string | null;
+}
+
+export interface ForumThreadListItemRow {
+	id: string;
+	title: string;
+	is_pinned: boolean;
+	is_locked: boolean;
+	reply_count: number;
+	last_posted_at: string;
+	created_at: string;
+	author_nickname: string;
+	author_is_staff: boolean;
+}
+
+export interface ForumThreadRow {
+	id: string;
+	board_slug: string;
+	board_title: string;
+	title: string;
+	is_pinned: boolean;
+	is_locked: boolean;
+	reply_count: number;
+	last_posted_at: string;
+	created_at: string;
+}
+
+export interface ForumPostViewRow {
+	id: string;
+	post_no: number;
+	body: string;
+	reply_to_no: number | null;
+	created_at: string;
+	is_deleted: boolean;
+	nickname: string | null;
+	is_staff: boolean;
+	is_own: boolean;
+}
+
+// 読み取り系（anon キーで動作）
+
+export async function listForumBoards(): Promise<ForumBoardRow[]> {
+	const { data, error } = await supa().rpc('forum_list_boards');
+	if (error) throw error;
+	return (data ?? []) as ForumBoardRow[];
+}
+
+export async function listForumThreads(
+	boardSlug: string,
+	page = 1,
+	perPage = 20
+): Promise<{ total: number; threads: ForumThreadListItemRow[] }> {
+	const { data, error } = await supa().rpc('forum_list_threads', {
+		p_board_slug: boardSlug,
+		p_page: page,
+		p_per: perPage
+	});
+	if (error) throw error;
+	return data as { total: number; threads: ForumThreadListItemRow[] };
+}
+
+export async function getForumThread(threadId: string): Promise<ForumThreadRow | null> {
+	const { data, error } = await supa().rpc('forum_get_thread', { p_thread_id: threadId });
+	if (error) throw error;
+	return (data ?? null) as ForumThreadRow | null;
+}
+
+export async function listForumPosts(threadId: string): Promise<ForumPostViewRow[]> {
+	const { data, error } = await supa().rpc('forum_list_posts', { p_thread_id: threadId });
+	if (error) throw error;
+	return (data ?? []) as ForumPostViewRow[];
+}
+
+// 書き込み系（authenticated・Supabase Auth 本接続後に有効。P5）
+
+export async function setForumNickname(nickname: string): Promise<{ user_id: string; nickname: string }> {
+	const { data, error } = await supa().rpc('forum_set_nickname', { p_nickname: nickname });
+	if (error) throw error;
+	return data as { user_id: string; nickname: string };
+}
+
+export async function createForumThread(
+	boardSlug: string,
+	title: string,
+	body: string
+): Promise<{ thread_id: string }> {
+	const { data, error } = await supa().rpc('forum_create_thread', {
+		p_board_slug: boardSlug,
+		p_title: title,
+		p_body: body
+	});
+	if (error) throw error;
+	return data as { thread_id: string };
+}
+
+export async function createForumPost(
+	threadId: string,
+	body: string
+): Promise<{ post_id: string; post_no: number }> {
+	const { data, error } = await supa().rpc('forum_create_post', {
+		p_thread_id: threadId,
+		p_body: body
+	});
+	if (error) throw error;
+	return data as { post_id: string; post_no: number };
+}
+
+export async function deleteOwnForumPost(postId: string): Promise<{ post_id: string }> {
+	const { data, error } = await supa().rpc('forum_delete_own_post', { p_post_id: postId });
+	if (error) throw error;
+	return data as { post_id: string };
+}
+
+// モデレーション系（authenticated + 内部 staff/admin ガード・Supabase Auth 本接続後に有効。P5）
+
+export async function moderateForumThread(
+	threadId: string,
+	patch: { isPinned?: boolean; isLocked?: boolean; isDeleted?: boolean }
+): Promise<{ thread_id: string }> {
+	const { data, error } = await supa().rpc('forum_moderate_thread', {
+		p_thread_id: threadId,
+		p_pinned: patch.isPinned ?? null,
+		p_locked: patch.isLocked ?? null,
+		p_deleted: patch.isDeleted ?? null
+	});
+	if (error) throw error;
+	return data as { thread_id: string };
+}
+
+export async function deleteForumPost(postId: string): Promise<{ post_id: string }> {
+	const { data, error } = await supa().rpc('forum_delete_post', { p_post_id: postId });
+	if (error) throw error;
+	return data as { post_id: string };
+}
+
+export async function setForumBan(userId: string, banned: boolean): Promise<{ user_id: string; banned: boolean }> {
+	const { data, error } = await supa().rpc('forum_set_ban', { p_user_id: userId, p_banned: banned });
+	if (error) throw error;
+	return data as { user_id: string; banned: boolean };
+}
+
+export async function upsertForumBoard(input: {
+	id?: string;
+	slug: string;
+	title: string;
+	description: string;
+	sortOrder: number;
+	isArchived: boolean;
+}): Promise<{ board_id: string }> {
+	const { data, error } = await supa().rpc('forum_upsert_board', {
+		p_id: input.id ?? null,
+		p_slug: input.slug,
+		p_title: input.title,
+		p_description: input.description,
+		p_sort_order: input.sortOrder,
+		p_is_archived: input.isArchived
+	});
+	if (error) throw error;
+	return data as { board_id: string };
+}

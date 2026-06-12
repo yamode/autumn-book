@@ -296,3 +296,72 @@ export interface CalendarDay {
 	remaining: number;
 	mark: '◎' | '○' | '△' | '×';
 }
+
+// ---------------------------------------------------------------- コミュニティ掲示板（book.forum_* 対称）
+
+export interface ForumProfile {
+	userId: string; // SessionUser.id（demo）/ auth.users.id（本接続）
+	nickname: string;
+	role: 'member' | 'staff' | 'admin';
+	isBanned: boolean;
+	createdAt: string;
+}
+
+export interface ForumBoard {
+	id: string;
+	slug: string;
+	title: string;
+	description: string;
+	sortOrder: number;
+	isArchived: boolean;
+	createdAt: string;
+}
+
+export interface ForumThread {
+	id: string;
+	boardId: string;
+	authorUserId: string;
+	title: string;
+	isPinned: boolean;
+	isLocked: boolean;
+	isDeleted: boolean;
+	replyCount: number; // 可視投稿数（#1 を含む）
+	lastPostedAt: string;
+	createdAt: string;
+}
+
+export interface ForumPost {
+	id: string;
+	threadId: string;
+	authorUserId: string;
+	postNo: number; // スレッド内連番。1 = スレ本文
+	body: string;
+	replyToNo: number | null; // 本文中の最初の >>n
+	isDeleted: boolean;
+	createdAt: string;
+}
+
+/** 表示用（authorUserId を含めない = 実体ID非露出を demo でも遵守） */
+export interface ForumPostView {
+	id: string;
+	postNo: number;
+	body: string; // 削除済みは ''
+	replyToNo: number | null;
+	createdAt: string;
+	isDeleted: boolean; // true ならプレースホルダ表示「この投稿は削除されました」
+	nickname: string | null; // 削除済みは null
+	isStaff: boolean; // role が staff/admin なら true（運営バッジ）
+	isOwn: boolean; // 閲覧者本人の投稿（削除ボタン表示用）
+}
+
+export interface ForumThreadListItem {
+	id: string;
+	title: string;
+	isPinned: boolean;
+	isLocked: boolean;
+	replyCount: number;
+	lastPostedAt: string;
+	createdAt: string;
+	authorNickname: string;
+	authorIsStaff: boolean;
+}

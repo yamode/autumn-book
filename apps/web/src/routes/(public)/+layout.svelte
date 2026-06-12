@@ -32,6 +32,7 @@
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
 				<a href="/yamado/nishiwaga" class="hidden hover:text-brand-800 sm:inline">{m.nav_nishiwaga()}</a>
 				<a href="/yamado/oga" class="hidden hover:text-brand-800 sm:inline">{m.nav_oga()}</a>
+					<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 			</nav>
 			<div class="ml-auto flex items-center gap-3 text-sm">
 				{#if data.user?.role === 'member'}
