@@ -51,6 +51,7 @@
 
 - **会員だけが書き込める公開掲示板**（閲覧は誰でも）。ファンコミュニティの可視化 → 会員登録（無料）・公式サイト/直販予約への誘導が目的
 - 設計書: `autumn_book_forum_design.md`（元仕様 forum-spec.md をプロジェクト規約に適合。§1 の差分判断が正）
+- **会員＝既存会員（book.members / デモ会員）そのもの**。掲示板専用の会員IDは作らない。DB 側は forum_set_nickname のプロフィール作成を「既存 book.members or 社内スタッフ（has_tenant_access・role 自動判定）」にゲート（それ以外は not_member）
 - **ニックネーム制**: 表示は全員ニックネームのみ（実名・メール・userId 非露出）。staff/admin 投稿に「運営」バッジ。初回投稿前に `/community/settings` で設定（ユニーク・2〜20字）
 - 公開側: `/community`（板一覧）→ `/community/[board]`（スレ一覧・ページネーション）→ `/community/threads/[id]`（投稿一覧＋返信）。未ログインは閲覧＋会員登録CTA。アンカーは `>>n`（スレ内連番）、本文は plain text（エスケープ→>>nリンク→URLリンク→改行。Markdown不採用＝XSS面積最小化）
 - 管理側: `/admin/community`（板CRUD=adminのみ・スレpin/lock/削除・投稿削除・ban=staff可。全操作を form action 内で role 再チェック＋監査ログ記帳）

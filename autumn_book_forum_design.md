@@ -28,6 +28,7 @@
 | 6 | Realtime / Claude モデレーション / 画像添付 | **本フェーズでは実装しない**（§11 後続フェーズ） | Realtime と Auth 連携は P5（Supabase Auth 本接続）後。現行は demo データ層が既定 |
 | 7 | （言及なし） | **demo ストア（store.ts）に同一意味論の実装を先行**し、`DATA_SOURCE` で切替 | 既存アーキテクチャ（store.ts ⇔ supabase-data.ts の二層）に従う |
 | 8 | 集計はトリガー（bump_thread_on_post） | **採番・集計とも `forum_create_post` RPC 内で実施**（thread 行を `for update` ロック） | post_no 採番にロックが必要なため、同一トランザクション内で reply_count / last_posted_at も更新する方が単純で競合安全 |
+| 9 | profiles は全 auth.users に自動生成（独立した掲示板会員） | **掲示板専用の会員ID・アカウントは作らない**。書き込めるのは**既存会員（book.members）と社内スタッフのみ**。forum_profiles のプロフィール新規作成は `forum_set_nickname` 内で「`private.has_tenant_access`（→ role=staff/admin 自動判定）or `book.members` 行が存在（→ role=member）」にゲートし、どちらでもなければ `not_member` | 掲示板は既存会員制度の機能拡張であり、別の会員基盤を作らない（2026-06-12 ユーザー明確化）。demo 側は既存会員ログイン（SessionUser）経由なので元から既存会員のみ |
 
 ## 2. ロールと権限
 
@@ -43,6 +44,7 @@
 | 会員の ban / 解除 | — | — | ✅ | ✅ |
 | 板の作成・編集・アーカイブ | — | — | — | ✅ |
 
+- **会員＝既存の会員制度（book.members / デモは store.members）そのもの**。掲示板専用の会員ID・登録フローは設けない。ニックネームは既存会員・スタッフに付与する表示名属性にすぎない（§1 #9）。
 - **表示は全員ニックネームのみ**。実名・メール・user_id は demo / DB いずれの経路でも画面・API 出力に一切出さない。
 - staff / admin の投稿には「運営」バッジを付ける（表示名はニックネームのまま。例:「やまびと事務局」）。
 - ban された会員は閲覧のみ可。投稿時にエラー「現在書き込みが制限されています」。
@@ -251,7 +253,7 @@ create index forum_posts_thread_idx on book.forum_posts (thread_id, post_no);
 
 | RPC | 引数 | 動作 |
 |---|---|---|
-| `book.forum_set_nickname(p_nickname text)` | | trim・長さ 2〜20 検証。重複は `nickname_taken`、不正は `invalid_nickname` を raise。プロフィールなければ role='member' で作成、あれば nickname のみ更新 |
+| `book.forum_set_nickname(p_nickname text)` | | trim・長さ 2〜20 検証。重複は `nickname_taken`、不正は `invalid_nickname` を raise。プロフィールがあれば nickname のみ更新。なければ**既存会員/スタッフ判定つきで lazy 作成**（§1 #9: スタッフ判定優先で role=staff/admin、book.members 行があれば role=member、どちらでもなければ `not_member`） |
 | `book.forum_create_thread(p_board_slug text, p_title text, p_body text)` | | profile 必須（なければ `no_nickname`）・banned → `banned`・板 archived → `board_archived`。thread + post_no=1 を作成し `{thread_id}` 返却 |
 | `book.forum_create_post(p_thread_id uuid, p_body text)` | | thread 行を `select ... for update` → locked なら `thread_locked`。post_no = reply_count ではなく `max(post_no)+1` で採番。reply_count+1・last_posted_at=now() を同一 Tx で更新。reply_to_no は本文先頭の >>n を正規表現抽出 |
 | `book.forum_delete_own_post(p_post_id uuid)` | | 本人のみ。soft delete + 可視だった場合 reply_count-1 |
