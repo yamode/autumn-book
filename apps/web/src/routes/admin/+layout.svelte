@@ -14,7 +14,8 @@
 		{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁' },
 		{ href: '/admin/members', label: '会員', icon: '👤' },
 		{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
-		{ href: '/admin/community', label: 'コミュニティ', icon: '💬' }
+		{ href: '/admin/community', label: 'コミュニティ', icon: '💬' },
+		{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠' }
 	];
 
 	let isLogin = $derived(page.url.pathname === '/admin/login');
@@ -76,6 +77,12 @@
 					</form>
 				</div>
 			</header>
+
+			{#if data.maintenanceActive}
+				<a href="/admin/maintenance" class="block bg-amber-500 px-4 py-1.5 text-center text-xs font-medium text-white hover:bg-amber-600">
+					🛠 メンテナンスモード有効 — 一般ユーザーへ非公開中（運営はプレビュー可）
+				</a>
+			{/if}
 
 			<main class="min-w-0 flex-1 p-4 md:p-6">
 				{@render children()}

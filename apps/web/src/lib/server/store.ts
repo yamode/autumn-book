@@ -516,6 +516,11 @@ export const holds = new Map<string, Hold>();
 export const bookings = new Map<string, Booking>();
 export const auditLogs: AuditLog[] = [];
 
+// 監査ログを1件追記する汎用ヘルパー（運営操作の記帳に使う）
+export function addAuditLog(actor: string, action: string, detail: string): void {
+	auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor, action, detail });
+}
+
 // デモ予約（会員に紐づく過去・未来）
 function seedBookings() {
 	const mk = (b: Partial<Booking> & Pick<Booking, 'code' | 'facilityId' | 'roomTypeId' | 'planId' | 'checkin' | 'status'>): Booking => ({

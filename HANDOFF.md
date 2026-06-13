@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-12（コミュニティ掲示板を追加。v0.9.0）
+> **最終更新**: 2026-06-13（メンテナンスモードを追加。v0.10.0）
 
 ## 現在の状態
 
@@ -59,6 +59,18 @@
 - DB: `book.forum_profiles / forum_boards / forum_threads / forum_posts` + RPC 12本（migration `20260612070000_book_forum.sql`）。**RPCファースト**＝テーブルは RLS deny-all・anon/authenticated への GRANT なし、読みは anon 可・書きは authenticated（P5 Auth 接続後に有効）。auth.users へのトリガーは作らない（共有 Supabase のため）。supabase-data.ts にアダプタ追記済み
 - **PROD 適用済み（2026-06-12）**: `schema_migrations` に 20260612070000 を確認・板シード3件投入済み。Supabase Advisor の新規指摘は「forum_* テーブル RLS有効・ポリシーなし」INFO 4件（＝deny-all+RPCファーストの意図的設計）と forum RPC の SECURITY DEFINER WARN（読み=anon は公開閲覧、書き=authenticated は内部ガードありで意図的）。**修正不要**
 - 後続: Realtime（P5後）/ Claude モデレーション / 画像添付 / 運営ロール付与オペ（設計書 §11）
+
+## メンテナンスモード（2026-06-13 追加・v0.10.0）
+
+- **正式公開前・メンテナンス作業中に一般ユーザーへサイトを非公開にする**。`hooks.server.ts` で全リクエストを横断ガードし、メンテナンス有効かつバイパス対象外なら **HTTP 503**（`noindex` + `Retry-After`）の自己完結メンテナンスページを返す（外部アセット非依存・ja/en/zh-TW 対応・両施設の電話番号掲載）
+- 制御は2系統（`src/lib/server/maintenance.ts`）:
+  - **環境変数 `MAINTENANCE_MODE=on`**：本番（Cloudflare Pages）での恒久制御。isolate を跨いで確実。on のときは**強制 ON**で管理画面トグルでは解除不可
+  - **管理画面トグル**（`/admin/maintenance`・プロセス内メモリ）：dev/デモでの即時切替用。admin のみ操作可・監査ログ `maintenance_toggle` 記帳
+- **バイパス（メンテ中もサイトを見られる）**：① `/admin` 配下（`/admin/login` でログイン→バイパス取得）② admin/staff ログイン中（公開サイトのプレビュー）③ プレビュートークン `?preview=<token>`（`MAINTENANCE_BYPASS_TOKEN` 一致で1日 cookie 発行・アカウント無しの関係者共有用）
+- 任意の環境変数：`MAINTENANCE_BYPASS_TOKEN`（プレビュー共有）/ `MAINTENANCE_MESSAGE`（ページ本文差し替え）。`.env` / `.env.example` に既定 off で追記済み
+- 管理画面：左ナビ「🛠 メンテナンス」+ 有効時はヘッダー下に黄色バナー。`/admin/maintenance` で状態表示・即時トグル・プレビューリンクのコピー・本番設定手順を提供
+- CI：`deploy.yml` のヘルスチェックを **200 または 503 を許容**に変更（公開前 lockdown 期間中も deploy が失敗扱いにならない）
+- 動作確認（dev）：公開ページ503 / `/admin/login`・admin/staff session・preview トークン+cookie継続はバイパス200 / `/en` で英語メンテ文言・`lang` 連動 / 既定 off で 200 を実証
 
 ## 実装済みの主な決定反映
 
@@ -198,6 +210,14 @@
 - [ ] DBG パネル（右下）が開閉できる（リリース時 DEBUG=false で非表示化）
 - [ ] スマホ幅で検索バー・地図・予約フローが崩れない
 
+### メンテナンスモード
+- [ ] `MAINTENANCE_MODE=on` で起動すると公開ページ（/・/search・施設HP）が 503 メンテナンスページになる
+- [ ] メンテ中でも /admin/login にアクセスでき、管理者ログイン後は公開サイトも閲覧できる（バイパス）
+- [ ] `MAINTENANCE_BYPASS_TOKEN` 設定時、`?preview=<token>` で公開サイトが見られ、以後 cookie で継続する
+- [ ] /en・/zh-TW でメンテナンスページの文言と `<html lang>` が切り替わる
+- [ ] 管理画面 `/admin/maintenance` で即時トグルでき、有効時はヘッダー下に黄色バナーが出る（環境変数強制 ON 時はトグル不可表示）
+- [ ] 既定（off）では従来どおり全ページが公開される
+
 ### コミュニティ掲示板
 - [ ] 未ログインで /community〜スレ詳細まで閲覧でき、投稿フォームの代わりに会員登録CTAが出る
 - [ ] 会員ログイン後、ニックネーム未設定だと投稿前に設定を求められ、設定後に投稿できる
@@ -216,6 +236,20 @@
 
 
 ## 作業ログ
+
+---
+
+### 2026-06-13（メンテナンスモード）
+
+**実施内容:**
+- 正式公開前・メンテ作業中に一般非公開にするメンテナンスモードを実装（`src/lib/server/maintenance.ts` + `hooks.server.ts` で全リクエスト横断ガード→503）
+- 制御2系統（環境変数 `MAINTENANCE_MODE` 強制 ON / 管理画面トグル）+ バイパス3経路（/admin 配下・運営ログイン・プレビュートークン+cookie）
+- 管理画面 `/admin/maintenance`（状態表示・即時トグル・プレビューリンク・本番設定手順）+ 左ナビ追加 + 有効時ヘッダーバナー。トグルは監査ログ記帳
+- メンテページは自己完結 HTML（ja/en/zh-TW・noindex・Retry-After・両施設の電話番号）。`MAINTENANCE_MESSAGE` で本文差し替え可
+- `.env`/`.env.example` に既定 off で追記。`deploy.yml` ヘルスチェックを 200/503 許容に
+- build 成功・dev で 503/バイパス/トークン継続/ロケール/既定 off を実証
+
+**バージョン:** `v0.10.0`
 
 ---
 

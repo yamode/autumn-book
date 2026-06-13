@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { facilities } from '$lib/server/store';
+import { isMaintenanceOn } from '$lib/server/maintenance';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
@@ -12,6 +13,7 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 	return {
 		user: locals.user,
 		facilities: facilities.map((f) => ({ id: f.id, name: f.name })),
-		currentFacility: { id: current.id, name: current.name }
+		currentFacility: { id: current.id, name: current.name },
+		maintenanceActive: isMaintenanceOn()
 	};
 };
