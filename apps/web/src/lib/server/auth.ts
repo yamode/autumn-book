@@ -36,17 +36,23 @@ export function createSupabaseServerClient(event: RequestEvent): SupabaseClient 
  * app_metadata.role が admin / staff のユーザーのみ通す。会員（role なし）は null を返す。
  */
 export async function getSupabaseAdminUser(event: RequestEvent): Promise<SessionUser | null> {
-	const supabase = createSupabaseServerClient(event);
-	// getUser() は cookie の JWT を Supabase に問い合わせて検証する（getSession の信用任せではない）
-	const {
-		data: { user },
-		error
-	} = await supabase.auth.getUser();
-	if (error || !user) return null;
+	try {
+		const supabase = createSupabaseServerClient(event);
+		// getUser() は cookie の JWT を Supabase に問い合わせて検証する（getSession の信用任せではない）
+		const {
+			data: { user },
+			error
+		} = await supabase.auth.getUser();
+		if (error || !user) return null;
 
-	const role = (user.app_metadata as { role?: string } | null)?.role;
-	if (role !== 'admin' && role !== 'staff') return null; // 管理権限を持つユーザーのみ
+		const role = (user.app_metadata as { role?: string } | null)?.role;
+		if (role !== 'admin' && role !== 'staff') return null; // 管理権限を持つユーザーのみ
 
-	const name = ((user.user_metadata as { name?: string } | null)?.name ?? user.email ?? '管理者') as string;
-	return { id: user.id, role, name };
+		const name = ((user.user_metadata as { name?: string } | null)?.name ?? user.email ?? '管理者') as string;
+		return { id: user.id, role, name };
+	} catch {
+		// Supabase 未設定/到達不可でも公開サイトは落とさない（管理者が解決できないだけ＝未ログイン扱い）。
+		// 毎リクエスト経由するため、ここで例外を握りつぶすのは安全側の設計。
+		return null;
+	}
 }

@@ -16,7 +16,12 @@ export const actions: Actions = {
 		const password = String(form.get('password') ?? '');
 		if (!email || !password) return fail(400, { message: 'メールアドレスとパスワードを入力してください', email });
 
-		const supabase = createSupabaseServerClient(event);
+		let supabase;
+		try {
+			supabase = createSupabaseServerClient(event);
+		} catch {
+			return fail(503, { message: '認証システムが未設定です。管理者にお問い合わせください（Supabase 環境変数）', email });
+		}
 		const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 		if (error || !data.user) return fail(401, { message: 'メールアドレスまたはパスワードが違います', email });
 
