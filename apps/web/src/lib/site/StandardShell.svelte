@@ -16,6 +16,10 @@
 			<nav class="ml-auto flex items-center gap-4 text-sm text-stone-600">
 				<a href="{base}/plans" class="hover:text-brand-800">プラン</a>
 				<a href="{base}/news" class="hover:text-brand-800">お知らせ</a>
+				{#each facility.siblings as sib}
+					<a href="/{sib.brandSlug}/{sib.slug}" class="hidden text-stone-500 hover:text-brand-800 sm:inline">{sib.name}</a>
+				{/each}
+				<a href="/" class="hidden text-stone-500 hover:text-brand-800 sm:inline">{facility.brandName}ポータル</a>
 				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="hover:text-brand-800">{user?.role === 'member' ? `${user.name} 様` : 'ログイン'}</a>
 				<a href="{base}/plans" class="rounded-md bg-accent-600 px-4 py-1.5 text-white hover:bg-accent-500">ご予約</a>
 			</nav>
@@ -38,6 +42,12 @@
 	</main>
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 py-8 text-center text-xs text-stone-400">
 		<p>{facility.name} ｜ {facility.addressPublic} ｜ TEL {facility.phone}</p>
+		<p class="mt-3">
+			<a href="/" class="text-stone-300 hover:underline">{facility.brandName}ポータル（全施設）</a>
+			{#each facility.siblings as sib}
+				<span class="text-stone-600"> ・ </span><a href="/{sib.brandSlug}/{sib.slug}" class="text-stone-300 hover:underline">{sib.name}</a>
+			{/each}
+		</p>
 		<p class="mt-2">
 			<a href="/legal/tokushoho" class="hover:underline">特商法表記</a> ・
 			<a href="/legal/privacy" class="hover:underline">プライバシーポリシー</a> ・

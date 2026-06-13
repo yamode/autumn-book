@@ -1,11 +1,18 @@
 import { error } from '@sveltejs/kit';
-import { getFacilityBySlug } from '$lib/server/store';
+import { getFacilityBySlug, facilities, brands } from '$lib/server/store';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	const facility = getFacilityBySlug(params.brand, params.facility, getLocale());
 	if (!facility) error(404, '施設が見つかりません');
+
+	// 同一ブランドの他施設（公開のみ・自施設を除く）＝施設間移動リンク用
+	const siblings = facilities
+		.filter((x) => x.brandSlug === facility.brandSlug && x.slug !== facility.slug && x.isPublished)
+		.map((x) => ({ slug: x.slug, name: x.name, brandSlug: x.brandSlug }));
+	const brandName = brands.find((b) => b.slug === facility.brandSlug)?.name ?? '山人';
+
 	return {
 		shellFacility: {
 			template: facility.template,
@@ -13,7 +20,9 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 			slug: facility.slug,
 			brandSlug: facility.brandSlug,
 			phone: facility.phone,
-			addressPublic: facility.addressPublic
+			addressPublic: facility.addressPublic,
+			brandName,
+			siblings
 		},
 		user: locals.user
 	};

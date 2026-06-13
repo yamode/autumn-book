@@ -1,10 +1,23 @@
 import type { Handle } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session';
+import { AUTH_MODE, getSupabaseAdminUser } from '$lib/server/auth';
 import { isMaintenanceOn, isMaintenanceBypassed, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	event.locals.user = getSession(event.cookies);
+	if (AUTH_MODE === 'supabase') {
+		// 管理者/スタッフは Supabase Auth の検証済みセッションからのみ解決（偽造 cookie で admin になれない）。
+		// 会員は Phase 1 ではデモ cookie のまま。ただし demo cookie の admin/staff は無視する。
+		const admin = await getSupabaseAdminUser(event);
+		if (admin) {
+			event.locals.user = admin;
+		} else {
+			const demo = getSession(event.cookies);
+			event.locals.user = demo && demo.role === 'member' ? demo : null;
+		}
+	} else {
+		event.locals.user = getSession(event.cookies);
+	}
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）

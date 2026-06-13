@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-13（メンテナンスモード + KV 永続トグル。v0.11.0）
+> **最終更新**: 2026-06-13（管理者認証Phase1=Supabase Auth土台 + 施設間ナビ + ヘッダー修正。v0.12.0）
 
 ## 現在の状態
 
@@ -73,6 +73,27 @@
 - CI：`deploy.yml` のヘルスチェックを **200 または 503 を許容**に変更（公開前 lockdown 期間中も deploy が失敗扱いにならない）
 - 動作確認：`wrangler pages dev`（KV バインド local）で admin トグル ON→公開ページ503・admin到達200・OFF→200 を通しで実証。加えて 503ページ/バイパス/preview cookie 継続/`/en` 英語文言/既定 off=200 を確認
 - ⚠ 本番で管理画面トグルが効くには KV バインドが本番デプロイに適用されていること。CI（`wrangler pages deploy`）が `wrangler.jsonc` を読んで適用するが、反映されない場合は Pages → Settings → Functions → KV namespace bindings で `AB_CONFIG` = `autumn_book_config` を設定
+
+## 管理者認証 Phase 1（2026-06-13・v0.12.0・Supabase Auth 土台）
+
+- **目的**：管理画面がデモ（ワンクリック・**素JSON cookie で誰でも admin になれる**）だった穴を塞ぐ。決定＝**Supabase Auth を使い、会員も含めP5本接続**だが、パスキーはドメイン依存のため段階化（下記）
+- **方式は `AUTH_MODE=demo|supabase` フラグ**（既定 demo・`DATA_SOURCE` と同流儀）。**既定 demo なので現行の本番（demo）は無変更**で、Supabase設定後に本番で `supabase` へ切替
+  - `demo`：従来のワンクリック（dev・移行前）
+  - `supabase`：`@supabase/ssr` で管理ログインを **email+パスワード**化。`hooks.server.ts` は **admin/staff を Supabase の検証済みセッション（`auth.getUser()`）からのみ解決**し、demo cookie の admin/staff は無視（=偽造 cookie で admin になれない）。会員は Phase 1 ではデモ cookie のまま
+  - ロール判定＝ユーザーの `app_metadata.role`（`admin`/`staff`）。`/admin/login` の email ログインは権限なしアカウントを 403 で拒否＋signOut。ログアウトは Supabase もsignOut
+- **バグ修正**：`PUBLIC_*` は `$env/dynamic/private` に含まれない（SvelteKit が公開プレフィックスを分離）。`auth.ts` と既存 `supabase.ts`（P5データ経路の潜在バグ）を `$env/dynamic/public` 参照に修正
+- **検証（`wrangler`不要・dev）**：demoモード=従来どおりログイン可。supabaseモード=メールフォーム表示・デモワンクリック無効・**偽造 admin cookie で /admin が 303 拒否**・未ログイン /admin は 303・公開サイト200・Supabase到達（誤認証は拒否）。build 成功
+- **本番で有効化するための残作業（要ユーザー/Supabase設定）**：
+  1. Supabase ダッシュボード Authentication：Email プロバイダ有効・**Redirect/Site URL** に `https://autumn-book.pages.dev`（と dev）を登録
+  2. **管理者ユーザーを1名作成**（Authentication→Users→Add user）し、**`app_metadata` に `{"role":"admin"}`** を設定（招待/パスワード設定メール送付）
+  3. Cloudflare Pages の環境変数に **`AUTH_MODE=supabase`** を設定 → これで本番の管理ログインが Supabase Auth に切替
+- **Phase 2（後続・大）**：会員も Supabase Auth へ（`book.members ⇔ auth.users` 名寄せ・マイページ/予約/ポイント/お気に入り/掲示板の実ユーザー化・`.yamado.co.jp` 親ドメイン cookie）
+- **Phase 3（ドメイン移行後）**：パスキー本登録。⚠ **RP ID は共有 Supabase 全体で1つ・後変更で既存パスキー全無効**のため、`yamado.co.jp` 本番稼働後に RP 設定（社内 `.yamado.app` 側と要調整）。`auth.experimental.passkey` + `registerPasskey`/`signInWithPasskey`
+
+## 施設サイト UI 改善（2026-06-13・v0.12.0）
+
+- **施設間移動・ブランドポータルの導線追加**：各施設シェル（Yamado/Oga/Standard）のヘッダー・フッター・モバイルメニュー/ドロワーに「山人ポータル(`/`)」と兄弟施設リンク（西和賀↔男鹿）を追加。データは `[brand]/[facility]/+layout.server.ts` が同ブランドの公開施設から算出（`ShellFacility.siblings`/`brandName`）
+- **Yamado ヘッダーの本文かぶり修正**：ロゴ520×384pxを幅130px指定＝表示高96px→ヘッダー実高約124pxなのに `main` が `pt-[68px]` しかなく**約56px隠れていた**。ロゴを高さ基準（56px）に変更しヘッダー約88pxへ、施設トップは全画面ヒーロー＋透過ヘッダー（男鹿と同方式）、下層は `pt-[88px]`。実DOM計測で overlap 解消（content top 88px / header 82px）を確認
 
 ## 実装済みの主な決定反映
 
@@ -212,6 +233,17 @@
 - [ ] DBG パネル（右下）が開閉できる（リリース時 DEBUG=false で非表示化）
 - [ ] スマホ幅で検索バー・地図・予約フローが崩れない
 
+### 管理者認証（Phase 1）
+- [ ] AUTH_MODE=demo（既定）でワンクリックのデモ管理ログインが従来どおり動く
+- [ ] AUTH_MODE=supabase で /admin/login が email+パスワードフォームになる
+- [ ] AUTH_MODE=supabase でデモワンクリック・偽造 `{role:'admin'}` cookie では /admin に入れない（login へ 303）
+- [ ] AUTH_MODE=supabase で正規の管理者（app_metadata.role=admin）がログインでき、権限なしアカウントは 403
+- [ ] ログアウトで Supabase セッションも破棄される
+
+### 施設間ナビ
+- [ ] 各施設サイトのヘッダー/フッター/メニューに「山人ポータル」と他施設へのリンクが出る
+- [ ] Yamado（西和賀）下層ページでヘッダーが本文に被らない／トップはヒーロー全画面に透過ヘッダー
+
 ### メンテナンスモード
 - [ ] `MAINTENANCE_MODE=on` で起動すると公開ページ（/・/search・施設HP）が 503 メンテナンスページになる
 - [ ] メンテ中でも /admin/login にアクセスでき、管理者ログイン後は公開サイトも閲覧できる（バイパス）
@@ -239,6 +271,21 @@
 
 
 ## 作業ログ
+
+---
+
+### 2026-06-13（管理者認証Phase1 + 施設UI）
+
+**実施内容:**
+- 施設サイトに施設間移動＋ブランドポータル導線を追加（全シェルのヘッダー/フッター/メニュー、`ShellFacility.siblings`/`brandName`）
+- Yamado ヘッダーの本文かぶりを修正（ロゴ高さ基準化でヘッダー124→88px、トップ全画面ヒーロー＋下層pt-88。実DOMで overlap 解消を確認）
+- 管理者認証 Phase 1：`AUTH_MODE` フラグ＋`@supabase/ssr`。supabaseモードで管理ログインを Supabase Auth(email+pass)化し、フックは admin/staff を検証済みセッションのみで解決（偽造cookie無効化）。デモは既定で温存
+- `PUBLIC_*` を `$env/dynamic/public` から読む修正（auth.ts/supabase.ts の潜在バグ）
+- 検証：demoモード無変更・supabaseモードで偽造admin cookieが /admin 拒否・公開サイト無影響。build成功
+
+**バージョン:** `v0.12.0`
+
+**本番有効化の残作業（Supabase設定）:** Email有効化＋Redirect URL登録／管理者1名作成(app_metadata.role=admin)／Pages env に AUTH_MODE=supabase
 
 ---
 

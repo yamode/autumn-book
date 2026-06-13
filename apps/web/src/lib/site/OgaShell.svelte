@@ -100,6 +100,25 @@
 					</a>
 					<a href="/search" class="block py-2 text-center text-[12px] tracking-widest text-stone-400 hover:underline">全施設から空室検索</a>
 				</div>
+
+				<!-- 山人グループ（施設間移動・ブランドポータル） -->
+				<h3 class="font-inter mt-10 text-xs tracking-[0.3em] text-stone-400">{facility.brandName} GROUP</h3>
+				<ul class="mt-4 divide-y divide-stone-200">
+					{#each facility.siblings as sib}
+						<li>
+							<a href="/{sib.brandSlug}/{sib.slug}" onclick={() => (drawerOpen = false)} class="flex items-baseline justify-between py-4">
+								<span class="text-[17px]">{sib.name}</span>
+								<span class="font-cormorant text-sm tracking-widest text-stone-400">Visit →</span>
+							</a>
+						</li>
+					{/each}
+					<li>
+						<a href="/" onclick={() => (drawerOpen = false)} class="flex items-baseline justify-between py-4">
+							<span class="text-[17px]">{facility.brandName}ポータル</span>
+							<span class="font-cormorant text-sm tracking-widest text-stone-400">Portal →</span>
+						</a>
+					</li>
+				</ul>
 			</div>
 		</div>
 	{/if}
@@ -131,6 +150,14 @@
 					<a href={item.href} class="text-[11px] tracking-[0.25em] text-white/80 hover:text-white">{item.en.toUpperCase()}</a>
 				{/each}
 				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[11px] tracking-[0.25em] text-white/80 hover:text-white">MEMBER</a>
+			</nav>
+			<!-- 山人グループ（施設間移動・ブランドポータル） -->
+			<nav class="font-inter mt-8 flex flex-wrap justify-center gap-x-7 gap-y-2 border-t border-white/15 pt-7">
+				<a href="/" class="text-[11px] tracking-[0.25em] text-white/90 hover:text-white">{facility.brandName.toUpperCase()} PORTAL</a>
+				<span class="text-[11px] tracking-[0.25em] text-white/40">{facility.name}</span>
+				{#each facility.siblings as sib}
+					<a href="/{sib.brandSlug}/{sib.slug}" class="text-[11px] tracking-[0.25em] text-white/90 hover:text-white">{sib.name}</a>
+				{/each}
 			</nav>
 			<nav class="mt-6 flex flex-wrap justify-center gap-x-6">
 				<a href="/legal/tokushoho" class="text-[11px] text-white/40 hover:underline">特定商取引法に基づく表記</a>

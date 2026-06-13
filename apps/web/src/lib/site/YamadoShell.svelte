@@ -11,6 +11,8 @@
 
 	let base = $derived(`/${facility.brandSlug}/${facility.slug}`);
 	let menuOpen = $state(false);
+	// 施設トップはヒーロー全画面のためヘッダーを画像に重ねる（pt 不要）。下層はヘッダー分を空ける
+	let isTop = $derived(page.url.pathname.replace(/\/$/, '') === base);
 	// プラン・客室ページでは検索条件バー（共通機能への入口）を出す
 	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname));
 
@@ -29,8 +31,8 @@
 	<!-- ヘッダー（fixed・白80%・ロゴ130px） -->
 	<header class="fixed left-0 top-0 z-50 w-full bg-white/80 backdrop-blur-[2px]">
 		<div class="flex items-stretch pl-[20px]">
-			<a href={base} class="block w-[130px] min-w-[130px] py-[14px]">
-				<img src="/site-assets/yamado/logo.png" alt={facility.name} class="w-full" />
+			<a href={base} class="flex items-center py-[16px]">
+				<img src="/site-assets/yamado/logo.png" alt={facility.name} class="h-[50px] w-auto sm:h-[56px]" />
 			</a>
 			<nav class="ml-auto hidden items-stretch lg:flex">
 				<div class="flex items-center">
@@ -38,7 +40,13 @@
 						<a href={item.href} class="ml-[24px] whitespace-nowrap text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">{item.label}</a>
 					{/each}
 					<a href="{base}/access" class="ml-[24px] text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">アクセス</a>
-					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="ml-[20px] text-[14px] text-stone-500 hover:text-black xl:ml-[28px]">
+					<!-- 施設間移動・ブランドポータル -->
+					<span class="ml-[24px] h-3 w-px bg-stone-300 xl:ml-[32px]"></span>
+					{#each facility.siblings as sib}
+						<a href="/{sib.brandSlug}/{sib.slug}" class="ml-[16px] whitespace-nowrap text-[13px] text-stone-500 hover:text-black">{sib.name}</a>
+					{/each}
+					<a href="/" class="ml-[16px] whitespace-nowrap text-[13px] text-stone-500 hover:text-black">{facility.brandName}ポータル</a>
+					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="ml-[18px] text-[14px] text-stone-500 hover:text-black xl:ml-[24px]">
 						{user?.role === 'member' ? `${user.name} 様` : '会員ログイン'}
 					</a>
 				</div>
@@ -68,14 +76,20 @@
 					<a href="{base}/access" onclick={() => (menuOpen = false)}>アクセス</a>
 					<a href="{base}/plans" onclick={() => (menuOpen = false)} class="mt-2 inline-block bg-white/90 px-8 py-3 text-center text-black">ご予約</a>
 					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[14px] text-white/70">{user?.role === 'member' ? 'マイページ' : '会員ログイン'}</a>
-					<a href="/search" class="text-[14px] text-white/70">{m.searchbar_submit()}（全施設）</a>
+					<!-- 山人グループ（施設間移動・ポータル） -->
+					<div class="mt-4 border-t border-white/20 pt-4 text-[13px] tracking-[0.2em] text-white/50">{facility.brandName} GROUP</div>
+					{#each facility.siblings as sib}
+						<a href="/{sib.brandSlug}/{sib.slug}" onclick={() => (menuOpen = false)} class="text-[15px] text-white/90">{sib.name}</a>
+					{/each}
+					<a href="/" onclick={() => (menuOpen = false)} class="text-[15px] text-white/90">{facility.brandName}ポータル（全施設トップ）</a>
+					<a href="/search" onclick={() => (menuOpen = false)} class="text-[14px] text-white/70">{m.searchbar_submit()}（全施設）</a>
 				</nav>
 			</div>
 		</div>
 	{/if}
 
-	<!-- 本体（fixedヘッダー分の余白） -->
-	<main class="pt-[68px]">
+	<!-- 本体（施設トップ=ヒーロー全画面でヘッダーを重ねる / 下層=fixedヘッダー分 88px を空ける） -->
+	<main class={isTop ? '' : 'pt-[88px]'}>
 		{#if showSearch}
 			<div class="border-b border-[#e2e2e2] bg-[#faf9f6]">
 				<div class="mx-auto max-w-[980px] px-4 py-3">
@@ -103,6 +117,14 @@
 				<a href="{base}/news" class="text-[15px] text-black hover:text-[#b2b2b2]">お知らせ</a>
 				<a href="{base}/access" class="text-[15px] text-black hover:text-[#b2b2b2]">アクセス</a>
 				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[15px] text-black hover:text-[#b2b2b2]">マイページ</a>
+			</nav>
+			<!-- 山人グループ（施設間移動・ブランドポータル） -->
+			<nav class="mt-6 flex flex-wrap justify-center gap-x-7 gap-y-2 border-t border-[#eee] pt-6">
+				<a href="/" class="text-[14px] font-medium text-[#4a6b52] hover:underline">{facility.brandName}ポータル（全施設）</a>
+				<span class="text-[14px] text-stone-400">{facility.name}（このサイト）</span>
+				{#each facility.siblings as sib}
+					<a href="/{sib.brandSlug}/{sib.slug}" class="text-[14px] text-black hover:text-[#b2b2b2]">{sib.name}</a>
+				{/each}
 			</nav>
 			<nav class="mt-4 flex flex-wrap justify-center gap-x-6">
 				<a href="/legal/tokushoho" class="text-[13px] text-stone-400 hover:underline">特定商取引法に基づく表記</a>
