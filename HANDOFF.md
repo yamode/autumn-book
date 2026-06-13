@@ -85,8 +85,10 @@
 - **検証（`wrangler`不要・dev）**：demoモード=従来どおりログイン可。supabaseモード=メールフォーム表示・デモワンクリック無効・**偽造 admin cookie で /admin が 303 拒否**・未ログイン /admin は 303・公開サイト200・Supabase到達（誤認証は拒否）。build 成功
 - **本番で有効化するための残作業（要ユーザー/Supabase設定）**：
   1. Supabase ダッシュボード Authentication：Email プロバイダ有効・**Redirect/Site URL** に `https://autumn-book.pages.dev`（と dev）を登録
-  2. **管理者ユーザーを1名作成**（Authentication→Users→Add user）し、**`app_metadata` に `{"role":"admin"}`** を設定（招待/パスワード設定メール送付）
-  3. Cloudflare Pages の環境変数に **`AUTH_MODE=supabase`** を設定 → これで本番の管理ログインが Supabase Auth に切替
+  2. **管理者ユーザーを1名作成**（Authentication→Users→Add user・Auto Confirm）し、**`app_metadata` に `{"role":"admin"}`** を設定（SQL: `update auth.users set raw_app_meta_data = raw_app_meta_data || jsonb_build_object('role','admin') where email=...` ＝DML で migration ルール非抵触）
+  3. **本番 env（AUTH_MODE / PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY）は `apps/web/wrangler.jsonc` の `vars` に集約済み**（v0.12.2・いずれも publishable=公開値）。`pages deploy`（CI）が適用するためダッシュボード手入力は不要。ローカル dev は `.env`（既定 demo）が優先
+     - ⚠ 教訓：PUBLIC_* を未設定のまま `AUTH_MODE=supabase` にすると全ページ500（demo 時は PUBLIC_* 未登録だった）。v0.12.1 で公開サイトは生存するよう堅牢化済み
+- **v0.12.1 ホットフィックス**：`AUTH_MODE=supabase` だが本番に PUBLIC_SUPABASE_* 未設定で全ページ500になった事故への対処。`getSupabaseAdminUser` を try/catch（未ログイン扱い）、login action も未設定時503メッセージ。**Supabase 未設定/到達不可でも公開サイトは常に生存**する安全側設計に
 - **Phase 2（後続・大）**：会員も Supabase Auth へ（`book.members ⇔ auth.users` 名寄せ・マイページ/予約/ポイント/お気に入り/掲示板の実ユーザー化・`.yamado.co.jp` 親ドメイン cookie）
 - **Phase 3（ドメイン移行後）**：パスキー本登録。⚠ **RP ID は共有 Supabase 全体で1つ・後変更で既存パスキー全無効**のため、`yamado.co.jp` 本番稼働後に RP 設定（社内 `.yamado.app` 側と要調整）。`auth.experimental.passkey` + `registerPasskey`/`signInWithPasskey`
 

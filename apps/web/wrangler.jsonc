@@ -7,5 +7,13 @@
 	"compatibility_flags": ["nodejs_compat"],
 	// アプリ設定フラグ（メンテナンスモード等）を edge 間で共有する KV。
 	// 管理画面トグルの保存先。本番では pages deploy がこのバインドを適用する。
-	"kv_namespaces": [{ "binding": "AB_CONFIG", "id": "d03a529d29c649dc8401819089dbd155" }]
+	"kv_namespaces": [{ "binding": "AB_CONFIG", "id": "d03a529d29c649dc8401819089dbd155" }],
+	// 本番（Pages）環境変数。いずれも publishable=公開値なので config に集約（再現性・ダッシュボード非依存）。
+	//  - AUTH_MODE=supabase で管理ログインを Supabase Auth に。ローカル dev は .env（既定 demo）が優先。
+	//  - PUBLIC_SUPABASE_* は Supabase Auth クライアントが使用（$env/dynamic/public 経由）。
+	"vars": {
+		"AUTH_MODE": "supabase",
+		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
+		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_5LrR74B4VdgRpq1koMbrQA_SIvpAWk0"
+	}
 }
