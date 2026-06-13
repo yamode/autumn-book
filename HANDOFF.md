@@ -86,8 +86,10 @@
 - **本番で有効化するための残作業（要ユーザー/Supabase設定）**：
   1. Supabase ダッシュボード Authentication：Email プロバイダ有効・**Redirect/Site URL** に `https://autumn-book.pages.dev`（と dev）を登録
   2. **管理者ユーザーを1名作成**（Authentication→Users→Add user・Auto Confirm）し、**`app_metadata` に `{"role":"admin"}`** を設定（SQL: `update auth.users set raw_app_meta_data = raw_app_meta_data || jsonb_build_object('role','admin') where email=...` ＝DML で migration ルール非抵触）
-  3. **本番 env（AUTH_MODE / PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY）は `apps/web/wrangler.jsonc` の `vars` に集約済み**（v0.12.2・いずれも publishable=公開値）。`pages deploy`（CI）が適用するためダッシュボード手入力は不要。ローカル dev は `.env`（既定 demo）が優先
-     - ⚠ 教訓：PUBLIC_* を未設定のまま `AUTH_MODE=supabase` にすると全ページ500（demo 時は PUBLIC_* 未登録だった）。v0.12.1 で公開サイトは生存するよう堅牢化済み
+  3. **本番 env（AUTH_MODE / PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY）は `apps/web/wrangler.jsonc` の `vars` に集約**（v0.12.4・いずれも publishable=公開値）。`pages deploy`（CI）が適用するためダッシュボード手入力は不要。ローカル dev は `.env`（既定 demo）が優先
+     - ⚠ **教訓1**：`wrangler pages deploy` は config の `vars` で**ダッシュボード env を「置換」**する（追記でない）。ダッシュボードと config に同名があると `"Binding name already in use"` で失敗、config に一部だけ書くとダッシュボード側が消える → **本番 env は全部 wrangler.jsonc に集約**するのが正
+     - ⚠ **教訓2**：PUBLIC_* を未設定のまま `AUTH_MODE=supabase` にすると全ページ500（demo 時は PUBLIC_* 未登録だった）。v0.12.1 で公開サイトは生存するよう堅牢化済み
+  4. **本番で動作確認済み（v0.12.4）**：/admin/login がメールフォーム・誤認証で401（Supabase到達）・未ログイン/admin 303・偽造cookie 303拒否・公開ページ200
 - **v0.12.1 ホットフィックス**：`AUTH_MODE=supabase` だが本番に PUBLIC_SUPABASE_* 未設定で全ページ500になった事故への対処。`getSupabaseAdminUser` を try/catch（未ログイン扱い）、login action も未設定時503メッセージ。**Supabase 未設定/到達不可でも公開サイトは常に生存**する安全側設計に
 - **Phase 2（後続・大）**：会員も Supabase Auth へ（`book.members ⇔ auth.users` 名寄せ・マイページ/予約/ポイント/お気に入り/掲示板の実ユーザー化・`.yamado.co.jp` 親ドメイン cookie）
 - **Phase 3（ドメイン移行後）**：パスキー本登録。⚠ **RP ID は共有 Supabase 全体で1つ・後変更で既存パスキー全無効**のため、`yamado.co.jp` 本番稼働後に RP 設定（社内 `.yamado.app` 側と要調整）。`auth.experimental.passkey` + `registerPasskey`/`signInWithPasskey`
