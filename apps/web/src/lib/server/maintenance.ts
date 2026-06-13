@@ -1,11 +1,11 @@
 // メンテナンスモード — 正式公開前 / メンテナンス作業中に一般ユーザーへ非公開にする。
 //
 // 制御は 2 系統:
-//   1) 環境変数 MAINTENANCE_MODE=on … 本番（Cloudflare Pages）での恒久的な制御。
-//      Cloudflare では各リクエストが別 isolate になり得るため、確実な ON/OFF は環境変数で行う。
-//      環境変数が on のときは「強制 ON」で、管理画面トグルでは解除できない。
-//   2) 管理画面トグル（このモジュールのメモリ状態）… 開発 / デモでの即時切替用。
-//      dev サーバー（単一プロセス）では確実に効くが、本番の恒久制御には(1)を使う。
+//   1) 管理画面トグル … /admin/maintenance から即時に ON/OFF。保存先は Cloudflare KV
+//      （AB_CONFIG バインド）。本番では edge 間で共有・永続するため、全 isolate に効く。
+//      KV バインドが無い環境（vite dev 等）はプロセス内メモリにフォールバックする。
+//   2) 環境変数 MAINTENANCE_MODE=on … 強制 ON のエスケープハッチ。on のときは
+//      KV/トグルの値に関わらずメンテナンス中になり、管理画面トグルでは解除できない。
 //
 // メンテナンス中でも以下はサイトを閲覧できる（バイパス）:
 //   - /admin 配下（運営作業・/admin/login でのログイン用）
@@ -15,6 +15,9 @@ import { env } from '$env/dynamic/private';
 import type { RequestEvent } from '@sveltejs/kit';
 
 const PREVIEW_COOKIE = 'ab_preview';
+const KV_KEY = 'maintenance';
+
+type Platform = App.Platform | undefined | null;
 
 function truthy(v: string | undefined): boolean {
 	return v === 'on' || v === 'true' || v === '1';
@@ -25,20 +28,48 @@ export function isEnvForced(): boolean {
 	return truthy(env.MAINTENANCE_MODE);
 }
 
-// 管理画面トグルのランタイム状態（プロセス内メモリ・dev / デモ用）
-let runtimeOn = false;
+// KV バインドが無い環境（vite dev 等）用のプロセス内メモリ・フォールバック
+let memoryOn = false;
 
-export function setRuntimeMaintenance(on: boolean): void {
-	runtimeOn = on;
+function kv(platform: Platform): KVNamespace | null {
+	return platform?.env?.AB_CONFIG ?? null;
 }
 
-export function isRuntimeOn(): boolean {
-	return runtimeOn;
+/** KV にバインドがあるか（=本番で永続・edge 共有が効くか）。 */
+export function isDurable(platform: Platform): boolean {
+	return Boolean(kv(platform));
 }
 
-/** 実際にメンテナンス中か（環境変数の強制 ON もしくは管理画面トグル ON）。 */
-export function isMaintenanceOn(): boolean {
-	return isEnvForced() || runtimeOn;
+/** 管理画面トグルの保存値を取得（KV があれば KV、無ければメモリ）。 */
+async function getToggle(platform: Platform): Promise<boolean> {
+	const ns = kv(platform);
+	if (ns) return (await ns.get(KV_KEY)) === 'on';
+	return memoryOn;
+}
+
+/** 管理画面トグルを保存（KV があれば KV、無ければメモリ）。 */
+export async function setMaintenance(platform: Platform, on: boolean): Promise<void> {
+	const ns = kv(platform);
+	if (ns) await ns.put(KV_KEY, on ? 'on' : 'off');
+	else memoryOn = on;
+}
+
+/** 実際にメンテナンス中か（環境変数の強制 ON もしくはトグル ON）。 */
+export async function isMaintenanceOn(platform: Platform): Promise<boolean> {
+	if (isEnvForced()) return true;
+	return getToggle(platform);
+}
+
+/** 管理画面表示用に状態の内訳をまとめて返す。 */
+export async function maintenanceStatus(platform: Platform): Promise<{
+	active: boolean;
+	envForced: boolean;
+	toggleOn: boolean;
+	durable: boolean;
+}> {
+	const envForced = isEnvForced();
+	const toggleOn = await getToggle(platform);
+	return { active: envForced || toggleOn, envForced, toggleOn, durable: isDurable(platform) };
 }
 
 /** プレビュートークン（未設定なら空文字＝トークンによるバイパス無効）。 */

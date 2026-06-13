@@ -8,7 +8,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）
-	if (isMaintenanceOn() && !isMaintenanceBypassed(event)) {
+	if ((await isMaintenanceOn(event.platform)) && !isMaintenanceBypassed(event)) {
 		return paraglideMiddleware(
 			event.request,
 			({ locale }) =>

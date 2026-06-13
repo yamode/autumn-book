@@ -4,5 +4,8 @@
 	"pages_build_output_dir": ".svelte-kit/cloudflare",
 	"compatibility_date": "2025-05-05",
 	// Paraglide の server.js が async_hooks(AsyncLocalStorage) を動的 import するため必須
-	"compatibility_flags": ["nodejs_compat"]
+	"compatibility_flags": ["nodejs_compat"],
+	// アプリ設定フラグ（メンテナンスモード等）を edge 間で共有する KV。
+	// 管理画面トグルの保存先。本番では pages deploy がこのバインドを適用する。
+	"kv_namespaces": [{ "binding": "AB_CONFIG", "id": "d03a529d29c649dc8401819089dbd155" }]
 }

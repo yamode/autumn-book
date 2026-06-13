@@ -32,12 +32,17 @@
 	<p class="mt-2 text-xs text-stone-500">
 		{#if data.envForced}
 			環境変数 <code class="rounded bg-stone-100 px-1">MAINTENANCE_MODE=on</code> による<strong>強制 ON</strong> です。解除は環境変数を <code class="rounded bg-stone-100 px-1">off</code> に変更してください。
-		{:else if data.runtimeOn}
-			この画面のトグルで ON にしています。
+		{:else if data.toggleOn}
+			この画面のトグルで ON にしています。下のボタンで解除できます。
 		{:else}
 			一般ユーザーは全ページを通常どおり閲覧できます。
 		{/if}
 	</p>
+	{#if !data.durable}
+		<p class="mt-2 rounded bg-stone-100 px-2 py-1 text-[11px] text-stone-500">
+			※ いまは KV 未接続（dev / プレビュー）のため、トグルはこのプロセス内のみ有効です。本番（Cloudflare・KV 接続済み）では全 edge に反映され永続します。
+		</p>
+	{/if}
 </div>
 
 {#if form?.message}
@@ -53,8 +58,8 @@
 		<p class="mt-2 text-sm text-stone-500">環境変数で強制 ON のため、画面からは切り替えできません。</p>
 	{:else}
 		<form method="POST" action="?/toggle" use:enhance class="mt-2">
-			<input type="hidden" name="on" value={data.runtimeOn ? 'false' : 'true'} />
-			{#if data.runtimeOn}
+			<input type="hidden" name="on" value={data.toggleOn ? 'false' : 'true'} />
+			{#if data.toggleOn}
 				<button class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
 					メンテナンスを解除して公開する
 				</button>
@@ -64,7 +69,13 @@
 				</button>
 			{/if}
 		</form>
-		<p class="mt-2 text-[11px] text-stone-400">※ このトグルは dev・デモで即時に効きます。本番（Cloudflare）で isolate を跨いで確実に制御するには、環境変数 <code class="rounded bg-stone-100 px-1">MAINTENANCE_MODE=on</code> を使ってください。</p>
+		<p class="mt-2 text-[11px] text-stone-400">
+			{#if data.durable}
+				切替は Cloudflare KV に保存され、数十秒以内に全 edge へ反映されます。緊急時は環境変数 <code class="rounded bg-stone-100 px-1">MAINTENANCE_MODE=on</code> で強制 ON にもできます。
+			{:else}
+				本番（Cloudflare）では切替が KV に保存され全 edge に反映されます。
+			{/if}
+		</p>
 	{/if}
 </div>
 
@@ -84,13 +95,13 @@
 	{/if}
 </div>
 
-<!-- 設定方法 -->
+<!-- 補足 -->
 <div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-xs leading-relaxed text-stone-500">
-	<h2 class="mb-2 text-sm font-medium text-stone-700">本番（Cloudflare Pages）での設定</h2>
-	<ol class="list-decimal space-y-1 pl-4">
-		<li>Pages → Settings → Environment variables を開く</li>
-		<li><code class="rounded bg-stone-100 px-1">MAINTENANCE_MODE</code> = <code class="rounded bg-stone-100 px-1">on</code> を追加（解除は <code class="rounded bg-stone-100 px-1">off</code> または削除）</li>
-		<li>任意：<code class="rounded bg-stone-100 px-1">MAINTENANCE_BYPASS_TOKEN</code>（プレビュー共有用）、<code class="rounded bg-stone-100 px-1">MAINTENANCE_MESSAGE</code>（ページ本文の差し替え）</li>
-	</ol>
-	<p class="mt-2">メンテナンス時は公開ページが HTTP 503（<code class="rounded bg-stone-100 px-1">noindex</code>・<code class="rounded bg-stone-100 px-1">Retry-After</code>）を返します。検索エンジンに「準備中」が索引されません。</p>
+	<h2 class="mb-2 text-sm font-medium text-stone-700">仕組みと補足</h2>
+	<ul class="list-disc space-y-1 pl-4">
+		<li>通常はこの画面のトグルで切替（保存先は Cloudflare KV・<code class="rounded bg-stone-100 px-1">AB_CONFIG</code>）。全 edge に共有・永続します。</li>
+		<li>メンテナンス時、公開ページは HTTP 503（<code class="rounded bg-stone-100 px-1">noindex</code>・<code class="rounded bg-stone-100 px-1">Retry-After</code>）を返し、検索エンジンに「準備中」が索引されません。</li>
+		<li>緊急の強制 ON：Pages → Settings → Environment variables で <code class="rounded bg-stone-100 px-1">MAINTENANCE_MODE</code> = <code class="rounded bg-stone-100 px-1">on</code>（このときトグルでは解除不可）。</li>
+		<li>任意の環境変数：<code class="rounded bg-stone-100 px-1">MAINTENANCE_BYPASS_TOKEN</code>（プレビュー共有用）、<code class="rounded bg-stone-100 px-1">MAINTENANCE_MESSAGE</code>（ページ本文の差し替え）。</li>
+	</ul>
 </div>

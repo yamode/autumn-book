@@ -1,9 +1,22 @@
 import type { SessionUser } from '$lib/server/session';
 
+// Cloudflare KV の最小型宣言（@cloudflare/workers-types 未導入環境向け）。
+// アプリ設定フラグの読み書きに使う分だけ定義する。
+interface KVNamespace {
+	get(key: string, options?: { cacheTtl?: number }): Promise<string | null>;
+	put(key: string, value: string): Promise<void>;
+}
+
 declare global {
 	namespace App {
 		interface Locals {
 			user: SessionUser | null;
+		}
+		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
+		interface Platform {
+			env?: {
+				AB_CONFIG?: KVNamespace;
+			};
 		}
 	}
 }

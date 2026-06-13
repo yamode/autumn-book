@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-13（メンテナンスモードを追加。v0.10.0）
+> **最終更新**: 2026-06-13（メンテナンスモード + KV 永続トグル。v0.11.0）
 
 ## 現在の状態
 
@@ -60,17 +60,19 @@
 - **PROD 適用済み（2026-06-12）**: `schema_migrations` に 20260612070000 を確認・板シード3件投入済み。Supabase Advisor の新規指摘は「forum_* テーブル RLS有効・ポリシーなし」INFO 4件（＝deny-all+RPCファーストの意図的設計）と forum RPC の SECURITY DEFINER WARN（読み=anon は公開閲覧、書き=authenticated は内部ガードありで意図的）。**修正不要**
 - 後続: Realtime（P5後）/ Claude モデレーション / 画像添付 / 運営ロール付与オペ（設計書 §11）
 
-## メンテナンスモード（2026-06-13 追加・v0.10.0）
+## メンテナンスモード（2026-06-13 追加・v0.10.0 → KV 永続トグル v0.11.0）
 
 - **正式公開前・メンテナンス作業中に一般ユーザーへサイトを非公開にする**。`hooks.server.ts` で全リクエストを横断ガードし、メンテナンス有効かつバイパス対象外なら **HTTP 503**（`noindex` + `Retry-After`）の自己完結メンテナンスページを返す（外部アセット非依存・ja/en/zh-TW 対応・両施設の電話番号掲載）
 - 制御は2系統（`src/lib/server/maintenance.ts`）:
-  - **環境変数 `MAINTENANCE_MODE=on`**：本番（Cloudflare Pages）での恒久制御。isolate を跨いで確実。on のときは**強制 ON**で管理画面トグルでは解除不可
-  - **管理画面トグル**（`/admin/maintenance`・プロセス内メモリ）：dev/デモでの即時切替用。admin のみ操作可・監査ログ `maintenance_toggle` 記帳
+  - **管理画面トグル**（`/admin/maintenance`・admin のみ・監査ログ `maintenance_toggle`）が通常の切替手段。**保存先は Cloudflare KV（`AB_CONFIG` バインド・namespace id `d03a529d29c649dc8401819089dbd155`）**で、全 edge に共有・永続する（数十秒以内に反映）。KV 未接続環境（vite dev / プレビュー）はプロセス内メモリにフォールバック
+  - **環境変数 `MAINTENANCE_MODE=on`**：強制 ON のエスケープハッチ。on のときは KV/トグルに関わらずメンテ中になり、UI トグルでは解除不可
+- **KV 配線**：`wrangler.jsonc` に `kv_namespaces`（`AB_CONFIG`）追加。`pages deploy`（CI）が本番デプロイにバインドを適用。型は `app.d.ts` に最小 `KVNamespace` / `App.Platform` を自前宣言。本番 KV は空＝**起動時は OFF（公開）**
 - **バイパス（メンテ中もサイトを見られる）**：① `/admin` 配下（`/admin/login` でログイン→バイパス取得）② admin/staff ログイン中（公開サイトのプレビュー）③ プレビュートークン `?preview=<token>`（`MAINTENANCE_BYPASS_TOKEN` 一致で1日 cookie 発行・アカウント無しの関係者共有用）
 - 任意の環境変数：`MAINTENANCE_BYPASS_TOKEN`（プレビュー共有）/ `MAINTENANCE_MESSAGE`（ページ本文差し替え）。`.env` / `.env.example` に既定 off で追記済み
-- 管理画面：左ナビ「🛠 メンテナンス」+ 有効時はヘッダー下に黄色バナー。`/admin/maintenance` で状態表示・即時トグル・プレビューリンクのコピー・本番設定手順を提供
+- 管理画面：左ナビ「🛠 メンテナンス」+ 有効時はヘッダー下に黄色バナー。`/admin/maintenance` で状態表示（KV 接続/強制 ON の別）・即時トグル・プレビューリンクのコピーを提供
 - CI：`deploy.yml` のヘルスチェックを **200 または 503 を許容**に変更（公開前 lockdown 期間中も deploy が失敗扱いにならない）
-- 動作確認（dev）：公開ページ503 / `/admin/login`・admin/staff session・preview トークン+cookie継続はバイパス200 / `/en` で英語メンテ文言・`lang` 連動 / 既定 off で 200 を実証
+- 動作確認：`wrangler pages dev`（KV バインド local）で admin トグル ON→公開ページ503・admin到達200・OFF→200 を通しで実証。加えて 503ページ/バイパス/preview cookie 継続/`/en` 英語文言/既定 off=200 を確認
+- ⚠ 本番で管理画面トグルが効くには KV バインドが本番デプロイに適用されていること。CI（`wrangler pages deploy`）が `wrangler.jsonc` を読んで適用するが、反映されない場合は Pages → Settings → Functions → KV namespace bindings で `AB_CONFIG` = `autumn_book_config` を設定
 
 ## 実装済みの主な決定反映
 
@@ -216,6 +218,7 @@
 - [ ] `MAINTENANCE_BYPASS_TOKEN` 設定時、`?preview=<token>` で公開サイトが見られ、以後 cookie で継続する
 - [ ] /en・/zh-TW でメンテナンスページの文言と `<html lang>` が切り替わる
 - [ ] 管理画面 `/admin/maintenance` で即時トグルでき、有効時はヘッダー下に黄色バナーが出る（環境変数強制 ON 時はトグル不可表示）
+- [ ] 本番（KV 接続）で admin トグル ON → 別端末/ログアウト状態の公開ページが 503 になる（数十秒で反映）
 - [ ] 既定（off）では従来どおり全ページが公開される
 
 ### コミュニティ掲示板
@@ -236,6 +239,19 @@
 
 
 ## 作業ログ
+
+---
+
+### 2026-06-13（メンテナンス: KV 永続トグル）
+
+**実施内容:**
+- 管理画面トグルの保存先を「プロセス内メモリ」→「Cloudflare KV（`AB_CONFIG`）」に変更。本番でも admin の `/admin/maintenance` トグルが全 edge に効く・永続するようにした
+- KV namespace `autumn_book_config`（id `d03a529d29c649dc8401819089dbd155`）を作成・`wrangler.jsonc` にバインド追加。`app.d.ts` に最小 `KVNamespace`/`App.Platform` 型
+- `maintenance.ts` の状態関数を async + platform 受け取りに（KV あれば KV・無ければメモリ）。`hooks.server.ts`・admin layout・maintenance ページを await 化
+- 環境変数 `MAINTENANCE_MODE=on` は強制 ON のエスケープハッチとして維持
+- `wrangler pages dev`（KV local バインド）で admin トグル経由の ON/OFF→公開ページ 503/200 を通しで実証。本番 KV は空＝起動時 OFF（公開）
+
+**バージョン:** `v0.11.0`
 
 ---
 

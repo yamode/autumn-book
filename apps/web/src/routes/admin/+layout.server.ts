@@ -3,7 +3,7 @@ import { facilities } from '$lib/server/store';
 import { isMaintenanceOn } from '$lib/server/maintenance';
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
+export const load: LayoutServerLoad = async ({ locals, url, cookies, platform }) => {
 	const isLogin = url.pathname === '/admin/login';
 	if (!isLogin && locals.user?.role !== 'admin' && locals.user?.role !== 'staff') {
 		redirect(303, '/admin/login');
@@ -14,6 +14,6 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
 		user: locals.user,
 		facilities: facilities.map((f) => ({ id: f.id, name: f.name })),
 		currentFacility: { id: current.id, name: current.name },
-		maintenanceActive: isMaintenanceOn()
+		maintenanceActive: await isMaintenanceOn(platform)
 	};
 };
