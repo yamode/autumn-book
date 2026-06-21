@@ -122,7 +122,7 @@
 - DB: `book.otayori_posts` + `book.otayori_ledger` + RPC8本（migration `autumn-shared/supabase/migrations/20260621120000_book_otayori.sql`）。**RPCファースト**＝2テーブル deny-all RLS・anon/authenticated GRANTなし・全 SECURITY DEFINER。承認/手動付与=admin、却下/一覧=staff、投稿/残高/自分サマリ=本人(auth.uid())。**PRODシードなし**。supabase-data.ts にアダプタ追記済み（authenticated限定＝P5 Auth後に有効、demoはstore.ts）。
 - demo: store.ts に実装＋シード（m-demo=たろう: 投稿3件 approved/pending/rejected + 台帳で残高3pt）。**dev で全フロー実証済み**（未ログインCTA→会員投稿→pending生成→admin承認+1pt→会員別手動付与。通常ptと混ざらないことを会員詳細で確認）。build成功。
 - **Phase 2（後続・P4 予約/決済 Supabase 本接続と同時）**: おたよりポイントの予約決済充当（1pt=1,000円・通常pt併用可）。設計§8 に確定済み。`confirm_booking`/`cancel_booking` は引数追加=drop+recreate のため P4 でまとめる。
-- ⚠ migration は **未push（ローカルコミットのみ）**。autumn-shared main へ push すると PROD 自動適用（追加のみ・既存ALTER/RPC変更なしで低リスク）。レビュー後に push すること。
+- ✅ **PROD 適用済み（2026-06-21）**: autumn-shared main へ push → GitHub Integration が自動適用。`schema_migrations` に `20260621120000` 確認・`book.otayori_posts` / `book.otayori_ledger` 作成確認（RLS有効・0行・シードなし）。autumn-book も main push 済み（CI→Cloudflare Pages デプロイ）。
 
 ## 実装済みの主な決定反映
 
