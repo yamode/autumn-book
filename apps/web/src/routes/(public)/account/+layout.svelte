@@ -8,6 +8,7 @@
 	const nav = $derived([
 		{ href: '/account', label: m.account_nav_reservations(), icon: '📅' },
 		{ href: '/account/points', label: m.account_nav_points(), icon: '◆' },
+		{ href: '/account/otayori', label: m.otayori_nav(), icon: '📨' },
 		{ href: '/account/favorites', label: m.account_nav_favorites(), icon: '♥' },
 		{ href: '/account/profile', label: m.account_nav_profile(), icon: '👤' },
 		{ href: '/community/settings', label: m.forum_settings_link(), icon: '💬' }

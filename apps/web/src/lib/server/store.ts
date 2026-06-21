@@ -20,7 +20,8 @@ import type {
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
 	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation,
-	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem
+	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem,
+	OtayoriEntry, OtayoriPost, OtayoriAdminItem
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
@@ -1727,4 +1728,193 @@ export function listForumThreadsAdmin(boardId: string): ForumThread[] {
 			if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
 			return b.lastPostedAt.localeCompare(a.lastPostedAt);
 		});
+}
+
+// ================================================================ おたよりポイント（demo・設計書 §3-4 / §11）
+// 将来 book.otayori_*（otayori_posts / otayori_ledger）テーブル + RPC（設計書 §5）へ差し替える境界。
+// 関数シグネチャは §4 に対応。通常ポイント（pointLedger・1pt=1円）とは別建て（1pt = OTAYORI_POINT_YEN 円）。
+// 残高は SUM(delta) で算出（無期限・expires_at を持たない）。
+
+export const otayoriLedger: OtayoriEntry[] = [];
+export const otayoriPosts: OtayoriPost[] = [];
+
+// ---- バリデーション規則（設計書 §4） ----
+const OTAYORI_BODY_MIN = 1;
+const OTAYORI_BODY_MAX = 2000;
+const OTAYORI_RADIO_MAX = 40;
+const OTAYORI_PENDING_MAX = 5; // 未審査（pending）は会員あたり5件まで
+
+let otayoriSeq = 0;
+const nextOtayoriId = (p: string) => `${p}-${++otayoriSeq}`;
+
+// ---- デモシード（設計書 §11）：m-demo（たろう）の投稿3件 + 台帳で残高3pt ----
+function seedOtayori() {
+	// ① 承認済（台帳 +1 の起点）
+	const approved: OtayoriPost = {
+		id: nextOtayoriId('op'),
+		memberId: 'm-demo',
+		body: '番組をいつも楽しく拝見しています。先日、雪見の露天風呂に入りながら聞いた川のせせらぎが忘れられません。次は紅葉の季節にお邪魔したいです。',
+		radioName: 'ゆきみ',
+		status: 'approved',
+		createdAt: addDays(today(), -12),
+		reviewedAt: addDays(today(), -10)
+	};
+	// ② 申請中（承認ボタンの確認用）
+	const pending: OtayoriPost = {
+		id: nextOtayoriId('op'),
+		memberId: 'm-demo',
+		body: '男鹿のお宿で見た日本海に沈む夕陽が本当にきれいでした。スタッフの方に教えていただいた鵜ノ崎海岸にも行ってみたいです。質問なのですが、冬の男鹿はどんな景色になりますか？',
+		radioName: 'うみねこ',
+		status: 'pending',
+		createdAt: addDays(today(), -2)
+	};
+	// ③ 見送り（却下：理由付き）
+	const rejected: OtayoriPost = {
+		id: nextOtayoriId('op'),
+		memberId: 'm-demo',
+		body: 'いつも応援しています！これからも頑張ってください。',
+		status: 'rejected',
+		reviewNote: '番組での採用は見送らせていただきました（内容が短いため）。',
+		createdAt: addDays(today(), -5),
+		reviewedAt: addDays(today(), -4)
+	};
+	otayoriPosts.push(approved, pending, rejected);
+
+	// 台帳：①承認起点の +1 ＋ ②手動付与 +2 → 残高 3pt（=3,000円分）
+	otayoriLedger.push({
+		id: nextOtayoriId('ol'),
+		memberId: 'm-demo',
+		delta: 1,
+		reason: 'YouTubeおたより投稿',
+		sourcePostId: approved.id,
+		createdAt: approved.reviewedAt!
+	});
+	otayoriLedger.push({
+		id: nextOtayoriId('ol'),
+		memberId: 'm-demo',
+		delta: 2,
+		reason: '【手動付与】番組開始前からのご愛顧',
+		createdAt: addDays(today(), -20)
+	});
+}
+seedOtayori();
+
+// ---------------------------------------------------------------- おたより: 読み取り（RPC 相当）
+
+/** RPC: book.otayori_balance 相当。残高 = SUM(delta)（無期限） */
+export function otayoriBalance(memberId: string): number {
+	return otayoriLedger.filter((e) => e.memberId === memberId).reduce((s, e) => s + e.delta, 0);
+}
+
+/** RPC: book.otayori_my_summary 相当。残高 + 台帳履歴 + 自分の投稿一覧（いずれも新しい順） */
+export function listMyOtayori(memberId: string): { balance: number; ledger: OtayoriEntry[]; posts: OtayoriPost[] } {
+	return {
+		balance: otayoriBalance(memberId),
+		ledger: otayoriLedger.filter((e) => e.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+		posts: otayoriPosts.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+	};
+}
+
+/** RPC: book.otayori_list_admin 相当。member_code / member_name を結合して返す。createdAt 降順 */
+export function listOtayoriAdmin(status: 'pending' | 'approved' | 'rejected'): OtayoriAdminItem[] {
+	return otayoriPosts
+		.filter((p) => p.status === status)
+		.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+		.map((p) => {
+			const member = members.find((mb) => mb.id === p.memberId);
+			return {
+				id: p.id,
+				memberId: p.memberId,
+				memberCode: member?.memberCode ?? '（退会した会員）',
+				memberName: member?.name ?? '—',
+				radioName: p.radioName,
+				body: p.body,
+				status: p.status,
+				createdAt: p.createdAt
+			};
+		});
+}
+
+// ---------------------------------------------------------------- おたより: 書き込み（RPC 相当）
+
+/** RPC: book.otayori_submit 相当。status='pending' で登録（ポイントはまだ付与しない） */
+export function otayoriSubmit(
+	memberId: string,
+	body: string,
+	radioName?: string
+): { post: OtayoriPost } | { error: 'invalid' | 'too_many_pending' } {
+	const b = body.trim();
+	const r = (radioName ?? '').trim();
+	if ([...b].length < OTAYORI_BODY_MIN || [...b].length > OTAYORI_BODY_MAX) return { error: 'invalid' };
+	if ([...r].length > OTAYORI_RADIO_MAX) return { error: 'invalid' };
+	const pendingCount = otayoriPosts.filter((p) => p.memberId === memberId && p.status === 'pending').length;
+	if (pendingCount >= OTAYORI_PENDING_MAX) return { error: 'too_many_pending' };
+	const post: OtayoriPost = {
+		id: nextOtayoriId('op'),
+		memberId,
+		body: b,
+		radioName: r || undefined,
+		status: 'pending',
+		createdAt: today()
+	};
+	otayoriPosts.push(post);
+	dbg('otayori_submit', memberId, post.id, `${[...b].length}字`);
+	return { post };
+}
+
+/**
+ * RPC: book.otayori_approve 相当（admin）。pending/rejected → approved。
+ * otayoriLedger に +1 付与（reason='YouTubeおたより投稿'・sourcePostId 紐付け）。
+ * 既に approved・または同 sourcePostId の付与済みなら冪等（再付与しない）。auditLogs 記帳。
+ */
+export function approveOtayori(postId: string, actor: string): OtayoriPost | { error: 'not_found' } {
+	const post = otayoriPosts.find((p) => p.id === postId);
+	if (!post) return { error: 'not_found' };
+	const wasApproved = post.status === 'approved';
+	post.status = 'approved';
+	post.reviewedAt = post.reviewedAt ?? today();
+	post.reviewNote = undefined;
+	// sourcePostId による二重付与防止（部分 UNIQUE インデックス相当）
+	const alreadyAwarded = otayoriLedger.some((e) => e.sourcePostId === postId);
+	if (!alreadyAwarded) {
+		otayoriLedger.push({
+			id: nextOtayoriId('ol'),
+			memberId: post.memberId,
+			delta: 1,
+			reason: 'YouTubeおたより投稿',
+			sourcePostId: postId,
+			createdAt: today()
+		});
+	}
+	addAuditLog(actor, 'otayori_approve', `post=${postId} member=${post.memberId}${wasApproved || alreadyAwarded ? ' (no-op)' : ' +1pt'}`);
+	dbg('otayori_approve', actor, postId, alreadyAwarded ? '(already awarded)' : '+1pt');
+	return post;
+}
+
+/** RPC: book.otayori_reject 相当（staff 可）。rejected に更新（review_note 記録）。ポイント操作なし。auditLogs 記帳 */
+export function rejectOtayori(postId: string, note: string, actor: string): OtayoriPost | { error: 'not_found' } {
+	const post = otayoriPosts.find((p) => p.id === postId);
+	if (!post) return { error: 'not_found' };
+	post.status = 'rejected';
+	post.reviewNote = note.trim() || undefined;
+	post.reviewedAt = today();
+	addAuditLog(actor, 'otayori_reject', `post=${postId} member=${post.memberId} note=${note.trim()}`);
+	dbg('otayori_reject', actor, postId);
+	return post;
+}
+
+/**
+ * RPC: book.otayori_adjust 相当（admin）。既存保持者への手動付与。
+ * otayoriLedger に delta（reason='【手動付与】'+reason）。delta は正負可（誤付与の訂正用）。auditLogs 記帳。
+ */
+export function grantOtayori(memberId: string, delta: number, reason: string, actor: string): void {
+	otayoriLedger.push({
+		id: nextOtayoriId('ol'),
+		memberId,
+		delta,
+		reason: `【手動付与】${reason}`,
+		createdAt: today()
+	});
+	addAuditLog(actor, 'otayori_adjust', `${memberId} ${delta > 0 ? '+' : ''}${delta}pt ${reason}`);
+	dbg('otayori_adjust', actor, memberId, `${delta > 0 ? '+' : ''}${delta}pt`);
 }

@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-13（管理者認証Phase1=Supabase Auth土台 + 施設間ナビ + ヘッダー修正。v0.12.0）
+> **最終更新**: 2026-06-21（おたよりポイント Phase 1＝専用台帳・YouTube投稿フォーム・承認制付与・会員別手動付与。v0.13.0）
 
 ## 現在の状態
 
@@ -110,6 +110,19 @@
   - 録音は既定OFF。Twilio月額 ≈ ¥8,500（固定電話受電）。**JP番号は Regulatory Bundle（株式会社山人の登記書類）申請が関門**。
 - **安全要件（Web外）**：050/WebRTCは110/119不可 → 客室に「非常時は非常ベル/スタッフへ」掲示、受付時間外導線、受電SLA定義を実装前に用意。
 - **未決**：受電に simring iPhone を併用するか／Twilio採用の最終可否（Regulatory Bundle 申請）／印刷スリップ様式／house_guides 初期コンテンツ。詳細は設計書 §12。
+
+## おたよりポイント Phase 1（2026-06-21 追加・v0.13.0）
+
+- **通常の会員ポイント（1pt=1円）とは別建ての「おたよりポイント」（1pt=1,000円相当）** を管理。YouTube おたより投稿への進呈・既存保持者への手動付与に対応。設計書: `autumn_book_otayori_design.md`
+- **アーキテクチャ＝専用テーブルで別建て**（既存 point_ledger に相乗りしない）。理由: 単位が1000倍違い、残高=SUM(delta) を共有すると取り違え事故が起きるため。既存の point_balance / 予約RPC / 会員UI は無改修。
+- **付与は承認制**: `/otayori` フォーム投稿は `pending` → 運営が `/admin/otayori` で承認した投稿だけ +1pt（**承認＝admin限定**）。1投稿1回（otayori_ledger(source_post_id) 部分UNIQUE + on conflict で二重付与防止）。却下・一覧閲覧は staff 可。
+- **フォーム**: `/otayori`（YouTube概要欄用の専用URL）。**会員のみ投稿可**（未ログインは登録CTA・staff/adminは投稿不可案内）。本文1〜2000字＋ラジオネーム任意。XSS安全（forum-format流用）。未審査(pending)5件まで。
+- **既存保持者への会員別手動付与**: `/admin/members/[id]` の「📨 おたよりポイント手動付与」パネル（admin・正負可・理由必須・監査ログ）＝設計§9主導線。`/admin/otayori` 上部の会員検索付与も同等。
+- **マイページ**: `/account/otayori`（残高・「1pt=1,000円分」・台帳・投稿status＝確認中/進呈済み/見送り）。会員メニュー・admin左ナビに導線追加。**有効期限なし（無期限）**。
+- DB: `book.otayori_posts` + `book.otayori_ledger` + RPC8本（migration `autumn-shared/supabase/migrations/20260621120000_book_otayori.sql`）。**RPCファースト**＝2テーブル deny-all RLS・anon/authenticated GRANTなし・全 SECURITY DEFINER。承認/手動付与=admin、却下/一覧=staff、投稿/残高/自分サマリ=本人(auth.uid())。**PRODシードなし**。supabase-data.ts にアダプタ追記済み（authenticated限定＝P5 Auth後に有効、demoはstore.ts）。
+- demo: store.ts に実装＋シード（m-demo=たろう: 投稿3件 approved/pending/rejected + 台帳で残高3pt）。**dev で全フロー実証済み**（未ログインCTA→会員投稿→pending生成→admin承認+1pt→会員別手動付与。通常ptと混ざらないことを会員詳細で確認）。build成功。
+- **Phase 2（後続・P4 予約/決済 Supabase 本接続と同時）**: おたよりポイントの予約決済充当（1pt=1,000円・通常pt併用可）。設計§8 に確定済み。`confirm_booking`/`cancel_booking` は引数追加=drop+recreate のため P4 でまとめる。
+- ⚠ migration は **未push（ローカルコミットのみ）**。autumn-shared main へ push すると PROD 自動適用（追加のみ・既存ALTER/RPC変更なしで低リスク）。レビュー後に push すること。
 
 ## 実装済みの主な決定反映
 
@@ -285,6 +298,23 @@
 - [ ] /en /zh-TW で UI 文言が翻訳される（投稿本文・板名は日本語のまま）
 - [ ] スマホ幅でスレ一覧・投稿一覧・フォームが崩れない
 
+
+### おたよりポイント
+- [ ] /otayori に未ログインで入ると会員登録CTAが出る（投稿フォームは出ない）
+- [ ] 会員ログイン中は本文＋ラジオネームを入力して投稿でき、サンクス文が出る
+- [ ] 投稿直後はポイントが増えない（pending・/account/otayori で「確認中」表示）
+- [ ] 本文空・2000字超・ラジオネーム40字超はエラーになる
+- [ ] 未審査5件を超えると投稿が拒否される
+- [ ] /admin/otayori 申請中タブに投稿が並び、会員番号・氏名・本文が見える
+- [ ] admin が承認するとおたよりpt残高が+1され、台帳に「YouTubeおたより投稿」が載る
+- [ ] 同じ投稿を再承認しても二重付与されない
+- [ ] staff は却下はできるが承認（付与）ボタンが出ない／実行で権限エラー
+- [ ] /admin/members/[id] のおたよりポイントパネルから手動付与でき、残高と監査ログに反映
+- [ ] /account/otayori に残高・「1pt=1,000円分」・台帳・投稿状況が表示される
+- [ ] 通常ポイント残高はおたよりポイントの増減に影響されない（単位が混ざらない）
+- [ ] /en /zh-TW で UI 文言が翻訳される（本文・ラジオネームは原文のまま）
+- [ ] スマホ幅で投稿フォーム・管理レビュー・マイページが崩れない
+- [ ] （Phase 2・P4同時）予約でおたよりpt利用＝1ptにつき1,000円減額（通常pt併用可）／キャンセルで返還
 
 ## 作業ログ
 

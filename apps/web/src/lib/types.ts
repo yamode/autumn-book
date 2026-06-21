@@ -178,6 +178,8 @@ export interface Hold {
 	guestDraft?: GuestInfo;
 	pointsDraft?: number;
 	paymentDraft?: PrepayMethod;
+	/** ②→③へ引き継ぐおたよりポイント利用ドラフト（Phase 2） */
+	otayoriDraft?: number;
 }
 
 export interface Booking {
@@ -203,6 +205,8 @@ export interface Booking {
 	cancellationPolicy: CancellationPolicy;
 	cancelFee?: number;
 	memberId?: string;
+	/** 予約で使ったおたよりポイント数（Phase 2・1pt=1,000円） */
+	otayoriUsed?: number;
 	createdAt: string;
 }
 
@@ -364,4 +368,44 @@ export interface ForumThreadListItem {
 	createdAt: string;
 	authorNickname: string;
 	authorIsStaff: boolean;
+}
+
+// ---------------------------------------------------------------- おたよりポイント（book.otayori_* 対称）
+
+/** おたよりポイント1ptの円換算（通常ポイント＝1pt=1円とは別建て）。設計書 §1.3 */
+export const OTAYORI_POINT_YEN = 1000;
+
+/** おたよりポイント台帳（book.otayori_ledger 対称）。1pt = OTAYORI_POINT_YEN 円 */
+export interface OtayoriEntry {
+	id: string;
+	memberId: string;
+	delta: number; // +N 付与 / -N 利用・巻き戻し
+	reason: string; // 'YouTubeおたより投稿' / '【手動付与】…' / 'ご予約での利用（code）' …
+	sourcePostId?: string; // 投稿起点の付与
+	bookingCode?: string; // 予約利用・巻き戻し（Phase 2）
+	createdAt: string;
+}
+
+/** おたより投稿（book.otayori_posts 対称） */
+export interface OtayoriPost {
+	id: string;
+	memberId: string;
+	body: string; // おたより本文（plain text）
+	radioName?: string; // 番組で読む用のラジオネーム（任意）
+	status: 'pending' | 'approved' | 'rejected';
+	reviewNote?: string; // 却下理由など
+	createdAt: string;
+	reviewedAt?: string;
+}
+
+/** 管理画面の投稿一覧行（会員の内部識別を含む。公開画面には出さない） */
+export interface OtayoriAdminItem {
+	id: string;
+	memberId: string;
+	memberCode: string; // YM-XXXXXX
+	memberName: string; // 内部表示用（core.guests.name 相当）
+	radioName?: string;
+	body: string;
+	status: 'pending' | 'approved' | 'rejected';
+	createdAt: string;
 }

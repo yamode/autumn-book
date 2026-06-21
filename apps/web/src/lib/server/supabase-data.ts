@@ -33,7 +33,7 @@
 //         return merged;
 //       });
 import { supa } from './supabase';
-import type { CalendarDay, GuestInfo } from '$lib/types';
+import type { CalendarDay, GuestInfo, OtayoriPost, OtayoriAdminItem } from '$lib/types';
 import type { Quote } from '@autumn-book/core';
 
 // ---------------------------------------------------------------- 公開コンテンツ
@@ -416,4 +416,120 @@ export async function upsertForumBoard(input: {
 	});
 	if (error) throw error;
 	return data as { board_id: string };
+}
+
+// ---------------------------------------------------------------- おたよりポイント RPC（設計書 §5.3 / §5.4）
+// book スキーマの otayori_* RPC を呼ぶ薄いアダプタ。store.ts（demo）と同じ意味論。
+// 本機能は全 RPC が authenticated 限定（grant execute = authenticated, service_role。anon は付けない）
+//   のため、Supabase Auth 本接続（P5・@supabase/ssr の cookie 連携）後に有効になる。
+//   それまでは anon セッションでは not_authenticated / forbidden が返る（cancelBooking と同じ扱い）。
+// DATA_SOURCE=demo の現状は store.ts 実装が実働。
+// member_user_id（= auth.users.id）や他会員の本文は deny-all + SECURITY DEFINER RPC で構造的に保護。
+// 型は $lib/types の OtayoriEntry / OtayoriPost / OtayoriAdminItem（camelCase）に対応。
+//   RPC は snake_case jsonb を返すため、ここでは RPC 出力の素の形（*Row）を返し、
+//   camelCase へのマッピングは呼び出し側（route）で行う（forum_* と同じ流儀）。
+
+export interface OtayoriLedgerRow {
+	id: string;
+	delta: number;
+	reason: string;
+	created_at: string;
+}
+
+export interface OtayoriPostRow {
+	id: string;
+	body: string;
+	radio_name: string | null;
+	status: OtayoriPost['status'];
+	review_note: string | null;
+	created_at: string;
+	reviewed_at: string | null;
+}
+
+export interface OtayoriMySummaryRow {
+	balance: number;
+	ledger: OtayoriLedgerRow[];
+	posts: OtayoriPostRow[];
+}
+
+export interface OtayoriAdminItemRow {
+	post_id: string;
+	member_user_id: string;
+	member_code: string;
+	member_name: string | null;
+	radio_name: string | null;
+	body: string;
+	status: OtayoriAdminItem['status'];
+	created_at: string;
+}
+
+// 会員向け（authenticated・Supabase Auth 本接続後に有効。P5）
+
+// おたよりポイント残高（自分 or 社内のみ）。SUM(delta)。
+export async function otayoriBalance(userId?: string): Promise<number> {
+	const { data, error } = await supa().rpc('otayori_balance', { p_user: userId ?? null });
+	if (error) throw error;
+	return (data ?? 0) as number;
+}
+
+// 自分のおたよりサマリ（残高 + 台帳 + 投稿一覧）。auth.uid() の分のみ。
+export async function getOtayoriMySummary(): Promise<OtayoriMySummaryRow> {
+	const { data, error } = await supa().rpc('otayori_my_summary');
+	if (error) throw error;
+	return data as OtayoriMySummaryRow;
+}
+
+// おたより投稿（申請）。会員必須・本文 1〜2000字・ラジオネーム ≤40字・pending は5件まで。
+// status='pending' で INSERT（ポイントは付与しない）。
+export async function submitOtayori(body: string, radioName?: string): Promise<{ post_id: string }> {
+	const { data, error } = await supa().rpc('otayori_submit', {
+		p_body: body,
+		p_radio_name: radioName ?? null
+	});
+	if (error) throw error;
+	return data as { post_id: string };
+}
+
+// 管理向け（authenticated + 内部 staff/admin ガード・Supabase Auth 本接続後に有効。P5）
+
+// 投稿一覧（管理・staff 可）。member_code / member_name を結合。created_at 降順・ページング。
+export async function listOtayoriAdmin(
+	status: 'pending' | 'approved' | 'rejected' = 'pending',
+	page = 1,
+	perPage = 50
+): Promise<{ total: number; items: OtayoriAdminItemRow[] }> {
+	const { data, error } = await supa().rpc('otayori_list_admin', {
+		p_status: status,
+		p_page: page,
+		p_per: perPage
+	});
+	if (error) throw error;
+	return data as { total: number; items: OtayoriAdminItemRow[] };
+}
+
+// 投稿の承認（admin・＝1pt 付与）。再承認しても二重付与されない（冪等）。
+export async function approveOtayori(postId: string): Promise<{ post_id: string; status: string }> {
+	const { data, error } = await supa().rpc('otayori_approve', { p_post_id: postId });
+	if (error) throw error;
+	return data as { post_id: string; status: string };
+}
+
+// 投稿の却下（staff）。ポイント操作なし。
+export async function rejectOtayori(postId: string, note?: string): Promise<{ post_id: string; status: string }> {
+	const { data, error } = await supa().rpc('otayori_reject', {
+		p_post_id: postId,
+		p_note: note ?? null
+	});
+	if (error) throw error;
+	return data as { post_id: string; status: string };
+}
+
+// 会員別の手動付与/調整（admin・既存保持者向け）。delta は正負可・p_delta=0 / 空理由は拒否。
+export async function adjustOtayori(memberUserId: string, delta: number, reason: string): Promise<void> {
+	const { error } = await supa().rpc('otayori_adjust', {
+		p_member_user_id: memberUserId,
+		p_delta: delta,
+		p_reason: reason
+	});
+	if (error) throw error;
 }
