@@ -5,6 +5,8 @@
 > 前提資料：`docs/architecture-memo.md`（星野リゾート動線の分析メモ）＋ autumn-rms / autumn-pms / autumn-order / autumn-shared の実装調査（**各リポ origin/main 最新化済み・2026-06-10 時点**）。
 > 特に **autumn-pms/docs/02-architecture.md（クラウドPMS設計・同日付）** と整合を取ること。予約データの最終的な着地形（stay_groups → stays → stay_nights）は PMS 設計が定義する。
 
+> ⚠ **2026-06-21 アーキテクチャ変更（要・最初に読むこと）**：施設HPの扱いを変更した。本書 §0・§4.0 が前提とする「**単一 SvelteKit アプリが全施設HPを `reroute` で配信し、施設HPを Svelte シェルで再現する**」方針は **`autumn_book_architecture_decision.md`（ADR-0001）で置き換え**。新方針＝**施設HPは既存サイト（WP）を外部に据え置き**、予約エンジン・会員・掲示板・地図検索は**単一のブランドポータル**（`stay.yamado.co.jp`）に統合し、施設HPの予約は**ポータルへリダイレクト**（ウィジェット不採用）。`book` スキーマ／RPC／会員／予約Tx／掲示板／客室情報／地図検索など本書の他章はそのまま有効。
+
 ---
 
 ## 0. 結論サマリ
