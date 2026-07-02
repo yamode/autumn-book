@@ -33,8 +33,18 @@
 //         return merged;
 //       });
 import { supa } from './supabase';
-import type { CalendarDay, GuestInfo, OtayoriPost, OtayoriAdminItem } from '$lib/types';
+import type { CalendarDay, GuestInfo, NewsPost, OtayoriPost, OtayoriAdminItem } from '$lib/types';
 import type { Quote } from '@autumn-book/core';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+// store.ts のデモ facility ID（'f-nishiwaga' 等）と実 Supabase の core.facilities.id（UUID）の対応表。
+// news 管理画面（施設スイッチャーは店舗一覧を store.ts の facilities から取得するデモ由来のUI）を
+// 実データに繋ぐために使用する。新しい施設を追加した場合はここにも追記が必要。
+export const FACILITY_UUID: Record<string, string> = {
+	'f-nishiwaga': '10000000-0000-0000-0000-000000000001',
+	'f-oga': '10000000-0000-0000-0000-000000000002'
+};
+const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 
 // ---------------------------------------------------------------- 公開コンテンツ
 
@@ -99,6 +109,98 @@ export async function listNews(facilityId: string, limit?: number) {
 	const { data, error } = await q;
 	if (error) throw error;
 	return data;
+}
+
+// 公開済み記事の単体取得（施設HP側の記事詳細ページ用）。RLSにより is_published=true のみ取得可。
+export async function getNewsPost(facilityId: string, id: string) {
+	const { data, error } = await supa()
+		.from('news_posts')
+		.select('id, title, body, published_at')
+		.eq('facility_id', facilityId)
+		.eq('id', id)
+		.maybeSingle();
+	if (error) throw error;
+	return data;
+}
+
+// --------------------------------------------------------- お知らせ管理（authenticated・要facility_access）
+// admin/news 用。下書きを含む全件の閲覧・追加・編集はRLS上 authenticated + has_facility_access が必須のため、
+// 呼び出し側（+page.server.ts）で Supabase Auth セッションに紐づいたクライアント
+// （auth.ts の createSupabaseServerClient(event)）を渡すこと。supa()（anonキー）を渡すと
+// news_posts_staff_all ポリシーに阻まれ 0件 / permission denied になる。
+
+export async function listNewsAdmin(client: SupabaseClient, facilityId: string): Promise<NewsPost[]> {
+	const { data, error } = await client
+		.schema('book')
+		.from('news_posts')
+		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.eq('facility_id', facilityId)
+		.order('published_at', { ascending: false });
+	if (error) throw error;
+	return (data ?? []).map(mapNewsRow);
+}
+
+export async function addNewsAdmin(
+	client: SupabaseClient,
+	facilityId: string,
+	input: { title: string; body: string; publishedAt: string }
+): Promise<NewsPost> {
+	const { data, error } = await client
+		.schema('book')
+		.from('news_posts')
+		.insert({
+			tenant_id: TENANT_ID,
+			facility_id: facilityId,
+			title: input.title,
+			body: input.body,
+			published_at: input.publishedAt,
+			is_published: false
+		})
+		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.single();
+	if (error) throw error;
+	return mapNewsRow(data);
+}
+
+export async function updateNewsAdmin(
+	client: SupabaseClient,
+	postId: string,
+	input: { title: string; body: string; publishedAt: string; isPublished: boolean }
+): Promise<NewsPost> {
+	const { data, error } = await client
+		.schema('book')
+		.from('news_posts')
+		.update({
+			title: input.title,
+			body: input.body,
+			published_at: input.publishedAt,
+			is_published: input.isPublished
+		})
+		.eq('id', postId)
+		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.single();
+	if (error) throw error;
+	return mapNewsRow(data);
+}
+
+function mapNewsRow(row: {
+	id: string;
+	facility_id: string;
+	title: string;
+	body: string | null;
+	published_at: string;
+	is_published: boolean;
+	created_at: string;
+}): NewsPost {
+	return {
+		id: row.id,
+		facilityId: row.facility_id,
+		title: row.title,
+		body: row.body ?? '',
+		publishedAt: row.published_at,
+		isPublished: row.is_published,
+		createdAt: row.created_at
+	};
 }
 
 export async function listFaqs(facilityId: string) {
