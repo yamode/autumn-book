@@ -11,9 +11,11 @@
 	// 本番（Pages）環境変数。pages deploy は config の vars でダッシュボード env を「置換」する
 	// （additive ではない）ため、本番に必要な変数はすべてここに集約する（＝単一の源・再現性）。
 	//  - AUTH_MODE=supabase：管理ログインを Supabase Auth に。ローカル dev は .env（既定 demo）が優先。
+	//  - DATA_SOURCE=supabase：news機能をbook.news_posts実データに接続。ローカル dev は .env（既定 demo）が優先。
 	//  - PUBLIC_SUPABASE_*：Supabase Auth クライアントが $env/dynamic/public 経由で使用（publishable=公開値）。
 	"vars": {
 		"AUTH_MODE": "supabase",
+		"DATA_SOURCE": "supabase",
 		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
 		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_5LrR74B4VdgRpq1koMbrQA_SIvpAWk0"
 	}
