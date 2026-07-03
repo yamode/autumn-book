@@ -18,7 +18,7 @@
 			<h1 class="font-display text-2xl text-brand-900">{data.board.title}</h1>
 			<p class="mt-1 text-sm text-stone-500">{data.board.description}</p>
 		</div>
-		{#if !data.board.isArchived}
+		{#if !data.board.isArchived && data.writeEnabled}
 			{#if data.isLoggedIn}
 				<a href="/community/{data.board.slug}/new" class="shrink-0 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">{m.forum_new_thread()}</a>
 			{:else}
@@ -29,6 +29,13 @@
 
 	{#if data.board.isArchived}
 		<p class="mb-4 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">{m.forum_archived_notice()}</p>
+	{/if}
+
+	{#if !data.writeEnabled}
+		<div class="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5">
+			<p class="font-medium text-brand-900">{m.forum_write_app_only_heading()}</p>
+			<p class="mt-1 text-sm text-stone-700">{m.forum_write_app_only()}</p>
+		</div>
 	{/if}
 
 	{#if !data.isLoggedIn}

@@ -1,3 +1,4 @@
+// DATA_SOURCE=supabase 時、公開側は実データだが本画面は demo データのまま（モデレーションは P5 で Supabase 化）。
 import { fail } from '@sveltejs/kit';
 import {
 	forumBoards,

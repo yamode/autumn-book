@@ -33,7 +33,17 @@
 //         return merged;
 //       });
 import { supa } from './supabase';
-import type { CalendarDay, GuestInfo, NewsPost, OtayoriPost, OtayoriAdminItem } from '$lib/types';
+import type {
+	CalendarDay,
+	GuestInfo,
+	NewsPost,
+	OtayoriPost,
+	OtayoriAdminItem,
+	ForumBoard,
+	ForumThread,
+	ForumThreadListItem,
+	ForumPostView
+} from '$lib/types';
 import type { Quote } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -430,6 +440,109 @@ export async function listForumPosts(threadId: string): Promise<ForumPostViewRow
 	const { data, error } = await supa().rpc('forum_list_posts', { p_thread_id: threadId });
 	if (error) throw error;
 	return (data ?? []) as ForumPostViewRow[];
+}
+
+// ---- 読み取り系アダプタ（route が使う camelCase 型に整形）----
+// route 側のページ型を store（demo）と同一に保つため、上の *Row（snake_case RPC 出力）を
+// $lib/types の Forum* 型へマッピングする。命名は store.ts の関数と揃える。
+// author_user_id は RPC 出力に含まれない（実体 ID 非露出）ため、ForumBoard.createdAt など
+// snake_case にしか無いフィールドはそのまま移送する。
+
+/** store.listForumBoards 相当。isArchived 含む・sortOrder 順（RPC が整列済み） */
+export async function listForumBoardsData(): Promise<(ForumBoard & { threadCount: number; lastPostedAt: string | null })[]> {
+	const rows = await listForumBoards();
+	return rows.map((b) => ({
+		id: b.id,
+		slug: b.slug,
+		title: b.title,
+		description: b.description,
+		sortOrder: b.sort_order,
+		isArchived: b.is_archived,
+		createdAt: b.created_at,
+		threadCount: b.thread_count,
+		lastPostedAt: b.last_posted_at
+	}));
+}
+
+/** store.getForumBoard 相当。board 一覧から slug で引く（RPC に単体取得が無いため） */
+export async function getForumBoardData(slug: string): Promise<ForumBoard | undefined> {
+	const rows = await listForumBoards();
+	const b = rows.find((r) => r.slug === slug);
+	if (!b) return undefined;
+	return {
+		id: b.id,
+		slug: b.slug,
+		title: b.title,
+		description: b.description,
+		sortOrder: b.sort_order,
+		isArchived: b.is_archived,
+		createdAt: b.created_at
+	};
+}
+
+/** store.listForumThreads 相当。boardSlug で引く（store は boardId・RPC は slug）。整列は RPC 側 */
+export async function listForumThreadsData(
+	boardSlug: string,
+	page = 1,
+	perPage = 20
+): Promise<{ threads: ForumThreadListItem[]; total: number }> {
+	const { total, threads } = await listForumThreads(boardSlug, page, perPage);
+	return {
+		total,
+		threads: (threads ?? []).map((t) => ({
+			id: t.id,
+			title: t.title,
+			isPinned: t.is_pinned,
+			isLocked: t.is_locked,
+			replyCount: t.reply_count,
+			lastPostedAt: t.last_posted_at,
+			createdAt: t.created_at,
+			authorNickname: t.author_nickname,
+			authorIsStaff: t.author_is_staff
+		}))
+	};
+}
+
+/** store.getForumThread 相当。is_deleted なら RPC が null を返す → undefined へ正規化 */
+export async function getForumThreadData(
+	threadId: string
+): Promise<(ForumThread & { boardSlug: string; boardTitle: string }) | undefined> {
+	const t = await getForumThread(threadId);
+	if (!t) return undefined;
+	return {
+		id: t.id,
+		// boardId は RPC 出力に無い（board_slug/board_title のみ）。route は boardSlug/boardTitle しか
+		// 使わないため、boardId は空文字を置く（型の穴埋め・表示には未使用）。
+		boardId: '',
+		// authorUserId は実体 ID 非露出のため RPC 出力に無い。表示未使用なので空文字。
+		authorUserId: '',
+		title: t.title,
+		isPinned: t.is_pinned,
+		isLocked: t.is_locked,
+		isDeleted: false,
+		replyCount: t.reply_count,
+		lastPostedAt: t.last_posted_at,
+		createdAt: t.created_at,
+		boardSlug: t.board_slug,
+		boardTitle: t.board_title
+	};
+}
+
+/** store.listForumPosts 相当。post_no 昇順・削除済みもプレースホルダ行（RPC が整形済み）。
+ *  is_own は auth.uid() 依存だが anon セッションでは常に false（Web からは本人判定不可・P5 で有効化）。 */
+export async function listForumPostsData(threadId: string): Promise<ForumPostView[]> {
+	const rows = await listForumPosts(threadId);
+	return rows.map((p) => ({
+		id: p.id,
+		postNo: p.post_no,
+		body: p.is_deleted ? '' : p.body,
+		replyToNo: p.reply_to_no,
+		createdAt: p.created_at,
+		isDeleted: p.is_deleted,
+		nickname: p.is_deleted ? null : p.nickname,
+		isStaff: p.is_staff,
+		isOwn: p.is_own
+	}));
 }
 
 // 書き込み系（authenticated・Supabase Auth 本接続後に有効。P5）

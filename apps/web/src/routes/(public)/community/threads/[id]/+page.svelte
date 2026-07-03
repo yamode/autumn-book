@@ -23,13 +23,18 @@
 
 	<div class="rounded-2xl border border-stone-200 bg-white">
 		{#each data.posts as post}
-			<ForumPostView {post} canDelete={data.isLoggedIn} />
+			<ForumPostView {post} canDelete={data.isLoggedIn && data.writeEnabled} />
 		{/each}
 	</div>
 
 	<!-- 返信フォーム / ロック通知 / 未ログイン CTA（設計書 §6） -->
 	<div class="mt-6">
-		{#if data.thread.isLocked}
+		{#if !data.writeEnabled}
+			<div class="rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5">
+				<p class="font-medium text-brand-900">{m.forum_write_app_only_heading()}</p>
+				<p class="mt-1 text-sm text-stone-700">{m.forum_write_app_only()}</p>
+			</div>
+		{:else if data.thread.isLocked}
 			<p class="rounded-lg bg-stone-100 px-3 py-2.5 text-sm text-stone-600">{m.forum_locked_notice()}</p>
 		{:else if data.isLoggedIn}
 			{#if form?.message}

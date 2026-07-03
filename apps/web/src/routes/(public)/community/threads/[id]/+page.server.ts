@@ -1,16 +1,20 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { getForumThread, listForumPosts, getForumProfile, createForumPost, deleteForumPost, getPublishedFacilities } from '$lib/server/store';
+import { DATA_SOURCE } from '$lib/server/supabase';
+import { getForumThreadData, listForumPostsData } from '$lib/server/supabase-data';
+import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-	const thread = getForumThread(params.id);
+	const supabase = DATA_SOURCE === 'supabase';
+	const thread = supabase ? await getForumThreadData(params.id) : getForumThread(params.id);
 	if (!thread) error(404, 'Thread not found');
 
-	const posts = listForumPosts(thread.id, locals.user?.id);
+	const posts = supabase ? await listForumPostsData(thread.id) : listForumPosts(thread.id, locals.user?.id);
 	const facilities = getPublishedFacilities(getLocale()).map((f) => ({ name: f.name, brandSlug: f.brandSlug, slug: f.slug }));
-	const hasNickname = locals.user ? !!getForumProfile(locals.user.id) : false;
+	const hasNickname = supabase ? false : locals.user ? !!getForumProfile(locals.user.id) : false;
 
 	return {
 		thread: {
@@ -24,12 +28,15 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		posts,
 		facilities,
 		isLoggedIn: !!locals.user,
-		hasNickname
+		hasNickname,
+		writeEnabled: FORUM_WRITE_ENABLED
 	};
 };
 
 export const actions: Actions = {
 	reply: async ({ request, params, locals, url }) => {
+		// 書き込み不可モード（supabase・P5 まで）では投稿を受け付けずアプリへ誘導
+		if (!FORUM_WRITE_ENABLED) return fail(403, { message: m.forum_write_app_only(), body: '' });
 		if (!locals.user) redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname)}`);
 		// ニックネーム未設定なら設定へ
 		if (!getForumProfile(locals.user.id)) redirect(303, `/community/settings?next=${encodeURIComponent(url.pathname)}`);
@@ -51,6 +58,7 @@ export const actions: Actions = {
 	},
 
 	deletePost: async ({ request, params, locals }) => {
+		if (!FORUM_WRITE_ENABLED) return fail(403, { message: m.forum_write_app_only() });
 		if (!locals.user) return fail(401, { message: m.forum_cta_login_to_post() });
 		const form = await request.formData();
 		const postId = String(form.get('postId') ?? '');

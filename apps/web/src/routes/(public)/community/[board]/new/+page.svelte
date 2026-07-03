@@ -20,6 +20,13 @@
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 	{/if}
 
+	{#if !data.writeEnabled}
+		<div class="rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5">
+			<p class="font-medium text-brand-900">{m.forum_write_app_only_heading()}</p>
+			<p class="mt-1 text-sm text-stone-700">{m.forum_write_app_only()}</p>
+			<a href="/community/{data.board.slug}" class="mt-3 inline-block text-sm text-stone-500 hover:underline">{m.forum_back_to_board()}</a>
+		</div>
+	{:else}
 	<form method="POST" action="?/create" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5">
 		<label class="block text-sm">
 			<span class="text-stone-600">{m.forum_thread_title_label()}</span>
@@ -34,4 +41,5 @@
 			<a href="/community/{data.board.slug}" class="text-sm text-stone-500 hover:underline">{m.forum_back_to_board()}</a>
 		</div>
 	</form>
+	{/if}
 </div>

@@ -16,6 +16,13 @@
 	<h1 class="font-display mb-1 text-2xl text-brand-900">{m.forum_nickname_settings_heading()}</h1>
 	<p class="mb-5 text-sm text-stone-500">{m.forum_nickname_settings_sub()}</p>
 
+	{#if !data.writeEnabled}
+		<div class="rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5">
+			<p class="font-medium text-brand-900">{m.forum_write_app_only_heading()}</p>
+			<p class="mt-1 text-sm text-stone-700">{m.forum_write_app_only()}</p>
+			<a href="/community" class="mt-3 inline-block text-sm text-stone-500 hover:underline">{m.forum_back_to_community()}</a>
+		</div>
+	{:else}
 	{#if form?.saved}
 		<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{m.forum_nickname_saved()}</p>
 	{/if}
@@ -38,4 +45,5 @@
 		</label>
 		<button type="submit" class="w-full rounded-lg bg-brand-800 py-2.5 font-medium text-white hover:bg-brand-700">{m.forum_nickname_save()}</button>
 	</form>
+	{/if}
 </div>
