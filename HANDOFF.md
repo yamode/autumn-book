@@ -4,6 +4,15 @@
 
 ## 現在の状態
 
+> ## ⛔ メンテナンスモードを解除してはいけない（2026-07-10 PROD 実査で確認）
+>
+> 本番 `wrangler.jsonc` は `DATA_SOURCE=supabase` だが、**Supabase 実データ経路に載っているルートは news / community / inroom の 11 ファイルだけ**で、**残り 53 ルート（検索・施設・プラン・客室・予約フロー・会員・ポイント・お気に入り）は本番でも `store.ts` のインメモリ・デモデータを配信している**。
+> したがって今メンテを解除すると:
+> 1. **デモの料金・客室・在庫が公開される**（`booking.rate_plans` / `daily_rates` / `availability` は PROD で **0 件**）
+> 2. **ゲストが「予約完了」まで進めてしまい、その予約は Cloudflare Workers の isolate メモリに書かれて消える**（`booking.bookings` は 0 件のまま・予約番号も引けない・確定メールもない）
+>
+> **解除の前提** = ①rms に rate_plans / daily_rates / availability を投入 → ②検索・予約ルートを supabase-data.ts へ接続（アダプタは実装済み）→ ③実データで通し確認。
+
 - **フェーズ：全25画面の UI 実装完了（デモデータ駆動）— Supabase 接続前**（v0.3.0）
 - 正式設計書：`autumn_book_design.md`（v2・プラットフォーム統合版）
 - 画面設計書：`autumn_book_ui_design.md`（v1）— 顧客向け16画面 + 管理画面9画面。実装増分は同書 §7
@@ -108,7 +117,7 @@
 - **データ層**: store.ts（デモシード: 西和賀ガイド ja5+en2 / 男鹿 ja4、デモトークン `demo-stay-nishiwaga`=コード11112222・oga=33334444）と supabase-data.ts（sb* アダプタ）を対称実装
 - **言語フォールバックは「言語単位」**: 指定言語のガイドが 0 件のときだけ ja 全件（RPC仕様）。en を部分的にしか作らないと en ゲストにはそれだけ表示される点に注意（セクション単位マージが必要なら RPC 改修＝新 migration）
 - **データソースの組み合わせ**（重要）: ゲスト面は `DATA_SOURCE`、管理面は `DATA_SOURCE=supabase && AUTH_MODE=supabase` で切替。**現 .env（supabase+demo）では管理面=デモ store・ゲスト面=PROD（トークン0件）となり繋がらない** → /r のフルデモは `DATA_SOURCE=demo` で行う。本番（supabase+supabase）は全経路 PROD で一貫
-- **本番利用の前提（残作業）**: 本番 admin ユーザー（Supabase Auth）に **core.memberships の行（施設アクセス権）が必要**（発行/失効 RPC の has_facility_access）。未登録だと管理面は黄バナー「取得に失敗」表示（500 にはならない・v0.12.1 と同じ安全側）。加えて house_guides の実コンテンツ投入（/admin/inroom から入力可）
+- **本番利用の前提**: ✅ 本番 admin（Supabase Auth・`app_metadata.role=admin`）は **`core.memberships` に `tenant_admin`（tenant全体スコープ）を保有済み**を PROD で確認（2026-07-10）。発行/失効・ガイド CRUD の `has_facility_access` / `is_tenant_admin` は通るため**本番でそのまま動作する**。万一 membership を失った場合も管理面は黄バナー表示で 500 にはならない（v0.12.1 と同じ安全側）。残るは house_guides の実コンテンツ投入（`book.house_guides` は現在 0 件・`/admin/inroom` から入力可）
 - 検証: dev（demo）で QR claim→滞在カード→ガイド／手入力コード／レート制限ロック／en フォールバック／admin CRUD／発行→claim→失効→終了表示／slip QR svg／build 成功
 
 ### 旧記録（2026-06-15 設計確定時点）
