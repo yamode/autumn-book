@@ -21,7 +21,8 @@ import type {
 	Member, PointEntry, MailCampaign, SequenceStep, EmailSequence, Faq, AuditLog,
 	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation,
 	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem,
-	OtayoriEntry, OtayoriPost, OtayoriAdminItem
+	OtayoriEntry, OtayoriPost, OtayoriAdminItem,
+	HouseGuide, StayToken, StayInfo
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
@@ -1917,4 +1918,380 @@ export function grantOtayori(memberId: string, delta: number, reason: string, ac
 	});
 	addAuditLog(actor, 'otayori_adjust', `${memberId} ${delta > 0 ? '+' : ''}${delta}pt ${reason}`);
 	dbg('otayori_adjust', actor, memberId, `${delta > 0 ? '+' : ''}${delta}pt`);
+}
+
+// ================================================================ 客室電子インフォメーション（demo・設計書 §4-§7 / §9-1・P8a）
+// 将来 book.house_guides / stay_access_tokens テーブル + RPC（migration 20260710103006_book_inroom_phase1）
+// へ差し替える境界。supabase-data.ts に対称の sb* アダプタがある（DATA_SOURCE=supabase で実働）。
+// 内線電話（intercom）・TV・PMS 連携は P8a の対象外（本節に含めない）。
+
+// ---- 館内案内シード（Markdown 原文・実在施設の雰囲気） ----
+// language-unit フォールバック（migration の list_house_guides と同一）: 指定言語が0件なら ja 全件へ。
+export const houseGuides: HouseGuide[] = [
+	// === 西和賀（f-nishiwaga）: ja 5件 ===
+	{
+		id: 'hg-nw-checkin', facilityId: 'f-nishiwaga', section: 'checkin', lang: 'ja', sortOrder: 1, isPublished: true,
+		title: 'ご到着・ご出発',
+		body: `## チェックイン / チェックアウト
+
+- チェックイン：**15:00** から
+- チェックアウト：**11:00** まで
+
+## 送迎について
+
+JR ほっとゆだ駅より無料送迎を承っております（前日まで要予約）。ご到着時刻がお決まりになりましたら、フロント（**0197-82-2222**）までお知らせください。`
+	},
+	{
+		id: 'hg-nw-onsen', facilityId: 'f-nishiwaga', section: 'onsen', lang: 'ja', sortOrder: 2, isPublished: true,
+		title: '温泉のご案内',
+		body: `## 大浴場・野天風呂
+
+源泉かけ流しの湯を、チェックインから翌朝までお楽しみいただけます。
+
+| | 時間 |
+|---|---|
+| ご利用時間 | 15:00 〜 翌 10:00 |
+| 清掃のため休止 | 10:00 〜 11:00 |
+
+## 貸切風呂
+
+渓流沿いの貸切風呂を **45分・当日予約制**でご用意しております。ご希望の際はフロントへお声がけください。`
+	},
+	{
+		id: 'hg-nw-meal', facilityId: 'f-nishiwaga', section: 'meal', lang: 'ja', sortOrder: 3, isPublished: true,
+		title: 'お食事',
+		body: `## 夕食
+
+個室のお食事処「福膳坊」にて、季節の山人料理をお召し上がりください。
+
+- 開始時刻：**17:30** または **19:30**（チェックイン時にお伺いします）
+
+## 朝食
+
+- 時間：**7:30 〜 9:00**
+- 場所：福膳坊
+
+炊きたての釜飯と山の汁物をご用意しております。`
+	},
+	{
+		id: 'hg-nw-wifi', facilityId: 'f-nishiwaga', section: 'wifi', lang: 'ja', sortOrder: 4, isPublished: true,
+		title: 'Wi-Fi のご利用',
+		body: `## 無料 Wi-Fi
+
+全客室・館内で無料 Wi-Fi をご利用いただけます。
+
+| | |
+|---|---|
+| ネットワーク名（SSID） | \`yamado-guest\` |
+| パスワード | \`yamado2026\` |
+
+接続がうまくいかない場合は、フロントまでお申し付けください。`
+	},
+	{
+		id: 'hg-nw-notice', facilityId: 'f-nishiwaga', section: 'notice', lang: 'ja', sortOrder: 5, isPublished: true,
+		title: '滞在中のご注意',
+		body: `## お願い
+
+- 館内は**全館禁煙**です。喫煙は屋外の指定場所をご利用ください。
+- 大浴場・お食事処へは館内着とスリッパでお越しいただけます。
+
+## クマにご注意ください
+
+春から秋にかけて、周辺でクマの目撃情報が寄せられることがあります。夕方以降の単独での外出はお控えください。クマ鈴の貸し出しをフロントで行っております。`
+	},
+	// === 西和賀（f-nishiwaga）: en 2件（onsen / wifi 相当） ===
+	{
+		id: 'hg-nw-onsen-en', facilityId: 'f-nishiwaga', section: 'onsen', lang: 'en', sortOrder: 2, isPublished: true,
+		title: 'Hot Spring Guide',
+		body: `## Large Bath & Open-air Bath
+
+Enjoy our naturally flowing hot spring from check-in through the next morning.
+
+| | Hours |
+|---|---|
+| Open | 15:00 – 10:00 (next day) |
+| Closed for cleaning | 10:00 – 11:00 |
+
+## Private Bath
+
+A riverside private bath is available for **45 minutes, same-day reservation**. Please ask the front desk.`
+	},
+	{
+		id: 'hg-nw-wifi-en', facilityId: 'f-nishiwaga', section: 'wifi', lang: 'en', sortOrder: 4, isPublished: true,
+		title: 'Wi-Fi',
+		body: `## Free Wi-Fi
+
+Free Wi-Fi is available in all guest rooms and throughout the inn.
+
+| | |
+|---|---|
+| Network (SSID) | \`yamado-guest\` |
+| Password | \`yamado2026\` |
+
+If you have trouble connecting, please contact the front desk.`
+	},
+	// === 男鹿（f-oga）: ja 4件 ===
+	{
+		id: 'hg-oga-checkin', facilityId: 'f-oga', section: 'checkin', lang: 'ja', sortOrder: 1, isPublished: true,
+		title: 'ご到着・ご出発',
+		body: `## チェックイン / チェックアウト
+
+- チェックイン：**15:00** から
+- チェックアウト：**10:00** まで
+
+ご不明な点はフロント（**0185-47-7776**）までお問い合わせください。`
+	},
+	{
+		id: 'hg-oga-onsen', facilityId: 'f-oga', section: 'onsen', lang: 'ja', sortOrder: 2, isPublished: true,
+		title: '温泉のご案内',
+		body: `## 展望温泉「鵜ノ崎の湯」
+
+エメラルド色に輝く源泉かけ流しの湯から、紺碧の日本海を一望いただけます。
+
+- ご利用時間：**15:00 〜 翌 9:30**
+- 泉質：含硫黄ナトリウム・カルシウム塩化物泉
+
+## 貸切露天風呂
+
+夕陽の時間帯は特におすすめです。ご予約はフロントにて承ります。`
+	},
+	{
+		id: 'hg-oga-meal', facilityId: 'f-oga', section: 'meal', lang: 'ja', sortOrder: 3, isPublished: true,
+		title: 'お食事',
+		body: `## レストラン「isana」
+
+日本海を望むレストランにて、男鹿の旬をご堪能ください。
+
+| | 時間 |
+|---|---|
+| 夕食 | 17:30 〜 22:00（L.O. 21:30） |
+| 朝食 | 7:30 〜 10:00（L.O. 9:30） |
+
+夕食の開始時刻は、日没に合わせてご案内する場合がございます。`
+	},
+	{
+		id: 'hg-oga-wifi', facilityId: 'f-oga', section: 'wifi', lang: 'ja', sortOrder: 4, isPublished: true,
+		title: 'Wi-Fi のご利用',
+		body: `## 無料 Wi-Fi
+
+全客室・館内で無料 Wi-Fi をご利用いただけます。
+
+| | |
+|---|---|
+| ネットワーク名（SSID） | \`oga-guest\` |
+| パスワード | \`oga2026\` |
+
+接続でお困りの際はフロントまでお申し付けください。`
+	}
+];
+
+// ---- 滞在トークンシード（デモ・claim / 印刷スリップ動作確認用） ----
+const stayNow = Date.now();
+export const stayTokens: StayToken[] = [
+	{
+		id: 'stk-demo-nw', facilityId: 'f-nishiwaga', roomCode: '雪椿', guestName: '山田 太郎',
+		token: 'demo-stay-nishiwaga', shortCode: '11112222',
+		validFrom: new Date(stayNow - 60 * 60 * 1000).toISOString(),
+		validTo: new Date(stayNow + 2 * 24 * 60 * 60 * 1000).toISOString(),
+		createdAt: new Date(stayNow - 60 * 60 * 1000).toISOString()
+	},
+	{
+		id: 'stk-demo-oga', facilityId: 'f-oga', roomCode: '山祇', guestName: '佐藤 花子',
+		token: 'demo-stay-oga', shortCode: '33334444',
+		validFrom: new Date(stayNow - 60 * 60 * 1000).toISOString(),
+		validTo: new Date(stayNow + 2 * 24 * 60 * 60 * 1000).toISOString(),
+		createdAt: new Date(stayNow - 60 * 60 * 1000).toISOString()
+	}
+];
+
+let inroomSeq = 0;
+const nextInroomId = (p: string) => `${p}-${++inroomSeq}`;
+
+/** トークンが現在有効か（未失効かつ期間内） */
+function isStayActive(t: StayToken, at = Date.now()): boolean {
+	if (t.revokedAt) return false;
+	return at >= new Date(t.validFrom).getTime() && at < new Date(t.validTo).getTime();
+}
+
+// ---------------------------------------------------------------- 客室: ゲスト面（RPC 相当・anon）
+
+/** RPC: book.stay_info 相当。有効なら StayInfo・無効（失効/期間外/不明）なら null。last_used_at を更新 */
+export function resolveStay(token: string, locale: Locale): StayInfo | null {
+	const t = stayTokens.find((x) => x.token === token.trim());
+	if (!t || !isStayActive(t)) return null;
+	t.lastUsedAt = new Date().toISOString();
+	// 施設名はロケール反映（電話・slug は非翻訳）
+	const fac = getFacilityById(t.facilityId, locale) ?? facilityById(t.facilityId);
+	return {
+		tokenId: t.id,
+		roomCode: t.roomCode,
+		guestName: t.guestName,
+		validFrom: t.validFrom,
+		validTo: t.validTo,
+		facility: { id: t.facilityId, slug: fac?.slug ?? '', name: fac?.name ?? '', phone: fac?.phone }
+	};
+}
+
+/** RPC: book.claim_stay_by_code 相当。8桁数字 → 有効トークン文字列 or null */
+export function claimStayByCode(code: string): string | null {
+	const digits = (code ?? '').replace(/\D/g, '');
+	if (digits.length !== 8) return null;
+	const t = stayTokens.find((x) => x.shortCode === digits);
+	if (!t || !isStayActive(t)) return null;
+	return t.token;
+}
+
+/** RPC: book.list_house_guides 相当。is_published のみ・language-unit フォールバック（指定言語0件→ja）・sort順 */
+export function listHouseGuidesFor(facilityId: string, locale: Locale): HouseGuide[] {
+	const published = houseGuides.filter((g) => g.facilityId === facilityId && g.isPublished);
+	const bySort = (a: HouseGuide, b: HouseGuide) => a.sortOrder - b.sortOrder;
+	let items = published.filter((g) => g.lang === locale).sort(bySort);
+	if (items.length === 0 && locale !== 'ja') items = published.filter((g) => g.lang === 'ja').sort(bySort);
+	return items;
+}
+
+// ---------------------------------------------------------------- 客室: 管理面（RPC 相当・authenticated）
+
+/** 管理画面用: 施設の館内案内を全件（未公開含む）。並びは sort_order → lang */
+export function listHouseGuidesAdmin(facilityId: string): HouseGuide[] {
+	return houseGuides
+		.filter((g) => g.facilityId === facilityId)
+		.sort((a, b) => a.sortOrder - b.sortOrder || a.lang.localeCompare(b.lang));
+}
+
+/** RPC: book.house_guide_upsert 相当（p_id なしで新規・ありで更新） */
+export function upsertHouseGuide(input: {
+	id?: string;
+	facilityId: string;
+	section: string;
+	title: string;
+	body: string;
+	lang: Locale;
+	sortOrder: number;
+	isPublished: boolean;
+}): HouseGuide {
+	if (input.id) {
+		const g = houseGuides.find((x) => x.id === input.id && x.facilityId === input.facilityId);
+		if (g) {
+			g.section = input.section.trim();
+			g.title = input.title.trim();
+			g.body = input.body;
+			g.lang = input.lang;
+			g.sortOrder = input.sortOrder;
+			g.isPublished = input.isPublished;
+			dbg('house_guide_upsert update', g.id);
+			return g;
+		}
+	}
+	const g: HouseGuide = {
+		id: nextInroomId('hg'),
+		facilityId: input.facilityId,
+		section: input.section.trim(),
+		title: input.title.trim(),
+		body: input.body,
+		lang: input.lang,
+		sortOrder: input.sortOrder,
+		isPublished: input.isPublished
+	};
+	houseGuides.push(g);
+	dbg('house_guide_upsert create', g.id, g.section, g.lang);
+	return g;
+}
+
+/** RPC: book.house_guide_delete 相当 */
+export function deleteHouseGuide(id: string): void {
+	const i = houseGuides.findIndex((g) => g.id === id);
+	if (i >= 0) {
+		houseGuides.splice(i, 1);
+		dbg('house_guide_delete', id);
+	}
+}
+
+/** RPC: book.issue_stay_token 相当。token=64hex・short_code=8桁数字（重複回避）をサーバ生成 */
+export function issueStayToken(input: {
+	facilityId: string;
+	roomCode: string;
+	guestName?: string;
+	validTo: string; // ISO
+	validFrom?: string; // ISO（省略時 now）
+	stayId?: string;
+}): StayToken {
+	// 64 hex（gen_random_uuid ×2 相当）
+	const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
+	let shortCode = '';
+	for (let i = 0; i < 20; i++) {
+		shortCode = String(Math.floor(Math.random() * 100000000)).padStart(8, '0');
+		if (!stayTokens.some((t) => t.shortCode === shortCode)) break;
+	}
+	const nowIso = new Date().toISOString();
+	const tok: StayToken = {
+		id: nextInroomId('stk'),
+		facilityId: input.facilityId,
+		stayId: input.stayId,
+		roomCode: input.roomCode.trim(),
+		guestName: input.guestName?.trim() || undefined,
+		token,
+		shortCode,
+		validFrom: input.validFrom ?? nowIso,
+		validTo: input.validTo,
+		createdAt: nowIso
+	};
+	stayTokens.push(tok);
+	dbg('issue_stay_token', input.facilityId, tok.roomCode, shortCode);
+	return tok;
+}
+
+/** RPC: book.revoke_stay_token 相当。冪等（既失効はそのまま） */
+export function revokeStayToken(id: string): void {
+	const t = stayTokens.find((x) => x.id === id);
+	if (t && !t.revokedAt) {
+		t.revokedAt = new Date().toISOString();
+		dbg('revoke_stay_token', id);
+	}
+}
+
+/** RPC: book.list_stay_tokens 相当。既定は有効のみ・include_inactive で全件。新しい順 */
+export function listStayTokens(facilityId: string, includeInactive = false): StayToken[] {
+	return stayTokens
+		.filter((t) => t.facilityId === facilityId && (includeInactive || isStayActive(t)))
+		.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+/** 印刷スリップ用: id で1件取得（施設横断） */
+export function getStayTokenById(id: string): StayToken | undefined {
+	return stayTokens.find((t) => t.id === id);
+}
+
+// ---------------------------------------------------------------- 客室: 手入力コードの簡易レート制限（デモ）
+// キー（クライアントIP等）単位で失敗回数を数え、5回で10分ロック。migration の
+// claim_stay_by_code は試行制限を持たない（アプリ層で実施）方針に対応する簡易実装。
+
+const CLAIM_MAX_FAIL = 5;
+const CLAIM_LOCK_MS = 10 * 60 * 1000;
+const claimAttempts = new Map<string, { fails: number; lockedUntil: number }>();
+
+/** ロック状態を確認。locked=true なら残り秒 retryInSec を返す */
+export function claimRateCheck(key: string): { locked: boolean; retryInSec: number } {
+	const rec = claimAttempts.get(key);
+	if (rec && rec.lockedUntil > Date.now()) {
+		return { locked: true, retryInSec: Math.ceil((rec.lockedUntil - Date.now()) / 1000) };
+	}
+	return { locked: false, retryInSec: 0 };
+}
+
+/** 失敗を記録。CLAIM_MAX_FAIL 到達でロック */
+export function claimRecordFailure(key: string): void {
+	const rec = claimAttempts.get(key) ?? { fails: 0, lockedUntil: 0 };
+	rec.fails += 1;
+	if (rec.fails >= CLAIM_MAX_FAIL) {
+		rec.lockedUntil = Date.now() + CLAIM_LOCK_MS;
+		rec.fails = 0;
+	}
+	claimAttempts.set(key, rec);
+	dbg('claim_rate fail', key, JSON.stringify(rec));
+}
+
+/** 成功時はカウンタをクリア */
+export function claimRecordSuccess(key: string): void {
+	claimAttempts.delete(key);
 }

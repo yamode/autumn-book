@@ -409,3 +409,49 @@ export interface OtayoriAdminItem {
 	status: 'pending' | 'approved' | 'rejected';
 	createdAt: string;
 }
+
+// ---------------------------------------------------------------- 客室電子インフォメーション（book.house_guides / stay_access_tokens 対称・P8a）
+
+/** 館内案内（book.house_guides 対称・多言語・Markdown 原文保存） */
+export interface HouseGuide {
+	id: string;
+	facilityId: string;
+	/** 自由スラッグ（checkin / onsen / meal / wifi / notice …） */
+	section: string;
+	title: string;
+	/** Markdown 原文（表示時に MarkdownView でサニタイズ） */
+	body: string;
+	lang: Locale;
+	sortOrder: number;
+	isPublished: boolean;
+}
+
+/** 滞在アクセストークン（book.stay_access_tokens 対称・印刷スリップ = QR + 手入力コード） */
+export interface StayToken {
+	id: string;
+	facilityId: string;
+	/** PMS 連携（P8b）で使う論理参照。P8a では未使用 */
+	stayId?: string;
+	/** 部屋表示名（pms.rooms と疎結合の文字列） */
+	roomCode: string;
+	guestName?: string;
+	/** QR(/r/c/<token>) 用 bearer（64 hex） */
+	token: string;
+	/** 手入力用の8桁数字 */
+	shortCode: string;
+	validFrom: string; // ISO
+	validTo: string; // ISO
+	revokedAt?: string; // 失効時刻（チェックアウト即時失効）
+	lastUsedAt?: string;
+	createdAt: string;
+}
+
+/** 滞在情報（book.stay_info RPC の出力対称・ゲスト面の滞在カード用） */
+export interface StayInfo {
+	tokenId: string;
+	roomCode: string;
+	guestName?: string;
+	validFrom: string; // ISO
+	validTo: string; // ISO
+	facility: { id: string; slug: string; name: string; phone?: string };
+}

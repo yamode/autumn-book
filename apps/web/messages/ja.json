@@ -496,5 +496,22 @@
 	"otayori_review_note_label": "運営より",
 	"otayori_error_not_member": "おたよりの投稿には会員登録（無料）が必要です。",
 	"otayori_error_too_many_pending": "確認中のおたよりが上限（5件）に達しています。承認をお待ちください。",
-	"otayori_error_invalid": "本文（1〜2000字）・ラジオネーム（40字以内）をご確認ください。"
+	"otayori_error_invalid": "本文（1〜2000字）・ラジオネーム（40字以内）をご確認ください。",
+
+	"inroom_header": "客室のご案内",
+	"inroom_welcome": "ようこそ {name} 様",
+	"inroom_welcome_generic": "ようこそいらっしゃいませ",
+	"inroom_room": "お部屋",
+	"inroom_checkout": "チェックアウト",
+	"inroom_guides_title": "館内のご案内",
+	"inroom_guides_empty": "ただいま準備中です。フロントへお問い合わせください。",
+	"inroom_code_title": "客室コードの入力",
+	"inroom_code_help": "チェックイン時にお渡しした案内カードの8桁の番号をご入力ください。",
+	"inroom_code_placeholder": "8桁の番号",
+	"inroom_code_submit": "この番号で開く",
+	"inroom_err_invalid_qr": "QRコードが無効です。フロントへお声がけください。",
+	"inroom_err_expired": "ご滞在は終了しました。ご利用ありがとうございました。",
+	"inroom_err_code": "コードが確認できませんでした。番号をご確認ください。",
+	"inroom_err_locked": "試行回数が上限に達しました。しばらくしてからお試しください。",
+	"inroom_front_call": "フロントへお電話"
 }

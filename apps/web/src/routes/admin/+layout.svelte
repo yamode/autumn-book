@@ -16,6 +16,7 @@
 		{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
 		{ href: '/admin/community', label: 'コミュニティ', icon: '💬' },
 		{ href: '/admin/otayori', label: 'おたより', icon: '📨' },
+		{ href: '/admin/inroom', label: '客室案内', icon: '📱' },
 		{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠' }
 	];
 

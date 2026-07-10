@@ -6,6 +6,10 @@
 //      book.facility_contents / plan_contents に公開行を投入済みであることを確認
 //   3. .env の DATA_SOURCE=supabase に変更し、各 +page.server.ts の import を
 //      store.ts からこのモジュールへ段階的に切替（検索系 → 予約系 → 会員系の順）
+//   4. 客室電子インフォメーション（inroom・P8a）: ゲスト面 RPC（stay_info /
+//      claim_stay_by_code / list_house_guides）は anon で即動作するため DATA_SOURCE=supabase で有効。
+//      管理面（issue/revoke/list_stay_tokens・house_guide_upsert/delete）は authenticated 前提のため
+//      Supabase Auth 本接続（AUTH_MODE=supabase）後に有効。それまで admin は demo（store.ts）を使う。
 // 会員系（my_reservations / register_member / point_balance）は Supabase Auth
 // セッション（P5: @supabase/ssr）が前提のため、cookie 連携実装後に接続する。
 //
@@ -42,7 +46,11 @@ import type {
 	ForumBoard,
 	ForumThread,
 	ForumThreadListItem,
-	ForumPostView
+	ForumPostView,
+	HouseGuide,
+	StayToken,
+	StayInfo,
+	Locale
 } from '$lib/types';
 import type { Quote } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -746,5 +754,196 @@ export async function adjustOtayori(memberUserId: string, delta: number, reason:
 		p_delta: delta,
 		p_reason: reason
 	});
+	if (error) throw error;
+}
+
+// ---------------------------------------------------------------- 客室電子インフォメーション RPC（設計書 §7・P8a）
+// book スキーマの inroom RPC（migration 20260710103006_book_inroom_phase1）を呼ぶ薄いアダプタ。
+// store.ts（demo）と同じ意味論・同じ camelCase 型（HouseGuide / StayToken / StayInfo）を返す。
+//
+// ・ゲスト面（sbResolveStay / sbClaimStayByCode / sbListHouseGuides）は anon `supa()` で動作。
+//   RPC は無効トークン等で例外（invalid_token / invalid_code）を投げるため、ここで null 返しへ正規化。
+// ・管理面（sbIssueStayToken 以下）は authenticated + private.has_facility_access が前提のため、
+//   呼び出し側で Supabase Auth セッションに紐づく client（auth.ts の createSupabaseServerClient）を渡す。
+//   `supa()`（anon）を渡すと not_authenticated / forbidden になる（otayori/news 管理系と同じ流儀）。
+// ・demo facility ID（'f-nishiwaga' 等）が渡された場合は FACILITY_UUID で UUID へ変換する
+//   （ゲスト面は stay_info が既に UUID を返すため通常は不要だが、両対応にしておく）。
+
+function toFacilityUuid(facilityId: string): string {
+	return FACILITY_UUID[facilityId] ?? facilityId;
+}
+
+// ---- ゲスト面（anon）----
+
+interface StayInfoRow {
+	token_id: string;
+	room_code: string;
+	guest_name: string | null;
+	valid_from: string;
+	valid_to: string;
+	facility: { id: string; slug: string; name: string; phone: string | null };
+}
+
+/** store.resolveStay 相当。無効トークンは RPC 例外 → null に正規化 */
+export async function sbResolveStay(token: string): Promise<StayInfo | null> {
+	const { data, error } = await supa().rpc('stay_info', { p_token: token });
+	if (error) return null; // invalid_token など
+	const r = data as StayInfoRow;
+	return {
+		tokenId: r.token_id,
+		roomCode: r.room_code,
+		guestName: r.guest_name ?? undefined,
+		validFrom: r.valid_from,
+		validTo: r.valid_to,
+		facility: {
+			id: r.facility.id,
+			slug: r.facility.slug,
+			name: r.facility.name,
+			phone: r.facility.phone ?? undefined
+		}
+	};
+}
+
+/** store.claimStayByCode 相当。無効コードは RPC 例外 → null に正規化 */
+export async function sbClaimStayByCode(code: string): Promise<string | null> {
+	const { data, error } = await supa().rpc('claim_stay_by_code', { p_short_code: code });
+	if (error) return null; // invalid_code など
+	return (data as { token: string }).token;
+}
+
+interface HouseGuideRow {
+	id: string;
+	section: string;
+	title: string;
+	body: string;
+	lang: Locale;
+	sort_order: number;
+}
+
+/** store.listHouseGuidesFor 相当。公開のみ・language-unit フォールバックは RPC 側で実施 */
+export async function sbListHouseGuides(facilityId: string, lang: string): Promise<HouseGuide[]> {
+	const facilityUuid = toFacilityUuid(facilityId);
+	const { data, error } = await supa().rpc('list_house_guides', { p_facility: facilityUuid, p_lang: lang });
+	if (error) throw error;
+	return ((data ?? []) as HouseGuideRow[]).map((r) => ({
+		id: r.id,
+		facilityId: facilityUuid,
+		section: r.section,
+		title: r.title,
+		body: r.body,
+		lang: r.lang,
+		sortOrder: r.sort_order,
+		isPublished: true // list_house_guides は公開分のみ返す
+	}));
+}
+
+// ---- 管理面（authenticated・Supabase Auth 本接続後に有効）----
+// 注: 管理用ガイド一覧（未公開含む）RPC は P8a には無い。deny-all テーブルの直 select も不可のため、
+//     管理面のガイド一覧アダプタは省略する（P5 Auth 本接続時に管理用一覧 RPC を追加する）。
+//     demo モードでは store.ts の listHouseGuidesAdmin が全件を返し機能は完結する。
+
+interface StayTokenRow {
+	id: string;
+	stay_id: string | null;
+	room_code: string;
+	guest_name: string | null;
+	token: string;
+	short_code: string;
+	valid_from: string;
+	valid_to: string;
+	revoked_at: string | null;
+	last_used_at: string | null;
+	created_at: string | null;
+	is_active?: boolean;
+}
+
+function mapStayTokenRow(r: StayTokenRow, facilityId: string): StayToken {
+	return {
+		id: r.id,
+		facilityId,
+		stayId: r.stay_id ?? undefined,
+		roomCode: r.room_code,
+		guestName: r.guest_name ?? undefined,
+		token: r.token,
+		shortCode: r.short_code,
+		validFrom: r.valid_from,
+		validTo: r.valid_to,
+		revokedAt: r.revoked_at ?? undefined,
+		lastUsedAt: r.last_used_at ?? undefined,
+		createdAt: r.created_at ?? r.valid_from
+	};
+}
+
+/** store.issueStayToken 相当。token/short_code はサーバ（RPC）生成。監査記帳は RPC 側 */
+export async function sbIssueStayToken(
+	client: SupabaseClient,
+	input: { facilityId: string; roomCode: string; guestName?: string; validTo: string; validFrom?: string; stayId?: string }
+): Promise<StayToken> {
+	const facilityUuid = toFacilityUuid(input.facilityId);
+	const { data, error } = await client.schema('book').rpc('issue_stay_token', {
+		p_facility: facilityUuid,
+		p_room_code: input.roomCode,
+		p_valid_to: input.validTo,
+		p_guest_name: input.guestName ?? null,
+		p_valid_from: input.validFrom ?? null,
+		p_stay_id: input.stayId ?? null
+	});
+	if (error) throw error;
+	// 発行 RPC は id/token/short_code/room_code/guest_name/valid_from/valid_to を返す
+	return mapStayTokenRow(data as StayTokenRow, facilityUuid);
+}
+
+/** store.revokeStayToken 相当。冪等。監査記帳は RPC 側 */
+export async function sbRevokeStayToken(client: SupabaseClient, tokenId: string): Promise<void> {
+	const { error } = await client.schema('book').rpc('revoke_stay_token', { p_token_id: tokenId });
+	if (error) throw error;
+}
+
+/** store.listStayTokens 相当。既定は有効のみ・include_inactive で全件。新しい順は RPC 側 */
+export async function sbListStayTokens(
+	client: SupabaseClient,
+	facilityId: string,
+	includeInactive = false
+): Promise<StayToken[]> {
+	const facilityUuid = toFacilityUuid(facilityId);
+	const { data, error } = await client.schema('book').rpc('list_stay_tokens', {
+		p_facility: facilityUuid,
+		p_include_inactive: includeInactive
+	});
+	if (error) throw error;
+	return ((data ?? []) as StayTokenRow[]).map((r) => mapStayTokenRow(r, facilityUuid));
+}
+
+/** store.upsertHouseGuide 相当。返り値は uuid（house_guide_upsert の戻り） */
+export async function sbUpsertHouseGuide(
+	client: SupabaseClient,
+	input: {
+		id?: string;
+		facilityId: string;
+		section: string;
+		title: string;
+		body: string;
+		lang: string;
+		sortOrder: number;
+		isPublished: boolean;
+	}
+): Promise<string> {
+	const { data, error } = await client.schema('book').rpc('house_guide_upsert', {
+		p_facility: toFacilityUuid(input.facilityId),
+		p_section: input.section,
+		p_title: input.title,
+		p_body: input.body,
+		p_lang: input.lang,
+		p_sort_order: input.sortOrder,
+		p_is_published: input.isPublished,
+		p_id: input.id ?? null
+	});
+	if (error) throw error;
+	return data as string;
+}
+
+/** store.deleteHouseGuide 相当 */
+export async function sbDeleteHouseGuide(client: SupabaseClient, id: string): Promise<void> {
+	const { error } = await client.schema('book').rpc('house_guide_delete', { p_id: id });
 	if (error) throw error;
 }

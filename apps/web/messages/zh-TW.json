@@ -496,5 +496,22 @@
 	"otayori_review_note_label": "營運團隊回覆",
 	"otayori_error_not_member": "投稿來信需註冊會員（免費）。",
 	"otayori_error_too_many_pending": "確認中的來信已達上限（5封）。請等待核准。",
-	"otayori_error_invalid": "請確認來信內容（1〜2000字）與廣播暱稱（40字以內）。"
+	"otayori_error_invalid": "請確認來信內容（1〜2000字）與廣播暱稱（40字以內）。",
+
+	"inroom_header": "客房資訊",
+	"inroom_welcome": "歡迎 {name}",
+	"inroom_welcome_generic": "歡迎蒞臨",
+	"inroom_room": "客房",
+	"inroom_checkout": "退房",
+	"inroom_guides_title": "館內資訊",
+	"inroom_guides_empty": "準備中，請洽詢櫃檯。",
+	"inroom_code_title": "輸入客房代碼",
+	"inroom_code_help": "請輸入入住時領取的導覽卡上的8位數字。",
+	"inroom_code_placeholder": "8位數字",
+	"inroom_code_submit": "開啟",
+	"inroom_err_invalid_qr": "QR碼無效，請洽詢櫃檯。",
+	"inroom_err_expired": "您的住宿已結束，感謝您的光臨。",
+	"inroom_err_code": "無法確認代碼，請確認號碼。",
+	"inroom_err_locked": "嘗試次數過多，請稍後再試。",
+	"inroom_front_call": "致電櫃檯"
 }

@@ -496,5 +496,22 @@
 	"otayori_review_note_label": "From our team",
 	"otayori_error_not_member": "A membership (free) is required to send a message.",
 	"otayori_error_too_many_pending": "You've reached the limit of messages under review (5). Please wait for approval.",
-	"otayori_error_invalid": "Please check your message (1–2000 characters) and on-air name (up to 40 characters)."
+	"otayori_error_invalid": "Please check your message (1–2000 characters) and on-air name (up to 40 characters).",
+
+	"inroom_header": "In-Room Guide",
+	"inroom_welcome": "Welcome, {name}",
+	"inroom_welcome_generic": "Welcome",
+	"inroom_room": "Room",
+	"inroom_checkout": "Check-out",
+	"inroom_guides_title": "Hotel Information",
+	"inroom_guides_empty": "Coming soon. Please contact the front desk.",
+	"inroom_code_title": "Enter your room code",
+	"inroom_code_help": "Enter the 8-digit number on the guide card you received at check-in.",
+	"inroom_code_placeholder": "8-digit code",
+	"inroom_code_submit": "Open",
+	"inroom_err_invalid_qr": "This QR code is invalid. Please contact the front desk.",
+	"inroom_err_expired": "Your stay has ended. Thank you for staying with us.",
+	"inroom_err_code": "We couldn't verify that code. Please check the number.",
+	"inroom_err_locked": "Too many attempts. Please try again in a little while.",
+	"inroom_front_call": "Call the front desk"
 }

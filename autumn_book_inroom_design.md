@@ -191,6 +191,7 @@ intercom_calls(id, facility_id, stay_id, room_code, from_surface, status, twilio
 
 ## 9. フェーズ（P3/P4 の後・設計は確定）
 1. **P8a**：`house_guides` migration（PMS非依存・即可）＋ `/r/[token]`（デモトークン）＋館内案内＋滞在カード。`store.ts`/`supabase-data.ts` に `resolveStay(token)` / `listHouseGuides()` を**対称実装**（デモは固定の擬似stay）。
+   → **✅ 実装済み（2026-07-10・v0.15.0）**：migration `20260710103006_book_inroom_phase1`（house_guides / stay_access_tokens + RPC 8本・PROD 適用済）。アプリ＝ `/r`（コード入力・claim済み滞在カード＋館内案内）・`/r/c/[token]`（QR claim→httpOnly Cookie）・`/admin/inroom`（ガイドCRUD＋スリップ発行/一覧/失効/印刷QR）。§4-§5 のとおり。ガイドの言語フォールバックは**言語単位**（指定言語0件時のみ ja 全件。セクション単位マージにする場合は RPC 改修）。
 2. **P8c**：内線 `/api/intercom/*`＋通話シート（デモトークンでE2E・**事務室の固定電話で実機テスト**）。Twilio 番号は **Regulatory Bundle（株式会社山人の登記書類）申請を1本通してから**。
 3. **P8b**：PMS完成後に「部屋→current stay 解決」と本番トークン発行（`issue_stay_token` を PMS チェックインが呼ぶ）を差し込む。PMS依存はここだけ。
 
