@@ -28,6 +28,7 @@
 | E5 | 施設未指定フォールバック | `/search` | 全施設の地図空室検索。ブランド横断導線のみに使用 |
 
 - `{facility}` の安定 slug: **`nishiwaga`（西和賀）／ `oga`（男鹿）**。
+  - ⚠ 出所は `book.facility_contents.slug`（`core.facilities.slug` ではない）。PROD は西和賀が `yamado` だったため、URL が `/yamado/yamado` になるのを避けて **2026-07-10 に `nishiwaga` へ変更**した（migration `20260710153430`・未公開のうちに実施）。以後この slug は恒久。
 - `/yamado`（ブランドトップ）はページを持たず `/` へ 301（sitemap §6-1・実装済み）。着地先には使わない。
 
 ## 3. クエリパラメータ（全エントリ共通・すべて省略可）

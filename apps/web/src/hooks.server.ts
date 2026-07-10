@@ -1,22 +1,20 @@
 import type { Handle } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session';
-import { AUTH_MODE, getSupabaseAdminUser } from '$lib/server/auth';
+import { AUTH_MODE, resolveSupabaseSessionUser } from '$lib/server/auth';
 import { isMaintenanceOn, isMaintenanceBypassed, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	if (AUTH_MODE === 'supabase') {
-		// 管理者/スタッフは Supabase Auth の検証済みセッションからのみ解決（偽造 cookie で admin になれない）。
-		// 会員は Phase 1 ではデモ cookie のまま。ただし demo cookie の admin/staff は無視する。
-		const admin = await getSupabaseAdminUser(event);
-		if (admin) {
-			event.locals.user = admin;
-		} else {
-			const demo = getSession(event.cookies);
-			event.locals.user = demo && demo.role === 'member' ? demo : null;
-		}
+		// admin/staff/member をすべて Supabase Auth の検証済みセッションからのみ解決する。
+		// demo cookie は一切信用しない（偽造 cookie で誰にもなれない）。
+		// OTP 認証済みだが未登録のユーザーは pendingAuthUser に載せ、/auth/register へ誘導する。
+		const { user, pending } = await resolveSupabaseSessionUser(event);
+		event.locals.user = user;
+		event.locals.pendingAuthUser = pending;
 	} else {
 		event.locals.user = getSession(event.cookies);
+		event.locals.pendingAuthUser = null;
 	}
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。

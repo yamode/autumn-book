@@ -8,8 +8,14 @@
 //
 // DATA_SOURCE=demo（現状の既定）では従来どおり Web から投稿できる。
 //
-// P5 で Supabase Auth（@supabase/ssr の cookie 連携）を接続したら、
-// ここの条件を「supabase かつ 会員ログイン済み」を許可する形へ差し替える。
+// Phase 2 で Supabase Auth（@supabase/ssr の cookie 連携）を接続したので、
+// DATA_SOURCE=supabase かつ AUTH_MODE=supabase（＝MEMBER_SUPABASE）のときは
+// authenticated クライアントで実際に書けるようゲートを解除する。
 import { DATA_SOURCE } from '$lib/server/supabase';
+import { MEMBER_SUPABASE } from '$lib/server/auth';
 
-export const FORUM_WRITE_ENABLED: boolean = DATA_SOURCE !== 'supabase';
+// - demo（DATA_SOURCE=demo）: store.ts で書ける（従来どおり）
+// - 本接続（DATA_SOURCE=supabase かつ AUTH_MODE=supabase）: 認証済みクライアントで書ける
+// - 過渡期（DATA_SOURCE=supabase かつ AUTH_MODE=demo）: 会員が Supabase Auth 未接続のため
+//   Web からは書けない → アプリ（YAMADO ONE）へ誘導するゲート
+export const FORUM_WRITE_ENABLED: boolean = DATA_SOURCE !== 'supabase' || MEMBER_SUPABASE;

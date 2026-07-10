@@ -154,6 +154,33 @@
 - Sentry（§9 のもう一方）は **保留**: DSN 未取得＋Cloudflare Pages での SDK 検証コストのため。導入時は `@sentry/sveltekit`＋`@sentry/cloudflare` 構成
 - 検証: /yamado→301 /（/en/yamado→/en/）・不明ブランド404・checkin付き施設URLでカレンダー該当月表示・GA未設定でバナー/gtagなし・G-TEST123設定でバナー表示→同意→gtagロード＋localStorage保存→リロードで再表示なし・build 成功
 
+## rms 料金・在庫の接続（2026-07-10・設計書 `autumn_book_rms_pricing_design.md`）
+
+- **PROD 実査で判明した最重要事実**: `booking.rate_plans / daily_rates / availability` は「空の器」で、**rms は一切書かない**（TL-リンカーンへ SOAP 直送しており booking.* を経由しない）。`rms_daily_rates` も 0 件（理論価格の実体化フローは PROD 未実行）。
+- **価格の正 = TL 実売価格**（`rms_tl_lincoln_rate_cache.rows[].priceRanges[].pricePerPerson`）。単位が「N名利用時の1名単価・税込」で `booking.daily_rates.price_adult_N` と**定義が完全一致**するため変換不要。入湯税150円/人は含まれない（現地徴収）。
+  - ⚠ **rms の理論式は使わない**：`prices_by_guest_count`（税込）を税抜として扱い ×1.1 するため**室料の消費税を二重計上**する。実測：メゾネット2名 rank E → 理論 79,200 / TL 実売 75,900（差 3,300 = 33,000×0.1）。
+- **直販プラン判定** = `rms_plan_templates.is_active` かつ `sales_channels.channels.autumnBooking <> ''`（PROD: yamado 29 / oga 13 コード）
+- **突合**：TL プラングループ名 `"a000桂■基本■2食■スタンダード(+17050円)"`(yamado) / `"e300■綿津見和洋室■県民■2食■県民限定(-10%)"`(oga) から、先頭4字=コード・部屋トークン・プランキーを抽出。部屋は `room_types.metadata.siteControllerName`（`│`除去）または `rms_base_room_rates.short_name` の `<` 前で解決（**1トークン→1部屋タイプを実査確認**）
+- **migration `20260710150415_book_rms_rate_sync`（PROD 適用済み）**: `book.sync_rms_rates(days)`（service_role 限定）＋ pg_cron 2本
+  - `book_sync_rms_rates` = 60日窓・3時間ごと（UTC `15 */3 * * *`）／ `book_sync_rms_rates_full` = 365日・日次（UTC `15 16`＝JST 01:15）
+  - 生成量の実測見込み: 365日で **約74万行**（yamado 約131行/日・oga 約72行/日）
+- **在庫は「差分適用」**：`available_rooms += (今回TL残室 − metadata.tl_remaining)` をクランプ。単純上書きすると `create_hold` / `confirm_booking` の減算が毎回消えるため。
+- **プランは下書きで作られる**：`book.plan_contents` は `is_published=false` で自動生成。**管理画面で公開するまで顧客側に1件も出ない**（県民限定・日帰り・セール等が混在するため人が選ぶ）
+- ⚠ **公開前に必須**：①直販予約の TL 書き戻しが無い＝**オーバーブッキングの窓**（暫定は `buffer_rooms>=1`）②キャンセル料が空配列＝無料 ③子供料金・事前決済は未モデル化
+
+### 付随して PROD に入れた migration（2026-07-10・すべて適用済み）
+
+| version | 内容 |
+|---|---|
+| `20260710150415_book_rms_rate_sync` | 同期関数 `book.sync_rms_rates(days)` + pg_cron 2本 |
+| `20260710152005_book_update_my_profile` | 会員の `my_profile()` / `update_my_profile()`（`core.guests` は会員に権限が無いため必要） |
+| `20260710152624_book_rms_sync_room_contents` | 同期が `book.room_type_contents` も自動生成（**is_published=true**）。無いと「泊まれる部屋が0」になる |
+| `20260710153135_book_plan_offers` | `book.plan_offers(facility, checkin, nights, adults, plan?)` — プラン×客室の販売可否と料金を単一クエリで |
+| `20260710153430_book_seed_facility_contents` | 施設プロフィールの実値 seed（lat/lng・住所）＋**西和賀の slug を `yamado`→`nishiwaga`** に是正 |
+
+- ⚠ **施設 slug の出所は `book.facility_contents.slug`**（`core.facilities.slug` ではない）。PROD は西和賀が `yamado` で URL が `/yamado/yamado` になっていたため、未公開のうちに `nishiwaga` へ変更した（deep-link 契約 v1 と一致）。
+- `book.plan_offers` は**デモの `plan.roomTypeIds` に相当する関係が実データに無い**ために新設。可否は `booking.daily_rates` に `(plan, room, date)` 行があり価格が入っているかで決まる。
+
 ## 実装済みの主な決定反映
 
 - 写真ストレージ＝**Supabase Storage で決定（2026-06-11）**。管理画面のアップロード UI は Storage 接続時に有効化
@@ -172,6 +199,26 @@
 - ✅ **Supabase Advisor の ERROR 3件解消（2026-06-12・migration 20260612001000/001100）**：v_* ビュー3本を security_invoker=true 化＋下位テーブルへ「公開行のみ・必要列のみ」の anon GRANT/RLS（可視範囲は不変・email等の非公開列は遮断を実証）。book-photos の listing 露出 WARN も SELECT ポリシー削除で解消
   - 残 WARN のうち book の anon 実行可 SECURITY DEFINER RPC（create_hold 等）は**ゲスト予約導線として意図的**（設計書 §5.2）。pg_net / rms_log_activity は rms 由来で対象外
   - 「Leaked Password Protection Disabled」WARN は Auth 本接続（P5）時にダッシュボードで有効化推奨
+
+## 会員 Supabase Auth Phase 2 実装済み（2026-07-10・v0.17.0）
+
+- **`MEMBER_SUPABASE = (DATA_SOURCE==='supabase' && AUTH_MODE==='supabase')` のときだけ**会員系を実データ化。demo 系（現本番 `AUTH_MODE=demo`）は挙動不変（回帰確認済み）
+- **方式 = 6桁メール OTP**（yamado-one と同一）: `/auth/login`・`/auth/register` が「email 入力 → 6桁コード」の2段。`signInWithOtp({shouldCreateUser:true})` → `verifyOtp({type:'email'})`。60秒再送クールダウン。パスワード/マジックリンクは不使用
+- **hooks.server.ts**: supabase モードでは admin/staff/member をすべて Supabase 検証済みセッション（`auth.getUser()`）のみで解決。**demo cookie は一切信用しない**（偽造 `ab_session` で会員になれない）。OTP 済み・未登録は `locals.pendingAuthUser` に載せ `/auth/register` のプロフィール入力へ
+- **会員行の作成は必ず `register_member` RPC 経由**（member_code 採番・email 名寄せ・入会500pt を一元化）。verify 後に `my_profile()` が通れば会員、通らなければ登録へ。登録成功で `updateUser({name, member:true})` を同期（yamado-one 経由の会員も救済）。「member フラグはあるが book.members 行が無い」異常系はフラグ解除で無限ループ防止（`account/+layout.server.ts`）
+- **実データアダプタ**（`supabase-data.ts`・authenticated client 受け取り）: `sbMyProfile` / `sbUpdateMyProfile` / `sbRegisterMember` / `sbPointBalance` / `sbPointLedger` / `sbMyReservations` / `sbCancelBookingAsMember` / `sbListFavorites` / `sbAddFavorite` / `sbRemoveFavorite`。掲示板書き込み4関数＋`submitOtayori`＋`getOtayoriMySummary` も client 引数化し、supabase 本接続で**書き込みゲートを解除**（`forum-write-enabled.ts`）
+- 会員判定 = `user_metadata.member===true`。`book.members` の RLS/GRANT は不変（rank_code 自己昇格・IDOR を防ぐ列レベル GRANT を維持）
+- ⚠ **本番で会員ログインを有効化するには `AUTH_MODE=demo → supabase` への切替が必要**。ただしその瞬間に予約もデモから実データに変わるため、rms 同期でデータが入り予約導線の接続（下記残タスク）が済むまで切り替えないこと
+- 検証: build 成功・demo 回帰なし（デモログイン→マイページ→おたより投稿）・supabase モードで偽造cookie拒否/未ログイン303/公開200/OTP が Supabase 到達
+
+## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
+
+会員認証は **yamado-one（モバイル）と同じ「6桁メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。
+
+- [ ] Authentication → Providers → **Email 有効**・サインアップ許可（`shouldCreateUser:true` を使うため）
+- [ ] Email テンプレート（Magic Link）に **`{{ .Token }}`（6桁コード）** が含まれること ※モバイルが既に依存
+- [ ] Leaked Password Protection を有効化（Advisor の WARN）
+- 管理者は従来どおり email+パスワード（`app_metadata.role=admin`）。会員とは別フロー
 
 ## 残アクション（要ユーザー作業 or 後続セッション）
 

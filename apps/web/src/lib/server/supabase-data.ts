@@ -52,7 +52,7 @@ import type {
 	StayInfo,
 	Locale
 } from '$lib/types';
-import type { Quote } from '@autumn-book/core';
+import type { Quote, CancellationPolicy } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // store.ts のデモ facility ID（'f-nishiwaga' 等）と実 Supabase の core.facilities.id（UUID）の対応表。
@@ -553,20 +553,28 @@ export async function listForumPostsData(threadId: string): Promise<ForumPostVie
 	}));
 }
 
-// 書き込み系（authenticated・Supabase Auth 本接続後に有効。P5）
+// 書き込み系（authenticated・Supabase Auth 本接続後に有効。Phase 2）
+// 認証済みユーザーの cookie に紐づく client（createSupabaseServerClient(event)）を渡すこと。
+// anon supa() では auth.uid() が null になり not_authenticated / no_nickname になる。
+// RPC は失敗時に raw な例外メッセージ（nickname_taken / banned / board_archived …）を throw する。
+// 呼び出し側（route）で error.message を見て i18n メッセージにマッピングする。
 
-export async function setForumNickname(nickname: string): Promise<{ user_id: string; nickname: string }> {
-	const { data, error } = await supa().rpc('forum_set_nickname', { p_nickname: nickname });
+export async function setForumNickname(
+	client: SupabaseClient,
+	nickname: string
+): Promise<{ user_id: string; nickname: string }> {
+	const { data, error } = await client.schema('book').rpc('forum_set_nickname', { p_nickname: nickname });
 	if (error) throw error;
 	return data as { user_id: string; nickname: string };
 }
 
 export async function createForumThread(
+	client: SupabaseClient,
 	boardSlug: string,
 	title: string,
 	body: string
 ): Promise<{ thread_id: string }> {
-	const { data, error } = await supa().rpc('forum_create_thread', {
+	const { data, error } = await client.schema('book').rpc('forum_create_thread', {
 		p_board_slug: boardSlug,
 		p_title: title,
 		p_body: body
@@ -576,10 +584,11 @@ export async function createForumThread(
 }
 
 export async function createForumPost(
+	client: SupabaseClient,
 	threadId: string,
 	body: string
 ): Promise<{ post_id: string; post_no: number }> {
-	const { data, error } = await supa().rpc('forum_create_post', {
+	const { data, error } = await client.schema('book').rpc('forum_create_post', {
 		p_thread_id: threadId,
 		p_body: body
 	});
@@ -587,8 +596,8 @@ export async function createForumPost(
 	return data as { post_id: string; post_no: number };
 }
 
-export async function deleteOwnForumPost(postId: string): Promise<{ post_id: string }> {
-	const { data, error } = await supa().rpc('forum_delete_own_post', { p_post_id: postId });
+export async function deleteOwnForumPost(client: SupabaseClient, postId: string): Promise<{ post_id: string }> {
+	const { data, error } = await client.schema('book').rpc('forum_delete_own_post', { p_post_id: postId });
 	if (error) throw error;
 	return data as { post_id: string };
 }
@@ -695,17 +704,21 @@ export async function otayoriBalance(userId?: string): Promise<number> {
 	return (data ?? 0) as number;
 }
 
-// 自分のおたよりサマリ（残高 + 台帳 + 投稿一覧）。auth.uid() の分のみ。
-export async function getOtayoriMySummary(): Promise<OtayoriMySummaryRow> {
-	const { data, error } = await supa().rpc('otayori_my_summary');
+// 自分のおたよりサマリ（残高 + 台帳 + 投稿一覧）。auth.uid() の分のみ。認証済み client を渡すこと。
+export async function getOtayoriMySummary(client: SupabaseClient): Promise<OtayoriMySummaryRow> {
+	const { data, error } = await client.schema('book').rpc('otayori_my_summary');
 	if (error) throw error;
 	return data as OtayoriMySummaryRow;
 }
 
 // おたより投稿（申請）。会員必須・本文 1〜2000字・ラジオネーム ≤40字・pending は5件まで。
-// status='pending' で INSERT（ポイントは付与しない）。
-export async function submitOtayori(body: string, radioName?: string): Promise<{ post_id: string }> {
-	const { data, error } = await supa().rpc('otayori_submit', {
+// status='pending' で INSERT（ポイントは付与しない）。認証済み client を渡すこと（auth.uid() 必須）。
+export async function submitOtayori(
+	client: SupabaseClient,
+	body: string,
+	radioName?: string
+): Promise<{ post_id: string }> {
+	const { data, error } = await client.schema('book').rpc('otayori_submit', {
 		p_body: body,
 		p_radio_name: radioName ?? null
 	});
@@ -945,5 +958,308 @@ export async function sbUpsertHouseGuide(
 /** store.deleteHouseGuide 相当 */
 export async function sbDeleteHouseGuide(client: SupabaseClient, id: string): Promise<void> {
 	const { error } = await client.schema('book').rpc('house_guide_delete', { p_id: id });
+	if (error) throw error;
+}
+
+// ================================================================ 会員系（authenticated・Phase 2）
+// マイページ（プロフィール・ポイント・予約・お気に入り）。すべて Supabase Auth セッションに
+// 紐づく client（auth.ts の createSupabaseServerClient(event)）を渡すこと。anon supa() を渡すと
+// RLS/GRANT で 0件 / permission denied / not_authenticated になる。
+// book スキーマは yamado-one（モバイル会員アプリ）と共有。会員行の作成は必ず register_member
+// RPC 経由（テーブル直 insert 禁止）。members の UPDATE は列レベル GRANT のため update_my_profile
+// RPC 経由でのみ氏名/カナ/電話/locale/メルマガ同意を更新する。
+
+// 実 UUID（core.facilities.id）→ store のデモ施設 ID（'f-nishiwaga' 等）の逆引き。
+// 施設マスタ（名称・写真・スラッグ）は store 側が正で、予約/お気に入りの UUID を表示に橋渡しする。
+const FACILITY_ID_BY_UUID: Record<string, string> = Object.fromEntries(
+	Object.entries(FACILITY_UUID).map(([storeId, uuid]) => [uuid, storeId])
+);
+
+/** core.facilities.id（UUID）→ store の施設 ID。未知の UUID は undefined。 */
+export function reverseFacilityUuid(uuid: string): string | undefined {
+	return FACILITY_ID_BY_UUID[uuid];
+}
+
+/** store の施設 ID → 実 UUID（お気に入り書き込み用）。既に UUID ならそのまま。 */
+export function toFacilityUuidStrict(facilityId: string): string {
+	return FACILITY_UUID[facilityId] ?? facilityId;
+}
+
+// ---- プロフィール（book.my_profile / book.update_my_profile / book.register_member）----
+
+export interface MemberProfile {
+	userId: string;
+	memberCode: string;
+	rankCode: 'standard' | 'silver' | 'gold';
+	locale: Locale;
+	isMailOptIn: boolean;
+	joinedAt: string;
+	name: string;
+	kana: string;
+	phone: string;
+	email: string;
+}
+
+interface MyProfileRow {
+	user_id: string;
+	member_code: string;
+	rank_code: string;
+	locale: string;
+	is_mail_opt_in: boolean;
+	joined_at: string;
+	name: string | null;
+	kana: string | null;
+	phone: string | null;
+	email: string | null;
+}
+
+/** store.memberById 相当。会員本人のプロフィール（members + guests を1回で）。未登録は not_member 例外。 */
+export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile> {
+	const { data, error } = await client.schema('book').rpc('my_profile');
+	if (error) throw error;
+	const r = data as MyProfileRow;
+	return {
+		userId: r.user_id,
+		memberCode: r.member_code,
+		rankCode: (r.rank_code as MemberProfile['rankCode']) ?? 'standard',
+		locale: (r.locale as Locale) ?? 'ja',
+		isMailOptIn: r.is_mail_opt_in,
+		joinedAt: (r.joined_at ?? '').slice(0, 10),
+		name: r.name ?? '',
+		kana: r.kana ?? '',
+		phone: r.phone ?? '',
+		email: r.email ?? ''
+	};
+}
+
+/** 会員本人の氏名/カナ/電話/locale/メルマガ同意を更新（RPC 経由・列レベル GRANT を尊重）。 */
+export async function sbUpdateMyProfile(
+	client: SupabaseClient,
+	input: { name: string; kana?: string; phone?: string; locale?: string; mailOptIn?: boolean }
+): Promise<void> {
+	const { error } = await client.schema('book').rpc('update_my_profile', {
+		p_name: input.name,
+		p_kana: input.kana ?? null,
+		p_phone: input.phone ?? null,
+		p_locale: input.locale ?? null,
+		p_mail_opt_in: input.mailOptIn ?? null
+	});
+	if (error) throw error;
+}
+
+/** 会員登録（OTP サインイン後に呼ぶ）。member_code 採番・email 名寄せ・入会500pt は RPC が一元処理。
+ *  既存会員は already_registered 例外。 */
+export async function sbRegisterMember(
+	client: SupabaseClient,
+	input: { name: string; kana: string; phone?: string; mailOptIn: boolean; locale?: string }
+): Promise<{ member_code: string; guest_id: string }> {
+	const { data, error } = await client.schema('book').rpc('register_member', {
+		p_name: input.name,
+		p_kana: input.kana,
+		p_phone: input.phone ?? null,
+		p_mail_opt_in: input.mailOptIn,
+		p_locale: input.locale ?? 'ja'
+	});
+	if (error) throw error;
+	return data as { member_code: string; guest_id: string };
+}
+
+// ---- ポイント（book.point_balance / book.point_ledger）----
+
+/** store.pointBalance 相当。残高＝SUM(delta)。自分の分のみ（RLS）。 */
+export async function sbPointBalance(client: SupabaseClient): Promise<number> {
+	const { data, error } = await client.schema('book').rpc('point_balance', { p_user: null });
+	if (error) throw error;
+	return (data ?? 0) as number;
+}
+
+export interface MemberPointEntry {
+	id: string;
+	delta: number;
+	reason: string;
+	bookingId?: string;
+	expiresAt?: string;
+	createdAt: string;
+}
+
+/** store.pointLedger（自分の分）相当。新しい順。RLS で member_user_id = auth.uid() の行のみ。 */
+export async function sbPointLedger(client: SupabaseClient): Promise<MemberPointEntry[]> {
+	const { data, error } = await client
+		.schema('book')
+		.from('point_ledger')
+		.select('id, delta, reason, booking_id, expires_at, created_at')
+		.order('created_at', { ascending: false });
+	if (error) throw error;
+	return ((data ?? []) as {
+		id: string;
+		delta: number;
+		reason: string;
+		booking_id: string | null;
+		expires_at: string | null;
+		created_at: string;
+	}[]).map((r) => ({
+		id: r.id,
+		delta: r.delta,
+		reason: r.reason,
+		bookingId: r.booking_id ?? undefined,
+		expiresAt: r.expires_at ?? undefined,
+		createdAt: (r.created_at ?? '').slice(0, 10)
+	}));
+}
+
+/** 有効期限が withinDays 日以内に迫っている加算ポイントの合計（デモ store.expiringPoints 相当）。 */
+export function sumExpiringPoints(ledger: MemberPointEntry[], withinDays = 30): number {
+	const limit = new Date(Date.now() + withinDays * 86400000).toISOString().slice(0, 10);
+	const today = new Date().toISOString().slice(0, 10);
+	return ledger
+		.filter((e) => e.delta > 0 && e.expiresAt && e.expiresAt >= today && e.expiresAt <= limit)
+		.reduce((s, e) => s + e.delta, 0);
+}
+
+// ---- 予約（book.my_reservations / book.cancel_booking）----
+
+interface MyReservationRow {
+	booking_code: string;
+	facility_id: string;
+	room_type_id: string;
+	rate_plan_id: string;
+	check_in_date: string;
+	check_out_date: string;
+	adult_count: number;
+	stay_status: string;
+	booking_status: string;
+	payment_status: string;
+	total_amount: number;
+	cancellation_fee: number | null;
+	cancellation_policy: CancellationPolicy | null;
+	points_used: number;
+	points_earned: number;
+	guest: GuestInfo | null;
+	created_at: string;
+}
+
+export interface MemberReservation {
+	code: string;
+	facilityUuid: string;
+	roomTypeUuid: string;
+	ratePlanUuid: string;
+	checkin: string;
+	checkout: string;
+	nights: number;
+	adults: number;
+	status: 'reserved' | 'cancelled' | 'stayed';
+	paymentStatus: 'unpaid' | 'paid' | 'refunded' | 'partial_refund';
+	payment: 'onsite' | 'card';
+	total: number;
+	cancelFee?: number;
+	cancellationPolicy: CancellationPolicy;
+	pointsUsed: number;
+	pointsEarned: number;
+	guest: GuestInfo;
+	channel: 'autumn_booking';
+	createdAt: string;
+}
+
+function daysBetween(from: string, to: string): number {
+	const a = Date.parse(from + 'T00:00:00Z');
+	const b = Date.parse(to + 'T00:00:00Z');
+	if (Number.isNaN(a) || Number.isNaN(b)) return 1;
+	return Math.max(1, Math.round((b - a) / 86400000));
+}
+
+function reservationStatus(stayStatus: string, bookingStatus: string): MemberReservation['status'] {
+	if (bookingStatus === 'cancelled' || stayStatus === 'cancelled' || stayStatus === 'no_show') return 'cancelled';
+	if (stayStatus === 'checked_out' || stayStatus === 'stayed' || stayStatus === 'departed') return 'stayed';
+	return 'reserved';
+}
+
+function mapReservationRow(r: MyReservationRow): MemberReservation {
+	const paymentStatus: MemberReservation['paymentStatus'] =
+		r.payment_status === 'paid'
+			? 'paid'
+			: r.payment_status === 'refunded'
+				? 'refunded'
+				: r.payment_status === 'partial_refund'
+					? 'partial_refund'
+					: 'unpaid';
+	return {
+		code: r.booking_code,
+		facilityUuid: r.facility_id,
+		roomTypeUuid: r.room_type_id,
+		ratePlanUuid: r.rate_plan_id,
+		checkin: r.check_in_date,
+		checkout: r.check_out_date,
+		nights: daysBetween(r.check_in_date, r.check_out_date),
+		adults: r.adult_count,
+		status: reservationStatus(r.stay_status, r.booking_status),
+		paymentStatus,
+		payment: paymentStatus === 'paid' || paymentStatus === 'refunded' || paymentStatus === 'partial_refund' ? 'card' : 'onsite',
+		total: r.total_amount,
+		cancelFee: r.cancellation_fee ?? undefined,
+		cancellationPolicy: r.cancellation_policy ?? { rules: [], note: '' },
+		pointsUsed: r.points_used ?? 0,
+		pointsEarned: r.points_earned ?? 0,
+		guest: r.guest ?? { name: '', kana: '', phone: '', email: '' },
+		channel: 'autumn_booking',
+		createdAt: (r.created_at ?? '').slice(0, 10)
+	};
+}
+
+/** store.myReservations 相当。会員本人（guest_id 連結）の予約一覧。check_in 降順は RPC 側。 */
+export async function sbMyReservations(client: SupabaseClient): Promise<MemberReservation[]> {
+	const { data, error } = await client.schema('book').rpc('my_reservations');
+	if (error) throw error;
+	return ((data ?? []) as MyReservationRow[]).map(mapReservationRow);
+}
+
+/** 会員本人によるキャンセル（キャンセル料は規定どおり・免除不可）。cancel_booking RPC。 */
+export async function sbCancelBookingAsMember(
+	client: SupabaseClient,
+	bookingCode: string
+): Promise<{ booking_code: string; cancellation_fee: number }> {
+	const { data, error } = await client.schema('book').rpc('cancel_booking', {
+		p_booking_code: bookingCode,
+		p_waive_fee: false,
+		p_reason: null
+	});
+	if (error) throw error;
+	return data as { booking_code: string; cancellation_fee: number };
+}
+
+// ---- お気に入り（book.favorites テーブル・RLS member_user_id = auth.uid()）----
+
+/** store.favoritesByMember 相当。お気に入り施設の UUID 一覧。 */
+export async function sbListFavorites(client: SupabaseClient): Promise<string[]> {
+	const { data, error } = await client.schema('book').from('favorites').select('facility_id');
+	if (error) throw error;
+	return ((data ?? []) as { facility_id: string }[]).map((r) => r.facility_id);
+}
+
+/** お気に入り追加（冪等・PK 重複は無視）。tenant_id は NOT NULL のため付与する。 */
+export async function sbAddFavorite(
+	client: SupabaseClient,
+	memberUserId: string,
+	facilityId: string
+): Promise<void> {
+	const { error } = await client
+		.schema('book')
+		.from('favorites')
+		.insert({ member_user_id: memberUserId, facility_id: toFacilityUuidStrict(facilityId), tenant_id: TENANT_ID });
+	// 23505 = unique_violation（既にお気に入り済み）は成功扱い
+	if (error && error.code !== '23505') throw error;
+}
+
+/** お気に入り削除（自分の行のみ・RLS）。 */
+export async function sbRemoveFavorite(
+	client: SupabaseClient,
+	memberUserId: string,
+	facilityId: string
+): Promise<void> {
+	const { error } = await client
+		.schema('book')
+		.from('favorites')
+		.delete()
+		.eq('member_user_id', memberUserId)
+		.eq('facility_id', toFacilityUuidStrict(facilityId));
 	if (error) throw error;
 }

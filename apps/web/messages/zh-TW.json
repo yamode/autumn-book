@@ -258,6 +258,22 @@
 	"register_login_link": "已有帳號？",
 	"register_login_anchor": "登入",
 
+	"auth_otp_email_hint": "我們將寄送6位數驗證碼至您輸入的電子郵件，無需密碼。",
+	"auth_otp_send": "寄送驗證碼",
+	"auth_otp_code_label": "驗證碼（6位數）",
+	"auth_otp_code_hint": "驗證碼已寄送至 {email}，請輸入郵件中的6位數字。",
+	"auth_otp_code_placeholder": "6位數驗證碼",
+	"auth_otp_verify": "登入",
+	"auth_otp_verify_register": "驗證並繼續",
+	"auth_otp_resend": "重新寄送驗證碼",
+	"auth_otp_resend_wait": "驗證碼可於60秒後重新寄送。",
+	"auth_otp_change_email": "變更電子郵件",
+	"auth_otp_error_email_invalid": "電子郵件格式不正確。",
+	"auth_otp_error_send": "驗證碼寄送失敗，請稍後再試。",
+	"auth_otp_error_code_invalid": "驗證碼不正確或已逾期。",
+	"auth_otp_error_config": "認證系統尚未設定，請聯絡管理員。",
+	"auth_register_failed": "會員註冊失敗，請稍後再試。",
+
 	"legal_title": "{title} ｜ 山人",
 	"legal_translation_notice": "本譯文僅供參考，以日文原文為準。",
 

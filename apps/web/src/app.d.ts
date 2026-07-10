@@ -11,6 +11,9 @@ declare global {
 	namespace App {
 		interface Locals {
 			user: SessionUser | null;
+			// OTP 認証は済んだが book.members 未登録のユーザー（/auth/register のプロフィール入力で使う）。
+			// AUTH_MODE=supabase のときのみ設定される。
+			pendingAuthUser: { id: string; email: string } | null;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

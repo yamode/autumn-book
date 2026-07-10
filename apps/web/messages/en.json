@@ -258,6 +258,22 @@
 	"register_login_link": "Already a member?",
 	"register_login_anchor": "Log in",
 
+	"auth_otp_email_hint": "We'll email a 6-digit verification code to the address you enter. No password required.",
+	"auth_otp_send": "Send verification code",
+	"auth_otp_code_label": "Verification code (6 digits)",
+	"auth_otp_code_hint": "A verification code was sent to {email}. Please enter the 6-digit number from the email.",
+	"auth_otp_code_placeholder": "6-digit code",
+	"auth_otp_verify": "Log in",
+	"auth_otp_verify_register": "Verify and continue",
+	"auth_otp_resend": "Resend verification code",
+	"auth_otp_resend_wait": "You can resend the verification code after 60 seconds.",
+	"auth_otp_change_email": "Change email address",
+	"auth_otp_error_email_invalid": "The email address format is invalid.",
+	"auth_otp_error_send": "Failed to send the verification code. Please wait a moment and try again.",
+	"auth_otp_error_code_invalid": "The verification code is incorrect or has expired.",
+	"auth_otp_error_config": "The authentication system is not configured. Please contact the administrator.",
+	"auth_register_failed": "Registration failed. Please wait a moment and try again.",
+
 	"legal_title": "{title} | yamado",
 	"legal_translation_notice": "This is a reference translation only. The Japanese original is the authoritative text.",
 
