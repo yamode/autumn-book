@@ -1,12 +1,14 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-07-10（客室電子インフォメーション P8a 実装 v0.15.0 ＋ deep-link契約v1・/[brand]301・GA4受け皿 v0.16.0）
+> **最終更新**: 2026-07-11（公開予約導線を Supabase 実データへ接続 v0.18.0）
 
 ## 現在の状態
 
-> ## ⛔ メンテナンスモードを解除してはいけない（2026-07-10 PROD 実査で確認）
+> ## ⛔ メンテナンスモードを解除してはいけない（2026-07-10 PROD 実査で確認 → 2026-07-11 更新）
 >
-> 本番 `wrangler.jsonc` は `DATA_SOURCE=supabase` だが、**Supabase 実データ経路に載っているルートは news / community / inroom の 11 ファイルだけ**で、**残り 53 ルート（検索・施設・プラン・客室・予約フロー・会員・ポイント・お気に入り）は本番でも `store.ts` のインメモリ・デモデータを配信している**。
+> **2026-07-11 更新**: 前提② の「公開予約導線を supabase-data.ts へ接続」は **v0.18.0 で完了**（検索・施設HP・プラン・客室・予約フロー hold/payment/complete を `DATA_SOURCE=supabase` 分岐で実データ経路に載せた）。**残る解除ブロッカーは前提① の rms データ投入のみ**：PROD の `booking.rate_plans / daily_rates / availability` は依然 **0 件**、`sync_rms_rates` 未実行のため `book.v_room_types / v_plans` も 0 件（施設 `v_facilities` は 2 件 seed 済み）。したがって今 supabase 経路にしても客室・プラン・料金が空表示（「満室」）になるため、**メンテ解除は rms 同期実行後**。
+>
+> 本番 `wrangler.jsonc` は `DATA_SOURCE=supabase` だが、**（v0.18.0 以前）Supabase 実データ経路に載っているルートは news / community / inroom の 11 ファイルだけ**で、**残り 53 ルート（検索・施設・プラン・客室・予約フロー・会員・ポイント・お気に入り）は本番でも `store.ts` のインメモリ・デモデータを配信している**。
 > したがって今メンテを解除すると:
 > 1. **デモの料金・客室・在庫が公開される**（`booking.rate_plans` / `daily_rates` / `availability` は PROD で **0 件**）
 > 2. **ゲストが「予約完了」まで進めてしまい、その予約は Cloudflare Workers の isolate メモリに書かれて消える**（`booking.bookings` は 0 件のまま・予約番号も引けない・確定メールもない）
@@ -422,6 +424,24 @@
 - [ ] 予約完了で purchase（予約番号・支払額）が送られ、リロードで再送されない
 
 ## 作業ログ
+
+---
+
+### 2026-07-11（公開予約導線を Supabase 実データへ接続）
+
+**実施内容:**
+- 別セッションで途中停止していた「公開予約導線の supabase 接続」を引き継ぎ・検証・完成。**メンテ解除前提②** の本体。
+- 対象13ファイルを `DATA_SOURCE==='supabase'` 分岐で実データ経路化（demo 経路は温存）:
+  - ポータル `/`・検索 `/search`（`sbFacilityAvailability`：日付なし=`reference_min_price` 参考額／日付あり=`search_availability`）
+  - 施設レイアウト/HP・客室一覧/詳細・プラン一覧/詳細（`v_facilities/v_room_types/v_plans` + `plan_offers` で「泊まれる客室×料金×残室」を単一クエリ集約）
+  - 予約フロー hold→payment→complete（`create_hold`/`get_hold`/`confirm_booking`。会員は authenticated client、ゲストは anon）
+- **anon で書けない/再取得できない箇所を httpOnly cookie で受け渡し**（supabase-data.ts に実装）: `ab_book_sid`（匿名 hold セッション）・`ab_book_draft`（②→③ 事前決済入力）・`ab_book_last`（確定→完了サマリ）。`confirm_booking` は `p_locale`/`p_member_coupon_id` にも対応
+- 実データにコンテンツ（写真/アクセス/設備）未投入でも UI が undefined 参照で落ちないよう各マッパーを安全既定値で充填（施設写真は picsum プレースホルダー最低1枚）
+- **検証**: `pnpm --filter web build` 成功・型エラーは既存12件のみで**新規0**（stash 比較で確認）。PROD で `v_facilities`/`v_room_types`/`v_plans` 3ビュー・RPC8本の実在を確認。dev（`.env` は既に DATA_SOURCE=supabase）で公開6ルート全て200・ポータルが実施設2件を描画・料金未投入でも「満室」でグレースフル・コンソールエラーなし
+
+**バージョン:** `v0.18.0`
+
+**残ブロッカー（メンテ解除に必要）:** rms 同期 `sync_rms_rates` を実行し `booking.rate_plans/daily_rates/availability` と `v_room_types/v_plans` を投入（現在すべて 0 件）。投入後に実料金で通し確認 → メンテ解除。
 
 ---
 

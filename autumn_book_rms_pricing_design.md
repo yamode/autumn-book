@@ -95,6 +95,7 @@ rms の TL プリフェッチ（2〜3時間おき）の後に走る想定。
 
 1. **オーバーブッキング（最重要）**: 直販予約を **TL へ書き戻していない**。したがって自社サイトで売れた部屋を OTA が売り続ける。
    - 暫定対策: `booking.availability.buffer_rooms` を **1 以上**に設定して安全域を取る。
+     - ⚠ 同期関数は **INSERT 時のみ buffer=0**、**UPDATE 時は buffer に触れない**。よって運用者が既存日に設定した buffer は維持されるが、**未来の新規日は毎回 buffer=0 で入る**。恒久的に効かせるには、同期関数の INSERT 側デフォルトを施設別設定（例 `book.facility_booking_settings.default_buffer`）から取る改修が要る（今は未実装＝施設運用値が 0〜1 で未確定のため。設計書 §14-7）。
    - 恒久対策: TL への在庫書き戻し（SC 連携）か、TL 側の在庫を自社直販ぶんだけ手動で絞る運用。
 2. **鮮度**: TL 残室は prefetch 依存（数時間）。同期間隔より短い窓の同時販売は防げない。
 3. **キャンセル料が無料**: `cancellation_policy = []` で作成される。実際の規定を `booking.rate_plans.cancellation_policy`（JSONB・日数別料率）に投入するまで、キャンセル料を請求できない。

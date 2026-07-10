@@ -50,10 +50,19 @@ import type {
 	HouseGuide,
 	StayToken,
 	StayInfo,
-	Locale
+	Locale,
+	Photo,
+	AccessInfo,
+	PaymentConfig,
+	Facility,
+	RoomType,
+	RatePlan,
+	Faq,
+	FacilityAvailability
 } from '$lib/types';
 import type { Quote, CancellationPolicy } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Cookies } from '@sveltejs/kit';
 
 // store.ts のデモ facility ID（'f-nishiwaga' 等）と実 Supabase の core.facilities.id（UUID）の対応表。
 // news 管理画面（施設スイッチャーは店舗一覧を store.ts の facilities から取得するデモ由来のUI）を
@@ -306,16 +315,21 @@ export async function createHold(
 	roomTypeId: string,
 	checkin: string,
 	nights: number,
-	adults: number
+	adults: number,
+	client?: SupabaseClient
 ): Promise<{ hold_id: string; expires_at: string; quote: Quote } | { error: 'sold_out' | string }> {
-	const { data, error } = await supa().rpc('create_hold', {
+	// 会員は authenticated client（member_user_id を記録）、ゲストは anon `supa()`。
+	const params = {
 		p_session_id: sessionId,
 		p_rate_plan_id: ratePlanId,
 		p_room_type_id: roomTypeId,
 		p_checkin: checkin,
 		p_nights: nights,
 		p_adults: adults
-	});
+	};
+	const { data, error } = client
+		? await client.schema('book').rpc('create_hold', params)
+		: await supa().rpc('create_hold', params);
 	if (error) {
 		if (error.message.includes('sold_out')) return { error: 'sold_out' };
 		throw error;
@@ -329,20 +343,87 @@ export async function getHold(holdId: string, sessionId: string) {
 	return data;
 }
 
+/** book.get_hold の結果を予約フロー（+page.server.ts / .svelte）が使う camelCase 形へ整形。
+ *  本人以外・不在は RPC が null を返す → null に正規化。expiresAt はミリ秒（HoldTimer 用）。 */
+export interface SbHold {
+	id: string;
+	facilityId: string;
+	roomTypeId: string;
+	planId: string;
+	checkin: string;
+	nights: number;
+	adults: number;
+	quote: Quote;
+	expiresAt: number;
+	status: string;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function sbGetHoldMapped(
+	holdId: string,
+	sessionId: string,
+	client?: SupabaseClient
+): Promise<SbHold | null> {
+	// UUID 形でない id（手入力・URL いじり等）は get_hold（p_hold_id uuid）が 22P02 で失敗するため、
+	// RPC を叩かず「期限切れ/不在」として null を返す（デモの getHold が unknown を undefined 扱いするのと対称）。
+	if (!UUID_RE.test(holdId)) return null;
+	const params = { p_hold_id: holdId, p_session_id: sessionId };
+	const { data, error } = client
+		? await client.schema('book').rpc('get_hold', params)
+		: await supa().rpc('get_hold', params);
+	if (error) throw error;
+	if (!data) return null;
+	const r = data as {
+		hold_id: string;
+		facility_id: string;
+		room_type_id: string;
+		rate_plan_id: string;
+		checkin_date: string;
+		checkout_date: string;
+		adult_count: number;
+		quote: Parameters<typeof mapQuote>[0];
+		expires_at: string;
+		status: string;
+	};
+	return {
+		id: r.hold_id,
+		facilityId: r.facility_id,
+		roomTypeId: r.room_type_id,
+		planId: r.rate_plan_id,
+		checkin: r.checkin_date,
+		nights: daysBetween(r.checkin_date, r.checkout_date),
+		adults: r.adult_count,
+		quote: mapQuote(r.quote),
+		expiresAt: Date.parse(r.expires_at),
+		status: r.status
+	};
+}
+
 export async function confirmBooking(
 	holdId: string,
 	sessionId: string,
 	guest: GuestInfo,
-	pointsUsed = 0
-): Promise<{ booking_code: string } | { error: string }> {
-	const { data, error } = await supa().rpc('confirm_booking', {
+	opts: { client?: SupabaseClient; pointsUsed?: number; locale?: string; memberCouponId?: string | null } = {}
+): Promise<{ booking_code: string; total: number; points_used: number; points_earned: number; discount?: number } | { error: string }> {
+	// 会員（ポイント利用・クーポン）は authenticated client、ゲストは anon `supa()`。
+	// 会員のロケール（p_locale）・クーポン（p_member_coupon_id）は任意。
+	const params = {
 		p_hold_id: holdId,
 		p_session_id: sessionId,
 		p_guest: guest,
-		p_points_used: pointsUsed
-	});
+		p_points_used: opts.pointsUsed ?? 0,
+		p_locale: opts.locale ?? 'ja',
+		p_member_coupon_id: opts.memberCouponId ?? null
+	};
+	const { data, error } = opts.client
+		? await opts.client.schema('book').rpc('confirm_booking', params)
+		: await supa().rpc('confirm_booking', params);
 	if (error) {
 		if (error.message.includes('hold_expired')) return { error: 'hold_expired' };
+		if (error.message.includes('forbidden')) return { error: 'forbidden' };
+		if (error.message.includes('invalid_guest')) return { error: 'invalid_guest' };
+		if (error.message.includes('coupon_invalid')) return { error: 'coupon_invalid' };
 		throw error;
 	}
 	return data;
@@ -1262,4 +1343,388 @@ export async function sbRemoveFavorite(
 		.eq('member_user_id', memberUserId)
 		.eq('facility_id', toFacilityUuidStrict(facilityId));
 	if (error) throw error;
+}
+
+// ================================================================ 公開予約導線（検索→施設→プラン→客室→hold→確定）
+// DATA_SOURCE=supabase のとき、公開ページ（トップ／検索／施設HP／プラン／客室／予約フロー）が使う。
+// ビュー（v_facilities / v_room_types / v_plans）と RPC（search_availability / reference_min_price /
+// plan_offers / get_plan_calendar / quote / create_hold / get_hold / confirm_booking）を叩き、返り値を
+// store.ts（デモ）と同じ camelCase 型（$lib/types）へ寄せる（+page.svelte を変えずに動かすため）。
+// 実データはコンテンツ（写真・アクセス・設備）が未投入のことがあるため、UI が undefined 参照で落ちないよう
+// 各マッパーは全フィールドを安全な既定値で埋める（施設写真は最低1枚のプレースホルダーを保証）。
+// ゲスト（未ログイン）は anon `supa()`、会員（MEMBER_SUPABASE）は authenticated client を使い分ける。
+
+/** 施設スラッグ→HPテンプレート。デモ（store.ts）の template 割当に合わせる（未知は standard）。 */
+function templateForSlug(slug: string): Facility['template'] {
+	if (slug === 'nishiwaga') return 'yamado-v1';
+	if (slug === 'oga') return 'oga-v1';
+	return 'standard';
+}
+
+/** 施設ヒーロー用のプレースホルダー写真（facility_photos 未投入時のフォールバック・最低1枚を保証）。 */
+function placeholderPhotos(seed: string, caption: string): Photo[] {
+	return [{ url: `https://picsum.photos/seed/${encodeURIComponent(seed)}/960/640`, caption, category: 'exterior' }];
+}
+
+const PHOTO_CATEGORIES: Photo['category'][] = ['exterior', 'room', 'bath', 'meal', 'view'];
+
+/** jsonb photos 配列 → Photo[]（不正な category は 'exterior' に丸め、url 空要素は除外）。 */
+function mapPhotos(raw: unknown, fallbackCaption: string): Photo[] {
+	if (!Array.isArray(raw)) return [];
+	return raw
+		.map((p) => {
+			const o = (p ?? {}) as Record<string, unknown>;
+			const cat = o.category as Photo['category'];
+			return {
+				url: String(o.url ?? ''),
+				caption: String(o.caption ?? fallbackCaption),
+				category: PHOTO_CATEGORIES.includes(cat) ? cat : 'exterior'
+			};
+		})
+		.filter((p) => p.url);
+}
+
+/** jsonb access（空 {} のことがある）→ AccessInfo 骨格（shuttle/parking を必ず持たせて undefined 参照を防ぐ）。 */
+function safeAccess(raw: unknown): AccessInfo {
+	const a = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+	const arr = (v: unknown) => (Array.isArray(v) ? v : []);
+	const shuttle = (a.shuttle ?? {}) as Record<string, unknown>;
+	const parking = (a.parking ?? {}) as Record<string, unknown>;
+	return {
+		car: arr(a.car) as AccessInfo['car'],
+		train: arr(a.train) as AccessInfo['train'],
+		air: arr(a.air) as AccessInfo['air'],
+		shuttle: { available: !!shuttle.available, note: String(shuttle.note ?? '') },
+		parking: { available: !!parking.available, capacity: Number(parking.capacity ?? 0), fee: String(parking.fee ?? '') }
+	};
+}
+
+/** payment_method（onsite / prepayment / deposit）→ PaymentConfig。実データに事前決済割引は無いため rate=0。 */
+function mapPaymentMethod(pm: string | null | undefined): PaymentConfig {
+	switch (pm) {
+		case 'prepayment':
+			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: 0 };
+		case 'deposit':
+			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: 0 };
+		case 'onsite':
+		default:
+			return { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0 };
+	}
+}
+
+/** v_facilities 行 → Facility。写真は facility_photos 未投入のためプレースホルダー（投入後はここで差し替える）。 */
+export function mapFacilityRow(row: FacilityRow): Facility {
+	return {
+		id: row.facility_id,
+		brandSlug: row.brand_slug ?? 'yamado',
+		slug: row.slug,
+		name: row.name,
+		catchCopy: row.catch_copy ?? '',
+		description: row.description ?? '',
+		lat: Number(row.lat ?? 0),
+		lng: Number(row.lng ?? 0),
+		prefecture: row.prefecture ?? '',
+		addressPublic: row.address_public ?? '',
+		phone: row.phone ?? '',
+		checkinTime: row.checkin_time ?? '15:00',
+		checkoutTime: row.checkout_time ?? '10:00',
+		amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : [],
+		access: safeAccess(row.access),
+		photos: placeholderPhotos(row.slug || row.facility_id, row.name),
+		template: templateForSlug(row.slug),
+		isPublished: true
+	};
+}
+
+/** v_room_types 行 → RoomType（capacity は capacity_max・面積は area_sqm。photos は無ければ空でよい）。 */
+export function mapRoomTypeRow(row: Record<string, unknown>): RoomType {
+	return {
+		id: String(row.room_type_id),
+		facilityId: String(row.facility_id),
+		slug: String(row.slug ?? ''),
+		name: String(row.name ?? ''),
+		headline: String(row.headline ?? ''),
+		description: String(row.description ?? ''),
+		capacity: Number(row.capacity_max ?? row.capacity_min ?? 2),
+		sizeM2: Number(row.area_sqm ?? 0),
+		totalRooms: 0, // 実在庫は booking.availability 側。表示未使用のため 0。
+		amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : [],
+		photos: mapPhotos(row.photos, String(row.name ?? ''))
+	};
+}
+
+/** v_plans 行 → RatePlan。プラン⇄客室の関係は持たない（実データは plan_offers が返す・設計）。basePrice は 0。 */
+export function mapPlanRow(row: Record<string, unknown>): RatePlan {
+	const policy =
+		row.cancellation_policy && typeof row.cancellation_policy === 'object'
+			? (row.cancellation_policy as CancellationPolicy)
+			: { rules: [], note: '' };
+	return {
+		id: String(row.rate_plan_id),
+		facilityId: String(row.facility_id),
+		slug: String(row.slug ?? ''),
+		name: String(row.name ?? ''),
+		headline: String(row.headline ?? ''),
+		description: String(row.description ?? ''),
+		mealPlan: String(row.meal_plan ?? ''),
+		payment: mapPaymentMethod(row.payment_method as string | null),
+		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
+		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
+		photos: mapPhotos(row.photos, String(row.name ?? '')),
+		cancellationPolicy: policy,
+		roomTypeIds: [],
+		isPublished: true,
+		sortOrder: Number(row.sort_order ?? 0)
+	};
+}
+
+function mapFaqRow(row: Record<string, unknown>, facilityId: string): Faq {
+	return {
+		id: String(row.id),
+		facilityId,
+		category: String(row.category ?? ''),
+		question: String(row.question ?? ''),
+		answer: String(row.answer ?? ''),
+		isPublished: true,
+		sortOrder: Number(row.sort_order ?? 0)
+	};
+}
+
+// ---- 施設・客室・プラン・FAQ・お知らせ（マッパー適用済み）----
+
+export async function sbListFacilities(): Promise<Facility[]> {
+	const rows = await listFacilities();
+	return rows.map(mapFacilityRow);
+}
+
+export async function sbFacilityBySlug(slug: string): Promise<Facility | undefined> {
+	const { data, error } = await supa().from('v_facilities').select('*').eq('slug', slug).maybeSingle();
+	if (error) throw error;
+	return data ? mapFacilityRow(data as FacilityRow) : undefined;
+}
+
+export async function sbFacilityByUuid(uuid: string): Promise<Facility | undefined> {
+	const { data, error } = await supa().from('v_facilities').select('*').eq('facility_id', uuid).maybeSingle();
+	if (error) throw error;
+	return data ? mapFacilityRow(data as FacilityRow) : undefined;
+}
+
+export async function sbListRoomTypesMapped(facilityUuid: string): Promise<RoomType[]> {
+	const rows = await listRoomTypes(facilityUuid);
+	return (rows ?? []).map((r) => mapRoomTypeRow(r as Record<string, unknown>));
+}
+
+export async function sbRoomTypeByUuid(uuid: string): Promise<RoomType | undefined> {
+	const { data, error } = await supa().from('v_room_types').select('*').eq('room_type_id', uuid).maybeSingle();
+	if (error) throw error;
+	return data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined;
+}
+
+export async function sbRoomTypeBySlug(facilityUuid: string, slug: string): Promise<RoomType | undefined> {
+	const { data, error } = await supa()
+		.from('v_room_types')
+		.select('*')
+		.eq('facility_id', facilityUuid)
+		.eq('slug', slug)
+		.maybeSingle();
+	if (error) throw error;
+	return data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined;
+}
+
+export async function sbListPlansMapped(facilityUuid: string): Promise<RatePlan[]> {
+	const rows = await listPlans(facilityUuid);
+	return (rows ?? []).map((r) => mapPlanRow(r as Record<string, unknown>));
+}
+
+export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
+	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
+	if (error) throw error;
+	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+}
+
+export async function sbPlanBySlug(facilityUuid: string, slug: string): Promise<RatePlan | undefined> {
+	const { data, error } = await supa()
+		.from('v_plans')
+		.select('*')
+		.eq('facility_id', facilityUuid)
+		.eq('slug', slug)
+		.maybeSingle();
+	if (error) throw error;
+	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+}
+
+export async function sbListFaqsMapped(facilityUuid: string): Promise<Faq[]> {
+	const rows = await listFaqs(facilityUuid);
+	return (rows ?? []).map((r) => mapFaqRow(r as Record<string, unknown>, facilityUuid));
+}
+
+export async function sbListNewsMapped(facilityUuid: string, limit?: number): Promise<NewsPost[]> {
+	const rows = await listNews(facilityUuid, limit);
+	return (rows ?? []).map((r) => ({
+		id: r.id,
+		facilityId: facilityUuid,
+		title: r.title,
+		body: r.body ?? '',
+		publishedAt: r.published_at,
+		isPublished: true,
+		createdAt: r.published_at
+	}));
+}
+
+// ---- plan_offers（プラン×客室×料金×残室。プラン一覧/詳細の「泊まれる客室」の心臓部）----
+
+export interface PlanOffer {
+	ratePlanId: string;
+	roomTypeId: string;
+	total: number;
+	perPerson: number;
+	remaining: number;
+}
+
+/** book.plan_offers。日付 null は 0 行（「日付を選択してください」表示）。p_rate_plan_id 省略で施設全プラン。 */
+export async function sbPlanOffers(
+	facilityUuid: string,
+	checkin: string | undefined,
+	nights: number,
+	adults: number,
+	ratePlanId?: string
+): Promise<PlanOffer[]> {
+	const { data, error } = await supa().rpc('plan_offers', {
+		p_facility: facilityUuid,
+		p_checkin: checkin ?? null,
+		p_nights: nights,
+		p_adults: adults,
+		p_rate_plan_id: ratePlanId ?? null
+	});
+	if (error) throw error;
+	return ((data ?? []) as { rate_plan_id: string; room_type_id: string; total: number; per_person: number; remaining: number }[]).map(
+		(r) => ({ ratePlanId: r.rate_plan_id, roomTypeId: r.room_type_id, total: r.total, perPerson: r.per_person, remaining: r.remaining })
+	);
+}
+
+/** plan_offers の 1 行 → Quote（客室選択カードの表示に必要な total / perPerson のみ確定。lines は省略）。 */
+export function offerToQuote(o: PlanOffer): Quote {
+	return { lines: [], total: o.total, perPerson: o.perPerson, taxIncluded: 0, pointsUsed: 0, payable: o.total };
+}
+
+/** 検索/トップ用: 全施設 × 空室（or 参考料金）を FacilityAvailability[] に整形（demo searchAvailability と同形）。 */
+export async function sbFacilityAvailability(
+	checkin: string | undefined,
+	nights: number,
+	adults: number
+): Promise<FacilityAvailability[]> {
+	const facilities = await sbListFacilities();
+	if (!checkin) {
+		// 日付未指定 = 参考最低料金（1名1泊。SEO入口）。rate が無い施設は満室扱い（minTotal=null）。
+		const ref = await referenceMinPrice(adults);
+		const byId = new Map(ref.map((r) => [r.facility_id, r.min_per_person]));
+		return facilities.map((f) => {
+			const per = byId.get(f.id) ?? null;
+			return {
+				facility: f,
+				minTotal: per !== null ? per * adults * nights : null,
+				minPerPerson: per,
+				remaining: per !== null ? 9 : 0,
+				reference: true
+			};
+		});
+	}
+	const avail = await searchAvailability(checkin, nights, adults);
+	const byId = new Map(avail.map((r) => [r.facility_id, r]));
+	return facilities.map((f) => {
+		const a = byId.get(f.id);
+		return {
+			facility: f,
+			minTotal: a ? a.min_total : null,
+			minPerPerson: a ? a.min_per_person : null,
+			remaining: a ? a.remaining : 0,
+			reference: false
+		};
+	});
+}
+
+// ---- 予約フローの cookie（session_id / ドラフト / 直近予約）----
+// book.holds は anon から UPDATE 不可（RLS）で guest_draft を書けず、予約確定を anon で参照できる
+// booking 取得 RPC も無いため、②→③（ドラフト）と ③→完了（直近予約）の受け渡しは httpOnly cookie で行う。
+
+const SID_COOKIE = 'ab_book_sid';
+const DRAFT_COOKIE = 'ab_book_draft';
+const LAST_COOKIE = 'ab_book_last';
+
+/** hold の session_id（未ログインでも hold 可能にする匿名セッション識別子）。無ければ発行して cookie に保存。 */
+export function bookingSessionId(cookies: Cookies): string {
+	let sid = cookies.get(SID_COOKIE);
+	if (!sid) {
+		sid = crypto.randomUUID();
+		cookies.set(SID_COOKIE, sid, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 });
+	}
+	return sid;
+}
+
+/** ②お客様情報 → ③決済 へ引き継ぐ入力ドラフト（事前決済プランのみ使用）。 */
+export interface BookingDraft {
+	holdId: string;
+	guest: GuestInfo;
+	pointsUsed: number;
+	payment: 'onsite' | 'card' | 'paypay';
+}
+
+export function setBookingDraft(cookies: Cookies, draft: BookingDraft): void {
+	cookies.set(DRAFT_COOKIE, encodeURIComponent(JSON.stringify(draft)), {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		maxAge: 60 * 30
+	});
+}
+
+export function getBookingDraft(cookies: Cookies): BookingDraft | null {
+	const raw = cookies.get(DRAFT_COOKIE);
+	if (!raw) return null;
+	try {
+		return JSON.parse(decodeURIComponent(raw)) as BookingDraft;
+	} catch {
+		return null;
+	}
+}
+
+export function clearBookingDraft(cookies: Cookies): void {
+	cookies.delete(DRAFT_COOKIE, { path: '/' });
+}
+
+/** 確定 → 完了ページ へ引き継ぐ直近予約サマリ（anon で booking を再取得できないための受け渡し）。 */
+export interface LastBooking {
+	code: string;
+	facilityUuid: string;
+	roomUuid: string;
+	planUuid: string;
+	checkin: string;
+	nights: number;
+	adults: number;
+	total: number;
+	pointsUsed: number;
+	pointsEarned: number;
+	payment: 'onsite' | 'card' | 'paypay';
+	discountAmount: number;
+	prepayDiscountRate?: number;
+	guest: { name: string; kana: string; phone: string; email: string };
+}
+
+export function setLastBooking(cookies: Cookies, last: LastBooking): void {
+	cookies.set(LAST_COOKIE, encodeURIComponent(JSON.stringify(last)), {
+		path: '/',
+		httpOnly: true,
+		sameSite: 'lax',
+		maxAge: 60 * 30
+	});
+}
+
+export function getLastBooking(cookies: Cookies): LastBooking | null {
+	const raw = cookies.get(LAST_COOKIE);
+	if (!raw) return null;
+	try {
+		return JSON.parse(decodeURIComponent(raw)) as LastBooking;
+	} catch {
+		return null;
+	}
 }

@@ -1,9 +1,35 @@
 import { error } from '@sveltejs/kit';
 import { getFacilityBySlug, facilities, brands } from '$lib/server/store';
+import { DATA_SOURCE } from '$lib/server/supabase';
+import { sbFacilityBySlug, sbListFacilities } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
+	if (DATA_SOURCE === 'supabase') {
+		const facility = await sbFacilityBySlug(params.facility);
+		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+
+		const all = await sbListFacilities();
+		const siblings = all
+			.filter((x) => x.brandSlug === facility.brandSlug && x.slug !== facility.slug)
+			.map((x) => ({ slug: x.slug, name: x.name, brandSlug: x.brandSlug }));
+
+		return {
+			shellFacility: {
+				template: facility.template,
+				name: facility.name,
+				slug: facility.slug,
+				brandSlug: facility.brandSlug,
+				phone: facility.phone,
+				addressPublic: facility.addressPublic,
+				brandName: '山人',
+				siblings
+			},
+			user: locals.user
+		};
+	}
+
 	const facility = getFacilityBySlug(params.brand, params.facility, getLocale());
 	if (!facility) error(404, '施設が見つかりません');
 
