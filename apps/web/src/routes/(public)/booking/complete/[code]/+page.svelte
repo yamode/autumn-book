@@ -1,10 +1,20 @@
 <script lang="ts">
 	import Stepper from '$lib/components/Stepper.svelte';
 	import { formatPrice, formatDateLong } from '$lib/format';
+	import { gaPurchaseOnce } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let b = $derived(data.booking);
+
+	// GA4 予約ファネル: 予約確定（purchase に予約金額・設計書 §9）。リロード再送は抑止
+	$effect(() => {
+		gaPurchaseOnce(b.code, {
+			value: b.total - b.pointsUsed,
+			currency: 'JPY',
+			items: [{ item_id: data.room.id, item_name: data.room.name, item_brand: data.facility.name }]
+		});
+	});
 	let isCard = $derived(b.payment !== 'onsite');
 
 	let steps = $derived(isCard

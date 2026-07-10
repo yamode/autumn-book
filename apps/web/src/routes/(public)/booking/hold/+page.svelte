@@ -7,6 +7,7 @@
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import { formatDateLong } from '$lib/format';
 	import { invalidateAll } from '$app/navigation';
+	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 
 	import { formatPrice } from '$lib/format';
@@ -14,6 +15,12 @@
 	let { data, form } = $props();
 
 	let expiredNow = $state(false);
+
+	// GA4 予約ファネル: 仮押さえ→ゲスト情報入力の開始（設計書 §9）
+	$effect(() => {
+		if (data.expired) return;
+		gaEvent('begin_checkout', { currency: 'JPY' });
+	});
 
 	// 支払い方法の選択肢（プランの決済設定から構築。事前決済=即時決済・割引あり）
 	let payOptions = $derived.by(() => {

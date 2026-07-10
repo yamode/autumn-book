@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-06-21（おたよりポイント Phase 1＝専用台帳・YouTube投稿フォーム・承認制付与・会員別手動付与。v0.13.0）
+> **最終更新**: 2026-07-10（客室電子インフォメーション P8a 実装 v0.15.0 ＋ deep-link契約v1・/[brand]301・GA4受け皿 v0.16.0）
 
 ## 現在の状態
 
@@ -99,7 +99,19 @@
 - **施設間移動・ブランドポータルの導線追加**：各施設シェル（Yamado/Oga/Standard）のヘッダー・フッター・モバイルメニュー/ドロワーに「山人ポータル(`/`)」と兄弟施設リンク（西和賀↔男鹿）を追加。データは `[brand]/[facility]/+layout.server.ts` が同ブランドの公開施設から算出（`ShellFacility.siblings`/`brandName`）
 - **Yamado ヘッダーの本文かぶり修正**：ロゴ520×384pxを幅130px指定＝表示高96px→ヘッダー実高約124pxなのに `main` が `pt-[68px]` しかなく**約56px隠れていた**。ロゴを高さ基準（56px）に変更しヘッダー約88pxへ、施設トップは全画面ヒーロー＋透過ヘッダー（男鹿と同方式）、下層は `pt-[88px]`。実DOM計測で overlap 解消（content top 88px / header 82px）を確認
 
-## 客室電子インフォメーション（モバイル）＋内線電話 設計確定（2026-06-15・未実装）
+## 客室電子インフォメーション（モバイル）＋内線電話（2026-06-15 設計確定 → **P8a 実装済み 2026-07-10・v0.15.0**）
+
+- **P8a（館内案内＋滞在トークン＋印刷スリップ）を実装・PROD migration 適用済み**。内線（P8c・Twilio）と PMS 連携（P8b）は未着手（下記の未決・依存のため）。
+- **DB**: migration `20260710103006_book_inroom_phase1`（autumn-shared main 直 push → PROD 自動適用確認済み）。`book.house_guides` + `book.stay_access_tokens` + RPC 8本（ゲスト面 anon: stay_info / claim_stay_by_code / list_house_guides、管理面 authenticated+has_facility_access: issue/revoke/list_stay_tokens・house_guide_upsert/delete）。forum/otayori と同じ RPC-first・deny-all。発行/失効は admin_audit_logs 記帳。Advisor 新規指摘は既存パターンと同じ INFO/WARN のみ（意図的設計・修正不要）
+- **ゲスト面 `/r`**（route group 外＝共通ヘッダーなしの専用シェル・noindex・ja/en/zh-TW）: `/r/c/<token>`（印刷スリップの QR）→ 検証 → **httpOnly Cookie `ab_stay`（3日）へ交換** → `/r` 302（以降 URL にトークン非表示）。`/r` = 滞在カード（部屋名・ゲスト名・チェックアウト・施設電話 tel:）＋館内案内（`<details>` アコーディオン・MarkdownView）。未 claim 時は 8桁コード入力（**IP 単位レート制限: 5回失敗で10分ロック**）。失効・期限切れは「ご滞在は終了しました」
+- **管理面 `/admin/inroom`**（左ナビ「📱 客室案内」）: 2タブ。①館内案内 CRUD（admin のみ・MarkdownEditor・lang/並び順/公開）②客室スリップ（admin/staff 可）＝発行（部屋名・ゲスト名任意・チェックアウト日→当日11:00 JST失効）・一覧（有効/全件）・失効・**印刷ページ `/admin/inroom/slip/[id]`**（A6カード・QR=qrcode-generator の SVG・8桁コード・3言語案内・print CSS）
+- **データ層**: store.ts（デモシード: 西和賀ガイド ja5+en2 / 男鹿 ja4、デモトークン `demo-stay-nishiwaga`=コード11112222・oga=33334444）と supabase-data.ts（sb* アダプタ）を対称実装
+- **言語フォールバックは「言語単位」**: 指定言語のガイドが 0 件のときだけ ja 全件（RPC仕様）。en を部分的にしか作らないと en ゲストにはそれだけ表示される点に注意（セクション単位マージが必要なら RPC 改修＝新 migration）
+- **データソースの組み合わせ**（重要）: ゲスト面は `DATA_SOURCE`、管理面は `DATA_SOURCE=supabase && AUTH_MODE=supabase` で切替。**現 .env（supabase+demo）では管理面=デモ store・ゲスト面=PROD（トークン0件）となり繋がらない** → /r のフルデモは `DATA_SOURCE=demo` で行う。本番（supabase+supabase）は全経路 PROD で一貫
+- **本番利用の前提（残作業）**: 本番 admin ユーザー（Supabase Auth）に **core.memberships の行（施設アクセス権）が必要**（発行/失効 RPC の has_facility_access）。未登録だと管理面は黄バナー「取得に失敗」表示（500 にはならない・v0.12.1 と同じ安全側）。加えて house_guides の実コンテンツ投入（/admin/inroom から入力可）
+- 検証: dev（demo）で QR claim→滞在カード→ガイド／手入力コード／レート制限ロック／en フォールバック／admin CRUD／発行→claim→失効→終了表示／slip QR svg／build 成功
+
+### 旧記録（2026-06-15 設計確定時点）
 
 - **設計書：`autumn_book_inroom_design.md`**（§15.3 を実装方式まで具体化＋新要件「客室内線電話」「TV配信」を追加）。**26エージェントの敵対的レビュー（Web裏取り）を反映**。
 - **実装は P3予約/P4決済の後**（収益コア優先）。設計のみ先行確定。migration は**下書き＝未適用**：`autumn-shared/supabase/migrations/20260615120000_book_inroom.sql`（house_guides / stay_access_tokens / facility_intercom / intercom_calls ＋ RPC・forum と同じ deny-all+RPC-first）。
@@ -123,6 +135,15 @@
 - demo: store.ts に実装＋シード（m-demo=たろう: 投稿3件 approved/pending/rejected + 台帳で残高3pt）。**dev で全フロー実証済み**（未ログインCTA→会員投稿→pending生成→admin承認+1pt→会員別手動付与。通常ptと混ざらないことを会員詳細で確認）。build成功。
 - **Phase 2（後続・P4 予約/決済 Supabase 本接続と同時）**: おたよりポイントの予約決済充当（1pt=1,000円・通常pt併用可）。設計§8 に確定済み。`confirm_booking`/`cancel_booking` は引数追加=drop+recreate のため P4 でまとめる。
 - ✅ **PROD 適用済み（2026-06-21）**: autumn-shared main へ push → GitHub Integration が自動適用。`schema_migrations` に `20260621120000` 確認・`book.otayori_posts` / `book.otayori_ledger` 作成確認（RLS有効・0行・シードなし）。autumn-book も main push 済み（CI→Cloudflare Pages デプロイ）。
+
+## ポータル整備: deep-link 契約 v1・/[brand] 301・GA4 受け皿（2026-07-10・v0.16.0）
+
+- **deep-link URL 契約 v1 を確定**（ADR-0001 決めごと1・sitemap §7 の宿題）: **`autumn_book_deeplink_contract.md`** 新規作成。施設HP（hp-yamado/hp-oga 刷新版）の「ご予約」が叩く安定エントリ＝`/yamado/{nishiwaga|oga}?checkin=YYYY-MM-DD&nights=1..5&adults=1..4`（全部省略可・不正値は黙って既定へ丸め）。プラン/客室 ID 直行は P3 本接続まで保証外と明記。ヘッダー/施設シェル検索バーへのプリフィルとプラン詳細の見積り反映は既存実装で充足済みを確認し、**施設予約トップの料金カレンダー初期月を checkin に連動**する実装のみ追加（`[facility]/+page.server.ts`）
+- **`/[brand]` → `/` 301 リダイレクト**（sitemap §6-1 決定の実装）: 実在ブランドのみ 301（ロケール保持・`localizeHref`）、不明 slug は 404。ブランドトップの `+page.svelte` は削除
+- **GA4 受け皿 + Consent Mode v2**（設計書 §9・2026-06-10 決定分）: `PUBLIC_GA4_MEASUREMENT_ID` **未設定なら計測・バナーとも完全無効**（現状の本番は未設定＝無効のまま）。設定すると: gtag.js ロード（Consent Mode v2 default=denied・広告系は常時 denied）＋同意バナー（ja/en/zh-TW 自己完結文言・localStorage `ab_consent`）＋ SPA page_view（afterNavigate 手動送信）＋予約ファネル4イベント＝`search`（/search 条件変更ごと）/`view_item`（プラン詳細）/`begin_checkout`（hold）/`purchase`（完了・`transaction_id`=予約番号・`value`=支払額・sessionStorage でリロード再送抑止）。**/admin と /r は計測・バナーとも除外**（社内画面とトークン URL の漏洩防止）。実装: `lib/analytics.ts` + `lib/components/AnalyticsConsent.svelte`（root layout にマウント）
+- **GA4 本番有効化の手順（ユーザー作業）**: GA4 プロパティ作成 → 測定 ID を `apps/web/wrangler.jsonc` の `vars` に `PUBLIC_GA4_MEASUREMENT_ID` として追記（⚠ vars はダッシュボード env を置換する教訓1に従い **wrangler.jsonc に集約**）→ main push。クロスドメイン計測（HP↔ポータル）は GA4 管理画面のドメイン設定で
+- Sentry（§9 のもう一方）は **保留**: DSN 未取得＋Cloudflare Pages での SDK 検証コストのため。導入時は `@sentry/sveltekit`＋`@sentry/cloudflare` 構成
+- 検証: /yamado→301 /（/en/yamado→/en/）・不明ブランド404・checkin付き施設URLでカレンダー該当月表示・GA未設定でバナー/gtagなし・G-TEST123設定でバナー表示→同意→gtagロード＋localStorage保存→リロードで再表示なし・build 成功
 
 ## 実装済みの主な決定反映
 
@@ -316,7 +337,50 @@
 - [ ] スマホ幅で投稿フォーム・管理レビュー・マイページが崩れない
 - [ ] （Phase 2・P4同時）予約でおたよりpt利用＝1ptにつき1,000円減額（通常pt併用可）／キャンセルで返還
 
+### 客室電子インフォメーション（P8a）
+※フルデモは `DATA_SOURCE=demo` で行う（supabase では /r が PROD トークンを参照するため）
+
+- [ ] /r に未 claim で入ると8桁コード入力フォームが出る
+- [ ] /r/c/demo-stay-nishiwaga で滞在カード（雪椿・山田 太郎・チェックアウト・施設電話）が出る
+- [ ] 館内案内がアコーディオンで開閉でき、Markdown（表・リスト）が正しく表示される
+- [ ] /en/r で UI が英語になり en ガイドが出る。/zh-TW/r は ja ガイドへフォールバック
+- [ ] 手入力コード 11112222 で開ける。でたらめ8桁を6回入れると10分ロックされる
+- [ ] /r/c/不正トークン →「QRコードが無効です」
+- [ ] /admin/inroom 館内案内タブでガイドの追加・編集・公開切替・削除ができる（admin のみ）
+- [ ] 客室スリップタブで発行（部屋名・チェックアウト日）→ 8桁コードが表示される（staff も可）
+- [ ] スリップ印刷ページに QR と手入力コードが出て、印刷プレビューで A6 カードになる
+- [ ] 発行トークンで /r が開ける → 失効 → 同トークンが「ご滞在は終了しました」になる
+- [ ] 発行・失効が監査ログに載る
+- [ ] スマホ幅で滞在カード・館内案内・スリップ印刷が崩れない
+
+### deep-link / ブランドリダイレクト
+- [ ] /yamado が / へ 301（/en/yamado は /en/ へ）。存在しないブランド slug は 404
+- [ ] /yamado/nishiwaga?checkin=翌月日付&nights=2&adults=3 で施設シェル検索バーにプリフィルされ、料金カレンダーが該当月で開く
+- [ ] 同クエリでプラン詳細に入ると日程・人数が見積りに反映される
+
+### GA4・同意バナー（PUBLIC_GA4_MEASUREMENT_ID 設定時のみ）
+- [ ] 未設定ではバナーも gtag も一切出ない
+- [ ] 設定時: 初回訪問でバナーが出る。「同意する」→ 消えて以後再表示されない
+- [ ] 「同意しない」でも gtag はロードされるが analytics_storage は denied のまま
+- [ ] /admin と /r ではバナー・page_view とも出ない
+- [ ] 予約完了で purchase（予約番号・支払額）が送られ、リロードで再送されない
+
 ## 作業ログ
+
+---
+
+### 2026-07-10（客室電子インフォ P8a + ポータル整備）
+
+**実施内容:**
+- 設計済み・未実装の棚卸し → 実装可能な4件を実装。**保留判断**: 内線 P8c（Twilio Regulatory Bundle 未決 §12）・オプション予約（PMS テーブル依存＋販売条件未決 §14-16）・おたより Phase 2（P4 と同時に確定済み）・メルマガ/ステップメール DB 化（配信基盤未決 §14-13）・site_pages 管理エディタ（ADR-0001 の施設HP外部化で価値低下）・Sentry（DSN 未取得・Pages 検証コスト）
+- **inroom P8a**: migration `20260710103006_book_inroom_phase1` を autumn-shared main 直 push（PROD 適用・Advisor 新規指摘は意図的設計のみ）。/r ゲスト面（QR claim→httpOnly Cookie・滞在カード・館内案内・手入力コード+レート制限）＋ /admin/inroom（ガイドCRUD・スリップ発行/失効/印刷QR=qrcode-generator 追加）＋ store/supabase-data 対称実装＋ i18n 16キー（実装=Opus エージェント並行・レビュー/コミット=親）
+- 本番安全化: /admin/inroom load を try/catch（admin の core.memberships 未登録でも 500 にせず黄バナー表示）
+- **deep-link 契約 v1**（`autumn_book_deeplink_contract.md`）＋施設トップのカレンダー月連動、**/[brand]→/ 301**、**GA4 受け皿+Consent Mode v2**（未設定時完全無効・ファネル4イベント・/admin と /r 除外）
+- 検証: dev（demo）で全フロー curl + preview ブラウザで UI/同意フロー実証。`pnpm build` 成功
+
+**バージョン:** `v0.15.0`（inroom P8a）→ `v0.16.0`（ポータル整備）
+
+**本番前の残作業**: 本番 admin（Supabase Auth）へ core.memberships 登録（発行 RPC の施設アクセス権）／house_guides 実コンテンツ投入（/admin/inroom から）／GA4 測定 ID 取得→wrangler.jsonc vars 設定
 
 ---
 

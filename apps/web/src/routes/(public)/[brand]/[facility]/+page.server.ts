@@ -12,7 +12,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const rooms = getRoomTypes(facility.id, locale);
 	const plans = getRatePlans(facility.id, locale);
 
-	const calendarNav = clampCalendarMonth(url.searchParams.get('cal'));
+	// deep-link（autumn_book_deeplink_contract.md）: checkin があればカレンダー初期月に反映
+	const checkin = url.searchParams.get('checkin') ?? undefined;
+	const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 	const calMonth = calendarNav.yearMonth;
 	const calendar = plans.length > 0 ? getPlanCalendar(plans[0].id, calMonth) : [];
 

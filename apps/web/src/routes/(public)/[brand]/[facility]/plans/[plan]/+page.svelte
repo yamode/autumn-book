@@ -6,9 +6,18 @@
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import { formatPrice } from '$lib/format';
 	import { shiftYearMonth } from '$lib/calendar-range';
+	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
+
+	// GA4 予約ファネル: プラン閲覧（設計書 §9）
+	$effect(() => {
+		gaEvent('view_item', {
+			currency: 'JPY',
+			items: [{ item_id: data.plan.id, item_name: data.plan.name, item_brand: data.facility.name }]
+		});
+	});
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''

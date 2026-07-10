@@ -2,9 +2,18 @@
 	import MapPanel from '$lib/components/MapPanel.svelte';
 	import { formatPrice } from '$lib/format';
 	import { dbg } from '$lib/debug';
+	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
+
+	// GA4 予約ファネル: 空室検索（設計書 §9・条件変更ごとに送信）
+	$effect(() => {
+		if (!data.params.checkin) return;
+		gaEvent('search', {
+			search_term: `${data.params.checkin}/${data.params.nights}n/${data.params.adults}a`
+		});
+	});
 
 	let highlighted = $state<string | null>(null);
 
