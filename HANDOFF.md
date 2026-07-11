@@ -225,8 +225,7 @@
 会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。
 
 - [ ] Authentication → Providers → **Email 有効**・サインアップ許可（`shouldCreateUser:true` を使うため）
-- [x] **Confirm signup** テンプレートを `{{ .Token }}`（コード）表示に変更（2026-07-11・ユーザー実施）
-- [ ] **Magic Link** テンプレートを `{{ .Token }}`（コード）表示に変更（下記「共有テンプレート統一」参照・**要実施**）
+- [ ] **Confirm signup と Magic Link を「同一・中立」内容にする**（件名 `【山人】認証コード` ＋本文 `{{ .Token }}`）。下記「テンプレ切替の仕様」参照・**要実施**
 - [ ] Leaked Password Protection を有効化（Advisor の WARN）
 - 管理者は従来どおり email+パスワード（`app_metadata.role=admin`）。会員とは別フロー
 
@@ -240,6 +239,18 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
   - ダッシュボード: **Magic Link テンプレを `{{ .Token }}` に変更**（リンクを排除）。
   - 招待/PW再設定リンク（token_hash・rms専用の別テンプレ・管理者限定）は従来どおりで交わらない。
 - 却下案: B デュアル表示（コード+リンク併記・文面が両アプリ混在）／C Send Email Hook（Edge Function+独自SMTP・現状オーバースペック）。
+
+### テンプレ切替の仕様（Confirm signup ⇄ Magic Link）と「同一・中立化」
+
+`signInWithOtp` は **`auth.users` 行の存在有無だけ**でテンプレを切り替える（**確認済みか否かは無関係**）:
+- 1回目送信（行が無い）→ **Confirm signup**
+- 2回目以降（1回目で行ができた・**未確認でも**）→ **Magic Link**
+
+このため「未登録メールでも2回目からログイン系コードになる」は **Supabase の仕様**でありアプリ側で抑止不可。ただし **実害なし**:
+`/auth/login`・`/auth/register` の verify はどちらも `verifyOtp({type:'email'})`（signup 由来でも magiclink 由来でも同じコードを検証）→ 以降は **`book.members` の有無だけ**で分岐する。つまり**どちらのテンプレが来ても登録は完了する**。
+
+→ 混乱を消す確定対応: **Confirm signup と Magic Link を同一・中立文面**にする（件名 `【山人】認証コード` ＋本文 `{{ .Token }}`）。
+送信回数・登録状態に関わらず常に同じ「認証コード」メールになり、"login/signup" の言い分けが表に出ない。rms 管理者ログインも同 UX（コード）なので齟齬なし。
 
 ## 残アクション（要ユーザー作業 or 後続セッション）
 
