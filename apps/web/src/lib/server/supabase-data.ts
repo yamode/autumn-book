@@ -651,6 +651,13 @@ export async function setForumNickname(
 	return data as { user_id: string; nickname: string };
 }
 
+/** 自分の現ニックネーム（未設定は空文字）。設定画面のプリフィル用。 */
+export async function getForumNickname(client: SupabaseClient): Promise<string> {
+	const { data, error } = await client.schema('book').rpc('forum_my_nickname');
+	if (error) throw error;
+	return (data as string | null) ?? '';
+}
+
 export async function createForumThread(
 	client: SupabaseClient,
 	boardSlug: string,

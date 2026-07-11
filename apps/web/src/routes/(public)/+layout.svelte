@@ -30,6 +30,7 @@
 			<a href="/" class="font-display text-xl font-bold tracking-widest text-brand-900">山人 <span class="text-xs font-normal tracking-normal text-stone-400">- yamado -</span></a>
 			<nav class="flex items-center gap-4 text-sm text-stone-600">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
+				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 			</nav>
 			<div class="ml-auto flex items-center gap-3 text-sm">
@@ -73,6 +74,7 @@
 			<div class="text-sm">
 				<p class="mb-2 font-medium text-white">{m.footer_guide()}</p>
 				<ul class="space-y-1 text-xs">
+					<li><a href="/membership" class="hover:underline">{m.nav_membership()}</a></li>
 					<li><a href="/legal/tokushoho" class="hover:underline">{m.footer_tokushoho()}</a></li>
 					<li><a href="/legal/privacy" class="hover:underline">{m.footer_privacy()}</a></li>
 					<li><a href="/legal/yakkan" class="hover:underline">{m.footer_yakkan()}</a></li>

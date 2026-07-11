@@ -13,11 +13,25 @@
 }
 
 html {
-	font-family: 'Yu Gothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+	/* x.com 風の太めゴシック。読みやすさ優先で中太（500）を基準にする。
+	   OS標準のクリーンなサンセリフ＋日本語は Hiragino / Yu Gothic Medium / Meiryo / Noto Sans JP。 */
+	font-family:
+		system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans',
+		'Yu Gothic Medium', 'YuGothic', 'Meiryo', 'Noto Sans JP', sans-serif;
+	font-weight: 500;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	letter-spacing: 0.01em;
 }
 
 .font-display {
-	font-family: var(--font-serif-jp);
+	/* 以前は明朝（游明朝）。ユーザー要望で全体を太めゴシックに統一（x.com 風）。
+	   見出しは太字（700）のゴシックで力強く・読みやすく。 */
+	font-family:
+		system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans',
+		'Yu Gothic Medium', 'YuGothic', 'Meiryo', 'Noto Sans JP', sans-serif;
+	font-weight: 700;
+	letter-spacing: 0.02em;
 }
 
 /* マイページ（/account）・掲示板（/community）: 公開マーケ面（明朝・和の情緒）とは分け、

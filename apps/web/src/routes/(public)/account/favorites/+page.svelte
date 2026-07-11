@@ -3,6 +3,18 @@
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
+
+	// 折りたたみの開閉をローカルに保持する。お気に入り操作（enhance 再描画）で
+	// open を favCount に反応させると、最後の1件を解除した瞬間にパネルが閉じてしまうため、
+	// ユーザーの開閉状態を優先し、初期値だけ「お気に入りがある型は開く」とする。
+	const keyOf = (fid: string, name: string) => `${fid}|${name}`;
+	// 初期値だけ data から取り、以後はユーザーの開閉を保持する（意図的な初期値参照）
+	// svelte-ignore state_referenced_locally
+	let openMap = $state<Record<string, boolean>>(
+		Object.fromEntries(
+			data.facilities.flatMap((f) => f.types.map((t) => [keyOf(f.id, t.name), t.favCount > 0]))
+		)
+	);
 </script>
 
 <svelte:head><title>{m.favorites_title()}</title></svelte:head>
@@ -29,8 +41,12 @@
 			{#if f.types.length > 0}
 				<div class="divide-y divide-stone-100">
 					{#each f.types as t}
-						<!-- 客室タイプごとの折りたたみパネル。お気に入りがある型は初期展開 -->
-						<details class="group" open={t.favCount > 0}>
+						<!-- 客室タイプごとの折りたたみパネル。開閉はローカル保持（お気に入り操作で閉じない） -->
+						<details
+							class="group"
+							open={openMap[keyOf(f.id, t.name)] ?? t.favCount > 0}
+							ontoggle={(e) => (openMap[keyOf(f.id, t.name)] = e.currentTarget.open)}
+						>
 							<summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 hover:bg-stone-50">
 								<span class="text-stone-400 transition-transform group-open:rotate-90">▶</span>
 								<span class="flex-1 font-medium text-brand-900">{t.name}</span>

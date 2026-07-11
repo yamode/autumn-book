@@ -251,6 +251,13 @@
   - demo `Member` 型＋registerMember＋seed も構造化対応。姓・名は必須／カナは任意（海外ゲスト対応）。
   - **予約フローのゲスト氏名も正規化**（v0.26.0）: `/booking/hold` の入力を姓/名/ミドル+カナに。`GuestInfo` に構造化フィールド追加（OTA/電話予約など合成名のみは任意）。`confirm_booking` が `p_guest` の構造化キーを受領し `core.guests` の構造化列へ保存（migration `20260711051616_book_confirm_booking_guest_name`・PROD 適用＆通し確認済み）。会員はプロフィールの姓/名等を予約フォームに自動プリフィル。
 
+## Phase 6（2026-07-11・v0.27.0）
+
+- **フォント刷新**（要望「全体的に読みづらい／x.com風の太めゴシック」）: `html` の基準フォントを system-ui 優先のサンセリフ＋**中太(500)**に。`.font-display`（旧游明朝）も**太字(700)ゴシック**へ統一（公開マーケ面も含め全体ゴシック化）。JP フォールバックは Hiragino/Yu Gothic Medium/Meiryo/Noto Sans JP。
+- **お気に入り折りたたみが閉じるバグ修正**: `<details open={t.favCount>0}>` が再描画で favCount に反応し、最後の1件を解除するとパネルが閉じていた。開閉状態を `openMap`（ローカル $state・初期値のみ data 由来）で保持し `ontoggle` で同期。
+- **ニックネームが保存後に空欄になるバグ修正**: supabase モードは現ニックネームを引く手段が無く load が空プリフィルだった。RPC `book.forum_my_nickname()`（migration `20260711054418`・PROD 適用済み）を追加し `/account/community` の load で現値を取得（demo は従来どおり store から）。
+- **会員プログラム紹介ページ**（公開・ログイン不要）: `/membership`。還元率（グレード別 1/2/3%）・特典（ポイント/会員限定プラン/お気に入り/おたより/コミュニティ）・入会CTA。グローバルナビ「会員特典」＋フッターから導線。ja/en/zh-TW。
+
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
 会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。

@@ -1,18 +1,24 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getForumProfile, setForumNickname } from '$lib/server/store';
-import { setForumNickname as sbSetForumNickname } from '$lib/server/supabase-data';
+import { setForumNickname as sbSetForumNickname, getForumNickname as sbGetForumNickname } from '$lib/server/supabase-data';
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async (event) => {
+	const { locals, url } = event;
 	// account レイアウトで member ガード済み（locals.user は member）
 	if (!FORUM_WRITE_ENABLED) {
 		return { nickname: '', next: '', writeEnabled: false };
 	}
-	// supabase 本接続: 現ニックネームを1発で引く RPC は無いため空でプリフィル（set は upsert）
-	const nickname = MEMBER_SUPABASE ? '' : (getForumProfile(locals.user!.id)?.nickname ?? '');
+	// 現ニックネームをプリフィル（supabase は forum_my_nickname RPC・demo は store から）
+	let nickname = '';
+	if (MEMBER_SUPABASE) {
+		nickname = await sbGetForumNickname(createSupabaseServerClient(event)).catch(() => '');
+	} else {
+		nickname = getForumProfile(locals.user!.id)?.nickname ?? '';
+	}
 	return {
 		nickname,
 		next: url.searchParams.get('next') ?? '',
