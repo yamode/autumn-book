@@ -9,6 +9,7 @@
 		{ href: '/admin/facility', label: '施設ページ編集', icon: '🏠' },
 		{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
 		{ href: '/admin/plans', label: 'プラン', icon: '📝' },
+		{ href: '/admin/options', label: 'オプション', icon: '🧺' },
 		{ href: '/admin/news', label: 'お知らせ', icon: '📰' },
 		{ href: '/admin/mail', label: 'メルマガ', icon: '✉' },
 		{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁' },

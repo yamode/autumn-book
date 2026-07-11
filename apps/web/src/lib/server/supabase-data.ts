@@ -58,7 +58,10 @@ import type {
 	RoomType,
 	RatePlan,
 	Faq,
-	FacilityAvailability
+	FacilityAvailability,
+	OptionItem,
+	OptionCategory,
+	BookingOptionOrder
 } from '$lib/types';
 import type { Quote, CancellationPolicy } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -1393,6 +1396,199 @@ export async function sbCancelBookingAsMember(
 	});
 	if (error) throw error;
 	return data as { booking_code: string; cancellation_fee: number };
+}
+
+// ---------------------------------------------------------------- オプション（滞在アレンジ・P1・設計書 §4.2）
+// book.option_items / booking_option_orders の RPC 5本を叩く薄いアダプタ。store.ts（demo）と同じ意味論・
+// 同じ camelCase 型（OptionItem / BookingOptionOrder）を返す。会計は宿泊料金と分離（現地精算）。
+//  ・カタログ（list_option_items）は anon `supa()` で動作（is_active のみ）。
+//  ・会員操作（add/cancel/list_my）は authenticated client（本人・auth.uid()）を渡す。
+//  ・当日提供リスト（list_booking_options_admin）は staff（facility_access）。
+
+const OPTION_CATEGORIES: OptionCategory[] = ['meal', 'spa', 'activity', 'amenity', 'personalize', 'other'];
+function safeCategory(raw: unknown): OptionCategory {
+	return OPTION_CATEGORIES.includes(raw as OptionCategory) ? (raw as OptionCategory) : 'other';
+}
+
+interface OptionItemRow {
+	id: string;
+	code: string;
+	name: string;
+	description: string | null;
+	category: string;
+	price_type: string;
+	unit_price: number;
+	lead_time_hours: number;
+	stock_type: string;
+	daily_capacity: number | null;
+	requires_service_date: boolean;
+	member_only: boolean;
+	photos: unknown;
+	sort_order: number;
+}
+
+function mapOptionItemRow(r: OptionItemRow): OptionItem {
+	return {
+		id: r.id,
+		code: r.code,
+		name: r.name,
+		description: r.description ?? '',
+		category: safeCategory(r.category),
+		priceType: (r.price_type as OptionItem['priceType']) ?? 'per_stay',
+		unitPrice: r.unit_price,
+		leadTimeHours: r.lead_time_hours,
+		stockType: r.stock_type === 'per_day' ? 'per_day' : 'none',
+		dailyCapacity: r.daily_capacity ?? undefined,
+		requiresServiceDate: r.requires_service_date,
+		memberOnly: r.member_only,
+		photos: mapPhotos(r.photos, r.name),
+		sortOrder: r.sort_order
+	};
+}
+
+/** store.listOptionItems 相当。施設の公開オプション（anon 可・is_active のみ）。
+ *  i18n: RPC は ja ベースを返すため、content_translations（entity_type='option'・is_published）を
+ *  app 層で引いて name/description を部分上書きする（facility/plan 翻訳マージと同じ §2.2 規約）。 */
+export async function sbListOptionItems(facilityUuid: string, locale: Locale = 'ja'): Promise<OptionItem[]> {
+	const { data, error } = await supa().rpc('list_option_items', { p_facility: toFacilityUuidStrict(facilityUuid) });
+	if (error) throw error;
+	const items = ((data ?? []) as OptionItemRow[]).map(mapOptionItemRow);
+	if (locale === 'ja' || items.length === 0) return items;
+
+	const { data: tr } = await supa()
+		.from('content_translations')
+		.select('entity_id, fields')
+		.eq('entity_type', 'option')
+		.eq('locale', locale)
+		.eq('is_published', true)
+		.in('entity_id', items.map((o) => o.id));
+	if (!tr || tr.length === 0) return items;
+
+	const byId = new Map((tr as { entity_id: string; fields: Record<string, unknown> }[]).map((t) => [t.entity_id, t.fields]));
+	return items.map((o) => {
+		const fields = byId.get(o.id);
+		if (!fields) return o;
+		const name = fields.name;
+		const description = fields.description;
+		return {
+			...o,
+			name: typeof name === 'string' && name !== '' ? name : o.name,
+			description: typeof description === 'string' && description !== '' ? description : o.description
+		};
+	});
+}
+
+/** store.addBookingOptions 相当。会員が自分の予約へオプションを追加（現地精算）。締切/在庫/本人検証は RPC 側。
+ *  items: [{ optionId, serviceDate, quantity, note }]。RPC の例外（past_deadline 等）はそのまま throw。 */
+export async function sbAddBookingOptions(
+	client: SupabaseClient,
+	code: string,
+	items: { optionId: string; serviceDate?: string | null; quantity: number; note?: string }[]
+): Promise<{ total_added: number }> {
+	const { data, error } = await client.schema('book').rpc('add_booking_options', {
+		p_booking_code: code,
+		p_items: items.map((i) => ({
+			option_id: i.optionId,
+			service_date: i.serviceDate ?? null,
+			quantity: i.quantity,
+			note: i.note ?? null
+		}))
+	});
+	if (error) throw error;
+	return data as { total_added: number };
+}
+
+/** store.cancelBookingOption 相当。本人・提供日前日まで（RPC 側検証）。 */
+export async function sbCancelBookingOption(client: SupabaseClient, orderId: string): Promise<void> {
+	const { error } = await client.schema('book').rpc('cancel_booking_option', { p_order_id: orderId });
+	if (error) throw error;
+}
+
+interface MyBookingOptionRow {
+	order_id: string;
+	option_id: string;
+	name: string;
+	category: string;
+	service_date: string | null;
+	quantity: number;
+	unit_price: number;
+	amount: number;
+	status: BookingOptionOrder['status'];
+	note: string | null;
+	requires_service_date: boolean;
+	created_at: string;
+}
+
+/** store.listMyBookingOptions 相当。本人・cancelled 以外を作成順で返す。
+ *  注: 明細名（name）は RPC が返す ja ベースのまま（翻訳マージはカタログ画面のみ・§7）。 */
+export async function sbListMyBookingOptions(client: SupabaseClient, code: string): Promise<BookingOptionOrder[]> {
+	const { data, error } = await client.schema('book').rpc('list_my_booking_options', { p_booking_code: code });
+	if (error) throw error;
+	return ((data ?? []) as MyBookingOptionRow[]).map((r) => ({
+		orderId: r.order_id,
+		optionId: r.option_id,
+		name: r.name,
+		category: safeCategory(r.category),
+		serviceDate: r.service_date ?? undefined,
+		quantity: r.quantity,
+		unitPrice: r.unit_price,
+		amount: r.amount,
+		status: r.status,
+		note: r.note ?? undefined,
+		requiresServiceDate: r.requires_service_date,
+		createdAt: r.created_at
+	}));
+}
+
+export interface AdminBookingOptionRow {
+	orderId: string;
+	bookingCode: string;
+	guestName: string;
+	optionName: string;
+	category: OptionCategory;
+	serviceDate?: string;
+	quantity: number;
+	amount: number;
+	status: BookingOptionOrder['status'];
+	note?: string;
+}
+
+/** 当日提供リスト（スタッフ・自施設）。list_booking_options_admin。
+ *  現状デッドコード: /admin は AUTH_MODE=supabase 前まで demo（store）運用のため未接続。
+ *  AUTH_MODE=supabase 後に admin/options のロードから接続する（news/faqs 管理系と同じ段階）。 */
+export async function sbListBookingOptionsAdmin(
+	client: SupabaseClient,
+	facilityUuid: string,
+	date: string
+): Promise<AdminBookingOptionRow[]> {
+	const { data, error } = await client.schema('book').rpc('list_booking_options_admin', {
+		p_facility: toFacilityUuidStrict(facilityUuid),
+		p_date: date
+	});
+	if (error) throw error;
+	return ((data ?? []) as {
+		order_id: string;
+		booking_code: string;
+		guest_name: string | null;
+		option_name: string;
+		category: string;
+		service_date: string | null;
+		quantity: number;
+		amount: number;
+		status: BookingOptionOrder['status'];
+		note: string | null;
+	}[]).map((r) => ({
+		orderId: r.order_id,
+		bookingCode: r.booking_code,
+		guestName: r.guest_name ?? '',
+		optionName: r.option_name,
+		category: safeCategory(r.category),
+		serviceDate: r.service_date ?? undefined,
+		quantity: r.quantity,
+		amount: r.amount,
+		status: r.status,
+		note: r.note ?? undefined
+	}));
 }
 
 // ---- お気に入り（book.favorites テーブル・RLS member_user_id = auth.uid()）----

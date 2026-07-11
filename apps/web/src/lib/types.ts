@@ -8,7 +8,7 @@ export type Locale = 'ja' | 'en' | 'zh-TW';
 
 /** コンテンツ翻訳行（book.content_translations 対称） */
 export interface ContentTranslation {
-	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal' | 'news' | 'site_page';
+	entityType: 'brand' | 'facility' | 'room_type' | 'plan' | 'faq' | 'photo' | 'legal' | 'news' | 'site_page' | 'option';
 	entityId: string;
 	locale: Locale;
 	/** 翻訳対象フィールドのみ部分上書き（空文字は欠落扱い） */
@@ -149,6 +149,51 @@ export interface RatePlan {
 	roomTypeIds: string[];
 	isPublished: boolean;
 	sortOrder: number;
+}
+
+// ---------------------------------------------------------------- オプション（滞在アレンジ・book.option_items / booking_option_orders 対称）
+
+/** オプション商品のカテゴリ（membership コピーの区分に対応） */
+export type OptionCategory = 'meal' | 'spa' | 'activity' | 'amenity' | 'personalize' | 'other';
+
+/** オプション商品マスタ（book.option_items 対称・現地精算・宿泊料金とは別建て） */
+export interface OptionItem {
+	id: string;
+	code: string;
+	name: string;
+	description: string;
+	category: OptionCategory;
+	/** per_person（人数分）／per_unit（個数）／per_stay（滞在あたり1式） */
+	priceType: 'per_person' | 'per_unit' | 'per_stay';
+	/** 税込円。0 円（無償パーソナライズ）も可 */
+	unitPrice: number;
+	/** チェックイン日 15:00（施設TZ）基準の申込締切（時間） */
+	leadTimeHours: number;
+	stockType: 'none' | 'per_day';
+	/** stock_type='per_day' 時の日別上限 */
+	dailyCapacity?: number;
+	/** false = 滞在全体に紐づく（per_stay のパーソナライズ等・提供日不要） */
+	requiresServiceDate: boolean;
+	memberOnly: boolean;
+	photos: Photo[];
+	sortOrder: number;
+}
+
+/** オプション予約明細（book.booking_option_orders 対称・list_my_booking_options の行に対応） */
+export interface BookingOptionOrder {
+	orderId: string;
+	optionId: string;
+	name: string;
+	category: OptionCategory;
+	/** 提供日（requires_service_date=false なら未設定） */
+	serviceDate?: string;
+	quantity: number;
+	unitPrice: number;
+	amount: number;
+	status: 'reserved' | 'cancelled' | 'fulfilled' | 'needs_reschedule';
+	note?: string;
+	requiresServiceDate: boolean;
+	createdAt: string;
 }
 
 export interface GuestInfo {

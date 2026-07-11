@@ -514,3 +514,4 @@ book.finalize_checkout() returns integer                  -- 走査（pg_cron �
 | 5 | チェックアウト確定 cron と rank 変動の時差 | 「チェックアウト時 rank」を cron 実行時点で近似（§3.4）。rank の自動昇格ロジック自体が未実装のため当面実害なし。昇格ロジック導入時に順序（昇格→確定 or 確定→昇格）を決める |
 | 6 | Stripe 修正決済の詳細（オーソリ期限・返金手数料等） | Stripe 接続時に別途設計。本設計は settlement 列と finalize フックの口だけ確保 |
 | 7 | plan_offers 等の互換差替えの回帰 | rank フィルタ追加時、anon 導線（公開予約フロー）の挙動が変わらないことをテストチェックリストで担保（min_rank_order NULL なら完全に従来どおり） |
+| 8 | **P1: `/admin/options` が Supabase 未接続**（本アプリは AUTH_MODE=supabase 前まで admin 全体が demo 運用）。本番では seed が `is_active=false` のため会員向けカタログが空のまま | admin の Supabase Auth 実接続（全 admin 共通の別課題）まで保留。それまで本番でオプションを公開するには DB で `is_active=true`・単価を直接投入するか、admin-supabase 接続を先に行う。`sbListBookingOptionsAdmin` は接続用に用意済み（デッドコード） |

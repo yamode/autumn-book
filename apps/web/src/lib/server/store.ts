@@ -23,7 +23,8 @@ import type {
 	SearchParams, FacilityAvailability, CalendarDay, Locale, ContentTranslation,
 	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem,
 	OtayoriEntry, OtayoriPost, OtayoriAdminItem,
-	HouseGuide, StayToken, StayInfo
+	HouseGuide, StayToken, StayInfo,
+	OptionItem, BookingOptionOrder
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
@@ -850,6 +851,327 @@ export function cancelBooking(code: string, opts: { waiveFee?: boolean; actor?: 
 		auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor: opts.actor, action: 'cancel_booking', detail: `${code} fee=${fee} reason=${opts.reason ?? ''}` });
 	}
 	return b;
+}
+
+// ---------------------------------------------------------------- オプション（滞在アレンジ・P1）
+// book.option_items / booking_option_orders / RPC 5本のデモ実装。
+// 会計は宿泊料金（Booking.total）と混ぜず、現地精算として別枠で管理する。
+
+/** デモのオプション商品（OptionItem + 施設・公開フラグ） */
+export interface DemoOptionItem extends OptionItem {
+	facilityId: string;
+	isActive: boolean;
+}
+
+/** デモのオプション予約明細（内部保持形。表示は listMyBookingOptions で BookingOptionOrder へ整形） */
+interface DemoOptionOrder {
+	orderId: string;
+	bookingCode: string;
+	memberId: string;
+	optionId: string;
+	serviceDate?: string;
+	quantity: number;
+	unitPrice: number;
+	amount: number;
+	status: BookingOptionOrder['status'];
+	note?: string;
+	createdAt: string;
+}
+
+// seed（決定 #4）: 両施設に「冷蔵庫ノンアル化」（personalize）・「タオル多め」（amenity）。
+// migration の seed は is_active=false・0円だが、demo は動作確認のため is_active=true で表示する。
+export const optionItems: DemoOptionItem[] = facilities.flatMap((f) => [
+	{
+		id: `opt-${f.id}-fridge-nonalc`,
+		facilityId: f.id,
+		code: 'fridge-nonalc',
+		name: '冷蔵庫の中身をノンアルコールに変更',
+		description: 'お部屋の冷蔵庫のドリンクを、ノンアルコール中心の内容へ交換してご用意します。',
+		category: 'personalize',
+		priceType: 'per_stay',
+		unitPrice: 0,
+		leadTimeHours: 24,
+		stockType: 'none',
+		requiresServiceDate: false,
+		memberOnly: true,
+		photos: [],
+		sortOrder: 1,
+		isActive: true
+	},
+	{
+		id: `opt-${f.id}-towel-extra`,
+		facilityId: f.id,
+		code: 'towel-extra',
+		name: 'タオル多め',
+		description: 'バスタオル・フェイスタオルを追加でご用意します。',
+		category: 'amenity',
+		priceType: 'per_stay',
+		unitPrice: 0,
+		leadTimeHours: 24,
+		stockType: 'none',
+		requiresServiceDate: false,
+		memberOnly: true,
+		photos: [],
+		sortOrder: 2,
+		isActive: true
+	}
+]);
+
+// オプション予約明細（予約コード → 明細配列）
+export const bookingOptionOrdersByBooking = new Map<string, DemoOptionOrder[]>();
+
+/** DemoOptionItem → 公開 OptionItem（施設・公開フラグを落とす） */
+function toOptionItem(o: DemoOptionItem): OptionItem {
+	return {
+		id: o.id,
+		code: o.code,
+		name: o.name,
+		description: o.description,
+		category: o.category,
+		priceType: o.priceType,
+		unitPrice: o.unitPrice,
+		leadTimeHours: o.leadTimeHours,
+		stockType: o.stockType,
+		dailyCapacity: o.dailyCapacity,
+		requiresServiceDate: o.requiresServiceDate,
+		memberOnly: o.memberOnly,
+		photos: o.photos,
+		sortOrder: o.sortOrder
+	};
+}
+
+/** RPC: book.list_option_items 相当（is_active のみ・sort_order 順・locale オーバーレイ適用） */
+export function listOptionItems(facilityId: string, locale: Locale = 'ja'): OptionItem[] {
+	return optionItems
+		.filter((o) => o.facilityId === facilityId && o.isActive)
+		.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+		.map((o) => applyTranslation(toOptionItem(o), 'option', o.id, locale));
+}
+
+/** 申込締切（チェックイン日 15:00 − lead_time_hours）を過ぎているか */
+function optionPastDeadline(checkin: string, leadTimeHours: number): boolean {
+	const deadline = new Date(`${checkin}T15:00:00`).getTime() - leadTimeHours * 3600000;
+	return Date.now() >= deadline;
+}
+
+/**
+ * RPC: book.add_booking_options 相当。
+ * items: [{ optionId, serviceDate, quantity, note }]。締切・在庫・本人・予約状態・提供日を検証する。
+ * 失敗時は Error（メッセージは RPC の例外コードに合わせる）を throw。
+ */
+export function addBookingOptions(
+	code: string,
+	items: { optionId: string; serviceDate?: string | null; quantity: number; note?: string }[],
+	memberId: string
+): { orders: { order_id: string; option_id: string; name: string; service_date: string | null; quantity: number; amount: number }[]; total_added: number } {
+	const booking = bookings.get(code);
+	if (!booking) throw new Error('not_found');
+	if (booking.memberId !== memberId) throw new Error('forbidden');
+	if (booking.status !== 'reserved') throw new Error('not_amendable');
+
+	const checkout = addDays(booking.checkin, booking.nights);
+	const orders: { order_id: string; option_id: string; name: string; service_date: string | null; quantity: number; amount: number }[] = [];
+	let totalAdded = 0;
+	const existing = bookingOptionOrdersByBooking.get(code) ?? [];
+	const created: DemoOptionOrder[] = [];
+
+	for (const item of items) {
+		const opt = optionItems.find((o) => o.id === item.optionId && o.facilityId === booking.facilityId && o.isActive);
+		if (!opt) throw new Error('option_not_found');
+
+		// per_stay は「滞在あたり1式」のため数量を 1 に強制。per_person / per_unit のみ 1..20 を検証。
+		let quantity: number;
+		if (opt.priceType === 'per_stay') {
+			quantity = 1;
+		} else {
+			quantity = Math.floor(item.quantity ?? 1);
+			if (quantity < 1 || quantity > 20) throw new Error('invalid_quantity');
+		}
+
+		let serviceDate: string | undefined;
+		if (opt.requiresServiceDate) {
+			serviceDate = item.serviceDate ?? undefined;
+			if (!serviceDate || serviceDate < booking.checkin || serviceDate > checkout) throw new Error('invalid_service_date');
+		} else {
+			serviceDate = undefined;
+		}
+
+		if (optionPastDeadline(booking.checkin, opt.leadTimeHours)) throw new Error('past_deadline');
+
+		// per_day 在庫（RPC と同じく全予約横断で reserved 合計 + 今回作成分 + 今回 <= daily_capacity）
+		if (opt.stockType === 'per_day' && opt.dailyCapacity != null) {
+			const reserved = [...bookingOptionOrdersByBooking.values()]
+				.flat()
+				.concat(created)
+				.filter((o) => o.optionId === opt.id && o.serviceDate === serviceDate && o.status === 'reserved')
+				.reduce((s, o) => s + o.quantity, 0);
+			if (reserved + quantity > opt.dailyCapacity) throw new Error('option_sold_out');
+		}
+
+		const amount = opt.unitPrice * quantity;
+		const order: DemoOptionOrder = {
+			orderId: nextId('optord'),
+			bookingCode: code,
+			memberId,
+			optionId: opt.id,
+			serviceDate,
+			quantity,
+			unitPrice: opt.unitPrice,
+			amount,
+			status: 'reserved',
+			note: item.note?.trim() || undefined,
+			createdAt: today()
+		};
+		created.push(order);
+		totalAdded += amount;
+		orders.push({ order_id: order.orderId, option_id: opt.id, name: opt.name, service_date: serviceDate ?? null, quantity, amount });
+	}
+
+	bookingOptionOrdersByBooking.set(code, [...existing, ...created]);
+	return { orders, total_added: totalAdded };
+}
+
+/** RPC: book.cancel_booking_option 相当。本人・reserved・提供日（無ければ CI 日）0:00 前まで取消可。 */
+export function cancelBookingOption(orderId: string, memberId: string): { order_id: string; cancelled: true } {
+	for (const [code, list] of bookingOptionOrdersByBooking) {
+		const order = list.find((o) => o.orderId === orderId);
+		if (!order) continue;
+		if (order.memberId !== memberId) throw new Error('forbidden');
+		if (order.status !== 'reserved') throw new Error('not_cancellable');
+		const booking = bookings.get(code);
+		const basis = order.serviceDate ?? booking?.checkin ?? today();
+		const cutoff = new Date(`${basis}T00:00:00`).getTime();
+		if (Date.now() >= cutoff) throw new Error('past_deadline');
+		order.status = 'cancelled';
+		return { order_id: orderId, cancelled: true };
+	}
+	throw new Error('not_found');
+}
+
+/** RPC: book.list_my_booking_options 相当。本人・cancelled 以外を作成順で返す。
+ *  注: 明細名は base（ja）のまま（翻訳マージはカタログ画面のみ・§7）。 */
+export function listMyBookingOptions(code: string, memberId: string): BookingOptionOrder[] {
+	const list = bookingOptionOrdersByBooking.get(code) ?? [];
+	return list
+		.filter((o) => o.memberId === memberId && o.status !== 'cancelled')
+		.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.orderId.localeCompare(b.orderId))
+		.map((o) => {
+			const opt = optionItems.find((i) => i.id === o.optionId);
+			return {
+				orderId: o.orderId,
+				optionId: o.optionId,
+				name: opt?.name ?? '',
+				category: opt?.category ?? 'other',
+				serviceDate: o.serviceDate,
+				quantity: o.quantity,
+				unitPrice: o.unitPrice,
+				amount: o.amount,
+				status: o.status,
+				note: o.note,
+				requiresServiceDate: opt?.requiresServiceDate ?? false,
+				createdAt: o.createdAt
+			};
+		});
+}
+
+// ---- 管理（/admin/options・demo store 直操作）----
+
+/** 管理画面用: 施設の全オプション（未公開含む・sort_order 順） */
+export function listOptionItemsAdmin(facilityId: string): DemoOptionItem[] {
+	return optionItems
+		.filter((o) => o.facilityId === facilityId)
+		.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
+}
+
+export interface OptionItemInput {
+	code: string;
+	name: string;
+	description: string;
+	category: OptionItem['category'];
+	priceType: OptionItem['priceType'];
+	unitPrice: number;
+	leadTimeHours: number;
+	stockType: OptionItem['stockType'];
+	dailyCapacity?: number;
+	requiresServiceDate: boolean;
+	memberOnly: boolean;
+	sortOrder: number;
+	isActive: boolean;
+}
+
+/** 新しいオプション商品を追加（下書き＝is_active は入力どおり） */
+export function addOptionItem(facilityId: string, input: OptionItemInput): DemoOptionItem {
+	const item: DemoOptionItem = {
+		id: nextId('opt'),
+		facilityId,
+		code: input.code || `opt-${++seq}`,
+		name: input.name,
+		description: input.description,
+		category: input.category,
+		priceType: input.priceType,
+		unitPrice: input.unitPrice,
+		leadTimeHours: input.leadTimeHours,
+		stockType: input.stockType,
+		dailyCapacity: input.stockType === 'per_day' ? input.dailyCapacity : undefined,
+		requiresServiceDate: input.requiresServiceDate,
+		memberOnly: input.memberOnly,
+		photos: [],
+		sortOrder: input.sortOrder,
+		isActive: input.isActive
+	};
+	optionItems.push(item);
+	return item;
+}
+
+/** 既存オプション商品を更新（見つからなければ undefined） */
+export function updateOptionItem(id: string, input: OptionItemInput): DemoOptionItem | undefined {
+	const item = optionItems.find((o) => o.id === id);
+	if (!item) return undefined;
+	item.code = input.code || item.code;
+	item.name = input.name;
+	item.description = input.description;
+	item.category = input.category;
+	item.priceType = input.priceType;
+	item.unitPrice = input.unitPrice;
+	item.leadTimeHours = input.leadTimeHours;
+	item.stockType = input.stockType;
+	item.dailyCapacity = input.stockType === 'per_day' ? input.dailyCapacity : undefined;
+	item.requiresServiceDate = input.requiresServiceDate;
+	item.memberOnly = input.memberOnly;
+	item.sortOrder = input.sortOrder;
+	item.isActive = input.isActive;
+	return item;
+}
+
+/** 当日提供リスト（スタッフ・自施設）。service_date 一致、または per_stay で CI 日一致の reserved 明細。 */
+export function listBookingOptionsAdmin(
+	facilityId: string,
+	date: string
+): { orderId: string; bookingCode: string; guestName: string; optionName: string; category: OptionItem['category']; serviceDate?: string; quantity: number; amount: number; status: BookingOptionOrder['status']; note?: string }[] {
+	const rows: { orderId: string; bookingCode: string; guestName: string; optionName: string; category: OptionItem['category']; serviceDate?: string; quantity: number; amount: number; status: BookingOptionOrder['status']; note?: string }[] = [];
+	for (const [code, list] of bookingOptionOrdersByBooking) {
+		const booking = bookings.get(code);
+		if (!booking || booking.facilityId !== facilityId) continue;
+		for (const o of list) {
+			if (o.status !== 'reserved') continue;
+			const match = o.serviceDate ? o.serviceDate === date : booking.checkin === date;
+			if (!match) continue;
+			const opt = optionItems.find((i) => i.id === o.optionId);
+			rows.push({
+				orderId: o.orderId,
+				bookingCode: code,
+				guestName: booking.guest.name,
+				optionName: opt?.name ?? '',
+				category: opt?.category ?? 'other',
+				serviceDate: o.serviceDate,
+				quantity: o.quantity,
+				amount: o.amount,
+				status: o.status,
+				note: o.note
+			});
+		}
+	}
+	return rows.sort((a, b) => a.category.localeCompare(b.category) || a.bookingCode.localeCompare(b.bookingCode));
 }
 
 // ---------------------------------------------------------------- 会員・ポイント

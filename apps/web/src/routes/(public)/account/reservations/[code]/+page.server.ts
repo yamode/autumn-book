@@ -1,8 +1,22 @@
 import { error, fail } from '@sveltejs/kit';
-import { bookings, facilityById, planById, roomTypeById, cancelBooking } from '$lib/server/store';
+import {
+	bookings,
+	facilityById,
+	planById,
+	roomTypeById,
+	cancelBooking,
+	listMyBookingOptions,
+	cancelBookingOption
+} from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbMyReservations, sbCancelBookingAsMember, reverseFacilityUuid } from '$lib/server/supabase-data';
-import { cancellationFee, cancellationRate } from '@autumn-book/core';
+import {
+	sbMyReservations,
+	sbCancelBookingAsMember,
+	sbListMyBookingOptions,
+	sbCancelBookingOption,
+	reverseFacilityUuid
+} from '$lib/server/supabase-data';
+import { cancellationFee, cancellationRate, addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
@@ -35,9 +49,13 @@ export const load: PageServerLoad = async (event) => {
 			cancelFee: r.cancelFee,
 			cancellationPolicy: r.cancellationPolicy
 		};
+		// 滞在アレンジ（オプション）明細。締切表示用に checkout（提供日セレクトの上限）も返す。
+		const options = await sbListMyBookingOptions(createSupabaseServerClient(event), r.code);
 		return {
 			booking,
 			facility,
+			checkout: r.checkout,
+			options,
 			// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
@@ -53,9 +71,12 @@ export const load: PageServerLoad = async (event) => {
 
 	const booking = bookings.get(params.code);
 	if (!booking || booking.memberId !== locals.user!.id) error(404, m.error_booking_not_found());
+	const options = listMyBookingOptions(params.code, locals.user!.id);
 	return {
 		booking,
 		facility: facilityById(booking.facilityId)!,
+		checkout: addDays(booking.checkin, booking.nights),
+		options,
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
 		cancelPreview:
@@ -87,5 +108,31 @@ export const actions: Actions = {
 		const result = cancelBooking(params.code);
 		if ('error' in result) return fail(400, { message: m.error_cannot_cancel() });
 		return { cancelled: true };
+	},
+
+	// オプション（滞在アレンジ）明細の取消（本人・提供日前日まで）
+	cancelOption: async (event) => {
+		const { request, params, locals } = event;
+		const form = await request.formData();
+		const orderId = String(form.get('orderId') ?? '');
+		if (!orderId) return fail(400, { message: m.options_cancel_failed() });
+
+		if (MEMBER_SUPABASE) {
+			try {
+				await sbCancelBookingOption(createSupabaseServerClient(event), orderId);
+			} catch {
+				return fail(400, { message: m.options_cancel_failed() });
+			}
+			return { optionCancelled: true };
+		}
+
+		const booking = bookings.get(params.code);
+		if (!booking || booking.memberId !== locals.user!.id) return fail(404, { message: m.error_booking_not_found() });
+		try {
+			cancelBookingOption(orderId, locals.user!.id);
+		} catch {
+			return fail(400, { message: m.options_cancel_failed() });
+		}
+		return { optionCancelled: true };
 	}
 };

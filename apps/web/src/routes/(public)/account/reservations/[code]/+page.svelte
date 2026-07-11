@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { formatPrice, formatDateLong } from '$lib/format';
+	import { formatPrice, formatDateLong, formatDate, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
+	import type { BookingOptionOrder } from '$lib/types';
 
 	let { data, form } = $props();
 	let b = $derived(data.booking);
@@ -16,6 +17,28 @@
 			default: return m.reservation_payment_unpaid();
 		}
 	}
+
+	// オプションのカテゴリラベル
+	function categoryLabel(cat: BookingOptionOrder['category']): string {
+		switch (cat) {
+			case 'meal': return m.options_category_meal();
+			case 'spa': return m.options_category_spa();
+			case 'activity': return m.options_category_activity();
+			case 'amenity': return m.options_category_amenity();
+			case 'personalize': return m.options_category_personalize();
+			default: return m.options_category_other();
+		}
+	}
+
+	// 提供日（無ければチェックイン日）の前日まで取消可（表示判定・強制は RPC/store 側）
+	function canCancelOption(o: BookingOptionOrder): boolean {
+		if (o.status !== 'reserved') return false;
+		const basis = o.serviceDate ?? b.checkin;
+		return todayStr() < basis;
+	}
+
+	let options = $derived((data.options ?? []) as BookingOptionOrder[]);
+	let optionsTotal = $derived(options.reduce((s, o) => s + o.amount, 0));
 </script>
 
 <svelte:head><title>{m.reservation_title({ code: b.code })}</title></svelte:head>
@@ -24,6 +47,9 @@
 
 {#if form?.cancelled}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.reservation_cancelled_ok()}</p>
+{/if}
+{#if form?.optionCancelled}
+	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.options_cancel_ok()}</p>
 {/if}
 {#if form?.message}
 	<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
@@ -98,10 +124,52 @@
 				</p>
 			</div>
 
-			<!-- オプション追加枠（P6 §15.2 接続点） -->
-			<div class="rounded-2xl border border-dashed border-stone-300 p-5 text-sm text-stone-500">
-				<p class="font-medium text-stone-600">{m.reservation_addon_heading()}</p>
-				<p class="mt-1 text-xs">{m.reservation_addon_msg()}</p>
+			<!-- 滞在アレンジ（オプション事前予約・現地精算） -->
+			<div class="rounded-2xl border border-stone-200 bg-white p-5 text-sm">
+				<div class="flex items-center justify-between">
+					<h2 class="font-medium text-brand-900">{m.options_heading()}</h2>
+					<a href="/account/reservations/{b.code}/options" class="text-xs font-medium text-accent-600 hover:underline">{m.options_add()}</a>
+				</div>
+
+				{#if options.length === 0}
+					<p class="mt-2 text-xs text-stone-400">{m.options_none()}</p>
+				{:else}
+					<ul class="mt-3 space-y-2">
+						{#each options as o (o.orderId)}
+							<li class="rounded-lg border border-stone-100 bg-stone-50 px-3 py-2">
+								<div class="flex items-start justify-between gap-2">
+									<div class="min-w-0">
+										<p class="truncate font-medium text-stone-700">{o.name}</p>
+										<p class="mt-0.5 text-xs text-stone-400">
+											{categoryLabel(o.category)}
+											{#if o.serviceDate}・{formatDate(o.serviceDate)}{/if}
+											{#if o.quantity > 1}・{m.options_qty({ n: String(o.quantity) })}{/if}
+										</p>
+										{#if o.note}<p class="mt-0.5 text-xs text-stone-400">{o.note}</p>{/if}
+										{#if o.status === 'needs_reschedule'}
+											<p class="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">{m.options_needs_reschedule()}</p>
+										{/if}
+									</div>
+									<span class="shrink-0 text-xs font-medium {o.amount === 0 ? 'text-emerald-700' : 'text-stone-700'}">
+										{o.amount === 0 ? m.options_free() : formatPrice(o.amount)}
+									</span>
+								</div>
+								{#if canCancelOption(o)}
+									<form method="POST" action="?/cancelOption" use:enhance class="mt-1.5 text-right">
+										<input type="hidden" name="orderId" value={o.orderId} />
+										<button type="submit" class="text-xs text-red-500 hover:underline">{m.options_cancel()}</button>
+									</form>
+								{:else if o.status === 'reserved'}
+									<p class="mt-1 text-right text-xs text-stone-400">{m.options_cancel_phone()}</p>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+					<div class="mt-3 flex justify-between border-t border-stone-100 pt-2 text-xs">
+						<span class="text-stone-500">{m.options_local_payment()}</span>
+						<span class="font-medium text-stone-700">{optionsTotal === 0 ? m.options_free() : formatPrice(optionsTotal)}</span>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
