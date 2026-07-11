@@ -493,6 +493,7 @@ export interface ForumPostViewRow {
 	created_at: string;
 	is_deleted: boolean;
 	nickname: string | null;
+	avatar_url: string | null;
 	is_staff: boolean;
 	is_own: boolean;
 }
@@ -629,6 +630,7 @@ export async function listForumPostsData(threadId: string): Promise<ForumPostVie
 		createdAt: p.created_at,
 		isDeleted: p.is_deleted,
 		nickname: p.is_deleted ? null : p.nickname,
+		avatarUrl: p.is_deleted ? null : (p.avatar_url ?? null),
 		isStaff: p.is_staff,
 		isOwn: p.is_own
 	}));
@@ -1129,6 +1131,28 @@ export async function sbUpdateMyProfile(
 		p_mail_opt_in: input.mailOptIn ?? null
 	});
 	if (error) throw error;
+}
+
+/** アバターURLを更新（book.set_my_avatar・null で解除）。 */
+export async function sbSetMyAvatar(client: SupabaseClient, url: string | null): Promise<void> {
+	const { error } = await client.schema('book').rpc('set_my_avatar', { p_url: url });
+	if (error) throw error;
+}
+
+/** アバター画像を Storage 'avatars' の本人フォルダへアップロードし、公開URLを book.members に保存。 */
+export async function sbUploadAvatar(client: SupabaseClient, userId: string, file: File): Promise<string> {
+	const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+	const path = `${userId}/avatar.${ext}`;
+	const { error } = await client.storage.from('avatars').upload(path, file, {
+		upsert: true,
+		contentType: file.type || 'image/jpeg'
+	});
+	if (error) throw error;
+	const { data } = client.storage.from('avatars').getPublicUrl(path);
+	// キャッシュバスター（同一パス upsert のため）
+	const url = `${data.publicUrl}?v=${Date.now()}`;
+	await sbSetMyAvatar(client, url);
+	return url;
 }
 
 /** 退会（論理削除）。book.withdraw_member RPC が withdrawn_at をマークする（データは保持）。

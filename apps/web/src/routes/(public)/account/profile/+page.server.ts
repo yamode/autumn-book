@@ -1,8 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { memberById, members, withdrawnMembers } from '$lib/server/store';
+import { memberById, members, withdrawnMembers, avatarByMember } from '$lib/server/store';
 import { clearSession } from '$lib/server/session';
-import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbUpdateMyProfile, sbWithdrawMember } from '$lib/server/supabase-data';
+import { MEMBER_SUPABASE, createSupabaseServerClient, getSupabaseUser } from '$lib/server/auth';
+import { sbUpdateMyProfile, sbWithdrawMember, sbUploadAvatar, sbSetMyAvatar } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
 import type { Actions } from './$types';
 
@@ -36,6 +36,52 @@ export const actions: Actions = {
 		member.phone = phone;
 		member.mailOptIn = mailOptIn;
 		return { saved: true, message: '' };
+	},
+
+	// プロフィール画像アップロード。supabase=Storage、demo=data URL をメモリ保持。
+	uploadAvatar: async (event) => {
+		const { request, locals } = event;
+		const form = await request.formData();
+		const file = form.get('avatar');
+		if (!(file instanceof File) || file.size === 0) return fail(400, { avatarError: m.profile_avatar_error_none() });
+		if (!file.type.startsWith('image/')) return fail(400, { avatarError: m.profile_avatar_error_type() });
+		if (file.size > 3 * 1024 * 1024) return fail(400, { avatarError: m.profile_avatar_error_size() });
+
+		if (MEMBER_SUPABASE) {
+			try {
+				const got = await getSupabaseUser(event);
+				if (!got) return fail(401, { avatarError: m.profile_avatar_error_failed() });
+				await sbUploadAvatar(got.client, got.user.id, file);
+			} catch {
+				return fail(400, { avatarError: m.profile_avatar_error_failed() });
+			}
+			return { avatarSaved: true };
+		}
+
+		// demo: data URL 化してメモリ保持（Cloudflare Workers 実行のため Buffer は使わず btoa）
+		const bytes = new Uint8Array(await file.arrayBuffer());
+		let bin = '';
+		const CHUNK = 0x8000;
+		for (let i = 0; i < bytes.length; i += CHUNK) {
+			bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+		}
+		const dataUrl = `data:${file.type};base64,${btoa(bin)}`;
+		avatarByMember.set(locals.user!.id, dataUrl);
+		return { avatarSaved: true };
+	},
+
+	removeAvatar: async (event) => {
+		const { locals } = event;
+		if (MEMBER_SUPABASE) {
+			try {
+				await sbSetMyAvatar(createSupabaseServerClient(event), null);
+			} catch {
+				return fail(400, { avatarError: m.profile_avatar_error_failed() });
+			}
+			return { avatarSaved: true };
+		}
+		avatarByMember.delete(locals.user!.id);
+		return { avatarSaved: true };
 	},
 
 	// メールアドレス変更。supabase は Supabase の確認フロー（新アドレスに確認メール）、demo は即時更新。

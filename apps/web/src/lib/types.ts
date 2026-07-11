@@ -354,6 +354,7 @@ export interface ForumPostView {
 	createdAt: string;
 	isDeleted: boolean; // true ならプレースホルダ表示「この投稿は削除されました」
 	nickname: string | null; // 削除済みは null
+	avatarUrl: string | null; // プロフィール画像（コミュニティのアイコン）。無ければ null でイニシャル表示
 	isStaff: boolean; // role が staff/admin なら true（運営バッジ）
 	isOwn: boolean; // 閲覧者本人の投稿（削除ボタン表示用）
 }

@@ -1587,7 +1587,7 @@ export function listForumPosts(threadId: string, viewerUserId?: string): ForumPo
 		.sort((a, b) => a.postNo - b.postNo)
 		.map((p) => {
 			if (p.isDeleted) {
-				return { id: p.id, postNo: p.postNo, body: '', replyToNo: null, createdAt: p.createdAt, isDeleted: true, nickname: null, isStaff: false, isOwn: false };
+				return { id: p.id, postNo: p.postNo, body: '', replyToNo: null, createdAt: p.createdAt, isDeleted: true, nickname: null, avatarUrl: null, isStaff: false, isOwn: false };
 			}
 			const { nickname, isStaff } = forumDisplay(profileOf(p.authorUserId));
 			return {
@@ -1598,6 +1598,7 @@ export function listForumPosts(threadId: string, viewerUserId?: string): ForumPo
 				createdAt: p.createdAt,
 				isDeleted: false,
 				nickname,
+				avatarUrl: avatarByMember.get(p.authorUserId) ?? null,
 				isStaff,
 				isOwn: !!viewerUserId && viewerUserId === p.authorUserId
 			};

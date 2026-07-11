@@ -16,7 +16,11 @@
 	<header class="mb-2 flex flex-wrap items-center gap-2 text-xs text-stone-400">
 		<span class="font-mono text-stone-500">{m.forum_post_anchor({ n: post.postNo })}</span>
 		{#if !post.isDeleted}
-			<span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-100 text-[10px] font-medium text-brand-800">{initial}</span>
+			{#if post.avatarUrl}
+				<img src={post.avatarUrl} alt="" class="h-5 w-5 rounded-full object-cover" />
+			{:else}
+				<span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-100 text-[10px] font-medium text-brand-800">{initial}</span>
+			{/if}
 			<span class="font-medium text-stone-600">{post.nickname}</span>
 			{#if post.isStaff}<span class="rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
 		{/if}

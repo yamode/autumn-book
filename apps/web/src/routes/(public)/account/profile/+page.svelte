@@ -18,6 +18,38 @@
 		<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
 	{/if}
 
+	<!-- プロフィール画像 -->
+	<div class="space-y-3 rounded-2xl border border-stone-200 bg-white p-6">
+		<h2 class="text-lg">{m.profile_avatar_heading()}</h2>
+		<p class="text-sm text-stone-500">{m.profile_avatar_note()}</p>
+		{#if form?.avatarSaved}
+			<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_avatar_saved()}</p>
+		{/if}
+		{#if form?.avatarError}
+			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.avatarError}</p>
+		{/if}
+		<div class="flex items-center gap-4">
+			{#if data.member.avatarUrl}
+				<img src={data.member.avatarUrl} alt="" class="h-20 w-20 rounded-full object-cover" />
+			{:else}
+				<div class="flex h-20 w-20 items-center justify-center rounded-full bg-brand-800 text-3xl font-semibold text-white">
+					{(data.member.name ?? '').trim().charAt(0) || '·'}
+				</div>
+			{/if}
+			<div class="flex-1 space-y-2">
+				<form method="POST" action="?/uploadAvatar" enctype="multipart/form-data" use:enhance class="flex flex-wrap items-center gap-2">
+					<input type="file" name="avatar" accept="image/*" required class="block w-full text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-800 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700" />
+					<button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.profile_avatar_upload()}</button>
+				</form>
+				{#if data.member.avatarUrl}
+					<form method="POST" action="?/removeAvatar" use:enhance>
+						<button type="submit" class="text-sm text-stone-500 underline hover:text-red-600">{m.profile_avatar_remove()}</button>
+					</form>
+				{/if}
+			</div>
+		</div>
+	</div>
+
 	<!-- 基本情報 -->
 	<form method="POST" action="?/update" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 		<h2 class="text-lg">{m.profile_heading()}</h2>

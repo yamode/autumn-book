@@ -232,6 +232,14 @@
 - **お気に入り＝個別客室**（v0.21.0・favorites）: 施設ごとに個別の部屋（例: 靖山樓 萌木/深緑…）をハートでトグル。demo=store `rooms`/`favoriteRoomsByMember` / supabase=`book.favorite_rooms` + RPC（`facility_rooms`/`list_my_favorite_rooms`/`toggle_favorite_room`）。個別客室名は `pms.rooms.metadata.display_name`。
   - migration: autumn-shared `20260711035842_book_favorite_rooms`（PROD 適用確認済み）。
 - 文言は ja/en/zh-TW 追加済み。旧「施設単位お気に入り」`book.favorites` は温存（この画面は客室単位に置換）。
+- **お気に入り 客室タイプ別トグル**（v0.22.0）: 施設→客室タイプ（`<details>` 折りたたみ）→個別客室 の3階層。お気に入りがある型は初期展開。
+- **ヘッダ改修**（v0.22.0）: ログアウトをヘッダへ移設（profile からは削除）／会員番号の表示を削除。
+- **プロフィール画像（アバター）**（v0.23.0）:
+  - demo=data URL をメモリ保持（Workers のため Buffer 不使用・btoa）／supabase=Storage `avatars`（本人フォルダ）へアップロード → `book.set_my_avatar` で URL 保存。
+  - 表示: マイページヘッダ・プロフィール・**コミュニティ投稿のアイコン**（`ForumPostView` が `avatarUrl` を描画・`forum_list_posts` RPC が author avatar_url を返す）。
+  - migration: `20260711042850_book_member_avatar`（avatar_url 列・Storage バケット/ポリシー・set_my_avatar・my_profile 拡張）、`20260711043538_book_forum_post_avatar`（forum_list_posts に avatar）。両方 PROD 適用確認済み。
+  - ⚠ 注意: 本番は AUTH_MODE=demo のため会員アバターは demo（メモリ・Workers の isolate 毎で揮発）。supabase 認証移行後に Storage 永続が効く。
+- **パスキー登録UI = 延期（TODO）**: WebAuthn は RP ID=`yamado.app` 前提で `*.pages.dev` オリジンでは動作不可、かつ AUTH_MODE=supabase＋ブラウザ Supabase クライアント導入が必要。**book が yamado.app サブドメイン＋supabase 認証に移行してから実装**する（rms `account/passkeys`・`autumn-shared/src/auth/passkey.ts` を参照実装に）。
 
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
