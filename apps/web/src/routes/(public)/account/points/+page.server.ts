@@ -1,6 +1,6 @@
-import { pointLedger, memberRanks, expiringPoints, myReservations } from '$lib/server/store';
+import { pointLedger, memberRanks, expiringPoints, myReservations, listMyOtayori } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbPointLedger, sbMyReservations, sumExpiringPoints } from '$lib/server/supabase-data';
+import { sbPointLedger, sbMyReservations, sumExpiringPoints, getOtayoriMySummary } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
 import type { PageServerLoad } from './$types';
 
@@ -10,7 +10,11 @@ export const load: PageServerLoad = async (event) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [ledger, reservations] = await Promise.all([sbPointLedger(client), sbMyReservations(client)]);
+		const [ledger, reservations, otayori] = await Promise.all([
+			sbPointLedger(client),
+			sbMyReservations(client),
+			getOtayoriMySummary(client)
+		]);
 		const staysThisYear = reservations
 			.filter((b) => b.status !== 'cancelled' && b.checkin >= yearStart)
 			.reduce((s, b) => s + b.nights, 0);
@@ -18,7 +22,24 @@ export const load: PageServerLoad = async (event) => {
 			ledger,
 			ranks: memberRanks,
 			expiring: sumExpiringPoints(ledger),
-			staysThisYear
+			staysThisYear,
+			otayori: {
+				balance: otayori.balance,
+				ledger: otayori.ledger.map((e) => ({
+					id: e.id,
+					delta: e.delta,
+					reason: e.reason,
+					createdAt: (e.created_at ?? '').slice(0, 10)
+				})),
+				posts: otayori.posts.map((p) => ({
+					id: p.id,
+					body: p.body,
+					radioName: p.radio_name ?? undefined,
+					status: p.status,
+					reviewNote: p.review_note ?? undefined,
+					createdAt: (p.created_at ?? '').slice(0, 10)
+				}))
+			}
 		};
 	}
 
@@ -27,10 +48,12 @@ export const load: PageServerLoad = async (event) => {
 	const staysThisYear = myReservations(memberId)
 		.filter((b) => b.status !== 'cancelled' && b.checkin >= yearStart)
 		.reduce((s, b) => s + b.nights, 0);
+	const otayori = listMyOtayori(memberId);
 	return {
 		ledger: pointLedger.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 		ranks: memberRanks,
 		expiring: expiringPoints(memberId),
-		staysThisYear
+		staysThisYear,
+		otayori
 	};
 };

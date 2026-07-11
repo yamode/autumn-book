@@ -26,7 +26,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 	// supabase 本接続では load から profile を引く RPC が無いため、この事前チェックは
 	// create アクション側で no_nickname 例外を捕捉して誘導する（下記）。
 	if (!MEMBER_SUPABASE && !getForumProfile(locals.user.id)) {
-		redirect(303, `/community/settings?next=${encodeURIComponent(url.pathname)}`);
+		redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 	}
 
 	return { board: { slug: board.slug, title: board.title }, writeEnabled: true };
@@ -49,7 +49,7 @@ export const actions: Actions = {
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : '';
 				// ニックネーム未設定は設定ページへ誘導（catch 内の redirect はそのまま伝播する）
-				if (msg.includes('no_nickname')) redirect(303, `/community/settings?next=${encodeURIComponent(url.pathname)}`);
+				if (msg.includes('no_nickname')) redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 				const message =
 					msg.includes('banned') ? m.forum_error_banned()
 					: msg.includes('board_archived') ? m.forum_error_archived()

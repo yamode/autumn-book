@@ -43,7 +43,7 @@
 			{#if !data.hasNickname}
 				<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
 					{m.forum_nickname_required_notice()}
-					<a href="/community/settings?next={encodeURIComponent(`/community/threads/${data.thread.id}`)}" class="underline">{m.forum_nickname_settings_heading()}</a>
+					<a href="/account/community?next={encodeURIComponent(`/community/threads/${data.thread.id}`)}" class="underline">{m.forum_nickname_settings_heading()}</a>
 				</p>
 			{/if}
 			<form method="POST" action="?/reply" use:enhance class="rounded-2xl border border-stone-200 bg-white p-4">

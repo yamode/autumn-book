@@ -47,7 +47,7 @@ export const actions: Actions = {
 		if (!locals.user) redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname)}`);
 		// ニックネーム未設定なら設定へ（supabase 本接続では RPC 側で no_nickname を捕捉して誘導）
 		if (!MEMBER_SUPABASE && !getForumProfile(locals.user.id)) {
-			redirect(303, `/community/settings?next=${encodeURIComponent(url.pathname)}`);
+			redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 		}
 
 		const form = await request.formData();
@@ -60,7 +60,7 @@ export const actions: Actions = {
 				postNo = res.post_no;
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : '';
-				if (msg.includes('no_nickname')) redirect(303, `/community/settings?next=${encodeURIComponent(url.pathname)}`);
+				if (msg.includes('no_nickname')) redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 				const message =
 					msg.includes('banned') ? m.forum_error_banned()
 					: msg.includes('thread_locked') ? m.forum_error_locked()

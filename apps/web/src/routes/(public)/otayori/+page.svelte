@@ -23,7 +23,7 @@
 			<p class="mt-2 text-sm text-emerald-800">{m.otayori_thanks_body()}</p>
 			<div class="mt-4 flex flex-wrap gap-2">
 				<a href="/otayori" class="rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.otayori_thanks_again()}</a>
-				<a href="/account/otayori" class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">{m.otayori_thanks_mypage()}</a>
+				<a href="/account/points" class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">{m.otayori_thanks_mypage()}</a>
 			</div>
 		</div>
 	{:else if !data.isLoggedIn}

@@ -32,7 +32,7 @@
 <div class="grid gap-6 md:grid-cols-[1fr_300px]">
 	<div class="rounded-2xl border border-stone-200 bg-white p-6">
 		<div class="flex items-center justify-between">
-			<h1 class="font-display text-xl text-brand-900">{data.facility.name}</h1>
+			<h1 class="text-xl font-semibold text-brand-900">{data.facility.name}</h1>
 			<span class="rounded-full px-3 py-1 text-xs {b.status === 'reserved' ? 'bg-emerald-50 text-emerald-700' : b.status === 'cancelled' ? 'bg-stone-100 text-stone-500' : 'bg-blue-50 text-blue-600'}">
 				{b.status === 'reserved' ? m.account_status_reserved() : b.status === 'cancelled' ? m.account_status_cancelled() : m.account_status_stayed()}
 			</span>

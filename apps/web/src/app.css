@@ -20,6 +20,25 @@ html {
 	font-family: var(--font-serif-jp);
 }
 
+/* マイページ（/account）: 公開マーケ面（明朝・和の情緒）とは分け、
+   グローバルスタンダードな明快さを優先する。見出しはゴシック、本文はやや大きめ・高コントラスト。 */
+.account-shell {
+	font-size: 1.0625rem; /* 17px 基準（既定より一段大きく・可読性優先） */
+	line-height: 1.7;
+	color: #1c1917; /* stone-900 相当・本文コントラスト確保 */
+}
+.account-shell :is(h1, h2, h3) {
+	font-family: 'Yu Gothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
+	letter-spacing: 0.01em;
+	color: #1c1917;
+}
+.account-shell h1 {
+	font-weight: 700;
+}
+.account-shell :is(h2, h3) {
+	font-weight: 600;
+}
+
 /* スクロールリビール（lib/actions/reveal.ts） */
 .reveal {
 	opacity: 0;

@@ -5,41 +5,52 @@
 
 	let { data, children } = $props();
 
+	// マイページのタブ。おたよりはポイントに統合済み。コミュニティ設定も account 配下に移設。
 	const nav = $derived([
-		{ href: '/account', label: m.account_nav_reservations(), icon: '📅' },
-		{ href: '/account/points', label: m.account_nav_points(), icon: '◆' },
-		{ href: '/account/otayori', label: m.otayori_nav(), icon: '📨' },
-		{ href: '/account/favorites', label: m.account_nav_favorites(), icon: '♥' },
-		{ href: '/account/profile', label: m.account_nav_profile(), icon: '👤' },
-		{ href: '/community/settings', label: m.forum_settings_link(), icon: '💬' }
+		{ href: '/account', label: m.account_nav_reservations() },
+		{ href: '/account/points', label: m.account_nav_points() },
+		{ href: '/account/favorites', label: m.account_nav_favorites() },
+		{ href: '/account/community', label: m.account_nav_community() },
+		{ href: '/account/profile', label: m.account_nav_profile() }
 	]);
 
 	function isActive(href: string) {
 		return href === '/account' ? page.url.pathname === '/account' : page.url.pathname.startsWith(href);
 	}
+
+	// 氏名のイニシャル（アバター代替）
+	const initial = $derived((data.member.name ?? '').trim().charAt(0) || '·');
 </script>
 
-<div class="mx-auto max-w-5xl px-4 py-8">
-	<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-		<div>
-			<h1 class="font-display text-2xl text-brand-900">{m.account_layout_heading()}</h1>
-			<p class="mt-1 text-sm text-stone-500">{data.member.name} 様（{data.member.memberCode}）</p>
+<div class="account-shell mx-auto max-w-5xl px-4 py-8 sm:px-6">
+	<!-- ヘッダー: アバター・氏名・ランク・ポイント -->
+	<header class="mb-8 flex flex-wrap items-center gap-4">
+		<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brand-800 text-2xl font-semibold text-white">
+			{initial}
 		</div>
-		<div class="flex items-center gap-3">
+		<div class="min-w-0 flex-1">
+			<h1 class="text-2xl leading-tight sm:text-3xl">{m.account_layout_heading()}</h1>
+			<p class="mt-1 text-sm text-stone-500">{data.member.name} 様 ・ {data.member.memberCode}</p>
+		</div>
+		<div class="flex items-center gap-2.5">
 			<RankBadge rank={data.member.rank} />
-			<span class="rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">{data.balance.toLocaleString()} {m.common_point_unit()}</span>
+			<span class="rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-semibold text-emerald-700">
+				{data.balance.toLocaleString()} {m.common_point_unit()}
+			</span>
 		</div>
-	</div>
+	</header>
 
-	<nav class="mb-6 flex gap-1 overflow-x-auto border-b border-stone-200 sm:gap-2">
+	<!-- タブ: 大きめ・タッチしやすい下線タブ -->
+	<nav class="mb-8 -mx-4 flex gap-1 overflow-x-auto border-b border-stone-200 px-4 sm:mx-0 sm:gap-2 sm:px-0">
 		{#each nav as item}
 			<a
 				href={item.href}
-				class="shrink-0 border-b-2 px-4 py-2 text-sm transition {isActive(item.href)
-					? 'border-brand-800 font-medium text-brand-900'
+				aria-current={isActive(item.href) ? 'page' : undefined}
+				class="shrink-0 border-b-2 px-4 py-3 text-[15px] font-medium transition {isActive(item.href)
+					? 'border-brand-800 text-brand-900'
 					: 'border-transparent text-stone-500 hover:text-brand-800'}"
 			>
-				{item.icon} {item.label}
+				{item.label}
 			</a>
 		{/each}
 	</nav>
