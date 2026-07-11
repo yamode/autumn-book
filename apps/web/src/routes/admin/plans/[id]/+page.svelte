@@ -46,7 +46,7 @@
 		<h2 class="text-sm font-bold text-stone-700">決済設定</h2>
 		{#if form?.paymentSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
 	</div>
-	{#if form?.paymentError}<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.paymentError}</p>{/if}
+	{#if (form as { paymentError?: string } | null)?.paymentError}<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { paymentError?: string }).paymentError}</p>{/if}
 
 	<div class="grid gap-4 sm:grid-cols-2">
 		<fieldset class="rounded-lg border border-stone-200 p-3 text-sm">

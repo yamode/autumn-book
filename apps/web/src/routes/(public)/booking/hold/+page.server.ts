@@ -130,7 +130,10 @@ export const actions: Actions = {
 			const payment = String(form.get('payment') ?? 'onsite') as 'onsite' | 'card' | 'paypay';
 			const allowed =
 				payment === 'onsite' ? plan.payment.onsite : plan.payment.prepay && plan.payment.prepayMethods.includes(payment);
-			if (!allowed) return fail(400, { errors: { payment: 'お支払い方法を選択してください' }, values: guest });
+			if (!allowed) {
+				errors.payment = 'お支払い方法を選択してください';
+				return fail(400, { errors, values: guest });
+			}
 
 			if (payment !== 'onsite') {
 				// ③ 決済ステップへ（事前決済=即時決済）。book.holds は anon で更新できないため入力を cookie に保持。
@@ -173,7 +176,10 @@ export const actions: Actions = {
 		const payment = String(form.get('payment') ?? 'onsite') as 'onsite' | 'card' | 'paypay';
 		const allowed =
 			payment === 'onsite' ? plan.payment.onsite : plan.payment.prepay && plan.payment.prepayMethods.includes(payment);
-		if (!allowed) return fail(400, { errors: { payment: 'お支払い方法を選択してください' }, values: guest });
+		if (!allowed) {
+			errors.payment = 'お支払い方法を選択してください';
+			return fail(400, { errors, values: guest });
+		}
 
 		if (payment !== 'onsite') {
 			// ③ 決済ステップへ（事前決済=即時決済。入力内容を hold に保持）

@@ -34,7 +34,7 @@
 						type="email"
 						autocomplete="username"
 						required
-						value={form?.email ?? ''}
+						value={(form as { email?: string } | null)?.email ?? ''}
 						class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm focus:border-brand-700 focus:outline-none"
 					/>
 				</label>

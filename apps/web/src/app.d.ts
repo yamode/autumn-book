@@ -1,11 +1,7 @@
 import type { SessionUser } from '$lib/server/session';
 
-// Cloudflare KV の最小型宣言（@cloudflare/workers-types 未導入環境向け）。
-// アプリ設定フラグの読み書きに使う分だけ定義する。
-interface KVNamespace {
-	get(key: string, options?: { cacheTtl?: number }): Promise<string | null>;
-	put(key: string, value: string): Promise<void>;
-}
+// KVNamespace は ambient.d.ts で global 宣言（本ファイルは import を持ちモジュール化するため
+// ここに書くと global にならない）。App.Platform からはその global 型を参照する。
 
 declare global {
 	namespace App {
@@ -21,17 +17,6 @@ declare global {
 				AB_CONFIG?: KVNamespace;
 			};
 		}
-	}
-}
-
-// async_hooks は Node.js 組み込みモジュール。@types/node 未インストール環境向けの最小型宣言。
-// paraglide が生成する server.js で動的インポートされる。
-declare module 'async_hooks' {
-	export class AsyncLocalStorage<T> {
-		run<R>(store: T, callback: (...args: unknown[]) => R, ...args: unknown[]): R;
-		getStore(): T | undefined;
-		enterWith(store: T): void;
-		disable(): void;
 	}
 }
 

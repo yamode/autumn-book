@@ -24,7 +24,7 @@
 </p>
 
 {#if form?.tested}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">テストメールを送信しました（デモ）。</p>{/if}
-{#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
+{#if (form as { message?: string } | null)?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { message?: string }).message}</p>{/if}
 
 {#each data.sequences as seq}
 	<section class="mb-6 rounded-xl border border-stone-200 bg-white">
