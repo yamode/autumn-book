@@ -2,11 +2,26 @@
 	import { enhance } from '$app/forms';
 	import { formatPrice, formatDateLong, formatDate, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
-	import type { BookingOptionOrder } from '$lib/types';
+	import type { BookingOptionOrder, BookingAmendment, AmendmentKind } from '$lib/types';
 
 	let { data, form } = $props();
 	let b = $derived(data.booking);
 	let showCancelConfirm = $state(false);
+
+	// 変更履歴・変更可否
+	let amendments = $derived((data.amendments ?? []) as BookingAmendment[]);
+	let amend = $derived(data.amend);
+
+	// 変更種別バッジの文言
+	function amendKindLabel(kind: AmendmentKind): string {
+		switch (kind) {
+			case 'dates': return m.amend_kind_dates();
+			case 'party': return m.amend_kind_party();
+			case 'room': return m.amend_kind_room();
+			case 'plan': return m.amend_kind_plan();
+			default: return m.amend_kind_composite();
+		}
+	}
 
 	// 支払いステータスラベル
 	function paymentStatusLabel(status: string): string {
@@ -39,6 +54,8 @@
 
 	let options = $derived((data.options ?? []) as BookingOptionOrder[]);
 	let optionsTotal = $derived(options.reduce((s, o) => s + o.amount, 0));
+	// 宿泊日変更でオプションの提供日が滞在期間外になった明細があるか（取り直し導線用）
+	let hasNeedsReschedule = $derived(options.some((o) => o.status === 'needs_reschedule'));
 </script>
 
 <svelte:head><title>{m.reservation_title({ code: b.code })}</title></svelte:head>
@@ -53,6 +70,12 @@
 {/if}
 {#if form?.message}
 	<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
+{/if}
+{#if hasNeedsReschedule}
+	<div class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+		{m.amend_needs_reschedule()}
+		<a href="/account/reservations/{b.code}/options" class="ml-1 font-medium underline">{m.amend_needs_reschedule_link()}</a>
+	</div>
 {/if}
 
 <div class="grid gap-6 md:grid-cols-[1fr_300px]">
@@ -118,10 +141,17 @@
 					</div>
 				{/if}
 
-				<p class="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
-					{m.reservation_date_change()}<br />
-					<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）
-				</p>
+				<div class="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
+					{#if amend?.canAmend}
+						<p class="mb-2">{m.amend_intro({ n: String(amend.remaining) })}</p>
+						<a href="/account/reservations/{b.code}/amend" class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{m.amend_button()}</a>
+					{:else}
+						<p>
+							{m.amend_call_us()}<br />
+							<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）
+						</p>
+					{/if}
+				</div>
 			</div>
 
 			<!-- 滞在アレンジ（オプション事前予約・現地精算） -->
@@ -180,3 +210,27 @@
 		</div>
 	</aside>
 </div>
+
+{#if amendments.length > 0}
+	<section class="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
+		<h2 class="text-sm font-medium text-brand-900">{m.amend_history_heading()}</h2>
+		<ul class="mt-3 space-y-2 text-sm">
+			{#each [...amendments].reverse() as a (a.amendmentNo)}
+				<li class="flex items-center justify-between gap-3 border-b border-stone-100 pb-2 last:border-0">
+					<div class="flex items-center gap-2">
+						<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{amendKindLabel(a.kind)}</span>
+						<span class="text-xs text-stone-400">{formatDate((a.createdAt ?? '').slice(0, 10))}</span>
+					</div>
+					<div class="text-right">
+						<span class="text-xs {a.diffAmount > 0 ? 'text-red-600' : a.diffAmount < 0 ? 'text-emerald-700' : 'text-stone-500'}">
+							{a.diffAmount > 0 ? '+' : ''}{formatPrice(a.diffAmount)}
+						</span>
+						{#if a.pointsRefund > 0}
+							<span class="ml-2 text-xs text-emerald-700">{m.amend_refund_points({ points: String(a.pointsRefund) })}</span>
+						{/if}
+					</div>
+				</li>
+			{/each}
+		</ul>
+	</section>
+{/if}

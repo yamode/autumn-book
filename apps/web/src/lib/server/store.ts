@@ -6,6 +6,7 @@ import {
 	addDays,
 	calcQuote,
 	cancellationFee,
+	cancellationRate,
 	earnedPoints,
 	eachNight,
 	type CancellationPolicy,
@@ -24,7 +25,8 @@ import type {
 	ForumProfile, ForumBoard, ForumThread, ForumPost, ForumPostView, ForumThreadListItem,
 	OtayoriEntry, OtayoriPost, OtayoriAdminItem,
 	HouseGuide, StayToken, StayInfo,
-	OptionItem, BookingOptionOrder
+	OptionItem, BookingOptionOrder,
+	BookingAmendment, AmendmentKind, AmendQuote, AmendParams
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
@@ -1072,6 +1074,188 @@ export function listMyBookingOptions(code: string, memberId: string): BookingOpt
 				createdAt: o.createdAt
 			};
 		});
+}
+
+// ---------------------------------------------------------------- 予約変更（滞在日/人数/部屋・プラン・P2）
+// book.quote_amendment / amend_booking / list_my_amendments のデモ実装。
+// in-place 更新（予約番号 YB-… を維持）＋履歴記録。上限2回・CI日9:00締切・ペナルティ期間の日程変更NG。
+// 料金は既存の nightlyRate（理論式相当）で新条件の全泊を再計算する（設計書 §3.1 の demo 近似）。
+
+// 予約コード → 変更履歴（新しい順ではなく amendment_no 昇順で保持）
+export const bookingAmendmentsByBooking = new Map<string, BookingAmendment[]>();
+
+/** 締切時刻（チェックイン日 9:00 施設TZ ≒ JST）を ms で返す。9:00 JST = 当日 00:00 UTC。 */
+function amendDeadlineMs(checkin: string): number {
+	return Date.parse(checkin + 'T00:00:00Z');
+}
+
+/** RPC: book.plan_offers 相当（変更ウィザードの候補提示用）。新条件でのプラン×客室×料金×残室。 */
+export function amendOffers(
+	facilityId: string,
+	checkin: string,
+	nights: number,
+	adults: number
+): { ratePlanId: string; roomTypeId: string; total: number; perPerson: number; remaining: number }[] {
+	const out: { ratePlanId: string; roomTypeId: string; total: number; perPerson: number; remaining: number }[] = [];
+	for (const plan of ratePlans.filter((p) => p.facilityId === facilityId && p.isPublished)) {
+		for (const rtId of plan.roomTypeIds) {
+			const rt = roomTypes.find((r) => r.id === rtId);
+			if (!rt || rt.capacity < adults) continue;
+			const remaining = Math.min(...eachNight(checkin, nights).map((d) => remainingRooms(rtId, d)));
+			const q = quoteFor(plan.id, rtId, checkin, nights, adults, 0);
+			out.push({ ratePlanId: plan.id, roomTypeId: rtId, total: q.total, perPerson: q.perPerson, remaining });
+		}
+	}
+	return out;
+}
+
+/** RPC: book.quote_amendment 相当（読み取り専用）。差額・ポイント返還・締切・ペナルティ・種別・残回数を算出。 */
+export function quoteAmendment(code: string, params: AmendParams, memberId: string): AmendQuote {
+	const b = bookings.get(code);
+	if (!b) throw new Error('not_found');
+	if (b.memberId !== memberId) throw new Error('forbidden');
+	const plan = planById(params.ratePlanId);
+	if (!plan || !plan.isPublished) throw new Error('plan_not_found');
+
+	// 料金（新プラン×新客室×新条件の全泊再計算）
+	const q = quoteFor(params.ratePlanId, params.roomTypeId, params.checkin, params.nights, params.adults, 0);
+	const newTotal = q.total;
+
+	// クーポン: demo booking は prepayDiscountRate（percent）のみ持つ。percent は new_total で都度再計算。
+	// fixed クーポンの概念は demo に無いため据置クランプは発生しない（設計書 §3.1 の近似）。
+	const rate = b.prepayDiscountRate ?? 0;
+	const newDiscount = rate > 0 ? Math.round(newTotal * rate) : 0;
+	const newCharge = newTotal - newDiscount;
+	const oldCharge = b.total;
+
+	// ポイント利用（縮小変更で超過分を返還・付与はチェックアウト確定に一本化）
+	const oldUse = b.pointsUsed;
+	const newUse = Math.min(oldUse, newCharge);
+	const pointsRefund = oldUse - newUse;
+
+	// 種別
+	const dateChanged = params.checkin !== b.checkin || params.nights !== b.nights;
+	const partyChanged = params.adults !== b.adults;
+	const roomChanged = params.roomTypeId !== b.roomTypeId;
+	const planChanged = params.ratePlanId !== b.planId;
+	const changes = [dateChanged, partyChanged, roomChanged, planChanged].filter(Boolean).length;
+	const kind: AmendmentKind =
+		changes === 0 ? 'none'
+		: changes > 1 ? 'composite'
+		: dateChanged ? 'dates'
+		: partyChanged ? 'party'
+		: roomChanged ? 'room'
+		: 'plan';
+
+	// 締切（CI 日 9:00 JST）
+	const deadlineMs = amendDeadlineMs(b.checkin);
+	const pastDeadline = Date.now() >= deadlineMs;
+
+	// ペナルティ（現時点のキャンセル料率 > 0 かつ日程変更）
+	const penRate = cancellationRate(b.cancellationPolicy, b.checkin, today());
+	const inPenalty = dateChanged && penRate > 0;
+
+	const amended = (bookingAmendmentsByBooking.get(code) ?? []).length;
+	const ok = b.status === 'reserved';
+	return {
+		ok,
+		amendable: ok && !pastDeadline && amended < 2,
+		amendRemaining: Math.max(0, 2 - amended),
+		kind,
+		isNoop: changes === 0,
+		deadlineAt: new Date(deadlineMs).toISOString(),
+		pastDeadline,
+		oldCharge,
+		newTotal,
+		newCharge,
+		diff: newCharge - oldCharge,
+		pointsRefund,
+		newPointsUsed: newUse,
+		newDiscount,
+		inPenalty,
+		dateChanged,
+		planChanged,
+		quote: q
+	};
+}
+
+/** RPC: book.amend_booking 相当。in-place 更新＋履歴記録＋ポイント返還＋オプション needs_reschedule 化。 */
+export function amendBooking(
+	code: string,
+	params: AmendParams,
+	memberId: string
+): { booking_code: string; amendment_no: number; diff: number; new_total: number; points_refund: number; kind: AmendmentKind } {
+	const b = bookings.get(code);
+	if (!b) throw new Error('not_found');
+	if (b.memberId !== memberId) throw new Error('forbidden');
+	if (b.status !== 'reserved') throw new Error('not_amendable');
+
+	const history = bookingAmendmentsByBooking.get(code) ?? [];
+	if (history.length >= 2) throw new Error('amend_limit');
+
+	const c = quoteAmendment(code, params, memberId);
+	if (c.pastDeadline) throw new Error('past_deadline');
+	if (c.isNoop) throw new Error('no_change');
+	if (c.inPenalty) throw new Error('amend_in_penalty');
+
+	// 在庫振替: 旧区間を +1 解放 → 新区間の残室を検証 → −1
+	adjustInventory(b.roomTypeId, b.checkin, b.nights, +1);
+	const remaining = Math.min(...eachNight(params.checkin, params.nights).map((d) => remainingRooms(params.roomTypeId, d)));
+	if (remaining <= 0) {
+		// 解放を巻き戻して失敗（元の在庫状態へ戻す）
+		adjustInventory(b.roomTypeId, b.checkin, b.nights, -1);
+		throw new Error('sold_out');
+	}
+	adjustInventory(params.roomTypeId, params.checkin, params.nights, -1);
+
+	const priceBefore = b.total;
+	const newPlan = planById(params.ratePlanId)!;
+
+	// 変更前後を in-place 反映
+	b.planId = params.ratePlanId;
+	b.roomTypeId = params.roomTypeId;
+	b.checkin = params.checkin;
+	b.nights = params.nights;
+	b.adults = params.adults;
+	b.total = c.newCharge;
+	b.pointsUsed = c.newPointsUsed;
+	// キャンセル規定 snapshot: プラン変更時のみ新プランで取り直す
+	if (c.planChanged) b.cancellationPolicy = newPlan.cancellationPolicy;
+
+	// ポイント返還（縮小変更）。付与差分はチェックアウト確定（demo 未実装）
+	if (c.pointsRefund > 0 && b.memberId) {
+		pointLedger.push({ id: nextId('pt'), memberId: b.memberId, delta: c.pointsRefund, reason: `ご予約変更に伴う返還（${code}）`, bookingCode: code, createdAt: today() });
+	}
+
+	// オプション: 新滞在期間から外れる提供日を needs_reschedule に
+	const checkout = addDays(params.checkin, params.nights);
+	for (const o of bookingOptionOrdersByBooking.get(code) ?? []) {
+		if (o.status === 'reserved' && o.serviceDate && (o.serviceDate < params.checkin || o.serviceDate > checkout)) {
+			o.status = 'needs_reschedule';
+		}
+	}
+
+	// 履歴
+	const amendmentNo = history.length + 1;
+	const entry: BookingAmendment = {
+		amendmentNo,
+		kind: c.kind,
+		priceBefore,
+		priceAfter: c.newCharge,
+		diffAmount: c.newCharge - priceBefore,
+		pointsRefund: c.pointsRefund,
+		createdAt: new Date().toISOString()
+	};
+	bookingAmendmentsByBooking.set(code, [...history, entry]);
+
+	return { booking_code: code, amendment_no: amendmentNo, diff: entry.diffAmount, new_total: c.newCharge, points_refund: c.pointsRefund, kind: c.kind };
+}
+
+/** RPC: book.list_my_amendments 相当。本人の変更履歴（amendment_no 昇順）。 */
+export function listMyAmendments(code: string, memberId: string): BookingAmendment[] {
+	const b = bookings.get(code);
+	if (!b || b.memberId !== memberId) return [];
+	return [...(bookingAmendmentsByBooking.get(code) ?? [])].sort((a, z) => a.amendmentNo - z.amendmentNo);
 }
 
 // ---- 管理（/admin/options・demo store 直操作）----

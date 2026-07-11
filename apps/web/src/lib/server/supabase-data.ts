@@ -61,7 +61,11 @@ import type {
 	FacilityAvailability,
 	OptionItem,
 	OptionCategory,
-	BookingOptionOrder
+	BookingOptionOrder,
+	BookingAmendment,
+	AmendmentKind,
+	AmendQuote,
+	AmendParams
 } from '$lib/types';
 import type { Quote, CancellationPolicy } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -1588,6 +1592,121 @@ export async function sbListBookingOptionsAdmin(
 		amount: r.amount,
 		status: r.status,
 		note: r.note ?? undefined
+	}));
+}
+
+// ---------------------------------------------------------------- 予約変更（P2・設計書 §4.1）
+// book.quote_amendment / amend_booking / list_my_amendments の薄いアダプタ。
+// 6 引数（rate_plan_id, room_type_id, checkin, nights, adults）を厳密に渡す（変更なしでも現値を渡す）。
+// RPC の例外（past_deadline / amend_limit / no_change / amend_in_penalty / sold_out …）は
+// そのまま throw し、呼び出し側（+page.server.ts）で i18n 文言へマッピングする。
+
+/** quote_amendment / _amend_compute の jsonb（snake_case）→ AmendQuote（camelCase）。 */
+function mapAmendQuote(raw: Record<string, unknown>): AmendQuote {
+	const q = (raw.quote ?? {}) as Record<string, unknown>;
+	const total = Number(q.total ?? raw.new_total ?? 0);
+	const quote: Quote = {
+		lines: [],
+		total,
+		perPerson: Number(q.per_person ?? 0),
+		taxIncluded: Number(q.tax_included ?? 0),
+		pointsUsed: 0,
+		payable: total
+	};
+	return {
+		ok: Boolean(raw.ok),
+		amendable: Boolean(raw.amendable),
+		amendRemaining: Number(raw.amend_remaining ?? 0),
+		kind: (raw.kind as AmendmentKind) ?? 'none',
+		isNoop: Boolean(raw.is_noop),
+		deadlineAt: String(raw.deadline_at ?? ''),
+		pastDeadline: Boolean(raw.past_deadline),
+		oldCharge: Number(raw.old_charge ?? 0),
+		newTotal: Number(raw.new_total ?? 0),
+		newCharge: Number(raw.new_charge ?? 0),
+		diff: Number(raw.diff ?? 0),
+		pointsRefund: Number(raw.points_refund ?? 0),
+		newPointsUsed: Number(raw.new_points_used ?? 0),
+		newDiscount: Number(raw.new_discount ?? 0),
+		inPenalty: Boolean(raw.in_penalty),
+		dateChanged: Boolean(raw.date_changed),
+		planChanged: Boolean(raw.plan_changed),
+		quote
+	};
+}
+
+/** store.quoteAmendment 相当。変更見積（読み取り専用・本人）。RPC 例外はそのまま throw。 */
+export async function sbQuoteAmendment(
+	client: SupabaseClient,
+	code: string,
+	p: AmendParams
+): Promise<AmendQuote> {
+	const { data, error } = await client.schema('book').rpc('quote_amendment', {
+		p_booking_code: code,
+		p_rate_plan_id: p.ratePlanId,
+		p_room_type_id: p.roomTypeId,
+		p_checkin: p.checkin,
+		p_nights: p.nights,
+		p_adults: p.adults
+	});
+	if (error) throw error;
+	return mapAmendQuote(data as Record<string, unknown>);
+}
+
+export interface AmendResult {
+	booking_code: string;
+	amendment_no: number;
+	diff: number;
+	new_total: number;
+	points_refund: number;
+	kind: AmendmentKind;
+}
+
+/** store.amendBooking 相当。変更確定（単一Tx・本人）。RPC 例外はそのまま throw。 */
+export async function sbAmendBooking(
+	client: SupabaseClient,
+	code: string,
+	p: AmendParams
+): Promise<AmendResult> {
+	const { data, error } = await client.schema('book').rpc('amend_booking', {
+		p_booking_code: code,
+		p_rate_plan_id: p.ratePlanId,
+		p_room_type_id: p.roomTypeId,
+		p_checkin: p.checkin,
+		p_nights: p.nights,
+		p_adults: p.adults
+	});
+	if (error) throw error;
+	return data as AmendResult;
+}
+
+interface AmendmentRow {
+	amendment_no: number;
+	kind: string;
+	price_before: number;
+	price_after: number;
+	diff_amount: number;
+	points_refund: number;
+	created_at: string;
+}
+
+const AMEND_KINDS: AmendmentKind[] = ['none', 'dates', 'party', 'room', 'plan', 'composite'];
+function safeAmendKind(raw: unknown): AmendmentKind {
+	return AMEND_KINDS.includes(raw as AmendmentKind) ? (raw as AmendmentKind) : 'composite';
+}
+
+/** store.listMyAmendments 相当。本人の変更履歴（amendment_no 昇順は RPC 側）。 */
+export async function sbListMyAmendments(client: SupabaseClient, code: string): Promise<BookingAmendment[]> {
+	const { data, error } = await client.schema('book').rpc('list_my_amendments', { p_booking_code: code });
+	if (error) throw error;
+	return ((data ?? []) as AmendmentRow[]).map((r) => ({
+		amendmentNo: r.amendment_no,
+		kind: safeAmendKind(r.kind),
+		priceBefore: r.price_before,
+		priceAfter: r.price_after,
+		diffAmount: r.diff_amount,
+		pointsRefund: r.points_refund,
+		createdAt: r.created_at
 	}));
 }
 

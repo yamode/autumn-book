@@ -6,7 +6,8 @@ import {
 	roomTypeById,
 	cancelBooking,
 	listMyBookingOptions,
-	cancelBookingOption
+	cancelBookingOption,
+	listMyAmendments
 } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import {
@@ -14,12 +15,25 @@ import {
 	sbCancelBookingAsMember,
 	sbListMyBookingOptions,
 	sbCancelBookingOption,
+	sbListMyAmendments,
 	reverseFacilityUuid
 } from '$lib/server/supabase-data';
 import { cancellationFee, cancellationRate, addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
+
+// 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
+// 締切 = チェックイン日 9:00 施設TZ（≒ JST）。9:00 JST = 当日 00:00 UTC。上限2回。
+function amendGate(status: string, checkin: string, amendCount: number) {
+	const deadlinePassed = Date.now() >= Date.parse(checkin + 'T00:00:00Z');
+	const remaining = Math.max(0, 2 - amendCount);
+	return {
+		remaining,
+		deadlinePassed,
+		canAmend: status === 'reserved' && !deadlinePassed && remaining > 0
+	};
+}
 
 export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
@@ -51,11 +65,15 @@ export const load: PageServerLoad = async (event) => {
 		};
 		// 滞在アレンジ（オプション）明細。締切表示用に checkout（提供日セレクトの上限）も返す。
 		const options = await sbListMyBookingOptions(createSupabaseServerClient(event), r.code);
+		// 変更履歴・変更可否
+		const amendments = await sbListMyAmendments(client, r.code);
 		return {
 			booking,
 			facility,
 			checkout: r.checkout,
 			options,
+			amendments,
+			amend: amendGate(r.status, r.checkin, amendments.length),
 			// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
@@ -72,11 +90,14 @@ export const load: PageServerLoad = async (event) => {
 	const booking = bookings.get(params.code);
 	if (!booking || booking.memberId !== locals.user!.id) error(404, m.error_booking_not_found());
 	const options = listMyBookingOptions(params.code, locals.user!.id);
+	const amendments = listMyAmendments(params.code, locals.user!.id);
 	return {
 		booking,
 		facility: facilityById(booking.facilityId)!,
 		checkout: addDays(booking.checkin, booking.nights),
 		options,
+		amendments,
+		amend: amendGate(booking.status, booking.checkin, amendments.length),
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
 		cancelPreview:

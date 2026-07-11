@@ -196,6 +196,71 @@ export interface BookingOptionOrder {
 	createdAt: string;
 }
 
+// ---------------------------------------------------------------- 予約変更（book.booking_amendments / quote_amendment / amend_booking 対称・P2）
+
+/** 変更種別（履歴バッジ・quote_amendment.kind）。none は差分ゼロ（no-op） */
+export type AmendmentKind = 'none' | 'dates' | 'party' | 'room' | 'plan' | 'composite';
+
+/** 変更の入力（quote_amendment / amend_booking の 6 引数のうち可変 5 項目）。
+ *  変更なしの項目も現値を渡す（曖昧さ排除・RPC シグネチャに一致）。 */
+export interface AmendParams {
+	/** 新プラン（demo プラン ID or 実 UUID） */
+	ratePlanId: string;
+	/** 新客室タイプ（demo ID or 実 UUID） */
+	roomTypeId: string;
+	checkin: string;
+	nights: number;
+	adults: number;
+}
+
+/** 変更履歴の1行（book.list_my_amendments 対称・本人） */
+export interface BookingAmendment {
+	amendmentNo: number;
+	kind: AmendmentKind;
+	priceBefore: number;
+	priceAfter: number;
+	diffAmount: number;
+	pointsRefund: number;
+	createdAt: string;
+}
+
+/** 変更見積（book.quote_amendment 戻り値の camelCase・読み取り専用）。
+ *  差額・ポイント返還・締切・ペナルティ・種別・残回数を保持する。 */
+export interface AmendQuote {
+	/** confirmed かつ reserved（変更対象の状態にある） */
+	ok: boolean;
+	/** ok かつ 締切前・残回数あり（実際に変更を確定できる） */
+	amendable: boolean;
+	/** 残り変更可能回数（0..2） */
+	amendRemaining: number;
+	kind: AmendmentKind;
+	/** 差分ゼロ（同一条件） */
+	isNoop: boolean;
+	/** 締切時刻（チェックイン日 9:00 施設TZ・ISO） */
+	deadlineAt: string;
+	pastDeadline: boolean;
+	/** 変更前の支払額（bookings.total_amount） */
+	oldCharge: number;
+	/** 変更後の宿泊料金（クーポン適用前・税込） */
+	newTotal: number;
+	/** 変更後の支払額（クーポン適用後） */
+	newCharge: number;
+	/** newCharge − oldCharge（±） */
+	diff: number;
+	/** 縮小変更で返還する利用ポイント */
+	pointsRefund: number;
+	/** 変更後の利用ポイント（newCharge にクランプ） */
+	newPointsUsed: number;
+	/** 変更後のクーポン割引額 */
+	newDiscount: number;
+	/** キャンセル料発生期間内の日程変更（原則 NG） */
+	inPenalty: boolean;
+	dateChanged: boolean;
+	planChanged: boolean;
+	/** 変更後の宿泊料金明細（book.quote 出力を app Quote へ整形） */
+	quote: Quote;
+}
+
 export interface GuestInfo {
 	name: string; // 表示用の合成（姓 名）
 	kana: string; // 表示用の合成（セイ メイ）
