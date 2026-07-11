@@ -224,9 +224,21 @@
 会員認証は **yamado-one（モバイル）と同じ「6桁メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。
 
 - [ ] Authentication → Providers → **Email 有効**・サインアップ許可（`shouldCreateUser:true` を使うため）
-- [ ] Email テンプレート（Magic Link）に **`{{ .Token }}`（6桁コード）** が含まれること ※モバイルが既に依存
+- [x] **Confirm signup** テンプレートを `{{ .Token }}`（6桁コード）表示に変更（2026-07-11・ユーザー実施）
+- [ ] **Magic Link** テンプレートを `{{ .Token }}`（6桁コード）表示に変更（下記「共有テンプレート統一」参照・**要実施**）
 - [ ] Leaked Password Protection を有効化（Advisor の WARN）
 - 管理者は従来どおり email+パスワード（`app_metadata.role=admin`）。会員とは別フロー
+
+### 共有テンプレート（Magic Link）の統一（2026-07-11 決定・方針A）
+
+autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メールテンプレートは1組**を共有する。会員登録は新規ユーザーなので **"Confirm signup"** が飛ぶ（book専用・修正済）。一方 **既存確認済みユーザーの `signInWithOtp`** は **"Magic Link"** テンプレートを飛ばし、これは **rms 管理者ログインの補助動線とも共有**する唯一の重複だった。
+
+- **問題の症状**: 既定 "Confirm signup"／"Magic Link" は `{{ .ConfirmationURL }}`（リンク）方式で、Site URL=`autumn-rms.yamado.app` のため、リンクを踏むと **rms 管理画面に着地**していた。
+- **根本解（方針A・採用）**: 共有する "Magic Link" の UX を **6桁コードに統一**。
+  - rms 側: ログイン補助を「リンク送信」→「6桁コード入力」に変更（autumn-rms v0.70.0・`login/+page.svelte`。`emailRedirectTo` を渡さず `verifyOtp({type:'email'})`）。
+  - ダッシュボード: **Magic Link テンプレを `{{ .Token }}` に変更**（リンクを排除）。
+  - 招待/PW再設定リンク（token_hash・rms専用の別テンプレ・管理者限定）は従来どおりで交わらない。
+- 却下案: B デュアル表示（コード+リンク併記・文面が両アプリ混在）／C Send Email Hook（Edge Function+独自SMTP・現状オーバースペック）。
 
 ## 残アクション（要ユーザー作業 or 後続セッション）
 
