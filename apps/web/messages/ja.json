@@ -362,6 +362,9 @@
 	"favorites_remove": "お気に入りから外す",
 	"favorites_add": "お気に入りに追加",
 	"favorites_empty": "お気に入りはまだありません。",
+	"favorites_rooms_heading": "お気に入りの部屋",
+	"favorites_rooms_sub": "気になる客室を施設ごとに登録できます。ハートをタップして登録・解除できます。",
+	"favorites_rooms_none": "この施設には登録できる客室がありません。",
 	"favorites_others": "その他の宿",
 
 	"profile_title": "プロフィール ｜ マイページ",

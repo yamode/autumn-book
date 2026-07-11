@@ -362,6 +362,9 @@
 	"favorites_remove": "取消收藏",
 	"favorites_add": "加入收藏",
 	"favorites_empty": "尚無收藏。",
+	"favorites_rooms_heading": "收藏的房間",
+	"favorites_rooms_sub": "可依設施收藏喜歡的客房。點擊愛心即可加入或移除。",
+	"favorites_rooms_none": "此設施沒有可收藏的客房。",
 	"favorites_others": "其他住宿",
 
 	"profile_title": "個人資料 ｜ 會員專區",

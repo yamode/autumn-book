@@ -517,6 +517,45 @@ export const favoritesByMember = new Map<string, Set<string>>([['m-demo', new Se
 // デモの退会（論理削除）会員ID。退会後はログイン不可・マイページ不可にする（データは保持）。
 export const withdrawnMembers = new Set<string>();
 
+// 個別客室（客室タイプ内の1部屋ごと。実データは pms.rooms・metadata.display_name が部屋名）。
+// お気に入り客室UI（demo）用。名称は実施設の部屋名に準拠。
+export interface DemoRoom {
+	id: string;
+	facilityId: string;
+	roomNumber: string;
+	name: string; // 部屋名（例: 萌木）
+	roomType: string; // 客室タイプの簡易表示
+}
+export const rooms: DemoRoom[] = [
+	// 山人-yamado-（西和賀）
+	{ id: 'nw-201', facilityId: 'f-nishiwaga', roomNumber: '201', name: '萌木', roomType: '靖山樓（メゾネット）' },
+	{ id: 'nw-202', facilityId: 'f-nishiwaga', roomNumber: '202', name: '深緑', roomType: '靖山樓（メゾネット）' },
+	{ id: 'nw-203', facilityId: 'f-nishiwaga', roomNumber: '203', name: '錦', roomType: '靖山樓（メゾネット）' },
+	{ id: 'nw-204', facilityId: 'f-nishiwaga', roomNumber: '204', name: '雪華', roomType: '靖山樓（メゾネット）' },
+	{ id: 'nw-301', facilityId: 'f-nishiwaga', roomNumber: '301', name: '蕗の薹', roomType: '麓花坊（ハリウッドツイン）' },
+	{ id: 'nw-302', facilityId: 'f-nishiwaga', roomNumber: '302', name: '堅香子', roomType: '麓花坊（ハリウッドツイン）' },
+	{ id: 'nw-303', facilityId: 'f-nishiwaga', roomNumber: '303', name: '羊草', roomType: '麓花坊（ハリウッドツイン）' },
+	{ id: 'nw-304', facilityId: 'f-nishiwaga', roomNumber: '304', name: '雪椿', roomType: '麓花坊（離れ・ジャパニーズスイート）' },
+	{ id: 'nw-401', facilityId: 'f-nishiwaga', roomNumber: '401', name: '椈', roomType: '麓樹坊（離れ・半露天付）' },
+	{ id: 'nw-402', facilityId: 'f-nishiwaga', roomNumber: '402', name: '水木', roomType: '麓樹坊（ハリウッドツイン）' },
+	{ id: 'nw-403', facilityId: 'f-nishiwaga', roomNumber: '403', name: '黒文字', roomType: '麓樹坊（ハリウッドツイン）' },
+	{ id: 'nw-404', facilityId: 'f-nishiwaga', roomNumber: '404', name: '桂', roomType: '麓樹坊（離れ・半露天付）' },
+	// 山人-oga-（男鹿）
+	{ id: 'og-101', facilityId: 'f-oga', roomNumber: '101', name: '紅葉', roomType: '山祇 ジュニアスイート' },
+	{ id: 'og-102', facilityId: 'f-oga', roomNumber: '102', name: '東雲', roomType: '山祇 ジュニアスイート' },
+	{ id: 'og-103', facilityId: 'f-oga', roomNumber: '103', name: '茜', roomType: '山祇 ジュニアスイート' },
+	{ id: 'og-104', facilityId: 'f-oga', roomNumber: '104', name: 'カーミン', roomType: '山祇 テラススイート' },
+	{ id: 'og-201', facilityId: 'f-oga', roomNumber: '201', name: '琥珀', roomType: '山祇 ジュニアスイート【上階】' },
+	{ id: 'og-202', facilityId: 'f-oga', roomNumber: '202', name: '鴇', roomType: '山祇 ジュニアスイート【上階】' },
+	{ id: 'og-301', facilityId: 'f-oga', roomNumber: '301', name: '緋橙', roomType: '迦具土 オーシャン和スイート' },
+	{ id: 'og-302', facilityId: 'f-oga', roomNumber: '302', name: '朱華', roomType: '迦具土 オーシャンスイート' },
+	{ id: 'og-401', facilityId: 'f-oga', roomNumber: '401', name: '一重梅', roomType: '綿津見 グランドスイート' },
+	{ id: 'og-402', facilityId: 'f-oga', roomNumber: '402', name: '蘇芳', roomType: '綿津見 ラグジュアリースイート' }
+];
+
+// デモのお気に入り客室（会員ID → 部屋ID の集合）
+export const favoriteRoomsByMember = new Map<string, Set<string>>([['m-demo', new Set(['nw-201', 'og-401'])]]);
+
 export const holds = new Map<string, Hold>();
 export const bookings = new Map<string, Booking>();
 export const auditLogs: AuditLog[] = [];

@@ -220,6 +220,19 @@
 - ⚠ **本番で会員ログインを有効化するには `AUTH_MODE=demo → supabase` への切替が必要**。ただしその瞬間に予約もデモから実データに変わるため、rms 同期でデータが入り予約導線の接続（下記残タスク）が済むまで切り替えないこと
 - 検証: build 成功・demo 回帰なし（デモログイン→マイページ→おたより投稿）・supabase モードで偽造cookie拒否/未ログイン303/公開200/OTP が Supabase 到達
 
+## マイページ刷新（2026-07-11・v0.19.0〜v0.21.0）
+
+グローバルスタンダードなUIへ刷新＋機能追加。demo/supabase 両モード配線済み。
+
+- **デザイン**（v0.19.0）: `.account-shell`（app.css）で account 配下のみ見出しをゴシック化・本文17px・高コントラスト（公開マーケ面の明朝は不変）。ヘッダーにアバター/氏名/ランク/ポイント、大きめタブ。
+- **タブ再編**（v0.19.0）: 予約 / ポイント / お気に入り / コミュニティ / プロフィール。「おたより」タブは廃止し、残高・台帳・マイ投稿を**ポイントタブに統合**。コミュニティ設定は `/account/community` へ移設（旧 `/community/settings` は 308 リダイレクト）。
+- **メールアドレス変更**（v0.20.0・profile）: demo=重複チェックのうえ即時 / supabase=`updateUser({email})` で新アドレスに確認メール（emailRedirectTo=/account/profile）。
+- **退会（論理削除）**（v0.20.0・profile）: 確認キーワード入力 → demo=`withdrawnMembers` でログイン不可化 / supabase=`book.withdraw_member`（withdrawn_at マーク・データ保持）→ member フラグ解除 → signOut。`book.my_profile` は退会者を除外・email は auth.users を正に変更。
+  - migration: autumn-shared `20260711034711_book_member_withdrawal`（PROD 適用確認済み）。
+- **お気に入り＝個別客室**（v0.21.0・favorites）: 施設ごとに個別の部屋（例: 靖山樓 萌木/深緑…）をハートでトグル。demo=store `rooms`/`favoriteRoomsByMember` / supabase=`book.favorite_rooms` + RPC（`facility_rooms`/`list_my_favorite_rooms`/`toggle_favorite_room`）。個別客室名は `pms.rooms.metadata.display_name`。
+  - migration: autumn-shared `20260711035842_book_favorite_rooms`（PROD 適用確認済み）。
+- 文言は ja/en/zh-TW 追加済み。旧「施設単位お気に入り」`book.favorites` は温存（この画面は客室単位に置換）。
+
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
 会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。

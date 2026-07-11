@@ -1,54 +1,99 @@
-import { favoritesByMember, facilities } from '$lib/server/store';
+import { facilities, rooms as demoRooms, favoriteRoomsByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbListFavorites, sbAddFavorite, sbRemoveFavorite, reverseFacilityUuid, toFacilityUuidStrict } from '$lib/server/supabase-data';
+import { sbFacilityRooms, sbListFavoriteRooms, sbToggleFavoriteRoom } from '$lib/server/supabase-data';
 import type { Actions, PageServerLoad } from './$types';
+
+export interface FavRoom {
+	roomId: string;
+	name: string;
+	roomNumber: string;
+	roomTypeName: string;
+	favorited: boolean;
+}
+export interface FavFacility {
+	id: string;
+	name: string;
+	brandSlug: string;
+	slug: string;
+	prefecture: string;
+	photo: string;
+	rooms: FavRoom[];
+	favCount: number;
+}
 
 export const load: PageServerLoad = async (event) => {
 	const { locals } = event;
+	const pubFacilities = facilities.filter((f) => f.isPublished);
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const favUuids = await sbListFavorites(client);
-		// お気に入りの実 UUID を store の施設 ID へ逆引きし、施設マスタ（store）を仕分ける
-		const favIds = new Set(favUuids.map((u) => reverseFacilityUuid(u)).filter((v): v is string => !!v));
-		return {
-			favorites: facilities.filter((f) => favIds.has(f.id)),
-			others: facilities.filter((f) => !favIds.has(f.id) && f.isPublished)
-		};
+		const favSet = new Set(await sbListFavoriteRooms(client));
+		const result: FavFacility[] = [];
+		for (const f of pubFacilities) {
+			const list = await sbFacilityRooms(client, f.id).catch(() => []);
+			const rooms = list.map((r) => ({
+				roomId: r.roomId,
+				name: r.name,
+				roomNumber: r.roomNumber,
+				roomTypeName: r.roomTypeName,
+				favorited: favSet.has(r.roomId)
+			}));
+			result.push(toFacility(f, rooms));
+		}
+		return { facilities: result };
 	}
 
-	const favs = favoritesByMember.get(locals.user!.id) ?? new Set<string>();
-	return {
-		favorites: facilities.filter((f) => favs.has(f.id)),
-		others: facilities.filter((f) => !favs.has(f.id) && f.isPublished)
-	};
+	const favSet = favoriteRoomsByMember.get(locals.user!.id) ?? new Set<string>();
+	const result: FavFacility[] = pubFacilities.map((f) => {
+		const rooms = demoRooms
+			.filter((r) => r.facilityId === f.id)
+			.map((r) => ({
+				roomId: r.id,
+				name: r.name,
+				roomNumber: r.roomNumber,
+				roomTypeName: r.roomType,
+				favorited: favSet.has(r.id)
+			}));
+		return toFacility(f, rooms);
+	});
+	return { facilities: result };
 };
+
+// 施設メタ + 部屋配列 → 画面用オブジェクト
+function toFacility(
+	f: (typeof facilities)[number],
+	rooms: FavRoom[]
+): FavFacility {
+	return {
+		id: f.id,
+		name: f.name,
+		brandSlug: f.brandSlug,
+		slug: f.slug,
+		prefecture: f.prefecture,
+		photo: f.photos[0]?.url ?? '',
+		rooms,
+		favCount: rooms.filter((r) => r.favorited).length
+	};
+}
 
 export const actions: Actions = {
 	toggle: async (event) => {
 		const { request, locals } = event;
 		const form = await request.formData();
-		const facilityId = String(form.get('facilityId'));
+		const roomId = String(form.get('roomId'));
 
 		if (MEMBER_SUPABASE) {
-			const client = createSupabaseServerClient(event);
-			const favUuids = await sbListFavorites(client);
-			const facilityUuid = toFacilityUuidStrict(facilityId);
-			if (favUuids.includes(facilityUuid)) {
-				await sbRemoveFavorite(client, locals.user!.id, facilityId);
-			} else {
-				await sbAddFavorite(client, locals.user!.id, facilityId);
-			}
+			await sbToggleFavoriteRoom(createSupabaseServerClient(event), roomId);
 			return { ok: true };
 		}
 
-		let favs = favoritesByMember.get(locals.user!.id);
+		let favs = favoriteRoomsByMember.get(locals.user!.id);
 		if (!favs) {
 			favs = new Set();
-			favoritesByMember.set(locals.user!.id, favs);
+			favoriteRoomsByMember.set(locals.user!.id, favs);
 		}
-		if (favs.has(facilityId)) favs.delete(facilityId);
-		else favs.add(facilityId);
+		if (favs.has(roomId)) favs.delete(roomId);
+		else favs.add(roomId);
 		return { ok: true };
 	}
 };

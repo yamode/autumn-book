@@ -1352,6 +1352,40 @@ export async function sbRemoveFavorite(
 	if (error) throw error;
 }
 
+// ---- お気に入り客室（book.favorite_rooms・RPC 経由。会員は pms.rooms を直接読めない）----
+
+export interface FacilityRoomRow {
+	roomId: string;
+	roomNumber: string;
+	name: string;
+	roomTypeName: string;
+}
+
+/** 施設の個別客室一覧（book.facility_rooms・display_name＝部屋名）。 */
+export async function sbFacilityRooms(client: SupabaseClient, facilityId: string): Promise<FacilityRoomRow[]> {
+	const { data, error } = await client
+		.schema('book')
+		.rpc('facility_rooms', { p_facility_id: toFacilityUuidStrict(facilityId) });
+	if (error) throw error;
+	return ((data ?? []) as { room_id: string; room_number: string; display_name: string; room_type_name: string | null }[]).map(
+		(r) => ({ roomId: r.room_id, roomNumber: r.room_number, name: r.display_name, roomTypeName: r.room_type_name ?? '' })
+	);
+}
+
+/** 自分のお気に入り客室 ID 一覧。 */
+export async function sbListFavoriteRooms(client: SupabaseClient): Promise<string[]> {
+	const { data, error } = await client.schema('book').rpc('list_my_favorite_rooms');
+	if (error) throw error;
+	return ((data ?? []) as { room_id: string }[]).map((r) => r.room_id);
+}
+
+/** お気に入り客室のトグル（true=登録した / false=解除した）。 */
+export async function sbToggleFavoriteRoom(client: SupabaseClient, roomId: string): Promise<boolean> {
+	const { data, error } = await client.schema('book').rpc('toggle_favorite_room', { p_room_id: roomId });
+	if (error) throw error;
+	return Boolean(data);
+}
+
 // ================================================================ 公開予約導線（検索→施設→プラン→客室→hold→確定）
 // DATA_SOURCE=supabase のとき、公開ページ（トップ／検索／施設HP／プラン／客室／予約フロー）が使う。
 // ビュー（v_facilities / v_room_types / v_plans）と RPC（search_availability / reference_min_price /
