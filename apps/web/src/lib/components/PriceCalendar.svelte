@@ -17,8 +17,10 @@
 		nextHref: string | null;
 	} = $props();
 
-	const [y, mo] = yearMonth.split('-').map(Number);
-	const firstDow = new Date(y, mo - 1, 1).getDay();
+	const ym = $derived(yearMonth.split('-').map(Number));
+	const y = $derived(ym[0]);
+	const mo = $derived(ym[1]);
+	const firstDow = $derived(new Date(y, mo - 1, 1).getDay());
 	const dows = ['日', '月', '火', '水', '木', '金', '土'];
 </script>
 

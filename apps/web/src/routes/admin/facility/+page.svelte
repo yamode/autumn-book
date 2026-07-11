@@ -4,6 +4,8 @@
 
 	let { data, form } = $props();
 	let f = $derived(data.facility);
+	// 初期値を prop から取り込み、以降は下の $effect で再同期する（意図的な初期化）
+	// svelte-ignore state_referenced_locally
 	let description = $state(data.facility.description);
 	$effect(() => {
 		description = data.facility.description;

@@ -5,6 +5,8 @@
 
 	let { data, form } = $props();
 	let p = $derived(data.plan);
+	// 初期値を prop から取り込み、以降はローカル編集する（意図的な初期化）
+	// svelte-ignore state_referenced_locally
 	let description = $state(data.plan.description);
 
 	// 翻訳タブ

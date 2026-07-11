@@ -10,8 +10,12 @@
 		large = false
 	}: { checkin?: string; nights?: number; adults?: number; action?: string; large?: boolean } = $props();
 
+	// 検索フォームの初期値を props から取り込み、以降はユーザー入力でローカル編集する（意図的な初期化）
+	// svelte-ignore state_referenced_locally
 	let ci = $state(checkin);
+	// svelte-ignore state_referenced_locally
 	let n = $state(nights);
+	// svelte-ignore state_referenced_locally
 	let a = $state(adults);
 	const minDate = todayStr();
 	const maxDate = addDays(todayStr(), 365);

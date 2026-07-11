@@ -10,7 +10,7 @@
 		meal: 'お食事',
 		view: '景色'
 	};
-	const categories = ['all', ...new Set(photos.map((p) => p.category))];
+	const categories = $derived(['all', ...new Set(photos.map((p) => p.category))]);
 	let active = $state('all');
 	let shown = $derived(active === 'all' ? photos : photos.filter((p) => p.category === active));
 </script>

@@ -4,6 +4,8 @@
 
 	let { expiresAt, onexpire }: { expiresAt: number; onexpire?: () => void } = $props();
 
+	// hold の期限は不変。現在値を初期の残り時間の種として1度だけ読む（以降は setInterval が都度読む）
+	// svelte-ignore state_referenced_locally
 	let remaining = $state(Math.max(0, expiresAt - Date.now()));
 
 	onMount(() => {
