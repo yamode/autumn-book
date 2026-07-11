@@ -23,6 +23,14 @@
 		{ icon: '✉', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() },
 		{ icon: '💬', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() }
 	];
+
+	// ご予約後の変更・滞在アレンジ（会員特典の詳細）
+	const changes = [
+		{ n: '01', title: m.membership_change_date_t(), body: m.membership_change_date_b() },
+		{ n: '02', title: m.membership_change_guests_t(), body: m.membership_change_guests_b() },
+		{ n: '03', title: m.membership_change_room_t(), body: m.membership_change_room_b() },
+		{ n: '04', title: m.membership_change_options_t(), body: m.membership_change_options_b() }
+	];
 </script>
 
 <svelte:head><title>{m.membership_title()}</title></svelte:head>
@@ -77,6 +85,24 @@
 				</div>
 			{/each}
 		</div>
+	</section>
+
+	<!-- ご予約後の変更・滞在アレンジ（日程変更特典の詳細） -->
+	<section class="mt-12 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
+		<h2 class="text-xl">{m.membership_change_heading()}</h2>
+		<p class="mt-2 text-stone-600">{m.membership_change_lead()}</p>
+		<div class="mt-6 grid gap-6 sm:grid-cols-2">
+			{#each changes as c}
+				<div class="flex gap-4">
+					<span class="font-display text-2xl leading-none text-accent-500">{c.n}</span>
+					<div>
+						<h3 class="text-base">{c.title}</h3>
+						<p class="mt-1 text-sm text-stone-600">{c.body}</p>
+					</div>
+				</div>
+			{/each}
+		</div>
+		<p class="mt-6 rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-800">{m.membership_change_note()}</p>
 	</section>
 
 	<!-- 末尾CTA -->
