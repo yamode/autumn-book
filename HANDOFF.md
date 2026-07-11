@@ -8,9 +8,10 @@
 >
 > **①データ投入 ✅ / ②ルート接続 ✅ / ③通し確認 ✅（hold まで）**。技術面の解除ブロッカーは無くなった。残りは**運用作業**:
 > 1. **プラン公開**: rms 同期は `plan_contents` を下書きで作る（42件）。管理画面で headline/説明/写真を肉付けし `is_published=true` にしたプランだけ直販に出る。検証用に **oga素泊・yamadoスタンダードの2件を公開済み**（不要なら下書きに戻す）
-> 2. **キャンセルポリシー投入**: 全プラン `cancellation_policy='[]'`＝キャンセル料無料のまま。実規定の JSONB 投入が公開前必須
+> 2. **キャンセルポリシー投入（公開前必須）**: 全プラン `cancellation_policy='[]'`＝無料のまま。**P3 でグレード別規定マスタ `book.rank_cancel_policies` を新設**（seed 全rank `rules='[]'`）。少なくとも **standard 行の rules（基準規定）を投入**すること。プラン個別の特別規定は `booking.rate_plans.cancellation_policy` に入れれば優先される。admin 未接続のため当面は service_role で SQL 直接投入（例: `update book.rank_cancel_policies set rules='[{"days_before":7,"rate":0.2},{"days_before":3,"rate":0.5},{"days_before":1,"rate":0.8},{"days_before":0,"rate":1.0}]' where rank_code='standard';`）
 > 3. **buffer_rooms 設定**: 直販→TL 在庫書き戻しは Phase D（PMS切替後）。それまでオーバーブッキング安全域として buffer≥1 の運用判断
 > 4. 客室コンテンツの肉付け（headline/description/photos は空・面積0㎡表示）・写真の Supabase Storage 移設
+> 5. **オプション公開（P1・任意）**: `book.option_items` は seed 2品（冷蔵庫ノンアル化・タオル多め）が `is_active=false`・0円。使うなら service_role で `is_active=true`・単価を投入（admin 未接続のため）
 >
 > 経緯: 2026-07-10 実査時は「本番はデモデータ配信・rms 3表0件」だった。v0.18.0 で公開53ルートを実データ経路に接続し、
 > 2026-07-11 に料金 SoT を rms マスタ理論式へ切替（autumn-shared `20260711012200`）・cron 修正で同期が稼働、
@@ -264,6 +265,16 @@
   - ⚠ 還元率5%/年10泊は暫定値。運用確定後に `book.member_ranks` を update＋`store.ts memberRanks`／REWARD_RATE を合わせる。
 - **会員特典を追加**（`/membership` の特典セクション・4項目。現状は紹介コピー＝機能実装は今後）:
   - 会員先行予約（他OTA非販売の先々期間を割引先行）／滞在のパーソナライズ（冷蔵庫中身交換・アメニティ追加）／日程変更／グレード別キャンセル規定。
+
+## 予約後機能 P1〜P3（2026-07-11・v0.29.0〜v0.31.0・設計書 `autumn_book_post_booking_design.md` v2）
+
+Phase 7 で「紹介コピーのみ」だった会員特典のうち3本を実機能化。**Opus 実装 → Fable5 レビュー → 修正 → PROD 反映** で実装。migration は autumn-shared に集約。P4（OTA 先行予約割引）は rms 側前提（先行プラン定義・rms_rank_calendar 恒久化）待ちで未着手（rms HANDOFF へ引き継ぎ済み）。
+
+- **P1 オプション事前予約（滞在アレンジ・v0.29.0）**: migration `20260711070733`。`book.option_items`/`booking_option_orders`＋RPC5本＋seed2品（冷蔵庫ノンアル化・タオル多め）。会員が予約後に食事/スパ/アメニティ/パーソナライズを**現地精算**で追加（宿泊料金と分離）。予約詳細「滞在アレンジ」＋`/options`＋`/admin/options`。締切=CI日15:00−lead_time、取消=提供日前日まで。
+- **P2 予約変更（v0.30.0）**: migration `20260711075937`。`book.booking_amendments`＋`quote_amendment`/`amend_booking`/`list_my_amendments`。宿泊日/人数/部屋・プランを in-place 変更（YB番号維持・**上限2回**・CI日9:00締切）。理論式 daily_rates で全泊再計算・在庫振替（旧+1→新検証→-1）・差額現地精算。ポイント付与は**チェックアウト後に rank で最終確定**（`finalize_checkout` cron・日次JST12:00）。`/amend` ウィザード。
+- **P3 グレード別キャンセル料（v0.31.0）**: migration `20260711083740`。`book.rank_cancel_policies`（グレード別「◯日前◯%」ルール表）＋`_cancel_fee`/`compute_cancel_fee`。`cancel_booking` を rank 準拠に互換差替え（プラン規定優先→rank ルール→standard）。`_amend_compute` のペナルティも rank＋`allow_amend_in_penalty` へ接続。キャンセル確認プレビュー・`/admin/cancel-policies`・`/membership` に規定表示。
+
+**要注意（公開前・上記「メンテ解除の残条件」参照）**: admin（`/admin/options`・`/admin/cancel-policies`）は AUTH_MODE=supabase 前まで demo 運用。本番でオプション公開・キャンセル規定投入は **service_role で SQL 直接投入**が必要。standard 行のキャンセル規定は公開前必須。
 
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
