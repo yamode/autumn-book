@@ -2,6 +2,8 @@
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import * as m from '$lib/paraglide/messages';
 
+	import type { RankCancelPolicy } from '$lib/types';
+
 	let { data } = $props();
 
 	// 会員グレード（ビジネスルール・表示用の静的定義）
@@ -11,6 +13,11 @@
 		{ code: 'gold' as const, cond: m.membership_cond_gold(), rate: 3 },
 		{ code: 'platinum' as const, cond: m.membership_cond_platinum(), rate: 5 }
 	];
+
+	// グレード別キャンセル規定（rank_cancel_policies）。rankCode → 規定でカードに表示する。
+	let cancelByRank = $derived(
+		new Map((data.cancelPolicies ?? []).map((p: RankCancelPolicy) => [p.rankCode, p]))
+	);
 
 	const benefits = [
 		{ icon: '◆', title: m.membership_benefit_points_t(), body: m.membership_benefit_points_b() },
@@ -61,11 +68,28 @@
 		<p class="mt-1 text-sm text-stone-500">{m.membership_rank_note()}</p>
 		<div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			{#each ranks as r}
+				{@const cp = cancelByRank.get(r.code)}
 				<div class="rounded-2xl border border-stone-200 bg-white p-6 text-center">
 					<div class="flex justify-center"><RankBadge rank={r.code} /></div>
 					<p class="mt-4 text-4xl font-bold text-brand-900">{r.rate}<span class="text-lg font-semibold">%</span></p>
 					<p class="text-sm text-stone-500">{m.membership_rate_label()}</p>
 					<p class="mt-3 border-t border-stone-100 pt-3 text-sm text-stone-600">{r.cond}</p>
+
+					<!-- キャンセル規定（グレード別・P3） -->
+					<div class="mt-3 border-t border-stone-100 pt-3 text-left">
+						<p class="text-center text-xs font-medium text-stone-500">{m.cancelrank_heading()}</p>
+						{#if cp?.note}
+							<p class="mt-1 text-center text-xs text-stone-600">{cp.note}</p>
+						{:else if !cp || cp.rules.length === 0}
+							<p class="mt-1 text-center text-xs text-emerald-700">{m.cancelrank_none()}</p>
+						{:else}
+							<ul class="mt-1 space-y-0.5 text-center text-xs text-stone-600">
+								{#each cp.rules as rule}
+									<li>{m.cancelrank_rule_line({ days: String(rule.days_before), rate: String(Math.round(rule.rate * 100)) })}</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 				</div>
 			{/each}
 		</div>

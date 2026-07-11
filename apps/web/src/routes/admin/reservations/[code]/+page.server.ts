@@ -1,6 +1,5 @@
 import { error, fail } from '@sveltejs/kit';
-import { bookings, facilityById, planById, roomTypeById, cancelBooking } from '$lib/server/store';
-import { cancellationFee } from '@autumn-book/core';
+import { bookings, facilityById, planById, roomTypeById, cancelBooking, computeCancelFee } from '$lib/server/store';
 import { todayStr } from '$lib/format';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -16,7 +15,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		facility: facilityById(booking.facilityId)!,
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
-		feePreview: booking.status === 'reserved' ? cancellationFee(booking.cancellationPolicy, booking.checkin, todayStr(), booking.total) : null
+		// スタッフ画面のキャンセル料プレビュー（グレード別ルール表準拠・実課金額と一致）
+		feePreview: booking.status === 'reserved' ? (computeCancelFee(params.code, todayStr())?.fee ?? null) : null
 	};
 };
 

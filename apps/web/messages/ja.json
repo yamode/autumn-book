@@ -479,6 +479,12 @@
 	"amend_err_not_sellable": "ご指定の条件では変更できませんでした。条件をご確認ください。",
 	"amend_failed": "変更できませんでした。内容をご確認ください。",
 
+	"cancelrank_heading": "キャンセル規定",
+	"cancelrank_your_grade": "あなたの会員グレードの規定",
+	"cancelrank_rule_line": "{days}日前から{rate}%",
+	"cancelrank_none": "キャンセル料はかかりません",
+	"cancelrank_plan_note": "このプラン独自のキャンセル規定が適用されます。",
+
 	"points_title": "ポイント・グレード ｜ マイページ",
 	"points_otayori_badge": "おたより",
 	"points_balance_label": "ポイント残高",

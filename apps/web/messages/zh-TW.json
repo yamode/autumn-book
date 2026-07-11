@@ -479,6 +479,12 @@
 	"amend_err_not_sellable": "所選條件無法變更，請確認條件。",
 	"amend_failed": "無法變更，請確認輸入內容。",
 
+	"cancelrank_heading": "取消規定",
+	"cancelrank_your_grade": "您的會員等級規定",
+	"cancelrank_rule_line": "入住前{days}天起收取{rate}%",
+	"cancelrank_none": "不收取取消費用",
+	"cancelrank_plan_note": "適用本方案專屬的取消規定。",
+
 	"points_title": "點數・等級 ｜ 會員專區",
 	"points_otayori_badge": "來信",
 	"points_balance_label": "點數餘額",

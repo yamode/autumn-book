@@ -65,9 +65,11 @@ import type {
 	BookingAmendment,
 	AmendmentKind,
 	AmendQuote,
-	AmendParams
+	AmendParams,
+	RankCancelPolicy,
+	CancelFeePreview
 } from '$lib/types';
-import type { Quote, CancellationPolicy } from '@autumn-book/core';
+import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -1388,18 +1390,88 @@ export async function sbMyReservations(client: SupabaseClient): Promise<MemberRe
 	return ((data ?? []) as MyReservationRow[]).map(mapReservationRow);
 }
 
-/** 会員本人によるキャンセル（キャンセル料は規定どおり・免除不可）。cancel_booking RPC。 */
+/** 会員本人によるキャンセル（キャンセル料はグレード別規定どおり・免除不可）。cancel_booking RPC。
+ *  戻り値に rank_benefit（適用したグレード規定の内訳・P3）を含む。 */
 export async function sbCancelBookingAsMember(
 	client: SupabaseClient,
 	bookingCode: string
-): Promise<{ booking_code: string; cancellation_fee: number }> {
+): Promise<{ booking_code: string; cancellation_fee: number; rank_benefit: unknown }> {
 	const { data, error } = await client.schema('book').rpc('cancel_booking', {
 		p_booking_code: bookingCode,
 		p_waive_fee: false,
 		p_reason: null
 	});
 	if (error) throw error;
-	return data as { booking_code: string; cancellation_fee: number };
+	return data as { booking_code: string; cancellation_fee: number; rank_benefit: unknown };
+}
+
+// ---------------------------------------------------------------- グレード別キャンセル料規定（P3・設計書 §3.3 / §4.3）
+// book.compute_cancel_fee（本人 or スタッフ・プレビュー）と book.rank_cancel_policies（公開 read）の薄いアダプタ。
+// 料率 = プラン規定 snapshot 非空 → プラン規定、空 → 予約作成会員 rank のルール表 → standard（SQL と同式）。
+
+interface ComputeCancelFeeRow {
+	rules_source: string;
+	rank_code: string;
+	rate: number;
+	fee: number;
+	total_amount: number;
+	check_in_date: string;
+}
+
+/** store.computeCancelFee 相当。compute_cancel_fee RPC を叩き、適用ルール表を除く結果を返す。
+ *  表示用の rules は呼び出し側で（plan なら予約 snapshot、rank なら sbListRankCancelPolicies から）補う。 */
+export async function sbComputeCancelFee(
+	client: SupabaseClient,
+	code: string,
+	asOf?: string
+): Promise<Omit<CancelFeePreview, 'rules'>> {
+	const args: { p_booking_code: string; p_as_of?: string } = { p_booking_code: code };
+	if (asOf) args.p_as_of = asOf;
+	const { data, error } = await client.schema('book').rpc('compute_cancel_fee', args);
+	if (error) throw error;
+	const r = data as ComputeCancelFeeRow;
+	return {
+		rulesSource: r.rules_source === 'plan' ? 'plan' : 'rank',
+		rankCode: r.rank_code,
+		rate: r.rate,
+		fee: r.fee,
+		totalAmount: r.total_amount,
+		checkInDate: r.check_in_date
+	};
+}
+
+interface RankCancelPolicyRow {
+	rank_code: string;
+	rules: unknown;
+	allow_amend_in_penalty: boolean;
+	note: string | null;
+}
+
+/** rules jsonb（bare 配列 or {rules:[...]}）を CancellationRule[] へ正規化。 */
+function normalizeRules(raw: unknown): CancellationRule[] {
+	const arr = Array.isArray(raw)
+		? raw
+		: raw && typeof raw === 'object' && Array.isArray((raw as { rules?: unknown }).rules)
+			? (raw as { rules: unknown[] }).rules
+			: [];
+	return (arr as Record<string, unknown>[])
+		.filter((r) => r && typeof r === 'object')
+		.map((r) => ({ days_before: Number(r.days_before ?? 0), rate: Number(r.rate ?? 0) }));
+}
+
+/** store.listRankCancelPolicies 相当。全グレードのキャンセル規定（公開 read・anon）。
+ *  /membership の規定表示に使う。書込みは service_role のみ（admin は demo 運用）。 */
+export async function sbListRankCancelPolicies(): Promise<RankCancelPolicy[]> {
+	const { data, error } = await supa()
+		.from('rank_cancel_policies')
+		.select('rank_code, rules, allow_amend_in_penalty, note');
+	if (error) throw error;
+	return ((data ?? []) as RankCancelPolicyRow[]).map((r) => ({
+		rankCode: r.rank_code as RankCancelPolicy['rankCode'],
+		rules: normalizeRules(r.rules),
+		allowAmendInPenalty: r.allow_amend_in_penalty,
+		note: r.note ?? undefined
+	}));
 }
 
 // ---------------------------------------------------------------- オプション（滞在アレンジ・P1・設計書 §4.2）

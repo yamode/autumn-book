@@ -1,5 +1,5 @@
 // 共有型定義（クライアント・サーバー両方から import 可）
-import type { CancellationPolicy, Quote } from '@autumn-book/core';
+import type { CancellationPolicy, CancellationRule, Quote } from '@autumn-book/core';
 
 // ---------------------------------------------------------------- i18n 型
 
@@ -259,6 +259,40 @@ export interface AmendQuote {
 	planChanged: boolean;
 	/** 変更後の宿泊料金明細（book.quote 出力を app Quote へ整形） */
 	quote: Quote;
+}
+
+// ---------------------------------------------------------------- グレード別キャンセル料規定（book.rank_cancel_policies 対称・P3）
+
+/** グレード別キャンセル規定（book.rank_cancel_policies 対称）。
+ *  rules は「◯日前から◯%」のルール表（rate は 0〜1 の fraction・表示は ×100）。 */
+export interface RankCancelPolicy {
+	/** 会員グレード（member_ranks.code） */
+	rankCode: 'standard' | 'silver' | 'gold' | 'platinum';
+	/** ルール表（days_before 昇順で評価・rate は 0〜1） */
+	rules: CancellationRule[];
+	/** キャンセル料発生期間内の日程変更を許可するか（グレード特典・決定 #7） */
+	allowAmendInPenalty: boolean;
+	/** 規定の説明文（管理画面・/membership 表示用・ja のみ） */
+	note?: string;
+}
+
+/** キャンセル料プレビュー（book.compute_cancel_fee 戻り値の camelCase・本人 or スタッフ）。
+ *  プラン規定 snapshot が非空ならプラン規定、空なら会員グレードのルール表を適用した結果。 */
+export interface CancelFeePreview {
+	/** 適用したルールの出所（'plan'＝プラン規定 / 'rank'＝グレード規定） */
+	rulesSource: 'plan' | 'rank';
+	/** 適用したグレード（キャンセル操作時点の予約作成会員 rank・非会員は 'standard'） */
+	rankCode: string;
+	/** キャンセル料率（0〜1・表示は ×100） */
+	rate: number;
+	/** キャンセル料（round(total_amount × rate)） */
+	fee: number;
+	/** 予約総額（bookings.total_amount） */
+	totalAmount: number;
+	/** チェックイン日（YYYY-MM-DD） */
+	checkInDate: string;
+	/** 適用したルール表（表示用「◯日前から◯%」。plan なら snapshot、rank ならグレードの rules） */
+	rules: CancellationRule[];
 }
 
 export interface GuestInfo {

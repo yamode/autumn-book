@@ -479,6 +479,12 @@
 	"amend_err_not_sellable": "The change could not be made for the selected conditions. Please check them.",
 	"amend_failed": "Could not change. Please check your entries.",
 
+	"cancelrank_heading": "Cancellation policy",
+	"cancelrank_your_grade": "Your membership grade policy",
+	"cancelrank_rule_line": "{rate}% from {days} days before",
+	"cancelrank_none": "No cancellation fee applies",
+	"cancelrank_plan_note": "This plan's own cancellation policy applies.",
+
 	"points_title": "Points & Grade | My Account",
 	"points_otayori_badge": "Letters",
 	"points_balance_label": "Points balance",

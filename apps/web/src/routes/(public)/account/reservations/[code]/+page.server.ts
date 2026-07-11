@@ -5,6 +5,7 @@ import {
 	planById,
 	roomTypeById,
 	cancelBooking,
+	computeCancelFee,
 	listMyBookingOptions,
 	cancelBookingOption,
 	listMyAmendments
@@ -13,12 +14,14 @@ import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import {
 	sbMyReservations,
 	sbCancelBookingAsMember,
+	sbComputeCancelFee,
+	sbListRankCancelPolicies,
 	sbListMyBookingOptions,
 	sbCancelBookingOption,
 	sbListMyAmendments,
 	reverseFacilityUuid
 } from '$lib/server/supabase-data';
-import { cancellationFee, cancellationRate, addDays } from '@autumn-book/core';
+import { addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
@@ -67,6 +70,16 @@ export const load: PageServerLoad = async (event) => {
 		const options = await sbListMyBookingOptions(createSupabaseServerClient(event), r.code);
 		// 変更履歴・変更可否
 		const amendments = await sbListMyAmendments(client, r.code);
+		// キャンセル料プレビュー（グレード別規定・P3）。適用ルール表は plan/rank で出所を分けて補完する。
+		let cancelPreview = null;
+		if (r.status === 'reserved') {
+			const base = await sbComputeCancelFee(client, r.code, today);
+			const rules =
+				base.rulesSource === 'plan'
+					? r.cancellationPolicy.rules
+					: ((await sbListRankCancelPolicies()).find((p) => p.rankCode === base.rankCode)?.rules ?? []);
+			cancelPreview = { ...base, rules };
+		}
 		return {
 			booking,
 			facility,
@@ -77,13 +90,7 @@ export const load: PageServerLoad = async (event) => {
 			// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
-			cancelPreview:
-				r.status === 'reserved'
-					? {
-							fee: cancellationFee(r.cancellationPolicy, r.checkin, today, r.total),
-							rate: cancellationRate(r.cancellationPolicy, r.checkin, today)
-						}
-					: null
+			cancelPreview
 		};
 	}
 
@@ -102,10 +109,7 @@ export const load: PageServerLoad = async (event) => {
 		room: roomTypeById(booking.roomTypeId)!,
 		cancelPreview:
 			booking.status === 'reserved'
-				? {
-						fee: cancellationFee(booking.cancellationPolicy, booking.checkin, today, booking.total),
-						rate: cancellationRate(booking.cancellationPolicy, booking.checkin, today)
-					}
+				? computeCancelFee(params.code, today, booking.memberId)
 				: null
 	};
 };

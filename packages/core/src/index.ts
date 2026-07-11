@@ -97,6 +97,37 @@ export function cancellationFee(policy: CancellationPolicy, checkin: string, tod
   return Math.round(total * cancellationRate(policy, checkin, today));
 }
 
+/**
+ * グレード別キャンセル料率（設計書 §3.3・SQL book._cancel_fee と同式）。
+ * プラン規定（snapshot）の rules が非空ならプラン規定を優先し、空なら会員グレードの
+ * ルール表（rankRules）を使う。いずれも days_before 昇順で最初に該当した率を返す。
+ * 既存 cancellationRate / cancellationFee は変更しない（後方互換）。
+ *
+ * @param planPolicy 予約のプラン規定 snapshot（bookings.cancellation_policy_snapshot 相当）
+ * @param rankRules  会員グレードのルール表（rank_cancel_policies.rules 相当・非会員は standard）
+ * @returns source（'plan' | 'rank'）と rate（0〜1）
+ */
+export function cancellationRateForRank(
+  planPolicy: CancellationPolicy | null | undefined,
+  rankRules: CancellationRule[],
+  checkin: string,
+  today: string
+): { source: 'plan' | 'rank'; rate: number } {
+  const planRules = planPolicy?.rules ?? [];
+  const usePlan = planRules.length > 0;
+  const rules = usePlan ? planRules : (rankRules ?? []);
+  const daysBefore = nightsBetween(today, checkin);
+  const sorted = [...rules].sort((a, b) => a.days_before - b.days_before);
+  let rate = 0;
+  for (const rule of sorted) {
+    if (daysBefore <= rule.days_before) {
+      rate = rule.rate;
+      break;
+    }
+  }
+  return { source: usePlan ? 'plan' : 'rank', rate };
+}
+
 /** 「6/20まで無料」等の動的文言を生成（設計書 §7） */
 export function cancelPolicyLabel(policy: CancellationPolicy, checkin: string): string {
   const sorted = [...policy.rules].filter((r) => r.rate > 0).sort((a, b) => b.days_before - a.days_before);

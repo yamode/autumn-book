@@ -121,7 +121,25 @@
 						{formatPrice(data.cancelPreview.fee)}（{Math.round(data.cancelPreview.rate * 100)}%）
 					</strong>
 				</p>
-				<p class="mt-2 text-xs text-stone-400">{b.cancellationPolicy.note}</p>
+
+				<!-- あなたの会員グレードの規定（グレード別キャンセル料規定・P3） -->
+				<div class="mt-2 rounded border border-stone-100 bg-white px-3 py-2 text-xs">
+					<p class="font-medium text-brand-900">{m.cancelrank_your_grade()}</p>
+					{#if (data.cancelPreview.rules ?? []).length === 0}
+						<p class="mt-1 text-emerald-700">{m.cancelrank_none()}</p>
+					{:else}
+						<ul class="mt-1 space-y-0.5 text-stone-600">
+							{#each data.cancelPreview.rules as rule}
+								<li>{m.cancelrank_rule_line({ days: String(rule.days_before), rate: String(Math.round(rule.rate * 100)) })}</li>
+							{/each}
+						</ul>
+						{#if data.cancelPreview.rulesSource === 'plan'}
+							<p class="mt-1 text-stone-400">{m.cancelrank_plan_note()}</p>
+						{/if}
+					{/if}
+				</div>
+
+				{#if b.cancellationPolicy.note}<p class="mt-2 text-xs text-stone-400">{b.cancellationPolicy.note}</p>{/if}
 
 				{#if !showCancelConfirm}
 					<button type="button" onclick={() => (showCancelConfirm = true)} class="mt-3 w-full rounded-lg border border-red-300 py-2 text-red-600 hover:bg-red-50">{m.reservation_cancel_btn()}</button>

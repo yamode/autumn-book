@@ -5,11 +5,11 @@
 import {
 	addDays,
 	calcQuote,
-	cancellationFee,
-	cancellationRate,
+	cancellationRateForRank,
 	earnedPoints,
 	eachNight,
 	type CancellationPolicy,
+	type CancellationRule,
 	type Quote
 } from '@autumn-book/core';
 
@@ -26,7 +26,8 @@ import type {
 	OtayoriEntry, OtayoriPost, OtayoriAdminItem,
 	HouseGuide, StayToken, StayInfo,
 	OptionItem, BookingOptionOrder,
-	BookingAmendment, AmendmentKind, AmendQuote, AmendParams
+	BookingAmendment, AmendmentKind, AmendQuote, AmendParams,
+	RankCancelPolicy, CancelFeePreview
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
@@ -834,11 +835,83 @@ export function confirmBooking(
 	return booking;
 }
 
-/** RPC: book.cancel_booking 相当 */
+// ---------------------------------------------------------------- グレード別キャンセル料規定（P3・book.rank_cancel_policies）
+// migration の seed と同じく全 rank rules=[]（料率ゼロ＝現行同挙動・実規定は /admin/cancel-policies で投入）。
+// キャンセル料 = プラン規定（booking.cancellationPolicy が非空）優先 → 予約作成会員 rank のルール → standard。
+// demo のプラン規定（stdPolicy）は非空のため、既定では常にプラン規定が適用される（SQL と同挙動）。
+
+/** rank_code → グレード規定（rules・allow_amend_in_penalty・note）。seed は全 rank rules=[]。 */
+export const rankCancelPolicies = new Map<string, { rules: CancellationRule[]; allowAmendInPenalty: boolean; note?: string }>(
+	memberRanks.map((r) => [r.code, { rules: [], allowAmendInPenalty: false, note: undefined }])
+);
+
+/** 予約作成会員の現在 rank（非会員・不明は 'standard'）。 */
+function bookingRank(b: Booking): string {
+	const member = b.memberId ? memberById(b.memberId) : undefined;
+	return member?.rank ?? 'standard';
+}
+
+/** rank のルール表（未登録は standard→[]）。 */
+function rankRules(rankCode: string): CancellationRule[] {
+	return rankCancelPolicies.get(rankCode)?.rules ?? rankCancelPolicies.get('standard')?.rules ?? [];
+}
+
+/** RPC: book.compute_cancel_fee 相当。プラン規定優先→rank ルール→standard で rate/fee を算出。
+ *  memberId 省略時は予約の memberId を使う（表示用プレビュー）。 */
+export function computeCancelFee(code: string, asOf: string, memberId?: string): CancelFeePreview | null {
+	const b = bookings.get(code);
+	if (!b) return null;
+	const rank = memberId ? (memberById(memberId)?.rank ?? 'standard') : bookingRank(b);
+	const rules = rankRules(rank);
+	const { source, rate } = cancellationRateForRank(b.cancellationPolicy, rules, b.checkin, asOf);
+	// 表示用に適用したルール表（plan なら snapshot、rank なら rank のルール）
+	const appliedRules = source === 'plan' ? b.cancellationPolicy.rules : rules;
+	return {
+		rulesSource: source,
+		rankCode: rank,
+		rate,
+		fee: Math.round(b.total * rate),
+		totalAmount: b.total,
+		checkInDate: b.checkin,
+		rules: appliedRules
+	};
+}
+
+/** 管理: グレード別キャンセル規定の一覧（rank 昇順・label 付き・/admin/cancel-policies）。 */
+export function listRankCancelPolicies(): (RankCancelPolicy & { label: string; rewardRate: number })[] {
+	return memberRanks.map((r) => {
+		const p = rankCancelPolicies.get(r.code);
+		return {
+			rankCode: r.code,
+			label: r.label,
+			rewardRate: r.rewardRate,
+			rules: p?.rules ?? [],
+			allowAmendInPenalty: p?.allowAmendInPenalty ?? false,
+			note: p?.note
+		};
+	});
+}
+
+/** 管理: グレード別キャンセル規定を保存（rules を days_before 降順に整えて格納）。 */
+export function updateRankCancelPolicy(
+	rankCode: string,
+	input: { rules: CancellationRule[]; allowAmendInPenalty: boolean; note?: string }
+): boolean {
+	if (!rankCancelPolicies.has(rankCode)) return false;
+	const rules = [...input.rules]
+		.filter((r) => Number.isFinite(r.days_before) && r.rate > 0)
+		.sort((a, b) => b.days_before - a.days_before);
+	rankCancelPolicies.set(rankCode, { rules, allowAmendInPenalty: input.allowAmendInPenalty, note: input.note?.trim() || undefined });
+	return true;
+}
+
+/** RPC: book.cancel_booking 相当（P3: グレード別ルール表準拠の料率） */
 export function cancelBooking(code: string, opts: { waiveFee?: boolean; actor?: string; reason?: string } = {}): Booking | { error: string } {
 	const b = bookings.get(code);
 	if (!b || b.status !== 'reserved') return { error: 'not_cancellable' };
-	const fee = opts.waiveFee ? 0 : cancellationFee(b.cancellationPolicy, b.checkin, today(), b.total);
+	// キャンセル料: プラン規定優先→予約作成会員 rank のルール→standard（設計書 §3.3）
+	const { rate } = cancellationRateForRank(b.cancellationPolicy, rankRules(bookingRank(b)), b.checkin, today());
+	const fee = opts.waiveFee ? 0 : Math.round(b.total * rate);
 	b.status = 'cancelled';
 	b.cancelFee = fee;
 	if (b.payment !== 'onsite' && b.paymentStatus === 'paid') {
@@ -1151,9 +1224,13 @@ export function quoteAmendment(code: string, params: AmendParams, memberId: stri
 	const deadlineMs = amendDeadlineMs(b.checkin);
 	const pastDeadline = Date.now() >= deadlineMs;
 
-	// ペナルティ（現時点のキャンセル料率 > 0 かつ日程変更）
-	const penRate = cancellationRate(b.cancellationPolicy, b.checkin, today());
-	const inPenalty = dateChanged && penRate > 0;
+	// ペナルティ（グレード別ルール表準拠・SQL _amend_compute と同式）。
+	// プラン規定（b.cancellationPolicy）が非空ならそちら優先、空なら予約作成会員 rank のルールで評価。
+	// rate>0 かつ日程変更で、allow_amend_in_penalty=false のグレードのみ変更不可。
+	const rank = bookingRank(b);
+	const { rate: penRate } = cancellationRateForRank(b.cancellationPolicy, rankRules(rank), b.checkin, today());
+	const allowInPenalty = rankCancelPolicies.get(rank)?.allowAmendInPenalty ?? false;
+	const inPenalty = dateChanged && penRate > 0 && !allowInPenalty;
 
 	const amended = (bookingAmendmentsByBooking.get(code) ?? []).length;
 	const ok = b.status === 'reserved';
