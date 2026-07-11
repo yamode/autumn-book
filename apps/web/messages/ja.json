@@ -365,6 +365,7 @@
 	"favorites_rooms_heading": "お気に入りの部屋",
 	"favorites_rooms_sub": "気になる客室を施設ごとに登録できます。ハートをタップして登録・解除できます。",
 	"favorites_rooms_none": "この施設には登録できる客室がありません。",
+	"favorites_room_count": "{n}室",
 	"favorites_others": "その他の宿",
 
 	"profile_title": "プロフィール ｜ マイページ",

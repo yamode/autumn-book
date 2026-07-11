@@ -65,12 +65,9 @@
 		</form>
 	</div>
 
-	<!-- 会員情報・ログアウト -->
+	<!-- 会員情報 -->
 	<div class="rounded-2xl border border-stone-200 bg-white p-6">
 		<p class="text-[15px] text-stone-500">{m.profile_member_info({ code: data.member.memberCode, date: data.member.joinedAt })}</p>
-		<form method="POST" action="/auth/logout" class="mt-4">
-			<button type="submit" class="rounded-lg border border-stone-300 px-5 py-2 hover:bg-stone-50">{m.common_logout()}</button>
-		</form>
 	</div>
 
 	<!-- 退会 -->

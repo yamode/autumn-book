@@ -1079,6 +1079,7 @@ export interface MemberProfile {
 	kana: string;
 	phone: string;
 	email: string;
+	avatarUrl: string | null;
 }
 
 interface MyProfileRow {
@@ -1092,6 +1093,7 @@ interface MyProfileRow {
 	kana: string | null;
 	phone: string | null;
 	email: string | null;
+	avatar_url: string | null;
 }
 
 /** store.memberById 相当。会員本人のプロフィール（members + guests を1回で）。未登録は not_member 例外。 */
@@ -1109,7 +1111,8 @@ export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile
 		name: r.name ?? '',
 		kana: r.kana ?? '',
 		phone: r.phone ?? '',
-		email: r.email ?? ''
+		email: r.email ?? '',
+		avatarUrl: r.avatar_url ?? null
 	};
 }
 

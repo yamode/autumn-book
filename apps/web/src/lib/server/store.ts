@@ -556,6 +556,9 @@ export const rooms: DemoRoom[] = [
 // デモのお気に入り客室（会員ID → 部屋ID の集合）
 export const favoriteRoomsByMember = new Map<string, Set<string>>([['m-demo', new Set(['nw-201', 'og-401'])]]);
 
+// デモのプロフィール画像（会員ID → data URL）。supabase では book.members.avatar_url + Storage。
+export const avatarByMember = new Map<string, string>();
+
 export const holds = new Map<string, Hold>();
 export const bookings = new Map<string, Booking>();
 export const auditLogs: AuditLog[] = [];

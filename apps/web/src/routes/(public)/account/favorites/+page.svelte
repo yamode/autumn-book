@@ -26,26 +26,41 @@
 				{/if}
 			</div>
 
-			{#if f.rooms.length > 0}
-				<div class="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2">
-					{#each f.rooms as r}
-						<form method="POST" action="?/toggle" use:enhance>
-							<input type="hidden" name="roomId" value={r.roomId} />
-							<button
-								type="submit"
-								aria-pressed={r.favorited}
-								title={r.favorited ? m.favorites_remove() : m.favorites_add()}
-								class="flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition {r.favorited
-									? 'border-red-200 bg-red-50'
-									: 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'}"
-							>
-								<span class="text-xl leading-none {r.favorited ? 'text-red-500' : 'text-stone-300'}">{r.favorited ? '♥' : '♡'}</span>
-								<span class="min-w-0 flex-1">
-									<span class="block truncate font-medium text-brand-900">{r.name}</span>
-									<span class="block truncate text-sm text-stone-400">{r.roomNumber} ・ {r.roomTypeName}</span>
-								</span>
-							</button>
-						</form>
+			{#if f.types.length > 0}
+				<div class="divide-y divide-stone-100">
+					{#each f.types as t}
+						<!-- 客室タイプごとの折りたたみパネル。お気に入りがある型は初期展開 -->
+						<details class="group" open={t.favCount > 0}>
+							<summary class="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 hover:bg-stone-50">
+								<span class="text-stone-400 transition-transform group-open:rotate-90">▶</span>
+								<span class="flex-1 font-medium text-brand-900">{t.name}</span>
+								{#if t.favCount > 0}
+									<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">♥ {t.favCount}</span>
+								{/if}
+								<span class="text-sm text-stone-400">{m.favorites_room_count({ n: String(t.rooms.length) })}</span>
+							</summary>
+							<div class="grid grid-cols-1 gap-2 px-4 pb-4 sm:grid-cols-2">
+								{#each t.rooms as r}
+									<form method="POST" action="?/toggle" use:enhance>
+										<input type="hidden" name="roomId" value={r.roomId} />
+										<button
+											type="submit"
+											aria-pressed={r.favorited}
+											title={r.favorited ? m.favorites_remove() : m.favorites_add()}
+											class="flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition {r.favorited
+												? 'border-red-200 bg-red-50'
+												: 'border-stone-200 hover:border-stone-300 hover:bg-stone-50'}"
+										>
+											<span class="text-xl leading-none {r.favorited ? 'text-red-500' : 'text-stone-300'}">{r.favorited ? '♥' : '♡'}</span>
+											<span class="min-w-0 flex-1">
+												<span class="block truncate font-medium text-brand-900">{r.name}</span>
+												<span class="block truncate text-sm text-stone-400">{r.roomNumber}</span>
+											</span>
+										</button>
+									</form>
+								{/each}
+							</div>
+						</details>
 					{/each}
 				</div>
 			{:else}

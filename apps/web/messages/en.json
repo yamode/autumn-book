@@ -365,6 +365,7 @@
 	"favorites_rooms_heading": "Favorite rooms",
 	"favorites_rooms_sub": "Save the rooms you like, by property. Tap the heart to add or remove.",
 	"favorites_rooms_none": "This property has no rooms available to save.",
+	"favorites_room_count": "{n} rooms",
 	"favorites_others": "Other properties",
 
 	"profile_title": "Profile | My Account",

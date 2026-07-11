@@ -1,5 +1,5 @@
 import { redirect } from '@sveltejs/kit';
-import { memberById, pointBalance } from '$lib/server/store';
+import { memberById, pointBalance, avatarByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile, sbPointBalance } from '$lib/server/supabase-data';
 import type { LayoutServerLoad } from './$types';
@@ -32,7 +32,8 @@ export const load: LayoutServerLoad = async (event) => {
 				email: p.email,
 				kana: p.kana,
 				phone: p.phone,
-				joinedAt: p.joinedAt
+				joinedAt: p.joinedAt,
+				avatarUrl: p.avatarUrl ?? null
 			},
 			balance
 		};
@@ -41,7 +42,7 @@ export const load: LayoutServerLoad = async (event) => {
 	const member = memberById(locals.user.id);
 	if (!member) redirect(303, '/auth/login');
 	return {
-		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, phone: member.phone, joinedAt: member.joinedAt },
+		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, phone: member.phone, joinedAt: member.joinedAt, avatarUrl: avatarByMember.get(member.id) ?? null },
 		balance: pointBalance(member.id)
 	};
 };

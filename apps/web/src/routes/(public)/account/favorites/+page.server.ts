@@ -10,6 +10,11 @@ export interface FavRoom {
 	roomTypeName: string;
 	favorited: boolean;
 }
+export interface FavType {
+	name: string;
+	rooms: FavRoom[];
+	favCount: number;
+}
 export interface FavFacility {
 	id: string;
 	name: string;
@@ -17,7 +22,7 @@ export interface FavFacility {
 	slug: string;
 	prefecture: string;
 	photo: string;
-	rooms: FavRoom[];
+	types: FavType[];
 	favCount: number;
 }
 
@@ -59,11 +64,26 @@ export const load: PageServerLoad = async (event) => {
 	return { facilities: result };
 };
 
-// 施設メタ + 部屋配列 → 画面用オブジェクト
+// 施設メタ + 部屋配列 → 画面用オブジェクト（客室タイプごとにグルーピング）
 function toFacility(
 	f: (typeof facilities)[number],
 	rooms: FavRoom[]
 ): FavFacility {
+	// 出現順を保ったままタイプ別にまとめる
+	const order: string[] = [];
+	const byType = new Map<string, FavRoom[]>();
+	for (const r of rooms) {
+		const key = r.roomTypeName || 'その他';
+		if (!byType.has(key)) {
+			byType.set(key, []);
+			order.push(key);
+		}
+		byType.get(key)!.push(r);
+	}
+	const types: FavType[] = order.map((name) => {
+		const list = byType.get(name)!;
+		return { name, rooms: list, favCount: list.filter((r) => r.favorited).length };
+	});
 	return {
 		id: f.id,
 		name: f.name,
@@ -71,7 +91,7 @@ function toFacility(
 		slug: f.slug,
 		prefecture: f.prefecture,
 		photo: f.photos[0]?.url ?? '',
-		rooms,
+		types,
 		favCount: rooms.filter((r) => r.favorited).length
 	};
 }
