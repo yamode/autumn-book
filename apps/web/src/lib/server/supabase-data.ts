@@ -1277,7 +1277,7 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 		payment: paymentStatus === 'paid' || paymentStatus === 'refunded' || paymentStatus === 'partial_refund' ? 'card' : 'onsite',
 		total: r.total_amount,
 		cancelFee: r.cancellation_fee ?? undefined,
-		cancellationPolicy: r.cancellation_policy ?? { rules: [], note: '' },
+		cancellationPolicy: normalizeCancellationPolicy(r.cancellation_policy),
 		pointsUsed: r.points_used ?? 0,
 		pointsEarned: r.points_earned ?? 0,
 		guest: r.guest ?? { name: '', kana: '', phone: '', email: '' },
@@ -1453,12 +1453,19 @@ export function mapRoomTypeRow(row: Record<string, unknown>): RoomType {
 	};
 }
 
+/** DB の cancellation_policy は「日数別料率の配列」（rms 同期は '[]' で作成）。
+ *  アプリ型 CancellationPolicy は { rules, note } なので、配列はラップし、不正値は空ポリシーに正規化する。 */
+export function normalizeCancellationPolicy(raw: unknown): CancellationPolicy {
+	if (Array.isArray(raw)) return { rules: raw as CancellationPolicy['rules'], note: '' };
+	if (raw && typeof raw === 'object' && Array.isArray((raw as CancellationPolicy).rules)) {
+		return raw as CancellationPolicy;
+	}
+	return { rules: [], note: '' };
+}
+
 /** v_plans 行 → RatePlan。プラン⇄客室の関係は持たない（実データは plan_offers が返す・設計）。basePrice は 0。 */
 export function mapPlanRow(row: Record<string, unknown>): RatePlan {
-	const policy =
-		row.cancellation_policy && typeof row.cancellation_policy === 'object'
-			? (row.cancellation_policy as CancellationPolicy)
-			: { rules: [], note: '' };
+	const policy = normalizeCancellationPolicy(row.cancellation_policy);
 	return {
 		id: String(row.rate_plan_id),
 		facilityId: String(row.facility_id),

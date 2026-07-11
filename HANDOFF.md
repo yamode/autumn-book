@@ -1,14 +1,20 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-07-11（公開予約導線を Supabase 実データへ接続 v0.18.0）
+> **最終更新**: 2026-07-11（料金SoT理論式化・rms同期稼働・実データ通し確認 v0.18.3）
 
 ## 現在の状態
 
-> ## ⛔ メンテナンスモードを解除してはいけない（2026-07-10 PROD 実査で確認 → 2026-07-11 更新）
+> ## ⛔ メンテナンスモード解除の残条件（2026-07-11 更新・技術ブロッカーは解消）
 >
-> **2026-07-11 更新**: 前提② の「公開予約導線を supabase-data.ts へ接続」は **v0.18.0 で完了**（検索・施設HP・プラン・客室・予約フロー hold/payment/complete を `DATA_SOURCE=supabase` 分岐で実データ経路に載せた）。**残る解除ブロッカーは前提① の rms データ投入のみ**：PROD の `booking.rate_plans / daily_rates / availability` は依然 **0 件**、`sync_rms_rates` 未実行のため `book.v_room_types / v_plans` も 0 件（施設 `v_facilities` は 2 件 seed 済み）。したがって今 supabase 経路にしても客室・プラン・料金が空表示（「満室」）になるため、**メンテ解除は rms 同期実行後**。
+> **①データ投入 ✅ / ②ルート接続 ✅ / ③通し確認 ✅（hold まで）**。技術面の解除ブロッカーは無くなった。残りは**運用作業**:
+> 1. **プラン公開**: rms 同期は `plan_contents` を下書きで作る（42件）。管理画面で headline/説明/写真を肉付けし `is_published=true` にしたプランだけ直販に出る。検証用に **oga素泊・yamadoスタンダードの2件を公開済み**（不要なら下書きに戻す）
+> 2. **キャンセルポリシー投入**: 全プラン `cancellation_policy='[]'`＝キャンセル料無料のまま。実規定の JSONB 投入が公開前必須
+> 3. **buffer_rooms 設定**: 直販→TL 在庫書き戻しは Phase D（PMS切替後）。それまでオーバーブッキング安全域として buffer≥1 の運用判断
+> 4. 客室コンテンツの肉付け（headline/description/photos は空・面積0㎡表示）・写真の Supabase Storage 移設
 >
-> 本番 `wrangler.jsonc` は `DATA_SOURCE=supabase` だが、**（v0.18.0 以前）Supabase 実データ経路に載っているルートは news / community / inroom の 11 ファイルだけ**で、**残り 53 ルート（検索・施設・プラン・客室・予約フロー・会員・ポイント・お気に入り）は本番でも `store.ts` のインメモリ・デモデータを配信している**。
+> 経緯: 2026-07-10 実査時は「本番はデモデータ配信・rms 3表0件」だった。v0.18.0 で公開53ルートを実データ経路に接続し、
+> 2026-07-11 に料金 SoT を rms マスタ理論式へ切替（autumn-shared `20260711012200`）・cron 修正で同期が稼働、
+> daily_rates 約7.4万行・availability 5,429行が投入され、search/plan_offers/quote/create_hold を実データで通し確認済み。
 > したがって今メンテを解除すると:
 > 1. **デモの料金・客室・在庫が公開される**（`booking.rate_plans` / `daily_rates` / `availability` は PROD で **0 件**）
 > 2. **ゲストが「予約完了」まで進めてしまい、その予約は Cloudflare Workers の isolate メモリに書かれて消える**（`booking.bookings` は 0 件のまま・予約番号も引けない・確定メールもない）
@@ -424,6 +430,34 @@
 - [ ] 予約完了で purchase（予約番号・支払額）が送られ、リロードで再送されない
 
 ## 作業ログ
+
+---
+
+### 2026-07-11（料金 SoT 再設計: rms マスタ理論式化・同期稼働・実データ通し確認）
+
+**設計決定（設計書 v2・`autumn_book_rms_pricing_design.md` 全面改訂）:**
+- SoT 再定義 — **料金=rms マスタ理論計算**（TL実売は読まない）／**プラン=book独自**（定義は rms・autumnBooking チャネル・当初 tripla 踏襲）／**在庫=将来PMS**（PMS⇄TL同期は実装済み・既存PMS切替待ち → Phase C/D 未着手、それまで TL 残室差分適用を継続）
+- v1「税二重計上」判定の訂正: PROD の室料は**税抜**保存（メゾネット2名=30,000・TL実売33,000=×1.1）で、rms 理論式 `(室料+ランク+食事)×1.1` は正しかった
+- rms 側の恒久対応（rank_calendar / plan_room_links / 料金式の構造化列）を `autumn-rms/docs/book-plan-master-design.md` に設計
+
+**Phase A（検算・PROD実査）:**
+- 理論式 `pp(N)=round((室料税抜[N]+rank_delta)×1.1/N) ± プラン加算` を確定。amount型=TL名 `(±N円)` サフィックス・percent型=`price_expression "refBR*factor"` が正
+- 一致確認: yamado ひとり旅100%（252点）・oga 素泊/朝食/カジュアル/フルコース サンプル全点一致・国内OTA(+20%)=ベース×1.25 の関係一致
+- 発見: yamado の TL 稼働プランは OTA マークアップ変種（+20%/+40%）でベースは旧プラン化＝**直販がベース価格で売る根拠**
+
+**Phase B（実装・autumn-shared `20260711012200`）:**
+- `sync_rms_rates_range` の daily_rates 生成を TL実売パース→理論式に置換（`book._theory_pp`）。価格式は `rate_plans.metadata.theory_pricing` に構造化。TL からは日付→ランクとプラン×客室 membership の構造情報のみ参照（暫定）
+- **cron 修正**: 20260710162029 の procedure+COMMIT は pg_cron(background worker) で `invalid transaction termination` となり**一度も成功していなかった**（0件の真因）→ 単一Tx select 実行へ戻し解消
+- 同期実行: rate_plans 42・plan_contents 下書き42・room_type_contents 15・**daily_rates 74,095行（400日）・availability 5,429行**
+
+**実データ通し確認（dev サーバー × PROD DB）:**
+- 検索 ¥81,400〜/残室 → プラン一覧 → プラン詳細（料金カレンダー・満室×・客室別料金）→ **create_hold 成功**（在庫 1→0 減算・20分自動失効）
+- 検証用に oga素泊・yamadoスタンダードの2プランを公開（`plan_contents.is_published=true`）
+- **実データバグ修正**: DB の `cancellation_policy` は配列だがアプリ型は `{rules,note}` → `normalizeCancellationPolicy` で正規化（plans 500 の修正・my_reservations も統一）
+
+**バージョン:** `v0.18.3`（autumn-shared: `e8852ca`）
+
+**次セッション候補:** プラン公開オペ（42下書きの肉付け）／キャンセルポリシー JSONB 投入／rms 側 rank_calendar・plan_room_links（rms設計書 §6）／メンテ解除判断
 
 ---
 
