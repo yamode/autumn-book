@@ -49,6 +49,7 @@
 	"nav_membership": "会員特典",
 	"nav_nishiwaga": "西和賀",
 	"nav_oga": "男鹿",
+	"nav_back_to_facility_site": "← {name}のサイトへ戻る",
 
 	"footer_brand_tagline": "東北の山と海に、土地の記憶を味わう小さな宿を。",
 	"footer_facilities": "施設",
@@ -600,6 +601,8 @@
 	"forum_title": "コミュニティ",
 	"forum_subtitle": "山人の宿の人と、会員のみなさまがゆるりと話せる掲示板です。",
 	"forum_boards_heading": "掲示板一覧",
+	"forum_recent_threads_heading": "最近の投稿",
+	"forum_recent_threads_empty": "まだ投稿がありません。",
 	"forum_board_breadcrumb": "コミュニティ",
 	"forum_threads_count": "{n}件",
 	"forum_threads_count_label": "スレッド",

@@ -49,6 +49,7 @@
 	"nav_membership": "會員禮遇",
 	"nav_nishiwaga": "西和賀",
 	"nav_oga": "男鹿",
+	"nav_back_to_facility_site": "← 返回{name}官網",
 
 	"footer_brand_tagline": "在東北的山林與海岸，品味土地記憶的小型旅宿。",
 	"footer_facilities": "住宿設施",
@@ -600,6 +601,8 @@
 	"forum_title": "社群",
 	"forum_subtitle": "山人宿的工作人員與會員們可以輕鬆交流的留言板。",
 	"forum_boards_heading": "看板一覽",
+	"forum_recent_threads_heading": "最新發文",
+	"forum_recent_threads_empty": "目前尚無貼文。",
 	"forum_board_breadcrumb": "社群",
 	"forum_threads_count": "{n}",
 	"forum_threads_count_label": "則主題",

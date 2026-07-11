@@ -14,6 +14,9 @@
 	let jaHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'ja' }));
 	let enHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'en' }));
 	let zhTwHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'zh-TW' }));
+
+	// 施設予約セクション（/[brand]/[facility]/**）を外部施設HPから深い誘導で開いた場合の戻り導線（ADR-0001）
+	let facilityBackLink = $derived(page.data.facilityBackLink as { name: string; href: string } | null | undefined);
 </script>
 
 <svelte:head>
@@ -26,6 +29,13 @@
 
 <div class="flex min-h-screen flex-col">
 	<header class="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
+		{#if facilityBackLink}
+			<div class="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs">
+				<a href={facilityBackLink.href} class="mx-auto flex max-w-6xl items-center gap-1 text-stone-500 hover:text-brand-800">
+					{m.nav_back_to_facility_site({ name: facilityBackLink.name })}
+				</a>
+			</div>
+		{/if}
 		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
 			<a href="/" class="font-display text-xl font-bold tracking-widest text-brand-900">山人 <span class="text-xs font-normal tracking-normal text-stone-400">- yamado -</span></a>
 			<nav class="flex items-center gap-4 text-sm text-stone-600">

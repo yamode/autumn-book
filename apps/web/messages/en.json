@@ -49,6 +49,7 @@
 	"nav_membership": "Membership",
 	"nav_nishiwaga": "Nishiwaga",
 	"nav_oga": "Oga",
+	"nav_back_to_facility_site": "← Back to {name} site",
 
 	"footer_brand_tagline": "Small inns in the mountains and coasts of Tohoku, where you can taste the memory of the land.",
 	"footer_facilities": "Properties",
@@ -600,6 +601,8 @@
 	"forum_title": "Community",
 	"forum_subtitle": "A relaxed message board where guests and the people of Yamado can chat together.",
 	"forum_boards_heading": "Boards",
+	"forum_recent_threads_heading": "Recent posts",
+	"forum_recent_threads_empty": "No posts yet.",
 	"forum_board_breadcrumb": "Community",
 	"forum_threads_count": "{n}",
 	"forum_threads_count_label": "threads",

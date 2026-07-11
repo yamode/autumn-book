@@ -26,6 +26,8 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 				brandName: '山人',
 				siblings
 			},
+			// 外部施設HP（WP等）からの深い誘導で来た予約セクション。グローバルヘッダーに「HPへ戻る」動線を出す（ADR-0001）
+			facilityBackLink: facility.websiteUrl ? { name: facility.name, href: facility.websiteUrl } : null,
 			user: locals.user
 		};
 	}
@@ -50,6 +52,7 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 			brandName,
 			siblings
 		},
+		facilityBackLink: facility.websiteUrl ? { name: facility.name, href: facility.websiteUrl } : null,
 		user: locals.user
 	};
 };
