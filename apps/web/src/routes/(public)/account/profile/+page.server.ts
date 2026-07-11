@@ -3,6 +3,7 @@ import { memberById, members, withdrawnMembers, avatarByMember } from '$lib/serv
 import { clearSession } from '$lib/server/session';
 import { MEMBER_SUPABASE, createSupabaseServerClient, getSupabaseUser } from '$lib/server/auth';
 import { sbUpdateMyProfile, sbWithdrawMember, sbUploadAvatar, sbSetMyAvatar } from '$lib/server/supabase-data';
+import { combineName, combineKana } from '$lib/name';
 import * as m from '$lib/paraglide/messages';
 import type { Actions } from './$types';
 
@@ -12,25 +13,38 @@ export const actions: Actions = {
 	update: async (event) => {
 		const { request, locals } = event;
 		const form = await request.formData();
-		const name = String(form.get('name') ?? '').trim();
-		const kana = String(form.get('kana') ?? '').trim();
+		const familyName = String(form.get('familyName') ?? '').trim();
+		const givenName = String(form.get('givenName') ?? '').trim();
+		const middleName = String(form.get('middleName') ?? '').trim();
+		const familyNameKana = String(form.get('familyNameKana') ?? '').trim();
+		const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
 		const phone = String(form.get('phone') ?? '').trim();
 		const mailOptIn = form.get('mailOptIn') === 'on';
-		if (!name || !kana) return fail(400, { saved: false, message: m.error_name_kana_required() });
+		// 姓・名は必須（カナは任意＝海外ゲスト対応）
+		if (!familyName || !givenName) return fail(400, { saved: false, message: m.error_name_required() });
+		const name = combineName(familyName, givenName);
+		const kana = combineKana(familyNameKana, givenNameKana);
 
 		if (MEMBER_SUPABASE) {
 			try {
-				// 氏名/カナ/電話は core.guests、メルマガ同意は book.members を RPC 経由で更新。
-				// locale はプロフィール画面では変更しない（null で現状維持）。
-				await sbUpdateMyProfile(createSupabaseServerClient(event), { name, kana, phone, mailOptIn });
+				// 構造化フィールド（core.guests）＋合成 name/kana を RPC 経由で更新。locale は変更しない。
+				await sbUpdateMyProfile(createSupabaseServerClient(event), {
+					name, kana, phone, mailOptIn,
+					familyName, givenName, middleName, familyNameKana, givenNameKana
+				});
 			} catch {
-				return fail(400, { saved: false, message: m.error_name_kana_required() });
+				return fail(400, { saved: false, message: m.error_name_required() });
 			}
 			return { saved: true, message: '' };
 		}
 
 		const member = memberById(locals.user!.id);
 		if (!member) return fail(404, { saved: false, message: '' });
+		member.familyName = familyName;
+		member.givenName = givenName;
+		member.middleName = middleName;
+		member.familyNameKana = familyNameKana;
+		member.givenNameKana = givenNameKana;
 		member.name = name;
 		member.kana = kana;
 		member.phone = phone;

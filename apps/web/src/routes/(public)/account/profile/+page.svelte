@@ -50,17 +50,31 @@
 		</div>
 	</div>
 
-	<!-- 基本情報 -->
+	<!-- 基本情報（グローバル正規化: 姓 / 名 / ミドルネーム + カナ） -->
 	<form method="POST" action="?/update" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 		<h2 class="text-lg">{m.profile_heading()}</h2>
 		<div class="grid grid-cols-2 gap-3">
 			<label class="block">
-				<span class="text-sm text-stone-600">{m.profile_name()}</span>
-				<input name="name" value={data.member.name} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+				<span class="text-sm text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
+				<input name="familyName" value={data.member.familyName} required class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
 			</label>
 			<label class="block">
-				<span class="text-sm text-stone-600">{m.profile_kana()}</span>
-				<input name="kana" value={data.member.kana} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+				<span class="text-sm text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
+				<input name="givenName" value={data.member.givenName} required class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+			</label>
+		</div>
+		<label class="block">
+			<span class="text-sm text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+			<input name="middleName" value={data.member.middleName} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+		</label>
+		<div class="grid grid-cols-2 gap-3">
+			<label class="block">
+				<span class="text-sm text-stone-600">{m.name_family_kana()}</span>
+				<input name="familyNameKana" value={data.member.familyNameKana} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+			</label>
+			<label class="block">
+				<span class="text-sm text-stone-600">{m.name_given_kana()}</span>
+				<input name="givenNameKana" value={data.member.givenNameKana} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
 			</label>
 		</div>
 		<label class="block">

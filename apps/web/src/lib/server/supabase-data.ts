@@ -1079,6 +1079,11 @@ export interface MemberProfile {
 	joinedAt: string;
 	name: string;
 	kana: string;
+	familyName: string;
+	givenName: string;
+	middleName: string;
+	familyNameKana: string;
+	givenNameKana: string;
 	phone: string;
 	email: string;
 	avatarUrl: string | null;
@@ -1093,6 +1098,11 @@ interface MyProfileRow {
 	joined_at: string;
 	name: string | null;
 	kana: string | null;
+	family_name: string | null;
+	given_name: string | null;
+	middle_name: string | null;
+	family_name_kana: string | null;
+	given_name_kana: string | null;
 	phone: string | null;
 	email: string | null;
 	avatar_url: string | null;
@@ -1112,6 +1122,11 @@ export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile
 		joinedAt: (r.joined_at ?? '').slice(0, 10),
 		name: r.name ?? '',
 		kana: r.kana ?? '',
+		familyName: r.family_name ?? '',
+		givenName: r.given_name ?? '',
+		middleName: r.middle_name ?? '',
+		familyNameKana: r.family_name_kana ?? '',
+		givenNameKana: r.given_name_kana ?? '',
 		phone: r.phone ?? '',
 		email: r.email ?? '',
 		avatarUrl: r.avatar_url ?? null
@@ -1121,14 +1136,30 @@ export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile
 /** 会員本人の氏名/カナ/電話/locale/メルマガ同意を更新（RPC 経由・列レベル GRANT を尊重）。 */
 export async function sbUpdateMyProfile(
 	client: SupabaseClient,
-	input: { name: string; kana?: string; phone?: string; locale?: string; mailOptIn?: boolean }
+	input: {
+		name: string;
+		kana?: string;
+		phone?: string;
+		locale?: string;
+		mailOptIn?: boolean;
+		familyName?: string;
+		givenName?: string;
+		middleName?: string;
+		familyNameKana?: string;
+		givenNameKana?: string;
+	}
 ): Promise<void> {
 	const { error } = await client.schema('book').rpc('update_my_profile', {
 		p_name: input.name,
 		p_kana: input.kana ?? null,
 		p_phone: input.phone ?? null,
 		p_locale: input.locale ?? null,
-		p_mail_opt_in: input.mailOptIn ?? null
+		p_mail_opt_in: input.mailOptIn ?? null,
+		p_family_name: input.familyName ?? null,
+		p_given_name: input.givenName ?? null,
+		p_middle_name: input.middleName ?? null,
+		p_family_name_kana: input.familyNameKana ?? null,
+		p_given_name_kana: input.givenNameKana ?? null
 	});
 	if (error) throw error;
 }
@@ -1166,14 +1197,30 @@ export async function sbWithdrawMember(client: SupabaseClient): Promise<void> {
  *  既存会員は already_registered 例外。 */
 export async function sbRegisterMember(
 	client: SupabaseClient,
-	input: { name: string; kana: string; phone?: string; mailOptIn: boolean; locale?: string }
+	input: {
+		name: string;
+		kana: string;
+		phone?: string;
+		mailOptIn: boolean;
+		locale?: string;
+		familyName?: string;
+		givenName?: string;
+		middleName?: string;
+		familyNameKana?: string;
+		givenNameKana?: string;
+	}
 ): Promise<{ member_code: string; guest_id: string }> {
 	const { data, error } = await client.schema('book').rpc('register_member', {
 		p_name: input.name,
 		p_kana: input.kana,
 		p_phone: input.phone ?? null,
 		p_mail_opt_in: input.mailOptIn,
-		p_locale: input.locale ?? 'ja'
+		p_locale: input.locale ?? 'ja',
+		p_family_name: input.familyName ?? null,
+		p_given_name: input.givenName ?? null,
+		p_middle_name: input.middleName ?? null,
+		p_family_name_kana: input.familyNameKana ?? null,
+		p_given_name_kana: input.givenNameKana ?? null
 	});
 	if (error) throw error;
 	return data as { member_code: string; guest_id: string };

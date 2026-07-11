@@ -241,6 +241,16 @@
   - ⚠ 注意: 本番は AUTH_MODE=demo のため会員アバターは demo（メモリ・Workers の isolate 毎で揮発）。supabase 認証移行後に Storage 永続が効く。
 - **パスキー登録UI = 延期（TODO）**: WebAuthn は RP ID=`yamado.app` 前提で `*.pages.dev` オリジンでは動作不可、かつ AUTH_MODE=supabase＋ブラウザ Supabase クライアント導入が必要。**book が yamado.app サブドメイン＋supabase 認証に移行してから実装**する（rms `account/passkeys`・`autumn-shared/src/auth/passkey.ts` を参照実装に）。
 
+## Phase 5（2026-07-11・v0.24.0〜v0.25.0）
+
+- **グローバルナビ整理**（v0.24.0）: 「西和賀」「男鹿」を削除（各施設サイトは独立方針）。検索カードに「施設サイト」（外部の独立サイト・新規タブ）リンクを追加（`$lib/facility-site.ts`・slug→URL: nishiwaga=yamado.co.jp / oga=oga.yamado.co.jp）。
+- **掲示板の可読性**（v0.24.0）: `.forum-shell`（ゴシック・本文17px）化・明朝除去、`ForumPostView` の本文 text-base 化。ページ背景を白（bg-white）に。
+- **氏名のグローバル正規化**（v0.25.0）: 会員登録/プロフィールを **姓 / 名 / ミドルネーム + カナ（セイ/メイ）** に分離。表示用の合成 `name`/`kana`（姓+名）は保持（`$lib/name.ts` の combineName/combineKana）。
+  - core.guests に `middle_name` 追加。`register_member` / `update_my_profile` に構造化パラメータを末尾 default null で追加（後方互換・yamado-one の5引数呼び出しは新関数に解決）。`my_profile` が構造化フィールドを返す。
+  - migration: autumn-shared `20260711045102_book_guest_name_normalize`（PROD 適用確認済み）。
+  - demo `Member` 型＋registerMember＋seed も構造化対応。姓・名は必須／カナは任意（海外ゲスト対応）。
+  - ⚠ 未対応: 予約フローの**ゲスト入力フォーム**（create_hold/confirm_booking の guest 名）は未変更（会員の氏名のみ正規化）。Travel XML/PMS 連携時に同様の構造化を適用する。
+
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
 会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。

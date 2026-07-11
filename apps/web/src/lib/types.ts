@@ -215,8 +215,14 @@ export interface Member {
 	memberCode: string;
 	email: string;
 	password: string;
-	name: string;
-	kana: string;
+	name: string; // 表示用の合成（姓 名）
+	kana: string; // 表示用の合成（セイ メイ）
+	// グローバル正規化フィールド（PMS / Travel XML 対応）
+	familyName: string;
+	givenName: string;
+	middleName?: string;
+	familyNameKana?: string;
+	givenNameKana?: string;
 	phone: string;
 	rank: 'standard' | 'silver' | 'gold';
 	mailOptIn: boolean;

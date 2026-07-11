@@ -31,6 +31,11 @@ export const load: LayoutServerLoad = async (event) => {
 				mailOptIn: p.isMailOptIn,
 				email: p.email,
 				kana: p.kana,
+				familyName: p.familyName,
+				givenName: p.givenName,
+				middleName: p.middleName,
+				familyNameKana: p.familyNameKana,
+				givenNameKana: p.givenNameKana,
 				phone: p.phone,
 				joinedAt: p.joinedAt,
 				avatarUrl: p.avatarUrl ?? null
@@ -42,7 +47,7 @@ export const load: LayoutServerLoad = async (event) => {
 	const member = memberById(locals.user.id);
 	if (!member) redirect(303, '/auth/login');
 	return {
-		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, phone: member.phone, joinedAt: member.joinedAt, avatarUrl: avatarByMember.get(member.id) ?? null },
+		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, familyName: member.familyName, givenName: member.givenName, middleName: member.middleName ?? '', familyNameKana: member.familyNameKana ?? '', givenNameKana: member.givenNameKana ?? '', phone: member.phone, joinedAt: member.joinedAt, avatarUrl: avatarByMember.get(member.id) ?? null },
 		balance: pointBalance(member.id)
 	};
 };

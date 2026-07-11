@@ -15,6 +15,7 @@ import {
 export type * from '$lib/types';
 import { PREPAY_DISCOUNT_MAX } from '$lib/types';
 export { PREPAY_DISCOUNT_MAX };
+import { combineName, combineKana } from '$lib/name';
 import type {
 	NewsPost, SitePage,
 	Brand, Photo, AccessInfo, Facility, RoomType, RatePlan, GuestInfo, Hold, Booking,
@@ -499,6 +500,10 @@ export const members: Member[] = [
 		password: 'demo',
 		name: '山田 太郎',
 		kana: 'ヤマダ タロウ',
+		familyName: '山田',
+		givenName: '太郎',
+		familyNameKana: 'ヤマダ',
+		givenNameKana: 'タロウ',
 		phone: '090-0000-0000',
 		rank: 'gold',
 		mailOptIn: true,
@@ -865,13 +870,15 @@ export function myReservations(memberId: string): Booking[] {
 		.sort((a, b) => b.checkin.localeCompare(a.checkin));
 }
 
-export function registerMember(input: { email: string; password: string; name: string; kana: string; phone: string; mailOptIn: boolean }): Member | { error: string } {
+export function registerMember(input: { email: string; password: string; familyName: string; givenName: string; middleName?: string; familyNameKana?: string; givenNameKana?: string; phone: string; mailOptIn: boolean }): Member | { error: string } {
 	if (members.some((m) => m.email === input.email)) return { error: 'email_exists' };
 	const m: Member = {
 		id: nextId('m'),
 		memberCode: `YM-${String(++seq).padStart(6, '0')}`,
 		rank: 'standard',
 		joinedAt: today(),
+		name: combineName(input.familyName, input.givenName),
+		kana: combineKana(input.familyNameKana, input.givenNameKana),
 		...input
 	};
 	members.push(m);

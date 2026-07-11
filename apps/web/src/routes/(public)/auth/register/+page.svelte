@@ -42,12 +42,26 @@
 			<p class="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{email}（認証済み）</p>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
-					<span class="text-stone-600">{m.register_name()} <span class="text-red-500">*</span></span>
-					<input name="name" value={form?.values?.name ?? data.prefill.name} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.name ? 'border-red-400' : 'border-stone-300'}" placeholder="山田 太郎" />
+					<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
+					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder="山田" />
 				</label>
 				<label class="block text-sm">
-					<span class="text-stone-600">{m.register_kana()} <span class="text-red-500">*</span></span>
-					<input name="kana" value={form?.values?.kana ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.kana ? 'border-red-400' : 'border-stone-300'}" placeholder="ヤマダ タロウ" />
+					<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
+					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
+				</label>
+			</div>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			</label>
+			<div class="grid grid-cols-2 gap-3">
+				<label class="block text-sm">
+					<span class="text-stone-600">{m.name_family_kana()}</span>
+					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="ヤマダ" />
+				</label>
+				<label class="block text-sm">
+					<span class="text-stone-600">{m.name_given_kana()}</span>
+					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
 				</label>
 			</div>
 			<label class="block text-sm">
@@ -86,12 +100,26 @@
 			</label>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
-					<span class="text-stone-600">{m.register_name()} <span class="text-red-500">*</span></span>
-					<input name="name" value={form?.values?.name ?? data.prefill.name} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.name ? 'border-red-400' : 'border-stone-300'}" placeholder="山田 太郎" />
+					<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
+					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder="山田" />
 				</label>
 				<label class="block text-sm">
-					<span class="text-stone-600">{m.register_kana()} <span class="text-red-500">*</span></span>
-					<input name="kana" value={form?.values?.kana ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.kana ? 'border-red-400' : 'border-stone-300'}" placeholder="ヤマダ タロウ" />
+					<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
+					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
+				</label>
+			</div>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			</label>
+			<div class="grid grid-cols-2 gap-3">
+				<label class="block text-sm">
+					<span class="text-stone-600">{m.name_family_kana()}</span>
+					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="ヤマダ" />
+				</label>
+				<label class="block text-sm">
+					<span class="text-stone-600">{m.name_given_kana()}</span>
+					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
 				</label>
 			</div>
 			<label class="block text-sm">

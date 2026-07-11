@@ -4,6 +4,7 @@ import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient, getSupabaseUser } from '$lib/server/auth';
 import { sbMyProfile, sbRegisterMember } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import { combineName, combineKana } from '$lib/name';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -93,21 +94,29 @@ export const actions: Actions = {
 		if (AUTH_MODE === 'supabase') {
 			const got = await getSupabaseUser(event);
 			if (!got) return fail(401, { step: 'email', message: m.auth_otp_error_config() });
-			const name = String(form.get('name') ?? '').trim();
-			const kana = String(form.get('kana') ?? '').trim();
+			const familyName = String(form.get('familyName') ?? '').trim();
+			const givenName = String(form.get('givenName') ?? '').trim();
+			const middleName = String(form.get('middleName') ?? '').trim();
+			const familyNameKana = String(form.get('familyNameKana') ?? '').trim();
+			const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
 			const phone = String(form.get('phone') ?? '').trim();
 			const mailOptIn = form.get('mailOptIn') === 'on';
+			const name = combineName(familyName, givenName);
+			const kana = combineKana(familyNameKana, givenNameKana);
 			// email も持たせて demo フォームと values 型を揃える（プロフィール入力では email は編集不可）
-			const values = { name, kana, phone, email: got.user.email ?? '' };
+			const values = { familyName, givenName, middleName, familyNameKana, givenNameKana, phone, email: got.user.email ?? '' };
 			const errors: Record<string, string> = {};
-			if (!name) errors.name = m.error_name_required();
-			if (!kana) errors.kana = m.error_kana_required();
+			if (!familyName) errors.familyName = m.error_name_required();
+			if (!givenName) errors.givenName = m.error_name_required();
 			if (Object.keys(errors).length > 0) return fail(400, { step: 'profile', email: got.user.email, errors, values });
 
 			let welcome = true;
 			try {
 				// member_code 採番・email 名寄せ・入会500pt は RPC が一元処理
-				await sbRegisterMember(got.client, { name, kana, phone, mailOptIn, locale: getLocale() });
+				await sbRegisterMember(got.client, {
+					name, kana, phone, mailOptIn, locale: getLocale(),
+					familyName, givenName, middleName, familyNameKana, givenNameKana
+				});
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : '';
 				if (msg.includes('already_registered')) {
@@ -122,19 +131,24 @@ export const actions: Actions = {
 		}
 
 		// demo: email + パスワード + プロフィールを一括登録
+		const familyName = String(form.get('familyName') ?? '').trim();
+		const givenName = String(form.get('givenName') ?? '').trim();
 		const input = {
 			email: String(form.get('email') ?? '').trim(),
 			password: String(form.get('password') ?? ''),
-			name: String(form.get('name') ?? '').trim(),
-			kana: String(form.get('kana') ?? '').trim(),
+			familyName,
+			givenName,
+			middleName: String(form.get('middleName') ?? '').trim(),
+			familyNameKana: String(form.get('familyNameKana') ?? '').trim(),
+			givenNameKana: String(form.get('givenNameKana') ?? '').trim(),
 			phone: String(form.get('phone') ?? '').trim(),
 			mailOptIn: form.get('mailOptIn') === 'on'
 		};
 		const errors: Record<string, string> = {};
 		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.email)) errors.email = m.error_email_invalid();
 		if (input.password.length < 8) errors.password = m.error_password_short();
-		if (!input.name) errors.name = m.error_name_required();
-		if (!input.kana) errors.kana = m.error_kana_required();
+		if (!input.familyName) errors.familyName = m.error_name_required();
+		if (!input.givenName) errors.givenName = m.error_name_required();
 		if (Object.keys(errors).length > 0) return fail(400, { step: 'demo', errors, values: input });
 
 		const result = registerMember(input);
