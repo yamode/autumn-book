@@ -94,6 +94,7 @@ export const facilities: Facility[] = [
 			{ url: '/site-assets/yamado/top_fig_02.jpg', caption: '西和賀の四季', category: 'view' }
 		],
 		template: 'yamado-v1',
+		websiteUrl: 'https://yamado.co.jp/',
 		isPublished: true
 	},
 	{
@@ -128,6 +129,7 @@ export const facilities: Facility[] = [
 			{ url: '/site-assets/oga/g_main.webp', caption: '潮の満ち引きで表情を変える海岸線', category: 'view' }
 		],
 		template: 'oga-v1',
+		websiteUrl: 'https://oga.yamado.co.jp/',
 		isPublished: true
 	}
 ];

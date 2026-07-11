@@ -67,8 +67,8 @@
 			<div class="text-sm">
 				<p class="mb-2 font-medium text-white">{m.footer_facilities()}</p>
 				<ul class="space-y-1 text-xs">
-					<li><a href="/yamado/nishiwaga" class="hover:underline">{m.footer_facility_nishiwaga()}</a></li>
-					<li><a href="/yamado/oga" class="hover:underline">{m.footer_facility_oga()}</a></li>
+					<li><a href="/yamado/nishiwaga/plans" class="hover:underline">{m.footer_facility_nishiwaga()}</a></li>
+					<li><a href="/yamado/oga/plans" class="hover:underline">{m.footer_facility_oga()}</a></li>
 				</ul>
 			</div>
 			<div class="text-sm">

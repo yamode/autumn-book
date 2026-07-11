@@ -1870,6 +1870,13 @@ function templateForSlug(slug: string): Facility['template'] {
 	return 'standard';
 }
 
+/** 施設スラッグ→オリジナル独立公式サイトURL。デモ（store.ts）の websiteUrl 割当に合わせる（未知は undefined）。 */
+function websiteUrlForSlug(slug: string): string | undefined {
+	if (slug === 'nishiwaga') return 'https://yamado.co.jp/';
+	if (slug === 'oga') return 'https://oga.yamado.co.jp/';
+	return undefined;
+}
+
 /** 施設ヒーロー用のプレースホルダー写真（facility_photos 未投入時のフォールバック・最低1枚を保証）。 */
 function placeholderPhotos(seed: string, caption: string): Photo[] {
 	return [{ url: `https://picsum.photos/seed/${encodeURIComponent(seed)}/960/640`, caption, category: 'exterior' }];
@@ -1941,6 +1948,7 @@ export function mapFacilityRow(row: FacilityRow): Facility {
 		access: safeAccess(row.access),
 		photos: placeholderPhotos(row.slug || row.facility_id, row.name),
 		template: templateForSlug(row.slug),
+		websiteUrl: websiteUrlForSlug(row.slug),
 		isPublished: true
 	};
 }

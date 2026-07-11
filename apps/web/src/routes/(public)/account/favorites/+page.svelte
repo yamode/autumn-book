@@ -30,7 +30,7 @@
 			<div class="flex items-center gap-3 border-b border-stone-100 p-4">
 				{#if f.photo}<img src={f.photo} alt="" class="h-14 w-20 rounded-lg object-cover" />{/if}
 				<div class="min-w-0 flex-1">
-					<a href="/{f.brandSlug}/{f.slug}" class="text-lg font-semibold text-brand-900 hover:underline">{f.name}</a>
+					<a href="/{f.brandSlug}/{f.slug}/plans" class="text-lg font-semibold text-brand-900 hover:underline">{f.name}</a>
 					<p class="text-sm text-stone-400">{f.prefecture}</p>
 				</div>
 				{#if f.favCount > 0}

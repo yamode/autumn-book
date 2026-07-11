@@ -15,7 +15,7 @@
 			name: r.facility.name,
 			label: r.minPerPerson ? `${formatPrice(r.minPerPerson)}〜` : m.common_sold_out(),
 			soldOut: !r.minPerPerson,
-			href: `/${r.facility.brandSlug}/${r.facility.slug}`
+			href: `/${r.facility.brandSlug}/${r.facility.slug}/plans`
 		}))
 	);
 </script>
@@ -44,7 +44,7 @@
 	<p class="mb-4 text-sm text-stone-500">{m.home_map_sub()}</p>
 	<MapPanel items={mapItems} height="380px" onpinclick={(id) => {
 		const r = data.results.find((x) => x.facility.id === id);
-		if (r) goto(`/${r.facility.brandSlug}/${r.facility.slug}`);
+		if (r) goto(`/${r.facility.brandSlug}/${r.facility.slug}/plans`);
 	}} />
 </section>
 
@@ -52,23 +52,31 @@
 	<h2 class="font-display mb-4 text-2xl text-brand-900">{m.home_list_heading()}</h2>
 	<div class="grid gap-6 sm:grid-cols-2">
 		{#each data.results as r}
-			<a href="/{r.facility.brandSlug}/{r.facility.slug}" class="group overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:shadow-lg">
-				<div class="relative">
-					<img src={r.facility.photos[0].url} alt={r.facility.name} class="h-56 w-full object-cover transition group-hover:scale-[1.02]" />
-					<span class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs text-white">{r.facility.prefecture}</span>
+			<div class="group overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:shadow-lg">
+				<a href="/{r.facility.brandSlug}/{r.facility.slug}/plans" class="block">
+					<div class="relative">
+						<img src={r.facility.photos[0].url} alt={r.facility.name} class="h-56 w-full object-cover transition group-hover:scale-[1.02]" />
+						<span class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs text-white">{r.facility.prefecture}</span>
+					</div>
+					<div class="px-5 pt-5">
+						<h3 class="font-display text-xl text-brand-900">{r.facility.name}</h3>
+						<p class="mt-1 text-sm text-stone-600">{r.facility.catchCopy}</p>
+						<p class="mt-3 text-lg font-bold text-brand-900">
+							{#if r.minPerPerson}
+								{formatPrice(r.minPerPerson)}<span class="text-xs font-normal text-stone-500">{m.home_price_from()}</span>
+							{:else}
+								<span class="text-stone-400">{m.common_sold_out()}</span>
+							{/if}
+						</p>
+					</div>
+				</a>
+				<div class="flex flex-wrap items-center justify-between gap-3 px-5 pb-5 pt-4">
+					<a href="/{r.facility.brandSlug}/{r.facility.slug}/plans" class="inline-flex items-center rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.home_list_view_plans()}</a>
+					{#if r.facility.websiteUrl}
+						<a href={r.facility.websiteUrl} target="_blank" rel="noopener noreferrer" class="text-sm text-accent-600 hover:underline">{m.home_list_official_site()} ↗</a>
+					{/if}
 				</div>
-				<div class="p-5">
-					<h3 class="font-display text-xl text-brand-900">{r.facility.name}</h3>
-					<p class="mt-1 text-sm text-stone-600">{r.facility.catchCopy}</p>
-					<p class="mt-3 text-lg font-bold text-brand-900">
-						{#if r.minPerPerson}
-							{formatPrice(r.minPerPerson)}<span class="text-xs font-normal text-stone-500">{m.home_price_from()}</span>
-						{:else}
-							<span class="text-stone-400">{m.common_sold_out()}</span>
-						{/if}
-					</p>
-				</div>
-			</a>
+			</div>
 		{/each}
 	</div>
 </section>

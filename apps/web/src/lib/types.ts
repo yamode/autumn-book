@@ -56,6 +56,8 @@ export interface Facility {
 	photos: Photo[];
 	/** 施設HPのデザインテンプレート（画面設計：施設ごとに別デザイン運用） */
 	template: 'standard' | 'yamado-v1' | 'oga-v1';
+	/** オリジナルの独立公式サイトURL（廃止した施設LPの代替導線に使う）。未設定なら外部リンクを出さない。 */
+	websiteUrl?: string;
 	isPublished: boolean;
 }
 
