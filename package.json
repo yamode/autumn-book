@@ -1,7 +1,7 @@
 {
   "name": "autumn-book",
   "private": true,
-  "version": "0.32.0",
+  "version": "0.32.1",
   "scripts": {
     "dev": "pnpm --filter @autumn-book/web dev",
     "build": "pnpm --filter @autumn-book/web build",

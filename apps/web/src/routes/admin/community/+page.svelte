@@ -73,6 +73,14 @@
 	</div>
 </section>
 
+{#if !data.moderationEnabled}
+	<!-- 本番（Supabase 実データ）では、スレ/投稿/ban のモデレーション用 admin RPC が未整備（P5）。
+	     demo データを見せて誤操作させないよう、セクションごと無効化する。 -->
+	<section class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+		<h2 class="font-medium text-amber-800">スレッド操作・投稿削除・ban 管理</h2>
+		<p class="mt-2 text-xs text-amber-700">これらの本番データ向けモデレーションは現在準備中（P5）です。板の追加・編集・アーカイブは上の「① 板管理」で行えます。</p>
+	</section>
+{:else}
 <!-- ② スレ操作 -->
 <section class="mb-8 rounded-xl border border-stone-200 bg-white p-4">
 	<div class="mb-3 flex flex-wrap items-center gap-3">
@@ -178,3 +186,4 @@
 		</tbody>
 	</table>
 </section>
+{/if}

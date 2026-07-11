@@ -729,22 +729,31 @@ export async function setForumBan(userId: string, banned: boolean): Promise<{ us
 	return data as { user_id: string; banned: boolean };
 }
 
-export async function upsertForumBoard(input: {
-	id?: string;
-	slug: string;
-	title: string;
-	description: string;
-	sortOrder: number;
-	isArchived: boolean;
-}): Promise<{ board_id: string }> {
-	const { data, error } = await supa().rpc('forum_upsert_board', {
+// forum_upsert_board は authenticated + 内部の tenant_admin ガード。管理者の cookie に紐づく
+// client（createSupabaseServerClient(event)）を渡すこと。anon supa() では auth.uid() が null で
+// not_authenticated になる。client 省略時は anon（読み取り互換のためのフォールバック）。
+export async function upsertForumBoard(
+	input: {
+		id?: string;
+		slug: string;
+		title: string;
+		description: string;
+		sortOrder: number;
+		isArchived: boolean;
+	},
+	client?: SupabaseClient
+): Promise<{ board_id: string }> {
+	const args = {
 		p_id: input.id ?? null,
 		p_slug: input.slug,
 		p_title: input.title,
 		p_description: input.description,
 		p_sort_order: input.sortOrder,
 		p_is_archived: input.isArchived
-	});
+	};
+	const { data, error } = client
+		? await client.schema('book').rpc('forum_upsert_board', args)
+		: await supa().rpc('forum_upsert_board', args);
 	if (error) throw error;
 	return data as { board_id: string };
 }
