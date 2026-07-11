@@ -85,9 +85,32 @@
 					<input type="hidden" name="holdId" value={data.hold.id} />
 					<h2 class="font-display text-lg text-brand-900">{m.hold_form_heading()}</h2>
 
+					<!-- 氏名（グローバル正規化: 姓 / 名 / ミドルネーム + カナ） -->
+					<div class="grid grid-cols-2 gap-3">
+						<label class="block text-sm">
+							<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
+							<input name="familyName" value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
+						</label>
+						<label class="block text-sm">
+							<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
+							<input name="givenName" value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
+						</label>
+					</div>
+					<label class="block text-sm">
+						<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+						<input name="middleName" value={form?.values?.middleName ?? data.member?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+					</label>
+					<div class="grid grid-cols-2 gap-3">
+						<label class="block text-sm">
+							<span class="text-stone-600">{m.name_family_kana()}</span>
+							<input name="familyNameKana" value={form?.values?.familyNameKana ?? data.member?.familyNameKana ?? ''} placeholder="ヤマダ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+						</label>
+						<label class="block text-sm">
+							<span class="text-stone-600">{m.name_given_kana()}</span>
+							<input name="givenNameKana" value={form?.values?.givenNameKana ?? data.member?.givenNameKana ?? ''} placeholder="タロウ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+						</label>
+					</div>
 					{#each [
-						{ key: 'name', label: m.hold_field_name(), ph: '山田 太郎', def: data.member?.name },
-						{ key: 'kana', label: m.hold_field_kana(), ph: 'ヤマダ タロウ', def: data.member?.kana },
 						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone },
 						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email }
 					] as field}
@@ -95,7 +118,7 @@
 							<span class="text-stone-600">{field.label} <span class="text-red-500">*</span></span>
 							<input
 								name={field.key}
-								value={form?.values?.[field.key as 'name'] ?? field.def ?? ''}
+								value={form?.values?.[field.key as 'phone'] ?? field.def ?? ''}
 								placeholder={field.ph}
 								class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.[field.key] ? 'border-red-400' : 'border-stone-300'}"
 							/>

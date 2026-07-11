@@ -249,7 +249,7 @@
   - core.guests に `middle_name` 追加。`register_member` / `update_my_profile` に構造化パラメータを末尾 default null で追加（後方互換・yamado-one の5引数呼び出しは新関数に解決）。`my_profile` が構造化フィールドを返す。
   - migration: autumn-shared `20260711045102_book_guest_name_normalize`（PROD 適用確認済み）。
   - demo `Member` 型＋registerMember＋seed も構造化対応。姓・名は必須／カナは任意（海外ゲスト対応）。
-  - ⚠ 未対応: 予約フローの**ゲスト入力フォーム**（create_hold/confirm_booking の guest 名）は未変更（会員の氏名のみ正規化）。Travel XML/PMS 連携時に同様の構造化を適用する。
+  - **予約フローのゲスト氏名も正規化**（v0.26.0）: `/booking/hold` の入力を姓/名/ミドル+カナに。`GuestInfo` に構造化フィールド追加（OTA/電話予約など合成名のみは任意）。`confirm_booking` が `p_guest` の構造化キーを受領し `core.guests` の構造化列へ保存（migration `20260711051616_book_confirm_booking_guest_name`・PROD 適用＆通し確認済み）。会員はプロフィールの姓/名等を予約フォームに自動プリフィル。
 
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 

@@ -25,6 +25,7 @@ import {
 	setLastBooking
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import { combineName, combineKana } from '$lib/name';
 import { earnedPoints } from '@autumn-book/core';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
@@ -48,7 +49,11 @@ export const load: PageServerLoad = async (event) => {
 		if (!plan || !room || !facility) return { expired: true as const };
 
 		// 会員のみポイント残高・獲得見込みを表示（未ログインのゲストは null）。
-		let member: { name: string; kana: string; phone: string; email: string; balance: number; earn: number } | null = null;
+		let member: {
+			name: string; kana: string;
+			familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string;
+			phone: string; email: string; balance: number; earn: number;
+		} | null = null;
 		if (MEMBER_SUPABASE && locals.user?.role === 'member') {
 			try {
 				const client = createSupabaseServerClient(event);
@@ -57,6 +62,11 @@ export const load: PageServerLoad = async (event) => {
 				member = {
 					name: profile.name,
 					kana: profile.kana,
+					familyName: profile.familyName,
+					givenName: profile.givenName,
+					middleName: profile.middleName,
+					familyNameKana: profile.familyNameKana,
+					givenNameKana: profile.givenNameKana,
 					phone: profile.phone,
 					email: profile.email,
 					balance,
@@ -86,6 +96,11 @@ export const load: PageServerLoad = async (event) => {
 			? {
 					name: member.name,
 					kana: member.kana,
+					familyName: member.familyName,
+					givenName: member.givenName,
+					middleName: member.middleName ?? '',
+					familyNameKana: member.familyNameKana ?? '',
+					givenNameKana: member.givenNameKana ?? '',
 					phone: member.phone,
 					email: member.email,
 					balance: pointBalance(member.id),
@@ -101,9 +116,19 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const holdId = String(form.get('holdId'));
 
+		const familyName = String(form.get('familyName') ?? '').trim();
+		const givenName = String(form.get('givenName') ?? '').trim();
+		const middleName = String(form.get('middleName') ?? '').trim();
+		const familyNameKana = String(form.get('familyNameKana') ?? '').trim();
+		const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
 		const guest = {
-			name: String(form.get('name') ?? '').trim(),
-			kana: String(form.get('kana') ?? '').trim(),
+			name: combineName(familyName, givenName),
+			kana: combineKana(familyNameKana, givenNameKana),
+			familyName,
+			givenName,
+			middleName,
+			familyNameKana,
+			givenNameKana,
 			phone: String(form.get('phone') ?? '').trim(),
 			email: String(form.get('email') ?? '').trim(),
 			arrival: String(form.get('arrival') ?? ''),
@@ -111,8 +136,9 @@ export const actions: Actions = {
 			notes: String(form.get('notes') ?? '').trim()
 		};
 		const errors: Record<string, string> = {};
-		if (!guest.name) errors.name = m.error_name_required();
-		if (!guest.kana) errors.kana = m.error_kana_required();
+		// 姓・名は必須（カナは任意＝海外ゲスト対応）
+		if (!familyName) errors.familyName = m.error_name_required();
+		if (!givenName) errors.givenName = m.error_name_required();
 		if (!/^[0-9\-+ ]{10,}$/.test(guest.phone)) errors.phone = m.error_phone_invalid();
 		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guest.email)) errors.email = m.error_email_invalid();
 

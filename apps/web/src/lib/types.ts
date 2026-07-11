@@ -152,8 +152,15 @@ export interface RatePlan {
 }
 
 export interface GuestInfo {
-	name: string;
-	kana: string;
+	name: string; // 表示用の合成（姓 名）
+	kana: string; // 表示用の合成（セイ メイ）
+	// グローバル正規化フィールド（PMS / Travel XML 対応）。
+	// OTA/電話予約など合成名のみのゲストもあるため任意（予約フォームでは姓・名を必須にする）。
+	familyName?: string;
+	givenName?: string;
+	middleName?: string;
+	familyNameKana?: string;
+	givenNameKana?: string;
 	phone: string;
 	email: string;
 	arrival?: string;
