@@ -1128,6 +1128,13 @@ export async function sbUpdateMyProfile(
 	if (error) throw error;
 }
 
+/** 退会（論理削除）。book.withdraw_member RPC が withdrawn_at をマークする（データは保持）。
+ *  以後 my_profile は not_member を返すため、呼び出し側で updateUser({member:false}) と signOut を行う。 */
+export async function sbWithdrawMember(client: SupabaseClient): Promise<void> {
+	const { error } = await client.schema('book').rpc('withdraw_member');
+	if (error) throw error;
+}
+
 /** 会員登録（OTP サインイン後に呼ぶ）。member_code 採番・email 名寄せ・入会500pt は RPC が一元処理。
  *  既存会員は already_registered 例外。 */
 export async function sbRegisterMember(

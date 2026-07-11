@@ -514,6 +514,9 @@ export const pointLedger: PointEntry[] = [
 
 export const favoritesByMember = new Map<string, Set<string>>([['m-demo', new Set(['f-oga'])]]);
 
+// デモの退会（論理削除）会員ID。退会後はログイン不可・マイページ不可にする（データは保持）。
+export const withdrawnMembers = new Set<string>();
+
 export const holds = new Map<string, Hold>();
 export const bookings = new Map<string, Booking>();
 export const auditLogs: AuditLog[] = [];

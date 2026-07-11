@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { members } from '$lib/server/store';
+import { members, withdrawnMembers } from '$lib/server/store';
 import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile } from '$lib/server/supabase-data';
@@ -23,7 +23,8 @@ export const actions: Actions = {
 		const email = String(form.get('email') ?? '').trim();
 		const password = String(form.get('password') ?? '');
 		const member = members.find((me) => me.email === email && me.password === password);
-		if (!member) return fail(401, { message: m.error_login_failed(), email });
+		// 退会済み（論理削除）はログイン不可
+		if (!member || withdrawnMembers.has(member.id)) return fail(401, { message: m.error_login_failed(), email });
 		setSession(cookies, { id: member.id, role: 'member', name: member.name });
 		redirect(303, url.searchParams.get('next') ?? '/account');
 	},
