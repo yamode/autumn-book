@@ -8,12 +8,17 @@
 	const ranks = [
 		{ code: 'standard' as const, cond: m.membership_cond_standard(), rate: 1 },
 		{ code: 'silver' as const, cond: m.membership_cond_silver(), rate: 2 },
-		{ code: 'gold' as const, cond: m.membership_cond_gold(), rate: 3 }
+		{ code: 'gold' as const, cond: m.membership_cond_gold(), rate: 3 },
+		{ code: 'platinum' as const, cond: m.membership_cond_platinum(), rate: 5 }
 	];
 
 	const benefits = [
 		{ icon: '◆', title: m.membership_benefit_points_t(), body: m.membership_benefit_points_b() },
+		{ icon: '⏱', title: m.membership_benefit_advance_t(), body: m.membership_benefit_advance_b() },
 		{ icon: '✦', title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
+		{ icon: '❄', title: m.membership_benefit_personalize_t(), body: m.membership_benefit_personalize_b() },
+		{ icon: '⇄', title: m.membership_benefit_datechange_t(), body: m.membership_benefit_datechange_b() },
+		{ icon: '✓', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
 		{ icon: '♥', title: m.membership_benefit_favorites_t(), body: m.membership_benefit_favorites_b() },
 		{ icon: '✉', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() },
 		{ icon: '💬', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() }
@@ -46,7 +51,7 @@
 	<section class="mt-10">
 		<h2 class="text-xl">{m.membership_ranks_heading()}</h2>
 		<p class="mt-1 text-sm text-stone-500">{m.membership_rank_note()}</p>
-		<div class="mt-5 grid gap-4 sm:grid-cols-3">
+		<div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			{#each ranks as r}
 				<div class="rounded-2xl border border-stone-200 bg-white p-6 text-center">
 					<div class="flex justify-center"><RankBadge rank={r.code} /></div>

@@ -6,8 +6,10 @@
 	let { data } = $props();
 	let member = $derived(data.member);
 	let currentRank = $derived(data.ranks.find((r) => r.code === member.rank)!);
-	// 次ランクまでの進捗（gold は最上位）
-	let nextTarget = $derived(member.rank === 'standard' ? 2 : member.rank === 'silver' ? 5 : null);
+	// 次ランクまでの進捗（platinum が最上位）
+	let nextTarget = $derived(
+		member.rank === 'standard' ? 2 : member.rank === 'silver' ? 5 : member.rank === 'gold' ? 10 : null
+	);
 
 	// おたより投稿ステータスのラベル・配色
 	const statusLabel = $derived({

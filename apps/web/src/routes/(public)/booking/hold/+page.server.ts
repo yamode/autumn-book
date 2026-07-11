@@ -31,7 +31,7 @@ import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
-const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03 };
+const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.05 };
 
 export const load: PageServerLoad = async (event) => {
 	const { url, locals, cookies } = event;

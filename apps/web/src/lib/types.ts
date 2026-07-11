@@ -231,7 +231,7 @@ export interface Member {
 	familyNameKana?: string;
 	givenNameKana?: string;
 	phone: string;
-	rank: 'standard' | 'silver' | 'gold';
+	rank: 'standard' | 'silver' | 'gold' | 'platinum';
 	mailOptIn: boolean;
 	joinedAt: string;
 }

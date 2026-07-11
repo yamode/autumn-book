@@ -258,6 +258,13 @@
 - **ニックネームが保存後に空欄になるバグ修正**: supabase モードは現ニックネームを引く手段が無く load が空プリフィルだった。RPC `book.forum_my_nickname()`（migration `20260711054418`・PROD 適用済み）を追加し `/account/community` の load で現値を取得（demo は従来どおり store から）。
 - **会員プログラム紹介ページ**（公開・ログイン不要）: `/membership`。還元率（グレード別 1/2/3%）・特典（ポイント/会員限定プラン/お気に入り/おたより/コミュニティ）・入会CTA。グローバルナビ「会員特典」＋フッターから導線。ja/en/zh-TW。
 
+## Phase 7（2026-07-11・v0.28.0）
+
+- **プラチナ会員を追加**（standard/silver/gold の上位）。`book.member_ranks` に platinum 行（rank_order 4・**還元率5%・年10泊以上・暫定 §14-10 未決**）を migration で投入（`20260711055820_book_rank_platinum`・PROD 適用済み）。型（Member.rank / MemberProfile.rankCode）・`memberRanks`・`RankBadge`（濃紺バッジ）・還元率マップ・ポイント進捗（gold→platinum の10泊）・会員ページを更新。
+  - ⚠ 還元率5%/年10泊は暫定値。運用確定後に `book.member_ranks` を update＋`store.ts memberRanks`／REWARD_RATE を合わせる。
+- **会員特典を追加**（`/membership` の特典セクション・4項目。現状は紹介コピー＝機能実装は今後）:
+  - 会員先行予約（他OTA非販売の先々期間を割引先行）／滞在のパーソナライズ（冷蔵庫中身交換・アメニティ追加）／日程変更／グレード別キャンセル規定。
+
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
 会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。

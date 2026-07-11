@@ -35,7 +35,8 @@ const img = (seed: string) => `https://picsum.photos/seed/${seed}/960/640`;
 export const memberRanks = [
 	{ code: 'standard', label: 'スタンダード', rewardRate: 0.01, condition: '入会で付与' },
 	{ code: 'silver', label: 'シルバー', rewardRate: 0.02, condition: '年2泊以上' },
-	{ code: 'gold', label: 'ゴールド', rewardRate: 0.03, condition: '年5泊以上' }
+	{ code: 'gold', label: 'ゴールド', rewardRate: 0.03, condition: '年5泊以上' },
+	{ code: 'platinum', label: 'プラチナ', rewardRate: 0.05, condition: '年10泊以上' }
 ] as const;
 
 export const brands: Brand[] = [

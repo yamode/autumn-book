@@ -1080,7 +1080,7 @@ export function toFacilityUuidStrict(facilityId: string): string {
 export interface MemberProfile {
 	userId: string;
 	memberCode: string;
-	rankCode: 'standard' | 'silver' | 'gold';
+	rankCode: 'standard' | 'silver' | 'gold' | 'platinum';
 	locale: Locale;
 	isMailOptIn: boolean;
 	joinedAt: string;
