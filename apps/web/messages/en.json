@@ -83,6 +83,7 @@
 	"search_sold_out_msg": "No availability for these dates",
 	"search_sold_out_phone": "For waitlist inquiries, please call ({phone})",
 	"search_facility_link": "View property",
+	"search_facility_site_link": "Official site",
 	"search_remaining": "{n} room(s) left",
 	"search_price_per_person_ref": "/ per person, per night (est.)",
 	"search_price_total": "/ {adults} adult(s), {nights} night(s) · tax incl.",

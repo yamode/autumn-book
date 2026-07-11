@@ -83,6 +83,7 @@
 	"search_sold_out_msg": "この条件では満室です",
 	"search_sold_out_phone": "キャンセル待ちはお電話（{phone}）でご相談ください",
 	"search_facility_link": "施設ページへ",
+	"search_facility_site_link": "施設サイト",
 	"search_remaining": "残り{n}室",
 	"search_price_per_person_ref": "/ 1名1泊（参考）",
 	"search_price_total": "/ {adults}名{nights}泊・税込",

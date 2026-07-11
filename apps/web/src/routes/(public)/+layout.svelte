@@ -30,9 +30,7 @@
 			<a href="/" class="font-display text-xl font-bold tracking-widest text-brand-900">山人 <span class="text-xs font-normal tracking-normal text-stone-400">- yamado -</span></a>
 			<nav class="flex items-center gap-4 text-sm text-stone-600">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
-				<a href="/yamado/nishiwaga" class="hidden hover:text-brand-800 sm:inline">{m.nav_nishiwaga()}</a>
-				<a href="/yamado/oga" class="hidden hover:text-brand-800 sm:inline">{m.nav_oga()}</a>
-					<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
+				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 			</nav>
 			<div class="ml-auto flex items-center gap-3 text-sm">
 				{#if data.user?.role === 'member'}

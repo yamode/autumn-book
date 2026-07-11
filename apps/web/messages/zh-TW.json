@@ -83,6 +83,7 @@
 	"search_sold_out_msg": "此條件下客滿",
 	"search_sold_out_phone": "候補請電話洽詢（{phone}）",
 	"search_facility_link": "前往設施頁面",
+	"search_facility_site_link": "設施官網",
 	"search_remaining": "僅剩{n}間",
 	"search_price_per_person_ref": "/ 每人每晚（參考）",
 	"search_price_total": "/ {adults}人{nights}晚 · 含稅",

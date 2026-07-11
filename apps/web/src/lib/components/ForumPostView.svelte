@@ -13,13 +13,13 @@
 </script>
 
 <article id="post-{post.postNo}" class="scroll-mt-20 border-t border-stone-100 px-4 py-4 first:border-t-0">
-	<header class="mb-2 flex flex-wrap items-center gap-2 text-xs text-stone-400">
+	<header class="mb-2 flex flex-wrap items-center gap-2 text-sm text-stone-400">
 		<span class="font-mono text-stone-500">{m.forum_post_anchor({ n: post.postNo })}</span>
 		{#if !post.isDeleted}
 			{#if post.avatarUrl}
-				<img src={post.avatarUrl} alt="" class="h-5 w-5 rounded-full object-cover" />
+				<img src={post.avatarUrl} alt="" class="h-6 w-6 rounded-full object-cover" />
 			{:else}
-				<span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-100 text-[10px] font-medium text-brand-800">{initial}</span>
+				<span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-800">{initial}</span>
 			{/if}
 			<span class="font-medium text-stone-600">{post.nickname}</span>
 			{#if post.isStaff}<span class="rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
@@ -34,8 +34,8 @@
 	</header>
 
 	{#if post.isDeleted}
-		<p class="text-sm italic text-stone-400">{m.forum_deleted_post()}</p>
+		<p class="text-base italic text-stone-400">{m.forum_deleted_post()}</p>
 	{:else}
-		<div class="break-words text-sm leading-relaxed text-stone-700">{@html html}</div>
+		<div class="break-words text-base leading-relaxed text-stone-700">{@html html}</div>
 	{/if}
 </article>

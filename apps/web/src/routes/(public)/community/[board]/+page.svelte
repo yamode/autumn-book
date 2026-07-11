@@ -8,14 +8,14 @@
 
 <svelte:head><title>{data.board.title} ｜ {m.forum_title()}</title></svelte:head>
 
-<div class="mx-auto max-w-3xl px-4 py-10">
+<div class="forum-shell mx-auto max-w-3xl px-4 py-10">
 	<nav class="mb-3 text-xs text-stone-400">
 		<a href="/community" class="hover:underline">{m.forum_board_breadcrumb()}</a> / {data.board.title}
 	</nav>
 
 	<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
 		<div>
-			<h1 class="font-display text-2xl text-brand-900">{data.board.title}</h1>
+			<h1 class="text-2xl text-brand-900">{data.board.title}</h1>
 			<p class="mt-1 text-sm text-stone-500">{data.board.description}</p>
 		</div>
 		{#if !data.board.isArchived && data.writeEnabled}

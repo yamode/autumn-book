@@ -9,13 +9,13 @@
 
 <svelte:head><title>{data.thread.title} ｜ {m.forum_title()}</title></svelte:head>
 
-<div class="mx-auto max-w-3xl px-4 py-10">
+<div class="forum-shell mx-auto max-w-3xl px-4 py-10">
 	<nav class="mb-3 text-xs text-stone-400">
 		<a href="/community" class="hover:underline">{m.forum_board_breadcrumb()}</a> /
 		<a href="/community/{data.thread.boardSlug}" class="hover:underline">{data.thread.boardTitle}</a>
 	</nav>
 
-	<h1 class="font-display mb-4 flex items-center gap-2 text-2xl text-brand-900">
+	<h1 class="mb-4 flex items-center gap-2 text-2xl text-brand-900">
 		{#if data.thread.isPinned}<span title="pinned">📌</span>{/if}
 		{#if data.thread.isLocked}<span title="locked">🔒</span>{/if}
 		{data.thread.title}

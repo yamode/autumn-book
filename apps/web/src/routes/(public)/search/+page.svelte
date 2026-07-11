@@ -3,6 +3,7 @@
 	import { formatPrice } from '$lib/format';
 	import { dbg } from '$lib/debug';
 	import { gaEvent } from '$lib/analytics';
+	import { facilitySiteUrl } from '$lib/facility-site';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -89,10 +90,11 @@
 								<p class="mt-0.5 text-xs font-medium text-red-600">{m.search_remaining({ n: String(r.remaining) })}</p>
 							{/if}
 							<a href={plansHref(r)} class="mt-2 block rounded-md bg-brand-800 py-1.5 text-center text-sm text-white hover:bg-brand-700">{m.search_plan_link()}</a>
+							<a href={facilitySiteUrl(r.facility)} target="_blank" rel="noopener noreferrer" class="mt-2 block rounded-md border border-stone-300 py-1.5 text-center text-sm text-stone-600 hover:bg-stone-50">{m.search_facility_site_link()}</a>
 						{:else}
 							<p class="mt-1 text-sm font-medium text-stone-400">{m.search_sold_out_msg()}</p>
 							<p class="mt-1 text-xs text-stone-500">{m.search_sold_out_phone({ phone: r.facility.phone })}</p>
-							<a href="/{r.facility.brandSlug}/{r.facility.slug}" class="mt-2 block rounded-md border border-stone-300 py-1.5 text-center text-sm text-stone-600 hover:bg-stone-50">{m.search_facility_link()}</a>
+							<a href={facilitySiteUrl(r.facility)} target="_blank" rel="noopener noreferrer" class="mt-2 block rounded-md border border-stone-300 py-1.5 text-center text-sm text-stone-600 hover:bg-stone-50">{m.search_facility_site_link()}</a>
 						{/if}
 					</div>
 				</div>
