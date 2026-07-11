@@ -28,7 +28,7 @@ export const actions: Actions = {
 		redirect(303, url.searchParams.get('next') ?? '/account');
 	},
 
-	// supabase: step1 メールアドレス → 6桁 OTP を送信
+	// supabase: step1 メールアドレス → 8桁 OTP を送信（コード長は Supabase の Email OTP 設定に従う）
 	sendCode: async (event) => {
 		const { request, cookies } = event;
 		if (AUTH_MODE !== 'supabase') return fail(400, { message: m.auth_otp_error_config() });
@@ -49,7 +49,7 @@ export const actions: Actions = {
 		return { step: 'code', email };
 	},
 
-	// supabase: step2 6桁コードを検証 → 会員判定して遷移先を決める
+	// supabase: step2 8桁コードを検証 → 会員判定して遷移先を決める
 	verify: async (event) => {
 		const { request, url } = event;
 		if (AUTH_MODE !== 'supabase') return fail(400, { message: m.auth_otp_error_config() });

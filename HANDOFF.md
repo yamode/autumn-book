@@ -211,7 +211,8 @@
 ## 会員 Supabase Auth Phase 2 実装済み（2026-07-10・v0.17.0）
 
 - **`MEMBER_SUPABASE = (DATA_SOURCE==='supabase' && AUTH_MODE==='supabase')` のときだけ**会員系を実データ化。demo 系（現本番 `AUTH_MODE=demo`）は挙動不変（回帰確認済み）
-- **方式 = 6桁メール OTP**（yamado-one と同一）: `/auth/login`・`/auth/register` が「email 入力 → 6桁コード」の2段。`signInWithOtp({shouldCreateUser:true})` → `verifyOtp({type:'email'})`。60秒再送クールダウン。パスワード/マジックリンクは不使用
+- **方式 = メール OTP**（yamado-one と同一）: `/auth/login`・`/auth/register` が「email 入力 → コード」の2段。`signInWithOtp({shouldCreateUser:true})` → `verifyOtp({type:'email'})`。60秒再送クールダウン。パスワード/マジックリンクは不使用
+  - **コード長は Supabase プロジェクトの Email OTP 設定に従う（現状 8桁）**。アプリ文言（`auth_otp_*`・ja/en/zh-TW）と入力欄 `maxlength` は 8桁に統一済み。設定を変えたら文言も追随させること
 - **hooks.server.ts**: supabase モードでは admin/staff/member をすべて Supabase 検証済みセッション（`auth.getUser()`）のみで解決。**demo cookie は一切信用しない**（偽造 `ab_session` で会員になれない）。OTP 済み・未登録は `locals.pendingAuthUser` に載せ `/auth/register` のプロフィール入力へ
 - **会員行の作成は必ず `register_member` RPC 経由**（member_code 採番・email 名寄せ・入会500pt を一元化）。verify 後に `my_profile()` が通れば会員、通らなければ登録へ。登録成功で `updateUser({name, member:true})` を同期（yamado-one 経由の会員も救済）。「member フラグはあるが book.members 行が無い」異常系はフラグ解除で無限ループ防止（`account/+layout.server.ts`）
 - **実データアダプタ**（`supabase-data.ts`・authenticated client 受け取り）: `sbMyProfile` / `sbUpdateMyProfile` / `sbRegisterMember` / `sbPointBalance` / `sbPointLedger` / `sbMyReservations` / `sbCancelBookingAsMember` / `sbListFavorites` / `sbAddFavorite` / `sbRemoveFavorite`。掲示板書き込み4関数＋`submitOtayori`＋`getOtayoriMySummary` も client 引数化し、supabase 本接続で**書き込みゲートを解除**（`forum-write-enabled.ts`）
@@ -221,11 +222,11 @@
 
 ## Supabase ダッシュボード設定（会員 Auth Phase 2 の前提・要ユーザー作業）
 
-会員認証は **yamado-one（モバイル）と同じ「6桁メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。
+会員認証は **yamado-one（モバイル）と同じ「メール OTP」方式**に揃える（パスワード・マジックリンクは使わない）。理由: ポータルのホスト名が未確定でリダイレクト URL に依存できず、共有プロジェクトのメールテンプレートを壊さないため。コード長は Supabase の Email OTP 設定に従う（**現状 8桁**・アプリ文言も8桁に統一済み）。
 
 - [ ] Authentication → Providers → **Email 有効**・サインアップ許可（`shouldCreateUser:true` を使うため）
-- [x] **Confirm signup** テンプレートを `{{ .Token }}`（6桁コード）表示に変更（2026-07-11・ユーザー実施）
-- [ ] **Magic Link** テンプレートを `{{ .Token }}`（6桁コード）表示に変更（下記「共有テンプレート統一」参照・**要実施**）
+- [x] **Confirm signup** テンプレートを `{{ .Token }}`（コード）表示に変更（2026-07-11・ユーザー実施）
+- [ ] **Magic Link** テンプレートを `{{ .Token }}`（コード）表示に変更（下記「共有テンプレート統一」参照・**要実施**）
 - [ ] Leaked Password Protection を有効化（Advisor の WARN）
 - 管理者は従来どおり email+パスワード（`app_metadata.role=admin`）。会員とは別フロー
 
@@ -234,8 +235,8 @@
 autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メールテンプレートは1組**を共有する。会員登録は新規ユーザーなので **"Confirm signup"** が飛ぶ（book専用・修正済）。一方 **既存確認済みユーザーの `signInWithOtp`** は **"Magic Link"** テンプレートを飛ばし、これは **rms 管理者ログインの補助動線とも共有**する唯一の重複だった。
 
 - **問題の症状**: 既定 "Confirm signup"／"Magic Link" は `{{ .ConfirmationURL }}`（リンク）方式で、Site URL=`autumn-rms.yamado.app` のため、リンクを踏むと **rms 管理画面に着地**していた。
-- **根本解（方針A・採用）**: 共有する "Magic Link" の UX を **6桁コードに統一**。
-  - rms 側: ログイン補助を「リンク送信」→「6桁コード入力」に変更（autumn-rms v0.70.0・`login/+page.svelte`。`emailRedirectTo` を渡さず `verifyOtp({type:'email'})`）。
+- **根本解（方針A・採用）**: 共有する "Magic Link" の UX を **コードに統一**。
+  - rms 側: ログイン補助を「リンク送信」→「コード入力」に変更（autumn-rms v0.70.0・`login/+page.svelte`。`emailRedirectTo` を渡さず `verifyOtp({type:'email'})`）。
   - ダッシュボード: **Magic Link テンプレを `{{ .Token }}` に変更**（リンクを排除）。
   - 招待/PW再設定リンク（token_hash・rms専用の別テンプレ・管理者限定）は従来どおりで交わらない。
 - 却下案: B デュアル表示（コード+リンク併記・文面が両アプリ混在）／C Send Email Hook（Edge Function+独自SMTP・現状オーバースペック）。

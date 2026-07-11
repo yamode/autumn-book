@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-	// supabase: step1 メールアドレス → 6桁 OTP を送信
+	// supabase: step1 メールアドレス → 8桁 OTP を送信（コード長は Supabase の Email OTP 設定に従う）
 	sendCode: async (event) => {
 		const { request, cookies } = event;
 		if (AUTH_MODE !== 'supabase') return fail(400, { message: m.auth_otp_error_config() });

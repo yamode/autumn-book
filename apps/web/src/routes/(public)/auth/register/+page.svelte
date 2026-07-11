@@ -19,13 +19,13 @@
 	{/if}
 
 	{#if data.authMode === 'supabase' && step === 'code'}
-		<!-- step2: 6桁コード入力 -->
+		<!-- step2: 8桁コード入力 -->
 		<form method="POST" action="?/verify" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 			<p class="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">{m.auth_otp_code_hint({ email })}</p>
 			<input type="hidden" name="email" value={email} />
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.auth_otp_code_label()}</span>
-				<input name="token" inputmode="numeric" autocomplete="one-time-code" required placeholder={m.auth_otp_code_placeholder()} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-center text-lg tracking-[0.4em]" />
+				<input name="token" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required placeholder={m.auth_otp_code_placeholder()} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-center text-lg tracking-[0.4em]" />
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.auth_otp_verify_register()}</button>
 		</form>
