@@ -7,6 +7,14 @@
 >
 > 関連 migration: `autumn-shared/supabase/migrations/20260615120000_book_inroom.sql`（下書き・未適用）
 
+> **【2026-07-19 改訂】内線通話の実装方式を変更。**
+> §3（Twilio ブリッジ）・§7 の `/api/intercom/token|voice|status`・§10（Twilio コスト）は**廃止**し、
+> **自前 WebRTC（ゲスト `/r` ⇄ 受電ネイティブアプリ yamode/autumn-call・taskul-one 通話実装の流用）** に置換した。
+> 内線の正式仕様は **`autumn_book_intercom_contract.md`（シグナリング契約書）** を参照。
+> 本書の §3・§10 は検討記録として残す。§4（claim フロー・画面構成）・§5（管理画面）・§6 のうち
+> `house_guides` / `stay_access_tokens`（P8a 実装済み）は引き続き有効。
+> Twilio 前提だった `facility_intercom` の列構成と P8c の Regulatory Bundle 前提は契約書側で改訂済み。
+
 ---
 
 ## 0. 決定サマリ（敵対的レビュー反映済み）
