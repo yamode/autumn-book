@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import VersionBadge from '$lib/components/VersionBadge.svelte';
 
 	let { data, children } = $props();
 
@@ -94,3 +95,6 @@
 		</div>
 	</div>
 {/if}
+
+<!-- ログイン画面含め管理画面のどのページでも常時見えるバージョン表記 -->
+<VersionBadge />

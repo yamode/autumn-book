@@ -4,6 +4,9 @@ import type { SessionUser } from '$lib/server/session';
 // ここに書くと global にならない）。App.Platform からはその global 型を参照する。
 
 declare global {
+	// vite.config.ts の define で注入されるアプリバージョン（ルート package.json の version）
+	const __APP_VERSION__: string;
+
 	namespace App {
 		interface Locals {
 			user: SessionUser | null;

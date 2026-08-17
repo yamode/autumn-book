@@ -1,9 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
+// バージョン表記の出所はモノレポルートの package.json（コミットメッセージの vX.Y.Z と一致させる）
+const rootPkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+
 export default defineConfig({
+	define: {
+		__APP_VERSION__: JSON.stringify(rootPkg.version)
+	},
 	plugins: [
 		tailwindcss(),
 		paraglideVitePlugin({
