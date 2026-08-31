@@ -93,6 +93,12 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// 管理エリアは常に到達可能（/admin/login でログイン → バイパス取得するため）
 	if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) return true;
 
+	// 滞在中のお客様向けの面（客室電子インフォメーション・貸切風呂のご予約）は
+	// ポータル本体より先に公開する。館内図に刷った QR の着地点なので、
+	// メンテナンス中でも必ず開けなければならない（紙は刷り直せない）。
+	// 言語プレフィックス付き（/en/r・/zh-TW/r）も同じ扱いにする。
+	if (/^\/(?:en\/|zh-TW\/)?r(?:\/|$)/.test(url.pathname)) return true;
+
 	// 運営（admin / staff）はメンテ中も公開サイトをプレビューできる
 	const role = locals.user?.role;
 	if (role === 'admin' || role === 'staff') return true;

@@ -1,12 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { resolveStay, listHouseGuidesFor, claimStayByCode } from '$lib/server/store';
+// 試行レート制限は KV（AB_CONFIG）に数える。store.ts のプロセス内 Map は
+// Workers では isolate ごとに分かれて揮発するため、本番で効かない（設計レビュー M1）。
 import {
-	resolveStay,
-	listHouseGuidesFor,
-	claimStayByCode,
 	claimRateCheck,
 	claimRecordFailure,
 	claimRecordSuccess
-} from '$lib/server/store';
+} from '$lib/server/claim-rate-limit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides, sbClaimStayByCode } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -44,7 +44,7 @@ export const actions: Actions = {
 	// 手入力の8桁コード → トークン交換 → Cookie 発行。簡易レート制限（5回失敗で10分ロック）付き。
 	claim: async (event) => {
 		const key = event.getClientAddress();
-		const rl = claimRateCheck(key);
+		const rl = await claimRateCheck(event.platform, key);
 		if (rl.locked) return fail(429, { claimError: 'locked' as const, retryInSec: rl.retryInSec });
 
 		const form = await event.request.formData();
@@ -52,11 +52,11 @@ export const actions: Actions = {
 
 		const token = DATA_SOURCE === 'supabase' ? await sbClaimStayByCode(code) : claimStayByCode(code);
 		if (!token) {
-			claimRecordFailure(key);
+			await claimRecordFailure(event.platform, key);
 			return fail(400, { claimError: 'fail' as const });
 		}
 
-		claimRecordSuccess(key);
+		await claimRecordSuccess(event.platform, key);
 		event.cookies.set(STAY_COOKIE, token, {
 			path: '/',
 			httpOnly: true,
