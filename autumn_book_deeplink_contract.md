@@ -14,8 +14,9 @@
 
 ## 1. ホスト
 
-- ポータルホスト名は未確定（§14-2）。本契約は**パス以下のみ**を固定する。
-- 現行: `https://autumn-book.pages.dev` ／ 将来: `https://stay.yamado.co.jp`（仮）。ホスト確定時は HP 側のリンク先ホストを一括置換するだけでよい。
+- **ポータルホストは `booking.yamado.co.jp` に確定**（2026-08-31）。本契約はパス以下に加えてホストも固定する。
+- 現行: `https://autumn-book.pages.dev` ／ 本番: `https://booking.yamado.co.jp`。HP 側のリンク先ホストはこれに一括置換する。
+- ⚠ **紙に刷った QR（館内図の貸切風呂予約・`autumn_book_private_bath_design.md`）はホストを後から変えられない。** 本ホストは恒久。
 
 ## 2. エントリ URL（安定契約）
 
@@ -67,3 +68,4 @@ https://<PORTAL>/yamado/nishiwaga/plans?checkin=2026-09-01&nights=2&adults=3
 ## 7. 変更履歴
 
 - 2026-07-10 v1 確定。施設トップのカレンダー初期月連動を実装（`[facility]/+page.server.ts`）。E1/E5・クエリ3種は既存実装で充足済みを確認。
+- 2026-08-31 **ポータルホストを `booking.yamado.co.jp` に確定**（従来の `stay.yamado.co.jp` は仮称だった）。館内図の紙 QR がこのホストを焼き込むため恒久扱いとする。

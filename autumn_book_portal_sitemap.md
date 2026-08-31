@@ -1,6 +1,6 @@
 # autumn-book ブランドポータル サイトマップ
 
-- **対象**: 単一ブランドポータル（`stay.yamado.co.jp`・ホスト名未確定）
+- **対象**: 単一ブランドポータル（`booking.yamado.co.jp`・2026-08-31 確定）
 - **前提**: `autumn_book_architecture_decision.md`（ADR-0001）— 施設HPは外部に据え置き、予約・会員・掲示板・地図検索をポータル1サイトに統合。
 - **最終更新**: 2026-06-21
 - 本書のルートは実装（`apps/web/src/routes`）＋設計書 §4 に一致。詳細な deep-link URL契約・施設別テーマリングは規約どおり Fable 5 で展開。
@@ -14,7 +14,7 @@
   西和賀 www.yamado.co.jp ／ 男鹿 oga.yamado.co.jp
         │  「予約」「プランを見る」= 施設・日程をURLに載せて deep-link
         ▼
-ブランドポータル（stay.yamado.co.jp・単一SvelteKit・SSR・全機能ファーストパーティ）
+ブランドポータル（booking.yamado.co.jp・単一SvelteKit・SSR・全機能ファーストパーティ）
   ├─ 公開エリア（誰でも・SEO）
   ├─ 予約フロー（匿名で開始→決済前に会員/ゲスト分岐）
   ├─ 会員エリア（要ログイン）

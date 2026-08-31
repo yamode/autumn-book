@@ -1,9 +1,9 @@
 # 貸切風呂 予約システム 設計（アプリ3）
 
-> **ステータス**: 設計レビュー済み・未決事項あり（2026-08-31）
+> **ステータス**: 設計レビュー済み・**未決事項8件すべて決定**（2026-08-31）
 > **位置づけ**: `autumn_book_design.md` §15.2「オプションサービス予約」のうち **時間枠型（貸切風呂）** を実装方式まで具体化したもの。
 > `autumn_book_post_booking_design.md` が「時間枠予約はスコープ外（アプリ3・貸切風呂予約システムの領域）」と切り出した、その本体。
-> **本書はレビュー結果であり、未決事項（§3）が埋まるまで着手しない。**
+> **決定事項は §3。段階1（§5）から着手できる。**
 
 ---
 
@@ -41,6 +41,8 @@
 3. `bath_id` null 混在と、販売条件（締切・料金・休止日）の欠如を**先に潰す**。
 
 トークンは**既存 `/r/c/[token]` → httpOnly Cookie 交換方式の再利用が正解**。新方式は作らない。
+
+**2026-08-31 の決定で B4（料金）と M8（ホスト）は解消**した ── 利用料は請求書へ**自動計上**、公開ホストは **`booking.yamado.co.jp`** に確定。自動計上は `first-bill.ts` の既存同期チェーンに乗せられることが分かったため、**段階1に前倒し**する（§4.5）。
 
 ---
 
@@ -116,6 +118,8 @@
 `autumn-pms/sveltekit/src/lib/facility-map-template.ts:117-`、判定は `core.stays.channel_code`）。
 **ゲストが自分で枠を取れるようになった瞬間、有料のお客様に金額を提示せず予約させることになる**。
 フロントが課金対象と知る手段も台帳に無いので請求漏れも起きる。
+
+→ **決定（§3-1）**: 利用料は請求書へ自動計上する。設計は §4.5。
 
 ---
 
@@ -193,10 +197,12 @@ autumn-book は autumn-shared の TS を import しない方針（`autumn-shared
 PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、そこを RPC 呼び出しに差し替えれば
 `PrivateBathModal` は無改修で一本化できる。
 
-#### M8. 公開ホスト未確定のまま紙 QR は刷れない
+#### M8. 公開ホスト未確定のまま紙 QR は刷れない → **解消（2026-08-31）**
 
-ディープリンク契約はパス以下のみ固定で「ホスト名は未確定」（`autumn_book_deeplink_contract.md` §1）。
-**紙に刷った QR のホストは後から変えられない。** `stay.yamado.co.jp`（仮）の確定が館内図 QR 配布の前提。
+ディープリンク契約はパス以下のみ固定で「ホスト名は未確定」だった（`autumn_book_deeplink_contract.md` §1）。
+**紙に刷った QR のホストは後から変えられない**ため、これが館内図 QR 配布の前提だった。
+
+→ **`booking.yamado.co.jp` に確定**（autumn-book 全体の運用ドメイン）。QR に載せる URL は `https://booking.yamado.co.jp/r/c/<64hex>`。ディープリンク契約側も更新済み。
 
 ---
 
@@ -210,20 +216,22 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 
 ---
 
-## 3. 未決事項（答えで設計が変わるものだけ）
+## 3. 決定事項（2026-08-31・Hikaru）
 
-| # | 問い |
-|---|---|
-| 1 | **料金**: 男鹿の 2,200円（公式以外）をゲスト予約時にどう課金するか ── 請求書へ自動計上 / フロントが手動計上 / 予約時オンライン決済は不要か。西和賀は全経路無料でよいか |
-| 2 | **受付開始と締切**: ゲストはいつから取れるか（チェックイン後のみ？ 予約確定後すぐ？）。当日は何分前まで / 何時までか |
-| 3 | **ゲスト自身のキャンセル・時間変更**を許すか。許すなら締切（例: 利用30分前） |
-| 4 | **公開ホスト**: `stay.yamado.co.jp`（仮）を紙 QR 印刷の前に確定できるか |
-| 5 | autumn-book の **`/r` 配下だけメンテ解除して先行公開**してよいか（予約エンジン等は 503 のまま） |
-| 6 | **電話予約の運用変更**: 今後フロントの電話予約は必ず予約詳細モーダル経由（stay 紐付け）にできるか。既存の将来日付 `guest_name` 行（特に男鹿）を stay へ紐付け直す作業をやるか |
-| 7 | **浴室マスタの整備**: 男鹿の浴室登録と、既存行の `bath_id` 一括バックフィル（西和賀 = 一寸）を実施してよいか |
-| 8 | **上限の単位**: 「1部屋につき1時間帯1回」は現行どおり **stay（部屋）単位**でよいか（2部屋の予約は部屋ごとに QR が刷られ、部屋ごとに1枠） |
+| # | 論点 | 決定 |
+|---|---|---|
+| 1 | **料金** | **請求書へ自動計上する。** 男鹿の「公式サイト予約なら無料 / それ以外 2,200円」を `core.stays.channel_code` で判定し、`pms.bill_items` に自動で行を起こす。方式は §4.5 |
+| 2 | **受付期間** | **予約確定後すぐ 〜 利用の30分前まで。** 設定値 `openFrom='booking_confirmed'` / `cutoffMin=30`。ただし**段階1の到達手段は館内図 QR のみ**なので実際には「チェックイン後」から。確定後すぐが実効になるのは段階3（マイページ・事前チェックイン）から |
+| 3 | **ゲストのキャンセル・変更** | **キャンセルのみ可・利用の30分前まで。** 時間変更は「取り消して取り直し」で表現する（変更専用 RPC を作らない ＝ 旧枠の解放と新枠の確保を1トランザクションにする複雑さを持ち込まない）。取消は行削除（`stay-services.ts` の既存思想と揃える） |
+| 4 | **公開ホスト** | **`booking.yamado.co.jp`**（autumn-book 全体の運用ドメイン）。QR に載る URL は `https://booking.yamado.co.jp/r/c/<64hex>` |
+| 5 | **先行公開** | **`/r` 配下だけメンテナンス除外して先行公開。** 予約エンジン・ポータル本体は 503 のまま |
+| 6 | **電話予約** | **今後は予約詳細モーダル経由（stay 紐付け）に統一し、既存行も紐付け直す。** 男鹿の将来日付の `guest_name` 行が対象。過去日の行は `booked_via='import'` のまま放置してよい |
+| 7 | **浴室マスタ** | **男鹿の浴室を登録し、既存行の `bath_id` を一括バックフィルする**（西和賀 = 一寸）。Blocker B2 の解消 |
+| 8 | **上限の単位** | **stay（部屋）単位**。要件5「1部屋につき1時間帯1枠」がそのまま `perRoomPerRange`。2部屋の予約は部屋ごとに QR が刷られ、部屋ごとに1枠取れる |
 
----
+**決定2の含意（重要）**: 「予約確定後すぐ」は設定として最初から持つが、
+**段階1では館内図 QR しか到達手段が無いため実効は「チェックイン後」**。
+段階3でマイページ・事前チェックインが出来た時点で、**RPC を直さずに設定だけで効く**ようにしておく。
 
 ## 4. 設計判断（結論）
 
@@ -284,50 +292,85 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
   刷り直し・全部屋一括印刷でも同一 stay は同一トークン ＝ **旧紙も有効のまま**。
   部屋移動で stay を作り直した場合は旧トークン失効 ＋ 新発行。
 
-### 4.5 課金（要件7）
+### 4.5 課金（要件7）── 請求明細の自動計上
 
-**入湯税の自動計上の作法をそのまま踏襲する。**
+**入湯税の自動計上と同じ場所・同じ作法に乗せる。ゲスト側 RPC は請求に書き込まない。**
 
-- `pms.bill_items.source`（`20260731170000_pms_bill_source.sql`）＝ その行を誰が起こしたか。
-  `null` ＝ 人が入れた行は**絶対に触らない**、値が入っている行だけ自動で作り直す。
-- 手本は `autumn-pms/sveltekit/src/lib/server/bath-tax.ts`（`BATH_TAX_SOURCE = 'bath_tax'`、`:160-215`）。
-  「**メモが入っている行は自動計算の対象外** ＝ 現場が意図して手で決めたいときの逃げ道」
-  「自動では直せない不一致は `mismatch` で人に知らせるだけで勝手に直さない」まで含めて確立済み。
-  返す形も `{ status, insert[], update[], deleteIds[] }` の plan 型。
-- **貸切風呂は `source = 'private_bath'` で揃える。**
+#### なぜ「請求書がまだ無い」問題が消えるか
 
-注意点:
+`pms.bills` は `stay_group_id` に紐づくため、当初は「ゲストが枠を取る時点で請求書が無いかもしれない」ことが懸念だった。
+実際には `loadFirstBillDetail`（`autumn-pms/sveltekit/src/lib/server/first-bill.ts:887-`）が
 
-| 論点 | 扱い |
+1. `ensureFirstBill` で**請求書を遅延作成**（無ければその場で作る）
+2. → `syncBathTaxItems`（入湯税の自動計上・是正）
+3. → 送客手数料の同期
+
+という順で同期チェーンを回している。**ここに `syncPrivateBathItems` を1本足せばよい。**
+
+#### 役割分担
+
+| 誰が | 何をするか |
 |---|---|
-| 請求書がまだ無い | `pms.bills` は `stay_group_id` に紐づく。ゲストが枠を取る時点で bill 行が存在するとは限らない。**段階1は「行に `price_yen` を記録するだけ・フロントが手動計上」で開始**し、自動計上は段階2 |
-| 無料 / 有料の判定 | `core.stays.channel_code`（`$lib/channels.ts` の `DIRECT_CHANNEL_PREFIX`）。**印刷の表示条件と課金で二重実装しない**よう、判定関数を1本にする |
-| `effective_date` | `dayOffset=1`（翌朝）の枠をどの夜に付けるかを決める（推奨: **泊まった日**＝ `bath_date - dayOffset`） |
-| 取り消しとの整合 | `stay-services.ts` はキャンセル・日程変更で**枠を行ごと削除**するが明細は見ていない。自動計上を入れるなら**同じ経路で明細も始末**する。発行済み（`status='issued'`）・印刷済み・freee 連携済みは**触らず警告**（入湯税と同じ作法） |
+| ゲスト側 RPC（anon） | `pms.private_bath_slots` に行を入れ、**`price_yen` を記録するだけ**。請求には一切触らない |
+| PMS 側（authenticated） | `loadFirstBillDetail` の同期チェーンで、`price_yen > 0` の枠から `pms.bill_items` の行を**起こす・直す・消す** |
 
----
+この分離により、**anon 経路から請求テーブルへ書き込む導線が存在しない**（権限境界が単純なまま保てる）。
+「予約を確認したら明細が自動追加される」という要件は、**フロントが予約詳細・請求を開いた時点で行が既に在る**形で満たされる。
+
+#### 作法（入湯税から踏襲する）
+
+- `pms.bill_items.source = 'private_bath'` の行だけを自動管理する。
+  **`source` が null の行（人が入れた行・売店・FileMaker 移行分）は絶対に触らない**（`20260731170000_pms_bill_source.sql`）。
+- **memo が入っている行は自動計算の対象外**。フロントが意図して金額を変えたい・無料にしたいときの逃げ道
+  （`bath-tax.ts:160-168` と同じ理由）。
+- 自動では直せない不一致は `mismatch` として**人に知らせるだけ**。勝手に上書きしない。
+- 返す形も plan 型 `{ status, insert[], update[], deleteIds[] }` に揃える。
+
+#### 決めごと
+
+| 論点 | 決定 |
+|---|---|
+| 無料 / 有料の判定 | `core.stays.channel_code`（`$lib/channels.ts` の `DIRECT_CHANNEL_PREFIX` / `isOwnBookingChannel`）。**館内図の刷り分けと課金で判定を二重実装しない** ── 判定関数を1本に切り出し、両方が呼ぶ |
+| 料金の持ち方 | 施設設定 `metadata.private_bath.public.pricingByChannel`（既定 0 円 ＝ 西和賀は全経路無料、男鹿は自社経路 0 円 / それ以外 2,200円）。**予約時点の適用額を `private_bath_slots.price_yen` にスナップショット**する（後から設定を変えても既存予約の金額が動かない） |
+| `effective_date` | **泊まった日**（`bath_date - dayOffset`）。翌朝の枠を「泊まっていない日の明細」にしない |
+| 商品・税率 | `pms.items` に「貸切風呂」を登録し `item_id` で参照。税率は既定 10%（`normalizeTaxRate` を通す） |
+| 取り消しとの整合 | `stay-services.ts` はキャンセル・日程変更で**枠を行ごと削除**する。枠が消えれば次の同期で明細も消える（`deleteIds`）＝ **枠が SoT、明細は従属**。この向きを崩さない |
+| 発行済み請求書 | `status='issued'` / 印刷済み / freee 連携済みの請求書は**触らず警告のみ**（入湯税と同じ扱い） |
+| ゲストへの表示 | 公開画面に「¥2,200（現地でご精算）」/ 無料の客には金額を出さない。**表示額と計上額は同じ判定関数から出す** |
 
 ## 5. 段階別の推奨
+
+### 段階0（着手前の前提作業）
+
+| # | 作業 | 根拠 |
+|---|---|---|
+| 0-1 | 男鹿の `pms.facility_baths` 登録 ＋ 既存行の `bath_id` 一括バックフィル（西和賀 = 一寸） | Blocker B2。決定7 |
+| 0-2 | 男鹿の将来日付 `guest_name` 行を stay へ紐付け直す ＋ 今後の電話予約は予約詳細モーダル経由に統一 | M5。決定6 |
+| 0-3 | `pms.items` に「貸切風呂」を登録（施設ごと・税率10%） | §4.5 |
+| 0-4 | `booking.yamado.co.jp` の DNS / Cloudflare Pages カスタムドメイン設定 | 決定4。**紙 QR を刷る前に必須** |
+
+0-1 と 0-2 は migration ではなく**運用 SQL**（データ整備）。
 
 ### 段階1（館内図 QR × 限定単体運用）
 
 | 要素 | 内容 |
 |---|---|
 | migration① | `YYYYMMDDHHMMSS_pms_private_bath_public_ready.sql`：`pms.private_bath_slots` に `booked_via text not null default 'staff' check (booked_via in ('staff','guest','import'))`・`source_token_id uuid`・`price_yen integer` を追加。既存の `stay_id is null` 行を `'import'` にバックフィル |
-| migration② | `YYYYMMDDHHMMSS_book_private_bath_rpcs.sql`：<br>・`book.get_or_issue_stay_token(p_stay, p_facility, p_room_code, p_valid_to, p_guest_name)`（authenticated・`has_facility_access` 内部ガード。stay の有効トークン再利用）<br>・内部関数 `book.private_bath_slot_starts(p_settings jsonb)`（`buildBathSlotGroups` の SQL 版・唯一の SQL 実装）<br>・`book.private_bath_context(p_token)`（anon。滞在・泊リスト・浴室・枠・埋まり・自分の予約・適用料金を1発で返す）<br>・`book.reserve_private_bath(p_token, p_bath, p_slots jsonb)`（anon。advisory lock ＋ 枠妥当性・滞在期間・締切・`perRoomPerRange` を単一トランザクションで検証、`booked_via='guest'`・`source_token_id`・`price_yen` を書いて insert。一意違反は `slot_taken` に変換）<br>・`book.cancel_private_bath(p_token, p_slot_id)`（anon。自分の行のみ・締切前のみ） |
-| PMS | 館内図: `RoomGuide` に stayId / トークン URL 追加 ＋ load で get-or-create 呼び出し／`MapBlock` に `kind:'qr'` 追加（エディタ含む）<br>新画面: **`/operations` に日別の貸切風呂一覧**（浴室 × 枠 × 部屋 × `booked_via` バッジ・予約詳細へリンク） |
-| book | `/r/bath`（枠選択・確定・自分の予約表示・キャンセル。`ab_stay` Cookie 前提、無ければ既存 claim へ誘導）<br>`maintenance.ts` に `/r` 除外／claim レート制限を KV or DB へ |
-| 権限境界 | テーブルは現状維持（anon 権限ゼロのまま）。ゲストは anon RPC のみ・トークン内部検証。PMS スタッフは authenticated RPC |
-| 運用 | ホスト確定 → 男鹿の浴室マスタ登録・`bath_id` バックフィル → 館内図レイアウトに QR ＋ `private_bath` 文言配置 → **チェックイン時に従来どおり館内図を渡すだけ（追加の配布作業ゼロ）** |
+| migration② | `YYYYMMDDHHMMSS_book_private_bath_rpcs.sql`：<br>・`book.get_or_issue_stay_token(p_stay, p_facility, p_room_code, p_valid_to, p_guest_name)`（authenticated・`has_facility_access` 内部ガード。stay の有効トークン再利用 ＝ M3 の解消）<br>・内部関数 `book.private_bath_slot_starts(p_settings jsonb)`（`buildBathSlotGroups` の SQL 版・唯一の SQL 実装）<br>・`book.private_bath_context(p_token)`（anon。滞在・泊リスト・浴室・枠・埋まり・自分の予約・**適用料金**を1発で返す）<br>・`book.reserve_private_bath(p_token, p_bath, p_slots jsonb)`（anon。advisory lock ＋ 枠妥当性・滞在期間・**締切（利用30分前）**・`perRoomPerRange` を単一トランザクションで検証、`booked_via='guest'`・`source_token_id`・`price_yen` を書いて insert。一意違反は `slot_taken` に変換）<br>・`book.cancel_private_bath(p_token, p_slot_id)`（anon。自分の行のみ・利用30分前まで・行削除） |
+| PMS（館内図） | `RoomGuide` に stayId / トークン URL 追加 ＋ load で get-or-create 呼び出し／`MapBlock` に `kind:'qr'` 追加（エディタ含む）。URL は `https://booking.yamado.co.jp/r/c/<64hex>` |
+| PMS（一覧） | **`/operations` に日別の貸切風呂一覧**（浴室 × 枠 × 部屋 × `booked_via` バッジ・予約詳細へリンク）＝ 要件6 |
+| PMS（請求） | `first-bill.ts` の同期チェーンに **`syncPrivateBathItems`** を追加（`source='private_bath'`・memo 付き行は触らない・発行済みは警告のみ）＝ 要件7 |
+| book | `/r/bath`（枠選択・確定・自分の予約表示・キャンセル。`ab_stay` Cookie 前提、無ければ既存 claim へ誘導）<br>`maintenance.ts` に `/r` 除外（決定5）／claim レート制限を KV or DB へ（M1） |
+| 設定 | `metadata.private_bath.public = { enabled, openFrom:'booking_confirmed', cutoffMin:30, guestCancelMin:30, pricingByChannel }` を保存形に追加（UI は段階2でも可・当面は既定値で動かす） |
+| 権限境界 | テーブルは現状維持（**anon は pms に権限ゼロ**のまま）。ゲストは anon RPC のみ・トークン内部検証。PMS スタッフは authenticated RPC |
+| 運用 | 段階0完了 → 館内図レイアウトに QR ＋ `private_bath` 文言配置 → **チェックイン時に従来どおり館内図を渡すだけ（追加の配布作業ゼロ）** |
 
 ### 段階2（PMS 本連携）
 
 - チェックイン・キャンセル・日程変更・TL 取込キャンセルの各経路で get-or-create / `revoke_stay_token` を自動接続。
-- 販売条件を `metadata.private_bath.public = { enabled, openFrom, cutoffMin, closures[], pricingByChannel }` として
-  `settings/master/services` に UI 追加（死んでいる `private_bath_days` はここで正式に廃止 or 休止日カレンダーとして転用を確定）。
-- **`price_yen > 0` の行を `pms.bill_items` へ自動計上**（`source='private_bath'`・入湯税と同じ plan 型・memo 付き行は触らない）。
-  `stay-services.ts` の取り消し経路に明細の始末を追加。
-- `savePrivateBath` / `/api/calendar-panels` を同じ RPC / SQL 関数へ寄せて**枠生成を単一実装化**（`booked_via='staff'`）。
+- 販売条件（`openFrom` / `cutoffMin` / `guestCancelMin` / 休止日 / 浴室ごとの公開可否 / 料金）の**設定 UI** を
+  `settings/master/services` に追加。死んでいる `private_bath_days` はここで正式に廃止 or 休止日カレンダーとして転用を確定。
+- `savePrivateBath` / `/api/calendar-panels` を同じ RPC / SQL 関数へ寄せて**枠生成を単一実装化**（`booked_via='staff'`）＝ M7 の出口。
 
 ### 段階3（会員マイページ・事前チェックイン）
 
@@ -335,23 +378,27 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 - `/account/reservations/[code]` に貸切風呂セクション。
 - **事前チェックインフォームは現存しない**（リポジトリ全域を確認済み）ため新設し、その1ステップに枠選択を組み込む。
   トークンは同じ `book.stay_access_tokens` を予約確定時発行・`valid_from` 前倒しで流用。
+- **ここで初めて `openFrom='booking_confirmed'`（決定2）が実効になる。** RPC の変更は不要 ＝ 到達手段が増えるだけ。
 - 多言語（ja/en/zh-TW）は pms マスタに i18n を足さず、`autumn_book_design.md` §15.2 の `book.option_products` 相当のコンテンツ層で吸収。
 
 ---
 
 ## 6. 段階1の着手順（最小セット）
 
-1. **決めごと2つ**（未決事項 #1 #4）: 男鹿 2,200円の課金方法と公開ホストの確定。
-2. **データ整備**（運用 SQL・migration ではない）: 男鹿 `facility_baths` 登録／西和賀既存行の `bath_id` = 一寸 バックフィル／男鹿の将来日付 `guest_name` 行の扱い決め。
-3. **migration①**（pms 列追加 ＋ import バックフィル）→ **migration②**（RPC 5本）。
-   命名・適用は `autumn-shared` 方針（`main` へ直 push）。
-4. **book**: `/r/bath` ルート ＋ `/r` メンテ除外 ＋ claim レート制限の KV 化。
-5. **PMS**: 館内図 `kind:'qr'`（クライアント SVG 生成・EC=M）＋ get-or-create 呼び出し／`/operations` の貸切風呂一覧。
-6. **通しテスト**:
+1. **段階0の前提作業**（浴室マスタ整備・電話予約の紐付け直し・`pms.items` 登録・`booking.yamado.co.jp` 設定）。
+2. **migration①**（pms 列追加 ＋ import バックフィル）→ **migration②**（RPC 5本）。
+   命名・適用は `autumn-shared` 方針（`main` へ直 push）。**pms へのは ALTER は他リポの未適用 migration を確認してから**（`autumn-book/CLAUDE.md`）。
+3. **book**: `/r/bath` ルート ＋ `/r` メンテ除外 ＋ claim レート制限の KV 化。
+4. **PMS**: 館内図 `kind:'qr'`（クライアント SVG 生成・EC=M・20mm 角以上）＋ get-or-create 呼び出し／`/operations` の貸切風呂一覧／`syncPrivateBathItems`。
+5. **通しテスト**:
    - 同一枠への並行 reserve（advisory lock と一意キーの二段防衛）
    - 設定変更後の古い画面からの reserve 拒否
+   - 締切（利用30分前）の境界・ゲストキャンセルの境界
    - 刷り直し後の旧 QR 有効性
    - チェックアウト後スキャンの「ご滞在は終了しました」表示
+   - **男鹿の自社経路予約で明細が立たない / OTA 経由で 2,200円 が1行だけ立つ**
+   - **memo を入れた行が自動同期で上書きされない**
+   - **ゲストが枠を取り消したら明細も消える**
 
 ---
 
@@ -366,3 +413,5 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 ## 8. 変更履歴
 
 - 2026-08-31 初版（設計レビュー）。要件1〜9 に対する Blocker 4 / Major 8 / Minor 5 と、段階1〜3 の推奨設計。
+- 2026-08-31 **未決事項8件すべて決定**（§3）。料金は請求書へ自動計上（§4.5・`first-bill.ts` の同期チェーンに `syncPrivateBathItems` を追加）＝ B4 解消。
+  公開ホストを `booking.yamado.co.jp` に確定 ＝ M8 解消（`autumn_book_deeplink_contract.md` も更新）。段階0（前提作業）を新設し、自動計上を段階1へ前倒し。

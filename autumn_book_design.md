@@ -5,7 +5,7 @@
 > 前提資料：`docs/architecture-memo.md`（星野リゾート動線の分析メモ）＋ autumn-rms / autumn-pms / autumn-order / autumn-shared の実装調査（**各リポ origin/main 最新化済み・2026-06-10 時点**）。
 > 特に **autumn-pms/docs/02-architecture.md（クラウドPMS設計・同日付）** と整合を取ること。予約データの最終的な着地形（stay_groups → stays → stay_nights）は PMS 設計が定義する。
 
-> ⚠ **2026-06-21 アーキテクチャ変更（要・最初に読むこと）**：施設HPの扱いを変更した。本書 §0・§4.0 が前提とする「**単一 SvelteKit アプリが全施設HPを `reroute` で配信し、施設HPを Svelte シェルで再現する**」方針は **`autumn_book_architecture_decision.md`（ADR-0001）で置き換え**。新方針＝**施設HPは既存サイト（WP）を外部に据え置き**、予約エンジン・会員・掲示板・地図検索は**単一のブランドポータル**（`stay.yamado.co.jp`）に統合し、施設HPの予約は**ポータルへリダイレクト**（ウィジェット不採用）。`book` スキーマ／RPC／会員／予約Tx／掲示板／客室情報／地図検索など本書の他章はそのまま有効。
+> ⚠ **2026-06-21 アーキテクチャ変更（要・最初に読むこと）**：施設HPの扱いを変更した。本書 §0・§4.0 が前提とする「**単一 SvelteKit アプリが全施設HPを `reroute` で配信し、施設HPを Svelte シェルで再現する**」方針は **`autumn_book_architecture_decision.md`（ADR-0001）で置き換え**。新方針＝**施設HPは既存サイト（WP）を外部に据え置き**、予約エンジン・会員・掲示板・地図検索は**単一のブランドポータル**（`booking.yamado.co.jp`）に統合し、施設HPの予約は**ポータルへリダイレクト**（ウィジェット不採用）。`book` スキーマ／RPC／会員／予約Tx／掲示板／客室情報／地図検索など本書の他章はそのまま有効。
 
 ---
 
@@ -168,7 +168,7 @@ book.holds                           -- 在庫仮押さえ（カートの実体�
 | `oga.yamado.co.jp` | 男鹿施設HP（WP）+ **MX 同居** | **男鹿施設HP（autumn-book）に置換** — MX 共存が DNS 上の争点（後述） |
 | `corporate.yamado.co.jp` | コーポレート（WP） | **現状維持（触らない）** — 変更頻度が低く autumn-book の対象外 |
 | apex `yamado.co.jp` | （www へ誘導）+ MX/SPF | 現状維持。メールの根なので Web 用途に使わない |
-| `stay.yamado.co.jp`（新設・名称要決定） | ─ | **ポータル**（全国マップ空室検索・会員マイページ・OAuth コールバック集約） |
+| `booking.yamado.co.jp`（新設・2026-08-31 確定） | ─ | **ポータル**（全国マップ空室検索・会員マイページ・OAuth コールバック集約） |
 | メール（両系統） | Xserver | **一切触らない**（MX/SPF/DKIM 維持） |
 
 - ドメインは **yamado.co.jp 一本を継続**（SEO 履歴・メール・印刷物の資産）。新ドメイン取得はしない。
@@ -186,7 +186,7 @@ book.holds                           -- 在庫仮押さえ（カートの実体�
 | **A. zone を Cloudflare DNS へ移管（推奨）** | 全レコード（MX/SPF/DKIM/A）を完全コピーして NS 切替。www/oga/stay → Pages、corporate/apex → Xserver A のまま | ◎ oga の MX 同居が CNAME flattening で解ける。メール・corporate 無影響。WAF/キャッシュも付く |
 | B. Xserver DNS のまま | www・stay は MX なしなので CNAME → Pages 可。**oga だけ MX 同居で CNAME 不可** | △ oga の解決に (b1) @oga メールを @yamado.co.jp に統合（公開済みアドレス変更のコスト）か (b2) 男鹿だけ別ホスト名、の妥協が要る |
 
-**カットオーバー**：P1〜P2 は `*.pages.dev` か `stay.yamado.co.jp` 配下で先行公開 → コンテンツ同等を確認後、www / oga の DNS を切替（旧 WP 主要 URL の 301 マップを用意）。切替は施設ごとに独立して実施できる（例：男鹿を先行）。
+**カットオーバー**：P1〜P2 は `*.pages.dev` か `booking.yamado.co.jp` 配下で先行公開 → コンテンツ同等を確認後、www / oga の DNS を切替（旧 WP 主要 URL の 301 マップを用意）。切替は施設ごとに独立して実施できる（例：男鹿を先行）。
 
 ### 4.0.1 DNS 移管ランブック（案A確定版・2026-06-10 実査に基づく）
 
@@ -230,7 +230,7 @@ Phase 1：zone 移管
 
 Phase 2：Web 切替（autumn-book 完成後・施設ごと独立）
  2-1 oga → Pages カスタムドメイン化（CNAME）。メールは 0-3 の明示 MX で無影響
- 2-2 www → 同上。stay.yamado.co.jp 新設
+ 2-2 www → 同上。booking.yamado.co.jp 新設
 ```
 
 **メールの長期方針**：corporate WP が Xserver に残る限り Xserver 契約は継続するため、**メールは Xserver のままで追加コストなし・移行不要**。将来 Xserver を完全解約する局面で初めてメール移行（Google Workspace 等）を検討する。それは本件 DNS 移管とは独立した別プロジェクトであり、mail.yamado.co.jp に MX を集約しておけばその時の切替も MX 1行の変更で済む。
