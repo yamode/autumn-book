@@ -355,8 +355,8 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 
 | 要素 | 内容 |
 |---|---|
-| migration① | `YYYYMMDDHHMMSS_pms_private_bath_public_ready.sql`：`pms.private_bath_slots` に `booked_via text not null default 'staff' check (booked_via in ('staff','guest','import'))`・`source_token_id uuid`・`price_yen integer` を追加。既存の `stay_id is null` 行を `'import'` にバックフィル |
-| migration② | `YYYYMMDDHHMMSS_book_private_bath_rpcs.sql`：<br>・`book.get_or_issue_stay_token(p_stay, p_facility, p_room_code, p_valid_to, p_guest_name)`（authenticated・`has_facility_access` 内部ガード。stay の有効トークン再利用 ＝ M3 の解消）<br>・内部関数 `book.private_bath_slot_starts(p_settings jsonb)`（`buildBathSlotGroups` の SQL 版・唯一の SQL 実装）<br>・`book.private_bath_context(p_token)`（anon。滞在・泊リスト・浴室・枠・埋まり・自分の予約・**適用料金**を1発で返す）<br>・`book.reserve_private_bath(p_token, p_bath, p_slots jsonb)`（anon。advisory lock ＋ 枠妥当性・滞在期間・**締切（利用30分前）**・`perRoomPerRange` を単一トランザクションで検証、`booked_via='guest'`・`source_token_id`・`price_yen` を書いて insert。一意違反は `slot_taken` に変換）<br>・`book.cancel_private_bath(p_token, p_slot_id)`（anon。自分の行のみ・利用30分前まで・行削除） |
+| migration① | `20260831223611_pms_private_bath_public_ready.sql`：`pms.private_bath_slots` に `booked_via text not null default 'staff' check (booked_via in ('staff','guest','import'))`・`source_token_id uuid`・`price_yen integer` を追加。既存の `stay_id is null` 行を `'import'` にバックフィル |
+| migration② | `20260831223711_book_private_bath_rpcs.sql`：<br>・`book.get_or_issue_stay_token(p_stay, p_facility, p_room_code, p_valid_to, p_guest_name)`（authenticated・`has_facility_access` 内部ガード。stay の有効トークン再利用 ＝ M3 の解消）<br>・内部関数 `book.private_bath_slot_starts(p_settings jsonb)`（`buildBathSlotGroups` の SQL 版・唯一の SQL 実装）<br>・`book.private_bath_context(p_token)`（anon。滞在・泊リスト・浴室・枠・埋まり・自分の予約・**適用料金**を1発で返す）<br>・`book.reserve_private_bath(p_token, p_bath, p_slots jsonb)`（anon。advisory lock ＋ 枠妥当性・滞在期間・**締切（利用30分前）**・`perRoomPerRange` を単一トランザクションで検証、`booked_via='guest'`・`source_token_id`・`price_yen` を書いて insert。一意違反は `slot_taken` に変換）<br>・`book.cancel_private_bath(p_token, p_slot_id)`（anon。自分の行のみ・利用30分前まで・行削除） |
 | PMS（館内図） | `RoomGuide` に stayId / トークン URL 追加 ＋ load で get-or-create 呼び出し／`MapBlock` に `kind:'qr'` 追加（エディタ含む）。URL は `https://booking.yamado.co.jp/r/c/<64hex>` |
 | PMS（一覧） | **`/operations` に日別の貸切風呂一覧**（浴室 × 枠 × 部屋 × `booked_via` バッジ・予約詳細へリンク）＝ 要件6 |
 | PMS（請求） | `first-bill.ts` の同期チェーンに **`syncPrivateBathItems`** を追加（`source='private_bath'`・memo 付き行は触らない・発行済みは警告のみ）＝ 要件7 |
@@ -387,8 +387,8 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 
 | # | 作業 | 状態 |
 |---|---|---|
-| migration① | `20260831141940_pms_private_bath_public_ready.sql`（`booked_via` / `source_token_id` / `price_yen` ＋ import バックフィル） | **実装済（未適用）** |
-| migration② | `20260831142600_book_private_bath_rpcs.sql`（RPC 6本 ＋ 内部関数 8本） | **実装済（未適用）** |
+| migration① | `20260831223611_pms_private_bath_public_ready.sql`（`booked_via` / `source_token_id` / `price_yen` ＋ import バックフィル） | **PROD 適用済** |
+| migration② | `20260831223711_book_private_bath_rpcs.sql`（RPC 6本 ＋ 内部関数 8本） | **PROD 適用済** |
 | PMS 一覧 | `/operations` の貸切風呂ボード（日別 × 浴室 × 枠 × 部屋・`booked_via` バッジ・枠外の別出し） | **実装済** |
 | PMS 課金 | `syncPrivateBathItems` を `first-bill.ts` の同期チェーンへ（入湯税のあと・送客手数料の前） | **実装済** |
 | PMS 料金判定 | `$lib/private-bath-pricing`（`channelKeyMatches` を `$lib/channels` に集約） | **実装済** |
