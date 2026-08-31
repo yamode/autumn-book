@@ -7,3 +7,6 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+
+# このリポは pnpm 管理。npm を叩いたときに出る lock は追跡しない。
+package-lock.json
