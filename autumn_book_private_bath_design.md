@@ -383,6 +383,46 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 
 ---
 
+## 5.5 段階1の実装状況（2026-08-31）
+
+| # | 作業 | 状態 |
+|---|---|---|
+| migration① | `20260831141940_pms_private_bath_public_ready.sql`（`booked_via` / `source_token_id` / `price_yen` ＋ import バックフィル） | **実装済（未適用）** |
+| migration② | `20260831142600_book_private_bath_rpcs.sql`（RPC 6本 ＋ 内部関数 8本） | **実装済（未適用）** |
+| PMS 一覧 | `/operations` の貸切風呂ボード（日別 × 浴室 × 枠 × 部屋・`booked_via` バッジ・枠外の別出し） | **実装済** |
+| PMS 課金 | `syncPrivateBathItems` を `first-bill.ts` の同期チェーンへ（入湯税のあと・送客手数料の前） | **実装済** |
+| PMS 料金判定 | `$lib/private-bath-pricing`（`channelKeyMatches` を `$lib/channels` に集約） | **実装済** |
+| book ゲスト面 | `/r/bath`（枠選択・確定・自分の予約・取消・ja/en/zh-TW） | **実装済** |
+| book メンテ除外 | `/r` 配下をメンテナンス中でも開く | **実装済** |
+| book レート制限 | 8桁コードの試行制限を KV（`AB_CONFIG`）へ | **実装済** |
+| 館内図 QR | `MapBlock` に `kind:'qr'` ＋ トークン get-or-create の呼び出し | **未着手（意図的に最後へ）** |
+| 段階0 | 浴室マスタ整備・電話予約の紐付け直し・`pms.items` 登録・ドメイン設定 | **未着手** |
+
+**館内図の QR を最後に回している理由**: 館内図は本番で毎日刷っている帳票で、
+試し刷りが実際の宿泊客に渡る紙に混ざる。RPC・課金・一覧が固まってから最後に着ける。
+
+### 検証（ローカル PostgreSQL 16）
+
+| 何を | 結果 |
+|---|---|
+| 枠生成が TS（`buildBathSlotGroups`）と一致するか | **11/11 一致**（旧形式の保存値の読み方の取りこぼしを1件発見・修正） |
+| 予約・取消の挙動 | **15/15**（`slot_taken` / `per_room_limit` / `past_cutoff` / `slot_not_available` / `bath_required` / `not_cancelable` / `not_open` / `invalid_token` ほか） |
+| 同一枠に8並列 | **1件だけ成立** |
+| 同一部屋・同一時間帯の別枠に8並列 | **上限どおり1件だけ成立**（現行の PMS 実装では破れる箇所） |
+| 別部屋・別枠を同時 | **両方成立**（締めすぎていない） |
+| PMS の自動計上 | vitest 3,930件（新規34件）・`svelte-check` 0件・build 成功。**二重計上のバグを1件発見・修正**（メモ行の上に自動計上が重なる） |
+
+### 積み残し（公開前に必要）
+
+1. **館内図 QR**（上記）。
+2. **段階0のデータ整備**。とくに男鹿の浴室マスタ登録と `bath_id` バックフィル（Blocker B2）。
+3. **販売条件の設定 UI**。いまは `metadata.private_bath.public` を直接書く必要がある
+   （既定は `enabled=false` / `price=0` なので、入れるまで何も起きない）。
+4. **`fm_channel_id` → `channel_code` の移行**（別作業・決定済み）。完了したら
+   `private-bath-pricing` の `freeFmCodes` の枝と、8箇所のフォールバックを外せる。
+
+---
+
 ## 6. 段階1の着手順（最小セット）
 
 1. **段階0の前提作業**（浴室マスタ整備・電話予約の紐付け直し・`pms.items` 登録・`booking.yamado.co.jp` 設定）。
@@ -413,5 +453,6 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 ## 8. 変更履歴
 
 - 2026-08-31 初版（設計レビュー）。要件1〜9 に対する Blocker 4 / Major 8 / Minor 5 と、段階1〜3 の推奨設計。
+- 2026-08-31 段階1を実装（§5.5）。館内図QR と段階0 を除く全項目。ローカル PostgreSQL 16 で RPC を検証。
 - 2026-08-31 **未決事項8件すべて決定**（§3）。料金は請求書へ自動計上（§4.5・`first-bill.ts` の同期チェーンに `syncPrivateBathItems` を追加）＝ B4 解消。
   公開ホストを `booking.yamado.co.jp` に確定 ＝ M8 解消（`autumn_book_deeplink_contract.md` も更新）。段階0（前提作業）を新設し、自動計上を段階1へ前倒し。
