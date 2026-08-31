@@ -63,6 +63,15 @@
 		{/if}
 	</section>
 
+	<!-- ============ 貸切風呂のご予約 ============ -->
+	<!-- 館内図の QR から来たお客様の主目的。館内案内より先に置く。 -->
+	<a
+		href="/r/bath"
+		class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-brand-800 bg-white py-3 text-sm font-medium text-brand-900 hover:bg-brand-50"
+	>
+		♨ {m.bath_link()}
+	</a>
+
 	<!-- ============ 館内案内 ============ -->
 	<section class="mt-6">
 		<h2 class="mb-2 px-1 font-display text-lg text-brand-900">{m.inroom_guides_title()}</h2>
