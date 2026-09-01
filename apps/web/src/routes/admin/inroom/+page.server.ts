@@ -19,6 +19,9 @@ import {
 	sbIssueStayToken,
 	sbRevokeStayToken
 } from '$lib/server/supabase-data';
+// 実際のご予約から公開URL/QRを出す部分は貸切風呂（/admin/bath）と同じ RPC を使う。
+// get-or-create なので、同じご予約なら何度押しても同じ URL・同じ QR になる。
+import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$lib/server/private-bath';
 import type { Locale } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -40,9 +43,30 @@ function checkoutToValidTo(dateStr: string): string | null {
 	return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+const STAYS_NOT_LIVE =
+	'この環境では実際のご予約を出せません（管理画面が実データに繋がっていません）。本番でお試しください。';
+
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	const includeInactive = event.url.searchParams.get('all') === '1';
+	const dateParam = event.url.searchParams.get('date') ?? '';
+	const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+
+	// 実際のご予約の一覧（公開URL・QR を出す元）。取れなくても画面は落とさない。
+	let stays: BookableStay[] = [];
+	let staysError: string | null = useSupabaseAdmin ? null : STAYS_NOT_LIVE;
+	if (useSupabaseAdmin) {
+		try {
+			stays = await sbListBookableStays(
+				createSupabaseServerClient(event),
+				FACILITY_UUID[currentFacility.id] ?? currentFacility.id,
+				date
+			);
+		} catch (e) {
+			staysError = e instanceof Error ? e.message : String(e);
+		}
+	}
+	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);
@@ -52,14 +76,14 @@ export const load: PageServerLoad = async (event) => {
 			// 管理用ガイド一覧（未公開含む）RPC は P8a には無い（P5 Auth 本接続時に追加）。
 			// 暫定で公開済みガイドのみ anon RPC 経由で表示する。未公開の確認は demo モードでのみ可能。
 			const guides = await sbListHouseGuides(facilityUuid, 'ja');
-			return { guides, tokens, includeInactive, loadError: null };
+			return { ...base, guides, tokens, loadError: null };
 		} catch (e) {
 			// 管理者の core.memberships 未登録（forbidden）や Supabase 到達不可でも
 			// 管理画面自体は落とさない（v0.12.1 と同じ安全側設計）
 			return {
+				...base,
 				guides: [],
 				tokens: [],
-				includeInactive,
 				loadError:
 					'Supabase からの取得に失敗しました。管理者アカウントの core.memberships 登録（施設アクセス権）を確認してください。' +
 					(e instanceof Error ? `（${e.message}）` : '')
@@ -68,9 +92,9 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	return {
+		...base,
 		guides: listHouseGuidesAdmin(currentFacility.id),
 		tokens: listStayTokens(currentFacility.id, includeInactive),
-		includeInactive,
 		loadError: null
 	};
 };
@@ -176,6 +200,45 @@ export const actions: Actions = {
 			return { revoked: true };
 		} catch (e) {
 			return fail(500, { message: e instanceof Error ? e.message : '失効に失敗しました' });
+		}
+	},
+
+	// ---- 実際のご予約から公開URL・QRを出す（/admin/bath の QR テストと同じ仕組み）----
+	// 発行済みなら同じトークンを取り出すだけなので、何度押しても URL は変わらない。
+	issueQr: async (event) => {
+		const user = event.locals.user;
+		if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
+			return fail(403, { message: '権限がありません' });
+		}
+		if (!useSupabaseAdmin) return fail(503, { message: STAYS_NOT_LIVE });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const stay = {
+			stay_id: String(form.get('stayId') ?? ''),
+			room_code: String(form.get('roomCode') ?? ''),
+			guest_name: String(form.get('guestName') ?? ''),
+			check_out_date: String(form.get('checkOutDate') ?? '')
+		};
+		if (!stay.stay_id || !/^\d{4}-\d{2}-\d{2}$/.test(stay.check_out_date)) {
+			return fail(400, { message: '対象のご予約が分かりません' });
+		}
+		try {
+			const r = await sbGetOrIssueStayToken(
+				createSupabaseServerClient(event),
+				FACILITY_UUID[facilityId] ?? facilityId,
+				stay
+			);
+			return {
+				qr: {
+					token: r.token,
+					shortCode: r.short_code,
+					roomCode: stay.room_code,
+					guestName: stay.guest_name,
+					checkOutDate: stay.check_out_date
+				}
+			};
+		} catch (e) {
+			return fail(400, { message: e instanceof Error ? e.message : 'URLの取得に失敗しました' });
 		}
 	}
 };

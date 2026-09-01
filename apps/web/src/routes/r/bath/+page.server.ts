@@ -7,6 +7,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbBathCancel, sbBathContent, sbBathContext, sbBathReserve } from '$lib/server/private-bath';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import { EMPTY_BATH_CONTENT } from '$lib/private-bath-content';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -27,7 +28,10 @@ export const load: PageServerLoad = async ({ cookies }) => {
 		? await sbBathContent(ctx.facility.id, getLocale()).catch(() => EMPTY_BATH_CONTENT)
 		: EMPTY_BATH_CONTENT;
 
-	return { ctx, content };
+	// シェル（黒ヘッダー）に出す見出しと戻り先。文章を入れていれば、その見出しをそのまま使う。
+	const headerTitle = content.fields.title || m.bath_title();
+
+	return { ctx, content, headerTitle, headerBack: '/r' };
 };
 
 export const actions: Actions = {

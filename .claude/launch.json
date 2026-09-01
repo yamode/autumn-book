@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "autumn-book-web",
+      "name": "autumn-book",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@autumn-book/web", "dev", "--port", "5197"],
-      "port": 5197
+      "runtimeArgs": ["-C", "apps/web", "dev", "--port", "5173"],
+      "port": 5173
     }
   ]
 }
