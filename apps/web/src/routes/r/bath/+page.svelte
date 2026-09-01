@@ -7,6 +7,9 @@
 
 	let { data, form } = $props();
 	const ctx = $derived(data.ctx);
+	// 管理画面（/admin/bath）で入れた文章。未入力の欄は null なので既定文言に落ちる。
+	const c = $derived(data.content?.fields ?? {});
+	const photos = $derived(data.content?.images ?? []);
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
 	function fmtDate(ymd: string): string {
@@ -39,14 +42,14 @@
 <svelte:head><title>{m.bath_title()} ｜ YAMADO</title></svelte:head>
 
 <section class="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-	<h1 class="font-display text-xl text-brand-900">{m.bath_title()}</h1>
+	<h1 class="font-display text-xl text-brand-900">{c.title || m.bath_title()}</h1>
 
 	{#if !ctx.ok}
 		<p class="mt-3 text-sm text-stone-600">{m.bath_closed()}</p>
 	{:else if !ctx.enabled}
 		<p class="mt-3 text-sm text-stone-600">{m.bath_closed()}</p>
 	{:else}
-		<p class="mt-2 text-sm text-stone-600">{m.bath_lead()}</p>
+		<p class="mt-2 whitespace-pre-line text-sm text-stone-600">{c.lead || m.bath_lead()}</p>
 		<p class="mt-1 text-sm text-stone-600">
 			{#if (ctx.price_yen ?? 0) > 0}
 				{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}
@@ -54,19 +57,36 @@
 				{m.bath_price_free()}
 			{/if}
 		</p>
+		{#if c.price_note}
+			<p class="mt-1 whitespace-pre-line text-sm text-stone-600">{c.price_note}</p>
+		{/if}
 		<p class="mt-1 text-xs text-stone-400">
 			{m.bath_limit({ count: ctx.per_room_per_range ?? 1 })}
 		</p>
 	{/if}
 
 	{#if form?.done === 'reserved'}
-		<p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{m.bath_done()}</p>
+		<p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{c.done || m.bath_done()}</p>
 	{:else if form?.done === 'canceled'}
 		<p class="mt-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
 	{:else if form?.error}
 		<p class="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{errorText(form.error)}</p>
 	{/if}
 </section>
+
+{#if photos.length}
+	<!-- 管理画面で登録した写真。上から順に出す。 -->
+	<section class="mt-4 space-y-3">
+		{#each photos as p (p.url)}
+			<figure class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+				<img src={p.url} alt={p.caption || m.bath_title()} class="w-full object-cover" loading="lazy" />
+				{#if p.caption}
+					<figcaption class="px-4 py-2 text-xs text-stone-500">{p.caption}</figcaption>
+				{/if}
+			</figure>
+		{/each}
+	</section>
+{/if}
 
 <!-- ============ ご予約中の時間（再スキャンでここを見に来る） ============ -->
 <section class="mt-4 rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
@@ -99,7 +119,7 @@
 			{/each}
 		</ul>
 	{/if}
-	<p class="mt-3 text-xs leading-5 text-stone-400">{m.bath_note_phone()}</p>
+	<p class="mt-3 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
 </section>
 
 <!-- ============ 空き枠 ============ -->

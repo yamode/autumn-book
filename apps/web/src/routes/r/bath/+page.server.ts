@@ -5,7 +5,9 @@
 // 同じ QR をもう一度スキャンしても、ここに戻ってきて **予約済みの時間を確認できる**。
 import { fail, redirect } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbBathCancel, sbBathContext, sbBathReserve } from '$lib/server/private-bath';
+import { sbBathCancel, sbBathContent, sbBathContext, sbBathReserve } from '$lib/server/private-bath';
+import { getLocale } from '$lib/paraglide/runtime';
+import { EMPTY_BATH_CONTENT } from '$lib/private-bath-content';
 import type { Actions, PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
@@ -19,7 +21,13 @@ export const load: PageServerLoad = async ({ cookies }) => {
 	// 失効・チェックアウト後は /r 側の「ご滞在は終了しました」に任せる（案内を1か所に寄せる）。
 	if (!ctx) redirect(303, '/r');
 
-	return { ctx };
+	// 管理画面で編集した文章・写真。未設定なら空＝アプリの既定文言がそのまま出る。
+	// 読めなくても画面は落とさない（予約できることのほうが大事）。
+	const content = ctx.facility?.id
+		? await sbBathContent(ctx.facility.id, getLocale()).catch(() => EMPTY_BATH_CONTENT)
+		: EMPTY_BATH_CONTENT;
+
+	return { ctx, content };
 };
 
 export const actions: Actions = {
