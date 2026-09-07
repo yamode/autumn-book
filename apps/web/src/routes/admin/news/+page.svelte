@@ -36,6 +36,15 @@
 				<time class="tabular-nums text-stone-400">{post.publishedAt}</time>
 				<span class="font-medium">{post.title}</span>
 				{#if form?.saved === post.id}<span class="text-xs text-emerald-600">✔ 保存済み</span>{/if}
+				<!-- 公開済みの記事だけアプリ通知へ導線を出す（未公開記事のリンクは踏ませない） -->
+				{#if data.adminSupabase && post.isPublished}
+					<a
+						href="/admin/push/new?type=news&title={encodeURIComponent(
+							post.title
+						)}&url={encodeURIComponent(`/news/${post.id}`)}"
+						class="text-brand-800 ml-auto text-xs underline">アプリに通知する →</a
+					>
+				{/if}
 			</summary>
 			<form method="POST" action="?/save" use:enhance class="space-y-2 border-t border-stone-100 p-4 text-sm">
 				<input type="hidden" name="postId" value={post.id} />

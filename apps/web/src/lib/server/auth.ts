@@ -24,6 +24,12 @@ export const AUTH_MODE: 'demo' | 'supabase' = env.AUTH_MODE === 'supabase' ? 'su
 // authenticated クライアントで実データに接続する。それ以外は store.ts（デモ）のまま。
 export const MEMBER_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
 
+// 管理面を Supabase の実データ＋実認証で動かすか。
+// アプリ運用画面（/admin/app・push・coupons・preferences）は SECURITY DEFINER RPC を
+// cookie 束縛の authenticated クライアントから呼ぶため、これが false のときは機能ごと無効化する。
+// （デモ会員は user_id も device_tokens も持たず、通知を「送った体」にしかできない）
+export const ADMIN_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
+
 /** リクエストの cookie に束縛した Supabase Auth クライアント（SSR）。 */
 export function createSupabaseServerClient(event: RequestEvent): SupabaseClient {
 	const url = publicEnv.PUBLIC_SUPABASE_URL;
