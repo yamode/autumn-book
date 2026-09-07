@@ -547,3 +547,100 @@ export function buildAppAlerts(d: AppDashboard): Alert[] {
 	return a.sort((x, y) => LEVEL_ORDER[x.level] - LEVEL_ORDER[y.level]);
 }
 
+
+// ---------------------------------------------------------------------------
+// 会員一覧・会員詳細（/admin/members の実データ経路）
+// ---------------------------------------------------------------------------
+
+export interface PointLedgerRow {
+	id: string;
+	delta: number;
+	reason: string | null;
+	created_at: string;
+	expires_at: string | null;
+}
+
+export interface MemberNotificationRow {
+	id: string;
+	type: string;
+	title: string;
+	status: string;
+	created_at: string;
+	read_at: string | null;
+}
+
+export interface MemberPreferenceRow {
+	pref_key: string;
+	value: unknown;
+	updated_at: string;
+}
+
+/** ポイント残高（既存 RPC・引数省略時は自分） */
+export const pointBalanceOf = (c: BookClient, userId: string) =>
+	rpc<number>(c, 'point_balance', { p_user: userId });
+
+/** おたよりポイント残高（既存 RPC） */
+export const otayoriBalanceOf = (c: BookClient, userId: string) =>
+	rpc<number>(c, 'otayori_balance', { p_user: userId });
+
+/** ポイント手動調整（既存 RPC・内部で監査ログを記帳する） */
+export const adjustPointsOf = (c: BookClient, userId: string, delta: number, reason: string) =>
+	rpc<void>(c, 'adjust_points', {
+		p_member_user_id: userId,
+		p_delta: delta,
+		p_reason: reason
+	});
+
+/** おたよりポイント手動付与（既存 RPC） */
+export const grantOtayoriOf = (c: BookClient, userId: string, delta: number, reason: string) =>
+	rpc<void>(c, 'otayori_adjust', {
+		p_member_user_id: userId,
+		p_delta: delta,
+		p_reason: reason
+	});
+
+/** ポイント履歴（point_ledger_staff_select 経由の直接 select） */
+export async function listPointLedger(c: BookClient, userId: string): Promise<PointLedgerRow[]> {
+	const { data, error } = await c
+		.from('point_ledger')
+		.select('id,delta,reason,created_at,expires_at')
+		.eq('member_user_id', userId)
+		.order('created_at', { ascending: false })
+		.limit(100);
+	if (error) throw error;
+	return (data ?? []) as PointLedgerRow[];
+}
+
+/** 会員宛の通知履歴（notifications_staff_select 経由） */
+export async function listMemberNotifications(
+	c: BookClient,
+	userId: string
+): Promise<MemberNotificationRow[]> {
+	const { data, error } = await c
+		.from('notifications')
+		.select('id,type,title,status,created_at,read_at')
+		.eq('member_user_id', userId)
+		.order('created_at', { ascending: false })
+		.limit(50);
+	if (error) throw error;
+	return (data ?? []) as MemberNotificationRow[];
+}
+
+/** 会員の好み回答（member_preferences_staff_select 経由） */
+export async function listMemberPreferences(
+	c: BookClient,
+	userId: string
+): Promise<MemberPreferenceRow[]> {
+	const { data, error } = await c
+		.from('member_preferences')
+		.select('pref_key,value,updated_at')
+		.eq('member_user_id', userId);
+	if (error) throw error;
+	return (data ?? []) as MemberPreferenceRow[];
+}
+
+/** RankBadge が受ける union に寄せる（DB は text のため） */
+export type MemberRank = 'standard' | 'silver' | 'gold' | 'platinum';
+export function normalizeRank(code: string | null | undefined): MemberRank {
+	return code === 'silver' || code === 'gold' || code === 'platinum' ? code : 'standard';
+}

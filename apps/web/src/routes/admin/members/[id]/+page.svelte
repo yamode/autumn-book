@@ -30,12 +30,40 @@
 				<div class="flex gap-2"><dt class="text-stone-400">メルマガ</dt><dd>{data.m.mailOptIn ? '受信する' : '受信しない'}</dd></div>
 				<div class="flex gap-2"><dt class="text-stone-400">ポイント残高</dt><dd class="font-medium">{data.balance.toLocaleString()} pt</dd></div>
 				<div class="flex gap-2"><dt class="text-stone-400">おたよりpt残高</dt><dd class="font-medium">{data.otayoriBalance.toLocaleString()} pt <span class="text-xs font-normal text-stone-400">（1pt=1,000円分）</span></dd></div>
+				{#if data.live}
+					<div class="flex gap-2">
+						<dt class="text-stone-400">push</dt>
+						<dd>
+							{data.devices.filter((d) => d.is_active).length} 台{data.m.pushOptIn
+								? ''
+								: '（受信オフ）'}
+						</dd>
+					</div>
+					<div class="flex gap-2">
+						<dt class="text-stone-400">最終宿泊</dt>
+						<dd>{data.m.lastStay ?? '—'}</dd>
+					</div>
+					{#if data.m.withdrawnAt}
+						<div class="flex gap-2">
+							<dt class="text-stone-400">退会日</dt>
+							<dd class="text-red-700">{data.m.withdrawnAt}</dd>
+						</div>
+					{/if}
+				{/if}
 			</dl>
 		</section>
 
 		<section class="rounded-xl border border-stone-200 bg-white p-5">
 			<h2 class="mb-2 text-sm font-medium text-stone-700">予約履歴</h2>
 			<div class="divide-y divide-stone-100 text-sm">
+				{#if data.live}
+					<p class="py-3 text-xs text-stone-400">
+						会員軸の予約検索は未対応です。<a
+							href="/admin/reservations"
+							class="text-accent-600 underline">予約管理</a
+						>でお名前を検索してください。
+					</p>
+				{/if}
 				{#each data.reservations as r}
 					<div class="flex items-center gap-3 py-2">
 						<a href="/admin/reservations/{r.code}" class="text-accent-600 hover:underline">{r.code}</a>
@@ -63,6 +91,11 @@
 		<section class="rounded-xl border border-stone-200 bg-white p-5">
 			<h2 class="mb-2 text-sm font-medium text-stone-700">おたよりポイント台帳 <span class="text-xs font-normal text-stone-400">（1pt=1,000円分）</span></h2>
 			<div class="divide-y divide-stone-100 text-sm">
+				{#if data.live}
+					<p class="py-3 text-xs text-stone-400">
+						履歴の表示は未対応です（book.otayori_ledger にスタッフ用の参照権限が無いため）。残高は上部に表示しています。
+					</p>
+				{/if}
 				{#each data.otayoriLedger as e}
 					<div class="flex items-center justify-between py-2">
 						<div><p>{e.reason}</p><p class="text-xs text-stone-400">{e.createdAt}</p></div>
@@ -73,6 +106,92 @@
 				{/each}
 			</div>
 		</section>
+		{#if data.live}
+			<section class="rounded-xl border border-stone-200 bg-white p-5">
+				<h2 class="mb-2 text-sm font-medium text-stone-700">クーポン（{data.coupons.length}）</h2>
+				<div class="divide-y divide-stone-100 text-sm">
+					{#each data.coupons as c}
+						<div class="flex flex-wrap items-center gap-3 py-2">
+							<a href="/admin/coupons/{c.coupon_id}" class="text-accent-600 hover:underline">
+								{c.coupon_name}
+							</a>
+							<span class="text-xs text-stone-400">
+								{c.status === 'used'
+									? '使用済'
+									: c.status === 'issued'
+										? '配布済'
+										: c.status === 'revoked'
+											? '取消'
+											: c.status}
+							</span>
+							{#if c.booking_code}
+								<span class="font-mono text-xs text-stone-400">{c.booking_code}</span>
+							{/if}
+						</div>
+					{:else}
+						<p class="py-3 text-stone-400">配布されたクーポンはありません</p>
+					{/each}
+				</div>
+			</section>
+
+			<section class="rounded-xl border border-stone-200 bg-white p-5">
+				<h2 class="mb-2 text-sm font-medium text-stone-700">
+					通知（直近 {data.notifications.length}）
+				</h2>
+				<div class="divide-y divide-stone-100 text-sm">
+					{#each data.notifications as n}
+						<div class="flex flex-wrap items-center gap-3 py-2">
+							<span class="text-xs text-stone-400">
+								{n.created_at.slice(0, 16).replace('T', ' ')}
+							</span>
+							<span class="flex-1">{n.title}</span>
+							<span class="text-xs {n.status === 'failed' ? 'text-red-700' : 'text-stone-400'}">
+								{n.status}{n.read_at ? '・既読' : ''}
+							</span>
+						</div>
+					{:else}
+						<p class="py-3 text-stone-400">通知はまだありません</p>
+					{/each}
+				</div>
+			</section>
+
+			<section class="rounded-xl border border-stone-200 bg-white p-5">
+				<h2 class="mb-2 text-sm font-medium text-stone-700">端末（{data.devices.length}）</h2>
+				<p class="mb-1 text-xs text-stone-400">
+					push トークンは表示しません（プラットフォームと端末名のみ）。
+				</p>
+				<div class="divide-y divide-stone-100 text-sm">
+					{#each data.devices as d}
+						<div class="flex flex-wrap items-center gap-3 py-2">
+							<span>{d.platform ?? '—'}</span>
+							<span class="flex-1 text-stone-500">{d.device_name ?? '—'}</span>
+							<span class="text-xs text-stone-400">
+								{d.is_active ? '有効' : '無効'}
+								{d.last_seen_at ? `・最終 ${d.last_seen_at.slice(0, 10)}` : ''}
+							</span>
+						</div>
+					{:else}
+						<p class="py-3 text-stone-400">端末が登録されていません（push は届きません）</p>
+					{/each}
+				</div>
+			</section>
+
+			<section class="rounded-xl border border-stone-200 bg-white p-5">
+				<h2 class="mb-2 text-sm font-medium text-stone-700">
+					ご滞在の好み（{data.preferences.length}）
+				</h2>
+				<div class="divide-y divide-stone-100 text-sm">
+					{#each data.preferences as p}
+						<div class="flex flex-wrap items-center gap-3 py-2">
+							<span class="font-mono text-xs text-stone-400">{p.pref_key}</span>
+							<span class="flex-1">{JSON.stringify(p.value)}</span>
+						</div>
+					{:else}
+						<p class="py-3 text-stone-400">まだ回答がありません</p>
+					{/each}
+				</div>
+			</section>
+		{/if}
 	</div>
 
 	<aside class="space-y-4">
@@ -85,7 +204,13 @@
 				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-1.5 text-white hover:bg-brand-700">調整を実行</button>
 			</form>
 
-			<form method="POST" action="?/rank" use:enhance class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<!-- ランク更新の RPC が未整備のため、実データでは出さない -->
+			<form
+				method="POST"
+				action="?/rank"
+				use:enhance
+				class="rounded-xl border border-stone-200 bg-white p-4 text-sm {data.live ? 'hidden' : ''}"
+			>
 				<h2 class="font-medium text-stone-700">ランク手動変更</h2>
 				<select name="rank" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5">
 					{#each ['standard', 'silver', 'gold'] as r}
