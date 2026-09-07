@@ -6,6 +6,7 @@
 import { error, fail } from '@sveltejs/kit';
 
 import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import {
 	adjustPointsOf,
 	adminListMemberCoupons,
@@ -49,7 +50,8 @@ export const load: PageServerLoad = async (event) => {
 
 	// 予約履歴の施設名を引くための対応表（admin_list_bookings は facility_id しか返さない）
 	const { facilities } = await event.parent();
-	const facilityName = new Map(facilities.map((f) => [f.id, f.name]));
+	// admin_list_bookings は実 UUID を返すので、対応表も UUID キーで作る
+	const facilityName = new Map(facilities.map((f) => [toFacilityUuidStrict(f.id), f.name]));
 
 	if (ADMIN_SUPABASE) {
 		const client = bookAdmin(event);

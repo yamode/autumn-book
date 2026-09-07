@@ -14,6 +14,7 @@ import {
 	type MailQueueStatus
 } from '$lib/server/admin-app-data';
 import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import { bookings, roomTypeById } from '$lib/server/store';
 import type { PageServerLoad } from './$types';
 
@@ -42,9 +43,11 @@ export const load: PageServerLoad = async (event) => {
 	if (ADMIN_SUPABASE) {
 		const client = bookAdmin(event);
 		try {
+			// 管理画面の施設スイッチャーは store.ts のデモ施設マスタ由来なので、
+			// RPC に渡す前に実 UUID へ変換する（news / bath / inroom と同じ流儀）
 			const [list, mailQueue] = await Promise.all([
 				adminListBookings(client, {
-					facilityId: currentFacility.id,
+					facilityId: toFacilityUuidStrict(currentFacility.id),
 					status: status || null,
 					source: channel === '' ? null : channel,
 					q: q || null,
