@@ -848,3 +848,33 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
 - [ ] app_metadata.role=admin だが core.memberships に tenant_admin が無いアカウントで書き込みを試すと「管理者権限（core.memberships の tenant_admin）が必要です」が出る
 - [ ] 上記操作がすべて book.admin_audit_logs に actor 付きで記録される
 - [ ] `select * from book.coupons` を shared_login 会員の JWT で実行すると select はでき、insert は permission denied になる（policy 絞り込みの確認）
+
+## 直販予約が PMS に届くようになった（2026-09-07・DB 側 autumn-shared v1.4.x）
+
+設計書: `autumn-shared/docs/BOOK_PMS_DIRECT_BOOKING.md`
+
+これまで `confirm_booking` は `core.stays` と `booking.bookings` しか書かず、PMS 側には
+予約グループも泊も作られていなかった（＝現場から見て予約が存在しない状態）。
+予約成立・変更・取消と同一トランザクションで JSON 電文を `pms.direct_booking_inbox` に積み、
+autumn-pms のワーカーが1分以内に展開する形にした。
+
+**autumn-book 側のコード変更は無い。** `confirm_booking` / `_cancel_booking_core` /
+`amend_booking` はシグネチャも戻り値も変わっていない。
+
+### 管理画面の位置づけがはっきりした
+
+直販予約の**取消権限は autumn-book にある**。PMS の予約詳細からはキャンセルできないよう
+塞いである（`fail(400)`）。OTA 予約を PMS から CXL しないのと同じ考え方で、
+取消メール・ポイント返還・クーポン復帰・キャンセルリンクの失効が book 側に紐づいているため。
+現場は PMS で滞在の中身（部屋移動・料金変更・食事）を扱う。
+
+### 未着手: 公開サイトの空室表示の作り直し（要検討）
+
+`book.search_availability` / `search_plans` / `get_plan_calendar` はすべて
+`booking.availability` を読んでおり、PMS の残室を見ていない。この表は TL-リンカーンの
+残室を**3時間ごとに差分で**当てているため、実態から数時間遅れる。
+
+直販予約が PMS の残室計算に乗るようになったので、**PMS の残室から作り直す**のが筋。
+検討メモと決めてほしいことは設計書 §15（B2 案では `create_hold` の `−1`、取消の `+1`、
+`release_expired_holds` の `+1`、`amend_booking` の `±1` がすべて不要になる）。
+**公開サイトの空室表示に直撃する変更なので、観察期間を置いてから切り替える。**
