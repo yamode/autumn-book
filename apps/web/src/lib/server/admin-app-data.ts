@@ -35,6 +35,13 @@ const RPC_MESSAGES: [string, string][] = [
 	['key_taken', 'その key は既に使われています。'],
 	['not_found', '対象が見つかりませんでした。'],
 	['invalid_params', '入力内容に誤りがあります。'],
+	['reason_required', '理由を入力してください（監査ログに記録されます）。'],
+	[
+		'not_direct_booking',
+		'このご予約は直販（サイト・アプリ）経由ではないため、ここでは取り消せません。OTA 側で取り消してください。'
+	],
+	['not_cancellable', 'このご予約は取り消せません（既に取り消し済み、またはご滞在済みです）。'],
+	['mail_no_recipient', 'この予約にはメールアドレスが登録されていないため、メールを送信できません。'],
 	[
 		'forbidden',
 		'この操作には管理者権限が必要です（Supabase の app_metadata.role と core.memberships の tenant_admin の両方が必要です）。'
@@ -421,7 +428,7 @@ function switchTo(facilityId: string, back: string): string {
 	return `/admin/switch?f=${facilityId}&back=${encodeURIComponent(back)}`;
 }
 
-export function buildAppAlerts(d: AppDashboard): Alert[] {
+export function buildAppAlerts(d: AppDashboard, mail?: MailQueueStatus | null): Alert[] {
 	const a: Alert[] = [];
 	const fs = d.facilities;
 
@@ -524,6 +531,25 @@ export function buildAppAlerts(d: AppDashboard): Alert[] {
 			message: 'グレード別キャンセル規定（standard）が空です。全予約がキャンセル料無料になります。',
 			link: { label: 'キャンセル規定', href: '/admin/cancel-policies' }
 		});
+	}
+
+	// A15: 予約確認メールの送信キュー。ここが詰まると「予約は入ったのにお客様に何も届かない」
+	// 状態になり、しかも誰も気づけない（客からの問い合わせで初めて分かる）
+	if (mail) {
+		if (mail.failed_24h > 0) {
+			a.push({
+				level: "error",
+				message: `予約メールの送信に失敗した件が ${mail.failed_24h} 件あります（直近24時間）。`,
+				link: { label: "予約管理", href: "/admin/reservations" }
+			});
+		}
+		if (mail.stuck) {
+			a.push({
+				level: "error",
+				message: "予約メールの送信が10分以上滞留しています（送信基盤を確認してください）。",
+				link: { label: "予約管理", href: "/admin/reservations" }
+			});
+		}
 	}
 
 	// A12: オプション
@@ -638,6 +664,186 @@ export async function listMemberPreferences(
 	if (error) throw error;
 	return (data ?? []) as MemberPreferenceRow[];
 }
+
+
+// ------------------------------------------- 予約管理（BOOKING_CANCEL_MAIL.md §5）
+// 予約の取り消しは PMS ではなくここで行う（OTA 予約を PMS から CXL しないのと同じ運用）。
+// PMS は滞在の中身（部屋割り・料金調整）を扱い、book は予約の入口と出口を扱う。
+
+export type BookingListRow = {
+	stay_id: string;
+	booking_id: string | null;
+	booking_code: string;
+	facility_id: string;
+	source: string | null;
+	channel_name: string | null;
+	/** 'web' | 'app'。直販以外は null */
+	client: string | null;
+	guest_name: string | null;
+	guest_kana: string | null;
+	is_member: boolean;
+	member_user_id: string | null;
+	check_in_date: string;
+	check_out_date: string;
+	nights: number;
+	adult_count: number;
+	room_name: string | null;
+	plan_name: string | null;
+	total_amount: number | null;
+	stay_status: string;
+	booking_status: string | null;
+	cancellation_fee: number | null;
+	/** 確認メールの最新状態。直販以外・未送信は null */
+	mail_status: string | null;
+	mail_sent_at: string | null;
+	created_at: string;
+};
+
+export type BookingQuery = {
+	/** null = 全施設（会員の予約履歴など施設を跨いで見るとき） */
+	facilityId: string | null;
+	/** null = すべて */
+	status?: string | null;
+	/** 'autumn_booking'（既定）または null（OTA 等も含めてすべて） */
+	source?: string | null;
+	q?: string | null;
+	checkinFrom?: string | null;
+	checkinTo?: string | null;
+	memberUserId?: string | null;
+	limit?: number;
+	offset?: number;
+};
+
+export function adminListBookings(c: BookClient, query: BookingQuery) {
+	return rpc<BookingListRow[]>(c, 'admin_list_bookings', {
+		p_facility_id: query.facilityId,
+		p_status: query.status ?? null,
+		p_source: query.source === undefined ? 'autumn_booking' : query.source,
+		p_q: query.q ?? null,
+		p_checkin_from: query.checkinFrom ?? null,
+		p_checkin_to: query.checkinTo ?? null,
+		p_member_user_id: query.memberUserId ?? null,
+		p_limit: query.limit ?? 200,
+		p_offset: query.offset ?? 0
+	});
+}
+
+export type BookingMailRow = {
+	id: string;
+	kind: string;
+	status: string;
+	to_email: string;
+	attempts: number;
+	last_error: string | null;
+	sent_at: string | null;
+	created_at: string;
+	/** admin のみ（本文にメールアドレスと取消リンクが含まれるため） */
+	subject: string | null;
+	body_text: string | null;
+};
+
+export type CancelTokenState = {
+	expires_at: string;
+	used_at: string | null;
+	revoked_at: string | null;
+	last_seen_at: string | null;
+	view_count: number;
+} | null;
+
+export type BookingDetail = {
+	booking: {
+		code: string;
+		stay_id: string;
+		booking_id: string | null;
+		facility_id: string;
+		facility_name: string;
+		source: string | null;
+		channel_code: string | null;
+		client: string | null;
+		check_in_date: string;
+		check_out_date: string;
+		nights: number;
+		adult_count: number;
+		room_name: string | null;
+		plan_name: string | null;
+		total_amount: number | null;
+		discount: number;
+		coupon_name: string | null;
+		points_used: number;
+		points_earned: number;
+		price_lines: { date: string; unit_price: number; adults: number; subtotal: number }[];
+		stay_status: string;
+		booking_status: string | null;
+		payment_status: string | null;
+		cancellation_fee: number | null;
+		cancelled_at: string | null;
+		cancelled_by: string | null;
+		is_member: boolean;
+		member_user_id: string | null;
+		notes: string | null;
+		created_at: string;
+		amendments: number;
+	};
+	guest: {
+		name: string | null;
+		kana: string | null;
+		phone: string | null;
+		email: string | null;
+		arrival: string | null;
+		shuttle: boolean;
+		guest_notes: string | null;
+	};
+	cancel_policy: {
+		rules_source?: string;
+		rank_code?: string;
+		rate?: number;
+		fee?: number;
+		rules: { days_before: number; rate: number }[];
+	};
+	mails: BookingMailRow[];
+	cancel_token: CancelTokenState;
+	audits: { at: string; action: string; detail: Record<string, unknown> }[];
+};
+
+export const adminBookingDetail = (c: BookClient, code: string) =>
+	rpc<BookingDetail>(c, 'admin_booking_detail', { p_booking_code: code });
+
+export const adminCancelBooking = (
+	c: BookClient,
+	code: string,
+	waiveFee: boolean,
+	reason: string
+) =>
+	rpc<{ booking_code: string; cancellation_fee: number; rate: number; waived: boolean }>(
+		c,
+		'admin_cancel_booking',
+		{ p_booking_code: code, p_waive_fee: waiveFee, p_reason: reason }
+	);
+
+/**
+ * 予約確認メールの再送。
+ * 未送信（失敗中）の行に raw トークンが残っていればそれを使い、送信済みなら
+ * 新しいトークンを発行して送る（raw はハッシュ化済みで復元できないため）。
+ * 画面側は送信済みのときだけ「取り消しリンクが新しくなる」旨を出す。
+ */
+export const adminResendBookingMail = (c: BookClient, code: string, kind = 'booking_confirmation') =>
+	rpc<string | null>(c, 'admin_resend_booking_mail', { p_booking_code: code, p_kind: kind });
+
+/** 漏洩が疑われるときの明示操作。旧リンクを失効させ、新しいリンク入りの確認メールを送る。 */
+export const adminRotateCancelToken = (c: BookClient, code: string) =>
+	rpc<string | null>(c, 'admin_rotate_cancel_token', { p_booking_code: code });
+
+export type MailQueueStatus = {
+	pending: number;
+	processing: number;
+	failed_24h: number;
+	last_sent_at: string | null;
+	oldest_pending_at: string | null;
+	stuck: boolean;
+};
+
+export const adminMailQueueStatus = (c: BookClient) =>
+	rpc<MailQueueStatus>(c, 'admin_mail_queue_status');
 
 /** RankBadge が受ける union に寄せる（DB は text のため） */
 export type MemberRank = 'standard' | 'silver' | 'gold' | 'platinum';

@@ -1,7 +1,6 @@
 // 会員詳細。本番（ADMIN_SUPABASE）では book の実データ、それ以外は store.ts のデモ。
 //
 // 実データ側で出せないもの（意図的に空にし、UI で理由を出す）:
-//   - 予約履歴 … 会員軸で他人の予約を引く管理 RPC が未整備（/admin/reservations で会員名検索する）
 //   - おたより台帳 … book.otayori_ledger に staff select policy が無い（残高のみ表示）
 //   - ランク手動変更 … 更新 RPC が未整備（book.members は members_own_update のみ）
 import { error, fail } from '@sveltejs/kit';
@@ -10,6 +9,7 @@ import { ADMIN_SUPABASE } from '$lib/server/auth';
 import {
 	adjustPointsOf,
 	adminListMemberCoupons,
+	adminListBookings,
 	adminListMembers,
 	adminMemberDevices,
 	bookAdmin,
@@ -47,6 +47,10 @@ type Audit = { at: string; actor: string; action: string; detail: string };
 export const load: PageServerLoad = async (event) => {
 	const isAdmin = event.locals.user?.role === 'admin';
 
+	// 予約履歴の施設名を引くための対応表（admin_list_bookings は facility_id しか返さない）
+	const { facilities } = await event.parent();
+	const facilityName = new Map(facilities.map((f) => [f.id, f.name]));
+
 	if (ADMIN_SUPABASE) {
 		const client = bookAdmin(event);
 		const id = event.params.id;
@@ -63,7 +67,7 @@ export const load: PageServerLoad = async (event) => {
 		if (!member) error(404, '会員が見つかりません');
 
 		// policy 未整備のテーブルがあるため、1つ落ちても画面が開くようにする
-		const [balance, otayori, ledger, coupons, devices, notifications, preferences] =
+		const [balance, otayori, ledger, coupons, devices, notifications, preferences, stays] =
 			await Promise.all([
 				pointBalanceOf(client, id).catch(() => 0),
 				otayoriBalanceOf(client, id).catch(() => 0),
@@ -71,7 +75,14 @@ export const load: PageServerLoad = async (event) => {
 				adminListMemberCoupons(client, { memberUserId: id }).catch(() => [] as MemberCouponRow[]),
 				adminMemberDevices(client, id).catch(() => [] as DeviceRow[]),
 				listMemberNotifications(client, id).catch(() => [] as MemberNotificationRow[]),
-				listMemberPreferences(client, id).catch(() => [] as MemberPreferenceRow[])
+				listMemberPreferences(client, id).catch(() => [] as MemberPreferenceRow[]),
+				// 会員軸の予約履歴。施設は跨いで見たいので p_facility_id は null、期間も無指定
+				adminListBookings(client, {
+					facilityId: null,
+					source: null,
+					memberUserId: id,
+					limit: 50
+				}).catch(() => [])
 			]);
 
 		return {
@@ -100,7 +111,12 @@ export const load: PageServerLoad = async (event) => {
 				createdAt: e.created_at.slice(0, 16).replace('T', ' ')
 			})),
 			otayoriLedger: [] as LedgerEntry[],
-			reservations: [] as Reservation[],
+			reservations: stays.map<Reservation>((s2) => ({
+				code: s2.booking_code,
+				checkin: s2.check_in_date,
+				status: s2.stay_status,
+				facilityName: facilityName.get(s2.facility_id) ?? ""
+			})),
 			audits: [] as Audit[],
 			coupons,
 			devices,

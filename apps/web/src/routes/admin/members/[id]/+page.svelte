@@ -56,19 +56,23 @@
 		<section class="rounded-xl border border-stone-200 bg-white p-5">
 			<h2 class="mb-2 text-sm font-medium text-stone-700">予約履歴</h2>
 			<div class="divide-y divide-stone-100 text-sm">
-				{#if data.live}
-					<p class="py-3 text-xs text-stone-400">
-						会員軸の予約検索は未対応です。<a
-							href="/admin/reservations"
-							class="text-accent-600 underline">予約管理</a
-						>でお名前を検索してください。
-					</p>
-				{/if}
 				{#each data.reservations as r}
 					<div class="flex items-center gap-3 py-2">
-						<a href="/admin/reservations/{r.code}" class="text-accent-600 hover:underline">{r.code}</a>
+						<a href="/admin/reservations/{encodeURIComponent(r.code)}" class="text-accent-600 hover:underline"
+							>{r.code}</a
+						>
 						<span class="flex-1">{r.facilityName} ／ {formatDateJa(r.checkin)}</span>
-						<span class="text-xs text-stone-400">{r.status === 'reserved' ? '予約済' : r.status === 'cancelled' ? 'キャンセル' : '宿泊済'}</span>
+						<span class="text-xs text-stone-400"
+							>{r.status === 'reserved'
+								? '予約済'
+								: r.status === 'cancelled'
+									? 'キャンセル'
+									: r.status === 'no_show'
+										? '不泊'
+										: r.status === 'checked_in'
+											? 'チェックイン済'
+											: '宿泊済'}</span
+						>
 					</div>
 				{:else}
 					<p class="py-3 text-stone-400">予約履歴はありません</p>

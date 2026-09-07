@@ -449,6 +449,78 @@ export async function cancelBooking(bookingCode: string, opts: { waiveFee?: bool
 	return data as { booking_code: string; cancellation_fee: number };
 }
 
+// ------------------------------------------ 非会員のキャンセル（BOOKING_CANCEL_MAIL.md §4.2）
+// 確認メールのリンク（?t=<トークン>）から呼ぶ2本。anon で実行できる。
+// 予約番号は連番のため URL には載せない。トークンは 32 バイト乱数の base64url で、
+// DB 側はハッシュしか持たないため、DB を読めても raw は復元できない。
+
+/** 取消可否の理由コード。画面はこれで文言を出し分ける（存在の有無を文言で区別しない）。 */
+export type GuestCancelReason =
+	| 'not_found'
+	| 'token_expired'
+	| 'token_used'
+	| 'token_revoked'
+	| 'already_cancelled'
+	| 'checked_in'
+	| 'checked_out'
+	| 'past_checkin';
+
+export type GuestCancelBooking = {
+	code: string;
+	facility_name: string;
+	facility_slug: string;
+	facility_phone: string | null;
+	check_in_date: string;
+	check_out_date: string;
+	nights: number;
+	adult_count: number;
+	room_name: string | null;
+	plan_name: string | null;
+	total_amount: number;
+	guest_name: string;
+	phone_masked: string;
+	email_masked: string;
+	status: string;
+	is_member: boolean;
+};
+
+export type GuestCancelFee = {
+	rules_source: 'plan' | 'rank';
+	rank_code: string;
+	rate: number;
+	fee: number;
+	as_of: string;
+	rules: { days_before: number; rate: number }[];
+};
+
+export type GuestBookingLookup =
+	| {
+			ok: true;
+			cancellable: boolean;
+			reason: GuestCancelReason | null;
+			booking: GuestCancelBooking;
+			fee: GuestCancelFee;
+	  }
+	| { ok: false; reason: GuestCancelReason };
+
+/** トークンで予約を1件引く。副作用は閲覧回数の記録だけ（GET で叩かれても予約は変わらない）。 */
+export async function guestBookingByToken(token: string): Promise<GuestBookingLookup> {
+	const { data, error } = await supa().rpc('guest_booking_by_token', { p_token: token });
+	if (error) throw error;
+	return data as GuestBookingLookup;
+}
+
+export type GuestCancelResult =
+	| { ok: true; booking_code: string; cancellation_fee: number; rate: number; waived: boolean }
+	| { ok: false; reason: GuestCancelReason };
+
+/** トークンで取り消す。キャンセル料の免除はできない（スタッフ操作のみ）。 */
+export async function guestCancelBooking(token: string): Promise<GuestCancelResult> {
+	const { data, error } = await supa().rpc('guest_cancel_booking', { p_token: token });
+	if (error) throw error;
+	return data as GuestCancelResult;
+}
+
 // ---------------------------------------------------------------- フォーラム RPC（設計書 §5.3）
 // book スキーマの forum_* RPC を呼ぶ薄いアダプタ。store.ts（demo）と同じ意味論。
 // 読み取り系（forum_list_boards / forum_list_threads / forum_get_thread / forum_list_posts）は

@@ -33,6 +33,10 @@
 		<p class="mt-2 text-sm text-stone-500">{m.complete_booking_number_label()}</p>
 		<p class="text-2xl font-bold tracking-wider text-brand-900">{b.code}</p>
 		<p class="mt-3 text-sm text-stone-600">{m.complete_email_sent({ email: b.guest.email })}</p>
+		{#if !data.isMember}
+			<!-- 非会員はマイページを持たないため、取消の入口が確認メールのリンクしかないことを先に伝える -->
+			<p class="mt-1 text-sm text-stone-600">{m.complete_cancel_hint()}</p>
+		{/if}
 
 		<dl class="mx-auto mt-6 max-w-md space-y-1.5 rounded-xl bg-stone-50 p-4 text-left text-sm">
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_facility()}</dt><dd>{data.facility.name}</dd></div>

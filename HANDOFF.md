@@ -1,6 +1,51 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-07（アプリ運用管理画面の増設・管理メニュー再編 v0.36.0）
+> **最終更新**: 2026-09-07（予約確認メール自動送信・非会員キャンセル・予約管理の実データ化 v0.38.0）
+
+## 予約確認メール・非会員キャンセル・予約管理（2026-09-07 追加・v0.38.0）
+
+設計書: `docs/BOOKING_CANCEL_MAIL.md`（実装の根拠・SQL・文面はすべてここ）。
+
+### 何が問題だったか
+
+- **予約確認メールがそもそも存在しなかった**。`book.confirm_booking` は core.stays / booking.bookings /
+  point_ledger を書くだけで、メールを送るトリガーも処理も無い。完了画面だけが
+  「確認メールをお送りしました」と表示していた（`complete_email_sent`）
+- **非会員は自分の予約を取り消せなかった**。`book.cancel_booking` は `auth.uid()` を要求する。
+  サイトは非会員予約を残す方針なので、自己解決の導線が無いままだった
+- **`/admin/reservations` は demo ストア直読みで、実予約が1件も出なかった**（サイト経由・アプリ経由を問わず）
+
+### 入れたもの
+
+| 層 | 追加 |
+|---|---|
+| DB（autumn-shared v1.3.0） | `book.mail_outbox` / `book.booking_access_tokens`、`_issue_booking_token` / `_token_lookup` / `_enqueue_booking_mail` / `_cancel_booking_core`、`guest_booking_by_token` / `guest_cancel_booking`（anon 可）、`claim_pending_mail` / `mail_render_context` / `mark_mail_result`（service_role）、`admin_list_bookings` / `admin_booking_detail` / `admin_cancel_booking` / `admin_resend_booking_mail` / `admin_rotate_cancel_token` / `admin_mail_queue_status`、cron 2本 |
+| Edge Function | `send-booking-mail`（outbox の drainer）。MIME 組み立ては `_shared/mime.ts` に集約し `multipart/alternative`（テキスト＋HTML）に対応。文面は `templates.ts`（テスト24件で固定） |
+| 公開面 | `/booking/cancel`（トークン式・二段確認・URL からトークンを消す）、完了画面の文言修正 |
+| 管理画面 | `/admin/reservations` 一覧・詳細を実データ化。メール送信状況・取消リンクの状態・再送・リンク再発行・キャンセル。`/admin/members/[id]` に予約履歴 |
+| アプリ | `p_guest.client = app` を送出（管理画面でサイト／アプリを見分ける） |
+
+### 設計上の要点
+
+- **予約番号は連番**（`YB-2026-001001`）。URL に予約番号を載せると総当たりで他人の予約を取り消せるため、
+  32バイト乱数の base64url をリンクに載せ、DB は SHA-256 ハッシュだけを持つ。raw は outbox の payload に
+  送信までの数分だけ置き、送信成功時に消す
+- メールを積むのは **`confirm_booking` の中（同一トランザクション）**。トリガーにすると OTA 取込・
+  FileMaker 移行・PMS 手入力でも発火し、他社経由の客に自社の確認メールを誤送信する
+- `cancel_booking` の本体を `_cancel_booking_core` に切り出し、会員・スタッフ・トークン・管理者の
+  4入口が同じ核を通る。キャンセル受付メールは核が1回だけ積む
+- **`cancellation_policy = []` は「無料」ではない**。DB は空ならグレード別規定（standard）にフォールバックする。
+  画面もメールも DB が返した `fee` / `rules` だけを表示する
+- 責務分担: **book の管理画面＝予約の入口と出口（取消）／PMS＝滞在の中身（部屋割り・料金調整）**。
+  `core.stays` を cancelled にすると PMS 側の `stays_release_rooms_on_cancel` が部屋割りを解放する
+
+### 未実施（本番反映に必要な手順）
+
+1. autumn-shared を main へ push、または `supabase db push --linked`（migration `20260907081954`）
+2. `supabase secrets set BOOK_SEND_BOOKING_MAIL_SECRET=... BOOK_SITE_BASE_URL=https://autumn-book.pages.dev`
+3. `supabase functions deploy send-booking-mail --no-verify-jwt`
+4. Vault に `book_send_booking_mail_url` / `book_send_booking_mail_secret` を投入（投入まで drain cron は no-op）
+5. 独自ドメイン移行時は `BOOK_SITE_BASE_URL` を差し替え、pages.dev から 301 を残す（送信済みメールのリンクは旧URLのまま）
 
 ## アプリ運用管理画面（2026-09-07 追加・v0.36.0）
 
@@ -673,6 +718,61 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
 - 下層ページ（site_pages）の管理画面エディタ
 - 原サイトJS演出の細部（Swiperイージング・blur-in・Lenis・男鹿ローディング画面）
 - カスタムドメイン割当（DNS移管後。oga の明示MX追加が先決）
+
+### 予約確認メール・非会員キャンセル・予約管理（設計書 docs/BOOKING_CANCEL_MAIL.md）
+
+※前提: 本番（DATA_SOURCE=supabase / AUTH_MODE=supabase）。テスト予約は必ず **@yamado.co.jp 宛**で作り、テスト後に管理画面から取り消す。
+※実会員・実予約が入ったあとは、全件系の操作（purge cron の手動実行等）を行わない。
+
+#### 予約確認メール
+- [ ] サイトで非会員として予約 → 完了画面に「確認メールを … 宛にお送りします」と取り消しリンクの案内が出る
+- [ ] 2 分以内に予約確認メールが届く。差出人名が施設名（山人-yamado- / 山人-oga-）、From が reservation@… である
+- [ ] 件名・本文が文字化けしない（Gmail PC／Gmail iPhone／iPhone 標準メール／Outlook）
+- [ ] HTML 版とテキスト版の内容が同じ（テキストのみ表示にしても情報が欠けない）
+- [ ] 予約番号・施設・チェックイン日時（15:00〜）・チェックアウト・泊数・部屋・プラン・人数・料金明細・当日お支払い額・キャンセル規定（14/10/3/当日/不泊）・施設連絡先が正しい
+- [ ] 到着予定／送迎希望／ご要望を入れた予約では該当行が出て、入れない予約では行が出ない
+- [ ] 会員（ポイント利用・クーポン利用）の予約でクーポン行／ポイント行／付与予定行が出る
+- [ ] アプリからの予約でも同じメールが届き、本文の「マイページ」文言が「アプリのマイページ」になる（client='app' 送出後）
+- [ ] 男鹿の予約は男鹿の SMTP（reservation@oga.yamado.co.jp）・男鹿の住所電話で届く
+- [ ] 同じ予約で確認メールが 2 通届かない（dedupe_key）
+- [ ] pms.mail_settings の is_active を一時 false にして予約 → outbox が failed にならず pending（設定エラーは last_error に出て 5 回で failed）→ 戻すと次回 drain で送られる（ユーザー立会いのみ）
+- [ ] /admin/reservations のメール送信帯が「待機 0／失敗 0／正常」を示し、失敗を作ると赤帯になる
+
+#### 非会員キャンセル（/booking/cancel）
+- [ ] メールのボタンから開くと予約内容（電話・メールはマスク）と本日時点のキャンセル料・料率が表示される
+- [ ] 表示直後にアドレスバーから ?t= が消え、リロードすると「リンクをもう一度お開きください」になる
+- [ ] 「この予約を取り消す」→ 確認パネル（料金・元に戻せない旨）→「取り消しを確定する」→ 完了表示
+- [ ] 完了後にキャンセル受付メールが届き、キャンセル料（¥0 なら「いただいておりません」）が本文と一致する
+- [ ] 同じリンクをもう一度開くと「取り消し済みです」になる
+- [ ] 取消後、/admin/reservations で状態がキャンセル・cancelled_by が guest_token になり、PMS の予約一覧から消えている（部屋割りが解放されている）
+- [ ] 在庫（booking.availability）が戻る：同日程・同部屋で再度検索すると残室が +1 されている
+- [ ] URL のトークンを 1 文字変えると「このリンクは無効です」（予約の存在が分からない）
+- [ ] 15 日以上前の予約で「キャンセル料はかかりません」、14 日前以内で 10% 等が出る（rank standard の規定）
+- [ ] PMS でチェックインした予約のリンクを開くと「ご滞在済み」になり取消できない
+- [ ] チェックイン翌日以降にリンクを開くと「受付期間を過ぎています」＋施設電話が出る
+- [ ] 同一 IP で 1 分に 11 回以上開くと「しばらく時間をおいて」になる
+- [ ] 2 つのタブで同時に確定を押しても取消は 1 回・メールは 1 通
+
+#### 管理画面（/admin/reservations）
+- [ ] 本番で実予約（YB-…）が一覧に出る（demo 予約が出ない）。既定フィルタは直販・今日〜120 日
+- [ ] 会員／非会員、サイト／アプリ、メール送信状況（✔／⏳／⚠）が行に出る
+- [ ] 経路「すべて」で OTA 予約が出て、金額「—」・操作カラムに「OTA 側で取り消してください」が出る
+- [ ] 詳細で価格明細・クーポン・ポイント・規定・本日時点のキャンセル料・メール履歴・取り消しリンクの状態（有効期限・閲覧回数）が出る
+- [ ] 「送信内容を見る」で件名・本文（リンク入り）が admin にだけ見える。staff では非表示・連絡先マスク・操作ボタン無し
+- [ ] キャンセル処理（理由必須）→ 状態キャンセル・監査ログ（actor 付き・by=admin）・お客様に受付メール（理由は載っていない）
+- [ ] 「施設都合」チェックで免除 → メールが「当館の都合によるお取り消しのため、キャンセル料はいただきません」になる
+- [ ] 「予約確認メールを再送」→ 送信済みの予約では「リンクが新しくなる」注記が出て、再送メールの新リンクは使え、旧リンクは「使えなくなりました」になる
+- [ ] failed の予約で再送 → 同じリンクのまま送られる（token_rotated=false）
+- [ ] 「リンクを無効化して再発行」→ 旧リンク無効・新メール到着・監査ログ rotate_cancel_token
+- [ ] /admin/members/[id] に予約履歴が出て、予約番号から詳細へ飛べる
+- [ ] /admin/app に「予約メールの送信に失敗 n 件」アラートが出る（失敗を作ったとき）
+- [ ] ローカル demo（DATA_SOURCE=demo）で /admin/reservations が従来どおり demo 予約を表示し、/booking/cancel が「本番専用」パネルになる
+
+#### DB・運用
+- [ ] cron.job に book_mail_outbox_drain（*/2）と book_mail_outbox_purge（日曜）がある
+- [ ] Vault に book_send_booking_mail_url / _secret がある。secret を一時的に変えると EF が 401 を返し outbox は processing→10 分で pending に戻る（ユーザー立会いのみ）
+- [ ] book.booking_access_tokens に token_hash だけがあり raw が無い。sent 済み outbox の payload に cancel_token が無い
+- [ ] book.admin_audit_logs に cancel_booking / resend_booking_mail / rotate_cancel_token が actor 付きで記録される
 
 ## テストチェックリスト（アプリ運用管理画面）
 
