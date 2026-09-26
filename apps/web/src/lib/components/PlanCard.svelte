@@ -46,7 +46,9 @@
 			{/if}
 		</div>
 		<h3 class="font-display text-lg leading-snug text-brand-900 group-hover:underline">{plan.name}</h3>
-		<p class="text-sm text-stone-600">{plan.headline}</p>
+		{#if plan.headline && plan.headline !== plan.name}
+			<p class="text-sm text-stone-600">{plan.headline}</p>
+		{/if}
 		<div class="mt-auto flex items-end justify-between gap-2 pt-2">
 			<div>
 				{#if total !== null && perPerson !== null}
