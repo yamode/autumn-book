@@ -20,7 +20,8 @@ import {
 	mapRpcError,
 	type BookingDetail
 } from '$lib/server/admin-app-data';
-import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { registerMemberForBooking } from '$lib/server/staff-member-register';
 import {
 	bookings,
 	cancelBooking,
@@ -231,6 +232,32 @@ export const actions: Actions = {
 			return { memberScope: true, memberQuery: q, candidates: found };
 		} catch (e) {
 			return fail(400, { memberScope: true, memberQuery: q, memberError: linkMemberErrorText(e) });
+		}
+	},
+	/** 会員登録そのものを代行する（お客様の同意を電話で得たうえで）。スタッフも操作できる */
+	registerMember: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
+		const role = event.locals.user?.role;
+		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const fd = await event.request.formData();
+		if (fd.get('consent') !== 'on') {
+			return fail(400, { memberScope: true, memberError: '会員登録についてお客様の同意を得たことを確認してください。' });
+		}
+		const email = String(fd.get('email') ?? '').trim();
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			const registered = await registerMemberForBooking({
+				staffClient: createSupabaseServerClient(event),
+				bookingCode: event.params.code,
+				email,
+				name: detail.guest.name,
+				mailOptIn: fd.get('mailOptIn') === 'on',
+				facilityName: detail.booking.facility_name,
+				origin: event.url.origin
+			});
+			return { memberScope: true, registered };
+		} catch (e) {
+			return fail(400, { memberScope: true, memberError: e instanceof Error ? e.message : String(e) });
 		}
 	},
 	linkMember: async (event) => {

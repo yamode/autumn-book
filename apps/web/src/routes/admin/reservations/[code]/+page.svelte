@@ -148,6 +148,14 @@
 		{l.refinalize ? '宿泊済みの予約のため、次の確定処理（毎日 12:00 ごろ）で会員ランクのポイントが付きます。' : 'ご宿泊後に会員ランクのポイントが付きます。'}
 	</p>
 {/if}
+{#if (form as { registered?: { memberCode: string; refinalize: boolean; mailSent: boolean } } | null)?.registered}
+	{@const r = (form as { registered: { memberCode: string; refinalize: boolean; mailSent: boolean } }).registered}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		会員登録を代行しました（会員番号 {r.memberCode}）。この予約は会員の予約になりました。
+		{r.mailSent ? 'お客様に会員登録のお知らせメールを送りました。' : 'お知らせメールは送れませんでした（メール送信の設定を確認してください）。ログイン方法をお電話でお伝えください。'}
+		{r.refinalize ? '宿泊済みのため、次の確定処理（毎日 12:00 ごろ）で会員ランクのポイントが付きます。' : ''}
+	</p>
+{/if}
 {#if form?.rotated}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
 		取り消しリンクを再発行し、新しいリンク入りの確認メールを送信キューに入れました。古いリンクは無効になりました。
@@ -247,11 +255,46 @@
 				candidates?: { user_id: string; member_code: string; name: string | null; kana: string | null; email: string | null; phone: string | null; guest_id: string | null }[];
 			} | null}
 			<div class="rounded-xl border border-sky-200 bg-sky-50/40 p-5 text-sm">
-				<h2 class="font-medium text-stone-700">会員に紐づける（非会員の予約）</h2>
+				<h2 class="font-medium text-stone-700">会員登録を代行する（非会員の予約）</h2>
 				<p class="mt-1 text-xs leading-relaxed text-stone-500">
-					「非会員で予約したが会員になりたい」というお問い合わせのときに使います。まずお客様に会員登録をしていただき
-					（登録ページ: <span class="select-all font-mono">{registerUrl}</span>）、登録後の会員番号（YM-）・メールアドレス・電話番号で探して紐づけます。
-					紐づけると、この予約が会員のマイページに表示され、ご宿泊後に会員ランクのポイントが付きます（宿泊済みの予約は次の確定処理で付与）。
+					「非会員で予約したが会員になりたい」というお電話のときに、施設側で会員登録をします。予約のお客様情報で会員になり、
+					この予約は会員の予約になります（マイページに表示・入会ボーナス 500pt・ご宿泊後に会員ポイント）。
+					パスワードはありません。お客様はこのメールアドレスでログインし、届く確認コードで入れます（登録のお知らせメールを送ります）。
+				</p>
+				{#if mf?.memberScope && mf.memberError}<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{mf.memberError}</p>{/if}
+				<form
+					method="POST"
+					action="?/registerMember"
+					class="mt-3 space-y-2"
+					onsubmit={(e) => {
+						if (!confirm(`${g.name ?? 'お客様'} 様を会員に登録し、予約 ${b.code} を会員の予約にします。よろしいですか？`)) e.preventDefault();
+					}}
+				>
+					<div class="flex flex-wrap items-center gap-2">
+						<span class="w-24 text-xs text-stone-500">お名前</span>
+						<span>{g.name ?? '（未登録）'}{g.kana ? `（${g.kana}）` : ''}</span>
+					</div>
+					<label class="flex flex-wrap items-center gap-2">
+						<span class="w-24 text-xs text-stone-500">メールアドレス</span>
+						<input name="email" type="email" required value={g.email ?? ''} class="w-72 rounded-md border border-stone-300 px-2 py-1.5" />
+						<span class="text-xs text-stone-400">ログインに使います。お電話で確認してください</span>
+					</label>
+					<label class="flex items-center gap-2 text-xs text-stone-600">
+						<input type="checkbox" name="mailOptIn" class="h-4 w-4" />
+						お知らせメール（メルマガ）の受け取りにも同意いただいた
+					</label>
+					<label class="flex items-center gap-2 text-xs font-medium text-stone-700">
+						<input type="checkbox" name="consent" required class="h-4 w-4" />
+						会員登録（会員規約・プライバシーポリシー）についてお客様の同意を得た
+					</label>
+					<button class="rounded-md bg-sky-700 px-4 py-1.5 text-xs text-white hover:bg-sky-800">会員登録を代行する</button>
+				</form>
+
+				<details class="mt-4 rounded-lg border border-stone-200 bg-white p-3" open={!!mf?.candidates}>
+					<summary class="cursor-pointer text-xs font-medium text-stone-600">すでに会員の方の場合（会員に紐づける）</summary>
+				<p class="mt-2 text-xs leading-relaxed text-stone-500">
+					お客様がすでに会員（別のメールアドレスで登録済みなど）のときは、会員番号（YM-）・メールアドレス・電話番号で探して、この予約を紐づけます。
+					お客様ご自身で登録していただく場合の登録ページ: <span class="select-all font-mono">{registerUrl}</span>
 				</p>
 				<form method="POST" action="?/findMember" class="mt-3 flex flex-wrap items-center gap-2">
 					<input
@@ -262,7 +305,6 @@
 					/>
 					<button class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50">会員を探す</button>
 				</form>
-				{#if mf?.memberScope && mf.memberError}<p class="mt-2 text-xs text-red-600">{mf.memberError}</p>{/if}
 				{#if mf?.candidates}
 					{#if mf.candidates.length === 0}
 						<p class="mt-2 text-xs text-stone-500">見つかりませんでした。会員登録が済んでいるか、入力を確かめてください。</p>
@@ -293,6 +335,7 @@
 						</ul>
 					{/if}
 				{/if}
+				</details>
 			</div>
 		{/if}
 
