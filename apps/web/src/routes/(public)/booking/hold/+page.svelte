@@ -1,16 +1,18 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import Stepper from '$lib/components/Stepper.svelte';
 	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
-	import { formatDateLong } from '$lib/format';
-	import { invalidateAll } from '$app/navigation';
+	import StripePayment from '$lib/components/payment/StripePayment.svelte';
+	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
+	import { directChargeOf, type PayOption } from '$lib/direct-payment';
+	import { formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
-
-	import { formatPrice } from '$lib/format';
 
 	let { data, form } = $props();
 
@@ -22,34 +24,129 @@
 		gaEvent('begin_checkout', { currency: 'JPY' });
 	});
 
-	// 支払い方法の選択肢（プランの決済設定から構築。事前決済=即時決済・割引あり）
+	// 支払い方法の選択肢（サーバがプランの決済設定とオンライン決済の可否から決めたもの）
+	const payLabel = (v: PayOption) => (v === 'card' ? m.pay_card() : v === 'paypay' ? m.pay_paypay() : m.pay_onsite());
 	let payOptions = $derived.by(() => {
 		if (data.expired) return [];
-		const opts: { value: 'onsite' | 'card' | 'paypay'; label: string; discount: number }[] = [];
 		const rate = Math.round(data.plan.payment.prepayDiscountRate * 100);
-		if (data.plan.payment.prepay) {
-			for (const mth of data.plan.payment.prepayMethods) {
-				opts.push({ value: mth, label: mth === 'card' ? m.pay_card() : m.pay_paypay(), discount: rate });
-			}
-		}
-		if (data.plan.payment.onsite) opts.push({ value: 'onsite', label: m.pay_onsite(), discount: 0 });
-		return opts;
+		return data.payOptions.map((v) => ({ value: v, label: payLabel(v), discount: v === 'onsite' ? 0 : rate }));
 	});
-	// 既定は割引のある事前決済（先頭）
-	let selectedPay = $state<'onsite' | 'card' | 'paypay' | null>(null);
+	// 既定は先頭（事前決済があればそれ）
+	let selectedPay = $state<PayOption | null>(null);
 	let payValue = $derived(selectedPay ?? payOptions[0]?.value ?? 'onsite');
 	let isPrepay = $derived(payValue !== 'onsite');
-	let discountRate = $derived(!data.expired && isPrepay ? data.plan.payment.prepayDiscountRate : 0);
+	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
+	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
+	let discountRate = $derived(!data.expired && isPrepay && !data.inline ? data.plan.payment.prepayDiscountRate : 0);
 	let discountedTotal = $derived(data.expired ? 0 : Math.round(data.hold.quote.total * (1 - discountRate)));
 
-	let steps = $derived(isPrepay
+	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
+	// svelte-ignore state_referenced_locally
+	let pointsInput = $state(data.expired ? 0 : data.hold.quote.pointsUsed);
+	let pointsApplied = $derived(
+		data.expired || !data.member
+			? 0
+			: Math.min(Math.max(0, Math.floor(Number(pointsInput) || 0)), data.member.balance, data.hold.quote.total)
+	);
+	let charge = $derived(
+		data.expired ? { lodging: 0, bathTax: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax })
+	);
+
+	let steps = $derived(isPrepay && !data.inline
 		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
 		: [m.steps_plan(), m.steps_info(), m.steps_complete()]);
+
+	// 仮押さえの期限（支払の準備で DB が延ばしたら更新する）
+	// svelte-ignore state_referenced_locally
+	let holdExpiresAt = $state(data.expired ? 0 : data.hold.expiresAt);
+
+	// ---- 同じ画面で払う決済部品 ----
+	let formEl: HTMLFormElement | undefined = $state();
+	let payRef: StripePayment | undefined = $state();
+	let paying = $state(false);
+	let payMessage = $state('');
+	const PHONE_RE = /^[0-9\-+ ]{10,}$/;
+	const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+	const payTexts: PaymentTexts = {
+		failed: m.pay_el_failed(),
+		tryOtherCard: m.pay_el_try_other(),
+		notReady: m.pay_el_not_ready(),
+		checkCard: m.pay_el_check_card(),
+		setupFailed: m.pay_el_failed(),
+		loadFailed: m.pay_el_load_failed(),
+		divider: m.pay_el_divider(),
+		secure: m.pay_el_secure()
+	};
+	const stripeLocale = (): PaymentLocale => {
+		const l = getLocale();
+		return l === 'en' || l === 'zh-TW' ? l : 'ja';
+	};
+
+	// 必須項目を先に確かめる（Apple Pay / Google Pay のシートを開く前にも呼ばれる）
+	function validateGuest(): string | null {
+		if (!formEl) return m.pay_el_not_ready();
+		const fd = new FormData(formEl);
+		const v = (k: string) => String(fd.get(k) ?? '').trim();
+		if (!v('familyName') || !v('givenName')) return m.error_name_required();
+		if (!PHONE_RE.test(v('phone'))) return m.error_phone_invalid();
+		if (!EMAIL_RE.test(v('email'))) return m.error_email_invalid();
+		return null;
+	}
+
+	async function preparePayment(): Promise<PaymentPrepareResult> {
+		if (!formEl) throw new Error(m.pay_el_not_ready());
+		const fd = new FormData(formEl);
+		fd.set('action', 'prepare');
+		fd.set('payment', 'card');
+		const res = await fetch('/booking/pay', { method: 'POST', body: fd });
+		const j = (await res.json().catch(() => ({ ok: false, message: m.pay_el_failed() }))) as {
+			ok: boolean;
+			message?: string;
+			clientSecret?: string;
+			returnUrl?: string;
+			amount?: number;
+			expiresAt?: number;
+		};
+		if (!j.ok || !j.clientSecret || !j.returnUrl) throw new Error(j.message ?? m.pay_el_failed());
+		if (typeof j.expiresAt === 'number' && Number.isFinite(j.expiresAt)) holdExpiresAt = j.expiresAt;
+		// 画面の金額（Apple Pay のシートに出す額）とサーバが決めた請求額が違えば払わせない
+		if (j.amount !== charge.charge) throw new Error(m.pay_notice_failed());
+		return { clientSecret: j.clientSecret, returnUrl: j.returnUrl };
+	}
+
+	async function onPaid(r: PaymentConfirmed) {
+		if (data.expired) return;
+		const fd = new FormData();
+		fd.set('action', 'confirm');
+		fd.set('intentId', r.intentId);
+		fd.set('holdId', data.hold.id);
+		const res = await fetch('/booking/pay', { method: 'POST', body: fd });
+		const j = (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; redirect?: string; message?: string };
+		if (j.ok && j.redirect) {
+			await goto(j.redirect);
+			return;
+		}
+		// 支払は通っているので Webhook でも確定される。ここでは案内だけ出す
+		payMessage = j.message ?? m.pay_notice_failed();
+	}
+
+	// 3Dセキュア等のリダイレクトの戻りで確定できなかったときの案内（/booking/pay/return）
+	const returnNotice = $derived.by(() => {
+		const p = page.url.searchParams.get('pay');
+		if (p === 'late') return m.pay_notice_late();
+		if (p === 'late_unrefunded') return m.pay_notice_late_unrefunded();
+		if (p === 'failed' || p === 'error') return m.pay_notice_failed();
+		return '';
+	});
 </script>
 
 <svelte:head><title>{m.hold_title()}</title></svelte:head>
 
 <div class="mx-auto max-w-4xl px-4 py-8">
+	{#if returnNotice}
+		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{returnNotice}</p>
+	{/if}
 	{#if data.expired || expiredNow}
 		<div class="mx-auto max-w-md rounded-2xl border border-stone-200 bg-white p-8 text-center">
 			<p class="text-3xl">⌛</p>
@@ -61,7 +158,8 @@
 		<Stepper {steps} current={1} />
 
 		<div class="mt-6">
-			<HoldTimer expiresAt={data.hold.expiresAt} onexpire={() => (expiredNow = true)} />
+			<!-- 支払の処理中は期限の表示で画面を切り替えない（確定の結果はサーバが判断する） -->
+			<HoldTimer expiresAt={holdExpiresAt} onexpire={() => { if (!paying) expiredNow = true; }} />
 		</div>
 
 		{#if form?.message}
@@ -81,7 +179,19 @@
 					</div>
 				{/if}
 
-				<form method="POST" action="?/submit" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5">
+				<form
+					bind:this={formEl}
+					method="POST"
+					action="?/submit"
+					use:enhance={({ cancel }) => {
+						// カードは同じ画面の決済部品で払う（Enter キーでの送信もここで止めて決済部品へ回す）
+						if (inlineCard) {
+							cancel();
+							void payRef?.submit();
+						}
+					}}
+					class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5"
+				>
 					<input type="hidden" name="holdId" value={data.hold.id} />
 					<h2 class="font-display text-lg text-brand-900">{m.hold_form_heading()}</h2>
 
@@ -89,11 +199,11 @@
 					<div class="grid grid-cols-2 gap-3">
 						<label class="block text-sm">
 							<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
-							<input name="familyName" value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
+							<input name="familyName" autocomplete="family-name" value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
 						</label>
 						<label class="block text-sm">
 							<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
-							<input name="givenName" value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
+							<input name="givenName" autocomplete="given-name" value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
 						</label>
 					</div>
 					<label class="block text-sm">
@@ -111,13 +221,15 @@
 						</label>
 					</div>
 					{#each [
-						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone },
-						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email }
+						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone, ac: 'tel' as const, type: 'tel' },
+						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email, ac: 'email' as const, type: 'email' }
 					] as field}
 						<label class="block text-sm">
 							<span class="text-stone-600">{field.label} <span class="text-red-500">*</span></span>
 							<input
 								name={field.key}
+								type={field.type}
+								autocomplete={field.ac}
 								value={form?.values?.[field.key as 'phone'] ?? field.def ?? ''}
 								placeholder={field.ph}
 								class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.[field.key] ? 'border-red-400' : 'border-stone-300'}"
@@ -154,14 +266,14 @@
 						<div class="rounded-lg bg-emerald-50 p-3 text-sm">
 							<p class="font-medium text-emerald-800">{m.hold_points_label({ balance: String(data.member.balance), earn: String(data.member.earn) })}</p>
 							<div class="mt-2 flex items-center gap-2">
-								<input type="number" name="points" min="0" max={data.member.balance} value={data.hold.quote.pointsUsed} class="w-32 rounded-md border border-stone-300 px-3 py-1.5" />
+								<input type="number" name="points" min="0" max={data.member.balance} bind:value={pointsInput} readonly={paying} class="w-32 rounded-md border border-stone-300 px-3 py-1.5" />
 								<span class="text-stone-500">{m.hold_points_use()}</span>
 							</div>
 						</div>
 					{/if}
 
-					<!-- お支払い方法（事前決済=即時決済・割引適用） -->
-					<fieldset class="rounded-lg border border-stone-200 p-3 text-sm">
+					<!-- お支払い方法 -->
+					<fieldset class="rounded-lg border border-stone-200 p-3 text-sm" disabled={paying}>
 						<legend class="px-1 font-medium text-brand-900">{m.pay_choose()}</legend>
 						<div class="space-y-2">
 							{#each payOptions as opt}
@@ -171,13 +283,16 @@
 										<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>
 									{/if}
 									<span class="flex-1">{opt.label}</span>
-									{#if opt.discount > 0}
+									{#if opt.discount > 0 && !data.inline}
 										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{opt.discount}%OFF</span>
 									{/if}
 								</label>
 							{/each}
 						</div>
-						{#if isPrepay}
+						{#if data.payFallback}
+							<p class="mt-2 text-xs text-stone-500">{m.pay_fallback_note()}</p>
+						{/if}
+						{#if isPrepay && !data.inline}
 							<p class="mt-2 text-xs text-stone-500">{m.pay_prepay_note()}</p>
 							{#if discountRate > 0}
 								<p class="mt-1 rounded bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
@@ -187,8 +302,45 @@
 						{/if}
 					</fieldset>
 
-					<button type="submit" class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500">
-						{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
+					{#if inlineCard}
+						<!-- カードを選んだらこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない -->
+						<section class="space-y-3 rounded-lg border border-stone-200 p-3">
+							<div class="flex items-baseline justify-between gap-3">
+								<h3 class="text-sm font-medium text-brand-900">{m.pay_card_heading()}</h3>
+								<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
+							</div>
+							<StripePayment
+								bind:this={payRef}
+								publishableKey={data.publishableKey}
+								mode="payment"
+								amount={charge.charge}
+								locale={stripeLocale()}
+								texts={payTexts}
+								unavailableText={m.pay_unavailable()}
+								validate={validateGuest}
+								prepare={preparePayment}
+								onconfirmed={onPaid}
+								onbusychange={(b) => (paying = b)}
+								onerror={() => (payMessage = '')}
+							/>
+							<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>
+						</section>
+					{/if}
+
+					{#if payMessage}
+						<p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{payMessage}</p>
+					{/if}
+
+					<button
+						type="submit"
+						disabled={paying || (inlineCard && !data.publishableKey)}
+						class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500 disabled:opacity-50"
+					>
+						{#if inlineCard}
+							{paying ? m.pay_processing_inline() : m.pay_submit_inline({ amount: formatPrice(charge.charge) })}
+						{:else}
+							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
+						{/if}
 					</button>
 					{#if !isPrepay}
 						<p class="text-center text-xs text-stone-400">{m.hold_local_payment_note()}</p>
@@ -196,8 +348,8 @@
 				</form>
 			</div>
 
-			<!-- 予約内容サマリ -->
-			<aside class="h-fit rounded-2xl border border-stone-200 bg-white p-5">
+			<!-- 予約内容サマリ（明細は常に表示: 宿泊料金・ポイント・入湯税・お支払い合計） -->
+			<aside class="h-fit rounded-2xl border border-stone-200 bg-white p-5 md:sticky md:top-20">
 				<h2 class="mb-3 font-medium text-brand-900">{m.hold_summary_heading()}</h2>
 				<img src={data.room.photos[0]?.url} alt="" class="mb-3 h-32 w-full rounded-lg object-cover" />
 				<dl class="space-y-1.5 text-sm">
@@ -208,7 +360,21 @@
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), adults: String(data.hold.adults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
-					<PriceBreakdown quote={data.hold.quote} />
+					<PriceBreakdown quote={{ ...data.hold.quote, pointsUsed: pointsApplied, payable: data.hold.quote.total - pointsApplied }} />
+					{#if data.bathTax > 0}
+						{#if inlineCard}
+							<div class="mt-1.5 flex justify-between text-sm text-stone-600">
+								<span>{m.pay_bath_tax_detail({ people: String(data.hold.adults), nights: String(data.hold.nights) })}</span>
+								<span class="tabular-nums">{formatPrice(charge.bathTax)}</span>
+							</div>
+							<div class="mt-1.5 flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold text-brand-900">
+								<span>{m.pay_total_due()}</span>
+								<span class="tabular-nums">{formatPrice(charge.charge)}</span>
+							</div>
+						{:else}
+							<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
+						{/if}
+					{/if}
 				</div>
 				<p class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
 					<CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.hold.checkin} />

@@ -18,9 +18,16 @@ import {
 	sbListRoomTypesMapped,
 	reverseFacilityUuid
 } from '$lib/server/supabase-data';
+import { directPaymentForBooking } from '$lib/server/direct-payments';
 import * as m from '$lib/paraglide/messages';
 import type { AmendParams, AmendQuote } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
+
+// オンライン決済（v0.43.0）で払った予約か（返金が残っていない＝支払済みのもの）
+async function isPrepaidOnline(code: string): Promise<boolean> {
+	const pay = await directPaymentForBooking(code).catch(() => null);
+	return !!pay && pay.status === 'paid' && pay.refund_status !== 'full';
+}
 
 // RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）
 function amendErrorMessage(msg: string): string {
@@ -89,6 +96,8 @@ export const load: PageServerLoad = async (event) => {
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
+		// オンライン決済済みの予約は変更させない（金額が変わると支払額と食い違うため。宿へ電話で）
+		if (await isPrepaidOnline(params.code)) redirect(303, `/account/reservations/${params.code}?amend=prepaid`);
 		const storeId = reverseFacilityUuid(r.facilityUuid);
 		const f = storeId ? facilityById(storeId) : undefined;
 		if (!f) error(404, m.error_booking_not_found());
@@ -215,6 +224,8 @@ export const actions: Actions = {
 			adults: clampInt(String(form.get('adults') ?? ''), 1, 1, 6)
 		};
 		if (!p.ratePlanId || !p.roomTypeId || !p.checkin) return fail(400, { message: m.amend_failed() });
+
+		if (MEMBER_SUPABASE && (await isPrepaidOnline(params.code))) return fail(400, { message: m.amend_prepaid_blocked() });
 
 		try {
 			if (MEMBER_SUPABASE) {

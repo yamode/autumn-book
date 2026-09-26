@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { formatPrice, formatDateLong, formatDate, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
@@ -62,8 +63,16 @@
 
 <nav class="mb-4 text-xs text-stone-400"><a href="/account" class="hover:underline">{m.reservation_breadcrumb_list()}</a> / {b.code}</nav>
 
+{#if page.url.searchParams.get('amend') === 'prepaid'}
+	<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{m.amend_prepaid_blocked()}</p>
+{/if}
 {#if form?.cancelled}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.reservation_cancelled_ok()}</p>
+	{#if form.refund?.kind === 'refunded'}
+		<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
+	{:else if form.refund?.kind === 'failed'}
+		<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.cancel_refund_failed()}</p>
+	{/if}
 {/if}
 {#if form?.optionCancelled}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.options_cancel_ok()}</p>

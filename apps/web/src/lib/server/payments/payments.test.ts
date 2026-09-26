@@ -69,6 +69,17 @@ describe('Webhook の振り分け', () => {
     expect(routeStripeEvent(ev('checkout.session.completed', { id: 'cs_3', metadata: { partner_booking_id: 'b1', app: 'autumn-book' } }), ROUTE_OPTS).kind).toBe('ignore');
     expect(routeStripeEvent(ev('checkout.session.completed', { id: 'cs_4', metadata: {} }), ROUTE_OPTS).kind).toBe('ignore');
   });
+  it('公式サイト予約（app=autumn-book / purpose=book_direct_booking）も同じ宛先で受ける', () => {
+    const opts = { ...ROUTE_OPTS, also: [{ app: 'autumn-book', purposes: ['book_direct_booking'] }] };
+    const direct = buildIntentMetadata({ app: 'autumn-book', purpose: 'book_direct_booking', refs: { hold_id: 'h1' } });
+    expect(routeStripeEvent(ev('payment_intent.succeeded', { id: 'pi_9', metadata: direct }), opts)).toEqual({ kind: 'payment_intent', id: 'pi_9', purpose: 'book_direct_booking' });
+    // also が無ければ無視（従来どおり）・取引先予約の判定は変わらない
+    expect(routeStripeEvent(ev('payment_intent.succeeded', { id: 'pi_9', metadata: direct }), ROUTE_OPTS).kind).toBe('ignore');
+    expect(routeStripeEvent(ev('payment_intent.succeeded', { id: 'pi_1', metadata: meta() }), opts)).toEqual({ kind: 'payment_intent', id: 'pi_1', purpose: PURPOSE });
+    // app と purpose の組み合わせが違うものは受けない
+    const cross = buildIntentMetadata({ app: 'autumn-book', purpose: PURPOSE, refs: { hold_id: 'h1' } });
+    expect(routeStripeEvent(ev('payment_intent.succeeded', { id: 'pi_8', metadata: cross }), opts).kind).toBe('ignore');
+  });
   it('返金は台帳で確かめるので常に渡す', () => {
     expect(routeStripeEvent(ev('charge.refunded', { id: 'ch_1', payment_intent: 'pi_1' }), ROUTE_OPTS).kind).toBe('charge_refunded');
   });

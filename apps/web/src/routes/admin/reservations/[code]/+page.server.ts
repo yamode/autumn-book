@@ -26,6 +26,7 @@ import {
 	planById,
 	roomTypeById
 } from '$lib/server/store';
+import { directPaymentForBooking, refundAfterCancel, retryDirectRefund, type DirectRefundOutcome } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 const UNAVAILABLE = 'この環境では利用できません（DATA_SOURCE / AUTH_MODE が supabase ではありません）。';
@@ -47,10 +48,13 @@ export const load: PageServerLoad = async (event) => {
 			if (msg.includes('見つかりません')) error(404, '予約が見つかりません');
 			error(500, msg);
 		}
+		// オンライン決済（公式サイト予約・v0.43.0）の台帳。現地払い・未適用の環境は null
+		const payment = detail.booking.booking_id ? await directPaymentForBooking(event.params.code).catch(() => null) : null;
 		return {
 			live: true as const,
 			canOperate: isAdmin,
 			detail,
+			payment,
 			// 直販（booking.bookings 行がある）のときだけ操作できる
 			isDirect: detail.booking.booking_id !== null,
 			feePreview: detail.booking.stay_status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
@@ -123,6 +127,7 @@ export const load: PageServerLoad = async (event) => {
 		live: false as const,
 		canOperate: event.locals.user?.role === 'admin',
 		detail,
+		payment: null,
 		isDirect: booking.channel !== 'ota',
 		feePreview: booking.status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
 	};
@@ -143,7 +148,9 @@ export const actions: Actions = {
 		if (ADMIN_SUPABASE) {
 			try {
 				const res = await adminCancelBooking(bookAdmin(event), event.params.code, waive, reason);
-				return { cancelled: true as const, fee: res.cancellation_fee };
+				// オンライン決済済みなら「支払額 − キャンセル料（免除なら 0）」をカードへ返金
+				const refund: DirectRefundOutcome = await refundAfterCancel(event.params.code, 'staff').catch(() => ({ kind: 'none' as const }));
+				return { cancelled: true as const, fee: res.cancellation_fee, refund };
 			} catch (e) {
 				return fail(400, { message: mapRpcError(e) });
 			}
@@ -156,6 +163,22 @@ export const actions: Actions = {
 		});
 		if ('error' in result) return fail(400, { message: 'この予約はキャンセルできません' });
 		return { cancelled: true as const, fee: result.cancelFee ?? 0 };
+	},
+
+	/** 返金の再実行（取消済みで返金が失敗・未了のオンライン決済の予約）。管理者のみ */
+	retryRefund: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '返金');
+		if (denied) return fail(403, { message: denied });
+		// 施設・テナントの権限は既存 RPC で確かめる（見えない予約なら例外）
+		try {
+			await adminBookingDetail(bookAdmin(event), event.params.code);
+		} catch (e) {
+			return fail(403, { message: mapRpcError(e) });
+		}
+		const refund = await retryDirectRefund(event.params.code);
+		if (refund.kind === 'failed') return fail(502, { message: `返金に失敗しました（${refund.message}）` });
+		return { refundRetried: true as const, refund };
 	},
 
 	/**

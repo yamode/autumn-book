@@ -46,10 +46,13 @@
 			<div class="flex justify-between border-t border-stone-200 pt-1.5 font-medium">
 				<dt>{isCard ? m.complete_paid() : m.complete_local_pay()}</dt>
 				<dd>
-					{formatPrice(b.total - b.pointsUsed)}
+					{formatPrice(data.paid ? data.paid.amount : b.total - b.pointsUsed)}
 					{#if b.payment === 'paypay'}<span class="ml-1 rounded bg-[#ff0033] px-1.5 py-0.5 text-[10px] font-bold text-white">PayPay</span>{/if}
 				</dd>
 			</div>
+			{#if data.paid && data.paid.bathTax > 0}
+				<div class="flex justify-between text-xs text-stone-500"><dt>{m.pay_bath_tax()}</dt><dd>{formatPrice(data.paid.bathTax)}</dd></div>
+			{/if}
 			{#if b.discountAmount}
 				<div class="flex justify-between text-red-600"><dt>{m.pay_discount_line({ rate: String(Math.round((b.prepayDiscountRate ?? 0) * 100)) })}</dt><dd>-{formatPrice(b.discountAmount)}</dd>
 			</div>

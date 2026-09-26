@@ -24,6 +24,7 @@ import {
 import { addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
+import { refundAfterCancel } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 // 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
@@ -125,7 +126,9 @@ export const actions: Actions = {
 			} catch {
 				return fail(400, { message: m.error_cannot_cancel() });
 			}
-			return { cancelled: true };
+			// オンライン決済済みなら「支払額 − キャンセル料」をカードへ返金（v0.43.0）
+			const refund = await refundAfterCancel(params.code, 'member').catch(() => ({ kind: 'none' as const }));
+			return { cancelled: true, refund };
 		}
 
 		const booking = bookings.get(params.code);

@@ -83,6 +83,13 @@
 					{m.gcancel_fee_none()}
 				{/if}
 			</p>
+			{#if form?.refund?.kind === 'refunded'}
+				<p class="mt-2 text-stone-700">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
+			{:else if form?.refund?.kind === 'failed'}
+				<p class="mt-2 text-red-700">{m.cancel_refund_failed()}</p>
+			{:else if form?.refund?.kind === 'nothing_due'}
+				<p class="mt-2 text-stone-700">{m.cancel_refund_none()}</p>
+			{/if}
 			{#if data.state === 'ready'}
 				<p class="mt-2 text-sm text-stone-500">
 					{m.gcancel_done_mail({ email: data.booking.email_masked })}
@@ -226,7 +233,14 @@
 				</details>
 			{/if}
 		</div>
-		{#if data.fee.fee > 0}
+		{#if data.refund}
+			<!-- オンライン決済済み: キャンセル料を差し引いてカードへ返金（入湯税はキャンセル料の対象外） -->
+			<p class="mt-2 rounded-lg bg-stone-50 p-3 text-sm text-stone-700">
+				{data.refund.refund > 0
+					? m.cancel_refund_preview({ paid: formatPrice(data.refund.paid), fee: formatPrice(data.refund.fee), refund: formatPrice(data.refund.refund) })
+					: m.cancel_refund_none()}
+			</p>
+		{:else if data.fee.fee > 0}
 			<p class="mt-2 text-sm text-stone-500">{m.gcancel_fee_note()}</p>
 		{/if}
 

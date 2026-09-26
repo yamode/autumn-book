@@ -14,6 +14,8 @@ import {
 	type GuestBookingLookup,
 	type GuestCancelReason
 } from '$lib/server/supabase-data';
+import { directPaymentForBooking, refundAfterCancel } from '$lib/server/direct-payments';
+import { directRefundDueOf } from '$lib/direct-payment';
 import type { Actions, PageServerLoad } from './$types';
 
 /** 同一 IP からの照会が多すぎるときのキー。総当たり自体は現実的でないが、ログ汚染と無駄な DB 負荷を避ける。 */
@@ -63,12 +65,20 @@ export const load: PageServerLoad = async ({ url, setHeaders, getClientAddress, 
 		};
 	}
 
+	// オンライン決済（v0.43.0）で払った予約は、取り消すと「支払額 − キャンセル料」をカードへ返金する
+	const pay = await directPaymentForBooking(lookup.booking.code).catch(() => null);
+	const refund =
+		pay && pay.status === 'paid'
+			? { paid: pay.amount, fee: Math.min(lookup.fee.fee, pay.amount), refund: directRefundDueOf({ amount: pay.amount, fee: lookup.fee.fee, refunded: pay.refunded_amount }) }
+			: null;
+
 	return {
 		unavailable: false as const,
 		state: 'ready' as const,
 		token,
 		booking: lookup.booking,
-		fee: lookup.fee
+		fee: lookup.fee,
+		refund
 	};
 };
 
@@ -83,11 +93,14 @@ export const actions: Actions = {
 		try {
 			const res = await guestCancelBooking(token);
 			if (!res.ok) return fail(400, { reason: res.reason });
+			// 事前決済済みなら返金（失敗しても取消は成立済み。台帳に failed が残り、管理画面から再実行できる）
+			const refund = await refundAfterCancel(res.booking_code, 'guest').catch(() => ({ kind: 'none' as const }));
 			return {
 				cancelled: true as const,
 				code: res.booking_code,
 				fee: res.cancellation_fee,
-				waived: res.waived
+				waived: res.waived,
+				refund
 			};
 		} catch {
 			// ネットワーク等。取消が実際に成立していれば、もう一度押すと already_cancelled になる

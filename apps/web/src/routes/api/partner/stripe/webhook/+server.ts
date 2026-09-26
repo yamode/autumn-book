@@ -12,11 +12,24 @@
 // ブラウザからの確定の連絡と同時に届いても、DB 関数が 'already' を返すので二重に確定しない（通知メールも1回）。
 // 同じ Stripe アカウントには autumn-book・EC の決済も載るので、自分の決済以外は何もせず 200 を返す。
 // 支払われずに放置された仮押さえは、DB の定期処理（5分ごと・rms_partner_expire_pending）が解放する。
+//
+// 公式サイト（一般のお客様）の予約のオンライン決済（v0.43.0〜・app=autumn-book / purpose=book_direct_booking）も
+// 同じ宛先で受ける（lib/server/direct-payments.ts）:
+//   - payment_intent.succeeded … direct_payment_confirm で予約確定（期限切れなら全額返金）
+//   - charge.refunded          … 取引先予約の台帳に無ければ、公式サイト予約の台帳で返金を記録（PMS に refunded の電文）
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { confirmCheckoutSession, confirmPartnerIntent, syncRefundFromStripe } from '$lib/server/partners/booking';
 import { partnerAdminClient } from '$lib/server/partners/store';
 import { routeStripeEvent } from '$lib/server/payments/webhook-route';
-import { STRIPE_APP, STRIPE_PURPOSE_PARTNER_BOOKING, StripeError, verifyWebhook } from '$lib/server/stripe';
+import { confirmDirectIntent, syncDirectRefundFromStripe } from '$lib/server/direct-payments';
+import {
+  STRIPE_APP,
+  STRIPE_APP_BOOK,
+  STRIPE_PURPOSE_DIRECT_BOOKING,
+  STRIPE_PURPOSE_PARTNER_BOOKING,
+  StripeError,
+  verifyWebhook
+} from '$lib/server/stripe';
 
 export const POST: RequestHandler = async ({ request, url }) => {
   const payload = await request.text();
@@ -26,7 +39,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'invalid' }, { status: e instanceof StripeError ? e.status : 400 });
   }
-  const route = routeStripeEvent(event, { app: STRIPE_APP, purposes: [STRIPE_PURPOSE_PARTNER_BOOKING], checkoutRefKey: 'partner_booking_id' });
+  const route = routeStripeEvent(event, {
+    app: STRIPE_APP,
+    purposes: [STRIPE_PURPOSE_PARTNER_BOOKING],
+    checkoutRefKey: 'partner_booking_id',
+    also: [{ app: STRIPE_APP_BOOK, purposes: [STRIPE_PURPOSE_DIRECT_BOOKING] }]
+  });
   if (route.kind === 'ignore') return json({ received: true, ignored: route.reason });
 
   const db = partnerAdminClient();
@@ -34,12 +52,18 @@ export const POST: RequestHandler = async ({ request, url }) => {
   try {
     if (route.kind === 'charge_refunded') {
       // 取引先予約かどうかは payment_intent で台帳を引いて決める（他アプリの決済なら not_ours）
-      return json({ received: true, result: await syncRefundFromStripe(db, route.object) });
+      const partner = await syncRefundFromStripe(db, route.object);
+      if (partner !== 'not_ours') return json({ received: true, result: partner });
+      return json({ received: true, result: await syncDirectRefundFromStripe(route.object) });
     }
     if (route.kind === 'checkout_session') {
       return json({ received: true, result: await confirmCheckoutSession(db, route.id, url.origin) });
     }
-    // payment_intent / setup_intent（purpose は rms_partner_booking だけを受けている）
+    if (route.kind === 'payment_intent' && route.purpose === STRIPE_PURPOSE_DIRECT_BOOKING) {
+      const r = await confirmDirectIntent(route.id);
+      return json({ received: true, result: r.result });
+    }
+    // payment_intent / setup_intent（取引先予約 rms_partner_booking）
     return json({ received: true, result: await confirmPartnerIntent(db, route.id, url.origin) });
   } catch (e) {
     // 500 を返すと Stripe が再送してくれる

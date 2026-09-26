@@ -23,6 +23,11 @@ const API = 'https://api.stripe.com/v1';
 export const STRIPE_APP = 'autumn-rms';
 export const STRIPE_PURPOSE_PARTNER_BOOKING = 'rms_partner_booking';
 
+// 公式サイト（一般のお客様）の予約のオンライン決済（v0.43.0〜）。こちらは最初から Book が作る決済なので app は autumn-book。
+// Webhook は取引先予約（app=autumn-rms）と同じ宛先で受け、metadata の app / purpose で振り分ける（payments/webhook-route.ts）。
+export const STRIPE_APP_BOOK = 'autumn-book';
+export const STRIPE_PURPOSE_DIRECT_BOOKING = 'book_direct_booking';
+
 // 貼り付け時の空白・引用符・見えない文字は cleanKey（payments/keys.ts）で取り除く。
 const secretKey = () => cleanKey(privateEnv.STRIPE_SECRET_KEY);
 const webhookSecret = () => cleanKey(privateEnv.STRIPE_WEBHOOK_SECRET);
@@ -243,8 +248,14 @@ export const chargeSavedCard = (args: {
 export const listRefunds = (paymentIntent: string) =>
   stripeFetch<{ data: Array<{ id: string; amount: number; status: string }> }>('GET', '/refunds', { payment_intent: paymentIntent, limit: 10 });
 
-export const createRefund = (paymentIntent: string, idempotencyKey: string, metadata: Record<string, string> = {}) =>
-  stripeFetch<{ id: string; status: string }>('POST', '/refunds', { payment_intent: paymentIntent, metadata }, idempotencyKey);
+// amount を省くと全額（残り全部）を返金する。一部返金（キャンセル料を差し引いた返金）は amount（円）を渡す
+export const createRefund = (paymentIntent: string, idempotencyKey: string, metadata: Record<string, string> = {}, amount?: number) =>
+  stripeFetch<{ id: string; status: string; amount: number }>(
+    'POST',
+    '/refunds',
+    { payment_intent: paymentIntent, metadata, amount: amount != null ? Math.round(amount) : undefined },
+    idempotencyKey
+  );
 
 // ---- Webhook の署名検証（Stripe-Signature: t=…,v1=…）----
 

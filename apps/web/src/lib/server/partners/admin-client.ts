@@ -12,6 +12,11 @@
 //     このクライアントで読み書きする。入口の検証が命綱なので、ここを通さずに rms_partner_* を触らないこと。
 //
 // 2026-09-26 に autumn-rms から移設（予約に関わる社外向け画面は Book に集約）。
+//
+// 例外その2（v0.43.0）: 公式サイト予約のオンライン決済（src/lib/server/direct-payments.ts）もこのクライアントを使う。
+//   Stripe の Webhook（ブラウザが閉じられた後の確定・返金の同期）はお客様のセッションが無いところで予約を確定する
+//   必要があり、book.direct_payment_* は service_role だけに grant している。サーバが Stripe から Intent を取り直して
+//   検証してから呼ぶこと（ブラウザから届いた値をそのまま渡さない）。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

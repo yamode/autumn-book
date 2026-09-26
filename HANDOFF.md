@@ -1,6 +1,111 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-26（取引先予約の決済を同じ画面で払う形に v0.42.0）
+> **最終更新**: 2026-09-26（公式サイト予約のオンライン決済・Link 欄の非表示 v0.43.0）
+
+## 公式サイト予約のオンライン決済（同じ画面で払う）（2026-09-26 追加・v0.43.0）
+
+**2026-09-26 ユーザー指示: 取引先予約（v0.42.0）の決済部品を公式サイト（一般のお客様の予約）にも組み込む。取りこぼしを減らすため1ページで完結。**
+あわせて決済部品から Stripe Link の「次回以降のチェックアウトを迅速にするために情報を保存」欄を消した（取引先ページにも効く）。
+
+### ⚠ 適用順（DB は未適用・未 push）
+1. **autumn-shared `supabase/migrations/20260926113646_book_direct_online_payment.sql`**（作成のみ・commit も push もしていない）をレビュー → main へ push（PROD 自動適用）
+2. autumn-book v0.43.0 をデプロイ（migration 未適用でも画面は落ちない: `book.direct_payment_available()` が無ければカードを出さず現地払いだけ）
+3. PMS（autumn-pms）の改修（下記）。**これが入るまで、公式サイトのオンライン決済の入金行は PMS に自動で立たない**（電文 paid / refunded は届くが、取引先予約専用の処理に落ちる）
+- Stripe の Webhook 宛先（`/api/partner/stripe/webhook`）は取引先予約と共用。使うイベント（`payment_intent.succeeded` / `charge.refunded`）は登録済みのはずなので追加不要
+- Apple Pay / Google Pay は Stripe の「決済手段のドメイン」に `book.yamado.app` の登録が必要（未登録ならボタンが出ないだけで、カードは使える）
+- 現状、本番の料金プランはすべて `payment_method = onsite`（2026-09-26 確認）。事前決済を出すには料金マスタでプランを `prepayment`（事前決済のみ）か `deposit`（カード or 現地払いを選べる）にする
+
+### 画面の流れ（/booking/hold の1ページで完結）
+- 予約入力画面の「お支払い方法」でカードを選ぶと、その場にカード入力欄（Apple Pay / Google Pay は上）。明細（宿泊料金・ポイント・入湯税・お支払い合計）は右に常に表示
+- ボタン「予約して ¥X を支払う」（Enter キーでも決済部品へ回す）→ ① `/booking/pay`（action=prepare）: 入力の検証 → `book.direct_payment_prepare`（仮押さえにお客様情報を結び付け、請求額を DB で決定・仮押さえを1回だけ15分先まで延長）→ PaymentIntent（`payment_method_types: ['card']`）
+  → ② `confirmPayment`（`redirect: 'if_required'`・3Dセキュアはモーダル）→ ③ `/booking/pay`（action=confirm）: Stripe から Intent を取り直して検証 → `book.direct_payment_confirm`（中で既存の `book.confirm_booking` を呼び、支払済みにして PMS へ電文 paid）→ 完了画面
+- リダイレクトが必要な決済の戻り: `/booking/pay/return`（同じ確定処理）
+- ブラウザが閉じられた: Webhook `payment_intent.succeeded` が同じ確定処理。DB の行ロックで二重確定しない（'already'）
+- 仮押さえの期限切れ・金額の食い違い（ポイント残高が途中で減った等）で予約にできなかった: 'late' → **その Intent を全額返金**して案内（返金に失敗したら台帳に refund_status=failed）
+- 事前決済しか無いプランで、オンライン決済が使えない環境（鍵・service_role・migration のどれかが無い）は**現地払いで受ける**（注記を出す）。deposit は既存の対応どおり「カード（全額）か現地払い」を選べる扱い
+- 実データでは旧デモ決済画面（`/booking/payment`）を使わない（予約入力画面へ戻す）。**v0.42 以前は実データでも事前決済プランがデモ画面で「支払わずに」確定していた**
+- PayPay は実データでは出さない（デモのみ）
+
+### 金額
+- 請求額 = 宿泊料金（`holds.price_snapshot.total`）− ポイント ＋ **入湯税**。入湯税は PMS の施設設定（`pms.facility_billing_settings`: 1人1泊の額 × 大人（子供は設定次第）× 泊数。現状 yamado / oga とも 150円・子供を含めない）
+- 公開側の料金（`book.quote`）には入湯税は含まれていなかった。現地払いのときは明細に「入湯税 ¥X は現地でお支払いください」と出す
+- キャンセル料の基準は宿泊料金（`booking.bookings.total_amount`・入湯税を含まない）。返金額 = 支払額 − キャンセル料（支払額まで）− 返金済み
+- 事前決済割引（prepayDiscountRate）は実データでは 0（従来どおり。DB の confirm_booking も割り引かない）
+
+### 取消・返金
+- お客様（確認メールのリンク `/booking/cancel`）・会員（マイページ）・管理画面（`/admin/reservations/[code]`）のどの取消でも、既存の取消 RPC の後に `refundAfterCancel` が `book.direct_payment_refund_due` → Stripe 返金（一部返金・冪等キー `book-direct-cancel-<予約id>-<返金済み額>`）→ `book.direct_payment_record_refund`（PMS へ電文 refunded）
+- 取消前の画面（お客様用）に「お支払い済みの ¥X から、キャンセル料 ¥Y を差し引いた ¥Z を返金します」
+- 返金に失敗しても取消は成立済み。管理画面の「オンライン決済」欄に返金エラーと「返金を再実行する」（管理者のみ）
+- Stripe の管理画面から返金した場合: Webhook `charge.refunded` で台帳に記録（取引先予約の台帳に無ければ公式サイト予約の台帳を見る）
+- **オンライン決済済みの予約は、会員の予約変更（amend）を止めた**（金額が変わると支払額と食い違うため。宿へ電話）。DB の amend_booking 自体は変えていない
+
+### 作ったもの・変えたもの（`apps/web/src` 配下）
+| 種類 | パス | 内容 |
+|---|---|---|
+| 部品 | `lib/components/payment/StripePayment.svelte`・`types.ts` | Payment Element の `wallets.link: 'never'`（Link の保存欄を出さない）。表示言語（`locale`: ja / en / zh-TW）と部品内の文言（`texts`）を差し替えられるように |
+| 純関数 | `lib/direct-payment.ts` | 請求額・返金額・支払方法の選択肢（画面とサーバで共有） |
+| サーバ | `lib/server/direct-payments.ts` | 準備・確定・期限後の全額返金・取消後の返金・Webhook の返金同期・台帳の取得（service_role の RPC だけで DB を触る） |
+| サーバ | `lib/server/booking-guest-form.ts`・`direct-booking-finish.ts` | 予約フォームの解析（現地払いの action と決済 API で共有）／完了画面への引き継ぎ |
+| API | `routes/(public)/booking/pay/+server.ts`・`pay/return/+server.ts` | prepare / confirm／リダイレクトの戻り |
+| 画面 | `routes/(public)/booking/hold`・`complete/[code]`・`payment`・`cancel`・`account/reservations/[code]`（+amend）・`admin/reservations/[code]` | 上記のとおり |
+| Webhook | `routes/api/partner/stripe/webhook/+server.ts`・`lib/server/payments/webhook-route.ts` | `also` で app=autumn-book / purpose=book_direct_booking も受ける（取引先予約の判定は不変・テストあり） |
+| Stripe | `lib/server/stripe.ts` | `STRIPE_APP_BOOK='autumn-book'`・`STRIPE_PURPOSE_DIRECT_BOOKING='book_direct_booking'`・`createRefund` に一部返金の額 |
+| テスト | `lib/direct-payment.test.ts`（8）・`payments.test.ts` に Webhook（1） | 合計 71 件 |
+- **metadata の app は新たに `autumn-book`**（取引先予約は移設前の決済を見分けるため `autumn-rms` のまま）。Webhook は app と purpose の組で見分けるので、取引先予約の判定は変わらない
+- service_role の例外（`lib/server/partners/admin-client.ts`）に「公式サイト予約のオンライン決済」を追記（Webhook はお客様のセッションが無いところで確定するため）
+
+### DB（autumn-shared 20260926113646・未適用）
+- `book.direct_payments`（仮押さえ1件1行の決済台帳。RLS 有効・service_role のみ）
+- RPC（すべて security definer・search_path=''・service_role のみ）: `direct_payment_available` / `direct_payment_bath_tax` / `direct_payment_prepare` / `direct_payment_attach_intent` / `direct_payment_confirm` / `direct_payment_refund_due` / `direct_payment_record_refund` / `direct_payment_mark_refund_failed` / `direct_payment_get`（内部: `_direct_bath_tax` / `_hold_child_total`）
+- `direct_payment_confirm` は既存の `book.confirm_booking` を**無改修で**呼ぶ。会員のポイント・紐付けのため、準備時に記録した会員 id をトランザクション内だけ `request.jwt.claim.sub` に入れる（auth.uid() になる）。例外はサブトランザクションで巻き戻して late
+- 既存の `booking.bookings` は ALTER しない: `payment_status='paid'`・`paid_amount`・`metadata.payment`（provider / option=online / method_name=オンライン決済(stripe) / payment_intent_id / amount / lodging_amount / bath_tax / paid_at / refunded_amount）。全額返金で `payment_status='refunded'`
+- `book._emit_pms_event` を差し替え: `'paid'` / `'refunded'` を受ける。`amounts.bath_tax`・`payment.option` / `method_name` / `payment_intent_id` / `paid_amount`・トップの `charge`（paid）/ `refund`（refunded）ブロック（取引先予約の電文と同じ名前）。既存項目の意味は不変
+
+### PMS 側に必要な改修（autumn-pms・未着手）
+- `sveltekit/src/lib/server/direct-booking/import.ts`: 電文 `paid` を公式サイト予約（`channel.client` が web / app）でも処理する。今は `chargePartnerPrepayment` → `seedPartnerPrepayment` が `client !== 'rms_partner'` で skipped になり、**入金行が立たないまま imported になる**
+  - 入金行: 支払方法「オンライン決済(stripe)」（カテゴリ「公式サイト決済」・`pms.payment_methods.name`）、額 = `charge.amount`（宿泊料金 − ポイント ＋ 入湯税）、日付 = `charge.paid_at`、メモ例「オンライン決済（公式サイト予約 YB-…）」、source 例 `book_direct_prepaid`
+  - 予約グループの `payment_method`（今は公式サイトは常に「現地払い」）を `payment.method_name` に
+- 電文 `refunded`: `refundPartnerPrepayment` と同じくマイナスの入金行（額 = `refund.amount`）。今は取引先予約のメモで入金行を探すため「見つからない」warning になる
+- 'new' の電文は確定と同じトランザクションで先に積まれ、その時点では `payment.status='pending'` / `option='onsite'`（直後の 'paid' で支払済みになる）。取消（'cancelled'）の後に 'refunded' が来る順序
+
+### 未実施・未解決
+- 本番（テストモードの鍵）での通し確認（下のチェックリスト）。ローカルに Stripe の鍵・service_role が無いので、**実際のカード入力欄・Link 欄が消えたことは画面では未確認**（`wallets.link` は Stripe.js v9 の型にある正式オプション）
+- migration の SQL は PROD に流していない（MCP で DDL を打たない方針のため、実行による構文確認もしていない）。レビュー時に `supabase db push --linked --dry-run` 等で確認を
+- 決済部品の `amount` と DB の請求額が食い違ったら支払わせない（画面で「お支払いを完了できませんでした」）
+- クーポン（`p_member_coupon_id`）は公開の予約画面にまだ入口が無いので、オンライン決済でも未対応（confirm_booking に null を渡す）
+- 期限切れで使われなかった PaymentIntent は Stripe に残る（請求はされない）
+
+### テストチェックリスト（公式サイト予約のオンライン決済 v0.43.0）
+※前提: migration 適用済み・本番（STRIPE_SECRET_KEY / PUBLIC_STRIPE_PUBLISHABLE_KEY はテストモード・SUPABASE_SERVICE_ROLE_KEY 登録済み）・テスト用プランを prepayment / deposit に
+
+#### Link 欄（取引先ページ・公式サイトとも）
+- [ ] カード入力欄の下に「次回以降のチェックアウトを迅速にするために情報を保存」（メール・電話・氏名）が出ない（`/p/[token]/book`・予約一覧のモーダル・`/booking/hold`）
+- [ ] Apple Pay / Google Pay のボタンが入力欄の上に1回だけ出る（Payment Element 側に重複して出ない）
+
+#### 予約時決済（prepayment）
+- [ ] 支払方法がカードだけ・その場に入力欄。右の明細に宿泊料金・入湯税（大人 × 泊）・お支払い合計、ボタンが「予約して ¥X を支払う」（¥X ＝ 合計）
+- [ ] 4242 4242 4242 4242 → 完了画面（お支払い済み ¥X・入湯税の行）・確認メール・PMS に予約（PMS 改修後は入金行「オンライン決済(stripe)」）
+- [ ] 4000 0027 6000 3184（3Dセキュア）→ モーダルで認証 → 確定。失敗させると入力欄の下にエラー・同じ画面で再試行できる
+- [ ] 4000 0000 0000 0002（拒否）→ エラー → 4242 で再試行 → 確定（Stripe に PaymentIntent が1本だけ）
+- [ ] 必須項目（姓名・電話・メール）が空のままボタン / Apple Pay → 支払わずにエラー
+- [ ] 支払直後にタブを閉じる → Webhook で確定・メールが届く（Webhook の配信履歴で payment_intent.succeeded が 200）
+- [ ] 会員でポイントを使う → 合計がポイント分減る・確定後の残高が減る・電文の points_used
+- [ ] 支払の準備後に仮押さえを期限切れにした状態で支払が通る（DB で expires_at を過去に）→「全額返金しました」の案内・Stripe で全額返金・予約は作られない
+- [ ] 英語 / 繁体字で開く → 入力欄・エラー・案内がその言語
+
+#### deposit・現地払い・使えない環境
+- [ ] deposit のプラン: カードと現地払いを選べる。現地払いは従来どおり確定（明細に「入湯税は現地で」）
+- [ ] 鍵または migration が無い環境: カードが出ず現地払いだけ。prepayment のプランは「現在オンライン決済をご利用いただけないため、現地でのお支払いで承ります」で予約できる
+- [ ] `/booking/payment?id=…`（旧デモ決済）を実データで開く → 予約入力画面へ戻る
+
+#### 取消・返金
+- [ ] 確認メールのリンクから取消 → 取消前に「お支払い済みの ¥X から、キャンセル料 ¥Y を差し引いた ¥Z を返金」→ 取消後「¥Z を返金しました」・Stripe で一部返金・PMS に refunded の電文
+- [ ] キャンセル料 0 円の期間 → 全額返金（入湯税も戻る）
+- [ ] 会員のマイページから取消 → 返金の案内。オンライン決済済みの予約で「変更」→「オンラインでお支払い済みのご予約は…」で変更できない
+- [ ] 管理画面で取消（免除あり / なし）→ 返金額が表示。予約詳細の「オンライン決済」欄に支払額・返金済み・Intent
+- [ ] 返金失敗（Stripe の鍵を一時的に外す等）→ 取消は成立・管理画面に返金エラー →「返金を再実行する」で返金
+- [ ] Stripe の管理画面から返金 → Webhook charge.refunded で管理画面の返金済みに反映
+
 
 ## 取引先予約の決済を「同じ画面で払う」形に（2026-09-26 追加・v0.42.0）
 
@@ -66,7 +171,7 @@
 ### 未実施・未解決
 - 本番（テストモードの鍵）での通し確認（下のチェックリスト）
 - Apple Pay の setup モード（カード登録）は `deferredPaymentRequest`（後日請求の表示）を渡していない。Apple Pay のシートでは「今は請求しない」旨が出ない（同意文は画面に出ている）
-- 公式サイト（`/booking`）への組み込みは未着手（部品・サーバの共通処理は用意済み。purpose を新しく決め、Webhook の `purposes` に足す）
+- 公式サイト（`/booking`）への組み込みは v0.43.0 で実施（上の節）
 - 期限切れで解放された仮押さえの PaymentIntent（未使用）は Stripe 上に残る（請求はされない。整理は任意）
 
 ### テストチェックリスト（同じ画面で払う決済 v0.42.0）

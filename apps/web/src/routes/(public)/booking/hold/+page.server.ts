@@ -21,12 +21,13 @@ import {
 	sbPointBalance,
 	confirmBooking as sbConfirmBooking,
 	bookingSessionId,
-	setBookingDraft,
 	setLastBooking
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import { combineName, combineKana } from '$lib/name';
 import { earnedPoints } from '@autumn-book/core';
+import { parseGuestForm } from '$lib/server/booking-guest-form';
+import { directPaymentsReady, directPublishableKey, holdBathTax } from '$lib/server/direct-payments';
+import { payOptionsFor } from '$lib/direct-payment';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -77,7 +78,27 @@ export const load: PageServerLoad = async (event) => {
 			}
 		}
 
-		return { expired: false as const, hold, plan, room, facility, member };
+		// オンライン決済（同じ画面で払う・v0.43.0）。Stripe の鍵・service_role・DB の migration がそろっていなければ
+		// カードを出さず現地払いだけ（事前決済しか無いプランも現地払いで受ける＝予約を止めない）
+		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
+		const onlineReady = await directPaymentsReady().catch(() => false);
+		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
+		const bathTax = await holdBathTax(hold.id, sid, memberUserId).catch(() => 0);
+
+		return {
+			expired: false as const,
+			hold,
+			plan,
+			room,
+			facility,
+			member,
+			payOptions: pay.options,
+			payFallback: pay.fallback,
+			// true = カードはこの画面で払う（実データ）。false = デモ決済画面へ（DATA_SOURCE=demo）
+			inline: true as const,
+			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
+			bathTax
+		};
 	}
 
 	const hold = getHold(url.searchParams.get('id') ?? '');
@@ -86,12 +107,19 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const member = locals.user?.role === 'member' ? memberById(locals.user.id) : undefined;
 	const rank = memberRanks.find((r) => r.code === (member?.rank ?? 'standard'))!;
+	const plan = planById(hold.planId)!;
+	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
 	return {
 		expired: false as const,
 		hold,
-		plan: planById(hold.planId)!,
+		plan,
 		room: roomTypeById(hold.roomTypeId)!,
 		facility: facilityById(hold.facilityId)!,
+		payOptions: pay.options,
+		payFallback: pay.fallback,
+		inline: false as const,
+		publishableKey: null,
+		bathTax: 0,
 		member: member
 			? {
 					name: member.name,
@@ -111,36 +139,11 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	// 現地払いの確定（カードは同じ画面の決済部品 → /booking/pay で確定する）
 	submit: async (event) => {
 		const { request, locals, cookies } = event;
 		const form = await request.formData();
-		const holdId = String(form.get('holdId'));
-
-		const familyName = String(form.get('familyName') ?? '').trim();
-		const givenName = String(form.get('givenName') ?? '').trim();
-		const middleName = String(form.get('middleName') ?? '').trim();
-		const familyNameKana = String(form.get('familyNameKana') ?? '').trim();
-		const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
-		const guest = {
-			name: combineName(familyName, givenName),
-			kana: combineKana(familyNameKana, givenNameKana),
-			familyName,
-			givenName,
-			middleName,
-			familyNameKana,
-			givenNameKana,
-			phone: String(form.get('phone') ?? '').trim(),
-			email: String(form.get('email') ?? '').trim(),
-			arrival: String(form.get('arrival') ?? ''),
-			shuttle: form.get('shuttle') === 'on',
-			notes: String(form.get('notes') ?? '').trim()
-		};
-		const errors: Record<string, string> = {};
-		// 姓・名は必須（カナは任意＝海外ゲスト対応）
-		if (!familyName) errors.familyName = m.error_name_required();
-		if (!givenName) errors.givenName = m.error_name_required();
-		if (!/^[0-9\-+ ]{10,}$/.test(guest.phone)) errors.phone = m.error_phone_invalid();
-		if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guest.email)) errors.email = m.error_email_invalid();
+		const { holdId, guest, pointsRequested, payment, errors } = parseGuestForm(form);
 
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);
@@ -149,22 +152,15 @@ export const actions: Actions = {
 			if (Object.keys(errors).length > 0) return fail(400, { errors, values: guest });
 
 			const useMember = MEMBER_SUPABASE && locals.user?.role === 'member';
-			const pointsUsed = useMember ? Math.max(0, Number(form.get('points') ?? 0)) : 0;
+			const pointsUsed = useMember ? pointsRequested : 0;
 
 			const plan = await sbPlanByUuid(hold.planId);
 			if (!plan) return fail(410, { message: m.error_hold_expired() });
-			const payment = String(form.get('payment') ?? 'onsite') as 'onsite' | 'card' | 'paypay';
-			const allowed =
-				payment === 'onsite' ? plan.payment.onsite : plan.payment.prepay && plan.payment.prepayMethods.includes(payment);
-			if (!allowed) {
+			const pay = payOptionsFor(plan.payment, { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
+			if (payment !== 'onsite' || !pay.options.includes('onsite')) {
+				// カードはこの画面の入力欄で払う（JavaScript が動かない等でここに来たときは選び直してもらう）
 				errors.payment = 'お支払い方法を選択してください';
 				return fail(400, { errors, values: guest });
-			}
-
-			if (payment !== 'onsite') {
-				// ③ 決済ステップへ（事前決済=即時決済）。book.holds は anon で更新できないため入力を cookie に保持。
-				setBookingDraft(cookies, { holdId, guest, pointsUsed, payment });
-				redirect(303, `/booking/payment?id=${holdId}`);
 			}
 
 			const client = useMember ? createSupabaseServerClient(event) : undefined;
@@ -195,20 +191,18 @@ export const actions: Actions = {
 		if (Object.keys(errors).length > 0) return fail(400, { errors, values: guest });
 
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;
-		const pointsUsed = memberId ? Math.max(0, Number(form.get('points') ?? 0)) : 0;
+		const pointsUsed = memberId ? pointsRequested : 0;
 
 		// 支払い方法（プランの決済設定でバリデーション）
 		const plan = planById(hold.planId)!;
-		const payment = String(form.get('payment') ?? 'onsite') as 'onsite' | 'card' | 'paypay';
-		const allowed =
-			payment === 'onsite' ? plan.payment.onsite : plan.payment.prepay && plan.payment.prepayMethods.includes(payment);
+		const allowed = payOptionsFor(plan.payment, { live: false, onlineReady: false }).options.includes(payment);
 		if (!allowed) {
 			errors.payment = 'お支払い方法を選択してください';
 			return fail(400, { errors, values: guest });
 		}
 
 		if (payment !== 'onsite') {
-			// ③ 決済ステップへ（事前決済=即時決済。入力内容を hold に保持）
+			// ③ デモ決済ステップへ（事前決済=即時決済。入力内容を hold に保持）
 			hold.guestDraft = guest;
 			hold.pointsDraft = pointsUsed;
 			hold.paymentDraft = payment;

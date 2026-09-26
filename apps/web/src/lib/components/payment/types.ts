@@ -20,3 +20,29 @@ export type PaymentConfirmed = {
   // express = Apple Pay / Google Pay のボタンから
   via: 'form' | 'express';
 };
+
+// 部品の中の文言（公式サイトの英語・繁体字で差し替える）。既定は日本語（取引先ページ）。
+export type PaymentTexts = {
+  failed: string; // お支払いを完了できませんでした。
+  tryOtherCard: string; // 別のカードでお試しください。
+  notReady: string;
+  checkCard: string;
+  setupFailed: string;
+  loadFailed: string; // 入力欄を表示できなかった（後ろに理由が付く）
+  divider: string; // Apple Pay 等のボタンとカード入力の間
+  secure: string; // カード情報は Stripe が…
+};
+
+export const PAYMENT_TEXTS_JA: PaymentTexts = {
+  failed: 'お支払いを完了できませんでした。',
+  tryOtherCard: '別のカードでお試しください。',
+  notReady: 'お支払いの準備ができていません。少し待ってからもう一度お試しください。',
+  checkCard: 'カード情報をご確認ください。',
+  setupFailed: 'カードを登録できませんでした。',
+  loadFailed: 'お支払いの入力欄を表示できませんでした。ページを開き直してください。',
+  divider: 'またはカード情報を入力',
+  secure: 'カード情報は Stripe が暗号化して処理します（当サイトには保存されません）'
+};
+
+// Stripe.js に渡す表示言語（サイトの言語 → Stripe の locale）
+export type PaymentLocale = 'ja' | 'en' | 'zh-TW';

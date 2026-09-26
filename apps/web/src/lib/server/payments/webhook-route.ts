@@ -22,6 +22,9 @@ export type WebhookRouteOptions = {
   purposes: readonly string[];
   // 旧 Checkout の決済のうち自分のものを見分けるキー（metadata に必ずあるもの）
   checkoutRefKey: string;
+  // 同じ宛先で受ける別のアプリ・用途（公式サイト予約 app=autumn-book / purpose=book_direct_booking など）。
+  // 同じ画面で払う方式の Intent（payment_intent / setup_intent）だけが対象（旧 Checkout は取引先予約だけ）。
+  also?: readonly { app: string; purposes: readonly string[] }[];
 };
 
 export function routeStripeEvent(event: StripeEventLike, opts: WebhookRouteOptions): WebhookRoute {
@@ -34,7 +37,8 @@ export function routeStripeEvent(event: StripeEventLike, opts: WebhookRouteOptio
     case 'payment_intent.succeeded':
     case 'setup_intent.succeeded': {
       if (!id) return { kind: 'ignore', reason: 'no_id' };
-      if (!isElementsIntentFor(meta, opts.app, opts.purposes)) return { kind: 'ignore', reason: 'not_ours' };
+      const ours = [{ app: opts.app, purposes: opts.purposes }, ...(opts.also ?? [])].some((t) => isElementsIntentFor(meta, t.app, t.purposes));
+      if (!ours) return { kind: 'ignore', reason: 'not_ours' };
       const kind = event.type === 'payment_intent.succeeded' ? 'payment_intent' : 'setup_intent';
       return { kind, id, purpose: String(meta.purpose) };
     }

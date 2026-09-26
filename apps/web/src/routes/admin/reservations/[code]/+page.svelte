@@ -89,6 +89,18 @@
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
 		キャンセル処理を実行しました（キャンセル料 {formatYen(form.fee ?? 0)}・監査ログに記録）。お客様にキャンセル受付メールを送信します。
 	</p>
+	{#if form.refund?.kind === 'refunded'}
+		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − キャンセル料 {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
+	{:else if form.refund?.kind === 'nothing_due'}
+		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）がキャンセル料以下のため、返金はありません。</p>
+	{:else if form.refund?.kind === 'failed'}
+		<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">取消は完了しましたが、カードへの返金（{formatYen(form.refund.amount)}）に失敗しました: {form.refund.message}。下の「オンライン決済」から返金を再実行してください。</p>
+	{/if}
+{/if}
+{#if form?.refundRetried}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		{form.refund.kind === 'refunded' ? `${formatYen(form.refund.amount)} を返金しました。` : '返金が必要な残りはありません。'}
+	</p>
 {/if}
 {#if form?.resent}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -201,6 +213,29 @@
 				</p>
 			{/if}
 		</div>
+
+		{#if data.payment}
+			<!-- オンライン決済（公式サイト予約・Stripe）。取消時は「支払額 − キャンセル料」を自動で返金する -->
+			{@const p = data.payment}
+			<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
+				<h2 class="font-medium text-stone-700">オンライン決済（Stripe）</h2>
+				<dl class="mt-2 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-stone-700">
+					<dt class="text-stone-500">状態</dt>
+					<dd>{p.status === 'paid' ? '支払済み' : p.status === 'late' ? '期限後の支払（予約にせず返金）' : '支払待ち'}{#if p.refund_status === 'full'}・全額返金済み{:else if p.refund_status === 'partial'}・一部返金済み{:else if p.refund_status === 'failed'}<span class="text-red-700">・返金失敗</span>{/if}</dd>
+					<dt class="text-stone-500">支払額</dt>
+					<dd>{formatYen(p.amount)}（宿泊料金 {formatYen(p.lodging_amount)}{p.bath_tax_amount > 0 ? `・入湯税 ${formatYen(p.bath_tax_amount)}` : ''}{p.points_used > 0 ? `・ポイント ${p.points_used.toLocaleString()}pt 利用後` : ''}）</dd>
+					{#if p.refunded_amount > 0}<dt class="text-stone-500">返金済み</dt><dd>{formatYen(p.refunded_amount)}</dd>{/if}
+					{#if p.paid_at}<dt class="text-stone-500">支払日時</dt><dd>{new Date(p.paid_at).toLocaleString('ja-JP')}</dd>{/if}
+					{#if p.payment_intent_id}<dt class="text-stone-500">Stripe</dt><dd class="break-all font-mono text-xs">{p.payment_intent_id}</dd>{/if}
+					{#if p.refund_error}<dt class="text-stone-500">返金エラー</dt><dd class="text-red-700">{p.refund_error}</dd>{/if}
+				</dl>
+				{#if data.canOperate && p.status === 'paid' && b.booking_status === 'cancelled' && p.refund_status !== 'full'}
+					<form method="POST" action="?/retryRefund" class="mt-3">
+						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">返金を再実行する（支払額 − キャンセル料の残り）</button>
+					</form>
+				{/if}
+			</div>
+		{/if}
 
 		{#if data.live}
 			<!-- メール -->

@@ -41,7 +41,9 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 			createdAt: new Date().toISOString().slice(0, 10)
 		};
 
-		return { booking, facility, plan: plan ?? null, room, isMember: locals.user?.role === 'member' };
+		// オンライン決済（v0.43.0）で払った額（入湯税を含む）
+		const paid = raw.paidAmount != null ? { amount: raw.paidAmount, bathTax: raw.bathTax ?? 0 } : null;
+		return { booking, facility, plan: plan ?? null, room, paid, isMember: locals.user?.role === 'member' };
 	}
 
 	const booking = bookings.get(params.code);
@@ -51,6 +53,7 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		facility: facilityById(booking.facilityId)!,
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
+		paid: null,
 		isMember: locals.user?.role === 'member'
 	};
 };

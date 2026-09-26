@@ -20,7 +20,7 @@
     StripePaymentElement
   } from '@stripe/stripe-js';
   import { stripeAppearance, type PaymentTheme } from './appearance';
-  import type { PaymentConfirmed, PaymentMode, PaymentPrepareResult } from './types';
+  import { PAYMENT_TEXTS_JA, type PaymentConfirmed, type PaymentLocale, type PaymentMode, type PaymentPrepareResult, type PaymentTexts } from './types';
 
   type Props = {
     // 公開可能キー（pk_）。無ければ入力欄を出さず、unavailableText を出す
@@ -37,6 +37,9 @@
     // 入力をいったん止める（金額の再計算中など）
     disabled?: boolean;
     unavailableText?: string;
+    // 表示言語（Stripe の入力欄・エラー文）と部品内の文言。既定は日本語
+    locale?: PaymentLocale;
+    texts?: Partial<PaymentTexts>;
     // 確定前に親のフォームを検証する。エラー文を返すと止める（Apple Pay / Google Pay のボタンでも呼ぶ）
     validate?: () => string | null;
     prepare: () => Promise<PaymentPrepareResult>;
@@ -57,6 +60,8 @@
     express = true,
     disabled = false,
     unavailableText = 'オンライン決済は現在ご利用いただけません。',
+    locale = 'ja',
+    texts = {},
     validate,
     prepare,
     onconfirmed,
@@ -64,6 +69,8 @@
     onbusychange,
     oncompletechange
   }: Props = $props();
+
+  const t = $derived({ ...PAYMENT_TEXTS_JA, ...texts });
 
   let stripe: Stripe | null = null;
   let elements: StripeElements | null = null;
@@ -91,8 +98,8 @@
 
   // Stripe のエラーは locale=ja で日本語になっている。カード会社の拒否だけ、次にどうすればよいかを足す。
   function friendly(e: StripeError): string {
-    const base = e.message ?? 'お支払いを完了できませんでした。';
-    if (e.type === 'card_error') return `${base} 別のカードでお試しください。`;
+    const base = e.message ?? t.failed;
+    if (e.type === 'card_error') return `${base} ${t.tryOtherCard}`;
     return base;
   }
 
@@ -103,12 +110,12 @@
       try {
         // pure 版は読み込んだ時点では何もしない（js.stripe.com/v3 はこの部品が表示されたときだけ読む）
         const { loadStripe } = await import('@stripe/stripe-js/pure');
-        const s = await loadStripe(publishableKey, { locale: 'ja' });
+        const s = await loadStripe(publishableKey, { locale });
         if (cancelled) return;
         if (!s) throw new Error('Stripe.js を読み込めませんでした');
         stripe = s;
         // サーバの Intent（payment_method_types=['card']）とそろえる。Apple Pay / Google Pay はカード扱い
-        const common = { currency, paymentMethodTypes: ['card'], appearance: stripeAppearance(theme), locale: 'ja' as const };
+        const common = { currency, paymentMethodTypes: ['card'], appearance: stripeAppearance(theme), locale };
         const el =
           mode === 'payment'
             ? s.elements({ ...common, mode: 'payment', amount: Math.max(50, Math.round(amount)) })
@@ -118,8 +125,10 @@
 
         const pe = el.create('payment', {
           layout: 'tabs',
-          // Apple Pay / Google Pay は上の Express Checkout のボタンに出すので、ここでは重複させない
-          wallets: { applePay: 'never', googlePay: 'never' },
+          // Apple Pay / Google Pay は上の Express Checkout のボタンに出すので、ここでは重複させない。
+          // Link（「次回以降のチェックアウトを迅速にするために情報を保存」＝メール・携帯電話番号・氏名の入力欄）は
+          // 入力が増えて取りこぼしの元になるので出さない（2026-09-26 ユーザー指示）。Express Checkout 側も link: never
+          wallets: { applePay: 'never', googlePay: 'never', link: 'never' },
           // カード登録の同意文はこの部品の下に自前で出す（Stripe 既定の英語混じりの文言は出さない）
           terms: { card: 'never' },
           readOnly: disabled
@@ -127,7 +136,7 @@
         pe.on('change', (e) => oncompletechange?.(e.complete));
         pe.on('loaderror', (e) => {
           phase = 'error';
-          loadError = e.error?.message ?? 'お支払いの入力欄を表示できませんでした。';
+          loadError = e.error?.message ?? t.loadFailed;
         });
         if (payHost) pe.mount(payHost);
         paymentElement = pe;
@@ -191,7 +200,7 @@
 
   async function run(via: 'form' | 'express', ev?: StripeExpressCheckoutElementConfirmEvent): Promise<boolean> {
     if (!stripe || !elements || phase !== 'ready') {
-      fail('お支払いの準備ができていません。少し待ってからもう一度お試しください。', ev);
+      fail(t.notReady, ev);
       return false;
     }
     if (busy) return false;
@@ -208,7 +217,7 @@
       // ① 入力の検証（deferred intent では Intent を作る前に必ず呼ぶ）
       const { error: submitError } = await elements.submit();
       if (submitError) {
-        fail(submitError.message ?? 'カード情報をご確認ください。', ev);
+        fail(submitError.message ?? t.checkCard, ev);
         return false;
       }
       // ② 予約の仮押さえ＋Intent（親）
@@ -226,7 +235,7 @@
       if (mode === 'payment') {
         const { error, paymentIntent } = await stripe.confirmPayment(params);
         if (error || !paymentIntent) {
-          fail(error ? friendly(error) : 'お支払いを完了できませんでした。', ev);
+          fail(error ? friendly(error) : t.failed, ev);
           return false;
         }
         intentId = paymentIntent.id;
@@ -234,7 +243,7 @@
       } else {
         const { error, setupIntent } = await stripe.confirmSetup(params);
         if (error || !setupIntent) {
-          fail(error ? friendly(error) : 'カードを登録できませんでした。', ev);
+          fail(error ? friendly(error) : t.setupFailed, ev);
           return false;
         }
         intentId = setupIntent.id;
@@ -262,7 +271,7 @@
     <div class:hidden={!expressShown}>
       <div bind:this={expressHost}></div>
       <p class="mt-4 flex items-center gap-3 text-xs text-stone-500">
-        <span class="h-px flex-1 bg-stone-200"></span>またはカード情報を入力<span class="h-px flex-1 bg-stone-200"></span>
+        <span class="h-px flex-1 bg-stone-200"></span>{t.divider}<span class="h-px flex-1 bg-stone-200"></span>
       </p>
     </div>
 
@@ -282,7 +291,7 @@
 
     {#if phase === 'error'}
       <p class="rounded-md border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700">
-        お支払いの入力欄を表示できませんでした。ページを開き直してください。{loadError ? `（${loadError}）` : ''}
+        {t.loadFailed}{loadError ? `（${loadError}）` : ''}
       </p>
     {/if}
 
@@ -297,7 +306,7 @@
 
     <p class="flex items-center gap-1.5 text-xs text-stone-500">
       <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></svg>
-      カード情報は Stripe が暗号化して処理します（当サイトには保存されません）
+      {t.secure}
     </p>
   </div>
 {/if}

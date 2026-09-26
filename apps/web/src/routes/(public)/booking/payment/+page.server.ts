@@ -1,54 +1,17 @@
+// デモ決済画面（DATA_SOURCE=demo のときだけ）。
+//
+// 実データ（supabase）のカード決済は予約入力画面（/booking/hold）の中で払う（v0.43.0・同じ画面で払う決済部品）。
+// この画面は Stripe を呼ばずに予約を確定するデモなので、実データでは使わせず予約入力画面へ戻す
+// （v0.42 以前は実データでも事前決済プランがここで「支払わずに」確定していた）。
 import { fail, redirect } from '@sveltejs/kit';
 import { getHold, planById, facilityById, roomTypeById, confirmBooking } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import {
-	sbGetHoldMapped,
-	sbPlanByUuid,
-	sbRoomTypeByUuid,
-	sbFacilityByUuid,
-	confirmBooking as sbConfirmBooking,
-	bookingSessionId,
-	getBookingDraft,
-	clearBookingDraft,
-	setLastBooking
-} from '$lib/server/supabase-data';
-import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => {
-	const { url, cookies } = event;
-
+export const load: PageServerLoad = async ({ url }) => {
 	if (DATA_SOURCE === 'supabase') {
-		const id = url.searchParams.get('id') ?? '';
-		const sid = bookingSessionId(cookies);
-		const draft = getBookingDraft(cookies);
-		const hold = await sbGetHoldMapped(id, sid);
-		if (!hold || hold.status !== 'active' || !draft || draft.holdId !== id) {
-			return { expired: true as const };
-		}
-		const [plan, room, facility] = await Promise.all([
-			sbPlanByUuid(hold.planId),
-			sbRoomTypeByUuid(hold.roomTypeId),
-			sbFacilityByUuid(hold.facilityId)
-		]);
-		if (!plan || !room || !facility) return { expired: true as const };
-
-		const method = draft.payment;
-		const discountRate = Math.min(plan.payment.prepayDiscountRate, 0.2); // 実データに事前決済割引は無い（0）
-		const discountAmount = Math.round(hold.quote.total * discountRate);
-		return {
-			expired: false as const,
-			hold,
-			plan,
-			method,
-			discountRate,
-			discountAmount,
-			payableTotal: hold.quote.total - discountAmount - draft.pointsUsed,
-			room,
-			facility
-		};
+		redirect(303, `/booking/hold?id=${encodeURIComponent(url.searchParams.get('id') ?? '')}`);
 	}
 
 	const hold = getHold(url.searchParams.get('id') ?? '');
@@ -73,43 +36,12 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-	// デモ決済：本実装では Stripe Payment Element + 3DS（カード）/ PayPay（Stripe 経由 or PayPay for Developers）
-	// 事前決済は予約時の即時決済（設計書 §15.4 + 2026-06-12 PayPay/割引要件）
+	// デモ決済（カード / PayPay の見本）。事前決済は予約時の即時決済（設計書 §15.4 + 2026-06-12 PayPay/割引要件）
 	pay: async (event) => {
-		const { request, locals, cookies } = event;
+		const { request, locals } = event;
+		if (DATA_SOURCE === 'supabase') return fail(410, { message: m.error_confirm_failed() });
 		const form = await request.formData();
 		const holdId = String(form.get('holdId'));
-
-		if (DATA_SOURCE === 'supabase') {
-			const sid = bookingSessionId(cookies);
-			const draft = getBookingDraft(cookies);
-			const hold = await sbGetHoldMapped(holdId, sid);
-			if (!hold || hold.status !== 'active' || !draft || draft.holdId !== holdId) {
-				return fail(410, { message: m.error_hold_expired() });
-			}
-			const useMember = MEMBER_SUPABASE && locals.user?.role === 'member';
-			const client = useMember ? createSupabaseServerClient(event) : undefined;
-			const pointsUsed = useMember ? draft.pointsUsed : 0;
-			const result = await sbConfirmBooking(holdId, sid, draft.guest, { client, pointsUsed, locale: getLocale() });
-			if ('error' in result) return fail(410, { message: m.error_confirm_failed() });
-			setLastBooking(cookies, {
-				code: result.booking_code,
-				facilityUuid: hold.facilityId,
-				roomUuid: hold.roomTypeId,
-				planUuid: hold.planId,
-				checkin: hold.checkin,
-				nights: hold.nights,
-				adults: hold.adults,
-				total: result.total,
-				pointsUsed: result.points_used,
-				pointsEarned: result.points_earned,
-				payment: draft.payment,
-				discountAmount: result.discount ?? 0,
-				guest: draft.guest
-			});
-			clearBookingDraft(cookies);
-			redirect(303, `/booking/complete/${result.booking_code}`);
-		}
 
 		const hold = getHold(holdId);
 		if (!hold || hold.status !== 'active' || !hold.guestDraft) {

@@ -2317,6 +2317,9 @@ export interface LastBooking {
 	payment: 'onsite' | 'card' | 'paypay';
 	discountAmount: number;
 	prepayDiscountRate?: number;
+	// オンライン決済（v0.43.0）: 支払った額（宿泊料金 − ポイント ＋ 入湯税）と入湯税
+	paidAmount?: number;
+	bathTax?: number;
 	guest: { name: string; kana: string; phone: string; email: string };
 }
 
