@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
 	import type { CampaignRow } from '$lib/server/admin-app-data';
@@ -170,13 +171,10 @@
 										<form
 											method="POST"
 											action="?/cancel"
-											use:enhance
-											class="mt-1"
-											onsubmit={(e) => {
-												if (!confirm(`予約配信「${c.title}」を取り消します。よろしいですか？`)) {
-													e.preventDefault();
-												}
+											use:enhance={async ({ cancel }) => {
+												if (!(await askConfirm({ message: `予約配信「${c.title}」を取り消します。`, confirmLabel: '配信を取り消す' }))) cancel();
 											}}
+											class="mt-1"
 										>
 											<input type="hidden" name="campaignId" value={c.id} />
 											<button type="submit" class="text-xs text-red-700 underline">取消</button>

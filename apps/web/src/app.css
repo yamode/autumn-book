@@ -91,3 +91,9 @@ html {
 /* 取引先専用ページ（/p/<token>）は 2026-09-26 に Book のトークン・部品へ寄せたため、専用の土台 CSS は持たない
    （枠線色は各要素に明示・文字サイズは Book 全体と同じ）。 */
 
+
+/* 管理画面: キーボード操作時のフォーカスを見えるようにする（マウス操作では出ない） */
+.admin-shell :is(input, select, textarea, button, a, summary):focus-visible {
+	outline: 2px solid var(--color-brand-600);
+	outline-offset: 2px;
+}

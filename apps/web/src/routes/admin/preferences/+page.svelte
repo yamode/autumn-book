@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
 	import type { PreferenceItem, PreferenceOption } from '$lib/server/admin-app-data';
@@ -225,10 +226,13 @@
 								type="submit"
 								class="rounded-lg bg-brand-800 px-4 py-1.5 text-sm font-medium text-white"
 								onclick={(e) => {
+									// 公開中の項目を非表示にする保存だけ確認する
 									if (item.is_active && !e.currentTarget.form?.isActive?.checked) {
-										if (!confirm(`「${item.label}」をアプリから非表示にします。回答は保持されます。`)) {
-											e.preventDefault();
-										}
+										return confirmSubmit({
+											message: `「${item.label}」をアプリから非表示にします。回答は保持されます。`,
+											confirmLabel: '非表示にして保存',
+											danger: false
+										})(e);
 									}
 								}}>保存</button
 							>

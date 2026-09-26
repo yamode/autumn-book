@@ -11,9 +11,9 @@
 	}
 </script>
 
-<svelte:head><title>FAQ管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>FAQ ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">FAQ管理 — {data.currentFacility.name}</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">FAQ — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">公開中の FAQ は施設ページに表示され、チャットボット（P9）の知識源にもなります。回答は Markdown 可。</p>
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}

@@ -143,7 +143,7 @@
 		<input
 			name="q"
 			value={data.filters.q}
-			placeholder="予約番号・氏名・カナ"
+			placeholder={data.isAdmin ? '予約番号・氏名・カナ・電話・メール' : '予約番号・氏名・カナ'}
 			class="rounded-md border border-stone-300 px-2 py-1.5"
 		/>
 	</label>

@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { beforeNavigate, goto } from '$app/navigation';
+  import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import {
     ADVANCE_PLAN_CODE,
     decidePartnerPrice,
@@ -230,7 +231,8 @@
 
 <svelte:head><title>{data.partner.name} ｜ 取引先 ｜ 山人管理</title></svelte:head>
 
-<div>
+<!-- 未保存の離脱確認はこの画面独自の beforeNavigate で行う（レイアウト共通のガードは data-own-unsaved-guard で外す） -->
+<div data-own-unsaved-guard>
     <nav class="mb-3 text-xs text-stone-400"><a href="/admin/partners" class="hover:underline">取引先</a> / {data.partner.name}</nav>
     <div class="mb-4">
       <div class="flex flex-wrap items-center gap-2">
@@ -266,9 +268,9 @@
           <form
             method="POST"
             action={`?/regenerateUrl`}
-            use:enhance={({ cancel }) => {
+            use:enhance={async ({ cancel }) => {
               lastSubmit = 'other';
-              if (!confirm('限定URLを作り直します。今のURLとログイン中の画面は使えなくなります。よろしいですか？')) cancel();
+              if (!(await askConfirm({ message: '限定URLを作り直します。今のURLとログイン中の画面は使えなくなります。', confirmLabel: 'URLを再発行する' }))) cancel();
               return async ({ update }) => update({ reset: false });
             }}
           >
@@ -929,8 +931,8 @@
                         <form
                           method="POST"
                           action={`?/updateAccount`}
-                          use:enhance={({ cancel }) => {
-                            if (!confirm(`ログインID ${a.loginId} を削除しますか？`)) cancel();
+                          use:enhance={async ({ cancel }) => {
+                            if (!(await askConfirm({ message: `ログインID ${a.loginId} を削除します。`, confirmLabel: '削除する' }))) cancel();
                             return async ({ update }) => update({ reset: false });
                           }}
                         >
@@ -1008,8 +1010,8 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
                     <form
                       method="POST"
                       action={`?/revokeKey`}
-                      use:enhance={({ cancel }) => {
-                        if (!confirm('この API キーを無効にします。取引先のシステムから取得できなくなります。よろしいですか？')) cancel();
+                      use:enhance={async ({ cancel }) => {
+                        if (!(await askConfirm({ message: 'この API キーを無効にします。取引先のシステムから取得できなくなります。', confirmLabel: '無効にする' }))) cancel();
                         return async ({ update }) => update({ reset: false });
                       }}
                     >
@@ -1061,8 +1063,8 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
       <form
         method="POST"
         action={`?/deletePartner`}
-        use:enhance={({ cancel }) => {
-          if (!confirm(`取引先「${data.partner.name}」を削除します。ログインID・API キー・アクセスログも消えます。よろしいですか？`)) cancel();
+        use:enhance={async ({ cancel }) => {
+          if (!(await askConfirm({ message: `取引先「${data.partner.name}」を削除します。ログインID・API キー・アクセスログも消えます。`, confirmLabel: '取引先を削除する' }))) cancel();
         }}
         class="text-right"
       >

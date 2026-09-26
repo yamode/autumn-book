@@ -39,7 +39,7 @@
 	{#if !data.unavailable && data.user?.role === 'admin'}
 		<a
 			href="/admin/coupons/new"
-			class="bg-accent-600 rounded-lg px-4 py-2 text-sm font-medium text-white">＋ 新しいクーポン</a
+			class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">＋ 新しいクーポン</a
 		>
 	{/if}
 </div>

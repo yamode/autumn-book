@@ -371,6 +371,17 @@
 					>
 				{:else}
 					<form method="POST" action="?/cancel" class="mt-4 space-y-2 rounded-lg bg-amber-50 p-3">
+						<!-- 取り違え防止: どの予約を取り消すのかを確定前に必ず見せる -->
+						<div class="rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
+							<p class="text-xs text-stone-500">この予約をキャンセルします</p>
+							<p class="font-medium text-stone-800">{g.name ?? '—'} 様・<span class="font-mono">{b.code}</span></p>
+							<p class="text-xs text-stone-600">
+								{formatDateLongJa(b.check_in_date)} から {b.nights}泊・大人{b.adult_count}名・{b.room_name ?? '—'}
+							</p>
+							{#if data.payment?.status === 'paid'}
+								<p class="mt-1 text-xs text-emerald-700">オンライン決済済み：支払額からキャンセル料を引いた額を自動で返金します。</p>
+							{/if}
+						</div>
 						<label class="flex items-start gap-2 text-sm">
 							<input type="checkbox" name="waive" bind:checked={waive} class="mt-1" />
 							<span>施設都合（キャンセル料を免除する）</span>
@@ -394,7 +405,7 @@
 								onclick={() => (showCancel = false)}>戻る</button
 							>
 							<button type="submit" class="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm text-white"
-								>実行</button
+								>この予約をキャンセルする</button
 							>
 						</div>
 					</form>

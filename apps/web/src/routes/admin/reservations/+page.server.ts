@@ -37,6 +37,8 @@ export const load: PageServerLoad = async (event) => {
 	const from = event.url.searchParams.get('from') || range.from;
 	const to = event.url.searchParams.get('to') || range.to;
 	const filters = { status, channel, q, from, to };
+	// 電話・メールでの検索は管理者のみ（book.admin_list_bookings と同じ線引き）
+	const isAdmin = event.locals.user?.role === 'admin';
 
 	if (ADMIN_SUPABASE) {
 		const client = bookAdmin(event);
@@ -58,6 +60,7 @@ export const load: PageServerLoad = async (event) => {
 			]);
 			return {
 				live: true as const,
+				isAdmin,
 				filters,
 				list,
 				mailQueue: mailQueue as MailQueueStatus | null,
@@ -67,6 +70,7 @@ export const load: PageServerLoad = async (event) => {
 		} catch (e) {
 			return {
 				live: true as const,
+				isAdmin,
 				filters,
 				list: [] as BookingListRow[],
 				mailQueue: null as MailQueueStatus | null,
@@ -82,9 +86,15 @@ export const load: PageServerLoad = async (event) => {
 	if (from) demo = demo.filter((b) => b.checkin >= from);
 	if (to) demo = demo.filter((b) => b.checkin <= to);
 	if (channel) demo = demo.filter((b) => b.channel === channel);
+	const digits = q.replace(/\D/g, '');
 	if (q) {
 		demo = demo.filter(
-			(b) => b.code.includes(q) || b.guest.name.includes(q) || b.guest.kana.includes(q)
+			(b) =>
+				b.code.includes(q) ||
+				b.guest.name.includes(q) ||
+				b.guest.kana.includes(q) ||
+				// 電話番号（4桁以上の数字・ハイフン無視）。本番と同じく管理者のみ
+				(isAdmin && digits.length >= 4 && b.guest.phone.replace(/\D/g, '').includes(digits))
 		);
 	}
 	const list: BookingListRow[] = demo
@@ -118,6 +128,7 @@ export const load: PageServerLoad = async (event) => {
 
 	return {
 		live: false as const,
+		isAdmin,
 		filters,
 		list,
 		mailQueue: null as MailQueueStatus | null,

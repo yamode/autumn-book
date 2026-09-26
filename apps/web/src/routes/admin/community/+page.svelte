@@ -14,9 +14,9 @@
 	}
 </script>
 
-<svelte:head><title>コミュニティ管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>コミュニティ ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">コミュニティ掲示板</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">コミュニティ</h1>
 <p class="mb-4 text-xs text-stone-400">板の管理（管理者のみ）・スレッドの pin / lock / 削除・投稿削除・会員の ban を行います。操作は監査ログに記録されます。</p>
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}

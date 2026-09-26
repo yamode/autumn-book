@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 
 	import ConfirmPanel from '$lib/components/admin/ConfirmPanel.svelte';
 	import CouponFields from '$lib/components/admin/CouponFields.svelte';
@@ -260,15 +261,8 @@
 									<form
 										method="POST"
 										action="?/revoke"
-										use:enhance
-										onsubmit={(e) => {
-											if (
-												!confirm(
-													`${r.member_code ?? ''} ${r.member_name ?? ''} さんへの配布を取り消します。会員のアプリから消えます。よろしいですか？`
-												)
-											) {
-												e.preventDefault();
-											}
+										use:enhance={async ({ cancel }) => {
+											if (!(await askConfirm({ message: `${r.member_code ?? ''} ${r.member_name ?? ''} さんへの配布を取り消します。会員のアプリから消えます。よろしいですか？`, confirmLabel: '配布を取り消す' }))) cancel();
 										}}
 									>
 										<input type="hidden" name="memberUserId" value={r.member_user_id} />

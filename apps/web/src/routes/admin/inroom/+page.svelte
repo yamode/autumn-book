@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
@@ -66,7 +67,7 @@
 
 <svelte:head><title>客室案内 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">客室電子インフォメーション — {data.currentFacility.name}</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">客室案内 — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">
 	ゲストの客室スマホに表示する滞在カード・館内案内と、チェックイン時にお渡しする印刷スリップ（QR＋手入力コード）を管理します。
 </p>
@@ -133,7 +134,7 @@
 					<button
 						type="submit"
 						class="text-xs text-stone-400 hover:text-red-600"
-						onclick={(e) => { if (!confirm('この館内案内を削除しますか？')) e.preventDefault(); }}
+						onclick={confirmSubmit({ message: 'この館内案内を削除します。', confirmLabel: '削除する' })}
 					>削除</button>
 				</form>
 			</div>
@@ -366,7 +367,7 @@
 										<button
 											type="submit"
 											class="text-xs text-stone-400 hover:text-red-600"
-											onclick={(e) => { if (!confirm('このスリップを失効しますか？（ゲストのアクセスが即時無効になります）')) e.preventDefault(); }}
+											onclick={confirmSubmit({ message: 'このスリップを失効します。ゲストのアクセスがすぐに無効になります。', confirmLabel: '失効する' })}
 										>失効</button>
 									</form>
 								{/if}

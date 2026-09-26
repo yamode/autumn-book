@@ -13,8 +13,8 @@
 <svelte:head><title>メルマガ ｜ 山人管理</title></svelte:head>
 
 <div class="mb-4 flex items-center justify-between">
-	<h1 class="text-lg font-bold text-stone-800">メルマガ配信</h1>
-	<a href="/admin/mail/new" class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">＋ 新規作成</a>
+	<h1 class="text-lg font-bold text-stone-800">メルマガ</h1>
+	<a href="/admin/mail/new" class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">＋ 新しいメルマガ</a>
 </div>
 
 <div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">

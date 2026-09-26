@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
-	import VersionBadge from '$lib/components/VersionBadge.svelte';
+	import { APP_VERSION } from '$lib/version';
 	import Toast from '$lib/components/admin/Toast.svelte';
+	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 
 	let { data, children } = $props();
 
@@ -99,6 +100,8 @@
 	beforeNavigate((nav) => {
 		for (const f of dirtyForms) if (!f.isConnected) dirtyForms.delete(f);
 		if (dirtyForms.size === 0 || nav.type === 'form') return;
+		// 画面が独自に離脱確認を持っているときは二重に聞かない（取引先詳細など）
+		if (document.querySelector('[data-own-unsaved-guard]')) return;
 		// タブを閉じる・再読み込み（leave）はブラウザ標準の確認を出す
 		if (nav.type === 'leave') {
 			nav.cancel();
@@ -139,8 +142,9 @@
 
 {#if isLogin}
 	{@render children()}
+	<p class="fixed right-3 bottom-2 font-mono text-[11px] text-stone-400">v{APP_VERSION}</p>
 {:else}
-	<div class="flex min-h-screen bg-stone-100">
+	<div class="admin-shell flex min-h-screen bg-stone-100">
 		<aside class="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
 			<p class="px-5 pt-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
 			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
@@ -149,7 +153,10 @@
 			<nav class="flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
 				{@render navList()}
 			</nav>
-			<a href="/" class="px-5 py-4 text-xs text-stone-500 hover:text-white">← 顧客サイトへ</a>
+			<div class="flex items-center justify-between px-5 py-4 text-xs">
+				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
+				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
+			</div>
 		</aside>
 
 		<!-- モバイル用ドロワー -->
@@ -164,7 +171,10 @@
 					<nav class="flex-1 overflow-y-auto px-2 pb-4">
 						{@render navList()}
 					</nav>
-					<a href="/" class="px-5 py-4 text-xs text-stone-500 hover:text-white">← 顧客サイトへ</a>
+					<div class="flex items-center justify-between px-5 py-4 text-xs">
+				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
+				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
+			</div>
 				</div>
 			</div>
 		{/if}
@@ -230,7 +240,6 @@
 		</div>
 	</div>
 	<Toast />
+	<ConfirmDialog />
 {/if}
 
-<!-- ログイン画面含め管理画面のどのページでも常時見えるバージョン表記 -->
-<VersionBadge />

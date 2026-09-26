@@ -27,7 +27,7 @@
 
 <svelte:head><title>キャンセル規定 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">グレード別キャンセル料規定</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">キャンセル規定</h1>
 <p class="mb-4 max-w-3xl text-xs text-stone-400">
 	会員グレードごとに「チェックイン◯日前から◯%」のキャンセル料ルールを設定します。スタンダード行が非会員・退会者にも適用される基準規定です。
 	ルールが空のグレードはキャンセル料がかかりません（現行と同じ挙動）。プラン独自のキャンセル規定があるプランでは、そちらが優先されます。

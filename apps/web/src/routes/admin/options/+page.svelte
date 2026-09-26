@@ -28,9 +28,9 @@
 	}
 </script>
 
-<svelte:head><title>オプション管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>オプション ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">オプション管理（滞在アレンジ） — {data.currentFacility.name}</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">オプション — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">
 	会員が予約詳細から事前予約できるオプション商品です。会計は宿泊料金と分離し、現地精算で扱います。公開すると会員のオプション追加画面に表示されます。
 </p>

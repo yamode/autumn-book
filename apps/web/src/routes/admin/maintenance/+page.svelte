@@ -16,9 +16,9 @@
 	}
 </script>
 
-<svelte:head><title>メンテナンスモード ｜ 山人管理</title></svelte:head>
+<svelte:head><title>メンテナンス ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">メンテナンスモード</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">メンテナンス</h1>
 <p class="mb-4 text-sm text-stone-500">正式公開前・メンテナンス作業中に、一般ユーザーへサイトを非公開にします。運営（管理者・スタッフ）はログイン中ならそのまま閲覧できます。</p>
 
 <!-- 現在の状態 -->

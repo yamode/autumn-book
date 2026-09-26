@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import { renderForumBody } from '$lib/forum-format';
 
 	let { data, form } = $props();
@@ -17,16 +18,15 @@
 	// 却下フォームを開いている投稿ID（インライン理由入力）
 	let rejectingId = $state<string | null>(null);
 
-	function confirmApprove(e: SubmitEvent) {
-		if (!confirm('このおたよりを承認し、1pt＝1,000円相当を付与します。よろしいですか？')) {
-			e.preventDefault();
-		}
-	}
+	// 承認は会員へポイントを付与するので確認する（use:enhance の submit で待つ）
+	const confirmApprove = async ({ cancel }: { cancel: () => void }) => {
+		if (!(await askConfirm({ message: 'このおたよりを承認し、1pt（1,000円相当）を付与します。', confirmLabel: '承認して付与する', danger: false }))) cancel();
+	};
 </script>
 
-<svelte:head><title>おたより管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">おたよりポイント</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">おたより</h1>
 <p class="mb-4 text-xs text-stone-400">YouTube 視聴者からのおたよりをレビューします。承認すると会員に1pt（＝1,000円相当）が付与されます（承認は管理者のみ）。却下・一覧閲覧はスタッフも可能です。操作は監査ログに記録されます。</p>
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
@@ -103,7 +103,7 @@
 						{#if data.status === 'pending'}
 							<!-- 承認（admin のみ・確認ダイアログ） -->
 							{#if data.isAdmin}
-								<form method="POST" action="?/approve" use:enhance onsubmit={confirmApprove}>
+								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
 									<input type="hidden" name="postId" value={it.id} />
 									<button class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500">承認して1pt付与</button>
 								</form>
@@ -128,7 +128,7 @@
 							<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">却下済み</span>
 							<!-- 却下→再承認も可（admin・冪等付与） -->
 							{#if data.isAdmin}
-								<form method="POST" action="?/approve" use:enhance onsubmit={confirmApprove}>
+								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
 									<input type="hidden" name="postId" value={it.id} />
 									<button class="rounded-md border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50">やはり承認する</button>
 								</form>

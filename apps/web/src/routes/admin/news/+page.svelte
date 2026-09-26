@@ -5,7 +5,7 @@
 	let { data, form } = $props();
 </script>
 
-<svelte:head><title>お知らせ管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>お知らせ ｜ 山人管理</title></svelte:head>
 
 <h1 class="mb-1 text-lg font-bold text-stone-800">お知らせ — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">施設HPの「お知らせ」に表示されます（WP のニュース機能の置き換え）。本文は Markdown 可。</p>

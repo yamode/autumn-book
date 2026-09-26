@@ -4,9 +4,9 @@
 	let { data } = $props();
 </script>
 
-<svelte:head><title>会員管理 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>会員 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">会員管理</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">会員</h1>
 <p class="mb-4 text-xs text-stone-400">
 	{#if data.live}
 		アプリ・Web 共通の会員（book.members）です。

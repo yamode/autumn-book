@@ -1,7 +1,7 @@
 // 全社デバッグ方針（CLAUDE.md）: DEBUG フラグ + dbg() + デバッグパネル。リリース時は false に変えるだけ
 import { writable } from 'svelte/store';
 
-export const DEBUG = true;
+export const DEBUG = false;
 
 export const debugLines = writable<string[]>([]);
 

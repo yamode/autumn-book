@@ -27,10 +27,10 @@
 	};
 </script>
 
-<svelte:head><title>貸切風呂 | 管理</title></svelte:head>
+<svelte:head><title>貸切風呂 ｜ 山人管理</title></svelte:head>
 
 <div class="mx-auto max-w-4xl px-4 py-6">
-	<h1 class="text-xl font-semibold">貸切風呂　<span class="text-sm font-normal text-stone-500">{data.facilityName}</span></h1>
+	<h1 class="text-lg font-bold text-stone-800">貸切風呂 — {data.facilityName}</h1>
 
 	{#if !data.live}
 		<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">

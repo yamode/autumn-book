@@ -4,7 +4,7 @@
 
 <svelte:head><title>部屋編集 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">部屋コンテンツ編集 — {data.currentFacility.name}</h1>
+<h1 class="mb-1 text-lg font-bold text-stone-800">部屋編集 — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">
 	部屋タイプの新設・室数・定員の変更は PMS 側（pms.room_types）。ここでは公式サイトと取引先ページでの見せ方を編集します。
 </p>
