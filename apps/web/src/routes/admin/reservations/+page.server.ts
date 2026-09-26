@@ -79,6 +79,8 @@ export const load: PageServerLoad = async (event) => {
 	// demo: 従来どおり store から。実データ側と同じ行の形に寄せて画面を1本にする
 	let demo = [...bookings.values()].filter((b) => b.facilityId === currentFacility.id);
 	if (status) demo = demo.filter((b) => b.status === status);
+	if (from) demo = demo.filter((b) => b.checkin >= from);
+	if (to) demo = demo.filter((b) => b.checkin <= to);
 	if (channel) demo = demo.filter((b) => b.channel === channel);
 	if (q) {
 		demo = demo.filter(
@@ -100,7 +102,7 @@ export const load: PageServerLoad = async (event) => {
 			is_member: !!b.memberId,
 			member_user_id: b.memberId ?? null,
 			check_in_date: b.checkin,
-			check_out_date: b.checkin,
+			check_out_date: addDays(b.checkin, b.nights),
 			nights: b.nights,
 			adult_count: b.adults,
 			room_name: roomTypeById(b.roomTypeId)?.name ?? null,

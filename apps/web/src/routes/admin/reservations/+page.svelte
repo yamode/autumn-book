@@ -1,7 +1,26 @@
 <script lang="ts">
-	import { formatYen, formatDateJa } from '$lib/format';
+	import { goto } from '$app/navigation';
+	import { formatYen, formatDateJa, todayStr, addDays } from '$lib/format';
 
 	let { data } = $props();
+
+	// 期間のワンタップ絞り込み（ステータス・経路・検索語は保ったまま期間だけ変える）
+	const today = todayStr();
+	const monthEnd = (() => {
+		const [y, m] = today.split('-').map(Number);
+		return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+	})();
+	const PRESETS = [
+		{ label: '本日到着', from: today, to: today },
+		{ label: '明日到着', from: addDays(today, 1), to: addDays(today, 1) },
+		{ label: '7日以内', from: today, to: addDays(today, 7) },
+		{ label: '今月', from: today.slice(0, 8) + '01', to: monthEnd }
+	];
+	function presetHref(from: string, to: string): string {
+		const q = new URLSearchParams({ status: data.filters.status, channel: data.filters.channel, q: data.filters.q, from, to });
+		return `?${q}`;
+	}
+	const detailHref = (code: string) => `/admin/reservations/${encodeURIComponent(code)}`;
 
 	/** core.stays.status → 表示名。予約済以外も一覧に出す（絞り込みで切り替える） */
 	const STAY_STATUS: Record<string, string> = {
@@ -96,9 +115,9 @@
 		経路
 		<select name="channel" class="rounded-md border border-stone-300 px-2 py-1.5">
 			<option value="autumn_booking" selected={data.filters.channel === 'autumn_booking'}
-				>直販（サイト・アプリ）</option
+				>直販のみ（サイト・アプリ）</option
 			>
-			<option value="" selected={data.filters.channel === ''}>すべて（OTA含む・閲覧）</option>
+			<option value="" selected={data.filters.channel === ''}>OTA・電話も含む（閲覧のみ）</option>
 		</select>
 	</label>
 	<label class="flex flex-col gap-1 text-xs text-stone-500">
@@ -129,48 +148,95 @@
 		/>
 	</label>
 	<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-white">絞り込む</button>
+	<a href="/admin/reservations" class="px-2 py-1.5 text-xs text-stone-500 hover:underline">条件をリセット</a>
+	<div class="flex w-full flex-wrap gap-1.5 pt-1">
+		{#each PRESETS as p (p.label)}
+			<a
+				href={presetHref(p.from, p.to)}
+				class="rounded-full px-3 py-1 text-xs {data.filters.from === p.from && data.filters.to === p.to
+					? 'bg-brand-800 text-white'
+					: 'bg-stone-100 text-stone-600 hover:bg-stone-200'}">{p.label}</a
+			>
+		{/each}
+	</div>
 </form>
 
-<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+<!-- スマホ: カード表示（フロントが手元で到着を確認しやすいように） -->
+<ul class="space-y-2 sm:hidden">
+	{#each data.list as b (b.stay_id)}
+		<li>
+			<a
+				href={detailHref(b.booking_code)}
+				class="block rounded-xl border border-stone-200 bg-white p-3 text-sm {b.stay_status === 'cancelled' ? 'opacity-60' : ''}"
+			>
+				<div class="flex items-center justify-between gap-2">
+					<span class="font-mono font-medium text-accent-600">{b.booking_code}</span>
+					<span class="rounded-full px-2 py-0.5 text-xs {statusClass(b.stay_status)}">{STAY_STATUS[b.stay_status] ?? b.stay_status}</span>
+				</div>
+				<p class="mt-1 font-medium text-stone-800">{b.guest_name ?? '—'}</p>
+				<p class="text-xs text-stone-500">
+					{formatDateJa(b.check_in_date)}・{b.nights}泊・大人{b.adult_count}名・{b.room_name ?? '—'}
+				</p>
+				<p class="mt-1 flex justify-between text-xs text-stone-500">
+					<span>{channelLabel(b)}</span>
+					<span>{b.total_amount != null ? formatYen(b.total_amount) : '—'}</span>
+				</p>
+			</a>
+		</li>
+	{:else}
+		<li class="rounded-xl border border-stone-200 bg-white px-3 py-8 text-center text-sm text-stone-500">該当する予約がありません。期間や条件を変えてみてください。</li>
+	{/each}
+</ul>
+
+<div class="hidden overflow-x-auto rounded-xl border border-stone-200 bg-white sm:block">
 	<table class="w-full min-w-[860px] text-sm">
 		<thead>
 			<tr class="border-b border-stone-200 bg-stone-50 text-left text-xs text-stone-500">
-				<th class="px-3 py-2">予約番号</th><th>ゲスト</th><th>チェックイン</th><th>泊数</th><th
-					>部屋</th
-				><th class="text-right">金額</th><th>経路</th><th>メール</th><th>状態</th>
+				<th class="px-3 py-2">予約番号</th>
+				<th class="px-3">ゲスト</th>
+				<th class="px-3">チェックイン</th>
+				<th class="px-3">泊数・人数</th>
+				<th class="px-3">部屋</th>
+				<th class="px-3 text-right">金額</th>
+				<th class="px-3">経路</th>
+				<th class="px-3">メール</th>
+				<th class="px-3">状態</th>
 			</tr>
 		</thead>
 		<tbody>
 			{#each data.list as b (b.stay_id)}
-				<tr class="border-b border-stone-100 hover:bg-stone-50">
+				<!-- 行のどこを押しても詳細へ（キーボードは予約番号のリンクで辿る） -->
+				<tr
+					class="cursor-pointer border-b border-stone-100 hover:bg-stone-50 {b.stay_status === 'cancelled' ? 'opacity-60' : ''}"
+					onclick={(e) => {
+						if (!(e.target as Element).closest('a')) goto(detailHref(b.booking_code));
+					}}
+				>
 					<td class="px-3 py-2">
-						<a
-							href="/admin/reservations/{encodeURIComponent(b.booking_code)}"
-							class="font-medium text-accent-600 hover:underline">{b.booking_code}</a
-						>
+						<a href={detailHref(b.booking_code)} class="font-mono font-medium text-accent-600 hover:underline">{b.booking_code}</a>
 					</td>
-					<td>
+					<td class="px-3">
 						{b.guest_name ?? '—'}
 						{#if b.source === 'autumn_booking'}
 							<span class="block text-[10px] text-stone-400">{b.is_member ? '会員' : '非会員'}</span>
 						{/if}
 					</td>
-					<td>{formatDateJa(b.check_in_date)}</td>
-					<td>{b.nights}泊</td>
-					<td class="max-w-[180px] truncate">{b.room_name ?? '—'}</td>
-					<td class="text-right">{b.total_amount != null ? formatYen(b.total_amount) : '—'}</td>
-					<td class="text-xs">{channelLabel(b)}</td>
-					<td class="text-xs {mailClass(b.mail_status)}">
+					<td class="px-3 whitespace-nowrap">{formatDateJa(b.check_in_date)}</td>
+					<td class="px-3 whitespace-nowrap">{b.nights}泊・{b.adult_count}名</td>
+					<td class="max-w-[180px] truncate px-3">{b.room_name ?? '—'}</td>
+					<td class="px-3 text-right whitespace-nowrap">{b.total_amount != null ? formatYen(b.total_amount) : '—'}</td>
+					<td class="px-3 text-xs">{channelLabel(b)}</td>
+					<td class="px-3 text-xs whitespace-nowrap {mailClass(b.mail_status)}">
 						{b.source === 'autumn_booking' ? (MAIL_LABEL[b.mail_status ?? ''] ?? '—') : '—'}
 					</td>
-					<td>
-						<span class="rounded-full px-2 py-0.5 text-xs {statusClass(b.stay_status)}">
+					<td class="px-3">
+						<span class="rounded-full px-2 py-0.5 text-xs whitespace-nowrap {statusClass(b.stay_status)}">
 							{STAY_STATUS[b.stay_status] ?? b.stay_status}
 						</span>
 					</td>
 				</tr>
 			{:else}
-				<tr><td colspan="9" class="px-3 py-8 text-center text-stone-400">該当する予約がありません</td></tr>
+				<tr><td colspan="9" class="px-3 py-8 text-center text-stone-500">該当する予約がありません。期間や条件を変えてみてください。</td></tr>
 			{/each}
 		</tbody>
 	</table>

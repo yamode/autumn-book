@@ -14,7 +14,7 @@
 		{
 			label: '宿泊・直販',
 			items: [
-				{ href: '/admin', label: 'ダッシュボード', icon: '📊', demoOnly: true },
+				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
@@ -143,7 +143,7 @@
 	<div class="flex min-h-screen bg-stone-100">
 		<aside class="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
 			<p class="px-5 pt-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
-			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium {facilityTone}" title="いま操作している施設">
+			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
 				{tenantWide ? '全施設共通' : data.currentFacility.name}
 			</p>
 			<nav class="flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
