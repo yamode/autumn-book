@@ -12,6 +12,7 @@
 	import { formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
@@ -187,7 +188,7 @@
 			<p class="font-medium text-brand-900">{data.facility.name}</p>
 			<p class="text-xs text-stone-500">{data.room.name} ／ {data.plan.name}</p>
 			<p class="mt-0.5 text-xs text-stone-600">
-				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), adults: String(data.hold.adults) })}
+				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults, data.hold.children) })}
 			</p>
 			<div class="mt-2 flex items-baseline justify-between border-t border-stone-100 pt-2">
 				<span class="text-stone-600">{inlineCard && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
@@ -395,7 +396,7 @@
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_checkin()}</dt><dd>{formatDateLong(data.hold.checkin)}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), adults: String(data.hold.adults) })}</dd></div>
+					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults, data.hold.children) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
 					<PriceBreakdown quote={{ ...data.hold.quote, pointsUsed: pointsApplied, payable: data.hold.quote.total - pointsApplied }} />

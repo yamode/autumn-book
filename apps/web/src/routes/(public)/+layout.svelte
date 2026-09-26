@@ -3,6 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { formatDate } from '$lib/format';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import { parseChildren, guestsLabel } from '$lib/components/guests';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -25,6 +26,7 @@
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
 	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));
+	let searchChildren = $derived(parseChildren(page.url.searchParams.get('children')));
 
 	// モバイル（<md）はスティッキーを1行に抑える: 検索は1行サマリのボタンに畳み、ナビ類はメニューへ。
 	// 844px 程度の画面でヘッダーが 200px 超を占めていたため（本文の視認領域を確保）
@@ -32,7 +34,11 @@
 	let mobileMenuOpen = $state(false);
 	let searchSummary = $derived(
 		searchCheckin
-			? m.header_search_summary({ date: formatDate(searchCheckin), nights: String(searchNights), adults: String(searchAdults) })
+			? m.header_search_summary({
+					date: formatDate(searchCheckin),
+					nights: String(searchNights),
+					guests: guestsLabel(searchAdults, searchChildren)
+				})
 			: m.header_search_prompt()
 	);
 
@@ -122,7 +128,7 @@
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
 				<div id="header-search-panel" class="w-full lg:ml-auto lg:w-auto {mobileSearchOpen ? '' : 'hidden md:block'}">
-					<SearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} />
+					<SearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} childCount={searchChildren} />
 				</div>
 			{/if}
 		</div>

@@ -677,6 +677,12 @@ export function nightlyRate(planId: string, date: string): number {
 	return Math.round((plan.basePrice * weekend * seasonal) / 100) * 100;
 }
 
+/** デモの子ども1名単価: 大人単価の 70%（小学生料金の一般的な目安）。実データは子供料金未対応（設計書 §14-11） */
+export const CHILD_RATE_RATIO = 0.7;
+export function childNightlyRate(planId: string, date: string): number {
+	return Math.round((nightlyRate(planId, date) * CHILD_RATE_RATIO) / 100) * 100;
+}
+
 /** RPC: book.search_availability 相当 */
 export function searchAvailability(params: SearchParams): FacilityAvailability[] {
 	return facilities
@@ -687,7 +693,8 @@ export function searchAvailability(params: SearchParams): FacilityAvailability[]
 				const ref = Math.min(...plans.map((p) => p.basePrice));
 				return { facility, minTotal: ref * params.adults * params.nights, minPerPerson: ref, remaining: 9, reference: true };
 			}
-			let best: number | null = null;
+			// best は1室の最安合計（子ども分を含む）。1名単価は大人1名あたり（quote.perPerson）で持つ
+			let best: { total: number; perPerson: number } | null = null;
 			let remaining = 0;
 			for (const plan of plans) {
 				for (const rtId of plan.roomTypeIds) {
@@ -696,20 +703,14 @@ export function searchAvailability(params: SearchParams): FacilityAvailability[]
 					const rem = Math.min(...eachNight(params.checkin, params.nights).map((d) => remainingRooms(rtId, d)));
 					if (rem <= 0) continue;
 					remaining = Math.max(remaining, rem);
-					const q = calcQuote({
-						checkin: params.checkin,
-						nights: params.nights,
-						adults: params.adults,
-						children: params.children,
-						nightlyRate: (d) => nightlyRate(plan.id, d)
-					});
-					if (best === null || q.total < best) best = q.total;
+					const q = quoteFor(plan.id, rtId, params.checkin, params.nights, params.adults, params.children);
+					if (best === null || q.total < best.total) best = { total: q.total, perPerson: q.perPerson };
 				}
 			}
 			return {
 				facility,
-				minTotal: best,
-				minPerPerson: best === null ? null : Math.round(best / params.adults),
+				minTotal: best?.total ?? null,
+				minPerPerson: best?.perPerson ?? null,
 				remaining,
 				reference: false
 			};
@@ -735,7 +736,15 @@ export function getPlanCalendar(planId: string, yearMonth: string): CalendarDay[
 
 /** RPC: book.quote 相当 */
 export function quoteFor(planId: string, roomTypeId: string, checkin: string, nights: number, adults: number, children: number, pointsUsed = 0): Quote {
-	return calcQuote({ checkin, nights, adults, children, pointsUsed, nightlyRate: (d) => nightlyRate(planId, d) });
+	return calcQuote({
+		checkin,
+		nights,
+		adults,
+		children,
+		pointsUsed,
+		nightlyRate: (d) => nightlyRate(planId, d),
+		childNightlyRate: (d) => childNightlyRate(planId, d)
+	});
 }
 
 /** RPC: book.create_hold 相当（version 楽観ロックの代わりにメモリ減算） */

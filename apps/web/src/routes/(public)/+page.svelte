@@ -3,9 +3,18 @@
 	import MapPanel from '$lib/components/MapPanel.svelte';
 	import { formatPrice } from '$lib/format';
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { areaLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
+
+	// 宿一覧（写真カード）を主、地図は従（開閉式）。デスクトップのみ初期表示で開き、モバイルは閉じる。
+	// 閉じている間は MapPanel を描画しない（モバイルで maplibre・タイルを読まない）
+	let mapOpen = $state(false);
+	onMount(() => {
+		if (window.matchMedia('(min-width: 1024px)').matches) mapOpen = true;
+	});
 
 	let mapItems = $derived(
 		data.results.map((r) => ({
@@ -38,25 +47,25 @@
 	</div>
 </section>
 
-<!-- 地図プレビュー + 施設カード -->
-<section class="mx-auto max-w-6xl px-4 py-12">
-	<h2 class="font-display mb-1 text-2xl text-brand-900">{m.home_map_heading()}</h2>
-	<p class="mb-4 text-sm text-stone-500">{m.home_map_sub()}</p>
-	<MapPanel items={mapItems} height="380px" onpinclick={(id) => {
-		const r = data.results.find((x) => x.facility.id === id);
-		if (r) goto(`/${r.facility.brandSlug}/${r.facility.slug}/plans`);
-	}} />
-</section>
-
-<section class="mx-auto max-w-6xl px-4">
+<!-- 宿一覧（写真カードが主） -->
+<section class="mx-auto max-w-6xl px-4 pt-12">
 	<h2 class="font-display mb-4 text-2xl text-brand-900">{m.home_list_heading()}</h2>
 	<div class="grid gap-6 sm:grid-cols-2">
-		{#each data.results as r}
+		{#each data.results as r, i (r.facility.id)}
 			<div class="group overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm transition hover:shadow-lg">
 				<a href="/{r.facility.brandSlug}/{r.facility.slug}/plans" class="block">
-					<div class="relative">
-						<img src={r.facility.photos[0].url} alt={r.facility.name} class="h-56 w-full object-cover transition group-hover:scale-[1.02]" />
-						<span class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs text-white">{r.facility.prefecture}</span>
+					<div class="relative overflow-hidden">
+						<!-- 16:9 固定（width/height＋aspect-video で CLS 防止）。ヒーローの下なので遅延読み込み -->
+						<img
+							src={r.facility.photos[0]?.url}
+							alt={r.facility.name}
+							width="800"
+							height="450"
+							loading={i < 2 ? 'eager' : 'lazy'}
+							decoding="async"
+							class="aspect-video h-auto w-full bg-stone-100 object-cover transition group-hover:scale-[1.02]"
+						/>
+						<span class="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1 text-xs text-white">{areaLabel(r.facility)}</span>
 					</div>
 					<div class="px-5 pt-5">
 						<h3 class="font-display text-xl text-brand-900">{r.facility.name}</h3>
@@ -78,6 +87,33 @@
 				</div>
 			</div>
 		{/each}
+	</div>
+</section>
+
+<!-- 地図（従・開閉式） -->
+<section class="mx-auto max-w-6xl px-4 pt-10">
+	<button
+		type="button"
+		class="flex w-full items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white px-4 py-3 text-left hover:bg-stone-50"
+		aria-expanded={mapOpen}
+		aria-controls="home-map"
+		onclick={() => (mapOpen = !mapOpen)}
+	>
+		<span>
+			<span class="font-display block text-lg text-brand-900"><span aria-hidden="true">🗺 </span>{m.home_map_heading()}</span>
+			<span class="block text-xs text-stone-500">{m.home_map_sub()}</span>
+		</span>
+		<span aria-hidden="true" class="shrink-0 text-stone-400 transition {mapOpen ? 'rotate-180' : ''}">▾</span>
+	</button>
+	<div id="home-map">
+		{#if mapOpen}
+			<div class="mt-3">
+				<MapPanel items={mapItems} height="340px" onpinclick={(id) => {
+					const r = data.results.find((x) => x.facility.id === id);
+					if (r) goto(`/${r.facility.brandSlug}/${r.facility.slug}/plans`);
+				}} />
+			</div>
+		{/if}
 	</div>
 </section>
 

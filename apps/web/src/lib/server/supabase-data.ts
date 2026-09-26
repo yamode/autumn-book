@@ -364,6 +364,8 @@ export interface SbHold {
 	checkin: string;
 	nights: number;
 	adults: number;
+	/** 子どもの人数（holds.child_counts の合計。現状 create_hold が子ども未対応のため常に 0） */
+	children: number;
 	quote: Quote;
 	expiresAt: number;
 	status: string;
@@ -393,6 +395,7 @@ export async function sbGetHoldMapped(
 		checkin_date: string;
 		checkout_date: string;
 		adult_count: number;
+		child_counts?: Record<string, number | string> | null;
 		quote: Parameters<typeof mapQuote>[0];
 		expires_at: string;
 		status: string;
@@ -405,6 +408,7 @@ export async function sbGetHoldMapped(
 		checkin: r.checkin_date,
 		nights: daysBetween(r.checkin_date, r.checkout_date),
 		adults: r.adult_count,
+		children: Object.values(r.child_counts ?? {}).reduce<number>((s, v) => s + (Number(v) || 0), 0),
 		quote: mapQuote(r.quote),
 		expiresAt: Date.parse(r.expires_at),
 		status: r.status

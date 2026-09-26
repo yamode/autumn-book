@@ -20,6 +20,11 @@ export interface QuoteInput {
   children: number;
   /** 日付 → 大人1名単価 */
   nightlyRate: (date: string) => number;
+  /**
+   * 日付 → 子ども1名単価（任意）。省略時は子どもを 0 円として大人のみ課金する
+   * （SQL book.quote は子供料金未対応＝設計書 §14-11 未決のため、既定は SQL と同式に保つ）。
+   */
+  childNightlyRate?: (date: string) => number;
   taxRate?: number; // 既定 0.10（内税表示）
   pointsUsed?: number;
 }
@@ -28,14 +33,19 @@ export interface QuoteLine {
   date: string;
   unitPrice: number;
   adults: number;
+  /** 子どもの人数（子供料金を計算したときのみ） */
+  children?: number;
+  /** 子ども1名単価（子供料金を計算したときのみ） */
+  childUnitPrice?: number;
+  /** 大人分＋子ども分の小計 */
   subtotal: number;
 }
 
 export interface Quote {
   lines: QuoteLine[];
-  /** 税込総額（1室） */
+  /** 税込総額（1室・子ども分を含む） */
   total: number;
-  /** 1名あたり税込 */
+  /** 大人1名あたり税込（全泊合計。子ども分は含めない） */
   perPerson: number;
   /** 内消費税 */
   taxIncluded: number;
@@ -66,16 +76,30 @@ export function formatYen(n: number): string {
 
 export function calcQuote(input: QuoteInput): Quote {
   const taxRate = input.taxRate ?? 0.1;
+  const children = Math.max(0, input.children || 0);
+  // 子供料金は単価関数が渡されたときだけ明細に載せる（未指定は従来どおり大人のみ）
+  const chargeChildren = children > 0 && !!input.childNightlyRate;
   const lines: QuoteLine[] = eachNight(input.checkin, input.nights).map((date) => {
     const unitPrice = input.nightlyRate(date);
-    return { date, unitPrice, adults: input.adults, subtotal: unitPrice * input.adults };
+    if (!chargeChildren) return { date, unitPrice, adults: input.adults, subtotal: unitPrice * input.adults };
+    const childUnitPrice = input.childNightlyRate!(date);
+    return {
+      date,
+      unitPrice,
+      adults: input.adults,
+      children,
+      childUnitPrice,
+      subtotal: unitPrice * input.adults + childUnitPrice * children
+    };
   });
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
+  // 「1名あたり」は大人1名の単価で表す（子ども分を割り込むと大人料金が安く見えるため）
+  const adultTotal = lines.reduce((s, l) => s + l.unitPrice * l.adults, 0);
   const pointsUsed = Math.min(input.pointsUsed ?? 0, total);
   return {
     lines,
     total,
-    perPerson: Math.round(total / Math.max(1, input.adults)),
+    perPerson: Math.round(adultTotal / Math.max(1, input.adults)),
     taxIncluded: Math.round(total - total / (1 + taxRate)),
     pointsUsed,
     payable: total - pointsUsed

@@ -8,6 +8,7 @@
 	import { formatPrice } from '$lib/format';
 	import { shiftYearMonth } from '$lib/calendar-range';
 	import { gaEvent } from '$lib/analytics';
+	import { guestsLabel, searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
@@ -20,19 +21,24 @@
 		});
 	});
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
-	let qs = $derived(
-		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
-	);
+	let qs = $derived(data.params.checkin ? searchQuery(data.params) : '');
+	// 料金カレンダーの日付リンクに引き継ぐ人数（子ども0名は付けない＝従来 URL と同じ）
+	let guestQs = $derived(`adults=${data.params.adults}${data.params.children ? `&children=${data.params.children}` : ''}`);
 
 	// 料金は「1名1泊・税込」を主、1室の合計を従で出す（全画面で単位を統一）。
-	// quote.perPerson は1名あたりの全泊合計なので、泊数で割って1名1泊にする。
-	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
+	// 1名 = 大人1名。quote.perPerson は大人1名あたりの全泊合計（子ども分は含まない）なので泊数で割る。
+	// 1室の合計（quote.total）は子ども分を含む。
+	const perPersonNight = (perPerson: number) => Math.round(perPerson / Math.max(1, data.params.nights));
+	let guests = $derived(guestsLabel(data.params.adults, data.params.children));
+	let unitLabel = $derived(data.params.children > 0 ? m.price_unit_adult_night() : m.price_unit_pp_night());
+	// 実データ（supabase）は子供料金・子ども連れの仮押さえに未対応 → 予約ボタンを出さず電話へ誘導
+	let childrenUnsupported = $derived(data.params.children > 0 && !data.childrenSupported);
 
 	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）
 	let cheapest = $derived.by(() => {
-		let best: { total: number } | null = null;
+		let best: { total: number; perPerson: number } | null = null;
 		for (const r of data.rooms) {
-			if (r.quote && (!best || r.quote.total < best.total)) best = { total: r.quote.total };
+			if (r.quote && (!best || r.quote.total < best.total)) best = { total: r.quote.total, perPerson: r.quote.perPerson };
 		}
 		return best;
 	});
@@ -55,11 +61,14 @@
 	{#if cheapest}
 		<p class="text-xs text-stone-500">{m.plan_price_dated_label()}</p>
 		<p class="text-2xl font-bold text-brand-900">
-			{formatPrice(perPersonNight(cheapest.total))}〜<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+			{formatPrice(perPersonNight(cheapest.perPerson))}〜<span class="text-xs font-normal text-stone-500">{unitLabel}</span>
 		</p>
 		<p class="text-xs text-stone-500">
-			{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
+			{m.plan_detail_price_detail({ guests, nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
 		</p>
+		{#if data.params.children > 0 && data.childrenSupported}
+			<p class="text-[11px] text-stone-500">{m.children_price_note()}</p>
+		{/if}
 	{:else if soldOut}
 		<p class="text-sm font-medium text-stone-500">{m.plan_price_sold_out()}</p>
 	{:else}
@@ -112,6 +121,11 @@
 			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる） -->
 			<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
 				{@render priceBlock()}
+				{#if childrenUnsupported}
+					<p class="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs text-amber-800">
+						{m.children_unsupported_phone({ phone: data.facility.phone })}
+					</p>
+				{/if}
 				{#if data.params.checkin && !soldOut}
 					<p class="mt-2 text-xs text-emerald-700">
 						{m.plan_detail_cancel()}: <CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.params.checkin} />
@@ -150,7 +164,7 @@
 				days={data.calendar}
 				yearMonth={data.calMonth}
 				makeDayHref={(date) =>
-					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&adults=${data.params.adults}#rooms`}
+					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&${guestQs}#rooms`}
 				prevHref={data.calendarNav.canGoPrev
 					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, -1)}#cal`
 					: null}
@@ -170,6 +184,12 @@
 		{#if !data.params.checkin}
 			<p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plan_detail_select_date()}</p>
 		{/if}
+		{#if childrenUnsupported}
+			<p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+				{m.children_unsupported_note()}
+				<span class="block text-xs">{m.children_unsupported_phone({ phone: data.facility.phone })}</span>
+			</p>
+		{/if}
 		<div class="mt-3 space-y-3">
 			{#each data.rooms as r}
 				<div class="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center">
@@ -184,24 +204,29 @@
 					<div class="text-right">
 						{#if r.quote}
 							<p class="text-lg font-bold text-brand-900">
-								{formatPrice(perPersonNight(r.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+								{formatPrice(perPersonNight(r.quote.perPerson))}<span class="text-xs font-normal text-stone-500">{unitLabel}</span>
 								<span class="block text-xs font-normal text-stone-500">
-									{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
+									{m.plan_detail_price_detail({ guests, nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
 								</span>
 							</p>
 							{#if r.remaining !== null && r.remaining <= 2}
 								<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(r.remaining) })}</p>
 							{/if}
-							<form method="POST" action="?/hold" use:enhance class="mt-2">
-								<input type="hidden" name="planId" value={data.plan.id} />
-								<input type="hidden" name="roomTypeId" value={r.room.id} />
-								<input type="hidden" name="checkin" value={data.params.checkin} />
-								<input type="hidden" name="nights" value={data.params.nights} />
-								<input type="hidden" name="adults" value={data.params.adults} />
-								<button type="submit" class="rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
-									{m.plan_detail_book()}
-								</button>
-							</form>
+							{#if childrenUnsupported}
+								<p class="mt-2 text-xs text-amber-800">{m.children_unsupported_phone({ phone: data.facility.phone })}</p>
+							{:else}
+								<form method="POST" action="?/hold" use:enhance class="mt-2">
+									<input type="hidden" name="planId" value={data.plan.id} />
+									<input type="hidden" name="roomTypeId" value={r.room.id} />
+									<input type="hidden" name="checkin" value={data.params.checkin} />
+									<input type="hidden" name="nights" value={data.params.nights} />
+									<input type="hidden" name="adults" value={data.params.adults} />
+									<input type="hidden" name="children" value={data.params.children} />
+									<button type="submit" class="rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
+										{m.plan_detail_book()}
+									</button>
+								</form>
+							{/if}
 						{:else if data.params.checkin && r.fits}
 							<p class="text-sm font-medium text-stone-400">{m.plan_detail_sold_out()}</p>
 						{/if}
@@ -225,10 +250,10 @@
 			<div class="min-w-0 flex-1 leading-tight">
 				{#if cheapest}
 					<p class="text-lg font-bold text-brand-900">
-						{formatPrice(perPersonNight(cheapest.total))}〜<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+						{formatPrice(perPersonNight(cheapest.perPerson))}〜<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{unitLabel}</span>
 					</p>
 					<p class="truncate text-[11px] text-stone-500">
-						{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
+						{m.plan_detail_price_detail({ guests, nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
 					</p>
 				{:else if soldOut}
 					<p class="text-xs text-stone-500">{m.plan_price_sold_out()}</p>
