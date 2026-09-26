@@ -45,7 +45,7 @@ jobs:
           sleep 10
           # 503 はメンテナンスモード有効時の正常応答として許容（正式公開前の lockdown 期間でも CI を通す）
           for path in / /yamado/nishiwaga /yamado/oga /yamado/oga/onsen /search; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://autumn-book.pages.dev$path")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://book.yamado.app$path")
             echo "$code $path"
             if [ "$code" != "200" ] && [ "$code" != "503" ]; then
               echo "::error::Health check failed: $path returned $code"
