@@ -71,7 +71,7 @@
 	{@render children()}
 {:else}
 	<div class="flex min-h-screen bg-stone-100">
-		<aside class="hidden w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
+		<aside class="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
 			<p class="px-5 py-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
 			<nav class="flex-1 overflow-y-auto px-2 pb-4">
 				{#each navGroups as group, gi}

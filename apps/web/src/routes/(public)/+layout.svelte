@@ -37,7 +37,7 @@
 			</div>
 		{/if}
 		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
-			<a href="/" class="font-display text-xl font-bold tracking-widest text-brand-900">山人 <span class="text-xs font-normal tracking-normal text-stone-400">- yamado -</span></a>
+			<a href="/" class="font-display text-xl font-bold tracking-widest text-brand-900">YAMADO</a>
 			<nav class="flex items-center gap-4 text-sm text-stone-600">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
 				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
@@ -71,7 +71,7 @@
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 text-stone-300">
 		<div class="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
 			<div>
-				<p class="font-display text-lg text-white">山人 -yamado-</p>
+				<p class="font-display text-lg tracking-widest text-white">YAMADO</p>
 				<p class="mt-2 text-xs leading-relaxed">{m.footer_brand_tagline()}</p>
 			</div>
 			<div class="text-sm">

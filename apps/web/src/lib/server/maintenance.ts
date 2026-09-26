@@ -142,7 +142,6 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 // メンテナンスページ文言（ja / en / zh-TW）
 const COPY = {
 	ja: {
-		brandSub: '- yamado -',
 		title: 'ただいまサイトを準備しています',
 		body: 'メンテナンスのため、一時的にアクセスを制限しています。ご不便をおかけしますが、しばらくお待ちください。',
 		tel: 'お急ぎの方・ご予約はお電話にて承ります',
@@ -150,7 +149,6 @@ const COPY = {
 		oga: '山人 -oga-（男鹿）'
 	},
 	en: {
-		brandSub: '- yamado -',
 		title: 'We will be back soon',
 		body: 'The site is temporarily unavailable for maintenance. We apologize for the inconvenience — please check back shortly.',
 		tel: 'For reservations or urgent matters, please call us',
@@ -158,7 +156,6 @@ const COPY = {
 		oga: 'Yamado Oga'
 	},
 	'zh-TW': {
-		brandSub: '- yamado -',
 		title: '網站維護中',
 		body: '網站正在進行維護，暫時無法瀏覽。造成不便敬請見諒，請稍後再試。',
 		tel: '如需訂房或有急事，歡迎來電洽詢',
@@ -214,7 +211,7 @@ export function maintenancePageHtml(locale: string = 'ja'): string {
 </head>
 <body>
   <main class="card">
-    <div class="brand">山人<small>${t.brandSub}</small></div>
+    <div class="brand">YAMADO</div>
     <div class="divider"></div>
     <h1>${escapeHtml(t.title)}</h1>
     <p class="body">${body}</p>
