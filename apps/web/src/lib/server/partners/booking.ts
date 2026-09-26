@@ -319,6 +319,8 @@ export async function createPartnerBooking(
       notes: input.notes.trim().slice(0, 1000),
       payment_option: paymentOption,
       payment_label: paymentOptionLabel(paymentOption),
+      // 入湯税（円・宿泊全体）。台帳の作成と同時に入れ、PMS への電文（月末締め等は作成時に積む）に載せる（autumn-shared 20260926103712）
+      bath_tax: quote.bathTax,
       // オンライン決済は支払待ちの仮押さえで作り、支払完了（予約時決済）・カード登録完了（チェックイン日決済）で
       // 確定・PMS へ（DB 関数 rms_partner_mark_paid / rms_partner_mark_card_saved）
       await_payment: isStripePaymentOption(paymentOption)
@@ -326,8 +328,6 @@ export async function createPartnerBooking(
   });
   if (error) throw new PartnerStoreError(friendlyRpcError(error.message), 409);
   const created = data as { id: string; booking_code: string; total_amount: number; status?: string };
-  // 入湯税を台帳に（決済画面・PMS への電文の請求額＝宿泊料金＋入湯税。電文は支払完了・カード登録完了のときに組むので、その前に入れる）
-  if (quote.bathTax > 0) await db.from('rms_partner_bookings').update({ bath_tax_amount: quote.bathTax }).eq('id', created.id);
 
   if (created.status === 'pending_payment') {
     const pending = await getPartnerBooking(db, partner.id, created.id);

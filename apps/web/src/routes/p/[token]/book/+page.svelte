@@ -285,7 +285,13 @@
             {/each}
             {#if values.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
             {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}</dd>{/if}
-            {#if quote.ok}<dt>合計</dt><dd class="font-bold">{yen(payTotal)}</dd>{/if}
+            {#if quote.ok}
+              <!-- 料金の明細（宿泊料金・予約時決済割引・入湯税）。キャンセル料は入湯税を除いた宿泊料金が基準 -->
+              <dt>宿泊料金</dt><dd class="tabular-nums">{yen(quote.total)}<span class="ml-1 text-xs text-stone-500">（税込・大人{quote.rooms.reduce((s, r) => s + r.adults, 0)}名 × {quote.nights}泊）</span></dd>
+              {#if discounted && prepay}<dt>予約時決済割引</dt><dd class="tabular-nums text-[var(--pt-accent)]">-{yen(prepay.discount)}<span class="ml-1 text-xs">（{prepay.label}）</span></dd>{/if}
+              {#if quote.bathTax > 0}<dt>入湯税</dt><dd class="tabular-nums">{yen(quote.bathTax)}<span class="ml-1 text-xs text-stone-500">（大人{quote.rooms.reduce((s, r) => s + r.adults, 0)}名 × {quote.nights}泊）</span></dd>{/if}
+              <dt>合計</dt><dd class="font-bold tabular-nums">{yen(payTotal)}</dd>
+            {/if}
           </dl>
           {#if paymentOption === 'online'}
             <p class="mt-3 text-sm text-stone-500">確定するとお支払い画面（Stripe）へ進みます。30分以内にお支払いいただくと予約が確定します。</p>

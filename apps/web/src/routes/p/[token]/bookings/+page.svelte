@@ -154,6 +154,10 @@
                 {#if b.arrival}<dt>到着予定</dt><dd>{b.arrival}</dd>{/if}
                 {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
                 {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
+                <!-- 料金の明細（宿泊料金はキャンセル料の基準。入湯税は別に請求） -->
+                <dt>宿泊料金</dt><dd class="tabular-nums">{yen(b.total - b.bathTax)}<span class="ml-1 text-xs text-stone-500">（税込）</span></dd>
+                {#if b.bathTax > 0}<dt>入湯税</dt><dd class="tabular-nums">{yen(b.bathTax)}</dd>{/if}
+                <dt>合計</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd>
                 {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}</dd>{/if}
                 <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
