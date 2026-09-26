@@ -20,7 +20,7 @@ import { PLAN_PAYMENT_METHODS, sbSetPlanPayment, type PlanPaymentMethod } from '
 import { directPaymentsReady } from '$lib/server/direct-payments';
 import { listPartners, PARTNER_KIND_LABELS, PartnerStoreError, requireStaffPartner, updatePartner } from '$lib/server/partners/store';
 import { staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
-import { loadEarlyPrepaySettings, sbAdminPaymentSettings, sbSaveEarlyPrepaySettings, sbSetPlanEarlyPrepay } from '$lib/server/payment-settings';
+import { loadEarlyPrepaySettings, sbAdminPaymentSettings, sbSaveEarlyPrepaySettings, sbSetPlanEarlyPrepay, sbSetPlanNonmemberPayment } from '$lib/server/payment-settings';
 import { inlinePaymentReady } from '$lib/server/stripe';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -47,7 +47,8 @@ export const load: PageServerLoad = async (event) => {
       hasContent: true,
       paymentMethod: (p.prepayDiscountRate > 0 ? 'deposit' : 'onsite') as PlanPaymentMethod,
       prepayDiscountRate: p.prepayDiscountRate,
-      earlyPrepay: true
+      earlyPrepay: true,
+      nonmemberPaymentMethod: null
     }));
     return {
       ...base,
@@ -152,10 +153,14 @@ export const actions: Actions = {
       return fail(400, { scope: 'plan', planId, error: '定率の割引は 0〜20% で選んでください。' });
     }
     const early = fd.get('early') === 'on';
+    // 非会員の支払方法（空 = 会員と同じ）
+    const nm = String(fd.get('nonmember') ?? '');
+    const nonmember = (PLAN_PAYMENT_METHODS as readonly string[]).includes(nm) ? (nm as PlanPaymentMethod) : null;
     const client = createSupabaseServerClient(event);
     try {
       await sbSetPlanPayment(client, planId, method as PlanPaymentMethod, pct / 100);
       await sbSetPlanEarlyPrepay(client, planId, early);
+      await sbSetPlanNonmemberPayment(client, planId, nonmember);
       return { scope: 'plan', planId, saved: true };
     } catch (e) {
       return fail(400, { scope: 'plan', planId, error: messageOf(e) });

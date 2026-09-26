@@ -848,5 +848,8 @@
   "complete_prepay_points_guest": "早期決済ポイント +{points}pt は、ご宿泊日までに同じメールアドレスで会員登録（無料）すると付与されます。",
   "plan_points_max": "予約時決済で最大 +{rate}% ポイント（早期決済ポイント）",
   "reservation_prepay_points": "早期決済ポイント（ご宿泊後に付与予定）",
-  "reservation_prepay_points_granted": "早期決済ポイント（付与済み）"
+  "reservation_prepay_points_granted": "早期決済ポイント（付与済み）",
+  "pay_member_onsite_hint": "会員の方は現地払いもお選びいただけます。",
+  "pay_member_onsite_login": "ログイン",
+  "pay_nonmember_onsite_denied": "このプランの現地払いは会員の方のみご利用いただけます。オンライン決済をお選びいただくか、ログインしてください。"
 }

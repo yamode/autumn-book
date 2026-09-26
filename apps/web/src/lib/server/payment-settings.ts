@@ -58,6 +58,8 @@ export type AdminPaymentPlan = {
   prepayDiscountRate: number;
   /** 早期決済割（段階表）の対象 */
   earlyPrepay: boolean;
+  /** 非会員の支払方法（null = 会員と同じ） */
+  nonmemberPaymentMethod: PlanPaymentMethod | null;
 };
 
 export type AdminPaymentSettings = {
@@ -99,7 +101,8 @@ export async function sbAdminPaymentSettings(client: SupabaseClient, facilityUui
       hasContent: p.has_content === true,
       paymentMethod: METHODS.includes(p.payment_method as PlanPaymentMethod) ? (p.payment_method as PlanPaymentMethod) : 'onsite',
       prepayDiscountRate: Number(p.prepay_discount_rate ?? 0) || 0,
-      earlyPrepay: p.early_prepay === true
+      earlyPrepay: p.early_prepay === true,
+      nonmemberPaymentMethod: METHODS.includes(p.nonmember_payment_method as PlanPaymentMethod) ? (p.nonmember_payment_method as PlanPaymentMethod) : null
     }))
   };
 }
@@ -118,4 +121,10 @@ export async function sbSaveEarlyPrepaySettings(client: SupabaseClient, facility
 export async function sbSetPlanEarlyPrepay(client: SupabaseClient, ratePlanId: string, enabled: boolean): Promise<void> {
   const { error } = await client.schema('book').rpc('admin_set_plan_early_prepay', { p_rate_plan_id: ratePlanId, p_enabled: enabled });
   if (error) throw friendly(error, '早期決済割の対象を保存できませんでした');
+}
+
+/** 非会員の支払方法（null で「会員と同じ」）。autumn-shared 20260926232136 */
+export async function sbSetPlanNonmemberPayment(client: SupabaseClient, ratePlanId: string, method: PlanPaymentMethod | null): Promise<void> {
+  const { error } = await client.schema('book').rpc('admin_set_plan_nonmember_payment', { p_rate_plan_id: ratePlanId, p_method: method });
+  if (error) throw friendly(error, '非会員の支払方法を保存できませんでした');
 }

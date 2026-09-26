@@ -848,5 +848,8 @@
   "complete_prepay_points_guest": "若於入住日前以相同電子郵件地址註冊會員（免費），將發放 +{points} 點提早付款點數。",
   "plan_points_max": "預訂時付款最高 +{rate}% 點數（提早付款點數）",
   "reservation_prepay_points": "提早付款點數（預定於入住後發放）",
-  "reservation_prepay_points_granted": "提早付款點數（已發放）"
+  "reservation_prepay_points_granted": "提早付款點數（已發放）",
+  "pay_member_onsite_hint": "會員亦可選擇現場付款。",
+  "pay_member_onsite_login": "登入",
+  "pay_nonmember_onsite_denied": "此方案的現場付款僅限會員使用。請選擇線上付款或登入。"
 }

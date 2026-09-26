@@ -28,7 +28,8 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor } from '$lib/server/direct-payments';
+import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
+import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
@@ -54,12 +55,15 @@ export const load: PageServerLoad = async (event) => {
 		const hold = await sbGetHoldMapped(url.searchParams.get('id') ?? '', sid);
 		if (!hold || hold.status !== 'active') return { expired: true as const };
 
-		const [plan, room, facility] = await Promise.all([
+		const [basePlan, room, facility] = await Promise.all([
 			sbPlanByUuid(hold.planId),
 			sbRoomTypeByUuid(hold.roomTypeId),
 			sbFacilityByUuid(hold.facilityId)
 		]);
-		if (!plan || !room || !facility) return { expired: true as const };
+		if (!basePlan || !room || !facility) return { expired: true as const };
+		// 非会員は非会員の支払方法（book.plan_contents.nonmember_payment_method）で出す
+		const isMember = viewerIsMember(locals);
+		const plan = planForViewer(basePlan, isMember);
 
 		// 会員のみポイント残高・獲得見込みを表示（未ログインのゲストは null）。
 		let member: {
@@ -115,6 +119,8 @@ export const load: PageServerLoad = async (event) => {
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
 			bathTax,
 			prepay,
+			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
+			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(basePlan.payment, isMember),
 			planHref: planHrefOf(facility, plan, hold)
 		};
 	}
@@ -125,7 +131,9 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const member = locals.user?.role === 'member' ? memberById(locals.user.id) : undefined;
 	const rank = memberRanks.find((r) => r.code === (member?.rank ?? 'standard'))!;
-	const plan = planById(hold.planId)!;
+	const isMember = viewerIsMember(locals);
+	const basePlan = planById(hold.planId)!;
+	const plan = planForViewer(basePlan, isMember);
 	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
 	const facility = facilityById(hold.facilityId)!;
 	const prepay = await prepayDiscountViewFor(hold.facilityId, plan, hold);
@@ -141,6 +149,7 @@ export const load: PageServerLoad = async (event) => {
 		publishableKey: null,
 		bathTax: 0,
 		prepay,
+		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		planHref: planHrefOf(facility, plan, hold),
 		member: member
 			? {
@@ -191,10 +200,18 @@ export const actions: Actions = {
 			const useMember = MEMBER_SUPABASE && locals.user?.role === 'member';
 			const pointsUsed = useMember ? pointsRequested : 0;
 
-			const plan = await sbPlanByUuid(hold.planId);
-			if (!plan) return fail(410, { message: m.error_hold_expired() });
+			const basePlan = await sbPlanByUuid(hold.planId);
+			if (!basePlan) return fail(410, { message: m.error_hold_expired() });
+			// 非会員は非会員の支払方法で判定する。book.confirm_booking（現地払いの確定）は他アプリと共用で
+			// 支払方法を見ないため、非会員に現地払いが無いプランはここで止める（画面で隠すだけにしない）
+			const isMember = viewerIsMember(locals);
+			const plan = planForViewer(basePlan, isMember);
 			const pay = payOptionsFor(plan.payment, { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
-			if (payment !== 'onsite' || !pay.options.includes('onsite')) {
+			if (payment === 'onsite' && !pay.options.includes('onsite')) {
+				errors.payment = memberOnsiteHint(basePlan.payment, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+				return fail(400, { errors, values: guest });
+			}
+			if (payment !== 'onsite') {
 				// カードはこの画面の入力欄で払う（JavaScript が動かない等でここに来たときは選び直してもらう）
 				errors.payment = 'お支払い方法を選択してください';
 				return fail(400, { errors, values: guest });
@@ -237,10 +254,15 @@ export const actions: Actions = {
 		const pointsUsed = memberId ? pointsRequested : 0;
 
 		// 支払い方法（プランの決済設定でバリデーション）
-		const plan = planById(hold.planId)!;
+		// 非会員は非会員の支払方法で判定する（デモのプランは非会員の設定を持たない＝会員と同じ）
+		const basePlan = planById(hold.planId)!;
+		const plan = planForViewer(basePlan, viewerIsMember(locals));
 		const allowed = payOptionsFor(plan.payment, { live: false, onlineReady: false }).options.includes(payment);
 		if (!allowed) {
-			errors.payment = 'お支払い方法を選択してください';
+			errors.payment =
+				payment === 'onsite' && memberOnsiteHint(basePlan.payment, viewerIsMember(locals))
+					? m.pay_nonmember_onsite_denied()
+					: 'お支払い方法を選択してください';
 			return fail(400, { errors, values: guest });
 		}
 

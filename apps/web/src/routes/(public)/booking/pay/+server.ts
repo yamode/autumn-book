@@ -18,7 +18,8 @@ import {
 	setBookingDraft
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { confirmDirectIntent, DirectPaymentError, directPaymentsReady, prepareDirectPayment } from '$lib/server/direct-payments';
+import { confirmDirectIntent, DirectPaymentError, directPaymentsReady, prepareDirectPayment, viewerIsMember } from '$lib/server/direct-payments';
+import { planForViewer } from '$lib/member-payment';
 import { payOptionsFor } from '$lib/direct-payment';
 import { finishDirectBooking, lateMessage } from '$lib/server/direct-booking-finish';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -43,8 +44,10 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			}
 			const hold = await sbGetHoldMapped(parsed.holdId, sid);
 			if (!hold || hold.status !== 'active') return bad(m.error_hold_expired(), 410, { expired: true });
-			const [plan, facility] = await Promise.all([sbPlanByUuid(hold.planId), sbFacilityByUuid(hold.facilityId)]);
-			if (!plan || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
+			const [basePlan, facility] = await Promise.all([sbPlanByUuid(hold.planId), sbFacilityByUuid(hold.facilityId)]);
+			if (!basePlan || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
+			// 非会員は非会員の支払方法で判定（DB の direct_payment_prepare も同じ判定をする）
+			const plan = planForViewer(basePlan, viewerIsMember(locals));
 			if (!payOptionsFor(plan.payment, { live: true, onlineReady: true }).options.includes('card')) {
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);
 			}

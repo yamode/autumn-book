@@ -24,10 +24,13 @@ import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { clampCalendarMonth } from '$lib/calendar-range';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
-import { withEarlyPrepayMax } from '$lib/server/direct-payments';
+import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
+import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
+	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
+	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
@@ -38,7 +41,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		const found = await sbPlanBySlug(facility.id, params.plan);
 		if (!found) error(404, 'プランが見つかりません');
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		const [plan] = withEarlyPrepayMax([found], await loadEarlyPrepaySettings(facility.id));
+		const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 
 		const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 		const calMonth = calendarNav.yearMonth;
@@ -67,6 +70,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			calendar,
 			calMonth,
 			calendarNav,
+			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
+			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
 			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
@@ -76,7 +81,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	if (!facility) error(404, '施設が見つかりません');
 	const found = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
 	if (!found) error(404, 'プランが見つかりません');
-	const [plan] = withEarlyPrepayMax([found], await loadEarlyPrepaySettings(facility.id));
+	const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 
 	const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 	const calMonth = calendarNav.yearMonth;
@@ -103,6 +108,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		calendar: getPlanCalendar(plan.id, calMonth),
 		calMonth,
 		calendarNav,
+		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };

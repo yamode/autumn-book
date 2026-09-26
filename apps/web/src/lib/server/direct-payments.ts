@@ -29,6 +29,8 @@ import { checkPaymentIntent, isPaymentIntentId } from '$lib/server/payments/veri
 import type { GuestInfo, RatePlan } from '$lib/types';
 import { addDays } from '@autumn-book/core';
 import { directRefundDueOf } from '$lib/direct-payment';
+import { DATA_SOURCE } from '$lib/server/supabase';
+import { MEMBER_SUPABASE } from '$lib/server/auth';
 import {
   nextTierDrop,
   prepayDiscountDetail,
@@ -590,4 +592,14 @@ export function withEarlyPrepayMax<T extends Pick<RatePlan, 'payment'>>(plans: T
     if (settings.mode !== 'points' && maxTier <= flat) return p;
     return { ...p, payment: { ...p.payment, earlyPrepayMaxRate: maxTier / 1000, earlyPrepayMode: settings.mode } };
   });
+}
+
+/**
+ * 閲覧者が会員か（非会員の支払方法 book.plan_contents.nonmember_payment_method の切替に使う）。
+ * 実データは会員ログイン（MEMBER_SUPABASE）で book.members に行がある人＝role 'member'。デモは role 'member'。
+ * 予約確認・決済 API・プラン一覧／詳細で同じ判定を使う（DB の direct_payment_prepare も会員行の有無で判定）。
+ */
+export function viewerIsMember(locals: { user?: { role?: string } | null }): boolean {
+  if (locals.user?.role !== 'member') return false;
+  return DATA_SOURCE === 'supabase' ? MEMBER_SUPABASE : true;
 }

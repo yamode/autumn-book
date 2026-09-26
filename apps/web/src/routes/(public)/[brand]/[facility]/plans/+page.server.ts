@@ -5,10 +5,13 @@ import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers } from '$lib/server/s
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
-import { withEarlyPrepayMax } from '$lib/server/direct-payments';
+import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
+import { planForViewer } from '$lib/member-payment';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
+	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
+	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
@@ -19,7 +22,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
 
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		let plans = withEarlyPrepayMax(await sbListPlansMapped(facility.id), await loadEarlyPrepaySettings(facility.id));
+		let plans = withEarlyPrepayMax(
+			(await sbListPlansMapped(facility.id)).map((p) => planForViewer(p, isMember)),
+			await loadEarlyPrepaySettings(facility.id)
+		);
 		const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 		if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 
@@ -53,7 +59,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
 
-	let plans = withEarlyPrepayMax(getRatePlans(facility.id, locale), await loadEarlyPrepaySettings(facility.id));
+	let plans = withEarlyPrepayMax(
+		getRatePlans(facility.id, locale).map((p) => planForViewer(p, isMember)),
+		await loadEarlyPrepaySettings(facility.id)
+	);
 	const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 	if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 

@@ -71,6 +71,7 @@ import type {
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
+import { paymentMethodsOf } from '$lib/member-payment';
 import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
@@ -2017,18 +2018,29 @@ function safeAccess(raw: unknown): AccessInfo {
  * 割引率は book.plan_contents.prepay_discount_rate（Book の管理画面で設定・autumn-shared 20260926151458）。
  * 実データの事前決済はカードのみ（PayPay の事前決済は無い）。
  */
-function mapPaymentMethod(pm: string | null | undefined, discountRate?: unknown, earlyPrepay?: unknown): PaymentConfig {
+function mapPaymentMethod(
+	pm: string | null | undefined,
+	discountRate?: unknown,
+	earlyPrepay?: unknown,
+	nonMemberPm?: unknown
+): PaymentConfig {
 	const rate = Math.min(Math.max(Number(discountRate) || 0, 0), 0.2);
 	// early_prepay 列は autumn-shared 20260926221912 で追加（v_plans は * で読むので、未適用なら undefined＝対象外）
 	const early = earlyPrepay === true;
+	// 非会員の支払方法（autumn-shared 20260926232136）。null・列なし（未適用）は会員と同じ＝nonMember を付けない
+	const nonMember = paymentMethodsOf(nonMemberPm) ?? undefined;
+	const nm = nonMember ? { nonMember } : {};
 	switch (pm) {
 		case 'prepayment':
-			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early };
+			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early, ...nm };
 		case 'deposit':
-			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early };
+			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early, ...nm };
 		case 'onsite':
 		default:
-			return { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0 };
+			// 会員は現地払いのみでも、非会員に予約時決済がある設定なら割引・早期決済割の値は残す
+			return nonMember?.prepay
+				? { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: rate, earlyPrepay: early, ...nm }
+				: { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0, ...nm };
 	}
 }
 
@@ -2100,7 +2112,7 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		headline: headline,
 		description: String(row.description ?? ''),
 		mealPlan: String(row.meal_plan ?? ''),
-		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate, row.early_prepay),
+		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate, row.early_prepay, row.nonmember_payment_method),
 		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
 		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
 		photos: mapPhotos(row.photos, String(row.name ?? '')),

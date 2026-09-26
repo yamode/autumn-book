@@ -119,6 +119,10 @@
 						{/if}
 					</dd>
 				</div>
+				{#if data.memberOnsiteHint}
+					<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
+					<p class="text-right text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
+				{/if}
 			</dl>
 
 			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる） -->

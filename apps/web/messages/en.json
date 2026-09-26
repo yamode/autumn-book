@@ -848,5 +848,8 @@
   "complete_prepay_points_guest": "The +{points} pts of early payment points will be granted if you sign up as a member (free) with the same email address by your stay date.",
   "plan_points_max": "Up to +{rate}% in points when you pay at booking (early payment points)",
   "reservation_prepay_points": "Early payment points (to be granted after your stay)",
-  "reservation_prepay_points_granted": "Early payment points (granted)"
+  "reservation_prepay_points_granted": "Early payment points (granted)",
+  "pay_member_onsite_hint": "Members can also choose to pay at the property.",
+  "pay_member_onsite_login": "Log in",
+  "pay_nonmember_onsite_denied": "Paying at the property is available to members only for this plan. Please choose online payment or log in."
 }

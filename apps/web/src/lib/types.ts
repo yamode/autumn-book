@@ -150,7 +150,16 @@ export interface PaymentConfig {
 	 * points = 「予約時決済で最大 +N% ポイント（早期決済ポイント）」。定率割引とは別に付く
 	 */
 	earlyPrepayMode?: 'discount' | 'points';
+	/**
+	 * 非会員の支払方法（book.plan_contents.nonmember_payment_method）。未設定（undefined）は会員と同じ。
+	 * 例: 会員は deposit（予約時決済か現地払い）、非会員は prepayment（予約時決済のみ＝無断キャンセル対策）。
+	 * 閲覧者ごとの実際の設定は lib/member-payment.ts の paymentFor で求める。
+	 */
+	nonMember?: PaymentMethods;
 }
+
+/** 支払方法の組み合わせ（payment_method の onsite / prepayment / deposit に相当） */
+export type PaymentMethods = Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods'>;
 
 export interface RatePlan {
 	id: string;

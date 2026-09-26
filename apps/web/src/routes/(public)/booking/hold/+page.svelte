@@ -482,6 +482,15 @@
 
 						{#if data.payFallback}
 							<p class="text-xs text-stone-500">{m.pay_fallback_note()}</p>
+						{:else if data.memberOnsiteHint}
+							<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
+							<p class="text-xs text-stone-500">
+								{m.pay_member_onsite_hint()}
+								<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="ml-1 underline hover:text-brand-800">{m.pay_member_onsite_login()}</a>
+							</p>
+						{/if}
+						{#if form?.errors && 'payment' in form.errors && form.errors.payment}
+							<p role="alert" class="text-xs text-red-600">{form.errors.payment}</p>
 						{/if}
 					</fieldset>
 

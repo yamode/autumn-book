@@ -294,7 +294,7 @@
 {:else if tab === 'plans'}
 	<!-- ============ プラン別 ============ -->
 	<p class="mb-3 max-w-3xl text-xs text-stone-500">
-		料金プランごとに、お客様が選べる支払方法と割引を決めます。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割／ポイントは
+		料金プランごとに、お客様が選べる支払方法と割引を決めます。支払方法は会員（ログインした会員）と非会員で分けられます（例: 会員は現地払いも可・非会員は予約時決済のみ）。定率割引と早期決済割の対象は、会員の支払方法が「現地払いのみ」だと設定できません。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割／ポイントは
 		<a href="?tab=basic" class="text-sky-700 hover:underline">基本</a>
 		の段階表です。割引方式のときは定率割引と泊ごとに大きい方、ポイント方式のときは定率割引に加えてポイントが付きます。
 		{#if savedEarlyOn}
@@ -310,7 +310,7 @@
 			<thead class="bg-stone-50 text-xs text-stone-500">
 				<tr>
 					<th class="px-3 py-2 text-left font-normal">プラン</th>
-					<th class="px-3 py-2 text-left font-normal">支払方法</th>
+					<th class="px-3 py-2 text-left font-normal">支払方法（会員／非会員）</th>
 					<th class="px-3 py-2 text-left font-normal">定率割引</th>
 					<th class="px-3 py-2 text-left font-normal">早期決済割</th>
 					<th class="px-3 py-2 text-left font-normal">予約時決済の最大還元</th>
@@ -332,9 +332,21 @@
 						<td class="px-3 py-2" colspan="4">
 							<form id="plan-{p.id}" method="POST" action="?/savePlan" use:enhance={keep} class="grid grid-cols-[1.3fr_0.8fr_1fr_1fr] items-center gap-3">
 								<input type="hidden" name="planId" value={p.id} />
-								<select name="method" bind:value={planMethod[p.id]} disabled={!p.hasContent} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
-									{#each Object.entries(METHOD_LABEL) as [v, l] (v)}<option value={v}>{l}</option>{/each}
-								</select>
+								<div class="space-y-1">
+									<label class="flex items-center gap-1.5 text-xs text-stone-500">
+										<span class="w-10 shrink-0">会員</span>
+										<select name="method" bind:value={planMethod[p.id]} disabled={!p.hasContent} class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm text-stone-800">
+											{#each Object.entries(METHOD_LABEL) as [v, l] (v)}<option value={v}>{l}</option>{/each}
+										</select>
+									</label>
+									<label class="flex items-center gap-1.5 text-xs text-stone-500">
+										<span class="w-10 shrink-0">非会員</span>
+										<select name="nonmember" disabled={!p.hasContent} class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm text-stone-800">
+											<option value="" selected={!p.nonmemberPaymentMethod}>会員と同じ</option>
+											{#each Object.entries(METHOD_LABEL) as [v, l] (v)}<option value={v} selected={p.nonmemberPaymentMethod === v}>{l}</option>{/each}
+										</select>
+									</label>
+								</div>
 								<select name="discount" disabled={onsite || !p.hasContent} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
 									{#each Array.from({ length: 21 }, (_, i) => i) as d (d)}
 										<option value={d} selected={Math.round(p.prepayDiscountRate * 100) === d}>{d === 0 ? 'なし' : `${d}%`}</option>
