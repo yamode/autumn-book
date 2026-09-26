@@ -850,3 +850,41 @@ export type MemberRank = 'standard' | 'silver' | 'gold' | 'platinum';
 export function normalizeRank(code: string | null | undefined): MemberRank {
 	return code === 'silver' || code === 'gold' || code === 'platinum' ? code : 'standard';
 }
+
+// ---------------------------------------------------------------------------
+// 非会員の予約を会員に紐づける（autumn-shared 20260926233540）
+// 「非会員で予約したけど会員になりたい」という電話に、施設側が対応するため。
+// ---------------------------------------------------------------------------
+
+export type MemberCandidate = {
+	user_id: string;
+	member_code: string;
+	rank_code: string;
+	guest_id: string | null;
+	name: string | null;
+	kana: string | null;
+	email: string | null;
+	phone: string | null;
+	joined_at: string;
+};
+
+/** 会員番号（YM-）・メールアドレス・電話番号（8桁以上）で会員を探す */
+export const adminFindMembers = (c: BookClient, query: string) =>
+	rpc<MemberCandidate[] | null>(c, 'admin_find_members', { p_query: query });
+
+export const adminLinkBookingMember = (c: BookClient, code: string, memberUserId: string, moveGuest: boolean) =>
+	rpc<{ booking_code: string; member_code: string; guest_moved: boolean; refinalize: boolean }>(
+		c,
+		'admin_link_booking_member',
+		{ p_booking_code: code, p_member_user_id: memberUserId, p_move_guest: moveGuest }
+	);
+
+/** 紐づけのエラーを画面の文言に */
+export function linkMemberErrorText(e: unknown): string {
+	const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message ?? '') : String(e ?? '');
+	if (msg.includes('already_member')) return 'この予約はすでに会員の予約です。';
+	if (msg.includes('member_not_found')) return '会員が見つかりません。検索し直してください。';
+	if (msg.includes('cancelled')) return '取り消し済みの予約は会員に紐づけられません。';
+	if (msg.includes('Could not find the function')) return 'DB の更新（autumn-shared 20260926233540）がまだ適用されていません。';
+	return mapRpcError(e);
+}

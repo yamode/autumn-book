@@ -11,6 +11,9 @@ import { todayStr } from '$lib/format';
 import {
 	adminBookingDetail,
 	adminCancelBooking,
+	adminFindMembers,
+	adminLinkBookingMember,
+	linkMemberErrorText,
 	adminResendBookingMail,
 	adminRotateCancelToken,
 	bookAdmin,
@@ -208,6 +211,40 @@ export const actions: Actions = {
 			return { resent: true as const };
 		} catch (e) {
 			return fail(400, { message: mapRpcError(e) });
+		}
+	},
+
+	/**
+	 * 非会員の予約を会員に紐づける（電話で「会員になりたい」と言われたとき）。スタッフも操作できる。
+	 * findMember で候補を出し、linkMember で確定する。お客様にはまず会員登録（/auth/register）をしてもらう。
+	 */
+	findMember: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
+		const role = event.locals.user?.role;
+		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const q = String((await event.request.formData()).get('q') ?? '').trim();
+		if (q.length < 3) {
+			return fail(400, { memberScope: true, memberQuery: q, memberError: '会員番号・メールアドレス・電話番号を入れてください。' });
+		}
+		try {
+			const found = (await adminFindMembers(bookAdmin(event), q)) ?? [];
+			return { memberScope: true, memberQuery: q, candidates: found };
+		} catch (e) {
+			return fail(400, { memberScope: true, memberQuery: q, memberError: linkMemberErrorText(e) });
+		}
+	},
+	linkMember: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
+		const role = event.locals.user?.role;
+		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const fd = await event.request.formData();
+		const userId = String(fd.get('memberUserId') ?? '');
+		if (!/^[0-9a-f-]{36}$/i.test(userId)) return fail(400, { memberScope: true, memberError: '会員を選んでください。' });
+		try {
+			const linked = await adminLinkBookingMember(bookAdmin(event), event.params.code, userId, fd.get('moveGuest') === 'on');
+			return { memberScope: true, linked };
+		} catch (e) {
+			return fail(400, { memberScope: true, memberError: linkMemberErrorText(e) });
 		}
 	},
 

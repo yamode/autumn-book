@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
+	import { page } from '$app/state';
 
 	let { data, form } = $props();
 
+	// 会員登録ページ（お客様へ電話で伝える）
+	const registerUrl = $derived(`${page.url.origin}/auth/register`);
 	let b = $derived(data.detail.booking);
 	let g = $derived(data.detail.guest);
 	let policy = $derived(data.detail.cancel_policy);
@@ -138,6 +141,13 @@
 		予約確認メールを送信キューに入れました（2分以内に送信されます）。
 	</p>
 {/if}
+{#if (form as { linked?: { member_code: string; guest_moved: boolean; refinalize: boolean } } | null)?.linked}
+	{@const l = (form as { linked: { member_code: string; guest_moved: boolean; refinalize: boolean } }).linked}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		会員 {l.member_code} に紐づけました。{l.guest_moved ? '予約のお客様情報を会員の情報に付け替えました（マイページに表示されます）。' : ''}
+		{l.refinalize ? '宿泊済みの予約のため、次の確定処理（毎日 12:00 ごろ）で会員ランクのポイントが付きます。' : 'ご宿泊後に会員ランクのポイントが付きます。'}
+	</p>
+{/if}
 {#if form?.rotated}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
 		取り消しリンクを再発行し、新しいリンク入りの確認メールを送信キューに入れました。古いリンクは無効になりました。
@@ -227,6 +237,64 @@
 				{/if}
 			</dl>
 		</div>
+
+		<!-- 非会員の予約を会員に紐づける（「会員になりたい」という電話への対応） -->
+		{#if data.live && data.isDirect && b.source === 'autumn_booking' && !b.is_member && b.booking_status !== 'cancelled'}
+			{@const mf = form as {
+				memberScope?: boolean;
+				memberQuery?: string;
+				memberError?: string;
+				candidates?: { user_id: string; member_code: string; name: string | null; kana: string | null; email: string | null; phone: string | null; guest_id: string | null }[];
+			} | null}
+			<div class="rounded-xl border border-sky-200 bg-sky-50/40 p-5 text-sm">
+				<h2 class="font-medium text-stone-700">会員に紐づける（非会員の予約）</h2>
+				<p class="mt-1 text-xs leading-relaxed text-stone-500">
+					「非会員で予約したが会員になりたい」というお問い合わせのときに使います。まずお客様に会員登録をしていただき
+					（登録ページ: <span class="select-all font-mono">{registerUrl}</span>）、登録後の会員番号（YM-）・メールアドレス・電話番号で探して紐づけます。
+					紐づけると、この予約が会員のマイページに表示され、ご宿泊後に会員ランクのポイントが付きます（宿泊済みの予約は次の確定処理で付与）。
+				</p>
+				<form method="POST" action="?/findMember" class="mt-3 flex flex-wrap items-center gap-2">
+					<input
+						name="q"
+						value={mf?.memberQuery ?? g.email ?? ''}
+						placeholder="YM-001234 / メールアドレス / 電話番号"
+						class="w-72 rounded-md border border-stone-300 px-2 py-1.5"
+					/>
+					<button class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50">会員を探す</button>
+				</form>
+				{#if mf?.memberScope && mf.memberError}<p class="mt-2 text-xs text-red-600">{mf.memberError}</p>{/if}
+				{#if mf?.candidates}
+					{#if mf.candidates.length === 0}
+						<p class="mt-2 text-xs text-stone-500">見つかりませんでした。会員登録が済んでいるか、入力を確かめてください。</p>
+					{:else}
+						<ul class="mt-3 space-y-2">
+							{#each mf.candidates as c (c.user_id)}
+								<li class="rounded-lg border border-stone-200 bg-white p-3">
+									<div class="flex flex-wrap items-baseline gap-x-3">
+										<span class="font-medium">{c.name ?? '（氏名未登録）'}</span>
+										<span class="font-mono text-xs text-stone-500">{c.member_code}</span>
+										<span class="text-xs text-stone-500">{c.email ?? ''}{c.phone ? `・${c.phone}` : ''}</span>
+									</div>
+									<form method="POST" action="?/linkMember" class="mt-2 flex flex-wrap items-center gap-3 text-xs">
+										<input type="hidden" name="memberUserId" value={c.user_id} />
+										<label class="flex items-center gap-1.5 text-stone-600">
+											<input type="checkbox" name="moveGuest" checked class="h-4 w-4" />
+											予約のお客様情報をこの会員の情報に付け替える（マイページに表示するため）
+										</label>
+										<button
+											class="rounded-md bg-sky-700 px-3 py-1.5 text-white hover:bg-sky-800"
+											onclick={(e) => {
+												if (!confirm(`予約 ${b.code} を会員 ${c.member_code}（${c.name ?? ''}）に紐づけます。よろしいですか？`)) e.preventDefault();
+											}}>この会員に紐づける</button
+										>
+									</form>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/if}
+			</div>
+		{/if}
 
 		<!-- キャンセル規定 -->
 		<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
