@@ -78,11 +78,10 @@ export const load = async (event) => {
       address: [b.detail.guest?.zip_code, b.detail.guest?.address].filter(Boolean).join(' '),
       allergies: b.detail.guest?.allergies ?? '',
       arrival: b.detail.arrival ?? '',
-      options: b.detail.options ?? [],
+      // 入力項目の一覧（旧形式の「予約時決済割引」の行は料金の明細へ移すので外す）
+      options: (b.detail.options ?? []).filter((o) => o.label !== PREPAY_DISCOUNT_LABEL),
+      ...priceOf(b),
       notes: b.detail.notes ?? '',
-      // 合計は入湯税を含む（宿泊料金＋入湯税）
-      total: b.total_amount + (b.bath_tax_amount ?? 0),
-      bathTax: b.bath_tax_amount ?? 0,
       paymentMethodName: b.payment_method_name,
       bookedBy: b.booked_by,
       createdAt: b.created_at,
@@ -91,6 +90,26 @@ export const load = async (event) => {
     }))
   };
 };
+
+const PREPAY_DISCOUNT_LABEL = '予約時決済割引';
+// 料金の明細: 宿泊料金（割引前）・予約時決済割引・入湯税・合計（請求額）。
+// 2026-09-26 以降の予約は割引を prepay_discount_amount に持ち total_amount は割引前。
+// それより前の予約は total_amount が割引後で、割引は入力項目（'2%引き（-2,304円）'）にだけ残っているので、そこから戻す。
+function priceOf(b: {
+  total_amount: number;
+  bath_tax_amount: number | null;
+  prepay_discount_amount?: number | null;
+  detail: { options?: { label: string; value: string }[] };
+}) {
+  const bathTax = b.bath_tax_amount ?? 0;
+  const o = (b.detail.options ?? []).find((x) => x.label === PREPAY_DISCOUNT_LABEL);
+  const label = o ? o.value.replace(/[（(].*$/, '').trim() : '';
+  const stored = b.prepay_discount_amount ?? 0;
+  if (stored > 0) return { lodging: b.total_amount, discount: stored, discountLabel: label, bathTax, total: b.total_amount + bathTax - stored };
+  const m = o?.value.match(/-([\d,]+)円/);
+  const legacy = m ? Number(m[1].replace(/,/g, '')) : 0;
+  return { lodging: b.total_amount + legacy, discount: legacy, discountLabel: label, bathTax, total: b.total_amount + bathTax };
+}
 
 export const actions = {
   cancel: async (event) => {

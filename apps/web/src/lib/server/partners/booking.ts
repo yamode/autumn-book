@@ -289,12 +289,11 @@ export async function createPartnerBooking(
 
   const quote = await quotePartnerBooking(db, partner, input);
   if (!quote.ok) throw new PartnerStoreError(quote.message);
-  // 予約時決済の割引（単価に当てる）。割引したことは PMS の備考・メールにも出す。
+  // 予約時決済の割引。予約金額（1泊ごとの料金・PMS の予約総額・キャンセル料の基準）は割引前のまま、
+  // 割引額を台帳（prepay_discount_amount）に持ち、請求額から引く。PMS には支払明細「予約時決済割引」で入る（2026-09-26 指示）。
   const discount = paymentOption === 'online' && quote.prepay ? quote.prepay : null;
-  const rooms = discount ? discountRooms(quote.rooms, s.prepayDiscount) : quote.rooms;
-  const optionValues = discount
-    ? [...answers.values, { label: '予約時決済割引', value: `${discount.label}（-${discount.discount.toLocaleString('ja-JP')}円）` }]
-    : answers.values;
+  const rooms = quote.rooms;
+  const optionValues = answers.values;
 
   const { data, error } = await db.rpc('rms_partner_create_booking', {
     p: {
@@ -327,6 +326,8 @@ export async function createPartnerBooking(
       payment_label: paymentOptionLabel(paymentOption),
       // 入湯税（円・宿泊全体）。台帳の作成と同時に入れ、PMS への電文（月末締め等は作成時に積む）に載せる（autumn-shared 20260926103712）
       bath_tax: quote.bathTax,
+      // 予約時決済の割引額（円）。予約金額からは引かない（autumn-shared 20260926113433）
+      prepay_discount: discount?.discount ?? 0,
       // オンライン決済は支払待ちの仮押さえで作り、支払完了（予約時決済）・カード登録完了（チェックイン日決済）で
       // 確定・PMS へ（DB 関数 rms_partner_mark_paid / rms_partner_mark_card_saved）
       await_payment: isStripePaymentOption(paymentOption)
@@ -843,6 +844,8 @@ export type PartnerBookingRow = {
   // 宿泊料金（キャンセル料の基準）。オンライン決済の請求額は total_amount + bath_tax_amount（chargeAmountOf）
   total_amount: number;
   bath_tax_amount: number;
+  // 予約時決済の割引額（円）。請求額＝total_amount＋bath_tax_amount−これ
+  prepay_discount_amount: number;
   card_consent_text: string | null;
   card_consent_at: string | null;
   payment_method_name: string | null;
@@ -874,7 +877,7 @@ export type PartnerBookingRow = {
 };
 
 const BOOKING_COLUMNS =
-  'id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at';
+  'id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   const ids = [...new Set(rows.flatMap((r) => r.stay_ids ?? []))];
@@ -980,7 +983,12 @@ export function bookingSummaryLines(b: PartnerBookingRow): string[] {
     ...(b.detail.options ?? []).map((o) => `${o.label}: ${o.value}`),
     ...(b.detail.notes ? [`備考: ${b.detail.notes}`] : []),
     ...((b.bath_tax_amount ?? 0) > 0
-      ? [`宿泊料金: ${yen(b.total_amount)}（税込）`, `入湯税: ${yen(b.bath_tax_amount)}`, `合計: ${yen(chargeAmountOf(b))}`]
+      ? [
+          `宿泊料金: ${yen(b.total_amount)}（税込）`,
+          ...((b.prepay_discount_amount ?? 0) > 0 ? [`予約時決済割引: -${yen(b.prepay_discount_amount)}`] : []),
+          `入湯税: ${yen(b.bath_tax_amount)}`,
+          `合計: ${yen(chargeAmountOf(b))}`
+        ]
       : [`合計: ${yen(b.total_amount)}（税込）`]),
     ...(b.payment_method_name
       ? [

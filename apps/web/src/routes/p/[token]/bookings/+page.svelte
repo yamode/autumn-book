@@ -2,6 +2,7 @@
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
   import StripePayment from '$lib/components/payment/StripePayment.svelte';
+  import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
   import type { PageData } from './$types';
@@ -202,14 +203,24 @@
                 {#if b.arrival}<dt>到着予定</dt><dd>{b.arrival}</dd>{/if}
                 {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
                 {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
-                <!-- 料金の明細（宿泊料金はキャンセル料の基準。入湯税は別に請求） -->
-                <dt>宿泊料金</dt><dd class="tabular-nums">{yen(b.total - b.bathTax)}<span class="ml-1 text-xs text-stone-500">（税込）</span></dd>
-                {#if b.bathTax > 0}<dt>入湯税</dt><dd class="tabular-nums">{yen(b.bathTax)}</dd>{/if}
-                <dt>合計</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd>
                 {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}</dd>{/if}
                 <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
               </dl>
+
+              <!-- 料金の明細（表）。宿泊料金はキャンセル料の基準（入湯税は含めない） -->
+              <div class="mt-4 max-w-md">
+                <PartnerPriceTable
+                  lodging={b.lodging}
+                  guests={b.adultTotal}
+                  nights={b.nights}
+                  discount={b.discount}
+                  discountLabel={b.discountLabel}
+                  bathTax={b.bathTax}
+                  total={b.total}
+                  totalNote={PAY_STATUS[b.paymentStatus] ?? ''}
+                />
+              </div>
 
               {#if b.canUpdateCard && b.payMode}
                 <div class="mt-4 border-t border-stone-200 pt-3">

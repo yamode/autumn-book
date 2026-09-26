@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
+  import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import StripePayment from '$lib/components/payment/StripePayment.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
@@ -385,14 +386,21 @@
             {/each}
             {#if values.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
             {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}</dd>{/if}
-            {#if quote.ok}
-              <!-- 料金の明細（宿泊料金・予約時決済割引・入湯税）。キャンセル料は入湯税を除いた宿泊料金が基準 -->
-              <dt>宿泊料金</dt><dd class="tabular-nums">{yen(quote.total)}<span class="ml-1 text-xs text-stone-500">（税込・大人{quote.rooms.reduce((s, r) => s + r.adults, 0)}名 × {quote.nights}泊）</span></dd>
-              {#if discounted && prepay}<dt>予約時決済割引</dt><dd class="tabular-nums text-[var(--pt-accent)]">-{yen(prepay.discount)}<span class="ml-1 text-xs">（{prepay.label}）</span></dd>{/if}
-              {#if quote.bathTax > 0}<dt>入湯税</dt><dd class="tabular-nums">{yen(quote.bathTax)}<span class="ml-1 text-xs text-stone-500">（大人{quote.rooms.reduce((s, r) => s + r.adults, 0)}名 × {quote.nights}泊）</span></dd>{/if}
-              <dt>合計</dt><dd class="font-bold tabular-nums">{yen(payTotal)}</dd>
-            {/if}
           </dl>
+          {#if quote.ok}
+            <!-- 料金の明細（表）。宿泊料金は割引前（キャンセル料の基準・入湯税を含まない） -->
+            <div class="mt-4 max-w-md">
+              <PartnerPriceTable
+                lodging={quote.total}
+                guests={quote.rooms.reduce((s, r) => s + r.adults, 0)}
+                nights={quote.nights}
+                discount={discounted && prepay ? prepay.discount : 0}
+                discountLabel={discounted && prepay ? prepay.label : ''}
+                bathTax={quote.bathTax}
+                total={payTotal}
+              />
+            </div>
+          {/if}
         </section>
       {/if}
 
