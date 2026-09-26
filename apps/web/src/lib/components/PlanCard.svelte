@@ -28,6 +28,11 @@
 	// 料金表示の単位は全画面で「1名1泊・税込」を主、1室の合計を従に統一する。
 	// quote.perPerson は「1名あたりの全泊合計」なので、泊数で割って 1名1泊 に揃える。
 	let perPersonNight = $derived(total !== null ? Math.round(total / Math.max(1, adults * nights)) : null);
+	// 早期決済割・早期決済ポイントの最大率（withEarlyPrepayMax が入れる）。
+	// points は定率割引と別に付くので、定率の「予約時決済で N%OFF」と並べて出す
+	let earlyMax = $derived(plan.payment.prepay ? (plan.payment.earlyPrepayMaxRate ?? 0) : 0);
+	let earlyPoints = $derived(earlyMax > 0 && plan.payment.earlyPrepayMode === 'points');
+	let earlyMaxText = $derived(percentText(Math.round(earlyMax * 1000) / 10));
 </script>
 
 <a {href} class="group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:shadow-md sm:flex-row">
@@ -41,17 +46,23 @@
 			{#if plan.payment.onsite}
 				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.pay_onsite()}</span>
 			{/if}
-			{#if plan.payment.prepay && (plan.payment.earlyPrepayMaxRate ?? 0) > 0}
+			{#if earlyMax > 0 && !earlyPoints}
 				<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
 				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-					{m.plan_early_max({ rate: percentText(Math.round((plan.payment.earlyPrepayMaxRate ?? 0) * 1000) / 10) })}
+					{m.plan_early_max({ rate: earlyMaxText })}
 				</span>
 			{:else if plan.payment.prepay && plan.payment.prepayDiscountRate > 0}
 				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
 					{m.pay_prepay_off({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) })}
 				</span>
-			{:else if plan.payment.prepay}
+			{:else if plan.payment.prepay && !earlyPoints}
 				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.plan_card_payment_card()}</span>
+			{/if}
+			{#if earlyPoints}
+				<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
+				<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+					{m.plan_points_max({ rate: earlyMaxText })}
+				</span>
 			{/if}
 			{#if plan.payment.prepay && plan.payment.prepayMethods.includes('paypay')}
 				<span class="rounded-full bg-[#ff0033]/10 px-2 py-0.5 text-xs font-medium text-[#d90030]">PayPay</span>

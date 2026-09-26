@@ -1,33 +1,48 @@
-// 早期決済割（予約時決済 × 宿泊日までの日数で段階的に上がる割引）の純関数。画面とサーバで共有する。
+// 早期決済割（予約時決済 × 宿泊日までの日数で段階的に上がる還元）の純関数。画面とサーバで共有する。
+// 還元方法は施設ごとに選ぶ（mode）: discount = 請求額から割引 / points = 宿泊後にポイントを上乗せ（「早期決済ポイント」）。
 //
-// 金額の正は DB（autumn-shared 20260926221912 の book._early_prepay_discount → direct_payment_prepare）。
+// 金額の正は DB（autumn-shared 20260926225536 の book._early_prepay_discount → direct_payment_prepare）。
 // ここは同じ式で画面の表示と、サーバが PaymentIntent を作る前の突き合わせに使う。1円でもずれると支払が止まるので、
 // 率は千分率の整数・金額は BigInt で計算する（浮動小数を使わない）。
 //
 //   泊ごとの率 = max(プランの定率, 段階表の率〔施設で ON・プランが対象・除外期間外〕)。上限 20%。
 //   段階表の率 = 「今日（JST）から宿泊初日までの日数」が days 以上の段のうち最大の percent。
 //   割引額 = floor(Σ 泊の小計 × 泊の率 / 1000)。明細の合計が宿泊料金と違うときは加重平均の率を宿泊料金に当てる。
+//   points のとき: 泊の割引率はプランの定率だけ。段階表の率はポイント = floor(Σ 泊の小計 × 率 / 1000 / 1.10)（税抜）。
 
 export type EarlyPrepayTier = { days: number; percent: number };
 export type EarlyPrepayBlackout = { from: string; to: string; label: string };
+export type EarlyPrepayMode = 'discount' | 'points';
 export type EarlyPrepaySettings = {
   enabled: boolean;
+  mode: EarlyPrepayMode;
   tiers: EarlyPrepayTier[];
   blackouts: EarlyPrepayBlackout[];
 };
 
-/** Fable の提案による初期値（1カ月・3カ月・半年）。 */
-export const DEFAULT_EARLY_PREPAY_TIERS: EarlyPrepayTier[] = [
-  { days: 30, percent: 3 },
-  { days: 90, percent: 5 },
-  { days: 180, percent: 8 }
-];
+/**
+ * Fable の改訂案による推奨値（2026-09-27）。2カ月前の予約ピークに割引を当てないよう 3カ月前から始める。
+ * ポイントは使われない分・再来の効果で実質の負担が額面の5〜6割のため、割引の約1.5倍。
+ */
+export const RECOMMENDED_EARLY_PREPAY_TIERS: Record<EarlyPrepayMode, EarlyPrepayTier[]> = {
+  discount: [
+    { days: 90, percent: 5 },
+    { days: 120, percent: 8 },
+    { days: 150, percent: 10 }
+  ],
+  points: [
+    { days: 90, percent: 8 },
+    { days: 120, percent: 12 },
+    { days: 150, percent: 15 }
+  ]
+};
+export const DEFAULT_EARLY_PREPAY_TIERS: EarlyPrepayTier[] = RECOMMENDED_EARLY_PREPAY_TIERS.discount;
 export const EARLY_PREPAY_MAX_TIERS = 4;
 export const EARLY_PREPAY_MAX_BLACKOUTS = 40;
 /** 率の上限（千分率）。PREPAY_DISCOUNT_MAX（20%）と同じ */
 const MAX_PERMILLE = 200;
 
-export const NO_EARLY_PREPAY: EarlyPrepaySettings = { enabled: false, tiers: [], blackouts: [] };
+export const NO_EARLY_PREPAY: EarlyPrepaySettings = { enabled: false, mode: 'discount', tiers: [], blackouts: [] };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -49,7 +64,8 @@ export function normalizeEarlyPrepaySettings(raw: unknown): EarlyPrepaySettings 
     .map((b) => ({ from: String(b.from ?? ''), to: String(b.to ?? ''), label: String(b.label ?? '').trim().slice(0, 40) }))
     .filter((b) => DATE_RE.test(b.from) && DATE_RE.test(b.to));
   const enabled = src.enabled ?? src.early_prepay_enabled;
-  return { enabled: enabled === true, tiers, blackouts };
+  const mode = (src.mode ?? src.early_prepay_mode) === 'points' ? 'points' : 'discount';
+  return { enabled: enabled === true, mode, tiers, blackouts };
 }
 
 /** 保存前の検証（SQL の admin_save_payment_settings と同じ条件）。問題があれば日本語のメッセージ。 */
@@ -110,62 +126,85 @@ export type PrepayDiscountInput = {
 };
 
 export type PrepayDiscountDetail = {
+  /** 還元方法（施設で OFF・対象外のプランは discount 扱い＝定率だけ） */
+  mode: EarlyPrepayMode;
+  /** 請求額から引く割引額（points のときはプランの定率の分だけ） */
   discount: number;
+  /** 宿泊後に上乗せするポイント（points のときだけ。税抜宿泊料金 × 段階表の率） */
+  bonusPoints: number;
   leadDays: number;
   /** 段階表の率（千分率・除外期間は考えない） */
   tierPermille: number;
   flatPermille: number;
-  /** 実際に当たった泊の率の最大（千分率） */
+  /** 実際に当たった泊の割引率の最大（千分率） */
   maxPermille: number;
+  /** 実際に当たった泊のポイント率の最大（千分率） */
+  pointsPermille: number;
   blackoutNights: number;
   nights: number;
 };
 
-/** 予約時決済の割引額と内訳（SQL の book._early_prepay_discount と同じ式）。 */
+/** 予約時決済の割引額・上乗せポイントと内訳（SQL の book._early_prepay_discount と同じ式）。 */
 export function prepayDiscountDetail(q: PrepayDiscountInput): PrepayDiscountDetail {
   const leadDays = daysBetween(q.today, q.checkIn);
   const flat = Math.min(Math.max(Math.round((q.flatRate || 0) * 1000), 0), MAX_PERMILLE);
-  const tier = q.settings.enabled && q.earlyEligible ? tierPermilleOf(q.settings.tiers, leadDays) : 0;
+  const active = q.settings.enabled && q.earlyEligible;
+  const tier = active ? tierPermilleOf(q.settings.tiers, leadDays) : 0;
+  const mode: EarlyPrepayMode = active ? q.settings.mode : 'discount';
   const total = Math.max(0, Math.round(q.total));
   const lines = (q.lines ?? []).filter((l) => !!l.date);
+  const ratesOf = (date: string) => {
+    const black = tier > 0 && inBlackout(date, q.settings.blackouts);
+    return {
+      black,
+      rate: mode === 'discount' && !black ? Math.max(flat, tier) : flat,
+      prate: mode === 'points' && !black ? tier : 0
+    };
+  };
 
   let sum = 0n;
   let num = 0n;
+  let pnum = 0n;
   let max = 0;
+  let pmax = 0;
   let black = 0;
   for (const l of lines) {
-    let rate: number;
-    if (tier > 0 && inBlackout(l.date, q.settings.blackouts)) {
-      black++;
-      rate = flat;
-    } else rate = Math.max(flat, tier);
+    const r = ratesOf(l.date);
+    if (r.black) black++;
     const s = BigInt(Math.round(l.subtotal || 0));
     sum += s;
-    num += s * BigInt(rate);
-    max = Math.max(max, rate);
+    num += s * BigInt(r.rate);
+    pnum += s * BigInt(r.prate);
+    max = Math.max(max, r.rate);
+    pmax = Math.max(pmax, r.prate);
   }
 
   let discount: number;
+  let points: number;
   if (lines.length === 0 || sum <= 0n) {
-    let rate: number;
-    if (tier > 0 && inBlackout(q.checkIn, q.settings.blackouts)) {
-      rate = flat;
-      black = 1;
-    } else rate = Math.max(flat, tier);
-    max = rate;
-    discount = Number((BigInt(total) * BigInt(rate)) / 1000n);
+    const r = ratesOf(q.checkIn);
+    black = r.black ? 1 : 0;
+    max = r.rate;
+    pmax = r.prate;
+    discount = Number((BigInt(total) * BigInt(r.rate)) / 1000n);
+    points = Number((BigInt(total) * BigInt(r.prate)) / 1100n); // ÷1000 ÷1.10（税抜）
   } else if (sum === BigInt(total)) {
     discount = Number(num / 1000n);
+    points = Number(pnum / 1100n);
   } else {
     discount = Number((BigInt(total) * num) / (sum * 1000n));
+    points = Number((BigInt(total) * pnum) / (sum * 1100n));
   }
 
   return {
+    mode,
     discount: Math.max(0, Math.min(discount, total)),
+    bonusPoints: Math.max(0, points),
     leadDays,
     tierPermille: tier,
     flatPermille: flat,
     maxPermille: max,
+    pointsPermille: pmax,
     blackoutNights: black,
     nights: Math.max(lines.length, 1)
   };

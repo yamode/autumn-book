@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { DEFAULT_EARLY_PREPAY_TIERS, EARLY_PREPAY_MAX_TIERS, percentText } from '$lib/early-prepay';
+	import { EARLY_PREPAY_MAX_TIERS, percentText, RECOMMENDED_EARLY_PREPAY_TIERS, type EarlyPrepayMode } from '$lib/early-prepay';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let { data, form } = $props();
@@ -29,9 +29,11 @@
 	type BlackRow = { from: string; to: string; label: string };
 	function initEarly() {
 		const s = data.settings?.earlyPrepay;
+		const mode: EarlyPrepayMode = s?.mode ?? 'discount';
 		return {
 			enabled: s?.enabled ?? false,
-			tiers: (s && s.tiers.length ? s.tiers : DEFAULT_EARLY_PREPAY_TIERS).map((t) => ({ days: t.days, percent: t.percent })) as TierRow[],
+			mode,
+			tiers: (s && s.tiers.length ? s.tiers : RECOMMENDED_EARLY_PREPAY_TIERS[mode]).map((t) => ({ days: t.days, percent: t.percent })) as TierRow[],
 			blackouts: (s?.blackouts ?? []).map((b) => ({ ...b })) as BlackRow[]
 		};
 	}
@@ -39,9 +41,13 @@
 	const addTier = () => {
 		if (early.tiers.length >= EARLY_PREPAY_MAX_TIERS) return;
 		const last = early.tiers.at(-1);
-		early.tiers.push({ days: last ? Number(last.days) + 90 : 30, percent: last ? Number(last.percent) + 2 : 3 });
+		early.tiers.push({ days: last ? Number(last.days) + 30 : 90, percent: last ? Number(last.percent) + 2 : 5 });
 	};
-	const resetTiers = () => (early.tiers = DEFAULT_EARLY_PREPAY_TIERS.map((t) => ({ ...t })));
+	const resetTiers = () => (early.tiers = RECOMMENDED_EARLY_PREPAY_TIERS[early.mode].map((t) => ({ ...t })));
+	const recommendedText = $derived(
+		RECOMMENDED_EARLY_PREPAY_TIERS[early.mode].map((t) => `${t.days}日 ${early.mode === 'points' ? '+' : ''}${t.percent}%`).join('・')
+	);
+	const unit = $derived(early.mode === 'points' ? 'ポイント' : '割引');
 
 	// 試算（1予約の宿泊料金を入れると、段ごとの割引額・お支払い額が出る）
 	let sample = $state(60000);
@@ -57,9 +63,15 @@
 			const next = tiers[i + 1];
 			rows.push({ label: next ? `${t.days}〜${next.days - 1}日前` : `${t.days}日前以上`, percent: t.percent });
 		});
+		const points = early.mode === 'points';
 		return rows.map((r) => {
-			const discount = Math.floor((total * Math.round(r.percent * 10)) / 1000);
-			return { ...r, discount, pay: total - discount, cost: r.percent + STRIPE_FEE };
+			const permille = Math.round(r.percent * 10);
+			// 割引: 請求額から引く。ポイント: 請求額は変わらず、税抜宿泊料金 × 率 を宿泊後に付与（DB と同じ ÷1.10・切り捨て）
+			const discount = points ? 0 : Math.floor((total * permille) / 1000);
+			const pt = points ? Math.floor((total * permille) / 1100) : 0;
+			// 宿の負担（額面）。ポイントは未使用・再来の効果で実質はこれより小さい
+			const cost = (points ? r.percent / 1.1 : r.percent) + STRIPE_FEE;
+			return { ...r, discount, pt, pay: total - discount, cost };
 		});
 	});
 
@@ -70,6 +82,7 @@
 		early.enabled ? Math.max(0, ...(data.settings?.earlyPrepay.tiers ?? []).map((t) => t.percent)) : 0
 	);
 	const savedEarlyOn = $derived(data.settings?.earlyPrepay.enabled ?? false);
+	const savedPoints = $derived(data.settings?.earlyPrepay.mode === 'points');
 	const savedEarlyMax = $derived(Math.max(0, ...(data.settings?.earlyPrepay.tiers ?? []).map((t) => t.percent)));
 
 	// ---- 取引先別 ----
@@ -155,13 +168,15 @@
 
 	<section class="rounded-xl border border-stone-200 bg-white p-4">
 		<div class="mb-1 flex items-center justify-between">
-			<h2 class="font-medium text-stone-800">早期決済割（公式サイトの予約時決済）</h2>
+			<h2 class="font-medium text-stone-800">早期決済割／早期決済ポイント（公式サイトの予約時決済）</h2>
 			{#if f?.scope === 'early' && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
 		</div>
 		<p class="mb-3 max-w-3xl text-xs text-stone-500">
-			ご宿泊日が先の予約ほど、予約時に決済すると割引率が上がります。率は「予約した日から宿泊初日までの日数」で決まります。
-			対象はプラン別で「早期決済割の対象」にしたプランだけです。プランの定率割引がある場合は、泊ごとに大きい方の率を使います（足し算はしません。上限 20%）。
-			<b class="text-stone-700">割引額はお客様都合の取消では返金しません</b>（キャンセル料を免除した取消は全額返金）。予約画面にも同じ大きさで表示します。
+			ご宿泊日が先の予約ほど、予約時に決済したときの還元が大きくなります。率は「予約した日から宿泊初日までの日数」で決まります。対象はプラン別で「対象」にしたプランだけです。
+			還元方法は施設ごとに選びます。<b class="text-stone-700">割引</b>＝請求額から引く（プランの定率割引とは泊ごとに大きい方・上限 20%）。
+			<b class="text-stone-700">ポイント</b>＝請求額は変えず、税抜宿泊料金 × 率 のポイントをご宿泊後に上乗せ付与（会員ランクの通常ポイントとは別。プランの定率割引はそのまま割引）。
+			割引額はお客様都合の取消では返金しません（入湯税は返金・キャンセル料免除の取消は全額返金）。ポイントは宿泊後の付与なので、取消されれば付きません。
+			非会員の予約でも、ご宿泊日までに同じメールアドレスで会員登録すればポイントが付きます。
 		</p>
 		{#if data.settingsError}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.settingsError}</p>{/if}
 		{#if f?.scope === 'early' && f.error}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.error}</p>{/if}
@@ -175,6 +190,15 @@
 					<span class="text-xs text-stone-400">（オフにすると段階表は効かず、プランの定率割引だけになります）</span>
 				</label>
 
+				<div class="flex flex-wrap items-center gap-4">
+					<span class="text-xs font-medium text-stone-500">還元方法</span>
+					<label class="flex items-center gap-1.5"><input type="radio" name="mode" value="discount" bind:group={early.mode} class="h-4 w-4" /> 割引（早期決済割）</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="mode" value="points" bind:group={early.mode} class="h-4 w-4" /> ポイント上乗せ（早期決済ポイント）</label>
+					{#if early.mode !== (data.settings?.earlyPrepay.mode ?? 'discount')}
+						<button type="button" onclick={resetTiers} class="text-xs text-sky-700 hover:underline">段階表をこの方式の推奨値にする</button>
+					{/if}
+				</div>
+
 				<div class="grid gap-6 lg:grid-cols-2">
 					<!-- 段階表 -->
 					<div>
@@ -186,7 +210,7 @@
 									<input type="number" name="tier_days" bind:value={t.days} min="1" max="365" class="w-20 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
 									<span class="text-stone-500">日前以上なら</span>
 									<input type="number" name="tier_percent" bind:value={t.percent} min="1" max="20" step="0.1" class="w-20 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
-									<span class="text-stone-500">% 引き</span>
+									<span class="text-stone-500">{early.mode === 'points' ? '% ポイント上乗せ' : '% 引き'}</span>
 									<button type="button" onclick={() => early.tiers.splice(i, 1)} class="ml-1 text-xs text-red-500 hover:underline">削除</button>
 								</div>
 							{/each}
@@ -195,7 +219,7 @@
 							{#if early.tiers.length < EARLY_PREPAY_MAX_TIERS}
 								<button type="button" onclick={addTier} class="text-sky-700 hover:underline">＋ 段を追加</button>
 							{/if}
-							<button type="button" onclick={resetTiers} class="text-stone-500 hover:underline">推奨値（30日 3%・90日 5%・180日 8%）に戻す</button>
+							<button type="button" onclick={resetTiers} class="text-stone-500 hover:underline">推奨値（{recommendedText}）に戻す</button>
 						</div>
 					</div>
 
@@ -208,28 +232,28 @@
 						</div>
 						<table class="w-full text-xs">
 							<thead class="text-stone-400">
-								<tr><th class="py-1 text-left font-normal">予約の時期</th><th class="text-right font-normal">割引</th><th class="text-right font-normal">お得額</th><th class="text-right font-normal">お支払い</th><th class="text-right font-normal" title="割引＋Stripe 手数料 3.6%">宿の負担</th></tr>
+								<tr><th class="py-1 text-left font-normal">予約の時期</th><th class="text-right font-normal">{unit}</th><th class="text-right font-normal">{early.mode === 'points' ? '付与pt' : 'お得額'}</th><th class="text-right font-normal">お支払い</th><th class="text-right font-normal" title="還元（額面）＋Stripe 手数料 3.6%">宿の負担</th></tr>
 							</thead>
 							<tbody class="text-stone-700">
 								{#each previewRows as r (r.label)}
 									<tr class="border-t border-stone-200">
 										<td class="py-1">{r.label}</td>
-										<td class="text-right">{percentText(r.percent)}%</td>
-										<td class="text-right">{r.discount ? yen(r.discount) : '—'}</td>
+										<td class="text-right">{early.mode === 'points' && r.percent ? '+' : ''}{percentText(r.percent)}%</td>
+										<td class="text-right">{early.mode === 'points' ? (r.pt ? `${r.pt.toLocaleString('ja-JP')}pt` : '—') : r.discount ? yen(r.discount) : '—'}</td>
 										<td class="text-right">{yen(r.pay)}</td>
 										<td class="text-right {r.cost > 10 ? 'text-amber-700' : 'text-stone-500'}">{r.cost.toFixed(1)}%</td>
 									</tr>
 								{/each}
 							</tbody>
 						</table>
-						<p class="mt-2 text-[11px] leading-relaxed text-stone-400">宿の負担＝割引＋Stripe 手数料（約3.6%）。OTA の手数料（概ね 10〜15%）を下回る範囲が目安です。</p>
+						<p class="mt-2 text-[11px] leading-relaxed text-stone-400">宿の負担＝還元の額面＋Stripe 手数料（約3.6%）。OTA の手数料（概ね 10〜15%）を下回る範囲が目安です。ポイントは使われない分（ホテル業界で15〜25%）や再来の効果があり、実質の負担は額面の5〜6割程度とされます。</p>
 					</div>
 				</div>
 
 				<!-- 除外期間 -->
 				<div>
 					<h3 class="mb-1 text-xs font-medium text-stone-500">除外期間（繁忙期）</h3>
-					<p class="mb-2 text-xs text-stone-400">この期間に泊まる日には段階表を当てません（泊ごとに判定・プランの定率割引は残ります）。割引しなくても埋まる日を入れます。毎年の分は年ごとに追加してください。</p>
+					<p class="mb-2 text-xs text-stone-400">この期間に泊まる日には段階表を当てません（泊ごとに判定・プランの定率割引は残ります）。還元しなくても埋まる日を入れます。毎年の分は年ごとに追加してください。</p>
 					<div class="space-y-2">
 						{#each early.blackouts as b, i (i)}
 							<div class="flex flex-wrap items-center gap-2">
@@ -246,33 +270,35 @@
 				</div>
 
 				<div class="flex items-center gap-3">
-					<button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700 disabled:opacity-40">早期決済割を保存</button>
+					<button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
 					{#if data.settings?.updatedAt}<span class="text-xs text-stone-400">最終更新 {new Date(data.settings.updatedAt).toLocaleString('ja-JP')}</span>{/if}
 				</div>
 			</fieldset>
 		</form>
 
 		<details class="mt-5 rounded-lg border border-stone-200 p-3 text-xs text-stone-600">
-			<summary class="cursor-pointer font-medium text-stone-700">段階表の考え方（初期値の根拠と見直し方）</summary>
+			<summary class="cursor-pointer font-medium text-stone-700">段階表の考え方（推奨値の根拠と見直し方・2026-09-27 改訂）</summary>
 			<ul class="mt-2 list-disc space-y-1 pl-5 leading-relaxed">
-				<li><b>段は3つ＋0%</b>。多すぎると「あと何日早ければ得か」が見えにくくなり、行動につながりません。</li>
-				<li><b>30 / 90 / 180日</b>は「1カ月・3カ月・半年」と言える区切り。早割プラン（45 / 75日・男鹿は 60 / 90日）と日数をずらし、「料金が下がる早割」と「払い方で下がる早期決済割」を混同させません。</li>
-				<li><b>3 → 5 → 8%</b>と上に行くほど差を広げます（差を実感してもらうため）。端数の率は避けます。最上段でも 8%＋手数料 3.6%＝11.6% で OTA より安く、上限 20% の半分以下です。</li>
-				<li>遠い日程ほど取消が多くなりますが、割引額は取消時に返金しないので、割引だけ取られる心配はありません。</li>
-				<li>早割プランは初期値で対象外にしています（重ねると OTA 並みの負担になるため）。</li>
-				<li>見直しは四半期ごと。見るもの: 直販のうち予約時決済の割合（目標 40%）・段ごとの件数と割引総額（直販売上の 2% 以内が目安）・割引付き予約の取消率・直販のリードタイム中央値。</li>
-				<li>最上段の利用が少なくても、8% は「見せる段」として残す価値があります（負担は小さく、比べる基準になる）。繁忙期に割引予約が多いときは、率ではなく除外期間を足して調整します。</li>
+				<li><b>3カ月前から始める</b>。国内の旅館は2カ月前ごろに予約が入り始める（最初のピーク）ため、そこに還元を当てると「放っておいても入る予約」に配るだけになります（カニバリゼーション）。予約の入り方が立ち上がる手前だけに段を置くのが定石です。</li>
+				<li>遠い日程の予約者ほど「行くかどうか・どこに行くか」がまだ決まっておらず、値引きに反応しやすい。直前の予約者は日程が決まっていて反応しにくい。予約時決済という条件で、反応する層だけに還元します。</li>
+				<li><b>割引: 90日 5%・120日 8%・150日 10%</b>（段は3つ・30日刻みで「○カ月前」と言える区切り）。最上段は OTA 手数料の下限（約10%）まで。大手ホテルの前払いレートは 5〜15% 引きが一般的です。</li>
+				<li><b>ポイント: 90日 +8%・120日 +12%・150日 +15%</b>（割引の約1.5倍）。ポイントは使われない分と、次の宿泊での利用（再来）があるため、実質の負担は割引とほぼ同じで、見た目の率は大きくできます。2倍以上にはしない（負債が積み上がる）。</li>
+				<li>男鹿は認知がまだ浅く予約が直前寄りと見て、割引 60日 5%・90日 8%・120日 10% から（実績が出て2カ月前ピークなら 90日始まりに戻す）。西和賀はリピーターと会員化を重視してポイント。両館で方式が違うので比べられます。</li>
+				<li>自社の宿泊代金にだけ使えるポイントは「値引」扱いで景品表示法の景品規制の対象外。物品や他社ポイントと交換できるようにすると規制がかかるので付けない。会計上は付与時に契約負債（収益認識基準）。</li>
+				<li>見直しは四半期ごと（段の変更は年2回まで）。見るもの: 直販のうち予約時決済の割合／リードタイム帯（0-29・30-59・60-89・90-119・120-149・150日〜）ごとの件数と取消率（予約時決済と現地払いで比べる）／ポイントの付与・利用・失効／予約から始まった会員登録数。</li>
+				<li><b>効き目の判定</b>: 導入前の同じ月と比べて「90日以上前の予約」が増え、「60〜89日の予約」が減っていなければ効いている。60〜89日が減っていれば入口が早すぎる（予約が前にずれただけ）。</li>
+				<li>予約の入り方の実績が1年分たまったら: 入口の段＝最終稼働の10〜15%が埋まる日数より前、最上段＝3〜5%しか埋まっていない日数、その間を等分（3段まで）。予約が目標より早く埋まる日は除外期間に入れる。</li>
 			</ul>
 		</details>
 	</section>
 {:else if tab === 'plans'}
 	<!-- ============ プラン別 ============ -->
 	<p class="mb-3 max-w-3xl text-xs text-stone-500">
-		料金プランごとに、お客様が選べる支払方法と割引を決めます。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割は
+		料金プランごとに、お客様が選べる支払方法と割引を決めます。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割／ポイントは
 		<a href="?tab=basic" class="text-sky-700 hover:underline">基本</a>
-		の段階表です。両方あるときは泊ごとに大きい方を使います。
+		の段階表です。割引方式のときは定率割引と泊ごとに大きい方、ポイント方式のときは定率割引に加えてポイントが付きます。
 		{#if savedEarlyOn}
-			<span class="text-stone-600">現在、早期決済割は ON（最大 {percentText(savedEarlyMax)}%）。</span>
+			<span class="text-stone-600">現在、{savedPoints ? '早期決済ポイントは ON（最大 +' : '早期決済割は ON（最大 '}{percentText(savedEarlyMax)}%）。</span>
 		{:else}
 			<span class="text-amber-700">現在、早期決済割は OFF です（対象にしても効きません）。</span>
 		{/if}
@@ -287,7 +313,7 @@
 					<th class="px-3 py-2 text-left font-normal">支払方法</th>
 					<th class="px-3 py-2 text-left font-normal">定率割引</th>
 					<th class="px-3 py-2 text-left font-normal">早期決済割</th>
-					<th class="px-3 py-2 text-left font-normal">予約時決済の最大割引</th>
+					<th class="px-3 py-2 text-left font-normal">予約時決済の最大還元</th>
 					<th class="px-3 py-2"></th>
 				</tr>
 			</thead>
@@ -324,8 +350,13 @@
 									{#if onsite}—（予約時決済なし）
 									{:else}
 										{@const flat = Math.round(p.prepayDiscountRate * 100)}
-										{@const max = Math.max(flat, p.earlyPrepay && savedEarlyOn ? savedEarlyMax : 0)}
-										{max ? `最大 ${percentText(max)}%` : '割引なし'}
+										{@const early = p.earlyPrepay && savedEarlyOn ? savedEarlyMax : 0}
+										{#if savedPoints}
+											{[flat ? `割引 ${flat}%` : '', early ? `最大 +${percentText(early)}%pt` : ''].filter(Boolean).join('＋') || '還元なし'}
+										{:else}
+											{@const max = Math.max(flat, early)}
+											{max ? `最大 ${percentText(max)}%` : '割引なし'}
+										{/if}
 									{/if}
 								</span>
 							</form>
@@ -344,7 +375,7 @@
 		</table>
 	</div>
 	<p class="mt-2 text-xs text-stone-400">
-		「最大割引」は保存済みの内容で計算しています。早期決済割の段は予約した日から宿泊初日までの日数で決まり、除外期間の泊は定率割引だけになります。料金・食事・対象客室は RMS で管理しています。
+		「最大還元」は保存済みの内容で計算しています。段は予約した日から宿泊初日までの日数で決まり、除外期間の泊は定率割引だけになります。料金・食事・対象客室は RMS で管理しています。
 		{#if earlyMax !== savedEarlyMax && early.enabled}（基本タブの未保存の変更は反映されていません）{/if}
 	</p>
 {:else}

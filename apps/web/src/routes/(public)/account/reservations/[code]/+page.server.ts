@@ -24,7 +24,7 @@ import {
 import { addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
-import { directPaymentForBooking, directRefundPreviewOf, refundAfterCancel } from '$lib/server/direct-payments';
+import { directPaymentForBooking, directRefundPreviewOf, prepayBonusPointsOf, refundAfterCancel } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 // 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
@@ -81,9 +81,13 @@ export const load: PageServerLoad = async (event) => {
 					: ((await sbListRankCancelPolicies()).find((p) => p.rankCode === base.rankCode)?.rules ?? []);
 			cancelPreview = { ...base, rules };
 		}
-		// オンライン決済済みなら、取り消したときの返金の見込み（予約時決済の割引額は返金しない）
-		const pay = cancelPreview ? await directPaymentForBooking(r.code).catch(() => null) : null;
+		// オンライン決済の台帳（取消の返金見込み・早期決済ポイントの表示用）。現地払いの予約は引かない
+		const pay = r.payment !== 'onsite' ? await directPaymentForBooking(r.code).catch(() => null) : null;
+		// 取り消したときの返金の見込み（予約時決済の割引額は返金しない）
 		const refundPreview = cancelPreview && pay && pay.status === 'paid' ? directRefundPreviewOf(pay, cancelPreview.fee) : null;
+		// 早期決済ポイント（施設が points のときの予約）。取消された予約には付与されないので出さない
+		const bonusPoints = pay && pay.status === 'paid' && r.status !== 'cancelled' ? prepayBonusPointsOf(pay) : 0;
+		const prepayBonus = bonusPoints > 0 ? { points: bonusPoints, granted: !!pay?.prepay_bonus_granted_at } : null;
 		return {
 			booking,
 			facility,
@@ -95,7 +99,8 @@ export const load: PageServerLoad = async (event) => {
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
 			cancelPreview,
-			refundPreview
+			refundPreview,
+			prepayBonus
 		};
 	}
 
@@ -116,7 +121,9 @@ export const load: PageServerLoad = async (event) => {
 			booking.status === 'reserved'
 				? computeCancelFee(params.code, today, booking.memberId)
 				: null,
-		refundPreview: null
+		refundPreview: null,
+		// デモ（store）は早期決済割（discount）だけ
+		prepayBonus: null
 	};
 };
 

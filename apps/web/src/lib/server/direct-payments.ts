@@ -34,6 +34,7 @@ import {
   prepayDiscountDetail,
   tierPermilleOf,
   todayJstIso,
+  type EarlyPrepayMode,
   type EarlyPrepaySettings,
   type PrepayDiscountDetail
 } from '$lib/early-prepay';
@@ -123,25 +124,47 @@ export type DirectPrepared = {
   expiresAt: string;
 };
 
-/** 完了画面の割引表示に使う内訳（DB の prepay_discount_detail から） */
+/** 完了画面の割引・上乗せポイントの表示に使う内訳（DB の prepay_discount_detail から） */
 export type PrepayDetailSummary = {
-  /** 当たった泊の率の最大（千分率） */
+  /** 当たった泊の割引率の最大（千分率） */
   maxPermille: number;
-  /** 早期決済割（段階表）が定率より大きく当たったか */
+  /** 早期決済割（段階表）が定率より大きく割引として当たったか（discount のときだけ） */
   early: boolean;
   /** 除外期間の泊があり、泊ごとに率が違う */
   mixed: boolean;
+  /** 還元方法（20260926225536 より前の DB は無い＝discount） */
+  mode?: EarlyPrepayMode;
+  /** 宿泊後に上乗せする早期決済ポイント（points のときだけ） */
+  bonusPoints?: number;
+  /** 早期決済ポイントの率の最大（千分率） */
+  pointsPermille?: number;
 };
 
-function detailSummaryOf(raw: unknown): PrepayDetailSummary | null {
+export function detailSummaryOf(raw: unknown): PrepayDetailSummary | null {
   if (!raw || typeof raw !== 'object') return null;
   const d = raw as Record<string, unknown>;
   const max = Number(d.max_permille);
   if (!Number.isFinite(max)) return null;
+  const mode: EarlyPrepayMode = d.mode === 'points' ? 'points' : 'discount';
   const tier = Number(d.tier_permille) || 0;
   const flat = Number(d.flat_permille) || 0;
   const black = Number(d.blackout_nights) || 0;
-  return { maxPermille: max, early: tier > flat, mixed: black > 0 && tier > flat };
+  // points のときは段階表の率は割引にならない（割引はプランの定率だけ）
+  const early = mode === 'discount' && tier > flat;
+  return {
+    maxPermille: max,
+    early,
+    mixed: black > 0 && early,
+    mode,
+    bonusPoints: mode === 'points' ? Math.max(0, Math.floor(Number(d.bonus_points) || 0)) : 0,
+    pointsPermille: mode === 'points' ? Math.max(0, Number(d.points_permille) || 0) : 0
+  };
+}
+
+/** 台帳（direct_payments.prepay_discount_detail）から早期決済ポイントの数（points 以外・旧 DB は 0） */
+export function prepayBonusPointsOf(pay: Pick<DirectPaymentInfo, 'prepay_discount_detail'> | null | undefined): number {
+  const d = detailSummaryOf(pay?.prepay_discount_detail);
+  return d?.mode === 'points' ? (d.bonusPoints ?? 0) : 0;
 }
 
 type PrepareRow = {
@@ -379,6 +402,10 @@ export type DirectPaymentInfo = {
   bath_tax_amount: number;
   /** 予約時決済の割引額（20260926151458 より前の行は無い） */
   prepay_discount_amount?: number;
+  /** 割引・上乗せポイントの内訳（20260926221912 から。mode / bonus_points は 20260926225536 から） */
+  prepay_discount_detail?: unknown;
+  /** 早期決済ポイントを付与した日時（20260926225536 から・未付与は null） */
+  prepay_bonus_granted_at?: string | null;
   points_used: number;
   payment_intent_id: string | null;
   paid_at: string | null;
@@ -476,14 +503,25 @@ export const retryDirectRefund = (bookingCode: string) => refundAfterCancel(book
 // 早期決済割の表示（予約確認画面・デモ決済画面・プラン一覧）。式は lib/early-prepay.ts（DB と同じ）
 // ---------------------------------------------------------------------------
 export type PrepayDiscountView = {
-  /** 段階表（日数の昇順）。早期決済割を見せないときは空 */
+  /**
+   * 還元方法。discount = 早期決済割（請求額から割引）/ points = 早期決済ポイント（宿泊後に上乗せ付与）。
+   * 施設で OFF・対象外のプランは discount（定率割引だけ）
+   */
+  mode: EarlyPrepayMode;
+  /** 段階表（日数の昇順）。早期決済割・ポイントを見せないときは空 */
   tiers: { days: number; percent: number }[];
-  /** 段階表を画面に出すか（施設で ON・プランが対象・段階表の最大が定率より大きい） */
+  /**
+   * 段階表を画面に出すか（施設で ON・プランが対象・
+   * discount は段階表の最大が定率より大きい／points は定率割引と別に付くので段階表があれば出す）
+   */
   showLadder: boolean;
   detail: PrepayDiscountDetail;
-  /** 早期決済割（段階表）が定率より大きく当たったか（割引行の名前を「早期決済割」にする） */
+  /** 早期決済割（段階表）が定率より大きく割引として当たったか（割引行の名前を「早期決済割」にする。points では常に false） */
   early: boolean;
-  /** 境界の7日以内: あと inDays 日で fromPercent% → toPercent% に下がる。diff は割引額の差（円） */
+  /**
+   * 境界の7日以内: あと inDays 日で fromPercent% → toPercent% に下がる。
+   * diff は discount なら割引額の差（円）、points なら早期決済ポイントの差（pt）
+   */
   drop: { inDays: number; fromPercent: number; toPercent: number; diff: number } | null;
 };
 
@@ -508,18 +546,27 @@ export function prepayDiscountViewOf(
   const detail = prepayDiscountDetail(input);
   const tiers = eligible ? [...settings.tiers].sort((a, b) => a.days - b.days) : [];
   const maxTier = tiers.reduce((mx, t) => Math.max(mx, Math.round(t.percent * 10)), 0);
-  const showLadder = eligible && maxTier > detail.flatPermille;
+  const points = detail.mode === 'points';
+  // points は定率割引と別に付く（重ならない）ので、定率と比べない
+  const showLadder = eligible && (points ? maxTier > 0 : maxTier > detail.flatPermille);
   let drop: PrepayDiscountView['drop'] = null;
-  if (showLadder && detail.tierPermille > detail.flatPermille) {
+  if (showLadder && detail.tierPermille > (points ? 0 : detail.flatPermille)) {
     const d = nextTierDrop(tiers, detail.leadDays);
     if (d) {
-      // 段が下がった日に予約した場合の割引額との差（定率の方が大きくなる等で差が 0 なら出さない）
+      // 段が下がった日に予約した場合との差（割引額 or ポイント）。定率の方が大きくなる等で差が 0 なら出さない
       const later = prepayDiscountDetail({ ...input, today: addDays(today, d.inDays) });
-      const diff = detail.discount - later.discount;
+      const diff = points ? detail.bonusPoints - later.bonusPoints : detail.discount - later.discount;
       if (diff > 0) drop = { ...d, diff };
     }
   }
-  return { tiers, showLadder, detail, early: detail.tierPermille > detail.flatPermille && detail.discount > 0, drop };
+  return {
+    mode: detail.mode,
+    tiers,
+    showLadder,
+    detail,
+    early: !points && detail.tierPermille > detail.flatPermille && detail.discount > 0,
+    drop
+  };
 }
 
 export async function prepayDiscountViewFor(facilityId: string, plan: Pick<RatePlan, 'payment'>, hold: HoldLike): Promise<PrepayDiscountView> {
@@ -529,7 +576,9 @@ export async function prepayDiscountViewFor(facilityId: string, plan: Pick<RateP
 
 /**
  * プラン一覧・詳細用: 対象プランの payment.earlyPrepayMaxRate に「予約時決済で最大 N%」の N（0〜0.2）を入れる。
- * 段階表の最大率が定率（prepayDiscountRate）より大きいときだけ（小さければ定率の表示のまま）。
+ * payment.earlyPrepayMode に施設の還元方法も入れる。
+ *   discount: 段階表の最大率が定率（prepayDiscountRate）より大きいときだけ（小さければ定率の表示のまま）
+ *   points:   定率割引とは別に付くので、段階表があれば入れる（定率の表示と並べて出す）
  * 元のプランは書き換えない（デモの store はプランを共有しているため）。
  */
 export function withEarlyPrepayMax<T extends Pick<RatePlan, 'payment'>>(plans: T[], settings: EarlyPrepaySettings): T[] {
@@ -538,7 +587,7 @@ export function withEarlyPrepayMax<T extends Pick<RatePlan, 'payment'>>(plans: T
   return plans.map((p) => {
     if (!p.payment.prepay || p.payment.earlyPrepay !== true) return p;
     const flat = Math.round((p.payment.prepayDiscountRate || 0) * 1000);
-    if (maxTier <= flat) return p;
-    return { ...p, payment: { ...p.payment, earlyPrepayMaxRate: maxTier / 1000 } };
+    if (settings.mode !== 'points' && maxTier <= flat) return p;
+    return { ...p, payment: { ...p.payment, earlyPrepayMaxRate: maxTier / 1000, earlyPrepayMode: settings.mode } };
   });
 }

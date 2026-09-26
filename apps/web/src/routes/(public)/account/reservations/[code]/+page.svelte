@@ -116,6 +116,13 @@
 			{#if b.pointsUsed > 0}
 				<div class="flex justify-between text-emerald-700"><dt>{m.reservation_points_used()}</dt><dd>-{b.pointsUsed.toLocaleString()}{m.common_point_unit()}</dd></div>
 			{/if}
+			{#if data.prepayBonus}
+				<!-- 早期決済ポイント（予約時決済で宿泊後に上乗せ付与。会員ランクの通常ポイントとは別） -->
+				<div class="flex justify-between text-emerald-700">
+					<dt>{data.prepayBonus.granted ? m.reservation_prepay_points_granted() : m.reservation_prepay_points()}</dt>
+					<dd>+{data.prepayBonus.points.toLocaleString()}{m.common_point_unit()}</dd>
+				</div>
+			{/if}
 			<div class="flex justify-between text-stone-500"><dt>{m.reservation_payment()}</dt><dd>{b.payment !== 'onsite' ? `${m.reservation_payment_card()}（${paymentStatusLabel(b.paymentStatus ?? '')}）` : m.reservation_payment_local()}</dd></div>
 			{#if b.cancelFee !== undefined}
 				<div class="flex justify-between text-red-600"><dt>{m.reservation_cancel_fee()}</dt><dd>{formatPrice(b.cancelFee)}</dd></div>

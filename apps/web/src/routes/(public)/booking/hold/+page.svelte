@@ -48,6 +48,13 @@
 	);
 	// 今の段（段階表のハイライト用・千分率）
 	let currentTierPermille = $derived(prepay?.detail.tierPermille ?? 0);
+	// 早期決済ポイント（施設の還元方法が points）: 段階表の率は割引にせず、宿泊後にポイントを上乗せする。
+	// 請求額から引くのはプランの定率割引だけ（prepayAmount）。会員ランクの通常ポイントとは別に付く
+	let isPoints = $derived(prepay?.mode === 'points');
+	let bonusPoints = $derived(isPoints ? (prepay?.detail.bonusPoints ?? 0) : 0);
+	let bonusRate = $derived(percentText((prepay?.detail.pointsPermille ?? 0) / 10));
+	// 非会員の会員登録導線（予約中の入力を消さないよう別タブで開く）
+	const registerHref = '/auth/register';
 	let selectedGroup = $state<'online' | 'onsite' | null>(null);
 	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : 'onsite'));
 	let selectedOnline = $state<'card' | 'paypay' | null>(null);
@@ -354,6 +361,9 @@
 									{#if prepayAmount > 0}
 										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
 									{/if}
+									{#if bonusPoints > 0}
+										<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
+									{/if}
 								</label>
 								{#if prepay && (prepayAmount > 0 || prepay.showLadder)}
 									<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
@@ -369,34 +379,57 @@
 											</p>
 											<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
 										{/if}
+										{#if bonusPoints > 0}
+											<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->
+											<p class="font-medium text-emerald-800">{m.pay_points_compare({ points: bonusPoints.toLocaleString() })}</p>
+											{#if data.member}
+												<p class="text-xs text-stone-600">{m.pay_points_grant({ rate: bonusRate, points: bonusPoints.toLocaleString() })}</p>
+											{:else}
+												<p class="text-xs text-stone-700">
+													{m.pay_points_guest({ rate: bonusRate, points: bonusPoints.toLocaleString() })}
+													<a href={registerHref} target="_blank" rel="noopener" class="ml-1 font-medium text-accent-600 underline hover:text-accent-500">{m.pay_points_register()}</a>
+												</p>
+											{/if}
+											<p class="text-xs text-stone-500">{m.pay_points_cancel_note()}</p>
+										{/if}
 										{#if prepay.showLadder}
 											<div class="rounded-md border border-stone-200 bg-white/80 p-2.5">
-												<p class="text-xs text-stone-600">{m.pay_early_heading()}</p>
+												<p class="text-xs text-stone-600">{isPoints ? m.pay_points_heading() : m.pay_early_heading()}</p>
 												<p class="mt-1 font-medium text-brand-900">
-													{currentTierPermille > 0
-														? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
-														: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+													{#if isPoints}
+														{currentTierPermille > 0
+															? m.pay_points_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
+															: m.pay_points_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+													{:else}
+														{currentTierPermille > 0
+															? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
+															: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+													{/if}
 												</p>
-												<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={m.pay_early_name()}>
+												<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={isPoints ? m.pay_points_name() : m.pay_early_name()}>
 													{#each prepay.tiers as t (t.days)}
 														{@const current = Math.round(t.percent * 10) === currentTierPermille}
 														<li
 															class="rounded-full border px-2.5 py-0.5 text-xs tabular-nums {current ? 'border-red-300 bg-red-50 font-bold text-red-700' : 'border-stone-200 text-stone-500'}"
 															aria-current={current ? 'true' : undefined}
 														>
-															{m.pay_early_tier({ days: String(t.days) })} {percentText(t.percent)}%
+															{isPoints
+																? m.pay_points_tier({ days: String(t.days), rate: percentText(t.percent) })
+																: `${m.pay_early_tier({ days: String(t.days) })} ${percentText(t.percent)}%`}
 														</li>
 													{/each}
 												</ol>
 												{#if prepay.drop}
 													<p class="mt-1.5 text-xs text-stone-600">
-														{m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
+														{isPoints
+															? m.pay_points_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: prepay.drop.diff.toLocaleString() })
+															: m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
 													</p>
 												{/if}
 												{#if prepay.detail.blackoutNights > 0}
-													<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_blackout()}</p>
+													<p class="mt-1.5 text-xs text-stone-600">{isPoints ? m.pay_points_blackout() : m.pay_early_blackout()}</p>
 												{/if}
-												{#if currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
+												{#if !isPoints && currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
 													<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_flat_note({ rate: percentText(prepay.detail.flatPermille / 10) })}</p>
 												{/if}
 											</div>

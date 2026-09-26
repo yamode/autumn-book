@@ -1,7 +1,6 @@
 // 早期決済割の純関数のテスト（SQL の book._early_prepay_discount と同じ式）。`pnpm --filter @autumn-book/web test`
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_EARLY_PREPAY_TIERS,
   nextTierDrop,
   normalizeEarlyPrepaySettings,
   prepayDiscountDetail,
@@ -11,17 +10,20 @@ import {
 } from './early-prepay';
 import { directRefundDueOf } from './direct-payment';
 
-const ON: EarlyPrepaySettings = { enabled: true, tiers: DEFAULT_EARLY_PREPAY_TIERS, blackouts: [] };
+// 計算の検証用の段階表（推奨値とは別に固定。推奨値を変えてもテストが動かないように）
+const TIERS = [{ days: 30, percent: 3 }, { days: 90, percent: 5 }, { days: 180, percent: 8 }];
+const ON: EarlyPrepaySettings = { enabled: true, mode: 'discount', tiers: TIERS, blackouts: [] };
+const POINTS: EarlyPrepaySettings = { ...ON, mode: 'points' };
 const lines = (from: string, n: number, sub: number) =>
   Array.from({ length: n }, (_, i) => ({ date: new Date(Date.parse(`${from}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10), subtotal: sub }));
 
 describe('段階表の率', () => {
   it('日数が段の days 以上なら、その段の率（千分率）', () => {
-    expect(tierPermilleOf(DEFAULT_EARLY_PREPAY_TIERS, 29)).toBe(0);
-    expect(tierPermilleOf(DEFAULT_EARLY_PREPAY_TIERS, 30)).toBe(30);
-    expect(tierPermilleOf(DEFAULT_EARLY_PREPAY_TIERS, 89)).toBe(30);
-    expect(tierPermilleOf(DEFAULT_EARLY_PREPAY_TIERS, 90)).toBe(50);
-    expect(tierPermilleOf(DEFAULT_EARLY_PREPAY_TIERS, 400)).toBe(80);
+    expect(tierPermilleOf(TIERS, 29)).toBe(0);
+    expect(tierPermilleOf(TIERS, 30)).toBe(30);
+    expect(tierPermilleOf(TIERS, 89)).toBe(30);
+    expect(tierPermilleOf(TIERS, 90)).toBe(50);
+    expect(tierPermilleOf(TIERS, 400)).toBe(80);
     expect(tierPermilleOf([{ days: 10, percent: 2.5 }], 10)).toBe(25);
   });
 });
@@ -61,12 +63,40 @@ describe('割引額', () => {
   });
 });
 
+describe('ポイントモード（早期決済ポイント）', () => {
+  it('段階表の率は割引にせずポイントに（税抜 ÷1.10・切り捨て）', () => {
+    const d = prepayDiscountDetail({
+      total: 60000, lines: lines('2027-01-10', 2, 30000), checkIn: '2027-01-10', today: '2026-10-01',
+      flatRate: 0, earlyEligible: true, settings: POINTS
+    });
+    expect(d.mode).toBe('points');
+    expect(d.discount).toBe(0);
+    expect(d.bonusPoints).toBe(2727); // 60000 × 5% ÷ 1.10 = 2727.27
+    expect(d.pointsPermille).toBe(50);
+  });
+  it('プランの定率割引はそのまま割引、段階表はポイント（両方つく）', () => {
+    const d = prepayDiscountDetail({
+      total: 10000, lines: [{ date: '2027-06-01', subtotal: 10000 }], checkIn: '2027-06-01', today: '2026-10-01',
+      flatRate: 0.05, earlyEligible: true, settings: POINTS
+    });
+    expect(d.discount).toBe(500);
+    expect(d.bonusPoints).toBe(727); // 10000 × 8% ÷ 1.10
+  });
+  it('除外期間の泊・OFF・対象外はポイントなし', () => {
+    const s = { ...POINTS, blackouts: [{ from: '2027-01-11', to: '2027-01-11', label: '' }] };
+    const base = { total: 60000, lines: lines('2027-01-10', 2, 30000), checkIn: '2027-01-10', today: '2026-10-01', flatRate: 0 };
+    expect(prepayDiscountDetail({ ...base, earlyEligible: true, settings: s }).bonusPoints).toBe(1363); // 1泊分
+    expect(prepayDiscountDetail({ ...base, earlyEligible: false, settings: POINTS }).bonusPoints).toBe(0);
+    expect(prepayDiscountDetail({ ...base, earlyEligible: true, settings: { ...POINTS, enabled: false } }).mode).toBe('discount');
+  });
+});
+
 describe('段が下がる案内', () => {
   it('境界の7日以内だけ', () => {
-    expect(nextTierDrop(DEFAULT_EARLY_PREPAY_TIERS, 92)).toEqual({ inDays: 3, fromPercent: 5, toPercent: 3 });
-    expect(nextTierDrop(DEFAULT_EARLY_PREPAY_TIERS, 30)).toEqual({ inDays: 1, fromPercent: 3, toPercent: 0 });
-    expect(nextTierDrop(DEFAULT_EARLY_PREPAY_TIERS, 100)).toBeNull();
-    expect(nextTierDrop(DEFAULT_EARLY_PREPAY_TIERS, 10)).toBeNull();
+    expect(nextTierDrop(TIERS, 92)).toEqual({ inDays: 3, fromPercent: 5, toPercent: 3 });
+    expect(nextTierDrop(TIERS, 30)).toEqual({ inDays: 1, fromPercent: 3, toPercent: 0 });
+    expect(nextTierDrop(TIERS, 100)).toBeNull();
+    expect(nextTierDrop(TIERS, 10)).toBeNull();
   });
 });
 
@@ -81,7 +111,7 @@ describe('設定の検証', () => {
   });
   it('DB の列名でも読める', () => {
     expect(normalizeEarlyPrepaySettings({ early_prepay_enabled: true, early_prepay_tiers: [{ days: '30', percent: '3' }], early_prepay_blackouts: [] })).toEqual({
-      enabled: true, tiers: [{ days: 30, percent: 3 }], blackouts: []
+      enabled: true, mode: 'discount', tiers: [{ days: 30, percent: 3 }], blackouts: []
     });
   });
 });

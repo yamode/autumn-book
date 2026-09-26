@@ -2303,7 +2303,15 @@ export interface BookingDraft {
 	pointsUsed: number;
 	payment: 'onsite' | 'card' | 'paypay';
 	/** 予約時決済の割引の内訳（完了画面の割引行の名前・率。DB の prepay_discount_detail から。旧 DB は null） */
-	prepayDetail?: { maxPermille: number; early: boolean; mixed: boolean } | null;
+	// mode / bonusPoints / pointsPermille は早期決済ポイント（20260926225536）から
+	prepayDetail?: {
+		maxPermille: number;
+		early: boolean;
+		mixed: boolean;
+		mode?: 'discount' | 'points';
+		bonusPoints?: number;
+		pointsPermille?: number;
+	} | null;
 }
 
 export function setBookingDraft(cookies: Cookies, draft: BookingDraft): void {
@@ -2348,6 +2356,9 @@ export interface LastBooking {
 	prepayDiscountRate?: number;
 	/** 割引が早期決済割（段階表）によるものか */
 	prepayDiscountEarly?: boolean;
+	/** 早期決済ポイント（宿泊後に上乗せ付与する予定のポイント）と率（0〜0.2） */
+	prepayBonusPoints?: number;
+	prepayBonusRate?: number;
 	// オンライン決済（v0.43.0）: 支払った額（宿泊料金 − ポイント ＋ 入湯税）と入湯税
 	paidAmount?: number;
 	bathTax?: number;

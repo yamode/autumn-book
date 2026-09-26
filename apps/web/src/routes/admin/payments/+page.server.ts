@@ -47,7 +47,7 @@ export const load: PageServerLoad = async (event) => {
       hasContent: true,
       paymentMethod: (p.prepayDiscountRate > 0 ? 'deposit' : 'onsite') as PlanPaymentMethod,
       prepayDiscountRate: p.prepayDiscountRate,
-      earlyPrepay: !/早割/.test(`${p.name}${p.headline ?? ''}`)
+      earlyPrepay: true
     }));
     return {
       ...base,
@@ -113,6 +113,7 @@ export const actions: Actions = {
     const labels = fd.getAll('bo_label').map(String);
     const settings = normalizeEarlyPrepaySettings({
       enabled: fd.get('enabled') === 'on',
+      mode: fd.get('mode') === 'points' ? 'points' : 'discount',
       tiers: days
         .map((d, i) => ({ days: d, percent: pcts[i] }))
         .filter((t) => String(t.days).trim() !== '' || String(t.percent ?? '').trim() !== ''),

@@ -94,6 +94,13 @@
 			{#if b.pointsEarned > 0}
 				<div class="flex justify-between text-emerald-700"><dt>{m.complete_points_earned()}</dt><dd>+{b.pointsEarned.toLocaleString()}{m.common_point_unit()}</dd></div>
 			{/if}
+			{#if data.prepayBonus}
+				<!-- 早期決済ポイント（施設が points のとき）。会員ランクの通常ポイントとは別の行で見せる -->
+				<div class="flex justify-between text-emerald-700"><dt>{m.complete_prepay_points()}</dt><dd>+{data.prepayBonus.points.toLocaleString()}{m.common_point_unit()}</dd></div>
+				{#if !data.isMember}
+					<p class="text-xs text-stone-600">{m.complete_prepay_points_guest({ points: data.prepayBonus.points.toLocaleString() })}</p>
+				{/if}
+			{/if}
 		</dl>
 
 		<div class="mt-6 flex flex-wrap justify-center gap-3">

@@ -30,6 +30,10 @@ export function finishDirectBooking(cookies: Cookies, hold: SbHold, draft: Booki
 		...(detail && r.prepayDiscount > 0
 			? { prepayDiscountRate: detail.mixed ? 0 : detail.maxPermille / 1000, prepayDiscountEarly: detail.early }
 			: {}),
+		// 早期決済ポイント（施設が points のとき）。宿泊後の確定処理（DB）で付与する予定の数。取消されたら付与されない
+		...(detail?.mode === 'points' && (detail.bonusPoints ?? 0) > 0
+			? { prepayBonusPoints: detail.bonusPoints, prepayBonusRate: (detail.pointsPermille ?? 0) / 1000 }
+			: {}),
 		paidAmount: r.amount,
 		bathTax,
 		guest: {

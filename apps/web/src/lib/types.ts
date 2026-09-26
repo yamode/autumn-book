@@ -145,6 +145,11 @@ export interface PaymentConfig {
 	 * （プラン一覧・詳細のローダが lib/server/direct-payments.ts の withEarlyPrepayMax で入れる）
 	 */
 	earlyPrepayMaxRate?: number;
+	/**
+	 * 画面表示用: 施設の早期決済割の還元方法（earlyPrepayMaxRate と一緒に入る）。
+	 * points = 「予約時決済で最大 +N% ポイント（早期決済ポイント）」。定率割引とは別に付く
+	 */
+	earlyPrepayMode?: 'discount' | 'points';
 }
 
 export interface RatePlan {

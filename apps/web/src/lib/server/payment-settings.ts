@@ -16,7 +16,7 @@ import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
 
 /** デモ環境の設定（段階表の初期値で ON） */
-const DEMO_EARLY_PREPAY: EarlyPrepaySettings = { enabled: true, tiers: DEFAULT_EARLY_PREPAY_TIERS, blackouts: [] };
+const DEMO_EARLY_PREPAY: EarlyPrepaySettings = { enabled: true, mode: 'discount', tiers: DEFAULT_EARLY_PREPAY_TIERS, blackouts: [] };
 
 /**
  * 公開側: 施設の早期決済割の設定。読めなかったとき（migration 未適用など）は OFF として扱う
@@ -28,7 +28,8 @@ export async function loadEarlyPrepaySettings(bookFacilityId: string): Promise<E
   try {
     const { data, error } = await supa()
       .from('payment_settings')
-      .select('early_prepay_enabled, early_prepay_tiers, early_prepay_blackouts')
+      // 列単位の grant なので列を明示する（* は anon で permission denied になる）
+      .select('early_prepay_enabled, early_prepay_mode, early_prepay_tiers, early_prepay_blackouts')
       .eq('facility_id', uuid)
       .maybeSingle();
     if (error || !data) return NO_EARLY_PREPAY;
@@ -75,7 +76,7 @@ function friendly(e: { message: string }, fallback: string): Error {
   if (m.includes('invalid_tiers')) return new Error('段階表の値が正しくありません（日数・割引率とも上の段より大きく、率は 1〜20%）。');
   if (m.includes('invalid_blackouts')) return new Error('除外期間の値が正しくありません（開始日 ≦ 終了日・1年以内）。');
   if (m.includes('Could not find the function') || m.includes('does not exist'))
-    return new Error('DB の更新（autumn-shared 20260926221912）がまだ適用されていません。');
+    return new Error('DB の更新（autumn-shared 20260926225536）がまだ適用されていません。');
   return new Error(`${fallback}（${m}）`);
 }
 
@@ -108,7 +109,8 @@ export async function sbSaveEarlyPrepaySettings(client: SupabaseClient, facility
     p_facility_id: facilityUuid,
     p_enabled: s.enabled,
     p_tiers: s.tiers,
-    p_blackouts: s.blackouts
+    p_blackouts: s.blackouts,
+    p_mode: s.mode
   });
   if (error) throw friendly(error, '早期決済割の設定を保存できませんでした');
 }

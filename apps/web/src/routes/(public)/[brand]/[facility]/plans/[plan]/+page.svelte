@@ -38,6 +38,10 @@
 		return best;
 	});
 	let soldOut = $derived(!!data.params.checkin && cheapest === null);
+	// 早期決済割・早期決済ポイントの最大率（withEarlyPrepayMax が入れる）。points は定率割引と並べて出す
+	let earlyMax = $derived(data.plan.payment.prepay ? (data.plan.payment.earlyPrepayMaxRate ?? 0) : 0);
+	let earlyPoints = $derived(earlyMax > 0 && data.plan.payment.earlyPrepayMode === 'points');
+	let earlyMaxText = $derived(percentText(Math.round(earlyMax * 1000) / 10));
 
 	// モバイルの下部固定バー: 客室セクションが画面に入ったら隠す（同じCTAが二重にならないように）
 	let roomsInView = $state(false);
@@ -103,11 +107,15 @@
 					<dt class="text-stone-500">{m.plan_detail_payment()}</dt>
 					<dd class="text-right">
 						{[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : ''].filter(Boolean).join(' ／ ')}
-						{#if data.plan.payment.prepay && (data.plan.payment.earlyPrepayMaxRate ?? 0) > 0}
+						{#if earlyMax > 0 && !earlyPoints}
 							<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
-							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: percentText(Math.round((data.plan.payment.earlyPrepayMaxRate ?? 0) * 1000) / 10) })}</span>
+							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
 						{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
 							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+						{/if}
+						{#if earlyPoints}
+							<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
+							<span class="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
 						{/if}
 					</dd>
 				</div>
