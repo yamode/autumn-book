@@ -226,3 +226,21 @@ export function resolveOptionAnswers(
   }
   return { ok: true, values };
 }
+
+// ---------------------------------------------------------------------------
+// オンライン決済の金額（サーバ・画面共通の純関数）
+// ---------------------------------------------------------------------------
+
+// 請求額 = 宿泊料金＋入湯税。キャンセル料の基準は宿泊料金（total_amount）だけ。
+export const chargeAmountOf = (b: { total_amount: number; bath_tax_amount?: number | null }) => b.total_amount + (b.bath_tax_amount ?? 0);
+
+// 予約画面の見積もりから、選んだ支払方法での宿泊料金と請求額を出す。
+// 予約時決済の割引（prepay）は予約時決済（online）を選んだときだけ効く。サーバが作る Intent の金額（chargeAmountOf）と同じになる。
+export function quoteChargeOf(
+  q: { total: number; bathTax: number; prepay: { total: number } | null },
+  paymentOption: string
+): { lodging: number; bathTax: number; charge: number; discounted: boolean } {
+  const discounted = paymentOption === 'online' && !!q.prepay;
+  const lodging = discounted && q.prepay ? q.prepay.total : q.total;
+  return { lodging, bathTax: q.bathTax, charge: lodging + q.bathTax, discounted };
+}

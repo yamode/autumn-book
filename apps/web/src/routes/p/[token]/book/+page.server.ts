@@ -1,10 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { canBookFor, describeDeadline, PARTNER_PAYMENT_OPTIONS } from '$lib/partner-booking';
+import { canBookFor, describeDeadline, isStripePaymentOption, PARTNER_PAYMENT_OPTIONS } from '$lib/partner-booking';
 import { availablePaymentOptions, createPartnerBooking, isPartnerBookingOpen, quotePartnerBooking } from '$lib/server/partners/booking';
+import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { PartnerStoreError, todayJst } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
-
-const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
+import { stripePublishableKey } from '$lib/server/stripe';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -36,50 +36,26 @@ export const load = async (event) => {
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: s.options },
-    paymentOptions: PARTNER_PAYMENT_OPTIONS.filter((o) => payIds.includes(o.id))
+    paymentOptions: PARTNER_PAYMENT_OPTIONS.filter((o) => payIds.includes(o.id)),
+    // 同じ画面で払う決済部品に渡す公開可能キー（オンライン決済を出せないときは null）
+    stripeKey: payIds.some(isStripePaymentOption) ? stripePublishableKey() : null
   };
 };
 
+// 後払い（銀行振込等）の確定。オンライン決済は同じ画面で払うため /book/reserve（API）から確定する。
 export const actions = {
   default: async (event) => {
     const { db, partner, session } = await requirePortalSession(event);
-    const fd = await event.request.formData();
-    const roomCount = Math.min(20, Math.max(1, Math.round(Number(str(fd, 'room_count'))) || 1));
-    const rooms = Array.from({ length: roomCount }, (_, i) => ({ adults: Math.round(Number(str(fd, `adults_${i}`))) || 0 }));
-    const answers: Record<string, string> = {};
-    for (const o of partner.booking_settings.options) answers[o.id] = str(fd, `opt_${o.id}`);
+    const input = parseBookingForm(await event.request.formData(), partner.booking_settings.options.map((o) => o.id));
+    // 支払方法が1つだけならそれに決まる（createPartnerBooking と同じ規則）
+    const payIds = availablePaymentOptions(partner);
+    const option = payIds.length === 1 ? payIds[0] : input.paymentOption;
+    if (isStripePaymentOption(option)) return fail(400, { message: 'お支払い情報を入力してから予約してください。' });
     try {
-      const created = await createPartnerBooking(
-        db,
-        partner,
-        { id: session.id, login_id: session.login_id },
-        {
-          roomCode: str(fd, 'room_code'),
-          planCode: str(fd, 'plan_code'),
-          planName: str(fd, 'plan_name'),
-          checkIn: str(fd, 'check_in'),
-          nights: Math.round(Number(str(fd, 'nights'))) || 1,
-          rooms,
-          guest: {
-            familyName: str(fd, 'family_name'),
-            givenName: str(fd, 'given_name'),
-            familyNameKana: str(fd, 'family_name_kana'),
-            givenNameKana: str(fd, 'given_name_kana'),
-            phone: str(fd, 'phone'),
-            email: str(fd, 'email'),
-            zipCode: str(fd, 'zip_code'),
-            address: str(fd, 'address'),
-            allergies: str(fd, 'allergies')
-          },
-          arrival: str(fd, 'arrival'),
-          notes: str(fd, 'notes'),
-          answers,
-          paymentOption: str(fd, 'payment_option')
-        },
-        { ip: requestMeta(event).ip, origin: event.url.origin }
-      );
-      // オンライン決済は Stripe の決済画面へ（支払完了で予約確定・PMS へ）
-      if (created.checkoutUrl) throw redirect(303, created.checkoutUrl);
+      const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, input, {
+        ip: requestMeta(event).ip,
+        origin: event.url.origin
+      });
       throw redirect(303, `/p/${event.params.token}/bookings?done=${encodeURIComponent(created.bookingCode)}`);
     } catch (e) {
       if (e instanceof PartnerStoreError) return fail(e.status >= 400 && e.status < 600 ? e.status : 400, { message: e.message });

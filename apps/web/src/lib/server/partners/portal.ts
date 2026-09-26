@@ -84,3 +84,11 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
     bookingEnabled: isPartnerBookingOpen(partner)
   };
 }
+
+// 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
+export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies'>) {
+  const { db, partner, session } = await resolvePortal(event);
+  if (!session) throw error(401, 'ログインしてください。');
+  if (partnerUnavailableReason(partner)) throw error(403, '現在ご利用いただけません。');
+  return { db, partner, session };
+}

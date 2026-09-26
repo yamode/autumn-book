@@ -1,6 +1,104 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-26（取引先の管理画面を autumn-rms から移設 v0.41.0）
+> **最終更新**: 2026-09-26（取引先予約の決済を同じ画面で払う形に v0.42.0）
+
+## 取引先予約の決済を「同じ画面で払う」形に（2026-09-26 追加・v0.42.0）
+
+**2026-09-26 ユーザー決定: 予約の取りこぼしを減らすため、Stripe Checkout（別ページへ移動）をやめ、予約画面の中で払う形にする。**
+再利用できる決済部品として作り、まず取引先専用ページ（`/p/[token]/book`・予約一覧）に組み込んだ。公式サイト（公開側の予約）でも同じ部品を使う前提。
+
+### 作ったもの（`apps/web/src` 配下）
+| 種類 | パス | 内容 |
+|---|---|---|
+| 部品 | `lib/components/payment/StripePayment.svelte` | Payment Element ＋ Express Checkout Element（Apple Pay / Google Pay）。deferred intent。取引先に依存しない（props: `publishableKey` / `mode` / `amount` / `theme` / `consentText` / `validate` / `prepare` / `onconfirmed`、親から `submit()`） |
+| 部品 | `lib/components/payment/appearance.ts`・`types.ts` | Elements の見た目を Book の配色・角丸・フォントに（施設の差し色を `theme` で上書き）／部品と画面の約束 |
+| サーバ | `lib/server/payments/{keys,metadata,verify,webhook-route}.ts` | 純関数: 鍵の判定・Intent の metadata（`flow: 'elements'`）・Intent の検証と使い回し判定・Webhook の振り分け |
+| サーバ | `lib/server/payments/intents.ts` | PaymentIntent / SetupIntent を「使い回す or 作る」共通処理 |
+| サーバ | `lib/server/stripe.ts` | `createPaymentIntent` / `retrievePaymentIntent` / `createSetupIntent` / `retrieveSetupIntent`・公開可能キー（`stripePublishableKey` / `inlinePaymentReady` / `publishableKeyProblem`）を追加。**Checkout の作成（createCheckoutSession / createSetupSession）は削除**（旧画面の完了処理用に `retrieveCheckoutSession` だけ残す） |
+| API | `routes/p/[token]/book/reserve/+server.ts` | 予約画面のフォーム（FormData）→ 仮押さえ＋Intent → `client_secret` |
+| API | `routes/p/[token]/payment/+server.ts` | `prepare`（予約一覧からの支払再開・カード登録し直し）／`confirm`（ブラウザで確定した連絡）／`release`（支払前に仮押さえをやめる） |
+| 共通 | `lib/partner-theme.ts`・`lib/server/partners/booking-form.ts` | 施設の差し色（layout と決済部品で共有）／予約フォームの解析（後払いの form action と reserve API で共有） |
+| テスト | `lib/server/payments/payments.test.ts`（16）・`lib/components/payment/appearance.test.ts`（2）・`lib/partner-booking.test.ts` に金額（3） | 合計 62 件 |
+
+`booking.ts` からは `startCheckout` / `startCardSetup` / `resumeOnlinePayment` / `confirmOnlinePayment` を削除し、
+`preparePartnerPayment`（内部）/ `resumePartnerPayment` / `releasePendingBooking` / `confirmPartnerIntent` / `confirmCheckoutSession`（旧画面用）に置き換えた。
+予約一覧の `?/pay` action と、旧 Checkout の戻り（`?paid=` / `?card=` / `?unpaid=`）の処理も削除。
+
+### 支払の流れ
+1. 予約画面で支払方法に「オンライン決済（予約時 / チェックイン日）」を選ぶと、その場に入力欄が出る（Apple Pay / Google Pay が使える端末ではボタンがカード入力の上に出る）。
+   - 予約時決済: Elements は `mode: 'payment'`・`amount` = 割引後の宿泊料金＋入湯税（`quoteChargeOf`＝サーバの `chargeAmountOf` と同じ）・`jpy`
+   - チェックイン日決済: `mode: 'setup'`・`setupFutureUsage: 'off_session'`。**同意文を入力欄の直下に表示**（予約前は見本、仮押さえ後はサーバが作った文面＝記録に残る文面）
+   - 支払方法はカードに固定（Elements・サーバの Intent とも `payment_method_types: ['card']`）
+2. 確定ボタン（「予約して ¥X を支払う」「予約してカードを登録する」）または Apple Pay / Google Pay で:
+   ① `elements.submit()`（入力検証）→ ② `/book/reserve`: `rms_partner_create_booking`（`await_payment=true`・pending_payment・35分）＋ Intent 作成
+   → ③ `stripe.confirmPayment` / `confirmSetup`（`redirect: 'if_required'`、return_url は予約一覧）→ ④ `/payment` confirm → 予約一覧（`?code=&result=`）
+3. 確定（④）はサーバで Intent を Stripe から取り直し、`metadata`（app / purpose / flow / partner_booking_id）・状態・金額を確かめてから
+   予約時決済は `rms_partner_mark_paid`、チェックイン日決済は `rms_partner_mark_card_saved`（カード表示名・同意文 `card_consent_text` / `card_consent_at` も）。
+- **3Dセキュア**: Stripe のモーダルで完結（ページは移動しない）。リダイレクトが必要な場合は予約一覧に `?payment_intent=` / `?setup_intent=` 付きで戻り、そこで確定する
+- **カードが断られた**: 部品の入力欄の下にエラー。仮押さえはそのまま（期限を表示）、**同じ予約・同じ Intent** で別のカードを試せる。「この予約をやめて入力に戻る」で仮押さえを解放
+- **ブラウザが閉じられた**: Webhook（`payment_intent.succeeded` / `setup_intent.succeeded`）が同じ確定処理を行う
+- **放置**: 既存の `rms_partner_expire_pending`（5分ごと）が 35分で解放。期限の1分前を切った仮押さえでは支払わせない（画面は取り直し、再開 API は拒否）。期限後に支払が通った場合は従来どおり全額返金（`refunded_late`）
+- **二重確定の防止**: ブラウザの連絡と Webhook が同時でも、DB 関数が行ロックで 'already' を返す（通知メールは 'paid' / 'saved' のときだけ）。
+  Intent は予約1件につき使い回す（`stripe_session_id` 列に Intent id を保存・状態と金額が合うものだけ）＋冪等キー `rms-partner-{pi|si}-<予約id>-<前回のIntent|first>`
+- **自動請求と見分ける**: 同じ画面の Intent には `flow: 'elements'` を付ける。チェックイン日の自動請求（off-session）の PaymentIntent は flow が無いので Webhook は無視する
+  （混ぜると確定済みの予約を「期限後の支払」とみなして返金してしまうため）
+- 予約一覧の「お支払いへ進む」「カードの登録へ進む」「カードを登録し直す」は、同じ部品をモーダルで出す（別ページへ移動しない）
+
+### 必要な設定（ユーザー作業）
+1. **`PUBLIC_STRIPE_PUBLISHABLE_KEY`**（`pk_test_…` / `pk_live_…`）を Cloudflare Pages（autumn-book）に登録:
+   `npx wrangler pages secret put PUBLIC_STRIPE_PUBLISHABLE_KEY --project-name autumn-book`（**wrangler.jsonc の vars には書かない**。vars はダッシュボードの平文変数を置き換えるため暗号化シークレットで）。
+   `STRIPE_SECRET_KEY` と**テスト/本番をそろえる**（食い違うと決済を出さない）。未設定・不一致ならオンライン決済の選択肢は取引先の画面に出ず、管理画面（取引先の予約受付設定）に理由が出る
+2. **Stripe の Webhook 宛先（`/api/partner/stripe/webhook`）にイベントを追加**: `payment_intent.succeeded` / `setup_intent.succeeded`
+   （既存の `checkout.session.completed` / `checkout.session.async_payment_succeeded` / `charge.refunded` はそのまま残す。旧画面の完了・返金の同期に使う）
+3. **Apple Pay / Google Pay の支払い用ドメイン登録**（本番ドメイン決定後）: Stripe ダッシュボード → 設定 → 決済 → 「決済手段のドメイン」（Payment method domains）に
+   Book のドメイン（例 `autumn-book.pages.dev`、独自ドメインにしたらそれも）を追加。テスト/本番の両方で登録する。
+   登録されていないドメインでは Express Checkout のボタンが出ない（カード入力は使える）。Apple 側の確認ファイル
+   （`/.well-known/apple-developer-merchantid-domain-association`）の設置を求められたら `apps/web/static/.well-known/` に置く
+- CSP・セキュリティヘッダーは Book に設定が無い（`_headers` は X-Robots-Tag のみ）ので変更なし。将来 CSP を入れるときは
+  `script-src https://js.stripe.com`、`frame-src https://js.stripe.com https://hooks.stripe.com`、`connect-src https://api.stripe.com` を許可する
+- `app` / `purpose` の値（`autumn-rms` / `rms_partner_booking`）は変えていない（移設前の予約の返金 Webhook を見分けるため）
+
+### 表示確認（ローカル・Stripe の鍵なし）
+- `check` 0エラー0警告・`build`・`vitest` 62件通過
+- 一時モック（コミットしていない）で: 鍵未設定 → 「オンライン決済は現在ご利用いただけません」で落ちない／無効な鍵 → Stripe.js は読み込まれ、入力欄の代わりにエラーを表示して落ちない／
+  カード登録の同意文が入力欄の下に出る／スマホ 375px で横スクロールなし。**実際のカード入力欄・Apple Pay ボタンの見た目は鍵が無いので未確認**
+
+### 未実施・未解決
+- 本番（テストモードの鍵）での通し確認（下のチェックリスト）
+- Apple Pay の setup モード（カード登録）は `deferredPaymentRequest`（後日請求の表示）を渡していない。Apple Pay のシートでは「今は請求しない」旨が出ない（同意文は画面に出ている）
+- 公式サイト（`/booking`）への組み込みは未着手（部品・サーバの共通処理は用意済み。purpose を新しく決め、Webhook の `purposes` に足す）
+- 期限切れで解放された仮押さえの PaymentIntent（未使用）は Stripe 上に残る（請求はされない。整理は任意）
+
+### テストチェックリスト（同じ画面で払う決済 v0.42.0）
+※前提: 本番（STRIPE_SECRET_KEY / PUBLIC_STRIPE_PUBLISHABLE_KEY はテストモード・Webhook に payment_intent.succeeded / setup_intent.succeeded 追加済み）
+
+#### 予約時決済（online）
+- [ ] 支払方法で「オンライン決済（予約時）」を選ぶと、その場にカード入力欄が出る（別ページへ移動しない）。入力欄の色・角丸が取引先ページの差し色に合っている
+- [ ] 明細（右のカード）の合計＝割引後の宿泊料金＋入湯税で、ボタンが「予約して ¥X を支払う」
+- [ ] 4242 4242 4242 4242 で支払 → 予約一覧に「お支払いが完了し、ご予約が確定しました」・PMS に取り込まれる・通知メールが1通ずつ
+- [ ] 4000 0027 6000 3184（3Dセキュア）→ モーダルで認証 → 確定。認証を失敗させると入力欄の下にエラー・仮押さえのまま
+- [ ] 4000 0000 0000 0002（拒否）→ エラー表示・仮押さえの期限表示 → 4242 で再試行すると同じ予約番号で確定（Stripe に PaymentIntent が1本だけ）
+- [ ] 「この予約をやめて入力に戻る」→ 仮押さえが取消になり、条件を変えて予約し直せる
+- [ ] 支払直後にタブを閉じる（確定の連絡が届かない）→ Webhook で確定・メールが届く
+- [ ] Stripe の Webhook 配信履歴で payment_intent.succeeded が 200（result: already または paid）
+
+#### チェックイン日決済（online_checkin）
+- [ ] 入力欄の直下に同意文（請求日・金額・内訳）が出る。ボタンが「予約してカードを登録する」
+- [ ] 4242 で登録 → 「カードを登録し、ご予約が確定しました」・台帳に card_label・card_consent_text・card_consent_at が入る（管理画面の予約一覧で「請求の同意」）
+- [ ] 4000 0025 0000 3155（登録時に3Dセキュア）→ モーダルで認証 → 登録。後日の自動請求（cron）が認証なしで通る
+- [ ] 予約一覧の「カードを登録し直す」→ モーダルで別のカードを登録 → 「カードを登録し直しました」。請求失敗の予約はチェックイン日ならその場で請求
+
+#### 予約一覧からの再開
+- [ ] 仮押さえ中の予約（予約画面で拒否された後に一覧へ移動したもの）の「お支払いへ進む」→ モーダルで支払 → 確定
+- [ ] 期限の1分前を切った仮押さえは「期限が過ぎたため…」で支払わせない
+
+#### Apple Pay / Google Pay（要ドメイン登録・実機）
+- [ ] iPhone Safari（Apple Pay 設定済み）で Apple Pay ボタンがカード入力の上に出る → 必須項目が空なら入力画面に戻ってシートが開かない → 入力済みなら支払えて確定
+- [ ] Android Chrome で Google Pay ボタンが出て支払える
+
+#### 鍵の設定
+- [ ] PUBLIC_STRIPE_PUBLISHABLE_KEY 未設定 → 取引先の画面にオンライン決済が出ない（後払いだけの取引先は予約できる）・管理画面に「公開可能キーが未登録」
+- [ ] シークレットキーが本番・公開可能キーがテスト → オンライン決済が出ない・管理画面に「テスト / 本番が食い違っています」
 
 ## 取引先の管理画面（RMS から移設）（2026-09-26 追加・v0.41.0）
 
@@ -135,6 +233,7 @@ autumn-rms（v0.102.0 時点の HEAD）の取引先専用ページ一式を、�
 | `SUPABASE_SERVICE_ROLE_KEY` | `rms_partner_*` の読み書き・RPC（**必須**） | 取引先ページ・API・Webhook・cron がすべて 503 |
 | `SUPABASE_URL` | 任意（無ければ `PUBLIC_SUPABASE_URL`） | — |
 | `STRIPE_SECRET_KEY` | オンライン決済（予約時決済・チェックイン日決済・返金） | オンライン決済を画面に出さない（銀行振込等のみ） |
+| `PUBLIC_STRIPE_PUBLISHABLE_KEY` | 同じ画面で払う決済部品（Stripe.js）に渡す公開可能キー（v0.42.0〜・シークレットキーとテスト/本番をそろえる） | オンライン決済を画面に出さない |
 | `STRIPE_WEBHOOK_SECRET` | Webhook 署名（Book 用に**新しく作る**宛先の whsec_） | Webhook が失敗（支払完了が記録されない） |
 | `CRON_SECRET` | `/api/cron/partner-charge` の Bearer | cron が 503 |
 | `CF_ACCOUNT_ID` / `CF_EMAIL_API_TOKEN` | 通知メール | メールを送らない（予約は通る） |
@@ -143,7 +242,7 @@ autumn-rms（v0.102.0 時点の HEAD）の取引先専用ページ一式を、�
 ### 未実施（本番切替に必要な手順）
 
 1. 上記 secret を Cloudflare Pages（autumn-book）に登録 → デプロイ
-2. **Stripe の Webhook 宛先を追加**: `https://autumn-book.pages.dev/api/partner/stripe/webhook`（イベント: `checkout.session.completed` / `checkout.session.async_payment_succeeded` / `charge.refunded`）。
+2. **Stripe の Webhook 宛先を追加**: `https://autumn-book.pages.dev/api/partner/stripe/webhook`（イベント: `payment_intent.succeeded` / `setup_intent.succeeded`（v0.42.0〜）/ `checkout.session.completed` / `checkout.session.async_payment_succeeded` / `charge.refunded`）。
    署名シークレットを `STRIPE_WEBHOOK_SECRET` に。**RMS 側の宛先と両方有効な間は、同じイベントを両方が処理する**（mark_paid 等は冪等だが通知メールが二重になりうる）→ Book で確認できたら RMS の宛先を無効化
 3. **請求 cron の呼び先を Book へ**: 現在 pg_cron `rms-partner-charge` は Vault `autumn_rms_rank_bump_url` の RMS オリジン＋ `autumn_rms_cron_secret` で **RMS の** `/api/cron/partner-charge` を叩いている。
    切り替えるには autumn-shared に migration（Book 用の URL・secret を Vault から読むよう job を差し替え）が必要。それまでは RMS が請求し、そのメール内リンクは RMS の `/p/...` を指す

@@ -1,33 +1,49 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { fail } from '@sveltejs/kit';
 import { canPartnerCancel, describeDeadline } from '$lib/partner-booking';
 import {
   cancelPartnerBooking,
   canUpdateCard,
-  confirmOnlinePayment,
+  cardConsentText,
+  confirmPartnerIntent,
   listPartnerBookings,
-  resumeOnlinePayment,
   type PaymentResult
 } from '$lib/server/partners/booking';
 import { PartnerStoreError } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
+import { stripePublishableKey } from '$lib/server/stripe';
+
+// 予約画面・支払の再開から戻ったときに出す結果（ブラウザが確定の連絡を済ませた後。表示だけに使う）
+const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'unpaid', 'refunded_late', 'card_saved', 'card_updated', 'card_late']);
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
   const { db, partner, session } = await requirePortalSession(event);
-  // 決済画面からの戻り: 支払完了を確かめて予約を確定する（Webhook より先に戻ってきても確定できるように）
   let payment: PaymentResult | { status: 'error'; message: string } | null = null;
-  // ?paid=（予約時決済の支払完了）/ ?card=（チェックイン日決済のカード登録完了）
-  const paidSession = event.url.searchParams.get('paid') ?? event.url.searchParams.get('card');
-  if (paidSession && /^cs_[A-Za-z0-9_]+$/.test(paidSession)) {
-    payment = await confirmOnlinePayment(db, paidSession, event.url.origin).catch((e) => ({ status: 'error' as const, message: e instanceof Error ? e.message : String(e) }));
+  const q = event.url.searchParams;
+  // Stripe の本人認証でリダイレクトした決済手段の戻り（?payment_intent= / ?setup_intent=。カードは通常モーダルで済み、ここへは来ない）:
+  // 支払完了を確かめて予約を確定する（Webhook より先に戻ってきても確定できるように・冪等）
+  const returned = q.get('payment_intent') ?? q.get('setup_intent') ?? '';
+  if (isPaymentIntentId(returned) || isSetupIntentId(returned)) {
+    payment = await confirmPartnerIntent(db, returned, event.url.origin, partner.id).catch((e) => ({
+      status: 'error' as const,
+      message: e instanceof Error ? e.message : String(e)
+    }));
+    if (payment.status === 'unknown') payment = { status: 'unpaid' };
+  } else if (q.get('result')) {
+    // 同じ画面で確定まで済ませて来たとき（?code=&result=）
+    const r = q.get('result') as PaymentResult['status'];
+    payment = { status: RESULT_STATUSES.has(r) ? r : 'unpaid', bookingCode: q.get('code') ?? undefined };
+    if (r === 'card_updated' && q.get('charge')) payment.charge = { status: q.get('charge') === 'paid' ? 'paid' : 'failed', message: '' };
   }
   const rows = await listPartnerBookings(db, { partnerId: partner.id, limit: 300 });
   const s = partner.booking_settings;
   return {
     portal: portalHeader(partner, session),
-    done: event.url.searchParams.get('done'),
+    done: q.get('done'),
     payment,
-    unpaidId: event.url.searchParams.get('unpaid'),
+    // 同じ画面で払う決済部品（支払の再開・カードの登録し直し）に渡す公開可能キー。オンライン決済を出せないときは null
+    stripeKey: stripePublishableKey(),
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     bookings: rows.map((b) => ({
       id: b.id,
@@ -40,6 +56,10 @@ export const load = async (event) => {
       cardLabel: b.card_label,
       chargeError: b.charge_error,
       canUpdateCard: canUpdateCard(b),
+      // 支払の再開・カード登録のときの決済部品の種類（予約時決済 = payment / チェックイン日決済 = setup）
+      payMode: b.payment_option === 'online_checkin' ? ('setup' as const) : b.payment_option === 'online' ? ('payment' as const) : null,
+      // カード登録の同意文（入力欄の直下に出し、登録完了時に同じ文面を記録する）
+      consentText: b.payment_option === 'online_checkin' ? cardConsentText(partner.facility_name, b) : null,
       paymentExpiresAt: b.payment_expires_at,
       paidAmount: b.paid_amount,
       checkIn: b.check_in_date,
@@ -73,19 +93,6 @@ export const load = async (event) => {
 };
 
 export const actions = {
-  // 支払待ちの予約の決済画面へ
-  pay: async (event) => {
-    const { db, partner } = await requirePortalSession(event);
-    const fd = await event.request.formData();
-    let url: string;
-    try {
-      url = await resumeOnlinePayment(db, partner, String(fd.get('id') ?? ''), event.url.origin);
-    } catch (e) {
-      if (e instanceof PartnerStoreError) return fail(400, { message: e.message });
-      return fail(502, { message: 'お支払い画面を開けませんでした。時間をおいてお試しください。' });
-    }
-    throw redirect(303, url);
-  },
   cancel: async (event) => {
     const { db, partner, session } = await requirePortalSession(event);
     const fd = await event.request.formData();

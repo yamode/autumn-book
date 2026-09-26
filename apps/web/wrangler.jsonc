@@ -14,7 +14,8 @@
 	//  - DATA_SOURCE=supabase：news機能をbook.news_posts実データに接続。ローカル dev は .env（既定 demo）が優先。
 	//  - PUBLIC_SUPABASE_*：Supabase Auth クライアントが $env/dynamic/public 経由で使用（publishable=公開値）。
 	// ⚠ 秘密（取引先専用ページ用の SUPABASE_SERVICE_ROLE_KEY / STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET /
-	//   CRON_SECRET / CF_ACCOUNT_ID / CF_EMAIL_API_TOKEN / REPORT_EMAIL_FROM）はここに書かない。
+	//   CRON_SECRET / CF_ACCOUNT_ID / CF_EMAIL_API_TOKEN / REPORT_EMAIL_FROM）と、決済部品の公開可能キー
+	//   PUBLIC_STRIPE_PUBLISHABLE_KEY（公開値だが Stripe のテスト/本番の切替をダッシュボードで行うため・v0.42.0）はここに書かない。
 	//   `wrangler pages secret put <NAME> --project-name autumn-book`（暗号化シークレット）で登録する。
 	"vars": {
 		"AUTH_MODE": "supabase",

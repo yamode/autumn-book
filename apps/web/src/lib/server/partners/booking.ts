@@ -6,6 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   applyPrepayDiscount,
+  chargeAmountOf,
   canBookFor,
   describePrepayDiscount,
   hasPrepayDiscount,
@@ -21,20 +22,23 @@ import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import {
   cardLabelOf,
   chargeSavedCard,
-  createCheckoutSession,
   createCustomer,
   createRefund,
-  createSetupSession,
+  inlinePaymentReady,
   listRefunds,
   onlinePaymentReady,
   retrieveCheckoutSession,
+  retrievePaymentIntent,
+  retrieveSetupIntent,
   STRIPE_APP,
   STRIPE_PURPOSE_PARTNER_BOOKING,
   StripeError,
   stripeTestMode,
-  type CheckoutSession,
   type StripePaymentMethod
 } from '$lib/server/stripe';
+import { buildIntentMetadata } from '$lib/server/payments/metadata';
+import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
+import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 
@@ -50,13 +54,14 @@ const escapeHtml = (s: string) =>
 // 支払方法・受付状態
 // ---------------------------------------------------------------------------
 
-// オンライン決済（Stripe）は STRIPE_SECRET_KEY があるときだけ使える。無ければ設定で許可していても
-// 取引先の画面には出さない（銀行振込だけの取引先はそのまま予約できる）。
-export { onlinePaymentReady };
+// オンライン決済（Stripe）は STRIPE_SECRET_KEY と PUBLIC_STRIPE_PUBLISHABLE_KEY がそろっているときだけ使える
+// （inlinePaymentReady）。無ければ設定で許可していても取引先の画面には出さない（銀行振込だけの取引先はそのまま予約できる）。
+// 自動請求（cron）はシークレットキーだけで動く（onlinePaymentReady）。
+export { inlinePaymentReady, onlinePaymentReady };
 
 // 取引先が予約時に選べる支払方法（設定で許可したもののうち、いま使えるもの）。
 export function availablePaymentOptions(partner: Pick<PartnerRow, 'booking_settings'>): PartnerPaymentOptionId[] {
-  return partner.booking_settings.paymentOptions.filter((id) => !isStripePaymentOption(id) || onlinePaymentReady());
+  return partner.booking_settings.paymentOptions.filter((id) => !isStripePaymentOption(id) || inlinePaymentReady());
 }
 
 // 限定URLから予約できる状態か（受付オン・使える支払方法が1つ以上）。
@@ -89,7 +94,8 @@ async function bathTaxRule(db: SupabaseClient, facilityId: string): Promise<{ en
 }
 
 // オンライン決済で請求する額（宿泊料金＋入湯税）。キャンセル料の基準は宿泊料金（total_amount）だけ。
-export const chargeAmountOf = (b: Pick<PartnerBookingRow, 'total_amount' | 'bath_tax_amount'>) => b.total_amount + (b.bath_tax_amount ?? 0);
+// 計算は lib/partner-booking.ts（画面と共通の純関数）
+export { chargeAmountOf };
 
 export type BookingQuote =
   | {
@@ -232,8 +238,8 @@ export type CreateBookingInput = BookingTarget & {
   answers: Record<string, string>;
 };
 
-// checkoutUrl があれば、オンライン決済の画面へ送る（支払完了で予約確定・PMS へ）。
-export type CreatedBooking = { id: string; bookingCode: string; total: number; emailed: boolean; checkoutUrl?: string };
+// payment があれば、オンライン決済の仮押さえ（同じ画面で支払・カード登録を済ませると予約確定・PMS へ）。
+export type CreatedBooking = { id: string; bookingCode: string; total: number; emailed: boolean; payment?: PreparedPartnerPayment };
 
 const PHONE_RE = /^[0-9+\-() ]{8,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -333,7 +339,7 @@ export async function createPartnerBooking(
     const pending = await getPartnerBooking(db, partner.id, created.id);
     try {
       if (!pending) throw new Error('予約が見つかりません');
-      const url = await startCheckout(db, partner, pending, meta.origin);
+      const payment = await preparePartnerPayment(db, partner, pending);
       await logPartnerAccess(db, {
         partnerId: partner.id,
         accountId: account.id,
@@ -342,10 +348,10 @@ export async function createPartnerBooking(
         detail: { bookingCode: created.booking_code, total: created.total_amount },
         ip: meta.ip
       });
-      return { id: created.id, bookingCode: created.booking_code, total: created.total_amount, emailed: false, checkoutUrl: url };
+      return { id: created.id, bookingCode: created.booking_code, total: created.total_amount, emailed: false, payment };
     } catch (e) {
-      // 決済画面を作れなければ仮押さえを解放して、やり直してもらう
-      await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: created.id, p_by: 'partner', p_reason: '決済画面を作れませんでした' });
+      // 決済の準備ができなければ仮押さえを解放して、やり直してもらう
+      await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: created.id, p_by: 'partner', p_reason: '決済の準備ができませんでした' });
       throw new PartnerStoreError(`オンライン決済を開始できませんでした。時間をおいてお試しください。${e instanceof Error ? `（${e.message}）` : ''}`, 502);
     }
   }
@@ -368,76 +374,77 @@ export async function createPartnerBooking(
 }
 
 // ---------------------------------------------------------------------------
-// オンライン決済（Stripe Checkout）
+// オンライン決済（同じ画面で払う方式・Stripe Payment Element / Express Checkout Element）
 // ---------------------------------------------------------------------------
+//
+// 流れ（v0.42.0〜。それまでは Stripe Checkout の別ページへ移動していた）:
+//   ① 予約を仮押さえ（rms_partner_create_booking を await_payment=true で。pending_payment・35分）
+//   ② この予約の PaymentIntent（予約時決済）/ SetupIntent（チェックイン日決済）を用意して client_secret を返す
+//   ③ ブラウザが stripe.confirmPayment / confirmSetup（3Dセキュアは Stripe のモーダル）
+//   ④ ブラウザから確定の連絡（confirmPartnerIntent）＋ Webhook（payment_intent.succeeded / setup_intent.succeeded）の
+//      どちらか早い方で予約を確定する。どちらも Intent を Stripe から取り直して確かめ、DB 関数の冪等性
+//      （rms_partner_mark_paid / rms_partner_mark_card_saved の 'already'）で二重確定を防ぐ。
+// 台帳の stripe_session_id 列には、旧方式では Checkout のセッション id（cs_）、新方式では Intent の id（pi_ / seti_）を入れる
+// （列名は旧方式のまま。次にブラウザへ渡すとき使い回せるかの判断に使う）。
 
-// 支払待ちの予約の決済画面を作る（開いている画面があればそれを使う）。戻り値は決済画面の URL。
-async function startCheckout(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow, origin: string): Promise<string> {
-  if (b.payment_option === 'online_checkin') return startCardSetup(db, partner, b, origin);
-  if (b.stripe_session_id) {
-    const cur = await retrieveCheckoutSession(b.stripe_session_id).catch(() => null);
-    if (cur?.status === 'open' && cur.url) return cur.url;
-  }
-  const base = `${origin}/p/${partner.url_token}/bookings`;
-  const session = await createCheckoutSession({
-    amount: b.total_amount,
-    bathTax: b.bath_tax_amount ?? 0,
-    productName: `${partner.facility_name} ご宿泊（${b.booking_code}）`,
-    description: `${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
-    successUrl: `${base}?paid={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${base}?unpaid=${encodeURIComponent(b.id)}`,
-    customerEmail: null,
-    metadata: {
-      app: STRIPE_APP,
-      purpose: STRIPE_PURPOSE_PARTNER_BOOKING,
-      partner_booking_id: b.id,
-      booking_code: b.booking_code,
-      partner_id: partner.id,
-      facility: partner.facility_slug
-    },
-    expiresInMinutes: 30,
-    idempotencyKey: `rms-partner-checkout-${b.id}-${Date.now()}`
-  });
-  await db.from('rms_partner_bookings').update({ stripe_session_id: session.id }).eq('id', b.id);
-  if (!session.url) throw new Error('決済画面の URL がありません');
-  return session.url;
-}
+const REF_KEY = 'partner_booking_id';
 
-// チェックイン日決済: カード登録の画面を作る（予約時・カードの登録し直しの両方）。戻り値は画面の URL。
-async function startCardSetup(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow, origin: string): Promise<string> {
-  let customer = b.stripe_customer_id;
-  if (!customer) {
-    customer = (
-      await createCustomer({
-        name: `${b.guest_name}（${partner.name}）`,
-        email: partner.contact_email,
-        metadata: { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_BOOKING, partner_booking_id: b.id, booking_code: b.booking_code, partner_id: partner.id },
-        idempotencyKey: `rms-partner-customer-${b.id}`
-      })
-    ).id;
-    await db.from('rms_partner_bookings').update({ stripe_customer_id: customer }).eq('id', b.id);
-  }
-  const base = `${origin}/p/${partner.url_token}/bookings`;
-  const session = await createSetupSession({
-    customer,
-    description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_in_date} チェックイン日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
-    consentText: cardConsentText(partner.facility_name, b),
-    successUrl: `${base}?card={CHECKOUT_SESSION_ID}`,
-    cancelUrl: b.status === 'pending_payment' ? `${base}?unpaid=${encodeURIComponent(b.id)}` : base,
-    metadata: {
-      app: STRIPE_APP,
-      purpose: STRIPE_PURPOSE_PARTNER_BOOKING,
-      partner_booking_id: b.id,
-      booking_code: b.booking_code,
-      partner_id: partner.id,
-      facility: partner.facility_slug
-    },
-    expiresInMinutes: 30,
-    idempotencyKey: `rms-partner-setup-${b.id}-${Date.now()}`
+const intentMetadata = (partner: PartnerContext, b: PartnerBookingRow, extra: Record<string, string> = {}) =>
+  buildIntentMetadata({
+    app: STRIPE_APP,
+    purpose: STRIPE_PURPOSE_PARTNER_BOOKING,
+    refs: { [REF_KEY]: b.id, booking_code: b.booking_code, partner_id: partner.id, facility: partner.facility_slug, ...extra }
   });
-  await db.from('rms_partner_bookings').update({ stripe_session_id: session.id }).eq('id', b.id);
-  if (!session.url) throw new Error('カード登録画面の URL がありません');
-  return session.url;
+
+// ブラウザに渡す決済の準備（予約・金額・同意文つき）
+export type PreparedPartnerPayment = PreparedIntent & {
+  bookingId: string;
+  bookingCode: string;
+  // 仮押さえの期限（予約時の支払・カード登録）。カードの登録し直しは null
+  expiresAt: string | null;
+  // チェックイン日決済: 入力欄の直下に出す同意文（確定時に同じ文面を台帳へ残す）
+  consentText: string | null;
+};
+
+// 予約（仮押さえ・カード登録し直し）の Intent を用意する（まだ使える Intent があれば使い回す）。
+async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow): Promise<PreparedPartnerPayment> {
+  const base = { bookingId: b.id, bookingCode: b.booking_code, expiresAt: b.status === 'pending_payment' ? b.payment_expires_at : null };
+  if (b.payment_option === 'online_checkin') {
+    let customer = b.stripe_customer_id;
+    if (!customer) {
+      customer = (
+        await createCustomer({
+          name: `${b.guest_name}（${partner.name}）`,
+          email: partner.contact_email,
+          metadata: { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_BOOKING, partner_booking_id: b.id, booking_code: b.booking_code, partner_id: partner.id },
+          idempotencyKey: `rms-partner-customer-${b.id}`
+        })
+      ).id;
+      await db.from('rms_partner_bookings').update({ stripe_customer_id: customer }).eq('id', b.id);
+    }
+    const consentText = cardConsentText(partner.facility_name, b);
+    const { prepared, created } = await prepareSetupIntent({
+      existingId: b.stripe_session_id,
+      customer,
+      description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_in_date} チェックイン日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
+      metadata: intentMetadata(partner, b, { consent_text: consentText }),
+      refKey: REF_KEY,
+      // 同時に2回押されても1本になるよう、前回の Intent（無ければ first）から作る
+      idempotencyKey: `rms-partner-si-${b.id}-${b.stripe_session_id ?? 'first'}`
+    });
+    if (created) await db.from('rms_partner_bookings').update({ stripe_session_id: prepared.intentId }).eq('id', b.id);
+    return { ...prepared, ...base, consentText };
+  }
+  const { prepared, created } = await preparePaymentIntent({
+    existingId: b.stripe_session_id,
+    amount: chargeAmountOf(b),
+    description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
+    metadata: intentMetadata(partner, b),
+    refKey: REF_KEY,
+    idempotencyKey: `rms-partner-pi-${b.id}-${b.stripe_session_id ?? 'first'}`
+  });
+  if (created) await db.from('rms_partner_bookings').update({ stripe_session_id: prepared.intentId }).eq('id', b.id);
+  return { ...prepared, ...base, consentText: null };
 }
 
 // カード登録画面に出す同意文（請求日・金額・内訳）。登録完了時に同じ文面を台帳に残す。
@@ -455,15 +462,25 @@ export function cardConsentText(facilityName: string, b: Pick<PartnerBookingRow,
 export const canUpdateCard = (b: Pick<PartnerBookingRow, 'status' | 'payment_option' | 'payment_status'>) =>
   b.status === 'confirmed' && b.payment_option === 'online_checkin' && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed');
 
-// 取引先の予約一覧の「お支払いへ進む」「カードを登録し直す」。
-export async function resumeOnlinePayment(db: SupabaseClient, partner: PartnerContext, bookingId: string, origin: string): Promise<string> {
+// 取引先の予約一覧の「お支払いへ進む」「カードの登録へ進む」「カードを登録し直す」。
+export async function resumePartnerPayment(db: SupabaseClient, partner: PartnerContext, bookingId: string): Promise<PreparedPartnerPayment> {
   const b = await getPartnerBooking(db, partner.id, bookingId);
-  if (b && canUpdateCard(b)) return startCardSetup(db, partner, b, origin);
+  if (b && canUpdateCard(b)) return preparePartnerPayment(db, partner, b);
   if (!b || b.status !== 'pending_payment') throw new PartnerStoreError('お支払い待ちの予約ではありません。');
-  if (b.payment_expires_at && new Date(b.payment_expires_at).getTime() <= Date.now()) {
+  if (!isStripePaymentOption(b.payment_option ?? '')) throw new PartnerStoreError('オンライン決済の予約ではありません。');
+  // 期限ぎりぎりで支払われると、確定前に仮押さえが切れて返金になる。1分を切ったら受け付けない。
+  if (b.payment_expires_at && new Date(b.payment_expires_at).getTime() <= Date.now() + 60_000) {
     throw new PartnerStoreError('お支払いの期限が過ぎたため、仮押さえを解除しました。もう一度ご予約ください。');
   }
-  return startCheckout(db, partner, b, origin);
+  return preparePartnerPayment(db, partner, b);
+}
+
+// 予約画面で、支払前に仮押さえをやめる（入力に戻って内容を変えるとき）。支払待ちの予約だけ。
+export async function releasePendingBooking(db: SupabaseClient, partner: PartnerContext, bookingId: string): Promise<boolean> {
+  const b = await getPartnerBooking(db, partner.id, bookingId);
+  if (!b || b.status !== 'pending_payment') return false;
+  await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: b.id, p_by: 'partner', p_reason: '予約画面で入力に戻りました' });
+  return true;
 }
 
 async function partnerForBooking(db: SupabaseClient, bookingId: string): Promise<{ partner: PartnerContext; booking: PartnerBookingRow } | null> {
@@ -483,27 +500,87 @@ export type PaymentResult = {
   charge?: ChargeResult;
 };
 
-// 支払完了の確認（Webhook と、決済画面からの戻り先の両方から呼ぶ。何度呼んでも同じ結果）。
-export async function confirmOnlinePayment(db: SupabaseClient, sessionId: string, origin: string): Promise<PaymentResult> {
+/**
+ * 同じ画面で払う方式の確定（ブラウザからの連絡と Webhook の両方から呼ぶ。何度呼んでも同じ結果）。
+ * Intent を Stripe から取り直し、自分の予約の・完了した Intent であることを確かめてから DB 関数で確定する。
+ * expectPartnerId を渡すと（ブラウザからの連絡）、ログイン中の取引先の予約でなければ unknown を返す。
+ */
+export async function confirmPartnerIntent(db: SupabaseClient, intentId: string, origin: string, expectPartnerId?: string): Promise<PaymentResult> {
+  const exp = { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_BOOKING, refKey: REF_KEY };
+  if (isPaymentIntentId(intentId)) {
+    const pi = await retrievePaymentIntent(intentId);
+    const ctx = await contextForIntent(db, pi.metadata?.[REF_KEY], expectPartnerId);
+    if (!ctx) return { status: 'unknown' };
+    const check = checkPaymentIntent(pi, { ...exp, refId: ctx.booking.id, expectedAmount: chargeAmountOf(ctx.booking) });
+    if (!check.ok && check.reason !== 'amount_mismatch') {
+      return check.reason === 'not_succeeded' ? { status: 'unpaid', bookingCode: ctx.booking.booking_code } : { status: 'unknown' };
+    }
+    if (!check.ok) {
+      // 作った Intent の金額は台帳の請求額そのものなので本来起きない。お金は受け取っているので、受け取った額で記録する。
+      console.error('[partner-booking] 支払額が請求額と違います:', ctx.booking.booking_code, check.expected, check.actual);
+    }
+    return recordPaid(db, ctx, { sessionId: null, paymentIntent: pi.id, amount: pi.amount_received ?? pi.amount }, origin);
+  }
+  if (isSetupIntentId(intentId)) {
+    const si = await retrieveSetupIntent(intentId, true);
+    const ctx = await contextForIntent(db, si.metadata?.[REF_KEY], expectPartnerId);
+    if (!ctx) return { status: 'unknown' };
+    const check = checkSetupIntent(si, { ...exp, refId: ctx.booking.id });
+    if (!check.ok) return check.reason === 'not_succeeded' ? { status: 'unpaid', bookingCode: ctx.booking.booking_code } : { status: 'unknown' };
+    const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
+    return recordCardSaved(db, ctx, { sessionId: si.id, customer: idOf(si.customer)!, paymentMethod: idOf(si.payment_method)!, card: pm }, origin);
+  }
+  return { status: 'unknown' };
+}
+
+async function contextForIntent(db: SupabaseClient, bookingId: string | undefined, expectPartnerId?: string) {
+  if (!bookingId) return null;
+  const ctx = await partnerForBooking(db, bookingId);
+  if (!ctx || (expectPartnerId && ctx.partner.id !== expectPartnerId)) return null;
+  return ctx;
+}
+
+// 旧方式（Stripe Checkout）の決済画面の完了（Webhook checkout.session.completed）。v0.42.0 の切替前に開いた画面のためだけに残す。
+export async function confirmCheckoutSession(db: SupabaseClient, sessionId: string, origin: string): Promise<PaymentResult> {
   const session = await retrieveCheckoutSession(sessionId, true);
-  const bookingId = session.metadata?.partner_booking_id;
+  const bookingId = session.metadata?.[REF_KEY];
   if (!bookingId) return { status: 'unknown' };
   const ctx = await partnerForBooking(db, bookingId);
   if (!ctx) return { status: 'unknown' };
-  if (session.mode === 'setup') return confirmCardSetup(db, ctx, session, origin);
-  if (session.payment_status !== 'paid') return { status: 'unpaid', bookingCode: ctx.booking.booking_code };
+  const code = ctx.booking.booking_code;
+  if (session.mode === 'setup') {
+    const si = session.setup_intent && typeof session.setup_intent === 'object' ? session.setup_intent : null;
+    if (session.status !== 'complete' || !si || si.status !== 'succeeded') return { status: 'unpaid', bookingCode: code };
+    const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
+    const pmId = pm?.id ?? (typeof si.payment_method === 'string' ? si.payment_method : null);
+    if (!pmId || !session.customer) return { status: 'unpaid', bookingCode: code };
+    return recordCardSaved(db, ctx, { sessionId: session.id, customer: session.customer, paymentMethod: pmId, card: pm }, origin);
+  }
+  if (session.payment_status !== 'paid') return { status: 'unpaid', bookingCode: code };
+  return recordPaid(db, ctx, { sessionId: session.id, paymentIntent: session.payment_intent, amount: session.amount_total ?? chargeAmountOf(ctx.booking) }, origin);
+}
 
+type BookingCtx = { partner: PartnerContext; booking: PartnerBookingRow };
+
+// 予約時決済の支払完了を記録して予約を確定する（DB 関数が冪等: 2回目以降は 'already'）。
+async function recordPaid(
+  db: SupabaseClient,
+  ctx: BookingCtx,
+  p: { sessionId: string | null; paymentIntent: string | null; amount: number },
+  origin: string
+): Promise<PaymentResult> {
+  const bookingId = ctx.booking.id;
   const { data, error } = await db.rpc('rms_partner_mark_paid', {
     p_partner_booking_id: bookingId,
-    p_session_id: session.id,
-    p_payment_intent: session.payment_intent,
-    p_amount: session.amount_total ?? chargeAmountOf(ctx.booking)
+    p_session_id: p.sessionId,
+    p_payment_intent: p.paymentIntent,
+    p_amount: p.amount
   });
   if (error) throw new PartnerStoreError(`支払の記録に失敗しました（${error.message}）`, 500);
   const result = String(data);
   const after = (await getPartnerBooking(db, ctx.partner.id, bookingId)) ?? ctx.booking;
   if (result === 'paid') {
-    await logPartnerAccess(db, { partnerId: ctx.partner.id, accountId: after.account_id, channel: 'web', action: 'paid', detail: { bookingCode: after.booking_code, amount: session.amount_total } });
+    await logPartnerAccess(db, { partnerId: ctx.partner.id, accountId: after.account_id, channel: 'web', action: 'paid', detail: { bookingCode: after.booking_code, amount: p.amount } });
     await sendBookingMails(db, ctx.partner, after, 'new', origin, after.account_id).catch(() => false);
     return { status: 'paid', bookingCode: after.booking_code };
   }
@@ -515,31 +592,26 @@ export async function confirmOnlinePayment(db: SupabaseClient, sessionId: string
   return { status: 'already', bookingCode: after.booking_code };
 }
 
-// チェックイン日決済: カード登録の完了を確かめて予約を確定する（Webhook と戻り先の両方から。何度呼んでも同じ結果）。
-async function confirmCardSetup(
+// チェックイン日決済: カード登録の完了を記録して予約を確定する（何度呼んでも同じ結果）。
+async function recordCardSaved(
   db: SupabaseClient,
-  ctx: { partner: PartnerContext; booking: PartnerBookingRow },
-  session: CheckoutSession,
+  ctx: BookingCtx,
+  p: { sessionId: string; customer: string; paymentMethod: string; card: StripePaymentMethod | null },
   origin: string
 ): Promise<PaymentResult> {
-  const code = ctx.booking.booking_code;
-  const si = session.setup_intent && typeof session.setup_intent === 'object' ? session.setup_intent : null;
-  if (session.status !== 'complete' || !si || si.status !== 'succeeded') return { status: 'unpaid', bookingCode: code };
-  const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
-  const pmId = pm?.id ?? (typeof si.payment_method === 'string' ? si.payment_method : null);
-  if (!pmId || !session.customer) return { status: 'unpaid', bookingCode: code };
   const before = ctx.booking;
+  const code = before.booking_code;
   const { data, error } = await db.rpc('rms_partner_mark_card_saved', {
     p_partner_booking_id: before.id,
-    p_session_id: session.id,
-    p_customer: session.customer,
-    p_payment_method: pmId,
-    p_card_label: cardLabelOf(pm as StripePaymentMethod | null)
+    p_session_id: p.sessionId,
+    p_customer: p.customer,
+    p_payment_method: p.paymentMethod,
+    p_card_label: cardLabelOf(p.card)
   });
   if (error) throw new PartnerStoreError(`カード登録の記録に失敗しました（${error.message}）`, 500);
   const result = String(data);
   if (result === 'saved' || result === 'updated') {
-    // 同意の記録（カード登録画面に出した文面と、登録を完了した日時）
+    // 同意の記録（カード入力欄の直下に出した文面と、登録を完了した日時）
     await db
       .from('rms_partner_bookings')
       .update({ card_consent_text: cardConsentText(ctx.partner.facility_name, before), card_consent_at: new Date().toISOString() })

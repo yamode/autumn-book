@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { partnerAccent } from '$lib/partner-theme';
 
   // 取引先向けページの枠（autumn-rms から移設・2026-09-26）。Book の公開サイト共通ヘッダー/フッターは出さない
   // （/p は (public) グループの外に置いているので、上位は root layout だけ。解析・デバッグは root 側で /p を除外）。
@@ -12,10 +13,6 @@
       | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean }
       | undefined
   );
-  const ACCENTS: Record<string, { accent: string; accentSoft: string }> = {
-    yamado: { accent: '#4a6b52', accentSoft: '#e7eee8' },
-    oga: { accent: '#2d4a5a', accentSoft: '#e4ecf0' }
-  };
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）
   const isActive = (path: string) => {
     const base = `/p/${$page.params.token}/`;
@@ -23,7 +20,8 @@
     const head = rest.split('/')[0];
     return path === 'calendar' ? head === 'calendar' || head === 'book' : head === path;
   };
-  const theme = $derived(ACCENTS[portal?.facilitySlug ?? ''] ?? { accent: '#44402f', accentSoft: '#e9e6dc' });
+  // 差し色の定義は lib/partner-theme.ts（決済部品にも同じ色を渡す）
+  const theme = $derived(partnerAccent(portal?.facilitySlug));
 </script>
 
 <svelte:head>

@@ -1,6 +1,9 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
+  import StripePayment from '$lib/components/payment/StripePayment.svelte';
+  import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
+  import { partnerAccent } from '$lib/partner-theme';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; cancelled?: string } } = $props();
@@ -42,8 +45,57 @@
     scheduled: 'チェックイン日に請求予定',
     charge_failed: 'カードへの請求ができませんでした'
   };
-  let paying = $state<string | null>(null);
-  const unpaidBooking = $derived(data.unpaidId ? data.bookings.find((b) => b.id === data.unpaidId && b.status === 'pending_payment') : undefined);
+  // ---- 支払の再開・カードの登録（し直し）: 同じ画面のモーダルで払う（lib/components/payment/StripePayment.svelte）----
+  type Row = PageData['bookings'][number];
+  const accent = $derived(partnerAccent(data.portal.facilitySlug));
+  let payTarget = $state<Row | null>(null);
+  let payRef: { submit: () => Promise<boolean> } | undefined = $state();
+  let payBusy = $state(false);
+  const payLabel = (b: Row) =>
+    b.status === 'pending_payment' ? (b.payMode === 'setup' ? 'カードを登録して予約を確定する' : `${yen(b.total)} を支払って予約を確定する`) : 'このカードに登録し直す';
+
+  function openPay(b: Row) {
+    payTarget = b;
+  }
+  function closePay() {
+    if (payBusy) return;
+    payTarget = null;
+  }
+
+  async function preparePay(): Promise<PaymentPrepareResult> {
+    if (!payTarget) throw new Error('予約が選ばれていません。');
+    const res = await fetch(`/p/${token}/payment`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ action: 'prepare', bookingId: payTarget.id })
+    });
+    if (res.status === 401) {
+      location.href = `/p/${token}`;
+      throw new Error('ログインの有効期限が切れました。');
+    }
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; returnUrl?: string; payment?: { clientSecret: string } } | null;
+    if (!res.ok || !j?.ok || !j.payment || !j.returnUrl) throw new Error(j?.message || 'お支払いの準備ができませんでした。時間をおいてお試しください。');
+    return { clientSecret: j.payment.clientSecret, returnUrl: j.returnUrl };
+  }
+
+  async function onPayConfirmed(r: PaymentConfirmed) {
+    const code = payTarget?.code ?? '';
+    let status = 'unpaid';
+    let charge = '';
+    try {
+      const res = await fetch(`/p/${token}/payment`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', intentId: r.intentId })
+      });
+      const j = (await res.json().catch(() => null)) as { result?: { status?: string; charge?: { status?: string } } } | null;
+      status = j?.result?.status ?? 'unpaid';
+      charge = j?.result?.charge?.status ?? '';
+    } catch {
+      // 連絡が届かなくても Webhook が確定する
+    }
+    location.href = `/p/${token}/bookings?code=${encodeURIComponent(code)}&result=${encodeURIComponent(status)}${charge ? `&charge=${charge}` : ''}`;
+  }
   const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }) : '');
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
   const displayPlanName = (name: string) => {
@@ -84,7 +136,7 @@
       ✓ カードを登録し直しました（予約番号 {data.payment.bookingCode}）。{data.payment.charge?.status === 'paid'
         ? 'ご請求が完了しました。'
         : data.payment.charge?.status === 'failed'
-          ? `ただし、このカードでもご請求できませんでした（${data.payment.charge.message}）。`
+          ? `ただし、このカードでもご請求できませんでした${data.payment.charge.message ? `（${data.payment.charge.message}）` : ''}。別のカードでお試しいただくか、宿へご連絡ください。`
           : 'チェックイン日にこのカードへご請求します。'}
     </p>
   {:else if data.payment?.status === 'card_late'}
@@ -96,15 +148,11 @@
       お支払いの期限（30分）を過ぎていたため、お部屋の確保ができませんでした。お支払いは全額返金しました。お手数ですが、もう一度ご予約ください。
     </p>
   {:else if data.payment?.status === 'unpaid'}
-    <p class="mt-4 rounded-xl border border-amber-700/30 bg-amber-700/5 px-4 py-3 text-amber-700">お支払いの確認が取れていません。少し時間をおいてこの画面を開き直してください。</p>
+    <p class="mt-4 rounded-xl border border-amber-700/30 bg-amber-700/5 px-4 py-3 text-amber-700">
+      お支払いの確認が取れていません{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。少し時間をおいてこの画面を開き直してください（カード会社の確認が済むと自動で確定します）。
+    </p>
   {:else if data.payment?.status === 'error'}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">お支払いの確認でエラーが起きました。宿へお問い合わせください。</p>
-  {/if}
-  {#if unpaidBooking}
-    <div class="mt-4 rounded-xl border border-amber-700/40 bg-white px-4 py-3">
-      <p class="font-bold">{unpaidBooking.paymentOption === 'online_checkin' ? 'カードの登録' : 'お支払い'}が完了していません（予約番号 {unpaidBooking.code}）</p>
-      <p class="mt-1 text-sm text-stone-500">{hm(unpaidBooking.paymentExpiresAt)} までに{unpaidBooking.paymentOption === 'online_checkin' ? 'カードをご登録' : 'お支払い'}いただくと、ご予約が確定します。それを過ぎるとお部屋の確保を解除します。</p>
-    </div>
   {/if}
   {#if form?.cancelled}
     <p class="mt-4 rounded-xl border border-stone-300 bg-white px-4 py-3">予約 {form.cancelled} を取り消しました。</p>
@@ -163,41 +211,17 @@
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
               </dl>
 
-              {#if b.canUpdateCard}
-                <form
-                  method="POST"
-                  action="?/pay"
-                  use:enhance={() => {
-                    paying = b.id;
-                    return async ({ update }) => {
-                      paying = null;
-                      await update();
-                    };
-                  }}
-                  class="mt-4 border-t border-stone-200 pt-3"
-                >
-                  <input type="hidden" name="id" value={b.id} />
-                  <button type="submit" disabled={paying === b.id} class={`rounded-full px-5 py-2 text-sm font-medium disabled:opacity-50 ${b.paymentStatus === 'charge_failed' ? 'bg-brand-900 text-white hover:bg-[var(--pt-accent)]' : 'border border-stone-300 hover:border-brand-900'}`}>{paying === b.id ? 'カードの登録画面を開いています…' : 'カードを登録し直す'}</button>
+              {#if b.canUpdateCard && b.payMode}
+                <div class="mt-4 border-t border-stone-200 pt-3">
+                  <button type="button" onclick={() => openPay(b)} disabled={!data.stripeKey} class={`rounded-lg px-5 py-2 text-sm font-medium disabled:opacity-50 ${b.paymentStatus === 'charge_failed' ? 'bg-brand-800 text-white hover:bg-brand-700' : 'border border-stone-300 hover:border-brand-900'}`}>カードを登録し直す</button>
                   {#if b.paymentStatus === 'charge_failed'}<span class="ml-2 text-xs text-rose-700">別のカードをご登録いただくと、その場でご請求します</span>{/if}
-                </form>
+                </div>
               {/if}
-              {#if b.status === 'pending_payment'}
-                <form
-                  method="POST"
-                  action="?/pay"
-                  use:enhance={() => {
-                    paying = b.id;
-                    return async ({ update }) => {
-                      paying = null;
-                      await update();
-                    };
-                  }}
-                  class="mt-4 border-t border-stone-200 pt-3"
-                >
-                  <input type="hidden" name="id" value={b.id} />
-                  <button type="submit" disabled={paying === b.id} class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{paying === b.id ? '画面を開いています…' : b.paymentOption === 'online_checkin' ? 'カードの登録へ進む' : 'お支払いへ進む'}</button>
-                  <span class="ml-2 text-xs text-stone-500">{hm(b.paymentExpiresAt)} までにお支払いください</span>
-                </form>
+              {#if b.status === 'pending_payment' && b.payMode}
+                <div class="mt-4 border-t border-stone-200 pt-3">
+                  <button type="button" onclick={() => openPay(b)} disabled={!data.stripeKey} class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{b.payMode === 'setup' ? 'カードの登録へ進む' : 'お支払いへ進む'}</button>
+                  <span class="ml-2 text-xs text-stone-500">{hm(b.paymentExpiresAt)} までに{b.payMode === 'setup' ? 'ご登録' : 'お支払い'}ください</span>
+                </div>
               {/if}
               {#if b.status === 'confirmed' || b.status === 'pending_payment'}
                 <div class="mt-4 border-t border-stone-200 pt-3">
@@ -244,6 +268,45 @@
     </ul>
   {/if}
 </main>
+
+{#if payTarget && payTarget.payMode}
+  {@const b = payTarget}
+  <!-- 支払の再開・カードの登録（し直し）。同じ画面で払う（別ページへ移動しない） -->
+  <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" role="presentation" onclick={(e) => e.target === e.currentTarget && closePay()} onkeydown={(e) => e.key === 'Escape' && closePay()}>
+    <div class="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="pay-title">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm text-stone-500">予約番号 {b.code}</p>
+          <h3 id="pay-title" class="text-lg font-bold">{b.status === 'pending_payment' ? (b.payMode === 'setup' ? 'カードの登録' : 'お支払い') : 'カードの登録し直し'}</h3>
+        </div>
+        <button type="button" onclick={closePay} disabled={payBusy} class="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100" aria-label="閉じる">✕</button>
+      </div>
+      <dl class="mt-3 grid gap-1 rounded-lg bg-stone-50 px-3 py-2.5 text-sm">
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">宿泊日</dt><dd>{fmt(b.checkIn)} から {b.nights}泊</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">宿泊者</dt><dd>{b.guestName} 様</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックイン日の請求額' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd></div>
+        {#if b.status === 'pending_payment' && b.paymentExpiresAt}<div class="flex justify-between gap-2"><dt class="text-stone-500">期限</dt><dd>{hm(b.paymentExpiresAt)} まで</dd></div>{/if}
+      </dl>
+      <div class="mt-4">
+        <StripePayment
+          bind:this={payRef}
+          publishableKey={data.stripeKey}
+          mode={b.payMode ?? 'payment'}
+          amount={b.total}
+          theme={{ accent: accent.accent, accentSoft: accent.accentSoft }}
+          consentText={b.consentText}
+          prepare={preparePay}
+          onconfirmed={onPayConfirmed}
+          onbusychange={(v) => (payBusy = v)}
+        />
+      </div>
+      <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
+        {payBusy ? '確認しています…' : payLabel(b)}
+      </button>
+      <button type="button" onclick={closePay} disabled={payBusy} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">閉じる</button>
+    </div>
+  </div>
+{/if}
 
 <style>
   .detail {

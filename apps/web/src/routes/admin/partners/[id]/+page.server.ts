@@ -5,11 +5,14 @@ import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { loadPartnerRates } from '$lib/server/partners/rates';
+import { describePublishableKeyIssue } from '$lib/server/payments/keys';
+import { publishableKeyProblem } from '$lib/server/stripe';
 import {
 	cancelPartnerBooking,
 	isPartnerBookingOpen,
 	isStripeTestMode,
 	listPartnerBookings,
+	inlinePaymentReady,
 	onlinePaymentReady,
 	retryPartnerCharge,
 	stripeKeyHint,
@@ -176,7 +179,10 @@ export const load: PageServerLoad = async (event) => {
 		})),
 		rooms: [...roomMap.values()],
 		planOptions,
-		onlinePaymentReady: onlinePaymentReady(),
+		// 取引先の画面に同じ画面で払う決済を出せるか（シークレットキー＋公開可能キー）。出せない理由は下の2つ
+		onlinePaymentReady: inlinePaymentReady(),
+		stripeSecretReady: onlinePaymentReady(),
+		stripePublishableIssue: onlinePaymentReady() && publishableKeyProblem() ? describePublishableKeyIssue(publishableKeyProblem()!) : null,
 		stripeTestMode: isStripeTestMode(),
 		stripeKeyKind: stripeKeyKind(),
 		stripeKeyHint: stripeKeyKind() === 'invalid' ? stripeKeyHint() : null,

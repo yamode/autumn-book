@@ -1,10 +1,15 @@
 // Stripe（取引先予約のオンライン決済）。SDK は使わず REST API を fetch で呼ぶ（Cloudflare Workers で軽く動かすため）。
 //
 // 【必要な環境変数（Cloudflare Pages のシークレット）】
-//   - STRIPE_SECRET_KEY      … sk_test_… / sk_live_…（テストモードから始める）
-//   - STRIPE_WEBHOOK_SECRET  … whsec_…（Stripe の Webhook 宛先 /api/partner/stripe/webhook の署名シークレット）
-// STRIPE_SECRET_KEY が無ければオンライン決済は取引先の画面に出さない（onlinePaymentReady）。
+//   - STRIPE_SECRET_KEY              … sk_test_… / sk_live_…（テストモードから始める）
+//   - STRIPE_WEBHOOK_SECRET          … whsec_…（Stripe の Webhook 宛先 /api/partner/stripe/webhook の署名シークレット）
+//   - PUBLIC_STRIPE_PUBLISHABLE_KEY  … pk_test_… / pk_live_…（ブラウザの Stripe.js に渡す公開可能キー。v0.42.0〜）
+// 決済は同じ画面で払う方式（Payment Element・deferred intent。lib/components/payment/StripePayment.svelte）。
+// シークレットキーと公開可能キーがそろわなければ、オンライン決済は取引先の画面に出さない（inlinePaymentReady）。
+// チェックイン日の自動請求（cron）はシークレットキーだけで動く（onlinePaymentReady）。
 import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
+import { cleanKey, keyMode, publishableKeyIssue, type PublishableKeyIssue } from './payments/keys';
 
 const API = 'https://api.stripe.com/v1';
 
@@ -18,18 +23,13 @@ const API = 'https://api.stripe.com/v1';
 export const STRIPE_APP = 'autumn-rms';
 export const STRIPE_PURPOSE_PARTNER_BOOKING = 'rms_partner_booking';
 
-// 貼り付け時に混ざりやすい前後の空白・引用符・見えない文字（BOM・ゼロ幅スペース）を取り除く。
-const cleanSecret = (v: string | undefined) =>
-  (v ?? '')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .trim()
-    .replace(/^["'`]+|["'`]+$/g, '')
-    .trim();
-const secretKey = () => cleanSecret(privateEnv.STRIPE_SECRET_KEY);
-const webhookSecret = () => cleanSecret(privateEnv.STRIPE_WEBHOOK_SECRET);
+// 貼り付け時の空白・引用符・見えない文字は cleanKey（payments/keys.ts）で取り除く。
+const secretKey = () => cleanKey(privateEnv.STRIPE_SECRET_KEY);
+const webhookSecret = () => cleanKey(privateEnv.STRIPE_WEBHOOK_SECRET);
+const publishableKeyRaw = () => cleanKey(publicEnv.PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
 // 登録されているキーの種類（値は出さず、先頭の形式だけで判定する）。
-// sk_ = シークレットキー / rk_ = 制限付きキー（Checkout・返金の権限があれば使える）/ pk_ = 公開可能キー（サーバでは使えない）。
+// sk_ = シークレットキー / rk_ = 制限付きキー（PaymentIntent・SetupIntent・Customer・返金の権限があれば使える）/ pk_ = 公開可能キー（サーバでは使えない）。
 export type StripeKeyKind = 'missing' | 'secret' | 'restricted' | 'publishable' | 'webhook_secret' | 'invalid';
 export function stripeKeyKind(): StripeKeyKind {
   const k = secretKey();
@@ -45,8 +45,18 @@ export function stripeKeyHint(): string {
   const k = secretKey();
   return k ? `先頭「${k.slice(0, 3)}」・${k.length}文字` : '未登録';
 }
+// サーバから Stripe を呼べるか（シークレットキーだけ。自動請求・返金・旧決済画面の確認に使う）
 export const onlinePaymentReady = () => ['secret', 'restricted'].includes(stripeKeyKind());
-export const stripeTestMode = () => /^(sk|rk)_test_/.test(secretKey());
+export const stripeTestMode = () => keyMode(secretKey()) === 'test';
+
+// 公開可能キーの問題（無ければ null）。シークレットキーが無いときは見ない（onlinePaymentReady が先に落ちる）。
+export const publishableKeyProblem = (): PublishableKeyIssue | null => publishableKeyIssue(secretKey(), publishableKeyRaw());
+
+// 同じ画面で払う方式を画面に出せるか（シークレットキー＋公開可能キー・テスト/本番がそろっている）
+export const inlinePaymentReady = () => onlinePaymentReady() && publishableKeyProblem() === null;
+
+// ブラウザへ渡す公開可能キー。使える状態のときだけ返す（pk_ 以外は絶対に返さない）。
+export const stripePublishableKey = (): string | null => (inlinePaymentReady() ? publishableKeyRaw() : null);
 
 export class StripeError extends Error {
   constructor(
@@ -93,6 +103,9 @@ async function stripeFetch<T>(method: 'GET' | 'POST', path: string, params?: Rec
   return json;
 }
 
+// 旧方式（Stripe Checkout の別ページ）の決済画面。2026-09-26（v0.42.0）に同じ画面で払う方式（Payment Element）へ
+// 切り替えたので新しくは作らないが、切替前に開いた決済画面の完了（Webhook checkout.session.completed）を
+// 処理するため、読み取りだけ残す。
 export type CheckoutSession = {
   id: string;
   mode?: 'payment' | 'setup';
@@ -107,55 +120,6 @@ export type CheckoutSession = {
   metadata: Record<string, string>;
   expires_at: number;
 };
-
-export function createCheckoutSession(args: {
-  amount: number; // 円（JPY はゼロ小数通貨なのでそのまま）
-  productName: string;
-  description: string;
-  // 入湯税（別の明細行で出す。0 なら出さない）
-  bathTax?: number;
-  successUrl: string;
-  cancelUrl: string;
-  customerEmail?: string | null;
-  metadata: Record<string, string>;
-  expiresInMinutes?: number; // Stripe は 30分〜24時間
-  idempotencyKey: string;
-}): Promise<CheckoutSession> {
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(30, Math.min(1440, args.expiresInMinutes ?? 30)) * 60 + 5;
-  return stripeFetch<CheckoutSession>(
-    'POST',
-    '/checkout/sessions',
-    {
-      mode: 'payment',
-      locale: 'ja',
-      // カードに固定する（Apple Pay・Google Pay はカード扱いで出る）。管理画面の「決済手段」は
-      // アカウント共通なので、EC 等のためにコンビニ決済・銀行振込を有効にしても、ここには出さない。
-      // 後から支払われる決済手段では 30分の仮押さえが先に切れ、支払後に自動返金になってしまうため。
-      payment_method_types: ['card'],
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      expires_at: expiresAt,
-      client_reference_id: args.metadata.partner_booking_id,
-      customer_email: args.customerEmail || undefined,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: 'jpy',
-            unit_amount: Math.round(args.amount),
-            product_data: { name: args.productName.slice(0, 250), description: args.description.slice(0, 500) }
-          }
-        },
-        ...((args.bathTax ?? 0) > 0
-          ? [{ quantity: 1, price_data: { currency: 'jpy', unit_amount: Math.round(args.bathTax ?? 0), product_data: { name: '入湯税' } } }]
-          : [])
-      ],
-      metadata: args.metadata,
-      payment_intent_data: { metadata: args.metadata, description: args.productName.slice(0, 250) }
-    },
-    args.idempotencyKey
-  );
-}
 
 export const retrieveCheckoutSession = (id: string, expandSetup = false) =>
   stripeFetch<CheckoutSession>(
@@ -183,42 +147,73 @@ export const createCustomer = (args: { name: string; email?: string | null; meta
     args.idempotencyKey
   );
 
-// カード登録の画面（Checkout mode=setup）。本人認証（3Dセキュア）もここで済ませ、後日の請求（off-session）に使える状態で保存する。
-export function createSetupSession(args: {
-  customer: string;
-  description: string;
-  successUrl: string;
-  cancelUrl: string;
+export type PaymentIntent = {
+  id: string;
+  status: string;
+  amount: number;
+  amount_received?: number | null;
+  currency: string;
+  client_secret?: string | null;
+  latest_charge?: string | null;
   metadata: Record<string, string>;
-  // 後日の請求（off-session）への同意文。登録ボタンの下に出し、SetupIntent の metadata にも残す。
-  consentText: string;
-  expiresInMinutes?: number;
+};
+
+export type SetupIntent = {
+  id: string;
+  status: string;
+  client_secret?: string | null;
+  customer: string | { id: string } | null;
+  // expand すると中身（カードの種類・下4桁）が入る
+  payment_method: string | StripePaymentMethod | null;
+  metadata: Record<string, string>;
+};
+
+// ---- 同じ画面で払う方式（Payment Element・deferred intent）----
+// ブラウザは Elements を mode/amount/currency で先に表示し、確定ボタンでサーバにこの Intent を作らせて
+// client_secret で confirmPayment / confirmSetup する。支払方法はカードに固定する（Apple Pay・Google Pay は
+// カード扱いで出る）。管理画面の「決済手段」はアカウント共通なので、EC 等のためにコンビニ決済・銀行振込を
+// 有効にしても、ここには出さない（後から支払われる決済手段では 35分の仮押さえが先に切れるため）。
+// ⚠ ブラウザ側の Elements も paymentMethodTypes: ['card'] にそろえる（食い違うと confirm が失敗する）。
+
+// 予約時決済（その場でカードに請求）。
+export const createPaymentIntent = (args: {
+  amount: number; // 円（JPY はゼロ小数通貨）
+  description: string;
+  metadata: Record<string, string>;
   idempotencyKey: string;
-}): Promise<CheckoutSession> {
-  const expiresAt = Math.floor(Date.now() / 1000) + Math.max(30, Math.min(1440, args.expiresInMinutes ?? 30)) * 60 + 5;
-  return stripeFetch<CheckoutSession>(
+}) =>
+  stripeFetch<PaymentIntent>(
     'POST',
-    '/checkout/sessions',
+    '/payment_intents',
     {
-      mode: 'setup',
-      custom_text: { submit: { message: args.consentText.slice(0, 1200) } },
-      locale: 'ja',
+      amount: Math.round(args.amount),
       currency: 'jpy',
-      customer: args.customer,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      expires_at: expiresAt,
-      client_reference_id: args.metadata.partner_booking_id,
-      // カードに固定（コンビニ決済等は後日請求できない）
       payment_method_types: ['card'],
-      metadata: args.metadata,
-      setup_intent_data: { metadata: { ...args.metadata, consent_text: args.consentText.slice(0, 500) }, description: args.description.slice(0, 500) }
+      description: args.description.slice(0, 1000),
+      metadata: args.metadata
     },
     args.idempotencyKey
   );
-}
 
-export type PaymentIntent = { id: string; status: string; amount: number; latest_charge?: string | null };
+export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
+
+// チェックイン日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
+export const createSetupIntent = (args: { customer: string; description: string; metadata: Record<string, string>; idempotencyKey: string }) =>
+  stripeFetch<SetupIntent>(
+    'POST',
+    '/setup_intents',
+    {
+      customer: args.customer,
+      usage: 'off_session',
+      payment_method_types: ['card'],
+      description: args.description.slice(0, 1000),
+      metadata: args.metadata
+    },
+    args.idempotencyKey
+  );
+
+export const retrieveSetupIntent = (id: string, expandPaymentMethod = false) =>
+  stripeFetch<SetupIntent>('GET', `/setup_intents/${encodeURIComponent(id)}`, expandPaymentMethod ? { expand: ['payment_method'] } : undefined);
 
 // 登録済みカードへの請求（お客様がその場にいない off-session）。失敗は StripeError（code に理由）。
 export const chargeSavedCard = (args: {

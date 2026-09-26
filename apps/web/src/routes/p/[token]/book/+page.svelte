@@ -2,11 +2,24 @@
   import { untrack } from 'svelte';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
+  import StripePayment from '$lib/components/payment/StripePayment.svelte';
+  import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
+  import { partnerAccent } from '$lib/partner-theme';
+  import { quoteChargeOf } from '$lib/partner-booking';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string } } = $props();
 
   type Quote = PageData['quote'];
+
+  // 表示用（金額・日付・時刻）
+  const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
+  const hm = (iso: string) => new Date(iso).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' });
+  const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+  const fmt = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEK[d.getUTCDay()]}）`;
+  };
   const init = untrack(() => data);
   const token = $derived($page.params.token);
 
@@ -60,18 +73,125 @@
   const paymentLabel = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.label ?? '');
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
-  const discounted = $derived(paymentOption === 'online' && !!prepay);
+  // 金額の計算はサーバ（Intent の金額）と同じ純関数（lib/partner-booking.ts の quoteChargeOf）
+  const charge = $derived(quote.ok ? quoteChargeOf(quote, paymentOption) : null);
+  const discounted = $derived(!!charge?.discounted);
   // お支払い合計＝宿泊料金（割引後）＋入湯税
-  const lodgingTotal = $derived(quote.ok ? (discounted && prepay ? prepay.total : quote.total) : 0);
-  const payTotal = $derived(quote.ok ? lodgingTotal + quote.bathTax : 0);
-  const submitLabel = $derived(
-    paymentOption === 'online' ? 'この内容で予約し、お支払いへ進む' : paymentOption === 'online_checkin' ? 'この内容で予約し、カードの登録へ進む' : 'この内容で予約を確定する'
-  );
+  const lodgingTotal = $derived(charge?.lodging ?? 0);
+  const payTotal = $derived(charge?.charge ?? 0);
   let submitting = $state(false);
   let clientError = $state('');
   let formEl: HTMLFormElement | undefined = $state();
   const soldShort = $derived(quote.ok && quote.remaining != null && quote.remaining < roomCount);
   const ready = $derived(quote.ok && canBook && !soldShort && !quoting);
+
+  // ---- オンライン決済（同じ画面で払う・lib/components/payment/StripePayment.svelte）----
+  // 確定ボタン（または Apple Pay / Google Pay）で ① 予約を仮押さえ＋Intent（/book/reserve）② Stripe で確定
+  // ③ 確定の連絡（/payment confirm）→ 予約一覧へ。カードが断られたら、仮押さえはそのままで別のカードを試せる。
+  const isStripe = $derived(paymentOption === 'online' || paymentOption === 'online_checkin');
+  const payMode = $derived<'payment' | 'setup'>(paymentOption === 'online_checkin' ? 'setup' : 'payment');
+  const accent = $derived(partnerAccent(data.portal.facilitySlug));
+  const submitLabel = $derived(
+    paymentOption === 'online' ? `予約して ${yen(payTotal)} を支払う` : paymentOption === 'online_checkin' ? '予約してカードを登録する' : 'この内容で予約を確定する'
+  );
+  type Pending = {
+    bookingId: string;
+    bookingCode: string;
+    mode: 'payment' | 'setup';
+    clientSecret: string;
+    expiresAt: string | null;
+    consentText: string | null;
+    returnUrl: string;
+  };
+  // 仮押さえ中の予約（支払が通るまで。同じ予約・同じ Intent で再試行する）
+  let pending = $state<Pending | null>(null);
+  let payRef: { submit: () => Promise<boolean> } | undefined = $state();
+  let paying = $state(false);
+  let payError = $state('');
+  let releasing = $state(false);
+  // 期限の1分前を切った仮押さえは使わない（確定前に切れて返金になるため）
+  const pendingUsable = (p: Pending) => !p.expiresAt || new Date(p.expiresAt).getTime() > Date.now() + 60_000;
+  // カード登録の同意文（確定前の見本。予約を作った後はサーバが作った文面＝記録に残る文面を出す）
+  const consentPreview = $derived(
+    quote.ok && paymentOption === 'online_checkin'
+      ? `${data.portal.facilityName}のご宿泊について、チェックイン日の ${fmt(quote.checkIn)} に、このカードへ ${yen(payTotal)}（宿泊料金 ${yen(lodgingTotal)}${quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}）を請求することに同意します。取消の期限内に予約を取り消した場合は請求しません。`
+      : null
+  );
+
+  function validatePay(): string | null {
+    if (!formEl) return '画面の準備ができていません。';
+    snapshot();
+    if (!formEl.checkValidity()) {
+      step = 'input';
+      setTimeout(() => formEl?.reportValidity(), 0);
+      return '入力内容をご確認ください（必須の項目があります）。';
+    }
+    if (!ready && !pending) return '料金・空室を確認できるまでお待ちください。';
+    return null;
+  }
+
+  async function preparePay(): Promise<PaymentPrepareResult> {
+    if (pending && pending.mode === payMode && pendingUsable(pending)) return { clientSecret: pending.clientSecret, returnUrl: pending.returnUrl };
+    // 期限が迫った仮押さえはやめて、取り直す
+    if (pending) await releasePending(false);
+    if (!formEl) throw new Error('画面の準備ができていません。');
+    const fd = new FormData(formEl);
+    fd.set('payment_option', paymentOption);
+    const res = await fetch(`/p/${token}/book/reserve`, { method: 'POST', body: fd });
+    if (res.status === 401) {
+      location.href = `/p/${token}`;
+      throw new Error('ログインの有効期限が切れました。');
+    }
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; returnUrl?: string; payment?: Omit<Pending, 'returnUrl'> } | null;
+    if (!res.ok || !j?.ok || !j.payment || !j.returnUrl) {
+      throw new Error(j?.message || 'ご予約を確定できませんでした。時間をおいてもう一度お試しください。');
+    }
+    pending = { ...j.payment, returnUrl: j.returnUrl };
+    return { clientSecret: pending.clientSecret, returnUrl: pending.returnUrl };
+  }
+
+  async function onPayConfirmed(r: PaymentConfirmed) {
+    const code = pending?.bookingCode ?? '';
+    let status = 'unpaid';
+    try {
+      const res = await fetch(`/p/${token}/payment`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', intentId: r.intentId })
+      });
+      const j = (await res.json().catch(() => null)) as { result?: { status?: string } } | null;
+      status = j?.result?.status ?? 'unpaid';
+    } catch {
+      // 連絡が届かなくても Webhook が確定する（一覧では「確認中」と出る）
+    }
+    location.href = `/p/${token}/bookings?code=${encodeURIComponent(code)}&result=${encodeURIComponent(status)}`;
+  }
+
+  async function payNow() {
+    payError = '';
+    await payRef?.submit();
+  }
+
+  // 仮押さえをやめる（入力に戻って内容を変えたいとき・期限が迫ったとき）
+  async function releasePending(toInput = true) {
+    if (!pending) return;
+    releasing = true;
+    try {
+      await fetch(`/p/${token}/payment`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'release', bookingId: pending.bookingId })
+      }).catch(() => null);
+      pending = null;
+      payError = '';
+      if (toInput) {
+        step = 'input';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } finally {
+      releasing = false;
+    }
+  }
 
   function toConfirm() {
     clientError = '';
@@ -94,12 +214,6 @@
     values = out;
   }
 
-  const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
-  const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
-  const fmt = (iso: string) => {
-    const d = new Date(`${iso}T00:00:00Z`);
-    return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEK[d.getUTCDay()]}）`;
-  };
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
   const displayPlanName = (name: string) => {
     const last = name.split('■').map((s) => s.trim()).filter(Boolean).pop() ?? name;
@@ -131,7 +245,13 @@
   <form
     bind:this={formEl}
     method="POST"
-    use:enhance={() => {
+    use:enhance={({ cancel }) => {
+      // オンライン決済はフォーム送信ではなく決済部品から確定する（入力欄で Enter を押したときも）
+      if (isStripe) {
+        cancel();
+        if (step === 'confirm') void payNow();
+        return;
+      }
       submitting = true;
       return async ({ result, update }) => {
         if (result.type === 'redirect') {
@@ -237,26 +357,6 @@
               </label>
             {/if}
           {/each}
-          {#if data.paymentOptions.length > 1}
-            <fieldset>
-              <legend class={label}>お支払方法 <em class="req">必須</em></legend>
-              <div class="grid gap-2 sm:grid-cols-2">
-                {#each data.paymentOptions as o (o.id)}
-                  <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
-                    <input type="radio" name="payment_option" value={o.id} bind:group={paymentOption} required class="mt-1 accent-[var(--pt-accent)]" />
-                    <span>
-                      <span class="font-medium">{o.label}</span>
-                      {#if o.id === 'online' && prepay}<span class="ml-1.5 rounded bg-[var(--pt-accent)] px-1.5 py-0.5 text-xs font-bold text-white">{prepay.label}</span>{/if}
-                      <span class="block text-sm text-stone-500">{o.note}</span>
-                      {#if o.id === 'online' && prepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">合計 {yen(prepay.total + (quote.ok ? quote.bathTax : 0))}（{yen(prepay.discount)} お得）</span>{/if}
-                    </span>
-                  </label>
-                {/each}
-              </div>
-            </fieldset>
-          {:else}
-            <input type="hidden" name="payment_option" value={paymentOption} />
-          {/if}
           <label class="block">
             <span class={label}>その他ご要望・備考</span>
             <textarea name="notes" rows="3" maxlength="1000" class={input}></textarea>
@@ -293,13 +393,66 @@
               <dt>合計</dt><dd class="font-bold tabular-nums">{yen(payTotal)}</dd>
             {/if}
           </dl>
-          {#if paymentOption === 'online'}
-            <p class="mt-3 text-sm text-stone-500">確定するとお支払い画面（Stripe）へ進みます。30分以内にお支払いいただくと予約が確定します。</p>
-          {:else if paymentOption === 'online_checkin'}
-            <p class="mt-3 text-sm text-stone-500">確定するとカードの登録画面（Stripe）へ進みます。登録した時点で予約が確定し、チェックイン日に登録カードへ自動で請求します（この時点では請求されません）。</p>
-          {/if}
         </section>
       {/if}
+
+      <!-- お支払い（入力・確認のどちらにも出す。カードを選んだ時点で入力欄が出る） -->
+      <section class="card">
+        <h3 class="card-title">お支払い</h3>
+        <div class="grid gap-4">
+          {#if data.paymentOptions.length > 1}
+            <fieldset disabled={!!pending}>
+              <legend class={label}>お支払方法 <em class="req">必須</em></legend>
+              <div class="grid gap-2 sm:grid-cols-2">
+                {#each data.paymentOptions as o (o.id)}
+                  <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                    <input type="radio" name="payment_option" value={o.id} bind:group={paymentOption} required class="mt-1 accent-[var(--pt-accent)]" />
+                    <span>
+                      <span class="font-medium">{o.label}</span>
+                      {#if o.id === 'online' && prepay}<span class="ml-1.5 rounded bg-[var(--pt-accent)] px-1.5 py-0.5 text-xs font-bold text-white">{prepay.label}</span>{/if}
+                      <span class="block text-sm text-stone-500">{o.note}</span>
+                      {#if o.id === 'online' && prepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">合計 {yen(prepay.total + (quote.ok ? quote.bathTax : 0))}（{yen(prepay.discount)} お得）</span>{/if}
+                    </span>
+                  </label>
+                {/each}
+              </div>
+            </fieldset>
+          {:else}
+            <input type="hidden" name="payment_option" value={paymentOption} />
+          {/if}
+          {#if pending}
+            <div class="rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2.5 text-sm">
+              <p class="font-medium text-amber-800">予約番号 {pending.bookingCode} のお部屋を{pending.expiresAt ? ` ${hm(pending.expiresAt)} まで` : ''}確保しています。</p>
+              <p class="mt-0.5 text-stone-600">{pending.mode === 'setup' ? 'カードを登録' : 'お支払いを完了'}するとご予約が確定します。別のカードでもお試しいただけます。</p>
+            </div>
+          {/if}
+          {#if isStripe}
+            {#key payMode}
+              <StripePayment
+                bind:this={payRef}
+                publishableKey={data.stripeKey}
+                mode={payMode}
+                amount={payTotal}
+                theme={{ accent: accent.accent, accentSoft: accent.accentSoft }}
+                consentText={pending?.mode === 'setup' ? pending.consentText : consentPreview}
+                disabled={!ready && !pending}
+                validate={validatePay}
+                prepare={preparePay}
+                onconfirmed={onPayConfirmed}
+                onerror={(m) => (payError = m)}
+                onbusychange={(b) => (paying = b)}
+              />
+            {/key}
+            {#if paymentOption === 'online'}
+              <p class="text-sm text-stone-500">予約とお支払いを同時に行います。お支払いが完了した時点でご予約が確定します。</p>
+            {:else}
+              <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックイン日に登録カードへ自動でご請求します。</p>
+            {/if}
+          {:else if paymentLabel}
+            <p class="text-sm text-stone-500">{paymentLabel}（{data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}）</p>
+          {/if}
+        </div>
+      </section>
     </div>
 
     <!-- 料金 -->
@@ -362,6 +515,17 @@
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
         <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="primary mt-4 w-full">内容を確認する</button>
+      {:else if isStripe}
+        <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
+        {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}
+        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending)} class="primary mt-4 w-full">
+          {paying ? (paymentOption === 'online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
+        </button>
+        {#if pending}
+          <button type="button" onclick={() => releasePending()} disabled={paying || releasing} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">{releasing ? '確保を解除しています…' : 'この予約をやめて入力に戻る'}</button>
+        {:else}
+          <button type="button" onclick={() => (step = 'input')} disabled={paying} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
+        {/if}
       {:else}
         <button type="submit" disabled={submitting || !ready} class="primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
         <button type="button" onclick={() => (step = 'input')} disabled={submitting} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>

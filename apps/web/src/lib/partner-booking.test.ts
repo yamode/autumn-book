@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   canBookFor,
+  chargeAmountOf,
+  quoteChargeOf,
   applyPrepayDiscount,
   canPartnerCancel,
   DEFAULT_PARTNER_BOOKING_SETTINGS,
@@ -98,5 +100,20 @@ describe('予約時決済の割引', () => {
 
   it('チェックイン日決済も支払方法として残す', () => {
     expect(normalizePartnerBookingSettings({ paymentOptions: ['online_checkin', 'online'] }).paymentOptions).toEqual(['online', 'online_checkin']);
+  });
+});
+
+describe('オンライン決済の金額', () => {
+  const q = { total: 30000, bathTax: 600, prepay: { total: 28500 } };
+  it('予約時決済は割引後の宿泊料金＋入湯税', () => {
+    expect(quoteChargeOf(q, 'online')).toEqual({ lodging: 28500, bathTax: 600, charge: 29100, discounted: true });
+  });
+  it('チェックイン日決済・後払いは割引しない', () => {
+    expect(quoteChargeOf(q, 'online_checkin')).toEqual({ lodging: 30000, bathTax: 600, charge: 30600, discounted: false });
+    expect(quoteChargeOf({ ...q, prepay: null }, 'online').charge).toBe(30600);
+  });
+  it('台帳の請求額（Intent の金額）は宿泊料金＋入湯税', () => {
+    expect(chargeAmountOf({ total_amount: 28500, bath_tax_amount: 600 })).toBe(29100);
+    expect(chargeAmountOf({ total_amount: 28500, bath_tax_amount: null })).toBe(28500);
   });
 });
