@@ -93,7 +93,9 @@
 				{/each}
 			</div>
 			<h1 class="font-display text-2xl leading-snug text-brand-900">{data.plan.name}</h1>
-			<p class="text-sm text-stone-600">{data.plan.headline}</p>
+			{#if data.plan.headline && data.plan.headline !== data.plan.name}
+				<p class="text-sm text-stone-600">{data.plan.headline}</p>
+			{/if}
 			<dl class="space-y-1 rounded-lg bg-stone-100 p-3 text-sm">
 				<div class="flex justify-between"><dt class="text-stone-500">{m.plan_detail_meal()}</dt><dd>{data.plan.mealPlan}</dd></div>
 				<div class="flex justify-between">

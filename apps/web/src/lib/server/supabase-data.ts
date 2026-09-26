@@ -2068,12 +2068,15 @@ export function normalizeCancellationPolicy(raw: unknown): CancellationPolicy {
 /** v_plans 行 → RatePlan。プラン⇄客室の関係は持たない（実データは plan_offers が返す・設計）。basePrice は 0。 */
 export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 	const policy = normalizeCancellationPolicy(row.cancellation_policy);
+	// 料金プラン名は rms 側に旧キャンペーン名が残ることがある。
+	// 顧客向けには book.plan_contents の見出しを正とする。
+	const headline = String(row.headline ?? '').trim();
 	return {
 		id: String(row.rate_plan_id),
 		facilityId: String(row.facility_id),
 		slug: String(row.slug ?? ''),
-		name: String(row.name ?? ''),
-		headline: String(row.headline ?? ''),
+		name: headline || String(row.name ?? ''),
+		headline: headline,
 		description: String(row.description ?? ''),
 		mealPlan: String(row.meal_plan ?? ''),
 		payment: mapPaymentMethod(row.payment_method as string | null),
