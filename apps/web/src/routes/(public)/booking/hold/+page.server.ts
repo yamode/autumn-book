@@ -27,7 +27,7 @@ import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
 import { directPaymentsReady, directPublishableKey, holdBathTax } from '$lib/server/direct-payments';
-import { payOptionsFor } from '$lib/direct-payment';
+import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -143,7 +143,7 @@ export const actions: Actions = {
 	submit: async (event) => {
 		const { request, locals, cookies } = event;
 		const form = await request.formData();
-		const { holdId, guest, pointsRequested, payment, errors } = parseGuestForm(form);
+		const { holdId, guest, pointsRequested, payment, onsiteMethod, errors } = parseGuestForm(form);
 
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);
@@ -164,7 +164,12 @@ export const actions: Actions = {
 			}
 
 			const client = useMember ? createSupabaseServerClient(event) : undefined;
-			const result = await sbConfirmBooking(holdId, sid, guest, { client, pointsUsed, locale: getLocale() });
+			// 現地払いの内訳（現地PayPay・現地カード・現地現金）は宿への申し送り（core.stays.notes → PMS の備考）に載せる。
+			// 予約の metadata.guest にも onsitePayment として残す
+			const guestForBooking = onsiteMethod
+				? { ...guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], guest.notes].filter(Boolean).join(' ') }
+				: guest;
+			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { client, pointsUsed, locale: getLocale() });
 			if ('error' in result) return fail(410, { message: m.error_hold_expired() });
 			setLastBooking(cookies, {
 				code: result.booking_code,
@@ -178,6 +183,7 @@ export const actions: Actions = {
 				pointsUsed: result.points_used,
 				pointsEarned: result.points_earned,
 				payment,
+				onsiteMethod,
 				discountAmount: result.discount ?? 0,
 				guest: { name: guest.name, kana: guest.kana, phone: guest.phone, email: guest.email }
 			});

@@ -25,16 +25,27 @@
 	});
 
 	// 支払い方法の選択肢（サーバがプランの決済設定とオンライン決済の可否から決めたもの）
-	const payLabel = (v: PayOption) => (v === 'card' ? m.pay_card() : v === 'paypay' ? m.pay_paypay() : m.pay_onsite());
+	// 現地払いは「現地PayPay決済」「現地カード決済」「現地現金決済」に分けて出す（宿は店頭 PayPay へ誘導したいので先頭）。
+	// サーバへは payment=onsite_paypay 等で送り、予約は現地払いのまま備考で宿へ申し送る
+	type PayChoice = PayOption | 'onsite_paypay' | 'onsite_card' | 'onsite_cash';
+	const isOnsite = (v: PayChoice) => v === 'onsite' || v.startsWith('onsite_');
+	const payLabel = (v: PayChoice) =>
+		v === 'card' ? m.pay_card()
+		: v === 'paypay' ? m.pay_paypay()
+		: v === 'onsite_paypay' ? m.pay_onsite_paypay()
+		: v === 'onsite_card' ? m.pay_onsite_card()
+		: v === 'onsite_cash' ? m.pay_onsite_cash()
+		: m.pay_onsite();
 	let payOptions = $derived.by(() => {
 		if (data.expired) return [];
 		const rate = Math.round(data.plan.payment.prepayDiscountRate * 100);
-		return data.payOptions.map((v) => ({ value: v, label: payLabel(v), discount: v === 'onsite' ? 0 : rate }));
+		const choices: PayChoice[] = data.payOptions.flatMap((v): PayChoice[] => (v === 'onsite' ? ['onsite_paypay', 'onsite_card', 'onsite_cash'] : [v]));
+		return choices.map((v) => ({ value: v, label: payLabel(v), discount: isOnsite(v) ? 0 : rate }));
 	});
 	// 既定は先頭（事前決済があればそれ）
-	let selectedPay = $state<PayOption | null>(null);
+	let selectedPay = $state<PayChoice | null>(null);
 	let payValue = $derived(selectedPay ?? payOptions[0]?.value ?? 'onsite');
-	let isPrepay = $derived(payValue !== 'onsite');
+	let isPrepay = $derived(!isOnsite(payValue));
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
 	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
 	let discountRate = $derived(!data.expired && isPrepay && !data.inline ? data.plan.payment.prepayDiscountRate : 0);
@@ -279,7 +290,7 @@
 							{#each payOptions as opt}
 								<label class="flex items-center gap-2 rounded-md border px-3 py-2.5 transition {payValue === opt.value ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
 									<input type="radio" name="payment" value={opt.value} checked={payValue === opt.value} onchange={() => (selectedPay = opt.value)} class="h-4 w-4" />
-									{#if opt.value === 'paypay'}
+									{#if opt.value === 'paypay' || opt.value === 'onsite_paypay'}
 										<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>
 									{/if}
 									<span class="flex-1">{opt.label}</span>
@@ -289,6 +300,9 @@
 								</label>
 							{/each}
 						</div>
+						{#if payValue === 'onsite_paypay'}
+							<p class="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{m.pay_onsite_paypay_note()}</p>
+						{/if}
 						{#if data.payFallback}
 							<p class="mt-2 text-xs text-stone-500">{m.pay_fallback_note()}</p>
 						{/if}

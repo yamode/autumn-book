@@ -7,6 +7,16 @@ import type { PaymentConfig } from '$lib/types';
 
 export type PayOption = 'onsite' | 'card' | 'paypay';
 
+// 現地払いの内訳。画面では「現地PayPay決済」「現地カード決済」「現地現金決済」を選んでもらう
+// （宿は店頭 PayPay へ誘導したいので PayPay を先頭に置く）。予約は現地払いのまま、内訳は備考で宿へ申し送る
+export const ONSITE_METHODS = ['paypay', 'card', 'cash'] as const;
+export type OnsiteMethod = (typeof ONSITE_METHODS)[number];
+export const ONSITE_METHOD_NOTE: Record<OnsiteMethod, string> = {
+  paypay: '【現地PayPay決済希望】',
+  card: '【現地カード決済希望】',
+  cash: '【現地現金決済希望】'
+};
+
 // 請求額 = 宿泊料金 − ポイント ＋ 入湯税。キャンセル料の基準は宿泊料金（入湯税を含まない）。
 export function directChargeOf(q: { total: number; pointsUsed?: number; bathTax?: number }): {
   lodging: number;

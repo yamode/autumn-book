@@ -3,12 +3,15 @@
 import { combineName, combineKana } from '$lib/name';
 import * as m from '$lib/paraglide/messages';
 import type { GuestInfo } from '$lib/types';
+import { ONSITE_METHODS, type OnsiteMethod } from '$lib/direct-payment';
 
 export type ParsedGuestForm = {
 	holdId: string;
 	guest: GuestInfo & { familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string };
 	pointsRequested: number;
 	payment: 'onsite' | 'card' | 'paypay';
+	// 現地払いの内訳（現地PayPay・現地カード・現地現金）。payment は 'onsite' のまま。宿への申し送りに使う
+	onsiteMethod: OnsiteMethod | null;
 	errors: Record<string, string>;
 };
 
@@ -43,11 +46,14 @@ export function parseGuestForm(form: FormData): ParsedGuestForm {
 	if (!EMAIL_RE.test(guest.email)) errors.email = m.error_email_invalid();
 	const raw = String(form.get('payment') ?? 'onsite');
 	const payment = raw === 'card' || raw === 'paypay' ? raw : 'onsite';
+	const sub = raw.startsWith('onsite_') ? raw.slice('onsite_'.length) : '';
+	const onsiteMethod = (ONSITE_METHODS as readonly string[]).includes(sub) ? (sub as OnsiteMethod) : null;
 	return {
 		holdId: String(form.get('holdId') ?? ''),
 		guest,
 		pointsRequested: Math.max(0, Math.floor(Number(form.get('points') ?? 0)) || 0),
 		payment,
+		onsiteMethod,
 		errors
 	};
 }

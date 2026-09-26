@@ -2315,6 +2315,8 @@ export interface LastBooking {
 	pointsUsed: number;
 	pointsEarned: number;
 	payment: 'onsite' | 'card' | 'paypay';
+	// 現地払いの内訳（現地PayPay・現地カード・現地現金）
+	onsiteMethod?: 'paypay' | 'card' | 'cash' | null;
 	discountAmount: number;
 	prepayDiscountRate?: number;
 	// オンライン決済（v0.43.0）: 支払った額（宿泊料金 − ポイント ＋ 入湯税）と入湯税
