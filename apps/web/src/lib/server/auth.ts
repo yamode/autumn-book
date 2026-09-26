@@ -1,7 +1,7 @@
 // 認証（Phase 1: 管理者 / Phase 2: 会員）。AUTH_MODE で切替する。
 //   - demo     … 従来のデモセッション（ワンクリック / 偽造可能な cookie）。dev・移行前の既定。
 //   - supabase … Supabase Auth で検証。管理者/スタッフは app_metadata.role、
-//                 会員は user_metadata.member + book.members 行で判定する。
+//                 会員は user_metadata.member または book.members 行で判定する。
 //
 // Phase 2 では会員も Supabase Auth に載せる（メール6桁OTP → register_member）。
 // book スキーマは yamado-one（モバイル会員アプリ）と共有するため、
@@ -81,12 +81,13 @@ export interface SupabaseAuthResolution {
  * Supabase セッションから locals へ載せる SessionUser を解決する。
  *   1. app_metadata.role が admin / staff  → その role（Phase 1）
  *   2. user_metadata.member === true        → member（Phase 2・register_member 済み）
- *   3. それ以外（OTP 済み・未登録）          → pending（会員登録のプロフィール入力へ）
+ *   3. フラグがなくても book.my_profile が通る → member（別アプリで登録した会員）
+ *   4. それ以外（OTP 済み・未登録）          → pending（会員登録のプロフィール入力へ）
  */
 export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<SupabaseAuthResolution> {
 	const got = await getSupabaseUser(event);
 	if (!got) return { user: null, pending: null };
-	const { user } = got;
+	const { user, client } = got;
 
 	const role = (user.app_metadata as { role?: string } | null)?.role;
 	if (role === 'admin' || role === 'staff') {
@@ -97,6 +98,14 @@ export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<S
 	const meta = user.user_metadata as { member?: boolean; name?: string } | null;
 	if (meta?.member === true) {
 		const name = (meta.name ?? 'ゲスト') as string;
+		return { user: { id: user.id, role: 'member', name }, pending: null };
+	}
+
+	// 他アプリ経由の会員や metadata 同期に失敗した会員も、実際の会員行で解決する。
+	// OTP 検証後に my_profile が成功しても metadata だけを見るとログインへ戻ってしまう。
+	const { data: profile, error } = await client.schema('book').rpc('my_profile');
+	if (!error && profile?.user_id === user.id) {
+		const name = (profile.name as string | null) ?? meta?.name ?? 'ゲスト';
 		return { user: { id: user.id, role: 'member', name }, pending: null };
 	}
 
