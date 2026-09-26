@@ -112,6 +112,10 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// ポータル本体の公開状況と関係なく稼働させる（2026-09-26 ユーザー指示。autumn-rms から移設）。
 	if (isPartnerPath(url.pathname)) return true;
 
+	// 法定表記（特商法・プライバシーポリシー・宿泊約款）は、取引先ページからのリンク先であり、
+	// 決済サービスの審査でも開ける必要があるため、ポータル本体の公開前から見られるようにする。
+	if (/^\/(?:en\/|zh-TW\/)?legal\//.test(url.pathname)) return true;
+
 	// 運営（admin / staff）はメンテ中も公開サイトをプレビューできる
 	const role = locals.user?.role;
 	if (role === 'admin' || role === 'staff') return true;
