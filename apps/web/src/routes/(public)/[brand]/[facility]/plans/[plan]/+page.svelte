@@ -23,14 +23,59 @@
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
 	);
+
+	// 料金は「1名1泊・税込」を主、1室の合計を従で出す（全画面で単位を統一）。
+	// quote.perPerson は1名あたりの全泊合計なので、泊数で割って1名1泊にする。
+	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
+
+	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）
+	let cheapest = $derived.by(() => {
+		let best: { total: number } | null = null;
+		for (const r of data.rooms) {
+			if (r.quote && (!best || r.quote.total < best.total)) best = { total: r.quote.total };
+		}
+		return best;
+	});
+	let soldOut = $derived(!!data.params.checkin && cheapest === null);
+
+	// モバイルの下部固定バー: 客室セクションが画面に入ったら隠す（同じCTAが二重にならないように）
+	let roomsInView = $state(false);
+	$effect(() => {
+		const el = document.getElementById('rooms');
+		if (!el || typeof IntersectionObserver === 'undefined') return;
+		const io = new IntersectionObserver((entries) => {
+			roomsInView = entries.some((e) => e.isIntersecting);
+		});
+		io.observe(el);
+		return () => io.disconnect();
+	});
 </script>
+
+{#snippet priceBlock()}
+	{#if cheapest}
+		<p class="text-xs text-stone-500">{m.plan_price_dated_label()}</p>
+		<p class="text-2xl font-bold text-brand-900">
+			{formatPrice(perPersonNight(cheapest.total))}〜<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+		</p>
+		<p class="text-xs text-stone-500">
+			{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
+		</p>
+	{:else if soldOut}
+		<p class="text-sm font-medium text-stone-500">{m.plan_price_sold_out()}</p>
+	{:else}
+		<p class="text-xs text-stone-500">{m.plan_price_base_label()}</p>
+		<p class="text-2xl font-bold text-brand-900">
+			{formatPrice(data.plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>
+		</p>
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<title>{m.plan_detail_title({ name: data.plan.name, facility: data.facility.name })}</title>
 	<meta name="description" content={data.plan.headline} />
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-4 py-8">
+<div class="mx-auto max-w-5xl px-4 pb-24 pt-8 md:pb-8">
 	<nav class="mb-2 text-xs text-stone-400">
 		<a href={base} class="hover:underline">{data.facility.name}</a> /
 		<a href="{base}/plans" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
@@ -40,7 +85,8 @@
 		<div>
 			<PhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
 		</div>
-		<div class="space-y-3">
+		<!-- 右カラムはスクロールしても料金・CTA が見えるよう追従させる（ヘッダー高さ分下げる） -->
+		<div class="space-y-3 md:sticky md:top-32 md:self-start lg:top-24">
 			<div class="flex flex-wrap gap-1.5">
 				{#each data.plan.highlightTags as tag}
 					<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
@@ -59,13 +105,26 @@
 						{/if}
 					</dd>
 				</div>
-				{#if data.params.checkin}
-					<div class="flex justify-between text-emerald-700">
-						<dt>{m.plan_detail_cancel()}</dt>
-						<dd><CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.params.checkin} /></dd>
-					</div>
-				{/if}
 			</dl>
+
+			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる） -->
+			<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
+				{@render priceBlock()}
+				{#if data.params.checkin && !soldOut}
+					<p class="mt-2 text-xs text-emerald-700">
+						{m.plan_detail_cancel()}: <CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.params.checkin} />
+					</p>
+				{:else if !data.params.checkin}
+					<p class="mt-2 text-xs text-stone-500">{m.plan_price_base_note()}</p>
+				{/if}
+				<!-- 日付未指定・満室時は日付選択（料金カレンダー）へ、指定済みなら客室選択へ -->
+				<a
+					href={cheapest ? '#rooms' : '#cal'}
+					class="mt-3 block rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500"
+				>
+					{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
+				</a>
+			</div>
 		</div>
 	</div>
 
@@ -81,7 +140,7 @@
 	<ContentBlocks specs={data.plan.specs} sections={data.plan.sections} specsTitle={m.plan_detail_specs()} />
 
 	<!-- 料金カレンダー -->
-	<section class="mt-10" id="cal">
+	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="cal">
 		<h2 class="font-display mb-1 text-xl text-brand-900">{m.plan_detail_price_calendar()}</h2>
 		<p class="mb-3 text-sm text-stone-500">{m.plan_detail_calendar_sub()}</p>
 		<div class="max-w-xl">
@@ -101,7 +160,7 @@
 	</section>
 
 	<!-- 客室選択 -->
-	<section class="mt-10" id="rooms">
+	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">
 		<h2 class="font-display mb-3 text-xl text-brand-900">{m.plan_detail_select_room()}</h2>
 		{#if form?.message}
 			<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -123,9 +182,9 @@
 					<div class="text-right">
 						{#if r.quote}
 							<p class="text-lg font-bold text-brand-900">
-								{formatPrice(r.quote.total)}
+								{formatPrice(perPersonNight(r.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
 								<span class="block text-xs font-normal text-stone-500">
-									{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), perPerson: formatPrice(r.quote.perPerson) })}
+									{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
 								</span>
 							</p>
 							{#if r.remaining !== null && r.remaining <= 2}
@@ -156,3 +215,33 @@
 		<p class="text-stone-600">{data.plan.cancellationPolicy.note}</p>
 	</section>
 </div>
+
+<!-- モバイル: 下部固定の料金バー（客室セクション表示中は隠す） -->
+{#if !roomsInView}
+	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
+		<div class="flex items-center gap-3">
+			<div class="min-w-0 flex-1 leading-tight">
+				{#if cheapest}
+					<p class="text-lg font-bold text-brand-900">
+						{formatPrice(perPersonNight(cheapest.total))}〜<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+					</p>
+					<p class="truncate text-[11px] text-stone-500">
+						{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
+					</p>
+				{:else if soldOut}
+					<p class="text-xs text-stone-500">{m.plan_price_sold_out()}</p>
+				{:else}
+					<p class="text-lg font-bold text-brand-900">
+						{formatPrice(data.plan.basePrice)}<span class="text-[11px] font-normal text-stone-500">{m.plan_card_base_price()}</span>
+					</p>
+				{/if}
+			</div>
+			<a
+				href={cheapest ? '#rooms' : '#cal'}
+				class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500"
+			>
+				{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
+			</a>
+		</div>
+	</div>
+{/if}

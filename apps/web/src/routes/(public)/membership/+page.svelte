@@ -132,7 +132,8 @@
 	<!-- 末尾CTA -->
 	{#if !data.isMember}
 		<div class="mt-14 rounded-2xl bg-brand-900 p-8 text-center text-stone-100">
-			<h2 class="text-2xl text-white">{m.membership_cta2_heading()}</h2>
+			<!-- .forum-shell の見出し色（app.css・レイヤー外）が text-white に勝つため important で白に固定 -->
+			<h2 class="text-2xl text-white!">{m.membership_cta2_heading()}</h2>
 			<p class="mx-auto mt-2 max-w-xl text-sm text-stone-300">{m.membership_cta2_body()}</p>
 			<a href="/auth/register" class="mt-5 inline-block rounded-lg bg-accent-600 px-8 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
 		</div>

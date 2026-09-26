@@ -10,6 +10,7 @@
 		total = null,
 		perPerson = null,
 		adults = 2,
+		nights = 1,
 		remaining = null,
 		checkin = ''
 	}: {
@@ -18,9 +19,14 @@
 		total?: number | null;
 		perPerson?: number | null;
 		adults?: number;
+		nights?: number;
 		remaining?: number | null;
 		checkin?: string;
 	} = $props();
+
+	// 料金表示の単位は全画面で「1名1泊・税込」を主、1室の合計を従に統一する。
+	// quote.perPerson は「1名あたりの全泊合計」なので、泊数で割って 1名1泊 に揃える。
+	let perPersonNight = $derived(total !== null ? Math.round(total / Math.max(1, adults * nights)) : null);
 </script>
 
 <a {href} class="group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:shadow-md sm:flex-row">
@@ -49,11 +55,11 @@
 		<p class="text-sm text-stone-600">{plan.headline}</p>
 		<div class="mt-auto flex items-end justify-between gap-2 pt-2">
 			<div>
-				{#if total !== null && perPerson !== null}
+				{#if total !== null && perPerson !== null && perPersonNight !== null}
 					<p class="text-xl font-bold text-brand-900">
-						{formatPrice(total)}
-						<span class="text-xs font-normal text-stone-500">{m.plan_card_per_room({ adults: String(adults), perPerson: formatPrice(perPerson) })}</span>
+						{formatPrice(perPersonNight)}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
 					</p>
+					<p class="text-xs text-stone-500">{m.plan_card_per_room({ adults: String(adults), nights: String(nights), total: formatPrice(total) })}</p>
 				{:else}
 					<p class="text-xl font-bold text-brand-900">
 						{formatPrice(plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>

@@ -60,6 +60,7 @@
 					total={item.total}
 					perPerson={item.perPerson}
 					adults={data.params.adults}
+					nights={data.params.nights}
 					remaining={item.remaining}
 					checkin={data.params.checkin}
 				/>

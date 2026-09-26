@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Stepper from '$lib/components/Stepper.svelte';
-	import { formatPrice, formatDateLong } from '$lib/format';
+	import { formatPrice, formatDateLong, addDays } from '$lib/format';
 	import { gaPurchaseOnce } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 
@@ -16,6 +16,32 @@
 		});
 	});
 	let isCard = $derived(b.payment !== 'onsite');
+
+	// 「カレンダーに追加」用の .ics（data URI）。チェックイン〜チェックアウトの終日予定としてクライアント側で組み立てる
+	const icsEscape = (v: string) => v.replace(/\\/g, '\\\\').replace(/[;,]/g, (c) => '\\' + c).replace(/\r?\n/g, '\\n');
+	let icsHref = $derived.by(() => {
+		const ymd = (d: string) => d.replaceAll('-', '');
+		const checkout = addDays(b.checkin, b.nights);
+		// DTSTAMP は SSR とハイドレーションで値がずれないよう予約作成日から固定で作る（現在時刻は使わない）
+		const stamp = `${ymd(b.createdAt.slice(0, 10))}T000000Z`;
+		const lines = [
+			'BEGIN:VCALENDAR',
+			'VERSION:2.0',
+			'PRODID:-//YAMADO//autumn-book//JA',
+			'CALSCALE:GREGORIAN',
+			'BEGIN:VEVENT',
+			`UID:${b.code}@yamado`,
+			`DTSTAMP:${stamp}`,
+			`DTSTART;VALUE=DATE:${ymd(b.checkin)}`,
+			`DTEND;VALUE=DATE:${ymd(checkout)}`,
+			`SUMMARY:${icsEscape(`${data.facility.name}（${b.code}）`)}`,
+			`DESCRIPTION:${icsEscape(`${m.complete_booking_number_label()}: ${b.code}\n${data.room.name}\n${m.complete_checkin()} ${data.facility.checkinTime}〜`)}`,
+			...(data.facility.addressPublic ? [`LOCATION:${icsEscape(data.facility.addressPublic)}`] : []),
+			'END:VEVENT',
+			'END:VCALENDAR'
+		];
+		return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(lines.join('\r\n'));
+	});
 
 	let steps = $derived(isCard
 		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
@@ -63,7 +89,7 @@
 		</dl>
 
 		<div class="mt-6 flex flex-wrap justify-center gap-3">
-			<a href="data:text/calendar," download="{b.code}.ics" class="rounded-lg border border-stone-300 px-5 py-2 text-sm hover:bg-stone-50">{m.complete_calendar()}</a>
+			<a href={icsHref} download="{b.code}.ics" class="rounded-lg border border-stone-300 px-5 py-2 text-sm hover:bg-stone-50">{m.complete_calendar()}</a>
 			{#if data.isMember}
 				<a href="/account" class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{m.complete_mypage()}</a>
 			{/if}
@@ -77,10 +103,6 @@
 			</div>
 		{/if}
 
-		<!-- クロスセル枠（P6: オプション予約 §15.2 をここに接続） -->
-		<div class="mt-6 rounded-xl border border-stone-200 p-4 text-left text-sm text-stone-500">
-			<p class="font-medium text-stone-600">{m.complete_cross_sell_heading()}</p>
-			<p class="mt-1 text-xs">{m.complete_cross_sell_msg()}</p>
-		</div>
+		<!-- クロスセル枠（P6: オプション予約 §15.2 をここに接続）。中身が空の「準備中」表示は CV に寄与しないため接続まで非表示 -->
 	</div>
 </div>

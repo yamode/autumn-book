@@ -18,13 +18,20 @@
 
 	let highlighted = $state<string | null>(null);
 
+	// 料金表示は全画面で「1名1泊・税込」を主に統一する。
+	// 日付指定時の minTotal は「1室・全泊の合計」なので、人数×泊数で割って 1名1泊 に換算する。
+	function perPersonNight(r: (typeof data.results)[0]): number {
+		if (r.reference) return r.minPerPerson!;
+		return Math.round(r.minTotal! / Math.max(1, data.params.adults * data.params.nights));
+	}
+
 	let mapItems = $derived(
 		data.results.map((r) => ({
 			id: r.facility.id,
 			lat: r.facility.lat,
 			lng: r.facility.lng,
 			name: r.facility.name,
-			label: r.minTotal !== null ? `${formatPrice(r.reference ? r.minPerPerson! : r.minTotal)}〜` : m.common_sold_out(),
+			label: r.minTotal !== null ? `${formatPrice(perPersonNight(r))}〜` : m.common_sold_out(),
 			soldOut: r.minTotal === null
 		}))
 	);
@@ -79,13 +86,17 @@
 						<h2 class="font-display text-lg text-brand-900">{r.facility.name}</h2>
 						{#if r.minTotal !== null}
 							<p class="mt-1 font-bold text-brand-900">
-								{formatPrice(r.reference ? r.minPerPerson! : r.minTotal)}〜
+								{formatPrice(perPersonNight(r))}〜
 								<span class="text-xs font-normal text-stone-500">
-									{r.reference
-										? m.search_price_per_person_ref()
-										: m.search_price_total({ adults: String(data.params.adults), nights: String(data.params.nights) })}
+									{r.reference ? m.search_price_per_person_ref() : m.price_unit_pp_night()}
 								</span>
 							</p>
+							{#if !r.reference}
+								<!-- 従: 1室の合計（人数×泊数） -->
+								<p class="text-xs text-stone-500">
+									{m.search_price_total({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.minTotal) })}
+								</p>
+							{/if}
 							{#if !r.reference && r.remaining <= 2}
 								<p class="mt-0.5 text-xs font-medium text-red-600">{m.search_remaining({ n: String(r.remaining) })}</p>
 							{/if}

@@ -63,6 +63,11 @@
 		data.expired ? { lodging: 0, bathTax: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax })
 	);
 
+	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
+	let summaryTotal = $derived(
+		data.expired ? 0 : inlineCard && data.bathTax > 0 ? charge.charge : data.hold.quote.total - pointsApplied
+	);
+
 	let steps = $derived(isPrepay && !data.inline
 		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
 		: [m.steps_plan(), m.steps_info(), m.steps_complete()]);
@@ -177,6 +182,20 @@
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 		{/if}
 
+		<!-- モバイル: 予約内容の要約（明細の aside は長いフォームの下になるため、合計を先に見せる） -->
+		<div class="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-sm md:hidden">
+			<p class="font-medium text-brand-900">{data.facility.name}</p>
+			<p class="text-xs text-stone-500">{data.room.name} ／ {data.plan.name}</p>
+			<p class="mt-0.5 text-xs text-stone-600">
+				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), adults: String(data.hold.adults) })}
+			</p>
+			<div class="mt-2 flex items-baseline justify-between border-t border-stone-100 pt-2">
+				<span class="text-stone-600">{inlineCard && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
+				<span class="text-lg font-bold tabular-nums text-brand-900">{formatPrice(summaryTotal)}</span>
+			</div>
+			<a href="#hold-summary" class="mt-1 block text-right text-xs text-accent-600 hover:underline">{m.hold_mobile_see_detail()} ↓</a>
+		</div>
+
 		<div class="mt-6 grid gap-6 md:grid-cols-[1fr_320px]">
 			<!-- 入力フォーム -->
 			<div>
@@ -210,16 +229,16 @@
 					<div class="grid grid-cols-2 gap-3">
 						<label class="block text-sm">
 							<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
-							<input name="familyName" autocomplete="family-name" value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
+							<input name="familyName" autocomplete="family-name" required aria-required="true" aria-invalid={form?.errors?.familyName ? 'true' : undefined} value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
 						</label>
 						<label class="block text-sm">
 							<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
-							<input name="givenName" autocomplete="given-name" value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
+							<input name="givenName" autocomplete="given-name" required aria-required="true" aria-invalid={form?.errors?.givenName ? 'true' : undefined} value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
 						</label>
 					</div>
 					<label class="block text-sm">
 						<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
-						<input name="middleName" value={form?.values?.middleName ?? data.member?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+						<input name="middleName" autocomplete="additional-name" value={form?.values?.middleName ?? data.member?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 					</label>
 					<div class="grid grid-cols-2 gap-3">
 						<label class="block text-sm">
@@ -232,21 +251,26 @@
 						</label>
 					</div>
 					{#each [
-						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone, ac: 'tel' as const, type: 'tel' },
-						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email, ac: 'email' as const, type: 'email' }
+						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone, ac: 'tel' as const, type: 'tel', im: 'tel' as const },
+						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email, ac: 'email' as const, type: 'email', im: 'email' as const }
 					] as field}
 						<label class="block text-sm">
 							<span class="text-stone-600">{field.label} <span class="text-red-500">*</span></span>
 							<input
 								name={field.key}
 								type={field.type}
+								inputmode={field.im}
 								autocomplete={field.ac}
+								required
+								aria-required="true"
+								aria-invalid={form?.errors?.[field.key] ? 'true' : undefined}
+								aria-describedby={form?.errors?.[field.key] ? `err-${field.key}` : undefined}
 								value={form?.values?.[field.key as 'phone'] ?? field.def ?? ''}
 								placeholder={field.ph}
 								class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.[field.key] ? 'border-red-400' : 'border-stone-300'}"
 							/>
 							{#if form?.errors?.[field.key]}
-								<span class="text-xs text-red-600">{form.errors[field.key]}</span>
+								<span id="err-{field.key}" class="text-xs text-red-600">{form.errors[field.key]}</span>
 							{/if}
 						</label>
 					{/each}
@@ -363,7 +387,7 @@
 			</div>
 
 			<!-- 予約内容サマリ（明細は常に表示: 宿泊料金・ポイント・入湯税・お支払い合計） -->
-			<aside class="h-fit rounded-2xl border border-stone-200 bg-white p-5 md:sticky md:top-20">
+			<aside id="hold-summary" class="h-fit scroll-mt-20 rounded-2xl border border-stone-200 bg-white p-5 md:sticky md:top-20">
 				<h2 class="mb-3 font-medium text-brand-900">{m.hold_summary_heading()}</h2>
 				<img src={data.room.photos[0]?.url} alt="" class="mb-3 h-32 w-full rounded-lg object-cover" />
 				<dl class="space-y-1.5 text-sm">
