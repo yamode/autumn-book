@@ -4,7 +4,7 @@
 // ■ 必ず**ログイン中スタッフの Supabase クライアント**（createSupabaseServerClient）で叩く。
 //   RLS は *_staff_all（private.has_facility_access）で施設ごとに守られている。service_role は使わない。
 // ■ 部屋名・定員は pms.room_types、プラン名は booking.rate_plans が持つ。紹介テーブルには無いので結合して見せる。
-//   booking スキーマは PostgREST の Exposed schemas に入っていない環境がある（2026-09-26 時点の本番）。
+//   booking スキーマは Data API に出していないので、book.v_admin_rate_plans（security_invoker ビュー）から読む。
 //   読めなければプラン名の代わりに slug を出し、画面に理由を出す（一覧そのものは落とさない）。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
@@ -180,22 +180,25 @@ export interface AdminPlanList {
 	namesError: string | null;
 }
 
-/** booking.rate_plans を読む。スキーマ未公開などで読めなければ空の Map と理由を返す。 */
+/**
+ * プラン名などを読む。booking スキーマは Data API に出していないので、book の security_invoker ビュー
+ * v_admin_rate_plans（autumn-shared 20260926094643）経由で読む（booking.rate_plans の RLS がそのまま効く）。
+ * 読めなければ空の Map と理由を返す。
+ */
 async function loadRatePlans(
 	client: SupabaseClient,
 	facilityUuid: string,
 	ids?: string[]
 ): Promise<{ byId: Map<string, Row>; error: string | null }> {
 	let q = client
-		.schema('booking')
-		.from('rate_plans')
+		.schema('book')
+		.from('v_admin_rate_plans')
 		.select('id, code, name, is_active, public_on_direct')
 		.eq('facility_id', facilityUuid);
 	if (ids) q = q.in('id', ids);
 	const { data, error } = await q;
 	if (error) {
-		const why = error.code === 'PGRST106' ? 'booking スキーマが Data API に公開されていません' : error.message;
-		return { byId: new Map(), error: `プラン名（booking.rate_plans）を読めません: ${why}` };
+		return { byId: new Map(), error: `プラン名（book.v_admin_rate_plans）を読めません: ${error.message}` };
 	}
 	return { byId: new Map((data ?? []).map((r: Row) => [String(r.id), r])), error: null };
 }

@@ -23,10 +23,8 @@ autumn-rms の取引先専用ページも同じ行を読む。編集は autumn-b
   - プラン詳細の「決済設定」「翻訳」はまだデモストア（メモリ）にしか繋がっていないため、**デモ環境でだけ表示**（本番では注記のみ）
 - 公開側: 部屋詳細・プラン詳細に仕様表（表）と紹介ブロック（group ごとの見出し＋写真つき）を表示（`ContentBlocks.svelte`）。
   部屋の説明は改行を保って表示、写真が2枚以上ならギャラリー（PhotoGallery）を出す。プラン本文は従来どおり Markdown（breaks:true で改行保持）
-- ⚠ **`booking` スキーマは PostgREST の Exposed schemas に入っていない**（2026-09-26 時点。`pms`・`book` は公開済み）。
-  そのためプラン一覧・編集でプラン名（`booking.rate_plans.name / code / is_active / public_on_direct`）が読めず、
-  **代わりに slug（コード由来）を表示し、黄色の注記を出す**。解消するには ①ダッシュボードで `booking` を Exposed schemas に追加
-  （RLS `rate_plans_all` があるのでスタッフは自施設分だけ読める）か、②`book` に security_invoker のビュー/RPC を足す（autumn-shared の migration）
+- プラン名（`booking.rate_plans`）は、`booking` スキーマを Data API に出していないため、`book.v_admin_rate_plans`（security_invoker ビュー・autumn-shared 20260926094643）から読む。
+  booking.rate_plans の RLS（自施設のみ）がそのまま効く。読めないときは slug を表示し黄色の注記を出す（画面は落とさない）
 
 ## 予約確認メール・非会員キャンセル・予約管理（2026-09-07 追加・v0.38.0）
 
@@ -817,7 +815,7 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
 - [ ] 未保存の変更があると保存バーに「未保存の変更があります」が出て、保存後「保存しました。」に変わる
 - [ ] /admin/plans に公開中／下書きのフィルタがあり、件数が合う
 - [ ] /admin/plans/[id] でタグ・表示順・公開を変えて保存できる（a003 を公開→下書きに戻す）
-- [ ] プラン名が読めない環境では黄色の注記と slug 表示になり、画面は落ちない（booking スキーマ未公開の間）
+- [ ] プラン一覧・編集で、プラン名（公式サイトの名前）が slug ではなく正しく出る
 - [ ] 他施設のみ権限のスタッフで保存すると「権限がありません」系のエラーになる（黙って成功しない）
 - [ ] ローカル（AUTH_MODE=demo）では「この環境では保存できません」が出て保存ボタンが押せない。プラン詳細の決済設定・翻訳はデモ環境でだけ表示される
 
