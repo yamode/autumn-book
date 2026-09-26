@@ -1,6 +1,21 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-26（管理画面の事故防止: 本日の JST 化・予約詳細の支払表示・施設切替の 404・本番未接続画面のガード v0.44.6）
+> **最終更新**: 2026-09-26（プランの支払方法を Book の管理画面で設定・管理画面の上部バー固定／トースト／未保存ガード v0.44.7）
+
+## プランの支払方法を Book で設定（2026-09-26・v0.44.7）
+
+**2026-09-26 ユーザー指示: 支払方法が RMS 側の設定なのはおかしい。autumn-book の設定にする。**
+- 実態: `booking.rate_plans.payment_method` は rms 同期（`book.sync_rms_rates_range`）が新規作成時に 'onsite' を入れるだけで、既存行は上書きしない。値の持ち主はもともと Book だったが、変更画面が無く migration で直していた
+- autumn-shared `20260926143318_book_admin_plan_payment_method.sql`（main 直 push・PROD 適用確認済み）: `book.admin_set_plan_payment_method(rate_plan_id, method)`（施設アクセスのあるスタッフ・監査ログ `plan_payment_method`）と `book.v_admin_rate_plans.payment_method`
+- 管理画面 → プラン → 各プランの上部「支払方法」で 現地払いのみ / 事前決済のみ / どちらも選べる（onsite / prepayment / deposit）。プラン一覧のカード右上にも表示
+- デモの「決済設定」欄（PayPay 事前決済・事前割引）はデモ専用のまま
+
+## 管理画面の共通シェル（v0.44.7）
+- 上部バー（施設切替・メンテナンス表示）をスクロールしても残す。施設ごとに色を付け、サイドバー上部にも操作中の施設名
+- モバイルのメニューを select からドロワーに
+- トースト（`lib/components/admin/Toast.svelte`）: form action の `{ saved: true }` 等と fail の message/error を右下に表示
+- 未保存ガード: レイアウトで main 内の POST フォームの入力を拾い、送信せずに移動しようとすると確認（`data-no-guard` で除外）
+
 
 ## 管理画面の事故防止（2026-09-26・v0.44.6）
 

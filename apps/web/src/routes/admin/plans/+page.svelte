@@ -1,5 +1,6 @@
 <script lang="ts">
 	let { data } = $props();
+	const PAYMENT_LABEL = { onsite: '現地払い', prepayment: '事前決済', deposit: '事前・現地' } as const;
 	let filter = $state<'all' | 'published' | 'draft'>('all');
 	let shown = $derived(
 		data.plans.filter((p) => (filter === 'all' ? true : filter === 'published' ? p.isPublished : !p.isPublished))
@@ -43,6 +44,9 @@
 				<span class="absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-medium {plan.isPublished ? 'bg-emerald-500 text-white' : 'bg-stone-600 text-white'}">
 					{plan.isPublished ? '公開中' : '下書き'}
 				</span>
+				{#if plan.paymentMethod}
+					<span class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-xs text-stone-700">{PAYMENT_LABEL[plan.paymentMethod]}</span>
+				{/if}
 			</div>
 			<div class="p-3">
 				<h2 class="line-clamp-2 text-sm font-medium text-stone-800 group-hover:underline">{plan.name}</h2>

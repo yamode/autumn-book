@@ -5,7 +5,13 @@ import { error, fail } from '@sveltejs/kit';
 import { planById, facilityById, roomTypeById, upsertTranslation, translationStore } from '$lib/server/store';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
-import { sbGetPlanContentAdmin, sbSavePlanContent } from '$lib/server/content-admin';
+import {
+	PLAN_PAYMENT_METHODS,
+	sbGetPlanContentAdmin,
+	sbSavePlanContent,
+	sbSetPlanPaymentMethod,
+	type PlanPaymentMethod
+} from '$lib/server/content-admin';
 import {
 	LIVE,
 	NOT_LIVE,
@@ -84,10 +90,26 @@ export const actions: Actions = {
 		}
 	},
 	upload: (event) => uploadPhotoAction(event, 'plans'),
+	// 支払方法（本番）。booking.rate_plans.payment_method を Book の管理画面で決める
+	setPaymentMethod: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { paymentError: NOT_LIVE });
+		const method = String((await event.request.formData()).get('method') ?? '');
+		if (!(PLAN_PAYMENT_METHODS as readonly string[]).includes(method)) {
+			return fail(400, { paymentError: '支払方法を選んでください。' });
+		}
+		try {
+			await sbSetPlanPaymentMethod(createSupabaseServerClient(event), event.params.id, method as PlanPaymentMethod);
+			return { paymentSaved: true };
+		} catch (e) {
+			return fail(400, { paymentError: messageOf(e) });
+		}
+	},
 	// 決済設定（現地払い/事前決済=即時決済/PayPay/事前割引≤20%）
 	// 本実装では booking.rate_plans.metadata.prepay へ書く（rms と共有・要連携）
 	savePayment: async ({ params, request, locals }) => {
-		if (LIVE) return fail(503, { paymentError: '決済設定はまだ実データに繋がっていません（rms 側で設定してください）。' });
+		if (LIVE) return fail(503, { paymentError: '本番の支払方法は上の「支払方法」で設定してください。' });
 		if (locals.user?.role !== 'admin') return fail(403, { paymentError: '編集権限がありません' });
 		const plan = planById(params.id);
 		if (!plan) return fail(404, {});

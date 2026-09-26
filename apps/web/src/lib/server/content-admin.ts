@@ -49,7 +49,13 @@ export interface AdminPlanContent extends AdminContentBase {
 	name: string;
 	isActive: boolean;
 	publicOnDirect: boolean;
+	/** 支払方法（booking.rate_plans.payment_method）。Book の管理画面で設定する。読めないときは null */
+	paymentMethod: PlanPaymentMethod | null;
 }
+
+/** onsite = 現地払いのみ / prepayment = 事前決済のみ / deposit = 事前決済と現地払いのどちらも選べる */
+export const PLAN_PAYMENT_METHODS = ['onsite', 'prepayment', 'deposit'] as const;
+export type PlanPaymentMethod = (typeof PLAN_PAYMENT_METHODS)[number];
 
 type Row = Record<string, unknown>;
 
@@ -193,7 +199,7 @@ async function loadRatePlans(
 	let q = client
 		.schema('book')
 		.from('v_admin_rate_plans')
-		.select('id, code, name, is_active, public_on_direct')
+		.select('id, code, name, is_active, public_on_direct, payment_method')
 		.eq('facility_id', facilityUuid);
 	if (ids) q = q.in('id', ids);
 	const { data, error } = await q;
@@ -211,7 +217,10 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		// プラン名が読めないときは slug（コード由来）で代用する
 		name: String(rp?.name ?? c.slug ?? ''),
 		isActive: rp ? rp.is_active === true : true,
-		publicOnDirect: rp ? rp.public_on_direct === true : true
+		publicOnDirect: rp ? rp.public_on_direct === true : true,
+		paymentMethod: (PLAN_PAYMENT_METHODS as readonly string[]).includes(String(rp?.payment_method))
+			? (rp!.payment_method as PlanPaymentMethod)
+			: null
 	};
 }
 
@@ -308,4 +317,24 @@ export async function sbUploadContentPhoto(
 	});
 	if (error) throw error;
 	return client.storage.from('book-photos').getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * プランの支払方法を変える（book.admin_set_plan_payment_method。autumn-shared 20260926143318）。
+ * rms 同期は既存プランの payment_method を上書きしないので、ここで決めた値が公開側・オンライン決済の判定に使われる。
+ */
+export async function sbSetPlanPaymentMethod(
+	client: SupabaseClient,
+	ratePlanId: string,
+	method: PlanPaymentMethod
+): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_set_plan_payment_method', {
+		p_rate_plan_id: ratePlanId,
+		p_method: method
+	});
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('このプランの支払方法を変更する権限がありません。');
+		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		throw error;
+	}
 }

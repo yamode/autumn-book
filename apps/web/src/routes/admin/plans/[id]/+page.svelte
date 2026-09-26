@@ -7,6 +7,12 @@
 	let { data, form } = $props();
 	let c = $derived(data.content);
 
+	const PAYMENT_OPTIONS = [
+		{ value: 'onsite', label: '現地払いのみ', hint: 'チェックアウト時に現地で精算' },
+		{ value: 'prepayment', label: '事前決済のみ', hint: '予約時にオンラインでカード決済' },
+		{ value: 'deposit', label: 'どちらも選べる', hint: 'お客様が事前決済か現地払いを選ぶ' }
+	] as const;
+
 	// ---- ここから下はデモ環境だけで使う（決済設定・翻訳はまだデモストアにしか繋がっていない）
 	// 翻訳タブ
 	let translationLocale = $state<'en' | 'zh-TW'>('en');
@@ -58,6 +64,38 @@
 		</dl>
 		<p class="mt-3 text-xs text-stone-400">料金・在庫・規定の変更は rms（料金管理）で行ってください。</p>
 	</section>
+{/if}
+
+{#if data.live}
+	<!-- 支払方法（本番）。booking.rate_plans.payment_method を Book で決める（rms 同期は上書きしない） -->
+	<form method="POST" action="?/setPaymentMethod" use:enhance class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
+		<div class="flex items-center justify-between">
+			<h2 class="text-sm font-bold text-stone-700">支払方法</h2>
+			{#if form?.paymentSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+		</div>
+		{#if (form as { paymentError?: string } | null)?.paymentError}
+			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { paymentError?: string }).paymentError}</p>
+		{/if}
+		{#if c.paymentMethod === null}
+			<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">現在の支払方法を読めませんでした。選んで保存すると設定されます。</p>
+		{/if}
+		<div class="mt-3 grid gap-2 sm:grid-cols-3">
+			{#each PAYMENT_OPTIONS as o}
+				<label class="flex cursor-pointer gap-2 rounded-lg border p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50 border-stone-200">
+					<input type="radio" name="method" value={o.value} checked={c.paymentMethod === o.value} class="mt-0.5 h-4 w-4" />
+					<span>
+						<span class="font-medium text-stone-800">{o.label}</span>
+						<span class="mt-0.5 block text-xs text-stone-500">{o.hint}</span>
+					</span>
+				</label>
+			{/each}
+		</div>
+		<p class="mt-3 text-xs text-stone-400">
+			現地払いでは、予約確認画面でお客様が「現地PayPay決済」「現地カード決済」「現地現金決済」から選びます（PMS の備考に申し送り）。
+			事前決済はオンラインのカード決済です。オンライン決済が使えない状態のときは、事前決済のみのプランも現地払いで受け付けます。
+		</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">支払方法を保存</button>
+	</form>
 {/if}
 
 <h2 class="mb-2 mt-6 text-sm font-bold text-stone-700">見せ方をつくる（公開コンテンツ）</h2>

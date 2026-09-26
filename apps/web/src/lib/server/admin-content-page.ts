@@ -120,6 +120,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			name: p.name,
 			isActive: true,
 			publicOnDirect: true,
+			paymentMethod: null,
 			hasContent: true,
 			slug: p.slug,
 			headline: p.headline,
