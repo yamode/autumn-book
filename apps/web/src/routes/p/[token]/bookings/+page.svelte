@@ -1,0 +1,254 @@
+<script lang="ts">
+  import { enhance } from '$app/forms';
+  import { page } from '$app/stores';
+  import type { PageData } from './$types';
+
+  let { data, form }: { data: PageData; form?: { message?: string; cancelled?: string } } = $props();
+
+  const token = $derived($page.params.token);
+  let filter = $state<'upcoming' | 'past' | 'cancelled'>('upcoming');
+  let open = $state<string | null>(null);
+  let cancelling = $state<string | null>(null);
+  let confirmId = $state<string | null>(null);
+  let reason = $state('');
+
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  const isActive = (s: string) => s === 'confirmed' || s === 'pending_payment';
+  const shown = $derived(
+    data.bookings
+      .filter((b) =>
+        filter === 'cancelled' ? !isActive(b.status) : isActive(b.status) && (filter === 'upcoming' ? b.checkOut > today : b.checkOut <= today)
+      )
+      .sort((a, b) => (filter === 'upcoming' ? a.checkIn.localeCompare(b.checkIn) : b.checkIn.localeCompare(a.checkIn)))
+  );
+  const counts = $derived({
+    upcoming: data.bookings.filter((b) => isActive(b.status) && b.checkOut > today).length,
+    past: data.bookings.filter((b) => isActive(b.status) && b.checkOut <= today).length,
+    cancelled: data.bookings.filter((b) => !isActive(b.status)).length
+  });
+
+  const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
+  const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+  const fmt = (iso: string) => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEK[d.getUTCDay()]}）`;
+  };
+  const hm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) : '');
+  const PAY_STATUS: Record<string, string> = {
+    paid: 'お支払い済み',
+    refunded: '全額返金済み',
+    refund_failed: '返金できませんでした（宿で対応します）',
+    unpaid: 'お支払い待ち',
+    scheduled: 'チェックイン日に請求予定',
+    charge_failed: 'カードへの請求ができませんでした'
+  };
+  let paying = $state<string | null>(null);
+  const unpaidBooking = $derived(data.unpaidId ? data.bookings.find((b) => b.id === data.unpaidId && b.status === 'pending_payment') : undefined);
+  const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }) : '');
+  const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
+  const displayPlanName = (name: string) => {
+    const last = name.split('■').map((s) => s.trim()).filter(Boolean).pop() ?? name;
+    return last.replace(/[（(][^()（）]*(?:円|%|％)[)）]\s*$/, '').trim() || last;
+  };
+</script>
+
+<svelte:head>
+  <title>予約一覧 | {data.portal.facilityName}</title>
+  <meta name="robots" content="noindex, nofollow" />
+</svelte:head>
+
+<main class="mx-auto max-w-4xl px-4 pb-10 pt-6 sm:px-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <h2 class="text-2xl font-bold">予約一覧</h2>
+    <a href={`/p/${token}/calendar`} class="rounded-full bg-[var(--pt-ink)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--pt-accent)]">料金カレンダーから予約する</a>
+  </div>
+
+  {#if data.done}
+    <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
+      <p class="font-bold text-[var(--pt-accent)]">✓ ご予約を承りました（予約番号 {data.done}）</p>
+      <p class="mt-1 text-sm text-[var(--pt-muted)]">確認メールをお送りしました（メールアドレスの登録がある場合）。内容は下の一覧からご確認いただけます。</p>
+    </div>
+  {/if}
+  {#if data.payment?.status === 'paid' || data.payment?.status === 'already'}
+    <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
+      <p class="font-bold text-[var(--pt-accent)]">✓ お支払いが完了し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
+      <p class="mt-1 text-sm text-[var(--pt-muted)]">確認メールをお送りしました（メールアドレスの登録がある場合）。</p>
+    </div>
+  {:else if data.payment?.status === 'card_saved'}
+    <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
+      <p class="font-bold text-[var(--pt-accent)]">✓ カードを登録し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
+      <p class="mt-1 text-sm text-[var(--pt-muted)]">チェックイン日に登録カードへ自動でご請求します。それまではご請求はありません。</p>
+    </div>
+  {:else if data.payment?.status === 'card_updated'}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 font-medium text-[var(--pt-accent)]">
+      ✓ カードを登録し直しました（予約番号 {data.payment.bookingCode}）。{data.payment.charge?.status === 'paid'
+        ? 'ご請求が完了しました。'
+        : data.payment.charge?.status === 'failed'
+          ? `ただし、このカードでもご請求できませんでした（${data.payment.charge.message}）。`
+          : 'チェックイン日にこのカードへご請求します。'}
+    </p>
+  {:else if data.payment?.status === 'card_late'}
+    <p class="mt-4 rounded-xl border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-4 py-3 text-[var(--pt-sun)]">
+      カードの登録の期限（30分）を過ぎていたため、お部屋の確保ができませんでした。ご請求はしていません。お手数ですが、もう一度ご予約ください。
+    </p>
+  {:else if data.payment?.status === 'refunded_late'}
+    <p class="mt-4 rounded-xl border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-4 py-3 text-[var(--pt-sun)]">
+      お支払いの期限（30分）を過ぎていたため、お部屋の確保ができませんでした。お支払いは全額返金しました。お手数ですが、もう一度ご予約ください。
+    </p>
+  {:else if data.payment?.status === 'unpaid'}
+    <p class="mt-4 rounded-xl border border-[var(--pt-warn)]/30 bg-[var(--pt-warn)]/5 px-4 py-3 text-[var(--pt-warn)]">お支払いの確認が取れていません。少し時間をおいてこの画面を開き直してください。</p>
+  {:else if data.payment?.status === 'error'}
+    <p class="mt-4 rounded-xl border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-4 py-3 text-[var(--pt-sun)]">お支払いの確認でエラーが起きました。宿へお問い合わせください。</p>
+  {/if}
+  {#if unpaidBooking}
+    <div class="mt-4 rounded-xl border border-[var(--pt-warn)]/40 bg-[var(--pt-surface)] px-4 py-3">
+      <p class="font-bold">{unpaidBooking.paymentOption === 'online_checkin' ? 'カードの登録' : 'お支払い'}が完了していません（予約番号 {unpaidBooking.code}）</p>
+      <p class="mt-1 text-sm text-[var(--pt-muted)]">{hm(unpaidBooking.paymentExpiresAt)} までに{unpaidBooking.paymentOption === 'online_checkin' ? 'カードをご登録' : 'お支払い'}いただくと、ご予約が確定します。それを過ぎるとお部屋の確保を解除します。</p>
+    </div>
+  {/if}
+  {#if form?.cancelled}
+    <p class="mt-4 rounded-xl border border-[var(--pt-line-strong)] bg-[var(--pt-surface)] px-4 py-3">予約 {form.cancelled} を取り消しました。</p>
+  {/if}
+  {#if form?.message}
+    <p class="mt-4 rounded-xl border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-4 py-3 text-[var(--pt-sun)]">{form.message}</p>
+  {/if}
+
+  <div class="mt-5 flex gap-1 rounded-full bg-[var(--pt-surface)] p-1 text-sm shadow-[0_1px_2px_rgba(31,29,21,0.06)] sm:inline-flex">
+    {#each [['upcoming', 'これからのご予約'], ['past', 'ご宿泊済み'], ['cancelled', '取消済み']] as [key, lbl]}
+      <button
+        type="button"
+        onclick={() => (filter = key as typeof filter)}
+        class={`flex-1 rounded-full px-4 py-1.5 transition sm:flex-none ${filter === key ? 'bg-[var(--pt-ink)] font-medium text-white' : 'text-[var(--pt-muted)] hover:text-[var(--pt-ink)]'}`}
+      >{lbl}<span class="ml-1 tabular-nums opacity-70">{counts[key as keyof typeof counts]}</span></button>
+    {/each}
+  </div>
+
+  {#if shown.length === 0}
+    <p class="mt-6 rounded-2xl border border-dashed border-[var(--pt-line-strong)] px-6 py-10 text-center text-[var(--pt-muted)]">該当するご予約はありません。</p>
+  {:else}
+    <ul class="mt-4 grid gap-3">
+      {#each shown as b (b.id)}
+        <li class="rounded-2xl border border-[var(--pt-line)] bg-[var(--pt-surface)] shadow-[0_1px_2px_rgba(31,29,21,0.04)]">
+          <button type="button" class="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left sm:p-5" onclick={() => (open = open === b.id ? null : b.id)}>
+            <div class="min-w-0">
+              <p class="text-sm text-[var(--pt-muted)]">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-[var(--pt-warn)]/10 px-1.5 text-xs font-medium text-[var(--pt-warn)]">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-[var(--pt-line)] px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-[var(--pt-line)] px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}</p>
+              <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
+              <p class="mt-0.5 text-sm text-[var(--pt-muted)]">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {displayPlanName(b.planName)}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-lg font-bold tabular-nums text-[var(--pt-gold-deep)]">{yen(b.total)}</p>
+              <p class="text-xs text-[var(--pt-muted)]">{open === b.id ? '閉じる ▲' : '詳細 ▼'}</p>
+            </div>
+          </button>
+          {#if open === b.id}
+            <div class="border-t border-[var(--pt-line)] px-4 pb-4 pt-3 sm:px-5">
+              <dl class="detail">
+                <dt>宿泊日</dt><dd>{fmt(b.checkIn)} 〜 {fmt(b.checkOut)}（{b.nights}泊）</dd>
+                <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
+                <dt>プラン</dt><dd>{displayPlanName(b.planName)}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
+                <dt>代表者</dt><dd>{b.guestName}{b.guestKana ? `（${b.guestKana}）` : ''}</dd>
+                <dt>電話番号</dt><dd>{b.phone ?? ''}</dd>
+                {#if b.email}<dt>メール</dt><dd>{b.email}</dd>{/if}
+                {#if b.address}<dt>住所</dt><dd>{b.address}</dd>{/if}
+                {#if b.allergies}<dt>アレルギー</dt><dd class="whitespace-pre-wrap">{b.allergies}</dd>{/if}
+                {#if b.arrival}<dt>到着予定</dt><dd>{b.arrival}</dd>{/if}
+                {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
+                {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
+                {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-[var(--pt-sun)]">{b.chargeError}</span>{/if}</dd>{/if}
+                <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
+                {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
+              </dl>
+
+              {#if b.canUpdateCard}
+                <form
+                  method="POST"
+                  action="?/pay"
+                  use:enhance={() => {
+                    paying = b.id;
+                    return async ({ update }) => {
+                      paying = null;
+                      await update();
+                    };
+                  }}
+                  class="mt-4 border-t border-[var(--pt-line)] pt-3"
+                >
+                  <input type="hidden" name="id" value={b.id} />
+                  <button type="submit" disabled={paying === b.id} class={`rounded-full px-5 py-2 text-sm font-medium disabled:opacity-50 ${b.paymentStatus === 'charge_failed' ? 'bg-[var(--pt-ink)] text-white hover:bg-[var(--pt-accent)]' : 'border border-[var(--pt-line-strong)] hover:border-[var(--pt-ink)]'}`}>{paying === b.id ? 'カードの登録画面を開いています…' : 'カードを登録し直す'}</button>
+                  {#if b.paymentStatus === 'charge_failed'}<span class="ml-2 text-xs text-[var(--pt-sun)]">別のカードをご登録いただくと、その場でご請求します</span>{/if}
+                </form>
+              {/if}
+              {#if b.status === 'pending_payment'}
+                <form
+                  method="POST"
+                  action="?/pay"
+                  use:enhance={() => {
+                    paying = b.id;
+                    return async ({ update }) => {
+                      paying = null;
+                      await update();
+                    };
+                  }}
+                  class="mt-4 border-t border-[var(--pt-line)] pt-3"
+                >
+                  <input type="hidden" name="id" value={b.id} />
+                  <button type="submit" disabled={paying === b.id} class="rounded-full bg-[var(--pt-ink)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--pt-accent)] disabled:opacity-50">{paying === b.id ? '画面を開いています…' : b.paymentOption === 'online_checkin' ? 'カードの登録へ進む' : 'お支払いへ進む'}</button>
+                  <span class="ml-2 text-xs text-[var(--pt-muted)]">{hm(b.paymentExpiresAt)} までにお支払いください</span>
+                </form>
+              {/if}
+              {#if b.status === 'confirmed' || b.status === 'pending_payment'}
+                <div class="mt-4 border-t border-[var(--pt-line)] pt-3">
+                  {#if b.canCancel}
+                    {#if confirmId === b.id}
+                      <form
+                        method="POST"
+                        action="?/cancel"
+                        use:enhance={() => {
+                          cancelling = b.id;
+                          return async ({ update }) => {
+                            cancelling = null;
+                            confirmId = null;
+                            reason = '';
+                            await update();
+                          };
+                        }}
+                        class="grid gap-2 rounded-xl bg-[var(--pt-sun)]/5 p-3"
+                      >
+                        <input type="hidden" name="id" value={b.id} />
+                        <p class="text-sm font-medium text-[var(--pt-sun)]">
+                          {b.status === 'pending_payment' ? 'このご予約をやめます（お部屋の確保を解除します）。' : 'このご予約を取り消します。取り消すと元に戻せません。'}
+                          {#if b.paymentStatus === 'paid'}お支払い済みの金額は全額返金します。{/if}
+                        </p>
+                        <input name="reason" bind:value={reason} maxlength="500" placeholder="取消の理由（任意）" class="rounded-lg border border-[var(--pt-line-strong)] bg-[var(--pt-surface)] px-3 py-2 text-sm" />
+                        <div class="flex flex-wrap gap-2">
+                          <button type="submit" disabled={cancelling === b.id} class="rounded-full bg-[var(--pt-sun)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{cancelling === b.id ? '取り消しています…' : '取り消す'}</button>
+                          <button type="button" onclick={() => (confirmId = null)} class="rounded-full border border-[var(--pt-line-strong)] px-4 py-2 text-sm">やめる</button>
+                        </div>
+                      </form>
+                    {:else}
+                      <button type="button" onclick={() => (confirmId = b.id)} class="rounded-full border border-[var(--pt-line-strong)] px-4 py-2 text-sm text-[var(--pt-muted)] hover:border-[var(--pt-sun)] hover:text-[var(--pt-sun)]">{b.status === 'pending_payment' ? 'この予約をやめる' : 'この予約を取り消す'}</button>
+                      {#if data.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-[var(--pt-muted)]">宿泊日の{data.cancelText}まで取り消せます</span>{/if}
+                    {/if}
+                  {:else}
+                    <p class="text-sm text-[var(--pt-muted)]">{b.checkedIn ? 'チェックイン済みです。' : data.cancelText ? `取消の期限（宿泊日の${data.cancelText}）を過ぎています。` : 'この画面からは取り消せません。'}変更・取消は宿へご連絡ください。</p>
+                  {/if}
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  {/if}
+</main>
+
+<style>
+  .detail {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 0.45rem 1rem;
+    font-size: 0.95rem;
+  }
+  .detail dt {
+    color: var(--pt-muted);
+  }
+</style>

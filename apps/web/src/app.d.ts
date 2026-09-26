@@ -19,6 +19,10 @@ declare global {
 			env?: {
 				AB_CONFIG?: KVNamespace;
 			};
+			// 応答を返した後も処理を続ける（取引先の請求 cron が Stripe 呼び出しを逃がすのに使う）。
+			context?: {
+				waitUntil(promise: Promise<unknown>): void;
+			};
 		}
 	}
 }

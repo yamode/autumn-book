@@ -33,10 +33,10 @@
 	};
 	const t = texts[getLocale()] ?? texts.ja;
 
-	// 計測対象は公開面のみ。/admin（社内）と /r（滞在トークンが URL に載る）は除外。
+	// 計測対象は公開面のみ。/admin（社内）と /r（滞在トークンが URL に載る）・/p（取引先の限定トークン）は除外。
 	function isExcluded(path: string): boolean {
 		const p = path.replace(/^\/(en|zh-TW)(?=\/|$)/, '');
-		return /^\/(admin|r)(\/|$)/.test(p);
+		return /^\/(admin|r|p)(\/|$)/.test(p);
 	}
 
 	function gtag(..._args: unknown[]) {

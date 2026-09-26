@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { readFileSync } from 'node:fs';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
@@ -33,5 +34,7 @@ export default defineConfig({
 		}),
 		sveltekit()
 	],
-	server: { fs: { allow: ['../..'] } }
+	server: { fs: { allow: ['../..'] } },
+	// 純関数のテスト（取引先ページの料金・予約・紹介の計算など）。`pnpm --filter @autumn-book/web test`
+	test: { include: ['src/**/*.test.ts'], environment: 'node' }
 });

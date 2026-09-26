@@ -83,6 +83,15 @@ export function previewLink(origin: string): string | null {
 	return token ? `${origin}/?preview=${encodeURIComponent(token)}` : null;
 }
 
+/** 取引先専用ページ（メンテナンスの対象外・日本語のみ）のパスか。 */
+export function isPartnerPath(pathname: string): boolean {
+	return (
+		pathname.startsWith('/p/') ||
+		pathname.startsWith('/api/partner/') ||
+		pathname === '/api/cron/partner-charge'
+	);
+}
+
 /**
  * メンテナンス中でもこのリクエストを通す（バイパスする）か。
  * preview トークンが一致したら cookie を発行し、以後の遷移でも通るようにする。
@@ -98,6 +107,10 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// メンテナンス中でも必ず開けなければならない（紙は刷り直せない）。
 	// 言語プレフィックス付き（/en/r・/zh-TW/r）も同じ扱いにする。
 	if (/^\/(?:en\/|zh-TW\/)?r(?:\/|$)/.test(url.pathname)) return true;
+
+	// 取引先専用ページ（限定URL /p/<token>・取引先 API・Stripe Webhook・請求 cron）は
+	// ポータル本体の公開状況と関係なく稼働させる（2026-09-26 ユーザー指示。autumn-rms から移設）。
+	if (isPartnerPath(url.pathname)) return true;
 
 	// 運営（admin / staff）はメンテ中も公開サイトをプレビューできる
 	const role = locals.user?.role;

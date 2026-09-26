@@ -1,13 +1,14 @@
 {
   "name": "@autumn-book/web",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@autumn-book/core": "workspace:*",
@@ -30,6 +31,7 @@
     "svelte-check": "^4.2.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.8.0",
-    "vite": "^6.3.0"
+    "vite": "^6.3.0",
+    "vitest": "^3.2.7"
   }
 }

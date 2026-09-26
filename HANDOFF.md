@@ -1,6 +1,104 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-26（部屋・プラン紹介の管理画面を実データ化／仕様表・紹介ブロック表示 v0.39.0）
+> **最終更新**: 2026-09-26（取引先専用ページを autumn-rms から移設 v0.40.0）
+
+## 取引先専用ページ（RMS から移設）（2026-09-26 追加・v0.40.0）
+
+**2026-09-26 ユーザー決定: 予約に関わる社外向け画面は Book、料金計算の元は RMS の理論値。**
+autumn-rms（v0.102.0 時点の HEAD）の取引先専用ページ一式を、同じ URL 構造で Book へ移した。
+取引先・アカウント・API キーの発行や設定、スタッフのプレビュー・再請求（`/partners/**`・`staff.ts`）は **RMS に残す**。
+利用者はテストユーザーのみのため一括で移設（RMS 側のページはまだ残っている。切替手順は下記「未実施」）。
+
+### 移したもの（すべて `apps/web/src` 配下）
+
+| 種類 | パス |
+|---|---|
+| 画面 | `routes/p/[token]/**`（ログイン・setup・logout・calendar(+month)・book(+quote)・bookings・rooms・plans） |
+| API | `routes/api/partner/v1/rates`（API キー `rmsp_`）・`routes/api/partner/stripe/webhook`・`routes/api/cron/partner-charge`（CRON_SECRET・waitUntil） |
+| lib | `lib/partner-{pricing,booking,contents}.ts`・`lib/holidays.ts`・`lib/components/PartnerContentBody.svelte`・`lib/server/partners/{store,portal,booking,rates,portal-month,crypto,contents,admin-client}.ts`・`lib/server/stripe.ts`・`lib/server/mailer.ts` |
+| テスト | `lib/partner-*.test.ts`・`lib/server/partners/{crypto,rates}.test.ts`（36件）。**Book に vitest を dev 依存で追加**（`pnpm --filter @autumn-book/web test`） |
+
+### Book に合わせて置き換えたこと
+
+- **料金・残室の元データ**: `rates.ts` は RMS 固有の `loadRmsWorkbook` / `loadRateQuote` / `loadCalendarInventory`（TL キャッシュ）をやめ、
+  RPC `public.rms_partner_portal_source(p_facility, p_from, p_to)`（service_role 専用）を呼ぶ。料金は `booking.daily_rates` の**理論値**、残室は PMS と同じ規則。
+  1回31日（RPC 上限62日の内側）・施設×期間を isolate 内で3分キャッシュ。`ratesFetchedAt` は廃止（API の項目は互換のため常に `null`）。
+  先行案内料金（advance）は元データに無いので `include_advance` は実質無効。**見積もり・予約の単価も理論値になる**（RMS 時代の TL 実売とは違う額になりうる）
+- **施設**: RMS の `facilities` / `getFacilityBySlug` 依存を削除。取引先の `facility_id`（UUID）が Book の `FACILITY_UUID` に含まれない取引先は「見つからない」扱い。slug・施設名は `core.facilities` から
+- **service_role クライアント**: `lib/server/partners/admin-client.ts` に閉じた（Book の他機能は service_role を使わない方針の**唯一の例外**。理由はファイル冒頭）。
+  取引先機能は Supabase Auth を使わず独自セッション（cookie `rms_partner_session`・path `/p/<token>`）と API キーで本人確認し、`rms_partner_*` は service_role 以外を拒否しているため
+- **スタッフ専用関数を削除**: `store.ts` の取引先・アカウント・API キーの作成/更新/削除/一覧、`booking.ts` の `retryPartnerCharge`
+- **メンテナンス除外**: `/p/`・`/api/partner/`・`/api/cron/partner-charge` は `isMaintenanceBypassed` で常に通す（`isPartnerPath`）。
+  hooks でもこのパスは Supabase Auth のセッション解決をしない（`locals.user = null`）
+- **root layout**: `/p/` では GA4 同意バナー（AnalyticsConsent・除外リストにも `/p` 追加）とデバッグパネルを出さない（URL の限定トークンを外へ送らない）。
+  `/p` は `(public)` グループの外なので、Book の公開サイト共通ヘッダー/フッターは被らない。取引先ページは日本語のみ
+- **見た目**: RMS の取引先レイアウト（生成り・墨・金茶、施設差し色 yamado=森の緑 / oga=夜の海）をそのまま。RMS の app.css の base 層に相当する分
+  （枠線の既定色・ボタンの指カーソル・text-xs の 13px 底上げ）を `app.css` の `.partner-portal` に限って追加
+- **Stripe**: `stripe.ts` はそのまま。metadata の `app: 'autumn-rms'` / `purpose: 'rms_partner_booking'` は**変えていない**（移設前の予約 PB-2026-000003 等の決済・返金 Webhook を同じ値で処理するため）。
+  success/cancel URL・メール内リンクはリクエストのオリジン（= Book）から作る
+- **メール**: `mailer.ts`（CF Email Sending REST）をそのまま。送信者名の既定は従来どおり `Autumn RMS`（`REPORT_EMAIL_FROM` で送信元アドレスを変更可）
+- 応答ヘッダー `cache-control: private, no-store` / `referrer-policy: no-referrer` / `x-robots-tag: noindex, nofollow` は各ルートで維持
+
+### Cloudflare に登録する secret（ユーザー作業・**wrangler.jsonc の vars には書かない**）
+
+`pages deploy` は vars でダッシュボードの平文環境変数を置き換えるため、**暗号化シークレット**として登録する:
+`npx wrangler pages secret put <NAME> --project-name autumn-book`（またはダッシュボードで「暗号化」）。未設定でも画面は落ちず 503「現在ご利用いただけません」。
+
+| 名前 | 用途 | 未設定時 |
+|---|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | `rms_partner_*` の読み書き・RPC（**必須**） | 取引先ページ・API・Webhook・cron がすべて 503 |
+| `SUPABASE_URL` | 任意（無ければ `PUBLIC_SUPABASE_URL`） | — |
+| `STRIPE_SECRET_KEY` | オンライン決済（予約時決済・チェックイン日決済・返金） | オンライン決済を画面に出さない（銀行振込等のみ） |
+| `STRIPE_WEBHOOK_SECRET` | Webhook 署名（Book 用に**新しく作る**宛先の whsec_） | Webhook が失敗（支払完了が記録されない） |
+| `CRON_SECRET` | `/api/cron/partner-charge` の Bearer | cron が 503 |
+| `CF_ACCOUNT_ID` / `CF_EMAIL_API_TOKEN` | 通知メール | メールを送らない（予約は通る） |
+| `REPORT_EMAIL_FROM` | 送信元（任意・既定 `rms@yamado.app`） | 既定値 |
+
+### 未実施（本番切替に必要な手順）
+
+1. 上記 secret を Cloudflare Pages（autumn-book）に登録 → デプロイ
+2. **Stripe の Webhook 宛先を追加**: `https://autumn-book.pages.dev/api/partner/stripe/webhook`（イベント: `checkout.session.completed` / `checkout.session.async_payment_succeeded` / `charge.refunded`）。
+   署名シークレットを `STRIPE_WEBHOOK_SECRET` に。**RMS 側の宛先と両方有効な間は、同じイベントを両方が処理する**（mark_paid 等は冪等だが通知メールが二重になりうる）→ Book で確認できたら RMS の宛先を無効化
+3. **請求 cron の呼び先を Book へ**: 現在 pg_cron `rms-partner-charge` は Vault `autumn_rms_rank_bump_url` の RMS オリジン＋ `autumn_rms_cron_secret` で **RMS の** `/api/cron/partner-charge` を叩いている。
+   切り替えるには autumn-shared に migration（Book 用の URL・secret を Vault から読むよう job を差し替え）が必要。それまでは RMS が請求し、そのメール内リンクは RMS の `/p/...` を指す
+4. 取引先に案内する URL を Book のオリジンへ（限定トークンは同じなので `https://autumn-book.pages.dev/p/<token>` に差し替えるだけ）。ログインのセッションは移らない（再ログイン）
+5. RMS 側: スタッフ画面の「限定URL」表示・パスワード設定リンク・メール文面のオリジンを Book に向ける／RMS の `/p/**` を撤去 or Book へリダイレクト（RMS リポ側の作業）
+
+### テストチェックリスト（取引先専用ページ v0.40.0）
+
+※前提: 本番（secret 登録済み）。RMS の取引先画面でテスト取引先を用意し、限定URLのオリジンを Book に読み替えて開く
+
+#### 共通
+- [ ] 存在しないトークン `/p/<でたらめ>` は 404、secret 未設定環境では 503「現在ご利用いただけません」で、どちらも画面が落ちない
+- [ ] 応答ヘッダーに `cache-control: private, no-store` / `referrer-policy: no-referrer` / `x-robots-tag: noindex, nofollow` が付く
+- [ ] メンテナンスモード ON でも `/p/<token>`・`/api/partner/v1/rates` が開ける（他の公開ページは 503）
+- [ ] 取引先ページに GA 同意バナー・DBG パネル・Book の公開ヘッダー/フッターが出ない
+- [ ] 施設差し色: yamado は緑、oga は紺。スマホ幅で横スクロールが出ない
+
+#### ログイン・パスワード
+- [ ] setup リンク（`/p/<token>/setup?token=...`）でパスワード設定 → そのままログイン状態になる
+- [ ] ID/パスワード違いで汎用エラー、5回失敗で15分ロック
+- [ ] ログアウトでログイン画面に戻り、戻るボタンで中身が見えない
+- [ ] 公開停止・公開期間外の取引先はログイン画面に理由が出る
+
+#### 料金カレンダー・紹介
+- [ ] 月・人数を切り替えると料金が変わる（`/calendar/month` の JSON）。休館日は休館表示
+- [ ] 料金は **booking.daily_rates の理論値**に取引先ルール（％・円・固定・端数・下限）を当てた額。ルールで出していないプランは出ない
+- [ ] 残室表示オンの取引先だけ残室が出る。「料金の更新」時刻は出ない（仕様）
+- [ ] 公開範囲（今日〜max_days_ahead・公開終了日）の外の月は料金が出ない
+- [ ] 「お部屋」「プラン」に Book の管理画面で編集した紹介が出る（取引先ルールで出しているプランだけ）
+
+#### 予約
+- [ ] カレンダーから予約入力へ進み、泊数・室数・人数を変えると見積もり（`/book/quote`）が更新される。入湯税が別表示
+- [ ] 銀行振込等で予約確定 → 予約一覧に出る・PMS に取り込まれる・取引先と宿に通知メールが届く
+- [ ] 予約時決済（Stripe テストモード・4242…）→ 支払後に予約確定。予約時決済の割引が反映される
+- [ ] チェックイン日決済: カード登録（同意文）→ 請求予定。`/api/cron/partner-charge?wait=1`（Bearer CRON_SECRET）で請求される
+- [ ] 取消期限内に取引先が取消 → 支払済みなら全額返金・PMS に反映
+- [ ] 移設前に RMS で作った予約（PB-2026-000003 等）が一覧に出て、取消・返金ができる
+
+#### API
+- [ ] `GET /api/partner/v1/rates`（Bearer rmsp_…）で JSON が返る。キー無し 401・取り消し済み 401・公開停止 403・from/to 不正 400
+- [ ] `ratesFetchedAt` は常に null（仕様）
 
 ## 部屋・プラン紹介の管理画面を実データ化（2026-09-26 追加・v0.39.0）
 
