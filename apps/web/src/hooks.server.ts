@@ -4,7 +4,20 @@ import { AUTH_MODE, resolveSupabaseSessionUser } from '$lib/server/auth';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 
+const LEGACY_HOST = 'autumn-book.pages.dev';
+const PRIMARY_ORIGIN = 'https://book.yamado.app';
+
 export const handle: Handle = async ({ event, resolve }) => {
+	// 本番ドメインは book.yamado.app（2026-09-26）。旧ドメイン（autumn-book.pages.dev 本体）で開かれたら同じパスへ転送する。
+	// プレビューデプロイ（<hash>.autumn-book.pages.dev）はそのまま使えるよう、本体のホスト名だけを対象にする。
+	// GET/HEAD 以外（フォーム送信・Webhook 等）は転送すると中身が失われるので、そのまま処理する。
+	if (event.url.hostname === LEGACY_HOST && (event.request.method === 'GET' || event.request.method === 'HEAD')) {
+		return new Response(null, {
+			status: 301,
+			headers: { location: `${PRIMARY_ORIGIN}${event.url.pathname}${event.url.search}` }
+		});
+	}
+
 	if (isPartnerPath(event.url.pathname)) {
 		// 取引先専用ページ・取引先 API・Stripe Webhook・請求 cron は Supabase Auth を使わない
 		// （独自セッション rms_partner_session / API キー / 署名 / CRON_SECRET で本人確認する）。
