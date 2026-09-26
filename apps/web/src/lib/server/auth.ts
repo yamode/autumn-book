@@ -30,12 +30,20 @@ export const MEMBER_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE 
 // （デモ会員は user_id も device_tokens も持たず、通知を「送った体」にしかできない）
 export const ADMIN_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
 
+/** Book の Supabase Auth セッション cookie 名（RMS の共有 cookie と衝突させない）。 */
+const BOOK_AUTH_COOKIE = 'sb-autumn-book-auth-token';
+
 /** リクエストの cookie に束縛した Supabase Auth クライアント（SSR）。 */
 export function createSupabaseServerClient(event: RequestEvent): SupabaseClient {
 	const url = publicEnv.PUBLIC_SUPABASE_URL;
 	const key = publicEnv.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 	if (!url || !key) throw new Error('PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY が未設定です');
 	return createServerClient(url, key, {
+		// cookie 名を Book 専用にする。autumn-rms は本番で auth cookie を Domain=.yamado.app で共有している
+		// （アプリ切替の再ログイン不要化）。既定名のままだと book.yamado.app に RMS の cookie と Book の cookie が
+		// 同名で2つ届き、先に作られた RMS 側（運営スタッフ）のセッションが読まれて、会員がログインしても
+		// ログイン画面へ戻される（2026-09-26 本番で発生）。会員と運営のセッションを混ぜないため分ける。
+		cookieOptions: { name: BOOK_AUTH_COOKIE },
 		cookies: {
 			getAll: () => event.cookies.getAll(),
 			setAll: (cookiesToSet) => {
