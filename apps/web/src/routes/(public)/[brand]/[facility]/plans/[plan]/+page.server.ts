@@ -23,6 +23,8 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { clampCalendarMonth } from '$lib/calendar-range';
+import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
+import { withEarlyPrepayMax } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -33,8 +35,10 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
-		const plan = await sbPlanBySlug(facility.id, params.plan);
-		if (!plan) error(404, 'プランが見つかりません');
+		const found = await sbPlanBySlug(facility.id, params.plan);
+		if (!found) error(404, 'プランが見つかりません');
+		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
+		const [plan] = withEarlyPrepayMax([found], await loadEarlyPrepaySettings(facility.id));
 
 		const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 		const calMonth = calendarNav.yearMonth;
@@ -70,8 +74,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
-	const plan = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
-	if (!plan) error(404, 'プランが見つかりません');
+	const found = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
+	if (!found) error(404, 'プランが見つかりません');
+	const [plan] = withEarlyPrepayMax([found], await loadEarlyPrepaySettings(facility.id));
 
 	const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 	const calMonth = calendarNav.yearMonth;

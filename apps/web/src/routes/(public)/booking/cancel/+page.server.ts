@@ -14,8 +14,7 @@ import {
 	type GuestBookingLookup,
 	type GuestCancelReason
 } from '$lib/server/supabase-data';
-import { directPaymentForBooking, refundAfterCancel } from '$lib/server/direct-payments';
-import { directRefundDueOf } from '$lib/direct-payment';
+import { directPaymentForBooking, directRefundPreviewOf, refundAfterCancel } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 /** 同一 IP からの照会が多すぎるときのキー。総当たり自体は現実的でないが、ログ汚染と無駄な DB 負荷を避ける。 */
@@ -65,12 +64,10 @@ export const load: PageServerLoad = async ({ url, setHeaders, getClientAddress, 
 		};
 	}
 
-	// オンライン決済（v0.43.0）で払った予約は、取り消すと「支払額 − キャンセル料」をカードへ返金する
+	// オンライン決済（v0.43.0）で払った予約は、取り消すと「支払額 − キャンセル料」をカードへ返金する。
+	// 予約時決済の割引額は返金しない（差し引く額 = キャンセル料と割引額の大きい方・autumn-shared 20260926221912）
 	const pay = await directPaymentForBooking(lookup.booking.code).catch(() => null);
-	const refund =
-		pay && pay.status === 'paid'
-			? { paid: pay.amount, fee: Math.min(lookup.fee.fee, pay.amount), refund: directRefundDueOf({ amount: pay.amount, fee: lookup.fee.fee, refunded: pay.refunded_amount }) }
-			: null;
+	const refund = pay && pay.status === 'paid' ? directRefundPreviewOf(pay, lookup.fee.fee) : null;
 
 	return {
 		unavailable: false as const,

@@ -26,7 +26,13 @@ import {
 	planById,
 	roomTypeById
 } from '$lib/server/store';
-import { directPaymentForBooking, refundAfterCancel, retryDirectRefund, type DirectRefundOutcome } from '$lib/server/direct-payments';
+import {
+	directPaymentForBooking,
+	directRefundDueFor,
+	refundAfterCancel,
+	retryDirectRefund,
+	type DirectRefundOutcome
+} from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 const UNAVAILABLE = 'この環境では利用できません（DATA_SOURCE / AUTH_MODE が supabase ではありません）。';
@@ -50,11 +56,17 @@ export const load: PageServerLoad = async (event) => {
 		}
 		// オンライン決済（公式サイト予約・v0.43.0）の台帳。現地払い・未適用の環境は null
 		const payment = detail.booking.booking_id ? await directPaymentForBooking(event.params.code).catch(() => null) : null;
+		// 取消済みのオンライン決済: 返金の内訳（規定のキャンセル料・返金しない予約時決済の割引額）を DB から
+		const refundDue =
+			payment?.status === 'paid' && detail.booking.booking_status === 'cancelled'
+				? await directRefundDueFor(event.params.code).catch(() => null)
+				: null;
 		return {
 			live: true as const,
 			canOperate: isAdmin,
 			detail,
 			payment,
+			refundDue,
 			// 直販（booking.bookings 行がある）のときだけ操作できる
 			isDirect: detail.booking.booking_id !== null,
 			feePreview: detail.booking.stay_status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
@@ -128,6 +140,7 @@ export const load: PageServerLoad = async (event) => {
 		canOperate: event.locals.user?.role === 'admin',
 		detail,
 		payment: null,
+		refundDue: null,
 		isDirect: booking.channel !== 'ota',
 		feePreview: booking.status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
 	};

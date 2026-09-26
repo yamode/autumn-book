@@ -24,7 +24,7 @@ import {
 import { addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
-import { refundAfterCancel } from '$lib/server/direct-payments';
+import { directPaymentForBooking, directRefundPreviewOf, refundAfterCancel } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 // 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
@@ -81,6 +81,9 @@ export const load: PageServerLoad = async (event) => {
 					: ((await sbListRankCancelPolicies()).find((p) => p.rankCode === base.rankCode)?.rules ?? []);
 			cancelPreview = { ...base, rules };
 		}
+		// オンライン決済済みなら、取り消したときの返金の見込み（予約時決済の割引額は返金しない）
+		const pay = cancelPreview ? await directPaymentForBooking(r.code).catch(() => null) : null;
+		const refundPreview = cancelPreview && pay && pay.status === 'paid' ? directRefundPreviewOf(pay, cancelPreview.fee) : null;
 		return {
 			booking,
 			facility,
@@ -91,7 +94,8 @@ export const load: PageServerLoad = async (event) => {
 			// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
-			cancelPreview
+			cancelPreview,
+			refundPreview
 		};
 	}
 
@@ -111,7 +115,8 @@ export const load: PageServerLoad = async (event) => {
 		cancelPreview:
 			booking.status === 'reserved'
 				? computeCancelFee(params.code, today, booking.memberId)
-				: null
+				: null,
+		refundPreview: null
 	};
 };
 

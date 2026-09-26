@@ -85,6 +85,7 @@
 			</p>
 			{#if form?.refund?.kind === 'refunded'}
 				<p class="mt-2 text-stone-700">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
+				{#if form.refund.kept > 0}<p class="mt-1 text-sm text-stone-600">{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}</p>{/if}
 			{:else if form?.refund?.kind === 'failed'}
 				<p class="mt-2 text-red-700">{m.cancel_refund_failed()}</p>
 			{:else if form?.refund?.kind === 'nothing_due'}
@@ -236,9 +237,20 @@
 		{#if data.refund}
 			<!-- オンライン決済済み: キャンセル料を差し引いてカードへ返金（入湯税はキャンセル料の対象外） -->
 			<p class="mt-2 rounded-lg bg-stone-50 p-3 text-sm text-stone-700">
-				{data.refund.refund > 0
-					? m.cancel_refund_preview({ paid: formatPrice(data.refund.paid), fee: formatPrice(data.refund.fee), refund: formatPrice(data.refund.refund) })
-					: m.cancel_refund_none()}
+				{#if data.refund.refund <= 0}
+					{m.cancel_refund_none()}
+				{:else if data.refund.discount > 0}
+					<!-- 予約時決済の割引額は返金しない: キャンセル料と割引額の大きい方を差し引く -->
+					{m.cancel_refund_preview_discount({
+						paid: formatPrice(data.refund.paid),
+						fee: formatPrice(data.refund.fee),
+						discount: formatPrice(data.refund.discount),
+						deducted: formatPrice(data.refund.deducted),
+						refund: formatPrice(data.refund.refund)
+					})}
+				{:else}
+					{m.cancel_refund_preview({ paid: formatPrice(data.refund.paid), fee: formatPrice(data.refund.fee), refund: formatPrice(data.refund.refund) })}
+				{/if}
 			</p>
 		{:else if data.fee.fee > 0}
 			<p class="mt-2 text-sm text-stone-500">{m.gcancel_fee_note()}</p>

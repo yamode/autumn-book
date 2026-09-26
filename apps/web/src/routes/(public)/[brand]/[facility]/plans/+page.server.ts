@@ -4,6 +4,8 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
+import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
+import { withEarlyPrepayMax } from '$lib/server/direct-payments';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -16,7 +18,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
 
-		let plans = await sbListPlansMapped(facility.id);
+		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
+		let plans = withEarlyPrepayMax(await sbListPlansMapped(facility.id), await loadEarlyPrepaySettings(facility.id));
 		const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 		if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 
@@ -50,7 +53,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
 
-	let plans = getRatePlans(facility.id, locale);
+	let plans = withEarlyPrepayMax(getRatePlans(facility.id, locale), await loadEarlyPrepaySettings(facility.id));
 	const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 	if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 

@@ -69,7 +69,10 @@
 {#if form?.cancelled}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.reservation_cancelled_ok()}</p>
 	{#if form.refund?.kind === 'refunded'}
-		<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
+		<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+			{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}
+			{#if form.refund.kept > 0}<br />{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}{/if}
+		</p>
 	{:else if form.refund?.kind === 'failed'}
 		<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.cancel_refund_failed()}</p>
 	{/if}
@@ -157,7 +160,19 @@
 						<p class="font-medium text-red-700">{m.reservation_cancel_confirm_heading()}</p>
 						<ul class="mt-1 list-disc pl-4 text-xs text-red-600">
 							<li>{m.reservation_cancel_fee_notice({ fee: formatPrice(data.cancelPreview.fee) })}</li>
-							{#if b.payment !== 'onsite'}<li>{m.reservation_cancel_refund_notice()}</li>{/if}
+							{#if data.refundPreview}
+								<!-- オンライン決済済み: 返金の見込み（予約時決済の割引額は返金しない＝キャンセル料と大きい方を差し引く） -->
+								{@const rp = data.refundPreview}
+								<li>
+									{#if rp.refund <= 0}
+										{m.cancel_refund_none()}
+									{:else if rp.discount > 0}
+										{m.cancel_refund_preview_discount({ paid: formatPrice(rp.paid), fee: formatPrice(rp.fee), discount: formatPrice(rp.discount), deducted: formatPrice(rp.deducted), refund: formatPrice(rp.refund) })}
+									{:else}
+										{m.cancel_refund_preview({ paid: formatPrice(rp.paid), fee: formatPrice(rp.fee), refund: formatPrice(rp.refund) })}
+									{/if}
+								</li>
+							{:else if b.payment !== 'onsite'}<li>{m.reservation_cancel_refund_notice()}</li>{/if}
 							{#if b.pointsUsed > 0}<li>{m.reservation_cancel_points_notice({ points: String(b.pointsUsed) })}</li>{/if}
 							{#if b.pointsEarned > 0}<li>{m.reservation_cancel_earn_notice()}</li>{/if}
 						</ul>

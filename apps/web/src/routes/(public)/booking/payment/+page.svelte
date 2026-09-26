@@ -5,6 +5,7 @@
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import { formatPrice, formatDateLong } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
+	import { percentText } from '$lib/early-prepay';
 
 	let { data, form } = $props();
 	let expiredNow = $state(false);
@@ -39,7 +40,7 @@
 				<PriceBreakdown quote={data.hold.quote} showLines={false} />
 				{#if data.discountAmount > 0}
 					<div class="mt-2 flex justify-between border-t border-stone-200 pt-2 text-sm text-red-600">
-						<span>{m.pay_discount_line({ rate: String(Math.round(data.discountRate * 100)) })}</span>
+						<span>{data.discountEarly ? m.pay_early_line({ rate: percentText(Math.round(data.discountRate * 1000) / 10) }) : m.pay_discount_line({ rate: percentText(Math.round(data.discountRate * 1000) / 10) })}</span>
 						<span>-{formatPrice(data.discountAmount)}</span>
 					</div>
 					<div class="mt-1 flex justify-between text-base font-bold">

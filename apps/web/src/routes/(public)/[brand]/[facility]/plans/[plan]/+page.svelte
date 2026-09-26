@@ -9,6 +9,7 @@
 	import { shiftYearMonth } from '$lib/calendar-range';
 	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
+	import { percentText } from '$lib/early-prepay';
 
 	let { data, form } = $props();
 
@@ -102,7 +103,10 @@
 					<dt class="text-stone-500">{m.plan_detail_payment()}</dt>
 					<dd class="text-right">
 						{[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : ''].filter(Boolean).join(' ／ ')}
-						{#if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
+						{#if data.plan.payment.prepay && (data.plan.payment.earlyPrepayMaxRate ?? 0) > 0}
+							<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
+							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: percentText(Math.round((data.plan.payment.earlyPrepayMaxRate ?? 0) * 1000) / 10) })}</span>
+						{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
 							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
 						{/if}
 					</dd>

@@ -19,6 +19,7 @@
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
+				{ href: '/admin/payments', label: '支払方法', icon: '💳' },
 				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
 				{ href: '/admin/options', label: 'オプション', icon: '🧺', demoOnly: true },
 				{ href: '/admin/cancel-policies', label: 'キャンセル規定', icon: '🚫', tenantWide: true, demoOnly: true },

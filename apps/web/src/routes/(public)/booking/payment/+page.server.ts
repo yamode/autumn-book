@@ -6,6 +6,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getHold, planById, facilityById, roomTypeById, confirmBooking } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
+import { prepayDiscountViewFor } from '$lib/server/direct-payments';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -20,8 +21,10 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 	const plan = planById(hold.planId)!;
 	const method = hold.paymentDraft ?? 'card';
-	const discountRate = Math.min(plan.payment.prepayDiscountRate, 0.2);
-	const discountAmount = Math.round(hold.quote.total * discountRate);
+	// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）
+	const view = await prepayDiscountViewFor(hold.facilityId, plan, hold);
+	const discountRate = view.detail.maxPermille / 1000;
+	const discountAmount = view.detail.discount;
 	return {
 		expired: false as const,
 		hold,
@@ -29,6 +32,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		method,
 		discountRate,
 		discountAmount,
+		discountEarly: view.early,
 		payableTotal: hold.quote.total - discountAmount - hold.quote.pointsUsed,
 		room: roomTypeById(hold.roomTypeId)!,
 		facility: facilityById(hold.facilityId)!
@@ -48,7 +52,12 @@ export const actions: Actions = {
 			return fail(410, { message: m.error_hold_expired() });
 		}
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;
-		const result = confirmBooking(hold.id, hold.guestDraft, hold.pointsDraft ?? 0, memberId, hold.paymentDraft ?? 'card');
+		const view = await prepayDiscountViewFor(hold.facilityId, planById(hold.planId)!, hold);
+		const result = confirmBooking(hold.id, hold.guestDraft, hold.pointsDraft ?? 0, memberId, hold.paymentDraft ?? 'card', {
+			amount: view.detail.discount,
+			rate: view.detail.maxPermille / 1000,
+			early: view.early
+		});
 		if ('error' in result) return fail(410, { message: m.error_confirm_failed() });
 		redirect(303, `/booking/complete/${result.code}`);
 	}

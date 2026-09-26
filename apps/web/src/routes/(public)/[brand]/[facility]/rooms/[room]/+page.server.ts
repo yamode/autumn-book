@@ -3,6 +3,8 @@ import { getFacilityBySlug, getRoomTypes, getRatePlans } from '$lib/server/store
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbRoomTypeBySlug, sbListPlansMapped } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
+import { withEarlyPrepayMax } from '$lib/server/direct-payments';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -13,7 +15,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		if (!room) error(404, '客室が見つかりません');
 		// 実データではプラン⇄客室の関係は日付付き plan_offers が返す。日付なしの一覧では確定できないため、
 		// 施設の全公開プランを提示する（実際の可否は各プラン詳細の plan_offers で判定される）。
-		const plans = await sbListPlansMapped(facility.id);
+		const plans = withEarlyPrepayMax(await sbListPlansMapped(facility.id), await loadEarlyPrepaySettings(facility.id));
 		return { facility, room, plans };
 	}
 
@@ -22,6 +24,9 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!facility) error(404, '施設が見つかりません');
 	const room = getRoomTypes(facility.id, locale).find((r) => r.slug === params.room);
 	if (!room) error(404, '客室が見つかりません');
-	const plans = getRatePlans(facility.id, locale).filter((p) => p.roomTypeIds.includes(room.id));
+	const plans = withEarlyPrepayMax(
+		getRatePlans(facility.id, locale).filter((p) => p.roomTypeIds.includes(room.id)),
+		await loadEarlyPrepaySettings(facility.id)
+	);
 	return { facility, room, plans };
 };

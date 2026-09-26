@@ -8,7 +8,8 @@
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
-	import { directChargeOf, prepayDiscountOf, type PayOption } from '$lib/direct-payment';
+	import { directChargeOf, type PayOption } from '$lib/direct-payment';
+	import { percentText } from '$lib/early-prepay';
 	import { formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -35,8 +36,18 @@
 	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
 	let onlineOptions = $derived(data.expired ? [] : data.payOptions.filter((v): v is 'card' | 'paypay' => v !== 'onsite'));
 	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
-	// 予約時決済の割引率（オンライン決済を選んだときだけ効く）
-	let prepayRate = $derived(data.expired ? 0 : data.plan.payment.prepayDiscountRate);
+	// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと。オンライン決済を選んだときだけ効く）。
+	// サーバが lib/early-prepay.ts（DB と同じ式）で計算した額。金額の正は DB（direct_payment_prepare）
+	let prepay = $derived(data.expired ? null : data.prepay);
+	let prepayAmount = $derived(prepay?.detail.discount ?? 0);
+	// 割引行の名前: 早期決済割が当たっていれば「早期決済割（5%）」、定率なら従来の「予約時決済割引（10%OFF）」
+	let discountLabel = $derived(
+		prepay?.early
+			? m.pay_early_line({ rate: percentText(prepay.detail.maxPermille / 10) })
+			: m.pay_discount_line({ rate: percentText((prepay?.detail.flatPermille ?? 0) / 10) })
+	);
+	// 今の段（段階表のハイライト用・千分率）
+	let currentTierPermille = $derived(prepay?.detail.tierPermille ?? 0);
 	let selectedGroup = $state<'online' | 'onsite' | null>(null);
 	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : 'onsite'));
 	let selectedOnline = $state<'card' | 'paypay' | null>(null);
@@ -47,8 +58,8 @@
 	let isPrepay = $derived(group === 'online');
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
 	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
-	let discountRate = $derived(isPrepay ? prepayRate : 0);
-	let discountedTotal = $derived(data.expired ? 0 : data.hold.quote.total - prepayDiscountOf(data.hold.quote.total, discountRate));
+	let discountNow = $derived(isPrepay ? prepayAmount : 0);
+	let discountedTotal = $derived(data.expired ? 0 : data.hold.quote.total - discountNow);
 
 	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
 	// svelte-ignore state_referenced_locally
@@ -60,11 +71,11 @@
 					Math.max(0, Math.floor(Number(pointsInput) || 0)),
 					data.member.balance,
 					// 予約時決済の割引があるときは割引後の宿泊料金まで（DB と同じ）
-					data.hold.quote.total - prepayDiscountOf(data.hold.quote.total, discountRate)
+					data.hold.quote.total - discountNow
 				)
 	);
 	let charge = $derived(
-		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscountRate: discountRate })
+		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
 	);
 
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
@@ -119,6 +130,8 @@
 		const fd = new FormData(formEl);
 		fd.set('action', 'prepare');
 		fd.set('payment', 'card');
+		// 画面の請求額。サーバは DB が決めた額（早期決済割を含む）と違えば Intent を作らずに止める
+		fd.set('expectedAmount', String(charge.charge));
 		const res = await fetch('/booking/pay', { method: 'POST', body: fd });
 		const j = (await res.json().catch(() => ({ ok: false, message: m.pay_el_failed() }))) as {
 			ok: boolean;
@@ -131,7 +144,7 @@
 		if (!j.ok || !j.clientSecret || !j.returnUrl) throw new Error(j.message ?? m.pay_el_failed());
 		if (typeof j.expiresAt === 'number' && Number.isFinite(j.expiresAt)) holdExpiresAt = j.expiresAt;
 		// 画面の金額（Apple Pay のシートに出す額）とサーバが決めた請求額が違えば払わせない
-		if (j.amount !== charge.charge) throw new Error(m.pay_notice_failed());
+		if (j.amount !== charge.charge) throw new Error(m.pay_notice_amount_changed());
 		return { clientSecret: j.clientSecret, returnUrl: j.returnUrl };
 	}
 
@@ -338,10 +351,58 @@
 								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
 									<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="h-4 w-4" />
 									<span class="flex-1 font-medium">{m.pay_group_online()}</span>
-									{#if prepayRate > 0}
-										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(prepayRate * 100)) })}</span>
+									{#if prepayAmount > 0}
+										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
 									{/if}
 								</label>
+								{#if prepay && (prepayAmount > 0 || prepay.showLadder)}
+									<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
+									     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
+									<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9 text-sm">
+										{#if prepayAmount > 0}
+											<p class="font-medium text-brand-900">
+												{#if hasOnsite}
+													{m.pay_prepay_compare({ onsite: formatPrice(data.hold.quote.total), online: formatPrice(data.hold.quote.total - prepayAmount), save: formatPrice(prepayAmount) })}
+												{:else}
+													{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.hold.quote.total - prepayAmount)}
+												{/if}
+											</p>
+											<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
+										{/if}
+										{#if prepay.showLadder}
+											<div class="rounded-md border border-stone-200 bg-white/80 p-2.5">
+												<p class="text-xs text-stone-600">{m.pay_early_heading()}</p>
+												<p class="mt-1 font-medium text-brand-900">
+													{currentTierPermille > 0
+														? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
+														: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+												</p>
+												<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={m.pay_early_name()}>
+													{#each prepay.tiers as t (t.days)}
+														{@const current = Math.round(t.percent * 10) === currentTierPermille}
+														<li
+															class="rounded-full border px-2.5 py-0.5 text-xs tabular-nums {current ? 'border-red-300 bg-red-50 font-bold text-red-700' : 'border-stone-200 text-stone-500'}"
+															aria-current={current ? 'true' : undefined}
+														>
+															{m.pay_early_tier({ days: String(t.days) })} {percentText(t.percent)}%
+														</li>
+													{/each}
+												</ol>
+												{#if prepay.drop}
+													<p class="mt-1.5 text-xs text-stone-600">
+														{m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
+													</p>
+												{/if}
+												{#if prepay.detail.blackoutNights > 0}
+													<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_blackout()}</p>
+												{/if}
+												{#if currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
+													<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_flat_note({ rate: percentText(prepay.detail.flatPermille / 10) })}</p>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								{/if}
 								{#if group === 'online'}
 									<div class="space-y-1.5 border-t border-amber-200/60 px-3 py-2.5 pl-9">
 										{#if onlineOptions.length > 1}
@@ -354,11 +415,6 @@
 											{/each}
 										{:else}
 											<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
-										{/if}
-										{#if prepayRate > 0}
-											<p class="rounded bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-												{m.pay_discount_line({ rate: String(Math.round(prepayRate * 100)) })}: <s class="text-stone-400">{formatPrice(data.hold.quote.total)}</s> → <strong>{formatPrice(discountedTotal)}</strong>
-											</p>
 										{/if}
 										{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
 									</div>
@@ -457,7 +513,7 @@
 					<PriceBreakdown quote={{ ...data.hold.quote, pointsUsed: pointsApplied, payable: data.hold.quote.total - pointsApplied }} />
 					{#if inlineCard && charge.discount > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-red-600">
-							<span>{m.pay_discount_line({ rate: String(Math.round(discountRate * 100)) })}</span>
+							<span>{discountLabel}</span>
 							<span class="tabular-nums">-{formatPrice(charge.discount)}</span>
 						</div>
 					{/if}

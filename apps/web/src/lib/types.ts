@@ -138,6 +138,13 @@ export interface PaymentConfig {
 	prepayMethods: PrepayMethod[];
 	/** 事前決済割引率 0〜0.2 */
 	prepayDiscountRate: number;
+	/** 早期決済割（施設の段階表）の対象か（book.plan_contents.early_prepay）。未設定は対象外 */
+	earlyPrepay?: boolean;
+	/**
+	 * 画面表示用: 施設の早期決済割が ON で、段階表の最大率が定率より大きいときの最大率 0〜0.2
+	 * （プラン一覧・詳細のローダが lib/server/direct-payments.ts の withEarlyPrepayMax で入れる）
+	 */
+	earlyPrepayMaxRate?: number;
 }
 
 export interface RatePlan {
@@ -362,6 +369,8 @@ export interface Booking {
 	paymentStatus: 'unpaid' | 'paid' | 'refunded' | 'partial_refund';
 	/** 事前決済割引（適用時のみ）。total は割引適用後の最終額 */
 	prepayDiscountRate?: number;
+	/** 割引が早期決済割（段階表）によるものか（完了画面の割引行の名前） */
+	prepayDiscountEarly?: boolean;
 	discountAmount?: number;
 	status: 'reserved' | 'cancelled' | 'stayed';
 	channel: 'autumn_booking' | 'ota';

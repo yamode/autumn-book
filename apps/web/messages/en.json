@@ -814,5 +814,21 @@
   "pay_discount_total": "Amount after discount",
   "hold_breadcrumb_current": "Guest details",
   "hold_change_plan": "← Change plan or room",
-  "hold_change_plan_note": "The room we are holding for you will be released."
+  "hold_change_plan_note": "The room we are holding for you will be released.",
+  "pay_early_name": "Early payment discount",
+  "pay_early_line": "Early payment discount ({rate}%)",
+  "pay_prepay_save": "Save {amount}",
+  "pay_prepay_compare": "Pay at the property {onsite} / Pay now {online} (save {save})",
+  "pay_early_heading": "Early payment discount: the further ahead your stay, the bigger the discount when you pay at booking",
+  "pay_early_lead": "{days} days until your stay → {rate}%",
+  "pay_early_lead_none": "{days} days until your stay (the early payment discount starts at {min}+ days ahead)",
+  "pay_early_tier": "{days}+ days ahead",
+  "pay_early_drop": "In {days} days this changes from {from}% to {to}% (a difference of {diff})",
+  "pay_early_nonrefund": "This discount of {amount} is not refunded if you cancel (except cancellations made by the property).",
+  "pay_early_blackout": "Nights in excluded periods (such as the New Year holidays) are not eligible for the early payment discount.",
+  "pay_early_flat_note": "This plan's own pay-at-booking discount ({rate}%) is larger, so that applies instead.",
+  "plan_early_max": "Up to {rate}% off when you pay at booking (early payment discount)",
+  "pay_notice_amount_changed": "The amount to pay has changed (for example, the early payment discount tier changed with the date). Please reload the page and check the amount.",
+  "cancel_refund_preview_discount": "From the {paid} you paid (including bathing tax), we will deduct the larger of the cancellation fee {fee} and the non-refundable pay-at-booking discount {discount} ({deducted}), and refund {refund} to your card.",
+  "cancel_refund_kept": "The pay-at-booking discount of {amount} is not refundable and has been deducted."
 }

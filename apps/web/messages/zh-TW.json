@@ -814,5 +814,21 @@
   "pay_discount_total": "折扣後付款金額",
   "hold_breadcrumb_current": "旅客資料",
   "hold_change_plan": "← 重新選擇方案或客房",
-  "hold_change_plan_note": "重新選擇後，目前保留的客房將會釋出。"
+  "hold_change_plan_note": "重新選擇後，目前保留的客房將會釋出。",
+  "pay_early_name": "提早付款優惠",
+  "pay_early_line": "提早付款優惠（{rate}%）",
+  "pay_prepay_save": "省下 {amount}",
+  "pay_prepay_compare": "現場付款 {onsite} ／ 立即付款 {online}（省下 {save}）",
+  "pay_early_heading": "提早付款優惠：入住日期越遠，預訂時付款的折扣越多",
+  "pay_early_lead": "距離入住 {days} 天 → {rate}%",
+  "pay_early_lead_none": "距離入住 {days} 天（提早付款優惠適用於 {min} 天以上前的預訂）",
+  "pay_early_tier": "{days} 天以上前",
+  "pay_early_drop": "再過 {days} 天將由 {from}% 變為 {to}%（相差 {diff}）",
+  "pay_early_nonrefund": "取消預訂時，此折扣 {amount} 不予退還（因旅館因素取消者除外）。",
+  "pay_early_blackout": "排除期間（如年末年初）的住宿不適用提早付款優惠。",
+  "pay_early_flat_note": "本方案的預訂時付款折扣（{rate}%）較高，因此適用該折扣。",
+  "plan_early_max": "預訂時付款最多享 {rate}% 優惠（提早付款優惠）",
+  "pay_notice_amount_changed": "付款金額已變更（例如日期變更導致提早付款優惠級距改變）。請重新載入頁面並確認金額。",
+  "cancel_refund_preview_discount": "將從已付款的 {paid}（含入湯稅）中，扣除取消費 {fee} 與不退還的預訂時付款折扣 {discount} 兩者中較高者（{deducted}），並將 {refund} 退還至您的信用卡。",
+  "cancel_refund_kept": "預訂時付款折扣 {amount} 不予退還，已從退款中扣除。"
 }

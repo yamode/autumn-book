@@ -2017,13 +2017,15 @@ function safeAccess(raw: unknown): AccessInfo {
  * 割引率は book.plan_contents.prepay_discount_rate（Book の管理画面で設定・autumn-shared 20260926151458）。
  * 実データの事前決済はカードのみ（PayPay の事前決済は無い）。
  */
-function mapPaymentMethod(pm: string | null | undefined, discountRate?: unknown): PaymentConfig {
+function mapPaymentMethod(pm: string | null | undefined, discountRate?: unknown, earlyPrepay?: unknown): PaymentConfig {
 	const rate = Math.min(Math.max(Number(discountRate) || 0, 0), 0.2);
+	// early_prepay 列は autumn-shared 20260926221912 で追加（v_plans は * で読むので、未適用なら undefined＝対象外）
+	const early = earlyPrepay === true;
 	switch (pm) {
 		case 'prepayment':
-			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate };
+			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early };
 		case 'deposit':
-			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate };
+			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate, earlyPrepay: early };
 		case 'onsite':
 		default:
 			return { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0 };
@@ -2098,7 +2100,7 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		headline: headline,
 		description: String(row.description ?? ''),
 		mealPlan: String(row.meal_plan ?? ''),
-		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate),
+		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate, row.early_prepay),
 		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
 		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
 		photos: mapPhotos(row.photos, String(row.name ?? '')),
@@ -2300,6 +2302,8 @@ export interface BookingDraft {
 	guest: GuestInfo;
 	pointsUsed: number;
 	payment: 'onsite' | 'card' | 'paypay';
+	/** 予約時決済の割引の内訳（完了画面の割引行の名前・率。DB の prepay_discount_detail から。旧 DB は null） */
+	prepayDetail?: { maxPermille: number; early: boolean; mixed: boolean } | null;
 }
 
 export function setBookingDraft(cookies: Cookies, draft: BookingDraft): void {
@@ -2342,6 +2346,8 @@ export interface LastBooking {
 	onsiteMethod?: 'paypay' | 'card' | 'cash' | null;
 	discountAmount: number;
 	prepayDiscountRate?: number;
+	/** 割引が早期決済割（段階表）によるものか */
+	prepayDiscountEarly?: boolean;
 	// オンライン決済（v0.43.0）: 支払った額（宿泊料金 − ポイント ＋ 入湯税）と入湯税
 	paidAmount?: number;
 	bathTax?: number;

@@ -11,6 +11,8 @@ import {
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { clampCalendarMonth } from '$lib/calendar-range';
+import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
+import { withEarlyPrepayMax } from '$lib/server/direct-payments';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -18,12 +20,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
 
-		const [rooms, plans, facilityFaqs, news] = await Promise.all([
+		const [rooms, rawPlans, facilityFaqs, news, early] = await Promise.all([
 			sbListRoomTypesMapped(facility.id),
 			sbListPlansMapped(facility.id),
 			sbListFaqsMapped(facility.id),
-			sbListNewsMapped(facility.id, 3)
+			sbListNewsMapped(facility.id, 3),
+			loadEarlyPrepaySettings(facility.id)
 		]);
+		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
+		const plans = withEarlyPrepayMax(rawPlans, early);
 
 		// deep-link: checkin があればカレンダー初期月に反映
 		const checkin = url.searchParams.get('checkin') ?? undefined;
@@ -49,7 +54,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	if (!facility) error(404, '施設が見つかりません');
 
 	const rooms = getRoomTypes(facility.id, locale);
-	const plans = getRatePlans(facility.id, locale);
+	const plans = withEarlyPrepayMax(getRatePlans(facility.id, locale), await loadEarlyPrepaySettings(facility.id));
 
 	// deep-link（autumn_book_deeplink_contract.md）: checkin があればカレンダー初期月に反映
 	const checkin = url.searchParams.get('checkin') ?? undefined;

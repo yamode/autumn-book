@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatYen, formatDateLongJa } from '$lib/format';
+	import { directRefundDueOf } from '$lib/direct-payment';
 
 	let { data, form } = $props();
 
@@ -9,6 +10,21 @@
 
 	let showCancel = $state(false);
 	let waive = $state(false);
+
+	// 取消前の返金の見込み（オンライン決済済みのとき）。予約時決済の割引額は返金しない:
+	// 差し引く額 = max(キャンセル料, 割引額)。施設都合（キャンセル料免除）は全額返金（DB の direct_payment_refund_due と同じ）
+	let cancelRefund = $derived.by(() => {
+		const p = data.payment;
+		if (!p || p.status !== 'paid') return null;
+		const discount = Math.max(0, p.prepay_discount_amount ?? 0);
+		const rule = waive ? 0 : Math.max(0, data.feePreview ?? 0);
+		const bathTax = Math.max(0, p.bath_tax_amount ?? 0);
+		const refund = directRefundDueOf({ amount: p.amount, fee: rule, refunded: p.refunded_amount, prepayDiscount: discount, waived: waive, bathTax });
+		const ruleCapped = Math.min(rule, p.amount);
+		// 返金しない割引額は入湯税を除いた支払額まで（入湯税は必ず返す）
+		const deducted = waive ? ruleCapped : Math.max(ruleCapped, Math.min(discount, Math.max(p.amount - bathTax, 0)));
+		return { paid: p.amount, rule: ruleCapped, discount, deducted, kept: Math.max(0, deducted - ruleCapped), refund };
+	});
 	/** 送信内容を開いている outbox 行 */
 	let openMail = $state<string | null>(null);
 
@@ -105,9 +121,9 @@
 		キャンセル処理を実行しました（キャンセル料 {formatYen(form.fee ?? 0)}・監査ログに記録）。お客様にキャンセル受付メールを送信します。
 	</p>
 	{#if form.refund?.kind === 'refunded'}
-		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − キャンセル料 {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
+		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − {form.refund.kept > 0 ? '返金しない予約時決済の割引額' : 'キャンセル料'} {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
 	{:else if form.refund?.kind === 'nothing_due'}
-		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）がキャンセル料以下のため、返金はありません。</p>
+		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）が差し引く額（キャンセル料・返金しない割引額の大きい方 {formatYen(form.refund.fee)}）以下のため、返金はありません。</p>
 	{:else if form.refund?.kind === 'failed'}
 		<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">取消は完了しましたが、カードへの返金（{formatYen(form.refund.amount)}）に失敗しました: {form.refund.message}。下の「オンライン決済」から返金を再実行してください。</p>
 	{/if}
@@ -246,13 +262,25 @@
 					<dt class="text-stone-500">支払額</dt>
 					<dd>{formatYen(p.amount)}（宿泊料金 {formatYen(p.lodging_amount)}{(p.prepay_discount_amount ?? 0) > 0 ? `・予約時決済割引 −${formatYen(p.prepay_discount_amount ?? 0)}` : ''}{p.bath_tax_amount > 0 ? `・入湯税 ${formatYen(p.bath_tax_amount)}` : ''}{p.points_used > 0 ? `・ポイント ${p.points_used.toLocaleString()}pt 利用後` : ''}）</dd>
 					{#if p.refunded_amount > 0}<dt class="text-stone-500">返金済み</dt><dd>{formatYen(p.refunded_amount)}</dd>{/if}
+					{#if data.refundDue}
+						<!-- 取消後: 支払額から差し引いた額（規定のキャンセル料と、返金しない予約時決済の割引額の大きい方） -->
+						<dt class="text-stone-500">差し引いた額</dt>
+						<dd>
+							{formatYen(data.refundDue.fee)}{#if data.refundDue.cancellationFee != null}（規定のキャンセル料 {formatYen(data.refundDue.cancellationFee)}）{/if}
+						</dd>
+						{#if data.refundDue.kept > 0}
+							<dt class="text-stone-500">返金しない割引額</dt>
+							<dd>{formatYen(data.refundDue.kept)}（予約時決済の割引 {formatYen(data.refundDue.prepayDiscount)} のうち、キャンセル料を超える分）</dd>
+						{/if}
+						{#if data.refundDue.due > 0}<dt class="text-stone-500">返金の残り</dt><dd>{formatYen(data.refundDue.due)}</dd>{/if}
+					{/if}
 					{#if p.paid_at}<dt class="text-stone-500">支払日時</dt><dd>{new Date(p.paid_at).toLocaleString('ja-JP')}</dd>{/if}
 					{#if p.payment_intent_id}<dt class="text-stone-500">Stripe</dt><dd class="break-all font-mono text-xs">{p.payment_intent_id}</dd>{/if}
 					{#if p.refund_error}<dt class="text-stone-500">返金エラー</dt><dd class="text-red-700">{p.refund_error}</dd>{/if}
 				</dl>
 				{#if data.canOperate && p.status === 'paid' && b.booking_status === 'cancelled' && p.refund_status !== 'full'}
 					<form method="POST" action="?/retryRefund" class="mt-3">
-						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">返金を再実行する（支払額 − キャンセル料の残り）</button>
+						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">返金を再実行する（支払額 − 差し引く額 の残り）</button>
 					</form>
 				{/if}
 			</div>
@@ -378,8 +406,15 @@
 							<p class="text-xs text-stone-600">
 								{formatDateLongJa(b.check_in_date)} から {b.nights}泊・大人{b.adult_count}名・{b.room_name ?? '—'}
 							</p>
-							{#if data.payment?.status === 'paid'}
-								<p class="mt-1 text-xs text-emerald-700">オンライン決済済み：支払額からキャンセル料を引いた額を自動で返金します。</p>
+							{#if cancelRefund}
+								<p class="mt-1 text-xs text-emerald-700">
+									オンライン決済済み：支払額 {formatYen(cancelRefund.paid)} から {formatYen(cancelRefund.deducted)} を差し引いた {formatYen(cancelRefund.refund)} を自動で返金します。
+									{#if waive}
+										（施設都合のため、予約時決済の割引も含めて全額返金）
+									{:else if cancelRefund.discount > 0}
+										（キャンセル料 {formatYen(cancelRefund.rule)} と、返金しない予約時決済の割引額 {formatYen(cancelRefund.discount)} の大きい方）
+									{/if}
+								</p>
 							{/if}
 						</div>
 						<label class="flex items-start gap-2 text-sm">

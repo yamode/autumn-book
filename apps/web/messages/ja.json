@@ -814,5 +814,21 @@
   "pay_discount_total": "割引後のお支払い額",
   "hold_breadcrumb_current": "お客様情報",
   "hold_change_plan": "← プラン・お部屋を選び直す",
-  "hold_change_plan_note": "選び直すと、いま確保しているお部屋は解放されます。"
+  "hold_change_plan_note": "選び直すと、いま確保しているお部屋は解放されます。",
+  "pay_early_name": "早期決済割",
+  "pay_early_line": "早期決済割（{rate}%）",
+  "pay_prepay_save": "{amount} お得",
+  "pay_prepay_compare": "現地払い {onsite} ／ 今すぐ決済 {online}（{save} お得）",
+  "pay_early_heading": "早期決済割：ご宿泊日が先のご予約ほど、予約時決済の割引が大きくなります",
+  "pay_early_lead": "ご宿泊日まで {days}日 → {rate}%",
+  "pay_early_lead_none": "ご宿泊日まで {days}日（早期決済割は{min}日以上前のご予約から）",
+  "pay_early_tier": "{days}日以上前",
+  "pay_early_drop": "あと {days}日で {from}% → {to}% になります（{diff} の差）",
+  "pay_early_nonrefund": "この割引分 {amount} は、お取消の際は返金されません（宿の都合による取消を除く）。",
+  "pay_early_blackout": "除外期間（年末年始など）の泊は早期決済割の対象外です。",
+  "pay_early_flat_note": "このプランの予約時決済割引（{rate}%）の方が大きいため、そちらを適用します。",
+  "plan_early_max": "予約時決済で最大{rate}%お得（早期決済割）",
+  "pay_notice_amount_changed": "お支払い額が変わりました（日付が変わり早期決済割の段階が変わった等）。ページを読み込み直して、金額をご確認ください。",
+  "cancel_refund_preview_discount": "お支払い済みの {paid}（入湯税を含む）から、キャンセル料 {fee} と返金しない予約時決済の割引額 {discount} の大きい方（{deducted}）を差し引いた {refund} をご利用のカードへ返金します。",
+  "cancel_refund_kept": "予約時決済の割引額 {amount} は返金の対象外のため、差し引いています。"
 }

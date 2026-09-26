@@ -56,10 +56,18 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 				pointsUsed: memberUserId ? parsed.pointsRequested : 0,
 				locale: getLocale(),
 				facilityName: facility.name,
-				checkin: hold.checkin
+				checkin: hold.checkin,
+				// 画面に出していた請求額（早期決済割を含む）。DB の額と違えば Intent を作らずに止める
+				expectedAmount: String(form.get('expectedAmount') ?? '').trim() ? Number(form.get('expectedAmount')) : null
 			});
-			// 完了画面（予約番号・お客様名）用。3Dセキュアの戻り・Webhook 後の画面でも使う
-			setBookingDraft(cookies, { holdId: hold.id, guest: parsed.guest, pointsUsed: prepared.pointsUsed, payment: 'card' });
+			// 完了画面（予約番号・お客様名・割引の名前）用。3Dセキュアの戻り・Webhook 後の画面でも使う
+			setBookingDraft(cookies, {
+				holdId: hold.id,
+				guest: parsed.guest,
+				pointsUsed: prepared.pointsUsed,
+				payment: 'card',
+				prepayDetail: prepared.prepayDetail
+			});
 			return json(
 				{
 					ok: true,
@@ -98,6 +106,11 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			if (e.code === 'invalid_guest') return bad('お名前・メールアドレスをご確認ください。', 400);
 			if (e.code === 'amount_too_small') return bad('お支払い額が少ないため、オンライン決済をご利用いただけません。現地払いをお選びください。', 400);
 			if (e.code === 'already_paid') return bad('このご予約はお支払い済みです。', 409);
+			// 画面の請求額と DB の額が違う（日付が変わって早期決済割の段が下がった等）。Intent は作っていない
+			if (e.code === 'amount_changed') {
+				console.warn('[booking/pay]', e.message);
+				return bad(m.pay_notice_amount_changed(), 409, { amountChanged: true });
+			}
 			console.error('[booking/pay]', e.code, e.message);
 			return bad('お支払いの準備ができませんでした。時間をおいてもう一度お試しください。', e.status);
 		}

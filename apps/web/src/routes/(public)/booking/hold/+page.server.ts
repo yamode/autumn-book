@@ -28,7 +28,7 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { directPaymentsReady, directPublishableKey, holdBathTax } from '$lib/server/direct-payments';
+import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor } from '$lib/server/direct-payments';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
@@ -95,7 +95,11 @@ export const load: PageServerLoad = async (event) => {
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
-		const bathTax = await holdBathTax(hold.id, sid, memberUserId).catch(() => 0);
+		const [bathTax, prepay] = await Promise.all([
+			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
+			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）。金額の正は DB の direct_payment_prepare
+			prepayDiscountViewFor(hold.facilityId, plan, hold)
+		]);
 
 		return {
 			expired: false as const,
@@ -110,6 +114,7 @@ export const load: PageServerLoad = async (event) => {
 			inline: true as const,
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
 			bathTax,
+			prepay,
 			planHref: planHrefOf(facility, plan, hold)
 		};
 	}
@@ -123,6 +128,7 @@ export const load: PageServerLoad = async (event) => {
 	const plan = planById(hold.planId)!;
 	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
 	const facility = facilityById(hold.facilityId)!;
+	const prepay = await prepayDiscountViewFor(hold.facilityId, plan, hold);
 	return {
 		expired: false as const,
 		hold,
@@ -134,6 +140,7 @@ export const load: PageServerLoad = async (event) => {
 		inline: false as const,
 		publishableKey: null,
 		bathTax: 0,
+		prepay,
 		planHref: planHrefOf(facility, plan, hold),
 		member: member
 			? {

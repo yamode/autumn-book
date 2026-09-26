@@ -3,6 +3,7 @@
 	import CancelPolicyNote from './CancelPolicyNote.svelte';
 	import type { RatePlan } from '$lib/types';
 	import * as m from '$lib/paraglide/messages';
+	import { percentText } from '$lib/early-prepay';
 
 	let {
 		plan,
@@ -40,7 +41,12 @@
 			{#if plan.payment.onsite}
 				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.pay_onsite()}</span>
 			{/if}
-			{#if plan.payment.prepay && plan.payment.prepayDiscountRate > 0}
+			{#if plan.payment.prepay && (plan.payment.earlyPrepayMaxRate ?? 0) > 0}
+				<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
+				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+					{m.plan_early_max({ rate: percentText(Math.round((plan.payment.earlyPrepayMaxRate ?? 0) * 1000) / 10) })}
+				</span>
+			{:else if plan.payment.prepay && plan.payment.prepayDiscountRate > 0}
 				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
 					{m.pay_prepay_off({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) })}
 				</span>

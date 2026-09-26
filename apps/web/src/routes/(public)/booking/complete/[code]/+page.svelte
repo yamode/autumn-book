@@ -4,6 +4,7 @@
 	import { gaPurchaseOnce } from '$lib/analytics';
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
+	import { percentText } from '$lib/early-prepay';
 
 	let { data } = $props();
 	let b = $derived(data.booking);
@@ -17,6 +18,12 @@
 		});
 	});
 	let isCard = $derived(b.payment !== 'onsite');
+	// 割引行の名前: 早期決済割なら「早期決済割（5%）」（泊ごとに率が違うときは率なし）、定率なら「予約時決済割引（10%OFF）」
+	let discountLabel = $derived.by(() => {
+		const rate = b.prepayDiscountRate ?? 0;
+		if (b.prepayDiscountEarly) return rate > 0 ? m.pay_early_line({ rate: percentText(Math.round(rate * 1000) / 10) }) : m.pay_early_name();
+		return m.pay_discount_line({ rate: percentText(Math.round(rate * 1000) / 10) });
+	});
 
 	// 「カレンダーに追加」用の .ics（data URI）。チェックイン〜チェックアウトの終日予定としてクライアント側で組み立てる
 	const icsEscape = (v: string) => v.replace(/\\/g, '\\\\').replace(/[;,]/g, (c) => '\\' + c).replace(/\r?\n/g, '\\n');
@@ -81,7 +88,7 @@
 				<div class="flex justify-between text-xs text-stone-500"><dt>{m.pay_bath_tax()}</dt><dd>{formatPrice(data.paid.bathTax)}</dd></div>
 			{/if}
 			{#if b.discountAmount}
-				<div class="flex justify-between text-red-600"><dt>{m.pay_discount_line({ rate: String(Math.round((b.prepayDiscountRate ?? 0) * 100)) })}</dt><dd>-{formatPrice(b.discountAmount)}</dd>
+				<div class="flex justify-between text-red-600"><dt>{discountLabel}</dt><dd>-{formatPrice(b.discountAmount)}</dd>
 			</div>
 			{/if}
 			{#if b.pointsEarned > 0}

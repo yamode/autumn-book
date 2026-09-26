@@ -25,13 +25,23 @@ export function prepayDiscountOf(total: number, rate = 0): number {
   return Math.floor((Math.max(0, total) * permille) / 1000);
 }
 
-export function directChargeOf(q: { total: number; pointsUsed?: number; bathTax?: number; prepayDiscountRate?: number }): {
+// 早期決済割（lib/early-prepay.ts の prepayDiscountDetail）で求めた割引額は prepayDiscount で渡す（率より優先）。
+export function directChargeOf(q: {
+  total: number;
+  pointsUsed?: number;
+  bathTax?: number;
+  prepayDiscountRate?: number;
+  prepayDiscount?: number;
+}): {
   lodging: number;
   bathTax: number;
   discount: number;
   charge: number;
 } {
-  const discount = prepayDiscountOf(q.total, q.prepayDiscountRate);
+  const discount =
+    q.prepayDiscount != null
+      ? Math.min(Math.max(0, Math.floor(q.prepayDiscount)), Math.max(0, q.total))
+      : prepayDiscountOf(q.total, q.prepayDiscountRate);
   const points = Math.min(Math.max(0, Math.round(q.pointsUsed ?? 0)), q.total - discount);
   const lodging = q.total - points;
   const bathTax = Math.max(0, Math.round(q.bathTax ?? 0));
@@ -39,8 +49,22 @@ export function directChargeOf(q: { total: number; pointsUsed?: number; bathTax?
 }
 
 // 取消後の返金額 = 支払額 − キャンセル料（支払額まで）− 返金済み。0 未満にはしない（SQL の direct_payment_refund_due と同じ）
-export function directRefundDueOf(p: { amount: number; fee: number; refunded?: number }): number {
-  const fee = Math.min(Math.max(0, p.fee), p.amount);
+// 予約時決済の割引額は返金しない（2026-09-27 ユーザー決定・autumn-shared 20260926221912）:
+//   差し引く額 = max(規定のキャンセル料〔支払額まで〕, 割引額〔入湯税を除いた支払額まで＝入湯税は必ず返す〕)。
+//   キャンセル料を免除した取消（waived・施設都合）は規定どおり（＝全額返金）。
+export function directRefundDueOf(p: {
+  amount: number;
+  fee: number;
+  refunded?: number;
+  prepayDiscount?: number;
+  waived?: boolean;
+  bathTax?: number;
+}): number {
+  let fee = Math.min(Math.max(0, p.fee), p.amount);
+  if (!p.waived) {
+    const keepCap = Math.max(0, p.amount - Math.max(0, p.bathTax ?? 0));
+    fee = Math.max(fee, Math.min(Math.max(0, p.prepayDiscount ?? 0), keepCap));
+  }
   return Math.max(0, p.amount - fee - Math.max(0, p.refunded ?? 0));
 }
 

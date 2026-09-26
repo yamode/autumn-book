@@ -243,7 +243,7 @@ export const ratePlans: RatePlan[] = ([
 | はじめての山人 | 全部入りの基本形 |
 | 食を楽しみたい | 献立は季節替わり |`,
 		mealPlan: '夕朝食付',
-		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.1 },
+		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.1, earlyPrepay: true },
 		basePrice: 23100,
 		highlightTags: ['源泉かけ流し', '個室食'],
 		photos: [{ url: img('nw-plan-std'), caption: '山人料理', category: 'meal' }],
@@ -268,7 +268,7 @@ export const ratePlans: RatePlan[] = ([
 
 ケーキのメッセージは予約時の連絡事項欄にご記入ください。`,
 		mealPlan: '夕朝食付',
-		payment: { onsite: false, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.05 },
+		payment: { onsite: false, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.05, earlyPrepay: true },
 		basePrice: 27500,
 		highlightTags: ['記念日', '特典付', '事前カード決済'],
 		photos: [{ url: img('nw-plan-anniv'), caption: '記念日の演出', category: 'meal' }],
@@ -291,7 +291,7 @@ export const ratePlans: RatePlan[] = ([
 
 夕食の開始時刻は日没に合わせてご案内します。`,
 		mealPlan: '夕朝食付',
-		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.15 },
+		payment: { onsite: true, prepay: true, prepayMethods: ['card', 'paypay'], prepayDiscountRate: 0.15, earlyPrepay: true },
 		basePrice: 25300,
 		highlightTags: ['オーシャンビュー', '石焼料理'],
 		photos: [{ url: img('oga-plan-std'), caption: '石焼料理', category: 'meal' }],
@@ -791,7 +791,10 @@ export function confirmBooking(
 	guest: GuestInfo,
 	pointsUsed: number,
 	memberId?: string,
-	paymentChoice: 'onsite' | 'card' | 'paypay' = 'onsite'
+	paymentChoice: 'onsite' | 'card' | 'paypay' = 'onsite',
+	// 予約時決済の割引（早期決済割を含む・lib/server/direct-payments.ts の prepayDiscountViewOf で計算済み）。
+	// 渡されなければ従来どおりプランの定率
+	prepay?: { amount: number; rate: number; early: boolean }
 ): Booking | { error: string } {
 	const hold = getHold(holdId);
 	if (!hold || hold.status !== 'active') return { error: 'hold_expired' };
@@ -805,8 +808,8 @@ export function confirmBooking(
 	if (!isPrepay && !plan.payment.onsite) return { error: 'payment_not_allowed' };
 
 	// 事前決済（即時決済）割引: total は割引適用後の最終額
-	const discountRate = isPrepay ? Math.min(plan.payment.prepayDiscountRate, PREPAY_DISCOUNT_MAX) : 0;
-	const discountAmount = Math.round(hold.quote.total * discountRate);
+	const discountRate = !isPrepay ? 0 : prepay ? prepay.rate : Math.min(plan.payment.prepayDiscountRate, PREPAY_DISCOUNT_MAX);
+	const discountAmount = !isPrepay ? 0 : prepay ? Math.max(0, Math.min(prepay.amount, hold.quote.total)) : Math.round(hold.quote.total * discountRate);
 	const finalTotal = hold.quote.total - discountAmount;
 
 	const member = memberId ? members.find((m) => m.id === memberId) : undefined;
@@ -830,6 +833,7 @@ export function confirmBooking(
 		// 事前決済は予約時の即時決済（宿泊後請求ではない）
 		paymentStatus: isPrepay ? 'paid' : 'unpaid',
 		prepayDiscountRate: discountRate > 0 ? discountRate : undefined,
+		prepayDiscountEarly: isPrepay && prepay?.early && discountAmount > 0 ? true : undefined,
 		discountAmount: discountAmount > 0 ? discountAmount : undefined,
 		status: 'reserved',
 		channel: 'autumn_booking',

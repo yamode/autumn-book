@@ -26,7 +26,18 @@ import {
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, isPaymentIntentId } from '$lib/server/payments/verify';
-import type { GuestInfo } from '$lib/types';
+import type { GuestInfo, RatePlan } from '$lib/types';
+import { addDays } from '@autumn-book/core';
+import { directRefundDueOf } from '$lib/direct-payment';
+import {
+  nextTierDrop,
+  prepayDiscountDetail,
+  tierPermilleOf,
+  todayJstIso,
+  type EarlyPrepaySettings,
+  type PrepayDiscountDetail
+} from '$lib/early-prepay';
+import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 
 export const DIRECT_REF_KEY = 'hold_id';
 const EXPECT = { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_DIRECT_BOOKING, refKey: DIRECT_REF_KEY } as const;
@@ -58,7 +69,7 @@ async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
 
 // DB の例外文字列 → 画面で出し分けるコード
 function codeOf(message: string): string {
-  for (const c of ['hold_expired', 'forbidden', 'invalid_guest', 'prepay_not_allowed', 'already_paid', 'amount_too_small', 'amount_mismatch', 'invalid_locale']) {
+  for (const c of ['hold_expired', 'forbidden', 'invalid_guest', 'prepay_not_allowed', 'already_paid', 'amount_too_small', 'amount_mismatch', 'amount_changed', 'invalid_locale']) {
     if (message.includes(c)) return c;
   }
   return 'error';
@@ -106,9 +117,32 @@ export type DirectPrepared = {
   lodging: number;
   bathTax: number;
   prepayDiscount: number;
+  /** 割引の内訳（20260926221912 より前の DB は無い＝null） */
+  prepayDetail: PrepayDetailSummary | null;
   pointsUsed: number;
   expiresAt: string;
 };
+
+/** 完了画面の割引表示に使う内訳（DB の prepay_discount_detail から） */
+export type PrepayDetailSummary = {
+  /** 当たった泊の率の最大（千分率） */
+  maxPermille: number;
+  /** 早期決済割（段階表）が定率より大きく当たったか */
+  early: boolean;
+  /** 除外期間の泊があり、泊ごとに率が違う */
+  mixed: boolean;
+};
+
+function detailSummaryOf(raw: unknown): PrepayDetailSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Record<string, unknown>;
+  const max = Number(d.max_permille);
+  if (!Number.isFinite(max)) return null;
+  const tier = Number(d.tier_permille) || 0;
+  const flat = Number(d.flat_permille) || 0;
+  const black = Number(d.blackout_nights) || 0;
+  return { maxPermille: max, early: tier > flat, mixed: black > 0 && tier > flat };
+}
 
 type PrepareRow = {
   hold_id: string;
@@ -116,6 +150,8 @@ type PrepareRow = {
   lodging_amount: number;
   bath_tax_amount: number;
   prepay_discount?: number;
+  /** 20260926221912 から。旧 DB は無い */
+  prepay_discount_detail?: unknown;
   points_used: number;
   total: number;
   payment_intent_id: string | null;
@@ -132,6 +168,11 @@ export async function prepareDirectPayment(args: {
   locale: string;
   facilityName: string;
   checkin: string;
+  /**
+   * 画面に出していた請求額。DB が決めた額（割引は DB の prepay_discount が正）と違えば Intent を作らずに止める
+   * （日付が変わって早期決済割の段が下がった等。画面側の「金額が違えば払わせない」と同じ扱いを、Intent を作る前にサーバでも行う）
+   */
+  expectedAmount?: number | null;
 }): Promise<DirectPrepared> {
   const row = await rpc<PrepareRow>('direct_payment_prepare', {
     p_hold_id: args.holdId,
@@ -141,6 +182,13 @@ export async function prepareDirectPayment(args: {
     p_points_used: args.pointsUsed,
     p_locale: args.locale
   });
+  if (args.expectedAmount != null && Number.isFinite(args.expectedAmount) && args.expectedAmount !== row.amount) {
+    throw new DirectPaymentError(
+      `画面の請求額 ${args.expectedAmount} と DB の請求額 ${row.amount}（割引 ${row.prepay_discount ?? 0}）が違います`,
+      'amount_changed',
+      409
+    );
+  }
   const metadata = buildIntentMetadata({
     app: STRIPE_APP_BOOK,
     purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
@@ -165,6 +213,7 @@ export async function prepareDirectPayment(args: {
     lodging: row.lodging_amount,
     bathTax: row.bath_tax_amount,
     prepayDiscount: row.prepay_discount ?? 0,
+    prepayDetail: detailSummaryOf(row.prepay_discount_detail),
     pointsUsed: row.points_used,
     expiresAt: row.expires_at
   };
@@ -258,15 +307,32 @@ async function refundWhole(intentId: string, reason: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // 取消後の返金（お客様・会員・管理画面のどの入口の取消からも呼ぶ。冪等）
 // ---------------------------------------------------------------------------
+// fee = 差し引いた額（規定のキャンセル料と返金しない割引額の大きい方）。kept = そのうち規定のキャンセル料を超えた分
+// （＝返金しない予約時決済の割引額。20260926221912 より前の DB は 0）
 export type DirectRefundOutcome =
   | { kind: 'none' } // オンライン決済の予約ではない（現地払い）
-  | { kind: 'nothing_due'; paid: number; fee: number } // キャンセル料が支払額以上
-  | { kind: 'refunded'; amount: number; paid: number; fee: number }
-  | { kind: 'failed'; amount: number; paid: number; fee: number; message: string };
+  | { kind: 'nothing_due'; paid: number; fee: number; kept: number } // 差し引く額が支払額以上
+  | { kind: 'refunded'; amount: number; paid: number; fee: number; kept: number }
+  | { kind: 'failed'; amount: number; paid: number; fee: number; kept: number; message: string };
 
 type RefundDueRow =
   | { result: 'none' | 'not_cancelled'; payment_intent_id?: string }
-  | { result: 'due'; booking_id: string; payment_intent_id: string; amount: number; bath_tax_amount: number; fee: number; refunded: number; due: number };
+  | {
+      result: 'due';
+      booking_id: string;
+      payment_intent_id: string;
+      amount: number;
+      bath_tax_amount: number;
+      /** 規定のキャンセル料（20260926221912 から） */
+      cancellation_fee?: number;
+      prepay_discount?: number;
+      prepay_discount_kept?: number;
+      fee: number;
+      refunded: number;
+      due: number;
+    };
+
+const keptOf = (due: { prepay_discount_kept?: number }) => Math.max(0, Number(due.prepay_discount_kept) || 0);
 
 export async function refundAfterCancel(bookingCode: string, reason: string): Promise<DirectRefundOutcome> {
   if (!partnerServiceClient()) return { kind: 'none' };
@@ -278,7 +344,8 @@ export async function refundAfterCancel(bookingCode: string, reason: string): Pr
     return { kind: 'none' };
   }
   if (due.result !== 'due') return { kind: 'none' };
-  if (due.due <= 0) return { kind: 'nothing_due', paid: due.amount, fee: due.fee };
+  const kept = keptOf(due);
+  if (due.due <= 0) return { kind: 'nothing_due', paid: due.amount, fee: due.fee, kept };
   try {
     // 冪等キーは「予約・返金済み額」で作る（同じ取消で2回呼ばれても1回だけ返金）
     const r = await createRefund(
@@ -293,12 +360,12 @@ export async function refundAfterCancel(bookingCode: string, reason: string): Pr
       p_amount: r.amount ?? due.due,
       p_reason: `cancel:${reason}`.slice(0, 200)
     });
-    return { kind: 'refunded', amount: r.amount ?? due.due, paid: due.amount, fee: due.fee };
+    return { kind: 'refunded', amount: r.amount ?? due.due, paid: due.amount, fee: due.fee, kept };
   } catch (e) {
     const message = e instanceof StripeError || e instanceof Error ? e.message : String(e);
     await rpc('direct_payment_mark_refund_failed', { p_payment_intent_id: due.payment_intent_id, p_error: message }).catch(() => {});
     console.error('[direct-payment] 取消の返金に失敗', bookingCode, message);
-    return { kind: 'failed', amount: due.due, paid: due.amount, fee: due.fee, message };
+    return { kind: 'failed', amount: due.due, paid: due.amount, fee: due.fee, kept, message };
   }
 }
 
@@ -330,6 +397,53 @@ export async function directPaymentForBooking(bookingCode: string): Promise<Dire
   return data as DirectPaymentInfo;
 }
 
+/**
+ * 取消前の返金の見込み（画面用。式は DB の direct_payment_refund_due と同じ lib/direct-payment.ts の directRefundDueOf）。
+ *   fee: 規定のキャンセル料（支払額まで）／ discount: 予約時決済の割引額 ／ deducted: 実際に差し引く額（大きい方）
+ *   kept: 規定のキャンセル料を超えて差し引く分（＝返金しない割引額）／ refund: 返金額
+ * waived（施設都合＝キャンセル料免除）のときは割引額も差し引かない（全額返金）。
+ */
+export type DirectRefundPreview = { paid: number; fee: number; discount: number; deducted: number; kept: number; refund: number };
+
+export function directRefundPreviewOf(
+  pay: Pick<DirectPaymentInfo, 'amount' | 'prepay_discount_amount' | 'refunded_amount'> & { bath_tax_amount?: number },
+  ruleFee: number,
+  waived = false
+): DirectRefundPreview {
+  const paid = pay.amount;
+  const bathTax = Math.max(0, pay.bath_tax_amount ?? 0);
+  const discount = Math.max(0, pay.prepay_discount_amount ?? 0);
+  const rule = waived ? 0 : Math.max(0, ruleFee);
+  const refund = directRefundDueOf({ amount: paid, fee: rule, refunded: pay.refunded_amount, prepayDiscount: discount, waived, bathTax });
+  const fee = Math.min(rule, paid);
+  // 返金しない割引額は「入湯税を除いた支払額」まで（入湯税は必ず返す・DB の direct_payment_refund_due と同じ）
+  const deducted = waived ? fee : Math.max(fee, Math.min(discount, Math.max(paid - bathTax, 0)));
+  return { paid, fee, discount, deducted, kept: Math.max(0, deducted - fee), refund };
+}
+
+/**
+ * 取消済みの予約の返金の内訳（管理画面用・DB の direct_payment_refund_due をそのまま読む）。
+ * 取消前・現地払い・移行前の環境なら null。kept（返金しない割引額）は 20260926221912 より前の DB では 0。
+ */
+export async function directRefundDueFor(
+  bookingCode: string
+): Promise<{ cancellationFee: number | null; prepayDiscount: number; kept: number; fee: number; due: number } | null> {
+  if (!partnerServiceClient()) return null;
+  try {
+    const d = await rpc<RefundDueRow>('direct_payment_refund_due', { p_booking_code: bookingCode });
+    if (d.result !== 'due') return null;
+    return {
+      cancellationFee: d.cancellation_fee ?? null,
+      prepayDiscount: Math.max(0, Number(d.prepay_discount) || 0),
+      kept: keptOf(d),
+      fee: d.fee,
+      due: d.due
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Webhook: Stripe の管理画面からの返金の同期（charge.refunded）。返金 id で冪等
 // ---------------------------------------------------------------------------
@@ -357,3 +471,74 @@ export async function syncDirectRefundFromStripe(charge: { payment_intent?: unkn
 
 // 返金をやり直す（管理画面の「返金を再実行」。取消済みで返金が残っている予約だけ）
 export const retryDirectRefund = (bookingCode: string) => refundAfterCancel(bookingCode, 'staff_retry');
+
+// ---------------------------------------------------------------------------
+// 早期決済割の表示（予約確認画面・デモ決済画面・プラン一覧）。式は lib/early-prepay.ts（DB と同じ）
+// ---------------------------------------------------------------------------
+export type PrepayDiscountView = {
+  /** 段階表（日数の昇順）。早期決済割を見せないときは空 */
+  tiers: { days: number; percent: number }[];
+  /** 段階表を画面に出すか（施設で ON・プランが対象・段階表の最大が定率より大きい） */
+  showLadder: boolean;
+  detail: PrepayDiscountDetail;
+  /** 早期決済割（段階表）が定率より大きく当たったか（割引行の名前を「早期決済割」にする） */
+  early: boolean;
+  /** 境界の7日以内: あと inDays 日で fromPercent% → toPercent% に下がる。diff は割引額の差（円） */
+  drop: { inDays: number; fromPercent: number; toPercent: number; diff: number } | null;
+};
+
+type HoldLike = { checkin: string; quote: { total: number; lines?: { date: string; subtotal: number }[] } };
+
+export function prepayDiscountViewOf(
+  settings: EarlyPrepaySettings,
+  plan: Pick<RatePlan, 'payment'>,
+  hold: HoldLike,
+  today = todayJstIso()
+): PrepayDiscountView {
+  const eligible = plan.payment.prepay && plan.payment.earlyPrepay === true && settings.enabled && settings.tiers.length > 0;
+  const input = {
+    total: hold.quote.total,
+    lines: hold.quote.lines,
+    checkIn: hold.checkin,
+    today,
+    flatRate: plan.payment.prepay ? plan.payment.prepayDiscountRate : 0,
+    earlyEligible: eligible,
+    settings
+  };
+  const detail = prepayDiscountDetail(input);
+  const tiers = eligible ? [...settings.tiers].sort((a, b) => a.days - b.days) : [];
+  const maxTier = tiers.reduce((mx, t) => Math.max(mx, Math.round(t.percent * 10)), 0);
+  const showLadder = eligible && maxTier > detail.flatPermille;
+  let drop: PrepayDiscountView['drop'] = null;
+  if (showLadder && detail.tierPermille > detail.flatPermille) {
+    const d = nextTierDrop(tiers, detail.leadDays);
+    if (d) {
+      // 段が下がった日に予約した場合の割引額との差（定率の方が大きくなる等で差が 0 なら出さない）
+      const later = prepayDiscountDetail({ ...input, today: addDays(today, d.inDays) });
+      const diff = detail.discount - later.discount;
+      if (diff > 0) drop = { ...d, diff };
+    }
+  }
+  return { tiers, showLadder, detail, early: detail.tierPermille > detail.flatPermille && detail.discount > 0, drop };
+}
+
+export async function prepayDiscountViewFor(facilityId: string, plan: Pick<RatePlan, 'payment'>, hold: HoldLike): Promise<PrepayDiscountView> {
+  const settings = await loadEarlyPrepaySettings(facilityId);
+  return prepayDiscountViewOf(settings, plan, hold);
+}
+
+/**
+ * プラン一覧・詳細用: 対象プランの payment.earlyPrepayMaxRate に「予約時決済で最大 N%」の N（0〜0.2）を入れる。
+ * 段階表の最大率が定率（prepayDiscountRate）より大きいときだけ（小さければ定率の表示のまま）。
+ * 元のプランは書き換えない（デモの store はプランを共有しているため）。
+ */
+export function withEarlyPrepayMax<T extends Pick<RatePlan, 'payment'>>(plans: T[], settings: EarlyPrepaySettings): T[] {
+  const maxTier = settings.enabled ? tierPermilleOf(settings.tiers, Number.MAX_SAFE_INTEGER) : 0;
+  if (maxTier <= 0) return plans;
+  return plans.map((p) => {
+    if (!p.payment.prepay || p.payment.earlyPrepay !== true) return p;
+    const flat = Math.round((p.payment.prepayDiscountRate || 0) * 1000);
+    if (maxTier <= flat) return p;
+    return { ...p, payment: { ...p.payment, earlyPrepayMaxRate: maxTier / 1000 } };
+  });
+}
