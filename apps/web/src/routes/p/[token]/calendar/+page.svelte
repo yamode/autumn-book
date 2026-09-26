@@ -195,7 +195,7 @@
     const [a, b] = name.split('│');
     return b ? { building: a.replace(/-+$/, '').trim(), room: b.trim() } : { building: '', room: name };
   };
-  const dowColor = (c: Cell) => (c.dow === 0 || c.holiday ? 'text-[var(--pt-sun)]' : c.dow === 6 ? 'text-[var(--pt-sat)]' : '');
+  const dowColor = (c: Cell) => (c.dow === 0 || c.holiday ? 'text-rose-700' : c.dow === 6 ? 'text-sky-700' : '');
 
   // 予約の受付締切（宿泊日の N 日前の H 時・JST）。確定時にサーバで再確認する。
   function bookable(iso: string): boolean {
@@ -220,29 +220,29 @@
 
 <main class="mx-auto max-w-6xl px-4 pb-6 pt-6 sm:px-6">
   <!-- 条件 -->
-  <section class="mb-5 rounded-2xl border border-[var(--pt-line)] bg-[var(--pt-surface)] p-4 shadow-[0_1px_2px_rgba(31,29,21,0.04)] sm:p-5">
+  <section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <button type="button" aria-label="前の月" disabled={!canPrev} onclick={() => show(shiftYm(currentYm, -1), guests)} class="nav-btn">
           <svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
         <h2 class="min-w-36 text-center text-2xl font-bold tracking-wide">
-          <span class="text-lg font-medium text-[var(--pt-muted)]">{current.month.year}年</span>{current.month.month}月
+          <span class="text-lg font-medium text-stone-500">{current.month.year}年</span>{current.month.month}月
         </h2>
         <button type="button" aria-label="次の月" disabled={!canNext} onclick={() => show(shiftYm(currentYm, 1), guests)} class="nav-btn">
           <svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
       </div>
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-[var(--pt-muted)]">ご利用人数</span>
-        <div class="flex rounded-full bg-[var(--pt-bg)] p-1" role="radiogroup" aria-label="1室の利用人数">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="shrink-0 whitespace-nowrap text-sm text-stone-500">ご利用人数</span>
+        <div class="flex max-w-full overflow-x-auto rounded-full bg-stone-50 p-1" role="radiogroup" aria-label="1室の利用人数">
           {#each GUEST_OPTIONS as g}
             <button
               type="button"
               role="radio"
               aria-checked={guests === g}
               onclick={() => show(currentYm, g)}
-              class={`rounded-full px-3 py-1 text-base tabular-nums transition ${guests === g ? 'bg-[var(--pt-ink)] font-medium text-white shadow-sm' : 'text-[var(--pt-muted)] hover:text-[var(--pt-ink)]'}`}
+              class={`whitespace-nowrap rounded-full px-2.5 py-1 text-base tabular-nums transition sm:px-3 ${guests === g ? 'bg-brand-800 font-medium text-white shadow-sm' : 'text-stone-500 hover:text-brand-800'}`}
             >{g}名</button>
           {/each}
         </div>
@@ -255,13 +255,13 @@
         <button
           type="button"
           onclick={() => show(ym, guests)}
-          class={`shrink-0 rounded-full border px-3.5 py-1 text-sm transition ${ym === currentYm ? 'border-[var(--pt-gold)] bg-[var(--pt-gold-soft)] font-semibold text-[var(--pt-gold-deep)]' : 'border-[var(--pt-line)] text-[var(--pt-muted)] hover:border-[var(--pt-line-strong)] hover:text-[var(--pt-ink)]'}`}
+          class={`shrink-0 rounded-full border px-3.5 py-1 text-sm transition ${ym === currentYm ? 'border-accent-500 bg-accent-500/10 font-semibold text-accent-600' : 'border-stone-200 text-stone-500 hover:border-stone-300 hover:text-brand-900'}`}
         >{m === 1 || ym === monthTabs[0] ? `${y}年` : ''}{m}月</button>
       {/each}
     </div>
 
     {#if shownRooms.length > 1}
-      <div class="-mx-1 mt-3 flex gap-1.5 overflow-x-auto border-t border-[var(--pt-line)] px-1 pb-1 pt-3 [scrollbar-width:none]">
+      <div class="-mx-1 mt-3 flex gap-1.5 overflow-x-auto border-t border-stone-200 px-1 pb-1 pt-3 [scrollbar-width:none]">
         <button type="button" onclick={() => (roomFilter = '')} class={`chip ${roomFilter === '' ? 'chip-on' : ''}`}>すべてのお部屋</button>
         {#each shownRooms as room}
           {@const rp = roomParts(room.name)}
@@ -277,29 +277,29 @@
     <!-- カレンダー -->
     <section class="relative">
       <div class="mb-2 flex flex-wrap items-end justify-between gap-2 px-1">
-        <p class="text-sm leading-5 text-[var(--pt-muted)]">
-          <strong class="font-medium text-[var(--pt-ink)]">{current.guests}名1室</strong>でご利用時の、お一人様あたりの最低料金（税込・入湯税別）
+        <p class="text-sm leading-5 text-stone-500">
+          <strong class="font-medium text-brand-900">{current.guests}名1室</strong>でご利用時の、お一人様あたりの最低料金（税込・入湯税別）
         </p>
         {#if data.showInventory}
-          <p class="flex gap-3 text-xs text-[var(--pt-muted)]">
+          <p class="flex gap-3 text-xs text-stone-500">
             <span><b class="text-[var(--pt-accent)]">◎</b> 空室あり</span>
             <span><b class="text-[var(--pt-accent)]">○</b> 残りわずか</span>
-            <span><b class="text-[var(--pt-warn)]">△</b> 残り1室</span>
+            <span><b class="text-amber-700">△</b> 残り1室</span>
             <span><b>×</b> 満室</span>
           </p>
         {/if}
       </div>
 
-      <div class="overflow-hidden rounded-2xl border border-[var(--pt-line)] bg-[var(--pt-surface)] shadow-[0_1px_2px_rgba(31,29,21,0.04)]">
-        <div class="grid grid-cols-7 border-b border-[var(--pt-line)] bg-[var(--pt-bg)]/60">
+      <div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
+        <div class="grid grid-cols-7 border-b border-stone-200 bg-stone-50/60">
           {#each WEEK as w, i}
-            <div class={`py-2 text-center text-sm font-medium ${i === 0 ? 'text-[var(--pt-sun)]' : i === 6 ? 'text-[var(--pt-sat)]' : 'text-[var(--pt-muted)]'}`}>{w}</div>
+            <div class={`py-2 text-center text-sm font-medium ${i === 0 ? 'text-rose-700' : i === 6 ? 'text-sky-700' : 'text-stone-500'}`}>{w}</div>
           {/each}
         </div>
-        <div class={`grid grid-cols-7 gap-px bg-[var(--pt-line)] transition-opacity ${loading ? 'opacity-50' : ''}`}>
+        <div class={`grid grid-cols-7 gap-px bg-stone-200 transition-opacity ${loading ? 'opacity-50' : ''}`}>
           {#each cells as c, i (c?.iso ?? `blank-${i}`)}
             {#if !c}
-              <div class="min-h-[84px] bg-[var(--pt-bg)]/50 sm:min-h-[104px]"></div>
+              <div class="min-h-[84px] bg-stone-50/50 sm:min-h-[104px]"></div>
             {:else}
               {@const soldOut = c.rest === 0}
               {@const bookable = c.inRange && !!c.day && !c.day.closed && c.min != null}
@@ -310,33 +310,33 @@
                 aria-pressed={selected === c.iso}
                 class={`cell group relative flex min-h-[84px] flex-col items-stretch p-1.5 text-left sm:min-h-[104px] sm:p-2.5
                   ${selected === c.iso ? 'cell-selected' : ''}
-                  ${bookable && !soldOut ? 'bg-[var(--pt-surface)] hover:bg-[var(--pt-gold-soft)]/50' : 'bg-[var(--pt-surface)]'}
-                  ${!c.inRange || !c.day ? 'cursor-default bg-[var(--pt-bg)]/50 text-[var(--pt-muted)]/50' : ''}
+                  ${bookable && !soldOut ? 'bg-white hover:bg-accent-500/5' : 'bg-white'}
+                  ${!c.inRange || !c.day ? 'cursor-default bg-stone-50/50 text-stone-500/50' : ''}
                   ${c.day?.closed ? 'closed cursor-default' : ''}`}
               >
                 <div class="flex items-start justify-between">
                   <span class={`text-sm font-semibold tabular-nums sm:text-base ${c.inRange ? dowColor(c) : ''}`}>{Number(c.iso.slice(8))}</span>
                   {#if bookable && c.rest != null}
-                    <span class={`text-sm font-bold leading-none sm:text-base ${c.rest === 0 ? 'text-[var(--pt-muted)]' : c.rest === 1 ? 'text-[var(--pt-warn)]' : 'text-[var(--pt-accent)]'}`}>{markOf(c.rest)}</span>
+                    <span class={`text-sm font-bold leading-none sm:text-base ${c.rest === 0 ? 'text-stone-500' : c.rest === 1 ? 'text-amber-700' : 'text-[var(--pt-accent)]'}`}>{markOf(c.rest)}</span>
                   {/if}
                 </div>
                 <div class="mt-auto">
                   {#if c.day?.closed}
-                    <span class="text-[11px] text-[var(--pt-muted)] sm:text-sm">休館日</span>
+                    <span class="text-[11px] text-stone-500 sm:text-sm">休館日</span>
                   {:else if c.inRange && c.day && c.min != null}
                     {#if monthMin != null && c.min === monthMin && !soldOut}
-                      <span class="mb-0.5 inline-block rounded bg-[var(--pt-gold)] px-1 text-[10px] font-bold leading-4 text-white sm:text-[11px]">最安</span>
+                      <span class="mb-0.5 inline-block rounded bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white sm:text-[11px]">最安</span>
                     {/if}
-                    <div class={`text-xs font-semibold tabular-nums leading-tight sm:text-[17px] ${soldOut ? 'text-[var(--pt-muted)] line-through decoration-1' : 'text-[var(--pt-ink)]'}`}>
-                      <span class="hidden sm:inline">¥</span>{c.min.toLocaleString('ja-JP')}<span class="hidden text-xs font-normal text-[var(--pt-muted)] sm:inline">〜</span>
+                    <div class={`text-xs font-semibold tabular-nums leading-tight sm:text-[17px] ${soldOut ? 'text-stone-500 line-through decoration-1' : 'text-brand-900'}`}>
+                      <span class="hidden sm:inline">¥</span>{c.min.toLocaleString('ja-JP')}<span class="hidden text-xs font-normal text-stone-500 sm:inline">〜</span>
                     </div>
                     {#if soldOut}
-                      <span class="text-[11px] text-[var(--pt-muted)] sm:text-xs">満室</span>
+                      <span class="text-[11px] text-stone-500 sm:text-xs">満室</span>
                     {:else if c.rest != null && c.rest <= 2}
-                      <span class="text-[11px] font-medium text-[var(--pt-warn)] sm:text-xs">残り{c.rest}室</span>
+                      <span class="text-[11px] font-medium text-amber-700 sm:text-xs">残り{c.rest}室</span>
                     {/if}
                   {:else if c.inRange && c.day}
-                    <span class="text-[11px] text-[var(--pt-muted)] sm:text-sm">{soldOut ? '満室' : '—'}</span>
+                    <span class="text-[11px] text-stone-500 sm:text-sm">{soldOut ? '満室' : '—'}</span>
                   {/if}
                 </div>
               </button>
@@ -346,16 +346,16 @@
       </div>
       {#if loading}
         <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div class="flex items-center gap-2 rounded-full bg-[var(--pt-surface)] px-4 py-2 text-base text-[var(--pt-muted)] shadow-md">
+          <div class="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-base text-stone-500 shadow-md">
             <span class="spinner"></span>料金を読み込んでいます
           </div>
         </div>
       {/if}
       {#if loadError}
-        <p class="mt-3 rounded-lg border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-3 py-2 text-base text-[var(--pt-sun)]">{loadError}</p>
+        <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-base text-rose-700">{loadError}</p>
       {/if}
       {#if current.fetchedAt}
-        <p class="mt-2 px-1 text-right text-xs text-[var(--pt-muted)]">
+        <p class="mt-2 px-1 text-right text-xs text-stone-500">
           料金の更新: {new Date(current.fetchedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}
           {#if data.showInventory}・残室は目安です（ご予約時点で変わることがあります）{/if}
         </p>
@@ -365,11 +365,11 @@
     <!-- 料金の詳細（PC は右に固定、スマホは下から出す） -->
     <aside class={`detail ${selectedDay ? 'detail-open' : ''}`} aria-live="polite">
       {#if selectedDay}
-        <div class="flex items-start justify-between gap-3 border-b border-[var(--pt-line)] px-5 pb-3 pt-5">
+        <div class="flex items-start justify-between gap-3 border-b border-stone-200 px-5 pb-3 pt-5">
           <div>
-            <p class="text-xs font-medium tracking-wider text-[var(--pt-gold-deep)]">ご宿泊日</p>
+            <p class="text-xs font-medium tracking-wider text-accent-600">ご宿泊日</p>
             <h3 class="text-xl font-bold">{fmtDate(selectedDay.date)}</h3>
-            <p class="mt-0.5 text-sm text-[var(--pt-muted)]">{current.guests}名1室・1泊・お一人様あたり（税込・入湯税別）</p>
+            <p class="mt-0.5 text-sm text-stone-500">{current.guests}名1室・1泊・お一人様あたり（税込・入湯税別）</p>
           </div>
           <button type="button" aria-label="閉じる" onclick={() => (selected = null)} class="nav-btn h-8 w-8 shrink-0">
             <svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
@@ -377,15 +377,15 @@
         </div>
         <div class="max-h-[60vh] overflow-y-auto px-5 py-4 lg:max-h-[calc(100vh-10rem)]">
           {#if selectedDay.closed}
-            <p class="text-base text-[var(--pt-muted)]">休館日です。</p>
+            <p class="text-base text-stone-500">休館日です。</p>
           {:else if visibleRooms(selectedDay).length === 0}
-            <p class="text-base text-[var(--pt-muted)]">この条件でご案内できる料金はありません。</p>
+            <p class="text-base text-stone-500">この条件でご案内できる料金はありません。</p>
           {:else}
             <div class="grid gap-4">
               {#each visibleRooms(selectedDay) as room (room.roomCode)}
                 {@const rp = roomParts(room.roomName)}
                 {@const full = room.remainingRooms === 0}
-                <article class={`rounded-xl border border-[var(--pt-line)] ${full ? 'opacity-60' : ''}`}>
+                <article class={`rounded-xl border border-stone-200 ${full ? 'opacity-60' : ''}`}>
                   <header class="flex items-start justify-between gap-2 rounded-t-xl bg-[var(--pt-accent-soft)]/60 px-3.5 py-2.5">
                     <div class="min-w-0">
                       {#if rp.building}<p class="text-xs tracking-wide text-[var(--pt-accent)]">{rp.building}</p>{/if}
@@ -393,12 +393,12 @@
                       {#if data.introRooms?.includes(room.roomCode)}<a href={`/p/${token}/rooms#${roomAnchor(room.roomCode)}`} class="text-xs text-[var(--pt-accent)] underline">お部屋の紹介</a>{/if}
                     </div>
                     {#if room.remainingRooms != null}
-                      <span class={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${full ? 'bg-[var(--pt-line)] text-[var(--pt-muted)]' : room.remainingRooms <= 2 ? 'bg-[var(--pt-warn)]/10 text-[var(--pt-warn)]' : 'bg-[var(--pt-surface)] text-[var(--pt-accent)]'}`}>
+                      <span class={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${full ? 'bg-stone-200 text-stone-500' : room.remainingRooms <= 2 ? 'bg-amber-700/10 text-amber-700' : 'bg-white text-[var(--pt-accent)]'}`}>
                         {full ? '満室' : `残り${room.remainingRooms}室`}
                       </span>
                     {/if}
                   </header>
-                  <ul class="divide-y divide-[var(--pt-line)]">
+                  <ul class="divide-y divide-stone-200">
                     {#each room.plans as plan (plan.planCode + plan.planName)}
                       {@const price = plan.pricesPerPerson[String(current.guests)]}
                       {#if price != null}
@@ -408,17 +408,17 @@
                             <p class="text-base font-medium leading-snug">{displayPlanName(plan.planName)}</p>
                             {#if data.introPlans?.includes(anchor)}<a href={`/p/${token}/plans#${anchor}`} class="text-xs text-[var(--pt-accent)] underline">プランの紹介</a>{/if}
                             <p class="mt-1 flex flex-wrap gap-1">
-                              {#if plan.mealType}<span class="rounded bg-[var(--pt-bg)] px-1.5 text-[11px] leading-5 text-[var(--pt-muted)]">{plan.mealType === '2食' ? '夕朝食付き' : plan.mealType === '朝食' ? '朝食付き' : plan.mealType === '素泊' ? '素泊まり' : plan.mealType}</span>{/if}
-                              {#if plan.advance}<span class="rounded bg-[var(--pt-gold-soft)] px-1.5 text-[11px] font-medium leading-5 text-[var(--pt-gold-deep)]">先行案内</span>{/if}
+                              {#if plan.mealType}<span class="rounded bg-stone-50 px-1.5 text-[11px] leading-5 text-stone-500">{plan.mealType === '2食' ? '夕朝食付き' : plan.mealType === '朝食' ? '朝食付き' : plan.mealType === '素泊' ? '素泊まり' : plan.mealType}</span>{/if}
+                              {#if plan.advance}<span class="rounded bg-accent-500/10 px-1.5 text-[11px] font-medium leading-5 text-accent-600">先行案内</span>{/if}
                             </p>
                           </div>
                           <div class="shrink-0 text-right tabular-nums">
-                            <p class="text-xl font-bold leading-none text-[var(--pt-gold-deep)]">{yen(price)}<span class="ml-0.5 text-xs font-normal text-[var(--pt-muted)]">/名</span></p>
-                            <p class="mt-1 text-xs text-[var(--pt-muted)]">1室 {yen(price * current.guests)}</p>
+                            <p class="text-xl font-bold leading-none text-accent-600">{yen(price)}<span class="ml-0.5 text-xs font-normal text-stone-500">/名</span></p>
+                            <p class="mt-1 text-xs text-stone-500">1室 {yen(price * current.guests)}</p>
                             {#if bookable(selectedDay.date) && !full}
                               <a
                                 href={`/p/${token}/book?${new URLSearchParams({ room: room.roomCode, plan: plan.planCode, name: plan.planName, date: selectedDay.date, guests: String(current.guests) })}`}
-                                class="mt-2 inline-block rounded-full bg-[var(--pt-ink)] px-4 py-1.5 text-sm font-medium text-white transition hover:bg-[var(--pt-accent)]"
+                                class="mt-2 inline-block rounded-lg bg-accent-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-accent-500"
                               >予約する</a>
                             {/if}
                           </div>
@@ -433,11 +433,11 @@
         </div>
       {:else}
         <div class="hidden px-6 py-10 text-center lg:block">
-          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--pt-gold-soft)] text-[var(--pt-gold-deep)]">
+          <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500/10 text-accent-600">
             <svg viewBox="0 0 24 24" class="h-6 w-6" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6" /><path d="M3.5 9.5h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
           </div>
           <p class="text-lg font-bold">ご宿泊日をお選びください</p>
-          <p class="mt-2 text-sm leading-5 text-[var(--pt-muted)]">カレンダーの日付を押すと、<br />お部屋・プランごとの料金をご覧いただけます。</p>
+          <p class="mt-2 text-sm leading-5 text-stone-500">カレンダーの日付を押すと、<br />お部屋・プランごとの料金をご覧いただけます。</p>
         </div>
       {/if}
     </aside>
@@ -455,13 +455,13 @@
     align-items: center;
     justify-content: center;
     border-radius: 9999px;
-    border: 1px solid var(--pt-line-strong);
-    color: var(--pt-ink);
+    border: 1px solid var(--color-stone-300, #d6d3d1);
+    color: var(--color-brand-900, #1f1d15);
     transition: background-color 0.15s, border-color 0.15s;
   }
   .nav-btn:hover:not(:disabled) {
-    border-color: var(--pt-ink);
-    background: var(--pt-bg);
+    border-color: var(--color-brand-900, #1f1d15);
+    background: var(--color-stone-50, #fafaf9);
   }
   .nav-btn:disabled {
     opacity: 0.3;
@@ -469,16 +469,16 @@
   .chip {
     flex-shrink: 0;
     border-radius: 9999px;
-    border: 1px solid var(--pt-line);
+    border: 1px solid var(--color-stone-200, #e7e5e4);
     padding: 0.3rem 0.8rem;
     font-size: 0.75rem;
-    color: var(--pt-muted);
+    color: var(--color-stone-500, #78716c);
     white-space: nowrap;
     transition: all 0.15s;
   }
   .chip:hover {
-    border-color: var(--pt-line-strong);
-    color: var(--pt-ink);
+    border-color: var(--color-stone-300, #d6d3d1);
+    color: var(--color-brand-900, #1f1d15);
   }
   .chip-on {
     border-color: var(--pt-accent);
@@ -492,8 +492,8 @@
     transition: background-color 0.15s, box-shadow 0.15s;
   }
   .cell-selected {
-    box-shadow: inset 0 0 0 2px var(--pt-gold);
-    background: var(--pt-gold-soft) !important;
+    box-shadow: inset 0 0 0 2px var(--color-accent-500, #b08d3e);
+    background: color-mix(in srgb, var(--color-accent-500, #b08d3e) 10%, white) !important;
   }
   .closed {
     background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(31, 29, 21, 0.035) 6px 12px);
@@ -502,8 +502,8 @@
     height: 0.9rem;
     width: 0.9rem;
     border-radius: 9999px;
-    border: 2px solid var(--pt-line-strong);
-    border-top-color: var(--pt-gold);
+    border: 2px solid var(--color-stone-300, #d6d3d1);
+    border-top-color: var(--color-accent-500, #b08d3e);
     animation: spin 0.8s linear infinite;
   }
   @keyframes spin {
@@ -513,10 +513,9 @@
   }
   /* 詳細: PC は右カラムに固定表示、スマホは下からのシート。 */
   .detail {
-    border-radius: 1rem;
-    border: 1px solid var(--pt-line);
-    background: var(--pt-surface);
-    box-shadow: 0 1px 2px rgba(31, 29, 21, 0.04);
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-stone-200, #e7e5e4);
+    background: var(--color-white, #fff);
   }
   @media (min-width: 1024px) {
     .detail {

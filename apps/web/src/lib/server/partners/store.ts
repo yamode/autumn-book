@@ -6,7 +6,7 @@
 //   - 限定URLのトークン → 取引先、クッキーのセッション → その取引先のアカウント、
 //     API キー → 取引先、の順に必ず結び付きを確かめてから読む。
 //   - 取引先の施設は Book が扱う施設（FACILITY_UUID）に限る。
-// 取引先・アカウント・API キーの発行や設定（スタッフ用の機能）は autumn-rms に残している。
+// 取引先・アカウント・API キーの発行や設定（スタッフ用の機能）も 2026-09-26 に Book の /admin/partners へ移した。
 // 表名・cookie 名・API キーの接頭辞（rms_ / rmsp_）は既存データと発行済みのキーをそのまま使うため変えない。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
@@ -152,6 +152,278 @@ export function partnerUnavailableReason(p: Pick<PartnerRow, 'is_active' | 'vali
   if (p.valid_from && today < p.valid_from) return `この料金カレンダーの公開は ${p.valid_from} からです。`;
   if (p.valid_until && today > p.valid_until) return 'この料金カレンダーの公開期間は終了しました。';
   return null;
+}
+
+// ============================================================================
+// スタッフ側（Book の管理画面 /admin/partners）。autumn-rms v0.103.0 から移設（2026-09-26）。
+// 呼び出し元（routes/admin/partners/**）は staffPartnerScope で「スタッフの役割」と「その施設へのアクセス（RLS）」を
+// 確かめてから呼ぶこと。ここでは取引先の施設 = 開いている施設の突き合わせ（requireStaffPartner）を必ず行う。
+// ============================================================================
+
+export async function listPartners(db: SupabaseClient, facilityId: string): Promise<PartnerRow[]> {
+  const { data, error } = await db
+    .from('rms_partners')
+    .select(PARTNER_COLUMNS)
+    .eq('facility_id', facilityId)
+    .order('is_active', { ascending: false })
+    .order('name');
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  return (data ?? []).map(toPartner);
+}
+
+// 取引先ごとのアカウント数・有効 API キー数（一覧表示用）。
+export async function countPartnerCredentials(db: SupabaseClient, partnerIds: string[]) {
+  const out = new Map<string, { accounts: number; activeAccounts: number; apiKeys: number }>();
+  if (!partnerIds.length) return out;
+  const [accounts, keys] = await Promise.all([
+    db.from('rms_partner_accounts').select('partner_id, is_active, password_hash').in('partner_id', partnerIds),
+    db.from('rms_partner_api_keys').select('partner_id, revoked_at').in('partner_id', partnerIds)
+  ]);
+  for (const id of partnerIds) out.set(id, { accounts: 0, activeAccounts: 0, apiKeys: 0 });
+  for (const a of (accounts.data ?? []) as { partner_id: string; is_active: boolean; password_hash: string | null }[]) {
+    const c = out.get(a.partner_id)!;
+    c.accounts += 1;
+    if (a.is_active && a.password_hash) c.activeAccounts += 1;
+  }
+  for (const k of (keys.data ?? []) as { partner_id: string; revoked_at: string | null }[]) {
+    if (!k.revoked_at) out.get(k.partner_id)!.apiKeys += 1;
+  }
+  return out;
+}
+
+// 取引先を読み、開いている施設のものかを必ず確かめる（別施設の ID を渡されても触らせない）。
+export async function requireStaffPartner(db: SupabaseClient, facilityId: string, partnerId: string): Promise<PartnerRow> {
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId)) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  const { data, error } = await db.from('rms_partners').select(PARTNER_COLUMNS).eq('id', partnerId).maybeSingle();
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  if (!data || data.facility_id !== facilityId) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  return toPartner(data);
+}
+
+export type PartnerSettingsInput = {
+  name: string;
+  kind: PartnerKind;
+  contact_name: string | null;
+  contact_email: string | null;
+  is_active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  max_days_ahead: number;
+  show_inventory: boolean;
+  include_advance: boolean;
+  pricing: PartnerPricing;
+  note: string | null;
+  booking_enabled: boolean;
+  booking_settings: PartnerBookingSettings;
+};
+
+export async function createPartner(
+  db: SupabaseClient,
+  scope: { tenantId: string; facilityId: string; userId: string | null },
+  input: PartnerSettingsInput
+): Promise<PartnerRow> {
+  const { data, error } = await db
+    .from('rms_partners')
+    .insert({
+      ...input,
+      tenant_id: scope.tenantId,
+      facility_id: scope.facilityId,
+      url_token: randomToken(18),
+      created_by: scope.userId,
+      updated_by: scope.userId
+    })
+    .select(PARTNER_COLUMNS)
+    .single();
+  if (error) raise(error, '取引先を登録できませんでした。');
+  return toPartner(data);
+}
+
+export async function updatePartner(
+  db: SupabaseClient,
+  partner: PartnerRow,
+  userId: string | null,
+  input: Partial<PartnerSettingsInput>
+): Promise<void> {
+  const { error } = await db
+    .from('rms_partners')
+    .update({ ...input, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id);
+  if (error) raise(error, '取引先を保存できませんでした。');
+}
+
+// 限定URLを作り直す（旧URLは即無効。ログイン中のセッションも切る）。
+export async function regeneratePartnerUrl(db: SupabaseClient, partner: PartnerRow, userId: string | null): Promise<string> {
+  const token = randomToken(18);
+  const { error } = await db
+    .from('rms_partners')
+    .update({ url_token: token, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id);
+  if (error) raise(error, '限定URLを再発行できませんでした。');
+  await revokeSessionsOfPartner(db, partner.id);
+  return token;
+}
+
+export async function deletePartner(db: SupabaseClient, partner: PartnerRow): Promise<void> {
+  const { error } = await db.from('rms_partners').delete().eq('id', partner.id).eq('facility_id', partner.facility_id);
+  if (error) raise(error, '取引先を削除できませんでした。');
+}
+
+export async function listPartnerAccounts(db: SupabaseClient, partnerId: string): Promise<PartnerAccountRow[]> {
+  const { data, error } = await db.from('rms_partner_accounts').select(ACCOUNT_COLUMNS).eq('partner_id', partnerId).order('created_at');
+  if (error) raise(error, 'ログインアカウントを読み込めませんでした。');
+  return (data ?? []) as PartnerAccountRow[];
+}
+
+export async function listPartnerApiKeys(db: SupabaseClient, partnerId: string): Promise<PartnerApiKeyRow[]> {
+  const { data, error } = await db
+    .from('rms_partner_api_keys')
+    .select('id, partner_id, label, key_prefix, last_used_at, revoked_at, created_at')
+    .eq('partner_id', partnerId)
+    .order('created_at', { ascending: false });
+  if (error) raise(error, 'API キーを読み込めませんでした。');
+  return (data ?? []) as PartnerApiKeyRow[];
+}
+
+export async function listPartnerAccessLogs(db: SupabaseClient, partnerId: string, limit = 50): Promise<PartnerAccessLogRow[]> {
+  const { data, error } = await db
+    .from('rms_partner_access_logs')
+    .select('id, account_id, api_key_id, channel, action, detail, ip, created_at')
+    .eq('partner_id', partnerId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) raise(error, 'アクセスログを読み込めませんでした。');
+  return (data ?? []) as PartnerAccessLogRow[];
+}
+
+export const LOGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{3,63}$/i;
+
+// ログインアカウントを発行し、パスワード設定用のトークン（平文・1度だけ）を返す。
+export async function createPartnerAccount(
+  db: SupabaseClient,
+  partner: PartnerRow,
+  input: { loginId: string; displayName: string | null; email: string | null; userId: string | null }
+): Promise<{ account: PartnerAccountRow; setupToken: string }> {
+  if (!LOGIN_ID_PATTERN.test(input.loginId)) {
+    throw new PartnerStoreError('ログインIDは英数字と . _ - で4〜64文字にしてください（先頭は英数字）。');
+  }
+  const setupToken = randomToken(32);
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .insert({
+      partner_id: partner.id,
+      // 大文字小文字を区別しないため、保存は小文字に揃える（ログイン時も小文字で照合）。
+      login_id: input.loginId.toLowerCase(),
+      display_name: input.displayName,
+      email: input.email,
+      setup_token_hash: await sha256Hex(setupToken),
+      setup_token_expires_at: new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3600_000).toISOString(),
+      created_by: input.userId
+    })
+    .select(ACCOUNT_COLUMNS)
+    .single();
+  if (error) {
+    if (error.code === '23505') throw new PartnerStoreError(`ログインID「${input.loginId}」は既に使われています。`, 409, 'duplicate');
+    raise(error, 'ログインアカウントを発行できませんでした。');
+  }
+  return { account: data as PartnerAccountRow, setupToken };
+}
+
+async function requireAccountOf(db: SupabaseClient, partner: PartnerRow, accountId: string): Promise<PartnerAccountRow> {
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select(ACCOUNT_COLUMNS)
+    .eq('id', accountId)
+    .eq('partner_id', partner.id)
+    .maybeSingle();
+  if (error) raise(error, 'ログインアカウントを読み込めませんでした。');
+  if (!data) throw new PartnerStoreError('ログインアカウントが見つかりません。', 404, 'not_found');
+  return data as PartnerAccountRow;
+}
+
+// パスワード設定（再設定）リンクを発行し直す。既存のパスワードは設定し直すまで有効のまま。
+export async function reissueSetupToken(
+  db: SupabaseClient,
+  partner: PartnerRow,
+  accountId: string
+): Promise<{ account: PartnerAccountRow; setupToken: string }> {
+  const account = await requireAccountOf(db, partner, accountId);
+  const setupToken = randomToken(32);
+  const { error } = await db
+    .from('rms_partner_accounts')
+    .update({
+      setup_token_hash: await sha256Hex(setupToken),
+      setup_token_expires_at: new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3600_000).toISOString()
+    })
+    .eq('id', account.id);
+  if (error) raise(error, 'パスワード設定リンクを発行できませんでした。');
+  return { account, setupToken };
+}
+
+export async function updatePartnerAccount(
+  db: SupabaseClient,
+  partner: PartnerRow,
+  accountId: string,
+  patch: { is_active?: boolean; unlock?: boolean }
+): Promise<PartnerAccountRow> {
+  const account = await requireAccountOf(db, partner, accountId);
+  const update: Record<string, unknown> = {};
+  if (patch.is_active != null) update.is_active = patch.is_active;
+  if (patch.unlock) {
+    update.failed_attempts = 0;
+    update.locked_until = null;
+  }
+  const { error } = await db.from('rms_partner_accounts').update(update).eq('id', account.id);
+  if (error) raise(error, 'ログインアカウントを更新できませんでした。');
+  if (patch.is_active === false) await db.from('rms_partner_sessions').delete().eq('account_id', account.id);
+  return account;
+}
+
+export async function deletePartnerAccount(db: SupabaseClient, partner: PartnerRow, accountId: string): Promise<PartnerAccountRow> {
+  const account = await requireAccountOf(db, partner, accountId);
+  const { error } = await db.from('rms_partner_accounts').delete().eq('id', account.id);
+  if (error) raise(error, 'ログインアカウントを削除できませんでした。');
+  return account;
+}
+
+// API キーを発行する。キー本体（平文）は戻り値でだけ返し、DB には SHA-256 しか残さない。
+export async function issuePartnerApiKey(
+  db: SupabaseClient,
+  partner: PartnerRow,
+  label: string | null,
+  userId: string | null
+): Promise<{ key: string; row: PartnerApiKeyRow }> {
+  const key = `${API_KEY_PREFIX}${randomToken(32)}`;
+  const { data, error } = await db
+    .from('rms_partner_api_keys')
+    .insert({
+      partner_id: partner.id,
+      label,
+      key_prefix: key.slice(0, API_KEY_PREFIX.length + 6),
+      key_hash: await sha256Hex(key),
+      created_by: userId
+    })
+    .select('id, partner_id, label, key_prefix, last_used_at, revoked_at, created_at')
+    .single();
+  if (error) raise(error, 'API キーを発行できませんでした。');
+  return { key, row: data as PartnerApiKeyRow };
+}
+
+export async function revokePartnerApiKey(db: SupabaseClient, partner: PartnerRow, keyId: string): Promise<void> {
+  const { error } = await db
+    .from('rms_partner_api_keys')
+    .update({ revoked_at: new Date().toISOString() })
+    .eq('id', keyId)
+    .eq('partner_id', partner.id)
+    .is('revoked_at', null);
+  if (error) raise(error, 'API キーを無効にできませんでした。');
+}
+
+async function revokeSessionsOfPartner(db: SupabaseClient, partnerId: string) {
+  const { data } = await db.from('rms_partner_accounts').select('id').eq('partner_id', partnerId);
+  const ids = ((data ?? []) as { id: string }[]).map((a) => a.id);
+  if (ids.length) await db.from('rms_partner_sessions').delete().in('account_id', ids);
 }
 
 // ============================================================================

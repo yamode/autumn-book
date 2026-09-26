@@ -88,31 +88,6 @@ html {
 	}
 }
 
-/* 取引先専用ページ（/p/<token>・autumn-rms から移設）の土台。
-   RMS の app.css の base 層（枠線の既定色・ボタンの指カーソル・極小文字の底上げ）に相当する分だけを、
-   取引先ページの枠（.partner-portal）の中に限って当てる。@layer base なので Tailwind のユーティリティが優先される。 */
-@layer base {
-	.partner-portal *,
-	.partner-portal ::before,
-	.partner-portal ::after {
-		border-color: #e9e6dc;
-	}
-	.partner-portal button:not(:disabled):not([aria-disabled='true']),
-	.partner-portal label[for],
-	.partner-portal summary {
-		cursor: pointer;
-	}
-	.partner-portal button:disabled {
-		cursor: not-allowed;
-	}
-	.partner-portal main {
-		overflow-x: clip;
-	}
-}
-/* 14px 未満の文字を作らない（RMS と同じ下限。text-xs = 12px → 13px） */
-@layer utilities {
-	.partner-portal .text-xs {
-		font-size: 0.8125rem;
-		line-height: 1.15rem;
-	}
-}
+/* 取引先専用ページ（/p/<token>）は 2026-09-26 に Book のトークン・部品へ寄せたため、専用の土台 CSS は持たない
+   （枠線色は各要素に明示・文字サイズは Book 全体と同じ）。 */
+

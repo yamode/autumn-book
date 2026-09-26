@@ -17,7 +17,7 @@ import {
   resolveOptionAnswers,
   type PartnerBookingGuestInput
 } from '$lib/partner-booking';
-import { sendHtmlEmail } from '$lib/server/mailer';
+import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import {
   cardLabelOf,
   chargeSavedCard,
@@ -659,6 +659,13 @@ function friendlyChargeError(e: unknown): string {
   return (e.code && reasons[e.code]) || e.message;
 }
 
+// スタッフの「再請求」（Book の管理画面 /admin/partners/[id]）。
+export async function retryPartnerCharge(db: SupabaseClient, partner: AnyPartner, bookingId: string, origin: string): Promise<ChargeResult> {
+  const b = await getPartnerBooking(db, partner.id, bookingId);
+  if (!b) throw new PartnerStoreError('予約が見つかりません。', 404);
+  return chargeBooking(db, partner, b, origin, 'staff');
+}
+
 // 定期処理（毎時）: チェックイン日を迎えた「チェックイン日決済」の予約に請求する。請求失敗の予約は自動では再請求しない。
 export async function chargeDueBookings(db: SupabaseClient, origin: string): Promise<{ target: number; paid: number; failed: number; skipped: number }> {
   const { data } = await db
@@ -933,7 +940,8 @@ async function sendBookingMails(
   accountId: string | null
 ): Promise<boolean> {
   const s = partner.booking_settings;
-  const facilityName = 'facility_name' in partner && partner.facility_name ? partner.facility_name : '';
+  // 施設名は差出人名と同じもの（core.facilities.name）。partner に施設名が無い呼び出し（Webhook・cron）でも空にしない
+  const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
   const title = kind === 'new' ? 'ご予約を承りました' : 'ご予約を取り消しました';
   const summary = bookingSummaryLines(b);
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
@@ -950,17 +958,17 @@ async function sendBookingMails(
     if (to.size) {
       const text = [`${partner.name} 様`, '', `${facilityName} です。以下の内容で${title}。`, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
       const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(facilityName)} です。以下の内容で${title}。</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
-      const r = await sendHtmlEmail({ to: [...to], subject: `【${facilityName}】${title}（${b.booking_code}）`, html, text });
+      const r = await sendPartnerMail(db, partner.facility_id, { to: [...to], subject: `【${facilityName}】${title}（${b.booking_code}）`, html, text });
       sent = sent || r.sent;
     }
   }
 
   // 宿へ
   if (s.notifyEmails.length) {
-    const head = kind === 'new' ? `取引先「${partner.name}」から予約が入りました。` : `取引先予約が取り消されました（${b.cancelled_by === 'staff' ? 'RMS のスタッフ操作' : '取引先の操作'}）。`;
+    const head = kind === 'new' ? `取引先「${partner.name}」から予約が入りました。` : `取引先予約が取り消されました（${b.cancelled_by === 'staff' ? 'スタッフの操作' : '取引先の操作'}）。`;
     const text = [head, '', ...summary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
     const html = `<p>${escapeHtml(head)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
-    const r = await sendHtmlEmail({
+    const r = await sendFacilityNotice(db, partner.facility_id, {
       to: s.notifyEmails,
       subject: `【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,
       html,
@@ -974,7 +982,7 @@ async function sendBookingMails(
 // チェックイン日決済の請求失敗（宿・取引先へ）。
 async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, origin: string, reason: string): Promise<boolean> {
   const s = partner.booking_settings;
-  const facilityName = 'facility_name' in partner && partner.facility_name ? partner.facility_name : '';
+  const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
   const summary = bookingSummaryLines(b);
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
   let sent = false;
@@ -988,14 +996,14 @@ async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b:
     const lead = `${facilityName} です。ご予約（${b.booking_code}）のチェックイン日のお支払いで、ご登録のカードに請求できませんでした（${reason}）。お手数ですが、予約一覧の「カードを登録し直す」から別のカードをご登録ください。`;
     const text = [`${partner.name} 様`, '', lead, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
     const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(lead)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
-    const r = await sendHtmlEmail({ to: [...partnerTo], subject: `【${facilityName}】カードへのご請求ができませんでした（${b.booking_code}）`, html, text });
+    const r = await sendPartnerMail(db, partner.facility_id, { to: [...partnerTo], subject: `【${facilityName}】カードへのご請求ができませんでした（${b.booking_code}）`, html, text });
     sent = sent || r.sent;
   }
   if (s.notifyEmails.length) {
-    const head = `取引先「${partner.name}」の予約で、チェックイン日のカード請求に失敗しました（${reason}）。取引先にはカードの再登録をお願いするメールを送りました。RMS の取引先ページから再請求するか、現地でのお支払いをご案内ください。`;
+    const head = `取引先「${partner.name}」の予約で、チェックイン日のカード請求に失敗しました（${reason}）。取引先にはカードの再登録をお願いするメールを送りました。Book の管理画面（取引先）から再請求するか、現地でのお支払いをご案内ください。`;
     const text = [head, '', ...summary].join('\n');
     const html = `<p>${escapeHtml(head)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre>`;
-    const r = await sendHtmlEmail({ to: s.notifyEmails, subject: `【取引先予約・請求失敗】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`, html, text });
+    const r = await sendFacilityNotice(db, partner.facility_id, { to: s.notifyEmails, subject: `【取引先予約・請求失敗】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`, html, text });
     sent = sent || r.sent;
   }
   return sent;

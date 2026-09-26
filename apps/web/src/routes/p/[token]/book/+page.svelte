@@ -107,7 +107,7 @@
   };
   const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
   const ARRIVALS = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00'];
-  const input = 'w-full rounded-lg border border-[var(--pt-line-strong)] bg-[var(--pt-surface)] px-3.5 py-2.5 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
+  const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
 </script>
 
@@ -117,15 +117,15 @@
 </svelte:head>
 
 <main class="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6">
-  <a href={`/p/${token}/calendar`} class="text-sm text-[var(--pt-muted)] hover:text-[var(--pt-ink)]">← 料金カレンダーへ戻る</a>
+  <a href={`/p/${token}/calendar`} class="text-sm text-stone-500 hover:text-brand-900">← 料金カレンダーへ戻る</a>
   <h2 class="mt-2 text-2xl font-bold">{step === 'input' ? 'ご予約内容の入力' : 'ご予約内容の確認'}</h2>
   <ol class="mt-3 flex gap-2 text-sm">
-    <li class={`rounded-full px-3 py-1 ${step === 'input' ? 'bg-[var(--pt-ink)] text-white' : 'bg-[var(--pt-line)] text-[var(--pt-muted)]'}`}>1. 入力</li>
-    <li class={`rounded-full px-3 py-1 ${step === 'confirm' ? 'bg-[var(--pt-ink)] text-white' : 'bg-[var(--pt-line)] text-[var(--pt-muted)]'}`}>2. 確認・確定</li>
+    <li class={`rounded-full px-3 py-1 ${step === 'input' ? 'bg-brand-900 text-white' : 'bg-stone-200 text-stone-500'}`}>1. 入力</li>
+    <li class={`rounded-full px-3 py-1 ${step === 'confirm' ? 'bg-brand-900 text-white' : 'bg-stone-200 text-stone-500'}`}>2. 確認・確定</li>
   </ol>
 
   {#if form?.message}
-    <p class="mt-4 rounded-lg border border-[var(--pt-sun)]/30 bg-[var(--pt-sun)]/5 px-4 py-3 text-[var(--pt-sun)]">{form.message}</p>
+    <p class="mt-4 rounded-lg border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
   {/if}
 
   <form
@@ -242,12 +242,12 @@
               <legend class={label}>お支払方法 <em class="req">必須</em></legend>
               <div class="grid gap-2 sm:grid-cols-2">
                 {#each data.paymentOptions as o (o.id)}
-                  <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-[var(--pt-line-strong)]'}`}>
+                  <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
                     <input type="radio" name="payment_option" value={o.id} bind:group={paymentOption} required class="mt-1 accent-[var(--pt-accent)]" />
                     <span>
                       <span class="font-medium">{o.label}</span>
                       {#if o.id === 'online' && prepay}<span class="ml-1.5 rounded bg-[var(--pt-accent)] px-1.5 py-0.5 text-xs font-bold text-white">{prepay.label}</span>{/if}
-                      <span class="block text-sm text-[var(--pt-muted)]">{o.note}</span>
+                      <span class="block text-sm text-stone-500">{o.note}</span>
                       {#if o.id === 'online' && prepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">合計 {yen(prepay.total + (quote.ok ? quote.bathTax : 0))}（{yen(prepay.discount)} お得）</span>{/if}
                     </span>
                   </label>
@@ -288,9 +288,9 @@
             {#if quote.ok}<dt>合計</dt><dd class="font-bold">{yen(payTotal)}</dd>{/if}
           </dl>
           {#if paymentOption === 'online'}
-            <p class="mt-3 text-sm text-[var(--pt-muted)]">確定するとお支払い画面（Stripe）へ進みます。30分以内にお支払いいただくと予約が確定します。</p>
+            <p class="mt-3 text-sm text-stone-500">確定するとお支払い画面（Stripe）へ進みます。30分以内にお支払いいただくと予約が確定します。</p>
           {:else if paymentOption === 'online_checkin'}
-            <p class="mt-3 text-sm text-[var(--pt-muted)]">確定するとカードの登録画面（Stripe）へ進みます。登録した時点で予約が確定し、チェックイン日に登録カードへ自動で請求します（この時点では請求されません）。</p>
+            <p class="mt-3 text-sm text-stone-500">確定するとカードの登録画面（Stripe）へ進みます。登録した時点で予約が確定し、チェックイン日に登録カードへ自動で請求します（この時点では請求されません）。</p>
           {/if}
         </section>
       {/if}
@@ -298,15 +298,15 @@
 
     <!-- 料金 -->
     <aside class="card lg:sticky lg:top-4">
-      <p class="text-sm text-[var(--pt-muted)]">{quote.ok ? quote.roomName : ''}</p>
+      <p class="text-sm text-stone-500">{quote.ok ? quote.roomName : ''}</p>
       <h3 class="text-lg font-bold leading-snug">{displayPlanName(data.target.planName)}</h3>
-      {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-[var(--pt-muted)]">{mealLabel(quote.mealType)}</p>{/if}
+      {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
 
-      <div class={`mt-4 border-t border-[var(--pt-line)] pt-4 transition-opacity ${quoting ? 'opacity-50' : ''}`}>
+      <div class={`mt-4 border-t border-stone-200 pt-4 transition-opacity ${quoting ? 'opacity-50' : ''}`}>
         {#if !quote.ok}
-          <p class="rounded-lg bg-[var(--pt-sun)]/5 px-3 py-2 text-sm text-[var(--pt-sun)]">{quote.message}</p>
+          <p class="rounded-lg bg-rose-700/5 px-3 py-2 text-sm text-rose-700">{quote.message}</p>
         {:else}
-          <p class="text-sm text-[var(--pt-muted)]">{fmt(quote.checkIn)} から {quote.nights}泊</p>
+          <p class="text-sm text-stone-500">{fmt(quote.checkIn)} から {quote.nights}泊</p>
           <ul class="mt-2 grid gap-1.5 text-sm">
             {#each quote.rooms as r, i}
               <li class="flex justify-between gap-2">
@@ -327,50 +327,50 @@
               <span class="tabular-nums">-{yen(prepay.discount)}</span>
             </div>
           {/if}
-          <div class="mt-3 flex items-end justify-between border-t border-[var(--pt-line)] pt-3">
+          <div class="mt-3 flex items-end justify-between border-t border-stone-200 pt-3">
             <span class="font-medium">合計</span>
-            <span class="text-2xl font-bold tabular-nums text-[var(--pt-gold-deep)]">{yen(payTotal)}</span>
+            <span class="text-2xl font-bold tabular-nums text-accent-600">{yen(payTotal)}</span>
           </div>
           {#if prepay && !discounted && data.paymentOptions.some((o) => o.id === 'online')}
             <p class="mt-1 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {yen(prepay.total + quote.bathTax)}（{prepay.label}）</p>
           {/if}
-          <p class="mt-1 text-right text-xs text-[var(--pt-muted)]">税込{quote.bathTax > 0 ? '・入湯税を含む' : ''}</p>
+          <p class="mt-1 text-right text-xs text-stone-500">税込{quote.bathTax > 0 ? '・入湯税を含む' : ''}</p>
           {#if quote.remaining != null}
-            <p class={`mt-2 text-sm ${soldShort ? 'font-medium text-[var(--pt-sun)]' : 'text-[var(--pt-muted)]'}`}>
+            <p class={`mt-2 text-sm ${soldShort ? 'font-medium text-rose-700' : 'text-stone-500'}`}>
               {soldShort ? `ご希望の室数を確保できません（残り${quote.remaining}室）` : `このお部屋の残り: ${quote.remaining}室`}
             </p>
           {/if}
         {/if}
         {#if !canBook}
-          <p class="mt-2 text-sm font-medium text-[var(--pt-sun)]">この宿泊日のご予約は締め切りました（宿泊日の{data.deadlineText}）。</p>
+          <p class="mt-2 text-sm font-medium text-rose-700">この宿泊日のご予約は締め切りました（宿泊日の{data.deadlineText}）。</p>
         {/if}
       </div>
 
-      <dl class="mt-4 grid gap-1 border-t border-[var(--pt-line)] pt-4 text-sm">
-        {#if paymentLabel}<div class="flex justify-between gap-2"><dt class="text-[var(--pt-muted)]">お支払</dt><dd>{paymentLabel}</dd></div>{/if}
-        <div class="flex justify-between gap-2"><dt class="text-[var(--pt-muted)]">予約の締切</dt><dd>宿泊日の{data.deadlineText}</dd></div>
-        <div class="flex justify-between gap-2"><dt class="text-[var(--pt-muted)]">取消</dt><dd>{data.cancelText ? `宿泊日の${data.cancelText}（この画面から）` : '宿へご連絡ください'}</dd></div>
+      <dl class="mt-4 grid gap-1 border-t border-stone-200 pt-4 text-sm">
+        {#if paymentLabel}<div class="flex justify-between gap-2"><dt class="text-stone-500">お支払</dt><dd>{paymentLabel}</dd></div>{/if}
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">予約の締切</dt><dd>宿泊日の{data.deadlineText}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">取消</dt><dd>{data.cancelText ? `宿泊日の${data.cancelText}（この画面から）` : '宿へご連絡ください'}</dd></div>
       </dl>
-      {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-[var(--pt-bg)] px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
+      {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
 
-      {#if clientError}<p class="mt-3 text-sm text-[var(--pt-sun)]">{clientError}</p>{/if}
+      {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
         <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="primary mt-4 w-full">内容を確認する</button>
       {:else}
         <button type="submit" disabled={submitting || !ready} class="primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
-        <button type="button" onclick={() => (step = 'input')} disabled={submitting} class="mt-2 w-full rounded-full border border-[var(--pt-line-strong)] px-4 py-2.5 text-sm hover:border-[var(--pt-ink)]">入力に戻る</button>
+        <button type="button" onclick={() => (step = 'input')} disabled={submitting} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
       {/if}
     </aside>
   </form>
 </main>
 
 <style>
+  /* Book の公開予約フロー（/booking）のカードと同じ: rounded-xl・stone-200 の枠・影なし */
   .card {
-    border-radius: 1rem;
-    border: 1px solid var(--pt-line);
-    background: var(--pt-surface);
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-stone-200, #e7e5e4);
+    background: var(--color-white, #fff);
     padding: 1.25rem;
-    box-shadow: 0 1px 2px rgba(31, 29, 21, 0.04);
   }
   @media (min-width: 640px) {
     .card {
@@ -385,22 +385,23 @@
   .req {
     margin-left: 0.25rem;
     border-radius: 0.25rem;
-    background: color-mix(in srgb, var(--pt-sun) 12%, transparent);
+    background: color-mix(in srgb, var(--color-rose-700, #be123c) 12%, transparent);
     padding: 0 0.3rem;
     font-size: 0.7rem;
     font-style: normal;
-    color: var(--pt-sun);
+    color: var(--color-rose-700, #be123c);
   }
+  /* Book の予約ボタン（rounded-lg・accent-600 → hover accent-500）に合わせる */
   .primary {
-    border-radius: 9999px;
-    background: var(--pt-ink);
-    padding: 0.8rem 1rem;
-    font-weight: 600;
+    border-radius: 0.5rem;
+    background: var(--color-accent-600, #95742c);
+    padding: 0.75rem 1rem;
+    font-weight: 500;
     color: #fff;
     transition: background-color 0.15s;
   }
   .primary:hover:not(:disabled) {
-    background: var(--pt-accent);
+    background: var(--color-accent-500, #b08d3e);
   }
   .primary:disabled {
     opacity: 0.4;
@@ -411,6 +412,6 @@
     gap: 0.6rem 1rem;
   }
   .confirm dt {
-    color: var(--pt-muted);
+    color: var(--color-stone-500, #78716c);
   }
 </style>

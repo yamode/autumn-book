@@ -1,12 +1,98 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-26（取引先専用ページを autumn-rms から移設 v0.40.0）
+> **最終更新**: 2026-09-26（取引先の管理画面を autumn-rms から移設 v0.41.0）
+
+## 取引先の管理画面（RMS から移設）（2026-09-26 追加・v0.41.0）
+
+**2026-09-26 ユーザー指示: RMS に残っていたスタッフ用の取引先画面（`/partners/**`）も Book の管理画面 `/admin/partners` へ移した。**
+移植元は autumn-rms v0.103.0。取引先ページ本体（`/p/**`）・API・webhook・cron は v0.40.0 で移設済みで、そのコードを使い回している（重複なし）。
+
+### 移したもの
+| 種類 | パス |
+|---|---|
+| 画面 | `routes/admin/partners/+page.{server.ts,svelte}`（一覧・新規作成）／`routes/admin/partners/[id]/+page.{server.ts,svelte}`（限定URL・再発行／公開設定／特別レートのルール編集＋プレビュー／予約受付設定（支払方法・予約時決済の割引・聞く項目・通知先）／予約一覧（取消・返金・再請求）／ログインID（発行・設定リンク再発行・停止/再開・ロック解除・削除）／REST API キー（発行・無効化）／アクセスログ／削除） |
+| lib | `lib/server/partners/staff.ts`（入口検証・設定メール）・`staff-form.ts`（フォーム解析・純関数）・`mail.ts`（差出人）。`store.ts` にスタッフ用関数（listPartners 〜 revokePartnerApiKey）、`booking.ts` に `retryPartnerCharge` を戻した |
+| ナビ | 管理画面の左ナビ「宿泊・直販」に「🤝 取引先」（予約管理の下） |
+| テスト | `lib/server/partners/staff-form.test.ts`（5件・合計41件） |
+
+### 権限と施設（RMS の staffScope の置き換え）
+- 役割: `locals.user.role` が admin / staff なら閲覧可。**編集（保存・URL再発行・ログインID/キー発行・取消と返金・再請求・削除）は admin のみ**。
+  金額（特別レート）・カード請求・返金・社外向けの資格情報を扱うため、キャンセル規定と同じ線引きにした（`staff.ts` の `canEditPartners`）。スタッフには入力欄が無効・操作ボタン非表示、サーバーでも 403
+- 施設: 管理画面共通の `ab_fac` クッキー → `FACILITY_UUID`。取引先の `facility_id` がその施設でなければ一覧へ戻す（`requireStaffPartner`）
+- **施設アクセスの確認**: `rms_partner_*` は service_role 専用で RLS では守れないので、service_role で触る前に**ログイン中スタッフのクライアント**で既存 RPC
+  `book.private_bath_contents_admin(p_facility)`（読み取り専用・`private.has_facility_access` を通らないと 'forbidden'）を呼んで確かめる
+- `DATA_SOURCE` / `AUTH_MODE` が supabase でない環境（ローカルのデモ等）では施設アクセスを確かめられないので、**閲覧も含めて**「この環境では使えません」を出す。
+  `SUPABASE_SERVICE_ROLE_KEY` 未登録なら「利用できません（シークレット未登録）」。どちらも画面は落ちない
+- `created_by` / `updated_by` はログイン中スタッフの auth uid（`locals.user.id`）
+- 新規作成時の `tenant_id` は `core.facilities` から（service_role）
+- 限定URL・設定リンク・API エンドポイントは Book 自身のオリジン（`event.url.origin`）で作る
+- ルール編集のプラン選択肢はプレビュー（`loadPartnerRates` の planOptions ＝ RPC `rms_partner_portal_source`）から、部屋はプレビューの rooms から。保存済みルールにしか無いコードも残す
+- RMS 時代の操作ログ（`locals.activityDetail`）は Book に仕組みが無いので持ってこなかった（取消は `rms_partner_access_logs` に staff_cancel が残る）
+
+### 取引先向けメールの差出人（2026-09-26 ユーザー指示）
+- 差出人名 = **予約先の施設名**（`core.facilities.name`「山人-yamado-」「山人-oga-」）。Book の直販予約メール（send-booking-mail）と同じ
+- 返信先（Reply-To）= 施設の予約用アドレス（`pms.mail_settings.from_address`・`is_active` のときだけ）。直販予約メールの差出人アドレスと同じ
+- 対象: 予約確認・取消・請求失敗（取引先宛て）／宿への通知（差出人名のみ）／パスワード設定リンク（管理画面から）。`lib/server/partners/mail.ts`（施設ごと10分キャッシュ）
+- **送信経路は Cloudflare Email Sending（`mailer.ts`）のまま**にした。理由:
+  1. `book.mail_outbox` は kind が CHECK（booking_confirmation / booking_cancelled）で `booking_id` も book 側の予約前提。取引先予約やパスワード設定を載せるには migration と Edge Function の改修が要る
+  2. パスワード設定リンク（1回限りのトークン）を outbox の `body_text` に残したくない
+  3. From アドレスを `reservation@yamado.co.jp` にすると、Cloudflare から送ったとき SPF/DKIM が合わず届かなくなる（Cloudflare Email Sending は yamado.app からしか送れない）。
+     そのためアドレスは `REPORT_EMAIL_FROM`（既定 rms@yamado.app）のまま、返信は施設の予約窓口に届くよう Reply-To を付けた
+- 差出人名の既定（施設名が取れないとき）は「Autumn RMS」から「山人」に変更。メール本文の「RMS の取引先ページから再請求」は「Book の管理画面（取引先）から」に
+
+### 取引先ページ（/p）の見た目を Book に寄せた（同じく 2026-09-26）
+- `--pt-*` の独自色を Book のトークンへ（地 stone-50・カード白＋stone-200 枠・文字 brand-900・金茶 accent-500/600・弱い文字 stone-500）。多くは元から brand / accent と同じ値だった
+- Noto Sans JP の Web フォント読み込みをやめ、Book 全体のゴシック（app.css の html）に
+- カードは rounded-xl・影なし、ログイン/パスワード設定/予約の主ボタンは Book の予約ボタン（rounded-lg・accent-600）、二次ボタンは rounded-lg・stone-300 枠、入力欄は rounded-md・stone-300
+- ヘッダーは Book の公開ヘッダーと同じ sticky・白95%・メニューは rounded-md（現在地 brand-800）
+- `app.css` の `.partner-portal` 専用 CSS（枠線の既定色・指カーソル・text-xs の 13px 底上げ）は撤去
+- 施設の差し色（yamado 森の緑 / oga 夜の海・`--pt-accent`）と、noindex・no-store・GA/DBG 非表示などの性質はそのまま
+
+### 表示確認（ローカル・AUTH_MODE=demo / DATA_SOURCE=supabase・service_role なし）
+- `/admin/partners`: 「この環境では使えません」の注記で落ちない。`/admin/partners/<id>` は一覧へ戻る
+- 詳細画面・取引先ページ（ログイン・料金カレンダー PC / スマホ 375px）は一時モック（コミットしていない）で表示を確認
+
+### 未実施
+- 本番（secret 登録済み）での通し確認（下のチェックリスト）
+- RMS 側の `/partners/**` 撤去（または Book へのリダイレクト）と RMS ナビからの削除（RMS リポの作業）
+
+### テストチェックリスト（取引先の管理画面 v0.41.0）
+※前提: 本番（`SUPABASE_SERVICE_ROLE_KEY` 登録済み）・AUTH_MODE=supabase
+
+#### 権限
+- [ ] admin でログイン → 左ナビ「取引先」→ 一覧が出る（施設を切り替えると施設ごとの取引先に変わる）
+- [ ] staff でログイン → 一覧・詳細は見られるが、入力欄が無効・発行/取消/削除のボタンが出ない（「閲覧のみ」の注記）
+- [ ] 別施設の取引先 ID を URL に入れる／詳細を開いたまま施設を切り替える → 一覧へ戻る
+- [ ] その施設の権限（core.memberships）が無いスタッフ → 「この施設の取引先を扱う権限がありません」
+- [ ] ローカルのデモ環境・service_role 未登録の環境 → 注記が出て画面は落ちない
+
+#### 取引先
+- [ ] 取引先を追加 → 詳細へ移り、公開停止・予約受付オフで作られている
+- [ ] 公開設定・特別レート（ルールの追加/並べ替え/削除・プラン/部屋/食事/人数/曜日/期間）を編集 → プレビューが保存前に変わる → 保存で「保存しました」
+- [ ] 入力ミス（取引先名なし・予約受付オンで支払方法なし・選択肢1つの選択項目）は保存前に止まる
+- [ ] 限定URLの再発行 → 旧URLが使えなくなり、ログイン中の取引先もログアウトされる
+- [ ] 取引先を削除 → 一覧に戻り、消えている
+
+#### ログインID・API キー
+- [ ] ログインIDを発行（メールで送る）→ パスワード設定リンクが表示され、取引先にメールが届く
+- [ ] **メールの差出人名が施設名（山人-yamado- / 山人-oga-）・返信先が施設の予約用アドレス**
+- [ ] 設定リンク再発行・停止/再開・ロック解除・削除ができる
+- [ ] API キーを発行 → キーが1度だけ表示 → `GET /api/partner/v1/rates` で使える → 無効化で 401
+
+#### 予約
+- [ ] 予約一覧に取引先予約が出る（これから／すべて）
+- [ ] スタッフ取消（理由・全額返金のチェック）→ PMS に反映・Stripe 返金・取引先に取消メール（差出人名は施設名）
+- [ ] チェックイン日決済の請求失敗・当日の請求予定に「再請求／今すぐ請求」が出て、結果が表示される
+
+#### 取引先ページ（/p）の見た目
+- [ ] ログイン・パスワード設定・料金カレンダー・予約入力・予約一覧・お部屋・プランが Book の配色・ボタン・カードで表示される
+- [ ] 施設の差し色（yamado 緑 / oga 紺）が残っている。スマホ幅で横スクロールが出ない
 
 ## 取引先専用ページ（RMS から移設）（2026-09-26 追加・v0.40.0）
 
 **2026-09-26 ユーザー決定: 予約に関わる社外向け画面は Book、料金計算の元は RMS の理論値。**
 autumn-rms（v0.102.0 時点の HEAD）の取引先専用ページ一式を、同じ URL 構造で Book へ移した。
-取引先・アカウント・API キーの発行や設定、スタッフのプレビュー・再請求（`/partners/**`・`staff.ts`）は **RMS に残す**。
+取引先・アカウント・API キーの発行や設定、スタッフのプレビュー・再請求（`/partners/**`・`staff.ts`）は v0.40.0 時点では RMS に残した（**v0.41.0 で Book の `/admin/partners` へ移設済み**・上の節）。
 利用者はテストユーザーのみのため一括で移設（RMS 側のページはまだ残っている。切替手順は下記「未実施」）。
 
 ### 移したもの（すべて `apps/web/src` 配下）

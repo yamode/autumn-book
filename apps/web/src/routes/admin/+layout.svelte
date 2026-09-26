@@ -13,6 +13,7 @@
 			items: [
 				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
+				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
 				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
 				{ href: '/admin/options', label: 'オプション', icon: '🧺' },
