@@ -70,6 +70,7 @@ import type {
 	CancelFeePreview
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
+import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -2047,7 +2048,9 @@ export function mapRoomTypeRow(row: Record<string, unknown>): RoomType {
 		sizeM2: Number(row.area_sqm ?? 0),
 		totalRooms: 0, // 実在庫は booking.availability 側。表示未使用のため 0。
 		amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : [],
-		photos: mapPhotos(row.photos, String(row.name ?? ''))
+		photos: mapPhotos(row.photos, String(row.name ?? '')),
+		specs: normalizeSpecs(row.specs),
+		sections: normalizeSections(row.sections)
 	};
 }
 
@@ -2079,7 +2082,9 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		cancellationPolicy: policy,
 		roomTypeIds: [],
 		isPublished: true,
-		sortOrder: Number(row.sort_order ?? 0)
+		sortOrder: Number(row.sort_order ?? 0),
+		specs: normalizeSpecs(row.specs),
+		sections: normalizeSections(row.sections)
 	};
 }
 

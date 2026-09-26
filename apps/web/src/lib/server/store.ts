@@ -134,7 +134,8 @@ export const facilities: Facility[] = [
 	}
 ];
 
-export const roomTypes: RoomType[] = [
+// specs / sections（紹介の表とブロック）は実データ専用。デモは空配列で持つ。
+export const roomTypes: RoomType[] = ([
 	// ---- 西和賀（現行サイトの実客室名） ----
 	{
 		id: 'r-nw-wayo',
@@ -215,9 +216,9 @@ export const roomTypes: RoomType[] = [
 		amenities: ['最上級グレード', 'バルコニー', '海岸線一望'],
 		photos: [{ url: '/site-assets/oga/room_c.webp', caption: '綿津見', category: 'room' }]
 	}
-];
+] satisfies Omit<RoomType, 'specs' | 'sections'>[]).map((r) => ({ ...r, specs: [], sections: [] }));
 
-export const ratePlans: RatePlan[] = [
+export const ratePlans: RatePlan[] = ([
 	{
 		id: 'p-nw-standard',
 		facilityId: 'f-nishiwaga',
@@ -318,7 +319,7 @@ export const ratePlans: RatePlan[] = [
 		isPublished: true,
 		sortOrder: 2
 	}
-];
+] satisfies Omit<RatePlan, 'specs' | 'sections'>[]).map((p) => ({ ...p, specs: [], sections: [] }));
 
 export const faqs: Faq[] = [
 	{

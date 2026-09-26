@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
 	import PriceCalendar from '$lib/components/PriceCalendar.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import { formatPrice } from '$lib/format';
@@ -69,9 +70,15 @@
 	</div>
 
 	<!-- プラン本文（A-05 で作成した Markdown） -->
-	<section class="mt-10 max-w-3xl">
-		<MarkdownView source={data.plan.description} />
-	</section>
+	<!-- 改行は Markdown の breaks:true でそのまま改行になる -->
+	{#if data.plan.description}
+		<section class="mt-10 max-w-3xl">
+			<MarkdownView source={data.plan.description} />
+		</section>
+	{/if}
+
+	<!-- 仕様表・紹介ブロック（book.plan_contents.specs / sections） -->
+	<ContentBlocks specs={data.plan.specs} sections={data.plan.sections} specsTitle={m.plan_detail_specs()} />
 
 	<!-- 料金カレンダー -->
 	<section class="mt-10" id="cal">

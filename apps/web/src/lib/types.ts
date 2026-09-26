@@ -1,5 +1,7 @@
 // 共有型定義（クライアント・サーバー両方から import 可）
 import type { CancellationPolicy, CancellationRule, Quote } from '@autumn-book/core';
+import type { ContentSpec, ContentSection } from './content-blocks';
+export type { ContentSpec, ContentSection } from './content-blocks';
 
 // ---------------------------------------------------------------- i18n 型
 
@@ -110,6 +112,10 @@ export interface RoomType {
 	totalRooms: number;
 	amenities: string[];
 	photos: Photo[];
+	/** 仕様表（項目名・内容）。book.room_type_contents.specs。デモは空配列。 */
+	specs: ContentSpec[];
+	/** 紹介ブロック（見出し group ごとにまとめて表示）。book.room_type_contents.sections。デモは空配列。 */
+	sections: ContentSection[];
 }
 
 /** 事前決済の手段 */
@@ -151,6 +157,10 @@ export interface RatePlan {
 	roomTypeIds: string[];
 	isPublished: boolean;
 	sortOrder: number;
+	/** 仕様表（項目名・内容）。book.plan_contents.specs。デモは空配列。 */
+	specs: ContentSpec[];
+	/** 紹介ブロック。book.plan_contents.sections。デモは空配列。 */
+	sections: ContentSection[];
 }
 
 // ---------------------------------------------------------------- オプション（滞在アレンジ・book.option_items / booking_option_orders 対称）

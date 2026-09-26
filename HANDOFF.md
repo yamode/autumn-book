@@ -1,6 +1,32 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-09-07（予約確認メール自動送信・非会員キャンセル・予約管理の実データ化 v0.38.0）
+> **最終更新**: 2026-09-26（部屋・プラン紹介の管理画面を実データ化／仕様表・紹介ブロック表示 v0.39.0）
+
+## 部屋・プラン紹介の管理画面を実データ化（2026-09-26 追加・v0.39.0）
+
+**部屋タイプ・プランの紹介の正本は autumn-book の `book.room_type_contents` / `book.plan_contents`（2026-09-26 決定）。**
+autumn-rms の取引先専用ページも同じ行を読む。編集は autumn-book の `/admin/rooms`・`/admin/plans` で行う。
+
+- DB（autumn-shared `20260926093228`）で両テーブルと公開ビュー `book.v_room_types` / `book.v_plans` に
+  `specs jsonb`（[{label,value}]・value は改行あり）と `sections jsonb`（[{group,title,text,note?,photo?}]）を追加済み
+- 管理画面:
+  - `/admin/rooms`（一覧）→ `/admin/rooms/[id]`（**新設**・id = `pms.room_types.id`）
+  - `/admin/plans`（一覧・公開/下書きフィルタ）→ `/admin/plans/[id]`（id = `booking.rate_plans.id`）
+  - 編集項目: 見出し・説明（プランは Markdown）・公開・タグ（部屋=amenities／プラン=highlight_tags）・表示順（プラン）・
+    仕様表（行の追加/削除/並べ替え）・紹介ブロック（見出し/タイトル/本文/注記/写真1枚）・写真（アップロード/削除/並べ替え/キャプション/カテゴリ）
+  - 写真は選んだ時点で `book-photos` の `rooms/{facilityUuid}/…`・`plans/{facilityUuid}/…` に上がり URL だけ受け取る。**行への書き込みは「保存」時**
+  - 保存は `ADMIN_SUPABASE`（DATA_SOURCE=supabase かつ AUTH_MODE=supabase）のときだけ。それ以外は画面の形だけ見せ、保存ボタンは無効＋action も NOT_LIVE を返す（/admin/bath と同じ）
+  - 書き込みはログイン中スタッフの Supabase クライアントで直接 `update`（RLS `*_staff_all` = `private.has_facility_access`）。編集権限は admin と staff
+  - 部屋は紹介の行が無ければ保存時に作る（slug は PMS の code 由来）。プランは rms 同期が作った行の更新のみ
+  - 空要素の除去・型の正規化は純関数 `src/lib/content-blocks.ts`（normalizeSpecs / normalizeSections / normalizePhotos / normalizeContentDraft）。
+    テストランナーは無いので `node --experimental-strip-types` で直接叩いて確認する（ファイル冒頭に例）
+  - プラン詳細の「決済設定」「翻訳」はまだデモストア（メモリ）にしか繋がっていないため、**デモ環境でだけ表示**（本番では注記のみ）
+- 公開側: 部屋詳細・プラン詳細に仕様表（表）と紹介ブロック（group ごとの見出し＋写真つき）を表示（`ContentBlocks.svelte`）。
+  部屋の説明は改行を保って表示、写真が2枚以上ならギャラリー（PhotoGallery）を出す。プラン本文は従来どおり Markdown（breaks:true で改行保持）
+- ⚠ **`booking` スキーマは PostgREST の Exposed schemas に入っていない**（2026-09-26 時点。`pms`・`book` は公開済み）。
+  そのためプラン一覧・編集でプラン名（`booking.rate_plans.name / code / is_active / public_on_direct`）が読めず、
+  **代わりに slug（コード由来）を表示し、黄色の注記を出す**。解消するには ①ダッシュボードで `booking` を Exposed schemas に追加
+  （RLS `rate_plans_all` があるのでスタッフは自施設分だけ読める）か、②`book` に security_invoker のビュー/RPC を足す（autumn-shared の migration）
 
 ## 予約確認メール・非会員キャンセル・予約管理（2026-09-07 追加・v0.38.0）
 
@@ -773,6 +799,36 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
 - [ ] Vault に book_send_booking_mail_url / _secret がある。secret を一時的に変えると EF が 401 を返し outbox は processing→10 分で pending に戻る（ユーザー立会いのみ）
 - [ ] book.booking_access_tokens に token_hash だけがあり raw が無い。sent 済み outbox の payload に cancel_token が無い
 - [ ] book.admin_audit_logs に cancel_booking / resend_booking_mail / rotate_cancel_token が actor 付きで記録される
+
+## テストチェックリスト（部屋・プラン紹介 v0.39.0）
+
+※本番（DATA_SOURCE=supabase / AUTH_MODE=supabase）に管理者 or スタッフでログイン。**公開中の部屋を触るときは公開ページに即反映される**ので、確認は下書きのプラン（例: oga a003 スタンダード（セレナーデ））で行う
+
+### 管理画面
+- [ ] /admin/rooms に施設の部屋タイプが PMS の並び順で出て、公開中／下書き／未作成、写真・仕様・ブロックの件数が出る
+- [ ] 施設を切り替えると一覧が切り替わる（oga は8タイプ）
+- [ ] /admin/rooms/[id] で見出し・説明・特徴タグを変えて保存 → 再読込しても残る
+- [ ] 仕様表の行を追加・並べ替え・削除して保存できる。項目名・内容が両方空の行は保存時に消える。内容の改行が残る
+- [ ] 紹介ブロックを追加（直前と同じ見出しで追加される）・並べ替え・削除して保存できる。タイトル・本文・注記・写真が全部空のブロックは消える
+- [ ] ブロックの写真を「写真一覧から選ぶ」「新しくアップロード」の両方で設定でき、「写真を外す」で外せる
+- [ ] 写真を複数まとめてアップロード → 一覧に並ぶ。キャプション・カテゴリ変更・並べ替え・削除 → 保存で反映される
+- [ ] アップロードだけして保存せずに離れると、行には反映されない（Storage にファイルは残る）
+- [ ] 10MB 超・GIF 等はアップロード時にエラーが出る
+- [ ] 未保存の変更があると保存バーに「未保存の変更があります」が出て、保存後「保存しました。」に変わる
+- [ ] /admin/plans に公開中／下書きのフィルタがあり、件数が合う
+- [ ] /admin/plans/[id] でタグ・表示順・公開を変えて保存できる（a003 を公開→下書きに戻す）
+- [ ] プラン名が読めない環境では黄色の注記と slug 表示になり、画面は落ちない（booking スキーマ未公開の間）
+- [ ] 他施設のみ権限のスタッフで保存すると「権限がありません」系のエラーになる（黙って成功しない）
+- [ ] ローカル（AUTH_MODE=demo）では「この環境では保存できません」が出て保存ボタンが押せない。プラン詳細の決済設定・翻訳はデモ環境でだけ表示される
+
+### 公開側
+- [ ] oga の部屋詳細（例: /yamado/oga/rooms/01）に「客室の詳細」の表が出て、ベッド欄の改行が保たれる
+- [ ] 紹介ブロックが見出し（浴室 等）ごとにまとまり、写真が左右交互に並ぶ（スマホでは縦積み）
+- [ ] 写真が2枚以上ある部屋は「写真」ギャラリーでカテゴリ絞り込みができる
+- [ ] 説明文の改行がそのまま表示される
+- [ ] プラン詳細に仕様表・紹介ブロックが出る（入っているプランのみ）。空のプランでは何も出ない
+- [ ] en / zh-TW でも見出し（Room details / 客房資訊 等）が切り替わる
+- [ ] autumn-rms の取引先専用ページに管理画面で編集した内容が反映される（rms 側の実装後）
 
 ## テストチェックリスト（アプリ運用管理画面）
 

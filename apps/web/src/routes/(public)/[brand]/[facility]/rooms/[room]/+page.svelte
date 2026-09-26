@@ -1,5 +1,7 @@
 <script lang="ts">
 	import PlanCard from '$lib/components/PlanCard.svelte';
+	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
+	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -15,7 +17,9 @@
 		<a href={base} class="hover:underline">{data.facility.name}</a> / {m.room_detail_breadcrumb()} / {data.room.name}
 	</nav>
 
-	<img src={data.room.photos[0]?.url} alt={data.room.name} class="h-80 w-full rounded-2xl object-cover" />
+	{#if data.room.photos[0]}
+		<img src={data.room.photos[0].url} alt={data.room.photos[0].caption || data.room.name} class="h-80 w-full rounded-2xl object-cover" />
+	{/if}
 
 	<div class="mt-6 flex flex-wrap items-start justify-between gap-4">
 		<div>
@@ -30,7 +34,19 @@
 		</div>
 	</div>
 
-	<p class="mt-4 text-sm leading-relaxed text-stone-700">{data.room.description}</p>
+	{#if data.room.description}
+		<p class="mt-4 whitespace-pre-line text-sm leading-relaxed text-stone-700">{data.room.description}</p>
+	{/if}
+
+	<ContentBlocks specs={data.room.specs} sections={data.room.sections} specsTitle={m.room_detail_specs()} />
+
+	<!-- 写真が2枚以上あれば全部見られるように（カテゴリで絞り込めるギャラリー） -->
+	{#if data.room.photos.length > 1}
+		<section class="mt-10">
+			<h2 class="font-display mb-3 text-xl text-brand-900">{m.room_detail_photos()}</h2>
+			<PhotoGallery photos={data.room.photos} />
+		</section>
+	{/if}
 
 	<section class="mt-10">
 		<h2 class="font-display mb-4 text-xl text-brand-900">{m.room_detail_plans()}</h2>

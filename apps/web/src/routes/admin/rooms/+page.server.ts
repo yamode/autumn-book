@@ -1,24 +1,21 @@
-import { fail } from '@sveltejs/kit';
-import { roomTypes } from '$lib/server/store';
-import type { Actions, PageServerLoad } from './$types';
+// 管理画面: 部屋タイプ紹介の一覧（book.room_type_contents × pms.room_types）。
+// 編集は /admin/rooms/[id]。部屋タイプの新設・定員・室数は PMS 側で行う。
+import { createSupabaseServerClient } from '$lib/server/auth';
+import { sbListRoomContentsAdmin, type AdminRoomContent } from '$lib/server/content-admin';
+import { LIVE, NOT_LIVE, demoRoomContents, facilityUuidOf, messageOf } from '$lib/server/admin-content-page';
+import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ parent }) => {
-	const { currentFacility } = await parent();
-	return { rooms: roomTypes.filter((r) => r.facilityId === currentFacility.id) };
-};
-
-export const actions: Actions = {
-	save: async ({ request, locals }) => {
-		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
-		const form = await request.formData();
-		const room = roomTypes.find((r) => r.id === String(form.get('roomId')));
-		if (!room) return fail(404, {});
-		room.headline = String(form.get('headline') ?? room.headline);
-		room.description = String(form.get('description') ?? room.description);
-		room.amenities = String(form.get('amenities') ?? '')
-			.split(/[、,]/)
-			.map((s) => s.trim())
-			.filter(Boolean);
-		return { saved: room.id };
+export const load: PageServerLoad = async (event) => {
+	const { currentFacility } = await event.parent();
+	if (!LIVE) {
+		return { rooms: demoRoomContents(currentFacility.id), live: false, loadError: NOT_LIVE };
 	}
+	let rooms: AdminRoomContent[] = [];
+	let loadError: string | null = null;
+	try {
+		rooms = await sbListRoomContentsAdmin(createSupabaseServerClient(event), facilityUuidOf(currentFacility.id));
+	} catch (e) {
+		loadError = messageOf(e);
+	}
+	return { rooms, live: true, loadError };
 };
