@@ -5,7 +5,7 @@
 	import { dbg } from '$lib/debug';
 	import { gaEvent } from '$lib/analytics';
 	import { facilitySiteUrl } from '$lib/facility-site';
-	import { areaLabel, guestsLabel, searchQuery } from '$lib/components/guests';
+	import { areaLabel, searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -14,7 +14,7 @@
 	$effect(() => {
 		if (!data.params.checkin) return;
 		gaEvent('search', {
-			search_term: `${data.params.checkin}/${data.params.nights}n/${data.params.adults}a/${data.params.children}c`
+			search_term: `${data.params.checkin}/${data.params.nights}n/${data.params.adults}a`
 		});
 	});
 
@@ -34,16 +34,12 @@
 		document.getElementById('search-map')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 	}
 
-	// 料金表示は全画面で「1名1泊・税込」を主に統一する（1名 = 大人1名。子ども分は合計にだけ含める）。
-	// minPerPerson は「大人1名あたりの全泊合計」なので泊数で割って 1名1泊 に換算する（参考料金は元から1名1泊）。
+	// 料金表示は全画面で「1名1泊・税込」を主に統一する。
+	// minTotal は1室の全泊合計なので人数×泊数で割って 1名1泊 に換算する（参考料金は元から1名1泊）。
 	function perPersonNight(r: (typeof data.results)[0]): number {
 		if (r.reference) return r.minPerPerson!;
-		return Math.round(r.minPerPerson! / Math.max(1, data.params.nights));
+		return Math.round(r.minTotal! / Math.max(1, data.params.adults * data.params.nights));
 	}
-
-	let guests = $derived(guestsLabel(data.params.adults, data.params.children));
-	// 子ども連れの検索で、実データ（supabase）は子供料金未対応 → 大人のみの料金である旨を出す
-	let childrenUnsupported = $derived(data.params.children > 0 && !data.childrenSupported);
 
 	let mapItems = $derived(
 		data.results.map((r) => ({
@@ -92,14 +88,8 @@
 		</p>
 	{:else}
 		<p class="mb-4 text-sm text-stone-500">
-			{m.search_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), guests })}
-			{#if data.params.children > 0 && data.childrenSupported}
-				<span class="block text-xs">{m.children_price_note()}</span>
-			{/if}
+			{m.search_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}
 		</p>
-	{/if}
-	{#if childrenUnsupported}
-		<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.children_unsupported_note()}</p>
 	{/if}
 
 	<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -156,17 +146,13 @@
 									<div>
 										<p class="text-xl font-bold text-brand-900">
 											{formatPrice(perPersonNight(r))}〜<span class="text-xs font-normal text-stone-500">
-												{r.reference
-													? m.search_price_per_person_ref()
-													: data.params.children > 0
-														? m.price_unit_adult_night()
-														: m.price_unit_pp_night()}
+												{r.reference ? m.search_price_per_person_ref() : m.price_unit_pp_night()}
 											</span>
 										</p>
 										{#if !r.reference}
-											<!-- 従: 1室の合計（人数×泊数。子ども分を含む） -->
+											<!-- 従: 1室の合計（人数×泊数） -->
 											<p class="text-xs text-stone-500">
-												{m.search_price_total({ guests, nights: String(data.params.nights), total: formatPrice(r.minTotal!) })}
+												{m.search_price_total({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.minTotal!) })}
 											</p>
 										{/if}
 									</div>

@@ -2002,13 +2002,18 @@ function safeAccess(raw: unknown): AccessInfo {
 	};
 }
 
-/** payment_method（onsite / prepayment / deposit）→ PaymentConfig。実データに事前決済割引は無いため rate=0。 */
-function mapPaymentMethod(pm: string | null | undefined): PaymentConfig {
+/**
+ * payment_method（onsite / prepayment / deposit）＋ 予約時決済の割引率 → PaymentConfig。
+ * 割引率は book.plan_contents.prepay_discount_rate（Book の管理画面で設定・autumn-shared 20260926151458）。
+ * 実データの事前決済はカードのみ（PayPay の事前決済は無い）。
+ */
+function mapPaymentMethod(pm: string | null | undefined, discountRate?: unknown): PaymentConfig {
+	const rate = Math.min(Math.max(Number(discountRate) || 0, 0), 0.2);
 	switch (pm) {
 		case 'prepayment':
-			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: 0 };
+			return { onsite: false, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate };
 		case 'deposit':
-			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: 0 };
+			return { onsite: true, prepay: true, prepayMethods: ['card'], prepayDiscountRate: rate };
 		case 'onsite':
 		default:
 			return { onsite: true, prepay: false, prepayMethods: [], prepayDiscountRate: 0 };
@@ -2083,7 +2088,7 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		headline: headline,
 		description: String(row.description ?? ''),
 		mealPlan: String(row.meal_plan ?? ''),
-		payment: mapPaymentMethod(row.payment_method as string | null),
+		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate),
 		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
 		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
 		photos: mapPhotos(row.photos, String(row.name ?? '')),

@@ -9,7 +9,7 @@ import {
 	PLAN_PAYMENT_METHODS,
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
-	sbSetPlanPaymentMethod,
+	sbSetPlanPayment,
 	type PlanPaymentMethod
 } from '$lib/server/content-admin';
 import {
@@ -95,12 +95,18 @@ export const actions: Actions = {
 		const denied = denyIfNotStaff(event);
 		if (denied) return denied;
 		if (!LIVE) return fail(503, { paymentError: NOT_LIVE });
-		const method = String((await event.request.formData()).get('method') ?? '');
+		const form = await event.request.formData();
+		const method = String(form.get('method') ?? '');
 		if (!(PLAN_PAYMENT_METHODS as readonly string[]).includes(method)) {
 			return fail(400, { paymentError: '支払方法を選んでください。' });
 		}
+		// 予約時決済の割引（%・0〜20）。現地払いのみなら 0
+		const pct = method === 'onsite' ? 0 : Math.round(Number(form.get('discount') ?? 0));
+		if (!Number.isFinite(pct) || pct < 0 || pct > 20) {
+			return fail(400, { paymentError: '予約時決済の割引は 0〜20% で選んでください。' });
+		}
 		try {
-			await sbSetPlanPaymentMethod(createSupabaseServerClient(event), event.params.id, method as PlanPaymentMethod);
+			await sbSetPlanPayment(createSupabaseServerClient(event), event.params.id, method as PlanPaymentMethod, pct / 100);
 			return { paymentSaved: true };
 		} catch (e) {
 			return fail(400, { paymentError: messageOf(e) });

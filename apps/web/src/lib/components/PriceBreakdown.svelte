@@ -11,15 +11,8 @@
 		{#each quote.lines as line}
 			<div class="flex justify-between text-stone-600">
 				<span>{m.price_breakdown_line({ date: formatDate(line.date), adults: String(line.adults), unit: formatPrice(line.unitPrice) })}</span>
-				<span>{formatPrice(line.unitPrice * line.adults)}</span>
+				<span>{formatPrice(line.subtotal)}</span>
 			</div>
-			<!-- 子供料金（デモのみ。実データは子ども未対応で明細に載らない） -->
-			{#if line.children && line.childUnitPrice !== undefined}
-				<div class="flex justify-between text-stone-600">
-					<span>{m.price_breakdown_child_line({ date: formatDate(line.date), children: String(line.children), unit: formatPrice(line.childUnitPrice) })}</span>
-					<span>{formatPrice(line.childUnitPrice * line.children)}</span>
-				</div>
-			{/if}
 		{/each}
 	{/if}
 	<div class="flex justify-between border-t border-stone-200 pt-1.5 font-medium">

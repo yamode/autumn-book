@@ -8,7 +8,7 @@
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
-	import { directChargeOf, type PayOption } from '$lib/direct-payment';
+	import { directChargeOf, prepayDiscountOf, type PayOption } from '$lib/direct-payment';
 	import { formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -25,32 +25,30 @@
 		gaEvent('begin_checkout', { currency: 'JPY' });
 	});
 
-	// 支払い方法の選択肢（サーバがプランの決済設定とオンライン決済の可否から決めたもの）
-	// 現地払いは「現地PayPay決済」「現地カード決済」「現地現金決済」に分けて出す（宿は店頭 PayPay へ誘導したいので先頭）。
-	// サーバへは payment=onsite_paypay 等で送り、予約は現地払いのまま備考で宿へ申し送る
-	type PayChoice = PayOption | 'onsite_paypay' | 'onsite_card' | 'onsite_cash';
-	const isOnsite = (v: PayChoice) => v === 'onsite' || v.startsWith('onsite_');
-	const payLabel = (v: PayChoice) =>
-		v === 'card' ? m.pay_card()
-		: v === 'paypay' ? m.pay_paypay()
-		: v === 'onsite_paypay' ? m.pay_onsite_paypay()
-		: v === 'onsite_card' ? m.pay_onsite_card()
-		: v === 'onsite_cash' ? m.pay_onsite_cash()
-		: m.pay_onsite();
-	let payOptions = $derived.by(() => {
-		if (data.expired) return [];
-		const rate = Math.round(data.plan.payment.prepayDiscountRate * 100);
-		const choices: PayChoice[] = data.payOptions.flatMap((v): PayChoice[] => (v === 'onsite' ? ['onsite_paypay', 'onsite_card', 'onsite_cash'] : [v]));
-		return choices.map((v) => ({ value: v, label: payLabel(v), discount: isOnsite(v) ? 0 : rate }));
-	});
-	// 既定は先頭（事前決済があればそれ）
-	let selectedPay = $state<PayChoice | null>(null);
-	let payValue = $derived(selectedPay ?? payOptions[0]?.value ?? 'onsite');
-	let isPrepay = $derived(!isOnsite(payValue));
+	// 支払い方法（サーバがプランの決済設定とオンライン決済の可否から決めたもの）。
+	// 「オンライン決済（ご予約時）」と「現地決済（チェックアウト時）」の2グループに分けて見せる。
+	// 現地決済を選んだら、その中で PayPay / クレジットカード / 現金 を選ぶ（宿は店頭 PayPay へ誘導したいので PayPay を先頭・既定）。
+	// サーバへは payment=card / paypay / onsite_paypay / onsite_card / onsite_cash で送る。現地払いは予約のまま備考で宿へ申し送る
+	type OnsiteMethod = 'paypay' | 'card' | 'cash';
+	type PayChoice = PayOption | `onsite_${OnsiteMethod}`;
+	const ONSITE_METHODS: OnsiteMethod[] = ['paypay', 'card', 'cash'];
+	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
+	let onlineOptions = $derived(data.expired ? [] : data.payOptions.filter((v): v is 'card' | 'paypay' => v !== 'onsite'));
+	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
+	// 予約時決済の割引率（オンライン決済を選んだときだけ効く）
+	let prepayRate = $derived(data.expired ? 0 : data.plan.payment.prepayDiscountRate);
+	let selectedGroup = $state<'online' | 'onsite' | null>(null);
+	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : 'onsite'));
+	let selectedOnline = $state<'card' | 'paypay' | null>(null);
+	let onsiteMethod = $state<OnsiteMethod>('paypay');
+	let payValue = $derived<PayChoice>(
+		group === 'online' ? (selectedOnline ?? onlineOptions[0] ?? 'card') : `onsite_${onsiteMethod}`
+	);
+	let isPrepay = $derived(group === 'online');
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
 	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
-	let discountRate = $derived(!data.expired && isPrepay && !data.inline ? data.plan.payment.prepayDiscountRate : 0);
-	let discountedTotal = $derived(data.expired ? 0 : Math.round(data.hold.quote.total * (1 - discountRate)));
+	let discountRate = $derived(isPrepay ? prepayRate : 0);
+	let discountedTotal = $derived(data.expired ? 0 : data.hold.quote.total - prepayDiscountOf(data.hold.quote.total, discountRate));
 
 	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
 	// svelte-ignore state_referenced_locally
@@ -58,15 +56,20 @@
 	let pointsApplied = $derived(
 		data.expired || !data.member
 			? 0
-			: Math.min(Math.max(0, Math.floor(Number(pointsInput) || 0)), data.member.balance, data.hold.quote.total)
+			: Math.min(
+					Math.max(0, Math.floor(Number(pointsInput) || 0)),
+					data.member.balance,
+					// 予約時決済の割引があるときは割引後の宿泊料金まで（DB と同じ）
+					data.hold.quote.total - prepayDiscountOf(data.hold.quote.total, discountRate)
+				)
 	);
 	let charge = $derived(
-		data.expired ? { lodging: 0, bathTax: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax })
+		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscountRate: discountRate })
 	);
 
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
 	let summaryTotal = $derived(
-		data.expired ? 0 : inlineCard && data.bathTax > 0 ? charge.charge : data.hold.quote.total - pointsApplied
+		data.expired ? 0 : inlineCard ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.hold.quote.total - pointsApplied
 	);
 
 	let steps = $derived(isPrepay && !data.inline
@@ -188,7 +191,7 @@
 			<p class="font-medium text-brand-900">{data.facility.name}</p>
 			<p class="text-xs text-stone-500">{data.room.name} ／ {data.plan.name}</p>
 			<p class="mt-0.5 text-xs text-stone-600">
-				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults, data.hold.children) })}
+				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults) })}
 			</p>
 			<div class="mt-2 flex items-baseline justify-between border-t border-stone-100 pt-2">
 				<span class="text-stone-600">{inlineCard && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
@@ -308,36 +311,71 @@
 						</div>
 					{/if}
 
-					<!-- お支払い方法 -->
-					<fieldset class="rounded-lg border border-stone-200 p-3 text-sm" disabled={paying}>
+					<!-- お支払い方法: オンライン決済 / 現地決済 の2グループ -->
+					<fieldset class="space-y-2 rounded-lg border border-stone-200 p-3 text-sm" disabled={paying}>
 						<legend class="px-1 font-medium text-brand-900">{m.pay_choose()}</legend>
-						<div class="space-y-2">
-							{#each payOptions as opt}
-								<label class="flex items-center gap-2 rounded-md border px-3 py-2.5 transition {payValue === opt.value ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
-									<input type="radio" name="payment" value={opt.value} checked={payValue === opt.value} onchange={() => (selectedPay = opt.value)} class="h-4 w-4" />
-									{#if opt.value === 'paypay' || opt.value === 'onsite_paypay'}
-										<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>
-									{/if}
-									<span class="flex-1">{opt.label}</span>
-									{#if opt.discount > 0 && !data.inline}
-										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{opt.discount}%OFF</span>
+						<input type="hidden" name="payment" value={payValue} />
+
+						{#if onlineOptions.length > 0}
+							<div class="rounded-md border transition {group === 'online' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
+								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
+									<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="h-4 w-4" />
+									<span class="flex-1 font-medium">{m.pay_group_online()}</span>
+									{#if prepayRate > 0}
+										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(prepayRate * 100)) })}</span>
 									{/if}
 								</label>
-							{/each}
-						</div>
-						{#if payValue === 'onsite_paypay'}
-							<p class="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{m.pay_onsite_paypay_note()}</p>
+								{#if group === 'online'}
+									<div class="space-y-1.5 border-t border-amber-200/60 px-3 py-2.5 pl-9">
+										{#if onlineOptions.length > 1}
+											{#each onlineOptions as v (v)}
+												<label class="flex cursor-pointer items-center gap-2">
+													<input type="radio" name="payOnline" value={v} checked={payValue === v} onchange={() => (selectedOnline = v)} class="h-4 w-4" />
+													{#if v === 'paypay'}<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>{/if}
+													<span>{v === 'card' ? m.pay_card() : m.pay_paypay()}</span>
+												</label>
+											{/each}
+										{:else}
+											<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
+										{/if}
+										{#if prepayRate > 0}
+											<p class="rounded bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+												{m.pay_discount_line({ rate: String(Math.round(prepayRate * 100)) })}: <s class="text-stone-400">{formatPrice(data.hold.quote.total)}</s> → <strong>{formatPrice(discountedTotal)}</strong>
+											</p>
+										{/if}
+										{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
+									</div>
+								{/if}
+							</div>
 						{/if}
+
+						{#if hasOnsite}
+							<div class="rounded-md border transition {group === 'onsite' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
+								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
+									<input type="radio" name="payGroup" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="h-4 w-4" />
+									<span class="flex-1 font-medium">{m.pay_group_onsite()}</span>
+								</label>
+								{#if group === 'onsite'}
+									<div class="border-t border-amber-200/60 px-3 py-2.5 pl-9">
+										<p class="mb-1.5 text-xs text-stone-500">{m.pay_onsite_how()}</p>
+										<div class="flex flex-wrap gap-2" role="radiogroup" aria-label={m.pay_onsite_how()}>
+											{#each ONSITE_METHODS as v (v)}
+												<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
+													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (onsiteMethod = v)} class="h-3.5 w-3.5" />
+													{#if v === 'paypay'}<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[10px] font-bold text-white">PayPay</span>{:else}{onsiteMethodLabel(v)}{/if}
+												</label>
+											{/each}
+										</div>
+										{#if onsiteMethod === 'paypay'}
+											<p class="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{m.pay_onsite_paypay_note()}</p>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						{/if}
+
 						{#if data.payFallback}
-							<p class="mt-2 text-xs text-stone-500">{m.pay_fallback_note()}</p>
-						{/if}
-						{#if isPrepay && !data.inline}
-							<p class="mt-2 text-xs text-stone-500">{m.pay_prepay_note()}</p>
-							{#if discountRate > 0}
-								<p class="mt-1 rounded bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-									{m.pay_discount_line({ rate: String(Math.round(discountRate * 100)) })}: <s class="text-stone-400">{formatPrice(data.hold.quote.total)}</s> → <strong>{formatPrice(discountedTotal)}</strong>
-								</p>
-							{/if}
+							<p class="text-xs text-stone-500">{m.pay_fallback_note()}</p>
 						{/if}
 					</fieldset>
 
@@ -396,23 +434,29 @@
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_checkin()}</dt><dd>{formatDateLong(data.hold.checkin)}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults, data.hold.children) })}</dd></div>
+					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
 					<PriceBreakdown quote={{ ...data.hold.quote, pointsUsed: pointsApplied, payable: data.hold.quote.total - pointsApplied }} />
-					{#if data.bathTax > 0}
-						{#if inlineCard}
-							<div class="mt-1.5 flex justify-between text-sm text-stone-600">
-								<span>{m.pay_bath_tax_detail({ people: String(data.hold.adults), nights: String(data.hold.nights) })}</span>
-								<span class="tabular-nums">{formatPrice(charge.bathTax)}</span>
-							</div>
-							<div class="mt-1.5 flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold text-brand-900">
-								<span>{m.pay_total_due()}</span>
-								<span class="tabular-nums">{formatPrice(charge.charge)}</span>
-							</div>
-						{:else}
-							<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
-						{/if}
+					{#if inlineCard && charge.discount > 0}
+						<div class="mt-1.5 flex justify-between text-sm text-red-600">
+							<span>{m.pay_discount_line({ rate: String(Math.round(discountRate * 100)) })}</span>
+							<span class="tabular-nums">-{formatPrice(charge.discount)}</span>
+						</div>
+					{/if}
+					{#if inlineCard && data.bathTax > 0}
+						<div class="mt-1.5 flex justify-between text-sm text-stone-600">
+							<span>{m.pay_bath_tax_detail({ people: String(data.hold.adults), nights: String(data.hold.nights) })}</span>
+							<span class="tabular-nums">{formatPrice(charge.bathTax)}</span>
+						</div>
+					{/if}
+					{#if inlineCard && (data.bathTax > 0 || charge.discount > 0)}
+						<div class="mt-1.5 flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold text-brand-900">
+							<span>{m.pay_total_due()}</span>
+							<span class="tabular-nums">{formatPrice(charge.charge)}</span>
+						</div>
+					{:else if data.bathTax > 0 && !inlineCard}
+						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
 					{/if}
 				</div>
 				<p class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">

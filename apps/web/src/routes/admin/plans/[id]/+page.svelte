@@ -7,6 +7,10 @@
 	let { data, form } = $props();
 	let c = $derived(data.content);
 
+	// 支払方法の選択（保存前の画面上の値）。予約時決済の割引は事前決済があるときだけ選べる
+	// svelte-ignore state_referenced_locally
+	let methodInput = $state<string | null>(data.content.paymentMethod);
+	const DISCOUNT_STEPS = [0, 3, 5, 7, 10, 15, 20];
 	const PAYMENT_OPTIONS = [
 		{ value: 'onsite', label: '現地払いのみ', hint: 'チェックアウト時に現地で精算' },
 		{ value: 'prepayment', label: '事前決済のみ', hint: '予約時にオンラインでカード決済' },
@@ -82,7 +86,7 @@
 		<div class="mt-3 grid gap-2 sm:grid-cols-3">
 			{#each PAYMENT_OPTIONS as o}
 				<label class="flex cursor-pointer gap-2 rounded-lg border p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50 border-stone-200">
-					<input type="radio" name="method" value={o.value} checked={c.paymentMethod === o.value} class="mt-0.5 h-4 w-4" />
+					<input type="radio" name="method" value={o.value} bind:group={methodInput} class="mt-0.5 h-4 w-4" />
 					<span>
 						<span class="font-medium text-stone-800">{o.label}</span>
 						<span class="mt-0.5 block text-xs text-stone-500">{o.hint}</span>
@@ -90,8 +94,19 @@
 				</label>
 			{/each}
 		</div>
+		{#if methodInput === 'prepayment' || methodInput === 'deposit'}
+			<label class="mt-3 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+				予約時決済の割引
+				<select name="discount" class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+					{#each DISCOUNT_STEPS as d (d)}
+						<option value={d} selected={Math.round(c.prepayDiscountRate * 100) === d}>{d === 0 ? '割引なし' : `${d}% OFF`}</option>
+					{/each}
+				</select>
+				<span class="text-xs text-stone-500">オンラインのカード決済を選んだお客様だけ、請求額から割り引きます（予約金額・キャンセル料の基準は割引前のまま）。</span>
+			</label>
+		{/if}
 		<p class="mt-3 text-xs text-stone-400">
-			現地払いでは、予約確認画面でお客様が「現地PayPay決済」「現地カード決済」「現地現金決済」から選びます（PMS の備考に申し送り）。
+			現地払いでは、予約確認画面でお客様が PayPay・クレジットカード・現金から選びます（PMS の備考に申し送り）。
 			事前決済はオンラインのカード決済です。オンライン決済が使えない状態のときは、事前決済のみのプランも現地払いで受け付けます。
 		</p>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">支払方法を保存</button>

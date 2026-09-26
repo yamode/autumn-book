@@ -4,7 +4,6 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
-import { parseChildren } from '$lib/components/guests';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -12,8 +11,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
 	const tag = url.searchParams.get('tag') || undefined;
-	// 子どもの人数（未指定は 0）。実データ（supabase）の plan_offers は子ども未対応のため大人のみで料金を出す
-	const children = parseChildren(url.searchParams.get('children'));
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
@@ -46,13 +43,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			return { plan, total: best.total, perPerson: best.perPerson, remaining: best.remaining };
 		});
 
-		return {
-			facility,
-			items,
-			allTags,
-			childrenSupported: false,
-			params: { checkin: checkin ?? '', nights, adults, children, tag: tag ?? '' }
-		};
+		return { facility, items, allTags, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
 	}
 
 	const locale = getLocale();
@@ -69,21 +60,15 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		let remaining = 0;
 		for (const rtId of plan.roomTypeIds) {
 			const rt = roomTypes.find((r) => r.id === rtId)!;
-			if (rt.capacity < adults + children) continue;
+			if (rt.capacity < adults) continue;
 			const rem = Math.min(...eachNight(checkin, nights).map((d) => remainingRooms(rtId, d)));
 			if (rem <= 0) continue;
 			remaining = Math.max(remaining, rem);
-			const q = quoteFor(plan.id, rtId, checkin, nights, adults, children);
+			const q = quoteFor(plan.id, rtId, checkin, nights, adults, 0);
 			if (!best || q.total < best.total) best = { total: q.total, perPerson: q.perPerson };
 		}
 		return { plan, total: best?.total ?? null, perPerson: best?.perPerson ?? null, remaining: best ? remaining : 0 };
 	});
 
-	return {
-		facility,
-		items,
-		allTags,
-		childrenSupported: true,
-		params: { checkin: checkin ?? '', nights, adults, children, tag: tag ?? '' }
-	};
+	return { facility, items, allTags, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
 };

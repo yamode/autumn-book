@@ -121,6 +121,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			isActive: true,
 			publicOnDirect: true,
 			paymentMethod: null,
+			prepayDiscountRate: p.payment.prepayDiscountRate,
 			hasContent: true,
 			slug: p.slug,
 			headline: p.headline,

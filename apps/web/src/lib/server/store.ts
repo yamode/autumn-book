@@ -677,12 +677,6 @@ export function nightlyRate(planId: string, date: string): number {
 	return Math.round((plan.basePrice * weekend * seasonal) / 100) * 100;
 }
 
-/** デモの子ども1名単価: 大人単価の 70%（小学生料金の一般的な目安）。実データは子供料金未対応（設計書 §14-11） */
-export const CHILD_RATE_RATIO = 0.7;
-export function childNightlyRate(planId: string, date: string): number {
-	return Math.round((nightlyRate(planId, date) * CHILD_RATE_RATIO) / 100) * 100;
-}
-
 /** RPC: book.search_availability 相当 */
 export function searchAvailability(params: SearchParams): FacilityAvailability[] {
 	return facilities
@@ -693,8 +687,7 @@ export function searchAvailability(params: SearchParams): FacilityAvailability[]
 				const ref = Math.min(...plans.map((p) => p.basePrice));
 				return { facility, minTotal: ref * params.adults * params.nights, minPerPerson: ref, remaining: 9, reference: true };
 			}
-			// best は1室の最安合計（子ども分を含む）。1名単価は大人1名あたり（quote.perPerson）で持つ
-			let best: { total: number; perPerson: number } | null = null;
+			let best: number | null = null;
 			let remaining = 0;
 			for (const plan of plans) {
 				for (const rtId of plan.roomTypeIds) {
@@ -703,14 +696,20 @@ export function searchAvailability(params: SearchParams): FacilityAvailability[]
 					const rem = Math.min(...eachNight(params.checkin, params.nights).map((d) => remainingRooms(rtId, d)));
 					if (rem <= 0) continue;
 					remaining = Math.max(remaining, rem);
-					const q = quoteFor(plan.id, rtId, params.checkin, params.nights, params.adults, params.children);
-					if (best === null || q.total < best.total) best = { total: q.total, perPerson: q.perPerson };
+					const q = calcQuote({
+						checkin: params.checkin,
+						nights: params.nights,
+						adults: params.adults,
+						children: params.children,
+						nightlyRate: (d) => nightlyRate(plan.id, d)
+					});
+					if (best === null || q.total < best) best = q.total;
 				}
 			}
 			return {
 				facility,
-				minTotal: best?.total ?? null,
-				minPerPerson: best?.perPerson ?? null,
+				minTotal: best,
+				minPerPerson: best === null ? null : Math.round(best / params.adults),
 				remaining,
 				reference: false
 			};
@@ -736,15 +735,7 @@ export function getPlanCalendar(planId: string, yearMonth: string): CalendarDay[
 
 /** RPC: book.quote 相当 */
 export function quoteFor(planId: string, roomTypeId: string, checkin: string, nights: number, adults: number, children: number, pointsUsed = 0): Quote {
-	return calcQuote({
-		checkin,
-		nights,
-		adults,
-		children,
-		pointsUsed,
-		nightlyRate: (d) => nightlyRate(planId, d),
-		childNightlyRate: (d) => childNightlyRate(planId, d)
-	});
+	return calcQuote({ checkin, nights, adults, children, pointsUsed, nightlyRate: (d) => nightlyRate(planId, d) });
 }
 
 /** RPC: book.create_hold 相当（version 楽観ロックの代わりにメモリ減算） */
@@ -2111,7 +2102,7 @@ seedThread('fb-travel', 'm-demo', '男鹿の夕陽スポットを教えてくだ
 // 4. qa: 子ども連れ（うみかぜ）
 seedThread('fb-qa', 'm-umikaze', '子ども連れでも大丈夫ですか？', {}, [
 	['m-umikaze', '小さい子ども（3歳）を連れての宿泊を考えています。大丈夫でしょうか？', 3],
-	['staff-demo', 'お子様連れのご宿泊も承っております。添い寝のご対応、お子様用の浴衣、お食事のご相談（取り分け・アレルギー対応等）も可能です。ご予約時にお気軽にご相談ください。', 2]
+	['staff-demo', 'ご質問ありがとうございます。当館は大人の方にゆっくりお過ごしいただく宿として、基本的に大人のみのご宿泊とさせていただいております。ご事情がある場合は、お電話でご相談ください。', 2]
 ]);
 
 // 5. announce: 受付終了の告知（locked）

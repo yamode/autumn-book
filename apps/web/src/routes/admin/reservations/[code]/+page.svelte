@@ -244,7 +244,7 @@
 					<dt class="text-stone-500">状態</dt>
 					<dd>{p.status === 'paid' ? '支払済み' : p.status === 'late' ? '期限後の支払（予約にせず返金）' : '支払待ち'}{#if p.refund_status === 'full'}・全額返金済み{:else if p.refund_status === 'partial'}・一部返金済み{:else if p.refund_status === 'failed'}<span class="text-red-700">・返金失敗</span>{/if}</dd>
 					<dt class="text-stone-500">支払額</dt>
-					<dd>{formatYen(p.amount)}（宿泊料金 {formatYen(p.lodging_amount)}{p.bath_tax_amount > 0 ? `・入湯税 ${formatYen(p.bath_tax_amount)}` : ''}{p.points_used > 0 ? `・ポイント ${p.points_used.toLocaleString()}pt 利用後` : ''}）</dd>
+					<dd>{formatYen(p.amount)}（宿泊料金 {formatYen(p.lodging_amount)}{(p.prepay_discount_amount ?? 0) > 0 ? `・予約時決済割引 −${formatYen(p.prepay_discount_amount ?? 0)}` : ''}{p.bath_tax_amount > 0 ? `・入湯税 ${formatYen(p.bath_tax_amount)}` : ''}{p.points_used > 0 ? `・ポイント ${p.points_used.toLocaleString()}pt 利用後` : ''}）</dd>
 					{#if p.refunded_amount > 0}<dt class="text-stone-500">返金済み</dt><dd>{formatYen(p.refunded_amount)}</dd>{/if}
 					{#if p.paid_at}<dt class="text-stone-500">支払日時</dt><dd>{new Date(p.paid_at).toLocaleString('ja-JP')}</dd>{/if}
 					{#if p.payment_intent_id}<dt class="text-stone-500">Stripe</dt><dd class="break-all font-mono text-xs">{p.payment_intent_id}</dd>{/if}

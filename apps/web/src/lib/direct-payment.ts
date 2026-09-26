@@ -17,16 +17,25 @@ export const ONSITE_METHOD_NOTE: Record<OnsiteMethod, string> = {
   cash: '【現地現金決済希望】'
 };
 
-// 請求額 = 宿泊料金 − ポイント ＋ 入湯税。キャンセル料の基準は宿泊料金（入湯税を含まない）。
-export function directChargeOf(q: { total: number; pointsUsed?: number; bathTax?: number }): {
+// 請求額 = 宿泊料金 − ポイント − 予約時決済割引 ＋ 入湯税。キャンセル料の基準は宿泊料金（割引前・入湯税を含まない）。
+// 割引（autumn-shared 20260926151458）= floor(宿泊料金 × 割引率)。割引率は 0〜0.2（小数3桁）。
+// DB と1円でもずれると画面が支払を止めるので、浮動小数を使わず整数（千分率）で計算する。ポイントは割引後の宿泊料金まで。
+export function prepayDiscountOf(total: number, rate = 0): number {
+  const permille = Math.min(Math.max(Math.round((rate || 0) * 1000), 0), 200);
+  return Math.floor((Math.max(0, total) * permille) / 1000);
+}
+
+export function directChargeOf(q: { total: number; pointsUsed?: number; bathTax?: number; prepayDiscountRate?: number }): {
   lodging: number;
   bathTax: number;
+  discount: number;
   charge: number;
 } {
-  const points = Math.min(Math.max(0, Math.round(q.pointsUsed ?? 0)), q.total);
+  const discount = prepayDiscountOf(q.total, q.prepayDiscountRate);
+  const points = Math.min(Math.max(0, Math.round(q.pointsUsed ?? 0)), q.total - discount);
   const lodging = q.total - points;
   const bathTax = Math.max(0, Math.round(q.bathTax ?? 0));
-  return { lodging, bathTax, charge: lodging + bathTax };
+  return { lodging, bathTax, discount, charge: lodging - discount + bathTax };
 }
 
 // 取消後の返金額 = 支払額 − キャンセル料（支払額まで）− 返金済み。0 未満にはしない（SQL の direct_payment_refund_due と同じ）

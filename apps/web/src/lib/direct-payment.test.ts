@@ -4,13 +4,28 @@ import { directChargeOf, directRefundDueOf, payOptionsFor } from './direct-payme
 
 describe('請求額（宿泊料金 − ポイント ＋ 入湯税）', () => {
 	it('入湯税を足す', () => {
-		expect(directChargeOf({ total: 30000, bathTax: 300 })).toEqual({ lodging: 30000, bathTax: 300, charge: 30300 });
+		expect(directChargeOf({ total: 30000, bathTax: 300 })).toEqual({ lodging: 30000, bathTax: 300, discount: 0, charge: 30300 });
 	});
 	it('ポイントは宿泊料金から引く（入湯税には使わない）', () => {
-		expect(directChargeOf({ total: 30000, pointsUsed: 5000, bathTax: 300 })).toEqual({ lodging: 25000, bathTax: 300, charge: 25300 });
+		expect(directChargeOf({ total: 30000, pointsUsed: 5000, bathTax: 300 })).toEqual({ lodging: 25000, bathTax: 300, discount: 0, charge: 25300 });
 		// 宿泊料金を超えるポイントは宿泊料金まで
 		expect(directChargeOf({ total: 30000, pointsUsed: 99999, bathTax: 300 }).charge).toBe(300);
-		expect(directChargeOf({ total: 30000, pointsUsed: -5, bathTax: -1 })).toEqual({ lodging: 30000, bathTax: 0, charge: 30000 });
+		expect(directChargeOf({ total: 30000, pointsUsed: -5, bathTax: -1 })).toEqual({ lodging: 30000, bathTax: 0, discount: 0, charge: 30000 });
+	});
+});
+
+describe('予約時決済割引（DB の direct_payment_prepare と同じ式）', () => {
+	it('宿泊料金に割引率を掛けて円未満切り捨て。予約金額（lodging）は割引前のまま', () => {
+		expect(directChargeOf({ total: 87200, bathTax: 300, prepayDiscountRate: 0.1 })).toEqual({ lodging: 87200, bathTax: 300, discount: 8720, charge: 78780 });
+		expect(directChargeOf({ total: 33333, prepayDiscountRate: 0.15 }).discount).toBe(4999);
+		expect(directChargeOf({ total: 30000, prepayDiscountRate: 0.07 }).discount).toBe(2100);
+	});
+	it('割引率は 0〜20% に丸める', () => {
+		expect(directChargeOf({ total: 10000, prepayDiscountRate: 0.5 }).discount).toBe(2000);
+		expect(directChargeOf({ total: 10000, prepayDiscountRate: -1 }).discount).toBe(0);
+	});
+	it('ポイントは割引後の宿泊料金まで', () => {
+		expect(directChargeOf({ total: 30000, pointsUsed: 99999, bathTax: 300, prepayDiscountRate: 0.1 })).toEqual({ lodging: 3000, bathTax: 300, discount: 3000, charge: 300 });
 	});
 });
 

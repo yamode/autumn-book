@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { formatPrice } from '$lib/format';
 	import CancelPolicyNote from './CancelPolicyNote.svelte';
-	import { guestsLabel } from './guests';
 	import type { RatePlan } from '$lib/types';
 	import * as m from '$lib/paraglide/messages';
 
@@ -11,7 +10,6 @@
 		total = null,
 		perPerson = null,
 		adults = 2,
-		childCount = 0,
 		nights = 1,
 		remaining = null,
 		checkin = ''
@@ -21,16 +19,14 @@
 		total?: number | null;
 		perPerson?: number | null;
 		adults?: number;
-		childCount?: number;
 		nights?: number;
 		remaining?: number | null;
 		checkin?: string;
 	} = $props();
 
 	// 料金表示の単位は全画面で「1名1泊・税込」を主、1室の合計を従に統一する。
-	// perPerson は「大人1名あたりの全泊合計」（子ども分は含まない）なので、泊数で割って 1名1泊 に揃える。
-	// 合計（total）は子ども分を含む1室の総額。
-	let perPersonNight = $derived(perPerson !== null ? Math.round(perPerson / Math.max(1, nights)) : null);
+	// quote.perPerson は「1名あたりの全泊合計」なので、泊数で割って 1名1泊 に揃える。
+	let perPersonNight = $derived(total !== null ? Math.round(total / Math.max(1, adults * nights)) : null);
 </script>
 
 <a {href} class="group flex flex-col overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm transition hover:shadow-md sm:flex-row">
@@ -63,9 +59,9 @@
 			<div>
 				{#if total !== null && perPerson !== null && perPersonNight !== null}
 					<p class="text-xl font-bold text-brand-900">
-						{formatPrice(perPersonNight)}<span class="text-xs font-normal text-stone-500">{childCount > 0 ? m.price_unit_adult_night() : m.price_unit_pp_night()}</span>
+						{formatPrice(perPersonNight)}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
 					</p>
-					<p class="text-xs text-stone-500">{m.plan_card_per_room({ guests: guestsLabel(adults, childCount), nights: String(nights), total: formatPrice(total) })}</p>
+					<p class="text-xs text-stone-500">{m.plan_card_per_room({ adults: String(adults), nights: String(nights), total: formatPrice(total) })}</p>
 				{:else}
 					<p class="text-xl font-bold text-brand-900">
 						{formatPrice(plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>

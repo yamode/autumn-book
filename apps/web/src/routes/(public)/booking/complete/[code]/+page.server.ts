@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 			pointsEarned: raw.pointsEarned,
 			payment: raw.payment,
 			paymentStatus: raw.payment === 'onsite' ? 'unpaid' : 'paid',
-			prepayDiscountRate: raw.prepayDiscountRate,
+			prepayDiscountRate: raw.prepayDiscountRate ?? (raw.discountAmount ? plan?.payment.prepayDiscountRate : undefined),
 			discountAmount: raw.discountAmount || undefined,
 			status: 'reserved',
 			channel: 'autumn_booking',

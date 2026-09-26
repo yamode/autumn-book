@@ -51,6 +51,8 @@ export interface AdminPlanContent extends AdminContentBase {
 	publicOnDirect: boolean;
 	/** 支払方法（booking.rate_plans.payment_method）。Book の管理画面で設定する。読めないときは null */
 	paymentMethod: PlanPaymentMethod | null;
+	/** 予約時決済（オンラインのカード事前決済）の割引率 0〜0.2（book.plan_contents.prepay_discount_rate） */
+	prepayDiscountRate: number;
 }
 
 /** onsite = 現地払いのみ / prepayment = 事前決済のみ / deposit = 事前決済と現地払いのどちらも選べる */
@@ -220,7 +222,8 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		publicOnDirect: rp ? rp.public_on_direct === true : true,
 		paymentMethod: (PLAN_PAYMENT_METHODS as readonly string[]).includes(String(rp?.payment_method))
 			? (rp!.payment_method as PlanPaymentMethod)
-			: null
+			: null,
+		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0
 	};
 }
 
@@ -320,21 +323,25 @@ export async function sbUploadContentPhoto(
 }
 
 /**
- * プランの支払方法を変える（book.admin_set_plan_payment_method。autumn-shared 20260926143318）。
- * rms 同期は既存プランの payment_method を上書きしないので、ここで決めた値が公開側・オンライン決済の判定に使われる。
+ * プランの支払方法と予約時決済の割引率を保存する（book.admin_set_plan_payment。autumn-shared 20260926151458）。
+ * 支払方法は booking.rate_plans.payment_method（rms 同期は既存プランを上書きしない）、割引率は book.plan_contents。
+ * 現地払いのみ（onsite）にすると割引率は DB 側で 0 に戻る。
  */
-export async function sbSetPlanPaymentMethod(
+export async function sbSetPlanPayment(
 	client: SupabaseClient,
 	ratePlanId: string,
-	method: PlanPaymentMethod
+	method: PlanPaymentMethod,
+	prepayDiscountRate: number
 ): Promise<void> {
-	const { error } = await client.schema('book').rpc('admin_set_plan_payment_method', {
+	const { error } = await client.schema('book').rpc('admin_set_plan_payment', {
 		p_rate_plan_id: ratePlanId,
-		p_method: method
+		p_method: method,
+		p_prepay_discount_rate: prepayDiscountRate
 	});
 	if (error) {
 		if (error.message.includes('forbidden')) throw new Error('このプランの支払方法を変更する権限がありません。');
 		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		if (error.message.includes('invalid_params')) throw new Error('支払方法・割引率の値が正しくありません（割引は 0〜20%）。');
 		throw error;
 	}
 }

@@ -105,6 +105,7 @@ export type DirectPrepared = {
   amount: number;
   lodging: number;
   bathTax: number;
+  prepayDiscount: number;
   pointsUsed: number;
   expiresAt: string;
 };
@@ -114,6 +115,7 @@ type PrepareRow = {
   amount: number;
   lodging_amount: number;
   bath_tax_amount: number;
+  prepay_discount?: number;
   points_used: number;
   total: number;
   payment_intent_id: string | null;
@@ -162,6 +164,7 @@ export async function prepareDirectPayment(args: {
     amount: row.amount,
     lodging: row.lodging_amount,
     bathTax: row.bath_tax_amount,
+    prepayDiscount: row.prepay_discount ?? 0,
     pointsUsed: row.points_used,
     expiresAt: row.expires_at
   };
@@ -179,6 +182,8 @@ export type DirectConfirmResult =
       pointsUsed: number | null;
       pointsEarned: number | null;
       discount: number | null;
+      /** 予約時決済の割引額（20260926151458）。予約金額からは引いていない */
+      prepayDiscount: number;
       amount: number;
       bathTax: number | null;
     }
@@ -198,6 +203,7 @@ type ConfirmRow = {
   discount?: number;
   amount?: number;
   bath_tax_amount?: number;
+  prepay_discount?: number;
 };
 
 // expectHoldId: ブラウザからの連絡のときは、画面の仮押さえの Intent であることも確かめる
@@ -223,6 +229,7 @@ export async function confirmDirectIntent(intentId: string, expectHoldId?: strin
       pointsUsed: row.points_used ?? null,
       pointsEarned: row.points_earned ?? null,
       discount: row.discount ?? null,
+      prepayDiscount: row.prepay_discount ?? 0,
       amount: row.amount ?? amount,
       bathTax: row.bath_tax_amount ?? null
     };
@@ -303,6 +310,8 @@ export type DirectPaymentInfo = {
   amount: number;
   lodging_amount: number;
   bath_tax_amount: number;
+  /** 予約時決済の割引額（20260926151458 より前の行は無い） */
+  prepay_discount_amount?: number;
   points_used: number;
   payment_intent_id: string | null;
   paid_at: string | null;

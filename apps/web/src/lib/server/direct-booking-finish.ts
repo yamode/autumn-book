@@ -17,12 +17,13 @@ export function finishDirectBooking(cookies: Cookies, hold: SbHold, draft: Booki
 		checkin: hold.checkin,
 		nights: hold.nights,
 		adults: hold.adults,
-		// already（Webhook が先に確定）のときは RPC が金額の内訳を返さないので、支払額から戻す
-		total: r.total ?? r.amount - bathTax + (draft?.pointsUsed ?? 0),
+		// already（Webhook が先に確定）のときは RPC が金額の内訳を返さないので、支払額から戻す（割引・ポイントは足し戻す）
+		total: r.total ?? r.amount - bathTax + r.prepayDiscount + (draft?.pointsUsed ?? 0),
 		pointsUsed: r.pointsUsed ?? draft?.pointsUsed ?? 0,
 		pointsEarned: r.pointsEarned ?? 0,
 		payment: 'card',
-		discountAmount: r.discount ?? 0,
+		// 完了画面の割引行は予約時決済の割引（予約金額からは引かず、支払額からだけ引いた額）
+		discountAmount: r.prepayDiscount,
 		paidAmount: r.amount,
 		bathTax,
 		guest: {

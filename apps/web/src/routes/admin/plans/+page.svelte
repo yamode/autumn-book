@@ -45,7 +45,7 @@
 					{plan.isPublished ? '公開中' : '下書き'}
 				</span>
 				{#if plan.paymentMethod}
-					<span class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-xs text-stone-700">{PAYMENT_LABEL[plan.paymentMethod]}</span>
+					<span class="absolute right-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-xs text-stone-700">{PAYMENT_LABEL[plan.paymentMethod]}{plan.paymentMethod !== 'onsite' && plan.prepayDiscountRate > 0 ? `・${Math.round(plan.prepayDiscountRate * 100)}%OFF` : ''}</span>
 				{/if}
 			</div>
 			<div class="p-3">

@@ -69,7 +69,7 @@
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_facility()}</dt><dd>{data.facility.name}</dd></div>
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_checkin()}</dt><dd>{formatDateLong(b.checkin)} {data.facility.checkinTime}〜</dd></div>
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_room_nights()}</dt><dd>{m.complete_nights_room({ room: data.room.name, nights: String(b.nights) })}</dd></div>
-			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_guest()}</dt><dd>{m.complete_guest_val({ name: b.guest.name, guests: guestsLabel(b.adults, b.children) })}</dd></div>
+			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_guest()}</dt><dd>{m.complete_guest_val({ name: b.guest.name, guests: guestsLabel(b.adults) })}</dd></div>
 			<div class="flex justify-between border-t border-stone-200 pt-1.5 font-medium">
 				<dt>{isCard ? m.complete_paid() : data.onsiteMethod === 'paypay' ? m.pay_onsite_paypay() : data.onsiteMethod === 'card' ? m.pay_onsite_card() : data.onsiteMethod === 'cash' ? m.pay_onsite_cash() : m.complete_local_pay()}</dt>
 				<dd>

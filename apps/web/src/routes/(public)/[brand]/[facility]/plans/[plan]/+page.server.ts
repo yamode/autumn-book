@@ -21,19 +21,14 @@ import {
 	bookingSessionId
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import * as m from '$lib/paraglide/messages';
 import { eachNight } from '@autumn-book/core';
 import { clampCalendarMonth } from '$lib/calendar-range';
-import { parseChildren } from '$lib/components/guests';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url }) => {
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
 	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
-	// 子どもの人数（未指定は 0）。デモは定員判定・子供料金に反映。実データ（supabase）は quote / create_hold が
-	// 子ども未対応（book.holds.child_counts は '{}' 固定・設計書 §14-11）のため、大人のみの料金を出し予約は電話へ誘導する
-	const children = parseChildren(url.searchParams.get('children'));
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
@@ -68,8 +63,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			calendar,
 			calMonth,
 			calendarNav,
-			childrenSupported: false,
-			params: { checkin: checkin ?? '', nights, adults, children }
+			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
 
@@ -85,15 +79,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	const rooms = plan.roomTypeIds
 		.map((id) => roomTypes.find((r) => r.id === id)!)
 		.map((room) => {
-			// 定員は大人＋子どもで判定する
-			const fits = room.capacity >= adults + children;
-			if (!checkin || !fits) {
-				return { room, quote: null, remaining: checkin ? 0 : null, fits };
+			if (!checkin || room.capacity < adults) {
+				return { room, quote: null, remaining: checkin ? 0 : null, fits: room.capacity >= adults };
 			}
 			const remaining = Math.min(...eachNight(checkin, nights).map((d) => remainingRooms(room.id, d)));
 			return {
 				room,
-				quote: remaining > 0 ? quoteFor(plan.id, room.id, checkin, nights, adults, children) : null,
+				quote: remaining > 0 ? quoteFor(plan.id, room.id, checkin, nights, adults, 0) : null,
 				remaining,
 				fits: true
 			};
@@ -106,8 +98,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		calendar: getPlanCalendar(plan.id, calMonth),
 		calMonth,
 		calendarNav,
-		childrenSupported: true,
-		params: { checkin: checkin ?? '', nights, adults, children }
+		params: { checkin: checkin ?? '', nights, adults }
 	};
 };
 
@@ -120,13 +111,9 @@ export const actions: Actions = {
 		const checkin = String(form.get('checkin'));
 		const nights = Number(form.get('nights'));
 		const adults = Number(form.get('adults'));
-		const children = parseChildren(form.get('children'));
 		if (!checkin || !planId || !roomTypeId) return fail(400, { message: '日付を選択してください' });
 
 		if (DATA_SOURCE === 'supabase') {
-			// create_hold は子ども未対応（p_child_counts 無し）。大人のみで仮押さえすると人数・料金が実態と
-			// 食い違うため、子ども連れはオンラインで受けずに電話へ誘導する（画面側でもボタンを出していない）
-			if (children > 0) return fail(400, { message: m.children_unsupported_note() });
 			const sid = bookingSessionId(cookies);
 			// 会員は authenticated client（member_user_id を記録）、ゲストは anon。
 			const client = MEMBER_SUPABASE && locals.user?.role === 'member' ? createSupabaseServerClient(event) : undefined;
@@ -137,10 +124,7 @@ export const actions: Actions = {
 			redirect(303, `/booking/hold?id=${result.hold_id}`);
 		}
 
-		// 定員（大人＋子ども）を超える客室は受けない（画面は fits=false でボタンを出さないが、直接 POST 対策）
-		const room = roomTypes.find((r) => r.id === roomTypeId);
-		if (!room || room.capacity < adults + children) return fail(400, { message: m.plan_detail_no_fit() });
-		const result = createHold(planId, roomTypeId, checkin, nights, adults, children, locals.user?.role === 'member' ? locals.user.id : undefined);
+		const result = createHold(planId, roomTypeId, checkin, nights, adults, 0, locals.user?.role === 'member' ? locals.user.id : undefined);
 		if ('error' in result) {
 			return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
 		}

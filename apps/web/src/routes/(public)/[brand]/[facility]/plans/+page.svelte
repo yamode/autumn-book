@@ -1,7 +1,6 @@
 <script lang="ts">
 	import PlanCard from '$lib/components/PlanCard.svelte';
 	import { page } from '$app/state';
-	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -33,22 +32,9 @@
 	<h1 class="font-display mb-4 text-2xl text-brand-900">{m.plans_heading()}</h1>
 
 	{#if data.params.checkin}
-		<p class="mb-3 text-sm text-stone-500">
-			{m.plans_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), guests: guestsLabel(data.params.adults, data.params.children) })}
-			{#if data.params.children > 0 && data.childrenSupported}
-				<span class="block text-xs">{m.children_price_note()}</span>
-			{/if}
-		</p>
+		<p class="mb-3 text-sm text-stone-500">{m.plans_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}</p>
 	{:else}
 		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plans_no_date()}</p>
-	{/if}
-
-	{#if data.params.children > 0 && !data.childrenSupported}
-		<!-- 実データは子供料金未対応（表示は大人のみの料金） -->
-		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
-			{m.children_unsupported_note()}
-			<span class="block text-xs">{m.children_unsupported_phone({ phone: data.facility.phone })}</span>
-		</p>
 	{/if}
 
 	<!-- 絞り込みチップ -->
@@ -74,7 +60,6 @@
 					total={item.total}
 					perPerson={item.perPerson}
 					adults={data.params.adults}
-					childCount={data.params.children}
 					nights={data.params.nights}
 					remaining={item.remaining}
 					checkin={data.params.checkin}
