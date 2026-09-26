@@ -11,6 +11,7 @@ import {
 import { todayStr } from '$lib/format';
 import type { OptionItem } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
+import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
 
 // フォーム → OptionItemInput（数値/真偽の正規化）
 function parseInput(form: FormData): OptionItemInput {
@@ -54,6 +55,8 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	save: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const id = String(form.get('optionId') ?? '');
@@ -64,6 +67,8 @@ export const actions: Actions = {
 		return { saved: id };
 	},
 	add: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const facilityId = String(form.get('facilityId'));
@@ -73,6 +78,8 @@ export const actions: Actions = {
 		return { added: true };
 	},
 	saveTranslation: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const optionId = String(form.get('optionId'));

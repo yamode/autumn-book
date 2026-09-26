@@ -16,15 +16,13 @@ import {
 import { ADMIN_SUPABASE } from '$lib/server/auth';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import { bookings, roomTypeById } from '$lib/server/store';
+import { addDays, todayStr } from '$lib/format';
 import type { PageServerLoad } from './$types';
 
 /** 既定の期間: 今日 〜 120日後。全期間だと件数上限に当たって古い予約で埋まる */
 function defaultRange(): { from: string; to: string } {
-	const today = new Date();
-	const to = new Date(today);
-	to.setDate(to.getDate() + 120);
-	const iso = (d: Date) => d.toISOString().slice(0, 10);
-	return { from: iso(today), to: iso(to) };
+	const from = todayStr();
+	return { from, to: addDays(from, 120) };
 }
 
 const LIMIT = 200;

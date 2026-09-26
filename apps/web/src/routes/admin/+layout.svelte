@@ -7,17 +7,18 @@
 	// 「誰が・何をきっかけに操作するか」でグループ化する（docs/ADMIN_APP_OPS.md §2）。
 	// 1項目は1箇所にしか置かない。両属性の項目は画面内の相互リンクで辿らせる。
 	// tenantWide = 施設に紐づかない画面（施設セレクトを出すと「切り替えても変わらない」混乱を生む）
-	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean }[] }[] = [
+	// demoOnly = まだ本番データに繋がっていない画面（デモストアを読み書きする）。本番では注意を出し、保存はサーバで止める（lib/server/admin-demo-guard.ts）
+	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean }[] }[] = [
 		{
 			label: '宿泊・直販',
 			items: [
-				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
+				{ href: '/admin', label: 'ダッシュボード', icon: '📊', demoOnly: true },
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
 				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
-				{ href: '/admin/options', label: 'オプション', icon: '🧺' },
-				{ href: '/admin/cancel-policies', label: 'キャンセル規定', icon: '🚫', tenantWide: true },
+				{ href: '/admin/options', label: 'オプション', icon: '🧺', demoOnly: true },
+				{ href: '/admin/cancel-policies', label: 'キャンセル規定', icon: '🚫', tenantWide: true, demoOnly: true },
 				{ href: '/admin/bath', label: '貸切風呂', icon: '♨️' },
 				{ href: '/admin/inroom', label: '客室案内', icon: '📱' }
 			]
@@ -37,11 +38,11 @@
 		{
 			label: 'サイト・コンテンツ',
 			items: [
-				{ href: '/admin/facility', label: '施設ページ編集', icon: '🏠' },
+				{ href: '/admin/facility', label: '施設ページ編集', icon: '🏠', demoOnly: true },
 				{ href: '/admin/news', label: 'お知らせ', icon: '📰' },
-				{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
-				{ href: '/admin/mail', label: 'メルマガ', icon: '✉' },
-				{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁' }
+				{ href: '/admin/faqs', label: 'FAQ', icon: '❓', demoOnly: true },
+				{ href: '/admin/mail', label: 'メルマガ', icon: '✉', demoOnly: true },
+				{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁', demoOnly: true }
 			]
 		},
 		{
@@ -63,6 +64,9 @@
 		navItems.filter((i) => isActive(i.href)).sort((a, b) => b.href.length - a.href.length)[0]
 	);
 	let tenantWide = $derived(activeItem?.tenantWide ?? false);
+	// 本番（実データ）なのに、デモストアしか読み書きしない画面を開いている
+	let live = $derived(data.dataSource === 'supabase');
+	let demoOnlyHere = $derived(live && (activeItem?.demoOnly ?? false));
 </script>
 
 <svelte:head><meta name="robots" content="noindex" /></svelte:head>
@@ -91,6 +95,7 @@
 									: 'hover:bg-white/5 hover:text-white'}"
 							>
 								{item.icon} {item.label}
+								{#if live && item.demoOnly}<span class="ml-1 rounded bg-white/10 px-1 text-[10px] text-stone-400">未接続</span>{/if}
 							</a>
 						{/each}
 					</div>
@@ -141,6 +146,13 @@
 				<a href="/admin/maintenance" class="block bg-amber-500 px-4 py-1.5 text-center text-xs font-medium text-white hover:bg-amber-600">
 					🛠 メンテナンスモード有効 — 一般ユーザーへ非公開中（運営はプレビュー可）
 				</a>
+			{/if}
+
+			{#if demoOnlyHere}
+				<div class="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+					<span class="font-bold">この画面はまだ本番データに繋がっていません。</span>
+					表示はサンプルです。保存してもお客様の画面には反映されないため、保存は止めています。
+				</div>
 			{/if}
 
 			<main class="min-w-0 flex-1 p-4 md:p-6">

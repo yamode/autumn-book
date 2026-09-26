@@ -52,6 +52,21 @@
 		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
 
+	// 支払の表示。オンライン決済（Stripe）の記録があればそれを正とし、無ければ現地払い。
+	// 現地払いの内訳（PayPay / カード / 現金）は予約時に備考の先頭へ【現地○○決済希望】で入る（v0.44.0）
+	let paymentLabel = $derived.by(() => {
+		const p = data.payment;
+		if (p) {
+			if (p.status === 'paid') return { text: 'オンライン決済済み（カード）', prepaid: true };
+			if (p.status === 'late') return { text: 'オンライン決済：期限後の支払（予約にせず返金）', prepaid: false };
+			return { text: 'オンライン決済：支払待ち', prepaid: false };
+		}
+		if (b.payment_status === 'paid') return { text: '事前決済済み', prepaid: true };
+		if (b.source !== 'autumn_booking') return { text: '経路（OTA 等）の条件に従う', prepaid: false };
+		const m = /【現地(PayPay|カード|現金)決済希望】/.exec(g.guest_notes ?? '');
+		return { text: m ? `現地払い（${m[1]}希望）` : '現地払い', prepaid: false };
+	});
+
 	let channelLabel = $derived(
 		b.source === 'autumn_booking'
 			? b.client === 'app'
@@ -130,6 +145,9 @@
 				>
 					{STAY_STATUS[b.stay_status] ?? b.stay_status}
 				</span>
+				{#if paymentLabel.prepaid}
+					<span class="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white">事前決済済・現地精算なし</span>
+				{/if}
 			</div>
 
 			<dl class="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -177,7 +195,10 @@
 						</span>
 					</dd>
 				</div>
-				<div><dt class="text-xs text-stone-400">支払</dt><dd>現地払い</dd></div>
+				<div>
+					<dt class="text-xs text-stone-400">支払</dt>
+					<dd class={paymentLabel.prepaid ? 'font-medium text-emerald-700' : ''}>{paymentLabel.text}</dd>
+				</div>
 				<div><dt class="text-xs text-stone-400">受付日時</dt><dd>{dt(b.created_at)}</dd></div>
 				{#if b.cancelled_at}
 					<div>

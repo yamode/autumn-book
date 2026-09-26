@@ -79,6 +79,7 @@ export function formatPrice(amount: number): string {
 	}).format(amount);
 }
 
+/** 日本時間（Asia/Tokyo）の今日を YYYY-MM-DD で返す。サーバ（Cloudflare）は UTC なので toISOString では JST 0〜9時が前日になる */
 export function todayStr(): string {
-	return new Date().toISOString().slice(0, 10);
+	return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
 }

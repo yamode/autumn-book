@@ -71,6 +71,7 @@ import type {
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
+import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -1369,8 +1370,8 @@ export async function sbPointLedger(client: SupabaseClient): Promise<MemberPoint
 
 /** 有効期限が withinDays 日以内に迫っている加算ポイントの合計（デモ store.expiringPoints 相当）。 */
 export function sumExpiringPoints(ledger: MemberPointEntry[], withinDays = 30): number {
-	const limit = new Date(Date.now() + withinDays * 86400000).toISOString().slice(0, 10);
-	const today = new Date().toISOString().slice(0, 10);
+	const today = todayStr();
+	const limit = addDays(today, withinDays);
 	return ledger
 		.filter((e) => e.delta > 0 && e.expiresAt && e.expiresAt >= today && e.expiresAt <= limit)
 		.reduce((s, e) => s + e.delta, 0);

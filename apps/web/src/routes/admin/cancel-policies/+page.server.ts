@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { listRankCancelPolicies, updateRankCancelPolicy } from '$lib/server/store';
 import type { CancellationRule } from '@autumn-book/core';
 import type { Actions, PageServerLoad } from './$types';
+import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
 
 // グレード別キャンセル料規定（book.rank_cancel_policies）の編集画面。
 // rank はテナント横断のグローバルマスタ（施設別ではない）。standard 行が実質の基準規定。
@@ -15,6 +16,8 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
 	// グレード1件のルール表・allow_amend_in_penalty・note を保存
 	save: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const rankCode = String(form.get('rankCode') ?? '');

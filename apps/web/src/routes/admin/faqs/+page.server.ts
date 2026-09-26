@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { faqs, upsertTranslation, translationStore } from '$lib/server/store';
 import type { Actions, PageServerLoad } from './$types';
+import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { currentFacility } = await parent();
@@ -22,6 +23,8 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	save: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const faq = faqs.find((q) => q.id === String(form.get('faqId')));
@@ -33,6 +36,8 @@ export const actions: Actions = {
 		return { saved: faq.id };
 	},
 	add: async ({ request, locals, cookies }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const facilityId = String(form.get('facilityId'));
@@ -50,6 +55,8 @@ export const actions: Actions = {
 		return { added: true };
 	},
 	saveTranslation: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await request.formData();
 		const faqId = String(form.get('faqId'));

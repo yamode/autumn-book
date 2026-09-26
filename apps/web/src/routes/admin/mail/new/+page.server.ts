@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { countSegment, mailCampaigns } from '$lib/server/store';
 import type { Actions } from './$types';
+import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
 
 function parseForm(form: FormData) {
 	return {
@@ -19,10 +20,14 @@ export const actions: Actions = {
 		return { values, count: countSegment({ ranks: values.ranks }) };
 	},
 	test: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		const values = parseForm(await request.formData());
 		return { values, tested: true, testTo: locals.user?.name ?? '' };
 	},
 	send: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '配信権限がありません' });
 		const values = parseForm(await request.formData());
 		if (!values.subject || !values.body) return fail(400, { values, message: '件名と本文を入力してください' });

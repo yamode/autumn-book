@@ -1,8 +1,19 @@
 import { redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
+/**
+ * 戻り先を「その画面の一覧」（/admin/<section>）に丸める。
+ * 詳細ページ（/admin/rooms/<id> 等）の ID は切替前の施設のものなので、そのまま戻すと 404 になる。
+ * /admin 以外（外部 URL 等）へは戻さない。
+ */
+function sectionRoot(back: string | null): string {
+	const m = /^\/admin(\/[a-z0-9-]+)?/.exec(back ?? '');
+	return m ? m[0] : '/admin';
+}
+
 export const GET: RequestHandler = async ({ url, cookies }) => {
 	const f = url.searchParams.get('f');
-	if (f) cookies.set('ab_fac', f, { path: '/admin', httpOnly: true, sameSite: 'lax' });
-	redirect(303, url.searchParams.get('back') ?? '/admin');
+	// ブラウザを閉じても選んだ施設を覚えておく（閉じると先頭の施設に戻り、別施設を編集する事故になるため）
+	if (f) cookies.set('ab_fac', f, { path: '/admin', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 });
+	redirect(303, sectionRoot(url.searchParams.get('back')));
 };

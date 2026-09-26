@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { emailSequences } from '$lib/server/store';
 import type { Actions, PageServerLoad } from './$types';
+import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
 
 export const load: PageServerLoad = async ({ parent }) => {
 	const { currentFacility } = await parent();
@@ -9,6 +10,8 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	toggle: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
 		const form = await request.formData();
 		const seq = emailSequences.find((s) => s.id === String(form.get('sequenceId')));
@@ -17,6 +20,8 @@ export const actions: Actions = {
 		return { toggled: true };
 	},
 	saveStep: async ({ request, locals }) => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
 		const form = await request.formData();
 		const seq = emailSequences.find((s) => s.id === String(form.get('sequenceId')));
@@ -29,6 +34,8 @@ export const actions: Actions = {
 		return { savedStep: step.id };
 	},
 	testStep: async () => {
+		const blocked = denyDemoStoreWrite();
+		if (blocked) return blocked;
 		return { tested: true };
 	}
 };
