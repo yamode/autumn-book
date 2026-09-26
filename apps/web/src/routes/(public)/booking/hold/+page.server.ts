@@ -8,7 +8,8 @@ import {
 	memberById,
 	pointBalance,
 	quoteFor,
-	memberRanks
+	memberRanks,
+	releaseHold
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
@@ -21,7 +22,8 @@ import {
 	sbPointBalance,
 	confirmBooking as sbConfirmBooking,
 	bookingSessionId,
-	setLastBooking
+	setLastBooking,
+	releaseHold as sbReleaseHold
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
@@ -30,6 +32,16 @@ import { directPaymentsReady, directPublishableKey, holdBathTax } from '$lib/ser
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
+
+// 選び直し・パンくず用: この仮押さえのプラン詳細（日程・人数つき）
+function planHrefOf(
+	facility: { brandSlug: string; slug: string },
+	plan: { slug: string },
+	hold: { checkin: string; nights: number; adults: number }
+): string {
+	const q = new URLSearchParams({ checkin: hold.checkin, nights: String(hold.nights), adults: String(hold.adults) });
+	return `/${facility.brandSlug}/${facility.slug}/plans/${plan.slug}?${q}`;
+}
 
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
 const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.05 };
@@ -97,7 +109,8 @@ export const load: PageServerLoad = async (event) => {
 			// true = カードはこの画面で払う（実データ）。false = デモ決済画面へ（DATA_SOURCE=demo）
 			inline: true as const,
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
-			bathTax
+			bathTax,
+			planHref: planHrefOf(facility, plan, hold)
 		};
 	}
 
@@ -109,17 +122,19 @@ export const load: PageServerLoad = async (event) => {
 	const rank = memberRanks.find((r) => r.code === (member?.rank ?? 'standard'))!;
 	const plan = planById(hold.planId)!;
 	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
+	const facility = facilityById(hold.facilityId)!;
 	return {
 		expired: false as const,
 		hold,
 		plan,
 		room: roomTypeById(hold.roomTypeId)!,
-		facility: facilityById(hold.facilityId)!,
+		facility,
 		payOptions: pay.options,
 		payFallback: pay.fallback,
 		inline: false as const,
 		publishableKey: null,
 		bathTax: 0,
+		planHref: planHrefOf(facility, plan, hold),
 		member: member
 			? {
 					name: member.name,
@@ -139,6 +154,21 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	// 「プラン・お部屋を選び直す」: 仮押さえを解放してプラン詳細へ戻る（押さえたまま戻ると期限まで部屋が減ったままになる）
+	release: async ({ request, cookies }) => {
+		const form = await request.formData();
+		const holdId = String(form.get('holdId') ?? '');
+		const back = String(form.get('back') ?? '');
+		try {
+			if (DATA_SOURCE === 'supabase') await sbReleaseHold(holdId, bookingSessionId(cookies));
+			else releaseHold(holdId);
+		} catch (e) {
+			// 解放に失敗しても戻る（期限で自動解放される）
+			console.error('[booking/hold] release', e);
+		}
+		// 自サイト内のパスだけ（外部 URL へは飛ばさない）
+		redirect(303, back.startsWith('/') && !back.startsWith('//') ? back : '/search');
+	},
 	// 現地払いの確定（カードは同じ画面の決済部品 → /booking/pay で確定する）
 	submit: async (event) => {
 		const { request, locals, cookies } = event;

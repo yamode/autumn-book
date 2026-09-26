@@ -175,7 +175,24 @@
 			<a href="/search" class="mt-4 inline-block rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">{m.hold_expired_search()}</a>
 		</div>
 	{:else}
+		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
+		<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
+			<a href="/{data.facility.brandSlug}/{data.facility.slug}" class="hover:underline">{data.facility.name}</a>
+			<span aria-hidden="true">/</span>
+			<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
+			<span aria-hidden="true">/</span>
+			<a href={data.planHref} class="max-w-[16rem] truncate hover:underline">{data.plan.name}</a>
+			<span aria-hidden="true">/</span>
+			<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
+		</nav>
 		<Stepper {steps} current={1} />
+		<!-- 選び直し: 仮押さえを解放してからプラン詳細へ（押さえたまま戻ると期限まで部屋が減ったまま） -->
+		<form method="POST" action="?/release" class="mt-2 flex flex-wrap items-baseline gap-x-2">
+			<input type="hidden" name="holdId" value={data.hold.id} />
+			<input type="hidden" name="back" value={data.planHref} />
+			<button type="submit" disabled={paying} class="text-sm text-accent-600 hover:underline disabled:opacity-50">{m.hold_change_plan()}</button>
+			<span class="text-xs text-stone-400">{m.hold_change_plan_note()}</span>
+		</form>
 
 		<div class="mt-6">
 			<!-- 支払の処理中は期限の表示で画面を切り替えない（確定の結果はサーバが判断する） -->

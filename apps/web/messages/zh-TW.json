@@ -811,5 +811,8 @@
   "pay_method_paypay": "PayPay",
   "pay_method_card": "信用卡",
   "pay_method_cash": "現金",
-  "pay_discount_total": "折扣後付款金額"
+  "pay_discount_total": "折扣後付款金額",
+  "hold_breadcrumb_current": "旅客資料",
+  "hold_change_plan": "← 重新選擇方案或客房",
+  "hold_change_plan_note": "重新選擇後，目前保留的客房將會釋出。"
 }

@@ -772,6 +772,14 @@ export function expireHolds() {
 	}
 }
 
+/** RPC: book.release_hold 相当（選び直すときに在庫を戻す） */
+export function releaseHold(id: string): void {
+	const h = holds.get(id);
+	if (!h || h.status !== 'active') return;
+	h.status = 'released';
+	adjustInventory(h.roomTypeId, h.checkin, h.nights, +1);
+}
+
 export function getHold(id: string): Hold | undefined {
 	expireHolds();
 	return holds.get(id);

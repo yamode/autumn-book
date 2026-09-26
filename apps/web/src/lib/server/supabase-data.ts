@@ -348,6 +348,16 @@ export async function createHold(
 	return { hold_id: data.hold_id, expires_at: data.expires_at, quote: mapQuote(data.quote) };
 }
 
+/**
+ * 仮押さえを画面から解放する（book.release_hold・autumn-shared 20260926152750）。本人のセッションのものだけ。
+ * 支払を始めた仮押さえは DB が解放しない（'in_payment'）。失敗しても画面の遷移は止めない（期限で解放される）。
+ */
+export async function releaseHold(holdId: string, sessionId: string): Promise<string> {
+	const { data, error } = await supa().rpc('release_hold', { p_hold_id: holdId, p_session_id: sessionId });
+	if (error) throw error;
+	return String(data);
+}
+
 export async function getHold(holdId: string, sessionId: string) {
 	const { data, error } = await supa().rpc('get_hold', { p_hold_id: holdId, p_session_id: sessionId });
 	if (error) throw error;

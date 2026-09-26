@@ -811,5 +811,8 @@
   "pay_method_paypay": "PayPay",
   "pay_method_card": "Credit card",
   "pay_method_cash": "Cash",
-  "pay_discount_total": "Amount after discount"
+  "pay_discount_total": "Amount after discount",
+  "hold_breadcrumb_current": "Guest details",
+  "hold_change_plan": "← Change plan or room",
+  "hold_change_plan_note": "The room we are holding for you will be released."
 }

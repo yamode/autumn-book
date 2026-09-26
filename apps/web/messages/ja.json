@@ -811,5 +811,8 @@
   "pay_method_paypay": "PayPay",
   "pay_method_card": "クレジットカード",
   "pay_method_cash": "現金",
-  "pay_discount_total": "割引後のお支払い額"
+  "pay_discount_total": "割引後のお支払い額",
+  "hold_breadcrumb_current": "お客様情報",
+  "hold_change_plan": "← プラン・お部屋を選び直す",
+  "hold_change_plan_note": "選び直すと、いま確保しているお部屋は解放されます。"
 }
