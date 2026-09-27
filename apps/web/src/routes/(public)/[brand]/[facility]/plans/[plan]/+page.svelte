@@ -69,11 +69,13 @@
 		</p>
 	{:else if soldOut}
 		<p class="text-sm font-medium text-stone-500">{m.plan_price_sold_out()}</p>
-	{:else}
+	{:else if data.plan.basePrice > 0}
 		<p class="text-xs text-stone-500">{m.plan_price_base_label()}</p>
 		<p class="text-2xl font-bold text-brand-900">
 			{formatPrice(data.plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>
 		</p>
+	{:else}
+		<p class="text-sm text-stone-500">{m.plan_price_base_note()}</p>
 	{/if}
 {/snippet}
 
@@ -250,10 +252,12 @@
 					</p>
 				{:else if soldOut}
 					<p class="text-xs text-stone-500">{m.plan_price_sold_out()}</p>
-				{:else}
+				{:else if data.plan.basePrice > 0}
 					<p class="text-lg font-bold text-brand-900">
 						{formatPrice(data.plan.basePrice)}<span class="text-[11px] font-normal text-stone-500">{m.plan_card_base_price()}</span>
 					</p>
+				{:else}
+					<p class="text-xs text-stone-500">{m.plan_price_cta_dates()}</p>
 				{/if}
 			</div>
 			<a

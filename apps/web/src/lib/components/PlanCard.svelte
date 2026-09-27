@@ -79,10 +79,12 @@
 						{formatPrice(perPersonNight)}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
 					</p>
 					<p class="text-xs text-stone-500">{m.plan_card_per_room({ adults: String(adults), nights: String(nights), total: formatPrice(total) })}</p>
-				{:else}
+				{:else if plan.basePrice > 0}
 					<p class="text-xl font-bold text-brand-900">
 						{formatPrice(plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>
 					</p>
+				{:else}
+					<p class="text-sm text-stone-500">{m.plan_price_cta_dates()}</p>
 				{/if}
 				{#if checkin}
 					<p class="mt-0.5 text-xs text-emerald-700"><CancelPolicyNote policy={plan.cancellationPolicy} {checkin} /></p>

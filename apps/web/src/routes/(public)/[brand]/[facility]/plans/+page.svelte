@@ -36,7 +36,9 @@
 	{#if data.params.checkin}
 		<p class="mb-3 text-sm text-stone-500">{m.plans_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}</p>
 	{:else}
-		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plans_no_date()}</p>
+		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+			{data.items.length > 0 && data.items.every((item) => item.plan.basePrice > 0) ? m.plans_no_date() : m.plan_price_cta_dates()}
+		</p>
 	{/if}
 
 	<!-- 絞り込みチップ -->
