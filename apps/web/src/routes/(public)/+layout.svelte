@@ -62,7 +62,9 @@
 	{/if}
 	<header class="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
 		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 md:gap-x-6 md:py-2.5">
-			<a href="/" class="shrink-0 font-display text-xl font-bold tracking-widest text-brand-900">YAMADO</a>
+			<a href="/" class="shrink-0" aria-label="YAMADO">
+				<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-6 w-auto md:h-7" />
+			</a>
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
 			<nav class="hidden items-center gap-4 text-sm text-stone-600 md:flex">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
