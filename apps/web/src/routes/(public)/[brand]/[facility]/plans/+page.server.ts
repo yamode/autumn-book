@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { getFacilityBySlug, getRatePlans, roomTypes, remainingRooms, quoteFor } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers } from '$lib/server/supabase-data';
+import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers, sbPlanReferenceMinPrices } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
@@ -26,6 +26,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			(await sbListPlansMapped(facility.id)).map((p) => planForViewer(p, isMember)),
 			await loadEarlyPrepaySettings(facility.id)
 		);
+		if (!checkin) {
+			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults);
+			plans = plans.map((plan) => ({ ...plan, basePrice: referencePrices.get(plan.id) ?? 0 }));
+		}
 		const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
 		if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
 
@@ -52,7 +56,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			return { plan, total: best.total, perPerson: best.perPerson, remaining: best.remaining };
 		});
 
-		return { facility, items, allTags, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
+		return { facility, items, allTags, referenceMode: !checkin, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
 	}
 
 	const locale = getLocale();
@@ -82,5 +86,5 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		return { plan, total: best?.total ?? null, perPerson: best?.perPerson ?? null, remaining: best ? remaining : 0 };
 	});
 
-	return { facility, items, allTags, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
+	return { facility, items, allTags, referenceMode: false, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
 };

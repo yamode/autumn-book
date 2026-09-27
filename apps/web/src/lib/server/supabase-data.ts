@@ -2183,6 +2183,17 @@ export async function sbListPlansMapped(facilityUuid: string): Promise<RatePlan[
 	return (rows ?? []).map((r) => mapPlanRow(r as Record<string, unknown>));
 }
 
+/** 公開プランごとの本日〜2か月後の参考最低料金（指定人数利用時の1名1泊）。 */
+export async function sbPlanReferenceMinPrices(facilityUuid: string, adults: number, ratePlanId?: string): Promise<Map<string, number>> {
+	const { data, error } = await supa().rpc('plan_reference_min_prices', {
+		p_facility: facilityUuid,
+		p_adults: adults,
+		p_rate_plan_id: ratePlanId ?? null
+	});
+	if (error) throw error;
+	return new Map(((data ?? []) as { rate_plan_id: string; min_per_person: number }[]).map((row) => [row.rate_plan_id, row.min_per_person]));
+}
+
 export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
 	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (error) throw error;

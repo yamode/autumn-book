@@ -15,6 +15,7 @@ import {
 	sbPlanBySlug,
 	sbListRoomTypesMapped,
 	sbPlanOffers,
+	sbPlanReferenceMinPrices,
 	offerToQuote,
 	createHold as sbCreateHold,
 	getPlanCalendar as sbGetPlanCalendar,
@@ -41,7 +42,11 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		const found = await sbPlanBySlug(facility.id, params.plan);
 		if (!found) error(404, 'プランが見つかりません');
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
+		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
+		if (!checkin) {
+			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id);
+			plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
+		}
 
 		const calendarNav = clampCalendarMonth(url.searchParams.get('cal') ?? checkin?.slice(0, 7));
 		const calMonth = calendarNav.yearMonth;
@@ -49,7 +54,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
 		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		const [calendar, offers, rooms] = await Promise.all([
-			sbGetPlanCalendar(plan.id, calMonth),
+			sbGetPlanCalendar(plan.id, calMonth, adults),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id) : Promise.resolve([]),
 			sbListRoomTypesMapped(facility.id)
 		]);
@@ -72,6 +77,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			calendarNav,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
+			referenceMode: !checkin,
 			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
@@ -109,6 +115,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		calMonth,
 		calendarNav,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
+		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };

@@ -70,7 +70,7 @@
 	{:else if soldOut}
 		<p class="text-sm font-medium text-stone-500">{m.plan_price_sold_out()}</p>
 	{:else if data.plan.basePrice > 0}
-		<p class="text-xs text-stone-500">{m.plan_price_base_label()}</p>
+		<p class="text-xs text-stone-500">{data.referenceMode ? m.plan_price_reference_label() : m.plan_price_base_label()}</p>
 		<p class="text-2xl font-bold text-brand-900">
 			{formatPrice(data.plan.basePrice)}<span class="text-xs font-normal text-stone-500">{m.plan_card_base_price()}</span>
 		</p>
