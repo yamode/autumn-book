@@ -137,17 +137,14 @@
 		</section>
 	{/if}
 
-	<!-- ============ ご予約中の時間 ============ -->
-	<section class="rounded-lg bg-white px-5 py-5 shadow-card">
-		<h2 class="text-base font-semibold text-stone-900">{m.bath_mine_title()}</h2>
-		{#if form?.done === 'canceled'}
-			<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
-		{:else if form?.done === 'change_started'}
-			<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_change_started()}</p>
-		{/if}
-		{#if !mine.length}
-			<p class="mt-2 text-sm text-stone-400">{m.bath_mine_empty()}</p>
-		{:else}
+	{#if mine.length}
+		<section class="rounded-lg bg-white px-5 py-5 shadow-card">
+			<h2 class="text-base font-semibold text-stone-900">{m.bath_mine_title()}</h2>
+			{#if form?.done === 'canceled'}
+				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
+			{:else if form?.done === 'change_started'}
+				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_change_started()}</p>
+			{/if}
 			<ul class="mt-3 space-y-3">
 				{#each mine as r (r.id)}
 					<li class="rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
@@ -182,9 +179,15 @@
 					</li>
 				{/each}
 			</ul>
-		{/if}
-		<p class="mt-4 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
-	</section>
+			<p class="mt-4 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
+		</section>
+	{/if}
+
+	{#if !mine.length && (form?.done === 'canceled' || form?.done === 'change_started')}
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">
+			{form.done === 'canceled' ? m.bath_canceled() : m.bath_change_started()}
+		</p>
+	{/if}
 
 	{#if ctx.ok && ctx.enabled && (hasBookableSlot || done)}
 		<!-- ============ ステップ表示 ============ -->
@@ -340,6 +343,9 @@
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached()}</p>
 	{:else if ctx.ok && ctx.enabled}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_no_availability()}</p>
+	{/if}
+	{#if !mine.length}
+		<p class="px-5 py-2 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
 	{/if}
 </div>
 
