@@ -58,8 +58,9 @@ export const actions: Actions = {
 
 		const fd = await request.formData();
 		const slotId = String(fd.get('slotId') ?? '').trim();
+		const intent = fd.get('intent') === 'change' ? 'change' : 'cancel';
 		if (!slotId) return fail(400, { error: 'other' as const });
 		if (!(await sbBathCancel(token, slotId))) return fail(400, { error: 'other' as const });
-		return { done: 'canceled' as const };
+		return { done: intent === 'change' ? 'change_started' as const : 'canceled' as const };
 	}
 };

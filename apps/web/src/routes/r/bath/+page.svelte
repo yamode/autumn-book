@@ -46,19 +46,31 @@
 	let from = $state('');
 
 	const baths = $derived(ctx.baths ?? []);
+	const mine = $derived(ctx.mine ?? []);
+	// PMS の午前・午後の時間帯と同じ単位で、取得済みの時間帯をフォームから外す。
+	// 確定時には RPC が実際の設定範囲と上限を再検証する。
+	function period(from: string): 'morning' | 'afternoon' {
+		return Number(from.slice(0, 2)) < 12 ? 'morning' : 'afternoon';
+	}
+	function isBookable(date: string, slot: { from: string; taken: boolean; closed: boolean }): boolean {
+		return !slot.taken && !slot.closed &&
+			mine.filter((r) => r.date === date && period(r.from) === period(slot.from)).length < (ctx.per_room_per_range ?? 1);
+	}
 	const bath = $derived(
 		(pickedBath === null ? null : baths.find((b) => (b.bath_id ?? '') === pickedBath)) ?? baths[0]
 	);
-	const days = $derived(bath?.days ?? []);
+	const days = $derived((bath?.days ?? []).filter((d) => d.slots.some((s) => isBookable(d.date, s))));
 	/** その日の「まだ取れる」枠だけ。埋まり・締切済みは選択肢に出さない（現行フォームと同じ）。 */
-	const slots = $derived((days.find((d) => d.date === date)?.slots ?? []).filter((s) => !s.taken && !s.closed));
+	const slots = $derived((days.find((d) => d.date === date)?.slots ?? []).filter((s) => isBookable(date, s)));
 	const pickedSlot = $derived(slots.find((s) => s.from === from));
-	const canConfirm = $derived(Boolean(date && from));
+	const canConfirm = $derived(Boolean(date && pickedSlot));
+	const hasBookableSlot = $derived(baths.some((b) => b.days.some((d) => d.slots.some((s) => isBookable(d.date, s)))));
 
 	// 送信が通ったら完了（STEP3）。失敗したら入力に戻して理由を出す。
 	const done = $derived(form?.done === 'reserved');
 	$effect(() => {
 		if (form?.error) step = 1;
+		if (form?.done === 'canceled' || form?.done === 'change_started') reset();
 	});
 
 	function onBathChange(v: string) {
@@ -125,7 +137,56 @@
 		</section>
 	{/if}
 
-	{#if ctx.ok && ctx.enabled}
+	<!-- ============ ご予約中の時間 ============ -->
+	<section class="rounded-lg bg-white px-5 py-5 shadow-card">
+		<h2 class="text-base font-semibold text-stone-900">{m.bath_mine_title()}</h2>
+		{#if form?.done === 'canceled'}
+			<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
+		{:else if form?.done === 'change_started'}
+			<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_change_started()}</p>
+		{/if}
+		{#if !mine.length}
+			<p class="mt-2 text-sm text-stone-400">{m.bath_mine_empty()}</p>
+		{:else}
+			<ul class="mt-3 space-y-3">
+				{#each mine as r (r.id)}
+					<li class="rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
+						<p class="font-medium text-stone-800">{fmtDate(r.date)}</p>
+						<p class="mt-1 text-lg font-semibold tabular-nums text-stone-900">{r.from}{r.to ? `〜${r.to}` : ''}</p>
+						{#if r.price_yen > 0}
+							<p class="mt-1 text-xs text-stone-500">{yen(r.price_yen)}</p>
+						{/if}
+						{#if r.cancelable}
+							<form method="POST" action="?/cancel" use:enhance class="mt-3 flex gap-2">
+								<input type="hidden" name="slotId" value={r.id} />
+								<button
+									type="submit"
+									name="intent"
+									value="change"
+									class="min-h-10 flex-1 rounded border border-[#48575f] px-3 py-2 text-sm font-medium text-[#48575f]"
+									onclick={(e) => {
+										if (!confirm(m.bath_change_confirm())) e.preventDefault();
+									}}>{m.bath_change()}</button>
+								<button
+									type="submit"
+									name="intent"
+									value="cancel"
+									class="min-h-10 flex-1 rounded border border-stone-300 px-3 py-2 text-sm text-stone-600"
+									onclick={(e) => {
+										if (!confirm(m.bath_cancel_confirm())) e.preventDefault();
+									}}>{m.bath_cancel()}</button>
+							</form>
+						{:else}
+							<p class="mt-2 text-xs text-stone-500">{m.bath_cancel_closed()}</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		<p class="mt-4 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
+	</section>
+
+	{#if ctx.ok && ctx.enabled && (hasBookableSlot || done)}
 		<!-- ============ ステップ表示 ============ -->
 		<ol class="flex overflow-hidden rounded-lg text-[11px] shadow-card">
 			{#each STEPS as label, i}
@@ -149,11 +210,13 @@
 			<!-- ============ STEP3 送信完了 ============ -->
 			<section class="rounded-lg bg-white px-5 py-6 text-center shadow-card">
 				<p class="text-[15px] leading-7 text-stone-800">{c.done || m.bath_done()}</p>
-				<button
-					type="button"
-					onclick={reset}
-					class="mt-5 inline-block w-full max-w-[220px] rounded border border-[#48575f] py-2.5 text-sm text-[#48575f]"
-				>{m.bath_new()}</button>
+				{#if hasBookableSlot}
+					<button
+						type="button"
+						onclick={reset}
+						class="mt-5 inline-block w-full max-w-[220px] rounded border border-[#48575f] py-2.5 text-sm text-[#48575f]"
+					>{m.bath_new()}</button>
+				{/if}
 			</section>
 		{:else if step === 1}
 			<!-- ============ STEP1 フォームのご入力 ============ -->
@@ -273,44 +336,11 @@
 				</div>
 			</section>
 		{/if}
+	{:else if ctx.ok && ctx.enabled && mine.length}
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached()}</p>
+	{:else if ctx.ok && ctx.enabled}
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_no_availability()}</p>
 	{/if}
-
-	<!-- ============ ご予約中の時間 ============ -->
-	<section class="rounded-lg bg-white px-5 py-5 shadow-card">
-		<h2 class="text-sm font-medium text-stone-900">{m.bath_mine_title()}</h2>
-		{#if form?.done === 'canceled'}
-			<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
-		{/if}
-		{#if !ctx.mine?.length}
-			<p class="mt-2 text-sm text-stone-400">{m.bath_mine_empty()}</p>
-		{:else}
-			<ul class="mt-3 divide-y divide-stone-100">
-				{#each ctx.mine as r (r.id)}
-					<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
-						<span class="font-medium text-stone-800">{fmtDate(r.date)}</span>
-						<span class="tabular-nums text-stone-800">{r.from}{r.to ? `〜${r.to}` : ''}</span>
-						{#if r.price_yen > 0}
-							<span class="text-xs text-stone-400">{yen(r.price_yen)}</span>
-						{/if}
-						{#if r.cancelable}
-							<form method="POST" action="?/cancel" use:enhance class="ml-auto">
-								<input type="hidden" name="slotId" value={r.id} />
-								<button
-									type="submit"
-									class="rounded border border-stone-300 px-2 py-1 text-xs text-stone-600"
-									onclick={(e) => {
-										if (!confirm(m.bath_cancel_confirm())) e.preventDefault();
-									}}>{m.bath_cancel()}</button>
-							</form>
-						{:else}
-							<span class="ml-auto text-xs text-stone-400">{m.bath_cancel_closed()}</span>
-						{/if}
-					</li>
-				{/each}
-			</ul>
-		{/if}
-		<p class="mt-4 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
-	</section>
 </div>
 
 <style>
