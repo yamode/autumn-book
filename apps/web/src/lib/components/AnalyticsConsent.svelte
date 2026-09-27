@@ -1,6 +1,6 @@
 <script lang="ts">
 	// GA4 ローダー + Consent Mode v2 同意バナー（設計書 §9）。
-	// PUBLIC_GA4_MEASUREMENT_ID 未設定なら何も描画・ロードしない（受け皿実装）。
+	// PUBLIC_GA4_MEASUREMENT_ID 未設定なら何も描画・ロードしない。
 	// 文言はメンテナンスページと同じ自己完結ロケール分岐（messages/*.json には持たない）。
 	import { browser } from '$app/environment';
 	import { afterNavigate } from '$app/navigation';
@@ -8,6 +8,8 @@
 	import { env } from '$env/dynamic/public';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { dbg } from '$lib/debug';
+	import { discardGaEvents, flushGaEvents } from '$lib/analytics';
+	import type { ExperimentAssignment } from '$lib/experiments';
 
 	const gaId = env.PUBLIC_GA4_MEASUREMENT_ID ?? '';
 
@@ -45,18 +47,17 @@
 		(window as any).dataLayer.push(arguments);
 	}
 
-	function initGtag(stored: 'granted' | 'denied' | null) {
+	function initGtag() {
 		const w = window as any;
 		if (w.gtag) return;
 		w.dataLayer = w.dataLayer ?? [];
 		w.gtag = gtag;
-		// Consent Mode v2: 広告系は常に denied（広告配信なし）。解析は同意後にのみ granted。
+		// Google のタグは解析への同意後にだけ読み込む。広告系は常に denied。
 		gtag('consent', 'default', {
 			ad_storage: 'denied',
 			ad_user_data: 'denied',
 			ad_personalization: 'denied',
-			analytics_storage: stored === 'granted' ? 'granted' : 'denied',
-			wait_for_update: 500
+			analytics_storage: 'granted'
 		});
 		gtag('js', new Date());
 		// SPA 遷移は afterNavigate で手動送信するため自動 page_view は無効化
@@ -65,6 +66,7 @@
 		s.async = true;
 		s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`;
 		document.head.appendChild(s);
+		flushGaEvents();
 		dbg('ga4 loaded', gaId);
 	}
 
@@ -77,8 +79,43 @@
 		} catch {
 			/* localStorage 不可なら毎回バナー表示 */
 		}
-		initGtag(stored);
+		if (stored === 'granted') initGtag();
 		if (consent === 'ssr') consent = stored ?? 'unset';
+	}
+
+	function pageLocation() {
+		// GA に予約コードや URL の検索条件・トークンを送らない。
+		const safePath = location.pathname
+			.replace(/(\/booking\/complete\/)[^/]+/, '$1:code')
+			.replace(/(\/account\/reservations\/)[^/]+/, '$1:code');
+		return `${location.origin}${safePath}`;
+	}
+
+	function trackPage() {
+		if (!browser || !gaId || consent !== 'granted' || isExcluded(location.pathname)) return;
+		if ((page.data.abExperiments ?? []).some((assignment: ExperimentAssignment) => assignment.preview)) return;
+		initGtag();
+		const assignments = ((page.data.abExperiments ?? []) as ExperimentAssignment[]).filter((assignment) => !assignment.preview);
+		gtag('event', 'page_view', {
+			page_location: pageLocation(),
+			page_title: document.title,
+			...(assignments.length ? { experiment_assignments: assignments.map((item) => `${item.id}:${item.revision}:${item.variant}`).join(',') } : {})
+		});
+		for (const assignment of assignments) {
+			const key = `ab_exposure_${assignment.id}_${assignment.revision}_${assignment.variant}`;
+			try {
+				if (sessionStorage.getItem(key)) continue;
+				sessionStorage.setItem(key, '1');
+			} catch {
+				// sessionStorage が使えなくても計測する。
+			}
+			gtag('event', 'experiment_exposure', {
+				experiment_id: assignment.id,
+				experiment_revision: assignment.revision,
+				experiment_variant: assignment.variant,
+				page_location: pageLocation()
+			});
+		}
 	}
 
 	$effect(() => {
@@ -88,12 +125,7 @@
 	afterNavigate(() => {
 		if (!browser || !gaId || isExcluded(location.pathname)) return;
 		ensureInit();
-		const w = window as any;
-		if (typeof w.gtag !== 'function') return;
-		w.gtag('event', 'page_view', {
-			page_location: location.href,
-			page_title: document.title
-		});
+		trackPage();
 	});
 
 	function choose(granted: boolean) {
@@ -103,9 +135,8 @@
 		} catch {
 			/* noop */
 		}
-		if (granted) {
-			gtag('consent', 'update', { analytics_storage: 'granted' });
-		}
+		if (granted) trackPage();
+		else discardGaEvents();
 		dbg('ga4 consent', consent);
 	}
 </script>

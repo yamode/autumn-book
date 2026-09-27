@@ -20,6 +20,8 @@
 	"vars": {
 		"AUTH_MODE": "supabase",
 		"DATA_SOURCE": "supabase",
+		// GA4 の測定 ID を取得したら G-... を設定。空欄の間はタグも同意バナーも無効。
+		"PUBLIC_GA4_MEASUREMENT_ID": "",
 		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
 		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_5LrR74B4VdgRpq1koMbrQA_SIvpAWk0"
 	}

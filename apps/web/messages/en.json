@@ -160,6 +160,7 @@
   "plans_title": "Rooms and plans | {name}",
   "plans_breadcrumb": "Rooms and plans",
   "plans_heading": "Choose a room",
+  "plans_heading_alternative": "Find your room",
   "plans_room_show_all": "View all plans ({count})",
   "plans_room_collapse": "Show fewer plans",
   "plans_room_details": "Details and booking",

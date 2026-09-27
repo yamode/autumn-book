@@ -5,12 +5,14 @@
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
+	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let expandedRooms = $state<Record<string, boolean>>({});
+	let headingVariant = $derived(experimentVariant(page.data.abExperiments, 'facility-plans-heading'));
 
 	function tagHref(tag: string) {
 		const query = new URLSearchParams(page.url.searchParams);
@@ -80,7 +82,7 @@
 		<div class="flex flex-wrap items-end justify-between gap-3">
 			<div>
 				<p class="text-xs font-semibold tracking-[0.22em] text-stone-500">ROOMS & PLANS</p>
-				<h2 class="font-display mt-2 text-2xl text-brand-900 sm:text-3xl">{m.plans_heading()}</h2>
+				<h2 class="font-display mt-2 text-2xl text-brand-900 sm:text-3xl">{headingVariant === 'b' ? m.plans_heading_alternative() : m.plans_heading()}</h2>
 			</div>
 			<span class="text-sm tabular-nums text-stone-500">{data.rooms.length}</span>
 		</div>

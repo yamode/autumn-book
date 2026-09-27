@@ -3,6 +3,7 @@ import { getSession } from '$lib/server/session';
 import { AUTH_MODE, resolveSupabaseSessionUser } from '$lib/server/auth';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
+import { experimentsForRequest } from '$lib/server/experiments';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 const PRIMARY_ORIGIN = 'https://book.yamado.app';
@@ -35,6 +36,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.locals.user = getSession(event.cookies);
 		event.locals.pendingAuthUser = null;
 	}
+	event.locals.abExperiments = experimentsForRequest(event);
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）

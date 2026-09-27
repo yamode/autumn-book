@@ -160,6 +160,7 @@
   "plans_title": "客室・プラン一覧 ｜ {name}",
   "plans_breadcrumb": "客室・プラン",
   "plans_heading": "客室から探す",
+  "plans_heading_alternative": "お部屋から探す",
   "plans_room_show_all": "プランをすべて見る（{count}件）",
   "plans_room_collapse": "プランを閉じる",
   "plans_room_details": "詳細・予約",
