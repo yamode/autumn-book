@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { addDays, formatDate, formatPrice, todayStr } from '$lib/format';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -25,8 +26,26 @@
 
 	// svelte-ignore state_referenced_locally
 	let selectedNights = $state(nights);
+	let scrollRegion = $state<HTMLDivElement | null>(null);
 	$effect(() => {
 		if (open) selectedNights = nights;
+	});
+	$effect(() => {
+		if (!open || !checkin) return;
+		const selectedMonth = checkin.slice(0, 7);
+		void tick().then(() => {
+			if (!open || !scrollRegion || checkin.slice(0, 7) !== selectedMonth) return;
+			const month = Array.from(scrollRegion.querySelectorAll<HTMLElement>('[data-month]'))
+				.find((element) => element.dataset.month === selectedMonth);
+			if (!month) return;
+			const edgePadding = Math.max(0, (scrollRegion.clientHeight - month.offsetHeight) / 2);
+			scrollRegion.style.paddingTop = `${edgePadding}px`;
+			scrollRegion.style.paddingBottom = `${Math.max(edgePadding, 32)}px`;
+			const monthRect = month.getBoundingClientRect();
+			const regionRect = scrollRegion.getBoundingClientRect();
+			scrollRegion.scrollTop +=
+				monthRect.top + monthRect.height / 2 - (regionRect.top + regionRect.height / 2);
+		});
 	});
 	$effect(() => {
 		if (!open) return;
@@ -85,9 +104,9 @@
 					<button type="button" disabled={selectedNights >= 7} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedNights++}>+</button>
 				</div>
 			</div>
-			<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-8 sm:px-6">
+			<div bind:this={scrollRegion} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-8 sm:px-6">
 				{#each months as month (month.key)}
-					<section class="pt-6" aria-label={month.label}>
+					<section class="pt-6" aria-label={month.label} data-month={month.key}>
 						<h3 class="mb-5 text-center text-lg font-semibold text-stone-900">{month.label}</h3>
 						<div class="grid grid-cols-7 text-center text-xs font-medium">
 							{#each weekdays as weekday, index}<div class="pb-3 {index === 0 ? 'text-red-500' : index === 6 ? 'text-blue-500' : 'text-stone-600'}">{weekday}</div>{/each}
