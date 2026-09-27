@@ -1,13 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
-	import PriceCalendar from '$lib/components/PriceCalendar.svelte';
+	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
-	import { formatPrice } from '$lib/format';
-	import { shiftYearMonth } from '$lib/calendar-range';
+	import { formatDate, formatPrice, todayStr } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 	import { percentText } from '$lib/early-prepay';
@@ -24,7 +24,6 @@
 	});
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let selectedRoom = $derived(page.url.searchParams.get('room') ?? '');
-	let roomQuery = $derived(selectedRoom ? `&room=${encodeURIComponent(selectedRoom)}` : '');
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
@@ -50,6 +49,12 @@
 
 	// モバイルの下部固定バー: 客室セクションが画面に入ったら隠す（同じCTAが二重にならないように）
 	let roomsInView = $state(false);
+	let datePickerOpen = $state(false);
+	function chooseDate(date: string, nights: number) {
+		const query = new URLSearchParams({ checkin: date, nights: String(nights), adults: String(data.params.adults) });
+		if (selectedRoom) query.set('room', selectedRoom);
+		void goto(`${base}/plans/${data.plan.slug}?${query}#${selectedRoom ? `room-${selectedRoom}` : 'rooms'}`);
+	}
 	$effect(() => {
 		const el = document.getElementById('rooms');
 		if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -143,12 +148,11 @@
 					<p class="mt-2 text-xs text-stone-500">{m.plan_price_base_note()}</p>
 				{/if}
 				<!-- 日付未指定・満室時は日付選択（料金カレンダー）へ、指定済みなら客室選択へ -->
-				<a
-					href={cheapest ? '#rooms' : '#cal'}
-					class="mt-3 block rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500"
-				>
-					{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
-				</a>
+				{#if cheapest}
+					<a href="#rooms" class="mt-3 block rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_rooms()}</a>
+				{:else}
+					<button type="button" onclick={() => (datePickerOpen = true)} class="mt-3 block w-full rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_dates()}</button>
+				{/if}
 			</div>
 		</div>
 	</div>
@@ -164,25 +168,15 @@
 	<!-- 仕様表・紹介ブロック（book.plan_contents.specs / sections） -->
 	<ContentBlocks specs={data.plan.specs} sections={data.plan.sections} specsTitle={m.plan_detail_specs()} />
 
-	<!-- 料金カレンダー -->
+	<!-- 日付選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="cal">
 		<h2 class="font-display mb-1 text-xl text-brand-900">{m.plan_detail_price_calendar()}</h2>
 		<p class="mb-3 text-sm text-stone-500">{m.plan_detail_calendar_sub()}</p>
-		<div class="max-w-xl">
-			<PriceCalendar
-				days={data.calendar}
-				yearMonth={data.calMonth}
-				makeDayHref={(date) =>
-					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&adults=${data.params.adults}${roomQuery}#${selectedRoom ? `room-${selectedRoom}` : 'rooms'}`}
-				prevHref={data.calendarNav.canGoPrev
-					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, -1)}${roomQuery}#cal`
-					: null}
-				nextHref={data.calendarNav.canGoNext
-					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, 1)}${roomQuery}#cal`
-					: null}
-			/>
-		</div>
+		<button type="button" onclick={() => (datePickerOpen = true)} class="w-full max-w-xl rounded-xl border border-stone-300 bg-white px-5 py-4 text-left text-sm font-medium text-brand-800 hover:border-brand-800">
+			📅 {data.params.checkin ? formatDate(data.params.checkin) : m.bath_select_date()} · {m.searchbar_nights_option({ n: String(data.params.nights) })}
+		</button>
 	</section>
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">

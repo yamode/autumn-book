@@ -24,23 +24,25 @@
 
 	let firstMonth = $derived(today.slice(0, 7));
 	let lastMonth = $derived(shiftYearMonth(firstMonth, 2));
-	let month = $state('');
-	let displayMonth = $derived(month || firstMonth);
-	$effect(() => {
-		const selectedMonth = checkin.slice(0, 7);
-		month = selectedMonth >= firstMonth && selectedMonth <= lastMonth ? selectedMonth : firstMonth;
-	});
 	let priceByDate = $derived(new Map(days.map((day) => [day.date, day])));
-	let firstWeekday = $derived(new Date(`${displayMonth}-01T00:00:00Z`).getUTCDay());
-	let monthDates = $derived.by(() => {
-		const [year, number] = displayMonth.split('-').map(Number);
-		const count = new Date(Date.UTC(year, number, 0)).getUTCDate();
-		return Array.from({ length: count }, (_, index) => `${displayMonth}-${String(index + 1).padStart(2, '0')}`);
-	});
 	const locale = getLocale();
-	let monthLabel = $derived(new Intl.DateTimeFormat(locale === 'zh-TW' ? 'zh-TW' : locale === 'en' ? 'en-US' : 'ja-JP', { year: 'numeric', month: 'long' }).format(new Date(`${displayMonth}-01T00:00:00Z`)));
+	const localeTag = locale === 'zh-TW' ? 'zh-TW' : locale === 'en' ? 'en-US' : 'ja-JP';
+	let months = $derived.by(() => {
+		const result: { key: string; label: string; offset: number; dates: string[] }[] = [];
+		for (let key = firstMonth; key <= lastMonth; key = shiftYearMonth(key, 1)) {
+			const [year, number] = key.split('-').map(Number);
+			const count = new Date(Date.UTC(year, number, 0)).getUTCDate();
+			result.push({
+				key,
+				label: new Intl.DateTimeFormat(localeTag, { year: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(year, number - 1, 1))),
+				offset: new Date(Date.UTC(year, number - 1, 1)).getUTCDay(),
+				dates: Array.from({ length: count }, (_, index) => `${key}-${String(index + 1).padStart(2, '0')}`)
+			});
+		}
+		return result;
+	});
 	const weekdays = Array.from({ length: 7 }, (_, index) =>
-		new Intl.DateTimeFormat(locale === 'zh-TW' ? 'zh-TW' : locale === 'en' ? 'en-US' : 'ja-JP', { weekday: 'short' }).format(new Date(Date.UTC(2024, 8, 1 + index)))
+		new Intl.DateTimeFormat(localeTag, { weekday: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(2024, 8, 1 + index)))
 	);
 
 	function dateHref(date: string) {
@@ -76,30 +78,32 @@
 			<button type="submit" class="rounded-md bg-brand-800 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">{m.facility_calendar_update()}</button>
 		</form>
 	</div>
-	<div class="flex items-center justify-between py-4">
-		<button type="button" aria-label={m.calendar_prev()} disabled={displayMonth <= firstMonth} onclick={() => (month = shiftYearMonth(displayMonth, -1))} class="rounded-full border border-stone-200 px-3 py-1.5 text-stone-600 hover:bg-stone-50 disabled:opacity-30">‹</button>
-		<h3 class="font-semibold text-stone-800">{monthLabel}</h3>
-		<button type="button" aria-label={m.calendar_next()} disabled={displayMonth >= lastMonth} onclick={() => (month = shiftYearMonth(displayMonth, 1))} class="rounded-full border border-stone-200 px-3 py-1.5 text-stone-600 hover:bg-stone-50 disabled:opacity-30">›</button>
-	</div>
-	<div class="grid grid-cols-7 gap-1 text-center text-[11px]">
-		{#each weekdays as weekday, index}
-			<div class="pb-2 font-medium {index === 0 ? 'text-red-500' : index === 6 ? 'text-blue-500' : 'text-stone-500'}">{weekday}</div>
-		{/each}
-		{#each Array(firstWeekday) as _}<div></div>{/each}
-		{#each monthDates as date}
-			{@const offer = priceByDate.get(date)}
-			{#if offer}
-				<a href={dateHref(date)} aria-label={`${date} ${formatPrice(offer.price)}〜`} class="flex min-h-16 min-w-0 flex-col items-center rounded-md border px-0.5 py-1 transition {checkin === date ? 'border-brand-800 bg-brand-50' : 'border-stone-200 hover:border-brand-700 hover:bg-brand-50'}">
-					<span class="font-medium text-stone-800">{Number(date.slice(-2))}</span>
-					<span class="mt-1 text-[9px] leading-none text-brand-800" aria-hidden="true">¥</span>
-					<span class="max-w-full whitespace-nowrap text-[clamp(8px,2.4vw,10px)] leading-none tracking-tight text-brand-800">{offer.price.toLocaleString('ja-JP')}</span>
-					<span class="text-[9px] leading-none text-brand-800" aria-hidden="true">〜</span>
-				</a>
-			{:else}
-				<div class="flex min-h-14 flex-col items-center rounded-md bg-stone-50 py-1.5 text-stone-300">
-					<span>{Number(date.slice(-2))}</span><span class="mt-1">—</span>
+	<div class="lg:max-h-[min(65dvh,640px)] lg:overflow-y-auto lg:overscroll-contain">
+		{#each months as month (month.key)}
+			<div class="pt-5">
+				<h3 class="mb-4 text-center font-semibold text-stone-800">{month.label}</h3>
+				<div class="grid grid-cols-7 gap-1 text-center text-[11px]">
+					{#each weekdays as weekday, index}
+						<div class="pb-2 font-medium {index === 0 ? 'text-red-500' : index === 6 ? 'text-blue-500' : 'text-stone-500'}">{weekday}</div>
+					{/each}
+					{#each Array(month.offset) as _}<div aria-hidden="true"></div>{/each}
+					{#each month.dates as date (date)}
+						{@const offer = priceByDate.get(date)}
+						{#if offer}
+							<a href={dateHref(date)} aria-label={`${date} ${formatPrice(offer.price)}〜`} class="flex min-h-16 min-w-0 flex-col items-center rounded-md border px-0.5 py-1 transition {checkin === date ? 'border-brand-800 bg-brand-50' : 'border-stone-200 hover:border-brand-700 hover:bg-brand-50'}">
+								<span class="font-medium text-stone-800">{Number(date.slice(-2))}</span>
+								<span class="mt-1 text-[9px] leading-none text-brand-800" aria-hidden="true">¥</span>
+								<span class="max-w-full whitespace-nowrap text-[clamp(8px,2.4vw,10px)] leading-none tracking-tight text-brand-800">{offer.price.toLocaleString('ja-JP')}</span>
+								<span class="text-[9px] leading-none text-brand-800" aria-hidden="true">〜</span>
+							</a>
+						{:else}
+							<div class="flex min-h-14 flex-col items-center rounded-md bg-stone-50 py-1.5 text-stone-300">
+								<span>{Number(date.slice(-2))}</span><span class="mt-1">—</span>
+							</div>
+						{/if}
+					{/each}
 				</div>
-			{/if}
+			</div>
 		{/each}
 	</div>
 	<p class="mt-3 text-[11px] text-stone-500">{m.facility_calendar_price_note()}</p>

@@ -2,9 +2,10 @@
 	import { page } from '$app/state';
 	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
 	import FacilityAvailabilityCalendar from '$lib/components/FacilityAvailabilityCalendar.svelte';
+	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
-	import { formatPrice } from '$lib/format';
+	import { formatDate, formatPrice } from '$lib/format';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
 
@@ -14,6 +15,15 @@
 	let expandedRooms = $state<Record<string, boolean>>({});
 	let introExpanded = $state(false);
 	let mobileCalendarOpen = $state(false);
+	let datePickerOpen = $state(false);
+	// svelte-ignore state_referenced_locally
+	let mobileCheckin = $state(data.params.checkin);
+	// svelte-ignore state_referenced_locally
+	let mobileNights = $state(data.params.nights);
+	$effect(() => {
+		mobileCheckin = data.params.checkin;
+		mobileNights = data.params.nights;
+	});
 	let headingVariant = $derived(experimentVariant(page.data.abExperiments, 'facility-plans-heading'));
 
 	function tagHref(tag: string) {
@@ -89,13 +99,14 @@
 					<h2 class="font-display text-lg text-brand-900">{m.searchbar_submit()}</h2>
 					<form method="GET" action="{base}/plans" class="mt-4 grid grid-cols-2 gap-3">
 						{#if data.params.tag}<input type="hidden" name="tag" value={data.params.tag} />{/if}
-						<label class="col-span-2 flex flex-col gap-1 text-xs text-stone-600">
-							{m.searchbar_checkin()}
-							<input type="date" name="checkin" min={data.today} value={data.params.checkin} required class="min-h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-base text-stone-800" />
-						</label>
+						<div class="col-span-2 flex flex-col gap-1 text-xs text-stone-600">
+							<span>{m.searchbar_checkin()}</span>
+							<input type="hidden" name="checkin" value={mobileCheckin} />
+							<button type="button" onclick={() => (datePickerOpen = true)} class="min-h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-left text-base text-stone-800">📅 {mobileCheckin ? formatDate(mobileCheckin) : m.bath_select_date()}</button>
+						</div>
 						<label class="flex flex-col gap-1 text-xs text-stone-600">
 							{m.searchbar_nights()}
-							<select name="nights" value={data.params.nights} class="min-h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-base text-stone-800">
+							<select name="nights" bind:value={mobileNights} class="min-h-11 w-full rounded-lg border border-stone-300 bg-white px-3 text-base text-stone-800">
 								{#each [1, 2, 3, 4, 5, 6, 7] as count}<option value={count}>{m.searchbar_nights_option({ n: String(count) })}</option>{/each}
 							</select>
 						</label>
@@ -105,8 +116,9 @@
 								{#each [1, 2, 3, 4, 5, 6] as count}<option value={count}>{m.searchbar_adults_option({ n: String(count) })}</option>{/each}
 							</select>
 						</label>
-						<button type="submit" class="col-span-2 min-h-11 rounded-lg bg-brand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">{m.searchbar_submit()}</button>
+						<button type="submit" disabled={!mobileCheckin} class="col-span-2 min-h-11 rounded-lg bg-brand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-40">{m.searchbar_submit()}</button>
 					</form>
+					<ScrollDatePicker bind:open={datePickerOpen} checkin={mobileCheckin} nights={mobileNights} minDate={data.today} days={data.calendarDays} availableThrough={data.calendarThrough} onSelect={(date, nights) => { mobileCheckin = date; mobileNights = nights; }} />
 					<button type="button" aria-expanded={mobileCalendarOpen} onclick={() => (mobileCalendarOpen = !mobileCalendarOpen)} class="mt-4 w-full border-t border-stone-200 pt-3 text-center text-sm font-semibold text-brand-700">
 						{mobileCalendarOpen ? m.plans_mobile_calendar_close() : m.plans_mobile_calendar_open()} <span aria-hidden="true">{mobileCalendarOpen ? '⌃' : '⌄'}</span>
 					</button>

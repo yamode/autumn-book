@@ -90,6 +90,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			rooms: roomsWithPlans(allRooms, plans, prices, adults),
 			allTags,
 			calendarDays,
+			calendarThrough: twoMonthsAfter(today),
 			today,
 			referenceMode: !checkin,
 			params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
@@ -123,6 +124,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults),
 		allTags,
 		calendarDays: demoCalendar(facility.id, today, nights, adults),
+		calendarThrough: twoMonthsAfter(today),
 		today,
 		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
