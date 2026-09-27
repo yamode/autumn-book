@@ -26,9 +26,11 @@
 <form
 	method="GET"
 	{action}
-	class="flex flex-wrap items-end gap-2 {large ? 'rounded-xl bg-white/95 p-4 shadow-lg' : ''}"
+	class={large
+		? 'grid w-full grid-cols-2 items-end gap-3 border border-stone-200 bg-white p-4 sm:grid-cols-[2fr_1fr_1fr_1.2fr] sm:gap-4 sm:p-5'
+		: 'flex flex-wrap items-end gap-2'}
 >
-	<label class="flex flex-col gap-1 text-xs text-stone-500">
+	<label class="flex min-w-0 flex-col gap-1 text-xs text-stone-500 {large ? 'col-span-2 sm:col-span-1' : ''}">
 		{m.searchbar_checkin()}
 		<input
 			type="date"
@@ -36,20 +38,22 @@
 			bind:value={ci}
 			min={minDate}
 			max={maxDate}
-			class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-800"
+			class={large
+				? 'h-11 min-w-0 w-full rounded-none border-0 bg-stone-100 px-3 text-sm text-stone-800'
+				: 'rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm text-stone-800'}
 		/>
 	</label>
-	<label class="flex flex-col gap-1 text-xs text-stone-500">
+	<label class="flex min-w-0 flex-col gap-1 text-xs text-stone-500">
 		{m.searchbar_nights()}
-		<select name="nights" bind:value={n} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
+		<select name="nights" bind:value={n} class={large ? 'h-11 w-full rounded-none border-0 bg-stone-100 px-3 text-sm text-stone-800' : 'rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm'}>
 			{#each nightOptions as v}
 				<option value={v}>{m.searchbar_nights_option({ n: String(v) })}</option>
 			{/each}
 		</select>
 	</label>
-	<label class="flex flex-col gap-1 text-xs text-stone-500">
+	<label class="flex min-w-0 flex-col gap-1 text-xs text-stone-500">
 		{m.searchbar_adults()}
-		<select name="adults" bind:value={a} class="rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm">
+		<select name="adults" bind:value={a} class={large ? 'h-11 w-full rounded-none border-0 bg-stone-100 px-3 text-sm text-stone-800' : 'rounded-md border border-stone-300 bg-white px-2 py-1.5 text-sm'}>
 			{#each [1, 2, 3, 4] as v}
 				<option value={v}>{m.searchbar_adults_option({ n: String(v) })}</option>
 			{/each}
@@ -57,9 +61,9 @@
 	</label>
 	<button
 		type="submit"
-		class="rounded-md bg-brand-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 {large
-			? 'px-6 py-2'
-			: ''}"
+		class={large
+			? 'col-span-2 h-11 bg-brand-900 px-6 text-sm font-semibold text-white transition hover:bg-brand-700 sm:col-span-1'
+			: 'rounded-md bg-brand-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700'}
 	>
 		{m.searchbar_submit()}
 	</button>
