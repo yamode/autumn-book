@@ -500,6 +500,14 @@ PROD の `book._pb_slots` で検証した最終状態:
 
 ## 6. 段階1の着手順（最小セット）
 
+### 運用開始前のPMS連携スイッチ（2026-09-27）
+
+ゲストの予約確定は `book.reserve_private_bath` RPC が `pms.private_bath_slots` に直接書く。同じ枠をPMS職員画面も参照するため、別台帳への仮保存や後日の同期は行わない。予約完了画面は、確定後のリダイレクト先 `/r/bath/complete` で同じ滞在の `mine` を照合して表示する。照合できないURLは予約フォームへ戻す。トップへ戻る導線と、フォームへ進む導線を置く。
+
+公開側の書き込みはサーバー専用の `PRIVATE_BATH_PMS_ENABLED` が文字列 `true` のときだけ許可する。初期値と本番 `wrangler.jsonc` の値は `false`。予約確定・取消の両アクションを拒否し、フォームも非表示にする。既存予約は表示し、停止中の変更・取消はフロントで受ける。これはアプリ側の運用スイッチであり、DBの `metadata.private_bath.public.enabled` も `false` のまま保持する必要がある。後者はRPCが直接呼ばれた場合の予約防止にも効く。`cancel_private_bath` RPCには `enabled` のガードがないため、アプリ以外のトークン保持者による直接取消を完全に止めるにはDB側の別ガードが必要である。
+
+運用開始時は、浴室・枠・料金・上限・締切・PMS画面の表示・請求同期を実予約を使わない環境で確認し、施設設定の `public.enabled=true` とデプロイ設定の `PRIVATE_BATH_PMS_ENABLED=true` を同じ切替作業で適用する。どちらか一方だけではゲスト予約を開始しない。切り戻しは両方を `false` に戻す。受け付け済み予約のPMS台帳行は維持し、職員が対応する。
+
 1. **段階0の前提作業**（済。§5 冒頭の実施記録を参照）。残るのは `booking.yamado.co.jp` のドメイン設定のみ。
 2. **migration①**（pms 列追加 ＋ import バックフィル）→ **migration②**（RPC 5本）。
    命名・適用は `autumn-shared` 方針（`main` へ直 push）。**pms へのは ALTER は他リポの未適用 migration を確認してから**（`autumn-book/CLAUDE.md`）。

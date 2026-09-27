@@ -20,6 +20,7 @@
 	"vars": {
 		"AUTH_MODE": "supabase",
 		"DATA_SOURCE": "supabase",
+		"PRIVATE_BATH_PMS_ENABLED": "false",
 		"PUBLIC_GA4_MEASUREMENT_ID": "G-JFW5QS8QKH",
 		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
 		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_5LrR74B4VdgRpq1koMbrQA_SIvpAWk0"

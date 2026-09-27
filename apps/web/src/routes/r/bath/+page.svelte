@@ -12,6 +12,7 @@
 
 	let { data, form } = $props();
 	const ctx = $derived(data.ctx);
+	const bookingOpen = $derived(data.pmsEnabled && ctx.ok && ctx.enabled);
 	// 管理画面（/admin/bath）で入れた文章。未入力の欄は null なので既定文言に落ちる。
 	const c = $derived(data.content?.fields ?? {});
 	const photos = $derived(data.content?.images ?? []);
@@ -32,6 +33,7 @@
 	const yen = (v: number) => `¥${v.toLocaleString('ja-JP')}`;
 
 	const errorText = (code: string | undefined): string => {
+		if (code === 'not_open') return m.bath_closed();
 		if (code === 'slot_taken') return m.bath_err_taken();
 		if (code === 'per_room_limit') return m.bath_err_limit();
 		if (code === 'past_cutoff') return m.bath_err_cutoff();
@@ -66,8 +68,7 @@
 	const canConfirm = $derived(Boolean(date && pickedSlot));
 	const hasBookableSlot = $derived(baths.some((b) => b.days.some((d) => d.slots.some((s) => isBookable(d.date, s)))));
 
-	// 送信が通ったら完了（STEP3）。失敗したら入力に戻して理由を出す。
-	const done = $derived(form?.done === 'reserved');
+	// 確定成功時は専用の完了ページへ遷移する。
 	$effect(() => {
 		if (form?.error) step = 1;
 		if (form?.done === 'canceled' || form?.done === 'change_started') reset();
@@ -88,7 +89,7 @@
 		from = '';
 	}
 
-	const stepNo = $derived(done ? 3 : step);
+	const stepNo = $derived(step);
 	const STEPS = $derived([m.bath_step1(), m.bath_step2(), m.bath_step3()]);
 </script>
 
@@ -98,7 +99,7 @@
 	<!-- ============ 概要（折りたたみ） ============ -->
 	<!-- 見出しは黒ヘッダーに出るので、ここでは繰り返さない -->
 	<section class="overflow-hidden rounded-lg bg-white shadow-card">
-		{#if ctx.ok && ctx.enabled}
+		{#if bookingOpen}
 			<details open class="group">
 				<summary class="flex cursor-pointer items-center justify-between px-5 py-4 text-sm font-medium text-stone-800 marker:content-['']">
 					{m.bath_overview()}
@@ -153,7 +154,7 @@
 						{#if r.price_yen > 0}
 							<p class="mt-1 text-xs text-stone-500">{yen(r.price_yen)}</p>
 						{/if}
-						{#if r.cancelable}
+						{#if r.cancelable && data.pmsEnabled}
 							<form method="POST" action="?/cancel" use:enhance class="mt-3 flex gap-2">
 								<input type="hidden" name="slotId" value={r.id} />
 								<button
@@ -189,7 +190,8 @@
 		</p>
 	{/if}
 
-	{#if ctx.ok && ctx.enabled && (hasBookableSlot || done)}
+	{#if bookingOpen && hasBookableSlot}
+		<div id="new-reservation"></div>
 		<!-- ============ ステップ表示 ============ -->
 		<ol class="flex overflow-hidden rounded-lg text-[11px] shadow-card">
 			{#each STEPS as label, i}
@@ -209,19 +211,7 @@
 			<p class="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">{errorText(form.error)}</p>
 		{/if}
 
-		{#if done}
-			<!-- ============ STEP3 送信完了 ============ -->
-			<section class="rounded-lg bg-white px-5 py-6 text-center shadow-card">
-				<p class="text-[15px] leading-7 text-stone-800">{c.done || m.bath_done()}</p>
-				{#if hasBookableSlot}
-					<button
-						type="button"
-						onclick={reset}
-						class="mt-5 inline-block w-full max-w-[220px] rounded border border-[#48575f] py-2.5 text-sm text-[#48575f]"
-					>{m.bath_new()}</button>
-				{/if}
-			</section>
-		{:else if step === 1}
+		{#if step === 1}
 			<!-- ============ STEP1 フォームのご入力 ============ -->
 			<section class="rounded-lg bg-white px-5 py-5 shadow-card">
 				{#if baths.length > 1}
@@ -339,9 +329,9 @@
 				</div>
 			</section>
 		{/if}
-	{:else if ctx.ok && ctx.enabled && mine.length}
+	{:else if bookingOpen && mine.length}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached()}</p>
-	{:else if ctx.ok && ctx.enabled}
+	{:else if bookingOpen}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_no_availability()}</p>
 	{/if}
 	{#if !mine.length}

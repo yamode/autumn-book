@@ -9,6 +9,7 @@ import { sbBathCancel, sbBathContent, sbBathContext, sbBathReserve } from '$lib/
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import { EMPTY_BATH_CONTENT } from '$lib/private-bath-content';
+import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
 import type { Actions, PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
@@ -31,13 +32,14 @@ export const load: PageServerLoad = async ({ cookies }) => {
 	// シェル（黒ヘッダー）に出す見出しと戻り先。文章を入れていれば、その見出しをそのまま使う。
 	const headerTitle = content.fields.title || m.bath_title();
 
-	return { ctx, content, headerTitle, headerBack: '/r' };
+	return { ctx, content, pmsEnabled: bathPmsEnabled(), headerTitle, headerBack: '/r' };
 };
 
 export const actions: Actions = {
 	reserve: async ({ request, cookies }) => {
 		const token = cookies.get(STAY_COOKIE);
 		if (!token) redirect(303, '/r');
+		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
 
 		const fd = await request.formData();
 		const bathId = String(fd.get('bathId') ?? '').trim() || null;
@@ -49,12 +51,14 @@ export const actions: Actions = {
 
 		const r = await sbBathReserve(token, bathId, [{ date, from }]);
 		if (!r.ok) return fail(400, { error: r.code });
-		return { done: 'reserved' as const };
+		const query = new URLSearchParams({ date, from, bath: bathId ?? '' });
+		redirect(303, `/r/bath/complete?${query}`);
 	},
 
 	cancel: async ({ request, cookies }) => {
 		const token = cookies.get(STAY_COOKIE);
 		if (!token) redirect(303, '/r');
+		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
 
 		const fd = await request.formData();
 		const slotId = String(fd.get('slotId') ?? '').trim();
