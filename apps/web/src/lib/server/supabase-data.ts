@@ -2194,6 +2194,42 @@ export async function sbPlanReferenceMinPrices(facilityUuid: string, adults: num
 	return new Map(((data ?? []) as { rate_plan_id: string; min_per_person: number }[]).map((row) => [row.rate_plan_id, row.min_per_person]));
 }
 
+/** 客室×プランごとの本日〜2か月後の参考最低料金（指定人数利用時の1名1泊）。 */
+export async function sbRoomPlanReferencePrices(
+	facilityUuid: string,
+	adults: number
+): Promise<{ ratePlanId: string; roomTypeId: string; minPerPerson: number }[]> {
+	const { data, error } = await supa().rpc('room_plan_reference_prices', {
+		p_facility: facilityUuid,
+		p_adults: adults
+	});
+	if (error) throw error;
+	return ((data ?? []) as { rate_plan_id: string; room_type_id: string; min_per_person: number }[]).map((row) => ({
+		ratePlanId: row.rate_plan_id,
+		roomTypeId: row.room_type_id,
+		minPerPerson: row.min_per_person
+	}));
+}
+
+/** 指定泊数・人数で泊まれる日と、その日の施設最安料金（1名1泊）。 */
+export async function sbFacilityStayCalendar(
+	facilityUuid: string,
+	nights: number,
+	adults: number
+): Promise<{ date: string; price: number; remaining: number }[]> {
+	const { data, error } = await supa().rpc('facility_stay_calendar', {
+		p_facility: facilityUuid,
+		p_nights: nights,
+		p_adults: adults
+	});
+	if (error) throw error;
+	return ((data ?? []) as { stay_date: string; min_per_person_night: number; remaining: number }[]).map((row) => ({
+		date: row.stay_date,
+		price: row.min_per_person_night,
+		remaining: row.remaining
+	}));
+}
+
 export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
 	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (error) throw error;

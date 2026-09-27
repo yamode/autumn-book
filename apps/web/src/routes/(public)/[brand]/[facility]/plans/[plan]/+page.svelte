@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
 	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
@@ -22,6 +23,8 @@
 		});
 	});
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
+	let selectedRoom = $derived(page.url.searchParams.get('room') ?? '');
+	let roomQuery = $derived(selectedRoom ? `&room=${encodeURIComponent(selectedRoom)}` : '');
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
@@ -170,12 +173,12 @@
 				days={data.calendar}
 				yearMonth={data.calMonth}
 				makeDayHref={(date) =>
-					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&adults=${data.params.adults}#rooms`}
+					`${base}/plans/${data.plan.slug}?checkin=${date}&nights=${data.params.nights}&adults=${data.params.adults}${roomQuery}#${selectedRoom ? `room-${selectedRoom}` : 'rooms'}`}
 				prevHref={data.calendarNav.canGoPrev
-					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, -1)}#cal`
+					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, -1)}${roomQuery}#cal`
 					: null}
 				nextHref={data.calendarNav.canGoNext
-					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, 1)}#cal`
+					? `${base}/plans/${data.plan.slug}?${qs ? qs + '&' : ''}cal=${shiftYearMonth(data.calMonth, 1)}${roomQuery}#cal`
 					: null}
 			/>
 		</div>
@@ -192,7 +195,7 @@
 		{/if}
 		<div class="mt-3 space-y-3">
 			{#each data.rooms as r}
-				<div class="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center">
+				<div id="room-{r.room.slug}" class="flex scroll-mt-28 flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center {selectedRoom === r.room.slug ? 'border-brand-800 ring-1 ring-brand-800' : 'border-stone-200'}">
 					<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
 					<div class="flex-1">
 						<h3 class="font-medium text-brand-900">{r.room.name}</h3>

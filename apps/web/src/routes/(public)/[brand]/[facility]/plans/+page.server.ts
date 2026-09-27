@@ -1,90 +1,130 @@
 import { error } from '@sveltejs/kit';
-import { getFacilityBySlug, getRatePlans, roomTypes, remainingRooms, quoteFor } from '$lib/server/store';
+import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor, searchAvailability } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbFacilityBySlug, sbListPlansMapped, sbPlanOffers, sbPlanReferenceMinPrices } from '$lib/server/supabase-data';
+import { sbFacilityBySlug, sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers, sbRoomPlanReferencePrices, sbFacilityStayCalendar } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import { eachNight } from '@autumn-book/core';
+import { addDays, eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
+import type { RatePlan, RoomType } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
+type RoomPlanPrice = {
+	ratePlanId: string;
+	roomTypeId: string;
+	total: number | null;
+	referencePrice: number | null;
+	remaining: number | null;
+};
+
+function twoMonthsAfter(date: string): string {
+	const [year, month, day] = date.split('-').map(Number);
+	const lastDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
+	return new Date(Date.UTC(year, month + 1, Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
+
+function demoCalendar(facilityId: string, today: string, nights: number, adults: number) {
+	const days: { date: string; price: number; remaining: number }[] = [];
+	for (let date = today; date <= twoMonthsAfter(today); date = addDays(date, 1)) {
+		const result = searchAvailability({ checkin: date, nights, adults, children: 0 }).find((item) => item.facility.id === facilityId);
+		if (result?.minTotal && result.remaining > 0) {
+			days.push({ date, price: Math.round(result.minTotal / (adults * nights)), remaining: result.remaining });
+		}
+	}
+	return days;
+}
+
+function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPrice[], adults: number) {
+	const planById = new Map(plans.map((plan) => [plan.id, plan]));
+	const pricesByRoom = new Map<string, RoomPlanPrice[]>();
+	for (const price of prices) {
+		const rows = pricesByRoom.get(price.roomTypeId) ?? [];
+		rows.push(price);
+		pricesByRoom.set(price.roomTypeId, rows);
+	}
+	return rooms
+		.filter((room) => room.capacity >= adults)
+		.map((room) => ({
+			room,
+			plans: (pricesByRoom.get(room.id) ?? [])
+				.map((price) => {
+					const plan = planById.get(price.ratePlanId);
+					return plan ? { plan, total: price.total, referencePrice: price.referencePrice, remaining: price.remaining } : null;
+				})
+				.filter((item): item is NonNullable<typeof item> => item !== null)
+				.sort((a, b) => (a.total ?? a.referencePrice ?? Infinity) - (b.total ?? b.referencePrice ?? Infinity))
+		}))
+		.sort((a, b) => Number(b.plans.length > 0) - Number(a.plans.length > 0));
+}
+
 export const load: PageServerLoad = async ({ params, url, locals }) => {
-	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
-	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
-	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
+	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
+	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
 	const tag = url.searchParams.get('tag') || undefined;
+	const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
-
-		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		let plans = withEarlyPrepayMax(
-			(await sbListPlansMapped(facility.id)).map((p) => planForViewer(p, isMember)),
-			await loadEarlyPrepaySettings(facility.id)
+		const [allPlans, allRooms, settings, datedOffers, referencePrices, calendarDays] = await Promise.all([
+			sbListPlansMapped(facility.id),
+			sbListRoomTypesMapped(facility.id),
+			loadEarlyPrepaySettings(facility.id),
+			checkin ? sbPlanOffers(facility.id, checkin, nights, adults) : Promise.resolve([]),
+			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
+			sbFacilityStayCalendar(facility.id, nights, adults)
+		]);
+		const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
+		const plans = withEarlyPrepayMax(
+			allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
+			settings
 		);
-		if (!checkin) {
-			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults);
-			plans = plans.map((plan) => ({ ...plan, basePrice: referencePrices.get(plan.id) ?? 0 }));
-		}
-		const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
-		if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
-
-		// 施設全プランの「泊まれる客室×料金×残室」を1クエリで取得（日付なしは 0 行）。
-		// プラン単位に最安総額（min）と残室（max）へ集約する。
-		const offers = await sbPlanOffers(facility.id, checkin, nights, adults);
-		const byPlan = new Map<string, { total: number; perPerson: number; remaining: number }>();
-		for (const o of offers) {
-			const cur = byPlan.get(o.ratePlanId);
-			if (!cur) {
-				byPlan.set(o.ratePlanId, { total: o.total, perPerson: o.perPerson, remaining: o.remaining });
-			} else {
-				byPlan.set(o.ratePlanId, {
-					total: Math.min(cur.total, o.total),
-					perPerson: o.total < cur.total ? o.perPerson : cur.perPerson,
-					remaining: Math.max(cur.remaining, o.remaining)
-				});
-			}
-		}
-
-		const items = plans.map((plan) => {
-			const best = byPlan.get(plan.id);
-			if (!checkin || !best) return { plan, total: null, perPerson: null, remaining: checkin ? 0 : null };
-			return { plan, total: best.total, perPerson: best.perPerson, remaining: best.remaining };
-		});
-
-		return { facility, items, allTags, referenceMode: !checkin, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
+		const prices: RoomPlanPrice[] = checkin
+			? datedOffers.map((offer) => ({ ratePlanId: offer.ratePlanId, roomTypeId: offer.roomTypeId, total: offer.total, referencePrice: null, remaining: offer.remaining }))
+			: referencePrices.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null }));
+		return {
+			facility,
+			rooms: roomsWithPlans(allRooms, plans, prices, adults),
+			allTags,
+			calendarDays,
+			today,
+			referenceMode: !checkin,
+			params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
+		};
 	}
 
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
-
-	let plans = withEarlyPrepayMax(
-		getRatePlans(facility.id, locale).map((p) => planForViewer(p, isMember)),
+	const allPlans = getRatePlans(facility.id, locale);
+	const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
+	const plans = withEarlyPrepayMax(
+		allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
 		await loadEarlyPrepaySettings(facility.id)
 	);
-	const allTags = [...new Set(plans.flatMap((p) => p.highlightTags))];
-	if (tag) plans = plans.filter((p) => p.highlightTags.includes(tag));
-
-	const items = plans.map((plan) => {
-		if (!checkin) return { plan, total: null, perPerson: null, remaining: null };
-		let best: { total: number; perPerson: number } | null = null;
-		let remaining = 0;
-		for (const rtId of plan.roomTypeIds) {
-			const rt = roomTypes.find((r) => r.id === rtId)!;
-			if (rt.capacity < adults) continue;
-			const rem = Math.min(...eachNight(checkin, nights).map((d) => remainingRooms(rtId, d)));
-			if (rem <= 0) continue;
-			remaining = Math.max(remaining, rem);
-			const q = quoteFor(plan.id, rtId, checkin, nights, adults, 0);
-			if (!best || q.total < best.total) best = { total: q.total, perPerson: q.perPerson };
+	const prices: RoomPlanPrice[] = [];
+	for (const plan of plans) {
+		for (const roomTypeId of plan.roomTypeIds) {
+			if (!checkin) {
+				prices.push({ ratePlanId: plan.id, roomTypeId, total: null, referencePrice: plan.basePrice, remaining: null });
+				continue;
+			}
+			const remaining = Math.min(...eachNight(checkin, nights).map((date) => remainingRooms(roomTypeId, date)));
+			if (remaining <= 0) continue;
+			const quote = quoteFor(plan.id, roomTypeId, checkin, nights, adults, 0);
+			prices.push({ ratePlanId: plan.id, roomTypeId, total: quote.total, referencePrice: null, remaining });
 		}
-		return { plan, total: best?.total ?? null, perPerson: best?.perPerson ?? null, remaining: best ? remaining : 0 };
-	});
-
-	return { facility, items, allTags, referenceMode: false, params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' } };
+	}
+	return {
+		facility,
+		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults),
+		allTags,
+		calendarDays: demoCalendar(facility.id, today, nights, adults),
+		today,
+		referenceMode: false,
+		params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
+	};
 };
