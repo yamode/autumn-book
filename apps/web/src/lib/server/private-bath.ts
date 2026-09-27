@@ -171,7 +171,7 @@ export async function sbGetOrIssueStayToken(
 	client: SupabaseClient,
 	facilityUuid: string,
 	stay: { stay_id: string; room_code: string; guest_name: string; check_out_date: string }
-): Promise<{ token: string; short_code: string }> {
+): Promise<{ token: string; short_code: string; valid_from: string; valid_to: string }> {
 	// 有効期限はチェックアウト日の 11:00 JST（/admin/inroom の発行と同じ考え方）。
 	const validTo = new Date(`${stay.check_out_date}T11:00:00+09:00`).toISOString();
 	const { data, error } = await client.schema('book').rpc('get_or_issue_stay_token', {
@@ -182,7 +182,7 @@ export async function sbGetOrIssueStayToken(
 		p_guest_name: stay.guest_name || null
 	});
 	if (error) throw error;
-	return data as { token: string; short_code: string };
+	return data as { token: string; short_code: string; valid_from: string; valid_to: string };
 }
 
 /** 予約フォームの写真を book-photos バケットへ上げ、公開URLを返す。 */

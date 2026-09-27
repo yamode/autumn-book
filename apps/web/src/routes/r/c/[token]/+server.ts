@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 // 以降 URL にトークンは出ない（履歴・共有からの漏洩を防ぐ）。無効なら /r?e=invalid。
 const STAY_COOKIE = 'ab_stay';
 
-export const GET: RequestHandler = async ({ params, cookies }) => {
+export const GET: RequestHandler = async ({ params, cookies, url }) => {
 	const token = params.token;
 	// 検証のみ（有効判定）。滞在カードの表示は /r 側でロケール込みに再解決する。
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, 'ja');
@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ params, cookies }) => {
 			sameSite: 'lax',
 			maxAge: stayCookieMaxAge(stay.validTo)
 		});
-		redirect(302, '/r');
+		redirect(302, url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r');
 	}
 
 	redirect(302, '/r?e=invalid');

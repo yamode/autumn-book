@@ -198,6 +198,7 @@
 									class="rounded border px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-40"
 									>QR を出す</button>
 							</form>
+							<a href={`/admin/bath/pop?${new URLSearchParams({ stay: s.stay_id, ...(data.date ? { date: data.date } : {}), size: 'A6' })}`} class="rounded border px-3 py-1 text-xs text-stone-700 hover:bg-stone-50">客室POP</a>
 						</li>
 					{/each}
 				</ul>

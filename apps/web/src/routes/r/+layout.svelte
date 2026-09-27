@@ -9,6 +9,8 @@
 	//
 	// /r は (public) グループ外の独立ルート。検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import * as m from '$lib/paraglide/messages';
 
@@ -23,6 +25,26 @@
 	const path = $derived(page.url.pathname);
 	// 滞在が確定している画面（/r で claim 済み・/r/bath・案内の詳細）だけタブを2本出す。
 	const bathEnabled = $derived(Boolean(page.data.stay ?? page.data.ctx));
+
+	// PMS の職員が枠を追加・変更したら、開きっぱなしの客室画面にも反映する。
+	// 表示中だけ再読込し、バックグラウンドから戻った時もすぐに更新する。
+	onMount(() => {
+		let refreshing = false;
+		const refresh = async () => {
+			if (document.visibilityState !== 'visible' || !['/r', '/r/bath'].includes(window.location.pathname) || refreshing) return;
+			refreshing = true;
+			try { await invalidateAll(); } finally { refreshing = false; }
+		};
+		const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+		const timer = window.setInterval(() => void refresh(), 30_000);
+		document.addEventListener('visibilitychange', onVisible);
+		window.addEventListener('focus', onVisible);
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisible);
+			window.removeEventListener('focus', onVisible);
+		};
+	});
 </script>
 
 <svelte:head>
