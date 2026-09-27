@@ -1323,7 +1323,7 @@ export async function sbRegisterMember(
 		familyNameKana?: string;
 		givenNameKana?: string;
 	}
-): Promise<{ member_code: string; guest_id: string }> {
+): Promise<{ member_code: string; guest_id: string; welcome_bonus?: number }> {
 	const { data, error } = await client.schema('book').rpc('register_member', {
 		p_name: input.name,
 		p_kana: input.kana,

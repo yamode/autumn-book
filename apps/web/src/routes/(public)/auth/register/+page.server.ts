@@ -1,3 +1,4 @@
+import { welcomeBonusPoints } from '$lib/server/member-program';
 import { fail, redirect } from '@sveltejs/kit';
 import { registerMember } from '$lib/server/store';
 import { setSession } from '$lib/server/session';
@@ -14,6 +15,8 @@ const OTP_COOLDOWN = 'ab_otp_cooldown';
 export const load: PageServerLoad = async ({ locals, url }) => {
 	// 既に会員ならマイページへ
 	if (locals.user?.role === 'member') redirect(303, '/account');
+	// 入会ボーナス（管理画面 → 会員 で設定。0 なら案内しない）
+	const welcomeBonus = await welcomeBonusPoints();
 
 	// 予約完了画面からの導線：入力済み情報をプリフィル（設計書 §3.6）
 	const prefill = {
@@ -24,12 +27,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	if (AUTH_MODE === 'supabase') {
 		// OTP 認証済み・未登録なら、いきなりプロフィール入力から
 		if (locals.pendingAuthUser) {
-			return { authMode: AUTH_MODE, step: 'profile', email: locals.pendingAuthUser.email, prefill };
+			return { authMode: AUTH_MODE, step: 'profile', email: locals.pendingAuthUser.email, prefill, welcomeBonus };
 		}
-		return { authMode: AUTH_MODE, step: 'email', email: '', prefill };
+		return { authMode: AUTH_MODE, step: 'email', email: '', prefill, welcomeBonus };
 	}
 
-	return { authMode: AUTH_MODE, step: 'demo', email: '', prefill };
+	return { authMode: AUTH_MODE, step: 'demo', email: '', prefill, welcomeBonus };
 };
 
 export const actions: Actions = {
@@ -111,12 +114,14 @@ export const actions: Actions = {
 			if (Object.keys(errors).length > 0) return fail(400, { step: 'profile', email: got.user.email, errors, values });
 
 			let welcome = true;
+			let bonus = 0;
 			try {
-				// member_code 採番・email 名寄せ・入会500pt は RPC が一元処理
-				await sbRegisterMember(got.client, {
+				// member_code 採番・email 名寄せ・入会ボーナス（管理画面で設定）は RPC が一元処理
+				const reg = await sbRegisterMember(got.client, {
 					name, kana, phone, mailOptIn, locale: getLocale(),
 					familyName, givenName, middleName, familyNameKana, givenNameKana
 				});
+				bonus = Math.max(0, Number(reg.welcome_bonus ?? 0) || 0);
 			} catch (e) {
 				const msg = e instanceof Error ? e.message : '';
 				if (msg.includes('already_registered')) {
@@ -127,7 +132,7 @@ export const actions: Actions = {
 			}
 			// hooks が会員と解決できるよう user_metadata を同期
 			await got.client.auth.updateUser({ data: { name, member: true } }).catch(() => {});
-			redirect(303, welcome ? '/account?welcome=1' : '/account');
+			redirect(303, welcome ? `/account?welcome=1&bonus=${bonus}` : '/account');
 		}
 
 		// demo: email + パスワード + プロフィールを一括登録

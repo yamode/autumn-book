@@ -258,7 +258,7 @@
 				<h2 class="font-medium text-stone-700">会員登録を代行する（非会員の予約）</h2>
 				<p class="mt-1 text-xs leading-relaxed text-stone-500">
 					「非会員で予約したが会員になりたい」というお電話のときに、施設側で会員登録をします。予約のお客様情報で会員になり、
-					この予約は会員の予約になります（マイページに表示・入会ボーナス 500pt・ご宿泊後に会員ポイント）。
+					この予約は会員の予約になります（マイページに表示・入会ボーナス（会員の画面で設定）・ご宿泊後に会員ポイント）。
 					パスワードはありません。お客様はこのメールアドレスでログインし、届く確認コードで入れます（登録のお知らせメールを送ります）。
 				</p>
 				{#if mf?.memberScope && mf.memberError}<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{mf.memberError}</p>{/if}
@@ -280,7 +280,7 @@
 						<span class="text-xs text-stone-400">ログインに使います。お電話で確認してください</span>
 					</label>
 					<label class="flex items-center gap-2 text-xs text-stone-600">
-						<input type="checkbox" name="mailOptIn" class="h-4 w-4" />
+						<input type="checkbox" name="mailOptIn" checked class="h-4 w-4" />
 						お知らせメール（メルマガ）の受け取りにも同意いただいた
 					</label>
 					<label class="flex items-center gap-2 text-xs font-medium text-stone-700">

@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 
-	let { data } = $props();
+	let { data, form } = $props();
+	// 保存後も入力を残す
+	const keep: SubmitFunction = () => async ({ update }) => update({ reset: false });
 </script>
 
 <svelte:head><title>会員 ｜ 山人管理</title></svelte:head>
@@ -14,6 +18,48 @@
 		デモデータを表示しています（本番接続時は実会員が表示されます）。
 	{/if}
 </p>
+
+<!-- 入会ボーナス（検討中のため、先に設定できるようにしておく） -->
+<section class="mb-5 max-w-3xl rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<div class="mb-1 flex items-center justify-between">
+		<h2 class="font-medium text-stone-800">入会ボーナス</h2>
+		{#if form?.programSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+	</div>
+	<p class="mb-3 text-xs leading-relaxed text-stone-500">
+		会員登録したときに付けるポイントです（お客様ご自身の登録・施設側の代行登録とも）。0 にすると付けません（登録画面の「入会で ○pt プレゼント」の案内も消えます）。
+		変更はこれからの登録から効きます（登録済みの会員のポイントは変わりません）。
+	</p>
+	{#if data.programError || form?.programError}
+		<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{form?.programError ?? data.programError}</p>
+	{/if}
+	{#if data.program}
+		<form method="POST" action="?/saveProgram" use:enhance={keep}>
+			<fieldset disabled={!data.canEditProgram} class="flex flex-wrap items-end gap-4">
+				<label class="block">
+					<span class="text-xs text-stone-500">ポイント</span>
+					<span class="mt-1 flex items-center gap-1">
+						<input type="number" name="points" min="0" max="100000" step="100" value={data.program.welcomeBonusPoints} class="w-28 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
+						<span class="text-stone-500">pt</span>
+					</span>
+				</label>
+				<label class="block">
+					<span class="text-xs text-stone-500">有効期限（付与日から）</span>
+					<span class="mt-1 flex items-center gap-1">
+						<input type="number" name="days" min="1" max="3650" value={data.program.welcomeBonusValidDays} class="w-24 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
+						<span class="text-stone-500">日</span>
+					</span>
+				</label>
+				<button class="rounded-md bg-stone-800 px-4 py-2 text-xs text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
+			</fieldset>
+		</form>
+		<p class="mt-2 text-xs text-stone-400">
+			これまでの付与 {data.program.grantedTotal.toLocaleString()} 件（直近30日 {data.program.granted30d.toLocaleString()} 件）
+			{#if data.program.updatedAt}・最終更新 {new Date(data.program.updatedAt).toLocaleString('ja-JP')}{/if}
+			{#if !data.canEditProgram}・変更は管理者だけができます{/if}
+			{#if !data.live}・デモ表示（保存はできません）{/if}
+		</p>
+	{/if}
+</section>
 
 {#if data.error}
 	<div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">

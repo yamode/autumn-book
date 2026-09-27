@@ -23,7 +23,7 @@
 
 {#if page.url.searchParams.get('welcome')}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-		{m.account_welcome()}
+		{#if Number(page.url.searchParams.get('bonus') ?? '0') > 0}{m.account_welcome({ points: Number(page.url.searchParams.get('bonus')).toLocaleString() })}{:else}{m.account_welcome_nobonus()}{/if}
 	</p>
 {/if}
 

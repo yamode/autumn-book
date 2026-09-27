@@ -11,6 +11,7 @@ import { partnerServiceClient } from '$lib/server/partners/admin-client';
 
 export type StaffRegisterResult = {
   memberCode: string;
+  welcomeBonus: number;
   refinalize: boolean;
   accountCreated: boolean;
   mailSent: boolean;
@@ -69,7 +70,9 @@ export async function registerMemberForBooking(args: {
     ({ data, error } = await callRegister(args.staffClient, args.bookingCode, email, args.mailOptIn));
   }
   if (error) throw new StaffRegisterError(textOf(error.message));
-  const r = data as { member_code: string; user_id: string; refinalize: boolean };
+  const r = data as { member_code: string; user_id: string; refinalize: boolean; welcome_bonus?: number };
+  // 入会ボーナス（管理画面 → 会員 で設定。0 なら付かない）
+  const bonus = Math.max(0, Number(r.welcome_bonus ?? 0) || 0);
 
   // 既存のアカウント（ログインしたことはあるが会員登録していない人）にも会員の印を付ける
   if (!accountCreated) {
@@ -81,21 +84,21 @@ export async function registerMemberForBooking(args: {
     to: [email],
     subject: `【${args.facilityName}】会員登録のお知らせ`,
     fromName: args.facilityName,
-    text: welcomeText(args, r.member_code),
-    html: welcomeHtml(args, r.member_code)
+    text: welcomeText(args, r.member_code, bonus),
+    html: welcomeHtml(args, r.member_code, bonus)
   }).catch(() => ({ sent: false }));
 
-  return { memberCode: r.member_code, refinalize: r.refinalize, accountCreated, mailSent: mail.sent };
+  return { memberCode: r.member_code, welcomeBonus: bonus, refinalize: r.refinalize, accountCreated, mailSent: mail.sent };
 }
 
-function welcomeText(args: { name: string | null; facilityName: string; origin: string }, memberCode: string): string {
+function welcomeText(args: { name: string | null; facilityName: string; origin: string }, memberCode: string, bonus: number): string {
   return [
     `${args.name ? `${args.name} 様` : 'お客様'}`,
     '',
     `お電話でのご依頼により、${args.facilityName} の会員登録を承りました。`,
     `会員番号: ${memberCode}`,
     '',
-    'ご予約は会員のご予約として登録済みです。入会ボーナスとして 500 ポイントを差し上げました。',
+    `ご予約は会員のご予約として登録済みです。${bonus > 0 ? `入会ボーナスとして ${bonus.toLocaleString('ja-JP')} ポイントを差し上げました。` : ''}`,
     'ご宿泊後には会員ポイントが付きます（次回のご宿泊で 1pt=1円としてお使いいただけます）。',
     '',
     'ログインはこのメールアドレスで行います。パスワードはありません。',
@@ -107,8 +110,8 @@ function welcomeText(args: { name: string | null; facilityName: string; origin: 
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-function welcomeHtml(args: { name: string | null; facilityName: string; origin: string }, memberCode: string): string {
-  return welcomeText(args, memberCode)
+function welcomeHtml(args: { name: string | null; facilityName: string; origin: string }, memberCode: string, bonus: number): string {
+  return welcomeText(args, memberCode, bonus)
     .split('\n')
     .map((l) => (l ? `<p style="margin:0 0 6px">${esc(l)}</p>` : '<p style="margin:0 0 6px">&nbsp;</p>'))
     .join('');

@@ -12,7 +12,7 @@
 
 <div class="mx-auto max-w-md px-4 py-12">
 	<h1 class="font-display mb-2 text-center text-2xl text-brand-900">{m.register_heading()}</h1>
-	<p class="mb-6 text-center text-sm text-stone-500">{m.register_sub()}</p>
+	<p class="mb-6 text-center text-sm text-stone-500">{data.welcomeBonus > 0 ? m.register_sub({ points: data.welcomeBonus.toLocaleString() }) : m.register_sub_nobonus()}</p>
 
 	{#if form?.message}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -69,7 +69,7 @@
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
 			<label class="flex items-start gap-2 text-sm">
-				<input type="checkbox" name="mailOptIn" class="mt-0.5 h-4 w-4" />
+				<input type="checkbox" name="mailOptIn" checked class="mt-0.5 h-4 w-4" />
 				<span class="text-stone-600">{m.register_mail_opt_in()}<span class="block text-xs text-stone-400">{m.register_mail_opt_in_sub()}</span></span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
@@ -127,7 +127,7 @@
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
 			<label class="flex items-start gap-2 text-sm">
-				<input type="checkbox" name="mailOptIn" class="mt-0.5 h-4 w-4" />
+				<input type="checkbox" name="mailOptIn" checked class="mt-0.5 h-4 w-4" />
 				<span class="text-stone-600">{m.register_mail_opt_in()}<span class="block text-xs text-stone-400">{m.register_mail_opt_in_sub()}</span></span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
