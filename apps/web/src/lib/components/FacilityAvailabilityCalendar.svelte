@@ -89,9 +89,11 @@
 		{#each monthDates as date}
 			{@const offer = priceByDate.get(date)}
 			{#if offer}
-				<a href={dateHref(date)} class="flex min-h-14 flex-col items-center rounded-md border py-1.5 transition {checkin === date ? 'border-brand-800 bg-brand-50' : 'border-stone-200 hover:border-brand-700 hover:bg-brand-50'}">
+				<a href={dateHref(date)} aria-label={`${date} ${formatPrice(offer.price)}〜`} class="flex min-h-16 min-w-0 flex-col items-center rounded-md border px-0.5 py-1 transition {checkin === date ? 'border-brand-800 bg-brand-50' : 'border-stone-200 hover:border-brand-700 hover:bg-brand-50'}">
 					<span class="font-medium text-stone-800">{Number(date.slice(-2))}</span>
-					<span class="mt-1 whitespace-nowrap text-[10px] text-brand-800">{formatPrice(offer.price)}〜</span>
+					<span class="mt-1 text-[9px] leading-none text-brand-800" aria-hidden="true">¥</span>
+					<span class="max-w-full whitespace-nowrap text-[clamp(8px,2.4vw,10px)] leading-none tracking-tight text-brand-800">{offer.price.toLocaleString('ja-JP')}</span>
+					<span class="text-[9px] leading-none text-brand-800" aria-hidden="true">〜</span>
 				</a>
 			{:else}
 				<div class="flex min-h-14 flex-col items-center rounded-md bg-stone-50 py-1.5 text-stone-300">

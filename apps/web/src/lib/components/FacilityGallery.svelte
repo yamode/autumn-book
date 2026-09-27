@@ -2,9 +2,12 @@
 	import type { Photo } from '$lib/types';
 	import * as m from '$lib/paraglide/messages';
 
-	let { photos, fallback, name }: { photos: Photo[]; fallback: string; name: string } = $props();
+	let { photos, cover, name }: { photos: Photo[]; cover: string; name: string } = $props();
 	let activeIndex = $state(0);
-	let images = $derived(photos.length ? photos : [{ url: fallback, caption: name, category: 'exterior' as const }]);
+	let images = $derived([
+		{ url: cover, caption: name, category: 'exterior' as const },
+		...photos.filter((photo) => photo.url !== cover)
+	]);
 	let active = $derived(images[activeIndex] ?? images[0]);
 </script>
 

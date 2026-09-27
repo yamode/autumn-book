@@ -60,7 +60,7 @@
 			</div>
 			<div class="mt-6">
 				<h2 class="font-display mb-3 text-lg text-brand-900">{m.facility_gallery()}</h2>
-				<FacilityGallery photos={data.facility.photos} fallback={facilityThumbnailUrl(data.facility.slug, '')} name={data.facility.name} />
+				<FacilityGallery photos={data.facility.photos} cover={facilityThumbnailUrl(data.facility.slug, data.facility.photos[0]?.url ?? '')} name={data.facility.name} />
 			</div>
 		</div>
 		<div class="lg:sticky lg:top-28">
