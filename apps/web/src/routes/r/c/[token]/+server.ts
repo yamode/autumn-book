@@ -2,13 +2,13 @@ import { redirect } from '@sveltejs/kit';
 import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
+import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import type { RequestHandler } from './$types';
 
 // 印刷スリップの QR（/r/c/<token>）着地点。
 // トークンを検証し、有効なら httpOnly Cookie（ab_stay）へ交換して /r へ 302。
 // 以降 URL にトークンは出ない（履歴・共有からの漏洩を防ぐ）。無効なら /r?e=invalid。
 const STAY_COOKIE = 'ab_stay';
-const STAY_MAXAGE = 60 * 60 * 24 * 3; // ≒チェックアウトまで
 
 export const GET: RequestHandler = async ({ params, cookies }) => {
 	const token = params.token;
@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ params, cookies }) => {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
-			maxAge: STAY_MAXAGE
+			maxAge: stayCookieMaxAge(stay.validTo)
 		});
 		redirect(302, '/r');
 	}

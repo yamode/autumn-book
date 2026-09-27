@@ -26,6 +26,18 @@
 			return iso.slice(0, 10);
 		}
 	}
+	function fmtBathDate(ymd: string): string {
+		try {
+			return new Intl.DateTimeFormat(localeTag[getLocale()] ?? 'ja-JP', {
+				month: 'long',
+				day: 'numeric',
+				weekday: 'short',
+				timeZone: 'Asia/Tokyo'
+			}).format(new Date(`${ymd}T00:00:00+09:00`));
+		} catch {
+			return ymd;
+		}
+	}
 
 	// tel: リンク用（ハイフン等を除去）
 	function telHref(phone?: string): string {
@@ -86,6 +98,23 @@
 				</div>
 			</dl>
 		</section>
+
+		{#if data.bathReservations.length}
+			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="bath-reservations-title">
+				<div class="flex items-center justify-between gap-3">
+					<h2 id="bath-reservations-title" class="text-[15px] font-semibold text-stone-900">{m.bath_mine_title()}</h2>
+					<a href="/r/bath" class="shrink-0 text-xs font-medium text-stone-600 underline underline-offset-2">{m.inroom_bath_manage()}</a>
+				</div>
+				<ul class="mt-3 divide-y divide-stone-100">
+					{#each data.bathReservations as reservation (reservation.id)}
+						<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
+							<span class="text-sm text-stone-700">{fmtBathDate(reservation.date)}</span>
+							<strong class="text-base font-semibold tabular-nums text-stone-900">{reservation.from}{reservation.to ? `〜${reservation.to}` : ''}</strong>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
 
 		<!-- ============ 機能ナビ（横並び） ============ -->
 		<nav class="flex items-stretch rounded-lg bg-white shadow-card">
