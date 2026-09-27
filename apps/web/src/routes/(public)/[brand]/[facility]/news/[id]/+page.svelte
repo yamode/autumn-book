@@ -11,7 +11,7 @@
 
 <div class="mx-auto max-w-3xl px-4 py-10">
 	<nav class="mb-4 text-xs text-stone-400">
-		<a href={base} class="hover:underline">{data.facility.name}</a> /
+		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> /
 		<a href="{base}/news" class="hover:underline">{m.news_title()}</a>
 	</nav>
 

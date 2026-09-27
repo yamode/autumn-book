@@ -1,10 +1,12 @@
 <script lang="ts">
 	import PlanCard from '$lib/components/PlanCard.svelte';
 	import { page } from '$app/state';
+	import { searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
+	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 
 	function tagHref(tag: string) {
 		const q = new URLSearchParams(page.url.searchParams);
@@ -27,7 +29,7 @@
 
 <div class="mx-auto max-w-4xl px-4 py-8">
 	<nav class="mb-2 text-xs text-stone-400">
-		<a href={base} class="hover:underline">{data.facility.name}</a> / {m.plans_breadcrumb()}
+		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> / {m.plans_breadcrumb()}
 	</nav>
 	<h1 class="font-display mb-4 text-2xl text-brand-900">{m.plans_heading()}</h1>
 

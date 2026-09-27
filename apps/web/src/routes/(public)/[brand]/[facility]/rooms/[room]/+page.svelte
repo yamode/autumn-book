@@ -14,7 +14,7 @@
 
 <div class="mx-auto max-w-5xl px-4 py-8">
 	<nav class="mb-4 text-xs text-stone-400">
-		<a href={base} class="hover:underline">{data.facility.name}</a> / {m.room_detail_breadcrumb()} / {data.room.name}
+		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> / {m.room_detail_breadcrumb()} / {data.room.name}
 	</nav>
 
 	{#if data.room.photos[0]}

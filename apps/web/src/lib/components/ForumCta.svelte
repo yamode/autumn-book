@@ -27,9 +27,9 @@
 		<h2 class="mb-3 font-medium text-brand-900">{m.forum_cta_facilities_heading()}</h2>
 		<div class="grid gap-3 sm:grid-cols-2">
 			{#each facilities as f}
-				<a href="/{f.brandSlug}/{f.slug}" class="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm hover:shadow-sm">
+				<a href="/{f.brandSlug}/{f.slug}/plans" class="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm hover:shadow-sm">
 					<span class="font-medium text-brand-900">{f.name}</span>
-					<span class="text-xs text-stone-400">{m.forum_cta_facility_visit()} →</span>
+					<span class="text-xs text-stone-400">{m.home_list_view_plans()} →</span>
 				</a>
 			{/each}
 		</div>

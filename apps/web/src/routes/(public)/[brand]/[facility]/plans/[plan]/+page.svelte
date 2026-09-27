@@ -10,6 +10,7 @@
 	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 	import { percentText } from '$lib/early-prepay';
+	import { searchQuery } from '$lib/components/guests';
 
 	let { data, form } = $props();
 
@@ -21,6 +22,7 @@
 		});
 	});
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
+	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let qs = $derived(
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
 	);
@@ -82,8 +84,8 @@
 
 <div class="mx-auto max-w-5xl px-4 pb-24 pt-8 md:pb-8">
 	<nav class="mb-2 text-xs text-stone-400">
-		<a href={base} class="hover:underline">{data.facility.name}</a> /
-		<a href="{base}/plans" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
+		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> /
+		<a href="{base}/plans{qs ? '?' + qs : ''}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
 	</nav>
 
 	<div class="grid gap-6 md:grid-cols-[1fr_320px]">

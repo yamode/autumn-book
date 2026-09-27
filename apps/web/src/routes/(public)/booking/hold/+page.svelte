@@ -197,9 +197,9 @@
 	{:else}
 		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
 		<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
-			<a href="/{data.facility.brandSlug}/{data.facility.slug}" class="hover:underline">{data.facility.name}</a>
+			<a href="/search?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.common_facility_list()}</a>
 			<span aria-hidden="true">/</span>
-			<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
+			<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
 			<span aria-hidden="true">/</span>
 			<a href={data.planHref} class="max-w-[16rem] truncate hover:underline">{data.plan.name}</a>
 			<span aria-hidden="true">/</span>
