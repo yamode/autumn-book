@@ -57,7 +57,7 @@
 					{#each data.facility.amenities.slice(0, 3) as amenity}<span>{amenity}</span>{/each}
 				</div>
 			</div>
-			<div id="gallery" class="mt-5 scroll-mt-28 sm:mt-7">
+			<div id="gallery" class="-mx-4 mt-5 scroll-mt-28 sm:mx-0 sm:mt-7">
 				<h2 class="font-display mb-3 hidden text-lg text-brand-900 sm:block">{m.facility_gallery()}</h2>
 				<FacilityGallery photos={data.facility.photos} cover={facilityThumbnailUrl(data.facility.slug, data.facility.photos[0]?.url ?? '')} name={data.facility.name} />
 			</div>

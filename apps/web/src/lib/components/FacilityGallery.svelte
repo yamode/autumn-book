@@ -16,8 +16,8 @@
 </script>
 
 <div class="space-y-2">
-	<div class="relative overflow-hidden rounded-xl bg-stone-100">
-		<img src={active.url} alt={active.caption || name} class="aspect-[16/9] w-full object-cover" />
+	<div class="relative overflow-hidden bg-stone-100 sm:rounded-xl">
+		<img src={active.url} alt={active.caption || name} class="aspect-[4/3] w-full object-cover sm:aspect-[16/9]" />
 		{#if active.caption}
 			<p class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-3 pt-9 text-xs text-white">{active.caption}</p>
 		{/if}

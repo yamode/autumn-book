@@ -15,7 +15,7 @@
 {/if}
 
 <article class="bg-white px-5 py-5">
-	<div class="flex items-start gap-3">
+	<div class="flex items-center gap-3">
 		<svg
 			viewBox="0 0 24 24"
 			class="mt-1 h-6 w-6 shrink-0 text-stone-500"
@@ -27,12 +27,10 @@
 			aria-hidden="true">
 			<path d={inroomIcon(data.guide.section)} />
 		</svg>
-		<div class="min-w-0 flex-1">
-			<h1 class="text-xl font-medium leading-snug text-stone-900">{data.guide.title}</h1>
-			<div class="guide-body mt-3 text-[15px] leading-7 text-stone-700">
-				<MarkdownView source={data.guide.body} />
-			</div>
-		</div>
+		<h1 class="min-w-0 flex-1 text-xl font-medium leading-snug text-stone-900">{data.guide.title}</h1>
+	</div>
+	<div class="guide-body mt-4 text-[15px] leading-7 text-stone-700">
+		<MarkdownView source={data.guide.body} />
 	</div>
 </article>
 
