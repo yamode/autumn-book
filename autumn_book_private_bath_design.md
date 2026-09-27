@@ -508,6 +508,8 @@ PROD の `book._pb_slots` で検証した最終状態:
 
 運用開始時は、浴室・枠・料金・上限・締切・PMS画面の表示・請求同期を実予約を使わない環境で確認し、施設設定の `public.enabled=true` とデプロイ設定の `PRIVATE_BATH_PMS_ENABLED=true` を同じ切替作業で適用する。どちらか一方だけではゲスト予約を開始しない。切り戻しは両方を `false` に戻す。受け付け済み予約のPMS台帳行は維持し、職員が対応する。
 
+**2026-09-27 運用開始:** 本番の施設設定を読み取り、山人・男鹿の両方で `public.enabled=true`、稼働中の浴室各1件、山人0円・男鹿2,200円、1室あたり午前／午後各1枠、締切・取消期限各30分を確認した。PMSの予約台帳への書き込みと請求同期は既存実装を使用する。ユーザーの指示を受け、bookのデプロイ設定 `PRIVATE_BATH_PMS_ENABLED` を `true` に切り替えた。以後、公開フォームからの予約確定・取消がPMS台帳へ反映される。
+
 1. **段階0の前提作業**（済。§5 冒頭の実施記録を参照）。残るのは `booking.yamado.co.jp` のドメイン設定のみ。
 2. **migration①**（pms 列追加 ＋ import バックフィル）→ **migration②**（RPC 5本）。
    命名・適用は `autumn-shared` 方針（`main` へ直 push）。**pms へのは ALTER は他リポの未適用 migration を確認してから**（`autumn-book/CLAUDE.md`）。
