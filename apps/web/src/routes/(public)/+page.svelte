@@ -9,6 +9,12 @@
 
 	let { data } = $props();
 
+	// 一休.com の各施設ページで先頭に表示される写真をポータルの施設カードに使用。
+	const facilityHeadingImages: Record<string, string> = {
+		nishiwaga: '/portal/yamado-ikyu-hero.jpg',
+		oga: '/portal/oga-ikyu-hero.jpg'
+	};
+
 	// 宿一覧（写真カード）を主、地図は従（開閉式）。デスクトップのみ初期表示で開き、モバイルは閉じる。
 	// 閉じている間は MapPanel を描画しない（モバイルで maplibre・タイルを読まない）
 	let mapOpen = $state(false);
@@ -57,7 +63,7 @@
 					<div class="relative overflow-hidden">
 						<!-- 16:9 固定（width/height＋aspect-video で CLS 防止）。ヒーローの下なので遅延読み込み -->
 						<img
-							src={r.facility.photos[0]?.url}
+							src={facilityHeadingImages[r.facility.slug] ?? r.facility.photos[0]?.url}
 							alt={r.facility.name}
 							width="800"
 							height="450"
