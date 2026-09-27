@@ -5,6 +5,7 @@
 	import { dbg } from '$lib/debug';
 	import { gaEvent } from '$lib/analytics';
 	import { facilitySiteUrl } from '$lib/facility-site';
+	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { areaLabel, searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 
@@ -111,7 +112,7 @@
 						<!-- 写真 16:9（width/height と aspect-video で読み込み前から枠を確保＝CLS 防止）。1枚目のみ即時読み込み -->
 						<a href={plansHref(r)} class="relative block md:w-[48%] md:shrink-0" tabindex="-1" aria-hidden="true">
 							<img
-								src={r.facility.photos[0]?.url}
+								src={facilityThumbnailUrl(r.facility.slug, r.facility.photos[0]?.url ?? '')}
 								alt=""
 								width="800"
 								height="450"

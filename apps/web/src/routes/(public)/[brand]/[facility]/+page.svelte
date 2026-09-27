@@ -3,10 +3,13 @@
 	import StandardTemplate from '$lib/templates/StandardTemplate.svelte';
 	import YamadoV1Template from '$lib/templates/YamadoV1Template.svelte';
 	import OgaV1Template from '$lib/templates/OgaV1Template.svelte';
+	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
+	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let f = $derived(data.facility);
+	let thumbnailUrl = $derived(new URL(facilityThumbnailUrl(f.slug, f.photos[0]?.url ?? ''), page.url).href);
 
 	let jsonLd = $derived(
 		JSON.stringify({
@@ -25,7 +28,9 @@
 <svelte:head>
 	<title>{m.facility_title({ name: f.name })}</title>
 	<meta name="description" content={f.catchCopy} />
-	<meta property="og:image" content={f.photos[0].url} />
+	<meta property="og:image" content={thumbnailUrl} />
+	<meta name="twitter:card" content="summary_large_image" />
+	<meta name="twitter:image" content={thumbnailUrl} />
 	{@html `<script type="application/ld+json">${jsonLd}<\/script>`}
 </svelte:head>
 

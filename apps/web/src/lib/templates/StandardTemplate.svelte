@@ -9,6 +9,7 @@
 	import FaqSection from '$lib/components/facility/FaqSection.svelte';
 	import OverviewSection from '$lib/components/facility/OverviewSection.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import type { FacilityPageData } from './types';
 
 	let { data }: { data: FacilityPageData } = $props();
@@ -18,7 +19,7 @@
 
 <!-- ヒーロー -->
 <section class="relative">
-	<img src={f.photos[0].url} alt={f.name} class="h-[400px] w-full object-cover sm:h-[460px]" />
+	<img src={facilityThumbnailUrl(f.slug, f.photos[0].url)} alt={f.name} class="h-[400px] w-full object-cover sm:h-[460px]" />
 	<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
 	<div class="absolute inset-x-0 bottom-0 mx-auto max-w-6xl px-4 pb-8 text-white">
 		<p class="text-sm opacity-90">{f.prefecture}</p>
