@@ -219,16 +219,21 @@
 				<!-- どのお部屋・どなたの予約かは QR で確定済み。入力欄は置かず、表示だけして安心してもらう -->
 				<div class="mb-5">
 					<span class="text-sm text-stone-900">{m.bath_reserver()}</span>
-					<dl class="mt-2 divide-y divide-[#e3e5e8] rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 text-sm">
+					<!-- 下の日付・時間帯と同じ「ラベルの下に左揃えの欄」の形にそろえる（表示専用なのでグレー地） -->
+					<dl class="mt-3 space-y-3">
 						{#if ctx.guest_name}
-							<div class="flex items-baseline justify-between gap-3 py-2">
+							<div>
 								<dt class="text-xs text-stone-400">{m.bath_guest()}</dt>
-								<dd class="font-medium text-[#3d3f45]">{m.bath_guest_honorific({ name: ctx.guest_name })}</dd>
+								<dd class="mt-1 rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 py-2 text-sm text-[#3d3f45]">
+									{m.bath_guest_honorific({ name: ctx.guest_name })}
+								</dd>
 							</div>
 						{/if}
-						<div class="flex items-baseline justify-between gap-3 py-2">
+						<div>
 							<dt class="text-xs text-stone-400">{m.bath_room()}</dt>
-							<dd class="font-medium text-[#3d3f45]">{ctx.room_code}</dd>
+							<dd class="mt-1 rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 py-2 text-sm text-[#3d3f45]">
+								{ctx.room_code}
+							</dd>
 						</div>
 					</dl>
 				</div>
