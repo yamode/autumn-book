@@ -6,6 +6,8 @@
 	//   入力は「日付」を選ぶと「時間帯」の選択肢が空き枠だけに絞られる、という順番。
 	// 現行フォームにあった「お部屋番号」「メールアドレス」の欄は置かない ── どのお部屋の
 	// ご予約かは QR のトークンで確定しており、控えはこの画面の「ご予約中の時間」で確認できるため。
+	// ただし入力欄が無いと「部屋も名前も入れずに大丈夫？」と不安になるので、STEP1 の先頭に
+	// お名前・お部屋を表示専用で出しておく。
 	import { enhance } from '$app/forms';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -214,6 +216,23 @@
 		{#if step === 1}
 			<!-- ============ STEP1 フォームのご入力 ============ -->
 			<section class="rounded-lg bg-white px-5 py-5 shadow-card">
+				<!-- どのお部屋・どなたの予約かは QR で確定済み。入力欄は置かず、表示だけして安心してもらう -->
+				<div class="mb-5">
+					<span class="text-sm text-stone-900">{m.bath_reserver()}</span>
+					<dl class="mt-2 divide-y divide-[#e3e5e8] rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 text-sm">
+						{#if ctx.guest_name}
+							<div class="flex items-baseline justify-between gap-3 py-2">
+								<dt class="text-xs text-stone-400">{m.bath_guest()}</dt>
+								<dd class="font-medium text-[#3d3f45]">{m.bath_guest_honorific({ name: ctx.guest_name })}</dd>
+							</div>
+						{/if}
+						<div class="flex items-baseline justify-between gap-3 py-2">
+							<dt class="text-xs text-stone-400">{m.bath_room()}</dt>
+							<dd class="font-medium text-[#3d3f45]">{ctx.room_code}</dd>
+						</div>
+					</dl>
+				</div>
+
 				{#if baths.length > 1}
 					<div class="mb-5">
 						<div class="flex items-center gap-2">
@@ -284,6 +303,12 @@
 			<!-- ============ STEP2 入力内容確認 ============ -->
 			<section class="rounded-lg bg-white px-5 py-5 shadow-card">
 				<dl class="divide-y divide-stone-100 text-sm">
+					{#if ctx.guest_name}
+						<div class="flex items-baseline justify-between py-2.5">
+							<dt class="text-stone-400">{m.bath_guest()}</dt>
+							<dd class="font-medium text-stone-800">{m.bath_guest_honorific({ name: ctx.guest_name })}</dd>
+						</div>
+					{/if}
 					<div class="flex items-baseline justify-between py-2.5">
 						<dt class="text-stone-400">{m.bath_room()}</dt>
 						<dd class="font-medium text-stone-800">{ctx.room_code}</dd>
