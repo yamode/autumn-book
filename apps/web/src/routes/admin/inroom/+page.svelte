@@ -108,7 +108,7 @@
 		<h2 class="font-medium text-stone-700">📞 内線（客室からフロントを呼ぶ） — {data.currentFacility.name}</h2>
 		<p class="mt-1 text-xs text-stone-400">
 			ON にすると、客室案内に「フロントを呼ぶ（Wi-Fi通話）」ボタンが出ます。受電は事務室の iPhone の受電アプリ（autumn-call）で受けます。
-			受電アプリの端末が1台も登録されていないうちは ON にしないでください（呼んでも誰も出られません）。
+			受電アプリが1台も動いていない（10分以上応答がない）ときは、客室のボタンは押せなくなり、電話ボタンをご案内します。
 		</p>
 		{#if data.intercomError}
 			<p class="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">{data.intercomError}</p>
@@ -120,7 +120,7 @@
 				<label class="flex items-center gap-2">
 					<input type="checkbox" name="isEnabled" checked={ic.isEnabled} class="h-4 w-4" />
 					<span>内線を使う（客室にボタンを出す）</span>
-					<span class="text-xs text-stone-400">受電端末 {ic.devices} 台</span>
+					<span class="text-xs {ic.onlineDevices ? 'text-emerald-700' : 'text-red-600'}">受電端末 {ic.devices} 台（稼働中 {ic.onlineDevices} 台{ic.lastSeenAt ? `・最終確認 ${new Date(ic.lastSeenAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}）</span>
 				</label>
 				<div class="flex flex-wrap items-center gap-3">
 					<label class="flex items-center gap-2">
@@ -144,7 +144,7 @@
 					<p class="mt-2 text-xs text-stone-400">まだ通話はありません。</p>
 				{:else}
 					<table class="mt-2 w-full text-xs">
-						<thead class="text-left text-stone-400"><tr><th class="py-1">日時</th><th>部屋</th><th>結果</th><th>通話</th></tr></thead>
+						<thead class="text-left text-stone-400"><tr><th class="py-1">日時</th><th>部屋</th><th>結果</th><th>通話</th><th>応答端末</th></tr></thead>
 						<tbody>
 							{#each data.intercomCalls as c (c.id)}
 								<tr class="border-t border-stone-100">
@@ -152,6 +152,7 @@
 									<td>{c.roomCode}</td>
 									<td class={c.status === 'missed' ? 'font-medium text-red-600' : ''}>{({ ringing: '呼出中', active: '通話中', ended: '通話', missed: '不在', declined: '拒否', canceled: '取消' } as Record<string, string>)[c.status] ?? c.status}</td>
 									<td>{c.durationSec != null ? `${Math.floor(c.durationSec / 60)}分${c.durationSec % 60}秒` : '—'}</td>
+									<td>{c.deviceLabel ?? '—'}</td>
 								</tr>
 							{/each}
 						</tbody>

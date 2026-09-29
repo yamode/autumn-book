@@ -84,6 +84,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			// 呼の当事者だけに発行する（call_secret を fetch で検証してから）
 			const check = await guestRpc('intercom_signal_fetch', { p_call_id: callId, p_secret: secret, p_after_id: 9e15 });
 			if (check.error) return json({ error: check.error }, { status: 400 });
+			const st = (check.data as { status?: string } | null)?.status;
+			if (st !== 'ringing' && st !== 'active') return json({ error: 'call_closed' }, { status: 400 });
 			return json({ iceServers: await turnServers() });
 		}
 		case 'timeout':

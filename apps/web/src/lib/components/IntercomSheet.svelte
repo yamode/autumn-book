@@ -29,6 +29,7 @@
 		busy: m.intercom_end_busy,
 		rate_limited: m.intercom_end_rate_limited,
 		disabled: m.intercom_end_error,
+		offline: m.intercom_end_offline,
 		error: m.intercom_end_error
 	};
 
@@ -124,7 +125,7 @@
 				{#if canRetry}
 					<button type="button" onclick={dial} class="w-full rounded-full bg-emerald-600 py-3 text-base font-medium">{m.intercom_retry()}</button>
 				{/if}
-				{#if tel && (end === 'failed' || end === 'missed' || end === 'mic' || end === 'error' || end === 'disabled')}
+				{#if tel && (end === 'failed' || end === 'missed' || end === 'mic' || end === 'error' || end === 'disabled' || end === 'offline')}
 					<a href={tel} class="w-full rounded-full border border-white/40 py-3 text-center text-base">{m.intercom_fallback_tel()}</a>
 				{/if}
 				<button type="button" onclick={close} class="w-full rounded-full bg-white/10 py-3 text-base">{m.intercom_close()}</button>

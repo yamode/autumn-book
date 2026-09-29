@@ -725,6 +725,8 @@
   "intercom_end_busy": "通話中です。",
   "intercom_end_rate_limited": "発信回数の上限に達しました。しばらくしてからお試しください。",
   "intercom_end_error": "ただいまご利用いただけません。",
+  "intercom_offline": "ただいま利用できません",
+  "intercom_end_offline": "ただいまフロントの端末につながりません。お電話でお問い合わせください。",
   "bath_title": "貸切風呂のご予約",
   "bath_lead": "ご希望の時間をお選びください。",
   "bath_closed": "ただいま貸切風呂のご予約は承っておりません。フロントへお問い合わせください。",
