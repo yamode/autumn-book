@@ -36,6 +36,7 @@ export type GuestCallEnd =
 	| 'busy'
 	| 'rate_limited'
 	| 'disabled'
+	| 'offline' // 受電端末が 1 台も動いていない
 	| 'error';
 
 const STUN_FALLBACK: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }];
@@ -128,7 +129,7 @@ export class GuestCall {
 			r = await api({ action: 'start' });
 		} catch (e) {
 			const code = e instanceof Error ? e.message : 'error';
-			const known: GuestCallEnd[] = ['out_of_hours', 'busy', 'rate_limited', 'disabled'];
+			const known: GuestCallEnd[] = ['out_of_hours', 'busy', 'rate_limited', 'disabled', 'offline'];
 			return this.finish(known.includes(code as GuestCallEnd) ? (code as GuestCallEnd) : 'error');
 		}
 		this.callId = String(r.callId);
@@ -161,7 +162,13 @@ export class GuestCall {
 			// 時間切れ直前に応答されていたら続行する
 			if (r.status === 'active') return this.onActive();
 		} catch {
-			/* 失敗しても missed 扱いで閉じる */
+			// timeout が通らなかった（直前に応答された等）。状態を 1 回だけ確かめて、通話中なら続ける
+			try {
+				const r = await api({ action: 'fetch', callId: this.callId, callSecret: this.secret, after: this.lastId });
+				if (r.status === 'active') return this.onActive();
+			} catch {
+				/* 取れなければ missed 扱いで閉じる */
+			}
 		}
 		this.finish('missed');
 	}

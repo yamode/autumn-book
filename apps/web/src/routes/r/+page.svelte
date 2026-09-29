@@ -135,7 +135,7 @@
 				<button
 					type="button"
 					onclick={() => sheet?.dial()}
-					disabled={!intercom.open}
+					disabled={!intercom.open || !intercom.online}
 					class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4 disabled:opacity-40"
 				>
 					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -143,7 +143,7 @@
 						<path d="M9 3h6M12 3v5" />
 					</svg>
 					<span class="text-xs text-stone-700">{m.intercom_call()}</span>
-					<span class="text-[10px] text-stone-400">{intercom.open ? m.intercom_call_sub() : m.intercom_closed()}</span>
+					<span class="text-[10px] text-stone-400">{!intercom.open ? m.intercom_closed() : !intercom.online ? m.intercom_offline() : m.intercom_call_sub()}</span>
 				</button>
 			{/if}
 			{#if data.stay.facility.phone}

@@ -725,6 +725,8 @@
   "intercom_end_busy": "正在通話中。",
   "intercom_end_rate_limited": "撥打次數已達上限，請稍後再試。",
   "intercom_end_error": "目前無法使用。",
+  "intercom_offline": "目前無法使用",
+  "intercom_end_offline": "目前無法連線到櫃檯，請以電話聯絡。",
   "bath_title": "包場溫泉預約",
   "bath_lead": "請選擇您希望的時段。",
   "bath_closed": "目前尚未開放包場溫泉預約，請洽櫃檯。",

@@ -725,6 +725,8 @@
   "intercom_end_busy": "A call is already in progress.",
   "intercom_end_rate_limited": "Too many calls. Please try again later.",
   "intercom_end_error": "Currently unavailable.",
+  "intercom_offline": "Currently unavailable",
+  "intercom_end_offline": "The front desk cannot be reached right now. Please call by phone.",
   "bath_title": "Private Bath Reservation",
   "bath_lead": "Please choose a time that suits you.",
   "bath_closed": "Private bath reservations are not available at the moment. Please contact the front desk.",

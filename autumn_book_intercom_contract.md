@@ -282,3 +282,14 @@ facility_intercom(
   3. 相手音声は非 muted の `<video playsinline autoplay>` に結線（taskul-one build 7 の無音対策）。
   4. `RTCPeerConnection({ iceCandidatePoolSize: 1 })`・ICE の保留キュー・シグナルは id 順に 1 件ずつ処理。
   5. 着信 UI は ring の `created_at` + 45 秒で自動クローズ（ghost ring 抑制）。
+
+### 12.1 追補（2026-09-29・受電アプリ設計の Fable レビュー反映）
+
+- DB 手直し：autumn-shared `20260929120200_book_intercom_hardening.sql`（PROD 適用済み）。
+  - `intercom_pending` の窓・`intercom_start` の取り残し掃除は **施設の `ring_timeout_sec` 基準**（＋15 秒／＋30 秒）。
+  - 端末は **`install_id`（アプリが生成・保存する UUID）で 1 端末 1 行**。`intercom_device_upsert(p_facility_id, p_install_id, p_platform, p_fcm_token, p_voip_token, p_device_label)`。受電アプリは起動時と 5 分ごとに呼ぶ（ハートビート）。
+  - **稼働端末（`last_seen_at` 10 分以内）が 0 台なら `intercom_start` は `offline` で断る**。`intercom_status_for` は `online` を返し、`/r` はボタンを押せなくして電話を案内する。
+  - 受電アプリの施設選択は `intercom_my_facilities()`。
+  - `admin_facility_intercom` は `online_devices` / `last_seen_at`、`list_intercom_calls` は `device_label` を返す。
+- **受信側は broadcast の payload を信用しない**（topic は public なので誰でも送れる）。`ring` → `intercom_pending` で実在確認、`signal` → `intercom_signal_fetch` で取り込み、`status` → pending / fetch で裏取り。broadcast は「DB を見に行け」という合図としてだけ使う。
+- ゲスト側の TURN 発行（`/r/api/intercom` action `ice`）は呼が ringing / active のときだけ。

@@ -8,8 +8,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
 
-export type IntercomStatus = { enabled: boolean; open: boolean; ringTimeoutSec: number };
-const OFF: IntercomStatus = { enabled: false, open: false, ringTimeoutSec: 30 };
+export type IntercomStatus = { enabled: boolean; open: boolean; online: boolean; ringTimeoutSec: number };
+const OFF: IntercomStatus = { enabled: false, open: false, online: false, ringTimeoutSec: 30 };
 
 /** 客室画面に「フロントを呼ぶ」を出すか。読めなければ出さない（従来の電話ボタンだけ） */
 export async function intercomStatusFor(token: string | undefined): Promise<IntercomStatus> {
@@ -18,7 +18,7 @@ export async function intercomStatusFor(token: string | undefined): Promise<Inte
 		const { data, error } = await supa().rpc('intercom_status_for', { p_token: token });
 		if (error || !data) return OFF;
 		const d = data as Record<string, unknown>;
-		return { enabled: d.enabled === true, open: d.open === true, ringTimeoutSec: Number(d.ring_timeout_sec ?? 30) || 30 };
+		return { enabled: d.enabled === true, open: d.open === true, online: d.online === true, ringTimeoutSec: Number(d.ring_timeout_sec ?? 30) || 30 };
 	} catch {
 		return OFF;
 	}
@@ -26,7 +26,7 @@ export async function intercomStatusFor(token: string | undefined): Promise<Inte
 
 /** RPC の例外コード（raise exception 'busy' 等）を取り出す */
 export function intercomErrorCode(message: string | undefined): string {
-	const known = ['disabled', 'out_of_hours', 'busy', 'rate_limited', 'invalid_token', 'forbidden', 'not_found', 'call_closed', 'too_many_signals'];
+	const known = ['disabled', 'out_of_hours', 'offline', 'busy', 'rate_limited', 'invalid_token', 'forbidden', 'not_found', 'call_closed', 'too_many_signals'];
 	return known.find((k) => message?.includes(k)) ?? 'error';
 }
 
@@ -46,6 +46,8 @@ export type AdminIntercom = {
 	ringTimeoutSec: number;
 	rateLimit: number;
 	devices: number;
+	onlineDevices: number;
+	lastSeenAt: string | null;
 };
 export type IntercomCall = {
 	id: string;
@@ -53,6 +55,7 @@ export type IntercomCall = {
 	status: string;
 	createdAt: string;
 	durationSec: number | null;
+	deviceLabel: string | null;
 };
 
 const uuidOf = (facilityId: string) => FACILITY_UUID[facilityId] ?? facilityId;
@@ -66,7 +69,9 @@ export async function sbAdminIntercom(client: SupabaseClient, facilityId: string
 		businessHours: (d.business_hours as BusinessHours) ?? {},
 		ringTimeoutSec: Number(d.ring_timeout_sec ?? 30),
 		rateLimit: Number(d.rate_limit ?? 5),
-		devices: Number(d.devices ?? 0)
+		devices: Number(d.devices ?? 0),
+		onlineDevices: Number(d.online_devices ?? 0),
+		lastSeenAt: (d.last_seen_at as string | null) ?? null
 	};
 }
 
@@ -101,6 +106,7 @@ export async function sbListIntercomCalls(client: SupabaseClient, facilityId: st
 		roomCode: String(r.room_code ?? ''),
 		status: String(r.status ?? ''),
 		createdAt: String(r.created_at ?? ''),
-		durationSec: r.duration_sec == null ? null : Number(r.duration_sec)
+		durationSec: r.duration_sec == null ? null : Number(r.duration_sec),
+		deviceLabel: (r.device_label as string | null) ?? null
 	}));
 }
