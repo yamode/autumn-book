@@ -293,3 +293,9 @@ facility_intercom(
   - `admin_facility_intercom` は `online_devices` / `last_seen_at`、`list_intercom_calls` は `device_label` を返す。
 - **受信側は broadcast の payload を信用しない**（topic は public なので誰でも送れる）。`ring` → `intercom_pending` で実在確認、`signal` → `intercom_signal_fetch` で取り込み、`status` → pending / fetch で裏取り。broadcast は「DB を見に行け」という合図としてだけ使う。
 - ゲスト側の TURN 発行（`/r/api/intercom` action `ice`）は呼が ringing / active のときだけ。
+
+### 12.2 追補（2026-09-29・TURN と push）
+
+- 受電側 TURN：Edge Function **`intercom-turn`**（autumn-shared・PROD デプロイ済み・verify_jwt=true）。内線を受けられるスタッフ（`intercom_my_facilities` が空でない）にだけ Cloudflare TURN の短命クレデンシャルを返す。`CF_TURN_*` 未設定なら STUN のみ。
+- 着信 push：Edge Function **`intercom-invite`**（PROD デプロイ済み・verify_jwt=false）。`/r/api/intercom` の start 直後に autumn-book サーバが `{ call_id, call_secret }` で呼ぶ（`waitUntil`・ゲストは待たせない）。call_secret を照合し、ringing かつ 60 秒以内の呼に **1 回だけ**（`intercom_calls.invited_at` の claim）、施設の受電端末へ FCM を送る。`FCM_SERVICE_ACCOUNT_JSON` 未設定なら送らない。
+- 受電アプリは push を「DB を見に行け」という合図として扱い、`intercom_pending` で裏取りしてから鳴らす（§12.1 と同じ）。
