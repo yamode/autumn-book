@@ -1,5 +1,5 @@
 // 客室内線のゲスト側 API（/r の通話シートから fetch で叩く）。
-//   start   … Cookie の stay token で呼を作る → { callId, callSecret, ringTimeoutSec }
+//   start   … Cookie の stay token で呼を作る → { callId, callSecret, ringTimeoutSec }。受電端末へ push（intercom-invite）
 //   send    … シグナル（offer / ice / bye）送信
 //   fetch   … 相手のシグナルと呼の状態を after 以降だけ取得（store-and-forward の正）
 //   hangup  … 取消（呼出中）／終話（通話中）
@@ -9,7 +9,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { guestRpc } from '$lib/server/intercom';
+import { guestRpc, inviteIntercomDevices } from '$lib/server/intercom';
 import type { RequestHandler } from './$types';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -34,7 +34,7 @@ async function turnServers(): Promise<unknown[]> {
 	}
 }
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 	if (DATA_SOURCE !== 'supabase') return json({ error: 'disabled' }, { status: 400 });
 	let body: Record<string, unknown>;
 	try {
@@ -50,6 +50,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		const { data, error } = await guestRpc('intercom_start', { p_token: token });
 		if (error) return json({ error }, { status: 400 });
 		const d = data as Record<string, unknown>;
+		// 受電アプリが背面・ロック中でも鳴るよう push（Edge Function intercom-invite）。ゲストは待たせない
+		const invite = inviteIntercomDevices(String(d.call_id), String(d.call_secret));
+		if (platform?.context?.waitUntil) platform.context.waitUntil(invite);
+		else await invite;
 		return json({ callId: d.call_id, callSecret: d.call_secret, ringTimeoutSec: Number(d.ring_timeout_sec ?? 30) });
 	}
 

@@ -7,6 +7,28 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
+import { env as publicEnv } from '$env/dynamic/public';
+
+/**
+ * 受電端末へ着信の push を送る（autumn-shared Edge Function intercom-invite）。
+ * 受電アプリが背面・ロック中でも iPhone を鳴らすため。1 呼 1 回・ringing のときだけ送るのは Function 側で守る。
+ * 失敗しても発信は止めない（受電アプリが前面なら Realtime と 15 秒ポーリングで鳴る）。
+ */
+export async function inviteIntercomDevices(callId: string, callSecret: string): Promise<void> {
+	const url = publicEnv.PUBLIC_SUPABASE_URL;
+	const key = publicEnv.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+	if (!url || !key) return;
+	try {
+		await fetch(`${url}/functions/v1/intercom-invite`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', apikey: key },
+			body: JSON.stringify({ call_id: callId, call_secret: callSecret }),
+			signal: AbortSignal.timeout(8000)
+		});
+	} catch {
+		/* push は補助。失敗しても呼は鳴っている */
+	}
+}
 
 export type IntercomStatus = { enabled: boolean; open: boolean; online: boolean; ringTimeoutSec: number };
 const OFF: IntercomStatus = { enabled: false, open: false, online: false, ringTimeoutSec: 30 };
