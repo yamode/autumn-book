@@ -13,6 +13,7 @@
 	import { onMount } from 'svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
 
 	let { children } = $props();
 
@@ -21,6 +22,8 @@
 			(page.data.stay as { facility: { name: string } } | null | undefined)?.facility.name ??
 			m.inroom_header()
 	);
+	const snsLinks = $derived(page.data.snsLinks as import('$lib/sns-links').SnsLinks | undefined);
+	const snsEntries = $derived(SNS_KINDS.flatMap((k) => (snsLinks?.[k] ? [[k, snsLinks[k] as string] as const] : [])));
 	const back = $derived(page.data.headerBack as string | undefined);
 	const path = $derived(page.url.pathname);
 	// 滞在が確定している画面（/r で claim 済み・/r/bath・案内の詳細）だけタブを2本出す。
@@ -69,9 +72,25 @@
 			{/if}
 		</header>
 
-		<main class="flex-1 pb-16">
+		<main class="flex-1 {snsEntries.length ? 'pb-4' : 'pb-16'}">
 			{@render children()}
 		</main>
+
+		<!-- ===== フッター（施設の SNS ボタン。設定は /admin/inroom） ===== -->
+		{#if snsEntries.length}
+			<footer class="mb-16 px-4 pb-4 pt-2 text-center">
+				<div class="flex flex-wrap justify-center gap-2">
+					{#each snsEntries as [kind, url] (kind)}
+						<a
+							href={url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="rounded-full border border-stone-300 bg-white px-4 py-2 text-xs text-stone-700 shadow-sm"
+						>{SNS_LABEL[kind].replace(/（.*）/, '')}</a>
+					{/each}
+				</div>
+			</footer>
+		{/if}
 
 		<!-- ===== 下端タブバー（固定） ===== -->
 		<nav

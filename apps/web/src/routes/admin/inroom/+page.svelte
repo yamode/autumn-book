@@ -5,6 +5,7 @@
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import type { StayToken } from '$lib/types';
+	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
 
 	let { data, form } = $props();
 
@@ -100,6 +101,29 @@
 	<!-- ============================ 館内案内 ============================ -->
 	{#if form?.guideAdded}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}
 	{#if form?.guideDeleted}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">削除しました。</p>{/if}
+
+	<!-- ===== フッターの SNS ボタン（施設ごと。空欄のボタンは出さない） ===== -->
+	{#if form?.snsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">SNSのURLを保存しました。</p>{/if}
+	<form method="POST" action="?/snsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+		<h2 class="font-medium text-stone-700">🔗 客室案内フッターのSNSボタン — {data.currentFacility.name}</h2>
+		<p class="mt-1 text-xs text-stone-400">URL（https://…）を入れたSNSだけ、客室案内の下部にボタンで出ます。空欄なら出ません。</p>
+		<div class="mt-3 grid gap-3 sm:grid-cols-2">
+			{#each SNS_KINDS as k (k)}
+				<label class="block">
+					<span class="text-xs text-stone-600">{SNS_LABEL[k]}</span>
+					<input
+						type="url"
+						name={k}
+						value={data.snsLinks[k] ?? ''}
+						placeholder="https://"
+						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+					/>
+				</label>
+			{/each}
+		</div>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+	</form>
 
 	<div class="space-y-3">
 		{#each data.guides as g (g.id)}

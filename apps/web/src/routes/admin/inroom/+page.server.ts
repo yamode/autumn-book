@@ -23,6 +23,8 @@ import {
 // get-or-create なので、同じご予約なら何度押しても同じ URL・同じ QR になる。
 import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$lib/server/private-bath';
 import type { Locale } from '$lib/types';
+import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
+import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
 import type { Actions, PageServerLoad } from './$types';
 
 // 本番系（実データ + 実認証）でのみ Supabase アダプタを使う。
@@ -66,7 +68,8 @@ export const load: PageServerLoad = async (event) => {
 			staysError = e instanceof Error ? e.message : String(e);
 		}
 	}
-	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin };
+	const snsLinks = await loadSnsLinks(currentFacility.id);
+	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);
@@ -131,6 +134,32 @@ async function saveGuide(event: Parameters<Actions[string]>[0], withId: boolean)
 }
 
 export const actions: Actions = {
+	// ---- 客室案内フッターの SNS ボタン（施設ごと・admin のみ）----
+	snsSave: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const raw: Record<string, string> = {};
+		for (const k of SNS_KINDS) {
+			const v = String(form.get(k) ?? '').trim();
+			if (v && !/^https:\/\/[^\s<>"']+$/i.test(v)) {
+				return fail(400, { message: 'URLは https:// で始まる形式で入力してください' });
+			}
+			raw[k] = v;
+		}
+		const links = normalizeSnsLinks(raw);
+		if (useSupabaseAdmin) {
+			try {
+				await sbSaveSnsLinks(createSupabaseServerClient(event), facilityId, links);
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+			}
+		} else {
+			saveSnsLinksDemo(facilityId, links);
+		}
+		return { snsSaved: true };
+	},
+
 	// ---- 館内案内（admin のみ）----
 	guideAdd: (event) => saveGuide(event, false),
 	guideSave: (event) => saveGuide(event, true),
