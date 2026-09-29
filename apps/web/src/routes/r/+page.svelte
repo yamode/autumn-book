@@ -10,8 +10,14 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { inroomCardImage, inroomHero, inroomIcon } from '$lib/inroom-visuals';
+	import IntercomSheet from '$lib/components/IntercomSheet.svelte';
 
 	let { data, form } = $props();
+
+	// 客室内線（Wi-Fi データ通話）。/admin/inroom で施設ごとに ON にしたときだけ出す
+	let sheetOpen = $state(false);
+	let sheet = $state<ReturnType<typeof IntercomSheet> | null>(null);
+	const intercom = $derived(data.stay ? data.intercom : undefined);
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
 	function fmtDate(iso: string): string {
@@ -124,6 +130,22 @@
 				</svg>
 				<span class="text-xs text-stone-700">{m.bath_link()}</span>
 			</a>
+			{#if intercom?.enabled}
+				<div class="my-3 w-px bg-stone-200"></div>
+				<button
+					type="button"
+					onclick={() => sheet?.dial()}
+					disabled={!intercom.open}
+					class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4 disabled:opacity-40"
+				>
+					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a5.5 5.5 0 0 1 8 0" /><circle cx="12" cy="18.5" r="1" fill="currentColor" />
+						<path d="M9 3h6M12 3v5" />
+					</svg>
+					<span class="text-xs text-stone-700">{m.intercom_call()}</span>
+					<span class="text-[10px] text-stone-400">{intercom.open ? m.intercom_call_sub() : m.intercom_closed()}</span>
+				</button>
+			{/if}
 			{#if data.stay.facility.phone}
 				<div class="my-3 w-px bg-stone-200"></div>
 				<a href={telHref(data.stay.facility.phone)} class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
@@ -134,6 +156,9 @@
 				</a>
 			{/if}
 		</nav>
+		{#if intercom?.enabled}
+			<IntercomSheet bind:this={sheet} bind:open={sheetOpen} phone={data.stay.facility.phone} />
+		{/if}
 
 		<!-- ============ 館内のご案内（カード） ============ -->
 		{#if cards.length === 0}

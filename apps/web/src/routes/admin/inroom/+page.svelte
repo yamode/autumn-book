@@ -5,6 +5,7 @@
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import type { StayToken } from '$lib/types';
+	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
 
 	let { data, form } = $props();
 
@@ -100,6 +101,88 @@
 	<!-- ============================ 館内案内 ============================ -->
 	{#if form?.guideAdded}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}
 	{#if form?.guideDeleted}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">削除しました。</p>{/if}
+
+	<!-- ===== 内線（客室からフロントへの Wi-Fi 通話・受電は autumn-call アプリ） ===== -->
+	{#if form?.intercomSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">内線の設定を保存しました。</p>{/if}
+	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<h2 class="font-medium text-stone-700">📞 内線（客室からフロントを呼ぶ） — {data.currentFacility.name}</h2>
+		<p class="mt-1 text-xs text-stone-400">
+			ON にすると、客室案内に「フロントを呼ぶ（Wi-Fi通話）」ボタンが出ます。受電は事務室の iPhone の受電アプリ（autumn-call）で受けます。
+			受電アプリの端末が1台も登録されていないうちは ON にしないでください（呼んでも誰も出られません）。
+		</p>
+		{#if data.intercomError}
+			<p class="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">{data.intercomError}</p>
+		{:else if data.intercom}
+			{@const ic = data.intercom}
+			{@const firstHours = Object.values(ic.businessHours)[0]?.[0]}
+			<form method="POST" action="?/intercomSave" use:enhance class="mt-3 space-y-3">
+				<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+				<label class="flex items-center gap-2">
+					<input type="checkbox" name="isEnabled" checked={ic.isEnabled} class="h-4 w-4" />
+					<span>内線を使う（客室にボタンを出す）</span>
+					<span class="text-xs text-stone-400">受電端末 {ic.devices} 台</span>
+				</label>
+				<div class="flex flex-wrap items-center gap-3">
+					<label class="flex items-center gap-2">
+						<input type="checkbox" name="allDay" checked={!firstHours} class="h-4 w-4" />
+						<span>24時間受け付ける</span>
+					</label>
+					<span class="text-xs text-stone-500">受付時間（毎日・JST）</span>
+					<input type="time" name="from" value={firstHours?.[0] ?? '07:00'} class="rounded-md border border-stone-300 px-2 py-1" />
+					<span>〜</span>
+					<input type="time" name="to" value={firstHours?.[1] ?? '22:00'} class="rounded-md border border-stone-300 px-2 py-1" />
+				</div>
+				<label class="flex items-center gap-2">
+					<span class="text-xs text-stone-500">呼出時間（秒・この時間出なければ「応答なし」）</span>
+					<input type="number" name="ringTimeoutSec" min="10" max="120" value={ic.ringTimeoutSec} class="w-20 rounded-md border border-stone-300 px-2 py-1" />
+				</label>
+				<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+			</form>
+			<details class="mt-4">
+				<summary class="cursor-pointer text-xs text-stone-500">通話ログ（直近7日・{data.intercomCalls.length}件）</summary>
+				{#if data.intercomCalls.length === 0}
+					<p class="mt-2 text-xs text-stone-400">まだ通話はありません。</p>
+				{:else}
+					<table class="mt-2 w-full text-xs">
+						<thead class="text-left text-stone-400"><tr><th class="py-1">日時</th><th>部屋</th><th>結果</th><th>通話</th></tr></thead>
+						<tbody>
+							{#each data.intercomCalls as c (c.id)}
+								<tr class="border-t border-stone-100">
+									<td class="py-1">{new Date(c.createdAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+									<td>{c.roomCode}</td>
+									<td class={c.status === 'missed' ? 'font-medium text-red-600' : ''}>{({ ringing: '呼出中', active: '通話中', ended: '通話', missed: '不在', declined: '拒否', canceled: '取消' } as Record<string, string>)[c.status] ?? c.status}</td>
+									<td>{c.durationSec != null ? `${Math.floor(c.durationSec / 60)}分${c.durationSec % 60}秒` : '—'}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			</details>
+		{/if}
+	</section>
+
+	<!-- ===== フッターの SNS ボタン（施設ごと。空欄のボタンは出さない） ===== -->
+	{#if form?.snsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">SNSのURLを保存しました。</p>{/if}
+	<form method="POST" action="?/snsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+		<h2 class="font-medium text-stone-700">🔗 客室案内フッターのSNSボタン — {data.currentFacility.name}</h2>
+		<p class="mt-1 text-xs text-stone-400">URL（https://…）を入れたSNSだけ、客室案内の下部にボタンで出ます。空欄なら出ません。</p>
+		<div class="mt-3 grid gap-3 sm:grid-cols-2">
+			{#each SNS_KINDS as k (k)}
+				<label class="block">
+					<span class="text-xs text-stone-600">{SNS_LABEL[k]}</span>
+					<input
+						type="url"
+						name={k}
+						value={data.snsLinks[k] ?? ''}
+						placeholder="https://"
+						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+					/>
+				</label>
+			{/each}
+		</div>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+	</form>
 
 	<div class="space-y-3">
 		{#each data.guides as g (g.id)}

@@ -23,6 +23,9 @@ import {
 // get-or-create なので、同じご予約なら何度押しても同じ URL・同じ QR になる。
 import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$lib/server/private-bath';
 import type { Locale } from '$lib/types';
+import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
+import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
+import { sbAdminIntercom, sbListIntercomCalls, sbSaveIntercom, type AdminIntercom, type BusinessHours, type IntercomCall } from '$lib/server/intercom';
 import type { Actions, PageServerLoad } from './$types';
 
 // 本番系（実データ + 実認証）でのみ Supabase アダプタを使う。
@@ -66,7 +69,23 @@ export const load: PageServerLoad = async (event) => {
 			staysError = e instanceof Error ? e.message : String(e);
 		}
 	}
-	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin };
+	const snsLinks = await loadSnsLinks(currentFacility.id);
+	// 内線（客室からの Wi-Fi 通話）の設定と通話ログ。実データに繋がっているときだけ
+	let intercom: AdminIntercom | null = null;
+	let intercomCalls: IntercomCall[] = [];
+	let intercomError: string | null = useSupabaseAdmin ? null : STAYS_NOT_LIVE;
+	if (useSupabaseAdmin) {
+		try {
+			const client = createSupabaseServerClient(event);
+			[intercom, intercomCalls] = await Promise.all([
+				sbAdminIntercom(client, currentFacility.id),
+				sbListIntercomCalls(client, currentFacility.id, 7)
+			]);
+		} catch (e) {
+			intercomError = e instanceof Error ? e.message : String(e);
+		}
+	}
+	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, intercom, intercomCalls, intercomError };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);
@@ -131,6 +150,63 @@ async function saveGuide(event: Parameters<Actions[string]>[0], withId: boolean)
 }
 
 export const actions: Actions = {
+	// ---- 内線（客室からの Wi-Fi 通話）の設定（admin のみ。DB 側も施設の管理者に限る）----
+	intercomSave: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+		if (!useSupabaseAdmin) return fail(400, { message: STAYS_NOT_LIVE });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const allDay = form.get('allDay') === 'on';
+		const from = String(form.get('from') ?? '');
+		const to = String(form.get('to') ?? '');
+		let businessHours: BusinessHours = {};
+		if (!allDay) {
+			if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to) || from >= to) {
+				return fail(400, { message: '受付時間は「開始 < 終了」で入力してください（日をまたぐ設定はできません）' });
+			}
+			const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+			businessHours = Object.fromEntries(days.map((d) => [d, [[from, to]]]));
+		}
+		const ringTimeoutSec = Math.min(120, Math.max(10, Number(form.get('ringTimeoutSec') ?? 30) || 30));
+		try {
+			await sbSaveIntercom(createSupabaseServerClient(event), facilityId, {
+				isEnabled: form.get('isEnabled') === 'on',
+				businessHours,
+				ringTimeoutSec,
+				rateLimit: 5
+			});
+		} catch (e) {
+			return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+		}
+		return { intercomSaved: true };
+	},
+
+	// ---- 客室案内フッターの SNS ボタン（施設ごと・admin のみ）----
+	snsSave: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const raw: Record<string, string> = {};
+		for (const k of SNS_KINDS) {
+			const v = String(form.get(k) ?? '').trim();
+			if (v && !/^https:\/\/[^\s<>"']+$/i.test(v)) {
+				return fail(400, { message: 'URLは https:// で始まる形式で入力してください' });
+			}
+			raw[k] = v;
+		}
+		const links = normalizeSnsLinks(raw);
+		if (useSupabaseAdmin) {
+			try {
+				await sbSaveSnsLinks(createSupabaseServerClient(event), facilityId, links);
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+			}
+		} else {
+			saveSnsLinksDemo(facilityId, links);
+		}
+		return { snsSaved: true };
+	},
+
 	// ---- 館内案内（admin のみ）----
 	guideAdd: (event) => saveGuide(event, false),
 	guideSave: (event) => saveGuide(event, true),

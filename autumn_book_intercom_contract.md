@@ -264,3 +264,21 @@ facility_intercom(
 2. push 第2段（iOS VoIP push + CallKit）まで行くか、据置き運用＋FCM 第1段で止めるか（運用実績を見て判断）。
 3. `business_hours` の初期値（両施設の受電可能時間帯）と時間外の代替導線文言。
 4. スタッフ携行端末（simring 相当）を初期から配るか、据置き 1 台で開始するか。
+
+---
+
+## 12. 実装状況と実装で決めた細部（2026-09-29）
+
+- **DB**: autumn-shared `20260929120100_book_intercom.sql`（PROD 適用済み）。§6.3 の RPC は全て実装。`facility_intercom.is_enabled` は全施設 **false** で開始（`/admin/inroom` で施設ごとに ON）。
+  - スタッフ側の認可は role ではなく **`private.has_facility_access`**（book の他の管理 RPC と同じ線引き）。設定の変更（`facility_intercom_upsert`）はテナント管理者のみ。
+  - `intercom_signal_fetch` は `{ status, signals }` を返す（呼の状態を同梱）。`intercom_answer` は先勝ちに負けると `{ ok: false, status }`。
+  - `intercom_hangup` は呼出中にゲストが切ると `canceled`、スタッフが切ると `declined`、通話中はどちらでも `ended`。`bye` シグナルは RPC が自動で入れる。
+  - Realtime: `intercom:facility:{id}` に `ring`、`call:{id}` に `status` / `signal`（`realtime.send(..., private=false)`）。
+- **ゲスト（autumn-book `/r`）**: ブラウザには Supabase クライアントを持たせず、`/r/api/intercom` 経由の **fetch ポーリングだけ**で動く（接続まで 1 秒・通話中 2 秒）。正は DB なので broadcast を使わなくても契約上問題ない。
+  - TURN は §5 の Edge Function ではなく **`/r/api/intercom` action `ice`** が発行（autumn-book の env `CF_TURN_KEY_ID` / `CF_TURN_API_TOKEN`。未設定なら STUN のみ）。受電アプリ側の `intercom-turn` は未実装。
+- **taskul-one の轍（HANDOFF v0.15.0）から、受電アプリも守ること**:
+  1. **ICE restart の re-offer に応答する**。ゲスト（発信側）が `disconnected` 6 秒グレース後に `createOffer({ iceRestart: true })` を送る（最大 3 回）。受電側は通話中に届いた 2 回目以降の `offer` にも `answer` を返す。受電側から restart はしない（glare 回避）。
+  2. offer / answer の payload は `{ sdp: { type, sdp } }`。answer を作るときも Opus の `useinbandfec=1;usedtx=1;minptime=10` を付ける（ゲストの `tuneOpus` と同じ）。
+  3. 相手音声は非 muted の `<video playsinline autoplay>` に結線（taskul-one build 7 の無音対策）。
+  4. `RTCPeerConnection({ iceCandidatePoolSize: 1 })`・ICE の保留キュー・シグナルは id 順に 1 件ずつ処理。
+  5. 着信 UI は ring の `created_at` + 45 秒で自動クローズ（ghost ring 抑制）。

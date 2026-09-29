@@ -11,6 +11,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides, sbClaimStayByCode } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
+import { intercomStatusFor } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -33,11 +34,12 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		return { stay: null, guides: [], bathReservations: [], expired: true, invalidQr };
 	}
 
-	const [guides, bathContext] = await Promise.all([
+	const [guides, bathContext, intercom] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
-		DATA_SOURCE === 'supabase' ? sbBathContext(token).catch(() => null) : Promise.resolve(null)
+		DATA_SOURCE === 'supabase' ? sbBathContext(token).catch(() => null) : Promise.resolve(null),
+		intercomStatusFor(token)
 	]);
 
 	return {
@@ -46,6 +48,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		bathReservations: bathContext?.ok
 			? (bathContext.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to }))
 			: [],
+		intercom,
 		expired: false,
 		invalidQr
 	};
