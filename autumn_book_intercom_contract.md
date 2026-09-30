@@ -309,3 +309,13 @@ facility_intercom(
   - 使えないもの：`facility_intercom_upsert`（テナント管理者のみ）・book の他の管理 RPC・PMS/RMS/ordering の全テーブル（membership が無いので RLS で弾かれる）。autumn-book `/admin` も `app_metadata.role` が無いので入れない。
 - オペレーターの追加・削除は当面 SQL（service_role）で行う。運用：施設ごとに 1 アカウント（2026-09-30：山人-yamado- = `reservation@yamado.co.jp`、山人-oga- = `reservation@oga.yamado.co.jp`）。
 - 既存スタッフ（membership あり）は従来どおり受電できる（`has_facility_access` の分岐は残す）。
+
+### 12.4 追補（2026-09-30・ロック中も鳴り続ける着信＝CallKit + VoIP push・受電アプリ C4）
+
+- 受電端末が `intercom_device_upsert(p_voip_token)` に PushKit の VoIP トークンを載せる（列 `intercom_devices.voip_token` は既存）。
+- `intercom-invite` は、施設の有効な受電端末のうち **`voip_token` がある端末へ APNs VoIP push（.p8・`apns-push-type: voip`・topic `<bundle>.voip`・TTL 30 秒）**、無い端末へは従来どおり FCM alert。**施設の全端末へ同時に送る**（同じアカウントで複数端末にログインしていても端末ごとに 1 行なので全部鳴る）。
+  - VoIP payload：`{ "kind": "intercom_ring", "callId", "roomCode", "facilityId", "ringTimeoutSec" }`（`aps` は空）。
+  - 送信条件は従来どおり（ringing・60 秒以内・1 呼 1 回の claim）。VoIP が BadDeviceToken（両環境）/ Unregistered なら `voip_token` を消す。
+  - secrets：`APNS_AUTH_KEY_P8` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_BUNDLE_ID`（未設定なら全端末 FCM にフォールバック）。本番→開発ホストの自動フォールバック（taskul-one `_shared/apns.ts` と同じ）。
+- 受電アプリは VoIP push を受けたら**毎回同期的に CallKit へ報告**し（iOS 要件）、CallKit が呼出時間の間ロック画面でも鳴らし続ける。**push は合図に過ぎず、応答は従来どおり `intercom_answer`（先勝ち）→ signal の store-and-forward**。他端末が先に応答した・取消・時間切れになったら、アプリが `intercom_pending` / status で裏取りして CallKit の着信を閉じる（呼出時間＋15 秒の安全弁もネイティブに持つ）。
+- ゲスト側（`/r`）とシグナリング・RPC は変更なし。
