@@ -299,3 +299,13 @@ facility_intercom(
 - 受電側 TURN：Edge Function **`intercom-turn`**（autumn-shared・PROD デプロイ済み・verify_jwt=true）。内線を受けられるスタッフ（`intercom_my_facilities` が空でない）にだけ Cloudflare TURN の短命クレデンシャルを返す。`CF_TURN_*` 未設定なら STUN のみ。
 - 着信 push：Edge Function **`intercom-invite`**（PROD デプロイ済み・verify_jwt=false）。`/r/api/intercom` の start 直後に autumn-book サーバが `{ call_id, call_secret }` で呼ぶ（`waitUntil`・ゲストは待たせない）。call_secret を照合し、ringing かつ 60 秒以内の呼に **1 回だけ**（`intercom_calls.invited_at` の claim）、施設の受電端末へ FCM を送る。`FCM_SERVICE_ACCOUNT_JSON` 未設定なら送らない。
 - 受電アプリは push を「DB を見に行け」という合図として扱い、`intercom_pending` で裏取りしてから鳴らす（§12.1 と同じ）。
+
+### 12.3 追補（2026-09-30・受電専用アカウント＝内線オペレーター）
+
+- **受電専用アカウントには `core.memberships` を付けない。** `private.has_facility_access` / `has_tenant_access` はロールを見ずに membership の有無だけで PMS・RMS・ordering・book の行（宿泊者・請求・予約など）を読み書きさせるうえ、PMS の `staff` / `shared_login` は cross-facility のため全施設に届く。常時ログインの据置き iPhone にそれを持たせない。
+- 代わりに **`book.intercom_operators (user_id, facility_id)`**（autumn-shared `20260930100000_book_intercom_operators.sql`）。RLS deny-all・RPC からだけ参照。
+- 受電側の認可は **`book._intercom_can_receive(tenant, facility)`** ＝ `has_facility_access` **または** `is_superadmin` **または** オペレーター行がある。`_intercom_require_staff`・`_intercom_call_auth`（スタッフ分岐）・`intercom_my_facilities` がこれを使う。
+  - オペレーターが使える RPC：`intercom_my_facilities` / `intercom_device_upsert` / `intercom_device_delete` / `intercom_pending` / `intercom_answer` / `intercom_decline` / `intercom_signal_send` / `intercom_signal_fetch` / `intercom_hangup`（p_secret=null）/ `list_intercom_calls` / `admin_facility_intercom`（自施設のみ）、Edge Function `intercom-turn`。
+  - 使えないもの：`facility_intercom_upsert`（テナント管理者のみ）・book の他の管理 RPC・PMS/RMS/ordering の全テーブル（membership が無いので RLS で弾かれる）。autumn-book `/admin` も `app_metadata.role` が無いので入れない。
+- オペレーターの追加・削除は当面 SQL（service_role）で行う。運用：施設ごとに 1 アカウント（2026-09-30：山人-yamado- = `reservation@yamado.co.jp`、山人-oga- = `reservation@oga.yamado.co.jp`）。
+- 既存スタッフ（membership あり）は従来どおり受電できる（`has_facility_access` の分岐は残す）。
