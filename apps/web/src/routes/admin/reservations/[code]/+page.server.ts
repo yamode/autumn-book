@@ -5,7 +5,12 @@
 //
 // 取り消しは PMS ではなくここで行う。core.stays を cancelled にすると PMS 側の
 // stays_release_rooms_on_cancel トリガーが走り、部屋割りが自動で解放される。
-import { error, fail } from '@sveltejs/kit';
+//
+// 取引先予約（source='rms_partner'・限定URL /p/<token> から入った予約）は booking.bookings 行があるが直販ではない。
+// book 側の操作（取消・返金・メール再送・取消リンク・会員紐づけ）は台帳・Stripe 返金・取引先メールを通らず、
+// 宿泊者へメールが出てしまうため、全 action の入口で rejectPartner により拒否する。
+// 取引先予約の取消・再請求は partnerCancel / partnerRetryCharge（/admin/partners/[id] と同じ関数・同じ権限）で行う。
+import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 
 import { todayStr } from '$lib/format';
 import {
@@ -37,6 +42,20 @@ import {
 	retryDirectRefund,
 	type DirectRefundOutcome
 } from '$lib/server/direct-payments';
+import {
+	isPartnerReservationCode,
+	isPartnerStay,
+	partnerFirstRoomCode,
+	PARTNER_BOOK_ACTION_DENIED
+} from '$lib/partner-reservation';
+import {
+	cancelPartnerReservation,
+	loadPartnerLedgerForReservation,
+	retryPartnerReservationCharge,
+	type PartnerLedgerResult
+} from '$lib/server/partners/admin-reservations';
+import { actionFailure } from '$lib/server/partners/staff';
+import { todayJst } from '$lib/server/partners/store';
 import type { Actions, PageServerLoad } from './$types';
 
 const UNAVAILABLE = 'この環境では利用できません（DATA_SOURCE / AUTH_MODE が supabase ではありません）。';
@@ -46,18 +65,63 @@ function requireAdmin(role: string | undefined, what: string): string | null {
 	return null;
 }
 
+/**
+ * 取引先予約なら book 側の操作を拒否する（サーバ側のガード）。取引先予約でなければ null。
+ * 予約番号の形（PB-…）で先に弾き、それ以外も admin_booking_detail の source / channel_code で確かめる。
+ * memberScope: 会員まわりの action は失敗表示の置き場所が違うので、その形で返す。
+ */
+async function rejectPartner(event: RequestEvent, memberScope = false) {
+	const deny = (status: number, message: string) =>
+		memberScope ? fail(status, { memberScope: true, memberError: message }) : fail(status, { message });
+	const code = event.params.code ?? '';
+	if (isPartnerReservationCode(code)) return deny(409, PARTNER_BOOK_ACTION_DENIED);
+	// デモ（store.ts）には取引先予約が無い（経路は autumn_booking / ota のみ）ので、番号の形だけで足りる
+	if (!ADMIN_SUPABASE) return null;
+	try {
+		const detail = await adminBookingDetail(bookAdmin(event), code);
+		if (isPartnerStay(detail.booking)) return deny(409, PARTNER_BOOK_ACTION_DENIED);
+	} catch (e) {
+		return deny(400, mapRpcError(e));
+	}
+	return null;
+}
+
+const NO_PARTNER: PartnerLedgerResult = { ledger: null, error: null };
+
 export const load: PageServerLoad = async (event) => {
 	const isAdmin = event.locals.user?.role === 'admin';
 
 	if (ADMIN_SUPABASE) {
-		let detail: BookingDetail;
+		let detail: BookingDetail | null = null;
 		try {
 			detail = await adminBookingDetail(bookAdmin(event), event.params.code);
 		} catch (e) {
 			const msg = mapRpcError(e);
-			if (msg.includes('見つかりません')) error(404, '予約が見つかりません');
-			error(500, msg);
+			if (!msg.includes('見つかりません')) error(500, msg);
 		}
+		if (!detail) {
+			// 複数室の取引先予約は滞在が PB-…-1, -2 …。一覧（metadata.booking_code）から台帳番号で来たら1室目へ
+			const firstRoom = partnerFirstRoomCode(event.params.code);
+			if (firstRoom) redirect(303, `/admin/reservations/${encodeURIComponent(firstRoom)}`);
+			error(404, '予約が見つかりません');
+		}
+
+		// 取引先予約: book 側の操作は出さず、台帳（取引先名・予約者・支払状況）と取引先予約としての取消を出す
+		if (isPartnerStay(detail.booking)) {
+			return {
+				live: true as const,
+				canOperate: isAdmin,
+				detail,
+				payment: null,
+				refundDue: null,
+				isDirect: false,
+				isPartner: true,
+				partner: await loadPartnerLedgerForReservation(event, event.params.code),
+				today: todayJst(),
+				feePreview: null
+			};
+		}
+
 		// オンライン決済（公式サイト予約・v0.43.0）の台帳。現地払い・未適用の環境は null
 		const payment = detail.booking.booking_id ? await directPaymentForBooking(event.params.code).catch(() => null) : null;
 		// 取消済みのオンライン決済: 返金の内訳（規定のキャンセル料・返金しない予約時決済の割引額）を DB から
@@ -73,6 +137,9 @@ export const load: PageServerLoad = async (event) => {
 			refundDue,
 			// 直販（booking.bookings 行がある）のときだけ操作できる
 			isDirect: detail.booking.booking_id !== null,
+			isPartner: false,
+			partner: NO_PARTNER,
+			today: todayJst(),
 			feePreview: detail.booking.stay_status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
 		};
 	}
@@ -146,6 +213,9 @@ export const load: PageServerLoad = async (event) => {
 		payment: null,
 		refundDue: null,
 		isDirect: booking.channel !== 'ota',
+		isPartner: false,
+		partner: NO_PARTNER,
+		today: todayJst(),
 		feePreview: booking.status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
 	};
 };
@@ -154,6 +224,8 @@ export const actions: Actions = {
 	cancel: async (event) => {
 		const denied = requireAdmin(event.locals.user?.role, 'ご予約の取り消し');
 		if (denied) return fail(403, { message: denied });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
 
 		const form = await event.request.formData();
 		const waive = form.get('waive') === 'on';
@@ -187,6 +259,8 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
 		const denied = requireAdmin(event.locals.user?.role, '返金');
 		if (denied) return fail(403, { message: denied });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
 		// 施設・テナントの権限は既存 RPC で確かめる（見えない予約なら例外）
 		try {
 			await adminBookingDetail(bookAdmin(event), event.params.code);
@@ -207,6 +281,8 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
 		const denied = requireAdmin(event.locals.user?.role, 'メールの再送');
 		if (denied) return fail(403, { message: denied });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
 		try {
 			await adminResendBookingMail(bookAdmin(event), event.params.code);
 			return { resent: true as const };
@@ -223,6 +299,8 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
 		const role = event.locals.user?.role;
 		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const partnerDenied = await rejectPartner(event, true);
+		if (partnerDenied) return partnerDenied;
 		const q = String((await event.request.formData()).get('q') ?? '').trim();
 		if (q.length < 3) {
 			return fail(400, { memberScope: true, memberQuery: q, memberError: '会員番号・メールアドレス・電話番号を入れてください。' });
@@ -239,6 +317,8 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
 		const role = event.locals.user?.role;
 		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const partnerDenied = await rejectPartner(event, true);
+		if (partnerDenied) return partnerDenied;
 		const fd = await event.request.formData();
 		if (fd.get('consent') !== 'on') {
 			return fail(400, { memberScope: true, memberError: '会員登録についてお客様の同意を得たことを確認してください。' });
@@ -264,6 +344,8 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { memberScope: true, memberError: UNAVAILABLE });
 		const role = event.locals.user?.role;
 		if (role !== 'admin' && role !== 'staff') return fail(403, { memberScope: true, memberError: '権限がありません。' });
+		const partnerDenied = await rejectPartner(event, true);
+		if (partnerDenied) return partnerDenied;
 		const fd = await event.request.formData();
 		const userId = String(fd.get('memberUserId') ?? '');
 		if (!/^[0-9a-f-]{36}$/i.test(userId)) return fail(400, { memberScope: true, memberError: '会員を選んでください。' });
@@ -275,11 +357,63 @@ export const actions: Actions = {
 		}
 	},
 
+	/**
+	 * 取引先予約の取消（管理者のみ）。/admin/partners/[id] の cancelBooking と同じ処理:
+	 * staffPartnerScope('edit') → requireStaffPartner（施設の確認）→ cancelPartnerBooking(…, 'staff', …)。
+	 * 台帳・PMS・オンライン決済の返金・取引先（予約者）へのメールまで行う。宿泊者へはメールしない。
+	 */
+	partnerCancel: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '取引先予約の取り消し');
+		if (denied) return fail(403, { message: denied });
+		try {
+			// URL の予約が取引先予約であること（直販の予約番号で取引先の取消を走らせない）
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		const fd = await event.request.formData();
+		const reason = String(fd.get('reason') ?? '').trim();
+		if (!reason) return fail(400, { message: '取消の理由を入力してください（取引先の台帳に残ります）。' });
+		try {
+			const b = await cancelPartnerReservation(event, event.params.code, {
+				reason,
+				// オンライン決済済みの予約を返金するか（画面のチェック。既定は返金する）
+				refund: fd.get('refund') !== null
+			});
+			return { partnerCancelled: b.booking_code, partnerPaymentStatus: b.payment_status };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	/** 取引先予約のチェックイン日決済の再請求（管理者のみ）。/admin/partners/[id] の retryCharge と同じ処理 */
+	partnerRetryCharge: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '再請求');
+		if (denied) return fail(403, { message: denied });
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		try {
+			const r = await retryPartnerReservationCharge(event, event.params.code);
+			return { partnerCharge: r };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
 	/** 取消リンクの漏洩が疑われるときの明示操作。旧リンクを失効させ、新リンクで再送する。 */
 	rotateToken: async (event) => {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
 		const denied = requireAdmin(event.locals.user?.role, '取り消しリンクの再発行');
 		if (denied) return fail(403, { message: denied });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
 		try {
 			await adminRotateCancelToken(bookAdmin(event), event.params.code);
 			return { rotated: true as const };

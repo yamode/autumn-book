@@ -14,6 +14,8 @@ import {
 	type MailQueueStatus
 } from '$lib/server/admin-app-data';
 import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { isPartnerStay, partnerBookingCodeOf } from '$lib/partner-reservation';
+import { partnerNamesForCodes } from '$lib/server/partners/admin-reservations';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import { bookings, roomTypeById } from '$lib/server/store';
 import { addDays, todayStr } from '$lib/format';
@@ -27,10 +29,13 @@ function defaultRange(): { from: string; to: string } {
 
 const LIMIT = 200;
 
+/** 一覧の行。取引先予約（source='rms_partner'）には台帳から引いた取引先名を付ける */
+type ListRow = BookingListRow & { partner_name: string | null };
+
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	const status = event.url.searchParams.get('status') ?? '';
-	// 既定は直販のみ。'' を渡すと OTA・電話予約も含めた全 source になる
+	// 既定は直販のみ。'' を渡すと OTA・電話予約も含めた全 source になる。'rms_partner' は取引先予約（限定URL）だけ
 	const channel = event.url.searchParams.get('channel') ?? 'autumn_booking';
 	const q = event.url.searchParams.get('q') ?? '';
 	const range = defaultRange();
@@ -58,11 +63,18 @@ export const load: PageServerLoad = async (event) => {
 				// スタッフでも見える（滞留に気づけるのが目的）。失敗しても一覧は出す
 				adminMailQueueStatus(client).catch(() => null)
 			]);
+			// 取引先予約の行に取引先名を付ける（いま選んでいる施設の台帳から。取れなければチャネル名のまま）
+			const partnerRows = list.filter((r) => isPartnerStay(r));
+			const names = partnerRows.length ? await partnerNamesForCodes(event, partnerRows.map((r) => r.booking_code)) : new Map<string, string>();
+			const rows: ListRow[] = list.map((r) => ({
+				...r,
+				partner_name: isPartnerStay(r) ? (names.get(partnerBookingCodeOf(r.booking_code) ?? '') ?? null) : null
+			}));
 			return {
 				live: true as const,
 				isAdmin,
 				filters,
-				list,
+				list: rows,
 				mailQueue: mailQueue as MailQueueStatus | null,
 				truncated: list.length >= LIMIT,
 				error: null as string | null
@@ -72,7 +84,7 @@ export const load: PageServerLoad = async (event) => {
 				live: true as const,
 				isAdmin,
 				filters,
-				list: [] as BookingListRow[],
+				list: [] as ListRow[],
 				mailQueue: null as MailQueueStatus | null,
 				truncated: false,
 				error: mapRpcError(e)
@@ -97,7 +109,7 @@ export const load: PageServerLoad = async (event) => {
 				(isAdmin && digits.length >= 4 && b.guest.phone.replace(/\D/g, '').includes(digits))
 		);
 	}
-	const list: BookingListRow[] = demo
+	const list: ListRow[] = demo
 		.sort((a, b) => a.checkin.localeCompare(b.checkin))
 		.map((b) => ({
 			stay_id: b.code,
@@ -123,7 +135,8 @@ export const load: PageServerLoad = async (event) => {
 			cancellation_fee: b.cancelFee ?? null,
 			mail_status: null,
 			mail_sent_at: null,
-			created_at: b.createdAt
+			created_at: b.createdAt,
+			partner_name: null
 		}));
 
 	return {

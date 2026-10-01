@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
+	import {
+		canRetryPartnerCharge,
+		canStaffCancelPartnerBooking,
+		partnerBookingStatusLabel,
+		partnerPaymentStatusLabel
+	} from '$lib/partner-reservation';
 	import { page } from '$app/state';
 
 	let { data, form } = $props();
@@ -13,6 +19,10 @@
 
 	let showCancel = $state(false);
 	let waive = $state(false);
+
+	// 取引先予約（source='rms_partner'）の台帳。取引先予約でない・台帳を引けないときは null
+	let pl = $derived(data.isPartner ? data.partner.ledger : null);
+	let showPartnerCancel = $state(false);
 
 	// 取消前の返金の見込み（オンライン決済済みのとき）。予約時決済の割引額は返金しない:
 	// 差し引く額 = max(キャンセル料, 割引額)。施設都合（キャンセル料免除）は全額返金（DB の direct_payment_refund_due と同じ）
@@ -74,6 +84,12 @@
 	// 支払の表示。オンライン決済（Stripe）の記録があればそれを正とし、無ければ現地払い。
 	// 現地払いの内訳（PayPay / カード / 現金）は予約時に備考の先頭へ【現地○○決済希望】で入る（v0.44.0）
 	let paymentLabel = $derived.by(() => {
+		// 取引先予約は台帳の支払方法・支払状況が正（booking.bookings の payment_status は見ない）
+		if (data.isPartner) {
+			if (!pl) return { text: '取引先の条件に従う（台帳を確認できません）', prepaid: false };
+			const status = partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel);
+			return { text: `${pl.paymentName ?? '—'}・${status}`, prepaid: pl.paymentStatus === 'paid' };
+		}
 		const p = data.payment;
 		if (p) {
 			if (p.status === 'paid') return { text: 'オンライン決済済み（カード）', prepaid: true };
@@ -87,7 +103,9 @@
 	});
 
 	let channelLabel = $derived(
-		b.source === 'autumn_booking'
+		data.isPartner
+			? `取引先予約${pl ? `（${pl.partnerName}）` : ''}`
+			: b.source === 'autumn_booking'
 			? b.client === 'app'
 				? 'アプリ'
 				: 'サイト'
@@ -159,6 +177,28 @@
 {#if form?.rotated}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
 		取り消しリンクを再発行し、新しいリンク入りの確認メールを送信キューに入れました。古いリンクは無効になりました。
+	</p>
+{/if}
+{#if form?.partnerCancelled}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		取引先予約 {form.partnerCancelled} を取り消しました（PMS へ反映。取引先の設定に従い、予約者・取引先へ取消のお知らせメールを送ります）。{form.partnerPaymentStatus === 'refunded'
+			? 'オンライン決済は全額返金しました。'
+			: form.partnerPaymentStatus === 'refund_failed'
+				? '返金に失敗しました。Stripe で対応してください。'
+				: ''}宿泊者へはメールしません。
+	</p>
+{/if}
+{#if form?.partnerCharge}
+	<p
+		class="mb-3 rounded-lg px-3 py-2 text-sm {form.partnerCharge.status === 'paid'
+			? 'bg-emerald-50 text-emerald-800'
+			: 'bg-red-50 text-red-700'}"
+	>
+		{form.partnerCharge.status === 'paid'
+			? '登録カードへの請求が完了しました。'
+			: form.partnerCharge.status === 'failed'
+				? `請求に失敗しました: ${form.partnerCharge.message ?? ''}`
+				: `請求しませんでした: ${form.partnerCharge.message ?? ''}`}
 	</p>
 {/if}
 {#if form?.message}
@@ -246,8 +286,68 @@
 			</dl>
 		</div>
 
+		{#if data.isPartner}
+			<!-- 取引先予約（限定URL /p/<token> から入った予約）の台帳。取消・再請求は右の「取引先予約の操作」から -->
+			<div class="rounded-xl border border-amber-200 bg-amber-50/40 p-5 text-sm">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<h2 class="font-medium text-stone-700">取引先予約</h2>
+					{#if pl?.partnerId}
+						<a href={`/admin/partners/${pl.partnerId}`} class="text-xs text-accent-600 hover:underline">取引先の管理画面で見る →</a>
+					{/if}
+				</div>
+				{#if !pl}
+					<p class="mt-2 text-xs text-amber-800">{data.partner.error ?? '取引先予約の台帳を読み込めませんでした。'}</p>
+				{:else}
+					<dl class="mt-3 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-stone-700">
+						<dt class="text-stone-500">取引先</dt>
+						<dd>{pl.partnerName}</dd>
+						<dt class="text-stone-500">予約番号</dt>
+						<dd class="font-mono">{pl.bookingCode}{#if pl.roomCount > 1}<span class="ml-1 font-sans text-xs text-stone-500">（{pl.roomCount}室・この画面は {b.code} の1室分）</span>{/if}</dd>
+						<dt class="text-stone-500">状態</dt>
+						<dd>{partnerBookingStatusLabel(pl.status, pl.checkedIn)}{#if pl.cancelledAt}<span class="text-xs text-stone-500">（{dt(pl.cancelledAt)}・{pl.cancelledBy === 'staff' ? '宿' : pl.cancelledBy === 'system' ? '自動' : '取引先'}）</span>{/if}</dd>
+						<dt class="text-stone-500">予約したログインID</dt>
+						<dd class="font-mono text-xs">{pl.bookedBy ?? '—'}</dd>
+						<dt class="text-stone-500">予約者</dt>
+						<dd>{pl.booker ?? '—'}</dd>
+						<dt class="text-stone-500">交通手段</dt>
+						<dd>{pl.transport ?? '—'}</dd>
+						<dt class="text-stone-500">取引先特典</dt>
+						<dd>
+							{#if pl.perks.length}
+								{#each pl.perks as perk (perk.title)}
+									<span class="block">{perk.title}{#if perk.description}<span class="text-xs text-stone-500">（{perk.description}）</span>{/if}</span>
+								{/each}
+							{:else}—{/if}
+						</dd>
+						<dt class="text-stone-500">部屋・プラン</dt>
+						<dd>{pl.roomName} × {pl.roomCount}室・大人{pl.adultTotal}名／{pl.planName || '—'}</dd>
+						<dt class="text-stone-500">支払方法</dt>
+						<dd>{pl.paymentName ?? '—'}</dd>
+						<dt class="text-stone-500">支払状況</dt>
+						<dd class={pl.paymentStatus === 'charge_failed' || pl.paymentStatus === 'refund_failed' ? 'text-red-700' : ''}>
+							{partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel)}
+							{#if pl.paidAt}<span class="text-xs text-stone-500">（{dt(pl.paidAt)}{pl.paidAmount != null ? `・${formatYen(pl.paidAmount)}` : ''}）</span>{/if}
+							{#if pl.chargeError}<span class="block text-xs text-red-700">{pl.chargeError}</span>{/if}
+							{#if pl.refundError}<span class="block text-xs text-red-700">{pl.refundError}</span>{/if}
+						</dd>
+						<dt class="text-stone-500">請求額</dt>
+						<dd>
+							{formatYen(pl.chargeAmount)}
+							<span class="text-xs text-stone-500">（宿泊料金 {formatYen(pl.lodging)}{pl.bathTax > 0 ? `・入湯税 ${formatYen(pl.bathTax)}` : ''}{pl.prepayDiscount > 0 ? `・予約時決済割引 −${formatYen(pl.prepayDiscount)}` : ''}）</span>
+						</dd>
+						{#if pl.guestEmail}
+							<dt class="text-stone-500">宿泊者のメール</dt>
+							<dd>{pl.guestEmail}<span class="block text-xs text-stone-500">取引先予約の確認・取消メールは予約者（取引先）宛てで、宿泊者へは送りません。</span></dd>
+						{/if}
+						<dt class="text-stone-500">受付日時</dt>
+						<dd>{dt(pl.createdAt)}</dd>
+					</dl>
+				{/if}
+			</div>
+		{/if}
+
 		<!-- 非会員の予約を会員に紐づける（「会員になりたい」という電話への対応） -->
-		{#if data.live && data.isDirect && b.source === 'autumn_booking' && !b.is_member && b.booking_status !== 'cancelled'}
+		{#if data.live && data.isDirect && !data.isPartner && b.source === 'autumn_booking' && !b.is_member && b.booking_status !== 'cancelled'}
 			{@const mf = form as {
 				memberScope?: boolean;
 				memberQuery?: string;
@@ -339,7 +439,8 @@
 			</div>
 		{/if}
 
-		<!-- キャンセル規定 -->
+		<!-- キャンセル規定（取引先予約は取引先の設定に従うので出さない） -->
+		{#if !data.isPartner}
 		<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
 			<h2 class="font-medium text-stone-700">
 				キャンセル規定{policy.rules_source === 'rank' ? '（当館の基本規定）' : '（プラン規定）'}
@@ -361,6 +462,7 @@
 				</p>
 			{/if}
 		</div>
+		{/if}
 
 		{#if data.payment}
 			<!-- オンライン決済（公式サイト予約・Stripe）。取消時は「支払額 − キャンセル料」を自動で返金する -->
@@ -398,7 +500,8 @@
 		{/if}
 
 		{#if data.live}
-			<!-- メール -->
+			<!-- メール（取引先予約は予約者＝取引先宛てに別経路で送るので、book のメール履歴は出さない） -->
+			{#if !data.isPartner}
 			<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
 				<h2 class="font-medium text-stone-700">メール</h2>
 				{#if data.detail.mails.length === 0}
@@ -441,6 +544,7 @@
 					</ul>
 				{/if}
 			</div>
+			{/if}
 
 			{#if data.isDirect}
 				<!-- 取り消しリンク -->
@@ -472,7 +576,79 @@
 
 	<!-- 操作 -->
 	<div class="space-y-3">
-		{#if !data.isDirect}
+		{#if data.isPartner}
+			<!-- 取引先予約: book 側の操作（取消・メール再送・取消リンク）は出さない。取消は取引先予約として行う -->
+			<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
+				<h2 class="font-medium text-stone-700">取引先予約の操作</h2>
+				<p class="mt-1 text-xs leading-relaxed text-stone-500">
+					取引先ページ（限定URL）からのご予約です。予約確認・取消のメールは予約者（取引先）宛てで、宿泊者へは送りません。
+				</p>
+				{#if !pl}
+					<p class="mt-2 text-xs text-stone-500">台帳を確認できないため操作できません。</p>
+				{:else if !data.canOperate}
+					<p class="mt-2 text-xs text-stone-500">取消・再請求は管理者のみ行えます（スタッフは閲覧のみ）。</p>
+				{:else}
+					{#if canRetryPartnerCharge(pl, data.today)}
+						<form method="POST" action="?/partnerRetryCharge" class="mt-3">
+							<button type="submit" class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
+								>{pl.paymentStatus === 'charge_failed' ? '登録カードへ再請求する' : '登録カードへ今すぐ請求する'}（{formatYen(pl.chargeAmount)}）</button
+							>
+						</form>
+					{/if}
+					{#if canStaffCancelPartnerBooking(pl)}
+						{#if !showPartnerCancel}
+							<button
+								type="button"
+								class="mt-4 w-full rounded-md bg-red-600 px-3 py-2 text-sm text-white"
+								onclick={() => (showPartnerCancel = true)}>取引先予約を取り消す</button
+							>
+						{:else}
+							<form method="POST" action="?/partnerCancel" class="mt-4 space-y-2 rounded-lg bg-amber-50 p-3">
+								<!-- 取り違え防止: どの予約を取り消すのかを確定前に必ず見せる -->
+								<div class="rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
+									<p class="text-xs text-stone-500">この取引先予約を取り消します</p>
+									<p class="font-medium text-stone-800">{pl.partnerName}・<span class="font-mono">{pl.bookingCode}</span></p>
+									<p class="text-xs text-stone-600">
+										{g.name ?? '—'} 様・{formatDateLongJa(pl.checkIn)} から {pl.nights}泊・{pl.roomName} × {pl.roomCount}室
+									</p>
+									{#if pl.roomCount > 1}
+										<p class="mt-1 text-xs text-amber-700">複数室の予約です。{pl.roomCount}室すべてが取り消されます。</p>
+									{/if}
+								</div>
+								{#if pl.paymentStatus === 'paid'}
+									<label class="flex items-start gap-2 text-sm">
+										<input type="checkbox" name="refund" checked class="mt-1" />
+										<span>オンライン決済を全額返金する（{formatYen(pl.paidAmount ?? pl.chargeAmount)}）</span>
+									</label>
+								{/if}
+								<input
+									name="reason"
+									required
+									maxlength="500"
+									placeholder="理由（必須・取引先の台帳に記録）"
+									class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+								/>
+								<p class="text-xs text-stone-500">
+									PMS に取消を反映し、取引先（予約者・ログインID・連絡先）へ取消のお知らせメールを送ります。キャンセル料の請求は取引先との取り決めに従って別途行ってください。
+								</p>
+								<div class="flex gap-2">
+									<button
+										type="button"
+										class="flex-1 rounded-md border border-stone-300 px-3 py-2 text-sm"
+										onclick={() => (showPartnerCancel = false)}>戻る</button
+									>
+									<button type="submit" class="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm text-white"
+										>取り消す</button
+									>
+								</div>
+							</form>
+						{/if}
+					{:else if pl.status === 'confirmed' && pl.checkedIn}
+						<p class="mt-2 text-xs text-stone-500">チェックイン済みのため取り消せません。</p>
+					{/if}
+				{/if}
+			</div>
+		{:else if !data.isDirect}
 			<p class="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">
 				OTA・電話経由のご予約です。取り消しは OTA 側で行ってください（PMS へ反映されます）。
 			</p>

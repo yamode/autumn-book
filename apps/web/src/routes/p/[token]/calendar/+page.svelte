@@ -107,13 +107,18 @@
 
   // ---- 公開期間の料金の幅（1名1泊の最低〜最高）。公開範囲全体を読むので重く、表示後に別で取りに行く ----
   // 取得中はスケルトン、取れなかった・料金が無いときはカードごと出さない。
-  let priceRange = $state<{ min: number; max: number; from: string; to: string } | null>(null);
+  // min / max は根拠つき（どの日・部屋・プラン・人数の料金か）。金額にマウスを乗せる・タップするとツールチップで出す。
+  type PriceBasis = { date: string; roomName: string; planName: string; guests: number };
+  type PriceExtreme = { price: number; count: number; samples: PriceBasis[] };
+  let priceRange = $state<{ min: PriceExtreme; max: PriceExtreme; from: string; to: string } | null>(null);
   let priceRangeState = $state<'loading' | 'done' | 'hidden'>('loading');
+  const isExtreme = (v: unknown): v is PriceExtreme =>
+    !!v && typeof v === 'object' && typeof (v as PriceExtreme).price === 'number' && Array.isArray((v as PriceExtreme).samples);
   async function loadPriceRange() {
     try {
       const res = await fetch(`/p/${token}/calendar/range`, { headers: { accept: 'application/json' } });
-      const j = (await res.json().catch(() => null)) as { min?: number; max?: number; from?: string; to?: string } | null;
-      if (!res.ok || !j || typeof j.min !== 'number' || typeof j.max !== 'number' || !j.from || !j.to) {
+      const j = (await res.json().catch(() => null)) as { min?: unknown; max?: unknown; from?: string; to?: string } | null;
+      if (!res.ok || !j || !isExtreme(j.min) || !isExtreme(j.max) || !j.from || !j.to) {
         priceRangeState = 'hidden';
         return;
       }
@@ -127,6 +132,22 @@
     const [, m, d] = iso.split('-').map(Number);
     return `${m}月${d}日`;
   };
+  const WD = ['日', '月', '火', '水', '木', '金', '土'];
+  const mdw = (iso: string) => `${md(iso)}（${WD[new Date(`${iso}T00:00:00Z`).getUTCDay()]}）`;
+  // ツールチップ: PC はマウスを乗せる／フォーカスで、スマホはタップで開閉（外側タップ・Esc で閉じる）
+  // マウス・フォーカス・タップ固定を別々に持つ（1つにまとめると、フォーカス中にマウスが通過して閉じる等が起きる）
+  let tipPinned = $state<'min' | 'max' | null>(null);
+  let tipHover = $state<'min' | 'max' | null>(null);
+  let tipFocus = $state<'min' | 'max' | null>(null);
+  const tipOpen = $derived(tipHover ?? tipFocus ?? tipPinned);
+  function closeTip() {
+    tipPinned = null;
+    tipHover = null;
+    tipFocus = null;
+  }
+  // 最低＝最高なら金額は1つだけ出す
+  const rangeKinds = $derived<('min' | 'max')[]>(priceRange && priceRange.max.price !== priceRange.min.price ? ['min', 'max'] : ['min']);
+  const tipFor = $derived(tipOpen && priceRange ? { kind: tipOpen, ex: priceRange[tipOpen] } : null);
 
   onMount(() => {
     prefetchAround(ymOf(initial), initial.guests);
@@ -233,11 +254,17 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') selected = null;
+    if (e.key === 'Escape') {
+      // 料金の根拠のツールチップが開いていれば、それだけ閉じる（日別パネルは閉じない）
+      if (tipOpen) {
+        closeTip();
+        (document.activeElement as HTMLElement | null)?.blur?.();
+      } else selected = null;
+    }
   }
 </script>
 
-<svelte:window onkeydown={onKey} />
+<svelte:window onkeydown={onKey} onclick={() => (tipPinned = null)} />
 
 <svelte:head>
   <title>{current.month.year}年{current.month.month}月 | {data.portal.facilityName} 料金カレンダー</title>
@@ -247,15 +274,63 @@
 <main class="mx-auto max-w-6xl px-4 pb-6 pt-6 sm:px-6">
   <!-- 公開期間の料金の幅（あとから読み込む。取れなければ出さない） -->
   {#if priceRangeState !== 'hidden'}
-    <section class="mb-4 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5" aria-live="polite">
+    <section class="relative z-30 mb-4 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5">
       <p class="text-xs text-stone-500">公開期間の料金（1名1泊・税込・入湯税別）</p>
       {#if priceRangeState === 'loading' || !priceRange}
         <div class="mt-1.5 h-7 w-56 max-w-full animate-pulse rounded bg-stone-100" aria-label="読み込み中"></div>
       {:else}
-        <p class="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-          <span class="text-xl font-bold tabular-nums text-brand-900">{yen(priceRange.min)}{priceRange.max !== priceRange.min ? ` 〜 ${yen(priceRange.max)}` : ''}</span>
+        <p class="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5" aria-live="polite">
+          <span class="text-xl font-bold tabular-nums text-brand-900">
+            {#each rangeKinds as kind, i (kind)}
+              {#if i > 0}<span class="px-1 font-normal text-stone-400">〜</span>{/if}
+              <button
+                type="button"
+                class="cursor-help rounded underline decoration-stone-300 decoration-dotted underline-offset-4 outline-none hover:decoration-[var(--pt-accent)] focus-visible:ring-2 focus-visible:ring-[var(--pt-accent-soft)]"
+                aria-describedby={tipOpen === kind ? 'price-range-tip' : undefined}
+                aria-expanded={tipOpen === kind}
+                onmouseenter={() => (tipHover = kind)}
+                onmouseleave={() => (tipHover = null)}
+                onfocus={() => (tipFocus = kind)}
+                onblur={() => (tipFocus = null)}
+                onclick={(e) => {
+                  e.stopPropagation();
+                  if (tipOpen === kind) {
+                    // 開いている金額をもう一度押したら閉じる（スマホのタップは hover・focus も立つので全部消す）
+                    closeTip();
+                    e.currentTarget.blur();
+                  } else {
+                    tipPinned = kind;
+                  }
+                }}
+              >{yen(priceRange[kind].price)}</button>
+            {/each}
+          </span>
           <span class="text-sm text-stone-500">（{md(priceRange.from)}〜{md(priceRange.to)}）</span>
+          <span class="text-xs text-stone-400">金額にマウスを乗せる（タップする）と、どの日・お部屋・プランの料金か表示します</span>
         </p>
+        {#if tipFor}
+          <div
+            id="price-range-tip"
+            role="tooltip"
+            class="absolute left-2 right-2 top-full mt-1 rounded-lg border border-stone-200 bg-white p-3 text-sm shadow-lg sm:left-4 sm:right-auto sm:w-[28rem]"
+          >
+            <p class="mb-1.5 font-medium text-brand-900">
+              {tipFor.kind === 'min' ? '最低料金' : '最高料金'} {yen(tipFor.ex.price)}（1名1泊）
+              {#if tipFor.ex.count > 1}<span class="text-xs font-normal text-stone-500">・該当 {tipFor.ex.count.toLocaleString('ja-JP')} 件</span>{/if}
+            </p>
+            <ul class="space-y-1">
+              {#each tipFor.ex.samples as s (`${s.date}|${s.roomName}|${s.planName}|${s.guests}`)}
+                <li class="leading-5">
+                  <span class="tabular-nums text-stone-700">{mdw(s.date)}</span>
+                  <span class="text-stone-600">・{s.roomName}・{s.planName}・{s.guests}名1室</span>
+                </li>
+              {/each}
+            </ul>
+            {#if tipFor.ex.count > tipFor.ex.samples.length}
+              <p class="mt-1 text-xs text-stone-500">ほか {(tipFor.ex.count - tipFor.ex.samples.length).toLocaleString('ja-JP')} 件（日付の早い順に表示）</p>
+            {/if}
+          </div>
+        {/if}
       {/if}
     </section>
   {/if}

@@ -4,6 +4,7 @@ import {
   buildPartnerDays,
   clampPartnerPrice,
   partnerPriceRange,
+  mergePriceExtreme,
   decidePartnerPrice,
   isRetiredPlanName,
   DEFAULT_PARTNER_PRICING,
@@ -264,7 +265,27 @@ describe('partnerPriceRange', () => {
       day('2026-10-02', true, [{ '2': 5000 }]),
       day('2026-10-03', false, [{ '2': 18000 }, { '3': 0 }])
     ]);
-    expect(r).toEqual({ min: 18000, max: 30000 });
+    expect(r).toEqual({
+      min: { price: 18000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planName: 'プラン', guests: 2 }] },
+      max: { price: 30000, count: 1, samples: [{ date: '2026-10-01', roomName: '和室', planName: 'プラン', guests: 1 }] }
+    });
+  });
+
+  it('同額が複数あれば件数を数え、根拠は日付の早い順に5件まで', () => {
+    const days = Array.from({ length: 7 }, (_, i) => day(`2026-10-${String(10 - i).padStart(2, '0')}`, false, [{ '2': 20000 }]));
+    const r = partnerPriceRange(days)!;
+    expect(r.min.count).toBe(7);
+    expect(r.min.samples.map((s) => s.date)).toEqual(['2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08']);
+  });
+
+  it('チャンクをまたいだ合算: 安い方を残し、同額なら件数と根拠を足す', () => {
+    const a = partnerPriceRange([day('2026-11-02', false, [{ '2': 15000 }])])!;
+    const b = partnerPriceRange([day('2026-10-02', false, [{ '2': 15000 }]), day('2026-10-03', false, [{ '2': 16000 }])])!;
+    const min = mergePriceExtreme(a.min, b.min, (x, y) => x < y)!;
+    expect(min.count).toBe(2);
+    expect(min.samples.map((s) => s.date)).toEqual(['2026-10-02', '2026-11-02']);
+    const max = mergePriceExtreme(a.max, b.max, (x, y) => x > y)!;
+    expect(max).toEqual({ price: 16000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planName: 'プラン', guests: 2 }] });
   });
 
   it('出せる料金が無ければ null', () => {

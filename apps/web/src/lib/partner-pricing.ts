@@ -192,22 +192,49 @@ export function clampPartnerPrice(price: number, pricing: Pick<PartnerPricing, '
 }
 
 // 公開期間の料金の幅（部屋タイプ・人数・プランを問わない1名1泊の最低・最高）。休館日・非表示は除く。
-export function partnerPriceRange(days: PartnerRateDay[]): { min: number; max: number } | null {
-  let min = Infinity;
-  let max = -Infinity;
+// 最低・最高それぞれに「どの日・部屋・プラン・人数の料金か」の根拠を付ける（2026-10-01 指示: ツールチップで見せる）。
+// 同額が多数あるときは日付順に先頭 PRICE_RANGE_SAMPLE_LIMIT 件だけ持ち、件数（count）は全部数える。
+export type PartnerPriceBasis = { date: string; roomName: string; planName: string; guests: number };
+export type PartnerPriceExtreme = { price: number; count: number; samples: PartnerPriceBasis[] };
+export type PartnerPriceRangeDetail = { min: PartnerPriceExtreme; max: PartnerPriceExtreme };
+export const PRICE_RANGE_SAMPLE_LIMIT = 5;
+
+const byBasis = (a: PartnerPriceBasis, b: PartnerPriceBasis) =>
+  a.date.localeCompare(b.date) || a.roomName.localeCompare(b.roomName) || a.planName.localeCompare(b.planName) || a.guests - b.guests;
+
+// 同じ極値（price）の根拠を足し合わせる。price が違えば良い方（better）を残す。
+export function mergePriceExtreme(
+  a: PartnerPriceExtreme | null,
+  b: PartnerPriceExtreme | null,
+  better: (x: number, y: number) => boolean
+): PartnerPriceExtreme | null {
+  if (!a) return b;
+  if (!b) return a;
+  if (a.price !== b.price) return better(a.price, b.price) ? a : b;
+  return { price: a.price, count: a.count + b.count, samples: [...a.samples, ...b.samples].sort(byBasis).slice(0, PRICE_RANGE_SAMPLE_LIMIT) };
+}
+
+export function partnerPriceRange(days: PartnerRateDay[]): PartnerPriceRangeDetail | null {
+  let min: PartnerPriceExtreme | null = null;
+  let max: PartnerPriceExtreme | null = null;
   for (const d of days) {
     if (d.closed) continue;
     for (const r of d.rooms) {
       for (const p of r.plans) {
-        for (const v of Object.values(p.pricesPerPerson)) {
+        for (const [g, v] of Object.entries(p.pricesPerPerson)) {
           if (!(v > 0)) continue;
-          if (v < min) min = v;
-          if (v > max) max = v;
+          const one: PartnerPriceExtreme = {
+            price: v,
+            count: 1,
+            samples: [{ date: d.date, roomName: r.roomName, planName: p.planName, guests: Number(g) }]
+          };
+          min = mergePriceExtreme(min, one, (x, y) => x < y);
+          max = mergePriceExtreme(max, one, (x, y) => x > y);
         }
       }
     }
   }
-  return Number.isFinite(min) ? { min, max } : null;
+  return min && max ? { min, max } : null;
 }
 
 // 1名あたりの基準価格（税込）に特別レートを当てる。非表示なら hidden。

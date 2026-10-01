@@ -38,9 +38,10 @@
 		return 'bg-blue-50 text-blue-600';
 	}
 
-	/** 経路。直販はサイト／アプリまで割り、それ以外はチャネル名（OTA 等） */
+	/** 経路。直販はサイト／アプリまで割り、取引先予約は取引先名、それ以外はチャネル名（OTA 等） */
 	function channelLabel(b: (typeof data.list)[number]): string {
 		if (b.source === 'autumn_booking') return b.client === 'app' ? 'アプリ' : 'サイト';
+		if (b.source === 'rms_partner') return b.partner_name ? `取引先：${b.partner_name}` : (b.channel_name ?? '取引先予約');
 		return b.channel_name ?? b.source ?? '—';
 	}
 
@@ -69,7 +70,7 @@
 
 <h1 class="mb-1 text-lg font-bold text-stone-800">予約管理 — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-500">
-	予約サイト・アプリからのご予約の確認と取り消しはここで行います。部屋割り・チェックインは PMS。
+	予約サイト・アプリからのご予約と、取引先ページ（限定URL）からのご予約の確認・取り消しはここで行います。部屋割り・チェックインは PMS。
 </p>
 
 {#if data.error}
@@ -117,6 +118,7 @@
 			<option value="autumn_booking" selected={data.filters.channel === 'autumn_booking'}
 				>直販のみ（サイト・アプリ）</option
 			>
+			<option value="rms_partner" selected={data.filters.channel === 'rms_partner'}>取引先予約（限定URL）</option>
 			<option value="" selected={data.filters.channel === ''}>OTA・電話も含む（閲覧のみ）</option>
 		</select>
 	</label>
@@ -243,7 +245,7 @@
 </div>
 
 <p class="mt-3 text-xs text-stone-400">
-	該当 {data.list.length} 件{data.filters.channel === 'autumn_booking' ? '（直販）' : ''}
+	該当 {data.list.length} 件{data.filters.channel === 'autumn_booking' ? '（直販）' : data.filters.channel === 'rms_partner' ? '（取引先予約）' : ''}
 	{#if data.truncated}／ 表示は 200 件までです。期間を絞ってください。{/if}
 </p>
 <p class="mt-1 text-xs text-stone-400">

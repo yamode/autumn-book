@@ -10,7 +10,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildPartnerDays,
   isRetiredPlanName,
+  mergePriceExtreme,
   partnerPriceRange,
+  type PartnerPriceExtreme,
   type PartnerRateDay,
   type PartnerSourceDay,
   type PartnerSourceInventory
@@ -137,7 +139,8 @@ export function partnerRangeChunks(
   return chunks;
 }
 
-export type PartnerPriceRange = { min: number; max: number; from: string; to: string };
+// min / max は根拠（日付・部屋・プラン・人数）つき。画面のツールチップに出す。
+export type PartnerPriceRange = { min: PartnerPriceExtreme; max: PartnerPriceExtreme; from: string; to: string };
 
 // 取引先・料金設定・公開範囲が同じなら isolate 内で10分使い回す（範囲全体を読むので重い）。
 const RANGE_TTL_MS = 10 * 60 * 1000;
@@ -158,8 +161,8 @@ export function loadPartnerPriceRange(
   if (hit && now - hit.at < RANGE_TTL_MS) return hit.value;
   const value = (async () => {
     if (!chunks.length) return null;
-    let min = Infinity;
-    let max = -Infinity;
+    let min: PartnerPriceExtreme | null = null;
+    let max: PartnerPriceExtreme | null = null;
     // 同時に読むのは4本まで（RPC を一度に投げすぎない）
     let next = 0;
     const worker = async () => {
@@ -168,13 +171,14 @@ export function loadPartnerPriceRange(
         const { days } = await loadPartnerRates(db, partner, c);
         const r = partnerPriceRange(days);
         if (r) {
-          if (r.min < min) min = r.min;
-          if (r.max > max) max = r.max;
+          // 根拠の並び（日付順）はマージ時に揃えるので、チャンクの完了順に依らない
+          min = mergePriceExtreme(min, r.min, (x, y) => x < y);
+          max = mergePriceExtreme(max, r.max, (x, y) => x > y);
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(RANGE_CONCURRENCY, chunks.length) }, worker));
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    if (!min || !max) return null;
     return { min, max, from: chunks[0].from, to: chunks[chunks.length - 1].to };
   })();
   rangeCache.delete(key);

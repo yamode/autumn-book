@@ -8,6 +8,7 @@ export const GET = async (event) => {
   const { db, partner } = await requirePortalApi(event);
   try {
     const range = await loadPartnerPriceRange(db, partner);
+    // min / max は { price, count, samples[{date, roomName, planName, guests}] }（ツールチップの根拠）
     return json(range ? { min: range.min, max: range.max, from: range.from, to: range.to } : { range: null }, { headers: PORTAL_HEADERS });
   } catch {
     // 読めないときは出さない（画面はカードを非表示にする）
