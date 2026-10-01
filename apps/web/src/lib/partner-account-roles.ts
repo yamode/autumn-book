@@ -1,0 +1,51 @@
+// 取引先ページのユーザー（マスタユーザー／子ユーザー）の権限判定（純関数。2026-10-01 追加）。
+//
+// - マスタユーザー: Book のスタッフが発行したログインID（rms_partner_accounts.is_master = true）。
+//   取引先内の子ユーザーを作成・停止/再開・削除・パスワード設定リンクの再送ができる。
+// - 子ユーザー: マスタが作ったログインID（is_master = false）。ユーザー管理以外はすべて使える
+//   （予約・予約一覧・覚書・請求書・自分の担当者情報）。他のユーザーは管理できない。
+// - マスタ自身・他のマスタは、取引先ページからは操作できない（停止・削除は Book のスタッフが行う）。
+
+export type AccountRoleSubject = {
+  id: string;
+  partner_id: string;
+  is_master: boolean;
+  is_active?: boolean;
+};
+
+/** ユーザー管理（一覧・作成）を使えるか。 */
+export const canManageUsers = (actor: Pick<AccountRoleSubject, 'is_master' | 'is_active'>) =>
+  actor.is_master === true && actor.is_active !== false;
+
+/** actor が target を操作（停止/再開・削除・設定リンクの再送）してよいか。 */
+export function canManageAccount(actor: AccountRoleSubject, target: AccountRoleSubject): boolean {
+  if (!canManageUsers(actor)) return false;
+  if (actor.partner_id !== target.partner_id) return false;
+  if (actor.id === target.id) return false;
+  // マスタ（自分以外も）は取引先ページから触らせない
+  return target.is_master === false;
+}
+
+export type AccountStatus = 'active' | 'disabled' | 'pending';
+
+export const ACCOUNT_STATUS_LABELS: Record<AccountStatus, string> = {
+  active: '有効',
+  disabled: '停止',
+  pending: '設定待ち'
+};
+
+/** 一覧に出す状態: 停止 → 停止／パスワード未設定 → 設定待ち／それ以外 → 有効。 */
+export function accountStatus(a: { is_active: boolean; password_hash?: string | null; password_set_at?: string | null }): AccountStatus {
+  if (!a.is_active) return 'disabled';
+  if (!a.password_hash && !a.password_set_at) return 'pending';
+  return 'active';
+}
+
+/** アカウント画面のタブ。ユーザー管理はマスタだけ。 */
+export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'users'; label: string }[] {
+  return [
+    { path: '', label: '担当者情報' },
+    { path: 'invoices', label: '請求書' },
+    ...(isMaster ? [{ path: 'users' as const, label: 'ユーザー管理' }] : [])
+  ];
+}

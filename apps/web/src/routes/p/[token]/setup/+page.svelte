@@ -17,7 +17,7 @@
   {#if !data.setupToken}
     <div class="rounded-xl border border-stone-200 bg-white p-6 text-base leading-6">
       <p>このリンクは無効か、有効期限が切れています。</p>
-      <p class="mt-2 text-stone-500">お手数ですが、ご担当の宿へパスワード設定リンクの再発行をご依頼ください。</p>
+      <p class="mt-2 text-stone-500">お手数ですが、ログインIDを発行した方（貴社のマスタユーザーまたはご担当の宿）へパスワード設定リンクの再発行をご依頼ください。</p>
     </div>
   {:else}
     <form

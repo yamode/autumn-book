@@ -35,7 +35,8 @@ export const isStripePaymentOption = (id: string) => id === 'online' || id === '
 // 自由入力の支払方法（2026-10-01 指示）。例: 「現地精算（法人カード）」「請求書払い（20日締め翌月10日）」。
 // 決済は伴わず、後払い（invoice_monthly）と同じく予約はその場で確定し、名前が PMS の支払方法・備考に入る。
 // id は 'custom_' で始める（PMS の電文 payment.option にもそのまま載るが、PMS は入金行を立てない）。
-export type PartnerCustomPaymentOption = { id: string; label: string; note: string };
+// billable: 月次の請求書で「ご請求」する（振込を求める）か。後払い（invoice_monthly）は常に対象（2026-10-01 指示）。
+export type PartnerCustomPaymentOption = { id: string; label: string; note: string; billable: boolean };
 export const CUSTOM_PAYMENT_PREFIX = 'custom_';
 export const MAX_CUSTOM_PAYMENT_OPTIONS = 5;
 export const isCustomPaymentOption = (id: string) => id.startsWith(CUSTOM_PAYMENT_PREFIX);
@@ -216,7 +217,12 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
       if (!/^custom_[a-z0-9_-]{1,40}$/i.test(id)) id = `${CUSTOM_PAYMENT_PREFIX}${i + 1}`;
       while (usedCustomIds.has(id)) id = `${id}_`;
       usedCustomIds.add(id);
-      return { id, label: String(o.label ?? '').trim().slice(0, 40), note: String(o.note ?? '').trim().slice(0, 200) };
+      return {
+        id,
+        label: String(o.label ?? '').trim().slice(0, 40),
+        note: String(o.note ?? '').trim().slice(0, 200),
+        billable: o.billable === true
+      };
     })
     .filter((o) => o.label)
     .slice(0, MAX_CUSTOM_PAYMENT_OPTIONS);

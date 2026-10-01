@@ -3,7 +3,7 @@ import { normalizeBooker } from '$lib/partner-booking';
 import { getBookerProfile, logPartnerAccess, PartnerStoreError, saveBookerProfile } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 
-// 取引先専用ページ: マイページ（ログイン中のアカウントの予約担当者情報。2026-10-01 追加）。
+// 取引先専用ページ: アカウント → 担当者情報（ログイン中のアカウントの予約担当者情報。2026-10-01 追加）。
 // 読み書きはセッションで確かめたアカウント（session.id）と partner.id の組だけ。
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);

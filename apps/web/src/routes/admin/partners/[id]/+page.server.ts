@@ -1,6 +1,6 @@
-// 管理画面: 取引先の詳細（限定URL・覚書・公開設定・特別レート・予約受付・プレビュー・予約・ログインID・API キー・アクセスログ）。
+// 管理画面: 取引先の詳細（限定URL・覚書・公開設定・特別レート・予約受付・プレビュー・予約・請求書・ログインID・API キー・アクセスログ）。
 // autumn-rms の /partners/[id]（v0.103.0）から移設（2026-09-26）。
-// 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除）は admin のみ（staff.ts の canEditPartners）。
+// 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除・請求書の発行・再送・取消）は admin のみ（staff.ts の canEditPartners）。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import { describeBooker, normalizeBooker } from '$lib/partner-booking';
@@ -56,6 +56,17 @@ import {
 	savePartnerMemorandum,
 	uploadPartnerDocument
 } from '$lib/server/partners/memorandum';
+import {
+	issuePartnerInvoice,
+	listPartnerInvoices,
+	normalizePeriod,
+	previewPartnerInvoice,
+	getPartnerInvoice,
+	sendPartnerInvoiceMail,
+	voidPartnerInvoice
+} from '$lib/server/partners/invoices';
+import { invoicePdfReady } from '$lib/server/partners/invoice-pdf';
+import { periodOf } from '$lib/partner-invoice';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -96,7 +107,12 @@ export const load: PageServerLoad = async (event) => {
 	const previewFrom = /^\d{4}-\d{2}-\d{2}$/.test(previewParam) && previewParam >= today ? previewParam : today;
 	const previewTo = addDaysIso(previewFrom, PREVIEW_DAYS - 1);
 
-	const [accounts, apiKeys, logs, bookings, preview, memo, documents] = await Promise.all([
+	// 請求書: 対象月（?inv=YYYY-MM・既定は当月）のプレビューと発行済み一覧
+	const currentPeriod = periodOf(today);
+	const invPeriodRaw = normalizePeriod(event.url.searchParams.get('inv'));
+	const invoicePeriod = invPeriodRaw && invPeriodRaw <= currentPeriod ? invPeriodRaw : currentPeriod;
+
+	const [accounts, apiKeys, logs, bookings, preview, memo, documents, invoices, invoicePreview] = await Promise.all([
 		listPartnerAccounts(scope.db, partner.id),
 		listPartnerApiKeys(scope.db, partner.id),
 		listPartnerAccessLogs(scope.db, partner.id, 50),
@@ -120,7 +136,14 @@ export const load: PageServerLoad = async (event) => {
 			.catch((e) => ({ text: '', updatedAt: null as string | null, error: e instanceof Error ? e.message : String(e) })),
 		listPartnerDocuments(scope.db, partner.id)
 			.then((rows) => ({ rows, error: null as string | null }))
-			.catch((e) => ({ rows: [], error: e instanceof Error ? e.message : String(e) }))
+			.catch((e) => ({ rows: [], error: e instanceof Error ? e.message : String(e) })),
+		// 請求書（読めなくても他の欄は出す）
+		listPartnerInvoices(scope.db, partner.id)
+			.then((rows) => ({ rows, error: null as string | null }))
+			.catch((e) => ({ rows: [], error: e instanceof Error ? e.message : String(e) })),
+		previewPartnerInvoice(scope.db, partner, invoicePeriod)
+			.then((r) => ({ ...r, error: null as string | null }))
+			.catch((e) => ({ document: null, bookingCount: 0, settings: null, chargeFailed: [] as string[], error: e instanceof Error ? e.message : String(e) }))
 	]);
 
 	// ルール編集の選択肢。プランは直近の料金（rms_partner_portal_source）に出ているプラングループから集める
@@ -184,6 +207,10 @@ export const load: PageServerLoad = async (event) => {
 		apiEndpoint: `${origin}/api/partner/v1/rates`,
 		accounts: accounts.map((a) => ({
 			id: a.id,
+			// Book のスタッフが発行したものはマスタ。子ユーザーは作成者（マスタのログインID）を出す
+			// is_master / created_by_account は listPartnerAccounts（store.ts の ACCOUNT_COLUMNS）で読み済み
+			isMaster: a.is_master !== false,
+			createdBy: a.created_by_account ? (accountLabel.get(a.created_by_account) ?? '(削除済み)') : null,
 			loginId: a.login_id,
 			displayName: a.display_name,
 			email: a.email,
@@ -252,7 +279,44 @@ export const load: PageServerLoad = async (event) => {
 			refundError: b.refund_error,
 			...bookingExtras(b.detail)
 		})),
-		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error }
+		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error },
+		invoices: {
+			period: invoicePeriod,
+			currentPeriod,
+			pdfReady: invoicePdfReady(),
+			error: invoices.error,
+			rows: invoices.rows.map((r) => ({
+				id: r.id,
+				invoiceNo: r.invoice_no,
+				period: r.period,
+				issueDate: r.issue_date,
+				dueDate: r.due_date,
+				status: r.status,
+				usageTotal: r.usage_total,
+				billedTotal: r.billed_total,
+				bookingCount: r.booking_ids.length,
+				issuedBy: r.issued_by,
+				sentAt: r.sent_at,
+				sentTo: r.sent_to,
+				sendError: r.send_error,
+				voidedAt: r.voided_at,
+				voidReason: r.void_reason,
+				createdAt: r.created_at
+			})),
+			preview: invoicePreview.document
+				? {
+						lines: invoicePreview.document.lines,
+						totals: invoicePreview.document.totals,
+						dueDate: invoicePreview.document.dueDate,
+						issuer: invoicePreview.document.issuer
+					}
+				: null,
+			previewError: invoicePreview.error,
+			// カード決済が失敗したままの予約（請求書には「カード決済失敗（要確認）」で載り、請求はしない）
+			chargeFailed: invoicePreview.chargeFailed,
+			bankAccountMissing: invoicePreview.settings ? !invoicePreview.settings.bankAccount : false,
+			autoIssue: invoicePreview.settings?.autoIssue ?? true
+		}
 	};
 };
 
@@ -459,6 +523,65 @@ export const actions: Actions = {
 				await updatePartnerAccount(db, partner, accountId, patch);
 			}
 			return { accountUpdated: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 請求書を今すぐ発行（対象月を選ぶ）。発行済みの月は既存を返す（二重発行しない）
+	issueInvoice: async (event) => {
+		try {
+			const { db, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			const period = normalizePeriod(String(fd.get('period') ?? ''));
+			if (!period) throw new PartnerStoreError('対象月を選んでください。');
+			const res = await issuePartnerInvoice(db, partner, period, {
+				by: 'staff',
+				staffId: userId,
+				send: fd.get('send') !== null,
+				origin: event.url.origin
+			});
+			if (!res) return { invoiceResult: { kind: 'empty' as const, message: 'この月（今日まで）にチェックアウトの確定予約がないため、発行しませんでした。' } };
+			const inv = res.invoice;
+			if (!res.created) {
+				return { invoiceResult: { kind: 'existing' as const, message: `この月は発行済みです（${inv.invoice_no}）。作り直すときは取り消してから発行してください。` } };
+			}
+			const mailNote = res.mail ? (res.mail.sent ? `・${res.mail.to.join(', ')} へ送信しました${res.mail.attachedPdf ? '（PDF 添付）' : '（PDF なし・ページへ案内）'}` : `・送信できませんでした（${res.mail.reason}）`) : '';
+			// カード決済が失敗したままの予約は請求せず「カード決済失敗（要確認）」で載せる。見落とさないよう知らせる
+			const failedNote = res.chargeFailed.length
+				? `（注意: カード決済が失敗したままの予約 ${res.chargeFailed.join('、')} は請求していません。予約の画面で再請求するか、別途ご精算ください）`
+				: '';
+			return { invoiceResult: { kind: 'issued' as const, message: `${inv.invoice_no} を発行しました${mailNote}。${failedNote}` } };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 請求書のメール再送
+	resendInvoice: async (event) => {
+		try {
+			const { db, partner } = await editScope(event);
+			const fd = await event.request.formData();
+			const row = await getPartnerInvoice(db, partner.id, String(fd.get('invoice_id') ?? ''));
+			if (!row || row.facility_id !== partner.facility_id) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
+			const r = await sendPartnerInvoiceMail(db, partner, row, event.url.origin);
+			return {
+				invoiceResult: r.sent
+					? { kind: 'sent' as const, message: `${row.invoice_no} を ${r.to.join(', ')} へ送信しました${r.attachedPdf ? '（PDF 添付）' : '（PDF なし・ページへ案内）'}。` }
+					: { kind: 'error' as const, message: `${row.invoice_no} を送信できませんでした（${r.reason}）。` }
+			};
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 請求書の取消（理由必須）。取り消すと同じ月を発行し直せる
+	voidInvoice: async (event) => {
+		try {
+			const { db, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			const row = await voidPartnerInvoice(db, partner, String(fd.get('invoice_id') ?? ''), String(fd.get('reason') ?? ''), userId);
+			return { invoiceResult: { kind: 'voided' as const, message: `${row.invoice_no} を取り消しました。` } };
 		} catch (e) {
 			return actionFailure(e);
 		}

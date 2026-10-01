@@ -21,6 +21,7 @@
     PARTNER_PAYMENT_OPTIONS,
     type PartnerBookingSettings
   } from '$lib/partner-booking';
+  import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
   import type { PageData } from './$types';
 
   type FormResult = {
@@ -36,6 +37,7 @@
     memorandumSaved?: boolean;
     documentUploaded?: string;
     documentDeleted?: boolean;
+    invoiceResult?: { kind: 'issued' | 'existing' | 'empty' | 'sent' | 'voided' | 'error'; message: string };
   };
   let { data, form }: { data: PageData; form?: FormResult } = $props();
 
@@ -78,7 +80,7 @@
   function addCustomPayment() {
     if (booking.customPaymentOptions.length >= MAX_CUSTOM_PAYMENT_OPTIONS) return;
     const id = `${CUSTOM_PAYMENT_PREFIX}${crypto.randomUUID().slice(0, 8)}`;
-    booking.customPaymentOptions = [...booking.customPaymentOptions, { id, label: '', note: '' }];
+    booking.customPaymentOptions = [...booking.customPaymentOptions, { id, label: '', note: '', billable: false }];
     togglePayment(id);
   }
   function removeCustomPayment(i: number) {
@@ -131,7 +133,29 @@
   let justSavedTimer: ReturnType<typeof setTimeout> | undefined;
   // 画面上部のお知らせは、保存以外の操作（URL再発行・ログインID発行など）の結果だけに使う。
   // 覚書（memo）・覚書ファイル（doc）は、それぞれの欄に結果を出す。
-  let lastSubmit = $state<'save' | 'other' | 'memo' | 'doc'>('other');
+  let lastSubmit = $state<'save' | 'other' | 'memo' | 'doc' | 'invoice'>('other');
+
+  // ---- 請求書 ----
+  let voidTarget = $state<string | null>(null);
+  let invoiceBusy = $state(false);
+  const invoiceMonth = $derived(data.invoices.period.slice(0, 7));
+  // 当月の途中で発行すると、月末までにチェックアウトする予約が載らない（同じ月は1枚だけ）
+  const issuingMidMonth = $derived(data.invoices.period === data.invoices.currentPeriod && !isLastDayOfMonth(todayIso));
+  function pickInvoiceMonth(v: string) {
+    if (!/^\d{4}-\d{2}$/.test(v)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('inv', v);
+    goto(url, { keepFocus: true, noScroll: true, replaceState: true });
+  }
+  const invoiceEnhance = () => {
+    lastSubmit = 'invoice';
+    invoiceBusy = true;
+    return async ({ update }: { update: (o?: { reset?: boolean }) => Promise<void> }) => {
+      await update({ reset: false });
+      invoiceBusy = false;
+      voidTarget = null;
+    };
+  };
 
   // ---- 覚書（本文） ----
   // 設定フォームとは別のフォームで保存する。未保存の判定は離脱確認（beforeNavigate）だけ共有する。
@@ -795,12 +819,16 @@
                   <input bind:value={o.label} maxlength="40" required placeholder="名前（例: 現地精算（法人カード））" class={inputClass} />
                   <input bind:value={o.note} maxlength="200" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass} />
                   <button type="button" class={smallBtn} onclick={() => removeCustomPayment(i)}>削除</button>
+                  <label class="flex items-center gap-1.5 text-[11px] text-stone-600 sm:col-span-4 sm:pl-6">
+                    <input type="checkbox" bind:checked={o.billable} />
+                    請求書で精算する（月次の請求書でご請求）
+                  </label>
                 </div>
               {/each}
               {#if booking.customPaymentOptions.length < MAX_CUSTOM_PAYMENT_OPTIONS}
                 <button type="button" onclick={addCustomPayment} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 支払方法を追加</button>
               {/if}
-              <p class="text-[11px] text-stone-500">決済は伴いません。予約はその場で確定し、名前が PMS の支払方法・備考に入ります。チェックを外すと定義は残したまま選べなくなります。</p>
+              <p class="text-[11px] text-stone-500">決済は伴いません。予約はその場で確定し、名前が PMS の支払方法・備考に入ります。チェックを外すと定義は残したまま選べなくなります。「請求書で精算する」にすると、月末の請求書でご請求額に入ります（入れないものは利用明細だけに載ります）。</p>
             </div>
             <p class="mt-1 text-[11px] text-stone-500">複数選んだときは、取引先が予約時に選びます。選ばれた支払方法は PMS の予約・備考に入ります。</p>
             {#if booking.paymentOptions.includes('online')}
@@ -1157,11 +1185,206 @@
       {/if}
     </div>
 
+    <!-- 請求書（利用明細書＋適格請求書） -->
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+      <h2 class="text-sm font-bold text-stone-700">請求書</h2>
+      <p class="mt-1 text-xs leading-5 text-stone-500">
+        チェックアウト日基準・月末締めで、利用明細書と適格請求書をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
+        金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外は利用明細に 0 円のご請求として載ります。お支払期限は翌月末です。取引先は取引先ページの「アカウント → 請求書」からいつでもダウンロードできます。
+      </p>
+      {#if data.invoices.bankAccountMissing}
+        <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">振込先が未設定のため、月末の自動発行は行われません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で振込先を登録してください。</p>
+      {:else if !data.invoices.autoIssue}
+        <p class="mt-2 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-700">この施設は月末の自動発行が OFF です（取引先一覧の「請求書の設定」）。必要なときはここから発行してください。</p>
+      {/if}
+      {#if !data.invoices.pdfReady}
+        <p class="mt-2 text-[11px] text-stone-500">※ PDF 生成（Cloudflare Browser Rendering）が未設定のため、ダウンロードは HTML（ブラウザで開いて印刷）になり、メールは PDF を添付せずに取引先ページへ案内します。</p>
+      {/if}
+
+      {#if form?.message && lastSubmit === 'invoice'}
+        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+      {:else if form?.invoiceResult}
+        <p class={`mt-3 rounded-lg px-3 py-2 text-sm ${form.invoiceResult.kind === 'error' ? 'bg-red-50 text-red-700' : form.invoiceResult.kind === 'issued' || form.invoiceResult.kind === 'sent' || form.invoiceResult.kind === 'voided' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>{form.invoiceResult.message}</p>
+      {/if}
+
+      <!-- 発行済み -->
+      {#if data.invoices.error}
+        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.invoices.error}</p>
+      {:else if data.invoices.rows.length === 0}
+        <p class="mt-3 text-sm text-stone-500">まだ請求書はありません。</p>
+      {:else}
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs text-stone-500">
+              <tr>
+                <th class="py-1.5 pr-3 font-medium">番号</th>
+                <th class="pr-3 font-medium">対象月</th>
+                <th class="pr-3 font-medium">発行日</th>
+                <th class="pr-3 text-right font-medium">ご請求額</th>
+                <th class="pr-3 font-medium">送信</th>
+                <th class="pr-3 font-medium">状態</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each data.invoices.rows as inv (inv.id)}
+                <tr class={`border-t border-stone-100 align-top ${inv.status === 'void' ? 'text-stone-400' : ''}`}>
+                  <td class="py-2 pr-3 font-mono text-xs whitespace-nowrap">{inv.invoiceNo}</td>
+                  <td class="py-2 pr-3 text-xs whitespace-nowrap">{periodLabel(inv.period)}<div class="text-stone-500">{inv.bookingCount}件</div></td>
+                  <td class="py-2 pr-3 text-xs whitespace-nowrap">{inv.issueDate}<div class="text-stone-500">{inv.issuedBy === 'auto' ? '自動' : 'スタッフ'}・期限 {inv.dueDate}</div></td>
+                  <td class="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{yen(inv.billedTotal)}円<div class="text-[11px] text-stone-500">利用 {yen(inv.usageTotal)}円</div></td>
+                  <td class="py-2 pr-3 text-xs">
+                    {#if inv.sentAt}
+                      <span class="text-emerald-700">{dt(inv.sentAt)}</span>
+                      <div class="break-all text-stone-500">{inv.sentTo.join(', ')}</div>
+                    {:else}
+                      <span class="text-stone-500">未送信</span>
+                    {/if}
+                    {#if inv.sendError}<div class="break-all text-rose-700">{inv.sendError}</div>{/if}
+                  </td>
+                  <td class="py-2 pr-3 text-xs whitespace-nowrap">
+                    {#if inv.status === 'void'}
+                      <span class="rounded-full bg-stone-200 px-2 py-0.5 text-stone-600">取消</span>
+                      <div class="mt-0.5 whitespace-normal text-stone-500">{dt(inv.voidedAt)}{inv.voidReason ? `・${inv.voidReason}` : ''}</div>
+                    {:else}
+                      <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">発行済み</span>
+                    {/if}
+                  </td>
+                  <td class="py-2">
+                    <div class="flex flex-wrap justify-end gap-1.5">
+                      <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/${inv.id}?format=pdf`} data-sveltekit-reload>PDF</a>
+                      <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/${inv.id}?format=html`} target="_blank" rel="noopener">HTML</a>
+                      {#if canEdit && inv.status === 'issued'}
+                        <form
+                          method="POST"
+                          action={`?/resendInvoice`}
+                          use:enhance={async ({ cancel }) => {
+                            if (!(await askConfirm({ message: `${inv.invoiceNo} を取引先へメールで${inv.sentAt ? '再送' : '送信'}します。`, confirmLabel: '送信する' }))) {
+                              cancel();
+                              return;
+                            }
+                            return invoiceEnhance();
+                          }}
+                        >
+                          <input type="hidden" name="invoice_id" value={inv.id} />
+                          <button type="submit" class={smallBtn} disabled={invoiceBusy}>{inv.sentAt ? '再送' : '送信'}</button>
+                        </form>
+                        <button type="button" class={`${smallBtn} hover:text-rose-700`} onclick={() => (voidTarget = voidTarget === inv.id ? null : inv.id)}>取消</button>
+                      {/if}
+                    </div>
+                    {#if canEdit && voidTarget === inv.id}
+                      <form method="POST" action={`?/voidInvoice`} use:enhance={invoiceEnhance} class="mt-2 flex flex-wrap items-center justify-end gap-1.5">
+                        <input type="hidden" name="invoice_id" value={inv.id} />
+                        <input name="reason" required maxlength="300" placeholder="取消の理由（必須）" class="w-56 rounded-md border border-stone-300 px-2 py-1 text-xs" />
+                        <button type="submit" class={`${smallBtn} text-rose-700`} disabled={invoiceBusy}>取り消す</button>
+                      </form>
+                      <p class="mt-1 text-right text-[11px] text-stone-500">取り消すと番号は欠番になり、同じ月を発行し直せます。取引先への連絡は別途行ってください。</p>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+
+      <!-- 対象月のプレビューと今すぐ発行 -->
+      <div class="mt-5 rounded-lg border border-stone-200 bg-stone-50 p-4">
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="block text-xs">
+            <span class="mb-0.5 block text-stone-500">対象月（チェックアウト）</span>
+            <input
+              type="month"
+              value={invoiceMonth}
+              max={data.invoices.currentPeriod.slice(0, 7)}
+              onchange={(e) => pickInvoiceMonth(e.currentTarget.value)}
+              class="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm"
+            />
+          </label>
+          <p class="text-xs text-stone-500">{periodLabel(data.invoices.period)}のプレビュー（まだ発行していない内容です）</p>
+        </div>
+
+        {#if data.invoices.previewError}
+          <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.invoices.previewError}</p>
+        {:else if data.invoices.preview}
+          {@const pv = data.invoices.preview}
+          {#if pv.lines.length === 0}
+            <p class="mt-3 text-sm text-stone-500">この月（今日まで）にチェックアウトの確定予約はありません（発行されません）。</p>
+          {:else}
+            <div class="mt-3 overflow-x-auto">
+              <table class="w-full bg-white text-xs">
+                <thead class="text-left text-stone-500">
+                  <tr class="border-b border-stone-200">
+                    <th class="px-2 py-1.5 font-medium">チェックアウト</th>
+                    <th class="px-2 font-medium">予約番号</th>
+                    <th class="px-2 font-medium">宿泊者・お部屋</th>
+                    <th class="px-2 font-medium">お支払方法</th>
+                    <th class="px-2 text-right font-medium">ご利用額</th>
+                    <th class="px-2 text-right font-medium">ご請求額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each pv.lines as l (l.bookingId)}
+                    <tr class="border-t border-stone-100 align-top">
+                      <td class="px-2 py-1.5 whitespace-nowrap">{l.checkOut}<div class="text-stone-500">{l.nights}泊</div></td>
+                      <td class="px-2 py-1.5 font-mono">{l.bookingCode}</td>
+                      <td class="px-2 py-1.5">{l.guestName} 様<div class="text-stone-500">{l.roomName} {l.roomCount}室・{l.adults}名</div></td>
+                      <td class="px-2 py-1.5">{l.paymentLabel}</td>
+                      <td class="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{yen(l.usage)}円{#if l.discount}<div class="text-stone-500">割引 −{yen(l.discount)}円</div>{/if}</td>
+                      <td class={`px-2 py-1.5 text-right tabular-nums whitespace-nowrap ${l.billable ? 'font-semibold' : 'text-stone-400'}`}>{l.billable ? `${yen(l.billed)}円` : '—'}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+                <tfoot>
+                  <tr class="border-t border-stone-300 font-semibold">
+                    <td class="px-2 py-1.5" colspan="4">合計（{pv.lines.length}件）</td>
+                    <td class="px-2 py-1.5 text-right tabular-nums">{yen(pv.totals.usageTotal)}円</td>
+                    <td class="px-2 py-1.5 text-right tabular-nums">{yen(pv.totals.billedTotal)}円</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <p class="mt-2 text-xs text-stone-600">
+              ご請求 {yen(pv.totals.billedTotal)}円（10%対象 {yen(pv.totals.taxable10)}円・うち消費税 {yen(pv.totals.tax10)}円／入湯税〔不課税〕 {yen(pv.totals.nonTaxable)}円）・お支払い済み・別途精算 {yen(pv.totals.paidTotal)}円・お支払期限 {pv.dueDate}
+              {#if pv.totals.billedTotal === 0}<span class="text-stone-500">（ご請求 0 円のため、利用明細書だけを発行します）</span>{/if}
+            </p>
+            {#if data.invoices.chargeFailed.length}
+              <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                カード決済（チェックイン日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
+              </p>
+            {/if}
+          {/if}
+
+          {#if canEdit && pv.lines.length > 0}
+            <form
+              method="POST"
+              action={`?/issueInvoice`}
+              use:enhance={async ({ formData, cancel }) => {
+                const send = formData.get('send') !== null;
+                const msg = `${periodLabel(data.invoices.period)}分の請求書を発行${send ? 'し、取引先へメールで送信' : ''}します。同じ月は1枚だけです（作り直すには取消が必要です）。${issuingMidMonth ? '\n※ 月の途中です。今日より後にチェックアウトする予約は載りません。' : ''}${data.invoices.chargeFailed.length ? `\n※ カード決済が失敗したままの予約（${data.invoices.chargeFailed.join('、')}）は請求しません。` : ''}`;
+                if (!(await askConfirm({ message: msg, confirmLabel: '発行する' }))) {
+                  cancel();
+                  return;
+                }
+                return invoiceEnhance();
+              }}
+              class="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-200 pt-3"
+            >
+              <input type="hidden" name="period" value={data.invoices.period} />
+              <label class="flex items-center gap-1.5 text-xs"><input type="checkbox" name="send" checked />取引先へメールで送信する</label>
+              <button type="submit" disabled={invoiceBusy} class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{invoiceBusy ? '処理中…' : '今すぐ発行'}</button>
+              {#if issuingMidMonth}<span class="text-[11px] text-amber-800">月の途中です。今日より後にチェックアウトする予約は載りません（発行せずに待てば月末に自動発行されます）。</span>{/if}
+            </form>
+          {/if}
+        {/if}
+      </div>
+    </div>
+
     <!-- ログインID -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-sm font-bold text-stone-700">ログインID</h2>
       <p class="mt-1 text-xs text-stone-500">
-        ここでログインIDを発行し、パスワード設定リンク（有効期限7日・1回限り）を取引先へ送ります。パスワードは取引先が自分で決めます（宿側では分かりません）。メールの差出人は施設名、返信先は施設の予約用アドレスです。
+        ここでログインIDを発行し、パスワード設定リンク（有効期限7日・1回限り）を取引先へ送ります。ここで発行するログインIDはマスタユーザーです（取引先ページで子ユーザーを作れます）。パスワードは取引先が自分で決めます（宿側では分かりません）。メールの差出人は施設名、返信先は施設の予約用アドレスです。
       </p>
 
       {#if form?.issued}
@@ -1188,7 +1411,15 @@
             <tbody>
               {#each data.accounts as a (a.id)}
                 <tr class="border-t border-stone-100 align-top">
-                  <td class="py-2 pr-3 font-mono">{a.loginId}</td>
+                  <td class="py-2 pr-3">
+                    <span class="font-mono">{a.loginId}</span>
+                    {#if a.isMaster}
+                      <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] text-brand-800">マスタ</span>
+                    {:else}
+                      <span class="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-600">子ユーザー</span>
+                      {#if a.createdBy}<div class="text-[11px] text-stone-500">作成: <span class="font-mono">{a.createdBy}</span></div>{/if}
+                    {/if}
+                  </td>
                   <td class="py-2 pr-3 text-xs">{a.displayName ?? ''}<div class="text-stone-500">{a.email ?? ''}</div></td>
                   <td class="py-2 pr-3 text-xs">
                     {#if !a.isActive}<span class="text-stone-500">停止中</span>

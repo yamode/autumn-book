@@ -75,12 +75,15 @@ export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 
 }
 
 // 取引先ページのヘッダー（layout）に渡す情報。
-export function portalHeader(partner: PartnerContext, session: { login_id: string } | null) {
+// isMaster: マスタユーザー（Book が発行したログインID）か。アカウント画面の「ユーザー管理」タブの表示に使う
+// （表示だけ。ユーザー管理の読み書きは store.ts の requireMasterAccount で毎回 DB を確かめる）。
+export function portalHeader(partner: PartnerContext, session: { login_id: string; is_master?: boolean } | null) {
   return {
     partnerName: partner.name,
     facilityName: partner.facility_name,
     facilitySlug: partner.facility_slug,
     loginId: session?.login_id ?? null,
+    isMaster: session?.is_master === true,
     bookingEnabled: isPartnerBookingOpen(partner)
   };
 }

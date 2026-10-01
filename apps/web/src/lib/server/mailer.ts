@@ -12,6 +12,9 @@
 //   - REPORT_EMAIL_FROM  … 送信元（任意・既定 'rms@yamado.app'）。yamado.app配下である必要がある。
 // いずれか未設定なら送信せず {sent:false, reason} を返す（graceful＝本番未設定でもクラッシュしない）。
 import { env as privateEnv } from '$env/dynamic/private';
+import { buildRestAttachments, type MailAttachment } from './mail-attachments';
+
+export type { MailAttachment };
 
 const DEFAULT_FROM = 'rms@yamado.app';
 // 差出人名の既定（呼び出し側が施設名を渡せなかったときだけ）
@@ -27,6 +30,8 @@ export async function sendHtmlEmail(args: {
   fromName?: string;
   /** 返信先（Reply-To）。取引先宛てでは施設の予約用アドレス（pms.mail_settings.from_address） */
   replyTo?: string;
+  /** 添付ファイル（合計 5MiB まで。超えると送らずに reason を返す） */
+  attachments?: MailAttachment[];
 }): Promise<SendEmailResult> {
   const accountId = privateEnv.CF_ACCOUNT_ID;
   const token = privateEnv.CF_EMAIL_API_TOKEN;
@@ -35,6 +40,8 @@ export async function sendHtmlEmail(args: {
 
   if (!to.length) return { sent: false, reason: 'no-recipients' };
   if (!accountId || !token) return { sent: false, reason: 'email-not-configured' };
+  const att = buildRestAttachments(args.attachments);
+  if (att.error) return { sent: false, reason: att.error };
 
   try {
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/email/sending/send`, {
@@ -47,7 +54,8 @@ export async function sendHtmlEmail(args: {
         ...(args.replyTo ? { reply_to: args.replyTo } : {}),
         subject: args.subject,
         html: args.html,
-        text: args.text
+        text: args.text,
+        ...(att.attachments ? { attachments: att.attachments } : {})
       })
     });
     if (!res.ok) {

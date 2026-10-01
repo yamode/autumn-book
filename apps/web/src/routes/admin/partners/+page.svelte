@@ -4,6 +4,8 @@
 	let { data, form } = $props();
 
 	let creating = $state(false);
+	// 請求書の設定フォームの結果は、その欄に出す（上部のお知らせには出さない）
+	let billingSubmitted = $state(false);
 	const inputCls = 'w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm';
 
 	const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
@@ -39,7 +41,7 @@
 {#if data.error}
 	<p class="mb-4 rounded-lg px-3 py-2 text-sm {data.live ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}">{data.error}</p>
 {/if}
-{#if form?.message}
+{#if form?.message && !billingSubmitted}
 	<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 {/if}
 {#if !data.canEdit && data.live && !data.error}
@@ -47,7 +49,7 @@
 {/if}
 
 {#if creating}
-	<form method="POST" action="?/create" use:enhance class="mb-4 space-y-3 rounded-xl border border-stone-200 bg-white p-5">
+	<form method="POST" action="?/create" use:enhance={() => { billingSubmitted = false; }} class="mb-4 space-y-3 rounded-xl border border-stone-200 bg-white p-5">
 		<h2 class="text-sm font-bold text-stone-700">取引先を追加</h2>
 		<div class="grid gap-3 sm:grid-cols-[1fr_220px]">
 			<label class="block text-sm">
@@ -95,5 +97,80 @@
 		{:else}
 			<p class="p-4 text-sm text-stone-500">まだ取引先がありません。</p>
 		{/each}
+	</div>
+{/if}
+
+{#if data.live && !data.error}
+	<!-- 請求書の設定（施設ごと）: 取引先の月次請求書（利用明細書＋適格請求書）の発行元・振込先 -->
+	<div class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
+		<h2 class="text-sm font-bold text-stone-700">請求書の設定 — {data.facilityName}</h2>
+		<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
+			取引先の月次請求書（利用明細書＋適格請求書）の発行元と振込先です。発行済みの請求書は発行時の内容のまま変わりません（変更は次の発行から）。
+			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります。
+		</p>
+		{#if data.billing.error}
+			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.billing.error}</p>
+		{:else if data.billing.settings}
+			{@const b = data.billing.settings}
+			{#if !b.bankAccount}
+				<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">振込先が未設定です。振込先を登録するまで、月末の請求書は自動発行されません。</p>
+			{/if}
+			{#if !b.saved}
+				<p class="mt-2 text-[11px] text-stone-500">まだ保存されていません（既定値を表示しています）。</p>
+			{/if}
+			{#if billingSubmitted && form?.message}
+				<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+			{:else if billingSubmitted && form?.billingSaved}
+				<p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">請求書の設定を保存しました。</p>
+			{/if}
+			<form
+				method="POST"
+				action="?/saveBilling"
+				use:enhance={() => {
+					billingSubmitted = true;
+					return async ({ update }) => update({ reset: false });
+				}}
+				class="mt-3 grid gap-3 sm:grid-cols-2"
+			>
+				<fieldset disabled={!data.canEdit} class="contents">
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">発行者名</span>
+						<input name="issuer_name" required maxlength="80" value={b.issuerName} class="mt-0.5 {inputCls}" />
+					</label>
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">登録番号（適格請求書発行事業者・T＋13桁）</span>
+						<input name="registration_number" required value={b.registrationNumber} class="mt-0.5 font-mono {inputCls}" />
+					</label>
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">住所（〒つき）</span>
+						<input name="issuer_address" required maxlength="200" value={b.issuerAddress} class="mt-0.5 {inputCls}" />
+					</label>
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">TEL（空欄にすると請求書に載せません）</span>
+						<input name="issuer_tel" maxlength="30" value={b.issuerTel} class="mt-0.5 {inputCls}" />
+					</label>
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">振込先（銀行・支店・種別・口座番号・名義。改行できます）</span>
+						<textarea name="bank_account" rows="3" maxlength="300" placeholder={'例: ○○銀行 △△支店\n普通 1234567\nカ）ヤマド'} class="mt-0.5 {inputCls}">{b.bankAccount}</textarea>
+					</label>
+					<label class="block text-sm">
+						<span class="text-xs text-stone-500">備考（請求書に載ります）</span>
+						<textarea name="note" rows="3" maxlength="500" class="mt-0.5 {inputCls}">{b.note}</textarea>
+					</label>
+					<label class="flex items-center gap-2 text-sm sm:col-span-2">
+						<input type="checkbox" name="auto_issue" checked={b.autoIssue} />
+						月末に自動で発行して取引先へ送る
+						{#if b.autoIssue && !b.bankAccount}<span class="text-xs text-amber-800">（振込先が未設定のあいだは自動発行されません）</span>{/if}
+					</label>
+				</fieldset>
+				{#if data.canEdit}
+					<div class="sm:col-span-2">
+						<button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">設定を保存</button>
+					</div>
+				{:else}
+					<p class="text-xs text-stone-500 sm:col-span-2">請求書の設定の変更は管理者だけができます。</p>
+				{/if}
+			</form>
+		{/if}
 	</div>
 {/if}

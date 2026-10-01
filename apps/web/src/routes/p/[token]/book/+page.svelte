@@ -329,10 +329,10 @@
         </div>
         <label class="mt-4 flex items-center gap-2.5 text-sm">
           <input type="checkbox" name="save_booker" class="h-5 w-5 accent-[var(--pt-accent)]" />
-          <span>この内容をマイページに保存する（次回から自動で入ります）</span>
+          <span>この内容をアカウントの担当者情報に保存する（次回から自動で入ります）</span>
         </label>
         {#if !data.bookerSaved}
-          <p class="mt-2 text-sm text-stone-500"><a href={`/p/${token}/account`} class="underline hover:text-brand-900">マイページ</a>で設定しておくと次回から自動で入ります。</p>
+          <p class="mt-2 text-sm text-stone-500"><a href={`/p/${token}/account`} class="underline hover:text-brand-900">アカウント（担当者情報）</a>で設定しておくと次回から自動で入ります。</p>
         {/if}
       </section>
 
@@ -423,7 +423,7 @@
             {#if quote.ok}<dt>お部屋</dt><dd>{quote.roomName} × {roomCount}室</dd>
               <dt>プラン</dt><dd>{displayPlanName(quote.planName)}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
-            <dt>予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をマイページに保存します</span>{/if}</dd>
+            <dt>予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>
             <dt>代表者</dt><dd>{values.family_name} {values.given_name}{values.family_name_kana || values.given_name_kana ? `（${values.family_name_kana} ${values.given_name_kana}）` : ''}</dd>
             <dt>電話番号</dt><dd>{values.phone}</dd>
             {#if values.email}<dt>メール</dt><dd>{values.email}</dd>{/if}

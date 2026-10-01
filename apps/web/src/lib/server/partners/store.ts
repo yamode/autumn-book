@@ -16,6 +16,7 @@ import { partnerServiceClient } from './admin-client';
 // 循環 import（memorandum → store）だが、どちらも呼び出し時にしか参照しないので問題ない
 import { removeAllPartnerDocumentFiles } from './memorandum';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
+import { canManageAccount } from '$lib/partner-account-roles';
 
 export type PartnerKind = 'agent' | 'corporate' | 'other';
 export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
@@ -62,6 +63,9 @@ export type PartnerAccountRow = {
   locked_until: string | null;
   last_login_at: string | null;
   is_active: boolean;
+  // マスタユーザー（Book のスタッフが発行）／子ユーザー（マスタが作成）。migration 20261001083643
+  is_master: boolean;
+  created_by_account: string | null;
   created_at: string;
 };
 
@@ -130,7 +134,7 @@ function raise(error: { code?: string; message?: string } | null, fallback: stri
 const PARTNER_COLUMNS =
   'id, tenant_id, facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, max_days_ahead, show_inventory, include_advance, pricing, note, booking_enabled, booking_settings, payment_method_id, created_at, updated_at';
 const ACCOUNT_COLUMNS =
-  'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, created_at';
+  'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, is_master, created_by_account, created_at';
 
 function toPartner(row: Record<string, unknown>): PartnerRow {
   return {
@@ -554,7 +558,7 @@ export async function loginPartner(
   return { ok: true, sessionToken };
 }
 
-export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name'> & { sessionId: string };
+export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'is_master'> & { sessionId: string };
 
 // クッキーのセッションから、この取引先のアカウントを引く。別の取引先のセッションは通さない。
 export async function getPartnerSession(
@@ -565,7 +569,7 @@ export async function getPartnerSession(
   if (!sessionToken) return null;
   const { data } = await db
     .from('rms_partner_sessions')
-    .select('id, expires_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active)')
+    .select('id, expires_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
     .eq('token_hash', await sha256Hex(sessionToken))
     .maybeSingle();
   const row = data as
@@ -573,7 +577,7 @@ export async function getPartnerSession(
         id: string;
         expires_at: string;
         last_seen_at: string;
-        account: { id: string; partner_id: string; login_id: string; display_name: string | null; is_active: boolean };
+        account: { id: string; partner_id: string; login_id: string; display_name: string | null; is_active: boolean; is_master: boolean };
       }
     | null;
   if (!row || new Date(row.expires_at).getTime() <= Date.now()) return null;
@@ -582,7 +586,14 @@ export async function getPartnerSession(
   if (Date.now() - new Date(row.last_seen_at).getTime() > 5 * 60_000) {
     await db.from('rms_partner_sessions').update({ last_seen_at: new Date().toISOString() }).eq('id', row.id);
   }
-  return { id: row.account.id, login_id: row.account.login_id, display_name: row.account.display_name, sessionId: row.id };
+  // is_master はリクエストごとに DB から読む（マスタの権限を外したら次のリクエストから効く）
+  return {
+    id: row.account.id,
+    login_id: row.account.login_id,
+    display_name: row.account.display_name,
+    is_master: row.account.is_master === true,
+    sessionId: row.id
+  };
 }
 
 export async function endPartnerSession(db: SupabaseClient, sessionToken: string | undefined) {
@@ -693,4 +704,165 @@ export async function saveBookerProfile(db: SupabaseClient, partnerId: string, a
     .eq('partner_id', partnerId);
   if (error) raise(error, '担当者情報を保存できませんでした。');
   return profile;
+}
+
+// ---- 取引先内のユーザー管理（マスタユーザー → 子ユーザー。2026-10-01 追加・autumn-shared 20261001083643） ----
+//
+// 取引先ページの「アカウント」→「ユーザー管理」から呼ぶ。service_role で触るので、毎回 DB 条件で次を確かめる（IDOR 防止）:
+//   - 操作する人（actorId = セッションで確かめたアカウント）が、この取引先の有効なマスタユーザーであること
+//   - 対象が同じ取引先の子ユーザー（is_master=false）であること（マスタ自身・他のマスタは触れない）
+// 子ユーザーは常に is_master=false で作る（列の既定は true なので必ず明示する）。
+
+// 操作する人がこの取引先の有効なマスタユーザーかを DB で確かめる。違えば 403。
+export async function requireMasterAccount(db: SupabaseClient, partnerId: string, actorId: string): Promise<PartnerAccountRow> {
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select(ACCOUNT_COLUMNS)
+    .eq('id', actorId)
+    .eq('partner_id', partnerId)
+    .eq('is_master', true)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) raise(error, 'アカウントを確認できませんでした。');
+  if (!data) throw new PartnerStoreError('ユーザー管理はマスタユーザーだけが使えます。', 403, 'forbidden');
+  return data as PartnerAccountRow;
+}
+
+// 取引先のユーザー一覧（マスタ・子ユーザーとも）。マスタユーザーだけが読める。
+export async function listPortalUsers(db: SupabaseClient, partnerId: string, actorId: string): Promise<PartnerAccountRow[]> {
+  await requireMasterAccount(db, partnerId, actorId);
+  return listPartnerAccounts(db, partnerId);
+}
+
+// 対象が「この取引先の子ユーザー」かを DB 条件で確かめて読み、操作してよいかを canManageAccount で判定する。
+async function requireChildTarget(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  accountId: string
+): Promise<{ actor: PartnerAccountRow; target: PartnerAccountRow }> {
+  const actor = await requireMasterAccount(db, partnerId, actorId);
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new PartnerStoreError('ユーザーが見つかりません。', 404, 'not_found');
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select(ACCOUNT_COLUMNS)
+    .eq('id', accountId)
+    .eq('partner_id', partnerId)
+    .eq('is_master', false)
+    .maybeSingle();
+  if (error) raise(error, 'ユーザーを読み込めませんでした。');
+  if (!data) throw new PartnerStoreError('ユーザーが見つかりません（マスタユーザーはここでは操作できません）。', 404, 'not_found');
+  const target = data as PartnerAccountRow;
+  if (!canManageAccount({ ...actor, is_active: true }, target)) throw new PartnerStoreError('このユーザーは操作できません。', 403, 'forbidden');
+  return { actor, target };
+}
+
+// 1取引先あたりの子ユーザーの上限（停止中も数える。要らなくなったら削除してもらう）
+export const MAX_CHILD_ACCOUNTS = 30;
+
+// 子ユーザーを作り、パスワード設定用のトークン（平文・1度だけ）を返す。
+export async function createChildAccount(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  input: { loginId: string; displayName: string; email: string }
+): Promise<{ account: PartnerAccountRow; setupToken: string }> {
+  const actor = await requireMasterAccount(db, partnerId, actorId);
+  if (!LOGIN_ID_PATTERN.test(input.loginId)) {
+    throw new PartnerStoreError('ログインIDは英数字と . _ - で4〜64文字にしてください（先頭は英数字）。');
+  }
+  const { count, error: countError } = await db
+    .from('rms_partner_accounts')
+    .select('id', { count: 'exact', head: true })
+    .eq('partner_id', actor.partner_id)
+    .eq('is_master', false);
+  if (countError) raise(countError, 'ユーザーを数えられませんでした。');
+  if ((count ?? 0) >= MAX_CHILD_ACCOUNTS) {
+    throw new PartnerStoreError(`子ユーザーは${MAX_CHILD_ACCOUNTS}人までです。使っていないユーザーを削除してから作成してください。`, 409, 'limit');
+  }
+  const setupToken = randomToken(32);
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .insert({
+      partner_id: actor.partner_id,
+      // 大文字小文字を区別しないため、保存は小文字に揃える（スタッフの発行と同じ）
+      login_id: input.loginId.toLowerCase(),
+      display_name: input.displayName,
+      email: input.email,
+      // 子ユーザー。列の既定（true）に任せるとマスタになるので必ず明示する
+      is_master: false,
+      created_by_account: actor.id,
+      setup_token_hash: await sha256Hex(setupToken),
+      setup_token_expires_at: new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3600_000).toISOString()
+    })
+    .select(ACCOUNT_COLUMNS)
+    .single();
+  if (error) {
+    if (error.code === '23505') throw new PartnerStoreError(`ログインID「${input.loginId}」は既に使われています。別のIDにしてください。`, 409, 'duplicate');
+    raise(error, 'ユーザーを作成できませんでした。');
+  }
+  return { account: data as PartnerAccountRow, setupToken };
+}
+
+// 子ユーザーの停止・再開。停止したらログイン中のセッションも切る。再開ではロックも解く。
+export async function setChildAccountActive(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  accountId: string,
+  active: boolean
+): Promise<PartnerAccountRow> {
+  const { target } = await requireChildTarget(db, partnerId, actorId, accountId);
+  const update: Record<string, unknown> = { is_active: active };
+  if (active) {
+    update.failed_attempts = 0;
+    update.locked_until = null;
+  }
+  const { error } = await db
+    .from('rms_partner_accounts')
+    .update(update)
+    .eq('id', target.id)
+    .eq('partner_id', partnerId)
+    .eq('is_master', false);
+  if (error) raise(error, 'ユーザーを更新できませんでした。');
+  if (!active) await db.from('rms_partner_sessions').delete().eq('account_id', target.id);
+  return target;
+}
+
+// 子ユーザーを削除する（ログイン中のセッションも消す）。
+export async function deleteChildAccount(db: SupabaseClient, partnerId: string, actorId: string, accountId: string): Promise<PartnerAccountRow> {
+  const { target } = await requireChildTarget(db, partnerId, actorId, accountId);
+  await db.from('rms_partner_sessions').delete().eq('account_id', target.id);
+  const { error } = await db
+    .from('rms_partner_accounts')
+    .delete()
+    .eq('id', target.id)
+    .eq('partner_id', partnerId)
+    .eq('is_master', false);
+  if (error) raise(error, 'ユーザーを削除できませんでした。');
+  return target;
+}
+
+// 子ユーザーのパスワード設定（再設定）リンクを発行し直す。既存のパスワードは設定し直すまで有効のまま。
+export async function reissueChildSetup(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  accountId: string
+): Promise<{ account: PartnerAccountRow; setupToken: string }> {
+  const { target } = await requireChildTarget(db, partnerId, actorId, accountId);
+  if (!target.is_active) throw new PartnerStoreError('停止中のユーザーには送れません。先に再開してください。');
+  if (!target.email) throw new PartnerStoreError('このユーザーにはメールアドレスがありません。');
+  const setupToken = randomToken(32);
+  const { error } = await db
+    .from('rms_partner_accounts')
+    .update({
+      setup_token_hash: await sha256Hex(setupToken),
+      setup_token_expires_at: new Date(Date.now() + SETUP_TOKEN_TTL_HOURS * 3600_000).toISOString()
+    })
+    .eq('id', target.id)
+    .eq('partner_id', partnerId)
+    .eq('is_master', false);
+  if (error) raise(error, 'パスワード設定リンクを発行できませんでした。');
+  return { account: target, setupToken };
 }

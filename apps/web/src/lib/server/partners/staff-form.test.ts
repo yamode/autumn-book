@@ -73,7 +73,7 @@ describe('parsePartnerSettings（2026-10-01: 自由入力の支払方法・取�
     });
     const r = parsePartnerSettings(form({ ...base, booking, booking_enabled: 'on' }));
     expect(r.booking_settings.paymentOptions).toEqual(['custom_ab12cd34']);
-    expect(r.booking_settings.customPaymentOptions).toEqual([{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い' }]);
+    expect(r.booking_settings.customPaymentOptions).toEqual([{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い', billable: false }]);
     expect(r.booking_settings.perks).toEqual([{ id: 'perk-1', title: 'ウェルカムドリンク', description: 'ラウンジで1杯', planCodes: ['a001'] }]);
   });
 

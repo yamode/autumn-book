@@ -14,7 +14,7 @@
 //     アドレスを From にすると SPF/DKIM が合わず届かなくなるため、アドレスは REPORT_EMAIL_FROM のまま、
 //     返信（Reply-To）を施設の予約用アドレスにする。取引先が返信すると施設の予約窓口に届く。
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { sendHtmlEmail, type SendEmailResult } from '$lib/server/mailer';
+import { sendHtmlEmail, type MailAttachment, type SendEmailResult } from '$lib/server/mailer';
 
 export type PartnerMailSender = { fromName: string; replyTo: string | null };
 
@@ -45,7 +45,7 @@ export async function partnerMailSender(db: SupabaseClient, facilityId: string):
 export async function sendPartnerMail(
   db: SupabaseClient,
   facilityId: string,
-  args: { to: string[]; subject: string; html: string; text: string }
+  args: { to: string[]; subject: string; html: string; text: string; attachments?: MailAttachment[] }
 ): Promise<SendEmailResult> {
   const sender = await partnerMailSender(db, facilityId);
   return sendHtmlEmail({ ...args, fromName: sender.fromName, replyTo: sender.replyTo ?? undefined });

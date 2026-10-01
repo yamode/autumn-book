@@ -1,0 +1,246 @@
+// 取引先の月次請求書（利用明細書＋適格請求書）の純関数のテスト。
+import { describe, expect, it } from 'vitest';
+import {
+  buildInvoiceLines,
+  invoiceFileName,
+  invoiceCutoffDate,
+  invoiceTotals,
+  isBillablePaymentOption,
+  isChargeFailed,
+  isInvoiceTarget,
+  isLastDayOfMonth,
+  MAX_INVOICE_SEND_ATTEMPTS,
+  sendFailureCount,
+  sendFailureMessage,
+  lastDayOfMonth,
+  nextMonthEnd,
+  periodLabel,
+  periodOf,
+  renderInvoiceHtml,
+  type InvoiceBookingSource,
+  type InvoiceDocument
+} from './partner-invoice';
+
+const settings = {
+  customPaymentOptions: [
+    { id: 'custom_bill', label: '請求書払い（20日締め）', note: '', billable: true },
+    { id: 'custom_card', label: '現地精算（法人カード）', note: '', billable: false }
+  ]
+};
+
+const booking = (over: Partial<InvoiceBookingSource> = {}): InvoiceBookingSource => ({
+  id: 'b1',
+  booking_code: 'P-0001',
+  status: 'confirmed',
+  check_in_date: '2026-10-10',
+  check_out_date: '2026-10-11',
+  nights: 1,
+  room_name: '和室',
+  room_count: 1,
+  adult_total: 2,
+  plan_name: '2食付き',
+  guest_name: '山田 太郎',
+  booked_by: 'agent01',
+  total_amount: 33000,
+  bath_tax_amount: 300,
+  prepay_discount_amount: 0,
+  payment_option: 'invoice_monthly',
+  payment_method_name: '月末締め翌月末銀行振込',
+  payment_status: 'none',
+  detail: null,
+  ...over
+});
+
+describe('期間', () => {
+  it('対象月・月末・翌月末', () => {
+    expect(periodOf('2026-10-15')).toBe('2026-10-01');
+    expect(lastDayOfMonth('2026-02-01')).toBe('2026-02-28');
+    expect(lastDayOfMonth('2028-02-01')).toBe('2028-02-29');
+    expect(lastDayOfMonth('2026-12-01')).toBe('2026-12-31');
+    expect(isLastDayOfMonth('2026-10-31')).toBe(true);
+    expect(isLastDayOfMonth('2026-10-30')).toBe(false);
+    expect(isLastDayOfMonth('2026-02-28')).toBe(true);
+    expect(nextMonthEnd('2026-10-01')).toBe('2026-11-30');
+    expect(nextMonthEnd('2026-12-01')).toBe('2027-01-31');
+    expect(nextMonthEnd('2027-01-01')).toBe('2027-02-28');
+    expect(periodLabel('2026-03-01')).toBe('2026年3月');
+  });
+
+  it('対象: 確定済みでチェックアウトがその月', () => {
+    expect(isInvoiceTarget({ status: 'confirmed', check_out_date: '2026-10-01' }, '2026-10-01')).toBe(true);
+    expect(isInvoiceTarget({ status: 'confirmed', check_out_date: '2026-10-31' }, '2026-10-01')).toBe(true);
+    expect(isInvoiceTarget({ status: 'confirmed', check_out_date: '2026-11-01' }, '2026-10-01')).toBe(false);
+    expect(isInvoiceTarget({ status: 'confirmed', check_out_date: '2026-09-30' }, '2026-10-01')).toBe(false);
+    expect(isInvoiceTarget({ status: 'cancelled', check_out_date: '2026-10-15' }, '2026-10-01')).toBe(false);
+    expect(isInvoiceTarget({ status: 'pending_payment', check_out_date: '2026-10-15' }, '2026-10-01')).toBe(false);
+  });
+
+  it('対象: 月の途中で発行すると、今日より後にチェックアウトする予約は載らない', () => {
+    const b = (d: string) => ({ status: 'confirmed', check_out_date: d });
+    expect(invoiceCutoffDate('2026-10-01', '2026-10-15')).toBe('2026-10-15');
+    expect(invoiceCutoffDate('2026-10-01', '2026-11-03')).toBe('2026-10-31');
+    expect(invoiceCutoffDate('2026-10-01')).toBe('2026-10-31');
+    expect(isInvoiceTarget(b('2026-10-15'), '2026-10-01', '2026-10-15')).toBe(true);
+    expect(isInvoiceTarget(b('2026-10-16'), '2026-10-01', '2026-10-15')).toBe(false);
+    expect(isInvoiceTarget(b('2026-10-31'), '2026-10-01', '2026-10-31')).toBe(true);
+    // 過去の月は今日に関係なく月末まで
+    expect(isInvoiceTarget(b('2026-09-30'), '2026-09-01', '2026-10-15')).toBe(true);
+  });
+});
+
+describe('ご請求の対象', () => {
+  it('後払いは常に・自由入力は billable だけ・オンライン決済は対象外', () => {
+    expect(isBillablePaymentOption('invoice_monthly', settings)).toBe(true);
+    expect(isBillablePaymentOption('custom_bill', settings)).toBe(true);
+    expect(isBillablePaymentOption('custom_card', settings)).toBe(false);
+    expect(isBillablePaymentOption('online', settings)).toBe(false);
+    expect(isBillablePaymentOption('online_checkin', settings)).toBe(false);
+    expect(isBillablePaymentOption(null, settings)).toBe(false);
+    expect(isBillablePaymentOption('custom_unknown', settings)).toBe(false);
+  });
+});
+
+describe('明細と合計', () => {
+  const lines = buildInvoiceLines(
+    [
+      booking({ id: 'b3', booking_code: 'P-0003', check_out_date: '2026-10-20', payment_option: 'custom_bill', payment_method_name: '請求書払い（20日締め）', total_amount: 22000, bath_tax_amount: 150 }),
+      // オンライン決済（予約時）済み・割引あり → 0 円のご請求
+      booking({ id: 'b2', booking_code: 'P-0002', check_out_date: '2026-10-05', payment_option: 'online', payment_method_name: 'オンライン決済', payment_status: 'paid', total_amount: 20000, bath_tax_amount: 150, prepay_discount_amount: 1000 }),
+      booking({ id: 'b1', booking_code: 'P-0001', check_out_date: '2026-10-20', total_amount: 33333, bath_tax_amount: 300 }),
+      booking({ id: 'b4', booking_code: 'P-0004', check_out_date: '2026-10-25', payment_option: 'custom_card', payment_method_name: '現地精算（法人カード）', total_amount: 10000, bath_tax_amount: 150, detail: { booker: { name: ' 佐藤 ' } } })
+    ],
+    settings
+  );
+
+  it('チェックアウト日 → 予約番号の順に並ぶ', () => {
+    expect(lines.map((l) => l.bookingCode)).toEqual(['P-0002', 'P-0001', 'P-0003', 'P-0004']);
+  });
+
+  it('ご請求の対象と金額', () => {
+    const byCode = Object.fromEntries(lines.map((l) => [l.bookingCode, l]));
+    expect(byCode['P-0002']).toMatchObject({ billable: false, usage: 19150, billed: 0, discount: 1000 });
+    expect(byCode['P-0002'].paymentLabel).toContain('オンライン決済済み');
+    expect(byCode['P-0001']).toMatchObject({ billable: true, usage: 33633, billed: 33633 });
+    expect(byCode['P-0003']).toMatchObject({ billable: true, usage: 22150, billed: 22150 });
+    expect(byCode['P-0004']).toMatchObject({ billable: false, billed: 0, bookerName: '佐藤' });
+    expect(byCode['P-0001'].bookerName).toBe('agent01');
+  });
+
+  it('合計: 10%対象は税込から割り戻して1回だけ切り捨て・入湯税は不課税', () => {
+    const t = invoiceTotals(lines);
+    expect(t.usageTotal).toBe(19150 + 33633 + 22150 + 10150);
+    expect(t.billedTotal).toBe(33633 + 22150);
+    expect(t.paidTotal).toBe(t.usageTotal - t.billedTotal);
+    expect(t.taxable10).toBe(33333 + 22000);
+    expect(t.nonTaxable).toBe(300 + 150);
+    // 55333 × 10 / 110 = 5030.27… → 5030
+    expect(t.tax10).toBe(Math.floor((55333 * 10) / 110));
+    expect(t.taxable10 + t.nonTaxable).toBe(t.billedTotal);
+  });
+
+  it('行ごとに丸めると変わる例でも、請求書1枚で1回だけ切り捨てる', () => {
+    const ls = buildInvoiceLines(
+      [booking({ id: 'x1', booking_code: 'X1', total_amount: 1009, bath_tax_amount: 0 }), booking({ id: 'x2', booking_code: 'X2', total_amount: 1009, bath_tax_amount: 0 })],
+      settings
+    );
+    // 行ごと: floor(91.72)+floor(91.72)=182 ／ 1回: floor(183.45)=183
+    expect(invoiceTotals(ls).tax10).toBe(183);
+  });
+
+  it('オンライン決済だけなら 0 円請求', () => {
+    const t = invoiceTotals(buildInvoiceLines([booking({ payment_option: 'online', payment_status: 'paid' })], settings));
+    expect(t.billedTotal).toBe(0);
+    expect(t.tax10).toBe(0);
+    expect(t.paidTotal).toBe(t.usageTotal);
+  });
+});
+
+const docOf = (bookings: InvoiceBookingSource[], over: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+  const lines = buildInvoiceLines(bookings, settings);
+  return {
+    version: 1,
+    invoiceNo: 'PI-202610-00001',
+    period: '2026-10-01',
+    issueDate: '2026-10-31',
+    dueDate: '2026-11-30',
+    recipient: { name: '○○トラベル' },
+    issuer: {
+      name: '株式会社山人',
+      facilityName: '山人-yamado-',
+      address: '〒029-5514 岩手県和賀郡西和賀町湯川52-71-10',
+      tel: '0197-82-2222',
+      registrationNumber: 'T3400001006564',
+      bankAccount: '○○銀行 △△支店\n普通 1234567',
+      note: '振込手数料は貴社にてご負担ください。'
+    },
+    lines,
+    totals: invoiceTotals(lines),
+    ...over
+  };
+};
+
+describe('紙面（HTML）', () => {
+  it('ご請求ありなら請求書＋利用明細書', () => {
+    const html = renderInvoiceHtml(docOf([booking()]));
+    expect(html).toContain('<h1>請求書</h1>');
+    expect(html).toContain('<h1>利用明細書</h1>');
+    expect(html).toContain('T3400001006564');
+    expect(html).toContain('2026年11月30日');
+    expect(html).toContain('○○銀行 △△支店<br>普通 1234567');
+  });
+
+  it('0 円なら利用明細書だけ', () => {
+    const doc = docOf([booking({ payment_option: 'online', payment_status: 'paid' })]);
+    const html = renderInvoiceHtml(doc);
+    expect(html).not.toContain('<h1>請求書</h1>');
+    expect(html).toContain('<h1>利用明細書</h1>');
+    expect(html).toContain('<title>利用明細書 PI-202610-00001</title>');
+    expect(invoiceFileName(doc, 'pdf')).toBe('利用明細書_PI-202610-00001_2026年10月.pdf');
+    expect(invoiceFileName(docOf([booking()]), 'html')).toBe('請求書・利用明細書_PI-202610-00001_2026年10月.html');
+  });
+
+  it('文字列はエスケープする', () => {
+    const doc = docOf([booking({ guest_name: '<script>alert(1)</script>', room_name: 'A&B "x"' })], {
+      recipient: { name: "O'Reilly <b>" }
+    });
+    const html = renderInvoiceHtml(doc);
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).toContain('A&amp;B &quot;x&quot;');
+    expect(html).toContain('O&#39;Reilly &lt;b&gt; 御中');
+  });
+});
+
+describe('カード決済失敗', () => {
+  it('charge_failed は別ラベル・請求はしない', () => {
+    const lines = buildInvoiceLines(
+      [
+        booking({ id: 'f', booking_code: 'P-0010', payment_option: 'online_checkin', payment_method_name: 'カード決済（チェックイン日）', payment_status: 'charge_failed' }),
+        booking({ id: 's', booking_code: 'P-0011', payment_option: 'online_checkin', payment_method_name: 'カード決済（チェックイン日）', payment_status: 'scheduled' })
+      ],
+      settings
+    );
+    const byCode = Object.fromEntries(lines.map((l) => [l.bookingCode, l]));
+    expect(byCode['P-0010'].paymentLabel).toContain('カード決済失敗（要確認）');
+    expect(byCode['P-0010'].billable).toBe(false);
+    expect(byCode['P-0010'].billed).toBe(0);
+    expect(byCode['P-0011'].paymentLabel).not.toContain('要確認');
+    expect(isChargeFailed({ payment_status: 'charge_failed' })).toBe(true);
+    expect(isChargeFailed({ payment_status: 'scheduled' })).toBe(false);
+  });
+});
+
+describe('送信失敗の回数', () => {
+  it('send_error の先頭の印で数える', () => {
+    expect(sendFailureCount(null)).toBe(0);
+    expect(sendFailureCount('古い形式のエラー')).toBe(1);
+    const first = sendFailureMessage(null, '送信先がありません');
+    expect(first).toBe('[送信失敗 1回目] 送信先がありません');
+    expect(sendFailureCount(first)).toBe(1);
+    const second = sendFailureMessage(first, 'HTTP 500');
+    expect(second).toBe('[送信失敗 2回目] HTTP 500');
+    const third = sendFailureMessage(second, '[送信失敗 9回目] 二重の印は消す');
+    expect(third).toBe('[送信失敗 3回目] 二重の印は消す');
+    expect(sendFailureCount(third) >= MAX_INVOICE_SEND_ATTEMPTS).toBe(true);
+  });
+});

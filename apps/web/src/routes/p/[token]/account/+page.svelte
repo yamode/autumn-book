@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先専用ページ: マイページ。予約担当者（予約者）の情報を設定する。
+  // 取引先専用ページ: アカウント → 担当者情報。予約担当者（予約者）の情報を設定する（見出し・タブは ./+layout.svelte）。
   // ここで保存した内容が予約フォームの「予約者」に最初から入り、予約確認などのメールはこのメールアドレスへ届く。
   import { enhance } from '$app/forms';
   import type { PartnerBooker } from '$lib/partner-booking';
@@ -15,18 +15,15 @@
 </script>
 
 <svelte:head>
-  <title>マイページ | {data.portal.facilityName}</title>
+  <title>担当者情報 | アカウント | {data.portal.facilityName}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<main class="mx-auto max-w-3xl px-4 pb-10 pt-6 sm:px-6">
-  <h2 class="text-2xl font-bold">マイページ</h2>
-  <p class="mt-1 text-sm text-stone-500">ログインID: <span class="font-mono text-brand-900">{data.loginId}</span></p>
-
+<section>
   {#if form?.message}
-    <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+    <p class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
   {:else if form?.saved}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">予約担当者の情報を保存しました。</p>
+    <p class="mb-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">予約担当者の情報を保存しました。</p>
   {/if}
 
   <form
@@ -38,7 +35,7 @@
         await update({ reset: false });
       };
     }}
-    class="mt-5 rounded-xl border border-stone-200 bg-white p-5 sm:p-6"
+    class="rounded-xl border border-stone-200 bg-white p-5 sm:p-6"
   >
     <h3 class="text-lg font-bold">予約担当者（予約者）</h3>
     <p class="mt-1 text-sm leading-6 text-stone-600">
@@ -55,7 +52,7 @@
     {/key}
     <button type="submit" disabled={saving} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">{saving ? '保存しています…' : '保存する'}</button>
   </form>
-</main>
+</section>
 
 <style>
   .req {

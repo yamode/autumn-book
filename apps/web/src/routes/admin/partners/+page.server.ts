@@ -6,6 +6,7 @@ import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
 import { countPartnerCredentials, createPartner, listPartners, PARTNER_KIND_LABELS, PartnerStoreError } from '$lib/server/partners/store';
 import { actionFailure, canEditPartners, staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
 import { parsePartnerKind } from '$lib/server/partners/staff-form';
+import { loadBillingSettings, parseBillingSettingsForm, saveBillingSettings } from '$lib/server/partners/invoices';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -18,11 +19,18 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		const scope = await staffPartnerScope(event, 'view');
 		const partners = await listPartners(scope.db, scope.facilityId);
-		const counts = await countPartnerCredentials(scope.db, partners.map((p) => p.id));
+		const [counts, billing] = await Promise.all([
+			countPartnerCredentials(scope.db, partners.map((p) => p.id)),
+			// 請求書の発行元設定（読めなくても一覧は出す）
+			loadBillingSettings(scope.db, scope.facilityId)
+				.then((settings) => ({ settings, error: null as string | null }))
+				.catch((e) => ({ settings: null, error: e instanceof Error ? e.message : String(e) }))
+		]);
 		return {
 			...base,
 			live: true,
 			error: null as string | null,
+			billing,
 			partners: partners.map((p) => ({
 				id: p.id,
 				name: p.name,
@@ -39,13 +47,25 @@ export const load: PageServerLoad = async (event) => {
 	} catch (e) {
 		if (e instanceof StaffScopeError || e instanceof PartnerStoreError) {
 			const live = !(e instanceof StaffScopeError && (e.code === 'not_live' || e.code === 'service_unconfigured'));
-			return { ...base, live, error: e.message, partners: [] };
+			return { ...base, live, error: e.message, partners: [], billing: { settings: null, error: null as string | null } };
 		}
 		throw e;
 	}
 };
 
 export const actions: Actions = {
+	// 請求書の発行元・振込先（施設ごと）。管理者だけ
+	saveBilling: async (event) => {
+		try {
+			const scope = await staffPartnerScope(event, 'edit');
+			const input = parseBillingSettingsForm(await event.request.formData());
+			await saveBillingSettings(scope.db, scope.facilityId, scope.tenantId, input, scope.userId);
+			return { billingSaved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
 	// 名前だけで取引先を作り、詳細（特別レート・アカウント）は編集画面で設定する。
 	create: async (event) => {
 		let id: string;

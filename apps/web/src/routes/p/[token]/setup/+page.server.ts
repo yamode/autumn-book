@@ -25,7 +25,7 @@ export const actions = {
     const password = String(fd.get('password') ?? '');
     const confirm = String(fd.get('password_confirm') ?? '');
     const account = await findAccountBySetupToken(db, partner, setupToken);
-    if (!account) return fail(400, { message: 'このリンクは無効か期限切れです。宿へ再発行をご依頼ください。' });
+    if (!account) return fail(400, { message: 'このリンクは無効か期限切れです。発行した方（貴社のマスタユーザーまたは宿）へ再発行をご依頼ください。' });
     const problem = passwordProblem(password);
     if (problem) return fail(400, { message: problem });
     if (password !== confirm) return fail(400, { message: '確認用のパスワードが一致しません。' });

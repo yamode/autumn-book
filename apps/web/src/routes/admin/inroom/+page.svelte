@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { deserialize, enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
@@ -18,6 +19,56 @@
 
 	// 一覧の行ごとに QR を開くためのトグル（開いた行の id）
 	let openQr = $state<string | null>(null);
+
+	// ご予約の行から公開URLを直接新しいタブで開く。発行済みならそのまま、未発行なら issueQr で発行（取り出し）してから開く。
+	// ポップアップブロックを避けるため、クリックの瞬間に空のタブを開いておき、URL が決まってから移動させる。
+	let openingStay = $state<string | null>(null);
+	async function openStayUrl(s: { stay_id: string; room_code: string; guest_name: string; check_out_date: string; token: string | null }) {
+		if (s.token) {
+			window.open(guestUrl(s.token), '_blank', 'noopener');
+			return;
+		}
+		const w = window.open('', '_blank');
+		openingStay = s.stay_id;
+		try {
+			const fd = new FormData();
+			fd.set('facilityId', data.currentFacility.id);
+			fd.set('stayId', s.stay_id);
+			fd.set('roomCode', s.room_code);
+			fd.set('guestName', s.guest_name);
+			fd.set('checkOutDate', s.check_out_date);
+			const res = await fetch('?/issueQr', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
+			const result = deserialize(await res.text());
+			const token = result.type === 'success' ? (result.data as { qr?: { token?: string } } | undefined)?.qr?.token : undefined;
+			if (!token) throw new Error(result.type === 'failure' ? String((result.data as { message?: string })?.message ?? '') : '');
+			const url = guestUrl(token);
+			if (w) {
+				w.opener = null;
+				w.location.href = url;
+			} else {
+				// 空のタブもポップアップブロックで開けなかった。URL をコピーして知らせる（発行は済んでいる）
+				let copiedUrl = false;
+				try {
+					await navigator.clipboard.writeText(url);
+					copiedUrl = true;
+				} catch {
+					/* クリップボードが使えない環境では URL を表示するだけ */
+				}
+				alert(
+					copiedUrl
+						? `ポップアップがブロックされました。URLをコピーしました。\n${url}`
+						: `ポップアップがブロックされました。次のURLを開いてください。\n${url}`
+				);
+			}
+			// 「発行済み」の表示を更新する
+			await invalidateAll();
+		} catch (e) {
+			w?.close();
+			alert(`公開URLを開けませんでした。${e instanceof Error && e.message ? `（${e.message}）` : ''}`);
+		} finally {
+			openingStay = null;
+		}
+	}
 
 	async function copy(text: string) {
 		try {
@@ -321,7 +372,14 @@
 							{#if s.token}
 								<span class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500">発行済み</span>
 							{/if}
-							<form method="POST" action="?/issueQr" use:enhance class="ml-auto">
+							<!-- 公開URLを直接開く（発行済みはそのまま、未発行はその場で発行してから開く） -->
+							<button
+								type="button"
+								disabled={!data.live || openingStay === s.stay_id}
+								onclick={() => openStayUrl(s)}
+								class="ml-auto rounded-md bg-brand-800 px-3 py-1.5 text-xs text-white hover:bg-brand-700 disabled:opacity-40"
+							>{openingStay === s.stay_id ? '開いています…' : '開く ↗'}</button>
+							<form method="POST" action="?/issueQr" use:enhance>
 								<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 								<input type="hidden" name="stayId" value={s.stay_id} />
 								<input type="hidden" name="roomCode" value={s.room_code} />
