@@ -238,7 +238,7 @@
 				</div>
 				<div>
 					<dt class="text-xs text-stone-400">客室 / プラン</dt>
-					<dd>{b.room_name ?? '—'} ／ {b.plan_name ?? '—'}</dd>
+					<dd>{b.room_name ?? pl?.roomName ?? '—'} ／ {b.plan_name ?? (pl?.planName || '—')}</dd>
 				</div>
 				<div>
 					<dt class="text-xs text-stone-400">ゲスト</dt>
