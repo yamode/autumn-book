@@ -1,7 +1,7 @@
 // 管理画面: 支払方法の一元管理（2026-09-27 ユーザー指示）。
 //   基本     … 支払手段の一覧（現地払いの内訳・オンライン決済の状態）と、早期決済割（段階表・除外期間）の設定
 //   プラン別 … 料金プランごとの支払方法（現地払い／事前決済／どちらも）・定率の予約時決済割引・早期決済割の対象
-//   取引先別 … 取引先ごとの支払方法（後払い／予約時決済／チェックイン日決済）と予約時決済割引
+//   取引先別 … 取引先ごとの支払方法（後払い／予約時決済／チェックイン日決済＋取引先ごとの自由入力）と予約時決済割引
 // 権限: 閲覧は admin / staff。早期決済割と取引先は管理者だけが保存できる（金額・返金に関わるため。キャンセル規定・取引先と同じ）。
 //       プラン別はプラン画面（/admin/plans/[id]）と同じくスタッフも保存できる。
 import { fail, type RequestEvent } from '@sveltejs/kit';
@@ -11,8 +11,8 @@ import {
   normalizePartnerBookingSettings,
   normalizePrepayDiscount,
   PARTNER_PAYMENT_OPTIONS,
-  validatePartnerBookingSettings,
-  type PartnerPaymentOptionId
+  partnerPaymentChoices,
+  validatePartnerBookingSettings
 } from '$lib/partner-booking';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { LIVE, NOT_LIVE, currentFacilityOf, demoPlanContents, denyIfNotStaff, messageOf } from '$lib/server/admin-content-page';
@@ -93,6 +93,8 @@ export const load: PageServerLoad = async (event) => {
           isActive: p.is_active,
           bookingEnabled: p.booking_enabled,
           paymentOptions: p.booking_settings.paymentOptions,
+          // 固定の3種＋その取引先の自由入力の支払方法（自由入力の追加・削除は取引先の画面で）
+          paymentChoices: partnerPaymentChoices(p.booking_settings),
           prepayDiscount: p.booking_settings.prepayDiscount
         }))
       : [],
@@ -174,11 +176,15 @@ export const actions: Actions = {
     try {
       const scope = await staffPartnerScope(event, 'edit');
       const partner = await requireStaffPartner(scope.db, scope.facilityId, partnerId);
-      const paymentOptions = PARTNER_PAYMENT_OPTIONS.map((o) => o.id).filter((id) => fd.get(`pay_${id}`) === 'on') as PartnerPaymentOptionId[];
+      // 自由入力の支払方法もチェックで選べる（定義そのものは取引先の画面で編集。ここでは選べるかどうかだけ）
+      const paymentOptions = partnerPaymentChoices(partner.booking_settings)
+        .map((o) => o.id)
+        .filter((id) => fd.get(`pay_${id}`) === 'on');
       const prepayDiscount = normalizePrepayDiscount({ type: fd.get('discount_type'), value: fd.get('discount_value') });
       if (paymentOptions.includes('online') === false && hasPrepayDiscount(prepayDiscount)) {
         return fail(400, { scope: 'partner', partnerId, error: '予約時決済割引は「オンライン決済（予約時）」を許可したときだけ設定できます。' });
       }
+      // 既存の設定（自由入力の支払方法・特典・受付ルールなど）は残し、支払方法と割引だけ差し替える
       const settings = normalizePartnerBookingSettings({ ...partner.booking_settings, paymentOptions, prepayDiscount });
       const problem = validatePartnerBookingSettings(settings, partner.booking_enabled);
       if (problem) return fail(400, { scope: 'partner', partnerId, error: problem });

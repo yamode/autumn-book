@@ -105,7 +105,33 @@
     prefetchAround(ym, g);
   }
 
-  onMount(() => prefetchAround(ymOf(initial), initial.guests));
+  // ---- 公開期間の料金の幅（1名1泊の最低〜最高）。公開範囲全体を読むので重く、表示後に別で取りに行く ----
+  // 取得中はスケルトン、取れなかった・料金が無いときはカードごと出さない。
+  let priceRange = $state<{ min: number; max: number; from: string; to: string } | null>(null);
+  let priceRangeState = $state<'loading' | 'done' | 'hidden'>('loading');
+  async function loadPriceRange() {
+    try {
+      const res = await fetch(`/p/${token}/calendar/range`, { headers: { accept: 'application/json' } });
+      const j = (await res.json().catch(() => null)) as { min?: number; max?: number; from?: string; to?: string } | null;
+      if (!res.ok || !j || typeof j.min !== 'number' || typeof j.max !== 'number' || !j.from || !j.to) {
+        priceRangeState = 'hidden';
+        return;
+      }
+      priceRange = { min: j.min, max: j.max, from: j.from, to: j.to };
+      priceRangeState = 'done';
+    } catch {
+      priceRangeState = 'hidden';
+    }
+  }
+  const md = (iso: string) => {
+    const [, m, d] = iso.split('-').map(Number);
+    return `${m}月${d}日`;
+  };
+
+  onMount(() => {
+    prefetchAround(ymOf(initial), initial.guests);
+    void loadPriceRange();
+  });
 
   const currentYm = $derived(ymOf(current));
   const canPrev = $derived(ymInBounds(shiftYm(currentYm, -1)));
@@ -219,6 +245,21 @@
 </svelte:head>
 
 <main class="mx-auto max-w-6xl px-4 pb-6 pt-6 sm:px-6">
+  <!-- 公開期間の料金の幅（あとから読み込む。取れなければ出さない） -->
+  {#if priceRangeState !== 'hidden'}
+    <section class="mb-4 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5" aria-live="polite">
+      <p class="text-xs text-stone-500">公開期間の料金（1名1泊・税込・入湯税別）</p>
+      {#if priceRangeState === 'loading' || !priceRange}
+        <div class="mt-1.5 h-7 w-56 max-w-full animate-pulse rounded bg-stone-100" aria-label="読み込み中"></div>
+      {:else}
+        <p class="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+          <span class="text-xl font-bold tabular-nums text-brand-900">{yen(priceRange.min)}{priceRange.max !== priceRange.min ? ` 〜 ${yen(priceRange.max)}` : ''}</span>
+          <span class="text-sm text-stone-500">（{md(priceRange.from)}〜{md(priceRange.to)}）</span>
+        </p>
+      {/if}
+    </section>
+  {/if}
+
   <!-- 条件 -->
   <section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
     <div class="flex flex-wrap items-center justify-between gap-4">

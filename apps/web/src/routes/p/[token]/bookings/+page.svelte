@@ -195,12 +195,15 @@
                 <dt>宿泊日</dt><dd>{fmt(b.checkIn)} 〜 {fmt(b.checkOut)}（{b.nights}泊）</dd>
                 <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
                 <dt>プラン</dt><dd>{displayPlanName(b.planName)}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
+                {#if b.booker}<dt>予約者</dt><dd>{b.booker.name}{b.booker.kana ? `（${b.booker.kana}）` : ''}{b.booker.department ? ` ${b.booker.department}` : ''}{#if b.booker.phone || b.booker.email}<span class="block text-sm text-stone-500">{[b.booker.phone, b.booker.email].filter(Boolean).join(' / ')}</span>{/if}</dd>{/if}
                 <dt>代表者</dt><dd>{b.guestName}{b.guestKana ? `（${b.guestKana}）` : ''}</dd>
                 <dt>電話番号</dt><dd>{b.phone ?? ''}</dd>
                 {#if b.email}<dt>メール</dt><dd>{b.email}</dd>{/if}
                 {#if b.address}<dt>住所</dt><dd>{b.address}</dd>{/if}
                 {#if b.allergies}<dt>アレルギー</dt><dd class="whitespace-pre-wrap">{b.allergies}</dd>{/if}
                 {#if b.arrival}<dt>到着予定</dt><dd>{b.arrival}</dd>{/if}
+                {#if b.transport}<dt>交通手段</dt><dd>{b.transport}</dd>{/if}
+                {#if b.perks.length}<dt>貴社限定特典</dt><dd>{#each b.perks as p}<span class="block"><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-sm text-stone-500">{p.description}</span>{/if}</span>{/each}</dd>{/if}
                 {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
                 {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
                 {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}</dd>{/if}

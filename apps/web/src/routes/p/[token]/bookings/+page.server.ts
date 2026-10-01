@@ -8,6 +8,7 @@ import {
   listPartnerBookings,
   type PaymentResult
 } from '$lib/server/partners/booking';
+import { readBookingExtras, splitExtraOptions } from '$lib/server/partners/booking-extras';
 import { PartnerStoreError } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
@@ -78,8 +79,10 @@ export const load = async (event) => {
       address: [b.detail.guest?.zip_code, b.detail.guest?.address].filter(Boolean).join(' '),
       allergies: b.detail.guest?.allergies ?? '',
       arrival: b.detail.arrival ?? '',
-      // 入力項目の一覧（旧形式の「予約時決済割引」の行は料金の明細へ移すので外す）
-      options: (b.detail.options ?? []).filter((o) => o.label !== PREPAY_DISCOUNT_LABEL),
+      // 予約者（ご担当者）・交通手段・取引先特典（2026-10-01〜の予約だけ。無ければ画面に出さない）
+      ...readBookingExtras(b.detail),
+      // 入力項目の一覧（旧形式の「予約時決済割引」の行は料金の明細へ、予約者・交通手段・特典の行は上の項目へ移すので外す）
+      options: splitExtraOptions(b.detail).filter((o) => o.label !== PREPAY_DISCOUNT_LABEL),
       ...priceOf(b),
       notes: b.detail.notes ?? '',
       paymentMethodName: b.payment_method_name,

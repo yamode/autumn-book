@@ -13,7 +13,14 @@
     type PartnerPricing,
     type PartnerRateRule
   } from '$lib/partner-pricing';
-  import { isStripePaymentOption, PARTNER_PAYMENT_OPTIONS, type PartnerBookingSettings, type PartnerPaymentOptionId } from '$lib/partner-booking';
+  import {
+    CUSTOM_PAYMENT_PREFIX,
+    isStripePaymentOption,
+    MAX_CUSTOM_PAYMENT_OPTIONS,
+    MAX_PARTNER_PERKS,
+    PARTNER_PAYMENT_OPTIONS,
+    type PartnerBookingSettings
+  } from '$lib/partner-booking';
   import type { PageData } from './$types';
 
   type FormResult = {
@@ -26,6 +33,9 @@
     chargeResult?: { status: 'paid' | 'failed' | 'skipped'; message?: string };
     apiKey?: string;
     issued?: { loginId: string; setupUrl: string; emailSent: boolean | null; emailReason: string | null };
+    memorandumSaved?: boolean;
+    documentUploaded?: string;
+    documentDeleted?: boolean;
   };
   let { data, form }: { data: PageData; form?: FormResult } = $props();
 
@@ -57,11 +67,47 @@
   const bookingJson = $derived(
     JSON.stringify({ ...booking, notifyEmails: notifyText.split(/[\s,、]+/).map((e) => e.trim()).filter(Boolean) })
   );
-  function togglePayment(id: PartnerPaymentOptionId) {
+  // 支払方法の並びは 固定の3種 → 自由入力（定義の順）。サーバの normalize と同じ並びにして、未保存の差分が出ないようにする
+  function togglePayment(id: string) {
+    const order = [...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string), ...booking.customPaymentOptions.map((o) => o.id)];
     booking.paymentOptions = booking.paymentOptions.includes(id)
       ? booking.paymentOptions.filter((x) => x !== id)
-      : PARTNER_PAYMENT_OPTIONS.map((o) => o.id).filter((x) => x === id || booking.paymentOptions.includes(x));
+      : order.filter((x) => x === id || booking.paymentOptions.includes(x));
   }
+  // 自由入力の支払方法（最大5）。追加すると選べる状態（チェックオン）にする
+  function addCustomPayment() {
+    if (booking.customPaymentOptions.length >= MAX_CUSTOM_PAYMENT_OPTIONS) return;
+    const id = `${CUSTOM_PAYMENT_PREFIX}${crypto.randomUUID().slice(0, 8)}`;
+    booking.customPaymentOptions = [...booking.customPaymentOptions, { id, label: '', note: '' }];
+    togglePayment(id);
+  }
+  function removeCustomPayment(i: number) {
+    const id = booking.customPaymentOptions[i]?.id;
+    booking.customPaymentOptions = booking.customPaymentOptions.filter((_, k) => k !== i);
+    booking.paymentOptions = booking.paymentOptions.filter((x) => x !== id);
+  }
+  // 取引先特典（最大10）
+  function addPerk() {
+    if (booking.perks.length >= MAX_PARTNER_PERKS) return;
+    booking.perks = [...booking.perks, { id: `perk-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: '', description: '', planCodes: [] }];
+  }
+  function removePerk(i: number) {
+    booking.perks = booking.perks.filter((_, k) => k !== i);
+  }
+  // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
+  const perkPlanOptions = $derived.by(() => {
+    const list = data.planOptions.map((p) => ({ code: p.code, label: p.label }));
+    const known = new Set(list.map((p) => p.code));
+    for (const perk of booking.perks) {
+      for (const code of perk.planCodes) {
+        if (!known.has(code)) {
+          known.add(code);
+          list.push({ code, label: code });
+        }
+      }
+    }
+    return list;
+  });
   function addOption() {
     booking.options = [...booking.options, { id: `o${Date.now().toString(36)}`, label: '', type: 'check', choices: [], required: false }];
   }
@@ -84,7 +130,20 @@
   let justSaved = $state(false);
   let justSavedTimer: ReturnType<typeof setTimeout> | undefined;
   // 画面上部のお知らせは、保存以外の操作（URL再発行・ログインID発行など）の結果だけに使う。
-  let lastSubmit = $state<'save' | 'other'>('other');
+  // 覚書（memo）・覚書ファイル（doc）は、それぞれの欄に結果を出す。
+  let lastSubmit = $state<'save' | 'other' | 'memo' | 'doc'>('other');
+
+  // ---- 覚書（本文） ----
+  // 設定フォームとは別のフォームで保存する。未保存の判定は離脱確認（beforeNavigate）だけ共有する。
+  const normalizeMemo = (t: string) => t.replace(/\r\n/g, '\n').trim();
+  let memoText = $state(untrack(() => data.memorandum.text));
+  let memoSaved = $state(untrack(() => normalizeMemo(data.memorandum.text)));
+  const memoDirty = $derived(normalizeMemo(memoText) !== memoSaved);
+  let memoSaving = $state(false);
+  let memoError = $state('');
+  let memoJustSaved = $state(false);
+  let memoTimer: ReturnType<typeof setTimeout> | undefined;
+  let docUploading = $state(false);
 
   function revertChanges() {
     const snap = JSON.parse(savedSnapshot) as { settings: typeof settings; pricing: PartnerPricing; bookingJson: string };
@@ -100,6 +159,12 @@
   function checkBeforeSave(): string | null {
     if (!settings.name.trim()) return '取引先名を入力してください。';
     if (settings.bookingEnabled && !booking.paymentOptions.length) return '予約を受け付けるときは、支払方法を1つ以上選んでください。';
+    for (const [i, o] of booking.customPaymentOptions.entries()) {
+      if (!o.label.trim()) return `自由入力の支払方法${i + 1}: 名前を入れてください（不要なら削除）。`;
+    }
+    for (const [i, perk] of booking.perks.entries()) {
+      if (!perk.title.trim()) return `取引先特典${i + 1}: タイトルを入れてください（不要なら削除）。`;
+    }
     for (const [i, o] of booking.options.entries()) {
       if (!o.label.trim()) return `予約オプション${i + 1}: 項目名を入れてください（不要なら削除）。`;
       if (o.type === 'select' && o.choices.length < 2) return `予約オプション${i + 1}「${o.label}」: 選択肢を2つ以上入れてください。`;
@@ -114,7 +179,7 @@
 
   // 未保存のままページを離れるときは確かめる（プレビューの日付変更など同じページ内の移動は除く）。
   beforeNavigate((nav) => {
-    if (!dirty || saving) return;
+    if (!(dirty || memoDirty) || saving || memoSaving) return;
     if (nav.to?.url.pathname === nav.from?.url.pathname) return;
     if (nav.type === 'leave') {
       nav.cancel();
@@ -280,6 +345,153 @@
       </div>
       {#if !data.partner.isActive}
         <p class="mt-2 text-xs text-amber-700">現在「公開停止」です。取引先はログインできません（下の設定で公開にしてください）。</p>
+      {/if}
+    </div>
+
+    <!-- 覚書（本文・ファイル） -->
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+      <h2 class="text-sm font-bold text-stone-700">覚書</h2>
+      <p class="mt-1 text-xs leading-5 text-stone-500">
+        取引条件のまとめ（料金・支払条件・特典・連絡先など）です。<strong class="font-medium text-stone-700">取引先ページの「覚書」にそのまま表示されます</strong>（社内向けのメモは「公開設定」の社内メモへ）。
+      </p>
+      {#if data.memorandum.error}
+        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">覚書を読み込めませんでした: {data.memorandum.error}</p>
+      {/if}
+      <form
+        method="POST"
+        action={`?/saveMemorandum`}
+        use:enhance={() => {
+          lastSubmit = 'memo';
+          const submitted = normalizeMemo(memoText);
+          memoSaving = true;
+          memoError = '';
+          memoJustSaved = false;
+          return async ({ result, update }) => {
+            memoSaving = false;
+            if (result.type === 'success') {
+              memoSaved = submitted;
+              memoJustSaved = true;
+              clearTimeout(memoTimer);
+              memoTimer = setTimeout(() => (memoJustSaved = false), 4000);
+            } else if (result.type === 'failure') {
+              memoError = String((result.data as { message?: string } | undefined)?.message ?? '保存できませんでした。');
+            } else if (result.type === 'error') {
+              memoError = '通信状況を確認して、もう一度お試しください。';
+            }
+            await update({ reset: false });
+          };
+        }}
+        class="mt-3"
+      >
+        <textarea
+          name="memorandum"
+          bind:value={memoText}
+          rows="8"
+          maxlength={data.memorandum.maxLength}
+          readonly={!canEdit}
+          placeholder={canEdit ? '例: 特別レートは正規料金の10%引き／お支払いは月末締め翌月末銀行振込／チェックイン時に館内利用券1,000円分をお渡し' : 'まだ覚書はありません。'}
+          class={`${inputClass} leading-6 read-only:bg-stone-50`}
+        ></textarea>
+        <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
+          <span class="min-w-0 flex-1">
+            {#if memoSaving}<span class="text-stone-500">保存しています…</span>
+            {:else if memoError}<span class="font-medium text-rose-700">保存できませんでした: {memoError}</span>
+            {:else if memoJustSaved}<span class="font-medium text-emerald-700">✓ 保存しました。取引先ページにもすぐ反映されます。</span>
+            {:else if memoDirty}<span class="inline-flex items-center gap-1.5 font-medium"><span class="h-2 w-2 rounded-full bg-amber-500"></span>保存していない変更があります</span>
+            {:else}<span class="text-stone-500">最終更新 {dt(data.memorandum.updatedAt)}</span>{/if}
+          </span>
+          {#if canEdit}
+            {#if memoDirty && !memoSaving}
+              <button type="button" class={smallBtn} onclick={() => ((memoText = memoSaved), (memoError = ''))}>元に戻す</button>
+            {/if}
+            <button
+              type="submit"
+              disabled={memoSaving || !memoDirty}
+              class="rounded-lg bg-brand-800 px-4 py-1.5 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
+            >{memoSaving ? '保存中…' : '覚書を保存'}</button>
+          {/if}
+        </div>
+      </form>
+
+      <h3 class="mt-5 text-xs font-bold text-stone-600">ファイル</h3>
+      <p class="mt-0.5 text-[11px] text-stone-500">契約書・見積書などを宿と取引先の双方で保存できます（取引先ページの「覚書」にも出ます）。1ファイル 20MB まで。</p>
+      {#if lastSubmit === 'doc' && form?.message}
+        <p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+      {:else if lastSubmit === 'doc' && form?.documentUploaded}
+        <p class="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">「{form.documentUploaded}」を保存しました。</p>
+      {:else if lastSubmit === 'doc' && form?.documentDeleted}
+        <p class="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ファイルを削除しました。</p>
+      {/if}
+      {#if data.documentsError}
+        <p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">ファイルの一覧を読み込めませんでした: {data.documentsError}</p>
+      {:else if data.documents.length === 0}
+        <p class="mt-2 text-sm text-stone-500">まだファイルはありません。</p>
+      {:else}
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="text-left text-xs text-stone-500">
+              <tr><th class="py-1.5 pr-3 font-medium">ファイル</th><th class="pr-3 text-right font-medium">サイズ</th><th class="pr-3 font-medium">保存者</th><th class="pr-3 font-medium">日時</th><th></th></tr>
+            </thead>
+            <tbody>
+              {#each data.documents as d (d.id)}
+                <tr class="border-t border-stone-100 align-top">
+                  <td class="py-2 pr-3">
+                    <a href={`/admin/partners/${data.partner.id}/documents/${d.id}`} target="_blank" rel="noopener" class="break-all text-brand-800 hover:underline">{d.fileName}</a>
+                    {#if d.note}<div class="text-[11px] text-stone-500">{d.note}</div>{/if}
+                  </td>
+                  <td class="py-2 pr-3 text-right text-xs tabular-nums whitespace-nowrap">{d.size}</td>
+                  <td class="py-2 pr-3 text-xs">
+                    <span class={`mr-1 rounded px-1.5 py-0.5 text-[10px] ${d.byKind === 'partner' ? 'bg-amber-50 text-amber-800' : 'bg-stone-100 text-stone-600'}`}>{d.byKind === 'partner' ? '取引先' : '宿'}</span>
+                    <span class={d.byKind === 'partner' ? 'font-mono' : ''}>{d.byLabel}</span>
+                  </td>
+                  <td class="py-2 pr-3 text-xs whitespace-nowrap">{dt(d.createdAt)}</td>
+                  <td class="py-2 text-right">
+                    {#if canEdit}
+                      <form
+                        method="POST"
+                        action={`?/deleteDocument`}
+                        use:enhance={async ({ cancel }) => {
+                          lastSubmit = 'doc';
+                          if (!(await askConfirm({ message: `「${d.fileName}」を削除します。取引先ページからも見られなくなります。`, confirmLabel: '削除する' }))) cancel();
+                          return async ({ update }) => update({ reset: false });
+                        }}
+                      >
+                        <input type="hidden" name="document_id" value={d.id} />
+                        <button type="submit" class={`${smallBtn} hover:text-rose-700`}>削除</button>
+                      </form>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+      {#if canEdit}
+        <form
+          method="POST"
+          action={`?/uploadDocument`}
+          enctype="multipart/form-data"
+          use:enhance={() => {
+            lastSubmit = 'doc';
+            docUploading = true;
+            return async ({ update }) => {
+              docUploading = false;
+              await update();
+            };
+          }}
+          class="mt-3 grid gap-2 border-t border-stone-200 pt-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+        >
+          <label class="block">
+            <span class="mb-0.5 block text-xs text-stone-500">ファイル</span>
+            <input type="file" name="file" required accept={data.documentAccept} class="block w-full text-xs file:mr-2 file:rounded-md file:border file:border-stone-300 file:bg-white file:px-3 file:py-1 file:text-xs" />
+          </label>
+          <label class="block">
+            <span class="mb-0.5 block text-xs text-stone-500">メモ（任意）</span>
+            <input name="note" maxlength="200" placeholder="例: 2026年度 契約書" class={inputClass} autocomplete="off" />
+          </label>
+          <button type="submit" disabled={docUploading} class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{docUploading ? '保存中…' : 'ファイルを保存'}</button>
+        </form>
       {/if}
     </div>
 
@@ -490,7 +702,7 @@
           <button type="button" onclick={addRule} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ ルールを追加</button>
         </div>
 
-        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label class="block">
             <span class="mb-0.5 block text-xs text-stone-500">端数の単位</span>
             <select bind:value={pricing.roundingUnit} class={inputClass}>
@@ -506,7 +718,7 @@
             </select>
           </label>
           <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">下限の単価（1名・円、空欄 = なし）</span>
+            <span class="mb-0.5 block text-xs text-stone-500">最低料金（1名1泊・円、空欄 = なし）</span>
             <input
               type="number"
               min="0"
@@ -515,7 +727,21 @@
               class={inputClass}
             />
           </label>
+          <label class="block">
+            <span class="mb-0.5 block text-xs text-stone-500">最高料金（1名1泊・円、空欄 = なし）</span>
+            <input
+              type="number"
+              min="0"
+              value={pricing.maxPricePerPerson ?? ''}
+              oninput={(e) => (pricing.maxPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+              class={inputClass}
+            />
+          </label>
         </div>
+        <p class="mt-1 text-[11px] text-stone-500">プラン料金がこの範囲を外れるときは、最低・最高料金で上書きして取引先に見せます（端数処理の後）。</p>
+        {#if pricing.minPricePerPerson != null && pricing.maxPricePerPerson != null && pricing.minPricePerPerson > pricing.maxPricePerPerson}
+          <p class="mt-1 text-xs text-rose-700">最低料金が最高料金を上回っています。</p>
+        {/if}
       </fieldset>
 
       <!-- 予約受付 -->
@@ -553,6 +779,28 @@
                   </span>
                 </label>
               {/each}
+            </div>
+            <!-- 自由入力の支払方法（取引先ごとの契約に合わせた名前。決済は伴わない） -->
+            <div class="mt-2 grid gap-1.5 rounded-md border border-stone-200 bg-white p-2.5">
+              <p class="text-xs font-medium">自由入力の支払方法 <span class="font-normal text-stone-500">（最大{MAX_CUSTOM_PAYMENT_OPTIONS}つ）</span></p>
+              {#each booking.customPaymentOptions as o, i (o.id)}
+                <div class="grid gap-1.5 sm:grid-cols-[auto_1fr_1.5fr_auto] sm:items-center">
+                  <input
+                    type="checkbox"
+                    checked={booking.paymentOptions.includes(o.id)}
+                    onchange={() => togglePayment(o.id)}
+                    aria-label="取引先が選べるようにする"
+                    title="取引先が選べるようにする"
+                  />
+                  <input bind:value={o.label} maxlength="40" required placeholder="名前（例: 現地精算（法人カード））" class={inputClass} />
+                  <input bind:value={o.note} maxlength="200" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass} />
+                  <button type="button" class={smallBtn} onclick={() => removeCustomPayment(i)}>削除</button>
+                </div>
+              {/each}
+              {#if booking.customPaymentOptions.length < MAX_CUSTOM_PAYMENT_OPTIONS}
+                <button type="button" onclick={addCustomPayment} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 支払方法を追加</button>
+              {/if}
+              <p class="text-[11px] text-stone-500">決済は伴いません。予約はその場で確定し、名前が PMS の支払方法・備考に入ります。チェックを外すと定義は残したまま選べなくなります。</p>
             </div>
             <p class="mt-1 text-[11px] text-stone-500">複数選んだときは、取引先が予約時に選びます。選ばれた支払方法は PMS の予約・備考に入ります。</p>
             {#if booking.paymentOptions.includes('online')}
@@ -648,6 +896,39 @@
             <button type="button" onclick={addOption} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 項目を追加</button>
           </div>
           <p class="mt-1 text-[11px] text-stone-500">宿泊者名・人数・電話・メール・住所・食物アレルギー・到着予定・備考は、項目を足さなくても毎回聞きます。</p>
+        </div>
+
+        <div>
+          <p class="mb-1 text-xs text-stone-500">取引先特典 <span>（最大{MAX_PARTNER_PERKS}件）</span></p>
+          <p class="mb-2 text-[11px] leading-5 text-stone-500">
+            この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
+          </p>
+          <div class="grid gap-2">
+            {#each booking.perks as perk, i (perk.id)}
+              <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
+                <div class="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <input bind:value={perk.title} maxlength="60" required placeholder="タイトル（例: ウェルカムドリンク）" class={inputClass} />
+                  <button type="button" class={smallBtn} onclick={() => removePerk(i)}>削除</button>
+                </div>
+                <textarea bind:value={perk.description} rows="2" maxlength="500" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass}></textarea>
+                <div>
+                  <p class="mb-1 text-[11px] text-stone-500">対象プラン（未選択 = すべてのプラン）</p>
+                  <div class="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+                    {#each perkPlanOptions as plan (plan.code)}
+                      <button type="button" class={chip(perk.planCodes.includes(plan.code))} onclick={() => (perk.planCodes = toggle(perk.planCodes, plan.code))}>
+                        <span class="font-mono">{plan.code}</span> {plan.label}
+                      </button>
+                    {:else}
+                      <span class="text-[11px] text-stone-400">選べるプランがありません（プレビューに出るプランから選べます）。</span>
+                    {/each}
+                  </div>
+                </div>
+              </div>
+            {/each}
+            {#if booking.perks.length < MAX_PARTNER_PERKS}
+              <button type="button" onclick={addPerk} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 特典を追加</button>
+            {/if}
+          </div>
         </div>
 
         <div class="grid gap-3 sm:grid-cols-2">
@@ -805,8 +1086,15 @@
                 <tr class="border-t border-stone-100 align-top">
                   <td class="py-2 pr-3 font-mono text-xs">{b.code}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
-                  <td class="py-2 pr-3">{b.guestName}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div></td>
-                  <td class="py-2 pr-3 text-xs">{b.roomName} × {b.roomCount}室・{b.adultTotal}名<div class="text-stone-500">{b.planName}</div></td>
+                  <td class="py-2 pr-3">
+                    {b.guestName}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
+                    {#if b.transport}<div class="text-[11px] text-stone-500">交通: {b.transport}</div>{/if}
+                    {#if b.booker}<div class="text-[11px] text-stone-500">予約者: {b.booker}</div>{/if}
+                  </td>
+                  <td class="py-2 pr-3 text-xs">
+                    {b.roomName} × {b.roomCount}室・{b.adultTotal}名<div class="text-stone-500">{b.planName}</div>
+                    {#if b.perks.length}<div class="text-[11px] text-amber-800">取引先特典: {b.perks.join('／')}</div>{/if}
+                  </td>
                   <td class="py-2 pr-3 text-right tabular-nums">{yen(b.total)}円</td>
                   <td class="py-2 pr-3 text-xs">
                     {#if b.status === 'pending_payment'}<span class="text-amber-700">支払待ち（仮押さえ）</span>

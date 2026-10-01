@@ -2,6 +2,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildPartnerDays,
+  clampPartnerPrice,
+  partnerPriceRange,
   decidePartnerPrice,
   isRetiredPlanName,
   DEFAULT_PARTNER_PRICING,
@@ -9,6 +11,7 @@ import {
   validatePartnerPricing,
   type PartnerPricing,
   type PartnerRateRule,
+  type PartnerRateDay,
   type PartnerSourceDay
 } from './partner-pricing';
 
@@ -204,5 +207,68 @@ describe('buildPartnerDays', () => {
     const out = buildPartnerDays(src, {}, { pricing: p, rooms, showInventory: false, includeAdvance: true });
     expect(out[0].rooms[0].plans.map((p) => [p.planCode, p.planName])).toEqual([['a000', '基本■2食■スタンダード(+17050円)']]);
     expect(isRetiredPlanName('基本■2食■スタンダード(+17050円)')).toBe(false);
+  });
+});
+
+// ---- 2026-10-01: 最高料金（maxPricePerPerson）・料金の幅 ----
+
+describe('最低・最高料金', () => {
+  it('normalize: 正の数だけ残し（四捨五入）、空・0・不正は null', () => {
+    expect(normalizePartnerPricing({ maxPricePerPerson: 30000.4 }).maxPricePerPerson).toBe(30000);
+    expect(normalizePartnerPricing({ maxPricePerPerson: '' }).maxPricePerPerson).toBeNull();
+    expect(normalizePartnerPricing({ maxPricePerPerson: 0 }).maxPricePerPerson).toBeNull();
+    expect(normalizePartnerPricing({ maxPricePerPerson: 'abc' }).maxPricePerPerson).toBeNull();
+    expect(normalizePartnerPricing({}).maxPricePerPerson).toBeNull();
+  });
+
+  it('clampPartnerPrice: 上限・下限・両方', () => {
+    expect(clampPartnerPrice(35000, { minPricePerPerson: null, maxPricePerPerson: 30000 })).toBe(30000);
+    expect(clampPartnerPrice(8000, { minPricePerPerson: 10000, maxPricePerPerson: null })).toBe(10000);
+    expect(clampPartnerPrice(20000, { minPricePerPerson: 10000, maxPricePerPerson: 30000 })).toBe(20000);
+    expect(clampPartnerPrice(5000, { minPricePerPerson: 10000, maxPricePerPerson: 30000 })).toBe(10000);
+    expect(clampPartnerPrice(40000, { minPricePerPerson: 10000, maxPricePerPerson: 30000 })).toBe(30000);
+    expect(clampPartnerPrice(12345, { minPricePerPerson: null, maxPricePerPerson: null })).toBe(12345);
+  });
+
+  it('validate: 最低料金が最高料金を上回るとエラー（同額は可）', () => {
+    expect(validatePartnerPricing(pricing({ minPricePerPerson: 20000, maxPricePerPerson: 10000 }))).toContain('最低料金が最高料金');
+    expect(validatePartnerPricing(pricing({ minPricePerPerson: 10000, maxPricePerPerson: 10000 }))).toBeNull();
+  });
+
+  it('decidePartnerPrice: 端数処理の後に上限で頭打ちにする', () => {
+    const d = decidePartnerPrice(pricing({ rules: [rule({ id: 'p', value: 10 })], maxPricePerPerson: 25_000 }), target, 23_650);
+    expect(d).toEqual({ hidden: false, price: 25_000, ruleId: 'p' }); // 26,015 → 26,000 → 上限 25,000
+    const under = decidePartnerPrice(pricing({ rules: [rule({ id: 'p', value: 0 })], maxPricePerPerson: 25_000 }), target, 23_650);
+    expect(under).toEqual({ hidden: false, price: 23_600, ruleId: 'p' });
+  });
+});
+
+describe('partnerPriceRange', () => {
+  const day = (date: string, closed: boolean, prices: Record<string, number>[]): PartnerRateDay => ({
+    date,
+    closed,
+    remainingRooms: null,
+    rooms: [
+      {
+        roomCode: '101',
+        roomName: '和室',
+        remainingRooms: null,
+        plans: prices.map((p, i) => ({ planCode: `a00${i}`, planName: 'プラン', mealType: '2食', advance: false, pricesPerPerson: p }))
+      }
+    ]
+  });
+
+  it('休館日を除いて 1名1泊 の最低・最高を出す', () => {
+    const r = partnerPriceRange([
+      day('2026-10-01', false, [{ '1': 30000, '2': 22000 }]),
+      day('2026-10-02', true, [{ '2': 5000 }]),
+      day('2026-10-03', false, [{ '2': 18000 }, { '3': 0 }])
+    ]);
+    expect(r).toEqual({ min: 18000, max: 30000 });
+  });
+
+  it('出せる料金が無ければ null', () => {
+    expect(partnerPriceRange([])).toBeNull();
+    expect(partnerPriceRange([day('2026-10-02', true, [{ '2': 5000 }])])).toBeNull();
   });
 });

@@ -25,9 +25,82 @@ export const PARTNER_PAYMENT_OPTIONS: { id: PartnerPaymentOptionId; label: strin
   { id: 'online', label: 'オンライン決済（予約時）', note: '予約時にクレジットカードでお支払い（Stripe）' },
   { id: 'online_checkin', label: 'オンライン決済（チェックイン日）', note: '予約時にクレジットカードを登録し、チェックイン日に自動でお支払い（Stripe）' }
 ];
-export const paymentOptionLabel = (id: string) => PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ?? id;
+export const isBuiltinPaymentOption = (id: string): id is PartnerPaymentOptionId => PARTNER_PAYMENT_OPTIONS.some((o) => o.id === id);
+// 支払方法の表示名。自由入力の支払方法（customPaymentOptions）は設定を渡すと名前を引ける。
+export const paymentOptionLabel = (id: string, s?: Pick<PartnerBookingSettings, 'customPaymentOptions'> | null) =>
+  PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ?? s?.customPaymentOptions.find((o) => o.id === id)?.label ?? id;
 // Stripe を使う支払方法
 export const isStripePaymentOption = (id: string) => id === 'online' || id === 'online_checkin';
+
+// 自由入力の支払方法（2026-10-01 指示）。例: 「現地精算（法人カード）」「請求書払い（20日締め翌月10日）」。
+// 決済は伴わず、後払い（invoice_monthly）と同じく予約はその場で確定し、名前が PMS の支払方法・備考に入る。
+// id は 'custom_' で始める（PMS の電文 payment.option にもそのまま載るが、PMS は入金行を立てない）。
+export type PartnerCustomPaymentOption = { id: string; label: string; note: string };
+export const CUSTOM_PAYMENT_PREFIX = 'custom_';
+export const MAX_CUSTOM_PAYMENT_OPTIONS = 5;
+export const isCustomPaymentOption = (id: string) => id.startsWith(CUSTOM_PAYMENT_PREFIX);
+
+// 取引先の画面に出す支払方法の一覧（固定の3種＋自由入力。並びは固定 → 自由入力）。
+export function partnerPaymentChoices(s: Pick<PartnerBookingSettings, 'customPaymentOptions'>): { id: string; label: string; note: string }[] {
+  return [...PARTNER_PAYMENT_OPTIONS, ...s.customPaymentOptions];
+}
+
+// ---- 取引先特典（2026-10-01 指示: 取引先専用ページから予約したときだけ付く特典） ----
+// planCodes が空なら全プラン。プランを絞ると「取引先専用プラン」として見せられる。
+// 特典は予約の要望（PMS の「事前質問・要望」）・確認メールに「取引先特典」として載り、宿が当日提供する。
+export type PartnerPerk = { id: string; title: string; description: string; planCodes: string[] };
+export const MAX_PARTNER_PERKS = 10;
+export const perksForPlan = (perks: PartnerPerk[], planCode: string | null | undefined) =>
+  perks.filter((p) => !p.planCodes.length || (!!planCode && p.planCodes.includes(planCode)));
+// 予約の要望・メールに載せる1行（例: 「ウェルカムドリンク／館内利用券 1,000円」）
+export const describePerks = (perks: PartnerPerk[]) => perks.map((p) => p.title).join('／');
+
+// ---- 予約者（取引先の予約担当者。2026-10-01 指示） ----
+// マイページ（rms_partner_accounts.booker_profile）で設定し、予約フォームの「予約者」に既定で出す。
+// 予約確認・取消・決済に関するメールは宿泊者ではなく予約者へ送る（宿泊者のメールには何も送らない）。
+export type PartnerBooker = { name: string; kana: string; department: string; phone: string; email: string };
+export const EMPTY_BOOKER: PartnerBooker = { name: '', kana: '', department: '', phone: '', email: '' };
+
+export function normalizeBooker(raw: unknown): PartnerBooker {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const s = (k: string, max: number) => String(src[k] ?? '').trim().slice(0, max);
+  return { name: s('name', 60), kana: s('kana', 60), department: s('department', 60), phone: s('phone', 20), email: s('email', 254) };
+}
+
+// 予約時の予約者の検証（氏名・メール必須。メールは確認メールの宛先）。
+export function validateBooker(b: PartnerBooker): string | null {
+  if (!b.name) return '予約者（ご担当者）のお名前を入力してください。';
+  if (!b.email) return '予約者（ご担当者）のメールアドレスを入力してください。予約確認メールの宛先になります。';
+  if (!EMAIL_RE.test(b.email)) return '予約者のメールアドレスの形式が正しくありません。';
+  if (b.phone && !/^[0-9+\-() ]{8,20}$/.test(b.phone)) return '予約者の電話番号を正しく入力してください。';
+  return null;
+}
+
+// 予約の要望（PMS）・メールに載せる1行（例: 「山田 太郎（総務部）03-1234-5678 / yamada@example.com」）
+export function describeBooker(b: PartnerBooker): string {
+  const head = `${b.name}${b.department ? `（${b.department}）` : ''}`;
+  return [head, b.phone, b.email].filter(Boolean).join(' / ');
+}
+
+// ---- 交通手段（宿泊者情報。2026-10-01 指示: JR・車・その他（自由入力）から選ぶ） ----
+export type PartnerTransportId = 'jr' | 'car' | 'other';
+export const PARTNER_TRANSPORT_OPTIONS: { id: PartnerTransportId; label: string }[] = [
+  { id: 'jr', label: 'JR' },
+  { id: 'car', label: '車' },
+  { id: 'other', label: 'その他' }
+];
+
+// 交通手段の入力を表示用の文字列にする（未選択は ''。その他は自由入力があれば「その他（○○）」）。
+export function resolveTransport(id: string, other: string): { ok: true; value: string } | { ok: false; message: string } {
+  const v = String(id ?? '').trim();
+  if (!v) return { ok: true, value: '' };
+  const opt = PARTNER_TRANSPORT_OPTIONS.find((o) => o.id === v);
+  if (!opt) return { ok: false, message: '交通手段の選択肢が正しくありません。' };
+  if (opt.id !== 'other') return { ok: true, value: opt.label };
+  const text = String(other ?? '').trim().slice(0, 60);
+  if (!text) return { ok: false, message: '交通手段（その他）の内容を入力してください。' };
+  return { ok: true, value: `その他（${text}）` };
+}
 
 // 予約時決済の割引（取引先ごと）。泊ごとの1名単価に当てるので、PMS の請求額とも一致する。
 //   percent … 単価の N% 引き（1円未満四捨五入）
@@ -60,8 +133,12 @@ export function describePrepayDiscount(d: PrepayDiscount): string {
 }
 
 export type PartnerBookingSettings = {
-  // 許可する支払方法（1つ以上）。
-  paymentOptions: PartnerPaymentOptionId[];
+  // 許可する支払方法（1つ以上）。固定の3種（PartnerPaymentOptionId）か自由入力（customPaymentOptions の id）。
+  paymentOptions: string[];
+  // 自由入力の支払方法の定義（最大5つ）。選べるかどうかは paymentOptions に id を入れて決める。
+  customPaymentOptions: PartnerCustomPaymentOption[];
+  // 取引先特典（最大10）。
+  perks: PartnerPerk[];
   // 予約時決済（online）を選んだときの割引。
   prepayDiscount: PrepayDiscount;
   // 受付締切: 宿泊日の leadDays 日前の cutoffHour 時（JST）まで。0日前 = 当日。
@@ -83,6 +160,8 @@ export type PartnerBookingSettings = {
 
 export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   paymentOptions: ['invoice_monthly'],
+  customPaymentOptions: [],
+  perks: [],
   prepayDiscount: { type: 'none', value: 0 },
   leadDays: 1,
   cutoffHour: 18,
@@ -128,12 +207,39 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
     : [];
   const cancelDays =
     src.cancelDays === null || src.cancelDays === '' ? null : src.cancelDays === undefined ? d.cancelDays : clampInt(src.cancelDays, 0, 90, 1);
-  const payIds = PARTNER_PAYMENT_OPTIONS.map((o) => o.id);
+  const customRaw = Array.isArray(src.customPaymentOptions) ? src.customPaymentOptions : [];
+  const usedCustomIds = new Set<string>();
+  const customPaymentOptions: PartnerCustomPaymentOption[] = customRaw
+    .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
+    .map((o, i) => {
+      let id = String(o.id ?? '').trim();
+      if (!/^custom_[a-z0-9_-]{1,40}$/i.test(id)) id = `${CUSTOM_PAYMENT_PREFIX}${i + 1}`;
+      while (usedCustomIds.has(id)) id = `${id}_`;
+      usedCustomIds.add(id);
+      return { id, label: String(o.label ?? '').trim().slice(0, 40), note: String(o.note ?? '').trim().slice(0, 200) };
+    })
+    .filter((o) => o.label)
+    .slice(0, MAX_CUSTOM_PAYMENT_OPTIONS);
+  // 並びは固定の3種 → 自由入力（定義の順）。定義に無い id（削除された自由入力など）は落とす。
+  const payIds = [...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string), ...customPaymentOptions.map((o) => o.id)];
   const paymentOptions = Array.isArray(src.paymentOptions)
     ? payIds.filter((id) => (src.paymentOptions as unknown[]).includes(id))
     : [...d.paymentOptions];
+  const perksRaw = Array.isArray(src.perks) ? src.perks : [];
+  const perks: PartnerPerk[] = perksRaw
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
+    .map((p, i) => ({
+      id: String(p.id ?? '').trim().slice(0, 40) || `perk-${i + 1}`,
+      title: String(p.title ?? '').trim().slice(0, 60),
+      description: String(p.description ?? '').trim().slice(0, 500),
+      planCodes: Array.isArray(p.planCodes) ? [...new Set(p.planCodes.map((c) => String(c ?? '').trim()).filter(Boolean))].slice(0, 50) : []
+    }))
+    .filter((p) => p.title)
+    .slice(0, MAX_PARTNER_PERKS);
   return {
     paymentOptions,
+    customPaymentOptions,
+    perks,
     prepayDiscount: normalizePrepayDiscount(src.prepayDiscount),
     leadDays: clampInt(src.leadDays, 0, 90, d.leadDays),
     cutoffHour: clampInt(src.cutoffHour, 0, 23, d.cutoffHour),

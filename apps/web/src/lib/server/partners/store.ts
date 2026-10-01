@@ -11,8 +11,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
-import { normalizePartnerBookingSettings, type PartnerBookingSettings } from '$lib/partner-booking';
+import { normalizeBooker, normalizePartnerBookingSettings, validateBooker, type PartnerBooker, type PartnerBookingSettings } from '$lib/partner-booking';
 import { partnerServiceClient } from './admin-client';
+// 循環 import（memorandum → store）だが、どちらも呼び出し時にしか参照しないので問題ない
+import { removeAllPartnerDocumentFiles } from './memorandum';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
 
 export type PartnerKind = 'agent' | 'corporate' | 'other';
@@ -266,6 +268,8 @@ export async function regeneratePartnerUrl(db: SupabaseClient, partner: PartnerR
 }
 
 export async function deletePartner(db: SupabaseClient, partner: PartnerRow): Promise<void> {
+  // 覚書ファイルの実体（Storage）を先に消す。台帳は FK cascade で消える
+  await removeAllPartnerDocumentFiles(db, partner.id);
   const { error } = await db.from('rms_partners').delete().eq('id', partner.id).eq('facility_id', partner.facility_id);
   if (error) raise(error, '取引先を削除できませんでした。');
 }
@@ -657,3 +661,36 @@ export async function findPartnerByApiKey(
   return { partner, apiKeyId: key.id };
 }
 
+
+// ---- 予約担当者のプロフィール（マイページ。2026-10-01 追加・autumn-shared 20261001074722） ----
+
+// ログイン中のアカウント（セッションで確かめた id）のプロフィール。partner_id でも絞り、別の取引先のアカウントは読まない。
+// 未設定のときは、発行時に入れた表示名・メールを初期値にする。
+export async function getBookerProfile(db: SupabaseClient, partnerId: string, accountId: string): Promise<PartnerBooker> {
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select('display_name, email, booker_profile')
+    .eq('id', accountId)
+    .eq('partner_id', partnerId)
+    .maybeSingle();
+  if (error) raise(error, '担当者情報を読み込めませんでした。');
+  const profile = normalizeBooker(data?.booker_profile);
+  return {
+    ...profile,
+    name: profile.name || String(data?.display_name ?? '').trim(),
+    email: profile.email || String(data?.email ?? '').trim()
+  };
+}
+
+export async function saveBookerProfile(db: SupabaseClient, partnerId: string, accountId: string, input: PartnerBooker): Promise<PartnerBooker> {
+  const profile = normalizeBooker(input);
+  const problem = validateBooker(profile);
+  if (problem) throw new PartnerStoreError(problem);
+  const { error } = await db
+    .from('rms_partner_accounts')
+    .update({ booker_profile: profile })
+    .eq('id', accountId)
+    .eq('partner_id', partnerId);
+  if (error) raise(error, '担当者情報を保存できませんでした。');
+  return profile;
+}

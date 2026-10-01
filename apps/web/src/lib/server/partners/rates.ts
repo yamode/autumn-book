@@ -10,6 +10,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildPartnerDays,
   isRetiredPlanName,
+  partnerPriceRange,
   type PartnerRateDay,
   type PartnerSourceDay,
   type PartnerSourceInventory
@@ -55,7 +56,8 @@ type PartnerBase = {
   rooms: { roomCode: string; name: string }[];
 };
 const BASE_TTL_MS = 3 * 60 * 1000;
-const BASE_MAX_ENTRIES = 24;
+// 料金の幅（loadPartnerPriceRange）が公開期間を31日ずつ最大24本読むので、カレンダー本体の分を押し出さない程度に持つ
+const BASE_MAX_ENTRIES = 64;
 const baseCache = new Map<string, { at: number; value: Promise<PartnerBase> }>();
 
 function loadPartnerBase(db: SupabaseClient, facilityId: string, range: { from: string; to: string }): Promise<PartnerBase> {
@@ -111,4 +113,77 @@ export async function loadPartnerRates(
     }
   }
   return { days, rooms, planOptions: [...planMap.values()] };
+}
+
+// ---------------------------------------------------------------------------
+// 公開期間の料金の幅（料金カレンダー上部のカード。2026-10-01 追加）
+// ---------------------------------------------------------------------------
+
+// 公開範囲（今日〜max_days_ahead・公開終了日。clampPartnerRange と同じ規則）を、1回に取れる日数（31日）ずつに分ける。
+export function partnerRangeChunks(
+  partner: Pick<PartnerRow, 'max_days_ahead' | 'valid_until'>,
+  today = todayJst()
+): { from: string; to: string }[] {
+  const chunks: { from: string; to: string }[] = [];
+  let from = today;
+  // 上限は max_days_ahead の範囲（最長でも1年ぶん程度）。念のため回数も抑える
+  for (let i = 0; i < 40; i += 1) {
+    const r = clampPartnerRange(partner, from, addDaysIso(from, PARTNER_MAX_RANGE_DAYS - 1), today);
+    if (!r) break;
+    chunks.push({ from: r.from, to: r.to });
+    if (r.to >= r.latest) break;
+    from = addDaysIso(r.to, 1);
+  }
+  return chunks;
+}
+
+export type PartnerPriceRange = { min: number; max: number; from: string; to: string };
+
+// 取引先・料金設定・公開範囲が同じなら isolate 内で10分使い回す（範囲全体を読むので重い）。
+const RANGE_TTL_MS = 10 * 60 * 1000;
+const RANGE_MAX_ENTRIES = 50;
+const RANGE_CONCURRENCY = 4;
+const rangeCache = new Map<string, { at: number; value: Promise<PartnerPriceRange | null> }>();
+
+// 公開期間の1名1泊の最低・最高（部屋タイプ・人数・プランを問わない。休館・非表示は除く）。料金が1つも無ければ null。
+export function loadPartnerPriceRange(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance' | 'max_days_ahead' | 'valid_until'>,
+  today = todayJst()
+): Promise<PartnerPriceRange | null> {
+  const chunks = partnerRangeChunks(partner, today);
+  const key = `${partner.id}|${today}|${partner.max_days_ahead}|${partner.valid_until ?? ''}|${partner.include_advance}|${JSON.stringify(partner.pricing)}`;
+  const now = Date.now();
+  const hit = rangeCache.get(key);
+  if (hit && now - hit.at < RANGE_TTL_MS) return hit.value;
+  const value = (async () => {
+    if (!chunks.length) return null;
+    let min = Infinity;
+    let max = -Infinity;
+    // 同時に読むのは4本まで（RPC を一度に投げすぎない）
+    let next = 0;
+    const worker = async () => {
+      while (next < chunks.length) {
+        const c = chunks[next++];
+        const { days } = await loadPartnerRates(db, partner, c);
+        const r = partnerPriceRange(days);
+        if (r) {
+          if (r.min < min) min = r.min;
+          if (r.max > max) max = r.max;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(RANGE_CONCURRENCY, chunks.length) }, worker));
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    return { min, max, from: chunks[0].from, to: chunks[chunks.length - 1].to };
+  })();
+  rangeCache.delete(key);
+  rangeCache.set(key, { at: now, value });
+  // 失敗した結果は残さない（次のアクセスで取り直す）。
+  value.catch(() => rangeCache.delete(key));
+  for (const k of rangeCache.keys()) {
+    if (rangeCache.size <= RANGE_MAX_ENTRIES) break;
+    rangeCache.delete(k);
+  }
+  return value;
 }

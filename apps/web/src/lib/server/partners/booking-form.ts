@@ -1,5 +1,6 @@
 // 取引先の予約画面（/p/[token]/book）のフォームを予約の入力に直す。
 // 後払い（form action）とオンライン決済（/book/reserve の API）で同じフォームを送るので、解析を1か所にまとめる。
+import { normalizeBooker } from '$lib/partner-booking';
 import type { CreateBookingInput } from './booking';
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
@@ -27,6 +28,16 @@ export function parseBookingForm(fd: FormData, optionIds: string[]): CreateBooki
       address: str(fd, 'address'),
       allergies: str(fd, 'allergies')
     },
+    // 予約者（ご担当者）。マイページの既定値をその予約の分だけ編集できる
+    booker: normalizeBooker({
+      name: str(fd, 'booker_name'),
+      kana: str(fd, 'booker_kana'),
+      department: str(fd, 'booker_department'),
+      phone: str(fd, 'booker_phone'),
+      email: str(fd, 'booker_email')
+    }),
+    saveBooker: fd.get('save_booker') === 'on' || fd.get('save_booker') === '1',
+    transport: { id: str(fd, 'transport'), other: str(fd, 'transport_other') },
     arrival: str(fd, 'arrival'),
     notes: str(fd, 'notes'),
     answers,

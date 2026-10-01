@@ -67,6 +67,15 @@
     return () => clearTimeout(t);
   });
 
+  // ---- 予約者・交通手段 ----
+  // 交通手段（「その他」を選んだときだけ自由入力の欄を出す）
+  let transport = $state('');
+  const transportLabel = (id: string, other: string) => {
+    const o = data.transportOptions.find((t) => t.id === id);
+    if (!o) return '';
+    return o.id === 'other' ? `その他${other ? `（${other}）` : ''}` : o.label;
+  };
+
   // ---- 入力 → 確認 ----
   let step = $state<'input' | 'confirm'>('input');
   // お支払方法（1つだけならそれに決まる）
@@ -307,6 +316,26 @@
         </div>
       </section>
 
+      <!-- 予約者（取引先のご担当者）。確認メールの宛先。マイページの設定が既定で入り、この予約の分だけ変えられる -->
+      <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
+        <h3 class="card-title">予約者（ご担当者）</h3>
+        <p class="-mt-2 mb-4 text-sm leading-6 text-stone-500">予約確認・取消・お支払いに関するメールは、ここに入力したメールアドレスへお送りします。</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block"><span class={label}>お名前 <em class="req">必須</em></span><input name="booker_name" value={init.booker.name} required maxlength="60" autocomplete="name" class={input} /></label>
+          <label class="block"><span class={label}>フリガナ</span><input name="booker_kana" value={init.booker.kana} maxlength="60" class={input} /></label>
+          <label class="block"><span class={label}>部署</span><input name="booker_department" value={init.booker.department} maxlength="60" autocomplete="organization-title" class={input} /></label>
+          <label class="block"><span class={label}>電話番号</span><input name="booker_phone" type="tel" value={init.booker.phone} minlength="8" maxlength="20" placeholder="03-1234-5678" autocomplete="tel" class={input} /></label>
+          <label class="block sm:col-span-2"><span class={label}>メールアドレス <em class="req">必須</em></span><input name="booker_email" type="email" value={init.booker.email} required maxlength="254" autocomplete="email" class={input} /></label>
+        </div>
+        <label class="mt-4 flex items-center gap-2.5 text-sm">
+          <input type="checkbox" name="save_booker" class="h-5 w-5 accent-[var(--pt-accent)]" />
+          <span>この内容をマイページに保存する（次回から自動で入ります）</span>
+        </label>
+        {#if !data.bookerSaved}
+          <p class="mt-2 text-sm text-stone-500"><a href={`/p/${token}/account`} class="underline hover:text-brand-900">マイページ</a>で設定しておくと次回から自動で入ります。</p>
+        {/if}
+      </section>
+
       <!-- 宿泊者 -->
       <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
         <h3 class="card-title">宿泊される方（代表者）</h3>
@@ -316,10 +345,30 @@
           <label class="block"><span class={label}>セイ</span><input name="family_name_kana" maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>メイ</span><input name="given_name_kana" maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>電話番号 <em class="req">必須</em></span><input name="phone" type="tel" required minlength="8" maxlength="20" placeholder="090-1234-5678" autocomplete="off" class={input} /></label>
-          <label class="block"><span class={label}>メールアドレス</span><input name="email" type="email" autocomplete="off" class={input} /></label>
+          <label class="block"><span class={label}>メールアドレス</span><input name="email" type="email" autocomplete="off" aria-describedby="guest-email-note" class={input} /></label>
           <label class="block"><span class={label}>郵便番号</span><input name="zip_code" maxlength="10" placeholder="010-0531" autocomplete="off" class={input} /></label>
           <label class="block sm:col-span-2"><span class={label}>住所</span><input name="address" maxlength="200" autocomplete="off" class={input} /></label>
         </div>
+        <p id="guest-email-note" class="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6 text-stone-600">
+          宿泊者様のメールアドレスへは、予約確認メールやお支払いに関するご連絡は一切お送りしません。予約確認は上の予約者（ご担当者）様へお送りします。
+        </p>
+        <!-- 交通手段（任意）。その他は自由入力 -->
+        <fieldset class="mt-4">
+          <legend class={label}>交通手段</legend>
+          <div class="flex flex-wrap gap-2">
+            <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === '' ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+              <input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--pt-accent)]" />未定
+            </label>
+            {#each data.transportOptions as t (t.id)}
+              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === t.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                <input type="radio" name="transport" value={t.id} bind:group={transport} class="accent-[var(--pt-accent)]" />{t.label}
+              </label>
+            {/each}
+          </div>
+          {#if transport === 'other'}
+            <input name="transport_other" required maxlength="60" placeholder="例: 高速バス・タクシー" aria-label="交通手段（その他）" class={`${input} mt-2 sm:max-w-sm`} />
+          {/if}
+        </fieldset>
       </section>
 
       <!-- 食事・ご要望 -->
@@ -374,12 +423,15 @@
             {#if quote.ok}<dt>お部屋</dt><dd>{quote.roomName} × {roomCount}室</dd>
               <dt>プラン</dt><dd>{displayPlanName(quote.planName)}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
+            <dt>予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をマイページに保存します</span>{/if}</dd>
             <dt>代表者</dt><dd>{values.family_name} {values.given_name}{values.family_name_kana || values.given_name_kana ? `（${values.family_name_kana} ${values.given_name_kana}）` : ''}</dd>
             <dt>電話番号</dt><dd>{values.phone}</dd>
             {#if values.email}<dt>メール</dt><dd>{values.email}</dd>{/if}
             {#if values.zip_code || values.address}<dt>住所</dt><dd>{values.zip_code} {values.address}</dd>{/if}
             {#if values.allergies}<dt>アレルギー</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
+            {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
+            {#if data.perks.length}<dt>貴社限定特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
             {#each data.settings.options as o (o.id)}
               {@const v = values[`opt_${o.id}`]}
               {#if v}<dt>{o.label}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
@@ -457,7 +509,8 @@
               <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックイン日に登録カードへ自動でご請求します。</p>
             {/if}
           {:else if paymentLabel}
-            <p class="text-sm text-stone-500">{paymentLabel}（{data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}）</p>
+            {@const note = data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}
+            <p class="text-sm text-stone-500">{paymentLabel}{note ? `（${note}）` : ''}</p>
           {/if}
         </div>
       </section>
@@ -468,6 +521,17 @@
       <p class="text-sm text-stone-500">{quote.ok ? quote.roomName : ''}</p>
       <h3 class="text-lg font-bold leading-snug">{displayPlanName(data.target.planName)}</h3>
       {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
+      {#if data.perks.length}
+        <!-- このプランに付く取引先特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
+        <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
+          <p class="text-xs font-bold text-[var(--pt-accent)]">貴社限定特典</p>
+          <ul class="mt-1 grid gap-1.5 text-sm">
+            {#each data.perks as p (p.id)}
+              <li><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-stone-600">{p.description}</span>{/if}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
 
       <div class={`mt-4 border-t border-stone-200 pt-4 transition-opacity ${quoting ? 'opacity-50' : ''}`}>
         {#if !quote.ok}

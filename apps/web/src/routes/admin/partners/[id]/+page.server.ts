@@ -1,8 +1,9 @@
-// 管理画面: 取引先の詳細（限定URL・公開設定・特別レート・予約受付・プレビュー・予約・ログインID・API キー・アクセスログ）。
+// 管理画面: 取引先の詳細（限定URL・覚書・公開設定・特別レート・予約受付・プレビュー・予約・ログインID・API キー・アクセスログ）。
 // autumn-rms の /partners/[id]（v0.103.0）から移設（2026-09-26）。
 // 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除）は admin のみ（staff.ts の canEditPartners）。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
+import { describeBooker, normalizeBooker } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { loadPartnerRates } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
@@ -45,6 +46,16 @@ import {
 	StaffScopeError
 } from '$lib/server/partners/staff';
 import { isEmail, parsePartnerSettings } from '$lib/server/partners/staff-form';
+import {
+	deletePartnerDocument,
+	formatBytes,
+	getPartnerMemorandum,
+	listPartnerDocuments,
+	MAX_MEMORANDUM_LENGTH,
+	PARTNER_DOCUMENT_ACCEPT,
+	savePartnerMemorandum,
+	uploadPartnerDocument
+} from '$lib/server/partners/memorandum';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -56,7 +67,8 @@ const PREVIEW_BASE_PRICING: PartnerPricing = {
 	defaultValue: 0,
 	rules: [],
 	roundingUnit: 1,
-	minPricePerPerson: null
+	minPricePerPerson: null,
+	maxPricePerPerson: null
 };
 
 const PREVIEW_DAYS = 14;
@@ -84,7 +96,7 @@ export const load: PageServerLoad = async (event) => {
 	const previewFrom = /^\d{4}-\d{2}-\d{2}$/.test(previewParam) && previewParam >= today ? previewParam : today;
 	const previewTo = addDaysIso(previewFrom, PREVIEW_DAYS - 1);
 
-	const [accounts, apiKeys, logs, bookings, preview] = await Promise.all([
+	const [accounts, apiKeys, logs, bookings, preview, memo, documents] = await Promise.all([
 		listPartnerAccounts(scope.db, partner.id),
 		listPartnerApiKeys(scope.db, partner.id),
 		listPartnerAccessLogs(scope.db, partner.id, 50),
@@ -101,7 +113,14 @@ export const load: PageServerLoad = async (event) => {
 				rooms: [] as { roomCode: string; name: string }[],
 				planOptions: [] as { code: string; label: string; mealType: string | null }[],
 				error: e instanceof Error ? e.message : String(e)
-			}))
+			})),
+		// 覚書（本文・ファイル）。読めなくても他の欄は出す
+		getPartnerMemorandum(scope.db, partner.id)
+			.then((m) => ({ ...m, error: null as string | null }))
+			.catch((e) => ({ text: '', updatedAt: null as string | null, error: e instanceof Error ? e.message : String(e) })),
+		listPartnerDocuments(scope.db, partner.id)
+			.then((rows) => ({ rows, error: null as string | null }))
+			.catch((e) => ({ rows: [], error: e instanceof Error ? e.message : String(e) }))
 	]);
 
 	// ルール編集の選択肢。プランは直近の料金（rms_partner_portal_source）に出ているプラングループから集める
@@ -146,6 +165,22 @@ export const load: PageServerLoad = async (event) => {
 			updatedAt: partner.updated_at
 		},
 		portalUrl: partnerPortalUrl(origin, partner.url_token),
+		memorandum: { text: memo.text, updatedAt: memo.updatedAt, maxLength: MAX_MEMORANDUM_LENGTH, error: memo.error },
+		documents: documents.rows.map((d) => ({
+			id: d.id,
+			fileName: d.file_name,
+			size: formatBytes(d.byte_size),
+			// 保存者: 宿（スタッフ名）／取引先（ログインID）
+			byKind: d.uploaded_by_kind,
+			byLabel:
+				d.uploaded_by_kind === 'partner'
+					? (d.uploaded_by_label ?? (d.uploaded_by_account ? (accountLabel.get(d.uploaded_by_account) ?? '(削除済み)') : ''))
+					: (d.uploaded_by_label ?? ''),
+			note: d.note,
+			createdAt: d.created_at
+		})),
+		documentsError: documents.error,
+		documentAccept: PARTNER_DOCUMENT_ACCEPT,
 		apiEndpoint: `${origin}/api/partner/v1/rates`,
 		accounts: accounts.map((a) => ({
 			id: a.id,
@@ -214,11 +249,30 @@ export const load: PageServerLoad = async (event) => {
 			paymentOption: b.payment_option,
 			cardLabel: b.card_label,
 			chargeError: b.charge_error,
-			refundError: b.refund_error
+			refundError: b.refund_error,
+			...bookingExtras(b.detail)
 		})),
 		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error }
 	};
 };
+
+// 予約の detail のうち、取引先ページの予約フォーム（2026-10-01）で増えた項目。古い予約には無いので、あるときだけ返す。
+//   booker    … 予約者（取引先の予約担当者）
+//   transport … 交通手段（「JR」「車」「その他（○○）」）
+//   perks     … 付いた取引先特典（{title, description} の並び。文字列でも受ける）
+function bookingExtras(detail: unknown): { booker: string | null; transport: string | null; perks: string[] } {
+	const d = (detail && typeof detail === 'object' ? detail : {}) as Record<string, unknown>;
+	const booker = d.booker && typeof d.booker === 'object' ? normalizeBooker(d.booker) : null;
+	const perksRaw = Array.isArray(d.perks) ? d.perks : typeof d.perks === 'string' && d.perks ? [d.perks] : [];
+	const perks = perksRaw
+		.map((p) => (typeof p === 'string' ? p : p && typeof p === 'object' ? String((p as Record<string, unknown>).title ?? '') : '').trim())
+		.filter(Boolean);
+	return {
+		booker: booker?.name ? describeBooker(booker) : null,
+		transport: typeof d.transport === 'string' && d.transport.trim() ? d.transport.trim() : null,
+		perks
+	};
+}
 
 // 各アクション共通: 編集権限（admin）・施設・取引先の所属を確かめる。
 async function editScope(event: RequestEvent) {
@@ -258,6 +312,50 @@ export const actions: Actions = {
 			const input = parsePartnerSettings(await event.request.formData());
 			await updatePartner(db, partner, userId, input);
 			return { saved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 覚書の本文（取引条件のまとめ）。取引先ページの「覚書」にそのまま出る
+	saveMemorandum: async (event) => {
+		try {
+			const { db, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			await savePartnerMemorandum(db, partner, String(fd.get('memorandum') ?? ''), userId);
+			return { memorandumSaved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 覚書のファイル（宿側から保存）。取引先ページの「覚書」にも出る
+	uploadDocument: async (event) => {
+		try {
+			const { db, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			const file = fd.get('file');
+			if (!(file instanceof File) || file.size === 0) return actionFailure(new PartnerStoreError('ファイルを選んでください。'));
+			const doc = await uploadPartnerDocument(
+				db,
+				partner,
+				file,
+				{ kind: 'staff', userId, label: event.locals.user?.name || 'スタッフ' },
+				String(fd.get('note') ?? '')
+			);
+			return { documentUploaded: doc.file_name };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 覚書のファイルの削除（スタッフはどのファイルも削除できる。取引先が保存したものも含む）
+	deleteDocument: async (event) => {
+		try {
+			const { db, partner } = await editScope(event);
+			const fd = await event.request.formData();
+			await deletePartnerDocument(db, partner.id, String(fd.get('document_id') ?? ''));
+			return { documentDeleted: true };
 		} catch (e) {
 			return actionFailure(e);
 		}

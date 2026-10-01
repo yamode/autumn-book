@@ -12,12 +12,17 @@ import {
   hasPrepayDiscount,
   isStripePaymentOption,
   paymentOptionLabel,
-  type PartnerPaymentOptionId,
   canPartnerCancel,
   describeDeadline,
+  normalizeBooker,
+  perksForPlan,
   resolveOptionAnswers,
+  resolveTransport,
+  validateBooker,
+  type PartnerBooker,
   type PartnerBookingGuestInput
 } from '$lib/partner-booking';
+import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailRecipients, splitExtraOptions, type BookingExtras } from './booking-extras';
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import {
   cardLabelOf,
@@ -39,7 +44,7 @@ import {
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
-import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, todayJst, type PartnerContext, type PartnerRow } from './store';
+import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
@@ -60,7 +65,7 @@ const escapeHtml = (s: string) =>
 export { inlinePaymentReady, onlinePaymentReady };
 
 // 取引先が予約時に選べる支払方法（設定で許可したもののうち、いま使えるもの）。
-export function availablePaymentOptions(partner: Pick<PartnerRow, 'booking_settings'>): PartnerPaymentOptionId[] {
+export function availablePaymentOptions(partner: Pick<PartnerRow, 'booking_settings'>): string[] {
   return partner.booking_settings.paymentOptions.filter((id) => !isStripePaymentOption(id) || inlinePaymentReady());
 }
 
@@ -232,6 +237,12 @@ function discountRooms(rooms: QuoteRoom[], d: PartnerContext['booking_settings']
 
 export type CreateBookingInput = BookingTarget & {
   paymentOption: string;
+  // 予約者（取引先のご担当者）。予約確認・取消・決済のメールの宛先（宿泊者へは送らない）
+  booker: PartnerBooker;
+  // 「この内容をマイページに保存する」（予約を受け付けたら rms_partner_accounts.booker_profile を上書き）
+  saveBooker?: boolean;
+  // 交通手段（任意）。id = jr / car / other、other は「その他」の自由入力
+  transport: { id: string; other: string };
   guest: PartnerBookingGuestInput;
   arrival: string;
   notes: string;
@@ -260,6 +271,16 @@ function friendlyRpcError(message: string): string {
   return 'ご予約を確定できませんでした。時間をおいてもう一度お試しください。';
 }
 
+// 作成直後の台帳 detail に予約者・交通手段・特典を足す（DB 関数が作った detail を読み、マージして書き戻す）。
+// service_role で触るので id と partner_id の両方で絞る。失敗しても予約は有効（PMS へは options で届いている）。
+async function attachBookingExtras(db: SupabaseClient, partnerId: string, bookingId: string, extras: BookingExtras): Promise<void> {
+  const { data } = await db.from('rms_partner_bookings').select('detail').eq('id', bookingId).eq('partner_id', partnerId).maybeSingle();
+  if (!data) return;
+  const detail = { ...((data.detail as Record<string, unknown> | null) ?? {}), booker: extras.booker, transport: extras.transport || null, perks: extras.perks };
+  const { error } = await db.from('rms_partner_bookings').update({ detail }).eq('id', bookingId).eq('partner_id', partnerId);
+  if (error) console.error('[partner-booking] 予約者情報を台帳に書けませんでした:', error.message);
+}
+
 export async function createPartnerBooking(
   db: SupabaseClient,
   partner: PartnerContext,
@@ -286,6 +307,11 @@ export async function createPartnerBooking(
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
   const answers = resolveOptionAnswers(s.options, input.answers);
   if (!answers.ok) throw new PartnerStoreError(answers.message);
+  const booker = normalizeBooker(input.booker);
+  const bookerProblem = validateBooker(booker);
+  if (bookerProblem) throw new PartnerStoreError(bookerProblem);
+  const transport = resolveTransport(input.transport?.id ?? '', input.transport?.other ?? '');
+  if (!transport.ok) throw new PartnerStoreError(transport.message);
 
   const quote = await quotePartnerBooking(db, partner, input);
   if (!quote.ok) throw new PartnerStoreError(quote.message);
@@ -293,7 +319,9 @@ export async function createPartnerBooking(
   // 割引額を台帳（prepay_discount_amount）に持ち、請求額から引く。PMS には支払明細「予約時決済割引」で入る（2026-09-26 指示）。
   const discount = paymentOption === 'online' && quote.prepay ? quote.prepay : null;
   const rooms = quote.rooms;
-  const optionValues = answers.values;
+  // 予約者・交通手段・取引先特典は PMS の「事前質問・要望」（と備考）の先頭に載せる（宿が当日まで目にする場所）
+  const extras = buildBookingExtras(booker, transport.value, perksForPlan(s.perks, quote.planCode));
+  const optionValues = [...extraOptionRows(extras), ...answers.values];
 
   const { data, error } = await db.rpc('rms_partner_create_booking', {
     p: {
@@ -323,7 +351,7 @@ export async function createPartnerBooking(
       options: optionValues,
       notes: input.notes.trim().slice(0, 1000),
       payment_option: paymentOption,
-      payment_label: paymentOptionLabel(paymentOption),
+      payment_label: paymentOptionLabel(paymentOption, s),
       // 入湯税（円・宿泊全体）。台帳の作成と同時に入れ、PMS への電文（月末締め等は作成時に積む）に載せる（autumn-shared 20260926103712）
       bath_tax: quote.bathTax,
       // 予約時決済の割引額（円）。予約金額からは引かない（autumn-shared 20260926113433）
@@ -335,6 +363,12 @@ export async function createPartnerBooking(
   });
   if (error) throw new PartnerStoreError(friendlyRpcError(error.message), 409);
   const created = data as { id: string; booking_code: string; total_amount: number; status?: string };
+  // 台帳に予約者・交通手段・特典を構造化して残す（メールの宛先・一覧の表示に使う）。仮押さえ（オンライン決済）も同じ
+  await attachBookingExtras(db, partner.id, created.id, extras);
+  if (input.saveBooker) {
+    // マイページへの保存に失敗しても予約は止めない
+    await saveBookerProfile(db, partner.id, account.id, booker).catch(() => undefined);
+  }
 
   if (created.status === 'pending_payment') {
     const pending = await getPartnerBooking(db, partner.id, created.id);
@@ -416,7 +450,8 @@ async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext
       customer = (
         await createCustomer({
           name: `${b.guest_name}（${partner.name}）`,
-          email: partner.contact_email,
+          // Stripe の領収・通知は予約者（ご担当者）へ。宿泊者のメールは使わない
+          email: b.detail.booker?.email || partner.contact_email,
           metadata: { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_BOOKING, partner_booking_id: b.id, booking_code: b.booking_code, partner_id: partner.id },
           idempotencyKey: `rms-partner-customer-${b.id}`
         })
@@ -868,6 +903,10 @@ export type PartnerBookingRow = {
     arrival?: string | null;
     options?: { label: string; value: string }[];
     notes?: string | null;
+    // 2026-10-01〜: 予約者（ご担当者）・交通手段・取引先特典（予約時点の内容）。それより前の予約には無い
+    booker?: PartnerBooker | null;
+    transport?: string | null;
+    perks?: { title: string; description: string }[] | null;
   };
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -974,13 +1013,16 @@ export function bookingSummaryLines(b: PartnerBookingRow): string[] {
     `お部屋: ${b.room_name ?? b.room_code ?? ''} × ${b.room_count}室`,
     `プラン: ${b.plan_name ?? ''}${b.meal_type ? `（${mealLabel(b.meal_type)}）` : ''}`,
     `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目 ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
+    // 予約者（ご担当者）・交通手段・取引先特典（detail に構造化して残したもの）
+    ...extraSummaryLines(b.detail),
     `宿泊者: ${b.guest_name}${b.guest_kana ? `（${b.guest_kana}）` : ''}`,
     `電話: ${b.guest_phone ?? ''}`,
     ...(b.guest_email ? [`メール: ${b.guest_email}`] : []),
     ...(g.address || g.zip_code ? [`住所: ${[g.zip_code, g.address].filter(Boolean).join(' ')}`] : []),
     ...(g.allergies ? [`アレルギー: ${g.allergies}`] : []),
     ...(b.detail.arrival ? [`到着予定: ${b.detail.arrival}`] : []),
-    ...(b.detail.options ?? []).map((o) => `${o.label}: ${o.value}`),
+    // 入力項目（予約者・交通手段・特典の行は上に出したので除く）
+    ...splitExtraOptions(b.detail).map((o) => `${o.label}: ${o.value}`),
     ...(b.detail.notes ? [`備考: ${b.detail.notes}`] : []),
     ...((b.bath_tax_amount ?? 0) > 0
       ? [
@@ -1027,18 +1069,14 @@ async function sendBookingMails(
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
   let sent = false;
 
-  // 取引先へ（予約したログインIDのメール＋取引先の連絡先メール）
+  // 取引先へ（予約者のメールを最優先に、予約したログインIDのメール＋取引先の連絡先メール）。
+  // 宿泊者のメール（b.guest_email）へは送らない（2026-10-01 指示: 予約確認・取消・お支払いの連絡は予約者＝ご担当者へだけ）。
   if (s.notifyPartner) {
-    const to = new Set<string>();
-    if (partner.contact_email) to.add(partner.contact_email);
-    if (accountId) {
-      const { data } = await db.from('rms_partner_accounts').select('email').eq('id', accountId).maybeSingle();
-      if (data?.email) to.add(String(data.email));
-    }
-    if (to.size) {
+    const to = await partnerRecipients(db, partner, b, accountId);
+    if (to.length) {
       const text = [`${partner.name} 様`, '', `${facilityName} です。以下の内容で${title}。`, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
       const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(facilityName)} です。以下の内容で${title}。</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
-      const r = await sendPartnerMail(db, partner.facility_id, { to: [...to], subject: `【${facilityName}】${title}（${b.booking_code}）`, html, text });
+      const r = await sendPartnerMail(db, partner.facility_id, { to, subject: `【${facilityName}】${title}（${b.booking_code}）`, html, text });
       sent = sent || r.sent;
     }
   }
@@ -1059,6 +1097,23 @@ async function sendBookingMails(
   return sent;
 }
 
+// 取引先宛てメールの宛先（予約者 → 予約したログインIDのメール → 取引先の連絡先。重複は1通）。
+// アカウントは partner_id でも絞る（service_role で読むため、別の取引先のアカウントのメールを拾わない）。
+// 宿泊者のメール（guest_email）は意図して含めない。
+async function partnerRecipients(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'id' | 'contact_email'>,
+  b: PartnerBookingRow,
+  accountId: string | null
+): Promise<string[]> {
+  let accountEmail: string | null = null;
+  if (accountId) {
+    const { data } = await db.from('rms_partner_accounts').select('email').eq('id', accountId).eq('partner_id', partner.id).maybeSingle();
+    accountEmail = (data?.email as string | null | undefined) ?? null;
+  }
+  return partnerMailRecipients([b.detail.booker?.email, accountEmail, partner.contact_email]);
+}
+
 // チェックイン日決済の請求失敗（宿・取引先へ）。
 async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, origin: string, reason: string): Promise<boolean> {
   const s = partner.booking_settings;
@@ -1066,17 +1121,13 @@ async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b:
   const summary = bookingSummaryLines(b);
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
   let sent = false;
-  const partnerTo = new Set<string>();
-  if (partner.contact_email) partnerTo.add(partner.contact_email);
-  if (b.account_id) {
-    const { data } = await db.from('rms_partner_accounts').select('email').eq('id', b.account_id).maybeSingle();
-    if (data?.email) partnerTo.add(String(data.email));
-  }
-  if (partnerTo.size) {
+  // 予約者・ログインID・取引先の連絡先へ（宿泊者のメールへは送らない）
+  const partnerTo = await partnerRecipients(db, partner, b, b.account_id);
+  if (partnerTo.length) {
     const lead = `${facilityName} です。ご予約（${b.booking_code}）のチェックイン日のお支払いで、ご登録のカードに請求できませんでした（${reason}）。お手数ですが、予約一覧の「カードを登録し直す」から別のカードをご登録ください。`;
     const text = [`${partner.name} 様`, '', lead, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
     const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(lead)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
-    const r = await sendPartnerMail(db, partner.facility_id, { to: [...partnerTo], subject: `【${facilityName}】カードへのご請求ができませんでした（${b.booking_code}）`, html, text });
+    const r = await sendPartnerMail(db, partner.facility_id, { to: partnerTo, subject: `【${facilityName}】カードへのご請求ができませんでした（${b.booking_code}）`, html, text });
     sent = sent || r.sent;
   }
   if (s.notifyEmails.length) {

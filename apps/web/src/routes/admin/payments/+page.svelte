@@ -411,7 +411,7 @@
 					{#if f?.scope === 'partner' && f.partnerId === p.id && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
 				</div>
 				<fieldset disabled={!data.canEditAdmin} class="flex flex-wrap items-center gap-x-5 gap-y-2">
-					{#each data.partnerPaymentOptions as o (o.id)}
+					{#each p.paymentChoices as o (o.id)}
 						<label class="flex items-center gap-1.5" title={o.note}>
 							<input type="checkbox" name="pay_{o.id}" checked={p.paymentOptions.includes(o.id)} class="h-4 w-4" />
 							{o.label}

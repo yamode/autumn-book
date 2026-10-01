@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { perksForPlan } from '$lib/partner-booking';
 import { logPartnerAccess } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
@@ -21,8 +22,17 @@ export const load = async (event) => {
     detail: { page: 'plans' },
     ip: requestMeta(event).ip
   });
+  // 取引先特典: 全プラン対象（planCodes が空）はページ上部に1回だけ、プランを絞ったものは該当プランに出す
+  const perks = partner.booking_settings.perks;
+  const toView = (p: { id: string; title: string; description: string }) => ({ id: p.id, title: p.title, description: p.description });
   return {
     portal: portalHeader(partner, session),
-    plans: contents.plans
+    commonPerks: perks.filter((p) => !p.planCodes.length).map(toView),
+    plans: contents.plans.map((p) => ({
+      ...p,
+      perks: perksForPlan(perks, p.planCode)
+        .filter((k) => k.planCodes.length)
+        .map(toView)
+    }))
   };
 };

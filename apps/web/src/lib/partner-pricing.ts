@@ -44,7 +44,10 @@ export type PartnerPricing = {
   rules: PartnerRateRule[];
   roundingUnit: number; // 1 / 10 / 100 / 1000
   roundingMode: PartnerRoundingMode;
+  // 1名1泊あたりの下限・上限（税込）。ルール・端数処理で決まったプラン料金をこの範囲に収める（上書き）。
+  // 上限は 2026-10-01 追加。null = 制限なし。
   minPricePerPerson: number | null;
+  maxPricePerPerson: number | null;
 };
 
 export const DEFAULT_PARTNER_PRICING: PartnerPricing = {
@@ -54,7 +57,8 @@ export const DEFAULT_PARTNER_PRICING: PartnerPricing = {
   rules: [],
   roundingUnit: 100,
   roundingMode: 'floor',
-  minPricePerPerson: null
+  minPricePerPerson: null,
+  maxPricePerPerson: null
 };
 
 const ROUNDING_UNITS = [1, 10, 100, 1000];
@@ -92,7 +96,10 @@ export function normalizePartnerPricing(raw: unknown): PartnerPricing {
       };
     });
   const unit = Number(src.roundingUnit);
-  const min = src.minPricePerPerson == null || src.minPricePerPerson === '' ? null : finite(src.minPricePerPerson, NaN);
+  const limit = (v: unknown) => {
+    const n = v == null || v === '' ? null : finite(v, NaN);
+    return n != null && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
   return {
     defaultAction: 'hide',
     defaultAdjustType: src.defaultAdjustType === 'amount' ? 'amount' : 'percent',
@@ -100,7 +107,8 @@ export function normalizePartnerPricing(raw: unknown): PartnerPricing {
     rules,
     roundingUnit: ROUNDING_UNITS.includes(unit) ? unit : DEFAULT_PARTNER_PRICING.roundingUnit,
     roundingMode: src.roundingMode === 'round' || src.roundingMode === 'ceil' ? src.roundingMode : 'floor',
-    minPricePerPerson: min != null && Number.isFinite(min) && min > 0 ? Math.round(min) : null
+    minPricePerPerson: limit(src.minPricePerPerson),
+    maxPricePerPerson: limit(src.maxPricePerPerson)
   };
 }
 
@@ -122,6 +130,9 @@ export function validatePartnerPricing(p: PartnerPricing): string | null {
     }
   }
   if (p.rules.length > 200) return 'ルールは200件までです。';
+  if (p.minPricePerPerson != null && p.maxPricePerPerson != null && p.minPricePerPerson > p.maxPricePerPerson) {
+    return '最低料金が最高料金を上回っています。';
+  }
   return null;
 }
 
@@ -172,6 +183,33 @@ function adjust(base: number, type: PartnerAdjustType, value: number): number {
 
 export type PartnerPriceDecision = { hidden: true; ruleId?: string } | { hidden: false; price: number; ruleId?: string };
 
+// 最低料金・最高料金（1名1泊）で上書きする。端数処理の後に当てるので、設定した額がそのまま出る。
+export function clampPartnerPrice(price: number, pricing: Pick<PartnerPricing, 'minPricePerPerson' | 'maxPricePerPerson'>): number {
+  let p = price;
+  if (pricing.maxPricePerPerson != null && p > pricing.maxPricePerPerson) p = pricing.maxPricePerPerson;
+  if (pricing.minPricePerPerson != null && p < pricing.minPricePerPerson) p = pricing.minPricePerPerson;
+  return p;
+}
+
+// 公開期間の料金の幅（部屋タイプ・人数・プランを問わない1名1泊の最低・最高）。休館日・非表示は除く。
+export function partnerPriceRange(days: PartnerRateDay[]): { min: number; max: number } | null {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const d of days) {
+    if (d.closed) continue;
+    for (const r of d.rooms) {
+      for (const p of r.plans) {
+        for (const v of Object.values(p.pricesPerPerson)) {
+          if (!(v > 0)) continue;
+          if (v < min) min = v;
+          if (v > max) max = v;
+        }
+      }
+    }
+  }
+  return Number.isFinite(min) ? { min, max } : null;
+}
+
 // 1名あたりの基準価格（税込）に特別レートを当てる。非表示なら hidden。
 export function decidePartnerPrice(pricing: PartnerPricing, target: PartnerRateTarget, basePrice: number): PartnerPriceDecision {
   const rule = pricing.rules.find((r) => ruleMatches(r, target));
@@ -180,7 +218,7 @@ export function decidePartnerPrice(pricing: PartnerPricing, target: PartnerRateT
   const type = rule ? rule.adjustType : pricing.defaultAdjustType;
   const value = rule ? rule.value : pricing.defaultValue;
   let price = roundTo(adjust(basePrice, type, value), pricing.roundingUnit, pricing.roundingMode);
-  if (pricing.minPricePerPerson != null && price < pricing.minPricePerPerson) price = pricing.minPricePerPerson;
+  price = clampPartnerPrice(price, pricing);
   if (!(price > 0)) return { hidden: true, ruleId: rule?.id };
   return { hidden: false, price, ruleId: rule?.id };
 }

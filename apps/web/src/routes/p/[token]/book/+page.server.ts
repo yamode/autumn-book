@@ -1,8 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { canBookFor, describeDeadline, isStripePaymentOption, PARTNER_PAYMENT_OPTIONS } from '$lib/partner-booking';
+import { canBookFor, describeDeadline, isStripePaymentOption, normalizeBooker, PARTNER_TRANSPORT_OPTIONS, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
 import { availablePaymentOptions, createPartnerBooking, isPartnerBookingOpen, quotePartnerBooking } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
-import { PartnerStoreError, todayJst } from '$lib/server/partners/store';
+import { getBookerProfile, PartnerStoreError, todayJst } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { stripePublishableKey } from '$lib/server/stripe';
 
@@ -21,10 +21,15 @@ export const load = async (event) => {
   if (!roomCode || !planCode) throw redirect(303, `/p/${token}/calendar`);
 
   const s = partner.booking_settings;
-  const [quote, rt] = await Promise.all([
+  const [quote, rt, booker, profileRow] = await Promise.all([
     quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights: 1, rooms: [{ adults: guests }] }),
-    db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle()
+    db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
+    // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
+    getBookerProfile(db, partner.id, session.id).catch(() => null),
+    // マイページで設定済みか（未設定なら「マイページで設定しておくと…」の案内を出す）
+    db.from('rms_partner_accounts').select('booker_profile').eq('id', session.id).eq('partner_id', partner.id).maybeSingle()
   ]);
+  const saved = normalizeBooker(profileRow.data?.booker_profile);
   const payIds = availablePaymentOptions(partner);
 
   return {
@@ -36,13 +41,21 @@ export const load = async (event) => {
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: s.options },
-    paymentOptions: PARTNER_PAYMENT_OPTIONS.filter((o) => payIds.includes(o.id)),
+    // 固定の3種＋自由入力の支払方法のうち、許可されていていま使えるもの（表示名は設定の名前）
+    paymentOptions: partnerPaymentChoices(s)
+      .filter((o) => payIds.includes(o.id))
+      .map((o) => ({ id: o.id, label: paymentOptionLabel(o.id, s), note: o.note })),
+    booker: booker ?? normalizeBooker(null),
+    bookerSaved: !!(saved.name && saved.email),
+    transportOptions: PARTNER_TRANSPORT_OPTIONS,
+    // このプランに付く取引先特典（予約画面は1プラン固定。確定時にサーバで同じ規則で付け直す）
+    perks: perksForPlan(s.perks, planCode).map((p) => ({ id: p.id, title: p.title, description: p.description })),
     // 同じ画面で払う決済部品に渡す公開可能キー（オンライン決済を出せないときは null）
     stripeKey: payIds.some(isStripePaymentOption) ? stripePublishableKey() : null
   };
 };
 
-// 後払い（銀行振込等）の確定。オンライン決済は同じ画面で払うため /book/reserve（API）から確定する。
+// 後払い（銀行振込等）・自由入力の支払方法（決済なし）の確定。オンライン決済は同じ画面で払うため /book/reserve（API）から確定する。
 export const actions = {
   default: async (event) => {
     const { db, partner, session } = await requirePortalSession(event);

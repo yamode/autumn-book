@@ -62,3 +62,25 @@ describe('parsePartnerKind', () => {
     expect(parsePartnerKind(null)).toBe('agent');
   });
 });
+
+describe('parsePartnerSettings（2026-10-01: 自由入力の支払方法・取引先特典・最高料金）', () => {
+  it('booking JSON の customPaymentOptions / perks がそのまま通る', () => {
+    const booking = JSON.stringify({
+      ...DEFAULT_PARTNER_BOOKING_SETTINGS,
+      paymentOptions: ['custom_ab12cd34'],
+      customPaymentOptions: [{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い' }],
+      perks: [{ id: 'perk-1', title: 'ウェルカムドリンク', description: 'ラウンジで1杯', planCodes: ['a001'] }]
+    });
+    const r = parsePartnerSettings(form({ ...base, booking, booking_enabled: 'on' }));
+    expect(r.booking_settings.paymentOptions).toEqual(['custom_ab12cd34']);
+    expect(r.booking_settings.customPaymentOptions).toEqual([{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い' }]);
+    expect(r.booking_settings.perks).toEqual([{ id: 'perk-1', title: 'ウェルカムドリンク', description: 'ラウンジで1杯', planCodes: ['a001'] }]);
+  });
+
+  it('最高料金を読み取り、最低料金 > 最高料金 は保存できない', () => {
+    const ok = parsePartnerSettings(form({ ...base, pricing: JSON.stringify({ ...DEFAULT_PARTNER_PRICING, minPricePerPerson: 10000, maxPricePerPerson: 30000 }) }));
+    expect(ok.pricing.maxPricePerPerson).toBe(30000);
+    const bad = JSON.stringify({ ...DEFAULT_PARTNER_PRICING, minPricePerPerson: 30000, maxPricePerPerson: 10000 });
+    expect(() => parsePartnerSettings(form({ ...base, pricing: bad }))).toThrow('最低料金が最高料金');
+  });
+});
