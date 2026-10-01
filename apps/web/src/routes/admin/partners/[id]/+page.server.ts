@@ -66,7 +66,7 @@ import {
 	voidPartnerInvoice
 } from '$lib/server/partners/invoices';
 import { invoicePdfReady } from '$lib/server/partners/invoice-pdf';
-import { periodOf } from '$lib/partner-invoice';
+import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -274,6 +274,8 @@ export const load: PageServerLoad = async (event) => {
 			paymentName: b.payment_method_name,
 			paymentStatus: b.payment_status,
 			paymentOption: b.payment_option,
+			// 取引先払い（宿泊料金・入湯税は取引先へ月末に請求し、お客様には請求しない）
+			billedToPartner: isBillablePaymentOption(b.payment_option, partner.booking_settings),
 			cardLabel: b.card_label,
 			chargeError: b.charge_error,
 			refundError: b.refund_error,

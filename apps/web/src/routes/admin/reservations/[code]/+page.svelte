@@ -290,7 +290,13 @@
 			<!-- 取引先予約（限定URL /p/<token> から入った予約）の台帳。取消・再請求は右の「取引先予約の操作」から -->
 			<div class="rounded-xl border border-amber-200 bg-amber-50/40 p-5 text-sm">
 				<div class="flex flex-wrap items-center justify-between gap-2">
-					<h2 class="font-medium text-stone-700">取引先予約</h2>
+					<h2 class="flex flex-wrap items-center gap-2 font-medium text-stone-700">
+						取引先予約
+						{#if pl?.billedToPartner}
+							<!-- 取引先払い（2026-10-02 指示）: 宿泊料金・入湯税は取引先へ月末に請求。お客様には請求しない -->
+							<span class="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">取引先へ請求（お客様には請求しない）</span>
+						{/if}
+					</h2>
 					{#if pl?.partnerId}
 						<a href={`/admin/partners/${pl.partnerId}`} class="text-xs text-accent-600 hover:underline">取引先の管理画面で見る →</a>
 					{/if}
@@ -322,7 +328,10 @@
 						<dt class="text-stone-500">部屋・プラン</dt>
 						<dd>{pl.roomName} × {pl.roomCount}室・大人{pl.adultTotal}名／{pl.planName || '—'}</dd>
 						<dt class="text-stone-500">支払方法</dt>
-						<dd>{pl.paymentName ?? '—'}</dd>
+						<dd>
+							{pl.paymentName ?? '—'}
+							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">宿泊料金・入湯税は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
+						</dd>
 						<dt class="text-stone-500">支払状況</dt>
 						<dd class={pl.paymentStatus === 'charge_failed' || pl.paymentStatus === 'refund_failed' ? 'text-red-700' : ''}>
 							{partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel)}

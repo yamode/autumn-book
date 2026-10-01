@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先専用ページ: アカウント → 担当者情報。予約担当者（予約者）の情報を設定する（見出し・タブは ./+layout.svelte）。
+  // 取引先専用ページ: アカウント → 担当者情報。予約担当者（ご予約者）の情報を設定する（見出し・タブは ./+layout.svelte）。
   // ここで保存した内容が予約フォームの「予約者」に最初から入り、予約確認などのメールはこのメールアドレスへ届く。
   import { enhance } from '$app/forms';
   import type { PartnerBooker } from '$lib/partner-booking';
@@ -37,9 +37,9 @@
     }}
     class="rounded-xl border border-stone-200 bg-white p-5 sm:p-6"
   >
-    <h3 class="text-lg font-bold">予約担当者（予約者）</h3>
+    <h3 class="text-lg font-bold">予約担当者（ご予約者）</h3>
     <p class="mt-1 text-sm leading-6 text-stone-600">
-      予約フォームの『予約者』に最初から入ります。予約確認・取消・お支払いに関するメールはこのメールアドレスへお送りします（宿泊者様へはお送りしません）。
+      予約フォームの『ご予約者』に最初から入ります。予約確認・取消・お支払いに関するメールはこのメールアドレスへお送りします（ご宿泊者様へはお送りしません）。
     </p>
     {#key values}
       <div class="mt-4 grid gap-4 sm:grid-cols-2">

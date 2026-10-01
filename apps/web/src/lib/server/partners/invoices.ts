@@ -517,7 +517,7 @@ export type SendInvoiceMailResult = {
   invoice: PartnerInvoiceRow;
 };
 
-/** 送信先: 取引先の連絡先メール ＋ マスタユーザー（有効）のメールと予約者情報のメール。大文字小文字を無視して重複を除く。 */
+/** 送信先: 取引先の連絡先メール ＋ マスタユーザー（有効）のメールとご予約者情報のメール。大文字小文字を無視して重複を除く。 */
 async function invoiceRecipients(db: SupabaseClient, partner: InvoicePartner): Promise<string[]> {
   const list: string[] = [];
   if (partner.contact_email) list.push(partner.contact_email);
@@ -595,7 +595,7 @@ export const partnerInvoicesUrl = (origin: string, urlToken: string) => `${origi
 
 /**
  * 請求書を取引先へメールで送る（PDF を添付。作れない・大きすぎるときは添付なしでページへ案内）。
- * 結果は sent_at / sent_to / send_error に記録する。宿泊者のメールには送らない。
+ * 結果は sent_at / sent_to / send_error に記録する。ご宿泊者のメールには送らない。
  * 失敗したときは send_error の先頭に「[送信失敗 N回目]」を付けて回数を数える（cron は MAX_INVOICE_SEND_ATTEMPTS 回で諦める）。
  */
 export async function sendPartnerInvoiceMail(

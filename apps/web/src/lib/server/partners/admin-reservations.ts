@@ -6,6 +6,7 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readBookingExtras } from './booking-extras';
+import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { describeBooker, chargeAmountOf } from '$lib/partner-booking';
 import { partnerBookingCodeOf } from '$lib/partner-reservation';
 import { cancelPartnerBooking, getPartnerBooking, retryPartnerCharge, type ChargeResult, type PartnerBookingRow } from './booking';
@@ -35,6 +36,8 @@ export type PartnerLedgerView = {
 	paymentName: string | null;
 	paymentOption: string | null;
 	paymentStatus: string;
+	/** 取引先払い（宿泊料金・入湯税は取引先へ月末に請求し、お客様には請求しない）。判定は請求書と同じ isBillablePaymentOption */
+	billedToPartner: boolean;
 	cardLabel: string | null;
 	chargeError: string | null;
 	refundError: string | null;
@@ -68,7 +71,7 @@ async function findLedgerRow(db: SupabaseClient, facilityId: string, bookingCode
 	return getPartnerBooking(db, String(data.partner_id), String(data.id));
 }
 
-function toView(b: PartnerBookingRow, isAdmin: boolean): PartnerLedgerView {
+function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean): PartnerLedgerView {
 	const x = readBookingExtras(b.detail);
 	return {
 		id: b.id,
@@ -90,6 +93,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean): PartnerLedgerView {
 		paymentName: b.payment_method_name,
 		paymentOption: b.payment_option,
 		paymentStatus: b.payment_status,
+		billedToPartner,
 		cardLabel: b.card_label,
 		chargeError: b.charge_error,
 		refundError: b.refund_error,
@@ -122,7 +126,10 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 				error: `いま選んでいる施設（${scope.facilityName}）の取引先予約の台帳に ${code} が見つかりません。施設を切り替えてください。`
 			};
 		}
-		return { ledger: toView(row, event.locals.user?.role === 'admin'), error: null };
+		// 取引先払いかの判定に取引先の設定（自由入力の支払方法の billable）が要る。読めなくても台帳は出す
+		const partner = row.partner_id ? await requireStaffPartner(scope.db, scope.facilityId, row.partner_id).catch(() => null) : null;
+		const billed = partner ? isBillablePaymentOption(row.payment_option, partner.booking_settings) : row.payment_option === 'invoice_monthly';
+		return { ledger: toView(row, event.locals.user?.role === 'admin', billed), error: null };
 	} catch (e) {
 		if (e instanceof StaffScopeError || e instanceof PartnerStoreError) return { ledger: null, error: e.message };
 		return { ledger: null, error: e instanceof Error ? e.message : String(e) };

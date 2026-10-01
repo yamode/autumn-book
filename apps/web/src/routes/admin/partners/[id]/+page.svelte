@@ -1131,6 +1131,7 @@
                     {:else if b.checkedIn}<span class="text-emerald-700">チェックイン済み</span>
                     {:else}<span class="text-brand-800">予約中</span>{/if}
                     {#if b.paymentName}<div class="text-[11px] text-stone-500">{b.paymentName}{b.paymentStatus === 'paid' ? '・支払済' : b.paymentStatus === 'refunded' ? '・返金済' : b.paymentStatus === 'scheduled' ? `・チェックイン日に請求${b.cardLabel ? `（${b.cardLabel}）` : ''}` : ''}</div>{/if}
+                    {#if b.billedToPartner}<div class="mt-0.5"><span class="rounded-full border border-red-300 bg-red-50 px-1.5 py-px text-[11px] font-bold whitespace-nowrap text-red-700">取引先へ請求（お客様には請求しない）</span></div>{/if}
                     {#if b.cardConsentAt}<div class="text-[11px] text-stone-500" title={b.cardConsentText ?? ''}>請求の同意: {dt(b.cardConsentAt)}</div>{/if}
                     {#if b.paymentStatus === 'charge_failed'}<div class="text-[11px] text-rose-700">請求失敗{b.chargeError ? `：${b.chargeError}` : ''}</div>{/if}
                     {#if b.paymentStatus === 'refund_failed'}<div class="text-[11px] text-rose-700" title={b.refundError ?? ''}>返金失敗（Stripe で対応が必要）</div>{/if}

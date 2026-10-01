@@ -70,10 +70,10 @@ export function normalizeBooker(raw: unknown): PartnerBooker {
 
 // 予約時の予約者の検証（氏名・メール必須。メールは確認メールの宛先）。
 export function validateBooker(b: PartnerBooker): string | null {
-  if (!b.name) return '予約者（ご担当者）のお名前を入力してください。';
-  if (!b.email) return '予約者（ご担当者）のメールアドレスを入力してください。予約確認メールの宛先になります。';
-  if (!EMAIL_RE.test(b.email)) return '予約者のメールアドレスの形式が正しくありません。';
-  if (b.phone && !/^[0-9+\-() ]{8,20}$/.test(b.phone)) return '予約者の電話番号を正しく入力してください。';
+  if (!b.name) return 'ご予約者（ご担当者）のお名前を入力してください。';
+  if (!b.email) return 'ご予約者（ご担当者）のメールアドレスを入力してください。予約確認メールの宛先になります。';
+  if (!EMAIL_RE.test(b.email)) return 'ご予約者のメールアドレスの形式が正しくありません。';
+  if (b.phone && !/^[0-9+\-() ]{8,20}$/.test(b.phone)) return 'ご予約者の電話番号を正しく入力してください。';
   return null;
 }
 

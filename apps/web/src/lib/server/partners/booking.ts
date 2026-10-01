@@ -24,6 +24,7 @@ import {
 } from '$lib/partner-booking';
 import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailRecipients, splitExtraOptions, type BookingExtras } from './booking-extras';
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
+import { isBillablePaymentOption } from '$lib/partner-invoice';
 import {
   cardLabelOf,
   chargeSavedCard,
@@ -261,8 +262,8 @@ function friendlyRpcError(message: string): string {
   if (message.includes('booking_disabled')) return '現在ご予約を受け付けていません。';
   if (message.includes('past_date')) return '過去の日付はご予約いただけません。';
   if (message.includes('invalid_adults')) return '1室あたりの人数がお部屋の定員を超えています。';
-  if (message.includes('guest_name_required')) return '宿泊者のお名前を入力してください。';
-  if (message.includes('guest_phone_required')) return '宿泊者の電話番号を入力してください。';
+  if (message.includes('guest_name_required')) return 'ご宿泊者のお名前を入力してください。';
+  if (message.includes('guest_phone_required')) return 'ご宿泊者の電話番号を入力してください。';
   if (message.includes('invalid_email')) return 'メールアドレスの形式が正しくありません。';
   if (message.includes('room_type_not_found')) return 'このお部屋は現在ご予約いただけません。';
   if (message.includes('channel_not_found') || message.includes('does not exist') || message.includes('Could not find')) {
@@ -302,7 +303,7 @@ export async function createPartnerBooking(
   if (input.rooms.length > s.maxRooms) throw new PartnerStoreError(`1回のご予約は ${s.maxRooms} 室までです。`);
 
   const g = input.guest;
-  if (!g.familyName.trim()) throw new PartnerStoreError('宿泊者（代表者）の姓を入力してください。');
+  if (!g.familyName.trim()) throw new PartnerStoreError('ご宿泊者（代表者）の姓を入力してください。');
   if (!PHONE_RE.test(g.phone.trim())) throw new PartnerStoreError('電話番号を正しく入力してください。');
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
   const answers = resolveOptionAnswers(s.options, input.answers);
@@ -1013,15 +1014,15 @@ export function bookingSummaryLines(b: PartnerBookingRow): string[] {
     `お部屋: ${b.room_name ?? b.room_code ?? ''} × ${b.room_count}室`,
     `プラン: ${b.plan_name ?? ''}${b.meal_type ? `（${mealLabel(b.meal_type)}）` : ''}`,
     `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目 ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
-    // 予約者（ご担当者）・交通手段・取引先特典（detail に構造化して残したもの）
+    // ご予約者（ご担当者）・交通手段・専用特典（detail に構造化して残したもの）
     ...extraSummaryLines(b.detail),
-    `宿泊者: ${b.guest_name}${b.guest_kana ? `（${b.guest_kana}）` : ''}`,
+    `ご宿泊者: ${b.guest_name}${b.guest_kana ? `（${b.guest_kana}）` : ''}`,
     `電話: ${b.guest_phone ?? ''}`,
     ...(b.guest_email ? [`メール: ${b.guest_email}`] : []),
     ...(g.address || g.zip_code ? [`住所: ${[g.zip_code, g.address].filter(Boolean).join(' ')}`] : []),
     ...(g.allergies ? [`アレルギー: ${g.allergies}`] : []),
     ...(b.detail.arrival ? [`到着予定: ${b.detail.arrival}`] : []),
-    // 入力項目（予約者・交通手段・特典の行は上に出したので除く）
+    // 入力項目（ご予約者・交通手段・専用特典の行は上に出したので除く）
     ...splitExtraOptions(b.detail).map((o) => `${o.label}: ${o.value}`),
     ...(b.detail.notes ? [`備考: ${b.detail.notes}`] : []),
     ...((b.bath_tax_amount ?? 0) > 0
@@ -1051,6 +1052,13 @@ export function bookingSummaryLines(b: PartnerBookingRow): string[] {
       : [])
   ];
   return lines;
+}
+
+// 取引先払い（宿泊料金・入湯税を取引先へ月末に請求し、お客様には請求しない）予約の、宿への注意書き（2026-10-02 指示）。
+// 判定は請求書と同じ isBillablePaymentOption（月末締め翌月末銀行振込、または「請求書で精算」の自由入力の支払方法）。
+export function partnerBilledNotice(partner: Pick<PartnerRow, 'name' | 'booking_settings'>, b: Pick<PartnerBookingRow, 'payment_option'>): string | null {
+  if (!isBillablePaymentOption(b.payment_option, partner.booking_settings)) return null;
+  return `【ご請求】宿泊料金・入湯税は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`;
 }
 
 async function sendBookingMails(
@@ -1084,8 +1092,13 @@ async function sendBookingMails(
   // 宿へ
   if (s.notifyEmails.length) {
     const head = kind === 'new' ? `取引先「${partner.name}」から予約が入りました。` : `取引先予約が取り消されました（${b.cancelled_by === 'staff' ? 'スタッフの操作' : '取引先の操作'}）。`;
-    const text = [head, '', ...summary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
-    const html = `<p>${escapeHtml(head)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
+    // 取引先払いの予約は、お客様に請求しないよう先頭付近で目立たせる
+    const billed = partnerBilledNotice(partner, b);
+    const text = [head, ...(billed ? ['', billed] : []), '', ...summary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
+    const billedHtml = billed
+      ? `<p style="margin:12px 0;padding:8px 12px;border:2px solid #b91c1c;border-radius:6px;background:#fef2f2;color:#b91c1c;font-weight:bold">${escapeHtml(billed)}</p>`
+      : '';
+    const html = `<p>${escapeHtml(head)}</p>${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
     const r = await sendFacilityNotice(db, partner.facility_id, {
       to: s.notifyEmails,
       subject: `【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,

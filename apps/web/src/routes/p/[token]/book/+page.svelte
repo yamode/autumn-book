@@ -81,6 +81,9 @@
   // お支払方法（1つだけならそれに決まる）
   let paymentOption = $state(init.paymentOptions[0]?.id ?? '');
   const paymentLabel = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.label ?? '');
+  // 請求書払い（取引先払い）: ご宿泊者様には請求しないことを支払方法の近くに出す（2026-10-02 指示）
+  const billedToPartner = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.billable ?? false);
+  const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
   // 金額の計算はサーバ（Intent の金額）と同じ純関数（lib/partner-booking.ts の quoteChargeOf）
@@ -316,9 +319,9 @@
         </div>
       </section>
 
-      <!-- 予約者（取引先のご担当者）。確認メールの宛先。マイページの設定が既定で入り、この予約の分だけ変えられる -->
+      <!-- ご予約者（取引先のご担当者）。確認メールの宛先。マイページの設定が既定で入り、この予約の分だけ変えられる -->
       <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">予約者（ご担当者）</h3>
+        <h3 class="card-title">ご予約者（ご担当者）</h3>
         <p class="-mt-2 mb-4 text-sm leading-6 text-stone-500">予約確認・取消・お支払いに関するメールは、ここに入力したメールアドレスへお送りします。</p>
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="block"><span class={label}>お名前 <em class="req">必須</em></span><input name="booker_name" value={init.booker.name} required maxlength="60" autocomplete="name" class={input} /></label>
@@ -336,9 +339,9 @@
         {/if}
       </section>
 
-      <!-- 宿泊者 -->
+      <!-- ご宿泊者 -->
       <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">宿泊される方（代表者）</h3>
+        <h3 class="card-title">ご宿泊者（代表者）</h3>
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="block"><span class={label}>姓 <em class="req">必須</em></span><input name="family_name" required maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>名</span><input name="given_name" maxlength="40" autocomplete="off" class={input} /></label>
@@ -350,7 +353,7 @@
           <label class="block sm:col-span-2"><span class={label}>住所</span><input name="address" maxlength="200" autocomplete="off" class={input} /></label>
         </div>
         <p id="guest-email-note" class="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6 text-stone-600">
-          宿泊者様のメールアドレスへは、予約確認メールやお支払いに関するご連絡は一切お送りしません。予約確認は上の予約者（ご担当者）様へお送りします。
+          ご宿泊者様のメールアドレスへは、予約確認メールやお支払いに関するご連絡は一切お送りしません。予約確認は上のご予約者（ご担当者）様へお送りします。
         </p>
         <!-- 交通手段（任意）。その他は自由入力 -->
         <fieldset class="mt-4">
@@ -423,7 +426,7 @@
             {#if quote.ok}<dt>お部屋</dt><dd>{quote.roomName} × {roomCount}室</dd>
               <dt>プラン</dt><dd>{displayPlanName(quote.planName)}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
-            <dt>予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>
+            <dt>ご予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>
             <dt>代表者</dt><dd>{values.family_name} {values.given_name}{values.family_name_kana || values.given_name_kana ? `（${values.family_name_kana} ${values.given_name_kana}）` : ''}</dd>
             <dt>電話番号</dt><dd>{values.phone}</dd>
             {#if values.email}<dt>メール</dt><dd>{values.email}</dd>{/if}
@@ -431,13 +434,13 @@
             {#if values.allergies}<dt>アレルギー</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
             {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
-            {#if data.perks.length}<dt>貴社限定特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
+            {#if data.perks.length}<dt>専用特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
             {#each data.settings.options as o (o.id)}
               {@const v = values[`opt_${o.id}`]}
               {#if v}<dt>{o.label}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
             {/each}
             {#if values.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
-            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}</dd>{/if}
+            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}</dd>{/if}
           </dl>
           {#if quote.ok}
             <!-- 料金の明細（表）。宿泊料金は割引前（キャンセル料の基準・入湯税を含まない） -->
@@ -511,6 +514,9 @@
           {:else if paymentLabel}
             {@const note = data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}
             <p class="text-sm text-stone-500">{paymentLabel}{note ? `（${note}）` : ''}</p>
+            {#if billedToPartner}
+              <p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</p>
+            {/if}
           {/if}
         </div>
       </section>
@@ -522,9 +528,9 @@
       <h3 class="text-lg font-bold leading-snug">{displayPlanName(data.target.planName)}</h3>
       {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
       {#if data.perks.length}
-        <!-- このプランに付く取引先特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
+        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
         <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
-          <p class="text-xs font-bold text-[var(--pt-accent)]">貴社限定特典</p>
+          <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
           <ul class="mt-1 grid gap-1.5 text-sm">
             {#each data.perks as p (p.id)}
               <li><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-stone-600">{p.description}</span>{/if}</li>
@@ -579,6 +585,7 @@
 
       <dl class="mt-4 grid gap-1 border-t border-stone-200 pt-4 text-sm">
         {#if paymentLabel}<div class="flex justify-between gap-2"><dt class="text-stone-500">お支払</dt><dd>{paymentLabel}</dd></div>{/if}
+        {#if billedToPartner}<p class="text-xs text-[var(--pt-accent)]">{BILLED_NOTE}</p>{/if}
         <div class="flex justify-between gap-2"><dt class="text-stone-500">予約の締切</dt><dd>宿泊日の{data.deadlineText}</dd></div>
         <div class="flex justify-between gap-2"><dt class="text-stone-500">取消</dt><dd>{data.cancelText ? `宿泊日の${data.cancelText}（この画面から）` : '宿へご連絡ください'}</dd></div>
       </dl>

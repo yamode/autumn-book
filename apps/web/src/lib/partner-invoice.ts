@@ -314,7 +314,7 @@ function statementPage(doc: InvoiceDocument): string {
   <td>${esc(l.bookingCode)}</td>
   <td>${md(l.checkIn)}〜${md(l.checkOut)}<br><span class="muted">${l.nights}泊</span></td>
   <td>${esc(l.roomName)} ${l.roomCount}室・${l.adults}名<br><span class="muted">${esc(l.planName)}</span></td>
-  <td>${esc(l.guestName)} 様${l.bookerName ? `<br><span class="muted">予約者 ${esc(l.bookerName)}</span>` : ''}</td>
+  <td>${esc(l.guestName)} 様${l.bookerName ? `<br><span class="muted">ご予約者 ${esc(l.bookerName)}</span>` : ''}</td>
   <td>${esc(l.paymentLabel)}</td>
   <td class="n">${yen(l.lodging)}${l.discount ? `<br><span class="muted">割引 −${yen(l.discount)}</span>` : ''}</td>
   <td class="n">${l.bathTax ? yen(l.bathTax) : '—'}</td>
@@ -327,7 +327,7 @@ function statementPage(doc: InvoiceDocument): string {
 <section class="page">
 ${headerBlock(doc, '利用明細書', `${periodLabel(doc.period)}ご利用分（${ymd(doc.period)}〜${ymd(lastDayOfMonth(doc.period))} チェックアウト）`)}
 <table class="t" style="margin-top:6mm">
-  <tr><th>予約番号</th><th>ご宿泊</th><th>お部屋・プラン</th><th>宿泊者</th><th>お支払方法</th><th>宿泊料金<br>（税込）</th><th>入湯税</th><th>ご利用額</th><th>ご請求額</th></tr>
+  <tr><th>予約番号</th><th>ご宿泊</th><th>お部屋・プラン</th><th>ご宿泊者</th><th>お支払方法</th><th>宿泊料金<br>（税込）</th><th>入湯税</th><th>ご利用額</th><th>ご請求額</th></tr>
   ${rows || '<tr><td colspan="9" class="muted">対象のご予約はありません。</td></tr>'}
   <tr class="sum"><td colspan="7">合計（${doc.lines.length}件）</td><td class="n">${yen(t.usageTotal)}</td><td class="n">${yen(t.billedTotal)}</td></tr>
 </table>

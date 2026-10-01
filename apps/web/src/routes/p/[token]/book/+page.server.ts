@@ -5,6 +5,7 @@ import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { getBookerProfile, PartnerStoreError, todayJst } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { stripePublishableKey } from '$lib/server/stripe';
+import { isBillablePaymentOption } from '$lib/partner-invoice';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -42,9 +43,10 @@ export const load = async (event) => {
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: s.options },
     // 固定の3種＋自由入力の支払方法のうち、許可されていていま使えるもの（表示名は設定の名前）
+    // billable: 請求書払い（宿泊料金・入湯税は取引先へ請求し、ご宿泊者様には請求しない）
     paymentOptions: partnerPaymentChoices(s)
       .filter((o) => payIds.includes(o.id))
-      .map((o) => ({ id: o.id, label: paymentOptionLabel(o.id, s), note: o.note })),
+      .map((o) => ({ id: o.id, label: paymentOptionLabel(o.id, s), note: o.note, billable: isBillablePaymentOption(o.id, s) })),
     booker: booker ?? normalizeBooker(null),
     bookerSaved: !!(saved.name && saved.email),
     transportOptions: PARTNER_TRANSPORT_OPTIONS,
