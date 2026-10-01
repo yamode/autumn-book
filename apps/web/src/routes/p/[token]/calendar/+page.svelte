@@ -132,6 +132,8 @@
     const [, m, d] = iso.split('-').map(Number);
     return `${m}月${d}日`;
   };
+  // 公開期間は年をまたぐので年まで出す（例: 2026年10月1日）
+  const ymdLabel = (iso: string) => `${Number(iso.slice(0, 4))}年${md(iso)}`;
   const WD = ['日', '月', '火', '水', '木', '金', '土'];
   const mdw = (iso: string) => `${md(iso)}（${WD[new Date(`${iso}T00:00:00Z`).getUTCDay()]}）`;
   // ツールチップ: PC はマウスを乗せる／フォーカスで、スマホはタップで開閉（外側タップ・Esc で閉じる）
@@ -305,7 +307,7 @@
               >{yen(priceRange[kind].price)}</button>
             {/each}
           </span>
-          <span class="text-sm text-stone-500">（{md(priceRange.from)}〜{md(priceRange.to)}）</span>
+          <span class="text-sm text-stone-500">（{ymdLabel(priceRange.from)}〜{ymdLabel(priceRange.to)}）</span>
           <span class="text-xs text-stone-400">金額にマウスを乗せる（タップする）と、どの日・お部屋・プランの料金か表示します</span>
         </p>
         {#if tipFor}
