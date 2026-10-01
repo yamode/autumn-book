@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先専用ページ: アカウント → 請求書。月ごとの利用明細書＋適格請求書をダウンロードする。
+  // 取引先専用ページ: アカウント → ご請求書。月ごとのご利用明細書＋ご請求書（適格請求書）をダウンロードする。
   import { page } from '$app/stores';
   import type { PageData } from './$types';
 
@@ -12,18 +12,18 @@
 </script>
 
 <svelte:head>
-  <title>請求書 | アカウント | {data.portal.facilityName}</title>
+  <title>ご請求書 | アカウント | {data.portal.facilityName}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
 <section>
   <p class="text-sm leading-6 text-stone-600">
-    毎月末日の15時ごろ、その月にチェックアウトしたご予約の請求書（利用明細書＋適格請求書）を発行し、メールでお送りします。ここからいつでもダウンロードできます。
+    毎月末日の15時ごろ、その月にチェックアウトしたご予約のご請求書・ご利用明細書を発行し、メールでお送りします。ここからいつでもダウンロードできます。
   </p>
 
   {#if data.invoices.length === 0}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white px-5 py-8 text-center text-stone-500">
-      まだ発行された請求書はありません。<br />毎月末日の15時ごろ、その月にチェックアウトしたご予約の請求書を発行し、メールでお送りします。
+      まだ発行されたご請求書はありません。<br />毎月末日の15時ごろ、その月にチェックアウトしたご予約のご請求書を発行し、メールでお送りします。
     </p>
   {:else}
     <!-- PC は表、スマホはカード -->
@@ -32,7 +32,7 @@
         <thead class="bg-stone-50 text-left text-stone-500">
           <tr>
             <th class="px-4 py-2.5 font-medium">対象月</th>
-            <th class="px-4 py-2.5 font-medium">請求書番号</th>
+            <th class="px-4 py-2.5 font-medium">ご請求書番号</th>
             <th class="px-4 py-2.5 font-medium">発行日</th>
             <th class="px-4 py-2.5 text-right font-medium">ご請求額</th>
             <th class="px-4 py-2.5 font-medium">お支払期限</th>
@@ -46,7 +46,7 @@
               <td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{inv.invoiceNo}</td>
               <td class="whitespace-nowrap px-4 py-3">{ymd(inv.issueDate)}</td>
               <td class="whitespace-nowrap px-4 py-3 text-right">
-                {#if inv.billedTotal > 0}{yen(inv.billedTotal)}{:else}<span class="text-stone-500">0円（利用明細書のみ）</span>{/if}
+                {#if inv.billedTotal > 0}{yen(inv.billedTotal)}{:else}<span class="text-stone-500">0円（ご利用明細書のみ）</span>{/if}
               </td>
               <td class="whitespace-nowrap px-4 py-3">{inv.billedTotal > 0 ? ymd(inv.dueDate) : '—'}</td>
               <td class="whitespace-nowrap px-4 py-3">
@@ -68,7 +68,7 @@
           </div>
           <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <dt class="text-stone-500">ご請求額</dt>
-            <dd>{#if inv.billedTotal > 0}{yen(inv.billedTotal)}{:else}0円（利用明細書のみ）{/if}</dd>
+            <dd>{#if inv.billedTotal > 0}{yen(inv.billedTotal)}{:else}0円（ご利用明細書のみ）{/if}</dd>
             <dt class="text-stone-500">発行日</dt>
             <dd>{ymd(inv.issueDate)}</dd>
             {#if inv.billedTotal > 0}

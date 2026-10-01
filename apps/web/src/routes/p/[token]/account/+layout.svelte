@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先専用ページ: アカウント（2026-10-01「マイページ」から改名）。タブで 担当者情報／請求書／ユーザー管理（マスタのみ）。
+  // 取引先専用ページ: アカウント（2026-10-01「マイページ」から改名）。タブで 担当者情報／ご請求書／ユーザー管理（マスタのみ）。
   // タブの表示だけここで決める。ユーザー管理の読み書きはサーバ側（store.ts の requireMasterAccount）で毎回確かめる。
   import { page } from '$app/stores';
   import { accountTabs } from '$lib/partner-account-roles';

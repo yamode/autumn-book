@@ -9,10 +9,10 @@ import { logPartnerAccess } from '$lib/server/partners/store';
 export const GET = async (event) => {
   const { db, partner, session } = await requirePortalSession(event);
   const id = event.params.id ?? '';
-  if (!/^[0-9a-f-]{36}$/i.test(id)) throw error(404, '請求書が見つかりません。');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw error(404, 'ご請求書が見つかりません。');
   const format = event.url.searchParams.get('format') === 'html' ? 'html' : 'pdf';
   const row = await getPartnerInvoice(db, partner.id, id);
-  if (!row || row.status !== 'issued') throw error(404, '請求書が見つかりません。');
+  if (!row || row.status !== 'issued') throw error(404, 'ご請求書が見つかりません。');
   await logPartnerAccess(db, {
     partnerId: partner.id,
     accountId: session.id,

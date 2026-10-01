@@ -1,7 +1,7 @@
 import { listPartnerInvoices } from '$lib/server/partners/invoices';
 import { portalHeader, PORTAL_HEADERS, requirePortalSession } from '$lib/server/partners/portal';
 
-// 取引先専用ページ: アカウント → 請求書（月次の利用明細書＋適格請求書。2026-10-01 追加）。
+// 取引先専用ページ: アカウント → ご請求書（月次のご利用明細書＋ご請求書（適格請求書）。2026-10-01 追加）。
 // マスタ・子ユーザーとも閲覧できる。取引先に見せるのは発行済み（status = 'issued'）だけ（取消済みは出さない）。
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);

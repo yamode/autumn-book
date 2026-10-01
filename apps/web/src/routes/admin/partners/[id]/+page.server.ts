@@ -310,6 +310,7 @@ export const load: PageServerLoad = async (event) => {
 						lines: invoicePreview.document.lines,
 						totals: invoicePreview.document.totals,
 						dueDate: invoicePreview.document.dueDate,
+						recipient: invoicePreview.document.recipient,
 						issuer: invoicePreview.document.issuer
 					}
 				: null,

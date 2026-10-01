@@ -15,6 +15,8 @@
   } from '$lib/partner-pricing';
   import {
     CUSTOM_PAYMENT_PREFIX,
+    describeInvoiceDue,
+    invoiceDueDate,
     isStripePaymentOption,
     MAX_CUSTOM_PAYMENT_OPTIONS,
     MAX_PARTNER_PERKS,
@@ -110,6 +112,14 @@
     }
     return list;
   });
+  // ご請求書のお支払期限（翌月末 / 翌月 N 日）。種類を切り替えたときの日は 25 日を既定にする
+  function setInvoiceDueType(type: string) {
+    booking.invoiceDue = type === 'next_month_day' ? { type: 'next_month_day', day: booking.invoiceDue.type === 'next_month_day' ? booking.invoiceDue.day : 25 } : { type: 'next_month_end' };
+  }
+  function setInvoiceDueDay(v: string) {
+    const day = Math.round(Number(v));
+    if (Number.isFinite(day) && day >= 1 && day <= 28) booking.invoiceDue = { type: 'next_month_day', day };
+  }
   function addOption() {
     booking.options = [...booking.options, { id: `o${Date.now().toString(36)}`, label: '', type: 'check', choices: [], required: false }];
   }
@@ -969,6 +979,34 @@
             <span>取引先にも予約確認メールを送る<span class="block text-[11px] text-stone-500">予約したログインIDのメールと、上の「連絡先メール」へ</span></span>
           </label>
         </div>
+
+        <div>
+          <p class="mb-1 text-xs font-medium text-stone-600">ご請求書（月次）</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
+              <input bind:value={booking.invoiceRecipientName} maxlength="120" placeholder={settings.name || '例: 株式会社〇〇'} class={inputClass} />
+              <span class="mt-0.5 block text-[11px] text-stone-500">空欄なら取引先名（{settings.name || '未入力'}）で発行します。「御中」は自動で付きます。</span>
+            </label>
+            <div>
+              <span class="mb-0.5 block text-xs text-stone-500">お支払期限</span>
+              <div class="flex flex-wrap items-center gap-2">
+                <select value={booking.invoiceDue.type} onchange={(e) => setInvoiceDueType(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm">
+                  <option value="next_month_end">翌月末</option>
+                  <option value="next_month_day">翌月の指定日</option>
+                </select>
+                {#if booking.invoiceDue.type === 'next_month_day'}
+                  <select value={String(booking.invoiceDue.day)} onchange={(e) => setInvoiceDueDay(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm" aria-label="お支払期限の日">
+                    {#each Array.from({ length: 28 }, (_, i) => i + 1) as d}<option value={String(d)}>{d}日</option>{/each}
+                  </select>
+                {/if}
+              </div>
+              <span class="mt-0.5 block text-[11px] text-stone-500">
+                {describeInvoiceDue(booking.invoiceDue)}（例: {periodLabel(data.invoices.currentPeriod)}分 → {invoiceDueDate(data.invoices.currentPeriod, booking.invoiceDue)}）。過去の月をあとから発行して期限が発行日より前になるときは、発行月を基準に同じ規則で決めます。
+              </span>
+            </div>
+          </div>
+        </div>
       </fieldset>
 
       <input type="hidden" name="booking" value={bookingJson} />
@@ -1186,12 +1224,12 @@
       {/if}
     </div>
 
-    <!-- 請求書（利用明細書＋適格請求書） -->
+    <!-- ご請求書（ご利用明細書＋適格請求書） -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">請求書</h2>
+      <h2 class="text-sm font-bold text-stone-700">ご請求書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
-        チェックアウト日基準・月末締めで、利用明細書と適格請求書をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
-        金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外は利用明細に 0 円のご請求として載ります。お支払期限は翌月末です。取引先は取引先ページの「アカウント → 請求書」からいつでもダウンロードできます。
+        チェックアウト日基準・月末締めで、ご利用明細書とご請求書（適格請求書）をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
+        金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
       </p>
       {#if data.invoices.bankAccountMissing}
         <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">振込先が未設定のため、月末の自動発行は行われません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で振込先を登録してください。</p>
@@ -1212,7 +1250,7 @@
       {#if data.invoices.error}
         <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.invoices.error}</p>
       {:else if data.invoices.rows.length === 0}
-        <p class="mt-3 text-sm text-stone-500">まだ請求書はありません。</p>
+        <p class="mt-3 text-sm text-stone-500">まだご請求書はありません。</p>
       {:else}
         <div class="mt-3 overflow-x-auto">
           <table class="w-full text-sm">
@@ -1347,11 +1385,12 @@
             </div>
             <p class="mt-2 text-xs text-stone-600">
               ご請求 {yen(pv.totals.billedTotal)}円（10%対象 {yen(pv.totals.taxable10)}円・うち消費税 {yen(pv.totals.tax10)}円／入湯税〔不課税〕 {yen(pv.totals.nonTaxable)}円）・お支払い済み・別途精算 {yen(pv.totals.paidTotal)}円・お支払期限 {pv.dueDate}
-              {#if pv.totals.billedTotal === 0}<span class="text-stone-500">（ご請求 0 円のため、利用明細書だけを発行します）</span>{/if}
+              {#if pv.totals.billedTotal === 0}<span class="text-stone-500">（ご請求 0 円のため、ご利用明細書だけを発行します）</span>{/if}
+              <span class="block text-stone-500">宛名: {pv.recipient.name} 御中（宛名・お支払期限は保存済みの設定で計算しています）</span>
             </p>
             {#if data.invoices.chargeFailed.length}
               <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                カード決済（チェックイン日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
+                カード決済（チェックイン日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。ご請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
               </p>
             {/if}
           {/if}
@@ -1362,7 +1401,7 @@
               action={`?/issueInvoice`}
               use:enhance={async ({ formData, cancel }) => {
                 const send = formData.get('send') !== null;
-                const msg = `${periodLabel(data.invoices.period)}分の請求書を発行${send ? 'し、取引先へメールで送信' : ''}します。同じ月は1枚だけです（作り直すには取消が必要です）。${issuingMidMonth ? '\n※ 月の途中です。今日より後にチェックアウトする予約は載りません。' : ''}${data.invoices.chargeFailed.length ? `\n※ カード決済が失敗したままの予約（${data.invoices.chargeFailed.join('、')}）は請求しません。` : ''}`;
+                const msg = `${periodLabel(data.invoices.period)}分のご請求書を発行${send ? 'し、取引先へメールで送信' : ''}します。同じ月は1枚だけです（作り直すには取消が必要です）。${issuingMidMonth ? '\n※ 月の途中です。今日より後にチェックアウトする予約は載りません。' : ''}${data.invoices.chargeFailed.length ? `\n※ カード決済が失敗したままの予約（${data.invoices.chargeFailed.join('、')}）は請求しません。` : ''}`;
                 if (!(await askConfirm({ message: msg, confirmLabel: '発行する' }))) {
                   cancel();
                   return;

@@ -46,6 +46,28 @@ export function partnerPaymentChoices(s: Pick<PartnerBookingSettings, 'customPay
   return [...PARTNER_PAYMENT_OPTIONS, ...s.customPaymentOptions];
 }
 
+// ---- 月次のご請求書（2026-10-02 指示: 支払期限は取引先ごと・宛名は正式社名を別に設定） ----
+// 支払期限: 翌月末 / 翌月 N 日（1〜28。29日以降は月により無いので 28 まで）
+export type PartnerInvoiceDue = { type: 'next_month_end' } | { type: 'next_month_day'; day: number };
+export const DEFAULT_INVOICE_DUE: PartnerInvoiceDue = { type: 'next_month_end' };
+
+export function normalizeInvoiceDue(raw: unknown): PartnerInvoiceDue {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  if (src.type !== 'next_month_day') return { ...DEFAULT_INVOICE_DUE };
+  const day = Math.round(Number(src.day));
+  return Number.isFinite(day) && day >= 1 && day <= 28 ? { type: 'next_month_day', day } : { ...DEFAULT_INVOICE_DUE };
+}
+
+export const describeInvoiceDue = (d: PartnerInvoiceDue) => (d.type === 'next_month_end' ? '翌月末' : `翌月${d.day}日`);
+
+// 対象月（YYYY-MM-01）の支払期限（YYYY-MM-DD）。
+export function invoiceDueDate(period: string, d: PartnerInvoiceDue): string {
+  const [y, m] = period.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m + 1, 0)); // 翌月末
+  const day = d.type === 'next_month_end' ? last.getUTCDate() : Math.min(d.day, last.getUTCDate());
+  return `${last.getUTCFullYear()}-${String(last.getUTCMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 // ---- 取引先特典（2026-10-01 指示: 取引先専用ページから予約したときだけ付く特典） ----
 // planCodes が空なら全プラン。プランを絞ると「取引先専用プラン」として見せられる。
 // 特典は予約の要望（PMS の「事前質問・要望」）・確認メールに「取引先特典」として載り、宿が当日提供する。
@@ -140,6 +162,9 @@ export type PartnerBookingSettings = {
   customPaymentOptions: PartnerCustomPaymentOption[];
   // 取引先特典（最大10）。
   perks: PartnerPerk[];
+  // 月次のご請求書の宛名（正式社名。空なら取引先名）と支払期限。
+  invoiceRecipientName: string;
+  invoiceDue: PartnerInvoiceDue;
   // 予約時決済（online）を選んだときの割引。
   prepayDiscount: PrepayDiscount;
   // 受付締切: 宿泊日の leadDays 日前の cutoffHour 時（JST）まで。0日前 = 当日。
@@ -163,6 +188,8 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   paymentOptions: ['invoice_monthly'],
   customPaymentOptions: [],
   perks: [],
+  invoiceRecipientName: '',
+  invoiceDue: { type: 'next_month_end' },
   prepayDiscount: { type: 'none', value: 0 },
   leadDays: 1,
   cutoffHour: 18,
@@ -246,6 +273,8 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
     paymentOptions,
     customPaymentOptions,
     perks,
+    invoiceRecipientName: String(src.invoiceRecipientName ?? '').trim().slice(0, 120),
+    invoiceDue: normalizeInvoiceDue(src.invoiceDue),
     prepayDiscount: normalizePrepayDiscount(src.prepayDiscount),
     leadDays: clampInt(src.leadDays, 0, 90, d.leadDays),
     cutoffHour: clampInt(src.cutoffHour, 0, 23, d.cutoffHour),

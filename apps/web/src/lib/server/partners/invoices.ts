@@ -18,7 +18,6 @@ import {
   isInvoiceTarget,
   isLastDayOfMonth,
   MAX_INVOICE_SEND_ATTEMPTS,
-  nextMonthEnd,
   periodLabel,
   periodOf,
   renderInvoiceHtml,
@@ -28,7 +27,12 @@ import {
   type InvoiceDocument,
   type InvoiceIssuer
 } from '$lib/partner-invoice';
-import { normalizePartnerBookingSettings } from '$lib/partner-booking';
+import {
+  DEFAULT_INVOICE_DUE,
+  invoiceDueDate,
+  normalizePartnerBookingSettings,
+  type PartnerInvoiceDue
+} from '$lib/partner-booking';
 import { FACILITY_UUID, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { fitsAttachmentLimit, type MailAttachment } from '$lib/server/mail-attachments';
 import { sendFacilityNotice, sendPartnerMail } from './mail';
@@ -369,10 +373,11 @@ async function loadTargetBookings(
 // カード決済（チェックイン日）が失敗したままの予約の予約番号（請求はしない。管理画面で警告を出す）
 const chargeFailedCodes = (bookings: InvoiceBookingSource[]) => bookings.filter(isChargeFailed).map((b) => b.booking_code);
 
-// お支払期限は翌月末。過去の月をあとから発行すると期限が発行日より前になるので、そのときは発行月の翌月末にする
-export function dueDateFor(period: string, issueDate: string): string {
-  const due = nextMonthEnd(period);
-  return due >= issueDate ? due : nextMonthEnd(periodOf(issueDate));
+// お支払期限は取引先ごとの規則（翌月末 / 翌月 N 日）。過去の月をあとから発行すると期限が発行日より前になるので、
+// そのときは発行月を基準に同じ規則で計算する（例: 翌月25日 → 発行日の翌月25日）
+export function dueDateFor(period: string, issueDate: string, rule: PartnerInvoiceDue = DEFAULT_INVOICE_DUE): string {
+  const due = invoiceDueDate(period, rule);
+  return due >= issueDate ? due : invoiceDueDate(periodOf(issueDate), rule);
 }
 
 function buildDocument(
@@ -383,14 +388,16 @@ function buildDocument(
   invoiceNo: string,
   issueDate: string
 ): InvoiceDocument {
-  const lines = buildInvoiceLines(bookings, normalizePartnerBookingSettings(partner.booking_settings));
+  const booking = normalizePartnerBookingSettings(partner.booking_settings);
+  const lines = buildInvoiceLines(bookings, booking);
   return {
     version: 1,
     invoiceNo,
     period,
     issueDate,
-    dueDate: dueDateFor(period, issueDate),
-    recipient: { name: partner.name },
+    dueDate: dueDateFor(period, issueDate, booking.invoiceDue),
+    // 宛名は正式社名（未設定なら取引先名）
+    recipient: { name: booking.invoiceRecipientName || partner.name },
     issuer: issuerOf(settings),
     lines,
     totals: invoiceTotals(lines)
@@ -548,14 +555,14 @@ const escapeHtml = (s: string) =>
 const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
 const ymd = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
 
-/** 件名（ご請求 0 円なら利用明細書だけ）。 */
+/** 件名（ご請求 0 円ならご利用明細書だけ）。 */
 export function invoiceMailSubject(doc: Pick<InvoiceDocument, 'invoiceNo' | 'period' | 'totals' | 'issuer'>): string {
-  const what = doc.totals.billedTotal > 0 ? '請求書・利用明細書' : '利用明細書';
+  const what = doc.totals.billedTotal > 0 ? 'ご請求書・ご利用明細書' : 'ご利用明細書';
   const facility = doc.issuer.facilityName || doc.issuer.name;
   return `【${facility}】${periodLabel(doc.period)}ご利用分 ${what}（${doc.invoiceNo}）`;
 }
 
-function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached: boolean): { text: string; html: string } {
+export function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached: boolean): { text: string; html: string } {
   const t = doc.totals;
   const billed = t.billedTotal > 0;
   const facility = doc.issuer.facilityName || doc.issuer.name;
@@ -563,7 +570,7 @@ function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached: boolea
     `${doc.recipient.name} 御中`,
     '',
     `いつも${facility}をご利用いただき、ありがとうございます。`,
-    `${periodLabel(doc.period)}ご利用分（チェックアウト日基準）の${billed ? '請求書・利用明細書' : '利用明細書'}をお送りします。`,
+    `${periodLabel(doc.period)}ご利用分（チェックアウト日基準）の${billed ? 'ご請求書・ご利用明細書' : 'ご利用明細書'}をお送りします。`,
     '',
     `請求書番号: ${doc.invoiceNo}`,
     `ご利用件数: ${doc.lines.length}件　ご利用総額: ${yen(t.usageTotal)}`,
@@ -577,15 +584,15 @@ function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached: boolea
       : ['今月のご請求はありません（オンライン決済済み・別途精算のご予約のみ）。']),
     '',
     attached ? 'PDF を添付しています。' : '書類は下記のページからダウンロードできます。',
-    `取引先ページ「アカウント → 請求書」: ${pageUrl}`,
-    '（ログインが必要です。過去の請求書もいつでもダウンロードできます）',
+    `取引先ページ「アカウント → ご請求書」: ${pageUrl}`,
+    '（ログインが必要です。過去のご請求書もいつでもダウンロードできます）',
     '',
     `${doc.issuer.name}　${facility}`,
     ...(doc.issuer.tel ? [`TEL ${doc.issuer.tel}`] : [])
   ];
   const text = lines.join('\n');
   const html = `<div style="font-family:sans-serif;line-height:1.7">${lines
-    .map((l) => (l.includes(pageUrl) ? `取引先ページ「アカウント → 請求書」: <a href="${escapeHtml(pageUrl)}">${escapeHtml(pageUrl)}</a>` : escapeHtml(l)))
+    .map((l) => (l.includes(pageUrl) ? `取引先ページ「アカウント → ご請求書」: <a href="${escapeHtml(pageUrl)}">${escapeHtml(pageUrl)}</a>` : escapeHtml(l)))
     .join('<br>')}</div>`;
   return { text, html };
 }
@@ -758,17 +765,17 @@ async function notifyMissingBankAccount(db: SupabaseClient, facilityId: string, 
   }
   const names = partners.map((p) => `・${p.name}`).join('\n');
   const text = [
-    `${periodLabel(period)}ご利用分の取引先の請求書を自動発行できませんでした。`,
-    '理由: 請求書の振込先が未設定です。',
+    `${periodLabel(period)}ご利用分の取引先のご請求書を自動発行できませんでした。`,
+    '理由: ご請求書の振込先が未設定です。',
     '',
-    '管理画面「取引先」の「請求書の設定」で振込先を登録し、各取引先の画面の「請求書」から発行・送信してください。',
+    '管理画面「取引先」の「請求書の設定」で振込先を登録し、各取引先の画面の「ご請求書」から発行・送信してください。',
     '',
     '対象の取引先:',
     names
   ].join('\n');
   await sendFacilityNotice(db, facilityId, {
     to,
-    subject: `【${facilityName}】振込先が未設定のため請求書を自動発行できませんでした（${periodLabel(period)}分）`,
+    subject: `【${facilityName}】振込先が未設定のためご請求書を自動発行できませんでした（${periodLabel(period)}分）`,
     text,
     html: `<div style="font-family:sans-serif;line-height:1.7">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`
   }).catch((e) => console.error('[partner-invoice] 通知を送れませんでした:', e instanceof Error ? e.message : e));

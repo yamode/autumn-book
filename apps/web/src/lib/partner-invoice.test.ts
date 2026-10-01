@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildInvoiceLines,
+  groupStatementLines,
   invoiceFileName,
   invoiceCutoffDate,
   invoiceTotals,
@@ -182,8 +183,8 @@ const docOf = (bookings: InvoiceBookingSource[], over: Partial<InvoiceDocument> 
 describe('紙面（HTML）', () => {
   it('ご請求ありなら請求書＋利用明細書', () => {
     const html = renderInvoiceHtml(docOf([booking()]));
-    expect(html).toContain('<h1>請求書</h1>');
-    expect(html).toContain('<h1>利用明細書</h1>');
+    expect(html).toContain('<h1>ご請求書</h1>');
+    expect(html).toContain('<h1>ご利用明細書</h1>');
     expect(html).toContain('T3400001006564');
     expect(html).toContain('2026年11月30日');
     expect(html).toContain('○○銀行 △△支店<br>普通 1234567');
@@ -192,11 +193,11 @@ describe('紙面（HTML）', () => {
   it('0 円なら利用明細書だけ', () => {
     const doc = docOf([booking({ payment_option: 'online', payment_status: 'paid' })]);
     const html = renderInvoiceHtml(doc);
-    expect(html).not.toContain('<h1>請求書</h1>');
-    expect(html).toContain('<h1>利用明細書</h1>');
-    expect(html).toContain('<title>利用明細書 PI-202610-00001</title>');
-    expect(invoiceFileName(doc, 'pdf')).toBe('利用明細書_PI-202610-00001_2026年10月.pdf');
-    expect(invoiceFileName(docOf([booking()]), 'html')).toBe('請求書・利用明細書_PI-202610-00001_2026年10月.html');
+    expect(html).not.toContain('<h1>ご請求書</h1>');
+    expect(html).toContain('<h1>ご利用明細書</h1>');
+    expect(html).toContain('<title>ご利用明細書 PI-202610-00001</title>');
+    expect(invoiceFileName(doc, 'pdf')).toBe('ご利用明細書_PI-202610-00001_2026年10月.pdf');
+    expect(invoiceFileName(docOf([booking()]), 'html')).toBe('ご請求書・ご利用明細書_PI-202610-00001_2026年10月.html');
   });
 
   it('文字列はエスケープする', () => {
@@ -242,5 +243,22 @@ describe('送信失敗の回数', () => {
     const third = sendFailureMessage(second, '[送信失敗 9回目] 二重の印は消す');
     expect(third).toBe('[送信失敗 3回目] 二重の印は消す');
     expect(sendFailureCount(third) >= MAX_INVOICE_SEND_ATTEMPTS).toBe(true);
+  });
+});
+
+describe('ご利用明細書のグループ（お支払方法別）', () => {
+  it('ご請求の対象を先に、お支払方法ごとにまとめる。旧形式は paymentLabel を見出しに', () => {
+    const base = { bookingId: 'x', checkIn: '2026-10-01', checkOut: '2026-10-02', nights: 1, roomName: 'R', roomCount: 1, adults: 2, planName: 'P', guestName: 'G', bookerName: '', lodging: 1000, bathTax: 0, discount: 0, usage: 1000 };
+    const g = groupStatementLines([
+      { ...base, bookingCode: 'A', paymentLabel: 'オンライン（済）', paymentMethod: 'オンライン', paymentNote: '済', billable: false, billed: 0 },
+      { ...base, bookingCode: 'B', paymentLabel: '月末', paymentMethod: '月末', paymentNote: '', billable: true, billed: 1000 },
+      { ...base, bookingCode: 'C', paymentLabel: '月末', paymentMethod: '月末', paymentNote: '', billable: true, billed: 1000 },
+      { ...base, bookingCode: 'D', paymentLabel: '旧ラベル', billable: false, billed: 0 }
+    ]);
+    expect(g.map((x) => [x.method, x.billable, x.lines.length])).toEqual([
+      ['月末', true, 2],
+      ['オンライン', false, 1],
+      ['旧ラベル', false, 1]
+    ]);
   });
 });

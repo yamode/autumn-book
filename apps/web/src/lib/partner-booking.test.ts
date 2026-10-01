@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   canBookFor,
+  describeInvoiceDue,
+  invoiceDueDate,
+  normalizeInvoiceDue,
   chargeAmountOf,
   quoteChargeOf,
   applyPrepayDiscount,
@@ -240,5 +243,37 @@ describe('予約者', () => {
       '山田 太郎（総務部） / 03-1234-5678 / y@example.com'
     );
     expect(describeBooker({ ...EMPTY_BOOKER, name: '山田', email: 'y@example.com' })).toBe('山田 / y@example.com');
+  });
+});
+
+describe('ご請求書のお支払期限（2026-10-02）', () => {
+  it('invoiceDueDate: 翌月末', () => {
+    expect(invoiceDueDate('2026-10-01', { type: 'next_month_end' })).toBe('2026-11-30');
+    expect(invoiceDueDate('2027-01-01', { type: 'next_month_end' })).toBe('2027-02-28');
+    expect(invoiceDueDate('2027-12-01', { type: 'next_month_end' })).toBe('2028-01-31');
+  });
+  it('invoiceDueDate: 翌月25日（2月・12月→翌年1月も）', () => {
+    const due = { type: 'next_month_day', day: 25 } as const;
+    expect(invoiceDueDate('2026-10-01', due)).toBe('2026-11-25');
+    expect(invoiceDueDate('2027-01-01', due)).toBe('2027-02-25');
+    expect(invoiceDueDate('2026-12-01', due)).toBe('2027-01-25');
+    expect(invoiceDueDate('2026-12-01', { type: 'next_month_day', day: 5 })).toBe('2027-01-05');
+  });
+  it('normalizeInvoiceDue: 範囲外・不正は翌月末', () => {
+    expect(normalizeInvoiceDue({ type: 'next_month_day', day: 25 })).toEqual({ type: 'next_month_day', day: 25 });
+    expect(normalizeInvoiceDue({ type: 'next_month_day', day: 0 })).toEqual({ type: 'next_month_end' });
+    expect(normalizeInvoiceDue({ type: 'next_month_day', day: 29 })).toEqual({ type: 'next_month_end' });
+    expect(normalizeInvoiceDue({ type: 'next_month_day', day: 'x' })).toEqual({ type: 'next_month_end' });
+    expect(normalizeInvoiceDue({ type: 'weird' })).toEqual({ type: 'next_month_end' });
+    expect(normalizeInvoiceDue(null)).toEqual({ type: 'next_month_end' });
+  });
+  it('describeInvoiceDue', () => {
+    expect(describeInvoiceDue({ type: 'next_month_end' })).toBe('翌月末');
+    expect(describeInvoiceDue({ type: 'next_month_day', day: 25 })).toBe('翌月25日');
+  });
+  it('normalizePartnerBookingSettings: 既定は宛名空・翌月末', () => {
+    const s = normalizePartnerBookingSettings({});
+    expect(s.invoiceRecipientName).toBe('');
+    expect(s.invoiceDue).toEqual({ type: 'next_month_end' });
   });
 });

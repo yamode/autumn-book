@@ -84,3 +84,22 @@ describe('parsePartnerSettings（2026-10-01: 自由入力の支払方法・取�
     expect(() => parsePartnerSettings(form({ ...base, pricing: bad }))).toThrow('最低料金が最高料金');
   });
 });
+
+describe('parsePartnerSettings（2026-10-02: ご請求書の宛名・お支払期限）', () => {
+  it('booking JSON の invoiceRecipientName / invoiceDue がそのまま通る', () => {
+    const booking = JSON.stringify({
+      ...DEFAULT_PARTNER_BOOKING_SETTINGS,
+      invoiceRecipientName: '  株式会社再春館製薬所 ',
+      invoiceDue: { type: 'next_month_day', day: 25 }
+    });
+    const r = parsePartnerSettings(form({ ...base, booking }));
+    expect(r.booking_settings.invoiceRecipientName).toBe('株式会社再春館製薬所');
+    expect(r.booking_settings.invoiceDue).toEqual({ type: 'next_month_day', day: 25 });
+  });
+
+  it('未指定・範囲外の期限は翌月末、宛名は空', () => {
+    const r = parsePartnerSettings(form({ ...base, booking: JSON.stringify({ ...DEFAULT_PARTNER_BOOKING_SETTINGS, invoiceDue: { type: 'next_month_day', day: 31 } }) }));
+    expect(r.booking_settings.invoiceDue).toEqual({ type: 'next_month_end' });
+    expect(r.booking_settings.invoiceRecipientName).toBe('');
+  });
+});

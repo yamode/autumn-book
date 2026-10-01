@@ -3,7 +3,7 @@
 // - マスタユーザー: Book のスタッフが発行したログインID（rms_partner_accounts.is_master = true）。
 //   取引先内の子ユーザーを作成・停止/再開・削除・パスワード設定リンクの再送ができる。
 // - 子ユーザー: マスタが作ったログインID（is_master = false）。ユーザー管理以外はすべて使える
-//   （予約・予約一覧・覚書・請求書・自分の担当者情報）。他のユーザーは管理できない。
+//   （予約・予約一覧・覚書・ご請求書・自分の担当者情報）。他のユーザーは管理できない。
 // - マスタ自身・他のマスタは、取引先ページからは操作できない（停止・削除は Book のスタッフが行う）。
 
 export type AccountRoleSubject = {
@@ -45,7 +45,7 @@ export function accountStatus(a: { is_active: boolean; password_hash?: string | 
 export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'users'; label: string }[] {
   return [
     { path: '', label: '担当者情報' },
-    { path: 'invoices', label: '請求書' },
+    { path: 'invoices', label: 'ご請求書' },
     ...(isMaster ? [{ path: 'users' as const, label: 'ユーザー管理' }] : [])
   ];
 }

@@ -105,7 +105,7 @@
 	<div class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
 		<h2 class="text-sm font-bold text-stone-700">請求書の設定 — {data.facilityName}</h2>
 		<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
-			取引先の月次請求書（利用明細書＋適格請求書）の発行元と振込先です。発行済みの請求書は発行時の内容のまま変わりません（変更は次の発行から）。
+			取引先の月次のご請求書・ご利用明細書の発行元と振込先です。発行済みのご請求書は発行時の内容のまま変わりません（変更は次の発行から）。
 			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります。
 		</p>
 		{#if data.billing.error}
@@ -146,7 +146,7 @@
 						<input name="issuer_address" required maxlength="200" value={b.issuerAddress} class="mt-0.5 {inputCls}" />
 					</label>
 					<label class="block text-sm">
-						<span class="text-xs text-stone-500">TEL（空欄にすると請求書に載せません）</span>
+						<span class="text-xs text-stone-500">TEL（空欄にするとご請求書に載せません）</span>
 						<input name="issuer_tel" maxlength="30" value={b.issuerTel} class="mt-0.5 {inputCls}" />
 					</label>
 					<label class="block text-sm">
@@ -154,7 +154,7 @@
 						<textarea name="bank_account" rows="3" maxlength="300" placeholder={'例: ○○銀行 △△支店\n普通 1234567\nカ）ヤマド'} class="mt-0.5 {inputCls}">{b.bankAccount}</textarea>
 					</label>
 					<label class="block text-sm">
-						<span class="text-xs text-stone-500">備考（請求書に載ります）</span>
+						<span class="text-xs text-stone-500">備考（ご請求書に載ります）</span>
 						<textarea name="note" rows="3" maxlength="500" class="mt-0.5 {inputCls}">{b.note}</textarea>
 					</label>
 					<label class="flex items-center gap-2 text-sm sm:col-span-2">
