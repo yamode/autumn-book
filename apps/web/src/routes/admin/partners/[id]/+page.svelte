@@ -1341,6 +1341,11 @@
             />
           </label>
           <p class="text-xs text-stone-500">{periodLabel(data.invoices.period)}のプレビュー（まだ発行していない内容です）</p>
+          <div class="ml-auto flex flex-wrap items-center gap-1.5">
+            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${data.invoices.period}&format=html`} target="_blank" rel="noopener">予定請求書を見る</a>
+            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${data.invoices.period}&format=pdf`} data-sveltekit-reload>予定請求書 PDF</a>
+            <a class="text-xs text-brand-800 hover:underline" href={`/admin/partners/invoices?period=${invoiceMonth}`}>全取引先の予定請求書 →</a>
+          </div>
         </div>
 
         {#if data.invoices.previewError}

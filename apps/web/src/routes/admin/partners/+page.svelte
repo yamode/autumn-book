@@ -29,6 +29,10 @@
 			REST API（API キー）で公開します。基準は料金マスタの理論値（1名・税込・入湯税別）です。
 		</p>
 	</div>
+	<div class="flex flex-wrap items-center gap-2">
+	{#if data.live && !data.error}
+		<a href="/admin/partners/invoices" class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">🧾 予定請求書を見る</a>
+	{/if}
 	{#if data.canEdit && data.live && !data.error}
 		<button
 			type="button"
@@ -36,6 +40,7 @@
 			class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700"
 		>＋ 取引先を追加</button>
 	{/if}
+	</div>
 </div>
 
 {#if data.error}

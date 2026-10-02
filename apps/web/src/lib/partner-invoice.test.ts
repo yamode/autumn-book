@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildInvoiceLines,
+  draftInvoiceDocName,
+  draftInvoiceFileName,
   groupStatementLines,
   invoiceFileName,
   invoiceCutoffDate,
@@ -209,6 +211,40 @@ describe('紙面（HTML）', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('A&amp;B &quot;x&quot;');
     expect(html).toContain('O&#39;Reilly &lt;b&gt; 御中');
+  });
+});
+
+describe('予定請求書（draft）', () => {
+  it('書類名・帯・透かし・未発行・試算日', () => {
+    const doc = docOf([booking()], { invoiceNo: '（未発行）', issueDate: '2026-10-02' });
+    const html = renderInvoiceHtml(doc, { draft: true });
+    expect(html).toContain('<h1>ご請求書（予定）</h1>');
+    expect(html).toContain('<h1>ご利用明細書（予定）</h1>');
+    expect(html).toContain('予定請求書 — 10月2日時点の実績（チェックアウト済み）による試算です。正式なご請求書ではありません');
+    expect(html).toContain('class="draft-wm"');
+    expect(html).toContain('<td>試算日</td><td>2026年10月2日</td>');
+    expect(html).toContain('<td>請求書番号</td><td>（未発行）</td>');
+    expect(html).not.toContain('<td>発行日</td>');
+    expect(html).toContain('<title>ご請求書（予定） ○○トラベル 2026年10月</title>');
+  });
+
+  it('draft でなければ正式版と同じ（オプション省略と一致・予定の表示なし）', () => {
+    const doc = docOf([booking()]);
+    const html = renderInvoiceHtml(doc);
+    expect(renderInvoiceHtml(doc, { draft: false })).toBe(html);
+    expect(html).not.toContain('（予定）');
+    expect(html).not.toContain('draft-band');
+    expect(html).not.toContain('draft-wm');
+    expect(html).toContain('<td>請求書番号</td><td>PI-202610-00001</td>');
+    expect(html).toContain('<td>発行日</td><td>2026年10月31日</td>');
+  });
+
+  it('ファイル名（ご請求 0 円なら利用明細書・使えない文字は全角に）', () => {
+    expect(draftInvoiceFileName(docOf([booking()]), '○○トラベル', 'pdf')).toBe('ご請求書（予定）_○○トラベル_2026年10月.pdf');
+    const paid = docOf([booking({ payment_option: 'online', payment_status: 'paid' })]);
+    expect(draftInvoiceDocName(paid)).toBe('ご利用明細書（予定）');
+    expect(draftInvoiceFileName(paid, 'A/B:C', 'html')).toBe('ご利用明細書（予定）_A／B：C_2026年10月.html');
+    expect(draftInvoiceFileName(paid, '  ', 'pdf')).toBe('ご利用明細書（予定）_取引先_2026年10月.pdf');
   });
 });
 

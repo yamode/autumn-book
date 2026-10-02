@@ -46,6 +46,8 @@ export type RenderInvoicePdfOptions = {
   timeoutMs?: number;
   /** false = レート制限（429）でも待って投げ直さない（cron の時間予算内で終えるため）。既定 true */
   backoff?: boolean;
+  /** 焼く HTML（既定は renderInvoiceHtml(doc)）。予定請求書は renderInvoiceHtml(doc, { draft: true }) を渡す */
+  html?: string;
 };
 
 /** 請求書の紙面を PDF にする。作れなければ null（理由は console.error に残す）。 */
@@ -61,7 +63,7 @@ export async function renderInvoicePdf(doc: InvoiceDocument, opts: RenderInvoice
   // スキーマは公式どおり（format は小文字・waitForSelector はオブジェクト）。autumn-pms で 400 を踏んだ点を踏襲。
   // 余白は紙面の @page（14mm 等）に任せる（margin を渡さない＋preferCSSPageSize）。
   const payload = JSON.stringify({
-    html: renderInvoiceHtml(doc),
+    html: opts.html ?? renderInvoiceHtml(doc),
     // ページ読み込みの待ちはリクエストの上限より少し短く（上限で切られる前に Browser Rendering 側で諦めさせる）
     gotoOptions: { waitUntil: 'networkidle0', timeout: Math.min(30_000, timeoutMs - 3_000) },
     viewport: { width: 1240, height: 1754 },

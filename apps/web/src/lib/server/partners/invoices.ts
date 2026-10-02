@@ -11,6 +11,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildInvoiceLines,
+  draftInvoiceFileName,
   invoiceCutoffDate,
   invoiceFileName,
   invoiceTotals,
@@ -368,8 +369,12 @@ async function loadTargetBookings(
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
   const rows = ((data ?? []) as (InvoiceBookingSource & { room_type_id?: string | null })[]).filter((b) => isInvoiceTarget(b, period, today));
-  // 紙面の部屋名は短縮名（2026-10-02 指示）。優先順: Book 部屋設定の「取引先向けの短縮名」
-  // （book.room_type_contents.partner_short_name）→ PMS の短縮名（pms.room_types.short_name・社内向けの略称）→ 正式名
+  return applyRoomShortNames(db, rows);
+}
+
+// 紙面の部屋名は短縮名（2026-10-02 指示）。優先順: Book 部屋設定の「取引先向けの短縮名」
+// （book.room_type_contents.partner_short_name）→ PMS の短縮名（pms.room_types.short_name・社内向けの略称）→ 正式名
+async function applyRoomShortNames<T extends InvoiceBookingSource & { room_type_id?: string | null }>(db: SupabaseClient, rows: T[]): Promise<T[]> {
   const typeIds = [...new Set(rows.map((b) => b.room_type_id).filter((x): x is string => !!x))];
   if (typeIds.length) {
     const [{ data: contents }, { data: types }] = await Promise.all([
@@ -423,6 +428,38 @@ function buildDocument(
   };
 }
 
+/**
+ * 予定請求書の応答（管理画面の確認用・正式発行前の試算）。紙面は renderInvoiceHtml(doc, { draft: true })。
+ * pdf が作れなければ HTML（印刷用）に切り替える（x-invoice-format で分かる）。
+ */
+export async function draftInvoiceResponse(doc: InvoiceDocument, partnerName: string, format: 'pdf' | 'html'): Promise<Response> {
+  const html = renderInvoiceHtml(doc, { draft: true });
+  const common = { 'x-content-type-options': 'nosniff', 'cache-control': 'private, no-store' };
+  if (format === 'pdf') {
+    const pdf = await renderInvoicePdf(doc, { html });
+    if (pdf) {
+      return new Response(new Uint8Array(pdf), {
+        headers: {
+          ...common,
+          'content-type': 'application/pdf',
+          'content-length': String(pdf.byteLength),
+          'content-disposition': contentDisposition('attachment', draftInvoiceFileName(doc, partnerName, 'pdf')),
+          'x-invoice-format': 'pdf'
+        }
+      });
+    }
+  }
+  return new Response(html, {
+    headers: {
+      ...common,
+      'content-type': 'text/html; charset=utf-8',
+      'content-disposition': contentDisposition('inline', draftInvoiceFileName(doc, partnerName, 'html')),
+      'content-security-policy': HTML_CSP,
+      'x-invoice-format': 'html'
+    }
+  });
+}
+
 /** 発行せずに紙面を組み立てる（管理画面のプレビュー用。番号は「未発行」）。 */
 export async function previewPartnerInvoice(
   db: SupabaseClient,
@@ -438,6 +475,87 @@ export async function previewPartnerInvoice(
     settings,
     chargeFailed: chargeFailedCodes(bookings)
   };
+}
+
+export type FacilityDraftInvoice = {
+  partner: { id: string; name: string; bookingEnabled: boolean; isActive: boolean };
+  /** 予定の紙面（番号は「（未発行）」・発行日は今日＝試算日） */
+  document: InvoiceDocument;
+  chargeFailed: string[];
+  /** その月の有効な正式のご請求書（無ければ null） */
+  issued: Pick<
+    PartnerInvoiceRow,
+    'id' | 'invoice_no' | 'issue_date' | 'due_date' | 'billed_total' | 'usage_total' | 'booking_ids' | 'issued_by' | 'sent_at' | 'sent_to' | 'send_error'
+  > | null;
+};
+
+/**
+ * 施設の取引先ごとの予定請求（/admin/partners/invoices の一覧用）。
+ * 対象: その月（今日まで）にチェックアウトの確定予約がある取引先 ＋ 予約受付中の取引先 ＋ その月に正式発行済みの取引先。
+ * 予約・設定・発行済みはまとめて読み、紙面は取引先ごとに previewPartnerInvoice と同じ規則（buildDocument）で組み立てる。
+ */
+export async function previewFacilityInvoices(
+  db: SupabaseClient,
+  facilityId: string,
+  period: string
+): Promise<{ settings: PartnerBillingSettings; rows: FacilityDraftInvoice[]; today: string }> {
+  if (!PERIOD_RE.test(period)) throw new PartnerStoreError('対象月が正しくありません。');
+  const today = todayJst();
+  const [bookingRes, partnerRes, issuedRes, settings] = await Promise.all([
+    db
+      .from('rms_partner_bookings')
+      .select(`${BOOKING_SOURCE_COLUMNS}, partner_id`)
+      .eq('facility_id', facilityId)
+      .eq('status', 'confirmed')
+      .gte('check_out_date', period)
+      .lte('check_out_date', invoiceCutoffDate(period, today)),
+    db
+      .from('rms_partners')
+      .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, is_active')
+      .eq('facility_id', facilityId)
+      .order('name'),
+    db
+      .from('rms_partner_invoices')
+      .select('id, partner_id, invoice_no, issue_date, due_date, billed_total, usage_total, booking_ids, issued_by, sent_at, sent_to, send_error')
+      .eq('facility_id', facilityId)
+      .eq('period', period)
+      .eq('status', 'issued'),
+    loadBillingSettings(db, facilityId)
+  ]);
+  if (bookingRes.error) raise(bookingRes.error, '予約を読み込めませんでした。');
+  if (partnerRes.error) raise(partnerRes.error, '取引先を読み込めませんでした。');
+  if (issuedRes.error) raise(issuedRes.error, '請求書を読み込めませんでした。');
+
+  type SourceRow = InvoiceBookingSource & { room_type_id?: string | null; partner_id: string | null };
+  const bookings = await applyRoomShortNames(
+    db,
+    ((bookingRes.data ?? []) as unknown as SourceRow[]).filter((b) => isInvoiceTarget(b, period, today))
+  );
+  const byPartner = new Map<string, SourceRow[]>();
+  for (const b of bookings) {
+    if (!b.partner_id) continue;
+    const list = byPartner.get(b.partner_id) ?? [];
+    list.push(b);
+    byPartner.set(b.partner_id, list);
+  }
+  type IssuedRow = NonNullable<FacilityDraftInvoice['issued']> & { partner_id: string | null };
+  const issuedBy = new Map(((issuedRes.data ?? []) as IssuedRow[]).filter((r) => r.partner_id).map((r) => [r.partner_id as string, r]));
+
+  const rows: FacilityDraftInvoice[] = [];
+  for (const raw of (partnerRes.data ?? []) as Record<string, unknown>[]) {
+    const p = { ...(raw as unknown as InvoicePartner), booking_settings: normalizePartnerBookingSettings(raw.booking_settings) };
+    const list = byPartner.get(p.id) ?? [];
+    const issuedRow = issuedBy.get(p.id) ?? null;
+    const bookingEnabled = raw.booking_enabled === true;
+    if (!list.length && !bookingEnabled && !issuedRow) continue;
+    rows.push({
+      partner: { id: p.id, name: p.name, bookingEnabled, isActive: raw.is_active === true },
+      document: buildDocument(p, period, list, settings, '（未発行）', today),
+      chargeFailed: chargeFailedCodes(list),
+      issued: issuedRow
+    });
+  }
+  return { settings, rows, today };
 }
 
 async function findIssued(db: SupabaseClient, partnerId: string, period: string): Promise<PartnerInvoiceRow | null> {

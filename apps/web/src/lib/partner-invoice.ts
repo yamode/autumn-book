@@ -258,18 +258,34 @@ table.t tr.sub td { background: #fafaf9; }
 // 書類名（2026-10-02 指示:「ご請求書」「ご利用明細書」）
 const DOC_INVOICE = 'ご請求書';
 const DOC_STATEMENT = 'ご利用明細書';
+// 予定請求書（正式発行前の試算・管理画面で確認する用。2026-10-02 指示）の書類名の後ろに付ける
+const DRAFT_SUFFIX = '（予定）';
 
-function headerBlock(doc: InvoiceDocument, title: string, sub: string): string {
+export type RenderInvoiceOptions = {
+  /** true = 予定請求書（書類名に「（予定）」・上部の帯・「予定」の透かし・番号は未発行・発行日の欄は試算日）。doc.issueDate を試算日として扱う */
+  draft?: boolean;
+};
+
+// 予定請求書だけに足す CSS（正式版の STYLE は変えない）
+const DRAFT_STYLE = `
+.draft-band { margin: 0 0 4mm; padding: 2mm 4mm; border: 1.5px solid #b45309; background: #fffbeb; color: #78350f; font-size: 9.5pt; font-weight: 700; text-align: center; }
+.draft-wm { position: fixed; top: 42%; left: 0; right: 0; text-align: center; font-size: 120pt; font-weight: 700; color: rgba(180, 83, 9, .08); transform: rotate(-30deg); pointer-events: none; z-index: 0; letter-spacing: .2em; }
+`;
+
+const draftBand = (doc: InvoiceDocument) =>
+  `<div class="draft-band">予定請求書 — ${Number(doc.issueDate.slice(5, 7))}月${Number(doc.issueDate.slice(8, 10))}日時点の実績（チェックアウト済み）による試算です。正式なご請求書ではありません</div>`;
+
+function headerBlock(doc: InvoiceDocument, title: string, sub: string, draft = false): string {
   const i = doc.issuer;
-  return `
-<h1>${esc(title)}</h1>
+  return `${draft ? draftBand(doc) : ''}
+<h1>${esc(draft ? title + DRAFT_SUFFIX : title)}</h1>
 <div class="sub">${esc(sub)}</div>
 <div class="head">
   <div><div class="to">${esc(doc.recipient.name)} 御中</div></div>
   <div>
     <table class="meta">
-      <tr><td>請求書番号</td><td>${esc(doc.invoiceNo)}</td></tr>
-      <tr><td>発行日</td><td>${ymd(doc.issueDate)}</td></tr>
+      <tr><td>請求書番号</td><td>${esc(draft ? '（未発行）' : doc.invoiceNo)}</td></tr>
+      <tr><td>${draft ? '試算日' : '発行日'}</td><td>${ymd(doc.issueDate)}</td></tr>
     </table>
     <div class="issuer">
       <b>${esc(i.name)}</b><br>
@@ -288,7 +304,7 @@ const periodSub = (doc: InvoiceDocument) =>
 // お部屋・人数の1行（例: 「オーシャンスイート57平米 1室・2名」）
 const roomLine = (l: InvoiceLine) => `${esc(l.roomName)} ${l.roomCount}室・${l.adults}名`;
 
-function invoicePage(doc: InvoiceDocument): string {
+function invoicePage(doc: InvoiceDocument, draft = false): string {
   const t = doc.totals;
   const billed = doc.lines.filter((l) => l.billable);
   const rows = billed
@@ -304,7 +320,7 @@ function invoicePage(doc: InvoiceDocument): string {
     .join('');
   return `
 <section class="page">
-${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`)}
+${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`, draft)}
 <div class="amount"><span class="l">ご請求金額（税込）</span><span class="v">${yen(t.billedTotal)}</span></div>
 <table class="t" style="width:115mm;margin-bottom:5mm">
   <colgroup><col style="width:47mm"><col style="width:38mm"><col style="width:30mm"></colgroup>
@@ -343,7 +359,7 @@ export function groupStatementLines(lines: InvoiceLine[]): StatementGroup[] {
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, g]) => g);
 }
 
-function statementPage(doc: InvoiceDocument): string {
+function statementPage(doc: InvoiceDocument, draft = false): string {
   const t = doc.totals;
   const groups = groupStatementLines(doc.lines);
   const head = `<colgroup><col style="width:32mm"><col><col style="width:29mm"><col style="width:19mm"><col style="width:13mm"><col style="width:19mm"><col style="width:19mm"></colgroup>
@@ -376,7 +392,7 @@ function statementPage(doc: InvoiceDocument): string {
     .join('');
   return `
 <section class="page">
-${headerBlock(doc, DOC_STATEMENT, periodSub(doc))}
+${headerBlock(doc, DOC_STATEMENT, periodSub(doc), draft)}
 ${body || '<p class="note">対象のご予約はありません。</p>'}
 <table class="t" style="margin-top:4mm">
   <colgroup><col><col style="width:19mm"><col style="width:19mm"></colgroup>
@@ -393,16 +409,32 @@ ${body || '<p class="note">対象のご予約はありません。</p>'}
 export const invoiceDocName = (doc: Pick<InvoiceDocument, 'totals'>) =>
   doc.totals.billedTotal > 0 ? `${DOC_INVOICE}・${DOC_STATEMENT}` : DOC_STATEMENT;
 
-// 紙面の HTML（1ファイル完結）。ご請求額が 0 円ならご利用明細書だけ。
-export function renderInvoiceHtml(doc: InvoiceDocument): string {
-  const pages = (doc.totals.billedTotal > 0 ? invoicePage(doc) : '') + statementPage(doc);
-  const title = `${invoiceDocName(doc)} ${doc.invoiceNo}`;
+// 予定請求書の書類名（例: ご請求書（予定）／ご請求 0 円なら ご利用明細書（予定））
+export const draftInvoiceDocName = (doc: Pick<InvoiceDocument, 'totals'>) =>
+  (doc.totals.billedTotal > 0 ? DOC_INVOICE : DOC_STATEMENT) + DRAFT_SUFFIX;
+
+// 紙面の HTML（1ファイル完結）。ご請求額が 0 円ならご利用明細書だけ。opts.draft で予定請求書。
+export function renderInvoiceHtml(doc: InvoiceDocument, opts: RenderInvoiceOptions = {}): string {
+  const draft = opts.draft === true;
+  const pages = (doc.totals.billedTotal > 0 ? invoicePage(doc, draft) : '') + statementPage(doc, draft);
+  const title = draft ? `${draftInvoiceDocName(doc)} ${doc.recipient.name} ${periodLabel(doc.period)}` : `${invoiceDocName(doc)} ${doc.invoiceNo}`;
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=block" rel="stylesheet">
-<style>${STYLE}</style></head><body>${pages}</body></html>`;
+<style>${STYLE}${draft ? DRAFT_STYLE : ''}</style></head><body>${draft ? '<div class="draft-wm" aria-hidden="true">予定</div>' : ''}${pages}</body></html>`;
 }
 
 // ダウンロード・添付のファイル名（例: ご請求書・ご利用明細書_PI-202610-00001_2026年10月.pdf）
 export const invoiceFileName = (doc: Pick<InvoiceDocument, 'invoiceNo' | 'period' | 'totals'>, ext: 'pdf' | 'html') =>
   `${invoiceDocName(doc)}_${doc.invoiceNo}_${periodLabel(doc.period)}.${ext}`;
+
+// 予定請求書のファイル名（例: ご請求書（予定）_○○トラベル_2026年10月.pdf）。ファイル名に使えない文字は全角に置き換える
+const safeFilePart = (s: string) =>
+  s
+    .replace(/[\\/:*?"<>|]/g,(c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0))
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f]/g, '')
+    .trim()
+    .slice(0, 60);
+export const draftInvoiceFileName = (doc: Pick<InvoiceDocument, 'period' | 'totals'>, partnerName: string, ext: 'pdf' | 'html') =>
+  `${draftInvoiceDocName(doc)}_${safeFilePart(partnerName) || '取引先'}_${periodLabel(doc.period)}.${ext}`;
