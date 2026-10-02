@@ -20,6 +20,8 @@ declare global {
 		interface Platform {
 			env?: {
 				AB_CONFIG?: KVNamespace;
+				// FAQ ボット公開 API のレート制限（KV: autumn-book-rate）
+				AB_RATE?: KVNamespace;
 			};
 			// 応答を返した後も処理を続ける（取引先の請求 cron が Stripe 呼び出しを逃がすのに使う）。
 			context?: {

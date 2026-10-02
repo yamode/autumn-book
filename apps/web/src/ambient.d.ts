@@ -6,7 +6,8 @@
 // アプリ設定フラグの読み書きに使う分だけ定義する。
 interface KVNamespace {
 	get(key: string, options?: { cacheTtl?: number }): Promise<string | null>;
-	put(key: string, value: string): Promise<void>;
+	// expirationTtl（秒・60以上）: FAQ ボットのレート制限カウンタを自動で消すのに使う
+	put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
 }
 
 // async_hooks は Node.js 組み込みモジュール。@types/node 未インストール環境向けの最小型宣言。

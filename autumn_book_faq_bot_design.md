@@ -34,7 +34,7 @@
 
 ```
 [施設HP]  oga.yamado.co.jp（Xserver 静的） / www・nishiwaga.yamado.co.jp（hp-yamado）
-   │  <script src="https://booking.yamado.co.jp/faq/widget.js" data-facility="oga" defer>
+   │  <script src="https://book.yamado.app/faq/widget.js" data-facility="oga" defer>
    ▼
 [ウィジェット]  widget.js（依存なしの素の JS・Shadow DOM で HP の CSS と干渉しない）
    │  fetch（CORS 許可済みのオリジンのみ）
@@ -131,7 +131,7 @@
 - **CORS**: 施設ごとの許可オリジンだけに `Access-Control-Allow-Origin` を返す。
   - oga: `https://oga.yamado.co.jp`
   - nishiwaga: `https://www.yamado.co.jp` / `https://nishiwaga.yamado.co.jp`
-  - 共通: `https://booking.yamado.co.jp`（autumn-book 自身の施設HP）
+  - 共通: `https://book.yamado.app`（autumn-book 自身の施設HP）
 - **レート制限**: 既存の KV（`AB_CONFIG` とは別に `FAQ_RATE` を作る）で IP あたり 10分30回（検索）。超過時 429。
 - **キャッシュ**: 一覧と個別回答は `Cache-Control: public, max-age=300`。検索・評価は `no-store`。
 - **Bot 対策**: 書き込みは質問ログだけで、メール送信などの副作用が無いため Turnstile は使わない（レート制限と入力長の制限で十分）。
@@ -144,7 +144,7 @@
 
 ```html
 <!-- 画面右下の「よくある質問」ボタン（talkappi の吹き出しと置き換え） -->
-<script src="https://booking.yamado.co.jp/faq/widget.js" data-facility="oga" defer></script>
+<script src="https://book.yamado.app/faq/widget.js" data-facility="oga" defer></script>
 
 <!-- FAQ ページなどにページ内で一覧表示したい場合（任意） -->
 <div data-autumn-faq="oga" data-mode="inline"></div>
