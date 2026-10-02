@@ -1,6 +1,28 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-02（予定請求書 v0.60.0）
+> **最終更新**: 2026-10-03（FAQ ボット v0.62.0）
+
+## FAQ ボット（2026-10-03・v0.61.0〜v0.62.0）
+
+**2026-10-03 ユーザー指示: 施設HPの他社ボット（男鹿: talkappi＋tripla bot／西和賀: tripla bot）を自前FAQに置き換える。回答は登録済みFAQの検索のみ（AI生成なし）。検索された質問を蓄積し、回答できなかったものを管理画面で回答してFAQを育てる。** 設計書: `autumn_book_faq_bot_design.md`
+- DB: autumn-shared `20261002233250_book_faq_bot.sql`（`book.faqs` に keywords/source/view_count、`book.faq_queries`、RPC `faq_log_query`/`faq_feedback`）。PROD 適用済み
+- 公開 API（`/api/faq/{oga|nishiwaga}`・`/item/{id}`・`/search`・`/feedback`）。CORS は施設HPのオリジンのみ。KV `AB_RATE`（autumn-book-rate）で IP あたり 10分30回。**メンテナンスモードの対象外**
+- 検索: `lib/server/faq/search.ts`（NFKC・かな統一・表記ゆれ辞書・文字2-gram・IDF 重み）。既定しきい値 0.30
+- ウィジェット: `static/faq/widget.js`。HP に `<script src="https://book.yamado.app/faq/widget.js" data-facility="oga" defer></script>`
+- 管理画面 `/admin/faqs`: 本番接続（demoOnly 解除）・言い換え・翻訳・検索テスト・「未回答の質問」タブ・初期データ取り込み（西和賀の旧HP 19件）
+- 残: 男鹿の初期データ（talkappi／tripla の管理画面から収集。talkappi はエクスポート機能なし）→ 施設側で確認・公開 → oga（Xserver 静的）と西和賀（hp-yamado）に埋め込み・talkappi 撤去・tripla はボットだけ停止（予約ウィジェットは残す）
+
+### テストチェックリスト（v0.62.0）
+- [ ] 管理画面 FAQ: 初期データ取り込み → 下書きで19件登録され、もう一度押しても重複しない
+- [ ] FAQ の追加・編集・言い換え・並び順・公開／非公開・翻訳（en／zh-TW）が保存できる
+- [ ] 検索テスト（?test=）でスコアが表示され、言い換えを足すとスコアが上がる
+- [ ] 未回答の質問: 同じ質問がまとまって件数順に出る。回答を作成／既存FAQに紐付け／対象外が効く
+- [ ] 他施設のスタッフには相手施設の FAQ・質問が見えない（RLS）
+- [ ] ウィジェット（PC・iPhone・Android）: ボタンの開閉・カテゴリ一覧・検索・回答表示・「解決しましたか」・回答なし時の電話／フォーム案内
+- [ ] HP 側のデザインが崩れない（Shadow DOM）。許可外ドメインに貼っても API を読めない（CORS）
+- [ ] 英語ページ（`<html lang="en">`）で英語表示・訳が無い項目は日本語で出る
+- [ ] 短時間に大量検索すると「検索が多すぎます」（429）
+- [ ] メンテナンスモード中も FAQ API・ウィジェットが動く
 
 ## 予定請求書（2026-10-02・v0.60.0）
 
