@@ -24,6 +24,7 @@ export type InvoiceBookingSource = {
   check_out_date: string;
   nights: number;
   room_name: string | null;
+  room_short_name?: string | null; // 部屋タイプの短縮名（紙面ではこちらを優先）
   room_count: number;
   adult_total: number;
   plan_name: string | null;
@@ -177,7 +178,7 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         checkIn: b.check_in_date,
         checkOut: b.check_out_date,
         nights: b.nights,
-        roomName: b.room_name ?? '',
+        roomName: (b.room_short_name ?? '').trim() || (b.room_name ?? ''),
         roomCount: b.room_count,
         adults: b.adult_total,
         planName: b.plan_name ?? '',
@@ -293,8 +294,7 @@ function invoicePage(doc: InvoiceDocument): string {
   const rows = billed
     .map(
       (l) => `<tr>
-  <td class="nw">${md(l.checkOut)}</td>
-  <td class="nw">${esc(l.bookingCode)}</td>
+  <td class="nw">${md(l.checkOut)}<br><span class="muted small">${esc(l.bookingCode)}</span></td>
   <td>ご宿泊 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}<br><span class="muted">${esc(l.guestName)} 様</span></td>
   <td class="n">${yen(l.lodging - l.discount)}</td>
   <td class="n">${l.bathTax ? yen(l.bathTax) : '—'}</td>
@@ -314,17 +314,17 @@ ${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`)}
   <tr class="sum"><td>合計</td><td class="n">${yen(t.billedTotal)}</td><td class="n">${yen(t.tax10)}</td></tr>
 </table>
 <table class="t">
-  <colgroup><col style="width:20mm"><col style="width:27mm"><col><col style="width:21mm"><col style="width:15mm"><col style="width:21mm"></colgroup>
-  <tr><th>取引日<br><span class="muted nw" style="font-size:6.5pt">チェックアウト</span></th><th>予約番号</th><th>内容</th><th class="n">宿泊料金<br><span class="muted small">10%・税込</span></th><th class="n">入湯税<br><span class="muted small">不課税</span></th><th class="n">金額</th></tr>
+  <colgroup><col style="width:25mm"><col><col style="width:21mm"><col style="width:15mm"><col style="width:21mm"></colgroup>
+  <tr><th>取引日<span class="muted small">※</span><br><span class="muted small">予約番号</span></th><th>内容</th><th class="n">宿泊料金<br><span class="muted small">10%・税込</span></th><th class="n">入湯税<br><span class="muted small">不課税</span></th><th class="n">金額</th></tr>
   ${rows}
-  <tr class="sum"><td colspan="3">合計（${billed.length}件）</td><td class="n">${yen(t.taxable10)}</td><td class="n">${yen(t.nonTaxable)}</td><td class="n">${yen(t.billedTotal)}</td></tr>
+  <tr class="sum"><td colspan="2">合計（${billed.length}件）</td><td class="n">${yen(t.taxable10)}</td><td class="n">${yen(t.nonTaxable)}</td><td class="n">${yen(t.billedTotal)}</td></tr>
 </table>
 <div class="box">
   <h3>お支払期限　${ymd(doc.dueDate)}</h3>
   ${doc.issuer.bankAccount ? `<div>お振込先：${nl2br(doc.issuer.bankAccount)}</div>` : ''}
   ${doc.issuer.note ? `<div class="note">${nl2br(doc.issuer.note)}</div>` : ''}
 </div>
-<div class="note">ご利用の全予約の内訳は、次ページの${DOC_STATEMENT}をご覧ください。</div>
+<div class="note">※ 取引日はチェックアウト日です。ご利用の全予約の内訳は、次ページの${DOC_STATEMENT}をご覧ください。</div>
 </section>`;
 }
 
@@ -346,15 +346,14 @@ export function groupStatementLines(lines: InvoiceLine[]): StatementGroup[] {
 function statementPage(doc: InvoiceDocument): string {
   const t = doc.totals;
   const groups = groupStatementLines(doc.lines);
-  const head = `<colgroup><col style="width:27mm"><col style="width:22mm"><col><col style="width:26mm"><col style="width:19mm"><col style="width:13mm"><col style="width:19mm"><col style="width:19mm"></colgroup>
-  <tr><th>予約番号</th><th>ご宿泊</th><th>お部屋・プラン</th><th>ご宿泊者</th><th class="n">宿泊料金<br><span class="muted small">税込</span></th><th class="n">入湯税</th><th class="n">ご利用額</th><th class="n">ご請求額</th></tr>`;
+  const head = `<colgroup><col style="width:32mm"><col><col style="width:29mm"><col style="width:19mm"><col style="width:13mm"><col style="width:19mm"><col style="width:19mm"></colgroup>
+  <tr><th>ご宿泊<br><span class="muted small">予約番号</span></th><th>お部屋・プラン</th><th>ご宿泊者</th><th class="n">宿泊料金<br><span class="muted small">税込</span></th><th class="n">入湯税</th><th class="n">ご利用額</th><th class="n">ご請求額</th></tr>`;
   const body = groups
     .map((g) => {
       const rows = g.lines
         .map(
           (l) => `<tr>
-  <td class="nw">${esc(l.bookingCode)}</td>
-  <td><span class="nw">${md(l.checkIn)}〜${md(l.checkOut)}</span><br><span class="muted">${l.nights}泊</span></td>
+  <td class="nw">${md(l.checkIn)}〜${md(l.checkOut)}<span class="muted small">・${l.nights}泊</span><br><span class="muted small">${esc(l.bookingCode)}</span></td>
   <td>${roomLine(l)}<br><span class="muted">${esc(l.planName)}</span></td>
   <td>${esc(l.guestName)} 様${l.bookerName ? `<br><span class="muted small">ご予約者 ${esc(l.bookerName)}</span>` : ''}</td>
   <td class="n">${yen(l.lodging)}${l.discount ? `<br><span class="muted small">割引 −${yen(l.discount)}</span>` : ''}</td>
@@ -371,7 +370,7 @@ function statementPage(doc: InvoiceDocument): string {
 <table class="t">
   ${head}
   ${rows}
-  <tr class="sub"><td colspan="6">小計（${g.lines.length}件）</td><td class="n">${yen(usage)}</td><td class="n">${g.billable ? yen(billed) : '—'}</td></tr>
+  <tr class="sub"><td colspan="5">小計（${g.lines.length}件）</td><td class="n">${yen(usage)}</td><td class="n">${g.billable ? yen(billed) : '—'}</td></tr>
 </table>`;
     })
     .join('');

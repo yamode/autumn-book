@@ -81,7 +81,7 @@ const INVOICE_COLUMNS =
   'id, tenant_id, facility_id, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
 
 const BOOKING_SOURCE_COLUMNS =
-  'id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail';
+  'id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id';
 
 const PERIOD_RE = /^\d{4}-\d{2}-01$/;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -367,7 +367,18 @@ async function loadTargetBookings(
     .gte('check_out_date', period)
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
-  return ((data ?? []) as InvoiceBookingSource[]).filter((b) => isInvoiceTarget(b, period, today));
+  const rows = ((data ?? []) as (InvoiceBookingSource & { room_type_id?: string | null })[]).filter((b) => isInvoiceTarget(b, period, today));
+  // 紙面には部屋タイプの短縮名（pms.room_types.short_name。例: 「オーシャン」）を使う（2026-10-02 指示）。読めなければ正式名のまま
+  const typeIds = [...new Set(rows.map((b) => b.room_type_id).filter((x): x is string => !!x))];
+  if (typeIds.length) {
+    const { data: types } = await db.schema('pms').from('room_types').select('id, short_name').in('id', typeIds);
+    const short = new Map(((types ?? []) as { id: string; short_name: string | null }[]).map((t) => [t.id, (t.short_name ?? '').trim()]));
+    for (const b of rows) {
+      const s = b.room_type_id ? short.get(b.room_type_id) : '';
+      if (s) b.room_short_name = s;
+    }
+  }
+  return rows;
 }
 
 // カード決済（チェックイン日）が失敗したままの予約の予約番号（請求はしない。管理画面で警告を出す）
