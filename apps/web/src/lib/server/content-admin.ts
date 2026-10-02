@@ -41,6 +41,10 @@ export interface AdminRoomContent extends AdminContentBase {
 	capacityMin: number | null;
 	capacityMax: number | null;
 	isActive: boolean;
+	/** 取引先向けの短縮名（book.room_type_contents.partner_short_name。ご請求書の部屋名）。空なら未設定 */
+	partnerShortName: string;
+	/** PMS の短縮名（pms.room_types.short_name。社内向けの略称。参考表示用） */
+	pmsShortName: string;
 }
 
 export interface AdminPlanContent extends AdminContentBase {
@@ -88,7 +92,7 @@ export async function sbListRoomContentsAdmin(
 		client
 			.schema('pms')
 			.from('room_types')
-			.select('id, code, name, capacity_min, capacity_max, is_active, sort_order')
+			.select('id, code, name, short_name, capacity_min, capacity_max, is_active, sort_order')
 			.eq('facility_id', facilityUuid)
 			.order('sort_order')
 			.order('code'),
@@ -104,7 +108,9 @@ export async function sbListRoomContentsAdmin(
 		name: String(r.name ?? ''),
 		capacityMin: r.capacity_min == null ? null : Number(r.capacity_min),
 		capacityMax: r.capacity_max == null ? null : Number(r.capacity_max),
-		isActive: r.is_active === true
+		isActive: r.is_active === true,
+		partnerShortName: String(byId.get(String(r.id))?.partner_short_name ?? ''),
+		pmsShortName: String(r.short_name ?? '')
 	}));
 }
 
@@ -176,6 +182,50 @@ export async function sbSaveRoomContent(
 			facility_id: r.facility_id,
 			slug: slugFromCode(String(r.code ?? ''), roomTypeId),
 			...fields
+		});
+	if (ins.error) throw ins.error;
+}
+
+/**
+ * 取引先向けの短縮名だけを保存する（2026-10-02 指示）。紹介の行が無ければ非公開の行を作る。
+ * 空文字は未設定（null）として保存する。
+ */
+export async function sbSaveRoomPartnerShortName(
+	client: SupabaseClient,
+	facilityUuid: string,
+	roomTypeId: string,
+	value: string
+): Promise<void> {
+	const v = value.trim().slice(0, 40) || null;
+	const upd = await client
+		.schema('book')
+		.from('room_type_contents')
+		.update({ partner_short_name: v, updated_at: new Date().toISOString() })
+		.eq('room_type_id', roomTypeId)
+		.eq('facility_id', facilityUuid)
+		.select('room_type_id');
+	if (upd.error) throw upd.error;
+	if ((upd.data ?? []).length > 0) return;
+	const rt = await client
+		.schema('pms')
+		.from('room_types')
+		.select('id, tenant_id, facility_id, code')
+		.eq('id', roomTypeId)
+		.eq('facility_id', facilityUuid)
+		.maybeSingle();
+	if (rt.error) throw rt.error;
+	if (!rt.data) throw new Error('対象の部屋タイプが見つかりません。');
+	const r = rt.data as Row;
+	const ins = await client
+		.schema('book')
+		.from('room_type_contents')
+		.insert({
+			room_type_id: roomTypeId,
+			tenant_id: r.tenant_id,
+			facility_id: r.facility_id,
+			slug: slugFromCode(String(r.code ?? ''), roomTypeId),
+			is_published: false,
+			partner_short_name: v
 		});
 	if (ins.error) throw ins.error;
 }

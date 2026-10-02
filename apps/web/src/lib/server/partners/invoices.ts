@@ -368,13 +368,21 @@ async function loadTargetBookings(
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
   const rows = ((data ?? []) as (InvoiceBookingSource & { room_type_id?: string | null })[]).filter((b) => isInvoiceTarget(b, period, today));
-  // 紙面には部屋タイプの短縮名（pms.room_types.short_name。例: 「オーシャン」）を使う（2026-10-02 指示）。読めなければ正式名のまま
+  // 紙面の部屋名は短縮名（2026-10-02 指示）。優先順: Book 部屋設定の「取引先向けの短縮名」
+  // （book.room_type_contents.partner_short_name）→ PMS の短縮名（pms.room_types.short_name・社内向けの略称）→ 正式名
   const typeIds = [...new Set(rows.map((b) => b.room_type_id).filter((x): x is string => !!x))];
   if (typeIds.length) {
-    const { data: types } = await db.schema('pms').from('room_types').select('id, short_name').in('id', typeIds);
-    const short = new Map(((types ?? []) as { id: string; short_name: string | null }[]).map((t) => [t.id, (t.short_name ?? '').trim()]));
+    const [{ data: contents }, { data: types }] = await Promise.all([
+      db.schema('book').from('room_type_contents').select('room_type_id, partner_short_name').in('room_type_id', typeIds),
+      db.schema('pms').from('room_types').select('id, short_name').in('id', typeIds)
+    ]);
+    const partnerShort = new Map(
+      ((contents ?? []) as { room_type_id: string; partner_short_name: string | null }[]).map((c) => [c.room_type_id, (c.partner_short_name ?? '').trim()])
+    );
+    const pmsShort = new Map(((types ?? []) as { id: string; short_name: string | null }[]).map((t) => [t.id, (t.short_name ?? '').trim()]));
     for (const b of rows) {
-      const s = b.room_type_id ? short.get(b.room_type_id) : '';
+      if (!b.room_type_id) continue;
+      const s = partnerShort.get(b.room_type_id) || pmsShort.get(b.room_type_id) || '';
       if (s) b.room_short_name = s;
     }
   }

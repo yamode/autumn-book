@@ -3,7 +3,7 @@
 import { error, fail } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
-import { sbGetRoomContentAdmin, sbSaveRoomContent } from '$lib/server/content-admin';
+import { sbGetRoomContentAdmin, sbSaveRoomContent, sbSaveRoomPartnerShortName } from '$lib/server/content-admin';
 import {
 	LIVE,
 	NOT_LIVE,
@@ -58,5 +58,24 @@ export const actions: Actions = {
 			return fail(400, { error: messageOf(e) });
 		}
 	},
-	upload: (event) => uploadPhotoAction(event, 'rooms')
+	upload: (event) => uploadPhotoAction(event, 'rooms'),
+
+	// 取引先向けの短縮名（ご請求書・ご利用明細書の部屋名。2026-10-02 指示）
+	savePartnerShortName: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { error: NOT_LIVE });
+		const fd = await event.request.formData();
+		try {
+			await sbSaveRoomPartnerShortName(
+				createSupabaseServerClient(event),
+				currentFacilityOf(event).uuid,
+				event.params.id,
+				String(fd.get('partner_short_name') ?? '')
+			);
+			return { shortNameSaved: true };
+		} catch (e) {
+			return fail(400, { error: messageOf(e) });
+		}
+	}
 };

@@ -96,6 +96,8 @@ export function demoRoomContents(facilityId: string): AdminRoomContent[] {
 			capacityMin: 1,
 			capacityMax: r.capacity,
 			isActive: true,
+			partnerShortName: '',
+			pmsShortName: '',
 			hasContent: true,
 			slug: r.slug,
 			headline: r.headline,
