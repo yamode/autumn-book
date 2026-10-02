@@ -112,6 +112,10 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// ポータル本体の公開状況と関係なく稼働させる（2026-09-26 ユーザー指示。autumn-rms から移設）。
 	if (isPartnerPath(url.pathname)) return true;
 
+	// FAQ ボットの公開 API とウィジェットは、各施設HP（oga.yamado.co.jp・www.yamado.co.jp）に埋め込んで使う
+	// 独立した機能なので、ポータル本体の公開状況と関係なく稼働させる（2026-10-03 ユーザー指示・設計書 autumn_book_faq_bot_design.md）。
+	if (url.pathname.startsWith('/api/faq/') || url.pathname.startsWith('/faq/')) return true;
+
 	// 法定表記（特商法・プライバシーポリシー・宿泊約款）は、取引先ページからのリンク先であり、
 	// 決済サービスの審査でも開ける必要があるため、ポータル本体の公開前から見られるようにする。
 	if (/^\/(?:en\/|zh-TW\/)?legal\//.test(url.pathname)) return true;

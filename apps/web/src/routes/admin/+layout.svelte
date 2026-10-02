@@ -45,7 +45,7 @@
 			items: [
 				{ href: '/admin/facility', label: '施設ページ編集', icon: '🏠', demoOnly: true },
 				{ href: '/admin/news', label: 'お知らせ', icon: '📰' },
-				{ href: '/admin/faqs', label: 'FAQ', icon: '❓', demoOnly: true },
+				{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
 				{ href: '/admin/mail', label: 'メルマガ', icon: '✉', demoOnly: true },
 				{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁', demoOnly: true }
 			]
