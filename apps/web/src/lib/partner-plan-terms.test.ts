@@ -41,6 +41,19 @@ describe('buildPlanTerms', () => {
     ]);
     expect(m.get('a009■特別')?.cancellation).toEqual([{ label: '3日前から', value: '50%' }]);
   });
+  it('施設のお子様設定があれば全プラン共通でそれを出す（区分コードより優先）', () => {
+    const m = buildPlanTerms({
+      plans: [{ plan_code: 'a003', plan_label: 'L', cancellation_policy: [], child_policy_code: '子供不可' }],
+      default_cancellation: null,
+      child_policy: { rows: [{ label: '小学生高学年', value: '大人料金の70%' }, { label: '', value: 'x' }], note: '添い寝は2名まで' }
+    });
+    expect(m.get('a003■L')?.children).toEqual([{ label: '小学生高学年', value: '大人料金の70%' }]);
+    expect(m.get('a003■L')?.childrenNote).toBe('添い寝は2名まで');
+  });
+  it('施設のお子様設定が空なら区分コードから', () => {
+    const m = buildPlanTerms({ plans: [{ plan_code: 'a', plan_label: 'L', child_policy_code: 'ファミリー' }], child_policy: { rows: [], note: '' } });
+    expect(m.get('a■L')?.childrenNote).toContain('お子様連れ');
+  });
   it('壊れた入力でも落ちない', () => {
     expect(buildPlanTerms(null).size).toBe(0);
   });

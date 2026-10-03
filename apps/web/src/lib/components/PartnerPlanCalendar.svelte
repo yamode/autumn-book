@@ -33,6 +33,25 @@
   const now = new Date(Date.now() + 9 * 3600 * 1000); // JST
   let start = $state({ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 });
   let guests = $state(2);
+  // マス目の金額: 1名あたり（取引先の料金表と同じ）か、1室の合計（人数ぶん）か。選んだ方は次に開いたときも使う。
+  const UNIT_KEY = 'pt-plan-cal-unit';
+  let unit = $state<'person' | 'room'>('person');
+  onMount(() => {
+    try {
+      if (localStorage.getItem(UNIT_KEY) === 'room') unit = 'room';
+    } catch {
+      /* 保存できない環境では毎回 1名あたり */
+    }
+  });
+  function setUnit(u: 'person' | 'room') {
+    unit = u;
+    try {
+      localStorage.setItem(UNIT_KEY, u);
+    } catch {
+      /* noop */
+    }
+  }
+  const shown = (perPerson: number) => (unit === 'room' ? perPerson * guests : perPerson);
   let months = $state<PortalMonthJson[]>([]);
   let loading = $state(false);
   let loadError = $state('');
@@ -156,7 +175,13 @@
       <button type="button" class="flex h-7 w-7 items-center justify-center rounded bg-[var(--pt-accent)] text-lg leading-none text-white disabled:opacity-40" disabled={guests >= GUEST_MAX} onclick={() => { guests += 1; selected = null; }} aria-label="人数を増やす">＋</button>
     </div>
   </div>
-  <p class="mt-1 text-xs text-stone-500">1泊・1名あたりの最安料金（税込・入湯税別）。日付を押すと部屋ごとの料金が見られます。</p>
+  <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div class="inline-flex overflow-hidden rounded-md border border-stone-300 text-xs" role="group" aria-label="金額の表示">
+      <button type="button" class={`px-3 py-1 ${unit === 'person' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'person'} onclick={() => setUnit('person')}>1名あたり</button>
+      <button type="button" class={`border-l border-stone-300 px-3 py-1 ${unit === 'room' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'room'} onclick={() => setUnit('room')}>1室合計</button>
+    </div>
+    <p class="text-xs text-stone-500">1泊の{unit === 'room' ? `1室（大人${guests}名）合計` : '1名あたり'}の最安料金（税込・入湯税別）。日付を押すと部屋ごとの料金が見られます。</p>
+  </div>
 
   <div class={`relative mt-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
     <button type="button" class="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" disabled={!canPrev || loading} onclick={() => shift(-1)} aria-label="前の月">
@@ -192,7 +217,7 @@
                     aria-pressed={selected === c.iso}
                   >
                     <span class={`block text-sm ${dayColor(c)}`}>{c.d}</span>
-                    <span class="block text-[11px] font-medium leading-tight text-[var(--pt-accent)] sm:text-xs">{c.min.toLocaleString('ja-JP')}<span class="text-[10px]">円</span></span>
+                    <span class="block text-[11px] font-medium leading-tight text-[var(--pt-accent)] sm:text-xs">{shown(c.min).toLocaleString('ja-JP')}<span class="text-[10px]">円</span></span>
                   </button>
                 {:else}
                   <div class="min-h-[3.75rem] border-b border-stone-100 px-0.5 py-1.5 text-stone-300">

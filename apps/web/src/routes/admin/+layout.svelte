@@ -24,6 +24,7 @@
 				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
 				{ href: '/admin/options', label: 'オプション', icon: '🧺', demoOnly: true },
 				{ href: '/admin/cancel-policies', label: 'キャンセル規定', icon: '🚫', tenantWide: true, demoOnly: true },
+				{ href: '/admin/children', label: 'お子様の受け入れ', icon: '🧒' },
 				{ href: '/admin/bath', label: '貸切風呂', icon: '♨️' },
 				{ href: '/admin/inroom', label: '客室案内', icon: '📱' }
 			]

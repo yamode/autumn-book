@@ -2,7 +2,8 @@
 //
 // 元データは RPC rms_partner_plan_terms（autumn-shared 20261003050209）。
 // - キャンセル規定: プラン個別（booking.rate_plans.cancellation_policy）が空なら施設の既定（core.cancellation_policies）。
-// - お子様: rms の区分コード（子供不可 / ファミリー）。区分ごとの細かな可否はデータに無いので、コードから案内文を決める。
+// - お子様: 施設の設定（book.facility_child_policies・管理画面「お子様の受け入れ」）があれば全プラン共通でそれを出す。
+//           未設定なら rms の区分コード（子供不可 / ファミリー）から案内文を決める。
 
 export type TermsRow = { label: string; value: string };
 export type PlanTerms = { cancellation: TermsRow[]; cancellationNote: string; children: TermsRow[]; childrenNote: string };
@@ -51,17 +52,30 @@ export function childrenTerms(code: string): { rows: TermsRow[]; note: string } 
   return { rows: [], note: '' };
 }
 
+// 施設のお子様設定（行は区分と内容。どちらか空の行は落とす）。行も補足も無ければ null（＝未設定）。
+export function normalizeChildPolicy(raw: unknown): { rows: TermsRow[]; note: string } | null {
+  const o = obj(raw);
+  const rows = arr(o.rows)
+    .map(obj)
+    .map((r) => ({ label: str(r.label).slice(0, 60), value: str(r.value).slice(0, 200) }))
+    .filter((r) => r.label && r.value)
+    .slice(0, 20);
+  const note = str(o.note).slice(0, 1000);
+  return rows.length || note ? { rows, note } : null;
+}
+
 // RPC の結果から、プラン（コード＋表示名）ごとの表示内容を作る。キーは `${planCode}■${planLabel}`。
 export function buildPlanTerms(raw: unknown): Map<string, PlanTerms> {
   const data = obj(raw);
   const def = obj(data.default_cancellation);
   const defRules = normalizeRules(def.rules);
   const defNoShow = def.no_show_rate_percent == null ? null : Number(def.no_show_rate_percent);
+  const facilityChildren = normalizeChildPolicy(data.child_policy);
   const out = new Map<string, PlanTerms>();
   for (const p of arr(data.plans).map(obj)) {
     const own = normalizeRules(p.cancellation_policy);
     const rules = own.length ? own : defRules;
-    const children = childrenTerms(str(p.child_policy_code));
+    const children = facilityChildren ?? childrenTerms(str(p.child_policy_code));
     out.set(`${str(p.plan_code)}■${str(p.plan_label)}`, {
       cancellation: cancellationRows(rules, own.length ? null : defNoShow),
       cancellationNote: own.length ? '' : str(def.body),
