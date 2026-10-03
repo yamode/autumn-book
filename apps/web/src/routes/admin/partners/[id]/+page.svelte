@@ -98,32 +98,44 @@
   function removePerk(i: number) {
     booking.perks = booking.perks.filter((_, k) => k !== i);
   }
-  // 特典の画像: 選んだ時点で ?/uploadPerkImage に上げて URL だけ受け取る（特典への反映は「保存」で確定）
+  // 特典の画像: 選んだ時点で ?/uploadPerkImage に上げる。保存済みの特典ならサーバ側でその場で保存されるので、
+  // 保存済みの状態（savedSnapshot）にも同じ画像を反映して「未保存」にしない。まだ保存していない特典は「保存する」で確定。
   let perkUploading = $state<string | null>(null);
   let perkImageError = $state<{ id: string; text: string } | null>(null);
-  async function onPerkImagePicked(perk: PartnerBookingSettings['perks'][number], e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
+  async function sendPerkImage(perk: PartnerBookingSettings['perks'][number], file: File | null) {
     perkUploading = perk.id;
     perkImageError = null;
     try {
       const fd = new FormData();
-      fd.append('photo', file);
+      fd.append('perk_id', perk.id);
+      if (file) fd.append('photo', file);
+      else fd.append('remove', '1');
       const res = await fetch('?/uploadPerkImage', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
       const result = deserialize(await res.text());
       if (result.type === 'success' && typeof result.data?.perkImageUploaded === 'string') {
-        perk.imageUrl = result.data.perkImageUploaded;
+        const url = result.data.perkImageUploaded;
+        perk.imageUrl = url;
+        if (result.data.perkImagePersisted) {
+          const snap = JSON.parse(savedSnapshot) as { settings: unknown; pricing: unknown; bookingJson: string };
+          const b = JSON.parse(snap.bookingJson) as PartnerBookingSettings;
+          b.perks = b.perks.map((p) => (p.id === perk.id ? { ...p, imageUrl: url } : p));
+          savedSnapshot = JSON.stringify({ ...snap, bookingJson: JSON.stringify(b) });
+        }
       } else {
-        const text = result.type === 'failure' && typeof result.data?.message === 'string' ? result.data.message : '画像をアップロードできませんでした。';
+        const text = result.type === 'failure' && typeof result.data?.message === 'string' ? result.data.message : '画像を保存できませんでした。';
         perkImageError = { id: perk.id, text };
       }
     } catch {
-      perkImageError = { id: perk.id, text: '画像をアップロードできませんでした。' };
+      perkImageError = { id: perk.id, text: '画像を保存できませんでした。' };
     } finally {
       perkUploading = null;
     }
+  }
+  function onPerkImagePicked(perk: PartnerBookingSettings['perks'][number], e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) sendPerkImage(perk, file);
   }
   // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
   const perkPlanOptions = $derived.by(() => {
@@ -985,9 +997,9 @@
                     <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" class="hidden" disabled={!!perkUploading} onchange={(e) => onPerkImagePicked(perk, e)} />
                   </label>
                   {#if perk.imageUrl}
-                    <button type="button" class={smallBtn} onclick={() => (perk.imageUrl = '')}>画像を外す</button>
+                    <button type="button" class={smallBtn} disabled={!!perkUploading} onclick={() => sendPerkImage(perk, null)}>画像を外す</button>
                   {/if}
-                  <span class="text-[11px] text-stone-400">任意。JPEG・PNG・WebP（10MBまで）。取引先の画面に出ます。</span>
+                  <span class="text-[11px] text-stone-400">任意。JPEG・PNG・WebP（10MBまで）。選ぶとすぐ保存され、取引先の画面に出ます（追加したばかりの特典は「保存する」で確定）。</span>
                   {#if perkImageError?.id === perk.id}<span class="text-[11px] text-rose-700">{perkImageError.text}</span>{/if}
                 </div>
                 <div>

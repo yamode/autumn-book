@@ -3,7 +3,7 @@
 // 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除・請求書の発行・再送・取消）は admin のみ（staff.ts の canEditPartners）。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
-import { describeBooker, normalizeBooker } from '$lib/partner-booking';
+import { describeBooker, normalizeBooker, normalizePartnerBookingSettings } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { loadPartnerRates } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
@@ -399,16 +399,28 @@ export const actions: Actions = {
 		}
 	},
 
-	// 取引先特典の画像（2026-10-03）。book-photos に上げて公開 URL だけ返す。特典への反映は「保存」で行う
+	// 取引先特典の画像（2026-10-03）。book-photos に上げ、保存済みの特典ならその場で imageUrl も保存する
+	// （「保存する」の押し忘れで画像が出ない、を防ぐ。まだ保存していない新しい特典は「保存する」で確定）。
+	// remove=1 なら画像を外す（ファイルは消さない）。
 	uploadPerkImage: async (event) => {
 		try {
-			const { facilityId } = await editScope(event);
+			const { db, partner, userId, facilityId } = await editScope(event);
 			const fd = await event.request.formData();
-			const file = fd.get('photo');
-			const problem = photoFileProblem(file instanceof File ? file : null);
-			if (problem) return actionFailure(new PartnerStoreError(problem));
-			const url = await sbUploadContentPhoto(createSupabaseServerClient(event), 'partners', facilityId, file as File);
-			return { perkImageUploaded: url };
+			const perkId = String(fd.get('perk_id') ?? '');
+			let url = '';
+			if (fd.get('remove') !== '1') {
+				const file = fd.get('photo');
+				const problem = photoFileProblem(file instanceof File ? file : null);
+				if (problem) return actionFailure(new PartnerStoreError(problem));
+				url = await sbUploadContentPhoto(createSupabaseServerClient(event), 'partners', facilityId, file as File);
+			}
+			const current = partner.booking_settings;
+			const persisted = current.perks.some((p) => p.id === perkId);
+			if (persisted) {
+				const perks = current.perks.map((p) => (p.id === perkId ? { ...p, imageUrl: url } : p));
+				await updatePartner(db, partner, userId, { booking_settings: normalizePartnerBookingSettings({ ...current, perks }) });
+			}
+			return { perkImageUploaded: url, perkImagePersisted: persisted };
 		} catch (e) {
 			return actionFailure(e);
 		}
