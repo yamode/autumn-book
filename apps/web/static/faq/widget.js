@@ -74,7 +74,17 @@
 		'.nf{padding:12px;background:#fafafa;border:1px solid #eee;border-radius:6px;margin-top:8px}' +
 		'.cta{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.cta a{flex:1;text-align:center;border:1px solid ' + ACCENT + ';border-radius:6px;padding:8px;color:' + ACCENT + ';text-decoration:none;min-width:120px}' +
 		'.msg{color:#a33;font-size:13px;padding:8px 0}' +
-		'@media (max-width:480px){.panel{right:8px;left:8px;width:auto;bottom:84px}}';
+		'@media (max-width:480px){.panel{right:8px;left:8px;width:auto;bottom:84px}}' +
+		// ページ埋め込み（FAQ ページ）: 見出しバー・枠を出さず、HP の書体・余白になじませる
+		'.inline .panel{border:0;border-radius:0;background:transparent}' +
+		'.inline .hd{display:none}.inline input,.inline button{font-family:inherit}' +
+		'.inline .sf{padding:0 0 8px;border:0}.inline .sf input{padding:12px 14px;border-radius:4px}.inline .sf button{padding:0 22px;border-radius:4px}' +
+		'.inline .bd{overflow:visible;padding:0}' +
+		'.inline .lbl{font-size:13px;margin:28px 0 8px;letter-spacing:.1em}' +
+		'.inline details{border-bottom:1px solid #ddd}.inline details:first-of-type{border-top:1px solid #ddd}' +
+		'.inline summary{padding:18px 4px;font-size:16px;font-weight:600;letter-spacing:.05em}' +
+		'.inline .q{padding:14px 4px 14px 20px;font-size:15px;font-family:inherit}' +
+		'.inline .ans{margin:0 0 14px 20px;padding:14px 18px;font-size:14px;line-height:1.9}';
 
 	function mount(container, inline) {
 		var host = document.createElement('div');
@@ -82,7 +92,12 @@
 		container.appendChild(host);
 		var root = host.attachShadow ? host.attachShadow({ mode: 'open' }) : host;
 		root.innerHTML = '<style>' + CSS + '</style><div class="w' + (inline ? ' inline' : '') + '"></div>';
-		return root.querySelector('.w');
+		var w = root.querySelector('.w');
+		// ページ埋め込みでは HP 本文の書体を引き継ぐ（:host{all:initial} で継承が切れるため明示的に写す）
+		if (inline) {
+			try { w.style.fontFamily = getComputedStyle(container).fontFamily; } catch (e) {}
+		}
+		return w;
 	}
 
 	var state = { list: null, fallback: null, lastQueryId: null };
@@ -137,6 +152,8 @@
 		// カテゴリ一覧（回答は開いたときに取得）
 		function showList() {
 			cats.innerHTML = '';
+			// 公開中の FAQ が無いときは空の一覧ではなく問い合わせ先を出す
+			if (!state.list || state.list.length === 0) cats.appendChild(fallbackEl());
 			(state.list || []).forEach(function (c) {
 				var d = document.createElement('details');
 				d.innerHTML = '<summary>' + esc(c.name) + '</summary>';
