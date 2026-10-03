@@ -1,6 +1,7 @@
 <script lang="ts">
   // 取引先専用ページの紹介の本文（写真・説明・仕様の表・説明ブロック）。「お部屋」「プラン」で共通。
   // 配色は取引先ページのレイアウト（/p/[token]/+layout.svelte）の --pt-* を使う。
+  import PartnerPhotoGallery from './PartnerPhotoGallery.svelte';
   import { groupSections, type ContentPhoto, type ContentSection, type ContentSpec } from '$lib/partner-contents';
 
   let {
@@ -19,36 +20,12 @@
     detailLabel?: string;
   } = $props();
 
-  let current = $state(0);
-  const main = $derived(photos[Math.min(current, photos.length - 1)]);
   const groups = $derived(groupSections(sections));
 </script>
 
 <div class="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
   <div class="min-w-0">
-    {#if main}
-      <figure class="overflow-hidden rounded-xl bg-stone-200">
-        <img src={main.url} alt={main.caption} class="aspect-[3/2] w-full object-cover" loading="lazy" decoding="async" />
-        {#if main.caption}<figcaption class="px-3 py-1.5 text-xs text-stone-500">{main.caption}</figcaption>{/if}
-      </figure>
-      {#if photos.length > 1}
-        <div class="mt-2 flex gap-1.5 overflow-x-auto pb-1" aria-label="写真">
-          {#each photos as p, i (p.url)}
-            <button
-              type="button"
-              class={`h-14 w-20 shrink-0 overflow-hidden rounded-md border-2 transition ${i === current ? 'border-[var(--pt-accent)]' : 'border-transparent opacity-70 hover:opacity-100'}`}
-              onclick={() => (current = i)}
-              aria-label={`写真 ${i + 1}`}
-              aria-pressed={i === current}
-            >
-              <img src={p.url} alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />
-            </button>
-          {/each}
-        </div>
-      {/if}
-    {:else}
-      <div class="flex aspect-[3/2] items-center justify-center rounded-xl bg-stone-200 text-sm text-stone-500">写真は準備中です</div>
-    {/if}
+    <PartnerPhotoGallery {photos} />
   </div>
 
   <div class="min-w-0 space-y-4">
