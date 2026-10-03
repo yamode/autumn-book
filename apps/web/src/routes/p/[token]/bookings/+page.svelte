@@ -99,10 +99,6 @@
   }
   const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }) : '');
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
-  const displayPlanName = (name: string) => {
-    const last = name.split('■').map((s) => s.trim()).filter(Boolean).pop() ?? name;
-    return last.replace(/[（(][^()（）]*(?:円|%|％)[)）]\s*$/, '').trim() || last;
-  };
 </script>
 
 <svelte:head>
@@ -182,7 +178,7 @@
             <div class="min-w-0">
               <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}</p>
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
-              <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {displayPlanName(b.planName)}</p>
+              <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
             </div>
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums text-accent-600">{yen(b.total)}</p>
@@ -194,7 +190,7 @@
               <dl class="detail">
                 <dt>宿泊日</dt><dd>{fmt(b.checkIn)} 〜 {fmt(b.checkOut)}（{b.nights}泊）</dd>
                 <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
-                <dt>プラン</dt><dd>{displayPlanName(b.planName)}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
+                <dt>プラン</dt><dd>{b.planName}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
                 {#if b.booker}<dt>ご予約者</dt><dd>{b.booker.name}{b.booker.kana ? `（${b.booker.kana}）` : ''}{b.booker.department ? ` ${b.booker.department}` : ''}{#if b.booker.phone || b.booker.email}<span class="block text-sm text-stone-500">{[b.booker.phone, b.booker.email].filter(Boolean).join(' / ')}</span>{/if}</dd>{/if}
                 <dt>代表者</dt><dd>{b.guestName}{b.guestKana ? `（${b.guestKana}）` : ''}</dd>
                 <dt>電話番号</dt><dd>{b.phone ?? ''}</dd>

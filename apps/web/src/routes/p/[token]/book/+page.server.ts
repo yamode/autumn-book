@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { canBookFor, describeDeadline, isStripePaymentOption, normalizeBooker, PARTNER_TRANSPORT_OPTIONS, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
+import { canBookFor, describeDeadline, partnerPlanName, isStripePaymentOption, normalizeBooker, PARTNER_TRANSPORT_OPTIONS, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
 import { availablePaymentOptions, createPartnerBooking, isPartnerBookingOpen, quotePartnerBooking } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { getBookerProfile, PartnerStoreError, todayJst } from '$lib/server/partners/store';
@@ -35,7 +35,8 @@ export const load = async (event) => {
 
   return {
     portal: portalHeader(partner, session),
-    target: { roomCode, planCode, planName, checkIn, guests },
+    // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
+    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests },
     quote,
     canBook: canBookFor(checkIn, s),
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),

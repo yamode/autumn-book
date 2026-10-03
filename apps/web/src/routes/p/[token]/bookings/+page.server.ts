@@ -5,6 +5,7 @@ import {
   canUpdateCard,
   cardConsentText,
   confirmPartnerIntent,
+  bookingPlanName,
   listPartnerBookings,
   type PaymentResult
 } from '$lib/server/partners/booking';
@@ -68,7 +69,8 @@ export const load = async (event) => {
       nights: b.nights,
       roomName: b.room_name ?? b.room_code ?? '',
       roomCount: b.room_count,
-      planName: b.plan_name ?? '',
+      // 取引先向けのプラン名（予約時点）。無い予約は元の名前から既定の表示名
+      planName: bookingPlanName(b),
       mealType: b.meal_type,
       rooms: (b.detail.rooms ?? []).map((r) => r.adults),
       adultTotal: b.adult_total,

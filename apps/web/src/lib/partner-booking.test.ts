@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  partnerPlanName,
   canBookFor,
   describeInvoiceDue,
   invoiceDueDate,
@@ -286,5 +287,19 @@ describe('ご請求書のお支払期限（2026-10-02）', () => {
     const s = normalizePartnerBookingSettings({});
     expect(s.invoiceRecipientName).toBe('');
     expect(s.invoiceDue).toEqual({ type: 'next_month_end' });
+  });
+});
+
+describe('取引先向けのプラン名', () => {
+  it('付けた名前があればそれ、無ければ既定の表示名', () => {
+    const names = { a003: '再春館様専用 会席プラン' };
+    expect(partnerPlanName(names, 'a003', '基本■2食■スタンダード(+20350円)')).toBe('再春館様専用 会席プラン');
+    expect(partnerPlanName(names, 'a004', '基本■2食■フルコース(+25850円)')).toBe('フルコース');
+    expect(partnerPlanName(undefined, null, '基本■素泊■素泊(±0円)')).toBe('素泊');
+  });
+  it('正規化: 空・不正なコードは落とし、空白をまとめて60文字まで', () => {
+    const s = normalizePartnerBookingSettings({ planNames: { a003: '  会席　 プラン ', a004: '   ', 'x y': 'NG', a005: 'あ'.repeat(80) } });
+    expect(s.planNames).toEqual({ a003: '会席 プラン', a005: 'あ'.repeat(60) });
+    expect(normalizePartnerBookingSettings({}).planNames).toEqual({});
   });
 });

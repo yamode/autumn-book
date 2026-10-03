@@ -33,6 +33,8 @@ export const load = async (event) => {
   return {
     portal: portalHeader(partner, session),
     showInventory: partner.show_inventory,
+    // 取引先向けのプラン名（プランコード → 名前）
+    planNames: partner.booking_settings.planNames,
     // 予約の受付（受付締切はカレンダーの「予約へ進む」の出し分けに使う。確定時にサーバで再確認する）
     booking: {
       enabled: isPartnerBookingOpen(partner),

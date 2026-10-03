@@ -36,7 +36,7 @@ export type InvoiceBookingSource = {
   payment_option: string | null;
   payment_method_name: string | null;
   payment_status: string;
-  detail?: { booker?: { name?: string } | null } | null;
+  detail?: { booker?: { name?: string } | null; plan_display_name?: string | null } | null;
 };
 
 export type InvoiceLine = {
@@ -181,7 +181,8 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         roomName: (b.room_short_name ?? '').trim() || (b.room_name ?? ''),
         roomCount: b.room_count,
         adults: b.adult_total,
-        planName: b.plan_name ?? '',
+        // 取引先向けのプラン名（予約時点）。無い予約は元の名前
+        planName: (b.detail?.plan_display_name ?? '').trim() || (b.plan_name ?? ''),
         guestName: b.guest_name,
         bookerName: (b.detail?.booker?.name ?? '').trim() || (b.booked_by ?? ''),
         paymentLabel: billable ? (b.payment_method_name ?? '') : `${b.payment_method_name ?? ''}（${paymentNote(b)}）`,

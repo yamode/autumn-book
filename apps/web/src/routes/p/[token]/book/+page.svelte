@@ -229,10 +229,6 @@
   }
 
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
-  const displayPlanName = (name: string) => {
-    const last = name.split('■').map((s) => s.trim()).filter(Boolean).pop() ?? name;
-    return last.replace(/[（(][^()（）]*(?:円|%|％)[)）]\s*$/, '').trim() || last;
-  };
   const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
   const ARRIVALS = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00'];
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
@@ -425,7 +421,7 @@
           <dl class="confirm">
             <dt>宿泊日</dt><dd>{fmt(checkIn)} から {nights}泊</dd>
             {#if quote.ok}<dt>お部屋</dt><dd>{quote.roomName} × {roomCount}室</dd>
-              <dt>プラン</dt><dd>{displayPlanName(quote.planName)}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
+              <dt>プラン</dt><dd>{data.target.displayName}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
             <dt>ご予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>
             <dt>代表者</dt><dd>{values.family_name} {values.given_name}{values.family_name_kana || values.given_name_kana ? `（${values.family_name_kana} ${values.given_name_kana}）` : ''}</dd>
@@ -526,7 +522,7 @@
     <!-- 料金 -->
     <aside class="card lg:sticky lg:top-4">
       <p class="text-sm text-stone-500">{quote.ok ? quote.roomName : ''}</p>
-      <h3 class="text-lg font-bold leading-snug">{displayPlanName(data.target.planName)}</h3>
+      <h3 class="text-lg font-bold leading-snug">{data.target.displayName}</h3>
       {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
       {#if data.perks.length}
         <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->

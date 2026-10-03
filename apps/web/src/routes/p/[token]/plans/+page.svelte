@@ -7,7 +7,6 @@
   import PartnerPlanCalendar from '$lib/components/PartnerPlanCalendar.svelte';
   import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
   import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
-  import { displayPlanName } from '$lib/partner-contents';
 
   let { data } = $props();
   const token = $derived($page.params.token);
@@ -42,7 +41,7 @@
               {#each p.tags as t (t)}<span class="rounded-full bg-accent-500/10 px-2.5 py-0.5 text-xs text-accent-600">{t}</span>{/each}
               {#if p.perks.length}<span class="rounded-full bg-[var(--pt-accent)] px-2.5 py-0.5 text-xs font-bold text-white">専用特典</span>{/if}
             </div>
-            <h3 class="mt-2 text-xl font-bold leading-snug sm:text-2xl">{displayPlanName(p.planLabel)}</h3>
+            <h3 class="mt-2 text-xl font-bold leading-snug sm:text-2xl">{p.displayName}</h3>
             {#if p.headline}<p class="mt-1 text-stone-500">{p.headline}</p>{/if}
           </header>
 

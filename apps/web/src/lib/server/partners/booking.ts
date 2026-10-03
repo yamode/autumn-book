@@ -15,6 +15,7 @@ import {
   canPartnerCancel,
   describeDeadline,
   normalizeBooker,
+  partnerPlanName,
   perksForPlan,
   resolveOptionAnswers,
   resolveTransport,
@@ -272,12 +273,18 @@ function friendlyRpcError(message: string): string {
   return 'ご予約を確定できませんでした。時間をおいてもう一度お試しください。';
 }
 
-// 作成直後の台帳 detail に予約者・交通手段・特典を足す（DB 関数が作った detail を読み、マージして書き戻す）。
+// 作成直後の台帳 detail に予約者・交通手段・特典と、取引先向けのプラン名（予約時点）を足す（DB 関数が作った detail を読み、マージして書き戻す）。
 // service_role で触るので id と partner_id の両方で絞る。失敗しても予約は有効（PMS へは options で届いている）。
-async function attachBookingExtras(db: SupabaseClient, partnerId: string, bookingId: string, extras: BookingExtras): Promise<void> {
+async function attachBookingExtras(db: SupabaseClient, partnerId: string, bookingId: string, extras: BookingExtras, planDisplayName: string): Promise<void> {
   const { data } = await db.from('rms_partner_bookings').select('detail').eq('id', bookingId).eq('partner_id', partnerId).maybeSingle();
   if (!data) return;
-  const detail = { ...((data.detail as Record<string, unknown> | null) ?? {}), booker: extras.booker, transport: extras.transport || null, perks: extras.perks };
+  const detail = {
+    ...((data.detail as Record<string, unknown> | null) ?? {}),
+    booker: extras.booker,
+    transport: extras.transport || null,
+    perks: extras.perks,
+    plan_display_name: planDisplayName
+  };
   const { error } = await db.from('rms_partner_bookings').update({ detail }).eq('id', bookingId).eq('partner_id', partnerId);
   if (error) console.error('[partner-booking] 予約者情報を台帳に書けませんでした:', error.message);
 }
@@ -365,7 +372,7 @@ export async function createPartnerBooking(
   if (error) throw new PartnerStoreError(friendlyRpcError(error.message), 409);
   const created = data as { id: string; booking_code: string; total_amount: number; status?: string };
   // 台帳に予約者・交通手段・特典を構造化して残す（メールの宛先・一覧の表示に使う）。仮押さえ（オンライン決済）も同じ
-  await attachBookingExtras(db, partner.id, created.id, extras);
+  await attachBookingExtras(db, partner.id, created.id, extras, partnerPlanName(s.planNames, quote.planCode, quote.planName));
   if (input.saveBooker) {
     // マイページへの保存に失敗しても予約は止めない
     await saveBookerProfile(db, partner.id, account.id, booker).catch(() => undefined);
@@ -908,6 +915,8 @@ export type PartnerBookingRow = {
     booker?: PartnerBooker | null;
     transport?: string | null;
     perks?: { title: string; description: string }[] | null;
+    // 2026-10-03〜: 取引先向けのプラン名（予約時点）。無い予約は plan_name から既定の表示名を作る
+    plan_display_name?: string | null;
   };
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -1005,14 +1014,22 @@ export async function cancelPartnerBooking(
 
 const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
 
-export function bookingSummaryLines(b: PartnerBookingRow): string[] {
+// 取引先に見せるプラン名: 予約時点の取引先向けの名前 → 無ければ plan_name から既定の表示名
+export const bookingPlanName = (b: { plan_name: string | null; detail?: { plan_display_name?: string | null } | null }) =>
+  (b.detail?.plan_display_name ?? '').trim() || partnerPlanName(undefined, null, b.plan_name ?? '');
+
+// audience: 取引先宛ては取引先向けのプラン名。宿宛ては元のプラン名（PMS と同じ）に取引先向けの名前を添える。
+export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 'facility' = 'partner'): string[] {
+  const shown = bookingPlanName(b);
+  const planLine =
+    audience === 'facility' && b.plan_name && shown !== b.plan_name ? `${b.plan_name}（取引先向けの名前: ${shown}）` : shown;
   const g = b.detail.guest ?? {};
   const rooms = b.detail.rooms ?? [];
   const lines = [
     `予約番号: ${b.booking_code}`,
     `宿泊日: ${b.check_in_date}（${b.nights}泊）〜 ${b.check_out_date} チェックアウト`,
     `お部屋: ${b.room_name ?? b.room_code ?? ''} × ${b.room_count}室`,
-    `プラン: ${b.plan_name ?? ''}${b.meal_type ? `（${mealLabel(b.meal_type)}）` : ''}`,
+    `プラン: ${planLine}${b.meal_type ? `（${mealLabel(b.meal_type)}）` : ''}`,
     `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目 ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
     // ご予約者（ご担当者）・交通手段・専用特典（detail に構造化して残したもの）
     ...extraSummaryLines(b.detail),
@@ -1094,11 +1111,12 @@ async function sendBookingMails(
     const head = kind === 'new' ? `取引先「${partner.name}」から予約が入りました。` : `取引先予約が取り消されました（${b.cancelled_by === 'staff' ? 'スタッフの操作' : '取引先の操作'}）。`;
     // 取引先払いの予約は、お客様に請求しないよう先頭付近で目立たせる
     const billed = partnerBilledNotice(partner, b);
-    const text = [head, ...(billed ? ['', billed] : []), '', ...summary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
+    const facilitySummary = bookingSummaryLines(b, 'facility');
+    const text = [head, ...(billed ? ['', billed] : []), '', ...facilitySummary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
     const billedHtml = billed
       ? `<p style="margin:12px 0;padding:8px 12px;border:2px solid #b91c1c;border-radius:6px;background:#fef2f2;color:#b91c1c;font-weight:bold">${escapeHtml(billed)}</p>`
       : '';
-    const html = `<p>${escapeHtml(head)}</p>${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
+    const html = `<p>${escapeHtml(head)}</p>${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(facilitySummary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
     const r = await sendFacilityNotice(db, partner.facility_id, {
       to: s.notifyEmails,
       subject: `【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,

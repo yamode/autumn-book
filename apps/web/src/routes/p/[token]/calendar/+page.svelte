@@ -4,6 +4,7 @@
   import { page } from '$app/stores';
   import { isHoliday } from '$lib/holidays';
   import { planAnchor, roomAnchor } from '$lib/partner-contents';
+  import { partnerPlanName } from '$lib/partner-booking';
   import type { PartnerRateDay } from '$lib/partner-pricing';
   import type { PortalMonth } from '$lib/server/partners/portal-month';
   import type { PageData } from './$types';
@@ -108,7 +109,7 @@
   // ---- 公開期間の料金の幅（1名1泊の最低〜最高）。公開範囲全体を読むので重く、表示後に別で取りに行く ----
   // 取得中はスケルトン、取れなかった・料金が無いときはカードごと出さない。
   // min / max は根拠つき（どの日・部屋・プラン・人数の料金か）。金額にマウスを乗せる・タップするとツールチップで出す。
-  type PriceBasis = { date: string; roomName: string; planName: string; guests: number };
+  type PriceBasis = { date: string; roomName: string; planCode?: string; planName: string; guests: number };
   type PriceExtreme = { price: number; count: number; samples: PriceBasis[] };
   let priceRange = $state<{ min: PriceExtreme; max: PriceExtreme; from: string; to: string } | null>(null);
   let priceRangeState = $state<'loading' | 'done' | 'hidden'>('loading');
@@ -235,11 +236,8 @@
     const d = new Date(`${iso}T00:00:00Z`);
     return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEK[d.getUTCDay()]}${isHoliday(iso) ? '・祝' : ''}）`;
   };
-  // 社内向けの調整表記（例: 「(+20350円)」「(-10%)」）と区分の前置きを落として、取引先に見せる名前にする。
-  const displayPlanName = (name: string) => {
-    const last = name.split('■').map((s) => s.trim()).filter(Boolean).pop() ?? name;
-    return last.replace(/[（(][^()（）]*(?:円|%|％)[)）]\s*$/, '').trim() || last;
-  };
+  // 取引先向けのプラン名（管理画面で付けた名前。無ければ社内向けの調整表記と区分の前置きを落とした既定の表示名）
+  const planLabel = (code: string | undefined, name: string) => partnerPlanName(data.planNames, code, name);
   const roomParts = (name: string) => {
     const [a, b] = name.split('│');
     return b ? { building: a.replace(/-+$/, '').trim(), room: b.trim() } : { building: '', room: name };
@@ -324,7 +322,7 @@
               {#each tipFor.ex.samples as s (`${s.date}|${s.roomName}|${s.planName}|${s.guests}`)}
                 <li class="leading-5">
                   <span class="tabular-nums text-stone-700">{mdw(s.date)}</span>
-                  <span class="text-stone-600">・{s.roomName}・{s.planName}・{s.guests}名1室</span>
+                  <span class="text-stone-600">・{s.roomName}・{planLabel(s.planCode, s.planName)}・{s.guests}名1室</span>
                 </li>
               {/each}
             </ul>
@@ -523,7 +521,7 @@
                         {@const anchor = planAnchor(plan.planCode, plan.planName)}
                         <li class="flex items-end justify-between gap-3 px-3.5 py-3">
                           <div class="min-w-0">
-                            <p class="text-base font-medium leading-snug">{displayPlanName(plan.planName)}</p>
+                            <p class="text-base font-medium leading-snug">{planLabel(plan.planCode, plan.planName)}</p>
                             {#if data.introPlans?.includes(anchor)}<a href={`/p/${token}/plans#${anchor}`} class="text-xs text-[var(--pt-accent)] underline">プランの紹介</a>{/if}
                             <p class="mt-1 flex flex-wrap gap-1">
                               {#if plan.mealType}<span class="rounded bg-stone-50 px-1.5 text-[11px] leading-5 text-stone-500">{plan.mealType === '2食' ? '夕朝食付き' : plan.mealType === '朝食' ? '朝食付き' : plan.mealType === '素泊' ? '素泊まり' : plan.mealType}</span>{/if}

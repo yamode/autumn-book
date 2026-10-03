@@ -194,7 +194,8 @@ export function clampPartnerPrice(price: number, pricing: Pick<PartnerPricing, '
 // 公開期間の料金の幅（部屋タイプ・人数・プランを問わない1名1泊の最低・最高）。休館日・非表示は除く。
 // 最低・最高それぞれに「どの日・部屋・プラン・人数の料金か」の根拠を付ける（2026-10-01 指示: ツールチップで見せる）。
 // 同額が多数あるときは日付順に先頭 PRICE_RANGE_SAMPLE_LIMIT 件だけ持ち、件数（count）は全部数える。
-export type PartnerPriceBasis = { date: string; roomName: string; planName: string; guests: number };
+// planCode: 取引先向けのプラン名（booking_settings.planNames）に引き直すため（2026-10-03）
+export type PartnerPriceBasis = { date: string; roomName: string; planCode: string; planName: string; guests: number };
 export type PartnerPriceExtreme = { price: number; count: number; samples: PartnerPriceBasis[] };
 export type PartnerPriceRangeDetail = { min: PartnerPriceExtreme; max: PartnerPriceExtreme };
 export const PRICE_RANGE_SAMPLE_LIMIT = 5;
@@ -226,7 +227,7 @@ export function partnerPriceRange(days: PartnerRateDay[]): PartnerPriceRangeDeta
           const one: PartnerPriceExtreme = {
             price: v,
             count: 1,
-            samples: [{ date: d.date, roomName: r.roomName, planName: p.planName, guests: Number(g) }]
+            samples: [{ date: d.date, roomName: r.roomName, planCode: p.planCode, planName: p.planName, guests: Number(g) }]
           };
           min = mergePriceExtreme(min, one, (x, y) => x < y);
           max = mergePriceExtreme(max, one, (x, y) => x > y);

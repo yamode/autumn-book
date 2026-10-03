@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { perksForPlan } from '$lib/partner-booking';
+import { partnerPlanName, perksForPlan } from '$lib/partner-booking';
 import { logPartnerAccess } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { isPartnerBookingOpen } from '$lib/server/partners/booking';
@@ -44,6 +44,8 @@ export const load = async (event) => {
     commonPerks: perks.filter((p) => !p.planCodes.length).map(toView),
     plans: contents.plans.map((p) => ({
       ...p,
+      // 取引先向けのプラン名（管理画面で付けた名前。無ければ既定の表示名）
+      displayName: partnerPlanName(partner.booking_settings.planNames, p.planCode, p.planLabel),
       terms: terms.get(`${p.planCode}■${p.planLabel}`) ?? null,
       perks: perksForPlan(perks, p.planCode)
         .filter((k) => k.planCodes.length)

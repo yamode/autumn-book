@@ -3,6 +3,7 @@
 // 予約そのものは autumn-shared の public.rms_partner_create_booking（DB 関数）が1トランザクションで作り、
 // 直販予約と同じ電文で PMS へ届ける（migration 20260926054852）。ここは「受け付けてよいか」の判断と、
 // RMS の設定画面・取引先の予約画面で使う形の定義だけを持つ。
+import { displayPlanName } from '$lib/partner-contents';
 
 export type PartnerBookingOptionType = 'check' | 'select' | 'text';
 
@@ -77,6 +78,15 @@ export const MAX_PARTNER_PERKS = 10;
 export const perksForPlan = <T extends { planCodes: string[] }>(perks: T[], planCode: string | null | undefined) =>
   perks.filter((p) => !p.planCodes.length || (!!planCode && p.planCodes.includes(planCode)));
 // 予約の要望・メールに載せる1行（例: 「ウェルカムドリンク／館内利用券 1,000円」）
+// ---- 取引先向けのプラン名（2026-10-03 指示: 取引先ごとに独自のレート・特典を付けるので、名前も取引先専用にする） ----
+// キーはプランコード（a003 等。特典の対象プランと同じ）。空なら PMS のプラン名から作る既定の表示名（displayPlanName）。
+// 取引先ページ・取引先宛てメール・請求書に出す。PMS・宿への記録（plan_name）は元の名前のまま。
+export const MAX_PLAN_NAME_LENGTH = 60;
+export function partnerPlanName(planNames: Record<string, string> | undefined, planCode: string | null | undefined, rawName: string): string {
+  const custom = planCode ? (planNames?.[planCode] ?? '').trim() : '';
+  return custom || displayPlanName(rawName);
+}
+
 export const describePerks = (perks: { title: string }[]) => perks.map((p) => p.title).join('／');
 
 // ---- 予約者（取引先の予約担当者。2026-10-01 指示） ----
@@ -163,6 +173,8 @@ export type PartnerBookingSettings = {
   customPaymentOptions: PartnerCustomPaymentOption[];
   // 取引先特典（最大10）。
   perks: PartnerPerk[];
+  // 取引先向けのプラン名（プランコード → 名前）。無いプランは既定の表示名。
+  planNames: Record<string, string>;
   // 月次のご請求書の宛名（正式社名。空なら取引先名）と支払期限。
   invoiceRecipientName: string;
   invoiceDue: PartnerInvoiceDue;
@@ -189,6 +201,7 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   paymentOptions: ['invoice_monthly'],
   customPaymentOptions: [],
   perks: [],
+  planNames: {},
   invoiceRecipientName: '',
   invoiceDue: { type: 'next_month_end' },
   prepayDiscount: { type: 'none', value: 0 },
@@ -277,10 +290,18 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
     }))
     .filter((p) => p.title)
     .slice(0, MAX_PARTNER_PERKS);
+  const planNames: Record<string, string> = {};
+  const namesRaw = src.planNames && typeof src.planNames === 'object' && !Array.isArray(src.planNames) ? (src.planNames as Record<string, unknown>) : {};
+  for (const [code, name] of Object.entries(namesRaw).slice(0, 100)) {
+    const c = code.trim();
+    const n = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_PLAN_NAME_LENGTH);
+    if (/^[A-Za-z0-9_-]{1,20}$/.test(c) && n) planNames[c] = n;
+  }
   return {
     paymentOptions,
     customPaymentOptions,
     perks,
+    planNames,
     invoiceRecipientName: String(src.invoiceRecipientName ?? '').trim().slice(0, 120),
     invoiceDue: normalizeInvoiceDue(src.invoiceDue),
     prepayDiscount: normalizePrepayDiscount(src.prepayDiscount),

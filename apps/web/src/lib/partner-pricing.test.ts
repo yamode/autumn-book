@@ -266,8 +266,8 @@ describe('partnerPriceRange', () => {
       day('2026-10-03', false, [{ '2': 18000 }, { '3': 0 }])
     ]);
     expect(r).toEqual({
-      min: { price: 18000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planName: 'プラン', guests: 2 }] },
-      max: { price: 30000, count: 1, samples: [{ date: '2026-10-01', roomName: '和室', planName: 'プラン', guests: 1 }] }
+      min: { price: 18000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planCode: 'a000', planName: 'プラン', guests: 2 }] },
+      max: { price: 30000, count: 1, samples: [{ date: '2026-10-01', roomName: '和室', planCode: 'a000', planName: 'プラン', guests: 1 }] }
     });
   });
 
@@ -285,7 +285,7 @@ describe('partnerPriceRange', () => {
     expect(min.count).toBe(2);
     expect(min.samples.map((s) => s.date)).toEqual(['2026-10-02', '2026-11-02']);
     const max = mergePriceExtreme(a.max, b.max, (x, y) => x > y)!;
-    expect(max).toEqual({ price: 16000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planName: 'プラン', guests: 2 }] });
+    expect(max).toEqual({ price: 16000, count: 1, samples: [{ date: '2026-10-03', roomName: '和室', planCode: 'a000', planName: 'プラン', guests: 2 }] });
   });
 
   it('出せる料金が無ければ null', () => {

@@ -24,6 +24,7 @@
     type PartnerBookingSettings
   } from '$lib/partner-booking';
   import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
+  import { displayPlanName, partnerContentScope } from '$lib/partner-contents';
   import type { PageData } from './$types';
 
   type FormResult = {
@@ -136,6 +137,21 @@
     const file = input.files?.[0];
     input.value = '';
     if (file) sendPerkImage(perk, file);
+  }
+  // 取引先向けのプラン名: 販売対象（「調整して出す」ルールのプラン。全プラン対象なら全部）＋名前を付け済みのコード
+  const namePlanOptions = $derived.by(() => {
+    const scope = partnerContentScope(pricing);
+    const list = data.planOptions
+      .filter((p) => !scope.plans || scope.plans.has(p.code) || booking.planNames[p.code])
+      .map((p) => ({ code: p.code, label: p.label }));
+    for (const code of Object.keys(booking.planNames)) if (!list.some((p) => p.code === code)) list.push({ code, label: code });
+    return list;
+  });
+  function setPlanName(code: string, v: string) {
+    const next = { ...booking.planNames };
+    if (v.trim()) next[code] = v;
+    else delete next[code];
+    booking.planNames = next;
   }
   // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
   const perkPlanOptions = $derived.by(() => {
@@ -1019,6 +1035,31 @@
             {#if booking.perks.length < MAX_PARTNER_PERKS}
               <button type="button" onclick={addPerk} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 特典を追加</button>
             {/if}
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-1 text-xs text-stone-500">プラン名（取引先向け）</p>
+          <p class="mb-2 text-[11px] leading-5 text-stone-500">
+            取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
+          </p>
+          <div class="grid gap-1.5">
+            {#each namePlanOptions as plan (plan.code)}
+              <div class="grid items-center gap-1 rounded-md border border-stone-200 bg-white px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:gap-3">
+                <div class="min-w-0 text-xs text-stone-500">
+                  <span class="font-mono">{plan.code}</span> <span class="break-all">{plan.label}</span>
+                </div>
+                <input
+                  value={booking.planNames[plan.code] ?? ''}
+                  oninput={(e) => setPlanName(plan.code, e.currentTarget.value)}
+                  maxlength="60"
+                  placeholder={displayPlanName(plan.label)}
+                  class={inputClass}
+                />
+              </div>
+            {:else}
+              <span class="text-[11px] text-stone-400">販売対象のプランがありません（特別レートで「調整して出す」ルールを作ると出ます）。</span>
+            {/each}
           </div>
         </div>
 
