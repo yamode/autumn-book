@@ -21,6 +21,7 @@ import {
 } from '$lib/server/faq/admin';
 import { searchFaqs } from '$lib/server/faq/search';
 import nishiwagaHpSeed from '$lib/server/faq/seeds/nishiwaga-hp.json';
+import ogaTalkappiSeed from '$lib/server/faq/seeds/oga-talkappi.json';
 
 // FAQ ボット（設計書 autumn_book_faq_bot_design.md §7）。
 // DATA_SOURCE=supabase では実データ（book.faqs / book.faq_queries）を、それ以外は従来どおりデモストアを使う。
@@ -28,7 +29,8 @@ import nishiwagaHpSeed from '$lib/server/faq/seeds/nishiwaga-hp.json';
 
 /** 施設ごとの初期データ（現行サイト・旧ボットから取り出したもの）。取り込みは下書きで登録する */
 const SEEDS: Record<string, { label: string; items: SeedItem[] }[]> = {
-	[FACILITY_UUID['f-nishiwaga']]: [{ label: '旧HP「よくある質問」ページ（19件）', items: nishiwagaHpSeed.items as SeedItem[] }]
+	[FACILITY_UUID['f-nishiwaga']]: [{ label: '旧HP「よくある質問」ページ（19件）', items: nishiwagaHpSeed.items as SeedItem[] }],
+	[FACILITY_UUID['f-oga']]: [{ label: `旧チャットボット talkappi の回答（${ogaTalkappiSeed.items.length}件・同趣旨はまとめ済み）`, items: ogaTalkappiSeed.items as SeedItem[] }]
 };
 
 function realFacilityId(demoFacilityId: string): string {

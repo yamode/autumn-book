@@ -1,8 +1,8 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-03（FAQ ボット v0.62.0）
+> **最終更新**: 2026-10-03（FAQ ボット v0.63.0）
 
-## FAQ ボット（2026-10-03・v0.61.0〜v0.62.0）
+## FAQ ボット（2026-10-03・v0.61.0〜v0.63.0）
 
 **2026-10-03 ユーザー指示: 施設HPの他社ボット（男鹿: talkappi＋tripla bot／西和賀: tripla bot）を自前FAQに置き換える。回答は登録済みFAQの検索のみ（AI生成なし）。検索された質問を蓄積し、回答できなかったものを管理画面で回答してFAQを育てる。** 設計書: `autumn_book_faq_bot_design.md`
 - DB: autumn-shared `20261002233250_book_faq_bot.sql`（`book.faqs` に keywords/source/view_count、`book.faq_queries`、RPC `faq_log_query`/`faq_feedback`）。PROD 適用済み
@@ -10,10 +10,11 @@
 - 検索: `lib/server/faq/search.ts`（NFKC・かな統一・表記ゆれ辞書・文字2-gram・IDF 重み）。既定しきい値 0.30
 - ウィジェット: `static/faq/widget.js`。HP に `<script src="https://book.yamado.app/faq/widget.js" data-facility="oga" defer></script>`
 - 管理画面 `/admin/faqs`: 本番接続（demoOnly 解除）・言い換え・翻訳・検索テスト・「未回答の質問」タブ・初期データ取り込み（西和賀の旧HP 19件）
-- 残: 男鹿の初期データ（talkappi／tripla の管理画面から収集。talkappi はエクスポート機能なし）→ 施設側で確認・公開 → oga（Xserver 静的）と西和賀（hp-yamado）に埋め込み・talkappi 撤去・tripla はボットだけ停止（予約ウィジェットは残す）
+- 男鹿の初期データ（v0.63.0）: `seeds/oga-talkappi.json` 125件。talkappi 管理画面の FAQ一覧（全605件中、回答登録済み220件）を画面から取得し、13歳未満お断り・館内にない施設など同趣旨の回答はまとめて言い換えに寄せた。誤字（大館能代空港・/cuisine/ 等）は修正、内線案内の「Talkappi」表記は削除、源泉停止中の注記は削除。**要確認: 個室食事処の席数（8席/6席が混在→席数なしで登録）、電話受付時間（10-20時/9-21時が混在→時間なしで登録）**。tripla ボットの回答は未取り込み（talkappi でほぼ網羅）
+- 残: 施設側で初期データを取り込み・確認・公開 → oga（Xserver 静的）と西和賀（hp-yamado）に埋め込み・talkappi 撤去・tripla はボットだけ停止（予約ウィジェットは残す）
 
 ### テストチェックリスト（v0.62.0）
-- [ ] 管理画面 FAQ: 初期データ取り込み → 下書きで19件登録され、もう一度押しても重複しない
+- [ ] 管理画面 FAQ: 初期データ取り込み → 西和賀は19件・男鹿は125件が下書きで登録され、もう一度押しても重複しない
 - [ ] FAQ の追加・編集・言い換え・並び順・公開／非公開・翻訳（en／zh-TW）が保存できる
 - [ ] 検索テスト（?test=）でスコアが表示され、言い換えを足すとスコアが上がる
 - [ ] 未回答の質問: 同じ質問がまとまって件数順に出る。回答を作成／既存FAQに紐付け／対象外が効く
