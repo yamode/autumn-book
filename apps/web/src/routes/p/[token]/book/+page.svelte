@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
@@ -531,11 +532,7 @@
         <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
         <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
           <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
-          <ul class="mt-1 grid gap-1.5 text-sm">
-            {#each data.perks as p (p.id)}
-              <li class="flex items-start gap-3">{#if p.imageUrl}<img src={p.imageUrl} alt={p.title} loading="lazy" class="h-16 w-20 shrink-0 rounded-md object-cover sm:h-20 sm:w-28" />{/if}<div><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-stone-600">{p.description}</span>{/if}</div></li>
-            {/each}
-          </ul>
+          <div class="mt-2"><PartnerPerkList perks={data.perks} variant="compact" /></div>
         </div>
       {/if}
 
