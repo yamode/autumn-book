@@ -2,7 +2,10 @@
   // 取引先専用ページ: プランの紹介。文章・写真は公式サイト（autumn-book）と共通。
   // 出すのは、この取引先に料金を出しているプランのうち、紹介が登録されているものだけ。
   import { page } from '$app/stores';
-  import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
+  import PartnerContentSections from '$lib/components/PartnerContentSections.svelte';
+  import PartnerPhotoGallery from '$lib/components/PartnerPhotoGallery.svelte';
+  import PartnerPlanCalendar from '$lib/components/PartnerPlanCalendar.svelte';
+  import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
   import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
   import { displayPlanName } from '$lib/partner-contents';
 
@@ -15,7 +18,7 @@
 
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
   <h2 class="text-2xl font-bold">プランのご紹介</h2>
-  <p class="mt-1 text-sm text-stone-500">料金・空室は<a class="underline" href={`/p/${token}/calendar`}>料金カレンダー</a>でご確認ください。</p>
+  <p class="mt-1 text-sm text-stone-500">各プランの下で2か月分の料金・空室をご覧いただけます。全プランまとめては<a class="underline" href={`/p/${token}/calendar`}>料金カレンダー</a>へ。</p>
 
   {#if data.commonPerks.length}
     <!-- 全プラン共通の専用特典（取引先専用ページからのご予約に付く） -->
@@ -31,6 +34,7 @@
   {:else}
     <div class="mt-6 space-y-8">
       {#each data.plans as p (p.anchor)}
+        <!-- 1カラム: 見出し → 写真ギャラリー → プランの紹介（説明・表・専用特典・お料理）→ 料金カレンダー（2か月）→ キャンセルポリシー・お子様 -->
         <article id={p.anchor} class="scroll-mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
           <header class="mb-4">
             <div class="flex flex-wrap items-center gap-1.5">
@@ -38,19 +42,38 @@
               {#each p.tags as t (t)}<span class="rounded-full bg-accent-500/10 px-2.5 py-0.5 text-xs text-accent-600">{t}</span>{/each}
               {#if p.perks.length}<span class="rounded-full bg-[var(--pt-accent)] px-2.5 py-0.5 text-xs font-bold text-white">専用特典</span>{/if}
             </div>
-            <h3 class="mt-2 text-xl font-bold leading-snug">{displayPlanName(p.planLabel)}</h3>
+            <h3 class="mt-2 text-xl font-bold leading-snug sm:text-2xl">{displayPlanName(p.planLabel)}</h3>
             {#if p.headline}<p class="mt-1 text-stone-500">{p.headline}</p>{/if}
+          </header>
+
+          <PartnerPhotoGallery photos={p.photos} wide />
+
+          <div class="mt-6 space-y-8">
+            {#if p.description || p.specs.length}
+              <div class="space-y-4">
+                {#if p.description}<p class="whitespace-pre-line leading-8">{p.description}</p>{/if}
+                {#if p.specs.length}
+                  <PartnerTermsTable title="" rows={p.specs.map((x) => ({ label: x.label, value: x.value }))} />
+                {/if}
+              </div>
+            {/if}
+
             {#if p.perks.length}
-              <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
-                <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
+              <div class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-3 sm:px-4">
+                <p class="text-sm font-bold text-[var(--pt-accent)]">専用特典</p>
                 <div class="mt-2"><PartnerPerkList perks={p.perks} /></div>
               </div>
             {/if}
-          </header>
-          <PartnerContentBody photos={p.photos} description={p.description} specs={p.specs} sections={p.sections} detailLabel="お料理・プランの内容" />
-          <p class="mt-4 text-right">
-            <a href={`/p/${token}/calendar`} class="inline-block rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">料金カレンダーで料金・空室を見る</a>
-          </p>
+
+            <PartnerContentSections sections={p.sections} heading="お料理・プランの内容" />
+
+            <PartnerPlanCalendar token={token ?? ''} planCode={p.planCode} planName={p.planLabel} showInventory={data.showInventory} booking={data.booking} />
+
+            {#if p.terms}
+              <PartnerTermsTable title="キャンセルポリシー" rows={p.terms.cancellation} note={p.terms.cancellationNote} />
+              <PartnerTermsTable title="お子様について" rows={p.terms.children} note={p.terms.childrenNote} />
+            {/if}
+          </div>
         </article>
       {/each}
     </div>

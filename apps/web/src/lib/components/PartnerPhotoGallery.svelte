@@ -4,7 +4,12 @@
   // メイン写真を押すとモーダルで大きく開く（矢印・サムネイル・キャプション・Esc/←/→・スワイプ）。
   import type { ContentPhoto } from '$lib/partner-contents';
 
-  let { photos }: { photos: ContentPhoto[] } = $props();
+  // wide: ページ幅いっぱいに置くとき（プラン紹介の見出し下）。メインを横長にし、サムネイルを多めに並べる。
+  let { photos, wide = false }: { photos: ContentPhoto[]; wide?: boolean } = $props();
+  const mainAspect = $derived(wide ? 'aspect-[3/2] sm:aspect-[2/1]' : 'aspect-[3/2]');
+  const thumbWidth = $derived(
+    wide ? 'w-[calc((100%-0.75rem)/3)] sm:w-[calc((100%-1.875rem)/6)]' : 'w-[calc((100%-0.75rem)/3)] sm:w-[calc((100%-1.125rem)/4)]'
+  );
 
   let current = $state(0);
   let open = $state(false);
@@ -83,7 +88,7 @@
   <div>
     <figure class="relative overflow-hidden rounded-xl bg-stone-200" ontouchstart={onTouchStart} ontouchend={onTouchEnd}>
       <button type="button" class="block w-full cursor-zoom-in" onclick={() => (open = true)} aria-label="写真を大きく見る">
-        <img src={main.url} alt={main.caption} class="aspect-[3/2] w-full object-cover" loading="lazy" decoding="async" />
+        <img src={main.url} alt={main.caption} class={`${mainAspect} w-full object-cover`} loading="lazy" decoding="async" />
       </button>
       {#if count > 1}
         <button type="button" class={`${arrowBtn} left-2`} onclick={() => go(-1)} aria-label="前の写真">
@@ -103,7 +108,7 @@
           {#each photos as p, i (p.url)}
             <button
               type="button"
-              class={`aspect-[3/2] w-[calc((100%-0.75rem)/3)] shrink-0 overflow-hidden rounded-md border-2 transition sm:w-[calc((100%-1.125rem)/4)] ${i === index ? 'border-[var(--pt-accent)]' : 'border-transparent opacity-70 hover:opacity-100'}`}
+              class={`aspect-[3/2] ${thumbWidth} shrink-0 overflow-hidden rounded-md border-2 transition ${i === index ? 'border-[var(--pt-accent)]' : 'border-transparent opacity-70 hover:opacity-100'}`}
               onclick={() => (current = i)}
               aria-label={`写真 ${i + 1}`}
               aria-pressed={i === index}
@@ -164,5 +169,5 @@
     </div>
   {/if}
 {:else}
-  <div class="flex aspect-[3/2] items-center justify-center rounded-xl bg-stone-200 text-sm text-stone-500">写真は準備中です</div>
+  <div class={`flex ${mainAspect} items-center justify-center rounded-xl bg-stone-200 text-sm text-stone-500`}>写真は準備中です</div>
 {/if}
