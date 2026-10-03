@@ -4,6 +4,9 @@
 
 	let { data, form } = $props();
 
+	// 初期データの取り込みは1件ずつ登録するため数十秒かかる。押した後に「取り込み中」を出し、二重送信を防ぐ
+	let importing = $state(false);
+
 	// タブ（FAQ / 未回答の質問）。URL の ?tab=queries で開ける
 	let tab = $state<'faqs' | 'queries'>(page.url.searchParams.get('tab') === 'queries' ? 'queries' : 'faqs');
 
@@ -67,12 +70,24 @@
 			<p class="font-medium text-amber-900">初期データの取り込み</p>
 			<p class="mb-2 text-xs text-amber-800">現行サイト・旧ボットから取り出した Q&A を<b>下書き</b>で登録します。同じ質問が既にあるものは飛ばします。</p>
 			{#each data.seeds as s}
-				<form method="POST" action="?/importSeed" use:enhance class="inline">
+				<form
+					method="POST"
+					action="?/importSeed"
+					use:enhance={() => {
+						importing = true;
+						return async ({ update }) => {
+							await update();
+							importing = false;
+						};
+					}}
+					class="inline"
+				>
 					<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 					<input type="hidden" name="index" value={s.index} />
-					<button type="submit" class="mr-2 mt-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100">{s.label} を取り込む</button>
+					<button type="submit" disabled={importing} class="mr-2 mt-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100 disabled:opacity-50">{s.label} を取り込む</button>
 				</form>
 			{/each}
+			{#if importing}<p class="mt-2 text-xs text-amber-800">取り込み中です（1分ほどかかります）。このままお待ちください…</p>{/if}
 		</div>
 	{/if}
 
