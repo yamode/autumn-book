@@ -118,7 +118,21 @@
 	});
 </script>
 
-<svelte:head><meta name="robots" content="noindex" /></svelte:head>
+<svelte:head>
+	<meta name="robots" content="noindex" />
+	<!--
+		管理画面の文字・余白を全体に大きく（2026-10-04 指示: 全体的に文字が小さい）。
+		基準の文字サイズを 16px → 18px に。Tailwind v4 の文字サイズ・余白は rem なので、画面全体が同じ比率で大きくなる。
+		px で直に指定した小さな文字（text-[9px]〜[12px]）は rem に読み替えて一緒に大きくする。
+		head に置くので管理画面を開いている間だけ効き、公開サイトへ移ると外れる（サーバ描画から効くのでちらつかない）。
+	-->
+	<style>
+		html { font-size: 112.5%; }
+		.text-\[9px\], .text-\[10px\] { font-size: 0.6875rem; }
+		.text-\[11px\] { font-size: 0.75rem; }
+		.text-\[12px\] { font-size: 0.8125rem; }
+	</style>
+</svelte:head>
 
 {#snippet navList()}
 	{#each navGroups as group, gi}
