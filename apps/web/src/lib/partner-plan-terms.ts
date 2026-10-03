@@ -3,7 +3,7 @@
 // 元データは RPC rms_partner_plan_terms（autumn-shared 20261003050209）。
 // - キャンセル規定: プラン個別（booking.rate_plans.cancellation_policy）が空なら施設の既定（core.cancellation_policies）。
 // - お子様: 施設の設定（book.facility_child_policies・管理画面「お子様の受け入れ」）があれば全プラン共通でそれを出す。
-//           未設定なら rms の区分コード（子供不可 / ファミリー）から案内文を決める。
+//           未設定なら rms の区分コード（子供不可）から決める。
 
 export type TermsRow = { label: string; value: string };
 export type PlanTerms = { cancellation: TermsRow[]; cancellationNote: string; children: TermsRow[]; childrenNote: string };
@@ -45,9 +45,6 @@ export function childrenTerms(code: string): { rows: TermsRow[]; note: string } 
       ],
       note: 'このプランは大人のみのご利用です。'
     };
-  }
-  if (code === 'ファミリー') {
-    return { rows: [], note: 'お子様連れでご利用いただけるプランです。お子様の料金・条件は宿へお問い合わせください。' };
   }
   return { rows: [], note: '' };
 }

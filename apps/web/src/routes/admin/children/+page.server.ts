@@ -1,5 +1,5 @@
 // 管理画面: お子様の受け入れ（区分ごとの可否・2026-10-03）。施設で1件・全プラン共通。
-// 取引先ページのプラン紹介「お子様について」に出る（未設定のプランは rms の区分コードから案内文を出す）。
+// 取引先ページのプラン紹介「お子様について」に出る（未設定の施設は rms の区分コードから案内文を出す）。
 // 保存先は book.facility_child_policies（RPC facility_child_policy_admin / _upsert。autumn-shared 20261003051130）。
 // 流儀は /admin/bath と同じ（実データに繋がっていないときは保存させない・admin と staff が編集できる）。
 import { fail } from '@sveltejs/kit';

@@ -19,9 +19,9 @@ describe('cancellationRows', () => {
 });
 
 describe('childrenTerms', () => {
-  it('子供不可は区分の表、ファミリーは案内文、知らないコードは何も出さない', () => {
+  it('子供不可は区分の表、知らないコードは何も出さない', () => {
     expect(childrenTerms('子供不可').rows.length).toBeGreaterThan(0);
-    expect(childrenTerms('ファミリー')).toEqual({ rows: [], note: expect.stringContaining('お子様連れ') });
+    expect(childrenTerms('ファミリー')).toEqual({ rows: [], note: '' });
     expect(childrenTerms('')).toEqual({ rows: [], note: '' });
   });
 });
@@ -51,8 +51,8 @@ describe('buildPlanTerms', () => {
     expect(m.get('a003■L')?.childrenNote).toBe('添い寝は2名まで');
   });
   it('施設のお子様設定が空なら区分コードから', () => {
-    const m = buildPlanTerms({ plans: [{ plan_code: 'a', plan_label: 'L', child_policy_code: 'ファミリー' }], child_policy: { rows: [], note: '' } });
-    expect(m.get('a■L')?.childrenNote).toContain('お子様連れ');
+    const m = buildPlanTerms({ plans: [{ plan_code: 'a', plan_label: 'L', child_policy_code: '子供不可' }], child_policy: { rows: [], note: '' } });
+    expect(m.get('a■L')?.childrenNote).toContain('大人のみ');
   });
   it('壊れた入力でも落ちない', () => {
     expect(buildPlanTerms(null).size).toBe(0);

@@ -44,7 +44,7 @@
   <h1 class="text-lg font-bold text-stone-800">お子様の受け入れ — {data.facilityName}</h1>
   <p class="mt-1 text-xs leading-5 text-stone-500">
     区分ごとの受け入れ可否です。<strong class="font-medium text-stone-700">この施設の全プランで共通</strong>で、取引先ページのプラン紹介「お子様について」に表として出ます。
-    内容が空の行は保存しません。何も設定していないときは、プランの区分（子供不可・ファミリー）から案内文を出します。
+    内容が空の行は保存しません。何も設定していないときは、プランの区分（子供不可）から案内文を出します。
   </p>
 
   {#if !data.live || data.loadError}
