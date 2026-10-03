@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { enhance } from '$app/forms';
+  import { deserialize, enhance } from '$app/forms';
   import { beforeNavigate, goto } from '$app/navigation';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import {
@@ -93,10 +93,37 @@
   // 取引先特典（最大10）
   function addPerk() {
     if (booking.perks.length >= MAX_PARTNER_PERKS) return;
-    booking.perks = [...booking.perks, { id: `perk-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: '', description: '', planCodes: [] }];
+    booking.perks = [...booking.perks, { id: `perk-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: '', description: '', imageUrl: '', planCodes: [] }];
   }
   function removePerk(i: number) {
     booking.perks = booking.perks.filter((_, k) => k !== i);
+  }
+  // 特典の画像: 選んだ時点で ?/uploadPerkImage に上げて URL だけ受け取る（特典への反映は「保存」で確定）
+  let perkUploading = $state<string | null>(null);
+  let perkImageError = $state<{ id: string; text: string } | null>(null);
+  async function onPerkImagePicked(perk: PartnerBookingSettings['perks'][number], e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    perkUploading = perk.id;
+    perkImageError = null;
+    try {
+      const fd = new FormData();
+      fd.append('photo', file);
+      const res = await fetch('?/uploadPerkImage', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
+      const result = deserialize(await res.text());
+      if (result.type === 'success' && typeof result.data?.perkImageUploaded === 'string') {
+        perk.imageUrl = result.data.perkImageUploaded;
+      } else {
+        const text = result.type === 'failure' && typeof result.data?.message === 'string' ? result.data.message : '画像をアップロードできませんでした。';
+        perkImageError = { id: perk.id, text };
+      }
+    } catch {
+      perkImageError = { id: perk.id, text: '画像をアップロードできませんでした。' };
+    } finally {
+      perkUploading = null;
+    }
   }
   // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
   const perkPlanOptions = $derived.by(() => {
@@ -949,6 +976,20 @@
                   <button type="button" class={smallBtn} onclick={() => removePerk(i)}>削除</button>
                 </div>
                 <textarea bind:value={perk.description} rows="2" maxlength="500" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass}></textarea>
+                <div class="flex flex-wrap items-center gap-2">
+                  {#if perk.imageUrl}
+                    <img src={perk.imageUrl} alt={perk.title} class="h-16 w-24 rounded-md border border-stone-200 object-cover" />
+                  {/if}
+                  <label class={`${smallBtn} cursor-pointer ${perkUploading ? 'pointer-events-none opacity-50' : ''}`}>
+                    {perkUploading === perk.id ? 'アップロード中…' : perk.imageUrl ? '画像を差し替え' : '画像を追加'}
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" class="hidden" disabled={!!perkUploading} onchange={(e) => onPerkImagePicked(perk, e)} />
+                  </label>
+                  {#if perk.imageUrl}
+                    <button type="button" class={smallBtn} onclick={() => (perk.imageUrl = '')}>画像を外す</button>
+                  {/if}
+                  <span class="text-[11px] text-stone-400">任意。JPEG・PNG・WebP（10MBまで）。取引先の画面に出ます。</span>
+                  {#if perkImageError?.id === perk.id}<span class="text-[11px] text-rose-700">{perkImageError.text}</span>{/if}
+                </div>
                 <div>
                   <p class="mb-1 text-[11px] text-stone-500">対象プラン（未選択 = すべてのプラン）</p>
                   <div class="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">

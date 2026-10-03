@@ -193,7 +193,18 @@ describe('取引先特典', () => {
     const raw = Array.from({ length: 12 }, (_, i) => ({ id: `p${i}`, title: i === 0 ? '' : `特典${i}`, planCodes: ['a001', 'a001', ' ', 'b002'] }));
     const s = normalizePartnerBookingSettings({ perks: raw });
     expect(s.perks).toHaveLength(10);
-    expect(s.perks[0]).toEqual({ id: 'p1', title: '特典1', description: '', planCodes: ['a001', 'b002'] });
+    expect(s.perks[0]).toEqual({ id: 'p1', title: '特典1', description: '', imageUrl: '', planCodes: ['a001', 'b002'] });
+  });
+  it('画像は https の URL だけ受ける', () => {
+    const s = normalizePartnerBookingSettings({
+      perks: [
+        { title: 'A', imageUrl: ' https://example.supabase.co/storage/v1/object/public/book-photos/partners/x/1.jpg ' },
+        { title: 'B', imageUrl: 'javascript:alert(1)' },
+        { title: 'C', imageUrl: 'http://example.com/a.jpg' },
+        { title: 'D' }
+      ]
+    });
+    expect(s.perks.map((p) => p.imageUrl)).toEqual(['https://example.supabase.co/storage/v1/object/public/book-photos/partners/x/1.jpg', '', '', '']);
   });
   it('id が無ければ perk-<n>', () => {
     const s = normalizePartnerBookingSettings({ perks: [{ title: 'ドリンク' }] });

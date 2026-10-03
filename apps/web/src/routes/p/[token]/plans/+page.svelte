@@ -22,7 +22,7 @@
       <p class="text-sm font-bold text-[var(--pt-accent)]">専用特典（すべてのプラン）</p>
       <ul class="mt-1.5 grid gap-1.5">
         {#each data.commonPerks as k (k.id)}
-          <li><span class="font-medium">{k.title}</span>{#if k.description}<span class="block whitespace-pre-wrap text-sm text-stone-600">{k.description}</span>{/if}</li>
+          <li class="flex items-start gap-3">{#if k.imageUrl}<img src={k.imageUrl} alt={k.title} loading="lazy" class="h-16 w-20 shrink-0 rounded-md object-cover sm:h-20 sm:w-28" />{/if}<div><span class="font-medium">{k.title}</span>{#if k.description}<span class="block whitespace-pre-wrap text-sm text-stone-600">{k.description}</span>{/if}</div></li>
         {/each}
       </ul>
       <p class="mt-1.5 text-xs text-stone-500">このページからご予約いただいた場合に付きます。</p>
@@ -48,7 +48,7 @@
                 <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
                 <ul class="mt-1 grid gap-1.5 text-sm">
                   {#each p.perks as k (k.id)}
-                    <li><span class="font-medium">{k.title}</span>{#if k.description}<span class="block whitespace-pre-wrap text-stone-600">{k.description}</span>{/if}</li>
+                    <li class="flex items-start gap-3">{#if k.imageUrl}<img src={k.imageUrl} alt={k.title} loading="lazy" class="h-16 w-20 shrink-0 rounded-md object-cover sm:h-20 sm:w-28" />{/if}<div><span class="font-medium">{k.title}</span>{#if k.description}<span class="block whitespace-pre-wrap text-stone-600">{k.description}</span>{/if}</div></li>
                   {/each}
                 </ul>
               </div>

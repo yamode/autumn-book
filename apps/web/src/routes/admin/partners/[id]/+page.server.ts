@@ -67,6 +67,9 @@ import {
 } from '$lib/server/partners/invoices';
 import { invoicePdfReady } from '$lib/server/partners/invoice-pdf';
 import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
+import { photoFileProblem } from '$lib/content-blocks';
+import { createSupabaseServerClient } from '$lib/server/auth';
+import { sbUploadContentPhoto } from '$lib/server/content-admin';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -391,6 +394,21 @@ export const actions: Actions = {
 			const fd = await event.request.formData();
 			await savePartnerMemorandum(db, partner, String(fd.get('memorandum') ?? ''), userId);
 			return { memorandumSaved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 取引先特典の画像（2026-10-03）。book-photos に上げて公開 URL だけ返す。特典への反映は「保存」で行う
+	uploadPerkImage: async (event) => {
+		try {
+			const { facilityId } = await editScope(event);
+			const fd = await event.request.formData();
+			const file = fd.get('photo');
+			const problem = photoFileProblem(file instanceof File ? file : null);
+			if (problem) return actionFailure(new PartnerStoreError(problem));
+			const url = await sbUploadContentPhoto(createSupabaseServerClient(event), 'partners', facilityId, file as File);
+			return { perkImageUploaded: url };
 		} catch (e) {
 			return actionFailure(e);
 		}

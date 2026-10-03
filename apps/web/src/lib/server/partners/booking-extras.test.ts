@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailRecipients, readBookingExtras, splitExtraOptions } from './booking-extras';
 
 const booker = { name: '山田 太郎', kana: 'ヤマダ タロウ', department: '総務部', phone: '03-1234-5678', email: 'yamada@example.com' };
-const perk = { id: 'p1', title: 'ウェルカムドリンク', description: 'ロビーで1杯', planCodes: [] };
+const perk = { id: 'p1', title: 'ウェルカムドリンク', description: 'ロビーで1杯', imageUrl: '', planCodes: [] };
 
 describe('extraOptionRows', () => {
   it('ご予約者 → 交通手段 → 専用特典 の順に並べる', () => {

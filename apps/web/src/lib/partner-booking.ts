@@ -71,12 +71,13 @@ export function invoiceDueDate(period: string, d: PartnerInvoiceDue): string {
 // ---- 取引先特典（2026-10-01 指示: 取引先専用ページから予約したときだけ付く特典） ----
 // planCodes が空なら全プラン。プランを絞ると「取引先専用プラン」として見せられる。
 // 特典は予約の要望（PMS の「事前質問・要望」）・確認メールに「取引先特典」として載り、宿が当日提供する。
-export type PartnerPerk = { id: string; title: string; description: string; planCodes: string[] };
+// imageUrl（2026-10-03 追加）: 取引先の画面に出す画像（book-photos バケットの公開URL）。空なら画像なし。
+export type PartnerPerk = { id: string; title: string; description: string; imageUrl: string; planCodes: string[] };
 export const MAX_PARTNER_PERKS = 10;
-export const perksForPlan = (perks: PartnerPerk[], planCode: string | null | undefined) =>
+export const perksForPlan = <T extends { planCodes: string[] }>(perks: T[], planCode: string | null | undefined) =>
   perks.filter((p) => !p.planCodes.length || (!!planCode && p.planCodes.includes(planCode)));
 // 予約の要望・メールに載せる1行（例: 「ウェルカムドリンク／館内利用券 1,000円」）
-export const describePerks = (perks: PartnerPerk[]) => perks.map((p) => p.title).join('／');
+export const describePerks = (perks: { title: string }[]) => perks.map((p) => p.title).join('／');
 
 // ---- 予約者（取引先の予約担当者。2026-10-01 指示） ----
 // マイページ（rms_partner_accounts.booker_profile）で設定し、予約フォームの「予約者」に既定で出す。
@@ -208,6 +209,12 @@ const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 };
 
+// 特典画像の URL は https のものだけ受ける（javascript: などを画面に出さない）。
+function perkImageUrl(v: unknown): string {
+  const s = String(v ?? '').trim();
+  return /^https:\/\/[^\s"'<>]+$/.test(s) && s.length <= 500 ? s : '';
+}
+
 // DB の jsonb / 画面からの入力を、欠けや不正値を補って正規形にする（保存前・読込時の両方で通す）。
 export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSettings {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
@@ -265,6 +272,7 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
       id: String(p.id ?? '').trim().slice(0, 40) || `perk-${i + 1}`,
       title: String(p.title ?? '').trim().slice(0, 60),
       description: String(p.description ?? '').trim().slice(0, 500),
+      imageUrl: perkImageUrl(p.imageUrl),
       planCodes: Array.isArray(p.planCodes) ? [...new Set(p.planCodes.map((c) => String(c ?? '').trim()).filter(Boolean))].slice(0, 50) : []
     }))
     .filter((p) => p.title)

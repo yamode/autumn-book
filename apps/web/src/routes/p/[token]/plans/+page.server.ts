@@ -24,7 +24,7 @@ export const load = async (event) => {
   });
   // 取引先特典: 全プラン対象（planCodes が空）はページ上部に1回だけ、プランを絞ったものは該当プランに出す
   const perks = partner.booking_settings.perks;
-  const toView = (p: { id: string; title: string; description: string }) => ({ id: p.id, title: p.title, description: p.description });
+  const toView = (p: { id: string; title: string; description: string; imageUrl: string }) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl });
   return {
     portal: portalHeader(partner, session),
     commonPerks: perks.filter((p) => !p.planCodes.length).map(toView),

@@ -34,7 +34,7 @@ export function extraOptionRows(x: BookingExtras): { label: string; value: strin
   const booker = describeBooker(x.booker);
   if (booker) rows.push({ label: BOOKER_LABEL, value: booker });
   if (x.transport) rows.push({ label: TRANSPORT_LABEL, value: x.transport });
-  if (x.perks.length) rows.push({ label: PERKS_LABEL, value: describePerks(x.perks.map((p) => ({ ...p, id: '', planCodes: [] }))) });
+  if (x.perks.length) rows.push({ label: PERKS_LABEL, value: describePerks(x.perks) });
   return rows;
 }
 

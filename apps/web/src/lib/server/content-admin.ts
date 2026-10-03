@@ -347,12 +347,13 @@ export async function sbSavePlanContent(
 
 /**
  * 紹介用の写真を book-photos バケットへ上げて公開 URL を返す。
- * パスは rooms/{facilityUuid}/… または plans/{facilityUuid}/…（バケットは membership 保持者が書き込み可）。
+ * パスは rooms/{facilityUuid}/…・plans/{facilityUuid}/…・partners/{facilityUuid}/…（取引先特典の画像）。
+ * バケットは membership 保持者が書き込み可。
  * 形式・サイズの確認は呼び出し側で photoFileProblem() を通しておくこと。
  */
 export async function sbUploadContentPhoto(
 	client: SupabaseClient,
-	kind: 'rooms' | 'plans',
+	kind: 'rooms' | 'plans' | 'partners',
 	facilityUuid: string,
 	file: File
 ): Promise<string> {

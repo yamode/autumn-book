@@ -51,7 +51,7 @@ export const load = async (event) => {
     bookerSaved: !!(saved.name && saved.email),
     transportOptions: PARTNER_TRANSPORT_OPTIONS,
     // このプランに付く取引先特典（予約画面は1プラン固定。確定時にサーバで同じ規則で付け直す）
-    perks: perksForPlan(s.perks, planCode).map((p) => ({ id: p.id, title: p.title, description: p.description })),
+    perks: perksForPlan(s.perks, planCode).map((p) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl })),
     // 同じ画面で払う決済部品に渡す公開可能キー（オンライン決済を出せないときは null）
     stripeKey: payIds.some(isStripePaymentOption) ? stripePublishableKey() : null
   };
