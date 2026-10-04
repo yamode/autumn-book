@@ -21,17 +21,19 @@ const STAY_COOKIE = 'ab_stay';
 export const load: PageServerLoad = async ({ cookies, url }) => {
 	const locale = getLocale();
 	const invalidQr = url.searchParams.get('e') === 'invalid';
+	// チェックアウト後に QR を読んだ（/r/c/<token> が e=ended で戻す）
+	const endedQr = url.searchParams.get('e') === 'ended';
 	const token = cookies.get(STAY_COOKIE);
 
 	if (!token) {
-		// 未 claim: コード入力フォームを出す
-		return { stay: null, guides: [], bathReservations: [], expired: false, invalidQr };
+		// 未 claim: コード入力フォームを出す（終了済み QR ならサンクス表示）
+		return { stay: null, guides: [], bathReservations: [], expired: endedQr, invalidQr };
 	}
 
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
 	if (!stay) {
 		// Cookie はあるが無効（失効/期間外）＝ ご滞在終了。Cookie は消さず「終了」表示に使う
-		return { stay: null, guides: [], bathReservations: [], expired: true, invalidQr };
+		return { stay: null, guides: [], bathReservations: [], expired: !invalidQr, invalidQr };
 	}
 
 	const [guides, bathContext, intercom] = await Promise.all([

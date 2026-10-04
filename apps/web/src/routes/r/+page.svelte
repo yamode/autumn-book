@@ -190,12 +190,16 @@
 		{/if}
 	</div>
 {:else}
-	<!-- ============ 未 claim / 無効 / 終了：コード入力 ============ -->
+	<!-- ============ 未 claim / 無効 / 終了 ============ -->
 	<div class="space-y-3 px-4 py-4">
-		{#if data.invalidQr}
+		{#if data.expired}
+			<!-- ご滞在終了（チェックアウト後の QR・期限切れの Cookie）：サンクス表示 -->
+			<section class="rounded-lg bg-white px-5 py-8 text-center shadow-card">
+				<p class="text-[17px] font-medium text-stone-900">{m.inroom_ended_title()}</p>
+				<p class="mt-3 text-sm leading-relaxed text-stone-600">{m.inroom_ended_body()}</p>
+			</section>
+		{:else if data.invalidQr}
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_invalid_qr()}</p>
-		{:else if data.expired}
-			<p class="rounded-lg bg-white px-4 py-3 text-sm text-stone-600 shadow-card">{m.inroom_err_expired()}</p>
 		{/if}
 
 		{#if form?.claimError === 'fail'}
@@ -204,9 +208,7 @@
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_locked()}</p>
 		{/if}
 
-		<section class="rounded-lg bg-white px-4 py-5 shadow-card">
-			<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_code_title()}</h1>
-			<p class="mt-1 text-sm text-stone-500">{m.inroom_code_help()}</p>
+		{#snippet codeForm()}
 			<form method="POST" action="?/claim" use:enhance class="mt-4 space-y-3">
 				<input
 					name="code"
@@ -220,7 +222,22 @@
 					{m.inroom_code_submit()}
 				</button>
 			</form>
-		</section>
+		{/snippet}
+
+		{#if data.expired}
+			<!-- 新しいご滞在の案内カードを持つ方だけが使う。普段は畳んでおく -->
+			<details class="rounded-lg bg-white px-4 py-3 shadow-card" open={!!form?.claimError}>
+				<summary class="cursor-pointer text-sm text-stone-500">{m.inroom_ended_other_code()}</summary>
+				<p class="mt-2 text-sm text-stone-500">{m.inroom_code_help()}</p>
+				{@render codeForm()}
+			</details>
+		{:else}
+			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
+				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_code_title()}</h1>
+				<p class="mt-1 text-sm text-stone-500">{m.inroom_code_help()}</p>
+				{@render codeForm()}
+			</section>
+		{/if}
 	</div>
 {/if}
 

@@ -25,5 +25,7 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 		redirect(302, url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r');
 	}
 
-	redirect(302, '/r?e=invalid');
+	// stay_info は期限切れ・失効・存在しないを区別しない。発行形式（64桁の16進）の QR が
+	// 解決できないのは、ほぼチェックアウト後の読み取り。サンクス表示（e=ended）へ回す。
+	redirect(302, /^[0-9a-f]{64}$/i.test(token) ? '/r?e=ended' : '/r?e=invalid');
 };
