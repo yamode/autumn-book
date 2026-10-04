@@ -50,7 +50,7 @@
 		return 'tel:' + (phone ?? '').replace(/[^0-9+]/g, '');
 	}
 
-	const slug = $derived(data.stay?.facility.slug ?? '');
+	const slug = $derived(data.stay?.facility.slug ?? data.endedFacility?.slug ?? '');
 	const hero = $derived(inroomHero(slug));
 	// Wi-Fi は現行アプリと同じくヒーロー直下に常時出す。残りはカードに並べる。
 	const wifi = $derived(data.guides.find((g) => g.section === 'wifi'));
@@ -191,13 +191,36 @@
 	</div>
 {:else}
 	<!-- ============ 未 claim / 無効 / 終了 ============ -->
+	{#if data.expired && hero}
+		<img src={hero} alt={data.endedFacility?.name ?? ''} class="h-40 w-full object-cover" />
+	{/if}
 	<div class="space-y-3 px-4 py-4">
 		{#if data.expired}
 			<!-- ご滞在終了（チェックアウト後の QR・期限切れの Cookie）：サンクス表示 -->
 			<section class="rounded-lg bg-white px-5 py-8 text-center shadow-card">
+				{#if data.endedFacility?.name}
+					<p class="mb-2 text-xs tracking-wide text-stone-400">{data.endedFacility.name}</p>
+				{/if}
 				<p class="text-[17px] font-medium text-stone-900">{m.inroom_ended_title()}</p>
 				<p class="mt-3 text-sm leading-relaxed text-stone-600">{m.inroom_ended_body()}</p>
 			</section>
+
+			<!-- 販促バナー（/admin/inroom/banners で施設ごとに設定。公開中・掲載期間内・言語が合うものだけ） -->
+			{#each data.banners as b (b.id)}
+				{#snippet bannerInner()}
+					<img src={b.imageUrl} alt={b.title} loading="lazy" class="block w-full" />
+					{#if b.body}
+						<p class="px-4 py-3 text-sm leading-relaxed text-stone-700">{b.body}</p>
+					{/if}
+				{/snippet}
+				{#if b.linkUrl}
+					<a href={b.linkUrl} target="_blank" rel="noopener" class="block overflow-hidden rounded-lg bg-white shadow-card">
+						{@render bannerInner()}
+					</a>
+				{:else}
+					<div class="overflow-hidden rounded-lg bg-white shadow-card">{@render bannerInner()}</div>
+				{/if}
+			{/each}
 		{:else if data.invalidQr}
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_invalid_qr()}</p>
 		{/if}

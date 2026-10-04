@@ -13,6 +13,12 @@ import { sbBathContext } from '$lib/server/private-bath';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { intercomStatusFor } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
+import {
+	endedFacilityBySlug,
+	loadThanksBanners,
+	stayEndedFacility,
+	type EndedFacility
+} from '$lib/server/inroom-banners';
 import type { Actions, PageServerLoad } from './$types';
 
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
@@ -25,15 +31,32 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 	const endedQr = url.searchParams.get('e') === 'ended';
 	const token = cookies.get(STAY_COOKIE);
 
+	// サンクス表示（ご滞在終了）。施設が分かれば、その施設の販促バナーを添える
+	const thanks = async (facility: EndedFacility | null) => ({
+		stay: null,
+		guides: [],
+		bathReservations: [],
+		expired: true,
+		invalidQr: false,
+		endedFacility: facility,
+		banners: facility ? await loadThanksBanners(facility.id, locale) : [],
+		// 黒ヘッダーの中央タイトル（layout が拾う）。施設が分かれば施設名
+		...(facility?.name ? { headerTitle: facility.name } : {})
+	});
+	const noStay = { stay: null, guides: [], bathReservations: [], expired: false, invalidQr, endedFacility: null, banners: [] };
+
 	if (!token) {
-		// 未 claim: コード入力フォームを出す（終了済み QR ならサンクス表示）
-		return { stay: null, guides: [], bathReservations: [], expired: endedQr, invalidQr };
+		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）
+		return endedQr ? thanks(endedFacilityBySlug(url.searchParams.get('f'), locale)) : noStay;
 	}
 
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
 	if (!stay) {
 		// Cookie はあるが無効（失効/期間外）＝ ご滞在終了。Cookie は消さず「終了」表示に使う
-		return { stay: null, guides: [], bathReservations: [], expired: !invalidQr, invalidQr };
+		if (invalidQr) return noStay;
+		return thanks(
+			(await stayEndedFacility(token, locale)) ?? endedFacilityBySlug(url.searchParams.get('f'), locale)
+		);
 	}
 
 	const [guides, bathContext, intercom] = await Promise.all([
@@ -52,7 +75,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 			: [],
 		intercom,
 		expired: false,
-		invalidQr
+		invalidQr,
+		endedFacility: null,
+		banners: []
 	};
 };
 

@@ -3,6 +3,7 @@ import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
+import { stayEndedFacility } from '$lib/server/inroom-banners';
 import type { RequestHandler } from './$types';
 
 // 印刷スリップの QR（/r/c/<token>）着地点。
@@ -25,7 +26,9 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 		redirect(302, url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r');
 	}
 
-	// stay_info は期限切れ・失効・存在しないを区別しない。発行形式（64桁の16進）の QR が
-	// 解決できないのは、ほぼチェックアウト後の読み取り。サンクス表示（e=ended）へ回す。
-	redirect(302, /^[0-9a-f]{64}$/i.test(token) ? '/r?e=ended' : '/r?e=invalid');
+	// チェックアウト後（期限切れ・失効）の QR はサンクス表示へ。施設は f=slug で渡す（バナーを施設別に出すため）
+	const ended = await stayEndedFacility(token, 'ja');
+	if (ended) redirect(302, `/r?e=ended&f=${encodeURIComponent(ended.slug)}`);
+
+	redirect(302, '/r?e=invalid');
 };
