@@ -72,6 +72,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			rooms: roomRows,
 			calendar: calendar.days,
 			calendarThrough: calendar.through,
+			calendarClosed: calendar.closed,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
 			referenceMode: !checkin,
@@ -108,6 +109,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		rooms,
 		calendar: calendar.days,
 		calendarThrough: calendar.through,
+			calendarClosed: calendar.closed,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults }

@@ -567,6 +567,7 @@
   "cal_adults": "入住人數",
   "cal_note": "{adults}人1間時，每人最低價（含稅）",
   "cal_cheapest": "最低價",
+  "cal_closed": "休館日",
   "cal_full": "客滿",
   "cal_left": "剩{n}間",
   "cal_pick_day": "選擇日期後，會顯示可預訂的客房與方案",

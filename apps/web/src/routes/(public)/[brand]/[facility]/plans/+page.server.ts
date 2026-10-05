@@ -75,6 +75,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			allTags,
 			calendarDays: calendar.days,
 			calendarThrough: calendar.through,
+			calendarClosed: calendar.closed,
 			today,
 			referenceMode: !checkin,
 			params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
@@ -110,6 +111,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		allTags,
 		calendarDays: calendar.days,
 		calendarThrough: calendar.through,
+			calendarClosed: calendar.closed,
 		today,
 		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }

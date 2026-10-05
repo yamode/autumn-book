@@ -2,7 +2,8 @@
 // スマホの下からのシート（ScrollDatePicker）と PC の検索バー直下のパネル（StayDatePanel）で共用する。
 
 export type StayDay = { date: string; price: number | null };
-export type StayDays = { days: StayDay[]; through: string };
+/** closed: 休館日（「満室」と分けて「休館日」と出す） */
+export type StayDays = { days: StayDay[]; through: string; closed?: string[] };
 export type StaySource = { facilityId: string; planId?: string; roomTypeId?: string; months?: number };
 
 export class StayDaysLoader {

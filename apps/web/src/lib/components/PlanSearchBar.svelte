@@ -14,6 +14,7 @@
 		today,
 		days,
 		through,
+		closed = [],
 		facilityId,
 		panelOpen = $bindable(false)
 	}: {
@@ -22,6 +23,8 @@
 		today: string;
 		days: StayDay[];
 		through: string;
+		/** 休館日 */
+		closed?: string[];
 		facilityId: string;
 		/** 外（部屋カードの「空室カレンダー」など）から開けるように bindable */
 		panelOpen?: boolean;
@@ -104,6 +107,7 @@
 				{today}
 				{days}
 				{through}
+				{closed}
 				daysNights={params.nights}
 				daysAdults={params.adults}
 				source={{ facilityId }}
@@ -120,6 +124,7 @@
 	minDate={today}
 	{days}
 	availableThrough={through}
+	{closed}
 	daysNights={params.nights}
 	daysAdults={params.adults}
 	source={{ facilityId, adults }}

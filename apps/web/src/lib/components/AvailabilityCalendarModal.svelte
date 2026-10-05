@@ -79,6 +79,7 @@
 		if (open) loader.load({ facilityId, roomTypeId: roomId || undefined, months: MONTHS }, nights, adults);
 	});
 	const current = $derived(loader.get(nights, adults));
+	const closedDates = $derived(new Set(current?.closed ?? []));
 	const dayByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day as { date: string; price: number | null; remaining?: number }])));
 
 	// 日を押したら、その日の部屋×プラン
@@ -233,7 +234,7 @@
 								aria-pressed={selected === date}
 								aria-label={`${formatDate(date)}${bookable ? ` ${formatPrice(price!)}` : ''}`}
 								onclick={() => choose(date)}
-								class="flex min-h-[4.5rem] min-w-0 flex-col items-start border-b border-r border-stone-100 px-1 py-1 text-left transition sm:min-h-20 sm:px-2 {selected === date ? 'bg-amber-50 ring-2 ring-inset ring-amber-700' : bookable ? 'hover:bg-sky-50' : 'bg-stone-50/60'}"
+								class="flex min-h-[4.5rem] min-w-0 flex-col items-start border-b border-r border-stone-100 px-1 py-1 text-left transition sm:min-h-20 sm:px-2 {selected === date ? 'bg-amber-50 ring-2 ring-inset ring-amber-700' : bookable ? 'hover:bg-sky-50' : closedDates.has(date) && !past ? 'bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgb(231_229_228/0.7)_6px_7px)]' : 'bg-stone-50/60'}"
 							>
 								<span class="text-sm tabular-nums {past ? 'text-stone-300' : weekday === 0 ? 'text-red-500' : weekday === 6 ? 'text-blue-500' : 'text-stone-800'}">{Number(date.slice(-2))}</span>
 								{#if bookable}
@@ -242,6 +243,8 @@
 									<span class="mt-auto max-w-full text-[10px] font-medium tabular-nums tracking-tight text-stone-900 sm:hidden">{price!.toLocaleString('ja-JP')}</span>
 									<span class="mt-auto hidden max-w-full truncate text-sm font-medium tabular-nums text-stone-900 sm:inline">{formatPrice(price!)}〜</span>
 									{#if day?.remaining != null && day.remaining <= 2}<span class="text-[10px] font-medium text-red-600">{m.cal_left({ n: String(day.remaining) })}</span>{/if}
+								{:else if known && !past && closedDates.has(date)}
+									<span class="mt-auto text-[11px] text-stone-500">{m.cal_closed()}</span>
 								{:else if known && !past}
 									<span class="mt-auto text-[11px] text-stone-400">{m.cal_full()}</span>
 								{/if}

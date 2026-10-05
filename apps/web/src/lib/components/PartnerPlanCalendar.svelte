@@ -168,19 +168,19 @@
 
 <section bind:this={root} class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h4 class="text-base font-bold">このプランの料金・空室</h4>
+    <h4 class="text-lg font-bold">このプランの料金・空室</h4>
     <div class="flex items-center gap-2 rounded-lg border border-stone-200 px-2 py-1">
-      <button type="button" class="flex h-7 w-7 items-center justify-center rounded bg-stone-100 text-lg leading-none disabled:opacity-40" disabled={guests <= GUEST_MIN} onclick={() => { guests -= 1; selected = null; }} aria-label="人数を減らす">−</button>
-      <span class="min-w-[4.5rem] text-center text-sm">大人{guests}名 1室</span>
-      <button type="button" class="flex h-7 w-7 items-center justify-center rounded bg-[var(--pt-accent)] text-lg leading-none text-white disabled:opacity-40" disabled={guests >= GUEST_MAX} onclick={() => { guests += 1; selected = null; }} aria-label="人数を増やす">＋</button>
+      <button type="button" class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl leading-none disabled:opacity-40" disabled={guests <= GUEST_MIN} onclick={() => { guests -= 1; selected = null; }} aria-label="人数を減らす">−</button>
+      <span class="min-w-[5.5rem] text-center text-base">大人{guests}名 1室</span>
+      <button type="button" class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl leading-none text-white disabled:opacity-40" disabled={guests >= GUEST_MAX} onclick={() => { guests += 1; selected = null; }} aria-label="人数を増やす">＋</button>
     </div>
   </div>
   <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-    <div class="inline-flex overflow-hidden rounded-md border border-stone-300 text-xs" role="group" aria-label="金額の表示">
-      <button type="button" class={`px-3 py-1 ${unit === 'person' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'person'} onclick={() => setUnit('person')}>1名あたり</button>
-      <button type="button" class={`border-l border-stone-300 px-3 py-1 ${unit === 'room' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'room'} onclick={() => setUnit('room')}>1室合計</button>
+    <div class="inline-flex overflow-hidden rounded-md border border-stone-300 text-sm" role="group" aria-label="金額の表示">
+      <button type="button" class={`px-3 py-1.5 ${unit === 'person' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'person'} onclick={() => setUnit('person')}>1名あたり</button>
+      <button type="button" class={`border-l border-stone-300 px-3 py-1.5 ${unit === 'room' ? 'bg-[var(--pt-accent)] text-white' : 'bg-white text-stone-600 hover:bg-stone-50'}`} aria-pressed={unit === 'room'} onclick={() => setUnit('room')}>1室合計</button>
     </div>
-    <p class="text-xs text-stone-500">1泊の{unit === 'room' ? `1室（大人${guests}名）合計` : '1名あたり'}の最安料金（税込・入湯税別）。日付を押すと部屋ごとの料金が見られます。</p>
+    <p class="text-sm text-stone-500">1泊の{unit === 'room' ? `1室（大人${guests}名）合計` : '1名あたり'}の最安料金（税込・入湯税別）。日付を押すと部屋ごとの料金が見られます。</p>
   </div>
 
   <div class={`relative mt-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
@@ -192,15 +192,15 @@
     </button>
 
     {#if loadError}
-      <p class="py-10 text-center text-sm text-rose-700">{loadError}</p>
+      <p class="py-10 text-center text-base text-rose-700">{loadError}</p>
     {:else if !months.length}
-      <p class="py-16 text-center text-sm text-stone-400">料金を読み込んでいます…</p>
+      <p class="py-16 text-center text-base text-stone-400">料金を読み込んでいます…</p>
     {:else}
       <div class="grid gap-6 md:grid-cols-2">
         {#each months as m, mi (ym(m.month))}
           <div class={mi === 1 ? 'hidden md:block' : ''}>
-            <p class="mb-2 text-center font-bold leading-8">{m.month.year}年 {m.month.month}月</p>
-            <div class="grid grid-cols-7 text-center text-xs">
+            <p class="mb-2 text-center text-lg font-bold leading-8">{m.month.year}年 {m.month.month}月</p>
+            <div class="grid grid-cols-7 text-center text-sm">
               {#each WEEK as w, i}
                 <div class={`py-1.5 font-medium ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-sky-600' : 'text-stone-500'}`}>{w}</div>
               {/each}
@@ -208,21 +208,21 @@
             <div class="grid grid-cols-7 border-t border-stone-200 text-center">
               {#each cellsOf(m) as c, i (c?.iso ?? `b-${i}`)}
                 {#if !c}
-                  <div class="min-h-[3.75rem] border-b border-stone-100"></div>
+                  <div class="min-h-[4.5rem] border-b border-stone-100"></div>
                 {:else if c.min != null && c.inRange}
                   <button
                     type="button"
-                    class={`min-h-[3.75rem] border-b border-stone-100 px-0.5 py-1.5 transition hover:bg-[var(--pt-accent-soft)] ${selected === c.iso ? 'bg-[var(--pt-accent-soft)] ring-1 ring-inset ring-[var(--pt-accent)]' : ''}`}
+                    class={`min-h-[4.5rem] border-b border-stone-100 px-0.5 py-2 transition hover:bg-[var(--pt-accent-soft)] ${selected === c.iso ? 'bg-[var(--pt-accent-soft)] ring-1 ring-inset ring-[var(--pt-accent)]' : ''}`}
                     onclick={() => (selected = selected === c.iso ? null : c.iso)}
                     aria-pressed={selected === c.iso}
                   >
-                    <span class={`block text-sm ${dayColor(c)}`}>{c.d}</span>
-                    <span class="block text-[11px] font-medium leading-tight text-[var(--pt-accent)] sm:text-xs">{shown(c.min).toLocaleString('ja-JP')}<span class="text-[10px]">円</span></span>
+                    <span class={`block text-base ${dayColor(c)}`}>{c.d}</span>
+                    <span class="mt-0.5 block text-xs font-semibold leading-tight tracking-tight text-[var(--pt-accent)] sm:text-sm">{shown(c.min).toLocaleString('ja-JP')}<span class="text-[11px] sm:text-xs">円</span></span>
                   </button>
                 {:else}
-                  <div class="min-h-[3.75rem] border-b border-stone-100 px-0.5 py-1.5 text-stone-300">
-                    <span class="block text-sm">{c.d}</span>
-                    <span class="block text-[10px] leading-tight">{#if c.inRange}<span class="sm:hidden">×</span><span class="hidden sm:inline">空室なし</span>{:else}-{/if}</span>
+                  <div class="min-h-[4.5rem] border-b border-stone-100 px-0.5 py-2 text-stone-300">
+                    <span class="block text-base">{c.d}</span>
+                    <span class="mt-0.5 block text-xs leading-tight">{#if c.inRange}<span class="sm:hidden">×</span><span class="hidden sm:inline">空室なし</span>{:else}-{/if}</span>
                   </div>
                 {/if}
               {/each}
@@ -235,28 +235,28 @@
 
   {#if selected}
     <div class="mt-4 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] p-3 sm:p-4">
-      <p class="font-bold">{fmtDate(selected)} から1泊・大人{guests}名</p>
+      <p class="text-lg font-bold">{fmtDate(selected)} から1泊・大人{guests}名</p>
       {#if !selectedOffers.length}
-        <p class="mt-1 text-sm text-stone-500">この日は空室がありません。</p>
+        <p class="mt-1 text-base text-stone-500">この日は空室がありません。</p>
       {:else}
         <ul class="mt-2 divide-y divide-stone-200 rounded-md bg-white">
           {#each selectedOffers as o (o.roomCode)}
             {@const rp = roomParts(o.roomName)}
-            <li class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+            <li class="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
               <div class="min-w-0">
-                {#if rp.building}<p class="text-xs text-stone-500">{rp.building}</p>{/if}
-                <p class="font-medium">{rp.room}</p>
-                {#if showInventory && o.remaining != null && o.remaining <= 2}<p class="text-xs text-rose-700">残り{o.remaining}室</p>{/if}
+                {#if rp.building}<p class="text-sm text-stone-500">{rp.building}</p>{/if}
+                <p class="text-lg font-medium">{rp.room}</p>
+                {#if showInventory && o.remaining != null && o.remaining <= 2}<p class="text-sm text-rose-700">残り{o.remaining}室</p>{/if}
               </div>
               <div class="flex items-center gap-3">
                 <div class="text-right">
-                  <p class="font-bold">{yen(o.perPerson * guests)}</p>
-                  <p class="text-xs text-stone-500">1名 {yen(o.perPerson)}</p>
+                  <p class="text-lg font-bold">{yen(o.perPerson * guests)}</p>
+                  <p class="text-sm text-stone-500">1名 {yen(o.perPerson)}</p>
                 </div>
                 {#if booking.enabled && canBookFor(selected, booking)}
-                  <a href={bookHref(o, selected)} class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">予約へ進む</a>
+                  <a href={bookHref(o, selected)} class="rounded-lg bg-accent-600 px-5 py-2.5 text-base font-medium text-white hover:bg-accent-500">予約へ進む</a>
                 {:else if booking.enabled}
-                  <span class="text-xs text-stone-500">受付締切</span>
+                  <span class="text-sm text-stone-500">受付締切</span>
                 {/if}
               </div>
             </li>

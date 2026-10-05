@@ -567,6 +567,7 @@
   "cal_adults": "Guests",
   "cal_note": "Lowest price per person for {adults} guest(s) in one room (tax incl.)",
   "cal_cheapest": "Lowest",
+  "cal_closed": "Closed",
   "cal_full": "Full",
   "cal_left": "{n} left",
   "cal_pick_day": "Pick a date to see the rooms and plans you can book",

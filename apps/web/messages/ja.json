@@ -567,6 +567,7 @@
   "cal_adults": "ご利用人数",
   "cal_note": "{adults}名1室でご利用時の、お一人様あたりの最低料金（税込）",
   "cal_cheapest": "最安",
+  "cal_closed": "休館日",
   "cal_full": "満室",
   "cal_left": "残り{n}室",
   "cal_pick_day": "日付を選ぶと、予約できるお部屋とプランが表示されます",

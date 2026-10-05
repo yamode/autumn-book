@@ -217,7 +217,7 @@
 			📅 {data.params.checkin ? formatDate(data.params.checkin) : m.bath_select_date()} · {m.searchbar_nights_option({ n: String(data.params.nights) })}
 		</button>
 	</section>
-	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6 }} onSelect={chooseDate} />
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6 }} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">

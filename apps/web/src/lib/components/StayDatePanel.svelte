@@ -14,6 +14,7 @@
 		today,
 		days,
 		through,
+		closed = [],
 		daysNights,
 		daysAdults,
 		source,
@@ -27,6 +28,8 @@
 		/** ページが持っている空き日（daysNights 泊・daysAdults 名で計算済み） */
 		days: StayDay[];
 		through: string;
+		/** 休館日 */
+		closed?: string[];
 		daysNights: number;
 		daysAdults: number;
 		source: StaySource;
@@ -41,8 +44,9 @@
 		loader.reset();
 	});
 	const isPageDays = $derived(nights === daysNights && adults === daysAdults);
-	const current = $derived<StayDays | null>(isPageDays ? { days, through } : loader.get(nights, adults));
+	const current = $derived<StayDays | null>(isPageDays ? { days, through, closed } : loader.get(nights, adults));
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
+	const closedDates = $derived(new Set(current?.closed ?? []));
 	$effect(() => {
 		if (!isPageDays) loader.load(source, nights, adults);
 	});
@@ -115,7 +119,7 @@
 							{#if price != null && price > 0}
 								<span class="mt-0.5 max-w-full text-[11px] leading-tight {selected ? 'text-white' : 'text-sky-700'}">{price.toLocaleString('ja-JP')}<span class="text-[10px]">〜</span></span>
 							{:else if knownUnavailable && date >= today}
-								<span class="mt-0.5 text-[11px] leading-tight">—</span>
+								<span class="mt-0.5 text-[11px] leading-tight">{closedDates.has(date) ? m.cal_closed() : '—'}</span>
 							{/if}
 						</button>
 					{/each}

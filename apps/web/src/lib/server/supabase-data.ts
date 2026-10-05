@@ -2234,6 +2234,13 @@ export async function sbFacilityStayCalendar(
 	}));
 }
 
+/** 施設の休館日（PMS の休館ブロック）。今日から months か月先まで */
+export async function sbFacilityClosedDates(facilityUuid: string, months: number): Promise<string[]> {
+	const { data, error } = await supa().rpc('facility_closed_dates', { p_facility: facilityUuid, p_months: months });
+	if (error) throw error;
+	return ((data ?? []) as { closed_date: string }[]).map((row) => row.closed_date);
+}
+
 export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
 	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (error) throw error;

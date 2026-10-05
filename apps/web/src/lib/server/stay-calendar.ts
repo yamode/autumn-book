@@ -2,7 +2,7 @@
 // 施設全体（プラン未指定）とプラン詳細の両方で使い、日付ピッカーで泊数を変えたときは /api/stay-calendar から取り直す。
 import { addDays, eachNight } from '@autumn-book/core';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbFacilityStayCalendar } from '$lib/server/supabase-data';
+import { sbFacilityClosedDates, sbFacilityStayCalendar } from '$lib/server/supabase-data';
 import { quoteFor, ratePlans, remainingRooms, roomTypes } from '$lib/server/store';
 
 export type StayCalendarDay = { date: string; price: number; remaining: number };
@@ -54,11 +54,19 @@ export async function stayCalendar(
 	nights: number,
 	adults: number,
 	options: { planId?: string; roomTypeId?: string; months?: number } = {}
-): Promise<{ days: StayCalendarDay[]; through: string }> {
+): Promise<{ days: StayCalendarDay[]; through: string; closed: string[] }> {
 	const months = Math.min(6, Math.max(1, options.months ?? 2));
 	const through = monthsAfter(todayJst(), months);
 	if (DATA_SOURCE === 'supabase') {
-		return { days: await sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, roomTypeId: options.roomTypeId, months }), through };
+		const [days, closed] = await Promise.all([
+			sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, roomTypeId: options.roomTypeId, months }),
+			// 休館日が取れなくてもカレンダーは出す（「満室」表示になるだけ）
+			sbFacilityClosedDates(facilityId, months).catch((e) => {
+				console.error('[stay-calendar] closed dates', e instanceof Error ? e.message : String(e));
+				return [] as string[];
+			})
+		]);
+		return { days, through, closed };
 	}
-	return { days: demoStayCalendar(facilityId, nights, adults, options.planId, options.roomTypeId, through), through };
+	return { days: demoStayCalendar(facilityId, nights, adults, options.planId, options.roomTypeId, through), through, closed: [] };
 }

@@ -13,6 +13,7 @@
 		maxDate = addDays(minDate, 365),
 		days = [],
 		availableThrough = '',
+		closed = [],
 		daysNights = nights,
 		daysAdults,
 		source,
@@ -25,6 +26,8 @@
 		maxDate?: string;
 		days?: { date: string; price: number | null }[];
 		availableThrough?: string;
+		/** 休館日（days と同じ条件のもの） */
+		closed?: string[];
 		/** days が何泊で計算されたものか（既定は nights） */
 		daysNights?: number;
 		/** days が何名で計算されたものか（既定は source.adults） */
@@ -98,9 +101,10 @@
 	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
 	const isPageDays = $derived(selectedNights === daysNights && (!source || source.adults === (daysAdults ?? source.adults)));
 	const current = $derived<StayDays | null>(
-		isPageDays ? { days, through: availableThrough } : source ? loader.get(selectedNights, source.adults) : null
+		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(selectedNights, source.adults) : null
 	);
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
+	const closedDates = $derived(new Set(current?.closed ?? []));
 	$effect(() => {
 		if (open && source && !isPageDays) loader.load(source, selectedNights, source.adults);
 	});
@@ -158,7 +162,7 @@
 									class="flex min-h-16 min-w-0 flex-col items-center justify-start border-t border-stone-200 px-0.5 py-2 text-sm tabular-nums transition {selected ? 'rounded bg-sky-600 text-white' : inStay ? 'bg-sky-100 text-sky-900' : disabled ? 'text-stone-300' : 'text-stone-900 hover:bg-sky-50'}"
 								>
 									<span class="font-medium">{Number(date.slice(-2))}</span>
-									{#if price != null && price > 0}<span class="mt-1 max-w-full text-[10px] leading-tight {selected ? 'text-white' : 'text-sky-700'}">{formatPrice(price)}</span>{:else if knownUnavailable}<span class="mt-1 text-[10px] leading-tight">—</span>{/if}
+									{#if price != null && price > 0}<span class="mt-1 max-w-full text-[10px] leading-tight {selected ? 'text-white' : 'text-sky-700'}">{formatPrice(price)}</span>{:else if knownUnavailable && closedDates.has(date)}<span class="mt-1 text-[10px] leading-tight">{m.cal_closed()}</span>{:else if knownUnavailable}<span class="mt-1 text-[10px] leading-tight">—</span>{/if}
 								</button>
 							{/each}
 						</div>

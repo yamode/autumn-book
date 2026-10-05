@@ -90,7 +90,7 @@
 	</header>
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} facilityId={data.facility.id} />
+		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} closed={data.calendarClosed} facilityId={data.facility.id} />
 	</div>
 
 	<section id="rooms" class="mt-6 scroll-mt-28">
