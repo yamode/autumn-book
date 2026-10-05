@@ -143,7 +143,7 @@
               <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-brand-900">
                 {#if detail.mealType}<span class="rounded-sm border border-amber-600 px-1.5 text-xs text-amber-700">{mealLabel(detail.mealType)}</span>{/if}
                 {#if times}<span><b>IN</b> {times.checkin}</span><span><b>OUT</b> {times.checkout}</span>{/if}
-                <span><b>予約受付</b> 宿泊日の{deadlineText}まで</span>
+                <span><b>予約受付</b> 宿泊日の{deadlineText}</span>
               </p>
               <div class="mt-4 rounded-lg border border-stone-200 px-4 py-3 text-sm text-brand-900">
                 <p class="font-bold">{#if parts.building}{parts.building}｜{/if}{parts.room}</p>
@@ -167,7 +167,7 @@
                 <p class="rounded-md bg-stone-100 py-4 text-center text-base text-stone-500">この宿泊日のご予約は受付を締め切りました</p>
               {/if}
             </div>
-            {#if cancelText}<p class="mt-2 text-sm text-rose-600">取消は宿泊日の{cancelText}まで（この画面から）</p>{/if}
+            {#if cancelText}<p class="mt-2 text-sm text-rose-600">取消は宿泊日の{cancelText}（予約一覧から）</p>{/if}
           </div>
         </section>
         {#if paymentLabels.length}
