@@ -33,7 +33,7 @@ export function partnerStayOffers(
   checkIn: string,
   nights: number,
   guests: number,
-  opts: { showInventory: boolean; planCode?: string; planName?: string; roomCode?: string }
+  opts: { showInventory: boolean; planCode?: string; planName?: string; roomCode?: string; rooms?: number }
 ): PartnerStayOffer[] | null {
   const dates = Array.from({ length: Math.max(1, nights) }, (_, i) => addDaysIsoClient(checkIn, i));
   const days: PartnerRateDay[] = [];
@@ -56,7 +56,9 @@ export function partnerStayOffers(
         const r = day.rooms.find((x) => x.roomCode === room.roomCode);
         const p = r?.plans.find((x) => x.planCode === plan.planCode && x.planName === plan.planName);
         const price = p?.pricesPerPerson[g];
-        if (!r || !(price != null && price > 0) || (opts.showInventory && r.remainingRooms === 0)) {
+        // 残室を見せる取引先は、残室が室数に足りない日を除く（残室が取れない日はサーバの確定時に確かめる）
+        const short = opts.showInventory && r?.remainingRooms != null && r.remainingRooms < Math.max(1, opts.rooms ?? 1);
+        if (!r || !(price != null && price > 0) || short) {
           ok = false;
           break;
         }
@@ -78,6 +80,39 @@ export function partnerStayOffers(
     }
   }
   return out.sort((a, b) => a.perPerson - b.perPerson);
+}
+
+export type PartnerReferencePlan = {
+  roomCode: string;
+  roomName: string;
+  planCode: string;
+  planName: string;
+  mealType: string | null;
+  advance: boolean;
+  /** 読み込んだ期間で泊まれる日の最安（1名1泊） */
+  minPerPerson: number;
+};
+
+/** 日付を選ぶ前に出す、部屋×プランごとの最安（読み込んだ期間・1泊・その人数で泊まれる日だけ） */
+export function partnerReferencePlans(days: PartnerRateDay[], guests: number, opts: { showInventory: boolean; from: string }): PartnerReferencePlan[] {
+  const g = String(guests);
+  const best = new Map<string, PartnerReferencePlan>();
+  for (const day of days) {
+    if (day.closed || day.date < opts.from) continue;
+    for (const room of day.rooms) {
+      if (opts.showInventory && room.remainingRooms === 0) continue;
+      for (const plan of room.plans) {
+        const price = plan.pricesPerPerson[g];
+        if (!(price != null && price > 0)) continue;
+        const key = `${room.roomCode}|${plan.planCode}|${plan.planName}`;
+        const hit = best.get(key);
+        if (!hit || price < hit.minPerPerson) {
+          best.set(key, { roomCode: room.roomCode, roomName: room.roomName, planCode: plan.planCode, planName: plan.planName, mealType: plan.mealType, advance: plan.advance, minPerPerson: price });
+        }
+      }
+    }
+  }
+  return [...best.values()].sort((a, b) => a.minPerPerson - b.minPerPerson);
 }
 
 /** 予約入力画面の「戻る」に使う、取引先ページ内の戻り先（それ以外は料金カレンダー） */

@@ -11,6 +11,7 @@
     date = $bindable(''),
     nights = $bindable(1),
     guests,
+    rooms = 1,
     maxNights,
     showInventory,
     today,
@@ -21,6 +22,8 @@
     date: string;
     nights: number;
     guests: number;
+    /** 室数（残室を見せる取引先は、残室が足りない日を除く） */
+    rooms?: number;
     maxNights: number;
     showInventory: boolean;
     today: string;
@@ -74,7 +77,7 @@
     for (let d = 1; d <= last; d += 1) {
       const iso = `${ym}-${pad(d)}`;
       const inRange = !!bounds && iso >= bounds.earliest && iso <= bounds.latest;
-      const offers = inRange ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory }) : null;
+      const offers = inRange ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, rooms }) : null;
       out.push({ iso, dow: (first + d - 1) % 7, min: offers?.length ? offers[0].perPerson : null, closed: index.get(iso)?.closed === true, inRange });
     }
     return out;
@@ -93,14 +96,14 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && !document.querySelector('[data-room-info]')) onClose(); }} />
 
-<div role="dialog" aria-label="ご宿泊日" class="rounded-b-xl border border-t-0 border-stone-300 bg-white px-4 pb-4 pt-3 shadow-lg sm:px-5">
+<div role="dialog" aria-label="ご宿泊日" class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
   <div class="flex flex-wrap items-center gap-3 border-b border-stone-100 pb-3">
     <span class="text-base text-stone-600">泊数</span>
     <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:opacity-30" aria-label="泊数を減らす">−</button>
     <span class="min-w-10 text-center text-base font-medium tabular-nums">{nights}泊</span>
     <button type="button" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label="泊数を増やす">＋</button>
     {#if loading}<span class="text-sm text-stone-500" role="status">空き状況を確認中…</span>{:else if failed}<span class="text-sm text-rose-700" role="status">料金を読み込めませんでした</span>{:else}<span class="text-sm text-stone-400">泊数を変えると空き日がすぐ変わります</span>{/if}
-    <span class="ml-auto text-sm text-stone-500">{guests}名1室・1名1泊の最安</span>
+    <span class="ml-auto text-sm text-stone-500">大人{guests}名{rooms > 1 ? `×${rooms}室` : '・1室'}・1名1泊の最安</span>
     <button type="button" onclick={onClose} class="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100" aria-label="閉じる">×</button>
   </div>
   <div class="relative mt-3 grid gap-6 md:grid-cols-2">
@@ -147,6 +150,6 @@
       {#if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
       <span class="ml-2 text-sm text-stone-400">— は満室・料金なし</span>
     </p>
-    <button type="button" disabled={!date} onclick={onApply} class="rounded-lg bg-accent-600 px-5 py-2.5 text-base font-semibold text-white hover:bg-accent-500 disabled:opacity-40">この日程で検索</button>
+    <button type="button" disabled={!date} onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">この日程で検索</button>
   </div>
 </div>

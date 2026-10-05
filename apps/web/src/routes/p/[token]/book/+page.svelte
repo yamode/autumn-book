@@ -28,8 +28,8 @@
   // ---- 宿泊条件 ----
   let checkIn = $state(init.target.checkIn);
   let nights = $state(init.target.nights ?? 1);
-  let roomCount = $state(1);
-  let adults = $state<number[]>([Math.min(init.capacity.max, Math.max(init.capacity.min, init.target.guests))]);
+  let roomCount = $state(init.target.roomCount ?? 1);
+  let adults = $state<number[]>(Array.from({ length: init.target.roomCount ?? 1 }, () => Math.min(init.capacity.max, Math.max(init.capacity.min, init.target.guests))));
   $effect(() => {
     // 室数を増減したら、部屋ごとの人数の欄を揃える（増やした部屋は1室目の人数で始める）
     const n = roomCount;

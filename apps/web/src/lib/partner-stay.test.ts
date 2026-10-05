@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { partnerBackTarget, partnerStayOffers } from './partner-stay';
+import { partnerBackTarget, partnerReferencePlans, partnerStayOffers } from './partner-stay';
 import type { PartnerRateDay } from './partner-pricing';
 
 const plan = (code: string, price: number) => ({ planCode: code, planName: `P${code}`, mealType: '2食', advance: false, pricesPerPerson: { '2': price } });
@@ -29,6 +29,10 @@ describe('partnerStayOffers', () => {
     expect(partnerStayOffers(dayOf, '2026-10-10', 3, 2, { showInventory: true })).toEqual([]);
     expect(partnerStayOffers(dayOf, '2026-10-09', 2, 2, { showInventory: true })).toBeNull();
   });
+  it('残室が室数に足りない日は除く', () => {
+    expect(partnerStayOffers(dayOf, '2026-10-10', 2, 2, { showInventory: true, rooms: 2 })).toEqual([]);
+    expect(partnerStayOffers(dayOf, '2026-10-10', 1, 2, { showInventory: true, rooms: 2 })?.length).toBe(2);
+  });
   it('プランで絞る', () => {
     const offers = partnerStayOffers(dayOf, '2026-10-10', 1, 2, { showInventory: true, planCode: 'y', planName: 'Py' });
     expect(offers?.map((o) => o.planCode)).toEqual(['y']);
@@ -49,5 +53,13 @@ describe('partnerBackTarget', () => {
     expect(partnerBackTarget('tk', '/p/other/plans').href).toBe('/p/tk/calendar');
     expect(partnerBackTarget('tk', 'https://example.com/').href).toBe('/p/tk/calendar');
     expect(partnerBackTarget('tk', null).label).toBe('料金カレンダーへ戻る');
+  });
+});
+
+describe('partnerReferencePlans', () => {
+  it('部屋×プランごとの最安（休館日と過去の日は除く）', () => {
+    const plans = partnerReferencePlans([...days.values()], 2, { showInventory: true, from: '2026-10-10' });
+    expect(plans.map((p) => [p.planCode, p.minPerPerson])).toEqual([['x', 30000], ['y', 40000]]);
+    expect(partnerReferencePlans([...days.values()], 2, { showInventory: true, from: '2026-10-11' }).map((p) => p.minPerPerson)).toEqual([34000]);
   });
 });

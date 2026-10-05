@@ -25,8 +25,10 @@ export const load = async (event) => {
   const s = partner.booking_settings;
   // カレンダーで選んだ泊数（無ければ1泊・上限は取引先ごとの最大泊数）
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
+  // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
+  const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
   const [quote, rt, booker, profileRow] = await Promise.all([
-    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: [{ adults: guests }] }),
+    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
     getBookerProfile(db, partner.id, session.id).catch(() => null),
@@ -39,7 +41,7 @@ export const load = async (event) => {
   return {
     portal: portalHeader(partner, session),
     // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
-    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights },
+    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights, roomCount },
     // 「戻る」は来たページ（料金カレンダー／プランのご紹介）へ。決め打ちで料金カレンダーに戻さない
     back: partnerBackTarget(token, q.get('from')),
     quote,
