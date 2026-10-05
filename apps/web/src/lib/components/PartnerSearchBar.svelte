@@ -45,9 +45,14 @@
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
   });
-  const toggle = (k: 'date' | 'guests') => (open = open === k ? '' : k);
-  const segment = (k: 'date' | 'guests') =>
-    `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open === k ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
+  // 押した区画だけを白く浮かせる（チェックインと泊数は同じ日付パネルを開く）
+  let seg = $state<'checkin' | 'nights' | 'guests'>('checkin');
+  const toggle = (k: 'date' | 'guests', s: 'checkin' | 'nights' | 'guests' = k === 'guests' ? 'guests' : 'checkin') => {
+    open = open === k && seg === s ? '' : k;
+    seg = s;
+  };
+  const segment = (s: 'checkin' | 'nights' | 'guests') =>
+    `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open && seg === s ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && open === 'guests') open = ''; }} />
@@ -55,12 +60,12 @@
 <div bind:this={root} class="relative">
   <!-- PC: 1本の角丸バー -->
   <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] md:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
-    <button type="button" class={`${segment('date')} flex-[1.3]`} onclick={() => toggle('date')} aria-expanded={open === 'date'}>
+    <button type="button" class={`${segment('checkin')} flex-[1.3]`} onclick={() => toggle('date', 'checkin')} aria-expanded={open === 'date'}>
       <span class="text-xs font-bold tracking-wide text-brand-900">チェックイン</span>
       <span class={`truncate text-base ${date ? 'text-brand-900' : 'text-stone-400'}`}>{date ? label(date) : '日付を追加'}</span>
     </button>
     <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
-    <button type="button" class={`${segment('date')} flex-[0.7]`} onclick={() => toggle('date')} aria-label="泊数を変える">
+    <button type="button" class={`${segment('nights')} flex-[0.7]`} onclick={() => toggle('date', 'nights')} aria-label="泊数を変える">
       <span class="text-xs font-bold tracking-wide text-brand-900">泊数</span>
       <span class="text-base text-brand-900">{nights}泊</span>
     </button>

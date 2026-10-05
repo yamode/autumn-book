@@ -5,6 +5,7 @@
   // 予約できるプランと料金に切り替える。料金・空室は月の JSON（fetchPortalMonth）から画面側で組み立て、
   // 予約の金額・在庫は予約入力・確定時にサーバで改めて確かめる。
   import { goto } from '$app/navigation';
+  import { navigating } from '$app/state';
   import { page } from '$app/stores';
   import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import PartnerRoomModal from '$lib/components/PartnerRoomModal.svelte';
@@ -153,14 +154,23 @@
     });
     return `/p/${token}/book?${q}`;
   };
-  // 空室カレンダーで日付を選んだら、その日程で検索し直してその部屋のカードへ
+  // 検索中（ページのデータを取り直している間）は一覧を薄くする。本番では1〜2秒かかり、古い一覧のままに見えるため
+  const searching = $derived(!!navigating.to && navigating.to.url.pathname === $page.url.pathname);
+  // 空室カレンダーで日付を選んだら、その日程で検索し直し、読み込みが終わってからその部屋のカードへ
+  let scrollTo = $state<{ code: string; date: string } | null>(null);
   function pickFromCalendar(iso: string) {
     const code = calendarRoom?.code;
     calendarRoom = null;
     date = iso;
+    if (code) scrollTo = { code, date: iso };
     search();
-    if (code) setTimeout(() => document.getElementById(`room-${code}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
   }
+  $effect(() => {
+    if (!scrollTo || searching || loading || data.params.date !== scrollTo.date) return;
+    const code = scrollTo.code;
+    scrollTo = null;
+    requestAnimationFrame(() => document.getElementById(`room-${code}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  });
   const checkout = $derived(dated ? addDaysIsoClient(data.params.date, data.params.nights) : '');
   const guestText = $derived(`大人${data.params.guests}名${data.params.rooms > 1 ? ` × ${data.params.rooms}室` : ''}`);
 </script>
@@ -207,6 +217,9 @@
     <p class="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">この宿泊日のご予約は受付を締め切りました。料金はご参考です。</p>
   {/if}
 
+  {#if searching}
+    <p class="mt-3 text-sm text-stone-500" role="status">検索しています…</p>
+  {/if}
   {#if loading}
     <div class="mt-5 space-y-5" aria-label="読み込み中">
       {#each [0, 1] as i (i)}<div class="h-64 animate-pulse rounded-lg border border-stone-200 bg-white"></div>{/each}
@@ -216,7 +229,7 @@
   {:else if closedDay}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">この日は休館日です。別の日程をお選びください。</p>
   {:else}
-    <div class="mt-4 space-y-6">
+    <div class={`mt-4 space-y-6 transition-opacity ${searching ? 'pointer-events-none opacity-40' : ''}`}>
       {#each cards as card (card.code)}
         {@const parts = roomParts(card.name)}
         {@const photo = card.content?.photos[0]?.url}
