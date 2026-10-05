@@ -3,6 +3,7 @@
 	import { addDays, formatDate, formatPrice, todayStr } from '$lib/format';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
+	import { StayDaysLoader, type StayDays } from '$lib/stay-days.svelte';
 
 	let {
 		open = $bindable(false),
@@ -13,6 +14,7 @@
 		days = [],
 		availableThrough = '',
 		daysNights = nights,
+		daysAdults,
 		source,
 		onSelect
 	}: {
@@ -25,21 +27,20 @@
 		availableThrough?: string;
 		/** days が何泊で計算されたものか（既定は nights） */
 		daysNights?: number;
+		/** days が何名で計算されたものか（既定は source.adults） */
+		daysAdults?: number;
 		/** 指定すると、泊数を変えたときに /api/stay-calendar からその泊数で予約できる日を取り直す */
 		source?: { facilityId: string; planId?: string; adults: number; months?: number };
 		onSelect: (date: string, nights: number) => void;
 	} = $props();
 
-	type Loaded = { days: { date: string; price: number | null }[]; through: string };
-	// 泊数ごとに取り直した結果（ページのデータや人数が変わったら捨てる）
-	let loadedByNights = $state<Record<number, Loaded>>({});
-	let loading = $state(false);
-	let loadFailed = $state(false);
-	let sourceKey = $derived(source ? `${source.facilityId}|${source.planId ?? ''}|${source.adults}|${source.months ?? ''}` : '');
+	// 泊数・人数を変えたら、その条件で予約できる日を取り直す（ページのデータや取得元が変わったら捨てる）
+	const loader = new StayDaysLoader();
+	let sourceKey = $derived(source ? `${source.facilityId}|${source.planId ?? ''}|${source.months ?? ''}` : '');
 	$effect(() => {
 		void sourceKey;
 		void days;
-		loadedByNights = {};
+		loader.reset();
 	});
 
 	// svelte-ignore state_referenced_locally
@@ -95,36 +96,13 @@
 		return result;
 	});
 	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
-	const current = $derived<Loaded | null>(
-		selectedNights === daysNights ? { days, through: availableThrough } : (loadedByNights[selectedNights] ?? null)
+	const isPageDays = $derived(selectedNights === daysNights && (!source || source.adults === (daysAdults ?? source.adults)));
+	const current = $derived<StayDays | null>(
+		isPageDays ? { days, through: availableThrough } : source ? loader.get(selectedNights, source.adults) : null
 	);
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
 	$effect(() => {
-		if (!open || !source || selectedNights === daysNights || loadedByNights[selectedNights]) return;
-		const target = selectedNights;
-		const query = new URLSearchParams({ facility: source.facilityId, nights: String(target), adults: String(source.adults) });
-		if (source.planId) query.set('plan', source.planId);
-		if (source.months) query.set('months', String(source.months));
-		const controller = new AbortController();
-		loading = true;
-		loadFailed = false;
-		fetch(`/api/stay-calendar?${query}`, { signal: controller.signal })
-			.then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
-			.then((result: Loaded) => {
-				loading = false;
-				loadedByNights = { ...loadedByNights, [target]: result };
-			})
-			.catch((reason) => {
-				if (controller.signal.aborted) return;
-				loading = false;
-				loadFailed = true;
-				console.error('[ScrollDatePicker] stay-calendar', reason);
-			});
-		// 泊数を続けて変えたら前の取得は捨てる
-		return () => {
-			controller.abort();
-			loading = false;
-		};
+		if (open && source && !isPageDays) loader.load(source, selectedNights, source.adults);
 	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
 
@@ -151,9 +129,9 @@
 					<button type="button" disabled={selectedNights <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedNights--}>−</button>
 					<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_nights_option({ n: String(selectedNights) })}</span>
 					<button type="button" disabled={selectedNights >= 7} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedNights++}>+</button>
-					{#if loading}
+					{#if loader.loading}
 						<span class="text-xs text-stone-500" role="status">{m.datepicker_loading()}</span>
-					{:else if loadFailed}
+					{:else if loader.failed}
 						<span class="text-xs text-red-600" role="status">{m.datepicker_load_failed()}</span>
 					{/if}
 				</div>
