@@ -45,7 +45,7 @@
         <!-- お部屋・プランの紹介・覚書・アカウントはログインした取引先すべてに見せる。予約一覧は予約を受け付けている取引先だけ。
              項目が増えてもスマホでは1行の横スクロールのまま（折り返さない）。 -->
         <nav class="order-last flex w-full gap-1 overflow-x-auto text-sm sm:order-none sm:w-auto" aria-label="取引先メニュー">
-          {#each [['calendar', '料金カレンダー'], ['rooms', 'お部屋'], ['plans', 'プラン'], ...(portal.bookingEnabled ? [['bookings', '予約一覧']] : []), ['memorandum', '覚書'], ['account', 'アカウント']] as [path, lbl]}
+          {#each [['calendar', '料金カレンダー'], ['stay', 'お部屋とプラン'], ['rooms', 'お部屋'], ['plans', 'プラン'], ...(portal.bookingEnabled ? [['bookings', '予約一覧']] : []), ['memorandum', '覚書'], ['account', 'アカウント']] as [path, lbl]}
             {@const active = isActive(path)}
             <a href={`/p/${$page.params.token}/${path}`} class={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 transition ${active ? 'bg-brand-800 text-white' : 'text-stone-600 hover:bg-stone-50 hover:text-brand-800'}`}>{lbl}</a>
           {/each}

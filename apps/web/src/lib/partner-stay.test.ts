@@ -39,6 +39,9 @@ describe('partnerBackTarget', () => {
   it('プランのご紹介から来たらそこへ戻る', () => {
     expect(partnerBackTarget('tk', '/p/tk/plans#plan-a')).toEqual({ href: '/p/tk/plans#plan-a', label: 'プランのご紹介へ戻る' });
   });
+  it('お部屋とプランから来たら条件つきで戻る', () => {
+    expect(partnerBackTarget('tk', '/p/tk/stay?date=2026-10-10&nights=2&guests=2')).toEqual({ href: '/p/tk/stay?date=2026-10-10&nights=2&guests=2', label: 'お部屋とプランへ戻る' });
+  });
   it('料金カレンダーは条件つきで戻る', () => {
     expect(partnerBackTarget('tk', '/p/tk/calendar?month=2026-10&guests=2').href).toBe('/p/tk/calendar?month=2026-10&guests=2');
   });

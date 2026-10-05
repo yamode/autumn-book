@@ -87,6 +87,7 @@ export function partnerBackTarget(token: string, from: string | null | undefined
   if (path.startsWith(base) && !path.includes('//', 1)) {
     const head = path.slice(base.length).split(/[/?#]/)[0];
     if (head === 'plans') return { href: path, label: 'プランのご紹介へ戻る' };
+    if (head === 'stay') return { href: path, label: 'お部屋とプランへ戻る' };
     if (head === 'rooms') return { href: path, label: 'お部屋のご紹介へ戻る' };
     if (head === 'calendar') return { href: path, label: '料金カレンダーへ戻る' };
   }

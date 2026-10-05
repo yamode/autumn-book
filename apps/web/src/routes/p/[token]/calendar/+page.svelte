@@ -33,7 +33,8 @@
   let guests = $state(initial.guests);
   let loading = $state(false);
   let loadError = $state('');
-  let roomFilter = $state('');
+  // 「お部屋とプラン」の部屋カードから来たら、その部屋で絞って開く
+  let roomFilter = $state(untrack(() => $page.url.searchParams.get('room') ?? ''));
   let selected = $state<string | null>(null);
   // 泊数（連泊は同じ部屋・同じプランで全泊空いている日だけ出す）
   let nights = $state(1);
