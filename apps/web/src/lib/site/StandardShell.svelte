@@ -2,11 +2,13 @@
 	// 標準シェル（新施設の既定）— シンプルな施設ヘッダー + 共通機能への導線
 	import { page } from '$app/state';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import { isPlansListPath } from '$lib/booking-nav';
 	import type { ShellFacility, ShellUser } from './types';
 
 	let { facility, user, children }: { facility: ShellFacility; user: ShellUser; children: any } = $props();
 	let base = $derived(`/${facility.brandSlug}/${facility.slug}`);
-	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname));
+	// 客室・プラン一覧はページ内に検索バーがあるので出さない
+	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname) && !isPlansListPath(page.url.pathname));
 </script>
 
 <div class="flex min-h-screen flex-col bg-stone-50">

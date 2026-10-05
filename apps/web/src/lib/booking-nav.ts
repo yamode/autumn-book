@@ -27,3 +27,8 @@ export const viaStorageKey = (planPath: string) => `book:via:${planPath}`;
 
 /** 予約入力画面へ経路を渡す Cookie（仮押さえ ID ごと） */
 export const HOLD_NAV_COOKIE = 'book_hold_nav';
+
+/** 客室・プラン一覧（/[brand]/[facility]/plans）か。ページ内に検索バーがあるので、ヘッダーの検索は出さない */
+export function isPlansListPath(pathname: string): boolean {
+	return /^(?:\/(?:en|zh-TW))?\/[^/]+\/[^/]+\/plans\/?$/.test(pathname);
+}

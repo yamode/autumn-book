@@ -3,7 +3,7 @@
 import { addDays, eachNight } from '@autumn-book/core';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityStayCalendar } from '$lib/server/supabase-data';
-import { quoteFor, ratePlans, remainingRooms, roomTypes, searchAvailability } from '$lib/server/store';
+import { quoteFor, ratePlans, remainingRooms, roomTypes } from '$lib/server/store';
 
 export type StayCalendarDay = { date: string; price: number; remaining: number };
 
@@ -19,25 +19,32 @@ export function monthsAfter(date: string, months: number): string {
 	return new Date(Date.UTC(year, month - 1 + months, Math.min(day, lastDay))).toISOString().slice(0, 10);
 }
 
-function demoStayCalendar(facilityId: string, nights: number, adults: number, planId: string | undefined, through: string) {
+/** デモ: 施設の公開プラン×客室の組み合わせ（プラン・部屋タイプ・人数で絞る） */
+export function demoPairs(facilityId: string, adults: number, planId?: string, roomTypeId?: string) {
+	const pairs: { planId: string; roomTypeId: string }[] = [];
+	for (const plan of ratePlans.filter((item) => item.facilityId === facilityId && item.isPublished && (!planId || item.id === planId))) {
+		for (const id of plan.roomTypeIds) {
+			const room = roomTypes.find((item) => item.id === id);
+			if (room && room.capacity >= adults && (!roomTypeId || id === roomTypeId)) pairs.push({ planId: plan.id, roomTypeId: id });
+		}
+	}
+	return pairs;
+}
+
+function demoStayCalendar(facilityId: string, nights: number, adults: number, planId: string | undefined, roomTypeId: string | undefined, through: string) {
 	const days: StayCalendarDay[] = [];
-	const plan = planId ? ratePlans.find((item) => item.id === planId) : undefined;
+	const pairs = demoPairs(facilityId, adults, planId, roomTypeId);
 	for (let date = todayJst(); date <= through; date = addDays(date, 1)) {
-		if (!plan) {
-			const result = searchAvailability({ checkin: date, nights, adults, children: 0 }).find((item) => item.facility.id === facilityId);
-			if (result?.minTotal && result.remaining > 0) days.push({ date, price: Math.round(result.minTotal / (adults * nights)), remaining: result.remaining });
-			continue;
+		let price: number | null = null;
+		let remaining = 0;
+		for (const pair of pairs) {
+			const left = Math.min(...eachNight(date, nights).map((night) => remainingRooms(pair.roomTypeId, night)));
+			if (left <= 0) continue;
+			remaining = Math.max(remaining, left);
+			const perPerson = Math.round(quoteFor(pair.planId, pair.roomTypeId, date, nights, adults, 0).total / (adults * nights));
+			if (price === null || perPerson < price) price = perPerson;
 		}
-		let best = null as StayCalendarDay | null;
-		for (const roomTypeId of plan.roomTypeIds) {
-			const room = roomTypes.find((item) => item.id === roomTypeId);
-			if (!room || room.capacity < adults) continue;
-			const remaining = Math.min(...eachNight(date, nights).map((night) => remainingRooms(roomTypeId, night)));
-			if (remaining <= 0) continue;
-			const price = Math.round(quoteFor(plan.id, roomTypeId, date, nights, adults, 0).total / (adults * nights));
-			if (!best || price < best.price) best = { date, price, remaining: Math.max(remaining, best?.remaining ?? 0) };
-		}
-		if (best) days.push(best);
+		if (price !== null) days.push({ date, price, remaining });
 	}
 	return days;
 }
@@ -46,12 +53,12 @@ export async function stayCalendar(
 	facilityId: string,
 	nights: number,
 	adults: number,
-	options: { planId?: string; months?: number } = {}
+	options: { planId?: string; roomTypeId?: string; months?: number } = {}
 ): Promise<{ days: StayCalendarDay[]; through: string }> {
 	const months = Math.min(6, Math.max(1, options.months ?? 2));
 	const through = monthsAfter(todayJst(), months);
 	if (DATA_SOURCE === 'supabase') {
-		return { days: await sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, months }), through };
+		return { days: await sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, roomTypeId: options.roomTypeId, months }), through };
 	}
-	return { days: demoStayCalendar(facilityId, nights, adults, options.planId, through), through };
+	return { days: demoStayCalendar(facilityId, nights, adults, options.planId, options.roomTypeId, through), through };
 }

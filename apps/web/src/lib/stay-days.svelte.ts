@@ -3,7 +3,7 @@
 
 export type StayDay = { date: string; price: number | null };
 export type StayDays = { days: StayDay[]; through: string };
-export type StaySource = { facilityId: string; planId?: string; months?: number };
+export type StaySource = { facilityId: string; planId?: string; roomTypeId?: string; months?: number };
 
 export class StayDaysLoader {
 	/** `${泊数}|${人数}` → 取り直した結果 */
@@ -38,6 +38,7 @@ export class StayDaysLoader {
 		this.#controller = controller;
 		const query = new URLSearchParams({ facility: source.facilityId, nights: String(nights), adults: String(adults) });
 		if (source.planId) query.set('plan', source.planId);
+		if (source.roomTypeId) query.set('room', source.roomTypeId);
 		if (source.months) query.set('months', String(source.months));
 		this.loading = true;
 		this.failed = false;

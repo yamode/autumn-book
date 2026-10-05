@@ -217,7 +217,7 @@
 		<!-- 選び直し: 仮押さえを解放してからプラン詳細へ（押さえたまま戻ると期限まで部屋が減ったまま） -->
 		<form method="POST" action="?/release" class="mt-2 flex flex-wrap items-baseline gap-x-2">
 			<input type="hidden" name="holdId" value={data.hold.id} />
-			<input type="hidden" name="back" value={data.planHref} />
+			<input type="hidden" name="back" value={data.backHref} />
 			<button type="submit" disabled={paying} class="text-sm text-accent-600 hover:underline disabled:opacity-50">{m.hold_change_plan()}</button>
 			<span class="text-xs text-stone-400">{m.hold_change_plan_note()}</span>
 		</form>

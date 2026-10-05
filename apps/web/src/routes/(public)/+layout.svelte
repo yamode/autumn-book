@@ -3,6 +3,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import { formatDate } from '$lib/format';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import { isPlansListPath } from '$lib/booking-nav';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -20,8 +21,8 @@
 	// 施設予約セクション（/[brand]/[facility]/**）を外部施設HPから深い誘導で開いた場合の戻り導線（ADR-0001）
 	let facilityBackLink = $derived(page.data.facilityBackLink as { name: string; href: string } | null | undefined);
 
-	// ヘッダーの検索バー（トップは本文ヒーローに大きな検索があるので出さない）
-	let showHeaderSearch = $derived(showSearch && page.url.pathname !== '/');
+	// ヘッダーの検索バー（トップは本文ヒーローに、客室・プラン一覧はページ内に検索があるので出さない）
+	let showHeaderSearch = $derived(showSearch && page.url.pathname !== '/' && !isPlansListPath(page.url.pathname));
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
 	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));

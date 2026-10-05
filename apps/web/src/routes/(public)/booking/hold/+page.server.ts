@@ -46,12 +46,18 @@ function planHrefOf(
 }
 
 // 遷移経路（プラン詳細の仮押さえ時に Cookie へ記録）。この仮押さえのものだけ使い、無ければプラン詳細へ
-function holdNav(cookies: Cookies, holdId: string, fallback: string): { planHref: string; via: string } {
+// planHref: パンくずのプラン名（プラン詳細）／backHref: 「選び直す」の戻り先（予約ボタンを押したページ。一覧の空室カレンダーから予約したら一覧）
+function holdNav(cookies: Cookies, holdId: string, fallback: string): { planHref: string; backHref: string; via: string } {
 	try {
 		const saved = JSON.parse(cookies.get(HOLD_NAV_COOKIE) ?? 'null') as { id?: string; back?: string; via?: string } | null;
-		if (saved && saved.id === holdId) return { planHref: safeLocalPath(saved.back) || fallback, via: safeLocalPath(saved.via) };
+		if (saved && saved.id === holdId) {
+			const back = safeLocalPath(saved.back);
+			// 戻り先がプラン詳細なら、選んだ客室の位置つきのそれをパンくずにも使う
+			const planHref = back && back.split('?')[0] === fallback.split('?')[0] ? back : fallback;
+			return { planHref, backHref: back || fallback, via: safeLocalPath(saved.via) };
+		}
 	} catch { /* 壊れた Cookie は無視 */ }
-	return { planHref: fallback, via: '' };
+	return { planHref: fallback, backHref: fallback, via: '' };
 }
 
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）

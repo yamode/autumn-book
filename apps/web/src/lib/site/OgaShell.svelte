@@ -6,6 +6,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import { isPlansListPath } from '$lib/booking-nav';
 	import type { ShellFacility, ShellUser } from './types';
 
 	let { facility, user, children }: { facility: ShellFacility; user: ShellUser; children: any } = $props();
@@ -16,7 +17,8 @@
 	// トップ（施設HP）はヒーロー全画面のためスクロール後にヘッダー出現（原サイト挙動）。下層は常時表示
 	let isTop = $derived(page.url.pathname.replace(/\/$/, '') === base || page.url.pathname.replace(/\/$/, '').endsWith(facility.slug));
 	let headerVisible = $derived(!isTop || scrolled);
-	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname));
+	// 客室・プラン一覧はページ内に検索バーがあるので出さない
+	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname) && !isPlansListPath(page.url.pathname));
 
 	onMount(() => {
 		const onScroll = () => (scrolled = window.scrollY > 120);

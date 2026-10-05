@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
 	import PlanSearchBar from '$lib/components/PlanSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
+	import AvailabilityCalendarModal from '$lib/components/AvailabilityCalendarModal.svelte';
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
@@ -17,7 +17,8 @@
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let expandedRooms = $state<Record<string, boolean>>({});
 	let introExpanded = $state(false);
-	let datePanelOpen = $state(false);
+	let calendarOpen = $state(false);
+	let calendarRoomId = $state('');
 	let infoRoom = $state<RoomType | null>(null);
 	let sort = $state<'asc' | 'desc'>('asc');
 	let headingVariant = $derived(experimentVariant(page.data.abExperiments, 'facility-plans-heading'));
@@ -63,11 +64,10 @@
 		return room.photos[0]?.url ?? data.facility.photos.find((photo) => photo.category === 'room')?.url ?? facilityThumbnailUrl(data.facility.slug, data.facility.photos[0]?.url ?? '');
 	}
 
-	// 部屋カードの「空室カレンダー」: 検索バーの日付パネル（スマホはシート）を開く
-	async function openCalendar() {
-		datePanelOpen = true;
-		await tick();
-		document.getElementById('plan-search')?.scrollIntoView({ block: 'start' });
+	// 部屋カードの「空室カレンダー」: その部屋で絞った月カレンダーを開く
+	function openCalendar(roomId: string) {
+		calendarRoomId = roomId;
+		calendarOpen = true;
 	}
 </script>
 
@@ -90,7 +90,7 @@
 	</header>
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} facilityId={data.facility.id} bind:panelOpen={datePanelOpen} />
+		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} facilityId={data.facility.id} />
 	</div>
 
 	<section id="rooms" class="mt-6 scroll-mt-28">
@@ -137,7 +137,7 @@
 							{/if}
 							<div class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-1">
 								<button type="button" onclick={() => (infoRoom = item.room)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">ⓘ {m.room_card_info()}</button>
-								<button type="button" onclick={openCalendar} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">📅 {m.room_card_calendar()}</button>
+								<button type="button" onclick={() => openCalendar(item.room.id)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">📅 {m.room_card_calendar()}</button>
 							</div>
 						</div>
 					</div>
@@ -218,4 +218,16 @@
 	</section>
 </div>
 
+<AvailabilityCalendarModal
+	bind:open={calendarOpen}
+	bind:roomId={calendarRoomId}
+	{base}
+	facilityId={data.facility.id}
+	rooms={data.rooms.map((item) => ({ id: item.room.id, name: item.room.name }))}
+	today={data.today}
+	nights={data.params.nights}
+	adults={data.params.adults}
+	tag={data.params.tag}
+	onRoomInfo={(roomId) => (infoRoom = data.rooms.find((item) => item.room.id === roomId)?.room ?? null)}
+/>
 <RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />

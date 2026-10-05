@@ -4,6 +4,7 @@
 	//         ご予約ボタン bg#e5e5e5 padding 0 60px hover#4d4d4d / 本文 游明朝16px lh1.6 #333 / コンテナ980px
 	import { page } from '$app/state';
 	import SearchBar from '$lib/components/SearchBar.svelte';
+	import { isPlansListPath } from '$lib/booking-nav';
 	import * as m from '$lib/paraglide/messages';
 	import type { ShellFacility, ShellUser } from './types';
 
@@ -14,7 +15,8 @@
 	// 施設トップはヒーロー全画面のためヘッダーを画像に重ねる（pt 不要）。下層はヘッダー分を空ける
 	let isTop = $derived(page.url.pathname.replace(/\/$/, '') === base);
 	// プラン・客室ページでは検索条件バー（共通機能への入口）を出す
-	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname));
+	// 客室・プラン一覧はページ内に検索バーがあるので出さない
+	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname) && !isPlansListPath(page.url.pathname));
 
 	// 原サイトと同じページ構成（客室/お料理/施設/オプション/山人の四季/よくある質問 + アクセス）
 	const nav = $derived([

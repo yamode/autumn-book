@@ -28,7 +28,7 @@
 	{@const photo = room.photos[photoIndex]}
 	<div class="fixed inset-0 z-[100] flex items-end justify-center sm:items-center" role="presentation">
 		<button type="button" class="absolute inset-0 bg-stone-950/55" aria-label={m.common_close()} onclick={close}></button>
-		<div bind:this={dialog} tabindex="-1" role="dialog" aria-modal="true" aria-label={room.name} class="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl outline-none sm:w-[min(92vw,760px)] sm:rounded-2xl">
+		<div bind:this={dialog} data-room-info tabindex="-1" role="dialog" aria-modal="true" aria-label={room.name} class="relative flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl outline-none sm:w-[min(92vw,760px)] sm:rounded-2xl">
 			<div class="flex shrink-0 items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 sm:px-6">
 				<h2 class="font-display min-w-0 truncate text-lg text-brand-900">{room.name}</h2>
 				<button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-stone-600 hover:bg-stone-100" aria-label={m.common_close()} onclick={close}>×</button>

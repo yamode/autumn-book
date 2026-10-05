@@ -2216,14 +2216,15 @@ export async function sbFacilityStayCalendar(
 	facilityUuid: string,
 	nights: number,
 	adults: number,
-	options: { planId?: string; months?: number } = {}
+	options: { planId?: string; roomTypeId?: string; months?: number } = {}
 ): Promise<{ date: string; price: number; remaining: number }[]> {
 	const { data, error } = await supa().rpc('facility_stay_calendar', {
 		p_facility: facilityUuid,
 		p_nights: nights,
 		p_adults: adults,
 		p_rate_plan_id: options.planId ?? null,
-		p_months: options.months ?? 2
+		p_months: options.months ?? 2,
+		p_room_type_id: options.roomTypeId ?? null
 	});
 	if (error) throw error;
 	return ((data ?? []) as { stay_date: string; min_per_person_night: number; remaining: number }[]).map((row) => ({
