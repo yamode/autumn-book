@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-06（取引先ページの文字を一休と同じに・固定フッターの動き v0.78.2）
+> **最終更新**: 2026-10-06（固定フッターが下から滑り出すよう修正 v0.78.3）
 
 ## 取引先ページの文字を一休と同じに・固定フッターの動き（2026-10-06・v0.78.2）
 
@@ -8,6 +8,7 @@
 - 一休（トップ・宿のページとも）の指定を Chrome で実測: `-apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif`・太さ 400・字間 normal（Webフォントは読み込んでいない）。`app.css` の `.partner-portal`（取引先ページの枠）だけこの指定に。公式サイト・管理画面（`html` の system-ui＋太さ500）は変えていない
 - プラン詳細モーダルの固定フッター: 出し入れ（{#if}）をやめ、本文の上に重ねて常に置き、`translate-y` と透明度を 420ms・ease-out（cubic-bezier(0.22,1,0.36,1)）で動かす（本文の高さが変わってガタつかない）。本文の下に余白。視差を減らす設定では動かさない
 - モーダル本体は開閉時に下から少し上がる（fly 28px・320ms）、背景はフェード
+- v0.78.3: 本番（前面のタブ）で確認。文字は一休と同じ指定で表示、フッターは透明度は動いていたが位置が動いていなかった（Tailwind v4 の `translate-y-*` は `transform` ではなく `translate` プロパティ）→ `transition-[translate,opacity]` に修正。※ Chrome のタブが裏にあると IntersectionObserver が動かずフッターが出ない（確認時の注意）
 
 ## 取引先の料金カレンダーにプラン詳細のモーダル（2026-10-06・v0.78.0）
 
