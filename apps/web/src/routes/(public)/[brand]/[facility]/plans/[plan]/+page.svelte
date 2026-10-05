@@ -1,17 +1,20 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
 	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
+	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
+	import type { RoomType } from '$lib/types';
 	import { formatDate, formatPrice, todayStr } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import * as m from '$lib/paraglide/messages';
 	import { percentText } from '$lib/early-prepay';
 	import { searchQuery } from '$lib/components/guests';
+	import { safeLocalPath, viaCrumb, viaStorageKey } from '$lib/booking-nav';
 
 	let { data, form } = $props();
 
@@ -50,6 +53,40 @@
 	// モバイルの下部固定バー: 客室セクションが画面に入ったら隠す（同じCTAが二重にならないように）
 	let roomsInView = $state(false);
 	let datePickerOpen = $state(false);
+	let infoRoom = $state<RoomType | null>(null);
+
+	// 遷移経路: このプラン詳細の手前のページ（一覧・施設トップ・客室ページ…）を覚え、パンくずと予約入力画面の戻り先に使う。
+	// 同じプラン内の日付変更や、予約入力画面から戻ってきたときは上書きしない。
+	let via = $state('');
+	afterNavigate(({ from, type }) => {
+		const here = page.url.pathname;
+		const key = viaStorageKey(here);
+		let previous = '';
+		if (type === 'enter') {
+			try {
+				const referrer = document.referrer ? new URL(document.referrer) : null;
+				if (referrer && referrer.origin === location.origin) previous = referrer.pathname + referrer.search;
+			} catch { /* 不正な referrer は無視 */ }
+		} else if (from) {
+			previous = from.url.pathname + from.url.search;
+		}
+		const previousPath = previous.split('?')[0];
+		try {
+			if (previous && previousPath !== here && !previousPath.startsWith('/booking') && !previousPath.startsWith('/auth')) {
+				sessionStorage.setItem(key, previous);
+			}
+			via = safeLocalPath(sessionStorage.getItem(key));
+		} catch {
+			via = previousPath !== here ? safeLocalPath(previous) : via;
+		}
+	});
+	let crumb = $derived(viaCrumb(via, data.facility));
+	// 予約ボタンを押したこのページ（選んだ客室の位置まで）に戻れるようにする
+	function backHref(roomSlug: string) {
+		const query = new URLSearchParams(page.url.searchParams);
+		query.set('room', roomSlug);
+		return `${page.url.pathname}?${query}#room-${roomSlug}`;
+	}
 	function chooseDate(date: string, nights: number) {
 		const query = new URLSearchParams({ checkin: date, nights: String(nights), adults: String(data.params.adults) });
 		if (selectedRoom) query.set('room', selectedRoom);
@@ -95,7 +132,11 @@
 <div class="mx-auto max-w-5xl px-4 pb-24 pt-8 md:pb-8">
 	<nav class="mb-2 text-xs text-stone-400">
 		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> /
-		<a href="{base}/plans{qs ? '?' + qs : ''}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
+		{#if crumb}
+			<a href={crumb.href} class="hover:underline">{crumb.kind === 'plans' ? m.plan_detail_breadcrumb_plans() : crumb.kind === 'room' ? m.room_detail_breadcrumb() : data.facility.name}</a> / {data.plan.name}
+		{:else}
+			<a href="{base}/plans{qs ? '?' + qs : ''}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
+		{/if}
 	</nav>
 
 	<div class="grid gap-6 md:grid-cols-[1fr_320px]">
@@ -176,7 +217,7 @@
 			📅 {data.params.checkin ? formatDate(data.params.checkin) : m.bath_select_date()} · {m.searchbar_nights_option({ n: String(data.params.nights) })}
 		</button>
 	</section>
-	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} onSelect={chooseDate} />
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6 }} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">
@@ -190,10 +231,14 @@
 		<div class="mt-3 space-y-3">
 			{#each data.rooms as r}
 				<div id="room-{r.room.slug}" class="flex scroll-mt-28 flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center {selectedRoom === r.room.slug ? 'border-brand-800 ring-1 ring-brand-800' : 'border-stone-200'}">
-					<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
+					<!-- 写真・客室名からも紹介モーダルを開ける（予約の流れを離れずに部屋を確かめる） -->
+					<button type="button" onclick={() => (infoRoom = r.room)} class="w-full shrink-0 sm:w-40" aria-label={`${r.room.name} ${m.room_info_show()}`}>
+						<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
+					</button>
 					<div class="flex-1">
 						<h3 class="font-medium text-brand-900">{r.room.name}</h3>
 						<p class="text-xs text-stone-500">{m.plan_detail_capacity({ n: String(r.room.capacity), size: String(r.room.sizeM2) })}</p>
+						<button type="button" onclick={() => (infoRoom = r.room)} class="mt-1 text-xs font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">{m.room_info_show()}</button>
 						{#if !r.fits}
 							<p class="mt-1 text-xs text-red-600">{m.plan_detail_no_fit()}</p>
 						{/if}
@@ -215,6 +260,8 @@
 								<input type="hidden" name="checkin" value={data.params.checkin} />
 								<input type="hidden" name="nights" value={data.params.nights} />
 								<input type="hidden" name="adults" value={data.params.adults} />
+								<input type="hidden" name="back" value={backHref(r.room.slug)} />
+								<input type="hidden" name="via" value={via} />
 								<button type="submit" class="rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
 									{m.plan_detail_book()}
 								</button>
@@ -227,6 +274,8 @@
 			{/each}
 		</div>
 	</section>
+
+	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />
 
 	<!-- キャンセルポリシー -->
 	<section class="mt-10 max-w-3xl rounded-xl bg-stone-100 p-5 text-sm">

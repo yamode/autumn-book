@@ -118,7 +118,7 @@
 						</label>
 						<button type="submit" disabled={!mobileCheckin} class="col-span-2 min-h-11 rounded-lg bg-brand-800 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-40">{m.searchbar_submit()}</button>
 					</form>
-					<ScrollDatePicker bind:open={datePickerOpen} checkin={mobileCheckin} nights={mobileNights} minDate={data.today} days={data.calendarDays} availableThrough={data.calendarThrough} onSelect={(date, nights) => { mobileCheckin = date; mobileNights = nights; }} />
+					<ScrollDatePicker bind:open={datePickerOpen} checkin={mobileCheckin} nights={mobileNights} minDate={data.today} days={data.calendarDays} availableThrough={data.calendarThrough} daysNights={data.params.nights} source={{ facilityId: data.facility.id, adults: data.params.adults }} onSelect={(date, nights) => { mobileCheckin = date; mobileNights = nights; }} />
 					<button type="button" aria-expanded={mobileCalendarOpen} onclick={() => (mobileCalendarOpen = !mobileCalendarOpen)} class="mt-4 w-full border-t border-stone-200 pt-3 text-center text-sm font-semibold text-brand-700">
 						{mobileCalendarOpen ? m.plans_mobile_calendar_close() : m.plans_mobile_calendar_open()} <span aria-hidden="true">{mobileCalendarOpen ? '⌃' : '⌄'}</span>
 					</button>

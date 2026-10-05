@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { navigating } from '$app/state';
 	import { shiftYearMonth } from '$lib/calendar-range';
 	import { formatPrice } from '$lib/format';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -56,7 +57,8 @@
 	<div class="border-b border-stone-100 pb-4">
 		<h2 class="font-display text-lg text-brand-900">{m.facility_calendar()}</h2>
 		<p class="mt-1 text-xs text-stone-500">{m.facility_calendar_range()}</p>
-		<form method="GET" action="{base}/plans" class="mt-4 flex flex-wrap items-end gap-2">
+		<!-- 泊数・人数を変えたらその場で取り直す（スクロール位置はそのまま。JS無効時だけ更新ボタンを出す） -->
+		<form method="GET" action="{base}/plans" data-sveltekit-noscroll data-sveltekit-keepfocus data-sveltekit-replacestate onchange={(event) => event.currentTarget.requestSubmit()} class="mt-4 flex flex-wrap items-end gap-2">
 			{#if checkin}<input type="hidden" name="checkin" value={checkin} />{/if}
 			{#if tag}<input type="hidden" name="tag" value={tag} />{/if}
 			<label class="flex flex-col gap-1 text-xs text-stone-500">
@@ -75,7 +77,8 @@
 					{/each}
 				</select>
 			</label>
-			<button type="submit" class="rounded-md bg-brand-800 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">{m.facility_calendar_update()}</button>
+			<noscript><button type="submit" class="rounded-md bg-brand-800 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">{m.facility_calendar_update()}</button></noscript>
+			{#if navigating.to}<span class="pb-2 text-xs text-stone-500" role="status">{m.datepicker_loading()}</span>{/if}
 		</form>
 	</div>
 	<div class="lg:max-h-[min(65dvh,640px)] lg:overflow-y-auto lg:overscroll-contain">

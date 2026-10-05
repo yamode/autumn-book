@@ -2211,16 +2211,19 @@ export async function sbRoomPlanReferencePrices(
 	}));
 }
 
-/** 指定泊数・人数で泊まれる日と、その日の施設最安料金（1名1泊）。 */
+/** 指定泊数・人数で泊まれる日と、その日の最安料金（1名1泊）。planId 指定時はそのプランだけで判定。 */
 export async function sbFacilityStayCalendar(
 	facilityUuid: string,
 	nights: number,
-	adults: number
+	adults: number,
+	options: { planId?: string; months?: number } = {}
 ): Promise<{ date: string; price: number; remaining: number }[]> {
 	const { data, error } = await supa().rpc('facility_stay_calendar', {
 		p_facility: facilityUuid,
 		p_nights: nights,
-		p_adults: adults
+		p_adults: adults,
+		p_rate_plan_id: options.planId ?? null,
+		p_months: options.months ?? 2
 	});
 	if (error) throw error;
 	return ((data ?? []) as { stay_date: string; min_per_person_night: number; remaining: number }[]).map((row) => ({

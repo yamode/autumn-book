@@ -1,4 +1,5 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { fail, redirect, type Cookies } from '@sveltejs/kit';
+import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import {
 	getHold,
 	planById,
@@ -42,6 +43,15 @@ function planHrefOf(
 ): string {
 	const q = new URLSearchParams({ checkin: hold.checkin, nights: String(hold.nights), adults: String(hold.adults) });
 	return `/${facility.brandSlug}/${facility.slug}/plans/${plan.slug}?${q}`;
+}
+
+// 遷移経路（プラン詳細の仮押さえ時に Cookie へ記録）。この仮押さえのものだけ使い、無ければプラン詳細へ
+function holdNav(cookies: Cookies, holdId: string, fallback: string): { planHref: string; via: string } {
+	try {
+		const saved = JSON.parse(cookies.get(HOLD_NAV_COOKIE) ?? 'null') as { id?: string; back?: string; via?: string } | null;
+		if (saved && saved.id === holdId) return { planHref: safeLocalPath(saved.back) || fallback, via: safeLocalPath(saved.via) };
+	} catch { /* 壊れた Cookie は無視 */ }
+	return { planHref: fallback, via: '' };
 }
 
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
@@ -121,7 +131,7 @@ export const load: PageServerLoad = async (event) => {
 			prepay,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(basePlan.payment, isMember),
-			planHref: planHrefOf(facility, plan, hold)
+			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold))
 		};
 	}
 
@@ -150,7 +160,7 @@ export const load: PageServerLoad = async (event) => {
 		bathTax: 0,
 		prepay,
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
-		planHref: planHrefOf(facility, plan, hold),
+		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		member: member
 			? {
 					name: member.name,

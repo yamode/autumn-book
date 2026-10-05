@@ -12,6 +12,8 @@
 		maxDate = addDays(minDate, 365),
 		days = [],
 		availableThrough = '',
+		daysNights = nights,
+		source,
 		onSelect
 	}: {
 		open?: boolean;
@@ -21,8 +23,24 @@
 		maxDate?: string;
 		days?: { date: string; price: number | null }[];
 		availableThrough?: string;
+		/** days が何泊で計算されたものか（既定は nights） */
+		daysNights?: number;
+		/** 指定すると、泊数を変えたときに /api/stay-calendar からその泊数で予約できる日を取り直す */
+		source?: { facilityId: string; planId?: string; adults: number; months?: number };
 		onSelect: (date: string, nights: number) => void;
 	} = $props();
+
+	type Loaded = { days: { date: string; price: number | null }[]; through: string };
+	// 泊数ごとに取り直した結果（ページのデータや人数が変わったら捨てる）
+	let loadedByNights = $state<Record<number, Loaded>>({});
+	let loading = $state(false);
+	let loadFailed = $state(false);
+	let sourceKey = $derived(source ? `${source.facilityId}|${source.planId ?? ''}|${source.adults}|${source.months ?? ''}` : '');
+	$effect(() => {
+		void sourceKey;
+		void days;
+		loadedByNights = {};
+	});
 
 	// svelte-ignore state_referenced_locally
 	let selectedNights = $state(nights);
@@ -76,7 +94,38 @@
 		}
 		return result;
 	});
-	const priceByDate = $derived(new Map((selectedNights === nights ? days : []).map((day) => [day.date, day.price])));
+	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
+	const current = $derived<Loaded | null>(
+		selectedNights === daysNights ? { days, through: availableThrough } : (loadedByNights[selectedNights] ?? null)
+	);
+	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
+	$effect(() => {
+		if (!open || !source || selectedNights === daysNights || loadedByNights[selectedNights]) return;
+		const target = selectedNights;
+		const query = new URLSearchParams({ facility: source.facilityId, nights: String(target), adults: String(source.adults) });
+		if (source.planId) query.set('plan', source.planId);
+		if (source.months) query.set('months', String(source.months));
+		const controller = new AbortController();
+		loading = true;
+		loadFailed = false;
+		fetch(`/api/stay-calendar?${query}`, { signal: controller.signal })
+			.then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+			.then((result: Loaded) => {
+				loading = false;
+				loadedByNights = { ...loadedByNights, [target]: result };
+			})
+			.catch((reason) => {
+				if (controller.signal.aborted) return;
+				loading = false;
+				loadFailed = true;
+				console.error('[ScrollDatePicker] stay-calendar', reason);
+			});
+		// 泊数を続けて変えたら前の取得は捨てる
+		return () => {
+			controller.abort();
+			loading = false;
+		};
+	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
 
 	function choose(date: string) {
@@ -102,6 +151,11 @@
 					<button type="button" disabled={selectedNights <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedNights--}>−</button>
 					<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_nights_option({ n: String(selectedNights) })}</span>
 					<button type="button" disabled={selectedNights >= 7} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedNights++}>+</button>
+					{#if loading}
+						<span class="text-xs text-stone-500" role="status">{m.datepicker_loading()}</span>
+					{:else if loadFailed}
+						<span class="text-xs text-red-600" role="status">{m.datepicker_load_failed()}</span>
+					{/if}
 				</div>
 			</div>
 			<div bind:this={scrollRegion} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-8 sm:px-6">
@@ -113,7 +167,7 @@
 							{#each Array(month.offset) as _}<div aria-hidden="true"></div>{/each}
 							{#each month.dates as date (date)}
 								{@const price = priceByDate.get(date)}
-								{@const knownUnavailable = Boolean(selectedNights === nights && availableThrough && date <= availableThrough && (price == null || price <= 0))}
+								{@const knownUnavailable = Boolean(current?.through && date <= current.through && (price == null || price <= 0))}
 								{@const disabled = date < minDate || date > maxDate || knownUnavailable}
 								{@const selected = date === checkin}
 								{@const inStay = checkin && date > checkin && date <= checkout}

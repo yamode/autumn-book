@@ -15,8 +15,11 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
+	import { viaCrumb } from '$lib/booking-nav';
 
 	let { data, form } = $props();
+	// プラン詳細の手前に通ってきたページ（パンくず用）
+	let viaStep = $derived(data.expired ? null : viaCrumb(data.via, data.facility));
 
 	let expiredNow = $state(false);
 
@@ -199,7 +202,12 @@
 		<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
 			<a href="/search?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.common_facility_list()}</a>
 			<span aria-hidden="true">/</span>
-			<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
+			<!-- 実際に通ってきたページ（一覧・施設トップ・客室ページ）を出す。経路が分からないときだけ一覧 -->
+			{#if viaStep}
+				<a href={viaStep.href} class="hover:underline">{viaStep.kind === 'plans' ? m.plan_detail_breadcrumb_plans() : viaStep.kind === 'room' ? m.room_detail_breadcrumb() : data.facility.name}</a>
+			{:else}
+				<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
+			{/if}
 			<span aria-hidden="true">/</span>
 			<a href={data.planHref} class="max-w-[16rem] truncate hover:underline">{data.plan.name}</a>
 			<span aria-hidden="true">/</span>

@@ -1,9 +1,10 @@
 import { error } from '@sveltejs/kit';
-import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor, searchAvailability } from '$lib/server/store';
+import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor } from '$lib/server/store';
+import { stayCalendar, todayJst } from '$lib/server/stay-calendar';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbFacilityBySlug, sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers, sbRoomPlanReferencePrices, sbFacilityStayCalendar } from '$lib/server/supabase-data';
+import { sbFacilityBySlug, sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers, sbRoomPlanReferencePrices } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import { addDays, eachNight } from '@autumn-book/core';
+import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
@@ -17,23 +18,6 @@ type RoomPlanPrice = {
 	referencePrice: number | null;
 	remaining: number | null;
 };
-
-function twoMonthsAfter(date: string): string {
-	const [year, month, day] = date.split('-').map(Number);
-	const lastDay = new Date(Date.UTC(year, month + 2, 0)).getUTCDate();
-	return new Date(Date.UTC(year, month + 1, Math.min(day, lastDay))).toISOString().slice(0, 10);
-}
-
-function demoCalendar(facilityId: string, today: string, nights: number, adults: number) {
-	const days: { date: string; price: number; remaining: number }[] = [];
-	for (let date = today; date <= twoMonthsAfter(today); date = addDays(date, 1)) {
-		const result = searchAvailability({ checkin: date, nights, adults, children: 0 }).find((item) => item.facility.id === facilityId);
-		if (result?.minTotal && result.remaining > 0) {
-			days.push({ date, price: Math.round(result.minTotal / (adults * nights)), remaining: result.remaining });
-		}
-	}
-	return days;
-}
 
 function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPrice[], adults: number) {
 	const planById = new Map(plans.map((plan) => [plan.id, plan]));
@@ -64,18 +48,18 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
 	const tag = url.searchParams.get('tag') || undefined;
-	const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+	const today = todayJst();
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
-		const [allPlans, allRooms, settings, datedOffers, referencePrices, calendarDays] = await Promise.all([
+		const [allPlans, allRooms, settings, datedOffers, referencePrices, calendar] = await Promise.all([
 			sbListPlansMapped(facility.id),
 			sbListRoomTypesMapped(facility.id),
 			loadEarlyPrepaySettings(facility.id),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults) : Promise.resolve([]),
 			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
-			sbFacilityStayCalendar(facility.id, nights, adults)
+			stayCalendar(facility.id, nights, adults)
 		]);
 		const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
 		const plans = withEarlyPrepayMax(
@@ -89,8 +73,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			facility,
 			rooms: roomsWithPlans(allRooms, plans, prices, adults),
 			allTags,
-			calendarDays,
-			calendarThrough: twoMonthsAfter(today),
+			calendarDays: calendar.days,
+			calendarThrough: calendar.through,
 			today,
 			referenceMode: !checkin,
 			params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
@@ -119,12 +103,13 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			prices.push({ ratePlanId: plan.id, roomTypeId, total: quote.total, referencePrice: null, remaining });
 		}
 	}
+	const calendar = await stayCalendar(facility.id, nights, adults);
 	return {
 		facility,
 		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults),
 		allTags,
-		calendarDays: demoCalendar(facility.id, today, nights, adults),
-		calendarThrough: twoMonthsAfter(today),
+		calendarDays: calendar.days,
+		calendarThrough: calendar.through,
 		today,
 		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }

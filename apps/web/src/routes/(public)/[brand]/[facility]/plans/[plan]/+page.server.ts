@@ -5,7 +5,6 @@ import {
 	roomTypes,
 	remainingRooms,
 	quoteFor,
-	getPlanCalendar,
 	createHold
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
@@ -18,13 +17,12 @@ import {
 	sbPlanReferenceMinPrices,
 	offerToQuote,
 	createHold as sbCreateHold,
-	getPlanCalendar as sbGetPlanCalendar,
 	bookingSessionId
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
-import { shiftYearMonth } from '$lib/calendar-range';
-import { todayStr } from '$lib/format';
+import { stayCalendar } from '$lib/server/stay-calendar';
+import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
@@ -34,10 +32,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
-	const nights = Math.max(1, Number(url.searchParams.get('nights') ?? 1));
-	const adults = Math.max(1, Number(url.searchParams.get('adults') ?? 2));
-	const firstCalendarMonth = todayStr().slice(0, 7);
-	const calendarMonths = Array.from({ length: 6 }, (_, index) => shiftYearMonth(firstCalendarMonth, index));
+	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
+	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
+	// 日付ピッカー用: このプランで「指定泊数」泊まれる日（6か月先まで）。泊数を変えたら画面側で取り直す
+	const CALENDAR_MONTHS = 6;
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
@@ -53,8 +51,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 		// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
 		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
-		const [calendarByMonth, offers, rooms] = await Promise.all([
-			Promise.all(calendarMonths.map((month) => sbGetPlanCalendar(plan.id, month, adults))),
+		const [calendar, offers, rooms] = await Promise.all([
+			stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS }),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id) : Promise.resolve([]),
 			sbListRoomTypesMapped(facility.id)
 		]);
@@ -72,7 +70,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			facility,
 			plan,
 			rooms: roomRows,
-			calendar: calendarByMonth.flat(),
+			calendar: calendar.days,
+			calendarThrough: calendar.through,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
 			referenceMode: !checkin,
@@ -102,11 +101,13 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			};
 		});
 
+	const calendar = await stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS });
 	return {
 		facility,
 		plan,
 		rooms,
-		calendar: calendarMonths.flatMap((month) => getPlanCalendar(plan.id, month)),
+		calendar: calendar.days,
+		calendarThrough: calendar.through,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		referenceMode: false,
 		params: { checkin: checkin ?? '', nights, adults }
@@ -123,6 +124,14 @@ export const actions: Actions = {
 		const nights = Number(form.get('nights'));
 		const adults = Number(form.get('adults'));
 		if (!checkin || !planId || !roomTypeId) return fail(400, { message: '日付を選択してください' });
+		// 遷移経路（予約ボタンを押したページと、その手前のページ）を予約入力画面へ渡す
+		const rememberNav = (holdId: string) =>
+			cookies.set(HOLD_NAV_COOKIE, JSON.stringify({ id: holdId, back: safeLocalPath(String(form.get('back') ?? '')), via: safeLocalPath(String(form.get('via') ?? '')) }), {
+				path: '/',
+				httpOnly: true,
+				sameSite: 'lax',
+				maxAge: 60 * 60 * 2
+			});
 
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);
@@ -132,6 +141,7 @@ export const actions: Actions = {
 			if ('error' in result) {
 				return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
 			}
+			rememberNav(String(result.hold_id));
 			redirect(303, `/booking/hold?id=${result.hold_id}`);
 		}
 
@@ -139,6 +149,7 @@ export const actions: Actions = {
 		if ('error' in result) {
 			return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
 		}
+		rememberNav(result.id);
 		redirect(303, `/booking/hold?id=${result.id}`);
 	}
 };
