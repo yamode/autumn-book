@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { partnerPlanName, perksForPlan } from '$lib/partner-booking';
+import { hasContent } from '$lib/partner-contents';
 import { logPartnerAccess } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { isPartnerBookingOpen } from '$lib/server/partners/booking';
@@ -39,8 +40,11 @@ export const load = async (event) => {
     booking: {
       enabled: isPartnerBookingOpen(partner),
       leadDays: partner.booking_settings.leadDays,
-      cutoffHour: partner.booking_settings.cutoffHour
+      cutoffHour: partner.booking_settings.cutoffHour,
+      maxNights: partner.booking_settings.maxNights
     },
+    // カレンダーの日別パネルから開くお部屋の紹介（紹介のある部屋だけ）
+    rooms: contents.rooms.filter(hasContent),
     commonPerks: perks.filter((p) => !p.planCodes.length).map(toView),
     plans: contents.plans.map((p) => ({
       ...p,

@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import { replaceState } from '$app/navigation';
+  import PartnerRoomModal from '$lib/components/PartnerRoomModal.svelte';
+  import { partnerStayOffers } from '$lib/partner-stay';
+  import type { PartnerRoomContent } from '$lib/partner-contents';
   import { page } from '$app/stores';
   import { isHoliday } from '$lib/holidays';
   import { planAnchor, roomAnchor } from '$lib/partner-contents';
@@ -23,6 +26,8 @@
   const monthCache = new Map<string, PortalMonth>([[keyOf(ymOf(initial), initial.guests), initial]]);
   const inflight = new Map<string, Promise<PortalMonth>>();
   const viewed = new Set<string>([keyOf(ymOf(initial), initial.guests)]);
+  // monthCache は素の Map なので、増えたことを画面に知らせる番号（連泊の判定は複数の月をまたいで見る）
+  let cacheVersion = $state(0);
 
   let current = $state<PortalMonth>(initial);
   let guests = $state(initial.guests);
@@ -30,6 +35,11 @@
   let loadError = $state('');
   let roomFilter = $state('');
   let selected = $state<string | null>(null);
+  // 泊数（連泊は同じ部屋・同じプランで全泊空いている日だけ出す）
+  let nights = $state(1);
+  const maxNights = $derived(Math.max(1, data.booking.maxNights ?? 7));
+  let infoRoom = $state<PartnerRoomContent | null>(null);
+  const roomContent = (code: string) => (data.introRoomContents ?? []).find((r) => r.code === code) ?? null;
 
   const token = $derived($page.params.token);
   const bounds = $derived(current.bounds);
@@ -49,6 +59,7 @@
         if (!res.ok) throw new Error('料金を読み込めませんでした。');
         const body = (await res.json()) as PortalMonth;
         monthCache.set(key, body);
+        cacheVersion += 1;
         if (view) viewed.add(key);
         return body;
       })
@@ -199,6 +210,29 @@
     if (!roomFilter) return day.remainingRooms;
     return day.rooms.find((r) => r.roomCode === roomFilter)?.remainingRooms ?? null;
   }
+  // ---- 連泊（2泊以上）: 読み込んだ全部の月から日を引き、翌月も読んでおく ----
+  const dayIndex = $derived.by(() => {
+    void cacheVersion;
+    const map = new Map<string, PartnerRateDay>();
+    for (const [key, m] of monthCache) if (key.endsWith(`|${guests}`)) for (const d of m.days) map.set(d.date, d);
+    for (const d of current.days) map.set(d.date, d);
+    return map;
+  });
+  $effect(() => {
+    if (nights <= 1) return;
+    const next = shiftYm(currentYm, 1);
+    if (ymInBounds(next)) fetchMonth(next, guests, false).catch(() => {});
+  });
+  const stayOffersOn = (iso: string) =>
+    partnerStayOffers((d) => dayIndex.get(d), iso, nights, current.guests, { showInventory: data.showInventory, roomCode: roomFilter || undefined });
+  // マス目の最安・残室（連泊用）。判定できない・泊まれない日は min=null（「—」）
+  function stayCell(iso: string): { min: number | null; rest: number | null } {
+    const offers = stayOffersOn(iso);
+    if (!offers || !offers.length) return { min: null, rest: null };
+    const rests = offers.map((o) => o.remaining).filter((n): n is number => n != null);
+    return { min: offers[0].perPerson, rest: data.showInventory && rests.length ? Math.max(...rests) : null };
+  }
+
   // 空室の目安（autumn-book と同じ: 0=× / 1=△ / 3室まで=○ / それ以上=◎）。残り2室以下は実数も出す。
   const markOf = (rest: number | null) => (rest == null ? '' : rest <= 0 ? '×' : rest === 1 ? '△' : rest <= 3 ? '○' : '◎');
 
@@ -212,11 +246,12 @@
       const iso = `${year}-${pad(month)}-${pad(d)}`;
       const day = byDate.get(iso);
       const open = day && !day.closed;
+      const stay = open && nights > 1 ? stayCell(iso) : null;
       out.push({
         iso,
         day,
-        min: open ? cheapest(day) : null,
-        rest: open ? remaining(day) : null,
+        min: open ? (stay ? stay.min : cheapest(day)) : null,
+        rest: open ? (stay ? stay.rest : remaining(day)) : null,
         inRange: iso >= bounds.earliest && iso <= bounds.latest,
         dow: (first + d - 1) % 7,
         holiday: isHoliday(iso)
@@ -232,6 +267,39 @@
   });
 
   const selectedDay = $derived(selected ? byDate.get(selected) : undefined);
+  // 日別パネルの部屋×プラン（1泊はその日の料金、連泊は全泊そろうものの1泊平均）
+  type PanelPlan = { planCode: string; planName: string; mealType: string | null; advance: boolean; price: number; total: number };
+  type PanelRoom = { roomCode: string; roomName: string; remainingRooms: number | null; plans: PanelPlan[] };
+  const panelRooms = $derived.by((): PanelRoom[] | null => {
+    if (!selectedDay || selectedDay.closed) return [];
+    if (nights <= 1) {
+      return visibleRooms(selectedDay).map((room) => ({
+        roomCode: room.roomCode,
+        roomName: room.roomName,
+        remainingRooms: room.remainingRooms,
+        plans: room.plans
+          .map((plan) => ({ plan, price: plan.pricesPerPerson[String(current.guests)] }))
+          .filter((x): x is { plan: typeof x.plan; price: number } => x.price != null)
+          .map(({ plan, price }) => ({ planCode: plan.planCode, planName: plan.planName, mealType: plan.mealType, advance: plan.advance, price, total: price }))
+      }));
+    }
+    const offers = stayOffersOn(selectedDay.date);
+    if (!offers) return null;
+    const rooms = new Map<string, PanelRoom>();
+    for (const o of offers) {
+      const room = rooms.get(o.roomCode) ?? { roomCode: o.roomCode, roomName: o.roomName, remainingRooms: o.remaining, plans: [] };
+      if (o.remaining != null) room.remainingRooms = room.remainingRooms == null ? o.remaining : Math.max(room.remainingRooms, o.remaining);
+      room.plans.push({ planCode: o.planCode, planName: o.planName, mealType: o.mealType, advance: o.advance, price: o.perPerson, total: o.totalPerPerson });
+      rooms.set(o.roomCode, room);
+    }
+    return [...rooms.values()];
+  });
+  // 予約入力の「戻る」でこの画面（同じ月・人数）に戻す
+  const bookHref = (roomCode: string, plan: { planCode: string; planName: string }, date: string) => {
+    const q = new URLSearchParams({ room: roomCode, plan: plan.planCode, name: plan.planName, date, guests: String(current.guests), nights: String(nights) });
+    q.set('from', `${$page.url.pathname}?${new URLSearchParams({ month: currentYm, guests: String(current.guests) })}`);
+    return `/p/${token}/book?${q}`;
+  };
   const fmtDate = (iso: string) => {
     const d = new Date(`${iso}T00:00:00Z`);
     return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日（${WEEK[d.getUTCDay()]}${isHoliday(iso) ? '・祝' : ''}）`;
@@ -255,6 +323,8 @@
 
   function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape') {
+      // お部屋の紹介のモーダルが開いているときは、そちらだけ閉じる
+      if (document.querySelector('[data-room-info]')) return;
       // 料金の根拠のツールチップが開いていれば、それだけ閉じる（日別パネルは閉じない）
       if (tipOpen) {
         closeTip();
@@ -362,6 +432,12 @@
             >{g}名</button>
           {/each}
         </div>
+        <span class="ml-2 shrink-0 whitespace-nowrap text-sm text-stone-500">泊数</span>
+        <div class="flex items-center gap-1.5 rounded-full bg-stone-50 p-1">
+          <button type="button" aria-label="泊数を減らす" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-8 w-8 items-center justify-center rounded-full text-lg text-brand-800 hover:bg-white disabled:opacity-30">−</button>
+          <span class="min-w-10 text-center text-base font-medium tabular-nums">{nights}泊</span>
+          <button type="button" aria-label="泊数を増やす" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-8 w-8 items-center justify-center rounded-full bg-brand-800 text-lg text-white disabled:opacity-30">＋</button>
+        </div>
       </div>
     </div>
 
@@ -394,7 +470,7 @@
     <section class="relative">
       <div class="mb-2 flex flex-wrap items-end justify-between gap-2 px-1">
         <p class="text-sm leading-5 text-stone-500">
-          <strong class="font-medium text-brand-900">{current.guests}名1室</strong>でご利用時の、お一人様あたりの最低料金（税込・入湯税別）
+          <strong class="font-medium text-brand-900">{current.guests}名1室{nights > 1 ? `・${nights}泊` : ''}</strong>でご利用時の、お一人様あたりの{nights > 1 ? '1泊平均の' : ''}最低料金（税込・入湯税別）
         </p>
         {#if data.showInventory}
           <p class="flex gap-3 text-xs text-stone-500">
@@ -485,7 +561,7 @@
           <div>
             <p class="text-xs font-medium tracking-wider text-accent-600">ご宿泊日</p>
             <h3 class="text-xl font-bold">{fmtDate(selectedDay.date)}</h3>
-            <p class="mt-0.5 text-sm text-stone-500">{current.guests}名1室・1泊・お一人様あたり（税込・入湯税別）</p>
+            <p class="mt-0.5 text-sm text-stone-500">{current.guests}名1室・{nights}泊・お一人様あたり{nights > 1 ? '1泊平均' : ''}（税込・入湯税別）</p>
           </div>
           <button type="button" aria-label="閉じる" onclick={() => (selected = null)} class="nav-btn h-8 w-8 shrink-0">
             <svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
@@ -494,11 +570,13 @@
         <div class="max-h-[60vh] overflow-y-auto px-5 py-4 lg:max-h-[calc(100vh-10rem)]">
           {#if selectedDay.closed}
             <p class="text-base text-stone-500">休館日です。</p>
-          {:else if visibleRooms(selectedDay).length === 0}
-            <p class="text-base text-stone-500">この条件でご案内できる料金はありません。</p>
+          {:else if panelRooms === null}
+            <p class="text-base text-stone-500">料金を読み込んでいます…</p>
+          {:else if panelRooms.length === 0}
+            <p class="text-base text-stone-500">{nights > 1 ? `この日から${nights}泊でご案内できるお部屋はありません。` : 'この条件でご案内できる料金はありません。'}</p>
           {:else}
             <div class="grid gap-4">
-              {#each visibleRooms(selectedDay) as room (room.roomCode)}
+              {#each panelRooms as room (room.roomCode)}
                 {@const rp = roomParts(room.roomName)}
                 {@const full = room.remainingRooms === 0}
                 <article class={`rounded-xl border border-stone-200 ${full ? 'opacity-60' : ''}`}>
@@ -506,7 +584,7 @@
                     <div class="min-w-0">
                       {#if rp.building}<p class="text-xs tracking-wide text-[var(--pt-accent)]">{rp.building}</p>{/if}
                       <h4 class="text-[17px] font-bold leading-snug">{rp.room}</h4>
-                      {#if data.introRooms?.includes(room.roomCode)}<a href={`/p/${token}/rooms#${roomAnchor(room.roomCode)}`} class="text-xs text-[var(--pt-accent)] underline">お部屋の紹介</a>{/if}
+                      {#if roomContent(room.roomCode)}<button type="button" onclick={() => (infoRoom = roomContent(room.roomCode))} class="text-xs text-[var(--pt-accent)] underline">お部屋の紹介</button>{/if}
                     </div>
                     {#if room.remainingRooms != null}
                       <span class={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${full ? 'bg-stone-200 text-stone-500' : room.remainingRooms <= 2 ? 'bg-amber-700/10 text-amber-700' : 'bg-white text-[var(--pt-accent)]'}`}>
@@ -516,7 +594,7 @@
                   </header>
                   <ul class="divide-y divide-stone-200">
                     {#each room.plans as plan (plan.planCode + plan.planName)}
-                      {@const price = plan.pricesPerPerson[String(current.guests)]}
+                      {@const price = plan.price}
                       {#if price != null}
                         {@const anchor = planAnchor(plan.planCode, plan.planName)}
                         <li class="flex items-end justify-between gap-3 px-3.5 py-3">
@@ -530,10 +608,10 @@
                           </div>
                           <div class="shrink-0 text-right tabular-nums">
                             <p class="text-xl font-bold leading-none text-accent-600">{yen(price)}<span class="ml-0.5 text-xs font-normal text-stone-500">/名</span></p>
-                            <p class="mt-1 text-xs text-stone-500">1室 {yen(price * current.guests)}</p>
+                            <p class="mt-1 text-xs text-stone-500">{nights > 1 ? `1室 ${nights}泊 ${yen(plan.total * current.guests)}` : `1室 ${yen(price * current.guests)}`}</p>
                             {#if bookable(selectedDay.date) && !full}
                               <a
-                                href={`/p/${token}/book?${new URLSearchParams({ room: room.roomCode, plan: plan.planCode, name: plan.planName, date: selectedDay.date, guests: String(current.guests) })}`}
+                                href={bookHref(room.roomCode, plan, selectedDay.date)}
                                 class="mt-2 inline-block rounded-lg bg-accent-600 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-accent-500"
                               >予約する</a>
                             {/if}
@@ -562,6 +640,7 @@
     <button type="button" aria-label="閉じる" class="fixed inset-0 z-30 bg-black/30 lg:hidden" onclick={() => (selected = null)}></button>
   {/if}
 </main>
+<PartnerRoomModal bind:room={infoRoom} token={token ?? ''} />
 
 <style>
   .nav-btn {

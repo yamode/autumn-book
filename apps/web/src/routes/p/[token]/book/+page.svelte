@@ -27,7 +27,7 @@
 
   // ---- 宿泊条件 ----
   let checkIn = $state(init.target.checkIn);
-  let nights = $state(1);
+  let nights = $state(init.target.nights ?? 1);
   let roomCount = $state(1);
   let adults = $state<number[]>([Math.min(init.capacity.max, Math.max(init.capacity.min, init.target.guests))]);
   $effect(() => {
@@ -241,7 +241,7 @@
 </svelte:head>
 
 <main class="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6">
-  <a href={`/p/${token}/calendar`} class="text-sm text-stone-500 hover:text-brand-900">← 料金カレンダーへ戻る</a>
+  <a href={data.back.href} class="text-sm text-stone-500 hover:text-brand-900">← {data.back.label}</a>
   <h2 class="mt-2 text-2xl font-bold">{step === 'input' ? 'ご予約内容の入力' : 'ご予約内容の確認'}</h2>
   <ol class="mt-3 flex gap-2 text-sm">
     <li class={`rounded-full px-3 py-1 ${step === 'input' ? 'bg-brand-900 text-white' : 'bg-stone-200 text-stone-500'}`}>1. 入力</li>

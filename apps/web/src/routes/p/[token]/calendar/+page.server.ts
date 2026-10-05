@@ -39,11 +39,14 @@ export const load = async (event) => {
     booking: {
       enabled: isPartnerBookingOpen(partner),
       leadDays: partner.booking_settings.leadDays,
-      cutoffHour: partner.booking_settings.cutoffHour
+      cutoffHour: partner.booking_settings.cutoffHour,
+      maxNights: partner.booking_settings.maxNights
     },
     initial,
     // 紹介のある部屋コード・プランのページ内 ID（カレンダーから紹介へ飛ぶリンクを出す）
     introRooms: contents.rooms.filter(hasContent).map((r) => r.code),
+    // 日別パネルの「お部屋の紹介」をモーダルで開くための中身
+    introRoomContents: contents.rooms.filter(hasContent),
     introPlans: contents.plans.map((p) => p.anchor)
   };
 };

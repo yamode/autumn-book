@@ -66,7 +66,7 @@
 
             <PartnerContentSections sections={p.sections} heading="お料理・プランの内容" />
 
-            <PartnerPlanCalendar token={token ?? ''} planCode={p.planCode} planName={p.planLabel} showInventory={data.showInventory} booking={data.booking} />
+            <PartnerPlanCalendar token={token ?? ''} planCode={p.planCode} planName={p.planLabel} showInventory={data.showInventory} booking={data.booking} rooms={data.rooms} from={`/p/${token}/plans#${p.anchor}`} />
 
             {#if p.terms}
               <PartnerTermsTable title="キャンセルポリシー" rows={p.terms.cancellation} note={p.terms.cancellationNote} />

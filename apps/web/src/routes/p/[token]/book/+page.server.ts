@@ -6,6 +6,7 @@ import { getBookerProfile, PartnerStoreError, todayJst } from '$lib/server/partn
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { stripePublishableKey } from '$lib/server/stripe';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
+import { partnerBackTarget } from '$lib/partner-stay';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -22,8 +23,10 @@ export const load = async (event) => {
   if (!roomCode || !planCode) throw redirect(303, `/p/${token}/calendar`);
 
   const s = partner.booking_settings;
+  // カレンダーで選んだ泊数（無ければ1泊・上限は取引先ごとの最大泊数）
+  const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   const [quote, rt, booker, profileRow] = await Promise.all([
-    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights: 1, rooms: [{ adults: guests }] }),
+    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: [{ adults: guests }] }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
     getBookerProfile(db, partner.id, session.id).catch(() => null),
@@ -36,7 +39,9 @@ export const load = async (event) => {
   return {
     portal: portalHeader(partner, session),
     // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
-    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests },
+    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights },
+    // 「戻る」は来たページ（料金カレンダー／プランのご紹介）へ。決め打ちで料金カレンダーに戻さない
+    back: partnerBackTarget(token, q.get('from')),
     quote,
     canBook: canBookFor(checkIn, s),
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
