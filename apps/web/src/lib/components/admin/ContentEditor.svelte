@@ -9,6 +9,7 @@
 	import { enhance, deserialize } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import type { PlanTextTemplate } from '$lib/plan-templates';
 	import {
 		PHOTO_CATEGORIES,
 		PHOTO_CATEGORY_LABELS,
@@ -39,7 +40,8 @@
 		tagsPlaceholder = '',
 		showSortOrder = false,
 		markdown = false,
-		photoFallback = 'room'
+		photoFallback = 'room',
+		templates = []
 	}: {
 		initial: Initial;
 		kind: 'room' | 'plan';
@@ -50,6 +52,8 @@
 		/** description を Markdown エディタで編集する（プラン本文）。false なら改行を保つテキスト。 */
 		markdown?: boolean;
 		photoFallback?: PhotoCategory;
+		/** プラン紹介文のテンプレート（Markdown エディタに挿入ボタンを出す） */
+		templates?: PlanTextTemplate[];
 	} = $props();
 
 	// 初期値を prop から取り込み、以降はローカルで編集する（意図的な初期化。保存後は親が作り直す）
@@ -234,7 +238,7 @@
 			</span>
 			<div class="mt-0.5" oninput={touch}>
 				{#if markdown}
-					<MarkdownEditor bind:value={description} name="description_md" rows={14} photos={photos} />
+					<MarkdownEditor bind:value={description} name="description_md" rows={14} photos={photos} {templates} />
 				{:else}
 					<textarea bind:value={description} rows="6" class={inputCls}></textarea>
 				{/if}

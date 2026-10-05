@@ -2,6 +2,8 @@
 // RPC rms_partner_contents（service_role 専用）で施設ぶんをまとめて取り、取引先のルールで絞る。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildPartnerContents } from '$lib/partner-contents';
+import { expandPlanText } from '$lib/plan-templates';
+import { loadPlanTemplates } from '$lib/server/plan-templates';
 import type { PartnerContext } from './store';
 
 // 紹介は滅多に変わらないので、施設ごとに短時間だけ使い回す（Worker の isolate 内だけ）。
@@ -21,6 +23,17 @@ function loadFacilityContents(db: SupabaseClient, facilityId: string): Promise<u
   return value;
 }
 
-export async function loadPartnerContents(db: SupabaseClient, partner: Pick<PartnerContext, 'facility_id' | 'pricing'>) {
-  return buildPartnerContents(await loadFacilityContents(db, partner.facility_id), partner.pricing);
+// 紹介文はテンプレートの差し込み印（{{tpl:key}}）を展開し、「特典」のテンプレート（公式HP限定特典）は本文から外す。
+// 公式HP限定特典は、取引先の設定（showOfficialPerks）で出すときだけ officialPerks に入れる。
+export async function loadPartnerContents(db: SupabaseClient, partner: Pick<PartnerContext, 'facility_id' | 'pricing'> & { booking_settings?: { showOfficialPerks?: boolean } }) {
+  const [raw, templates] = await Promise.all([loadFacilityContents(db, partner.facility_id), loadPlanTemplates(partner.facility_id)]);
+  const contents = buildPartnerContents(raw, partner.pricing);
+  const showOfficial = partner.booking_settings?.showOfficialPerks === true;
+  return {
+    ...contents,
+    plans: contents.plans.map((p) => {
+      const { text, perks } = expandPlanText(p.description, templates);
+      return { ...p, description: text, officialPerks: showOfficial ? perks : [] };
+    })
+  };
 }

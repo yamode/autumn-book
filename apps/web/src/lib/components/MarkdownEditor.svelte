@@ -1,14 +1,26 @@
 <script lang="ts">
 	import MarkdownView from './MarkdownView.svelte';
 	import type { Photo } from '$lib/types';
+	import { expandPlanText, templateToken, type PlanTextTemplate } from '$lib/plan-templates';
 
 	let {
 		value = $bindable(''),
 		name = 'body',
 		rows = 16,
 		photos = [],
-		variables = []
-	}: { value?: string; name?: string; rows?: number; photos?: Photo[]; variables?: string[] } = $props();
+		variables = [],
+		templates = []
+	}: {
+		value?: string;
+		name?: string;
+		rows?: number;
+		photos?: Photo[];
+		variables?: string[];
+		/** プラン紹介文のテンプレート（挿入ボタンを出し、プレビューでは展開して見せる） */
+		templates?: PlanTextTemplate[];
+	} = $props();
+	let showTemplates = $state(false);
+	const preview = $derived(templates.length ? expandPlanText(value, templates) : { text: value, perks: [] });
 
 	let textarea: HTMLTextAreaElement;
 	let showPicker = $state(false);
@@ -34,6 +46,9 @@
 		{#if photos.length > 0}
 			<button type="button" class="tb" onclick={() => (showPicker = !showPicker)}>📷 写真挿入</button>
 		{/if}
+		{#if templates.length > 0}
+			<button type="button" class="tb" onclick={() => (showTemplates = !showTemplates)}>テンプレート ▾</button>
+		{/if}
 		{#each variables as v}
 			<button type="button" class="tb text-accent-600" onclick={() => insert(`{${v}}`)}>{'{'}{v}{'}'}</button>
 		{/each}
@@ -42,6 +57,23 @@
 			<button type="button" class="tb {mobileTab === 'preview' ? 'bg-stone-200' : ''}" onclick={() => (mobileTab = 'preview')}>プレビュー</button>
 		</div>
 	</div>
+	{#if showTemplates}
+		<div class="flex flex-wrap gap-1.5 border-b border-stone-200 bg-stone-50 p-2">
+			{#each templates as t (t.id)}
+				<button
+					type="button"
+					class="rounded-full border px-3 py-1 text-xs {t.kind === 'perk' ? 'border-teal-600 text-teal-700' : 'border-stone-300 text-stone-700'} hover:bg-white"
+					onclick={() => {
+						insert(`
+${templateToken(t.key)}
+`);
+						showTemplates = false;
+					}}
+				>{t.title}{t.kind === 'perk' ? '（特典バナー）' : ''}</button>
+			{/each}
+			<a href="/admin/plans/templates" class="ml-auto self-center text-xs text-stone-500 underline">テンプレートを編集</a>
+		</div>
+	{/if}
 	{#if showPicker}
 		<div class="flex gap-2 overflow-x-auto border-b border-stone-200 bg-stone-50 p-2">
 			{#each photos as p}
@@ -69,7 +101,10 @@
 		></textarea>
 		<div class="max-h-[480px] overflow-y-auto bg-stone-50/50 p-3 text-sm {mobileTab === 'edit' ? 'hidden lg:block' : ''}">
 			{#if value.trim()}
-				<MarkdownView source={value} />
+				<MarkdownView source={preview.text} />
+				{#if preview.perks.length}
+					<p class="mt-3 rounded bg-teal-50 px-2 py-1.5 text-xs text-teal-800">特典バナーで表示: {preview.perks.map((p) => p.label).join('・')}（本文には出ません）</p>
+				{/if}
 			{:else}
 				<p class="text-stone-400">プレビューがここに表示されます</p>
 			{/if}

@@ -22,6 +22,8 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { stayCalendar } from '$lib/server/stay-calendar';
+import { loadPlanTemplates } from '$lib/server/plan-templates';
+import { expandPlanText } from '$lib/plan-templates';
 import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
@@ -44,6 +46,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		if (!found) error(404, 'プランが見つかりません');
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
 		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
+		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
+		const expanded = expandPlanText(plan.description, await loadPlanTemplates(facility.id));
+		plan = { ...plan, description: expanded.text, perks: expanded.perks };
 		if (!checkin) {
 			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id);
 			plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };

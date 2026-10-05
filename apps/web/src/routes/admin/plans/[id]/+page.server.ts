@@ -23,6 +23,7 @@ import {
 	messageOf,
 	uploadPhotoAction
 } from '$lib/server/admin-content-page';
+import { loadPlanTemplates } from '$lib/server/plan-templates';
 import type { Actions, PageServerLoad } from './$types';
 
 const NOT_FOUND = 'プランが見つかりません（施設を切り替えた場合は一覧から選び直してください）';
@@ -38,9 +39,14 @@ export const load: PageServerLoad = async (event) => {
 			error(500, messageOf(e));
 		}
 		if (!r.plan) error(404, NOT_FOUND);
-		const f = await sbFacilityByUuid(uuid).catch(() => undefined);
+		const [f, templates] = await Promise.all([
+			sbFacilityByUuid(uuid).catch(() => undefined),
+			// 紹介文のテンプレート（エディタの挿入ボタン・プレビュー用。読めなくても編集はできる）
+			loadPlanTemplates(uuid, createSupabaseServerClient(event))
+		]);
 		return {
 			live: true as const,
+			templates,
 			content: r.plan,
 			namesError: r.namesError,
 			previewBase: f ? `/${f.brandSlug}/${f.slug}` : null,

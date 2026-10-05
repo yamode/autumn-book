@@ -170,6 +170,7 @@
       plan: data.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName) ?? null,
       terms: data.planTerms[`${r.planCode}■${r.planName}`] ?? null,
       perks: data.planPerks[r.planCode] ?? data.commonPerks,
+      officialPerks: data.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName)?.officialPerks ?? [],
       total: r.total ?? r.perPerson * p.guests * p.nights * p.rooms,
       perRoomNight: r.perPerson * p.guests,
       remaining: r.remaining,

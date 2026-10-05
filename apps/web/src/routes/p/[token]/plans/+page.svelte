@@ -7,6 +7,7 @@
   import PartnerPlanCalendar from '$lib/components/PartnerPlanCalendar.svelte';
   import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
   import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
+  import MarkdownView from '$lib/components/MarkdownView.svelte';
 
   let { data } = $props();
   const token = $derived($page.params.token);
@@ -63,6 +64,14 @@
                 <div class="mt-2"><PartnerPerkList perks={p.perks} /></div>
               </div>
             {/if}
+
+            {#each p.officialPerks ?? [] as op (op.key)}
+              <!-- 公式HP限定特典（取引先の設定で出すときだけ） -->
+              <div class="rounded-lg border border-teal-600/30 bg-teal-50 px-3 py-3 sm:px-4">
+                <p class="text-sm font-bold text-teal-800">{op.label}</p>
+                <div class="mt-2"><MarkdownView source={op.body} /></div>
+              </div>
+            {/each}
 
             <PartnerContentSections sections={p.sections} heading="お料理・プランの内容" />
 

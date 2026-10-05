@@ -6,8 +6,9 @@
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import PartnerContentBody from './PartnerContentBody.svelte';
+  import PerkBanners, { type PerkBanner } from './PerkBanners.svelte';
+  import PerkModal, { type PerkModalContent } from './PerkModal.svelte';
   import PartnerContentSections from './PartnerContentSections.svelte';
-  import PartnerPerkList from './PartnerPerkList.svelte';
   import PartnerTermsTable from './PartnerTermsTable.svelte';
   import { roomParts, type ContentPhoto, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import type { PlanTerms } from '$lib/partner-plan-terms';
@@ -21,6 +22,8 @@
     plan: PartnerPlanContent | null;
     terms: PlanTerms | null;
     perks: Perk[];
+    /** 公式HP限定特典（取引先の設定で出すときだけ） */
+    officialPerks: { key: string; label: string; title: string; body: string }[];
     /** 全室・全泊の合計 */
     total: number;
     /** 1室1泊（連泊は平均） */
@@ -89,13 +92,32 @@
     io.observe(topCta);
     return () => io.disconnect();
   });
+  // 「予約へ進む」の左に並べる特典のバナー（公式HP限定特典・取引先専用特典）。押すとモーダルで中身
+  const banners = $derived<PerkBanner[]>(
+    detail
+      ? [
+          ...detail.officialPerks.map((p) => ({ key: `official:${p.key}`, label: p.label, kind: 'official' as const })),
+          ...(detail.perks.length ? [{ key: 'partner', label: '取引先専用特典', kind: 'partner' as const }] : [])
+        ]
+      : []
+  );
+  let perkContent = $state<PerkModalContent | null>(null);
+  function openPerk(key: string) {
+    if (!detail) return;
+    if (key === 'partner') {
+      perkContent = { label: '取引先専用特典', perks: detail.perks, note: 'このページからご予約いただいた場合に付きます。' };
+      return;
+    }
+    const p = detail.officialPerks.find((x) => `official:${x.key}` === key);
+    if (p) perkContent = { label: p.label, body: p.body };
+  }
   const parts = $derived(detail ? roomParts(detail.roomName) : { building: '', room: '' });
   const capacity = $derived(
     detail?.room ? (detail.room.capacityMin === detail.room.capacityMax ? `${detail.room.capacityMax}名` : `${detail.room.capacityMin}名〜${detail.room.capacityMax}名`) : ''
   );
 </script>
 
-<svelte:window onkeydown={(e) => { if (detail && e.key === 'Escape') detail = null; }} />
+<svelte:window onkeydown={(e) => { if (detail && e.key === 'Escape' && !document.querySelector('[data-room-info]')) detail = null; }} />
 
 {#snippet chips(size: 'lg' | 'sm')}
   <div class={`flex flex-wrap gap-3 ${size === 'sm' ? 'gap-2' : ''}`}>
@@ -161,8 +183,10 @@
             {@render chips('lg')}
             {@render price('lg')}
           </div>
-          <div class="mt-5 flex flex-col items-end">
-            <div bind:this={topCta} class="w-full sm:w-96">
+          <div class="mt-5 flex flex-wrap items-start justify-between gap-4">
+            <div class="pt-1"><PerkBanners items={banners} onopen={openPerk} /></div>
+            <div class="flex w-full flex-col items-end sm:w-96">
+            <div bind:this={topCta} class="w-full">
               {#if canBook}
                 <a href={detail.bookHref} class="block rounded-md bg-green-600 py-4 text-center text-lg font-bold text-white hover:bg-green-700">予約へ進む</a>
               {:else}
@@ -170,6 +194,7 @@
               {/if}
             </div>
             {#if cancelText}<p class="mt-2 text-sm text-rose-600">取消は宿泊日の{cancelText}（予約一覧から）</p>{/if}
+            </div>
           </div>
         </section>
         {#if paymentLabels.length}
@@ -186,12 +211,6 @@
               {#if detail.plan.headline && detail.plan.headline !== detail.plan.name}<p class="mb-3 font-medium">{detail.plan.headline}</p>{/if}
               {#if detail.plan.description}<p class="whitespace-pre-line leading-8">{detail.plan.description}</p>{/if}
               {#if detail.plan.specs.length}<div class="mt-4"><PartnerTermsTable title="" rows={detail.plan.specs.map((x) => ({ label: x.label, value: x.value }))} /></div>{/if}
-            </section>
-          {/if}
-          {#if detail.perks.length}
-            <section class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-4">
-              <h3 class="mb-2 text-lg font-bold text-[var(--pt-accent)]">専用特典</h3>
-              <PartnerPerkList perks={detail.perks} />
             </section>
           {/if}
           {#if detail.plan?.sections.length}<PartnerContentSections sections={detail.plan.sections} heading="お料理・プランの内容" />{/if}
@@ -228,3 +247,4 @@
     </div>
   </div>
 {/if}
+<PerkModal bind:content={perkContent} />

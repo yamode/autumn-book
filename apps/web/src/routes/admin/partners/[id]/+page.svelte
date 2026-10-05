@@ -1036,6 +1036,10 @@
               <button type="button" onclick={addPerk} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 特典を追加</button>
             {/if}
           </div>
+          <label class="mt-3 flex items-start gap-2 text-sm">
+            <input type="checkbox" bind:checked={booking.showOfficialPerks} class="mt-0.5" />
+            <span>公式HP限定特典もこの取引先ページに出す<span class="block text-[11px] text-stone-500">プラン紹介文テンプレートの「特典」（例: 貸切露天風呂 無料）を、取引先特典と並べてバナーで出します。公式HPからの予約の特典なので、出すのは取引先からの予約にも付けるときだけ。</span></span>
+          </label>
         </div>
 
         <div>

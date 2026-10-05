@@ -12,7 +12,10 @@
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
 	<h1 class="text-lg font-bold text-stone-800">プラン — {data.currentFacility.name}</h1>
-	<p class="text-xs text-stone-400">プランの新規作成（料金・在庫・キャンセル規定）は rms 側で行い、ここで「見せ方」を作ります</p>
+	<div class="flex flex-wrap items-center gap-3">
+		<p class="text-xs text-stone-400">プランの新規作成（料金・在庫・キャンセル規定）は rms 側で行い、ここで「見せ方」を作ります</p>
+		<a href="/admin/plans/templates" class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:border-brand-800">紹介文テンプレート</a>
+	</div>
 </div>
 
 {#if data.loadError}

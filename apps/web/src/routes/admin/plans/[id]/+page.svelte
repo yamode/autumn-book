@@ -124,6 +124,7 @@
 		showSortOrder
 		markdown
 		photoFallback="meal"
+		templates={data.live ? data.templates : []}
 	/>
 {/key}
 

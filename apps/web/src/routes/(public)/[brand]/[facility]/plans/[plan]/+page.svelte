@@ -8,6 +8,8 @@
 	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
+	import PerkBanners from '$lib/components/PerkBanners.svelte';
+	import PerkModal, { type PerkModalContent } from '$lib/components/PerkModal.svelte';
 	import type { RoomType } from '$lib/types';
 	import { formatDate, formatPrice, todayStr } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
@@ -54,6 +56,13 @@
 	let roomsInView = $state(false);
 	let datePickerOpen = $state(false);
 	let infoRoom = $state<RoomType | null>(null);
+	// 公式HP限定特典など（紹介文テンプレートの「特典」）。予約ボタンの下にバナー、押すとモーダル
+	let perkContent = $state<PerkModalContent | null>(null);
+	const perkBanners = $derived((data.plan.perks ?? []).map((p) => ({ key: p.key, label: p.label, kind: 'official' as const })));
+	function openPerk(key: string) {
+		const p = data.plan.perks?.find((x) => x.key === key);
+		if (p) perkContent = { label: p.label, body: p.body };
+	}
 
 	// 遷移経路: このプラン詳細の手前のページ（一覧・施設トップ・客室ページ…）を覚え、パンくずと予約入力画面の戻り先に使う。
 	// 同じプラン内の日付変更や、予約入力画面から戻ってきたときは上書きしない。
@@ -194,6 +203,7 @@
 				{:else}
 					<button type="button" onclick={() => (datePickerOpen = true)} class="mt-3 block w-full rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_dates()}</button>
 				{/if}
+				{#if perkBanners.length}<div class="mt-3"><PerkBanners items={perkBanners} onopen={openPerk} /></div>{/if}
 			</div>
 		</div>
 	</div>
@@ -275,6 +285,7 @@
 		</div>
 	</section>
 
+	<PerkModal bind:content={perkContent} />
 	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />
 
 	<!-- キャンセルポリシー -->

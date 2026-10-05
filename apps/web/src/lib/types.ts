@@ -182,6 +182,8 @@ export interface RatePlan {
 	specs: ContentSpec[];
 	/** 紹介ブロック。book.plan_contents.sections。デモは空配列。 */
 	sections: ContentSection[];
+	/** 紹介文テンプレートの「特典」（公式HP限定特典など）。予約ボタン横のバナーに出す。展開したときだけ入る */
+	perks?: { key: string; label: string; title: string; body: string }[];
 }
 
 // ---------------------------------------------------------------- オプション（滞在アレンジ・book.option_items / booking_option_orders 対称）

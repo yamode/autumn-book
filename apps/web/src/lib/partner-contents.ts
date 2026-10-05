@@ -33,6 +33,8 @@ export type PartnerPlanContent = ContentBody & {
   mealPlan: string;
   tags: string[];
   anchor: string;
+  /** 公式HP限定特典（紹介文テンプレートの「特典」）。取引先の設定で出すときだけ入る */
+  officialPerks?: { key: string; label: string; title: string; body: string }[];
 };
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : v == null ? '' : String(v).trim());

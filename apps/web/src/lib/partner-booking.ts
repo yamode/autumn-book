@@ -195,6 +195,8 @@ export type PartnerBookingSettings = {
   notifyEmails: string[];
   // 取引先（予約した人のメール・取引先の連絡先メール）へも予約確認メールを送るか。
   notifyPartner: boolean;
+  // 公式HP限定特典（紹介文テンプレートの「特典」）を取引先ページにも出すか。既定は出さない（公式HPからの予約の特典のため）。
+  showOfficialPerks: boolean;
 };
 
 export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
@@ -213,7 +215,8 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   notice: '',
   options: [],
   notifyEmails: [],
-  notifyPartner: true
+  notifyPartner: true,
+  showOfficialPerks: false
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -313,7 +316,8 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
     notice: String(src.notice ?? '').trim().slice(0, 1000),
     options,
     notifyEmails: emails,
-    notifyPartner: src.notifyPartner === undefined ? d.notifyPartner : src.notifyPartner === true
+    notifyPartner: src.notifyPartner === undefined ? d.notifyPartner : src.notifyPartner === true,
+    showOfficialPerks: src.showOfficialPerks === true
   };
 }
 
