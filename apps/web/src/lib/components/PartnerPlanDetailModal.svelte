@@ -3,6 +3,8 @@
   // 上部: 写真・プラン名・食事・IN/OUT・予約受付・お部屋 → 日程・人数・料金 → 「予約へ進む」。
   // 本文: プランの紹介・専用特典・お料理・お部屋・キャンセルポリシー・お子様。
   // 上部の「予約へ進む」が見えなくなったら、日程・人数・料金・「予約へ進む」の固定フッターを出す。
+  import { fade, fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import PartnerContentBody from './PartnerContentBody.svelte';
   import PartnerContentSections from './PartnerContentSections.svelte';
   import PartnerPerkList from './PartnerPerkList.svelte';
@@ -117,8 +119,8 @@
 
 {#if detail}
   <div class="fixed inset-0 z-[95] flex items-end justify-center sm:items-center" role="presentation">
-    <button type="button" class="absolute inset-0 bg-stone-950/55" aria-label="閉じる" onclick={() => (detail = null)}></button>
-    <div bind:this={dialog} tabindex="-1" role="dialog" aria-modal="true" aria-label={detail.plan?.name || detail.planName} class="relative flex h-[94dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl outline-none sm:h-[92dvh] sm:w-[min(96vw,1000px)] sm:rounded-2xl">
+    <button type="button" class="absolute inset-0 bg-stone-950/55" aria-label="閉じる" onclick={() => (detail = null)} transition:fade={{ duration: 200 }}></button>
+    <div bind:this={dialog} transition:fly={{ y: 28, duration: 320, easing: cubicOut }} tabindex="-1" role="dialog" aria-modal="true" aria-label={detail.plan?.name || detail.planName} class="relative flex h-[94dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl outline-none sm:h-[92dvh] sm:w-[min(96vw,1000px)] sm:rounded-2xl">
       <button type="button" class="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-2xl text-stone-600 shadow hover:bg-white" aria-label="閉じる" onclick={() => (detail = null)}>×</button>
       <div bind:this={scroller} class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <!-- 上部: 概要 -->
@@ -177,7 +179,7 @@
         {/if}
 
         <!-- 本文 -->
-        <div class="space-y-10 px-5 py-8 sm:px-10">
+        <div class="space-y-10 px-5 pb-32 pt-8 sm:px-10">
           {#if detail.plan && (detail.plan.description || detail.plan.specs.length)}
             <section>
               <h3 class="mb-3 text-xl font-bold">プランの紹介</h3>
@@ -206,9 +208,13 @@
         </div>
       </div>
 
-      <!-- 固定フッター（上部の「予約へ進む」が見えないとき） -->
-      {#if footerVisible}
-        <div class="shrink-0 border-t border-stone-200 bg-white px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] sm:px-8">
+      <!-- 固定フッター（上部の「予約へ進む」が見えないとき）。本文の上に重ねて下から滑り出す
+           （出し入れで本文の高さを変えるとガタつくため、常に置いて位置と透明度だけを動かす） -->
+      <div
+        inert={!footerVisible}
+        aria-hidden={!footerVisible}
+        class={`absolute inset-x-0 bottom-0 z-10 border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)] backdrop-blur transition-[transform,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:px-8 ${footerVisible ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-full opacity-0'}`}
+      >
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="hidden md:block">{@render chips('sm')}</div>
             <div class="flex flex-1 items-center justify-end gap-4">
@@ -218,8 +224,7 @@
               {/if}
             </div>
           </div>
-        </div>
-      {/if}
+      </div>
     </div>
   </div>
 {/if}

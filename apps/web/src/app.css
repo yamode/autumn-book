@@ -34,6 +34,18 @@ html {
 	letter-spacing: 0.02em;
 }
 
+/* 取引先専用ページ（/p/[token]）: 一休と同じ文字（2026-10-06 指示「一休と同じフォントに」）。
+   一休は OS 標準のゴシック（Mac はヒラギノ、Windows は Chrome の既定の日本語ゴシック）・太さ 400・字間なし。
+   公式サイト・管理画面の文字（上の html の指定）は変えない。モーダルもページの中に描くのでここで効く。 */
+.partner-portal,
+.partner-portal .font-display {
+	font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
+	letter-spacing: normal;
+}
+.partner-portal {
+	font-weight: 400;
+}
+
 /* マイページ（/account）・掲示板（/community）: 公開マーケ面（明朝・和の情緒）とは分け、
    グローバルスタンダードな明快さを優先する。見出しはゴシック、本文はやや大きめ・高コントラスト。 */
 .account-shell,
