@@ -1,7 +1,9 @@
 import { redirect } from '@sveltejs/kit';
 import { logPartnerAccess, partnerUnavailableReason, todayJst } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
-import { isPartnerBookingOpen } from '$lib/server/partners/booking';
+import { availablePaymentOptions, isPartnerBookingOpen } from '$lib/server/partners/booking';
+import { describeDeadline, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
+import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
 import { portalHeader, PORTAL_HEADERS, requestMeta, resolvePortal } from '$lib/server/partners/portal';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 
@@ -23,7 +25,11 @@ export const load = async (event) => {
   const guests = guestsRaw >= 1 && guestsRaw <= 6 ? guestsRaw : 2;
   const rooms = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
 
-  const [contents, , facility] = await Promise.all([
+  // キャンセル規定・お子様の区分（プラン詳細のモーダル用。読めなくても一覧は出す）
+  const termsPromise = db
+    .rpc('rms_partner_plan_terms', { p_facility: partner.facility_id })
+    .then(({ data, error: e }) => (e ? new Map<string, PlanTerms>() : buildPlanTerms(data)), () => new Map<string, PlanTerms>());
+  const [contents, , facility, terms] = await Promise.all([
     // 写真・紹介（読めなくても一覧は出す）
     loadPartnerContents(db, partner).catch(() => ({ rooms: [], plans: [] })),
     logPartnerAccess(db, {
@@ -35,8 +41,11 @@ export const load = async (event) => {
       ip: requestMeta(event).ip
     }),
     // カードの IN / OUT（読めなければ出さない）
-    sbFacilityByUuid(partner.facility_id).catch(() => undefined)
+    sbFacilityByUuid(partner.facility_id).catch(() => undefined),
+    termsPromise
   ]);
+  const toPerk = (p: { id: string; title: string; description: string; imageUrl: string }) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl });
+  const payIds = availablePaymentOptions(partner);
 
   return {
     portal: portalHeader(partner, session),
@@ -51,6 +60,20 @@ export const load = async (event) => {
     planAnchors: contents.plans.map((p) => ({ planCode: p.planCode, planLabel: p.planLabel, anchor: p.anchor })),
     // 専用特典の付くプラン（「専用特典」のしるし用。全プラン対象の特典があれば全部に付く）
     perkPlanCodes: [...new Set(s.perks.flatMap((p) => p.planCodes))],
-    commonPerk: s.perks.some((p) => !p.planCodes.length)
+    commonPerk: s.perks.some((p) => !p.planCodes.length),
+    // ---- プラン詳細のモーダル用 ----
+    // プランの紹介（写真・説明・仕様・お料理など）。キーは planCode■planLabel（料金カレンダーの planName）
+    planContents: contents.plans,
+    // キャンセルポリシー・お子様（同じキー）
+    planTerms: Object.fromEntries(terms),
+    // プランごとの専用特典（全プラン対象を含む）
+    planPerks: Object.fromEntries(
+      [...new Set(contents.plans.map((p) => p.planCode))].map((code) => [code, perksForPlan(s.perks, code).map(toPerk)])
+    ),
+    commonPerks: s.perks.filter((p) => !p.planCodes.length).map(toPerk),
+    // 予約受付の締切・取消の期限・使える支払方法（表示用。確定時にサーバで再確認する）
+    deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
+    cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
+    paymentLabels: partnerPaymentChoices(s).filter((o) => payIds.includes(o.id)).map((o) => paymentOptionLabel(o.id, s))
   };
 };

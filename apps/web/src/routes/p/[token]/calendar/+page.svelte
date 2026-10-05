@@ -9,6 +9,7 @@
   import { page } from '$app/stores';
   import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import PartnerRoomModal from '$lib/components/PartnerRoomModal.svelte';
+  import PartnerPlanDetailModal, { type PlanDetail } from '$lib/components/PartnerPlanDetailModal.svelte';
   import PartnerSearchBar from '$lib/components/PartnerSearchBar.svelte';
   import { canBookFor, partnerPlanName } from '$lib/partner-booking';
   import { roomParts, type PartnerRoomContent } from '$lib/partner-contents';
@@ -56,11 +57,14 @@
 
   // ---- 料金の読み込み（日程あり: チェックインから泊数ぶん／日程なし: 今後3か月） ----
   const dated = $derived(!!data.params.date);
-  let index = $state<Map<string, PartnerRateDay>>(new Map());
+  // 表示中の一覧のもと（読み込みが終わった条件と日別データ）。読み込み中は前の一覧を薄くして残し、
+  // 揃ってから一度に入れ替える（読み込み中の枠に置き換えるとページが縮み、スクロール位置が飛ぶため）
+  type Shown = { params: { date: string; nights: number; guests: number; rooms: number }; index: Map<string, PartnerRateDay> };
+  let shown = $state<Shown | null>(null);
   let loading = $state(true);
   let loadError = $state('');
   $effect(() => {
-    const { date: d, nights: n, guests: g } = data.params;
+    const { date: d, nights: n, guests: g, rooms: rc } = data.params;
     const yms = d
       ? [...new Set(Array.from({ length: n }, (_, i) => addDaysIsoClient(d, i).slice(0, 7)))]
       : [0, 1, 2].map((i) => shiftYm(data.today.slice(0, 7), i));
@@ -71,7 +75,7 @@
     Promise.all(yms.map((ym, i) => (d || i === 0 ? fetchPortalMonth(token, ym, g) : fetchPortalMonth(token, ym, g).catch(() => null))))
       .then((ms) => {
         if (cancelled) return;
-        index = new Map(ms.flatMap((m) => (m ? m.days.map((day) => [day.date, day] as const) : [])));
+        shown = { params: { date: d, nights: n, guests: g, rooms: rc }, index: new Map(ms.flatMap((m) => (m ? m.days.map((day) => [day.date, day] as const) : []))) };
       })
       .catch(() => {
         if (!cancelled) loadError = '料金を読み込めませんでした。時間をおいてお試しください。';
@@ -83,7 +87,7 @@
       cancelled = true;
     };
   });
-  const closedDay = $derived(dated && index.get(data.params.date)?.closed === true);
+  const closedDay = $derived(!!shown?.params.date && shown.index.get(shown.params.date)?.closed === true);
 
   // ---- 部屋タイプごとのカード（プラン行は日程の有無で中身が変わる） ----
   type Row = {
@@ -100,8 +104,8 @@
     remaining: number | null;
   };
   const rows = $derived.by((): Row[] => {
-    if (loading) return [];
-    const p = data.params;
+    if (!shown) return [];
+    const { params: p, index } = shown;
     if (p.date) {
       return (partnerStayOffers((x) => index.get(x), p.date, p.nights, p.guests, { showInventory: data.showInventory, rooms: p.rooms }) ?? []).map((o) => ({
         ...o,
@@ -154,6 +158,31 @@
     });
     return `/p/${token}/book?${q}`;
   };
+  // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から
+  let detail = $state<PlanDetail | null>(null);
+  function openDetail(r: Row, content: PartnerRoomContent | null) {
+    const p = data.params;
+    detail = {
+      planName: partnerPlanName(data.planNames, r.planCode, r.planName),
+      mealType: r.mealType,
+      roomName: r.roomName,
+      room: content,
+      plan: data.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName) ?? null,
+      terms: data.planTerms[`${r.planCode}■${r.planName}`] ?? null,
+      perks: data.planPerks[r.planCode] ?? data.commonPerks,
+      total: r.total ?? r.perPerson * p.guests * p.nights * p.rooms,
+      perRoomNight: r.perPerson * p.guests,
+      remaining: r.remaining,
+      bookHref: bookHref(r)
+    };
+  }
+  // モーダルの日程・人数を押したら、閉じて検索バーのパネルを開く
+  function reopenSearch(panel: 'date' | 'guests') {
+    detail = null;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    openPanel = panel;
+  }
+
   // 検索中（ページのデータを取り直している間）は一覧を薄くする。本番では1〜2秒かかり、古い一覧のままに見えるため
   const searching = $derived(!!navigating.to && navigating.to.url.pathname === $page.url.pathname);
   // 空室カレンダーで日付を選んだら、その日程で検索し直し、読み込みが終わってからその部屋のカードへ
@@ -166,7 +195,7 @@
     search();
   }
   $effect(() => {
-    if (!scrollTo || searching || loading || data.params.date !== scrollTo.date) return;
+    if (!scrollTo || searching || loading || shown?.params.date !== scrollTo.date) return;
     const code = scrollTo.code;
     scrollTo = null;
     requestAnimationFrame(() => document.getElementById(`room-${code}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -217,10 +246,10 @@
     <p class="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">この宿泊日のご予約は受付を締め切りました。料金はご参考です。</p>
   {/if}
 
-  {#if searching}
+  {#if searching || (loading && shown)}
     <p class="mt-3 text-sm text-stone-500" role="status">検索しています…</p>
   {/if}
-  {#if loading}
+  {#if !shown && loading}
     <div class="mt-5 space-y-5" aria-label="読み込み中">
       {#each [0, 1] as i (i)}<div class="h-64 animate-pulse rounded-lg border border-stone-200 bg-white"></div>{/each}
     </div>
@@ -229,7 +258,7 @@
   {:else if closedDay}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">この日は休館日です。別の日程をお選びください。</p>
   {:else}
-    <div class={`mt-4 space-y-6 transition-opacity ${searching ? 'pointer-events-none opacity-40' : ''}`}>
+    <div class={`mt-4 space-y-6 transition-opacity ${searching || loading ? 'pointer-events-none opacity-40' : ''}`}>
       {#each cards as card (card.code)}
         {@const parts = roomParts(card.name)}
         {@const photo = card.content?.photos[0]?.url}
@@ -290,7 +319,7 @@
                         {/if}
                       </p>
                       {#if dated && canBook}
-                        <a href={bookHref(r)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</a>
+                        <button type="button" onclick={() => openDetail(r, card.content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
                       {:else if !dated}
                         <button type="button" onclick={() => (calendarRoom = { code: card.code, name: card.name })} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">空室を見る</button>
                       {/if}
@@ -327,5 +356,17 @@
   today={data.today}
   selected={data.params.date}
   onPick={pickFromCalendar}
+/>
+<PartnerPlanDetailModal
+  bind:detail
+  params={data.params}
+  times={data.times}
+  deadlineText={data.deadlineText}
+  cancelText={data.cancelText}
+  paymentLabels={data.paymentLabels}
+  showInventory={data.showInventory}
+  {canBook}
+  onChangeDates={() => reopenSearch('date')}
+  onChangeGuests={() => reopenSearch('guests')}
 />
 <PartnerRoomModal bind:room={infoRoom} {token} />
