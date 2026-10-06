@@ -148,7 +148,8 @@
         <!-- 上部: 概要 -->
         <section class="px-5 pb-6 pt-6 sm:px-10 sm:pt-10">
           <div class="grid gap-6 md:grid-cols-[300px_minmax(0,1fr)]">
-            <div class="relative overflow-hidden rounded-lg bg-stone-100">
+            <!-- self-start: 右欄の方が高いと枠が伸び、ドットが写真の下の余白に落ちるため -->
+            <div class="relative self-start overflow-hidden rounded-lg bg-stone-100">
               {#if photos.length}
                 <img src={photos[photoIndex]?.url} alt={photos[photoIndex]?.caption || detail.planName} class="aspect-[4/3] w-full object-cover" />
                 {#if photos.length > 1}
