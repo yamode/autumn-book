@@ -85,6 +85,9 @@
   // 請求書払い（取引先払い）: ご宿泊者様には請求しないことを支払方法の近くに出す（2026-10-02 指示）
   const billedToPartner = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.billable ?? false);
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
+  // 右の欄の「お支払方法」の ⓘ（請求書払いの説明）。押して固定・マウスを乗せる／フォーカスでも開く
+  let billTipOpen = $state(false);
+  let billTipHover = $state(false);
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
   // 金額の計算はサーバ（Intent の金額）と同じ純関数（lib/partner-booking.ts の quoteChargeOf）
@@ -234,6 +237,8 @@
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
 </script>
+
+<svelte:window onclick={() => (billTipOpen = false)} onkeydown={(e) => { if (e.key === 'Escape') billTipOpen = false; }} />
 
 <svelte:head>
   <title>ご予約 | {data.portal.facilityName}</title>
@@ -565,10 +570,9 @@
             <p class="mt-1 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {yen(prepay.total + quote.bathTax)}（{prepay.label}）</p>
           {/if}
           <p class="mt-1 text-right text-xs text-stone-500">税込{quote.bathTax > 0 ? '・入湯税を含む' : ''}</p>
-          {#if quote.remaining != null}
-            <p class={`mt-2 text-sm ${soldShort ? 'font-medium text-rose-700' : 'text-stone-500'}`}>
-              {soldShort ? `ご希望の室数を確保できません（残り${quote.remaining}室）` : `このお部屋の残り: ${quote.remaining}室`}
-            </p>
+          {#if soldShort}
+            <!-- 残室は出さず、希望の室数に足りないときだけ知らせる（2026-10-06 指示） -->
+            <p class="mt-2 text-sm font-medium text-rose-700">ご希望の室数を確保できません（残り{quote.remaining}室）</p>
           {/if}
         {/if}
         {#if !canBook}
@@ -576,11 +580,45 @@
         {/if}
       </div>
 
-      <dl class="mt-4 grid gap-1 border-t border-stone-200 pt-4 text-sm">
-        {#if paymentLabel}<div class="flex justify-between gap-2"><dt class="text-stone-500">お支払</dt><dd>{paymentLabel}</dd></div>{/if}
-        {#if billedToPartner}<p class="text-xs text-[var(--pt-accent)]">{BILLED_NOTE}</p>{/if}
-        <div class="flex justify-between gap-2"><dt class="text-stone-500">予約の締切</dt><dd>宿泊日の{data.deadlineText}</dd></div>
-        <div class="flex justify-between gap-2"><dt class="text-stone-500">取消</dt><dd>{data.cancelText ? `宿泊日の${data.cancelText}（この画面から）` : '宿へご連絡ください'}</dd></div>
+      <!-- 見出しを上・中身を下に積む（横並びだと見出しが折り返して窮屈だったため）。予約の締切は出さない（2026-10-06 指示） -->
+      <dl class="mt-4 space-y-3 border-t border-stone-200 pt-4">
+        {#if paymentLabel}
+          <div>
+            <dt class="flex items-center gap-1.5 text-sm text-stone-500">
+              お支払方法
+              {#if billedToPartner}
+                <!-- 請求書払いの説明はツールチップ（マウスを乗せる・押す・フォーカスで開く） -->
+                <span class="relative inline-flex">
+                  <button
+                    type="button"
+                    aria-label="お支払いについて"
+                    aria-expanded={billTipOpen}
+                    aria-describedby={billTipOpen ? 'bill-tip' : undefined}
+                    onclick={(e) => { e.stopPropagation(); billTipOpen = !billTipOpen; }}
+                    onmouseenter={() => (billTipHover = true)}
+                    onmouseleave={() => (billTipHover = false)}
+                    onfocus={() => (billTipHover = true)}
+                    onblur={() => (billTipHover = false)}
+                    class="flex h-5 w-5 items-center justify-center rounded-full border border-stone-400 text-[11px] font-bold leading-none text-stone-500 hover:border-[var(--pt-accent)] hover:text-[var(--pt-accent)]"
+                  >i</button>
+                  {#if billTipOpen || billTipHover}
+                    <span id="bill-tip" role="tooltip" class="absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-lg bg-brand-900 px-3.5 py-3 text-sm leading-6 text-white shadow-lg">
+                      ご宿泊者様へのご請求はありません。宿泊料金・入湯税は貴社へご請求します。<br />
+                      ただし、館内でのご飲食・売店などの現地でのご利用分は、チェックアウト時にご宿泊者様へ別途ご請求します。
+                    </span>
+                  {/if}
+                </span>
+              {/if}
+            </dt>
+            <dd class="mt-0.5 text-base leading-7">{paymentLabel}</dd>
+          </div>
+        {/if}
+        <div>
+          <dt class="text-sm text-stone-500">取消</dt>
+          <dd class="mt-0.5 text-base leading-7">
+            {#if data.cancelText}宿泊日の{data.cancelText}<span class="block text-sm text-stone-500">予約一覧から取り消せます</span>{:else}宿へご連絡ください{/if}
+          </dd>
+        </div>
       </dl>
       {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
 
