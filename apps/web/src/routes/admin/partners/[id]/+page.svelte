@@ -963,7 +963,7 @@
         </label>
 
         <div>
-          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">予約時に聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
+          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">予約時に聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
           <div class="grid gap-2">
             {#each booking.options as o, i (o.id)}
               <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5 sm:grid-cols-[1fr_130px_1fr_auto_auto] sm:items-center">
@@ -993,7 +993,7 @@
         </div>
 
         <div>
-          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件）</span></h3>
+          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件）</span></h3>
           <p class="mb-2 text-[11px] leading-5 text-stone-500">
             この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
           </p>
@@ -1044,7 +1044,7 @@
         </div>
 
         <div>
-          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
+          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
           <p class="mb-2 text-[11px] leading-5 text-stone-500">
             取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
           </p>
@@ -1068,7 +1068,7 @@
           </div>
         </div>
 
-        <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">通知メール</h3>
+        <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">通知メール</h3>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block">
             <span class="mb-0.5 block text-xs text-stone-500">宿への通知メール（予約・取消のたびに送る。改行・カンマ区切り）</span>
@@ -1081,7 +1081,7 @@
         </div>
 
         <div>
-          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">ご請求書（月次）</h3>
+          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">ご請求書（月次）</h3>
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
