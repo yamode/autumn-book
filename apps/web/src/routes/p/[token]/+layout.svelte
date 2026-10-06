@@ -59,15 +59,16 @@
 
 <div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
   <header bind:this={headerEl} class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
-    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
-      <div class="min-w-0">
+    <!-- 本文の表示領域を広く取るため高さを詰める（2026-10-06）: 上下の余白を小さくし、PCでは施設名と「専用料金」を横1行に並べる。 -->
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2 sm:px-6">
+      <div class="flex min-w-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+        <h1 class="truncate font-display text-lg tracking-wide text-brand-900 sm:text-xl">{portal?.facilityName ?? ''}</h1>
         {#if portal?.partnerName}
-          <p class="mb-1 inline-flex items-center gap-1.5 rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
-            <span class="h-1.5 w-1.5 rounded-full bg-[var(--pt-accent)]"></span>
+          <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
+            <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
             {portal.partnerName} 様 専用料金
           </p>
         {/if}
-        <h1 class="truncate font-display text-xl tracking-wide text-brand-900 sm:text-2xl">{portal?.facilityName ?? ''}</h1>
       </div>
       {#if portal?.loginId}
         <!-- お部屋・プランの紹介・覚書・アカウントはログインした取引先すべてに見せる。予約一覧は予約を受け付けている取引先だけ。
@@ -80,9 +81,9 @@
         </nav>
       {/if}
       {#if portal?.loginId}
-        <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-base">
+        <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-sm">
           <span class="hidden text-stone-500 sm:inline">{portal.loginId}</span>
-          <button type="submit" class="rounded-lg border border-stone-300 px-4 py-1.5 text-sm text-stone-600 transition hover:bg-stone-50">
+          <button type="submit" class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">
             ログアウト
           </button>
         </form>
