@@ -528,7 +528,7 @@
         <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
         <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
           <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
-          <div class="mt-2"><PartnerPerkList perks={data.perks} variant="compact" /></div>
+          <div class="mt-2"><PartnerPerkList perks={data.perks} variant="compact" showImages={false} /></div>
         </div>
       {/if}
 

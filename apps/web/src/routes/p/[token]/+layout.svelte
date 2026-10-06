@@ -27,6 +27,18 @@
 <svelte:head>
   <!-- ホーム画面に追加したときの名前は施設名にする。 -->
   <meta name="apple-mobile-web-app-title" content={portal?.facilityName ?? ''} />
+  <!--
+    取引先ページの文字を全体に一回り大きく（2026-10-06 指示「まだ全体的に文字が小さい」）。基準 16px → 18px。
+    Tailwind v4 の文字・余白は rem なので同じ比率で大きくなる。px で直に指定した小さな文字も rem に読み替えて一緒に大きくする。
+    head に置くので取引先ページにいる間だけ効く（公式サイト・管理画面は変わらない）。
+  -->
+  <style>
+    html { font-size: 112.5%; }
+    .text-\[10px\] { font-size: 0.6875rem; }
+    .text-\[11px\] { font-size: 0.75rem; }
+    .text-\[15px\] { font-size: 0.9375rem; }
+    .text-\[17px\] { font-size: 1.0625rem; }
+  </style>
 </svelte:head>
 
 <div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
