@@ -127,8 +127,8 @@
 		head に置くので管理画面を開いている間だけ効き、公開サイトへ移ると外れる（サーバ描画から効くのでちらつかない）。
 	-->
 	<!--
-		2026-10-06 指示（見づらい・メインカラムの文字が小さい）: 基準を 18px → 20px、いちばん多い補足の文字（text-xs）を一段大きく。
-		サイドバーは大きくしない（zoom 0.9 で従来の 18px 相当に戻す。rem は html 基準なので要素ごとに基準を変えられないため）。
+		2026-10-06 指示（見づらい・メインカラムの文字が小さい）: 基準を 17px（ユーザー指定）、いちばん多い補足の文字（text-xs）を一段大きく。
+		サイドバーは従来の 18px 相当のまま（zoom 18/17。rem は html 基準なので要素ごとに基準を変えられないため）。
 		文字は取引先ページと同じ一休式（OS 標準のゴシック・太さ 400・字間なし）。以前の system-ui は Windows で
 		「Yu Gothic UI」（幅の狭い細いラベル用の書体）になり、文章が詰まって薄く見えていた。
 		本文側（.admin-main）の灰色を一段濃く（stone-400→500・500→600 の濃さ）。サイドバーは暗い地なので変えない。
@@ -136,7 +136,7 @@
 	-->
 	<style>
 		html {
-			font-size: 125%;
+			font-size: 106.25%;
 			font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
 			font-weight: 400;
 			letter-spacing: normal;
@@ -150,8 +150,8 @@
 			--color-stone-400: oklch(55.3% 0.013 58.071);
 			--color-stone-500: oklch(44.4% 0.011 73.639);
 		}
-		/* zoom は高さ（h-screen=100vh）も 0.9 倍にするので、画面いっぱいになるよう割り戻す */
-		.admin-sidebar { zoom: 0.9; height: calc(100vh / 0.9); }
+		/* zoom は高さ（h-screen=100vh）も同じ倍率にするので、画面いっぱいになるよう割り戻す */
+		.admin-sidebar { zoom: 1.0588; height: calc(100vh / 1.0588); }
 		.admin-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 		.admin-nav:hover { scrollbar-color: rgb(255 255 255 / 0.22) transparent; }
 		.admin-nav::-webkit-scrollbar { width: 6px; }
