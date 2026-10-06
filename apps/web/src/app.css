@@ -109,3 +109,23 @@ html {
 	outline: 2px solid var(--color-brand-600);
 	outline-offset: 2px;
 }
+
+/* 読み込み中のプレースホルダー（シマー）。ガラスに映る光が斜めに流れるように、帯を左から右へ流す。
+   background-attachment: fixed で画面全体の位置にそろえ、複数の帯でも1本の光が横切って見えるようにする。
+   動きを減らす設定の端末では止める。 */
+.shimmer {
+	border-radius: 0.375rem;
+	background-color: #ebe8e4;
+	background-image: linear-gradient(105deg, transparent 0%, transparent 38%, rgb(255 255 255 / 0.75) 50%, transparent 62%, transparent 100%);
+	background-size: 200% 100%;
+	background-attachment: fixed;
+	background-repeat: no-repeat;
+	animation: shimmer-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes shimmer-sweep {
+	0% { background-position: 150% 0; }
+	100% { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.shimmer { animation: none; background-image: none; }
+}

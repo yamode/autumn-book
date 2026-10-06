@@ -186,6 +186,8 @@
 
   // 検索中（ページのデータを取り直している間）は一覧を薄くする。本番では1〜2秒かかり、古い一覧のままに見えるため
   const searching = $derived(!!navigating.to && navigating.to.url.pathname === $page.url.pathname);
+  // 料金を読み込み中（初回・検索し直し）。部屋カードはすぐ出し、プランの行だけ読み込み中の形にする
+  const pending = $derived(loading || searching);
   // 空室カレンダーで日付を選んだら、その日程で検索し直し、読み込みが終わってからその部屋のカードへ
   let scrollTo = $state<{ code: string; date: string } | null>(null);
   function pickFromCalendar(iso: string) {
@@ -231,7 +233,7 @@
     <div>
       {#if dated}
         <p class="text-lg font-bold">{fmt(data.params.date)} 〜 {fmt(checkout)}・{data.params.nights}泊・{guestText}</p>
-        {#if !loading && !loadError && !closedDay}<p class="text-sm text-stone-500">予約できるお部屋 {bookableCount}件</p>{/if}
+        {#if !pending && !loadError && !closedDay}<p class="text-sm text-stone-500">予約できるお部屋 {bookableCount}件</p>{/if}
       {:else}
         <p class="text-lg font-bold">すべてのお部屋とプラン</p>
         <p class="text-sm text-stone-500">料金は{guestText}でご利用時の、今後3か月の最安です。ご宿泊日を選ぶと、その日の料金と空室に切り替わります。</p>
@@ -247,19 +249,15 @@
     <p class="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">この宿泊日のご予約は受付を締め切りました。料金はご参考です。</p>
   {/if}
 
-  {#if searching || (loading && shown)}
-    <p class="mt-3 text-sm text-stone-500" role="status">検索しています…</p>
+  {#if pending}
+    <p class="mt-4 text-base text-stone-600" role="status">料金と空室を読み込んでいます…</p>
   {/if}
-  {#if !shown && loading}
-    <div class="mt-5 space-y-5" aria-label="読み込み中">
-      {#each [0, 1] as i (i)}<div class="h-64 animate-pulse rounded-lg border border-stone-200 bg-white"></div>{/each}
-    </div>
-  {:else if loadError}
+  {#if loadError && !pending}
     <p class="mt-5 rounded-xl border border-rose-700/30 bg-rose-700/5 p-4 text-rose-700">{loadError}</p>
-  {:else if closedDay}
+  {:else if closedDay && !pending}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">この日は休館日です。別の日程をお選びください。</p>
   {:else}
-    <div class={`mt-4 space-y-6 transition-opacity ${searching || loading ? 'pointer-events-none opacity-40' : ''}`}>
+    <div class="mt-4 space-y-6" aria-busy={pending}>
       {#each cards as card (card.code)}
         {@const parts = roomParts(card.name)}
         {@const photo = card.content?.photos[0]?.url}
@@ -289,7 +287,25 @@
             </div>
           </div>
           <div class="min-w-0">
-            {#if card.rows.length}
+            {#if pending}
+              <!-- 読み込み中のプレースホルダー（プランの行の形・光が流れるシマー） -->
+              <div class="divide-y divide-stone-200" aria-hidden="true">
+                {#each [0, 1] as i (i)}
+                  <div class="grid gap-4 px-5 py-6 sm:grid-cols-[minmax(0,1fr)_11rem] sm:gap-8">
+                    <div class="space-y-3">
+                      <div class="shimmer h-4 w-11/12"></div>
+                      <div class="shimmer h-4 w-2/3"></div>
+                      <div class="shimmer mt-4 h-3.5 w-40 opacity-70"></div>
+                    </div>
+                    <div class="flex flex-col items-end gap-2.5">
+                      <div class="shimmer h-3 w-20 opacity-70"></div>
+                      <div class="shimmer h-7 w-36"></div>
+                      <div class="shimmer h-10 w-28"></div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {:else if card.rows.length}
               <div class="divide-y divide-stone-200">
                 {#each card.rows.slice(0, expanded[card.code] ? card.rows.length : 2) as r (r.planCode + r.planName)}
                   {@const anchor = planAnchorOf(r)}
