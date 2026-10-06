@@ -45,6 +45,9 @@
 		}
 	}
 
+	// 食事時間（PMS で決まったもの。将来は事前チェックインの申請中も status='requested' で並ぶ）
+	const mealLabel = (t: string) => (t === 'dinner' ? m.inroom_meal_dinner() : t === 'breakfast' ? m.inroom_meal_breakfast() : m.inroom_meal_lunch());
+
 	// tel: リンク用（ハイフン等を除去）
 	function telHref(phone?: string): string {
 		return 'tel:' + (phone ?? '').replace(/[^0-9+]/g, '');
@@ -104,6 +107,25 @@
 				</div>
 			</dl>
 		</section>
+
+		{#if data.meals.length}
+			<!-- ============ お食事の時間（PMS の伺い書で決まった時間） ============ -->
+			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="meal-times-title">
+				<h2 id="meal-times-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_meals_title()}</h2>
+				<ul class="mt-3 divide-y divide-stone-100">
+					{#each data.meals as meal (`${meal.date}-${meal.type}`)}
+						<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
+							<span class="text-sm text-stone-700">{fmtBathDate(meal.date)}<span class="ml-2 text-stone-500">{mealLabel(meal.type)}</span></span>
+							<strong class="text-base font-semibold tabular-nums text-stone-900">
+								{meal.time}
+								{#if meal.status === 'requested'}<span class="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">{m.inroom_meal_requested()}</span>{/if}
+							</strong>
+						</li>
+					{/each}
+				</ul>
+				<p class="mt-2 text-xs text-stone-500">{m.inroom_meals_note()}</p>
+			</section>
+		{/if}
 
 		{#if data.bathReservations.length}
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="bath-reservations-title">

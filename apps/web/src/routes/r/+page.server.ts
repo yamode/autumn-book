@@ -10,6 +10,7 @@ import {
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides, sbClaimStayByCode } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
+import { sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { intercomStatusFor } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -36,6 +37,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		stay: null,
 		guides: [],
 		bathReservations: [],
+		meals: [] as StayMeal[],
 		expired: true,
 		invalidQr: false,
 		endedFacility: facility,
@@ -43,7 +45,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 黒ヘッダーの中央タイトル（layout が拾う）。施設が分かれば施設名
 		...(facility?.name ? { headerTitle: facility.name } : {})
 	});
-	const noStay = { stay: null, guides: [], bathReservations: [], expired: false, invalidQr, endedFacility: null, banners: [] };
+	const noStay = { stay: null, guides: [], bathReservations: [], meals: [] as StayMeal[], expired: false, invalidQr, endedFacility: null, banners: [] };
 
 	if (!token) {
 		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）
@@ -59,12 +61,14 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		);
 	}
 
-	const [guides, bathContext, intercom] = await Promise.all([
+	const [guides, bathContext, intercom, meals] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
 		DATA_SOURCE === 'supabase' ? sbBathContext(token).catch(() => null) : Promise.resolve(null),
-		intercomStatusFor(token)
+		intercomStatusFor(token),
+		// PMS で決まった食事時間（夕食・朝食）。読めなければ出さない
+		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[])
 	]);
 
 	return {
@@ -73,6 +77,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		bathReservations: bathContext?.ok
 			? (bathContext.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to }))
 			: [],
+		meals,
 		intercom,
 		expired: false,
 		invalidQr,
