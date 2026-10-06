@@ -158,6 +158,34 @@
 		.admin-main :is(.rounded-xl, .rounded-2xl).border.bg-white {
 			box-shadow: 0 1px 2px rgb(41 37 36 / 0.05), 0 1px 1px rgb(41 37 36 / 0.03);
 		}
+		/* 入力欄（2026-10-06 指摘・見づらい）: 白いカードの上でも欄の範囲が分かるよう、枠線は白との差 3:1 以上（WCAG 1.4.11）。
+		   中は常に白（Tailwind の初期値は透明で、灰色の地では地と同じ色になっていた）。入力できない欄だけ薄い灰色。
+		   例文の文字も 4.5:1 以上に。カードの区切り線・表の罫線は薄いまま。
+		   枠線は色を直接上書きせず、欄の中でだけ stone-200/300 を濃くする（border-red-* などの状態色はそのまま効く）。
+		   中の色は base 層に置き、bg-red-50 などの指定があればそちらを優先。bg-stone-50 の欄は白にそろえる */
+		.admin-main :is(input, select, textarea) {
+			--color-stone-200: #928c87;
+			--color-stone-300: #928c87;
+			--color-stone-50: #fff;
+		}
+		.admin-main :is(input, select, textarea):hover:not(:disabled):not(:focus) {
+			--color-stone-200: #6f6964;
+			--color-stone-300: #6f6964;
+		}
+		@layer base {
+			.admin-main :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='submit']):not([type='button']):not([type='color']), select, textarea) {
+				background-color: #fff;
+			}
+		}
+		.admin-main :is(input, select, textarea):is(:disabled, [readonly]) {
+			background-color: #f5f4f2;
+			border-color: #c5c0bd;
+			color: #57534e;
+		}
+		.admin-main :is(input, textarea)::placeholder {
+			color: #75706b;
+			opacity: 1;
+		}
 		.admin-main :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):focus {
 			border-color: oklch(44.4% 0.011 73.639);
 			box-shadow: 0 0 0 3px rgb(68 64 60 / 0.12);
