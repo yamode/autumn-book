@@ -536,7 +536,7 @@
         <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。
              右欄が長くなるので一覧は出さず、ボタンを押すとモーダルで中身を見せる（2026-10-06 指示） -->
         <div class="mt-3">
-          <PerkBanners items={[{ key: 'partner', label: `取引先専用特典（${data.perks.length}件）`, kind: 'partner' }]} onopen={() => (perkContent = { label: '取引先専用特典', perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
+          <PerkBanners items={[{ key: 'partner', label: '取引先専用特典', kind: 'partner' }]} onopen={() => (perkContent = { label: '取引先専用特典', perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
         </div>
       {/if}
 

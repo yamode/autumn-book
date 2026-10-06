@@ -1,6 +1,6 @@
 {
   "name": "@autumn-book/web",
-  "version": "0.79.10",
+  "version": "0.79.11",
   "private": true,
   "type": "module",
   "scripts": {
