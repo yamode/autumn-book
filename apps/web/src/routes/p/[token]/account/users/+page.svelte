@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → ユーザー管理（マスタユーザーだけ）。子ユーザーの作成・停止/再開・削除・設定リンクの再送。
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
@@ -60,7 +61,7 @@
 </script>
 
 <svelte:head>
-  <title>ユーザー管理 | アカウント | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, 'ユーザー管理')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

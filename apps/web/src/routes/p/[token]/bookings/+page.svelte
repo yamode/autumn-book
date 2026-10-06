@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
   import StripePayment from '$lib/components/payment/StripePayment.svelte';
@@ -113,7 +114,7 @@
 </script>
 
 <svelte:head>
-  <title>予約一覧 | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, '予約一覧')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

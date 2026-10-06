@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → ご請求書。月ごとのご利用明細書＋ご請求書（適格請求書）をダウンロードする。
   import { page } from '$app/stores';
   import type { PageData } from './$types';
@@ -12,7 +13,7 @@
 </script>
 
 <svelte:head>
-  <title>ご請求書 | アカウント | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, 'ご請求書')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → 担当者情報。予約担当者（ご予約者）の情報を設定する（見出し・タブは ./+layout.svelte）。
   // ここで保存した内容が予約フォームの「予約者」に最初から入り、予約確認などのメールはこのメールアドレスへ届く。
   import { enhance } from '$app/forms';
@@ -15,7 +16,7 @@
 </script>
 
 <svelte:head>
-  <title>担当者情報 | アカウント | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, '担当者情報')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

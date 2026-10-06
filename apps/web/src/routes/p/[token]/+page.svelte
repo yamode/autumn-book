@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$app/forms';
   import type { PageData } from './$types';
 
@@ -9,7 +10,7 @@
 </script>
 
 <svelte:head>
-  <title>ログイン | {data.portal.facilityName} 料金カレンダー</title>
+  <title>{partnerTitle(data.portal)}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: 覚書。宿が書いた取引条件のまとめ（本文）と、宿・貴社の双方が保存するファイル。
   // 本文はプレーンテキスト（改行はそのまま表示。リンクの自動変換はしない）。
   import { enhance } from '$app/forms';
@@ -17,7 +18,7 @@
 </script>
 
 <svelte:head>
-  <title>覚書 | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, '覚書')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

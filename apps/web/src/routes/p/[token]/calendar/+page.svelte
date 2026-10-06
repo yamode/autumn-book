@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: 料金カレンダー（2026-10-06 に一休型へ一本化。旧「お部屋とプラン」）。
   // 検索バー（Airbnb 風）→ 並び順 → 部屋タイプごとの全幅カード（一休のカードを再現）。
   // 日付を選ぶ前から全部屋のカードを出し、料金は今後3か月の最安〜。日程を選ぶと、その日程・人数・室数で
@@ -208,7 +209,7 @@
 </script>
 
 <svelte:head>
-  <title>料金カレンダー｜{data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, '料金カレンダー')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

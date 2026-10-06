@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: プランの紹介。文章・写真は公式サイト（autumn-book）と共通。
   // 出すのは、この取引先に料金を出しているプランのうち、紹介が登録されているものだけ。
   import { page } from '$app/stores';
@@ -14,7 +15,7 @@
   const mealLabel = (m: string) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : m);
 </script>
 
-<svelte:head><title>プランのご紹介｜{data.portal.facilityName}</title></svelte:head>
+<svelte:head><title>{partnerTitle(data.portal, 'プランのご紹介')}</title><meta name="robots" content="noindex, nofollow" /></svelte:head>
 
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
   <h2 class="text-2xl font-bold">プランのご紹介</h2>

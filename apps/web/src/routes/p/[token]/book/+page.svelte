@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   import { untrack } from 'svelte';
   import PerkBanners from '$lib/components/PerkBanners.svelte';
   import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
@@ -299,7 +300,7 @@
 
 
 <svelte:head>
-  <title>ご予約 | {data.portal.facilityName}</title>
+  <title>{partnerTitle(data.portal, 'ご予約')}</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

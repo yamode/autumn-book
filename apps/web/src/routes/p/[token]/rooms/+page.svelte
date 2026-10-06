@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: お部屋（部屋タイプ）の紹介。文章・写真は公式サイト（autumn-book）と共通。
   import { page } from '$app/stores';
   import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
@@ -8,7 +9,7 @@
   const token = $derived($page.params.token);
 </script>
 
-<svelte:head><title>お部屋のご紹介｜{data.portal.facilityName}</title></svelte:head>
+<svelte:head><title>{partnerTitle(data.portal, 'お部屋のご紹介')}</title><meta name="robots" content="noindex, nofollow" /></svelte:head>
 
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
   <h2 class="text-2xl font-bold">お部屋のご紹介</h2>
