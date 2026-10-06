@@ -672,13 +672,10 @@
 
       <!-- 取消の案内（一休の帯と同じく「◯年◯月◯日までキャンセル料無料」を主に。ⓘでキャンセルポリシーへ・2026-10-06） -->
       <div class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sky-700">
-        <!-- 文言の最後の語とⓘは同じ行に（ⓘだけが次の行に落ちないように） -->
+        <!-- 文言の最後の語とⓘは同じ行に（ⓘだけが次の行に落ちないように）。取消の方法・期限はⓘのツールチップに（2026-10-06 指示: 帯には出さない） -->
         <p class="text-sm font-bold leading-6">
-          {band.head}<span class="whitespace-nowrap">{band.tail}<button type="button" aria-label="キャンセルポリシーを見る" onclick={() => document.getElementById('cancel-policy')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} class="ml-0.5 inline-flex h-5 w-5 translate-y-[3px] items-center justify-center rounded-full align-baseline text-sky-700 hover:bg-sky-100"><svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /><circle cx="10" cy="6.3" r="1" fill="currentColor" /></svg></button></span>
+          {band.head}<span class="whitespace-nowrap">{band.tail}<span class="group relative inline-block align-baseline"><button type="button" aria-label="キャンセルについて" aria-describedby="cancel-tip" onclick={() => document.getElementById('cancel-policy')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} class="ml-0.5 inline-flex h-5 w-5 translate-y-[3px] items-center justify-center rounded-full text-sky-700 hover:bg-sky-100"><svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /><circle cx="10" cy="6.3" r="1" fill="currentColor" /></svg></button><span id="cancel-tip" role="tooltip" class="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-64 whitespace-normal rounded-lg bg-stone-800 px-3 py-2 text-left text-xs font-normal leading-5 text-white opacity-0 shadow-lg transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">{data.cancelText ? `取消は宿泊日の${data.cancelText}、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}{#if freeUntil !== null}<span class="mt-1 block">それより後は、キャンセルポリシーの料率でキャンセル料がかかります。</span>{/if}<span class="mt-1 block text-stone-300">押すとキャンセルポリシーへ移ります</span></span></span></span>
         </p>
-        {#if data.cancelText && freeUntil !== null}
-          <p class="mt-0.5 text-xs leading-5">取消は宿泊日の{data.cancelText}、予約一覧からできます</p>
-        {/if}
       </div>
 
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
