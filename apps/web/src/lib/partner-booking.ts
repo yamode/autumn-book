@@ -14,12 +14,13 @@ export type PartnerBookingOption = BookingQuestion;
 // 支払方法（取引先ごとの契約で許可するもの。複数可。予約時に取引先が選ぶ）。
 //   invoice_monthly … 後払い（銀行振込）
 //   online          … 予約時にカード決済（Stripe Checkout）。割引（prepayDiscount）を付けられる
-//   online_checkin  … 予約時にカードを登録し、チェックイン日に自動で請求（Stripe・off-session）
+//   online_checkin  … 予約時にカードを登録し、チェックアウト日に自動で請求（Stripe・off-session）。
+//                      ID は互換のため online_checkin のまま（2026-10-07 にチェックイン日→チェックアウト日へ変更。現地精算と揃える）
 export type PartnerPaymentOptionId = 'invoice_monthly' | 'online' | 'online_checkin';
 export const PARTNER_PAYMENT_OPTIONS: { id: PartnerPaymentOptionId; label: string; note: string }[] = [
   { id: 'invoice_monthly', label: '月末締め翌月末銀行振込', note: 'ご利用月の月末締めで請求し、翌月末までに銀行振込' },
   { id: 'online', label: 'オンライン決済（予約時）', note: '予約時にクレジットカードでお支払い（Stripe）' },
-  { id: 'online_checkin', label: 'オンライン決済（チェックイン日）', note: '予約時にクレジットカードを登録し、チェックイン日に自動でお支払い（Stripe）' }
+  { id: 'online_checkin', label: 'オンライン決済（チェックアウト日）', note: '予約時にクレジットカードを登録し、チェックアウト日に自動でお支払い（Stripe）' }
 ];
 export const isBuiltinPaymentOption = (id: string): id is PartnerPaymentOptionId => PARTNER_PAYMENT_OPTIONS.some((o) => o.id === id);
 // 支払方法の表示名。自由入力の支払方法（customPaymentOptions）は設定を渡すと名前を引ける。

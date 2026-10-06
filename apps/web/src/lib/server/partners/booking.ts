@@ -399,7 +399,7 @@ export async function createPartnerBooking(
       bath_tax: quote.bathTax,
       // 予約時決済の割引額（円）。予約金額からは引かない（autumn-shared 20260926113433）
       prepay_discount: discount?.discount ?? 0,
-      // オンライン決済は支払待ちの仮押さえで作り、支払完了（予約時決済）・カード登録完了（チェックイン日決済）で
+      // オンライン決済は支払待ちの仮押さえで作り、支払完了（予約時決済）・カード登録完了（チェックアウト日決済）で
       // 確定・PMS へ（DB 関数 rms_partner_mark_paid / rms_partner_mark_card_saved）
       await_payment: isStripePaymentOption(paymentOption)
     }
@@ -459,7 +459,7 @@ export async function createPartnerBooking(
 //
 // 流れ（v0.42.0〜。それまでは Stripe Checkout の別ページへ移動していた）:
 //   ① 予約を仮押さえ（rms_partner_create_booking を await_payment=true で。pending_payment・35分）
-//   ② この予約の PaymentIntent（予約時決済）/ SetupIntent（チェックイン日決済）を用意して client_secret を返す
+//   ② この予約の PaymentIntent（予約時決済）/ SetupIntent（チェックアウト日決済）を用意して client_secret を返す
 //   ③ ブラウザが stripe.confirmPayment / confirmSetup（3Dセキュアは Stripe のモーダル）
 //   ④ ブラウザから確定の連絡（confirmPartnerIntent）＋ Webhook（payment_intent.succeeded / setup_intent.succeeded）の
 //      どちらか早い方で予約を確定する。どちらも Intent を Stripe から取り直して確かめ、DB 関数の冪等性
@@ -482,7 +482,7 @@ export type PreparedPartnerPayment = PreparedIntent & {
   bookingCode: string;
   // 仮押さえの期限（予約時の支払・カード登録）。カードの登録し直しは null
   expiresAt: string | null;
-  // チェックイン日決済: 入力欄の直下に出す同意文（確定時に同じ文面を台帳へ残す）
+  // チェックアウト日決済: 入力欄の直下に出す同意文（確定時に同じ文面を台帳へ残す）
   consentText: string | null;
 };
 
@@ -507,7 +507,7 @@ async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext
     const { prepared, created } = await prepareSetupIntent({
       existingId: b.stripe_session_id,
       customer,
-      description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_in_date} チェックイン日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
+      description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_out_date} チェックアウト日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
       metadata: intentMetadata(partner, b, { consent_text: consentText }),
       refKey: REF_KEY,
       // 同時に2回押されても1本になるよう、前回の Intent（無ければ first）から作る
@@ -529,17 +529,17 @@ async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext
 }
 
 // カード登録画面に出す同意文（請求日・金額・内訳）。登録完了時に同じ文面を台帳に残す。
-export function cardConsentText(facilityName: string, b: Pick<PartnerBookingRow, 'booking_code' | 'check_in_date' | 'total_amount' | 'bath_tax_amount'>): string {
-  const [y, m, d] = b.check_in_date.split('-').map(Number);
+export function cardConsentText(facilityName: string, b: Pick<PartnerBookingRow, 'booking_code' | 'check_out_date' | 'total_amount' | 'bath_tax_amount'>): string {
+  const [y, m, d] = b.check_out_date.split('-').map(Number);
   const bath = b.bath_tax_amount ?? 0;
   return (
-    `${facilityName}のご宿泊（予約番号 ${b.booking_code}）について、チェックイン日の ${y}年${m}月${d}日に、` +
+    `${facilityName}のご宿泊（予約番号 ${b.booking_code}）について、チェックアウト日の ${y}年${m}月${d}日に、` +
     `このカードへ ${yen(chargeAmountOf(b))}（宿泊料金 ${yen(b.total_amount)}${bath > 0 ? `・入湯税 ${yen(bath)}` : ''}）を請求することに同意します。` +
     'キャンセル料がかかる日に取り消した場合は、キャンセル料をこのカードへ請求します。'
   );
 }
 
-// チェックイン日決済で、カードを登録し直せる状態か（請求前・請求失敗）。
+// チェックアウト日決済で、カードを登録し直せる状態か（請求前・請求失敗）。
 export const canUpdateCard = (b: Pick<PartnerBookingRow, 'status' | 'payment_option' | 'payment_status'>) =>
   b.status === 'confirmed' && b.payment_option === 'online_checkin' && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed');
 
@@ -673,7 +673,7 @@ async function recordPaid(
   return { status: 'already', bookingCode: after.booking_code };
 }
 
-// チェックイン日決済: カード登録の完了を記録して予約を確定する（何度呼んでも同じ結果）。
+// チェックアウト日決済: カード登録の完了を記録して予約を確定する（何度呼んでも同じ結果）。
 async function recordCardSaved(
   db: SupabaseClient,
   ctx: BookingCtx,
@@ -705,9 +705,9 @@ async function recordCardSaved(
     return { status: 'card_saved', bookingCode: code };
   }
   if (result === 'updated') {
-    // 請求に失敗していた予約は、チェックイン日を迎えていればその場で請求し直す
+    // 請求に失敗していた予約は、チェックアウト日を迎えていればその場で請求し直す
     const charge =
-      before.payment_status === 'charge_failed' && after.check_in_date <= todayJst()
+      before.payment_status === 'charge_failed' && after.check_out_date <= todayJst()
         ? await chargeBooking(db, ctx.partner, after, origin, 'card_updated')
         : undefined;
     return { status: 'card_updated', bookingCode: code, charge };
@@ -721,7 +721,7 @@ export type ChargeResult = { status: 'paid' | 'failed' | 'skipped'; message?: st
 type AnyPartner = PartnerContext | (PartnerRow & { facility_name?: string; url_token?: string });
 
 /**
- * チェックイン日決済: 登録カードに請求する（定期処理・スタッフの再請求・カード登録し直しから）。
+ * チェックアウト日決済（payment_option は online_checkin のまま）: 登録カードに請求する（定期処理・スタッフの再請求・カード登録し直しから）。
  * 同じ予約を同時に2回請求しないよう、charge_attempts を条件付きで進めてから Stripe を呼ぶ
  * （Stripe の冪等キーも試行回数ごと）。成功 → rms_partner_mark_charged（PMS へ paid 電文）。
  * 失敗 → payment_status='charge_failed' にして宿・取引先へメール。
@@ -733,7 +733,7 @@ export async function chargeBooking(
   origin: string,
   trigger: 'cron' | 'staff' | 'card_updated'
 ): Promise<ChargeResult> {
-  if (b.status !== 'confirmed' || b.payment_option !== 'online_checkin') return { status: 'skipped', message: 'チェックイン日決済の予約ではありません。' };
+  if (b.status !== 'confirmed' || b.payment_option !== 'online_checkin') return { status: 'skipped', message: 'チェックアウト日決済の予約ではありません。' };
   if (b.payment_status !== 'scheduled' && b.payment_status !== 'charge_failed') return { status: 'skipped', message: '請求できる状態ではありません。' };
   if (!b.stripe_customer_id || !b.stripe_payment_method_id) return { status: 'skipped', message: 'カードが登録されていません。' };
   const attempt = (b.charge_attempts ?? 0) + 1;
@@ -819,7 +819,8 @@ export async function retryPartnerCharge(db: SupabaseClient, partner: AnyPartner
   return chargeBooking(db, partner, b, origin, 'staff');
 }
 
-// 定期処理（毎時）: チェックイン日を迎えた「チェックイン日決済」の予約に請求する。請求失敗の予約は自動では再請求しない。
+// 定期処理（毎時）: チェックアウト日を迎えた「チェックアウト日決済」の予約に請求する（2026-10-07 にチェックイン日から変更・
+// 現地の精算と揃える）。請求失敗の予約は自動では再請求しない。
 export async function chargeDueBookings(db: SupabaseClient, origin: string): Promise<{ target: number; paid: number; failed: number; skipped: number }> {
   const { data } = await db
     .from('rms_partner_bookings')
@@ -827,8 +828,8 @@ export async function chargeDueBookings(db: SupabaseClient, origin: string): Pro
     .eq('status', 'confirmed')
     .eq('payment_option', 'online_checkin')
     .eq('payment_status', 'scheduled')
-    .lte('check_in_date', todayJst())
-    .order('check_in_date')
+    .lte('check_out_date', todayJst())
+    .order('check_out_date')
     .limit(50);
   const rows = (data ?? []) as { id: string }[];
   const out = { target: rows.length, paid: 0, failed: 0, skipped: 0 };
@@ -1126,7 +1127,7 @@ export async function previewPartnerCancels(
   return out;
 }
 
-// キャンセル料を登録カードへ請求（チェックイン日決済の予約）。失敗したら月末の請求書へ回す。
+// キャンセル料を登録カードへ請求（チェックアウト日決済の予約）。失敗したら月末の請求書へ回す。
 async function chargeCancelFee(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, fee: number): Promise<{ ok: boolean; message?: string }> {
   const fail = async (message: string) => {
     await db
@@ -1254,7 +1255,7 @@ export async function cancelPartnerBooking(
     const r = partnerRefundOf(booking, fee, waived);
     if (r.refund > 0) await refundBooking(db, booking, by === 'partner' ? 'partner_cancel' : 'staff_cancel', r.kept > 0 ? r.refund : undefined);
   }
-  // チェックイン日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
+  // チェックアウト日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
   if (settlement === 'card' && fee > 0) await chargeCancelFee(db, partner, booking, fee);
   const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
   await sendBookingMails(db, partner, after, 'cancelled', opts.origin, booking.account_id).catch(() => false);
@@ -1311,7 +1312,7 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
             b.payment_status === 'paid'
               ? `（お支払い済み ${yen(b.paid_amount ?? chargeAmountOf(b))}）`
               : b.payment_status === 'scheduled'
-                ? `（チェックイン日に${b.card_label ? ` ${b.card_label} へ` : ''}請求します）`
+                ? `（チェックアウト日に${b.card_label ? ` ${b.card_label} へ` : ''}請求します）`
                 : b.payment_status === 'charge_failed'
                   ? '（カードへの請求ができませんでした）'
                   : b.payment_status === 'refunded'
@@ -1432,7 +1433,7 @@ async function partnerRecipients(
   return partnerMailRecipients([b.detail.booker?.email, accountEmail, partner.contact_email]);
 }
 
-// チェックイン日決済の請求失敗（宿・取引先へ）。
+// チェックアウト日決済の請求失敗（宿・取引先へ）。
 async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, origin: string, reason: string): Promise<boolean> {
   const s = partner.booking_settings;
   const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
@@ -1442,14 +1443,14 @@ async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b:
   // 予約者・ログインID・取引先の連絡先へ（宿泊者のメールへは送らない）
   const partnerTo = await partnerRecipients(db, partner, b, b.account_id);
   if (partnerTo.length) {
-    const lead = `${facilityName} です。ご予約（${b.booking_code}）のチェックイン日のお支払いで、ご登録のカードに請求できませんでした（${reason}）。お手数ですが、予約一覧の「カードを登録し直す」から別のカードをご登録ください。`;
+    const lead = `${facilityName} です。ご予約（${b.booking_code}）のチェックアウト日のお支払いで、ご登録のカードに請求できませんでした（${reason}）。お手数ですが、予約一覧の「カードを登録し直す」から別のカードをご登録ください。`;
     const text = [`${partner.name} 様`, '', lead, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
     const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(lead)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
     const r = await sendPartnerMail(db, partner.facility_id, { to: partnerTo, subject: `【${facilityName}】カードへのご請求ができませんでした（${b.booking_code}）`, html, text });
     sent = sent || r.sent;
   }
   if (s.notifyEmails.length) {
-    const head = `取引先「${partner.name}」の予約で、チェックイン日のカード請求に失敗しました（${reason}）。取引先にはカードの再登録をお願いするメールを送りました。Book の管理画面（取引先）から再請求するか、現地でのお支払いをご案内ください。`;
+    const head = `取引先「${partner.name}」の予約で、チェックアウト日のカード請求に失敗しました（${reason}）。取引先にはカードの再登録をお願いするメールを送りました。Book の管理画面（取引先）から再請求するか、現地でのお支払いをご案内ください。`;
     const text = [head, '', ...summary].join('\n');
     const html = `<p>${escapeHtml(head)}</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre>`;
     const r = await sendFacilityNotice(db, partner.facility_id, { to: s.notifyEmails, subject: `【取引先予約・請求失敗】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`, html, text });

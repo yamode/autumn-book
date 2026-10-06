@@ -174,7 +174,7 @@ export function cancelChargeOf(b: Omit<InvoiceTargetSource, 'status' | 'check_ou
   return 0;
 }
 
-// チェックイン日のカード決済が失敗したままの予約か（請求はしない・宿が確認する）
+// チェックアウト日のカード決済が失敗したままの予約か（請求はしない・宿が確認する）
 export const isChargeFailed = (b: Pick<InvoiceBookingSource, 'payment_status'>) => b.payment_status === 'charge_failed';
 
 // ---- 送信の失敗回数（rms_partner_invoices.send_error の先頭に「[送信失敗 N回目]」として持つ・列は増やさない） ----
@@ -198,7 +198,7 @@ export function sendFailureMessage(previous: string | null | undefined, reason: 
 const paymentNote = (b: InvoiceBookingSource): string => {
   if (b.payment_status === 'paid') return 'オンライン決済済み';
   if (b.payment_status === 'charge_failed') return 'カード決済失敗（要確認）';
-  if (b.payment_status === 'scheduled') return 'カード決済（チェックイン日）';
+  if (b.payment_status === 'scheduled') return 'カード決済（チェックアウト日）';
   return '別途精算';
 };
 

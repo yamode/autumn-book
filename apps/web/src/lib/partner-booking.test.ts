@@ -112,7 +112,7 @@ describe('予約時決済の割引', () => {
     expect(describePrepayDiscount({ type: 'percent', value: 5 })).toBe('5%引き');
   });
 
-  it('チェックイン日決済も支払方法として残す', () => {
+  it('チェックアウト日決済も支払方法として残す', () => {
     expect(normalizePartnerBookingSettings({ paymentOptions: ['online_checkin', 'online'] }).paymentOptions).toEqual(['online', 'online_checkin']);
   });
 });
@@ -122,7 +122,7 @@ describe('オンライン決済の金額', () => {
   it('予約時決済は割引後の宿泊料金＋入湯税', () => {
     expect(quoteChargeOf(q, 'online')).toEqual({ lodging: 28500, bathTax: 600, charge: 29100, discounted: true });
   });
-  it('チェックイン日決済・後払いは割引しない', () => {
+  it('チェックアウト日決済・後払いは割引しない', () => {
     expect(quoteChargeOf(q, 'online_checkin')).toEqual({ lodging: 30000, bathTax: 600, charge: 30600, discounted: false });
     expect(quoteChargeOf({ ...q, prepay: null }, 'online').charge).toBe(30600);
   });

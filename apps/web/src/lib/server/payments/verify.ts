@@ -62,7 +62,7 @@ export function checkPaymentIntent(
   return { ok: true, refId: ref };
 }
 
-// チェックイン日決済: カード登録（SetupIntent）が succeeded で、顧客とカードが付いているか。
+// チェックアウト日決済: カード登録（SetupIntent）が succeeded で、顧客とカードが付いているか。
 export function checkSetupIntent(si: SetupIntentLike, exp: IntentExpectation): IntentCheck {
   const ref = refOf(si.metadata, exp);
   if (typeof ref !== 'string') return ref;

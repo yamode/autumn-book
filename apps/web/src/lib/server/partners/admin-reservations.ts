@@ -33,6 +33,8 @@ export type PartnerLedgerView = {
 	status: PartnerBookingRow['status'];
 	checkedIn: boolean;
 	checkIn: string;
+	/** チェックアウト日（カード後日決済の請求日） */
+	checkOut: string;
 	nights: number;
 	roomCount: number;
 	adultTotal: number;
@@ -99,6 +101,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 		status: b.status,
 		checkedIn: !!b.checkedIn,
 		checkIn: b.check_in_date,
+		checkOut: b.check_out_date,
 		nights: b.nights,
 		roomCount: b.room_count,
 		adultTotal: b.adult_total,
@@ -219,7 +222,7 @@ export async function cancelPartnerReservation(
 	return cancelPartnerBooking(db, partner, row.id, 'staff', { ...opts, origin: event.url.origin });
 }
 
-/** チェックイン日決済の再請求（スタッフ） */
+/** チェックアウト日決済の再請求（スタッフ） */
 export async function retryPartnerReservationCharge(event: RequestEvent, reservationCode: string): Promise<ChargeResult> {
 	const { db, partner, row } = await partnerEditTarget(event, reservationCode);
 	return retryPartnerCharge(db, partner, row.id, event.url.origin);

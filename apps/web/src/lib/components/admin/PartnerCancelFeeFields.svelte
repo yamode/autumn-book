@@ -12,7 +12,7 @@
     settlement: 'none' | 'invoice' | 'refund' | 'card';
     refund: { paid: number; kept: number; refund: number } | null;
   };
-  // paid: 予約時決済で支払済み / card: チェックイン日決済でカード登録済み（未請求）
+  // paid: 予約時決済で支払済み / card: チェックアウト日決済でカード登録済み（未請求）
   let { preview, paid = false, card = false, invoiceMonth = '' }: { preview: Preview | null; paid?: boolean; card?: boolean; invoiceMonth?: string } = $props();
 
   let mode = $state<'rule' | 'no_show' | 'custom' | 'waive'>('rule');

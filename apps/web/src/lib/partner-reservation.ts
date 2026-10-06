@@ -58,7 +58,7 @@ export function partnerPaymentStatusLabel(status: string | null | undefined, car
 		case 'paid':
 			return '支払済み';
 		case 'scheduled':
-			return `チェックイン日に請求${cardLabel ? `（${cardLabel}）` : ''}`;
+			return `チェックアウト日に請求${cardLabel ? `（${cardLabel}）` : ''}`;
 		case 'charge_failed':
 			return '請求失敗';
 		case 'refunded':
@@ -84,11 +84,11 @@ export function partnerBookingStatusLabel(status: string | null | undefined, che
 export const canStaffCancelPartnerBooking = (b: { status: string; checkedIn?: boolean }) =>
 	(b.status === 'confirmed' || b.status === 'pending_payment') && !b.checkedIn;
 
-/** チェックイン日決済の再請求（または当日の今すぐ請求）を出せるか（/admin/partners/[id] と同じ条件） */
+/** チェックアウト日決済の再請求（または当日の今すぐ請求）を出せるか（/admin/partners/[id] と同じ条件） */
 export const canRetryPartnerCharge = (
-	b: { status: string; paymentOption: string | null; paymentStatus: string; checkIn: string },
+	b: { status: string; paymentOption: string | null; paymentStatus: string; checkOut: string },
 	todayIso: string
 ) =>
 	b.status === 'confirmed' &&
 	b.paymentOption === 'online_checkin' &&
-	(b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkIn <= todayIso));
+	(b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkOut <= todayIso));

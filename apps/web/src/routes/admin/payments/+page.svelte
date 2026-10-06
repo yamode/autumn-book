@@ -146,7 +146,7 @@
 			<dl class="space-y-1.5 text-stone-600">
 				<div class="flex gap-2">
 					<dt class="w-28 shrink-0 text-stone-400">支払方法</dt>
-					<dd>月末締め翌月末銀行振込／オンライン決済（予約時）／オンライン決済（チェックイン日）</dd>
+					<dd>月末締め翌月末銀行振込／オンライン決済（予約時）／オンライン決済（チェックアウト日）</dd>
 				</div>
 				<div class="flex gap-2">
 					<dt class="w-28 shrink-0 text-stone-400">オンライン決済</dt>

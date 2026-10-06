@@ -59,7 +59,7 @@
     refunded: '返金済み',
     refund_failed: '返金できませんでした（宿で対応します）',
     unpaid: 'お支払い待ち',
-    scheduled: 'チェックイン日に請求予定',
+    scheduled: 'チェックアウト日に請求予定',
     charge_failed: 'カードへの請求ができませんでした'
   };
   // ---- 支払の再開・カードの登録（し直し）: 同じ画面のモーダルで払う（lib/components/payment/StripePayment.svelte）----
@@ -145,7 +145,7 @@
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ カードを登録し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
       {#if paidNameHolder}<p class="mt-1 text-sm">ご予約名義: {paidNameHolder}</p>{/if}
-      <p class="mt-1 text-sm text-stone-500">チェックイン日に登録カードへ自動でご請求します。それまではご請求はありません。</p>
+      <p class="mt-1 text-sm text-stone-500">チェックアウト日に登録カードへ自動でご請求します。それまではご請求はありません。</p>
     </div>
   {:else if data.payment?.status === 'card_updated'}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 font-medium text-[var(--pt-accent)]">
@@ -153,7 +153,7 @@
         ? 'ご請求が完了しました。'
         : data.payment.charge?.status === 'failed'
           ? `ただし、このカードでもご請求できませんでした${data.payment.charge.message ? `（${data.payment.charge.message}）` : ''}。別のカードでお試しいただくか、宿へご連絡ください。`
-          : 'チェックイン日にこのカードへご請求します。'}
+          : 'チェックアウト日にこのカードへご請求します。'}
     </p>
   {:else if data.payment?.status === 'card_late'}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
@@ -378,7 +378,7 @@
       <dl class="mt-3 grid gap-1 rounded-lg bg-stone-50 px-3 py-2.5 text-sm">
         <div class="flex justify-between gap-2"><dt class="text-stone-500">宿泊日</dt><dd>{fmt(b.checkIn)} から {b.nights}泊</dd></div>
         <div class="flex justify-between gap-2"><dt class="text-stone-500">ご宿泊者</dt><dd>{b.guestName} 様</dd></div>
-        <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックイン日の請求額' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックアウト日の請求額' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd></div>
         {#if b.status === 'pending_payment' && b.paymentExpiresAt}<div class="flex justify-between gap-2"><dt class="text-stone-500">期限</dt><dd>{hm(b.paymentExpiresAt)} まで</dd></div>{/if}
       </dl>
       <div class="mt-4">

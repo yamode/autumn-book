@@ -1455,7 +1455,7 @@
                     {:else if b.status === 'cancelled'}<span class="text-stone-500">取消（{b.cancelledBy === 'staff' ? '宿' : b.cancelledBy === 'system' ? '自動' : '取引先'}）</span>
                     {:else if b.checkedIn}<span class="text-emerald-700">チェックイン済み</span>
                     {:else}<span class="text-brand-800">予約中</span>{/if}
-                    {#if b.paymentName}<div class="text-[11px] text-stone-500">{b.paymentName}{b.paymentStatus === 'paid' ? '・支払済' : b.paymentStatus === 'refunded' ? '・返金済' : b.paymentStatus === 'scheduled' ? `・チェックイン日に請求${b.cardLabel ? `（${b.cardLabel}）` : ''}` : ''}</div>{/if}
+                    {#if b.paymentName}<div class="text-[11px] text-stone-500">{b.paymentName}{b.paymentStatus === 'paid' ? '・支払済' : b.paymentStatus === 'refunded' ? '・返金済' : b.paymentStatus === 'scheduled' ? `・チェックアウト日に請求${b.cardLabel ? `（${b.cardLabel}）` : ''}` : ''}</div>{/if}
                     {#if b.billedToPartner}<div class="mt-0.5"><span class="rounded-full border border-red-300 bg-red-50 px-1.5 py-px text-[11px] font-bold whitespace-nowrap text-red-700">取引先へ請求（お客様には請求しない）</span></div>{/if}
                     {#if b.cardConsentAt}<div class="text-[11px] text-stone-500" title={b.cardConsentText ?? ''}>請求の同意: {dt(b.cardConsentAt)}</div>{/if}
                     {#if b.paymentStatus === 'charge_failed'}<div class="text-[11px] text-rose-700">請求失敗{b.chargeError ? `：${b.chargeError}` : ''}</div>{/if}
@@ -1463,7 +1463,7 @@
                     {#if b.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {b.cancelFee.fee > 0 ? `${b.cancelFee.fee.toLocaleString('ja-JP')}円（${b.cancelFee.basis}・不課税）${b.cancelFee.settlement ? ` ${b.cancelFee.settlement}` : ''}` : `なし${b.cancelFee.waived ? '（免除）' : ''}`}{#if b.cancelFee.note}<span class="text-stone-500">・{b.cancelFee.note}</span>{/if}{#if b.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{b.cancelFee.error ? `（${b.cancelFee.error}）` : ''}</span>{/if}</span>{/if}
                   </td>
                   <td class="py-2 text-right">
-                    {#if canEdit && b.status === 'confirmed' && b.paymentOption === 'online_checkin' && (b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkIn <= todayIso))}
+                    {#if canEdit && b.status === 'confirmed' && b.paymentOption === 'online_checkin' && (b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkOut <= todayIso))}
                       <form
                         method="POST"
                         action={`?/retryCharge`}
@@ -1684,7 +1684,7 @@
             </p>
             {#if data.invoices.chargeFailed.length}
               <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                カード決済（チェックイン日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。ご請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
+                カード決済（チェックアウト日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。ご請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
               </p>
             {/if}
           {/if}

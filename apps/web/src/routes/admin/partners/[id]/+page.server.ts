@@ -291,6 +291,7 @@ export const load: PageServerLoad = async (event) => {
 			status: b.status,
 			checkedIn: !!b.checkedIn,
 			checkIn: b.check_in_date,
+			checkOut: b.check_out_date,
 			nights: b.nights,
 			roomName: b.room_name ?? b.room_code ?? '',
 			roomCount: b.room_count,

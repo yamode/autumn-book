@@ -158,7 +158,7 @@
   // カード登録の同意文（確定前の見本。予約を作った後はサーバが作った文面＝記録に残る文面を出す）
   const consentPreview = $derived(
     quote.ok && paymentOption === 'online_checkin'
-      ? `${data.portal.facilityName}のご宿泊について、チェックイン日の ${fmt(quote.checkIn)} に、このカードへ ${yen(payTotal)}（宿泊料金 ${yen(lodgingTotal)}${quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}）を請求することに同意します。キャンセル料がかかる日に取り消した場合は、キャンセル料をこのカードへ請求します。`
+      ? `${data.portal.facilityName}のご宿泊について、チェックアウト日の ${fmt(quote.checkOut)} に、このカードへ ${yen(payTotal)}（宿泊料金 ${yen(lodgingTotal)}${quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}）を請求することに同意します。キャンセル料がかかる日に取り消した場合は、キャンセル料をこのカードへ請求します。`
       : null
   );
 
@@ -606,7 +606,7 @@
             {#if paymentOption === 'online'}
               <p class="text-sm text-stone-500">予約とお支払いを同時に行います。お支払いが完了した時点でご予約が確定します。</p>
             {:else}
-              <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックイン日に登録カードへ自動でご請求します。</p>
+              <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックアウト日に登録カードへ自動でご請求します。</p>
             {/if}
           {:else if paymentLabel}
             {@const note = data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}

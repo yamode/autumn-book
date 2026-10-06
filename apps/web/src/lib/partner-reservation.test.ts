@@ -52,8 +52,8 @@ describe('操作の可否', () => {
 		expect(canStaffCancelPartnerBooking({ status: 'cancelled' })).toBe(false);
 		expect(canStaffCancelPartnerBooking({ status: 'expired' })).toBe(false);
 	});
-	it('再請求はチェックイン日決済の請求失敗、または当日以降の請求予定だけ', () => {
-		const base = { status: 'confirmed', paymentOption: 'online_checkin', paymentStatus: 'charge_failed', checkIn: '2026-10-05' };
+	it('再請求はチェックアウト日決済の請求失敗、またはチェックアウト日を迎えた請求予定だけ', () => {
+		const base = { status: 'confirmed', paymentOption: 'online_checkin', paymentStatus: 'charge_failed', checkOut: '2026-10-05' };
 		expect(canRetryPartnerCharge(base, '2026-10-01')).toBe(true);
 		expect(canRetryPartnerCharge({ ...base, paymentStatus: 'scheduled' }, '2026-10-01')).toBe(false);
 		expect(canRetryPartnerCharge({ ...base, paymentStatus: 'scheduled' }, '2026-10-05')).toBe(true);
@@ -61,7 +61,7 @@ describe('操作の可否', () => {
 		expect(canRetryPartnerCharge({ ...base, status: 'cancelled' }, '2026-10-05')).toBe(false);
 	});
 	it('支払状況の表示名', () => {
-		expect(partnerPaymentStatusLabel('scheduled', 'Visa 4242')).toBe('チェックイン日に請求（Visa 4242）');
+		expect(partnerPaymentStatusLabel('scheduled', 'Visa 4242')).toBe('チェックアウト日に請求（Visa 4242）');
 		expect(partnerPaymentStatusLabel('paid')).toBe('支払済み');
 		expect(partnerPaymentStatusLabel(null)).toBe('—');
 	});
