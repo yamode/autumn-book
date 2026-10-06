@@ -539,7 +539,7 @@
         {:else}
           <p class="text-[15px] leading-7 text-stone-700">キャンセル料の規定は宿へお問い合わせください。</p>
         {/if}
-        <p class="mt-3 text-[15px] leading-7 text-stone-700">{data.cancelText ? `取消は宿泊日の${data.cancelText}まで、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}</p>
+        <p class="mt-3 text-[15px] leading-7 text-stone-700">{data.cancelText ? `取消は宿泊日の${data.cancelText}、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}</p>
       </section>
       <section class="card">
         <h3 class="card-title">お子様について</h3>
@@ -631,8 +631,8 @@
             </div>
           {/if}
           <div class="mt-4 flex items-end justify-between gap-3 border-t border-stone-200 pt-4">
-            <span class="font-bold">お支払い金額合計</span>
-            <span class="whitespace-nowrap"><span class="mr-1 text-sm">税込</span><span class="text-[1.75rem] font-bold tabular-nums leading-none">{num(payTotal)}</span><span class="font-bold">円</span></span>
+            <span class="whitespace-nowrap font-bold">お支払い金額合計</span>
+            <span class="whitespace-nowrap"><span class="mr-1 text-sm">税込</span><span class="text-2xl font-bold tabular-nums leading-none">{num(payTotal)}</span><span class="font-bold">円</span></span>
           </div>
           {#if prepay && !discounted && data.paymentOptions.some((o) => o.id === 'online')}
             <p class="mt-2 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {num(prepay.total + quote.bathTax)}円（{prepay.label}）</p>
@@ -650,7 +650,7 @@
 
       <!-- 取消の案内（一休の「◯日までキャンセル料無料」の帯の位置） -->
       <p class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sm font-bold leading-6 text-sky-700">
-        {data.cancelText ? `宿泊日の${data.cancelText}まで、予約一覧から取消できます` : '取消は宿へご連絡ください'}
+        {data.cancelText ? `宿泊日の${data.cancelText}、予約一覧から取消できます` : '取消は宿へご連絡ください'}
       </p>
 
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}

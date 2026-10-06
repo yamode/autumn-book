@@ -62,7 +62,8 @@ export const load = async (event) => {
     summary: {
       photo: roomContent?.photos[0]?.url ?? planContent?.photos[0]?.url ?? null,
       facilityName: partner.facility_name,
-      area: facility ? [facility.prefecture, facility.addressPublic].filter(Boolean).join(' ') : '',
+      // 公開用の住所が県名から始まるときは住所だけ（「秋田県 秋田県男鹿市…」のように県名が重なるため）
+      area: facility ? (facility.addressPublic && facility.prefecture && facility.addressPublic.startsWith(facility.prefecture) ? facility.addressPublic : [facility.prefecture, facility.addressPublic].filter(Boolean).join(' ')) : '',
       checkinTime: facility?.checkinTime ?? null,
       checkoutTime: facility?.checkoutTime ?? null
     },
