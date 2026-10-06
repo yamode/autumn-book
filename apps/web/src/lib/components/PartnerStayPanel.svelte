@@ -2,9 +2,10 @@
   // 取引先専用ページ「お部屋とプラン」の検索バーから開く日付パネル（2か月横並び・スマホは1か月）。
   // 泊数を変えると、どこかの部屋・プランで全泊空いている日だけに料金（1名1泊の最安）を出す。
   // 日付を押しても閉じず、「この日程で検索」で確定する。
-  // プラン詳細（日付未定）から開くときは filter で部屋・プランを絞り、日付を押したらそのまま onApply（予約画面へ）。
+  // プラン詳細（日付未定）から開くときは filter で部屋・プランを絞り、日付を押したらその日の料金（offer）を onPick で返す
+  // （プラン詳細をその日の料金で表示し直す）。
   import { isHoliday } from '$lib/holidays';
-  import { partnerStayOffers } from '$lib/partner-stay';
+  import { partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import { fetchPortalMonth, type PortalMonthJson } from '$lib/partner-month-client';
 
   let {
@@ -20,6 +21,7 @@
     pickApplies = false,
     isBookable,
     onApply,
+    onPick,
     onClose
   }: {
     token: string;
@@ -33,8 +35,10 @@
     today: string;
     /** 部屋・プランを絞る（プラン詳細から開いたとき）。null ならすべての部屋・プランの最安 */
     filter?: { roomCode: string; planCode: string; planName: string } | null;
-    /** 日付を押したらすぐ onApply する（「この日程で検索」ボタンを出さない） */
+    /** 日付を押したらすぐ onPick する（「この日程で検索」ボタンを出さない） */
     pickApplies?: boolean;
+    /** pickApplies のとき: 押した日・泊数・その日のいちばん安い料金 */
+    onPick?: (date: string, nights: number, offer: PartnerStayOffer) => void;
     /** 予約を受け付ける日か（受付締切を過ぎた日は押せなくする）。省略時はすべて */
     isBookable?: (iso: string) => boolean;
     onApply: () => void;
@@ -83,7 +87,7 @@
     const [year, month] = ym.split('-').map(Number);
     const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
     const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const out: ({ iso: string; dow: number; min: number | null; closed: boolean; inRange: boolean } | null)[] = Array(first).fill(null);
+    const out: ({ iso: string; dow: number; min: number | null; offer: PartnerStayOffer | null; closed: boolean; inRange: boolean } | null)[] = Array(first).fill(null);
     for (let d = 1; d <= last; d += 1) {
       const iso = `${ym}-${pad(d)}`;
       const inRange = !!bounds && iso >= bounds.earliest && iso <= bounds.latest;
@@ -91,7 +95,7 @@
         inRange && (!isBookable || isBookable(iso))
           ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, rooms, roomCode: filter?.roomCode, planCode: filter?.planCode, planName: filter?.planName })
           : null;
-      out.push({ iso, dow: (first + d - 1) % 7, min: offers?.length ? offers[0].perPerson : null, closed: index.get(iso)?.closed === true, inRange });
+      out.push({ iso, dow: (first + d - 1) % 7, min: offers?.length ? offers[0].perPerson : null, offer: offers?.[0] ?? null, closed: index.get(iso)?.closed === true, inRange });
     }
     return out;
   }
@@ -144,7 +148,7 @@
                 aria-pressed={selected}
                 onclick={() => {
                   date = c.iso;
-                  if (pickApplies) onApply();
+                  if (pickApplies && c.offer) onPick?.(c.iso, nights, c.offer);
                 }}
                 class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
               >
@@ -167,7 +171,7 @@
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
     <p class="text-base text-stone-700">
-      {#if pickApplies}チェックイン日を選ぶと、予約の入力へ進みます{:else if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
+      {#if pickApplies}チェックイン日を選ぶと、その日の料金でプランの詳細を表示します{:else if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
       <span class="ml-2 text-sm text-stone-400">— は満室・料金なし</span>
     </p>
     {#if !pickApplies}

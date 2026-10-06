@@ -4,7 +4,8 @@
   // 本文: プランの紹介・専用特典・お料理・お部屋・キャンセルポリシー・お子様。
   // 上部の「予約へ進む」が見えなくなったら、日程・人数・料金・「予約へ進む」の固定フッターを出す。
   // 日付未定（日程を選ぶ前の一覧から開いたとき）は料金を「〜」で出し、「日付を選択して予約」で、この部屋・プランに絞った
-  // 日付パネルをモーダルの中に開く。日付を押したらそのまま予約の入力へ（onPickDate）。日程の欄を押しても同じパネルを開く。
+  // 日付パネルをモーダルの中に開く。日付を押したら、その日の料金でこの詳細を表示し直す（onPickDate）。
+  // 料金とプランの内容を確かめてから「予約へ進む」。日程の欄を押しても同じパネルを開く。
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import PartnerContentBody from './PartnerContentBody.svelte';
@@ -14,6 +15,7 @@
   import PartnerTermsTable from './PartnerTermsTable.svelte';
   import MarkdownView from './MarkdownView.svelte';
   import PartnerStayPanel from './PartnerStayPanel.svelte';
+  import type { PartnerStayOffer } from '$lib/partner-stay';
   import { roomParts, type ContentPhoto, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import { freeCancelText, type PlanTerms } from '$lib/partner-plan-terms';
 
@@ -70,8 +72,8 @@
     maxNights: number;
     /** 予約を受け付ける日か（日付パネルで締切後の日を押せなくする） */
     isBookable: (iso: string) => boolean;
-    /** 日付パネルで日付を選んだら（予約の入力へ進む） */
-    onPickDate: (date: string, nights: number) => void;
+    /** 日付パネルで日付を選んだら（その日の料金で詳細を表示し直す） */
+    onPickDate: (date: string, nights: number, offer: PartnerStayOffer) => void;
     onChangeGuests: () => void;
   } = $props();
 
@@ -236,7 +238,8 @@
                 filter={{ roomCode: detail.roomCode, planCode: detail.planCode, planName: detail.planLabel }}
                 pickApplies
                 {isBookable}
-                onApply={() => pickDate && onPickDate(pickDate, pickNights)}
+                onApply={() => {}}
+                onPick={onPickDate}
                 onClose={() => (pickerOpen = false)}
               />
             </div>

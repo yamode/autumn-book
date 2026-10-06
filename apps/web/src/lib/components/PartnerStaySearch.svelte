@@ -15,7 +15,7 @@
   import { roomParts, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import { fetchPortalMonth } from '$lib/partner-month-client';
   import type { PartnerRateDay } from '$lib/partner-pricing';
-  import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers } from '$lib/partner-stay';
+  import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import type { StayPageData } from '$lib/server/partners/stay-page';
   import { planSummary } from '$lib/plan-summary';
 
@@ -195,7 +195,8 @@
     return `/p/${token}/book?${q}`;
   };
   // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から。
-  // 日程を選ぶ前は日付未定のまま開き、中の「日付を選択して予約」で日付を選んだら予約の入力へ（pickDateForDetail）
+  // 日程を選ぶ前は日付未定のまま開き、中の「日付を選択して予約」で日付を選んだら、その日の料金で詳細を表示し直す
+  // （pickDateForDetail。料金と内容を確かめてから「予約へ進む」）
   let detail = $state<PlanDetail | null>(null);
   // svelte-ignore state_referenced_locally
   let detailParams = $state<Params>(data.params);
@@ -221,10 +222,15 @@
       bookHref: bookHref(r, p)
     };
   }
-  function pickDateForDetail(iso: string, nights: number) {
-    if (!detailRow) return;
-    void goto(bookHref(detailRow, { ...detailParams, date: iso, nights }));
+  function pickDateForDetail(iso: string, n: number, offer: PartnerStayOffer) {
+    const p = { ...detailParams, date: iso, nights: n };
+    openDetail({ ...offer, total: offer.totalPerPerson * p.guests * p.rooms }, roomOf(offer.roomCode), p);
+    // 後ろの一覧・検索バーもその日程にそろえる（詳細を閉じたとき、その日の一覧になっているように）
+    date = iso;
+    nights = n;
+    search();
   }
+
   // モーダルの人数を押したら、閉じて検索バーのパネルを開く
   function reopenSearch(panel: 'date' | 'guests') {
     detail = null;
