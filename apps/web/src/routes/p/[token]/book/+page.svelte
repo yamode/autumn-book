@@ -86,11 +86,8 @@
   // 請求書払い（取引先払い）: ご宿泊者様には請求しないことを支払方法の近くに出す（2026-10-02 指示）
   const billedToPartner = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.billable ?? false);
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
-  // 右の欄の「お支払方法」の ⓘ（請求書払いの説明）。押して固定・マウスを乗せる／フォーカスでも開く
-  let billTipOpen = $state(false);
   // 専用特典のモーダル
   let perkContent = $state<PerkModalContent | null>(null);
-  let billTipHover = $state(false);
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
   // 金額の計算はサーバ（Intent の金額）と同じ純関数（lib/partner-booking.ts の quoteChargeOf）
@@ -241,7 +238,6 @@
   const label = 'mb-1 block text-sm font-medium';
 </script>
 
-<svelte:window onclick={() => (billTipOpen = false)} onkeydown={(e) => { if (e.key === 'Escape') billTipOpen = false; }} />
 
 <svelte:head>
   <title>ご予約 | {data.portal.facilityName}</title>
@@ -520,7 +516,11 @@
             {@const note = data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}
             <p class="text-sm text-stone-500">{paymentLabel}{note ? `（${note}）` : ''}</p>
             {#if billedToPartner}
-              <p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</p>
+              <!-- 請求書払いの説明（右欄のツールチップをやめてここに出す・2026-10-06 指示） -->
+              <div class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3.5 py-3 text-sm leading-6">
+                <p class="font-medium text-[var(--pt-accent)]">ご宿泊者様へのご請求はありません。宿泊料金・入湯税は貴社へご請求します。</p>
+                <p class="mt-1 text-stone-600">館内でのご飲食・売店など、現地でのご利用分は、チェックアウト時にご宿泊者様へ別途ご請求します。</p>
+              </div>
             {/if}
           {/if}
         </div>
@@ -587,32 +587,7 @@
       <dl class="mt-4 space-y-3 border-t border-stone-200 pt-4">
         {#if paymentLabel}
           <div>
-            <dt class="flex items-center gap-1.5 text-sm text-stone-500">
-              お支払方法
-              {#if billedToPartner}
-                <!-- 請求書払いの説明はツールチップ（マウスを乗せる・押す・フォーカスで開く） -->
-                <span class="relative inline-flex">
-                  <button
-                    type="button"
-                    aria-label="お支払いについて"
-                    aria-expanded={billTipOpen}
-                    aria-describedby={billTipOpen ? 'bill-tip' : undefined}
-                    onclick={(e) => { e.stopPropagation(); billTipOpen = !billTipOpen; }}
-                    onmouseenter={() => (billTipHover = true)}
-                    onmouseleave={() => (billTipHover = false)}
-                    onfocus={() => (billTipHover = true)}
-                    onblur={() => (billTipHover = false)}
-                    class="flex h-5 w-5 items-center justify-center rounded-full border border-stone-400 text-[11px] font-bold leading-none text-stone-500 hover:border-[var(--pt-accent)] hover:text-[var(--pt-accent)]"
-                  >i</button>
-                  {#if billTipOpen || billTipHover}
-                    <span id="bill-tip" role="tooltip" class="absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-lg bg-brand-900 px-3.5 py-3 text-sm leading-6 text-white shadow-lg">
-                      ご宿泊者様へのご請求はありません。宿泊料金・入湯税は貴社へご請求します。<br />
-                      ただし、館内でのご飲食・売店などの現地でのご利用分は、チェックアウト時にご宿泊者様へ別途ご請求します。
-                    </span>
-                  {/if}
-                </span>
-              {/if}
-            </dt>
+            <dt class="text-sm text-stone-500">お支払方法</dt>
             <dd class="mt-0.5 text-base leading-7">{paymentLabel}</dd>
           </div>
         {/if}
