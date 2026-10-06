@@ -126,11 +126,35 @@
 		px で直に指定した小さな文字（text-[9px]〜[12px]）は rem に読み替えて一緒に大きくする。
 		head に置くので管理画面を開いている間だけ効き、公開サイトへ移ると外れる（サーバ描画から効くのでちらつかない）。
 	-->
+	<!--
+		2026-10-06 指示（見づらい・小さい）: 基準を 18px → 19px、いちばん多い補足の文字（text-xs）を一段大きく。
+		文字は取引先ページと同じ一休式（OS 標準のゴシック・太さ 400・字間なし）。以前の system-ui は Windows で
+		「Yu Gothic UI」（幅の狭い細いラベル用の書体）になり、文章が詰まって薄く見えていた。
+		本文側（.admin-main）の灰色を一段濃く（stone-400→500・500→600 の濃さ）。サイドバーは暗い地なので変えない。
+		サイドバーのスクロールバーは普段は出さず、メニューにマウスを乗せたときだけ細く薄く出す。
+	-->
 	<style>
-		html { font-size: 112.5%; }
+		html {
+			font-size: 118.75%;
+			font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', sans-serif;
+			font-weight: 400;
+			letter-spacing: normal;
+		}
+		.font-display { font-family: inherit; letter-spacing: normal; }
 		.text-\[9px\], .text-\[10px\] { font-size: 0.6875rem; }
 		.text-\[11px\] { font-size: 0.75rem; }
 		.text-\[12px\] { font-size: 0.8125rem; }
+		.text-xs { font-size: 0.8125rem; line-height: 1.5; }
+		.admin-main {
+			--color-stone-400: oklch(55.3% 0.013 58.071);
+			--color-stone-500: oklch(44.4% 0.011 73.639);
+		}
+		.admin-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+		.admin-nav:hover { scrollbar-color: rgb(255 255 255 / 0.22) transparent; }
+		.admin-nav::-webkit-scrollbar { width: 6px; }
+		.admin-nav::-webkit-scrollbar-track { background: transparent; }
+		.admin-nav::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+		.admin-nav:hover::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.22); }
 	</style>
 </svelte:head>
 
@@ -161,13 +185,13 @@
 	{@render children()}
 	<p class="fixed right-3 bottom-2 font-mono text-[11px] text-stone-400">v{APP_VERSION}</p>
 {:else}
-	<div class="admin-shell flex min-h-screen bg-stone-100">
+	<div class="admin-shell flex min-h-screen bg-stone-50">
 		<aside class="sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
 			<p class="px-5 pt-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
 			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
 				{tenantWide ? '全施設共通' : data.currentFacility.name}
 			</p>
-			<nav class="flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
+			<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
 				{@render navList()}
 			</nav>
 			<div class="flex items-center justify-between px-5 py-4 text-xs">
@@ -185,7 +209,7 @@
 						<p class="font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
 						<button type="button" class="text-2xl leading-none text-stone-400 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}>×</button>
 					</div>
-					<nav class="flex-1 overflow-y-auto px-2 pb-4">
+					<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4">
 						{@render navList()}
 					</nav>
 					<div class="flex items-center justify-between px-5 py-4 text-xs">
@@ -196,7 +220,7 @@
 			</div>
 		{/if}
 
-		<div class="flex min-w-0 flex-1 flex-col">
+		<div class="admin-main flex min-w-0 flex-1 flex-col">
 			<!-- 上部バーはスクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
 			<div class="sticky top-0 z-30">
 				<header class="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-2.5">
