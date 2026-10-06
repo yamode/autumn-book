@@ -885,7 +885,7 @@ export function computeCancelFee(code: string, asOf: string, memberId?: string):
 		rulesSource: source,
 		rankCode: rank,
 		rate,
-		fee: Math.round(b.total * rate),
+		fee: Math.floor(b.total * rate),
 		totalAmount: b.total,
 		checkInDate: b.checkin,
 		rules: appliedRules
@@ -926,7 +926,7 @@ export function cancelBooking(code: string, opts: { waiveFee?: boolean; actor?: 
 	if (!b || b.status !== 'reserved') return { error: 'not_cancellable' };
 	// キャンセル料: プラン規定優先→予約作成会員 rank のルール→standard（設計書 §3.3）
 	const { rate } = cancellationRateForRank(b.cancellationPolicy, rankRules(bookingRank(b)), b.checkin, today());
-	const fee = opts.waiveFee ? 0 : Math.round(b.total * rate);
+	const fee = opts.waiveFee ? 0 : Math.floor(b.total * rate);
 	b.status = 'cancelled';
 	b.cancelFee = fee;
 	if (b.payment !== 'onsite' && b.paymentStatus === 'paid') {
