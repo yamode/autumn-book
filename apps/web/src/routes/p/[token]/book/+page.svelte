@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
+  import PerkBanners from '$lib/components/PerkBanners.svelte';
+  import PerkModal, { type PerkModalContent } from '$lib/components/PerkModal.svelte';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
@@ -87,6 +88,8 @@
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
   // 右の欄の「お支払方法」の ⓘ（請求書払いの説明）。押して固定・マウスを乗せる／フォーカスでも開く
   let billTipOpen = $state(false);
+  // 専用特典のモーダル
+  let perkContent = $state<PerkModalContent | null>(null);
   let billTipHover = $state(false);
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
@@ -530,10 +533,10 @@
       <h3 class="text-lg font-bold leading-snug">{data.target.displayName}</h3>
       {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
       {#if data.perks.length}
-        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します） -->
-        <div class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5">
-          <p class="text-xs font-bold text-[var(--pt-accent)]">専用特典</p>
-          <div class="mt-2"><PartnerPerkList perks={data.perks} variant="compact" showImages={false} /></div>
+        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。
+             右欄が長くなるので一覧は出さず、ボタンを押すとモーダルで中身を見せる（2026-10-06 指示） -->
+        <div class="mt-3">
+          <PerkBanners items={[{ key: 'partner', label: `取引先専用特典（${data.perks.length}件）`, kind: 'partner' }]} onopen={() => (perkContent = { label: '取引先専用特典', perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
         </div>
       {/if}
 
@@ -695,3 +698,5 @@
     color: var(--color-stone-500, #78716c);
   }
 </style>
+
+<PerkModal bind:content={perkContent} />
