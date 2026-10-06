@@ -571,13 +571,11 @@
           <p class="text-[15px] leading-7 text-stone-700">お子様のご宿泊・料金については宿へお問い合わせください。</p>
         {/if}
       </section>
-      {#if data.bookingNote || data.settings.notice || data.summary.checkinTime}
+      <!-- 注意事項は管理画面「予約時の注意事項」の文面（と取引先ごとの予約画面の案内）だけ。どちらも空ならセクションごと出さない（2026-10-06 指示） -->
+      {#if data.bookingNote?.trim() || data.settings.notice?.trim()}
         <section class="card">
           <h3 class="card-title">注意事項</h3>
-          {#if data.summary.checkinTime}
-            <p class="text-[15px] leading-7">チェックイン {data.summary.checkinTime}〜 ／ チェックアウト 〜{data.summary.checkoutTime}</p>
-          {/if}
-          {#if data.bookingNote}<div class="mt-2 text-[15px]"><MarkdownView source={data.bookingNote} /></div>{/if}
+          {#if data.bookingNote?.trim()}<div class="text-[15px]"><MarkdownView source={data.bookingNote} /></div>{/if}
           {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
         </section>
       {/if}
