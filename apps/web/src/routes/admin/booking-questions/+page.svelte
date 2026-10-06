@@ -21,7 +21,17 @@
 	const startAdd = () =>
 		(adding = { id: null, name: '', questions: [], sortOrder: (data.templates.at(-1)?.sortOrder ?? 0) + 10 });
 
-	const submitter = () => {
+	// 保存・削除の送信。削除は確認してから（送るボタンの formaction で見分ける）
+	const submitter = (d: Draft) => async ({ action, cancel }: { action: URL; cancel: () => void }) => {
+		if (action.search.includes('delete')) {
+			const used = (d.id && data.usage[d.id]?.length) || 0;
+			const ok = await askConfirm({
+				message: `テンプレート「${d.name}」を削除します。${used ? `使っている ${used} プランは「なし」に戻ります。` : ''}`,
+				confirmLabel: '削除する',
+				danger: true
+			});
+			if (!ok) return cancel();
+		}
 		busy = true;
 		return async ({ result, update }: { result: { type: string }; update: (o?: { reset?: boolean }) => Promise<void> }) => {
 			await update({ reset: false });
@@ -53,7 +63,7 @@
 {#if form && 'deleted' in form && form.deleted}<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">削除しました。使っていたプランは「なし」に戻りました。</p>{/if}
 
 {#snippet card(d: Draft, isNew: boolean)}
-	<form method="POST" action="?/save" use:enhance={submitter} class="rounded-xl border border-stone-200 bg-white p-4">
+	<form method="POST" action="?/save" use:enhance={submitter(d)} class="rounded-xl border border-stone-200 bg-white p-4">
 		<input type="hidden" name="id" value={d.id ?? ''} />
 		<input type="hidden" name="questions" value={JSON.stringify(d.questions)} />
 		<div class="mb-3 grid gap-2 sm:grid-cols-[1fr_120px]">
@@ -87,15 +97,6 @@
 					type="submit"
 					formaction="?/delete"
 					disabled={busy || !data.live}
-					onclick={async (e) => {
-						const f = e.currentTarget.form;
-						e.preventDefault();
-						const used = (d.id && data.usage[d.id]?.length) || 0;
-						const btn = e.currentTarget as HTMLButtonElement;
-						if (await askConfirm({ message: `テンプレート「${d.name}」を削除します。${used ? `使っている ${used} プランは「なし」に戻ります。` : ''}`, confirmLabel: '削除する', danger: true })) {
-							f?.requestSubmit(btn);
-						}
-					}}
 					class="rounded-md border border-rose-300 px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:opacity-40">削除</button
 				>
 			{/if}
