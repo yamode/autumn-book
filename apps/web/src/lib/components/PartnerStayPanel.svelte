@@ -119,7 +119,11 @@
 
 <div role="dialog" aria-label="ご宿泊日" class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
   <div class="flex flex-wrap items-center gap-3 border-b border-stone-100 pb-3">
-    <!-- 日付指定なし: 日付を選んでいるときだけ押せる（押すと日付を外す）。日付が無いときはチェック済みで押せない -->
+    <span class="text-base text-stone-600">泊数</span>
+    <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label="泊数を減らす"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg></button>
+    <span class="min-w-10 text-center text-base font-medium tabular-nums">{nights}泊</span>
+    <button type="button" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label="泊数を増やす"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14" /></svg></button>
+    <!-- 日付指定なし（泊数の右）: 日付を選んでいるときだけ押せる（押すと日付を外す）。日付が無いときはチェック済みで押せない -->
     <label class={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
       <input
         type="checkbox"
@@ -133,10 +137,6 @@
       />
       日付指定なし
     </label>
-    <span class="text-base text-stone-600">泊数</span>
-    <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:opacity-30" aria-label="泊数を減らす">−</button>
-    <span class="min-w-10 text-center text-base font-medium tabular-nums">{nights}泊</span>
-    <button type="button" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label="泊数を増やす">＋</button>
     {#if loading}<span class="text-sm text-stone-500" role="status">空き状況を確認中…</span>{:else if failed}<span class="text-sm text-rose-700" role="status">料金を読み込めませんでした</span>{:else}<span class="text-sm text-stone-400">泊数を変えると空き日がすぐ変わります</span>{/if}
     <span class="ml-auto text-sm text-stone-500">大人{guests}名{rooms > 1 ? `×${rooms}室` : '・1室'}・1名1泊の最安</span>
     <button type="button" onclick={onClose} class="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100" aria-label="閉じる">×</button>
