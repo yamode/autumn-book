@@ -1,12 +1,31 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: お部屋（部屋タイプ）の紹介。文章・写真は公式サイト（autumn-book）と共通。
+  // 各部屋の「この部屋の空室・料金を見る」で、その部屋だけの空室カレンダーを開き、日を選ぶと
+  // 料金カレンダーへその日程で移って、その部屋のカードまでスクロールする。
+  import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
+  import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import { roomAnchor, roomParts } from '$lib/partner-contents';
 
   let { data } = $props();
   const token = $derived($page.params.token);
+
+  // 部屋カレンダーの条件: 1泊・1室。人数は大人2名を定員の範囲に収めたもの（料金カレンダー側で変えられる）
+  let calendarRoom = $state<{ code: string; name: string } | null>(null);
+  let guests = $state(2);
+  function openCalendar(r: (typeof data.rooms)[number]) {
+    guests = Math.min(Math.max(2, r.capacityMin || 1), r.capacityMax || 6);
+    calendarRoom = { code: r.code, name: r.name };
+  }
+  function pick(date: string) {
+    const code = calendarRoom?.code;
+    calendarRoom = null;
+    const q = new URLSearchParams({ date, nights: '1', guests: String(guests), rooms: '1' });
+    if (code) q.set('room', code);
+    void goto(`/p/${token}/calendar?${q}`);
+  }
 </script>
 
 <svelte:head><title>{partnerTitle(data.portal, 'お部屋のご紹介')}</title><meta name="robots" content="noindex, nofollow" /></svelte:head>
@@ -35,9 +54,28 @@
               {#if r.headline && r.headline !== r.name}{r.headline}・{/if}定員 {r.capacityMin === r.capacityMax ? r.capacityMax : `${r.capacityMin}〜${r.capacityMax}`}名
             </p>
           </header>
-          <PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel="浴室・アメニティ・設備" />
+          <PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel="浴室・アメニティ・設備">
+            {#snippet actions()}
+              <button type="button" onclick={() => openCalendar(r)} class="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--pt-accent)] px-5 py-3 text-base font-bold text-white hover:opacity-90">
+                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
+                この部屋の空室・料金を見る
+              </button>
+            {/snippet}
+          </PartnerContentBody>
         </article>
       {/each}
     </div>
   {/if}
 </main>
+
+<PartnerRoomCalendarModal
+  bind:room={calendarRoom}
+  token={token ?? ''}
+  {guests}
+  nights={1}
+  rooms={1}
+  showInventory={data.showInventory}
+  today={data.today}
+  selected=""
+  onPick={pick}
+/>

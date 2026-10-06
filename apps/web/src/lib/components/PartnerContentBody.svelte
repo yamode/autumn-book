@@ -1,6 +1,7 @@
 <script lang="ts">
   // 取引先専用ページの紹介の本文（写真・説明・仕様の表・説明ブロック）。「お部屋」「プラン」で共通。
   // 配色は取引先ページのレイアウト（/p/[token]/+layout.svelte）の --pt-* を使う。
+  import type { Snippet } from 'svelte';
   import PartnerPhotoGallery from './PartnerPhotoGallery.svelte';
   import { groupSections, type ContentPhoto, type ContentSection, type ContentSpec } from '$lib/partner-contents';
 
@@ -10,7 +11,8 @@
     specs,
     sections,
     amenities = [],
-    detailLabel = '詳しく見る'
+    detailLabel = '詳しく見る',
+    actions
   }: {
     photos: ContentPhoto[];
     description: string;
@@ -18,6 +20,8 @@
     sections: ContentSection[];
     amenities?: string[];
     detailLabel?: string;
+    /** 右欄のいちばん下に置くボタンなど（「お部屋」ページの空室・料金ボタン） */
+    actions?: Snippet;
   } = $props();
 
   const groups = $derived(groupSections(sections));
@@ -45,6 +49,7 @@
         {#each amenities as a (a)}<li class="rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-1 text-[var(--pt-accent)]">{a}</li>{/each}
       </ul>
     {/if}
+    {#if actions}{@render actions()}{/if}
   </div>
 </div>
 

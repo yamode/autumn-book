@@ -121,7 +121,7 @@
           <span class="min-w-32 text-center text-xl font-bold">{y}年{m}月</span>
           <button type="button" disabled={!!bounds && shiftYm(ym, 1) > bounds.latest.slice(0, 7)} onclick={() => (ym = shiftYm(ym, 1))} class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 disabled:opacity-30" aria-label="次の月">›</button>
         </div>
-        <div class={`overflow-hidden rounded-xl border border-stone-200 transition-opacity ${loading ? 'opacity-50' : ''}`}>
+        <div class="overflow-hidden rounded-xl border border-stone-200">
           <div class="grid grid-cols-7 border-b border-stone-200 bg-stone-50 text-center text-sm">
             {#each WEEK as w, i}<div class={`py-2 font-medium ${i === 0 ? 'text-rose-700' : i === 6 ? 'text-sky-700' : 'text-stone-500'}`}>{w}</div>{/each}
           </div>
@@ -130,15 +130,19 @@
               {#if !c}
                 <div class="min-h-[4.5rem] bg-stone-50"></div>
               {:else}
+                <!-- 取得中は今日以降の料金欄をシマーにする（日付パネルと同じ。前の月・人数の料金を押させない） -->
+                {@const pending = loading && c.iso >= today}
                 <button
                   type="button"
-                  disabled={c.min == null}
+                  disabled={pending || c.min == null}
                   onclick={() => onPick(c.iso)}
                   aria-pressed={c.iso === selected}
-                  class={`flex min-h-[4.5rem] flex-col items-start bg-white p-1.5 text-left transition sm:min-h-20 sm:p-2 ${c.iso === selected ? 'ring-2 ring-inset ring-[var(--pt-accent)]' : ''} ${c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'bg-stone-50/70 text-stone-400'}`}
+                  class={`flex min-h-[4.5rem] flex-col items-start bg-white p-1.5 text-left transition sm:min-h-20 sm:p-2 ${c.iso === selected ? 'ring-2 ring-inset ring-[var(--pt-accent)]' : ''} ${pending ? '' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'bg-stone-50/70 text-stone-400'}`}
                 >
-                  <span class={`text-sm font-semibold sm:text-base ${c.min == null ? '' : c.dow === 0 || isHoliday(c.iso) ? 'text-rose-700' : c.dow === 6 ? 'text-sky-700' : 'text-brand-900'}`}>{Number(c.iso.slice(8))}</span>
-                  {#if c.min != null}
+                  <span class={`text-sm font-semibold sm:text-base ${!pending && c.min == null ? '' : c.dow === 0 || isHoliday(c.iso) ? 'text-rose-700' : c.dow === 6 ? 'text-sky-700' : 'text-brand-900'}`}>{Number(c.iso.slice(8))}</span>
+                  {#if pending}
+                    <span class="shimmer mt-auto block h-3.5 w-4/5 max-w-16" aria-hidden="true"></span>
+                  {:else if c.min != null}
                     {#if c.min === monthMin}<span class="rounded bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white">最安</span>{/if}
                     <span class="mt-auto text-xs font-semibold tabular-nums text-brand-900 sm:text-sm">{c.min.toLocaleString('ja-JP')}<span class="text-[10px] font-normal">円〜</span></span>
                     {#if showInventory && c.rest != null && c.rest <= 2}<span class="text-[10px] font-medium text-amber-700 sm:text-xs">残り{c.rest}室</span>{/if}
@@ -152,7 +156,7 @@
             {/each}
           </div>
         </div>
-        <p class="mt-2 text-xs text-stone-500">日付を押すと、その日程で一覧を表示します。</p>
+        <p class="mt-2 text-xs text-stone-500">{#if loading}<span role="status">料金を確認中…</span>{:else}日付を押すと、その日程で一覧を表示します。{/if}</p>
       </div>
     </div>
   </div>

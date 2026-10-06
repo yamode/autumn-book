@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { logPartnerAccess } from '$lib/server/partners/store';
+import { logPartnerAccess, todayJst } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 
@@ -23,6 +23,9 @@ export const load = async (event) => {
   });
   return {
     portal: portalHeader(partner, session),
-    rooms: contents.rooms
+    rooms: contents.rooms,
+    // 「この部屋の空室・料金を見る」の部屋カレンダー用
+    today: todayJst(),
+    showInventory: partner.show_inventory
   };
 };

@@ -190,7 +190,11 @@
   // 料金を読み込み中（初回・検索し直し）。部屋カードはすぐ出し、プランの行だけ読み込み中の形にする
   const pending = $derived(loading || searching);
   // 空室カレンダーで日付を選んだら、その日程で検索し直し、読み込みが終わってからその部屋のカードへ
-  let scrollTo = $state<{ code: string; date: string } | null>(null);
+  // 「お部屋」ページの部屋カレンダーから来たとき（?room=）も、読み込み後にその部屋のカードへ
+  // svelte-ignore state_referenced_locally
+  const fromRoom = $page.url.searchParams.get('room');
+  // svelte-ignore state_referenced_locally
+  let scrollTo = $state<{ code: string; date: string } | null>(fromRoom && data.params.date ? { code: fromRoom, date: data.params.date } : null);
   function pickFromCalendar(iso: string) {
     const code = calendarRoom?.code;
     calendarRoom = null;
