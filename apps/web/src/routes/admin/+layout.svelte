@@ -146,9 +146,21 @@
 		.text-\[11px\] { font-size: 0.75rem; }
 		.text-\[12px\] { font-size: 0.8125rem; }
 		.text-xs { font-size: 0.8125rem; line-height: 1.5; }
+		/* 背景・カード・入力欄が同じ白で見分けにくかった（2026-10-06 指摘）: 背景を薄い灰色、カードは白に一段濃い枠と薄い影、
+		   入力欄・ボタンの枠も一段濃く。stone の枠線色（200・300）を本文側だけ濃い値に差し替える */
 		.admin-main {
+			--color-stone-200: oklch(89% 0.005 56);
+			--color-stone-300: oklch(81% 0.007 56);
 			--color-stone-400: oklch(55.3% 0.013 58.071);
 			--color-stone-500: oklch(44.4% 0.011 73.639);
+		}
+		.admin-main :is(.rounded-xl, .rounded-2xl).border.bg-white {
+			box-shadow: 0 1px 2px rgb(41 37 36 / 0.05), 0 1px 1px rgb(41 37 36 / 0.03);
+		}
+		.admin-main :is(input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea):focus {
+			border-color: oklch(44.4% 0.011 73.639);
+			box-shadow: 0 0 0 3px rgb(68 64 60 / 0.12);
+			outline: none;
 		}
 		/* zoom は高さ（h-screen=100vh）も同じ倍率にするので、画面いっぱいになるよう割り戻す */
 		.admin-sidebar { zoom: 1.0588; height: calc(100vh / 1.0588); }
@@ -188,7 +200,7 @@
 	{@render children()}
 	<p class="fixed right-3 bottom-2 font-mono text-[11px] text-stone-400">v{APP_VERSION}</p>
 {:else}
-	<div class="admin-shell flex min-h-screen bg-stone-50">
+	<div class="admin-shell flex min-h-screen bg-[#f0eeeb]">
 		<aside class="admin-sidebar sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
 			<p class="px-5 pt-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
 			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
