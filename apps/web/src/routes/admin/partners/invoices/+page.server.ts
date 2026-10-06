@@ -54,6 +54,7 @@ export const load: PageServerLoad = async (event) => {
 					billedTotal: doc.totals.billedTotal,
 					tax10: doc.totals.tax10,
 					nonTaxable: doc.totals.nonTaxable,
+					cancelFee: doc.totals.cancelFee ?? 0,
 					dueDate: doc.dueDate,
 					chargeFailed: r.chargeFailed,
 					issued: r.issued

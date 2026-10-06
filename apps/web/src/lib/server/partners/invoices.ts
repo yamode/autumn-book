@@ -82,7 +82,7 @@ const INVOICE_COLUMNS =
   'id, tenant_id, facility_id, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
 
 const BOOKING_SOURCE_COLUMNS =
-  'id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id';
+  'id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id, cancelled_at, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_settlement, cancel_fee_status, paid_amount, refund_amount';
 
 const PERIOD_RE = /^\d{4}-\d{2}-01$/;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -364,7 +364,7 @@ async function loadTargetBookings(
     .select(BOOKING_SOURCE_COLUMNS)
     .eq('partner_id', partner.id)
     .eq('facility_id', partner.facility_id)
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'cancelled'])
     .gte('check_out_date', period)
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
@@ -506,7 +506,7 @@ export async function previewFacilityInvoices(
       .from('rms_partner_bookings')
       .select(`${BOOKING_SOURCE_COLUMNS}, partner_id`)
       .eq('facility_id', facilityId)
-      .eq('status', 'confirmed')
+      .in('status', ['confirmed', 'cancelled'])
       .gte('check_out_date', period)
       .lte('check_out_date', invoiceCutoffDate(period, today)),
     db
@@ -625,7 +625,7 @@ export async function issuePartnerInvoice(
       billed_total: t.billedTotal,
       taxable_10: t.taxable10,
       tax_10: t.tax10,
-      non_taxable: t.nonTaxable,
+      non_taxable: t.nonTaxable + (t.cancelFee ?? 0), // 不課税の合計（入湯税＋キャンセル料）
       document: doc,
       issued_by: opts.by,
       issued_by_staff: opts.by === 'staff' ? (opts.staffId ?? null) : null
@@ -713,7 +713,7 @@ export function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached:
     `ご利用件数: ${doc.lines.length}件　ご利用総額: ${yen(t.usageTotal)}`,
     ...(billed
       ? [
-          `ご請求額: ${yen(t.billedTotal)}（うち消費税 ${yen(t.tax10)}・入湯税 ${yen(t.nonTaxable)}）`,
+          `ご請求額: ${yen(t.billedTotal)}（うち消費税 ${yen(t.tax10)}・入湯税 ${yen(t.nonTaxable)}${t.cancelFee ? `・キャンセル料〔不課税〕 ${yen(t.cancelFee)}` : ''}）`,
           `お支払期限: ${ymd(doc.dueDate)}`,
           ...(doc.issuer.bankAccount ? ['お振込先:', ...doc.issuer.bankAccount.split('\n').map((l) => `　${l}`)] : []),
           ...(doc.issuer.note ? ['', doc.issuer.note] : [])
@@ -874,7 +874,7 @@ async function partnersWithBookings(db: SupabaseClient, facilityId: string, peri
     .from('rms_partner_bookings')
     .select('partner_id')
     .eq('facility_id', facilityId)
-    .eq('status', 'confirmed')
+    .in('status', ['confirmed', 'cancelled'])
     .gte('check_out_date', period)
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');

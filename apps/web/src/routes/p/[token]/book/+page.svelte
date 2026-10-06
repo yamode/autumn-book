@@ -30,6 +30,15 @@
 
   // ---- 宿泊条件 ----
   let checkIn = $state(init.target.checkIn);
+  // キャンセル料が無料の最終日（最初に料率がかかる日の前日）。料率の段が無いプランは null（取消の期限まで無料）
+  const todayIso = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+  const freeUntil = $derived.by(() => {
+    if (data.cancelFeeFromDays == null || !checkIn) return null;
+    const d = new Date(`${checkIn}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - (data.cancelFeeFromDays + 1));
+    return d.toISOString().slice(0, 10);
+  });
+  const ymdJa = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
   let nights = $state(init.target.nights ?? 1);
   let roomCount = $state(init.target.roomCount ?? 1);
   let adults = $state<number[]>(Array.from({ length: init.target.roomCount ?? 1 }, () => Math.min(init.capacity.max, Math.max(init.capacity.min, init.target.guests))));
@@ -136,7 +145,7 @@
   // カード登録の同意文（確定前の見本。予約を作った後はサーバが作った文面＝記録に残る文面を出す）
   const consentPreview = $derived(
     quote.ok && paymentOption === 'online_checkin'
-      ? `${data.portal.facilityName}のご宿泊について、チェックイン日の ${fmt(quote.checkIn)} に、このカードへ ${yen(payTotal)}（宿泊料金 ${yen(lodgingTotal)}${quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}）を請求することに同意します。取消の期限内に予約を取り消した場合は請求しません。`
+      ? `${data.portal.facilityName}のご宿泊について、チェックイン日の ${fmt(quote.checkIn)} に、このカードへ ${yen(payTotal)}（宿泊料金 ${yen(lodgingTotal)}${quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}）を請求することに同意します。キャンセル料がかかる日に取り消した場合は、キャンセル料をこのカードへ請求します。`
       : null
   );
 
@@ -532,7 +541,7 @@
       </section>
 
       <!-- キャンセルポリシー・お子様について・注意事項（入力・確認のどちらでも出す・2026-10-06 指示） -->
-      <section class="card">
+      <section id="cancel-policy" class="card scroll-mt-4">
         <h3 class="card-title">キャンセルポリシー</h3>
         {#if data.terms && (data.terms.cancellation.length || data.terms.cancellationNote)}
           <PartnerTermsTable title="" rows={data.terms.cancellation} note={data.terms.cancellationNote} />
@@ -540,6 +549,9 @@
           <p class="text-[15px] leading-7 text-stone-700">キャンセル料の規定は宿へお問い合わせください。</p>
         {/if}
         <p class="mt-3 text-[15px] leading-7 text-stone-700">{data.cancelText ? `取消は宿泊日の${data.cancelText}、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}</p>
+        {#if data.terms?.cancellation.length}
+          <p class="mt-1 text-[15px] leading-7 text-stone-700">キャンセル料は、税込の予約金額（割引前・入湯税を除く）に上の料率を掛けた額です。予約一覧から取り消すときも、規定の日からはかかります（消費税の対象外）。</p>
+        {/if}
       </section>
       <section class="card">
         <h3 class="card-title">お子様について</h3>
@@ -648,10 +660,24 @@
         {/if}
       </div>
 
-      <!-- 取消の案内（一休の「◯日までキャンセル料無料」の帯の位置） -->
-      <p class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sm font-bold leading-6 text-sky-700">
-        {data.cancelText ? `宿泊日の${data.cancelText}、予約一覧から取消できます` : '取消は宿へご連絡ください'}
-      </p>
+      <!-- 取消の案内（一休の帯と同じく「◯年◯月◯日までキャンセル料無料」を主に。ⓘでキャンセルポリシーへ・2026-10-06） -->
+      <div class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sky-700">
+        <p class="text-sm font-bold leading-6">
+          {#if freeUntil === null}
+            {data.cancelText ? `宿泊日の${data.cancelText}、キャンセル料無料` : '取消は宿へご連絡ください'}
+          {:else if freeUntil >= todayIso}
+            {ymdJa(freeUntil)}までキャンセル料無料
+          {:else}
+            キャンセル料がかかる期間です
+          {/if}
+          <button type="button" aria-label="キャンセルポリシーを見る" onclick={() => document.getElementById('cancel-policy')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} class="ml-0.5 inline-flex h-5 w-5 translate-y-[3px] items-center justify-center rounded-full align-baseline text-sky-700 hover:bg-sky-100">
+            <svg viewBox="0 0 20 20" class="h-4 w-4" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M10 9v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /><circle cx="10" cy="6.3" r="1" fill="currentColor" /></svg>
+          </button>
+        </p>
+        {#if data.cancelText && freeUntil !== null}
+          <p class="mt-0.5 text-xs leading-5">取消は宿泊日の{data.cancelText}、予約一覧からできます</p>
+        {/if}
+      </div>
 
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}

@@ -9,7 +9,18 @@ import { readBookingExtras } from './booking-extras';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { describeBooker, chargeAmountOf } from '$lib/partner-booking';
 import { partnerBookingCodeOf } from '$lib/partner-reservation';
-import { cancelPartnerBooking, getPartnerBooking, retryPartnerCharge, type ChargeResult, type PartnerBookingRow } from './booking';
+import {
+	cancelFeeBasisLabel,
+	cancelFeeSettlementLabel,
+	cancelPartnerBooking,
+	getPartnerBooking,
+	previewPartnerCancel,
+	retryPartnerCharge,
+	type CancelPreview,
+	type ChargeResult,
+	type PartnerBookingRow,
+	type StaffFeeMode
+} from './booking';
 import { staffPartnerScope, StaffScopeError } from './staff';
 import { PartnerStoreError, requireStaffPartner } from './store';
 
@@ -54,6 +65,13 @@ export type PartnerLedgerView = {
 	createdAt: string;
 	/** 管理者のみ（スタッフには連絡先を見せない） */
 	guestEmail: string | null;
+	/** 取消フォームのキャンセル料の見込み（確定済みの予約） */
+	cancelPreview: CancelPreview | null;
+	/** 取消済みのキャンセル料 */
+	cancelFee: { fee: number; waived: boolean; basis: string; settlement: string; status: string | null; error: string | null; note: string | null } | null;
+	refundAmount: number | null;
+	invoiceMonth: string;
+	hasCard: boolean;
 };
 
 export type PartnerLedgerResult = { ledger: PartnerLedgerView | null; error: string | null };
@@ -71,7 +89,7 @@ async function findLedgerRow(db: SupabaseClient, facilityId: string, bookingCode
 	return getPartnerBooking(db, String(data.partner_id), String(data.id));
 }
 
-function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean): PartnerLedgerView {
+function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean, cancelPreview: CancelPreview | null): PartnerLedgerView {
 	const x = readBookingExtras(b.detail);
 	return {
 		id: b.id,
@@ -106,7 +124,23 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 		cancelledAt: b.cancelled_at,
 		cancelledBy: b.cancelled_by,
 		createdAt: b.created_at,
-		guestEmail: isAdmin ? b.guest_email : null
+		guestEmail: isAdmin ? b.guest_email : null,
+		cancelPreview,
+		cancelFee:
+			b.status === 'cancelled' && b.cancel_fee_settlement
+				? {
+						fee: b.cancel_fee ?? 0,
+						waived: !!b.cancel_fee_waived,
+						basis: cancelFeeBasisLabel(b),
+						settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''),
+						status: b.cancel_fee_status ?? null,
+						error: b.cancel_fee_error ?? null,
+						note: b.cancel_fee_note ?? null
+					}
+				: null,
+		refundAmount: b.refund_amount ?? null,
+		invoiceMonth: `${Number(b.check_out_date.slice(0, 4))}年${Number(b.check_out_date.slice(5, 7))}月`,
+		hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed')
 	};
 }
 
@@ -129,7 +163,8 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 		// 取引先払いかの判定に取引先の設定（自由入力の支払方法の billable）が要る。読めなくても台帳は出す
 		const partner = row.partner_id ? await requireStaffPartner(scope.db, scope.facilityId, row.partner_id).catch(() => null) : null;
 		const billed = partner ? isBillablePaymentOption(row.payment_option, partner.booking_settings) : row.payment_option === 'invoice_monthly';
-		return { ledger: toView(row, event.locals.user?.role === 'admin', billed), error: null };
+		const preview = row.checkedIn ? null : await previewPartnerCancel(scope.db, scope.facilityId, row).catch(() => null);
+		return { ledger: toView(row, event.locals.user?.role === 'admin', billed, preview), error: null };
 	} catch (e) {
 		if (e instanceof StaffScopeError || e instanceof PartnerStoreError) return { ledger: null, error: e.message };
 		return { ledger: null, error: e instanceof Error ? e.message : String(e) };
@@ -178,10 +213,10 @@ async function partnerEditTarget(event: RequestEvent, reservationCode: string) {
 export async function cancelPartnerReservation(
 	event: RequestEvent,
 	reservationCode: string,
-	opts: { reason: string; refund: boolean }
+	opts: { reason: string; refund: boolean; feeMode?: StaffFeeMode; customFee?: number | null; feeNote?: string }
 ): Promise<PartnerBookingRow> {
 	const { db, partner, row } = await partnerEditTarget(event, reservationCode);
-	return cancelPartnerBooking(db, partner, row.id, 'staff', { reason: opts.reason, origin: event.url.origin, refund: opts.refund });
+	return cancelPartnerBooking(db, partner, row.id, 'staff', { ...opts, origin: event.url.origin });
 }
 
 /** チェックイン日決済の再請求（スタッフ） */

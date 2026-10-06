@@ -105,7 +105,7 @@
 							<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{yen(r.usageTotal)}</td>
 							<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
 								<span class={r.billedTotal > 0 ? 'font-semibold text-stone-800' : 'text-stone-400'}>{yen(r.billedTotal)}</span>
-								{#if r.billedTotal > 0}<div class="text-[11px] text-stone-500">うち消費税 {yen(r.tax10)}・入湯税 {yen(r.nonTaxable)}</div>{/if}
+								{#if r.billedTotal > 0}<div class="text-[11px] text-stone-500">うち消費税 {yen(r.tax10)}・入湯税 {yen(r.nonTaxable)}{r.cancelFee ? `・キャンセル料 ${yen(r.cancelFee)}` : ''}</div>{/if}
 							</td>
 							<td class="px-3 py-2.5 text-xs whitespace-nowrap">{r.billedTotal > 0 ? r.dueDate : '—'}</td>
 						{/if}

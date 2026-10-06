@@ -6,7 +6,10 @@ import {
   cardConsentText,
   confirmPartnerIntent,
   bookingPlanName,
+  cancelFeeBasisLabel,
+  cancelFeeSettlementLabel,
   listPartnerBookings,
+  previewPartnerCancels,
   type PaymentResult
 } from '$lib/server/partners/booking';
 import { readBookingExtras, splitExtraOptions } from '$lib/server/partners/booking-extras';
@@ -40,6 +43,12 @@ export const load = async (event) => {
   }
   const rows = await listPartnerBookings(db, { partnerId: partner.id, limit: 300 });
   const s = partner.booking_settings;
+  // 取り消せる予約のキャンセル料の見込み（確認欄に出す・取消時に同じ額かを確かめる）
+  const previews = await previewPartnerCancels(
+    db,
+    partner.facility_id,
+    rows.filter((b) => b.status === 'confirmed' && canPartnerCancel(b.check_in_date, s))
+  ).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
   return {
     portal: portalHeader(partner, session),
     done: q.get('done'),
@@ -91,7 +100,14 @@ export const load = async (event) => {
       bookedBy: b.booked_by,
       createdAt: b.created_at,
       cancelledAt: b.cancelled_at,
-      cancelledBy: b.cancelled_by
+      cancelledBy: b.cancelled_by,
+      refundAmount: b.refund_amount ?? null,
+      cancelPreview: previews[b.id] ?? null,
+      // 取消済みのキャンセル料（精算の方法と一緒に出す）
+      cancelFee:
+        b.status === 'cancelled' && b.cancel_fee_settlement
+          ? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, '') }
+          : null
     }))
   };
 };
@@ -123,6 +139,8 @@ export const actions = {
     try {
       const b = await cancelPartnerBooking(db, partner, String(fd.get('id') ?? ''), 'partner', {
         reason: String(fd.get('reason') ?? ''),
+        // 確認欄で見せたキャンセル料（日をまたいで変わっていたら取り消さない）
+        expectedFee: fd.get('expectedFee') == null || fd.get('expectedFee') === '' ? null : Number(fd.get('expectedFee')),
         accountId: session.id,
         ip: requestMeta(event).ip,
         origin: event.url.origin

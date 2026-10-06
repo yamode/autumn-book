@@ -9,6 +9,7 @@ import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { partnerBackTarget } from '$lib/partner-stay';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
+import { planCancelPolicy } from '$lib/partner-cancel-fee';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { loadBookingNote } from '$lib/server/booking-notes';
 
@@ -43,7 +44,10 @@ export const load = async (event) => {
     // 左カラムのキャンセルポリシー・お子様（料金カレンダー・プランのご紹介と同じ取得口）
     db
       .rpc('rms_partner_plan_terms', { p_facility: partner.facility_id })
-      .then(({ data: t, error: e }) => (e ? new Map<string, PlanTerms>() : buildPlanTerms(t)), () => new Map<string, PlanTerms>()),
+      .then(
+        ({ data: t, error: e }) => (e ? { map: new Map<string, PlanTerms>(), raw: null } : { map: buildPlanTerms(t), raw: t as unknown }),
+        () => ({ map: new Map<string, PlanTerms>(), raw: null })
+      ),
     // 右欄の所在地・注意事項のチェックイン／アウト
     sbFacilityByUuid(partner.facility_id).catch(() => undefined),
     // 左カラムの注意事項（施設のマスタ。管理画面「予約時の注意事項」）
@@ -67,7 +71,14 @@ export const load = async (event) => {
       checkinTime: facility?.checkinTime ?? null,
       checkoutTime: facility?.checkoutTime ?? null
     },
-    terms: terms.get(`${planCode}■${planName}`) ?? null,
+    terms: terms.map.get(`${planCode}■${planName}`) ?? null,
+    // 「◯月◯日までキャンセル料無料」の帯: 最初に料率がかかるのが宿泊日の何日前か（料率の段が無ければ null）
+    cancelFeeFromDays: (() => {
+      const days = (planCancelPolicy(terms.raw, planCode, planName)?.rules ?? []).filter((r) => r.rate_percent > 0).map((r) => r.days_before);
+      return days.length ? Math.max(...days) : null;
+    })(),
+    cancelDays: s.cancelDays,
+    cancelCutoffHour: s.cutoffHour,
     bookingNote,
     // 「戻る」は来たページ（料金カレンダー／プランのご紹介）へ。決め打ちで料金カレンダーに戻さない
     back: partnerBackTarget(token, q.get('from')),

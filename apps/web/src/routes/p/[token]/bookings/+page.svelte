@@ -40,7 +40,7 @@
   const hm = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit' }) : '');
   const PAY_STATUS: Record<string, string> = {
     paid: 'お支払い済み',
-    refunded: '全額返金済み',
+    refunded: '返金済み',
     refund_failed: '返金できませんでした（宿で対応します）',
     unpaid: 'お支払い待ち',
     scheduled: 'チェックイン日に請求予定',
@@ -205,6 +205,18 @@
                 {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}</dd>{/if}
                 <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
+                {#if b.cancelFee}
+                  <dt>キャンセル料</dt>
+                  <dd>
+                    {#if b.cancelFee.fee > 0}
+                      <span class="font-bold tabular-nums">{b.cancelFee.fee.toLocaleString('ja-JP')}円</span><span class="ml-1 text-sm text-stone-500">（{b.cancelFee.basis}・不課税）</span>
+                      {#if b.cancelFee.settlement}<span class="block text-sm text-stone-600">{b.cancelFee.settlement}</span>{/if}
+                    {:else}
+                      なし{b.cancelFee.waived ? '（免除）' : ''}
+                    {/if}
+                    {#if b.paymentStatus === 'refunded' && b.refundAmount != null}<span class="block text-sm text-stone-600">返金 {b.refundAmount.toLocaleString('ja-JP')}円</span>{/if}
+                  </dd>
+                {/if}
               </dl>
 
               <!-- 料金の明細（表）。宿泊料金はキャンセル料の基準（入湯税は含めない） -->
@@ -237,6 +249,7 @@
                 <div class="mt-4 border-t border-stone-200 pt-3">
                   {#if b.canCancel}
                     {#if confirmId === b.id}
+                      {@const cp = b.status === 'confirmed' ? b.cancelPreview : null}
                       <form
                         method="POST"
                         action="?/cancel"
@@ -252,19 +265,50 @@
                         class="grid gap-2 rounded-xl bg-rose-700/5 p-3"
                       >
                         <input type="hidden" name="id" value={b.id} />
+                        {#if cp}<input type="hidden" name="expectedFee" value={cp.fee} />{/if}
                         <p class="text-sm font-medium text-rose-700">
                           {b.status === 'pending_payment' ? 'このご予約をやめます（お部屋の確保を解除します）。' : 'このご予約を取り消します。取り消すと元に戻せません。'}
-                          {#if b.paymentStatus === 'paid'}お支払い済みの金額は全額返金します。{/if}
+                          {#if b.paymentStatus === 'paid' && (!cp || (cp.refund && cp.refund.kept === 0))}お支払い済みの金額は全額返金します。{/if}
                         </p>
+                        {#if cp && cp.table.length}
+                          <!-- キャンセル規定（今の段に印）と、今取り消したときの金額 -->
+                          <table class="w-full max-w-md border-collapse bg-white text-sm">
+                            <thead><tr class="text-stone-600"><th class="border border-stone-300 px-2.5 py-1 text-left font-normal">取消の日</th><th class="border border-stone-300 px-2.5 py-1 text-right font-normal">キャンセル料</th></tr></thead>
+                            <tbody>
+                              {#each cp.table as r}
+                                <tr class={r.current ? 'bg-rose-50 font-bold text-rose-700' : ''}>
+                                  <td class="border border-stone-300 px-2.5 py-1">{r.label}{r.current ? '（今ここ）' : ''}</td>
+                                  <td class="border border-stone-300 px-2.5 py-1 text-right tabular-nums">{r.rate === 0 ? '無料' : `${r.rate}%`}</td>
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        {/if}
+                        {#if cp}
+                          <div class="max-w-md rounded-lg bg-white px-3 py-2 text-sm">
+                            <div class="flex justify-between gap-3"><span>予約金額（税込・割引前・入湯税を除く）</span><span class="tabular-nums">{cp.base.toLocaleString('ja-JP')}円</span></div>
+                            <div class="flex justify-between gap-3 font-bold"><span>キャンセル料{cp.rate > 0 ? `（${cp.rate}%）` : ''}</span><span class="tabular-nums">{cp.fee > 0 ? `${cp.fee.toLocaleString('ja-JP')}円` : 'なし'}</span></div>
+                            {#if cp.refund}
+                              <div class="mt-1 flex justify-between gap-3 border-t border-stone-200 pt-1"><span>お支払い済み</span><span class="tabular-nums">{cp.refund.paid.toLocaleString('ja-JP')}円</span></div>
+                              {#if cp.refund.kept > 0}<div class="flex justify-between gap-3"><span>差し引く額{cp.refund.kept > cp.fee ? '（予約時決済割引の分）' : ''}</span><span class="tabular-nums">-{cp.refund.kept.toLocaleString('ja-JP')}円</span></div>{/if}
+                              <div class="flex justify-between gap-3 font-bold"><span>返金額</span><span class="tabular-nums">{cp.refund.refund.toLocaleString('ja-JP')}円</span></div>
+                            {/if}
+                            {#if cp.settlementText && !cp.refund}<p class="mt-1 text-stone-600">{cp.settlementText}</p>{/if}
+                            {#if cp.fee > 0}<p class="mt-1 text-xs text-stone-500">キャンセル料は逸失利益に対する損害賠償金のため、消費税はかかりません（不課税）。</p>{/if}
+                          </div>
+                        {/if}
                         <input name="reason" bind:value={reason} maxlength="500" placeholder="取消の理由（任意）" class="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm" />
                         <div class="flex flex-wrap gap-2">
-                          <button type="submit" disabled={cancelling === b.id} class="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{cancelling === b.id ? '取り消しています…' : '取り消す'}</button>
+                          <button type="submit" disabled={cancelling === b.id} class="rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{cancelling === b.id ? '取り消しています…' : b.status === 'confirmed' && b.cancelPreview && b.cancelPreview.fee > 0 ? `キャンセル料 ${b.cancelPreview.fee.toLocaleString('ja-JP')}円で取り消す` : '取り消す'}</button>
                           <button type="button" onclick={() => (confirmId = null)} class="rounded-lg border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">やめる</button>
                         </div>
                       </form>
                     {:else}
                       <button type="button" onclick={() => (confirmId = b.id)} class="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-rose-50 hover:text-rose-700">{b.status === 'pending_payment' ? 'この予約をやめる' : 'この予約を取り消す'}</button>
                       {#if data.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-stone-500">宿泊日の{data.cancelText}まで取り消せます</span>{/if}
+                      {#if b.status === 'confirmed' && b.cancelPreview && b.cancelPreview.fee > 0}
+                        <p class="mt-1.5 text-sm text-rose-700">今取り消すとキャンセル料 {b.cancelPreview.fee.toLocaleString('ja-JP')}円（予約金額の{b.cancelPreview.rate}%）がかかります</p>
+                      {/if}
                     {/if}
                   {:else}
                     <p class="text-sm text-stone-500">{b.checkedIn ? 'チェックイン済みです。' : data.cancelText ? `取消の期限（宿泊日の${data.cancelText}）を過ぎています。` : 'この画面からは取り消せません。'}変更・取消は宿へご連絡ください。</p>

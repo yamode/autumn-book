@@ -27,6 +27,19 @@ import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailReci
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import {
+  cancelPolicyTable,
+  invoiceMonthLabel,
+  partnerRefundOf,
+  planCancelPolicy,
+  quoteCancelFee,
+  readCancelPolicy,
+  settlementOf,
+  settlementText,
+  storeCancelPolicy,
+  type CancelPolicy,
+  type CancelSettlement
+} from '$lib/partner-cancel-fee';
+import {
   cardLabelOf,
   chargeSavedCard,
   createCustomer,
@@ -373,6 +386,8 @@ export async function createPartnerBooking(
   const created = data as { id: string; booking_code: string; total_amount: number; status?: string };
   // 台帳に予約者・交通手段・特典を構造化して残す（メールの宛先・一覧の表示に使う）。仮押さえ（オンライン決済）も同じ
   await attachBookingExtras(db, partner.id, created.id, extras, partnerPlanName(s.planNames, quote.planCode, quote.planName));
+  // 予約時点のキャンセル規定を台帳に残す（取消時のキャンセル料はこれで計算する）。失敗しても予約は止めない
+  await snapshotCancelPolicy(db, partner.facility_id, created.id, quote.planCode, quote.planName).catch(() => undefined);
   if (input.saveBooker) {
     // マイページへの保存に失敗しても予約は止めない
     await saveBookerProfile(db, partner.id, account.id, booker).catch(() => undefined);
@@ -498,7 +513,7 @@ export function cardConsentText(facilityName: string, b: Pick<PartnerBookingRow,
   return (
     `${facilityName}のご宿泊（予約番号 ${b.booking_code}）について、チェックイン日の ${y}年${m}月${d}日に、` +
     `このカードへ ${yen(chargeAmountOf(b))}（宿泊料金 ${yen(b.total_amount)}${bath > 0 ? `・入湯税 ${yen(bath)}` : ''}）を請求することに同意します。` +
-    '取消の期限内に予約を取り消した場合は請求しません。'
+    'キャンセル料がかかる日に取り消した場合は、キャンセル料をこのカードへ請求します。'
   );
 }
 
@@ -807,14 +822,14 @@ export async function chargeDueBookings(db: SupabaseClient, origin: string): Pro
   return out;
 }
 
-// 支払済みの予約を全額返金して台帳に結果を残す。
-async function refundBooking(db: SupabaseClient, b: PartnerBookingRow, reason: string): Promise<boolean> {
+// 支払済みの予約を返金して台帳に結果を残す。amount を省くと全額（キャンセル料を差し引くときは返金額を渡す）。
+async function refundBooking(db: SupabaseClient, b: PartnerBookingRow, reason: string, amount?: number): Promise<boolean> {
   const { data } = await db.from('rms_partner_bookings').select('stripe_payment_intent_id, payment_status').eq('id', b.id).maybeSingle();
   const intent = data?.stripe_payment_intent_id as string | null | undefined;
   if (!intent || data?.payment_status === 'refunded') return false;
   let refundId: string;
   try {
-    refundId = (await createRefund(intent, `rms-partner-refund-${b.id}`, { partner_booking_id: b.id, booking_code: b.booking_code, reason })).id;
+    refundId = (await createRefund(intent, `rms-partner-refund-${b.id}`, { partner_booking_id: b.id, booking_code: b.booking_code, reason }, amount)).id;
   } catch (e) {
     await db
       .from('rms_partner_bookings')
@@ -823,11 +838,14 @@ async function refundBooking(db: SupabaseClient, b: PartnerBookingRow, reason: s
     return false;
   }
   // 返金の記録と、PMS に送った予約なら返金電文（PMS が請求書にマイナスの入金行を起こす）。
-  const { error } = await db.rpc('rms_partner_mark_refunded', { p_partner_booking_id: b.id, p_refund_id: refundId });
+  const { error } = await db.rpc('rms_partner_mark_refunded', { p_partner_booking_id: b.id, p_refund_id: refundId, p_amount: amount ?? null });
   if (error) {
     // 返金そのものは成功している。記録だけは残す（PMS の請求書は人が直す）。
     console.error('[partner-booking] 返金の記録に失敗:', error.message);
-    await db.from('rms_partner_bookings').update({ payment_status: 'refunded', stripe_refund_id: refundId, refund_error: null }).eq('id', b.id);
+    await db
+      .from('rms_partner_bookings')
+      .update({ payment_status: 'refunded', stripe_refund_id: refundId, refund_error: null, ...(amount != null ? { refund_amount: amount } : {}) })
+      .eq('id', b.id);
   }
   return true;
 }
@@ -921,12 +939,25 @@ export type PartnerBookingRow = {
   cancelled_at: string | null;
   cancelled_by: string | null;
   created_at: string;
+  cancel_reason?: string | null;
+  // キャンセル料（autumn-shared 20261006022716）。基準は total_amount（割引前・入湯税を除く税込）
+  cancel_policy?: unknown;
+  cancel_fee?: number;
+  cancel_fee_rate?: number | null;
+  cancel_fee_basis?: string | null;
+  cancel_fee_waived?: boolean;
+  // invoice（月末の請求書）/ refund（予約時決済から差し引き）/ card（登録カードへ請求）/ none
+  cancel_fee_settlement?: CancelSettlement | null;
+  cancel_fee_status?: 'charged' | 'charge_failed' | null;
+  cancel_fee_error?: string | null;
+  cancel_fee_note?: string | null;
+  refund_amount?: number | null;
   // PMS 側の状態（チェックイン済みなら取り消せない）
   checkedIn?: boolean;
 };
 
 const BOOKING_COLUMNS =
-  'id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at';
+  'id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   const ids = [...new Set(rows.flatMap((r) => r.stay_ids ?? []))];
@@ -957,17 +988,156 @@ export async function getPartnerBooking(db: SupabaseClient, partnerId: string, i
   return row;
 }
 
+// ---------------------------------------------------------------------------
+// キャンセル料（2026-10-06 指示・計算は lib/partner-cancel-fee.ts）
+// ---------------------------------------------------------------------------
+
+// 今のプランの規定（プラン個別 → 施設の既定）。取引先ページのキャンセルポリシーと同じ元データ。
+async function currentCancelPolicy(db: SupabaseClient, facilityId: string, planCode: string | null, planName: string | null): Promise<CancelPolicy | null> {
+  const { data, error } = await db.rpc('rms_partner_plan_terms', { p_facility: facilityId });
+  if (error) return null;
+  return planCancelPolicy(data, planCode, planName);
+}
+
+async function snapshotCancelPolicy(db: SupabaseClient, facilityId: string, bookingId: string, planCode: string | null, planName: string | null) {
+  const policy = await currentCancelPolicy(db, facilityId, planCode, planName);
+  if (policy) await db.from('rms_partner_bookings').update({ cancel_policy: storeCancelPolicy(policy) }).eq('id', bookingId);
+}
+
+// 予約の規定（予約時点に残したもの → 無い予約は今のプランの規定）
+async function cancelPolicyOf(db: SupabaseClient, facilityId: string, b: PartnerBookingRow): Promise<CancelPolicy | null> {
+  return readCancelPolicy(b.cancel_policy) ?? (await currentCancelPolicy(db, facilityId, b.plan_code, b.plan_name));
+}
+
+export type StaffFeeMode = 'rule' | 'no_show' | 'custom' | 'waive';
+
+/** スタッフの取消フォーム（components/admin/PartnerCancelFeeFields）の値 */
+export function parseStaffFeeForm(fd: FormData): { feeMode: StaffFeeMode; customFee: number | null; feeNote: string } {
+  const m = String(fd.get('feeMode') ?? 'rule');
+  const feeMode: StaffFeeMode = m === 'no_show' || m === 'custom' || m === 'waive' ? m : 'rule';
+  const raw = String(fd.get('customFee') ?? '').trim();
+  return { feeMode, customFee: raw === '' ? null : Number(raw), feeNote: String(fd.get('feeNote') ?? '') };
+}
+
+export type CancelPreview = {
+  base: number;
+  daysBefore: number;
+  rate: number;
+  fee: number;
+  basis: string;
+  noShowRate: number;
+  noShowFee: number;
+  table: { label: string; rate: number; current: boolean }[];
+  settlement: CancelSettlement;
+  // 予約時決済（支払済み）のとき: 支払額・差し引く額・返金額
+  refund: { paid: number; kept: number; refund: number } | null;
+  // 精算の一文（画面に出す）
+  settlementText: string;
+};
+
+function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = new Date()): CancelPreview {
+  const q = quoteCancelFee(b, policy, { now });
+  const ns = quoteCancelFee(b, policy, { now, noShow: true });
+  const settlement = settlementOf(b, q.fee);
+  const refund = settlement === 'refund' ? partnerRefundOf(b, q.fee) : null;
+  return {
+    ...q,
+    noShowRate: ns.rate,
+    noShowFee: ns.fee,
+    table: cancelPolicyTable(policy, q.daysBefore),
+    settlement,
+    refund,
+    settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund)
+  };
+}
+
+/** 取消確認欄に出すキャンセル料の見込み（確定済みの予約だけ。それ以外は null）。 */
+export async function previewPartnerCancel(db: SupabaseClient, facilityId: string, b: PartnerBookingRow, now = new Date()): Promise<CancelPreview | null> {
+  if (b.status !== 'confirmed') return null;
+  return previewFrom(b, await cancelPolicyOf(db, facilityId, b), now);
+}
+
+/** 一覧の確定済み予約の見込みをまとめて（今の規定の読み込みは1回） */
+export async function previewPartnerCancels(
+  db: SupabaseClient,
+  facilityId: string,
+  rows: PartnerBookingRow[],
+  now = new Date()
+): Promise<Record<string, CancelPreview>> {
+  const targets = rows.filter((r) => r.status === 'confirmed' && !r.checkedIn);
+  if (!targets.length) return {};
+  const needCurrent = targets.some((r) => !readCancelPolicy(r.cancel_policy));
+  const terms = needCurrent
+    ? await db.rpc('rms_partner_plan_terms', { p_facility: facilityId }).then(
+        (r) => (r.error ? null : r.data),
+        () => null
+      )
+    : null;
+  const out: Record<string, CancelPreview> = {};
+  for (const r of targets) {
+    out[r.id] = previewFrom(r, readCancelPolicy(r.cancel_policy) ?? (terms ? planCancelPolicy(terms, r.plan_code, r.plan_name) : null), now);
+  }
+  return out;
+}
+
+// キャンセル料を登録カードへ請求（チェックイン日決済の予約）。失敗したら月末の請求書へ回す。
+async function chargeCancelFee(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, fee: number): Promise<{ ok: boolean; message?: string }> {
+  const fail = async (message: string) => {
+    await db
+      .from('rms_partner_bookings')
+      .update({ cancel_fee_settlement: 'invoice', cancel_fee_status: 'charge_failed', cancel_fee_error: message.slice(0, 500) })
+      .eq('id', b.id);
+    return { ok: false, message };
+  };
+  if (!b.stripe_customer_id || !b.stripe_payment_method_id) return fail('カードが登録されていません');
+  const facilityName = 'facility_name' in partner && partner.facility_name ? partner.facility_name : '';
+  try {
+    const pi = await chargeSavedCard({
+      customer: b.stripe_customer_id,
+      paymentMethod: b.stripe_payment_method_id,
+      amount: fee,
+      description: `${facilityName} キャンセル料（${b.booking_code}）`,
+      metadata: {
+        app: STRIPE_APP,
+        purpose: STRIPE_PURPOSE_PARTNER_BOOKING,
+        partner_booking_id: b.id,
+        booking_code: b.booking_code,
+        partner_id: partner.id,
+        trigger: 'cancel_fee'
+      },
+      idempotencyKey: `rms-partner-cancel-fee-${b.id}`
+    });
+    if (pi.status !== 'succeeded') return fail(`請求が完了しませんでした（${pi.status}）`);
+    await db.from('rms_partner_bookings').update({ cancel_fee_status: 'charged', cancel_fee_payment_intent: pi.id, cancel_fee_error: null }).eq('id', b.id);
+    return { ok: true };
+  } catch (e) {
+    return fail(friendlyChargeError(e));
+  }
+}
+
 export async function cancelPartnerBooking(
   db: SupabaseClient,
   partner: PartnerContext | (PartnerRow & { facility_name?: string }),
   bookingId: string,
   by: 'partner' | 'staff',
-  opts: { reason?: string; accountId?: string | null; ip?: string | null; origin: string; refund?: boolean }
+  opts: {
+    reason?: string;
+    accountId?: string | null;
+    ip?: string | null;
+    origin: string;
+    refund?: boolean;
+    // 取引先: 確認欄で見せたキャンセル料（日をまたいで変わっていたら取り消さずに見直してもらう）
+    expectedFee?: number | null;
+    // スタッフ: 規定どおり / 不泊 / 金額を変える / 免除
+    feeMode?: StaffFeeMode;
+    customFee?: number | null;
+    feeNote?: string;
+  }
 ): Promise<PartnerBookingRow> {
   const booking = await getPartnerBooking(db, partner.id, bookingId);
   if (!booking) throw new PartnerStoreError('予約が見つかりません。', 404);
   if (booking.status === 'cancelled' || booking.status === 'expired') return booking;
-  // 支払待ち（仮押さえ）の取消はいつでもできる。PMS へは何も送っていない。
+  // 支払待ち（仮押さえ）の取消はいつでもできる。PMS へは何も送っていない。キャンセル料もかからない。
   if (booking.status === 'pending_payment') {
     await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: booking.id, p_by: by, p_reason: (opts.reason ?? '').slice(0, 500) || null });
     return (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
@@ -981,10 +1151,41 @@ export async function cancelPartnerBooking(
         : `取消の期限（宿泊日の${describeDeadline(s.cancelDays, s.cutoffHour)}）を過ぎています。宿へご連絡ください。`
     );
   }
+
+  // キャンセル料（基準は割引前・入湯税を除く税込の予約金額）
+  const policy = await cancelPolicyOf(db, partner.facility_id, booking);
+  const rule = quoteCancelFee(booking, policy);
+  const mode: StaffFeeMode = by === 'partner' ? 'rule' : (opts.feeMode ?? 'rule');
+  let fee = rule.fee;
+  let rate: number | null = rule.rate;
+  let basis = rule.basis;
+  if (mode === 'no_show') {
+    const ns = quoteCancelFee(booking, policy, { noShow: true });
+    fee = ns.fee;
+    rate = ns.rate;
+    basis = '不泊';
+  } else if (mode === 'custom') {
+    const n = Math.round(Number(opts.customFee));
+    if (opts.customFee == null || !Number.isFinite(n) || n < 0) throw new PartnerStoreError('キャンセル料の金額を正しく入力してください。');
+    fee = Math.min(n, booking.total_amount);
+    rate = null;
+    basis = '金額指定';
+  } else if (mode === 'waive') {
+    fee = 0;
+    rate = null;
+    basis = '免除';
+  }
+  if (by === 'partner' && opts.expectedFee != null && Math.round(opts.expectedFee) !== fee) {
+    throw new PartnerStoreError(`キャンセル料が変わりました（${yen(fee)}）。内容をご確認のうえ、もう一度お取り消しください。`, 409);
+  }
+  const waived = mode === 'waive';
+  const settlement = settlementOf(booking, fee);
+
   const { data: cancelled, error } = await db.rpc('rms_partner_cancel_booking', {
     p_partner_booking_id: booking.id,
     p_by: by,
-    p_reason: (opts.reason ?? '').slice(0, 500) || null
+    p_reason: (opts.reason ?? '').slice(0, 500) || null,
+    p_fee: { fee, rate, basis, waived, settlement, note: (opts.feeNote ?? '').trim().slice(0, 500) || null }
   });
   if (error) {
     throw new PartnerStoreError(
@@ -997,12 +1198,18 @@ export async function cancelPartnerBooking(
     accountId: opts.accountId ?? null,
     channel: 'web',
     action: by === 'partner' ? 'cancel' : 'staff_cancel',
-    detail: { bookingCode: booking.booking_code },
+    detail: { bookingCode: booking.booking_code, cancelFee: fee, basis, settlement },
     ip: opts.ip ?? null
   });
-  // オンライン決済済みは全額返金（取引先の期限内取消は常に。スタッフの取消は画面で選んだとき）
+  // 予約時決済（支払済み）: キャンセル料（直販と同じく割引分も）を差し引いて返金。免除なら全額。
+  // スタッフの取消で「返金しない」を選んだときは Stripe に触らない（宿で扱う）
   const paid = (cancelled as { payment_status?: string } | null)?.payment_status === 'paid';
-  if (paid && (by === 'partner' || opts.refund !== false)) await refundBooking(db, booking, by === 'partner' ? 'partner_cancel' : 'staff_cancel');
+  if (paid && (by === 'partner' || opts.refund !== false)) {
+    const r = partnerRefundOf(booking, fee, waived);
+    if (r.refund > 0) await refundBooking(db, booking, by === 'partner' ? 'partner_cancel' : 'staff_cancel', r.kept > 0 ? r.refund : undefined);
+  }
+  // チェックイン日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
+  if (settlement === 'card' && fee > 0) await chargeCancelFee(db, partner, booking, fee);
   const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
   await sendBookingMails(db, partner, after, 'cancelled', opts.origin, booking.account_id).catch(() => false);
   return after;
@@ -1060,15 +1267,47 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
                 : b.payment_status === 'charge_failed'
                   ? '（カードへの請求ができませんでした）'
                   : b.payment_status === 'refunded'
-                ? '（全額返金済み）'
+                ? b.refund_amount != null && b.refund_amount < (b.paid_amount ?? chargeAmountOf(b))
+                  ? `（${yen(b.refund_amount)} 返金済み）`
+                  : '（全額返金済み）'
                 : b.payment_status === 'refund_failed'
                   ? '（返金できませんでした。宿で対応します）'
                   : ''
           }`
         ]
-      : [])
+      : []),
+    ...cancelFeeLines(b)
   ];
   return lines;
+}
+
+// 取消済みの予約のキャンセル料（メール・一覧）。0円なら「なし」を明記する
+export function cancelFeeLines(b: PartnerBookingRow): string[] {
+  if (b.status !== 'cancelled' || !b.cancel_fee_settlement) return [];
+  const fee = b.cancel_fee ?? 0;
+  if (fee <= 0) return [`キャンセル料: なし${b.cancel_fee_waived ? '（免除）' : ''}`];
+  const how = cancelFeeSettlementLabel(b);
+  return [`キャンセル料: ${yen(fee)}（${cancelFeeBasisLabel(b)}・不課税）${how ? ` ${how}` : ''}`];
+}
+
+// 「2日前の取消 30%」「不泊 100%」「金額指定」
+export function cancelFeeBasisLabel(b: Pick<PartnerBookingRow, 'cancel_fee_basis' | 'cancel_fee_rate'>): string {
+  const basis = b.cancel_fee_basis ?? '';
+  if (b.cancel_fee_rate == null) return basis || '宿の判断';
+  return `${basis === '不泊' ? '不泊' : `${basis}の取消`} ${b.cancel_fee_rate}%`;
+}
+
+export function cancelFeeSettlementLabel(b: PartnerBookingRow): string {
+  switch (b.cancel_fee_settlement) {
+    case 'invoice':
+      return `→ ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求${b.cancel_fee_status === 'charge_failed' ? '（カードへの請求ができなかったため）' : ''}`;
+    case 'card':
+      return b.cancel_fee_status === 'charged' ? '→ ご登録のカードへ請求済み' : '→ ご登録のカードへ請求';
+    case 'refund':
+      return '→ お支払い済みの金額から差し引き';
+    default:
+      return '';
+  }
 }
 
 // 取引先払い（宿泊料金・入湯税を取引先へ月末に請求し、お客様には請求しない）予約の、宿への注意書き（2026-10-02 指示）。

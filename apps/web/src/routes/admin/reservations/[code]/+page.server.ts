@@ -10,6 +10,7 @@
 // book 側の操作（取消・返金・メール再送・取消リンク・会員紐づけ）は台帳・Stripe 返金・取引先メールを通らず、
 // 宿泊者へメールが出てしまうため、全 action の入口で rejectPartner により拒否する。
 // 取引先予約の取消・再請求は partnerCancel / partnerRetryCharge（/admin/partners/[id] と同じ関数・同じ権限）で行う。
+import { parseStaffFeeForm } from '$lib/server/partners/booking';
 import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 
 import { todayStr } from '$lib/format';
@@ -380,7 +381,8 @@ export const actions: Actions = {
 			const b = await cancelPartnerReservation(event, event.params.code, {
 				reason,
 				// オンライン決済済みの予約を返金するか（画面のチェック。既定は返金する）
-				refund: fd.get('refund') !== null
+				refund: fd.get('refund') !== null,
+				...parseStaffFeeForm(fd)
 			});
 			return { partnerCancelled: b.booking_code, partnerPaymentStatus: b.payment_status };
 		} catch (e) {

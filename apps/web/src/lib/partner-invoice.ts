@@ -37,6 +37,15 @@ export type InvoiceBookingSource = {
   payment_method_name: string | null;
   payment_status: string;
   detail?: { booker?: { name?: string } | null; plan_display_name?: string | null } | null;
+  // 取消済みの予約のキャンセル料（2026-10-06〜・不課税）。無い列（古いデータ）は 0 扱い
+  cancelled_at?: string | null;
+  cancel_fee?: number | null;
+  cancel_fee_rate?: number | null;
+  cancel_fee_basis?: string | null;
+  cancel_fee_settlement?: string | null;
+  cancel_fee_status?: string | null;
+  paid_amount?: number | null;
+  refund_amount?: number | null;
 };
 
 export type InvoiceLine = {
@@ -57,9 +66,13 @@ export type InvoiceLine = {
   lodging: number; // 宿泊料金（税込10%・割引前）
   bathTax: number; // 入湯税（不課税）
   discount: number; // 予約時決済の割引
-  usage: number; // ご利用額 = lodging + bathTax - discount
+  usage: number; // ご利用額 = lodging + bathTax - discount（取消の行はキャンセル料）
   billable: boolean;
   billed: number; // ご請求額（billable なら usage、それ以外 0）
+  // 取消の予約の行（2026-10-06〜）。宿泊料金・入湯税・割引は 0、usage がキャンセル料（不課税・逸失利益に対する損害賠償金）
+  cancelFee?: number;
+  cancelledOn?: string; // 取消日（YYYY-MM-DD・JST）
+  cancelNote?: string; // 「2日前の取消 30%」など
 };
 
 export type InvoiceIssuer = {
@@ -92,6 +105,8 @@ export type InvoiceTotals = {
   taxable10: number; // ご請求のうち 10% 対象（税込）
   tax10: number; // うち消費税
   nonTaxable: number; // ご請求のうち 入湯税（不課税）
+  // ご請求のうち キャンセル料（不課税・逸失利益に対する損害賠償金）。2026-10-06 より前の紙面には無い
+  cancelFee?: number;
 };
 
 // ---- 日付（JST の暦日として ISO 文字列で扱う） ----
@@ -133,8 +148,31 @@ export const invoiceCutoffDate = (period: string, today?: string): string => {
 
 // 請求書に載せる予約か（確定済み・チェックアウト日が対象月かつ今日まで）。取消・支払待ち・期限切れは載せない。
 // today を省くと月末まで（過去の月・月末の自動発行と同じ）。
-export const isInvoiceTarget = (b: Pick<InvoiceBookingSource, 'status' | 'check_out_date'>, period: string, today?: string) =>
-  b.status === 'confirmed' && b.check_out_date >= period && b.check_out_date <= invoiceCutoffDate(period, today);
+// 取消済みでもキャンセル料（予約時決済から差し引いた額を含む）がある予約は、チェックアウト予定日の月に載せる（2026-10-06 指示）。
+export const isInvoiceTarget = (b: InvoiceTargetSource, period: string, today?: string) =>
+  (b.status === 'confirmed' || (b.status === 'cancelled' && cancelChargeOf(b) > 0)) &&
+  b.check_out_date >= period &&
+  b.check_out_date <= invoiceCutoffDate(period, today);
+
+type InvoiceTargetSource = Pick<InvoiceBookingSource, 'status' | 'check_out_date'> &
+  Partial<Pick<InvoiceBookingSource, 'cancel_fee' | 'cancel_fee_settlement' | 'paid_amount' | 'refund_amount' | 'payment_status'>>;
+
+/**
+ * 取消の予約で受け取る額（不課税）。
+ *   invoice / card … キャンセル料
+ *   refund（予約時決済から差し引き）… 支払額 − 返金額（直販と同じく割引分を差し引いたときはキャンセル料より大きい）
+ */
+export function cancelChargeOf(b: Omit<InvoiceTargetSource, 'status' | 'check_out_date'>): number {
+  const fee = Math.max(0, b.cancel_fee ?? 0);
+  if (b.cancel_fee_settlement === 'invoice' || b.cancel_fee_settlement === 'card') return fee;
+  if (b.cancel_fee_settlement === 'refund') {
+    const paid = b.paid_amount ?? 0;
+    if (b.payment_status === 'refunded') return Math.max(0, paid - (b.refund_amount ?? paid));
+    // 返金前・返金失敗・スタッフが返金しなかった予約は、規定のキャンセル料分を受け取ったものとして載せる
+    return Math.min(fee, Math.max(0, paid));
+  }
+  return 0;
+}
 
 // チェックイン日のカード決済が失敗したままの予約か（請求はしない・宿が確認する）
 export const isChargeFailed = (b: Pick<InvoiceBookingSource, 'payment_status'>) => b.payment_status === 'charge_failed';
@@ -164,9 +202,49 @@ const paymentNote = (b: InvoiceBookingSource): string => {
   return '別途精算';
 };
 
+const jstDay = (iso: string | null | undefined) => (iso ? new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10) : '');
+
+function cancelNoteOf(b: InvoiceBookingSource): string {
+  const basis = b.cancel_fee_basis ?? '';
+  if (b.cancel_fee_rate == null) return basis ? `キャンセル料（${basis}）` : 'キャンセル料';
+  return `キャンセル料 ${basis === '不泊' ? '不泊' : `${basis}の取消`} ${b.cancel_fee_rate}%`;
+}
+
 export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<PartnerBookingSettings, 'customPaymentOptions'>): InvoiceLine[] {
   return bookings
     .map((b): InvoiceLine => {
+      if (b.status === 'cancelled') {
+        // 取消の行: 宿泊料金・入湯税は請求しない。キャンセル料（不課税）だけ。
+        // 請求書払い（invoice・カード請求の失敗を含む）はご請求、予約時決済から差し引き・カードで回収済みは対象外（済み）
+        const charge = cancelChargeOf(b);
+        const billable = b.cancel_fee_settlement === 'invoice';
+        const note = b.cancel_fee_settlement === 'refund' ? 'オンライン決済から差引済み' : b.cancel_fee_settlement === 'card' ? 'カード決済済み' : '';
+        return {
+          bookingId: b.id,
+          bookingCode: b.booking_code,
+          checkIn: b.check_in_date,
+          checkOut: b.check_out_date,
+          nights: b.nights,
+          roomName: (b.room_short_name ?? '').trim() || (b.room_name ?? ''),
+          roomCount: b.room_count,
+          adults: b.adult_total,
+          planName: (b.detail?.plan_display_name ?? '').trim() || (b.plan_name ?? ''),
+          guestName: b.guest_name,
+          bookerName: (b.detail?.booker?.name ?? '').trim() || (b.booked_by ?? ''),
+          paymentLabel: billable ? (b.payment_method_name ?? '') : `${b.payment_method_name ?? ''}（${note}）`,
+          paymentMethod: b.payment_method_name ?? '',
+          paymentNote: billable ? '' : note,
+          lodging: 0,
+          bathTax: 0,
+          discount: 0,
+          usage: charge,
+          billable,
+          billed: billable ? charge : 0,
+          cancelFee: charge,
+          cancelledOn: jstDay(b.cancelled_at),
+          cancelNote: cancelNoteOf(b)
+        };
+      }
       const lodging = b.total_amount;
       const bathTax = b.bath_tax_amount ?? 0;
       const discount = b.prepay_discount_amount ?? 0;
@@ -205,6 +283,7 @@ export function invoiceTotals(lines: InvoiceLine[]): InvoiceTotals {
   const billedTotal = billedLines.reduce((s, l) => s + l.billed, 0);
   const taxable10 = billedLines.reduce((s, l) => s + (l.lodging - l.discount), 0);
   const nonTaxable = billedLines.reduce((s, l) => s + l.bathTax, 0);
+  const cancelFee = billedLines.reduce((s, l) => s + (l.cancelFee ?? 0), 0);
   return {
     usageTotal,
     paidTotal: usageTotal - billedTotal,
@@ -212,7 +291,8 @@ export function invoiceTotals(lines: InvoiceLine[]): InvoiceTotals {
     taxable10,
     // 税込額から割り戻し、請求書1枚につき1回だけ切り捨て
     tax10: Math.floor((taxable10 * INVOICE_TAX_RATE) / (100 + INVOICE_TAX_RATE)),
-    nonTaxable
+    nonTaxable,
+    cancelFee
   };
 }
 
@@ -312,8 +392,12 @@ function invoicePage(doc: InvoiceDocument, draft = false): string {
     .map(
       (l) => `<tr>
   <td class="nw">${md(l.checkOut)}<br><span class="muted small">${esc(l.bookingCode)}</span></td>
-  <td>ご宿泊 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}<br><span class="muted">${esc(l.guestName)} 様</span></td>
-  <td class="n">${yen(l.lodging - l.discount)}</td>
+  <td>${
+    l.cancelFee != null
+      ? `${esc(l.cancelNote ?? 'キャンセル料')}（不課税）<br><span class="muted">ご宿泊予定 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}　${esc(l.guestName)} 様${l.cancelledOn ? `・${md(l.cancelledOn)} 取消` : ''}</span>`
+      : `ご宿泊 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}<br><span class="muted">${esc(l.guestName)} 様</span>`
+  }</td>
+  <td class="n">${l.cancelFee != null ? '—' : yen(l.lodging - l.discount)}</td>
   <td class="n">${l.bathTax ? yen(l.bathTax) : '—'}</td>
   <td class="n">${yen(l.billed)}</td>
 </tr>`
@@ -328,6 +412,7 @@ ${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`, draft)}
   <tr><th>区分</th><th class="n">対象額（税込）</th><th class="n">消費税額</th></tr>
   <tr><td>10%対象（宿泊料金）</td><td class="n">${yen(t.taxable10)}</td><td class="n">${yen(t.tax10)}</td></tr>
   <tr><td>不課税（入湯税）</td><td class="n">${yen(t.nonTaxable)}</td><td class="n">—</td></tr>
+  ${t.cancelFee ? `<tr><td>不課税（キャンセル料）<br><span class="muted small">逸失利益に対する損害賠償金</span></td><td class="n">${yen(t.cancelFee)}</td><td class="n">—</td></tr>` : ''}
   <tr class="sum"><td>合計</td><td class="n">${yen(t.billedTotal)}</td><td class="n">${yen(t.tax10)}</td></tr>
 </table>
 <table class="t">
@@ -371,9 +456,9 @@ function statementPage(doc: InvoiceDocument, draft = false): string {
         .map(
           (l) => `<tr>
   <td class="nw">${md(l.checkIn)}〜${md(l.checkOut)}<span class="muted small">・${l.nights}泊</span><br><span class="muted small">${esc(l.bookingCode)}</span></td>
-  <td>${roomLine(l)}<br><span class="muted">${esc(l.planName)}</span></td>
+  <td>${roomLine(l)}<br><span class="muted">${esc(l.planName)}</span>${l.cancelFee != null ? `<br><span class="small">${esc(l.cancelNote ?? 'キャンセル料')}（不課税）${l.cancelledOn ? `・${md(l.cancelledOn)} 取消` : ''}</span>` : ''}</td>
   <td>${esc(l.guestName)} 様${l.bookerName ? `<br><span class="muted small">ご予約者 ${esc(l.bookerName)}</span>` : ''}</td>
-  <td class="n">${yen(l.lodging)}${l.discount ? `<br><span class="muted small">割引 −${yen(l.discount)}</span>` : ''}</td>
+  <td class="n">${l.cancelFee != null ? '—' : `${yen(l.lodging)}${l.discount ? `<br><span class="muted small">割引 −${yen(l.discount)}</span>` : ''}`}</td>
   <td class="n">${l.bathTax ? yen(l.bathTax) : '—'}</td>
   <td class="n">${yen(l.usage)}</td>
   <td class="n">${l.billable ? yen(l.billed) : `—${l.paymentNote ? `<br><span class="muted small wrap">${esc(l.paymentNote)}</span>` : ''}`}</td>

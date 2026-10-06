@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
 	import {
@@ -310,7 +311,7 @@
 						<dt class="text-stone-500">予約番号</dt>
 						<dd class="font-mono">{pl.bookingCode}{#if pl.roomCount > 1}<span class="ml-1 font-sans text-xs text-stone-500">（{pl.roomCount}室・この画面は {b.code} の1室分）</span>{/if}</dd>
 						<dt class="text-stone-500">状態</dt>
-						<dd>{partnerBookingStatusLabel(pl.status, pl.checkedIn)}{#if pl.cancelledAt}<span class="text-xs text-stone-500">（{dt(pl.cancelledAt)}・{pl.cancelledBy === 'staff' ? '宿' : pl.cancelledBy === 'system' ? '自動' : '取引先'}）</span>{/if}</dd>
+						<dd>{partnerBookingStatusLabel(pl.status, pl.checkedIn)}{#if pl.cancelledAt}<span class="text-xs text-stone-500">（{dt(pl.cancelledAt)}・{pl.cancelledBy === 'staff' ? '宿' : pl.cancelledBy === 'system' ? '自動' : '取引先'}）</span>{/if}{#if pl.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {pl.cancelFee.fee > 0 ? `${pl.cancelFee.fee.toLocaleString('ja-JP')}円（${pl.cancelFee.basis}・不課税）${pl.cancelFee.settlement ? ` ${pl.cancelFee.settlement}` : ''}` : `なし${pl.cancelFee.waived ? '（免除）' : ''}`}{#if pl.cancelFee.note}<span class="text-stone-500">・{pl.cancelFee.note}</span>{/if}{#if pl.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{pl.cancelFee.error ? `（${pl.cancelFee.error}）` : ''}</span>{/if}</span>{/if}</dd>
 						<dt class="text-stone-500">予約したログインID</dt>
 						<dd class="font-mono text-xs">{pl.bookedBy ?? '—'}</dd>
 						<dt class="text-stone-500">予約者</dt>
@@ -624,10 +625,11 @@
 										<p class="mt-1 text-xs text-amber-700">複数室の予約です。{pl.roomCount}室すべてが取り消されます。</p>
 									{/if}
 								</div>
+								<PartnerCancelFeeFields preview={pl.cancelPreview} paid={pl.paymentStatus === 'paid'} card={pl.hasCard} invoiceMonth={pl.invoiceMonth} />
 								{#if pl.paymentStatus === 'paid'}
 									<label class="flex items-start gap-2 text-sm">
 										<input type="checkbox" name="refund" checked class="mt-1" />
-										<span>オンライン決済を全額返金する（{formatYen(pl.paidAmount ?? pl.chargeAmount)}）</span>
+										<span>オンライン決済を返金する（{formatYen(pl.paidAmount ?? pl.chargeAmount)} からキャンセル料を差し引く。免除なら全額）</span>
 									</label>
 								{/if}
 								<input
@@ -638,7 +640,7 @@
 									class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm"
 								/>
 								<p class="text-xs text-stone-500">
-									PMS に取消を反映し、取引先（予約者・ログインID・連絡先）へ取消のお知らせメールを送ります。キャンセル料の請求は取引先との取り決めに従って別途行ってください。
+									PMS に取消を反映し、取引先（予約者・ログインID・連絡先）へ取消のお知らせメールを送ります。キャンセル料は支払方法に応じて、月末の請求書・登録カード・予約時決済からの差し引きで精算します。
 								</p>
 								<div class="flex gap-2">
 									<button

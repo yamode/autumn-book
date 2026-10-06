@@ -8,12 +8,12 @@
 export type TermsRow = { label: string; value: string };
 export type PlanTerms = { cancellation: TermsRow[]; cancellationNote: string; children: TermsRow[]; childrenNote: string };
 
-type Rule = { days_before: number; rate_percent: number };
+export type Rule = { days_before: number; rate_percent: number };
 const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
-function normalizeRules(raw: unknown): Rule[] {
+export function normalizeRules(raw: unknown): Rule[] {
   // 配列（日数別料率）か {rules: [...]} のどちらでも受ける
   const list = Array.isArray(raw) ? raw : arr(obj(raw).rules);
   return list

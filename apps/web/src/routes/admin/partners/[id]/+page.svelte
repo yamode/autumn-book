@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
   import { untrack } from 'svelte';
   import { deserialize, enhance } from '$app/forms';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -413,7 +414,7 @@
 
     <!-- 限定URL -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">限定URL</h2>
+      <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
       <p class="mt-1 text-xs text-stone-500">この取引先専用のログイン画面です。下で発行したログインIDとパスワードでログインします。</p>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>
@@ -439,7 +440,7 @@
 
     <!-- 覚書（本文・ファイル） -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">覚書</h2>
+      <h2 class="text-lg font-bold text-stone-900">覚書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         取引条件のまとめ（料金・支払条件・特典・連絡先など）です。<strong class="font-medium text-stone-700">取引先ページの「覚書」にそのまま表示されます</strong>（社内向けのメモは「公開設定」の社内メモへ）。
       </p>
@@ -502,7 +503,7 @@
         </div>
       </form>
 
-      <h3 class="mt-5 text-xs font-bold text-stone-600">ファイル</h3>
+      <h3 class="mt-5 text-[15px] font-bold text-stone-800">ファイル</h3>
       <p class="mt-0.5 text-[11px] text-stone-500">契約書・見積書などを宿と取引先の双方で保存できます（取引先ページの「覚書」にも出ます）。1ファイル 20MB まで。</p>
       {#if lastSubmit === 'doc' && form?.message}
         <p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -617,7 +618,7 @@
       }}
       class="mb-6 rounded-xl border border-stone-200 bg-white p-5"
     >
-      <h2 class="mb-3 text-sm font-bold text-stone-700">公開設定</h2>
+      <h2 class="mb-3 text-lg font-bold text-stone-900">公開設定</h2>
       <fieldset disabled={!canEdit} class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label class="block">
           <span class="mb-0.5 block text-xs text-stone-500">取引先名</span>
@@ -670,7 +671,7 @@
         </label>
       </fieldset>
 
-      <h2 class="mb-1 mt-6 text-sm font-bold text-stone-700">特別レート</h2>
+      <h2 class="mb-1 mt-6 text-lg font-bold text-stone-900">特別レート</h2>
       <p class="mb-3 text-xs leading-5 text-stone-500">
         基準は料金マスタの理論値（booking.daily_rates・1名あたり・税込・入湯税別）です。<strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まります。
         <strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>で、どのルールにも当てはまらない料金は出しません。
@@ -834,7 +835,7 @@
       </fieldset>
 
       <!-- 予約受付 -->
-      <h2 class="mb-1 mt-8 text-sm font-bold text-stone-700">予約受付</h2>
+      <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">予約受付</h2>
       <p class="mb-3 text-xs leading-5 text-stone-500">
         限定URLの料金カレンダーから、取引先がそのまま予約できます。予約は即時確定し、PMS に「取引先予約（RMS）」として1分ほどで取り込まれます
         （部屋割り・在庫送信も PMS が行います）。空室は確定の瞬間に PMS と同じ規則で数え直すので、売り越しは起きません。
@@ -855,7 +856,7 @@
             </span>
           </label>
           <div>
-            <p class="mb-1 text-sm font-medium">支払方法（複数可） {#if settings.bookingEnabled}<span class="text-rose-700">1つ以上必須</span>{/if}</p>
+            <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">支払方法（複数可） {#if settings.bookingEnabled}<span class="text-xs font-normal text-rose-700">1つ以上必須</span>{/if}</h3>
             <div class="grid gap-1.5">
               {#each PARTNER_PAYMENT_OPTIONS as o (o.id)}
                 <label class="flex items-start gap-2 text-sm">
@@ -962,7 +963,7 @@
         </label>
 
         <div>
-          <p class="mb-1 text-xs text-stone-500">予約時に聞く項目（回答は PMS の予約備考に入ります）</p>
+          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">予約時に聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
           <div class="grid gap-2">
             {#each booking.options as o, i (o.id)}
               <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5 sm:grid-cols-[1fr_130px_1fr_auto_auto] sm:items-center">
@@ -992,7 +993,7 @@
         </div>
 
         <div>
-          <p class="mb-1 text-xs text-stone-500">取引先特典 <span>（最大{MAX_PARTNER_PERKS}件）</span></p>
+          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件）</span></h3>
           <p class="mb-2 text-[11px] leading-5 text-stone-500">
             この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
           </p>
@@ -1043,7 +1044,7 @@
         </div>
 
         <div>
-          <p class="mb-1 text-xs text-stone-500">プラン名（取引先向け）</p>
+          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
           <p class="mb-2 text-[11px] leading-5 text-stone-500">
             取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
           </p>
@@ -1067,6 +1068,7 @@
           </div>
         </div>
 
+        <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">通知メール</h3>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block">
             <span class="mb-0.5 block text-xs text-stone-500">宿への通知メール（予約・取消のたびに送る。改行・カンマ区切り）</span>
@@ -1079,7 +1081,7 @@
         </div>
 
         <div>
-          <p class="mb-1 text-xs font-medium text-stone-600">ご請求書（月次）</p>
+          <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">ご請求書（月次）</h3>
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
@@ -1149,7 +1151,7 @@
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-sm font-bold text-stone-700">プレビュー（取引先に見える価格）</h2>
+          <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格）</h2>
           <p class="mt-1 text-xs text-stone-500">
             <strong class="font-medium text-stone-800">編集中の内容で計算しています（保存前の変更も反映）。</strong>小さい数字は基準の理論値（料金マスタ）です。
           </p>
@@ -1221,7 +1223,7 @@
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-sm font-bold text-stone-700">予約一覧</h2>
+          <h2 class="text-lg font-bold text-stone-900">予約一覧</h2>
           <p class="mt-1 text-xs text-stone-500">この取引先が限定URLから入れた予約です。取消はここ（または取引先の画面）から行います。PMS の画面からは取り消せません。</p>
         </div>
         <div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
@@ -1271,6 +1273,7 @@
                     {#if b.cardConsentAt}<div class="text-[11px] text-stone-500" title={b.cardConsentText ?? ''}>請求の同意: {dt(b.cardConsentAt)}</div>{/if}
                     {#if b.paymentStatus === 'charge_failed'}<div class="text-[11px] text-rose-700">請求失敗{b.chargeError ? `：${b.chargeError}` : ''}</div>{/if}
                     {#if b.paymentStatus === 'refund_failed'}<div class="text-[11px] text-rose-700" title={b.refundError ?? ''}>返金失敗（Stripe で対応が必要）</div>{/if}
+                    {#if b.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {b.cancelFee.fee > 0 ? `${b.cancelFee.fee.toLocaleString('ja-JP')}円（${b.cancelFee.basis}・不課税）${b.cancelFee.settlement ? ` ${b.cancelFee.settlement}` : ''}` : `なし${b.cancelFee.waived ? '（免除）' : ''}`}{#if b.cancelFee.note}<span class="text-stone-500">・{b.cancelFee.note}</span>{/if}{#if b.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{b.cancelFee.error ? `（${b.cancelFee.error}）` : ''}</span>{/if}</span>{/if}
                   </td>
                   <td class="py-2 text-right">
                     {#if canEdit && b.status === 'confirmed' && b.paymentOption === 'online_checkin' && (b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkIn <= todayIso))}
@@ -1301,11 +1304,12 @@
                               await update({ reset: false });
                             };
                           }}
-                          class="flex flex-wrap items-center justify-end gap-1.5"
+                          class="flex w-[26rem] max-w-full flex-wrap items-center justify-end gap-1.5 text-left"
                         >
                           <input type="hidden" name="booking_id" value={b.id} />
+                          <div class="w-full"><PartnerCancelFeeFields preview={b.cancelPreview} paid={b.paymentStatus === 'paid'} card={b.hasCard} invoiceMonth={b.invoiceMonth} /></div>
                           <input name="reason" maxlength="500" placeholder="理由（任意）" class="w-32 rounded-md border border-stone-300 bg-white px-2 py-1 text-xs" />
-                          {#if b.paymentStatus === 'paid'}<label class="flex items-center gap-1 text-[11px]"><input type="checkbox" name="refund" checked />全額返金</label>{/if}
+                          {#if b.paymentStatus === 'paid'}<label class="flex items-center gap-1 text-[11px]"><input type="checkbox" name="refund" checked />返金する</label>{/if}
                           <button type="submit" class={`${smallBtn} border-rose-300 text-rose-700`}>取り消す</button>
                           <button type="button" class={smallBtn} onclick={() => (cancelTarget = null)}>やめる</button>
                         </form>
@@ -1324,7 +1328,7 @@
 
     <!-- ご請求書（ご利用明細書＋適格請求書） -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">ご請求書</h2>
+      <h2 class="text-lg font-bold text-stone-900">ご請求書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         チェックアウト日基準・月末締めで、ご利用明細書とご請求書（適格請求書）をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
         金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
@@ -1487,7 +1491,7 @@
               </table>
             </div>
             <p class="mt-2 text-xs text-stone-600">
-              ご請求 {yen(pv.totals.billedTotal)}円（10%対象 {yen(pv.totals.taxable10)}円・うち消費税 {yen(pv.totals.tax10)}円／入湯税〔不課税〕 {yen(pv.totals.nonTaxable)}円）・お支払い済み・別途精算 {yen(pv.totals.paidTotal)}円・お支払期限 {pv.dueDate}
+              ご請求 {yen(pv.totals.billedTotal)}円（10%対象 {yen(pv.totals.taxable10)}円・うち消費税 {yen(pv.totals.tax10)}円／入湯税〔不課税〕 {yen(pv.totals.nonTaxable)}円{pv.totals.cancelFee ? `／キャンセル料〔不課税〕 ${yen(pv.totals.cancelFee)}円` : ''}）・お支払い済み・別途精算 {yen(pv.totals.paidTotal)}円・お支払期限 {pv.dueDate}
               {#if pv.totals.billedTotal === 0}<span class="text-stone-500">（ご請求 0 円のため、ご利用明細書だけを発行します）</span>{/if}
               <span class="block text-stone-500">宛名: {pv.recipient.name} 御中（宛名・お支払期限は保存済みの設定で計算しています）</span>
             </p>
@@ -1525,7 +1529,7 @@
 
     <!-- ログインID -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">ログインID</h2>
+      <h2 class="text-lg font-bold text-stone-900">ログインID</h2>
       <p class="mt-1 text-xs text-stone-500">
         ここでログインIDを発行し、パスワード設定リンク（有効期限7日・1回限り）を取引先へ送ります。ここで発行するログインIDはマスタユーザーです（取引先ページで子ユーザーを作れます）。パスワードは取引先が自分で決めます（宿側では分かりません）。メールの差出人は施設名、返信先は施設の予約用アドレスです。
       </p>
@@ -1633,7 +1637,7 @@
 
     <!-- API -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">REST API</h2>
+      <h2 class="text-lg font-bold text-stone-900">REST API</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         取引先のシステムから特別レート・残室を JSON で取得できます。API キーは発行時に1度だけ表示します（キー本体は保存しません）。
       </p>
@@ -1700,7 +1704,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
 
     <!-- アクセスログ -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-sm font-bold text-stone-700">アクセスログ（直近50件）</h2>
+      <h2 class="text-lg font-bold text-stone-900">アクセスログ（直近50件）</h2>
       {#if data.logs.length === 0}
         <p class="mt-2 text-sm text-stone-500">まだアクセスはありません。</p>
       {:else}

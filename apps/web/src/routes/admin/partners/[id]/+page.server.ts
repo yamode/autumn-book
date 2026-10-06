@@ -13,6 +13,10 @@ import {
 	isPartnerBookingOpen,
 	isStripeTestMode,
 	listPartnerBookings,
+	parseStaffFeeForm,
+	previewPartnerCancels,
+	cancelFeeBasisLabel,
+	cancelFeeSettlementLabel,
 	inlinePaymentReady,
 	onlinePaymentReady,
 	retryPartnerCharge,
@@ -165,6 +169,8 @@ export const load: PageServerLoad = async (event) => {
 	const keyLabel = new Map(apiKeys.map((k) => [k.id, k.label || k.key_prefix]));
 	const origin = event.url.origin;
 
+	// 取消フォームに出すキャンセル料の見込み（確定済み・未チェックインの予約）
+	const cancelPreviews = await previewPartnerCancels(scope.db, partner.facility_id, bookings).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
 	return {
 		facilityName: scope.facilityName,
 		facilitySlugHint: scope.bookFacilityId === 'f-oga' ? 'oga' : 'yamado',
@@ -252,6 +258,14 @@ export const load: PageServerLoad = async (event) => {
 		stripeKeyKind: stripeKeyKind(),
 		stripeKeyHint: stripeKeyKind() === 'invalid' ? stripeKeyHint() : null,
 		bookings: bookings.map((b) => ({
+			// キャンセル料の見込み（取消フォーム）と、取消済みのキャンセル料
+			cancelPreview: cancelPreviews[b.id] ?? null,
+			cancelFee:
+				b.status === 'cancelled' && b.cancel_fee_settlement
+					? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''), status: b.cancel_fee_status ?? null, error: b.cancel_fee_error ?? null, note: b.cancel_fee_note ?? null }
+					: null,
+			invoiceMonth: `${Number(b.check_out_date.slice(0, 4))}年${Number(b.check_out_date.slice(5, 7))}月`,
+			hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed'),
 			id: b.id,
 			code: b.booking_code,
 			status: b.status,
@@ -477,7 +491,8 @@ export const actions: Actions = {
 				reason: String(fd.get('reason') ?? ''),
 				origin: event.url.origin,
 				// オンライン決済済みの予約を返金するか（画面のチェック。既定は返金する）
-				refund: fd.get('refund') !== null
+				refund: fd.get('refund') !== null,
+				...parseStaffFeeForm(fd)
 			});
 			return { bookingCancelled: b.booking_code };
 		} catch (e) {

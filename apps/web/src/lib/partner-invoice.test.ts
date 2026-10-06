@@ -298,3 +298,26 @@ describe('ご利用明細書のグループ（お支払方法別）', () => {
     ]);
   });
 });
+
+describe('取消の予約のキャンセル料（2026-10-06〜・不課税）', () => {
+  const cancelled = (over: Partial<InvoiceBookingSource> = {}) =>
+    booking({ status: 'cancelled', cancelled_at: '2026-10-08T05:00:00Z', cancel_fee: 15_600, cancel_fee_rate: 30, cancel_fee_basis: '2日前', cancel_fee_settlement: 'invoice', ...over });
+  it('キャンセル料がある取消は、チェックアウト予定日の月に載せる。無ければ載せない', () => {
+    expect(isInvoiceTarget(cancelled(), '2026-10-01')).toBe(true);
+    expect(isInvoiceTarget(cancelled({ cancel_fee: 0, cancel_fee_settlement: 'none' }), '2026-10-01')).toBe(false);
+    expect(isInvoiceTarget(cancelled({ cancel_fee: 0, cancel_fee_settlement: null }), '2026-10-01')).toBe(false);
+  });
+  it('請求書払いはキャンセル料だけを請求し、10%対象に入れず不課税で集計する', () => {
+    const [l] = buildInvoiceLines([cancelled()], settings);
+    expect(l).toMatchObject({ lodging: 0, bathTax: 0, usage: 15_600, billable: true, billed: 15_600, cancelFee: 15_600, cancelledOn: '2026-10-08', cancelNote: 'キャンセル料 2日前の取消 30%' });
+    const t = invoiceTotals([l, ...buildInvoiceLines([booking()], settings)]);
+    expect(t.cancelFee).toBe(15_600);
+    expect(t.taxable10).toBe(buildInvoiceLines([booking()], settings)[0].lodging);
+  });
+  it('予約時決済から差し引いた分・カードで回収した分は対象外（済み）として明細に出す', () => {
+    const [r] = buildInvoiceLines([cancelled({ cancel_fee_settlement: 'refund', payment_status: 'refunded', paid_amount: 52_300, refund_amount: 36_700 })], settings);
+    expect(r).toMatchObject({ usage: 15_600, billable: false, billed: 0, paymentNote: 'オンライン決済から差引済み' });
+    const [c] = buildInvoiceLines([cancelled({ cancel_fee_settlement: 'card', cancel_fee_status: 'charged' })], settings);
+    expect(c).toMatchObject({ billable: false, paymentNote: 'カード決済済み' });
+  });
+});
