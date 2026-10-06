@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import PerkBanners from '$lib/components/PerkBanners.svelte';
+  import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
+  import MarkdownView from '$lib/components/MarkdownView.svelte';
   import PerkModal, { type PerkModalContent } from '$lib/components/PerkModal.svelte';
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
@@ -88,6 +90,9 @@
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
   // 専用特典のモーダル
   let perkContent = $state<PerkModalContent | null>(null);
+  // 右欄の料金明細の開閉
+  let showBreakdown = $state(false);
+  const num = (n: number) => n.toLocaleString('ja-JP');
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
   // 金額の計算はサーバ（Intent の金額）と同じ純関数（lib/partner-booking.ts の quoteChargeOf）
@@ -288,7 +293,7 @@
 
     <div class="grid gap-5">
       <!-- 宿泊条件 -->
-      <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
+      <section id="stay-conditions" class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
         <h3 class="card-title">ご宿泊の条件</h3>
         <div class="grid gap-4 sm:grid-cols-3">
           <label class="block">
@@ -525,17 +530,69 @@
           {/if}
         </div>
       </section>
+
+      <!-- キャンセルポリシー・お子様について・注意事項（入力・確認のどちらでも出す・2026-10-06 指示） -->
+      <section class="card">
+        <h3 class="card-title">キャンセルポリシー</h3>
+        {#if data.terms && (data.terms.cancellation.length || data.terms.cancellationNote)}
+          <PartnerTermsTable title="" rows={data.terms.cancellation} note={data.terms.cancellationNote} />
+        {:else}
+          <p class="text-[15px] leading-7 text-stone-700">キャンセル料の規定は宿へお問い合わせください。</p>
+        {/if}
+        <p class="mt-3 text-[15px] leading-7 text-stone-700">{data.cancelText ? `取消は宿泊日の${data.cancelText}まで、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}</p>
+      </section>
+      <section class="card">
+        <h3 class="card-title">お子様について</h3>
+        {#if data.terms && (data.terms.children.length || data.terms.childrenNote)}
+          <PartnerTermsTable title="" rows={data.terms.children} note={data.terms.childrenNote} />
+        {:else}
+          <p class="text-[15px] leading-7 text-stone-700">お子様のご宿泊・料金については宿へお問い合わせください。</p>
+        {/if}
+      </section>
+      {#if data.bookingNote || data.settings.notice || data.summary.checkinTime}
+        <section class="card">
+          <h3 class="card-title">注意事項</h3>
+          {#if data.summary.checkinTime}
+            <p class="text-[15px] leading-7">チェックイン {data.summary.checkinTime}〜 ／ チェックアウト 〜{data.summary.checkoutTime}</p>
+          {/if}
+          {#if data.bookingNote}<div class="mt-2 text-[15px]"><MarkdownView source={data.bookingNote} /></div>{/if}
+          {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
+        </section>
+      {/if}
     </div>
 
-    <!-- 料金 -->
+    <!-- 料金（一休の右欄の形: 写真・施設名・所在地 → 日程・人数・お部屋・プラン → 宿泊料金 → お支払い金額合計 → 取消の案内 → ボタン・2026-10-06） -->
     <aside class="card lg:sticky lg:top-4">
-      <p class="text-sm text-stone-500">{quote.ok ? quote.roomName : ''}</p>
-      <h3 class="text-lg font-bold leading-snug">{data.target.displayName}</h3>
-      {#if quote.ok && quote.mealType}<p class="mt-1 text-sm text-stone-500">{mealLabel(quote.mealType)}</p>{/if}
+      <div class="flex items-start gap-3">
+        {#if data.summary.photo}<img src={data.summary.photo} alt="" class="h-[72px] w-[72px] shrink-0 rounded-lg object-cover" />{/if}
+        <div class="min-w-0">
+          <p class="text-lg font-bold leading-snug">{data.summary.facilityName}</p>
+          {#if data.summary.area}<p class="mt-0.5 text-sm text-stone-500">{data.summary.area}</p>{/if}
+        </div>
+      </div>
+      <ul class="mt-4 space-y-2.5 text-[15px] leading-6">
+        <li class="flex gap-2.5">
+          <svg viewBox="0 0 20 20" class="mt-0.5 h-5 w-5 shrink-0 text-stone-500" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M3 8.5h14M7 3v3M13 3v3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+          <span>{fmt(checkIn)} 〜 {nights}泊{#if quote.ok && quote.mealType}<span class="ml-1.5">{mealLabel(quote.mealType)}</span>{/if}</span>
+        </li>
+        <li class="flex gap-2.5">
+          <svg viewBox="0 0 20 20" class="mt-0.5 h-5 w-5 shrink-0 text-stone-500" aria-hidden="true"><circle cx="10" cy="7" r="3" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M4 17c.8-3.2 3.2-4.8 6-4.8s5.2 1.6 6 4.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+          <span>
+            大人{adults.reduce((t, a) => t + a, 0)}名{#if roomCount > 1}<span class="text-sm text-stone-500">（{adults.map((a) => `${a}名`).join('・')}）</span>{/if} {roomCount}室
+            {#if step === 'input'}<button type="button" onclick={() => document.getElementById('stay-conditions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} class="ml-1.5 text-sm text-sky-700 hover:underline">変更</button>{/if}
+          </span>
+        </li>
+        {#if quote.ok}
+          <li class="flex gap-2.5">
+            <svg viewBox="0 0 20 20" class="mt-0.5 h-5 w-5 shrink-0 text-stone-500" aria-hidden="true"><path d="M2.5 15V6.5M2.5 11.5h15V15M17.5 11.5V10a2 2 0 0 0-2-2H9.5v3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /><circle cx="6" cy="9" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
+            <span>{quote.roomName}</span>
+          </li>
+        {/if}
+        <li class="pl-[1.875rem] text-stone-700">{data.target.displayName}</li>
+      </ul>
       {#if data.perks.length}
-        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。
-             右欄が長くなるので一覧は出さず、ボタンを押すとモーダルで中身を見せる（2026-10-06 指示） -->
-        <div class="mt-3">
+        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。ボタンを押すとモーダルで中身を見せる -->
+        <div class="mt-4">
           <PerkBanners items={[{ key: 'partner', label: '取引先専用特典', kind: 'partner' }]} onopen={() => (perkContent = { label: '取引先専用特典', perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
         </div>
       {/if}
@@ -544,37 +601,45 @@
         {#if !quote.ok}
           <p class="rounded-lg bg-rose-700/5 px-3 py-2 text-sm text-rose-700">{quote.message}</p>
         {:else}
-          <p class="text-sm text-stone-500">{fmt(quote.checkIn)} から {quote.nights}泊</p>
-          <ul class="mt-2 grid gap-1.5 text-sm">
-            {#each quote.rooms as r, i}
-              <li class="flex justify-between gap-2">
-                <span>{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊</span>
-                <span class="tabular-nums">{yen(r.subtotal)}</span>
-              </li>
-            {/each}
-          </ul>
+          <div class="flex items-start justify-between gap-3">
+            <span class="font-bold">宿泊料金合計</span>
+            <div class="text-right">
+              <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
+              <button type="button" aria-expanded={showBreakdown} onclick={() => (showBreakdown = !showBreakdown)} class="text-xs text-stone-500 hover:text-brand-900">料金明細を{showBreakdown ? '閉じる' : '表示'} <span aria-hidden="true" class={`inline-block transition ${showBreakdown ? 'rotate-180' : ''}`}>⌄</span></button>
+            </div>
+          </div>
+          {#if showBreakdown}
+            <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
+              {#each quote.rooms as r, i}
+                <li class="flex justify-between gap-2">
+                  <span>{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊</span>
+                  <span class="tabular-nums">{num(r.subtotal)}円</span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
           {#if quote.bathTax > 0}
-            <div class="mt-1.5 flex justify-between gap-2 text-sm">
-              <span>入湯税（大人 {quote.rooms.reduce((s, r) => s + r.adults, 0)}名 × {quote.nights}泊）</span>
-              <span class="tabular-nums">{yen(quote.bathTax)}</span>
+            <div class="mt-2.5 flex justify-between gap-2">
+              <span class="font-bold">入湯税</span>
+              <span class="tabular-nums">{num(quote.bathTax)}円</span>
             </div>
           {/if}
           {#if discounted && prepay}
-            <div class="mt-2 flex justify-between gap-2 text-sm text-[var(--pt-accent)]">
-              <span>予約時決済割引（{prepay.label}）</span>
-              <span class="tabular-nums">-{yen(prepay.discount)}</span>
+            <div class="mt-2.5 flex justify-between gap-2">
+              <span class="font-bold">予約時決済割引<span class="ml-1 text-xs font-normal text-stone-500">（{prepay.label}）</span></span>
+              <span class="font-bold tabular-nums text-rose-600">-{num(prepay.discount)}円</span>
             </div>
           {/if}
-          <div class="mt-3 flex items-end justify-between border-t border-stone-200 pt-3">
-            <span class="font-medium">合計</span>
-            <span class="text-2xl font-bold tabular-nums text-accent-600">{yen(payTotal)}</span>
+          <div class="mt-4 flex items-end justify-between gap-3 border-t border-stone-200 pt-4">
+            <span class="font-bold">お支払い金額合計</span>
+            <span class="whitespace-nowrap"><span class="mr-1 text-sm">税込</span><span class="text-[1.75rem] font-bold tabular-nums leading-none">{num(payTotal)}</span><span class="font-bold">円</span></span>
           </div>
           {#if prepay && !discounted && data.paymentOptions.some((o) => o.id === 'online')}
-            <p class="mt-1 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {yen(prepay.total + quote.bathTax)}（{prepay.label}）</p>
+            <p class="mt-2 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {num(prepay.total + quote.bathTax)}円（{prepay.label}）</p>
           {/if}
-          <p class="mt-1 text-right text-xs text-stone-500">税込{quote.bathTax > 0 ? '・入湯税を含む' : ''}</p>
+          {#if paymentLabel}<p class="mt-2 text-right text-sm text-stone-500">{paymentLabel}</p>{/if}
           {#if soldShort}
-            <!-- 残室は出さず、希望の室数に足りないときだけ知らせる（2026-10-06 指示） -->
+            <!-- 残室は出さず、希望の室数に足りないときだけ知らせる -->
             <p class="mt-2 text-sm font-medium text-rose-700">ご希望の室数を確保できません（残り{quote.remaining}室）</p>
           {/if}
         {/if}
@@ -583,22 +648,10 @@
         {/if}
       </div>
 
-      <!-- 見出しを上・中身を下に積む（横並びだと見出しが折り返して窮屈だったため）。予約の締切は出さない（2026-10-06 指示） -->
-      <dl class="mt-4 space-y-3 border-t border-stone-200 pt-4">
-        {#if paymentLabel}
-          <div>
-            <dt class="text-sm text-stone-500">お支払方法</dt>
-            <dd class="mt-0.5 text-base leading-7">{paymentLabel}</dd>
-          </div>
-        {/if}
-        <div>
-          <dt class="text-sm text-stone-500">取消</dt>
-          <dd class="mt-0.5 text-base leading-7">
-            {#if data.cancelText}宿泊日の{data.cancelText}<span class="block text-sm text-stone-500">予約一覧から取り消せます</span>{:else}宿へご連絡ください{/if}
-          </dd>
-        </div>
-      </dl>
-      {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
+      <!-- 取消の案内（一休の「◯日までキャンセル料無料」の帯の位置） -->
+      <p class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sm font-bold leading-6 text-sky-700">
+        {data.cancelText ? `宿泊日の${data.cancelText}まで、予約一覧から取消できます` : '取消は宿へご連絡ください'}
+      </p>
 
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
@@ -652,14 +705,14 @@
   /* Book の予約ボタン（rounded-lg・accent-600 → hover accent-500）に合わせる */
   .primary {
     border-radius: 0.5rem;
-    background: var(--color-accent-600, #95742c);
+    background: #16a34a;
     padding: 0.75rem 1rem;
     font-weight: 500;
     color: #fff;
     transition: background-color 0.15s;
   }
   .primary:hover:not(:disabled) {
-    background: var(--color-accent-500, #b08d3e);
+    background: #15803d;
   }
   .primary:disabled {
     opacity: 0.4;

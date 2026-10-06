@@ -7,6 +7,10 @@ import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from 
 import { stripePublishableKey } from '$lib/server/stripe';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { partnerBackTarget } from '$lib/partner-stay';
+import { loadPartnerContents } from '$lib/server/partners/contents';
+import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
+import { sbFacilityByUuid } from '$lib/server/supabase-data';
+import { loadBookingNote } from '$lib/server/booking-notes';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -27,14 +31,26 @@ export const load = async (event) => {
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
-  const [quote, rt, booker, profileRow] = await Promise.all([
+  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote] = await Promise.all([
     quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
     getBookerProfile(db, partner.id, session.id).catch(() => null),
     // マイページで設定済みか（未設定なら「マイページで設定しておくと…」の案内を出す）
-    db.from('rms_partner_accounts').select('booker_profile').eq('id', session.id).eq('partner_id', partner.id).maybeSingle()
+    db.from('rms_partner_accounts').select('booker_profile').eq('id', session.id).eq('partner_id', partner.id).maybeSingle(),
+    // 右欄の写真（お部屋の紹介の1枚目）。読めなくても予約はできる
+    loadPartnerContents(db, partner).catch(() => null),
+    // 左カラムのキャンセルポリシー・お子様（料金カレンダー・プランのご紹介と同じ取得口）
+    db
+      .rpc('rms_partner_plan_terms', { p_facility: partner.facility_id })
+      .then(({ data: t, error: e }) => (e ? new Map<string, PlanTerms>() : buildPlanTerms(t)), () => new Map<string, PlanTerms>()),
+    // 右欄の所在地・注意事項のチェックイン／アウト
+    sbFacilityByUuid(partner.facility_id).catch(() => undefined),
+    // 左カラムの注意事項（施設のマスタ。管理画面「予約時の注意事項」）
+    loadBookingNote(partner.facility_id)
   ]);
+  const roomContent = contents?.rooms.find((r) => r.code === roomCode);
+  const planContent = contents?.plans.find((p) => p.planCode === planCode && p.planLabel === planName);
   const saved = normalizeBooker(profileRow.data?.booker_profile);
   const payIds = availablePaymentOptions(partner);
 
@@ -42,6 +58,16 @@ export const load = async (event) => {
     portal: portalHeader(partner, session),
     // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
     target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights, roomCount },
+    // 右欄の見出し（一休の形: 写真・施設名・所在地）と左カラムのキャンセルポリシー・注意事項
+    summary: {
+      photo: roomContent?.photos[0]?.url ?? planContent?.photos[0]?.url ?? null,
+      facilityName: partner.facility_name,
+      area: facility ? [facility.prefecture, facility.addressPublic].filter(Boolean).join(' ') : '',
+      checkinTime: facility?.checkinTime ?? null,
+      checkoutTime: facility?.checkoutTime ?? null
+    },
+    terms: terms.get(`${planCode}■${planName}`) ?? null,
+    bookingNote,
     // 「戻る」は来たページ（料金カレンダー／プランのご紹介）へ。決め打ちで料金カレンダーに戻さない
     back: partnerBackTarget(token, q.get('from')),
     quote,
