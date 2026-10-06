@@ -15,7 +15,7 @@
   import { roomParts, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import { fetchPortalMonth } from '$lib/partner-month-client';
   import type { PartnerRateDay } from '$lib/partner-pricing';
-  import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
+  import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers } from '$lib/partner-stay';
   import type { StayPageData } from '$lib/server/partners/stay-page';
   import { planSummary } from '$lib/plan-summary';
 
@@ -165,13 +165,10 @@
 
   let infoRoom = $state<PartnerRoomContent | null>(null);
   let calendarRoom = $state<{ code: string; name: string } | null>(null);
-  // プランの行（日程を選ぶ前の「詳細・予約」）から開いたときは、そのプランに絞り、日付を選んだらすぐ詳細を開く
-  let calendarPlan = $state<{ code: string; name: string; label: string } | null>(null);
-  // 空室カレンダーを開いたカード（プランを絞らないとき、日付を選んだあと、そのカードへスクロールする）
+  // 空室カレンダーを開いたカード（日付を選んだあと、そのカードへスクロールする）
   let calendarFrom = '';
-  function openCalendar(code: string, name: string, cardId: string, row?: Row) {
+  function openCalendar(code: string, name: string, cardId: string) {
     calendarFrom = cardId;
-    calendarPlan = row ? { code: row.planCode, name: row.planName, label: partnerPlanName(data.planNames, row.planCode, row.planName) } : null;
     calendarRoom = { code, name };
   }
   const planAnchorOf = (r: Row) => data.planAnchors.find((p) => p.planCode === r.planCode && p.planLabel === r.planName)?.anchor ?? null;
@@ -197,14 +194,19 @@
     });
     return `/p/${token}/book?${q}`;
   };
-  // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から
+  // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から。
+  // 日程を選ぶ前は日付未定のまま開き、中の「日付を選択して予約」で日付を選んだら予約の入力へ（pickDateForDetail）
   let detail = $state<PlanDetail | null>(null);
-  // 詳細の日程（空室カレンダーから開いたときは、一覧の読み込みより先に選んだ日で開く）
   // svelte-ignore state_referenced_locally
   let detailParams = $state<Params>(data.params);
+  let detailRow: Row | null = null;
   function openDetail(r: Row, content: PartnerRoomContent | null, p: Params = data.params) {
     detailParams = p;
+    detailRow = r;
     detail = {
+      roomCode: r.roomCode,
+      planCode: r.planCode,
+      planLabel: r.planName,
       planName: partnerPlanName(data.planNames, r.planCode, r.planName),
       mealType: r.mealType,
       roomName: r.roomName,
@@ -219,7 +221,11 @@
       bookHref: bookHref(r, p)
     };
   }
-  // モーダルの日程・人数を押したら、閉じて検索バーのパネルを開く
+  function pickDateForDetail(iso: string, nights: number) {
+    if (!detailRow) return;
+    void goto(bookHref(detailRow, { ...detailParams, date: iso, nights }));
+  }
+  // モーダルの人数を押したら、閉じて検索バーのパネルを開く
   function reopenSearch(panel: 'date' | 'guests') {
     detail = null;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -236,17 +242,11 @@
   const fromRoom = $page.url.searchParams.get('room');
   // svelte-ignore state_referenced_locally
   let scrollTo = $state<{ id: string; date: string } | null>(fromRoom && data.params.date ? { id: `room-${fromRoom}`, date: data.params.date } : null);
-  function pickFromCalendar(iso: string, offer: PartnerStayOffer | null) {
+  function pickFromCalendar(iso: string) {
     const id = calendarFrom;
-    const withPlan = !!calendarPlan;
     calendarRoom = null;
-    calendarPlan = null;
     date = iso;
-    if (withPlan && offer) {
-      // プランを絞って開いたとき: カレンダーで読み込み済みの料金で、その日程のプラン詳細をすぐ開く（一覧は後ろで検索し直す）
-      const p = { ...data.params, date: iso };
-      openDetail({ ...offer, total: offer.totalPerPerson * p.guests * p.rooms }, roomOf(offer.roomCode), p);
-    } else if (id) scrollTo = { id, date: iso };
+    if (id) scrollTo = { id, date: iso };
     search();
   }
   $effect(() => {
@@ -300,7 +300,7 @@
     {#if dated && canBook}
       <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
     {:else if !dated}
-      <button type="button" onclick={() => openCalendar(r.roomCode, r.roomName, cardId, r)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
+      <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
     {/if}
   </div>
 {/snippet}
@@ -508,7 +508,6 @@
   showInventory={data.showInventory}
   today={data.today}
   selected={data.params.date}
-  plan={calendarPlan}
   onPick={pickFromCalendar}
 />
 <PartnerPlanDetailModal
@@ -520,7 +519,11 @@
   paymentLabels={data.paymentLabels}
   showInventory={data.showInventory}
   canBook={canBookOn(detailParams.date)}
-  onChangeDates={() => reopenSearch('date')}
+  {token}
+  today={data.today}
+  maxNights={data.booking.maxNights}
+  isBookable={canBookOn}
+  onPickDate={pickDateForDetail}
   onChangeGuests={() => reopenSearch('guests')}
 />
 <PartnerRoomModal bind:room={infoRoom} {token} />

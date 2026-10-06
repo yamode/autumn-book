@@ -2,6 +2,7 @@
   // 取引先専用ページ「お部屋とプラン」の検索バーから開く日付パネル（2か月横並び・スマホは1か月）。
   // 泊数を変えると、どこかの部屋・プランで全泊空いている日だけに料金（1名1泊の最安）を出す。
   // 日付を押しても閉じず、「この日程で検索」で確定する。
+  // プラン詳細（日付未定）から開くときは filter で部屋・プランを絞り、日付を押したらそのまま onApply（予約画面へ）。
   import { isHoliday } from '$lib/holidays';
   import { partnerStayOffers } from '$lib/partner-stay';
   import { fetchPortalMonth, type PortalMonthJson } from '$lib/partner-month-client';
@@ -15,6 +16,9 @@
     maxNights,
     showInventory,
     today,
+    filter = null,
+    pickApplies = false,
+    isBookable,
     onApply,
     onClose
   }: {
@@ -27,6 +31,12 @@
     maxNights: number;
     showInventory: boolean;
     today: string;
+    /** 部屋・プランを絞る（プラン詳細から開いたとき）。null ならすべての部屋・プランの最安 */
+    filter?: { roomCode: string; planCode: string; planName: string } | null;
+    /** 日付を押したらすぐ onApply する（「この日程で検索」ボタンを出さない） */
+    pickApplies?: boolean;
+    /** 予約を受け付ける日か（受付締切を過ぎた日は押せなくする）。省略時はすべて */
+    isBookable?: (iso: string) => boolean;
     onApply: () => void;
     onClose: () => void;
   } = $props();
@@ -77,7 +87,10 @@
     for (let d = 1; d <= last; d += 1) {
       const iso = `${ym}-${pad(d)}`;
       const inRange = !!bounds && iso >= bounds.earliest && iso <= bounds.latest;
-      const offers = inRange ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, rooms }) : null;
+      const offers =
+        inRange && (!isBookable || isBookable(iso))
+          ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, rooms, roomCode: filter?.roomCode, planCode: filter?.planCode, planName: filter?.planName })
+          : null;
       out.push({ iso, dow: (first + d - 1) % 7, min: offers?.length ? offers[0].perPerson : null, closed: index.get(iso)?.closed === true, inRange });
     }
     return out;
@@ -129,7 +142,10 @@
                 type="button"
                 disabled={pending || c.min == null}
                 aria-pressed={selected}
-                onclick={() => (date = c.iso)}
+                onclick={() => {
+                  date = c.iso;
+                  if (pickApplies) onApply();
+                }}
                 class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
               >
                 <span class={`block text-base ${selected ? '' : !pending && c.min == null ? '' : c.dow === 0 || isHoliday(c.iso) ? 'text-rose-600' : c.dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(c.iso.slice(8))}</span>
@@ -151,9 +167,11 @@
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
     <p class="text-base text-stone-700">
-      {#if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
+      {#if pickApplies}チェックイン日を選ぶと、予約の入力へ進みます{:else if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
       <span class="ml-2 text-sm text-stone-400">— は満室・料金なし</span>
     </p>
-    <button type="button" disabled={!date} onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">この日程で検索</button>
+    {#if !pickApplies}
+      <button type="button" disabled={!date} onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">この日程で検索</button>
+    {/if}
   </div>
 </div>

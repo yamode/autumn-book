@@ -6,7 +6,20 @@
 //           未設定なら rms の区分コード（子供不可）から決める。
 
 export type TermsRow = { label: string; value: string };
-export type PlanTerms = { cancellation: TermsRow[]; cancellationNote: string; children: TermsRow[]; childrenNote: string };
+export type PlanTerms = {
+  cancellation: TermsRow[];
+  cancellationNote: string;
+  children: TermsRow[];
+  childrenNote: string;
+  /** チェックイン日の何日前までキャンセル料無料か（最初に料率がかかる日の前日まで。料率の段が無ければ null） */
+  freeUntilDays?: number | null;
+};
+
+/** 「チェックイン日の15日前までキャンセル料無料」の文言（予約画面の帯と同じ数え方） */
+export function freeCancelText(days: number | null | undefined): string | null {
+  if (days == null) return null;
+  return days <= 1 ? 'チェックイン日の前日までキャンセル料無料' : `チェックイン日の${days}日前までキャンセル料無料`;
+}
 
 export type Rule = { days_before: number; rate_percent: number };
 const obj = (v: unknown) => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
@@ -76,6 +89,11 @@ export function buildPlanTerms(raw: unknown): Map<string, PlanTerms> {
     out.set(`${str(p.plan_code)}■${str(p.plan_label)}`, {
       cancellation: cancellationRows(rules, own.length ? null : defNoShow),
       cancellationNote: own.length ? '' : str(def.body),
+      // 最初に料率がかかるのが N日前なら、N+1日前まで無料（予約画面の cancelFeeFromDays と同じ）
+      freeUntilDays: (() => {
+        const fee = rules.filter((r) => r.rate_percent > 0).map((r) => r.days_before);
+        return fee.length ? Math.max(...fee) + 1 : null;
+      })(),
       children: children.rows,
       childrenNote: children.note
     });

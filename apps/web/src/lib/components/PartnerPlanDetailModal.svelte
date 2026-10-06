@@ -3,6 +3,8 @@
   // 上部: 写真・プラン名・食事・IN/OUT・予約受付・お部屋 → 日程・人数・料金 → 「予約へ進む」。
   // 本文: プランの紹介・専用特典・お料理・お部屋・キャンセルポリシー・お子様。
   // 上部の「予約へ進む」が見えなくなったら、日程・人数・料金・「予約へ進む」の固定フッターを出す。
+  // 日付未定（日程を選ぶ前の一覧から開いたとき）は料金を「〜」で出し、「日付を選択して予約」で、この部屋・プランに絞った
+  // 日付パネルをモーダルの中に開く。日付を押したらそのまま予約の入力へ（onPickDate）。日程の欄を押しても同じパネルを開く。
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import PartnerContentBody from './PartnerContentBody.svelte';
@@ -11,11 +13,17 @@
   import PartnerContentSections from './PartnerContentSections.svelte';
   import PartnerTermsTable from './PartnerTermsTable.svelte';
   import MarkdownView from './MarkdownView.svelte';
+  import PartnerStayPanel from './PartnerStayPanel.svelte';
   import { roomParts, type ContentPhoto, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
-  import type { PlanTerms } from '$lib/partner-plan-terms';
+  import { freeCancelText, type PlanTerms } from '$lib/partner-plan-terms';
 
   type Perk = { id: string; title: string; description: string; imageUrl: string };
   export type PlanDetail = {
+    /** 料金・予約の対象（日付パネルの絞り込み用） */
+    roomCode: string;
+    planCode: string;
+    /** 料金の planName（基本■2食■…）。表示名は planName */
+    planLabel: string;
     planName: string;
     mealType: string | null;
     roomName: string;
@@ -25,7 +33,7 @@
     perks: Perk[];
     /** 公式HP限定特典（取引先の設定で出すときだけ） */
     officialPerks: { key: string; label: string; title: string; body: string }[];
-    /** 全室・全泊の合計 */
+    /** 全室・全泊の合計（日付未定のときは今後3か月の最安で数えた参考） */
     total: number;
     /** 1室1泊（連泊は平均） */
     perRoomNight: number;
@@ -42,7 +50,11 @@
     paymentLabels,
     showInventory,
     canBook,
-    onChangeDates,
+    token,
+    today,
+    maxNights,
+    isBookable,
+    onPickDate,
     onChangeGuests
   }: {
     detail: PlanDetail | null;
@@ -53,15 +65,22 @@
     paymentLabels: string[];
     showInventory: boolean;
     canBook: boolean;
-    onChangeDates: () => void;
+    token: string;
+    today: string;
+    maxNights: number;
+    /** 予約を受け付ける日か（日付パネルで締切後の日を押せなくする） */
+    isBookable: (iso: string) => boolean;
+    /** 日付パネルで日付を選んだら（予約の入力へ進む） */
+    onPickDate: (date: string, nights: number) => void;
     onChangeGuests: () => void;
   } = $props();
 
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   const num = (n: number) => n.toLocaleString('ja-JP');
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付' : m === '朝食' ? '朝食付' : m === '素泊' ? '食事なし' : (m ?? ''));
+  const dated = $derived(!!params.date);
   const dateText = $derived.by(() => {
-    if (!params.date) return '';
+    if (!params.date) return `日付指定なし ${params.nights}泊`;
     const t = new Date(`${params.date}T00:00:00Z`);
     return `${t.getUTCMonth() + 1}月${t.getUTCDate()}日(${WEEK[t.getUTCDay()]}) ${params.nights}泊`;
   });
@@ -72,12 +91,25 @@
   let topCta = $state<HTMLElement | null>(null);
   let footerVisible = $state(false);
   let photoIndex = $state(0);
+  // 日付パネル（モーダルの中）
+  let pickerOpen = $state(false);
+  let pickerEl = $state<HTMLElement | null>(null);
+  let pickDate = $state('');
+  let pickNights = $state(1);
+  function openPicker() {
+    pickDate = params.date;
+    pickNights = params.nights;
+    pickerOpen = true;
+    requestAnimationFrame(() => pickerEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+  }
+  const freeText = $derived(freeCancelText(detail?.terms?.freeUntilDays));
   const photos = $derived<ContentPhoto[]>(detail ? [...(detail.plan?.photos ?? []), ...(detail.room?.photos ?? [])] : []);
 
   $effect(() => {
     if (!detail) return;
     photoIndex = 0;
     footerVisible = false;
+    pickerOpen = false;
     dialog?.focus();
     if (scroller) scroller.scrollTop = 0;
     const previous = document.body.style.overflow;
@@ -122,7 +154,10 @@
 
 {#snippet chips(size: 'lg' | 'sm')}
   <div class={`flex flex-wrap gap-3 ${size === 'sm' ? 'gap-2' : ''}`}>
-    <button type="button" onclick={onChangeDates} class={`rounded-lg border border-stone-200 bg-white text-left hover:border-brand-900 ${size === 'lg' ? 'px-5 py-4 text-lg' : 'px-4 py-3 text-base'}`}>{dateText}</button>
+    <button type="button" onclick={openPicker} aria-expanded={pickerOpen} class={`flex items-center gap-2 rounded-lg border bg-white text-left hover:border-brand-900 ${pickerOpen ? 'border-sky-600' : 'border-stone-200'} ${size === 'lg' ? 'px-5 py-4 text-lg' : 'px-4 py-3 text-base'}`}>
+      <svg viewBox="0 0 24 24" class="h-5 w-5 text-sky-700" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
+      {dateText}
+    </button>
     <button type="button" onclick={onChangeGuests} class={`rounded-lg border border-stone-200 bg-white text-left hover:border-brand-900 ${size === 'lg' ? 'px-5 py-4 text-lg' : 'px-4 py-3 text-base'}`}>{guestText}</button>
   </div>
 {/snippet}
@@ -133,9 +168,10 @@
       {#if detail.perks.length}<p class="text-sm font-bold text-amber-700">専用特典つき</p>{/if}
       <p class={`text-brand-900 ${size === 'lg' ? 'text-base' : 'text-sm'}`}>
         {mealLabel(detail.mealType)}大人{params.guests}名{params.rooms > 1 ? `×${params.rooms}室` : ''}{params.nights > 1 ? `・${params.nights}泊` : ''} 税込
-        <span class={`font-bold tabular-nums ${size === 'lg' ? 'text-3xl' : 'text-2xl'}`}>{num(detail.total)}</span><span class="font-bold">円</span>
+        <span class={`font-bold tabular-nums ${size === 'lg' ? 'text-3xl' : 'text-2xl'}`}>{num(detail.total)}</span><span class="font-bold">円{dated ? '' : '〜'}</span>
       </p>
-      {#if params.nights > 1 || params.rooms > 1}<p class="text-xs text-stone-500">1室1泊{params.nights > 1 ? '（平均）' : ''} {num(detail.perRoomNight)}円</p>{/if}
+      {#if !dated}<p class="text-xs text-stone-500">今後3か月の最安・日付を選ぶと確定します</p>
+      {:else if params.nights > 1 || params.rooms > 1}<p class="text-xs text-stone-500">1室1泊{params.nights > 1 ? '（平均）' : ''} {num(detail.perRoomNight)}円</p>{/if}
     </div>
   {/if}
 {/snippet}
@@ -185,17 +221,46 @@
             {@render chips('lg')}
             {@render price('lg')}
           </div>
+          {#if pickerOpen}
+            <!-- この部屋・プランだけの空室と料金。日付を押したら予約の入力へ -->
+            <div bind:this={pickerEl} class="mt-4 scroll-mt-4">
+              <PartnerStayPanel
+                {token}
+                bind:date={pickDate}
+                bind:nights={pickNights}
+                guests={params.guests}
+                rooms={params.rooms}
+                {maxNights}
+                {showInventory}
+                {today}
+                filter={{ roomCode: detail.roomCode, planCode: detail.planCode, planName: detail.planLabel }}
+                pickApplies
+                {isBookable}
+                onApply={() => pickDate && onPickDate(pickDate, pickNights)}
+                onClose={() => (pickerOpen = false)}
+              />
+            </div>
+          {/if}
           <div class="mt-5 flex flex-wrap items-start justify-between gap-4">
             <div class="pt-1"><PerkBanners items={banners} onopen={openPerk} /></div>
             <div class="flex w-full flex-col items-end sm:w-96">
             <div bind:this={topCta} class="w-full">
-              {#if canBook}
-                <a href={detail.bookHref} class="block rounded-md bg-green-600 py-4 text-center text-lg font-bold text-white hover:bg-green-700">予約へ進む</a>
+              {#if !dated}
+                <button type="button" onclick={openPicker} class="block w-full rounded-md bg-green-600 py-3 text-center text-white hover:bg-green-700">
+                  <span class="block text-lg font-bold">日付を選択して予約</span>
+                  {#if freeText}<span class="block text-xs font-medium">{freeText}</span>{/if}
+                </button>
+              {:else if canBook}
+                <a href={detail.bookHref} class="block rounded-md bg-green-600 py-3 text-center text-white hover:bg-green-700">
+                  <span class="block text-lg font-bold">予約へ進む</span>
+                  {#if freeText}<span class="block text-xs font-medium">{freeText}</span>{/if}
+                </a>
               {:else}
                 <p class="rounded-md bg-stone-100 py-4 text-center text-base text-stone-500">この宿泊日のご予約は受付を締め切りました</p>
               {/if}
             </div>
-            {#if cancelText}<p class="mt-2 text-sm text-rose-600">取消は宿泊日の{cancelText}（予約一覧から）</p>{/if}
+            <!-- キャンセル料の段が無いプランだけ、従来の取消期限を出す（いつから料金がかかるかの方が大事なので、段があれば上のボタンの中に） -->
+            {#if !freeText && cancelText}<p class="mt-2 text-sm text-rose-600">取消は宿泊日の{cancelText}（予約一覧から）</p>{/if}
             </div>
           </div>
         </section>
@@ -240,7 +305,9 @@
             <div class="hidden md:block">{@render chips('sm')}</div>
             <div class="flex flex-1 items-center justify-end gap-4">
               {@render price('sm')}
-              {#if canBook}
+              {#if !dated}
+                <button type="button" onclick={openPicker} class="shrink-0 rounded-md bg-green-600 px-6 py-3 text-base font-bold text-white hover:bg-green-700">日付を選択して予約</button>
+              {:else if canBook}
                 <a href={detail.bookHref} class="shrink-0 rounded-md bg-green-600 px-6 py-3 text-base font-bold text-white hover:bg-green-700">予約へ進む</a>
               {/if}
             </div>

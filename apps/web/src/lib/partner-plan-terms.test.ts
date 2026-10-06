@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPlanTerms, cancellationRows, childrenTerms } from './partner-plan-terms';
+import { buildPlanTerms, cancellationRows, childrenTerms, freeCancelText } from './partner-plan-terms';
 
 describe('cancellationRows', () => {
   it('日数の多い順・0% は出さない・前日／当日の呼び方・不泊は最後', () => {
@@ -56,5 +56,19 @@ describe('buildPlanTerms', () => {
   });
   it('壊れた入力でも落ちない', () => {
     expect(buildPlanTerms(null).size).toBe(0);
+  });
+});
+
+describe('キャンセル料無料の期間', () => {
+  it('最初に料率がかかる日の前日までを無料とする', () => {
+    const m = buildPlanTerms({ plans: [{ plan_code: 'a1', plan_label: 'x', cancellation_policy: [{ days_before: 14, rate_percent: 20 }, { days_before: 30, rate_percent: 0 }, { days_before: 0, rate_percent: 100 }] }] });
+    expect(m.get('a1■x')?.freeUntilDays).toBe(15);
+    expect(freeCancelText(15)).toBe('チェックイン日の15日前までキャンセル料無料');
+  });
+  it('当日からなら前日まで・料率の段が無ければ出さない', () => {
+    expect(buildPlanTerms({ plans: [{ plan_code: 'a1', plan_label: 'x', cancellation_policy: [{ days_before: 0, rate_percent: 100 }] }] }).get('a1■x')?.freeUntilDays).toBe(1);
+    expect(freeCancelText(1)).toBe('チェックイン日の前日までキャンセル料無料');
+    expect(buildPlanTerms({ plans: [{ plan_code: 'a1', plan_label: 'x', cancellation_policy: [] }] }).get('a1■x')?.freeUntilDays).toBe(null);
+    expect(freeCancelText(null)).toBe(null);
   });
 });
