@@ -19,6 +19,10 @@
 
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   const isActive = (s: string) => s === 'confirmed' || s === 'pending_payment';
+  // 完了の表示（予約・お支払い・カード登録）: 旅行会社名義（Phase 2）の予約なら名義の行も出す
+  const nameHolderOf = (code: string | null | undefined) => (code ? (data.bookings.find((b) => b.code === code)?.nameHolder ?? null) : null);
+  const doneNameHolder = $derived(nameHolderOf(data.done));
+  const paidNameHolder = $derived(nameHolderOf(data.payment && 'bookingCode' in data.payment ? data.payment.bookingCode : null));
   // 一覧は取引先内の全予約（どのログインIDで入れた予約も）。担当者 = 予約時の「ご予約者（ご担当者）」、無い古い予約はログインID
   const staffOf = (b: { booker: { name: string } | null; bookedBy: string | null }) => b.booker?.name.trim() || b.bookedBy || '（不明）';
   const staffList = $derived([...new Set(data.bookings.map(staffOf))].sort((a, b) => a.localeCompare(b, 'ja')));
@@ -127,17 +131,20 @@
   {#if data.done && !form?.cancelled}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ ご予約を承りました（予約番号 {data.done}）</p>
+      {#if doneNameHolder}<p class="mt-1 text-sm">ご予約名義: {doneNameHolder}</p>{/if}
       <p class="mt-1 text-sm text-stone-500">確認メールをお送りしました（メールアドレスの登録がある場合）。内容は下の一覧からご確認いただけます。</p>
     </div>
   {/if}
   {#if data.payment?.status === 'paid' || data.payment?.status === 'already'}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ お支払いが完了し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
+      {#if paidNameHolder}<p class="mt-1 text-sm">ご予約名義: {paidNameHolder}</p>{/if}
       <p class="mt-1 text-sm text-stone-500">確認メールをお送りしました（メールアドレスの登録がある場合）。</p>
     </div>
   {:else if data.payment?.status === 'card_saved'}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ カードを登録し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
+      {#if paidNameHolder}<p class="mt-1 text-sm">ご予約名義: {paidNameHolder}</p>{/if}
       <p class="mt-1 text-sm text-stone-500">チェックイン日に登録カードへ自動でご請求します。それまではご請求はありません。</p>
     </div>
   {:else if data.payment?.status === 'card_updated'}
@@ -224,6 +231,7 @@
                 <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
                 <dt>プラン</dt><dd>{b.planName}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
                 {#if b.booker}<dt>ご予約者</dt><dd>{b.booker.name}{b.booker.kana ? `（${b.booker.kana}）` : ''}{b.booker.department ? ` ${b.booker.department}` : ''}{#if b.booker.phone || b.booker.email}<span class="block text-sm text-stone-500">{[b.booker.phone, b.booker.email].filter(Boolean).join(' / ')}</span>{/if}</dd>{/if}
+                {#if b.nameHolder}<dt>ご予約名義</dt><dd>{b.nameHolder}</dd>{/if}
                 <dt>代表者</dt><dd>{b.guestName}{b.guestKana ? `（${b.guestKana}）` : ''}</dd>
                 <dt>電話番号</dt><dd>{b.phone ?? ''}</dd>
                 {#if b.email}<dt>メール</dt><dd>{b.email}</dd>{/if}

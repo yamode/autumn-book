@@ -75,3 +75,42 @@ export function ilikeContainsPattern(raw: string): string {
   if (!q) return '';
   return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 }
+
+// ============================================================================
+// 予約名義（Phase 2・docs/partner-pms-customer-link.md §6.1〜§6.3）
+//   guest   … 宿泊者名で取る（PMS の代表者＝お客様・予約者＝紐づけ先）。従来どおり
+//   partner … 旅行会社名で取る（PMS の代表者＝紐づけ先・お客様は部屋別の宿泊者名。お客様の顧客台帳は作らない）
+// 取引先の設定（rms_partners.booking_name_mode）と、予約ごとの実際の名義（rms_partner_bookings.name_mode）の両方に使う。
+// ============================================================================
+
+export type BookingNameMode = 'guest' | 'partner';
+export const BOOKING_NAME_MODES: readonly BookingNameMode[] = ['guest', 'partner'];
+
+/** 不明な値は 'guest'（従来どおり）に倒す。 */
+export const normalizeBookingNameMode = (v: unknown): BookingNameMode => (v === 'partner' ? 'partner' : 'guest');
+
+/**
+ * 名義の表示（「ご予約名義: 」の後ろ）: 「株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）」。
+ * 名義人が空なら ''（行を出さない）。宿泊者名が空なら名義人だけ。
+ */
+export function bookingNameHolderText(holder: string | null | undefined, guestName: string | null | undefined): string {
+  const h = (holder ?? '').trim();
+  if (!h) return '';
+  const g = (guestName ?? '').replace(/\s+/g, ' ').trim();
+  return g ? `${h}（お部屋の宿泊者名: ${g} 様）` : h;
+}
+
+/**
+ * 予約1件の名義の行（メール・一覧）。名義が partner のときだけ「ご予約名義: …」、それ以外は null。
+ * holder は予約時の紐づけ先（rms_partner_bookings.pms_guest_id）の正式名称。読めなければ fallback（取引先名）。
+ */
+export function bookingNameLine(
+  nameMode: unknown,
+  holder: string | null | undefined,
+  guestName: string | null | undefined,
+  fallback: string | null | undefined = null
+): string | null {
+  if (normalizeBookingNameMode(nameMode) !== 'partner') return null;
+  const text = bookingNameHolderText((holder ?? '').trim() || fallback, guestName);
+  return text ? `ご予約名義: ${text}` : null;
+}

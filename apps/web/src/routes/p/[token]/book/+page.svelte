@@ -12,6 +12,7 @@
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
   import { quoteChargeOf } from '$lib/partner-booking';
+  import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
   import type { PageData } from './$types';
 
@@ -514,6 +515,8 @@
               <dt>プラン</dt><dd>{data.target.displayName}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
             <dt>ご予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>
+            <!-- 旅行会社名義（Phase 2）: PMS の代表者は御社（紐づけ先）、ご宿泊者様のお名前はお部屋の宿泊者名として入る -->
+            {#if data.nameHolder}<dt>ご予約名義</dt><dd>{bookingNameHolderText(data.nameHolder, `${values.family_name ?? ''} ${values.given_name ?? ''}`)}</dd>{/if}
             <dt>代表者</dt><dd>{values.family_name} {values.given_name}{values.family_name_kana || values.given_name_kana ? `（${values.family_name_kana} ${values.given_name_kana}）` : ''}</dd>
             <dt>電話番号</dt><dd>{values.phone}</dd>
             {#if values.email}<dt>メール</dt><dd>{values.email}</dd>{/if}

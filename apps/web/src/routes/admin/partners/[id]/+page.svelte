@@ -435,6 +435,35 @@
       pmsBusy = null;
     }
   }
+  // ---- 予約名義（Phase 2）: 紐づけ済みのときだけ選べる。紐づけ・解除と同じく選んだ時点で保存する ----
+  // ラジオは「保存する」の送信に混ぜないよう name を付けず、手元の状態（bind:group）で持つ。失敗したら元に戻す。
+  type NameMode = 'guest' | 'partner';
+  let nameMode = $state<NameMode>('guest');
+  $effect(() => {
+    nameMode = data.pmsLink.bookingNameMode;
+  });
+  let nameModeBusy = $state(false);
+  async function changeNameMode(next: NameMode) {
+    const prev = data.pmsLink.bookingNameMode;
+    if (nameModeBusy || next === prev) return;
+    nameModeBusy = true;
+    pmsMessage = null;
+    try {
+      const result = await postPmsAction('setBookingNameMode', { mode: next });
+      if (result.type === 'success') {
+        await invalidateAll();
+        pmsMessage = { kind: 'ok', text: next === 'partner' ? '予約名義を「旅行会社名で取る」にしました。以後の予約から反映されます。' : '予約名義を「宿泊者名で取る」に戻しました。以後の予約から反映されます。' };
+      } else {
+        nameMode = prev;
+        pmsMessage = { kind: 'error', text: failureText(result, '予約名義を保存できませんでした。') };
+      }
+    } catch {
+      nameMode = prev;
+      pmsMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      nameModeBusy = false;
+    }
+  }
   // 請求書の宛名の既定（入力欄が空のとき）: 紐づけ先の正式名称 → 取引先名
   // 宛名の既定（請求書の発行と同じ順）: 紐づけ先の正式名称 → 取引先名。正式名称が空の顧客は取引先名
   const linkedRecipient = $derived(data.pmsLink.guest?.recipientName ?? '');
@@ -756,8 +785,8 @@
       <section class="mt-6 rounded-lg border border-stone-200 bg-stone-50/60 p-4">
         <h3 class="text-base font-bold text-stone-900">PMS の顧客マスタとの紐づけ</h3>
         <p class="mt-1 text-xs leading-5 text-stone-500">
-          この取引先を、PMS の顧客マスタにある旅行会社・法人に紐づけます。紐づけると、<strong class="font-medium text-stone-700">この取引先からの予約の「予約者」として PMS にこの顧客が入ります</strong>（PMS の顧客カルテの紹介実績に数えられます）。宿泊者（代表者）はこれまでどおりお客様です。
-          紐づけと解除は押した時点で保存されます（下の「保存する」は不要です）。
+          この取引先を、PMS の顧客マスタにある旅行会社・法人に紐づけます。紐づけると、<strong class="font-medium text-stone-700">この取引先からの予約の「予約者」として PMS にこの顧客が入ります</strong>（PMS の顧客カルテの紹介実績に数えられます）。宿泊者（代表者）はこれまでどおりお客様です（予約名義を「旅行会社名で取る」にしたときは、代表者がこの顧客になります）。
+          紐づけ・解除・予約名義は押した時点で保存されます（下の「保存する」は不要です）。
         </p>
         {#if pmsMessage}
           <p class={`mt-2 rounded-md px-3 py-1.5 text-xs ${pmsMessage.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>{pmsMessage.text}</p>
@@ -786,6 +815,23 @@
               <button type="button" class={smallBtn} disabled={pmsBusy !== null} onclick={unlinkPmsGuest}>{pmsBusy === 'unlink' ? '解除中…' : '紐づけを外す'}</button>
             {/if}
           </div>
+          {#if data.pmsLink.guest}
+            <!-- 予約名義（Phase 2・決定 #4）。紐づけ先が読めるときだけ。name は付けない（「保存する」の送信に混ぜない） -->
+            <fieldset class="mt-3 rounded-md border border-stone-200 bg-white p-3" disabled={!canEdit || nameModeBusy || pmsBusy !== null}>
+              <legend class="px-1 text-sm font-bold text-stone-800">予約名義</legend>
+              <label class="flex items-start gap-2 py-1 text-sm">
+                <input type="radio" value="guest" bind:group={nameMode} onchange={() => changeNameMode('guest')} class="mt-1" />
+                <span>宿泊者名で取る<span class="block text-xs text-stone-500">PMS の代表者＝お客様・予約者＝この顧客</span></span>
+              </label>
+              <label class="flex items-start gap-2 py-1 text-sm">
+                <input type="radio" value="partner" bind:group={nameMode} onchange={() => changeNameMode('partner')} class="mt-1" />
+                <span>旅行会社名で取る<span class="block text-xs text-stone-500">PMS の代表者＝この顧客・お客様は部屋別の宿泊者名。お客様の顧客台帳は作りません</span></span>
+              </label>
+              <p class="mt-1 text-[11px] text-stone-400">
+                選んだ時点で保存され、以後の予約から反映されます（予約済みの分は変わりません）。紐づけを外すと「宿泊者名で取る」に戻ります。{#if nameModeBusy}保存中…{/if}
+              </p>
+            </fieldset>
+          {/if}
         {:else}
           <p class="mt-3 text-sm text-stone-600">未紐づけです。</p>
           <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -1393,7 +1439,8 @@
                   <td class="py-2 pr-3 font-mono text-xs">{b.code}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
                   <td class="py-2 pr-3">
-                    {b.guestName}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
+                    {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
+                    {#if b.nameLine}<div class="text-[11px] text-stone-500">{b.nameLine}</div>{/if}
                     {#if b.transport}<div class="text-[11px] text-stone-500">交通: {b.transport}</div>{/if}
                     {#if b.booker}<div class="text-[11px] text-stone-500">予約者: {b.booker}</div>{/if}
                   </td>

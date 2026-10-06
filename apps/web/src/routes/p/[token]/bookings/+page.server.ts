@@ -14,6 +14,7 @@ import {
 } from '$lib/server/partners/booking';
 import { readBookingExtras, splitExtraOptions } from '$lib/server/partners/booking-extras';
 import { PartnerStoreError } from '$lib/server/partners/store';
+import { bookingNameHolderText } from '$lib/pms-partner-guest';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { stripePublishableKey } from '$lib/server/stripe';
@@ -85,6 +86,8 @@ export const load = async (event) => {
       adultTotal: b.adult_total,
       guestName: b.guest_name,
       guestKana: b.guest_kana,
+      // 旅行会社名義（Phase 2）の予約だけ「ご予約名義」の中身（予約時の紐づけ先の正式名称＋お部屋の宿泊者名）。それ以外は null
+      nameHolder: b.name_mode === 'partner' ? bookingNameHolderText(b.name_holder || b.partner_name, b.guest_name) || null : null,
       phone: b.guest_phone,
       email: b.guest_email,
       address: [b.detail.guest?.zip_code, b.detail.guest?.address].filter(Boolean).join(' '),

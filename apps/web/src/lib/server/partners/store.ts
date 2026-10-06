@@ -21,6 +21,8 @@ import { canManageAccount } from '$lib/partner-account-roles';
 import {
   ilikeContainsPattern,
   isPmsPartnerGuestType,
+  normalizeBookingNameMode,
+  type BookingNameMode,
   PMS_PARTNER_GUEST_TYPES,
   pmsGuestFormalName,
   type PmsGuestNameFields,
@@ -57,14 +59,14 @@ export type PartnerRow = {
   payment_method_id: string | null;
   // PMS の顧客マスタ（旅行会社・法人）への紐づけ（migration 20261006224655）。null = 未紐づけ
   pms_guest_id: string | null;
-  // 予約名義（Phase 2）・与信超過時の挙動（Phase 3）。Phase 1 では読み取りだけ（編集 UI は無い）
+  // 予約名義（Phase 2・管理画面の「PMS の顧客マスタとの紐づけ」で編集）・与信超過時の挙動（Phase 3・まだ読み取りだけ）
   booking_name_mode: PartnerBookingNameMode;
   credit_over_action: PartnerCreditOverAction;
   created_at: string;
   updated_at: string;
 };
 
-export type PartnerBookingNameMode = 'guest' | 'partner';
+export type PartnerBookingNameMode = BookingNameMode;
 export type PartnerCreditOverAction = 'ignore' | 'warn' | 'deposit';
 
 export type PartnerAccountRow = {
@@ -161,7 +163,7 @@ function toPartner(row: Record<string, unknown>): PartnerRow {
     booking_settings: normalizePartnerBookingSettings(row.booking_settings),
     payment_method_id: (row.payment_method_id as string | null) ?? null,
     pms_guest_id: (row.pms_guest_id as string | null) ?? null,
-    booking_name_mode: row.booking_name_mode === 'partner' ? 'partner' : 'guest',
+    booking_name_mode: normalizeBookingNameMode(row.booking_name_mode),
     credit_over_action: row.credit_over_action === 'ignore' || row.credit_over_action === 'warn' ? row.credit_over_action : 'deposit'
   };
 }
@@ -377,6 +379,64 @@ export async function setPartnerPmsGuest(
     .eq('facility_id', partner.facility_id);
   if (error) raise(error, 'PMS の顧客との紐づけを保存できませんでした。');
   return { partner: { ...partner, pms_guest_id: guest?.id ?? null }, guest };
+}
+
+/**
+ * 予約名義を変える（Phase 2）。'partner'（旅行会社名で取る）は、紐づけ先が同じテナントの旅行会社・法人として
+ * 読めるときだけ受け付ける（紐づけ無し・紐づけ先が見つからないときは拒否）。'guest' はいつでも戻せる。
+ * DB 側もトリガーで「pms_guest_id が null なら guest」に倒すが、画面の結果と食い違わないようここでも確かめる。
+ */
+export async function setPartnerBookingNameMode(
+  db: SupabaseClient,
+  facilityId: string,
+  partnerId: string,
+  mode: BookingNameMode,
+  userId: string | null = null
+): Promise<PartnerRow> {
+  const partner = await requireStaffPartner(db, facilityId, partnerId);
+  if (mode === 'partner') {
+    const guest = await getPmsPartnerGuest(db, partner.tenant_id, partner.pms_guest_id);
+    if (!guest) {
+      throw new PartnerStoreError('「旅行会社名で取る」は、PMS の旅行会社・法人の顧客に紐づけてから選べます。', 409, 'not_linked');
+    }
+  }
+  const { data, error } = await db
+    .from('rms_partners')
+    .update({ booking_name_mode: mode, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id)
+    .select(PARTNER_COLUMNS)
+    .single();
+  if (error) raise(error, '予約名義を保存できませんでした。');
+  const saved = toPartner(data);
+  // トリガーで guest に戻された（同時に紐づけが外れた等）なら、そのことを伝える
+  if (saved.booking_name_mode !== mode) {
+    throw new PartnerStoreError('予約名義を「旅行会社名で取る」にできませんでした（紐づけが外れています）。画面を読み直してください。', 409, 'not_linked');
+  }
+  return saved;
+}
+
+/**
+ * 予約の名義表示用: 顧客 ID → 正式名称（法人格つき）。旅行会社・法人でない・読めない ID は入らない。
+ * 予約時のスナップショット（rms_partner_bookings.pms_guest_id）から引く。返すのは名称だけ（個人情報は読まない）。
+ */
+export async function pmsGuestFormalNames(
+  db: SupabaseClient,
+  ids: readonly (string | null | undefined)[],
+  tenantId?: string
+): Promise<Map<string, string>> {
+  const uniq = [...new Set(ids.filter((id): id is string => !!id && /^[0-9a-f-]{36}$/i.test(id)))];
+  const out = new Map<string, string>();
+  if (!uniq.length) return out;
+  let query = db.schema('core').from('guests').select(PMS_PARTNER_GUEST_COLUMNS).in('id', uniq);
+  if (tenantId) query = query.eq('tenant_id', tenantId);
+  const { data, error } = await query;
+  if (error) return out; // 名義の表示は補助情報。読めなければ呼び出し側が取引先名で代える
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const g = toPmsPartnerGuest(row);
+    if (g?.recipientName) out.set(g.id, g.recipientName);
+  }
+  return out;
 }
 
 // 限定URLを作り直す（旧URLは即無効。ログイン中のセッションも切る）。

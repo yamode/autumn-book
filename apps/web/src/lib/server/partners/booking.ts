@@ -60,7 +60,8 @@ import {
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
-import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
+import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
+import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
@@ -902,6 +903,8 @@ export { stripeKeyHint, stripeKeyKind } from '$lib/server/stripe';
 
 export type PartnerBookingRow = {
   id: string;
+  /** 名義人の名称を引くときのテナントの絞り込み用 */
+  tenant_id?: string;
   partner_id: string | null;
   partner_name: string;
   account_id: string | null;
@@ -975,12 +978,23 @@ export type PartnerBookingRow = {
   refund_amount?: number | null;
   // PMS 側の状態（チェックイン済みなら取り消せない）
   checkedIn?: boolean;
+  // 予約時の紐づけ先（PMS 顧客）と名義（autumn-shared 20261006224655 / 20261006230308）。
+  // name_mode = 'partner' なら PMS の代表者は紐づけ先で、guest_name は部屋の宿泊者名。
+  pms_guest_id?: string | null;
+  name_mode?: BookingNameMode;
+  // 名義が partner のときの名義人（予約時の紐づけ先の正式名称。読めなければ取引先名）。読み込み時に付ける
+  name_holder?: string | null;
 };
 
+// 予約1件の名義の行（「ご予約名義: 株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）」）。名義が宿泊者名なら null
+export const bookingNameLineOf = (b: Pick<PartnerBookingRow, 'name_mode' | 'name_holder' | 'guest_name' | 'partner_name'>) =>
+  bookingNameLine(b.name_mode, b.name_holder, b.guest_name, b.partner_name);
+
 const BOOKING_COLUMNS =
-  'id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount';
+  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
+  rows = await attachNameHolder(db, rows);
   const ids = [...new Set(rows.flatMap((r) => r.stay_ids ?? []))];
   if (!ids.length) return rows;
   const { data } = await coreDb(db).from('stays').select('id, status').in('id', ids);
@@ -988,6 +1002,17 @@ async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): P
     ((data ?? []) as { id: string; status: string }[]).filter((s) => s.status === 'checked_in' || s.status === 'checked_out').map((s) => s.id)
   );
   return rows.map((r) => ({ ...r, checkedIn: (r.stay_ids ?? []).some((id) => inHouse.has(id)) }));
+}
+
+// 名義が partner の予約に名義人（予約時の紐づけ先の正式名称）を付ける。取引先の今の紐づけではなく予約のスナップショットから引く。
+// 紐づけ先が読めない（統合・削除）ときは取引先名で代える（bookingNameLineOf の fallback）。
+async function attachNameHolder(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
+  const normalized = rows.map((r) => ({ ...r, name_mode: normalizeBookingNameMode(r.name_mode) }));
+  const targets = normalized.filter((r) => r.name_mode === 'partner');
+  if (!targets.length) return normalized;
+  // 同じテナントの顧客だけを引く（他テナントの名称が混ざる経路を構造的に塞ぐ）
+  const names = await pmsGuestFormalNames(db, targets.map((r) => r.pms_guest_id), targets[0].tenant_id).catch(() => new Map<string, string>());
+  return normalized.map((r) => (r.name_mode === 'partner' ? { ...r, name_holder: (r.pms_guest_id && names.get(r.pms_guest_id)) || null } : r));
 }
 
 export async function listPartnerBookings(
@@ -1261,6 +1286,8 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
     `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目 ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
     // ご予約者（ご担当者）・交通手段・専用特典（detail に構造化して残したもの）
     ...extraSummaryLines(b.detail),
+    // 旅行会社名義（Phase 2）: 名義人と部屋の宿泊者名。宿泊者名義の予約には出さない
+    ...[bookingNameLineOf(b)].filter((l): l is string => !!l),
     `ご宿泊者: ${b.guest_name}${b.guest_kana ? `（${b.guest_kana}）` : ''}`,
     `電話: ${b.guest_phone ?? ''}`,
     ...(b.guest_email ? [`メール: ${b.guest_email}`] : []),

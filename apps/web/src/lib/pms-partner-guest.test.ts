@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ilikeContainsPattern, isPmsPartnerGuestType, legalFormPosition, pmsGuestFormalName, pmsGuestUrl, withLegalForm } from './pms-partner-guest';
+import { bookingNameHolderText, bookingNameLine, ilikeContainsPattern, isPmsPartnerGuestType, legalFormPosition, normalizeBookingNameMode, pmsGuestFormalName, pmsGuestUrl, withLegalForm } from './pms-partner-guest';
 
 describe('withLegalForm', () => {
   it('前株・後株で法人格の位置が変わる', () => {
@@ -65,5 +65,35 @@ describe('ilikeContainsPattern', () => {
 describe('pmsGuestUrl', () => {
   it('PMS の顧客カルテの URL', () => {
     expect(pmsGuestUrl('abc')).toBe('https://autumn-pms.yamado.app/guests/abc');
+  });
+});
+
+describe('予約名義（Phase 2）', () => {
+  it('normalizeBookingNameMode は partner 以外を guest にする', () => {
+    expect(normalizeBookingNameMode('partner')).toBe('partner');
+    expect(normalizeBookingNameMode('guest')).toBe('guest');
+    expect(normalizeBookingNameMode('PARTNER')).toBe('guest');
+    expect(normalizeBookingNameMode(null)).toBe('guest');
+    expect(normalizeBookingNameMode(undefined)).toBe('guest');
+  });
+
+  it('bookingNameHolderText は名義人と部屋の宿泊者名を1行にする', () => {
+    expect(bookingNameHolderText('株式会社JTB', '山田 太郎')).toBe('株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）');
+    // 空白のゆれは1つにまとめる
+    expect(bookingNameHolderText(' 株式会社JTB ', '  山田　 太郎 ')).toBe('株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）');
+    expect(bookingNameHolderText('株式会社JTB', '')).toBe('株式会社JTB');
+    expect(bookingNameHolderText('', '山田 太郎')).toBe('');
+    expect(bookingNameHolderText(null, null)).toBe('');
+  });
+
+  it('bookingNameLine は partner のときだけ行を返す', () => {
+    expect(bookingNameLine('partner', '株式会社JTB', '山田 太郎')).toBe('ご予約名義: 株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）');
+    expect(bookingNameLine('guest', '株式会社JTB', '山田 太郎')).toBeNull();
+    expect(bookingNameLine(null, '株式会社JTB', '山田 太郎')).toBeNull();
+  });
+
+  it('bookingNameLine は名義人が読めなければ fallback（取引先名）を使い、それも無ければ null', () => {
+    expect(bookingNameLine('partner', null, '山田 太郎', 'JTB 盛岡支店')).toBe('ご予約名義: JTB 盛岡支店（お部屋の宿泊者名: 山田 太郎 様）');
+    expect(bookingNameLine('partner', '', '山田 太郎', '')).toBeNull();
   });
 });

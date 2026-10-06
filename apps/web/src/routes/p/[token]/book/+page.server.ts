@@ -2,7 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { canBookFor, describeDeadline, partnerPlanName, isStripePaymentOption, normalizeBooker, PARTNER_TRANSPORT_OPTIONS, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
 import { availablePaymentOptions, createPartnerBooking, isPartnerBookingOpen, quotePartnerBooking } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
-import { getBookerProfile, PartnerStoreError, todayJst } from '$lib/server/partners/store';
+import { getBookerProfile, getPmsPartnerGuest, PartnerStoreError, todayJst } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { stripePublishableKey } from '$lib/server/stripe';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
@@ -33,7 +33,7 @@ export const load = async (event) => {
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
-  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields] = await Promise.all([
+  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields, nameHolder] = await Promise.all([
     quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
@@ -56,7 +56,14 @@ export const load = async (event) => {
     // 予約時に聞く項目: プランの項目（テンプレート or プラン独自）→ この取引先だけ追加で聞く項目
     partnerBookingForm(db, partner, planCode, planName),
     // 毎回聞く項目（アレルギー・備考）の見出し・例文（施設の設定 → 既定）
-    loadStandardFieldTexts(partner.facility_id)
+    loadStandardFieldTexts(partner.facility_id),
+    // 予約名義（Phase 2）: 「旅行会社名で取る」で紐づけ先が読めるときだけ、確認画面に名義の行を出す（RPC と同じ条件）。
+    // 読めなければ null（予約は宿泊者名で取られる）
+    partner.booking_name_mode === 'partner'
+      ? getPmsPartnerGuest(db, partner.tenant_id, partner.pms_guest_id)
+          .then((g) => g?.recipientName || null)
+          .catch(() => null)
+      : Promise.resolve(null)
   ]);
   const roomContent = contents?.rooms.find((r) => r.code === roomCode);
   const planContent = contents?.plans.find((p) => p.planCode === planCode && p.planLabel === planName);
@@ -94,6 +101,8 @@ export const load = async (event) => {
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: bookingForm.questions, askGender: bookingForm.askGender },
     standardFields,
+    // 予約名義の名義人（紐づけ先の正式名称）。null = 宿泊者名義（行を出さない）
+    nameHolder,
     // 固定の3種＋自由入力の支払方法のうち、許可されていていま使えるもの（表示名は設定の名前）
     // billable: 請求書払い（宿泊料金・入湯税は取引先へ請求し、ご宿泊者様には請求しない）
     paymentOptions: partnerPaymentChoices(s)

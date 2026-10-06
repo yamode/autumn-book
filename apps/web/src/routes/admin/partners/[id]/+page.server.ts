@@ -2,6 +2,7 @@
 // autumn-rms の /partners/[id]（v0.103.0）から移設（2026-09-26）。
 // 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除・請求書の発行・再送・取消）は admin のみ（staff.ts の canEditPartners）。
 // PMS の顧客マスタとの紐づけ（2026-10-07・Phase 1）: 候補の検索は閲覧権限で、紐づけ・解除は admin のみ。
+// 予約名義（2026-10-07・Phase 2）: 紐づけ済みのときだけ選べる。変更は admin のみ（setBookingNameMode）。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import { describeBooker, normalizeBooker, normalizePartnerBookingSettings } from '$lib/partner-booking';
@@ -13,6 +14,7 @@ import {
 	cancelPartnerBooking,
 	isPartnerBookingOpen,
 	isStripeTestMode,
+	bookingNameLineOf,
 	listPartnerBookings,
 	parseStaffFeeForm,
 	previewPartnerCancels,
@@ -41,6 +43,7 @@ import {
 	requireStaffPartner,
 	revokePartnerApiKey,
 	searchPmsPartnerGuests,
+	setPartnerBookingNameMode,
 	setPartnerPmsGuest,
 	todayJst,
 	updatePartner,
@@ -78,7 +81,7 @@ import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
 import { photoFileProblem } from '$lib/content-blocks';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbUploadContentPhoto } from '$lib/server/content-admin';
-import { pmsGuestUrl } from '$lib/pms-partner-guest';
+import { BOOKING_NAME_MODES, pmsGuestUrl, type BookingNameMode } from '$lib/pms-partner-guest';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -210,7 +213,9 @@ export const load: PageServerLoad = async (event) => {
 		pmsLink: {
 			guestId: partner.pms_guest_id,
 			guest: pmsGuest.guest ? { ...pmsGuest.guest, url: pmsGuestUrl(pmsGuest.guest.id) } : null,
-			error: pmsGuest.error
+			error: pmsGuest.error,
+			// 予約名義（Phase 2）。紐づけが無ければ DB のトリガーで常に guest
+			bookingNameMode: partner.booking_name_mode
 		},
 		memorandum: { text: memo.text, updatedAt: memo.updatedAt, maxLength: MAX_MEMORANDUM_LENGTH, error: memo.error },
 		documents: documents.rows.map((d) => ({
@@ -292,6 +297,9 @@ export const load: PageServerLoad = async (event) => {
 			adultTotal: b.adult_total,
 			planName: b.plan_name ?? '',
 			guestName: b.guest_name,
+			// 旅行会社名義の予約（Phase 2）: 一覧の印と名義の行（予約時の紐づけ先の名称）
+			nameMode: b.name_mode ?? 'guest',
+			nameLine: bookingNameLineOf(b),
 			phone: b.guest_phone,
 			// 合計は入湯税を含む（宿泊料金＋入湯税）。キャンセル料の基準は宿泊料金（lodging）だけ
 			total: b.total_amount + (b.bath_tax_amount ?? 0),
@@ -438,6 +446,21 @@ export const actions: Actions = {
 			const { db, facilityId, partner, userId } = await editScope(event);
 			await setPartnerPmsGuest(db, facilityId, partner.id, null, userId);
 			return { pmsUnlinked: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 予約名義（Phase 2）。紐づけ・解除と同じく「押した時点で保存」にする: 名義は紐づけと一体の設定で、
+	// 同じ欄の中で紐づけは即時保存・名義だけ「保存する」待ち、だと押し忘れ・食い違いが起きるため。
+	// 紐づけが無い（または紐づけ先が読めない）のに partner は setPartnerBookingNameMode が拒否する。
+	setBookingNameMode: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			const raw = String((await event.request.formData()).get('mode') ?? '');
+			if (!(BOOKING_NAME_MODES as readonly string[]).includes(raw)) return actionFailure(new PartnerStoreError('予約名義の指定が正しくありません。'));
+			const saved = await setPartnerBookingNameMode(db, facilityId, partner.id, raw as BookingNameMode, userId);
+			return { bookingNameMode: saved.booking_name_mode };
 		} catch (e) {
 			return actionFailure(e);
 		}
