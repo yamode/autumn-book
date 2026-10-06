@@ -97,7 +97,7 @@
     <nav class="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
       <a href={`/p/${$page.params.token}/legal/tokushoho`} class="underline hover:text-stone-700">特定商取引法に基づく表記</a>
       <a href={`/p/${$page.params.token}/legal/privacy`} class="underline hover:text-stone-700">プライバシーポリシー</a>
-      <a href={`/p/${$page.params.token}/legal/yakkan`} class="underline hover:text-stone-700">宿泊約款</a>
+      <!-- 宿泊約款は正式な文面ができるまで出さない（2026-10-06 指示） -->
     </nav>
   </footer>
 </div>
