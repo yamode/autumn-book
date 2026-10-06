@@ -44,6 +44,7 @@ export function parseBookingForm(fd: FormData): CreateBookingInput {
     }),
     saveBooker: fd.get('save_booker') === 'on' || fd.get('save_booker') === '1',
     transport: { id: str(fd, 'transport'), other: str(fd, 'transport_other') },
+    pickupTime: str(fd, 'pickup_time'),
     arrival: str(fd, 'arrival'),
     notes: str(fd, 'notes'),
     answers,

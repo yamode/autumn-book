@@ -114,7 +114,7 @@
 	</p>
 	<div class="mt-3 grid gap-3">
 		{#each STANDARD_FIELDS as f (f.key)}
-			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string } | undefined>)[f.key]}
+			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string; choices?: string[] } | undefined>)[f.key]}
 			<div class="rounded-lg border border-stone-200 p-3">
 				<p class="text-sm font-medium text-stone-800">{f.name}</p>
 				<div class="mt-2 grid gap-2 sm:grid-cols-2">
@@ -122,10 +122,17 @@
 						<span class="mb-0.5 block text-xs text-stone-500">見出し</span>
 						<input name="{f.key}_label" value={saved?.label ?? ''} maxlength="60" placeholder={f.label} class={inputClass} />
 					</label>
-					<label class="block">
-						<span class="mb-0.5 block text-xs text-stone-500">例文</span>
-						<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
-					</label>
+					{#if f.choices}
+						<label class="block">
+							<span class="mb-0.5 block text-xs text-stone-500">選択肢（「、」区切り）</span>
+							<input name="{f.key}_choices" value={(saved?.choices ?? []).join('、')} placeholder="例: 15:10、16:20、17:30" class={inputClass} />
+						</label>
+					{:else}
+						<label class="block">
+							<span class="mb-0.5 block text-xs text-stone-500">例文</span>
+							<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
+						</label>
+					{/if}
 					<label class="block sm:col-span-2">
 						<span class="mb-0.5 block text-xs text-stone-500">補足の説明（見出しの下に小さい文字で出ます。改行できます）</span>
 						<textarea name="{f.key}_help" rows="2" maxlength="500" placeholder="（なし）" class={inputClass}>{saved?.help ?? ''}</textarea>

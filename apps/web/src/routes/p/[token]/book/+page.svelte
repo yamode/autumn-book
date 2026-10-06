@@ -453,6 +453,17 @@
               </label>
             {/each}
           </div>
+          {#if transport === 'jr' && data.standardFields.pickup.choices.length}
+            <!-- JR のときのお迎え（西和賀＝乗合タクシー・男鹿＝迎えの車。文言・時間は管理画面「予約時に聞く項目」の毎回聞く項目） -->
+            <label class="mt-3 block sm:max-w-sm">
+              <span class={label}>{data.standardFields.pickup.label} <em class="req">必須</em></span>
+              {#if data.standardFields.pickup.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.pickup.help}</span>{/if}
+              <select name="pickup_time" required class={input}>
+                <option value="">選択してください</option>
+                {#each data.standardFields.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
+              </select>
+            </label>
+          {/if}
           {#if transport === 'other'}
             <input name="transport_other" required maxlength="60" placeholder="例: 高速バス・タクシー" aria-label="交通手段（その他）" class={`${input} mt-2 sm:max-w-sm`} />
           {/if}
@@ -503,6 +514,7 @@
             {#if values.allergies}<dt>{data.standardFields.allergies.label}</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
             {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
+            {#if values.transport === 'jr' && values.pickup_time}<dt>{data.standardFields.pickup.label}</dt><dd>{values.pickup_time}</dd>{/if}
             {#if data.perks.length}<dt>専用特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
             {#if data.settings.askGender}
               {#each adults as a, i (i)}

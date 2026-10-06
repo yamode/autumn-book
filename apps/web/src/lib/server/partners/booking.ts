@@ -26,7 +26,7 @@ import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailReci
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { genderText, resolveQuestionAnswers, resolveRoomGenders } from '$lib/booking-questions';
-import { partnerBookingForm } from '../booking-questions';
+import { loadStandardFieldTexts, partnerBookingForm } from '../booking-questions';
 import {
   cancelPolicyTable,
   invoiceMonthLabel,
@@ -265,6 +265,8 @@ export type CreateBookingInput = BookingTarget & {
   answers: Record<string, string>;
   // 部屋ごとの男女の内訳（male_<i> / female_<i>）。聞くかはプランの設定（book.plan_contents.ask_gender）
   genders?: Record<string, string>;
+  // JR のときのお迎え時間（施設の「毎回聞く項目」に選択肢があるときだけ聞く）
+  pickupTime?: string;
 };
 
 // payment があれば、オンライン決済の仮押さえ（同じ画面で支払・カード登録を済ませると予約確定・PMS へ）。
@@ -341,6 +343,15 @@ export async function createPartnerBooking(
   if (bookerProblem) throw new PartnerStoreError(bookerProblem);
   const transport = resolveTransport(input.transport?.id ?? '', input.transport?.other ?? '');
   if (!transport.ok) throw new PartnerStoreError(transport.message);
+  // JR のときのお迎え時間（西和賀＝乗合タクシー・男鹿＝迎えの車）。施設が選択肢を設定しているときだけ必須
+  const pickup = (await loadStandardFieldTexts(partner.facility_id)).pickup;
+  let pickupRow: { label: string; value: string } | null = null;
+  if (input.transport?.id === 'jr' && pickup.choices.length) {
+    const t = String(input.pickupTime ?? '').trim();
+    if (!t) throw new PartnerStoreError(`「${pickup.label}」を選んでください。`);
+    if (!pickup.choices.includes(t)) throw new PartnerStoreError(`「${pickup.label}」の選択肢が正しくありません。`);
+    pickupRow = { label: pickup.label, value: t };
+  }
 
   const quote = await quotePartnerBooking(db, partner, input);
   if (!quote.ok) throw new PartnerStoreError(quote.message);
@@ -352,7 +363,7 @@ export async function createPartnerBooking(
   const extras = buildBookingExtras(booker, transport.value, perksForPlan(s.perks, quote.planCode));
   const genderRooms = genders?.ok ? genders.rooms : null;
   const genderRows = (genderRooms ?? []).map((gr, i) => ({ label: rooms.length > 1 ? `${i + 1}室目 男女の内訳` : '男女の内訳', value: genderText(gr) }));
-  const optionValues = [...extraOptionRows(extras), ...genderRows, ...answers.values];
+  const optionValues = [...extraOptionRows(extras), ...(pickupRow ? [pickupRow] : []), ...genderRows, ...answers.values];
 
   const { data, error } = await db.rpc('rms_partner_create_booking', {
     p: {
