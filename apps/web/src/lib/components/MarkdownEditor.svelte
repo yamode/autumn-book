@@ -2,6 +2,7 @@
 	import MarkdownView from './MarkdownView.svelte';
 	import type { Photo } from '$lib/types';
 	import { expandPlanText, templateToken, type PlanTextTemplate } from '$lib/plan-templates';
+	import { MORE_MARKER } from '$lib/plan-summary';
 
 	let {
 		value = $bindable(''),
@@ -9,7 +10,8 @@
 		rows = 16,
 		photos = [],
 		variables = [],
-		templates = []
+		templates = [],
+		moreButton = false
 	}: {
 		value?: string;
 		name?: string;
@@ -18,9 +20,13 @@
 		variables?: string[];
 		/** プラン紹介文のテンプレート（挿入ボタンを出し、プレビューでは展開して見せる） */
 		templates?: PlanTextTemplate[];
+		/** 「ここまで一覧に表示」（<!--more-->）の挿入ボタンを出す（プラン紹介文） */
+		moreButton?: boolean;
 	} = $props();
 	let showTemplates = $state(false);
 	const preview = $derived(templates.length ? expandPlanText(value, templates) : { text: value, perks: [] });
+	// プレビューでは区切りの位置に目印を出す（本番の表示では区切りは出ない）
+	const previewText = $derived(moreButton ? preview.text.replace(/^[ \t　]*<!--\s*more\s*-->[ \t　]*$/gm, '\n\n---\n\n*（ここまでがプラン一覧の紹介文）*\n\n') : preview.text);
 
 	let textarea: HTMLTextAreaElement;
 	let showPicker = $state(false);
@@ -43,6 +49,9 @@
 		<button type="button" class="tb font-bold" onclick={() => insert('**強調**')}>B</button>
 		<button type="button" class="tb" onclick={() => insert('\n- 項目\n- 項目\n')}>リスト</button>
 		<button type="button" class="tb" onclick={() => insert('\n| 列1 | 列2 |\n|---|---|\n| 内容 | 内容 |\n')}>表</button>
+		{#if moreButton}
+			<button type="button" class="tb text-sky-700" title="ここより前の文章を、取引先ページのプラン一覧に紹介文として出します（区切りは表示されません）" onclick={() => insert(`\n${MORE_MARKER}\n`)}>✂ ここまで一覧に表示</button>
+		{/if}
 		{#if photos.length > 0}
 			<button type="button" class="tb" onclick={() => (showPicker = !showPicker)}>📷 写真挿入</button>
 		{/if}
@@ -101,7 +110,7 @@ ${templateToken(t.key)}
 		></textarea>
 		<div class="max-h-[480px] overflow-y-auto bg-stone-50/50 p-3 text-sm {mobileTab === 'edit' ? 'hidden lg:block' : ''}">
 			{#if value.trim()}
-				<MarkdownView source={preview.text} />
+				<MarkdownView source={previewText} />
 				{#if preview.perks.length}
 					<p class="mt-3 rounded bg-teal-50 px-2 py-1.5 text-xs text-teal-800">特典バナーで表示: {preview.perks.map((p) => p.label).join('・')}（本文には出ません）</p>
 				{/if}

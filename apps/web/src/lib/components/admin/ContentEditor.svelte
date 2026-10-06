@@ -238,7 +238,7 @@
 			</span>
 			<div class="mt-0.5" oninput={touch}>
 				{#if markdown}
-					<MarkdownEditor bind:value={description} name="description_md" rows={14} photos={photos} {templates} />
+					<MarkdownEditor bind:value={description} name="description_md" rows={14} photos={photos} {templates} moreButton={kind === 'plan'} />
 				{:else}
 					<textarea bind:value={description} rows="6" class={inputCls}></textarea>
 				{/if}

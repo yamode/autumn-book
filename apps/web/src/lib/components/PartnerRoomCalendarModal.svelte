@@ -3,7 +3,7 @@
   // マスはその部屋で泊数ぶん泊まれるプランの最安（1名1泊）。日を押すと、その日程で一覧を検索し直す。
   import { isHoliday } from '$lib/holidays';
   import { roomParts } from '$lib/partner-contents';
-  import { partnerStayOffers } from '$lib/partner-stay';
+  import { partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import { fetchPortalMonth, type PortalMonthJson } from '$lib/partner-month-client';
 
   let {
@@ -15,6 +15,7 @@
     showInventory,
     today,
     selected,
+    plan = null,
     onPick
   }: {
     /** 開いている部屋（null で閉じる） */
@@ -26,7 +27,10 @@
     showInventory: boolean;
     today: string;
     selected: string;
-    onPick: (date: string) => void;
+    /** プランを絞る（プランのカードの「詳細・予約」から開いたとき）。null なら部屋の全プランの最安 */
+    plan?: { code: string; name: string; label: string } | null;
+    /** offer: その日のいちばん安いプラン（そのまま詳細を開けるように渡す） */
+    onPick: (date: string, offer: PartnerStayOffer | null) => void;
   } = $props();
 
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -78,11 +82,11 @@
     const [year, month] = ym.split('-').map(Number);
     const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
     const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const out: ({ iso: string; dow: number; min: number | null; rest: number | null; closed: boolean; full: boolean; inRange: boolean } | null)[] = Array(first).fill(null);
+    const out: ({ iso: string; dow: number; min: number | null; rest: number | null; closed: boolean; full: boolean; inRange: boolean; offer: PartnerStayOffer | null } | null)[] = Array(first).fill(null);
     for (let d = 1; d <= last; d += 1) {
       const iso = `${ym}-${pad(d)}`;
       const inRange = !!bounds && iso >= bounds.earliest && iso <= bounds.latest;
-      const offers = inRange ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, roomCode: room.code, rooms }) : null;
+      const offers = inRange ? partnerStayOffers((x) => index.get(x), iso, nights, guests, { showInventory, roomCode: room.code, rooms, planCode: plan?.code, planName: plan?.name }) : null;
       out.push({
         iso,
         dow: (first + d - 1) % 7,
@@ -90,7 +94,8 @@
         rest: offers?.length ? (offers[0].remaining ?? null) : null,
         closed: index.get(iso)?.closed === true,
         full: index.get(iso)?.rooms.find((r) => r.roomCode === room!.code)?.remainingRooms === 0,
-        inRange
+        inRange,
+        offer: offers?.[0] ?? null
       });
     }
     while (out.length % 7) out.push(null);
@@ -111,6 +116,7 @@
         <div class="min-w-0">
           <p class="text-xs text-stone-500">空室カレンダー{parts.building ? `・${parts.building}` : ''}</p>
           <h2 class="truncate text-lg font-bold">{parts.room}</h2>
+          {#if plan}<p class="truncate text-sm font-medium text-brand-900">{plan.label}</p>{/if}
           <p class="text-sm text-stone-500">大人{guests}名{rooms > 1 ? ` × ${rooms}室` : '・1室'}・{nights}泊の、お一人様1泊あたりの最安（税込・入湯税別）</p>
         </div>
         <button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-stone-600 hover:bg-stone-100" aria-label="閉じる" onclick={() => (room = null)}>×</button>
@@ -135,7 +141,7 @@
                 <button
                   type="button"
                   disabled={pending || c.min == null}
-                  onclick={() => onPick(c.iso)}
+                  onclick={() => onPick(c.iso, c.offer)}
                   aria-pressed={c.iso === selected}
                   class={`flex min-h-[4.5rem] flex-col items-start bg-white p-1.5 text-left transition sm:min-h-20 sm:p-2 ${c.iso === selected ? 'ring-2 ring-inset ring-[var(--pt-accent)]' : ''} ${pending ? '' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'bg-stone-50/70 text-stone-400'}`}
                 >
@@ -156,7 +162,7 @@
             {/each}
           </div>
         </div>
-        <p class="mt-2 text-xs text-stone-500">{#if loading}<span role="status">料金を確認中…</span>{:else}日付を押すと、その日程で一覧を表示します。{/if}</p>
+        <p class="mt-2 text-xs text-stone-500">{#if loading}<span role="status">料金を確認中…</span>{:else if plan}日付を押すと、その日程のプラン詳細を開きます。{:else}日付を押すと、その日程で一覧を表示します。{/if}</p>
       </div>
     </div>
   </div>

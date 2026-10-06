@@ -10,6 +10,7 @@
   import PerkModal, { type PerkModalContent } from './PerkModal.svelte';
   import PartnerContentSections from './PartnerContentSections.svelte';
   import PartnerTermsTable from './PartnerTermsTable.svelte';
+  import MarkdownView from './MarkdownView.svelte';
   import { roomParts, type ContentPhoto, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import type { PlanTerms } from '$lib/partner-plan-terms';
 
@@ -210,7 +211,7 @@
             <section>
               <h3 class="mb-3 text-xl font-bold">プランの紹介</h3>
               {#if detail.plan.headline && detail.plan.headline !== detail.plan.name}<p class="mb-3 font-medium">{detail.plan.headline}</p>{/if}
-              {#if detail.plan.description}<p class="whitespace-pre-line leading-8">{detail.plan.description}</p>{/if}
+              {#if detail.plan.description}<MarkdownView source={detail.plan.description} />{/if}
               {#if detail.plan.specs.length}<div class="mt-4"><PartnerTermsTable title="" rows={detail.plan.specs.map((x) => ({ label: x.label, value: x.value }))} /></div>{/if}
             </section>
           {/if}

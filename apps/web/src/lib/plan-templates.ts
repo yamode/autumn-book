@@ -39,7 +39,8 @@ export function findBlock(text: string, title: string): { start: number; end: nu
   const head = lines.findIndex((l) => l.trim().replace(/[ \t　]+$/u, '') === title.trim());
   if (head < 0) return null;
   let end = head + 1;
-  while (end < lines.length && !isHeading(lines[end]) && !isRule(lines[end])) end++;
+  // 一覧用の区切り（<!--more-->）でも止める（特典ブロックと一緒に区切りを消さない）
+  while (end < lines.length && !isHeading(lines[end]) && !isRule(lines[end]) && !/^\s*<!--\s*more\s*-->\s*$/.test(lines[end])) end++;
   return { start: head, end, body: lines.slice(head + 1, end).join('\n') };
 }
 
