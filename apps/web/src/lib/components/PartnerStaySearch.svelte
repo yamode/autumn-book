@@ -201,6 +201,8 @@
   // svelte-ignore state_referenced_locally
   let detailParams = $state<Params>(data.params);
   let detailRow: Row | null = null;
+  // 日付未定に戻したとき、一覧（今後3か月の最安）を読み直したら、その行で詳細を表示し直す
+  let undatedTarget = $state<{ roomCode: string; planCode: string; planName: string } | null>(null);
   function openDetail(r: Row, content: PartnerRoomContent | null, p: Params = data.params) {
     detailParams = p;
     detailRow = r;
@@ -231,6 +233,24 @@
     search();
   }
 
+  function undateDetail(n: number) {
+    if (!detailRow) return;
+    const r = detailRow;
+    // 先に日付未定の形で開き直し（料金は読み直すまで今の行の値で「〜」）、一覧を日付なしで検索し直す
+    openDetail({ ...r, total: null }, roomOf(r.roomCode), { ...detailParams, date: '', nights: n });
+    undatedTarget = { roomCode: r.roomCode, planCode: r.planCode, planName: r.planName };
+    date = '';
+    nights = n;
+    search();
+  }
+  $effect(() => {
+    const t = undatedTarget;
+    if (!t || searching || loading || !shown || shown.params.date !== '') return;
+    undatedTarget = null;
+    const r = rows.find((x) => x.roomCode === t.roomCode && x.planCode === t.planCode && x.planName === t.planName);
+    // 詳細が開いたままなら、今後3か月の最安で表示し直す（スクロール位置も先頭に戻る）
+    if (r && detail) openDetail(r, roomOf(r.roomCode), detailParams);
+  });
   // モーダルの人数を押したら、閉じて検索バーのパネルを開く
   function reopenSearch(panel: 'date' | 'guests') {
     detail = null;
@@ -530,6 +550,7 @@
   maxNights={data.booking.maxNights}
   isBookable={canBookOn}
   onPickDate={pickDateForDetail}
+  onUndated={undateDetail}
   onChangeGuests={() => reopenSearch('guests')}
 />
 <PartnerRoomModal bind:room={infoRoom} {token} />

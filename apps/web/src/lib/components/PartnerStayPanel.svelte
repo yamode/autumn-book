@@ -4,6 +4,7 @@
   // 日付を押しても閉じず、「この日程で検索」で確定する。
   // プラン詳細（日付未定）から開くときは filter で部屋・プランを絞り、日付を押したらその日の料金（offer）を onPick で返す
   // （プラン詳細をその日の料金で表示し直す）。
+  // 見出しの「日付指定なし」で日付を外せる（検索バーでは日付なしで検索、プラン詳細では onUndated で日付未定に戻す）。
   import { isHoliday } from '$lib/holidays';
   import { partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import { fetchPortalMonth, type PortalMonthJson } from '$lib/partner-month-client';
@@ -22,6 +23,7 @@
     isBookable,
     onApply,
     onPick,
+    onUndated,
     onClose
   }: {
     token: string;
@@ -39,6 +41,8 @@
     pickApplies?: boolean;
     /** pickApplies のとき: 押した日・泊数・その日のいちばん安い料金 */
     onPick?: (date: string, nights: number, offer: PartnerStayOffer) => void;
+    /** pickApplies のとき:「日付指定なし」に戻した */
+    onUndated?: () => void;
     /** 予約を受け付ける日か（受付締切を過ぎた日は押せなくする）。省略時はすべて */
     isBookable?: (iso: string) => boolean;
     onApply: () => void;
@@ -115,6 +119,20 @@
 
 <div role="dialog" aria-label="ご宿泊日" class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
   <div class="flex flex-wrap items-center gap-3 border-b border-stone-100 pb-3">
+    <!-- 日付指定なし: 日付を選んでいるときだけ押せる（押すと日付を外す）。日付が無いときはチェック済みで押せない -->
+    <label class={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
+      <input
+        type="checkbox"
+        class="h-4 w-4"
+        checked={!date}
+        disabled={!date}
+        onchange={() => {
+          date = '';
+          if (pickApplies) onUndated?.();
+        }}
+      />
+      日付指定なし
+    </label>
     <span class="text-base text-stone-600">泊数</span>
     <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:opacity-30" aria-label="泊数を減らす">−</button>
     <span class="min-w-10 text-center text-base font-medium tabular-nums">{nights}泊</span>
@@ -171,11 +189,11 @@
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
     <p class="text-base text-stone-700">
-      {#if pickApplies}チェックイン日を選ぶと、その日の料金でプランの詳細を表示します{:else if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}ご宿泊日をお選びください{/if}
+      {#if pickApplies}チェックイン日を選ぶと、その日の料金でプランの詳細を表示します{:else if date}{md(date)} 〜 {md(checkout)}・{nights}泊{:else}日付指定なし・{nights}泊（今後3か月の最安で表示）{/if}
       <span class="ml-2 text-sm text-stone-400">— は満室・料金なし</span>
     </p>
     {#if !pickApplies}
-      <button type="button" disabled={!date} onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">この日程で検索</button>
+      <button type="button" onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? 'この日程で検索' : '日付指定なしで検索'}</button>
     {/if}
   </div>
 </div>

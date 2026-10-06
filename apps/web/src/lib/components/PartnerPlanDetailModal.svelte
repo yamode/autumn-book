@@ -57,6 +57,7 @@
     maxNights,
     isBookable,
     onPickDate,
+    onUndated,
     onChangeGuests
   }: {
     detail: PlanDetail | null;
@@ -74,6 +75,8 @@
     isBookable: (iso: string) => boolean;
     /** 日付パネルで日付を選んだら（その日の料金で詳細を表示し直す） */
     onPickDate: (date: string, nights: number, offer: PartnerStayOffer) => void;
+    /** 日付パネルの「日付指定なし」で日付未定に戻した（泊数はそのまま） */
+    onUndated: (nights: number) => void;
     onChangeGuests: () => void;
   } = $props();
 
@@ -240,6 +243,7 @@
                 {isBookable}
                 onApply={() => {}}
                 onPick={onPickDate}
+                onUndated={() => onUndated(pickNights)}
                 onClose={() => (pickerOpen = false)}
               />
             </div>
