@@ -577,7 +577,7 @@ export const actions: Actions = {
 		}
 	},
 
-	// チェックイン日決済の再請求（請求失敗・チェックイン日を迎えた請求予定）
+	// チェックアウト日決済の再請求（請求失敗・チェックアウト日を迎えた請求予定）
 	retryCharge: async (event) => {
 		try {
 			const { db, partner } = await editScope(event);

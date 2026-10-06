@@ -9,7 +9,7 @@ export type StripeEventLike = { type: string; data: { object: Record<string, unk
 export type WebhookRoute =
   // 同じ画面で払う方式: 支払完了（予約時決済）
   | { kind: 'payment_intent'; id: string; purpose: string }
-  // 同じ画面で払う方式: カード登録完了（チェックイン日決済）
+  // 同じ画面で払う方式: カード登録完了（チェックアウト日決済）
   | { kind: 'setup_intent'; id: string; purpose: string }
   // 旧方式（Stripe Checkout）の決済画面の完了。切替前に開いた画面のため残す
   | { kind: 'checkout_session'; id: string }

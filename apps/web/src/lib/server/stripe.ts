@@ -133,7 +133,7 @@ export const retrieveCheckoutSession = (id: string, expandSetup = false) =>
     expandSetup ? { expand: ['setup_intent', 'setup_intent.payment_method'] } : undefined
   );
 
-// ---- カードを登録して後日請求（チェックイン日決済）----
+// ---- カードを登録して後日請求（チェックアウト日決済）----
 
 export type StripePaymentMethod = { id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } | null };
 
@@ -202,7 +202,7 @@ export const createPaymentIntent = (args: {
 
 export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
 
-// チェックイン日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
+// チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
 export const createSetupIntent = (args: { customer: string; description: string; metadata: Record<string, string>; idempotencyKey: string }) =>
   stripeFetch<SetupIntent>(
     'POST',

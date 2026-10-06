@@ -4,7 +4,7 @@
 // 受け取るイベント（振り分けは lib/server/payments/webhook-route.ts）:
 //   - payment_intent.succeeded … 同じ画面で払う方式（v0.42.0〜）の予約時決済。ブラウザが閉じられて確定の連絡が
 //                                届かなかったときの保険（rms_partner_mark_paid）
-//   - setup_intent.succeeded   … 同じ画面で払う方式のチェックイン日決済のカード登録（rms_partner_mark_card_saved）
+//   - setup_intent.succeeded   … 同じ画面で払う方式のチェックアウト日決済のカード登録（rms_partner_mark_card_saved）
 //     ※ どちらも metadata.flow='elements' の Intent だけ。チェックイン日の自動請求（off-session）の PaymentIntent は
 //       同じ app / purpose でも flow が無いので無視する（自動請求は請求処理の中で確定する）
 //   - checkout.session.completed / async_payment_succeeded … 旧方式（Stripe Checkout）。切替前に開いた決済画面のため残す

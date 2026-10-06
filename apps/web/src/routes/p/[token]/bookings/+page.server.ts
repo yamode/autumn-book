@@ -68,7 +68,7 @@ export const load = async (event) => {
       cardLabel: b.card_label,
       chargeError: b.charge_error,
       canUpdateCard: canUpdateCard(b),
-      // 支払の再開・カード登録のときの決済部品の種類（予約時決済 = payment / チェックイン日決済 = setup）
+      // 支払の再開・カード登録のときの決済部品の種類（予約時決済 = payment / チェックアウト日決済 = setup）
       payMode: b.payment_option === 'online_checkin' ? ('setup' as const) : b.payment_option === 'online' ? ('payment' as const) : null,
       // カード登録の同意文（入力欄の直下に出し、登録完了時に同じ文面を記録する）
       consentText: b.payment_option === 'online_checkin' ? cardConsentText(partner.facility_name, b) : null,

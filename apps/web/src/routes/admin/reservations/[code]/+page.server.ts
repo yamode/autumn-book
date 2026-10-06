@@ -390,7 +390,7 @@ export const actions: Actions = {
 		}
 	},
 
-	/** 取引先予約のチェックイン日決済の再請求（管理者のみ）。/admin/partners/[id] の retryCharge と同じ処理 */
+	/** 取引先予約のチェックアウト日決済の再請求（管理者のみ）。/admin/partners/[id] の retryCharge と同じ処理 */
 	partnerRetryCharge: async (event) => {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
 		const denied = requireAdmin(event.locals.user?.role, '再請求');
