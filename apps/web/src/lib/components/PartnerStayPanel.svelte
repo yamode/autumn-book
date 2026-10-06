@@ -123,15 +123,19 @@
             {:else}
               {@const selected = c.iso === date}
               {@const inStay = !!date && c.iso > date && c.iso < checkout}
+              <!-- 取得中は今日以降の料金欄をシマーにする（前の月・人数の料金を押させない） -->
+              {@const pending = loading && c.iso >= today}
               <button
                 type="button"
-                disabled={c.min == null}
+                disabled={pending || c.min == null}
                 aria-pressed={selected}
                 onclick={() => (date = c.iso)}
-                class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
+                class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : c.min != null ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
               >
-                <span class={`block text-base ${selected ? '' : c.min == null ? '' : c.dow === 0 || isHoliday(c.iso) ? 'text-rose-600' : c.dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(c.iso.slice(8))}</span>
-                {#if c.min != null}
+                <span class={`block text-base ${selected ? '' : !pending && c.min == null ? '' : c.dow === 0 || isHoliday(c.iso) ? 'text-rose-600' : c.dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(c.iso.slice(8))}</span>
+                {#if pending}
+                  <span class="shimmer mx-auto mt-1 block h-3.5 w-4/5 max-w-14" aria-hidden="true"></span>
+                {:else if c.min != null}
                   <span class={`block text-xs font-semibold tracking-tight sm:text-sm ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{c.min.toLocaleString('ja-JP')}<span class="text-[11px]">円</span></span>
                 {:else if c.inRange && c.closed}
                   <span class="block text-xs">休館日</span>
