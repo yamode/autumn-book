@@ -20,11 +20,13 @@ export const STANDARD_FIELDS: readonly { key: StandardFieldKey; name: string; la
   }
 ];
 
-export type StandardFieldText = { label: string; placeholder: string };
+// help = 見出しの下に小さい文字で出す補足の説明（改行可）
+export type StandardFieldText = { label: string; placeholder: string; help: string };
 export type StandardFieldTexts = Record<StandardFieldKey, StandardFieldText>;
 
 const MAX_LABEL = 60;
 const MAX_PLACEHOLDER = 200;
+const MAX_HELP = 500;
 
 // 保存する形（施設が変えた文言だけ。空は既定に戻す）
 export function normalizeStandardFields(raw: unknown): Partial<Record<StandardFieldKey, Partial<StandardFieldText>>> {
@@ -34,7 +36,8 @@ export function normalizeStandardFields(raw: unknown): Partial<Record<StandardFi
     const v = src[f.key] && typeof src[f.key] === 'object' ? (src[f.key] as Record<string, unknown>) : {};
     const label = String(v.label ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_LABEL);
     const placeholder = String(v.placeholder ?? '').trim().slice(0, MAX_PLACEHOLDER);
-    if (label || placeholder) out[f.key] = { ...(label ? { label } : {}), ...(placeholder ? { placeholder } : {}) };
+    const help = String(v.help ?? '').replace(/\r\n?/g, '\n').trim().slice(0, MAX_HELP);
+    if (label || placeholder || help) out[f.key] = { ...(label ? { label } : {}), ...(placeholder ? { placeholder } : {}), ...(help ? { help } : {}) };
   }
   return out;
 }
@@ -43,6 +46,6 @@ export function normalizeStandardFields(raw: unknown): Partial<Record<StandardFi
 export function resolveStandardFields(raw: unknown): StandardFieldTexts {
   const saved = normalizeStandardFields(raw);
   return Object.fromEntries(
-    STANDARD_FIELDS.map((f) => [f.key, { label: saved[f.key]?.label || f.label, placeholder: saved[f.key]?.placeholder ?? f.placeholder }])
+    STANDARD_FIELDS.map((f) => [f.key, { label: saved[f.key]?.label || f.label, placeholder: saved[f.key]?.placeholder ?? f.placeholder, help: saved[f.key]?.help ?? '' }])
   ) as StandardFieldTexts;
 }

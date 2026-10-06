@@ -110,11 +110,11 @@
 <form method="POST" action="?/saveStandard" use:enhance={() => async ({ update }) => update({ reset: false })} class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
 	<h2 class="text-sm font-bold text-stone-700">毎回聞く項目</h2>
 	<p class="mt-1 text-xs text-stone-500">
-		どのプランでも必ず聞く項目です。見出しと例文（入力欄の薄い字）だけ変えられます。空欄なら既定の文言を使います。いまは取引先ページの予約入力に出ます。
+		どのプランでも必ず聞く項目です。見出し・例文（入力欄の薄い字）・補足の説明だけ変えられます。空欄なら既定の文言を使います。いまは取引先ページの予約入力に出ます。
 	</p>
 	<div class="mt-3 grid gap-3">
 		{#each STANDARD_FIELDS as f (f.key)}
-			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string } | undefined>)[f.key]}
+			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string } | undefined>)[f.key]}
 			<div class="rounded-lg border border-stone-200 p-3">
 				<p class="text-sm font-medium text-stone-800">{f.name}</p>
 				<div class="mt-2 grid gap-2 sm:grid-cols-2">
@@ -125,6 +125,10 @@
 					<label class="block">
 						<span class="mb-0.5 block text-xs text-stone-500">例文</span>
 						<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
+					</label>
+					<label class="block sm:col-span-2">
+						<span class="mb-0.5 block text-xs text-stone-500">補足の説明（見出しの下に小さい文字で出ます。改行できます）</span>
+						<textarea name="{f.key}_help" rows="2" maxlength="500" placeholder="（なし）" class={inputClass}>{saved?.help ?? ''}</textarea>
 					</label>
 				</div>
 				<p class="mt-1 text-[11px] text-stone-500">{f.note}</p>

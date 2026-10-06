@@ -465,6 +465,7 @@
         <div class="grid gap-4">
           <label class="block">
             <span class={label}>{data.standardFields.allergies.label}</span>
+            {#if data.standardFields.allergies.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.allergies.help}</span>{/if}
             <textarea name="allergies" rows="2" maxlength="500" placeholder={data.standardFields.allergies.placeholder} class={input}></textarea>
           </label>
           <label class="block sm:max-w-xs">
@@ -479,6 +480,7 @@
           {/each}
           <label class="block">
             <span class={label}>{data.standardFields.notes.label}</span>
+            {#if data.standardFields.notes.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.notes.help}</span>{/if}
             <textarea name="notes" rows="3" maxlength="1000" placeholder={data.standardFields.notes.placeholder} class={input}></textarea>
           </label>
         </div>

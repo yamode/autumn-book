@@ -46,9 +46,13 @@ export const actions: Actions = {
     if (denied) return denied;
     if (!LIVE) return fail(400, { error: NOT_LIVE });
     const form = await event.request.formData();
-    const fields: Record<string, { label: string; placeholder: string }> = {};
+    const fields: Record<string, { label: string; placeholder: string; help: string }> = {};
     for (const f of STANDARD_FIELDS) {
-      fields[f.key] = { label: String(form.get(`${f.key}_label`) ?? ''), placeholder: String(form.get(`${f.key}_placeholder`) ?? '') };
+      fields[f.key] = {
+        label: String(form.get(`${f.key}_label`) ?? ''),
+        placeholder: String(form.get(`${f.key}_placeholder`) ?? ''),
+        help: String(form.get(`${f.key}_help`) ?? '')
+      };
     }
     try {
       await saveStandardFieldSettings(createSupabaseServerClient(event), currentFacilityOf(event).uuid, fields);

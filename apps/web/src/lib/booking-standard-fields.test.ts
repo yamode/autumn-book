@@ -10,7 +10,13 @@ describe('毎回聞く項目の文言', () => {
   });
   it('設定が無ければ既定の文言', () => {
     const t = resolveStandardFields({ allergies: { placeholder: '例: そば' } });
-    expect(t.allergies).toEqual({ label: '食物アレルギー・苦手な食材', placeholder: '例: そば' });
+    expect(t.allergies).toEqual({ label: '食物アレルギー・苦手な食材', placeholder: '例: そば', help: '' });
     expect(t.notes.label).toBe('その他ご要望・備考');
+  });
+});
+
+describe('補足の説明', () => {
+  it('改行を保ち、前後の空白を落とす', () => {
+    expect(resolveStandardFields({ allergies: { help: ' 1行目\r\n2行目 ' } }).allergies.help).toBe('1行目\n2行目');
   });
 });
