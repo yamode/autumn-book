@@ -8,6 +8,7 @@
 //   - 取引先の施設は Book が扱う施設（FACILITY_UUID）に限る。
 // 取引先・アカウント・API キーの発行や設定（スタッフ用の機能）も 2026-09-26 に Book の /admin/partners へ移した。
 // 表名・cookie 名・API キーの接頭辞（rms_ / rmsp_）は既存データと発行済みのキーをそのまま使うため変えない。
+import { PREVIEW_ACCOUNT_ID } from './preview';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
@@ -469,6 +470,8 @@ export async function logPartnerAccess(
     ip?: string | null;
   }
 ) {
+  // 管理画面からの確認モードは記録しない（取引先の利用状況に運営の確認を混ぜない）
+  if (entry.accountId === PREVIEW_ACCOUNT_ID) return;
   // 記録の失敗で閲覧を止めない。
   await db
     .from('rms_partner_access_logs')
@@ -558,7 +561,11 @@ export async function loginPartner(
   return { ok: true, sessionToken };
 }
 
-export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'is_master'> & { sessionId: string };
+export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'is_master'> & {
+  sessionId: string;
+  /** 管理画面からの確認モード（preview.ts）。見るだけで、書き込みは入口で断る */
+  preview?: boolean;
+};
 
 // クッキーのセッションから、この取引先のアカウントを引く。別の取引先のセッションは通さない。
 export async function getPartnerSession(

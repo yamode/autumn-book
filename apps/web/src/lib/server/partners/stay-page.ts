@@ -15,7 +15,8 @@ export async function loadStayPage(event: Pick<RequestEvent, 'params' | 'cookies
   const { db, partner, session } = await resolvePortal(event);
   const token = event.params.token;
   if (!session) throw redirect(303, `/p/${token}`);
-  if (partnerUnavailableReason(partner)) throw redirect(303, `/p/${token}`);
+  // 管理画面からの確認モードは公開停止中でも見られる
+  if (partnerUnavailableReason(partner) && !session.preview) throw redirect(303, `/p/${token}`);
 
   const q = event.url.searchParams;
   const s = partner.booking_settings;

@@ -12,6 +12,7 @@ import {
   type RequestMeta
 } from './store';
 import { isPartnerBookingOpen } from './booking';
+import { PARTNER_PREVIEW_COOKIE, PREVIEW_ACCOUNT_ID, PREVIEW_DENIED_MESSAGE, verifyPreviewToken } from './preview';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -61,37 +62,51 @@ export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookie
     throw e;
   }
   if (!partner) throw error(404, 'ページが見つかりません。');
-  const session = await getPartnerSession(db, partner, event.cookies.get(PARTNER_SESSION_COOKIE));
+  let session = await getPartnerSession(db, partner, event.cookies.get(PARTNER_SESSION_COOKIE));
+  // 取引先のログインが無く、管理画面の「確認ページを開く」の署名付きクッキーがあれば確認モード（preview.ts）
+  if (!session && (await verifyPreviewToken(event.cookies.get(PARTNER_PREVIEW_COOKIE), partner.id))) {
+    session = { id: PREVIEW_ACCOUNT_ID, login_id: '管理者の確認', display_name: '管理者の確認', is_master: false, sessionId: '', preview: true };
+  }
   return { db, partner, session };
 }
 
+// 確認モードは見るだけ。GET 以外（予約の確定・取消・保存・アップロード等）は入口で一律に断る
+function denyPreviewWrite(event: Pick<RequestEvent, 'request'>, session: { preview?: boolean } | null) {
+  if (session?.preview && event.request.method !== 'GET' && event.request.method !== 'HEAD') throw error(403, PREVIEW_DENIED_MESSAGE);
+}
+
 // ログイン済みの取引先ページ共通: セッションが無い・公開停止中ならログイン画面へ戻す。
-export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies'>) {
+export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'>) {
   const { db, partner, session } = await resolvePortal(event);
   const token = event.params.token ?? '';
   if (!session) throw redirect(303, `/p/${token}`);
-  if (partnerUnavailableReason(partner)) throw redirect(303, `/p/${token}`);
+  // 確認モードは公開停止中でも見られる（公開前の確認のため）
+  if (partnerUnavailableReason(partner) && !session.preview) throw redirect(303, `/p/${token}`);
+  denyPreviewWrite(event, session);
   return { db, partner, session };
 }
 
 // 取引先ページのヘッダー（layout）に渡す情報。
 // isMaster: マスタユーザー（Book が発行したログインID）か。アカウント画面の「ユーザー管理」タブの表示に使う
 // （表示だけ。ユーザー管理の読み書きは store.ts の requireMasterAccount で毎回 DB を確かめる）。
-export function portalHeader(partner: PartnerContext, session: { login_id: string; is_master?: boolean } | null) {
+export function portalHeader(partner: PartnerContext, session: { login_id: string; is_master?: boolean; preview?: boolean } | null) {
   return {
     partnerName: partner.name,
     facilityName: partner.facility_name,
     facilitySlug: partner.facility_slug,
     loginId: session?.login_id ?? null,
     isMaster: session?.is_master === true,
+    // 管理画面からの確認モード（帯を出し、予約の確定ボタンを止める）
+    preview: session?.preview === true,
     bookingEnabled: isPartnerBookingOpen(partner)
   };
 }
 
 // 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
-export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies'>) {
+export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'>) {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
-  if (partnerUnavailableReason(partner)) throw error(403, '現在ご利用いただけません。');
+  if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');
+  denyPreviewWrite(event, session);
   return { db, partner, session };
 }

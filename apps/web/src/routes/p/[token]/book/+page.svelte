@@ -211,6 +211,7 @@
   }
 
   async function payNow() {
+    if (data.portal.preview) return; // 確認モードは確定しない（サーバでも断る）
     payError = '';
     await payRef?.submit();
   }
@@ -320,6 +321,11 @@
     bind:this={formEl}
     method="POST"
     use:enhance={({ cancel }) => {
+      // 管理画面からの確認モードは送らない（入力欄で Enter を押したときも）
+      if (data.portal.preview) {
+        cancel();
+        return;
+      }
       // オンライン決済はフォーム送信ではなく決済部品から確定する（入力欄で Enter を押したときも）
       if (isStripe) {
         cancel();
@@ -743,6 +749,11 @@
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
         <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="primary mt-4 w-full">内容を確認する</button>
+      {:else if data.portal.preview}
+        <!-- 管理画面からの確認モード: 最終確認までは見せ、確定（予約の作成・決済）はさせない。サーバ側でも GET 以外は断る -->
+        <button type="button" disabled class="primary mt-4 w-full">{submitLabel}</button>
+        <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">管理者の確認モードのため、予約は確定できません。</p>
+        <button type="button" onclick={() => (step = 'input')} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
       {:else if isStripe}
         <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
         {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}

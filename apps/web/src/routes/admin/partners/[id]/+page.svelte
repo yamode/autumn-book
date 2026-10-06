@@ -410,10 +410,12 @@
     <!-- 限定URL -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
-      <p class="mt-1 text-xs text-stone-500">この取引先専用のログイン画面です。下で発行したログインIDとパスワードでログインします。</p>
+      <p class="mt-1 text-xs text-stone-500">この取引先専用のログイン画面です。下で発行したログインIDとパスワードでログインします。「確認ページを開く」は、ログインなしでこの取引先から見た画面を開きます（2時間・見るだけで、予約の確定・取消はできません）。</p>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>
         <button type="button" class={smallBtn} onclick={() => copy(data.portalUrl)}>コピー</button>
+        <!-- 取引先のアカウントなしで、その取引先から見た画面を開く（確認モード・予約の確定はできない） -->
+        <a href={`/admin/partners/${data.partner.id}/preview`} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く ↗</a>
         {#if canEdit}
           <form
             method="POST"

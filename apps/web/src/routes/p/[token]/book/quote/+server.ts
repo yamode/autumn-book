@@ -8,7 +8,8 @@ import { partnerUnavailableReason } from '$lib/server/partners/store';
 export const POST = async (event) => {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
-  if (partnerUnavailableReason(partner) || !partner.booking_enabled) throw error(403, '現在ご予約を受け付けていません。');
+  // 料金の再計算は読み取りなので確認モードも通す（公開停止中でも確認できるように）
+  if ((partnerUnavailableReason(partner) && !session.preview) || !partner.booking_enabled) throw error(403, '現在ご予約を受け付けていません。');
   const body = (await event.request.json().catch(() => ({}))) as Record<string, unknown>;
   const rooms = Array.isArray(body.rooms) ? body.rooms.slice(0, 20).map((r) => ({ adults: Math.round(Number((r as { adults?: unknown })?.adults)) || 0 })) : [];
   const checkIn = String(body.checkIn ?? '');

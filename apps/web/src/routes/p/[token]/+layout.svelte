@@ -10,7 +10,7 @@
   let { children } = $props();
   const portal = $derived(
     $page.data.portal as
-      | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean }
+      | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean; preview?: boolean }
       | undefined
   );
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）
@@ -59,6 +59,10 @@
 
 <div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
   <header bind:this={headerEl} class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
+    {#if portal?.preview}
+      <!-- 管理画面の「確認ページを開く」から開いた確認モード（見るだけ・予約の確定や取消はできない） -->
+      <p class="bg-amber-400 px-4 py-1 text-center text-xs font-bold text-amber-950 sm:text-sm" role="status">管理者の確認モード — 取引先から見た画面です。予約の最終確認まで進めますが、確定・取消・保存はできません。</p>
+    {/if}
     <!-- 本文の表示領域を広く取るため高さを詰める（2026-10-06）: 上下の余白を小さくし、PCでは施設名と「専用料金」を横1行に並べる。 -->
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2 sm:px-6">
       <div class="flex min-w-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-3">
@@ -84,7 +88,7 @@
         <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-sm">
           <span class="hidden text-stone-500 sm:inline">{portal.loginId}</span>
           <button type="submit" class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">
-            ログアウト
+            {portal.preview ? '確認を終える' : 'ログアウト'}
           </button>
         </form>
       {/if}

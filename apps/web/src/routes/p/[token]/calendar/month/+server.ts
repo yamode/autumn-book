@@ -11,7 +11,8 @@ export const GET = async (event) => {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
   const unavailable = partnerUnavailableReason(partner);
-  if (unavailable) throw error(403, unavailable);
+  // 管理画面からの確認モードは公開停止中でも見られる
+  if (unavailable && !session.preview) throw error(403, unavailable);
 
   const q = parsePortalQuery(event.url);
   const view = event.url.searchParams.get('view') === '1';

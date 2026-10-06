@@ -6,7 +6,7 @@ export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
   const { partner, session } = await resolvePortal(event);
   const unavailable = partnerUnavailableReason(partner);
-  if (session && !unavailable) throw redirect(303, `/p/${event.params.token}/calendar`);
+  if (session && (!unavailable || session.preview)) throw redirect(303, `/p/${event.params.token}/calendar`);
   return {
     portal: portalHeader(partner, session),
     unavailable
