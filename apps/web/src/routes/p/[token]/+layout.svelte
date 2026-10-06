@@ -22,6 +22,22 @@
   };
   // 差し色の定義は lib/partner-theme.ts（決済部品にも同じ色を渡す）
   const theme = $derived(partnerAccent(portal?.facilitySlug));
+
+  // 固定ヘッダーの実際の高さ（画面幅でメニューが折り返すと変わる）を --portal-header-h に入れる（2026-10-06）。
+  // 右欄の追従（sticky）の位置と、ページ内移動（scrollIntoView）の止まる位置を、ヘッダーの下にそろえるため。
+  let headerEl = $state<HTMLElement | null>(null);
+  $effect(() => {
+    if (!headerEl) return;
+    const root = document.documentElement;
+    const set = () => root.style.setProperty('--portal-header-h', `${headerEl!.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(headerEl);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--portal-header-h');
+    };
+  });
 </script>
 
 <svelte:head>
@@ -33,7 +49,7 @@
     head に置くので取引先ページにいる間だけ効く（公式サイト・管理画面は変わらない）。
   -->
   <style>
-    html { font-size: 112.5%; }
+    html { font-size: 112.5%; scroll-padding-top: calc(var(--portal-header-h, 6rem) + 1rem); }
     .text-\[10px\] { font-size: 0.6875rem; }
     .text-\[11px\] { font-size: 0.75rem; }
     .text-\[15px\] { font-size: 0.9375rem; }
@@ -42,7 +58,7 @@
 </svelte:head>
 
 <div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
-  <header class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
+  <header bind:this={headerEl} class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
       <div class="min-w-0">
         {#if portal?.partnerName}

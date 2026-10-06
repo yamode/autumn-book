@@ -26,7 +26,7 @@
     <div class="mt-6 space-y-8">
       {#each data.rooms as r (r.code)}
         {@const parts = roomParts(r.name)}
-        <article id={roomAnchor(r.code)} class="scroll-mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
+        <article id={roomAnchor(r.code)} class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
           <header class="mb-4">
             {#if parts.building}<p class="text-xs tracking-wider text-stone-500">{parts.building}</p>{/if}
             <h3 class="text-xl font-bold leading-snug">{parts.room}</h3>

@@ -551,7 +551,7 @@
       </section>
 
       <!-- キャンセルポリシー・お子様について・注意事項（入力・確認のどちらでも出す・2026-10-06 指示） -->
-      <section id="cancel-policy" class="card scroll-mt-4">
+      <section id="cancel-policy" class="card">
         <h3 class="card-title">キャンセルポリシー</h3>
         {#if data.terms && (data.terms.cancellation.length || data.terms.cancellationNote)}
           <PartnerTermsTable title="" rows={data.terms.cancellation} note={data.terms.cancellationNote} />
@@ -584,7 +584,8 @@
     </div>
 
     <!-- 料金（一休の右欄の形: 写真・施設名・所在地 → 日程・人数・お部屋・プラン → 宿泊料金 → お支払い金額合計 → 取消の案内 → ボタン・2026-10-06） -->
-    <aside class="card lg:sticky lg:top-4">
+    <!-- 追従はヘッダー（高さは --portal-header-h・レイアウトで測る）の下から -->
+    <aside class="card lg:sticky lg:top-[calc(var(--portal-header-h,6rem)+1rem)]">
       <div class="flex items-start gap-3">
         {#if data.summary.photo}<img src={data.summary.photo} alt="" class="h-[72px] w-[72px] shrink-0 rounded-lg object-cover" />{/if}
         <div class="min-w-0">

@@ -262,7 +262,7 @@
         {@const parts = roomParts(card.name)}
         {@const photo = card.content?.photos[0]?.url}
         <!-- 一休のカード: 左に写真と部屋、右にプラン行 -->
-        <article id={`room-${card.code}`} class="scroll-mt-24 overflow-hidden rounded-lg border border-stone-200 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)] md:grid md:grid-cols-[280px_minmax(0,1fr)]">
+        <article id={`room-${card.code}`} class="overflow-hidden rounded-lg border border-stone-200 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)] md:grid md:grid-cols-[280px_minmax(0,1fr)]">
           <div class="border-b border-stone-200 md:border-b-0 md:border-r">
             {#if photo}
               <button type="button" class="block w-full" onclick={() => (infoRoom = card.content)} aria-label={`${parts.room} お部屋の紹介`}>

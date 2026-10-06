@@ -35,7 +35,7 @@
     <div class="mt-6 space-y-8">
       {#each data.plans as p (p.anchor)}
         <!-- 1カラム: 見出し → 写真ギャラリー → プランの紹介（説明・表・専用特典・お料理）→ 料金カレンダー（2か月）→ キャンセルポリシー・お子様 -->
-        <article id={p.anchor} class="scroll-mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
+        <article id={p.anchor} class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
           <header class="mb-4">
             <div class="flex flex-wrap items-center gap-1.5">
               {#if p.mealPlan}<span class="rounded-full bg-brand-900 px-2.5 py-0.5 text-xs text-white">{mealLabel(p.mealPlan)}</span>{/if}
