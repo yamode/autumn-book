@@ -18,17 +18,28 @@
 
   const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   const isActive = (s: string) => s === 'confirmed' || s === 'pending_payment';
+  // 一覧は取引先内の全予約（どのログインIDで入れた予約も）。担当者 = 予約時の「ご予約者（ご担当者）」、無い古い予約はログインID
+  const staffOf = (b: { booker: { name: string } | null; bookedBy: string | null }) => b.booker?.name.trim() || b.bookedBy || '（不明）';
+  const staffList = $derived([...new Set(data.bookings.map(staffOf))].sort((a, b) => a.localeCompare(b, 'ja')));
+  let staff = $state(''); // '' = すべての担当者
+  // 並び: 既定は宿泊日の昇順（2026-10-06 指示。どのタブでも同じ）
+  let sort = $state<'checkin_asc' | 'checkin_desc' | 'created_desc'>('checkin_asc');
+  const byStaff = $derived(staff ? data.bookings.filter((b) => staffOf(b) === staff) : data.bookings);
   const shown = $derived(
-    data.bookings
+    byStaff
       .filter((b) =>
         filter === 'cancelled' ? !isActive(b.status) : isActive(b.status) && (filter === 'upcoming' ? b.checkOut > today : b.checkOut <= today)
       )
-      .sort((a, b) => (filter === 'upcoming' ? a.checkIn.localeCompare(b.checkIn) : b.checkIn.localeCompare(a.checkIn)))
+      .sort((a, b) =>
+        sort === 'created_desc'
+          ? b.createdAt.localeCompare(a.createdAt)
+          : (sort === 'checkin_asc' ? 1 : -1) * (a.checkIn.localeCompare(b.checkIn) || a.createdAt.localeCompare(b.createdAt))
+      )
   );
   const counts = $derived({
-    upcoming: data.bookings.filter((b) => isActive(b.status) && b.checkOut > today).length,
-    past: data.bookings.filter((b) => isActive(b.status) && b.checkOut <= today).length,
-    cancelled: data.bookings.filter((b) => !isActive(b.status)).length
+    upcoming: byStaff.filter((b) => isActive(b.status) && b.checkOut > today).length,
+    past: byStaff.filter((b) => isActive(b.status) && b.checkOut <= today).length,
+    cancelled: byStaff.filter((b) => !isActive(b.status)).length
   });
 
   const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
@@ -112,7 +123,7 @@
     <a href={`/p/${token}/calendar`} class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">料金カレンダーから予約する</a>
   </div>
 
-  {#if data.done}
+  {#if data.done && !form?.cancelled}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ ご予約を承りました（予約番号 {data.done}）</p>
       <p class="mt-1 text-sm text-stone-500">確認メールをお送りしました（メールアドレスの登録がある場合）。内容は下の一覧からご確認いただけます。</p>
@@ -168,6 +179,25 @@
     {/each}
   </div>
 
+  <!-- 絞り込み・並び（取引先内の全予約が対象） -->
+  <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+    <label class="flex items-center gap-2">
+      <span class="text-stone-500">担当者</span>
+      <select bind:value={staff} class="rounded-lg border border-stone-300 bg-white px-3 py-1.5">
+        <option value="">すべて（{data.bookings.length}件）</option>
+        {#each staffList as name (name)}<option value={name}>{name}（{data.bookings.filter((b) => staffOf(b) === name).length}件）</option>{/each}
+      </select>
+    </label>
+    <label class="flex items-center gap-2">
+      <span class="text-stone-500">並び</span>
+      <select bind:value={sort} class="rounded-lg border border-stone-300 bg-white px-3 py-1.5">
+        <option value="checkin_asc">宿泊日の早い順</option>
+        <option value="checkin_desc">宿泊日の遅い順</option>
+        <option value="created_desc">予約日の新しい順</option>
+      </select>
+    </label>
+  </div>
+
   {#if shown.length === 0}
     <p class="mt-6 rounded-xl border border-dashed border-stone-300 px-6 py-10 text-center text-stone-500">該当するご予約はありません。</p>
   {:else}
@@ -179,6 +209,7 @@
               <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}</p>
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
               <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
+              <p class="mt-0.5 text-sm text-stone-500">担当: {staffOf(b)}</p>
             </div>
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums text-accent-600">{yen(b.total)}</p>
@@ -305,7 +336,7 @@
                       </form>
                     {:else}
                       <button type="button" onclick={() => (confirmId = b.id)} class="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-rose-50 hover:text-rose-700">{b.status === 'pending_payment' ? 'この予約をやめる' : 'この予約を取り消す'}</button>
-                      {#if data.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-stone-500">宿泊日の{data.cancelText}まで取り消せます</span>{/if}
+                      {#if data.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-stone-500">宿泊日の{data.cancelText}取り消せます</span>{/if}
                       {#if b.status === 'confirmed' && b.cancelPreview && b.cancelPreview.fee > 0}
                         <p class="mt-1.5 text-sm text-rose-700">今取り消すとキャンセル料 {b.cancelPreview.fee.toLocaleString('ja-JP')}円（予約金額の{b.cancelPreview.rate}%）がかかります</p>
                       {/if}
