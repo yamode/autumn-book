@@ -18,6 +18,14 @@ import { partnerServiceClient } from './admin-client';
 import { removeAllPartnerDocumentFiles } from './memorandum';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
 import { canManageAccount } from '$lib/partner-account-roles';
+import {
+  ilikeContainsPattern,
+  isPmsPartnerGuestType,
+  PMS_PARTNER_GUEST_TYPES,
+  pmsGuestFormalName,
+  type PmsGuestNameFields,
+  type PmsPartnerGuest
+} from '$lib/pms-partner-guest';
 
 export type PartnerKind = 'agent' | 'corporate' | 'other';
 export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
@@ -47,9 +55,17 @@ export type PartnerRow = {
   booking_enabled: boolean;
   booking_settings: PartnerBookingSettings;
   payment_method_id: string | null;
+  // PMS の顧客マスタ（旅行会社・法人）への紐づけ（migration 20261006224655）。null = 未紐づけ
+  pms_guest_id: string | null;
+  // 予約名義（Phase 2）・与信超過時の挙動（Phase 3）。Phase 1 では読み取りだけ（編集 UI は無い）
+  booking_name_mode: PartnerBookingNameMode;
+  credit_over_action: PartnerCreditOverAction;
   created_at: string;
   updated_at: string;
 };
+
+export type PartnerBookingNameMode = 'guest' | 'partner';
+export type PartnerCreditOverAction = 'ignore' | 'warn' | 'deposit';
 
 export type PartnerAccountRow = {
   id: string;
@@ -133,7 +149,7 @@ function raise(error: { code?: string; message?: string } | null, fallback: stri
 }
 
 const PARTNER_COLUMNS =
-  'id, tenant_id, facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, max_days_ahead, show_inventory, include_advance, pricing, note, booking_enabled, booking_settings, payment_method_id, created_at, updated_at';
+  'id, tenant_id, facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, max_days_ahead, show_inventory, include_advance, pricing, note, booking_enabled, booking_settings, payment_method_id, pms_guest_id, booking_name_mode, credit_over_action, created_at, updated_at';
 const ACCOUNT_COLUMNS =
   'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, is_master, created_by_account, created_at';
 
@@ -143,7 +159,10 @@ function toPartner(row: Record<string, unknown>): PartnerRow {
     pricing: normalizePartnerPricing(row.pricing),
     booking_enabled: row.booking_enabled === true,
     booking_settings: normalizePartnerBookingSettings(row.booking_settings),
-    payment_method_id: (row.payment_method_id as string | null) ?? null
+    payment_method_id: (row.payment_method_id as string | null) ?? null,
+    pms_guest_id: (row.pms_guest_id as string | null) ?? null,
+    booking_name_mode: row.booking_name_mode === 'partner' ? 'partner' : 'guest',
+    credit_over_action: row.credit_over_action === 'ignore' || row.credit_over_action === 'warn' ? row.credit_over_action : 'deposit'
   };
 }
 
@@ -257,6 +276,107 @@ export async function updatePartner(
     .eq('id', partner.id)
     .eq('facility_id', partner.facility_id);
   if (error) raise(error, '取引先を保存できませんでした。');
+}
+
+// ============================================================================
+// PMS の顧客マスタ（core.guests の旅行会社・法人）との紐づけ（Phase 1・docs/partner-pms-customer-link.md §5.7・§6.1）。
+// core.guests はテナント単位の共有表。service_role で読むので、tenant_id と種別（group / corporate）の絞り込みが命綱。
+// 返す列は §5.7 の範囲に限る（住所・電話・メール等の個人情報は読まない）。
+// ============================================================================
+
+const PMS_PARTNER_GUEST_COLUMNS =
+  'id, tenant_id, guest_type, name, name_kana, corporate_name, corporate_name_kana, branch, legal_form, legal_form_position, guest_code, updated_at';
+const PMS_PARTNER_GUEST_SEARCH_LIMIT = 20;
+// 部分一致で探す列（名前・法人名・かな・顧客コード）
+const PMS_PARTNER_GUEST_SEARCH_FIELDS = ['corporate_name', 'name', 'corporate_name_kana', 'name_kana', 'guest_code'] as const;
+
+function toPmsPartnerGuest(row: Record<string, unknown>): PmsPartnerGuest | null {
+  if (!isPmsPartnerGuestType(row.guest_type)) return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  return {
+    id: row.id as string,
+    guestType: row.guest_type,
+    formalName: pmsGuestFormalName(row as PmsGuestNameFields) || '（名称未設定）',
+    recipientName: pmsGuestFormalName(row as PmsGuestNameFields),
+    kana: str(row.corporate_name_kana) ?? str(row.name_kana),
+    branch: str(row.branch),
+    guestCode: str(row.guest_code),
+    updatedAt: (row.updated_at as string | null) ?? null
+  };
+}
+
+/** PMS の顧客（旅行会社・法人）を名前・法人名・かな・顧客コードの部分一致で探す（最大20件）。 */
+export async function searchPmsPartnerGuests(db: SupabaseClient, tenantId: string, query: string): Promise<PmsPartnerGuest[]> {
+  const pattern = ilikeContainsPattern(query);
+  if (!pattern) return [];
+  // PostgREST の or() は値の引用・エスケープが二重になり壊れやすいので、列ごとに ilike を並べて投げて結果をまとめる
+  const results = await Promise.all(
+    PMS_PARTNER_GUEST_SEARCH_FIELDS.map((field) =>
+      db
+        .schema('core')
+        .from('guests')
+        .select(PMS_PARTNER_GUEST_COLUMNS)
+        .eq('tenant_id', tenantId)
+        .in('guest_type', [...PMS_PARTNER_GUEST_TYPES])
+        .ilike(field, pattern)
+        .order('updated_at', { ascending: false })
+        .limit(PMS_PARTNER_GUEST_SEARCH_LIMIT)
+    )
+  );
+  const byId = new Map<string, PmsPartnerGuest>();
+  for (const { data, error } of results) {
+    if (error) raise(error, 'PMS の顧客を検索できませんでした。');
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      // 念のためテナントを再確認（service_role は RLS を通らない）
+      if (row.tenant_id !== tenantId || byId.has(row.id as string)) continue;
+      const g = toPmsPartnerGuest(row);
+      if (g) byId.set(g.id, g);
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
+    .slice(0, PMS_PARTNER_GUEST_SEARCH_LIMIT);
+}
+
+/** 紐づけ先の顧客を1件読む。同じテナントの旅行会社・法人でなければ null（統合・種別変更で外れた場合も null）。 */
+export async function getPmsPartnerGuest(db: SupabaseClient, tenantId: string, id: string | null): Promise<PmsPartnerGuest | null> {
+  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { data, error } = await db
+    .schema('core')
+    .from('guests')
+    .select(PMS_PARTNER_GUEST_COLUMNS)
+    .eq('id', id)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) raise(error, 'PMS の顧客を読み込めませんでした。');
+  return data ? toPmsPartnerGuest(data as Record<string, unknown>) : null;
+}
+
+/**
+ * 取引先を PMS の顧客に紐づける（guestId = null で外す）。
+ * 取引先がその施設のもの、顧客が同じテナントの旅行会社・法人であることを確かめてから更新する。
+ * 名義（booking_name_mode）は外したときに DB のトリガーが 'guest' へ戻す。
+ */
+export async function setPartnerPmsGuest(
+  db: SupabaseClient,
+  facilityId: string,
+  partnerId: string,
+  guestId: string | null,
+  userId: string | null = null
+): Promise<{ partner: PartnerRow; guest: PmsPartnerGuest | null }> {
+  const partner = await requireStaffPartner(db, facilityId, partnerId);
+  let guest: PmsPartnerGuest | null = null;
+  if (guestId) {
+    guest = await getPmsPartnerGuest(db, partner.tenant_id, guestId);
+    if (!guest) throw new PartnerStoreError('紐づけ先の顧客が見つかりません（旅行会社・法人の顧客だけを選べます）。', 404, 'not_found');
+  }
+  const { error } = await db
+    .from('rms_partners')
+    .update({ pms_guest_id: guest?.id ?? null, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id);
+  if (error) raise(error, 'PMS の顧客との紐づけを保存できませんでした。');
+  return { partner: { ...partner, pms_guest_id: guest?.id ?? null }, guest };
 }
 
 // 限定URLを作り直す（旧URLは即無効。ログイン中のセッションも切る）。

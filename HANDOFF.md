@@ -1,6 +1,27 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-06（取引先向け特商法・プライバシーポリシー v0.85.3）
+> **最終更新**: 2026-10-07（取引先 × PMS 顧客マスタの紐づけ Phase 1 v0.95.0）
+
+## 取引先 × PMS 顧客マスタの紐づけ Phase 1（2026-10-07）
+- 設計: `docs/partner-pms-customer-link.md`（§5.2・§5.7・§6.1・§7 Phase 1）。DB は autumn-shared `20261006224655_rms_partner_pms_guest_link`（`rms_partners.pms_guest_id` ほか・予約作成時のトリガーで `rms_partner_bookings` に写す・電文の `booker.guest_id`・`merge_guests` の付け替え）
+- 管理画面 `/admin/partners/[id]` の「公開設定」の直下に「PMS の顧客マスタとの紐づけ」。候補の検索（`searchPmsGuests`）は閲覧権限、紐づけ・解除（`linkPmsGuest` / `unlinkPmsGuest`）は管理者のみ。保存フォームの中にあるので fetch でアクションを呼び、押した時点で保存する
+- 検索は service_role で `core.guests` を `tenant_id` 一致 ＋ `guest_type in ('group','corporate')` に絞り、名前・法人名・かな・顧客コードの部分一致（列ごとに ilike を並べて結果をまとめる・最大20件）。返すのは社名・かな・支店・顧客コードだけ（`store.ts` の `searchPmsPartnerGuests`）
+- 正式名称（法人格つき）は `lib/pms-partner-guest.ts` の `pmsGuestFormalName`（PMS の `withLegalForm` と同じ規則）
+- 月次請求書の宛名: `invoiceRecipientName` → 紐づけ先の正式名称 → 取引先名 の順（決定 #10・`invoices.ts` の `linkedRecipientNames`）。名義の切替・与信・デポジットは Phase 2・3（未実装）
+
+### テストチェックリスト（取引先 × PMS 顧客マスタ Phase 1）
+- [ ] 管理画面の取引先設定で、旅行会社（PMS 種別「旅行会社」）を名前・かな・顧客コードで検索して紐づけられる
+- [ ] 法人（種別「法人」）も検索・紐づけできる。個人は候補に出ない
+- [ ] 別テナントの顧客は候補に出ない（DEV データで確認）
+- [ ] 紐づけ済みの表示に正式名称（法人格つき）・顧客コード・PMS カルテへのリンクが出る。リンクで PMS の顧客カルテが新しいタブで開く
+- [ ] 「紐づけを外す」で確認ダイアログが出て、null に戻る（取引先の他の設定は変わらない・未保存の編集も消えない）
+- [ ] スタッフ（閲覧のみ）は検索できるが、「この顧客に紐づける」「紐づけを外す」は出ない
+- [ ] 検索欄で Enter を押しても「公開設定」の保存は走らず、検索になる
+- [ ] 紐づけた取引先からテスト予約 → PMS の予約詳細の「予約者」にその旅行会社が入っている（`stay_groups.booker_guest_id`）
+- [ ] PMS 顧客カルテ（旅行会社）の紹介実績にその予約が数えられる
+- [ ] 未紐づけの取引先からの予約は従来どおり（予約者は名前の文字列のみ・`booker_guest_id` null）
+- [ ] PMS で紐づけ先の顧客を別の顧客へ統合（`merge_guests`）→ 取引先の紐づけが統合先に付け替わる（`rms_partners.pms_guest_id` と `rms_partner_bookings.pms_guest_id`）
+- [ ] 月次請求書の宛名: `invoiceRecipientName` が空の取引先では紐づけ先の正式名称（法人格つき）、入力済みならその値。宛名入力欄のプレースホルダにも紐づけ先の正式名称が出る。金額は Phase 1 前と変わらない
 
 ## 取引先向け特商法・プライバシーポリシー（2026-10-06・v0.85.3）
 - 取引先ページの「特定商取引法に基づく表記」を取引先向けの文面に（`lib/server/partners/legal.ts` の `partnerTokushoho`）。お支払い方法・お支払い時期・取消の期限は、その取引先の設定（許可した支払方法・請求書の支払期限・取消期限）から書き出す。公式サイトの表記（一般のお客様向け・`store.ts`）とは別。事業者・連絡先は両方に同じ内容を持っているので、変えるときは両方直す

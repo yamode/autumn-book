@@ -3,7 +3,7 @@
   import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
   import { untrack } from 'svelte';
   import { deserialize, enhance } from '$app/forms';
-  import { beforeNavigate, goto } from '$app/navigation';
+  import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import {
     ADVANCE_PLAN_CODE,
@@ -27,6 +27,7 @@
   } from '$lib/partner-booking';
   import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
   import { displayPlanName, partnerContentScope } from '$lib/partner-contents';
+  import { PMS_PARTNER_GUEST_TYPE_LABELS, type PmsPartnerGuest } from '$lib/pms-partner-guest';
   import type { PageData } from './$types';
 
   type FormResult = {
@@ -356,6 +357,89 @@
     const d = new Date(`${iso}T00:00:00Z`);
     return { md: `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, dow: WEEKDAY_LABELS[d.getUTCDay()], dowIdx: d.getUTCDay() };
   };
+  // ---- PMS の顧客マスタ（旅行会社・法人）との紐づけ（Phase 1） ----
+  // 「公開設定」の保存フォームの中に置くため、入れ子のフォームにせず fetch でアクションを呼ぶ（特典の画像と同じ方式）。
+  // 検索欄には name を付けない（「保存する」で一緒に送らない）。紐づけ・解除の後は invalidateAll で読み直す
+  // （設定フォームは手元コピーなので、未保存の編集は消えない）。
+  type PmsGuestCandidate = PmsPartnerGuest & { url: string };
+  let pmsQuery = $state('');
+  let pmsResults = $state<PmsGuestCandidate[] | null>(null);
+  let pmsSearchedQuery = $state('');
+  let pmsBusy = $state<'search' | 'link' | 'unlink' | null>(null);
+  let pmsMessage = $state<{ kind: 'error' | 'ok'; text: string } | null>(null);
+  async function postPmsAction(action: string, fields: Record<string, string>) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+    const res = await fetch(`?/${action}`, { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
+    return deserialize(await res.text());
+  }
+  const failureText = (result: ReturnType<typeof deserialize>, fallback: string) =>
+    result.type === 'failure' && typeof result.data?.message === 'string' ? result.data.message : fallback;
+  async function searchPmsGuests() {
+    const q = pmsQuery.trim();
+    if (!q || pmsBusy) return;
+    pmsBusy = 'search';
+    pmsMessage = null;
+    try {
+      const result = await postPmsAction('searchPmsGuests', { q });
+      if (result.type === 'success' && Array.isArray(result.data?.pmsGuestResults)) {
+        pmsResults = result.data.pmsGuestResults as PmsGuestCandidate[];
+        pmsSearchedQuery = q;
+      } else {
+        pmsMessage = { kind: 'error', text: failureText(result, '検索できませんでした。') };
+      }
+    } catch {
+      pmsMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      pmsBusy = null;
+    }
+  }
+  async function linkPmsGuest(g: PmsGuestCandidate) {
+    if (pmsBusy) return;
+    if (!(await askConfirm({ message: `「${g.formalName}」（${PMS_PARTNER_GUEST_TYPE_LABELS[g.guestType]}）に紐づけます。以後この取引先からの予約は、PMS の「予約者」にこの顧客が入ります。`, confirmLabel: '紐づける' }))) return;
+    pmsBusy = 'link';
+    pmsMessage = null;
+    try {
+      const result = await postPmsAction('linkPmsGuest', { guest_id: g.id });
+      if (result.type === 'success') {
+        pmsResults = null;
+        pmsQuery = '';
+        await invalidateAll();
+        pmsMessage = { kind: 'ok', text: `「${g.formalName}」に紐づけました。` };
+      } else {
+        pmsMessage = { kind: 'error', text: failureText(result, '紐づけられませんでした。') };
+      }
+    } catch {
+      pmsMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      pmsBusy = null;
+    }
+  }
+  async function unlinkPmsGuest() {
+    if (pmsBusy) return;
+    const name = data.pmsLink.guest?.formalName ?? '紐づけ先';
+    if (!(await askConfirm({ message: `「${name}」との紐づけを外します。以後の予約は PMS の「予約者」に入らなくなります（取引先の他の設定は変わりません）。`, confirmLabel: '紐づけを外す' }))) return;
+    pmsBusy = 'unlink';
+    pmsMessage = null;
+    try {
+      const result = await postPmsAction('unlinkPmsGuest', {});
+      if (result.type === 'success') {
+        await invalidateAll();
+        pmsMessage = { kind: 'ok', text: '紐づけを外しました。' };
+      } else {
+        pmsMessage = { kind: 'error', text: failureText(result, '紐づけを外せませんでした。') };
+      }
+    } catch {
+      pmsMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      pmsBusy = null;
+    }
+  }
+  // 請求書の宛名の既定（入力欄が空のとき）: 紐づけ先の正式名称 → 取引先名
+  // 宛名の既定（請求書の発行と同じ順）: 紐づけ先の正式名称 → 取引先名。正式名称が空の顧客は取引先名
+  const linkedRecipient = $derived(data.pmsLink.guest?.recipientName ?? '');
+  const defaultRecipientName = $derived(linkedRecipient || settings.name);
+
   const yen = (n: number) => n.toLocaleString('ja-JP');
   const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' }) : '—');
 
@@ -667,6 +751,86 @@
           <textarea name="note" bind:value={settings.note} rows="2" maxlength="2000" class={inputClass}></textarea>
         </label>
       </fieldset>
+
+      <!-- PMS の顧客マスタとの紐づけ（Phase 1・docs/partner-pms-customer-link.md §6.1）。保存フォームとは別に即時保存 -->
+      <section class="mt-6 rounded-lg border border-stone-200 bg-stone-50/60 p-4">
+        <h3 class="text-base font-bold text-stone-900">PMS の顧客マスタとの紐づけ</h3>
+        <p class="mt-1 text-xs leading-5 text-stone-500">
+          この取引先を、PMS の顧客マスタにある旅行会社・法人に紐づけます。紐づけると、<strong class="font-medium text-stone-700">この取引先からの予約の「予約者」として PMS にこの顧客が入ります</strong>（PMS の顧客カルテの紹介実績に数えられます）。宿泊者（代表者）はこれまでどおりお客様です。
+          紐づけと解除は押した時点で保存されます（下の「保存する」は不要です）。
+        </p>
+        {#if pmsMessage}
+          <p class={`mt-2 rounded-md px-3 py-1.5 text-xs ${pmsMessage.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>{pmsMessage.text}</p>
+        {/if}
+        {#if data.pmsLink.error}
+          <p class="mt-2 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">紐づけ先を読み込めませんでした（{data.pmsLink.error}）</p>
+        {/if}
+
+        {#if data.pmsLink.guestId}
+          <div class="mt-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-stone-200 bg-white p-3">
+            {#if data.pmsLink.guest}
+              {@const g = data.pmsLink.guest}
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class={`rounded-full px-2 py-0.5 text-[11px] ${g.guestType === 'group' ? 'bg-brand-100 text-brand-800' : 'bg-stone-200 text-stone-700'}`}>{PMS_PARTNER_GUEST_TYPE_LABELS[g.guestType]}</span>
+                  <span class="font-medium text-stone-900">{g.formalName}</span>
+                  {#if g.branch}<span class="text-xs text-stone-500">{g.branch}</span>{/if}
+                </div>
+                <p class="mt-0.5 text-xs text-stone-500">顧客コード: {g.guestCode ?? '—'}{#if g.kana}・{g.kana}{/if}</p>
+                <a href={g.url} target="_blank" rel="noopener" class="mt-1 inline-block text-xs text-brand-800 underline">PMS の顧客カルテを開く ↗</a>
+              </div>
+            {:else if !data.pmsLink.error}
+              <p class="text-sm text-amber-800">紐づけ先の顧客が見つかりません（PMS で削除・種別変更された可能性があります）。紐づけを外して、選び直してください。</p>
+            {/if}
+            {#if canEdit}
+              <button type="button" class={smallBtn} disabled={pmsBusy !== null} onclick={unlinkPmsGuest}>{pmsBusy === 'unlink' ? '解除中…' : '紐づけを外す'}</button>
+            {/if}
+          </div>
+        {:else}
+          <p class="mt-3 text-sm text-stone-600">未紐づけです。</p>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <!-- name を付けない（「保存する」の送信に混ぜない）。Enter は保存ではなく検索にする -->
+            <input
+              type="search"
+              bind:value={pmsQuery}
+              maxlength="50"
+              placeholder="旅行会社名・法人名・かな・顧客コード"
+              onkeydown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  searchPmsGuests();
+                }
+              }}
+              class="w-full max-w-sm rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm"
+            />
+            <button type="button" class={smallBtn} disabled={!pmsQuery.trim() || pmsBusy !== null} onclick={searchPmsGuests}>{pmsBusy === 'search' ? '検索中…' : '検索'}</button>
+          </div>
+          <p class="mt-1 text-[11px] text-stone-400">PMS の種別「旅行会社」「法人」の顧客だけが候補に出ます（最大20件）。</p>
+          {#if pmsResults}
+            {#if pmsResults.length === 0}
+              <p class="mt-2 text-xs text-stone-500">「{pmsSearchedQuery}」に当てはまる旅行会社・法人は見つかりませんでした。</p>
+            {:else}
+              <ul class="mt-2 divide-y divide-stone-100 rounded-md border border-stone-200 bg-white">
+                {#each pmsResults as g (g.id)}
+                  <li class="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class={`rounded-full px-2 py-0.5 text-[11px] ${g.guestType === 'group' ? 'bg-brand-100 text-brand-800' : 'bg-stone-200 text-stone-700'}`}>{PMS_PARTNER_GUEST_TYPE_LABELS[g.guestType]}</span>
+                        <span class="text-sm font-medium text-stone-900">{g.formalName}</span>
+                        {#if g.branch}<span class="text-xs text-stone-500">{g.branch}</span>{/if}
+                      </div>
+                      <p class="mt-0.5 text-[11px] text-stone-500">顧客コード: {g.guestCode ?? '—'}{#if g.kana}・{g.kana}{/if}・<a href={g.url} target="_blank" rel="noopener" class="underline">カルテ ↗</a></p>
+                    </div>
+                    {#if canEdit}
+                      <button type="button" class={smallBtn} disabled={pmsBusy !== null} onclick={() => linkPmsGuest(g)}>この顧客に紐づける</button>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+        {/if}
+      </section>
 
       <h2 class="mb-1 mt-6 text-lg font-bold text-stone-900">特別レート</h2>
       <p class="mb-3 text-xs leading-5 text-stone-500">
@@ -1061,8 +1225,8 @@
           <div class="grid gap-3 sm:grid-cols-2">
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
-              <input bind:value={booking.invoiceRecipientName} maxlength="120" placeholder={settings.name || '例: 株式会社〇〇'} class={inputClass} />
-              <span class="mt-0.5 block text-[11px] text-stone-500">空欄なら取引先名（{settings.name || '未入力'}）で発行します。「御中」は自動で付きます。</span>
+              <input bind:value={booking.invoiceRecipientName} maxlength="120" placeholder={defaultRecipientName || '例: 株式会社〇〇'} class={inputClass} />
+              <span class="mt-0.5 block text-[11px] text-stone-500">空欄なら{linkedRecipient ? 'PMS の紐づけ先の正式名称' : '取引先名'}（{defaultRecipientName || '未入力'}）で発行します。「御中」は自動で付きます。</span>
             </label>
             <div>
               <span class="mb-0.5 block text-xs text-stone-500">お支払期限</span>
@@ -1307,7 +1471,7 @@
       <h2 class="text-lg font-bold text-stone-900">ご請求書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         チェックアウト日基準・月末締めで、ご利用明細書とご請求書（適格請求書）をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
-        金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
+        金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : linkedRecipient ? `PMS の紐づけ先の正式名称「${linkedRecipient}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
       </p>
       {#if data.invoices.bankAccountMissing}
         <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">振込先が未設定のため、月末の自動発行は行われません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で振込先を登録してください。</p>

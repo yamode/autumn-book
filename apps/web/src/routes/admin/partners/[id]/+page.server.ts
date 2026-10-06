@@ -1,6 +1,7 @@
 // 管理画面: 取引先の詳細（限定URL・覚書・公開設定・特別レート・予約受付・プレビュー・予約・請求書・ログインID・API キー・アクセスログ）。
 // autumn-rms の /partners/[id]（v0.103.0）から移設（2026-09-26）。
 // 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除・請求書の発行・再送・取消）は admin のみ（staff.ts の canEditPartners）。
+// PMS の顧客マスタとの紐づけ（2026-10-07・Phase 1）: 候補の検索は閲覧権限で、紐づけ・解除は admin のみ。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import { describeBooker, normalizeBooker, normalizePartnerBookingSettings } from '$lib/partner-booking';
@@ -28,6 +29,7 @@ import {
 	createPartnerAccount,
 	deletePartner,
 	deletePartnerAccount,
+	getPmsPartnerGuest,
 	issuePartnerApiKey,
 	listPartnerAccessLogs,
 	listPartnerAccounts,
@@ -38,6 +40,8 @@ import {
 	reissueSetupToken,
 	requireStaffPartner,
 	revokePartnerApiKey,
+	searchPmsPartnerGuests,
+	setPartnerPmsGuest,
 	todayJst,
 	updatePartner,
 	updatePartnerAccount
@@ -74,6 +78,7 @@ import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
 import { photoFileProblem } from '$lib/content-blocks';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbUploadContentPhoto } from '$lib/server/content-admin';
+import { pmsGuestUrl } from '$lib/pms-partner-guest';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -119,7 +124,7 @@ export const load: PageServerLoad = async (event) => {
 	const invPeriodRaw = normalizePeriod(event.url.searchParams.get('inv'));
 	const invoicePeriod = invPeriodRaw && invPeriodRaw <= currentPeriod ? invPeriodRaw : currentPeriod;
 
-	const [accounts, apiKeys, logs, bookings, preview, memo, documents, invoices, invoicePreview] = await Promise.all([
+	const [accounts, apiKeys, logs, bookings, preview, memo, documents, invoices, invoicePreview, pmsGuest] = await Promise.all([
 		listPartnerAccounts(scope.db, partner.id),
 		listPartnerApiKeys(scope.db, partner.id),
 		listPartnerAccessLogs(scope.db, partner.id, 50),
@@ -150,7 +155,11 @@ export const load: PageServerLoad = async (event) => {
 			.catch((e) => ({ rows: [], error: e instanceof Error ? e.message : String(e) })),
 		previewPartnerInvoice(scope.db, partner, invoicePeriod)
 			.then((r) => ({ ...r, error: null as string | null }))
-			.catch((e) => ({ document: null, bookingCount: 0, settings: null, chargeFailed: [] as string[], error: e instanceof Error ? e.message : String(e) }))
+			.catch((e) => ({ document: null, bookingCount: 0, settings: null, chargeFailed: [] as string[], error: e instanceof Error ? e.message : String(e) })),
+		// PMS の顧客マスタの紐づけ先（読めなくても他の欄は出す）
+		getPmsPartnerGuest(scope.db, partner.tenant_id, partner.pms_guest_id)
+			.then((guest) => ({ guest, error: null as string | null }))
+			.catch((e) => ({ guest: null, error: e instanceof Error ? e.message : String(e) }))
 	]);
 
 	// ルール編集の選択肢。プランは直近の料金（rms_partner_portal_source）に出ているプラングループから集める
@@ -197,6 +206,12 @@ export const load: PageServerLoad = async (event) => {
 			updatedAt: partner.updated_at
 		},
 		portalUrl: partnerPortalUrl(origin, partner.url_token),
+		// PMS の顧客マスタ（旅行会社・法人）との紐づけ。guestId があるのに guest が null = 紐づけ先が見つからない（統合・種別変更など）
+		pmsLink: {
+			guestId: partner.pms_guest_id,
+			guest: pmsGuest.guest ? { ...pmsGuest.guest, url: pmsGuestUrl(pmsGuest.guest.id) } : null,
+			error: pmsGuest.error
+		},
 		memorandum: { text: memo.text, updatedAt: memo.updatedAt, maxLength: MAX_MEMORANDUM_LENGTH, error: memo.error },
 		documents: documents.rows.map((d) => ({
 			id: d.id,
@@ -390,6 +405,44 @@ async function issueSetupLink(
 }
 
 export const actions: Actions = {
+	// PMS の顧客マスタ（旅行会社・法人）の候補を探す。閲覧権限でよい（返すのは社名・かな・支店・顧客コードだけ）
+	searchPmsGuests: async (event) => {
+		try {
+			const scope = await staffPartnerScope(event, 'view');
+			const partner = await requireStaffPartner(scope.db, scope.facilityId, event.params.id ?? '');
+			const query = String((await event.request.formData()).get('q') ?? '').trim();
+			if (!query) return { pmsGuestQuery: query, pmsGuestResults: [] };
+			const results = await searchPmsPartnerGuests(scope.db, partner.tenant_id, query);
+			return { pmsGuestQuery: query, pmsGuestResults: results.map((g) => ({ ...g, url: pmsGuestUrl(g.id) })) };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// PMS の顧客に紐づける（guest_id）。顧客が同じテナントの旅行会社・法人であることは setPartnerPmsGuest で確かめる
+	linkPmsGuest: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			const guestId = String((await event.request.formData()).get('guest_id') ?? '').trim();
+			if (!guestId) return actionFailure(new PartnerStoreError('紐づける顧客を選んでください。'));
+			await setPartnerPmsGuest(db, facilityId, partner.id, guestId, userId);
+			return { pmsLinked: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 紐づけを外す（取引先の他の設定は変えない。名義は DB のトリガーが「宿泊者名」に戻す）
+	unlinkPmsGuest: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			await setPartnerPmsGuest(db, facilityId, partner.id, null, userId);
+			return { pmsUnlinked: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
 	save: async (event) => {
 		try {
 			const { db, partner, userId } = await editScope(event);

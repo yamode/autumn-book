@@ -39,6 +39,7 @@ import { fitsAttachmentLimit, type MailAttachment } from '$lib/server/mail-attac
 import { sendFacilityNotice, sendPartnerMail } from './mail';
 import { renderInvoicePdf, type RenderInvoicePdfOptions } from './invoice-pdf';
 import { isMissingTableError, PartnerStoreError, todayJst, type PartnerRow } from './store';
+import { isPmsPartnerGuestType, pmsGuestFormalName, type PmsGuestNameFields } from '$lib/pms-partner-guest';
 
 // ---------------------------------------------------------------------------
 // 型
@@ -75,8 +76,12 @@ export type PartnerInvoiceRow = {
   updated_at: string;
 };
 
-/** 請求書の発行・送信に要る取引先の項目（PartnerRow / PartnerContext のどちらでも渡せる）。 */
-export type InvoicePartner = Pick<PartnerRow, 'id' | 'tenant_id' | 'facility_id' | 'name' | 'contact_email' | 'url_token' | 'booking_settings'>;
+/**
+ * 請求書の発行・送信に要る取引先の項目（PartnerRow / PartnerContext のどちらでも渡せる）。
+ * pms_guest_id は宛名の既定（紐づけ先の正式名称）に使う。無ければ従来どおり取引先名。
+ */
+export type InvoicePartner = Pick<PartnerRow, 'id' | 'tenant_id' | 'facility_id' | 'name' | 'contact_email' | 'url_token' | 'booking_settings'> &
+  Partial<Pick<PartnerRow, 'pms_guest_id'>>;
 
 const INVOICE_COLUMNS =
   'id, tenant_id, facility_id, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
@@ -404,13 +409,40 @@ export function dueDateFor(period: string, issueDate: string, rule: PartnerInvoi
   return due >= issueDate ? due : invoiceDueDate(periodOf(issueDate), rule);
 }
 
+/**
+ * 宛名の既定に使う、紐づけ先（PMS の顧客マスタの旅行会社・法人）の正式名称（法人格つき）。取引先 ID → 名称。
+ * 同じテナントの旅行会社・法人でなければ使わない（統合・種別変更で外れた紐づけは取引先名に戻る）。
+ * 読めなかったときは宛名を取り違えないよう、発行を止める（raise）。
+ */
+async function linkedRecipientNames(db: SupabaseClient, partners: InvoicePartner[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const linked = partners.filter((p) => p.pms_guest_id && UUID_RE.test(p.pms_guest_id));
+  if (!linked.length) return out;
+  const ids = [...new Set(linked.map((p) => p.pms_guest_id as string))];
+  const { data, error } = await db
+    .schema('core')
+    .from('guests')
+    .select('id, tenant_id, guest_type, name, corporate_name, legal_form, legal_form_position')
+    .in('id', ids);
+  if (error) raise(error, '請求書の宛名（PMS の顧客）を読み込めませんでした。');
+  const byId = new Map(((data ?? []) as (PmsGuestNameFields & { id: string; tenant_id: string })[]).map((g) => [g.id, g]));
+  for (const p of linked) {
+    const g = byId.get(p.pms_guest_id as string);
+    if (!g || g.tenant_id !== p.tenant_id || !isPmsPartnerGuestType(g.guest_type)) continue;
+    const name = pmsGuestFormalName(g);
+    if (name) out.set(p.id, name);
+  }
+  return out;
+}
+
 function buildDocument(
   partner: InvoicePartner,
   period: string,
   bookings: InvoiceBookingSource[],
   settings: PartnerBillingSettings,
   invoiceNo: string,
-  issueDate: string
+  issueDate: string,
+  linkedName: string | null = null
 ): InvoiceDocument {
   const booking = normalizePartnerBookingSettings(partner.booking_settings);
   const lines = buildInvoiceLines(bookings, booking);
@@ -420,8 +452,8 @@ function buildDocument(
     period,
     issueDate,
     dueDate: dueDateFor(period, issueDate, booking.invoiceDue),
-    // 宛名は正式社名（未設定なら取引先名）
-    recipient: { name: booking.invoiceRecipientName || partner.name },
+    // 宛名は正式社名 → 未設定なら紐づけ先（PMS の顧客）の正式名称（法人格つき・決定 #10）→ それも無ければ取引先名
+    recipient: { name: booking.invoiceRecipientName || linkedName || partner.name },
     issuer: issuerOf(settings),
     lines,
     totals: invoiceTotals(lines)
@@ -469,8 +501,10 @@ export async function previewPartnerInvoice(
   if (!PERIOD_RE.test(period)) throw new PartnerStoreError('対象月が正しくありません。');
   const today = todayJst();
   const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today), loadBillingSettings(db, partner.facility_id)]);
+  // 宛名の紐づけ先は、ご請求の予約がある月だけ読む（予約なしの月を紐づけ先の読み込みで失敗させない）
+  const linked = bookings.length ? await linkedRecipientNames(db, [partner]) : new Map<string, string>();
   return {
-    document: buildDocument(partner, period, bookings, settings, '（未発行）', today),
+    document: buildDocument(partner, period, bookings, settings, '（未発行）', today, linked.get(partner.id) ?? null),
     bookingCount: bookings.length,
     settings,
     chargeFailed: chargeFailedCodes(bookings)
@@ -511,7 +545,7 @@ export async function previewFacilityInvoices(
       .lte('check_out_date', invoiceCutoffDate(period, today)),
     db
       .from('rms_partners')
-      .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, is_active')
+      .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, is_active, pms_guest_id')
       .eq('facility_id', facilityId)
       .order('name'),
     db
@@ -541,16 +575,21 @@ export async function previewFacilityInvoices(
   type IssuedRow = NonNullable<FacilityDraftInvoice['issued']> & { partner_id: string | null };
   const issuedBy = new Map(((issuedRes.data ?? []) as IssuedRow[]).filter((r) => r.partner_id).map((r) => [r.partner_id as string, r]));
 
+  const partnerRows = ((partnerRes.data ?? []) as Record<string, unknown>[]).map((raw) => ({
+    raw,
+    p: { ...(raw as unknown as InvoicePartner), booking_settings: normalizePartnerBookingSettings(raw.booking_settings) }
+  }));
+  const linkedNames = await linkedRecipientNames(db, partnerRows.map((r) => r.p));
+
   const rows: FacilityDraftInvoice[] = [];
-  for (const raw of (partnerRes.data ?? []) as Record<string, unknown>[]) {
-    const p = { ...(raw as unknown as InvoicePartner), booking_settings: normalizePartnerBookingSettings(raw.booking_settings) };
+  for (const { raw, p } of partnerRows) {
     const list = byPartner.get(p.id) ?? [];
     const issuedRow = issuedBy.get(p.id) ?? null;
     const bookingEnabled = raw.booking_enabled === true;
     if (!list.length && !bookingEnabled && !issuedRow) continue;
     rows.push({
       partner: { id: p.id, name: p.name, bookingEnabled, isActive: raw.is_active === true },
-      document: buildDocument(p, period, list, settings, '（未発行）', today),
+      document: buildDocument(p, period, list, settings, '（未発行）', today, linkedNames.get(p.id) ?? null),
       chargeFailed: chargeFailedCodes(list),
       issued: issuedRow
     });
@@ -601,11 +640,12 @@ export async function issuePartnerInvoice(
 
   const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today), loadBillingSettings(db, partner.facility_id)]);
   if (!bookings.length) return null;
+  const linked = await linkedRecipientNames(db, [partner]);
 
   const { data: no, error: noError } = await db.rpc('rms_partner_next_invoice_no', { p_period: period });
   if (noError || typeof no !== 'string') raise(noError, '請求書番号を採番できませんでした。');
 
-  const doc = buildDocument(partner, period, bookings, settings, no, today);
+  const doc = buildDocument(partner, period, bookings, settings, no, today, linked.get(partner.id) ?? null);
   const t = doc.totals;
   const { data, error } = await db
     .from('rms_partner_invoices')
@@ -882,7 +922,7 @@ async function partnersWithBookings(db: SupabaseClient, facilityId: string, peri
   if (!ids.length) return [];
   const { data, error: pErr } = await db
     .from('rms_partners')
-    .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled')
+    .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, pms_guest_id')
     .eq('facility_id', facilityId)
     .in('id', ids)
     .order('name');
