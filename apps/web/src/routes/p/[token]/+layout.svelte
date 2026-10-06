@@ -91,12 +91,13 @@
     </div>
   </header>
   {@render children()}
+  <!-- 規約3点は取引先ページの中で見せる（公式サイトはまだ非公開のため。中身は公式サイトと同じ・legal/[page]） -->
   <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-sm leading-6 text-stone-500 sm:px-6">
     このページは貴社専用です。URL・ログイン情報は社外へ共有しないでください。
     <nav class="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-      <a href="/legal/tokushoho" target="_blank" rel="noopener" class="underline hover:text-stone-700">特定商取引法に基づく表記</a>
-      <a href="/legal/privacy" target="_blank" rel="noopener" class="underline hover:text-stone-700">プライバシーポリシー</a>
-      <a href="/legal/yakkan" target="_blank" rel="noopener" class="underline hover:text-stone-700">宿泊約款</a>
+      <a href={`/p/${$page.params.token}/legal/tokushoho`} class="underline hover:text-stone-700">特定商取引法に基づく表記</a>
+      <a href={`/p/${$page.params.token}/legal/privacy`} class="underline hover:text-stone-700">プライバシーポリシー</a>
+      <a href={`/p/${$page.params.token}/legal/yakkan`} class="underline hover:text-stone-700">宿泊約款</a>
     </nav>
   </footer>
 </div>
