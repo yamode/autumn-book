@@ -10,7 +10,12 @@ export function parseBookingForm(fd: FormData): CreateBookingInput {
   const roomCount = Math.min(20, Math.max(1, Math.round(Number(str(fd, 'room_count'))) || 1));
   const rooms = Array.from({ length: roomCount }, (_, i) => ({ adults: Math.round(Number(str(fd, `adults_${i}`))) || 0 }));
   const answers: Record<string, string> = {};
-  for (const [k, v] of fd.entries()) if (k.startsWith('opt_') && typeof v === 'string') answers[k.slice(4)] = v.trim();
+  const genders: Record<string, string> = {};
+  for (const [k, v] of fd.entries()) {
+    if (typeof v !== 'string') continue;
+    if (k.startsWith('opt_')) answers[k.slice(4)] = v.trim();
+    else if (/^(male|female)_\d+$/.test(k)) genders[k] = v.trim();
+  }
   return {
     roomCode: str(fd, 'room_code'),
     planCode: str(fd, 'plan_code'),
@@ -42,6 +47,7 @@ export function parseBookingForm(fd: FormData): CreateBookingInput {
     arrival: str(fd, 'arrival'),
     notes: str(fd, 'notes'),
     answers,
+    genders,
     paymentOption: str(fd, 'payment_option')
   };
 }

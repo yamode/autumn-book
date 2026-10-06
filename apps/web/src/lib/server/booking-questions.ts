@@ -11,6 +11,8 @@ import {
   normalizeBookingQuestions,
   PLAN_QUESTION_MODES,
   resolveQuestionAnswers,
+  resolveRoomGenders,
+  type RoomGender,
   type BookingQuestion,
   type BookingQuestionTemplate,
   type PlanQuestionMode
@@ -94,21 +96,26 @@ export async function questionTemplateUsage(client: SupabaseClient, facilityUuid
   return map;
 }
 
-export type PlanQuestionSetting = { mode: PlanQuestionMode; templateId: string | null; questions: BookingQuestion[] };
+export type PlanQuestionSetting = { mode: PlanQuestionMode; templateId: string | null; questions: BookingQuestion[]; askGender: boolean };
 
 /** プランの選択（管理画面）。行が無い・読めないときは「なし」 */
 export async function loadPlanQuestionSetting(client: SupabaseClient, facilityUuid: string, ratePlanId: string): Promise<PlanQuestionSetting> {
   const { data, error } = await client
     .schema('book')
     .from('plan_contents')
-    .select('question_mode, question_template_id, questions')
+    .select('question_mode, question_template_id, questions, ask_gender')
     .eq('facility_id', facilityUuid)
     .eq('rate_plan_id', ratePlanId)
     .maybeSingle();
   if (error) throw error;
   const r = (data ?? {}) as Row;
   const mode = (PLAN_QUESTION_MODES as readonly string[]).includes(String(r.question_mode)) ? (r.question_mode as PlanQuestionMode) : 'none';
-  return { mode, templateId: r.question_template_id ? String(r.question_template_id) : null, questions: normalizeBookingQuestions(r.questions) };
+  return {
+    mode,
+    templateId: r.question_template_id ? String(r.question_template_id) : null,
+    questions: normalizeBookingQuestions(r.questions),
+    askGender: r.ask_gender !== false
+  };
 }
 
 export async function savePlanQuestionSetting(
@@ -125,6 +132,7 @@ export async function savePlanQuestionSetting(
       // テンプレートを選んでいないときも、選んでいたテンプレートは覚えておく（切り替えて戻したとき用）
       question_template_id: s.templateId,
       questions: s.questions,
+      ask_gender: s.askGender,
       updated_at: new Date().toISOString()
     })
     .eq('rate_plan_id', ratePlanId)
@@ -134,56 +142,69 @@ export async function savePlanQuestionSetting(
   if ((data ?? []).length === 0) throw new Error('対象のプランが見つからないか、編集する権限がありません。');
 }
 
+export type BookingForm = { questions: BookingQuestion[]; askGender: boolean };
+
 /**
- * 予約画面で聞くプランの項目。プランは rate_plan_id（公式サイト）か rate_plans.code（取引先予約の「コード■プラン名」）で指す。
- * 読めなければ空（予約は止めない）。db は book スキーマを向いたクライアント（省略時は anon）。
+ * 予約画面で聞くプランの項目と、部屋ごとの男女の内訳を聞くか（RPC book.plan_booking_form・autumn-shared 20261006075659）。
+ * プランは rate_plan_id（公式サイト）か rate_plans.code（取引先予約の「コード■プラン名」）で指す。
+ * 読めなければ項目なし・男女は聞く（既定。予約は止めない）。db は省略時 anon。
  */
-export async function planBookingQuestions(
+export async function planBookingForm(
   facilityUuid: string,
   plan: { ratePlanId?: string; code?: string },
   db?: SupabaseClient
-): Promise<BookingQuestion[]> {
-  if (DATA_SOURCE !== 'supabase' && !db) return [];
+): Promise<BookingForm> {
+  if (DATA_SOURCE !== 'supabase' && !db) return { questions: [], askGender: true };
   try {
     const client = db ? db.schema('book') : supa();
-    const { data, error } = await client.rpc('plan_booking_questions', {
+    const { data, error } = await client.rpc('plan_booking_form', {
       p_facility: facilityUuid,
       p_rate_plan_id: plan.ratePlanId ?? null,
       p_code: plan.code ?? null
     });
     if (error) throw error;
-    return normalizeBookingQuestions(data);
+    const r = (data ?? {}) as Row;
+    return { questions: normalizeBookingQuestions(r.questions), askGender: r.ask_gender !== false };
   } catch (e) {
-    console.error('[booking-questions] plan questions', e instanceof Error ? e.message : String(e));
-    return [];
+    console.error('[booking-questions] plan form', e instanceof Error ? e.message : String(e));
+    return { questions: [], askGender: true };
   }
 }
 
-/** 取引先予約で聞く項目: プランの項目 → 取引先ごとの項目（id は p-／x- 付き） */
-export async function partnerBookingQuestions(
+/** 取引先予約で聞く項目: プランの項目 → 取引先ごとの項目（id は p-／x- 付き）と、男女の内訳を聞くか */
+export async function partnerBookingForm(
   db: SupabaseClient,
   partner: { facility_id: string; booking_settings: { options: BookingQuestion[] } },
   planCode: string,
   planName: string
-): Promise<BookingQuestion[]> {
-  const plan = await planBookingQuestions(partner.facility_id, { code: `${planCode}■${planName}` }, db);
-  return mergePartnerQuestions(plan, partner.booking_settings.options);
+): Promise<BookingForm> {
+  const f = await planBookingForm(partner.facility_id, { code: `${planCode}■${planName}` }, db);
+  return { questions: mergePartnerQuestions(f.questions, partner.booking_settings.options), askGender: f.askGender };
 }
 
 /**
- * 公式サイトの予約: プランの項目への回答（opt_<id>）を検証し、「項目名: 回答」の行を備考（宿への申し送り＝PMS の備考）の先頭に足す。
+ * 公式サイトの予約（1予約1室）: プランの項目への回答（opt_<key>）と男女の内訳（male_0 / female_0）を検証し、
+ * 回答は「項目名: 回答」の行で備考（宿への申し送り＝PMS の備考）の先頭に、男女は guest.male / female に入れる
+ * （DB の電文が rooms[0].male / female として PMS へ渡す）。
  * 現地払いの確定（/booking/hold ?/submit）とオンライン決済（/booking/pay prepare）で同じものを通す。
  */
 export async function applyPlanAnswers<G extends { notes?: string }>(
   form: FormData,
   facilityUuid: string,
   ratePlanId: string,
+  adults: number,
   guest: G
-): Promise<{ ok: true; guest: G } | { ok: false; message: string }> {
-  const questions = await planBookingQuestions(facilityUuid, { ratePlanId });
-  if (!questions.length) return { ok: true, guest };
-  const r = resolveQuestionAnswers(questions, answersFromForm(form, questions));
+): Promise<{ ok: true; guest: G & Partial<RoomGender> } | { ok: false; message: string }> {
+  const { questions, askGender } = await planBookingForm(facilityUuid, { ratePlanId });
+  let out: G & Partial<RoomGender> = guest;
+  if (askGender) {
+    const g = resolveRoomGenders([adults], (k) => form.get(k) as string | null);
+    if (!g.ok) return g;
+    out = { ...out, ...g.rooms[0] };
+  }
+  if (!questions.length) return { ok: true, guest: out };
+  const r = resolveQuestionAnswers(questions, answersFromForm(form, questions, 1), 1);
   if (!r.ok) return r;
-  if (!r.values.length) return { ok: true, guest };
-  return { ok: true, guest: { ...guest, notes: [answerLines(r.values), guest.notes].filter(Boolean).join('\n') } };
+  if (!r.values.length) return { ok: true, guest: out };
+  return { ok: true, guest: { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') } };
 }

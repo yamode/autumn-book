@@ -74,6 +74,8 @@
 	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
 	// svelte-ignore state_referenced_locally
 	let pointsInput = $state(data.expired ? 0 : data.hold.quote.pointsUsed);
+	// 男女の内訳（男性の人数。女性は大人の人数から引く）
+	let male0 = $state("");
 	let pointsApplied = $derived(
 		data.expired || !data.member
 			? 0
@@ -341,17 +343,30 @@
 						{/if}
 					</div>
 
-					<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る -->
+					<!-- 部屋ごとの男女の内訳（プランの設定・既定で聞く。必須・合計＝大人の人数。PMS の部屋別の男女に入る） -->
+					{#if data.askGender}
+						{@const n = data.hold.adults}
+						<label class="block text-sm">
+							<span class="text-stone-600">男女の内訳 <span class="text-red-500">*</span></span>
+							<select name="male_0" bind:value={male0} required class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
+								<option value="">選択してください</option>
+								{#each Array.from({ length: n + 1 }, (_, m) => m) as m (m)}<option value={String(m)}>男性{m}名・女性{n - m}名</option>{/each}
+							</select>
+							<input type="hidden" name="female_0" value={male0 === '' ? '' : String(n - Number(male0))} />
+						</label>
+					{/if}
+					<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る。1予約1室なので「部屋ごと」も1回 -->
 					{#each data.questions as q (q.id)}
+						{@const key = q.scope === 'room' ? `${q.id}@0` : q.id}
 						{#if q.type === 'check'}
 							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" name={`opt_${q.id}`} required={q.required} class="h-4 w-4" />
+								<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
 								<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
 							</label>
 						{:else if q.type === 'select'}
 							<label class="block text-sm">
 								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-								<select name={`opt_${q.id}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
+								<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
 									<option value="">選択してください</option>
 									{#each q.choices as c}<option value={c}>{c}</option>{/each}
 								</select>
@@ -359,7 +374,7 @@
 						{:else}
 							<label class="block text-sm">
 								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-								<input name={`opt_${q.id}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+								<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 							</label>
 						{/if}
 					{/each}

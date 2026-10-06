@@ -11,6 +11,7 @@
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
   import { quoteChargeOf } from '$lib/partner-booking';
+  import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string } } = $props();
@@ -260,7 +261,41 @@
   const ARRIVALS = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00'];
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
+
+  // 予約時に聞く項目: 予約ごと（食事・ご要望の欄）と部屋ごと（宿泊条件の部屋の欄）
+  const bookingQuestions = $derived(data.settings.options.filter((o) => o.scope !== 'room'));
+  const roomQuestions = $derived(data.settings.options.filter((o) => o.scope === 'room'));
+  // 部屋ごとの男女の内訳（男性の人数。女性は人数から引く）。部屋数・人数が変わったら選び直してもらう
+  let males = $state<string[]>([]);
+  $effect(() => {
+    const a = adults.map((x) => x);
+    untrack(() => {
+      males = a.map((n, i) => (males[i] !== undefined && males[i] !== '' && Number(males[i]) <= n ? males[i] : ''));
+    });
+  });
 </script>
+
+{#snippet questionField(o: BookingQuestion, key: string)}
+  {#if o.type === 'check'}
+    <label class="flex items-center gap-2.5">
+      <input type="checkbox" name={`opt_${key}`} required={o.required} class="h-5 w-5 accent-[var(--pt-accent)]" />
+      <span>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+    </label>
+  {:else if o.type === 'select'}
+    <label class="block sm:max-w-sm">
+      <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+      <select name={`opt_${key}`} required={o.required} class={input}>
+        <option value="">選択してください</option>
+        {#each o.choices as c}<option value={c}>{c}</option>{/each}
+      </select>
+    </label>
+  {:else}
+    <label class="block">
+      <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+      <input name={`opt_${key}`} required={o.required} maxlength="500" class={input} />
+    </label>
+  {/if}
+{/snippet}
 
 
 <svelte:head>
@@ -342,6 +377,31 @@
             </label>
           {/each}
         </div>
+        {#if data.settings.askGender || roomQuestions.length}
+          <!-- 部屋ごとに聞く項目: 男女の内訳（必須・合計＝その部屋の人数。PMS の部屋別の男女に入る）とプラン・取引先の「部屋ごと」の項目 -->
+          <div class="mt-4 grid gap-3">
+            {#each adults as a, i (i)}
+              <div class="rounded-lg border border-stone-200 p-3">
+                {#if roomCount > 1}<p class="mb-2 text-sm font-medium">{i + 1}室目（大人{a}名）</p>{/if}
+                <div class="grid gap-3 sm:grid-cols-2">
+                  {#if data.settings.askGender}
+                    <label class="block">
+                      <span class={label}>男女の内訳 <em class="req">必須</em></span>
+                      <select name={`male_${i}`} bind:value={males[i]} required class={input}>
+                        <option value="">選択してください</option>
+                        {#each range(0, a) as m (m)}<option value={String(m)}>男性{m}名・女性{a - m}名</option>{/each}
+                      </select>
+                      <input type="hidden" name={`female_${i}`} value={males[i] === '' || males[i] == null ? '' : String(a - Number(males[i]))} />
+                    </label>
+                  {/if}
+                  {#each roomQuestions as o (o.id)}
+                    {@render questionField(o, `${o.id}@${i}`)}
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </section>
 
       <!-- ご予約者（取引先のご担当者）。確認メールの宛先。マイページの設定が既定で入り、この予約の分だけ変えられる -->
@@ -414,26 +474,8 @@
               {#each ARRIVALS as t}<option value={t}>{t}</option>{/each}
             </select>
           </label>
-          {#each data.settings.options as o (o.id)}
-            {#if o.type === 'check'}
-              <label class="flex items-center gap-2.5">
-                <input type="checkbox" name={`opt_${o.id}`} required={o.required} class="h-5 w-5 accent-[var(--pt-accent)]" />
-                <span>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
-              </label>
-            {:else if o.type === 'select'}
-              <label class="block sm:max-w-sm">
-                <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
-                <select name={`opt_${o.id}`} required={o.required} class={input}>
-                  <option value="">選択してください</option>
-                  {#each o.choices as c}<option value={c}>{c}</option>{/each}
-                </select>
-              </label>
-            {:else}
-              <label class="block">
-                <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
-                <input name={`opt_${o.id}`} required={o.required} maxlength="500" class={input} />
-              </label>
-            {/if}
+          {#each bookingQuestions as o (o.id)}
+            {@render questionField(o, o.id)}
           {/each}
           <label class="block">
             <span class={label}>その他ご要望・備考</span>
@@ -460,9 +502,15 @@
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
             {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
             {#if data.perks.length}<dt>専用特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
-            {#each data.settings.options as o (o.id)}
-              {@const v = values[`opt_${o.id}`]}
-              {#if v}<dt>{o.label}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
+            {#if data.settings.askGender}
+              {#each adults as a, i (i)}
+                {@const m = values[`male_${i}`]}
+                {#if m !== undefined && m !== ''}<dt>{roomCount > 1 ? `${i + 1}室目 男女` : '男女の内訳'}</dt><dd>男性{m}名・女性{a - Number(m)}名</dd>{/if}
+              {/each}
+            {/if}
+            {#each expandQuestions(data.settings.options, roomCount) as o (o.key)}
+              {@const v = values[`opt_${o.key}`]}
+              {#if v}<dt>{o.fullLabel}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
             {/each}
             {#if values.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
             {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}</dd>{/if}

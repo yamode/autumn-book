@@ -55,8 +55,8 @@ describe('normalizePartnerBookingSettings', () => {
       ]
     });
     expect(s.options).toEqual([
-      { id: 'a', label: '送迎', type: 'check', choices: [], required: false },
-      { id: 'c', label: '夕食時間', type: 'select', choices: ['18:00', '19:00'], required: true }
+      { id: 'a', label: '送迎', type: 'check', choices: [], required: false, scope: 'booking' as const },
+      { id: 'c', label: '夕食時間', type: 'select', choices: ['18:00', '19:00'], required: true, scope: 'booking' as const }
     ]);
     expect(validatePartnerBookingSettings(normalizePartnerBookingSettings({ options: [{ label: 'X', type: 'select', choices: ['1'] }] }))).toMatch(/選択肢/);
   });
@@ -77,9 +77,9 @@ describe('期限', () => {
 
 describe('resolveOptionAnswers', () => {
   const options = [
-    { id: 'pick', label: '送迎希望', type: 'check' as const, choices: [], required: false },
-    { id: 'time', label: '夕食時間', type: 'select' as const, choices: ['18:00', '19:00'], required: true },
-    { id: 'memo', label: '記念日', type: 'text' as const, choices: [], required: false }
+    { id: 'pick', label: '送迎希望', type: 'check' as const, choices: [], required: false, scope: 'booking' as const },
+    { id: 'time', label: '夕食時間', type: 'select' as const, choices: ['18:00', '19:00'], required: true, scope: 'booking' as const },
+    { id: 'memo', label: '記念日', type: 'text' as const, choices: [], required: false, scope: 'booking' as const }
   ];
   it('回答を label/value にし、必須・選択肢を検証する', () => {
     expect(resolveOptionAnswers(options, { pick: 'on', time: '19:00', memo: '' })).toEqual({

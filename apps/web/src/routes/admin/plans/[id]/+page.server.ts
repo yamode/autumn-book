@@ -126,7 +126,8 @@ export const actions: Actions = {
 			await savePlanQuestionSetting(createSupabaseServerClient(event), currentFacilityOf(event).uuid, event.params.id, {
 				mode: mode as PlanQuestionMode,
 				templateId,
-				questions
+				questions,
+				askGender: form.get('ask_gender') === 'on'
 			});
 			return { questionSaved: true };
 		} catch (e) {

@@ -163,7 +163,7 @@
 					{#if qTemplate}
 						<ul class="mt-2 list-disc pl-5 text-xs text-stone-600">
 							{#each qTemplate.questions as q (q.id)}
-								<li>{q.label}{q.type === 'select' ? `（${q.choices.join('・')}）` : q.type === 'text' ? '（自由入力）' : '（チェック）'}{q.required ? '・必須' : ''}</li>
+								<li>{q.label}{q.type === 'select' ? `（${q.choices.join('・')}）` : q.type === 'text' ? '（自由入力）' : '（チェック）'}{q.required ? '・必須' : ''}{q.scope === 'room' ? '・部屋ごと' : ''}</li>
 							{:else}<li>項目がありません</li>{/each}
 						</ul>
 					{/if}
@@ -179,9 +179,16 @@
 		{#if qMode === 'custom'}
 			<div class="mt-3"><BookingQuestionsEditor bind:questions={qOwn} /></div>
 		{/if}
+		<label class="mt-4 flex items-start gap-2 rounded-lg border border-stone-200 p-3 text-sm">
+			<input type="checkbox" name="ask_gender" checked={qs0?.askGender ?? true} class="mt-0.5 h-4 w-4" />
+			<span>
+				<span class="font-medium text-stone-800">部屋ごとの男女の内訳を聞く</span>
+				<span class="mt-0.5 block text-xs text-stone-500">必須。男性と女性の合計がその部屋の大人の人数と合わないと予約できません。PMS の部屋別の男女の人数に入ります。上の「なし」を選んでいても聞きます。</span>
+			</span>
+		</label>
 		<p class="mt-3 text-xs text-stone-400">
 			公式サイトと取引先ページの予約で聞き、回答は PMS の予約備考に入ります。取引先ごとに足す項目は、取引先の設定で決めます。
-			宿泊者名・人数・電話・メール・到着予定・備考は、ここで足さなくても毎回聞きます。
+			宿泊者名・人数・電話・メール・到着予定・備考は、ここで足さなくても毎回聞きます。「部屋ごと」の項目は、複数室の予約で部屋の数だけ聞きます。
 		</p>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">予約時に聞く項目を保存</button>
 	</form>

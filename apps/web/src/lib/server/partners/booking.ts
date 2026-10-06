@@ -25,8 +25,8 @@ import {
 import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailRecipients, splitExtraOptions, type BookingExtras } from './booking-extras';
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
-import { resolveQuestionAnswers } from '$lib/booking-questions';
-import { partnerBookingQuestions } from '../booking-questions';
+import { genderText, resolveQuestionAnswers, resolveRoomGenders } from '$lib/booking-questions';
+import { partnerBookingForm } from '../booking-questions';
 import {
   cancelPolicyTable,
   invoiceMonthLabel,
@@ -263,6 +263,8 @@ export type CreateBookingInput = BookingTarget & {
   arrival: string;
   notes: string;
   answers: Record<string, string>;
+  // 部屋ごとの男女の内訳（male_<i> / female_<i>）。聞くかはプランの設定（book.plan_contents.ask_gender）
+  genders?: Record<string, string>;
 };
 
 // payment があれば、オンライン決済の仮押さえ（同じ画面で支払・カード登録を済ませると予約確定・PMS へ）。
@@ -328,7 +330,11 @@ export async function createPartnerBooking(
   if (!PHONE_RE.test(g.phone.trim())) throw new PartnerStoreError('電話番号を正しく入力してください。');
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
   // 予約時に聞く項目（プランの項目＋この取引先だけの項目）。予約画面と同じ規則で決め直して検証する
-  const answers = resolveQuestionAnswers(await partnerBookingQuestions(db, partner, input.planCode, input.planName), input.answers);
+  const form = await partnerBookingForm(db, partner, input.planCode, input.planName);
+  const answers = resolveQuestionAnswers(form.questions, input.answers, input.rooms.length);
+  // 部屋ごとの男女の内訳（必須・合計＝その部屋の大人の人数）。PMS へは電文の rooms[].male / female で渡る
+  const genders = form.askGender ? resolveRoomGenders(input.rooms.map((r) => r.adults), (k) => input.genders?.[k]) : null;
+  if (genders && !genders.ok) throw new PartnerStoreError(genders.message);
   if (!answers.ok) throw new PartnerStoreError(answers.message);
   const booker = normalizeBooker(input.booker);
   const bookerProblem = validateBooker(booker);
@@ -344,7 +350,9 @@ export async function createPartnerBooking(
   const rooms = quote.rooms;
   // 予約者・交通手段・取引先特典は PMS の「事前質問・要望」（と備考）の先頭に載せる（宿が当日まで目にする場所）
   const extras = buildBookingExtras(booker, transport.value, perksForPlan(s.perks, quote.planCode));
-  const optionValues = [...extraOptionRows(extras), ...answers.values];
+  const genderRooms = genders?.ok ? genders.rooms : null;
+  const genderRows = (genderRooms ?? []).map((gr, i) => ({ label: rooms.length > 1 ? `${i + 1}室目 男女の内訳` : '男女の内訳', value: genderText(gr) }));
+  const optionValues = [...extraOptionRows(extras), ...genderRows, ...answers.values];
 
   const { data, error } = await db.rpc('rms_partner_create_booking', {
     p: {
@@ -358,7 +366,7 @@ export async function createPartnerBooking(
       meal_type: quote.mealType,
       check_in: quote.checkIn,
       check_out: quote.checkOut,
-      rooms: rooms.map((r) => ({ adults: r.adults, nights: r.nights })),
+      rooms: rooms.map((r, i) => ({ adults: r.adults, nights: r.nights, ...(genderRooms?.[i] ?? {}) })),
       guest: {
         family_name: g.familyName.trim().slice(0, 40),
         given_name: g.givenName.trim().slice(0, 40),

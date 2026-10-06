@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);
 			}
 			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
-			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, parsed.guest);
+			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, hold.adults, parsed.guest);
 			if (!answered.ok) return bad(answered.message, 400, { errors: { questions: answered.message } });
 			const prepared = await prepareDirectPayment({
 				holdId: hold.id,

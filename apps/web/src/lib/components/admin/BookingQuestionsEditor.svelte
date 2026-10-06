@@ -21,12 +21,16 @@
 
 <div class="grid gap-2">
   {#each questions as o, i (o.id)}
-    <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5 sm:grid-cols-[1fr_130px_1fr_auto_auto] sm:items-center">
+    <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5 sm:grid-cols-[1fr_120px_120px_1fr_auto_auto] sm:items-center">
       <input bind:value={o.label} maxlength="60" placeholder="例: 送迎希望 / 夕食時間 / 記念日" class={inputClass} {disabled} />
       <select bind:value={o.type} class={inputClass} {disabled}>
         <option value="check">チェック</option>
         <option value="select">選択肢</option>
         <option value="text">自由入力</option>
+      </select>
+      <select bind:value={o.scope} class={inputClass} {disabled} title="複数室の予約で、部屋ごとに聞くか">
+        <option value="booking">予約ごと</option>
+        <option value="room">部屋ごと</option>
       </select>
       {#if o.type === 'select'}
         <input

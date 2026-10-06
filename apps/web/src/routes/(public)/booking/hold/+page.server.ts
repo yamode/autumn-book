@@ -29,7 +29,7 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { applyPlanAnswers, planBookingQuestions } from '$lib/server/booking-questions';
+import { applyPlanAnswers, planBookingForm } from '$lib/server/booking-questions';
 import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
@@ -116,12 +116,12 @@ export const load: PageServerLoad = async (event) => {
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
-		const [bathTax, prepay, questions] = await Promise.all([
+		const [bathTax, prepay, bookingForm] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）。金額の正は DB の direct_payment_prepare
 			prepayDiscountViewFor(hold.facilityId, plan, hold),
 			// 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は備考の先頭に入る
-			planBookingQuestions(hold.facilityId, { ratePlanId: hold.planId })
+			planBookingForm(hold.facilityId, { ratePlanId: hold.planId })
 		]);
 
 		return {
@@ -138,7 +138,8 @@ export const load: PageServerLoad = async (event) => {
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
 			bathTax,
 			prepay,
-			questions,
+			questions: bookingForm.questions,
+			askGender: bookingForm.askGender,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(basePlan.payment, isMember),
 			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold))
@@ -170,6 +171,7 @@ export const load: PageServerLoad = async (event) => {
 		bathTax: 0,
 		prepay,
 		questions: [],
+		askGender: false,
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		member: member
@@ -239,7 +241,7 @@ export const actions: Actions = {
 			}
 
 			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
-			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, guest);
+			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, hold.adults, guest);
 			if (!answered.ok) {
 				errors.questions = answered.message;
 				return fail(400, { errors, values: guest });
