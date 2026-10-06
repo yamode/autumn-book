@@ -22,8 +22,8 @@ const TOKEN_RE = /\{\{tpl:([a-z0-9][a-z0-9_-]{0,39})\}\}/g;
 
 /** 区切り線（――― だけの行） */
 const isRule = (line: string) => /^\s*[―\-ー─━]{5,}\s*$/.test(line);
-/** ブロックの見出し（■ で始まる行） */
-const isHeading = (line: string) => /^\s*■/.test(line);
+/** ブロックの見出し（■ で始まる行）。差し込み印だけの行も次のブロックとみなす（置き換え済みのブロックの手前で止める） */
+const isHeading = (line: string) => /^\s*■/.test(line) || /^\s*\{\{tpl:[a-z0-9_-]+\}\}\s*$/.test(line);
 /** Markdown の改行（行末の2つ以上の空白）や前後の空白を落として比べる */
 const norm = (text: string) =>
   text

@@ -65,6 +65,12 @@ describe('replaceBlockWithToken', () => {
     expect(r.text).not.toContain('――');
     expect(usedTemplateKeys(r.text)).toEqual(['official-perk']);
   });
+  it('すぐ後ろに別の差し込み印があっても、そこでブロックを区切る', () => {
+    const text = '■-ご朝食-■  \n波の煌めきが差し込むレストランにて。  \n一日の始まりを。  \n   \n{{tpl:official-perk}}';
+    const r = replaceBlockWithToken(text, breakfast);
+    expect(r.result).toBe('replaced');
+    expect(usedTemplateKeys(r.text)).toEqual(['breakfast', 'official-perk']);
+  });
   it('見出しが無い・置き換え済み', () => {
     expect(replaceBlockWithToken('本文だけ', breakfast).result).toBe('absent');
     expect(replaceBlockWithToken('{{tpl:breakfast}}', breakfast).result).toBe('already');
