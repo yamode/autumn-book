@@ -50,6 +50,23 @@
 	<link rel="alternate" hreflang="en" href={enHref} />
 	<link rel="alternate" hreflang="zh-TW" href={zhTwHref} />
 	<link rel="alternate" hreflang="x-default" href={jaHref} />
+	<!--
+		公式サイトの文字を全体に一回り大きく（2026-10-06 指示。取引先ページと同じ）。基準 16px → 18px。
+		Tailwind v4 の文字・余白は rem なので同じ比率で大きくなる。px で直に指定した 10〜18px の文字も rem に読み替えて一緒に大きくする
+		（22px 以上の大きな見出しはそのまま）。head に置くので公式サイトにいる間だけ効く（管理画面・取引先ページ・客室案内は各自の指定）。
+	-->
+	<style>
+		html { font-size: 112.5%; }
+		.text-\[10px\] { font-size: 0.6250rem; }
+		.text-\[11px\] { font-size: 0.6875rem; }
+		.text-\[12px\] { font-size: 0.7500rem; }
+		.text-\[13px\] { font-size: 0.8125rem; }
+		.text-\[14px\] { font-size: 0.8750rem; }
+		.text-\[15px\] { font-size: 0.9375rem; }
+		.text-\[16px\] { font-size: 1rem; }
+		.text-\[17px\] { font-size: 1.0625rem; }
+		.text-\[18px\] { font-size: 1.1250rem; }
+	</style>
 </svelte:head>
 
 <div class="flex min-h-screen flex-col">
