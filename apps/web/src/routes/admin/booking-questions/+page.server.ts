@@ -8,33 +8,55 @@ import {
   loadQuestionTemplates,
   questionTemplateErrorMessage,
   questionTemplateUsage,
-  saveQuestionTemplate
+  saveQuestionTemplate,
+  loadStandardFieldSettings,
+  saveStandardFieldSettings
 } from '$lib/server/booking-questions';
 import { normalizeBookingQuestions, validateBookingQuestions } from '$lib/booking-questions';
+import { STANDARD_FIELDS } from '$lib/booking-standard-fields';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
   const { currentFacility } = await event.parent();
-  if (!LIVE) return { live: false, templates: [], usage: {} as Record<string, { id: string; name: string }[]>, loadError: NOT_LIVE };
+  if (!LIVE) return { live: false, templates: [], usage: {} as Record<string, { id: string; name: string }[]>, standard: {}, loadError: NOT_LIVE };
   const uuid = facilityUuidOf(currentFacility.id);
   const client = createSupabaseServerClient(event);
   try {
-    const [templates, usage, plans] = await Promise.all([
+    const [templates, usage, plans, standard] = await Promise.all([
       loadQuestionTemplates(uuid, client),
       questionTemplateUsage(client, uuid),
-      sbListPlanContentsAdmin(client, uuid).catch(() => ({ plans: [] as { id: string; name: string }[] }))
+      sbListPlanContentsAdmin(client, uuid).catch(() => ({ plans: [] as { id: string; name: string }[] })),
+      // 毎回聞く項目の見出し・例文（施設が変えたものだけ。空は既定）
+      loadStandardFieldSettings(uuid, client)
     ]);
     const nameOf = new Map(plans.plans.map((p) => [p.id, p.name]));
     // テンプレート id → 使っているプラン（名前つき。編集画面へのリンク用）
     const usageOut: Record<string, { id: string; name: string }[]> = {};
     for (const [tid, list] of usage) usageOut[tid] = list.map((p) => ({ id: p.id, name: nameOf.get(p.id) ?? p.slug }));
-    return { live: true, templates, usage: usageOut, loadError: null as string | null };
+    return { live: true, templates, usage: usageOut, standard, loadError: null as string | null };
   } catch (e) {
-    return { live: true, templates: [], usage: {}, loadError: messageOf(e) };
+    return { live: true, templates: [], usage: {}, standard: {}, loadError: messageOf(e) };
   }
 };
 
 export const actions: Actions = {
+  // 毎回聞く項目（アレルギー・備考）の見出し・例文
+  saveStandard: async (event) => {
+    const denied = denyIfNotStaff(event);
+    if (denied) return denied;
+    if (!LIVE) return fail(400, { error: NOT_LIVE });
+    const form = await event.request.formData();
+    const fields: Record<string, { label: string; placeholder: string }> = {};
+    for (const f of STANDARD_FIELDS) {
+      fields[f.key] = { label: String(form.get(`${f.key}_label`) ?? ''), placeholder: String(form.get(`${f.key}_placeholder`) ?? '') };
+    }
+    try {
+      await saveStandardFieldSettings(createSupabaseServerClient(event), currentFacilityOf(event).uuid, fields);
+      return { standardSaved: true };
+    } catch (e) {
+      return fail(400, { error: messageOf(e) });
+    }
+  },
   save: async (event) => {
     const denied = denyIfNotStaff(event);
     if (denied) return denied;

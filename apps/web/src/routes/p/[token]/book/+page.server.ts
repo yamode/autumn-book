@@ -12,7 +12,7 @@ import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
 import { planCancelPolicy } from '$lib/partner-cancel-fee';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { loadBookingNote } from '$lib/server/booking-notes';
-import { partnerBookingForm } from '$lib/server/booking-questions';
+import { loadStandardFieldTexts, partnerBookingForm } from '$lib/server/booking-questions';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -33,7 +33,7 @@ export const load = async (event) => {
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
-  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm] = await Promise.all([
+  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields] = await Promise.all([
     quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
@@ -54,7 +54,9 @@ export const load = async (event) => {
     // 左カラムの注意事項（施設のマスタ。管理画面「予約時の注意事項」）
     loadBookingNote(partner.facility_id),
     // 予約時に聞く項目: プランの項目（テンプレート or プラン独自）→ この取引先だけ追加で聞く項目
-    partnerBookingForm(db, partner, planCode, planName)
+    partnerBookingForm(db, partner, planCode, planName),
+    // 毎回聞く項目（アレルギー・備考）の見出し・例文（施設の設定 → 既定）
+    loadStandardFieldTexts(partner.facility_id)
   ]);
   const roomContent = contents?.rooms.find((r) => r.code === roomCode);
   const planContent = contents?.plans.find((p) => p.planCode === planCode && p.planLabel === planName);
@@ -91,6 +93,7 @@ export const load = async (event) => {
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: bookingForm.questions, askGender: bookingForm.askGender },
+    standardFields,
     // 固定の3種＋自由入力の支払方法のうち、許可されていていま使えるもの（表示名は設定の名前）
     // billable: 請求書払い（宿泊料金・入湯税は取引先へ請求し、ご宿泊者様には請求しない）
     paymentOptions: partnerPaymentChoices(s)

@@ -17,6 +17,7 @@ import {
   type BookingQuestionTemplate,
   type PlanQuestionMode
 } from '$lib/booking-questions';
+import { normalizeStandardFields, resolveStandardFields, type StandardFieldTexts } from '$lib/booking-standard-fields';
 
 type Row = Record<string, unknown>;
 const mapTemplate = (r: Row): BookingQuestionTemplate => ({
@@ -207,4 +208,32 @@ export async function applyPlanAnswers<G extends { notes?: string }>(
   if (!r.ok) return r;
   if (!r.values.length) return { ok: true, guest: out };
   return { ok: true, guest: { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') } };
+}
+
+// ---- 毎回聞く項目（アレルギー・備考）の見出し・例文（book.booking_form_settings・autumn-shared 20261006081330）----
+
+/** 施設が変えた文言（保存してある形）。読めなければ空＝既定の文言 */
+export async function loadStandardFieldSettings(facilityUuid: string, client?: SupabaseClient): Promise<ReturnType<typeof normalizeStandardFields>> {
+  if (DATA_SOURCE !== 'supabase' && !client) return {};
+  try {
+    const db = client ? client.schema('book') : supa();
+    const { data, error } = await db.from('booking_form_settings').select('fields').eq('facility_id', facilityUuid).maybeSingle();
+    if (error) throw error;
+    return normalizeStandardFields((data as { fields?: unknown } | null)?.fields);
+  } catch (e) {
+    console.error('[booking-questions] standard fields', e instanceof Error ? e.message : String(e));
+    return {};
+  }
+}
+
+/** 予約画面に出す文言（施設の設定 → 無ければ既定） */
+export async function loadStandardFieldTexts(facilityUuid: string, client?: SupabaseClient): Promise<StandardFieldTexts> {
+  return resolveStandardFields(await loadStandardFieldSettings(facilityUuid, client));
+}
+
+export async function saveStandardFieldSettings(client: SupabaseClient, facilityUuid: string, raw: unknown): Promise<void> {
+  const { error } = await client
+    .schema('book')
+    .rpc('admin_save_booking_form_settings', { p_facility_id: facilityUuid, p_fields: normalizeStandardFields(raw) });
+  if (error) throw error;
 }

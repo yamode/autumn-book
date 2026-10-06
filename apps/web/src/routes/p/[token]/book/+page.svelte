@@ -464,8 +464,8 @@
         <h3 class="card-title">お食事・ご要望</h3>
         <div class="grid gap-4">
           <label class="block">
-            <span class={label}>食物アレルギー・苦手な食材</span>
-            <textarea name="allergies" rows="2" maxlength="500" placeholder="例: えび・かに（2名）" class={input}></textarea>
+            <span class={label}>{data.standardFields.allergies.label}</span>
+            <textarea name="allergies" rows="2" maxlength="500" placeholder={data.standardFields.allergies.placeholder} class={input}></textarea>
           </label>
           <label class="block sm:max-w-xs">
             <span class={label}>到着予定時刻</span>
@@ -478,8 +478,8 @@
             {@render questionField(o, o.id)}
           {/each}
           <label class="block">
-            <span class={label}>その他ご要望・備考</span>
-            <textarea name="notes" rows="3" maxlength="1000" class={input}></textarea>
+            <span class={label}>{data.standardFields.notes.label}</span>
+            <textarea name="notes" rows="3" maxlength="1000" placeholder={data.standardFields.notes.placeholder} class={input}></textarea>
           </label>
         </div>
       </section>
@@ -498,7 +498,7 @@
             <dt>電話番号</dt><dd>{values.phone}</dd>
             {#if values.email}<dt>メール</dt><dd>{values.email}</dd>{/if}
             {#if values.zip_code || values.address}<dt>住所</dt><dd>{values.zip_code} {values.address}</dd>{/if}
-            {#if values.allergies}<dt>アレルギー</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
+            {#if values.allergies}<dt>{data.standardFields.allergies.label}</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
             {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
             {#if data.perks.length}<dt>専用特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
@@ -512,7 +512,7 @@
               {@const v = values[`opt_${o.key}`]}
               {#if v}<dt>{o.fullLabel}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
             {/each}
-            {#if values.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
+            {#if values.notes}<dt>{data.standardFields.notes.label}</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
             {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}</dd>{/if}
           </dl>
           {#if quote.ok}

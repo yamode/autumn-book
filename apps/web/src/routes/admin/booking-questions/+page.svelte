@@ -4,6 +4,7 @@
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import type { BookingQuestion } from '$lib/booking-questions';
+	import { STANDARD_FIELDS } from '$lib/booking-standard-fields';
 
 	let { data, form } = $props();
 
@@ -60,6 +61,7 @@
 {#if data.loadError}<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{data.loadError}</p>{/if}
 {#if form?.error}<p class="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{form.error}</p>{/if}
 {#if form && 'saved' in form && form.saved}<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">保存しました。</p>{/if}
+{#if form && 'standardSaved' in form && form.standardSaved}<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">毎回聞く項目の文言を保存しました。</p>{/if}
 {#if form && 'deleted' in form && form.deleted}<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900">削除しました。使っていたプランは「なし」に戻りました。</p>{/if}
 
 {#snippet card(d: Draft, isNew: boolean)}
@@ -104,6 +106,35 @@
 	</form>
 {/snippet}
 
+<!-- 毎回聞く項目（アレルギー・備考）: 項目そのものは固定で、見出しと例文だけ施設ごとに変えられる -->
+<form method="POST" action="?/saveStandard" use:enhance={() => async ({ update }) => update({ reset: false })} class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
+	<h2 class="text-sm font-bold text-stone-700">毎回聞く項目</h2>
+	<p class="mt-1 text-xs text-stone-500">
+		どのプランでも必ず聞く項目です。見出しと例文（入力欄の薄い字）だけ変えられます。空欄なら既定の文言を使います。いまは取引先ページの予約入力に出ます。
+	</p>
+	<div class="mt-3 grid gap-3">
+		{#each STANDARD_FIELDS as f (f.key)}
+			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string } | undefined>)[f.key]}
+			<div class="rounded-lg border border-stone-200 p-3">
+				<p class="text-sm font-medium text-stone-800">{f.name}</p>
+				<div class="mt-2 grid gap-2 sm:grid-cols-2">
+					<label class="block">
+						<span class="mb-0.5 block text-xs text-stone-500">見出し</span>
+						<input name="{f.key}_label" value={saved?.label ?? ''} maxlength="60" placeholder={f.label} class={inputClass} />
+					</label>
+					<label class="block">
+						<span class="mb-0.5 block text-xs text-stone-500">例文</span>
+						<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
+					</label>
+				</div>
+				<p class="mt-1 text-[11px] text-stone-500">{f.note}</p>
+			</div>
+		{/each}
+	</div>
+	<button type="submit" disabled={!data.live} class="mt-3 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-40">毎回聞く項目を保存</button>
+</form>
+
+<h2 class="mb-2 text-sm font-bold text-stone-700">追加で聞く項目のテンプレート</h2>
 <div class="grid gap-4">
 	{#if adding}
 		{@render card(adding, true)}
