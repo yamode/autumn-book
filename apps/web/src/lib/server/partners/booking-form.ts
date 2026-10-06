@@ -5,11 +5,12 @@ import type { CreateBookingInput } from './booking';
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
 
-export function parseBookingForm(fd: FormData, optionIds: string[]): CreateBookingInput {
+// 予約時に聞く項目の回答は opt_<id> をすべて拾う（どの項目を聞くかはプラン＋取引先で決まり、検証は createPartnerBooking で行う）。
+export function parseBookingForm(fd: FormData): CreateBookingInput {
   const roomCount = Math.min(20, Math.max(1, Math.round(Number(str(fd, 'room_count'))) || 1));
   const rooms = Array.from({ length: roomCount }, (_, i) => ({ adults: Math.round(Number(str(fd, `adults_${i}`))) || 0 }));
   const answers: Record<string, string> = {};
-  for (const id of optionIds) answers[id] = str(fd, `opt_${id}`);
+  for (const [k, v] of fd.entries()) if (k.startsWith('opt_') && typeof v === 'string') answers[k.slice(4)] = v.trim();
   return {
     roomCode: str(fd, 'room_code'),
     planCode: str(fd, 'plan_code'),

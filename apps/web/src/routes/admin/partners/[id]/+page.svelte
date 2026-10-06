@@ -1,5 +1,6 @@
 <script lang="ts">
   import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
+  import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
   import { untrack } from 'svelte';
   import { deserialize, enhance } from '$app/forms';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -175,12 +176,6 @@
   function setInvoiceDueDay(v: string) {
     const day = Math.round(Number(v));
     if (Number.isFinite(day) && day >= 1 && day <= 28) booking.invoiceDue = { type: 'next_month_day', day };
-  }
-  function addOption() {
-    booking.options = [...booking.options, { id: `o${Date.now().toString(36)}`, label: '', type: 'check', choices: [], required: false }];
-  }
-  function removeOption(i: number) {
-    booking.options = booking.options.filter((_, k) => k !== i);
   }
   let bookingFilter = $state<'upcoming' | 'all'>('upcoming');
   let cancelTarget = $state<string | null>(null);
@@ -963,32 +958,11 @@
         </label>
 
         <div>
-          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">予約時に聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
-          <div class="grid gap-2">
-            {#each booking.options as o, i (o.id)}
-              <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5 sm:grid-cols-[1fr_130px_1fr_auto_auto] sm:items-center">
-                <input bind:value={o.label} maxlength="60" placeholder="例: 送迎希望 / 夕食時間 / 記念日" class={inputClass} />
-                <select bind:value={o.type} class={inputClass}>
-                  <option value="check">チェック</option>
-                  <option value="select">選択肢</option>
-                  <option value="text">自由入力</option>
-                </select>
-                {#if o.type === 'select'}
-                  <input
-                    value={o.choices.join('、')}
-                    oninput={(e) => (o.choices = e.currentTarget.value.split(/[、,]/).map((c) => c.trim()).filter(Boolean))}
-                    placeholder="選択肢を「、」区切りで（例: 18:00、18:30、19:00）"
-                    class={inputClass}
-                  />
-                {:else}
-                  <span class="text-[11px] text-stone-500">{o.type === 'check' ? '「あり」にチェックする項目' : '文字で入力する項目'}</span>
-                {/if}
-                <label class="flex items-center gap-1.5 text-xs"><input type="checkbox" bind:checked={o.required} />必須</label>
-                <button type="button" class={smallBtn} onclick={() => removeOption(i)}>削除</button>
-              </div>
-            {/each}
-            <button type="button" onclick={addOption} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 項目を追加</button>
-          </div>
+          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
+          <p class="mb-2 text-[11px] text-stone-500">
+            プランで設定した「予約時に聞く項目」（<a href="/admin/booking-questions" class="underline">テンプレート</a>またはプラン独自）の後ろに、この取引先からの予約のときだけ足して聞きます。
+          </p>
+          <BookingQuestionsEditor bind:questions={booking.options} />
           <p class="mt-1 text-[11px] text-stone-500">宿泊者名・人数・電話・メール・住所・食物アレルギー・到着予定・備考は、項目を足さなくても毎回聞きます。</p>
         </div>
 

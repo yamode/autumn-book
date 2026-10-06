@@ -29,6 +29,7 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
+import { applyPlanAnswers, planBookingQuestions } from '$lib/server/booking-questions';
 import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
@@ -115,10 +116,12 @@ export const load: PageServerLoad = async (event) => {
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
-		const [bathTax, prepay] = await Promise.all([
+		const [bathTax, prepay, questions] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）。金額の正は DB の direct_payment_prepare
-			prepayDiscountViewFor(hold.facilityId, plan, hold)
+			prepayDiscountViewFor(hold.facilityId, plan, hold),
+			// 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は備考の先頭に入る
+			planBookingQuestions(hold.facilityId, { ratePlanId: hold.planId })
 		]);
 
 		return {
@@ -135,6 +138,7 @@ export const load: PageServerLoad = async (event) => {
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
 			bathTax,
 			prepay,
+			questions,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(basePlan.payment, isMember),
 			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold))
@@ -165,6 +169,7 @@ export const load: PageServerLoad = async (event) => {
 		publishableKey: null,
 		bathTax: 0,
 		prepay,
+		questions: [],
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		member: member
@@ -233,12 +238,19 @@ export const actions: Actions = {
 				return fail(400, { errors, values: guest });
 			}
 
+			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
+			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, guest);
+			if (!answered.ok) {
+				errors.questions = answered.message;
+				return fail(400, { errors, values: guest });
+			}
+
 			const client = useMember ? createSupabaseServerClient(event) : undefined;
 			// 現地払いの内訳（現地PayPay・現地カード・現地現金）は宿への申し送り（core.stays.notes → PMS の備考）に載せる。
 			// 予約の metadata.guest にも onsitePayment として残す
 			const guestForBooking = onsiteMethod
-				? { ...guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], guest.notes].filter(Boolean).join(' ') }
-				: guest;
+				? { ...answered.guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], answered.guest.notes].filter(Boolean).join(' ') }
+				: answered.guest;
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { client, pointsUsed, locale: getLocale() });
 			if ('error' in result) return fail(410, { message: m.error_hold_expired() });
 			setLastBooking(cookies, {

@@ -17,7 +17,6 @@ import {
   normalizeBooker,
   partnerPlanName,
   perksForPlan,
-  resolveOptionAnswers,
   resolveTransport,
   validateBooker,
   type PartnerBooker,
@@ -26,6 +25,8 @@ import {
 import { buildBookingExtras, extraOptionRows, extraSummaryLines, partnerMailRecipients, splitExtraOptions, type BookingExtras } from './booking-extras';
 import { partnerMailSender, sendFacilityNotice, sendPartnerMail } from './mail';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
+import { resolveQuestionAnswers } from '$lib/booking-questions';
+import { partnerBookingQuestions } from '../booking-questions';
 import {
   cancelPolicyTable,
   invoiceMonthLabel,
@@ -326,7 +327,8 @@ export async function createPartnerBooking(
   if (!g.familyName.trim()) throw new PartnerStoreError('ご宿泊者（代表者）の姓を入力してください。');
   if (!PHONE_RE.test(g.phone.trim())) throw new PartnerStoreError('電話番号を正しく入力してください。');
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
-  const answers = resolveOptionAnswers(s.options, input.answers);
+  // 予約時に聞く項目（プランの項目＋この取引先だけの項目）。予約画面と同じ規則で決め直して検証する
+  const answers = resolveQuestionAnswers(await partnerBookingQuestions(db, partner, input.planCode, input.planName), input.answers);
   if (!answers.ok) throw new PartnerStoreError(answers.message);
   const booker = normalizeBooker(input.booker);
   const bookerProblem = validateBooker(booker);

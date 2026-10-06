@@ -18,6 +18,7 @@ import {
 	setBookingDraft
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
+import { applyPlanAnswers } from '$lib/server/booking-questions';
 import { confirmDirectIntent, DirectPaymentError, directPaymentsReady, prepareDirectPayment, viewerIsMember } from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
 import { payOptionsFor } from '$lib/direct-payment';
@@ -51,11 +52,14 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			if (!payOptionsFor(plan.payment, { live: true, onlineReady: true }).options.includes('card')) {
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);
 			}
+			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
+			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, parsed.guest);
+			if (!answered.ok) return bad(answered.message, 400, { errors: { questions: answered.message } });
 			const prepared = await prepareDirectPayment({
 				holdId: hold.id,
 				sessionId: sid,
 				memberUserId,
-				guest: parsed.guest,
+				guest: answered.guest,
 				pointsUsed: memberUserId ? parsed.pointsRequested : 0,
 				locale: getLocale(),
 				facilityName: facility.name,

@@ -341,6 +341,32 @@
 						{/if}
 					</div>
 
+					<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る -->
+					{#each data.questions as q (q.id)}
+						{#if q.type === 'check'}
+							<label class="flex items-center gap-2 text-sm">
+								<input type="checkbox" name={`opt_${q.id}`} required={q.required} class="h-4 w-4" />
+								<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+							</label>
+						{:else if q.type === 'select'}
+							<label class="block text-sm">
+								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+								<select name={`opt_${q.id}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
+									<option value="">選択してください</option>
+									{#each q.choices as c}<option value={c}>{c}</option>{/each}
+								</select>
+							</label>
+						{:else}
+							<label class="block text-sm">
+								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+								<input name={`opt_${q.id}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+							</label>
+						{/if}
+					{/each}
+					{#if form?.errors?.questions}
+						<p class="text-xs text-red-600">{form.errors.questions}</p>
+					{/if}
+
 					<label class="block text-sm">
 						<span class="text-stone-600">{m.hold_field_notes()}</span>
 						<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.hold_field_notes_ph()}></textarea>

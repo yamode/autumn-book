@@ -11,7 +11,7 @@ import { PartnerStoreError } from '$lib/server/partners/store';
 
 export const POST = async (event) => {
   const { db, partner, session } = await requirePortalApi(event);
-  const input = parseBookingForm(await event.request.formData(), partner.booking_settings.options.map((o) => o.id));
+  const input = parseBookingForm(await event.request.formData());
   const payIds = availablePaymentOptions(partner);
   const option = payIds.length === 1 ? payIds[0] : input.paymentOption;
   if (!isStripePaymentOption(option) || !payIds.includes(option)) throw error(400, 'オンライン決済の予約ではありません。');

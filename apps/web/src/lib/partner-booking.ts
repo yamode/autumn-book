@@ -4,17 +4,12 @@
 // 直販予約と同じ電文で PMS へ届ける（migration 20260926054852）。ここは「受け付けてよいか」の判断と、
 // RMS の設定画面・取引先の予約画面で使う形の定義だけを持つ。
 import { displayPlanName } from '$lib/partner-contents';
+import { normalizeBookingQuestions, resolveQuestionAnswers, validateBookingQuestions, type BookingQuestion, type BookingQuestionType } from '$lib/booking-questions';
 
-export type PartnerBookingOptionType = 'check' | 'select' | 'text';
+export type PartnerBookingOptionType = BookingQuestionType;
 
-// 予約時に取引先へ聞く追加項目（送迎希望・記念日・夕食時間など）。回答は PMS の予約備考に入る。
-export type PartnerBookingOption = {
-  id: string;
-  label: string;
-  type: PartnerBookingOptionType;
-  choices: string[]; // type=select のときの選択肢
-  required: boolean;
-};
+// 取引先ごとに、プランの項目（lib/booking-questions.ts）に足して聞く項目（送迎希望・記念日・夕食時間など）。回答は PMS の予約備考に入る。
+export type PartnerBookingOption = BookingQuestion;
 
 // 支払方法（取引先ごとの契約で許可するもの。複数可。予約時に取引先が選ぶ）。
 //   invoice_monthly … 後払い（銀行振込）
@@ -235,24 +230,7 @@ function perkImageUrl(v: unknown): string {
 export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSettings {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const d = DEFAULT_PARTNER_BOOKING_SETTINGS;
-  const optionsRaw = Array.isArray(src.options) ? src.options : [];
-  const options: PartnerBookingOption[] = optionsRaw
-    .filter((o): o is Record<string, unknown> => !!o && typeof o === 'object')
-    .map((o, i) => {
-      const type: PartnerBookingOptionType = o.type === 'select' || o.type === 'text' ? o.type : 'check';
-      const choices = Array.isArray(o.choices)
-        ? [...new Set(o.choices.map((c) => String(c ?? '').trim()).filter(Boolean))].slice(0, 20)
-        : [];
-      return {
-        id: String(o.id ?? '').trim() || `opt-${i + 1}`,
-        label: String(o.label ?? '').trim().slice(0, 60),
-        type,
-        choices: type === 'select' ? choices : [],
-        required: o.required === true
-      };
-    })
-    .filter((o) => o.label)
-    .slice(0, 20);
+  const options: PartnerBookingOption[] = normalizeBookingQuestions(src.options);
   const emails = Array.isArray(src.notifyEmails)
     ? [...new Set(src.notifyEmails.map((e) => String(e ?? '').trim()).filter((e) => EMAIL_RE.test(e)))].slice(0, 10)
     : [];
@@ -324,10 +302,8 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
 // 保存時の検証（normalize で吸収できない入力ミス）。
 export function validatePartnerBookingSettings(s: PartnerBookingSettings, bookingEnabled = false): string | null {
   if (bookingEnabled && !s.paymentOptions.length) return '予約を受け付けるときは、支払方法を1つ以上選んでください。';
-  for (const [i, o] of s.options.entries()) {
-    if (o.type === 'select' && o.choices.length < 2) return `予約オプション${i + 1}「${o.label}」: 選択肢を2つ以上入れてください。`;
-  }
-  return null;
+  const q = validateBookingQuestions(s.options);
+  return q ? `この取引先だけ追加で聞く項目 — ${q}` : null;
 }
 
 // ---- 期限（JST） ----
@@ -378,28 +354,8 @@ export type PartnerBookingGuestInput = {
   allergies: string;
 };
 
-// 追加オプションの回答を検証して {label, value} の並びにする。
-export function resolveOptionAnswers(
-  options: PartnerBookingOption[],
-  answers: Record<string, string>
-): { ok: true; values: { label: string; value: string }[] } | { ok: false; message: string } {
-  const values: { label: string; value: string }[] = [];
-  for (const o of options) {
-    const raw = String(answers[o.id] ?? '').trim();
-    if (o.type === 'check') {
-      if (raw === '1' || raw === 'true' || raw === 'on') values.push({ label: o.label, value: 'あり' });
-      else if (o.required) return { ok: false, message: `「${o.label}」を確認してください。` };
-      continue;
-    }
-    if (!raw) {
-      if (o.required) return { ok: false, message: `「${o.label}」を入力してください。` };
-      continue;
-    }
-    if (o.type === 'select' && !o.choices.includes(raw)) return { ok: false, message: `「${o.label}」の選択肢が正しくありません。` };
-    values.push({ label: o.label, value: raw.slice(0, 500) });
-  }
-  return { ok: true, values };
-}
+// 追加オプションの回答を検証して {label, value} の並びにする（lib/booking-questions.ts と同じもの）。
+export const resolveOptionAnswers = resolveQuestionAnswers;
 
 // ---------------------------------------------------------------------------
 // オンライン決済の金額（サーバ・画面共通の純関数）

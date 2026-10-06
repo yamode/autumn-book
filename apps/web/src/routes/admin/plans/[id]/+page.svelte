@@ -3,6 +3,8 @@
 	import ContentEditor from '$lib/components/admin/ContentEditor.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { formatYen } from '$lib/format';
+	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
+	import type { BookingQuestion, PlanQuestionMode } from '$lib/booking-questions';
 
 	let { data, form } = $props();
 	let c = $derived(data.content);
@@ -15,6 +17,19 @@
 		{ value: 'onsite', label: '現地払いのみ', hint: 'チェックアウト時に現地で精算' },
 		{ value: 'prepayment', label: '事前決済のみ', hint: '予約時にオンラインでカード決済' },
 		{ value: 'deposit', label: 'どちらも選べる', hint: 'お客様が事前決済か現地払いを選ぶ' }
+	] as const;
+
+	// 予約時に聞く項目（保存前の画面上の値）。テンプレートを選んでいなくても、独自の項目は残しておく
+	// svelte-ignore state_referenced_locally
+	const qs0 = data.live ? data.questionSetting : null;
+	let qMode = $state<PlanQuestionMode>(qs0?.mode ?? 'none');
+	let qTemplateId = $state<string>(qs0?.templateId ?? '');
+	let qOwn = $state<BookingQuestion[]>(structuredClone(qs0?.questions ?? []));
+	const qTemplate = $derived(data.live ? data.questionTemplates.find((t) => t.id === qTemplateId) : undefined);
+	const Q_MODES = [
+		{ value: 'none', label: 'なし', hint: '追加の項目は聞かない' },
+		{ value: 'template', label: 'テンプレートを使う', hint: 'テンプレートを直すと、選んだ全プランが変わる' },
+		{ value: 'custom', label: 'プラン独自に決める', hint: 'このプランだけの項目' }
 	] as const;
 
 	// ---- ここから下はデモ環境だけで使う（決済設定・翻訳はまだデモストアにしか繋がっていない）
@@ -110,6 +125,65 @@
 			事前決済はオンラインのカード決済です。オンライン決済が使えない状態のときは、事前決済のみのプランも現地払いで受け付けます。
 		</p>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">支払方法を保存</button>
+	</form>
+{/if}
+
+{#if data.live}
+	<!-- 予約時に聞く項目（book.plan_contents.question_mode）。公式サイト・取引先ページの予約で聞き、回答は PMS の予約備考に入る -->
+	<form method="POST" action="?/setQuestions" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-4 rounded-xl border border-stone-200 bg-white p-5">
+		<div class="flex items-center justify-between">
+			<h2 class="text-sm font-bold text-stone-700">予約時に聞く項目</h2>
+			{#if (form as { questionSaved?: boolean } | null)?.questionSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+		</div>
+		{#if (form as { questionError?: string } | null)?.questionError}
+			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { questionError?: string }).questionError}</p>
+		{/if}
+		{#if !data.questionSetting}
+			<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">いまの設定を読めませんでした（DB の更新がまだの可能性があります）。</p>
+		{/if}
+		<input type="hidden" name="questions" value={JSON.stringify(qOwn)} />
+		<div class="mt-3 grid gap-2 sm:grid-cols-3">
+			{#each Q_MODES as o}
+				<label class="flex cursor-pointer gap-2 rounded-lg border p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50 border-stone-200">
+					<input type="radio" name="mode" value={o.value} bind:group={qMode} class="mt-0.5 h-4 w-4" />
+					<span>
+						<span class="font-medium text-stone-800">{o.label}</span>
+						<span class="mt-0.5 block text-xs text-stone-500">{o.hint}</span>
+					</span>
+				</label>
+			{/each}
+		</div>
+		{#if qMode === 'template'}
+			<div class="mt-3">
+				{#if data.questionTemplates.length}
+					<select name="template_id" bind:value={qTemplateId} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+						<option value="">テンプレートを選ぶ</option>
+						{#each data.questionTemplates as t (t.id)}<option value={t.id}>{t.name}（{t.questions.length}項目）</option>{/each}
+					</select>
+					{#if qTemplate}
+						<ul class="mt-2 list-disc pl-5 text-xs text-stone-600">
+							{#each qTemplate.questions as q (q.id)}
+								<li>{q.label}{q.type === 'select' ? `（${q.choices.join('・')}）` : q.type === 'text' ? '（自由入力）' : '（チェック）'}{q.required ? '・必須' : ''}</li>
+							{:else}<li>項目がありません</li>{/each}
+						</ul>
+					{/if}
+				{:else}
+					<input type="hidden" name="template_id" value="" />
+					<p class="text-xs text-stone-500">まだテンプレートがありません。</p>
+				{/if}
+				<a href="/admin/booking-questions" class="mt-2 inline-block text-xs text-brand-700 underline">テンプレートを作る・直す →</a>
+			</div>
+		{:else}
+			<input type="hidden" name="template_id" value={qTemplateId} />
+		{/if}
+		{#if qMode === 'custom'}
+			<div class="mt-3"><BookingQuestionsEditor bind:questions={qOwn} /></div>
+		{/if}
+		<p class="mt-3 text-xs text-stone-400">
+			公式サイトと取引先ページの予約で聞き、回答は PMS の予約備考に入ります。取引先ごとに足す項目は、取引先の設定で決めます。
+			宿泊者名・人数・電話・メール・到着予定・備考は、ここで足さなくても毎回聞きます。
+		</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">予約時に聞く項目を保存</button>
 	</form>
 {/if}
 

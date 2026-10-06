@@ -24,6 +24,8 @@ import {
 	uploadPhotoAction
 } from '$lib/server/admin-content-page';
 import { loadPlanTemplates } from '$lib/server/plan-templates';
+import { loadPlanQuestionSetting, loadQuestionTemplates, savePlanQuestionSetting } from '$lib/server/booking-questions';
+import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestions, type PlanQuestionMode } from '$lib/booking-questions';
 import type { Actions, PageServerLoad } from './$types';
 
 const NOT_FOUND = 'プランが見つかりません（施設を切り替えた場合は一覧から選び直してください）';
@@ -39,14 +41,20 @@ export const load: PageServerLoad = async (event) => {
 			error(500, messageOf(e));
 		}
 		if (!r.plan) error(404, NOT_FOUND);
-		const [f, templates] = await Promise.all([
+		const client = createSupabaseServerClient(event);
+		const [f, templates, questionTemplates, questionSetting] = await Promise.all([
 			sbFacilityByUuid(uuid).catch(() => undefined),
 			// 紹介文のテンプレート（エディタの挿入ボタン・プレビュー用。読めなくても編集はできる）
-			loadPlanTemplates(uuid, createSupabaseServerClient(event))
+			loadPlanTemplates(uuid, client),
+			// 予約時に聞く項目（テンプレート一覧と、このプランの選択）
+			loadQuestionTemplates(uuid, client),
+			loadPlanQuestionSetting(client, uuid, event.params.id).catch(() => null)
 		]);
 		return {
 			live: true as const,
 			templates,
+			questionTemplates,
+			questionSetting,
 			content: r.plan,
 			namesError: r.namesError,
 			previewBase: f ? `/${f.brandSlug}/${f.slug}` : null,
@@ -96,6 +104,35 @@ export const actions: Actions = {
 		}
 	},
 	upload: (event) => uploadPhotoAction(event, 'plans'),
+	// 予約時に聞く項目: なし / テンプレート / プラン独自（book.plan_contents.question_mode）
+	setQuestions: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { questionError: NOT_LIVE });
+		const form = await event.request.formData();
+		const mode = String(form.get('mode') ?? '');
+		if (!(PLAN_QUESTION_MODES as readonly string[]).includes(mode)) return fail(400, { questionError: '聞き方を選んでください。' });
+		const templateId = String(form.get('template_id') ?? '').trim() || null;
+		if (mode === 'template' && !templateId) return fail(400, { questionError: 'テンプレートを選んでください。' });
+		let questions;
+		try {
+			questions = normalizeBookingQuestions(JSON.parse(String(form.get('questions') ?? '[]')));
+		} catch {
+			return fail(400, { questionError: '項目を読み取れませんでした。' });
+		}
+		const problem = mode === 'custom' ? validateBookingQuestions(questions) : null;
+		if (problem) return fail(400, { questionError: problem });
+		try {
+			await savePlanQuestionSetting(createSupabaseServerClient(event), currentFacilityOf(event).uuid, event.params.id, {
+				mode: mode as PlanQuestionMode,
+				templateId,
+				questions
+			});
+			return { questionSaved: true };
+		} catch (e) {
+			return fail(400, { questionError: messageOf(e) });
+		}
+	},
 	// 支払方法（本番）。booking.rate_plans.payment_method を Book の管理画面で決める
 	setPaymentMethod: async (event) => {
 		const denied = denyIfNotStaff(event);
