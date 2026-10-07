@@ -34,6 +34,6 @@
 		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
 		"PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_5LrR74B4VdgRpq1koMbrQA_SIvpAWk0",
 		// 取引先予約の添付ファイル（docs/partner-booking-attachments.md）。PMS の対応（event 'attachments'）を出してから true にする
-		"PARTNER_BOOKING_ATTACHMENTS": "false"
+		"PARTNER_BOOKING_ATTACHMENTS": "true"
 	}
 }

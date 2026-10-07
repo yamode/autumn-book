@@ -1,10 +1,10 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-07（取引先予約の添付ファイル・v0.103.0・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+> **最終更新**: 2026-10-07（取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
 ## 取引先予約の添付ファイル（2026-10-07・v0.103.0）
 - 設計: `docs/partner-booking-attachments.md`（§11 N1〜N11 はすべて推奨案で確定・実装で決めたことは §11.1）。取引先ページの予約に添付ファイルを複数（ドラッグ＆ドロップ／選択）。予約入力でも予約一覧からでも。PMS の予約詳細の添付に連動し、添付だけの更新も PMS の新着通知（変更）に出る
-- 有効化: 環境変数 `PARTNER_BOOKING_ATTACHMENTS`（既定 false・`wrangler.jsonc` の vars）。**PMS の対応をデプロイしてから true にする**
+- 有効化: 環境変数 `PARTNER_BOOKING_ATTACHMENTS`（既定 false・`wrangler.jsonc` の vars）。**2026-10-07 v0.103.1 で true（本番で有効）**
 - DB（autumn-shared・**未適用**）: `20261007022950_rms_partner_booking_attachments`（台帳 `public.rms_partner_booking_attachments`・`rms_partner_bookings.attachments_updated_at / attachments_notified_at`・電文の `attachments` / `attachment_change`・event `attachments`・受信箱の CHECK・`rms_partner_create_booking` の `attachment_ids` の束縛・`rms_partner_emit_attachments_event`・`rms_partner_attachment_orphans`）、`20261007022953_pms_reservation_attachments_source_key`（`pms.reservation_attachments.source_key`＋部分一意索引）
 - 実体は PMS と共用のバケット `reservation-attachments` の `partner-booking/<facility>/<partner>/<uuid>.<ext>`（バケットの `file_size_limit` / `allowed_mime_types` は**付けない**＝PMS の添付が止まる）。種類（pdf・画像・Word・Excel・PowerPoint・csv・txt。zip・html・svg・マクロ付き不可）・1ファイル 20MB・1予約 10件／50MB は Book のサーバで検査（`lib/partner-attachments.ts`）
 - Book: `lib/server/partners/booking-attachments.ts`（台帳・Storage・通知・掃除）、`portal-attachments.ts`（取引先ページの API の入口）、部品 `lib/components/PartnerAttachments.svelte`。API: `/p/[token]/book/attachments`（仮置き）・`/p/[token]/bookings/[id]/attachments`（追加・削除・ダウンロード・`notify`）・`/admin/reservations/[code]/attachments`（スタッフ）。予約入力は仮置き → 確定時に RPC が束縛（電文の前）。予約一覧・管理画面は追加・削除のあとに1回 `notify` → `attachments` 電文。取りこぼしは `/api/cron/partner-charge`（毎時）が知らせ直し、古い仮置き（24h）・PMS へ送らずに終わった予約の添付（7日）を掃除（条件を付けて行を消し、消せた行の実体だけを消す＝確定直後の束縛と競合しない）。予約入力を開くと、自分の仮置き（24h 以内）が最初から欄に出る。アップロードは content-length が 21MB 超なら本文を読まずに 413
