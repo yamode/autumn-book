@@ -124,3 +124,21 @@ describe('Intent の検証', () => {
     expect(isSetupIntentId('cs_test_1')).toBe(false);
   });
 });
+
+describe('保存カード（2026-10-07）: Customer の一致', () => {
+  const base = { app: APP, purpose: PURPOSE, refKey: 'partner_booking_id', refId: 'b1' };
+  it('customer を渡すと、Intent の Customer が一致するときだけ使い回す', () => {
+    const pi = { status: 'requires_payment_method', metadata: meta(), amount: 1000, customer: null };
+    expect(isReusableIntent(pi, { ...base, amount: 1000 })).toBe(true);
+    expect(isReusableIntent(pi, { ...base, amount: 1000, customer: null })).toBe(true);
+    expect(isReusableIntent(pi, { ...base, amount: 1000, customer: 'cus_s' })).toBe(false);
+    expect(isReusableIntent({ ...pi, customer: 'cus_s' }, { ...base, amount: 1000, customer: 'cus_s' })).toBe(true);
+    expect(isReusableIntent({ ...pi, customer: { id: 'cus_s' } }, { ...base, amount: 1000, customer: null })).toBe(false);
+  });
+  it('SetupIntent の確定で、Customer が違えば自分のものとみなさない', () => {
+    const si = { id: 'seti_1', status: 'succeeded', customer: 'cus_a', payment_method: 'pm_1', metadata: meta() };
+    expect(checkSetupIntent(si, { ...base }).ok).toBe(true);
+    expect(checkSetupIntent(si, { ...base, customer: 'cus_a' }).ok).toBe(true);
+    expect(checkSetupIntent(si, { ...base, customer: 'cus_b' })).toEqual({ ok: false, reason: 'not_ours' });
+  });
+});

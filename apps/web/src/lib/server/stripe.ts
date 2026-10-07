@@ -28,6 +28,12 @@ export const STRIPE_PURPOSE_PARTNER_BOOKING = 'rms_partner_booking';
 export const STRIPE_APP_BOOK = 'autumn-book';
 export const STRIPE_PURPOSE_DIRECT_BOOKING = 'book_direct_booking';
 
+// 保存カード（マイページのカード登録・2026-10-07・docs/saved-cards.md）。取引先は取引先ごと（app は取引先予約と同じ autumn-rms）、
+// 会員は会員ごとの Customer に付ける。Webhook の purposes には含めない（setup_intent.succeeded は ignore で 200）。
+// 登録の確定はブラウザからの連絡だけで行う（予約が無いので Webhook での確定は要らない）。
+export const STRIPE_PURPOSE_PARTNER_CARD = 'rms_partner_card';
+export const STRIPE_PURPOSE_MEMBER_CARD = 'book_member_card';
+
 // 貼り付け時の空白・引用符・見えない文字は cleanKey（payments/keys.ts）で取り除く。
 const secretKey = () => cleanKey(privateEnv.STRIPE_SECRET_KEY);
 const webhookSecret = () => cleanKey(privateEnv.STRIPE_WEBHOOK_SECRET);
@@ -68,11 +74,19 @@ export class StripeError extends Error {
     message: string,
     public status = 502,
     // card_declined / authentication_required / insufficient_funds など（請求失敗の理由表示用）
-    public code: string | null = null
+    public code: string | null = null,
+    // エラーの種類（card_error / invalid_request_error / idempotency_error など）
+    public type: string | null = null
   ) {
     super(message);
   }
 }
+
+// 指定した Customer・PaymentMethod 等が Stripe に無い（No such customer 等。ダッシュボードで消された・テスト/本番の取り違え）
+export const isStripeResourceMissing = (e: unknown): boolean => e instanceof StripeError && e.code === 'resource_missing';
+
+// 冪等キーの衝突（同じキーで別のパラメータ＝名前・メールが変わった再送など。type=idempotency_error）
+export const isStripeIdempotencyError = (e: unknown): boolean => e instanceof StripeError && e.type === 'idempotency_error';
 
 // Stripe の form-encoded（ネストは a[b][c]=v）に直す。
 function encodeForm(params: Record<string, unknown>, prefix = '', out: URLSearchParams = new URLSearchParams()): URLSearchParams {
@@ -100,10 +114,10 @@ async function stripeFetch<T>(method: 'GET' | 'POST', path: string, params?: Rec
     url += `?${encodeForm(params).toString()}`;
   }
   const res = await fetch(url, { method, headers, body });
-  const json = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string; decline_code?: string } } & T;
+  const json = (await res.json().catch(() => ({}))) as { error?: { message?: string; code?: string; decline_code?: string; type?: string } } & T;
   if (!res.ok) {
     const code = json.error?.decline_code ?? json.error?.code;
-    throw new StripeError(`Stripe: ${json.error?.message ?? res.status}${code ? `（${code}）` : ''}`, res.status, code ?? null);
+    throw new StripeError(`Stripe: ${json.error?.message ?? res.status}${code ? `（${code}）` : ''}`, res.status, code ?? null, json.error?.type ?? null);
   }
   return json;
 }
@@ -135,7 +149,15 @@ export const retrieveCheckoutSession = (id: string, expandSetup = false) =>
 
 // ---- カードを登録して後日請求（チェックアウト日決済）----
 
-export type StripePaymentMethod = { id: string; card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } | null };
+export type StripePaymentMethod = {
+  id: string;
+  card?: { brand?: string; last4?: string; exp_month?: number; exp_year?: number; fingerprint?: string | null } | null;
+  // 以下は保存カード（一覧・取り外しの検証）で使う。expand した SetupIntent の payment_method にも入っている
+  customer?: string | { id: string } | null;
+  created?: number;
+  allow_redisplay?: 'always' | 'limited' | 'unspecified';
+  metadata?: Record<string, string>;
+};
 
 // 画面表示用のカード名（例: Visa •••• 4242）
 export function cardLabelOf(pm: StripePaymentMethod | null | undefined): string | null {
@@ -145,12 +167,62 @@ export function cardLabelOf(pm: StripePaymentMethod | null | undefined): string 
 }
 
 export const createCustomer = (args: { name: string; email?: string | null; metadata: Record<string, string>; idempotencyKey: string }) =>
-  stripeFetch<{ id: string }>(
+  stripeFetch<{ id: string; livemode?: boolean }>(
     'POST',
     '/customers',
     { name: args.name.slice(0, 250), email: args.email || undefined, metadata: args.metadata },
     args.idempotencyKey
   );
+
+// ---- 保存カード（Customer に付けたカード・2026-10-07）----
+
+export type StripeCustomer = {
+  id: string;
+  deleted?: boolean;
+  livemode?: boolean;
+  invoice_settings?: { default_payment_method?: string | { id: string } | null } | null;
+};
+
+export const retrieveCustomer = (id: string) => stripeFetch<StripeCustomer>('GET', `/customers/${encodeURIComponent(id)}`);
+
+// 既定のカード（Payment Element の「保存済み」で先頭に出る）を設定する
+export const updateCustomer = (id: string, args: { defaultPaymentMethod?: string }) =>
+  stripeFetch<StripeCustomer>('POST', `/customers/${encodeURIComponent(id)}`, {
+    invoice_settings: args.defaultPaymentMethod ? { default_payment_method: args.defaultPaymentMethod } : undefined
+  });
+
+// ブラウザの Payment Element に「この Customer の保存カードを見せてよい」と伝える短命の資格情報（30 分で失効）。
+// save: 「このカードを保存する」チェックボックスを出すか（第1段階は出さない・N3）。Element からの削除はさせない（削除はマイページだけ）。
+export const createCustomerSession = (args: { customer: string; save?: boolean; redisplayLimit?: number }) =>
+  stripeFetch<{ client_secret: string; expires_at: number }>('POST', '/customer_sessions', {
+    customer: args.customer,
+    components: {
+      payment_element: {
+        enabled: true,
+        features: {
+          payment_method_redisplay: 'enabled',
+          payment_method_redisplay_limit: args.redisplayLimit ?? 10,
+          // マイページで保存の同意を取って allow_redisplay=always にしたカードだけ出す
+          // （予約ごとのカード登録で付いたカード＝unspecified は出さない）
+          payment_method_allow_redisplay_filters: ['always'],
+          payment_method_save: args.save ? 'enabled' : 'disabled',
+          payment_method_remove: 'disabled'
+        }
+      }
+    }
+  });
+
+// Customer に付いているカード（新しい順・最大 100 枚）
+export const listPaymentMethods = (customer: string) =>
+  stripeFetch<{ data: StripePaymentMethod[] }>('GET', `/customers/${encodeURIComponent(customer)}/payment_methods`, { type: 'card', limit: 100 });
+
+export const retrievePaymentMethod = (id: string) => stripeFetch<StripePaymentMethod>('GET', `/payment_methods/${encodeURIComponent(id)}`);
+
+export const updatePaymentMethod = (id: string, args: { allowRedisplay?: 'always' | 'limited' | 'unspecified'; metadata?: Record<string, string> }) =>
+  stripeFetch<StripePaymentMethod>('POST', `/payment_methods/${encodeURIComponent(id)}`, { allow_redisplay: args.allowRedisplay, metadata: args.metadata });
+
+// Customer から外す（以後どの Intent でも使えない。未請求の予約が使っていないことを呼び出し側で確かめる）
+export const detachPaymentMethod = (id: string) => stripeFetch<StripePaymentMethod>('POST', `/payment_methods/${encodeURIComponent(id)}/detach`);
 
 export type PaymentIntent = {
   id: string;
@@ -160,6 +232,7 @@ export type PaymentIntent = {
   currency: string;
   client_secret?: string | null;
   latest_charge?: string | null;
+  customer?: string | { id: string } | null;
   metadata: Record<string, string>;
 };
 
@@ -181,11 +254,14 @@ export type SetupIntent = {
 // ⚠ ブラウザ側の Elements も paymentMethodTypes: ['card'] にそろえる（食い違うと confirm が失敗する）。
 
 // 予約時決済（その場でカードに請求）。
+// customer: 保存カードを選べるようにするとき（ブラウザの CustomerSession と同じ Customer・2026-10-07）。
+// 付けても setup_future_usage は付けないので、新しく入力したカードは保存されない。
 export const createPaymentIntent = (args: {
   amount: number; // 円（JPY はゼロ小数通貨）
   description: string;
   metadata: Record<string, string>;
   idempotencyKey: string;
+  customer?: string | null;
 }) =>
   stripeFetch<PaymentIntent>(
     'POST',
@@ -193,6 +269,7 @@ export const createPaymentIntent = (args: {
     {
       amount: Math.round(args.amount),
       currency: 'jpy',
+      customer: args.customer || undefined,
       payment_method_types: ['card'],
       description: args.description.slice(0, 1000),
       metadata: args.metadata
@@ -203,7 +280,8 @@ export const createPaymentIntent = (args: {
 export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
 
 // チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
-export const createSetupIntent = (args: { customer: string; description: string; metadata: Record<string, string>; idempotencyKey: string }) =>
+// マイページの保存カードの登録にも使う（冪等キー無し＝毎回新しく作る・N8）。
+export const createSetupIntent = (args: { customer: string; description: string; metadata: Record<string, string>; idempotencyKey?: string }) =>
   stripeFetch<SetupIntent>(
     'POST',
     '/setup_intents',

@@ -11,6 +11,8 @@
 		{ href: '/account/points', label: m.account_nav_points() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
 		{ href: '/account/community', label: m.account_nav_community() },
+		// 保存カード（2026-10-07・docs/saved-cards.md §6.2）
+		{ href: '/account/cards', label: m.account_nav_cards() },
 		{ href: '/account/profile', label: m.account_nav_profile() }
 	]);
 

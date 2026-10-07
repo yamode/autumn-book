@@ -1351,6 +1351,10 @@
                 </label>
               {/each}
             </div>
+            {#if data.savedCards}
+              <!-- 取引先のお支払いカード（保存カード・2026-10-07）: 枚数と最終登録だけ（操作は取引先ページの「アカウント → お支払いカード」） -->
+              <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {data.savedCards.count} 枚{#if data.savedCards.lastAt}（最終登録 {new Date(data.savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
+            {/if}
             <!-- 自由入力の支払方法（取引先ごとの契約に合わせた名前。決済は伴わない） -->
             <div class="mt-2 grid gap-1.5 rounded-md border border-stone-200 bg-white p-2.5">
               <p class="text-xs font-medium">自由入力の支払方法 <span class="font-normal text-stone-500">（最大{MAX_CUSTOM_PAYMENT_OPTIONS}つ）</span></p>

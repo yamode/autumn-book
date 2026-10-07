@@ -67,6 +67,7 @@ import {
   retrieveSetupIntent,
   STRIPE_APP,
   STRIPE_PURPOSE_PARTNER_BOOKING,
+  isStripeResourceMissing,
   StripeError,
   stripeTestMode,
   type StripePaymentMethod
@@ -75,6 +76,7 @@ import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { cardExpiresBefore } from '$lib/partner-card';
+import { resolvePartnerCustomer } from '$lib/server/payments/saved-cards';
 import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresDeposit, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
@@ -626,30 +628,56 @@ export type PreparedPartnerPayment = PreparedIntent & {
 // 予約（仮押さえ・カード登録し直し）の Intent を用意する（まだ使える Intent があれば使い回す）。
 async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow): Promise<PreparedPartnerPayment> {
   const base = { bookingId: b.id, bookingCode: b.booking_code, expiresAt: b.status === 'pending_payment' ? b.payment_expires_at : null };
+  // 保存カード（2026-10-07・docs/saved-cards.md §7.2）: 取引先共有の Customer があれば Intent に付ける（予約画面の「保存済み」から選べる）。
+  // 読めない・まだ無いときは null（従来どおり）
+  const shared = await resolvePartnerCustomer(db, partner, { create: false }).catch(() => null);
   if (b.payment_option === 'online_checkin') {
-    let customer = b.stripe_customer_id;
-    if (!customer) {
-      customer = (
+    // 予約ごとの Customer を作る（共有 Customer が無いとき・Stripe 側で Customer が消えていたとき）。
+    // suffix: 消えた Customer の作り直しでは別の冪等キーにする（同じキーだと消えた Customer の id が返るため）
+    const createBookingCustomer = async (suffix = '') => {
+      const id = (
         await createCustomer({
           name: `${b.guest_name}（${partner.name}）`,
           // Stripe の領収・通知は予約者（ご担当者）へ。宿泊者のメールは使わない
           email: b.detail.booker?.email || partner.contact_email,
           metadata: { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_BOOKING, partner_booking_id: b.id, booking_code: b.booking_code, partner_id: partner.id },
-          idempotencyKey: `rms-partner-customer-${b.id}`
+          idempotencyKey: `rms-partner-customer-${b.id}${suffix}`
         })
       ).id;
-      await db.from('rms_partner_bookings').update({ stripe_customer_id: customer }).eq('id', b.id);
+      await db.from('rms_partner_bookings').update({ stripe_customer_id: id }).eq('id', b.id);
+      return id;
+    };
+    let customer = b.stripe_customer_id;
+    if (!customer) {
+      // 共有 Customer があればそれを使う。無ければ従来どおり予約ごとに作る（既に予約の Customer がある予約はそのまま）
+      if (shared) {
+        customer = shared;
+        await db.from('rms_partner_bookings').update({ stripe_customer_id: customer }).eq('id', b.id);
+      } else customer = await createBookingCustomer();
     }
     const consentText = cardConsentText(partner.facility_name, b);
-    const { prepared, created } = await prepareSetupIntent({
-      existingId: b.stripe_session_id,
-      customer,
-      description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_out_date} チェックアウト日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
-      metadata: intentMetadata(partner, b, { consent_text: consentText }),
-      refKey: REF_KEY,
-      // 同時に2回押されても1本になるよう、前回の Intent（無ければ first）から作る
-      idempotencyKey: `rms-partner-si-${b.id}-${b.stripe_session_id ?? 'first'}`
-    });
+    const setup = (cus: string, keySuffix = '') =>
+      prepareSetupIntent({
+        existingId: b.stripe_session_id,
+        customer: cus,
+        description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_out_date} チェックアウト日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
+        metadata: intentMetadata(partner, b, { consent_text: consentText }),
+        refKey: REF_KEY,
+        // 同時に2回押されても1本になるよう、前回の Intent（無ければ first）から作る
+        idempotencyKey: `rms-partner-si-${b.id}-${b.stripe_session_id ?? 'first'}${keySuffix}`
+      });
+    let r: Awaited<ReturnType<typeof setup>>;
+    try {
+      r = await setup(customer);
+    } catch (e) {
+      // 台帳の Customer（共有・予約ごと）が Stripe 側で消えていた → 予約ごとの Customer を作り直して従来の経路で登録させる
+      if (!isStripeResourceMissing(e)) throw e;
+      console.warn('[partner-booking] Customer が Stripe に見つからないため、予約ごとの Customer で作り直します:', b.booking_code, customer);
+      const missing = customer;
+      customer = await createBookingCustomer(`-${missing}`);
+      r = await setup(customer, `-${missing}`);
+    }
+    const { prepared, created } = r;
     if (created) await db.from('rms_partner_bookings').update({ stripe_session_id: prepared.intentId }).eq('id', b.id);
     return { ...prepared, ...base, consentText };
   }
@@ -660,7 +688,8 @@ async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext
     description: `${partner.facility_name} ご宿泊${isDepositPaymentOption(b.payment_option) ? 'のデポジット' : ''}（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
     metadata: intentMetadata(partner, b),
     refKey: REF_KEY,
-    idempotencyKey: `rms-partner-pi-${b.id}-${b.stripe_session_id ?? 'first'}`
+    idempotencyKey: `rms-partner-pi-${b.id}-${b.stripe_session_id ?? 'first'}`,
+    customer: shared
   });
   if (created) await db.from('rms_partner_bookings').update({ stripe_session_id: prepared.intentId }).eq('id', b.id);
   return { ...prepared, ...base, consentText: null };
@@ -745,7 +774,8 @@ export async function confirmPartnerIntent(db: SupabaseClient, intentId: string,
     const si = await retrieveSetupIntent(intentId, true);
     const ctx = await contextForIntent(db, si.metadata?.[REF_KEY], expectPartnerId);
     if (!ctx) return { status: 'unknown' };
-    const check = checkSetupIntent(si, { ...exp, refId: ctx.booking.id });
+    // Customer は台帳に書いたもの（取引先共有・予約ごと）と一致すること（保存カード・2026-10-07）
+    const check = checkSetupIntent(si, { ...exp, refId: ctx.booking.id, customer: ctx.booking.stripe_customer_id ?? undefined });
     if (!check.ok) return check.reason === 'not_succeeded' ? { status: 'unpaid', bookingCode: ctx.booking.booking_code } : { status: 'unknown' };
     const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
     // 有効期限が請求日（チェックアウト日）より前に切れるカードは登録しない（予約は支払待ちのまま・別のカードを登録してもらう）

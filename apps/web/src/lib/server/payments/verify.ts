@@ -63,9 +63,11 @@ export function checkPaymentIntent(
 }
 
 // チェックアウト日決済: カード登録（SetupIntent）が succeeded で、顧客とカードが付いているか。
-export function checkSetupIntent(si: SetupIntentLike, exp: IntentExpectation): IntentCheck {
+// customer を渡すと（保存カードの登録）、Intent の Customer がそれと一致しなければ自分のものとみなさない（not_ours）。
+export function checkSetupIntent(si: SetupIntentLike, exp: IntentExpectation & { customer?: string }): IntentCheck {
   const ref = refOf(si.metadata, exp);
   if (typeof ref !== 'string') return ref;
+  if (exp.customer && idOf(si.customer) !== exp.customer) return { ok: false, reason: 'not_ours' };
   if (si.status !== 'succeeded' || !idOf(si.customer) || !idOf(si.payment_method)) {
     return { ok: false, reason: 'not_succeeded', status: si.status, refId: ref };
   }
@@ -87,13 +89,16 @@ export const isSetupIntentId = (v: string) => /^seti_[A-Za-z0-9]+$/.test(v);
 const REUSABLE = new Set(['requires_payment_method', 'requires_confirmation', 'requires_action']);
 
 // この Intent をもう一度ブラウザに渡してよいか（純関数）。
+// customer を渡すと（undefined 以外）、Intent の Customer が一致するときだけ使い回す（null = Customer 無しの Intent だけ）。
+// 保存カード（2026-10-07）: Customer 無しの古い PaymentIntent を、保存カード（Customer 付き）で確定させないため。
 export function isReusableIntent(
-  intent: { status: string; metadata?: Record<string, string> | null; amount?: number | null },
-  expect: { app: string; purpose: string; refKey: string; refId: string; amount?: number | null }
+  intent: { status: string; metadata?: Record<string, string> | null; amount?: number | null; customer?: string | { id: string } | null },
+  expect: { app: string; purpose: string; refKey: string; refId: string; amount?: number | null; customer?: string | null }
 ): boolean {
   if (!REUSABLE.has(intent.status)) return false;
   if (!isElementsIntentFor(intent.metadata, expect.app, [expect.purpose])) return false;
   if (intent.metadata?.[expect.refKey] !== expect.refId) return false;
   if (expect.amount != null && intent.amount !== expect.amount) return false;
+  if (expect.customer !== undefined && idOf(intent.customer) !== expect.customer) return false;
   return true;
 }

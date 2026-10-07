@@ -1,10 +1,64 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-07（予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+> **最終更新**: 2026-10-07（マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
-## 予約時決済の事務手数料（取消時に返金しない率）＋デポジット不足分の請求（2026-10-07・未コミット）
+## マイページのカード登録（保存カード）（2026-10-07・v0.102.0）
+- 設計: `docs/saved-cards.md`（§9 N1〜N11 は推奨案で確定・§9.1 に実装での差分）。取引先は取引先に1つ（当面は `rms_partners` の行ごと・統合後は取引先で1つ。Customer の名前・metadata・冪等キー・文言で施設を前提にしない）、公式サイト会員は会員ごとの Stripe Customer にカードを保存し、予約時の Payment Element の「保存済み」から選べる（CustomerSession）
+- DB（autumn-shared・**未適用・未コミット**）: `20261007022727_rms_partner_stripe_customer`（`rms_partners.stripe_customer_id / stripe_livemode / stripe_customer_created_at`・一意索引・`rms_partner_bookings.stripe_customer_id` のコメント更新）、`20261007022730_book_member_payment_profiles`（会員 → Customer の対応表・service_role のみ・RLS ポリシー無し）。未適用の間は読み取りが「Customer なし」になり従来どおり動く（予約画面に保存カードが出ない・マイページの登録は「現在ご利用いただけません」）
+- 純関数 `lib/saved-cards.ts`（一覧の整形・`allow_redisplay='always'` だけ・既定→新しい順・fingerprint の重複・期限・削除ガードの判定・CustomerSession を出す Customer の判定・同意文）＋ `saved-cards.test.ts`。サーバ `lib/server/payments/saved-cards.ts`（Customer の解決〔テスト/本番の取り違えは作り直し〕・一覧・CustomerSession・SetupIntent の用意と確定〔Customer 一致・期限切れ・二重登録を弾き、PM の metadata に同意〕・削除・既定・取引先の削除ガード・管理画面の枚数）
+- Stripe REST（`lib/server/stripe.ts`）: `createCustomerSession`（redisplay 10・保存チェックボックス無し・Element からの削除無し）・`listPaymentMethods`・`retrievePaymentMethod`・`updatePaymentMethod`・`detachPaymentMethod`・`retrieveCustomer`・`updateCustomer`、`createPaymentIntent` に `customer`、用途 `rms_partner_card` / `book_member_card`（Webhook は ignore）
+- 決済部品 `StripePayment.svelte`: `customerSession`（取得関数・マウントごと）・`allowRedisplay`・`onsavedcardchange`。未指定なら従来どおり
+- 取引先: アカウントに「お支払いカード」タブ（`/p/[token]/account/cards`・全ユーザー・登録 `cards/api`・削除/既定は form action・アクセスログ `card_profile_saved/removed/default`）。予約画面・予約一覧のモーダルに保存カード（`/payment` の `customer_session`）。チェックアウト日決済で選んだ保存カードの有効期限が近ければ確定前に警告して止める（サーバも従来どおり `card_expiry`）。`preparePartnerPayment` は共有 Customer があれば PI に付け、チェックアウト日決済の新しい予約は共有 Customer で SetupIntent。管理画面の取引先詳細（支払方法）に保存カードの枚数・最終登録
+- 公式サイト会員: マイページに「お支払いカード」（`/account/cards`・ナビ ja/en/zh-TW）。予約確認（`/booking/hold`）は会員なら保存カード（`/booking/pay` の `customer_session`）。`prepareDirectPayment` は会員の Customer を PI に付ける
+- 残: 会員退会時の保存カードの detach（N6・第2段階）、予約時の「このカードを保存する」（N3・第2段階）、Stripe ダッシュボードの設定（下）。本番（テストキー）での通し確認は未実施（鍵が無いのでローカルでは入力欄の表示まで確認できない）
+- Stripe ダッシュボードでユーザーがやること: 制限付きキー（`rk_`）なら Customer Sessions・Payment Methods の書き込み権限を付ける（`sk_` なら不要）／「設定 → 顧客メール」で支払い方法の保存時のメールが OFF か確認／Webhook の追加は不要
+
+### テストチェックリスト（マイページのカード登録）
+#### 取引先ページ「お支払いカード」
+- [ ] アカウント → 「お支払いカード」タブが出る（マスタ・子ユーザーの両方）。初回は「登録されているカードはありません」
+- [ ] 「カードを追加する」→ モーダルで 4242 を登録 → 一覧にブランド・下4桁・有効期限・登録日。`rms_partners.stripe_customer_id` が入り、Stripe の Customer に PM が付いている（`allow_redisplay=always`・metadata に `partner_id`）
+- [ ] 同じ取引先の別ユーザーでログイン → 同じカードが一覧に出る
+- [ ] 同じカードをもう一度登録 → 「既に登録されています」（一覧は1枚のまま）
+- [ ] 有効期限切れのカード（テスト用）→ 登録できない
+- [ ] 2枚目を登録 → 「既定にする」→ 予約画面の保存済みで先頭に出る
+- [ ] 「削除」→ 確認 → 一覧から消え、Stripe でも detach されている。アクセスログに `card_profile_removed`
+- [ ] チェックアウト日決済でそのカードを使った未請求の予約があるとき、削除が断られ予約番号が示される
+- [ ] 確認モード（管理画面の「確認ページを開く」）: 一覧は「確認モードでは表示しません」・追加・削除のボタンが無い／POST が 403。`rms_partners.stripe_customer_id` が作られていない
+- [ ] Stripe の鍵が無い環境: 「現在ご利用いただけません」で落ちない
+
+#### 取引先ページの予約で保存カードを使う
+- [ ] 予約時決済（`online`）: カード入力欄に「保存済み」の一覧が出る → 選んで確定 → 予約確定・Stripe の PaymentIntent に `customer` が付き、`payment_method` が保存 PM
+- [ ] デポジット（`deposit_online`）: 同様に保存カードで支払える（額は `deposit_amount`）
+- [ ] チェックアウト日決済（`online_checkin`）: 保存カードを選び、同意文が入力欄の直下に出る → 確定 → 台帳の `stripe_customer_id` が共有 Customer・`stripe_payment_method_id` が保存 PM・`card_label`・`card_consent_text / at` が入る
+- [ ] 同じ予約のチェックアウト日に cron（`/api/cron/partner-charge?wait=1`）で請求が通る（`rms_partner_mark_charged`・PMS に paid 電文）
+- [ ] 保存カードの有効期限がチェックアウト日の月から2か月以内のとき: 選んだ時点で警告・確定不可。サーバ側でも `card_expiry` になる（画面の警告を無理に抜けた場合）
+- [ ] 新規カードを入力して確定 → 保存されない（マイページの一覧に増えない・N3）
+- [ ] 保存カードが無い取引先 → 従来どおり新規入力だけ（「保存済み」の見出しが出ない）
+- [ ] 予約一覧の「カードを登録し直す」（請求失敗の予約）→ 保存カードから選べる → 登録し直し後にその場で請求
+- [ ] 別の取引先の PM id を `remove` / `set_default` に送る → 403（curl で確認）
+- [ ] Webhook 配信履歴: マイページ登録の `setup_intent.succeeded` が 200（`ignored: not_ours`）
+- [ ] 取消・返金: 保存カードで払った予約の取消で、既存どおり一部返金・事務手数料の扱い
+
+#### 公式サイト会員
+- [ ] `/account/cards` がナビに出る（ja / en / zh-TW）。非会員は `/auth/login` へ
+- [ ] カードの登録・既定・削除ができ、`book.member_payment_profiles` に1行
+- [ ] 予約確認（`/booking/hold`）で会員ログイン中なら「保存済み」が出て、選んで支払える（PaymentIntent に `customer`）。非会員・デモでは出ない
+- [ ] 早期決済割・ポイント利用・3D セキュアの流れが保存カードでも従来どおり
+- [ ] デモ環境（`DATA_SOURCE=demo`）で `/account/cards` を開いても落ちない（「この環境では使えません」）
+
+#### 共通
+- [ ] テストキー → 本番キーに切り替えた環境で、テストの `stripe_customer_id` が残っていてもエラーにならず、本番で作り直される
+- [ ] 既存の決済（保存カード無し）のテストチェックリスト（HANDOFF.md「同じ画面で払う」の項）が従来どおり通る（回帰）
+- [ ] スマホ（375px）でカード一覧・モーダルが横にはみ出さない
+- [ ] Stripe ダッシュボードで取引先共有の Customer を削除した後: 予約画面に「保存済み」が出ず（ログに「Customer が Stripe に見つかりません」）、予約時決済・デポジットは新しいカードで払える（PI は Customer 無しで作り直し）。チェックアウト日決済は予約ごとの Customer が作られて登録でき、台帳の `stripe_customer_id` がその Customer になる。マイページの「カードを追加する」は Customer を作り直して登録できる
+- [ ] 会員の Customer を Stripe で削除した後: `/booking/hold` で保存カードが出ず、新しいカードで払える。`/account/cards` は「登録されているカードはありません」で落ちない
+- [ ] DB（migration 20261007022727 適用後）: 施設スタッフ（authenticated）のセッションで `rms_partners` の `stripe_customer_id` / `stripe_livemode` / `stripe_customer_created_at` を UPDATE すると `rms_partners_stripe_customer_readonly`（42501）で拒まれる。他の列（note 等）の更新・管理画面の保存は従来どおりできる。service_role（autumn-book のサーバ）からのカード登録では列が入る
+- [ ] 取消から24時間を過ぎても「カードへキャンセル料を請求する途中」のまま残っている予約は、保存カードの削除を止めない
+
+
+## 予約時決済の事務手数料（取消時に返金しない率）＋デポジット不足分の請求（2026-10-07・v0.101.0）
 - ユーザー決定: 予約時にオンライン決済（全額・取引先のデポジットを含む）で払った予約を取り消したとき、施設の率（既定 5%）は、キャンセル料の期間に関係なく「事務手数料」として返金しない。返金しない額は **キャンセル料・予約時決済の割引額・事務手数料の大きい方**（足し合わせない）。率は施設ごとに1つ・3.6%（Stripe の決済手数料）以下と 0% は保存不可・上限 20%。チェックアウト日決済（未請求）は対象外
-- DB: autumn-shared `20261007010002_book_cancel_admin_fee`（`book.payment_settings.cancel_admin_fee_percent`・`book.direct_payments.cancel_admin_fee_percent / cancel_admin_fee_waived`（行ができたときにトリガーで率を写す）・`book.direct_payment_refund_due` に事務手数料・`book.direct_payment_set_admin_fee_waived`・`book.admin_payment_settings` に率・`book.admin_save_cancel_admin_fee`）。**適用は親（未適用）**
+- DB: autumn-shared `20261007010002_book_cancel_admin_fee`（`book.payment_settings.cancel_admin_fee_percent`・`book.direct_payments.cancel_admin_fee_percent / cancel_admin_fee_waived`（行ができたときにトリガーで率を写す）・`book.direct_payment_refund_due` に事務手数料・`book.direct_payment_set_admin_fee_waived`・`book.admin_payment_settings` に率・`book.admin_save_cancel_admin_fee`）。適用済み
 - 取引先予約は DB 変更なし: 予約確定時に `rms_partner_bookings.cancel_policy` に `admin_fee_percent` を写す（予約時決済・デポジットのときだけ）。事務手数料の免除は `cancel_policy.admin_fee_waived`。率の無い導入前の予約は事務手数料なし
 - 計算: `lib/cancel-admin-fee.ts`（`adminFeeOf`・`deductionOf`）。`partnerRefundOf`・`directRefundDueOf`・`directRefundPreviewOf` が使う。デポジットは充当 = min(max(キャンセル料, デポジット × 率), デポジット)
 - キャンセル料の「免除」は事務手数料の免除ではない。スタッフの取消フォーム（取引先: `PartnerCancelFeeFields`・公式: 予約詳細）に「事務手数料も免除する」（既定は差し引く）

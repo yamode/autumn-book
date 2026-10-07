@@ -46,3 +46,10 @@ export const PAYMENT_TEXTS_JA: PaymentTexts = {
 
 // Stripe.js に渡す表示言語（サイトの言語 → Stripe の locale）
 export type PaymentLocale = 'ja' | 'en' | 'zh-TW';
+
+// 予約画面の Payment Element で「保存済み」のカードが選ばれたとき（2026-10-07・保存カード）。
+// card は Stripe が渡すときだけ入る。親は自前の保存カード一覧（id → 有効期限）でも引けるようにしておく。
+export type SavedCardSelection = {
+  id: string;
+  card: { brand?: string; last4?: string; exp_month?: number; exp_year?: number } | null;
+};

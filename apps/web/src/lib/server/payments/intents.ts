@@ -7,6 +7,7 @@
 import {
   createPaymentIntent,
   createSetupIntent,
+  isStripeResourceMissing,
   retrievePaymentIntent,
   retrieveSetupIntent,
   type PaymentIntent,
@@ -32,16 +33,30 @@ type Common = {
   idempotencyKey: string;
 };
 
-export async function preparePaymentIntent(args: Common & { amount: number }): Promise<{ prepared: PreparedIntent; created: boolean; intent: PaymentIntent }> {
+// customer: 保存カードを選べるようにするとき（取引先共有・会員の Customer。2026-10-07）。null / 省略 = Customer 無し（従来どおり）。
+// 使い回すのは Customer が一致する Intent だけ（Customer の有無が変わったら作り直す）。
+export async function preparePaymentIntent(
+  args: Common & { amount: number; customer?: string | null }
+): Promise<{ prepared: PreparedIntent; created: boolean; intent: PaymentIntent }> {
   const amount = toStripeJpy(args.amount);
-  const expect = { app: args.metadata.app, purpose: args.metadata.purpose, refKey: args.refKey, refId: args.metadata[args.refKey], amount };
+  const customer = args.customer || null;
+  const expect = { app: args.metadata.app, purpose: args.metadata.purpose, refKey: args.refKey, refId: args.metadata[args.refKey], amount, customer };
   if (args.existingId?.startsWith('pi_')) {
     const cur = await retrievePaymentIntent(args.existingId).catch(() => null);
     if (cur?.client_secret && isReusableIntent(cur, expect)) {
       return { prepared: { mode: 'payment', intentId: cur.id, clientSecret: cur.client_secret, amount: cur.amount }, created: false, intent: cur };
     }
   }
-  const pi = await createPaymentIntent({ amount, description: args.description, metadata: args.metadata, idempotencyKey: args.idempotencyKey });
+  let pi: PaymentIntent;
+  try {
+    pi = await createPaymentIntent({ amount, description: args.description, metadata: args.metadata, idempotencyKey: args.idempotencyKey, customer });
+  } catch (e) {
+    // 保存カードの Customer が Stripe 側で消えていた（No such customer）→ Customer 無しで作り直す（新しいカードでは払える）。
+    // 冪等キーは別にする（同じキーで別のパラメータを送ると idempotency_error になるため）
+    if (!customer || !isStripeResourceMissing(e)) throw e;
+    console.warn('[payments] Customer が Stripe に見つからないため、Customer 無しで PaymentIntent を作ります:', customer);
+    pi = await createPaymentIntent({ amount, description: args.description, metadata: args.metadata, idempotencyKey: `${args.idempotencyKey}-nocus` });
+  }
   if (!pi.client_secret) throw new Error('決済の準備ができませんでした（client_secret がありません）');
   return { prepared: { mode: 'payment', intentId: pi.id, clientSecret: pi.client_secret, amount: pi.amount }, created: true, intent: pi };
 }

@@ -12,6 +12,8 @@
   import StripePayment from '$lib/components/payment/StripePayment.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
+  import { fetchPartnerCustomerSession } from '$lib/partner-saved-cards';
+  import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
   import { quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
@@ -190,8 +192,21 @@
       : null
   );
 
+  // 保存カード（2026-10-07・docs/saved-cards.md §6.4・§7.3）: 部品のマウントのたびに CustomerSession を取り直す（確認モードは取らない）。
+  // チェックアウト日決済で選んだ保存カードの有効期限が近ければ、確定前に警告して止める（サーバでも card_expiry で断る）
+  let savedCards = $state<SavedCardExp[]>([]);
+  let savedSel = $state<{ id: string; card: { exp_month?: number; exp_year?: number } | null } | null>(null);
+  async function loadSavedSession(): Promise<string | null> {
+    if (data.portal.preview) return null;
+    const r = await fetchPartnerCustomerSession(token);
+    savedCards = r.cards;
+    return r.clientSecret;
+  }
+  const savedTooSoon = $derived(payMode === 'setup' && quote.ok && selectedCardExpiresBefore(savedSel, savedCards, quote.checkOut));
+
   function validatePay(): string | null {
     if (!formEl) return '画面の準備ができていません。';
+    if (savedTooSoon) return SAVED_CARD_EXPIRY_WARNING;
     snapshot();
     if (!formEl.checkValidity()) {
       step = 'input';
@@ -654,8 +669,13 @@
                 onconfirmed={onPayConfirmed}
                 onerror={(m) => (payError = m)}
                 onbusychange={(b) => (paying = b)}
+                customerSession={loadSavedSession}
+                onsavedcardchange={(c) => (savedSel = c)}
               />
             {/key}
+            {#if savedTooSoon}
+              <p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{SAVED_CARD_EXPIRY_WARNING}</p>
+            {/if}
             {#if (paymentOption === 'online' || isDeposit) && data.adminFeePercent}
               <!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）: 選んだ時点で、予約前に知らせる -->
               <p class="rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2 text-sm text-amber-900">{adminFeeNotice(data.adminFeePercent, 'partner')}{isDeposit ? '（デポジットのご予約は、デポジットの額に対して）' : ''}</p>
@@ -834,7 +854,7 @@
       {:else if isStripe}
         <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
         {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}
-        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending)} class="primary mt-4 w-full">
+        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="primary mt-4 w-full">
           {paying ? (paymentOption === 'online' || paymentOption === 'deposit_online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
         </button>
         {#if pending}

@@ -137,6 +137,18 @@
 		return null;
 	}
 
+	// 保存カード（2026-10-07・docs/saved-cards.md §6.4）: 会員ならマイページで保存したカードを「保存済み」に出す。
+	// 部品のマウントのたびに取り直す（30 分で失効）。非会員・失敗は null（従来どおり新しいカードの入力だけ）
+	async function loadMemberSession(): Promise<string | null> {
+		if (!data.member) return null;
+		const fd = new FormData();
+		fd.set('action', 'customer_session');
+		const res = await fetch('/booking/pay', { method: 'POST', body: fd }).catch(() => null);
+		if (!res?.ok) return null;
+		const j = (await res.json().catch(() => null)) as { clientSecret?: string | null } | null;
+		return j?.clientSecret ?? null;
+	}
+
 	async function preparePayment(): Promise<PaymentPrepareResult> {
 		if (!formEl) throw new Error(m.pay_el_not_ready());
 		const fd = new FormData(formEl);
@@ -565,6 +577,7 @@
 								onconfirmed={onPaid}
 								onbusychange={(b) => (paying = b)}
 								onerror={() => (payMessage = '')}
+								customerSession={loadMemberSession}
 							/>
 							<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>
 						</section>

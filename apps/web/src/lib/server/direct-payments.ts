@@ -25,6 +25,7 @@ import {
 } from '$lib/server/stripe';
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent } from '$lib/server/payments/intents';
+import { createSavedCardSession, listSavedCards, resolveMemberCustomer } from '$lib/server/payments/saved-cards';
 import { checkPaymentIntent, isPaymentIntentId } from '$lib/server/payments/verify';
 import type { GuestInfo, RatePlan } from '$lib/types';
 import { addDays } from '@autumn-book/core';
@@ -97,6 +98,29 @@ export async function directPaymentsReady(): Promise<boolean> {
 }
 
 export const directPublishableKey = () => stripePublishableKey();
+
+// 会員の保存カードの Customer（読むだけ・無い／読めなければ null）。会員ログインが Supabase のときだけ
+async function memberSavedCardCustomer(userId: string): Promise<string | null> {
+  const c = partnerServiceClient();
+  if (!c || !MEMBER_SUPABASE) return null;
+  return resolveMemberCustomer(c, { userId, name: null, email: null }, { create: false }).catch(() => null);
+}
+
+/**
+ * 予約確認（/booking/hold）の決済部品に会員の保存カードを出す CustomerSession（2026-10-07・§6.4）。
+ * 会員の Customer が無い・保存カードが無い・失敗のときは null（従来どおり新しいカードの入力だけ）。
+ */
+export async function directMemberCustomerSession(userId: string): Promise<string | null> {
+  const customer = await memberSavedCardCustomer(userId);
+  if (!customer) return null;
+  try {
+    if (!(await listSavedCards(customer)).length) return null;
+    return (await createSavedCardSession(customer)).clientSecret;
+  } catch (e) {
+    console.warn('[direct-payments] 保存カードを出せません:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
 
 // 画面の明細用の入湯税（本人の仮押さえのときだけ・取れなければ 0）
 export async function holdBathTax(holdId: string, sessionId: string, memberUserId: string | null): Promise<number> {
@@ -220,8 +244,11 @@ export async function prepareDirectPayment(args: {
     purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
     refs: { [DIRECT_REF_KEY]: row.hold_id, facility_id: row.facility_id, checkin: args.checkin }
   });
+  // 保存カード（2026-10-07・docs/saved-cards.md §7.6）: 会員の Customer があれば Intent に付ける（予約確認の「保存済み」から選べる）
+  const customer = args.memberUserId ? await memberSavedCardCustomer(args.memberUserId) : null;
   const { prepared } = await preparePaymentIntent({
     existingId: row.payment_intent_id,
+    customer,
     amount: row.amount,
     description: `${args.facilityName} ご宿泊（${args.checkin} チェックイン・公式サイト予約）`,
     metadata,

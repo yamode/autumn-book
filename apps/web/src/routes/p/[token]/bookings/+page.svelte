@@ -6,6 +6,8 @@
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
+  import { fetchPartnerCustomerSession } from '$lib/partner-saved-cards';
+  import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; cancelled?: string } } = $props();
@@ -77,7 +79,19 @@
 
   function openPay(b: Row) {
     payTarget = b;
+    savedSel = null;
   }
+  // 保存カード（2026-10-07・docs/saved-cards.md §6.4）: モーダルを開くたびに、その予約で使える取引先共有の保存カードの CustomerSession を取る。
+  // チェックアウト日決済で選んだ保存カードの有効期限が近ければ、確定前に止める（サーバでも card_expiry で断る）
+  let savedCards = $state<SavedCardExp[]>([]);
+  let savedSel = $state<{ id: string; card: { exp_month?: number; exp_year?: number } | null } | null>(null);
+  async function loadSavedSession(): Promise<string | null> {
+    if (data.portal.preview || !payTarget) return null;
+    const r = await fetchPartnerCustomerSession(token, payTarget.id);
+    savedCards = r.cards;
+    return r.clientSecret;
+  }
+  const savedTooSoon = $derived(payTarget?.payMode === 'setup' && selectedCardExpiresBefore(savedSel, savedCards, payTarget.checkOut));
   function closePay() {
     if (payBusy) return;
     payTarget = null;
@@ -403,9 +417,15 @@
           prepare={preparePay}
           onconfirmed={onPayConfirmed}
           onbusychange={(v) => (payBusy = v)}
+          customerSession={loadSavedSession}
+          onsavedcardchange={(c) => (savedSel = c)}
+          validate={() => (savedTooSoon ? SAVED_CARD_EXPIRY_WARNING : null)}
         />
       </div>
-      <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
+      {#if savedTooSoon}
+        <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{SAVED_CARD_EXPIRY_WARNING}</p>
+      {/if}
+      <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey || savedTooSoon} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
         {payBusy ? '確認しています…' : payLabel(b)}
       </button>
       <button type="button" onclick={closePay} disabled={payBusy} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">閉じる</button>

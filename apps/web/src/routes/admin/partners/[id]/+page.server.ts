@@ -6,6 +6,7 @@
 // 与信（2026-10-07・Phase 3a）: 紐づけ先が旅行会社のときだけ。表示は閲覧権限、設定の保存（saveAgencyCredit）と
 // 超過時の挙動（setCreditOverAction）は admin のみ。
 // デポジット（2026-10-07・Phase 3b）: 超過時の挙動 deposit の額の決め方・残額の精算先（setCreditDeposit・admin のみ）。
+import { partnerSavedCardSummary } from '$lib/server/payments/saved-cards';
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import {
@@ -212,6 +213,8 @@ export const load: PageServerLoad = async (event) => {
 
 	// 取消フォームに出すキャンセル料の見込み（確定済み・未チェックインの予約）
 	const cancelPreviews = await previewPartnerCancels(scope.db, partner.facility_id, bookings).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
+	// 取引先のお支払いカード（保存カード・2026-10-07）の枚数と最終登録（読むだけ・問い合わせ対応用・N10）。読めなければ出さない
+	const savedCards = onlinePaymentReady() ? await partnerSavedCardSummary(scope.db, partner).catch(() => null) : null;
 	return {
 		facilityName: scope.facilityName,
 		facilitySlugHint: scope.bookFacilityId === 'f-oga' ? 'oga' : 'yamado',
@@ -311,6 +314,7 @@ export const load: PageServerLoad = async (event) => {
 		stripeSecretReady: onlinePaymentReady(),
 		stripePublishableIssue: onlinePaymentReady() && publishableKeyProblem() ? describePublishableKeyIssue(publishableKeyProblem()!) : null,
 		stripeTestMode: isStripeTestMode(),
+		savedCards,
 		stripeKeyKind: stripeKeyKind(),
 		stripeKeyHint: stripeKeyKind() === 'invalid' ? stripeKeyHint() : null,
 		bookings: bookings.map((b) => ({

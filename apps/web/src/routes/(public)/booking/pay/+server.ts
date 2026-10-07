@@ -3,6 +3,8 @@
 //   action=prepare … 予約入力フォーム（FormData）→ 検証 → 仮押さえにお客様情報を結び付けて請求額を DB で決め、
 //                    PaymentIntent を用意して client_secret を返す（lib/server/direct-payments.ts）
 //   action=confirm … ブラウザで confirmPayment が済んだ連絡（intentId）→ Stripe から Intent を取り直して検証 → 予約確定
+//   action=customer_session … 会員の保存カード（2026-10-07・docs/saved-cards.md §6.4）を決済部品に出す CustomerSession
+//                    → { clientSecret | null }（非会員・保存カードなし・使えない環境は null。Intent にも同じ会員の Customer を付ける）
 //
 // 3Dセキュア等でリダイレクトした場合の戻りは /booking/pay/return（GET）。ブラウザが閉じられた場合は Webhook が確定する。
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -19,7 +21,14 @@ import {
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
 import { applyPlanAnswers } from '$lib/server/booking-questions';
-import { confirmDirectIntent, DirectPaymentError, directPaymentsReady, prepareDirectPayment, viewerIsMember } from '$lib/server/direct-payments';
+import {
+	confirmDirectIntent,
+	DirectPaymentError,
+	directMemberCustomerSession,
+	directPaymentsReady,
+	prepareDirectPayment,
+	viewerIsMember
+} from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
 import { payOptionsFor } from '$lib/direct-payment';
 import { finishDirectBooking, lateMessage } from '$lib/server/direct-booking-finish';
@@ -37,6 +46,11 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 	const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 
 	try {
+		if (action === 'customer_session') {
+			const clientSecret = memberUserId && (await directPaymentsReady()) ? await directMemberCustomerSession(memberUserId) : null;
+			return json({ ok: true, clientSecret }, { headers: noStore });
+		}
+
 		if (action === 'prepare') {
 			if (!(await directPaymentsReady())) return bad('オンライン決済は現在ご利用いただけません。現地払いをお選びください。', 503);
 			const parsed = parseGuestForm(form);

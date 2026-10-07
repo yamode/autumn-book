@@ -20,7 +20,15 @@
     StripePaymentElement
   } from '@stripe/stripe-js';
   import { stripeAppearance, type PaymentTheme } from './appearance';
-  import { PAYMENT_TEXTS_JA, type PaymentConfirmed, type PaymentLocale, type PaymentMode, type PaymentPrepareResult, type PaymentTexts } from './types';
+  import {
+    PAYMENT_TEXTS_JA,
+    type PaymentConfirmed,
+    type PaymentLocale,
+    type PaymentMode,
+    type PaymentPrepareResult,
+    type PaymentTexts,
+    type SavedCardSelection
+  } from './types';
 
   type Props = {
     // 公開可能キー（pk_）。無ければ入力欄を出さず、unavailableText を出す
@@ -48,6 +56,14 @@
     onbusychange?: (busy: boolean) => void;
     // カード入力が埋まったか（ボタンの有効化などに使う）
     oncompletechange?: (complete: boolean) => void;
+    // 保存カード（2026-10-07・docs/saved-cards.md）: CustomerSession の client_secret を取る関数。マウントのたびに呼ぶ
+    // （30 分で失効・1つの Elements に1つ。{#key} の再マウントでも取り直す）。null・失敗なら保存カード無しで従来どおり出す。
+    // ⚠ 親は Intent にも同じ Customer を付けること（付けないと保存カードでの確定に失敗する）
+    customerSession?: () => Promise<string | null>;
+    // カード登録（mode='setup'）で、登録したカードを予約画面の「保存済み」に出せるようにする（マイページの登録・保存の同意文に基づく）
+    allowRedisplay?: 'always' | null;
+    // 「保存済み」のカードが選ばれた／外れたとき（有効期限の事前警告に使う）。新しいカードの入力中は null
+    onsavedcardchange?: (card: SavedCardSelection | null) => void;
   };
 
   let {
@@ -67,7 +83,10 @@
     onconfirmed,
     onerror,
     onbusychange,
-    oncompletechange
+    oncompletechange,
+    customerSession,
+    allowRedisplay = null,
+    onsavedcardchange
   }: Props = $props();
 
   const t = $derived({ ...PAYMENT_TEXTS_JA, ...texts });
@@ -114,8 +133,11 @@
         if (cancelled) return;
         if (!s) throw new Error('Stripe.js を読み込めませんでした');
         stripe = s;
+        // 保存カード: CustomerSession（取れなければ保存カード無しで出す。Stripe docs: client secret は省略してよい）
+        const customerSessionClientSecret = customerSession ? ((await customerSession().catch(() => null)) ?? undefined) : undefined;
+        if (cancelled) return;
         // サーバの Intent（payment_method_types=['card']）とそろえる。Apple Pay / Google Pay はカード扱い
-        const common = { currency, paymentMethodTypes: ['card'], appearance: stripeAppearance(theme), locale };
+        const common = { currency, paymentMethodTypes: ['card'], appearance: stripeAppearance(theme), locale, customerSessionClientSecret };
         const el =
           mode === 'payment'
             ? s.elements({ ...common, mode: 'payment', amount: Math.max(50, Math.round(amount)) })
@@ -133,7 +155,12 @@
           terms: { card: 'never' },
           readOnly: disabled
         });
-        pe.on('change', (e) => oncompletechange?.(e.complete));
+        pe.on('change', (e) => {
+          oncompletechange?.(e.complete);
+          // 保存カードが選ばれていれば id（と取れればカードの有効期限）。新しいカードの入力中は null
+          const sel = e.value?.payment_method as { id: string; card?: SavedCardSelection['card'] } | undefined;
+          onsavedcardchange?.(sel?.id ? { id: sel.id, card: sel.card ?? null } : null);
+        });
         pe.on('loaderror', (e) => {
           phase = 'error';
           loadError = e.error?.message ?? t.loadFailed;
@@ -230,6 +257,9 @@
       }
       // ③ Stripe で確定（3Dセキュアはモーダル。カードは通常リダイレクトしない）
       const params = { elements, clientSecret: prepared.clientSecret, confirmParams: { return_url: prepared.returnUrl }, redirect: 'if_required' as const };
+      // マイページのカード登録: 自前の保存の同意文に基づき、予約画面の「保存済み」に出せるカードにする
+      const setupParams =
+        allowRedisplay === 'always' ? { ...params, confirmParams: { ...params.confirmParams, payment_method_data: { allow_redisplay: 'always' as const } } } : params;
       let intentId: string;
       let status: string;
       if (mode === 'payment') {
@@ -241,7 +271,7 @@
         intentId = paymentIntent.id;
         status = paymentIntent.status;
       } else {
-        const { error, setupIntent } = await stripe.confirmSetup(params);
+        const { error, setupIntent } = await stripe.confirmSetup(setupParams);
         if (error || !setupIntent) {
           fail(error ? friendly(error) : t.setupFailed, ev);
           return false;
