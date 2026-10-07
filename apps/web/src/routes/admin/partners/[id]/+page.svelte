@@ -1714,7 +1714,7 @@
             <tbody>
               {#each shownBookings as b (b.id)}
                 <tr class="border-t border-stone-100 align-top">
-                  <td class="py-2 pr-3 font-mono text-xs">{b.code}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
+                  <td class="py-2 pr-3 font-mono text-xs">{b.code}{#if b.attachmentCount}<span class="ml-1 font-sans whitespace-nowrap" title="添付ファイル（予約管理の詳細で見る・追加・削除）">📎 {b.attachmentCount}</span>{/if}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
                   <td class="py-2 pr-3">
                     {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-1 rounded-full bg-amber-100 px-1.5 py-px text-[11px] whitespace-nowrap text-amber-800" title={b.creditOverText ?? ''}>受付枠超過</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>

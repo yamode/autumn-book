@@ -18,6 +18,7 @@
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
+  import PartnerAttachments, { type AttachmentItem } from '$lib/components/PartnerAttachments.svelte';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string } } = $props();
@@ -185,6 +186,19 @@
   let releasing = $state(false);
   // 期限の1分前を切った仮押さえは使わない（確定前に切れて返金になるため）
   const pendingUsable = (p: Pending) => !p.expiresAt || new Date(p.expiresAt).getTime() > Date.now() + 60_000;
+
+  // ---- 添付ファイル（2026-10-07・PARTNER_BOOKING_ATTACHMENTS が on のときだけ）----
+  // 1件ずつ仮置きし（/book/attachments）、id を hidden の attachment_ids で確定に渡す。DB 関数が予約に結ぶ。
+  // 仮押さえ（オンライン決済）を解放すると、その予約に結ばれた添付は引き継がない（§11-N5）ので、一覧を空にして上げ直してもらう。
+  // 開いた時点で、このログインIDの仮置き（24時間以内・未束縛）があれば最初から欄に出す（そのまま使う・消すができる）
+  let attachments = $state<AttachmentItem[]>(init.attachments?.staged ?? []);
+  let attachmentsReset = $state('');
+  const RESET_NOTE = 'お部屋の確保を解除したため、添付ファイルは引き継がれません。お手数ですが、もう一度お付けください。';
+  function resetAttachmentsAfterRelease() {
+    if (!attachments.length) return;
+    attachments = [];
+    attachmentsReset = RESET_NOTE;
+  }
   // カード登録の同意文（確定前の見本。予約を作った後はサーバが作った文面＝記録に残る文面を出す）
   const consentPreview = $derived(
     quote.ok && paymentOption === 'online_checkin'
@@ -220,7 +234,15 @@
   async function preparePay(): Promise<PaymentPrepareResult> {
     if (pending && pending.mode === payMode && pendingUsable(pending)) return { clientSecret: pending.clientSecret, returnUrl: pending.returnUrl };
     // 期限が迫った仮押さえはやめて、取り直す
-    if (pending) await releasePending(false);
+    if (pending) {
+      const hadAttachments = attachments.length > 0;
+      await releasePending(false);
+      // 解放した予約に結ばれた添付は新しい予約へ引き継がない。黙って添付なしで確定しないよう、入力へ戻して上げ直してもらう
+      if (hadAttachments) {
+        step = 'input';
+        throw new Error(RESET_NOTE);
+      }
+    }
     if (!formEl) throw new Error('画面の準備ができていません。');
     const fd = new FormData(formEl);
     fd.set('payment_option', paymentOption);
@@ -274,6 +296,7 @@
       }).catch(() => null);
       pending = null;
       payError = '';
+      resetAttachmentsAfterRelease();
       if (toInput) {
         step = 'input';
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -415,6 +438,8 @@
     <input type="hidden" name="plan_code" value={data.target.planCode} />
     <input type="hidden" name="plan_name" value={data.target.planName} />
     <input type="hidden" name="room_count" value={roomCount} />
+    <!-- 仮置きした添付ファイルの id（確定時に DB 関数が予約へ結ぶ） -->
+    <input type="hidden" name="attachment_ids" value={attachments.map((a) => a.id).join(',')} />
 
     <div class="grid gap-5">
       <!-- 宿泊条件 -->
@@ -568,6 +593,24 @@
         </div>
       </section>
 
+      {#if data.attachments}
+        <!-- 添付ファイル（任意・2026-10-07）: 名簿・行程表など。1件ずつ仮置きし、予約の確定で予約に結ぶ。宿（PMS）の予約詳細にも出る -->
+        <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
+          <h3 class="card-title">添付ファイル（任意）</h3>
+          <p class="-mt-2 mb-3 text-sm leading-6 text-stone-500">名簿・行程表・配車表などをお付けください。宿の予約管理（PMS）にも同じファイルが届きます。予約の後でも予約一覧から追加・削除できます。</p>
+          {#if attachmentsReset}<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{attachmentsReset}</p>{/if}
+          <PartnerAttachments
+            bind:items={attachments}
+            uploadUrl={data.portal.preview ? null : `/p/${token}/book/attachments`}
+            accept={data.attachments.accept}
+            hint={data.attachments.hint}
+            note={data.portal.preview ? '管理者の確認モードのため、添付ファイルは追加できません。' : null}
+            showUploader={false}
+            onchange={() => (attachmentsReset = '')}
+          />
+        </section>
+      {/if}
+
       <!-- 確認 -->
       {#if step === 'confirm'}
         <section class="card">
@@ -600,6 +643,7 @@
               {#if v}<dt>{o.fullLabel}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
             {/each}
             {#if values.notes}<dt>{data.standardFields.notes.label}</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
+            {#if attachments.length}<dt>添付ファイル</dt><dd>{attachments.map((a) => `${a.fileName}（${a.size}）`).join('、')}</dd>{/if}
             {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}{#if isDeposit && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">デポジット {yen(deposit.amount)} を予約時にお支払い・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}</dd>{/if}
           </dl>
           {#if quote.ok}

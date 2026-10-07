@@ -7,6 +7,7 @@
 // どの関数も partner.id で絞り込み、別の取引先のファイルには触れない。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { PartnerStoreError, type PartnerRow } from './store';
+import { isInlineAttachment } from '$lib/partner-attachments';
 
 export const PARTNER_DOCUMENT_BUCKET = 'partner-documents';
 export const MAX_PARTNER_DOCUMENT_BYTES = 20 * 1024 * 1024; // 20MB（バケットの file_size_limit と同じ）
@@ -201,11 +202,11 @@ export async function removeAllPartnerDocumentFiles(db: SupabaseClient, partnerI
 const encodeRfc5987 = (s: string) =>
   encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
 
-// ダウンロード応答（取引先ページ・管理画面で共通）。日本語のファイル名は RFC 5987 で渡す。
-export function documentResponse(doc: PartnerDocumentRow, body: Blob, extraHeaders: Record<string, string> = {}): Response {
+// ダウンロード応答（取引先ページ・管理画面で共通。取引先予約の添付ファイルでも使う）。日本語のファイル名は RFC 5987 で渡す。
+export function documentResponse(doc: Pick<PartnerDocumentRow, 'file_name' | 'mime_type'>, body: Blob, extraHeaders: Record<string, string> = {}): Response {
   const ascii = doc.file_name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
-  // 画像・PDF はブラウザで開く。それ以外は保存させる。
-  const inline = /^(image\/|application\/pdf$)/.test(doc.mime_type ?? '');
+  // PDF と表示できる画像はブラウザで開く。それ以外（HEIC・Office 等）は保存させる（2026-10-07: HEIC を inline から外した）
+  const inline = isInlineAttachment(doc.mime_type);
   return new Response(body, {
     headers: {
       ...extraHeaders,

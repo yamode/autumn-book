@@ -21,6 +21,14 @@ import { isCreditOver } from '$lib/partner-credit';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { stripePublishableKey } from '$lib/server/stripe';
+import {
+  bookingAttachmentPolicy,
+  listBookingAttachments,
+  partnerBookingAttachmentsEnabled,
+  type BookingAttachmentRow
+} from '$lib/server/partners/booking-attachments';
+import { portalAttachmentView } from '$lib/server/partners/portal-attachments';
+import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
 
 // 予約画面・支払の再開から戻ったときに出す結果（ブラウザが確定の連絡を済ませた後。表示だけに使う）
 const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'unpaid', 'refunded_late', 'card_saved', 'card_updated', 'card_late', 'card_expiry']);
@@ -53,7 +61,25 @@ export const load = async (event) => {
     partner.facility_id,
     rows.filter((b) => b.status === 'confirmed' && canPartnerCancel(b.check_in_date, s))
   ).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
+  // 添付ファイル（2026-10-07・PARTNER_BOOKING_ATTACHMENTS が on のときだけ）。一覧の全予約ぶんを1回で引く。読めなくても一覧は出す
+  const attEnabled = partnerBookingAttachmentsEnabled();
+  const attMap = attEnabled
+    ? await listBookingAttachments(db, partner.id, rows.map((b) => b.id)).catch(() => new Map<string, BookingAttachmentRow[]>())
+    : new Map<string, BookingAttachmentRow[]>();
+  const attachmentsOf = (b: (typeof rows)[number]) => {
+    if (!attEnabled) return null;
+    const policy = bookingAttachmentPolicy(b);
+    const target = { bookingId: b.id };
+    return {
+      items: (attMap.get(b.id) ?? []).map((r) => portalAttachmentView(event.params.token, target, r, session, policy.canDelete)),
+      // 確認モードは見るだけ（ドロップ枠を出さない。API も 403）
+      canAdd: policy.canAdd && !session.preview,
+      note: session.preview ? '管理者の確認モードのため、添付ファイルは追加・削除できません。' : policy.note
+    };
+  };
   return {
+    // 添付ファイルの欄の設定（off なら null・画面に出さない）
+    attachmentConfig: attEnabled ? { accept: PARTNER_ATTACHMENT_ACCEPT, hint: PARTNER_ATTACHMENT_HINT } : null,
     portal: portalHeader(partner, session),
     done: q.get('done'),
     payment,
@@ -120,6 +146,8 @@ export const load = async (event) => {
       cancelledAt: b.cancelled_at,
       cancelledBy: b.cancelled_by,
       refundAmount: b.refund_amount ?? null,
+      // 添付ファイル（2026-10-07）: 一覧・追加できるか・追加できない理由。機能が off なら null
+      attachments: attachmentsOf(b),
       cancelPreview: previews[b.id] ?? null,
       // 取消済みのキャンセル料（精算の方法と一緒に出す）
       cancelFee:

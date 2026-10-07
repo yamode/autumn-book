@@ -1,6 +1,7 @@
 // 取引先の予約画面（/p/[token]/book）のフォームを予約の入力に直す。
 // 後払い（form action）とオンライン決済（/book/reserve の API）で同じフォームを送るので、解析を1か所にまとめる。
 import { normalizeBooker } from '$lib/partner-booking';
+import { parseAttachmentIds } from '$lib/partner-attachments';
 import type { CreateBookingInput } from './booking';
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
@@ -49,6 +50,8 @@ export function parseBookingForm(fd: FormData): CreateBookingInput {
     notes: str(fd, 'notes'),
     answers,
     genders,
-    paymentOption: str(fd, 'payment_option')
+    paymentOption: str(fd, 'payment_option'),
+    // 予約入力で仮置きした添付ファイルの id（カンマ区切り・2026-10-07）。結ぶかは DB 関数が持ち主で確かめる
+    attachmentIds: parseAttachmentIds(str(fd, 'attachment_ids'))
   };
 }

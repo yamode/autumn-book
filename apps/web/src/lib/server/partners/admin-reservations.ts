@@ -3,7 +3,7 @@
 // rms_partner_* は service_role 専用なので、必ず staffPartnerScope（ログイン中スタッフの施設アクセス確認）を
 // 通してから触る。施設は管理画面で選んでいる施設（ab_fac）に限る＝台帳の facility_id がそれと一致する予約だけ。
 // 取消・再請求は /admin/partners/[id] と同じ関数（cancelPartnerBooking / retryPartnerCharge）を使う。
-import type { RequestEvent } from '@sveltejs/kit';
+import { json, type RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readBookingExtras } from './booking-extras';
 import { isPartnerBilledBooking } from '$lib/partner-invoice';
@@ -24,6 +24,14 @@ import {
 	type StaffFeeMode
 } from './booking';
 import { staffPartnerScope, StaffScopeError } from './staff';
+import {
+	attachmentView,
+	bookingAttachmentPolicy,
+	listBookingAttachments,
+	partnerBookingAttachmentsEnabled,
+	type AttachmentView
+} from './booking-attachments';
+import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
 import { PartnerStoreError, requireStaffPartner } from './store';
 
 /** 予約管理の詳細に出す取引先予約の内容（宿泊者のメールは管理者のときだけ入れる） */
@@ -78,6 +86,8 @@ export type PartnerLedgerView = {
 	refundAmount: number | null;
 	invoiceMonth: string;
 	hasCard: boolean;
+	/** 添付ファイル（2026-10-07・PARTNER_BOOKING_ATTACHMENTS が on のときだけ。off・読めないときは null） */
+	attachments: { items: AttachmentView[]; canAdd: boolean; note: string | null; accept: string; hint: string } | null;
 };
 
 export type PartnerLedgerResult = { ledger: PartnerLedgerView | null; error: string | null };
@@ -149,8 +159,60 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 				: null,
 		refundAmount: b.refund_amount ?? null,
 		invoiceMonth: `${Number(b.check_out_date.slice(0, 4))}年${Number(b.check_out_date.slice(5, 7))}月`,
-		hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed')
+		hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed'),
+		attachments: null
 	};
+}
+
+/** 予約詳細の添付ファイル欄（スタッフ: どのファイルも消せる。予約の状態の制限は取引先ページと同じ） */
+async function ledgerAttachments(db: SupabaseClient, reservationCode: string, b: PartnerBookingRow): Promise<PartnerLedgerView['attachments']> {
+	if (!partnerBookingAttachmentsEnabled() || !b.partner_id) return null;
+	try {
+		const policy = bookingAttachmentPolicy(b);
+		const rows = (await listBookingAttachments(db, b.partner_id, [b.id])).get(b.id) ?? [];
+		const base = `/admin/reservations/${encodeURIComponent(reservationCode)}/attachments`;
+		return {
+			items: rows.map((r) => attachmentView(r, { href: `${base}/${r.id}`, canDelete: policy.canDelete, audience: 'staff' })),
+			canAdd: policy.canAdd,
+			note: policy.note,
+			accept: PARTNER_ATTACHMENT_ACCEPT,
+			hint: PARTNER_ATTACHMENT_HINT
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * 添付ファイルの操作（追加・削除・ダウンロード・PMS への通知）の共通: 施設・台帳・取引先の所属を確かめる。
+ * 閲覧の権限（施設アクセスのあるスタッフ）で通す: 名簿・行程表などの現場の資料で、金額・資格情報を扱わないため
+ * （取消・再請求の partnerEditTarget＝管理者のみ、より広い）。
+ */
+export async function partnerAttachmentTarget(event: RequestEvent, reservationCode: string) {
+	if (!partnerBookingAttachmentsEnabled()) throw new PartnerStoreError('ページが見つかりません。', 404);
+	const code = partnerBookingCodeOf(reservationCode);
+	if (!code) throw new PartnerStoreError('取引先予約ではありません。', 400);
+	const scope = await staffPartnerScope(event, 'view');
+	const row = await findLedgerRow(scope.db, scope.facilityId, code);
+	if (!row?.partner_id) {
+		throw new PartnerStoreError(`いま選んでいる施設（${scope.facilityName}）の取引先予約に ${code} が見つかりません。`, 404);
+	}
+	const partner = await requireStaffPartner(scope.db, scope.facilityId, row.partner_id);
+	return {
+		db: scope.db,
+		partner,
+		row,
+		policy: bookingAttachmentPolicy(row),
+		staff: { userId: scope.userId, label: event.locals.user?.name || 'スタッフ' }
+	};
+}
+
+/** 添付ファイルの API（管理画面）の失敗応答（権限・台帳の理由はそのまま JSON で返す） */
+export function partnerAttachmentApiError(e: unknown): Response {
+	if (e instanceof StaffScopeError || e instanceof PartnerStoreError) {
+		return json({ ok: false, message: e.message }, { status: e.status >= 400 && e.status < 600 ? e.status : 400, headers: { 'cache-control': 'private, no-store' } });
+	}
+	throw e;
 }
 
 /**
@@ -174,7 +236,9 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 		// デポジット（Phase 3b）は残額の精算先（予約時のスナップショット）で判定する
 		const billed = isPartnerBilledBooking(row, partner?.booking_settings ?? { customPaymentOptions: [] });
 		const preview = row.checkedIn ? null : await previewPartnerCancel(scope.db, scope.facilityId, row).catch(() => null);
-		return { ledger: toView(row, event.locals.user?.role === 'admin', billed, preview), error: null };
+		const view = toView(row, event.locals.user?.role === 'admin', billed, preview);
+		view.attachments = await ledgerAttachments(scope.db, reservationCode, row);
+		return { ledger: view, error: null };
 	} catch (e) {
 		if (e instanceof StaffScopeError || e instanceof PartnerStoreError) return { ledger: null, error: e.message };
 		return { ledger: null, error: e instanceof Error ? e.message : String(e) };

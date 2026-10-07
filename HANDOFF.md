@@ -1,10 +1,59 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-07（マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+> **最終更新**: 2026-10-07（取引先予約の添付ファイル・v0.103.0・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+
+## 取引先予約の添付ファイル（2026-10-07・v0.103.0）
+- 設計: `docs/partner-booking-attachments.md`（§11 N1〜N11 はすべて推奨案で確定・実装で決めたことは §11.1）。取引先ページの予約に添付ファイルを複数（ドラッグ＆ドロップ／選択）。予約入力でも予約一覧からでも。PMS の予約詳細の添付に連動し、添付だけの更新も PMS の新着通知（変更）に出る
+- 有効化: 環境変数 `PARTNER_BOOKING_ATTACHMENTS`（既定 false・`wrangler.jsonc` の vars）。**PMS の対応をデプロイしてから true にする**
+- DB（autumn-shared・**未適用**）: `20261007022950_rms_partner_booking_attachments`（台帳 `public.rms_partner_booking_attachments`・`rms_partner_bookings.attachments_updated_at / attachments_notified_at`・電文の `attachments` / `attachment_change`・event `attachments`・受信箱の CHECK・`rms_partner_create_booking` の `attachment_ids` の束縛・`rms_partner_emit_attachments_event`・`rms_partner_attachment_orphans`）、`20261007022953_pms_reservation_attachments_source_key`（`pms.reservation_attachments.source_key`＋部分一意索引）
+- 実体は PMS と共用のバケット `reservation-attachments` の `partner-booking/<facility>/<partner>/<uuid>.<ext>`（バケットの `file_size_limit` / `allowed_mime_types` は**付けない**＝PMS の添付が止まる）。種類（pdf・画像・Word・Excel・PowerPoint・csv・txt。zip・html・svg・マクロ付き不可）・1ファイル 20MB・1予約 10件／50MB は Book のサーバで検査（`lib/partner-attachments.ts`）
+- Book: `lib/server/partners/booking-attachments.ts`（台帳・Storage・通知・掃除）、`portal-attachments.ts`（取引先ページの API の入口）、部品 `lib/components/PartnerAttachments.svelte`。API: `/p/[token]/book/attachments`（仮置き）・`/p/[token]/bookings/[id]/attachments`（追加・削除・ダウンロード・`notify`）・`/admin/reservations/[code]/attachments`（スタッフ）。予約入力は仮置き → 確定時に RPC が束縛（電文の前）。予約一覧・管理画面は追加・削除のあとに1回 `notify` → `attachments` 電文。取りこぼしは `/api/cron/partner-charge`（毎時）が知らせ直し、古い仮置き（24h）・PMS へ送らずに終わった予約の添付（7日）を掃除（条件を付けて行を消し、消せた行の実体だけを消す＝確定直後の束縛と競合しない）。予約入力を開くと、自分の仮置き（24h 以内）が最初から欄に出る。アップロードは content-length が 21MB 超なら本文を読まずに 413
+- 権限: 取引先は自分の分・マスターは取引先が上げた全件（宿が付けたものは不可）。スタッフ（閲覧権限）は全件。確認モードは見るだけ。取消済みは追加不可・削除可、期限切れ・チェックアウトから 90 日超は追加・削除とも不可
+- PMS（autumn-pms・**未コミット**）: `direct-booking/partner-attachments.ts`（差分の純関数）・`import.ts`（`attachments` 分岐・`expandDirectBooking` の末尾で写しを同期）・`arrivals.ts`（新着通知「変更」・文面・確認完了で外す）・`attachments.ts`（写しは削除不可）・予約詳細のバッジ・未知の event は展開せず error に。PMS v4.732.0（`sveltekit/package.json`＋`release-notes.json`）
+- メール: 予約確認（取引先・宿）に「添付ファイル: …」の行（ファイルは付けない）。添付の追加・削除ではメールを出さない（N7）
+- **デプロイ順**: ① autumn-shared の migration 2本を適用 → ② autumn-pms をデプロイ → ③ autumn-book を `PARTNER_BOOKING_ATTACHMENTS=false` でデプロイ → 本番で PMS の対応を確認 → true に
+
+### テストチェックリスト（取引先予約の添付ファイル）
+#### 取引先ページ（予約入力）
+- [ ] 予約入力でファイルをドロップ／選択すると 1 件ずつ上がり、行に名前・サイズが出る。「削除」で消える
+- [ ] pdf / xlsx / jpg は上がる。zip / html / svg / exe / xlsm は理由つきで断られる。0 バイトも断られる
+- [ ] 21MB のファイルは断られる。11 件目は断られる（10 件まで）。合計 50MB 超も断られる
+- [ ] 後払いで予約 → 台帳の行が予約に束縛され、PMS の予約詳細に取込後「取引先ページから（ログインID）」のバッジつきで出る。プレビュー・ダウンロードできる
+- [ ] オンライン決済（予約時決済・デポジット・チェックアウト日決済）で予約 → 支払完了後に PMS に出る（`new` 電文の `attachments` に載っている）
+- [ ] 支払わずに 35 分放置 → 予約は `expired`。添付は取引先ページに残り（追加・削除不可・「7日後に削除」の注記）、7 日後の掃除で実体と行が消える
+- [ ] 支払の画面で「この予約をやめて入力に戻る」→ 添付欄が空になり「もう一度お付けください」の案内が出る
+- [ ] 確認画面に「添付ファイル: 名簿.xlsx（47 KB）…」。確認メール（取引先）・宿への通知メールに「添付ファイル: …」の行（ファイルは添付されない）
+- [ ] `attachment_ids` に他人・他予約の id を入れても束縛されない
+- [ ] 予約しなかった仮置きは 24 時間後の掃除で消える
+#### 取引先ページ（予約一覧）
+- [ ] 予約一覧の見出しに 📎 N、詳細に添付の一覧（誰が・いつ）。ダウンロードで元のファイル名（日本語）で保存される。画像・PDF はブラウザで開く
+- [ ] 後から追加 → 「宿（PMS）へは数分以内に反映されます」→ 1 分以内に PMS の予約詳細に出る。PMS の新着通知に「変更」の行（変更点「[添付ファイル] 名簿.xlsx を追加（取引先 ログインID）」）
+- [ ] 削除 → 取引先ページから即消え、1 分以内に PMS からも消える。PMS の新着通知に「… を削除」
+- [ ] 子アカウントが上げたファイルを別の子アカウントは消せない（削除ボタンが無い・API 直叩きも 403）。マスターは消せる。宿が付けたファイルは取引先からは消せない
+- [ ] 取消済み予約: 追加できない（ドロップ枠が出ず、API 直叩きも 400）。削除・ダウンロードはできる
+- [ ] チェックアウトから 90 日を過ぎた予約: 追加・削除できない（理由が出る）
+- [ ] 確認モード（管理画面の「確認ページを開く」）: 一覧とダウンロードはできる。追加・削除・notify は 403（画面にも出ない）
+- [ ] 別の取引先の予約 id・添付 id を URL に入れても 404
+#### Book 管理画面
+- [ ] `/admin/reservations/[code]`（取引先予約）に添付の一覧・ダウンロード・アップロード（スタッフ名が残る）・削除。スタッフ（role=staff）でも操作できる
+- [ ] スタッフの追加・削除も PMS に同期され、新着通知に「宿 スタッフ名」で出る
+- [ ] `/admin/partners/[id]` の予約一覧の予約番号の横に 📎 件数
+#### PMS
+- [ ] 写し行に削除ボタンが無い（「削除は Book から」）。`deleteAttachment` を直接送っても断られる
+- [ ] PMS で手動アップロードした添付は、Book の同期で消えない
+- [ ] 写し行を事前応対メールの添付に選べる（PDF・画像のみ・8MB）。予約送信にも選べ、Book 側で削除されていたら failed になる
+- [ ] `new` の再取込（受信箱の再処理）で写しが二重にならない（一意索引）
+- [ ] `attachments` 電文が予約グループの無い予約に来たら `skipped`（通知には出ない）
+- [ ] 添付の変更通知は、予約詳細の「確認完了」で新着通知から消える
+- [ ] 取引先ページからの予約の取消後も PMS の添付は残る
+#### 運用・掃除
+- [ ] 取引先を削除 → その取引先の添付の実体がバケットから消える
+- [ ] `PARTNER_BOOKING_ATTACHMENTS=false` では取引先ページ・管理画面に添付欄が出ず、API は 404（掃除は動く）
+- [ ] 画面が notify を呼べなかった変更（通信断など）は、次の `/api/cron/partner-charge`（毎時）で `attachments` 電文が出る
 
 ## マイページのカード登録（保存カード）（2026-10-07・v0.102.0）
 - 設計: `docs/saved-cards.md`（§9 N1〜N11 は推奨案で確定・§9.1 に実装での差分）。取引先は取引先に1つ（当面は `rms_partners` の行ごと・統合後は取引先で1つ。Customer の名前・metadata・冪等キー・文言で施設を前提にしない）、公式サイト会員は会員ごとの Stripe Customer にカードを保存し、予約時の Payment Element の「保存済み」から選べる（CustomerSession）
-- DB（autumn-shared・**未適用・未コミット**）: `20261007022727_rms_partner_stripe_customer`（`rms_partners.stripe_customer_id / stripe_livemode / stripe_customer_created_at`・一意索引・`rms_partner_bookings.stripe_customer_id` のコメント更新）、`20261007022730_book_member_payment_profiles`（会員 → Customer の対応表・service_role のみ・RLS ポリシー無し）。未適用の間は読み取りが「Customer なし」になり従来どおり動く（予約画面に保存カードが出ない・マイページの登録は「現在ご利用いただけません」）
+- DB（autumn-shared・適用済み）: `20261007022727_rms_partner_stripe_customer`（`rms_partners.stripe_customer_id / stripe_livemode / stripe_customer_created_at`・一意索引・`rms_partner_bookings.stripe_customer_id` のコメント更新）、`20261007022730_book_member_payment_profiles`（会員 → Customer の対応表・service_role のみ・RLS ポリシー無し）。未適用の間は読み取りが「Customer なし」になり従来どおり動く（予約画面に保存カードが出ない・マイページの登録は「現在ご利用いただけません」）
 - 純関数 `lib/saved-cards.ts`（一覧の整形・`allow_redisplay='always'` だけ・既定→新しい順・fingerprint の重複・期限・削除ガードの判定・CustomerSession を出す Customer の判定・同意文）＋ `saved-cards.test.ts`。サーバ `lib/server/payments/saved-cards.ts`（Customer の解決〔テスト/本番の取り違えは作り直し〕・一覧・CustomerSession・SetupIntent の用意と確定〔Customer 一致・期限切れ・二重登録を弾き、PM の metadata に同意〕・削除・既定・取引先の削除ガード・管理画面の枚数）
 - Stripe REST（`lib/server/stripe.ts`）: `createCustomerSession`（redisplay 10・保存チェックボックス無し・Element からの削除無し）・`listPaymentMethods`・`retrievePaymentMethod`・`updatePaymentMethod`・`detachPaymentMethod`・`retrieveCustomer`・`updateCustomer`、`createPaymentIntent` に `customer`、用途 `rms_partner_card` / `book_member_card`（Webhook は ignore）
 - 決済部品 `StripePayment.svelte`: `customerSession`（取得関数・マウントごと）・`allowRedisplay`・`onsavedcardchange`。未指定なら従来どおり

@@ -8,6 +8,7 @@
   import { partnerAccent } from '$lib/partner-theme';
   import { fetchPartnerCustomerSession } from '$lib/partner-saved-cards';
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
+  import PartnerAttachments from '$lib/components/PartnerAttachments.svelte';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; cancelled?: string } } = $props();
@@ -240,7 +241,7 @@
               <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-2 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="ご予約時に御社の受付枠を超えていました。宿で確認のうえご連絡することがあります。">受付枠超過</span>{/if}</p>
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
               <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
-              <p class="mt-0.5 text-sm text-stone-500">担当: {staffOf(b)}</p>
+              <p class="mt-0.5 text-sm text-stone-500">担当: {staffOf(b)}{#if b.attachments?.items.length}<span class="ml-2" title="添付ファイル">📎 {b.attachments.items.length}</span>{/if}</p>
             </div>
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums text-accent-600">{yen(b.total)}</p>
@@ -282,6 +283,21 @@
                   </dd>
                 {/if}
               </dl>
+
+              {#if b.attachments && data.attachmentConfig}
+                <!-- 添付ファイル（2026-10-07）: 名簿・行程表など。宿（PMS）の予約詳細にも同じファイルが出る。追加・削除のあとに1回 PMS へ知らせる -->
+                <div class="mt-4 border-t border-stone-200 pt-3">
+                  <p class="mb-2 text-sm font-medium text-stone-600">添付ファイル（{b.attachments.items.length}件）</p>
+                  <PartnerAttachments
+                    items={b.attachments.items}
+                    uploadUrl={b.attachments.canAdd ? `/p/${token}/bookings/${b.id}/attachments` : null}
+                    notifyUrl={`/p/${token}/bookings/${b.id}/attachments/notify`}
+                    accept={data.attachmentConfig.accept}
+                    hint={data.attachmentConfig.hint}
+                    note={b.attachments.note}
+                  />
+                </div>
+              {/if}
 
               <!-- 料金の明細（表）。宿泊料金はキャンセル料の基準（入湯税は含めない） -->
               <div class="mt-4 max-w-md">

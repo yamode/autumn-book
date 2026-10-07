@@ -83,6 +83,8 @@ import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresD
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 import { loadCancelAdminFeePercent } from '../payment-settings';
 import { readAdminFeeTerms } from '$lib/cancel-admin-fee';
+import { bookingAttachmentNames, partnerBookingAttachmentsEnabled } from './booking-attachments';
+import { attachmentLine } from '$lib/partner-attachments';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -386,6 +388,8 @@ export type CreateBookingInput = BookingTarget & {
   genders?: Record<string, string>;
   // JR のときのお迎え時間（施設の「毎回聞く項目」に選択肢があるときだけ聞く）
   pickupTime?: string;
+  // 予約入力で仮置きした添付ファイルの id（2026-10-07）。RPC が同じ取引先・同じログインIDの未束縛の行だけを結ぶ
+  attachmentIds?: string[];
 };
 
 // payment があれば、オンライン決済の仮押さえ（同じ画面で支払・カード登録を済ませると予約確定・PMS へ）。
@@ -537,7 +541,9 @@ export async function createPartnerBooking(
       prepay_discount: discount?.discount ?? 0,
       // オンライン決済は支払待ちの仮押さえで作り、支払完了（予約時決済）・カード登録完了（チェックアウト日決済）で
       // 確定・PMS へ（DB 関数 rms_partner_mark_paid / rms_partner_mark_card_saved）
-      await_payment: isStripePaymentOption(paymentOption)
+      await_payment: isStripePaymentOption(paymentOption),
+      // 添付ファイル（2026-10-07・autumn-shared 20261007022950）: 仮置きを電文の前に予約へ結ぶ。機能が off なら渡さない
+      ...(input.attachmentIds?.length && partnerBookingAttachmentsEnabled() ? { attachment_ids: input.attachmentIds } : {})
     }
   });
   if (error) throw new PartnerStoreError(friendlyRpcError(error.message), 409);
@@ -1163,6 +1169,8 @@ export type PartnerBookingRow = {
   name_holder?: string | null;
   // 予約時の受付枠（与信）の判定（autumn-shared 20261007000239・rms_partner_credit_check の返り値そのまま）。null = 判定なし
   credit_result?: unknown;
+  // 添付ファイルの名前（2026-10-07）。台帳の列ではない: 予約確認メールを組み立てるときだけ sendBookingMails が付ける
+  attachment_names?: string[];
 };
 
 // 予約1件の名義の行（「ご予約名義: 株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）」）。名義が宿泊者名なら null
@@ -1510,6 +1518,10 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
     // 入力項目（ご予約者・交通手段・専用特典の行は上に出したので除く）
     ...splitExtraOptions(b.detail).map((o) => `${o.label}: ${o.value}`),
     ...(b.detail.notes ? [`備考: ${b.detail.notes}`] : []),
+    // 添付ファイル（2026-10-07）: 名前だけ（ファイルはメールに付けない・§10.1）
+    ...[attachmentLine(b.attachment_names ?? [], audience === 'facility' ? '（PMS の予約詳細でご確認ください）' : '（予約一覧でご確認いただけます）')].filter(
+      (l): l is string => !!l
+    ),
     ...((b.bath_tax_amount ?? 0) > 0
       ? [
           `宿泊料金: ${yen(b.total_amount)}（税込）`,
@@ -1632,6 +1644,8 @@ async function sendBookingMails(
   accountId: string | null
 ): Promise<boolean> {
   const s = partner.booking_settings;
+  // 予約確認には添付ファイルの名前の行を足す（2026-10-07・機能が off なら空）
+  if (kind === 'new') b = { ...b, attachment_names: await bookingAttachmentNames(db, b.partner_id, b.id) };
   // 施設名は差出人名と同じもの（core.facilities.name）。partner に施設名が無い呼び出し（Webhook・cron）でも空にしない
   const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
   const title = kind === 'new' ? 'ご予約を承りました' : 'ご予約を取り消しました';

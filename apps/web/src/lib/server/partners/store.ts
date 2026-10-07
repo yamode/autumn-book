@@ -24,6 +24,7 @@ import {
 import { partnerServiceClient } from './admin-client';
 // 循環 import（memorandum → store）だが、どちらも呼び出し時にしか参照しないので問題ない
 import { removeAllPartnerDocumentFiles } from './memorandum';
+import { removeAllBookingAttachmentFiles } from './booking-attachments';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
 import { canManageAccount } from '$lib/partner-account-roles';
 import {
@@ -604,6 +605,8 @@ export async function regeneratePartnerUrl(db: SupabaseClient, partner: PartnerR
 export async function deletePartner(db: SupabaseClient, partner: PartnerRow): Promise<void> {
   // 覚書ファイルの実体（Storage）を先に消す。台帳は FK cascade で消える
   await removeAllPartnerDocumentFiles(db, partner.id);
+  // 取引先予約の添付ファイルの実体も（2026-10-07。台帳は FK cascade。PMS の写しの行は PMS の運用に任せる）
+  await removeAllBookingAttachmentFiles(db, partner.id);
   const { error } = await db.from('rms_partners').delete().eq('id', partner.id).eq('facility_id', partner.facility_id);
   if (error) raise(error, '取引先を削除できませんでした。');
 }

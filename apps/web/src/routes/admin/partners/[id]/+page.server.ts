@@ -18,6 +18,7 @@ import {
 	normalizePartnerBookingSettings
 } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
+import { countBookingAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
 import { loadPartnerRates } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
 import { publishableKeyProblem } from '$lib/server/stripe';
@@ -215,6 +216,10 @@ export const load: PageServerLoad = async (event) => {
 	const cancelPreviews = await previewPartnerCancels(scope.db, partner.facility_id, bookings).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
 	// 取引先のお支払いカード（保存カード・2026-10-07）の枚数と最終登録（読むだけ・問い合わせ対応用・N10）。読めなければ出さない
 	const savedCards = onlinePaymentReady() ? await partnerSavedCardSummary(scope.db, partner).catch(() => null) : null;
+	// 予約ごとの添付ファイルの件数（📎 N・2026-10-07）。操作は予約管理の詳細に集める。機能が off・読めなければ空
+	const attachmentCounts = partnerBookingAttachmentsEnabled()
+		? await countBookingAttachments(scope.db, partner.id, bookings.map((b) => b.id))
+		: new Map<string, number>();
 	return {
 		facilityName: scope.facilityName,
 		facilitySlugHint: scope.bookFacilityId === 'f-oga' ? 'oga' : 'yamado',
@@ -329,6 +334,7 @@ export const load: PageServerLoad = async (event) => {
 			hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed'),
 			id: b.id,
 			code: b.booking_code,
+			attachmentCount: attachmentCounts.get(b.id) ?? 0,
 			status: b.status,
 			checkedIn: !!b.checkedIn,
 			checkIn: b.check_in_date,

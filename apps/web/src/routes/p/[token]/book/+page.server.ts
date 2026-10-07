@@ -14,6 +14,9 @@ import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { loadBookingNote } from '$lib/server/booking-notes';
 import { loadStandardFieldTexts, partnerBookingForm } from '$lib/server/booking-questions';
 import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
+import { listStagedAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
+import { portalAttachmentView } from '$lib/server/partners/portal-attachments';
+import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -119,7 +122,18 @@ export const load = async (event) => {
     perks: perksForPlan(s.perks, planCode).map((p) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl })),
     // 同じ画面で払う決済部品に渡す公開可能キー（オンライン決済を出せないときは null）
     // 受付枠を超えたとき（deposit）は後払いの取引先でも全額の予約時決済・デポジットを出すので、そのときも渡す
-    stripeKey: payIds.some(isStripePaymentOption) || creditOverPaymentOptions(partner).length ? stripePublishableKey() : null
+    stripeKey: payIds.some(isStripePaymentOption) || creditOverPaymentOptions(partner).length ? stripePublishableKey() : null,
+    // 添付ファイル（2026-10-07・PARTNER_BOOKING_ATTACHMENTS が on のときだけ）。1件ずつ仮置きし、確定時に予約へ結ぶ
+    // staged: このログインIDの仮置き（24時間以内・予約に結ばれていないもの）。開き直しても欄に出し、消す・そのまま使うができる
+    attachments: partnerBookingAttachmentsEnabled()
+      ? {
+          accept: PARTNER_ATTACHMENT_ACCEPT,
+          hint: PARTNER_ATTACHMENT_HINT,
+          staged: session.preview
+            ? []
+            : (await listStagedAttachments(db, partner.id, session.id)).map((r) => portalAttachmentView(token, { stagedFor: session.id }, r, session, true))
+        }
+      : null
   };
 };
 

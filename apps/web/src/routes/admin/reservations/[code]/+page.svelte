@@ -1,5 +1,6 @@
 <script lang="ts">
 	import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
+	import PartnerAttachments from '$lib/components/PartnerAttachments.svelte';
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
 	import { deductionOf, keptReasonLabel } from '$lib/cancel-admin-fee';
@@ -366,6 +367,22 @@
 						<dt class="text-stone-500">受付日時</dt>
 						<dd>{dt(pl.createdAt)}</dd>
 					</dl>
+					{#if pl.attachments}
+						<!-- 添付ファイル（2026-10-07）: 取引先ページで付けたもの＋スタッフが付けたもの。PMS の予約詳細にも同じファイルが出る（取込後・数分以内） -->
+						<div class="mt-3 border-t border-stone-200 pt-3">
+							<p class="mb-1 text-sm font-medium text-stone-700">添付ファイル（{pl.attachments.items.length}件）</p>
+							<p class="mb-2 text-xs text-stone-500">PMS の予約詳細にも同じファイルが出ます（取込後・数分以内）。PMS からは削除できないので、削除はここで行ってください。</p>
+							<PartnerAttachments
+								items={pl.attachments.items}
+								uploadUrl={pl.attachments.canAdd ? `/admin/reservations/${encodeURIComponent(b.code)}/attachments` : null}
+								notifyUrl={`/admin/reservations/${encodeURIComponent(b.code)}/attachments/notify`}
+								accept={pl.attachments.accept}
+								hint={pl.attachments.hint}
+								note={pl.attachments.note}
+								notifiedText="PMS へは数分以内に反映されます。"
+							/>
+						</div>
+					{/if}
 				{/if}
 			</div>
 		{/if}
