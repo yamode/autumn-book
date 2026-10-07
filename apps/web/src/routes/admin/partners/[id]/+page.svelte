@@ -1093,7 +1093,7 @@
                       <p class="mt-1.5 text-[11px] leading-5 text-stone-500">
                         いまの設定: {describeCreditDeposit(data.pmsLink.creditDeposit)}・残額は{(data.pmsLink.creditDepositRemainder ?? data.pmsLink.creditDepositRemainderDefault) === 'invoice' ? '月末の請求書' : '現地'}。
                         デポジットに予約時決済の割引は付きません。請求額（宿泊料金＋入湯税）を超えません。既定の精算先は、請求書払いの支払方法（月末締め・請求書で精算する自由入力）があれば請求書、無ければ現地です。
-                        取消時はデポジットをキャンセル料に充当して差額を返金し、キャンセル料がデポジットを超えた分は、残額が請求書なら請求書へ・現地なら請求しません。
+                        取消時はデポジットをキャンセル料に充当して差額を返金し、キャンセル料がデポジットを超えた分は、残額の精算先にかかわらず月末の請求書でご請求します（不課税）。
                       </p>
                       {#if canEdit}
                         <button type="button" class={`${smallBtn} mt-2`} disabled={depositBusy || !depositDirty} onclick={saveCreditDeposit}>{depositBusy ? '保存中…' : 'デポジットの設定を保存'}</button>
@@ -1735,7 +1735,7 @@
                     {#if b.cardConsentAt}<div class="text-[11px] text-stone-500" title={b.cardConsentText ?? ''}>請求の同意: {dt(b.cardConsentAt)}</div>{/if}
                     {#if b.paymentStatus === 'charge_failed'}<div class="text-[11px] text-rose-700">請求失敗{b.chargeError ? `：${b.chargeError}` : ''}</div>{/if}
                     {#if b.paymentStatus === 'refund_failed'}<div class="text-[11px] text-rose-700" title={b.refundError ?? ''}>返金失敗（Stripe で対応が必要）</div>{/if}
-                    {#if b.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {b.cancelFee.fee > 0 ? `${b.cancelFee.fee.toLocaleString('ja-JP')}円（${b.cancelFee.basis}・不課税）${b.cancelFee.settlement ? ` ${b.cancelFee.settlement}` : ''}` : `なし${b.cancelFee.waived ? '（免除）' : ''}`}{#if b.cancelFee.note}<span class="text-stone-500">・{b.cancelFee.note}</span>{/if}{#if b.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{b.cancelFee.error ? `（${b.cancelFee.error}）` : ''}</span>{/if}</span>{/if}
+                    {#if b.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {b.cancelFee.fee > 0 ? `${b.cancelFee.fee.toLocaleString('ja-JP')}円（${b.cancelFee.basis}・不課税）${b.cancelFee.settlement ? ` ${b.cancelFee.settlement}` : ''}` : `なし${b.cancelFee.waived ? '（免除）' : ''}`}{#if b.cancelFee.kept}<span class="block text-stone-600">{b.cancelFee.kept}</span>{/if}{#if b.cancelFee.note}<span class="text-stone-500">・{b.cancelFee.note}</span>{/if}{#if b.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{b.cancelFee.error ? `（${b.cancelFee.error}）` : ''}</span>{/if}</span>{/if}
                   </td>
                   <td class="py-2 text-right">
                     {#if canEdit && b.status === 'confirmed' && b.paymentOption === 'online_checkin' && (b.paymentStatus === 'charge_failed' || (b.paymentStatus === 'scheduled' && b.checkOut <= todayIso))}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
   import { untrack } from 'svelte';
+  import { adminFeeNotice } from '$lib/cancel-admin-fee';
   import PerkBanners from '$lib/components/PerkBanners.svelte';
   import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
   import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -655,6 +656,10 @@
                 onbusychange={(b) => (paying = b)}
               />
             {/key}
+            {#if (paymentOption === 'online' || isDeposit) && data.adminFeePercent}
+              <!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）: 選んだ時点で、予約前に知らせる -->
+              <p class="rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2 text-sm text-amber-900">{adminFeeNotice(data.adminFeePercent, 'partner')}{isDeposit ? '（デポジットのご予約は、デポジットの額に対して）' : ''}</p>
+            {/if}
             {#if isDeposit && deposit}
               <p class="text-sm text-stone-500">予約とデポジット（{yen(deposit.amount)}）のお支払いを同時に行います。お支払いが完了した時点でご予約が確定します。残額 {yen(deposit.remainder)} は{deposit.remainderText}します（予約時決済の割引は付きません）。</p>
             {:else if paymentOption === 'online'}
@@ -687,6 +692,9 @@
         <p class="mt-3 text-[15px] leading-7 text-stone-700">{data.cancelText ? `取消は宿泊日の${data.cancelText}、予約一覧からできます。それより後は宿へご連絡ください。` : '取消は宿へご連絡ください。'}</p>
         {#if data.terms?.cancellation.length}
           <p class="mt-1 text-[15px] leading-7 text-stone-700">キャンセル料は、税込の予約金額（割引前・入湯税を除く）に上の料率を掛けた額です。予約一覧から取り消すときも、規定の日からはかかります（消費税の対象外）。</p>
+        {/if}
+        {#if data.adminFeePercent && payChoices.some((o) => o.id === 'online' || o.id === 'deposit_online')}
+          <p class="mt-1 text-[15px] leading-7 text-stone-700">{adminFeeNotice(data.adminFeePercent, 'partner')}キャンセル料の期間に関係なくかかります。</p>
         {/if}
       </section>
       <section class="card">

@@ -9,6 +9,7 @@ import {
   depositSummary,
   cancelFeeBasisLabel,
   cancelFeeSettlementLabel,
+  cancelKeptNote,
   listPartnerBookings,
   previewPartnerCancels,
   type PaymentResult
@@ -123,7 +124,8 @@ export const load = async (event) => {
       // 取消済みのキャンセル料（精算の方法と一緒に出す）
       cancelFee:
         b.status === 'cancelled' && b.cancel_fee_settlement
-          ? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, '') }
+          ? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''),
+						kept: cancelKeptNote(b) }
           : null
     }))
   };

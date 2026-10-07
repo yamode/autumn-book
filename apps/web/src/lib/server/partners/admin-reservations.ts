@@ -12,6 +12,7 @@ import { partnerBookingCodeOf } from '$lib/partner-reservation';
 import {
 	cancelFeeBasisLabel,
 	cancelFeeSettlementLabel,
+	cancelKeptNote,
 	cancelPartnerBooking,
 	depositSummary,
 	getPartnerBooking,
@@ -73,7 +74,7 @@ export type PartnerLedgerView = {
 	/** 取消フォームのキャンセル料の見込み（確定済みの予約） */
 	cancelPreview: CancelPreview | null;
 	/** 取消済みのキャンセル料 */
-	cancelFee: { fee: number; waived: boolean; basis: string; settlement: string; status: string | null; error: string | null; note: string | null } | null;
+	cancelFee: { fee: number; waived: boolean; basis: string; settlement: string; kept: string | null; status: string | null; error: string | null; note: string | null } | null;
 	refundAmount: number | null;
 	invoiceMonth: string;
 	hasCard: boolean;
@@ -140,6 +141,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 						waived: !!b.cancel_fee_waived,
 						basis: cancelFeeBasisLabel(b),
 						settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''),
+						kept: cancelKeptNote(b),
 						status: b.cancel_fee_status ?? null,
 						error: b.cancel_fee_error ?? null,
 						note: b.cancel_fee_note ?? null
@@ -221,7 +223,7 @@ async function partnerEditTarget(event: RequestEvent, reservationCode: string) {
 export async function cancelPartnerReservation(
 	event: RequestEvent,
 	reservationCode: string,
-	opts: { reason: string; refund: boolean; feeMode?: StaffFeeMode; customFee?: number | null; feeNote?: string }
+	opts: { reason: string; refund: boolean; feeMode?: StaffFeeMode; customFee?: number | null; feeNote?: string; adminFeeWaived?: boolean }
 ): Promise<PartnerBookingRow> {
 	const { db, partner, row } = await partnerEditTarget(event, reservationCode);
 	return cancelPartnerBooking(db, partner, row.id, 'staff', { ...opts, origin: event.url.origin });

@@ -2,6 +2,7 @@
 	import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
+	import { deductionOf, keptReasonLabel } from '$lib/cancel-admin-fee';
 	import {
 		canRetryPartnerCharge,
 		canStaffCancelPartnerBooking,
@@ -20,24 +21,36 @@
 
 	let showCancel = $state(false);
 	let waive = $state(false);
+	// 事務手数料も免除する（予約時決済で率の残っている予約だけ。既定は差し引く・2026-10-07）
+	let adminWaive = $state(false);
 
 	// 取引先予約（source='rms_partner'）の台帳。取引先予約でない・台帳を引けないときは null
 	let pl = $derived(data.isPartner ? data.partner.ledger : null);
 	let showPartnerCancel = $state(false);
 
-	// 取消前の返金の見込み（オンライン決済済みのとき）。予約時決済の割引額は返金しない:
-	// 差し引く額 = max(キャンセル料, 割引額)。施設都合（キャンセル料免除）は全額返金（DB の direct_payment_refund_due と同じ）
+	// 取消前の返金の見込み（オンライン決済済みのとき）。予約時決済の割引額・事務手数料は返金しない:
+	// 差し引く額 = max(キャンセル料, 割引額, 事務手数料)。施設都合（キャンセル料免除）は割引額も返す。事務手数料は「事務手数料も免除」のときだけ返す
+	// （DB の direct_payment_refund_due と同じ・lib/cancel-admin-fee.ts の deductionOf）
+	let adminPercent = $derived(data.payment?.cancel_admin_fee_percent == null ? null : Number(data.payment.cancel_admin_fee_percent));
 	let cancelRefund = $derived.by(() => {
 		const p = data.payment;
 		if (!p || p.status !== 'paid') return null;
 		const discount = Math.max(0, p.prepay_discount_amount ?? 0);
 		const rule = waive ? 0 : Math.max(0, data.feePreview ?? 0);
 		const bathTax = Math.max(0, p.bath_tax_amount ?? 0);
-		const refund = directRefundDueOf({ amount: p.amount, fee: rule, refunded: p.refunded_amount, prepayDiscount: discount, waived: waive, bathTax });
+		const refund = directRefundDueOf({
+			amount: p.amount,
+			fee: rule,
+			refunded: p.refunded_amount,
+			prepayDiscount: discount,
+			waived: waive,
+			bathTax,
+			adminFeePercent: adminPercent,
+			adminFeeWaived: adminWaive
+		});
+		const d = deductionOf({ paid: p.amount, bathTax, fee: rule, discount: waive ? 0 : discount, adminFeePercent: adminPercent, adminFeeWaived: adminWaive });
 		const ruleCapped = Math.min(rule, p.amount);
-		// 返金しない割引額は入湯税を除いた支払額まで（入湯税は必ず返す）
-		const deducted = waive ? ruleCapped : Math.max(ruleCapped, Math.min(discount, Math.max(p.amount - bathTax, 0)));
-		return { paid: p.amount, rule: ruleCapped, discount, deducted, kept: Math.max(0, deducted - ruleCapped), refund };
+		return { paid: p.amount, rule: ruleCapped, discount, deducted: d.kept, kept: Math.max(0, d.kept - ruleCapped), refund, adminFee: d.adminFee, reason: d.reason };
 	});
 	/** 送信内容を開いている outbox 行 */
 	let openMail = $state<string | null>(null);
@@ -143,9 +156,9 @@
 		キャンセル処理を実行しました（キャンセル料 {formatYen(form.fee ?? 0)}・監査ログに記録）。お客様にキャンセル受付メールを送信します。
 	</p>
 	{#if form.refund?.kind === 'refunded'}
-		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − {form.refund.kept > 0 ? '返金しない予約時決済の割引額' : 'キャンセル料'} {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
+		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − {keptReasonLabel(form.refund.reason, form.refund.adminFeePercent) || 'キャンセル料'} {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
 	{:else if form.refund?.kind === 'nothing_due'}
-		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）が差し引く額（キャンセル料・返金しない割引額の大きい方 {formatYen(form.refund.fee)}）以下のため、返金はありません。</p>
+		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）が差し引く額（キャンセル料・返金しない割引額・事務手数料の大きい方 {formatYen(form.refund.fee)}）以下のため、返金はありません。</p>
 	{:else if form.refund?.kind === 'failed'}
 		<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">取消は完了しましたが、カードへの返金（{formatYen(form.refund.amount)}）に失敗しました: {form.refund.message}。下の「オンライン決済」から返金を再実行してください。</p>
 	{/if}
@@ -311,7 +324,7 @@
 						<dt class="text-stone-500">予約番号</dt>
 						<dd class="font-mono">{pl.bookingCode}{#if pl.roomCount > 1}<span class="ml-1 font-sans text-xs text-stone-500">（{pl.roomCount}室・この画面は {b.code} の1室分）</span>{/if}</dd>
 						<dt class="text-stone-500">状態</dt>
-						<dd>{partnerBookingStatusLabel(pl.status, pl.checkedIn)}{#if pl.cancelledAt}<span class="text-xs text-stone-500">（{dt(pl.cancelledAt)}・{pl.cancelledBy === 'staff' ? '宿' : pl.cancelledBy === 'system' ? '自動' : '取引先'}）</span>{/if}{#if pl.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {pl.cancelFee.fee > 0 ? `${pl.cancelFee.fee.toLocaleString('ja-JP')}円（${pl.cancelFee.basis}・不課税）${pl.cancelFee.settlement ? ` ${pl.cancelFee.settlement}` : ''}` : `なし${pl.cancelFee.waived ? '（免除）' : ''}`}{#if pl.cancelFee.note}<span class="text-stone-500">・{pl.cancelFee.note}</span>{/if}{#if pl.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{pl.cancelFee.error ? `（${pl.cancelFee.error}）` : ''}</span>{/if}</span>{/if}</dd>
+						<dd>{partnerBookingStatusLabel(pl.status, pl.checkedIn)}{#if pl.cancelledAt}<span class="text-xs text-stone-500">（{dt(pl.cancelledAt)}・{pl.cancelledBy === 'staff' ? '宿' : pl.cancelledBy === 'system' ? '自動' : '取引先'}）</span>{/if}{#if pl.cancelFee}<span class="block text-xs text-stone-700">キャンセル料 {pl.cancelFee.fee > 0 ? `${pl.cancelFee.fee.toLocaleString('ja-JP')}円（${pl.cancelFee.basis}・不課税）${pl.cancelFee.settlement ? ` ${pl.cancelFee.settlement}` : ''}` : `なし${pl.cancelFee.waived ? '（免除）' : ''}`}{#if pl.cancelFee.kept}<span class="block text-stone-600">{pl.cancelFee.kept}</span>{/if}{#if pl.cancelFee.note}<span class="text-stone-500">・{pl.cancelFee.note}</span>{/if}{#if pl.cancelFee.status === 'charge_failed'}<span class="block text-rose-700">カードへの請求に失敗したため請求書へ回しました{pl.cancelFee.error ? `（${pl.cancelFee.error}）` : ''}</span>{/if}</span>{/if}</dd>
 						<dt class="text-stone-500">予約したログインID</dt>
 						<dd class="font-mono text-xs">{pl.bookedBy ?? '—'}</dd>
 						<dt class="text-stone-500">予約者</dt>
@@ -492,10 +505,14 @@
 						<dd>
 							{formatYen(data.refundDue.fee)}{#if data.refundDue.cancellationFee != null}（規定のキャンセル料 {formatYen(data.refundDue.cancellationFee)}）{/if}
 						</dd>
-						{#if data.refundDue.kept > 0}
+						{#if data.refundDue.kept > 0 && data.refundDue.reason === 'admin_fee'}
+							<dt class="text-stone-500">事務手数料</dt>
+							<dd>{formatYen(data.refundDue.adminFee)}（お支払額の {data.refundDue.adminFeePercent}%・キャンセル料より大きいため差し引き）</dd>
+						{:else if data.refundDue.kept > 0}
 							<dt class="text-stone-500">返金しない割引額</dt>
 							<dd>{formatYen(data.refundDue.kept)}（予約時決済の割引 {formatYen(data.refundDue.prepayDiscount)} のうち、キャンセル料を超える分）</dd>
 						{/if}
+						{#if data.refundDue.adminFeeWaived}<dt class="text-stone-500">事務手数料</dt><dd>免除</dd>{/if}
 						{#if data.refundDue.due > 0}<dt class="text-stone-500">返金の残り</dt><dd>{formatYen(data.refundDue.due)}</dd>{/if}
 					{/if}
 					{#if p.paid_at}<dt class="text-stone-500">支払日時</dt><dd>{new Date(p.paid_at).toLocaleString('ja-JP')}</dd>{/if}
@@ -708,10 +725,10 @@
 							{#if cancelRefund}
 								<p class="mt-1 text-xs text-emerald-700">
 									オンライン決済済み：支払額 {formatYen(cancelRefund.paid)} から {formatYen(cancelRefund.deducted)} を差し引いた {formatYen(cancelRefund.refund)} を自動で返金します。
-									{#if waive}
-										（施設都合のため、予約時決済の割引も含めて全額返金）
-									{:else if cancelRefund.discount > 0}
-										（キャンセル料 {formatYen(cancelRefund.rule)} と、返金しない予約時決済の割引額 {formatYen(cancelRefund.discount)} の大きい方）
+									{#if cancelRefund.deducted > 0}
+										（差し引く額: {keptReasonLabel(cancelRefund.reason, adminPercent)}。キャンセル料 {formatYen(cancelRefund.rule)}{cancelRefund.discount > 0 && !waive ? `・返金しない予約時決済の割引額 ${formatYen(cancelRefund.discount)}` : ''}{adminPercent != null ? `・事務手数料 ${formatYen(cancelRefund.adminFee)}${adminWaive ? '（免除）' : ''}` : ''} のうち大きい方）
+									{:else}
+										（全額返金）
 									{/if}
 								</p>
 							{/if}
@@ -720,6 +737,12 @@
 							<input type="checkbox" name="waive" bind:checked={waive} class="mt-1" />
 							<span>施設都合（キャンセル料を免除する）</span>
 						</label>
+						{#if cancelRefund && adminPercent != null}
+							<label class="flex items-start gap-2 text-sm">
+								<input type="checkbox" name="adminFeeWaive" bind:checked={adminWaive} class="mt-1" />
+								<span>事務手数料（予約時決済の取消で返金しない {adminPercent}%）も免除する</span>
+							</label>
+						{/if}
 						<p class="text-sm text-stone-700">
 							適用キャンセル料：{waive ? formatYen(0) : formatYen(data.feePreview ?? 0)}
 						</p>

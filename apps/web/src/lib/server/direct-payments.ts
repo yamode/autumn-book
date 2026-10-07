@@ -29,6 +29,7 @@ import { checkPaymentIntent, isPaymentIntentId } from '$lib/server/payments/veri
 import type { GuestInfo, RatePlan } from '$lib/types';
 import { addDays } from '@autumn-book/core';
 import { directRefundDueOf } from '$lib/direct-payment';
+import { deductionOf, type KeptReason } from '$lib/cancel-admin-fee';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE } from '$lib/server/auth';
 import {
@@ -334,11 +335,14 @@ async function refundWhole(intentId: string, reason: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // fee = 差し引いた額（規定のキャンセル料と返金しない割引額の大きい方）。kept = そのうち規定のキャンセル料を超えた分
 // （＝返金しない予約時決済の割引額。20260926221912 より前の DB は 0）
+// reason = 差し引いた額の理由（cancel_fee / prepay_discount / admin_fee / none）。adminFee / adminFeePercent = 事務手数料（2026-10-07・
+// autumn-shared 20261007010002 より前の DB・率の無い予約は 0 / null）
+type RefundExtra = { reason: KeptReason; adminFee: number; adminFeePercent: number | null };
 export type DirectRefundOutcome =
   | { kind: 'none' } // オンライン決済の予約ではない（現地払い）
-  | { kind: 'nothing_due'; paid: number; fee: number; kept: number } // 差し引く額が支払額以上
-  | { kind: 'refunded'; amount: number; paid: number; fee: number; kept: number }
-  | { kind: 'failed'; amount: number; paid: number; fee: number; kept: number; message: string };
+  | ({ kind: 'nothing_due'; paid: number; fee: number; kept: number } & RefundExtra) // 差し引く額が支払額以上
+  | ({ kind: 'refunded'; amount: number; paid: number; fee: number; kept: number } & RefundExtra)
+  | ({ kind: 'failed'; amount: number; paid: number; fee: number; kept: number; message: string } & RefundExtra);
 
 type RefundDueRow =
   | { result: 'none' | 'not_cancelled'; payment_intent_id?: string }
@@ -352,12 +356,35 @@ type RefundDueRow =
       cancellation_fee?: number;
       prepay_discount?: number;
       prepay_discount_kept?: number;
+      /** 事務手数料（20261007010002 から） */
+      admin_fee_percent?: number | null;
+      admin_fee_waived?: boolean;
+      admin_fee?: number;
+      kept_reason?: KeptReason;
       fee: number;
       refunded: number;
       due: number;
     };
 
 const keptOf = (due: { prepay_discount_kept?: number }) => Math.max(0, Number(due.prepay_discount_kept) || 0);
+const extraOf = (due: { admin_fee?: number; admin_fee_percent?: number | null; kept_reason?: KeptReason; fee: number; prepay_discount_kept?: number }): RefundExtra => ({
+  reason: due.kept_reason ?? (keptOf(due) > 0 ? 'prepay_discount' : due.fee > 0 ? 'cancel_fee' : 'none'),
+  adminFee: Math.max(0, Number(due.admin_fee) || 0),
+  adminFeePercent: due.admin_fee_percent == null ? null : Number(due.admin_fee_percent)
+});
+
+/**
+ * 管理画面の取消で「事務手数料も免除」を選んだとき、返金の前に支払の記録へ印を付ける（autumn-shared 20261007010002）。
+ * DB が古い・オンライン決済の予約でないときは何もしない（false）。
+ */
+export async function setDirectAdminFeeWaived(bookingCode: string, waived: boolean): Promise<boolean> {
+  if (!partnerServiceClient()) return false;
+  try {
+    return (await rpc<boolean>('direct_payment_set_admin_fee_waived', { p_booking_code: bookingCode, p_waived: waived })) === true;
+  } catch {
+    return false;
+  }
+}
 
 export async function refundAfterCancel(bookingCode: string, reason: string): Promise<DirectRefundOutcome> {
   if (!partnerServiceClient()) return { kind: 'none' };
@@ -370,7 +397,8 @@ export async function refundAfterCancel(bookingCode: string, reason: string): Pr
   }
   if (due.result !== 'due') return { kind: 'none' };
   const kept = keptOf(due);
-  if (due.due <= 0) return { kind: 'nothing_due', paid: due.amount, fee: due.fee, kept };
+  const extra = extraOf(due);
+  if (due.due <= 0) return { kind: 'nothing_due', paid: due.amount, fee: due.fee, kept, ...extra };
   try {
     // 冪等キーは「予約・返金済み額」で作る（同じ取消で2回呼ばれても1回だけ返金）
     const r = await createRefund(
@@ -385,12 +413,12 @@ export async function refundAfterCancel(bookingCode: string, reason: string): Pr
       p_amount: r.amount ?? due.due,
       p_reason: `cancel:${reason}`.slice(0, 200)
     });
-    return { kind: 'refunded', amount: r.amount ?? due.due, paid: due.amount, fee: due.fee, kept };
+    return { kind: 'refunded', amount: r.amount ?? due.due, paid: due.amount, fee: due.fee, kept, ...extra };
   } catch (e) {
     const message = e instanceof StripeError || e instanceof Error ? e.message : String(e);
     await rpc('direct_payment_mark_refund_failed', { p_payment_intent_id: due.payment_intent_id, p_error: message }).catch(() => {});
     console.error('[direct-payment] 取消の返金に失敗', bookingCode, message);
-    return { kind: 'failed', amount: due.due, paid: due.amount, fee: due.fee, kept, message };
+    return { kind: 'failed', amount: due.due, paid: due.amount, fee: due.fee, kept, message, ...extra };
   }
 }
 
@@ -416,6 +444,9 @@ export type DirectPaymentInfo = {
   refunds: { id: string; amount: number; reason: string | null; at: string }[];
   refund_error: string | null;
   last_error: string | null;
+  /** 予約時の事務手数料の率（%・20261007010002 から。導入前の行は null＝事務手数料なし） */
+  cancel_admin_fee_percent?: number | null;
+  cancel_admin_fee_waived?: boolean;
 };
 
 export async function directPaymentForBooking(bookingCode: string): Promise<DirectPaymentInfo | null> {
@@ -428,26 +459,52 @@ export async function directPaymentForBooking(bookingCode: string): Promise<Dire
 
 /**
  * 取消前の返金の見込み（画面用。式は DB の direct_payment_refund_due と同じ lib/direct-payment.ts の directRefundDueOf）。
- *   fee: 規定のキャンセル料（支払額まで）／ discount: 予約時決済の割引額 ／ deducted: 実際に差し引く額（大きい方）
- *   kept: 規定のキャンセル料を超えて差し引く分（＝返金しない割引額）／ refund: 返金額
- * waived（施設都合＝キャンセル料免除）のときは割引額も差し引かない（全額返金）。
+ *   fee: 規定のキャンセル料（支払額まで）／ discount: 予約時決済の割引額 ／ adminFee: 事務手数料（支払額 × 予約時の率）
+ *   deducted: 実際に差し引く額（いちばん大きい方）／ kept: 規定のキャンセル料を超えて差し引く分 ／ refund: 返金額
+ *   reason: 差し引く額の理由
+ * waived（施設都合＝キャンセル料免除）のときは割引額も差し引かない。事務手数料は adminFeeWaived のときだけ差し引かない。
  */
-export type DirectRefundPreview = { paid: number; fee: number; discount: number; deducted: number; kept: number; refund: number };
+export type DirectRefundPreview = {
+  paid: number;
+  fee: number;
+  discount: number;
+  deducted: number;
+  kept: number;
+  refund: number;
+  adminFee: number;
+  adminFeePercent: number | null;
+  reason: KeptReason;
+};
 
 export function directRefundPreviewOf(
-  pay: Pick<DirectPaymentInfo, 'amount' | 'prepay_discount_amount' | 'refunded_amount'> & { bath_tax_amount?: number },
+  pay: Pick<DirectPaymentInfo, 'amount' | 'prepay_discount_amount' | 'refunded_amount'> & {
+    bath_tax_amount?: number;
+    cancel_admin_fee_percent?: number | null;
+    cancel_admin_fee_waived?: boolean;
+  },
   ruleFee: number,
-  waived = false
+  waived = false,
+  adminFeeWaived = pay.cancel_admin_fee_waived === true
 ): DirectRefundPreview {
   const paid = pay.amount;
   const bathTax = Math.max(0, pay.bath_tax_amount ?? 0);
   const discount = Math.max(0, pay.prepay_discount_amount ?? 0);
   const rule = waived ? 0 : Math.max(0, ruleFee);
-  const refund = directRefundDueOf({ amount: paid, fee: rule, refunded: pay.refunded_amount, prepayDiscount: discount, waived, bathTax });
+  const adminFeePercent = pay.cancel_admin_fee_percent == null ? null : Number(pay.cancel_admin_fee_percent);
+  const refund = directRefundDueOf({
+    amount: paid,
+    fee: rule,
+    refunded: pay.refunded_amount,
+    prepayDiscount: discount,
+    waived,
+    bathTax,
+    adminFeePercent,
+    adminFeeWaived
+  });
+  // 返金しない割引額・事務手数料は「入湯税を除いた支払額」まで（入湯税は必ず返す・DB の direct_payment_refund_due と同じ）
+  const d = deductionOf({ paid, bathTax, fee: rule, discount: waived ? 0 : discount, adminFeePercent, adminFeeWaived });
   const fee = Math.min(rule, paid);
-  // 返金しない割引額は「入湯税を除いた支払額」まで（入湯税は必ず返す・DB の direct_payment_refund_due と同じ）
-  const deducted = waived ? fee : Math.max(fee, Math.min(discount, Math.max(paid - bathTax, 0)));
-  return { paid, fee, discount, deducted, kept: Math.max(0, deducted - fee), refund };
+  return { paid, fee, discount, deducted: d.kept, kept: Math.max(0, d.kept - fee), refund, adminFee: d.adminFee, adminFeePercent, reason: d.reason };
 }
 
 /**
@@ -456,7 +513,9 @@ export function directRefundPreviewOf(
  */
 export async function directRefundDueFor(
   bookingCode: string
-): Promise<{ cancellationFee: number | null; prepayDiscount: number; kept: number; fee: number; due: number } | null> {
+): Promise<
+  ({ cancellationFee: number | null; prepayDiscount: number; kept: number; fee: number; due: number } & RefundExtra & { adminFeeWaived: boolean }) | null
+> {
   if (!partnerServiceClient()) return null;
   try {
     const d = await rpc<RefundDueRow>('direct_payment_refund_due', { p_booking_code: bookingCode });
@@ -466,7 +525,9 @@ export async function directRefundDueFor(
       prepayDiscount: Math.max(0, Number(d.prepay_discount) || 0),
       kept: keptOf(d),
       fee: d.fee,
-      due: d.due
+      due: d.due,
+      ...extraOf(d),
+      adminFeeWaived: d.admin_fee_waived === true
     };
   } catch {
     return null;

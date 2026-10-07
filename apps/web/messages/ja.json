@@ -951,5 +951,8 @@
   "reservation_prepay_points_granted": "早期決済ポイント（付与済み）",
   "pay_member_onsite_hint": "会員の方は現地払いもお選びいただけます。",
   "pay_member_onsite_login": "ログイン",
-  "pay_nonmember_onsite_denied": "このプランの現地払いは会員の方のみご利用いただけます。オンライン決済をお選びいただくか、ログインしてください。"
+  "pay_nonmember_onsite_denied": "このプランの現地払いは会員の方のみご利用いただけます。オンライン決済をお選びいただくか、ログインしてください。",
+  "cancel_refund_preview_admin_fee": "お支払い済みの {paid}（入湯税を含む）から、キャンセル料 {fee} と事務手数料 {adminFee}（お支払額の {percent}）の大きい方（{deducted}）を差し引いた {refund} をご利用のカードへ返金します。",
+  "cancel_refund_kept_admin_fee": "事務手数料 {amount}（お支払額の {percent}・カード決済手数料や返金の事務にかかる費用）はご返金の対象外のため、差し引いています。",
+  "prepay_admin_fee_notice": "予約時にオンライン決済でお支払いのご予約を取り消した場合、キャンセル料のかからない期間でも、お支払額の {percent} は事務手数料（カード決済手数料・返金の事務にかかる費用）としてご返金いたしません（キャンセル料がこれを上回る場合はキャンセル料をいただきます。両方はいただきません）。"
 }

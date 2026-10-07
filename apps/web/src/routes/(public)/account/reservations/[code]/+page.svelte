@@ -71,7 +71,8 @@
 	{#if form.refund?.kind === 'refunded'}
 		<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
 			{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}
-			{#if form.refund.kept > 0}<br />{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}{/if}
+			{#if form.refund.kept > 0 && form.refund.reason === 'admin_fee'}<br />{m.cancel_refund_kept_admin_fee({ amount: formatPrice(form.refund.adminFee), percent: `${form.refund.adminFeePercent ?? ''}%` })}
+			{:else if form.refund.kept > 0}<br />{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}{/if}
 		</p>
 	{:else if form.refund?.kind === 'failed'}
 		<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.cancel_refund_failed()}</p>
@@ -173,6 +174,8 @@
 								<li>
 									{#if rp.refund <= 0}
 										{m.cancel_refund_none()}
+									{:else if rp.adminFeePercent != null && rp.reason !== 'prepay_discount'}
+										{m.cancel_refund_preview_admin_fee({ paid: formatPrice(rp.paid), fee: formatPrice(rp.fee), adminFee: formatPrice(rp.adminFee), percent: `${rp.adminFeePercent}%`, deducted: formatPrice(rp.deducted), refund: formatPrice(rp.refund) })}
 									{:else if rp.discount > 0}
 										{m.cancel_refund_preview_discount({ paid: formatPrice(rp.paid), fee: formatPrice(rp.fee), discount: formatPrice(rp.discount), deducted: formatPrice(rp.deducted), refund: formatPrice(rp.refund) })}
 									{:else}

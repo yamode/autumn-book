@@ -951,5 +951,8 @@
   "reservation_prepay_points_granted": "Early payment points (granted)",
   "pay_member_onsite_hint": "Members can also choose to pay at the property.",
   "pay_member_onsite_login": "Log in",
-  "pay_nonmember_onsite_denied": "Paying at the property is available to members only for this plan. Please choose online payment or log in."
+  "pay_nonmember_onsite_denied": "Paying at the property is available to members only for this plan. Please choose online payment or log in.",
+  "cancel_refund_preview_admin_fee": "From the {paid} you paid (including bathing tax), we will deduct the larger of the cancellation fee {fee} and the administrative fee {adminFee} ({percent} of the amount paid) ({deducted}), and refund {refund} to your card.",
+  "cancel_refund_kept_admin_fee": "The administrative fee of {amount} ({percent} of the amount paid, covering card processing and refund handling costs) is non-refundable and has been deducted.",
+  "prepay_admin_fee_notice": "If you cancel a booking paid online at the time of booking, {percent} of the amount paid is non-refundable as an administrative fee (card processing and refund handling costs), even during the free-cancellation period. If the cancellation fee is higher, the cancellation fee applies instead (we never charge both)."
 }

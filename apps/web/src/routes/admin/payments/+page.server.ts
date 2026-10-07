@@ -20,7 +20,15 @@ import { PLAN_PAYMENT_METHODS, sbSetPlanPayment, type PlanPaymentMethod } from '
 import { directPaymentsReady } from '$lib/server/direct-payments';
 import { listPartners, PARTNER_KIND_LABELS, PartnerStoreError, requireStaffPartner, updatePartner } from '$lib/server/partners/store';
 import { staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
-import { loadEarlyPrepaySettings, sbAdminPaymentSettings, sbSaveEarlyPrepaySettings, sbSetPlanEarlyPrepay, sbSetPlanNonmemberPayment } from '$lib/server/payment-settings';
+import {
+  loadEarlyPrepaySettings,
+  sbAdminPaymentSettings,
+  sbSaveCancelAdminFee,
+  sbSaveEarlyPrepaySettings,
+  sbSetPlanEarlyPrepay,
+  sbSetPlanNonmemberPayment
+} from '$lib/server/payment-settings';
+import { adminFeePercentError, DEFAULT_ADMIN_FEE_PERCENT } from '$lib/cancel-admin-fee';
 import { inlinePaymentReady } from '$lib/server/stripe';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -54,7 +62,7 @@ export const load: PageServerLoad = async (event) => {
       ...base,
       live: false as const,
       notLive: NOT_LIVE,
-      settings: { earlyPrepay: await loadEarlyPrepaySettings(currentFacility.id), updatedAt: null, plans },
+      settings: { earlyPrepay: await loadEarlyPrepaySettings(currentFacility.id), cancelAdminFeePercent: DEFAULT_ADMIN_FEE_PERCENT, updatedAt: null, plans },
       settingsError: null,
       partners: [],
       partnersError: NOT_LIVE,
@@ -136,6 +144,23 @@ export const actions: Actions = {
       return { scope: 'early', saved: true };
     } catch (e) {
       return fail(400, { scope: 'early', error: messageOf(e) });
+    }
+  },
+
+  // 予約時決済の事務手数料（取消時に返金しない率・施設ごとに1つ・2026-10-07）。金額・返金に関わるので管理者だけ（DB でも検査）
+  saveAdminFee: async (event) => {
+    if (!isAdmin(event)) return fail(403, { scope: 'adminFee', error: '事務手数料の率は管理者だけが変更できます。' });
+    if (!LIVE) return fail(503, { scope: 'adminFee', error: NOT_LIVE });
+    const fd = await event.request.formData();
+    const raw = String(fd.get('percent') ?? '').trim();
+    // 決済手数料（3.6%）以下・0%（事務手数料なし）は保存できない（lib/cancel-admin-fee.ts・DB の check と同じ）
+    const problem = adminFeePercentError(raw);
+    if (problem) return fail(400, { scope: 'adminFee', error: problem });
+    try {
+      await sbSaveCancelAdminFee(createSupabaseServerClient(event), currentFacilityOf(event).uuid, Number(raw));
+      return { scope: 'adminFee', saved: true };
+    } catch (e) {
+      return fail(400, { scope: 'adminFee', error: messageOf(e) });
     }
   },
 

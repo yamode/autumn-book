@@ -4,6 +4,7 @@
 // サーバが Intent を作る前の突き合わせに使う（同じ式にそろえる）。
 
 import type { PaymentConfig } from '$lib/types';
+import { deductionOf } from '$lib/cancel-admin-fee';
 
 export type PayOption = 'onsite' | 'card' | 'paypay';
 
@@ -48,10 +49,12 @@ export function directChargeOf(q: {
   return { lodging, bathTax, discount, charge: lodging - discount + bathTax };
 }
 
-// 取消後の返金額 = 支払額 − キャンセル料（支払額まで）− 返金済み。0 未満にはしない（SQL の direct_payment_refund_due と同じ）
-// 予約時決済の割引額は返金しない（2026-09-27 ユーザー決定・autumn-shared 20260926221912）:
-//   差し引く額 = max(規定のキャンセル料〔支払額まで〕, 割引額〔入湯税を除いた支払額まで＝入湯税は必ず返す〕)。
-//   キャンセル料を免除した取消（waived・施設都合）は規定どおり（＝全額返金）。
+// 取消後の返金額 = 支払額 − 差し引く額 − 返金済み。0 未満にはしない（SQL の direct_payment_refund_due と同じ）
+// 予約時決済の割引額は返金しない（2026-09-27 ユーザー決定・autumn-shared 20260926221912）。
+// 事務手数料（支払額 × 予約時の率）も返金しない（2026-10-07 ユーザー決定・autumn-shared 20261007010002・lib/cancel-admin-fee.ts）:
+//   差し引く額 = max(規定のキャンセル料〔支払額まで〕, 割引額, 事務手数料)〔割引額・事務手数料は入湯税を除いた支払額まで＝入湯税は必ず返す〕。
+//   キャンセル料を免除した取消（waived・施設都合）は割引額も返す。事務手数料は adminFeeWaived（スタッフが取消フォームで選ぶ）のときだけ返す。
+//   率の無い導入前の予約（adminFeePercent = null）は事務手数料なし。
 export function directRefundDueOf(p: {
   amount: number;
   fee: number;
@@ -59,13 +62,19 @@ export function directRefundDueOf(p: {
   prepayDiscount?: number;
   waived?: boolean;
   bathTax?: number;
+  adminFeePercent?: number | null;
+  adminFeeWaived?: boolean;
 }): number {
-  let fee = Math.min(Math.max(0, p.fee), p.amount);
-  if (!p.waived) {
-    const keepCap = Math.max(0, p.amount - Math.max(0, p.bathTax ?? 0));
-    fee = Math.max(fee, Math.min(Math.max(0, p.prepayDiscount ?? 0), keepCap));
-  }
-  return Math.max(0, p.amount - fee - Math.max(0, p.refunded ?? 0));
+  const d = deductionOf({
+    paid: p.amount,
+    bathTax: p.bathTax,
+    fee: p.fee,
+    // 免除のときは割引額を差し引かない（キャンセル料は渡された額のまま＝DB と同じ）
+    discount: p.waived ? 0 : p.prepayDiscount,
+    adminFeePercent: p.adminFeePercent,
+    adminFeeWaived: p.adminFeeWaived
+  });
+  return Math.max(0, p.amount - d.kept - Math.max(0, p.refunded ?? 0));
 }
 
 // プランの支払設定から、画面に出す支払方法を決める。

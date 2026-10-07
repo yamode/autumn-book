@@ -33,6 +33,7 @@ import { applyPlanAnswers, planBookingForm } from '$lib/server/booking-questions
 import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
+import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -116,12 +117,14 @@ export const load: PageServerLoad = async (event) => {
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
-		const [bathTax, prepay, bookingForm] = await Promise.all([
+		const [bathTax, prepay, bookingForm, adminFeePercent] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）。金額の正は DB の direct_payment_prepare
 			prepayDiscountViewFor(hold.facilityId, plan, hold),
 			// 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は備考の先頭に入る
-			planBookingForm(hold.facilityId, { ratePlanId: hold.planId })
+			planBookingForm(hold.facilityId, { ratePlanId: hold.planId }),
+			// 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。オンライン決済を選んだときに予約前に知らせる
+			loadCancelAdminFeePercent(hold.facilityId)
 		]);
 
 		return {
@@ -138,6 +141,7 @@ export const load: PageServerLoad = async (event) => {
 			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
 			bathTax,
 			prepay,
+			adminFeePercent,
 			questions: bookingForm.questions,
 			askGender: bookingForm.askGender,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
@@ -170,6 +174,7 @@ export const load: PageServerLoad = async (event) => {
 		publishableKey: null,
 		bathTax: 0,
 		prepay,
+		adminFeePercent: await loadCancelAdminFeePercent(hold.facilityId),
 		questions: [],
 		askGender: false,
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),

@@ -85,7 +85,8 @@
 			</p>
 			{#if form?.refund?.kind === 'refunded'}
 				<p class="mt-2 text-stone-700">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
-				{#if form.refund.kept > 0}<p class="mt-1 text-sm text-stone-600">{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}</p>{/if}
+				{#if form.refund.kept > 0 && form.refund.reason === 'admin_fee'}<p class="mt-1 text-sm text-stone-600">{m.cancel_refund_kept_admin_fee({ amount: formatPrice(form.refund.adminFee), percent: `${form.refund.adminFeePercent ?? ''}%` })}</p>
+				{:else if form.refund.kept > 0}<p class="mt-1 text-sm text-stone-600">{m.cancel_refund_kept({ amount: formatPrice(form.refund.kept) })}</p>{/if}
 			{:else if form?.refund?.kind === 'failed'}
 				<p class="mt-2 text-red-700">{m.cancel_refund_failed()}</p>
 			{:else if form?.refund?.kind === 'nothing_due'}
@@ -239,6 +240,16 @@
 			<p class="mt-2 rounded-lg bg-stone-50 p-3 text-sm text-stone-700">
 				{#if data.refund.refund <= 0}
 					{m.cancel_refund_none()}
+				{:else if data.refund.adminFeePercent != null && data.refund.reason !== 'prepay_discount'}
+					<!-- 事務手数料（2026-10-07）: キャンセル料と事務手数料の大きい方を差し引く -->
+					{m.cancel_refund_preview_admin_fee({
+						paid: formatPrice(data.refund.paid),
+						fee: formatPrice(data.refund.fee),
+						adminFee: formatPrice(data.refund.adminFee),
+						percent: `${data.refund.adminFeePercent}%`,
+						deducted: formatPrice(data.refund.deducted),
+						refund: formatPrice(data.refund.refund)
+					})}
 				{:else if data.refund.discount > 0}
 					<!-- 予約時決済の割引額は返金しない: キャンセル料と割引額の大きい方を差し引く -->
 					{m.cancel_refund_preview_discount({

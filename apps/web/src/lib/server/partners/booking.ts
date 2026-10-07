@@ -79,6 +79,8 @@ import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, partnerCreditCheck
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresDeposit, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
+import { loadCancelAdminFeePercent } from '../payment-settings';
+import { readAdminFeeTerms } from '$lib/cancel-admin-fee';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -541,7 +543,10 @@ export async function createPartnerBooking(
   // 台帳に予約者・交通手段・特典を構造化して残す（メールの宛先・一覧の表示に使う）。仮押さえ（オンライン決済）も同じ
   await attachBookingExtras(db, partner.id, created.id, extras, partnerPlanName(s.planNames, quote.planCode, quote.planName));
   // 予約時点のキャンセル規定を台帳に残す（取消時のキャンセル料はこれで計算する）。失敗しても予約は止めない
-  await snapshotCancelPolicy(db, partner.facility_id, created.id, quote.planCode, quote.planName).catch(() => undefined);
+  // 予約時決済（全額・デポジット）は、予約前に見せた事務手数料の率も一緒に残す（2026-10-07）
+  await snapshotCancelPolicy(db, partner.facility_id, created.id, quote.planCode, quote.planName, {
+    adminFee: paymentOption === 'online' || isDepositPaymentOption(paymentOption)
+  }).catch(() => undefined);
   if (input.saveBooker) {
     // マイページへの保存に失敗しても予約は止めない
     await saveBookerProfile(db, partner.id, account.id, booker).catch(() => undefined);
@@ -1189,9 +1194,22 @@ async function currentCancelPolicy(db: SupabaseClient, facilityId: string, planC
   return planCancelPolicy(data, planCode, planName);
 }
 
-async function snapshotCancelPolicy(db: SupabaseClient, facilityId: string, bookingId: string, planCode: string | null, planName: string | null) {
+// 予約時点の規定を台帳（cancel_policy）に残す。opts.adminFee のとき、事務手数料の率（admin_fee_percent）も同じ jsonb に残す
+// （予約時決済の取消で返金しない率・2026-10-07。率の無い予約＝導入前・後払いの予約は事務手数料なし）。
+// 規定の段が無いプランでも率だけは残す（readCancelPolicy は段も不泊も無ければ null を返すので、取消時は今の規定を読む）。
+async function snapshotCancelPolicy(
+  db: SupabaseClient,
+  facilityId: string,
+  bookingId: string,
+  planCode: string | null,
+  planName: string | null,
+  opts: { adminFee?: boolean } = {}
+) {
   const policy = await currentCancelPolicy(db, facilityId, planCode, planName);
-  if (policy) await db.from('rms_partner_bookings').update({ cancel_policy: storeCancelPolicy(policy) }).eq('id', bookingId);
+  const adminFeePercent = opts.adminFee ? await loadCancelAdminFeePercent(facilityId) : null;
+  if (!policy && adminFeePercent == null) return;
+  const stored = { ...(policy ? storeCancelPolicy(policy) : { rules: [], no_show_rate_percent: null }), ...(adminFeePercent != null ? { admin_fee_percent: adminFeePercent } : {}) };
+  await db.from('rms_partner_bookings').update({ cancel_policy: stored }).eq('id', bookingId);
 }
 
 // 予約の規定（予約時点に残したもの → 無い予約は今のプランの規定）
@@ -1201,12 +1219,12 @@ async function cancelPolicyOf(db: SupabaseClient, facilityId: string, b: Partner
 
 export type StaffFeeMode = 'rule' | 'no_show' | 'custom' | 'waive';
 
-/** スタッフの取消フォーム（components/admin/PartnerCancelFeeFields）の値 */
-export function parseStaffFeeForm(fd: FormData): { feeMode: StaffFeeMode; customFee: number | null; feeNote: string } {
+/** スタッフの取消フォーム（components/admin/PartnerCancelFeeFields）の値。adminFeeWaived = 事務手数料も免除（既定は差し引く） */
+export function parseStaffFeeForm(fd: FormData): { feeMode: StaffFeeMode; customFee: number | null; feeNote: string; adminFeeWaived: boolean } {
   const m = String(fd.get('feeMode') ?? 'rule');
   const feeMode: StaffFeeMode = m === 'no_show' || m === 'custom' || m === 'waive' ? m : 'rule';
   const raw = String(fd.get('customFee') ?? '').trim();
-  return { feeMode, customFee: raw === '' ? null : Number(raw), feeNote: String(fd.get('feeNote') ?? '') };
+  return { feeMode, customFee: raw === '' ? null : Number(raw), feeNote: String(fd.get('feeNote') ?? ''), adminFeeWaived: fd.get('adminFeeWaive') === 'on' };
 }
 
 export type CancelPreview = {
@@ -1221,10 +1239,14 @@ export type CancelPreview = {
   settlement: CancelSettlement;
   // 予約時決済（支払済み）・デポジットのとき: 支払額・差し引く額（充当額）・返金額（デポジットは不足分も）
   refund: PartnerRefund | null;
-  // デポジット予約のとき: 残額を請求書で受けるか（不足分の扱い・N3）。デポジットでなければ null
+  // デポジット予約のとき: 残額を請求書で受けるか（表示用。取消の不足分は 2026-10-07 から精算先にかかわらず請求書）。デポジットでなければ null
   depositRemainderBilled: boolean | null;
   // 精算の一文（画面に出す）
   settlementText: string;
+  // 事務手数料（2026-10-07）: 予約に残した率（無い予約は null）と、スタッフの取消フォームで返金額を計算し直すための値
+  adminFeePercent: number | null;
+  prepayDiscount: number;
+  bathTax: number;
 };
 
 function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = new Date()): CancelPreview {
@@ -1240,7 +1262,10 @@ function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = ne
     settlement,
     refund,
     depositRemainderBilled: isDepositPaymentOption(b.payment_option) ? isDepositRemainderBilled(b.remainder_option) : null,
-    settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund)
+    settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund),
+    adminFeePercent: refund ? readAdminFeeTerms(b.cancel_policy).percent : null,
+    prepayDiscount: Math.max(0, b.prepay_discount_amount ?? 0),
+    bathTax: Math.max(0, b.bath_tax_amount ?? 0)
   };
 }
 
@@ -1325,6 +1350,8 @@ export async function cancelPartnerBooking(
     feeMode?: StaffFeeMode;
     customFee?: number | null;
     feeNote?: string;
+    // スタッフ: 事務手数料も免除する（既定は差し引く。キャンセル料の免除とは別に選ぶ・2026-10-07）
+    adminFeeWaived?: boolean;
   }
 ): Promise<PartnerBookingRow> {
   const booking = await getPartnerBooking(db, partner.id, bookingId);
@@ -1394,11 +1421,20 @@ export async function cancelPartnerBooking(
     detail: { bookingCode: booking.booking_code, cancelFee: fee, basis, settlement },
     ip: opts.ip ?? null
   });
-  // 予約時決済（支払済み）: キャンセル料（直販と同じく割引分も）を差し引いて返金。免除なら全額。
+  // 事務手数料の免除（スタッフが選んだときだけ）は、予約に残した規定（cancel_policy）に印を残す（取消後の表示・請求書が同じ計算になるように）
+  const adminFeeWaived = by === 'staff' && opts.adminFeeWaived === true;
+  if (adminFeeWaived && readAdminFeeTerms(booking.cancel_policy).percent != null) {
+    const cp = booking.cancel_policy && typeof booking.cancel_policy === 'object' ? (booking.cancel_policy as Record<string, unknown>) : {};
+    await db
+      .from('rms_partner_bookings')
+      .update({ cancel_policy: { ...cp, admin_fee_waived: true } })
+      .eq('id', booking.id);
+  }
+  // 予約時決済（支払済み）: max(キャンセル料, 割引額, 事務手数料) を差し引いて返金。キャンセル料の免除は割引分も返す（事務手数料は別に選ぶ）。
   // スタッフの取消で「返金しない」を選んだときは Stripe に触らない（宿で扱う）
   const paid = (cancelled as { payment_status?: string } | null)?.payment_status === 'paid';
   if (paid && (by === 'partner' || opts.refund !== false)) {
-    const r = partnerRefundOf(booking, fee, waived);
+    const r = partnerRefundOf(booking, fee, waived, adminFeeWaived);
     if (r.refund > 0) await refundBooking(db, booking, by === 'partner' ? 'partner_cancel' : 'staff_cancel', r.kept > 0 ? r.refund : undefined);
   }
   // チェックアウト日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
@@ -1494,9 +1530,24 @@ export function depositSummary(
 export function cancelFeeLines(b: PartnerBookingRow): string[] {
   if (b.status !== 'cancelled' || !b.cancel_fee_settlement) return [];
   const fee = b.cancel_fee ?? 0;
-  if (fee <= 0) return [`キャンセル料: なし${b.cancel_fee_waived ? '（免除）' : ''}`];
+  const kept = cancelKeptNote(b);
+  const adminLines = (): string[] => (kept ? [kept] : []);
+  if (fee <= 0) return [`キャンセル料: なし${b.cancel_fee_waived ? '（免除）' : ''}`, ...adminLines()];
   const how = cancelFeeSettlementLabel(b);
-  return [`キャンセル料: ${yen(fee)}（${cancelFeeBasisLabel(b)}・不課税）${how ? ` ${how}` : ''}`];
+  return [`キャンセル料: ${yen(fee)}（${cancelFeeBasisLabel(b)}・不課税）${how ? ` ${how}` : ''}`, ...adminLines()];
+}
+
+/**
+ * 取消済みの予約時決済・デポジットで、キャンセル料より大きい額（事務手数料・予約時決済割引の分）を差し引いたときの一文（2026-10-07）。
+ * キャンセル料をそのまま差し引いた・後払いの予約は null。メール・取引先の予約一覧・管理画面に出す。
+ */
+export function cancelKeptNote(b: PartnerBookingRow): string | null {
+  if (b.status !== 'cancelled' || (b.cancel_fee_settlement !== 'refund' && b.cancel_fee_settlement !== 'deposit')) return null;
+  const r = partnerRefundOf(b, b.cancel_fee ?? 0, !!b.cancel_fee_waived);
+  if (r.reason === 'admin_fee')
+    return `事務手数料: ${yen(r.adminFee)}（予約時決済の取消で返金しない ${r.adminFeePercent ?? ''}%・キャンセル料より大きいためこちらを差し引き）→ 返金 ${yen(r.refund)}`;
+  if (r.reason === 'prepay_discount') return `予約時決済割引の分: ${yen(r.kept)}（キャンセル料より大きいためこちらを差し引き）→ 返金 ${yen(r.refund)}`;
+  return null;
 }
 
 // 「2日前の取消 30%」「不泊 100%」「金額指定」
@@ -1515,12 +1566,10 @@ export function cancelFeeSettlementLabel(b: PartnerBookingRow): string {
     case 'refund':
       return '→ お支払い済みの金額から差し引き';
     case 'deposit': {
-      // デポジットから充当。不足分は残額が請求書なら請求書へ・現地なら請求しない（N3）
+      // デポジットから充当。不足分は精算先にかかわらず請求書へ（2026-10-07 変更・旧 N3 廃止）
       const r = partnerRefundOf(b, b.cancel_fee ?? 0, !!b.cancel_fee_waived);
       if (r.shortage <= 0) return '→ お支払い済みのデポジットから充当';
-      return r.shortageBilled > 0
-        ? `→ デポジットから充当（超える ${yen(r.shortage)} は ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求）`
-        : `→ デポジットから充当（超える ${yen(r.shortage)} はご請求しません）`;
+      return `→ デポジットから充当（超える ${yen(r.shortage)} は ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求）`;
     }
     default:
       return '';

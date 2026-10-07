@@ -397,11 +397,12 @@ describe('デポジット（Phase 3b）', () => {
     const t = invoiceTotals([l]);
     expect(t).toMatchObject({ billedTotal: 19_550, cancelFee: 19_550, taxable10: 0, nonTaxable: 0, paidTotal: 30_450 });
   });
-  it('取消（キャンセル料 > デポジット・残額は現地）: 不足分は請求しない（N3）', () => {
+  it('取消（キャンセル料 > デポジット・残額は現地）: 不足 19,550 を不課税で請求書に（2026-10-07 変更・旧 N3 廃止）', () => {
     const c = dep({ status: 'cancelled', remainder_option: 'onsite', cancel_fee: 50_000, cancel_fee_settlement: 'deposit' });
-    expect(cancelChargeOf(c)).toBe(30_450);
+    expect(cancelChargeOf(c)).toBe(50_000);
+    expect(isInvoiceTarget(c, '2026-10-01')).toBe(true);
     const [l] = buildInvoiceLines([c], settings);
-    expect(l).toMatchObject({ billable: false, billed: 0 });
+    expect(l).toMatchObject({ billable: true, billed: 19_550, deposit: 30_450 });
   });
   it('取引先払いの判定: デポジットは残額の精算先で決める', () => {
     expect(isPartnerBilledBooking({ payment_option: 'deposit_online', remainder_option: 'invoice_monthly' }, settings)).toBe(true);

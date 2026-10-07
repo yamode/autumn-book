@@ -12,6 +12,7 @@ import {
   type EarlyPrepaySettings
 } from '$lib/early-prepay';
 import type { PlanPaymentMethod } from '$lib/server/content-admin';
+import { DEFAULT_ADMIN_FEE_PERCENT, normalizeAdminFeePercent, roundAdminFeePercent } from '$lib/cancel-admin-fee';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
 
@@ -36,6 +37,27 @@ export async function loadEarlyPrepaySettings(bookFacilityId: string): Promise<E
     return normalizeEarlyPrepaySettings(data);
   } catch {
     return NO_EARLY_PREPAY;
+  }
+}
+
+/**
+ * 公開側: 施設の「予約時決済の事務手数料（取消時に返金しない率）」（autumn-shared 20261007010002）。
+ * 公式サイト（Book の施設 ID）・取引先ページ（core.facilities の UUID）のどちらの ID でもよい。
+ * 読めなかったとき（migration 未適用・行が無い）は既定の 5%（DB の既定・トリガーの既定と同じ）。
+ */
+export async function loadCancelAdminFeePercent(facilityId: string): Promise<number> {
+  if (DATA_SOURCE !== 'supabase') return DEFAULT_ADMIN_FEE_PERCENT;
+  const uuid = FACILITY_UUID[facilityId] ?? facilityId;
+  try {
+    const { data, error } = await supa()
+      .from('payment_settings')
+      .select('cancel_admin_fee_percent')
+      .eq('facility_id', uuid)
+      .maybeSingle();
+    if (error || !data) return DEFAULT_ADMIN_FEE_PERCENT;
+    return normalizeAdminFeePercent((data as { cancel_admin_fee_percent?: unknown }).cancel_admin_fee_percent);
+  } catch {
+    return DEFAULT_ADMIN_FEE_PERCENT;
   }
 }
 
@@ -64,6 +86,8 @@ export type AdminPaymentPlan = {
 
 export type AdminPaymentSettings = {
   earlyPrepay: EarlyPrepaySettings;
+  /** 予約時決済の事務手数料（取消時に返金しない率・%）。既定 5 */
+  cancelAdminFeePercent: number;
   updatedAt: string | null;
   plans: AdminPaymentPlan[];
 };
@@ -75,6 +99,7 @@ function friendly(e: { message: string }, fallback: string): Error {
   if (m.includes('forbidden'))
     return new Error('この施設の支払設定を変更する権限がありません（早期決済割の保存はテナント管理者だけができます）。');
   if (m.includes('not_found')) return new Error('施設またはプランが見つかりません。');
+  if (m.includes('invalid_admin_fee')) return new Error('事務手数料の率が正しくありません（決済手数料 3.6% より大きく、20% 以下）。');
   if (m.includes('invalid_tiers')) return new Error('段階表の値が正しくありません（日数・割引率とも上の段より大きく、率は 1〜20%）。');
   if (m.includes('invalid_blackouts')) return new Error('除外期間の値が正しくありません（開始日 ≦ 終了日・1年以内）。');
   if (m.includes('Could not find the function') || m.includes('does not exist'))
@@ -89,6 +114,7 @@ export async function sbAdminPaymentSettings(client: SupabaseClient, facilityUui
   const plans = (Array.isArray(d.plans) ? d.plans : []) as Record<string, unknown>[];
   return {
     earlyPrepay: normalizeEarlyPrepaySettings(d),
+    cancelAdminFeePercent: normalizeAdminFeePercent(d.cancel_admin_fee_percent),
     updatedAt: (d.updated_at as string | null) ?? null,
     plans: plans.map((p) => ({
       id: String(p.id),
@@ -127,4 +153,17 @@ export async function sbSetPlanEarlyPrepay(client: SupabaseClient, ratePlanId: s
 export async function sbSetPlanNonmemberPayment(client: SupabaseClient, ratePlanId: string, method: PlanPaymentMethod | null): Promise<void> {
   const { error } = await client.schema('book').rpc('admin_set_plan_nonmember_payment', { p_rate_plan_id: ratePlanId, p_method: method });
   if (error) throw friendly(error, '非会員の支払方法を保存できませんでした');
+}
+
+/** 予約時決済の事務手数料の率を保存（管理者のみ・DB でも検査）。autumn-shared 20261007010002 */
+export async function sbSaveCancelAdminFee(client: SupabaseClient, facilityUuid: string, percent: number): Promise<number> {
+  const { data, error } = await client
+    .schema('book')
+    .rpc('admin_save_cancel_admin_fee', { p_facility_id: facilityUuid, p_percent: roundAdminFeePercent(percent) });
+  if (error) {
+    if (error.message.includes('Could not find the function') || error.message.includes('does not exist'))
+      throw new Error('DB の更新（autumn-shared 20261007010002）がまだ適用されていません。');
+    throw friendly(error, '事務手数料の率を保存できませんでした');
+  }
+  return normalizeAdminFeePercent(data);
 }

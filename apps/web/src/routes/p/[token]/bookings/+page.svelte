@@ -263,6 +263,7 @@
                     {:else}
                       なし{b.cancelFee.waived ? '（免除）' : ''}
                     {/if}
+                    {#if b.cancelFee.kept}<span class="block text-sm text-stone-600">{b.cancelFee.kept}</span>{/if}
                     {#if b.paymentStatus === 'refunded' && b.refundAmount != null}<span class="block text-sm text-stone-600">返金 {b.refundAmount.toLocaleString('ja-JP')}円</span>{/if}
                   </dd>
                 {/if}
@@ -339,7 +340,8 @@
                             <div class="flex justify-between gap-3 font-bold"><span>キャンセル料{cp.rate > 0 ? `（${cp.rate}%）` : ''}</span><span class="tabular-nums">{cp.fee > 0 ? `${cp.fee.toLocaleString('ja-JP')}円` : 'なし'}</span></div>
                             {#if cp.refund}
                               <div class="mt-1 flex justify-between gap-3 border-t border-stone-200 pt-1"><span>お支払い済み</span><span class="tabular-nums">{cp.refund.paid.toLocaleString('ja-JP')}円</span></div>
-                              {#if cp.refund.kept > 0}<div class="flex justify-between gap-3"><span>{cp.settlement === 'deposit' ? 'キャンセル料に充当' : '差し引く額'}{cp.refund.kept > cp.fee ? '（予約時決済割引の分）' : ''}</span><span class="tabular-nums">-{cp.refund.kept.toLocaleString('ja-JP')}円</span></div>{/if}
+                              {#if cp.refund.kept > 0}<div class="flex justify-between gap-3"><span>{cp.settlement === 'deposit' ? '充当する額' : '差し引く額'}{cp.refund.reason === 'admin_fee' ? `（事務手数料 ${cp.refund.adminFeePercent}%）` : cp.refund.reason === 'prepay_discount' ? '（予約時決済割引の分）' : '（キャンセル料）'}</span><span class="tabular-nums">-{cp.refund.kept.toLocaleString('ja-JP')}円</span></div>{/if}
+                              {#if cp.refund.adminFeePercent != null}<p class="mt-1 text-xs text-stone-500">{cp.settlement === 'deposit' ? `デポジットのご予約は、取り消すとデポジット額の ${cp.refund.adminFeePercent}% を事務手数料として充当します` : `予約時決済のご予約は、取り消すとご請求額の ${cp.refund.adminFeePercent}% を事務手数料としてご返金いたしません`}（キャンセル料がこれを上回る場合はキャンセル料。両方はいただきません）。</p>{/if}
                               <div class="flex justify-between gap-3 font-bold"><span>返金額</span><span class="tabular-nums">{cp.refund.refund.toLocaleString('ja-JP')}円</span></div>
                             {/if}
                             {#if cp.settlementText && (!cp.refund || cp.settlement === 'deposit')}<p class="mt-1 text-stone-600">{cp.settlementText}</p>{/if}

@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { EARLY_PREPAY_MAX_TIERS, percentText, RECOMMENDED_EARLY_PREPAY_TIERS, type EarlyPrepayMode } from '$lib/early-prepay';
+	import { ADMIN_FEE_MAX_PERCENT, adminFeeNotice, STRIPE_FEE_PERCENT } from '$lib/cancel-admin-fee';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let { data, form } = $props();
@@ -164,6 +165,42 @@
 				</div>
 			</dl>
 		</div>
+	</section>
+
+	<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。公式サイト・取引先ページの両方に効く -->
+	<section class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
+		<div class="mb-1 flex items-center justify-between">
+			<h2 class="font-medium text-stone-800">事務手数料（予約時決済の取消で返金しない率）</h2>
+			{#if f?.scope === 'adminFee' && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+		</div>
+		<p class="mb-3 max-w-3xl text-xs text-stone-500">
+			予約時にオンライン決済（全額・取引先のデポジットを含む）で払った予約を取り消したとき、この率の額はキャンセル料の期間に関係なく返金しません。
+			返金しない額はキャンセル料・予約時決済の割引額・事務手数料の<b class="text-stone-700">いちばん大きい方</b>です（足し合わせません）。
+			公式サイトと取引先ページの両方に効き、予約前に率を表示します。率は予約ごとに残すので、変えても既にある予約は予約時の率のままです。
+			Stripe の決済手数料（{STRIPE_FEE_PERCENT}%）以下にはできません（0%＝事務手数料なしも不可。取らない取消は、取消フォームで「事務手数料も免除」を選びます）。チェックアウト日決済（カード登録のみ）は対象外です。
+		</p>
+		{#if f?.scope === 'adminFee' && f.error}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.error}</p>{/if}
+		{#if data.settings}
+			<form method="POST" action="?/saveAdminFee" use:enhance={keep} class="flex flex-wrap items-end gap-3 text-sm">
+				<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="flex flex-wrap items-end gap-3">
+					<label class="grid gap-1">
+						<span class="text-xs text-stone-500">率（%）</span>
+						<input
+							name="percent"
+							type="number"
+							step="0.1"
+							min={STRIPE_FEE_PERCENT + 0.1}
+							max={ADMIN_FEE_MAX_PERCENT}
+							value={data.settings.cancelAdminFeePercent}
+							required
+							class="w-24 rounded-md border border-stone-300 px-2 py-1.5 text-right"
+						/>
+					</label>
+					<button type="submit" class="rounded-md bg-stone-800 px-3 py-1.5 text-white hover:bg-stone-700">保存</button>
+				</fieldset>
+				<p class="w-full max-w-3xl text-xs text-stone-500">お客様への表示: {adminFeeNotice(data.settings.cancelAdminFeePercent, 'partner')}</p>
+			</form>
+		{/if}
 	</section>
 
 	<section class="rounded-xl border border-stone-200 bg-white p-4">

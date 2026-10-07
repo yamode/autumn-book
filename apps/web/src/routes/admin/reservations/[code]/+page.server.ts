@@ -39,6 +39,7 @@ import {
 import {
 	directPaymentForBooking,
 	directRefundDueFor,
+	setDirectAdminFeeWaived,
 	refundAfterCancel,
 	retryDirectRefund,
 	type DirectRefundOutcome
@@ -230,6 +231,8 @@ export const actions: Actions = {
 
 		const form = await event.request.formData();
 		const waive = form.get('waive') === 'on';
+		// 事務手数料も免除する（既定は差し引く・キャンセル料の免除とは別・2026-10-07）
+		const adminFeeWaive = form.get('adminFeeWaive') === 'on';
 		const reason = String(form.get('reason') ?? '').trim();
 		if (!reason) {
 			return fail(400, { message: 'キャンセル理由を入力してください（監査ログに記録されます）' });
@@ -238,6 +241,8 @@ export const actions: Actions = {
 		if (ADMIN_SUPABASE) {
 			try {
 				const res = await adminCancelBooking(bookAdmin(event), event.params.code, waive, reason);
+				// 返金額の計算（DB の direct_payment_refund_due）より先に、事務手数料の免除を支払の記録に残す
+				if (adminFeeWaive) await setDirectAdminFeeWaived(event.params.code, true);
 				// オンライン決済済みなら「支払額 − キャンセル料（免除なら 0）」をカードへ返金
 				const refund: DirectRefundOutcome = await refundAfterCancel(event.params.code, 'staff').catch(() => ({ kind: 'none' as const }));
 				return { cancelled: true as const, fee: res.cancellation_fee, refund };

@@ -12,7 +12,7 @@
 // デポジット（Phase 3b・2026-10-07）: 受付枠を超えて deposit_online で受けた予約は、残額の精算先が請求書なら
 //   「ご請求の対象」としてデポジットを差し引いた残額だけを請求し、明細に「うちデポジット ○円 お支払い済み」を出す。
 //   残額が現地なら請求額 0（別途精算）。デポジットは宿泊料金（10%）から先に差し引き、超えた分を入湯税から差し引く。
-//   取消時はデポジットをキャンセル料に充当し、超えた分（残額が請求書のときだけ・N3）を不課税で請求する。
+//   取消時はデポジットをキャンセル料に充当し、超えた分を不課税で請求する（2026-10-07 変更: 残額の精算先が現地でも請求する・旧 N3 廃止）。
 // 紙面（HTML）は Cloudflare Browser Rendering で PDF にする（lib/server/partners/invoice-pdf.ts）。
 // PDF が作れない環境でも、同じ HTML をそのまま開いて印刷できる。
 import { chargeAmountOf, isDepositPaymentOption, isDepositRemainderBilled, type PartnerBookingSettings } from '$lib/partner-booking';
@@ -181,7 +181,7 @@ type InvoiceTargetSource = Pick<InvoiceBookingSource, 'status' | 'check_out_date
 /**
  * デポジット予約の取消（cancel_fee_settlement='deposit'）で受け取る額の内訳。
  *   kept      … デポジットから充当した額（返金後は 支払額−返金額。返金前は min(キャンセル料, デポジット)）
- *   shortage  … キャンセル料がデポジットを超えた額のうち、請求書で請求する額（残額が現地なら 0・N3）
+ *   shortage  … キャンセル料がデポジットを超えた額（請求書で請求する。2026-10-07 から残額の精算先が現地でも請求）
  */
 export function depositCancelPartsOf(b: Omit<InvoiceTargetSource, 'status' | 'check_out_date'>): { kept: number; shortage: number } {
   const fee = Math.max(0, b.cancel_fee ?? 0);
@@ -190,13 +190,13 @@ export function depositCancelPartsOf(b: Omit<InvoiceTargetSource, 'status' | 'ch
   const kept =
     b.payment_status === 'refunded' ? Math.max(0, paid - (b.refund_amount ?? paid)) : b.payment_status === 'paid' ? paid : Math.min(fee, paid);
   const over = Math.max(0, fee - Math.min(fee, paid));
-  return { kept, shortage: isDepositRemainderBilled(b.remainder_option) ? over : 0 };
+  return { kept, shortage: over };
 }
 
 /**
  * 取消の予約で受け取る額（不課税）。
  *   invoice / card … キャンセル料
- *   refund（予約時決済から差し引き）… 支払額 − 返金額（直販と同じく割引分を差し引いたときはキャンセル料より大きい）
+ *   refund（予約時決済から差し引き）… 支払額 − 返金額（直販と同じく割引分・事務手数料〔2026-10-07〕を差し引いたときはキャンセル料より大きい）
  */
 export function cancelChargeOf(b: Omit<InvoiceTargetSource, 'status' | 'check_out_date'>): number {
   const fee = Math.max(0, b.cancel_fee ?? 0);
@@ -246,8 +246,15 @@ const jstDay = (iso: string | null | undefined) => (iso ? new Date(new Date(iso)
 
 function cancelNoteOf(b: InvoiceBookingSource): string {
   const basis = b.cancel_fee_basis ?? '';
-  if (b.cancel_fee_rate == null) return basis ? `キャンセル料（${basis}）` : 'キャンセル料';
-  return `キャンセル料 ${basis === '不泊' ? '不泊' : `${basis}の取消`} ${b.cancel_fee_rate}%`;
+  const head =
+    b.cancel_fee_rate == null
+      ? basis
+        ? `キャンセル料（${basis}）`
+        : 'キャンセル料'
+      : `キャンセル料 ${basis === '不泊' ? '不泊' : `${basis}の取消`} ${b.cancel_fee_rate}%`;
+  // 予約時決済・デポジットから差し引いた額がキャンセル料より大きい（事務手数料・予約時決済割引の分を返金しなかった・2026-10-07）
+  const over = (b.cancel_fee_settlement === 'refund' || b.cancel_fee_settlement === 'deposit') && cancelChargeOf(b) > Math.max(0, b.cancel_fee ?? 0);
+  return over ? `${head}（事務手数料等の返金しない分を含む）` : head;
 }
 
 export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<PartnerBookingSettings, 'customPaymentOptions'>): InvoiceLine[] {

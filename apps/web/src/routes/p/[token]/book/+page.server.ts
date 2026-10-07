@@ -13,6 +13,7 @@ import { planCancelPolicy } from '$lib/partner-cancel-fee';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { loadBookingNote } from '$lib/server/booking-notes';
 import { loadStandardFieldTexts, partnerBookingForm } from '$lib/server/booking-questions';
+import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -33,7 +34,7 @@ export const load = async (event) => {
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
-  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields, nameHolder] = await Promise.all([
+  const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields, nameHolder, adminFeePercent] = await Promise.all([
     quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }, { credit: true }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
@@ -63,7 +64,9 @@ export const load = async (event) => {
       ? getPmsPartnerGuest(db, partner.tenant_id, partner.pms_guest_id)
           .then((g) => g?.recipientName || null)
           .catch(() => null)
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    // 予約時決済の事務手数料（取消時に返金しない率・施設の設定・2026-10-07）。予約時決済を選んだときに案内する
+    loadCancelAdminFeePercent(partner.facility_id)
   ]);
   const roomContent = contents?.rooms.find((r) => r.code === roomCode);
   const planContent = contents?.plans.find((p) => p.planCode === planCode && p.planLabel === planName);
@@ -98,6 +101,7 @@ export const load = async (event) => {
     canBook: canBookFor(checkIn, s),
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
+    adminFeePercent,
     capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: bookingForm.questions, askGender: bookingForm.askGender },
     standardFields,

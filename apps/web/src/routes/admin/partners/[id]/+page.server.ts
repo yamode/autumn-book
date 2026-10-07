@@ -31,6 +31,7 @@ import {
 	previewPartnerCancels,
 	cancelFeeBasisLabel,
 	cancelFeeSettlementLabel,
+	cancelKeptNote,
 	inlinePaymentReady,
 	onlinePaymentReady,
 	retryPartnerCharge,
@@ -317,7 +318,8 @@ export const load: PageServerLoad = async (event) => {
 			cancelPreview: cancelPreviews[b.id] ?? null,
 			cancelFee:
 				b.status === 'cancelled' && b.cancel_fee_settlement
-					? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''), status: b.cancel_fee_status ?? null, error: b.cancel_fee_error ?? null, note: b.cancel_fee_note ?? null }
+					? { fee: b.cancel_fee ?? 0, waived: !!b.cancel_fee_waived, basis: cancelFeeBasisLabel(b), settlement: cancelFeeSettlementLabel(b).replace(/^→ /, ''),
+						kept: cancelKeptNote(b), status: b.cancel_fee_status ?? null, error: b.cancel_fee_error ?? null, note: b.cancel_fee_note ?? null }
 					: null,
 			invoiceMonth: `${Number(b.check_out_date.slice(0, 4))}年${Number(b.check_out_date.slice(5, 7))}月`,
 			hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed'),

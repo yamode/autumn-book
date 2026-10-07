@@ -7,13 +7,21 @@
 // - 取消の日: 宿泊日の何日前か（JST の暦日）。規定は「N日前から X%」なので、N 以下で最も小さい段を当てる。
 // - 精算: 支払方法で決まる（settlementOf）。
 //     請求書払い・自由入力の支払方法 … 月末の請求書（チェックアウト予定日の月）に不課税で載せる
-//     予約時決済（支払済み） … 支払額から差し引いて返金。差し引く額は直販と同じく max(キャンセル料, 割引額)
+//     予約時決済（支払済み） … 支払額から差し引いて返金。差し引く額は直販と同じく max(キャンセル料, 割引額, 事務手数料)
+//       事務手数料（2026-10-07・lib/cancel-admin-fee.ts）= 予約時に残した率（cancel_policy.admin_fee_percent）× 支払額。
+//       キャンセル料の期間に関係なく返金しない。足し合わせず大きい方。率の無い導入前の予約は 0
 //     チェックアウト日決済（カード登録のみ・未請求） … 取消時に登録カードへ請求（失敗したら請求書へ回す）
 //     デポジット（支払済み・Phase 3b） … デポジットをキャンセル料に充当し、差額を返金。キャンセル料がデポジットを超えた
-//       不足分は、残額の精算先が請求書なら月末の請求書へ、現地なら請求しない（デポジットが上限・N3）。免除は全額返金
+//       不足分は、残額の精算先にかかわらず月末の請求書へ（不課税）。免除は全額返金
+//       （2026-10-07 変更: 旧 N3「現地なら不足分は請求しない」を廃止。現地精算の取引先でも不足分は請求書で請求する）
+//       事務手数料（2026-10-07）もデポジットから差し引く: 充当＝min(max(キャンセル料, デポジット × 率), デポジット)。
+//       デポジットもカードで受けたお金（決済手数料がかかる）なので、全額の予約時決済と同じ「大きい方」の規則にそろえた。
+//       不足分（請求書へ回す額）はキャンセル料だけから出す（事務手数料はデポジット以下なので不足は生まない）
+//     キャンセル料の免除（waived）は事務手数料の免除ではない。事務手数料も免除するかは cancel_policy.admin_fee_waived（スタッフが選ぶ）
 // - 請求書上は「逸失利益に対する損害賠償金」として不課税で計上する（消費税の対象外）。
 import { normalizeRules, type Rule } from '$lib/partner-plan-terms';
-import { isDepositPaymentOption, isDepositRemainderBilled } from '$lib/partner-booking';
+import { isDepositPaymentOption } from '$lib/partner-booking';
+import { adminFeeOf, deductionOf, keptReasonLabel, readAdminFeeTerms, type KeptReason } from '$lib/cancel-admin-fee';
 
 export type CancelPolicy = { rules: Rule[]; noShowPercent: number | null };
 
@@ -124,6 +132,8 @@ export type SettlementSource = {
   // デポジット（payment_option='deposit_online'・Phase 3b）
   deposit_amount?: number | null;
   remainder_option?: string | null;
+  // 予約時に残した規定（事務手数料の率 admin_fee_percent・免除 admin_fee_waived もここ）
+  cancel_policy?: unknown;
 };
 
 export function settlementOf(b: SettlementSource, fee: number): CancelSettlement {
@@ -139,31 +149,57 @@ export type PartnerRefund = {
   paid: number;
   kept: number;
   refund: number;
-  // デポジットのとき: キャンセル料がデポジットを超えた不足分と、そのうち請求書で請求する額（残額が現地なら 0・N3）
+  // デポジットのとき: キャンセル料がデポジットを超えた不足分と、そのうち請求書で請求する額
+  // （2026-10-07 から精算先にかかわらず不足分＝請求額。互換のため両方の名前を残す）
   shortage: number;
   shortageBilled: number;
+  // 差し引く額の理由（キャンセル料 / 割引 / 事務手数料）と、比べた事務手数料の額・率（率が無い予約は null）
+  reason: KeptReason;
+  adminFee: number;
+  adminFeePercent: number | null;
 };
 
 /**
  * 予約時決済（支払済み）の返金額。直販（lib/direct-payment.ts の directRefundDueOf）と同じ:
- * 差し引く額 = max(キャンセル料, 割引額〔入湯税を除いた支払額まで＝入湯税は必ず返す〕)。免除したときは全額返金。
- * デポジット（deposit_online）は割引が無いので、充当＝min(キャンセル料, デポジット)・返金＝デポジット−充当。
+ * 差し引く額 = max(キャンセル料, 割引額, 事務手数料)〔割引額・事務手数料は入湯税を除いた支払額まで＝入湯税は必ず返す〕。
+ * キャンセル料を免除したとき（waived）は割引額も差し引かない。事務手数料は adminFeeWaived（省略時は予約の cancel_policy.admin_fee_waived）。
+ * デポジット（deposit_online）は割引が無いので、充当＝min(max(キャンセル料, 事務手数料), デポジット)・返金＝デポジット−充当。
  */
-export function partnerRefundOf(b: SettlementSource, fee: number, waived = false): PartnerRefund {
+export function partnerRefundOf(b: SettlementSource, fee: number, waived = false, adminFeeWaived?: boolean): PartnerRefund {
+  const terms = readAdminFeeTerms(b.cancel_policy);
+  const adminWaived = adminFeeWaived ?? terms.waived;
   if (isDepositPaymentOption(b.payment_option)) {
     const deposit = Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0);
     const f = waived ? 0 : Math.max(0, fee);
-    const kept = Math.min(f, deposit);
-    const shortage = f - kept;
-    return { paid: deposit, kept, refund: deposit - kept, shortage, shortageBilled: isDepositRemainderBilled(b.remainder_option) ? shortage : 0 };
+    // 事務手数料はデポジットのうち宿泊料金に充てた分まで（デポジットが宿泊料金を超えた分＝入湯税は必ず返す。全額決済と同じ）
+    const adminCap = Math.min(deposit, Math.max(0, b.total_amount));
+    const adminFee = adminWaived ? 0 : Math.min(adminFeeOf(deposit, terms.percent), adminCap);
+    const feeKept = Math.min(f, deposit);
+    const kept = Math.max(feeKept, adminFee);
+    const shortage = f - feeKept;
+    const reason: KeptReason = kept <= 0 ? 'none' : adminFee > feeKept ? 'admin_fee' : 'cancel_fee';
+    return {
+      paid: deposit,
+      kept,
+      refund: deposit - kept,
+      shortage,
+      shortageBilled: shortage,
+      reason,
+      adminFee,
+      adminFeePercent: terms.percent
+    };
   }
   const paid = Math.max(0, b.paid_amount ?? b.total_amount + b.bath_tax_amount - b.prepay_discount_amount);
-  let kept = Math.min(Math.max(0, fee), paid);
-  if (!waived) {
-    const cap = Math.max(0, paid - Math.max(0, b.bath_tax_amount));
-    kept = Math.max(kept, Math.min(Math.max(0, b.prepay_discount_amount), cap));
-  }
-  return { paid, kept, refund: paid - kept, shortage: 0, shortageBilled: 0 };
+  const d = deductionOf({
+    paid,
+    bathTax: b.bath_tax_amount,
+    fee,
+    discount: b.prepay_discount_amount,
+    adminFeePercent: terms.percent,
+    waived,
+    adminFeeWaived: adminWaived
+  });
+  return { paid, kept: d.kept, refund: paid - d.kept, shortage: 0, shortageBilled: 0, reason: d.reason, adminFee: d.adminFee, adminFeePercent: terms.percent };
 }
 
 /** 取消確認欄・メールの「どう精算するか」の一文 */
@@ -171,28 +207,41 @@ export function settlementText(
   s: CancelSettlement,
   fee: number,
   invoiceMonth: string,
-  refund?: { refund: number; kept: number; paid?: number; shortage?: number; shortageBilled?: number } | null
+  refund?: {
+    refund: number;
+    kept: number;
+    paid?: number;
+    shortage?: number;
+    shortageBilled?: number;
+    reason?: KeptReason;
+    adminFeePercent?: number | null;
+  } | null
 ): string {
   const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
+  // 差し引く額の理由（事務手数料・割引のときだけ言葉を足す。キャンセル料は従来の文のまま）
+  const why = refund?.reason && refund.reason !== 'cancel_fee' && refund.reason !== 'none' ? keptReasonLabel(refund.reason, refund.adminFeePercent) : '';
   switch (s) {
     case 'deposit': {
       if (!refund) return '';
       const head =
         refund.kept > 0
-          ? `お支払い済みのデポジット ${yen(refund.paid ?? refund.kept + refund.refund)} から ${yen(refund.kept)} をキャンセル料に充当し、${refund.refund > 0 ? `${yen(refund.refund)} をカードへ返金します` : '返金はありません'}`
+          ? `お支払い済みのデポジット ${yen(refund.paid ?? refund.kept + refund.refund)} から ${yen(refund.kept)} を${why || 'キャンセル料'}に充当し、${refund.refund > 0 ? `${yen(refund.refund)} をカードへ返金します` : '返金はありません'}`
           : `お支払い済みのデポジット ${yen(refund.paid ?? refund.refund)} を全額カードへ返金します`;
       const short = refund.shortage ?? 0;
       if (short <= 0) return head;
-      return (refund.shortageBilled ?? 0) > 0
-        ? `${head}。デポジットを超える ${yen(short)} は ${invoiceMonth}分の請求書でご請求します`
-        : `${head}（デポジットを超える ${yen(short)} はご請求しません）`;
+      // 不足分は残額の精算先（現地でも）にかかわらず請求書で請求する（2026-10-07）
+      return `${head}。デポジットを超える ${yen(short)} は ${invoiceMonth}分の請求書でご請求します`;
     }
     case 'invoice':
       return `${invoiceMonth}分の請求書でご請求します（チェックアウト予定日の月）`;
     case 'card':
       return `ご登録のカードへ ${yen(fee)} をご請求します`;
     case 'refund':
-      return refund ? `お支払い済みの金額から ${yen(refund.kept)} を差し引き、${yen(refund.refund)} をカードへ返金します` : '';
+      return refund
+        ? refund.kept > 0
+          ? `お支払い済みの金額から ${yen(refund.kept)}${why ? `（${why}）` : ''} を差し引き、${yen(refund.refund)} をカードへ返金します`
+          : `お支払い済みの ${yen(refund.refund)} を全額カードへ返金します`
+        : '';
     default:
       return '';
   }

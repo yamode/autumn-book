@@ -6,6 +6,7 @@ import { DEPOSIT_PAYMENT_LABEL, describeDeadline, describeInvoiceDue, isStripePa
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { availablePaymentOptions, creditOverPaymentOptions } from './booking';
 import type { PartnerContext } from './store';
+import { adminFeeNotice, DEFAULT_ADMIN_FEE_PERCENT } from '$lib/cancel-admin-fee';
 
 const COMPANY = `## 販売事業者
 
@@ -34,7 +35,9 @@ const COMPANY = `## 販売事業者
 - 山人-oga-（秋田県男鹿市船川港台島字鵜ノ崎62-29）：0185-47-7776 ／ info@oga.yamado.co.jp`;
 
 export function partnerTokushoho(
-  partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'> & Partial<Pick<PartnerContext, 'credit_over_action' | 'pms_guest_id'>>
+  partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'> & Partial<Pick<PartnerContext, 'credit_over_action' | 'pms_guest_id'>>,
+  // 予約時決済の事務手数料（取消時に返金しない率・施設の設定 book.payment_settings・2026-10-07）
+  adminFeePercent: number = DEFAULT_ADMIN_FEE_PERCENT
 ): { title: string; body: string } {
   const s = partner.booking_settings;
   const due = describeInvoiceDue(s.invoiceDue);
@@ -76,6 +79,19 @@ export function partnerTokushoho(
       : `ご予約の取消は、宿泊日の${describeDeadline(s.cancelDays, s.cutoffHour)}、この専用ページの「予約一覧」からできます。それより後は宿へご連絡ください。`;
   const stripe = ids.some(isStripePaymentOption);
   const billable = ids.some((id) => isBillablePaymentOption(id, s));
+  // 予約時に支払う方法（全額の予約時決済・デポジット）があるときだけ、事務手数料の説明を出す（チェックアウト日決済は未請求なので対象外）
+  const prepaid = ids.some((id) => id === 'online' || id === 'deposit_online');
+  const adminFeeText = prepaid
+    ? `\n- ${adminFeeNotice(adminFeePercent, 'partner')}キャンセル料の期間に関係なくかかります。${
+        ids.includes('deposit_online')
+          ? 'デポジットのご予約は、お支払いのデポジットの額に同じ率を掛けた額です。'
+          : ''
+      }`
+    : '';
+  // デポジットの取消: キャンセル料をデポジットに充当し、超えた分は残額の精算先にかかわらず請求書で請求（2026-10-07 変更・旧 N3 廃止）
+  const depositCancelText = ids.includes('deposit_online')
+    ? '\n- デポジットのご予約を取り消した場合は、お支払いのデポジットをキャンセル料に充当し、差額を返金します。キャンセル料がデポジットを超える場合、超えた額は残額の精算方法（ご請求書・現地）にかかわらず、ご利用予定月のご請求書でご請求します（不課税）。'
+    : '';
 
   const body = `このページは、${partner.facility_name}と取引のある法人・旅行会社等のお客様（以下「貴社」）専用の予約ページです。
 一般のお客様向けの表記は、公式サイトに掲載します。
@@ -117,7 +133,7 @@ ${timings.join('\n') || '- 宿へお問い合わせください'}
     stripe
       ? '\n- 予約時にお支払い済みのご予約は、お支払い額からキャンセル料を差し引いた額を、お支払いに使われたクレジットカードへ返金します。返金が反映される時期は、カード会社によって異なります。\n- チェックアウト日にお支払いのご予約は、キャンセル料をご登録のクレジットカードへ請求します。'
       : ''
-  }
+  }${adminFeeText}${depositCancelText}
 - 当館の都合で宿泊を提供できない場合は、宿泊料金はいただきません（お支払い済みの場合は全額を返金します）。`;
 
   return { title: '特定商取引法に基づく表記', body };

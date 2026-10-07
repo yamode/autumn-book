@@ -951,5 +951,8 @@
   "reservation_prepay_points_granted": "提早付款點數（已發放）",
   "pay_member_onsite_hint": "會員亦可選擇現場付款。",
   "pay_member_onsite_login": "登入",
-  "pay_nonmember_onsite_denied": "此方案的現場付款僅限會員使用。請選擇線上付款或登入。"
+  "pay_nonmember_onsite_denied": "此方案的現場付款僅限會員使用。請選擇線上付款或登入。",
+  "cancel_refund_preview_admin_fee": "將從已付款的 {paid}（含入湯稅）中，扣除取消費 {fee} 與手續費 {adminFee}（付款金額的 {percent}）兩者中較高者（{deducted}），並將 {refund} 退還至您的信用卡。",
+  "cancel_refund_kept_admin_fee": "手續費 {amount}（付款金額的 {percent}，用於信用卡手續費及退款作業費用）不予退還，已從退款中扣除。",
+  "prepay_admin_fee_notice": "預訂時以線上付款的訂單如取消，即使在免費取消期間內，付款金額的 {percent} 將作為手續費（信用卡手續費及退款作業費用）不予退還。若取消費高於此金額，則收取取消費（不會同時收取兩者）。"
 }

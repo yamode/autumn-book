@@ -499,6 +499,8 @@
 											<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
 										{/if}
 										{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
+										<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
+										{#if data.adminFeePercent}<p class="text-xs text-amber-900">{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}</p>{/if}
 									</div>
 								{/if}
 							</div>

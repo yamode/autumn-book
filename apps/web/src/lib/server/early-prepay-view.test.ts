@@ -163,17 +163,17 @@ describe('directRefundPreviewOf', () => {
   const paid = { amount: 57300, prepay_discount_amount: 3000, refunded_amount: 0 };
 
   it('キャンセル料が割引より小さいときは割引額を差し引く（返金しない割引額）', () => {
-    expect(directRefundPreviewOf(paid, 0)).toEqual({ paid: 57300, fee: 0, discount: 3000, deducted: 3000, kept: 3000, refund: 54300 });
-    expect(directRefundPreviewOf(paid, 1000)).toEqual({ paid: 57300, fee: 1000, discount: 3000, deducted: 3000, kept: 2000, refund: 54300 });
+    expect(directRefundPreviewOf(paid, 0)).toMatchObject({ paid: 57300, fee: 0, discount: 3000, deducted: 3000, kept: 3000, refund: 54300 });
+    expect(directRefundPreviewOf(paid, 1000)).toMatchObject({ paid: 57300, fee: 1000, discount: 3000, deducted: 3000, kept: 2000, refund: 54300 });
   });
 
   it('キャンセル料の方が大きければキャンセル料だけ', () => {
-    expect(directRefundPreviewOf(paid, 30000)).toEqual({ paid: 57300, fee: 30000, discount: 3000, deducted: 30000, kept: 0, refund: 27300 });
+    expect(directRefundPreviewOf(paid, 30000)).toMatchObject({ paid: 57300, fee: 30000, discount: 3000, deducted: 30000, kept: 0, refund: 27300 });
   });
 
   it('返金しない割引額は入湯税を除いた支払額まで（入湯税は必ず返す）', () => {
     // ポイントで宿泊料金をほぼ払った予約: 支払額 1,300（うち入湯税 300）・割引 3,000
-    expect(directRefundPreviewOf({ amount: 1300, bath_tax_amount: 300, prepay_discount_amount: 3000, refunded_amount: 0 }, 0)).toEqual({
+    expect(directRefundPreviewOf({ amount: 1300, bath_tax_amount: 300, prepay_discount_amount: 3000, refunded_amount: 0 }, 0)).toMatchObject({
       paid: 1300,
       fee: 0,
       discount: 3000,
@@ -185,6 +185,6 @@ describe('directRefundPreviewOf', () => {
 
   it('施設都合（免除）は全額返金・割引のない予約は従来どおり', () => {
     expect(directRefundPreviewOf(paid, 30000, true).refund).toBe(57300);
-    expect(directRefundPreviewOf({ amount: 30300, refunded_amount: 0 }, 15000)).toEqual({ paid: 30300, fee: 15000, discount: 0, deducted: 15000, kept: 0, refund: 15300 });
+    expect(directRefundPreviewOf({ amount: 30300, refunded_amount: 0 }, 15000)).toMatchObject({ paid: 30300, fee: 15000, discount: 0, deducted: 15000, kept: 0, refund: 15300 });
   });
 });
