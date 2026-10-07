@@ -331,7 +331,8 @@
 						<dt class="text-stone-500">支払方法</dt>
 						<dd>
 							{pl.paymentName ?? '—'}
-							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">宿泊料金・入湯税は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
+							{#if pl.depositText}<span class="block text-xs font-medium text-amber-800">{pl.depositText}</span>{/if}
+							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">{pl.depositText ? '残額' : '宿泊料金・入湯税'}は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
 						</dd>
 						<dt class="text-stone-500">支払状況</dt>
 						<dd class={pl.paymentStatus === 'charge_failed' || pl.paymentStatus === 'refund_failed' ? 'text-red-700' : ''}>

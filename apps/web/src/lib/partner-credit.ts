@@ -195,29 +195,48 @@ export function creditOverLine(creditResult: unknown): string | null {
 export type CreditOverAction = 'ignore' | 'warn' | 'deposit';
 
 /**
- * 管理画面の選択肢。Phase 3a では deposit（後払いを止めてデポジットで受ける）はまだ選べない（3b で有効化）。
- * 既存の取引先は列の既定が deposit なので、その値は「準備中・いまは警告と同じ」として表示だけ残し、
- * 選び直しは warn / ignore のどちらかにする（deposit を選べないようにする方を採った・2026-10-07）。
+ * 管理画面の選択肢（Phase 3b で deposit を有効化・2026-10-07）。
+ * deposit: 受付枠を超える予約は後払い（月末締め・自由入力・チェックアウト日決済〈N1〉）を選べなくし、
+ * 全額の予約時決済かデポジット（一部を予約時にオンライン決済・残額は後日）だけで受ける。
  */
 export const CREDIT_OVER_ACTION_OPTIONS: readonly { id: CreditOverAction; label: string; note: string; selectable: boolean }[] = [
-  { id: 'warn', label: '受け付けて警告する', note: '枠を超えても予約を受け、予約一覧・宿への通知メール・PMS の備考に【受付枠超過】の印を付けます。', selectable: true },
-  { id: 'ignore', label: '与信を見ない', note: '受付枠を判定せず、取引先ページにも残り室数を出しません。', selectable: true },
   {
     id: 'deposit',
-    label: '後払いを止めてデポジットで受ける（準備中）',
-    note: 'デポジット方式は準備中です。この設定のあいだは「受け付けて警告する」と同じ動きになります。',
-    selectable: false
-  }
+    label: '後払いを止めてデポジットで受ける',
+    note: '枠を超える予約は、全額の予約時決済か、デポジット（一部を予約時にオンライン決済・残額は後日）だけで受けます。後払い（月末締め・自由入力・チェックアウト日決済）は選べません。',
+    selectable: true
+  },
+  { id: 'warn', label: '受け付けて警告する', note: '枠を超えても予約を受け、予約一覧・宿への通知メール・PMS の備考に【受付枠超過】の印を付けます。', selectable: true },
+  { id: 'ignore', label: '与信を見ない', note: '受付枠を判定せず、取引先ページにも残り室数を出しません。', selectable: true }
 ];
 
 export const normalizeCreditOverAction = (v: unknown): CreditOverAction => (v === 'ignore' || v === 'warn' ? v : 'deposit');
 
-/** 管理画面から保存できる値か（Phase 3a は warn / ignore だけ）。 */
+/** 管理画面から保存できる値か。 */
 export const isSelectableCreditOverAction = (v: unknown): v is CreditOverAction =>
   CREDIT_OVER_ACTION_OPTIONS.some((o) => o.id === v && o.selectable);
 
-/** 取引先ページで受付枠を見せるか（ignore 以外）。deposit も 3a では warn と同じ扱い。 */
+/** 取引先ページで受付枠を見せるか（ignore 以外）。 */
 export const showsCredit = (action: CreditOverAction) => action !== 'ignore';
+
+/**
+ * 超過時にデポジット方式で受ける予約か（判定が「超過」で、超過時の挙動が deposit）。
+ * このときの支払方法は online（全額の予約時決済）と deposit_online（デポジット）だけ。
+ */
+export const requiresDeposit = (action: CreditOverAction, credit: Pick<CreditCheck, 'over'> | null | undefined) =>
+  action === 'deposit' && !!credit?.over;
+
+/**
+ * 超過時（deposit）の案内（§6.2）。「2027年2月は御社の受付枠（上限 10 室）を超えるため、このご予約は …」
+ * depositAmount はデポジットの額（円）。
+ */
+export function creditDepositNotice(months: CreditMonth[], depositAmount: number): string {
+  const over = months.filter((m) => m.over);
+  const head = over.length
+    ? `${over.map((m) => `${creditMonthLabel(m.month)}は御社の受付枠（上限 ${m.limit} 室）`).join('、')}を超えるため、`
+    : '御社の受付枠を超えるため、';
+  return `${head}このご予約はデポジット（${depositAmount.toLocaleString('ja-JP')}円）を予約時にお支払いいただく方法か、全額の予約時決済でお受けします。後払いはお選びいただけません。枠について御社担当者へご相談の場合は宿までご連絡ください。`;
+}
 
 // ---------------------------------------------------------------------------
 // 与信設定の編集（管理画面・管理者のみ）

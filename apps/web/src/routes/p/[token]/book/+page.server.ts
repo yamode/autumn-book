@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { canBookFor, describeDeadline, partnerPlanName, isStripePaymentOption, normalizeBooker, PARTNER_TRANSPORT_OPTIONS, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
-import { availablePaymentOptions, createPartnerBooking, isPartnerBookingOpen, quotePartnerBooking } from '$lib/server/partners/booking';
+import { availablePaymentOptions, createPartnerBooking, creditOverPaymentOptions, isPartnerBookingOpen, quotePartnerBooking, resolvePaymentOption } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { getBookerProfile, getPmsPartnerGuest, PartnerStoreError, todayJst } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
@@ -114,7 +114,8 @@ export const load = async (event) => {
     // このプランに付く取引先特典（予約画面は1プラン固定。確定時にサーバで同じ規則で付け直す）
     perks: perksForPlan(s.perks, planCode).map((p) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl })),
     // 同じ画面で払う決済部品に渡す公開可能キー（オンライン決済を出せないときは null）
-    stripeKey: payIds.some(isStripePaymentOption) ? stripePublishableKey() : null
+    // 受付枠を超えたとき（deposit）は後払いの取引先でも全額の予約時決済・デポジットを出すので、そのときも渡す
+    stripeKey: payIds.some(isStripePaymentOption) || creditOverPaymentOptions(partner).length ? stripePublishableKey() : null
   };
 };
 
@@ -124,8 +125,7 @@ export const actions = {
     const { db, partner, session } = await requirePortalSession(event);
     const input = parseBookingForm(await event.request.formData());
     // 支払方法が1つだけならそれに決まる（createPartnerBooking と同じ規則）
-    const payIds = availablePaymentOptions(partner);
-    const option = payIds.length === 1 ? payIds[0] : input.paymentOption;
+    const option = resolvePaymentOption(partner, input.paymentOption)?.option ?? input.paymentOption;
     if (isStripePaymentOption(option)) return fail(400, { message: 'お支払い情報を入力してから予約してください。' });
     try {
       const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, input, {

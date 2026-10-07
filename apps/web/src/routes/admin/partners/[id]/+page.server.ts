@@ -5,15 +5,24 @@
 // 予約名義（2026-10-07・Phase 2）: 紐づけ済みのときだけ選べる。変更は admin のみ（setBookingNameMode）。
 // 与信（2026-10-07・Phase 3a）: 紐づけ先が旅行会社のときだけ。表示は閲覧権限、設定の保存（saveAgencyCredit）と
 // 超過時の挙動（setCreditOverAction）は admin のみ。
+// デポジット（2026-10-07・Phase 3b）: 超過時の挙動 deposit の額の決め方・残額の精算先（setCreditDeposit・admin のみ）。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
-import { describeBooker, normalizeBooker, normalizePartnerBookingSettings } from '$lib/partner-booking';
+import {
+	depositRemainderModeOf,
+	describeBooker,
+	normalizeBooker,
+	normalizeCreditDeposit,
+	normalizeCreditDepositRemainder,
+	normalizePartnerBookingSettings
+} from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { loadPartnerRates } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
 import { publishableKeyProblem } from '$lib/server/stripe';
 import {
 	cancelPartnerBooking,
+	depositSummary,
 	isPartnerBookingOpen,
 	isStripeTestMode,
 	bookingNameLineOf,
@@ -39,6 +48,7 @@ import {
 	partnerCreditCheck,
 	setAgencyCredit,
 	setPartnerCreditOverAction,
+	setPartnerCreditDeposit,
 	listPartnerAccessLogs,
 	listPartnerAccounts,
 	listPartnerApiKeys,
@@ -83,7 +93,7 @@ import {
 	voidPartnerInvoice
 } from '$lib/server/partners/invoices';
 import { invoicePdfReady } from '$lib/server/partners/invoice-pdf';
-import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
+import { isPartnerBilledBooking, periodOf } from '$lib/partner-invoice';
 import { photoFileProblem } from '$lib/content-blocks';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbUploadContentPhoto } from '$lib/server/content-admin';
@@ -236,7 +246,11 @@ export const load: PageServerLoad = async (event) => {
 			bookingNameMode: partner.booking_name_mode,
 			// 与信（Phase 3a）。紐づけ先が旅行会社でなければ null（セクションを出さない）
 			credit,
-			creditOverAction: partner.credit_over_action
+			creditOverAction: partner.credit_over_action,
+			// デポジット（Phase 3b）: 額の決め方・残額の精算先（null＝既定）と、既定のときの精算先
+			creditDeposit: partner.booking_settings.creditDeposit,
+			creditDepositRemainder: partner.booking_settings.creditDepositRemainder,
+			creditDepositRemainderDefault: depositRemainderModeOf({ ...partner.booking_settings, creditDepositRemainder: null })
 		},
 		memorandum: { text: memo.text, updatedAt: memo.updatedAt, maxLength: MAX_MEMORANDUM_LENGTH, error: memo.error },
 		documents: documents.rows.map((d) => ({
@@ -340,7 +354,9 @@ export const load: PageServerLoad = async (event) => {
 			paymentStatus: b.payment_status,
 			paymentOption: b.payment_option,
 			// 取引先払い（宿泊料金・入湯税は取引先へ月末に請求し、お客様には請求しない）
-			billedToPartner: isBillablePaymentOption(b.payment_option, partner.booking_settings),
+			billedToPartner: isPartnerBilledBooking(b, partner.booking_settings),
+			// デポジット予約（Phase 3b）: 「デポジット ○円 お支払い済み・残額 ○円（請求書／現地）」
+			depositText: depositSummary(b),
 			cardLabel: b.card_label,
 			chargeError: b.charge_error,
 			refundError: b.refund_error,
@@ -579,7 +595,7 @@ export const actions: Actions = {
 		}
 	},
 
-	// 超過時の挙動（Phase 3a）。warn / ignore だけ選べる（deposit は 3b で有効化・setPartnerCreditOverAction が拒否する）
+	// 超過時の挙動（deposit / warn / ignore）。選んだ時点で保存
 	setCreditOverAction: async (event) => {
 		try {
 			const { db, facilityId, partner, userId } = await editScope(event);
@@ -592,10 +608,47 @@ export const actions: Actions = {
 		}
 	},
 
+	// デポジット（Phase 3b・取引先ごと）: 額の決め方（定率％／1室あたり円／1泊分）と残額の精算先（既定／請求書／現地）。管理者だけ
+	setCreditDeposit: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			const type = String(fd.get('type') ?? '');
+			if (type !== 'percent' && type !== 'yen_per_room' && type !== 'first_night') {
+				return actionFailure(new PartnerStoreError('デポジットの額の決め方を選んでください。'));
+			}
+			const raw = String(fd.get('value') ?? '').replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[,，％%円\s]/g, '');
+			if (type !== 'first_night') {
+				const n = Number(raw);
+				const max = type === 'percent' ? 100 : 1_000_000;
+				if (!/^\d+$/.test(raw) || n < 1 || n > max) {
+					return actionFailure(new PartnerStoreError(type === 'percent' ? '定率は 1〜100 の整数で入力してください（％）。' : '1室あたりの額は 1〜1,000,000 の整数で入力してください（円）。'));
+				}
+			}
+			const remainderRaw = String(fd.get('remainder') ?? '');
+			const saved = await setPartnerCreditDeposit(
+				db,
+				facilityId,
+				partner.id,
+				{ deposit: normalizeCreditDeposit({ type, value: Number(raw) }), remainder: normalizeCreditDepositRemainder(remainderRaw) },
+				userId
+			);
+			return { creditDeposit: saved.booking_settings.creditDeposit };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
 	save: async (event) => {
 		try {
 			const { db, partner, userId } = await editScope(event);
 			const input = parsePartnerSettings(await event.request.formData());
+			// デポジットの設定は専用のアクション（setCreditDeposit）で保存する。画面に残った古い値で上書きしないよう、今の DB の値を残す
+			input.booking_settings = {
+				...input.booking_settings,
+				creditDeposit: partner.booking_settings.creditDeposit,
+				creditDepositRemainder: partner.booking_settings.creditDepositRemainder
+			};
 			await updatePartner(db, partner, userId, input);
 			return { saved: true };
 		} catch (e) {

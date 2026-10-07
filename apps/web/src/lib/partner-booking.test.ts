@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_CREDIT_DEPOSIT,
+  depositAmountOf,
+  depositRemainderIdOf,
+  depositRemainderModeOf,
+  depositStateOf,
+  firstNightLodgingOf,
+  intentAmountOf,
+  isDepositRemainderBilled,
+  isStripePaymentOption,
+  normalizeCreditDeposit,
   partnerPlanName,
   canBookFor,
   describeInvoiceDue,
@@ -301,5 +311,76 @@ describe('取引先向けのプラン名', () => {
     const s = normalizePartnerBookingSettings({ planNames: { a003: '  会席　 プラン ', a004: '   ', 'x y': 'NG', a005: 'あ'.repeat(80) } });
     expect(s.planNames).toEqual({ a003: '会席 プラン', a005: 'あ'.repeat(60) });
     expect(normalizePartnerBookingSettings({}).planNames).toEqual({});
+  });
+});
+
+describe('デポジット（Phase 3b・受付枠を超えた予約）', () => {
+  const rooms2 = [
+    { adults: 2, nights: [{ date: '2027-02-10', unit_price: 20000 }, { date: '2027-02-11', unit_price: 15000 }] },
+    { adults: 1, nights: [{ date: '2027-02-10', unit_price: 25000 }, { date: '2027-02-11', unit_price: 20000 }] }
+  ];
+
+  it('定率 30%（既定）: 宿泊料金 100,000・入湯税 1,500 → 30,450／残額 71,050', () => {
+    const amount = depositAmountOf(DEFAULT_CREDIT_DEPOSIT, { lodging: 100000, bathTax: 1500, rooms: 1, nights: 1, firstNight: 100000 });
+    expect(amount).toBe(30450);
+    expect(100000 + 1500 - amount).toBe(71050);
+  });
+  it('定率は円未満切り捨て', () => {
+    expect(depositAmountOf({ type: 'percent', value: 33 }, { lodging: 10001, bathTax: 0, rooms: 1, nights: 1, firstNight: 0 })).toBe(3300);
+  });
+  it('1室あたりの額 × 室数（請求額を超えない）', () => {
+    expect(depositAmountOf({ type: 'yen_per_room', value: 10000 }, { lodging: 100000, bathTax: 1500, rooms: 3, nights: 1, firstNight: 0 })).toBe(30000);
+    expect(depositAmountOf({ type: 'yen_per_room', value: 50000 }, { lodging: 60000, bathTax: 900, rooms: 2, nights: 1, firstNight: 0 })).toBe(60900);
+  });
+  it('1泊分: 1泊目の宿泊料金（全部屋）＋入湯税の1泊ぶん', () => {
+    const first = firstNightLodgingOf(rooms2, '2027-02-10');
+    expect(first).toBe(20000 * 2 + 25000 * 1);
+    // 入湯税 150円 × 3名 × 2泊 = 900 → 1泊ぶん 450
+    expect(depositAmountOf({ type: 'first_night', value: 0 }, { lodging: 135000, bathTax: 900, rooms: 2, nights: 2, firstNight: first })).toBe(65450);
+  });
+  it('設定の正規化（読めない値は定率 30%）', () => {
+    expect(normalizeCreditDeposit(undefined)).toEqual({ type: 'percent', value: 30 });
+    expect(normalizeCreditDeposit({ type: 'percent', value: 0 })).toEqual({ type: 'percent', value: 30 });
+    expect(normalizeCreditDeposit({ type: 'percent', value: 150 })).toEqual({ type: 'percent', value: 100 });
+    expect(normalizeCreditDeposit({ type: 'yen_per_room', value: -1 })).toEqual({ type: 'percent', value: 30 });
+    expect(normalizeCreditDeposit({ type: 'yen_per_room', value: '10000' })).toEqual({ type: 'yen_per_room', value: 10000 });
+    expect(normalizeCreditDeposit({ type: 'first_night', value: 5 })).toEqual({ type: 'first_night', value: 0 });
+    expect(normalizeCreditDeposit({ value: 50 })).toEqual({ type: 'percent', value: 30 });
+    expect(normalizePartnerBookingSettings({}).creditDeposit).toEqual({ type: 'percent', value: 30 });
+    expect(normalizePartnerBookingSettings({}).creditDepositRemainder).toBeNull();
+  });
+  it('残額の精算先: 既定は請求書払いの支払方法があれば請求書、無ければ現地', () => {
+    const invoice = normalizePartnerBookingSettings({ paymentOptions: ['invoice_monthly', 'online'] });
+    expect(depositRemainderModeOf(invoice)).toBe('invoice');
+    expect(depositRemainderIdOf(invoice)).toBe('invoice_monthly');
+    const custom = normalizePartnerBookingSettings({
+      paymentOptions: ['custom_1', 'custom_2'],
+      customPaymentOptions: [
+        { id: 'custom_1', label: '現地精算', note: '', billable: false },
+        { id: 'custom_2', label: '請求書で精算する', note: '', billable: true }
+      ]
+    });
+    expect(depositRemainderIdOf(custom)).toBe('custom_2');
+    const onsite = normalizePartnerBookingSettings({ paymentOptions: ['online_checkin'] });
+    expect(depositRemainderModeOf(onsite)).toBe('onsite');
+    expect(depositRemainderIdOf(onsite)).toBe('onsite');
+    // 明示した設定が優先。請求書を選んだのに請求書払いの支払方法が無ければ invoice_monthly
+    expect(depositRemainderIdOf({ ...onsite, creditDepositRemainder: 'invoice' })).toBe('invoice_monthly');
+    expect(depositRemainderIdOf({ ...invoice, creditDepositRemainder: 'onsite' })).toBe('onsite');
+    expect(isDepositRemainderBilled('invoice_monthly')).toBe(true);
+    expect(isDepositRemainderBilled('custom_2')).toBe(true);
+    expect(isDepositRemainderBilled('onsite')).toBe(false);
+    expect(isDepositRemainderBilled(null)).toBe(false);
+  });
+  it('支払方法 deposit_online: Stripe・表示名・Intent の額', () => {
+    expect(isStripePaymentOption('deposit_online')).toBe(true);
+    expect(paymentOptionLabel('deposit_online')).toBe('デポジット（予約時にオンライン決済・残額は後日）');
+    // 取引先の設定の支払方法には出さない
+    expect(normalizePartnerBookingSettings({ paymentOptions: ['deposit_online', 'online'] }).paymentOptions).toEqual(['online']);
+    const b = { total_amount: 100000, bath_tax_amount: 1500, prepay_discount_amount: 0, payment_option: 'deposit_online', deposit_amount: 30450, paid_amount: null };
+    expect(intentAmountOf(b)).toBe(30450);
+    expect(depositStateOf(b)).toEqual({ deposit: 30450, remainder: 71050 });
+    expect(intentAmountOf({ ...b, payment_option: 'online' })).toBe(101500);
+    expect(depositStateOf({ ...b, payment_option: 'online' })).toBeNull();
   });
 });

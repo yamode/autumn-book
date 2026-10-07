@@ -9,8 +9,10 @@
     basis: string;
     noShowRate: number;
     noShowFee: number;
-    settlement: 'none' | 'invoice' | 'refund' | 'card';
+    settlement: 'none' | 'invoice' | 'refund' | 'card' | 'deposit';
     refund: { paid: number; kept: number; refund: number } | null;
+    // デポジット予約（Phase 3b）: 残額を請求書で受けるか（キャンセル料がデポジットを超えた不足分の扱い）
+    depositRemainderBilled?: boolean | null;
   };
   // paid: 予約時決済で支払済み / card: チェックアウト日決済でカード登録済み（未請求）
   let { preview, paid = false, card = false, invoiceMonth = '' }: { preview: Preview | null; paid?: boolean; card?: boolean; invoiceMonth?: string } = $props();
@@ -22,8 +24,22 @@
     !preview ? 0 : mode === 'rule' ? preview.fee : mode === 'no_show' ? preview.noShowFee : mode === 'custom' ? Math.max(0, Math.round(Number(custom) || 0)) : 0
   );
   // 精算の見込み（サーバの settlementOf と同じ考え方。支払済みは差し引いて返金、カード登録はカードへ、それ以外は請求書）
+  // デポジット（Phase 3b）: デポジットをキャンセル料に充当し差額を返金。超えた分は残額が請求書なら請求書へ・現地なら請求しない
+  const depositHow = $derived.by(() => {
+    if (!preview || preview.settlement !== 'deposit' || !preview.refund) return '';
+    const dep = preview.refund.paid;
+    const kept = Math.min(fee, dep);
+    const over = fee - kept;
+    const head = fee <= 0 ? `デポジット ${yen(dep)} を全額返金します` : `デポジット ${yen(dep)} から ${yen(kept)} を充当し、${yen(dep - kept)} を返金します`;
+    if (over <= 0) return head;
+    return preview.depositRemainderBilled
+      ? `${head}。超える ${yen(over)} は${invoiceMonth ? `${invoiceMonth}分の` : ''}月末の請求書でご請求します（不課税）`
+      : `${head}（超える ${yen(over)} は請求しません）`;
+  });
   const how = $derived(
-    !preview || fee <= 0
+    depositHow
+      ? depositHow
+      : !preview || fee <= 0
       ? ''
       : paid
         ? 'お支払い済みの金額から差し引いて返金します（直販と同じく予約時決済割引の分も差し引きます）'

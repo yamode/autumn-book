@@ -4,7 +4,7 @@
 // 送るのは予約画面のフォームそのもの（FormData・同一オリジン）。後払いは従来どおり form action（/book の default）。
 import { error, json } from '@sveltejs/kit';
 import { isStripePaymentOption } from '$lib/partner-booking';
-import { availablePaymentOptions, createPartnerBooking } from '$lib/server/partners/booking';
+import { createPartnerBooking, resolvePaymentOption } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { PORTAL_HEADERS, requestMeta, requirePortalApi } from '$lib/server/partners/portal';
 import { PartnerStoreError } from '$lib/server/partners/store';
@@ -12,9 +12,9 @@ import { PartnerStoreError } from '$lib/server/partners/store';
 export const POST = async (event) => {
   const { db, partner, session } = await requirePortalApi(event);
   const input = parseBookingForm(await event.request.formData());
-  const payIds = availablePaymentOptions(partner);
-  const option = payIds.length === 1 ? payIds[0] : input.paymentOption;
-  if (!isStripePaymentOption(option) || !payIds.includes(option)) throw error(400, 'オンライン決済の予約ではありません。');
+  // 選べる支払方法（受付枠を超えたときだけの online / deposit_online を含む・超過かは createPartnerBooking が確かめる）
+  const option = resolvePaymentOption(partner, input.paymentOption)?.option ?? '';
+  if (!isStripePaymentOption(option)) throw error(400, 'オンライン決済の予約ではありません。');
   try {
     const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, { ...input, paymentOption: option }, {
       ip: requestMeta(event).ip,

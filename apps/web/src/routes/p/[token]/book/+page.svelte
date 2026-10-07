@@ -69,8 +69,11 @@
   let quote = $state<Quote>(init.quote);
   let canBook = $state(init.canBook);
   let quoting = $state(false);
+  // 確定に失敗したとき（受付枠が埋まって後払いが選べなくなった等）に見積を取り直す
+  let requote = $state(0);
   let seq = 0;
   $effect(() => {
+    void requote;
     const body = { roomCode: init.target.roomCode, planCode: init.target.planCode, planName: init.target.planName, checkIn, nights, rooms: adults.map((a) => ({ adults: a })) };
     const mine = ++seq;
     quoting = true;
@@ -106,11 +109,25 @@
 
   // ---- 入力 → 確認 ----
   let step = $state<'input' | 'confirm'>('input');
+  // お支払方法の選択肢。受付枠を超え、超過時の挙動が deposit のときは見積が差し替える（全額の予約時決済とデポジットだけ・Phase 3b）
+  const payChoices = $derived(quote.ok && quote.paymentChoices ? quote.paymentChoices : data.paymentOptions);
+  // 受付枠を超えたのにオンライン決済を出せない（Stripe 未接続）: 予約できない
+  const noPayChoice = $derived(quote.ok && !!quote.paymentChoices && quote.paymentChoices.length === 0);
   // お支払方法（1つだけならそれに決まる）
-  let paymentOption = $state(init.paymentOptions[0]?.id ?? '');
-  const paymentLabel = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.label ?? '');
+  let paymentOption = $state(init.quote.ok && init.quote.paymentChoices ? (init.quote.paymentChoices[0]?.id ?? '') : (init.paymentOptions[0]?.id ?? ''));
+  // 選択肢が差し替わったら、今の選択が無ければ先頭に
+  $effect(() => {
+    const ids = payChoices.map((o) => o.id);
+    untrack(() => {
+      if (!ids.includes(paymentOption)) paymentOption = ids[0] ?? '';
+    });
+  });
+  const paymentLabel = $derived(payChoices.find((o) => o.id === paymentOption)?.label ?? '');
   // 請求書払い（取引先払い）: ご宿泊者様には請求しないことを支払方法の近くに出す（2026-10-02 指示）
-  const billedToPartner = $derived(data.paymentOptions.find((o) => o.id === paymentOption)?.billable ?? false);
+  const billedToPartner = $derived(payChoices.find((o) => o.id === paymentOption)?.billable ?? false);
+  // デポジット（受付枠を超えたときだけ・Phase 3b）。額は見積の見込み（確定時はサーバが計算し直す）
+  const deposit = $derived(quote.ok ? quote.deposit : null);
+  const isDeposit = $derived(paymentOption === 'deposit_online' && !!deposit);
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
   // 専用特典のモーダル
   let perkContent = $state<PerkModalContent | null>(null);
@@ -129,16 +146,24 @@
   let clientError = $state('');
   let formEl: HTMLFormElement | undefined = $state();
   const soldShort = $derived(quote.ok && quote.remaining != null && quote.remaining < roomCount);
-  const ready = $derived(quote.ok && canBook && !soldShort && !quoting);
+  const ready = $derived(quote.ok && canBook && !soldShort && !quoting && !noPayChoice);
 
   // ---- オンライン決済（同じ画面で払う・lib/components/payment/StripePayment.svelte）----
   // 確定ボタン（または Apple Pay / Google Pay）で ① 予約を仮押さえ＋Intent（/book/reserve）② Stripe で確定
   // ③ 確定の連絡（/payment confirm）→ 予約一覧へ。カードが断られたら、仮押さえはそのままで別のカードを試せる。
-  const isStripe = $derived(paymentOption === 'online' || paymentOption === 'online_checkin');
+  const isStripe = $derived(paymentOption === 'online' || paymentOption === 'online_checkin' || paymentOption === 'deposit_online');
+  // 予約時にカードで払う額（デポジットはデポジットの額・それ以外は合計）
+  const payNowAmount = $derived(isDeposit && deposit ? deposit.amount : payTotal);
   const payMode = $derived<'payment' | 'setup'>(paymentOption === 'online_checkin' ? 'setup' : 'payment');
   const accent = $derived(partnerAccent(data.portal.facilitySlug));
   const submitLabel = $derived(
-    paymentOption === 'online' ? `予約して ${yen(payTotal)} を支払う` : paymentOption === 'online_checkin' ? '予約してカードを登録する' : 'この内容で予約を確定する'
+    isDeposit
+      ? `予約してデポジット ${yen(payNowAmount)} を支払う`
+      : paymentOption === 'online'
+        ? `予約して ${yen(payTotal)} を支払う`
+        : paymentOption === 'online_checkin'
+          ? '予約してカードを登録する'
+          : 'この内容で予約を確定する'
   );
   type Pending = {
     bookingId: string;
@@ -190,6 +215,8 @@
     }
     const j = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; returnUrl?: string; payment?: Omit<Pending, 'returnUrl'> } | null;
     if (!res.ok || !j?.ok || !j.payment || !j.returnUrl) {
+      // 受付枠の変化で支払方法が変わることがあるので、見積を取り直す
+      requote += 1;
       throw new Error(j?.message || 'ご予約を確定できませんでした。時間をおいてもう一度お試しください。');
     }
     pending = { ...j.payment, returnUrl: j.returnUrl };
@@ -292,7 +319,7 @@
       {/each}
     </ul>
     <p class="mt-1.5 text-xs text-stone-500">{CREDIT_UNIT_NOTE}</p>
-    {#if c.over}<p class="mt-1.5 text-[13px] font-medium text-amber-800">{CREDIT_OVER_NOTICE}</p>{/if}
+    {#if c.over}<p class="mt-1.5 text-[13px] font-medium text-amber-800">{deposit ? deposit.notice : CREDIT_OVER_NOTICE}</p>{/if}
   </div>
 {/snippet}
 
@@ -359,8 +386,10 @@
         }
         submitting = false;
         await update({ reset: false });
-        // 満室・締切などで確定できなかったときは、条件を直せるよう入力に戻す
+        // 満室・締切などで確定できなかったときは、条件を直せるよう入力に戻す。受付枠が埋まって後払いが
+        // 選べなくなった（デポジット方式）こともあるので、見積（支払方法の選択肢）を取り直す
         step = 'input';
+        requote += 1;
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
     }}
@@ -555,7 +584,7 @@
               {#if v}<dt>{o.fullLabel}</dt><dd>{o.type === 'check' ? 'あり' : v}</dd>{/if}
             {/each}
             {#if values.notes}<dt>{data.standardFields.notes.label}</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
-            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}</dd>{/if}
+            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}{#if isDeposit && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">デポジット {yen(deposit.amount)} を予約時にお支払い・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}</dd>{/if}
           </dl>
           {#if quote.ok}
             <!-- 料金の明細（表）。宿泊料金は割引前（キャンセル料の基準・入湯税を含まない） -->
@@ -579,11 +608,14 @@
       <section class="card">
         <h3 class="card-title">お支払い</h3>
         <div class="grid gap-4">
-          {#if data.paymentOptions.length > 1}
+          {#if noPayChoice}
+            <p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2.5 text-sm text-rose-700">御社の受付枠を超えるため、このご予約はオンライン決済（全額またはデポジット）でのお受けになりますが、現在オンライン決済をご利用いただけません。宿へお問い合わせください。</p>
+          {/if}
+          {#if payChoices.length > 1}
             <fieldset disabled={!!pending}>
               <legend class={label}>お支払方法 <em class="req">必須</em></legend>
               <div class="grid gap-2 sm:grid-cols-2">
-                {#each data.paymentOptions as o (o.id)}
+                {#each payChoices as o (o.id)}
                   <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
                     <input type="radio" name="payment_option" value={o.id} bind:group={paymentOption} required class="mt-1 accent-[var(--pt-accent)]" />
                     <span>
@@ -591,6 +623,7 @@
                       {#if o.id === 'online' && prepay}<span class="ml-1.5 rounded bg-[var(--pt-accent)] px-1.5 py-0.5 text-xs font-bold text-white">{prepay.label}</span>{/if}
                       <span class="block text-sm text-stone-500">{o.note}</span>
                       {#if o.id === 'online' && prepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">合計 {yen(prepay.total + (quote.ok ? quote.bathTax : 0))}（{yen(prepay.discount)} お得）</span>{/if}
+                      {#if o.id === 'deposit_online' && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">デポジット {yen(deposit.amount)}（{deposit.basis}）・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}
                     </span>
                   </label>
                 {/each}
@@ -611,7 +644,7 @@
                 bind:this={payRef}
                 publishableKey={data.stripeKey}
                 mode={payMode}
-                amount={payTotal}
+                amount={payNowAmount}
                 theme={{ accent: accent.accent, accentSoft: accent.accentSoft }}
                 consentText={pending?.mode === 'setup' ? pending.consentText : consentPreview}
                 disabled={!ready && !pending}
@@ -622,13 +655,15 @@
                 onbusychange={(b) => (paying = b)}
               />
             {/key}
-            {#if paymentOption === 'online'}
+            {#if isDeposit && deposit}
+              <p class="text-sm text-stone-500">予約とデポジット（{yen(deposit.amount)}）のお支払いを同時に行います。お支払いが完了した時点でご予約が確定します。残額 {yen(deposit.remainder)} は{deposit.remainderText}します（予約時決済の割引は付きません）。</p>
+            {:else if paymentOption === 'online'}
               <p class="text-sm text-stone-500">予約とお支払いを同時に行います。お支払いが完了した時点でご予約が確定します。</p>
             {:else}
-              <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックアウト日に登録カードへ自動でご請求します。有効期限がチェックアウト日以降のカードをご登録ください（それより前に切れるカードは登録できません）。</p>
+              <p class="text-sm text-stone-500">この時点では請求されません。カードを登録した時点でご予約が確定し、チェックアウト日に登録カードへ自動でご請求します。有効期限がチェックアウト日の月の2か月後以降のカードをご登録ください（カードの更新の時期と重なるため、それより前に有効期限を迎えるカードは登録できません）。</p>
             {/if}
           {:else if paymentLabel}
-            {@const note = data.paymentOptions.find((o) => o.id === paymentOption)?.note ?? ''}
+            {@const note = payChoices.find((o) => o.id === paymentOption)?.note ?? ''}
             <p class="text-sm text-stone-500">{paymentLabel}{note ? `（${note}）` : ''}</p>
             {#if billedToPartner}
               <!-- 請求書払いの説明（右欄のツールチップをやめてここに出す・2026-10-06 指示） -->
@@ -746,7 +781,18 @@
             <span class="whitespace-nowrap font-bold">お支払い金額合計</span>
             <span class="whitespace-nowrap"><span class="mr-1 text-sm">税込</span><span class="text-2xl font-bold tabular-nums leading-none">{num(payTotal)}</span><span class="font-bold">円</span></span>
           </div>
-          {#if prepay && !discounted && data.paymentOptions.some((o) => o.id === 'online')}
+          {#if isDeposit && deposit}
+            <!-- デポジット（Phase 3b）: 予約時に払うのはデポジットだけ。残額は請求書／現地 -->
+            <div class="mt-2.5 flex justify-between gap-2 text-[var(--pt-accent)]">
+              <span class="font-bold">予約時のお支払い（デポジット）</span>
+              <span class="font-bold tabular-nums">{num(deposit.amount)}円</span>
+            </div>
+            <div class="mt-1 flex justify-between gap-2 text-sm text-stone-600">
+              <span>残額（{deposit.remainderBilled ? '請求書' : '現地'}）</span>
+              <span class="tabular-nums">{num(deposit.remainder)}円</span>
+            </div>
+          {/if}
+          {#if prepay && !discounted && payChoices.some((o) => o.id === 'online')}
             <p class="mt-2 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {num(prepay.total + quote.bathTax)}円（{prepay.label}）</p>
           {/if}
           {#if paymentLabel}<p class="mt-2 text-right text-sm text-stone-500">{paymentLabel}</p>{/if}
@@ -781,7 +827,7 @@
         <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
         {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}
         <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending)} class="primary mt-4 w-full">
-          {paying ? (paymentOption === 'online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
+          {paying ? (paymentOption === 'online' || paymentOption === 'deposit_online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
         </button>
         {#if pending}
           <button type="button" onclick={() => releasePending()} disabled={paying || releasing} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">{releasing ? '確保を解除しています…' : 'この予約をやめて入力に戻る'}</button>

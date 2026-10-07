@@ -12,7 +12,15 @@ import { PREVIEW_ACCOUNT_ID } from './preview';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
-import { normalizeBooker, normalizePartnerBookingSettings, validateBooker, type PartnerBooker, type PartnerBookingSettings } from '$lib/partner-booking';
+import {
+  normalizeBooker,
+  normalizePartnerBookingSettings,
+  validateBooker,
+  type CreditDeposit,
+  type CreditDepositRemainder,
+  type PartnerBooker,
+  type PartnerBookingSettings
+} from '$lib/partner-booking';
 import { partnerServiceClient } from './admin-client';
 // 循環 import（memorandum → store）だが、どちらも呼び出し時にしか参照しないので問題ない
 import { removeAllPartnerDocumentFiles } from './memorandum';
@@ -507,7 +515,36 @@ export async function setAgencyCredit(
   return { result: r.result === 'updated' ? 'updated' : 'conflict', updatedAt: r.updated_at ?? null };
 }
 
-/** 超過時の挙動を保存する。Phase 3a で選べるのは warn / ignore だけ（deposit は 3b で有効化）。 */
+/**
+ * デポジットの設定（Phase 3b・取引先ごと・管理者のみ）: 額の決め方と残額の精算先。
+ * booking_settings の2キーだけを差し替える（他の受付ルールは今の DB の値のまま）。
+ * remainder = null は既定（請求書払いの支払方法があれば請求書、無ければ現地）。
+ */
+export async function setPartnerCreditDeposit(
+  db: SupabaseClient,
+  facilityId: string,
+  partnerId: string,
+  input: { deposit: CreditDeposit; remainder: CreditDepositRemainder | null },
+  userId: string | null = null
+): Promise<PartnerRow> {
+  const partner = await requireStaffPartner(db, facilityId, partnerId);
+  const settings = normalizePartnerBookingSettings({
+    ...partner.booking_settings,
+    creditDeposit: input.deposit,
+    creditDepositRemainder: input.remainder
+  });
+  const { data, error } = await db
+    .from('rms_partners')
+    .update({ booking_settings: settings, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id)
+    .select(PARTNER_COLUMNS)
+    .single();
+  if (error) raise(error, 'デポジットの設定を保存できませんでした。');
+  return toPartner(data);
+}
+
+/** 超過時の挙動を保存する（deposit / warn / ignore）。 */
 export async function setPartnerCreditOverAction(
   db: SupabaseClient,
   facilityId: string,
@@ -515,7 +552,7 @@ export async function setPartnerCreditOverAction(
   action: CreditOverAction,
   userId: string | null = null
 ): Promise<PartnerRow> {
-  if (!isSelectableCreditOverAction(action)) throw new PartnerStoreError('この超過時の挙動はまだ選べません。');
+  if (!isSelectableCreditOverAction(action)) throw new PartnerStoreError('超過時の挙動の指定が正しくありません。');
   const partner = await requireStaffPartner(db, facilityId, partnerId);
   const { data, error } = await db
     .from('rms_partners')

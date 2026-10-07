@@ -1,11 +1,12 @@
 import { fail } from '@sveltejs/kit';
-import { canPartnerCancel, describeDeadline } from '$lib/partner-booking';
+import { canPartnerCancel, describeDeadline, intentAmountOf } from '$lib/partner-booking';
 import {
   cancelPartnerBooking,
   canUpdateCard,
   cardConsentText,
   confirmPartnerIntent,
   bookingPlanName,
+  depositSummary,
   cancelFeeBasisLabel,
   cancelFeeSettlementLabel,
   listPartnerBookings,
@@ -70,7 +71,17 @@ export const load = async (event) => {
       chargeError: b.charge_error,
       canUpdateCard: canUpdateCard(b),
       // 支払の再開・カード登録のときの決済部品の種類（予約時決済 = payment / チェックアウト日決済 = setup）
-      payMode: b.payment_option === 'online_checkin' ? ('setup' as const) : b.payment_option === 'online' ? ('payment' as const) : null,
+      payMode:
+        b.payment_option === 'online_checkin'
+          ? ('setup' as const)
+          : b.payment_option === 'online' || b.payment_option === 'deposit_online'
+            ? ('payment' as const)
+            : null,
+      // 支払の再開で払う額（デポジットはデポジットの額・Phase 3b）
+      payAmount: intentAmountOf(b),
+      // デポジット予約: 「デポジット ○円 お支払い済み・残額 ○円（請求書／現地）」（支払後だけ）
+      depositText: depositSummary(b),
+      isDeposit: b.payment_option === 'deposit_online',
       // カード登録の同意文（入力欄の直下に出し、登録完了時に同じ文面を記録する）
       consentText: b.payment_option === 'online_checkin' ? cardConsentText(partner.facility_name, b) : null,
       paymentExpiresAt: b.payment_expires_at,

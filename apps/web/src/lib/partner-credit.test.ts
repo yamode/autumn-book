@@ -9,6 +9,8 @@ import {
   creditUpdatedSource,
   isCreditOver,
   isSelectableCreditOverAction,
+  requiresDeposit,
+  creditDepositNotice,
   nextMonths,
   normalizeCreditCheck,
   normalizeCreditOverAction,
@@ -119,10 +121,29 @@ describe('超過時の挙動（credit_over_action）', () => {
     expect(normalizeCreditOverAction('ignore')).toBe('ignore');
     expect(normalizeCreditOverAction('x')).toBe('deposit');
   });
-  it('Phase 3a で選べるのは warn / ignore だけ', () => {
+  it('Phase 3b から deposit も選べる', () => {
     expect(isSelectableCreditOverAction('warn')).toBe(true);
     expect(isSelectableCreditOverAction('ignore')).toBe(true);
-    expect(isSelectableCreditOverAction('deposit')).toBe(false);
+    expect(isSelectableCreditOverAction('deposit')).toBe(true);
+    expect(isSelectableCreditOverAction('x')).toBe(false);
+  });
+  it('デポジットを求めるのは超過かつ deposit のときだけ', () => {
+    expect(requiresDeposit('deposit', { over: true })).toBe(true);
+    expect(requiresDeposit('deposit', { over: false })).toBe(false);
+    expect(requiresDeposit('warn', { over: true })).toBe(false);
+    expect(requiresDeposit('deposit', null)).toBe(false);
+  });
+  it('超過時（deposit）の案内', () => {
+    const t = creditDepositNotice(
+      [
+        { month: '2027-01', baseline: 0, limit: 5, booked: 1, adding: 1, remaining: 3, over: false },
+        { month: '2027-02', baseline: 0, limit: 10, booked: 9, adding: 2, remaining: -1, over: true }
+      ],
+      30450
+    );
+    expect(t).toBe(
+      '2027年2月は御社の受付枠（上限 10 室）を超えるため、このご予約はデポジット（30,450円）を予約時にお支払いいただく方法か、全額の予約時決済でお受けします。後払いはお選びいただけません。枠について御社担当者へご相談の場合は宿までご連絡ください。'
+    );
   });
   it('ignore 以外は受付枠を見せる', () => {
     expect(showsCredit('warn')).toBe(true);

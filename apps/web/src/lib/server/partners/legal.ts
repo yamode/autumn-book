@@ -2,9 +2,9 @@
 // 公式サイト（一般のお客様向け・lib/server/store.ts の legalPages.tokushoho）とは別の文面。
 // お支払い方法・お支払い時期・取消の期限は、その取引先の設定（rms_partners.booking_settings）から書き出す。
 // 事業者・連絡先は公式サイトの表記と同じ内容（変えるときは両方を直す）。
-import { describeDeadline, describeInvoiceDue, isStripePaymentOption, paymentOptionLabel } from '$lib/partner-booking';
+import { DEPOSIT_PAYMENT_LABEL, describeDeadline, describeInvoiceDue, isStripePaymentOption, paymentOptionLabel } from '$lib/partner-booking';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
-import { availablePaymentOptions } from './booking';
+import { availablePaymentOptions, creditOverPaymentOptions } from './booking';
 import type { PartnerContext } from './store';
 
 const COMPANY = `## 販売事業者
@@ -33,10 +33,15 @@ const COMPANY = `## 販売事業者
 - 山人-yamado-（岩手県和賀郡西和賀町湯川52-71-10）：0197-82-2222 ／ info@yamado.co.jp
 - 山人-oga-（秋田県男鹿市船川港台島字鵜ノ崎62-29）：0185-47-7776 ／ info@oga.yamado.co.jp`;
 
-export function partnerTokushoho(partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'>): { title: string; body: string } {
+export function partnerTokushoho(
+  partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'> & Partial<Pick<PartnerContext, 'credit_over_action' | 'pms_guest_id'>>
+): { title: string; body: string } {
   const s = partner.booking_settings;
   const due = describeInvoiceDue(s.invoiceDue);
-  const ids = availablePaymentOptions(partner);
+  const base = availablePaymentOptions(partner);
+  // 受付枠（与信）を超えたときだけの支払方法（Phase 3b: 全額の予約時決済・デポジット）
+  const overIds = creditOverPaymentOptions({ credit_over_action: partner.credit_over_action ?? 'ignore', pms_guest_id: partner.pms_guest_id ?? null });
+  const ids = [...base, ...overIds.filter((id) => !base.includes(id))];
 
   // お支払い方法と時期（この取引先に許可している支払方法だけ）
   const methods: string[] = [];
@@ -49,6 +54,9 @@ export function partnerTokushoho(partner: Pick<PartnerContext, 'name' | 'facilit
     } else if (id === 'online') {
       methods.push(`- ${label}：クレジットカード（オンライン決済）`);
       timings.push(`- ${label}：ご予約の確定時`);
+    } else if (id === 'deposit_online') {
+      methods.push(`- ${DEPOSIT_PAYMENT_LABEL}：クレジットカード（オンライン決済）。貴社の受付枠を超えるご予約のときだけ`);
+      timings.push(`- ${DEPOSIT_PAYMENT_LABEL}：ご予約の確定時にデポジット（予約画面に表示する額）をお支払いいただき、残額は月末のご請求書または現地でお支払いいただきます。`);
     } else if (id === 'online_checkin') {
       methods.push(`- ${label}：クレジットカード（オンライン決済）`);
       timings.push(`- ${label}：ご予約時にカードをご登録いただき、チェックアウト日に自動でお支払い`);

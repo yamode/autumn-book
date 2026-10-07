@@ -69,7 +69,11 @@
   let payRef: { submit: () => Promise<boolean> } | undefined = $state();
   let payBusy = $state(false);
   const payLabel = (b: Row) =>
-    b.status === 'pending_payment' ? (b.payMode === 'setup' ? 'カードを登録して予約を確定する' : `${yen(b.total)} を支払って予約を確定する`) : 'このカードに登録し直す';
+    b.status === 'pending_payment'
+      ? b.payMode === 'setup'
+        ? 'カードを登録して予約を確定する'
+        : `${b.isDeposit ? 'デポジット ' : ''}${yen(b.payAmount)} を支払って予約を確定する`
+      : 'このカードに登録し直す';
 
   function openPay(b: Row) {
     payTarget = b;
@@ -145,7 +149,7 @@
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ カードを登録し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
       {#if paidNameHolder}<p class="mt-1 text-sm">ご予約名義: {paidNameHolder}</p>{/if}
-      <p class="mt-1 text-sm text-stone-500">チェックアウト日に登録カードへ自動でご請求します。それまではご請求はありません。有効期限がチェックアウト日以降のカードをご登録ください。</p>
+      <p class="mt-1 text-sm text-stone-500">チェックアウト日に登録カードへ自動でご請求します。それまではご請求はありません。有効期限がチェックアウト日の月の2か月後以降のカードをご登録ください。</p>
     </div>
   {:else if data.payment?.status === 'card_updated'}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 font-medium text-[var(--pt-accent)]">
@@ -158,7 +162,7 @@
   {:else if data.payment?.status === 'card_expiry'}
     <!-- 登録カードの有効期限が請求日（チェックアウト日）より前（lib/partner-card.ts）。予約は支払待ちのまま -->
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
-      ご登録のカードは、ご請求日（チェックアウト日）より前に有効期限が切れるため登録できませんでした{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。ご請求はしていません。お手数ですが、下の一覧の「カードを登録して予約を確定する」から、有効期限がチェックアウト日以降のカードをご登録ください（お部屋の確保の期限内に限ります）。
+      ご登録のカードは、有効期限がご請求日（チェックアウト日）に近く、カードの更新の時期と重なるおそれがあるため登録できませんでした{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。ご請求はしていません。お手数ですが、下の一覧の「カードを登録して予約を確定する」から、有効期限がチェックアウト日の月の2か月後以降のカードをご登録ください（お部屋の確保の期限内に限ります）。
     </p>
   {:else if data.payment?.status === 'card_late'}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
@@ -247,7 +251,7 @@
                 {#if b.perks.length}<dt>専用特典</dt><dd>{#each b.perks as p}<span class="block"><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-sm text-stone-500">{p.description}</span>{/if}</span>{/each}</dd>{/if}
                 {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
                 {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
-                {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}</dd>{/if}
+                {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}{#if b.depositText}<span class="block text-sm font-medium text-amber-800">{b.depositText}</span>{/if}</dd>{/if}
                 <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
                 {#if b.cancelFee}
@@ -335,10 +339,10 @@
                             <div class="flex justify-between gap-3 font-bold"><span>キャンセル料{cp.rate > 0 ? `（${cp.rate}%）` : ''}</span><span class="tabular-nums">{cp.fee > 0 ? `${cp.fee.toLocaleString('ja-JP')}円` : 'なし'}</span></div>
                             {#if cp.refund}
                               <div class="mt-1 flex justify-between gap-3 border-t border-stone-200 pt-1"><span>お支払い済み</span><span class="tabular-nums">{cp.refund.paid.toLocaleString('ja-JP')}円</span></div>
-                              {#if cp.refund.kept > 0}<div class="flex justify-between gap-3"><span>差し引く額{cp.refund.kept > cp.fee ? '（予約時決済割引の分）' : ''}</span><span class="tabular-nums">-{cp.refund.kept.toLocaleString('ja-JP')}円</span></div>{/if}
+                              {#if cp.refund.kept > 0}<div class="flex justify-between gap-3"><span>{cp.settlement === 'deposit' ? 'キャンセル料に充当' : '差し引く額'}{cp.refund.kept > cp.fee ? '（予約時決済割引の分）' : ''}</span><span class="tabular-nums">-{cp.refund.kept.toLocaleString('ja-JP')}円</span></div>{/if}
                               <div class="flex justify-between gap-3 font-bold"><span>返金額</span><span class="tabular-nums">{cp.refund.refund.toLocaleString('ja-JP')}円</span></div>
                             {/if}
-                            {#if cp.settlementText && !cp.refund}<p class="mt-1 text-stone-600">{cp.settlementText}</p>{/if}
+                            {#if cp.settlementText && (!cp.refund || cp.settlement === 'deposit')}<p class="mt-1 text-stone-600">{cp.settlementText}</p>{/if}
                             {#if cp.fee > 0}<p class="mt-1 text-xs text-stone-500">キャンセル料は逸失利益に対する損害賠償金のため、消費税はかかりません（不課税）。</p>{/if}
                           </div>
                         {/if}
@@ -383,7 +387,7 @@
       <dl class="mt-3 grid gap-1 rounded-lg bg-stone-50 px-3 py-2.5 text-sm">
         <div class="flex justify-between gap-2"><dt class="text-stone-500">宿泊日</dt><dd>{fmt(b.checkIn)} から {b.nights}泊</dd></div>
         <div class="flex justify-between gap-2"><dt class="text-stone-500">ご宿泊者</dt><dd>{b.guestName} 様</dd></div>
-        <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックアウト日の請求額' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.total)}</dd></div>
+        <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックアウト日の請求額' : b.isDeposit ? 'お支払い額（デポジット）' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.payMode === 'setup' ? b.total : b.payAmount)}</dd></div>
         {#if b.status === 'pending_payment' && b.paymentExpiresAt}<div class="flex justify-between gap-2"><dt class="text-stone-500">期限</dt><dd>{hm(b.paymentExpiresAt)} まで</dd></div>{/if}
       </dl>
       <div class="mt-4">
@@ -391,7 +395,7 @@
           bind:this={payRef}
           publishableKey={data.stripeKey}
           mode={b.payMode ?? 'payment'}
-          amount={b.total}
+          amount={b.payMode === 'setup' ? b.total : b.payAmount}
           theme={{ accent: accent.accent, accentSoft: accent.accentSoft }}
           consentText={b.consentText}
           prepare={preparePay}

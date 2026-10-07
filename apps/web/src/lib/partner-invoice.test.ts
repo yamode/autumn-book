@@ -2,6 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildInvoiceLines,
+  cancelChargeOf,
+  depositCancelPartsOf,
+  isPartnerBilledBooking,
   draftInvoiceDocName,
   draftInvoiceFileName,
   groupStatementLines,
@@ -319,5 +322,91 @@ describe('取消の予約のキャンセル料（2026-10-06〜・不課税）', 
     expect(r).toMatchObject({ usage: 15_600, billable: false, billed: 0, paymentNote: 'オンライン決済から差引済み' });
     const [c] = buildInvoiceLines([cancelled({ cancel_fee_settlement: 'card', cancel_fee_status: 'charged' })], settings);
     expect(c).toMatchObject({ billable: false, paymentNote: 'カード決済済み' });
+  });
+});
+
+describe('デポジット（Phase 3b）', () => {
+  // 宿泊料金 100,000・入湯税 1,500・デポジット 30% = 30,450（予約時決済割引なし）
+  const dep = (over: Partial<InvoiceBookingSource> = {}) =>
+    booking({
+      total_amount: 100_000,
+      bath_tax_amount: 1_500,
+      payment_option: 'deposit_online',
+      payment_method_name: 'デポジット（予約時にオンライン決済・残額は後日）',
+      payment_status: 'paid',
+      paid_amount: 30_450,
+      deposit_amount: 30_450,
+      remainder_option: 'invoice_monthly',
+      ...over
+    });
+  it('残額が請求書: ご請求の対象として残額だけを請求し、デポジットを差し引く', () => {
+    const [l] = buildInvoiceLines([dep()], settings);
+    expect(l).toMatchObject({ usage: 101_500, billable: true, billed: 71_050, deposit: 30_450, paymentNote: '' });
+    const t = invoiceTotals([l]);
+    // デポジットは宿泊料金（10%）から先に差し引く。入湯税はそのまま
+    expect(t).toMatchObject({ usageTotal: 101_500, billedTotal: 71_050, paidTotal: 30_450, taxable10: 69_550, nonTaxable: 1_500 });
+    expect(t.tax10).toBe(Math.floor((69_550 * 10) / 110));
+    expect(t.taxable10 + t.nonTaxable).toBe(t.billedTotal);
+  });
+  it('他の予約と合わせても合計・消費税の端数処理は請求書1枚で1回', () => {
+    const lines = buildInvoiceLines([dep(), booking({ id: 'b2', booking_code: 'P-0002' })], settings);
+    const t = invoiceTotals(lines);
+    expect(t.billedTotal).toBe(71_050 + 33_300);
+    expect(t.taxable10).toBe(69_550 + 33_000);
+    expect(t.nonTaxable).toBe(1_500 + 300);
+    expect(t.tax10).toBe(Math.floor(((69_550 + 33_000) * 10) / 110));
+  });
+  it('残額が現地: 明細に載るが請求額 0（デポジットお支払い済み・残額は現地で精算）', () => {
+    const [l] = buildInvoiceLines([dep({ remainder_option: 'onsite' })], settings);
+    expect(l).toMatchObject({ billable: false, billed: 0, deposit: 30_450 });
+    expect(l.paymentNote).toBe('デポジット 30,450円 お支払い済み・残額は現地で精算');
+  });
+  it('紙面に「うちデポジット ○円 お支払い済み」を出す', () => {
+    const lines = buildInvoiceLines([dep()], settings);
+    const doc: InvoiceDocument = {
+      version: 1,
+      invoiceNo: 'PI-202610-00001',
+      period: '2026-10-01',
+      issueDate: '2026-10-31',
+      dueDate: '2026-11-30',
+      recipient: { name: '株式会社テスト' },
+      issuer: { name: '株式会社山人', facilityName: '', address: '', tel: '', registrationNumber: '', bankAccount: '', note: '' },
+      lines,
+      totals: invoiceTotals(lines)
+    };
+    const html = renderInvoiceHtml(doc);
+    expect(html).toContain('うちデポジット 30,450円 お支払い済み');
+    expect(html).toContain('71,050円');
+  });
+  it('取消（キャンセル料 < デポジット）: 充当分はお支払い済み・請求 0', () => {
+    const c = dep({ status: 'cancelled', cancelled_at: '2026-10-08T05:00:00Z', cancel_fee: 10_000, cancel_fee_rate: 10, cancel_fee_basis: '3日前', cancel_fee_settlement: 'deposit', payment_status: 'refunded', refund_amount: 20_450 });
+    expect(cancelChargeOf(c)).toBe(10_000);
+    expect(isInvoiceTarget(c, '2026-10-01')).toBe(true);
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ usage: 10_000, billable: false, billed: 0, deposit: 10_000, paymentNote: 'デポジットから充当済み' });
+  });
+  it('取消（キャンセル料 < デポジット・スタッフが「返金しない」）: デポジット全額を受け取ったままとして扱う', () => {
+    const c = dep({ status: 'cancelled', cancel_fee: 10_000, cancel_fee_settlement: 'deposit', payment_status: 'paid' });
+    expect(depositCancelPartsOf(c)).toEqual({ kept: 30_450, shortage: 0 });
+  });
+  it('取消（キャンセル料 > デポジット・残額は請求書）: 不足分だけを不課税で請求', () => {
+    const c = dep({ status: 'cancelled', cancelled_at: '2026-10-08T05:00:00Z', cancel_fee: 50_000, cancel_fee_rate: 50, cancel_fee_basis: '前日', cancel_fee_settlement: 'deposit' });
+    expect(depositCancelPartsOf(c)).toEqual({ kept: 30_450, shortage: 19_550 });
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ usage: 50_000, billable: true, billed: 19_550, cancelFee: 50_000, deposit: 30_450 });
+    const t = invoiceTotals([l]);
+    expect(t).toMatchObject({ billedTotal: 19_550, cancelFee: 19_550, taxable10: 0, nonTaxable: 0, paidTotal: 30_450 });
+  });
+  it('取消（キャンセル料 > デポジット・残額は現地）: 不足分は請求しない（N3）', () => {
+    const c = dep({ status: 'cancelled', remainder_option: 'onsite', cancel_fee: 50_000, cancel_fee_settlement: 'deposit' });
+    expect(cancelChargeOf(c)).toBe(30_450);
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ billable: false, billed: 0 });
+  });
+  it('取引先払いの判定: デポジットは残額の精算先で決める', () => {
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_online', remainder_option: 'invoice_monthly' }, settings)).toBe(true);
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_online', remainder_option: 'onsite' }, settings)).toBe(false);
+    expect(isPartnerBilledBooking({ payment_option: 'custom_bill' }, settings)).toBe(true);
+    expect(isPartnerBilledBooking({ payment_option: 'online' }, settings)).toBe(false);
   });
 });

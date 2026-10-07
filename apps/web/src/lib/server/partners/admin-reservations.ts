@@ -6,13 +6,14 @@
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { readBookingExtras } from './booking-extras';
-import { isBillablePaymentOption } from '$lib/partner-invoice';
+import { isPartnerBilledBooking } from '$lib/partner-invoice';
 import { describeBooker, chargeAmountOf } from '$lib/partner-booking';
 import { partnerBookingCodeOf } from '$lib/partner-reservation';
 import {
 	cancelFeeBasisLabel,
 	cancelFeeSettlementLabel,
 	cancelPartnerBooking,
+	depositSummary,
 	getPartnerBooking,
 	previewPartnerCancel,
 	retryPartnerCharge,
@@ -49,8 +50,10 @@ export type PartnerLedgerView = {
 	paymentName: string | null;
 	paymentOption: string | null;
 	paymentStatus: string;
-	/** 取引先払い（宿泊料金・入湯税は取引先へ月末に請求し、お客様には請求しない）。判定は請求書と同じ isBillablePaymentOption */
+	/** 取引先払い（宿泊料金・入湯税は取引先へ月末に請求し、お客様には請求しない）。判定は請求書と同じ isPartnerBilledBooking */
 	billedToPartner: boolean;
+	/** デポジット予約（Phase 3b）: 「デポジット ○円 お支払い済み・残額 ○円（請求書／現地）」。それ以外は null */
+	depositText: string | null;
 	cardLabel: string | null;
 	chargeError: string | null;
 	refundError: string | null;
@@ -115,6 +118,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 		paymentOption: b.payment_option,
 		paymentStatus: b.payment_status,
 		billedToPartner,
+		depositText: depositSummary(b),
 		cardLabel: b.card_label,
 		chargeError: b.charge_error,
 		refundError: b.refund_error,
@@ -165,7 +169,8 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 		}
 		// 取引先払いかの判定に取引先の設定（自由入力の支払方法の billable）が要る。読めなくても台帳は出す
 		const partner = row.partner_id ? await requireStaffPartner(scope.db, scope.facilityId, row.partner_id).catch(() => null) : null;
-		const billed = partner ? isBillablePaymentOption(row.payment_option, partner.booking_settings) : row.payment_option === 'invoice_monthly';
+		// デポジット（Phase 3b）は残額の精算先（予約時のスナップショット）で判定する
+		const billed = isPartnerBilledBooking(row, partner?.booking_settings ?? { customPaymentOptions: [] });
 		const preview = row.checkedIn ? null : await previewPartnerCancel(scope.db, scope.facilityId, row).catch(() => null);
 		return { ledger: toView(row, event.locals.user?.role === 'admin', billed, preview), error: null };
 	} catch (e) {

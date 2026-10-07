@@ -23,11 +23,22 @@ export const PARTNER_PAYMENT_OPTIONS: { id: PartnerPaymentOptionId; label: strin
   { id: 'online_checkin', label: 'オンライン決済（チェックアウト日）', note: '予約時にクレジットカードを登録し、チェックアウト日に自動でお支払い（Stripe）' }
 ];
 export const isBuiltinPaymentOption = (id: string): id is PartnerPaymentOptionId => PARTNER_PAYMENT_OPTIONS.some((o) => o.id === id);
+
+// デポジット（Phase 3b・docs/partner-pms-customer-link.md §5.3）: 受付枠（与信）を超えた予約で、一部を予約時にオンライン決済し、
+// 残額は月末の請求書か現地で精算する。取引先の paymentOptions には出さない（人が選ぶ設定ではない）。
+// 受付枠を超え、超過時の挙動が deposit のときだけ、サーバが見積の選択肢に差し込む（online と並べる）。
+export const DEPOSIT_PAYMENT_OPTION = 'deposit_online';
+export const DEPOSIT_PAYMENT_LABEL = 'デポジット（予約時にオンライン決済・残額は後日）';
+export const DEPOSIT_PAYMENT_NOTE = '予約時に一部（デポジット）をクレジットカードでお支払い（Stripe）。残額は後日精算';
+export const isDepositPaymentOption = (id: string | null | undefined) => id === DEPOSIT_PAYMENT_OPTION;
+
 // 支払方法の表示名。自由入力の支払方法（customPaymentOptions）は設定を渡すと名前を引ける。
 export const paymentOptionLabel = (id: string, s?: Pick<PartnerBookingSettings, 'customPaymentOptions'> | null) =>
-  PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ?? s?.customPaymentOptions.find((o) => o.id === id)?.label ?? id;
+  isDepositPaymentOption(id)
+    ? DEPOSIT_PAYMENT_LABEL
+    : (PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ?? s?.customPaymentOptions.find((o) => o.id === id)?.label ?? id);
 // Stripe を使う支払方法
-export const isStripePaymentOption = (id: string) => id === 'online' || id === 'online_checkin';
+export const isStripePaymentOption = (id: string) => id === 'online' || id === 'online_checkin' || id === DEPOSIT_PAYMENT_OPTION;
 
 // 自由入力の支払方法（2026-10-01 指示）。例: 「現地精算（法人カード）」「請求書払い（20日締め翌月10日）」。
 // 決済は伴わず、後払い（invoice_monthly）と同じく予約はその場で確定し、名前が PMS の支払方法・備考に入る。
@@ -162,6 +173,85 @@ export function describePrepayDiscount(d: PrepayDiscount): string {
   return d.type === 'percent' ? `${d.value}%引き` : `1名1泊 ${d.value.toLocaleString('ja-JP')}円引き`;
 }
 
+// ---- デポジット（Phase 3b・受付枠を超えた予約。docs/partner-pms-customer-link.md §5.3・決定 #2・N2 N3 N6） ----
+// 額の決め方（取引先ごと・booking_settings.creditDeposit）。請求額（宿泊料金＋入湯税）を超えない。予約時決済割引は付けない（N6）。
+//   percent      … floor(請求額 × 率 / 100)（既定 30%）
+//   yen_per_room … 円 × 室数
+//   first_night  … 1泊目の宿泊料金（全部屋ぶん）＋入湯税の1泊ぶん
+// DB 関数 public._rms_partner_deposit_amount（autumn-shared 20261007002617）と同じ規則。片方だけ変えないこと。
+export type CreditDepositType = 'percent' | 'yen_per_room' | 'first_night';
+export type CreditDeposit = { type: CreditDepositType; value: number };
+export const DEFAULT_CREDIT_DEPOSIT: CreditDeposit = { type: 'percent', value: 30 };
+export const CREDIT_DEPOSIT_TYPES: readonly { id: CreditDepositType; label: string; unit: string; note: string }[] = [
+  { id: 'percent', label: '定率', unit: '%', note: '宿泊料金＋入湯税の N%（円未満切り捨て）' },
+  { id: 'yen_per_room', label: '1室あたりの額', unit: '円/室', note: 'N 円 × 室数（請求額を超えない）' },
+  { id: 'first_night', label: '1泊分', unit: '', note: '1泊目の宿泊料金（全部屋ぶん）＋入湯税の1泊ぶん' }
+];
+// 残額の精算先: invoice（月末の請求書で取引先へ）/ onsite（現地でお客様が払う）
+export type CreditDepositRemainder = 'invoice' | 'onsite';
+
+export function normalizeCreditDeposit(raw: unknown): CreditDeposit {
+  const src = (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const n = Math.round(Number(src.value));
+  if (src.type === 'first_night') return { type: 'first_night', value: 0 };
+  if (src.type === 'yen_per_room' && Number.isFinite(n) && n >= 1) return { type: 'yen_per_room', value: Math.min(1_000_000, n) };
+  if (src.type === 'percent' && Number.isFinite(n) && n >= 1) return { type: 'percent', value: Math.min(100, n) };
+  return { ...DEFAULT_CREDIT_DEPOSIT };
+}
+
+export const normalizeCreditDepositRemainder = (raw: unknown): CreditDepositRemainder | null =>
+  raw === 'invoice' || raw === 'onsite' ? raw : null;
+
+/** 「宿泊料金＋入湯税の30%」「1室あたり 10,000円」「1泊分」 */
+export function describeCreditDeposit(d: CreditDeposit): string {
+  if (d.type === 'yen_per_room') return `1室あたり ${d.value.toLocaleString('ja-JP')}円`;
+  if (d.type === 'first_night') return '1泊分（1泊目の宿泊料金＋入湯税）';
+  return `宿泊料金＋入湯税の${d.value}%`;
+}
+
+// 取引先が使える「請求書で精算する」支払方法（月末締め・billable な自由入力）。定義の順で最初のもの
+function billablePaymentIdOf(s: Pick<PartnerBookingSettings, 'paymentOptions' | 'customPaymentOptions'>): string | null {
+  if (s.paymentOptions.includes('invoice_monthly')) return 'invoice_monthly';
+  return s.customPaymentOptions.find((o) => o.billable && s.paymentOptions.includes(o.id))?.id ?? null;
+}
+
+/** 残額の精算先（設定が無ければ: 請求書払いの支払方法があれば invoice、無ければ onsite）。 */
+export function depositRemainderModeOf(
+  s: Pick<PartnerBookingSettings, 'paymentOptions' | 'customPaymentOptions' | 'creditDepositRemainder'>
+): CreditDepositRemainder {
+  return s.creditDepositRemainder ?? (billablePaymentIdOf(s) ? 'invoice' : 'onsite');
+}
+
+/** 台帳の remainder_option に写す ID（invoice_monthly / custom_* / onsite）。DB 関数 _rms_partner_deposit_remainder と同じ規則。 */
+export function depositRemainderIdOf(s: Pick<PartnerBookingSettings, 'paymentOptions' | 'customPaymentOptions' | 'creditDepositRemainder'>): string {
+  if (depositRemainderModeOf(s) === 'onsite') return 'onsite';
+  return billablePaymentIdOf(s) ?? 'invoice_monthly';
+}
+
+/** 予約の残額を請求書で受けるか（remainder_option が onsite 以外）。予約時のスナップショットで判断する（設定を後から変えても動かない）。 */
+export const isDepositRemainderBilled = (remainderOption: string | null | undefined) => !!remainderOption && remainderOption !== 'onsite';
+
+export const depositRemainderText = (billed: boolean) => (billed ? '月末の請求書で貴社へご請求' : '現地でご精算');
+
+/** 1泊目の宿泊料金（全部屋ぶん＝その日の単価 × 人数の合計）。 */
+export function firstNightLodgingOf(rooms: { adults: number; nights: { date: string; unit_price: number }[] }[], checkIn: string): number {
+  return rooms.reduce((s, r) => s + r.nights.filter((n) => n.date === checkIn).reduce((t, n) => t + n.unit_price, 0) * r.adults, 0);
+}
+
+/** デポジットの額（請求額を超えない・1円以上）。lodging は割引前の宿泊料金。 */
+export function depositAmountOf(
+  d: CreditDeposit,
+  b: { lodging: number; bathTax: number; rooms: number; nights: number; firstNight: number }
+): number {
+  const dep = normalizeCreditDeposit(d);
+  const base = Math.max(0, b.lodging + b.bathTax);
+  let amount: number;
+  if (dep.type === 'yen_per_room') amount = dep.value * Math.max(1, b.rooms);
+  else if (dep.type === 'first_night') amount = b.firstNight + Math.floor(b.bathTax / Math.max(1, b.nights));
+  else amount = Math.floor((base * dep.value) / 100);
+  return Math.max(Math.min(amount, base), Math.min(1, base));
+}
+
 export type PartnerBookingSettings = {
   // 許可する支払方法（1つ以上）。固定の3種（PartnerPaymentOptionId）か自由入力（customPaymentOptions の id）。
   paymentOptions: string[];
@@ -193,6 +283,10 @@ export type PartnerBookingSettings = {
   notifyPartner: boolean;
   // 公式HP限定特典（紹介文テンプレートの「特典」）を取引先ページにも出すか。既定は出さない（公式HPからの予約の特典のため）。
   showOfficialPerks: boolean;
+  // 受付枠（与信）を超えた予約のデポジット（Phase 3b）。額の決め方（既定は定率 30%・N2）
+  creditDeposit: CreditDeposit;
+  // デポジットの残額の精算先。null = 既定（請求書払いの支払方法があれば請求書、無ければ現地）
+  creditDepositRemainder: CreditDepositRemainder | null;
 };
 
 export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
@@ -212,7 +306,9 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   options: [],
   notifyEmails: [],
   notifyPartner: true,
-  showOfficialPerks: false
+  showOfficialPerks: false,
+  creditDeposit: { type: 'percent', value: 30 },
+  creditDepositRemainder: null
 };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -296,7 +392,9 @@ export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSet
     options,
     notifyEmails: emails,
     notifyPartner: src.notifyPartner === undefined ? d.notifyPartner : src.notifyPartner === true,
-    showOfficialPerks: src.showOfficialPerks === true
+    showOfficialPerks: src.showOfficialPerks === true,
+    creditDeposit: normalizeCreditDeposit(src.creditDeposit),
+    creditDepositRemainder: normalizeCreditDepositRemainder(src.creditDepositRemainder)
   };
 }
 
@@ -366,6 +464,29 @@ export const resolveOptionAnswers = resolveQuestionAnswers;
 // 請求額＝宿泊料金（割引前）＋入湯税−予約時決済の割引
 export const chargeAmountOf = (b: { total_amount: number; bath_tax_amount?: number | null; prepay_discount_amount?: number | null }) =>
   b.total_amount + (b.bath_tax_amount ?? 0) - (b.prepay_discount_amount ?? 0);
+
+type DepositSource = {
+  total_amount: number;
+  bath_tax_amount?: number | null;
+  prepay_discount_amount?: number | null;
+  payment_option?: string | null;
+  deposit_amount?: number | null;
+  paid_amount?: number | null;
+};
+
+/**
+ * 予約時の PaymentIntent で受け取る額。デポジット（deposit_online）は台帳の deposit_amount（DB 関数が計算した額）、
+ * それ以外は請求額（chargeAmountOf）。mark_paid の金額の検証も同じ額で。
+ */
+export const intentAmountOf = (b: DepositSource) =>
+  isDepositPaymentOption(b.payment_option) && (b.deposit_amount ?? 0) > 0 ? (b.deposit_amount as number) : chargeAmountOf(b);
+
+/** デポジット予約の受け取り済みの額と残額。デポジットでなければ null。 */
+export function depositStateOf(b: DepositSource): { deposit: number; remainder: number } | null {
+  if (!isDepositPaymentOption(b.payment_option)) return null;
+  const deposit = Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0);
+  return { deposit, remainder: Math.max(0, chargeAmountOf(b) - deposit) };
+}
 
 // 予約画面の見積もりから、選んだ支払方法での宿泊料金と請求額を出す。
 // 予約時決済の割引（prepay）は予約時決済（online）を選んだときだけ効く。サーバが作る Intent の金額（chargeAmountOf）と同じになる。

@@ -16,13 +16,16 @@
     type PartnerRateRule
   } from '$lib/partner-pricing';
   import {
+    CREDIT_DEPOSIT_TYPES,
     CUSTOM_PAYMENT_PREFIX,
+    describeCreditDeposit,
     describeInvoiceDue,
     invoiceDueDate,
     isStripePaymentOption,
     MAX_CUSTOM_PAYMENT_OPTIONS,
     MAX_PARTNER_PERKS,
     PARTNER_PAYMENT_OPTIONS,
+    type CreditDepositType,
     type PartnerBookingSettings
   } from '$lib/partner-booking';
   import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
@@ -555,6 +558,47 @@
       creditBusy = null;
     }
   }
+  // デポジット（Phase 3b）: 超過時の挙動が deposit のときの額の決め方・残額の精算先（管理者だけ・押した時点で保存）
+  type DepositFormState = { type: CreditDepositType; value: string; remainder: '' | 'invoice' | 'onsite' };
+  const depositFormOf = (): DepositFormState => ({
+    type: data.pmsLink.creditDeposit.type,
+    value: data.pmsLink.creditDeposit.type === 'first_night' ? '' : String(data.pmsLink.creditDeposit.value),
+    remainder: data.pmsLink.creditDepositRemainder ?? ''
+  });
+  let depositForm = $state<DepositFormState>({ type: 'percent', value: '30', remainder: '' });
+  // 保存済みの値が変わったときだけ入れ替える（他の操作の読み直しで編集中の値を消さない）
+  let depositLoaded = '';
+  $effect(() => {
+    const f = depositFormOf();
+    const key = JSON.stringify(f);
+    if (key === depositLoaded) return;
+    depositLoaded = key;
+    untrack(() => (depositForm = f));
+  });
+  const depositDirty = $derived.by(() => {
+    const cur = depositFormOf();
+    return cur.type !== depositForm.type || cur.remainder !== depositForm.remainder || (depositForm.type !== 'first_night' && cur.value !== depositForm.value.trim());
+  });
+  let depositBusy = $state(false);
+  let depositMessage = $state<{ kind: 'error' | 'ok'; text: string } | null>(null);
+  async function saveCreditDeposit() {
+    if (depositBusy) return;
+    depositBusy = true;
+    depositMessage = null;
+    try {
+      const result = await postPmsAction('setCreditDeposit', { type: depositForm.type, value: depositForm.value, remainder: depositForm.remainder });
+      if (result.type === 'success') {
+        await invalidateAll();
+        depositMessage = { kind: 'ok', text: 'デポジットの設定を保存しました。以後の予約から反映されます。' };
+      } else {
+        depositMessage = { kind: 'error', text: failureText(result, 'デポジットの設定を保存できませんでした。') };
+      }
+    } catch {
+      depositMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      depositBusy = false;
+    }
+  }
   // Enter で外側の「保存する」フォームを送らない
   const noSubmitOnEnter = (e: KeyboardEvent) => {
     if (e.key === 'Enter') e.preventDefault();
@@ -937,7 +981,7 @@
                 </div>
                 <p class="mt-1 text-xs leading-5 text-stone-500">
                   PMS の旅行会社の与信管理と同じ設定です（どちらで変えても同じ値）。上限＝過去3年の同月の送客実績の平均×（1＋増加率）、ただし最低枠を下回りません。{CREDIT_UNIT_NOTE}
-                  取引先ページには月ごとの残り室数を出します。超えても予約は止めません（宿への通知メール・予約一覧・PMS の備考に【受付枠超過】の印が付きます）。
+                  取引先ページには月ごとの残り室数を出します。枠を超える予約には、宿への通知メール・予約一覧・PMS の備考に【受付枠超過】の印が付きます。超えたときの受け方は下の「受付枠を超えたとき」で選びます。
                 </p>
                 {#if creditMessage}
                   <p class={`mt-2 rounded-md px-3 py-1.5 text-xs ${creditMessage.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
@@ -1017,8 +1061,47 @@
                         </label>
                       {/if}
                     {/each}
-                    <p class="mt-1 text-[11px] text-stone-400">選んだ時点で保存されます。「後払いを止めてデポジットで受ける」は準備中です。{#if creditBusy === 'action'}保存中…{/if}</p>
+                    <p class="mt-1 text-[11px] text-stone-400">選んだ時点で保存されます。{#if creditBusy === 'action'}保存中…{/if}</p>
                   </fieldset>
+
+                  {#if creditOverAction === 'deposit'}
+                    <!-- デポジット（Phase 3b・§5.3）: 額の決め方と残額の精算先（取引先ごと）。入力欄に name は付けない（「保存する」に混ぜない） -->
+                    <fieldset class="mt-3 border-t border-stone-100 pt-2" disabled={!canEdit || depositBusy}>
+                      <legend class="pt-2 text-xs font-bold text-stone-700">デポジット（受付枠を超えた予約で予約時に受ける額）</legend>
+                      {#if depositMessage}
+                        <p class={`mt-1 rounded-md px-3 py-1.5 text-xs ${depositMessage.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>{depositMessage.text}</p>
+                      {/if}
+                      <div class="mt-1 grid gap-1">
+                        {#each CREDIT_DEPOSIT_TYPES as t (t.id)}
+                          <label class="flex flex-wrap items-center gap-2 py-0.5 text-sm">
+                            <input type="radio" value={t.id} bind:group={depositForm.type} />
+                            <span>{t.label}</span>
+                            {#if t.id !== 'first_night' && depositForm.type === t.id}
+                              <input type="text" inputmode="numeric" bind:value={depositForm.value} onkeydown={noSubmitOnEnter} maxlength="9" class="w-28 rounded-md border border-stone-300 bg-white px-2 py-1 text-sm" />
+                              <span class="text-xs text-stone-500">{t.unit}</span>
+                            {/if}
+                            <span class="text-xs text-stone-500">{t.note}</span>
+                          </label>
+                        {/each}
+                      </div>
+                      <div class="mt-2 text-sm">
+                        <span class="block text-xs text-stone-500">残額の精算</span>
+                        <label class="mr-4 inline-flex items-center gap-1.5"><input type="radio" value="" bind:group={depositForm.remainder} />既定（いまは{data.pmsLink.creditDepositRemainderDefault === 'invoice' ? '請求書' : '現地'}）</label>
+                        <label class="mr-4 inline-flex items-center gap-1.5"><input type="radio" value="invoice" bind:group={depositForm.remainder} />月末の請求書で取引先へ</label>
+                        <label class="inline-flex items-center gap-1.5"><input type="radio" value="onsite" bind:group={depositForm.remainder} />現地でお客様から</label>
+                      </div>
+                      <p class="mt-1.5 text-[11px] leading-5 text-stone-500">
+                        いまの設定: {describeCreditDeposit(data.pmsLink.creditDeposit)}・残額は{(data.pmsLink.creditDepositRemainder ?? data.pmsLink.creditDepositRemainderDefault) === 'invoice' ? '月末の請求書' : '現地'}。
+                        デポジットに予約時決済の割引は付きません。請求額（宿泊料金＋入湯税）を超えません。既定の精算先は、請求書払いの支払方法（月末締め・請求書で精算する自由入力）があれば請求書、無ければ現地です。
+                        取消時はデポジットをキャンセル料に充当して差額を返金し、キャンセル料がデポジットを超えた分は、残額が請求書なら請求書へ・現地なら請求しません。
+                      </p>
+                      {#if canEdit}
+                        <button type="button" class={`${smallBtn} mt-2`} disabled={depositBusy || !depositDirty} onclick={saveCreditDeposit}>{depositBusy ? '保存中…' : 'デポジットの設定を保存'}</button>
+                      {:else}
+                        <p class="mt-1 text-[11px] text-stone-400">デポジットの設定は管理者だけが変えられます。</p>
+                      {/if}
+                    </fieldset>
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -1647,6 +1730,7 @@
                     {:else if b.checkedIn}<span class="text-emerald-700">チェックイン済み</span>
                     {:else}<span class="text-brand-800">予約中</span>{/if}
                     {#if b.paymentName}<div class="text-[11px] text-stone-500">{b.paymentName}{b.paymentStatus === 'paid' ? '・支払済' : b.paymentStatus === 'refunded' ? '・返金済' : b.paymentStatus === 'scheduled' ? `・チェックアウト日に請求${b.cardLabel ? `（${b.cardLabel}）` : ''}` : ''}</div>{/if}
+                    {#if b.depositText}<div class="text-[11px] font-medium text-amber-800">{b.depositText}</div>{/if}
                     {#if b.billedToPartner}<div class="mt-0.5"><span class="rounded-full border border-red-300 bg-red-50 px-1.5 py-px text-[11px] font-bold whitespace-nowrap text-red-700">取引先へ請求（お客様には請求しない）</span></div>{/if}
                     {#if b.cardConsentAt}<div class="text-[11px] text-stone-500" title={b.cardConsentText ?? ''}>請求の同意: {dt(b.cardConsentAt)}</div>{/if}
                     {#if b.paymentStatus === 'charge_failed'}<div class="text-[11px] text-rose-700">請求失敗{b.chargeError ? `：${b.chargeError}` : ''}</div>{/if}

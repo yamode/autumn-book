@@ -9,8 +9,11 @@
 //     請求書払い・自由入力の支払方法 … 月末の請求書（チェックアウト予定日の月）に不課税で載せる
 //     予約時決済（支払済み） … 支払額から差し引いて返金。差し引く額は直販と同じく max(キャンセル料, 割引額)
 //     チェックアウト日決済（カード登録のみ・未請求） … 取消時に登録カードへ請求（失敗したら請求書へ回す）
+//     デポジット（支払済み・Phase 3b） … デポジットをキャンセル料に充当し、差額を返金。キャンセル料がデポジットを超えた
+//       不足分は、残額の精算先が請求書なら月末の請求書へ、現地なら請求しない（デポジットが上限・N3）。免除は全額返金
 // - 請求書上は「逸失利益に対する損害賠償金」として不課税で計上する（消費税の対象外）。
 import { normalizeRules, type Rule } from '$lib/partner-plan-terms';
+import { isDepositPaymentOption, isDepositRemainderBilled } from '$lib/partner-booking';
 
 export type CancelPolicy = { rules: Rule[]; noShowPercent: number | null };
 
@@ -107,7 +110,7 @@ export function cancelPolicyTable(policy: CancelPolicy | null, daysBefore: numbe
 
 // ---- 精算 ----
 
-export type CancelSettlement = 'none' | 'invoice' | 'refund' | 'card';
+export type CancelSettlement = 'none' | 'invoice' | 'refund' | 'card' | 'deposit';
 
 export type SettlementSource = {
   status: string;
@@ -118,34 +121,72 @@ export type SettlementSource = {
   bath_tax_amount: number;
   prepay_discount_amount: number;
   stripe_payment_method_id?: string | null;
+  // デポジット（payment_option='deposit_online'・Phase 3b）
+  deposit_amount?: number | null;
+  remainder_option?: string | null;
 };
 
 export function settlementOf(b: SettlementSource, fee: number): CancelSettlement {
   if (b.status === 'pending_payment') return 'none';
+  if (b.payment_status === 'paid' && isDepositPaymentOption(b.payment_option)) return 'deposit';
   if (b.payment_status === 'paid') return 'refund';
   if (fee <= 0) return 'none';
   if (b.payment_option === 'online_checkin' && b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed')) return 'card';
   return 'invoice';
 }
 
+export type PartnerRefund = {
+  paid: number;
+  kept: number;
+  refund: number;
+  // デポジットのとき: キャンセル料がデポジットを超えた不足分と、そのうち請求書で請求する額（残額が現地なら 0・N3）
+  shortage: number;
+  shortageBilled: number;
+};
+
 /**
  * 予約時決済（支払済み）の返金額。直販（lib/direct-payment.ts の directRefundDueOf）と同じ:
  * 差し引く額 = max(キャンセル料, 割引額〔入湯税を除いた支払額まで＝入湯税は必ず返す〕)。免除したときは全額返金。
+ * デポジット（deposit_online）は割引が無いので、充当＝min(キャンセル料, デポジット)・返金＝デポジット−充当。
  */
-export function partnerRefundOf(b: SettlementSource, fee: number, waived = false): { paid: number; kept: number; refund: number } {
+export function partnerRefundOf(b: SettlementSource, fee: number, waived = false): PartnerRefund {
+  if (isDepositPaymentOption(b.payment_option)) {
+    const deposit = Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0);
+    const f = waived ? 0 : Math.max(0, fee);
+    const kept = Math.min(f, deposit);
+    const shortage = f - kept;
+    return { paid: deposit, kept, refund: deposit - kept, shortage, shortageBilled: isDepositRemainderBilled(b.remainder_option) ? shortage : 0 };
+  }
   const paid = Math.max(0, b.paid_amount ?? b.total_amount + b.bath_tax_amount - b.prepay_discount_amount);
   let kept = Math.min(Math.max(0, fee), paid);
   if (!waived) {
     const cap = Math.max(0, paid - Math.max(0, b.bath_tax_amount));
     kept = Math.max(kept, Math.min(Math.max(0, b.prepay_discount_amount), cap));
   }
-  return { paid, kept, refund: paid - kept };
+  return { paid, kept, refund: paid - kept, shortage: 0, shortageBilled: 0 };
 }
 
 /** 取消確認欄・メールの「どう精算するか」の一文 */
-export function settlementText(s: CancelSettlement, fee: number, invoiceMonth: string, refund?: { refund: number; kept: number } | null): string {
+export function settlementText(
+  s: CancelSettlement,
+  fee: number,
+  invoiceMonth: string,
+  refund?: { refund: number; kept: number; paid?: number; shortage?: number; shortageBilled?: number } | null
+): string {
   const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
   switch (s) {
+    case 'deposit': {
+      if (!refund) return '';
+      const head =
+        refund.kept > 0
+          ? `お支払い済みのデポジット ${yen(refund.paid ?? refund.kept + refund.refund)} から ${yen(refund.kept)} をキャンセル料に充当し、${refund.refund > 0 ? `${yen(refund.refund)} をカードへ返金します` : '返金はありません'}`
+          : `お支払い済みのデポジット ${yen(refund.paid ?? refund.refund)} を全額カードへ返金します`;
+      const short = refund.shortage ?? 0;
+      if (short <= 0) return head;
+      return (refund.shortageBilled ?? 0) > 0
+        ? `${head}。デポジットを超える ${yen(short)} は ${invoiceMonth}分の請求書でご請求します`
+        : `${head}（デポジットを超える ${yen(short)} はご請求しません）`;
+    }
     case 'invoice':
       return `${invoiceMonth}分の請求書でご請求します（チェックアウト予定日の月）`;
     case 'card':

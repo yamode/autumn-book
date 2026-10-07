@@ -8,6 +8,19 @@ import {
   applyPrepayDiscount,
   chargeAmountOf,
   canBookFor,
+  DEPOSIT_PAYMENT_LABEL,
+  DEPOSIT_PAYMENT_NOTE,
+  DEPOSIT_PAYMENT_OPTION,
+  depositAmountOf,
+  depositRemainderModeOf,
+  depositRemainderText,
+  depositStateOf,
+  describeCreditDeposit,
+  firstNightLodgingOf,
+  intentAmountOf,
+  isDepositPaymentOption,
+  isDepositRemainderBilled,
+  PARTNER_PAYMENT_OPTIONS,
   describePrepayDiscount,
   hasPrepayDiscount,
   isStripePaymentOption,
@@ -38,7 +51,8 @@ import {
   settlementText,
   storeCancelPolicy,
   type CancelPolicy,
-  type CancelSettlement
+  type CancelSettlement,
+  type PartnerRefund
 } from '$lib/partner-cancel-fee';
 import {
   cardLabelOf,
@@ -63,7 +77,7 @@ import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupI
 import { cardExpiresBefore } from '$lib/partner-card';
 import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
-import { creditOverLine, creditOverSubjectPrefix, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
+import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresDeposit, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
@@ -92,6 +106,42 @@ export function availablePaymentOptions(partner: Pick<PartnerRow, 'booking_setti
 export function isPartnerBookingOpen(partner: Pick<PartnerRow, 'booking_enabled' | 'booking_settings'>): boolean {
   return partner.booking_enabled && availablePaymentOptions(partner).length > 0;
 }
+
+// 受付枠（与信）を超えたときにだけ使える支払方法（Phase 3b・決定 #2）。超過時の挙動が deposit で、紐づけがあり、
+// Stripe を画面に出せるときだけ。取引先の paymentOptions に online が無くても、超過時は全額の予約時決済も選べる。
+export function creditOverPaymentOptions(partner: Pick<PartnerRow, 'credit_over_action' | 'pms_guest_id'>): string[] {
+  if (partner.credit_over_action !== 'deposit' || !partner.pms_guest_id || !inlinePaymentReady()) return [];
+  return ['online', DEPOSIT_PAYMENT_OPTION];
+}
+
+/**
+ * 予約で使う支払方法を決める（予約画面の確定・/book/reserve・createPartnerBooking で共通）。
+ * 取引先が選んだもの（使えるもの・超過時だけの online / deposit_online を含む）→ 無ければ、支払方法が1つだけならそれ。
+ * overOnly: 取引先の通常の支払方法には無く、受付枠を超えたときだけ選べるもの（確定前に超過かを確かめる）。
+ */
+export function resolvePaymentOption(
+  partner: Pick<PartnerRow, 'booking_settings' | 'credit_over_action' | 'pms_guest_id'>,
+  requested: string | null | undefined
+): { option: string; overOnly: boolean } | null {
+  const base = availablePaymentOptions(partner);
+  const req = String(requested ?? '');
+  if (req && base.includes(req) && !isDepositPaymentOption(req)) return { option: req, overOnly: false };
+  if (req && creditOverPaymentOptions(partner).includes(req)) return { option: req, overOnly: true };
+  return base.length === 1 ? { option: base[0], overOnly: false } : null;
+}
+
+// 予約画面に出す支払方法の1つ（billable: 請求書払い＝宿泊料金・入湯税は取引先へ請求）
+export type QuotePaymentChoice = { id: string; label: string; note: string; billable: boolean };
+
+// デポジット（超過時・deposit）の見積。額は DB 関数と同じ規則で計算した見込み（確定時は DB が計算し直す）
+export type QuoteDeposit = {
+  amount: number;
+  remainder: number;
+  remainderBilled: boolean;
+  remainderText: string;
+  basis: string;
+  notice: string;
+};
 
 // ---------------------------------------------------------------------------
 // 見積もり
@@ -144,6 +194,10 @@ export type BookingQuote =
       // 御社の受付枠（与信・Phase 3a）: 紐づけ先が与信 ON の旅行会社のときだけ。滞在が触る月ごとの判定（この予約ぶんを足した後）。
       // 見積の画面（予約入力・料金の再計算）でだけ読む（確定時は DB 関数が判定し直す）。
       credit: PartnerQuoteCredit | null;
+      // 受付枠を超え、超過時の挙動が deposit のとき（Phase 3b）: 支払方法の選択肢の差し替え（online と deposit_online だけ）と
+      // デポジットの額・残額。それ以外は null（取引先の通常の支払方法のまま）。
+      paymentChoices: QuotePaymentChoice[] | null;
+      deposit: QuoteDeposit | null;
     }
   | { ok: false; message: string };
 
@@ -253,6 +307,29 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
   const d = partner.booking_settings.prepayDiscount;
   const prepayTotal =
     hasPrepayDiscount(d) && availablePaymentOptions(partner).includes('online') ? discountRooms(rooms, d).reduce((s, r) => s + r.subtotal, 0) : null;
+  const bathTax = bathRule.enabled ? bathRule.amount * rooms.reduce((s, r) => s + r.adults, 0) * nights : 0;
+  // 受付枠を超え、超過時の挙動が deposit（Phase 3b）: 後払いを外し、全額の予約時決済とデポジットだけにする
+  let paymentChoices: QuotePaymentChoice[] | null = null;
+  let deposit: QuoteDeposit | null = null;
+  if (credit && requiresDeposit(partner.credit_over_action, credit)) {
+    const s = partner.booking_settings;
+    const amount = depositAmountOf(s.creditDeposit, { lodging: total, bathTax, rooms: rooms.length, nights, firstNight: firstNightLodgingOf(rooms, t.checkIn) });
+    const remainderBilled = depositRemainderModeOf(s) === 'invoice';
+    const online = PARTNER_PAYMENT_OPTIONS.find((o) => o.id === 'online')!;
+    paymentChoices = creditOverPaymentOptions(partner).map((id) =>
+      id === 'online'
+        ? { id, label: online.label, note: online.note, billable: false }
+        : { id, label: DEPOSIT_PAYMENT_LABEL, note: DEPOSIT_PAYMENT_NOTE, billable: false }
+    );
+    deposit = {
+      amount,
+      remainder: Math.max(0, total + bathTax - amount),
+      remainderBilled,
+      remainderText: depositRemainderText(remainderBilled),
+      basis: describeCreditDeposit(s.creditDeposit),
+      notice: creditDepositNotice(credit.months, amount)
+    };
+  }
   return {
     ok: true,
     roomCode: t.roomCode,
@@ -266,10 +343,12 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     nights,
     rooms,
     total,
-    bathTax: bathRule.enabled ? bathRule.amount * rooms.reduce((s, r) => s + r.adults, 0) * nights : 0,
+    bathTax,
     prepay: prepayTotal == null ? null : { total: prepayTotal, discount: total - prepayTotal, label: describePrepayDiscount(d) },
     remaining: remaining.min,
-    credit
+    credit,
+    paymentChoices,
+    deposit
   };
 }
 
@@ -311,9 +390,15 @@ export type CreatedBooking = { id: string; bookingCode: string; total: number; e
 const PHONE_RE = /^[0-9+\-() ]{8,20}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function friendlyRpcError(message: string): string {
+export function friendlyRpcError(message: string): string {
   const m = message.match(/sold_out:(\d{4}-\d{2}-\d{2}):(\d+)/);
   if (m) return `${m[1]} は満室になりました（残り ${m[2]} 室）。室数・日程を変えてお試しください。`;
+  // 受付枠（与信）を超えたときのデポジット方式（Phase 3b・autumn-shared 20261007002617）
+  if (message.includes('credit_over_requires_deposit')) {
+    return '御社の受付枠を超えたため、このご予約は後払いではお受けできなくなりました。全額の予約時決済かデポジットでのお支払いをお選びください。';
+  }
+  if (message.includes('deposit_not_required')) return '受付枠に空きができたため、デポジットは不要になりました。お支払方法を選び直してください。';
+  if (message.includes('invalid_payment_option')) return 'お支払方法を選び直してください。';
   if (message.includes('booking_disabled')) return '現在ご予約を受け付けていません。';
   if (message.includes('past_date')) return '過去の日付はご予約いただけません。';
   if (message.includes('invalid_adults')) return '1室あたりの人数がお部屋の定員を超えています。';
@@ -354,9 +439,21 @@ export async function createPartnerBooking(
   if (!partner.booking_enabled) throw new PartnerStoreError('現在ご予約を受け付けていません。', 403);
   const payOptions = availablePaymentOptions(partner);
   if (!payOptions.length) throw new PartnerStoreError('予約の受付準備ができていません（宿へお問い合わせください）。', 409);
-  // 支払方法が1つだけならそれ。複数なら取引先が選んだもの（許可されたものに限る）。
-  const paymentOption = payOptions.length === 1 ? payOptions[0] : payOptions.find((id) => id === input.paymentOption);
-  if (!paymentOption) throw new PartnerStoreError('お支払方法を選んでください。');
+  // 取引先が選んだもの（許可されたもの・受付枠を超えたときだけの online / deposit_online を含む）。1つだけならそれ。
+  const resolved = resolvePaymentOption(partner, input.paymentOption);
+  if (!resolved) throw new PartnerStoreError('お支払方法を選んでください。');
+  const paymentOption = resolved.option;
+  if (resolved.overOnly) {
+    // 超過時だけの支払方法: 今も受付枠を超えているかを確かめる（最終の判定は DB 関数が施設ロックの中でやり直す）
+    const credit = await partnerStayCredit(db, partner, input.checkIn, Math.round(input.nights), input.rooms.length);
+    if (!credit) {
+      // 受付枠を読めなかった（空いたとは限らない）
+      throw new PartnerStoreError('受付枠を確認できませんでした。少し時間をおいて、お支払方法を選び直してください。', 409);
+    }
+    if (!requiresDeposit(partner.credit_over_action, credit)) {
+      throw new PartnerStoreError('受付枠に空きができたため、通常のお支払方法でご予約いただけます。お支払方法を選び直してください。', 409);
+    }
+  }
   if (!canBookFor(input.checkIn, s)) {
     throw new PartnerStoreError(`この宿泊日のご予約は締め切りました（宿泊日の${describeDeadline(s.leadDays, s.cutoffHour)}）。`);
   }
@@ -551,10 +648,11 @@ async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext
     if (created) await db.from('rms_partner_bookings').update({ stripe_session_id: prepared.intentId }).eq('id', b.id);
     return { ...prepared, ...base, consentText };
   }
+  // デポジット（deposit_online）は台帳の deposit_amount（DB 関数が計算した額）だけを受ける。それ以外は請求額
   const { prepared, created } = await preparePaymentIntent({
     existingId: b.stripe_session_id,
-    amount: chargeAmountOf(b),
-    description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
+    amount: intentAmountOf(b),
+    description: `${partner.facility_name} ご宿泊${isDepositPaymentOption(b.payment_option) ? 'のデポジット' : ''}（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
     metadata: intentMetadata(partner, b),
     refKey: REF_KEY,
     idempotencyKey: `rms-partner-pi-${b.id}-${b.stripe_session_id ?? 'first'}`
@@ -627,7 +725,8 @@ export async function confirmPartnerIntent(db: SupabaseClient, intentId: string,
     const pi = await retrievePaymentIntent(intentId);
     const ctx = await contextForIntent(db, pi.metadata?.[REF_KEY], expectPartnerId);
     if (!ctx) return { status: 'unknown' };
-    const check = checkPaymentIntent(pi, { ...exp, refId: ctx.booking.id, expectedAmount: chargeAmountOf(ctx.booking) });
+    // デポジットはデポジットの額（台帳の deposit_amount）、それ以外は請求額で確かめる
+    const check = checkPaymentIntent(pi, { ...exp, refId: ctx.booking.id, expectedAmount: intentAmountOf(ctx.booking) });
     if (!check.ok && check.reason !== 'amount_mismatch') {
       return check.reason === 'not_succeeded' ? { status: 'unpaid', bookingCode: ctx.booking.booking_code } : { status: 'unknown' };
     }
@@ -676,7 +775,7 @@ export async function confirmCheckoutSession(db: SupabaseClient, sessionId: stri
     return recordCardSaved(db, ctx, { sessionId: session.id, customer: session.customer, paymentMethod: pmId, card: pm }, origin);
   }
   if (session.payment_status !== 'paid') return { status: 'unpaid', bookingCode: code };
-  return recordPaid(db, ctx, { sessionId: session.id, paymentIntent: session.payment_intent, amount: session.amount_total ?? chargeAmountOf(ctx.booking) }, origin);
+  return recordPaid(db, ctx, { sessionId: session.id, paymentIntent: session.payment_intent, amount: session.amount_total ?? intentAmountOf(ctx.booking) }, origin);
 }
 
 type BookingCtx = { partner: PartnerContext; booking: PartnerBookingRow };
@@ -970,6 +1069,10 @@ export type PartnerBookingRow = {
   bath_tax_amount: number;
   // 予約時決済の割引額（円）。請求額＝total_amount＋bath_tax_amount−これ
   prepay_discount_amount: number;
+  // デポジット（Phase 3b・autumn-shared 20261007002617）: payment_option='deposit_online' のときだけ。
+  // deposit_amount = 予約時に受ける額（決済後は paid_amount と同じ）。remainder_option = 残額の精算（invoice_monthly / custom_* / onsite）
+  deposit_amount?: number | null;
+  remainder_option?: string | null;
   card_consent_text: string | null;
   card_consent_at: string | null;
   payment_method_name: string | null;
@@ -1032,7 +1135,7 @@ export const bookingNameLineOf = (b: Pick<PartnerBookingRow, 'name_mode' | 'name
   bookingNameLine(b.name_mode, b.name_holder, b.guest_name, b.partner_name);
 
 const BOOKING_COLUMNS =
-  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result';
+  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result, deposit_amount, remainder_option';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   rows = await attachNameHolder(db, rows);
@@ -1116,8 +1219,10 @@ export type CancelPreview = {
   noShowFee: number;
   table: { label: string; rate: number; current: boolean }[];
   settlement: CancelSettlement;
-  // 予約時決済（支払済み）のとき: 支払額・差し引く額・返金額
-  refund: { paid: number; kept: number; refund: number } | null;
+  // 予約時決済（支払済み）・デポジットのとき: 支払額・差し引く額（充当額）・返金額（デポジットは不足分も）
+  refund: PartnerRefund | null;
+  // デポジット予約のとき: 残額を請求書で受けるか（不足分の扱い・N3）。デポジットでなければ null
+  depositRemainderBilled: boolean | null;
   // 精算の一文（画面に出す）
   settlementText: string;
 };
@@ -1126,7 +1231,7 @@ function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = ne
   const q = quoteCancelFee(b, policy, { now });
   const ns = quoteCancelFee(b, policy, { now, noShow: true });
   const settlement = settlementOf(b, q.fee);
-  const refund = settlement === 'refund' ? partnerRefundOf(b, q.fee) : null;
+  const refund = settlement === 'refund' || settlement === 'deposit' ? partnerRefundOf(b, q.fee) : null;
   return {
     ...q,
     noShowRate: ns.rate,
@@ -1134,6 +1239,7 @@ function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = ne
     table: cancelPolicyTable(policy, q.daysBefore),
     settlement,
     refund,
+    depositRemainderBilled: isDepositPaymentOption(b.payment_option) ? isDepositRemainderBilled(b.remainder_option) : null,
     settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund)
   };
 }
@@ -1349,7 +1455,9 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
     ...(b.payment_method_name
       ? [
           `お支払: ${b.payment_method_name}${
-            b.payment_status === 'paid'
+            depositSummary(b)
+              ? `（${depositSummary(b)}）`
+              : b.payment_status === 'paid'
               ? `（お支払い済み ${yen(b.paid_amount ?? chargeAmountOf(b))}）`
               : b.payment_status === 'scheduled'
                 ? `（チェックアウト日に${b.card_label ? ` ${b.card_label} へ` : ''}請求します）`
@@ -1368,6 +1476,18 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
     ...cancelFeeLines(b)
   ];
   return lines;
+}
+
+/**
+ * デポジット予約のお支払の説明（メール・一覧）。デポジットでない・支払前は null。
+ * 「デポジット 30,450円 お支払い済み・残額 71,050円（請求書）」。取消・返金の後は返金の説明を優先する（null）。
+ */
+export function depositSummary(
+  b: Pick<PartnerBookingRow, 'payment_option' | 'payment_status' | 'total_amount' | 'bath_tax_amount' | 'prepay_discount_amount' | 'deposit_amount' | 'paid_amount' | 'remainder_option' | 'status'>
+): string | null {
+  const st = depositStateOf(b);
+  if (!st || b.payment_status !== 'paid' || b.status === 'cancelled') return null;
+  return `デポジット ${yen(st.deposit)} お支払い済み・残額 ${yen(st.remainder)}（${isDepositRemainderBilled(b.remainder_option) ? '請求書' : '現地'}）`;
 }
 
 // 取消済みの予約のキャンセル料（メール・一覧）。0円なら「なし」を明記する
@@ -1394,6 +1514,14 @@ export function cancelFeeSettlementLabel(b: PartnerBookingRow): string {
       return b.cancel_fee_status === 'charged' ? '→ ご登録のカードへ請求済み' : '→ ご登録のカードへ請求';
     case 'refund':
       return '→ お支払い済みの金額から差し引き';
+    case 'deposit': {
+      // デポジットから充当。不足分は残額が請求書なら請求書へ・現地なら請求しない（N3）
+      const r = partnerRefundOf(b, b.cancel_fee ?? 0, !!b.cancel_fee_waived);
+      if (r.shortage <= 0) return '→ お支払い済みのデポジットから充当';
+      return r.shortageBilled > 0
+        ? `→ デポジットから充当（超える ${yen(r.shortage)} は ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求）`
+        : `→ デポジットから充当（超える ${yen(r.shortage)} はご請求しません）`;
+    }
     default:
       return '';
   }
@@ -1401,7 +1529,17 @@ export function cancelFeeSettlementLabel(b: PartnerBookingRow): string {
 
 // 取引先払い（宿泊料金・入湯税を取引先へ月末に請求し、お客様には請求しない）予約の、宿への注意書き（2026-10-02 指示）。
 // 判定は請求書と同じ isBillablePaymentOption（月末締め翌月末銀行振込、または「請求書で精算」の自由入力の支払方法）。
-export function partnerBilledNotice(partner: Pick<PartnerRow, 'name' | 'booking_settings'>, b: Pick<PartnerBookingRow, 'payment_option'>): string | null {
+export function partnerBilledNotice(
+  partner: Pick<PartnerRow, 'name' | 'booking_settings'>,
+  b: Pick<PartnerBookingRow, 'payment_option'> & Partial<Pick<PartnerBookingRow, 'total_amount' | 'bath_tax_amount' | 'prepay_discount_amount' | 'deposit_amount' | 'paid_amount' | 'remainder_option'>>
+): string | null {
+  // デポジット（Phase 3b）: 予約時に受けた額と、残額の精算先（請求書なら取引先へ・現地ならお客様から）
+  const dep = b.total_amount != null ? depositStateOf({ ...b, total_amount: b.total_amount }) : null;
+  if (dep) {
+    return isDepositRemainderBilled(b.remainder_option)
+      ? `【ご請求】デポジット ${yen(dep.deposit)} はお支払い済み。残額 ${yen(dep.remainder)} は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`
+      : `【デポジット】${yen(dep.deposit)} はお支払い済みです。残額 ${yen(dep.remainder)} は現地でお客様からお受け取りください。`;
+  }
   if (!isBillablePaymentOption(b.payment_option, partner.booking_settings)) return null;
   return `【ご請求】宿泊料金・入湯税は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`;
 }
