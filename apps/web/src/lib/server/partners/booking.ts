@@ -60,6 +60,7 @@ import {
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
+import { cardExpiresBefore } from '$lib/partner-card';
 import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
@@ -575,7 +576,7 @@ async function partnerForBooking(db: SupabaseClient, bookingId: string): Promise
 }
 
 export type PaymentResult = {
-  status: 'paid' | 'already' | 'unpaid' | 'refunded_late' | 'unknown' | 'card_saved' | 'card_updated' | 'card_late';
+  status: 'paid' | 'already' | 'unpaid' | 'refunded_late' | 'unknown' | 'card_saved' | 'card_updated' | 'card_late' | 'card_expiry';
   bookingCode?: string;
   // カード登録し直し後、その場で請求した結果
   charge?: ChargeResult;
@@ -609,6 +610,8 @@ export async function confirmPartnerIntent(db: SupabaseClient, intentId: string,
     const check = checkSetupIntent(si, { ...exp, refId: ctx.booking.id });
     if (!check.ok) return check.reason === 'not_succeeded' ? { status: 'unpaid', bookingCode: ctx.booking.booking_code } : { status: 'unknown' };
     const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
+    // 有効期限が請求日（チェックアウト日）より前に切れるカードは登録しない（予約は支払待ちのまま・別のカードを登録してもらう）
+    if (cardExpiresBefore(pm?.card, ctx.booking.check_out_date)) return { status: 'card_expiry', bookingCode: ctx.booking.booking_code };
     return recordCardSaved(db, ctx, { sessionId: si.id, customer: idOf(si.customer)!, paymentMethod: idOf(si.payment_method)!, card: pm }, origin);
   }
   return { status: 'unknown' };
@@ -635,6 +638,7 @@ export async function confirmCheckoutSession(db: SupabaseClient, sessionId: stri
     const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
     const pmId = pm?.id ?? (typeof si.payment_method === 'string' ? si.payment_method : null);
     if (!pmId || !session.customer) return { status: 'unpaid', bookingCode: code };
+    if (cardExpiresBefore(pm?.card, ctx.booking.check_out_date)) return { status: 'card_expiry', bookingCode: code };
     return recordCardSaved(db, ctx, { sessionId: session.id, customer: session.customer, paymentMethod: pmId, card: pm }, origin);
   }
   if (session.payment_status !== 'paid') return { status: 'unpaid', bookingCode: code };

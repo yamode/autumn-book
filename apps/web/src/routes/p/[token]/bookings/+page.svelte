@@ -145,7 +145,7 @@
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ カードを登録し、ご予約が確定しました（予約番号 {data.payment.bookingCode}）</p>
       {#if paidNameHolder}<p class="mt-1 text-sm">ご予約名義: {paidNameHolder}</p>{/if}
-      <p class="mt-1 text-sm text-stone-500">チェックアウト日に登録カードへ自動でご請求します。それまではご請求はありません。</p>
+      <p class="mt-1 text-sm text-stone-500">チェックアウト日に登録カードへ自動でご請求します。それまではご請求はありません。有効期限がチェックアウト日以降のカードをご登録ください。</p>
     </div>
   {:else if data.payment?.status === 'card_updated'}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 font-medium text-[var(--pt-accent)]">
@@ -154,6 +154,11 @@
         : data.payment.charge?.status === 'failed'
           ? `ただし、このカードでもご請求できませんでした${data.payment.charge.message ? `（${data.payment.charge.message}）` : ''}。別のカードでお試しいただくか、宿へご連絡ください。`
           : 'チェックアウト日にこのカードへご請求します。'}
+    </p>
+  {:else if data.payment?.status === 'card_expiry'}
+    <!-- 登録カードの有効期限が請求日（チェックアウト日）より前（lib/partner-card.ts）。予約は支払待ちのまま -->
+    <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
+      ご登録のカードは、ご請求日（チェックアウト日）より前に有効期限が切れるため登録できませんでした{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。ご請求はしていません。お手数ですが、下の一覧の「カードを登録して予約を確定する」から、有効期限がチェックアウト日以降のカードをご登録ください（お部屋の確保の期限内に限ります）。
     </p>
   {:else if data.payment?.status === 'card_late'}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">

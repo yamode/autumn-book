@@ -20,7 +20,7 @@ import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify'
 import { stripePublishableKey } from '$lib/server/stripe';
 
 // 予約画面・支払の再開から戻ったときに出す結果（ブラウザが確定の連絡を済ませた後。表示だけに使う）
-const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'unpaid', 'refunded_late', 'card_saved', 'card_updated', 'card_late']);
+const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'unpaid', 'refunded_late', 'card_saved', 'card_updated', 'card_late', 'card_expiry']);
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
