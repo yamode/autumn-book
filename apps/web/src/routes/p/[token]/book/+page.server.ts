@@ -34,7 +34,7 @@ export const load = async (event) => {
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
   const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields, nameHolder] = await Promise.all([
-    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }),
+    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }, { credit: true }),
     db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
     getBookerProfile(db, partner.id, session.id).catch(() => null),

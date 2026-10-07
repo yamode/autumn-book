@@ -3,6 +3,8 @@
 // 閲覧は admin / staff、操作（保存・再発行・発行・取消と返金・再請求・削除・請求書の発行・再送・取消）は admin のみ（staff.ts の canEditPartners）。
 // PMS の顧客マスタとの紐づけ（2026-10-07・Phase 1）: 候補の検索は閲覧権限で、紐づけ・解除は admin のみ。
 // 予約名義（2026-10-07・Phase 2）: 紐づけ済みのときだけ選べる。変更は admin のみ（setBookingNameMode）。
+// 与信（2026-10-07・Phase 3a）: 紐づけ先が旅行会社のときだけ。表示は閲覧権限、設定の保存（saveAgencyCredit）と
+// 超過時の挙動（setCreditOverAction）は admin のみ。
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import { describeBooker, normalizeBooker, normalizePartnerBookingSettings } from '$lib/partner-booking';
@@ -31,8 +33,12 @@ import {
 	createPartnerAccount,
 	deletePartner,
 	deletePartnerAccount,
+	getAgencyCreditState,
 	getPmsPartnerGuest,
 	issuePartnerApiKey,
+	partnerCreditCheck,
+	setAgencyCredit,
+	setPartnerCreditOverAction,
 	listPartnerAccessLogs,
 	listPartnerAccounts,
 	listPartnerApiKeys,
@@ -81,7 +87,16 @@ import { isBillablePaymentOption, periodOf } from '$lib/partner-invoice';
 import { photoFileProblem } from '$lib/content-blocks';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbUploadContentPhoto } from '$lib/server/content-admin';
-import { BOOKING_NAME_MODES, pmsGuestUrl, type BookingNameMode } from '$lib/pms-partner-guest';
+import { BOOKING_NAME_MODES, pmsGuestCreditUrl, pmsGuestUrl, type BookingNameMode } from '$lib/pms-partner-guest';
+import {
+	bookActorUserId,
+	creditOverLine,
+	creditUpdatedSource,
+	isCreditOver,
+	isSelectableCreditOverAction,
+	nextMonths,
+	parseCreditSettingsInput
+} from '$lib/partner-credit';
 import type { Actions, PageServerLoad } from './$types';
 
 // プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
@@ -165,6 +180,9 @@ export const load: PageServerLoad = async (event) => {
 			.catch((e) => ({ guest: null, error: e instanceof Error ? e.message : String(e) }))
 	]);
 
+	// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
+	const credit = pmsGuest.guest?.guestType === 'group' ? await loadCreditSection(event, scope, partner, today) : null;
+
 	// ルール編集の選択肢。プランは直近の料金（rms_partner_portal_source）に出ているプラングループから集める
 	// （同じコードが部屋タイプ間で共通なので、コード単位でまとめる）。保存済みルールにしか無いコードも残す。
 	const planMap = new Map(preview.planOptions.map((p) => [p.code, p]));
@@ -215,7 +233,10 @@ export const load: PageServerLoad = async (event) => {
 			guest: pmsGuest.guest ? { ...pmsGuest.guest, url: pmsGuestUrl(pmsGuest.guest.id) } : null,
 			error: pmsGuest.error,
 			// 予約名義（Phase 2）。紐づけが無ければ DB のトリガーで常に guest
-			bookingNameMode: partner.booking_name_mode
+			bookingNameMode: partner.booking_name_mode,
+			// 与信（Phase 3a）。紐づけ先が旅行会社でなければ null（セクションを出さない）
+			credit,
+			creditOverAction: partner.credit_over_action
 		},
 		memorandum: { text: memo.text, updatedAt: memo.updatedAt, maxLength: MAX_MEMORANDUM_LENGTH, error: memo.error },
 		documents: documents.rows.map((d) => ({
@@ -301,6 +322,9 @@ export const load: PageServerLoad = async (event) => {
 			// 旅行会社名義の予約（Phase 2）: 一覧の印と名義の行（予約時の紐づけ先の名称）
 			nameMode: b.name_mode ?? 'guest',
 			nameLine: bookingNameLineOf(b),
+			// 予約時に受付枠（与信）を超えていた予約（Phase 3a）。超過した月の内訳はツールチップに
+			creditOver: isCreditOver(b.credit_result),
+			creditOverText: creditOverLine(b.credit_result),
 			phone: b.guest_phone,
 			// 合計は入湯税を含む（宿泊料金＋入湯税）。キャンセル料の基準は宿泊料金（lodging）だけ
 			total: b.total_amount + (b.bath_tax_amount ?? 0),
@@ -380,6 +404,69 @@ function bookingExtras(detail: unknown): { booker: string | null; transport: str
 		transport: typeof d.transport === 'string' && d.transport.trim() ? d.transport.trim() : null,
 		perks
 	};
+}
+
+// 管理画面の表に出す月数（今月から）
+const CREDIT_TABLE_MONTHS = 12;
+
+// 与信（受付枠）のセクション: 設定（PMS の metadata.pms の4キー・楽観ロック用の updated_at）・最終更新・今後 12 か月の判定。
+// 読めなくても他の欄は出す（error に理由）。
+async function loadCreditSection(
+	event: RequestEvent,
+	scope: Awaited<ReturnType<typeof staffPartnerScope>>,
+	partner: Awaited<ReturnType<typeof requireStaffPartner>>,
+	today: string
+) {
+	const guestId = partner.pms_guest_id as string;
+	try {
+		const [state, check] = await Promise.all([
+			getAgencyCreditState(scope.db, partner.tenant_id, guestId),
+			partnerCreditCheck(scope.db, partner, nextMonths(today.slice(0, 7), CREDIT_TABLE_MONTHS))
+		]);
+		if (!state) return null;
+		return {
+			state: {
+				enabled: state.enabled,
+				growthRate: state.growthRate,
+				minRooms: state.minRooms,
+				note: state.note,
+				// 楽観ロック: 保存時にこの値を送り、違えば「他の人が先に変えました」
+				guestUpdatedAt: state.guestUpdatedAt
+			},
+			updatedAt: state.updatedAt,
+			updatedSource: creditUpdatedSource(state.updatedBy, await bookActorName(event, scope, state.updatedBy)),
+			months: check?.enabled ? check.months : [],
+			pmsCreditUrl: pmsGuestCreditUrl(guestId),
+			error: null as string | null
+		};
+	} catch (e) {
+		return {
+			state: null,
+			updatedAt: null,
+			updatedSource: '',
+			months: [],
+			pmsCreditUrl: pmsGuestCreditUrl(guestId),
+			error: e instanceof Error ? e.message : String(e)
+		};
+	}
+}
+
+// 「最終更新」の誰: credit_updated_by = 'book:<user id>' のスタッフ名（自分なら自分の名前、他の人は Auth の表示名・メール）。
+// 引けなければ null（「book」とだけ出す）
+async function bookActorName(event: RequestEvent, scope: Awaited<ReturnType<typeof staffPartnerScope>>, updatedBy: string | null): Promise<string | null> {
+	const id = bookActorUserId(updatedBy);
+	if (!id) return null;
+	if (id === scope.userId) return event.locals.user?.name || null;
+	try {
+		const { data } = await scope.db.auth.admin.getUserById(id);
+		const u = data?.user;
+		if (!u) return null;
+		const meta = (u.user_metadata ?? {}) as Record<string, unknown>;
+		const name = [meta.name, meta.full_name, meta.display_name].find((v) => typeof v === 'string' && v.trim()) as string | undefined;
+		return name?.trim() || u.email || null;
+	} catch {
+		return null;
+	}
 }
 
 // 各アクション共通: 編集権限（admin）・施設・取引先の所属を確かめる。
@@ -462,6 +549,44 @@ export const actions: Actions = {
 			if (!(BOOKING_NAME_MODES as readonly string[]).includes(raw)) return actionFailure(new PartnerStoreError('予約名義の指定が正しくありません。'));
 			const saved = await setPartnerBookingNameMode(db, facilityId, partner.id, raw as BookingNameMode, userId);
 			return { bookingNameMode: saved.booking_name_mode };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 与信の設定（Phase 3a・決定 #7・N4）。管理者だけ（editScope が admin を確かめる。スタッフは 403）。
+	// 紐づけ・名義と同じく専用アクションで即時保存。metadata.pms の4キーだけを DB 関数で部分更新し、
+	// 画面に出した時点の core.guests.updated_at が変わっていれば保存しない（他の人・PMS が先に変えた）。
+	saveAgencyCredit: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			const fd = await event.request.formData();
+			const parsed = parseCreditSettingsInput({
+				enabled: String(fd.get('enabled') ?? ''),
+				growthRate: fd.get('growth_rate'),
+				minRooms: fd.get('min_rooms'),
+				note: fd.get('note')
+			});
+			if (!parsed.ok) return actionFailure(new PartnerStoreError(parsed.message));
+			const expected = String(fd.get('expected_updated_at') ?? '').trim() || null;
+			const r = await setAgencyCredit(db, facilityId, partner.id, parsed.patch, userId, expected);
+			if (r.result === 'conflict') {
+				return actionFailure(new PartnerStoreError('他の人が先に変えました。読み直してください。', 409, 'conflict'));
+			}
+			return { agencyCreditSaved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 超過時の挙動（Phase 3a）。warn / ignore だけ選べる（deposit は 3b で有効化・setPartnerCreditOverAction が拒否する）
+	setCreditOverAction: async (event) => {
+		try {
+			const { db, facilityId, partner, userId } = await editScope(event);
+			const raw = String((await event.request.formData()).get('action') ?? '');
+			if (!isSelectableCreditOverAction(raw)) return actionFailure(new PartnerStoreError('超過時の挙動の指定が正しくありません。'));
+			const saved = await setPartnerCreditOverAction(db, facilityId, partner.id, raw, userId);
+			return { creditOverAction: saved.credit_over_action };
 		} catch (e) {
 			return actionFailure(e);
 		}

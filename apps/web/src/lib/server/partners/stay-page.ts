@@ -1,5 +1,6 @@
 import { redirect, type RequestEvent } from '@sveltejs/kit';
-import { logPartnerAccess, partnerUnavailableReason, todayJst } from '$lib/server/partners/store';
+import { logPartnerAccess, partnerCreditCheck, partnerUnavailableReason, todayJst } from '$lib/server/partners/store';
+import { showsCredit, stayMonths } from '$lib/partner-credit';
 import { loadPartnerContents } from '$lib/server/partners/contents';
 import { availablePaymentOptions, isPartnerBookingOpen } from '$lib/server/partners/booking';
 import { describeDeadline, partnerPaymentChoices, paymentOptionLabel, perksForPlan } from '$lib/partner-booking';
@@ -30,7 +31,14 @@ export async function loadStayPage(event: Pick<RequestEvent, 'params' | 'cookies
   const termsPromise = db
     .rpc('rms_partner_plan_terms', { p_facility: partner.facility_id })
     .then(({ data, error: e }) => (e ? new Map<string, PlanTerms>() : buildPlanTerms(data)), () => new Map<string, PlanTerms>());
-  const [contents, , facility, terms] = await Promise.all([
+  // 御社の受付枠（与信・Phase 3a）: 紐づけ先が与信 ON の旅行会社のときだけ。表示中の日程が触る月（日程なしは今月）を
+  // ページの読み込みごとに1回だけ読む（RPC の呼び出しを抑える）。読めなくても一覧は出す
+  const creditMonths = date ? stayMonths(date, nights) : [todayJst().slice(0, 7)];
+  const creditPromise =
+    partner.pms_guest_id && showsCredit(partner.credit_over_action)
+      ? partnerCreditCheck(db, partner, creditMonths).catch(() => null)
+      : Promise.resolve(null);
+  const [contents, , facility, terms, credit] = await Promise.all([
     // 写真・紹介（読めなくても一覧は出す）
     loadPartnerContents(db, partner).catch(() => ({ rooms: [], plans: [] })),
     logPartnerAccess(db, {
@@ -43,7 +51,8 @@ export async function loadStayPage(event: Pick<RequestEvent, 'params' | 'cookies
     }),
     // カードの IN / OUT（読めなければ出さない）
     sbFacilityByUuid(partner.facility_id).catch(() => undefined),
-    termsPromise
+    termsPromise,
+    creditPromise
   ]);
   const toPerk = (p: { id: string; title: string; description: string; imageUrl: string }) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl });
   const payIds = availablePaymentOptions(partner);
@@ -54,6 +63,8 @@ export async function loadStayPage(event: Pick<RequestEvent, 'params' | 'cookies
     params: { date, nights, guests, rooms },
     times: facility ? { checkin: facility.checkinTime, checkout: facility.checkoutTime } : null,
     showInventory: partner.show_inventory,
+    // 受付枠（月別の延べ室数・N5）。与信 ON の旅行会社でなければ null（見出しの脇に何も出さない）
+    credit: credit?.enabled ? { months: credit.months.map((m) => ({ month: m.month, limit: m.limit, booked: m.booked })) } : null,
     planNames: s.planNames,
     booking: { enabled: isPartnerBookingOpen(partner), leadDays: s.leadDays, cutoffHour: s.cutoffHour, maxNights: s.maxNights, maxRooms: s.maxRooms },
     rooms: contents.rooms,

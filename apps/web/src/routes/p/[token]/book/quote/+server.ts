@@ -20,6 +20,6 @@ export const POST = async (event) => {
     checkIn,
     nights: Math.round(Number(body.nights)) || 1,
     rooms
-  });
+  }, { credit: true });
   return json({ quote, canBook: /^\d{4}-\d{2}-\d{2}$/.test(checkIn) && canBookFor(checkIn, partner.booking_settings) }, { headers: PORTAL_HEADERS });
 };

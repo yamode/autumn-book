@@ -28,6 +28,14 @@
   import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
   import { displayPlanName, partnerContentScope } from '$lib/partner-contents';
   import { PMS_PARTNER_GUEST_TYPE_LABELS, type PmsPartnerGuest } from '$lib/pms-partner-guest';
+  import {
+    CREDIT_OVER_ACTION_OPTIONS,
+    CREDIT_UNIT_NOTE,
+    creditMonthLabel,
+    creditRemainingBefore,
+    isSelectableCreditOverAction,
+    type CreditOverAction
+  } from '$lib/partner-credit';
   import type { PageData } from './$types';
 
   type FormResult = {
@@ -464,6 +472,94 @@
       nameModeBusy = false;
     }
   }
+  // ---- 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ。設定の保存・超過時の挙動は管理者だけ・即時保存 ----
+  // 入力欄は「保存する」の送信に混ぜないよう name を付けない。画面に出した時点の core.guests.updated_at を
+  // 楽観ロックに使い、他の人（PMS を含む）が先に変えていたら保存しない。
+  type CreditFormState = { enabled: boolean; growthRate: string; minRooms: string; note: string };
+  let creditForm = $state<CreditFormState>({ enabled: false, growthRate: '', minRooms: '', note: '' });
+  let creditLoadedAt = $state('');
+  // 読み直したとき（updated_at が変わったとき）だけ手元の入力を入れ替える（他の操作の読み直しで編集中の値を消さない）
+  $effect(() => {
+    const s = data.pmsLink.credit?.state;
+    if (!s || s.guestUpdatedAt === untrack(() => creditLoadedAt)) return;
+    creditForm = { enabled: s.enabled, growthRate: s.growthRate, minRooms: s.minRooms, note: s.note };
+    creditLoadedAt = s.guestUpdatedAt;
+  });
+  let creditBusy = $state<'save' | 'action' | 'reload' | null>(null);
+  let creditMessage = $state<{ kind: 'error' | 'ok'; text: string; conflict?: boolean } | null>(null);
+  const creditDirty = $derived.by(() => {
+    const s = data.pmsLink.credit?.state;
+    if (!s) return false;
+    return s.enabled !== creditForm.enabled || s.growthRate !== creditForm.growthRate.trim() || s.minRooms !== creditForm.minRooms.trim() || s.note !== creditForm.note.trim();
+  });
+  async function saveAgencyCredit() {
+    const s = data.pmsLink.credit?.state;
+    if (!s || creditBusy) return;
+    creditBusy = 'save';
+    creditMessage = null;
+    try {
+      const result = await postPmsAction('saveAgencyCredit', {
+        enabled: creditForm.enabled ? '1' : '',
+        growth_rate: creditForm.growthRate,
+        min_rooms: creditForm.minRooms,
+        note: creditForm.note,
+        expected_updated_at: creditLoadedAt
+      });
+      if (result.type === 'success') {
+        await invalidateAll();
+        creditMessage = { kind: 'ok', text: '与信の設定を保存しました（PMS の旅行会社の設定にも反映されています）。' };
+      } else {
+        creditMessage = { kind: 'error', text: failureText(result, '与信の設定を保存できませんでした。'), conflict: result.type === 'failure' && result.status === 409 };
+      }
+    } catch {
+      creditMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      creditBusy = null;
+    }
+  }
+  // 競合のあと: 最新の設定を読み直す（手元の入力は最新の値に置き換わる）
+  async function reloadAgencyCredit() {
+    if (creditBusy) return;
+    creditBusy = 'reload';
+    try {
+      creditLoadedAt = '';
+      await invalidateAll();
+      creditMessage = { kind: 'ok', text: '最新の設定を読み直しました。' };
+    } finally {
+      creditBusy = null;
+    }
+  }
+  // 超過時の挙動（warn / ignore を選べる。deposit は 3b まで選べない＝表示だけ）
+  let creditOverAction = $state<CreditOverAction>('deposit');
+  $effect(() => {
+    creditOverAction = data.pmsLink.creditOverAction;
+  });
+  async function changeCreditOverAction(next: CreditOverAction) {
+    const prev = data.pmsLink.creditOverAction;
+    if (creditBusy || next === prev || !isSelectableCreditOverAction(next)) return;
+    creditBusy = 'action';
+    creditMessage = null;
+    try {
+      const result = await postPmsAction('setCreditOverAction', { action: next });
+      if (result.type === 'success') {
+        await invalidateAll();
+        creditMessage = { kind: 'ok', text: `超過時の挙動を「${CREDIT_OVER_ACTION_OPTIONS.find((o) => o.id === next)?.label ?? next}」にしました。以後の予約から反映されます。` };
+      } else {
+        creditOverAction = prev;
+        creditMessage = { kind: 'error', text: failureText(result, '超過時の挙動を保存できませんでした。') };
+      }
+    } catch {
+      creditOverAction = prev;
+      creditMessage = { kind: 'error', text: '通信状況を確認して、もう一度お試しください。' };
+    } finally {
+      creditBusy = null;
+    }
+  }
+  // Enter で外側の「保存する」フォームを送らない
+  const noSubmitOnEnter = (e: KeyboardEvent) => {
+    if (e.key === 'Enter') e.preventDefault();
+  };
+
   // 請求書の宛名の既定（入力欄が空のとき）: 紐づけ先の正式名称 → 取引先名
   // 宛名の既定（請求書の発行と同じ順）: 紐づけ先の正式名称 → 取引先名。正式名称が空の顧客は取引先名
   const linkedRecipient = $derived(data.pmsLink.guest?.recipientName ?? '');
@@ -831,6 +927,101 @@
                 選んだ時点で保存され、以後の予約から反映されます（予約済みの分は変わりません）。紐づけを外すと「宿泊者名で取る」に戻ります。{#if nameModeBusy}保存中…{/if}
               </p>
             </fieldset>
+            {#if data.pmsLink.credit}
+              {@const credit = data.pmsLink.credit}
+              <!-- 与信（受付枠・Phase 3a・§6.1）。紐づけ先が旅行会社のときだけ（法人・未紐づけでは出さない）。入力欄に name は付けない -->
+              <div class="mt-3 rounded-md border border-stone-200 bg-white p-3">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                  <h4 class="text-sm font-bold text-stone-800">与信（月別の受付枠）</h4>
+                  <a href={credit.pmsCreditUrl} target="_blank" rel="noopener" class="text-xs text-brand-800 underline">PMS の与信画面を開く ↗</a>
+                </div>
+                <p class="mt-1 text-xs leading-5 text-stone-500">
+                  PMS の旅行会社の与信管理と同じ設定です（どちらで変えても同じ値）。上限＝過去3年の同月の送客実績の平均×（1＋増加率）、ただし最低枠を下回りません。{CREDIT_UNIT_NOTE}
+                  取引先ページには月ごとの残り室数を出します。超えても予約は止めません（宿への通知メール・予約一覧・PMS の備考に【受付枠超過】の印が付きます）。
+                </p>
+                {#if creditMessage}
+                  <p class={`mt-2 rounded-md px-3 py-1.5 text-xs ${creditMessage.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
+                    {creditMessage.text}
+                    {#if creditMessage.conflict}<button type="button" class="ml-2 underline" disabled={creditBusy !== null} onclick={reloadAgencyCredit}>読み直す</button>{/if}
+                  </p>
+                {/if}
+                {#if credit.error}
+                  <p class="mt-2 rounded-md bg-red-50 px-3 py-1.5 text-xs text-red-700">与信を読み込めませんでした（{credit.error}）</p>
+                {/if}
+                {#if credit.state}
+                  <!-- 設定（決定 #7・N4: 編集は管理者だけ。スタッフは表示のみ） -->
+                  <fieldset class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" disabled={!canEdit || creditBusy !== null}>
+                    <label class="flex items-center gap-2 self-end pb-1.5 text-sm">
+                      <input type="checkbox" bind:checked={creditForm.enabled} />
+                      <span class="font-medium">与信管理をする</span>
+                    </label>
+                    <label class="block">
+                      <span class="mb-0.5 block text-xs text-stone-500">増加率（％）</span>
+                      <input type="text" inputmode="decimal" bind:value={creditForm.growthRate} onkeydown={noSubmitOnEnter} placeholder="0" maxlength="8" class={inputClass} />
+                    </label>
+                    <label class="block">
+                      <span class="mb-0.5 block text-xs text-stone-500">最低枠（室/月）</span>
+                      <input type="text" inputmode="numeric" bind:value={creditForm.minRooms} onkeydown={noSubmitOnEnter} placeholder="0" maxlength="5" class={inputClass} />
+                    </label>
+                    <label class="block sm:col-span-2 lg:col-span-4">
+                      <span class="mb-0.5 block text-xs text-stone-500">運用メモ（社内用・取引先には出ません）</span>
+                      <textarea bind:value={creditForm.note} rows="2" maxlength="500" class={inputClass}></textarea>
+                    </label>
+                  </fieldset>
+                  <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-[11px] text-stone-500">
+                      {credit.updatedAt ? `book で最後に保存: ${dt(credit.updatedAt)}（${credit.updatedSource}）` : '最終更新: PMS などで設定'}
+                      {#if !credit.updatedAt}<span class="text-stone-400">（PMS で保存した日時は記録されません）</span>{/if}
+                    </p>
+                    {#if canEdit}
+                      <button type="button" class={smallBtn} disabled={creditBusy !== null || !creditDirty} onclick={saveAgencyCredit}>{creditBusy === 'save' ? '保存中…' : '与信の設定を保存'}</button>
+                    {:else}
+                      <p class="text-[11px] text-stone-400">与信の設定は管理者だけが変えられます。</p>
+                    {/if}
+                  </div>
+
+                  <!-- 今後 12 か月の月別（上限・予約済み・残り）。与信 OFF なら判定しない -->
+                  {#if credit.state.enabled && credit.months.length}
+                    <div class="mt-3 overflow-x-auto">
+                      <table class="w-full text-xs tabular-nums">
+                        <thead class="text-left text-stone-500">
+                          <tr><th class="py-1 pr-3 font-medium">月</th><th class="pr-3 text-right font-medium">基準（実績平均）</th><th class="pr-3 text-right font-medium">上限</th><th class="pr-3 text-right font-medium">予約済み</th><th class="pr-3 text-right font-medium">残り</th><th class="font-medium"></th></tr>
+                        </thead>
+                        <tbody>
+                          {#each credit.months as m (m.month)}
+                            {@const rest = creditRemainingBefore(m)}
+                            <tr class={`border-t border-stone-100 ${rest < 0 ? 'bg-amber-50' : ''}`}>
+                              <td class="py-1 pr-3 whitespace-nowrap">{creditMonthLabel(m.month)}</td>
+                              <td class="pr-3 text-right text-stone-500">{m.baseline}</td>
+                              <td class="pr-3 text-right">{m.limit} 室</td>
+                              <td class="pr-3 text-right">{m.booked} 室</td>
+                              <td class={`pr-3 text-right ${rest <= 0 ? 'font-bold text-amber-800' : ''}`}>{rest} 室</td>
+                              <td>{#if rest < 0}<span class="rounded-full bg-amber-100 px-1.5 py-px text-[11px] text-amber-800">超過 {-rest} 室</span>{:else if rest === 0}<span class="text-[11px] text-stone-500">満枠</span>{/if}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  {:else if !credit.state.enabled}
+                    <p class="mt-3 text-xs text-stone-500">与信管理がオフのため、受付枠は判定しません（取引先ページにも残り室数は出ません）。</p>
+                  {/if}
+
+                  <!-- 超過時の挙動（rms_partners.credit_over_action）。deposit は 3b まで選べない（表示だけ・いまは warn と同じ動き） -->
+                  <fieldset class="mt-3 border-t border-stone-100 pt-2" disabled={!canEdit || creditBusy !== null}>
+                    <legend class="pt-2 text-xs font-bold text-stone-700">受付枠を超えたとき</legend>
+                    {#each CREDIT_OVER_ACTION_OPTIONS as o (o.id)}
+                      {#if o.selectable || creditOverAction === o.id}
+                        <label class="flex items-start gap-2 py-1 text-sm">
+                          <input type="radio" value={o.id} bind:group={creditOverAction} disabled={!o.selectable} onchange={() => changeCreditOverAction(o.id)} class="mt-1" />
+                          <span>{o.label}<span class="block text-xs text-stone-500">{o.note}</span></span>
+                        </label>
+                      {/if}
+                    {/each}
+                    <p class="mt-1 text-[11px] text-stone-400">選んだ時点で保存されます。「後払いを止めてデポジットで受ける」は準備中です。{#if creditBusy === 'action'}保存中…{/if}</p>
+                  </fieldset>
+                {/if}
+              </div>
+            {/if}
           {/if}
         {:else}
           <p class="mt-3 text-sm text-stone-600">未紐づけです。</p>
@@ -1439,7 +1630,7 @@
                   <td class="py-2 pr-3 font-mono text-xs">{b.code}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
                   <td class="py-2 pr-3">
-                    {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
+                    {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-1 rounded-full bg-amber-100 px-1.5 py-px text-[11px] whitespace-nowrap text-amber-800" title={b.creditOverText ?? ''}>受付枠超過</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
                     {#if b.nameLine}<div class="text-[11px] text-stone-500">{b.nameLine}</div>{/if}
                     {#if b.transport}<div class="text-[11px] text-stone-500">交通: {b.transport}</div>{/if}
                     {#if b.booker}<div class="text-[11px] text-stone-500">予約者: {b.booker}</div>{/if}

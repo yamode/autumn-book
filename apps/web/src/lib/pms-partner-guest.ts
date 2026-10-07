@@ -18,6 +18,8 @@ export const isPmsPartnerGuestType = (v: unknown): v is PmsPartnerGuestType => v
 /** PMS の顧客カルテ（新しいタブで開く）。 */
 export const PMS_GUEST_URL_BASE = 'https://autumn-pms.yamado.app/guests/';
 export const pmsGuestUrl = (id: string) => `${PMS_GUEST_URL_BASE}${encodeURIComponent(id)}`;
+/** PMS の旅行会社の与信画面（autumn-pms routes/guests/[id]/credit・月別の上限と実績）。 */
+export const pmsGuestCreditUrl = (id: string) => `${pmsGuestUrl(id)}/credit`;
 
 /** 法人格の位置。prefix=前株（株式会社○○）/ suffix=後株（○○株式会社）。PMS と同じく既定は前株。 */
 export type LegalFormPosition = 'prefix' | 'suffix';

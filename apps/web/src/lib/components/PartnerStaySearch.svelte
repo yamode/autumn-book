@@ -18,6 +18,7 @@
   import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import type { StayPageData } from '$lib/server/partners/stay-page';
   import { planSummary } from '$lib/plan-summary';
+  import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
 
   let { data, view }: { data: StayPageData; view: 'room' | 'plan' } = $props();
   const token = $derived($page.params.token ?? '');
@@ -356,6 +357,13 @@
       {:else}
         <p class="text-lg font-bold">{view === 'room' ? 'すべてのお部屋とプラン' : 'すべてのプラン'}</p>
         <p class="text-sm text-stone-500">料金は{guestText}でご利用時の、今後3か月の最安です。ご宿泊日を選ぶと、その日の料金と空室に切り替わります。</p>
+      {/if}
+      {#if data.credit?.months.length}
+        <!-- 御社の受付枠（与信 ON の旅行会社だけ・月別の延べ室数）。表示中の日程の月（日程なしは今月） -->
+        <p class="mt-1 text-sm text-stone-600">
+          {#each data.credit.months as m, i (m.month)}{#if i > 0}<span class="text-stone-400">／</span>{/if}<span class={m.limit - m.booked <= 0 ? 'font-medium text-amber-800' : ''}>{creditMonthShort(m)}</span>{/each}
+          <span class="block text-xs text-stone-500">{CREDIT_UNIT_NOTE}</span>
+        </p>
       {/if}
     </div>
     <div class="flex gap-5 text-base" role="group" aria-label="並び順">

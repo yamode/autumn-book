@@ -61,8 +61,9 @@ import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$lib/server/payments/intents';
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { cardExpiresBefore } from '$lib/partner-card';
-import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
+import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
+import { creditOverLine, creditOverSubjectPrefix, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
@@ -140,8 +141,38 @@ export type BookingQuote =
       prepay: { total: number; discount: number; label: string } | null;
       // 部屋タイプの残室（PMS と同じ規則）。取れなければ null。
       remaining: number | null;
+      // 御社の受付枠（与信・Phase 3a）: 紐づけ先が与信 ON の旅行会社のときだけ。滞在が触る月ごとの判定（この予約ぶんを足した後）。
+      // 見積の画面（予約入力・料金の再計算）でだけ読む（確定時は DB 関数が判定し直す）。
+      credit: PartnerQuoteCredit | null;
     }
   | { ok: false; message: string };
+
+export type PartnerQuoteCredit = Pick<CreditCheck, 'over' | 'months'>;
+
+/**
+ * 滞在の受付枠（与信）。紐づけ先が無い・与信を見ない（ignore）・旅行会社でない・与信 OFF なら null。
+ * p_add はこの予約の延べ室数（室数 × その月の泊数）。Phase 3a では超えても止めない（warn / deposit とも表示だけ）。
+ * 受付枠は補助の表示なので、読めなくても見積・予約は止めない（null）。
+ */
+export async function partnerStayCredit(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'pms_guest_id' | 'facility_id' | 'credit_over_action'>,
+  checkIn: string,
+  nights: number,
+  roomCount: number
+): Promise<PartnerQuoteCredit | null> {
+  if (!partner.pms_guest_id || !showsCredit(partner.credit_over_action)) return null;
+  const add = stayRoomNightsByMonth(checkIn, nights, roomCount);
+  const months = Object.keys(add);
+  if (!months.length) return null;
+  try {
+    const c = await partnerCreditCheck(db, partner, months, add);
+    return c?.enabled ? { over: c.over, months: c.months } : null;
+  } catch (e) {
+    console.error('[partner-credit] 受付枠を読めませんでした:', e instanceof Error ? e.message : e);
+    return null;
+  }
+}
 
 export async function roomTypeRemaining(
   db: SupabaseClient,
@@ -170,7 +201,8 @@ export async function roomTypeRemaining(
   return { roomTypeId, min: rows.length ? Math.min(...rows.map((r) => r.remaining)) : null };
 }
 
-export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerContext, t: BookingTarget): Promise<BookingQuote> {
+// opts.credit: 受付枠（与信）も読む（予約入力の画面・料金の再計算のとき）。確定（createPartnerBooking）では読まない
+export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerContext, t: BookingTarget, opts: { credit?: boolean } = {}): Promise<BookingQuote> {
   const nights = Math.round(t.nights);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(t.checkIn) || !(nights >= 1) || nights > PARTNER_MAX_RANGE_DAYS) {
     return { ok: false, message: '宿泊日・泊数が正しくありません。' };
@@ -184,10 +216,11 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     return { ok: false, message: 'ご案内できる期間を超えています。宿泊日・泊数をご確認ください。' };
   }
   const guests = [...new Set(t.rooms.map((r) => r.adults))];
-  const [rates, remaining, bathRule] = await Promise.all([
+  const [rates, remaining, bathRule, credit] = await Promise.all([
     loadPartnerRates(db, partner, { from: range.from, to: range.to }, { rooms: [t.roomCode], guests }),
     roomTypeRemaining(db, partner.facility_id, t.roomCode, t.checkIn, addDaysIso(lastNight, 1)),
-    bathTaxRule(db, partner.facility_id)
+    bathTaxRule(db, partner.facility_id),
+    opts.credit ? partnerStayCredit(db, partner, t.checkIn, nights, t.rooms.length) : Promise.resolve(null)
   ]);
 
   let roomName = t.roomCode;
@@ -235,7 +268,8 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     total,
     bathTax: bathRule.enabled ? bathRule.amount * rooms.reduce((s, r) => s + r.adults, 0) * nights : 0,
     prepay: prepayTotal == null ? null : { total: prepayTotal, discount: total - prepayTotal, label: describePrepayDiscount(d) },
-    remaining: remaining.min
+    remaining: remaining.min,
+    credit
   };
 }
 
@@ -989,6 +1023,8 @@ export type PartnerBookingRow = {
   name_mode?: BookingNameMode;
   // 名義が partner のときの名義人（予約時の紐づけ先の正式名称。読めなければ取引先名）。読み込み時に付ける
   name_holder?: string | null;
+  // 予約時の受付枠（与信）の判定（autumn-shared 20261007000239・rms_partner_credit_check の返り値そのまま）。null = 判定なし
+  credit_result?: unknown;
 };
 
 // 予約1件の名義の行（「ご予約名義: 株式会社JTB（お部屋の宿泊者名: 山田 太郎 様）」）。名義が宿泊者名なら null
@@ -996,7 +1032,7 @@ export const bookingNameLineOf = (b: Pick<PartnerBookingRow, 'name_mode' | 'name
   bookingNameLine(b.name_mode, b.name_holder, b.guest_name, b.partner_name);
 
 const BOOKING_COLUMNS =
-  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode';
+  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   rows = await attachNameHolder(db, rows);
@@ -1403,15 +1439,20 @@ async function sendBookingMails(
     const head = kind === 'new' ? `取引先「${partner.name}」から予約が入りました。` : `取引先予約が取り消されました（${b.cancelled_by === 'staff' ? 'スタッフの操作' : '取引先の操作'}）。`;
     // 取引先払いの予約は、お客様に請求しないよう先頭付近で目立たせる
     const billed = partnerBilledNotice(partner, b);
+    // 受付枠（与信）を超えて受けた予約（Phase 3a・止めずに受けて印を付ける）。新規の通知だけ件名・本文で目立たせる
+    const creditLine = kind === 'new' ? creditOverLine(b.credit_result) : null;
     const facilitySummary = bookingSummaryLines(b, 'facility');
-    const text = [head, ...(billed ? ['', billed] : []), '', ...facilitySummary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
+    const text = [head, ...(creditLine ? ['', creditLine] : []), ...(billed ? ['', billed] : []), '', ...facilitySummary, '', 'PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。'].join('\n');
     const billedHtml = billed
       ? `<p style="margin:12px 0;padding:8px 12px;border:2px solid #b91c1c;border-radius:6px;background:#fef2f2;color:#b91c1c;font-weight:bold">${escapeHtml(billed)}</p>`
       : '';
-    const html = `<p>${escapeHtml(head)}</p>${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(facilitySummary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
+    const creditHtml = creditLine
+      ? `<p style="margin:12px 0;padding:8px 12px;border:2px solid #b45309;border-radius:6px;background:#fffbeb;color:#92400e;font-weight:bold">${escapeHtml(creditLine)}</p>`
+      : '';
+    const html = `<p>${escapeHtml(head)}</p>${creditHtml}${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(facilitySummary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
     const r = await sendFacilityNotice(db, partner.facility_id, {
       to: s.notifyEmails,
-      subject: `【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,
+      subject: `${creditLine ? creditOverSubjectPrefix(b.credit_result) : ''}【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,
       html,
       text
     });

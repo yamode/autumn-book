@@ -13,12 +13,14 @@
   import { partnerAccent } from '$lib/partner-theme';
   import { quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
+  import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string } } = $props();
 
   type Quote = PageData['quote'];
+  type CreditView = { over: boolean; months: CreditMonth[] };
 
   // 表示用（金額・日付・時刻）
   const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
@@ -277,6 +279,22 @@
     });
   });
 </script>
+
+<!-- 御社の受付枠（与信・Phase 3a・決定 #3）: 紐づけ先が与信 ON の旅行会社のときだけ見積に入る。月ごとに残りとこの予約の後の残り。
+     超えても止めない（warn / deposit とも 3a では案内だけ） -->
+{#snippet creditBox(c: CreditView)}
+  <div class={`mt-3 rounded-lg border px-3 py-2.5 text-sm ${c.over ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-stone-50'}`}>
+    <p class="font-bold">御社の受付枠</p>
+    <ul class="mt-1 space-y-1">
+      {#each c.months as m (m.month)}
+        {@const t = creditMonthText(m)}
+        <li>{t.head}{#if t.after}<span class={`block text-[13px] ${m.over ? 'font-medium text-amber-800' : 'text-stone-600'}`}>／{t.after}</span>{/if}</li>
+      {/each}
+    </ul>
+    <p class="mt-1.5 text-xs text-stone-500">{CREDIT_UNIT_NOTE}</p>
+    {#if c.over}<p class="mt-1.5 text-[13px] font-medium text-amber-800">{CREDIT_OVER_NOTICE}</p>{/if}
+  </div>
+{/snippet}
 
 {#snippet questionField(o: BookingQuestion, key: string)}
   {#if o.type === 'check'}
@@ -552,6 +570,7 @@
                 total={payTotal}
               />
             </div>
+            {#if quote.credit}<div class="max-w-md">{@render creditBox(quote.credit)}</div>{/if}
           {/if}
         </section>
       {/if}
@@ -735,6 +754,7 @@
             <!-- 残室は出さず、希望の室数に足りないときだけ知らせる -->
             <p class="mt-2 text-sm font-medium text-rose-700">ご希望の室数を確保できません（残り{quote.remaining}室）</p>
           {/if}
+          {#if quote.credit}{@render creditBox(quote.credit)}{/if}
         {/if}
         {#if !canBook}
           <p class="mt-2 text-sm font-medium text-rose-700">この宿泊日のご予約は締め切りました（宿泊日の{data.deadlineText}）。</p>

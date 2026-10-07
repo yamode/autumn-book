@@ -28,6 +28,15 @@ import {
   type PmsGuestNameFields,
   type PmsPartnerGuest
 } from '$lib/pms-partner-guest';
+import {
+  isSelectableCreditOverAction,
+  normalizeCreditCheck,
+  normalizeCreditOverAction,
+  readAgencyCreditMeta,
+  type CreditCheck,
+  type CreditOverAction,
+  type CreditSettingsPatch
+} from '$lib/partner-credit';
 
 export type PartnerKind = 'agent' | 'corporate' | 'other';
 export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
@@ -59,7 +68,8 @@ export type PartnerRow = {
   payment_method_id: string | null;
   // PMS の顧客マスタ（旅行会社・法人）への紐づけ（migration 20261006224655）。null = 未紐づけ
   pms_guest_id: string | null;
-  // 予約名義（Phase 2・管理画面の「PMS の顧客マスタとの紐づけ」で編集）・与信超過時の挙動（Phase 3・まだ読み取りだけ）
+  // 予約名義（Phase 2）・与信超過時の挙動（Phase 3a・warn / ignore を選べる。deposit は 3b まで warn と同じ扱い）。
+  // どちらも管理画面の「PMS の顧客マスタとの紐づけ」で編集
   booking_name_mode: PartnerBookingNameMode;
   credit_over_action: PartnerCreditOverAction;
   created_at: string;
@@ -67,7 +77,7 @@ export type PartnerRow = {
 };
 
 export type PartnerBookingNameMode = BookingNameMode;
-export type PartnerCreditOverAction = 'ignore' | 'warn' | 'deposit';
+export type PartnerCreditOverAction = CreditOverAction;
 
 export type PartnerAccountRow = {
   id: string;
@@ -164,7 +174,7 @@ function toPartner(row: Record<string, unknown>): PartnerRow {
     payment_method_id: (row.payment_method_id as string | null) ?? null,
     pms_guest_id: (row.pms_guest_id as string | null) ?? null,
     booking_name_mode: normalizeBookingNameMode(row.booking_name_mode),
-    credit_over_action: row.credit_over_action === 'ignore' || row.credit_over_action === 'warn' ? row.credit_over_action : 'deposit'
+    credit_over_action: normalizeCreditOverAction(row.credit_over_action)
   };
 }
 
@@ -414,6 +424,108 @@ export async function setPartnerBookingNameMode(
     throw new PartnerStoreError('予約名義を「旅行会社名で取る」にできませんでした（紐づけが外れています）。画面を読み直してください。', 409, 'not_linked');
   }
   return saved;
+}
+
+// ============================================================================
+// 与信（受付枠）Phase 3a（docs/partner-pms-customer-link.md §5.4〜5.7・§6.1）。
+// 判定は public.rms_partner_credit_check、設定の更新は public.rms_partner_set_agency_credit（どちらも service_role のみ・
+// autumn-shared 20261007000239）。呼び出し側が権限（閲覧＝admin/staff、設定の編集＝admin）を確かめてから呼ぶ。
+// ============================================================================
+
+/**
+ * 受付枠の判定（月別）。紐づけ先が無ければ null。旅行会社以外・与信 OFF は enabled=false の結果が返る。
+ * add はこの予約で足す延べ室数（月別・stayRoomNightsByMonth）。施設は取引先の施設（枠は施設ごと）。
+ */
+export async function partnerCreditCheck(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'pms_guest_id' | 'facility_id'>,
+  months: readonly string[],
+  add: Record<string, number> = {}
+): Promise<CreditCheck | null> {
+  if (!partner.pms_guest_id || !months.length) return null;
+  const { data, error } = await db.rpc('rms_partner_credit_check', {
+    p_guest: partner.pms_guest_id,
+    p_facility: partner.facility_id,
+    p_months: [...new Set(months)].filter((m) => /^\d{4}-\d{2}$/.test(m)).sort(),
+    p_add: add
+  });
+  if (error) raise(error, '受付枠を読み込めませんでした。');
+  return normalizeCreditCheck(data);
+}
+
+/** 管理画面の与信設定の編集フォーム用: 紐づけ先（旅行会社）の与信の4キー・最終更新と、楽観ロック用の updated_at。 */
+export type AgencyCreditState = ReturnType<typeof readAgencyCreditMeta> & { guestId: string; guestUpdatedAt: string };
+
+export async function getAgencyCreditState(db: SupabaseClient, tenantId: string, guestId: string | null): Promise<AgencyCreditState | null> {
+  if (!guestId || !/^[0-9a-f-]{36}$/i.test(guestId)) return null;
+  const { data, error } = await db
+    .schema('core')
+    .from('guests')
+    .select('id, tenant_id, guest_type, updated_at, metadata')
+    .eq('id', guestId)
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) raise(error, '与信の設定を読み込めませんでした。');
+  // 与信は旅行会社（group）だけ（法人には出さない・決定 #6）
+  if (!data || data.guest_type !== 'group') return null;
+  // metadata は与信の4キーと最終更新だけを取り出して返す（他のキーは画面に渡さない）
+  return { ...readAgencyCreditMeta(data.metadata), guestId: data.id as string, guestUpdatedAt: String(data.updated_at) };
+}
+
+/**
+ * 与信設定を保存する（管理者のみ・呼び出し側で確認）。紐づけ先がこの取引先の旅行会社であることを確かめ、
+ * metadata.pms の与信の4キーだけを DB 関数で部分更新する（PMS が書いた他のキーを消さない）。
+ * expectedUpdatedAt（画面に出した時点の core.guests.updated_at）が違えば conflict を返す。
+ */
+export async function setAgencyCredit(
+  db: SupabaseClient,
+  facilityId: string,
+  partnerId: string,
+  patch: CreditSettingsPatch,
+  actorUserId: string | null,
+  expectedUpdatedAt: string | null
+): Promise<{ result: 'updated' | 'conflict'; updatedAt: string | null }> {
+  const partner = await requireStaffPartner(db, facilityId, partnerId);
+  const state = await getAgencyCreditState(db, partner.tenant_id, partner.pms_guest_id);
+  if (!state) throw new PartnerStoreError('与信は、PMS の旅行会社に紐づけた取引先だけで設定できます。', 409, 'not_agency');
+  if (!expectedUpdatedAt) throw new PartnerStoreError('画面を読み直してから保存してください。', 409, 'conflict');
+  const { data, error } = await db.rpc('rms_partner_set_agency_credit', {
+    p_guest: state.guestId,
+    p_patch: patch,
+    p_actor: `book:${actorUserId ?? 'unknown'}`,
+    p_expected_updated_at: expectedUpdatedAt
+  });
+  if (error) {
+    const m = error.message ?? '';
+    if (m.includes('not_agency')) throw new PartnerStoreError('紐づけ先が旅行会社ではないため、与信を設定できません。', 409, 'not_agency');
+    if (m.includes('invalid_growth_rate')) throw new PartnerStoreError('増加率は 0〜1000 の数で入力してください（％）。');
+    if (m.includes('invalid_min_rooms')) throw new PartnerStoreError('最低枠は 0〜9999 の整数で入力してください（室/月）。');
+    if (m.includes('guest_not_found')) throw new PartnerStoreError('紐づけ先の顧客が見つかりません。', 404, 'not_found');
+    raise(error, '与信の設定を保存できませんでした。');
+  }
+  const r = (data ?? {}) as { result?: string; updated_at?: string | null };
+  return { result: r.result === 'updated' ? 'updated' : 'conflict', updatedAt: r.updated_at ?? null };
+}
+
+/** 超過時の挙動を保存する。Phase 3a で選べるのは warn / ignore だけ（deposit は 3b で有効化）。 */
+export async function setPartnerCreditOverAction(
+  db: SupabaseClient,
+  facilityId: string,
+  partnerId: string,
+  action: CreditOverAction,
+  userId: string | null = null
+): Promise<PartnerRow> {
+  if (!isSelectableCreditOverAction(action)) throw new PartnerStoreError('この超過時の挙動はまだ選べません。');
+  const partner = await requireStaffPartner(db, facilityId, partnerId);
+  const { data, error } = await db
+    .from('rms_partners')
+    .update({ credit_over_action: action, updated_by: userId })
+    .eq('id', partner.id)
+    .eq('facility_id', partner.facility_id)
+    .select(PARTNER_COLUMNS)
+    .single();
+  if (error) raise(error, '超過時の挙動を保存できませんでした。');
+  return toPartner(data);
 }
 
 /**
