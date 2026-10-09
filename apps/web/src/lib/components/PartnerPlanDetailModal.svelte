@@ -178,8 +178,8 @@
         {mealLabel(detail.mealType)}大人{params.guests}名{params.rooms > 1 ? `×${params.rooms}室` : ''}{params.nights > 1 ? `・${params.nights}泊` : ''} 税込
         <span class={`font-bold tabular-nums ${size === 'lg' ? 'text-3xl' : 'text-2xl'}`}>{num(detail.total)}</span><span class="font-bold">円{dated ? '' : '〜'}</span>
       </p>
-      <!-- 1名料金は常に併記する（2026-10-09 指示）。1室1泊 ÷ 人数（連泊は平均） -->
-      <p class="text-sm font-semibold text-brand-900">1名1泊{params.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(Math.round(detail.perRoomNight / Math.max(params.guests, 1)))}</span>円{dated ? '' : '〜'}</p>
+      <!-- 1名料金を併記する（2026-10-09 指示）。1室1泊 ÷ 人数（連泊は平均）。1名のときは出さない -->
+      {#if params.guests > 1}<p class="text-sm font-semibold text-brand-900">1名1泊{params.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(Math.round(detail.perRoomNight / Math.max(params.guests, 1)))}</span>円{dated ? '' : '〜'}</p>{/if}
       {#if !dated}<p class="text-xs text-stone-500">今後3か月の最安・日付を選ぶと確定します</p>
       {:else if params.nights > 1 || params.rooms > 1}<p class="text-xs text-stone-500">1室1泊{params.nights > 1 ? '（平均）' : ''} {num(detail.perRoomNight)}円</p>{/if}
     </div>
