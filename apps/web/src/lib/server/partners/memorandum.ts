@@ -101,7 +101,7 @@ export type DocumentUploader =
 
 export async function uploadPartnerDocument(
   db: SupabaseClient,
-  partner: Pick<PartnerRow, 'id' | 'tenant_id' | 'facility_id'>,
+  partner: Pick<PartnerRow, 'id' | 'tenant_id'>,
   file: File,
   by: DocumentUploader,
   note = ''
@@ -123,7 +123,8 @@ export async function uploadPartnerDocument(
     .from('rms_partner_documents')
     .insert({
       tenant_id: partner.tenant_id,
-      facility_id: partner.facility_id,
+      // 覚書のファイルは取引先共通（決定 N4・§7.3）。新規は施設を持たない（2026-10-09 複数施設化 S3）
+      facility_id: null,
       partner_id: partner.id,
       file_name: fileName,
       mime_type: mime,

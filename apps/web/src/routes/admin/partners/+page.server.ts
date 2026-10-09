@@ -3,7 +3,14 @@
 import { redirect } from '@sveltejs/kit';
 import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
 import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
-import { countPartnerCredentials, createPartner, listPartners, PARTNER_KIND_LABELS, PartnerStoreError } from '$lib/server/partners/store';
+import {
+	countPartnerCredentials,
+	createPartner,
+	listPartners,
+	listTenantPartners,
+	PARTNER_KIND_LABELS,
+	PartnerStoreError
+} from '$lib/server/partners/store';
 import { actionFailure, canEditPartners, staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
 import { parsePartnerKind } from '$lib/server/partners/staff-form';
 import { loadBillingSettings, parseBillingSettingsForm, saveBillingSettings } from '$lib/server/partners/invoices';
@@ -11,14 +18,21 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
+	// 「すべて」（N8・2026-10-09 複数施設化 S3）: テナントの取引先すべてを施設バッジ付きで。既定は ab_fac の施設に行がある取引先だけ
+	const showAll = event.url.searchParams.get('all') === '1';
 	const base = {
 		kindLabels: PARTNER_KIND_LABELS,
 		facilityName: currentFacility.name,
-		canEdit: canEditPartners(event)
+		canEdit: canEditPartners(event),
+		showAll
 	};
 	try {
 		const scope = await staffPartnerScope(event, 'view');
-		const partners = await listPartners(scope.db, scope.facilityId);
+		const listed = showAll
+			? await listTenantPartners(scope.db, scope.tenantId, scope.facilityId)
+			: (await listPartners(scope.db, scope.facilityId)).map((partner) => ({ partner, onCurrent: true }));
+		const partners = listed.map((l) => l.partner);
+		const onCurrent = new Map(listed.map((l) => [l.partner.id, l.onCurrent]));
 		const [counts, billing] = await Promise.all([
 			countPartnerCredentials(scope.db, partners.map((p) => p.id)),
 			// 請求書の発行元設定（読めなくても一覧は出す）
@@ -36,7 +50,11 @@ export const load: PageServerLoad = async (event) => {
 				name: p.name,
 				kind: p.kind,
 				isActive: p.is_active,
-				bookingEnabled: p.booking_enabled,
+				// 予約受付は ab_fac の施設のもの（その施設に行が無い取引先は false）
+				bookingEnabled: onCurrent.get(p.id) ? p.booking_enabled : false,
+				onCurrent: onCurrent.get(p.id) ?? false,
+				// 施設のバッジ（オン／オフ・予約受付）。施設設定の行がある施設だけ
+				facilities: p.facilities.map((f) => ({ id: f.id, name: f.name, enabled: f.enabled, bookingEnabled: f.bookingEnabled })),
 				validFrom: p.valid_from,
 				validUntil: p.valid_until,
 				pricing: p.pricing,

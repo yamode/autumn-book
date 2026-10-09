@@ -13,6 +13,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
 import {
+  buildPartnerCommonSettings,
   normalizeBooker,
   normalizePartnerBookingSettings,
   PARTNER_FACILITY_SETTING_KEYS,
@@ -564,6 +565,105 @@ export async function requireStaffPartner(db: SupabaseClient, facilityId: string
   const partner = composePartnerContext(bundle, facilityId, { allowDisabled: true });
   if (!partner || partner.facility_id !== facilityId) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
   return partner;
+}
+
+// ---- 管理画面の詳細（共通セクション × 施設タブ・複数施設化 S3・§7.12・2026-10-09） ----
+
+/** Book が扱う施設の slug・名前（施設タブ・一覧の施設バッジ用）。並びは Book の施設の並び */
+export async function bookFacilityMeta(db: SupabaseClient): Promise<{ id: string; slug: string; name: string }[]> {
+  const meta = await facilityMeta(db, BOOK_FACILITY_ORDER);
+  return BOOK_FACILITY_ORDER.filter((id) => meta.has(id)).map((id) => ({ id, ...meta.get(id)! }));
+}
+
+/** 管理画面の取引先の詳細: 取引先（共通＋施設設定）・選んだ施設で合成したもの・その施設の設定の行（無ければ null） */
+export type StaffPartnerView = { bundle: PartnerBundle; partner: PartnerContext; row: PartnerFacilityInfo | null };
+
+/**
+ * 管理画面で取引先を開く（§7.12: ab_fac を切り替えても一覧へ戻さない）。見せてよいのは、
+ *   - スタッフのテナントの取引先で、
+ *   - 施設設定の行がある施設のどれか（ab_fac の施設を含む）にスタッフがアクセスできるもの（canAccess で確かめる）。
+ *     行が1つも無い取引先（行の削除・バックフィル漏れ）は、施設をオンにし直せるよう見せる。
+ * 合成は facilityId（施設タブ）の施設で行う。その施設に行が無ければ、販売しない既定値で補って合成する
+ * （タブには「この施設では販売していません」を出す・row は null）。どれにも当たらなければ 404。
+ */
+export async function loadStaffPartnerView(
+  db: SupabaseClient,
+  partnerId: string,
+  opts: { tenantId: string; facilityId: string; canAccess: (facilityId: string) => Promise<boolean> }
+): Promise<StaffPartnerView> {
+  const notFound = () => new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId) || !isBookFacility(opts.facilityId)) throw notFound();
+  const bundle = await loadBundle(db, { id: partnerId });
+  if (!bundle || bundle.common.tenant_id !== opts.tenantId) throw notFound();
+  const real = bundle.facilities.filter((f) => !f.synthetic);
+  if (real.length) {
+    let allowed = false;
+    for (const f of real) {
+      if (await opts.canAccess(f.facility_id)) {
+        allowed = true;
+        break;
+      }
+    }
+    if (!allowed) throw notFound();
+  }
+  // 補った行（synthetic）は取り除き、タブの施設に行が無ければその施設だけ補う
+  const view: PartnerBundle = { common: bundle.common, facilities: real };
+  const row = real.find((f) => f.facility_id === opts.facilityId) ?? null;
+  if (!row) {
+    const meta = (await facilityMeta(db, [opts.facilityId])).get(opts.facilityId);
+    if (!meta) throw notFound();
+    view.facilities = [...real, { ...syntheticFacilityRow(bundle.common, opts.facilityId), ...meta, synthetic: true }].sort(facilityOrder);
+  }
+  const partner = composePartnerContext(view, opts.facilityId, { allowDisabled: true });
+  if (!partner || partner.facility_id !== opts.facilityId) throw notFound();
+  return { bundle: view, partner, row };
+}
+
+/**
+ * 「すべて」の一覧（N8）: テナントの取引先すべてを返す。ab_fac の施設に行があればその施設で、無ければ既定の施設で合成する
+ * （施設のバッジは facilities を見る）。onCurrent = ab_fac の施設に施設設定の行がある。
+ */
+export async function listTenantPartners(
+  db: SupabaseClient,
+  tenantId: string,
+  facilityId: string
+): Promise<{ partner: PartnerContext; onCurrent: boolean }[]> {
+  const { data, error } = await db
+    .from('rms_partners')
+    .select(COMMON_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .order('is_active', { ascending: false })
+    .order('name');
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  const bundles = await bundlesOf(db, ((data ?? []) as Record<string, unknown>[]).map(toCommon));
+  const out: { partner: PartnerContext; onCurrent: boolean }[] = [];
+  for (const b of bundles) {
+    const onCurrent = b.facilities.some((f) => f.facility_id === facilityId && !f.synthetic);
+    const partner = composePartnerContext(b, onCurrent ? facilityId : null, { allowDisabled: true });
+    if (partner) out.push({ partner, onCurrent });
+  }
+  return out;
+}
+
+/**
+ * 共通セクションの保存（?/saveCommon）: rms_partners の共通の列と booking_settings（共通の部分・N6 の既定）だけを書く。
+ * 施設の行（rms_partner_facilities）には触らない（施設タブの未保存の編集・施設の上書きを消さない）。
+ */
+export async function updatePartnerCommon(
+  db: SupabaseClient,
+  partner: Pick<PartnerCommonRow, 'id' | 'common_settings'>,
+  userId: string | null,
+  input: Pick<PartnerSettingsInput, (typeof COMMON_INPUT_KEYS)[number]> & { booking_settings: PartnerBookingSettings }
+): Promise<Record<string, unknown>> {
+  const common: Record<string, unknown> = {};
+  for (const k of COMMON_INPUT_KEYS) common[k] = input[k];
+  const bookingSettings = buildPartnerCommonSettings(partner.common_settings, input.booking_settings);
+  const { error } = await db
+    .from('rms_partners')
+    .update({ ...common, booking_settings: bookingSettings, updated_by: userId })
+    .eq('id', partner.id);
+  if (error) raise(error, '取引先を保存できませんでした。');
+  return bookingSettings;
 }
 
 export type PartnerSettingsInput = {
