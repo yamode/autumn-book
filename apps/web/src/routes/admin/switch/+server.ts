@@ -7,6 +7,9 @@ import type { RequestHandler } from './$types';
  * /admin 以外（外部 URL 等）へは戻さない。
  */
 function sectionRoot(back: string | null): string {
+	// 取引先の詳細は施設によらない（取引先は Book で1つ・施設はタブ）。切り替えても詳細に戻す（複数施設化 S3・2026-10-09）
+	const partner = /^\/admin\/partners\/[0-9a-f-]{36}$/i.exec(back ?? '');
+	if (partner) return partner[0];
 	const m = /^\/admin(\/[a-z0-9-]+)?/.exec(back ?? '');
 	return m ? m[0] : '/admin';
 }

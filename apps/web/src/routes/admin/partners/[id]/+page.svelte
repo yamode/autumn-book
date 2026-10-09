@@ -20,13 +20,19 @@
     CUSTOM_PAYMENT_PREFIX,
     describeCreditDeposit,
     describeInvoiceDue,
+    describePartnerFacilityOverride,
     invoiceDueDate,
     isStripePaymentOption,
     MAX_CUSTOM_PAYMENT_OPTIONS,
     MAX_PARTNER_PERKS,
+    PARTNER_FACILITY_OVERRIDE_KEYS,
+    PARTNER_FACILITY_OVERRIDE_LABELS,
     PARTNER_PAYMENT_OPTIONS,
     type CreditDepositType,
-    type PartnerBookingSettings
+    type PartnerBookingSettings,
+    type PartnerFacilityOverrideKey,
+    type PartnerFacilityOverrides,
+    type PartnerFacilityOwnSettings
   } from '$lib/partner-booking';
   import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
   import { displayPlanName, partnerContentScope } from '$lib/partner-contents';
@@ -43,7 +49,9 @@
 
   type FormResult = {
     message?: string;
-    saved?: boolean;
+    commonSaved?: boolean;
+    facilitySaved?: string;
+    facilityEnabled?: string;
     urlRegenerated?: boolean;
     accountUpdated?: boolean;
     keyRevoked?: boolean;
@@ -61,8 +69,10 @@
   // 操作（保存・発行・取消など）は管理者だけ。スタッフは閲覧のみ（サーバー側でも同じ線引きで弾く）
   const canEdit = $derived(data.canEdit);
 
-  // ---- 設定フォーム（保存するまで手元で編集） ----
-  // 画面で編集するための手元コピー（保存後の再読込で上書きしない）。
+  // ---- 共通の設定フォーム（保存するまで手元で編集・?/saveCommon） ----
+  // 画面で編集するための手元コピー（保存後の再読込・施設タブの切替で上書きしない）。
+  // 複数施設化 S3（2026-10-09）: 共通（rms_partners）と施設タブ（rms_partner_facilities）は別々のフォーム・別々の保存。
+  // 片方を保存しても、もう片方の未保存の編集は消えない（§13）。
   const initial = untrack(() => data.partner);
   let settings = $state({
     name: initial.name,
@@ -72,20 +82,46 @@
     isActive: initial.isActive,
     validFrom: initial.validFrom ?? '',
     validUntil: initial.validUntil ?? '',
-    maxDaysAhead: initial.maxDaysAhead,
-    showInventory: initial.showInventory,
-    includeAdvance: initial.includeAdvance,
-    note: initial.note ?? '',
-    bookingEnabled: initial.bookingEnabled
+    note: initial.note ?? ''
   });
-  let pricing = $state<PartnerPricing>(structuredClone(initial.pricing));
+  // 共通の予約設定（支払方法・請求条件・毎回聞く項目・取引先への通知・早期決済割と受付ルールの既定〔N6〕）
+  let booking = $state<PartnerBookingSettings>(structuredClone(initial.commonSettings));
+  const bookingJson = $derived(JSON.stringify(booking));
+
+  // ---- 施設タブのフォーム（?/saveFacility・hidden の facility_id の施設だけを保存） ----
+  type FacilityForm = { enabled: boolean; bookingEnabled: boolean; maxDaysAhead: number; showInventory: boolean; includeAdvance: boolean; sortOrder: number };
+  const EMPTY_OWN: PartnerFacilityOwnSettings = { planNames: {}, perks: [], notice: '', notifyEmails: [], showOfficialPerks: false };
+  const facilityFormOf = (f: PageData['facility']): FacilityForm => ({
+    enabled: f?.enabled ?? false,
+    bookingEnabled: f?.bookingEnabled ?? false,
+    maxDaysAhead: f?.maxDaysAhead ?? 365,
+    showInventory: f?.showInventory ?? true,
+    includeAdvance: f?.includeAdvance ?? true,
+    sortOrder: f?.sortOrder ?? 0
+  });
+  const initialFacility = untrack(() => data.facility);
+  let fac = $state<FacilityForm>(facilityFormOf(initialFacility));
+  let pricing = $state<PartnerPricing>(structuredClone(initialFacility?.pricing ?? normalizePartnerPricing(null)));
   const pricingJson = $derived(JSON.stringify(pricing));
-  // 予約受付の設定（受付ルール・追加オプション・通知先）。通知先は画面では改行区切りの文字で持つ。
-  let booking = $state<PartnerBookingSettings>(structuredClone(initial.bookingSettings));
-  let notifyText = $state(initial.bookingSettings.notifyEmails.join('\n'));
-  const bookingJson = $derived(
-    JSON.stringify({ ...booking, notifyEmails: notifyText.split(/[\s,、]+/).map((e) => e.trim()).filter(Boolean) })
+  // 施設ごとの予約設定（プラン名・特典・案内文・通知先・公式特典）。通知先は画面では改行区切りの文字で持つ。
+  let own = $state<PartnerFacilityOwnSettings>(structuredClone(initialFacility?.own ?? EMPTY_OWN));
+  let notifyText = $state((initialFacility?.own.notifyEmails ?? []).join('\n'));
+  const ownJson = $derived(
+    JSON.stringify({ ...own, notifyEmails: notifyText.split(/[\s,、]+/).map((e) => e.trim()).filter(Boolean) })
   );
+  // 早期決済割・受付ルールの施設での上書き（N6）。キーがある = この施設だけ変える、無い = 共通の既定を使う
+  let overrides = $state<PartnerFacilityOverrides>(structuredClone(initialFacility?.overrides ?? {}));
+  const overridesJson = $derived(JSON.stringify(overrides));
+  const isOverridden = (k: PartnerFacilityOverrideKey) => Object.prototype.hasOwnProperty.call(overrides, k);
+  function setOverride(k: PartnerFacilityOverrideKey, on: boolean) {
+    const next = { ...overrides } as Record<string, unknown>;
+    // 「この施設だけ変える」は共通の既定（いま画面に出ている値）から始める。戻すとキーを消す
+    if (on) next[k] = structuredClone($state.snapshot(booking[k]));
+    else delete next[k];
+    overrides = next as PartnerFacilityOverrides;
+  }
+  // 施設タブの値（上書きがあれば施設、無ければ共通の既定）。予約受付の締切の表示などに使う
+  const effective = $derived({ ...booking, ...overrides } as PartnerBookingSettings);
   // 支払方法の並びは 固定の3種 → 自由入力（定義の順）。サーバの normalize と同じ並びにして、未保存の差分が出ないようにする
   function togglePayment(id: string) {
     const order = [...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string), ...booking.customPaymentOptions.map((o) => o.id)];
@@ -105,23 +141,25 @@
     booking.customPaymentOptions = booking.customPaymentOptions.filter((_, k) => k !== i);
     booking.paymentOptions = booking.paymentOptions.filter((x) => x !== id);
   }
-  // 取引先特典（最大10）
+  // 取引先特典（最大10・施設ごと）
   function addPerk() {
-    if (booking.perks.length >= MAX_PARTNER_PERKS) return;
-    booking.perks = [...booking.perks, { id: `perk-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: '', description: '', imageUrl: '', planCodes: [] }];
+    if (own.perks.length >= MAX_PARTNER_PERKS) return;
+    own.perks = [...own.perks, { id: `perk-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, title: '', description: '', imageUrl: '', planCodes: [] }];
   }
   function removePerk(i: number) {
-    booking.perks = booking.perks.filter((_, k) => k !== i);
+    own.perks = own.perks.filter((_, k) => k !== i);
   }
   // 特典の画像: 選んだ時点で ?/uploadPerkImage に上げる。保存済みの特典ならサーバ側でその場で保存されるので、
-  // 保存済みの状態（savedSnapshot）にも同じ画像を反映して「未保存」にしない。まだ保存していない特典は「保存する」で確定。
+  // 保存済みの状態（facilitySavedSnapshot）にも同じ画像を反映して「未保存」にしない。まだ保存していない特典は「保存する」で確定。
+  // 特典は施設ごと: 送り先はいま開いている施設タブの施設（hidden の facility_id と同じ）。
   let perkUploading = $state<string | null>(null);
   let perkImageError = $state<{ id: string; text: string } | null>(null);
-  async function sendPerkImage(perk: PartnerBookingSettings['perks'][number], file: File | null) {
+  async function sendPerkImage(perk: PartnerFacilityOwnSettings['perks'][number], file: File | null) {
     perkUploading = perk.id;
     perkImageError = null;
     try {
       const fd = new FormData();
+      fd.append('facility_id', data.tab.id);
       fd.append('perk_id', perk.id);
       if (file) fd.append('photo', file);
       else fd.append('remove', '1');
@@ -131,10 +169,10 @@
         const url = result.data.perkImageUploaded;
         perk.imageUrl = url;
         if (result.data.perkImagePersisted) {
-          const snap = JSON.parse(savedSnapshot) as { settings: unknown; pricing: unknown; bookingJson: string };
-          const b = JSON.parse(snap.bookingJson) as PartnerBookingSettings;
-          b.perks = b.perks.map((p) => (p.id === perk.id ? { ...p, imageUrl: url } : p));
-          savedSnapshot = JSON.stringify({ ...snap, bookingJson: JSON.stringify(b) });
+          const snap = JSON.parse(facilitySavedSnapshot) as { fac: unknown; pricing: unknown; ownJson: string; overridesJson: string };
+          const o = JSON.parse(snap.ownJson) as PartnerFacilityOwnSettings;
+          o.perks = o.perks.map((p) => (p.id === perk.id ? { ...p, imageUrl: url } : p));
+          facilitySavedSnapshot = JSON.stringify({ ...snap, ownJson: JSON.stringify(o) });
         }
       } else {
         const text = result.type === 'failure' && typeof result.data?.message === 'string' ? result.data.message : '画像を保存できませんでした。';
@@ -146,7 +184,7 @@
       perkUploading = null;
     }
   }
-  function onPerkImagePicked(perk: PartnerBookingSettings['perks'][number], e: Event) {
+  function onPerkImagePicked(perk: PartnerFacilityOwnSettings['perks'][number], e: Event) {
     const input = e.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     input.value = '';
@@ -156,22 +194,22 @@
   const namePlanOptions = $derived.by(() => {
     const scope = partnerContentScope(pricing);
     const list = data.planOptions
-      .filter((p) => !scope.plans || scope.plans.has(p.code) || booking.planNames[p.code])
+      .filter((p) => !scope.plans || scope.plans.has(p.code) || own.planNames[p.code])
       .map((p) => ({ code: p.code, label: p.label }));
-    for (const code of Object.keys(booking.planNames)) if (!list.some((p) => p.code === code)) list.push({ code, label: code });
+    for (const code of Object.keys(own.planNames)) if (!list.some((p) => p.code === code)) list.push({ code, label: code });
     return list;
   });
   function setPlanName(code: string, v: string) {
-    const next = { ...booking.planNames };
+    const next = { ...own.planNames };
     if (v.trim()) next[code] = v;
     else delete next[code];
-    booking.planNames = next;
+    own.planNames = next;
   }
   // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
   const perkPlanOptions = $derived.by(() => {
     const list = data.planOptions.map((p) => ({ code: p.code, label: p.label }));
     const known = new Set(list.map((p) => p.code));
-    for (const perk of booking.perks) {
+    for (const perk of own.perks) {
       for (const code of perk.planCodes) {
         if (!known.has(code)) {
           known.add(code);
@@ -190,23 +228,89 @@
     if (Number.isFinite(day) && day >= 1 && day <= 28) booking.invoiceDue = { type: 'next_month_day', day };
   }
   let bookingFilter = $state<'upcoming' | 'all'>('upcoming');
+  // 予約一覧の施設の列: 取引先が2施設以上で売っている・予約が2施設以上にあるときだけ出す
+  const showBookingFacility = $derived(
+    data.facilityTabs.filter((t) => t.hasRow).length > 1 || new Set(data.bookings.map((b) => b.facilityId)).size > 1
+  );
   let cancelTarget = $state<string | null>(null);
   const todayIso = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   const shownBookings = $derived(
     bookingFilter === 'upcoming' ? data.bookings.filter((b) => b.status === 'confirmed' && b.checkIn >= todayIso) : data.bookings
   );
 
-  // ---- 保存状態（未保存の変更・保存中・保存結果） ----
-  const snapshotOf = () => JSON.stringify({ settings, pricing, bookingJson });
-  let savedSnapshot = $state(untrack(snapshotOf));
-  const dirty = $derived(snapshotOf() !== savedSnapshot);
-  let saving = $state(false);
-  let saveError = $state('');
-  let justSaved = $state(false);
-  let justSavedTimer: ReturnType<typeof setTimeout> | undefined;
+  // ---- 保存状態（未保存の変更・保存中・保存結果）。共通と施設タブで別々に持つ ----
+  type SaveState = { saving: boolean; error: string; justSaved: boolean; timer?: ReturnType<typeof setTimeout> };
+  const commonSnapshotOf = () => JSON.stringify({ settings, bookingJson });
+  let commonSavedSnapshot = $state(untrack(commonSnapshotOf));
+  const commonDirty = $derived(commonSnapshotOf() !== commonSavedSnapshot);
+  let commonSave = $state<SaveState>({ saving: false, error: '', justSaved: false });
+  const facilitySnapshotOf = () => JSON.stringify({ fac, pricing, ownJson, overridesJson });
+  let facilitySavedSnapshot = $state(untrack(facilitySnapshotOf));
+  const facilityDirty = $derived(!!data.facility && facilitySnapshotOf() !== facilitySavedSnapshot);
+  let facilitySave = $state<SaveState>({ saving: false, error: '', justSaved: false });
+  const saving = $derived(commonSave.saving || facilitySave.saving);
+  // 施設タブを切り替えた・施設をオンにした（行ができた）ときだけ、施設タブの手元の値を読み直す（共通の編集はそのまま）
+  let loadedFacilityKey = untrack(() => `${data.tab.id}|${data.facility ? 'row' : 'none'}`);
+  $effect(() => {
+    const key = `${data.tab.id}|${data.facility ? 'row' : 'none'}`;
+    if (key === loadedFacilityKey) return;
+    loadedFacilityKey = key;
+    untrack(() => {
+      const f = data.facility;
+      fac = facilityFormOf(f);
+      pricing = structuredClone(f?.pricing ?? normalizePartnerPricing(null));
+      own = structuredClone(f?.own ?? EMPTY_OWN);
+      notifyText = (f?.own.notifyEmails ?? []).join('\n');
+      overrides = structuredClone(f?.overrides ?? {});
+      facilitySavedSnapshot = facilitySnapshotOf();
+      facilitySave = { saving: false, error: '', justSaved: false };
+      openRule = null;
+    });
+  });
+  // 施設タブの切替（?fac=）。施設タブに未保存の変更があれば確かめる（共通の未保存の編集は残る）
+  function switchTab(id: string) {
+    if (id === data.tab.id) return;
+    if (facilityDirty && !confirm(`${data.tab.name}の施設の設定に保存していない変更があります。破棄して切り替えますか？`)) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('fac', id);
+    url.searchParams.delete('preview');
+    goto(url, { keepFocus: true, noScroll: true });
+  }
+  // 保存フォームの enhance（共通・施設タブで同じ流れ。結果はそれぞれの保存バーに出す）
+  function saveEnhance(target: 'common' | 'facility') {
+    return ({ cancel }: { cancel: () => void }) => {
+      lastSubmit = target;
+      const st = target === 'common' ? commonSave : facilitySave;
+      const problem = target === 'common' ? checkCommonBeforeSave() : checkFacilityBeforeSave();
+      if (problem) {
+        st.error = problem;
+        cancel();
+        return;
+      }
+      const submitted = target === 'common' ? commonSnapshotOf() : facilitySnapshotOf();
+      st.saving = true;
+      st.error = '';
+      st.justSaved = false;
+      return async ({ result, update }: { result: { type: string; data?: unknown }; update: (o?: { reset?: boolean }) => Promise<void> }) => {
+        st.saving = false;
+        if (result.type === 'success') {
+          if (target === 'common') commonSavedSnapshot = submitted;
+          else facilitySavedSnapshot = submitted;
+          st.justSaved = true;
+          clearTimeout(st.timer);
+          st.timer = setTimeout(() => (st.justSaved = false), 4000);
+        } else if (result.type === 'failure') {
+          st.error = String((result.data as { message?: string } | undefined)?.message ?? '保存できませんでした。');
+        } else if (result.type === 'error') {
+          st.error = '通信状況を確認して、もう一度お試しください。';
+        }
+        await update({ reset: false });
+      };
+    };
+  }
   // 画面上部のお知らせは、保存以外の操作（URL再発行・ログインID発行など）の結果だけに使う。
-  // 覚書（memo）・覚書ファイル（doc）は、それぞれの欄に結果を出す。
-  let lastSubmit = $state<'save' | 'other' | 'memo' | 'doc' | 'invoice'>('other');
+  // 覚書（memo）・覚書ファイル（doc）・施設のオン（enable）は、それぞれの欄に結果を出す。
+  let lastSubmit = $state<'common' | 'facility' | 'enable' | 'other' | 'memo' | 'doc' | 'invoice'>('other');
 
   // ---- 請求書 ----
   let voidTarget = $state<string | null>(null);
@@ -242,29 +346,48 @@
   let memoTimer: ReturnType<typeof setTimeout> | undefined;
   let docUploading = $state(false);
 
-  function revertChanges() {
-    const snap = JSON.parse(savedSnapshot) as { settings: typeof settings; pricing: PartnerPricing; bookingJson: string };
+  function revertCommon() {
+    const snap = JSON.parse(commonSavedSnapshot) as { settings: typeof settings; bookingJson: string };
     settings = snap.settings;
+    booking = JSON.parse(snap.bookingJson) as PartnerBookingSettings;
+    commonSave.error = '';
+  }
+  function revertFacility() {
+    const snap = JSON.parse(facilitySavedSnapshot) as { fac: FacilityForm; pricing: PartnerPricing; ownJson: string; overridesJson: string };
+    fac = snap.fac;
     pricing = snap.pricing;
-    const b = JSON.parse(snap.bookingJson) as PartnerBookingSettings;
-    booking = b;
-    notifyText = b.notifyEmails.join('\n');
-    saveError = '';
+    const o = JSON.parse(snap.ownJson) as PartnerFacilityOwnSettings;
+    own = o;
+    notifyText = o.notifyEmails.join('\n');
+    overrides = JSON.parse(snap.overridesJson) as PartnerFacilityOverrides;
+    facilitySave.error = '';
   }
 
-  // 保存前に、画面で分かる入力ミスを知らせる（該当ルールを開く）。
-  function checkBeforeSave(): string | null {
+  // 予約を受け付けている施設（保存済み）。共通の支払方法が要るかの判定
+  const acceptingFacilities = $derived(data.facilityTabs.filter((t) => t.bookingEnabled));
+
+  // 保存前に、画面で分かる入力ミスを知らせる。
+  function checkCommonBeforeSave(): string | null {
     if (!settings.name.trim()) return '取引先名を入力してください。';
-    if (settings.bookingEnabled && !booking.paymentOptions.length) return '予約を受け付けるときは、支払方法を1つ以上選んでください。';
+    if (acceptingFacilities.length && !booking.paymentOptions.length) {
+      return `予約を受け付けている施設（${acceptingFacilities.map((t) => t.name).join('・')}）があるため、支払方法を1つ以上選んでください。`;
+    }
     for (const [i, o] of booking.customPaymentOptions.entries()) {
       if (!o.label.trim()) return `自由入力の支払方法${i + 1}: 名前を入れてください（不要なら削除）。`;
-    }
-    for (const [i, perk] of booking.perks.entries()) {
-      if (!perk.title.trim()) return `取引先特典${i + 1}: タイトルを入れてください（不要なら削除）。`;
     }
     for (const [i, o] of booking.options.entries()) {
       if (!o.label.trim()) return `予約オプション${i + 1}: 項目名を入れてください（不要なら削除）。`;
       if (o.type === 'select' && o.choices.length < 2) return `予約オプション${i + 1}「${o.label}」: 選択肢を2つ以上入れてください。`;
+    }
+    return null;
+  }
+  // 施設タブ: 特典のタイトル・特別レートのルール（該当ルールを開く）・予約受付には共通の支払方法（保存済み）が要る
+  function checkFacilityBeforeSave(): string | null {
+    if (fac.enabled && fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length) {
+      return '予約を受け付けるときは、共通の「支払方法」を1つ以上選んで保存してください。';
+    }
+    for (const [i, perk] of own.perks.entries()) {
+      if (!perk.title.trim()) return `取引先特典${i + 1}: タイトルを入れてください（不要なら削除）。`;
     }
     const err = validatePartnerPricing(normalizePartnerPricing(pricing));
     if (err) {
@@ -276,7 +399,7 @@
 
   // 未保存のままページを離れるときは確かめる（プレビューの日付変更など同じページ内の移動は除く）。
   beforeNavigate((nav) => {
-    if (!(dirty || memoDirty) || saving || memoSaving) return;
+    if (!(commonDirty || facilityDirty || memoDirty) || saving || memoSaving) return;
     if (nav.to?.url.pathname === nav.from?.url.pathname) return;
     if (nav.type === 'leave') {
       nav.cancel();
@@ -346,7 +469,7 @@
     for (const day of data.preview.days) {
       for (const room of day.rooms) {
         for (const plan of room.plans) {
-          if (plan.advance && !settings.includeAdvance) continue;
+          if (plan.advance && !fac.includeAdvance) continue;
           const base = plan.pricesPerPerson[String(previewGuests)];
           if (base == null) continue;
           const decision = decidePartnerPrice(
@@ -645,13 +768,17 @@
         {:else}
           <span class="rounded-full bg-stone-600 px-2 py-0.5 text-[11px] text-white">公開停止中</span>
         {/if}
-        {#if data.partner.bookingOpen}
-          <span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付中</span>
+        <!-- 施設ごとの販売・予約受付（複数施設化 S3）。設定は下の施設タブ -->
+        {#each data.facilityTabs.filter((t) => t.hasRow) as t (t.id)}
+          <span
+            class={`rounded-full border px-2 py-0.5 text-[11px] ${!t.enabled ? 'border-stone-200 text-stone-400 line-through' : t.bookingEnabled ? 'border-brand-800 bg-brand-100 text-brand-800' : 'border-stone-300 text-stone-600'}`}
+            title={!t.enabled ? 'この施設では販売していません' : t.bookingEnabled ? '販売中・予約受付中' : '販売中（予約受付なし・閲覧のみ）'}
+          >{t.name}{t.enabled ? (t.bookingEnabled ? '・予約受付中' : '・閲覧のみ') : ''}</span>
         {:else}
-          <span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">予約受付なし（閲覧のみ）</span>
-        {/if}
+          <span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">販売している施設がありません</span>
+        {/each}
       </div>
-      <p class="mt-0.5 text-xs text-stone-400">{data.kindLabels[data.partner.kind]}・{data.facilityName}{#if !canEdit}・閲覧のみ（編集は管理者だけができます）{/if}</p>
+      <p class="mt-0.5 text-xs text-stone-400">{data.kindLabels[data.partner.kind]}{#if !canEdit}・閲覧のみ（編集は管理者だけができます）{/if}</p>
     </div>
 
     {#if form?.message && lastSubmit === 'other'}
@@ -667,8 +794,8 @@
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>
         <button type="button" class={smallBtn} onclick={() => copy(data.portalUrl)}>コピー</button>
-        <!-- 取引先のアカウントなしで、その取引先から見た画面を開く（確認モード・予約の確定はできない） -->
-        <a href={`/admin/partners/${data.partner.id}/preview`} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く ↗</a>
+        <!-- 取引先のアカウントなしで、その取引先から見た画面を開く（確認モード・予約の確定はできない）。施設タブの施設で開く -->
+        <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}） ↗</a>
         {#if canEdit}
           <form
             method="POST"
@@ -684,7 +811,7 @@
         {/if}
       </div>
       {#if !data.partner.isActive}
-        <p class="mt-2 text-xs text-amber-700">現在「公開停止」です。取引先はログインできません（下の設定で公開にしてください）。</p>
+        <p class="mt-2 text-xs text-amber-700">現在「公開停止」です。取引先はログインできません（下の共通の設定で公開にしてください）。</p>
       {/if}
     </div>
 
@@ -835,40 +962,16 @@
       {/if}
     </div>
 
-    <!-- 設定・特別レート -->
+    <!-- 共通の設定（rms_partners・全施設に効く）。施設タブとは別のフォーム・別の保存（複数施設化 S3・§7.12） -->
     <form
       method="POST"
-      action={`?/save`}
-      use:enhance={({ cancel }) => {
-        lastSubmit = 'save';
-        const problem = checkBeforeSave();
-        if (problem) {
-          saveError = problem;
-          cancel();
-          return;
-        }
-        const submitted = snapshotOf();
-        saving = true;
-        saveError = '';
-        justSaved = false;
-        return async ({ result, update }) => {
-          saving = false;
-          if (result.type === 'success') {
-            savedSnapshot = submitted;
-            justSaved = true;
-            clearTimeout(justSavedTimer);
-            justSavedTimer = setTimeout(() => (justSaved = false), 4000);
-          } else if (result.type === 'failure') {
-            saveError = String((result.data as { message?: string } | undefined)?.message ?? '保存できませんでした。');
-          } else if (result.type === 'error') {
-            saveError = '通信状況を確認して、もう一度お試しください。';
-          }
-          await update({ reset: false });
-        };
-      }}
+      action={`?/saveCommon`}
+      use:enhance={saveEnhance('common')}
       class="mb-6 rounded-xl border border-stone-200 bg-white p-5"
     >
-      <h2 class="mb-3 text-lg font-bold text-stone-900">公開設定</h2>
+      <h2 class="text-lg font-bold text-stone-900">共通の設定</h2>
+      <p class="mb-3 mt-1 text-xs leading-5 text-stone-500">取引先名・公開・支払方法・請求条件・受付ルールの既定などです。<strong class="font-medium text-stone-700">すべての施設に効きます</strong>（施設ごとの料金・特典・案内文は下の施設タブで）。</p>
+      <h3 class="mb-2 text-[15px] font-bold text-stone-800">公開設定</h3>
       <fieldset disabled={!canEdit} class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label class="block">
           <span class="mb-0.5 block text-xs text-stone-500">取引先名</span>
@@ -888,7 +991,7 @@
           <span class="text-sm">
             <span class="font-medium">公開</span>
             <span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${settings.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{settings.isActive ? 'オン' : 'オフ'}</span>
-            <span class="mt-0.5 block text-[11px] text-stone-500">{settings.isActive ? '取引先がログイン・API取得できます' : '取引先はログインもAPIも使えません'}</span>
+            <span class="mt-0.5 block text-[11px] text-stone-500">{settings.isActive ? '取引先がログイン・API取得できます（全施設）' : '取引先はログインもAPIも使えません（全施設）'}</span>
           </span>
         </label>
         <label class="block">
@@ -899,10 +1002,7 @@
           <span class="mb-0.5 block text-xs text-stone-500">連絡先メール</span>
           <input name="contact_email" type="email" bind:value={settings.contactEmail} class={inputClass} />
         </label>
-        <label class="block">
-          <span class="mb-0.5 block text-xs text-stone-500">何日先まで出すか</span>
-          <input name="max_days_ahead" type="number" min="1" max="730" bind:value={settings.maxDaysAhead} class={inputClass} />
-        </label>
+        <div class="hidden lg:block"></div>
         <label class="block">
           <span class="mb-0.5 block text-xs text-stone-500">公開開始日（空欄 = すぐ）</span>
           <input name="valid_from" type="date" bind:value={settings.validFrom} class={inputClass} />
@@ -911,10 +1011,6 @@
           <span class="mb-0.5 block text-xs text-stone-500">公開終了日（空欄 = 無期限）</span>
           <input name="valid_until" type="date" bind:value={settings.validUntil} class={inputClass} />
         </label>
-        <div class="flex flex-col justify-end gap-1 pb-1 text-sm">
-          <label class="flex items-center gap-2"><input type="checkbox" name="show_inventory" bind:checked={settings.showInventory} />残室数を出す</label>
-          <label class="flex items-start gap-2"><input type="checkbox" name="include_advance" bind:checked={settings.includeAdvance} class="mt-1" /><span>先行案内料金も出す<span class="block text-[11px] text-stone-400">料金の元データに無いため、現在は効きません</span></span></label>
-        </div>
         <label class="block sm:col-span-2 lg:col-span-3">
           <span class="mb-0.5 block text-xs text-stone-500">社内メモ（取引先には出ません）</span>
           <textarea name="note" bind:value={settings.note} rows="2" maxlength="2000" class={inputClass}></textarea>
@@ -1025,6 +1121,7 @@
                   </div>
 
                   <!-- 今後 12 か月の月別（上限・予約済み・残り）。与信 OFF なら判定しない -->
+                  {#if credit.state.enabled && credit.months.length}<p class="mt-3 text-xs font-medium text-stone-700">{data.tab.name}の受付枠（枠は施設ごとに数えます・施設タブで切替）</p>{/if}
                   {#if credit.state.enabled && credit.months.length}
                     <div class="mt-3 overflow-x-auto">
                       <table class="w-full text-xs tabular-nums">
@@ -1152,303 +1249,146 @@
         {/if}
       </section>
 
-      <h2 class="mb-1 mt-6 text-lg font-bold text-stone-900">特別レート</h2>
+      <!-- 支払方法と請求条件（共通） -->
+      <h3 class="mb-1 mt-6 text-[15px] font-bold text-stone-800">支払方法と請求条件 {#if acceptingFacilities.length}<span class="text-xs font-normal text-rose-700">支払方法は1つ以上必須（予約を受け付けている施設があります）</span>{/if}</h3>
       <p class="mb-3 text-xs leading-5 text-stone-500">
-        基準は料金マスタの理論値（booking.daily_rates・1名あたり・税込・入湯税別）です。<strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まります。
-        <strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>で、どのルールにも当てはまらない料金は出しません。
-        ％・円はマイナスで値引き（例: -10 = 10%引き、-1000 = 1名1,000円引き）。値引きなしで出すなら「％・0」にします。
-      </p>
-      <fieldset disabled={!canEdit}>
-        {#if pricing.rules.every((r) => r.action !== 'adjust')}
-          <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">
-            まだ公開するプランがありません。「＋ ルールを追加」で、出すプランを選んでください。
-          </p>
-        {/if}
-
-        <div class="mt-3 grid gap-2">
-          {#each pricing.rules as rule, i (rule.id)}
-            <div class="rounded-lg border border-stone-200 bg-white">
-              <div class="flex flex-wrap items-center gap-2 px-3 py-2">
-                <span class="text-xs font-semibold text-stone-500">#{i + 1}</span>
-                <button type="button" class="min-w-0 flex-1 text-left text-sm" onclick={() => (openRule = openRule === rule.id ? null : rule.id)}>
-                  <span class="font-medium">{rule.label || '（名前なし）'}</span>
-                  {#if ruleProblem(rule)}<span class="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">{ruleProblem(rule)}</span>{/if}
-                  <span class="ml-2 text-xs text-stone-500">{ruleSummary(rule)}</span>
-                  <span class="ml-2 text-xs font-semibold text-brand-800">→ {describeAdjust(rule.action, rule.adjustType, Number(rule.value) || 0)}</span>
-                </button>
-                <button type="button" class={smallBtn} onclick={() => moveRule(i, -1)} disabled={i === 0} aria-label="上へ">↑</button>
-                <button type="button" class={smallBtn} onclick={() => moveRule(i, 1)} disabled={i === pricing.rules.length - 1} aria-label="下へ">↓</button>
-                <button type="button" class={smallBtn} onclick={() => removeRule(i)}>削除</button>
-              </div>
-              {#if openRule === rule.id}
-                <div class="grid gap-3 border-t border-stone-200 p-3">
-                  <div class="grid gap-3 sm:grid-cols-[1fr_150px_130px_130px]">
-                    <label class="block">
-                      <span class="mb-0.5 block text-xs text-stone-500">ルール名（任意）</span>
-                      <input bind:value={rule.label} maxlength="80" placeholder="例: 繁忙期は割引なし" class={inputClass} />
-                    </label>
-                    <label class="block">
-                      <span class="mb-0.5 block text-xs text-stone-500">扱い</span>
-                      <select bind:value={rule.action} class={inputClass}>
-                        <option value="adjust">調整して出す</option>
-                        <option value="hide">出さない</option>
-                      </select>
-                    </label>
-                    {#if rule.action === 'adjust'}
-                      <label class="block">
-                        <span class="mb-0.5 block text-xs text-stone-500">調整方法</span>
-                        <select bind:value={rule.adjustType} class={inputClass}>
-                          <option value="percent">％</option>
-                          <option value="amount">円/人</option>
-                          <option value="fixed">固定単価</option>
-                        </select>
-                      </label>
-                      <label class="block">
-                        <span class="mb-0.5 block text-xs text-stone-500">{rule.adjustType === 'fixed' ? '1名あたり（円）' : '値'}</span>
-                        <input type="number" step="any" bind:value={rule.value} class={inputClass} />
-                      </label>
-                    {/if}
-                  </div>
-                  <div>
-                    <p class="mb-1 text-xs text-stone-500">部屋タイプ（未選択 = すべて）</p>
-                    <div class="flex flex-wrap gap-1.5">
-                      {#each data.rooms as room}
-                        <button type="button" class={chip(rule.roomCodes.includes(room.code))} onclick={() => (rule.roomCodes = toggle(rule.roomCodes, room.code))}>{room.name}</button>
-                      {/each}
-                    </div>
-                  </div>
-                  <div>
-                    <p class="mb-1 text-xs text-stone-500">
-                      {#if rule.action === 'adjust'}プラン（<span class="text-rose-700">必須</span>・選んだプランだけ公開）{:else}プラン（未選択 = すべて）{/if}
-                    </p>
-                    <div class="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
-                      <button type="button" class={chip(rule.planGroupCodes.includes(ADVANCE_PLAN_CODE))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, ADVANCE_PLAN_CODE))}>先行案内料金（すべて）</button>
-                      {#each data.planOptions as plan}
-                        <button type="button" class={chip(rule.planGroupCodes.includes(plan.code))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, plan.code))}>
-                          <span class="font-mono">{plan.code}</span> {plan.label}
-                        </button>
-                      {/each}
-                    </div>
-                  </div>
-                  <div class="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <p class="mb-1 text-xs text-stone-500">食事</p>
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each MEAL_TYPES as meal}
-                          <button type="button" class={chip(rule.mealTypes.includes(meal))} onclick={() => (rule.mealTypes = toggle(rule.mealTypes, meal))}>{meal}</button>
-                        {/each}
-                      </div>
-                    </div>
-                    <div>
-                      <p class="mb-1 text-xs text-stone-500">人数</p>
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each GUEST_COUNTS as g}
-                          <button type="button" class={chip(rule.guestCounts.includes(g))} onclick={() => (rule.guestCounts = toggle(rule.guestCounts, g).sort((a, b) => a - b))}>{g}名</button>
-                        {/each}
-                      </div>
-                    </div>
-                    <div>
-                      <p class="mb-1 text-xs text-stone-500">曜日（祝 = 祝日）</p>
-                      <div class="flex flex-wrap gap-1.5">
-                        {#each WEEKDAY_LABELS as label, d}
-                          <button type="button" class={chip(rule.weekdays.includes(d))} onclick={() => (rule.weekdays = toggle(rule.weekdays, d).sort((a, b) => a - b))}>{label}</button>
-                        {/each}
-                      </div>
-                    </div>
-                  </div>
-                  <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="block">
-                      <span class="mb-0.5 block text-xs text-stone-500">宿泊日 から</span>
-                      <input type="date" value={rule.dateFrom ?? ''} oninput={(e) => (rule.dateFrom = e.currentTarget.value || null)} class={inputClass} />
-                    </label>
-                    <label class="block">
-                      <span class="mb-0.5 block text-xs text-stone-500">宿泊日 まで</span>
-                      <input type="date" value={rule.dateTo ?? ''} oninput={(e) => (rule.dateTo = e.currentTarget.value || null)} class={inputClass} />
-                    </label>
-                  </div>
-                </div>
-              {/if}
-            </div>
-          {/each}
-          <button type="button" onclick={addRule} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ ルールを追加</button>
-        </div>
-
-        <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">端数の単位</span>
-            <select bind:value={pricing.roundingUnit} class={inputClass}>
-              {#each [1, 10, 100, 1000] as u}<option value={u}>{u}円</option>{/each}
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">端数処理</span>
-            <select bind:value={pricing.roundingMode} class={inputClass}>
-              <option value="floor">切り捨て</option>
-              <option value="round">四捨五入</option>
-              <option value="ceil">切り上げ</option>
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">最低料金（1名1泊・円、空欄 = なし）</span>
-            <input
-              type="number"
-              min="0"
-              value={pricing.minPricePerPerson ?? ''}
-              oninput={(e) => (pricing.minPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-              class={inputClass}
-            />
-          </label>
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">最高料金（1名1泊・円、空欄 = なし）</span>
-            <input
-              type="number"
-              min="0"
-              value={pricing.maxPricePerPerson ?? ''}
-              oninput={(e) => (pricing.maxPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-              class={inputClass}
-            />
-          </label>
-        </div>
-        <p class="mt-1 text-[11px] text-stone-500">プラン料金がこの範囲を外れるときは、最低・最高料金で上書きして取引先に見せます（端数処理の後）。</p>
-        {#if pricing.minPricePerPerson != null && pricing.maxPricePerPerson != null && pricing.minPricePerPerson > pricing.maxPricePerPerson}
-          <p class="mt-1 text-xs text-rose-700">最低料金が最高料金を上回っています。</p>
-        {/if}
-      </fieldset>
-
-      <!-- 予約受付 -->
-      <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">予約受付</h2>
-      <p class="mb-3 text-xs leading-5 text-stone-500">
-        限定URLの料金カレンダーから、取引先がそのまま予約できます。予約は即時確定し、PMS に「取引先予約（RMS）」として1分ほどで取り込まれます
-        （部屋割り・在庫送信も PMS が行います）。空室は確定の瞬間に PMS と同じ規則で数え直すので、売り越しは起きません。
+        限定URLの料金カレンダーから、取引先がそのまま予約できます（予約を受けるかどうかは施設タブで施設ごとに決めます）。予約は即時確定し、PMS に「取引先予約（RMS）」として1分ほどで取り込まれます。
       </p>
       <fieldset disabled={!canEdit} class="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <label class="flex cursor-pointer items-center gap-3 self-start rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-            <input type="checkbox" name="booking_enabled" bind:checked={settings.bookingEnabled} class="peer sr-only" />
-            <span class={`relative h-6 w-11 shrink-0 rounded-full transition ${settings.bookingEnabled ? 'bg-emerald-500' : 'bg-stone-300'} peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600`}>
-              <span class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${settings.bookingEnabled ? 'left-[22px]' : 'left-0.5'}`}></span>
-            </span>
-            <span class="text-sm">
-              <span class="font-medium">予約受付</span>
-              <span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${settings.bookingEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{settings.bookingEnabled ? 'オン' : 'オフ'}</span>
-              <span class="mt-0.5 block text-[11px] text-stone-500">
-                {settings.bookingEnabled ? '取引先の料金パネルに「予約する」が出ます（締切前・空室のある日だけ）' : '取引先は料金を見るだけで、予約はできません'}
-              </span>
-            </span>
+        <div>
+          <div class="grid gap-1.5">
+            {#each PARTNER_PAYMENT_OPTIONS as o (o.id)}
+              <label class="flex items-start gap-2 text-sm">
+                <input type="checkbox" checked={booking.paymentOptions.includes(o.id)} onchange={() => togglePayment(o.id)} class="mt-0.5" />
+                <span>
+                  {o.label}
+                  <span class="block text-[11px] text-stone-500">
+                    {o.note}{#if isStripePaymentOption(o.id) && !data.onlinePaymentReady}<span class="text-amber-700">（{data.stripeKeyKind === 'publishable' ? 'Stripe のキーが公開可能キー（pk_）です。シークレットキー（sk_）を登録してください' : data.stripeKeyKind === 'webhook_secret' ? 'STRIPE_SECRET_KEY に Webhook の署名シークレット（whsec_）が入っています。2つが逆に登録されていないか確認してください' : data.stripeKeyKind === 'invalid' ? `Stripe のキーの形式が正しくありません（sk_ で始まるシークレットキーを登録してください。登録されている値: ${data.stripeKeyHint}）` : data.stripePublishableIssue ? `${data.stripePublishableIssue}（Stripe の決済を取引先の画面に出せません）` : 'Stripe 接続後に取引先の画面に出ます'}）</span>{:else if isStripePaymentOption(o.id) && data.stripeTestMode}<span class="text-amber-700">（Stripe テストモード: 実際の請求は発生しません）</span>{/if}
+                  </span>
+                </span>
+              </label>
+            {/each}
+          </div>
+          {#if data.savedCards}
+            <!-- 取引先のお支払いカード（保存カード・2026-10-07）: 枚数と最終登録だけ（操作は取引先ページの「アカウント → お支払いカード」） -->
+            <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {data.savedCards.count} 枚{#if data.savedCards.lastAt}（最終登録 {new Date(data.savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
+          {/if}
+          <!-- 自由入力の支払方法（取引先ごとの契約に合わせた名前。決済は伴わない） -->
+          <div class="mt-2 grid gap-1.5 rounded-md border border-stone-200 bg-white p-2.5">
+            <p class="text-xs font-medium">自由入力の支払方法 <span class="font-normal text-stone-500">（最大{MAX_CUSTOM_PAYMENT_OPTIONS}つ）</span></p>
+            {#each booking.customPaymentOptions as o, i (o.id)}
+              <div class="grid gap-1.5 sm:grid-cols-[auto_1fr_1.5fr_auto] sm:items-center">
+                <input
+                  type="checkbox"
+                  checked={booking.paymentOptions.includes(o.id)}
+                  onchange={() => togglePayment(o.id)}
+                  aria-label="取引先が選べるようにする"
+                  title="取引先が選べるようにする"
+                />
+                <input bind:value={o.label} maxlength="40" required placeholder="名前（例: 現地精算（法人カード））" class={inputClass} />
+                <input bind:value={o.note} maxlength="200" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass} />
+                <button type="button" class={smallBtn} onclick={() => removeCustomPayment(i)}>削除</button>
+                <label class="flex items-center gap-1.5 text-[11px] text-stone-600 sm:col-span-4 sm:pl-6">
+                  <input type="checkbox" bind:checked={o.billable} />
+                  請求書で精算する（月次の請求書でご請求）
+                </label>
+              </div>
+            {/each}
+            {#if booking.customPaymentOptions.length < MAX_CUSTOM_PAYMENT_OPTIONS}
+              <button type="button" onclick={addCustomPayment} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 支払方法を追加</button>
+            {/if}
+            <p class="text-[11px] text-stone-500">決済は伴いません。予約はその場で確定し、名前が PMS の支払方法・備考に入ります。チェックを外すと定義は残したまま選べなくなります。「請求書で精算する」にすると、月末の請求書でご請求額に入ります（入れないものは利用明細だけに載ります）。</p>
+          </div>
+          <p class="mt-1 text-[11px] text-stone-500">複数選んだときは、取引先が予約時に選びます。選ばれた支払方法は PMS の予約・備考に入ります。</p>
+          {#if booking.paymentOptions.includes('online')}
+            <div class="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-white px-2.5 py-2 text-sm">
+              <span class="text-xs font-medium">予約時決済の割引（共通の既定）</span>
+              <select bind:value={booking.prepayDiscount.type} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
+                <option value="none">なし</option>
+                <option value="percent">％引き</option>
+                <option value="yen">1名1泊あたり円引き</option>
+              </select>
+              {#if booking.prepayDiscount.type !== 'none'}
+                <input
+                  type="number"
+                  min="1"
+                  max={booking.prepayDiscount.type === 'percent' ? 50 : 100000}
+                  bind:value={booking.prepayDiscount.value}
+                  class="w-24 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-xs tabular-nums"
+                />
+                <span class="text-xs">{booking.prepayDiscount.type === 'percent' ? '%' : '円'}</span>
+              {/if}
+              <span class="w-full text-[11px] text-stone-500">「オンライン決済（予約時）」を選んだ予約だけ、泊ごとの単価から割り引きます（PMS の請求額も割引後）。施設タブで施設ごとに変えられます。</span>
+            </div>
+          {/if}
+        </div>
+
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="block">
+            <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
+            <input bind:value={booking.invoiceRecipientName} maxlength="120" placeholder={defaultRecipientName || '例: 株式会社〇〇'} class={inputClass} />
+            <span class="mt-0.5 block text-[11px] text-stone-500">空欄なら{linkedRecipient ? 'PMS の紐づけ先の正式名称' : '取引先名'}（{defaultRecipientName || '未入力'}）で発行します。「御中」は自動で付きます。</span>
           </label>
           <div>
-            <h3 class="mb-1.5 text-[15px] font-bold text-stone-800">支払方法（複数可） {#if settings.bookingEnabled}<span class="text-xs font-normal text-rose-700">1つ以上必須</span>{/if}</h3>
-            <div class="grid gap-1.5">
-              {#each PARTNER_PAYMENT_OPTIONS as o (o.id)}
-                <label class="flex items-start gap-2 text-sm">
-                  <input type="checkbox" checked={booking.paymentOptions.includes(o.id)} onchange={() => togglePayment(o.id)} class="mt-0.5" />
-                  <span>
-                    {o.label}
-                    <span class="block text-[11px] text-stone-500">
-                      {o.note}{#if isStripePaymentOption(o.id) && !data.onlinePaymentReady}<span class="text-amber-700">（{data.stripeKeyKind === 'publishable' ? 'Stripe のキーが公開可能キー（pk_）です。シークレットキー（sk_）を登録してください' : data.stripeKeyKind === 'webhook_secret' ? 'STRIPE_SECRET_KEY に Webhook の署名シークレット（whsec_）が入っています。2つが逆に登録されていないか確認してください' : data.stripeKeyKind === 'invalid' ? `Stripe のキーの形式が正しくありません（sk_ で始まるシークレットキーを登録してください。登録されている値: ${data.stripeKeyHint}）` : data.stripePublishableIssue ? `${data.stripePublishableIssue}（Stripe の決済を取引先の画面に出せません）` : 'Stripe 接続後に取引先の画面に出ます'}）</span>{:else if isStripePaymentOption(o.id) && data.stripeTestMode}<span class="text-amber-700">（Stripe テストモード: 実際の請求は発生しません）</span>{/if}
-                    </span>
-                  </span>
-                </label>
-              {/each}
-            </div>
-            {#if data.savedCards}
-              <!-- 取引先のお支払いカード（保存カード・2026-10-07）: 枚数と最終登録だけ（操作は取引先ページの「アカウント → お支払いカード」） -->
-              <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {data.savedCards.count} 枚{#if data.savedCards.lastAt}（最終登録 {new Date(data.savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
-            {/if}
-            <!-- 自由入力の支払方法（取引先ごとの契約に合わせた名前。決済は伴わない） -->
-            <div class="mt-2 grid gap-1.5 rounded-md border border-stone-200 bg-white p-2.5">
-              <p class="text-xs font-medium">自由入力の支払方法 <span class="font-normal text-stone-500">（最大{MAX_CUSTOM_PAYMENT_OPTIONS}つ）</span></p>
-              {#each booking.customPaymentOptions as o, i (o.id)}
-                <div class="grid gap-1.5 sm:grid-cols-[auto_1fr_1.5fr_auto] sm:items-center">
-                  <input
-                    type="checkbox"
-                    checked={booking.paymentOptions.includes(o.id)}
-                    onchange={() => togglePayment(o.id)}
-                    aria-label="取引先が選べるようにする"
-                    title="取引先が選べるようにする"
-                  />
-                  <input bind:value={o.label} maxlength="40" required placeholder="名前（例: 現地精算（法人カード））" class={inputClass} />
-                  <input bind:value={o.note} maxlength="200" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass} />
-                  <button type="button" class={smallBtn} onclick={() => removeCustomPayment(i)}>削除</button>
-                  <label class="flex items-center gap-1.5 text-[11px] text-stone-600 sm:col-span-4 sm:pl-6">
-                    <input type="checkbox" bind:checked={o.billable} />
-                    請求書で精算する（月次の請求書でご請求）
-                  </label>
-                </div>
-              {/each}
-              {#if booking.customPaymentOptions.length < MAX_CUSTOM_PAYMENT_OPTIONS}
-                <button type="button" onclick={addCustomPayment} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 支払方法を追加</button>
-              {/if}
-              <p class="text-[11px] text-stone-500">決済は伴いません。予約はその場で確定し、名前が PMS の支払方法・備考に入ります。チェックを外すと定義は残したまま選べなくなります。「請求書で精算する」にすると、月末の請求書でご請求額に入ります（入れないものは利用明細だけに載ります）。</p>
-            </div>
-            <p class="mt-1 text-[11px] text-stone-500">複数選んだときは、取引先が予約時に選びます。選ばれた支払方法は PMS の予約・備考に入ります。</p>
-            {#if booking.paymentOptions.includes('online')}
-              <div class="mt-2 flex flex-wrap items-center gap-2 rounded-md bg-stone-50 px-2.5 py-2 text-sm">
-                <span class="text-xs font-medium">予約時決済の割引</span>
-                <select bind:value={booking.prepayDiscount.type} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
-                  <option value="none">なし</option>
-                  <option value="percent">％引き</option>
-                  <option value="yen">1名1泊あたり円引き</option>
+            <span class="mb-0.5 block text-xs text-stone-500">お支払期限</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <select value={booking.invoiceDue.type} onchange={(e) => setInvoiceDueType(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm">
+                <option value="next_month_end">翌月末</option>
+                <option value="next_month_day">翌月の指定日</option>
+              </select>
+              {#if booking.invoiceDue.type === 'next_month_day'}
+                <select value={String(booking.invoiceDue.day)} onchange={(e) => setInvoiceDueDay(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm" aria-label="お支払期限の日">
+                  {#each Array.from({ length: 28 }, (_, i) => i + 1) as d}<option value={String(d)}>{d}日</option>{/each}
                 </select>
-                {#if booking.prepayDiscount.type !== 'none'}
-                  <input
-                    type="number"
-                    min="1"
-                    max={booking.prepayDiscount.type === 'percent' ? 50 : 100000}
-                    bind:value={booking.prepayDiscount.value}
-                    class="w-24 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-xs tabular-nums"
-                  />
-                  <span class="text-xs">{booking.prepayDiscount.type === 'percent' ? '%' : '円'}</span>
-                {/if}
-                <span class="w-full text-[11px] text-stone-500">「オンライン決済（予約時）」を選んだ予約だけ、泊ごとの単価から割り引きます（PMS の請求額も割引後）。取引先の画面に割引後の金額が出ます。</span>
-              </div>
-            {/if}
+              {/if}
+            </div>
+            <span class="mt-0.5 block text-[11px] text-stone-500">
+              {describeInvoiceDue(booking.invoiceDue)}（例: {periodLabel(data.invoices.currentPeriod)}分 → {invoiceDueDate(data.invoices.currentPeriod, booking.invoiceDue)}）。過去の月をあとから発行して期限が発行日より前になるときは、発行月を基準に同じ規則で決めます。
+            </span>
           </div>
         </div>
-
-        <div class="grid gap-3 sm:grid-cols-4">
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">予約の締切</span>
-            <select bind:value={booking.leadDays} class={inputClass}>
-              {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={d}>{d === 0 ? '当日' : `${d}日前`}</option>{/each}
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">締切の時刻</span>
-            <select bind:value={booking.cutoffHour} class={inputClass}>
-              {#each Array.from({ length: 24 }, (_, h) => h) as h}<option value={h}>{h}時まで</option>{/each}
-            </select>
-          </label>
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">取引先による取消</span>
-            <select
-              value={booking.cancelDays == null ? '' : String(booking.cancelDays)}
-              onchange={(e) => (booking.cancelDays = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}
-              class={inputClass}
-            >
-              <option value="">画面からは不可</option>
-              {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={String(d)}>{d === 0 ? '当日' : `${d}日前`}の同時刻まで</option>{/each}
-            </select>
-          </label>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="block">
-              <span class="mb-0.5 block text-xs text-stone-500">最大室数</span>
-              <input type="number" min="1" max="20" bind:value={booking.maxRooms} class={inputClass} />
-            </label>
-            <label class="block">
-              <span class="mb-0.5 block text-xs text-stone-500">最大泊数</span>
-              <input type="number" min="1" max="30" bind:value={booking.maxNights} class={inputClass} />
-            </label>
-          </div>
-        </div>
-
-        <label class="block">
-          <span class="mb-0.5 block text-xs text-stone-500">予約画面の案内（取引先に表示。お支払・キャンセル規定など）</span>
-          <textarea bind:value={booking.notice} rows="2" maxlength="1000" class={inputClass}></textarea>
-        </label>
 
         <div>
-          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
+          <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">受付ルールの既定 <span class="text-xs font-normal text-stone-500">（施設タブで施設ごとに変えられます）</span></h3>
+          <div class="grid gap-3 sm:grid-cols-4">
+            <label class="block">
+              <span class="mb-0.5 block text-xs text-stone-500">予約の締切</span>
+              <select bind:value={booking.leadDays} class={inputClass}>
+                {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={d}>{d === 0 ? '当日' : `${d}日前`}</option>{/each}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-0.5 block text-xs text-stone-500">締切の時刻</span>
+              <select bind:value={booking.cutoffHour} class={inputClass}>
+                {#each Array.from({ length: 24 }, (_, h) => h) as h}<option value={h}>{h}時まで</option>{/each}
+              </select>
+            </label>
+            <label class="block">
+              <span class="mb-0.5 block text-xs text-stone-500">取引先による取消</span>
+              <select
+                value={booking.cancelDays == null ? '' : String(booking.cancelDays)}
+                onchange={(e) => (booking.cancelDays = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}
+                class={inputClass}
+              >
+                <option value="">画面からは不可</option>
+                {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={String(d)}>{d === 0 ? '当日' : `${d}日前`}の同時刻まで</option>{/each}
+              </select>
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">最大室数</span>
+                <input type="number" min="1" max="20" bind:value={booking.maxRooms} class={inputClass} />
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">最大泊数</span>
+                <input type="number" min="1" max="30" bind:value={booking.maxNights} class={inputClass} />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
           <p class="mb-2 text-[11px] text-stone-500">
             プランで設定した「予約時に聞く項目」（<a href="/admin/booking-questions" class="underline">テンプレート</a>またはプラン独自）の後ろに、この取引先からの予約のときだけ足して聞きます。
           </p>
@@ -1456,166 +1396,519 @@
           <p class="mt-1 text-[11px] text-stone-500">宿泊者名・人数・電話・メール・住所・食物アレルギー・到着予定・備考は、項目を足さなくても毎回聞きます。</p>
         </div>
 
-        <div>
-          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件）</span></h3>
-          <p class="mb-2 text-[11px] leading-5 text-stone-500">
-            この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
-          </p>
-          <div class="grid gap-2">
-            {#each booking.perks as perk, i (perk.id)}
-              <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
-                <div class="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
-                  <input bind:value={perk.title} maxlength="60" required placeholder="タイトル（例: ウェルカムドリンク）" class={inputClass} />
-                  <button type="button" class={smallBtn} onclick={() => removePerk(i)}>削除</button>
-                </div>
-                <textarea bind:value={perk.description} rows="2" maxlength="500" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass}></textarea>
-                <div class="flex flex-wrap items-center gap-2">
-                  {#if perk.imageUrl}
-                    <img src={perk.imageUrl} alt={perk.title} class="h-16 w-24 rounded-md border border-stone-200 object-cover" />
-                  {/if}
-                  <label class={`${smallBtn} cursor-pointer ${perkUploading ? 'pointer-events-none opacity-50' : ''}`}>
-                    {perkUploading === perk.id ? 'アップロード中…' : perk.imageUrl ? '画像を差し替え' : '画像を追加'}
-                    <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" class="hidden" disabled={!!perkUploading} onchange={(e) => onPerkImagePicked(perk, e)} />
-                  </label>
-                  {#if perk.imageUrl}
-                    <button type="button" class={smallBtn} disabled={!!perkUploading} onclick={() => sendPerkImage(perk, null)}>画像を外す</button>
-                  {/if}
-                  <span class="text-[11px] text-stone-400">任意。JPEG・PNG・WebP（10MBまで）。選ぶとすぐ保存され、取引先の画面に出ます（追加したばかりの特典は「保存する」で確定）。</span>
-                  {#if perkImageError?.id === perk.id}<span class="text-[11px] text-rose-700">{perkImageError.text}</span>{/if}
-                </div>
-                <div>
-                  <p class="mb-1 text-[11px] text-stone-500">対象プラン（未選択 = すべてのプラン）</p>
-                  <div class="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-                    {#each perkPlanOptions as plan (plan.code)}
-                      <button type="button" class={chip(perk.planCodes.includes(plan.code))} onclick={() => (perk.planCodes = toggle(perk.planCodes, plan.code))}>
-                        <span class="font-mono">{plan.code}</span> {plan.label}
-                      </button>
-                    {:else}
-                      <span class="text-[11px] text-stone-400">選べるプランがありません（プレビューに出るプランから選べます）。</span>
-                    {/each}
-                  </div>
-                </div>
-              </div>
-            {/each}
-            {#if booking.perks.length < MAX_PARTNER_PERKS}
-              <button type="button" onclick={addPerk} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 特典を追加</button>
-            {/if}
-          </div>
-          <label class="mt-3 flex items-start gap-2 text-sm">
-            <input type="checkbox" bind:checked={booking.showOfficialPerks} class="mt-0.5" />
-            <span>公式HP限定特典もこの取引先ページに出す<span class="block text-[11px] text-stone-500">プラン紹介文テンプレートの「特典」（例: 貸切露天風呂 無料）を、取引先特典と並べてバナーで出します。公式HPからの予約の特典なので、出すのは取引先からの予約にも付けるときだけ。</span></span>
-          </label>
-        </div>
-
-        <div>
-          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
-          <p class="mb-2 text-[11px] leading-5 text-stone-500">
-            取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
-          </p>
-          <div class="grid gap-1.5">
-            {#each namePlanOptions as plan (plan.code)}
-              <div class="grid items-center gap-1 rounded-md border border-stone-200 bg-white px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:gap-3">
-                <div class="min-w-0 text-xs text-stone-500">
-                  <span class="font-mono">{plan.code}</span> <span class="break-all">{plan.label}</span>
-                </div>
-                <input
-                  value={booking.planNames[plan.code] ?? ''}
-                  oninput={(e) => setPlanName(plan.code, e.currentTarget.value)}
-                  maxlength="60"
-                  placeholder={displayPlanName(plan.label)}
-                  class={inputClass}
-                />
-              </div>
-            {:else}
-              <span class="text-[11px] text-stone-400">販売対象のプランがありません（特別レートで「調整して出す」ルールを作ると出ます）。</span>
-            {/each}
-          </div>
-        </div>
-
-        <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">通知メール</h3>
-        <div class="grid gap-3 sm:grid-cols-2">
-          <label class="block">
-            <span class="mb-0.5 block text-xs text-stone-500">宿への通知メール（予約・取消のたびに送る。改行・カンマ区切り）</span>
-            <textarea bind:value={notifyText} rows="2" placeholder="front@example.com" class={inputClass}></textarea>
-          </label>
-          <label class="flex items-start gap-2 pt-5 text-sm">
-            <input type="checkbox" bind:checked={booking.notifyPartner} class="mt-0.5" />
-            <span>取引先にも予約確認メールを送る<span class="block text-[11px] text-stone-500">予約したログインIDのメールと、上の「連絡先メール」へ</span></span>
-          </label>
-        </div>
-
-        <div>
-          <h3 class="mb-1.5 mt-3 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">ご請求書（月次）</h3>
-          <div class="grid gap-3 sm:grid-cols-2">
-            <label class="block">
-              <span class="mb-0.5 block text-xs text-stone-500">ご請求書の宛名（正式社名）</span>
-              <input bind:value={booking.invoiceRecipientName} maxlength="120" placeholder={defaultRecipientName || '例: 株式会社〇〇'} class={inputClass} />
-              <span class="mt-0.5 block text-[11px] text-stone-500">空欄なら{linkedRecipient ? 'PMS の紐づけ先の正式名称' : '取引先名'}（{defaultRecipientName || '未入力'}）で発行します。「御中」は自動で付きます。</span>
-            </label>
-            <div>
-              <span class="mb-0.5 block text-xs text-stone-500">お支払期限</span>
-              <div class="flex flex-wrap items-center gap-2">
-                <select value={booking.invoiceDue.type} onchange={(e) => setInvoiceDueType(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm">
-                  <option value="next_month_end">翌月末</option>
-                  <option value="next_month_day">翌月の指定日</option>
-                </select>
-                {#if booking.invoiceDue.type === 'next_month_day'}
-                  <select value={String(booking.invoiceDue.day)} onchange={(e) => setInvoiceDueDay(e.currentTarget.value)} class="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm" aria-label="お支払期限の日">
-                    {#each Array.from({ length: 28 }, (_, i) => i + 1) as d}<option value={String(d)}>{d}日</option>{/each}
-                  </select>
-                {/if}
-              </div>
-              <span class="mt-0.5 block text-[11px] text-stone-500">
-                {describeInvoiceDue(booking.invoiceDue)}（例: {periodLabel(data.invoices.currentPeriod)}分 → {invoiceDueDate(data.invoices.currentPeriod, booking.invoiceDue)}）。過去の月をあとから発行して期限が発行日より前になるときは、発行月を基準に同じ規則で決めます。
-              </span>
-            </div>
-          </div>
-        </div>
+        <label class="flex items-start gap-2 border-t border-stone-300 pt-4 text-sm">
+          <input type="checkbox" bind:checked={booking.notifyPartner} class="mt-0.5" />
+          <span>取引先にも予約確認メールを送る<span class="block text-[11px] text-stone-500">予約したログインIDのメールと、上の「連絡先メール」へ（宿への通知先は施設タブ）</span></span>
+        </label>
       </fieldset>
 
       <input type="hidden" name="booking" value={bookingJson} />
-      <input type="hidden" name="pricing" value={pricingJson} />
       {#if canEdit}
-        <!-- 保存バー: フォームの下端に貼り付く（Book の ContentEditor と同じ sticky）。状態（未保存・保存中・保存済み・エラー）が見える。 -->
+        <!-- 保存バー（共通）: フォームの下端に貼り付く。状態（未保存・保存中・保存済み・エラー）が見える。 -->
         <div class="sticky bottom-0 z-10 -mx-1 mt-6">
           <div
             class={`flex w-full flex-wrap items-center gap-3 rounded-xl border px-4 py-3 shadow-sm backdrop-blur transition
-              ${saveError ? 'border-rose-300 bg-white/95' : justSaved ? 'border-emerald-300 bg-white/95' : dirty ? 'border-amber-400 bg-white/95' : 'border-stone-200 bg-white/90'}`}
+              ${commonSave.error ? 'border-rose-300 bg-white/95' : commonSave.justSaved ? 'border-emerald-300 bg-white/95' : commonDirty ? 'border-amber-400 bg-white/95' : 'border-stone-200 bg-white/90'}`}
             role="status"
             aria-live="polite"
           >
             <div class="min-w-0 flex-1 text-sm">
-              {#if saving}
+              {#if commonSave.saving}
                 <span class="inline-flex items-center gap-2 text-stone-500"><span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-stone-200 border-t-brand-800"></span>保存しています…</span>
-              {:else if saveError}
-                <span class="font-medium text-rose-700">保存できませんでした: {saveError}</span>
-              {:else if justSaved}
-                <span class="font-medium text-emerald-700">✓ 保存しました。取引先の画面・API にもすぐ反映されます。</span>
-              {:else if dirty}
-                <span class="inline-flex items-center gap-2 font-medium"><span class="h-2 w-2 rounded-full bg-amber-500"></span>保存していない変更があります</span>
-                <span class="ml-1 text-xs text-stone-500">プレビューには反映済みです</span>
+              {:else if commonSave.error}
+                <span class="font-medium text-rose-700">保存できませんでした: {commonSave.error}</span>
+              {:else if commonSave.justSaved}
+                <span class="font-medium text-emerald-700">✓ 共通の設定を保存しました。すべての施設の取引先ページにすぐ反映されます。</span>
+              {:else if commonDirty}
+                <span class="inline-flex items-center gap-2 font-medium"><span class="h-2 w-2 rounded-full bg-amber-500"></span>共通の設定に保存していない変更があります</span>
               {:else}
-                <span class="text-stone-500">変更はありません・最終保存 {dt(data.partner.updatedAt)}</span>
+                <span class="text-stone-500">共通の設定・変更はありません・最終保存 {dt(data.partner.updatedAt)}</span>
               {/if}
             </div>
-            {#if dirty && !saving}
-              <button type="button" onclick={revertChanges} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
+            {#if commonDirty && !commonSave.saving}
+              <button type="button" onclick={revertCommon} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
             {/if}
             <button
               type="submit"
-              disabled={saving || (!dirty && !saveError)}
+              disabled={commonSave.saving || (!commonDirty && !commonSave.error)}
               class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
-            >{saving ? '保存中…' : dirty ? '保存する' : '保存済み'}</button>
+            >{commonSave.saving ? '保存中…' : commonDirty ? '共通の設定を保存' : '保存済み'}</button>
           </div>
         </div>
       {/if}
     </form>
 
-    <!-- プレビュー -->
+    <!-- 施設タブ（rms_partner_facilities・施設ごとの販売設定）。既定のタブは ab_fac の施設（?fac= で切替） -->
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white">
+      <div class="flex flex-wrap items-end gap-1 border-b border-stone-200 px-3 pt-3" role="tablist">
+        {#each data.facilityTabs.filter((t) => t.accessible) as t (t.id)}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={t.id === data.tab.id}
+            onclick={() => switchTab(t.id)}
+            class={`-mb-px rounded-t-lg border px-4 py-2 text-sm ${t.id === data.tab.id ? 'border-stone-200 border-b-white bg-white font-bold text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
+          >
+            {t.name}
+            {#if !t.hasRow || !t.enabled}<span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-normal text-stone-500">販売なし</span>
+            {:else if t.bookingEnabled}<span class="ml-1 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] font-normal text-brand-800">予約受付</span>
+            {:else}<span class="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-normal text-emerald-700">販売中</span>{/if}
+            {#if t.isCurrent}<span class="ml-1 text-[10px] font-normal text-stone-400">（いまの施設）</span>{/if}
+          </button>
+        {/each}
+      </div>
+
+      <div class="p-5">
+        {#if lastSubmit === 'enable' && form?.message}
+          <p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+        {/if}
+        {#if !data.facility}
+          <!-- この施設に施設設定の行が無い: 販売していない。オンにすると行を作る（オン・予約受付はオフ・料金ルールなし） -->
+          <div class="rounded-lg border border-dashed border-stone-300 bg-stone-50 p-5 text-center">
+            <p class="text-sm font-medium text-stone-700">{data.tab.name}では販売していません。</p>
+            <p class="mt-1 text-xs text-stone-500">オンにすると、この施設の料金カレンダーが取引先ページの施設の切替に出ます（予約受付はオフ・特別レートのルールはまだ無い状態で始まります）。</p>
+            {#if canEdit}
+              <form
+                method="POST"
+                action={`?/enableFacility`}
+                use:enhance={() => {
+                  lastSubmit = 'enable';
+                  return async ({ update }) => update({ reset: false });
+                }}
+                class="mt-3"
+              >
+                <input type="hidden" name="facility_id" value={data.tab.id} />
+                <button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{data.tab.name}で販売する（オンにする）</button>
+              </form>
+            {/if}
+          </div>
+        {:else}
+          <form
+            method="POST"
+            action={`?/saveFacility`}
+            use:enhance={saveEnhance('facility')}
+          >
+            <input type="hidden" name="facility_id" value={data.tab.id} />
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 class="text-lg font-bold text-stone-900">{data.tab.name}の設定</h2>
+                <p class="mt-1 text-xs leading-5 text-stone-500">この施設の取引先ページにだけ効きます（他の施設は変わりません）。</p>
+              </div>
+              <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}） ↗</a>
+            </div>
+            {#if !fac.enabled}
+              <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">この施設は「販売」がオフです。取引先ページの施設の切替に出ず、料金も予約も API も出しません（確認ページは販売中の施設で開きます）。</p>
+            {/if}
+            <fieldset disabled={!canEdit} class="mt-3 grid gap-3 sm:grid-cols-2">
+              <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+                <input type="checkbox" name="enabled" bind:checked={fac.enabled} class="peer sr-only" />
+                <span class={`relative h-6 w-11 shrink-0 rounded-full transition ${fac.enabled ? 'bg-emerald-500' : 'bg-stone-300'} peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600`}>
+                  <span class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${fac.enabled ? 'left-[22px]' : 'left-0.5'}`}></span>
+                </span>
+                <span class="text-sm">
+                  <span class="font-medium">この施設で販売</span>
+                  <span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${fac.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{fac.enabled ? 'オン' : 'オフ'}</span>
+                  <span class="mt-0.5 block text-[11px] text-stone-500">{fac.enabled ? '取引先ページ・API にこの施設の料金を出します' : 'この施設は取引先に出しません'}</span>
+                </span>
+              </label>
+              <label class="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+                <input type="checkbox" name="booking_enabled" bind:checked={fac.bookingEnabled} class="peer sr-only" />
+                <span class={`relative h-6 w-11 shrink-0 rounded-full transition ${fac.bookingEnabled ? 'bg-emerald-500' : 'bg-stone-300'} peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600`}>
+                  <span class={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${fac.bookingEnabled ? 'left-[22px]' : 'left-0.5'}`}></span>
+                </span>
+                <span class="text-sm">
+                  <span class="font-medium">予約受付</span>
+                  <span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${fac.bookingEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{fac.bookingEnabled ? 'オン' : 'オフ'}</span>
+                  <span class="mt-0.5 block text-[11px] text-stone-500">
+                    {fac.bookingEnabled ? '取引先の料金パネルに「予約する」が出ます（締切前・空室のある日だけ）' : '取引先は料金を見るだけで、予約はできません'}
+                    {#if fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length}<span class="block text-rose-700">共通の「支払方法」を1つ以上選んで保存してください。</span>{/if}
+                  </span>
+                </span>
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">何日先まで出すか</span>
+                <input name="max_days_ahead" type="number" min="1" max="730" bind:value={fac.maxDaysAhead} class={inputClass} />
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">施設の切替での並び順（小さいほど先・同じなら施設の並び）</span>
+                <input name="sort_order" type="number" min="-999" max="999" bind:value={fac.sortOrder} class={inputClass} />
+              </label>
+              <div class="flex flex-col gap-1 text-sm sm:col-span-2">
+                <label class="flex items-center gap-2"><input type="checkbox" name="show_inventory" bind:checked={fac.showInventory} />残室数を出す</label>
+                <label class="flex items-start gap-2"><input type="checkbox" name="include_advance" bind:checked={fac.includeAdvance} class="mt-1" /><span>先行案内料金も出す<span class="block text-[11px] text-stone-400">料金の元データに無いため、現在は効きません</span></span></label>
+              </div>
+            </fieldset>
+
+          <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">特別レート</h2>
+          <p class="mb-3 text-xs leading-5 text-stone-500">
+            基準は料金マスタの理論値（booking.daily_rates・1名あたり・税込・入湯税別）です。<strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まります。
+            <strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>で、どのルールにも当てはまらない料金は出しません。
+            ％・円はマイナスで値引き（例: -10 = 10%引き、-1000 = 1名1,000円引き）。値引きなしで出すなら「％・0」にします。
+          </p>
+          <fieldset disabled={!canEdit}>
+            {#if pricing.rules.every((r) => r.action !== 'adjust')}
+              <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">
+                まだ公開するプランがありません。「＋ ルールを追加」で、出すプランを選んでください。
+              </p>
+            {/if}
+
+            <div class="mt-3 grid gap-2">
+              {#each pricing.rules as rule, i (rule.id)}
+                <div class="rounded-lg border border-stone-200 bg-white">
+                  <div class="flex flex-wrap items-center gap-2 px-3 py-2">
+                    <span class="text-xs font-semibold text-stone-500">#{i + 1}</span>
+                    <button type="button" class="min-w-0 flex-1 text-left text-sm" onclick={() => (openRule = openRule === rule.id ? null : rule.id)}>
+                      <span class="font-medium">{rule.label || '（名前なし）'}</span>
+                      {#if ruleProblem(rule)}<span class="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">{ruleProblem(rule)}</span>{/if}
+                      <span class="ml-2 text-xs text-stone-500">{ruleSummary(rule)}</span>
+                      <span class="ml-2 text-xs font-semibold text-brand-800">→ {describeAdjust(rule.action, rule.adjustType, Number(rule.value) || 0)}</span>
+                    </button>
+                    <button type="button" class={smallBtn} onclick={() => moveRule(i, -1)} disabled={i === 0} aria-label="上へ">↑</button>
+                    <button type="button" class={smallBtn} onclick={() => moveRule(i, 1)} disabled={i === pricing.rules.length - 1} aria-label="下へ">↓</button>
+                    <button type="button" class={smallBtn} onclick={() => removeRule(i)}>削除</button>
+                  </div>
+                  {#if openRule === rule.id}
+                    <div class="grid gap-3 border-t border-stone-200 p-3">
+                      <div class="grid gap-3 sm:grid-cols-[1fr_150px_130px_130px]">
+                        <label class="block">
+                          <span class="mb-0.5 block text-xs text-stone-500">ルール名（任意）</span>
+                          <input bind:value={rule.label} maxlength="80" placeholder="例: 繁忙期は割引なし" class={inputClass} />
+                        </label>
+                        <label class="block">
+                          <span class="mb-0.5 block text-xs text-stone-500">扱い</span>
+                          <select bind:value={rule.action} class={inputClass}>
+                            <option value="adjust">調整して出す</option>
+                            <option value="hide">出さない</option>
+                          </select>
+                        </label>
+                        {#if rule.action === 'adjust'}
+                          <label class="block">
+                            <span class="mb-0.5 block text-xs text-stone-500">調整方法</span>
+                            <select bind:value={rule.adjustType} class={inputClass}>
+                              <option value="percent">％</option>
+                              <option value="amount">円/人</option>
+                              <option value="fixed">固定単価</option>
+                            </select>
+                          </label>
+                          <label class="block">
+                            <span class="mb-0.5 block text-xs text-stone-500">{rule.adjustType === 'fixed' ? '1名あたり（円）' : '値'}</span>
+                            <input type="number" step="any" bind:value={rule.value} class={inputClass} />
+                          </label>
+                        {/if}
+                      </div>
+                      <div>
+                        <p class="mb-1 text-xs text-stone-500">部屋タイプ（未選択 = すべて）</p>
+                        <div class="flex flex-wrap gap-1.5">
+                          {#each data.rooms as room}
+                            <button type="button" class={chip(rule.roomCodes.includes(room.code))} onclick={() => (rule.roomCodes = toggle(rule.roomCodes, room.code))}>{room.name}</button>
+                          {/each}
+                        </div>
+                      </div>
+                      <div>
+                        <p class="mb-1 text-xs text-stone-500">
+                          {#if rule.action === 'adjust'}プラン（<span class="text-rose-700">必須</span>・選んだプランだけ公開）{:else}プラン（未選択 = すべて）{/if}
+                        </p>
+                        <div class="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
+                          <button type="button" class={chip(rule.planGroupCodes.includes(ADVANCE_PLAN_CODE))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, ADVANCE_PLAN_CODE))}>先行案内料金（すべて）</button>
+                          {#each data.planOptions as plan}
+                            <button type="button" class={chip(rule.planGroupCodes.includes(plan.code))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, plan.code))}>
+                              <span class="font-mono">{plan.code}</span> {plan.label}
+                            </button>
+                          {/each}
+                        </div>
+                      </div>
+                      <div class="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <p class="mb-1 text-xs text-stone-500">食事</p>
+                          <div class="flex flex-wrap gap-1.5">
+                            {#each MEAL_TYPES as meal}
+                              <button type="button" class={chip(rule.mealTypes.includes(meal))} onclick={() => (rule.mealTypes = toggle(rule.mealTypes, meal))}>{meal}</button>
+                            {/each}
+                          </div>
+                        </div>
+                        <div>
+                          <p class="mb-1 text-xs text-stone-500">人数</p>
+                          <div class="flex flex-wrap gap-1.5">
+                            {#each GUEST_COUNTS as g}
+                              <button type="button" class={chip(rule.guestCounts.includes(g))} onclick={() => (rule.guestCounts = toggle(rule.guestCounts, g).sort((a, b) => a - b))}>{g}名</button>
+                            {/each}
+                          </div>
+                        </div>
+                        <div>
+                          <p class="mb-1 text-xs text-stone-500">曜日（祝 = 祝日）</p>
+                          <div class="flex flex-wrap gap-1.5">
+                            {#each WEEKDAY_LABELS as label, d}
+                              <button type="button" class={chip(rule.weekdays.includes(d))} onclick={() => (rule.weekdays = toggle(rule.weekdays, d).sort((a, b) => a - b))}>{label}</button>
+                            {/each}
+                          </div>
+                        </div>
+                      </div>
+                      <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="block">
+                          <span class="mb-0.5 block text-xs text-stone-500">宿泊日 から</span>
+                          <input type="date" value={rule.dateFrom ?? ''} oninput={(e) => (rule.dateFrom = e.currentTarget.value || null)} class={inputClass} />
+                        </label>
+                        <label class="block">
+                          <span class="mb-0.5 block text-xs text-stone-500">宿泊日 まで</span>
+                          <input type="date" value={rule.dateTo ?? ''} oninput={(e) => (rule.dateTo = e.currentTarget.value || null)} class={inputClass} />
+                        </label>
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+              <button type="button" onclick={addRule} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ ルールを追加</button>
+            </div>
+
+            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">端数の単位</span>
+                <select bind:value={pricing.roundingUnit} class={inputClass}>
+                  {#each [1, 10, 100, 1000] as u}<option value={u}>{u}円</option>{/each}
+                </select>
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">端数処理</span>
+                <select bind:value={pricing.roundingMode} class={inputClass}>
+                  <option value="floor">切り捨て</option>
+                  <option value="round">四捨五入</option>
+                  <option value="ceil">切り上げ</option>
+                </select>
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">最低料金（1名1泊・円、空欄 = なし）</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={pricing.minPricePerPerson ?? ''}
+                  oninput={(e) => (pricing.minPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+                  class={inputClass}
+                />
+              </label>
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">最高料金（1名1泊・円、空欄 = なし）</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={pricing.maxPricePerPerson ?? ''}
+                  oninput={(e) => (pricing.maxPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
+                  class={inputClass}
+                />
+              </label>
+            </div>
+            <p class="mt-1 text-[11px] text-stone-500">プラン料金がこの範囲を外れるときは、最低・最高料金で上書きして取引先に見せます（端数処理の後）。</p>
+            {#if pricing.minPricePerPerson != null && pricing.maxPricePerPerson != null && pricing.minPricePerPerson > pricing.maxPricePerPerson}
+              <p class="mt-1 text-xs text-rose-700">最低料金が最高料金を上回っています。</p>
+            {/if}
+          </fieldset>
+
+            <!-- 早期決済割・受付ルール（N6）: 共通の既定を使う／この施設だけ変える。戻すと facility_settings からキーを消す -->
+            <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">早期決済割・受付ルール</h2>
+            <p class="mb-3 text-xs leading-5 text-stone-500">
+              ふだんは共通の設定の既定を使います。この施設だけ変えるときは「この施設だけ変える」を選びます（0 や「当日」も施設の値として残ります）。「共通の既定を使う」に戻すと、共通の値に戻ります。
+            </p>
+            <fieldset disabled={!canEdit} class="grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-4">
+              {#each PARTNER_FACILITY_OVERRIDE_KEYS as k (k)}
+                {#if k !== 'prepayDiscount' || booking.paymentOptions.includes('online') || isOverridden(k)}
+                  <div class="grid gap-2 rounded-md border border-stone-200 bg-white p-2.5 sm:grid-cols-[11rem_1fr] sm:items-center">
+                    <span class="text-sm font-medium text-stone-800">{PARTNER_FACILITY_OVERRIDE_LABELS[k]}</span>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                      <label class="inline-flex items-center gap-1.5">
+                        <input type="radio" checked={!isOverridden(k)} onchange={() => setOverride(k, false)} />
+                        共通の既定を使う<span class="text-xs text-stone-500">（{describePartnerFacilityOverride(k, booking)}）</span>
+                      </label>
+                      <label class="inline-flex items-center gap-1.5">
+                        <input type="radio" checked={isOverridden(k)} onchange={() => setOverride(k, true)} />
+                        この施設だけ変える
+                      </label>
+                      {#if isOverridden(k)}
+                        {#if k === 'leadDays' && overrides.leadDays !== undefined}
+                          <select bind:value={overrides.leadDays} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm">
+                            {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={d}>{d === 0 ? '当日' : `${d}日前`}</option>{/each}
+                          </select>
+                        {:else if k === 'cutoffHour' && overrides.cutoffHour !== undefined}
+                          <select bind:value={overrides.cutoffHour} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm">
+                            {#each Array.from({ length: 24 }, (_, h) => h) as h}<option value={h}>{h}時まで</option>{/each}
+                          </select>
+                        {:else if k === 'cancelDays'}
+                          <select
+                            value={overrides.cancelDays == null ? '' : String(overrides.cancelDays)}
+                            onchange={(e) => (overrides.cancelDays = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}
+                            class="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm"
+                          >
+                            <option value="">画面からは不可</option>
+                            {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={String(d)}>{d === 0 ? '当日' : `${d}日前`}の同時刻まで</option>{/each}
+                          </select>
+                        {:else if k === 'maxRooms' && overrides.maxRooms !== undefined}
+                          <span class="inline-flex items-center gap-1"><input type="number" min="1" max="20" bind:value={overrides.maxRooms} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm" />室</span>
+                        {:else if k === 'maxNights' && overrides.maxNights !== undefined}
+                          <span class="inline-flex items-center gap-1"><input type="number" min="1" max="30" bind:value={overrides.maxNights} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm" />泊</span>
+                        {:else if k === 'prepayDiscount' && overrides.prepayDiscount}
+                          <span class="inline-flex flex-wrap items-center gap-1.5">
+                            <select bind:value={overrides.prepayDiscount.type} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
+                              <option value="none">なし</option>
+                              <option value="percent">％引き</option>
+                              <option value="yen">1名1泊あたり円引き</option>
+                            </select>
+                            {#if overrides.prepayDiscount.type !== 'none'}
+                              <input
+                                type="number"
+                                min="1"
+                                max={overrides.prepayDiscount.type === 'percent' ? 50 : 100000}
+                                bind:value={overrides.prepayDiscount.value}
+                                class="w-24 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-xs tabular-nums"
+                              />
+                              <span class="text-xs">{overrides.prepayDiscount.type === 'percent' ? '%' : '円'}</span>
+                            {/if}
+                          </span>
+                        {/if}
+                      {/if}
+                    </div>
+                  </div>
+                {/if}
+              {/each}
+              <p class="text-[11px] text-stone-500">
+                この施設での受付: 締切は宿泊日の{effective.leadDays === 0 ? '当日' : `${effective.leadDays}日前`}の{effective.cutoffHour}時まで・取引先による取消は{effective.cancelDays == null ? '画面からは不可' : `${effective.cancelDays === 0 ? '当日' : `${effective.cancelDays}日前`}の${effective.cutoffHour}時まで`}・1回の予約は{effective.maxRooms}室・{effective.maxNights}泊まで。
+                {#if !booking.paymentOptions.includes('online') && !isOverridden('prepayDiscount')}予約時決済の割引は、共通の支払方法で「オンライン決済（予約時）」を選ぶと設定できます。{/if}
+              </p>
+            </fieldset>
+
+            <fieldset disabled={!canEdit} class="mt-6 grid gap-4">
+              <label class="block">
+                <span class="mb-0.5 block text-xs text-stone-500">予約画面の案内（取引先に表示。この施設の注意事項・お支払・キャンセル規定など）</span>
+                <textarea bind:value={own.notice} rows="2" maxlength="1000" class={inputClass}></textarea>
+              </label>
+
+              <div>
+                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件・この施設）</span></h3>
+                <p class="mb-2 text-[11px] leading-5 text-stone-500">
+                  この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
+                </p>
+                <div class="grid gap-2">
+                  {#each own.perks as perk, i (perk.id)}
+                    <div class="grid gap-2 rounded-lg border border-stone-200 bg-white p-2.5">
+                      <div class="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                        <input bind:value={perk.title} maxlength="60" required placeholder="タイトル（例: ウェルカムドリンク）" class={inputClass} />
+                        <button type="button" class={smallBtn} onclick={() => removePerk(i)}>削除</button>
+                      </div>
+                      <textarea bind:value={perk.description} rows="2" maxlength="500" placeholder="説明（任意。取引先の画面に出ます）" class={inputClass}></textarea>
+                      <div class="flex flex-wrap items-center gap-2">
+                        {#if perk.imageUrl}
+                          <img src={perk.imageUrl} alt={perk.title} class="h-16 w-24 rounded-md border border-stone-200 object-cover" />
+                        {/if}
+                        <label class={`${smallBtn} cursor-pointer ${perkUploading ? 'pointer-events-none opacity-50' : ''}`}>
+                          {perkUploading === perk.id ? 'アップロード中…' : perk.imageUrl ? '画像を差し替え' : '画像を追加'}
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" class="hidden" disabled={!!perkUploading} onchange={(e) => onPerkImagePicked(perk, e)} />
+                        </label>
+                        {#if perk.imageUrl}
+                          <button type="button" class={smallBtn} disabled={!!perkUploading} onclick={() => sendPerkImage(perk, null)}>画像を外す</button>
+                        {/if}
+                        <span class="text-[11px] text-stone-400">任意。JPEG・PNG・WebP（10MBまで）。選ぶとすぐ保存され、取引先の画面に出ます（追加したばかりの特典は「保存する」で確定）。</span>
+                        {#if perkImageError?.id === perk.id}<span class="text-[11px] text-rose-700">{perkImageError.text}</span>{/if}
+                      </div>
+                      <div>
+                        <p class="mb-1 text-[11px] text-stone-500">対象プラン（未選択 = すべてのプラン）</p>
+                        <div class="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
+                          {#each perkPlanOptions as plan (plan.code)}
+                            <button type="button" class={chip(perk.planCodes.includes(plan.code))} onclick={() => (perk.planCodes = toggle(perk.planCodes, plan.code))}>
+                              <span class="font-mono">{plan.code}</span> {plan.label}
+                            </button>
+                          {:else}
+                            <span class="text-[11px] text-stone-400">選べるプランがありません（プレビューに出るプランから選べます）。</span>
+                          {/each}
+                        </div>
+                      </div>
+                    </div>
+                  {/each}
+                  {#if own.perks.length < MAX_PARTNER_PERKS}
+                    <button type="button" onclick={addPerk} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ 特典を追加</button>
+                  {/if}
+                </div>
+                <label class="mt-3 flex items-start gap-2 text-sm">
+                  <input type="checkbox" bind:checked={own.showOfficialPerks} class="mt-0.5" />
+                  <span>公式HP限定特典もこの取引先ページに出す<span class="block text-[11px] text-stone-500">プラン紹介文テンプレートの「特典」（例: 貸切露天風呂 無料）を、取引先特典と並べてバナーで出します。公式HPからの予約の特典なので、出すのは取引先からの予約にも付けるときだけ。</span></span>
+                </label>
+              </div>
+
+              <div>
+                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
+                <p class="mb-2 text-[11px] leading-5 text-stone-500">
+                  取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
+                </p>
+                <div class="grid gap-1.5">
+                  {#each namePlanOptions as plan (plan.code)}
+                    <div class="grid items-center gap-1 rounded-md border border-stone-200 bg-white px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] sm:gap-3">
+                      <div class="min-w-0 text-xs text-stone-500">
+                        <span class="font-mono">{plan.code}</span> <span class="break-all">{plan.label}</span>
+                      </div>
+                      <input
+                        value={own.planNames[plan.code] ?? ''}
+                        oninput={(e) => setPlanName(plan.code, e.currentTarget.value)}
+                        maxlength="60"
+                        placeholder={displayPlanName(plan.label)}
+                        class={inputClass}
+                      />
+                    </div>
+                  {:else}
+                    <span class="text-[11px] text-stone-400">販売対象のプランがありません（特別レートで「調整して出す」ルールを作ると出ます）。</span>
+                  {/each}
+                </div>
+              </div>
+
+              <label class="block border-t border-stone-300 pt-5">
+                <span class="mb-0.5 block text-xs text-stone-500">宿への通知メール（この施設の予約・取消のたびに送る。改行・カンマ区切り）</span>
+                <textarea bind:value={notifyText} rows="2" placeholder="front@example.com" class={inputClass}></textarea>
+              </label>
+            </fieldset>
+
+            <input type="hidden" name="pricing" value={pricingJson} />
+            <input type="hidden" name="facility_booking" value={ownJson} />
+            <input type="hidden" name="overrides" value={overridesJson} />
+            {#if canEdit}
+              <!-- 保存バー（施設タブ）: 共通の保存バーとは別。この施設の行だけを保存する -->
+              <div class="sticky bottom-0 z-10 -mx-1 mt-6">
+                <div
+                  class={`flex w-full flex-wrap items-center gap-3 rounded-xl border px-4 py-3 shadow-sm backdrop-blur transition
+                    ${facilitySave.error ? 'border-rose-300 bg-white/95' : facilitySave.justSaved ? 'border-emerald-300 bg-white/95' : facilityDirty ? 'border-amber-400 bg-white/95' : 'border-stone-200 bg-white/90'}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  <div class="min-w-0 flex-1 text-sm">
+                    {#if facilitySave.saving}
+                      <span class="inline-flex items-center gap-2 text-stone-500"><span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-stone-200 border-t-brand-800"></span>保存しています…</span>
+                    {:else if facilitySave.error}
+                      <span class="font-medium text-rose-700">保存できませんでした: {facilitySave.error}</span>
+                    {:else if facilitySave.justSaved}
+                      <span class="font-medium text-emerald-700">✓ {data.tab.name}の設定を保存しました。この施設の取引先ページ・API にすぐ反映されます。</span>
+                    {:else if facilityDirty}
+                      <span class="inline-flex items-center gap-2 font-medium"><span class="h-2 w-2 rounded-full bg-amber-500"></span>{data.tab.name}の設定に保存していない変更があります</span>
+                      <span class="ml-1 text-xs text-stone-500">プレビューには反映済みです</span>
+                    {:else}
+                      <span class="text-stone-500">{data.tab.name}の設定・変更はありません{#if data.facility.updatedAt}・最終保存 {dt(data.facility.updatedAt)}{/if}</span>
+                    {/if}
+                  </div>
+                  {#if facilityDirty && !facilitySave.saving}
+                    <button type="button" onclick={revertFacility} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
+                  {/if}
+                  <button
+                    type="submit"
+                    disabled={facilitySave.saving || (!facilityDirty && !facilitySave.error)}
+                    class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
+                  >{facilitySave.saving ? '保存中…' : facilityDirty ? `${data.tab.name}の設定を保存` : '保存済み'}</button>
+                </div>
+              </div>
+            {/if}
+          </form>
+        {/if}
+      </div>
+    </div>
+
+    <!-- プレビュー（施設タブの施設・編集中の特別レートで計算） -->
+    {#if data.facility}
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格）</h2>
+          <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
           <p class="mt-1 text-xs text-stone-500">
             <strong class="font-medium text-stone-800">編集中の内容で計算しています（保存前の変更も反映）。</strong>小さい数字は基準の理論値（料金マスタ）です。
           </p>
@@ -1682,13 +1975,14 @@
         </div>
       {/if}
     </div>
+    {/if}
 
     <!-- 取引先予約 -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-lg font-bold text-stone-900">予約一覧</h2>
-          <p class="mt-1 text-xs text-stone-500">この取引先が限定URLから入れた予約です。取消はここ（または取引先の画面）から行います。PMS の画面からは取り消せません。</p>
+          <p class="mt-1 text-xs text-stone-500">この取引先が限定URLから入れた予約です（すべての施設）。取消はここ（または取引先の画面）から行います。PMS の画面からは取り消せません。</p>
         </div>
         <div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
           <button type="button" onclick={() => (bookingFilter = 'upcoming')} class={`px-3 py-1.5 ${bookingFilter === 'upcoming' ? 'bg-brand-800 text-white' : ''}`}>これから</button>
@@ -1709,12 +2003,13 @@
         <div class="mt-3 overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="text-left text-xs text-stone-500">
-              <tr><th class="py-1.5 pr-3 font-medium">予約番号</th><th class="pr-3 font-medium">宿泊日</th><th class="pr-3 font-medium">宿泊者</th><th class="pr-3 font-medium">部屋・プラン</th><th class="pr-3 text-right font-medium">合計</th><th class="pr-3 font-medium">状態</th><th></th></tr>
+              <tr><th class="py-1.5 pr-3 font-medium">予約番号</th>{#if showBookingFacility}<th class="pr-3 font-medium">施設</th>{/if}<th class="pr-3 font-medium">宿泊日</th><th class="pr-3 font-medium">宿泊者</th><th class="pr-3 font-medium">部屋・プラン</th><th class="pr-3 text-right font-medium">合計</th><th class="pr-3 font-medium">状態</th><th></th></tr>
             </thead>
             <tbody>
               {#each shownBookings as b (b.id)}
                 <tr class="border-t border-stone-100 align-top">
                   <td class="py-2 pr-3 font-mono text-xs">{b.code}{#if b.attachmentCount}<span class="ml-1 font-sans whitespace-nowrap" title="添付ファイル（予約管理の詳細で見る・追加・削除）">📎 {b.attachmentCount}</span>{/if}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
+                  {#if showBookingFacility}<td class="py-2 pr-3 text-xs whitespace-nowrap">{b.facilityName || '—'}</td>{/if}
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
                   <td class="py-2 pr-3">
                     {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-1 rounded-full bg-amber-100 px-1.5 py-px text-[11px] whitespace-nowrap text-amber-800" title={b.creditOverText ?? ''}>受付枠超過</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>

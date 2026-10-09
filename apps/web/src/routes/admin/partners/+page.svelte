@@ -70,7 +70,7 @@
 				</select>
 			</label>
 		</div>
-		<p class="text-xs text-stone-400">作成直後は「公開停止」です。特別レートとログインIDを設定してから公開してください。</p>
+		<p class="text-xs text-stone-400">作成直後は「公開停止」です。特別レートとログインIDを設定してから公開してください。{data.facilityName}で販売する設定で作ります（他の施設は詳細の施設タブでオンにできます）。</p>
 		<div class="flex gap-2">
 			<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">作成して設定へ</button>
 			<button type="button" onclick={() => (creating = false)} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">キャンセル</button>
@@ -79,6 +79,16 @@
 {/if}
 
 {#if data.live && !data.error}
+	<!-- 一覧の範囲（N8・2026-10-09 複数施設化）: 既定は今の施設で設定のある取引先、「すべて」でテナントの取引先すべて -->
+	<div class="mb-2 flex flex-wrap items-center gap-2">
+		<div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
+			<a href="/admin/partners" class={`px-3 py-1.5 ${!data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{data.facilityName}の取引先</a>
+			<a href="/admin/partners?all=1" class={`px-3 py-1.5 ${data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>すべて</a>
+		</div>
+		<p class="text-[11px] text-stone-400">
+			{data.showAll ? '全施設の取引先です。施設のバッジは販売中（濃）／停止中（薄）。' : `${data.facilityName}に設定のある取引先です（販売停止中を含む）。`}
+		</p>
+	</div>
 	<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
 		{#each data.partners as p (p.id)}
 			{@const st = statusOf(p)}
@@ -94,13 +104,21 @@
 						{#if p.validFrom || p.validUntil}・公開期間 {p.validFrom ?? '—'} 〜 {p.validUntil ?? '—'}{/if}
 					</p>
 				</div>
-				<div class="flex shrink-0 items-center gap-1.5">
+				<div class="flex shrink-0 flex-wrap items-center gap-1.5">
+					{#if data.showAll || p.facilities.length > 1}
+						{#each p.facilities as f (f.id)}
+							<span
+								class={`rounded-full border px-2 py-0.5 text-[11px] ${f.enabled ? 'border-brand-800 bg-brand-50 text-brand-900' : 'border-stone-200 text-stone-400 line-through'}`}
+								title={f.enabled ? (f.bookingEnabled ? '販売中・予約受付' : '販売中（予約受付なし）') : 'この施設では販売していません'}
+							>{f.name}{#if f.enabled && f.bookingEnabled}・予約{/if}</span>
+						{/each}
+					{/if}
 					{#if p.bookingEnabled}<span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付</span>{/if}
 					<span class="rounded-full px-2 py-0.5 text-[11px] {st.cls}">{st.label}</span>
 				</div>
 			</a>
 		{:else}
-			<p class="p-4 text-sm text-stone-500">まだ取引先がありません。</p>
+			<p class="p-4 text-sm text-stone-500">{data.showAll ? 'まだ取引先がありません。' : `${data.facilityName}に設定のある取引先はありません（「すべて」で他の施設の取引先を見られます）。`}</p>
 		{/each}
 	</div>
 {/if}

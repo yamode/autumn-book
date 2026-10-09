@@ -6,16 +6,23 @@
 // 与信（2026-10-07・Phase 3a）: 紐づけ先が旅行会社のときだけ。表示は閲覧権限、設定の保存（saveAgencyCredit）と
 // 超過時の挙動（setCreditOverAction）は admin のみ。
 // デポジット（2026-10-07・Phase 3b）: 超過時の挙動 deposit の額の決め方・残額の精算先（setCreditDeposit・admin のみ）。
+// 複数施設化 S3（2026-10-09・docs/partner-multi-facility.md §7.12）: 共通セクション（?/saveCommon）と施設タブ（?/saveFacility・
+// ?/enableFacility）に分けた。施設タブは ?fac=<Book の施設 ID>（既定は ab_fac の施設）。取引先は施設のどれかにアクセスできれば
+// 開ける（ab_fac を切り替えても一覧へ戻さない）。施設タブの操作は requireStaffFacility（Book の施設・アクセス）を通す。
 import { partnerSavedCardSummary } from '$lib/server/payments/saved-cards';
 import { redirect, type RequestEvent } from '@sveltejs/kit';
 import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
 import {
+	buildPartnerFacilitySettings,
 	depositRemainderModeOf,
 	describeBooker,
 	normalizeBooker,
 	normalizeCreditDeposit,
 	normalizeCreditDepositRemainder,
-	normalizePartnerBookingSettings
+	normalizePartnerBookingSettings,
+	PARTNER_FACILITY_SETTING_KEYS,
+	readPartnerFacilityOverrides,
+	type PartnerFacilityOwnSettings
 } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { countBookingAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
@@ -42,6 +49,7 @@ import {
 } from '$lib/server/partners/booking';
 import {
 	addDaysIso,
+	bookFacilityMeta,
 	createPartnerAccount,
 	deletePartner,
 	deletePartnerAccount,
@@ -59,23 +67,29 @@ import {
 	PartnerStoreError,
 	regeneratePartnerUrl,
 	reissueSetupToken,
-	requireStaffPartner,
 	revokePartnerApiKey,
+	savePartnerFacility,
 	searchPmsPartnerGuests,
 	setPartnerBookingNameMode,
 	setPartnerPmsGuest,
 	todayJst,
-	updatePartner,
-	updatePartnerAccount
+	updatePartnerAccount,
+	updatePartnerCommon,
+	type StaffPartnerView
 } from '$lib/server/partners/store';
 import {
 	actionFailure,
 	partnerPortalUrl,
+	requireCommonEditAccess,
+	requireStaffFacility,
+	resolveBookFacility,
 	sendSetupEmail,
+	staffHasFacilityAccess,
 	staffPartnerScope,
+	staffPartnerView,
 	StaffScopeError
 } from '$lib/server/partners/staff';
-import { isEmail, parsePartnerSettings } from '$lib/server/partners/staff-form';
+import { isEmail, parsePartnerCommonForm, parsePartnerFacilityForm } from '$lib/server/partners/staff-form';
 import {
 	deletePartnerDocument,
 	formatBytes,
@@ -136,14 +150,24 @@ export const load: PageServerLoad = async (event) => {
 		if (e instanceof StaffScopeError) redirect(303, '/admin/partners');
 		throw e;
 	}
-	let partner;
+	// 施設タブ: ?fac=<Book の施設 ID>（既定は ab_fac の施設）。アクセスできない施設なら ab_fac の施設に戻す
+	const asked = resolveBookFacility(event.url.searchParams.get('fac'));
+	const tabFacility =
+		asked && (asked.facilityId === scope.facilityId || (await staffHasFacilityAccess(event, asked.facilityId)))
+			? asked
+			: { bookFacilityId: scope.bookFacilityId, facilityId: scope.facilityId, name: scope.facilityName };
+	let view: StaffPartnerView;
 	try {
-		partner = await requireStaffPartner(scope.db, scope.facilityId, event.params.id);
+		view = await staffPartnerView(event, scope, event.params.id, tabFacility.facilityId);
 	} catch (e) {
-		// 別施設の取引先（施設を切り替えた直後など）・存在しない ID は一覧へ
+		// 見られない取引先（アクセスできる施設に設定が無い・別テナント）・存在しない ID は一覧へ
 		if (e instanceof PartnerStoreError) redirect(303, '/admin/partners');
 		throw e;
 	}
+	// 合成はタブの施設（行が無ければ販売しない既定値で補ったもの）
+	const partner = view.partner;
+	const row = view.row;
+	const facilityTabs = await loadFacilityTabs(event, scope, view);
 
 	const today = todayJst();
 	const previewParam = event.url.searchParams.get('preview') ?? '';
@@ -160,11 +184,14 @@ export const load: PageServerLoad = async (event) => {
 		listPartnerApiKeys(scope.db, partner.id),
 		listPartnerAccessLogs(scope.db, partner.id, 50),
 		listPartnerBookings(scope.db, { partnerId: partner.id, limit: 200 }),
-		// プレビューは公開停止中でも見られるように、取引先の公開状態は見ずに計算する。
-		loadPartnerRates(
-			scope.db,
-			{ ...partner, pricing: PREVIEW_BASE_PRICING, include_advance: true, show_inventory: true },
-			{ from: previewFrom, to: previewTo }
+		// プレビューは公開停止中でも見られるように、取引先の公開状態は見ずに計算する。施設で販売していなければ作らない
+		(row
+			? loadPartnerRates(
+					scope.db,
+					{ ...partner, pricing: PREVIEW_BASE_PRICING, include_advance: true, show_inventory: true },
+					{ from: previewFrom, to: previewTo }
+				)
+			: Promise.reject(new Error('この施設では販売していません。'))
 		)
 			.then((r) => ({ ...r, error: null as string | null }))
 			.catch((e) => ({
@@ -209,6 +236,8 @@ export const load: PageServerLoad = async (event) => {
 	const planOptions = [...planMap.values()].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }));
 
 	const accountLabel = new Map(accounts.map((a) => [a.id, a.login_id]));
+	const facilityNames = new Map(facilityTabs.map((t) => [t.facilityId, t.name]));
+	const facilityNameOf = (id: string | null | undefined) => (id ? (facilityNames.get(id) ?? '') : '');
 	const keyLabel = new Map(apiKeys.map((k) => [k.id, k.label || k.key_prefix]));
 	const origin = event.url.origin;
 
@@ -223,6 +252,36 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		facilityName: scope.facilityName,
 		facilitySlugHint: scope.bookFacilityId === 'f-oga' ? 'oga' : 'yamado',
+		// 施設タブ（Book の施設のうちスタッフがアクセスできるもの）と、選んでいるタブ
+		facilityTabs,
+		tab: {
+			id: tabFacility.bookFacilityId,
+			facilityId: tabFacility.facilityId,
+			name: partner.facility_name || tabFacility.name,
+			slug: partner.facility_slug,
+			hasRow: !!row,
+			isCurrent: tabFacility.facilityId === scope.facilityId
+		},
+		// 施設タブの設定（この施設に行が無ければ null =「この施設では販売していません」）
+		facility: row
+			? {
+					enabled: row.enabled,
+					bookingEnabled: row.booking_enabled,
+					maxDaysAhead: row.max_days_ahead,
+					showInventory: row.show_inventory,
+					includeAdvance: row.include_advance,
+					pricing: row.pricing,
+					sortOrder: row.sort_order,
+					// 施設ごとのキー（取引先ページに出ている値。施設に無いキーは共通の旧い値で補われる）
+					own: Object.fromEntries(PARTNER_FACILITY_SETTING_KEYS.map((k) => [k, partner.booking_settings[k]])) as PartnerFacilityOwnSettings,
+					// N6 の上書き（キーがあるものだけ）
+					overrides: readPartnerFacilityOverrides(row.facility_settings),
+					bookingOpen: isPartnerBookingOpen(partner),
+					updatedAt: row.updated_at
+				}
+			: null,
+		// 「確認ページを開く」: タブの施設で開く（取引先ページは ?f=<slug> のオンの施設を選ぶ）
+		previewUrl: `/admin/partners/${partner.id}/preview?f=${encodeURIComponent(partner.facility_slug)}`,
 		canEdit: scope.canEdit,
 		kindLabels: PARTNER_KIND_LABELS,
 		today,
@@ -235,14 +294,11 @@ export const load: PageServerLoad = async (event) => {
 			isActive: partner.is_active,
 			validFrom: partner.valid_from,
 			validUntil: partner.valid_until,
-			maxDaysAhead: partner.max_days_ahead,
-			showInventory: partner.show_inventory,
-			includeAdvance: partner.include_advance,
-			pricing: partner.pricing,
 			note: partner.note,
-			bookingEnabled: partner.booking_enabled,
+			// 共通の予約設定（rms_partners.booking_settings だけを正規化したもの。N6 の既定を含む）
+			commonSettings: normalizePartnerBookingSettings(partner.common_settings),
+			// タブの施設で合成した設定（請求書の欄の説明など。請求条件のキーは共通）
 			bookingSettings: partner.booking_settings,
-			bookingOpen: isPartnerBookingOpen(partner),
 			updatedAt: partner.updated_at
 		},
 		portalUrl: partnerPortalUrl(origin, partner.url_token),
@@ -334,6 +390,9 @@ export const load: PageServerLoad = async (event) => {
 			hasCard: b.payment_option === 'online_checkin' && !!b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed'),
 			id: b.id,
 			code: b.booking_code,
+			// 予約の施設（取消・再請求は予約の施設で合成し直す・contextForBooking）
+			facilityId: b.facility_id,
+			facilityName: facilityNameOf(b.facility_id),
 			attachmentCount: attachmentCounts.get(b.id) ?? 0,
 			status: b.status,
 			checkedIn: !!b.checkedIn,
@@ -442,7 +501,7 @@ const CREDIT_TABLE_MONTHS = 12;
 async function loadCreditSection(
 	event: RequestEvent,
 	scope: Awaited<ReturnType<typeof staffPartnerScope>>,
-	partner: Awaited<ReturnType<typeof requireStaffPartner>>,
+	partner: StaffPartnerView['partner'],
 	today: string
 ) {
 	const guestId = partner.pms_guest_id as string;
@@ -497,11 +556,50 @@ async function bookActorName(event: RequestEvent, scope: Awaited<ReturnType<type
 	}
 }
 
-// 各アクション共通: 編集権限（admin）・施設・取引先の所属を確かめる。
+// 施設タブ（複数施設化 S3）: Book の施設すべて（施設名・slug）と、スタッフがアクセスできるか・取引先の設定（オン／オフ・予約受付）
+async function loadFacilityTabs(event: RequestEvent, scope: Awaited<ReturnType<typeof staffPartnerScope>>, view: StaffPartnerView) {
+	const metas = await bookFacilityMeta(scope.db);
+	return Promise.all(
+		metas.map(async (m) => {
+			const row = view.bundle.facilities.find((f) => f.facility_id === m.id && !f.synthetic) ?? null;
+			return {
+				id: resolveBookFacility(m.id)?.bookFacilityId ?? m.id,
+				facilityId: m.id,
+				slug: m.slug,
+				name: m.name,
+				accessible: m.id === scope.facilityId || (await staffHasFacilityAccess(event, m.id)),
+				hasRow: !!row,
+				enabled: row?.enabled ?? false,
+				bookingEnabled: !!row && row.enabled && row.booking_enabled,
+				isCurrent: m.id === scope.facilityId
+			};
+		})
+	);
+}
+
+// 各アクション共通: 編集権限（admin）・取引先を見られるか（施設のどれかにアクセスできる）を確かめる。
+// facilityId は「取引先に施設設定の行がある施設」（ab_fac の施設を優先）に差し替える（store の紐づけ・与信などの関数は
+// その施設で取引先の所属を確かめ直すため）。ab_fac の施設そのものは scopeFacilityId。
 async function editScope(event: RequestEvent) {
 	const scope = await staffPartnerScope(event, 'edit');
-	const partner = await requireStaffPartner(scope.db, scope.facilityId, event.params.id ?? '');
-	return { ...scope, partner };
+	const view = await staffPartnerView(event, scope, event.params.id ?? '');
+	const partnerFacilityId = view.row?.facility_id ?? view.bundle.facilities.find((f) => !f.synthetic)?.facility_id ?? scope.facilityId;
+	return { ...scope, scopeFacilityId: scope.facilityId, facilityId: partnerFacilityId, view, partner: view.partner };
+}
+
+// 共通設定（名前・支払条件・紐づけ・与信・覚書など）の操作: 取引先のオンの施設すべてにアクセスできる管理者だけ（§7.7）
+async function commonScope(event: RequestEvent) {
+	const s = await editScope(event);
+	await requireCommonEditAccess(event, { ...s, facilityId: s.scopeFacilityId }, s.view);
+	return s;
+}
+
+// 施設タブの操作: 施設が Book の施設で、スタッフがアクセスできること（requireStaffFacility）・取引先を見られること
+async function facilityScope(event: RequestEvent, facilityRef: string | null | undefined) {
+	const scope = await staffPartnerScope(event, 'edit');
+	const fac = await requireStaffFacility(event, scope, facilityRef);
+	const view = await staffPartnerView(event, scope, event.params.id ?? '', fac.facilityId);
+	return { ...scope, fac, view, partner: view.partner };
 }
 
 async function issueSetupLink(
@@ -533,7 +631,7 @@ export const actions: Actions = {
 	searchPmsGuests: async (event) => {
 		try {
 			const scope = await staffPartnerScope(event, 'view');
-			const partner = await requireStaffPartner(scope.db, scope.facilityId, event.params.id ?? '');
+			const { partner } = await staffPartnerView(event, scope, event.params.id ?? '');
 			const query = String((await event.request.formData()).get('q') ?? '').trim();
 			if (!query) return { pmsGuestQuery: query, pmsGuestResults: [] };
 			const results = await searchPmsPartnerGuests(scope.db, partner.tenant_id, query);
@@ -546,7 +644,7 @@ export const actions: Actions = {
 	// PMS の顧客に紐づける（guest_id）。顧客が同じテナントの旅行会社・法人であることは setPartnerPmsGuest で確かめる
 	linkPmsGuest: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			const guestId = String((await event.request.formData()).get('guest_id') ?? '').trim();
 			if (!guestId) return actionFailure(new PartnerStoreError('紐づける顧客を選んでください。'));
 			await setPartnerPmsGuest(db, facilityId, partner.id, guestId, userId);
@@ -559,7 +657,7 @@ export const actions: Actions = {
 	// 紐づけを外す（取引先の他の設定は変えない。名義は DB のトリガーが「宿泊者名」に戻す）
 	unlinkPmsGuest: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			await setPartnerPmsGuest(db, facilityId, partner.id, null, userId);
 			return { pmsUnlinked: true };
 		} catch (e) {
@@ -572,7 +670,7 @@ export const actions: Actions = {
 	// 紐づけが無い（または紐づけ先が読めない）のに partner は setPartnerBookingNameMode が拒否する。
 	setBookingNameMode: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			const raw = String((await event.request.formData()).get('mode') ?? '');
 			if (!(BOOKING_NAME_MODES as readonly string[]).includes(raw)) return actionFailure(new PartnerStoreError('予約名義の指定が正しくありません。'));
 			const saved = await setPartnerBookingNameMode(db, facilityId, partner.id, raw as BookingNameMode, userId);
@@ -587,7 +685,7 @@ export const actions: Actions = {
 	// 画面に出した時点の core.guests.updated_at が変わっていれば保存しない（他の人・PMS が先に変えた）。
 	saveAgencyCredit: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			const fd = await event.request.formData();
 			const parsed = parseCreditSettingsInput({
 				enabled: String(fd.get('enabled') ?? ''),
@@ -610,7 +708,7 @@ export const actions: Actions = {
 	// 超過時の挙動（deposit / warn / ignore）。選んだ時点で保存
 	setCreditOverAction: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			const raw = String((await event.request.formData()).get('action') ?? '');
 			if (!isSelectableCreditOverAction(raw)) return actionFailure(new PartnerStoreError('超過時の挙動の指定が正しくありません。'));
 			const saved = await setPartnerCreditOverAction(db, facilityId, partner.id, raw, userId);
@@ -623,7 +721,7 @@ export const actions: Actions = {
 	// デポジット（Phase 3b・取引先ごと）: 額の決め方（定率％／1室あたり円／1泊分）と残額の精算先（既定／請求書／現地）。管理者だけ
 	setCreditDeposit: async (event) => {
 		try {
-			const { db, facilityId, partner, userId } = await editScope(event);
+			const { db, facilityId, partner, userId } = await commonScope(event);
 			const fd = await event.request.formData();
 			const type = String(fd.get('type') ?? '');
 			if (type !== 'percent' && type !== 'yen_per_room' && type !== 'first_night') {
@@ -651,18 +749,66 @@ export const actions: Actions = {
 		}
 	},
 
-	save: async (event) => {
+	// 共通セクションの保存（複数施設化 S3・2026-10-09）: 名前・公開・連絡先・社内メモと、共通の予約設定（支払方法・請求条件・
+	// 毎回聞く項目・取引先への通知・早期決済割と受付ルールの既定〔N6〕）。施設の行には触らない（施設タブの未保存の編集を消さない）
+	saveCommon: async (event) => {
 		try {
-			const { db, partner, userId } = await editScope(event);
-			const input = parsePartnerSettings(await event.request.formData());
+			const { db, partner, userId, view } = await commonScope(event);
+			const input = parsePartnerCommonForm(await event.request.formData());
 			// デポジットの設定は専用のアクション（setCreditDeposit）で保存する。画面に残った古い値で上書きしないよう、今の DB の値を残す
+			const current = normalizePartnerBookingSettings(partner.common_settings);
 			input.booking_settings = {
 				...input.booking_settings,
-				creditDeposit: partner.booking_settings.creditDeposit,
-				creditDepositRemainder: partner.booking_settings.creditDepositRemainder
+				creditDeposit: current.creditDeposit,
+				creditDepositRemainder: current.creditDepositRemainder
 			};
-			await updatePartner(db, partner, userId, input);
-			return { saved: true };
+			// 予約を受け付けている施設があるときは、支払方法が要る
+			const accepting = view.bundle.facilities.filter((f) => !f.synthetic && f.enabled && f.booking_enabled);
+			if (accepting.length && !input.booking_settings.paymentOptions.length) {
+				throw new PartnerStoreError(`予約を受け付けている施設（${accepting.map((f) => f.name).join('・')}）があるため、支払方法を1つ以上選んでください。`);
+			}
+			await updatePartnerCommon(db, partner, userId, input);
+			return { commonSaved: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 施設タブの保存（複数施設化 S3）: hidden の facility_id の施設の行（rms_partner_facilities）だけを書く。
+	// N6 の上書きはキーの有無（「共通の既定を使う」はキーを消す）。共通の設定には触らない
+	saveFacility: async (event) => {
+		try {
+			const fd = await event.request.formData();
+			const input = parsePartnerFacilityForm(fd);
+			const { db, userId, fac, view } = await facilityScope(event, input.facilityRef);
+			if (!view.row) throw new PartnerStoreError(`${fac.name}では販売していません。先に「この施設で販売する」でオンにしてください。`, 409, 'facility_off');
+			if (input.patch.enabled && input.patch.booking_enabled && !normalizePartnerBookingSettings(view.partner.common_settings).paymentOptions.length) {
+				throw new PartnerStoreError('予約を受け付けるときは、共通の「支払方法」を1つ以上選んで保存してください。');
+			}
+			await savePartnerFacility(
+				db,
+				view.partner,
+				fac.facilityId,
+				{ ...input.patch, facility_settings: buildPartnerFacilitySettings(view.row.facility_settings, input.own, input.overrides) },
+				userId
+			);
+			return { facilitySaved: fac.bookFacilityId };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 施設タブの「この施設で販売する」: 行が無ければ作り（オン・予約受付はオフ・料金ルールなし）、オフならオンにする
+	enableFacility: async (event) => {
+		try {
+			const fd = await event.request.formData();
+			const { db, userId, fac, view } = await facilityScope(event, String(fd.get('facility_id') ?? ''));
+			if (!view.row) {
+				await savePartnerFacility(db, view.partner, fac.facilityId, { enabled: true, booking_enabled: false }, userId);
+			} else if (!view.row.enabled) {
+				await savePartnerFacility(db, view.partner, fac.facilityId, { enabled: true }, userId);
+			}
+			return { facilityEnabled: fac.bookFacilityId };
 		} catch (e) {
 			return actionFailure(e);
 		}
@@ -671,7 +817,7 @@ export const actions: Actions = {
 	// 覚書の本文（取引条件のまとめ）。取引先ページの「覚書」にそのまま出る
 	saveMemorandum: async (event) => {
 		try {
-			const { db, partner, userId } = await editScope(event);
+			const { db, partner, userId } = await commonScope(event);
 			const fd = await event.request.formData();
 			await savePartnerMemorandum(db, partner, String(fd.get('memorandum') ?? ''), userId);
 			return { memorandumSaved: true };
@@ -683,23 +829,26 @@ export const actions: Actions = {
 	// 取引先特典の画像（2026-10-03）。book-photos に上げ、保存済みの特典ならその場で imageUrl も保存する
 	// （「保存する」の押し忘れで画像が出ない、を防ぐ。まだ保存していない新しい特典は「保存する」で確定）。
 	// remove=1 なら画像を外す（ファイルは消さない）。
+	// 特典は施設ごと（§4.2）: hidden の facility_id の施設の行の perks を書き、画像は施設の置き場（partners/{施設UUID}/…）へ。
 	uploadPerkImage: async (event) => {
 		try {
-			const { db, partner, userId, facilityId } = await editScope(event);
 			const fd = await event.request.formData();
+			const { db, userId, fac, view } = await facilityScope(event, String(fd.get('facility_id') ?? ''));
+			if (!view.row) throw new PartnerStoreError(`${fac.name}では販売していません。`, 409, 'facility_off');
 			const perkId = String(fd.get('perk_id') ?? '');
 			let url = '';
 			if (fd.get('remove') !== '1') {
 				const file = fd.get('photo');
 				const problem = photoFileProblem(file instanceof File ? file : null);
 				if (problem) return actionFailure(new PartnerStoreError(problem));
-				url = await sbUploadContentPhoto(createSupabaseServerClient(event), 'partners', facilityId, file as File);
+				url = await sbUploadContentPhoto(createSupabaseServerClient(event), 'partners', fac.facilityId, file as File);
 			}
-			const current = partner.booking_settings;
-			const persisted = current.perks.some((p) => p.id === perkId);
+			// 施設の行に特典があるときだけその場で保存する（共通の旧い値で補った特典は「保存する」で施設へ確定）
+			const saved = normalizePartnerBookingSettings(view.row.facility_settings).perks;
+			const persisted = Array.isArray(view.row.facility_settings.perks) && saved.some((p) => p.id === perkId);
 			if (persisted) {
-				const perks = current.perks.map((p) => (p.id === perkId ? { ...p, imageUrl: url } : p));
-				await updatePartner(db, partner, userId, { booking_settings: normalizePartnerBookingSettings({ ...current, perks }) });
+				const perks = saved.map((p) => (p.id === perkId ? { ...p, imageUrl: url } : p));
+				await savePartnerFacility(db, view.partner, fac.facilityId, { facility_settings: { ...view.row.facility_settings, perks } }, userId);
 			}
 			return { perkImageUploaded: url, perkImagePersisted: persisted };
 		} catch (e) {
@@ -741,7 +890,7 @@ export const actions: Actions = {
 
 	regenerateUrl: async (event) => {
 		try {
-			const { db, partner, userId } = await editScope(event);
+			const { db, partner, userId } = await commonScope(event);
 			await regeneratePartnerUrl(db, partner, userId);
 			return { urlRegenerated: true };
 		} catch (e) {
@@ -781,7 +930,7 @@ export const actions: Actions = {
 
 	deletePartner: async (event) => {
 		try {
-			const { db, partner } = await editScope(event);
+			const { db, partner } = await commonScope(event);
 			await deletePartner(db, partner);
 		} catch (e) {
 			return actionFailure(e);
