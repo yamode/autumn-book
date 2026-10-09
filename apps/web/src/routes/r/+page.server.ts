@@ -20,7 +20,7 @@ import {
 	stayEndedFacility,
 	type EndedFacility
 } from '$lib/server/inroom-banners';
-import { currentStayDayItems, jstDate } from '$lib/inroom-day';
+import { upcomingItems } from '$lib/inroom-day';
 import type { Actions, PageServerLoad } from './$types';
 
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
@@ -75,21 +75,20 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[])
 	]);
 
-	// 連泊は「今の滞在日」の予定だけ（今日＋明日の朝。日付が変わると新しい滞在日に切り替わる・2026-10-09）
+	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
+	// 画面を開いたままでも時間が過ぎた分は消える（+page.svelte が1分ごとに同じ判定をし直す）
 	const now = new Date();
 	return {
 		stay,
 		guides,
 		bathReservations: bathContext?.ok
-			? currentStayDayItems(
+			? upcomingItems(
 					(bathContext.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to })),
-					(r) => ({ date: r.date, time: r.from }),
+					(r) => ({ date: r.date, start: r.from, end: r.to }),
 					now
 				)
 			: [],
-		meals: currentStayDayItems(meals, (meal) => meal, now),
-		// 画面を開いたままでも日付が変わったら読み直す（+page.svelte）
-		stayDay: jstDate(now),
+		meals: upcomingItems(meals, (meal) => ({ date: meal.date, start: meal.time }), now),
 		intercom,
 		expired: false,
 		invalidQr,
@@ -99,7 +98,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 };
 
 export const actions: Actions = {
-	// 手入力の8桁コード → トークン交換 → Cookie 発行。簡易レート制限（5回失敗で10分ロック）付き。
+	// 手入力の6桁コード（2026-10-09 以前の発行分は8桁）→ トークン交換 → Cookie 発行。簡易レート制限（5回失敗で10分ロック）付き。
 	claim: async (event) => {
 		const key = event.getClientAddress();
 		const rl = await claimRateCheck(event.platform, key);

@@ -17,7 +17,7 @@
 	</div>
 	<div class="print-hide mb-5 space-y-2 text-sm">
 		<p class="text-stone-600">
-			お客様・日付によらず同じQRです。客室に置いたままで使えます。読み取ったお客様が、チェックイン時にお渡しする8桁のコードを入れると、その方のその日の客室案内（食事時間・貸切風呂のご予約など）が開きます。
+			お客様・日付によらず同じQRです。客室に置いたままで使えます。読み取ったお客様が、チェックイン時にお渡しする6桁のコードを入れると、その方のその日の客室案内（食事時間・貸切風呂のご予約など）が開きます。
 		</p>
 		<p class="text-stone-600">
 			コードが使えるのは <b>チェックイン日の 12:00 〜 チェックアウト日の 11:00</b> です。一度入れたスマートフォンは、次からコードなしで開きます。
@@ -38,8 +38,8 @@
 		</div>
 		<div class="qr my-3 bg-white p-1"><QrCode value={data.qrUrl} px={190} label="客室案内の入口QRコード" /></div>
 		<div class="w-full">
-			<p class="text-[10px] leading-relaxed">スマートフォンで読み取り、<br />チェックイン時にお渡しした<br />8桁のコードを入力してください。</p>
-			<p class="mt-1.5 text-[8.5px] leading-snug text-stone-500">Scan and enter the 8-digit code<br />given at check-in.</p>
+			<p class="text-[10px] leading-relaxed">スマートフォンで読み取り、<br />チェックイン時にお渡しした<br />6桁のコードを入力してください。</p>
+			<p class="mt-1.5 text-[8.5px] leading-snug text-stone-500">Scan and enter the 6-digit code<br />given at check-in.</p>
 			<p class="mt-3 border-t border-stone-300 pt-2 text-[9px] text-stone-500">ご利用: チェックイン日 12:00 〜 チェックアウト日 11:00</p>
 		</div>
 	</div>
