@@ -13,6 +13,7 @@ import {
 import { notifyNewEnvironmentLogin, portalUrl } from '$lib/server/partners/portal-users';
 import { ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
+import { portalMfaUrl } from '$lib/partner-mfa';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -30,7 +31,7 @@ export const load = async (event) => {
 //   2. KV のレート制限: 1 IP × 取引先 10 回/10 分・取引先全体 60 回/10 分 → 15 分止める（アカウント単位の 5 回ロックはそのまま・二段構え）
 //      キーは限定URLのトークンではなく取引先 ID（URL を再発行しても数えが続く）
 //   3. ID・パスワードの照合（失敗・ロック中・制限中はすべて同じ文言＝ID の有無を漏らさない・§4.5）
-//   4. 成功: IP の数えをやめる（取引先全体の数は減らさない）・端末クッキー・新しい環境なら通知メール（応答の後で送る）
+//   4. 成功: IP の数えをやめる（続けて 5. 本人確認が要るログインなら /mfa へ）（取引先全体の数は減らさない）・端末クッキー・新しい環境なら通知メール（応答の後で送る）
 export const actions = {
   default: async (event) => {
     const { db, partner } = await resolvePortal(event);
@@ -84,6 +85,8 @@ export const actions = {
         })
       );
     }
+    // ログイン直後の本人確認（§6.2・S3）: always は毎回、step_up は新しい環境か前回の本人確認から 30 日以上（メールがあるとき）
+    if (result.stepUp) throw redirect(303, portalMfaUrl(event.params.token, `/p/${event.params.token}/calendar`));
     throw redirect(303, `/p/${event.params.token}/calendar`);
   }
 };

@@ -76,7 +76,7 @@ export function summarizeUserAgent(ua: string | null | undefined): string {
   return [browser ?? 'ブラウザ', os].filter(Boolean).join(' / ');
 }
 
-/** アカウント → セキュリティに出すログの種類（§4.4。§6 の mfa_* / passkey_* は S3 以降で足す） */
+/** アカウント → セキュリティに出すログの種類（§4.4。本人確認の mfa_* と email_change は S3。passkey_* は S6 で足す） */
 export const SECURITY_LOG_ACTIONS = [
   'login',
   'login_failed',
@@ -86,7 +86,13 @@ export const SECURITY_LOG_ACTIONS = [
   'password_set',
   'logout',
   'logout_others',
-  'logout_session'
+  'logout_session',
+  // 本人確認（S3）
+  'mfa_sent',
+  'mfa_ok',
+  'mfa_failed',
+  'mfa_locked',
+  'email_change'
 ] as const;
 
 /** アクセスログの表示名（取引先ページのセキュリティ・管理画面のアクセスログ共通） */
@@ -100,7 +106,12 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   logout: 'ログアウト',
   logout_others: '他の端末をログアウト',
   logout_session: '端末をログアウト',
-  child_logout_all: 'ユーザーの全端末をログアウト'
+  child_logout_all: 'ユーザーの全端末をログアウト',
+  mfa_sent: '認証コードの送信',
+  mfa_ok: '本人確認',
+  mfa_failed: '認証コードの誤り',
+  mfa_locked: '認証コードの誤りが続いたため停止',
+  email_change: 'メールアドレスの変更'
 };
 
 /** JST の日時（通知メール用） */

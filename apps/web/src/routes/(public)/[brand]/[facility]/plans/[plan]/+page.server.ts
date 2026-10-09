@@ -10,6 +10,8 @@ import {
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE } from '$lib/server/auth';
 import { holdRateCheck } from '$lib/server/hold-rate-limit';
+import { checkTurnstile } from '$lib/server/turnstile';
+import * as m from '$lib/paraglide/messages';
 import {
 	sbFacilityBySlug,
 	sbPlanBySlug,
@@ -154,8 +156,11 @@ export const actions: Actions = {
 				maxAge: 60 * 60 * 2
 			});
 
-		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
 		const ip = clientIp(event);
+		// Turnstile（auth-hardening.md §9 S8・§4.2）。未設定（ローカル・プレビュー）なら素通り。文言は多言語（会員ログインと同じキー）
+		if (!(await checkTurnstile(form, ip)).ok) return fail(400, { message: m.auth_turnstile_failed() });
+
+		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
 		if (!(await holdRateCheck(event.platform, ip))) {
 			return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
 		}

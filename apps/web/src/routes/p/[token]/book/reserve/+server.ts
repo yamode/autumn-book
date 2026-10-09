@@ -6,7 +6,7 @@ import { error, json } from '@sveltejs/kit';
 import { isStripePaymentOption } from '$lib/partner-booking';
 import { createPartnerBooking, resolvePaymentOption } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
-import { portalFacilityContext, PORTAL_HEADERS, requestMeta, requirePortalApi } from '$lib/server/partners/portal';
+import { portalAal2, portalFacilityContext, PORTAL_HEADERS, requestMeta, requirePortalApi } from '$lib/server/partners/portal';
 import { PartnerStoreError } from '$lib/server/partners/store';
 
 export const POST = async (event) => {
@@ -21,7 +21,9 @@ export const POST = async (event) => {
     if (!isStripePaymentOption(option)) throw error(400, 'オンライン決済の予約ではありません。');
     const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, { ...input, paymentOption: option }, {
       ip: requestMeta(event).ip,
-      origin: event.url.origin
+      origin: event.url.origin,
+      // 本人確認済み（aal2）のときだけ、保存カードを選べる Intent にする（docs/auth-hardening.md §5.2・S4）
+      allowSavedCards: portalAal2(session)
     });
     if (!created.payment) throw new PartnerStoreError('お支払いの準備ができませんでした。', 502);
     return json(

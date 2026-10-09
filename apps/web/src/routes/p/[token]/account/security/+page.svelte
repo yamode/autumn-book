@@ -5,7 +5,8 @@
   import type { SubmitFunction } from '@sveltejs/kit';
   import type { PageData } from './$types';
 
-  let { data, form }: { data: PageData; form?: { message?: string; loggedOut?: number } } = $props();
+  let { data, form }: { data: PageData; form?: { message?: string; loggedOut?: number; emailMessage?: string; emailSaved?: string; email?: string } } = $props();
+  let editingEmail = $state(false);
 
   let busy = $state(false);
   const submit =
@@ -26,7 +27,16 @@
     iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
   const others = $derived(data.sessions.filter((s) => !s.current).length);
   // 注意して見てほしい記録（失敗・制限・新しい環境）
-  const warn = (action: string) => action === 'login_failed' || action === 'login_locked' || action === 'login_rate_limited' || action === 'login_new_device';
+  const warn = (action: string) =>
+    action === 'login_failed' ||
+    action === 'login_locked' ||
+    action === 'login_rate_limited' ||
+    action === 'login_new_device' ||
+    action === 'mfa_failed' ||
+    action === 'mfa_locked' ||
+    action === 'email_change';
+  const inputClass =
+    'w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
 </script>
 
 <svelte:head>
@@ -51,6 +61,61 @@
     {/if}
     {#if data.loadError}
       <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{data.loadError}</p>
+    {/if}
+
+    {#if data.mfa}
+      <!-- 本人確認（docs/auth-hardening.md §6.4・S3）: 認証コードの送り先と、このブラウザの本人確認の状態 -->
+      <h3 class="mt-6 text-lg font-bold">本人確認（メールの認証コード）</h3>
+      <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+        <p class="text-stone-600">カードの登録・保存済みカードでのご予約・ユーザー管理などの前に、このメールアドレスへ届く認証コードで本人確認をお願いしています。</p>
+        <dl class="mt-3 grid gap-2 sm:grid-cols-[10rem_1fr]">
+          <dt class="text-stone-500">認証コードの送り先</dt>
+          <dd>
+            {#if data.mfa.hasEmail}
+              <span class="font-mono">{data.mfa.maskedEmail}</span>
+              {#if data.mfa.verified}<span class="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">確認済み</span>{:else}<span class="ml-2 rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">未確認</span>{/if}
+            {:else}
+              <span class="text-amber-800">未登録（本人確認ができません。登録してください）</span>
+            {/if}
+          </dd>
+          <dt class="text-stone-500">このブラウザ</dt>
+          <dd>
+            {#if data.mfa.aal2}
+              本人確認済み{#if data.mfa.aal2Until}（{fmt(data.mfa.aal2Until)} まで有効）{/if}
+            {:else}
+              未確認 {#if data.mfa.hasEmail}<a href={data.mfa.mfaHref} class="ml-2 underline">本人確認する</a>{/if}
+            {/if}
+          </dd>
+        </dl>
+        {#if form?.emailMessage}
+          <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.emailMessage}</p>
+        {:else if form?.emailSaved}
+          <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">メールアドレスを {form.emailSaved} にしました。次の本人確認から、このアドレスに認証コードが届きます。</p>
+        {/if}
+        {#if editingEmail || !data.mfa.hasEmail || form?.emailMessage}
+          <form method="POST" action="?/set_email" use:enhance={submit()} class="mt-4 space-y-3">
+            <label class="block">
+              <span class="mb-1 block font-medium">{data.mfa.hasEmail ? '新しいメールアドレス' : 'メールアドレス'}</span>
+              <input name="email" type="email" required autocomplete="email" value={form?.email ?? ''} class={inputClass} />
+            </label>
+            {#if !data.mfa.hasEmail}
+              <label class="block">
+                <span class="mb-1 block font-medium">確認のため、いまのパスワード</span>
+                <input name="password" type="password" required autocomplete="current-password" class={inputClass} />
+              </label>
+            {:else if !data.mfa.aal2}
+              <p class="text-xs text-stone-500">変更の前に、いまのメールアドレスでの本人確認をお願いします（「変更する」を押すと確認の画面へ進みます）。</p>
+            {/if}
+            <div class="flex flex-wrap gap-2">
+              <button type="submit" disabled={busy} class="rounded-md bg-accent-600 px-4 py-2 font-medium text-white hover:bg-accent-500 disabled:opacity-50">{data.mfa.hasEmail ? '変更する' : '登録する'}</button>
+              {#if data.mfa.hasEmail}<button type="button" onclick={() => (editingEmail = false)} class="rounded-md border border-stone-300 px-4 py-2 hover:bg-stone-50">やめる</button>{/if}
+            </div>
+            <p class="text-xs leading-5 text-stone-500">変更すると、変更前のアドレス（無ければ貴社のマスタユーザー）へお知らせのメールが届きます。</p>
+          </form>
+        {:else}
+          <button type="button" onclick={() => (editingEmail = true)} class="mt-4 rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50">メールアドレスを変更する</button>
+        {/if}
+      </div>
     {/if}
 
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3">

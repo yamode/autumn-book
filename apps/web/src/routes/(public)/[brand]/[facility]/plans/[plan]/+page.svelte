@@ -17,8 +17,17 @@
 	import { percentText } from '$lib/early-prepay';
 	import { searchQuery } from '$lib/components/guests';
 	import { safeLocalPath, viaCrumb, viaStorageKey } from '$lib/booking-nav';
+	import Turnstile from '$lib/components/Turnstile.svelte';
+	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let { data, form } = $props();
+
+	// 仮押さえの Turnstile（auth-hardening.md §9 S8）: 部品は 1 つだけ置き、押した部屋のフォームにトークンを足して送る
+	let turnstileBox: HTMLDivElement | undefined = $state();
+	const withTurnstile: SubmitFunction = ({ formData }) => {
+		const token = turnstileBox?.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')?.value;
+		if (token) formData.set('cf-turnstile-response', token);
+	};
 
 	// GA4 予約ファネル: プラン閲覧（設計書 §9）
 	$effect(() => {
@@ -264,7 +273,7 @@
 							{#if r.remaining !== null && r.remaining <= 2}
 								<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(r.remaining) })}</p>
 							{/if}
-							<form method="POST" action="?/hold" use:enhance class="mt-2">
+							<form method="POST" action="?/hold" use:enhance={withTurnstile} class="mt-2">
 								<input type="hidden" name="planId" value={data.plan.id} />
 								<input type="hidden" name="roomTypeId" value={r.room.id} />
 								<input type="hidden" name="checkin" value={data.params.checkin} />
@@ -284,6 +293,9 @@
 			{/each}
 		</div>
 	</section>
+
+	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない） -->
+	<div bind:this={turnstileBox}><Turnstile action="booking-hold" /></div>
 
 	<PerkModal bind:content={perkContent} />
 	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />

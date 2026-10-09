@@ -3,6 +3,7 @@
   // 取引先専用ページ: アカウント → お支払いカード（保存カード・2026-10-07・docs/saved-cards.md §6.1）。
   // 登録したカードは御社の全ユーザーが予約時に選べる。登録はモーダル（StripePayment・mode='setup'・Apple Pay 等は出さない・N4）、
   // 削除・既定は form action。請求はご予約ごとの同意に基づく（ここでの同意は「保存」の同意）。
+  // 登録・削除・既定はマスタユーザーだけ＋本人確認（docs/auth-hardening.md §5.1・S4）。子ユーザーには一覧だけを出す。
   import { enhance } from '$app/forms';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
@@ -63,7 +64,12 @@
       location.href = `/p/${token}`;
       throw new Error('ログインの有効期限が切れました。');
     }
-    const j = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; clientSecret?: string; returnUrl?: string } | null;
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; code?: string; next?: string; message?: string; clientSecret?: string; returnUrl?: string } | null;
+    // 本人確認が切れていた（12時間）→ 確認の画面へ。済んだらこの画面に戻る
+    if (res.status === 403 && j?.code === 'mfa_required' && j.next) {
+      location.href = j.next;
+      throw new Error(j.message ?? '本人確認が必要です。');
+    }
     if (!res.ok || !j?.ok || !j.clientSecret || !j.returnUrl) throw new Error(j?.message || 'カード登録の準備ができませんでした。時間をおいてお試しください。');
     return { clientSecret: j.clientSecret, returnUrl: j.returnUrl };
   }
@@ -96,8 +102,8 @@
 
 <section>
   <p class="text-sm leading-6 text-stone-600">
-    ここで登録したカードは、御社の全ユーザーが予約時に選べます。請求はご予約ごとの同意（予約画面の文面）に基づいて行います。
-    カードの番号は Stripe が保管し、当サイトには保存されません。
+    ここで登録したカードは、御社の全ユーザーが予約時に選べます。<strong class="font-medium text-brand-900">登録・削除はマスタユーザーのみ</strong>。選んで確定するときは本人確認（メールの認証コード）が必要です。
+    請求はご予約ごとの同意（予約画面の文面）に基づいて行います。カードの番号は Stripe が保管し、当サイトには保存されません。
   </p>
 
   {#if data.preview}
@@ -119,6 +125,14 @@
     {#if data.loadError}
       <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{data.loadError}</p>
     {/if}
+    {#if !data.canManage}
+      <p class="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">カードの登録・削除は貴社のマスタユーザーが行えます。</p>
+    {:else if !data.aal2}
+      <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <span>カードの登録・削除・既定の変更の前に、本人確認（メールの認証コード）をお願いします。</span>
+        <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
+      </p>
+    {/if}
 
     {#if data.cards.length === 0}
       {#if !data.loadError}
@@ -139,6 +153,7 @@
                   <p class="mt-1 text-xs leading-5 text-stone-500">このカードでお支払い予定のご予約: {c.bookings.join('・')}</p>
                 {/if}
               </div>
+              {#if data.canManage}
               <div class="flex flex-wrap gap-2 text-sm">
                 {#if !c.isDefault}
                   <form method="POST" action="?/set_default" use:enhance={submit()}>
@@ -151,15 +166,20 @@
                   <button type="submit" disabled={busy} class="rounded-md border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50 disabled:opacity-50">削除</button>
                 </form>
               </div>
+              {/if}
             </div>
           </li>
         {/each}
       </ul>
     {/if}
 
-    <button type="button" onclick={openAdd} disabled={!data.stripeKey} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">
-      カードを追加する
-    </button>
+    {#if data.canManage && data.aal2}
+      <button type="button" onclick={openAdd} disabled={!data.stripeKey} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">
+        カードを追加する
+      </button>
+    {:else if data.canManage}
+      <a href={data.mfaHref} class="mt-5 inline-block rounded-lg border border-stone-300 px-5 py-2.5 text-sm font-medium text-stone-700 hover:bg-stone-50">本人確認してカードを追加する</a>
+    {/if}
   {/if}
 </section>
 

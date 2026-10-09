@@ -12,7 +12,8 @@
   import StripePayment from '$lib/components/payment/StripePayment.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
-  import { fetchPartnerCustomerSession } from '$lib/partner-saved-cards';
+  import { fetchPartnerCustomerSession, type PartnerCustomerSession } from '$lib/partner-saved-cards';
+  import PartnerStepUp from '$lib/components/PartnerStepUp.svelte';
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
   import { quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
@@ -210,11 +211,22 @@
   // チェックアウト日決済で選んだ保存カードの有効期限が近ければ、確定前に警告して止める（サーバでも card_expiry で断る）
   let savedCards = $state<SavedCardExp[]>([]);
   let savedSel = $state<{ id: string; card: { exp_month?: number; exp_year?: number } | null } | null>(null);
+  // 本人確認（docs/auth-hardening.md §5.2・S4）: 保存カードがあっても、本人確認（aal2）が済むまでは出さない。
+  // この画面のまま認証コードで確認できるようにし、済んだら決済部品を作り直して保存カードを出す（入力した内容は残る）
+  let savedMfa = $state<PartnerCustomerSession | null>(null);
+  let stepUpOpen = $state(false);
+  let savedVersion = $state(0);
   async function loadSavedSession(): Promise<string | null> {
     if (data.portal.preview) return null;
-    const r = await fetchPartnerCustomerSession(token);
+    const r = await fetchPartnerCustomerSession(token, null, `${location.pathname}${location.search}`);
     savedCards = r.cards;
+    savedMfa = r.mfaRequired ? r : null;
     return r.clientSecret;
+  }
+  async function onStepUpDone() {
+    stepUpOpen = false;
+    savedMfa = null;
+    savedVersion += 1;
   }
   const savedTooSoon = $derived(payMode === 'setup' && quote.ok && selectedCardExpiresBefore(savedSel, savedCards, quote.checkOut));
 
@@ -701,7 +713,28 @@
             </div>
           {/if}
           {#if isStripe}
-            {#key payMode}
+            {#if savedMfa && !pending && !data.portal.preview}
+              <div class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3.5 py-3 text-sm">
+                <p class="text-stone-700">御社の保存済みのカード（{savedMfa.savedCount}枚）を使うには、本人確認（メールの認証コード）が必要です。新しいカードを入力する場合は不要です。</p>
+                {#if stepUpOpen && savedMfa.stepUp}
+                  <div class="mt-3 rounded-lg bg-white p-3">
+                    <PartnerStepUp
+                      token={token ?? ''}
+                      compact
+                      maskedEmail={savedMfa.stepUp.maskedEmail}
+                      methods={savedMfa.stepUp.methods}
+                      initialWaitSec={savedMfa.stepUp.waitSec}
+                      initialOpen={savedMfa.stepUp.open}
+                      securityHref={`/p/${token}/account/security`}
+                      onverified={onStepUpDone}
+                    />
+                  </div>
+                {:else}
+                  <button type="button" onclick={() => (stepUpOpen = true)} class="mt-2 rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認して保存済みのカードを使う</button>
+                {/if}
+              </div>
+            {/if}
+            {#key `${payMode}:${savedVersion}`}
               <StripePayment
                 bind:this={payRef}
                 publishableKey={data.stripeKey}

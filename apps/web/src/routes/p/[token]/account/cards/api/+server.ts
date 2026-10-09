@@ -2,10 +2,13 @@
 //   prepare … 取引先共有の Customer（無ければ作る）に SetupIntent を作る（毎回新しく・N8）→ { clientSecret, returnUrl }
 //   confirm … ブラウザで confirmSetup が済んだ連絡 { intentId } → SetupIntent を取り直して確かめ、期限切れ・二重登録を弾いて保存
 //             → { result: { status, card? }, message }
+// 登録はマスタユーザーだけ（DB で確かめる・子ユーザーは 403）。prepare は本人確認（aal2）も要る（未確認は 403 mfa_required・
+// docs/auth-hardening.md §5.1・§5.2・S4）。confirm は prepare 済みの登録の後始末なので、マスタかだけを確かめる。
 // 確認モードは portal.ts（requirePortalApi）が 403。Webhook の setup_intent.succeeded は purpose が違うので無視される（ここだけで確定する）。
 import { error, json } from '@sveltejs/kit';
 import { PORTAL_HEADERS, requestMeta, requirePortalApi } from '$lib/server/partners/portal';
-import { logPartnerAccess } from '$lib/server/partners/store';
+import { logPartnerAccess, PartnerStoreError, requireSavedCardManager } from '$lib/server/partners/store';
+import { aal2ApiProblem } from '$lib/server/partners/mfa';
 import { inlinePaymentReady, STRIPE_APP, STRIPE_PURPOSE_PARTNER_CARD, StripeError } from '$lib/server/stripe';
 import { confirmCardSetup, prepareCardSetup, resolvePartnerCustomer, SavedCardError } from '$lib/server/payments/saved-cards';
 import { isSetupIntentId } from '$lib/server/payments/verify';
@@ -19,7 +22,10 @@ export const POST = async (event) => {
   const owner = { app: STRIPE_APP, purpose: STRIPE_PURPOSE_PARTNER_CARD, refKey: 'partner_id' as const, refId: partner.id };
   try {
     if (!inlinePaymentReady()) return reply({ ok: false, message: '現在ご利用いただけません。' }, 503);
+    await requireSavedCardManager(db, partner.id, session.id);
     if (action === 'prepare') {
+      const mfa = aal2ApiProblem(event, session, `/p/${event.params.token}/account/cards`);
+      if (mfa) return mfa;
       const customer = await resolvePartnerCustomer(db, partner, { create: true });
       const si = await prepareCardSetup({
         customer: customer!,
@@ -50,6 +56,7 @@ export const POST = async (event) => {
     }
     throw error(400, '不明な操作です。');
   } catch (e) {
+    if (e instanceof PartnerStoreError) return reply({ ok: false, message: e.message }, e.status >= 400 && e.status < 600 ? e.status : 400);
     if (e instanceof SavedCardError) return reply({ ok: false, message: e.message }, e.status);
     if (e instanceof StripeError) return reply({ ok: false, message: 'カード登録の準備ができませんでした。時間をおいてお試しください。' }, 502);
     throw e;

@@ -72,6 +72,12 @@
     マスタユーザーの追加・停止は宿へご依頼ください。
   </p>
 
+  {#if !data.aal2}
+    <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <span>ユーザーの追加・停止・削除・ログアウトなどの操作の前に、本人確認（メールの認証コード）をお願いします。</span>
+      <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
+    </p>
+  {/if}
   {#if form?.message}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
   {/if}

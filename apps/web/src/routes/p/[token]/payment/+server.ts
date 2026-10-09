@@ -9,9 +9,18 @@
 //             共有 Customer が無い・予約が予約ごとの Customer（旧予約）なら clientSecret: null（従来どおり新しいカードの入力だけ）。
 //             cards は有効期限の事前警告用（チェックアウト日決済）。確認モードは POST 自体が 403
 // どれもログイン中の取引先の予約だけを扱う（別の取引先の予約 id・Intent は unknown / 404）。
+//
+// 保存カードと本人確認（docs/auth-hardening.md §5.2・S4）:
+//   - customer_session は本人確認済み（aal2）のセッションにだけ発行する。未確認なら clientSecret: null と mfaRequired（保存カードがあるとき）を返す
+//   - prepare は aal2 でなければ Customer 無しの Intent を用意する（保存カードは Stripe が断る＝サーバ側の強制。booking.ts preparePartnerPayment）。
+//     カードの登録し直しは aal2 が必須（403 mfa_required）
+//   - 予約画面の確定（/book/reserve）も同じ条件で Intent を作る
+//   - オフセッション請求（チェックアウト日決済・キャンセル料）は aal を見ない（台帳の Customer＋PaymentMethod の組だけ）
 import { error, json } from '@sveltejs/kit';
 import { confirmPartnerIntent, getPartnerBooking, inlinePaymentReady, releasePendingBooking, resumePartnerPayment } from '$lib/server/partners/booking';
-import { PORTAL_HEADERS, requirePortalApi } from '$lib/server/partners/portal';
+import { portalAal2, PORTAL_HEADERS, requirePortalApi } from '$lib/server/partners/portal';
+import { aal2ApiProblem, emailOtpStatus, loadMfaAccount } from '$lib/server/partners/mfa';
+import { maskEmail, mfaMethodsFor, normalizeMfaPolicy, portalMfaUrl } from '$lib/partner-mfa';
 import { PartnerStoreError } from '$lib/server/partners/store';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { StripeError } from '$lib/server/stripe';
@@ -21,7 +30,10 @@ import { savedCardCustomerFor } from '$lib/saved-cards';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const POST = async (event) => {
-  const { db, partner } = await requirePortalApi(event);
+  const { db, partner, session } = await requirePortalApi(event);
+  const aal2 = portalAal2(session);
+  // 本人確認の後に戻る先: 予約一覧（モーダル）から来た予約は予約一覧、予約画面はブラウザが渡した戻り先（無ければ予約一覧）
+  const backTo = `/p/${event.params.token}/bookings`;
   const body = (await event.request.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(body.action ?? '');
   const bookingId = String(body.bookingId ?? '');
@@ -30,7 +42,7 @@ export const POST = async (event) => {
   try {
     if (action === 'prepare') {
       if (!UUID.test(bookingId)) throw error(400, '予約の指定が正しくありません。');
-      const payment = await resumePartnerPayment(db, partner, bookingId);
+      const payment = await resumePartnerPayment(db, partner, bookingId, { aal2 });
       return reply({ ok: true, payment, returnUrl: `${event.url.origin}/p/${event.params.token}/bookings` });
     }
     if (action === 'confirm') {
@@ -40,6 +52,27 @@ export const POST = async (event) => {
     }
     if (action === 'customer_session') {
       const none = () => reply({ ok: true, clientSecret: null, cards: [] });
+      // 本人確認がまだ: 保存カードは出さない。保存カードがあれば、本人確認すれば選べることを画面に知らせる（件数だけ）
+      // 予約画面がその場で本人確認できるよう、送り先（伏せたもの）と方法・再送の待ちも返す
+      const needMfa = async (count: number) => {
+        const policy = normalizeMfaPolicy(partner.mfa_policy);
+        const account = await loadMfaAccount(db, partner.id, session.id).catch(() => null);
+        const status = account?.email ? await emailOtpStatus(db, session.id).catch(() => null) : null;
+        return reply({
+          ok: true,
+          clientSecret: null,
+          cards: [],
+          mfaRequired: count > 0,
+          savedCount: count,
+          mfaUrl: portalMfaUrl(event.params.token, String(body.next || backTo)),
+          stepUp: {
+            maskedEmail: maskEmail(account?.email),
+            methods: mfaMethodsFor(policy, { email: account?.email ?? null }),
+            waitSec: status?.waitSec ?? 0,
+            open: status?.open ?? false
+          }
+        });
+      };
       if (!inlinePaymentReady()) return none();
       const booking = bookingId ? (UUID.test(bookingId) ? await getPartnerBooking(db, partner.id, bookingId) : null) : null;
       if (bookingId && !booking) return none();
@@ -50,6 +83,7 @@ export const POST = async (event) => {
       try {
         const cards = await listSavedCards(customer);
         if (!cards.length) return none();
+        if (!aal2) return needMfa(cards.length);
         const s = await createSavedCardSession(customer);
         return reply({ ok: true, clientSecret: s.clientSecret, cards: cards.map((c) => ({ id: c.id, expMonth: c.expMonth, expYear: c.expYear })) });
       } catch (e) {
@@ -63,6 +97,7 @@ export const POST = async (event) => {
     }
     throw error(400, '不明な操作です。');
   } catch (e) {
+    if (e instanceof PartnerStoreError && e.code === 'mfa_required') return aal2ApiProblem(event, session, backTo) ?? reply({ ok: false, message: e.message }, 403);
     if (e instanceof PartnerStoreError) return reply({ ok: false, message: e.message }, e.status >= 400 && e.status < 600 ? e.status : 400);
     if (e instanceof StripeError) return reply({ ok: false, message: 'お支払いの準備ができませんでした。時間をおいてお試しください。' }, 502);
     throw e;

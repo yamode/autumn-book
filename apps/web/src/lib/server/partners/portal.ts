@@ -19,6 +19,7 @@ import {
 import { isPartnerBookingOpen } from './booking';
 import { PARTNER_PREVIEW_COOKIE, PREVIEW_ACCOUNT_ID, PREVIEW_DENIED_MESSAGE, verifyPreviewToken } from './preview';
 import { randomToken, sha256Hex } from './crypto';
+import { isAal2Valid, normalizeMfaPolicy, portalMfaGate, portalMfaUrl } from '$lib/partner-mfa';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -285,14 +286,40 @@ function denyPreviewWrite(event: Pick<RequestEvent, 'request'>, session: { previ
   if (session?.preview && event.request.method !== 'GET' && event.request.method !== 'HEAD') throw error(403, PREVIEW_DENIED_MESSAGE);
 }
 
+// 本人確認（第2要素）の関所（docs/auth-hardening.md §6.2・S3）: ログイン直後の本人確認待ち（mfa_method='required'）と、
+// 方針 always / passkey_only で aal2 が切れているセッションは、/mfa（と、メールの登録・ログアウト）以外を使わせない。
+// opts.mfaGate=false: /mfa 自身・セキュリティのメール登録など、本人確認の前に使う必要のある入口だけが渡す。
+type PortalGateOptions = { mfaGate?: boolean };
+
+/** 戻り先（いま開いているページ・form action の ?/xxx は外す） */
+function gateNext(event: { url?: URL }, token: string): string {
+  if (!event.url) return `/p/${token}/calendar`;
+  const u = new URL(event.url);
+  for (const k of [...u.searchParams.keys()]) if (k.startsWith('/')) u.searchParams.delete(k);
+  const q = u.searchParams.toString();
+  return `${u.pathname}${q ? `?${q}` : ''}`;
+}
+
+/** セッションと取引先の方針から、関所で止めるか（確認モードは止めない） */
+export function portalNeedsMfa(partner: Pick<PartnerContext, 'mfa_policy'>, session: { aal?: number; mfaAt?: string | null; mfaMethod?: string | null; preview?: boolean }) {
+  return portalMfaGate(session, normalizeMfaPolicy(partner.mfa_policy));
+}
+
+/** セッションの aal2 が今も有効か（表示用。確認モードは false） */
+export const portalAal2 = (session: { aal?: number; mfaAt?: string | null; preview?: boolean } | null) => Boolean(session && !session.preview && isAal2Valid(session));
+
 // ログイン済みの取引先ページ共通: セッションが無い・公開停止中ならログイン画面へ戻す。
-export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform }) {
+export async function requirePortalSession(
+  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform },
+  opts: PortalGateOptions = {}
+) {
   const { db, partner, session } = await resolvePortal(event);
   const token = event.params.token ?? '';
   if (!session) throw redirect(303, `/p/${token}`);
   // 確認モードは公開停止中でも見られる（公開前の確認のため）
   if (partnerUnavailableReason(partner) && !session.preview) throw redirect(303, `/p/${token}`);
   denyPreviewWrite(event, session);
+  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw redirect(303, portalMfaUrl(token, gateNext(event, token)));
   return { db, partner, session };
 }
 
@@ -320,10 +347,14 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
 }
 
 // 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
-export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform }) {
+export async function requirePortalApi(
+  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform },
+  opts: PortalGateOptions = {}
+) {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
   if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');
   denyPreviewWrite(event, session);
+  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw error(403, '本人確認（メールの認証コード）が済んでいません。画面を読み直してください。');
   return { db, partner, session };
 }

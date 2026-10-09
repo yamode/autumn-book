@@ -1,6 +1,8 @@
 import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 import { accountStatus } from '$lib/partner-account-roles';
-import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { portalAal2, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { requireAal2 } from '$lib/server/partners/mfa';
+import { portalMfaUrl } from '$lib/partner-mfa';
 import { autoChildLoginId, portalUrl, sendChildSetupEmail } from '$lib/server/partners/portal-users';
 import { isEmail } from '$lib/server/partners/staff-form';
 import {
@@ -18,6 +20,7 @@ import {
 // 取引先専用ページ: アカウント → ユーザー管理（マスタユーザーだけ。2026-10-01 追加）。
 // マスタユーザーは取引先内の子ユーザーを作成・停止/再開・削除・パスワード設定リンクの再送ができる。
 // 権限は store.ts の requireMasterAccount / requireChildTarget が DB 条件で毎回確かめる（ここでの session.is_master は入口の早期判定）。
+// どの操作も本人確認（aal2）が要る（docs/auth-hardening.md §5.2・S3）。一覧を見るだけなら要らない。
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -46,7 +49,9 @@ export const load = async (event) => {
   }));
   return {
     portal: portalHeader(partner, session),
-    users
+    users,
+    aal2: portalAal2(session),
+    mfaHref: portalMfaUrl(event.params.token, `/p/${event.params.token}/account/users`)
   };
 };
 
@@ -58,6 +63,8 @@ function failure(e: unknown) {
 async function masterScope(event: RequestEvent) {
   const scope = await requirePortalSession(event);
   if (!scope.session.is_master) throw error(403, 'ユーザー管理はマスタユーザーだけが使えます。');
+  // 本人確認がまだ・12時間を過ぎた → /mfa（済んだらこの画面へ戻る）
+  requireAal2(event, scope.session, { next: `/p/${event.params.token}/account/users` });
   return scope;
 }
 

@@ -6,7 +6,9 @@
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import type { PaymentConfirmed, PaymentPrepareResult } from '$lib/components/payment/types';
   import { partnerAccent } from '$lib/partner-theme';
-  import { fetchPartnerCustomerSession } from '$lib/partner-saved-cards';
+  import { fetchPartnerCustomerSession, type PartnerCustomerSession } from '$lib/partner-saved-cards';
+  import PartnerStepUp from '$lib/components/PartnerStepUp.svelte';
+  import type { MfaMethod } from '$lib/partner-mfa';
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
   import PartnerAttachments from '$lib/components/PartnerAttachments.svelte';
   import { streamed } from '$lib/streamed.svelte';
@@ -86,9 +88,33 @@
         : `${b.isDeposit ? 'デポジット ' : ''}${yen(b.payAmount)} を支払って予約を確定する`
       : 'このカードに登録し直す';
 
+  // 本人確認（docs/auth-hardening.md §5.2・S4）: カードの登録し直しは本人確認が要る。支払待ちは、保存済みのカードを使うときだけ要る。
+  // モーダルの中で認証コードを確かめ、済んだら決済部品を作り直す（保存カードが出る）
+  let aal2Now = $state(false);
+  const aal2 = $derived(data.aal2 || aal2Now);
+  type StepUpInfo = { maskedEmail: string; methods: MfaMethod[]; waitSec: number; open: boolean };
+  let stepUp = $state<StepUpInfo | null>(null);
+  let savedMfa = $state<PartnerCustomerSession | null>(null);
+  let payVersion = $state(0);
+  const needsStepUpFirst = (b: Row) => b.status !== 'pending_payment' && !aal2;
+  async function loadStepUp() {
+    const res = await fetch(`/p/${token}/mfa/email/send`).catch(() => null);
+    const j = (await res?.json().catch(() => null)) as (StepUpInfo & { ok?: boolean }) | null;
+    stepUp = j?.ok ? { maskedEmail: j.maskedEmail, methods: j.methods, waitSec: j.waitSec, open: j.open } : { maskedEmail: '', methods: [], waitSec: 0, open: false };
+  }
+  async function onStepUpDone() {
+    aal2Now = true;
+    stepUp = null;
+    savedMfa = null;
+    payVersion += 1;
+  }
+
   function openPay(b: Row) {
     payTarget = b;
     savedSel = null;
+    savedMfa = null;
+    stepUp = null;
+    if (needsStepUpFirst(b)) void loadStepUp();
   }
   // 保存カード（2026-10-07・docs/saved-cards.md §6.4）: モーダルを開くたびに、その予約で使える取引先共有の保存カードの CustomerSession を取る。
   // チェックアウト日決済で選んだ保存カードの有効期限が近ければ、確定前に止める（サーバでも card_expiry で断る）
@@ -96,8 +122,9 @@
   let savedSel = $state<{ id: string; card: { exp_month?: number; exp_year?: number } | null } | null>(null);
   async function loadSavedSession(): Promise<string | null> {
     if (data.portal.preview || !payTarget) return null;
-    const r = await fetchPartnerCustomerSession(token, payTarget.id);
+    const r = await fetchPartnerCustomerSession(token, payTarget.id, `/p/${token}/bookings`);
     savedCards = r.cards;
+    savedMfa = r.mfaRequired ? r : null;
     return r.clientSecret;
   }
   const savedTooSoon = $derived(payTarget?.payMode === 'setup' && selectedCardExpiresBefore(savedSel, savedCards, payTarget.checkOut));
@@ -117,7 +144,13 @@
       location.href = `/p/${token}`;
       throw new Error('ログインの有効期限が切れました。');
     }
-    const j = (await res.json().catch(() => null)) as { ok?: boolean; message?: string; returnUrl?: string; payment?: { clientSecret: string } } | null;
+    const j = (await res.json().catch(() => null)) as { ok?: boolean; code?: string; message?: string; returnUrl?: string; payment?: { clientSecret: string } } | null;
+    // 本人確認が切れていた（12時間）→ モーダルの中で確かめ直す
+    if (res.status === 403 && j?.code === 'mfa_required') {
+      aal2Now = false;
+      void loadStepUp();
+      throw new Error(j.message ?? '本人確認が必要です。');
+    }
     if (!res.ok || !j?.ok || !j.payment || !j.returnUrl) throw new Error(j?.message || 'お支払いの準備ができませんでした。時間をおいてお試しください。');
     return { clientSecret: j.payment.clientSecret, returnUrl: j.returnUrl };
   }
@@ -453,6 +486,30 @@
         <div class="flex justify-between gap-2"><dt class="text-stone-500">{b.payMode === 'setup' ? 'チェックアウト日の請求額' : b.isDeposit ? 'お支払い額（デポジット）' : 'お支払い額'}</dt><dd class="font-bold tabular-nums">{yen(b.payMode === 'setup' ? b.total : b.payAmount)}</dd></div>
         {#if b.status === 'pending_payment' && b.paymentExpiresAt}<div class="flex justify-between gap-2"><dt class="text-stone-500">期限</dt><dd>{hm(b.paymentExpiresAt)} まで</dd></div>{/if}
       </dl>
+      {#if stepUp || (savedMfa && savedMfa.stepUp)}
+        {@const info = stepUp ?? savedMfa?.stepUp}
+        <div class="mt-4 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] p-3 text-sm">
+          <p class="mb-3 text-stone-700">
+            {stepUp ? 'カードの登録し直しには、本人確認（メールの認証コード）が必要です。' : `御社の保存済みのカード（${savedMfa?.savedCount ?? 0}枚）を使うには、本人確認が必要です。新しいカードを入力する場合は不要です。`}
+          </p>
+          {#if info}
+            <div class="rounded-lg bg-white p-3">
+              <PartnerStepUp
+                token={token ?? ''}
+                compact
+                maskedEmail={info.maskedEmail}
+                methods={info.methods}
+                initialWaitSec={info.waitSec}
+                initialOpen={info.open}
+                securityHref={`/p/${token}/account/security`}
+                onverified={onStepUpDone}
+              />
+            </div>
+          {/if}
+        </div>
+      {/if}
+      {#if !needsStepUpFirst(b)}
+      {#key payVersion}
       <div class="mt-4">
         <StripePayment
           bind:this={payRef}
@@ -469,10 +526,12 @@
           validate={() => (savedTooSoon ? SAVED_CARD_EXPIRY_WARNING : null)}
         />
       </div>
+      {/key}
+      {/if}
       {#if savedTooSoon}
         <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{SAVED_CARD_EXPIRY_WARNING}</p>
       {/if}
-      <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey || savedTooSoon} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
+      <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey || savedTooSoon || needsStepUpFirst(b)} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
         {payBusy ? '確認しています…' : payLabel(b)}
       </button>
       <button type="button" onclick={closePay} disabled={payBusy} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">閉じる</button>

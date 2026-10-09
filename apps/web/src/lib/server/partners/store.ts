@@ -18,6 +18,7 @@ import {
   SECURITY_LOG_ACTIONS,
   type LoginHistoryEntry
 } from '$lib/partner-login-security';
+import { loginStepUpReason, MFA_PENDING_MARK, normalizeMfaPolicy, type LoginStepUpReason, type PartnerMfaPolicy } from '$lib/partner-mfa';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
@@ -39,7 +40,7 @@ import { partnerServiceClient } from './admin-client';
 import { removeAllPartnerDocumentFiles } from './memorandum';
 import { removeAllBookingAttachmentFiles } from './booking-attachments';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
-import { canManageAccount } from '$lib/partner-account-roles';
+import { canManageAccount, canManageSavedCards } from '$lib/partner-account-roles';
 import {
   ilikeContainsPattern,
   isPmsPartnerGuestType,
@@ -99,6 +100,8 @@ export type PartnerCommonRow = {
   // どちらも管理画面の「PMS の顧客マスタとの紐づけ」で編集
   booking_name_mode: PartnerBookingNameMode;
   credit_over_action: PartnerCreditOverAction;
+  /** 第2要素の方針（docs/auth-hardening.md §6.3・既定 step_up）。古いテストの行には無いので省略可 */
+  mfa_policy?: PartnerMfaPolicy;
   created_at: string;
   updated_at: string;
 };
@@ -244,7 +247,7 @@ function raise(error: { code?: string; message?: string } | null, fallback: stri
 }
 
 const COMMON_COLUMNS =
-  'id, tenant_id, primary_facility_id, legacy_facility_id:facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, note, booking_settings, pms_guest_id, booking_name_mode, credit_over_action, created_at, updated_at';
+  'id, tenant_id, primary_facility_id, legacy_facility_id:facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, note, booking_settings, pms_guest_id, booking_name_mode, credit_over_action, mfa_policy, created_at, updated_at';
 const FACILITY_COLUMNS =
   'partner_id, facility_id, tenant_id, enabled, booking_enabled, max_days_ahead, show_inventory, include_advance, pricing, payment_method_id, facility_settings, sort_order, updated_at';
 const ACCOUNT_COLUMNS =
@@ -272,6 +275,7 @@ function toCommon(row: Record<string, unknown>): PartnerCommonRow {
     pms_guest_id: (row.pms_guest_id as string | null) ?? null,
     booking_name_mode: normalizeBookingNameMode(row.booking_name_mode),
     credit_over_action: normalizeCreditOverAction(row.credit_over_action),
+    mfa_policy: normalizeMfaPolicy(row.mfa_policy),
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? '')
   };
@@ -1306,7 +1310,9 @@ export async function logPartnerAccess(
     );
 }
 
-async function startSession(db: SupabaseClient, accountId: string, meta: RequestMeta): Promise<string> {
+// opts.mfaPending: ログイン直後に本人確認を求める（mfa_method に印 'required' を付ける・aal は 1 のまま・§6.2）。
+// 印が付いたセッションは、本人確認が済むまで /mfa 以外を使えない（portal.ts の関所）
+async function startSession(db: SupabaseClient, accountId: string, meta: RequestMeta, opts: { mfaPending?: boolean } = {}): Promise<string> {
   const token = randomToken(32);
   const { error } = await db.from('rms_partner_sessions').insert({
     account_id: accountId,
@@ -1314,7 +1320,8 @@ async function startSession(db: SupabaseClient, accountId: string, meta: Request
     expires_at: new Date(Date.now() + SESSION_TTL_HOURS * 3600_000).toISOString(),
     user_agent: meta.userAgent?.slice(0, 300) ?? null,
     ip: meta.ip,
-    device_id: meta.deviceId ?? null
+    device_id: meta.deviceId ?? null,
+    ...(opts.mfaPending ? { mfa_method: MFA_PENDING_MARK } : {})
   });
   if (error) raise(error, 'ログインできませんでした。');
   // 期限切れセッションの掃除（ついでに・失敗は無視）。
@@ -1332,6 +1339,8 @@ export type LoginResult =
       account: Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'email' | 'is_master'>;
       /** 新しい環境（端末も IP も直近 90 日に無い）からのログインか（§4.3） */
       newEnvironment: boolean;
+      /** ログインの直後に本人確認（/mfa）を求める理由（§6.2）。求めない → null */
+      stepUp: LoginStepUpReason | null;
     }
   | { ok: false; message: string };
 
@@ -1416,7 +1425,12 @@ export async function loginPartner(
   // 新しい環境かは、このログインのセッションを作る前の履歴で判定する（§4.3）
   const history = await loginHistory(db, partner.id, account.id).catch(() => null);
   const newEnvironment = history ? isNewEnvironment(history, meta.deviceId ?? null, meta.ip) : false;
-  const sessionToken = await startSession(db, account.id, meta);
+  // ログイン直後の本人確認（§6.2）: always は毎回、step_up はメールがあって新しい環境か 30 日ぶりのとき
+  const policy = normalizeMfaPolicy(partner.mfa_policy);
+  const hasEmail = Boolean(String(account.email ?? '').trim());
+  const lastMfaAt = policy === 'step_up' && hasEmail && !newEnvironment ? await lastMfaOkAt(db, partner.id, account.id).catch(() => null) : null;
+  const stepUp = loginStepUpReason({ policy, newEnvironment, hasEmail, lastMfaAt });
+  const sessionToken = await startSession(db, account.id, meta, { mfaPending: stepUp !== null });
   await logPartnerAccess(db, {
     partnerId: partner.id,
     accountId: account.id,
@@ -1429,12 +1443,33 @@ export async function loginPartner(
     ok: true,
     sessionToken,
     account: { id: account.id, login_id: account.login_id, display_name: account.display_name, email: account.email, is_master: account.is_master },
-    newEnvironment
+    newEnvironment,
+    stepUp
   };
+}
+
+/** そのアカウントが最後に本人確認を通した時刻（access_logs の mfa_ok・§6.2 の 3）。無ければ null */
+async function lastMfaOkAt(db: SupabaseClient, partnerId: string, accountId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from('rms_partner_access_logs')
+    .select('created_at')
+    .eq('partner_id', partnerId)
+    .eq('account_id', accountId)
+    .eq('action', 'mfa_ok')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return String((data as { created_at: string }).created_at);
 }
 
 export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'is_master'> & {
   sessionId: string;
+  /** セッションの保証レベル（1 = パスワードのみ・2 = 第2要素済み）と、第2要素を通した時刻・方法（§5.2・§6.6）。
+   *  aal2 の有効期間（12 時間）は isAal2Valid で判定する。mfaMethod='required' はログイン直後の本人確認待ちの印 */
+  aal?: 1 | 2;
+  mfaAt?: string | null;
+  mfaMethod?: string | null;
   /** 管理画面からの確認モード（preview.ts）。見るだけで、書き込みは入口で断る */
   preview?: boolean;
 };
@@ -1452,7 +1487,9 @@ export async function getPartnerSession(
   const [{ data }, p] = await Promise.all([
     db
       .from('rms_partner_sessions')
-      .select('id, expires_at, created_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
+      .select(
+        'id, expires_at, created_at, last_seen_at, aal, mfa_at, mfa_method, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)'
+      )
       .eq('token_hash', await sha256Hex(sessionToken))
       .maybeSingle(),
     partner
@@ -1464,6 +1501,9 @@ export async function getPartnerSession(
         expires_at: string;
         created_at: string | null;
         last_seen_at: string;
+        aal: number | null;
+        mfa_at: string | null;
+        mfa_method: string | null;
         account: { id: string; partner_id: string; login_id: string; display_name: string | null; is_active: boolean; is_master: boolean };
       }
     | null;
@@ -1483,8 +1523,24 @@ export async function getPartnerSession(
     login_id: row.account.login_id,
     display_name: row.account.display_name,
     is_master: row.account.is_master === true,
-    sessionId: row.id
+    sessionId: row.id,
+    aal: row.aal === 2 ? 2 : 1,
+    mfaAt: row.mfa_at ?? null,
+    mfaMethod: row.mfa_method ?? null
   };
+}
+
+/** 自分のパスワードの再入力を確かめる（メールアドレスを初めて登録するとき・docs/auth-hardening.md M4）。該当なしでも同じ計算をする */
+export async function verifyOwnPassword(db: SupabaseClient, partnerId: string, accountId: string, password: string): Promise<boolean> {
+  const { data } = await db
+    .from('rms_partner_accounts')
+    .select('password_hash, is_active')
+    .eq('id', accountId)
+    .eq('partner_id', partnerId)
+    .maybeSingle();
+  const row = data as { password_hash: string | null; is_active: boolean } | null;
+  const ok = await verifyPassword(password, row?.password_hash);
+  return ok && row?.is_active === true;
 }
 
 export async function endPartnerSession(db: SupabaseClient, sessionToken: string | undefined) {
@@ -1624,6 +1680,20 @@ export async function requireMasterAccount(db: SupabaseClient, partnerId: string
   if (error) raise(error, 'アカウントを確認できませんでした。');
   if (!data) throw new PartnerStoreError('ユーザー管理はマスタユーザーだけが使えます。', 403, 'forbidden');
   return data as PartnerAccountRow;
+}
+
+export const SAVED_CARD_MASTER_ONLY = 'カードの登録・削除・既定の変更は、貴社のマスタユーザーが行えます。';
+
+// 保存カードの登録・削除・既定の変更をする人が、この取引先の有効なマスタユーザーかを DB で確かめる（docs/auth-hardening.md §5.1・M2）。違えば 403。
+export async function requireSavedCardManager(db: SupabaseClient, partnerId: string, actorId: string): Promise<PartnerAccountRow> {
+  try {
+    const actor = await requireMasterAccount(db, partnerId, actorId);
+    if (!canManageSavedCards(actor)) throw new PartnerStoreError(SAVED_CARD_MASTER_ONLY, 403, 'forbidden');
+    return actor;
+  } catch (e) {
+    if (e instanceof PartnerStoreError && e.status === 403) throw new PartnerStoreError(SAVED_CARD_MASTER_ONLY, 403, 'forbidden');
+    throw e;
+  }
 }
 
 // 取引先のユーザー一覧（マスタ・子ユーザーとも）。マスタユーザーだけが読める。

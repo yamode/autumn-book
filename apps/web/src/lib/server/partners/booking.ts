@@ -483,7 +483,9 @@ export async function createPartnerBooking(
   partner: PartnerContext,
   account: { id: string; login_id: string },
   input: CreateBookingInput,
-  meta: { ip: string | null; origin: string }
+  // allowSavedCards: 予約した人のセッションが本人確認済み（aal2）か。そうでなければ Intent に取引先共有の Customer を付けない
+  // （＝保存カードでは確定できない・docs/auth-hardening.md §5.2・S4）。省略は false
+  meta: { ip: string | null; origin: string; allowSavedCards?: boolean }
 ): Promise<CreatedBooking> {
   const s = partner.booking_settings;
   // オンの施設が無い（N9）・この施設で受付をしていない
@@ -609,7 +611,7 @@ export async function createPartnerBooking(
     const pending = await getPartnerBooking(db, partner.id, created.id);
     try {
       if (!pending) throw new Error('予約が見つかりません');
-      const payment = await preparePartnerPayment(db, partner, pending);
+      const payment = await preparePartnerPayment(db, partner, pending, { allowSaved: meta.allowSavedCards === true });
       await logPartnerAccess(db, {
         partnerId: partner.id,
         accountId: account.id,
@@ -677,13 +679,25 @@ export type PreparedPartnerPayment = PreparedIntent & {
 };
 
 // 予約（仮押さえ・カード登録し直し）の Intent を用意する（まだ使える Intent があれば使い回す）。
-async function preparePartnerPayment(db: SupabaseClient, viewer: PartnerContext, b: PartnerBookingRow): Promise<PreparedPartnerPayment> {
+//
+// 保存カードの本人確認（docs/auth-hardening.md §5.2・S4）: opts.allowSaved（＝操作した人のセッションが aal2）でなければ、
+// Intent に取引先共有の Customer を付けない。保存カード（共有 Customer の PaymentMethod）は Customer の違う Intent では
+// Stripe が確定を断るので、画面を経由せずに Stripe.js を直接呼ばれても、本人確認の無いセッションでは保存カードで確定できない。
+//   - 予約時決済（PaymentIntent）: Customer 無しで作る（新しいカードでは払える）。aal2 になれば Customer 付きで作り直す（使い回しは Customer 一致のときだけ）
+//   - チェックアウト日決済（SetupIntent）: Customer が要るので、予約ごとの Customer を使う（共有 Customer が台帳に付いていても付け替える）
+async function preparePartnerPayment(
+  db: SupabaseClient,
+  viewer: PartnerContext,
+  b: PartnerBookingRow,
+  opts: { allowSaved: boolean }
+): Promise<PreparedPartnerPayment> {
   // 施設名・Stripe の metadata は予約の施設（取引先ページで選んでいる施設とは限らない）
   const partner = await contextForBooking(db, viewer, b);
   const base = { bookingId: b.id, bookingCode: b.booking_code, expiresAt: b.status === 'pending_payment' ? b.payment_expires_at : null };
   // 保存カード（2026-10-07・docs/saved-cards.md §7.2）: 取引先共有の Customer があれば Intent に付ける（予約画面の「保存済み」から選べる）。
   // 読めない・まだ無いときは null（従来どおり）
-  const shared = await resolvePartnerCustomer(db, partner, { create: false }).catch(() => null);
+  const sharedAny = await resolvePartnerCustomer(db, partner, { create: false }).catch(() => null);
+  const shared = opts.allowSaved ? sharedAny : null;
   if (b.payment_option === 'online_checkin') {
     // 予約ごとの Customer を作る（共有 Customer が無いとき・Stripe 側で Customer が消えていたとき）。
     // suffix: 消えた Customer の作り直しでは別の冪等キーにする（同じキーだと消えた Customer の id が返るため）
@@ -701,6 +715,8 @@ async function preparePartnerPayment(db: SupabaseClient, viewer: PartnerContext,
       return id;
     };
     let customer = b.stripe_customer_id;
+    // 共有 Customer が付いた予約でも、本人確認の無いセッションでは予約ごとの Customer に付け替える（保存カードを選ばせない）
+    if (customer && sharedAny && customer === sharedAny && !opts.allowSaved) customer = null;
     if (!customer) {
       // 共有 Customer があればそれを使う。無ければ従来どおり予約ごとに作る（既に予約の Customer がある予約はそのまま）
       if (shared) {
@@ -764,16 +780,26 @@ export const canUpdateCard = (b: Pick<PartnerBookingRow, 'status' | 'payment_opt
   b.status === 'confirmed' && b.payment_option === 'online_checkin' && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed');
 
 // 取引先の予約一覧の「お支払いへ進む」「カードの登録へ進む」「カードを登録し直す」。
-export async function resumePartnerPayment(db: SupabaseClient, partner: PartnerContext, bookingId: string): Promise<PreparedPartnerPayment> {
+// opts.aal2: 操作した人のセッションが本人確認済みか（§5.2）。カードの登録し直しは本人確認が必須（403 mfa_required）。
+// お支払い・カード登録へ進む（支払待ち）は、本人確認済みのときだけ保存カードを選べる Intent にする。
+export async function resumePartnerPayment(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  bookingId: string,
+  opts: { aal2: boolean }
+): Promise<PreparedPartnerPayment> {
   const b = await getPartnerBooking(db, partner.id, bookingId);
-  if (b && canUpdateCard(b)) return preparePartnerPayment(db, partner, b);
+  if (b && canUpdateCard(b)) {
+    if (!opts.aal2) throw new PartnerStoreError('カードの登録し直しには本人確認（メールの認証コード）が必要です。', 403, 'mfa_required');
+    return preparePartnerPayment(db, partner, b, { allowSaved: true });
+  }
   if (!b || b.status !== 'pending_payment') throw new PartnerStoreError('お支払い待ちの予約ではありません。');
   if (!isStripePaymentOption(b.payment_option ?? '')) throw new PartnerStoreError('オンライン決済の予約ではありません。');
   // 期限ぎりぎりで支払われると、確定前に仮押さえが切れて返金になる。1分を切ったら受け付けない。
   if (b.payment_expires_at && new Date(b.payment_expires_at).getTime() <= Date.now() + 60_000) {
     throw new PartnerStoreError('お支払いの期限が過ぎたため、仮押さえを解除しました。もう一度ご予約ください。');
   }
-  return preparePartnerPayment(db, partner, b);
+  return preparePartnerPayment(db, partner, b, { allowSaved: opts.aal2 });
 }
 
 // 予約画面で、支払前に仮押さえをやめる（入力に戻って内容を変えるとき）。支払待ちの予約だけ。

@@ -54,3 +54,10 @@ export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'cards
     ...(isMaster ? [{ path: 'users' as const, label: 'ユーザー管理' }] : [])
   ];
 }
+
+/**
+ * 保存カード（お支払いカード）の登録・削除・既定の変更をしてよいか（docs/auth-hardening.md §5.1・M2）。
+ * マスタユーザー（有効）だけ。一覧の表示と、予約時に保存カードを選ぶのは全ユーザー（どちらも本人確認＝aal2 が別に要る）。
+ */
+export const canManageSavedCards = (actor: Pick<AccountRoleSubject, 'is_master' | 'is_active'>) =>
+  actor.is_master === true && actor.is_active !== false;

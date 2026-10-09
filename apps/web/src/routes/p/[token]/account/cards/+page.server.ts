@@ -1,6 +1,8 @@
 import { fail } from '@sveltejs/kit';
-import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
-import { logPartnerAccess } from '$lib/server/partners/store';
+import { portalAal2, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { logPartnerAccess, PartnerStoreError, requireSavedCardManager } from '$lib/server/partners/store';
+import { requireAal2 } from '$lib/server/partners/mfa';
+import { portalMfaUrl } from '$lib/partner-mfa';
 import { inlinePaymentReady, stripePublishableKey, STRIPE_APP, STRIPE_PURPOSE_PARTNER_CARD, StripeError } from '$lib/server/stripe';
 import {
   confirmCardSetup,
@@ -17,6 +19,7 @@ import { PARTNER_CARD_RESULT_TEXT, PARTNER_CARD_SAVE_CONSENT, savedCardTitle, sa
 
 // 取引先専用ページ: アカウント → お支払いカード（保存カード・2026-10-07・docs/saved-cards.md §6.1）。
 // 取引先に1つの Stripe Customer にカードを保存し、その取引先の全ユーザー（マスタ・子ユーザー）が予約時に選べる（D2・N2）。
+// 登録・削除・既定の変更はマスタユーザーだけ＋本人確認（aal2）が要る（docs/auth-hardening.md §5.1・S4・M2）。一覧は全ユーザー。
 // 登録は cards/api（JSON）、削除・既定は form action。どれもログイン中の取引先の Customer だけを扱う（Customer は partner.id から引く）。
 // 確認モード（管理画面の「確認ページを開く」）は一覧も出さない（Stripe を呼ばない・Customer を作らない）。POST は portal.ts が 403。
 
@@ -63,6 +66,10 @@ export const load = async (event) => {
     portal: portalHeader(partner, session),
     preview,
     ready,
+    // 登録・削除・既定のボタンを出すか（表示だけ。操作のたびにサーバが DB でマスタかを確かめる）と、本人確認が済んでいるか
+    canManage: session.is_master === true && !preview,
+    aal2: portalAal2(session),
+    mfaHref: portalMfaUrl(event.params.token, `/p/${event.params.token}/account/cards`),
     stripeKey: ready && !preview ? stripePublishableKey() : null,
     consentText: PARTNER_CARD_SAVE_CONSENT,
     cards,
@@ -72,13 +79,17 @@ export const load = async (event) => {
 };
 
 function failure(e: unknown) {
+  if (e instanceof PartnerStoreError) return fail(e.status >= 400 && e.status < 500 ? e.status : 400, { message: e.message });
   if (e instanceof SavedCardError) return fail(e.status >= 400 && e.status < 500 ? e.status : 400, { message: e.message });
   if (e instanceof StripeError) return fail(502, { message: 'カードを操作できませんでした。時間をおいてお試しください。' });
   throw e;
 }
 
-async function scope(event: Parameters<typeof requirePortalSession>[0]) {
+// 削除・既定の共通: マスタユーザー（DB で確かめる・子ユーザーは 403）→ 本人確認（aal2 でなければ /mfa へ 303・戻り先はこの画面）
+async function scope(event: Parameters<typeof requirePortalSession>[0] & Parameters<typeof requireAal2>[0]) {
   const s = await requirePortalSession(event);
+  await requireSavedCardManager(s.db, s.partner.id, s.session.id);
+  requireAal2(event, s.session, { next: `/p/${event.params.token}/account/cards` });
   const fd = await event.request.formData();
   const pm = String(fd.get('pm') ?? '');
   const customer = await resolvePartnerCustomer(s.db, s.partner, { create: false });

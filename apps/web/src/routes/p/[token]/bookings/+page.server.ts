@@ -20,7 +20,7 @@ import { readBookingExtras, splitExtraOptions } from '$lib/server/partners/booki
 import { PartnerStoreError } from '$lib/server/partners/store';
 import { bookingNameHolderText } from '$lib/pms-partner-guest';
 import { isCreditOver } from '$lib/partner-credit';
-import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { portalAal2, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { stripePublishableKey } from '$lib/server/stripe';
 import {
@@ -200,6 +200,8 @@ export const load = async (event) => {
     payment,
     // 同じ画面で払う決済部品（支払の再開・カードの登録し直し）に渡す公開可能キー。オンライン決済を出せないときは null
     stripeKey: stripePublishableKey(),
+    // 本人確認（aal2）が済んでいるか。カードの登録し直しは本人確認が要る（docs/auth-hardening.md §5.2・S4）
+    aal2: portalAal2(session),
     list
   };
 };

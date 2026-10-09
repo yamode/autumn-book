@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountStatus, accountTabs, canManageAccount, canManageUsers } from './partner-account-roles';
+import { accountStatus, accountTabs, canManageAccount, canManageSavedCards, canManageUsers } from './partner-account-roles';
 
 const P1 = 'partner-1';
 const P2 = 'partner-2';
@@ -53,5 +53,16 @@ describe('accountTabs', () => {
   it('ユーザー管理はマスタだけに出す', () => {
     expect(accountTabs(true).map((t) => t.path)).toEqual(['', 'invoices', 'cards', 'security', 'users']);
     expect(accountTabs(false).map((t) => t.path)).toEqual(['', 'invoices', 'cards', 'security']);
+  });
+});
+
+describe('canManageSavedCards（docs/auth-hardening.md §5.1・M2）', () => {
+  it('有効なマスタユーザーだけが登録・削除・既定を変えられる', () => {
+    expect(canManageSavedCards({ is_master: true, is_active: true })).toBe(true);
+    expect(canManageSavedCards({ is_master: true })).toBe(true);
+  });
+  it('子ユーザー・停止中のマスタはできない', () => {
+    expect(canManageSavedCards({ is_master: false, is_active: true })).toBe(false);
+    expect(canManageSavedCards({ is_master: true, is_active: false })).toBe(false);
   });
 });
