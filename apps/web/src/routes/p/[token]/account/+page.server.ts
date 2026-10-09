@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { normalizeBooker } from '$lib/partner-booking';
+import { normalizeBooker, type PartnerBooker } from '$lib/partner-booking';
 import { getBookerProfile, logPartnerAccess, PartnerStoreError, saveBookerProfile } from '$lib/server/partners/store';
 import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 
@@ -8,11 +8,15 @@ import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
   const { db, partner, session } = await requirePortalSession(event);
-  const booker = await getBookerProfile(db, partner.id, session.id);
+  // 担当者情報は後から流す（2026-10-10）。読めなければ入力欄を出さずに案内する（空の欄で上書きさせない）
+  const profile = getBookerProfile(db, partner.id, session.id).then(
+    (booker) => ({ booker: booker as PartnerBooker | null, error: null as string | null }),
+    () => ({ booker: null as PartnerBooker | null, error: '担当者情報を読み込めませんでした。時間をおいて開き直してください。' })
+  );
   return {
     portal: portalHeader(partner, session),
     loginId: session.login_id,
-    booker
+    profile
   };
 };
 

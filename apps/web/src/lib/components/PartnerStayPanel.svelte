@@ -174,7 +174,8 @@
                 {#if pending}
                   <span class="shimmer mx-auto mt-1 block h-3.5 w-4/5 max-w-14" aria-hidden="true"></span>
                 {:else if c.min != null}
-                  <span class={`block text-xs font-semibold tracking-tight sm:text-sm ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{c.min.toLocaleString('ja-JP')}<span class="text-[11px]">円</span></span>
+                  <!-- 金額と「円」を1行に（2026-10-10 指示: 円だけ改行されていた）。狭いマスでも収まるよう少し小さく・字間を詰める -->
+                  <span class={`block whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter sm:text-[13px] ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{c.min.toLocaleString('ja-JP')}<span class="text-[9px] sm:text-[10px]">円</span></span>
                 {:else if c.inRange && c.closed}
                   <span class="block text-xs">休館日</span>
                 {:else if c.inRange && c.iso >= today}

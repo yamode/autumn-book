@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { navigating, page } from '$app/stores';
   import { partnerAccent } from '$lib/partner-theme';
+  import PartnerPageSkeleton from '$lib/components/PartnerPageSkeleton.svelte';
 
   // 取引先向けページの枠（autumn-rms から移設・2026-09-26）。Book の公開サイト共通ヘッダー/フッターは出さない
   // （/p は (public) グループの外に置いているので、上位は root layout だけ。解析・デバッグは root 側で /p を除外）。
@@ -39,8 +40,49 @@
       e.preventDefault();
     }
   }
-  // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）
+  // メインメニュー（並び順どおり。予約一覧は予約を受け付けている取引先だけ）
+  const MENU: [string, string][] = [
+    ['calendar', '料金カレンダー'],
+    ['rooms', 'お部屋'],
+    ['plans', 'プラン'],
+    ['rate-sheet', '料金表'],
+    ['bookings', '予約一覧'],
+    ['memorandum', '覚書'],
+    ['account', 'アカウント']
+  ];
+  const menu = $derived(MENU.filter(([path]) => path !== 'bookings' || portal?.bookingEnabled));
+
+  // ---- メニューの切替を先に見せる（2026-10-10）----
+  // SvelteKit は行き先の load が終わるまで前の画面のままなので、同じ取引先のメインメニューのページ（/p/<token>/<menu> ちょうど）へ
+  // 移る間は、メニューの選択をすぐ行き先にし、本文を行き先の「読み込み中」の骨組みに差し替える（ちらつかないよう 120ms 待ってから）。
+  // 対象外: 同じページ内の検索（?date= 等の goto・同じ pathname）、予約入力・支払い・アカウントのタブなどメニュー以外の行き先、フォームの送信。
+  // 前の画面は消さずに隠すだけ（移れなかったときはそのまま戻る）。
+  const menuPathOf = (url: URL) => {
+    const base = `/p/${$page.params.token}/`;
+    if (url.origin !== $page.url.origin || !url.pathname.startsWith(base)) return null;
+    const rest = url.pathname.slice(base.length).replace(/\/+$/, '');
+    return MENU.some(([path]) => path === rest) ? rest : null;
+  };
+  const pendingMenu = $derived.by(() => {
+    const nav = $navigating;
+    const to = nav?.to?.url;
+    if (!nav || !to || nav.type === 'form' || to.pathname === $page.url.pathname) return null;
+    return menuPathOf(to);
+  });
+  let skeleton = $state<string | null>(null);
+  $effect(() => {
+    const m = pendingMenu;
+    if (!m) {
+      skeleton = null;
+      return;
+    }
+    const t = setTimeout(() => (skeleton = m), 120);
+    return () => clearTimeout(t);
+  });
+
+  // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）。メニューで移る間は行き先
   const isActive = (path: string) => {
+    if (pendingMenu) return path === pendingMenu;
     const base = `/p/${$page.params.token}/`;
     const rest = $page.url.pathname.startsWith(base) ? $page.url.pathname.slice(base.length) : '';
     const head = rest.split('/')[0];
@@ -126,7 +168,7 @@
         <!-- お部屋・プランの紹介・料金表（CSV / PDF・2026-10-09）・覚書・アカウントはログインした取引先すべてに見せる。予約一覧は予約を受け付けている取引先だけ。
              項目が増えてもスマホでは1行の横スクロールのまま（折り返さない）。 -->
         <nav class="order-last flex w-full gap-1 overflow-x-auto text-sm sm:order-none sm:w-auto" aria-label="取引先メニュー">
-          {#each [['calendar', '料金カレンダー'], ['rooms', 'お部屋'], ['plans', 'プラン'], ['rate-sheet', '料金表'], ...(portal.bookingEnabled ? [['bookings', '予約一覧']] : []), ['memorandum', '覚書'], ['account', 'アカウント']] as [path, lbl]}
+          {#each menu as [path, lbl] (path)}
             {@const active = isActive(path)}
             <a href={`/p/${$page.params.token}/${path}`} class={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 transition ${active ? 'bg-brand-800 text-white' : 'text-stone-600 hover:bg-stone-50 hover:text-brand-800'}`}>{lbl}</a>
           {/each}
@@ -146,7 +188,13 @@
     <!-- オンの施設が1つも無い取引先（N9・2026-10-09 複数施設化）: ログインはできるが料金・予約は出さない -->
     <p class="mx-auto mt-4 max-w-6xl rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6" role="status">{portal.noFacilityMessage}</p>
   {/if}
-  {@render children()}
+  {#if skeleton}
+    <PartnerPageSkeleton path={skeleton} label={MENU.find(([path]) => path === skeleton)?.[1] ?? ''} />
+  {/if}
+  <!-- 骨組みを出している間は前の画面を隠すだけ（消さない） -->
+  <div class={skeleton ? 'hidden' : 'contents'}>
+    {@render children()}
+  </div>
   <!-- 規約3点は取引先ページの中で見せる（公式サイトはまだ非公開のため。中身は公式サイトと同じ・legal/[page]） -->
   <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-sm leading-6 text-stone-500 sm:px-6">
     このページは貴社専用です。URL・ログイン情報は社外へ共有しないでください。

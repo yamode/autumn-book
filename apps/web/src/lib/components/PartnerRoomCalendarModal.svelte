@@ -150,7 +150,7 @@
                     <span class="shimmer mt-auto block h-3.5 w-4/5 max-w-16" aria-hidden="true"></span>
                   {:else if c.min != null}
                     {#if c.min === monthMin}<span class="rounded bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white">最安</span>{/if}
-                    <span class="mt-auto text-xs font-semibold tabular-nums text-brand-900 sm:text-sm">{c.min.toLocaleString('ja-JP')}<span class="text-[10px] font-normal">円〜</span></span>
+                    <span class="mt-auto whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter text-brand-900 sm:text-sm">{c.min.toLocaleString('ja-JP')}<span class="text-[10px] font-normal">円〜</span></span>
                     {#if showInventory && c.rest != null && c.rest <= 2}<span class="text-[10px] font-medium text-amber-700 sm:text-xs">残り{c.rest}室</span>{/if}
                   {:else if c.inRange && c.closed}
                     <span class="mt-auto text-xs">休館日</span>

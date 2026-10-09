@@ -163,7 +163,51 @@ export const PORTAL_HEADERS = {
   'x-robots-tag': 'noindex, nofollow'
 };
 
-export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookies'> & { url?: URL }): Promise<{
+/**
+ * 応答を待たせない後始末（アクセスログ・最終アクセスの更新などの書き込み）。
+ * Cloudflare では waitUntil に渡して応答の後も続ける。無い環境（vite dev・テスト）は投げっぱなし（失敗は握りつぶす）。
+ */
+export function deferTask(event: { platform?: App.Platform }, task: Promise<unknown>) {
+  const guarded = task.catch(() => undefined);
+  const ctx = event.platform?.context;
+  if (ctx?.waitUntil) ctx.waitUntil(guarded);
+}
+
+// ---- 取引先の設定（束）の一時保存（2026-10-10・メニュー切替を軽くする） ----
+// 同じ isolate の中で、トークンごとに 30 秒だけ使い回す（取引先・施設の設定の読み込みは DB の往復が複数あるため）。
+// そのため管理画面・RMS で取引先の設定（公開停止・予約受付・料金・施設のオン/オフ等）を変えると、取引先ページへの反映が最長 30 秒遅れる。
+// 使い回すのは GET（画面の表示・料金の JSON）だけ。POST（ログイン・予約の確定・支払い・保存・取消）は毎回 DB から読み直す。
+// セッション（ログイン・ログアウト・アカウントの停止）は毎回 DB で確かめるので、ここでは遅れない。
+const BUNDLE_TTL_MS = 30_000;
+const BUNDLE_CACHE_MAX = 200;
+const bundleCache = new Map<string, { at: number; bundle: PartnerBundle }>();
+
+async function loadPartnerBundle(db: SupabaseClient, token: string, useCache: boolean): Promise<PartnerBundle | null> {
+  const now = Date.now();
+  if (useCache) {
+    const hit = bundleCache.get(token);
+    if (hit && now - hit.at < BUNDLE_TTL_MS) return hit.bundle;
+  }
+  const bundle = await findPartnerBundleByUrlToken(db, token);
+  if (bundle) {
+    // 古いものから捨てる（Map は入れた順）
+    bundleCache.delete(token);
+    if (bundleCache.size >= BUNDLE_CACHE_MAX) bundleCache.delete(bundleCache.keys().next().value as string);
+    bundleCache.set(token, { at: now, bundle });
+  } else {
+    bundleCache.delete(token);
+  }
+  return bundle;
+}
+
+/** テスト用: 一時保存を空にする */
+export function clearPartnerBundleCache() {
+  bundleCache.clear();
+}
+
+export async function resolvePortal(
+  event: Pick<RequestEvent, 'params' | 'cookies'> & { url?: URL; request?: Request; platform?: App.Platform }
+): Promise<{
   db: SupabaseClient;
   partner: PartnerContext;
   session: Awaited<ReturnType<typeof getPartnerSession>>;
@@ -171,17 +215,32 @@ export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookie
   const db = partnerAdminClient();
   if (!db) throw error(503, '現在ご利用いただけません。');
   const token = event.params.token ?? '';
-  let partner: PartnerContext | null;
-  try {
-    const bundle = await findPartnerBundleByUrlToken(db, token);
-    // 施設の選択（?f= → クッキー → 既定の施設 → オンの先頭）で合成する（§7.8）
-    partner = bundle ? composeForRequest(event, bundle) : null;
-  } catch (e) {
-    if (e instanceof PartnerStoreError) throw error(503, '現在ご利用いただけません。');
-    throw e;
-  }
+  // 取引先の設定を30秒使い回すのは、表示だけの GET / HEAD に限る（レビュー指摘 2026-10-10）:
+  //   - リクエストが分からない呼び出しは使い回さない（POST の書き込みで古い設定を使わない）
+  //   - 確認モード（管理画面の「確認ページを開く」）は、管理画面で変えた直後の設定を確かめるための入口なので毎回読む
+  //   - 料金表の出力（CSV / PDF / 印刷）は、停止・トークン再発行をすぐ効かせるため毎回読む
+  const method = event.request?.method;
+  const rateSheetOutput = /\/rate-sheet\/(csv|pdf|print)\/?$/.test(event.url?.pathname ?? '');
+  const useCache =
+    (method === 'GET' || method === 'HEAD') && !event.cookies.get(PARTNER_PREVIEW_COOKIE) && !rateSheetOutput;
+  const partnerPromise = (async () => {
+    try {
+      const bundle = await loadPartnerBundle(db, token, useCache);
+      // 施設の選択（?f= → クッキー → 既定の施設 → オンの先頭）で合成する（§7.8）
+      return bundle ? composeForRequest(event, bundle) : null;
+    } catch (e) {
+      if (e instanceof PartnerStoreError) throw error(503, '現在ご利用いただけません。');
+      throw e;
+    }
+  })();
+  // セッションの問い合わせは取引先の読み込みと並べて投げる（取引先が見つからない・読めないときは捨てる）
+  const sessionPromise = getPartnerSession(db, partnerPromise.catch(() => null), event.cookies.get(PARTNER_SESSION_COOKIE), {
+    defer: (p) => deferTask(event, p)
+  });
+  sessionPromise.catch(() => undefined);
+  const partner = await partnerPromise;
   if (!partner) throw error(404, 'ページが見つかりません。');
-  let session = await getPartnerSession(db, partner, event.cookies.get(PARTNER_SESSION_COOKIE));
+  let session = await sessionPromise;
   // 取引先のログインが無く、管理画面の「確認ページを開く」の署名付きクッキーがあれば確認モード（preview.ts）
   if (!session && (await verifyPreviewToken(event.cookies.get(PARTNER_PREVIEW_COOKIE), partner.id))) {
     session = { id: PREVIEW_ACCOUNT_ID, login_id: '管理者の確認', display_name: '管理者の確認', is_master: false, sessionId: '', preview: true };
@@ -195,7 +254,7 @@ function denyPreviewWrite(event: Pick<RequestEvent, 'request'>, session: { previ
 }
 
 // ログイン済みの取引先ページ共通: セッションが無い・公開停止中ならログイン画面へ戻す。
-export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL }) {
+export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform }) {
   const { db, partner, session } = await resolvePortal(event);
   const token = event.params.token ?? '';
   if (!session) throw redirect(303, `/p/${token}`);
@@ -229,7 +288,7 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
 }
 
 // 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
-export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL }) {
+export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform }) {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
   if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');

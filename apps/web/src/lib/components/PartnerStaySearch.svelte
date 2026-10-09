@@ -17,13 +17,20 @@
   import { fetchPortalMonth } from '$lib/partner-month-client';
   import type { PartnerRateDay } from '$lib/partner-pricing';
   import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
-  import type { StayPageData } from '$lib/server/partners/stay-page';
+  import type { StayPageData, StayPageExtras } from '$lib/server/partners/stay-page';
   import { planSummary } from '$lib/plan-summary';
+  import { streamed } from '$lib/streamed.svelte';
   import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
 
   // below: 検索バーの下・一覧の上に差し込む中身（プランのご紹介の「専用特典」）
   let { data, view, below }: { data: StayPageData; view: 'room' | 'plan'; below?: Snippet } = $props();
   const token = $derived($page.params.token ?? '');
+  // 後から届く一覧の中身（写真・紹介・キャンセル規定・受付枠・IN/OUT。stay-page.ts の stay・2026-10-10）。
+  // 届くまではカードの枠（読み込み中の形）を出す。検索し直し（同じページの読み直し）の間は前の中身を残し、届いたら入れ替える
+  const stay = streamed(() => data.stay);
+  const extras = $derived(stay.current);
+  const NO_EXTRAS: StayPageExtras = { times: null, credit: null, rooms: [], planAnchors: [], planContents: [], planTerms: {}, planPerks: {} };
+  const ex = $derived(extras ?? NO_EXTRAS);
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   const num = (n: number) => n.toLocaleString('ja-JP');
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付' : m === '朝食' ? '朝食付' : m === '素泊' ? '食事なし' : (m ?? ''));
@@ -127,7 +134,7 @@
   let sort = $state<'asc' | 'desc'>('asc');
   let expanded = $state<Record<string, boolean>>({});
   const byPrice = (a: number | null, b: number | null) => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : sort === 'asc' ? a - b : b - a);
-  const roomOf = (code: string) => data.rooms.find((r) => r.code === code) ?? null;
+  const roomOf = (code: string) => ex.rooms.find((r) => r.code === code) ?? null;
 
   // 部屋タイプごとのカード（料金カレンダー）
   type Card = { code: string; name: string; content: PartnerRoomContent | null; rows: Row[] };
@@ -135,7 +142,7 @@
     const byRoom = new Map<string, Row[]>();
     for (const r of rows) byRoom.set(r.roomCode, [...(byRoom.get(r.roomCode) ?? []), r]);
     const list: Card[] = [];
-    for (const r of data.rooms) {
+    for (const r of ex.rooms) {
       if (r.capacityMax && r.capacityMax < data.params.guests) continue;
       list.push({ code: r.code, name: r.name, content: r, rows: byRoom.get(r.code) ?? [] });
       byRoom.delete(r.code);
@@ -153,7 +160,7 @@
     const byPlan = new Map<string, Row[]>();
     for (const r of rows) byPlan.set(planKey(r.planCode, r.planName), [...(byPlan.get(planKey(r.planCode, r.planName)) ?? []), r]);
     const list: PlanCard[] = [];
-    for (const p of data.planContents) {
+    for (const p of ex.planContents) {
       const key = planKey(p.planCode, p.planLabel);
       const rs = byPlan.get(key) ?? [];
       list.push({ key, anchor: p.anchor, planCode: p.planCode, planName: p.planLabel, mealType: rs[0]?.mealType ?? p.mealPlan ?? null, content: p, rows: rs });
@@ -174,7 +181,7 @@
     calendarFrom = cardId;
     calendarRoom = { code, name };
   }
-  const planAnchorOf = (r: Row) => data.planAnchors.find((p) => p.planCode === r.planCode && p.planLabel === r.planName)?.anchor ?? null;
+  const planAnchorOf = (r: Row) => ex.planAnchors.find((p) => p.planCode === r.planCode && p.planLabel === r.planName)?.anchor ?? null;
   const hasPerk = (code: string) => data.commonPerk || data.perkPlanCodes.includes(code);
   type Params = StayPageData['params'];
   const canBookOn = (iso: string) => !!iso && data.booking.enabled && canBookFor(iso, data.booking);
@@ -219,10 +226,10 @@
       mealType: r.mealType,
       roomName: r.roomName,
       room: content,
-      plan: data.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName) ?? null,
-      terms: data.planTerms[`${r.planCode}■${r.planName}`] ?? null,
-      perks: data.planPerks[r.planCode] ?? data.commonPerks,
-      officialPerks: data.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName)?.officialPerks ?? [],
+      plan: ex.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName) ?? null,
+      terms: ex.planTerms[`${r.planCode}■${r.planName}`] ?? null,
+      perks: ex.planPerks[r.planCode] ?? data.commonPerks,
+      officialPerks: ex.planContents.find((c) => c.planCode === r.planCode && c.planLabel === r.planName)?.officialPerks ?? [],
       total: r.total ?? r.perPerson * p.guests * p.nights * p.rooms,
       perRoomNight: r.perPerson * p.guests,
       remaining: r.remaining,
@@ -281,10 +288,18 @@
     search();
   }
   $effect(() => {
-    if (!scrollTo || searching || loading || shown?.params.date !== scrollTo.date) return;
+    if (!scrollTo || searching || loading || !extras || shown?.params.date !== scrollTo.date) return;
     const id = scrollTo.id;
     scrollTo = null;
     requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  });
+  // ページ内の位置（/plans#plan-… など）: カードは中身が届いてから出るので、最初に届いたときにその位置へ移る
+  let hashScrolled = false;
+  $effect(() => {
+    if (!extras || hashScrolled) return;
+    hashScrolled = true;
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
   const checkout = $derived(dated ? addDaysIsoClient(data.params.date, data.params.nights) : '');
   const guestText = $derived(`大人${data.params.guests}名${data.params.rooms > 1 ? ` × ${data.params.rooms}室` : ''}`);
@@ -367,10 +382,10 @@
         <p class="text-lg font-bold">{view === 'room' ? 'すべてのお部屋とプラン' : 'すべてのプラン'}</p>
         <p class="text-sm text-stone-500">料金は{guestText}でご利用時の、今後3か月の最安です。ご宿泊日を選ぶと、その日の料金と空室に切り替わります。</p>
       {/if}
-      {#if data.credit?.months.length}
+      {#if ex.credit?.months.length}
         <!-- 御社の受付枠（与信 ON の旅行会社だけ・月別の延べ室数）。表示中の日程の月（日程なしは今月） -->
         <p class="mt-1 text-sm text-stone-600">
-          {#each data.credit.months as m, i (m.month)}{#if i > 0}<span class="text-stone-400">／</span>{/if}<span class={m.limit - m.booked <= 0 ? 'font-medium text-amber-800' : ''}>{creditMonthShort(m)}</span>{/each}
+          {#each ex.credit.months as m, i (m.month)}{#if i > 0}<span class="text-stone-400">／</span>{/if}<span class={m.limit - m.booked <= 0 ? 'font-medium text-amber-800' : ''}>{creditMonthShort(m)}</span>{/each}
           <span class="block text-xs text-stone-500">{CREDIT_UNIT_NOTE}</span>
         </p>
       {/if}
@@ -392,6 +407,26 @@
     <p class="mt-5 rounded-xl border border-rose-700/30 bg-rose-700/5 p-4 text-rose-700">{loadError}</p>
   {:else if closedDay && !pending}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">この日は休館日です。別の日程をお選びください。</p>
+  {:else if !extras}
+    <!-- 写真・紹介がまだ届いていない間は、カードの枠だけ出す（メニューから移ってきた直後） -->
+    <div class="mt-4 space-y-6" aria-busy="true">
+      {#each [0, 1, 2] as i (i)}
+        <div class={`overflow-hidden rounded-lg border border-stone-200 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)] ${view === 'room' ? 'md:grid md:grid-cols-[280px_minmax(0,1fr)]' : ''}`}>
+          {#if view === 'room'}
+            <div class="border-b border-stone-200 md:border-b-0 md:border-r">
+              <div class="shimmer aspect-[16/10] w-full rounded-none"></div>
+              <div class="space-y-3 px-5 py-4"><div class="shimmer h-4 w-2/3"></div><div class="shimmer h-3.5 w-1/2 opacity-70"></div></div>
+            </div>
+            <div class="min-w-0">{@render rowShimmer(2, false)}</div>
+          {:else}
+            <div class="gap-6 px-5 py-5 sm:px-6 md:grid md:grid-cols-[280px_minmax(0,1fr)]">
+              <div class="shimmer mb-4 aspect-[16/10] w-full md:mb-0"></div>
+              <div class="space-y-3"><div class="shimmer h-5 w-3/4"></div><div class="shimmer h-4 w-full opacity-70"></div><div class="shimmer h-4 w-5/6 opacity-70"></div></div>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </div>
   {:else if view === 'room'}
     <div class="mt-4 space-y-6" aria-busy={pending}>
       {#each cards as card (card.code)}
@@ -433,7 +468,7 @@
                     <div class="min-w-0">
                       <p class="text-[15px] leading-7 text-brand-900">{partnerPlanName(data.planNames, r.planCode, r.planName)}</p>
                       <p class="mt-3 text-sm text-brand-900">
-                        {#if data.times}<span class="font-bold">IN</span> {data.times.checkin}<span class="ml-3 font-bold">OUT</span> {data.times.checkout}{/if}
+                        {#if ex.times}<span class="font-bold">IN</span> {ex.times.checkin}<span class="ml-3 font-bold">OUT</span> {ex.times.checkout}{/if}
                         {#if dated && data.showInventory && r.remaining != null && r.remaining <= 2}<span class="ml-3 font-bold text-rose-600">残りあと{r.remaining}室</span>{/if}
                       </p>
                       <p class="mt-1.5 flex flex-wrap gap-x-3 text-sm">
@@ -484,7 +519,7 @@
                 <!-- 一覧用の要約（紹介文の more 区切りまで／無ければ最初の3行）。全文は「詳細・予約」のプラン詳細で -->
                 <p class="mt-2 line-clamp-4 whitespace-pre-line text-sm leading-7 text-stone-700">{intro}</p>
               {/if}
-              {#if data.times}<p class="mt-3 text-sm text-brand-900"><span class="font-bold">IN</span> {data.times.checkin}<span class="ml-3 font-bold">OUT</span> {data.times.checkout}</p>{/if}
+              {#if ex.times}<p class="mt-3 text-sm text-brand-900"><span class="font-bold">IN</span> {ex.times.checkin}<span class="ml-3 font-bold">OUT</span> {ex.times.checkout}</p>{/if}
             </div>
           </header>
           <div class="mx-5 mb-5 overflow-hidden rounded-md border border-stone-200 sm:mx-6">
@@ -556,7 +591,7 @@
 <PartnerPlanDetailModal
   bind:detail
   params={detailParams}
-  times={data.times}
+  times={ex.times}
   deadlineText={data.deadlineText}
   cancelText={data.cancelText}
   paymentLabels={data.paymentLabels}

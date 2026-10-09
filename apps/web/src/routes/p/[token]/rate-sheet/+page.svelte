@@ -5,6 +5,7 @@
   import { page } from '$app/stores';
   import { untrack } from 'svelte';
   import { shiftYm } from '$lib/partner-rate-sheet';
+  import { streamed } from '$lib/streamed.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -16,7 +17,16 @@
   let from = $state(untrack(() => data.months[0] ?? ''));
   let months = $state(3);
   let format = $state<'pdf' | 'csv'>('pdf');
-  let guests = $state<number[]>(untrack(() => (data.guestOptions.includes(2) ? [2] : data.guestOptions.slice(0, 1))));
+  // 人数の選択肢は後から届く（直近の料金から決めるため）。届いたら最初の選択（2名、無ければ先頭）を入れる
+  const guestOpts = streamed(() => data.guestOptions);
+  let guests = $state<number[]>([]);
+  let guestsReady = false;
+  $effect(() => {
+    const o = guestOpts.current;
+    if (!o || guestsReady) return;
+    guestsReady = true;
+    guests = o.includes(2) ? [2] : o.slice(0, 1);
+  });
 
   // 選んだ期間のうち公開範囲外の月（出力には載らない）
   const outside = $derived.by(() => {
@@ -95,14 +105,18 @@
         <fieldset class="min-w-0">
           <legend class="mb-1 text-sm font-medium">料金表の人数（1室あたり・複数選べます）</legend>
           <div class="flex flex-wrap gap-2">
-            {#each data.guestOptions as g (g)}
-              <label class={chip(guests.includes(g))}>
-                <input type="checkbox" class="sr-only" checked={guests.includes(g)} onchange={() => toggleGuest(g)} />{g}名
-              </label>
-            {/each}
+            {#if guestOpts.current}
+              {#each guestOpts.current as g (g)}
+                <label class={chip(guests.includes(g))}>
+                  <input type="checkbox" class="sr-only" checked={guests.includes(g)} onchange={() => toggleGuest(g)} />{g}名
+                </label>
+              {/each}
+            {:else}
+              {#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-[3.25rem] rounded-full" aria-hidden="true"></div>{/each}
+            {/if}
           </div>
           <input type="hidden" name="guests" value={guests.join(',')} />
-          {#if !guests.length}<p class="mt-1.5 text-xs text-rose-700">人数を1つ以上選んでください。</p>{/if}
+          {#if guestOpts.current && !guests.length}<p class="mt-1.5 text-xs text-rose-700">人数を1つ以上選んでください。</p>{/if}
         </fieldset>
       {/if}
 

@@ -4,11 +4,14 @@
   // 本文はプレーンテキスト（改行はそのまま表示。リンクの自動変換はしない）。
   import { enhance } from '$app/forms';
   import { page } from '$app/stores';
+  import { streamed } from '$lib/streamed.svelte';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; uploaded?: string; deleted?: boolean } } = $props();
 
   const token = $derived($page.params.token);
+  // 本文・ファイルの一覧（後から届く。保存・削除の後の読み直しの間は前の一覧を残す）
+  const content = streamed(() => data.content);
   const dt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short' }) : '');
   let uploading = $state(false);
   let deleting = $state<string | null>(null);
@@ -36,59 +39,75 @@
 
   <!-- 本文（宿が書く） -->
   <section class="mt-5 rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
-    <div class="flex flex-wrap items-baseline justify-between gap-2">
+    {#if !content.current}
+      <!-- 本文が届くまでの枠（メニューから移ってきた直後） -->
       <h3 class="text-lg font-bold">取引条件</h3>
-      {#if data.memorandum.updatedAt}<p class="text-xs text-stone-500">最終更新 {dt(data.memorandum.updatedAt)}</p>{/if}
-    </div>
-    {#if data.memorandum.text}
-      <div class="mt-3 whitespace-pre-wrap break-words leading-7">{data.memorandum.text}</div>
+      <div class="mt-3 space-y-2.5" aria-busy="true"><div class="shimmer h-4 w-11/12"></div><div class="shimmer h-4 w-4/5"></div><div class="shimmer h-4 w-2/3"></div></div>
     {:else}
-      <p class="mt-3 text-stone-500">まだ登録されていません。</p>
+      {@const c = content.current}
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-lg font-bold">取引条件</h3>
+        {#if c.memorandum?.updatedAt}<p class="text-xs text-stone-500">最終更新 {dt(c.memorandum.updatedAt)}</p>{/if}
+      </div>
+        {#if c.error}
+        <p class="mt-3 text-rose-700">{c.error}</p>
+      {:else if c.memorandum?.text}
+        <div class="mt-3 whitespace-pre-wrap break-words leading-7">{c.memorandum.text}</div>
+      {:else}
+        <p class="mt-3 text-stone-500">まだ登録されていません。</p>
+      {/if}
     {/if}
   </section>
 
   <!-- ファイル -->
   <section class="mt-5 rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
     <h3 class="text-lg font-bold">ファイル</h3>
-    {#if data.documents.length === 0}
-      <p class="mt-3 text-stone-500">保存されたファイルはありません。</p>
+    {#if !content.current}
+      <div class="mt-3 space-y-3" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-10 w-full"></div>{/each}</div>
     {:else}
-      <ul class="mt-3 divide-y divide-stone-200">
-        {#each data.documents as d (d.id)}
-          <li class="flex flex-wrap items-start justify-between gap-3 py-3">
-            <div class="min-w-0 flex-1">
-              <a href={`/p/${token}/memorandum/files/${d.id}`} target="_blank" rel="noopener" class="break-all font-medium text-brand-900 underline decoration-stone-300 underline-offset-2 hover:decoration-brand-900">{d.fileName}</a>
-              <p class="mt-0.5 text-xs text-stone-500">
-                {d.size}{d.size ? ' ・ ' : ''}{d.uploader} ・ {dt(d.createdAt)}
-              </p>
-              {#if d.note}<p class="mt-1 whitespace-pre-wrap break-words text-sm text-stone-600">{d.note}</p>{/if}
-            </div>
-            <div class="flex shrink-0 items-center gap-2">
-              <a href={`/p/${token}/memorandum/files/${d.id}`} download class="rounded-lg border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">ダウンロード</a>
-              {#if d.canDelete}
-                <form
-                  method="POST"
-                  action="?/delete"
-                  use:enhance={({ cancel }) => {
-                    if (!confirm(`「${d.fileName}」を削除します。元に戻せません。よろしいですか？`)) {
-                      cancel();
-                      return;
-                    }
-                    deleting = d.id;
-                    return async ({ update }) => {
-                      deleting = null;
-                      await update();
-                    };
-                  }}
-                >
-                  <input type="hidden" name="id" value={d.id} />
-                  <button type="submit" disabled={deleting === d.id} class="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50">{deleting === d.id ? '削除中…' : '削除'}</button>
-                </form>
-              {/if}
-            </div>
-          </li>
-        {/each}
-      </ul>
+      {@const c = content.current}
+      {#if c.error}
+        <p class="mt-3 text-stone-500">ファイルの一覧を読み込めませんでした。</p>
+      {:else if c.documents.length === 0}
+        <p class="mt-3 text-stone-500">保存されたファイルはありません。</p>
+      {:else}
+        <ul class="mt-3 divide-y divide-stone-200">
+          {#each c.documents as d (d.id)}
+            <li class="flex flex-wrap items-start justify-between gap-3 py-3">
+              <div class="min-w-0 flex-1">
+                <a href={`/p/${token}/memorandum/files/${d.id}`} target="_blank" rel="noopener" class="break-all font-medium text-brand-900 underline decoration-stone-300 underline-offset-2 hover:decoration-brand-900">{d.fileName}</a>
+                <p class="mt-0.5 text-xs text-stone-500">
+                  {d.size}{d.size ? ' ・ ' : ''}{d.uploader} ・ {dt(d.createdAt)}
+                </p>
+                {#if d.note}<p class="mt-1 whitespace-pre-wrap break-words text-sm text-stone-600">{d.note}</p>{/if}
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <a href={`/p/${token}/memorandum/files/${d.id}`} download class="rounded-lg border border-stone-300 px-3 py-1.5 text-sm hover:bg-stone-50">ダウンロード</a>
+                {#if d.canDelete}
+                  <form
+                    method="POST"
+                    action="?/delete"
+                    use:enhance={({ cancel }) => {
+                      if (!confirm(`「${d.fileName}」を削除します。元に戻せません。よろしいですか？`)) {
+                        cancel();
+                        return;
+                      }
+                      deleting = d.id;
+                      return async ({ update }) => {
+                        deleting = null;
+                        await update();
+                      };
+                    }}
+                  >
+                    <input type="hidden" name="id" value={d.id} />
+                    <button type="submit" disabled={deleting === d.id} class="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-600 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50">{deleting === d.id ? '削除中…' : '削除'}</button>
+                  </form>
+                {/if}
+              </div>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     {/if}
 
     <!-- アップロード（保存者は貴社のログインID） -->

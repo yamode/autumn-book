@@ -1372,17 +1372,24 @@ export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 
 };
 
 // クッキーのセッションから、この取引先のアカウントを引く。別の取引先のセッションは通さない。
+// partner は取引先の読み込みと並べて走らせられるよう Promise でも受ける（セッションの問い合わせを先に投げる・2026-10-10）。
+// opts.defer: 最終アクセスの更新（書き込み）を応答の後へ逃がす先（portal.ts の deferTask → waitUntil）。無ければその場で待つ。
 export async function getPartnerSession(
   db: SupabaseClient,
-  partner: PartnerContext,
-  sessionToken: string | undefined
+  partner: Pick<PartnerContext, 'id'> | PromiseLike<Pick<PartnerContext, 'id'> | null>,
+  sessionToken: string | undefined,
+  opts: { defer?: (p: Promise<unknown>) => void } = {}
 ): Promise<PartnerSessionAccount | null> {
   if (!sessionToken) return null;
-  const { data } = await db
-    .from('rms_partner_sessions')
-    .select('id, expires_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
-    .eq('token_hash', await sha256Hex(sessionToken))
-    .maybeSingle();
+  const [{ data }, p] = await Promise.all([
+    db
+      .from('rms_partner_sessions')
+      .select('id, expires_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
+      .eq('token_hash', await sha256Hex(sessionToken))
+      .maybeSingle(),
+    partner
+  ]);
+  if (!p) return null;
   const row = data as
     | {
         id: string;
@@ -1392,10 +1399,13 @@ export async function getPartnerSession(
       }
     | null;
   if (!row || new Date(row.expires_at).getTime() <= Date.now()) return null;
-  if (row.account.partner_id !== partner.id || !row.account.is_active) return null;
+  if (row.account.partner_id !== p.id || !row.account.is_active) return null;
   // 最終アクセスの更新は5分に1回まで（毎リクエスト書き込まない）。
+  // 表示用の記録で、セッションの期限・停止の判定には使わないので、応答を待たせない（defer があれば応答の後で書く）
   if (Date.now() - new Date(row.last_seen_at).getTime() > 5 * 60_000) {
-    await db.from('rms_partner_sessions').update({ last_seen_at: new Date().toISOString() }).eq('id', row.id);
+    const touch = Promise.resolve(db.from('rms_partner_sessions').update({ last_seen_at: new Date().toISOString() }).eq('id', row.id));
+    if (opts.defer) opts.defer(touch);
+    else await touch;
   }
   // is_master はリクエストごとに DB から読む（マスタの権限を外したら次のリクエストから効く）
   return {

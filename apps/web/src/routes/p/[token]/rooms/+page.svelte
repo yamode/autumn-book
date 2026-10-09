@@ -15,7 +15,8 @@
   // 部屋カレンダーの条件: 1泊・1室。人数は大人2名を定員の範囲に収めたもの（料金カレンダー側で変えられる）
   let calendarRoom = $state<{ code: string; name: string } | null>(null);
   let guests = $state(2);
-  function openCalendar(r: (typeof data.rooms)[number]) {
+  type Room = Awaited<typeof data.contents>['rooms'][number];
+  function openCalendar(r: Room) {
     guests = Math.min(Math.max(2, r.capacityMin || 1), r.capacityMax || 6);
     calendarRoom = { code: r.code, name: r.name };
   }
@@ -36,37 +37,55 @@
 
   {#if data.portal.noFacilityMessage}
     <!-- オンの施設が1つも無い取引先（N9・2026-10-09）: 紹介は出さない（案内はヘッダーの下に出ている） -->
-  {:else if data.rooms.length === 0}
-    <p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">ご案内できるお部屋の紹介はまだありません。</p>
   {:else}
-    <nav class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="お部屋の一覧">
-      {#each data.rooms as r (r.code)}
-        <a href={`#${roomAnchor(r.code)}`} class="rounded-full border border-stone-300 bg-white px-3 py-1 hover:border-brand-900">{r.shortName || roomParts(r.name).room}</a>
-      {/each}
-    </nav>
+    {#await data.contents}
+      <!-- 紹介が届くまでの枠（メニューから移ってきた直後） -->
+      <div class="mt-4 flex flex-wrap gap-1.5" aria-hidden="true">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-7 w-24 rounded-full"></div>{/each}</div>
+      <div class="mt-6 space-y-8" aria-busy="true">
+        {#each [0, 1] as i (i)}
+          <div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
+            <div class="shimmer h-6 w-1/2"></div>
+            <div class="shimmer mt-2 h-4 w-1/3 opacity-70"></div>
+            <div class="shimmer mt-4 aspect-[16/9] w-full"></div>
+          </div>
+        {/each}
+      </div>
+    {:then { rooms, error }}
+      {#if error}
+        <p class="mt-8 rounded-xl border border-rose-700/30 bg-rose-700/5 p-6 text-center text-rose-700">{error}</p>
+      {:else if rooms.length === 0}
+        <p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">ご案内できるお部屋の紹介はまだありません。</p>
+      {:else}
+        <nav class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="お部屋の一覧">
+          {#each rooms as r (r.code)}
+            <a href={`#${roomAnchor(r.code)}`} class="rounded-full border border-stone-300 bg-white px-3 py-1 hover:border-brand-900">{r.shortName || roomParts(r.name).room}</a>
+          {/each}
+        </nav>
 
-    <div class="mt-6 space-y-8">
-      {#each data.rooms as r (r.code)}
-        {@const parts = roomParts(r.name)}
-        <article id={roomAnchor(r.code)} class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
-          <header class="mb-4">
-            {#if parts.building}<p class="text-xs tracking-wider text-stone-500">{parts.building}</p>{/if}
-            <h3 class="text-xl font-bold leading-snug">{parts.room}</h3>
-            <p class="mt-1 text-sm text-stone-500">
-              {#if r.headline && r.headline !== r.name}{r.headline}・{/if}定員 {r.capacityMin === r.capacityMax ? r.capacityMax : `${r.capacityMin}〜${r.capacityMax}`}名
-            </p>
-          </header>
-          <PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel="浴室・アメニティ・設備">
-            {#snippet actions()}
-              <button type="button" onclick={() => openCalendar(r)} class="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--pt-accent)] px-5 py-3 text-base font-bold text-white hover:opacity-90">
-                <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
-                この部屋の空室・料金を見る
-              </button>
-            {/snippet}
-          </PartnerContentBody>
-        </article>
-      {/each}
-    </div>
+        <div class="mt-6 space-y-8">
+          {#each rooms as r (r.code)}
+            {@const parts = roomParts(r.name)}
+            <article id={roomAnchor(r.code)} class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
+              <header class="mb-4">
+                {#if parts.building}<p class="text-xs tracking-wider text-stone-500">{parts.building}</p>{/if}
+                <h3 class="text-xl font-bold leading-snug">{parts.room}</h3>
+                <p class="mt-1 text-sm text-stone-500">
+                  {#if r.headline && r.headline !== r.name}{r.headline}・{/if}定員 {r.capacityMin === r.capacityMax ? r.capacityMax : `${r.capacityMin}〜${r.capacityMax}`}名
+                </p>
+              </header>
+              <PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel="浴室・アメニティ・設備">
+                {#snippet actions()}
+                  <button type="button" onclick={() => openCalendar(r)} class="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--pt-accent)] px-5 py-3 text-base font-bold text-white hover:opacity-90">
+                    <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M3.5 9.5h17M8 3v4M16 3v4" /></svg>
+                    この部屋の空室・料金を見る
+                  </button>
+                {/snippet}
+              </PartnerContentBody>
+            </article>
+          {/each}
+        </div>
+      {/if}
+    {/await}
   {/if}
 </main>
 
