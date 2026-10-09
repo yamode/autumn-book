@@ -10,6 +10,10 @@
 //   - CLOUDFLARE_ACCOUNT_ID（無ければ CF_ACCOUNT_ID＝メール送信と同じアカウント ID を使う）
 //   - CLOUDFLARE_BROWSER_RENDERING_TOKEN … 「Browser Rendering - Edit」権限の API トークン
 // 未設定・失敗のときは null を返す（例外は投げない）。呼び出し側は HTML（印刷用）に切り替える。
+//
+// 紙面の版（2026-10-09 全施設分1枚・N3）: renderInvoiceHtml が document.version で描き分ける。
+//   version 2 … 施設が2つ以上なら施設の見出し・施設小計・消費税の端数の注記つき（1施設なら従来と同じ紙面）
+//   version 1 … 発行済みの施設ごとの請求書。発行時の紙面のまま描く
 import { env } from '$env/dynamic/private';
 import { renderInvoiceHtml, type InvoiceDocument } from '$lib/partner-invoice';
 

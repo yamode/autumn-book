@@ -106,12 +106,13 @@
 {/if}
 
 {#if data.live && !data.error}
-	<!-- 請求書の設定（施設ごと）: 取引先の月次請求書（利用明細書＋適格請求書）の発行元・振込先 -->
+	<!-- 請求書の設定（全施設共通・2026-10-09 N3）: 取引先の月次請求書（利用明細書＋適格請求書）の発行元・振込先・通知先 -->
 	<div class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
-		<h2 class="text-sm font-bold text-stone-700">請求書の設定 — {data.facilityName}</h2>
+		<h2 class="text-sm font-bold text-stone-700">請求書の設定（全施設共通）</h2>
 		<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
-			取引先の月次のご請求書・ご利用明細書の発行元と振込先です。発行済みのご請求書は発行時の内容のまま変わりません（変更は次の発行から）。
-			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります。
+			取引先の月次のご請求書・ご利用明細書の発行元と振込先です。ご請求書は取引先ごとに全施設分を1枚にまとめて発行するため、この設定は施設を切り替えても同じです。
+			発行済みのご請求書は発行時の内容のまま変わりません（変更は次の発行から）。
+			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります（差出人は発行者名）。
 		</p>
 		{#if data.billing.error}
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.billing.error}</p>
@@ -121,7 +122,7 @@
 				<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">振込先が未設定です。振込先を登録するまで、月末の請求書は自動発行されません。</p>
 			{/if}
 			{#if !b.saved}
-				<p class="mt-2 text-[11px] text-stone-500">まだ保存されていません（既定値を表示しています）。</p>
+				<p class="mt-2 text-[11px] text-stone-500">まだ保存されていません（既定値を表示しています。保存するまで月末の自動発行はされません）。</p>
 			{/if}
 			{#if billingSubmitted && form?.message}
 				<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -166,6 +167,10 @@
 						<input type="checkbox" name="auto_issue" checked={b.autoIssue} />
 						月末に自動で発行して取引先へ送る
 						{#if b.autoIssue && !b.bankAccount}<span class="text-xs text-amber-800">（振込先が未設定のあいだは自動発行されません）</span>{/if}
+					</label>
+					<label class="block text-sm sm:col-span-2">
+						<span class="text-xs text-stone-500">通知先（振込先が未設定などで月末の自動発行を止めたときに知らせるメールアドレス。改行・カンマ区切りで10件まで）</span>
+						<textarea name="notify_emails" rows="2" placeholder="例: keiri@example.com" class="mt-0.5 font-mono {inputCls}">{b.notifyEmails.join('\n')}</textarea>
 					</label>
 				</fieldset>
 				{#if data.canEdit}

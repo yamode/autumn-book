@@ -23,8 +23,15 @@ import {
   periodLabel,
   periodOf,
   renderInvoiceHtml,
+  facilitiesOfLines,
+  groupStatementByFacility,
+  invoiceFacilityCsv,
+  invoiceFacilityNames,
+  isMultiFacilityInvoice,
   type InvoiceBookingSource,
-  type InvoiceDocument
+  type InvoiceDocument,
+  type InvoiceDocumentV1,
+  type InvoiceDocumentV2
 } from './partner-invoice';
 
 const settings = {
@@ -161,7 +168,7 @@ describe('明細と合計', () => {
   });
 });
 
-const docOf = (bookings: InvoiceBookingSource[], over: Partial<InvoiceDocument> = {}): InvoiceDocument => {
+const docOf = (bookings: InvoiceBookingSource[], over: Partial<InvoiceDocumentV1> = {}): InvoiceDocumentV1 => {
   const lines = buildInvoiceLines(bookings, settings);
   return {
     version: 1,
@@ -409,5 +416,164 @@ describe('デポジット（Phase 3b）', () => {
     expect(isPartnerBilledBooking({ payment_option: 'deposit_online', remainder_option: 'onsite' }, settings)).toBe(false);
     expect(isPartnerBilledBooking({ payment_option: 'custom_bill' }, settings)).toBe(true);
     expect(isPartnerBilledBooking({ payment_option: 'online' }, settings)).toBe(false);
+  });
+});
+
+describe('全施設分を1枚（version 2・決定 N3・2026-10-09）', () => {
+  const NW = { id: 'fac-nw', name: '山人-yamado-', address: '〒029-5514 岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222' };
+  const OGA = { id: 'fac-oga', name: '山人-oga-', address: '〒010-0531 秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776' };
+  const ORDER = [NW, OGA];
+  const at = (f: { id: string; name: string }, over: Partial<InvoiceBookingSource> = {}) =>
+    booking({ facility_id: f.id, facility_name: f.name, ...over });
+
+  const v2Of = (bookings: InvoiceBookingSource[], order = ORDER): InvoiceDocumentV2 => {
+    const v1 = docOf(bookings);
+    return { ...v1, version: 2, issuer: { ...v1.issuer, facilityName: '' }, facilities: facilitiesOfLines(v1.lines, order) };
+  };
+
+  const mixed = () => [
+    at(OGA, { id: 'o1', booking_code: 'P-0101', check_in_date: '2026-10-04', check_out_date: '2026-10-05', total_amount: 11_006, bath_tax_amount: 150 }),
+    at(NW, { id: 'n1', booking_code: 'P-0102', check_in_date: '2026-10-05', check_out_date: '2026-10-06', total_amount: 11_006, bath_tax_amount: 150 }),
+    at(NW, { id: 'n2', booking_code: 'P-0103', payment_option: 'online', payment_method_name: 'オンライン決済', payment_status: 'paid', total_amount: 20_000 }),
+    // 取消の行（キャンセル料・請求書払い）も予約の施設に帰属する
+    at(OGA, {
+      id: 'o2',
+      booking_code: 'P-0104',
+      status: 'cancelled',
+      cancel_fee: 5_000,
+      cancel_fee_rate: 30,
+      cancel_fee_basis: '2日前',
+      cancel_fee_settlement: 'invoice',
+      cancelled_at: '2026-10-08T01:00:00Z'
+    })
+  ];
+
+  it('明細の行に予約の施設が付く（取消の行も）。施設の無い入力は従来どおり', () => {
+    const lines = buildInvoiceLines(mixed(), settings);
+    const by = Object.fromEntries(lines.map((l) => [l.bookingCode, l]));
+    expect(by['P-0101']).toMatchObject({ facilityId: 'fac-oga', facilityName: '山人-oga-' });
+    expect(by['P-0104']).toMatchObject({ facilityId: 'fac-oga', cancelFee: 5_000, billable: true });
+    const [old] = buildInvoiceLines([booking()], settings);
+    expect('facilityId' in old).toBe(false);
+  });
+
+  it('施設の並び順・施設小計（10%対象・入湯税・キャンセル料・ご請求額だけ。消費税は持たない）', () => {
+    const doc = v2Of(mixed());
+    expect(doc.facilities.map((f) => f.id)).toEqual(['fac-nw', 'fac-oga']);
+    const [nw, oga] = doc.facilities;
+    expect(nw).toMatchObject({ name: '山人-yamado-', tel: '0197-82-2222' });
+    expect(nw.totals).toEqual({ count: 2, billableCount: 1, usageTotal: 31_456, paidTotal: 20_300, billedTotal: 11_156, taxable10: 11_006, nonTaxable: 150, cancelFee: 0 });
+    expect(oga.totals).toEqual({ count: 2, billableCount: 2, usageTotal: 16_156, paidTotal: 0, billedTotal: 16_156, taxable10: 11_006, nonTaxable: 150, cancelFee: 5_000 });
+    expect('tax10' in nw.totals).toBe(false);
+    // 施設小計の合計は全体と一致
+    const sum = (k: 'billedTotal' | 'taxable10' | 'nonTaxable' | 'cancelFee' | 'usageTotal') => doc.facilities.reduce((s, f) => s + f.totals[k], 0);
+    expect(sum('billedTotal')).toBe(doc.totals.billedTotal);
+    expect(sum('taxable10')).toBe(doc.totals.taxable10);
+    expect(sum('nonTaxable')).toBe(doc.totals.nonTaxable);
+    expect(sum('cancelFee')).toBe(doc.totals.cancelFee);
+    expect(sum('usageTotal')).toBe(doc.totals.usageTotal);
+  });
+
+  it('消費税は請求書1枚で1回だけ切り捨て（施設ごとに計算した合計とずれても全体が正）', () => {
+    const doc = v2Of(mixed());
+    // 11,006 × 10/110 = 1000.5… → 施設ごとなら 1,000 + 1,000 = 2,000。全体なら 22,012 × 10/110 = 2001.09… → 2,001
+    expect(doc.totals.taxable10).toBe(22_012);
+    expect(doc.totals.tax10).toBe(2_001);
+    const perFacility = doc.facilities.reduce((s, f) => s + Math.floor((f.totals.taxable10 * 10) / 110), 0);
+    expect(perFacility).toBe(2_000);
+  });
+
+  it('order に無い施設は後ろに・名前は行の施設名', () => {
+    const lines = buildInvoiceLines([at({ id: 'fac-x', name: '別館' }), at(OGA, { id: 'o9', booking_code: 'P-0999' })], settings);
+    expect(facilitiesOfLines(lines, ORDER).map((f) => [f.id, f.name])).toEqual([
+      ['fac-oga', '山人-oga-'],
+      ['fac-x', '別館']
+    ]);
+  });
+
+  it('ご利用明細書は 施設 → お支払方法（ご請求の対象を先）の2階層', () => {
+    const sections = groupStatementByFacility(v2Of(mixed()));
+    expect(sections.map((s) => [s.facility.id, s.groups.map((g) => [g.method, g.billable, g.lines.map((l) => l.bookingCode)])])).toEqual([
+      [
+        'fac-nw',
+        [
+          ['月末締め翌月末銀行振込', true, ['P-0102']],
+          ['オンライン決済', false, ['P-0103']]
+        ]
+      ],
+      ['fac-oga', [['月末締め翌月末銀行振込', true, ['P-0101', 'P-0104']]]]
+    ]);
+    // version 1 は1グループ（従来の groupStatementLines と同じ）
+    const v1 = docOf([booking(), booking({ id: 'b2', booking_code: 'P-0002', payment_option: 'online', payment_status: 'paid', payment_method_name: 'オンライン決済' })]);
+    const [only] = groupStatementByFacility(v1);
+    expect(only.groups).toEqual(groupStatementLines(v1.lines));
+  });
+
+  it('2施設の紙面: 施設の見出し → 行 → 施設小計。税率ごとの区分は全体で1つ・端数の注記', () => {
+    const doc = v2Of(mixed());
+    expect(isMultiFacilityInvoice(doc)).toBe(true);
+    const html = renderInvoiceHtml(doc);
+    // ご請求書: 施設の見出し行と施設小計
+    expect(html).toContain('<tr class="fac"><td colspan="5">山人-yamado-');
+    expect(html).toContain('<tr class="fac"><td colspan="5">山人-oga-');
+    expect(html).toContain(
+      '山人-oga- 小計（2件）<br><span class="muted small">うちキャンセル料（不課税） 5,000円</span></td><td class="n">11,006円</td><td class="n">150円</td><td class="n">16,156円</td>'
+    );
+    expect(html.indexOf('<tr class="fac"><td colspan="5">山人-yamado-')).toBeLessThan(html.indexOf('<tr class="fac"><td colspan="5">山人-oga-'));
+    // 消費税の区分の表は1つだけ（施設小計に消費税は出さない）
+    expect(html.split('<th class="n">消費税額</th>').length - 1).toBe(1);
+    expect(html).toContain('<td>10%対象（宿泊料金）</td><td class="n">22,012円</td><td class="n">2,001円</td>');
+    expect(html).toContain('消費税額は請求書全体の10%対象額から1回だけ計算しています');
+    // ご利用明細書: 施設の見出し（連絡先つき）と施設小計
+    expect(html).toContain('<div class="fac-h"><span>山人-yamado-</span><small>〒029-5514 岩手県和賀郡西和賀町湯川52-71-10　TEL 0197-82-2222・2件</small></div>');
+    expect(html).toContain('山人-yamado- 小計（2件）</td><td class="n">31,456円</td><td class="n">11,156円</td>');
+    expect(html).toContain('<tr class="sum"><td>合計（4件）</td><td class="n">47,612円</td><td class="n">27,312円</td></tr>');
+    // 発行者欄に施設名を出さない
+    expect(html).not.toMatch(/<b>株式会社山人<\/b><br>\s*山人-/);
+  });
+
+  it('1施設だけの version 2 は施設の見出し・小計を出さず、従来（version 1）と同じ紙面', () => {
+    const bookings = [at(NW), at(NW, { id: 'b2', booking_code: 'P-0002', payment_option: 'online', payment_status: 'paid', payment_method_name: 'オンライン決済' })];
+    const v2 = v2Of(bookings);
+    expect(v2.facilities).toHaveLength(1);
+    expect(isMultiFacilityInvoice(v2)).toBe(false);
+    const v1: InvoiceDocumentV1 = { ...docOf(bookings), issuer: v2.issuer };
+    expect(renderInvoiceHtml(v2)).toBe(renderInvoiceHtml(v1));
+    expect(renderInvoiceHtml(v2, { draft: true })).toBe(renderInvoiceHtml(v1, { draft: true }));
+    const html = renderInvoiceHtml(v2);
+    expect(html).not.toContain('class="fac"');
+    expect(html).not.toContain('fac-h');
+    expect(html).not.toContain('1回だけ計算しています');
+  });
+
+  it('version 1 の紙面は従来どおり（施設名は発行者欄に・施設の見出しなし）', () => {
+    const v1 = docOf([at(NW), at(OGA, { id: 'o1', booking_code: 'P-0101' })]);
+    expect(v1.version).toBe(1);
+    expect(isMultiFacilityInvoice(v1)).toBe(false);
+    const html = renderInvoiceHtml(v1);
+    expect(html).toMatch(/<b>株式会社山人<\/b><br>\s*山人-yamado-<br>/);
+    expect(html).not.toContain('class="fac"');
+    expect(html).not.toContain('fac-h');
+  });
+
+  it('載っている施設名（一覧の表示用）', () => {
+    expect(invoiceFacilityNames(v2Of(mixed()))).toEqual(['山人-yamado-', '山人-oga-']);
+    expect(invoiceFacilityNames(docOf([booking()]))).toEqual(['山人-yamado-']);
+  });
+
+  it('施設別小計の CSV（期間・取引先・施設・税込・入湯税・キャンセル料・請求額）', () => {
+    const csv = invoiceFacilityCsv([
+      { period: '2026-10-01', partnerName: '○○トラベル', facilityName: '山人-yamado-', taxable10: 11_006, nonTaxable: 150, cancelFee: 0, billedTotal: 11_156 },
+      { period: '2026-10-01', partnerName: 'A,"B"', facilityName: '山人-oga-', taxable10: 0, nonTaxable: 0, cancelFee: 5_000, billedTotal: 5_000 },
+      { period: '2026-10-01', partnerName: '=HYPERLINK("x")', facilityName: '山人-oga-', taxable10: 0, nonTaxable: 0, cancelFee: 0, billedTotal: 0 }
+    ]);
+    expect(csv.startsWith('﻿')).toBe(true);
+    expect(csv.slice(1).split('\r\n')).toEqual([
+      '期間,取引先,施設,10%対象（税込）,入湯税,キャンセル料,ご請求額',
+      '2026-10,○○トラベル,山人-yamado-,11006,150,0,11156',
+      '2026-10,"A,""B""",山人-oga-,0,0,5000,5000',
+      `2026-10,"'=HYPERLINK(""x"")",山人-oga-,0,0,0,0`,
+      ''
+    ]);
   });
 });

@@ -15,6 +15,13 @@
 //   取消時はデポジットをキャンセル料に充当し、超えた分を不課税で請求する（2026-10-07 変更: 残額の精算先が現地でも請求する・旧 N3 廃止）。
 // 紙面（HTML）は Cloudflare Browser Rendering で PDF にする（lib/server/partners/invoice-pdf.ts）。
 // PDF が作れない環境でも、同じ HTML をそのまま開いて印刷できる。
+//
+// 全施設分を1枚に（複数施設化 決定 N3・docs/partner-multi-facility.md §7.1・2026-10-09）:
+//   - 取引先 × 月で1枚（InvoiceDocument version 2）。明細の行は予約の施設（facilityId / facilityName）に帰属し、
+//     紙面は 施設 → お支払方法（ご請求の対象を先）の2階層で並べ、施設ごとの小計を出す。
+//   - 施設の小計は 10%対象（税込）・入湯税・キャンセル料・ご請求額だけ（M3）。消費税は請求書1枚で1回だけ端数処理する。
+//   - 載っている施設が1つだけなら、施設の見出し・小計を出さず従来（version 1）と同じ紙面にする。
+//   - 発行済みの version 1（施設ごとの請求書）は document に固定されたまま、従来どおり描ける。
 import { chargeAmountOf, isDepositPaymentOption, isDepositRemainderBilled, type PartnerBookingSettings } from '$lib/partner-booking';
 
 export const INVOICE_TAX_RATE = 10;
@@ -53,6 +60,9 @@ export type InvoiceBookingSource = {
   // デポジット（Phase 3b）。payment_option='deposit_online' のときだけ
   deposit_amount?: number | null;
   remainder_option?: string | null;
+  // 予約の施設（台帳 rms_partner_bookings.facility_id）と施設名（2026-10-09 全施設分1枚・N3）
+  facility_id?: string | null;
+  facility_name?: string | null;
 };
 
 export type InvoiceLine = {
@@ -82,10 +92,14 @@ export type InvoiceLine = {
   cancelNote?: string; // 「2日前の取消 30%」など
   // デポジット（Phase 3b）: ご利用額のうちお支払い済みのデポジット（取消の行は充当した額）。ご請求額＝ご利用額−これ
   deposit?: number;
+  // 予約の施設（2026-10-09 全施設分1枚・N3）。取消・デポジット不足分・返金しない額の行もその予約の施設に帰属。version 1 の紙面には無い
+  facilityId?: string;
+  facilityName?: string;
 };
 
 export type InvoiceIssuer = {
   name: string;
+  /** version 1（施設ごと）の発行施設名。version 2（全施設分1枚）は ''（発行者欄に施設名を出さない・§7.1） */
   facilityName: string;
   address: string;
   tel: string;
@@ -95,8 +109,7 @@ export type InvoiceIssuer = {
 };
 
 // 紙面の全内容（rms_partner_invoices.document に固定して持つ）
-export type InvoiceDocument = {
-  version: 1;
+type InvoiceDocumentBase = {
   invoiceNo: string;
   period: string; // YYYY-MM-01
   issueDate: string;
@@ -106,6 +119,41 @@ export type InvoiceDocument = {
   lines: InvoiceLine[];
   totals: InvoiceTotals;
 };
+
+/** version 1: 施設ごとの請求書（〜2026-10-09。発行済みはそのまま描く） */
+export type InvoiceDocumentV1 = InvoiceDocumentBase & { version: 1 };
+
+/** version 2: 取引先 × 月で全施設分を1枚（N3）。facilities = 載っている施設（施設の並び順）と施設ごとの小計 */
+export type InvoiceDocumentV2 = InvoiceDocumentBase & { version: 2; facilities: InvoiceFacilityGroup[] };
+
+export type InvoiceDocument = InvoiceDocumentV1 | InvoiceDocumentV2;
+
+/**
+ * 施設ごとの小計（M3: 10%対象〔税込〕・入湯税・キャンセル料・ご請求額だけ。消費税は請求書全体で1回だけ計算するので持たない）。
+ * count / billableCount / usageTotal / paidTotal はご利用明細書の施設小計・一覧の表示用。
+ */
+export type InvoiceFacilitySubtotal = {
+  count: number;
+  billableCount: number;
+  usageTotal: number;
+  paidTotal: number;
+  billedTotal: number;
+  taxable10: number;
+  nonTaxable: number;
+  cancelFee: number;
+};
+
+/** 紙面の施設グループ。address / tel は施設見出しに小さく出す施設の連絡先（M1・無ければ出さない） */
+export type InvoiceFacilityGroup = {
+  id: string;
+  name: string;
+  address?: string;
+  tel?: string;
+  totals: InvoiceFacilitySubtotal;
+};
+
+/** 施設の並び・名前・連絡先（facilitiesOfLines の材料） */
+export type InvoiceFacilityInfo = { id: string; name: string; address?: string; tel?: string };
 
 export type InvoiceTotals = {
   usageTotal: number;
@@ -257,6 +305,10 @@ function cancelNoteOf(b: InvoiceBookingSource): string {
   return over ? `${head}（事務手数料等の返金しない分を含む）` : head;
 }
 
+// 予約の施設（あるときだけ行に付ける。施設の無い入力は従来どおりの行）
+const facilityOfSource = (b: InvoiceBookingSource): Pick<InvoiceLine, 'facilityId' | 'facilityName'> =>
+  b.facility_id ? { facilityId: b.facility_id, facilityName: (b.facility_name ?? '').trim() } : {};
+
 export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<PartnerBookingSettings, 'customPaymentOptions'>): InvoiceLine[] {
   return bookings
     .map((b): InvoiceLine => {
@@ -299,7 +351,8 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
           cancelFee: charge,
           cancelledOn: jstDay(b.cancelled_at),
           cancelNote: cancelNoteOf(b),
-          ...(dep && dep.kept > 0 ? { deposit: dep.kept } : {})
+          ...(dep && dep.kept > 0 ? { deposit: dep.kept } : {}),
+          ...facilityOfSource(b)
         };
       }
       const lodging = b.total_amount;
@@ -332,7 +385,8 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         usage,
         billable,
         billed: billable ? usage - deposit : 0,
-        ...(deposit > 0 ? { deposit } : {})
+        ...(deposit > 0 ? { deposit } : {}),
+        ...facilityOfSource(b)
       };
     })
     .sort((a, b) => a.checkOut.localeCompare(b.checkOut) || a.bookingCode.localeCompare(b.bookingCode));
@@ -367,6 +421,93 @@ export function invoiceTotals(lines: InvoiceLine[]): InvoiceTotals {
     nonTaxable,
     cancelFee
   };
+}
+
+// ---- 施設ごとの小計（全施設分1枚・N3・2026-10-09） ----
+
+/** 施設ごとの小計（M3: 消費税は出さない）。合計の規則は invoiceTotals と同じ */
+export function invoiceFacilitySubtotal(lines: InvoiceLine[]): InvoiceFacilitySubtotal {
+  const t = invoiceTotals(lines);
+  return {
+    count: lines.length,
+    billableCount: lines.filter((l) => l.billable).length,
+    usageTotal: t.usageTotal,
+    paidTotal: t.paidTotal,
+    billedTotal: t.billedTotal,
+    taxable10: t.taxable10,
+    nonTaxable: t.nonTaxable,
+    cancelFee: t.cancelFee ?? 0
+  };
+}
+
+/**
+ * 明細の行から、載っている施設と施設ごとの小計を作る（InvoiceDocumentV2.facilities）。
+ * 並びは order（施設の並び順）→ order に無い施設は行に出てきた順。名前・連絡先は order を優先し、無ければ行の施設名。
+ * 施設の無い行は id '' のグループにまとめる。
+ */
+export function facilitiesOfLines(lines: InvoiceLine[], order: InvoiceFacilityInfo[] = []): InvoiceFacilityGroup[] {
+  const byId = new Map<string, InvoiceLine[]>();
+  for (const l of lines) {
+    const id = l.facilityId ?? '';
+    const list = byId.get(id) ?? [];
+    list.push(l);
+    byId.set(id, list);
+  }
+  const rank = (id: string) => {
+    const i = order.findIndex((f) => f.id === id);
+    return i < 0 ? order.length : i;
+  };
+  return [...byId.entries()]
+    .map(([id, ls], i) => ({ id, ls, i }))
+    .sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i)
+    .map(({ id, ls }) => {
+      const info = order.find((f) => f.id === id);
+      const name = (info?.name ?? '').trim() || ls.find((l) => l.facilityName)?.facilityName || '';
+      return {
+        id,
+        name,
+        ...(info?.address ? { address: info.address } : {}),
+        ...(info?.tel ? { tel: info.tel } : {}),
+        totals: invoiceFacilitySubtotal(ls)
+      };
+    });
+}
+
+/** 施設の見出し・小計を出す紙面か（version 2 で施設が2つ以上）。1施設なら従来の紙面 */
+export const isMultiFacilityInvoice = (doc: InvoiceDocument): doc is InvoiceDocumentV2 =>
+  doc.version === 2 && Array.isArray(doc.facilities) && doc.facilities.length > 1;
+
+/** 請求書に載っている施設名（一覧の表示用）。version 1 は発行施設の名前 */
+export function invoiceFacilityNames(doc: InvoiceDocument): string[] {
+  if (doc.version === 2) return (doc.facilities ?? []).map((f) => f.name).filter((n) => !!n);
+  return doc.issuer?.facilityName ? [doc.issuer.facilityName] : [];
+}
+
+/** 予定請求の施設別小計の CSV の1行（M5・freee の入金消込の手元資料）。1行 = 取引先 × 施設 */
+export type InvoiceFacilityCsvRow = {
+  period: string; // YYYY-MM-01
+  partnerName: string;
+  facilityName: string;
+  taxable10: number;
+  nonTaxable: number;
+  cancelFee: number;
+  billedTotal: number;
+};
+
+const csvCell = (v: string | number) => {
+  // 文字列の先頭が = + - @ だと表計算ソフトが式として読むので、先頭に ' を付ける（数値はそのまま）
+  const s = typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/**
+ * 施設別小計の CSV（見出し: 期間・取引先・施設・10%対象（税込）・入湯税・キャンセル料・ご請求額）。
+ * Excel で文字化けしないよう先頭に BOM・改行は CRLF。期間は YYYY-MM。
+ */
+export function invoiceFacilityCsv(rows: InvoiceFacilityCsvRow[]): string {
+  const head = ['期間', '取引先', '施設', '10%対象（税込）', '入湯税', 'キャンセル料', 'ご請求額'];
+  const body = rows.map((r) => [r.period.slice(0, 7), r.partnerName, r.facilityName, r.taxable10, r.nonTaxable, r.cancelFee, r.billedTotal]);
+  return '﻿' + [head, ...body].map((cols) => cols.map(csvCell).join(',')).join('\r\n') + '\r\n';
 }
 
 // ---- 紙面（HTML） ----
@@ -426,6 +567,14 @@ const DRAFT_STYLE = `
 .draft-wm { position: fixed; top: 42%; left: 0; right: 0; text-align: center; font-size: 120pt; font-weight: 700; color: rgba(180, 83, 9, .08); transform: rotate(-30deg); pointer-events: none; z-index: 0; letter-spacing: .2em; }
 `;
 
+// 施設が2つ以上の紙面（全施設分1枚・N3）だけに足す CSS（1施設・version 1 の紙面は従来と同じ HTML のまま）
+const FACILITY_STYLE = `
+table.t tr.fac td { background: #e7e5e4; font-weight: 700; font-size: 9pt; }
+.fac-h { margin: 7mm 0 0; padding: 1.5mm 2.5mm; font-size: 11pt; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; gap: 4mm; background: #f5f5f4; border-left: 5px solid #1c1917; }
+.fac-h small { font-weight: 400; color: #57534e; font-size: 8.5pt; }
+table.t.fac-sub { margin-top: 1.5mm; }
+`;
+
 const draftBand = (doc: InvoiceDocument) =>
   `<div class="draft-band">予定請求書 — ${Number(doc.issueDate.slice(5, 7))}月${Number(doc.issueDate.slice(8, 10))}日時点の実績（チェックアウト済み）による試算です。正式なご請求書ではありません</div>`;
 
@@ -461,9 +610,7 @@ const roomLine = (l: InvoiceLine) => `${esc(l.roomName)} ${l.roomCount}室・${l
 function invoicePage(doc: InvoiceDocument, draft = false): string {
   const t = doc.totals;
   const billed = doc.lines.filter((l) => l.billable);
-  const rows = billed
-    .map(
-      (l) => `<tr>
+  const rowOf = (l: InvoiceLine) => `<tr>
   <td class="nw">${md(l.checkOut)}<br><span class="muted small">${esc(l.bookingCode)}</span></td>
   <td>${
     l.cancelFee != null
@@ -473,9 +620,21 @@ function invoicePage(doc: InvoiceDocument, draft = false): string {
   <td class="n">${l.cancelFee != null ? '—' : yen(l.lodging - l.discount - depositSplitOf(l).lodging)}</td>
   <td class="n">${l.cancelFee == null && l.bathTax - depositSplitOf(l).bathTax ? yen(l.bathTax - depositSplitOf(l).bathTax) : '—'}</td>
   <td class="n">${yen(l.billed)}</td>
-</tr>`
-    )
-    .join('');
+</tr>`;
+  // 全施設分1枚（N3）で施設が2つ以上: 施設の見出し → その施設の対象行 → 施設小計（10%対象・入湯税・キャンセル料・ご請求額。消費税は出さない・M3）
+  const multi = isMultiFacilityInvoice(doc);
+  const rows = multi
+    ? doc.facilities
+        .map((f) => {
+          const fl = billed.filter((l) => (l.facilityId ?? '') === f.id);
+          if (!fl.length) return '';
+          const ft = f.totals;
+          return `<tr class="fac"><td colspan="5">${esc(f.name || '（施設未設定）')}${facilityContact(f) ? `<span class="muted small">　${facilityContact(f)}</span>` : ''}</td></tr>
+  ${fl.map(rowOf).join('')}
+  <tr class="sub"><td colspan="2">${esc(f.name || '（施設未設定）')} 小計（${fl.length}件）${ft.cancelFee ? `<br><span class="muted small">うちキャンセル料（不課税） ${yen(ft.cancelFee)}</span>` : ''}</td><td class="n">${yen(ft.taxable10)}</td><td class="n">${yen(ft.nonTaxable)}</td><td class="n">${yen(ft.billedTotal)}</td></tr>`;
+        })
+        .join('')
+    : billed.map(rowOf).join('');
   return `
 <section class="page">
 ${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`, draft)}
@@ -499,9 +658,17 @@ ${headerBlock(doc, DOC_INVOICE, `適格請求書　${periodSub(doc)}`, draft)}
   ${doc.issuer.bankAccount ? `<div>お振込先：${nl2br(doc.issuer.bankAccount)}</div>` : ''}
   ${doc.issuer.note ? `<div class="note">${nl2br(doc.issuer.note)}</div>` : ''}
 </div>
-<div class="note">※ 取引日はチェックアウト日です。ご利用の全予約の内訳は、次ページの${DOC_STATEMENT}をご覧ください。</div>
+<div class="note">※ 取引日はチェックアウト日です。ご利用の全予約の内訳は、次ページの${DOC_STATEMENT}をご覧ください。</div>${multi ? `\n${FACILITY_ROUNDING_NOTE}` : ''}
 </section>`;
 }
+
+// 全施設分1枚の紙面の注記（消費税の端数処理は請求書1枚で1回・M3）
+const FACILITY_ROUNDING_NOTE =
+  '<div class="note">※ 施設ごとの小計は10%対象（税込）・入湯税・キャンセル料・金額です。消費税額は請求書全体の10%対象額から1回だけ計算しています（施設ごとに計算した額の合計とは1円ほど異なることがあります）。</div>';
+
+// 施設見出しに小さく出す施設の連絡先（M1）
+const facilityContact = (f: Pick<InvoiceFacilityGroup, 'address' | 'tel'>) =>
+  [f.address ? esc(f.address) : '', f.tel ? `TEL ${esc(f.tel)}` : ''].filter(Boolean).join('　');
 
 // ご利用明細書のグループ（お支払方法ごと。ご請求の対象を先に）。見出しを表の外に出して「お支払方法」の列を省く。
 export type StatementGroup = { method: string; billable: boolean; lines: InvoiceLine[] };
@@ -518,12 +685,33 @@ export function groupStatementLines(lines: InvoiceLine[]): StatementGroup[] {
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, g]) => g);
 }
 
+/**
+ * ご利用明細書の2階層のグループ（全施設分1枚・N3）: 施設（doc.facilities の並び）→ お支払方法（ご請求の対象を先）。
+ * version 1・施設の無い紙面は、施設 id '' の1グループに全行をまとめる。
+ */
+export type StatementFacilitySection = { facility: InvoiceFacilityGroup; groups: StatementGroup[] };
+export function groupStatementByFacility(doc: InvoiceDocument): StatementFacilitySection[] {
+  if (doc.version === 2 && doc.facilities?.length) {
+    return doc.facilities.map((facility) => ({
+      facility,
+      groups: groupStatementLines(doc.lines.filter((l) => (l.facilityId ?? '') === facility.id))
+    }));
+  }
+  return [
+    {
+      facility: { id: '', name: doc.issuer.facilityName ?? '', totals: invoiceFacilitySubtotal(doc.lines) },
+      groups: groupStatementLines(doc.lines)
+    }
+  ];
+}
+
 function statementPage(doc: InvoiceDocument, draft = false): string {
   const t = doc.totals;
-  const groups = groupStatementLines(doc.lines);
+  const multi = isMultiFacilityInvoice(doc);
   const head = `<colgroup><col style="width:32mm"><col><col style="width:29mm"><col style="width:19mm"><col style="width:13mm"><col style="width:19mm"><col style="width:19mm"></colgroup>
   <tr><th>ご宿泊<br><span class="muted small">予約番号</span></th><th>お部屋・プラン</th><th>ご宿泊者</th><th class="n">宿泊料金<br><span class="muted small">税込</span></th><th class="n">入湯税</th><th class="n">ご利用額</th><th class="n">ご請求額</th></tr>`;
-  const body = groups
+  const groupBlock = (groups: StatementGroup[]) =>
+    groups
     .map((g) => {
       const rows = g.lines
         .map(
@@ -549,6 +737,20 @@ function statementPage(doc: InvoiceDocument, draft = false): string {
 </table>`;
     })
     .join('');
+  // 全施設分1枚（N3）で施設が2つ以上: 施設の見出し → お支払方法のグループ → 施設小計（ご利用額・ご請求額）
+  const body = multi
+    ? groupStatementByFacility(doc)
+        .map(({ facility: f, groups }) => {
+          const contact = facilityContact(f);
+          return `
+<div class="fac-h"><span>${esc(f.name || '（施設未設定）')}</span><small>${contact ? `${contact}・` : ''}${f.totals.count}件</small></div>${groupBlock(groups)}
+<table class="t fac-sub">
+  <colgroup><col><col style="width:19mm"><col style="width:19mm"></colgroup>
+  <tr class="sub"><td>${esc(f.name || '（施設未設定）')} 小計（${f.totals.count}件）${f.totals.cancelFee ? `<span class="muted small">　うちキャンセル料（不課税） ${yen(f.totals.cancelFee)}</span>` : ''}</td><td class="n">${yen(f.totals.usageTotal)}</td><td class="n">${yen(f.totals.billedTotal)}</td></tr>
+</table>`;
+        })
+        .join('')
+    : groupBlock(groupStatementLines(doc.lines));
   return `
 <section class="page">
 ${headerBlock(doc, DOC_STATEMENT, periodSub(doc), draft)}
@@ -560,7 +762,7 @@ ${body || '<p class="note">対象のご予約はありません。</p>'}
 <div class="note">
   ご利用総額 ${yen(t.usageTotal)} のうち、お支払い済み・別途精算 ${yen(t.paidTotal)}、今回のご請求 ${yen(t.billedTotal)}。<br>
   金額はご予約時の料金です（宿泊料金は税込・入湯税は別）。ご宿泊時の追加のご利用は含みません。
-</div>
+</div>${multi ? `\n${FACILITY_ROUNDING_NOTE}` : ''}
 </section>`;
 }
 
@@ -580,7 +782,7 @@ export function renderInvoiceHtml(doc: InvoiceDocument, opts: RenderInvoiceOptio
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=block" rel="stylesheet">
-<style>${STYLE}${draft ? DRAFT_STYLE : ''}</style></head><body>${draft ? '<div class="draft-wm" aria-hidden="true">予定</div>' : ''}${pages}</body></html>`;
+<style>${STYLE}${draft ? DRAFT_STYLE : ''}${isMultiFacilityInvoice(doc) ? FACILITY_STYLE : ''}</style></head><body>${draft ? '<div class="draft-wm" aria-hidden="true">予定</div>' : ''}${pages}</body></html>`;
 }
 
 // ダウンロード・添付のファイル名（例: ご請求書・ご利用明細書_PI-202610-00001_2026年10月.pdf）
