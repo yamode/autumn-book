@@ -35,6 +35,23 @@
 - [ ] 確認モード（管理画面の「確認ページを開く」）でも CSV / PDF を出せる（アクセスログには残らない）。取引先のログインでは管理画面のアクセスログに「料金表 CSV / PDF」が残る
 - [ ] スマホ幅（375px）で料金表の画面がはみ出さない
 
+### 取引先料金の先計算と、特別レートの RMS への移設（2026-10-10・v0.108.0）
+- 設計: `docs/partner-rank-rates.md` §7（Book は §7.3）。DB は autumn-shared `20261009152714_rms_partner_prices_precompute` ＋ `20261009153128_rms_partner_prices_jst`（**PROD 適用済み**）。RMS 側の特別レートの編集画面は §7.4（別作業）
+- 料金の読み出し（`lib/server/partners/rates.ts` の `loadPartnerRates`）: まず `rms_partner_portal_prices(p_partner, p_facility, p_from, p_to)` を読み、`ready=true` なら `days[].options[].pricesByGuest` を**最終料金としてそのまま**使う（`buildPartnerDays` の `pricesFinal: true`・特別レート前は `basePricesByGuest`。休館・残室・部屋の並び・絞り込み・残室を出すかは従来どおり）。`ready=false`・RPC の失敗・計算済みの先端（`computedTo`）が公開範囲の最終日に届いていないとき（日付が変わった直後〜毎日の計算まで）は従来の経路（`rms_partner_portal_source` ＋ `partnerPlanCodeFilter` ＋ TS のルール）。`PartnerRatesResult` に `priceMode`（`'precomputed' | 'live'`）・`computedAt` を追加。保存済みの料金も元データのキャッシュ（`baseCache`・キー `pre|取引先|施設|from|to|特別レートの JSON`・60 秒〔ready=false も 60 秒〕）に乗る。REST API の `ratesFetchedAt` は保存済みの料金の計算時刻（従来の経路なら null）。`staff-form.ts` の使われていない `parsePartnerSettings` / `parsePricing` を削除（テストは `parsePartnerCommonForm` へ移した）。取引先ページ・月 JSON・料金の幅・料金表・REST API・予約の見積もり（`booking.ts`）・管理画面のプレビューが同じ読み出しを使う（取引先ページに出た料金と同じ値で予約を確定する）
+- 管理画面 `/admin/partners/[id]`: 「特別レート」の編集をやめ、読み取り専用の要約（ルールごとの 部屋・プラン名・食事・人数・曜日・期間・調整内容、端数処理、最高・最低）と「RMS で編集する ↗」（`rmsPartnerRatesUrl`・`?facility=<slug>`）。計算の状態（`rms_partner_price_state`: 計算日時・件数・期間・失敗のメッセージ）を料金の元の欄に出す。施設タブの保存（`?/saveFacility`・`parsePartnerFacilityForm`）は pricing を読まず・書かない（RMS が正）
+- プレビュー: 保存済みの最終料金（取引先に見える価格）と特別レート前の料金（小さい数字）。保存済みが使えないときは「従来の計算で出しています」と注記。プランの一覧（プラン名〔取引先向け〕・特典の対象・ルールの要約の名前）は `book.v_admin_rate_plans` をスタッフのセッションで読む（service_role には権限が無い。読めなければプレビューに出たプランで補う）
+- 変更ファイル: `apps/web/src/lib/partner-pricing.ts`（`pricesFinal`・`basePricesByGuest`）・`partner-pricing.test.ts`・`lib/server/partners/rates.ts`・`rates.test.ts`・`staff-form.ts`・`staff-form.test.ts`・`routes/admin/partners/[id]/+page.server.ts`・`+page.svelte`・`package.json`（ルート・apps/web）
+
+#### テストチェックリスト（先計算・特別レートの RMS 移設）
+- [ ] 取引先ページの料金カレンダー・料金の幅・料金表・REST API の料金が、RMS の「最終料金の確認」（`rms_partner_prices`）と一致する
+- [ ] RMS で特別レートを変えて保存 → すぐ（暦だけ変えたときは 60 秒以内）取引先ページ・見積もりの料金が変わる（月 JSON の KV は別途 20 分まで古い値を返しうる）
+- [ ] 取引先ページで見た料金のまま予約の見積もり・確定ができる（金額が画面と一致）
+- [ ] 計算の状態に失敗（`error`）がある取引先・まだ計算していない取引先でも、取引先ページは従来の計算で料金が出る
+- [ ] 管理画面の取引先詳細: 特別レートの節に編集欄が無く、ルールの要約・端数処理・最高/最低・「RMS で編集する ↗」（施設タブの施設の slug 付き）・計算の状態が出る
+- [ ] 管理画面で施設タブの設定（販売・予約受付・何日先・残室・並び順・プラン名・特典・早期決済割）を保存できる。保存しても特別レート（pricing）は変わらない（RMS で入れたルールが残る）
+- [ ] 管理画面のプレビューが保存済みの最終料金になり、小さい数字で特別レート前の料金が出る。人数を変えると切り替わる
+- [ ] 「プラン名（取引先向け）」に販売対象のプランが並び、特典の対象プランの選択肢に施設のプランが並ぶ
+
 ## 【設計のみ・未実装】認証強化とランサムウェア対策（2026-10-09・v0.107.1）
 - 設計書: `docs/auth-hardening.md`（Fable 作成。§10 ユーザーに決めてもらう事項 M1〜M14・§11 実装分割 S0〜S8・§12 運用チェックリスト・§13 インシデント対応・§14 テストチェックリスト）
 - 範囲: 取引先ログインの第1段階（IP×限定URL のレート制限・Turnstile・ログイン通知・履歴と他端末ログアウト）、保存カードの権限（マスタのみ）とステップアップ、取引先の第2要素（メール OTP 標準・パスキー任意→取引先ごとに必須化）、管理画面の Supabase TOTP MFA（つなぎに Cloudflare Access）、会員 OTP のメール単位制限、anon 実行可 RPC の見直し

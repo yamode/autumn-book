@@ -6,14 +6,16 @@
 //   - FRESH_MS 以内 … そのまま返す
 //   - STALE_MS 以内 … 先に返し、waitUntil で取り直して保存する
 //   - それより古い・無い … その場で読み、保存して返す
+// 2026-10-09: 料金を DB で先に計算して保存するようになり読み出しが軽くなったので、3分／20分 → 1分／5分に短くした
+// （RMS で特別レート・暦を変えたときの反映を早くする）。
 // 残室は「目安」の表示（予約の見積もり・確定は毎回 DB から読み直す＝ここは通らない）なので、数分の遅れは許容する。
 // キーは取引先・施設・今日・月・人数・料金設定のハッシュ（特別レート・公開範囲が変われば別のキー）。
 // 取引先ランク暦（RMS）の塗り替えは、最長 STALE_MS 後に反映される。
 import type { PartnerContext } from './store';
 import type { PortalMonth } from './portal-month';
 
-const FRESH_MS = 3 * 60 * 1000;
-const STALE_MS = 20 * 60 * 1000;
+const FRESH_MS = 60 * 1000;
+const STALE_MS = 5 * 60 * 1000;
 const KV_TTL_SEC = 30 * 60;
 const PREFIX = 'partner-month:v1:';
 

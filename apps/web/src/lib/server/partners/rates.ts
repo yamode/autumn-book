@@ -1,6 +1,12 @@
 // 取引先向けの料金カレンダー（特別レート＋残室）を組み立てる。限定URLの画面・REST API・予約の見積もりで共通。
 //
-// 元データは RPC public.rms_partner_portal_source（service_role 専用）:
+// 先計算（2026-10-09・docs/partner-rank-rates.md §7）: まず RPC public.rms_partner_portal_prices（service_role 専用）で
+//   DB に保存済みの最終料金（ランク → 特別レート → 端数 → 最高 → 最低。計算は DB が正）と、毎回最新の残室・休館日を読む。
+//   ready=true ならその料金をそのまま使う（priceMode = 'precomputed'・TS のルールは当てない）。
+//   ready=false（未計算・計算の失敗・計算済みの範囲の外）や RPC の失敗なら、下の従来の経路に切り替える（priceMode = 'live'）。
+//   特別レートの編集は RMS に移した（Book は読むだけ）。
+//
+// 従来の経路の元データは RPC public.rms_partner_portal_source（service_role 専用）:
 //   - 料金 … booking.daily_rates の理論値（RMS のマスタ理論式。2026-09-26 決定: 料金計算の元は RMS の理論値）
 //   - 残室 … PMS と同じ規則・休館日
 // 返り値 jsonb は partner-pricing.ts の PartnerSourceDay[] / PartnerSourceInventory にそのまま渡せる形。
@@ -60,9 +66,14 @@ export type PartnerRatesResult = {
   planOptions: { code: string; label: string; mealType: string | null }[];
   // 料金の元（取引先ランク暦 / TL のランク由来の理論値）。管理画面の表示用
   priceSource: PartnerPriceSource;
+  // どちらで出したか: 'precomputed' = DB に保存済みの最終料金（rms_partner_portal_prices）／'live' = 従来の計算（TS のルール）
+  priceMode: PartnerPriceMode;
+  // 保存済みの料金を計算した時刻（precomputed のときだけ）
+  computedAt: string | null;
 };
 
 export type PartnerPriceSource = 'partner_rank' | 'standard';
+export type PartnerPriceMode = 'precomputed' | 'live';
 
 // 取引先ごとの特別レートを当てる前の元データ（料金＋残室）。同じ施設・期間はしばらく使い回す
 // （月の行き来や前後月の先読みで同じ範囲を何度も読むため）。
@@ -75,11 +86,71 @@ type PartnerBase = {
   rooms: { roomCode: string; name: string }[];
   priceSource: PartnerPriceSource;
 };
+// 保存済みの最終料金（rms_partner_portal_prices）。ready=false は null（その間は従来の経路で出す）
+type PrecomputedBase = PartnerBase & { computedAt: string | null; computedTo: string | null };
 const BASE_TTL_MS = 3 * 60 * 1000;
+// 保存済みの最終料金は短めに（RMS で暦・料金を変えたあと、見積もり・確定が古い最終料金のままにならないように。ready=false も同じ）
+const PRE_TTL_MS = 60 * 1000;
 // 料金の幅（loadPartnerPriceRange）が公開期間を31日ずつ最大24本読むので、カレンダー本体の分を押し出さない程度に持つ
 // （1件は1か月ぶんの JSON。Workers のメモリ 128MB に収めるため増やさない）
 const BASE_MAX_ENTRIES = 64;
-const baseCache = new Map<string, { at: number; value: Promise<PartnerBase> }>();
+// 保存済みの最終料金も同じキャッシュに置く（キー: pre|取引先|施設|from|to|特別レート。ready=false の null も PRE_TTL_MS の間は覚える）
+const baseCache = new Map<string, { at: number; value: Promise<PartnerBase | PrecomputedBase | null> }>();
+
+function cacheBase<T extends PartnerBase | null>(key: string, load: () => Promise<T>, ttlMs = BASE_TTL_MS): Promise<T> {
+  const now = Date.now();
+  const hit = baseCache.get(key);
+  if (hit && now - hit.at < ttlMs) return hit.value as Promise<T>;
+  const value = load();
+  baseCache.delete(key);
+  baseCache.set(key, { at: now, value });
+  // 失敗した結果は残さない（次のアクセスで取り直す）。
+  value.catch(() => baseCache.delete(key));
+  // 古い順（Map は挿入順）に上限まで捨てる。
+  for (const k of baseCache.keys()) {
+    if (baseCache.size <= BASE_MAX_ENTRIES) break;
+    baseCache.delete(k);
+  }
+  return value;
+}
+
+// 保存済みの最終料金を読む。RPC の失敗は例外（呼び出し側で従来の経路へ）、ready=false は null
+function loadPartnerPrecomputed(
+  db: SupabaseClient,
+  partnerId: string,
+  facilityId: string,
+  range: { from: string; to: string },
+  // 特別レート（rms_partner_facilities.pricing）。キーに含め、RMS で変えたらすぐ別のキーで読み直す（loadPartnerPriceRange と同じ流儀）
+  pricing: unknown
+): Promise<PrecomputedBase | null> {
+  const key = `pre|${partnerId}|${facilityId}|${range.from}|${range.to}|${JSON.stringify(pricing)}`;
+  return cacheBase(key, async (): Promise<PrecomputedBase | null> => {
+    const { data, error } = await db.rpc('rms_partner_portal_prices', {
+      p_partner: partnerId,
+      p_facility: facilityId,
+      p_from: range.from,
+      p_to: range.to
+    });
+    if (error) throw new Error(`保存済みの料金の読み込みに失敗しました: ${error.message}`);
+    const d = (data ?? {}) as Partial<Omit<PrecomputedBase, 'computedTo'>> & { ready?: boolean; computedTo?: unknown };
+    if (d.ready !== true) return null;
+    return {
+      days: Array.isArray(d.days) ? d.days : [],
+      inventory: d.inventory && typeof d.inventory === 'object' ? d.inventory : {},
+      rooms: Array.isArray(d.rooms) ? d.rooms : [],
+      priceSource: d.priceSource === 'partner_rank' ? 'partner_rank' : 'standard',
+      computedAt: typeof d.computedAt === 'string' ? d.computedAt : null,
+      computedTo: typeof d.computedTo === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d.computedTo) ? d.computedTo.slice(0, 10) : null
+    };
+  }, PRE_TTL_MS);
+}
+
+// 保存済みの料金で出せるか。計算済みの先端（computedTo）より先を、公開範囲（今日＋max_days_ahead）の内側で求められたら
+// 従来の経路にする（日付が変わった直後〜毎日の計算までの間、公開範囲の最終日の料金が無いままにしない）。
+function precomputedCovers(pre: PrecomputedBase, range: { to: string }, maxDaysAhead: number): boolean {
+  if (!pre.computedTo || pre.computedTo >= range.to) return true;
+  return pre.computedTo >= addDaysIso(todayJst(), maxDaysAhead);
+}
 
 // 取引先 × 施設で取引先ランク暦を使っているか（rms_partner_rank_settings.enabled・service_role）。60秒だけ使い回す。
 // 読めないときは「使っていない」とみなさず例外にする（暦の取引先に TL のランクの料金＝誤った料金を出さない）。
@@ -140,10 +211,7 @@ function loadPartnerBase(
   const key = rank
     ? `${partnerId}|${facilityId}|${range.from}|${range.to}|${plans}`
     : `${facilityId}|${range.from}|${range.to}|${plans}`;
-  const now = Date.now();
-  const hit = baseCache.get(key);
-  if (hit && now - hit.at < BASE_TTL_MS) return hit.value;
-  const value = (async (): Promise<PartnerBase> => {
+  return cacheBase(key, async (): Promise<PartnerBase> => {
     const { data, error } = await db.rpc(
       'rms_partner_portal_source',
       {
@@ -162,27 +230,26 @@ function loadPartnerBase(
       rooms: Array.isArray(d.rooms) ? d.rooms : [],
       priceSource: d.priceSource === 'partner_rank' ? 'partner_rank' : 'standard'
     };
-  })();
-  baseCache.delete(key);
-  baseCache.set(key, { at: now, value });
-  // 失敗した結果は残さない（次のアクセスで取り直す）。
-  value.catch(() => baseCache.delete(key));
-  // 古い順（Map は挿入順）に上限まで捨てる。
-  for (const k of baseCache.keys()) {
-    if (baseCache.size <= BASE_MAX_ENTRIES) break;
-    baseCache.delete(k);
-  }
-  return value;
+  });
 }
 
 export async function loadPartnerRates(
   db: SupabaseClient,
-  partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance'>,
+  partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance' | 'max_days_ahead'>,
   range: { from: string; to: string },
   filters: { rooms?: string[]; guests?: number[]; includeBase?: boolean } = {}
 ): Promise<PartnerRatesResult> {
   // Book が扱う施設以外の料金は出さない（store の withFacility でも弾いているが二重に確かめる）。
   if (!isBookFacility(partner.facility_id)) throw new Error(`未登録の施設です: ${partner.facility_id}`);
+  // 1. 保存済みの最終料金（先計算・§7）。取引先ページ・API・料金表・予約の見積もり（booking.ts）・管理画面のプレビューで共通
+  //    （取引先ページに出た料金と同じ値で予約を確定する）。読めない・ready=false なら従来の経路へ（取引先ページを止めない）
+  const pre = await loadPartnerPrecomputed(db, partner.id, partner.facility_id, range, partner.pricing).catch(() => null);
+  if (pre && precomputedCovers(pre, range, partner.max_days_ahead)) {
+    // 暦の有無も覚えておく（従来の経路に切り替えたとき、施設で共有の元データを読むか取引先付きで読むかの判定に使う）
+    rememberPartnerRank(partner.id, partner.facility_id, pre.priceSource === 'partner_rank');
+    return buildRatesResult(pre, partner, filters, 'precomputed', pre.computedAt);
+  }
+  // 2. 従来の経路（rms_partner_portal_source ＋ TS のルール）
   // 暦を使うかが分かっていれば、使っていない取引先は施設で共有の元データを読む。まだ分からなければ（isolate の初回）
   // 取引先付きで RPC を1回呼び、返り値の priceSource で覚える（暦の有無を別に問い合わせる往復を省く・2026-10-09 重さ対策）
   // 取引先が売るプラン（特別レートの調整ルールで指定したもの）だけを読む（2026-10-09 重さ対策）
@@ -195,6 +262,16 @@ export async function loadPartnerRates(
     base = await loadPartnerBase(db, partner.id, partner.facility_id, range, true, planCodes);
     rememberPartnerRank(partner.id, partner.facility_id, base.priceSource === 'partner_rank');
   }
+  return buildRatesResult(base, partner, filters, 'live', null);
+}
+
+function buildRatesResult(
+  base: PartnerBase,
+  partner: Pick<PartnerRow, 'pricing' | 'show_inventory' | 'include_advance'>,
+  filters: { rooms?: string[]; guests?: number[]; includeBase?: boolean },
+  priceMode: PartnerPriceMode,
+  computedAt: string | null
+): PartnerRatesResult {
   const { days: sourceDays, inventory, rooms, priceSource } = base;
   const days = buildPartnerDays(sourceDays, inventory, {
     pricing: partner.pricing,
@@ -203,7 +280,9 @@ export async function loadPartnerRates(
     includeAdvance: partner.include_advance,
     roomFilter: filters.rooms,
     guestFilter: filters.guests,
-    includeBase: filters.includeBase
+    includeBase: filters.includeBase,
+    // 保存済みの料金は特別レートまで当てた最終料金なので、ルールを当て直さない
+    pricesFinal: priceMode === 'precomputed'
   });
   const planMap = new Map<string, { code: string; label: string; mealType: string | null }>();
   for (const day of sourceDays) {
@@ -212,7 +291,7 @@ export async function loadPartnerRates(
       planMap.set(o.planGroupCode, { code: o.planGroupCode, label: o.planLabel, mealType: o.mealType ?? null });
     }
   }
-  return { days, rooms, planOptions: [...planMap.values()], priceSource };
+  return { days, rooms, planOptions: [...planMap.values()], priceSource, priceMode, computedAt };
 }
 
 // ---------------------------------------------------------------------------

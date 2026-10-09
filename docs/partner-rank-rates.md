@@ -128,3 +128,29 @@ Book の特別レート（rms_partner_facilities.pricing のルール → 端数
 - [ ] 料金表 PDF: 月カレンダーの色・区分と区分の料金表が一致。人数を 2 つ選ぶと表が 2 つ。Browser Rendering が無い環境では印刷用 HTML に切り替わる
 - [ ] 公開範囲外の月は出ない。確認モードでも出力できる
 - [ ] 管理画面の取引先詳細に「料金の元」と RMS へのリンク・未設定日の警告
+
+## 7. 取引先料金の先計算と、特別レートの RMS への移設（2026-10-09 決定）
+
+### 7.1 ユーザーの決定
+- 取引先料金は一度決めたらほとんど変えない → **更新のたびに DB に計算して保存**し、取引先ページは保存済みを読むだけにする（読み込みの高速化）
+- **特別レートは RMS に移す**（料金系を RMS にまとめる）。Book は読むだけ
+- **早期決済割は Book に残す**（支払方法と一体）。取引先向けプラン名・特典・紹介文・受付ルールも Book
+
+### 7.2 DB（autumn-shared・PROD 適用済み）
+- `20261009152714_rms_partner_prices_precompute` ＋ `20261009153128_rms_partner_prices_jst`（「今日」を日本時間に）
+- `public.rms_partner_prices`（取引先×施設×日×部屋×プラン〔`plan_key` = rate_plans.code 全体〕→ `prices`〔人数→最終の1名料金〕・`base_prices`〔特別レート前〕）
+- `public.rms_partner_price_state`（取引先×施設: `price_source` standard / partner_rank / disabled・`computed_from/to`・`row_count`・`duration_ms`・`computed_at`・`error`）
+- `public.jp_holidays`（祝日 2024〜2036・Book の `lib/holidays.ts` から書き出し）
+- 計算: `public.rms_partner_recompute_prices(partner, facility, from?, to?)`（特別レートの判定 `_rms_partner_decide` は `lib/partner-pricing.ts` の decidePartnerPrice と同じ規則。**DB が正**）。失敗しても設定の保存は止めず `state.error` に残す
+- きっかけ: `rms_partner_facilities` の pricing / enabled / max_days_ahead（トリガー）・`rms_partner_rank_settings.enabled`（トリガー）・`rms_partner_rank_days`（文単位・変わった日の範囲）・pg_cron `rms-partner-prices-refresh`（45 */3・通常ランクの取引先の60日）／`rms-partner-prices-full`（45 16 * * *・全取引先の公開範囲）
+- 読み出し: `public.rms_partner_portal_prices(partner, facility, from, to)` → `rms_partner_portal_source` と同じ形（`pricesByGuest` は最終料金・`basePricesByGuest`）＋ `ready` / `priceSource` / `computedAt`。**`ready=false` なら Book は従来の計算（portal_source ＋ TS のルール）に切り替える**
+- PROD で照合: 既存2社の保存済み料金（3,825 件・1,530 件）が、ルールを素直に当てた計算と全件一致。読み出しはメモリにある状態で 0.045 秒（大半は残室）
+
+### 7.3 Book
+- `loadPartnerRates`: 取引先ページ・API・予約の見積もりは `rms_partner_portal_prices` を読み、`ready` なら最終料金をそのまま使う（`buildPartnerDays` にルールを当てない経路を足す）。`ready=false`・RPC の失敗は従来の経路
+- 管理画面 `/admin/partners/[id]`: 特別レートの編集をやめ、ルールの要約（読み取り専用）と RMS の `/partner-rates/<id>?facility=<slug>` へのリンク。サーバでも pricing を書かない。プレビューは保存済みの最終料金と特別レート前の料金を出す。計算の状態（最終計算・失敗）も出す
+- 「プラン名（取引先向け）」の対象プランは、引き続き特別レートで調整して出すプラン
+
+### 7.4 RMS
+- `/partner-rates/[partnerId]` に「特別レート」の編集（Book の管理画面と同じ内容: ルール〔部屋・プラン・食事・人数・期間・曜日・調整/非表示・％/円/固定〕・端数・最高/最低）と、保存後の「最終料金の確認」（`rms_partner_prices` の最終料金と特別レート前の料金・計算の状態）
+- 保存は `rms_partner_facilities.pricing` を service_role で更新（トリガーがその場で計算し直す）。検証・正規化は Book の `normalizePartnerPricing` / `validatePartnerPricing` と同じもの（RMS に写す）

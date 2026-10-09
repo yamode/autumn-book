@@ -7,10 +7,8 @@
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import {
     ADVANCE_PLAN_CODE,
-    decidePartnerPrice,
     describeAdjust,
     normalizePartnerPricing,
-    validatePartnerPricing,
     WEEKDAY_LABELS,
     type PartnerPricing,
     type PartnerRateRule
@@ -101,8 +99,8 @@
   });
   const initialFacility = untrack(() => data.facility);
   let fac = $state<FacilityForm>(facilityFormOf(initialFacility));
-  let pricing = $state<PartnerPricing>(structuredClone(initialFacility?.pricing ?? normalizePartnerPricing(null)));
-  const pricingJson = $derived(JSON.stringify(pricing));
+  // 特別レートは読むだけ（2026-10-09・docs/partner-rank-rates.md §7: 編集は RMS。保存しても Book からは書かない）
+  const pricing = $derived<PartnerPricing>(data.facility?.pricing ?? normalizePartnerPricing(null));
   // 施設ごとの予約設定（プラン名・特典・案内文・通知先・公式特典）。通知先は画面では改行区切りの文字で持つ。
   let own = $state<PartnerFacilityOwnSettings>(structuredClone(initialFacility?.own ?? EMPTY_OWN));
   let notifyText = $state((initialFacility?.own.notifyEmails ?? []).join('\n'));
@@ -169,7 +167,7 @@
         const url = result.data.perkImageUploaded;
         perk.imageUrl = url;
         if (result.data.perkImagePersisted) {
-          const snap = JSON.parse(facilitySavedSnapshot) as { fac: unknown; pricing: unknown; ownJson: string; overridesJson: string };
+          const snap = JSON.parse(facilitySavedSnapshot) as { fac: unknown; ownJson: string; overridesJson: string };
           const o = JSON.parse(snap.ownJson) as PartnerFacilityOwnSettings;
           o.perks = o.perks.map((p) => (p.id === perk.id ? { ...p, imageUrl: url } : p));
           facilitySavedSnapshot = JSON.stringify({ ...snap, ownJson: JSON.stringify(o) });
@@ -244,7 +242,7 @@
   let commonSavedSnapshot = $state(untrack(commonSnapshotOf));
   const commonDirty = $derived(commonSnapshotOf() !== commonSavedSnapshot);
   let commonSave = $state<SaveState>({ saving: false, error: '', justSaved: false });
-  const facilitySnapshotOf = () => JSON.stringify({ fac, pricing, ownJson, overridesJson });
+  const facilitySnapshotOf = () => JSON.stringify({ fac, ownJson, overridesJson });
   let facilitySavedSnapshot = $state(untrack(facilitySnapshotOf));
   const facilityDirty = $derived(!!data.facility && facilitySnapshotOf() !== facilitySavedSnapshot);
   let facilitySave = $state<SaveState>({ saving: false, error: '', justSaved: false });
@@ -258,13 +256,11 @@
     untrack(() => {
       const f = data.facility;
       fac = facilityFormOf(f);
-      pricing = structuredClone(f?.pricing ?? normalizePartnerPricing(null));
       own = structuredClone(f?.own ?? EMPTY_OWN);
       notifyText = (f?.own.notifyEmails ?? []).join('\n');
       overrides = structuredClone(f?.overrides ?? {});
       facilitySavedSnapshot = facilitySnapshotOf();
       facilitySave = { saving: false, error: '', justSaved: false };
-      openRule = null;
     });
   });
   // 施設タブの切替（?fac=）。施設タブに未保存の変更があれば確かめる（共通の未保存の編集は残る）
@@ -353,9 +349,8 @@
     commonSave.error = '';
   }
   function revertFacility() {
-    const snap = JSON.parse(facilitySavedSnapshot) as { fac: FacilityForm; pricing: PartnerPricing; ownJson: string; overridesJson: string };
+    const snap = JSON.parse(facilitySavedSnapshot) as { fac: FacilityForm; ownJson: string; overridesJson: string };
     fac = snap.fac;
-    pricing = snap.pricing;
     const o = JSON.parse(snap.ownJson) as PartnerFacilityOwnSettings;
     own = o;
     notifyText = o.notifyEmails.join('\n');
@@ -381,7 +376,7 @@
     }
     return null;
   }
-  // 施設タブ: 特典のタイトル・特別レートのルール（該当ルールを開く）・予約受付には共通の支払方法（保存済み）が要る
+  // 施設タブ: 特典のタイトル・予約受付には共通の支払方法（保存済み）が要る
   function checkFacilityBeforeSave(): string | null {
     if (fac.enabled && fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length) {
       return '予約を受け付けるときは、共通の「支払方法」を1つ以上選んで保存してください。';
@@ -389,12 +384,7 @@
     for (const [i, perk] of own.perks.entries()) {
       if (!perk.title.trim()) return `取引先特典${i + 1}: タイトルを入れてください（不要なら削除）。`;
     }
-    const err = validatePartnerPricing(normalizePartnerPricing(pricing));
-    if (err) {
-      const m = err.match(/^ルール(\d+)/);
-      if (m) openRule = pricing.rules[Number(m[1]) - 1]?.id ?? openRule;
-    }
-    return err;
+    return null;
   }
 
   // 未保存のままページを離れるときは確かめる（プレビューの日付変更など同じページ内の移動は除く）。
@@ -408,43 +398,13 @@
     if (!confirm('保存していない変更があります。破棄してページを移動しますか？')) nav.cancel();
   });
 
-  const MEAL_TYPES = ['素泊', '朝食', '2食'];
   const GUEST_COUNTS = [1, 2, 3, 4, 5, 6];
-  const newRuleId = () => `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-
-  function addRule() {
-    const rule: PartnerRateRule = {
-      id: newRuleId(),
-      label: '',
-      roomCodes: [],
-      planGroupCodes: [],
-      mealTypes: [],
-      guestCounts: [],
-      weekdays: [],
-      dateFrom: null,
-      dateTo: null,
-      action: 'adjust',
-      adjustType: 'percent',
-      value: -10
-    };
-    pricing.rules = [...pricing.rules, rule];
-    openRule = rule.id;
-  }
-  function moveRule(i: number, delta: number) {
-    const j = i + delta;
-    if (j < 0 || j >= pricing.rules.length) return;
-    const next = [...pricing.rules];
-    [next[i], next[j]] = [next[j], next[i]];
-    pricing.rules = next;
-  }
-  function removeRule(i: number) {
-    pricing.rules = pricing.rules.filter((_, k) => k !== i);
-  }
+  const ROUNDING_MODE_LABELS: Record<PartnerPricing['roundingMode'], string> = { floor: '切り捨て', round: '四捨五入', ceil: '切り上げ' };
   function toggle<T>(list: T[], value: T): T[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
   }
-  let openRule = $state<string | null>(null);
 
+  // ---- 特別レートの要約（読み取り専用。編集は RMS） ----
   const roomName = (code: string) => data.rooms.find((r) => r.code === code)?.name ?? code;
   const ruleProblem = (r: PartnerRateRule) => (r.action === 'adjust' && !r.planGroupCodes.length ? 'プラン未選択' : '');
   const planName = (code: string) =>
@@ -462,25 +422,17 @@
 
   // ---- プレビュー ----
   let previewGuests = $state(2);
-  // サーバからは全プランの基準価格（実売）が来るので、編集中（未保存を含む）のルールをここで当てる。
-  const previewPricing = $derived(normalizePartnerPricing(pricing));
+  // サーバからは保存済みの最終料金（取引先に見える価格）と特別レート前の料金が来る（2026-10-09 §7）。ここでは並べるだけ
   const previewRows = $derived.by(() => {
-    const rows = new Map<string, { key: string; roomName: string; planName: string; advance: boolean; cells: Record<string, { price: number; base: number }> }>();
+    const rows = new Map<string, { key: string; roomName: string; planName: string; advance: boolean; cells: Record<string, { price: number; base: number | null }> }>();
     for (const day of data.preview.days) {
       for (const room of day.rooms) {
         for (const plan of room.plans) {
-          if (plan.advance && !fac.includeAdvance) continue;
-          const base = plan.pricesPerPerson[String(previewGuests)];
-          if (base == null) continue;
-          const decision = decidePartnerPrice(
-            previewPricing,
-            { date: day.date, roomCode: room.roomCode, planGroupCode: plan.planCode, mealType: plan.mealType ?? undefined, guestCount: previewGuests },
-            base
-          );
-          if (decision.hidden) continue;
+          const price = plan.pricesPerPerson[String(previewGuests)];
+          if (price == null) continue;
           const key = `${room.roomCode}|${plan.planCode}|${plan.planName}`;
           const row = rows.get(key) ?? { key, roomName: room.roomName, planName: plan.planName, advance: plan.advance, cells: {} };
-          row.cells[day.date] = { price: decision.price, base };
+          row.cells[day.date] = { price, base: plan.basePricesPerPerson?.[String(previewGuests)] ?? null };
           rows.set(key, row);
         }
       }
@@ -1542,11 +1494,14 @@
               </div>
             </fieldset>
 
-          <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">特別レート</h2>
+          <!-- 特別レート（2026-10-09・docs/partner-rank-rates.md §7）: 編集は RMS へ移した。ここは読み取り専用の要約と計算の状態 -->
+          <div class="mb-1 mt-8 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 class="text-lg font-bold text-stone-900">特別レート</h2>
+            <a href={data.priceSource.rmsUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>RMS で編集する ↗</a>
+          </div>
           <p class="mb-3 text-xs leading-5 text-stone-500">
-            基準は料金マスタの理論値（booking.daily_rates・1名あたり・税込・入湯税別）です。<strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まります。
-            <strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>で、どのルールにも当てはまらない料金は出しません。
-            ％・円はマイナスで値引き（例: -10 = 10%引き、-1000 = 1名1,000円引き）。値引きなしで出すなら「％・0」にします。
+            特別レートは RMS の「取引先料金」で編集します（ここでは変えられません）。RMS で保存すると DB が最終料金を計算し直し、取引先ページはその料金を出します。
+            <strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まり、<strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>です。
           </p>
           <!-- 料金の元（2026-10-09・docs/partner-rank-rates.md §5.4）: RMS の取引先ランク暦を使うと、基準の理論値が暦のランクで決まる -->
           <div class="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
@@ -1559,7 +1514,6 @@
               {:else}
                 <span class="text-stone-500">確かめられませんでした</span>
               {/if}
-              <a href={data.priceSource.rmsUrl} target="_blank" rel="noopener" class="text-xs text-brand-800 underline hover:no-underline">RMS の取引先料金で設定 ↗</a>
             </div>
             {#if data.priceSource.source === 'partner_rank' && (data.priceSource.missingDays ?? 0) > 0}
               <p class="mt-1 text-xs font-medium text-rose-700">
@@ -1568,163 +1522,50 @@
             {:else if data.priceSource.source === 'partner_rank'}
               <p class="mt-1 text-xs text-stone-500">基準の理論値は暦のランクで決まり、下のルールはその料金に当たります（「不可」の日は売りません）。</p>
             {/if}
+            <!-- 計算の状態（rms_partner_price_state）。失敗・未計算のあいだ、取引先ページは従来の計算（Book のルール）で出す -->
+            <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-stone-200 pt-1.5">
+              <span class="text-xs text-stone-500">最終料金の計算</span>
+              {#if !data.priceState}
+                <span class="text-xs text-stone-500">まだ計算していません（取引先ページは従来の計算で出しています）</span>
+              {:else}
+                <span class="text-xs text-stone-700">
+                  {dt(data.priceState.computedAt)}
+                  {#if data.priceState.priceSource === 'disabled'}・この施設は販売オフ（保存済みの料金なし）
+                  {:else}・{data.priceState.rowCount.toLocaleString()}件{#if data.priceState.computedFrom && data.priceState.computedTo}（{data.priceState.computedFrom}〜{data.priceState.computedTo}）{/if}{/if}
+                </span>
+                {#if data.priceState.error}
+                  <span class="block w-full text-xs font-medium text-rose-700">前回の計算に失敗しました: {data.priceState.error}（取引先ページは従来の計算で出しています）</span>
+                {/if}
+              {/if}
+            </div>
           </div>
-          <fieldset disabled={!canEdit}>
-            {#if pricing.rules.every((r) => r.action !== 'adjust')}
-              <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">
-                まだ公開するプランがありません。「＋ ルールを追加」で、出すプランを選んでください。
-              </p>
-            {/if}
-
-            <div class="mt-3 grid gap-2">
+          {#if pricing.rules.every((r) => r.action !== 'adjust')}
+            <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">
+              まだ公開するプランがありません。RMS の「取引先料金」で、出すプランのルールを作ってください。
+            </p>
+          {/if}
+          {#if pricing.rules.length}
+            <ol class="mt-3 grid gap-1.5">
               {#each pricing.rules as rule, i (rule.id)}
-                <div class="rounded-lg border border-stone-200 bg-white">
-                  <div class="flex flex-wrap items-center gap-2 px-3 py-2">
-                    <span class="text-xs font-semibold text-stone-500">#{i + 1}</span>
-                    <button type="button" class="min-w-0 flex-1 text-left text-sm" onclick={() => (openRule = openRule === rule.id ? null : rule.id)}>
-                      <span class="font-medium">{rule.label || '（名前なし）'}</span>
-                      {#if ruleProblem(rule)}<span class="ml-1 rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">{ruleProblem(rule)}</span>{/if}
-                      <span class="ml-2 text-xs text-stone-500">{ruleSummary(rule)}</span>
-                      <span class="ml-2 text-xs font-semibold text-brand-800">→ {describeAdjust(rule.action, rule.adjustType, Number(rule.value) || 0)}</span>
-                    </button>
-                    <button type="button" class={smallBtn} onclick={() => moveRule(i, -1)} disabled={i === 0} aria-label="上へ">↑</button>
-                    <button type="button" class={smallBtn} onclick={() => moveRule(i, 1)} disabled={i === pricing.rules.length - 1} aria-label="下へ">↓</button>
-                    <button type="button" class={smallBtn} onclick={() => removeRule(i)}>削除</button>
-                  </div>
-                  {#if openRule === rule.id}
-                    <div class="grid gap-3 border-t border-stone-200 p-3">
-                      <div class="grid gap-3 sm:grid-cols-[1fr_150px_130px_130px]">
-                        <label class="block">
-                          <span class="mb-0.5 block text-xs text-stone-500">ルール名（任意）</span>
-                          <input bind:value={rule.label} maxlength="80" placeholder="例: 繁忙期は割引なし" class={inputClass} />
-                        </label>
-                        <label class="block">
-                          <span class="mb-0.5 block text-xs text-stone-500">扱い</span>
-                          <select bind:value={rule.action} class={inputClass}>
-                            <option value="adjust">調整して出す</option>
-                            <option value="hide">出さない</option>
-                          </select>
-                        </label>
-                        {#if rule.action === 'adjust'}
-                          <label class="block">
-                            <span class="mb-0.5 block text-xs text-stone-500">調整方法</span>
-                            <select bind:value={rule.adjustType} class={inputClass}>
-                              <option value="percent">％</option>
-                              <option value="amount">円/人</option>
-                              <option value="fixed">固定単価</option>
-                            </select>
-                          </label>
-                          <label class="block">
-                            <span class="mb-0.5 block text-xs text-stone-500">{rule.adjustType === 'fixed' ? '1名あたり（円）' : '値'}</span>
-                            <input type="number" step="any" bind:value={rule.value} class={inputClass} />
-                          </label>
-                        {/if}
-                      </div>
-                      <div>
-                        <p class="mb-1 text-xs text-stone-500">部屋タイプ（未選択 = すべて）</p>
-                        <div class="flex flex-wrap gap-1.5">
-                          {#each data.rooms as room}
-                            <button type="button" class={chip(rule.roomCodes.includes(room.code))} onclick={() => (rule.roomCodes = toggle(rule.roomCodes, room.code))}>{room.name}</button>
-                          {/each}
-                        </div>
-                      </div>
-                      <div>
-                        <p class="mb-1 text-xs text-stone-500">
-                          {#if rule.action === 'adjust'}プラン（<span class="text-rose-700">必須</span>・選んだプランだけ公開）{:else}プラン（未選択 = すべて）{/if}
-                        </p>
-                        <div class="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
-                          <button type="button" class={chip(rule.planGroupCodes.includes(ADVANCE_PLAN_CODE))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, ADVANCE_PLAN_CODE))}>先行案内料金（すべて）</button>
-                          {#each data.planOptions as plan}
-                            <button type="button" class={chip(rule.planGroupCodes.includes(plan.code))} onclick={() => (rule.planGroupCodes = toggle(rule.planGroupCodes, plan.code))}>
-                              <span class="font-mono">{plan.code}</span> {plan.label}
-                            </button>
-                          {/each}
-                        </div>
-                      </div>
-                      <div class="grid gap-3 sm:grid-cols-3">
-                        <div>
-                          <p class="mb-1 text-xs text-stone-500">食事</p>
-                          <div class="flex flex-wrap gap-1.5">
-                            {#each MEAL_TYPES as meal}
-                              <button type="button" class={chip(rule.mealTypes.includes(meal))} onclick={() => (rule.mealTypes = toggle(rule.mealTypes, meal))}>{meal}</button>
-                            {/each}
-                          </div>
-                        </div>
-                        <div>
-                          <p class="mb-1 text-xs text-stone-500">人数</p>
-                          <div class="flex flex-wrap gap-1.5">
-                            {#each GUEST_COUNTS as g}
-                              <button type="button" class={chip(rule.guestCounts.includes(g))} onclick={() => (rule.guestCounts = toggle(rule.guestCounts, g).sort((a, b) => a - b))}>{g}名</button>
-                            {/each}
-                          </div>
-                        </div>
-                        <div>
-                          <p class="mb-1 text-xs text-stone-500">曜日（祝 = 祝日）</p>
-                          <div class="flex flex-wrap gap-1.5">
-                            {#each WEEKDAY_LABELS as label, d}
-                              <button type="button" class={chip(rule.weekdays.includes(d))} onclick={() => (rule.weekdays = toggle(rule.weekdays, d).sort((a, b) => a - b))}>{label}</button>
-                            {/each}
-                          </div>
-                        </div>
-                      </div>
-                      <div class="grid gap-3 sm:grid-cols-2">
-                        <label class="block">
-                          <span class="mb-0.5 block text-xs text-stone-500">宿泊日 から</span>
-                          <input type="date" value={rule.dateFrom ?? ''} oninput={(e) => (rule.dateFrom = e.currentTarget.value || null)} class={inputClass} />
-                        </label>
-                        <label class="block">
-                          <span class="mb-0.5 block text-xs text-stone-500">宿泊日 まで</span>
-                          <input type="date" value={rule.dateTo ?? ''} oninput={(e) => (rule.dateTo = e.currentTarget.value || null)} class={inputClass} />
-                        </label>
-                      </div>
-                    </div>
-                  {/if}
-                </div>
+                <li class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm">
+                  <span class="text-xs font-semibold text-stone-500">#{i + 1}</span>
+                  <span class="font-medium">{rule.label || '（名前なし）'}</span>
+                  {#if ruleProblem(rule)}<span class="rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700">{ruleProblem(rule)}</span>{/if}
+                  <span class="text-xs text-stone-500">{ruleSummary(rule)}</span>
+                  <span class="text-xs font-semibold text-brand-800">→ {describeAdjust(rule.action, rule.adjustType, Number(rule.value) || 0)}</span>
+                </li>
               {/each}
-              <button type="button" onclick={addRule} class="justify-self-start rounded-md border border-dashed border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">＋ ルールを追加</button>
-            </div>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <label class="block">
-                <span class="mb-0.5 block text-xs text-stone-500">端数の単位</span>
-                <select bind:value={pricing.roundingUnit} class={inputClass}>
-                  {#each [1, 10, 100, 1000] as u}<option value={u}>{u}円</option>{/each}
-                </select>
-              </label>
-              <label class="block">
-                <span class="mb-0.5 block text-xs text-stone-500">端数処理</span>
-                <select bind:value={pricing.roundingMode} class={inputClass}>
-                  <option value="floor">切り捨て</option>
-                  <option value="round">四捨五入</option>
-                  <option value="ceil">切り上げ</option>
-                </select>
-              </label>
-              <label class="block">
-                <span class="mb-0.5 block text-xs text-stone-500">最低料金（1名1泊・円、空欄 = なし）</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={pricing.minPricePerPerson ?? ''}
-                  oninput={(e) => (pricing.minPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-                  class={inputClass}
-                />
-              </label>
-              <label class="block">
-                <span class="mb-0.5 block text-xs text-stone-500">最高料金（1名1泊・円、空欄 = なし）</span>
-                <input
-                  type="number"
-                  min="0"
-                  value={pricing.maxPricePerPerson ?? ''}
-                  oninput={(e) => (pricing.maxPricePerPerson = e.currentTarget.value ? Number(e.currentTarget.value) : null)}
-                  class={inputClass}
-                />
-              </label>
-            </div>
-            <p class="mt-1 text-[11px] text-stone-500">プラン料金がこの範囲を外れるときは、最低・最高料金で上書きして取引先に見せます（端数処理の後）。</p>
-            {#if pricing.minPricePerPerson != null && pricing.maxPricePerPerson != null && pricing.minPricePerPerson > pricing.maxPricePerPerson}
-              <p class="mt-1 text-xs text-rose-700">最低料金が最高料金を上回っています。</p>
-            {/if}
-          </fieldset>
+            </ol>
+          {/if}
+          <dl class="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
+            <dt class="text-xs text-stone-500">端数処理</dt>
+            <dd>{pricing.roundingUnit}円単位で{ROUNDING_MODE_LABELS[pricing.roundingMode]}</dd>
+            <dt class="text-xs text-stone-500">最高料金（1名1泊）</dt>
+            <dd>{pricing.maxPricePerPerson != null ? `${yen(pricing.maxPricePerPerson)}円` : 'なし'}</dd>
+            <dt class="text-xs text-stone-500">最低料金（1名1泊）</dt>
+            <dd>{pricing.minPricePerPerson != null ? `${yen(pricing.minPricePerPerson)}円` : 'なし'}</dd>
+          </dl>
+          <p class="mt-1 text-[11px] text-stone-500">プラン料金が最高・最低を外れるときは、その額で上書きして取引先に見せます（端数処理の後）。</p>
 
             <!-- 早期決済割・受付ルール（N6）: 共通の既定を使う／この施設だけ変える。戻すと facility_settings からキーを消す -->
             <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">早期決済割・受付ルール</h2>
@@ -1885,7 +1726,6 @@
               </label>
             </fieldset>
 
-            <input type="hidden" name="pricing" value={pricingJson} />
             <input type="hidden" name="facility_booking" value={ownJson} />
             <input type="hidden" name="overrides" value={overridesJson} />
             {#if canEdit}
@@ -1906,7 +1746,6 @@
                       <span class="font-medium text-emerald-700">✓ {data.tab.name}の設定を保存しました。この施設の取引先ページ・API にすぐ反映されます。</span>
                     {:else if facilityDirty}
                       <span class="inline-flex items-center gap-2 font-medium"><span class="h-2 w-2 rounded-full bg-amber-500"></span>{data.tab.name}の設定に保存していない変更があります</span>
-                      <span class="ml-1 text-xs text-stone-500">プレビューには反映済みです</span>
                     {:else}
                       <span class="text-stone-500">{data.tab.name}の設定・変更はありません{#if data.facility.updatedAt}・最終保存 {dt(data.facility.updatedAt)}{/if}</span>
                     {/if}
@@ -1927,14 +1766,19 @@
       </div>
     </div>
 
-    <!-- プレビュー（施設タブの施設・編集中の特別レートで計算） -->
+    <!-- プレビュー（施設タブの施設・保存済みの最終料金と特別レート前の料金） -->
     {#if data.facility}
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
           <p class="mt-1 text-xs text-stone-500">
-            <strong class="font-medium text-stone-800">編集中の内容で計算しています（保存前の変更も反映）。</strong>小さい数字は基準の理論値（料金マスタ）です。
+            {#if data.preview.priceMode === 'precomputed'}
+              <strong class="font-medium text-stone-800">保存済みの最終料金です</strong>（計算 {dt(data.preview.computedAt)}・取引先ページと同じ値）。
+            {:else if data.preview.priceMode === 'live'}
+              <strong class="font-medium text-amber-800">保存済みの料金が使えないため、従来の計算（保存済みのルール）で出しています</strong>（取引先ページも同じ）。
+            {/if}
+            小さい数字は特別レート前の料金（料金マスタの理論値）です。
           </p>
         </div>
         <div class="flex items-end gap-2">

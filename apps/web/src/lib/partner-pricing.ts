@@ -261,6 +261,8 @@ export type PartnerSourceOption = {
   mealType?: string;
   salesStatus?: string; // 1販売中 / 2停止中 / 3一部停止
   pricesByGuest: Record<number, number>;
+  // 保存済みの最終料金（rms_partner_portal_prices）のとき: 特別レートを当てる前の料金（管理画面のプレビュー用）
+  basePricesByGuest?: Record<number, number>;
 };
 export type PartnerSourceDay = { date: string; options: PartnerSourceOption[] };
 export type PartnerSourceInventory = {
@@ -298,6 +300,10 @@ export type BuildPartnerDaysOptions = {
   roomFilter?: string[];
   guestFilter?: number[];
   includeBase?: boolean; // スタッフのプレビュー時だけ true
+  // true = pricesByGuest は DB で計算済みの最終料金（rms_partner_portal_prices・docs/partner-rank-rates.md §7）。
+  // 特別レート（pricing）は当てずにそのまま出す。特別レート前の料金は basePricesByGuest（無ければ最終料金と同じ）。
+  // 休館・残室・部屋の並び・roomFilter / guestFilter・showInventory の扱いは従来と同じ
+  pricesFinal?: boolean;
 };
 
 const STOPPED_SALES_STATUS = '2';
@@ -337,6 +343,12 @@ export function buildPartnerDays(
         const guestCount = Number(g);
         if (!(p > 0) || !Number.isInteger(guestCount)) continue;
         if (guestFilter && !guestFilter.has(guestCount)) continue;
+        if (opts.pricesFinal) {
+          prices[g] = p;
+          const b = option.basePricesByGuest?.[guestCount];
+          base[g] = typeof b === 'number' && b > 0 ? b : p;
+          continue;
+        }
         const decision = decidePartnerPrice(
           opts.pricing,
           { date: day.date, roomCode, planGroupCode: option.planGroupCode, mealType: option.mealType, guestCount },

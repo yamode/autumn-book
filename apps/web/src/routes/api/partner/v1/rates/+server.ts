@@ -75,8 +75,8 @@ export const GET: RequestHandler = async (event) => {
       range: { from: range.from, to: range.to },
       requested: { from, to },
       availableRange: { from: range.earliest, to: range.latest },
-      // 旧 API（autumn-rms）との互換のため項目は残す。理論値には取得時刻が無いので常に null。
-      ratesFetchedAt: null,
+      // 旧 API（autumn-rms）との互換の項目。保存済みの最終料金（2026-10-09 §7）なら計算した時刻、従来の計算なら null。
+      ratesFetchedAt: result.computedAt ?? null,
       rooms: result.rooms.filter((r) => shown.has(r.roomCode)).map((r) => ({ roomCode: r.roomCode, roomName: r.name })),
       days: result.days
     },

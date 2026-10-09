@@ -1,6 +1,6 @@
-// 管理画面（/admin/partners/[id]）の「公開設定・特別レート・予約受付」フォームの読み取り（純関数）。
+// 管理画面（/admin/partners/[id]）の「共通の設定・施設タブ」フォームの読み取り（純関数）。
 // autumn-rms の staff.ts（parsePartnerSettings）から移設（2026-09-26）。DB・環境変数に触らないのでテストから直接呼べる。
-import { normalizePartnerPricing, validatePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
+// 特別レート（pricing）は読まない（2026-10-09・docs/partner-rank-rates.md §7: 編集は RMS。旧 parsePartnerSettings は削除）。
 import {
   normalizePartnerBookingSettings,
   PARTNER_FACILITY_SETTING_KEYS,
@@ -10,7 +10,7 @@ import {
   type PartnerFacilityOverrides,
   type PartnerFacilityOwnSettings
 } from '$lib/partner-booking';
-import type { PartnerFacilityPatch, PartnerKind, PartnerSettingsInput } from './store';
+import type { PartnerFacilityPatch, PartnerKind } from './store';
 
 /** 入力の誤り（画面に 400 で返す）。 */
 export class PartnerFormError extends Error {
@@ -69,35 +69,6 @@ function parseJsonField(fd: FormData, key: string, what: string): unknown {
   }
 }
 
-function parsePricing(fd: FormData): PartnerPricing {
-  const pricing: PartnerPricing = normalizePartnerPricing(parseJsonField(fd, 'pricing', '特別レートの設定'));
-  const problem = validatePartnerPricing(pricing);
-  if (problem) throw new PartnerFormError(problem);
-  return pricing;
-}
-
-export function parsePartnerSettings(fd: FormData): PartnerSettingsInput {
-  const common = parseCommonFields(fd);
-  const maxDays = parseMaxDays(fd);
-  const pricing = parsePricing(fd);
-
-  // 予約受付の設定（受付ルール・追加オプション・通知先）と支払方法
-  const bookingSettings = normalizePartnerBookingSettings(parseJsonField(fd, 'booking', '予約受付の設定'));
-  const bookingEnabled = bool(fd, 'booking_enabled');
-  const bookingProblem = validatePartnerBookingSettings(bookingSettings, bookingEnabled);
-  if (bookingProblem) throw new PartnerFormError(bookingProblem);
-
-  return {
-    ...common,
-    max_days_ahead: maxDays,
-    show_inventory: bool(fd, 'show_inventory'),
-    include_advance: bool(fd, 'include_advance'),
-    pricing,
-    booking_enabled: bookingEnabled,
-    booking_settings: bookingSettings
-  };
-}
-
 // ---- 共通セクションと施設タブ（複数施設化 S3・docs/partner-multi-facility.md §7.12・2026-10-09） ----
 
 export type PartnerCommonFormInput = ReturnType<typeof parseCommonFields> & {
@@ -117,7 +88,8 @@ export function parsePartnerCommonForm(fd: FormData): PartnerCommonFormInput {
 export type PartnerFacilityFormInput = {
   /** hidden の facility_id（Book の施設 ID か core.facilities の UUID。検査は呼び出し側の requireStaffFacility） */
   facilityRef: string;
-  patch: Required<Pick<PartnerFacilityPatch, 'enabled' | 'booking_enabled' | 'max_days_ahead' | 'show_inventory' | 'include_advance' | 'pricing' | 'sort_order'>>;
+  // 特別レート（pricing）は含めない（2026-10-09・docs/partner-rank-rates.md §7: 編集は RMS。Book から上書きしない）
+  patch: Required<Pick<PartnerFacilityPatch, 'enabled' | 'booking_enabled' | 'max_days_ahead' | 'show_inventory' | 'include_advance' | 'sort_order'>>;
   /** 施設ごとにだけ持つ値（プラン名・特典・案内文・通知先・公式特典） */
   own: PartnerFacilityOwnSettings;
   /** 施設で上書きする N6 の値（キーがあるものだけ。無いキーは「共通の既定を使う」） */
@@ -140,7 +112,6 @@ export function parsePartnerFacilityForm(fd: FormData): PartnerFacilityFormInput
       max_days_ahead: parseMaxDays(fd),
       show_inventory: bool(fd, 'show_inventory'),
       include_advance: bool(fd, 'include_advance'),
-      pricing: parsePricing(fd),
       sort_order: sortOrder
     },
     own,

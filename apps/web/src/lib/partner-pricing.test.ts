@@ -313,3 +313,61 @@ describe('partnerPlanCodeFilter', () => {
     expect(partnerPlanCodeFilter(normalizePartnerPricing({}))).toEqual([]);
   });
 });
+
+describe('buildPartnerDays（保存済みの最終料金・pricesFinal・2026-10-09 §7）', () => {
+  const rooms = [
+    { roomCode: '101', name: '和室' },
+    { roomCode: '201', name: '洋室' }
+  ];
+  const days: PartnerSourceDay[] = [
+    {
+      date: '2026-10-07',
+      options: [
+        { planGroupCode: 'a001', planLabel: '素泊', roomCode: '201', mealType: '素泊', pricesByGuest: { 1: 15_000, 2: 9_900 }, basePricesByGuest: { 1: 16_000, 2: 11_000 } },
+        { planGroupCode: 'a002', planLabel: '2食付', roomCode: '101', mealType: '2食', pricesByGuest: { 2: 22_500 } },
+        { planGroupCode: 'a003', planLabel: '旧プラン', roomCode: '101', pricesByGuest: { 2: 1 } }
+      ]
+    },
+    { date: '2026-10-08', options: [{ planGroupCode: 'a001', planLabel: '素泊', roomCode: '101', pricesByGuest: { 2: 9_900 } }] }
+  ];
+  const inventory = {
+    '2026-10-07': { isClosed: false, remainingRoomCount: 9, byRoomType: [{ remaining: 2, roomCode: '101' }, { remaining: 4, roomCode: '201' }] },
+    '2026-10-08': { isClosed: true, remainingRoomCount: 0 }
+  };
+
+  it('ルールを当てずに最終料金をそのまま出す（ルールが空でも出る）・部屋の並び・休館・残室は従来どおり', () => {
+    const out = buildPartnerDays(days, inventory, {
+      pricing: normalizePartnerPricing({}),
+      rooms,
+      showInventory: true,
+      includeAdvance: false,
+      pricesFinal: true
+    });
+    expect(out[0].rooms.map((r) => r.roomCode)).toEqual(['101', '201']);
+    expect(out[0].rooms[0].plans.map((p) => p.planCode)).toEqual(['a002']);
+    expect(out[0].rooms[1].plans[0].pricesPerPerson).toEqual({ '1': 15_000, '2': 9_900 });
+    expect(out[0].rooms[1].plans[0].basePricesPerPerson).toBeUndefined();
+    expect(out[0].remainingRooms).toBe(6);
+    expect(out[1]).toEqual({ date: '2026-10-08', closed: true, remainingRooms: 0, rooms: [] });
+  });
+
+  it('人数・部屋で絞り、includeBase なら特別レート前の料金（無ければ最終料金）を付ける', () => {
+    const out = buildPartnerDays(days, inventory, {
+      pricing: pricing({ rules: [rule({ planGroupCodes: ['a001'], value: -50 })] }),
+      rooms,
+      showInventory: false,
+      includeAdvance: false,
+      guestFilter: [2],
+      includeBase: true,
+      pricesFinal: true
+    });
+    expect(out[0].remainingRooms).toBeNull();
+    expect(out[0].rooms.map((r) => r.plans[0])).toEqual([
+      { planCode: 'a002', planName: '2食付', mealType: '2食', advance: false, pricesPerPerson: { '2': 22_500 }, basePricesPerPerson: { '2': 22_500 } },
+      { planCode: 'a001', planName: '素泊', mealType: '素泊', advance: false, pricesPerPerson: { '2': 9_900 }, basePricesPerPerson: { '2': 11_000 } }
+    ]);
+    const only201 = buildPartnerDays(days, inventory, { pricing: normalizePartnerPricing({}), rooms, showInventory: true, includeAdvance: false, roomFilter: ['201'], pricesFinal: true });
+    expect(only201[0].rooms.map((r) => r.roomCode)).toEqual(['201']);
+    expect(only201[0].remainingRooms).toBe(4);
+  });
+});

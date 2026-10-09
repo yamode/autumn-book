@@ -1,8 +1,8 @@
-// 管理画面の取引先設定フォームの読み取り（parsePartnerSettings）。
+// 管理画面の取引先設定フォームの読み取り（parsePartnerCommonForm・parsePartnerFacilityForm）。
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
 import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
-import { parsePartnerCommonForm, parsePartnerFacilityForm, parsePartnerKind, parsePartnerSettings, PartnerFormError } from './staff-form';
+import { parsePartnerCommonForm, parsePartnerFacilityForm, parsePartnerKind, PartnerFormError } from './staff-form';
 
 function form(fields: Record<string, string>) {
   const fd = new FormData();
@@ -13,45 +13,25 @@ function form(fields: Record<string, string>) {
 const base = {
   name: '○○トラベル',
   kind: 'corporate',
-  pricing: JSON.stringify(DEFAULT_PARTNER_PRICING),
   booking: JSON.stringify(DEFAULT_PARTNER_BOOKING_SETTINGS)
 };
 
-describe('parsePartnerSettings', () => {
-  it('チェックボックス・日付・日数を読み取る', () => {
-    const r = parsePartnerSettings(
-      form({ ...base, is_active: 'on', show_inventory: 'on', valid_from: '2026-10-01', valid_until: '2026-12-31', max_days_ahead: '90', note: ' メモ ' })
-    );
+// 共通の項目の読み取り（旧 parsePartnerSettings のテストを parsePartnerCommonForm に移したもの。特別レートは RMS へ移したので読まない）
+describe('parsePartnerCommonForm（共通の項目）', () => {
+  it('チェックボックス・日付を読み取る', () => {
+    const r = parsePartnerCommonForm(form({ ...base, is_active: 'on', valid_from: '2026-10-01', valid_until: '2026-12-31', note: ' メモ ' }));
     expect(r.name).toBe('○○トラベル');
     expect(r.kind).toBe('corporate');
     expect(r.is_active).toBe(true);
-    expect(r.show_inventory).toBe(true);
-    expect(r.include_advance).toBe(false);
-    expect(r.booking_enabled).toBe(false);
     expect(r.valid_from).toBe('2026-10-01');
-    expect(r.max_days_ahead).toBe(90);
     expect(r.note).toBe('メモ');
     expect(r.contact_email).toBeNull();
-  });
-
-  it('日数の既定は 365、日付の形式違いは null', () => {
-    const r = parsePartnerSettings(form({ ...base, valid_from: '2026/10/01' }));
-    expect(r.max_days_ahead).toBe(365);
-    expect(r.valid_from).toBeNull();
+    expect(parsePartnerCommonForm(form({ ...base, valid_from: '2026/10/01' })).valid_from).toBeNull();
   });
 
   it('入力ミスは PartnerFormError（400）', () => {
-    expect(() => parsePartnerSettings(form({ ...base, name: ' ' }))).toThrow(PartnerFormError);
-    expect(() => parsePartnerSettings(form({ ...base, contact_email: 'abc' }))).toThrow('連絡先メール');
-    expect(() => parsePartnerSettings(form({ ...base, valid_from: '2026-12-01', valid_until: '2026-11-01' }))).toThrow('開始日');
-    expect(() => parsePartnerSettings(form({ ...base, max_days_ahead: '999' }))).toThrow('1〜730');
-    expect(() => parsePartnerSettings(form({ ...base, pricing: '{' }))).toThrow('特別レート');
-    expect(() => parsePartnerSettings(form({ ...base, booking: '{' }))).toThrow('予約受付');
-  });
-
-  it('予約受付オンで支払方法なしは保存できない', () => {
-    const booking = JSON.stringify({ ...DEFAULT_PARTNER_BOOKING_SETTINGS, paymentOptions: [] });
-    expect(() => parsePartnerSettings(form({ ...base, booking, booking_enabled: 'on' }))).toThrow(PartnerFormError);
+    expect(() => parsePartnerCommonForm(form({ ...base, contact_email: 'abc' }))).toThrow('連絡先メール');
+    expect(() => parsePartnerCommonForm(form({ ...base, valid_from: '2026-12-01', valid_until: '2026-11-01' }))).toThrow('開始日');
   });
 });
 
@@ -63,7 +43,7 @@ describe('parsePartnerKind', () => {
   });
 });
 
-describe('parsePartnerSettings（2026-10-01: 自由入力の支払方法・取引先特典・最高料金）', () => {
+describe('parsePartnerCommonForm（2026-10-01〜02: 自由入力の支払方法・取引先特典・ご請求書）', () => {
   it('booking JSON の customPaymentOptions / perks がそのまま通る', () => {
     const booking = JSON.stringify({
       ...DEFAULT_PARTNER_BOOKING_SETTINGS,
@@ -71,36 +51,24 @@ describe('parsePartnerSettings（2026-10-01: 自由入力の支払方法・取�
       customPaymentOptions: [{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い' }],
       perks: [{ id: 'perk-1', title: 'ウェルカムドリンク', description: 'ラウンジで1杯', planCodes: ['a001'] }]
     });
-    const r = parsePartnerSettings(form({ ...base, booking, booking_enabled: 'on' }));
+    const r = parsePartnerCommonForm(form({ ...base, booking }));
     expect(r.booking_settings.paymentOptions).toEqual(['custom_ab12cd34']);
     expect(r.booking_settings.customPaymentOptions).toEqual([{ id: 'custom_ab12cd34', label: '現地精算（法人カード）', note: 'フロントでお支払い', billable: false }]);
     expect(r.booking_settings.perks).toEqual([{ id: 'perk-1', title: 'ウェルカムドリンク', description: 'ラウンジで1杯', imageUrl: '', planCodes: ['a001'] }]);
   });
 
-  it('最高料金を読み取り、最低料金 > 最高料金 は保存できない', () => {
-    const ok = parsePartnerSettings(form({ ...base, pricing: JSON.stringify({ ...DEFAULT_PARTNER_PRICING, minPricePerPerson: 10000, maxPricePerPerson: 30000 }) }));
-    expect(ok.pricing.maxPricePerPerson).toBe(30000);
-    const bad = JSON.stringify({ ...DEFAULT_PARTNER_PRICING, minPricePerPerson: 30000, maxPricePerPerson: 10000 });
-    expect(() => parsePartnerSettings(form({ ...base, pricing: bad }))).toThrow('最低料金が最高料金');
-  });
-});
-
-describe('parsePartnerSettings（2026-10-02: ご請求書の宛名・お支払期限）', () => {
-  it('booking JSON の invoiceRecipientName / invoiceDue がそのまま通る', () => {
+  it('booking JSON の invoiceRecipientName / invoiceDue がそのまま通る・範囲外の期限は翌月末', () => {
     const booking = JSON.stringify({
       ...DEFAULT_PARTNER_BOOKING_SETTINGS,
       invoiceRecipientName: '  株式会社再春館製薬所 ',
       invoiceDue: { type: 'next_month_day', day: 25 }
     });
-    const r = parsePartnerSettings(form({ ...base, booking }));
+    const r = parsePartnerCommonForm(form({ ...base, booking }));
     expect(r.booking_settings.invoiceRecipientName).toBe('株式会社再春館製薬所');
     expect(r.booking_settings.invoiceDue).toEqual({ type: 'next_month_day', day: 25 });
-  });
-
-  it('未指定・範囲外の期限は翌月末、宛名は空', () => {
-    const r = parsePartnerSettings(form({ ...base, booking: JSON.stringify({ ...DEFAULT_PARTNER_BOOKING_SETTINGS, invoiceDue: { type: 'next_month_day', day: 31 } }) }));
-    expect(r.booking_settings.invoiceDue).toEqual({ type: 'next_month_end' });
-    expect(r.booking_settings.invoiceRecipientName).toBe('');
+    const r2 = parsePartnerCommonForm(form({ ...base, booking: JSON.stringify({ ...DEFAULT_PARTNER_BOOKING_SETTINGS, invoiceDue: { type: 'next_month_day', day: 31 } }) }));
+    expect(r2.booking_settings.invoiceDue).toEqual({ type: 'next_month_end' });
+    expect(r2.booking_settings.invoiceRecipientName).toBe('');
   });
 });
 
@@ -137,6 +105,11 @@ describe('parsePartnerFacilityForm（2026-10-09: 施設タブ・複数施設化 
     expect(r.own).toEqual({ planNames: { A1: '専用' }, perks: [], notice: '男鹿の案内', notifyEmails: ['oga@example.com'], showOfficialPerks: false });
     expect('leadDays' in r.own).toBe(false);
     expect(r.overrides).toEqual({});
+  });
+
+  it('特別レート（pricing）は読まない（編集は RMS・2026-10-09 §7）', () => {
+    const r = parsePartnerFacilityForm(form({ ...facilityBase, pricing: '{' }));
+    expect('pricing' in r.patch).toBe(false);
   });
 
   it('上書きはキーの有無で読む（0・null も上書き）', () => {

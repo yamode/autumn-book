@@ -10,8 +10,9 @@
 // ?/enableFacility）に分けた。施設タブは ?fac=<Book の施設 ID>（既定は ab_fac の施設）。取引先は施設のどれかにアクセスできれば
 // 開ける（ab_fac を切り替えても一覧へ戻さない）。施設タブの操作は requireStaffFacility（Book の施設・アクセス）を通す。
 import { partnerSavedCardSummary } from '$lib/server/payments/saved-cards';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { redirect, type RequestEvent } from '@sveltejs/kit';
-import { ADVANCE_PLAN_CODE, DEFAULT_PARTNER_PRICING, type PartnerPricing } from '$lib/partner-pricing';
+import { ADVANCE_PLAN_CODE, isRetiredPlanName } from '$lib/partner-pricing';
 import {
 	buildPartnerFacilitySettings,
 	depositRemainderModeOf,
@@ -26,7 +27,7 @@ import {
 } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { countBookingAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
-import { loadPartnerRankStatus, loadPartnerRates, rmsPartnerRatesUrl, type PartnerPriceSource } from '$lib/server/partners/rates';
+import { loadPartnerRankStatus, loadPartnerRates, rmsPartnerRatesUrl, type PartnerPriceMode, type PartnerPriceSource } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
 import { publishableKeyProblem } from '$lib/server/stripe';
 import {
@@ -126,20 +127,67 @@ import {
 } from '$lib/partner-credit';
 import type { Actions, PageServerLoad } from './$types';
 
-// プレビュー用: 全プランを基準価格（理論値）のまま取る。特別レートは画面側で編集中のルールを当てて計算する
-// （保存しなくても結果が見えるように）。
-const PREVIEW_BASE_PRICING: PartnerPricing = {
-	...DEFAULT_PARTNER_PRICING,
-	defaultAction: 'adjust',
-	defaultAdjustType: 'percent',
-	defaultValue: 0,
-	rules: [],
-	roundingUnit: 1,
-	minPricePerPerson: null,
-	maxPricePerPerson: null
-};
-
 const PREVIEW_DAYS = 14;
+
+type PlanOption = { code: string; label: string; mealType: string | null };
+
+// 施設のプラン一覧（プラングループ単位・「プラン名（取引先向け）」・特典の対象プラン・特別レートの要約の名前）。
+// booking.rate_plans は Data API に出していないので、book.v_admin_rate_plans（security_invoker・authenticated）を
+// ログイン中のスタッフのクライアントで読む（service_role には権限が無い）。読めなければ null（呼び出し側でプレビューのプランで補う）
+async function loadFacilityPlanOptions(event: RequestEvent, facilityId: string): Promise<PlanOption[] | null> {
+	try {
+		const { data, error } = await createSupabaseServerClient(event)
+			.schema('book')
+			.from('v_admin_rate_plans')
+			.select('code, meal_plan, is_active')
+			.eq('facility_id', facilityId)
+			.eq('is_active', true);
+		if (error) return null;
+		const map = new Map<string, PlanOption>();
+		for (const r of (data ?? []) as { code: string | null; meal_plan: string | null }[]) {
+			const code = String(r.code ?? '');
+			const i = code.indexOf('■');
+			if (i <= 0) continue;
+			const group = code.slice(0, i);
+			const label = code.slice(i + 1);
+			if (map.has(group) || isRetiredPlanName(label)) continue;
+			map.set(group, { code: group, label, mealType: r.meal_plan ?? null });
+		}
+		return [...map.values()];
+	} catch {
+		return null;
+	}
+}
+
+// 保存済みの最終料金の計算状態（rms_partner_price_state・service_role）。読めなければ null
+type PriceState = {
+	priceSource: string | null;
+	computedFrom: string | null;
+	computedTo: string | null;
+	rowCount: number;
+	durationMs: number | null;
+	computedAt: string | null;
+	error: string | null;
+};
+async function loadPriceState(db: SupabaseClient, partnerId: string, facilityId: string): Promise<PriceState | null> {
+	const { data, error } = await db
+		.from('rms_partner_price_state')
+		.select('price_source, computed_from, computed_to, row_count, duration_ms, computed_at, error')
+		.eq('partner_id', partnerId)
+		.eq('facility_id', facilityId)
+		.maybeSingle();
+	if (error || !data) return null;
+	const r = data as Record<string, unknown>;
+	return {
+		priceSource: (r.price_source as string | null) ?? null,
+		computedFrom: (r.computed_from as string | null) ?? null,
+		computedTo: (r.computed_to as string | null) ?? null,
+		rowCount: Number(r.row_count ?? 0),
+		durationMs: r.duration_ms == null ? null : Number(r.duration_ms),
+		computedAt: (r.computed_at as string | null) ?? null,
+		error: (r.error as string | null) ?? null
+	};
+}
 
 export const load: PageServerLoad = async (event) => {
 	let scope;
@@ -184,21 +232,20 @@ export const load: PageServerLoad = async (event) => {
 		listPartnerApiKeys(scope.db, partner.id),
 		listPartnerAccessLogs(scope.db, partner.id, 50),
 		listPartnerBookings(scope.db, { partnerId: partner.id, limit: 200 }),
-		// プレビューは公開停止中でも見られるように、取引先の公開状態は見ずに計算する。施設で販売していなければ作らない
+		// プレビュー: 保存済みの最終料金（取引先に見える価格）と特別レート前の料金（2026-10-09 §7）。取引先ページと同じ読み出し
+		// （保存済みが無ければ従来の計算）。公開停止中でも見られるように、取引先の公開状態は見ない。施設で販売していなければ作らない
 		(row
-			? loadPartnerRates(
-					scope.db,
-					{ ...partner, pricing: PREVIEW_BASE_PRICING, include_advance: true, show_inventory: true },
-					{ from: previewFrom, to: previewTo }
-				)
+			? loadPartnerRates(scope.db, { ...partner, show_inventory: true }, { from: previewFrom, to: previewTo }, { includeBase: true })
 			: Promise.reject(new Error('この施設では販売していません。'))
 		)
 			.then((r) => ({ ...r, error: null as string | null }))
 			.catch((e) => ({
 				days: [],
 				rooms: [] as { roomCode: string; name: string }[],
-				planOptions: [] as { code: string; label: string; mealType: string | null }[],
+				planOptions: [] as PlanOption[],
 				priceSource: null as PartnerPriceSource | null,
+				priceMode: null as PartnerPriceMode | null,
+				computedAt: null as string | null,
 				error: e instanceof Error ? e.message : String(e)
 			})),
 		// 覚書（本文・ファイル）。読めなくても他の欄は出す
@@ -221,15 +268,21 @@ export const load: PageServerLoad = async (event) => {
 			.catch((e) => ({ guest: null, error: e instanceof Error ? e.message : String(e) }))
 	]);
 
-	// 料金の元（取引先ランク暦 / TL のランク）と暦の未設定日（2026-10-09・docs/partner-rank-rates.md §5.4）。読めなければ出さない
-	const rankStatus = row ? await loadPartnerRankStatus(scope.db, partner, today).catch(() => null) : null;
+	// 料金の元（取引先ランク暦 / TL のランク）と暦の未設定日（2026-10-09・docs/partner-rank-rates.md §5.4）・
+	// 保存済みの最終料金の計算状態（§7）・施設のプラン一覧。読めなければ出さない
+	const [rankStatus, priceState, facilityPlans] = await Promise.all([
+		row ? loadPartnerRankStatus(scope.db, partner, today).catch(() => null) : Promise.resolve(null),
+		row ? loadPriceState(scope.db, partner.id, partner.facility_id).catch(() => null) : Promise.resolve(null),
+		loadFacilityPlanOptions(event, partner.facility_id)
+	]);
 
 	// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
 	const credit = pmsGuest.guest?.guestType === 'group' ? await loadCreditSection(event, scope, partner, today) : null;
 
-	// ルール編集の選択肢。プランは直近の料金（rms_partner_portal_source）に出ているプラングループから集める
-	// （同じコードが部屋タイプ間で共通なので、コード単位でまとめる）。保存済みルールにしか無いコードも残す。
-	const planMap = new Map(preview.planOptions.map((p) => [p.code, p]));
+	// プランの選択肢（プラン名・特典・特別レートの要約）。施設のプラン一覧（booking.rate_plans）を正とし、読めなければ
+	// プレビューに出たプランで補う（同じコードが部屋タイプ間で共通なので、コード単位でまとめる）。保存済みルールにしか無いコードも残す。
+	const planMap = new Map((facilityPlans ?? preview.planOptions).map((p) => [p.code, p]));
+	for (const p of preview.planOptions) if (!planMap.has(p.code)) planMap.set(p.code, p);
 	const roomMap = new Map(preview.rooms.map((r) => [r.roomCode, { code: r.roomCode, name: r.name }]));
 	for (const rule of partner.pricing.rules) {
 		for (const code of rule.planGroupCodes) {
@@ -439,7 +492,9 @@ export const load: PageServerLoad = async (event) => {
 			refundError: b.refund_error,
 			...bookingExtras(b.detail)
 		})),
-		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error },
+		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error, priceMode: preview.priceMode, computedAt: preview.computedAt },
+		// 保存済みの最終料金の計算状態（rms_partner_price_state）。行が無い・読めなければ null
+		priceState,
 		// 料金の元: 暦の設定（rankStatus）を優先し、読めなければプレビューの RPC が返した priceSource
 		priceSource: {
 			source: rankStatus ? (rankStatus.enabled ? 'partner_rank' : 'standard') : preview.priceSource,
