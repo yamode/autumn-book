@@ -338,7 +338,7 @@ table.cal td.blank { border: none; }
 .sat { color: #1d4ed8; }
 .legend { margin-top: 4mm; display: flex; flex-wrap: wrap; gap: 1.2mm 5mm; font-size: 7.8pt; page-break-inside: avoid; break-inside: avoid; }
 .legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
-.legend b { font-weight: 400; color: #57534e; font-variant-numeric: tabular-nums; }
+.legend .legend-note { flex-basis: 100%; color: #57534e; }
 .legend i { display: inline-block; width: 6mm; height: 4mm; border: 1px solid #a8a29e; font-style: normal; text-align: center; font-size: 7pt; font-weight: 700; line-height: 3.6mm; }
 table.pt { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.6pt; }
 table.pt thead tr.top th { border: none; background: none; padding: 0 0 2.5mm; text-align: left; font-weight: 400; }
@@ -391,15 +391,6 @@ function monthHtml(ym: string, meta: RateSheetMeta, dayMap: Map<string, RateShee
   return `<div class="month"><h2>${y}年${m}月</h2><table class="cal"><thead><tr>${head}</tr></thead><tbody>${weeks.join('')}</tbody></table></div>`;
 }
 
-// 区分の目安（その区分に出ている全組合せの1名料金の最安〜最高）
-function categoryRange(c: RateSheetCategory): string {
-  const vals = Object.values(c.prices);
-  if (!vals.length) return '';
-  const lo = Math.min(...vals);
-  const hi = Math.max(...vals);
-  return lo === hi ? yen(lo) : `${yen(lo)}〜${yen(hi)}`;
-}
-
 function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number): string {
   // その人数で料金のある行・区分だけ
   const rows = sheet.rows.filter((r) => sheet.categories.some((c) => c.prices[comboKey(r.roomCode, r.planCode, guests)] != null));
@@ -413,7 +404,7 @@ function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number):
       const span = 3 + chunk.length;
       const suffix = chunks.length > 1 ? `（区分 ${chunk[0].label}〜${chunk[chunk.length - 1].label}）` : '';
       // 縦の紙幅（188mm）: 部屋 30mm・プラン 40mm・食事 10mm、残り（約108mm）を区分の列で等分（8列で約13.5mm）
-      const head = `<tr class="top"><th colspan="${span}">${headerHtml(meta)}<p class="pt-title">${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
+      const head = `<tr class="top"><th colspan="${span}">${headerHtml(meta)}<p class="pt-title">区分別の料金表　${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
 <tr><th style="width:30mm">部屋タイプ</th><th style="width:40mm">プラン</th><th style="width:10mm">食事</th>${chunk
         .map((c) => `<th class="cat" style="background:${c.color}">区分${esc(c.label)}</th>`)
         .join('')}</tr>`;
@@ -453,8 +444,10 @@ export function renderRateSheetHtml(sheet: RateSheet, meta: RateSheetMeta): stri
   const months = meta.months.filter((ym) => `${ym}-01` <= meta.range.to && lastDayOf(ym) >= meta.range.from);
   const legend = sheet.categories.length
     ? `<div class="legend">${sheet.categories
-        .map((c) => `<span><i style="background:${c.color}">${esc(c.label)}</i>区分${esc(c.label)}<b>${categoryRange(c)}</b></span>`)
-        .join('')}<span><i style="background:#e7e5e4"></i>休館・販売なし</span></div>`
+        // 凡例は色と区分名だけ（2026-10-10 指示: 全部屋・全プラン・全人数の最安〜最高を並べても区分の差が読めない）。
+        // 料金は後ろのページの区分別料金表を見てもらう
+        .map((c) => `<span><i style="background:${c.color}">${esc(c.label)}</i>区分${esc(c.label)}</span>`)
+        .join('')}<span><i style="background:#e7e5e4"></i>休館・販売なし</span><span class="legend-note">各区分の料金は、後ろのページの「区分別の料金表」をご覧ください。</span></div>`
     : '<p class="empty">この期間にご案内できる料金はありません。</p>';
   const calPages: string[] = [];
   for (let i = 0; i < months.length; i += 2) {

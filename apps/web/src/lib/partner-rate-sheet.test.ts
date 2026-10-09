@@ -236,12 +236,14 @@ describe('renderRateSheetHtml', () => {
     expect(html).toContain('<thead><tr class="top">');
   });
 
-  it('凡例に区分の目安（1名料金の最安〜最高）', () => {
+  it('凡例は色と区分名だけ（料金は区分別の料金表へ案内）', () => {
     const html = renderRateSheetHtml(sheet, meta);
-    const legend = html.slice(html.indexOf('<div class="legend">'));
-    // 区分A（2026-10-02・2名 15,000 / 1名 19,000 / 洋室 17,000）
-    expect(legend).toContain('区分A<b>¥15,000〜¥19,000</b>');
-    expect(legend).toContain('区分B<b>¥20,000〜¥24,000</b>');
+    const start = html.indexOf('<div class="legend">');
+    const legend = html.slice(start, html.indexOf('</div>', start));
+    expect(legend).toContain('区分A</span>');
+    expect(legend).toContain('区分B</span>');
+    expect(legend).not.toContain('¥');
+    expect(legend).toContain('区分別の料金表');
     expect(legend).toContain('休館・販売なし');
   });
 
