@@ -26,7 +26,7 @@ import {
 } from '$lib/partner-booking';
 import { friendlyId } from '$lib/server/partners/crypto';
 import { countBookingAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
-import { loadPartnerRates } from '$lib/server/partners/rates';
+import { loadPartnerRankStatus, loadPartnerRates, rmsPartnerRatesUrl, type PartnerPriceSource } from '$lib/server/partners/rates';
 import { describePublishableKeyIssue } from '$lib/server/payments/keys';
 import { publishableKeyProblem } from '$lib/server/stripe';
 import {
@@ -198,6 +198,7 @@ export const load: PageServerLoad = async (event) => {
 				days: [],
 				rooms: [] as { roomCode: string; name: string }[],
 				planOptions: [] as { code: string; label: string; mealType: string | null }[],
+				priceSource: null as PartnerPriceSource | null,
 				error: e instanceof Error ? e.message : String(e)
 			})),
 		// 覚書（本文・ファイル）。読めなくても他の欄は出す
@@ -219,6 +220,9 @@ export const load: PageServerLoad = async (event) => {
 			.then((guest) => ({ guest, error: null as string | null }))
 			.catch((e) => ({ guest: null, error: e instanceof Error ? e.message : String(e) }))
 	]);
+
+	// 料金の元（取引先ランク暦 / TL のランク）と暦の未設定日（2026-10-09・docs/partner-rank-rates.md §5.4）。読めなければ出さない
+	const rankStatus = row ? await loadPartnerRankStatus(scope.db, partner, today).catch(() => null) : null;
 
 	// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
 	const credit = pmsGuest.guest?.guestType === 'group' ? await loadCreditSection(event, scope, partner, today) : null;
@@ -436,6 +440,13 @@ export const load: PageServerLoad = async (event) => {
 			...bookingExtras(b.detail)
 		})),
 		preview: { from: previewFrom, to: previewTo, days: preview.days, error: preview.error },
+		// 料金の元: 暦の設定（rankStatus）を優先し、読めなければプレビューの RPC が返した priceSource
+		priceSource: {
+			source: rankStatus ? (rankStatus.enabled ? 'partner_rank' : 'standard') : preview.priceSource,
+			publicDays: rankStatus?.publicDays ?? null,
+			missingDays: rankStatus?.missingDays ?? null,
+			rmsUrl: rmsPartnerRatesUrl(partner.id, partner.facility_slug)
+		},
 		invoices: {
 			period: invoicePeriod,
 			currentPeriod,

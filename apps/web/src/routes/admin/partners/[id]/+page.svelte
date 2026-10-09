@@ -747,6 +747,8 @@
     view: '料金カレンダー閲覧',
     rates: 'API 料金取得',
     facilities: 'API 施設一覧',
+    rate_sheet_csv: '料金表 CSV',
+    rate_sheet_pdf: '料金表 PDF',
     logout: 'ログアウト'
   };
 
@@ -1546,6 +1548,27 @@
             <strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>で、どのルールにも当てはまらない料金は出しません。
             ％・円はマイナスで値引き（例: -10 = 10%引き、-1000 = 1名1,000円引き）。値引きなしで出すなら「％・0」にします。
           </p>
+          <!-- 料金の元（2026-10-09・docs/partner-rank-rates.md §5.4）: RMS の取引先ランク暦を使うと、基準の理論値が暦のランクで決まる -->
+          <div class="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span class="text-xs text-stone-500">料金の元</span>
+              {#if data.priceSource.source === 'partner_rank'}
+                <span class="font-medium text-brand-800">RMS の取引先ランク暦</span>
+              {:else if data.priceSource.source === 'standard'}
+                <span class="font-medium text-stone-700">TL のランク（既定）</span>
+              {:else}
+                <span class="text-stone-500">確かめられませんでした</span>
+              {/if}
+              <a href={data.priceSource.rmsUrl} target="_blank" rel="noopener" class="text-xs text-brand-800 underline hover:no-underline">RMS の取引先料金で設定 ↗</a>
+            </div>
+            {#if data.priceSource.source === 'partner_rank' && (data.priceSource.missingDays ?? 0) > 0}
+              <p class="mt-1 text-xs font-medium text-rose-700">
+                公開範囲（{data.priceSource.publicDays}日）のうち {data.priceSource.missingDays}日 は暦のランクが未設定で、取引先ページで販売されません。
+              </p>
+            {:else if data.priceSource.source === 'partner_rank'}
+              <p class="mt-1 text-xs text-stone-500">基準の理論値は暦のランクで決まり、下のルールはその料金に当たります（「不可」の日は売りません）。</p>
+            {/if}
+          </div>
           <fieldset disabled={!canEdit}>
             {#if pricing.rules.every((r) => r.action !== 'adjust')}
               <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">

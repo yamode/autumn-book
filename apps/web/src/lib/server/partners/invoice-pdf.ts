@@ -55,7 +55,21 @@ export type RenderInvoicePdfOptions = {
 };
 
 /** 請求書の紙面を PDF にする。作れなければ null（理由は console.error に残す）。 */
-export async function renderInvoicePdf(doc: InvoiceDocument, opts: RenderInvoicePdfOptions = {}): Promise<Uint8Array | null> {
+export function renderInvoicePdf(doc: InvoiceDocument, opts: RenderInvoicePdfOptions = {}): Promise<Uint8Array | null> {
+  return renderHtmlPdf(opts.html ?? renderInvoiceHtml(doc), doc.invoiceNo, opts);
+}
+
+/**
+ * 1ファイル完結の HTML を PDF にする（請求書・料金表で共通。2026-10-09 に料金表のため切り出し）。
+ * label はログの見出し（請求書番号など）。landscape = true なら A4 横の画面幅で焼く（用紙の向きは紙面の @page に従う）。
+ * 作れなければ null（理由は console.error に残す）。
+ */
+export async function renderHtmlPdf(
+  html: string,
+  label: string,
+  opts: Omit<RenderInvoicePdfOptions, 'html'> & { landscape?: boolean } = {}
+): Promise<Uint8Array | null> {
+  const doc = { invoiceNo: label };
   const timeoutMs = Math.max(5_000, opts.timeoutMs ?? REQUEST_TIMEOUT_MS);
   const backoff = opts.backoff !== false ? BACKOFF_MS : [];
   const account = accountId();
@@ -67,10 +81,10 @@ export async function renderInvoicePdf(doc: InvoiceDocument, opts: RenderInvoice
   // スキーマは公式どおり（format は小文字・waitForSelector はオブジェクト）。autumn-pms で 400 を踏んだ点を踏襲。
   // 余白は紙面の @page（14mm 等）に任せる（margin を渡さない＋preferCSSPageSize）。
   const payload = JSON.stringify({
-    html: opts.html ?? renderInvoiceHtml(doc),
+    html,
     // ページ読み込みの待ちはリクエストの上限より少し短く（上限で切られる前に Browser Rendering 側で諦めさせる）
     gotoOptions: { waitUntil: 'networkidle0', timeout: Math.min(30_000, timeoutMs - 3_000) },
-    viewport: { width: 1240, height: 1754 },
+    viewport: opts.landscape ? { width: 1754, height: 1240 } : { width: 1240, height: 1754 },
     pdfOptions: { format: 'a4', printBackground: true, preferCSSPageSize: true }
   });
   const startedAt = Date.now();

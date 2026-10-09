@@ -4,6 +4,8 @@
 //   - 料金 … booking.daily_rates の理論値（RMS のマスタ理論式。2026-09-26 決定: 料金計算の元は RMS の理論値）
 //   - 残室 … PMS と同じ規則・休館日
 // 返り値 jsonb は partner-pricing.ts の PartnerSourceDay[] / PartnerSourceInventory にそのまま渡せる形。
+// 取引先ランク暦（2026-10-09・docs/partner-rank-rates.md）: p_partner を渡すと、その取引先 × 施設の暦が有効なら
+//   料金は暦のランクで RMS の式から出す（priceSource = 'partner_rank'）。それ以外は従来どおり（'standard'）。
 // autumn-rms 時代の TL 実売キャッシュ（loadRmsWorkbook / loadRateQuote / loadCalendarInventory）は使わない。
 // 先行案内料金（advance:*）は元データに無いので、取引先の include_advance は実質効かない。
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -24,16 +26,24 @@ export const PARTNER_MAX_RANGE_DAYS = 31;
 
 export type PartnerRange = { from: string; to: string; earliest: string; latest: string };
 
-// 取引先に見せてよい範囲（今日〜max_days_ahead・公開終了日まで）に要求範囲を収める。
+// 取引先に見せてよい範囲（今日〜max_days_ahead・公開終了日まで）。公開終了日が過去なら latest < earliest になる。
+export function partnerPublicBounds(
+  partner: Pick<PartnerRow, 'max_days_ahead' | 'valid_until'>,
+  today = todayJst()
+): { earliest: string; latest: string } {
+  let latest = addDaysIso(today, partner.max_days_ahead);
+  if (partner.valid_until && partner.valid_until < latest) latest = partner.valid_until;
+  return { earliest: today, latest };
+}
+
+// 取引先に見せてよい範囲（partnerPublicBounds）に要求範囲を収める。
 export function clampPartnerRange(
   partner: Pick<PartnerRow, 'max_days_ahead' | 'valid_until'>,
   from: string,
   to: string,
   today = todayJst()
 ): PartnerRange | null {
-  const earliest = today;
-  let latest = addDaysIso(today, partner.max_days_ahead);
-  if (partner.valid_until && partner.valid_until < latest) latest = partner.valid_until;
+  const { earliest, latest } = partnerPublicBounds(partner, today);
   const f = from < earliest ? earliest : from;
   let t = to > latest ? latest : to;
   const maxTo = addDaysIso(f, PARTNER_MAX_RANGE_DAYS - 1);
@@ -47,34 +57,85 @@ export type PartnerRatesResult = {
   rooms: { roomCode: string; name: string }[];
   // 特別レートを当てる前のプラングループ（コードは部屋タイプ間で共通）。
   planOptions: { code: string; label: string; mealType: string | null }[];
+  // 料金の元（取引先ランク暦 / TL のランク由来の理論値）。管理画面の表示用
+  priceSource: PartnerPriceSource;
 };
 
-// 取引先ごとの特別レートを当てる前の元データ（料金＋残室）。取引先・API で共通なので、
-// 同じ施設・期間はしばらく使い回す（月の行き来や前後月の先読みで同じ範囲を何度も読むため）。
+export type PartnerPriceSource = 'partner_rank' | 'standard';
+
+// 取引先ごとの特別レートを当てる前の元データ（料金＋残室）。同じ施設・期間はしばらく使い回す
+// （月の行き来や前後月の先読みで同じ範囲を何度も読むため）。
+// 取引先ランク暦（2026-10-09）: 暦を使っていない取引先は従来どおり施設のキー（facility|from|to）で共有し、RPC に p_partner を渡さない。
+// 暦を使っている取引先だけ料金が他と違うので partner|facility|from|to のキーで p_partner 付きで読む（キャッシュの件数を取引先数で増やさない）。
 // 残室は「目安」表示なので、数分の遅れは許容する。Worker の isolate 内だけのキャッシュ。
 type PartnerBase = {
   days: PartnerSourceDay[];
   inventory: Record<string, PartnerSourceInventory | undefined>;
   rooms: { roomCode: string; name: string }[];
+  priceSource: PartnerPriceSource;
 };
 const BASE_TTL_MS = 3 * 60 * 1000;
 // 料金の幅（loadPartnerPriceRange）が公開期間を31日ずつ最大24本読むので、カレンダー本体の分を押し出さない程度に持つ
+// （1件は1か月ぶんの JSON。Workers のメモリ 128MB に収めるため増やさない）
 const BASE_MAX_ENTRIES = 64;
 const baseCache = new Map<string, { at: number; value: Promise<PartnerBase> }>();
 
-function loadPartnerBase(db: SupabaseClient, facilityId: string, range: { from: string; to: string }): Promise<PartnerBase> {
-  const key = `${facilityId}|${range.from}|${range.to}`;
+// 取引先 × 施設で取引先ランク暦を使っているか（rms_partner_rank_settings.enabled・service_role）。60秒だけ使い回す。
+// 読めないときは「使っていない」とみなさず例外にする（暦の取引先に TL のランクの料金＝誤った料金を出さない）。
+const RANK_TTL_MS = 60 * 1000;
+const RANK_MAX_ENTRIES = 500;
+const rankCache = new Map<string, { at: number; value: Promise<boolean> }>();
+
+export function partnerRankEnabled(db: SupabaseClient, partnerId: string, facilityId: string): Promise<boolean> {
+  const key = `${partnerId}|${facilityId}`;
+  const now = Date.now();
+  const hit = rankCache.get(key);
+  if (hit && now - hit.at < RANK_TTL_MS) return hit.value;
+  const value = (async () => {
+    const { data, error } = await db
+      .from('rms_partner_rank_settings')
+      .select('enabled')
+      .eq('partner_id', partnerId)
+      .eq('facility_id', facilityId)
+      .maybeSingle();
+    if (error) throw new Error(`料金の設定の読み込みに失敗しました: ${error.message}`);
+    return (data as { enabled?: boolean } | null)?.enabled === true;
+  })();
+  rankCache.delete(key);
+  rankCache.set(key, { at: now, value });
+  value.catch(() => rankCache.delete(key));
+  for (const k of rankCache.keys()) {
+    if (rankCache.size <= RANK_MAX_ENTRIES) break;
+    rankCache.delete(k);
+  }
+  return value;
+}
+
+function loadPartnerBase(
+  db: SupabaseClient,
+  partnerId: string,
+  facilityId: string,
+  range: { from: string; to: string },
+  rank: boolean
+): Promise<PartnerBase> {
+  const key = rank ? `${partnerId}|${facilityId}|${range.from}|${range.to}` : `${facilityId}|${range.from}|${range.to}`;
   const now = Date.now();
   const hit = baseCache.get(key);
   if (hit && now - hit.at < BASE_TTL_MS) return hit.value;
-  const value = (async () => {
-    const { data, error } = await db.rpc('rms_partner_portal_source', { p_facility: facilityId, p_from: range.from, p_to: range.to });
+  const value = (async (): Promise<PartnerBase> => {
+    const { data, error } = await db.rpc(
+      'rms_partner_portal_source',
+      rank
+        ? { p_facility: facilityId, p_from: range.from, p_to: range.to, p_partner: partnerId }
+        : { p_facility: facilityId, p_from: range.from, p_to: range.to }
+    );
     if (error) throw new Error(`料金の読み込みに失敗しました: ${error.message}`);
     const d = (data ?? {}) as Partial<PartnerBase>;
     return {
       days: Array.isArray(d.days) ? d.days : [],
       inventory: d.inventory && typeof d.inventory === 'object' ? d.inventory : {},
-      rooms: Array.isArray(d.rooms) ? d.rooms : []
+      rooms: Array.isArray(d.rooms) ? d.rooms : [],
+      priceSource: d.priceSource === 'partner_rank' ? 'partner_rank' : 'standard'
     };
   })();
   baseCache.delete(key);
@@ -91,13 +152,14 @@ function loadPartnerBase(db: SupabaseClient, facilityId: string, range: { from: 
 
 export async function loadPartnerRates(
   db: SupabaseClient,
-  partner: Pick<PartnerRow, 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance'>,
+  partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance'>,
   range: { from: string; to: string },
   filters: { rooms?: string[]; guests?: number[]; includeBase?: boolean } = {}
 ): Promise<PartnerRatesResult> {
   // Book が扱う施設以外の料金は出さない（store の withFacility でも弾いているが二重に確かめる）。
   if (!isBookFacility(partner.facility_id)) throw new Error(`未登録の施設です: ${partner.facility_id}`);
-  const { days: sourceDays, inventory, rooms } = await loadPartnerBase(db, partner.facility_id, range);
+  const rank = await partnerRankEnabled(db, partner.id, partner.facility_id);
+  const { days: sourceDays, inventory, rooms, priceSource } = await loadPartnerBase(db, partner.id, partner.facility_id, range, rank);
   const days = buildPartnerDays(sourceDays, inventory, {
     pricing: partner.pricing,
     rooms,
@@ -114,7 +176,7 @@ export async function loadPartnerRates(
       planMap.set(o.planGroupCode, { code: o.planGroupCode, label: o.planLabel, mealType: o.mealType ?? null });
     }
   }
-  return { days, rooms, planOptions: [...planMap.values()] };
+  return { days, rooms, planOptions: [...planMap.values()], priceSource };
 }
 
 // ---------------------------------------------------------------------------
@@ -142,20 +204,22 @@ export function partnerRangeChunks(
 // min / max は根拠（日付・部屋・プラン・人数）つき。画面のツールチップに出す。
 export type PartnerPriceRange = { min: PartnerPriceExtreme; max: PartnerPriceExtreme; from: string; to: string };
 
-// 取引先・料金設定・公開範囲が同じなら isolate 内で10分使い回す（範囲全体を読むので重い）。
+// 取引先・施設・料金の元（暦を使うか）・料金設定・公開範囲が同じなら isolate 内で10分使い回す（範囲全体を読むので重い）。
+// 施設はキーに含める（複数施設化で、同じ取引先でも選んでいる施設で幅が違う）。暦の切替は次の読み込みで別のキーになる。
 const RANGE_TTL_MS = 10 * 60 * 1000;
 const RANGE_MAX_ENTRIES = 50;
 const RANGE_CONCURRENCY = 4;
 const rangeCache = new Map<string, { at: number; value: Promise<PartnerPriceRange | null> }>();
 
 // 公開期間の1名1泊の最低・最高（部屋タイプ・人数・プランを問わない。休館・非表示は除く）。料金が1つも無ければ null。
-export function loadPartnerPriceRange(
+export async function loadPartnerPriceRange(
   db: SupabaseClient,
   partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance' | 'max_days_ahead' | 'valid_until'>,
   today = todayJst()
 ): Promise<PartnerPriceRange | null> {
   const chunks = partnerRangeChunks(partner, today);
-  const key = `${partner.id}|${today}|${partner.max_days_ahead}|${partner.valid_until ?? ''}|${partner.include_advance}|${JSON.stringify(partner.pricing)}`;
+  const rank = await partnerRankEnabled(db, partner.id, partner.facility_id);
+  const key = `${partner.id}|${partner.facility_id}|${rank ? 'rank' : 'std'}|${today}|${partner.max_days_ahead}|${partner.valid_until ?? ''}|${partner.include_advance}|${JSON.stringify(partner.pricing)}`;
   const now = Date.now();
   const hit = rangeCache.get(key);
   if (hit && now - hit.at < RANGE_TTL_MS) return hit.value;
@@ -190,4 +254,60 @@ export function loadPartnerPriceRange(
     rangeCache.delete(k);
   }
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// 取引先ランク暦の状態（管理画面の「料金の元」。2026-10-09・docs/partner-rank-rates.md §5.4）
+// ---------------------------------------------------------------------------
+
+// 取引先ランク暦の編集画面（RMS）。Book に RMS のオリジンの設定が無いので定数で持つ（PMS_GUEST_URL_BASE と同じ流儀）
+export const RMS_ORIGIN = 'https://autumn-rms.yamado.app';
+export const rmsPartnerRatesUrl = (partnerId: string, facilitySlug: string) =>
+  `${RMS_ORIGIN}/partner-rates/${encodeURIComponent(partnerId)}?facility=${encodeURIComponent(facilitySlug)}`;
+
+export type PartnerRankStatus = {
+  enabled: boolean;
+  // 公開範囲（partnerPublicBounds）の日数と、そのうち未設定の日（暦の行が無い日・施設の有効なランクセットに無いコードの日。
+  // どちらも取引先ページで売らない。「不可」は設定済みとして数えない）
+  publicDays: number;
+  missingDays: number;
+};
+
+/** 取引先 × 施設の取引先ランク暦の状態。読めなければ null（画面は表示を省く） */
+export async function loadPartnerRankStatus(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'id' | 'facility_id' | 'max_days_ahead' | 'valid_until'>,
+  today = todayJst()
+): Promise<PartnerRankStatus | null> {
+  const { data, error } = await db
+    .from('rms_partner_rank_settings')
+    .select('enabled')
+    .eq('partner_id', partner.id)
+    .eq('facility_id', partner.facility_id)
+    .maybeSingle();
+  if (error) return null;
+  const enabled = (data as { enabled?: boolean } | null)?.enabled === true;
+  const { earliest, latest } = partnerPublicBounds(partner, today);
+  const publicDays = latest < earliest ? 0 : Math.round((Date.parse(`${latest}T00:00:00Z`) - Date.parse(`${earliest}T00:00:00Z`)) / 86_400_000) + 1;
+  if (!enabled || !publicDays) return { enabled, publicDays, missingDays: 0 };
+  // 施設の有効なランクセットのランクコード（料金の RPC と同じ: rms_rate_rank_sets.is_active → rms_rate_rank_prices.rank_code）
+  const { data: sets, error: e1 } = await db.from('rms_rate_rank_sets').select('id').eq('facility_id', partner.facility_id).eq('is_active', true);
+  if (e1) return null;
+  const setIds = ((sets ?? []) as { id: string }[]).map((s) => s.id);
+  let codes: string[] = [];
+  if (setIds.length) {
+    const { data: prices, error: e3 } = await db.from('rms_rate_rank_prices').select('rank_code').in('rate_rank_set_id', setIds);
+    if (e3) return null;
+    codes = [...new Set(((prices ?? []) as { rank_code: string }[]).map((p) => p.rank_code))];
+  }
+  const { count, error: e2 } = await db
+    .from('rms_partner_rank_days')
+    .select('stay_date', { count: 'exact', head: true })
+    .eq('partner_id', partner.id)
+    .eq('facility_id', partner.facility_id)
+    .in('rank_code', [...codes, '不可'])
+    .gte('stay_date', earliest)
+    .lte('stay_date', latest);
+  if (e2) return null;
+  return { enabled, publicDays, missingDays: Math.max(0, publicDays - (count ?? 0)) };
 }
