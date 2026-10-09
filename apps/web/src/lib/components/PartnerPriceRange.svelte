@@ -69,7 +69,8 @@
 
 <svelte:window onkeydown={onKey} onclick={() => (tipPinned = null)} />
 
-<section class="relative z-30 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5">
+<!-- z-40: 直後の検索バー（z-30）より上に置き、根拠のツールチップが検索バーの下に潜らないようにする -->
+<section class="relative z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5">
   {#if priceRangeState !== 'hidden'}
     <div class="min-w-0 flex-1">
       <p class="text-xs text-stone-500">公開期間の料金（1名1泊・税込・入湯税別）</p>
