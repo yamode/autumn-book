@@ -837,8 +837,9 @@
             <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
               {#each quote.rooms as r, i}
                 <li class="flex justify-between gap-2">
-                  <span>{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊{#if r.adults > 1}<span class="ml-1 text-xs">（1名1泊{quote.nights > 1 ? '平均' : ''} {num(Math.round(r.subtotal / Math.max(r.adults * quote.nights, 1)))}円）</span>{/if}</span>
-                  <span class="tabular-nums">{num(r.subtotal)}円</span>
+                  <!-- 1行に収める（2026-10-10 指示）。1室なら1名料金は上の合計の下に出ているので、明細では複数室のときだけ短く添える -->
+                  <span class="min-w-0 whitespace-nowrap">{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊{#if quote.rooms.length > 1 && r.adults > 1}<span class="ml-1 text-xs">（1名 {num(Math.round(r.subtotal / Math.max(r.adults * quote.nights, 1)))}円）</span>{/if}</span>
+                  <span class="whitespace-nowrap tabular-nums">{num(r.subtotal)}円</span>
                 </li>
               {/each}
             </ul>
