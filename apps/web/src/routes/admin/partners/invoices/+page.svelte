@@ -121,7 +121,7 @@
 				{#each data.rows as r (r.partnerId)}
 					<tr class="border-t border-stone-100 align-top">
 						<td class="px-3 py-2.5">
-							<a href="/admin/partners/{r.partnerId}?inv={ym(data.period)}" class="font-medium text-stone-800 hover:underline">{r.partnerName}</a>
+							<a href="/admin/partners/{r.partnerId}?inv={ym(data.period)}{r.detailFac ? `&fac=${r.detailFac}` : ''}" class="font-medium text-stone-800 hover:underline">{r.partnerName}</a>
 							{#if r.recipientName !== r.partnerName}<div class="text-xs text-stone-500">宛名: {r.recipientName} 御中</div>{/if}
 							<div class="mt-0.5 flex flex-wrap gap-1">
 								{#if r.bookingEnabled}<span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付</span>{/if}

@@ -15,13 +15,14 @@ import { facilities } from '$lib/server/store';
 import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { sendPartnerMail } from './mail';
+import { partnerSetupBrand } from './setup-brand';
 import { PartnerFormError } from './staff-form';
 import {
   loadStaffPartnerView,
   partnerAdminClient,
   PartnerStoreError,
   SETUP_TOKEN_TTL_HOURS,
-  type PartnerRow,
+  type PartnerContext,
   type StaffPartnerView
 } from './store';
 
@@ -199,18 +200,19 @@ export async function sendSetupEmail(
   db: SupabaseClient,
   args: {
     to: string;
-    partner: Pick<PartnerRow, 'name' | 'facility_id'>;
-    facilityName: string;
+    // 差出人は既定の施設・本文はオンの施設を列挙（複数施設化 S5b・§7.11・2026-10-09。setup-brand.ts）
+    partner: Pick<PartnerContext, 'name' | 'facility_id' | 'facility_name' | 'facilities' | 'primary_facility_id'>;
     loginId: string;
     setupUrl: string;
     loginUrl: string;
   }
 ) {
   const days = Math.round(SETUP_TOKEN_TTL_HOURS / 24);
+  const brand = partnerSetupBrand(args.partner);
   const text = [
     `${args.partner.name} 様`,
     '',
-    `${args.facilityName} の料金カレンダー（特別レート）のログインIDを発行しました。`,
+    `${brand.label} の料金カレンダー（特別レート）のログインIDを発行しました。`,
     '下記のリンクからパスワードを設定してください。',
     '',
     `ログインID: ${args.loginId}`,
@@ -222,15 +224,15 @@ export async function sendSetupEmail(
     '※このURLは貴社専用です。社外へは共有しないでください。'
   ].join('\n');
   const html = `<p>${escapeHtml(args.partner.name)} 様</p>
-<p>${escapeHtml(args.facilityName)} の料金カレンダー（特別レート）のログインIDを発行しました。<br>下記のリンクからパスワードを設定してください。</p>
+<p>${escapeHtml(brand.label)} の料金カレンダー（特別レート）のログインIDを発行しました。<br>下記のリンクからパスワードを設定してください。</p>
 <p>ログインID: <strong>${escapeHtml(args.loginId)}</strong><br>
 パスワード設定: <a href="${escapeHtml(args.setupUrl)}">${escapeHtml(args.setupUrl)}</a><br>
 （リンクの有効期限: ${days}日）</p>
 <p>次回以降のログイン: <a href="${escapeHtml(args.loginUrl)}">${escapeHtml(args.loginUrl)}</a></p>
 <p style="color:#666;font-size:12px">※このURLは貴社専用です。社外へは共有しないでください。</p>`;
-  return sendPartnerMail(db, args.partner.facility_id, {
+  return sendPartnerMail(db, brand.facilityId, {
     to: [args.to],
-    subject: `【${args.facilityName}】料金カレンダーのログインID発行のお知らせ`,
+    subject: `【${brand.subjectName}】料金カレンダーのログインID発行のお知らせ`,
     html,
     text
   });

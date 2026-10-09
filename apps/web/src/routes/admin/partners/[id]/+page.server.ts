@@ -334,6 +334,8 @@ export const load: PageServerLoad = async (event) => {
 		documentsError: documents.error,
 		documentAccept: PARTNER_DOCUMENT_ACCEPT,
 		apiEndpoint: `${origin}/api/partner/v1/rates`,
+		// API の facility（オンの施設の slug・2つ以上なら必須・複数施設化 S5b・2026-10-09）
+		apiFacilities: view.bundle.facilities.filter((f) => !f.synthetic && f.enabled).map((f) => f.slug),
 		accounts: accounts.map((a) => ({
 			id: a.id,
 			// Book のスタッフが発行したものはマスタ。子ユーザーは作成者（マスタのログインID）を出す
@@ -617,7 +619,6 @@ async function issueSetupLink(
 		emailResult = await sendSetupEmail(s.db, {
 			to: sendTo,
 			partner: s.partner,
-			facilityName: s.facilityName,
 			loginId: account.login_id,
 			setupUrl,
 			loginUrl

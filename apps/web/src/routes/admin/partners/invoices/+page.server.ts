@@ -54,6 +54,9 @@ export const load: PageServerLoad = async (event) => {
 				const doc = r.document;
 				return {
 					partnerId: r.partner.id,
+					// 取引先の詳細を開く施設タブ（「すべて」で今の施設に設定の無い取引先は、請求の載っている施設のタブで開く・2026-10-09）。
+					// 詳細は loadStaffPartnerView で開くので、今の施設に設定が無くても 404 にはならない（タブの施設を合わせるだけ）
+					detailFac: doc.facilities.some((f) => f.id === scope.facilityId) ? null : (doc.facilities[0]?.id ?? null),
 					partnerName: r.partner.name,
 					recipientName: doc.recipient.name,
 					bookingEnabled: r.partner.bookingEnabled,

@@ -746,6 +746,7 @@
     password_set: 'パスワード設定',
     view: '料金カレンダー閲覧',
     rates: 'API 料金取得',
+    facilities: 'API 施設一覧',
     logout: 'ログアウト'
   };
 
@@ -2415,9 +2416,11 @@
 Authorization: Bearer rmsp_xxxxxxxx
 
 任意: room=部屋コード（複数可） / guests=人数（複数可）
+施設: facility=施設の slug（{data.apiFacilities.join(' / ') || 'オンの施設なし'}）。オンの施設が2つ以上なら必須（省略は 400 facility_required）。
+      施設の一覧は GET {data.apiEndpoint.replace(/\/rates$/, '/facilities')}
 1回で最大31日。from 省略 = 今日、to 省略 = from から31日。
 
-curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guests=2"</pre>
+curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guests=2{data.apiFacilities.length >= 2 ? `&facility=${data.apiFacilities[0]}` : ''}"</pre>
 
       {#if data.apiKeys.length}
         <table class="mt-3 w-full text-sm">

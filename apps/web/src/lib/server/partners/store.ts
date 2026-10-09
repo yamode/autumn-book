@@ -1463,7 +1463,7 @@ export async function setPartnerPassword(
 export async function findPartnerByApiKey(
   db: SupabaseClient,
   apiKey: string
-): Promise<{ partner: PartnerContext; apiKeyId: string } | null> {
+): Promise<{ partner: PartnerContext; apiKeyId: string; bundle: PartnerBundle } | null> {
   if (!apiKey.startsWith(API_KEY_PREFIX) || apiKey.length > 128) return null;
   const { data, error } = await db
     .from('rms_partner_api_keys')
@@ -1473,14 +1473,14 @@ export async function findPartnerByApiKey(
   if (error) raise(error, 'API キーを確認できませんでした。');
   const key = data as { id: string; partner_id: string; revoked_at: string | null; last_used_at: string | null } | null;
   if (!key || key.revoked_at) return null;
-  // 施設は既定の施設（primary → オンの先頭）。API の facility 指定（§7.10）は S5b
+  // 施設は既定の施設（primary → オンの先頭）で合成して返す。API の facility 指定（§7.10）は呼び出し側が bundle で合成し直す
   const bundle = await loadBundle(db, { id: key.partner_id });
   const partner = bundle?.facilities.length ? composePartnerContext(bundle, null) : null;
-  if (!partner) return null;
+  if (!bundle || !partner) return null;
   if (!key.last_used_at || Date.now() - new Date(key.last_used_at).getTime() > 5 * 60_000) {
     await db.from('rms_partner_api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', key.id);
   }
-  return { partner, apiKeyId: key.id };
+  return { partner, apiKeyId: key.id, bundle };
 }
 
 

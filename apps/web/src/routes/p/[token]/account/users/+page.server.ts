@@ -102,7 +102,8 @@ export const actions = {
       if (!values.display_name) throw new PartnerStoreError('お名前を入力してください。');
       if (!values.email) throw new PartnerStoreError('メールアドレスを入力してください。');
       if (!isEmail(values.email) || values.email.length > 254) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
-      const loginId = values.login_id || autoChildLoginId(s.partner);
+      // 自動採番の接頭辞は作るマスタユーザーのログインIDから（施設の接頭辞はやめた・2026-10-09）
+      const loginId = values.login_id || autoChildLoginId(s.session.login_id);
       const { account, setupToken } = await createChildAccount(s.db, s.partner.id, s.session.id, {
         loginId,
         displayName: values.display_name,

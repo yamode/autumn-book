@@ -1,54 +1,32 @@
 // 取引先向け REST API: 特別レートと残室を JSON で返す。
 //
-//   GET /api/partner/v1/rates?from=YYYY-MM-DD&to=YYYY-MM-DD[&room=<部屋コード>...][&guests=<人数>...]
-//   Authorization: Bearer rmsp_xxxxxxxx   （autumn-rms の取引先画面で発行する API キー）
+//   GET /api/partner/v1/rates?from=YYYY-MM-DD&to=YYYY-MM-DD[&facility=<施設の slug>][&room=<部屋コード>...][&guests=<人数>...]
+//   Authorization: Bearer rmsp_xxxxxxxx   （Book の管理画面の取引先で発行する API キー）
+//
+// facility（2026-10-09 複数施設化 S5b・§7.10・決定 N11）: 施設の slug（GET /api/partner/v1/facilities の slug）。
+// オンの施設が1つなら省略可（その施設）。2つ以上で省略すると 400 facility_required（応答の facilities にオンの施設の一覧）。
+// 知らない施設は 400 unknown_facility、オフの施設は 403 facility_disabled、オンの施設が無ければ 403 no_facility。
 //
 // 1回で最大31日。from 省略 = 今日（JST）、to 省略 = from から31日。取引先の公開範囲
 // （今日〜何日先まで・公開終了日）の外は切り詰め、切り詰めた後の範囲を range に返す。
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { findPartnerByApiKey, logPartnerAccess, NO_PARTNER_FACILITY_MESSAGE, partnerAdminClient, partnerUnavailableReason, PartnerStoreError, addDaysIso, todayJst } from '$lib/server/partners/store';
+import { logPartnerAccess, addDaysIso, todayJst } from '$lib/server/partners/store';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from '$lib/server/partners/rates';
 import { requestMeta } from '$lib/server/partners/portal';
-
-const CORS_HEADERS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'GET, OPTIONS',
-  'access-control-allow-headers': 'authorization, content-type',
-  'access-control-max-age': '86400'
-};
-const HEADERS = { ...CORS_HEADERS, 'cache-control': 'private, no-store' };
-
-function apiError(status: number, code: string, message: string, extra: Record<string, string> = {}) {
-  return json({ error: { code, message } }, { status, headers: { ...HEADERS, ...extra } });
-}
+import { authenticatePartnerApi, partnerApiError as apiError, PARTNER_API_HEADERS as HEADERS, partnerApiOptions, partnerForApiFacility } from '$lib/server/partners/api';
 
 const isIsoDate = (v: string | null): v is string =>
   !!v && /^\d{4}-\d{2}-\d{2}$/.test(v) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
-export const OPTIONS: RequestHandler = () => new Response(null, { status: 204, headers: CORS_HEADERS });
+export const OPTIONS: RequestHandler = () => partnerApiOptions();
 
 export const GET: RequestHandler = async (event) => {
-  const db = partnerAdminClient();
-  if (!db) return apiError(503, 'unavailable', 'Service is temporarily unavailable.');
-
-  const auth = event.request.headers.get('authorization') ?? '';
-  const apiKey = auth.match(/^Bearer\s+(\S+)$/i)?.[1] ?? '';
-  if (!apiKey) return apiError(401, 'unauthorized', 'Authorization: Bearer <API key> is required.', { 'www-authenticate': 'Bearer' });
-
-  let found: Awaited<ReturnType<typeof findPartnerByApiKey>>;
-  try {
-    found = await findPartnerByApiKey(db, apiKey);
-  } catch (e) {
-    if (e instanceof PartnerStoreError) return apiError(503, 'unavailable', 'Service is temporarily unavailable.');
-    throw e;
-  }
-  if (!found) return apiError(401, 'unauthorized', 'Invalid or revoked API key.', { 'www-authenticate': 'Bearer error="invalid_token"' });
-  const { partner, apiKeyId } = found;
-
-  const unavailable = partnerUnavailableReason(partner);
-  if (unavailable) return apiError(403, 'not_published', unavailable);
-  // オンの施設が1つも無い（N9・2026-10-09 複数施設化）。施設の指定（facility）は S5b
-  if (!partner.facility_available) return apiError(403, 'no_facility', NO_PARTNER_FACILITY_MESSAGE);
+  const auth = await authenticatePartnerApi(event);
+  if (auth instanceof Response) return auth;
+  const { db, apiKeyId } = auth;
+  // 施設（?facility=<slug>）: オンが1つなら省略可・2つ以上で省略は 400 facility_required（N11）・オンが無ければ 403 no_facility（N9）
+  const partner = partnerForApiFacility(auth, event.url.searchParams.get('facility'));
+  if (partner instanceof Response) return partner;
 
   const params = event.url.searchParams;
   const fromParam = params.get('from');
@@ -85,7 +63,7 @@ export const GET: RequestHandler = async (event) => {
     apiKeyId,
     channel: 'api',
     action: 'rates',
-    detail: { from: range.from, to: range.to, rooms: rooms.length ? rooms : undefined, guests: guests.length ? guests : undefined },
+    detail: { facility: partner.facility_slug, from: range.from, to: range.to, rooms: rooms.length ? rooms : undefined, guests: guests.length ? guests : undefined },
     ip: meta.ip
   });
 

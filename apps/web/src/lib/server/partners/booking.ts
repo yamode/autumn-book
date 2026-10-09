@@ -1697,6 +1697,13 @@ export function partnerBilledNotice(
   return `【ご請求】宿泊料金・入湯税は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`;
 }
 
+/**
+ * メールの中の予約一覧のリンク（純関数）。?f=<その予約の施設 slug> を付け、開くとその施設が選ばれる（§7.8・2026-10-09 複数施設化）。
+ * 1施設の取引先でも付ける（付いていても画面は変わらない）。
+ */
+export const partnerBookingsUrl = (origin: string, partner: Pick<PartnerContext, 'url_token' | 'facility_slug'>) =>
+  `${origin}/p/${partner.url_token}/bookings${partner.facility_slug ? `?f=${encodeURIComponent(partner.facility_slug)}` : ''}`;
+
 async function sendBookingMails(
   db: SupabaseClient,
   viewer: AnyPartner,
@@ -1714,7 +1721,7 @@ async function sendBookingMails(
   const facilityName = partner.facility_name || (await partnerMailSender(db, partner.facility_id)).fromName;
   const title = kind === 'new' ? 'ご予約を承りました' : 'ご予約を取り消しました';
   const summary = bookingSummaryLines(b);
-  const listUrl = `${origin}/p/${partner.url_token}/bookings`;
+  const listUrl = partnerBookingsUrl(origin, partner);
   let sent = false;
 
   // 取引先へ（予約者のメールを最優先に、予約したログインIDのメール＋取引先の連絡先メール）。
@@ -1779,7 +1786,7 @@ async function sendChargeFailedMails(db: SupabaseClient, viewer: AnyPartner, b: 
   const s = partner.booking_settings;
   const facilityName = partner.facility_name || (await partnerMailSender(db, partner.facility_id)).fromName;
   const summary = bookingSummaryLines(b);
-  const listUrl = `${origin}/p/${partner.url_token}/bookings`;
+  const listUrl = partnerBookingsUrl(origin, partner);
   let sent = false;
   // 予約者・ログインID・取引先の連絡先へ（宿泊者のメールへは送らない）
   const partnerTo = await partnerRecipients(db, partner, b, b.account_id);
