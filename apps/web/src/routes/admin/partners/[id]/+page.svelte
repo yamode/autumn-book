@@ -4,6 +4,8 @@
   import { untrack } from 'svelte';
   import { deserialize, enhance } from '$app/forms';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+  import { navigating } from '$app/state';
+  import { streamed } from '$lib/streamed.svelte';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import {
     ADVANCE_PLAN_CODE,
@@ -63,6 +65,52 @@
     invoiceResult?: { kind: 'issued' | 'existing' | 'empty' | 'sent' | 'voided' | 'error'; message: string };
   };
   let { data, form }: { data: PageData; form?: FormResult } = $props();
+
+  // ---- 後から届くもの（2026-10-10・+layout.server.ts / +page.server.ts がストリーミングで返す）----
+  // 届くまでは null（枠を出す）。保存の後の読み直しの間は前の値を残し、届いたら入れ替える（lib/streamed.svelte.ts）
+  const previewInfo = streamed(() => data.previewInfo);
+  const bookingList = streamed(() => data.bookingList);
+  const accessLogs = streamed(() => data.accessLogs);
+  const invoiceData = streamed(() => data.invoiceData);
+  const savedCardsData = streamed(() => data.savedCards);
+  // プレビュー・料金の元・計算の状態は、いま開いているタブの読み込みのときだけ使う（切替直後に前のタブの結果を出さない）
+  // 開始日（?preview=）を変えたときも、その期間の結果が届くまで枠に戻す
+  const pvInfo = $derived(
+    previewInfo.current && previewInfo.current.tabId === data.tab.id && previewInfo.current.from === data.previewRange.from ? previewInfo.current : null
+  );
+  // 与信の月別の判定（施設ごと・タブの施設の結果だけ使う）
+  const creditMonthsData = streamed(() => data.creditMonths);
+  const creditMonthsInfo = $derived(creditMonthsData.current && creditMonthsData.current.tabId === data.tab.id ? creditMonthsData.current : null);
+  const creditMonthRows = $derived(creditMonthsInfo?.months ?? []);
+  const bookings = $derived(bookingList.current?.rows ?? []);
+  const logs = $derived(accessLogs.current?.rows ?? []);
+  const savedCards = $derived(savedCardsData.current ?? null);
+  // 請求書: 対象月はすぐ、一覧・プレビューは後から（対象月を切り替えた直後は前の月の結果を出さない）
+  const invoiceReady = $derived(!!invoiceData.current && invoiceData.current.period === data.invoicePeriod.period);
+  const INVOICE_LOADING = { error: null, rows: [], preview: null, previewError: null, chargeFailed: [], bankAccountMissing: false, autoIssue: true };
+  const invoices = $derived({ ...(invoiceReady && invoiceData.current ? invoiceData.current : INVOICE_LOADING), ...data.invoicePeriod });
+  // プランの選択肢・部屋の名前: すぐ出す分（施設のプラン一覧・保存済みルール）＋プレビューにだけ出たもの（後から）
+  const planOptions = $derived(
+    [...data.planOptions, ...(pvInfo?.extraPlans ?? [])].sort((a, b) => a.code.localeCompare(b.code, 'en', { numeric: true }))
+  );
+  // 同じコードはプレビューの名前（先頭）を残す
+  const rooms = $derived.by(() => {
+    const byCode = new Map<string, { code: string; name: string }>();
+    for (const r of [...(pvInfo?.rooms ?? []), ...data.rooms]) if (!byCode.has(r.code)) byCode.set(r.code, r);
+    return [...byCode.values()];
+  });
+
+  // ---- 施設タブの切替を先に見せる（2026-10-10）----
+  // 同じページで ?fac= だけ変わる移動の間は、タブの選択と「{施設}の設定」の見出しをすぐ行き先にし、
+  // 施設の設定欄・プレビューは読み込み中の枠にする（手元の編集中の値は消さない。読み込みが終わってから読み直す）
+  const pendingTab = $derived.by(() => {
+    const to = navigating.to?.url;
+    if (!to || to.pathname !== navigating.from?.url.pathname) return null;
+    const id = to.searchParams.get('fac');
+    if (!id || id === data.tab.id) return null;
+    return data.facilityTabs.find((t) => t.id === id) ?? null;
+  });
+  const selectedTabId = $derived(pendingTab?.id ?? data.tab.id);
 
   // 操作（保存・発行・取消など）は管理者だけ。スタッフは閲覧のみ（サーバー側でも同じ線引きで弾く）
   const canEdit = $derived(data.canEdit);
@@ -191,7 +239,7 @@
   // 取引先向けのプラン名: 販売対象（「調整して出す」ルールのプラン。全プラン対象なら全部）＋名前を付け済みのコード
   const namePlanOptions = $derived.by(() => {
     const scope = partnerContentScope(pricing);
-    const list = data.planOptions
+    const list = planOptions
       .filter((p) => !scope.plans || scope.plans.has(p.code) || own.planNames[p.code])
       .map((p) => ({ code: p.code, label: p.label }));
     for (const code of Object.keys(own.planNames)) if (!list.some((p) => p.code === code)) list.push({ code, label: code });
@@ -205,7 +253,7 @@
   }
   // 特典の対象プランの選択肢: プレビュー由来のプラン＋保存済みの特典にしか無いコード
   const perkPlanOptions = $derived.by(() => {
-    const list = data.planOptions.map((p) => ({ code: p.code, label: p.label }));
+    const list = planOptions.map((p) => ({ code: p.code, label: p.label }));
     const known = new Set(list.map((p) => p.code));
     for (const perk of own.perks) {
       for (const code of perk.planCodes) {
@@ -228,12 +276,12 @@
   let bookingFilter = $state<'upcoming' | 'all'>('upcoming');
   // 予約一覧の施設の列: 取引先が2施設以上で売っている・予約が2施設以上にあるときだけ出す
   const showBookingFacility = $derived(
-    data.facilityTabs.filter((t) => t.hasRow).length > 1 || new Set(data.bookings.map((b) => b.facilityId)).size > 1
+    data.facilityTabs.filter((t) => t.hasRow).length > 1 || new Set(bookings.map((b) => b.facilityId)).size > 1
   );
   let cancelTarget = $state<string | null>(null);
   const todayIso = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
   const shownBookings = $derived(
-    bookingFilter === 'upcoming' ? data.bookings.filter((b) => b.status === 'confirmed' && b.checkIn >= todayIso) : data.bookings
+    bookingFilter === 'upcoming' ? bookings.filter((b) => b.status === 'confirmed' && b.checkIn >= todayIso) : bookings
   );
 
   // ---- 保存状態（未保存の変更・保存中・保存結果）。共通と施設タブで別々に持つ ----
@@ -311,9 +359,9 @@
   // ---- 請求書 ----
   let voidTarget = $state<string | null>(null);
   let invoiceBusy = $state(false);
-  const invoiceMonth = $derived(data.invoices.period.slice(0, 7));
+  const invoiceMonth = $derived(invoices.period.slice(0, 7));
   // 当月の途中で発行すると、月末までにチェックアウトする予約が載らない（同じ月は1枚だけ）
-  const issuingMidMonth = $derived(data.invoices.period === data.invoices.currentPeriod && !isLastDayOfMonth(todayIso));
+  const issuingMidMonth = $derived(invoices.period === invoices.currentPeriod && !isLastDayOfMonth(todayIso));
   function pickInvoiceMonth(v: string) {
     if (!/^\d{4}-\d{2}$/.test(v)) return;
     const url = new URL(window.location.href);
@@ -405,10 +453,10 @@
   }
 
   // ---- 特別レートの要約（読み取り専用。編集は RMS） ----
-  const roomName = (code: string) => data.rooms.find((r) => r.code === code)?.name ?? code;
+  const roomName = (code: string) => rooms.find((r) => r.code === code)?.name ?? code;
   const ruleProblem = (r: PartnerRateRule) => (r.action === 'adjust' && !r.planGroupCodes.length ? 'プラン未選択' : '');
   const planName = (code: string) =>
-    code === ADVANCE_PLAN_CODE ? '先行案内料金' : (data.planOptions.find((p) => p.code === code)?.label ?? code);
+    code === ADVANCE_PLAN_CODE ? '先行案内料金' : (planOptions.find((p) => p.code === code)?.label ?? code);
   function ruleSummary(r: PartnerRateRule): string {
     const parts: string[] = [];
     parts.push(r.roomCodes.length ? r.roomCodes.map(roomName).join('・') : '全部屋');
@@ -422,10 +470,16 @@
 
   // ---- プレビュー ----
   let previewGuests = $state(2);
+  // 開始日の変更: 施設タブ（?fac=）・請求書の月（?inv=）は残す（以前は ?preview= だけにしていたため既定のタブへ戻っていた・2026-10-10）
+  function pickPreviewFrom(v: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('preview', v);
+    goto(url, { noScroll: true, keepFocus: true });
+  }
   // サーバからは保存済みの最終料金（取引先に見える価格）と特別レート前の料金が来る（2026-10-09 §7）。ここでは並べるだけ
   const previewRows = $derived.by(() => {
     const rows = new Map<string, { key: string; roomName: string; planName: string; advance: boolean; cells: Record<string, { price: number; base: number | null }> }>();
-    for (const day of data.preview.days) {
+    for (const day of pvInfo?.preview.days ?? []) {
       for (const room of day.rooms) {
         for (const plan of room.plans) {
           const price = plan.pricesPerPerson[String(previewGuests)];
@@ -1076,15 +1130,20 @@
                   </div>
 
                   <!-- 今後 12 か月の月別（上限・予約済み・残り）。与信 OFF なら判定しない -->
-                  {#if credit.state.enabled && credit.months.length}<p class="mt-3 text-xs font-medium text-stone-700">{data.tab.name}の受付枠（枠は施設ごとに数えます・施設タブで切替）</p>{/if}
-                  {#if credit.state.enabled && credit.months.length}
+                  {#if credit.state.enabled && (creditMonthRows.length || !creditMonthsInfo || pendingTab)}<p class="mt-3 text-xs font-medium text-stone-700">{(pendingTab ?? data.tab).name}の受付枠（枠は施設ごとに数えます・施設タブで切替）</p>{/if}
+                  {#if credit.state.enabled && (!creditMonthsInfo || pendingTab)}
+                    <!-- 月別の判定はタブの施設で後から届く -->
+                    <div class="mt-3 space-y-1.5" aria-busy="true">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-5 w-full opacity-70"></div>{/each}</div>
+                  {:else if credit.state.enabled && creditMonthsInfo?.error}
+                    <p class="mt-3 text-xs text-rose-700">受付枠の判定を読み込めませんでした: {creditMonthsInfo.error}</p>
+                  {:else if credit.state.enabled && creditMonthRows.length}
                     <div class="mt-3 overflow-x-auto">
                       <table class="w-full text-xs tabular-nums">
                         <thead class="text-left text-stone-500">
                           <tr><th class="py-1 pr-3 font-medium">月</th><th class="pr-3 text-right font-medium">基準（実績平均）</th><th class="pr-3 text-right font-medium">上限</th><th class="pr-3 text-right font-medium">予約済み</th><th class="pr-3 text-right font-medium">残り</th><th class="font-medium"></th></tr>
                         </thead>
                         <tbody>
-                          {#each credit.months as m (m.month)}
+                          {#each creditMonthRows as m (m.month)}
                             {@const rest = creditRemainingBefore(m)}
                             <tr class={`border-t border-stone-100 ${rest < 0 ? 'bg-amber-50' : ''}`}>
                               <td class="py-1 pr-3 whitespace-nowrap">{creditMonthLabel(m.month)}</td>
@@ -1224,9 +1283,9 @@
               </label>
             {/each}
           </div>
-          {#if data.savedCards}
+          {#if savedCards}
             <!-- 取引先のお支払いカード（保存カード・2026-10-07）: 枚数と最終登録だけ（操作は取引先ページの「アカウント → お支払いカード」） -->
-            <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {data.savedCards.count} 枚{#if data.savedCards.lastAt}（最終登録 {new Date(data.savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
+            <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {savedCards.count} 枚{#if savedCards.lastAt}（最終登録 {new Date(savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
           {/if}
           <!-- 自由入力の支払方法（取引先ごとの契約に合わせた名前。決済は伴わない） -->
           <div class="mt-2 grid gap-1.5 rounded-md border border-stone-200 bg-white p-2.5">
@@ -1298,7 +1357,7 @@
               {/if}
             </div>
             <span class="mt-0.5 block text-[11px] text-stone-500">
-              {describeInvoiceDue(booking.invoiceDue)}（例: {periodLabel(data.invoices.currentPeriod)}分 → {invoiceDueDate(data.invoices.currentPeriod, booking.invoiceDue)}）。過去の月をあとから発行して期限が発行日より前になるときは、発行月を基準に同じ規則で決めます。
+              {describeInvoiceDue(booking.invoiceDue)}（例: {periodLabel(invoices.currentPeriod)}分 → {invoiceDueDate(invoices.currentPeriod, booking.invoiceDue)}）。過去の月をあとから発行して期限が発行日より前になるときは、発行月を基準に同じ規則で決めます。
             </span>
           </div>
         </div>
@@ -1400,9 +1459,9 @@
           <button
             type="button"
             role="tab"
-            aria-selected={t.id === data.tab.id}
+            aria-selected={t.id === selectedTabId}
             onclick={() => switchTab(t.id)}
-            class={`-mb-px rounded-t-lg border px-4 py-2 text-sm ${t.id === data.tab.id ? 'border-stone-200 border-b-white bg-white font-bold text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
+            class={`-mb-px rounded-t-lg border px-4 py-2 text-sm ${t.id === selectedTabId ? 'border-stone-200 border-b-white bg-white font-bold text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
           >
             {t.name}
             {#if !t.hasRow || !t.enabled}<span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-normal text-stone-500">販売なし</span>
@@ -1414,6 +1473,18 @@
       </div>
 
       <div class="p-5">
+        {#if pendingTab}
+          <!-- 施設タブの切替中（読み込みが終わるまで）: 見出しはすぐ行き先に、設定欄は枠だけ -->
+          <div aria-busy="true">
+            <h2 class="text-lg font-bold text-stone-900">{pendingTab.name}の設定</h2>
+            <p class="mt-1 text-xs leading-5 text-stone-500">読み込んでいます…</p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              {#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-14 w-full"></div>{/each}
+            </div>
+            <div class="shimmer mt-8 h-5 w-32"></div>
+            <div class="mt-3 space-y-2">{#each [0, 1, 2] as i (i)}<div class="shimmer h-9 w-full opacity-70"></div>{/each}</div>
+          </div>
+        {:else}
         {#if lastSubmit === 'enable' && form?.message}
           <p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
         {/if}
@@ -1497,48 +1568,53 @@
           <!-- 特別レート（2026-10-09・docs/partner-rank-rates.md §7）: 編集は RMS へ移した。ここは読み取り専用の要約と計算の状態 -->
           <div class="mb-1 mt-8 flex flex-wrap items-baseline justify-between gap-2">
             <h2 class="text-lg font-bold text-stone-900">特別レート</h2>
-            <a href={data.priceSource.rmsUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>RMS で編集する ↗</a>
+            <a href={data.rmsUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>RMS で編集する ↗</a>
           </div>
           <p class="mb-3 text-xs leading-5 text-stone-500">
             特別レートは RMS の「取引先料金」で編集します（ここでは変えられません）。RMS で保存すると DB が最終料金を計算し直し、取引先ページはその料金を出します。
             <strong>ルールは上から順に見て、最初に当てはまったもの</strong>で決まり、<strong>公開するのは「調整して出す」ルールで指定したプランだけ</strong>です。
           </p>
           <!-- 料金の元（2026-10-09・docs/partner-rank-rates.md §5.4）: RMS の取引先ランク暦を使うと、基準の理論値が暦のランクで決まる -->
+          {#if !pvInfo}
+            <!-- 料金の元・計算の状態は後から届く -->
+            <div class="mb-3 space-y-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5" aria-busy="true"><div class="shimmer h-4 w-48"></div><div class="shimmer h-3.5 w-72 max-w-full opacity-70"></div></div>
+          {:else}
           <div class="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span class="text-xs text-stone-500">料金の元</span>
-              {#if data.priceSource.source === 'partner_rank'}
+              {#if pvInfo.priceSource.source === 'partner_rank'}
                 <span class="font-medium text-brand-800">RMS の取引先ランク暦</span>
-              {:else if data.priceSource.source === 'standard'}
+              {:else if pvInfo.priceSource.source === 'standard'}
                 <span class="font-medium text-stone-700">TL のランク（既定）</span>
               {:else}
                 <span class="text-stone-500">確かめられませんでした</span>
               {/if}
             </div>
-            {#if data.priceSource.source === 'partner_rank' && (data.priceSource.missingDays ?? 0) > 0}
+            {#if pvInfo.priceSource.source === 'partner_rank' && (pvInfo.priceSource.missingDays ?? 0) > 0}
               <p class="mt-1 text-xs font-medium text-rose-700">
-                公開範囲（{data.priceSource.publicDays}日）のうち {data.priceSource.missingDays}日 は暦のランクが未設定で、取引先ページで販売されません。
+                公開範囲（{pvInfo.priceSource.publicDays}日）のうち {pvInfo.priceSource.missingDays}日 は暦のランクが未設定で、取引先ページで販売されません。
               </p>
-            {:else if data.priceSource.source === 'partner_rank'}
+            {:else if pvInfo.priceSource.source === 'partner_rank'}
               <p class="mt-1 text-xs text-stone-500">基準の理論値は暦のランクで決まり、下のルールはその料金に当たります（「不可」の日は売りません）。</p>
             {/if}
             <!-- 計算の状態（rms_partner_price_state）。失敗・未計算のあいだ、取引先ページは従来の計算（Book のルール）で出す -->
             <div class="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-stone-200 pt-1.5">
               <span class="text-xs text-stone-500">最終料金の計算</span>
-              {#if !data.priceState}
+              {#if !pvInfo.priceState}
                 <span class="text-xs text-stone-500">まだ計算していません（取引先ページは従来の計算で出しています）</span>
               {:else}
                 <span class="text-xs text-stone-700">
-                  {dt(data.priceState.computedAt)}
-                  {#if data.priceState.priceSource === 'disabled'}・この施設は販売オフ（保存済みの料金なし）
-                  {:else}・{data.priceState.rowCount.toLocaleString()}件{#if data.priceState.computedFrom && data.priceState.computedTo}（{data.priceState.computedFrom}〜{data.priceState.computedTo}）{/if}{/if}
+                  {dt(pvInfo.priceState.computedAt)}
+                  {#if pvInfo.priceState.priceSource === 'disabled'}・この施設は販売オフ（保存済みの料金なし）
+                  {:else}・{pvInfo.priceState.rowCount.toLocaleString()}件{#if pvInfo.priceState.computedFrom && pvInfo.priceState.computedTo}（{pvInfo.priceState.computedFrom}〜{pvInfo.priceState.computedTo}）{/if}{/if}
                 </span>
-                {#if data.priceState.error}
-                  <span class="block w-full text-xs font-medium text-rose-700">前回の計算に失敗しました: {data.priceState.error}（取引先ページは従来の計算で出しています）</span>
+                {#if pvInfo.priceState.error}
+                  <span class="block w-full text-xs font-medium text-rose-700">前回の計算に失敗しました: {pvInfo.priceState.error}（取引先ページは従来の計算で出しています）</span>
                 {/if}
               {/if}
             </div>
           </div>
+          {/if}
           {#if pricing.rules.every((r) => r.action !== 'adjust')}
             <p class="rounded-lg border border-dashed border-stone-200 bg-stone-50 p-3 text-sm text-stone-500">
               まだ公開するプランがありません。RMS の「取引先料金」で、出すプランのルールを作ってください。
@@ -1763,19 +1839,28 @@
             {/if}
           </form>
         {/if}
+        {/if}
       </div>
     </div>
 
     <!-- プレビュー（施設タブの施設・保存済みの最終料金と特別レート前の料金） -->
-    {#if data.facility}
+    {#if pendingTab}
+    <!-- 施設タブの切替中: プレビューは枠だけ -->
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5" aria-busy="true">
+      <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{pendingTab.name}）</h2>
+      <div class="mt-3 space-y-2">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
+    </div>
+    {:else if data.facility}
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
           <p class="mt-1 text-xs text-stone-500">
-            {#if data.preview.priceMode === 'precomputed'}
-              <strong class="font-medium text-stone-800">保存済みの最終料金です</strong>（計算 {dt(data.preview.computedAt)}・取引先ページと同じ値）。
-            {:else if data.preview.priceMode === 'live'}
+            {#if !pvInfo}
+              読み込んでいます…
+            {:else if pvInfo.preview.priceMode === 'precomputed'}
+              <strong class="font-medium text-stone-800">保存済みの最終料金です</strong>（計算 {dt(pvInfo.preview.computedAt)}・取引先ページと同じ値）。
+            {:else if pvInfo.preview.priceMode === 'live'}
               <strong class="font-medium text-amber-800">保存済みの料金が使えないため、従来の計算（保存済みのルール）で出しています</strong>（取引先ページも同じ）。
             {/if}
             小さい数字は特別レート前の料金（料金マスタの理論値）です。
@@ -1787,8 +1872,8 @@
             <input
               type="date"
               min={data.today}
-              value={data.preview.from}
-              onchange={(e) => goto(`?preview=${e.currentTarget.value}`, { noScroll: true, keepFocus: true })}
+              value={data.previewRange.from}
+              onchange={(e) => pickPreviewFrom(e.currentTarget.value)}
               class={inputClass}
             />
           </label>
@@ -1800,8 +1885,10 @@
           </label>
         </div>
       </div>
-      {#if data.preview.error}
-        <p class="mt-3 text-sm text-rose-700">プレビューを作れませんでした: {data.preview.error}</p>
+      {#if !pvInfo}
+        <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
+      {:else if pvInfo.preview.error}
+        <p class="mt-3 text-sm text-rose-700">プレビューを作れませんでした: {pvInfo.preview.error}</p>
       {:else if previewRows.length === 0}
         <p class="mt-3 text-sm text-stone-500">この期間・人数で出る料金がありません。</p>
       {:else}
@@ -1810,7 +1897,7 @@
             <thead>
               <tr>
                 <th class="sticky left-0 z-10 min-w-56 border-b border-stone-200 bg-white px-2 py-1.5 text-left font-medium">部屋 / プラン</th>
-                {#each data.preview.days as day}
+                {#each pvInfo.preview.days as day}
                   {@const h = dayHead(day.date)}
                   <th class={`border-b border-stone-200 px-2 py-1.5 text-right font-medium ${h.dowIdx === 0 ? 'text-rose-700' : h.dowIdx === 6 ? 'text-brand-800' : ''}`}>
                     {h.md}<span class="ml-0.5 text-[10px]">({h.dow})</span>
@@ -1827,7 +1914,7 @@
                     <div class="font-medium">{row.planName}{#if row.advance}<span class="ml-1 rounded border border-brand-600/40 px-1 text-[10px] text-brand-800">先行</span>{/if}</div>
                     <div class="text-[10px] text-stone-500">{row.roomName}</div>
                   </td>
-                  {#each data.preview.days as day}
+                  {#each pvInfo.preview.days as day}
                     {@const cell = row.cells[day.date]}
                     <td class="px-2 py-1.5 text-right tabular-nums">
                       {#if cell}
@@ -1854,7 +1941,7 @@
         </div>
         <div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
           <button type="button" onclick={() => (bookingFilter = 'upcoming')} class={`px-3 py-1.5 ${bookingFilter === 'upcoming' ? 'bg-brand-800 text-white' : ''}`}>これから</button>
-          <button type="button" onclick={() => (bookingFilter = 'all')} class={`px-3 py-1.5 ${bookingFilter === 'all' ? 'bg-brand-800 text-white' : ''}`}>すべて（{data.bookings.length}）</button>
+          <button type="button" onclick={() => (bookingFilter = 'all')} class={`px-3 py-1.5 ${bookingFilter === 'all' ? 'bg-brand-800 text-white' : ''}`}>すべて（{bookings.length}）</button>
         </div>
       </div>
       {#if form?.chargeResult}
@@ -1865,7 +1952,11 @@
       {#if form?.bookingCancelled}
         <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">予約 {form.bookingCancelled} を取り消しました。PMS にも1分ほどで反映されます。</p>
       {/if}
-      {#if shownBookings.length === 0}
+      {#if !bookingList.current}
+        <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-12 w-full opacity-70"></div>{/each}</div>
+      {:else if bookingList.current.error}
+        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{bookingList.current.error}</p>
+      {:else if shownBookings.length === 0}
         <p class="mt-3 text-sm text-stone-500">{bookingFilter === 'upcoming' ? 'これからの予約はありません。' : 'まだ予約はありません。'}</p>
       {:else}
         <div class="mt-3 overflow-x-auto">
@@ -1962,12 +2053,12 @@
         チェックアウト日基準・月末締めで、ご利用明細書とご請求書（適格請求書）をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
         金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : linkedRecipient ? `PMS の紐づけ先の正式名称「${linkedRecipient}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
       </p>
-      {#if data.invoices.bankAccountMissing}
+      {#if invoices.bankAccountMissing}
         <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">振込先が未設定のため、月末の自動発行は行われません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で振込先を登録してください。</p>
-      {:else if !data.invoices.autoIssue}
+      {:else if !invoices.autoIssue}
         <p class="mt-2 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-700">この施設は月末の自動発行が OFF です（取引先一覧の「請求書の設定」）。必要なときはここから発行してください。</p>
       {/if}
-      {#if !data.invoices.pdfReady}
+      {#if !invoices.pdfReady}
         <p class="mt-2 text-[11px] text-stone-500">※ PDF 生成（Cloudflare Browser Rendering）が未設定のため、ダウンロードは HTML（ブラウザで開いて印刷）になり、メールは PDF を添付せずに取引先ページへ案内します。</p>
       {/if}
 
@@ -1978,9 +2069,11 @@
       {/if}
 
       <!-- 発行済み -->
-      {#if data.invoices.error}
-        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.invoices.error}</p>
-      {:else if data.invoices.rows.length === 0}
+      {#if !invoiceReady}
+        <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-9 w-full opacity-70"></div>{/each}</div>
+      {:else if invoices.error}
+        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.error}</p>
+      {:else if invoices.rows.length === 0}
         <p class="mt-3 text-sm text-stone-500">まだご請求書はありません。</p>
       {:else}
         <div class="mt-3 overflow-x-auto">
@@ -1997,7 +2090,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each data.invoices.rows as inv (inv.id)}
+              {#each invoices.rows as inv (inv.id)}
                 <tr class={`border-t border-stone-100 align-top ${inv.status === 'void' ? 'text-stone-400' : ''}`}>
                   <td class="py-2 pr-3 font-mono text-xs whitespace-nowrap">{inv.invoiceNo}</td>
                   <td class="py-2 pr-3 text-xs whitespace-nowrap">{periodLabel(inv.period)}<div class="text-stone-500">{inv.bookingCount}件</div></td>
@@ -2066,23 +2159,25 @@
             <input
               type="month"
               value={invoiceMonth}
-              max={data.invoices.currentPeriod.slice(0, 7)}
+              max={invoices.currentPeriod.slice(0, 7)}
               onchange={(e) => pickInvoiceMonth(e.currentTarget.value)}
               class="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm"
             />
           </label>
-          <p class="text-xs text-stone-500">{periodLabel(data.invoices.period)}のプレビュー（まだ発行していない内容です）</p>
+          <p class="text-xs text-stone-500">{periodLabel(invoices.period)}のプレビュー（まだ発行していない内容です）</p>
           <div class="ml-auto flex flex-wrap items-center gap-1.5">
-            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${data.invoices.period}&format=html`} target="_blank" rel="noopener">予定請求書を見る</a>
-            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${data.invoices.period}&format=pdf`} data-sveltekit-reload>予定請求書 PDF</a>
+            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${invoices.period}&format=html`} target="_blank" rel="noopener">予定請求書を見る</a>
+            <a class={smallBtn} href={`/admin/partners/${data.partner.id}/invoices/preview?period=${invoices.period}&format=pdf`} data-sveltekit-reload>予定請求書 PDF</a>
             <a class="text-xs text-brand-800 hover:underline" href={`/admin/partners/invoices?period=${invoiceMonth}`}>全取引先の予定請求書 →</a>
           </div>
         </div>
 
-        {#if data.invoices.previewError}
-          <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.invoices.previewError}</p>
-        {:else if data.invoices.preview}
-          {@const pv = data.invoices.preview}
+        {#if !invoiceReady}
+          <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-7 w-full opacity-70"></div>{/each}</div>
+        {:else if invoices.previewError}
+          <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.previewError}</p>
+        {:else if invoices.preview}
+          {@const pv = invoices.preview}
           {#if pv.lines.length === 0}
             <p class="mt-3 text-sm text-stone-500">この月（今日まで）にチェックアウトの確定予約はありません（発行されません）。</p>
           {:else}
@@ -2124,9 +2219,9 @@
               {#if pv.totals.billedTotal === 0}<span class="text-stone-500">（ご請求 0 円のため、ご利用明細書だけを発行します）</span>{/if}
               <span class="block text-stone-500">宛名: {pv.recipient.name} 御中（宛名・お支払期限は保存済みの設定で計算しています）</span>
             </p>
-            {#if data.invoices.chargeFailed.length}
+            {#if invoices.chargeFailed.length}
               <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                カード決済（チェックアウト日）が失敗したままの予約があります：{data.invoices.chargeFailed.join('、')}。ご請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
+                カード決済（チェックアウト日）が失敗したままの予約があります：{invoices.chargeFailed.join('、')}。ご請求書には「カード決済失敗（要確認）」として載り、ご請求には含めません。予約の画面で再請求するか、別途ご精算ください。
               </p>
             {/if}
           {/if}
@@ -2137,7 +2232,7 @@
               action={`?/issueInvoice`}
               use:enhance={async ({ formData, cancel }) => {
                 const send = formData.get('send') !== null;
-                const msg = `${periodLabel(data.invoices.period)}分のご請求書を発行${send ? 'し、取引先へメールで送信' : ''}します。同じ月は1枚だけです（作り直すには取消が必要です）。${issuingMidMonth ? '\n※ 月の途中です。今日より後にチェックアウトする予約は載りません。' : ''}${data.invoices.chargeFailed.length ? `\n※ カード決済が失敗したままの予約（${data.invoices.chargeFailed.join('、')}）は請求しません。` : ''}`;
+                const msg = `${periodLabel(invoices.period)}分のご請求書を発行${send ? 'し、取引先へメールで送信' : ''}します。同じ月は1枚だけです（作り直すには取消が必要です）。${issuingMidMonth ? '\n※ 月の途中です。今日より後にチェックアウトする予約は載りません。' : ''}${invoices.chargeFailed.length ? `\n※ カード決済が失敗したままの予約（${invoices.chargeFailed.join('、')}）は請求しません。` : ''}`;
                 if (!(await askConfirm({ message: msg, confirmLabel: '発行する' }))) {
                   cancel();
                   return;
@@ -2146,7 +2241,7 @@
               }}
               class="mt-3 flex flex-wrap items-center gap-3 border-t border-stone-200 pt-3"
             >
-              <input type="hidden" name="period" value={data.invoices.period} />
+              <input type="hidden" name="period" value={invoices.period} />
               <label class="flex items-center gap-1.5 text-xs"><input type="checkbox" name="send" checked />取引先へメールで送信する</label>
               <button type="submit" disabled={invoiceBusy} class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{invoiceBusy ? '処理中…' : '今すぐ発行'}</button>
               {#if issuingMidMonth}<span class="text-[11px] text-amber-800">月の途中です。今日より後にチェックアウトする予約は載りません（発行せずに待てば月末に自動発行されます）。</span>{/if}
@@ -2336,12 +2431,16 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
     <!-- アクセスログ -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">アクセスログ（直近50件）</h2>
-      {#if data.logs.length === 0}
+      {#if !accessLogs.current}
+        <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-6 w-full opacity-70"></div>{/each}</div>
+      {:else if accessLogs.current.error}
+        <p class="mt-2 text-sm text-red-700">{accessLogs.current.error}</p>
+      {:else if logs.length === 0}
         <p class="mt-2 text-sm text-stone-500">まだアクセスはありません。</p>
       {:else}
         <table class="mt-3 w-full text-xs">
           <tbody>
-            {#each data.logs as l (l.id)}
+            {#each logs as l (l.id)}
               <tr class="border-t border-stone-100">
                 <td class="py-1.5 pr-3 whitespace-nowrap">{dt(l.at)}</td>
                 <td class="pr-3">{l.channel === 'api' ? 'API' : '画面'}</td>
