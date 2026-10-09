@@ -60,13 +60,13 @@ export type AttachmentUploader =
 export type AttachmentTarget = { bookingId: string } | { stagedFor: string };
 
 /** 添付先の予約（状態の判定に要る列だけ。partner_id で絞る） */
-export type AttachmentBooking = { id: string; partner_id: string; status: string; check_out_date: string; booking_code: string };
+export type AttachmentBooking = { id: string; partner_id: string; facility_id: string; status: string; check_out_date: string; booking_code: string };
 
 export async function getAttachmentBooking(db: SupabaseClient, partnerId: string, bookingId: string): Promise<AttachmentBooking | null> {
   if (!UUID_RE.test(bookingId)) return null;
   const { data } = await db
     .from('rms_partner_bookings')
-    .select('id, partner_id, status, check_out_date, booking_code')
+    .select('id, partner_id, facility_id, status, check_out_date, booking_code')
     .eq('id', bookingId)
     .eq('partner_id', partnerId)
     .maybeSingle();

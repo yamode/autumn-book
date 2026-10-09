@@ -2,6 +2,8 @@ import { fail } from '@sveltejs/kit';
 import { canPartnerCancel, describeDeadline, intentAmountOf } from '$lib/partner-booking';
 import {
   cancelPartnerBooking,
+  contextsForBookings,
+  partnerFacilityName,
   canUpdateCard,
   cardConsentText,
   confirmPartnerIntent,
@@ -55,11 +57,14 @@ export const load = async (event) => {
   }
   const rows = await listPartnerBookings(db, { partnerId: partner.id, limit: 300 });
   const s = partner.booking_settings;
+  // 取消の期限は予約の施設の設定で判定する（N6: 施設ごとの cancelDays・2026-10-09 複数施設化）
+  const byFacility = await contextsForBookings(db, partner, rows);
+  const settingsOf = (b: (typeof rows)[number]) => (byFacility.get(b.facility_id) ?? partner).booking_settings;
   // 取り消せる予約のキャンセル料の見込み（確認欄に出す・取消時に同じ額かを確かめる）
   const previews = await previewPartnerCancels(
     db,
     partner.facility_id,
-    rows.filter((b) => b.status === 'confirmed' && canPartnerCancel(b.check_in_date, s))
+    rows.filter((b) => b.status === 'confirmed' && canPartnerCancel(b.check_in_date, settingsOf(b)))
   ).catch(() => ({}) as Awaited<ReturnType<typeof previewPartnerCancels>>);
   // 添付ファイル（2026-10-07・PARTNER_BOOKING_ATTACHMENTS が on のときだけ）。一覧の全予約ぶんを1回で引く。読めなくても一覧は出す
   const attEnabled = partnerBookingAttachmentsEnabled();
@@ -91,7 +96,7 @@ export const load = async (event) => {
       code: b.booking_code,
       status: b.status,
       checkedIn: !!b.checkedIn,
-      canCancel: b.status === 'pending_payment' || (b.status === 'confirmed' && !b.checkedIn && canPartnerCancel(b.check_in_date, s)),
+      canCancel: b.status === 'pending_payment' || (b.status === 'confirmed' && !b.checkedIn && canPartnerCancel(b.check_in_date, settingsOf(b))),
       paymentStatus: b.payment_status,
       paymentOption: b.payment_option,
       cardLabel: b.card_label,
@@ -110,7 +115,7 @@ export const load = async (event) => {
       depositText: depositSummary(b),
       isDeposit: b.payment_option === 'deposit_online',
       // カード登録の同意文（入力欄の直下に出し、登録完了時に同じ文面を記録する）
-      consentText: b.payment_option === 'online_checkin' ? cardConsentText(partner.facility_name, b) : null,
+      consentText: b.payment_option === 'online_checkin' ? cardConsentText(partnerFacilityName(partner, b.facility_id), b) : null,
       paymentExpiresAt: b.payment_expires_at,
       paidAmount: b.paid_amount,
       checkIn: b.check_in_date,

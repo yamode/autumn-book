@@ -2,15 +2,23 @@
 import { error, json } from '@sveltejs/kit';
 import { canBookFor } from '$lib/partner-booking';
 import { quotePartnerBooking } from '$lib/server/partners/booking';
-import { PORTAL_HEADERS, resolvePortal } from '$lib/server/partners/portal';
-import { partnerUnavailableReason } from '$lib/server/partners/store';
+import { PORTAL_HEADERS, portalFacilityContext, resolvePortal } from '$lib/server/partners/portal';
+import { partnerUnavailableReason, PartnerStoreError } from '$lib/server/partners/store';
 
 export const POST = async (event) => {
-  const { db, partner, session } = await resolvePortal(event);
+  const { db, partner: selected, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
+  const body = (await event.request.json().catch(() => ({}))) as Record<string, unknown>;
+  // 見積の施設は予約画面の施設（facilityId・選んでいる施設ではない・§7.8）
+  let partner;
+  try {
+    partner = await portalFacilityContext(db, selected, String(body.facilityId ?? ''));
+  } catch (e) {
+    if (e instanceof PartnerStoreError) throw error(e.status, e.message);
+    throw e;
+  }
   // 料金の再計算は読み取りなので確認モードも通す（公開停止中でも確認できるように）
   if ((partnerUnavailableReason(partner) && !session.preview) || !partner.booking_enabled) throw error(403, '現在ご予約を受け付けていません。');
-  const body = (await event.request.json().catch(() => ({}))) as Record<string, unknown>;
   const rooms = Array.isArray(body.rooms) ? body.rooms.slice(0, 20).map((r) => ({ adults: Math.round(Number((r as { adults?: unknown })?.adults)) || 0 })) : [];
   const checkIn = String(body.checkIn ?? '');
   const quote = await quotePartnerBooking(db, partner, {

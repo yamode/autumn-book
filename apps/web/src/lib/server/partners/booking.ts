@@ -77,7 +77,7 @@ import { preparePaymentIntent, prepareSetupIntent, type PreparedIntent } from '$
 import { checkPaymentIntent, checkSetupIntent, idOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { cardExpiresBefore } from '$lib/partner-card';
 import { resolvePartnerCustomer } from '$lib/server/payments/saved-cards';
-import { addDaysIso, findPartnerByUrlToken, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
+import { addDaysIso, loadPartnerContextAt, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresDeposit, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
@@ -91,6 +91,48 @@ const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms')
 const coreDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('core');
 
 const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
+
+// ---------------------------------------------------------------------------
+// 予約の施設で合成した取引先（複数施設化・docs/partner-multi-facility.md §7.9・2026-10-09）
+// ---------------------------------------------------------------------------
+
+/**
+ * 予約・取消・請求・メールのように「台帳の予約から施設が決まる」処理用: 取引先をその予約の施設（台帳の facility_id）で
+ * 合成し直す。渡された取引先が既にその施設で合成済みならそのまま返す（取引先ページで選んでいる施設・管理画面の施設とは限らない）。
+ */
+export async function contextForBooking(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'id'> & Partial<PartnerContext>,
+  booking: Pick<PartnerBookingRow, 'facility_id'>
+): Promise<PartnerContext> {
+  if (partner.facility_id === booking.facility_id && partner.facility_name && partner.facility_slug && partner.facilities && partner.booking_settings) {
+    return partner as PartnerContext;
+  }
+  const ctx = await loadPartnerContextAt(db, partner.id, booking.facility_id);
+  if (!ctx) throw new PartnerStoreError('予約の施設の取引先設定が見つかりません。', 404, 'not_found');
+  return ctx;
+}
+
+/** 予約一覧用: 予約の施設ごとに合成した取引先（施設 id → 合成）。読めない施設は入れない（呼び出し側が選んでいる施設で代える） */
+export async function contextsForBookings(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  rows: readonly Pick<PartnerBookingRow, 'facility_id'>[]
+): Promise<Map<string, PartnerContext>> {
+  const out = new Map<string, PartnerContext>([[partner.facility_id, partner]]);
+  const ids = [...new Set(rows.map((r) => r.facility_id).filter((id) => id && !out.has(id)))];
+  await Promise.all(
+    ids.map(async (id) => {
+      const ctx = await contextForBooking(db, partner, { facility_id: id }).catch(() => null);
+      if (ctx) out.set(id, ctx);
+    })
+  );
+  return out;
+}
+
+/** 取引先の施設の名前（予約一覧で予約ごとの施設名を出す）。知らない施設なら選んでいる施設の名前 */
+export const partnerFacilityName = (partner: Pick<PartnerContext, 'facilities' | 'facility_name'>, facilityId: string | null | undefined) =>
+  partner.facilities.find((f) => f.id === facilityId)?.name ?? partner.facility_name;
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
@@ -407,7 +449,7 @@ export function friendlyRpcError(message: string): string {
   }
   if (message.includes('deposit_not_required')) return '受付枠に空きができたため、デポジットは不要になりました。お支払方法を選び直してください。';
   if (message.includes('invalid_payment_option')) return 'お支払方法を選び直してください。';
-  if (message.includes('booking_disabled')) return '現在ご予約を受け付けていません。';
+  if (message.includes('booking_disabled') || message.includes('facility_not_enabled')) return '現在ご予約を受け付けていません。';
   if (message.includes('past_date')) return '過去の日付はご予約いただけません。';
   if (message.includes('invalid_adults')) return '1室あたりの人数がお部屋の定員を超えています。';
   if (message.includes('guest_name_required')) return 'ご宿泊者のお名前を入力してください。';
@@ -444,7 +486,8 @@ export async function createPartnerBooking(
   meta: { ip: string | null; origin: string }
 ): Promise<CreatedBooking> {
   const s = partner.booking_settings;
-  if (!partner.booking_enabled) throw new PartnerStoreError('現在ご予約を受け付けていません。', 403);
+  // オンの施設が無い（N9）・この施設で受付をしていない
+  if (!partner.facility_available || !partner.booking_enabled) throw new PartnerStoreError('現在ご予約を受け付けていません。', 403);
   const payOptions = availablePaymentOptions(partner);
   if (!payOptions.length) throw new PartnerStoreError('予約の受付準備ができていません（宿へお問い合わせください）。', 409);
   // 取引先が選んだもの（許可されたもの・受付枠を超えたときだけの online / deposit_online を含む）。1つだけならそれ。
@@ -509,6 +552,8 @@ export async function createPartnerBooking(
   const { data, error } = await db.rpc('rms_partner_create_booking', {
     p: {
       partner_id: partner.id,
+      // 予約する施設（予約画面の施設・2026-10-09 複数施設化）。DB 関数が rms_partner_facilities のオン・受付・支払方法・設定で受ける
+      facility_id: partner.facility_id,
       account_id: account.id,
       booked_by: account.login_id,
       room_code: quote.roomCode,
@@ -632,7 +677,9 @@ export type PreparedPartnerPayment = PreparedIntent & {
 };
 
 // 予約（仮押さえ・カード登録し直し）の Intent を用意する（まだ使える Intent があれば使い回す）。
-async function preparePartnerPayment(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow): Promise<PreparedPartnerPayment> {
+async function preparePartnerPayment(db: SupabaseClient, viewer: PartnerContext, b: PartnerBookingRow): Promise<PreparedPartnerPayment> {
+  // 施設名・Stripe の metadata は予約の施設（取引先ページで選んでいる施設とは限らない）
+  const partner = await contextForBooking(db, viewer, b);
   const base = { bookingId: b.id, bookingCode: b.booking_code, expiresAt: b.status === 'pending_payment' ? b.payment_expires_at : null };
   // 保存カード（2026-10-07・docs/saved-cards.md §7.2）: 取引先共有の Customer があれば Intent に付ける（予約画面の「保存済み」から選べる）。
   // 読めない・まだ無いときは null（従来どおり）
@@ -737,14 +784,14 @@ export async function releasePendingBooking(db: SupabaseClient, partner: Partner
   return true;
 }
 
+// 予約 id から取引先を引き、予約の施設で合成する（Webhook・cron・ブラウザからの決済の連絡）。
 async function partnerForBooking(db: SupabaseClient, bookingId: string): Promise<{ partner: PartnerContext; booking: PartnerBookingRow } | null> {
   const { data } = await db.from('rms_partner_bookings').select('partner_id').eq('id', bookingId).maybeSingle();
   if (!data?.partner_id) return null;
-  const { data: row } = await db.from('rms_partners').select('url_token').eq('id', data.partner_id).maybeSingle();
-  if (!row?.url_token) return null;
-  const partner = await findPartnerByUrlToken(db, String(row.url_token));
-  const booking = partner ? await getPartnerBooking(db, partner.id, bookingId) : null;
-  return partner && booking ? { partner, booking } : null;
+  const booking = await getPartnerBooking(db, String(data.partner_id), bookingId);
+  if (!booking) return null;
+  const partner = await loadPartnerContextAt(db, String(data.partner_id), booking.facility_id).catch(() => null);
+  return partner ? { partner, booking } : null;
 }
 
 export type PaymentResult = {
@@ -896,7 +943,9 @@ async function recordCardSaved(
 
 export type ChargeResult = { status: 'paid' | 'failed' | 'skipped'; message?: string };
 
-type AnyPartner = PartnerContext | (PartnerRow & { facility_name?: string; url_token?: string });
+// 管理画面（管理画面の施設で合成）・取引先ページ（選んでいる施設で合成）・cron（予約の施設で合成）のどれから来てもよい。
+// 中で予約の施設に合成し直す（contextForBooking）
+type AnyPartner = PartnerContext | PartnerRow;
 
 /**
  * チェックアウト日決済（payment_option は online_checkin のまま）: 登録カードに請求する（定期処理・スタッフの再請求・カード登録し直しから）。
@@ -906,11 +955,12 @@ type AnyPartner = PartnerContext | (PartnerRow & { facility_name?: string; url_t
  */
 export async function chargeBooking(
   db: SupabaseClient,
-  partner: AnyPartner,
+  viewer: AnyPartner,
   b: PartnerBookingRow,
   origin: string,
   trigger: 'cron' | 'staff' | 'card_updated'
 ): Promise<ChargeResult> {
+  const partner = await contextForBooking(db, viewer, b);
   if (b.status !== 'confirmed' || b.payment_option !== 'online_checkin') return { status: 'skipped', message: 'チェックアウト日決済の予約ではありません。' };
   if (b.payment_status !== 'scheduled' && b.payment_status !== 'charge_failed') return { status: 'skipped', message: '請求できる状態ではありません。' };
   if (!b.stripe_customer_id || !b.stripe_payment_method_id) return { status: 'skipped', message: 'カードが登録されていません。' };
@@ -924,7 +974,7 @@ export async function chargeBooking(
     .select('id');
   if (!claimed?.length) return { status: 'skipped', message: '別の処理が請求中です。' };
 
-  const facilityName = 'facility_name' in partner && partner.facility_name ? partner.facility_name : '';
+  const facilityName = partner.facility_name;
   let failure: string | null = null;
   let paymentIntent: string | null = null;
   try {
@@ -1084,6 +1134,8 @@ export type PartnerBookingRow = {
   id: string;
   /** 名義人の名称を引くときのテナントの絞り込み用 */
   tenant_id?: string;
+  /** 予約の施設（予約は必ず1施設・複数施設化の後も台帳が正。メール・取消・請求はこの施設で合成する） */
+  facility_id: string;
   partner_id: string | null;
   partner_name: string;
   account_id: string | null;
@@ -1178,7 +1230,7 @@ export const bookingNameLineOf = (b: Pick<PartnerBookingRow, 'name_mode' | 'name
   bookingNameLine(b.name_mode, b.name_holder, b.guest_name, b.partner_name);
 
 const BOOKING_COLUMNS =
-  'id, tenant_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result, deposit_amount, remainder_option';
+  'id, tenant_id, facility_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result, deposit_amount, remainder_option';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   rows = await attachNameHolder(db, rows);
@@ -1310,10 +1362,11 @@ function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = ne
 /** 取消確認欄に出すキャンセル料の見込み（確定済みの予約だけ。それ以外は null）。 */
 export async function previewPartnerCancel(db: SupabaseClient, facilityId: string, b: PartnerBookingRow, now = new Date()): Promise<CancelPreview | null> {
   if (b.status !== 'confirmed') return null;
-  return previewFrom(b, await cancelPolicyOf(db, facilityId, b), now);
+  // 今の規定は予約の施設のもの（facilityId は台帳に施設が無いときの代わり）
+  return previewFrom(b, await cancelPolicyOf(db, b.facility_id || facilityId, b), now);
 }
 
-/** 一覧の確定済み予約の見込みをまとめて（今の規定の読み込みは1回） */
+/** 一覧の確定済み予約の見込みをまとめて（今の規定の読み込みは施設ごとに1回）。facilityId は台帳に施設が無い行の代わり */
 export async function previewPartnerCancels(
   db: SupabaseClient,
   facilityId: string,
@@ -1322,22 +1375,29 @@ export async function previewPartnerCancels(
 ): Promise<Record<string, CancelPreview>> {
   const targets = rows.filter((r) => r.status === 'confirmed' && !r.checkedIn);
   if (!targets.length) return {};
-  const needCurrent = targets.some((r) => !readCancelPolicy(r.cancel_policy));
-  const terms = needCurrent
-    ? await db.rpc('rms_partner_plan_terms', { p_facility: facilityId }).then(
+  const facOf = (r: PartnerBookingRow) => r.facility_id || facilityId;
+  // 予約時点の規定が無い予約の施設だけ、今の規定を読む（予約は施設ごとに規定が違う）
+  const needFacilities = [...new Set(targets.filter((r) => !readCancelPolicy(r.cancel_policy)).map(facOf))];
+  const termsBy = new Map<string, unknown>();
+  await Promise.all(
+    needFacilities.map(async (fac) => {
+      const terms = await db.rpc('rms_partner_plan_terms', { p_facility: fac }).then(
         (r) => (r.error ? null : r.data),
         () => null
-      )
-    : null;
+      );
+      termsBy.set(fac, terms);
+    })
+  );
   const out: Record<string, CancelPreview> = {};
   for (const r of targets) {
+    const terms = termsBy.get(facOf(r));
     out[r.id] = previewFrom(r, readCancelPolicy(r.cancel_policy) ?? (terms ? planCancelPolicy(terms, r.plan_code, r.plan_name) : null), now);
   }
   return out;
 }
 
 // キャンセル料を登録カードへ請求（チェックアウト日決済の予約）。失敗したら月末の請求書へ回す。
-async function chargeCancelFee(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, fee: number): Promise<{ ok: boolean; message?: string }> {
+async function chargeCancelFee(db: SupabaseClient, partner: PartnerContext, b: PartnerBookingRow, fee: number): Promise<{ ok: boolean; message?: string }> {
   const fail = async (message: string) => {
     await db
       .from('rms_partner_bookings')
@@ -1346,7 +1406,7 @@ async function chargeCancelFee(db: SupabaseClient, partner: AnyPartner, b: Partn
     return { ok: false, message };
   };
   if (!b.stripe_customer_id || !b.stripe_payment_method_id) return fail('カードが登録されていません');
-  const facilityName = 'facility_name' in partner && partner.facility_name ? partner.facility_name : '';
+  const facilityName = partner.facility_name;
   try {
     const pi = await chargeSavedCard({
       customer: b.stripe_customer_id,
@@ -1373,7 +1433,7 @@ async function chargeCancelFee(db: SupabaseClient, partner: AnyPartner, b: Partn
 
 export async function cancelPartnerBooking(
   db: SupabaseClient,
-  partner: PartnerContext | (PartnerRow & { facility_name?: string }),
+  viewer: AnyPartner,
   bookingId: string,
   by: 'partner' | 'staff',
   opts: {
@@ -1392,9 +1452,11 @@ export async function cancelPartnerBooking(
     adminFeeWaived?: boolean;
   }
 ): Promise<PartnerBookingRow> {
-  const booking = await getPartnerBooking(db, partner.id, bookingId);
+  const booking = await getPartnerBooking(db, viewer.id, bookingId);
   if (!booking) throw new PartnerStoreError('予約が見つかりません。', 404);
   if (booking.status === 'cancelled' || booking.status === 'expired') return booking;
+  // 取消の期限・キャンセル規定・メールは予約の施設の設定で（N6: 施設ごとの cancelDays）
+  const partner = await contextForBooking(db, viewer, booking);
   // 支払待ち（仮押さえ）の取消はいつでもできる。PMS へは何も送っていない。キャンセル料もかからない。
   if (booking.status === 'pending_payment') {
     await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: booking.id, p_by: by, p_reason: (opts.reason ?? '').slice(0, 500) || null });
@@ -1637,17 +1699,19 @@ export function partnerBilledNotice(
 
 async function sendBookingMails(
   db: SupabaseClient,
-  partner: PartnerContext | (PartnerRow & { facility_name?: string; url_token?: string }),
+  viewer: AnyPartner,
   b: PartnerBookingRow,
   kind: 'new' | 'cancelled',
   origin: string,
   accountId: string | null
 ): Promise<boolean> {
+  // 差出人・宿への通知先（notifyEmails）・取引先向けの設定は予約の施設のもの
+  const partner = await contextForBooking(db, viewer, b);
   const s = partner.booking_settings;
   // 予約確認には添付ファイルの名前の行を足す（2026-10-07・機能が off なら空）
   if (kind === 'new') b = { ...b, attachment_names: await bookingAttachmentNames(db, b.partner_id, b.id) };
-  // 施設名は差出人名と同じもの（core.facilities.name）。partner に施設名が無い呼び出し（Webhook・cron）でも空にしない
-  const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
+  // 施設名は差出人名と同じもの（core.facilities.name）。合成で空なら差出人名で代える
+  const facilityName = partner.facility_name || (await partnerMailSender(db, partner.facility_id)).fromName;
   const title = kind === 'new' ? 'ご予約を承りました' : 'ご予約を取り消しました';
   const summary = bookingSummaryLines(b);
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
@@ -1710,9 +1774,10 @@ async function partnerRecipients(
 }
 
 // チェックアウト日決済の請求失敗（宿・取引先へ）。
-async function sendChargeFailedMails(db: SupabaseClient, partner: AnyPartner, b: PartnerBookingRow, origin: string, reason: string): Promise<boolean> {
+async function sendChargeFailedMails(db: SupabaseClient, viewer: AnyPartner, b: PartnerBookingRow, origin: string, reason: string): Promise<boolean> {
+  const partner = await contextForBooking(db, viewer, b);
   const s = partner.booking_settings;
-  const facilityName = ('facility_name' in partner && partner.facility_name) || (await partnerMailSender(db, partner.facility_id)).fromName;
+  const facilityName = partner.facility_name || (await partnerMailSender(db, partner.facility_id)).fromName;
   const summary = bookingSummaryLines(b);
   const listUrl = `${origin}/p/${partner.url_token}/bookings`;
   let sent = false;

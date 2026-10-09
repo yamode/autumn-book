@@ -10,7 +10,7 @@
   let { children } = $props();
   const portal = $derived(
     $page.data.portal as
-      | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean; preview?: boolean }
+      | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean; preview?: boolean; noFacilityMessage?: string | null }
       | undefined
   );
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）
@@ -99,6 +99,10 @@
       {/if}
     </div>
   </header>
+  {#if portal?.loginId && portal?.noFacilityMessage}
+    <!-- オンの施設が1つも無い取引先（N9・2026-10-09 複数施設化）: ログインはできるが料金・予約は出さない -->
+    <p class="mx-auto mt-4 max-w-6xl rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6" role="status">{portal.noFacilityMessage}</p>
+  {/if}
   {@render children()}
   <!-- 規約3点は取引先ページの中で見せる（公式サイトはまだ非公開のため。中身は公式サイトと同じ・legal/[page]） -->
   <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-sm leading-6 text-stone-500 sm:px-6">

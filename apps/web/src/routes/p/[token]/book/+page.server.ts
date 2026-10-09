@@ -3,7 +3,7 @@ import { canBookFor, describeDeadline, partnerPlanName, isStripePaymentOption, n
 import { availablePaymentOptions, createPartnerBooking, creditOverPaymentOptions, isPartnerBookingOpen, quotePartnerBooking, resolvePaymentOption } from '$lib/server/partners/booking';
 import { parseBookingForm } from '$lib/server/partners/booking-form';
 import { getBookerProfile, getPmsPartnerGuest, PartnerStoreError, todayJst } from '$lib/server/partners/store';
-import { portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { portalFacilityContext, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 import { stripePublishableKey } from '$lib/server/stripe';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
 import { partnerBackTarget } from '$lib/partner-stay';
@@ -140,12 +140,15 @@ export const load = async (event) => {
 // 後払い（銀行振込等）・自由入力の支払方法（決済なし）の確定。オンライン決済は同じ画面で払うため /book/reserve（API）から確定する。
 export const actions = {
   default: async (event) => {
-    const { db, partner, session } = await requirePortalSession(event);
-    const input = parseBookingForm(await event.request.formData());
-    // 支払方法が1つだけならそれに決まる（createPartnerBooking と同じ規則）
-    const option = resolvePaymentOption(partner, input.paymentOption)?.option ?? input.paymentOption;
-    if (isStripePaymentOption(option)) return fail(400, { message: 'お支払い情報を入力してから予約してください。' });
+    const { db, partner: selected, session } = await requirePortalSession(event);
+    const fd = await event.request.formData();
+    const input = parseBookingForm(fd);
     try {
+      // 予約する施設はフォームの施設（hidden facility_id・選んでいる施設ではない・§7.8）
+      const partner = await portalFacilityContext(db, selected, String(fd.get('facility_id') ?? ''));
+      // 支払方法が1つだけならそれに決まる（createPartnerBooking と同じ規則）
+      const option = resolvePaymentOption(partner, input.paymentOption)?.option ?? input.paymentOption;
+      if (isStripePaymentOption(option)) return fail(400, { message: 'お支払い情報を入力してから予約してください。' });
       const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, input, {
         ip: requestMeta(event).ip,
         origin: event.url.origin

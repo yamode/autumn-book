@@ -17,7 +17,8 @@ export const POST = async (event) => {
   if (!(file instanceof File) || file.size === 0) return json({ ok: false, message: 'ファイルを選んでください。' }, { status: 400, headers: PORTAL_HEADERS });
   try {
     const target = { bookingId: booking.id };
-    const row = await uploadBookingAttachment(db, partner, file, { kind: 'partner', accountId: session.id, label: session.login_id }, target);
+    // 保存先・台帳の施設は予約の施設（取引先ページで選んでいる施設とは限らない・2026-10-09 複数施設化）
+    const row = await uploadBookingAttachment(db, { ...partner, facility_id: booking.facility_id || partner.facility_id }, file, { kind: 'partner', accountId: session.id, label: session.login_id }, target);
     await logAttachment(event, ctx, 'attachment_add', { attachmentId: row.id, bookingCode: booking.booking_code, fileName: row.file_name, bytes: row.byte_size });
     return json({ ok: true, attachment: portalAttachmentView(event.params.token, target, row, session, policy.canDelete) }, { headers: PORTAL_HEADERS });
   } catch (e) {

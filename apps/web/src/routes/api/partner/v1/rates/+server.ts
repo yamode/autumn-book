@@ -6,7 +6,7 @@
 // 1回で最大31日。from 省略 = 今日（JST）、to 省略 = from から31日。取引先の公開範囲
 // （今日〜何日先まで・公開終了日）の外は切り詰め、切り詰めた後の範囲を range に返す。
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { findPartnerByApiKey, logPartnerAccess, partnerAdminClient, partnerUnavailableReason, PartnerStoreError, addDaysIso, todayJst } from '$lib/server/partners/store';
+import { findPartnerByApiKey, logPartnerAccess, NO_PARTNER_FACILITY_MESSAGE, partnerAdminClient, partnerUnavailableReason, PartnerStoreError, addDaysIso, todayJst } from '$lib/server/partners/store';
 import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from '$lib/server/partners/rates';
 import { requestMeta } from '$lib/server/partners/portal';
 
@@ -47,6 +47,8 @@ export const GET: RequestHandler = async (event) => {
 
   const unavailable = partnerUnavailableReason(partner);
   if (unavailable) return apiError(403, 'not_published', unavailable);
+  // オンの施設が1つも無い（N9・2026-10-09 複数施設化）。施設の指定（facility）は S5b
+  if (!partner.facility_available) return apiError(403, 'no_facility', NO_PARTNER_FACILITY_MESSAGE);
 
   const params = event.url.searchParams;
   const fromParam = params.get('from');

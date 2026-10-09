@@ -5,12 +5,19 @@
 import { error, json } from '@sveltejs/kit';
 import { isPartnerBookingOpen } from '$lib/server/partners/booking';
 import { rejectOversizedUpload, uploadBookingAttachment } from '$lib/server/partners/booking-attachments';
-import { PORTAL_HEADERS } from '$lib/server/partners/portal';
+import { PORTAL_HEADERS, portalFacilityContext } from '$lib/server/partners/portal';
 import { attachmentApiError, logAttachment, portalAttachmentView, requireAttachmentApi } from '$lib/server/partners/portal-attachments';
 
 export const POST = async (event) => {
   const ctx = await requireAttachmentApi(event);
-  const { db, partner, session } = ctx;
+  const { db, session } = ctx;
+  // 仮置きの施設は予約入力画面の施設（?facility_id=・選んでいる施設が途中で変わっても予約の施設に揃える・§12.2）
+  let partner;
+  try {
+    partner = await portalFacilityContext(db, ctx.partner, event.url.searchParams.get('facility_id'));
+  } catch (e) {
+    return attachmentApiError(e);
+  }
   if (!isPartnerBookingOpen(partner)) throw error(403, '現在ご予約を受け付けていません。');
   const tooLarge = rejectOversizedUpload(event.request, PORTAL_HEADERS);
   if (tooLarge) return tooLarge;

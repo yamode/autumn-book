@@ -2,12 +2,17 @@
 import { error, redirect, type Cookies, type RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
-  findPartnerByUrlToken,
+  composePartnerContext,
+  defaultPartnerFacilityId,
+  findPartnerBundleByUrlToken,
   getPartnerSession,
+  loadPartnerContext,
+  NO_PARTNER_FACILITY_MESSAGE,
   partnerAdminClient,
   partnerUnavailableReason,
   PartnerStoreError,
   SESSION_TTL_HOURS,
+  type PartnerBundle,
   type PartnerContext,
   type RequestMeta
 } from './store';
@@ -32,6 +37,92 @@ export function clearPartnerSessionCookie(cookies: Cookies, urlToken: string) {
   cookies.delete(PARTNER_SESSION_COOKIE, { path: cookiePath(urlToken) });
 }
 
+// ---- 選択中の施設（複数施設化・docs/partner-multi-facility.md §7.8・決定 N1・2026-10-09） ----
+//
+// URL は今のまま（/p/<token>/…）。選んでいる施設はクッキー rms_partner_facility（path /p/<token>・1年・値は施設の slug）に持ち、
+// ?f=<slug> が付けばそれを採用してクッキーも更新する。決め方:
+//   1. ?f=<slug> がオンの施設 → それ（クッキーも更新）。オフ・不明なら無視
+//   2. クッキーがオンの施設 → それ
+//   3. primary_facility_id（オンなら）
+//   4. オンの施設の先頭（sort_order → 施設の並び）
+//   5. オンが1つも無い → null（N9: ログインはできるが料金・予約は案内文。合成は facility_available=false）
+// 切替の画面（ヘッダーのセグメント・POST /p/<token>/facility）は S4。
+
+export const PARTNER_FACILITY_COOKIE = 'rms_partner_facility';
+const FACILITY_COOKIE_MAX_AGE = 365 * 24 * 3600;
+
+export type PartnerFacilitySource = 'query' | 'cookie' | 'primary' | 'first' | 'none';
+
+/** 施設の選択（純関数）。facilities は取引先の施設（オン／オフとも）、slug は ?f= / クッキーの値 */
+export function selectPartnerFacility(
+  facilities: readonly { id: string; slug: string; enabled: boolean }[],
+  primaryFacilityId: string | null,
+  choice: { query?: string | null; cookie?: string | null }
+): { facilityId: string | null; source: PartnerFacilitySource } {
+  const enabled = facilities.filter((f) => f.enabled);
+  const bySlug = (slug: string | null | undefined) => (slug ? enabled.find((f) => f.slug === slug) : undefined);
+  const q = bySlug(choice.query);
+  if (q) return { facilityId: q.id, source: 'query' };
+  const c = bySlug(choice.cookie);
+  if (c) return { facilityId: c.id, source: 'cookie' };
+  const p = enabled.find((f) => f.id === primaryFacilityId);
+  if (p) return { facilityId: p.id, source: 'primary' };
+  if (enabled[0]) return { facilityId: enabled[0].id, source: 'first' };
+  return { facilityId: null, source: 'none' };
+}
+
+export function setPartnerFacilityCookie(cookies: Cookies, urlToken: string, slug: string) {
+  cookies.set(PARTNER_FACILITY_COOKIE, slug, {
+    path: cookiePath(urlToken),
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    maxAge: FACILITY_COOKIE_MAX_AGE
+  });
+}
+
+// 取引先の施設の束から、リクエスト（?f=・クッキー）に従って施設を選んで合成する。?f= が効いたらクッキーも更新する。
+function composeForRequest(
+  event: Pick<RequestEvent, 'params' | 'cookies'> & { url?: URL },
+  bundle: PartnerBundle
+): PartnerContext | null {
+  const token = event.params.token ?? '';
+  const facilities = bundle.facilities.map((f) => ({ id: f.facility_id, slug: f.slug, enabled: f.enabled }));
+  const cookie = event.cookies.get(PARTNER_FACILITY_COOKIE) ?? null;
+  const { facilityId, source } = selectPartnerFacility(facilities, bundle.common.primary_facility_id, {
+    query: event.url?.searchParams.get('f') ?? null,
+    cookie
+  });
+  const partner = composePartnerContext(bundle, facilityId ?? defaultPartnerFacilityId(bundle));
+  if (partner && source === 'query' && cookie !== partner.facility_slug) setPartnerFacilityCookie(event.cookies, token, partner.facility_slug);
+  // オフになった施設を指していたクッキーは消す（次の操作でもう一方の施設へ切り替わる・§13）
+  else if (cookie && source !== 'cookie' && source !== 'query') event.cookies.delete(PARTNER_FACILITY_COOKIE, { path: cookiePath(token) });
+  return partner;
+}
+
+/**
+ * 予約画面（/book・/book/quote・/book/reserve・添付）用: フォームの施設（hidden facility_id）で合成し直す（§7.8）。
+ * 選んでいる施設（クッキー）ではなく、画面を開いたときの施設で見積・確定する（切替直後の二重送信で施設がずれないように）。
+ * 空・同じ施設ならそのまま。オンでない施設・取引先の施設でなければ 409。
+ */
+export async function portalFacilityContext(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  facilityId: string | null | undefined
+): Promise<PartnerContext> {
+  const id = String(facilityId ?? '').trim();
+  if (!id || id === partner.facility_id) return partner;
+  const ctx = /^[0-9a-f-]{36}$/i.test(id) ? await loadPartnerContext(db, partner.id, id) : null;
+  if (!ctx || ctx.facility_id !== id || !ctx.facility_available) {
+    throw new PartnerStoreError('予約する施設を確かめられませんでした。画面を読み直してください。', 409, 'facility_mismatch');
+  }
+  return ctx;
+}
+
+/** オンの施設が1つも無い取引先の案内（N9）。オンの施設があれば null */
+export const partnerNoFacilityMessage = (partner: Pick<PartnerContext, 'facility_available'>) =>
+  partner.facility_available ? null : NO_PARTNER_FACILITY_MESSAGE;
+
 export function requestMeta(event: Pick<RequestEvent, 'request'>): RequestMeta {
   return {
     ip: event.request.headers.get('cf-connecting-ip') ?? event.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
@@ -46,7 +137,7 @@ export const PORTAL_HEADERS = {
   'x-robots-tag': 'noindex, nofollow'
 };
 
-export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookies'>): Promise<{
+export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookies'> & { url?: URL }): Promise<{
   db: SupabaseClient;
   partner: PartnerContext;
   session: Awaited<ReturnType<typeof getPartnerSession>>;
@@ -56,7 +147,9 @@ export async function resolvePortal(event: Pick<RequestEvent, 'params' | 'cookie
   const token = event.params.token ?? '';
   let partner: PartnerContext | null;
   try {
-    partner = await findPartnerByUrlToken(db, token);
+    const bundle = await findPartnerBundleByUrlToken(db, token);
+    // 施設の選択（?f= → クッキー → 既定の施設 → オンの先頭）で合成する（§7.8）
+    partner = bundle ? composeForRequest(event, bundle) : null;
   } catch (e) {
     if (e instanceof PartnerStoreError) throw error(503, '現在ご利用いただけません。');
     throw e;
@@ -76,7 +169,7 @@ function denyPreviewWrite(event: Pick<RequestEvent, 'request'>, session: { previ
 }
 
 // ログイン済みの取引先ページ共通: セッションが無い・公開停止中ならログイン画面へ戻す。
-export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'>) {
+export async function requirePortalSession(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL }) {
   const { db, partner, session } = await resolvePortal(event);
   const token = event.params.token ?? '';
   if (!session) throw redirect(303, `/p/${token}`);
@@ -94,6 +187,9 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
     partnerName: partner.name,
     facilityName: partner.facility_name,
     facilitySlug: partner.facility_slug,
+    // 選んでいる施設（予約画面の hidden facility_id・切替の現在地）と、オンの施設が無いときの案内（N9）
+    facilityId: partner.facility_id,
+    noFacilityMessage: partnerNoFacilityMessage(partner),
     loginId: session?.login_id ?? null,
     isMaster: session?.is_master === true,
     // 管理画面からの確認モード（帯を出し、予約の確定ボタンを止める）
@@ -103,7 +199,7 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
 }
 
 // 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
-export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'>) {
+export async function requirePortalApi(event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL }) {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
   if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');

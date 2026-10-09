@@ -9,7 +9,8 @@ export const load = async (event) => {
   const { db, partner, session } = await requirePortalSession(event);
   let contents;
   try {
-    contents = await loadPartnerContents(db, partner);
+    // オンの施設が無い取引先（N9）は紹介を出さない（ヘッダーの下に案内）
+    contents = partner.facility_available ? await loadPartnerContents(db, partner) : { rooms: [], plans: [] };
   } catch {
     throw error(503, '紹介を読み込めませんでした。時間をおいてお試しください。');
   }
