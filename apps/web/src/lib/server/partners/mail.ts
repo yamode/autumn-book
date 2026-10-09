@@ -41,14 +41,17 @@ export async function partnerMailSender(db: SupabaseClient, facilityId: string):
   return value;
 }
 
-/** 取引先宛て: 差出人名 = 施設名・返信先 = 施設の予約用アドレス。 */
+/**
+ * 取引先宛て: 差出人名 = 施設名・返信先 = 施設の予約用アドレス。
+ * args.fromName を渡すと差出人名だけ差し替える（全施設分1枚の月次請求書は発行者名・2026-10-09 §7.11）。
+ */
 export async function sendPartnerMail(
   db: SupabaseClient,
   facilityId: string,
-  args: { to: string[]; subject: string; html: string; text: string; attachments?: MailAttachment[] }
+  args: { to: string[]; subject: string; html: string; text: string; attachments?: MailAttachment[]; fromName?: string }
 ): Promise<SendEmailResult> {
   const sender = await partnerMailSender(db, facilityId);
-  return sendHtmlEmail({ ...args, fromName: sender.fromName, replyTo: sender.replyTo ?? undefined });
+  return sendHtmlEmail({ ...args, fromName: args.fromName?.trim() || sender.fromName, replyTo: sender.replyTo ?? undefined });
 }
 
 /** 宿（スタッフ）宛ての通知: 差出人名だけ施設名にする（返信先は付けない）。 */

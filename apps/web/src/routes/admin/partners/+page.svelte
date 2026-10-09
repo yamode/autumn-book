@@ -70,7 +70,7 @@
 				</select>
 			</label>
 		</div>
-		<p class="text-xs text-stone-400">作成直後は「公開停止」です。特別レートとログインIDを設定してから公開してください。</p>
+		<p class="text-xs text-stone-400">作成直後は「公開停止」です。特別レートとログインIDを設定してから公開してください。{data.facilityName}で販売する設定で作ります（他の施設は詳細の施設タブでオンにできます）。</p>
 		<div class="flex gap-2">
 			<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">作成して設定へ</button>
 			<button type="button" onclick={() => (creating = false)} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">キャンセル</button>
@@ -79,6 +79,16 @@
 {/if}
 
 {#if data.live && !data.error}
+	<!-- 一覧の範囲（N8・2026-10-09 複数施設化）: 既定は今の施設で設定のある取引先、「すべて」でテナントの取引先すべて -->
+	<div class="mb-2 flex flex-wrap items-center gap-2">
+		<div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
+			<a href="/admin/partners" class={`px-3 py-1.5 ${!data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{data.facilityName}の取引先</a>
+			<a href="/admin/partners?all=1" class={`px-3 py-1.5 ${data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>すべて</a>
+		</div>
+		<p class="text-[11px] text-stone-400">
+			{data.showAll ? '全施設の取引先です。施設のバッジは販売中（濃）／停止中（薄）。' : `${data.facilityName}に設定のある取引先です（販売停止中を含む）。`}
+		</p>
+	</div>
 	<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
 		{#each data.partners as p (p.id)}
 			{@const st = statusOf(p)}
@@ -94,24 +104,33 @@
 						{#if p.validFrom || p.validUntil}・公開期間 {p.validFrom ?? '—'} 〜 {p.validUntil ?? '—'}{/if}
 					</p>
 				</div>
-				<div class="flex shrink-0 items-center gap-1.5">
+				<div class="flex shrink-0 flex-wrap items-center gap-1.5">
+					{#if data.showAll || p.facilities.length > 1}
+						{#each p.facilities as f (f.id)}
+							<span
+								class={`rounded-full border px-2 py-0.5 text-[11px] ${f.enabled ? 'border-brand-800 bg-brand-50 text-brand-900' : 'border-stone-200 text-stone-400 line-through'}`}
+								title={f.enabled ? (f.bookingEnabled ? '販売中・予約受付' : '販売中（予約受付なし）') : 'この施設では販売していません'}
+							>{f.name}{#if f.enabled && f.bookingEnabled}・予約{/if}</span>
+						{/each}
+					{/if}
 					{#if p.bookingEnabled}<span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付</span>{/if}
 					<span class="rounded-full px-2 py-0.5 text-[11px] {st.cls}">{st.label}</span>
 				</div>
 			</a>
 		{:else}
-			<p class="p-4 text-sm text-stone-500">まだ取引先がありません。</p>
+			<p class="p-4 text-sm text-stone-500">{data.showAll ? 'まだ取引先がありません。' : `${data.facilityName}に設定のある取引先はありません（「すべて」で他の施設の取引先を見られます）。`}</p>
 		{/each}
 	</div>
 {/if}
 
 {#if data.live && !data.error}
-	<!-- 請求書の設定（施設ごと）: 取引先の月次請求書（利用明細書＋適格請求書）の発行元・振込先 -->
+	<!-- 請求書の設定（全施設共通・2026-10-09 N3）: 取引先の月次請求書（利用明細書＋適格請求書）の発行元・振込先・通知先 -->
 	<div class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
-		<h2 class="text-sm font-bold text-stone-700">請求書の設定 — {data.facilityName}</h2>
+		<h2 class="text-sm font-bold text-stone-700">請求書の設定（全施設共通）</h2>
 		<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
-			取引先の月次のご請求書・ご利用明細書の発行元と振込先です。発行済みのご請求書は発行時の内容のまま変わりません（変更は次の発行から）。
-			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります。
+			取引先の月次のご請求書・ご利用明細書の発行元と振込先です。ご請求書は取引先ごとに全施設分を1枚にまとめて発行するため、この設定は施設を切り替えても同じです。
+			発行済みのご請求書は発行時の内容のまま変わりません（変更は次の発行から）。
+			月末の自動発行が ON なら、月末日の15:00〜16:00ごろにチェックアウト基準で発行し、取引先へメールで送ります（差出人は発行者名）。
 		</p>
 		{#if data.billing.error}
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.billing.error}</p>
@@ -121,7 +140,7 @@
 				<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">振込先が未設定です。振込先を登録するまで、月末の請求書は自動発行されません。</p>
 			{/if}
 			{#if !b.saved}
-				<p class="mt-2 text-[11px] text-stone-500">まだ保存されていません（既定値を表示しています）。</p>
+				<p class="mt-2 text-[11px] text-stone-500">まだ保存されていません（既定値を表示しています。保存するまで月末の自動発行はされません）。</p>
 			{/if}
 			{#if billingSubmitted && form?.message}
 				<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -166,6 +185,10 @@
 						<input type="checkbox" name="auto_issue" checked={b.autoIssue} />
 						月末に自動で発行して取引先へ送る
 						{#if b.autoIssue && !b.bankAccount}<span class="text-xs text-amber-800">（振込先が未設定のあいだは自動発行されません）</span>{/if}
+					</label>
+					<label class="block text-sm sm:col-span-2">
+						<span class="text-xs text-stone-500">通知先（振込先が未設定などで月末の自動発行を止めたときに知らせるメールアドレス。改行・カンマ区切りで10件まで）</span>
+						<textarea name="notify_emails" rows="2" placeholder="例: keiri@example.com" class="mt-0.5 font-mono {inputCls}">{b.notifyEmails.join('\n')}</textarea>
 					</label>
 				</fieldset>
 				{#if data.canEdit}

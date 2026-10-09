@@ -758,6 +758,8 @@
   "inroom_code_help": "チェックイン時にお渡しした案内カードの6桁の番号をご入力ください。",
   "inroom_code_placeholder": "6桁の番号",
   "inroom_code_submit": "この番号で開く",
+  "inroom_code_checking": "確認しています…",
+  "inroom_code_aria": "案内カードの番号（6桁）",
   "inroom_err_invalid_qr": "QRコードが無効です。フロントへお声がけください。",
   "inroom_err_expired": "ご滞在は終了しました。ご利用ありがとうございました。",
   "inroom_ended_title": "ご利用ありがとうございました",

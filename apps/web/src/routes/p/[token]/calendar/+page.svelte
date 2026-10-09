@@ -12,4 +12,7 @@
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<PartnerStaySearch {data} view="room" />
+<!-- オンの施設が1つも無い取引先（N9）は検索・カードを出さない（ヘッダーの下の案内だけ・2026-10-09） -->
+{#if !data.portal.noFacilityMessage}
+  <PartnerStaySearch {data} view="room" />
+{/if}

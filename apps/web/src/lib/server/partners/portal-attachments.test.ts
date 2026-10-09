@@ -15,7 +15,12 @@ vi.mock('./store', () => ({
   SESSION_TTL_HOURS: 12,
   todayJst: () => '2026-10-07',
   partnerAdminClient: () => ({}),
-  findPartnerByUrlToken: async () => ({ id: 'p1', name: '取引先', facility_name: '宿' }),
+  // 施設の選択（?f=・クッキー）は portal.ts。束は1施設・合成は固定の取引先を返す（2026-10-09 複数施設化）
+  findPartnerBundleByUrlToken: async () => ({ common: { id: 'p1', primary_facility_id: 'f1' }, facilities: [{ facility_id: 'f1', slug: 'oga', enabled: true }] }),
+  composePartnerContext: () => ({ id: 'p1', name: '取引先', facility_id: 'f1', facility_slug: 'oga', facility_name: '宿', facility_available: true }),
+  defaultPartnerFacilityId: () => 'f1',
+  loadPartnerContext: async () => null,
+  NO_PARTNER_FACILITY_MESSAGE: '現在ご案内できる施設がありません。',
   getPartnerSession: async () => null,
   partnerUnavailableReason: () => null,
   logPartnerAccess: async () => undefined

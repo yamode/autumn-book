@@ -32,7 +32,9 @@
   let staff = $state(''); // '' = すべての担当者
   // 並び: 既定は宿泊日の昇順（2026-10-06 指示。どのタブでも同じ）
   let sort = $state<'checkin_asc' | 'checkin_desc' | 'created_desc'>('checkin_asc');
-  const byStaff = $derived(staff ? data.bookings.filter((b) => staffOf(b) === staff) : data.bookings);
+  // 施設の絞り込み（オンの施設が2つ以上の取引先だけ・既定はすべて・複数施設化 S4・2026-10-09）
+  let facility = $state(''); // '' = すべての施設
+  const byStaff = $derived(data.bookings.filter((b) => (!staff || staffOf(b) === staff) && (!facility || b.facilityId === facility)));
   const shown = $derived(
     byStaff
       .filter((b) =>
@@ -220,6 +222,15 @@
         {#each staffList as name (name)}<option value={name}>{name}（{data.bookings.filter((b) => staffOf(b) === name).length}件）</option>{/each}
       </select>
     </label>
+    {#if data.facilityFilter.length >= 2}
+      <label class="flex items-center gap-2">
+        <span class="text-stone-500">施設</span>
+        <select bind:value={facility} class="rounded-lg border border-stone-300 bg-white px-3 py-1.5">
+          <option value="">すべて</option>
+          {#each data.facilityFilter as f (f.id)}<option value={f.id}>{f.name}（{data.bookings.filter((b) => b.facilityId === f.id).length}件）</option>{/each}
+        </select>
+      </label>
+    {/if}
     <label class="flex items-center gap-2">
       <span class="text-stone-500">並び</span>
       <select bind:value={sort} class="rounded-lg border border-stone-300 bg-white px-3 py-1.5">
@@ -239,6 +250,7 @@
           <button type="button" class="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left sm:p-5" onclick={() => (open = open === b.id ? null : b.id)}>
             <div class="min-w-0">
               <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-2 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="ご予約時に御社の受付枠を超えていました。宿で確認のうえご連絡することがあります。">受付枠超過</span>{/if}</p>
+              {#if data.multiFacility}<p class="mt-1"><span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">{b.facilityName}</span></p>{/if}
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
               <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
               <p class="mt-0.5 text-sm text-stone-500">担当: {staffOf(b)}{#if b.attachments?.items.length}<span class="ml-2" title="添付ファイル">📎 {b.attachments.items.length}</span>{/if}</p>
@@ -251,6 +263,7 @@
           {#if open === b.id}
             <div class="border-t border-stone-200 px-4 pb-4 pt-3 sm:px-5">
               <dl class="detail">
+                {#if data.multiFacility}<dt>施設</dt><dd>{b.facilityName}</dd>{/if}
                 <dt>宿泊日</dt><dd>{fmt(b.checkIn)} 〜 {fmt(b.checkOut)}（{b.nights}泊）</dd>
                 <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
                 <dt>プラン</dt><dd>{b.planName}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
@@ -386,13 +399,13 @@
                       </form>
                     {:else}
                       <button type="button" onclick={() => (confirmId = b.id)} class="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-600 hover:bg-rose-50 hover:text-rose-700">{b.status === 'pending_payment' ? 'この予約をやめる' : 'この予約を取り消す'}</button>
-                      {#if data.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-stone-500">宿泊日の{data.cancelText}取り消せます</span>{/if}
+                      {#if b.cancelText && b.status === 'confirmed'}<span class="ml-2 text-xs text-stone-500">宿泊日の{b.cancelText}取り消せます</span>{/if}
                       {#if b.status === 'confirmed' && b.cancelPreview && b.cancelPreview.fee > 0}
                         <p class="mt-1.5 text-sm text-rose-700">今取り消すとキャンセル料 {b.cancelPreview.fee.toLocaleString('ja-JP')}円（予約金額の{b.cancelPreview.rate}%）がかかります</p>
                       {/if}
                     {/if}
                   {:else}
-                    <p class="text-sm text-stone-500">{b.checkedIn ? 'チェックイン済みです。' : data.cancelText ? `取消の期限（宿泊日の${data.cancelText}）を過ぎています。` : 'この画面からは取り消せません。'}変更・取消は宿へご連絡ください。</p>
+                    <p class="text-sm text-stone-500">{b.checkedIn ? 'チェックイン済みです。' : b.cancelText ? `取消の期限（宿泊日の${b.cancelText}）を過ぎています。` : 'この画面からは取り消せません。'}変更・取消は宿へご連絡ください。</p>
                   {/if}
                 </div>
               {/if}
@@ -411,7 +424,7 @@
     <div class="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="pay-title">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <p class="text-sm text-stone-500">予約番号 {b.code}</p>
+          <p class="text-sm text-stone-500">{#if data.multiFacility}{b.facilityName} ・ {/if}予約番号 {b.code}</p>
           <h3 id="pay-title" class="text-lg font-bold">{b.status === 'pending_payment' ? (b.payMode === 'setup' ? 'カードの登録' : 'お支払い') : 'カードの登録し直し'}</h3>
         </div>
         <button type="button" onclick={closePay} disabled={payBusy} class="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100" aria-label="閉じる">✕</button>

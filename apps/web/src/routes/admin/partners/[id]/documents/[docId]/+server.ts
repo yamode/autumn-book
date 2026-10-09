@@ -4,14 +4,15 @@
 // partner.id に属するファイルだけを中継する（署名URLは外へ出さない）。
 import { error } from '@sveltejs/kit';
 import { documentResponse, downloadPartnerDocument } from '$lib/server/partners/memorandum';
-import { PartnerStoreError, requireStaffPartner } from '$lib/server/partners/store';
-import { staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
+import { PartnerStoreError } from '$lib/server/partners/store';
+import { staffPartnerScope, staffPartnerView, StaffScopeError } from '$lib/server/partners/staff';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async (event) => {
 	try {
 		const scope = await staffPartnerScope(event, 'view');
-		const partner = await requireStaffPartner(scope.db, scope.facilityId, event.params.id);
+		// 覚書は取引先共通（N4）。取引先の施設のどれかにアクセスできれば開ける（2026-10-09 複数施設化 S3）
+		const { partner } = await staffPartnerView(event, scope, event.params.id);
 		const hit = await downloadPartnerDocument(scope.db, partner.id, event.params.docId);
 		if (!hit) error(404, 'ファイルが見つかりません。');
 		return documentResponse(hit.doc, hit.body);

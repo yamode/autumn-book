@@ -16,35 +16,47 @@
 		usage: data.rows.reduce((s, r) => s + r.usageTotal, 0),
 		billed: data.rows.reduce((s, r) => s + r.billedTotal, 0)
 	});
-	// 当月の未発行: 自動発行の条件（自動発行 ON・振込先あり）を満たすときだけ「月末に自動発行」
-	const autoWillIssue = $derived(data.autoIssue && !data.bankAccountMissing);
+	// 当月の未発行: 自動発行の条件（発行元の設定あり・自動発行 ON・振込先あり）を満たすときだけ「月末に自動発行」
+	const autoWillIssue = $derived(data.autoIssue && !data.bankAccountMissing && !data.issuerMissing);
+	// 施設別小計の列（全施設分1枚・N3）。載っている施設が2つ以上のときだけ出す（1施設ならご請求額と同じ）
+	const showFacilityColumns = $derived(data.facilityColumns.length > 1);
+	const facilitySum = (id: string) => data.rows.reduce((s, r) => s + (r.facilities[id]?.billedTotal ?? 0), 0);
+	const colCount = $derived(7 + (showFacilityColumns ? data.facilityColumns.length : 0));
 
+	// 対象月・絞り込み（?all=1）のリンク
+	const q = (period: string, all = data.all) => `?period=${ym(period)}${all ? '&all=1' : ''}`;
+	const csvUrl = $derived(`/admin/partners/invoices/csv${q(data.period)}`);
 	const draftUrl = (partnerId: string, format: 'html' | 'pdf') => `/admin/partners/${partnerId}/invoices/preview?period=${data.period}&format=${format}`;
 	const smallBtn = 'inline-block rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs whitespace-nowrap text-stone-700 hover:bg-stone-50';
+	const tabCls = (active: boolean) =>
+		`rounded-full px-3 py-1 text-xs whitespace-nowrap ${active ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`;
 </script>
 
 <svelte:head><title>予定請求書 ｜ 山人管理</title></svelte:head>
 
 <div class="mb-4">
 	<p class="mb-1 text-xs text-stone-400"><a href="/admin/partners" class="hover:underline">取引先</a> ／ 予定請求書</p>
-	<h1 class="mb-1 text-lg font-bold text-stone-800">予定請求書 — {data.facilityName}</h1>
+	<h1 class="mb-1 text-lg font-bold text-stone-800">予定請求書 — {data.all ? 'すべての取引先' : data.facilityName}</h1>
 	<p class="max-w-3xl text-xs leading-5 text-stone-500">
 		その月の今日までにチェックアウトした確定予約で計算した予定のご請求です。月末日の15時ごろに正式なご請求書を発行し、取引先へ送ります。
 		金額は予約時の金額で、ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした支払方法だけです（それ以外はご利用明細に載り、ご請求は 0 円）。
 	</p>
+	<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
+		ご請求書は取引先ごとに全施設分を1枚にまとめます。金額はいつも全施設分で、施設が2つ以上ある月は施設別の小計も出します（入金の消込は施設別小計の CSV で）。
+	</p>
 </div>
 
 <!-- 対象月（未来の月は選べない） -->
-<div class="mb-4 flex flex-wrap items-center gap-2">
-	<a href="?period={ym(data.prevPeriod)}" class={smallBtn}>← 前月</a>
+<div class="mb-3 flex flex-wrap items-center gap-2">
+	<a href={q(data.prevPeriod)} class={smallBtn}>← 前月</a>
 	<span class="px-2 text-sm font-bold text-stone-800">{periodLabel(data.period)}</span>
 	{#if data.nextPeriod}
-		<a href="?period={ym(data.nextPeriod)}" class={smallBtn}>翌月 →</a>
+		<a href={q(data.nextPeriod)} class={smallBtn}>翌月 →</a>
 	{:else}
 		<span class="{smallBtn} cursor-not-allowed opacity-40" aria-disabled="true">翌月 →</span>
 	{/if}
 	{#if !isCurrent}
-		<a href="?period={ym(data.currentPeriod)}" class="text-xs text-brand-800 hover:underline">当月へ</a>
+		<a href={q(data.currentPeriod)} class="text-xs text-brand-800 hover:underline">当月へ</a>
 	{/if}
 	<span class="text-xs text-stone-500">
 		{#if isCurrent}
@@ -55,16 +67,32 @@
 	</span>
 </div>
 
+<!-- 絞り込み（M4: 既定は今の施設に関わる取引先・「すべて」で全取引先。金額は常に全施設分） -->
+<div class="mb-4 flex flex-wrap items-center gap-2">
+	<a href={q(data.period, false)} class={tabCls(!data.all)} aria-current={!data.all ? 'page' : undefined}>{data.facilityName}に関わる取引先</a>
+	<a href={q(data.period, true)} class={tabCls(data.all)} aria-current={data.all ? 'page' : undefined}>すべて</a>
+	{#if !data.all && data.hidden > 0}
+		<span class="text-xs text-stone-500">ほかの施設だけの取引先 {data.hidden}社は「すべて」で表示</span>
+	{/if}
+	{#if data.live && !data.error}
+		<a href={csvUrl} class="{smallBtn} ml-auto" data-sveltekit-reload>施設別小計の CSV</a>
+	{/if}
+</div>
+
 {#if data.error}
 	<p class="mb-4 rounded-lg px-3 py-2 text-sm {data.live ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}">{data.error}</p>
 {:else}
-	{#if data.bankAccountMissing}
+	{#if data.issuerMissing}
+		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+			ご請求書の発行元が未設定のため、月末のご請求書は自動発行されません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で発行元・振込先を保存してください。
+		</p>
+	{:else if data.bankAccountMissing}
 		<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
 			振込先が未設定のため、月末のご請求書は自動発行されません。<a href="/admin/partners" class="underline">取引先一覧の「請求書の設定」</a>で振込先を登録してください。
 		</p>
 	{:else if !data.autoIssue}
 		<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-700">
-			この施設は月末の自動発行が OFF です（取引先一覧の「請求書の設定」）。正式なご請求書は各取引先の画面から発行してください。
+			月末の自動発行が OFF です（取引先一覧の「請求書の設定」・全施設共通）。正式なご請求書は各取引先の画面から発行してください。
 		</p>
 	{/if}
 	{#if !data.pdfReady}
@@ -78,7 +106,12 @@
 					<th class="px-3 py-2 font-medium">取引先（宛名）</th>
 					<th class="px-3 py-2 text-right font-medium">対象件数<div class="font-normal text-stone-400">ご請求／全件</div></th>
 					<th class="px-3 py-2 text-right font-medium">ご利用総額</th>
-					<th class="px-3 py-2 text-right font-medium">ご請求額</th>
+					<th class="px-3 py-2 text-right font-medium">ご請求額<div class="font-normal text-stone-400">全施設</div></th>
+					{#if showFacilityColumns}
+						{#each data.facilityColumns as f (f.id)}
+							<th class="px-3 py-2 text-right font-medium">{f.name || '施設'}<div class="font-normal text-stone-400">施設別小計</div></th>
+						{/each}
+					{/if}
 					<th class="px-3 py-2 font-medium">お支払期限</th>
 					<th class="px-3 py-2 font-medium">状態</th>
 					<th class="px-3 py-2 font-medium"></th>
@@ -88,7 +121,7 @@
 				{#each data.rows as r (r.partnerId)}
 					<tr class="border-t border-stone-100 align-top">
 						<td class="px-3 py-2.5">
-							<a href="/admin/partners/{r.partnerId}?inv={ym(data.period)}" class="font-medium text-stone-800 hover:underline">{r.partnerName}</a>
+							<a href="/admin/partners/{r.partnerId}?inv={ym(data.period)}{r.detailFac ? `&fac=${r.detailFac}` : ''}" class="font-medium text-stone-800 hover:underline">{r.partnerName}</a>
 							{#if r.recipientName !== r.partnerName}<div class="text-xs text-stone-500">宛名: {r.recipientName} 御中</div>{/if}
 							<div class="mt-0.5 flex flex-wrap gap-1">
 								{#if r.bookingEnabled}<span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付</span>{/if}
@@ -99,7 +132,7 @@
 							{/if}
 						</td>
 						{#if r.total === 0}
-							<td class="px-3 py-2.5 text-right text-xs text-stone-400" colspan="4">対象なし（{isCurrent ? '今日まで' : 'この月'}にチェックアウトの確定予約はありません）</td>
+							<td class="px-3 py-2.5 text-right text-xs text-stone-400" colspan={4 + (showFacilityColumns ? data.facilityColumns.length : 0)}>対象なし（{isCurrent ? '今日まで' : 'この月'}にチェックアウトの確定予約はありません）</td>
 						{:else}
 							<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{r.billableCount}／{r.total}件</td>
 							<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{yen(r.usageTotal)}</td>
@@ -107,6 +140,19 @@
 								<span class={r.billedTotal > 0 ? 'font-semibold text-stone-800' : 'text-stone-400'}>{yen(r.billedTotal)}</span>
 								{#if r.billedTotal > 0}<div class="text-[11px] text-stone-500">うち消費税 {yen(r.tax10)}・入湯税 {yen(r.nonTaxable)}{r.cancelFee ? `・キャンセル料 ${yen(r.cancelFee)}` : ''}</div>{/if}
 							</td>
+							{#if showFacilityColumns}
+								{#each data.facilityColumns as f (f.id)}
+									{@const fs = r.facilities[f.id]}
+									<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
+										{#if fs}
+											<span class={fs.billedTotal > 0 ? 'text-stone-800' : 'text-stone-400'}>{yen(fs.billedTotal)}</span>
+											<div class="text-[11px] text-stone-500">{fs.count}件{fs.billedTotal > 0 ? `・10%対象 ${yen(fs.taxable10)}・入湯税 ${yen(fs.nonTaxable)}` : ''}{fs.cancelFee ? `・キャンセル料 ${yen(fs.cancelFee)}` : ''}</div>
+										{:else}
+											<span class="text-stone-300">—</span>
+										{/if}
+									</td>
+								{/each}
+							{/if}
 							<td class="px-3 py-2.5 text-xs whitespace-nowrap">{r.billedTotal > 0 ? r.dueDate : '—'}</td>
 						{/if}
 						<td class="px-3 py-2.5 text-xs">
@@ -120,7 +166,9 @@
 									<div class="text-stone-500">未送信</div>
 								{/if}
 								{#if r.issued.sendError}<div class="break-all text-rose-700">{r.issued.sendError}</div>{/if}
-								{#if r.issued.billedTotal !== r.billedTotal || r.issued.bookingCount !== r.total}
+								{#if r.issued.legacy}
+									<div class="mt-0.5 text-amber-800">※ 施設ごとの請求書（旧形式）です。全施設分を1枚にまとめるには、取り消してから発行し直してください</div>
+								{:else if r.issued.billedTotal !== r.billedTotal || r.issued.bookingCount !== r.total}
 									<div class="mt-0.5 text-amber-800">※ 発行後の実績と差があります（正式なご請求書は発行時の内容のままです）</div>
 								{/if}
 							{:else if isCurrent}
@@ -145,7 +193,7 @@
 					</tr>
 				{:else}
 					<tr>
-						<td colspan="7" class="px-3 py-4 text-sm text-stone-500">
+						<td colspan={colCount} class="px-3 py-4 text-sm text-stone-500">
 							{periodLabel(data.period)}は対象の取引先がありません（チェックアウトの確定予約がある取引先・予約受付中の取引先が対象です）。
 						</td>
 					</tr>
@@ -158,6 +206,11 @@
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{sum.billable}／{sum.total}件</td>
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{yen(sum.usage)}</td>
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{yen(sum.billed)}</td>
+						{#if showFacilityColumns}
+							{#each data.facilityColumns as f (f.id)}
+								<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{yen(facilitySum(f.id))}</td>
+							{/each}
+						{/if}
 						<td colspan="3"></td>
 					</tr>
 				</tfoot>
@@ -166,5 +219,6 @@
 	</div>
 	<p class="mt-2 text-[11px] text-stone-500">
 		予定請求書は確認用の試算です（番号は未発行・「予定」の透かし入り）。取引先へは送らないでください。正式なご請求書の発行・送信・取消は各取引先の画面の「ご請求書」で行えます。
+		施設別小計の消費税は出しません（消費税はご請求書1枚で1回だけ計算します。施設ごとの按分は10%対象（税込）の額で行えます）。
 	</p>
 {/if}

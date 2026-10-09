@@ -13,8 +13,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
 import {
+  buildPartnerCommonSettings,
   normalizeBooker,
   normalizePartnerBookingSettings,
+  PARTNER_FACILITY_SETTING_KEYS,
+  partnerFacilityOverrides,
+  splitPartnerBookingSettings,
   validateBooker,
   type CreditDeposit,
   type CreditDepositRemainder,
@@ -54,10 +58,21 @@ export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
   other: 'その他'
 };
 
-export type PartnerRow = {
+// ---- 取引先共通と施設ごと（複数施設化 Phase B・docs/partner-multi-facility.md §4・§7.9・2026-10-09） ----
+//
+// 取引先は rms_partners（取引先共通・取引先で1行）と rms_partner_facilities（取引先 × 施設の販売設定）に分かれた
+// （autumn-shared 20261009054024）。画面・予約・メールの処理は、施設を1つ選んで合成した PartnerContext を読む。
+// rms_partners の旧列（facility_id / pricing / booking_enabled / max_days_ahead / show_inventory / include_advance /
+// payment_method_id）は Phase D で落とすまで残るが、Book は読まない・書かない（§5.2。新規作成時の facility_id だけ互換で入れる）。
+
+/** rms_partners（取引先共通）の行 */
+export type PartnerCommonRow = {
   id: string;
   tenant_id: string;
-  facility_id: string;
+  /** 既定の施設（取引先ページの初期表示・設定メールの差出人）。null なら最初のオンの施設 */
+  primary_facility_id: string | null;
+  /** 旧 rms_partners.facility_id（Phase D まで互換で残る・NULL 許容）。読むのは primary が無いときの代わりだけ */
+  legacy_facility_id: string | null;
   name: string;
   kind: PartnerKind;
   contact_name: string | null;
@@ -66,15 +81,9 @@ export type PartnerRow = {
   is_active: boolean;
   valid_from: string | null;
   valid_until: string | null;
-  max_days_ahead: number;
-  show_inventory: boolean;
-  include_advance: boolean;
-  pricing: PartnerPricing;
   note: string | null;
-  // 予約受付（migration 20260926054852）
-  booking_enabled: boolean;
-  booking_settings: PartnerBookingSettings;
-  payment_method_id: string | null;
+  /** rms_partners.booking_settings（jsonb）の生の値。共通の部分（§4.2）と、Phase D まで残る旧い施設ごとのキー */
+  common_settings: Record<string, unknown>;
   // PMS の顧客マスタ（旅行会社・法人）への紐づけ（migration 20261006224655）。null = 未紐づけ
   pms_guest_id: string | null;
   // 予約名義（Phase 2）・与信超過時の挙動（Phase 3a・warn / ignore を選べる。deposit は 3b まで warn と同じ扱い）。
@@ -84,6 +93,51 @@ export type PartnerRow = {
   created_at: string;
   updated_at: string;
 };
+
+/** rms_partner_facilities（取引先 × 施設）の行 */
+export type PartnerFacilityRow = {
+  partner_id: string;
+  facility_id: string;
+  tenant_id: string;
+  /** この施設に販売するか（切替・料金・予約・API の入口） */
+  enabled: boolean;
+  // 予約受付（migration 20260926054852 から移した列）
+  booking_enabled: boolean;
+  max_days_ahead: number;
+  show_inventory: boolean;
+  include_advance: boolean;
+  pricing: PartnerPricing;
+  payment_method_id: string | null;
+  /** booking_settings の施設ごとの部分＋共通の上書き（N6）の生の値 */
+  facility_settings: Record<string, unknown>;
+  sort_order: number;
+  updated_at: string | null;
+};
+
+/** 施設の行に施設名・slug を付けたもの（切替・一覧用）。synthetic = 施設設定の行が無く、既定値で補ったもの */
+export type PartnerFacilityInfo = PartnerFacilityRow & { slug: string; name: string; synthetic?: boolean };
+
+/** 施設切替の一覧（PartnerContext.facilities）の1件 */
+export type PartnerFacilitySummary = {
+  id: string;
+  slug: string;
+  name: string;
+  enabled: boolean;
+  bookingEnabled: boolean;
+  sortOrder: number;
+};
+
+/**
+ * 選んだ施設で合成した取引先（従来の「施設ごとの rms_partners の行」と同じ形）。
+ * booking_settings = normalizePartnerBookingSettings(共通, 施設)（N6 の上書き規則）。
+ */
+export type PartnerRow = Omit<PartnerCommonRow, 'legacy_facility_id'> &
+  Pick<
+    PartnerFacilityRow,
+    'facility_id' | 'booking_enabled' | 'max_days_ahead' | 'show_inventory' | 'include_advance' | 'pricing' | 'payment_method_id' | 'facility_settings'
+  > & {
+    booking_settings: PartnerBookingSettings;
+  };
 
 export type PartnerBookingNameMode = BookingNameMode;
 export type PartnerCreditOverAction = CreditOverAction;
@@ -128,8 +182,18 @@ export type PartnerAccessLogRow = {
   created_at: string;
 };
 
-// 公開期間などを見て「いま見せてよいか」を判定するための最小情報。
-export type PartnerContext = PartnerRow & { facility_slug: string; facility_name: string };
+// 取引先ページ・予約・メールが読む取引先（選んだ施設で合成したもの・§7.9）。
+//   facilities: 取引先の施設（オン／オフとも・並び順）。切替（S4）の材料
+//   facility_available: 選んだ施設がオンか。false = オンの施設が1つも無い（N9: ログインはできるが料金・予約は案内文）
+export type PartnerContext = PartnerRow & {
+  facility_slug: string;
+  facility_name: string;
+  facilities: PartnerFacilitySummary[];
+  facility_available: boolean;
+};
+
+/** オンの施設が1つも無い取引先に、料金・予約の代わりに出す案内（N9） */
+export const NO_PARTNER_FACILITY_MESSAGE = '現在ご案内できる施設がありません。宿へお問い合わせください。';
 
 export const SETUP_TOKEN_TTL_HOURS = 24 * 7;
 export const SESSION_TTL_HOURS = 24 * 7;
@@ -169,22 +233,266 @@ function raise(error: { code?: string; message?: string } | null, fallback: stri
   throw new PartnerStoreError(`${fallback}${error?.message ? `（${error.message}）` : ''}`, 500, 'db_error');
 }
 
-const PARTNER_COLUMNS =
-  'id, tenant_id, facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, max_days_ahead, show_inventory, include_advance, pricing, note, booking_enabled, booking_settings, payment_method_id, pms_guest_id, booking_name_mode, credit_over_action, created_at, updated_at';
+const COMMON_COLUMNS =
+  'id, tenant_id, primary_facility_id, legacy_facility_id:facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, note, booking_settings, pms_guest_id, booking_name_mode, credit_over_action, created_at, updated_at';
+const FACILITY_COLUMNS =
+  'partner_id, facility_id, tenant_id, enabled, booking_enabled, max_days_ahead, show_inventory, include_advance, pricing, payment_method_id, facility_settings, sort_order, updated_at';
 const ACCOUNT_COLUMNS =
   'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, is_master, created_by_account, created_at';
 
-function toPartner(row: Record<string, unknown>): PartnerRow {
+const asJsonObject = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+function toCommon(row: Record<string, unknown>): PartnerCommonRow {
   return {
-    ...(row as unknown as PartnerRow),
-    pricing: normalizePartnerPricing(row.pricing),
-    booking_enabled: row.booking_enabled === true,
-    booking_settings: normalizePartnerBookingSettings(row.booking_settings),
-    payment_method_id: (row.payment_method_id as string | null) ?? null,
+    id: String(row.id),
+    tenant_id: String(row.tenant_id),
+    primary_facility_id: (row.primary_facility_id as string | null) ?? null,
+    legacy_facility_id: (row.legacy_facility_id as string | null) ?? null,
+    name: String(row.name ?? ''),
+    kind: (row.kind as PartnerKind) ?? 'other',
+    contact_name: (row.contact_name as string | null) ?? null,
+    contact_email: (row.contact_email as string | null) ?? null,
+    url_token: String(row.url_token ?? ''),
+    is_active: row.is_active === true,
+    valid_from: (row.valid_from as string | null) ?? null,
+    valid_until: (row.valid_until as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+    common_settings: asJsonObject(row.booking_settings),
     pms_guest_id: (row.pms_guest_id as string | null) ?? null,
     booking_name_mode: normalizeBookingNameMode(row.booking_name_mode),
-    credit_over_action: normalizeCreditOverAction(row.credit_over_action)
+    credit_over_action: normalizeCreditOverAction(row.credit_over_action),
+    created_at: String(row.created_at ?? ''),
+    updated_at: String(row.updated_at ?? '')
   };
+}
+
+function toFacilityRow(row: Record<string, unknown>): PartnerFacilityRow {
+  const days = Math.round(Number(row.max_days_ahead));
+  return {
+    partner_id: String(row.partner_id),
+    facility_id: String(row.facility_id),
+    tenant_id: String(row.tenant_id),
+    enabled: row.enabled !== false,
+    booking_enabled: row.booking_enabled === true,
+    max_days_ahead: Number.isFinite(days) && days >= 1 ? days : 365,
+    show_inventory: row.show_inventory !== false,
+    include_advance: row.include_advance !== false,
+    pricing: normalizePartnerPricing(row.pricing),
+    payment_method_id: (row.payment_method_id as string | null) ?? null,
+    facility_settings: asJsonObject(row.facility_settings),
+    sort_order: Number(row.sort_order) || 0,
+    updated_at: (row.updated_at as string | null) ?? null
+  };
+}
+
+// 施設設定の行が無い施設（バックフィル漏れ・行の削除）を、販売しない既定値で補う（N9 の画面を出すため）。
+function syntheticFacilityRow(partner: PartnerCommonRow, facilityId: string): PartnerFacilityRow {
+  return {
+    partner_id: partner.id,
+    facility_id: facilityId,
+    tenant_id: partner.tenant_id,
+    enabled: false,
+    booking_enabled: false,
+    max_days_ahead: 365,
+    show_inventory: true,
+    include_advance: true,
+    pricing: normalizePartnerPricing(null),
+    payment_method_id: null,
+    facility_settings: {},
+    sort_order: 0,
+    updated_at: null
+  };
+}
+
+// 施設の並び: sort_order → Book の施設の並び（西和賀 → 男鹿）
+const BOOK_FACILITY_ORDER = Object.values(FACILITY_UUID);
+const facilityOrder = (a: PartnerFacilityInfo, b: PartnerFacilityInfo) =>
+  a.sort_order - b.sort_order || BOOK_FACILITY_ORDER.indexOf(a.facility_id) - BOOK_FACILITY_ORDER.indexOf(b.facility_id);
+
+// core.facilities の slug・名前（施設 UUID → { slug, name }）。Book が扱う施設だけ
+async function facilityMeta(db: SupabaseClient, ids: readonly string[]): Promise<Map<string, { slug: string; name: string }>> {
+  const uniq = [...new Set(ids.filter(isBookFacility))];
+  const out = new Map<string, { slug: string; name: string }>();
+  if (!uniq.length) return out;
+  const { data } = await db.schema('core').from('facilities').select('id, slug, name').in('id', uniq);
+  for (const r of (data ?? []) as { id: string; slug: string | null; name: string | null }[]) {
+    if (r.slug) out.set(r.id, { slug: String(r.slug), name: String(r.name ?? r.slug) });
+  }
+  return out;
+}
+
+/** 取引先（共通）と、その施設設定（Book の施設だけ・並び順）。合成の材料 */
+export type PartnerBundle = { common: PartnerCommonRow; facilities: PartnerFacilityInfo[] };
+
+// 取引先の施設設定を読む（partnerId → 行）。Book が扱っていない施設の行は落とす。
+async function loadFacilityRows(db: SupabaseClient, partnerIds: readonly string[]): Promise<Map<string, PartnerFacilityRow[]>> {
+  const out = new Map<string, PartnerFacilityRow[]>();
+  if (!partnerIds.length) return out;
+  const { data, error } = await db.from('rms_partner_facilities').select(FACILITY_COLUMNS).in('partner_id', [...partnerIds]);
+  if (error) raise(error, '取引先の施設設定を読み込めませんでした。');
+  for (const raw of (data ?? []) as Record<string, unknown>[]) {
+    const row = toFacilityRow(raw);
+    if (!isBookFacility(row.facility_id)) continue;
+    const list = out.get(row.partner_id) ?? [];
+    list.push(row);
+    out.set(row.partner_id, list);
+  }
+  return out;
+}
+
+// 共通の行と施設設定の行から、施設名つきの束を作る。施設設定が1つも無ければ、既定の施設（primary → 旧 facility_id）を
+// 販売しない既定値で補う（N9: ログインはできるが料金・予約は案内文）。それも無ければ null。
+async function bundlesOf(db: SupabaseClient, commons: PartnerCommonRow[]): Promise<PartnerBundle[]> {
+  const rowsBy = await loadFacilityRows(db, commons.map((c) => c.id));
+  const filled = commons.map((common) => {
+    let rows = rowsBy.get(common.id) ?? [];
+    if (!rows.length) {
+      const fallback = [common.primary_facility_id, common.legacy_facility_id].find((id): id is string => !!id && isBookFacility(id));
+      if (fallback) rows = [syntheticFacilityRow(common, fallback)];
+    }
+    return { common, rows };
+  });
+  const meta = await facilityMeta(db, filled.flatMap((f) => f.rows.map((r) => r.facility_id)));
+  return filled.map(({ common, rows }) => ({
+    common,
+    facilities: rows
+      .filter((r) => meta.has(r.facility_id))
+      .map((r) => ({
+        ...r,
+        ...meta.get(r.facility_id)!,
+        ...(rowsBy.get(common.id)?.length ? {} : { synthetic: true })
+      }))
+      .sort(facilityOrder)
+  }));
+}
+
+async function loadBundle(db: SupabaseClient, by: { id: string } | { urlToken: string }): Promise<PartnerBundle | null> {
+  const q = db.from('rms_partners').select(COMMON_COLUMNS);
+  const { data, error } = await ('id' in by ? q.eq('id', by.id) : q.eq('url_token', by.urlToken)).maybeSingle();
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  if (!data) return null;
+  const [bundle] = await bundlesOf(db, [toCommon(data as Record<string, unknown>)]);
+  return bundle ?? null;
+}
+
+/** 既定の施設: primary_facility_id（オンなら）→ オンの施設の先頭（並び順）。オンが無ければ null（§7.8 の 3・4） */
+export function defaultPartnerFacilityId(bundle: PartnerBundle): string | null {
+  const enabled = bundle.facilities.filter((f) => f.enabled);
+  return enabled.find((f) => f.facility_id === bundle.common.primary_facility_id)?.facility_id ?? enabled[0]?.facility_id ?? null;
+}
+
+/**
+ * 施設を1つ選んで合成する（§7.9）。facilityId がオンの施設ならそれ、違えば既定の施設。
+ * opts.allowDisabled（管理画面）: オフの施設でも行があればその施設で合成する（facility_available=false）。
+ * オンの施設が1つも無いとき（N9）: 既定の施設（primary → 先頭）の行で合成し、facility_available=false・予約受付 off。
+ * 施設の行が1つも無ければ null（取引先として扱えない）。
+ */
+export function composePartnerContext(
+  bundle: PartnerBundle,
+  facilityId: string | null | undefined,
+  opts: { allowDisabled?: boolean } = {}
+): PartnerContext | null {
+  const { common, facilities } = bundle;
+  const pick =
+    facilities.find((f) => f.facility_id === facilityId && (f.enabled || opts.allowDisabled)) ??
+    facilities.find((f) => f.facility_id === defaultPartnerFacilityId(bundle)) ??
+    facilities.find((f) => f.facility_id === common.primary_facility_id) ??
+    facilities[0];
+  if (!pick) return null;
+  const available = pick.enabled;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { legacy_facility_id: _legacy, ...rest } = common;
+  return {
+    ...rest,
+    facility_id: pick.facility_id,
+    // オフの施設（N9・管理画面のオフの施設）では予約を受けない
+    booking_enabled: available && pick.booking_enabled,
+    max_days_ahead: pick.max_days_ahead,
+    show_inventory: pick.show_inventory,
+    include_advance: pick.include_advance,
+    pricing: pick.pricing,
+    payment_method_id: pick.payment_method_id,
+    facility_settings: pick.facility_settings,
+    booking_settings: normalizePartnerBookingSettings(common.common_settings, pick.facility_settings),
+    facility_slug: pick.slug,
+    facility_name: pick.name,
+    facility_available: available,
+    facilities: facilities.map((f) => ({
+      id: f.facility_id,
+      slug: f.slug,
+      name: f.name,
+      enabled: f.enabled,
+      bookingEnabled: f.enabled && f.booking_enabled,
+      sortOrder: f.sort_order
+    }))
+  };
+}
+
+/** 取引先を id で読み、施設を選んで合成する（facilityId 省略 = 既定の施設） */
+export async function loadPartnerContext(
+  db: SupabaseClient,
+  partnerId: string,
+  facilityId?: string | null,
+  opts: { allowDisabled?: boolean } = {}
+): Promise<PartnerContext | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId)) return null;
+  const bundle = await loadBundle(db, { id: partnerId });
+  return bundle ? composePartnerContext(bundle, facilityId, opts) : null;
+}
+
+/**
+ * 予約・請求のように「台帳の施設」で決まる処理用: 取引先をその施設で合成する（オフの施設でも合成する）。
+ * 施設設定の行が無い施設（行の削除など）は、施設名だけ引いて販売しない既定値で補う（メールの差出人・規定の施設を外さない）。
+ * 取引先が無い・Book の施設でなければ null。
+ */
+export async function loadPartnerContextAt(db: SupabaseClient, partnerId: string, facilityId: string): Promise<PartnerContext | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId) || !isBookFacility(facilityId)) return null;
+  const bundle = await loadBundle(db, { id: partnerId });
+  if (!bundle) return null;
+  if (!bundle.facilities.some((f) => f.facility_id === facilityId)) {
+    const meta = (await facilityMeta(db, [facilityId])).get(facilityId);
+    if (!meta) return null;
+    bundle.facilities = [...bundle.facilities, { ...syntheticFacilityRow(bundle.common, facilityId), ...meta, synthetic: true }].sort(facilityOrder);
+  }
+  const ctx = composePartnerContext(bundle, facilityId, { allowDisabled: true });
+  return ctx && ctx.facility_id === facilityId ? ctx : null;
+}
+
+/** 取引先の施設設定の一覧（施設名つき・オン／オフとも・並び順） */
+export async function listPartnerFacilities(db: SupabaseClient, partnerId: string): Promise<PartnerFacilityInfo[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId)) return [];
+  const bundle = await loadBundle(db, { id: partnerId });
+  return bundle?.facilities.filter((f) => !f.synthetic) ?? [];
+}
+
+/** 施設設定の保存で受ける列（rms_partner_facilities） */
+export type PartnerFacilityPatch = Partial<
+  Pick<
+    PartnerFacilityRow,
+    'enabled' | 'booking_enabled' | 'max_days_ahead' | 'show_inventory' | 'include_advance' | 'pricing' | 'payment_method_id' | 'facility_settings' | 'sort_order'
+  >
+>;
+
+/**
+ * 取引先 × 施設の設定を1行保存する（無ければ作る・あれば渡した列だけ更新）。
+ * 施設は Book が扱う施設に限る（§9 の isBookFacility）。
+ */
+export async function savePartnerFacility(
+  db: SupabaseClient,
+  partner: Pick<PartnerCommonRow, 'id' | 'tenant_id'>,
+  facilityId: string,
+  patch: PartnerFacilityPatch,
+  userId: string | null
+): Promise<void> {
+  if (!isBookFacility(facilityId)) throw new PartnerStoreError('この施設には取引先の設定を作れません。', 400, 'bad_facility');
+  const { error } = await db
+    .from('rms_partner_facilities')
+    .upsert(
+      { ...patch, partner_id: partner.id, facility_id: facilityId, tenant_id: partner.tenant_id, updated_by: userId },
+      { onConflict: 'partner_id,facility_id' }
+    );
+  if (error) raise(error, '取引先の施設設定を保存できませんでした。');
 }
 
 // ---- 日付（JST） ----
@@ -207,15 +515,23 @@ export function partnerUnavailableReason(p: Pick<PartnerRow, 'is_active' | 'vali
 // 確かめてから呼ぶこと。ここでは取引先の施設 = 開いている施設の突き合わせ（requireStaffPartner）を必ず行う。
 // ============================================================================
 
-export async function listPartners(db: SupabaseClient, facilityId: string): Promise<PartnerRow[]> {
+// 開いている施設（ab_fac）に施設設定の行がある取引先（オン／オフとも）を、その施設で合成して返す（2026-10-09 複数施設化）。
+export async function listPartners(db: SupabaseClient, facilityId: string): Promise<PartnerContext[]> {
+  const { data: links, error: linkError } = await db.from('rms_partner_facilities').select('partner_id').eq('facility_id', facilityId);
+  if (linkError) raise(linkError, '取引先を読み込めませんでした。');
+  const ids = [...new Set(((links ?? []) as { partner_id: string }[]).map((r) => r.partner_id))];
+  if (!ids.length) return [];
   const { data, error } = await db
     .from('rms_partners')
-    .select(PARTNER_COLUMNS)
-    .eq('facility_id', facilityId)
+    .select(COMMON_COLUMNS)
+    .in('id', ids)
     .order('is_active', { ascending: false })
     .order('name');
   if (error) raise(error, '取引先を読み込めませんでした。');
-  return (data ?? []).map(toPartner);
+  const bundles = await bundlesOf(db, ((data ?? []) as Record<string, unknown>[]).map(toCommon));
+  return bundles
+    .map((b) => composePartnerContext(b, facilityId, { allowDisabled: true }))
+    .filter((p): p is PartnerContext => !!p && p.facility_id === facilityId);
 }
 
 // 取引先ごとのアカウント数・有効 API キー数（一覧表示用）。
@@ -238,13 +554,116 @@ export async function countPartnerCredentials(db: SupabaseClient, partnerIds: st
   return out;
 }
 
-// 取引先を読み、開いている施設のものかを必ず確かめる（別施設の ID を渡されても触らせない）。
-export async function requireStaffPartner(db: SupabaseClient, facilityId: string, partnerId: string): Promise<PartnerRow> {
+// 取引先を読み、開いている施設（ab_fac）に施設設定の行があるかを必ず確かめる（無い施設の取引先は触らせない）。
+// 返すのはその施設で合成した取引先（オフの施設でも合成する・facility_available=false）。
+export async function requireStaffPartner(db: SupabaseClient, facilityId: string, partnerId: string): Promise<PartnerContext> {
   if (!/^[0-9a-f-]{36}$/i.test(partnerId)) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
-  const { data, error } = await db.from('rms_partners').select(PARTNER_COLUMNS).eq('id', partnerId).maybeSingle();
+  const bundle = await loadBundle(db, { id: partnerId });
+  if (!bundle || !bundle.facilities.some((f) => f.facility_id === facilityId && !f.synthetic)) {
+    throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  }
+  const partner = composePartnerContext(bundle, facilityId, { allowDisabled: true });
+  if (!partner || partner.facility_id !== facilityId) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  return partner;
+}
+
+// ---- 管理画面の詳細（共通セクション × 施設タブ・複数施設化 S3・§7.12・2026-10-09） ----
+
+/** Book が扱う施設の slug・名前（施設タブ・一覧の施設バッジ用）。並びは Book の施設の並び */
+export async function bookFacilityMeta(db: SupabaseClient): Promise<{ id: string; slug: string; name: string }[]> {
+  const meta = await facilityMeta(db, BOOK_FACILITY_ORDER);
+  return BOOK_FACILITY_ORDER.filter((id) => meta.has(id)).map((id) => ({ id, ...meta.get(id)! }));
+}
+
+/** 管理画面の取引先の詳細: 取引先（共通＋施設設定）・選んだ施設で合成したもの・その施設の設定の行（無ければ null） */
+export type StaffPartnerView = { bundle: PartnerBundle; partner: PartnerContext; row: PartnerFacilityInfo | null };
+
+/**
+ * 管理画面で取引先を開く（§7.12: ab_fac を切り替えても一覧へ戻さない）。見せてよいのは、
+ *   - スタッフのテナントの取引先で、
+ *   - 施設設定の行がある施設のどれか（ab_fac の施設を含む）にスタッフがアクセスできるもの（canAccess で確かめる）。
+ *     行が1つも無い取引先（行の削除・バックフィル漏れ）は、施設をオンにし直せるよう見せる。
+ * 合成は facilityId（施設タブ）の施設で行う。その施設に行が無ければ、販売しない既定値で補って合成する
+ * （タブには「この施設では販売していません」を出す・row は null）。どれにも当たらなければ 404。
+ */
+export async function loadStaffPartnerView(
+  db: SupabaseClient,
+  partnerId: string,
+  opts: { tenantId: string; facilityId: string; canAccess: (facilityId: string) => Promise<boolean> }
+): Promise<StaffPartnerView> {
+  const notFound = () => new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  if (!/^[0-9a-f-]{36}$/i.test(partnerId) || !isBookFacility(opts.facilityId)) throw notFound();
+  const bundle = await loadBundle(db, { id: partnerId });
+  if (!bundle || bundle.common.tenant_id !== opts.tenantId) throw notFound();
+  const real = bundle.facilities.filter((f) => !f.synthetic);
+  if (real.length) {
+    let allowed = false;
+    for (const f of real) {
+      if (await opts.canAccess(f.facility_id)) {
+        allowed = true;
+        break;
+      }
+    }
+    if (!allowed) throw notFound();
+  }
+  // 補った行（synthetic）は取り除き、タブの施設に行が無ければその施設だけ補う
+  const view: PartnerBundle = { common: bundle.common, facilities: real };
+  const row = real.find((f) => f.facility_id === opts.facilityId) ?? null;
+  if (!row) {
+    const meta = (await facilityMeta(db, [opts.facilityId])).get(opts.facilityId);
+    if (!meta) throw notFound();
+    view.facilities = [...real, { ...syntheticFacilityRow(bundle.common, opts.facilityId), ...meta, synthetic: true }].sort(facilityOrder);
+  }
+  const partner = composePartnerContext(view, opts.facilityId, { allowDisabled: true });
+  if (!partner || partner.facility_id !== opts.facilityId) throw notFound();
+  return { bundle: view, partner, row };
+}
+
+/**
+ * 「すべて」の一覧（N8）: テナントの取引先すべてを返す。ab_fac の施設に行があればその施設で、無ければ既定の施設で合成する
+ * （施設のバッジは facilities を見る）。onCurrent = ab_fac の施設に施設設定の行がある。
+ */
+export async function listTenantPartners(
+  db: SupabaseClient,
+  tenantId: string,
+  facilityId: string
+): Promise<{ partner: PartnerContext; onCurrent: boolean }[]> {
+  const { data, error } = await db
+    .from('rms_partners')
+    .select(COMMON_COLUMNS)
+    .eq('tenant_id', tenantId)
+    .order('is_active', { ascending: false })
+    .order('name');
   if (error) raise(error, '取引先を読み込めませんでした。');
-  if (!data || data.facility_id !== facilityId) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
-  return toPartner(data);
+  const bundles = await bundlesOf(db, ((data ?? []) as Record<string, unknown>[]).map(toCommon));
+  const out: { partner: PartnerContext; onCurrent: boolean }[] = [];
+  for (const b of bundles) {
+    const onCurrent = b.facilities.some((f) => f.facility_id === facilityId && !f.synthetic);
+    const partner = composePartnerContext(b, onCurrent ? facilityId : null, { allowDisabled: true });
+    if (partner) out.push({ partner, onCurrent });
+  }
+  return out;
+}
+
+/**
+ * 共通セクションの保存（?/saveCommon）: rms_partners の共通の列と booking_settings（共通の部分・N6 の既定）だけを書く。
+ * 施設の行（rms_partner_facilities）には触らない（施設タブの未保存の編集・施設の上書きを消さない）。
+ */
+export async function updatePartnerCommon(
+  db: SupabaseClient,
+  partner: Pick<PartnerCommonRow, 'id' | 'common_settings'>,
+  userId: string | null,
+  input: Pick<PartnerSettingsInput, (typeof COMMON_INPUT_KEYS)[number]> & { booking_settings: PartnerBookingSettings }
+): Promise<Record<string, unknown>> {
+  const common: Record<string, unknown> = {};
+  for (const k of COMMON_INPUT_KEYS) common[k] = input[k];
+  const bookingSettings = buildPartnerCommonSettings(partner.common_settings, input.booking_settings);
+  const { error } = await db
+    .from('rms_partners')
+    .update({ ...common, booking_settings: bookingSettings, updated_by: userId })
+    .eq('id', partner.id);
+  if (error) raise(error, '取引先を保存できませんでした。');
+  return bookingSettings;
 }
 
 export type PartnerSettingsInput = {
@@ -264,39 +683,92 @@ export type PartnerSettingsInput = {
   booking_settings: PartnerBookingSettings;
 };
 
+// 取引先共通（rms_partners）の列と、施設ごと（rms_partner_facilities）の列
+const COMMON_INPUT_KEYS = ['name', 'kind', 'contact_name', 'contact_email', 'is_active', 'valid_from', 'valid_until', 'note'] as const;
+const FACILITY_INPUT_KEYS = ['max_days_ahead', 'show_inventory', 'include_advance', 'pricing', 'booking_enabled'] as const;
+
+/**
+ * 画面の設定（共通と施設が混ざった形）を、rms_partners と rms_partner_facilities の更新に振り分ける（§4・§5.2）。
+ * booking_settings は splitPartnerBookingSettings で分ける。共通の jsonb には、Phase D まで残る旧い施設ごとのキー
+ * （planNames など）を今の値のまま残す（書き換えない・巻き戻し時の互換）。施設の jsonb は今の値に重ねる
+ * （上書き中の N6 キーは施設へ戻す）。
+ */
+function splitSettingsInput(
+  current: Pick<PartnerCommonRow, 'common_settings'> & { facility_settings: Record<string, unknown> },
+  input: Partial<PartnerSettingsInput>
+): { common: Record<string, unknown>; facility: PartnerFacilityPatch } {
+  const common: Record<string, unknown> = {};
+  const facility: Record<string, unknown> = {};
+  for (const k of COMMON_INPUT_KEYS) if (input[k] !== undefined) common[k] = input[k];
+  for (const k of FACILITY_INPUT_KEYS) if (input[k] !== undefined) facility[k] = input[k];
+  if (input.booking_settings) {
+    const split = splitPartnerBookingSettings(input.booking_settings, partnerFacilityOverrides(current.facility_settings));
+    const legacy = Object.fromEntries(
+      PARTNER_FACILITY_SETTING_KEYS.filter((k) => k in current.common_settings).map((k) => [k, current.common_settings[k]])
+    );
+    common.booking_settings = { ...legacy, ...split.common };
+    facility.facility_settings = { ...current.facility_settings, ...split.facility };
+  }
+  return { common, facility: facility as PartnerFacilityPatch };
+}
+
+/**
+ * 取引先を作る。共通の行（rms_partners）と、作った施設（管理画面の施設）の施設設定を1行作る。
+ * 旧 facility_id は Phase D まで互換で入れる（他アプリ・旧い DB 関数の経路のため）。primary_facility_id も同じ施設。
+ */
 export async function createPartner(
   db: SupabaseClient,
   scope: { tenantId: string; facilityId: string; userId: string | null },
   input: PartnerSettingsInput
-): Promise<PartnerRow> {
+): Promise<PartnerContext> {
+  if (!isBookFacility(scope.facilityId)) throw new PartnerStoreError('この施設には取引先を作れません。', 400, 'bad_facility');
+  const split = splitSettingsInput({ common_settings: {}, facility_settings: {} }, input);
   const { data, error } = await db
     .from('rms_partners')
     .insert({
-      ...input,
+      ...split.common,
       tenant_id: scope.tenantId,
       facility_id: scope.facilityId,
+      primary_facility_id: scope.facilityId,
       url_token: randomToken(18),
       created_by: scope.userId,
       updated_by: scope.userId
     })
-    .select(PARTNER_COLUMNS)
+    .select('id')
     .single();
   if (error) raise(error, '取引先を登録できませんでした。');
-  return toPartner(data);
+  const id = String(data.id);
+  try {
+    await savePartnerFacility(db, { id, tenant_id: scope.tenantId }, scope.facilityId, { ...split.facility, enabled: true }, scope.userId);
+  } catch (e) {
+    // 施設設定を作れなければ取引先も残さない（施設の無い取引先を作らない）
+    await db.from('rms_partners').delete().eq('id', id);
+    throw e;
+  }
+  const created = await loadPartnerContext(db, id, scope.facilityId, { allowDisabled: true });
+  if (!created) throw new PartnerStoreError('取引先を登録できませんでした。', 500, 'db_error');
+  return created;
 }
 
+/**
+ * 取引先の設定を保存する。共通の項目は rms_partners、施設の項目は「いま合成している施設」（partner.facility_id・
+ * 管理画面では ab_fac の施設）の rms_partner_facilities へ。rms_partners の旧い施設の列は書かない（§5.2）。
+ */
 export async function updatePartner(
   db: SupabaseClient,
   partner: PartnerRow,
   userId: string | null,
   input: Partial<PartnerSettingsInput>
 ): Promise<void> {
-  const { error } = await db
-    .from('rms_partners')
-    .update({ ...input, updated_by: userId })
-    .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id);
-  if (error) raise(error, '取引先を保存できませんでした。');
+  const split = splitSettingsInput(partner, input);
+  if (Object.keys(split.common).length) {
+    const { error } = await db
+      .from('rms_partners')
+      .update({ ...split.common, updated_by: userId })
+      .eq('id', partner.id);
+    if (error) raise(error, '取引先を保存できませんでした。');
+  }
+  if (Object.keys(split.facility).length) await savePartnerFacility(db, partner, partner.facility_id, split.facility, userId);
 }
 
 // ============================================================================
@@ -384,7 +856,7 @@ export async function setPartnerPmsGuest(
   partnerId: string,
   guestId: string | null,
   userId: string | null = null
-): Promise<{ partner: PartnerRow; guest: PmsPartnerGuest | null }> {
+): Promise<{ partner: PartnerContext; guest: PmsPartnerGuest | null }> {
   const partner = await requireStaffPartner(db, facilityId, partnerId);
   let guest: PmsPartnerGuest | null = null;
   if (guestId) {
@@ -394,8 +866,7 @@ export async function setPartnerPmsGuest(
   const { error } = await db
     .from('rms_partners')
     .update({ pms_guest_id: guest?.id ?? null, updated_by: userId })
-    .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id);
+    .eq('id', partner.id);
   if (error) raise(error, 'PMS の顧客との紐づけを保存できませんでした。');
   return { partner: { ...partner, pms_guest_id: guest?.id ?? null }, guest };
 }
@@ -411,7 +882,7 @@ export async function setPartnerBookingNameMode(
   partnerId: string,
   mode: BookingNameMode,
   userId: string | null = null
-): Promise<PartnerRow> {
+): Promise<PartnerContext> {
   const partner = await requireStaffPartner(db, facilityId, partnerId);
   if (mode === 'partner') {
     const guest = await getPmsPartnerGuest(db, partner.tenant_id, partner.pms_guest_id);
@@ -423,11 +894,10 @@ export async function setPartnerBookingNameMode(
     .from('rms_partners')
     .update({ booking_name_mode: mode, updated_by: userId })
     .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id)
-    .select(PARTNER_COLUMNS)
+    .select('booking_name_mode')
     .single();
   if (error) raise(error, '予約名義を保存できませんでした。');
-  const saved = toPartner(data);
+  const saved = { ...partner, booking_name_mode: normalizeBookingNameMode(data.booking_name_mode) };
   // トリガーで guest に戻された（同時に紐づけが外れた等）なら、そのことを伝える
   if (saved.booking_name_mode !== mode) {
     throw new PartnerStoreError('予約名義を「旅行会社名で取る」にできませんでした（紐づけが外れています）。画面を読み直してください。', 409, 'not_linked');
@@ -527,22 +997,25 @@ export async function setPartnerCreditDeposit(
   partnerId: string,
   input: { deposit: CreditDeposit; remainder: CreditDepositRemainder | null },
   userId: string | null = null
-): Promise<PartnerRow> {
+): Promise<PartnerContext> {
   const partner = await requireStaffPartner(db, facilityId, partnerId);
-  const settings = normalizePartnerBookingSettings({
-    ...partner.booking_settings,
-    creditDeposit: input.deposit,
-    creditDepositRemainder: input.remainder
-  });
-  const { data, error } = await db
+  // デポジットは取引先共通のキー（§4.2）。共通の jsonb の2キーだけを差し替える（他のキーは今の DB の値のまま）
+  const normalized = normalizePartnerBookingSettings({ creditDeposit: input.deposit, creditDepositRemainder: input.remainder });
+  const commonSettings = {
+    ...partner.common_settings,
+    creditDeposit: normalized.creditDeposit,
+    creditDepositRemainder: normalized.creditDepositRemainder
+  };
+  const { error } = await db
     .from('rms_partners')
-    .update({ booking_settings: settings, updated_by: userId })
-    .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id)
-    .select(PARTNER_COLUMNS)
-    .single();
+    .update({ booking_settings: commonSettings, updated_by: userId })
+    .eq('id', partner.id);
   if (error) raise(error, 'デポジットの設定を保存できませんでした。');
-  return toPartner(data);
+  return {
+    ...partner,
+    common_settings: commonSettings,
+    booking_settings: normalizePartnerBookingSettings(commonSettings, partner.facility_settings)
+  };
 }
 
 /** 超過時の挙動を保存する（deposit / warn / ignore）。 */
@@ -552,18 +1025,17 @@ export async function setPartnerCreditOverAction(
   partnerId: string,
   action: CreditOverAction,
   userId: string | null = null
-): Promise<PartnerRow> {
+): Promise<PartnerContext> {
   if (!isSelectableCreditOverAction(action)) throw new PartnerStoreError('超過時の挙動の指定が正しくありません。');
   const partner = await requireStaffPartner(db, facilityId, partnerId);
   const { data, error } = await db
     .from('rms_partners')
     .update({ credit_over_action: action, updated_by: userId })
     .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id)
-    .select(PARTNER_COLUMNS)
+    .select('credit_over_action')
     .single();
   if (error) raise(error, '超過時の挙動を保存できませんでした。');
-  return toPartner(data);
+  return { ...partner, credit_over_action: normalizeCreditOverAction(data.credit_over_action) };
 }
 
 /**
@@ -590,24 +1062,24 @@ export async function pmsGuestFormalNames(
 }
 
 // 限定URLを作り直す（旧URLは即無効。ログイン中のセッションも切る）。
-export async function regeneratePartnerUrl(db: SupabaseClient, partner: PartnerRow, userId: string | null): Promise<string> {
+export async function regeneratePartnerUrl(db: SupabaseClient, partner: Pick<PartnerRow, 'id'>, userId: string | null): Promise<string> {
   const token = randomToken(18);
   const { error } = await db
     .from('rms_partners')
     .update({ url_token: token, updated_by: userId })
-    .eq('id', partner.id)
-    .eq('facility_id', partner.facility_id);
+    .eq('id', partner.id);
   if (error) raise(error, '限定URLを再発行できませんでした。');
   await revokeSessionsOfPartner(db, partner.id);
   return token;
 }
 
-export async function deletePartner(db: SupabaseClient, partner: PartnerRow): Promise<void> {
+export async function deletePartner(db: SupabaseClient, partner: Pick<PartnerRow, 'id'>): Promise<void> {
   // 覚書ファイルの実体（Storage）を先に消す。台帳は FK cascade で消える
   await removeAllPartnerDocumentFiles(db, partner.id);
   // 取引先予約の添付ファイルの実体も（2026-10-07。台帳は FK cascade。PMS の写しの行は PMS の運用に任せる）
   await removeAllBookingAttachmentFiles(db, partner.id);
-  const { error } = await db.from('rms_partners').delete().eq('id', partner.id).eq('facility_id', partner.facility_id);
+  // 施設設定（rms_partner_facilities）は FK cascade で消える
+  const { error } = await db.from('rms_partners').delete().eq('id', partner.id);
   if (error) raise(error, '取引先を削除できませんでした。');
 }
 
@@ -771,21 +1243,21 @@ async function revokeSessionsOfPartner(db: SupabaseClient, partnerId: string) {
 // 取引先側（限定URL・API）
 // ============================================================================
 
-async function withFacility(db: SupabaseClient, row: Record<string, unknown>): Promise<PartnerContext | null> {
-  const partner = toPartner(row);
-  // Book が扱っていない施設の取引先は「見つからない」扱い（別施設の料金・予約を出さない）。
-  if (!isBookFacility(partner.facility_id)) return null;
-  const { data } = await db.schema('core').from('facilities').select('slug, name').eq('id', partner.facility_id).maybeSingle();
-  if (!data?.slug) return null;
-  return { ...partner, facility_slug: String(data.slug), facility_name: String(data.name ?? data.slug) };
+/**
+ * 限定URLのトークンから取引先を引く（共通の行と施設設定の束）。無ければ null（存在の有無は取引先に区別させない）。
+ * 施設の選択（クッキー・?f=）は portal.ts の resolvePortal が行い、composePartnerContext で合成する。
+ */
+export async function findPartnerBundleByUrlToken(db: SupabaseClient, urlToken: string): Promise<PartnerBundle | null> {
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(urlToken)) return null;
+  const bundle = await loadBundle(db, { urlToken });
+  // Book が扱う施設の設定が1つも無い取引先は「見つからない」扱い（別施設の料金・予約を出さない）
+  return bundle && bundle.facilities.length ? bundle : null;
 }
 
-// 限定URLのトークンから取引先を引く。無ければ null（存在の有無は取引先に区別させない）。
-export async function findPartnerByUrlToken(db: SupabaseClient, urlToken: string): Promise<PartnerContext | null> {
-  if (!/^[A-Za-z0-9_-]{16,64}$/.test(urlToken)) return null;
-  const { data, error } = await db.from('rms_partners').select(PARTNER_COLUMNS).eq('url_token', urlToken).maybeSingle();
-  if (error) raise(error, '取引先を読み込めませんでした。');
-  return data ? withFacility(db, data) : null;
+// 限定URLのトークンから取引先を引き、施設を選んで合成する（facilityId 省略 = 既定の施設）。
+export async function findPartnerByUrlToken(db: SupabaseClient, urlToken: string, facilityId?: string | null): Promise<PartnerContext | null> {
+  const bundle = await findPartnerBundleByUrlToken(db, urlToken);
+  return bundle ? composePartnerContext(bundle, facilityId) : null;
 }
 
 export type RequestMeta = { ip: string | null; userAgent: string | null };
@@ -991,7 +1463,7 @@ export async function setPartnerPassword(
 export async function findPartnerByApiKey(
   db: SupabaseClient,
   apiKey: string
-): Promise<{ partner: PartnerContext; apiKeyId: string } | null> {
+): Promise<{ partner: PartnerContext; apiKeyId: string; bundle: PartnerBundle } | null> {
   if (!apiKey.startsWith(API_KEY_PREFIX) || apiKey.length > 128) return null;
   const { data, error } = await db
     .from('rms_partner_api_keys')
@@ -1001,14 +1473,14 @@ export async function findPartnerByApiKey(
   if (error) raise(error, 'API キーを確認できませんでした。');
   const key = data as { id: string; partner_id: string; revoked_at: string | null; last_used_at: string | null } | null;
   if (!key || key.revoked_at) return null;
-  const { data: partnerRow, error: partnerError } = await db.from('rms_partners').select(PARTNER_COLUMNS).eq('id', key.partner_id).maybeSingle();
-  if (partnerError) raise(partnerError, '取引先を読み込めませんでした。');
-  const partner = partnerRow ? await withFacility(db, partnerRow) : null;
-  if (!partner) return null;
+  // 施設は既定の施設（primary → オンの先頭）で合成して返す。API の facility 指定（§7.10）は呼び出し側が bundle で合成し直す
+  const bundle = await loadBundle(db, { id: key.partner_id });
+  const partner = bundle?.facilities.length ? composePartnerContext(bundle, null) : null;
+  if (!bundle || !partner) return null;
   if (!key.last_used_at || Date.now() - new Date(key.last_used_at).getTime() > 5 * 60_000) {
     await db.from('rms_partner_api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', key.id);
   }
-  return { partner, apiKeyId: key.id };
+  return { partner, apiKeyId: key.id, bundle };
 }
 
 

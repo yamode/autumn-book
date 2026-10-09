@@ -78,7 +78,7 @@
   let seq = 0;
   $effect(() => {
     void requote;
-    const body = { roomCode: init.target.roomCode, planCode: init.target.planCode, planName: init.target.planName, checkIn, nights, rooms: adults.map((a) => ({ adults: a })) };
+    const body = { facilityId: data.portal.facilityId, roomCode: init.target.roomCode, planCode: init.target.planCode, planName: init.target.planName, checkIn, nights, rooms: adults.map((a) => ({ adults: a })) };
     const mine = ++seq;
     quoting = true;
     const t = setTimeout(async () => {
@@ -434,6 +434,8 @@
     }}
     class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start"
   >
+    <!-- 予約する施設（画面を開いたときの施設。サーバはこの施設で見積・確定する・2026-10-09 複数施設化） -->
+    <input type="hidden" name="facility_id" value={data.portal.facilityId} />
     <input type="hidden" name="room_code" value={data.target.roomCode} />
     <input type="hidden" name="plan_code" value={data.target.planCode} />
     <input type="hidden" name="plan_name" value={data.target.planName} />
@@ -601,7 +603,7 @@
           {#if attachmentsReset}<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{attachmentsReset}</p>{/if}
           <PartnerAttachments
             bind:items={attachments}
-            uploadUrl={data.portal.preview ? null : `/p/${token}/book/attachments`}
+            uploadUrl={data.portal.preview ? null : `/p/${token}/book/attachments?facility_id=${encodeURIComponent(data.portal.facilityId)}`}
             accept={data.attachments.accept}
             hint={data.attachments.hint}
             note={data.portal.preview ? '管理者の確認モードのため、添付ファイルは追加できません。' : null}

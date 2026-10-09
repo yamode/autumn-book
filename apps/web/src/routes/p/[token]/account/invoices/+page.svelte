@@ -43,7 +43,10 @@
         <tbody class="divide-y divide-stone-100">
           {#each data.invoices as inv (inv.id)}
             <tr>
-              <td class="whitespace-nowrap px-4 py-3 font-medium">{ym(inv.period)}</td>
+              <td class="whitespace-nowrap px-4 py-3 font-medium">
+                {ym(inv.period)}
+                {#if inv.facilityNames.length}<div class="text-xs font-normal text-stone-500">{inv.facilityNames.join('・')}</div>{/if}
+              </td>
               <td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{inv.invoiceNo}</td>
               <td class="whitespace-nowrap px-4 py-3">{ymd(inv.issueDate)}</td>
               <td class="whitespace-nowrap px-4 py-3 text-right">
@@ -67,6 +70,7 @@
             <span class="font-bold">{ym(inv.period)}分</span>
             <span class="font-mono text-xs text-stone-500">{inv.invoiceNo}</span>
           </div>
+          {#if inv.facilityNames.length}<p class="mt-0.5 text-xs text-stone-500">{inv.facilityNames.join('・')}</p>{/if}
           <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
             <dt class="text-stone-500">ご請求額</dt>
             <dd>{#if inv.billedTotal > 0}{yen(inv.billedTotal)}{:else}0円（ご利用明細書のみ）{/if}</dd>

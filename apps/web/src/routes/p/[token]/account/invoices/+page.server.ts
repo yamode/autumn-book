@@ -1,4 +1,4 @@
-import { listPartnerInvoices } from '$lib/server/partners/invoices';
+import { listPartnerInvoices, partnerInvoiceFacilityNames } from '$lib/server/partners/invoices';
 import { portalHeader, PORTAL_HEADERS, requirePortalSession } from '$lib/server/partners/portal';
 
 // 取引先専用ページ: アカウント → ご請求書（月次のご利用明細書＋ご請求書（適格請求書）。2026-10-01 追加）。
@@ -16,7 +16,9 @@ export const load = async (event) => {
       issueDate: r.issue_date,
       dueDate: r.due_date,
       billedTotal: r.billed_total,
-      usageTotal: r.usage_total
+      usageTotal: r.usage_total,
+      // 載っている施設（全施設分1枚・2026-10-09 N3）。行に小さく出す
+      facilityNames: partnerInvoiceFacilityNames(r)
     }));
   return {
     portal: portalHeader(partner, session),

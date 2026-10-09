@@ -36,7 +36,8 @@ export async function loadPortalMonth(
   const end = new Date(Date.UTC(q.year, q.month, 0)).toISOString().slice(0, 10);
   const range = clampPartnerRange(partner, start, end, today);
   const latest = range?.latest ?? addDaysIso(today, partner.max_days_ahead);
-  const rates = range
+  // オンの施設が無い取引先（N9）は料金を出さない
+  const rates = range && partner.facility_available
     ? await loadPartnerRates(db, partner, range, { guests: [q.guests] })
     : { days: [], rooms: [] };
   return {

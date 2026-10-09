@@ -39,8 +39,8 @@ export async function loadStayPage(event: Pick<RequestEvent, 'params' | 'cookies
       ? partnerCreditCheck(db, partner, creditMonths).catch(() => null)
       : Promise.resolve(null);
   const [contents, , facility, terms, credit] = await Promise.all([
-    // 写真・紹介（読めなくても一覧は出す）
-    loadPartnerContents(db, partner).catch(() => ({ rooms: [], plans: [] })),
+    // 写真・紹介（読めなくても一覧は出す）。オンの施設が無い取引先（N9）は出さない（ヘッダーの下に案内）
+    partner.facility_available ? loadPartnerContents(db, partner).catch(() => ({ rooms: [], plans: [] })) : Promise.resolve({ rooms: [], plans: [] }),
     logPartnerAccess(db, {
       partnerId: partner.id,
       accountId: session.id,

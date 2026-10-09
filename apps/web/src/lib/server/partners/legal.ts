@@ -1,6 +1,7 @@
 // 取引先専用ページの「特定商取引法に基づく表記」（2026-10-06 指示: 取引先向けに書き直す）。
 // 公式サイト（一般のお客様向け・lib/server/store.ts の legalPages.tokushoho）とは別の文面。
-// お支払い方法・お支払い時期・取消の期限は、その取引先の設定（rms_partners.booking_settings）から書き出す。
+// お支払い方法・お支払い時期・取消の期限は、その取引先の設定（選んでいる施設で合成した booking_settings）から書き出す。
+// 宿泊施設の欄は取引先ページで選んでいる施設（複数施設化 §7.2・2026-10-09）。ほかの施設の表記へのリンクはページ側（?f=）。
 // 事業者・連絡先は公式サイトの表記と同じ内容（変えるときは両方を直す）。
 import { DEPOSIT_PAYMENT_LABEL, describeDeadline, describeInvoiceDue, isStripePaymentOption, paymentOptionLabel } from '$lib/partner-booking';
 import { isBillablePaymentOption } from '$lib/partner-invoice';
@@ -8,6 +9,7 @@ import { availablePaymentOptions, creditOverPaymentOptions } from './booking';
 import type { PartnerContext } from './store';
 import { adminFeeNotice, DEFAULT_ADMIN_FEE_PERCENT } from '$lib/cancel-admin-fee';
 
+// 事業者（会社で1つ）。施設ごとの連絡先は FACILITY_CONTACTS（選んでいる施設を先に出す・2026-10-09 複数施設化 §7.2）
 const COMPANY = `## 販売事業者
 
 株式会社山人
@@ -22,20 +24,34 @@ const COMPANY = `## 販売事業者
 
 ## 所在地
 
-〒029-5514 岩手県和賀郡西和賀町湯川52-71-10
+〒029-5514 岩手県和賀郡西和賀町湯川52-71-10`;
 
-## 連絡先
+const COMPANY_CONTACT = `- 電話：0197-82-2222
+- メール：info@yamado.co.jp`;
 
-- 電話：0197-82-2222
-- メール：info@yamado.co.jp
+/** 宿泊施設の連絡先（core.facilities の slug → 表記）。公式サイトの表記と同じ内容（変えるときは両方を直す） */
+const FACILITY_CONTACTS: { slug: string; name: string; address: string; tel: string; email: string }[] = [
+  { slug: 'yamado', name: '山人-yamado-', address: '岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222', email: 'info@yamado.co.jp' },
+  { slug: 'oga', name: '山人-oga-', address: '秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776', email: 'info@oga.yamado.co.jp' }
+];
 
-各施設へのお問い合わせは、次の連絡先でも承ります。
-
-- 山人-yamado-（岩手県和賀郡西和賀町湯川52-71-10）：0197-82-2222 ／ info@yamado.co.jp
-- 山人-oga-（秋田県男鹿市船川港台島字鵜ノ崎62-29）：0185-47-7776 ／ info@oga.yamado.co.jp`;
+/**
+ * 事業者・宿泊施設・連絡先の欄（純関数）。facilitySlug = 取引先ページで選んでいる施設。
+ * 選んでいる施設を「宿泊施設」に書き、連絡先の施設一覧でも先頭にする。知らない施設なら施設の欄は出さず一覧だけ（従来どおり）。
+ */
+export function tokushohoCompanySection(facilitySlug?: string | null): string {
+  const selected = FACILITY_CONTACTS.find((f) => f.slug === facilitySlug) ?? null;
+  const ordered = selected ? [selected, ...FACILITY_CONTACTS.filter((f) => f !== selected)] : FACILITY_CONTACTS;
+  const facility = selected
+    ? `\n\n## 宿泊施設\n\n${selected.name}\n\n- 所在地：${selected.address}\n- 電話：${selected.tel}\n- メール：${selected.email}`
+    : '';
+  const list = ordered.map((f) => `- ${f.name}（${f.address}）：${f.tel} ／ ${f.email}`).join('\n');
+  return `${COMPANY}${facility}\n\n## 連絡先\n\n${COMPANY_CONTACT}\n\n各施設へのお問い合わせは、次の連絡先でも承ります。\n\n${list}`;
+}
 
 export function partnerTokushoho(
-  partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'> & Partial<Pick<PartnerContext, 'credit_over_action' | 'pms_guest_id'>>,
+  partner: Pick<PartnerContext, 'name' | 'facility_name' | 'booking_settings'> &
+    Partial<Pick<PartnerContext, 'credit_over_action' | 'pms_guest_id' | 'facility_slug'>>,
   // 予約時決済の事務手数料（取消時に返金しない率・施設の設定 book.payment_settings・2026-10-07）
   adminFeePercent: number = DEFAULT_ADMIN_FEE_PERCENT
 ): { title: string; body: string } {
@@ -96,7 +112,7 @@ export function partnerTokushoho(
   const body = `このページは、${partner.facility_name}と取引のある法人・旅行会社等のお客様（以下「貴社」）専用の予約ページです。
 一般のお客様向けの表記は、公式サイトに掲載します。
 
-${COMPANY}
+${tokushohoCompanySection(partner.facility_slug)}
 
 ## 販売価格
 

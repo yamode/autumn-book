@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizePartnerBookingSettings } from '$lib/partner-booking';
-import { partnerTokushoho } from './legal';
+import { partnerTokushoho, tokushohoCompanySection } from './legal';
 
 describe('partnerTokushoho', () => {
   const settings = normalizePartnerBookingSettings({
@@ -19,5 +19,25 @@ describe('partnerTokushoho', () => {
   });
   it('使っていないオンライン決済の返金の説明は出さない', () => {
     expect(doc.body).not.toContain('クレジットカードへ返金');
+  });
+});
+
+// 特商法の宿泊施設の欄は選んでいる施設（複数施設化 §7.2・2026-10-09）
+describe('tokushohoCompanySection', () => {
+  it('選んでいる施設を「宿泊施設」に書き、連絡先の一覧でも先頭にする', () => {
+    const oga = tokushohoCompanySection('oga');
+    expect(oga).toContain('## 宿泊施設\n\n山人-oga-');
+    expect(oga.indexOf('- 山人-oga-（')).toBeLessThan(oga.indexOf('- 山人-yamado-（'));
+    expect(oga).toContain('株式会社山人');
+  });
+  it('知らない施設なら施設の欄は出さず一覧だけ（従来どおり）', () => {
+    const doc = tokushohoCompanySection(null);
+    expect(doc).not.toContain('## 宿泊施設');
+    expect(doc.indexOf('- 山人-yamado-（')).toBeLessThan(doc.indexOf('- 山人-oga-（'));
+  });
+  it('partnerTokushoho は facility_slug の施設で書く', () => {
+    const settings = normalizePartnerBookingSettings({ paymentOptions: ['invoice_monthly'] });
+    const doc = partnerTokushoho({ name: '取引先', facility_name: '山人-yamado-', facility_slug: 'yamado', booking_settings: settings });
+    expect(doc.body).toContain('## 宿泊施設\n\n山人-yamado-');
   });
 });
