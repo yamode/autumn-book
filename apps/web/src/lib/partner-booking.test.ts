@@ -34,7 +34,11 @@ import {
   paymentOptionLabel,
   perksForPlan,
   resolveTransport,
-  validateBooker
+  validateBooker,
+  mergePartnerSettingsRaw,
+  splitPartnerBookingSettings,
+  partnerFacilityOverrides,
+  PARTNER_FACILITY_SETTING_KEYS
 } from './partner-booking';
 
 describe('normalizePartnerBookingSettings', () => {
@@ -382,5 +386,109 @@ describe('デポジット（Phase 3b・受付枠を超えた予約）', () => {
     expect(depositStateOf(b)).toEqual({ deposit: 30450, remainder: 71050 });
     expect(intentAmountOf({ ...b, payment_option: 'online' })).toBe(101500);
     expect(depositStateOf({ ...b, payment_option: 'online' })).toBeNull();
+  });
+});
+
+// 複数施設化（docs/partner-multi-facility.md §4.2・決定 N6・2026-10-09）: 共通 ‖ 施設 の合成と保存時の振り分け
+describe('normalizePartnerBookingSettings（共通＋施設の合成・N6）', () => {
+  const common = {
+    leadDays: 3,
+    cutoffHour: 17,
+    maxRooms: 4,
+    maxNights: 5,
+    cancelDays: 2,
+    prepayDiscount: { type: 'percent', value: 5 },
+    notice: '共通の案内',
+    paymentOptions: ['invoice_monthly', 'online']
+  };
+
+  it('1引数の呼び出しは従来どおり', () => {
+    expect(normalizePartnerBookingSettings(common)).toEqual(normalizePartnerBookingSettings(common, undefined));
+    expect(normalizePartnerBookingSettings(common).leadDays).toBe(3);
+  });
+
+  it('施設にキーが無ければ共通の値', () => {
+    const s = normalizePartnerBookingSettings(common, {});
+    expect(s.leadDays).toBe(3);
+    expect(s.cancelDays).toBe(2);
+    expect(s.prepayDiscount).toEqual({ type: 'percent', value: 5 });
+    expect(s.notice).toBe('共通の案内');
+    expect(normalizePartnerBookingSettings(common, null).leadDays).toBe(3);
+  });
+
+  it('0・空文字・空配列・false も「値あり」として上書きする', () => {
+    const s = normalizePartnerBookingSettings(
+      { ...common, showOfficialPerks: true, notifyEmails: ['a@example.com'] },
+      { leadDays: 0, cancelDays: 0, notice: '', notifyEmails: [], showOfficialPerks: false }
+    );
+    expect(s.leadDays).toBe(0);
+    expect(s.cancelDays).toBe(0);
+    expect(s.notice).toBe('');
+    expect(s.notifyEmails).toEqual([]);
+    expect(s.showOfficialPerks).toBe(false);
+  });
+
+  it('null も上書き（cancelDays: null = 画面から取り消せない）', () => {
+    expect(normalizePartnerBookingSettings(common, { cancelDays: null }).cancelDays).toBeNull();
+  });
+
+  it('undefined の値は「キーが無い」と同じ（JSON に残らないため）', () => {
+    const s = normalizePartnerBookingSettings(common, { leadDays: undefined, notice: undefined });
+    expect(s.leadDays).toBe(3);
+    expect(s.notice).toBe('共通の案内');
+  });
+
+  it('prepayDiscount はオブジェクトごと上書き（type と value を別々に継承しない）', () => {
+    expect(normalizePartnerBookingSettings(common, { prepayDiscount: { type: 'none' } }).prepayDiscount).toEqual({ type: 'none', value: 0 });
+    expect(normalizePartnerBookingSettings(common, { prepayDiscount: { type: 'yen', value: 1000 } }).prepayDiscount).toEqual(
+      normalizePrepayDiscount({ type: 'yen', value: 1000 })
+    );
+  });
+
+  it('共通だけのキー（支払方法）は施設にあっても SQL と同じく上書きされる（キーの有無だけで判定）', () => {
+    expect(normalizePartnerBookingSettings(common, { paymentOptions: ['online'] }).paymentOptions).toEqual(['online']);
+  });
+
+  it('mergePartnerSettingsRaw は SQL の common || facility と同じ（トップレベルのキーで上書き）', () => {
+    expect(mergePartnerSettingsRaw({ a: 1, b: { x: 1 } }, { b: { y: 2 }, c: 0 })).toEqual({ a: 1, b: { y: 2 }, c: 0 });
+    expect(mergePartnerSettingsRaw(null, null)).toEqual({});
+  });
+});
+
+describe('splitPartnerBookingSettings（保存時の振り分け）', () => {
+  const s = normalizePartnerBookingSettings({
+    planNames: { a001: '取引先向け' },
+    notice: '案内',
+    notifyEmails: ['a@example.com'],
+    leadDays: 2,
+    prepayDiscount: { type: 'percent', value: 5 }
+  });
+
+  it('施設ごとのキーは施設へ、それ以外（N6 の上書きキーを含む）は共通へ', () => {
+    const { common, facility } = splitPartnerBookingSettings(s);
+    expect(Object.keys(facility).sort()).toEqual([...PARTNER_FACILITY_SETTING_KEYS].sort());
+    expect(facility.planNames).toEqual({ a001: '取引先向け' });
+    expect(common.leadDays).toBe(2);
+    expect(common.prepayDiscount).toEqual({ type: 'percent', value: 5 });
+    expect(common.paymentOptions).toEqual(['invoice_monthly']);
+    for (const k of PARTNER_FACILITY_SETTING_KEYS) expect(k in common).toBe(false);
+  });
+
+  it('施設で上書き中の N6 キーは施設へ戻す', () => {
+    const { common, facility } = splitPartnerBookingSettings(s, ['leadDays', 'prepayDiscount']);
+    expect(facility.leadDays).toBe(2);
+    expect(facility.prepayDiscount).toEqual({ type: 'percent', value: 5 });
+    expect('leadDays' in common).toBe(false);
+    expect(common.cutoffHour).toBe(18);
+  });
+
+  it('分けて合成し直すと元に戻る', () => {
+    const { common, facility } = splitPartnerBookingSettings(s, ['cancelDays']);
+    expect(normalizePartnerBookingSettings(common, facility)).toEqual(s);
+  });
+
+  it('partnerFacilityOverrides はキーの有無で判定する（0・null も上書き）', () => {
+    expect(partnerFacilityOverrides({ leadDays: 0, cancelDays: null, notice: 'x', maxRooms: undefined })).toEqual(['leadDays', 'cancelDays']);
+    expect(partnerFacilityOverrides(null)).toEqual([]);
   });
 });

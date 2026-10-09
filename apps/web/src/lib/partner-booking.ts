@@ -323,9 +323,69 @@ function perkImageUrl(v: unknown): string {
   return /^https:\/\/[^\s"'<>]+$/.test(s) && s.length <= 500 ? s : '';
 }
 
+// ---- 取引先共通と施設ごとの振り分け（複数施設化・docs/partner-multi-facility.md §4.2・2026-10-09） ----
+//
+// rms_partners.booking_settings（取引先共通）と rms_partner_facilities.facility_settings（施設ごと）の2つの jsonb を
+// 1つの PartnerBookingSettings に合成する。規則は SQL の _rms_partner_effective_settings（common || facility）と同じ:
+// facility_settings に「キーがあれば」施設の値、無ければ共通の値（0・空文字・[]・false・null も「値あり」として上書きする）。
+// prepayDiscount はオブジェクトごと上書き（type と value を別々に継承しない・M6）。
+
+/** 施設ごとにだけ持つキー（施設のプラン・特典・案内・通知先）。保存時は常に facility_settings へ */
+export const PARTNER_FACILITY_SETTING_KEYS = ['planNames', 'perks', 'notice', 'notifyEmails', 'showOfficialPerks'] as const;
+/** 共通の既定を施設で上書きできるキー（決定 N6）。既定は共通に置き、施設で上書きしているときだけ facility_settings へ */
+export const PARTNER_FACILITY_OVERRIDE_KEYS = ['prepayDiscount', 'leadDays', 'cutoffHour', 'maxRooms', 'maxNights', 'cancelDays'] as const;
+
+export type PartnerFacilitySettingKey = (typeof PARTNER_FACILITY_SETTING_KEYS)[number];
+export type PartnerFacilityOverrideKey = (typeof PARTNER_FACILITY_OVERRIDE_KEYS)[number];
+
+const asSettingsObject = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+
+/**
+ * 共通と施設の jsonb を、SQL の `common || facility` と同じ規則で1つにする（正規化の前の生の合成）。
+ * JS の undefined は JSON に残らない（DB では「キーが無い」と同じ）ので、上書きしない。
+ */
+export function mergePartnerSettingsRaw(common: unknown, facility?: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...asSettingsObject(common) };
+  for (const [k, v] of Object.entries(asSettingsObject(facility))) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * 保存時の振り分け: 正規化済みの設定を、取引先共通（rms_partners.booking_settings）と施設（facility_settings）に分ける。
+ * 施設ごとのキー（PARTNER_FACILITY_SETTING_KEYS）は施設へ。N6 の上書きキーは既定で共通へ置き、
+ * overriddenKeys（いまその施設で上書きしているキー）に入っているものだけ施設へ置く（画面で見せた値＝施設の値を施設に戻す）。
+ */
+export function splitPartnerBookingSettings(
+  settings: PartnerBookingSettings,
+  overriddenKeys: Iterable<string> = []
+): { common: Record<string, unknown>; facility: Record<string, unknown> } {
+  const overridden = new Set(overriddenKeys);
+  const facilityKeys = new Set<string>([
+    ...PARTNER_FACILITY_SETTING_KEYS,
+    ...PARTNER_FACILITY_OVERRIDE_KEYS.filter((k) => overridden.has(k))
+  ]);
+  const common: Record<string, unknown> = {};
+  const facility: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(settings)) {
+    if (facilityKeys.has(k)) facility[k] = v;
+    else common[k] = v;
+  }
+  return { common, facility };
+}
+
+/** facility_settings で上書きしている N6 のキー（キーの有無で判定。値が 0 や空でも上書き） */
+export function partnerFacilityOverrides(facility: unknown): PartnerFacilityOverrideKey[] {
+  const src = asSettingsObject(facility);
+  return PARTNER_FACILITY_OVERRIDE_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(src, k) && src[k] !== undefined);
+}
+
 // DB の jsonb / 画面からの入力を、欠けや不正値を補って正規形にする（保存前・読込時の両方で通す）。
-export function normalizePartnerBookingSettings(raw: unknown): PartnerBookingSettings {
-  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+// facility を渡すと、取引先共通（raw）に施設の設定を重ねてから正規化する（上の mergePartnerSettingsRaw・決定 N6）。
+export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown): PartnerBookingSettings {
+  const src = facility === undefined ? asSettingsObject(raw) : mergePartnerSettingsRaw(raw, facility);
   const d = DEFAULT_PARTNER_BOOKING_SETTINGS;
   const options: PartnerBookingOption[] = normalizeBookingQuestions(src.options);
   const emails = Array.isArray(src.notifyEmails)
