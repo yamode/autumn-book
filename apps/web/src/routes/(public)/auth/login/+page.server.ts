@@ -4,6 +4,7 @@ import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
+import { safeNext } from '$lib/safe-next';
 import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -11,7 +12,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const OTP_COOLDOWN = 'ab_otp_cooldown';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	if (locals.user?.role === 'member') redirect(303, url.searchParams.get('next') ?? '/account');
+	if (locals.user?.role === 'member') redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	return { authMode: AUTH_MODE };
 };
 
@@ -26,7 +27,7 @@ export const actions: Actions = {
 		// 退会済み（論理削除）はログイン不可
 		if (!member || withdrawnMembers.has(member.id)) return fail(401, { message: m.error_login_failed(), email });
 		setSession(cookies, { id: member.id, role: 'member', name: member.name });
-		redirect(303, url.searchParams.get('next') ?? '/account');
+		redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	},
 
 	// supabase: step1 メールアドレス → 8桁 OTP を送信（コード長は Supabase の Email OTP 設定に従う）
@@ -83,6 +84,6 @@ export const actions: Actions = {
 				/* 失敗しても次回ログイン/登録で再同期される */
 			}
 		}
-		redirect(303, url.searchParams.get('next') ?? '/account');
+		redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	}
 };

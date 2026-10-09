@@ -4,6 +4,7 @@ import { setForumNickname as sbSetForumNickname, getForumNickname as sbGetForumN
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import * as m from '$lib/paraglide/messages';
+import { safeNext } from '$lib/safe-next';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -57,7 +58,10 @@ export const actions: Actions = {
 		}
 
 		// 戻り先指定があればそこへ、なければ設定画面に留まり成功表示
-		if (next && next.startsWith('/')) redirect(303, next);
+		if (next) {
+			const to = safeNext(next, '');
+			if (to) redirect(303, to);
+		}
 		return { saved: true, nickname: savedNickname };
 	}
 };

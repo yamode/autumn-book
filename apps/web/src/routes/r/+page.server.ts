@@ -107,7 +107,8 @@ export const actions: Actions = {
 		const form = await event.request.formData();
 		const code = String(form.get('code') ?? '');
 
-		const token = DATA_SOURCE === 'supabase' ? await sbClaimStayByCode(code) : claimStayByCode(code);
+		const token = DATA_SOURCE === 'supabase' ? await sbClaimStayByCode(code, key) : claimStayByCode(code);
+		if (token === 'rate_limited') return fail(429, { claimError: 'locked' as const, retryInSec: 600 });
 		if (!token) {
 			await claimRecordFailure(event.platform, key);
 			return fail(400, { claimError: 'fail' as const });

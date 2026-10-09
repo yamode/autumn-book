@@ -4,11 +4,15 @@ import { AUTH_MODE, resolveSupabaseSessionUser } from '$lib/server/auth';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { experimentsForRequest } from '$lib/server/experiments';
+import { applySecurityHeaders } from '$lib/server/security-headers';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 const PRIMARY_ORIGIN = 'https://book.yamado.app';
 
-export const handle: Handle = async ({ event, resolve }) => {
+// すべての応答にセキュリティヘッダを付ける（security-headers.ts）
+export const handle: Handle = async (input) => applySecurityHeaders(await handleRequest(input), input.event.url);
+
+const handleRequest: Handle = async ({ event, resolve }) => {
 	// 本番ドメインは book.yamado.app（2026-09-26）。旧ドメイン（autumn-book.pages.dev 本体）で開かれたら同じパスへ転送する。
 	// プレビューデプロイ（<hash>.autumn-book.pages.dev）はそのまま使えるよう、本体のホスト名だけを対象にする。
 	// GET/HEAD 以外（フォーム送信・Webhook 等）は転送すると中身が失われるので、そのまま処理する。

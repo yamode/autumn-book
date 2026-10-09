@@ -31,7 +31,15 @@
 		let map: import('maplibre-gl').Map | undefined;
 		let cancelled = false;
 		(async () => {
-			const maplibregl = (await import('maplibre-gl')).default;
+			// maplibre-gl v6 は default export が無い（名前付き export のみ）。
+			// 描画用の Web Worker を自分のファイル位置から相対で探すため、Vite のバンドル後は見つからない。
+			// worker ファイル（単体で完結）を ?url で配信物に含め、その URL を明示する（2026-10-09・v5→v6）
+			const [maplibregl, { default: workerUrl }] = await Promise.all([
+				import('maplibre-gl'),
+				import('maplibre-gl/dist/maplibre-gl-worker.mjs?url')
+			]);
+			// blob 経由で読み込むので相対パスは解決できない。絶対 URL にして渡す
+			maplibregl.setWorkerUrl(new URL(workerUrl, location.href).href);
 			if (cancelled) return;
 			map = new maplibregl.Map({
 				container,
