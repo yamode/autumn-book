@@ -6,6 +6,8 @@
 	// 「館内のご案内」は1件ずつ詳細ページ（/r/g/<id>）へ。長い案内（ルームサービスのメニュー等）を
 	// トップに積まないための分け方で、これも現行アプリと同じ。
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
+	import { jstDate } from '$lib/inroom-day';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -52,6 +54,21 @@
 	function telHref(phone?: string): string {
 		return 'tel:' + (phone ?? '').replace(/[^0-9+]/g, '');
 	}
+
+	// 連泊: 画面を開いたまま（ホーム画面に置いたまま）日付が変わったら読み直し、新しい滞在日の食事・お風呂に切り替える（2026-10-09）
+	$effect(() => {
+		const day = data.stay && 'stayDay' in data ? data.stayDay : undefined;
+		if (!day) return;
+		const check = () => {
+			if (document.visibilityState === 'visible' && jstDate() !== day) invalidateAll();
+		};
+		const timer = setInterval(check, 60_000);
+		document.addEventListener('visibilitychange', check);
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', check);
+		};
+	});
 
 	const slug = $derived(data.stay?.facility.slug ?? data.endedFacility?.slug ?? '');
 	const hero = $derived(inroomHero(slug));

@@ -146,6 +146,11 @@
 		href="/admin/inroom/banners"
 		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
 	>🎁 サンクスページのバナー</a>
+	<!-- 客室に常設する入口QR（お客様によらず同じ・8桁コードで開く。2026-10-09） -->
+	<a
+		href="/admin/inroom/entry"
+		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
+	>🖨 入口QR（客室に常設）</a>
 </div>
 
 {#if form?.message}
