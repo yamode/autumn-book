@@ -1,8 +1,9 @@
 <script lang="ts">
   // 取引先ページの本人確認（ステップアップ・docs/auth-hardening.md §6.2〜6.4・S3）。
   // /p/<token>/mfa の画面と、予約画面の「保存済みのカードを使う」の両方で使う（同じ画面のまま確認できるように）。
-  // 初版はメールの認証コードのみ。パスキー（S6）は methods に 'passkey' が来たらここにボタンを足す。
+  // 方法は methods の順（パスキーがあれば先に・S6）。パスキーは本番ドメインとローカルでだけ methods に入る（サーバの stepUpState）。
   // API: POST /p/<token>/mfa/email/send → { ok, to, waitSec } ／ POST /p/<token>/mfa/email/verify { code } → { ok }
+  //      POST /p/<token>/mfa/passkey/options → { challengeId, options } ／ POST /p/<token>/mfa/passkey/verify → { ok }
   import { onDestroy, untrack } from 'svelte';
   import type { MfaMethod } from '$lib/partner-mfa';
 
@@ -14,6 +15,7 @@
     initialOpen = false,
     securityHref,
     compact = false,
+    passkeyOnly = false,
     onverified
   }: {
     token: string;
@@ -27,6 +29,8 @@
     securityHref: string;
     /** 予約画面などに埋め込むときの詰めた表示 */
     compact?: boolean;
+    /** 取引先の方針が passkey_only（メールに落とさない）。方法が無いときの案内を変える */
+    passkeyOnly?: boolean;
     onverified: () => void | Promise<void>;
   } = $props();
 
@@ -39,6 +43,30 @@
   let message = $state('');
   let info = $state('');
   let timer: ReturnType<typeof setInterval> | null = null;
+  let passkeyMessage = $state('');
+  const hasPasskey = $derived(methods.includes('passkey'));
+  const hasEmail = $derived(methods.includes('email'));
+
+  // パスキーで確認する（S6）
+  async function verifyPasskey() {
+    if (busy) return;
+    busy = true;
+    passkeyMessage = '';
+    try {
+      const { stepUpWithPasskey } = await import('$lib/partner-passkey-client');
+      const r = await stepUpWithPasskey(token);
+      if (r.ok) {
+        info = '本人確認ができました。';
+        await onverified();
+      } else if (r.status === 401) {
+        location.href = `/p/${token}`;
+      } else {
+        passkeyMessage = r.message;
+      }
+    } finally {
+      busy = false;
+    }
+  }
 
   function tick() {
     if (timer) clearInterval(timer);
@@ -129,8 +157,27 @@
 </script>
 
 <div class={compact ? 'space-y-3' : 'space-y-4'}>
-  {#if !methods.includes('email')}
-    {#if !maskedEmail}
+  {#if hasPasskey}
+    <div class="space-y-2">
+      <p class="text-sm leading-6 text-stone-600">登録済みのパスキー（端末の生体認証・PIN）で確認できます。</p>
+      {#if passkeyMessage}<p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{passkeyMessage}</p>{/if}
+      {#if info && !hasEmail}<p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-sm text-brand-900" role="status">{info}</p>{/if}
+      <button type="button" onclick={() => void verifyPasskey()} disabled={busy} class="w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">
+        {busy ? '確認しています…' : 'パスキーで確認する'}
+      </button>
+    </div>
+    {#if hasEmail}
+      <div class="flex items-center gap-3 text-xs text-stone-400"><span class="h-px flex-1 bg-stone-200"></span>または、メールの認証コードで確認<span class="h-px flex-1 bg-stone-200"></span></div>
+    {/if}
+  {/if}
+  {#if hasPasskey && !hasEmail}
+    <!-- パスキーだけ（passkey_only・またはメール未登録） -->
+  {:else if !hasEmail}
+    {#if passkeyOnly}
+      <p class="rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2.5 text-sm leading-6 text-amber-900">
+        この取引先では、パスキーでの本人確認が必要です（メールの認証コードは使えません）。このログインIDにはパスキーが登録されていないか、このページのアドレスではパスキーを使えません。貴社のマスタユーザーまたは宿に、第2要素のリセット（パスワード設定リンクの再発行）をご依頼ください。
+      </p>
+    {:else if !maskedEmail}
       <p class="rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2.5 text-sm leading-6 text-amber-900">
         本人確認には、ログインIDのメールアドレス（認証コードの送り先）が必要です。<a href={securityHref} class="font-medium underline">「アカウント」→「セキュリティ」</a>から登録してください。
       </p>

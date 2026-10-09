@@ -20,6 +20,7 @@
       updated?: { loginId: string; active: boolean };
       deleted?: { loginId: string };
       loggedOut?: { loginId: string; count: number };
+      mfaReset?: { loginId: string; passkeys: number; sessions: number; issued: Issued | null };
     };
   } = $props();
 
@@ -56,7 +57,7 @@
     disabled: 'bg-stone-100 text-stone-500',
     pending: 'bg-amber-50 text-amber-700'
   };
-  const issued = $derived(form?.created ?? form?.resent ?? null);
+  const issued = $derived(form?.created ?? form?.resent ?? form?.mfaReset?.issued ?? null);
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
 </script>
@@ -71,10 +72,11 @@
     貴社内でこのページを使う方のログインID（ユーザー）を作れます。作成したユーザーは、ユーザー管理以外のすべて（予約・予約一覧・覚書・ご請求書・ご自身の担当者情報）を使えます。
     マスタユーザーの追加・停止は宿へご依頼ください。
   </p>
+  <p class="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs leading-5 text-stone-600">{data.oneIdNotice}</p>
 
   {#if !data.aal2}
     <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <span>ユーザーの追加・停止・削除・ログアウトなどの操作の前に、本人確認（メールの認証コード）をお願いします。</span>
+      <span>ユーザーの追加・停止・削除・ログアウトなどの操作の前に、本人確認（メールの認証コードまたはパスキー）をお願いします。</span>
       <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
     </p>
   {/if}
@@ -84,7 +86,11 @@
   {#if issued}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm leading-6 text-brand-900">
       <p class="font-medium">
-        {form?.created ? `ユーザー「${issued.loginId}」を作成しました。` : `「${issued.loginId}」のパスワード設定リンクを発行し直しました。`}
+        {#if form?.mfaReset}
+          「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。パスワード設定リンクも発行し直しました。
+        {:else}
+          {form?.created ? `ユーザー「${issued.loginId}」を作成しました。` : `「${issued.loginId}」のパスワード設定リンクを発行し直しました。`}
+        {/if}
       </p>
       {#if issued.emailSent}
         <p>{issued.email} 宛てにパスワード設定のご案内をお送りしました（リンクの有効期限は7日です）。</p>
@@ -102,6 +108,10 @@
   {:else if form?.loggedOut}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
       「{form.loggedOut.loginId}」を{form.loggedOut.count > 0 ? form.loggedOut.count + '台の端末から' : ''}ログアウトさせました{form.loggedOut.count > 0 ? '' : '（ログイン中の端末はありませんでした）'}。
+    </p>
+  {:else if form?.mfaReset}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。メールアドレスが無い・停止中のため、パスワード設定リンクは送っていません。
     </p>
   {:else if form?.deleted}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">「{form.deleted.loginId}」を削除しました。</p>
@@ -122,7 +132,9 @@
               {#if u.lockedUntil}<span class="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-700">ロック中</span>{/if}
             </p>
             <p class="mt-1 text-sm">{u.displayName ?? '（お名前未設定）'}{#if u.email}<span class="ml-2 text-stone-500">{u.email}</span>{/if}</p>
-            <p class="mt-0.5 text-xs text-stone-500">最終ログイン: {fmt(u.lastLoginAt)}</p>
+            <p class="mt-0.5 text-xs text-stone-500">
+              最終ログイン: {fmt(u.lastLoginAt)} ／ パスキー: {u.passkeyCount}件{#if u.emailVerified} ／ メール確認済み{/if}{#if u.mfaResetAt} ／ 第2要素のリセット: {fmt(u.mfaResetAt)}{/if}
+            </p>
           </div>
           {#if !u.isMaster}
             <div class="flex flex-wrap gap-2 text-sm">
@@ -138,6 +150,16 @@
                 <form method="POST" action="?/logout_all" use:enhance={submit(`「${u.loginId}」をすべての端末からログアウトさせます（停止はしません）。よろしいですか？`)}>
                   <input type="hidden" name="account_id" value={u.id} />
                   <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">すべての端末からログアウト</button>
+                </form>
+              {/if}
+              {#if u.status !== 'disabled'}
+                <form
+                  method="POST"
+                  action="?/reset_mfa"
+                  use:enhance={submit(`「${u.loginId}」の第2要素をリセットします。登録済みのパスキーをすべて削除し、すべての端末からログアウトさせ、パスワード設定リンクを送り直します。ご本人であることを（電話・対面などで）確かめてから行ってください。よろしいですか？`)}
+                >
+                  <input type="hidden" name="account_id" value={u.id} />
+                  <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">第2要素をリセット</button>
                 </form>
               {/if}
               <form method="POST" action="?/toggle" use:enhance={submit(u.status === 'disabled' ? undefined : `「${u.loginId}」を停止します。ログイン中でもすぐに使えなくなります。よろしいですか？`)}>

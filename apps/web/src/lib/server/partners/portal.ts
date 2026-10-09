@@ -355,6 +355,6 @@ export async function requirePortalApi(
   if (!session) throw error(401, 'ログインしてください。');
   if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');
   denyPreviewWrite(event, session);
-  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw error(403, '本人確認（メールの認証コード）が済んでいません。画面を読み直してください。');
+  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw error(403, '本人確認（メールの認証コードまたはパスキー）が済んでいません。画面を読み直してください。');
   return { db, partner, session };
 }

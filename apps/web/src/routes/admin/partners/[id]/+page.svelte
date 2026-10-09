@@ -55,6 +55,8 @@
     facilityEnabled?: string;
     urlRegenerated?: boolean;
     accountUpdated?: boolean;
+    accountMessage?: string;
+    mfaPolicySaved?: string;
     keyRevoked?: boolean;
     bookingCancelled?: string;
     chargeResult?: { status: 'paid' | 'failed' | 'skipped'; message?: string };
@@ -758,8 +760,17 @@
     child_setup_resend: 'ユーザーの設定リンク再送',
     child_enable: 'ユーザー再開',
     child_disable: 'ユーザー停止',
-    child_delete: 'ユーザー削除'
+    child_delete: 'ユーザー削除',
+    logout_all: '宿が全端末をログアウト'
   };
+
+  // ---- 本人確認の方針（docs/auth-hardening.md §6.3・S6）----
+  let mfaPolicyChoice = $state<string>('');
+  $effect.pre(() => {
+    // 保存後・読み直しで DB の値に戻す
+    mfaPolicyChoice = data.mfaPolicy.value;
+  });
+  const passkeyOnlyBlocked = $derived(data.accounts.filter((a) => a.isActive && a.passkeyCount === 0).map((a) => a.loginId));
 
   const inputClass = 'w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm disabled:bg-stone-50 disabled:text-stone-500';
   const smallBtn = 'rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
@@ -2257,6 +2268,43 @@
     <!-- ログインID -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">ログインID</h2>
+
+      <!-- 本人確認の方針（§6.3・共通の設定・admin のみ変更） -->
+      <form
+        method="POST"
+        action={`?/setMfaPolicy`}
+        use:enhance={async ({ cancel }) => {
+          lastSubmit = 'other';
+          if (mfaPolicyChoice === 'passkey_only' && data.mfaPolicy.value !== 'passkey_only') {
+            const blocked = passkeyOnlyBlocked.length ? `パスキーが未登録のログインID（${passkeyOnlyBlocked.join('、')}）は、パスキーを登録するまでログインできなくなります（宿が「第2要素をリセット」して設定リンクを送れば、そのリンクから入って登録できます）。` : '';
+            if (!(await askConfirm({ message: `本人確認を「パスキーのみ」にします。メールの認証コードは使えなくなります。${blocked}`, confirmLabel: '変更する' }))) cancel();
+          }
+          return async ({ update }) => update({ reset: false });
+        }}
+        class="mt-3 rounded-lg border border-stone-200 bg-stone-50 p-3"
+      >
+        <fieldset disabled={!canEdit}>
+          <legend class="text-sm font-medium text-stone-800">本人確認（第2要素）の方針</legend>
+          <div class="mt-2 grid gap-2 sm:grid-cols-3">
+            {#each data.mfaPolicy.options as o (o.value)}
+              <label class={`flex cursor-pointer gap-2 rounded-md border bg-white p-2 text-xs ${mfaPolicyChoice === o.value ? 'border-brand-800' : 'border-stone-200'}`}>
+                <input type="radio" name="mfa_policy" value={o.value} bind:group={mfaPolicyChoice} class="mt-0.5" />
+                <span><span class="block text-sm font-medium text-stone-800">{o.label}</span><span class="text-stone-500">{o.help}</span></span>
+              </label>
+            {/each}
+          </div>
+          {#if canEdit}
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <button type="submit" class={smallBtn} disabled={mfaPolicyChoice === data.mfaPolicy.value}>方針を保存</button>
+              <span class="text-[11px] text-stone-500">取引先のマスタユーザーは「重要な操作の前だけ → ログインのたびに」へ厳しくする変更だけできます。変更はアクセスログに残ります。</span>
+            </div>
+          {/if}
+        </fieldset>
+        {#if form?.mfaPolicySaved}<p class="mt-2 text-xs text-emerald-700">{form.mfaPolicySaved}</p>{/if}
+      </form>
+      {#if form?.accountMessage}
+        <p class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.accountMessage}</p>
+      {/if}
       <p class="mt-1 text-xs text-stone-500">
         ここでログインIDを発行し、パスワード設定リンク（有効期限7日・1回限り）を取引先へ送ります。ここで発行するログインIDはマスタユーザーです（取引先ページで子ユーザーを作れます）。パスワードは取引先が自分で決めます（宿側では分かりません）。メールの差出人は施設名、返信先は施設の予約用アドレスです。
       </p>
@@ -2280,7 +2328,7 @@
         <div class="mt-3 overflow-x-auto">
           <table class="w-full text-sm">
             <thead class="text-left text-xs text-stone-500">
-              <tr><th class="py-1.5 pr-3 font-medium">ログインID</th><th class="pr-3 font-medium">名前・メール</th><th class="pr-3 font-medium">状態</th><th class="pr-3 font-medium">最終ログイン</th><th></th></tr>
+              <tr><th class="py-1.5 pr-3 font-medium">ログインID</th><th class="pr-3 font-medium">名前・メール</th><th class="pr-3 font-medium">状態</th><th class="pr-3 font-medium">第2要素</th><th class="pr-3 font-medium">最終ログイン</th><th></th></tr>
             </thead>
             <tbody>
               {#each data.accounts as a (a.id)}
@@ -2302,6 +2350,11 @@
                     {:else}<span class="text-emerald-700">利用可</span>{/if}
                     {#if a.setupPending && a.hasPassword}<div class="text-stone-500">再設定リンク発行中</div>{/if}
                   </td>
+                  <td class="py-2 pr-3 text-xs">
+                    <div>パスキー {a.passkeyCount}件{#if data.mfaPolicy.value === 'passkey_only' && a.passkeyCount === 0 && a.isActive}<span class="ml-1 text-rose-700">（ログイン不可）</span>{/if}</div>
+                    <div class="text-stone-500">{a.email ? (a.emailVerified ? 'メール確認済み' : 'メール未確認') : 'メール未登録'}</div>
+                    {#if a.mfaResetAt}<div class="text-stone-500">リセット: {dt(a.mfaResetAt)}（{a.mfaResetBy}）</div>{/if}
+                  </td>
                   <td class="py-2 pr-3 text-xs">{dt(a.lastLoginAt)}</td>
                   <td class="py-2">
                     {#if canEdit}
@@ -2317,6 +2370,30 @@
                             <button type="submit" class={smallBtn}>ロック解除</button>
                           </form>
                         {/each}
+                        {#if a.isActive}
+                          <form method="POST" action={`?/updateAccount`} use:enhance={async ({ cancel }) => {
+                            lastSubmit = 'other';
+                            if (!(await askConfirm({ message: `ログインID ${a.loginId} をすべての端末からログアウトさせます（停止はしません）。`, confirmLabel: 'ログアウトさせる' }))) cancel();
+                            return async ({ update }) => update({ reset: false });
+                          }}>
+                            <input type="hidden" name="account_id" value={a.id} /><input type="hidden" name="op" value="logout" />
+                            <button type="submit" class={smallBtn}>全端末ログアウト</button>
+                          </form>
+                          <!-- 第2要素のリセット（§6.8・M14）。マスタは宿だけがリセットできる（電話の折り返しで本人確認してから） -->
+                          <form method="POST" action={`?/resetAccountMfa`} class="flex items-center gap-1" use:enhance={async ({ cancel }) => {
+                            lastSubmit = 'other';
+                            const msg = a.isMaster
+                              ? `ログインID ${a.loginId}（マスタ）の第2要素をリセットします。パスキーをすべて削除し、すべての端末からログアウトさせます。\n\n本人確認: 先方からの電話・メールだけで行わず、取引先の登録済みの電話番号へ宿から折り返し、担当者名と直近の予約を口頭で確かめてから実行してください。`
+                              : `ログインID ${a.loginId}（子ユーザー）の第2要素をリセットします。パスキーをすべて削除し、すべての端末からログアウトさせます。子ユーザーのリセットは、通常は取引先のマスタユーザーが「ユーザー管理」から行います。`;
+                            if (!(await askConfirm({ message: msg, confirmLabel: 'リセットする' }))) cancel();
+                            return async ({ update }) => update({ reset: false });
+                          }}>
+                            <input type="hidden" name="account_id" value={a.id} />
+                            <label class="flex items-center gap-1 text-[11px] text-stone-500"><input type="checkbox" name="reissue" checked />設定リンク</label>
+                            {#if a.email}<label class="flex items-center gap-1 text-[11px] text-stone-500"><input type="checkbox" name="send_email" checked />メール</label>{/if}
+                            <button type="submit" class={`${smallBtn} hover:text-rose-700`}>第2要素をリセット</button>
+                          </form>
+                        {/if}
                         <form method="POST" action={`?/updateAccount`} use:enhance={() => { lastSubmit = 'other'; return async ({ update }) => update({ reset: false }); }}>
                           <input type="hidden" name="account_id" value={a.id} /><input type="hidden" name="op" value={a.isActive ? 'disable' : 'enable'} />
                           <button type="submit" class={smallBtn}>{a.isActive ? '停止' : '再開'}</button>
@@ -2446,7 +2523,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
             {#each logs as l (l.id)}
               <tr class="border-t border-stone-100">
                 <td class="py-1.5 pr-3 whitespace-nowrap">{dt(l.at)}</td>
-                <td class="pr-3">{l.channel === 'api' ? 'API' : '画面'}</td>
+                <td class="pr-3">{l.channel === 'api' ? 'API' : l.channel === 'admin' ? '宿（管理画面）' : '画面'}</td>
                 <td class={`pr-3 ${l.action.startsWith('login_') ? 'text-rose-700' : ''}`}>{ACTION_LABELS[l.action] ?? l.action}</td>
                 <td class="pr-3 font-mono">{l.who ?? (l.detail?.loginId as string | undefined) ?? ''}</td>
                 <td class="pr-3 text-stone-500">{l.detail?.from ? `${l.detail.from}〜${l.detail.to}` : (l.detail?.month ?? '')}</td>

@@ -31,6 +31,7 @@ import {
 	getPmsPartnerGuest,
 	listPartnerAccessLogs,
 	listPartnerAccounts,
+	countPasskeysByAccount,
 	listPartnerApiKeys,
 	PartnerStoreError,
 	todayJst,
@@ -43,6 +44,8 @@ import { invoicePdfReady } from '$lib/server/partners/invoice-pdf';
 import { isPartnerBilledBooking, periodOf } from '$lib/partner-invoice';
 import { pmsGuestCreditUrl, pmsGuestUrl } from '$lib/pms-partner-guest';
 import { bookActorUserId, creditOverLine, creditUpdatedSource, isCreditOver } from '$lib/partner-credit';
+import { normalizeMfaPolicy, PARTNER_MFA_POLICIES, PARTNER_MFA_POLICY_LABELS } from '$lib/partner-mfa';
+import { PARTNER_MFA_POLICY_HELP } from '$lib/partner-passkey';
 import type { LayoutServerLoad } from './$types';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -96,6 +99,12 @@ export const load: LayoutServerLoad = async (event) => {
 	// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
 	const credit = pmsGuest.guest?.guestType === 'group' ? await loadCreditSection(event, scope, partner) : null;
 
+	// アカウントごとのパスキーの数（第2要素の状態・docs/auth-hardening.md §6.7・S6）。読めなければ 0
+	const passkeyCounts = await countPasskeysByAccount(
+		db,
+		accounts.map((a) => a.id)
+	);
+	const mfaPolicy = normalizeMfaPolicy(partner.mfa_policy);
 	const accountLabel = new Map(accounts.map((a) => [a.id, a.login_id]));
 	const keyLabel = new Map(apiKeys.map((k) => [k.id, k.label || k.key_prefix]));
 	const facilityNames = new Map(facilityMetas.map((m) => [m.id, m.name]));
@@ -303,8 +312,18 @@ export const load: LayoutServerLoad = async (event) => {
 			setupExpiresAt: a.setup_token_expires_at,
 			lockedUntil: a.locked_until && new Date(a.locked_until).getTime() > Date.now() ? a.locked_until : null,
 			lastLoginAt: a.last_login_at,
-			isActive: a.is_active
+			isActive: a.is_active,
+			// 第2要素（S6）: パスキーの数・メールの確認済み・最後のリセット（時刻と、宿／マスタのどちらか）
+			passkeyCount: passkeyCounts.get(a.id) ?? 0,
+			emailVerified: Boolean(a.email && a.email_verified_at),
+			mfaResetAt: a.mfa_reset_at ?? null,
+			mfaResetBy: a.mfa_reset_by ? (a.mfa_reset_by.startsWith('admin:') ? '宿' : 'マスタユーザー') : null
 		})),
+		// 本人確認の方針（rms_partners.mfa_policy・§6.3）。変更は ?/setMfaPolicy（admin）
+		mfaPolicy: {
+			value: mfaPolicy,
+			options: PARTNER_MFA_POLICIES.map((p) => ({ value: p, label: PARTNER_MFA_POLICY_LABELS[p], help: PARTNER_MFA_POLICY_HELP[p] }))
+		},
 		apiKeys: apiKeys.map((k) => ({
 			id: k.id,
 			label: k.label,

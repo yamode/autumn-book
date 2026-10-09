@@ -2,8 +2,8 @@
 // GET → いまの状態 { aal2, maskedEmail, methods, waitSec, open }（予約一覧のモーダルがその場で本人確認するときに使う）。
 // 関所（ログイン直後の本人確認待ち）の中でも使えるよう mfaGate を外す。確認モードは POST 自体が 403（portal.ts）・GET も 403。
 import { json } from '@sveltejs/kit';
-import { denyPreviewMfa, emailOtpStatus, issueEmailOtp, loadMfaAccount, sessionHasAal2 } from '$lib/server/partners/mfa';
-import { maskEmail, mfaMethodsFor, normalizeMfaPolicy } from '$lib/partner-mfa';
+import { denyPreviewMfa, issueEmailOtp, sessionHasAal2 } from '$lib/server/partners/mfa';
+import { stepUpState } from '$lib/server/partners/passkeys';
 import { PORTAL_HEADERS, requestMeta, requirePortalApi } from '$lib/server/partners/portal';
 import { PartnerStoreError } from '$lib/server/partners/store';
 
@@ -21,17 +21,16 @@ export const POST = async (event) => {
 export const GET = async (event) => {
   const { db, partner, session } = await requirePortalApi(event, { mfaGate: false });
   denyPreviewMfa(session);
-  const policy = normalizeMfaPolicy(partner.mfa_policy);
-  const account = await loadMfaAccount(db, partner.id, session.id);
-  const status = account?.email ? await emailOtpStatus(db, session.id).catch(() => null) : null;
+  // 方法はパスキー（このホストで使えるとき・S6）とメール
+  const state = await stepUpState(db, event, partner, session);
   return json(
     {
       ok: true,
       aal2: sessionHasAal2(session),
-      maskedEmail: maskEmail(account?.email),
-      methods: mfaMethodsFor(policy, { email: account?.email ?? null }),
-      waitSec: status?.waitSec ?? 0,
-      open: status?.open ?? false
+      maskedEmail: state.maskedEmail,
+      methods: state.methods,
+      waitSec: state.waitSec,
+      open: state.open
     },
     { headers: PORTAL_HEADERS }
   );

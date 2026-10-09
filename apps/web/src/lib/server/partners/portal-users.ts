@@ -9,6 +9,7 @@ import { childLoginIdPrefix, partnerSetupBrand } from './setup-brand';
 import { findLoginNoticeRecipient, logPartnerAccess, SETUP_TOKEN_TTL_HOURS, type LoginResult, type PartnerContext, type RequestMeta } from './store';
 import { loadInvoiceFacilities } from './invoices';
 import { formatJst, summarizeUserAgent } from '$lib/partner-login-security';
+import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -58,7 +59,9 @@ export async function sendChildSetupEmail(
     `次回以降のログイン: ${args.loginUrl}`,
     '',
     '※このURLは貴社専用です。社外へは共有しないでください。',
-    '※お心当たりのない場合は、このメールを破棄してください。'
+    '※お心当たりのない場合は、このメールを破棄してください。',
+    // 「1人1ID」の案内（docs/auth-hardening.md §6.5・S6）
+    `※${ONE_PERSON_ONE_ID_NOTICE}`
   ].join('\n');
   const html = `<p>${escapeHtml(who)}</p>
 <p>${escapeHtml(intro)}<br>下記のリンクからパスワードを設定してください。</p>
@@ -66,7 +69,7 @@ export async function sendChildSetupEmail(
 パスワード設定: <a href="${escapeHtml(args.setupUrl)}">${escapeHtml(args.setupUrl)}</a><br>
 （リンクの有効期限: ${days}日）</p>
 <p>次回以降のログイン: <a href="${escapeHtml(args.loginUrl)}">${escapeHtml(args.loginUrl)}</a></p>
-<p style="color:#666;font-size:12px">※このURLは貴社専用です。社外へは共有しないでください。<br>※お心当たりのない場合は、このメールを破棄してください。</p>`;
+<p style="color:#666;font-size:12px">※このURLは貴社専用です。社外へは共有しないでください。<br>※お心当たりのない場合は、このメールを破棄してください。<br>※${escapeHtml(ONE_PERSON_ONE_ID_NOTICE)}</p>`;
   return sendPartnerMail(db, brand.facilityId, {
     to: [args.to],
     subject: args.isReset

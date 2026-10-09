@@ -61,3 +61,9 @@ export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'cards
  */
 export const canManageSavedCards = (actor: Pick<AccountRoleSubject, 'is_master' | 'is_active'>) =>
   actor.is_master === true && actor.is_active !== false;
+
+/**
+ * actor（マスタ）が target（子ユーザー）の第2要素（パスキー）をリセットしてよいか（docs/auth-hardening.md §6.8）。
+ * 子ユーザーの停止・削除と同じ範囲（同じ取引先の子ユーザーだけ・自分とマスタは不可）。マスタのリセットは宿（管理画面・admin）だけ。
+ */
+export const canResetMfa = (actor: AccountRoleSubject, target: AccountRoleSubject) => canManageAccount(actor, target);

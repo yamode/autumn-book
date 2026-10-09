@@ -4,8 +4,9 @@
 // 用語:
 //   aal … セッションの保証レベル。1 = パスワードだけ、2 = 第2要素済み（rms_partner_sessions.aal）
 //   mfa_at … 第2要素を通した時刻。aal2 は mfa_at から 12 時間だけ有効
-//   mfa_method … 'email'（初版はメール OTP のみ・パスキーは S6）。
+//   mfa_method … 'email'（メールの認証コード）／'passkey'（パスキー・S6）。
 //     'required' は「ログイン直後に本人確認が要る（まだ済んでいない）」の印（aal=1 のときだけ意味を持つ・§6.2 の 2・3 と always）
+//     'setup' は「パスワード設定リンクから入った」印（aal=1・passkey_only の初回のパスキー登録だけに使う・partner-passkey.ts）
 
 export type PartnerMfaPolicy = 'step_up' | 'always' | 'passkey_only';
 export const PARTNER_MFA_POLICIES: readonly PartnerMfaPolicy[] = ['step_up', 'always', 'passkey_only'];
@@ -50,13 +51,15 @@ export function isAal2Valid(s: SessionAal, now = Date.now()): boolean {
 /**
  * 取引先ページ全体の関所（requirePortalSession / requirePortalApi）: 本人確認が済むまで /mfa 以外を使わせないか。
  *   - ログイン直後の印（mfa_method='required'・aal1）が付いている → true
- *   - 方針が always / passkey_only で aal2 が有効でない → true（12 時間で切れたら再び求める）
+ *   - 方針が always で aal2 が有効でない → true（12 時間で切れたら再び求める）
+ *   - 方針が passkey_only でパスキーの aal2 が有効でない → true（方針を変える前にメールで通した aal2 は数えない・S6）
  *   - 確認モード（管理画面からの閲覧）は対象外
  */
 export function portalMfaGate(s: SessionAal, policy: PartnerMfaPolicy, now = Date.now()): boolean {
   if (s.preview) return false;
   if (s.mfaMethod === MFA_PENDING_MARK && s.aal !== 2) return true;
-  if (policy === 'always' || policy === 'passkey_only') return !isAal2Valid(s, now);
+  if (policy === 'always') return !isAal2Valid(s, now);
+  if (policy === 'passkey_only') return !(isAal2Valid(s, now) && s.mfaMethod === 'passkey');
   return false;
 }
 
@@ -80,7 +83,10 @@ export function loginStepUpReason(
   return null;
 }
 
-/** 使える本人確認の方法（初版はメール OTP のみ。パスキーは S6 で足す）。passkey_only はメールに落とさない */
+/**
+ * 使える本人確認の方法。passkeyCount はこのホストで使えるパスキーの数（プレビュー〔*.pages.dev〕では 0 を渡す）。
+ * passkey_only はメールに落とさない。並びは画面に出す順（パスキーを先に）
+ */
 export type MfaMethod = 'email' | 'passkey';
 export function mfaMethodsFor(policy: PartnerMfaPolicy, account: { email?: string | null }, passkeyCount = 0): MfaMethod[] {
   const methods: MfaMethod[] = [];
@@ -197,4 +203,4 @@ export const portalMfaUrl = (token: string, next: string) => `/p/${token}/mfa?ne
 
 /** JSON API が本人確認を求めるときの応答の形（403） */
 export type MfaRequiredBody = { ok: false; code: 'mfa_required'; message: string; next: string };
-export const MFA_REQUIRED_MESSAGE = 'この操作には本人確認（メールの認証コード）が必要です。';
+export const MFA_REQUIRED_MESSAGE = 'この操作には本人確認（メールの認証コードまたはパスキー）が必要です。';

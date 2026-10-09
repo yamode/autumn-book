@@ -76,7 +76,7 @@ export function summarizeUserAgent(ua: string | null | undefined): string {
   return [browser ?? 'ブラウザ', os].filter(Boolean).join(' / ');
 }
 
-/** アカウント → セキュリティに出すログの種類（§4.4。本人確認の mfa_* と email_change は S3。passkey_* は S6 で足す） */
+/** アカウント → セキュリティに出すログの種類（§4.4。本人確認の mfa_* と email_change は S3。passkey_* と mfa_reset は S6） */
 export const SECURITY_LOG_ACTIONS = [
   'login',
   'login_failed',
@@ -92,7 +92,13 @@ export const SECURITY_LOG_ACTIONS = [
   'mfa_ok',
   'mfa_failed',
   'mfa_locked',
-  'email_change'
+  'email_change',
+  // パスキー・第2要素のリセット（S6）
+  'passkey_login',
+  'passkey_registered',
+  'passkey_removed',
+  'passkey_failed',
+  'mfa_reset'
 ] as const;
 
 /** アクセスログの表示名（取引先ページのセキュリティ・管理画面のアクセスログ共通） */
@@ -111,7 +117,15 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   mfa_ok: '本人確認',
   mfa_failed: '認証コードの誤り',
   mfa_locked: '認証コードの誤りが続いたため停止',
-  email_change: 'メールアドレスの変更'
+  email_change: 'メールアドレスの変更',
+  passkey_login: 'パスキーでログイン',
+  passkey_registered: 'パスキーの登録',
+  passkey_removed: 'パスキーの削除',
+  passkey_renamed: 'パスキーの名前の変更',
+  passkey_failed: 'パスキーでの確認の失敗',
+  mfa_reset: '第2要素のリセット',
+  mfa_policy_change: '本人確認の方針の変更',
+  child_mfa_reset: 'ユーザーの第2要素をリセット'
 };
 
 /** JST の日時（通知メール用） */

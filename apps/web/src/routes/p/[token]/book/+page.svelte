@@ -715,7 +715,7 @@
           {#if isStripe}
             {#if savedMfa && !pending && !data.portal.preview}
               <div class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3.5 py-3 text-sm">
-                <p class="text-stone-700">御社の保存済みのカード（{savedMfa.savedCount}枚）を使うには、本人確認（メールの認証コード）が必要です。新しいカードを入力する場合は不要です。</p>
+                <p class="text-stone-700">御社の保存済みのカード（{savedMfa.savedCount}枚）を使うには、本人確認（メールの認証コードまたはパスキー）が必要です。新しいカードを入力する場合は不要です。</p>
                 {#if stepUpOpen && savedMfa.stepUp}
                   <div class="mt-3 rounded-lg bg-white p-3">
                     <PartnerStepUp

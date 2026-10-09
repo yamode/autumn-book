@@ -790,7 +790,7 @@ export async function resumePartnerPayment(
 ): Promise<PreparedPartnerPayment> {
   const b = await getPartnerBooking(db, partner.id, bookingId);
   if (b && canUpdateCard(b)) {
-    if (!opts.aal2) throw new PartnerStoreError('カードの登録し直しには本人確認（メールの認証コード）が必要です。', 403, 'mfa_required');
+    if (!opts.aal2) throw new PartnerStoreError('カードの登録し直しには本人確認（メールの認証コードまたはパスキー）が必要です。', 403, 'mfa_required');
     return preparePartnerPayment(db, partner, b, { allowSaved: true });
   }
   if (!b || b.status !== 'pending_payment') throw new PartnerStoreError('お支払い待ちの予約ではありません。');

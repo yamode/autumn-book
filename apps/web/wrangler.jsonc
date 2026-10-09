@@ -41,6 +41,9 @@
 		// Cloudflare Turnstile のサイトキー（公開値・docs/auth-hardening.md §4.2）。取引先ログイン／パスワード設定・管理ログイン・会員の認証コード送信に付ける。
 		// 空なら部品を出さず、サーバも検証をスキップする。シークレット TURNSTILE_SECRET_KEY は
 		// `wrangler pages secret put TURNSTILE_SECRET_KEY --project-name autumn-book` で登録する（両方そろったときだけ検証する）
-		"PUBLIC_TURNSTILE_SITE_KEY": ""
+		"PUBLIC_TURNSTILE_SITE_KEY": "",
+		// 取引先ページのパスキー（WebAuthn）の RP ID（docs/auth-hardening.md §6.5・S6）。このホスト名で開いたときだけパスキーを使える
+		// （*.autumn-book.pages.dev のプレビューでは出さない）。ローカル（localhost）は設定なしで使える。空ならローカル以外は無効
+		"PASSKEY_RP_ID": "book.yamado.app"
 	}
 }

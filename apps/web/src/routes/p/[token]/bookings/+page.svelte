@@ -490,7 +490,7 @@
         {@const info = stepUp ?? savedMfa?.stepUp}
         <div class="mt-4 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] p-3 text-sm">
           <p class="mb-3 text-stone-700">
-            {stepUp ? 'カードの登録し直しには、本人確認（メールの認証コード）が必要です。' : `御社の保存済みのカード（${savedMfa?.savedCount ?? 0}枚）を使うには、本人確認が必要です。新しいカードを入力する場合は不要です。`}
+            {stepUp ? 'カードの登録し直しには、本人確認（メールの認証コードまたはパスキー）が必要です。' : `御社の保存済みのカード（${savedMfa?.savedCount ?? 0}枚）を使うには、本人確認が必要です。新しいカードを入力する場合は不要です。`}
           </p>
           {#if info}
             <div class="rounded-lg bg-white p-3">

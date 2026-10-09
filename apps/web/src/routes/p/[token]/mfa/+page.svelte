@@ -1,7 +1,8 @@
 <script lang="ts">
-  // 取引先ページの本人確認（ステップアップ・docs/auth-hardening.md §6.2〜6.4・S3）。
-  // 確認が済んだら next（元の画面）へ戻る。初版はメールの認証コードのみ（パスキーは S6 で PartnerStepUp に足す）。
-  import { goto } from '$app/navigation';
+  // 取引先ページの本人確認（ステップアップ・docs/auth-hardening.md §6.2〜6.5・S3／S6）。
+  // 確認が済んだら next（元の画面）へ戻る。方法はパスキーとメールの認証コード（PartnerStepUp）。
+  // passkey_only でパスキーが 0 のアカウントは、パスワード設定リンクから入った直後だけ、ここで最初のパスキーを登録 → そのまま確認する。
+  import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import { partnerTitle } from '$lib/partner-title';
   import PartnerStepUp from '$lib/components/PartnerStepUp.svelte';
@@ -12,6 +13,33 @@
 
   async function done() {
     await goto(data.next, { invalidateAll: true });
+  }
+
+  // ---- passkey_only の初回登録（§6.8） ----
+  let regBusy = $state(false);
+  let regMessage = $state('');
+  let regName = $state('');
+  async function registerAndVerify() {
+    if (regBusy) return;
+    regBusy = true;
+    regMessage = '';
+    try {
+      const { registerPasskey, stepUpWithPasskey } = await import('$lib/partner-passkey-client');
+      const r = await registerPasskey(token, regName);
+      if (!r.ok) {
+        regMessage = r.message;
+        return;
+      }
+      // 登録したパスキーで、続けて本人確認する（登録だけでは本人確認済みにしない）
+      const v = await stepUpWithPasskey(token);
+      if (v.ok) await done();
+      else {
+        // 画面を読み直すと、登録したパスキーでの確認ボタンに切り替わる
+        await invalidateAll();
+      }
+    } finally {
+      regBusy = false;
+    }
   }
 </script>
 
@@ -30,15 +58,38 @@
         この操作（カードの登録・保存済みカードでのご予約・ユーザー管理など）の前に、本人確認をお願いしています。確認は12時間有効です。
       {/if}
     </p>
-    <PartnerStepUp
-      {token}
-      maskedEmail={data.maskedEmail}
-      methods={data.methods}
-      initialWaitSec={data.waitSec}
-      initialOpen={data.open}
-      securityHref={`/p/${token}/account/security`}
-      onverified={done}
-    />
+    {#if data.bootstrap}
+      <div class="space-y-3">
+        <p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2.5 text-sm leading-6 text-brand-900">
+          この取引先では、ログインのたびにパスキーでの本人確認が必要です。まず、この端末にパスキーを登録してください（端末の生体認証・PIN を使います）。
+        </p>
+        {#if regMessage}<p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{regMessage}</p>{/if}
+        <label class="block">
+          <span class="mb-1 block text-sm font-medium">パスキーの名前（任意）</span>
+          <input
+            bind:value={regName}
+            maxlength="60"
+            placeholder="例: 事務所のPC"
+            class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]"
+          />
+        </label>
+        <button type="button" onclick={() => void registerAndVerify()} disabled={regBusy} class="w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">
+          {regBusy ? '登録しています…' : 'パスキーを登録して続ける'}
+        </button>
+        <p class="text-xs leading-5 text-stone-500">{data.oneIdNotice}</p>
+      </div>
+    {:else}
+      <PartnerStepUp
+        {token}
+        maskedEmail={data.maskedEmail}
+        methods={data.methods}
+        initialWaitSec={data.waitSec}
+        initialOpen={data.open}
+        securityHref={`/p/${token}/account/security`}
+        passkeyOnly={data.policy === 'passkey_only'}
+        onverified={done}
+      />
+    {/if}
     <div class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-4 text-sm">
       {#if !data.gated}
         <a href={data.next} class="text-stone-500 underline">確認せずに戻る</a>

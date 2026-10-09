@@ -102,7 +102,7 @@
 
 <section>
   <p class="text-sm leading-6 text-stone-600">
-    ここで登録したカードは、御社の全ユーザーが予約時に選べます。<strong class="font-medium text-brand-900">登録・削除はマスタユーザーのみ</strong>。選んで確定するときは本人確認（メールの認証コード）が必要です。
+    ここで登録したカードは、御社の全ユーザーが予約時に選べます。<strong class="font-medium text-brand-900">登録・削除はマスタユーザーのみ</strong>。選んで確定するときは本人確認（メールの認証コードまたはパスキー）が必要です。
     請求はご予約ごとの同意（予約画面の文面）に基づいて行います。カードの番号は Stripe が保管し、当サイトには保存されません。
   </p>
 
@@ -129,7 +129,7 @@
       <p class="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">カードの登録・削除は貴社のマスタユーザーが行えます。</p>
     {:else if !data.aal2}
       <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <span>カードの登録・削除・既定の変更の前に、本人確認（メールの認証コード）をお願いします。</span>
+        <span>カードの登録・削除・既定の変更の前に、本人確認（メールの認証コードまたはパスキー）をお願いします。</span>
         <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
       </p>
     {/if}

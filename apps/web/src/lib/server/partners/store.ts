@@ -18,7 +18,8 @@ import {
   SECURITY_LOG_ACTIONS,
   type LoginHistoryEntry
 } from '$lib/partner-login-security';
-import { loginStepUpReason, MFA_PENDING_MARK, normalizeMfaPolicy, type LoginStepUpReason, type PartnerMfaPolicy } from '$lib/partner-mfa';
+import { loginStepUpReason, MFA_PENDING_MARK, normalizeMfaPolicy, PARTNER_MFA_POLICIES, type LoginStepUpReason, type PartnerMfaPolicy } from '$lib/partner-mfa';
+import { MFA_SETUP_MARK } from '$lib/partner-passkey';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
@@ -40,7 +41,7 @@ import { partnerServiceClient } from './admin-client';
 import { removeAllPartnerDocumentFiles } from './memorandum';
 import { removeAllBookingAttachmentFiles } from './booking-attachments';
 import { randomToken, sha256Hex, verifyPassword, hashPassword } from './crypto';
-import { canManageAccount, canManageSavedCards } from '$lib/partner-account-roles';
+import { canManageAccount, canManageSavedCards, canResetMfa } from '$lib/partner-account-roles';
 import {
   ilikeContainsPattern,
   isPmsPartnerGuestType,
@@ -171,6 +172,10 @@ export type PartnerAccountRow = {
   is_master: boolean;
   created_by_account: string | null;
   created_at: string;
+  // 第2要素（docs/auth-hardening.md §6.6・S6 で画面に出す）: メールの確認済み・宿／マスタがリセットした時刻と人
+  email_verified_at?: string | null;
+  mfa_reset_at?: string | null;
+  mfa_reset_by?: string | null;
 };
 
 export type PartnerApiKeyRow = {
@@ -187,7 +192,7 @@ export type PartnerAccessLogRow = {
   id: number;
   account_id: string | null;
   api_key_id: string | null;
-  channel: 'web' | 'api';
+  channel: 'web' | 'api' | 'admin';
   action: string;
   detail: Record<string, unknown> | null;
   ip: string | null;
@@ -251,7 +256,7 @@ const COMMON_COLUMNS =
 const FACILITY_COLUMNS =
   'partner_id, facility_id, tenant_id, enabled, booking_enabled, max_days_ahead, show_inventory, include_advance, pricing, payment_method_id, facility_settings, sort_order, updated_at';
 const ACCOUNT_COLUMNS =
-  'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, is_master, created_by_account, created_at';
+  'id, partner_id, login_id, display_name, email, password_hash, password_set_at, setup_token_expires_at, failed_attempts, locked_until, last_login_at, is_active, is_master, created_by_account, created_at, email_verified_at, mfa_reset_at, mfa_reset_by';
 
 const asJsonObject = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -1284,7 +1289,8 @@ export async function logPartnerAccess(
     partnerId: string;
     accountId?: string | null;
     apiKeyId?: string | null;
-    channel: 'web' | 'api';
+    // admin = 宿（管理画面）の操作（本人確認の方針の変更・第2要素のリセット・S6）
+    channel: 'web' | 'api' | 'admin';
     action: string;
     detail?: Record<string, unknown>;
     ip?: string | null;
@@ -1312,8 +1318,22 @@ export async function logPartnerAccess(
 
 // opts.mfaPending: ログイン直後に本人確認を求める（mfa_method に印 'required' を付ける・aal は 1 のまま・§6.2）。
 // 印が付いたセッションは、本人確認が済むまで /mfa 以外を使えない（portal.ts の関所）
-async function startSession(db: SupabaseClient, accountId: string, meta: RequestMeta, opts: { mfaPending?: boolean } = {}): Promise<string> {
+// opts.passkey: パスキーでログインした（はじめから aal=2・mfa_method='passkey'・§6.5）
+// opts.setup: パスワード設定リンクから入った（mfa_method に印 'setup'・aal は 1。passkey_only の初回のパスキー登録だけに使う・§6.8）
+async function startSession(
+  db: SupabaseClient,
+  accountId: string,
+  meta: RequestMeta,
+  opts: { mfaPending?: boolean; passkey?: boolean; setup?: boolean } = {}
+): Promise<string> {
   const token = randomToken(32);
+  const mfa = opts.passkey
+    ? { aal: 2, mfa_at: new Date().toISOString(), mfa_method: 'passkey' }
+    : opts.mfaPending
+      ? { mfa_method: MFA_PENDING_MARK }
+      : opts.setup
+        ? { mfa_method: MFA_SETUP_MARK }
+        : {};
   const { error } = await db.from('rms_partner_sessions').insert({
     account_id: accountId,
     token_hash: await sha256Hex(token),
@@ -1321,7 +1341,7 @@ async function startSession(db: SupabaseClient, accountId: string, meta: Request
     user_agent: meta.userAgent?.slice(0, 300) ?? null,
     ip: meta.ip,
     device_id: meta.deviceId ?? null,
-    ...(opts.mfaPending ? { mfa_method: MFA_PENDING_MARK } : {})
+    ...mfa
   });
   if (error) raise(error, 'ログインできませんでした。');
   // 期限切れセッションの掃除（ついでに・失敗は無視）。
@@ -1362,7 +1382,7 @@ async function loginHistory(db: SupabaseClient, partnerId: string, accountId: st
       .select('ip, detail')
       .eq('partner_id', partnerId)
       .eq('account_id', accountId)
-      .in('action', ['login', 'password_set'])
+      .in('action', ['login', 'password_set', 'passkey_login'])
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(200)
@@ -1448,14 +1468,56 @@ export async function loginPartner(
   };
 }
 
-/** そのアカウントが最後に本人確認を通した時刻（access_logs の mfa_ok・§6.2 の 3）。無ければ null */
+/**
+ * パスキーでのログイン（docs/auth-hardening.md §6.5・S6）。パスキーの署名・counter の検証は呼ぶ側（passkeys.ts）で済ませてから呼ぶ。
+ * accountId はパスキーから引いたアカウント。ここでも「この取引先の・有効な・パスワード設定済みの」アカウントかを DB で確かめる
+ * （別の取引先のパスキーで入れない）。セッションははじめから aal=2（mfa_method='passkey'）。
+ * アカウント単位のロック（パスワードの失敗）はパスワードのためのものなので、パスキーのログインは止めない（数えも戻さない）。
+ */
+export async function loginPartnerWithPasskey(
+  db: SupabaseClient,
+  partner: Pick<PartnerContext, 'id'>,
+  accountId: string,
+  meta: RequestMeta & { passkeyId?: string }
+): Promise<Extract<LoginResult, { ok: true }> | null> {
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select(ACCOUNT_COLUMNS)
+    .eq('id', accountId)
+    .eq('partner_id', partner.id)
+    .maybeSingle();
+  if (error) raise(error, 'ログインできませんでした。');
+  const account = data as PartnerAccountRow | null;
+  if (!account || !account.is_active || !account.password_hash) return null;
+  await db.from('rms_partner_accounts').update({ last_login_at: new Date().toISOString() }).eq('id', account.id);
+  const history = await loginHistory(db, partner.id, account.id).catch(() => null);
+  const newEnvironment = history ? isNewEnvironment(history, meta.deviceId ?? null, meta.ip) : false;
+  const sessionToken = await startSession(db, account.id, meta, { passkey: true });
+  await logPartnerAccess(db, {
+    partnerId: partner.id,
+    accountId: account.id,
+    channel: 'web',
+    action: 'passkey_login',
+    detail: { ...(meta.deviceId ? { device: meta.deviceId } : {}), ...(meta.passkeyId ? { passkeyId: meta.passkeyId } : {}) },
+    ip: meta.ip
+  });
+  return {
+    ok: true,
+    sessionToken,
+    account: { id: account.id, login_id: account.login_id, display_name: account.display_name, email: account.email, is_master: account.is_master },
+    newEnvironment,
+    stepUp: null
+  };
+}
+
+/** そのアカウントが最後に本人確認を通した時刻（access_logs の mfa_ok・パスキーでのログイン passkey_login・§6.2 の 3）。無ければ null */
 async function lastMfaOkAt(db: SupabaseClient, partnerId: string, accountId: string): Promise<string | null> {
   const { data, error } = await db
     .from('rms_partner_access_logs')
     .select('created_at')
     .eq('partner_id', partnerId)
     .eq('account_id', accountId)
-    .eq('action', 'mfa_ok')
+    .in('action', ['mfa_ok', 'passkey_login'])
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -1470,6 +1532,8 @@ export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 
   aal?: 1 | 2;
   mfaAt?: string | null;
   mfaMethod?: string | null;
+  /** セッションを作った時刻（パスワード設定直後のパスキー初回登録の判定・S6） */
+  createdAt?: string | null;
   /** 管理画面からの確認モード（preview.ts）。見るだけで、書き込みは入口で断る */
   preview?: boolean;
 };
@@ -1526,7 +1590,8 @@ export async function getPartnerSession(
     sessionId: row.id,
     aal: row.aal === 2 ? 2 : 1,
     mfaAt: row.mfa_at ?? null,
-    mfaMethod: row.mfa_method ?? null
+    mfaMethod: row.mfa_method ?? null,
+    createdAt: row.created_at ?? null
   };
 }
 
@@ -1590,7 +1655,8 @@ export async function setPartnerPassword(
     .eq('partner_id', partner.id);
   if (error) raise(error, 'パスワードを設定できませんでした。');
   await db.from('rms_partner_sessions').delete().eq('account_id', account.id);
-  const sessionToken = await startSession(db, account.id, meta);
+  // 設定リンクから入った印（passkey_only でパスキーが 0 のアカウントが、最初のパスキーを登録できるように・§6.8）
+  const sessionToken = await startSession(db, account.id, meta, { setup: true });
   await logPartnerAccess(db, {
     partnerId: partner.id,
     accountId: account.id,
@@ -1921,4 +1987,154 @@ export async function reissueChildSetup(
     .eq('is_master', false);
   if (error) raise(error, 'パスワード設定リンクを発行できませんでした。');
   return { account: target, setupToken };
+}
+
+// ---- 本人確認の方針（rms_partners.mfa_policy）と第2要素のリセット（docs/auth-hardening.md §6.3・§6.8・S6） ----
+
+/**
+ * 本人確認の方針を変える。by: 'admin:<スタッフの uuid>'（管理画面）／'master:<アカウント id>'（取引先ページ・厳しくする方向だけ）。
+ * 変えたら access_logs に mfa_policy_change（channel は admin / web）。変わらなければ何もしない（changed=false）。
+ * 権限（admin か・マスタの厳しくする方向か）は呼ぶ側で確かめる。
+ */
+export async function setPartnerMfaPolicy(
+  db: SupabaseClient,
+  args: {
+    partnerId: string;
+    policy: PartnerMfaPolicy;
+    by: string;
+    channel: 'admin' | 'web';
+    accountId?: string | null;
+    ip?: string | null;
+    /** 変えてよいかを、いまの方針で確かめる（マスタの「厳しくする方向だけ」）。false なら 403 */
+    allow?: (from: PartnerMfaPolicy) => boolean;
+  }
+): Promise<{ changed: boolean; from: PartnerMfaPolicy }> {
+  if (!PARTNER_MFA_POLICIES.includes(args.policy)) throw new PartnerStoreError('本人確認の方針が正しくありません。');
+  const { data, error } = await db.from('rms_partners').select('mfa_policy').eq('id', args.partnerId).maybeSingle();
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  if (!data) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  const from = normalizeMfaPolicy((data as { mfa_policy: unknown }).mfa_policy);
+  if (from === args.policy) return { changed: false, from };
+  if (args.allow && !args.allow(from)) throw new PartnerStoreError('この変更は宿へご依頼ください。', 403, 'forbidden');
+  // 読んだ値のままのときだけ変える（同時の変更で記録と食い違わないように）
+  const { data: updated, error: e } = await db
+    .from('rms_partners')
+    .update({ mfa_policy: args.policy })
+    .eq('id', args.partnerId)
+    .eq('mfa_policy', from)
+    .select('id');
+  if (e) raise(e, '本人確認の方針を保存できませんでした。');
+  if (!(updated ?? []).length) throw new PartnerStoreError('他の操作と重なりました。画面を読み直してからもう一度お試しください。', 409, 'conflict');
+  await logPartnerAccess(db, {
+    partnerId: args.partnerId,
+    accountId: args.accountId ?? null,
+    channel: args.channel,
+    action: 'mfa_policy_change',
+    detail: { from, to: args.policy, by: args.by },
+    ip: args.ip ?? null
+  });
+  return { changed: true, from };
+}
+
+/**
+ * アカウントの第2要素をリセットする（§6.8）: パスキーを全部消し、メールの確認済み印・TOTP の列（初版は未提供・念のため）を外し、
+ * mfa_reset_at / mfa_reset_by を記録し、全セッションと未使用のチャレンジを消す。access_logs に mfa_reset（by: 'admin' / 'master'）。
+ * 権限（宿の admin か・マスタが子ユーザーにか）は呼ぶ側で確かめる。パスワード設定リンクの再発行も呼ぶ側（宛先・送り方が違うため）。
+ */
+export async function resetAccountMfa(
+  db: SupabaseClient,
+  args: {
+    partnerId: string;
+    accountId: string;
+    by: { kind: 'admin'; staffId: string | null } | { kind: 'master'; accountId: string };
+    ip?: string | null;
+  }
+): Promise<{ account: PartnerAccountRow; passkeys: number; sessions: number }> {
+  if (!/^[0-9a-f-]{36}$/i.test(args.accountId)) throw new PartnerStoreError('ログインアカウントが見つかりません。', 404, 'not_found');
+  const { data, error } = await db
+    .from('rms_partner_accounts')
+    .select(ACCOUNT_COLUMNS)
+    .eq('id', args.accountId)
+    .eq('partner_id', args.partnerId)
+    .maybeSingle();
+  if (error) raise(error, 'ログインアカウントを読み込めませんでした。');
+  const account = data as PartnerAccountRow | null;
+  if (!account) throw new PartnerStoreError('ログインアカウントが見つかりません。', 404, 'not_found');
+  const byText = args.by.kind === 'admin' ? `admin:${args.by.staffId ?? 'unknown'}` : `master:${args.by.accountId}`;
+  const { data: removed, error: pe } = await db.from('rms_partner_passkeys').delete().eq('account_id', account.id).select('id');
+  if (pe) raise(pe, 'パスキーを削除できませんでした。');
+  const { error: ae } = await db
+    .from('rms_partner_accounts')
+    .update({
+      email_verified_at: null,
+      totp_secret_enc: null,
+      totp_confirmed_at: null,
+      totp_backup_codes_hash: null,
+      mfa_reset_at: new Date().toISOString(),
+      mfa_reset_by: byText
+    })
+    .eq('id', account.id)
+    .eq('partner_id', args.partnerId);
+  if (ae) raise(ae, '第2要素をリセットできませんでした。');
+  const { data: sessions } = await db.from('rms_partner_sessions').delete().eq('account_id', account.id).select('id');
+  await db
+    .from('rms_partner_mfa_challenges')
+    .delete()
+    .eq('account_id', account.id)
+    .then(
+      () => undefined,
+      () => undefined
+    );
+  const result = { passkeys: (removed ?? []).length, sessions: (sessions ?? []).length };
+  // 本人のログとして残す（セキュリティタブの履歴にも出る）。操作した人は detail.actor
+  await logPartnerAccess(db, {
+    partnerId: args.partnerId,
+    accountId: account.id,
+    channel: args.by.kind === 'admin' ? 'admin' : 'web',
+    action: 'mfa_reset',
+    detail: { by: args.by.kind, actor: byText, ...result },
+    ip: args.ip ?? null
+  });
+  return { account, ...result };
+}
+
+/** マスタが子ユーザーの第2要素をリセットする（ユーザー管理・§6.8。本人確認はマスタの責任）。対象は同じ取引先の子ユーザーだけ */
+export async function resetChildMfa(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  accountId: string,
+  ip: string | null
+): Promise<{ account: PartnerAccountRow; passkeys: number; sessions: number }> {
+  const { actor, target } = await requireChildTarget(db, partnerId, actorId, accountId);
+  if (!canResetMfa({ ...actor, is_active: true }, target)) throw new PartnerStoreError('このユーザーは操作できません。', 403, 'forbidden');
+  return resetAccountMfa(db, { partnerId, accountId: target.id, by: { kind: 'master', accountId: actor.id }, ip });
+}
+
+/** 宿（管理画面）がアカウントをすべての端末からログアウトさせる（停止はしない・§6.7）。access_logs に logout_all（channel='admin'） */
+export async function revokeAllSessionsByStaff(
+  db: SupabaseClient,
+  partnerId: string,
+  accountId: string,
+  staffId: string | null
+): Promise<{ count: number }> {
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) throw new PartnerStoreError('ログインアカウントが見つかりません。', 404, 'not_found');
+  const { data: acc, error: ae } = await db.from('rms_partner_accounts').select('id').eq('id', accountId).eq('partner_id', partnerId).maybeSingle();
+  if (ae) raise(ae, 'ログインアカウントを読み込めませんでした。');
+  if (!acc) throw new PartnerStoreError('ログインアカウントが見つかりません。', 404, 'not_found');
+  const { data, error } = await db.from('rms_partner_sessions').delete().eq('account_id', accountId).select('id');
+  if (error) raise(error, 'ログアウトできませんでした。');
+  const count = (data ?? []).length;
+  await logPartnerAccess(db, { partnerId, accountId, channel: 'admin', action: 'logout_all', detail: { count, by: `admin:${staffId ?? 'unknown'}` } });
+  return { count };
+}
+
+/** アカウントごとのパスキーの数（管理画面・ユーザー管理の表示）。読めなければ空 */
+export async function countPasskeysByAccount(db: SupabaseClient, accountIds: readonly string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!accountIds.length) return out;
+  const { data, error } = await db.from('rms_partner_passkeys').select('account_id').in('account_id', [...accountIds]);
+  if (error) return out;
+  for (const r of (data ?? []) as { account_id: string }[]) out.set(r.account_id, (out.get(r.account_id) ?? 0) + 1);
+  return out;
 }

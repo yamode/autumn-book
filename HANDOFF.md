@@ -26,6 +26,32 @@
 - [ ] PMS の顧客の紐づけ・与信の表示と保存が従来どおり
 - [ ] スタッフ（閲覧のみ）でも開ける。アクセスできない施設の ?fac= はいまの施設に戻る
 
+## 認証強化 S6・S7：パスキー・二段階認証の方針・リセット（2026-10-10・v0.114.0・autumn-shared 20261009215711）
+- パスキー（@simplewebauthn/server 14.0.3・browser 14.0.0）: ログイン画面の「パスキーでログイン」（パスワード不要・生体認証/PIN 必須・セッションは aal2）と Conditional UI、/mfa の「パスキーで確認する」、セキュリティでの追加・名前変更・削除（aal2 必須・登録完了メール）。`PASSKEY_RP_ID=book.yamado.app`（wrangler.jsonc）。localhost は設定なしで可、`*.pages.dev` ではボタンを出さず API は 404
+- ログイン用チャレンジは `rms_partner_mfa_challenges`（account_id=null・partner_id=限定URLの取引先・kind='passkey_auth'）。検証でチャレンジの取引先とパスキーの持ち主の取引先・有効性を両方確認。counter は読んだ値のときだけ進める
+- 方針 `mfa_policy`: 管理画面の取引先詳細で step_up / always / passkey_only を選ぶ（passkey_only にするとき未登録ユーザーを確認ダイアログで表示）。マスタはセキュリティで step_up → always だけ変更可。passkey_only はパスキーで得た aal2 だけを認める
+- リセット: 宿（管理画面・admin）が「第2要素をリセット」（パスキー全削除・全端末ログアウト・設定リンク再発行・mfa_reset_at/by・channel=admin のログ）。マスタの本人確認は電話折り返し＋担当者名と直近予約の口頭確認（M14・ダイアログに手順）。マスタは子ユーザーをリセット可。passkey_only でパスキー0のときは設定リンクから入った直後30分だけ登録できる
+- 「1人1ID」の文言をログイン画面・セキュリティ・ユーザー管理・設定メールに
+- S7: docs/ADMIN_APP_OPS.md の「service_role は一切無い」を訂正
+- 宿のリセットの記録は rms_partner_access_logs（channel=admin）のみ（book.admin_audit_logs には書かない）
+
+### テストチェックリスト（認証強化 S6・本番ドメインまたは localhost）
+- [ ] セキュリティ →「パスキーを追加」（aal1 なら /mfa）→ 生体認証 → 一覧に名前・登録日。登録完了メール。passkey_registered
+- [ ] 「パスキーでログイン」→ パスワード無しで /calendar。sessions が aal=2・mfa_method='passkey'。新しい環境なら通知メール
+- [ ] 別の取引先の /p/<token> では同じパスキーで入れない。停止中のアカウントも入れない
+- [ ] ログインID欄のフォーカスでパスキーの候補が出る（Chrome・Safari）
+- [ ] /mfa の「パスキーで確認する」で aal2。counter・last_used_at が更新され、同じ応答の送り直しは拒否
+- [ ] 保存カードの予約画面・予約一覧のモーダルでもパスキーで本人確認できる
+- [ ] パスキーの名前変更・削除は aal2。passkey_only では最後の1つを消せない
+- [ ] 管理画面で mfa_policy を変更 → access_logs（channel=admin・mfa_policy_change）
+- [ ] passkey_only: パスワードでログイン → /mfa はパスキーだけ。メール送信 API は拒否。メールの aal2 では関所を抜けない
+- [ ] passkey_only でパスキー0 → 宿が「第2要素をリセット」→ 設定リンク → /mfa で「パスキーを登録して続ける」→ /calendar。30分過ぎると出ない
+- [ ] マスタが子ユーザーの「第2要素をリセット」→ パスキー全削除・全端末ログアウト・設定リンク。子ユーザーは実行できない
+- [ ] 宿がマスタをリセット → mfa_reset_at/by が入り、管理画面に表示。「全端末ログアウト」でセッションが消える
+- [ ] マスタは step_up → always だけ変更でき、緩める変更は 403。子ユーザーにはボタンが出ない
+- [ ] 「1人1ID」の文言がログイン画面・セキュリティ・ユーザー管理・設定メールに出る
+- [ ] プレビュー（*.pages.dev）ではパスキーのボタンが出ず API は 404。確認モードでは /mfa に入らず POST は 403
+
 ## 認証強化 S3・S4：本人確認（メールの認証コード）と保存カードの権限（2026-10-10・v0.113.0）
 - 本人確認（aal2）: `/p/<token>/mfa` でメールの認証コード（6桁・有効10分・5回まで・再送60秒/1時間5通・ハッシュ保存・件名にコードなし）。通るとセッションが aal=2（12時間有効）
 - ログイン直後に求める条件: mfa_policy=always は毎回。step_up（既定）はメール登録済みかつ「新しい環境」または「前回の本人確認から30日」（一度も確認していない人は30日判定の対象外＝配備直後に一斉に求めない）。待ちの印は `rms_partner_sessions.mfa_method='required'`

@@ -53,7 +53,10 @@ import {
 	PartnerStoreError,
 	regeneratePartnerUrl,
 	reissueSetupToken,
+	resetAccountMfa,
+	revokeAllSessionsByStaff,
 	revokePartnerApiKey,
+	setPartnerMfaPolicy,
 	savePartnerFacility,
 	searchPmsPartnerGuests,
 	setPartnerBookingNameMode,
@@ -94,6 +97,8 @@ import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbUploadContentPhoto } from '$lib/server/content-admin';
 import { BOOKING_NAME_MODES, pmsGuestUrl, type BookingNameMode } from '$lib/pms-partner-guest';
 import { isSelectableCreditOverAction, nextMonths, parseCreditSettingsInput } from '$lib/partner-credit';
+import { requestMeta } from '$lib/server/partners/portal';
+import { normalizeMfaPolicy, PARTNER_MFA_POLICIES, PARTNER_MFA_POLICY_LABELS, type PartnerMfaPolicy } from '$lib/partner-mfa';
 import type { Actions, PageServerLoad } from './$types';
 
 const PREVIEW_DAYS = 14;
@@ -765,18 +770,75 @@ export const actions: Actions = {
 
 	updateAccount: async (event) => {
 		try {
-			const { db, partner } = await editScope(event);
+			const { db, partner, userId } = await editScope(event);
 			const fd = await event.request.formData();
 			const op = String(fd.get('op') ?? '');
 			const accountId = String(fd.get('account_id') ?? '');
 			if (op === 'delete') {
 				await deletePartnerAccount(db, partner, accountId);
+			} else if (op === 'logout') {
+				// すべての端末からログアウト（停止はしない・§6.7）
+				const { count } = await revokeAllSessionsByStaff(db, partner.id, accountId, userId);
+				return { accountUpdated: true, accountMessage: `${count}台の端末をログアウトさせました。` };
 			} else {
 				const patch = op === 'disable' ? { is_active: false } : op === 'enable' ? { is_active: true } : op === 'unlock' ? { unlock: true } : null;
 				if (!patch) throw new PartnerStoreError('不明な操作です。');
 				await updatePartnerAccount(db, partner, accountId, patch);
 			}
 			return { accountUpdated: true };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// 本人確認の方針（rms_partners.mfa_policy・docs/auth-hardening.md §6.3・S6）。共通の設定なので commonScope（admin・全施設）。
+	// 変更は access_logs（channel='admin'・mfa_policy_change）に残る。passkey_only にすると、パスキーの無いユーザーはログインできなくなる
+	setMfaPolicy: async (event) => {
+		try {
+			const s = await commonScope(event);
+			const fd = await event.request.formData();
+			const value = String(fd.get('mfa_policy') ?? '');
+			if (!PARTNER_MFA_POLICIES.includes(value as PartnerMfaPolicy)) throw new PartnerStoreError('本人確認の方針を選んでください。');
+			const r = await setPartnerMfaPolicy(s.db, {
+				partnerId: s.partner.id,
+				policy: value as PartnerMfaPolicy,
+				by: `admin:${s.userId ?? 'unknown'}`,
+				channel: 'admin',
+				ip: requestMeta(event).ip
+			});
+			return {
+				mfaPolicySaved: r.changed
+					? `本人確認の方針を「${PARTNER_MFA_POLICY_LABELS[value as PartnerMfaPolicy]}」にしました（変更前: ${PARTNER_MFA_POLICY_LABELS[normalizeMfaPolicy(r.from)]}）。`
+					: '変更はありませんでした。'
+			};
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// アカウントの第2要素をリセット（§6.8・M14）: パスキー全削除・メールの確認済みを外す・全端末ログアウト・mfa_reset_at/by・監査ログ。
+	// マスタのリセットは宿（admin）だけ＝ここ。本人確認は「登録済みの電話番号へ宿から折り返し、担当者名と直近の予約を口頭で確認」（§13）。
+	// 「設定リンクをメールで送る」に印があれば、パスワード設定リンクも再発行して送る（passkey_only の取引先は、そのリンクから入って最初のパスキーを登録する）
+	resetAccountMfa: async (event) => {
+		try {
+			const s = await editScope(event);
+			const fd = await event.request.formData();
+			const r = await resetAccountMfa(s.db, {
+				partnerId: s.partner.id,
+				accountId: String(fd.get('account_id') ?? ''),
+				by: { kind: 'admin', staffId: s.userId ?? null },
+				ip: requestMeta(event).ip
+			});
+			let issued: Awaited<ReturnType<typeof issueSetupLink>> | null = null;
+			if (fd.get('reissue') === 'on' && r.account.is_active) {
+				const { account, setupToken } = await reissueSetupToken(s.db, s.partner, r.account.id);
+				issued = await issueSetupLink(event, s, account, setupToken, account.email && fd.get('send_email') === 'on' ? account.email : null);
+			}
+			return {
+				accountUpdated: true,
+				accountMessage: `${r.account.login_id} の第2要素をリセットしました（パスキー ${r.passkeys}件を削除・${r.sessions}台の端末をログアウト）。`,
+				...(issued ? { issued } : {})
+			};
 		} catch (e) {
 			return actionFailure(e);
 		}

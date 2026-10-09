@@ -16,6 +16,7 @@ import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { sendPartnerMail } from './mail';
 import { partnerSetupBrand } from './setup-brand';
+import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
 import { PartnerFormError } from './staff-form';
 import {
   loadStaffPartnerView,
@@ -221,7 +222,9 @@ export async function sendSetupEmail(
     '',
     `次回以降のログイン: ${args.loginUrl}`,
     '',
-    '※このURLは貴社専用です。社外へは共有しないでください。'
+    '※このURLは貴社専用です。社外へは共有しないでください。',
+    // 「1人1ID」の案内（docs/auth-hardening.md §6.5・S6）
+    `※${ONE_PERSON_ONE_ID_NOTICE}`
   ].join('\n');
   const html = `<p>${escapeHtml(args.partner.name)} 様</p>
 <p>${escapeHtml(brand.label)} の料金カレンダー（特別レート）のログインIDを発行しました。<br>下記のリンクからパスワードを設定してください。</p>
@@ -229,7 +232,7 @@ export async function sendSetupEmail(
 パスワード設定: <a href="${escapeHtml(args.setupUrl)}">${escapeHtml(args.setupUrl)}</a><br>
 （リンクの有効期限: ${days}日）</p>
 <p>次回以降のログイン: <a href="${escapeHtml(args.loginUrl)}">${escapeHtml(args.loginUrl)}</a></p>
-<p style="color:#666;font-size:12px">※このURLは貴社専用です。社外へは共有しないでください。</p>`;
+<p style="color:#666;font-size:12px">※このURLは貴社専用です。社外へは共有しないでください。<br>※${escapeHtml(ONE_PERSON_ONE_ID_NOTICE)}</p>`;
   return sendPartnerMail(db, brand.facilityId, {
     to: [args.to],
     subject: `【${brand.subjectName}】料金カレンダーのログインID発行のお知らせ`,

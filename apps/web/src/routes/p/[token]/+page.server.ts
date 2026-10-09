@@ -14,6 +14,7 @@ import { notifyNewEnvironmentLogin, portalUrl } from '$lib/server/partners/porta
 import { ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
 import { portalMfaUrl } from '$lib/partner-mfa';
+import { passkeyRp } from '$lib/server/partners/passkeys';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -22,7 +23,9 @@ export const load = async (event) => {
   if (session && (!unavailable || session.preview)) throw redirect(303, `/p/${event.params.token}/calendar`);
   return {
     portal: portalHeader(partner, session),
-    unavailable
+    unavailable,
+    // パスキーでログイン（本番ドメインとローカルだけ・*.pages.dev のプレビューでは出さない・§6.5）
+    passkeyEnabled: Boolean(passkeyRp(event))
   };
 };
 

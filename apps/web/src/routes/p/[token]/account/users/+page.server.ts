@@ -5,13 +5,16 @@ import { requireAal2 } from '$lib/server/partners/mfa';
 import { portalMfaUrl } from '$lib/partner-mfa';
 import { autoChildLoginId, portalUrl, sendChildSetupEmail } from '$lib/server/partners/portal-users';
 import { isEmail } from '$lib/server/partners/staff-form';
+import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
 import {
+  countPasskeysByAccount,
   createChildAccount,
   deleteChildAccount,
   listPortalUsers,
   logPartnerAccess,
   PartnerStoreError,
   reissueChildSetup,
+  resetChildMfa,
   revokeAccountSessions,
   setChildAccountActive,
   type PartnerAccountRow
@@ -21,6 +24,8 @@ import {
 // マスタユーザーは取引先内の子ユーザーを作成・停止/再開・削除・パスワード設定リンクの再送ができる。
 // 権限は store.ts の requireMasterAccount / requireChildTarget が DB 条件で毎回確かめる（ここでの session.is_master は入口の早期判定）。
 // どの操作も本人確認（aal2）が要る（docs/auth-hardening.md §5.2・S3）。一覧を見るだけなら要らない。
+// 第2要素のリセット（§6.8・S6）: 子ユーザーのパスキーを全部消し、全端末をログアウトさせ、パスワード設定リンクを送り直す。
+//   本人確認（電話・対面など）はマスタの責任。リセットした記録は対象の mfa_reset（by:'master'）とマスタの child_mfa_reset。
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -35,6 +40,10 @@ export const load = async (event) => {
     throw e;
   }
   // パスワードのハッシュ等は画面へ渡さない（表示に要る列だけ）
+  const passkeyCounts = await countPasskeysByAccount(
+    db,
+    rows.map((a) => a.id)
+  );
   const users = rows.map((a) => ({
     id: a.id,
     loginId: a.login_id,
@@ -45,12 +54,17 @@ export const load = async (event) => {
     isSelf: a.id === session.id,
     lastLoginAt: a.last_login_at,
     lockedUntil: a.locked_until && new Date(a.locked_until).getTime() > Date.now() ? a.locked_until : null,
-    createdAt: a.created_at
+    createdAt: a.created_at,
+    // 第2要素（S6）: パスキーの数・メールの確認済み・最後にリセットした時刻
+    passkeyCount: passkeyCounts.get(a.id) ?? 0,
+    emailVerified: Boolean(a.email && a.email_verified_at),
+    mfaResetAt: a.mfa_reset_at ?? null
   }));
   return {
     portal: portalHeader(partner, session),
     users,
     aal2: portalAal2(session),
+    oneIdNotice: ONE_PERSON_ONE_ID_NOTICE,
     mfaHref: portalMfaUrl(event.params.token, `/p/${event.params.token}/account/users`)
   };
 };
@@ -188,6 +202,33 @@ export const actions = {
         ip: requestMeta(event).ip
       });
       return { loggedOut: { loginId: account.login_id, count } };
+    } catch (e) {
+      return failure(e);
+    }
+  },
+
+  // 子ユーザーの第2要素をリセットする（§6.8）: パスキー全削除・全端末ログアウト・パスワード設定リンクの再送
+  reset_mfa: async (event) => {
+    const s = await masterScope(event);
+    const fd = await event.request.formData();
+    const ip = requestMeta(event).ip;
+    try {
+      const r = await resetChildMfa(s.db, s.partner.id, s.session.id, String(fd.get('account_id') ?? ''), ip);
+      // 設定リンクを送り直す（停止中・メール無しは送らない＝画面で案内）
+      let issued: Awaited<ReturnType<typeof deliverSetupLink>> | null = null;
+      if (r.account.is_active && r.account.email) {
+        const { account, setupToken } = await reissueChildSetup(s.db, s.partner.id, s.session.id, r.account.id);
+        issued = await deliverSetupLink(event, s, account, setupToken, true);
+      }
+      await logPartnerAccess(s.db, {
+        partnerId: s.partner.id,
+        accountId: s.session.id,
+        channel: 'web',
+        action: 'child_mfa_reset',
+        detail: { targetAccountId: r.account.id, loginId: r.account.login_id, passkeys: r.passkeys, sessions: r.sessions, emailSent: issued?.emailSent ?? false },
+        ip
+      });
+      return { mfaReset: { loginId: r.account.login_id, passkeys: r.passkeys, sessions: r.sessions, issued } };
     } catch (e) {
       return failure(e);
     }

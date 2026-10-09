@@ -19,8 +19,9 @@
 import { error, json } from '@sveltejs/kit';
 import { confirmPartnerIntent, getPartnerBooking, inlinePaymentReady, releasePendingBooking, resumePartnerPayment } from '$lib/server/partners/booking';
 import { portalAal2, PORTAL_HEADERS, requirePortalApi } from '$lib/server/partners/portal';
-import { aal2ApiProblem, emailOtpStatus, loadMfaAccount } from '$lib/server/partners/mfa';
-import { maskEmail, mfaMethodsFor, normalizeMfaPolicy, portalMfaUrl } from '$lib/partner-mfa';
+import { aal2ApiProblem } from '$lib/server/partners/mfa';
+import { stepUpState } from '$lib/server/partners/passkeys';
+import { portalMfaUrl } from '$lib/partner-mfa';
 import { PartnerStoreError } from '$lib/server/partners/store';
 import { isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { StripeError } from '$lib/server/stripe';
@@ -55,9 +56,7 @@ export const POST = async (event) => {
       // 本人確認がまだ: 保存カードは出さない。保存カードがあれば、本人確認すれば選べることを画面に知らせる（件数だけ）
       // 予約画面がその場で本人確認できるよう、送り先（伏せたもの）と方法・再送の待ちも返す
       const needMfa = async (count: number) => {
-        const policy = normalizeMfaPolicy(partner.mfa_policy);
-        const account = await loadMfaAccount(db, partner.id, session.id).catch(() => null);
-        const status = account?.email ? await emailOtpStatus(db, session.id).catch(() => null) : null;
+        const state = await stepUpState(db, event, partner, session).catch(() => null);
         return reply({
           ok: true,
           clientSecret: null,
@@ -65,11 +64,12 @@ export const POST = async (event) => {
           mfaRequired: count > 0,
           savedCount: count,
           mfaUrl: portalMfaUrl(event.params.token, String(body.next || backTo)),
+          // 方法はパスキー（このホストで使えるとき・S6）とメール
           stepUp: {
-            maskedEmail: maskEmail(account?.email),
-            methods: mfaMethodsFor(policy, { email: account?.email ?? null }),
-            waitSec: status?.waitSec ?? 0,
-            open: status?.open ?? false
+            maskedEmail: state?.maskedEmail ?? '',
+            methods: state?.methods ?? [],
+            waitSec: state?.waitSec ?? 0,
+            open: state?.open ?? false
           }
         });
       };

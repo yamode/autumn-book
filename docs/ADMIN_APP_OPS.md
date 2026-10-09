@@ -27,7 +27,7 @@ YAMADO 公式アプリ（yamado-one）が表示・配信するものを運用す
 | 2 | 既存画面と重複する画面は作らない。プラン公開は `/admin/plans`、お知らせは `/admin/news`。新規画面は**既存画面へ導線を張る**だけ | §1.3 |
 | 3 | サイドバーは「**誰が・何をきっかけに操作するか**」でグループ化（宿泊・直販 ／ アプリ・会員 ／ サイト・コンテンツ ／ システム）。**1 項目は 1 箇所にしか置かない**。両属性の項目（お知らせ・会員・コミュニティ）は画面内の相互リンクで解決する | §2 |
 | 4 | 新規画面は **実データ専用**（`store.ts` にデモ実装を作らない）。`DATA_SOURCE=demo` または `AUTH_MODE=demo` のときは画面全体を「この環境では利用できません」パネルにする（`/admin/community` のモデレーション無効化と同じ流儀） | §6 |
-| 5 | 書き込みはすべて **`SECURITY DEFINER` RPC（`private.is_tenant_admin` ガード・監査ログ内蔵）**。**service_role キーを SvelteKit に持ち込まない**（現状 autumn-book に service_role は一切無く、Cloudflare Pages に秘密を増やさない） | §5 |
+| 5 | 書き込みはすべて **`SECURITY DEFINER` RPC（`private.is_tenant_admin` ガード・監査ログ内蔵）**。**service_role キーを SvelteKit に持ち込まない**（※2026-10-10 訂正: 現在は `SUPABASE_SERVICE_ROLE_KEY` を Cloudflare Pages に置き、取引先モジュール・公式サイト決済・客室コード照合・FAQ ログ・管理画面の二段階認証の復旧・仮押さえに限って使っている。一覧は `apps/web/src/lib/server/partners/admin-client.ts` 冒頭の「例外」。管理画面の通常の書き込みは引き続き RPC） | §5 |
 | 6 | 通知の一斉配信は「**テスト受信者へ送る → 宛先件数を確認 → 件数を入力して確定**」の三段。予約配信のみ取り消せる（即時配信は 2 分以内に drain されるため取り消し不可と明示） | §3.2 |
 | 7 | 配信履歴のために `book.notification_campaigns` を新設し `notifications.campaign_id` で紐づける。cron の自動通知（reminder/thanks）は `campaign_id IS NULL` として別タブに出す | §3.2 / §5 |
 | 8 | クーポンは配布済みになったら割引条件（種別・額・最低金額・施設・宿泊日）を変更不可。止めるときは「無効化」（`is_active=false`＝アプリ側 `isCouponUsableFor()` が即 false）、個別に剥がすときは「配布取消」（`status='revoked'`） | §3.1 |
@@ -729,7 +729,7 @@ order by l.created_at desc limit 10;
 
 | 観点 | RPC（採用） | service_role 直操作（不採用） |
 |---|---|---|
-| 秘密の置き場所 | 不要（cookie の JWT で `auth.uid()` が立つ） | `SUPABASE_SERVICE_ROLE_KEY` を Cloudflare Pages に置く必要がある。現状 autumn-book には service_role が 1 箇所も無く、増やすとサーバー側コードのどこからでも全テーブルを触れてしまう |
+| 秘密の置き場所 | 不要（cookie の JWT で `auth.uid()` が立つ） | `SUPABASE_SERVICE_ROLE_KEY` を Cloudflare Pages に置く必要がある。増やすとサーバー側コードのどこからでも全テーブルを触れてしまう（※現在は限定用途で使用中・上記 §0 の訂正を参照） |
 | 権限判定 | RPC 内で `private.is_tenant_admin(tenant)` ／ `has_tenant_access` を評価。**DB が最終防衛線** | アプリ側 `locals.user.role` だけが防衛線になる（`AUTH_MODE=demo` の偽造 cookie で突破される設計上の後退） |
 | 監査 | RPC 内で `admin_audit_logs` に `actor = auth.uid()` を記帳（既存 `issue_coupon` / `forum_upsert_board` と同じ） | アプリ側で別途 insert する必要があり漏れる |
 | 既存との整合 | `issue_coupon` / `broadcast_notification` / `forum_*` / `otayori_*` / inroom 系がすべてこの形 | 前例なし |

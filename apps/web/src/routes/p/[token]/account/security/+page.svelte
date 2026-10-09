@@ -3,9 +3,70 @@
   import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
+  import { invalidateAll } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { onMount } from 'svelte';
+  import { passkeyRemoval } from '$lib/partner-passkey';
   import type { PageData } from './$types';
 
-  let { data, form }: { data: PageData; form?: { message?: string; loggedOut?: number; emailMessage?: string; emailSaved?: string; email?: string } } = $props();
+  let {
+    data,
+    form
+  }: {
+    data: PageData;
+    form?: {
+      message?: string;
+      loggedOut?: number;
+      emailMessage?: string;
+      emailSaved?: string;
+      email?: string;
+      passkeyMessage?: string;
+      passkeyError?: string;
+      policyMessage?: string;
+      policyError?: string;
+    };
+  } = $props();
+  const token = $derived($page.params.token ?? '');
+
+  // ---- パスキー（docs/auth-hardening.md §6.5・S6） ----
+  let passkeySupported = $state(false);
+  let addName = $state('');
+  let adding = $state(false);
+  let addMessage = $state('');
+  let addDone = $state('');
+  let renaming = $state<string | null>(null);
+  onMount(() => {
+    if (!data.passkeys?.enabled) return;
+    void import('$lib/partner-passkey-client').then(async (m) => (passkeySupported = await m.passkeySupported()));
+  });
+  async function addPasskey() {
+    if (adding) return;
+    adding = true;
+    addMessage = '';
+    addDone = '';
+    try {
+      const { registerPasskey } = await import('$lib/partner-passkey-client');
+      const r = await registerPasskey(token, addName);
+      if (r.ok) {
+        addDone = 'パスキーを登録しました。次回から「パスキーでログイン」・パスキーでの本人確認が使えます。';
+        addName = '';
+        await invalidateAll();
+      } else if (r.status === 403 && typeof r.data?.next === 'string') {
+        // 本人確認がまだ → /mfa（済んだらこの画面へ戻る）
+        location.href = r.data.next;
+      } else {
+        addMessage = r.message;
+      }
+    } finally {
+      adding = false;
+    }
+  }
+  const removeConfirm = (count: number) => {
+    const rule = passkeyRemoval(data.policy?.value ?? 'step_up', count - 1);
+    return rule.warn
+      ? `${rule.message}削除してよろしいですか？`
+      : 'このパスキーを削除します。よろしいですか？（端末側に残ったパスキーは、端末の設定から削除してください）';
+  };
   let editingEmail = $state(false);
 
   let busy = $state(false);
@@ -34,7 +95,11 @@
     action === 'login_new_device' ||
     action === 'mfa_failed' ||
     action === 'mfa_locked' ||
-    action === 'email_change';
+    action === 'email_change' ||
+    action === 'passkey_registered' ||
+    action === 'passkey_removed' ||
+    action === 'passkey_failed' ||
+    action === 'mfa_reset';
   const inputClass =
     'w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
 </script>
@@ -115,6 +180,102 @@
         {:else}
           <button type="button" onclick={() => (editingEmail = true)} class="mt-4 rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50">メールアドレスを変更する</button>
         {/if}
+      </div>
+    {/if}
+
+    {#if data.passkeys}
+      <!-- パスキー（§6.5・S6） -->
+      <h3 class="mt-8 text-lg font-bold">パスキー</h3>
+      <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+        <p class="text-stone-600">
+          パスキーを登録すると、パスワード無しで「パスキーでログイン」できます。本人確認もパスキー（端末の生体認証・PIN）で行えます。偽のログイン画面（フィッシング）にも強い方法です。
+        </p>
+        {#if form?.passkeyError}
+          <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.passkeyError}</p>
+        {:else if form?.passkeyMessage}
+          <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.passkeyMessage}</p>
+        {/if}
+        {#if data.passkeys.error}<p class="mt-3 text-rose-700">{data.passkeys.error}</p>{/if}
+        <ul class="mt-3 divide-y divide-stone-100">
+          {#each data.passkeys.items as p (p.id)}
+            <li class="flex flex-wrap items-start justify-between gap-3 py-3">
+              <div class="min-w-0">
+                {#if renaming === p.id}
+                  <form method="POST" action="?/passkey_rename" use:enhance={submit()} class="flex flex-wrap items-center gap-2" onsubmit={() => (renaming = null)}>
+                    <input type="hidden" name="passkey_id" value={p.id} />
+                    <input name="name" value={p.name} maxlength="60" required class="rounded-md border border-stone-300 px-2 py-1" />
+                    <button type="submit" disabled={busy} class="rounded-md bg-accent-600 px-3 py-1 text-white disabled:opacity-50">保存</button>
+                    <button type="button" onclick={() => (renaming = null)} class="rounded-md border border-stone-300 px-3 py-1">やめる</button>
+                  </form>
+                {:else}
+                  <p class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium">{p.name}</span>
+                    {#if p.backedUp}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700" title="Apple / Google アカウント等で同期されるパスキー">同期済み</span>{/if}
+                  </p>
+                {/if}
+                <p class="mt-0.5 text-xs text-stone-500">登録: {fmt(p.createdAt)} ／ 最終使用: {fmt(p.lastUsedAt)}</p>
+              </div>
+              {#if renaming !== p.id}
+                <div class="flex gap-2">
+                  <button type="button" onclick={() => (renaming = p.id)} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50">名前を変更</button>
+                  <form method="POST" action="?/passkey_remove" use:enhance={submit(removeConfirm(data.passkeys.items.length))}>
+                    <input type="hidden" name="passkey_id" value={p.id} />
+                    <button type="submit" disabled={busy} class="rounded-md border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50 disabled:opacity-50">削除</button>
+                  </form>
+                </div>
+              {/if}
+            </li>
+          {:else}
+            <li class="py-3 text-stone-500">登録されたパスキーはありません。</li>
+          {/each}
+        </ul>
+        {#if data.passkeys.enabled && passkeySupported}
+          <div class="mt-3 space-y-2 border-t border-stone-100 pt-3">
+            {#if addMessage}<p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{addMessage}</p>{/if}
+            {#if addDone}<p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{addDone}</p>{/if}
+            <div class="flex flex-wrap items-end gap-2">
+              <label class="block min-w-[12rem] flex-1">
+                <span class="mb-1 block font-medium">パスキーの名前（任意）</span>
+                <input bind:value={addName} maxlength="60" placeholder="例: 事務所のPC・自分のiPhone" class={inputClass} />
+              </label>
+              <button type="button" onclick={() => void addPasskey()} disabled={adding} class="rounded-md bg-accent-600 px-4 py-2 font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+                {adding ? '登録しています…' : 'パスキーを追加'}
+              </button>
+            </div>
+            {#if data.mfa && !data.mfa.aal2}<p class="text-xs text-stone-500">追加・名前の変更・削除の前に本人確認をお願いします（「パスキーを追加」を押すと確認の画面へ進みます）。</p>{/if}
+          </div>
+        {:else if !data.passkeys.enabled}
+          <p class="mt-3 text-xs text-stone-500">このページのアドレスではパスキーを登録・使用できません（正式なアドレスでお使いください）。</p>
+        {:else}
+          <p class="mt-3 text-xs text-stone-500">このブラウザはパスキーに対応していません。</p>
+        {/if}
+        <p class="mt-3 text-xs leading-5 text-stone-500">{data.policy?.oneIdNotice}</p>
+      </div>
+    {/if}
+
+    {#if data.policy}
+      <!-- 本人確認の方針（§6.3・宿が設定。マスタは厳しくする方向だけ） -->
+      <h3 class="mt-8 text-lg font-bold">本人確認の方針（貴社共通）</h3>
+      <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+        <p class="font-medium">{data.policy.label}</p>
+        <p class="mt-1 text-stone-600">{data.policy.help}</p>
+        {#if form?.policyError}
+          <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.policyError}</p>
+        {:else if form?.policyMessage}
+          <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.policyMessage}</p>
+        {/if}
+        {#if data.policy.canStrengthen}
+          <form
+            method="POST"
+            action="?/set_policy"
+            use:enhance={submit('貴社の全ユーザーが、ログインのたびに本人確認を求められるようになります。元に戻すときは宿へご依頼ください。よろしいですか？')}
+            class="mt-3"
+          >
+            <input type="hidden" name="policy" value="always" />
+            <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">ログインのたびに本人確認を求める</button>
+          </form>
+        {/if}
+        <p class="mt-2 text-xs text-stone-500">方針を緩める・パスキーのみにする変更は、宿へご依頼ください。</p>
       </div>
     {/if}
 
