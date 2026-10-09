@@ -878,7 +878,8 @@ export const actions: Actions = {
 			const { db, partner } = await editScope(event);
 			const fd = await event.request.formData();
 			const row = await getPartnerInvoice(db, partner.id, String(fd.get('invoice_id') ?? ''));
-			if (!row || row.facility_id !== partner.facility_id) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
+			// 請求書は取引先ごと（全施設分1枚・N3・2026-10-09）。施設では絞らない
+			if (!row) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
 			const r = await sendPartnerInvoiceMail(db, partner, row, event.url.origin);
 			return {
 				invoiceResult: r.sent

@@ -1,18 +1,29 @@
 // 取引先予約の月次請求書（利用明細書＋適格請求書）の発行・送信・取消・ダウンロード（2026-10-01 ユーザー指示）。
 //
 //   - チェックアウト基準・月末締め。金額は予約時の金額（rms_partner_bookings）。計算と紙面は $lib/partner-invoice（純関数）。
-//   - 月末日の 15:00〜15:50 JST に pg_cron が /api/cron/partner-invoices を10分おきに呼び、issueMonthEndInvoices が施設ごとに発行・送信する。
+//   - 月末日の 15:00〜15:50 JST に pg_cron が /api/cron/partner-invoices を10分おきに呼び、issueMonthEndInvoices が取引先ごとに発行・送信する。
 //     1回の呼び出しは時間予算（約20秒）内で処理できる分だけ進め、残りは次の呼び出しで続ける（発行済み・送信済みは飛ばす＝冪等）。
 //   - 紙面の全内容は rms_partner_invoices.document に固定する。PDF は毎回 document から作り直す（保存しない）。
 //     発行後に発行元設定や予約を変えても、発行済みの紙面は変わらない（直すときは取り消して発行し直す）。
 //
+// 全施設分を1枚に（複数施設化 決定 N3・docs/partner-multi-facility.md §7.1・2026-10-09）:
+//   - 「取引先 × 月」で1枚。その月にチェックアウトした全施設の予約を載せる（document version 2・施設ごとの小計）。
+//     rms_partner_invoices.facility_id は null、載せた予約の施設を facility_ids に持つ。
+//   - 発行元（発行者・住所・TEL・登録番号・振込先・自動発行・通知先）は会社で1つ（rms_partner_invoice_issuer・テナントで1行）。
+//   - 発行済みの施設ごとの請求書（version 1・facility_id あり）はそのまま有効（ダウンロード・再送・取消は従来どおり）。
+//     同じ取引先・同じ月に version 1 が発行済みなら、1枚にまとめた発行は断る（取り消してから発行する）。
+//   - 月末の自動発行は取引先ごとに1枚。発行元が無い・振込先が空なら全取引先を止め、発行元設定の通知先へ1通知らせる（M2）。
+//   - 送信メールの差出人名は発行者名、返信先は取引先の既定の施設（primary_facility_id）の予約用アドレス（§7.11）。
+//
 // すべて service_role クライアント（./admin-client.ts）で動く。呼び出し側（管理画面・取引先ページ・cron）が権限を確認済みの前提で、
-// ここでは必ず partner_id / facility_id で絞って読み書きする（別の取引先の請求書を ID だけで触らせない）。
+// ここでは必ず partner_id / tenant_id で絞って読み書きする（別の取引先の請求書を ID だけで触らせない）。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildInvoiceLines,
   draftInvoiceFileName,
+  facilitiesOfLines,
   invoiceCutoffDate,
+  invoiceFacilityNames,
   invoiceFileName,
   invoiceTotals,
   isChargeFailed,
@@ -26,6 +37,8 @@ import {
   sendFailureMessage,
   type InvoiceBookingSource,
   type InvoiceDocument,
+  type InvoiceDocumentV2,
+  type InvoiceFacilityInfo,
   type InvoiceIssuer
 } from '$lib/partner-invoice';
 import {
@@ -36,9 +49,10 @@ import {
 } from '$lib/partner-booking';
 import { FACILITY_UUID, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { fitsAttachmentLimit, type MailAttachment } from '$lib/server/mail-attachments';
-import { sendFacilityNotice, sendPartnerMail } from './mail';
+import { sendHtmlEmail } from '$lib/server/mailer';
+import { sendPartnerMail } from './mail';
 import { renderInvoicePdf, type RenderInvoicePdfOptions } from './invoice-pdf';
-import { isMissingTableError, PartnerStoreError, todayJst, type PartnerRow } from './store';
+import { isMissingTableError, loadPartnerContext, PartnerStoreError, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { isPmsPartnerGuestType, pmsGuestFormalName, type PmsGuestNameFields } from '$lib/pms-partner-guest';
 
 // ---------------------------------------------------------------------------
@@ -48,7 +62,10 @@ import { isPmsPartnerGuestType, pmsGuestFormalName, type PmsGuestNameFields } fr
 export type PartnerInvoiceRow = {
   id: string;
   tenant_id: string;
-  facility_id: string;
+  /** version 1（施設ごと）の施設。version 2（全施設分1枚）は null */
+  facility_id: string | null;
+  /** 載せた予約の施設（管理画面の施設の絞り込み用） */
+  facility_ids: string[];
   partner_id: string | null;
   partner_name: string;
   period: string; // YYYY-MM-01
@@ -79,15 +96,20 @@ export type PartnerInvoiceRow = {
 /**
  * 請求書の発行・送信に要る取引先の項目（PartnerRow / PartnerContext のどちらでも渡せる）。
  * pms_guest_id は宛名の既定（紐づけ先の正式名称）に使う。無ければ従来どおり取引先名。
+ * primary_facility_id / facility_id は送信メールの返信先（既定の施設の予約用アドレス）を決めるだけに使う。
+ * booking_settings は取引先共通の項目（支払方法・お支払期限・宛名）だけを読む。
  */
-export type InvoicePartner = Pick<PartnerRow, 'id' | 'tenant_id' | 'facility_id' | 'name' | 'contact_email' | 'url_token' | 'booking_settings'> &
-  Partial<Pick<PartnerRow, 'pms_guest_id'>>;
+export type InvoicePartner = Pick<PartnerRow, 'id' | 'tenant_id' | 'name' | 'contact_email' | 'url_token' | 'booking_settings'> &
+  Partial<Pick<PartnerRow, 'pms_guest_id' | 'primary_facility_id' | 'facility_id'>>;
 
 const INVOICE_COLUMNS =
-  'id, tenant_id, facility_id, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
+  'id, tenant_id, facility_id, facility_ids, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
 
 const BOOKING_SOURCE_COLUMNS =
-  'id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id, cancelled_at, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_settlement, cancel_fee_status, paid_amount, refund_amount, deposit_amount, remainder_option';
+  'id, facility_id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id, cancelled_at, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_settlement, cancel_fee_status, paid_amount, refund_amount, deposit_amount, remainder_option';
+
+// 取引先（共通）の列。旧 rms_partners.facility_id / booking_enabled は読まない（施設は rms_partner_facilities・台帳の facility_id）
+const PARTNER_COLUMNS = 'id, tenant_id, primary_facility_id, name, contact_email, url_token, booking_settings, is_active, pms_guest_id';
 
 const PERIOD_RE = /^\d{4}-\d{2}-01$/;
 const UUID_RE = /^[0-9a-f-]{36}$/i;
@@ -95,7 +117,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function raise(error: { code?: string; message?: string } | null, fallback: string): never {
   if (isMissingTableError(error)) {
-    throw new PartnerStoreError('請求書の DB（autumn-shared migration 20261001083643）が未適用です。', 503, 'migration_missing');
+    throw new PartnerStoreError('請求書の DB（autumn-shared migration 20261001083643 / 20261009054024）が未適用です。', 503, 'migration_missing');
   }
   throw new PartnerStoreError(`${fallback}${error?.message ? `（${error.message}）` : ''}`, 500, 'db_error');
 }
@@ -111,11 +133,30 @@ export function normalizePeriod(raw: string | null | undefined): string | null {
   return PERIOD_RE.test(p) ? p : null;
 }
 
+/**
+ * 管理画面の請求書の出力（予定請求書・正式版のダウンロード）で使う取引先。請求書は取引先ごと（全施設分1枚・N3）なので、
+ * 開いている施設（ab_fac）に施設設定の行が無い取引先でも、同じ会社（テナント）の取引先なら開ける（予定請求の「すべて」から開くため）。
+ * 合成は ab_fac の施設（行があれば）→ 既定の施設。呼び出し側は staffPartnerScope で役割と施設へのアクセスを確かめておくこと。
+ */
+export async function requireInvoicePartner(
+  db: SupabaseClient,
+  scope: { tenantId: string; facilityId: string },
+  partnerId: string
+): Promise<PartnerContext> {
+  const partner = UUID_RE.test(partnerId) ? await loadPartnerContext(db, partnerId, scope.facilityId, { allowDisabled: true }) : null;
+  if (!partner || partner.tenant_id !== scope.tenantId) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  return partner;
+}
+
+/** 施設ごとの請求書（version 1）か（facility_id が入っている・document が version 1） */
+export const isLegacyFacilityInvoice = (row: Pick<PartnerInvoiceRow, 'facility_id' | 'document'>) =>
+  !!row.facility_id || row.document?.version === 1;
+
 // ---------------------------------------------------------------------------
 // 一覧・取得・ダウンロード
 // ---------------------------------------------------------------------------
 
-/** 取引先の請求書（新しい順・取消済みを含む）。 */
+/** 取引先の請求書（新しい順・取消済みを含む・全施設分）。 */
 export async function listPartnerInvoices(db: SupabaseClient, partnerId: string): Promise<PartnerInvoiceRow[]> {
   if (!UUID_RE.test(partnerId)) return [];
   const { data, error } = await db
@@ -125,7 +166,7 @@ export async function listPartnerInvoices(db: SupabaseClient, partnerId: string)
     .order('period', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) raise(error, '請求書を読み込めませんでした。');
-  return (data ?? []) as PartnerInvoiceRow[];
+  return ((data ?? []) as PartnerInvoiceRow[]).map(withFacilityIds);
 }
 
 /** 取引先の請求書を1枚（その取引先のものでなければ null）。 */
@@ -138,8 +179,18 @@ export async function getPartnerInvoice(db: SupabaseClient, partnerId: string, i
     .eq('partner_id', partnerId)
     .maybeSingle();
   if (error) raise(error, '請求書を読み込めませんでした。');
-  return (data as PartnerInvoiceRow | null) ?? null;
+  return data ? withFacilityIds(data as PartnerInvoiceRow) : null;
 }
+
+// facility_ids が無い行（念のため）は version 1 の facility_id で補う
+const withFacilityIds = (row: PartnerInvoiceRow): PartnerInvoiceRow => ({
+  ...row,
+  facility_ids: Array.isArray(row.facility_ids) && row.facility_ids.length ? row.facility_ids : row.facility_id ? [row.facility_id] : []
+});
+
+/** 請求書に載っている施設名（一覧の表示用・document から）。 */
+export const partnerInvoiceFacilityNames = (row: Pick<PartnerInvoiceRow, 'document'>): string[] =>
+  row.document ? invoiceFacilityNames(row.document) : [];
 
 // RFC 5987 の値（encodeURIComponent が残す !'()* も %XX にする）
 const rfc5987 = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -197,22 +248,25 @@ export async function invoiceDownloadResponse(
 }
 
 // ---------------------------------------------------------------------------
-// 発行元の設定（施設ごと）
+// 発行元の設定（会社＝テナントで1つ・rms_partner_invoice_issuer・2026-10-09 N3）
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_ISSUER_NAME = '株式会社山人';
 export const DEFAULT_REGISTRATION_NUMBER = 'T3400001006564';
 export const DEFAULT_INVOICE_NOTE = '振込手数料は貴社にてご負担ください。';
 export const REGISTRATION_NUMBER_RE = /^T\d{13}$/;
+export const MAX_ISSUER_NOTIFY_EMAILS = 10;
 
+// 施設の住所・TEL（施設見出しに小さく出す連絡先・M1）。発行元の既定は本社（西和賀）
 const FACILITY_DEFAULTS: Record<'nishiwaga' | 'oga', { address: string; tel: string }> = {
   nishiwaga: { address: '〒029-5514 岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222' },
   oga: { address: '〒010-0531 秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776' }
 };
+const HEAD_OFFICE = FACILITY_DEFAULTS.nishiwaga;
 
-export type PartnerBillingSettings = {
-  facilityId: string;
-  facilityName: string;
+/** 請求書の発行元（会社で1つ）。null の列は既定値で補う */
+export type PartnerInvoiceIssuerSettings = {
+  tenantId: string;
   issuerName: string;
   issuerAddress: string;
   issuerTel: string;
@@ -220,7 +274,9 @@ export type PartnerBillingSettings = {
   bankAccount: string; // 空 = 未設定（自動発行しない）
   note: string;
   autoIssue: boolean;
-  /** 設定が DB に保存済みか（false = 既定値を表示しているだけ） */
+  /** 発行元の未設定・振込先が空で月末の自動発行を止めたときの通知先（M2） */
+  notifyEmails: string[];
+  /** 設定が DB に保存済みか（false = 既定値を表示しているだけ・自動発行しない） */
   saved: boolean;
   updatedAt: string | null;
 };
@@ -233,6 +289,7 @@ export type BillingSettingsInput = {
   bankAccount: string;
   note: string;
   autoIssue: boolean;
+  notifyEmails: string[];
 };
 
 // Book の施設 ID（FACILITY_UUID の逆引き）→ 無ければ core.facilities.slug で西和賀／男鹿を見分ける
@@ -243,19 +300,15 @@ function facilityKind(facilityId: string, slug: string | null): 'nishiwaga' | 'o
   return /oga/i.test(slug ?? '') ? 'oga' : 'nishiwaga';
 }
 
-export async function loadBillingSettings(db: SupabaseClient, facilityId: string): Promise<PartnerBillingSettings> {
-  const [fac, row] = await Promise.all([
-    db.schema('core').from('facilities').select('name, slug').eq('id', facilityId).maybeSingle(),
-    db
-      .from('rms_partner_billing_settings')
-      .select('issuer_name, issuer_address, issuer_tel, registration_number, bank_account, note, auto_issue, updated_at')
-      .eq('facility_id', facilityId)
-      .maybeSingle()
-  ]);
-  if (row.error) raise(row.error, '請求書の設定を読み込めませんでした。');
-  const f = fac.data as { name?: string | null; slug?: string | null } | null;
-  const def = FACILITY_DEFAULTS[facilityKind(facilityId, f?.slug ?? null)];
-  const r = row.data as {
+/** 発行元の設定を読む（テナントで1行。無ければ既定値・saved:false）。 */
+export async function loadInvoiceIssuer(db: SupabaseClient, tenantId: string): Promise<PartnerInvoiceIssuerSettings> {
+  const { data, error } = await db
+    .from('rms_partner_invoice_issuer')
+    .select('issuer_name, issuer_address, issuer_tel, registration_number, bank_account, note, auto_issue, notify_emails, updated_at')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) raise(error, '請求書の設定を読み込めませんでした。');
+  const r = data as {
     issuer_name: string | null;
     issuer_address: string | null;
     issuer_tel: string | null;
@@ -263,20 +316,21 @@ export async function loadBillingSettings(db: SupabaseClient, facilityId: string
     bank_account: string | null;
     note: string | null;
     auto_issue: boolean;
+    notify_emails: string[] | null;
     updated_at: string;
   } | null;
-  // null = 未設定 → 既定値。空文字は「あえて空にした」とみなしてそのまま（備考・振込先・電話番号）
+  // null = 未設定 → 既定値。空文字は「あえて空にした」とみなしてそのまま（備考・振込先・電話番号）。
+  // 住所・TEL は保存された値をそのまま使う（M1: 本社の住所を入れておく。施設の連絡先は明細の施設見出しに出る）
   return {
-    facilityId,
-    facilityName: String(f?.name ?? '').trim(),
+    tenantId,
     issuerName: r?.issuer_name?.trim() || DEFAULT_ISSUER_NAME,
-    issuerAddress: r?.issuer_address?.trim() || def.address,
-    // 電話番号は空文字＝あえて載せない（null＝未設定だけ既定値）
-    issuerTel: r ? (r.issuer_tel ?? def.tel).trim() : def.tel,
+    issuerAddress: r?.issuer_address?.trim() || HEAD_OFFICE.address,
+    issuerTel: r ? (r.issuer_tel ?? HEAD_OFFICE.tel).trim() : HEAD_OFFICE.tel,
     registrationNumber: r?.registration_number?.trim() || DEFAULT_REGISTRATION_NUMBER,
     bankAccount: (r?.bank_account ?? '').trim(),
     note: r ? (r.note ?? DEFAULT_INVOICE_NOTE) : DEFAULT_INVOICE_NOTE,
     autoIssue: r ? r.auto_issue !== false : true,
+    notifyEmails: Array.isArray(r?.notify_emails) ? r.notify_emails.filter((e) => typeof e === 'string' && EMAIL_RE.test(e.trim())).map((e) => e.trim()) : [],
     saved: !!r,
     updatedAt: r?.updated_at ?? null
   };
@@ -290,6 +344,19 @@ export function normalizeRegistrationNumber(raw: string): string {
     .toUpperCase();
 }
 
+/** 通知先の入力（改行・カンマ・読点・空白区切り）をメールアドレスの配列にする（重複は大文字小文字を無視して除く）。 */
+export function parseNotifyEmails(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[\s,、，;；]+/)) {
+    const e = part.trim();
+    if (!e || seen.has(e.toLowerCase())) continue;
+    seen.add(e.toLowerCase());
+    out.push(e);
+  }
+  return out;
+}
+
 /** 管理画面のフォームから設定を読む。 */
 export function parseBillingSettingsForm(fd: FormData): BillingSettingsInput {
   const s = (k: string) => String(fd.get(k) ?? '').replace(/\r\n/g, '\n').trim();
@@ -300,17 +367,18 @@ export function parseBillingSettingsForm(fd: FormData): BillingSettingsInput {
     registrationNumber: normalizeRegistrationNumber(s('registration_number')),
     bankAccount: s('bank_account'),
     note: s('note'),
-    autoIssue: fd.get('auto_issue') !== null
+    autoIssue: fd.get('auto_issue') !== null,
+    notifyEmails: parseNotifyEmails(s('notify_emails'))
   };
 }
 
-export async function saveBillingSettings(
+/** 発行元の設定を保存する（テナントで1行・管理者だけ）。どの施設（ab_fac）から保存しても同じ行。 */
+export async function saveInvoiceIssuer(
   db: SupabaseClient,
-  facilityId: string,
   tenantId: string,
   input: BillingSettingsInput,
   userId: string | null
-): Promise<PartnerBillingSettings> {
+): Promise<PartnerInvoiceIssuerSettings> {
   if (!input.issuerName) throw new PartnerStoreError('発行者名を入力してください。');
   if (input.issuerName.length > 80) throw new PartnerStoreError('発行者名は80文字以内にしてください。');
   if (!input.issuerAddress) throw new PartnerStoreError('住所を入力してください。');
@@ -322,9 +390,13 @@ export async function saveBillingSettings(
   }
   if (input.bankAccount.length > 300) throw new PartnerStoreError('振込先は300文字以内にしてください。');
   if (input.note.length > 500) throw new PartnerStoreError('備考は500文字以内にしてください。');
-  const { error } = await db.from('rms_partner_billing_settings').upsert(
+  const bad = input.notifyEmails.find((e) => !EMAIL_RE.test(e) || e.length > 254);
+  if (bad) throw new PartnerStoreError(`通知先のメールアドレスが正しくありません（${bad}）。`);
+  if (input.notifyEmails.length > MAX_ISSUER_NOTIFY_EMAILS) {
+    throw new PartnerStoreError(`通知先は${MAX_ISSUER_NOTIFY_EMAILS}件までにしてください。`);
+  }
+  const { error } = await db.from('rms_partner_invoice_issuer').upsert(
     {
-      facility_id: facilityId,
       tenant_id: tenantId,
       issuer_name: input.issuerName,
       issuer_address: input.issuerAddress,
@@ -334,17 +406,19 @@ export async function saveBillingSettings(
       bank_account: input.bankAccount,
       note: input.note,
       auto_issue: input.autoIssue,
+      notify_emails: input.notifyEmails,
       updated_by: userId
     },
-    { onConflict: 'facility_id' }
+    { onConflict: 'tenant_id' }
   );
   if (error) raise(error, '請求書の設定を保存できませんでした。');
-  return loadBillingSettings(db, facilityId);
+  return loadInvoiceIssuer(db, tenantId);
 }
 
-const issuerOf = (s: PartnerBillingSettings): InvoiceIssuer => ({
+// 紙面の発行者欄（会社名・住所・TEL・登録番号・振込先。施設名は出さない・§7.1）
+const issuerOf = (s: PartnerInvoiceIssuerSettings): InvoiceIssuer => ({
   name: s.issuerName,
-  facilityName: s.facilityName,
+  facilityName: '',
   address: s.issuerAddress,
   tel: s.issuerTel,
   registrationNumber: s.registrationNumber,
@@ -352,29 +426,51 @@ const issuerOf = (s: PartnerBillingSettings): InvoiceIssuer => ({
   note: s.note
 });
 
+/**
+ * Book の施設（FACILITY_UUID の並び＝西和賀 → 男鹿）の名前と連絡先。紙面の施設の並び・施設見出しに使う。
+ * 名前が読めなかった施設は名前なし（行の施設名で補う）。
+ */
+export async function loadInvoiceFacilities(db: SupabaseClient): Promise<InvoiceFacilityInfo[]> {
+  const ids = Object.values(FACILITY_UUID);
+  const { data } = await db.schema('core').from('facilities').select('id, name, slug').in('id', ids);
+  const meta = new Map(((data ?? []) as { id: string; name: string | null; slug: string | null }[]).map((f) => [f.id, f]));
+  return ids.map((id) => {
+    const f = meta.get(id);
+    const def = FACILITY_DEFAULTS[facilityKind(id, f?.slug ?? null)];
+    return { id, name: String(f?.name ?? '').trim(), address: def.address, tel: def.tel };
+  });
+}
+
+// 予約に施設名を付ける（紙面の行の施設名）
+function applyFacilityNames<T extends InvoiceBookingSource>(rows: T[], facilities: InvoiceFacilityInfo[]): T[] {
+  const names = new Map(facilities.map((f) => [f.id, f.name]));
+  for (const b of rows) if (b.facility_id) b.facility_name = names.get(b.facility_id) ?? '';
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // プレビュー・発行
 // ---------------------------------------------------------------------------
 
-// 対象予約: 確定済みで、チェックアウトが対象月の1日〜min(月末, 今日 JST)。
+// 対象予約: 確定済みで、チェックアウトが対象月の1日〜min(月末, 今日 JST)。全施設（N3: 施設の条件は付けない）。
 // 月の途中で発行しても、まだチェックアウトしていない予約は請求しない。
 async function loadTargetBookings(
   db: SupabaseClient,
   partner: InvoicePartner,
   period: string,
-  today: string
+  today: string,
+  facilities: InvoiceFacilityInfo[]
 ): Promise<InvoiceBookingSource[]> {
   const { data, error } = await db
     .from('rms_partner_bookings')
     .select(BOOKING_SOURCE_COLUMNS)
     .eq('partner_id', partner.id)
-    .eq('facility_id', partner.facility_id)
     .in('status', ['confirmed', 'cancelled'])
     .gte('check_out_date', period)
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
   const rows = ((data ?? []) as (InvoiceBookingSource & { room_type_id?: string | null })[]).filter((b) => isInvoiceTarget(b, period, today));
-  return applyRoomShortNames(db, rows);
+  return applyFacilityNames(await applyRoomShortNames(db, rows), facilities);
 }
 
 // 紙面の部屋名は短縮名（2026-10-02 指示）。優先順: Book 部屋設定の「取引先向けの短縮名」
@@ -435,28 +531,31 @@ async function linkedRecipientNames(db: SupabaseClient, partners: InvoicePartner
   return out;
 }
 
+// 紙面（version 2・全施設分1枚）を組み立てる。支払方法・お支払期限・宛名は取引先共通の設定
 function buildDocument(
   partner: InvoicePartner,
   period: string,
   bookings: InvoiceBookingSource[],
-  settings: PartnerBillingSettings,
+  issuer: PartnerInvoiceIssuerSettings,
+  facilities: InvoiceFacilityInfo[],
   invoiceNo: string,
   issueDate: string,
   linkedName: string | null = null
-): InvoiceDocument {
+): InvoiceDocumentV2 {
   const booking = normalizePartnerBookingSettings(partner.booking_settings);
   const lines = buildInvoiceLines(bookings, booking);
   return {
-    version: 1,
+    version: 2,
     invoiceNo,
     period,
     issueDate,
     dueDate: dueDateFor(period, issueDate, booking.invoiceDue),
     // 宛名は正式社名 → 未設定なら紐づけ先（PMS の顧客）の正式名称（法人格つき・決定 #10）→ それも無ければ取引先名
     recipient: { name: booking.invoiceRecipientName || linkedName || partner.name },
-    issuer: issuerOf(settings),
+    issuer: issuerOf(issuer),
     lines,
-    totals: invoiceTotals(lines)
+    totals: invoiceTotals(lines),
+    facilities: facilitiesOfLines(lines, facilities)
   };
 }
 
@@ -492,78 +591,82 @@ export async function draftInvoiceResponse(doc: InvoiceDocument, partnerName: st
   });
 }
 
-/** 発行せずに紙面を組み立てる（管理画面のプレビュー用。番号は「未発行」）。 */
+/** 発行せずに紙面を組み立てる（管理画面のプレビュー用。番号は「未発行」・全施設分）。 */
 export async function previewPartnerInvoice(
   db: SupabaseClient,
   partner: InvoicePartner,
   period: string
-): Promise<{ document: InvoiceDocument; bookingCount: number; settings: PartnerBillingSettings; chargeFailed: string[] }> {
+): Promise<{ document: InvoiceDocumentV2; bookingCount: number; settings: PartnerInvoiceIssuerSettings; chargeFailed: string[] }> {
   if (!PERIOD_RE.test(period)) throw new PartnerStoreError('対象月が正しくありません。');
   const today = todayJst();
-  const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today), loadBillingSettings(db, partner.facility_id)]);
+  const facilities = await loadInvoiceFacilities(db);
+  const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today, facilities), loadInvoiceIssuer(db, partner.tenant_id)]);
   // 宛名の紐づけ先は、ご請求の予約がある月だけ読む（予約なしの月を紐づけ先の読み込みで失敗させない）
   const linked = bookings.length ? await linkedRecipientNames(db, [partner]) : new Map<string, string>();
   return {
-    document: buildDocument(partner, period, bookings, settings, '（未発行）', today, linked.get(partner.id) ?? null),
+    document: buildDocument(partner, period, bookings, settings, facilities, '（未発行）', today, linked.get(partner.id) ?? null),
     bookingCount: bookings.length,
     settings,
     chargeFailed: chargeFailedCodes(bookings)
   };
 }
 
-export type FacilityDraftInvoice = {
+export type TenantDraftInvoice = {
   partner: { id: string; name: string; bookingEnabled: boolean; isActive: boolean };
-  /** 予定の紙面（番号は「（未発行）」・発行日は今日＝試算日） */
-  document: InvoiceDocument;
+  /** 予定の紙面（番号は「（未発行）」・発行日は今日＝試算日・全施設分） */
+  document: InvoiceDocumentV2;
   chargeFailed: string[];
-  /** その月の有効な正式のご請求書（無ければ null） */
-  issued: Pick<
-    PartnerInvoiceRow,
-    'id' | 'invoice_no' | 'issue_date' | 'due_date' | 'billed_total' | 'usage_total' | 'booking_ids' | 'issued_by' | 'sent_at' | 'sent_to' | 'send_error'
-  > | null;
+  /** その月の有効な正式のご請求書（無ければ null）。legacy = 施設ごとの請求書（version 1） */
+  issued:
+    | (Pick<
+        PartnerInvoiceRow,
+        'id' | 'invoice_no' | 'issue_date' | 'due_date' | 'billed_total' | 'usage_total' | 'booking_ids' | 'issued_by' | 'sent_at' | 'sent_to' | 'send_error' | 'facility_ids'
+      > & { legacy: boolean })
+    | null;
 };
 
 /**
- * 施設の取引先ごとの予定請求（/admin/partners/invoices の一覧用）。
+ * 取引先ごとの予定請求（/admin/partners/invoices の一覧用・M4）。金額は常に全施設分。
  * 対象: その月（今日まで）にチェックアウトの確定予約がある取引先 ＋ 予約受付中の取引先 ＋ その月に正式発行済みの取引先。
- * 予約・設定・発行済みはまとめて読み、紙面は取引先ごとに previewPartnerInvoice と同じ規則（buildDocument）で組み立てる。
+ * opts.all が false なら「今の施設（facilityId）に関わる取引先」だけ: その施設の予約がある・発行済みの請求書にその施設が載っている・
+ * その施設でオンかつ予約受付中。予約・設定・発行済みはまとめて読み、紙面は取引先ごとに previewPartnerInvoice と同じ規則で組み立てる。
  */
-export async function previewFacilityInvoices(
+export async function previewTenantInvoices(
   db: SupabaseClient,
-  facilityId: string,
-  period: string
-): Promise<{ settings: PartnerBillingSettings; rows: FacilityDraftInvoice[]; today: string }> {
+  scope: { tenantId: string; facilityId: string },
+  period: string,
+  opts: { all?: boolean } = {}
+): Promise<{ settings: PartnerInvoiceIssuerSettings; rows: TenantDraftInvoice[]; hidden: number; facilities: InvoiceFacilityInfo[]; today: string }> {
   if (!PERIOD_RE.test(period)) throw new PartnerStoreError('対象月が正しくありません。');
   const today = todayJst();
-  const [bookingRes, partnerRes, issuedRes, settings] = await Promise.all([
+  const [bookingRes, partnerRes, facilityRes, issuedRes, settings, facilities] = await Promise.all([
     db
       .from('rms_partner_bookings')
       .select(`${BOOKING_SOURCE_COLUMNS}, partner_id`)
-      .eq('facility_id', facilityId)
+      .eq('tenant_id', scope.tenantId)
       .in('status', ['confirmed', 'cancelled'])
       .gte('check_out_date', period)
       .lte('check_out_date', invoiceCutoffDate(period, today)),
-    db
-      .from('rms_partners')
-      .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, is_active, pms_guest_id')
-      .eq('facility_id', facilityId)
-      .order('name'),
+    db.from('rms_partners').select(PARTNER_COLUMNS).eq('tenant_id', scope.tenantId).order('name'),
+    db.from('rms_partner_facilities').select('partner_id, facility_id, enabled, booking_enabled').eq('tenant_id', scope.tenantId),
     db
       .from('rms_partner_invoices')
-      .select('id, partner_id, invoice_no, issue_date, due_date, billed_total, usage_total, booking_ids, issued_by, sent_at, sent_to, send_error')
-      .eq('facility_id', facilityId)
+      .select('id, partner_id, facility_id, facility_ids, invoice_no, issue_date, due_date, billed_total, usage_total, booking_ids, issued_by, sent_at, sent_to, send_error')
+      .eq('tenant_id', scope.tenantId)
       .eq('period', period)
       .eq('status', 'issued'),
-    loadBillingSettings(db, facilityId)
+    loadInvoiceIssuer(db, scope.tenantId),
+    loadInvoiceFacilities(db)
   ]);
   if (bookingRes.error) raise(bookingRes.error, '予約を読み込めませんでした。');
   if (partnerRes.error) raise(partnerRes.error, '取引先を読み込めませんでした。');
+  if (facilityRes.error) raise(facilityRes.error, '取引先の施設設定を読み込めませんでした。');
   if (issuedRes.error) raise(issuedRes.error, '請求書を読み込めませんでした。');
 
   type SourceRow = InvoiceBookingSource & { room_type_id?: string | null; partner_id: string | null };
-  const bookings = await applyRoomShortNames(
-    db,
-    ((bookingRes.data ?? []) as unknown as SourceRow[]).filter((b) => isInvoiceTarget(b, period, today))
+  const bookings = applyFacilityNames(
+    await applyRoomShortNames(db, ((bookingRes.data ?? []) as unknown as SourceRow[]).filter((b) => isInvoiceTarget(b, period, today))),
+    facilities
   );
   const byPartner = new Map<string, SourceRow[]>();
   for (const b of bookings) {
@@ -572,8 +675,12 @@ export async function previewFacilityInvoices(
     list.push(b);
     byPartner.set(b.partner_id, list);
   }
-  type IssuedRow = NonNullable<FacilityDraftInvoice['issued']> & { partner_id: string | null };
-  const issuedBy = new Map(((issuedRes.data ?? []) as IssuedRow[]).filter((r) => r.partner_id).map((r) => [r.partner_id as string, r]));
+  type IssuedRaw = Omit<NonNullable<TenantDraftInvoice['issued']>, 'legacy'> & { partner_id: string | null; facility_id: string | null };
+  const issuedBy = new Map(((issuedRes.data ?? []) as IssuedRaw[]).filter((r) => r.partner_id).map((r) => [r.partner_id as string, r]));
+  // 施設設定（オン／オフ・予約受付）。旧 rms_partners.booking_enabled は読まない
+  const facilityRows = (facilityRes.data ?? []) as { partner_id: string; facility_id: string; enabled: boolean; booking_enabled: boolean }[];
+  const receiving = (partnerId: string, facilityId?: string) =>
+    facilityRows.some((f) => f.partner_id === partnerId && f.enabled !== false && f.booking_enabled === true && (!facilityId || f.facility_id === facilityId));
 
   const partnerRows = ((partnerRes.data ?? []) as Record<string, unknown>[]).map((raw) => ({
     raw,
@@ -581,20 +688,44 @@ export async function previewFacilityInvoices(
   }));
   const linkedNames = await linkedRecipientNames(db, partnerRows.map((r) => r.p));
 
-  const rows: FacilityDraftInvoice[] = [];
+  const rows: TenantDraftInvoice[] = [];
+  let hidden = 0;
   for (const { raw, p } of partnerRows) {
     const list = byPartner.get(p.id) ?? [];
-    const issuedRow = issuedBy.get(p.id) ?? null;
-    const bookingEnabled = raw.booking_enabled === true;
-    if (!list.length && !bookingEnabled && !issuedRow) continue;
+    const issuedRaw = issuedBy.get(p.id) ?? null;
+    const bookingEnabled = receiving(p.id);
+    if (!list.length && !bookingEnabled && !issuedRaw) continue;
+    const issuedFacilities = issuedRaw ? (issuedRaw.facility_ids?.length ? issuedRaw.facility_ids : issuedRaw.facility_id ? [issuedRaw.facility_id] : []) : [];
+    const atFacility =
+      list.some((b) => b.facility_id === scope.facilityId) || issuedFacilities.includes(scope.facilityId) || receiving(p.id, scope.facilityId);
+    if (!opts.all && !atFacility) {
+      hidden += 1;
+      continue;
+    }
     rows.push({
       partner: { id: p.id, name: p.name, bookingEnabled, isActive: raw.is_active === true },
-      document: buildDocument(p, period, list, settings, '（未発行）', today, linkedNames.get(p.id) ?? null),
+      document: buildDocument(p, period, list, settings, facilities, '（未発行）', today, linkedNames.get(p.id) ?? null),
       chargeFailed: chargeFailedCodes(list),
-      issued: issuedRow
+      issued: issuedRaw
+        ? {
+            id: issuedRaw.id,
+            invoice_no: issuedRaw.invoice_no,
+            issue_date: issuedRaw.issue_date,
+            due_date: issuedRaw.due_date,
+            billed_total: issuedRaw.billed_total,
+            usage_total: issuedRaw.usage_total,
+            booking_ids: issuedRaw.booking_ids ?? [],
+            issued_by: issuedRaw.issued_by,
+            sent_at: issuedRaw.sent_at,
+            sent_to: issuedRaw.sent_to ?? [],
+            send_error: issuedRaw.send_error,
+            facility_ids: issuedFacilities,
+            legacy: !!issuedRaw.facility_id
+          }
+        : null
     });
   }
-  return { settings, rows, today };
+  return { settings, rows, hidden, facilities, today };
 }
 
 async function findIssued(db: SupabaseClient, partnerId: string, period: string): Promise<PartnerInvoiceRow | null> {
@@ -606,8 +737,12 @@ async function findIssued(db: SupabaseClient, partnerId: string, period: string)
     .eq('status', 'issued')
     .maybeSingle();
   if (error) raise(error, '請求書を読み込めませんでした。');
-  return (data as PartnerInvoiceRow | null) ?? null;
+  return data ? withFacilityIds(data as PartnerInvoiceRow) : null;
 }
+
+/** 施設ごとの請求書（version 1）が同じ月に発行済みのときの理由（1枚にまとめた発行を断る・§7.1） */
+export const legacyInvoiceIssuedMessage = (period: string, invoiceNo: string) =>
+  `${periodLabel(period)}は施設ごとの請求書（${invoiceNo}）が発行済みです。取り消してから1枚にまとめて発行してください。`;
 
 export type IssueInvoiceResult = {
   invoice: PartnerInvoiceRow;
@@ -620,8 +755,8 @@ export type IssueInvoiceResult = {
 };
 
 /**
- * 取引先×月の請求書を発行する。対象予約（確定済み・チェックアウトがその月かつ今日まで）が0件なら発行しない（null）。
- * 発行済み（有効な1枚）があればそれを返す（created:false・送信もしない）。
+ * 取引先×月の請求書（全施設分1枚）を発行する。対象予約（確定済み・チェックアウトがその月かつ今日まで）が0件なら発行しない（null）。
+ * 発行済み（有効な1枚）があればそれを返す（created:false・送信もしない）。ただし施設ごとの請求書（version 1）が発行済みなら断る（409）。
  *   today … 「今日」（JST）。cron のテスト用の日付上書きで渡す。省くと todayJst()
  *   pdf   … 送信時の PDF 生成の待ち方（cron は短く）
  */
@@ -636,22 +771,30 @@ export async function issuePartnerInvoice(
   if (period > periodOf(today)) throw new PartnerStoreError('これからの月の請求書は発行できません。');
 
   const existing = await findIssued(db, partner.id, period);
-  if (existing) return { invoice: existing, created: false, mail: null, chargeFailed: [] };
+  if (existing) {
+    if (isLegacyFacilityInvoice(existing)) {
+      throw new PartnerStoreError(legacyInvoiceIssuedMessage(period, existing.invoice_no), 409, 'legacy_invoice_issued');
+    }
+    return { invoice: existing, created: false, mail: null, chargeFailed: [] };
+  }
 
-  const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today), loadBillingSettings(db, partner.facility_id)]);
+  const facilities = await loadInvoiceFacilities(db);
+  const [bookings, settings] = await Promise.all([loadTargetBookings(db, partner, period, today, facilities), loadInvoiceIssuer(db, partner.tenant_id)]);
   if (!bookings.length) return null;
   const linked = await linkedRecipientNames(db, [partner]);
 
   const { data: no, error: noError } = await db.rpc('rms_partner_next_invoice_no', { p_period: period });
   if (noError || typeof no !== 'string') raise(noError, '請求書番号を採番できませんでした。');
 
-  const doc = buildDocument(partner, period, bookings, settings, no, today, linked.get(partner.id) ?? null);
+  const doc = buildDocument(partner, period, bookings, settings, facilities, no, today, linked.get(partner.id) ?? null);
   const t = doc.totals;
   const { data, error } = await db
     .from('rms_partner_invoices')
     .insert({
       tenant_id: partner.tenant_id,
-      facility_id: partner.facility_id,
+      // 全施設分1枚（N3）: 施設は facility_ids（載せた予約の施設）に持ち、facility_id は null
+      facility_id: null,
+      facility_ids: doc.facilities.map((f) => f.id).filter((id) => UUID_RE.test(id)),
       partner_id: partner.id,
       partner_name: partner.name,
       period,
@@ -680,7 +823,7 @@ export async function issuePartnerInvoice(
     }
     raise(error, '請求書を発行できませんでした。');
   }
-  let invoice = data as PartnerInvoiceRow;
+  let invoice = withFacilityIds(data as PartnerInvoiceRow);
   let mail: SendInvoiceMailResult | null = null;
   if (opts.send) {
     mail = await sendPartnerInvoiceMail(db, partner, invoice, opts.origin, { pdf: opts.pdf });
@@ -732,7 +875,9 @@ const escapeHtml = (s: string) =>
 const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
 const ymd = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
 
-/** 件名（ご請求 0 円ならご利用明細書だけ）。 */
+/**
+ * 件名（ご請求 0 円ならご利用明細書だけ）。version 1 は【施設名】、version 2（全施設分1枚）は【発行者名】（§7.11）。
+ */
 export function invoiceMailSubject(doc: Pick<InvoiceDocument, 'invoiceNo' | 'period' | 'totals' | 'issuer'>): string {
   const what = doc.totals.billedTotal > 0 ? 'ご請求書・ご利用明細書' : 'ご利用明細書';
   const facility = doc.issuer.facilityName || doc.issuer.name;
@@ -742,7 +887,9 @@ export function invoiceMailSubject(doc: Pick<InvoiceDocument, 'invoiceNo' | 'per
 export function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached: boolean): { text: string; html: string } {
   const t = doc.totals;
   const billed = t.billedTotal > 0;
-  const facility = doc.issuer.facilityName || doc.issuer.name;
+  // version 1 は発行施設、version 2 は載っている施設（無ければ発行者名）
+  const usedNames = doc.version === 2 ? invoiceFacilityNames(doc) : [];
+  const facility = doc.issuer.facilityName || usedNames.join('・') || doc.issuer.name;
   const lines = [
     `${doc.recipient.name} 御中`,
     '',
@@ -764,7 +911,7 @@ export function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached:
     `取引先ページ「アカウント → ご請求書」: ${pageUrl}`,
     '（ログインが必要です。過去のご請求書もいつでもダウンロードできます）',
     '',
-    `${doc.issuer.name}　${facility}`,
+    doc.issuer.facilityName ? `${doc.issuer.name}　${doc.issuer.facilityName}` : doc.issuer.name,
     ...(doc.issuer.tel ? [`TEL ${doc.issuer.tel}`] : [])
   ];
   const text = lines.join('\n');
@@ -778,9 +925,18 @@ export function invoiceMailBody(doc: InvoiceDocument, pageUrl: string, attached:
 export const partnerInvoicesUrl = (origin: string, urlToken: string) => `${origin}/p/${urlToken}/account/invoices`;
 
 /**
+ * 送信メールの返信先に使う施設（§7.11）: version 1 は発行施設。version 2 は取引先の既定の施設（primary_facility_id）→
+ * 合成で選んだ施設 → 請求書に載っている先頭の施設 → Book の最初の施設。
+ */
+function replyFacilityOf(partner: InvoicePartner, row: PartnerInvoiceRow): string {
+  return row.facility_id || partner.primary_facility_id || partner.facility_id || row.facility_ids?.[0] || Object.values(FACILITY_UUID)[0];
+}
+
+/**
  * 請求書を取引先へメールで送る（PDF を添付。作れない・大きすぎるときは添付なしでページへ案内）。
  * 結果は sent_at / sent_to / send_error に記録する。ご宿泊者のメールには送らない。
  * 失敗したときは send_error の先頭に「[送信失敗 N回目]」を付けて回数を数える（cron は MAX_INVOICE_SEND_ATTEMPTS 回で諦める）。
+ * 差出人名: version 1 は発行施設の名前（従来どおり）、version 2 は発行者名。返信先は replyFacilityOf の施設の予約用アドレス。
  */
 export async function sendPartnerInvoiceMail(
   db: SupabaseClient,
@@ -789,9 +945,7 @@ export async function sendPartnerInvoiceMail(
   origin: string,
   opts: { pdf?: RenderInvoicePdfOptions } = {}
 ): Promise<SendInvoiceMailResult> {
-  if (row.partner_id !== partner.id || row.facility_id !== partner.facility_id) {
-    throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
-  }
+  if (row.partner_id !== partner.id) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
   if (row.status !== 'issued') throw new PartnerStoreError('取り消した請求書は送信できません。', 409, 'void');
 
   const doc = row.document;
@@ -806,12 +960,14 @@ export async function sendPartnerInvoiceMail(
     const attachments: MailAttachment[] = pdf ? [{ filename: invoiceFileName(doc, 'pdf'), type: 'application/pdf', content: pdf }] : [];
     attachedPdf = attachments.length > 0 && fitsAttachmentLimit(attachments);
     const body = invoiceMailBody(doc, partnerInvoicesUrl(origin, partner.url_token), attachedPdf);
-    const result = await sendPartnerMail(db, partner.facility_id, {
+    const result = await sendPartnerMail(db, replyFacilityOf(partner, row), {
       to,
       subject: invoiceMailSubject(doc),
       html: body.html,
       text: body.text,
-      attachments: attachedPdf ? attachments : undefined
+      attachments: attachedPdf ? attachments : undefined,
+      // 全施設分1枚（version 2）の差出人名は発行者名（§7.11）。version 1 は施設名のまま
+      ...(isLegacyFacilityInvoice(row) ? {} : { fromName: doc.issuer.name })
     });
     sent = result.sent;
     reason = result.sent ? null : (result.reason ?? '送信できませんでした');
@@ -828,14 +984,14 @@ export async function sendPartnerInvoiceMail(
     .select(INVOICE_COLUMNS)
     .single();
   if (error) console.error('[partner-invoice] 送信結果を記録できませんでした:', error.message);
-  return { sent, to, attachedPdf, reason, invoice: (data as PartnerInvoiceRow | null) ?? { ...row, ...patch } };
+  return { sent, to, attachedPdf, reason, invoice: data ? withFacilityIds(data as PartnerInvoiceRow) : { ...row, ...patch } };
 }
 
 // ---------------------------------------------------------------------------
 // 取消
 // ---------------------------------------------------------------------------
 
-/** 請求書を取り消す（理由必須）。取り消すと同じ月を発行し直せる。番号は欠番になる。 */
+/** 請求書を取り消す（理由必須）。取り消すと同じ月を発行し直せる。番号は欠番になる。施設ごとの請求書（version 1）も同じ。 */
 export async function voidPartnerInvoice(
   db: SupabaseClient,
   partner: InvoicePartner,
@@ -846,7 +1002,7 @@ export async function voidPartnerInvoice(
   const why = reason.trim().slice(0, 300);
   if (!why) throw new PartnerStoreError('取消の理由を入力してください。');
   const row = await getPartnerInvoice(db, partner.id, invoiceId);
-  if (!row || row.facility_id !== partner.facility_id) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
+  if (!row) throw new PartnerStoreError('請求書が見つかりません。', 404, 'not_found');
   if (row.status === 'void') throw new PartnerStoreError('この請求書は取消済みです。', 409, 'void');
   const { data, error } = await db
     .from('rms_partner_invoices')
@@ -858,18 +1014,19 @@ export async function voidPartnerInvoice(
     .maybeSingle();
   if (error) raise(error, '請求書を取り消せませんでした。');
   if (!data) throw new PartnerStoreError('この請求書は取消済みです。', 409, 'void');
-  return data as PartnerInvoiceRow;
+  return withFacilityIds(data as PartnerInvoiceRow);
 }
 
 // ---------------------------------------------------------------------------
 // 月末の自動発行（cron）
 // ---------------------------------------------------------------------------
 
-export type MonthEndFacilityResult = {
-  facilityId: string;
-  facilityName: string;
-  /** pending = 時間予算が尽きてこの呼び出しでは処理しきれていない（次の呼び出しで続ける） */
-  status: 'done' | 'auto_off' | 'no_bank_account' | 'error' | 'pending';
+/** 会社（テナント）ごとの結果。山人は1テナントなので通常は1件 */
+export type MonthEndTenantResult = {
+  tenantId: string;
+  issuerName: string;
+  /** pending = 時間予算が尽きてこの呼び出しでは処理しきれていない（次の呼び出しで続ける）。no_issuer = 発行元が未設定 */
+  status: 'done' | 'auto_off' | 'no_issuer' | 'no_bank_account' | 'error' | 'pending';
   partners: number; // 対象予約のある取引先
   issued: number; // この呼び出しで発行した
   existing: number; // 発行済みだった
@@ -890,7 +1047,7 @@ export type MonthEndResult =
       /** この呼び出しで確認できなかった取引先の数（partial のときだけ 0 以外） */
       remaining: number;
       elapsedMs: number;
-      facilities: MonthEndFacilityResult[];
+      tenants: MonthEndTenantResult[];
     };
 
 export type MonthEndOptions = {
@@ -898,7 +1055,7 @@ export type MonthEndOptions = {
   today?: string;
   /** 1回の呼び出しの時間予算（ミリ秒）。超えたら次の取引先に進まず返す。既定 20 秒 */
   budgetMs?: number;
-  /** 振込先が未設定のとき施設の通知先へ知らせるか（1日に何度も呼ぶので最初の呼び出しだけ true にする）。既定 true */
+  /** 発行元が未設定・振込先が空のとき通知先へ知らせるか（1日に何度も呼ぶので最初の呼び出しだけ true にする）。既定 true */
   notifyMissingBankAccount?: boolean;
 };
 
@@ -906,63 +1063,62 @@ const MONTH_END_BUDGET_MS = 20_000;
 // cron 経路の PDF 生成: 1回 15 秒で諦め、レート制限でも待たない（作れなければ添付なし＋ページ案内で送る）
 const CRON_PDF_OPTIONS: RenderInvoicePdfOptions = { timeoutMs: 15_000, backoff: false };
 
-type PartnerSourceRow = InvoicePartner & { booking_enabled: boolean };
-
-/** 施設の取引先のうち、その月（今日まで）にチェックアウトの確定予約があるもの。 */
-async function partnersWithBookings(db: SupabaseClient, facilityId: string, period: string, today: string): Promise<PartnerSourceRow[]> {
+/** その月（今日まで）にチェックアウトの確定予約がある取引先（全施設・テナントをまたいで読む）。 */
+async function partnersWithBookings(db: SupabaseClient, period: string, today: string): Promise<InvoicePartner[]> {
   const { data: rows, error } = await db
     .from('rms_partner_bookings')
     .select('partner_id')
-    .eq('facility_id', facilityId)
     .in('status', ['confirmed', 'cancelled'])
     .gte('check_out_date', period)
     .lte('check_out_date', invoiceCutoffDate(period, today));
   if (error) raise(error, '予約を読み込めませんでした。');
   const ids = [...new Set(((rows ?? []) as { partner_id: string | null }[]).map((r) => r.partner_id).filter((x): x is string => !!x))];
   if (!ids.length) return [];
-  const { data, error: pErr } = await db
-    .from('rms_partners')
-    .select('id, tenant_id, facility_id, name, contact_email, url_token, booking_settings, booking_enabled, pms_guest_id')
-    .eq('facility_id', facilityId)
-    .in('id', ids)
-    .order('name');
+  const { data, error: pErr } = await db.from('rms_partners').select(PARTNER_COLUMNS).in('id', ids).order('name');
   if (pErr) raise(pErr, '取引先を読み込めませんでした。');
   return ((data ?? []) as Record<string, unknown>[]).map((p) => ({
-    ...(p as unknown as PartnerSourceRow),
-    booking_settings: normalizePartnerBookingSettings(p.booking_settings),
-    booking_enabled: p.booking_enabled === true
+    ...(p as unknown as InvoicePartner),
+    booking_settings: normalizePartnerBookingSettings(p.booking_settings)
   }));
 }
 
-async function notifyMissingBankAccount(db: SupabaseClient, facilityId: string, facilityName: string, period: string, partners: PartnerSourceRow[]) {
-  const to = [...new Set(partners.flatMap((p) => p.booking_settings.notifyEmails.map((e) => e.trim().toLowerCase())).filter((e) => EMAIL_RE.test(e)))];
+/** 発行元が未設定・振込先が空で自動発行を止めたことを、発行元設定の通知先（notify_emails）へ1通知らせる（M2）。 */
+async function notifyIssuerMissing(
+  issuer: PartnerInvoiceIssuerSettings,
+  why: 'no_issuer' | 'no_bank_account',
+  period: string,
+  partners: InvoicePartner[]
+) {
+  const to = issuer.notifyEmails;
+  const reason = why === 'no_issuer' ? 'ご請求書の発行元（発行者・振込先）が未設定です。' : 'ご請求書の振込先が未設定です。';
   if (!to.length) {
-    console.error(`[partner-invoice] ${facilityName}: 振込先が未設定で自動発行できず、通知先もありません`);
+    console.error(`[partner-invoice] ${reason}自動発行できず、通知先（請求書の設定の通知先）もありません`);
     return;
   }
   const names = partners.map((p) => `・${p.name}`).join('\n');
   const text = [
-    `${periodLabel(period)}ご利用分の取引先のご請求書を自動発行できませんでした。`,
-    '理由: ご請求書の振込先が未設定です。',
+    `${periodLabel(period)}ご利用分の取引先のご請求書を自動発行できませんでした（全取引先）。`,
+    `理由: ${reason}`,
     '',
-    '管理画面「取引先」の「請求書の設定」で振込先を登録し、各取引先の画面の「ご請求書」から発行・送信してください。',
+    '管理画面「取引先」の「請求書の設定」で発行元・振込先を登録し、各取引先の画面の「ご請求書」から発行・送信してください。',
     '',
     '対象の取引先:',
     names
   ].join('\n');
-  await sendFacilityNotice(db, facilityId, {
+  await sendHtmlEmail({
     to,
-    subject: `【${facilityName}】振込先が未設定のためご請求書を自動発行できませんでした（${periodLabel(period)}分）`,
+    subject: `【${issuer.issuerName}】${why === 'no_issuer' ? '発行元が未設定' : '振込先が未設定'}のためご請求書を自動発行できませんでした（${periodLabel(period)}分）`,
     text,
-    html: `<div style="font-family:sans-serif;line-height:1.7">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`
+    html: `<div style="font-family:sans-serif;line-height:1.7">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`,
+    fromName: issuer.issuerName
   }).catch((e) => console.error('[partner-invoice] 通知を送れませんでした:', e instanceof Error ? e.message : e));
 }
 
-const emptyFacilityResult = (facilityId: string): MonthEndFacilityResult => ({
-  facilityId,
-  facilityName: '',
+const emptyTenantResult = (tenantId: string, partners: number): MonthEndTenantResult => ({
+  tenantId,
+  issuerName: '',
   status: 'done',
-  partners: 0,
+  partners,
   issued: 0,
   existing: 0,
   sent: 0,
@@ -972,14 +1128,16 @@ const emptyFacilityResult = (facilityId: string): MonthEndFacilityResult => ({
 });
 
 /**
- * 月末日なら、その月の取引先の請求書を施設ごとに発行して送る（cron 用）。月末日でなければ何もしない。
- * 自動発行が OFF・振込先が未設定の施設は発行しない（未設定なら施設の通知先へ知らせる）。1取引先の失敗で全体を止めない。
+ * 月末日なら、その月の取引先の請求書（全施設分1枚）を取引先ごとに発行して送る（cron 用）。月末日でなければ何もしない。
+ * 自動発行が OFF・発行元が未設定・振込先が空なら、その会社の取引先はすべて発行しない（未設定は発行元設定の通知先へ1通知らせる・M2）。
+ * 1取引先の失敗で全体を止めない。
  *
  * 冪等・再開可能（月末日に10分おきに数回呼ばれる前提）:
  *   - 発行済みの取引先は発行し直さない。自動発行したもので未送信（sent_at が空）なら送信を試みる
  *     （送信失敗は send_error に回数を残し、MAX_INVOICE_SEND_ATTEMPTS 回失敗したら諦める＝管理画面から再送する）。
  *   - 時間予算（budgetMs）を使い切ったら次の取引先に進まず partial:true で返す。残りは次の呼び出しで続ける。
  *     1社の処理（PDF 最大15秒＋メール）の途中では止めないので、1回の呼び出しは最長で「予算＋約20秒」かかる。
+ *   - 同じ月に施設ごとの請求書（version 1）が発行済みの取引先は発行しない（failed に理由を残す）。
  */
 export async function issueMonthEndInvoices(db: SupabaseClient, origin: string, opts: MonthEndOptions = {}): Promise<MonthEndResult> {
   const startedAt = Date.now();
@@ -988,39 +1146,38 @@ export async function issueMonthEndInvoices(db: SupabaseClient, origin: string, 
   const period = periodOf(today);
   const budgetMs = opts.budgetMs ?? MONTH_END_BUDGET_MS;
   const overBudget = () => Date.now() - startedAt >= budgetMs;
-  const facilities: MonthEndFacilityResult[] = [];
+  const tenants: MonthEndTenantResult[] = [];
   let partial = false;
   let remaining = 0;
 
-  for (const facilityId of Object.values(FACILITY_UUID)) {
-    const r = emptyFacilityResult(facilityId);
-    facilities.push(r);
-    // 予算切れのあとの施設は、対象の取引先の数だけ数える（DB を読むだけ・発行も送信もしない）
+  const all = await partnersWithBookings(db, period, today);
+  const byTenant = new Map<string, InvoicePartner[]>();
+  for (const p of all) {
+    const list = byTenant.get(p.tenant_id) ?? [];
+    list.push(p);
+    byTenant.set(p.tenant_id, list);
+  }
+
+  for (const [tenantId, partners] of byTenant) {
+    const r = emptyTenantResult(tenantId, partners.length);
+    tenants.push(r);
+    // 予算切れのあとの会社は、対象の取引先の数だけ数える（発行も送信もしない）
     if (partial) {
       r.status = 'pending';
-      try {
-        r.partners = (await partnersWithBookings(db, facilityId, period, today)).length;
-        remaining += r.partners;
-      } catch (e) {
-        r.error = e instanceof Error ? e.message : String(e);
-      }
+      remaining += partners.length;
       continue;
     }
     try {
-      const settings = await loadBillingSettings(db, facilityId);
-      r.facilityName = settings.facilityName;
-      if (!settings.autoIssue) {
+      const issuer = await loadInvoiceIssuer(db, tenantId);
+      r.issuerName = issuer.issuerName;
+      if (issuer.saved && !issuer.autoIssue) {
         r.status = 'auto_off';
         continue;
       }
-      const partners = await partnersWithBookings(db, facilityId, period, today);
-      r.partners = partners.length;
-      if (!partners.length) continue;
-      if (!settings.bankAccount) {
-        r.status = 'no_bank_account';
-        if (opts.notifyMissingBankAccount !== false) {
-          await notifyMissingBankAccount(db, facilityId, settings.facilityName || '山人', period, partners);
-        }
+      // 発行元が無い・振込先が空 → 全取引先を止めて1通（M2）
+      if (!issuer.saved || !issuer.bankAccount) {
+        r.status = issuer.saved ? 'no_bank_account' : 'no_issuer';
+        if (opts.notifyMissingBankAccount !== false) await notifyIssuerMissing(issuer, r.status, period, partners);
         continue;
       }
       // PDF 生成（Browser Rendering）はレート制限があるので、1社ずつ順に
@@ -1061,8 +1218,8 @@ export async function issueMonthEndInvoices(db: SupabaseClient, origin: string, 
     } catch (e) {
       r.status = 'error';
       r.error = e instanceof Error ? e.message : String(e);
-      console.error(`[partner-invoice] 施設 ${facilityId} の処理に失敗:`, r.error);
+      console.error(`[partner-invoice] テナント ${tenantId} の処理に失敗:`, r.error);
     }
   }
-  return { today, period, partial, remaining, elapsedMs: Date.now() - startedAt, facilities };
+  return { today, period, partial, remaining, elapsedMs: Date.now() - startedAt, tenants };
 }

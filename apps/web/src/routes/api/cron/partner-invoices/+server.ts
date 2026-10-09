@@ -7,7 +7,7 @@
 // 1社の処理の途中では止めないので、応答までは最長で約 40 秒（予算 20 秒＋PDF 15 秒＋メール）。
 //
 //   ?date=YYYY-MM-DD  … 「今日」を上書きする（テスト用。CRON_SECRET で認証済みのリクエストだけ）
-//   ?notify=1|0       … 振込先が未設定のときの施設への通知を出すか。省くと 15:00 台の最初の呼び出し（JST の分が 10 未満）だけ出す
+//   ?notify=1|0       … 発行元・振込先が未設定のときの通知（発行元設定の通知先・2026-10-09）を出すか。省くと 15:00 台の最初の呼び出し（JST の分が 10 未満）だけ出す
 //                       （1日に6回呼ぶので、同じ通知を6通送らないため）
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
