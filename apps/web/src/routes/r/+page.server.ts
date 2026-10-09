@@ -20,6 +20,7 @@ import {
 	stayEndedFacility,
 	type EndedFacility
 } from '$lib/server/inroom-banners';
+import { currentStayDayItems, jstDate } from '$lib/inroom-day';
 import type { Actions, PageServerLoad } from './$types';
 
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
@@ -48,8 +49,11 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 	const noStay = { stay: null, guides: [], bathReservations: [], meals: [] as StayMeal[], expired: false, invalidQr, endedFacility: null, banners: [] };
 
 	if (!token) {
-		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）
-		return endedQr ? thanks(endedFacilityBySlug(url.searchParams.get('f'), locale)) : noStay;
+		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）。
+		// 客室の入口QR（/r/start?f=<slug>）から来たときは、黒ヘッダーに施設名を出す
+		if (endedQr) return thanks(endedFacilityBySlug(url.searchParams.get('f'), locale));
+		const entryFacility = endedFacilityBySlug(url.searchParams.get('f'), locale);
+		return entryFacility?.name ? { ...noStay, headerTitle: entryFacility.name } : noStay;
 	}
 
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
@@ -71,13 +75,21 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[])
 	]);
 
+	// 連泊は「今の滞在日」の予定だけ（今日＋明日の朝。日付が変わると新しい滞在日に切り替わる・2026-10-09）
+	const now = new Date();
 	return {
 		stay,
 		guides,
 		bathReservations: bathContext?.ok
-			? (bathContext.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to }))
+			? currentStayDayItems(
+					(bathContext.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to })),
+					(r) => ({ date: r.date, time: r.from }),
+					now
+				)
 			: [],
-		meals,
+		meals: currentStayDayItems(meals, (meal) => meal, now),
+		// 画面を開いたままでも日付が変わったら読み直す（+page.svelte）
+		stayDay: jstDate(now),
 		intercom,
 		expired: false,
 		invalidQr,
