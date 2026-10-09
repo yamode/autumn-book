@@ -5,7 +5,6 @@
 	//   ヒーロー写真 → Wi-Fi 帯 → 滞在カード → 機能ナビ（横並びアイコン）→ 案内カードのグリッド
 	// 「館内のご案内」は1件ずつ詳細ページ（/r/g/<id>）へ。長い案内（ルームサービスのメニュー等）を
 	// トップに積まないための分け方で、これも現行アプリと同じ。
-	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { groupByDay, upcomingItems } from '$lib/inroom-day';
 	import * as m from '$lib/paraglide/messages';
@@ -13,6 +12,7 @@
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { inroomCardImage, inroomHero, inroomIcon } from '$lib/inroom-visuals';
 	import IntercomSheet from '$lib/components/IntercomSheet.svelte';
+	import StayCodeInput from '$lib/components/StayCodeInput.svelte';
 
 	let { data, form } = $props();
 
@@ -306,20 +306,9 @@
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_locked()}</p>
 		{/if}
 
-		{#snippet codeForm()}
-			<form method="POST" action="?/claim" use:enhance class="mt-4 space-y-3">
-				<input
-					name="code"
-					inputmode="numeric"
-					autocomplete="off"
-					maxlength="8"
-					placeholder={m.inroom_code_placeholder()}
-					class="w-full rounded-md border border-stone-300 px-4 py-3 text-center font-mono text-2xl tracking-[0.3em] text-stone-800"
-				/>
-				<button type="submit" class="w-full rounded-md bg-stone-700 py-3 text-sm font-medium text-white hover:bg-stone-600">
-					{m.inroom_code_submit()}
-				</button>
-			</form>
+		{#snippet codeForm(autofocus: boolean)}
+			<!-- 6桁のマスに打つ入力欄（そろったら自動で送る・違えば揺らして打ち直し。2026-10-09） -->
+			<StayCodeInput {autofocus} />
 		{/snippet}
 
 		{#if data.expired}
@@ -327,13 +316,13 @@
 			<details class="rounded-lg bg-white px-4 py-3 shadow-card" open={!!form?.claimError}>
 				<summary class="cursor-pointer text-sm text-stone-500">{m.inroom_ended_other_code()}</summary>
 				<p class="mt-2 text-sm text-stone-500">{m.inroom_code_help()}</p>
-				{@render codeForm()}
+				{@render codeForm(false)}
 			</details>
 		{:else}
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
 				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_code_title()}</h1>
 				<p class="mt-1 text-sm text-stone-500">{m.inroom_code_help()}</p>
-				{@render codeForm()}
+				{@render codeForm(true)}
 			</section>
 		{/if}
 	</div>

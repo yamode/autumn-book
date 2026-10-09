@@ -758,6 +758,8 @@
   "inroom_code_help": "請輸入入住時領取的導覽卡上的6位數字。",
   "inroom_code_placeholder": "6位數字",
   "inroom_code_submit": "開啟",
+  "inroom_code_checking": "確認中…",
+  "inroom_code_aria": "導覽卡上的號碼（6位數）",
   "inroom_err_invalid_qr": "QR碼無效，請洽詢櫃檯。",
   "inroom_err_expired": "您的住宿已結束，感謝您的光臨。",
   "inroom_ended_title": "感謝您的光臨",
