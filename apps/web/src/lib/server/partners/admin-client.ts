@@ -21,6 +21,9 @@
 // 例外その3（2026-10-09・セキュリティレビュー H-1）: 客室案内の手入力コード照合（supabase-data.ts sbClaimStayByCode）。
 //   book.claim_stay_by_code を anon から外して総当たりを防ぐため、サーバが接続元 IP を添えて service_role で呼ぶ。
 //   ほかに保存カード（member-saved-cards.ts）・スタッフの会員登録（staff-member-register.ts）でも使っている。
+//
+// 例外その4（2026-10-10・auth-hardening.md §9 S1）: FAQ ボットの質問ログ（routes/api/faq/[facility]/search・feedback）。
+//   book.faq_log_query / faq_feedback を anon から外し、IP 制限を通したサーバからだけ記録する（ログ汚染・集計改ざん対策）。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
