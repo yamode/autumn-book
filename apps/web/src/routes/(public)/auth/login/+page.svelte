@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
+	import Turnstile from '$lib/components/Turnstile.svelte';
 
 	let { data, form } = $props();
 	let next = $derived(page.url.searchParams.get('next') ?? '');
@@ -43,6 +44,7 @@
 			<div class="mt-3 flex items-center justify-between text-sm">
 				<form method="POST" action="?/sendCode{nextQuery}" use:enhance>
 					<input type="hidden" name="email" value={email} />
+					<Turnstile action="member-otp" />
 					<button type="submit" class="text-accent-600 underline">{m.auth_otp_resend()}</button>
 				</form>
 				<a href="/auth/login{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-stone-500 underline">{m.auth_otp_change_email()}</a>
@@ -55,6 +57,7 @@
 					<span class="text-stone-600">{m.login_email()}</span>
 					<input type="email" name="email" value={email} required class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="mail@example.com" />
 				</label>
+				<Turnstile action="member-otp" />
 				<button type="submit" class="w-full rounded-lg bg-brand-800 py-2.5 font-medium text-white hover:bg-brand-700">{m.auth_otp_send()}</button>
 			</form>
 		{/if}

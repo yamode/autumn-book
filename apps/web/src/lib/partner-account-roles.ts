@@ -41,12 +41,16 @@ export function accountStatus(a: { is_active: boolean; password_hash?: string | 
   return 'active';
 }
 
-/** アカウント画面のタブ。ユーザー管理はマスタだけ。お支払いカード（保存カード・2026-10-07）は全ユーザー（取引先で共有・N2）。 */
-export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'cards' | 'users'; label: string }[] {
+/**
+ * アカウント画面のタブ。ユーザー管理はマスタだけ。お支払いカード（保存カード・2026-10-07）は全ユーザー（取引先で共有・N2）。
+ * セキュリティ（ログイン中の端末・ログイン履歴・他端末ログアウト・docs/auth-hardening.md §4.4）は全ユーザー。
+ */
+export function accountTabs(isMaster: boolean): { path: '' | 'invoices' | 'cards' | 'security' | 'users'; label: string }[] {
   return [
     { path: '', label: '担当者情報' },
     { path: 'invoices', label: 'ご請求書' },
     { path: 'cards', label: 'お支払いカード' },
+    { path: 'security', label: 'セキュリティ' },
     ...(isMaster ? [{ path: 'users' as const, label: 'ユーザー管理' }] : [])
   ];
 }

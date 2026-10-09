@@ -329,6 +329,8 @@
   "auth_otp_verify_register": "驗證並繼續",
   "auth_otp_resend": "重新寄送驗證碼",
   "auth_otp_resend_wait": "驗證碼可於60秒後重新寄送。",
+  "auth_otp_rate_limited": "驗證碼寄送次數已達上限，請稍後再試。",
+  "auth_turnstile_failed": "驗證失敗，請重新整理頁面後再試一次。",
   "auth_otp_change_email": "變更電子郵件",
   "auth_otp_error_email_invalid": "電子郵件格式不正確。",
   "auth_otp_error_send": "驗證碼寄送失敗，請稍後再試。",

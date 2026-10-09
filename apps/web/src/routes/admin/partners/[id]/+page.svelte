@@ -2,6 +2,7 @@
   import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
   import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
   import { untrack } from 'svelte';
+  import { LOGIN_LOG_LABELS } from '$lib/partner-login-security';
   import { deserialize, enhance } from '$app/forms';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
@@ -691,17 +692,19 @@
     navigator.clipboard?.writeText(text).catch(() => undefined);
   }
 
+  // ログイン関係（制限・新しい環境・他端末ログアウト等）は取引先ページのセキュリティと共通（docs/auth-hardening.md §4.5）
   const ACTION_LABELS: Record<string, string> = {
-    login: 'ログイン',
-    login_failed: 'ログイン失敗',
-    login_locked: 'ロック中のログイン',
-    password_set: 'パスワード設定',
+    ...LOGIN_LOG_LABELS,
     view: '料金カレンダー閲覧',
     rates: 'API 料金取得',
     facilities: 'API 施設一覧',
     rate_sheet_csv: '料金表 CSV',
     rate_sheet_pdf: '料金表 PDF',
-    logout: 'ログアウト'
+    child_create: 'ユーザー作成',
+    child_setup_resend: 'ユーザーの設定リンク再送',
+    child_enable: 'ユーザー再開',
+    child_disable: 'ユーザー停止',
+    child_delete: 'ユーザー削除'
   };
 
   const inputClass = 'w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm disabled:bg-stone-50 disabled:text-stone-500';

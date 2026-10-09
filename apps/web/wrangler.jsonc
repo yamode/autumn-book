@@ -37,6 +37,10 @@
 		"PARTNER_BOOKING_ATTACHMENTS": "true",
 		// 管理画面の二段階認証（TOTP）を全員に必須にするか（docs/auth-hardening.md §7.2・M7）。
 		// false＝登録は任意（登録した人だけ毎回コードを求める）。必須化の日に true にする（Supabase で TOTP を有効化してから）
-		"ADMIN_MFA_REQUIRED": "false"
+		"ADMIN_MFA_REQUIRED": "false",
+		// Cloudflare Turnstile のサイトキー（公開値・docs/auth-hardening.md §4.2）。取引先ログイン／パスワード設定・管理ログイン・会員の認証コード送信に付ける。
+		// 空なら部品を出さず、サーバも検証をスキップする。シークレット TURNSTILE_SECRET_KEY は
+		// `wrangler pages secret put TURNSTILE_SECRET_KEY --project-name autumn-book` で登録する（両方そろったときだけ検証する）
+		"PUBLIC_TURNSTILE_SITE_KEY": ""
 	}
 }

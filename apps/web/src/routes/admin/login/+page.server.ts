@@ -1,6 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
+import { clientIp, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
+import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
+
+// ログインの失敗・制限中で同じ文言（制限中かを外から区別させない・docs/auth-hardening.md §4.5）
+const LOGIN_FAILED_MESSAGE = 'メールアドレスまたはパスワードが違うか、しばらくの間ログインを制限しています。数分おいてからお試しください。';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
@@ -16,6 +21,13 @@ export const actions: Actions = {
 		const password = String(form.get('password') ?? '');
 		if (!email || !password) return fail(400, { message: 'メールアドレスとパスワードを入力してください', email });
 
+		// Turnstile（未設定なら素通り）と、1 IP 10 回/10 分の失敗で 15 分止める（docs/auth-hardening.md §4.1・§4.2・S2）
+		const ip = clientIp(event.request);
+		const turnstile = await checkTurnstile(form, ip);
+		if (!turnstile.ok) return fail(400, { message: TURNSTILE_FAILED_MESSAGE, email });
+		const rateKey = ipKey(ip);
+		if ((await rateCheck(event.platform, RATE_RULES.adminIp, rateKey)).locked) return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
+
 		let supabase;
 		try {
 			supabase = createSupabaseServerClient(event);
@@ -23,7 +35,11 @@ export const actions: Actions = {
 			return fail(503, { message: '認証システムが未設定です。管理者にお問い合わせください（Supabase 環境変数）', email });
 		}
 		const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-		if (error || !data.user) return fail(401, { message: 'メールアドレスまたはパスワードが違います', email });
+		if (error || !data.user) {
+			await rateHit(event.platform, RATE_RULES.adminIp, rateKey);
+			return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
+		}
+		await rateReset(event.platform, RATE_RULES.adminIp, rateKey);
 
 		const role = (data.user.app_metadata as { role?: string } | null)?.role;
 		if (role !== 'admin' && role !== 'staff') {
