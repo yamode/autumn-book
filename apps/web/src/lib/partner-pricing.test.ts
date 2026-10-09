@@ -9,6 +9,7 @@ import {
   isRetiredPlanName,
   DEFAULT_PARTNER_PRICING,
   normalizePartnerPricing,
+  partnerPlanCodeFilter,
   validatePartnerPricing,
   type PartnerPricing,
   type PartnerRateRule,
@@ -291,5 +292,24 @@ describe('partnerPriceRange', () => {
   it('出せる料金が無ければ null', () => {
     expect(partnerPriceRange([])).toBeNull();
     expect(partnerPriceRange([day('2026-10-02', true, [{ '2': 5000 }])])).toBeNull();
+  });
+});
+
+describe('partnerPlanCodeFilter', () => {
+  const rule = (action: 'adjust' | 'hide', planGroupCodes: string[]) =>
+    ({ ...normalizePartnerPricing({ rules: [{ action, planGroupCodes, value: 0 }] }).rules[0] });
+  it('調整ルールで指定したプランだけ（重複なし・並べ替え）。非表示ルール・先行案内料金は含めない', () => {
+    const p = normalizePartnerPricing({});
+    p.rules = [rule('adjust', ['a003', 'a001']), rule('hide', ['a009']), rule('adjust', ['a001', 'advance'])];
+    expect(partnerPlanCodeFilter(p)).toEqual(['a001', 'a003']);
+  });
+  it('全プランを出す既定（管理画面のプレビュー）・プラン指定の無い調整ルールは絞らない', () => {
+    expect(partnerPlanCodeFilter({ ...normalizePartnerPricing({}), defaultAction: 'adjust' })).toBeNull();
+    const p = normalizePartnerPricing({});
+    p.rules = [rule('adjust', [])];
+    expect(partnerPlanCodeFilter(p)).toBeNull();
+  });
+  it('調整ルールが無ければ空（どのプランも出さない）', () => {
+    expect(partnerPlanCodeFilter(normalizePartnerPricing({}))).toEqual([]);
   });
 });

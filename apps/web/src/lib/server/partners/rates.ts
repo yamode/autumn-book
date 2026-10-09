@@ -13,6 +13,7 @@ import {
   buildPartnerDays,
   isRetiredPlanName,
   mergePriceExtreme,
+  partnerPlanCodeFilter,
   partnerPriceRange,
   type PartnerPriceExtreme,
   type PartnerRateDay,
@@ -131,18 +132,27 @@ function loadPartnerBase(
   partnerId: string,
   facilityId: string,
   range: { from: string; to: string },
-  rank: boolean
+  rank: boolean,
+  // 読むプランのコード（partnerPlanCodeFilter）。null = 全プラン
+  planCodes: string[] | null
 ): Promise<PartnerBase> {
-  const key = rank ? `${partnerId}|${facilityId}|${range.from}|${range.to}` : `${facilityId}|${range.from}|${range.to}`;
+  const plans = planCodes ? planCodes.join(',') : '*';
+  const key = rank
+    ? `${partnerId}|${facilityId}|${range.from}|${range.to}|${plans}`
+    : `${facilityId}|${range.from}|${range.to}|${plans}`;
   const now = Date.now();
   const hit = baseCache.get(key);
   if (hit && now - hit.at < BASE_TTL_MS) return hit.value;
   const value = (async (): Promise<PartnerBase> => {
     const { data, error } = await db.rpc(
       'rms_partner_portal_source',
-      rank
-        ? { p_facility: facilityId, p_from: range.from, p_to: range.to, p_partner: partnerId }
-        : { p_facility: facilityId, p_from: range.from, p_to: range.to }
+      {
+        p_facility: facilityId,
+        p_from: range.from,
+        p_to: range.to,
+        ...(rank ? { p_partner: partnerId } : {}),
+        ...(planCodes ? { p_plan_codes: planCodes } : {})
+      }
     );
     if (error) throw new Error(`料金の読み込みに失敗しました: ${error.message}`);
     const d = (data ?? {}) as Partial<PartnerBase>;
@@ -175,12 +185,14 @@ export async function loadPartnerRates(
   if (!isBookFacility(partner.facility_id)) throw new Error(`未登録の施設です: ${partner.facility_id}`);
   // 暦を使うかが分かっていれば、使っていない取引先は施設で共有の元データを読む。まだ分からなければ（isolate の初回）
   // 取引先付きで RPC を1回呼び、返り値の priceSource で覚える（暦の有無を別に問い合わせる往復を省く・2026-10-09 重さ対策）
+  // 取引先が売るプラン（特別レートの調整ルールで指定したもの）だけを読む（2026-10-09 重さ対策）
+  const planCodes = partnerPlanCodeFilter(partner.pricing);
   const known = peekPartnerRank(partner.id, partner.facility_id);
   let base: PartnerBase;
   if (known) {
-    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, await known);
+    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, await known, planCodes);
   } else {
-    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, true);
+    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, true, planCodes);
     rememberPartnerRank(partner.id, partner.facility_id, base.priceSource === 'partner_rank');
   }
   const { days: sourceDays, inventory, rooms, priceSource } = base;

@@ -397,3 +397,18 @@ export function describeAdjust(action: PartnerRuleAction, type: PartnerAdjustTyp
   if (value === 0) return '実売価格のまま';
   return value < 0 ? `${Math.abs(value)}%引き` : `${value}%増し`;
 }
+
+// 料金の元データ（rms_partner_portal_source）で読むプランのコード。2026-10-09 重さ対策:
+// 取引先が売るのは「調整して出す」ルールで指定したプランだけ（当てはまらない料金は出さない）なので、それ以外は最初から読まない。
+// null = 絞らない（全プランを出す既定の設定〔管理画面のプレビュー〕・プラン指定の無い調整ルールがある旧データ）。
+// 'advance'（先行案内料金）は元データに無いので含めない。結果が空なら、どのプランも出さない設定。
+export function partnerPlanCodeFilter(pricing: Pick<PartnerPricing, 'defaultAction' | 'rules'>): string[] | null {
+  if (pricing.defaultAction === 'adjust') return null;
+  const codes = new Set<string>();
+  for (const r of pricing.rules) {
+    if (r.action !== 'adjust') continue;
+    if (!r.planGroupCodes.length) return null;
+    for (const c of r.planGroupCodes) if (c !== ADVANCE_PLAN_CODE) codes.add(c);
+  }
+  return [...codes].sort();
+}
