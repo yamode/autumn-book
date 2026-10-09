@@ -4,6 +4,7 @@
   // 日付を選ぶ前から全カードを出し、料金は今後3か月の最安〜。日程を選ぶと、その日程・人数・室数で
   // 予約できるプランと料金に切り替える。料金・空室は月の JSON（fetchPortalMonth）から画面側で組み立て、
   // 予約の金額・在庫は予約入力・確定時にサーバで改めて確かめる。
+  import type { Snippet } from 'svelte';
   import { goto } from '$app/navigation';
   import { navigating } from '$app/state';
   import { page } from '$app/stores';
@@ -20,7 +21,8 @@
   import { planSummary } from '$lib/plan-summary';
   import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
 
-  let { data, view }: { data: StayPageData; view: 'room' | 'plan' } = $props();
+  // below: 検索バーの下・一覧の上に差し込む中身（プランのご紹介の「専用特典」）
+  let { data, view, below }: { data: StayPageData; view: 'room' | 'plan'; below?: Snippet } = $props();
   const token = $derived($page.params.token ?? '');
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   const num = (n: number) => n.toLocaleString('ja-JP');
@@ -348,6 +350,7 @@
       onSearch={search}
     />
   </div>
+  {#if below}{@render below()}{/if}
 
   <div class="mt-6 flex flex-wrap items-end justify-between gap-3">
     <div>

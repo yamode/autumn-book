@@ -11,15 +11,15 @@
 
 <svelte:head><title>{partnerTitle(data.portal, 'プランのご紹介')}</title><meta name="robots" content="noindex, nofollow" /></svelte:head>
 
-{#if data.commonPerks.length}
-  <!-- 全プラン共通の専用特典（取引先専用ページからのご予約に付く） -->
-  <div class="mx-auto max-w-6xl px-4 pt-6 sm:px-6">
-    <section class="rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 sm:px-5">
-      <p class="text-sm font-bold text-[var(--pt-accent)]">専用特典（すべてのプラン）</p>
-      <div class="mt-2"><PartnerPerkList perks={data.commonPerks} /></div>
-      <p class="mt-1.5 text-xs text-stone-500">このページからご予約いただいた場合に付きます。</p>
-    </section>
-  </div>
-{/if}
-
-<PartnerStaySearch {data} view="plan" />
+<!-- 全プラン共通の専用特典（取引先専用ページからのご予約に付く）。検索バーの下・プラン一覧の上に、プランのカードと同じ形で出す（2026-10-09 指示） -->
+<PartnerStaySearch {data} view="plan">
+  {#snippet below()}
+    {#if data.commonPerks.length}
+      <section class="mt-6">
+        <p class="text-lg font-bold">{data.portal.partnerName ? `${data.portal.partnerName}様専用特典` : '専用特典'}（すべてのプラン）</p>
+        <p class="text-sm text-stone-500">このページからご予約いただいた場合に付きます。</p>
+        <div class="mt-4"><PartnerPerkList perks={data.commonPerks} variant="plan" /></div>
+      </section>
+    {/if}
+  {/snippet}
+</PartnerStaySearch>
