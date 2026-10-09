@@ -37,6 +37,7 @@
 //         return merged;
 //       });
 import { supa } from './supabase';
+import { partnerServiceClient } from './partners/admin-client';
 import type {
 	CalendarDay,
 	GuestInfo,
@@ -971,7 +972,8 @@ export async function adjustOtayori(memberUserId: string, delta: number, reason:
 // book スキーマの inroom RPC（migration 20260710103006_book_inroom_phase1）を呼ぶ薄いアダプタ。
 // store.ts（demo）と同じ意味論・同じ camelCase 型（HouseGuide / StayToken / StayInfo）を返す。
 //
-// ・ゲスト面（sbResolveStay / sbClaimStayByCode / sbListHouseGuides）は anon `supa()` で動作。
+// ・ゲスト面（sbResolveStay / sbListHouseGuides）は anon `supa()` で動作。
+//   sbClaimStayByCode だけは総当たり対策で service_role 専用（2026-10-09・partnerServiceClient を使う）。
 //   RPC は無効トークン等で例外（invalid_token / invalid_code）を投げるため、ここで null 返しへ正規化。
 // ・管理面（sbIssueStayToken 以下）は authenticated + private.has_facility_access が前提のため、
 //   呼び出し側で Supabase Auth セッションに紐づく client（auth.ts の createSupabaseServerClient）を渡す。
@@ -1014,11 +1016,24 @@ export async function sbResolveStay(token: string): Promise<StayInfo | null> {
 	};
 }
 
-/** store.claimStayByCode 相当。無効コードは RPC 例外 → null に正規化 */
-export async function sbClaimStayByCode(code: string): Promise<string | null> {
-	const { data, error } = await supa().rpc('claim_stay_by_code', { p_short_code: code });
-	if (error) return null; // invalid_code など
-	return (data as { token: string }).token;
+/**
+ * store.claimStayByCode 相当。無効コードは null、DB 側の試行上限に当たったら 'rate_limited'。
+ * 2026-10-09（セキュリティレビュー H-1）: claim_stay_by_code は anon から直接叩かれて総当たりされないよう
+ * service_role 専用になった（autumn-shared 20261009131735）。サーバが service_role で呼び、
+ * 接続元 IP（clientKey）を渡して DB 側でも失敗回数を数える。
+ */
+export async function sbClaimStayByCode(
+	code: string,
+	clientKey: string
+): Promise<string | null | 'rate_limited'> {
+	const sb = partnerServiceClient();
+	if (!sb) return null;
+	const { data, error } = await sb.rpc('claim_stay_by_code', {
+		p_short_code: code,
+		p_client_key: clientKey
+	});
+	if (error) return error.message.includes('rate_limited') ? 'rate_limited' : null;
+	return (data as { token: string | null }).token ?? null;
 }
 
 interface HouseGuideRow {

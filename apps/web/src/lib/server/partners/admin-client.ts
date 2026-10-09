@@ -17,6 +17,10 @@
 //   Stripe の Webhook（ブラウザが閉じられた後の確定・返金の同期）はお客様のセッションが無いところで予約を確定する
 //   必要があり、book.direct_payment_* は service_role だけに grant している。サーバが Stripe から Intent を取り直して
 //   検証してから呼ぶこと（ブラウザから届いた値をそのまま渡さない）。
+//
+// 例外その3（2026-10-09・セキュリティレビュー H-1）: 客室案内の手入力コード照合（supabase-data.ts sbClaimStayByCode）。
+//   book.claim_stay_by_code を anon から外して総当たりを防ぐため、サーバが接続元 IP を添えて service_role で呼ぶ。
+//   ほかに保存カード（member-saved-cards.ts）・スタッフの会員登録（staff-member-register.ts）でも使っている。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
