@@ -2,6 +2,21 @@
 
 > **最終更新**: 2026-10-10（取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
+## 認証強化 S8：公式サイトの仮押さえを service_role 経由に（2026-10-10・v0.110.1・autumn-shared 20261009210747）
+- `book.create_hold` に新署名 `(…, p_client_key, p_member_user_id, p_locale)` を追加（service_role 専用）。Book のサーバが接続元 IP と会員 id を渡す。DB 側の上限: 同じ接続元 10分20件・全体 10分500件で `rate_limited`。`book.holds.client_key` に接続元を記録
+- 旧署名（7引数）は **yamado-one（Expo アプリ）が anon で直接呼んでいるため残した**。中身は新署名を呼ぶ入口に差し替え（接続元は PostgREST の request.headers から `rest:<IP>`・会員は auth.uid()）。yamado-one をサーバ経由に移したら旧署名を drop する migration を別に切る
+- `book.release_hold` は service_role 専用に。Book の `releaseHold` も service_role
+- アプリ: プラン詳細の `?/hold` に KV の IP 制限（`lib/server/hold-rate-limit.ts`・10分20回）。`rate_limited` / `too_many_holds` は 429「お申し込みが集中しています」。Turnstile は S2 と統合するときに `?/hold` へ付ける
+
+### テストチェックリスト（認証強化 S8）
+- [ ] 非会員：公式サイトでプランを選んで仮押さえでき、予約確認へ進める。holds.client_key に接続元 IP が入る
+- [ ] 会員：仮押さえの member_user_id が本人。ポイント利用・会員限定プランの確定が従来どおり
+- [ ] 「プラン・お部屋を選び直す」で仮押さえが released になり在庫が戻る。同じセッションで選び直すと前の仮押さえが解放される
+- [ ] 同じ IP で10分に21回目の仮押さえは「お申し込みが集中しています」（429）
+- [ ] 公開キーで新署名 `rpc/create_hold`（p_client_key 付き）・`rpc/release_hold` を呼ぶと拒否される
+- [ ] yamado-one（実機）から仮押さえ・予約確定が従来どおり。holds.client_key が `rest:<IP>`（`rest:unknown` なら PostgREST がヘッダを渡していない）
+- [ ] カード決済（direct_payment_prepare → confirm）が従来どおり通る
+
 ## 認証強化 S1・S5：DB の土台と管理画面の二段階認証（2026-10-10・v0.109.1〜v0.110.0・autumn-shared 20261009205246 / 20261009205248）
 設計書 `docs/auth-hardening.md` の S1・S5。M1〜M14 は推奨どおりで確定（2026-10-10）。
 - S1（v0.109.1）: 取引先の第2要素用の列・表（`rms_partners.mfa_policy`・`rms_partner_sessions.aal / mfa_at / device_id`・`rms_partner_passkeys`・`rms_partner_mfa_challenges`・access_logs の channel に admin）。`book.faq_log_query / faq_feedback` を anon から外し FAQ API は service_role 経由に。`_pb_store / _pb_token / sync_stay_token_window` も anon から外した。`_theory_pp` の search_path 固定は料金計算のインライン展開を壊すため見送り

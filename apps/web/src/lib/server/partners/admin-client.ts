@@ -28,6 +28,9 @@
 //   他の管理者の第2要素の一覧・削除は Supabase Auth の管理 API（auth.admin.listUsers / auth.admin.mfa.*）で service_role が要る。
 //   呼び出し元（routes/admin/security/users）は「操作者が admin・aal2」を確かめてから呼び、book.admin_audit_logs に
 //   admin_mfa_reset を記帳してから削除する。
+// 例外その6（2026-10-10・auth-hardening.md §9 S8）: 公式サイトの仮押さえ（supabase-data.ts createHold / releaseHold）。
+//   book.create_hold（新署名）/ release_hold を anon から外し、KV `hold:<ip>` を通したサーバが接続元 IP と
+//   検証済みセッションの会員 id を添えて呼ぶ（在庫枯渇攻撃の対策。DB 側にも 10 分 20 件の上限）。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

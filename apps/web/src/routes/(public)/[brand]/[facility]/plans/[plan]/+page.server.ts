@@ -8,7 +8,8 @@ import {
 	createHold
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { MEMBER_SUPABASE } from '$lib/server/auth';
+import { holdRateCheck } from '$lib/server/hold-rate-limit';
 import {
 	sbFacilityBySlug,
 	sbPlanBySlug,
@@ -121,6 +122,19 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	};
 };
 
+const HOLD_RATE_LIMITED_MESSAGE = 'お申し込みが集中しています。しばらく時間をおいてからお試しください。';
+
+/** 接続元 IP（Cloudflare では cf-connecting-ip。取れなければ 'unknown'） */
+function clientIp(event: { request: Request; getClientAddress: () => string }): string {
+	const h = event.request.headers.get('cf-connecting-ip');
+	if (h) return h;
+	try {
+		return event.getClientAddress();
+	} catch {
+		return 'unknown';
+	}
+}
+
 export const actions: Actions = {
 	hold: async (event) => {
 		const { request, locals, cookies } = event;
@@ -140,12 +154,21 @@ export const actions: Actions = {
 				maxAge: 60 * 60 * 2
 			});
 
+		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
+		const ip = clientIp(event);
+		if (!(await holdRateCheck(event.platform, ip))) {
+			return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
+		}
+
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);
-			// 会員は authenticated client（member_user_id を記録）、ゲストは anon。
-			const client = MEMBER_SUPABASE && locals.user?.role === 'member' ? createSupabaseServerClient(event) : undefined;
-			const result = await sbCreateHold(sid, planId, roomTypeId, checkin, nights, adults, client);
+			// create_hold は service_role 専用（S8）。会員の紐付けは検証済みセッションの会員 id を渡す（会員でなければ null）
+			const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
+			const result = await sbCreateHold(sid, planId, roomTypeId, checkin, nights, adults, { clientKey: ip, memberUserId });
 			if ('error' in result) {
+				if (result.error === 'rate_limited' || result.error === 'too_many_holds') {
+					return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
+				}
 				return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
 			}
 			rememberNav(String(result.hold_id));
