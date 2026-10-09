@@ -282,8 +282,21 @@ export const rateSheetFileName = (facilityName: string, fromYm: string, toYm: st
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
 const jpDate = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
-// 1つの表に並べる区分の列の上限（A4 横で 1名料金が読める幅）。超えたら表を分ける
-const MAX_CATEGORY_COLUMNS = 14;
+// 1つの表に並べる区分の列の上限（A4 縦の紙幅で 1名料金が読める幅）。超えたら表を分ける
+export const MAX_CATEGORY_COLUMNS = 8;
+
+/**
+ * 区分の列を表ごとに分ける。1表 max 列まで・表の数は最小にして、列数はなるべく均等にする
+ * （9区分なら 8 + 1 ではなく 5 + 4。最後の表だけ細くならないように）。
+ */
+export function chunkCategoryColumns<T>(cats: T[], max = MAX_CATEGORY_COLUMNS): T[][] {
+  if (!cats.length) return [];
+  const tables = Math.ceil(cats.length / max);
+  const size = Math.ceil(cats.length / tables);
+  const out: T[][] = [];
+  for (let i = 0; i < cats.length; i += size) out.push(cats.slice(i, i + size));
+  return out;
+}
 
 export type RateSheetMeta = {
   partnerName: string;
@@ -296,49 +309,56 @@ export type RateSheetMeta = {
   autoPrintNonce?: string;
 };
 
+// A4 縦（210 × 297mm・余白 11mm → 紙面 188 × 275mm）。月カレンダーは1ページに2か月を上下に並べ、
+// 1か月 = 見出し 6mm ＋ 曜日 5mm ＋ 6週 × 17mm ≒ 113mm。2か月 ＋ 見出し・注記・凡例で 1ページに収まる。
 const STYLE = `
-@page { size: A4 landscape; margin: 9mm 10mm 10mm; }
+@page { size: A4 portrait; margin: 11mm 11mm 11mm; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: 'Noto Sans JP', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif; color: #1c1917; font-size: 9pt; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.page { page-break-after: always; }
-.page:last-child { page-break-after: auto; }
-.hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; border-bottom: 1.5px solid #1c1917; padding-bottom: 1.5mm; }
-.hd h1 { margin: 0; font-size: 13pt; font-weight: 700; }
-.hd .m { font-size: 8.5pt; color: #44403c; text-align: right; white-space: nowrap; }
+.page { page-break-after: always; break-after: page; }
+.page:last-child { page-break-after: auto; break-after: auto; }
+.hd { display: flex; justify-content: space-between; align-items: flex-end; gap: 4mm; border-bottom: 1.5px solid #1c1917; padding-bottom: 1.5mm; }
+.hd h1 { margin: 0; font-size: 12.5pt; font-weight: 700; }
+.hd .m { font-size: 8pt; color: #44403c; text-align: right; }
+.hd .m span { white-space: nowrap; }
 .nt { margin: 1.2mm 0 3mm; font-size: 7.5pt; color: #57534e; }
-.months { display: flex; gap: 8mm; }
-.month { flex: 1 1 0; min-width: 0; }
-.month h2 { margin: 0 0 1.5mm; font-size: 11pt; }
+.months { display: flex; flex-direction: column; gap: 5mm; }
+.month { page-break-inside: avoid; break-inside: avoid; }
+.month h2 { margin: 0 0 1.2mm; font-size: 11pt; }
 table.cal { width: 100%; border-collapse: collapse; table-layout: fixed; }
-table.cal th { font-size: 8pt; font-weight: 600; padding: 0.8mm 0; border: 1px solid #a8a29e; background: #fafaf9; }
-table.cal td { height: 15mm; border: 1px solid #a8a29e; vertical-align: top; padding: 0.8mm 1.2mm; }
+table.cal th { font-size: 8pt; font-weight: 600; padding: 0.6mm 0; border: 1px solid #a8a29e; background: #fafaf9; }
+table.cal td { height: 17mm; border: 1px solid #a8a29e; vertical-align: top; padding: 0.8mm 1.2mm; }
 table.cal td .d { font-size: 8.5pt; font-variant-numeric: tabular-nums; }
-table.cal td .c { display: block; text-align: center; font-size: 13pt; font-weight: 700; line-height: 1.2; margin-top: 0.5mm; }
-table.cal td .x { display: block; text-align: center; font-size: 8pt; color: #57534e; margin-top: 2mm; }
+table.cal td .c { display: block; text-align: center; font-size: 13pt; font-weight: 700; line-height: 1.2; margin-top: 0.2mm; }
+table.cal td .x { display: block; text-align: center; font-size: 8pt; color: #57534e; margin-top: 1.5mm; }
 table.cal td.none { background: #e7e5e4; }
 table.cal td.out { background: #fff; color: #d6d3d1; }
 table.cal td.blank { border: none; }
 .sun { color: #b91c1c; }
 .sat { color: #1d4ed8; }
-.legend { margin-top: 3mm; display: flex; flex-wrap: wrap; gap: 1.5mm 4mm; font-size: 8pt; }
+.legend { margin-top: 4mm; display: flex; flex-wrap: wrap; gap: 1.2mm 5mm; font-size: 7.8pt; page-break-inside: avoid; break-inside: avoid; }
 .legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
+.legend b { font-weight: 400; color: #57534e; font-variant-numeric: tabular-nums; }
 .legend i { display: inline-block; width: 6mm; height: 4mm; border: 1px solid #a8a29e; font-style: normal; text-align: center; font-size: 7pt; font-weight: 700; line-height: 3.6mm; }
-table.pt { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 8pt; }
+table.pt { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.6pt; }
 table.pt thead tr.top th { border: none; background: none; padding: 0 0 2.5mm; text-align: left; font-weight: 400; }
-table.pt th, table.pt td { border: 1px solid #a8a29e; padding: 0.9mm 1.2mm; vertical-align: top; }
+table.pt th, table.pt td { border: 1px solid #a8a29e; padding: 0.8mm 1mm; vertical-align: top; overflow-wrap: anywhere; }
 table.pt th { background: #f5f5f4; font-weight: 600; }
 table.pt th.cat { text-align: center; }
 table.pt td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-table.pt td.n small { display: block; color: #78716c; font-size: 6.8pt; }
+table.pt td.n small { display: block; color: #78716c; font-size: 6.5pt; }
 table.pt td.na { text-align: center; color: #a8a29e; }
-table.pt tr { break-inside: avoid; }
-.pt-title { font-size: 10.5pt; font-weight: 700; margin: 0 0 1.5mm; }
+table.pt tr { page-break-inside: avoid; break-inside: avoid; }
+table.pt tbody.grp { page-break-inside: avoid; break-inside: avoid; border-top: 2px solid #57534e; }
+table.pt td.room { font-weight: 600; border-bottom-color: transparent; }
+table.pt tbody.grp tr:last-child td.room { border-bottom-color: #a8a29e; }
+.pt-title { font-size: 10pt; font-weight: 700; margin: 0 0 1.5mm; }
 .empty { margin-top: 10mm; text-align: center; color: #57534e; font-size: 11pt; }
 `;
 
 function headerHtml(meta: RateSheetMeta): string {
   const period = `${jpDate(meta.range.from)}〜${jpDate(meta.range.to)}`;
-  return `<div class="hd"><h1>${esc(meta.partnerName)} 様 専用料金表</h1><div class="m">${esc(meta.facilityName)}　期間 ${period}　発行日 ${jpDate(meta.issuedOn)}</div></div>
+  return `<div class="hd"><h1>${esc(meta.partnerName)} 様 専用料金表</h1><div class="m"><span>${esc(meta.facilityName)}</span>　<span>期間 ${period}</span>　<span>発行日 ${jpDate(meta.issuedOn)}</span></div></div>
 <p class="nt">料金は1名1泊・税込・入湯税別です。残室により予約できない日があります。発行日時点の料金です（料金は変わることがあります）。</p>`;
 }
 
@@ -371,6 +391,15 @@ function monthHtml(ym: string, meta: RateSheetMeta, dayMap: Map<string, RateShee
   return `<div class="month"><h2>${y}年${m}月</h2><table class="cal"><thead><tr>${head}</tr></thead><tbody>${weeks.join('')}</tbody></table></div>`;
 }
 
+// 区分の目安（その区分に出ている全組合せの1名料金の最安〜最高）
+function categoryRange(c: RateSheetCategory): string {
+  const vals = Object.values(c.prices);
+  if (!vals.length) return '';
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  return lo === hi ? yen(lo) : `${yen(lo)}〜${yen(hi)}`;
+}
+
 function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number): string {
   // その人数で料金のある行・区分だけ
   const rows = sheet.rows.filter((r) => sheet.categories.some((c) => c.prices[comboKey(r.roomCode, r.planCode, guests)] != null));
@@ -378,45 +407,61 @@ function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number):
   if (!rows.length || !cats.length) {
     return `<div class="page">${headerHtml(meta)}<p class="pt-title">${guests}名1室の料金</p><p class="empty">この人数で予約できる料金はありません。</p></div>`;
   }
-  const parts: string[] = [];
-  for (let i = 0; i < cats.length; i += MAX_CATEGORY_COLUMNS) {
-    const chunk = cats.slice(i, i + MAX_CATEGORY_COLUMNS);
-    const span = 3 + chunk.length;
-    const suffix = cats.length > MAX_CATEGORY_COLUMNS ? `（区分 ${chunk[0].label}〜${chunk[chunk.length - 1].label}）` : '';
-    const head = `<tr class="top"><th colspan="${span}">${headerHtml(meta)}<p class="pt-title">${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
-<tr><th style="width:42mm">部屋タイプ</th><th style="width:58mm">プラン</th><th style="width:14mm">食事</th>${chunk
-      .map((c) => `<th class="cat" style="background:${c.color}">区分${esc(c.label)}</th>`)
-      .join('')}</tr>`;
-    const body = rows
-      .map((r) => {
-        const tds = chunk
-          .map((c) => {
-            const v = c.prices[comboKey(r.roomCode, r.planCode, guests)];
-            return v != null ? `<td class="n">${yen(v)}<small>${yen(v * guests)}</small></td>` : '<td class="na">—</td>';
-          })
-          .join('');
-        return `<tr><td>${esc(r.roomName)}</td><td>${esc(r.planName)}</td><td>${esc(r.mealType ?? '')}</td>${tds}</tr>`;
-      })
-      .join('');
-    parts.push(`<div class="page"><table class="pt"><thead>${head}</thead><tbody>${body}</tbody></table></div>`);
-  }
-  return parts.join('');
+  const chunks = chunkCategoryColumns(cats);
+  return chunks
+    .map((chunk) => {
+      const span = 3 + chunk.length;
+      const suffix = chunks.length > 1 ? `（区分 ${chunk[0].label}〜${chunk[chunk.length - 1].label}）` : '';
+      // 縦の紙幅（188mm）: 部屋 30mm・プラン 40mm・食事 10mm、残り（約108mm）を区分の列で等分（8列で約13.5mm）
+      const head = `<tr class="top"><th colspan="${span}">${headerHtml(meta)}<p class="pt-title">${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
+<tr><th style="width:30mm">部屋タイプ</th><th style="width:40mm">プラン</th><th style="width:10mm">食事</th>${chunk
+        .map((c) => `<th class="cat" style="background:${c.color}">区分${esc(c.label)}</th>`)
+        .join('')}</tr>`;
+      // 部屋タイプごとに tbody を分け、部屋名は先頭の行だけに出す（毎行くり返すと読みにくい・2026-10-09）。
+      // tbody は改ページで割らない（rowspan は改ページで部屋名が消えるので使わない）
+      const groups: (typeof rows)[] = [];
+      for (const r of rows) {
+        const last = groups[groups.length - 1];
+        if (last && last[0].roomCode === r.roomCode) last.push(r);
+        else groups.push([r]);
+      }
+      const body = groups
+        .map((g) => {
+          const trs = g
+            .map((r, i) => {
+              const tds = chunk
+                .map((c) => {
+                  const v = c.prices[comboKey(r.roomCode, r.planCode, guests)];
+                  return v != null ? `<td class="n">${yen(v)}<small>${yen(v * guests)}</small></td>` : '<td class="na">—</td>';
+                })
+                .join('');
+              return `<tr><td class="room">${i === 0 ? esc(r.roomName) : ''}</td><td>${esc(r.planName)}</td><td>${esc(r.mealType ?? '')}</td>${tds}</tr>`;
+            })
+            .join('');
+          return `<tbody class="grp">${trs}</tbody>`;
+        })
+        .join('');
+      return `<div class="page"><table class="pt"><thead>${head}</thead>${body}</table></div>`;
+    })
+    .join('');
 }
 
-/** 料金表の紙面（A4 横）: 月カレンダー（1ページに2か月）＋人数ごとの区分の料金表 */
+/** 料金表の紙面（A4 縦）: 月カレンダー（1ページに2か月を上下に・区分の凡例つき）＋人数ごとの区分の料金表 */
 export function renderRateSheetHtml(sheet: RateSheet, meta: RateSheetMeta): string {
   const dayMap = new Map(sheet.days.map((d) => [d.date, d]));
   const colorOf = new Map(sheet.categories.map((c) => [c.label, c.color]));
   const months = meta.months.filter((ym) => `${ym}-01` <= meta.range.to && lastDayOf(ym) >= meta.range.from);
   const legend = sheet.categories.length
     ? `<div class="legend">${sheet.categories
-        .map((c) => `<span><i style="background:${c.color}">${esc(c.label)}</i>区分${esc(c.label)}（${c.dates.length}日）</span>`)
+        .map((c) => `<span><i style="background:${c.color}">${esc(c.label)}</i>区分${esc(c.label)}<b>${categoryRange(c)}</b></span>`)
         .join('')}<span><i style="background:#e7e5e4"></i>休館・販売なし</span></div>`
     : '<p class="empty">この期間にご案内できる料金はありません。</p>';
   const calPages: string[] = [];
   for (let i = 0; i < months.length; i += 2) {
-    const pair = months.slice(i, i + 2);
-    const inner = pair.map((ym) => monthHtml(ym, meta, dayMap, colorOf)).join('') + (pair.length === 1 ? '<div class="month"></div>' : '');
+    const inner = months
+      .slice(i, i + 2)
+      .map((ym) => monthHtml(ym, meta, dayMap, colorOf))
+      .join('');
     calPages.push(`<div class="page">${headerHtml(meta)}<div class="months">${inner}</div>${legend}</div>`);
   }
   const tables = sheet.categories.length ? meta.guests.map((g) => priceTablesHtml(sheet, meta, g)).join('') : '';

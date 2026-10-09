@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import type { PartnerRateDay } from '$lib/partner-pricing';
 import {
   buildRateSheet,
+  chunkCategoryColumns,
   csvCell,
   parseRateSheetGuests,
   parseRateSheetRequest,
@@ -10,7 +11,8 @@ import {
   rateSheetCsv,
   rateSheetFileName,
   renderRateSheetHtml,
-  RATE_SHEET_COLORS
+  RATE_SHEET_COLORS,
+  MAX_CATEGORY_COLUMNS
 } from './partner-rate-sheet';
 
 // 1日ぶん（部屋 101 / 201・プラン a001）。p1 / p2 は 1名・2名の1名料金
@@ -221,5 +223,49 @@ describe('renderRateSheetHtml', () => {
     const html = renderRateSheetHtml(sheet, { ...meta, autoPrintNonce: 'abc123' });
     expect(html).toContain('<script nonce="abc123">');
     expect(html).toContain('window.print()');
+  });
+
+  it('紙面は A4 縦・月は上下に並べて月の途中で改ページしない', () => {
+    const html = renderRateSheetHtml(sheet, meta);
+    expect(html).toContain('size: A4 portrait');
+    expect(html).not.toContain('landscape');
+    expect(html).toContain('flex-direction: column');
+    expect(html).toMatch(/\.month \{[^}]*page-break-inside: avoid/);
+    // 料金表の行も途中で切らない・見出しは thead で繰り返す
+    expect(html).toMatch(/table\.pt tr \{[^}]*page-break-inside: avoid/);
+    expect(html).toContain('<thead><tr class="top">');
+  });
+
+  it('凡例に区分の目安（1名料金の最安〜最高）', () => {
+    const html = renderRateSheetHtml(sheet, meta);
+    const legend = html.slice(html.indexOf('<div class="legend">'));
+    // 区分A（2026-10-02・2名 15,000 / 1名 19,000 / 洋室 17,000）
+    expect(legend).toContain('区分A<b>¥15,000〜¥19,000</b>');
+    expect(legend).toContain('区分B<b>¥20,000〜¥24,000</b>');
+    expect(legend).toContain('休館・販売なし');
+  });
+
+  it('区分の列は 1表 8列まで・表の数は最小で均等に分ける', () => {
+    expect(MAX_CATEGORY_COLUMNS).toBe(8);
+    const n = (k: number) => Array.from({ length: k }, (_, i) => i);
+    expect(chunkCategoryColumns(n(0))).toEqual([]);
+    expect(chunkCategoryColumns(n(8)).map((c) => c.length)).toEqual([8]);
+    expect(chunkCategoryColumns(n(9)).map((c) => c.length)).toEqual([5, 4]);
+    expect(chunkCategoryColumns(n(17)).map((c) => c.length)).toEqual([6, 6, 5]);
+    expect(chunkCategoryColumns(n(17)).flat()).toEqual(n(17));
+  });
+
+  it('区分が 9 以上なら表を分け、各表の見出しに区分の範囲', () => {
+    // 毎日料金が違う 10 日 → 10 区分
+    const many = Array.from({ length: 10 }, (_, i) => day(`2026-10-${String(i + 1).padStart(2, '0')}`, 10000 + i * 1000));
+    const s = buildRateSheet(many, {});
+    expect(s.categories).toHaveLength(10);
+    const html = renderRateSheetHtml(s, { ...meta, guests: [2] });
+    expect(html).toContain('2名1室の料金（1名あたり・下段は1室合計）（区分 A〜E）');
+    expect(html).toContain('2名1室の料金（1名あたり・下段は1室合計）（区分 F〜J）');
+    // 1表の区分の列は 8 以下
+    const tables = html.split('<table class="pt">').slice(1);
+    expect(tables).toHaveLength(2);
+    for (const t of tables) expect((t.match(/<th class="cat"/g) ?? []).length).toBeLessThanOrEqual(8);
   });
 });

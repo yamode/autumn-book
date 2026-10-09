@@ -20,6 +20,7 @@ export const GET = async (event) => {
     throw redirect(303, printUrl);
   }
   const data = await loadRateSheetData(db, partner, event.url);
+  // 紙面は A4 縦（@page size: A4 portrait）。画面幅も請求書と同じ縦の既定のまま（landscape は渡さない）
   const pdf = await renderHtmlPdf(
     renderRateSheetHtml(data.sheet, {
       partnerName: partner.name,
@@ -29,8 +30,7 @@ export const GET = async (event) => {
       range: data.req.range,
       guests: data.guests
     }),
-    `rate-sheet ${partner.id} ${data.req.fromYm}+${data.req.months}`,
-    { landscape: true }
+    `rate-sheet ${partner.id} ${data.req.fromYm}+${data.req.months}`
   );
   await logRateSheet(db, event, partner, session.id, 'rate_sheet_pdf', data.req, { guests: data.guests, format: pdf ? 'pdf' : 'html' });
   if (!pdf) throw redirect(303, printUrl);
