@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 印刷専用スリップ（A6 カード風）。チェックイン時にゲストへお渡しする。
-	// QR（/r/c/<token> の絶対URL）＋8桁コード＋3言語の案内。印刷時は管理画面の枠と操作ボタンを隠す。
+	// QR（/r/c/<token> の絶対URL）＋6桁コード（2026-10-09 以前の発行分は8桁）＋3言語の案内。印刷時は管理画面の枠と操作ボタンを隠す。
 	let { data } = $props();
 
 	function fmtDate(iso: string): string {

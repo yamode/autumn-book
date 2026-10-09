@@ -2784,10 +2784,10 @@ export function resolveStay(token: string, locale: Locale): StayInfo | null {
 	};
 }
 
-/** RPC: book.claim_stay_by_code 相当。8桁数字 → 有効トークン文字列 or null */
+/** RPC: book.claim_stay_by_code 相当。6桁数字（2026-10-09 以前に発行した分は8桁）→ 有効トークン文字列 or null */
 export function claimStayByCode(code: string): string | null {
 	const digits = (code ?? '').replace(/\D/g, '');
-	if (digits.length !== 8) return null;
+	if (digits.length !== 6 && digits.length !== 8) return null;
 	const t = stayTokens.find((x) => x.shortCode === digits);
 	if (!t || !isStayActive(t)) return null;
 	return t.token;
@@ -2859,7 +2859,7 @@ export function deleteHouseGuide(id: string): void {
 	}
 }
 
-/** RPC: book.issue_stay_token 相当。token=64hex・short_code=8桁数字（重複回避）をサーバ生成 */
+/** RPC: book.issue_stay_token 相当。token=64hex・short_code=6桁数字（重複回避・2026-10-09 に8桁から変更）をサーバ生成 */
 export function issueStayToken(input: {
 	facilityId: string;
 	roomCode: string;
@@ -2872,7 +2872,7 @@ export function issueStayToken(input: {
 	const token = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g, '');
 	let shortCode = '';
 	for (let i = 0; i < 20; i++) {
-		shortCode = String(Math.floor(Math.random() * 100000000)).padStart(8, '0');
+		shortCode = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
 		if (!stayTokens.some((t) => t.shortCode === shortCode)) break;
 	}
 	const nowIso = new Date().toISOString();

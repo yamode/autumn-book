@@ -7,7 +7,7 @@
 	// トップに積まないための分け方で、これも現行アプリと同じ。
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
-	import { jstDate } from '$lib/inroom-day';
+	import { groupByDay, upcomingItems } from '$lib/inroom-day';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -55,20 +55,37 @@
 		return 'tel:' + (phone ?? '').replace(/[^0-9+]/g, '');
 	}
 
-	// 連泊: 画面を開いたまま（ホーム画面に置いたまま）日付が変わったら読み直し、新しい滞在日の食事・お風呂に切り替える（2026-10-09）
+	// 過ぎた予定を隠す（2026-10-09）。画面を開いたまま（ホーム画面に置いたまま）でも1分ごとに判定し直す。
+	// 新しく決まった予定（PMS で入った翌朝の朝食など）は、画面に戻ったとき・日付が変わったときに読み直して出す
+	let now = $state(new Date());
 	$effect(() => {
-		const day = data.stay && 'stayDay' in data ? data.stayDay : undefined;
-		if (!day) return;
-		const check = () => {
-			if (document.visibilityState === 'visible' && jstDate() !== day) invalidateAll();
+		if (!data.stay) return;
+		let day = now.toDateString();
+		const tick = () => {
+			now = new Date();
+			if (document.visibilityState === 'visible' && now.toDateString() !== day) {
+				day = now.toDateString();
+				invalidateAll();
+			}
 		};
-		const timer = setInterval(check, 60_000);
-		document.addEventListener('visibilitychange', check);
+		const onVisible = () => {
+			if (document.visibilityState === 'visible') {
+				now = new Date();
+				invalidateAll();
+			}
+		};
+		const timer = setInterval(tick, 60_000);
+		document.addEventListener('visibilitychange', onVisible);
 		return () => {
 			clearInterval(timer);
-			document.removeEventListener('visibilitychange', check);
+			document.removeEventListener('visibilitychange', onVisible);
 		};
 	});
+	// 日をまたいで並ぶときは日ごとにまとめ、最初の日だけ開く（後の日は日付を押すと開く）
+	const mealDays = $derived(groupByDay(upcomingItems(data.meals, (meal) => ({ date: meal.date, start: meal.time }), now)));
+	const bathDays = $derived(
+		groupByDay(upcomingItems(data.bathReservations, (r) => ({ date: r.date, start: r.from, end: r.to }), now))
+	);
 
 	const slug = $derived(data.stay?.facility.slug ?? data.endedFacility?.slug ?? '');
 	const hero = $derived(inroomHero(slug));
@@ -125,39 +142,58 @@
 			</dl>
 		</section>
 
-		{#if data.meals.length}
-			<!-- ============ お食事の時間（PMS の伺い書で決まった時間） ============ -->
+		{#if mealDays.length}
+			<!-- ============ お食事の時間（PMS の伺い書で決まった時間）。過ぎた分は隠し、日ごとにまとめる ============ -->
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="meal-times-title">
 				<h2 id="meal-times-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_meals_title()}</h2>
-				<ul class="mt-3 divide-y divide-stone-100">
-					{#each data.meals as meal (`${meal.date}-${meal.type}`)}
-						<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
-							<span class="text-sm text-stone-700">{fmtBathDate(meal.date)}<span class="ml-2 text-stone-500">{mealLabel(meal.type)}</span></span>
-							<strong class="text-base font-semibold tabular-nums text-stone-900">
-								{meal.time}
-								{#if meal.status === 'requested'}<span class="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">{m.inroom_meal_requested()}</span>{/if}
-							</strong>
-						</li>
+				<div class="mt-3 divide-y divide-stone-100">
+					{#each mealDays as day, i (day.date)}
+						<details class="group py-2 first:pt-0 last:pb-0" open={i === 0}>
+							<summary class={`flex list-none ${mealDays.length > 1 ? 'cursor-pointer' : 'pointer-events-none'} items-center justify-between gap-3 text-sm font-medium text-stone-800 [&::-webkit-details-marker]:hidden`}>
+								{fmtBathDate(day.date)}
+								{#if mealDays.length > 1}<span class="text-xs text-stone-400 transition group-open:rotate-180">▾</span>{/if}
+							</summary>
+							<ul class="mt-1.5 space-y-1.5">
+								{#each day.items as meal (`${meal.date}-${meal.type}`)}
+									<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 pl-3">
+										<span class="text-sm text-stone-500">{mealLabel(meal.type)}</span>
+										<strong class="text-base font-semibold tabular-nums text-stone-900">
+											{meal.time}
+											{#if meal.status === 'requested'}<span class="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-800">{m.inroom_meal_requested()}</span>{/if}
+										</strong>
+									</li>
+								{/each}
+							</ul>
+						</details>
 					{/each}
-				</ul>
+				</div>
 				<p class="mt-2 text-xs text-stone-500">{m.inroom_meals_note()}</p>
 			</section>
 		{/if}
 
-		{#if data.bathReservations.length}
+		{#if bathDays.length}
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="bath-reservations-title">
 				<div class="flex items-center justify-between gap-3">
 					<h2 id="bath-reservations-title" class="text-[15px] font-semibold text-stone-900">{m.bath_mine_title()}</h2>
 					<a href="/r/bath" class="shrink-0 text-xs font-medium text-stone-600 underline underline-offset-2">{m.inroom_bath_manage()}</a>
 				</div>
-				<ul class="mt-3 divide-y divide-stone-100">
-					{#each data.bathReservations as reservation (reservation.id)}
-						<li class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 py-2 first:pt-0 last:pb-0">
-							<span class="text-sm text-stone-700">{fmtBathDate(reservation.date)}</span>
-							<strong class="text-base font-semibold tabular-nums text-stone-900">{reservation.from}{reservation.to ? `〜${reservation.to}` : ''}</strong>
-						</li>
+				<div class="mt-3 divide-y divide-stone-100">
+					{#each bathDays as day, i (day.date)}
+						<details class="group py-2 first:pt-0 last:pb-0" open={i === 0}>
+							<summary class={`flex list-none ${bathDays.length > 1 ? 'cursor-pointer' : 'pointer-events-none'} items-center justify-between gap-3 text-sm font-medium text-stone-800 [&::-webkit-details-marker]:hidden`}>
+								{fmtBathDate(day.date)}
+								{#if bathDays.length > 1}<span class="text-xs text-stone-400 transition group-open:rotate-180">▾</span>{/if}
+							</summary>
+							<ul class="mt-1.5 space-y-1.5">
+								{#each day.items as reservation (reservation.id)}
+									<li class="pl-3 text-right">
+										<strong class="text-base font-semibold tabular-nums text-stone-900">{reservation.from}{reservation.to ? `〜${reservation.to}` : ''}</strong>
+									</li>
+								{/each}
+							</ul>
+						</details>
 					{/each}
-				</ul>
+				</div>
 			</section>
 		{/if}
 
