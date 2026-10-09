@@ -4,6 +4,8 @@ import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
+import { clientIp, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
+import { checkTurnstile } from '$lib/server/turnstile';
 import { safeNext } from '$lib/safe-next';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -39,6 +41,10 @@ export const actions: Actions = {
 		if (!EMAIL_RE.test(email)) return fail(400, { step: 'email', email, message: m.auth_otp_error_email_invalid() });
 		// 60秒クールダウン（再送含む）
 		if (cookies.get(OTP_COOLDOWN)) return fail(429, { step: 'code', email, message: m.auth_otp_resend_wait() });
+		// Turnstile（未設定なら素通り）と、サーバ側の送信数の制限（Cookie を捨てても効く・未登録メールでも同じ応答）
+		const ip = clientIp(request);
+		if (!(await checkTurnstile(form, ip)).ok) return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
+		if (!(await memberOtpSendAllowed(event.platform, email, ip))) return fail(429, { step: 'email', email, message: m.auth_otp_rate_limited() });
 		let client;
 		try {
 			client = createSupabaseServerClient(event);
@@ -60,8 +66,11 @@ export const actions: Actions = {
 		const token = String(form.get('token') ?? '').trim();
 		if (!EMAIL_RE.test(email) || !token) return fail(400, { step: 'code', email, message: m.auth_otp_error_code_invalid() });
 
+		// 同じメールへの検証の失敗が続いたら止める（10 分 10 回）
+		if (await memberOtpVerifyLocked(event.platform, email)) return fail(429, { step: 'code', email, message: m.auth_otp_rate_limited() });
 		const client = createSupabaseServerClient(event);
 		const { data, error } = await client.auth.verifyOtp({ email, token, type: 'email' });
+		await memberOtpVerifyResult(event.platform, email, !error && Boolean(data.user));
 		if (error || !data.user) return fail(401, { step: 'code', email, message: m.auth_otp_error_code_invalid() });
 
 		// 会員判定: my_profile が通れば book.members あり＝会員。

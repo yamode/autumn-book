@@ -9,6 +9,15 @@
 // 取引先・アカウント・API キーの発行や設定（スタッフ用の機能）も 2026-09-26 に Book の /admin/partners へ移した。
 // 表名・cookie 名・API キーの接頭辞（rms_ / rmsp_）は既存データと発行済みのキーをそのまま使うため変えない。
 import { PREVIEW_ACCOUNT_ID } from './preview';
+import {
+  isNewEnvironment,
+  isPartnerSessionAlive,
+  NEW_ENVIRONMENT_LOOKBACK_DAYS,
+  PARTNER_SESSION_IDLE_HOURS,
+  PARTNER_SESSION_TTL_HOURS,
+  SECURITY_LOG_ACTIONS,
+  type LoginHistoryEntry
+} from '$lib/partner-login-security';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { normalizePartnerPricing, type PartnerPricing } from '$lib/partner-pricing';
@@ -196,7 +205,8 @@ export type PartnerContext = PartnerRow & {
 export const NO_PARTNER_FACILITY_MESSAGE = '現在ご案内できる施設がありません。宿へお問い合わせください。';
 
 export const SETUP_TOKEN_TTL_HOURS = 24 * 7;
-export const SESSION_TTL_HOURS = 24 * 7;
+// 発行から 7 日。加えて最終アクセスから 24 時間で切れる（M3・getPartnerSession の isPartnerSessionAlive）
+export const SESSION_TTL_HOURS = PARTNER_SESSION_TTL_HOURS;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 export const API_KEY_PREFIX = 'rmsp_';
@@ -1260,7 +1270,9 @@ export async function findPartnerByUrlToken(db: SupabaseClient, urlToken: string
   return bundle ? composePartnerContext(bundle, facilityId) : null;
 }
 
-export type RequestMeta = { ip: string | null; userAgent: string | null };
+// deviceId: 端末クッキー rms_partner_device のハッシュ（portal.ts partnerDeviceId・docs/auth-hardening.md §4.3）。
+// ログインとパスワード設定でだけ渡す（セッション行の device_id と、ログの detail.device に残す）
+export type RequestMeta = { ip: string | null; userAgent: string | null; deviceId?: string | null };
 
 export async function logPartnerAccess(
   db: SupabaseClient,
@@ -1301,7 +1313,8 @@ async function startSession(db: SupabaseClient, accountId: string, meta: Request
     token_hash: await sha256Hex(token),
     expires_at: new Date(Date.now() + SESSION_TTL_HOURS * 3600_000).toISOString(),
     user_agent: meta.userAgent?.slice(0, 300) ?? null,
-    ip: meta.ip
+    ip: meta.ip,
+    device_id: meta.deviceId ?? null
   });
   if (error) raise(error, 'ログインできませんでした。');
   // 期限切れセッションの掃除（ついでに・失敗は無視）。
@@ -1312,9 +1325,48 @@ async function startSession(db: SupabaseClient, accountId: string, meta: Request
   return token;
 }
 
-export type LoginResult = { ok: true; sessionToken: string } | { ok: false; message: string };
+export type LoginResult =
+  | {
+      ok: true;
+      sessionToken: string;
+      account: Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'email' | 'is_master'>;
+      /** 新しい環境（端末も IP も直近 90 日に無い）からのログインか（§4.3） */
+      newEnvironment: boolean;
+    }
+  | { ok: false; message: string };
 
-const GENERIC_LOGIN_ERROR = 'ログインIDまたはパスワードが違います。';
+// 失敗・ロック中・レート制限中を外から区別できない統一文言（§4.5）。
+// 内部ログ（access_logs）には login_failed / login_locked / login_rate_limited を区別して残す。
+export const GENERIC_LOGIN_ERROR = 'ログインIDまたはパスワードが違うか、しばらくの間ログインを制限しています。数分おいてからお試しください。';
+
+/**
+ * アカウントの直近 90 日のログイン環境（端末・IP）。新しい環境の判定（isNewEnvironment）の材料。
+ * セッション行は期限切れで消えるので、アクセスログ（login / password_set の ip と detail.device）も合わせて見る。
+ * 読めなかったときは null（通知を送らない側に倒す＝ログインを止めない・通知を乱発しない）。
+ */
+async function loginHistory(db: SupabaseClient, partnerId: string, accountId: string): Promise<LoginHistoryEntry[] | null> {
+  const since = new Date(Date.now() - NEW_ENVIRONMENT_LOOKBACK_DAYS * 86400_000).toISOString();
+  const [sessions, logs] = await Promise.all([
+    db.from('rms_partner_sessions').select('device_id, ip').eq('account_id', accountId).gte('created_at', since).limit(200),
+    db
+      .from('rms_partner_access_logs')
+      .select('ip, detail')
+      .eq('partner_id', partnerId)
+      .eq('account_id', accountId)
+      .in('action', ['login', 'password_set'])
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(200)
+  ]);
+  if (sessions.error || logs.error) return null;
+  return [
+    ...((sessions.data ?? []) as { device_id: string | null; ip: string | null }[]).map((r) => ({ deviceId: r.device_id, ip: r.ip })),
+    ...((logs.data ?? []) as { ip: string | null; detail: { device?: unknown } | null }[]).map((r) => ({
+      deviceId: typeof r.detail?.device === 'string' ? r.detail.device : null,
+      ip: r.ip
+    }))
+  ];
+}
 
 export async function loginPartner(
   db: SupabaseClient,
@@ -1338,9 +1390,10 @@ export async function loginPartner(
     await logPartnerAccess(db, { partnerId: partner.id, channel: 'web', action: 'login_failed', detail: { loginId: loginId.slice(0, 64) }, ip: meta.ip });
     return { ok: false, message: GENERIC_LOGIN_ERROR };
   }
+  // ロック中も失敗と同じ文言（ID の有無・ロック中かを外から区別させない・§4.5）
   if (account.locked_until && new Date(account.locked_until).getTime() > Date.now()) {
     await logPartnerAccess(db, { partnerId: partner.id, accountId: account.id, channel: 'web', action: 'login_locked', ip: meta.ip });
-    return { ok: false, message: `ログインの失敗が続いたため、一時的にロックしています。${LOCK_MINUTES}分ほどおいてからお試しください。` };
+    return { ok: false, message: GENERIC_LOGIN_ERROR };
   }
   if (!passwordOk) {
     const attempts = account.failed_attempts + 1;
@@ -1360,9 +1413,24 @@ export async function loginPartner(
     .from('rms_partner_accounts')
     .update({ failed_attempts: 0, locked_until: null, last_login_at: new Date().toISOString() })
     .eq('id', account.id);
+  // 新しい環境かは、このログインのセッションを作る前の履歴で判定する（§4.3）
+  const history = await loginHistory(db, partner.id, account.id).catch(() => null);
+  const newEnvironment = history ? isNewEnvironment(history, meta.deviceId ?? null, meta.ip) : false;
   const sessionToken = await startSession(db, account.id, meta);
-  await logPartnerAccess(db, { partnerId: partner.id, accountId: account.id, channel: 'web', action: 'login', ip: meta.ip });
-  return { ok: true, sessionToken };
+  await logPartnerAccess(db, {
+    partnerId: partner.id,
+    accountId: account.id,
+    channel: 'web',
+    action: 'login',
+    detail: meta.deviceId ? { device: meta.deviceId } : undefined,
+    ip: meta.ip
+  });
+  return {
+    ok: true,
+    sessionToken,
+    account: { id: account.id, login_id: account.login_id, display_name: account.display_name, email: account.email, is_master: account.is_master },
+    newEnvironment
+  };
 }
 
 export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 'display_name' | 'is_master'> & {
@@ -1384,7 +1452,7 @@ export async function getPartnerSession(
   const [{ data }, p] = await Promise.all([
     db
       .from('rms_partner_sessions')
-      .select('id, expires_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
+      .select('id, expires_at, created_at, last_seen_at, account:rms_partner_accounts!inner(id, partner_id, login_id, display_name, is_active, is_master)')
       .eq('token_hash', await sha256Hex(sessionToken))
       .maybeSingle(),
     partner
@@ -1394,11 +1462,13 @@ export async function getPartnerSession(
     | {
         id: string;
         expires_at: string;
+        created_at: string | null;
         last_seen_at: string;
         account: { id: string; partner_id: string; login_id: string; display_name: string | null; is_active: boolean; is_master: boolean };
       }
     | null;
-  if (!row || new Date(row.expires_at).getTime() <= Date.now()) return null;
+  // 発行から 7 日、または最終アクセスから 24 時間で切れ（M3）
+  if (!row || !isPartnerSessionAlive(row)) return null;
   if (row.account.partner_id !== p.id || !row.account.is_active) return null;
   // 最終アクセスの更新は5分に1回まで（毎リクエスト書き込まない）。
   // 表示用の記録で、セッションの期限・停止の判定には使わないので、応答を待たせない（defer があれば応答の後で書く）
@@ -1465,7 +1535,14 @@ export async function setPartnerPassword(
   if (error) raise(error, 'パスワードを設定できませんでした。');
   await db.from('rms_partner_sessions').delete().eq('account_id', account.id);
   const sessionToken = await startSession(db, account.id, meta);
-  await logPartnerAccess(db, { partnerId: partner.id, accountId: account.id, channel: 'web', action: 'password_set', ip: meta.ip });
+  await logPartnerAccess(db, {
+    partnerId: partner.id,
+    accountId: account.id,
+    channel: 'web',
+    action: 'password_set',
+    detail: meta.deviceId ? { device: meta.deviceId } : undefined,
+    ip: meta.ip
+  });
   return sessionToken;
 }
 
@@ -1648,6 +1725,94 @@ export async function setChildAccountActive(
   if (error) raise(error, 'ユーザーを更新できませんでした。');
   if (!active) await db.from('rms_partner_sessions').delete().eq('account_id', target.id);
   return target;
+}
+
+// 子ユーザーをすべての端末からログアウトさせる（マスタのユーザー管理・§4.4）。停止はしない。消したセッション数を返す。
+export async function revokeAccountSessions(
+  db: SupabaseClient,
+  partnerId: string,
+  actorId: string,
+  accountId: string
+): Promise<{ account: PartnerAccountRow; count: number }> {
+  const { target } = await requireChildTarget(db, partnerId, actorId, accountId);
+  const { data, error } = await db.from('rms_partner_sessions').delete().eq('account_id', target.id).select('id');
+  if (error) raise(error, 'ログアウトできませんでした。');
+  return { account: target, count: (data ?? []).length };
+}
+
+// ---- アカウント → セキュリティ（自分のログイン中の端末・ログイン履歴・他端末ログアウト。§4.4） ----
+// どれもセッションで確かめた自分のアカウント（accountId = session.id）の行だけを読む・消す。
+
+export type OwnSessionRow = { id: string; created_at: string; last_seen_at: string | null; ip: string | null; user_agent: string | null };
+
+/** 自分のログイン中のセッション（期限内・最終アクセスが新しい順） */
+export async function listOwnSessions(db: SupabaseClient, accountId: string): Promise<OwnSessionRow[]> {
+  const { data, error } = await db
+    .from('rms_partner_sessions')
+    .select('id, created_at, expires_at, last_seen_at, ip, user_agent')
+    .eq('account_id', accountId)
+    .gt('expires_at', new Date().toISOString())
+    .gt('last_seen_at', new Date(Date.now() - PARTNER_SESSION_IDLE_HOURS * 3600_000).toISOString())
+    .order('last_seen_at', { ascending: false })
+    .limit(50);
+  if (error) raise(error, 'ログイン中の端末を読み込めませんでした。');
+  return ((data ?? []) as (OwnSessionRow & { expires_at: string })[])
+    .filter((r) => isPartnerSessionAlive(r))
+    .map(({ id, created_at, last_seen_at, ip, user_agent }) => ({ id, created_at, last_seen_at, ip, user_agent }));
+}
+
+/** 自分のログイン関係の記録（直近 limit 件） */
+export async function listOwnSecurityLogs(db: SupabaseClient, partnerId: string, accountId: string, limit = 30): Promise<PartnerAccessLogRow[]> {
+  const { data, error } = await db
+    .from('rms_partner_access_logs')
+    .select('id, account_id, api_key_id, channel, action, detail, ip, created_at')
+    .eq('partner_id', partnerId)
+    .eq('account_id', accountId)
+    .in('action', [...SECURITY_LOG_ACTIONS])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) raise(error, 'ログイン履歴を読み込めませんでした。');
+  return (data ?? []) as PartnerAccessLogRow[];
+}
+
+/** 自分の「いまのセッション以外」をすべて消す。消した数を返す */
+export async function revokeOtherSessions(db: SupabaseClient, accountId: string, currentSessionId: string): Promise<number> {
+  const { data, error } = await db.from('rms_partner_sessions').delete().eq('account_id', accountId).neq('id', currentSessionId).select('id');
+  if (error) raise(error, 'ログアウトできませんでした。');
+  return (data ?? []).length;
+}
+
+/** 自分のセッションを 1 つ消す（自分のアカウントの行だけ）。消せたら true */
+export async function revokeOwnSession(db: SupabaseClient, accountId: string, sessionId: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) return false;
+  const { data, error } = await db.from('rms_partner_sessions').delete().eq('account_id', accountId).eq('id', sessionId).select('id');
+  if (error) raise(error, 'ログアウトできませんでした。');
+  return (data ?? []).length > 0;
+}
+
+/**
+ * ログイン通知の宛先（M9: 本人のみ。本人に email が無ければマスタ）。
+ * マスタは有効なマスタのうち、メールのある最初の人（作成順）。どちらも無ければ null。
+ */
+export async function findLoginNoticeRecipient(
+  db: SupabaseClient,
+  partnerId: string,
+  account: Pick<PartnerAccountRow, 'id' | 'email'>
+): Promise<{ email: string; to: 'self' | 'master' } | null> {
+  const own = String(account.email ?? '').trim();
+  if (own) return { email: own, to: 'self' };
+  const { data } = await db
+    .from('rms_partner_accounts')
+    .select('id, email')
+    .eq('partner_id', partnerId)
+    .eq('is_master', true)
+    .eq('is_active', true)
+    .neq('id', account.id)
+    .not('email', 'is', null)
+    .order('created_at')
+    .limit(5);
+  const master = ((data ?? []) as { email: string | null }[]).map((r) => String(r.email ?? '').trim()).find(Boolean);
+  return master ? { email: master, to: 'master' } : null;
 }
 
 // 子ユーザーを削除する（ログイン中のセッションも消す）。

@@ -19,6 +19,7 @@
       resent?: Issued;
       updated?: { loginId: string; active: boolean };
       deleted?: { loginId: string };
+      loggedOut?: { loginId: string; count: number };
     };
   } = $props();
 
@@ -92,6 +93,10 @@
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
       「{form.updated.loginId}」を{form.updated.active ? '再開' : '停止'}しました。
     </p>
+  {:else if form?.loggedOut}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      「{form.loggedOut.loginId}」を{form.loggedOut.count > 0 ? form.loggedOut.count + '台の端末から' : ''}ログアウトさせました{form.loggedOut.count > 0 ? '' : '（ログイン中の端末はありませんでした）'}。
+    </p>
   {:else if form?.deleted}
     <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">「{form.deleted.loginId}」を削除しました。</p>
   {/if}
@@ -121,6 +126,12 @@
                   <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">
                     {u.status === 'pending' ? '設定リンクを再送' : 'パスワード再設定リンクを送る'}
                   </button>
+                </form>
+              {/if}
+              {#if u.status === 'active'}
+                <form method="POST" action="?/logout_all" use:enhance={submit(`「${u.loginId}」をすべての端末からログアウトさせます（停止はしません）。よろしいですか？`)}>
+                  <input type="hidden" name="account_id" value={u.id} />
+                  <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">すべての端末からログアウト</button>
                 </form>
               {/if}
               <form method="POST" action="?/toggle" use:enhance={submit(u.status === 'disabled' ? undefined : `「${u.loginId}」を停止します。ログイン中でもすぐに使えなくなります。よろしいですか？`)}>

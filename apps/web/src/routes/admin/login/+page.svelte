@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import Turnstile from '$lib/components/Turnstile.svelte';
 	let { data, form } = $props();
 	let loading = $state(false);
 </script>
@@ -48,6 +49,7 @@
 						class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm focus:border-brand-700 focus:outline-none"
 					/>
 				</label>
+				<Turnstile action="admin-login" />
 				<button
 					disabled={loading}
 					class="w-full rounded-lg bg-brand-800 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"

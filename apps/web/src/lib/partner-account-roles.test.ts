@@ -51,7 +51,7 @@ describe('accountStatus', () => {
 
 describe('accountTabs', () => {
   it('ユーザー管理はマスタだけに出す', () => {
-    expect(accountTabs(true).map((t) => t.path)).toEqual(['', 'invoices', 'cards', 'users']);
-    expect(accountTabs(false).map((t) => t.path)).toEqual(['', 'invoices', 'cards']);
+    expect(accountTabs(true).map((t) => t.path)).toEqual(['', 'invoices', 'cards', 'security', 'users']);
+    expect(accountTabs(false).map((t) => t.path)).toEqual(['', 'invoices', 'cards', 'security']);
   });
 });

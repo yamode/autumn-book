@@ -329,6 +329,8 @@
   "auth_otp_verify_register": "Verify and continue",
   "auth_otp_resend": "Resend verification code",
   "auth_otp_resend_wait": "You can resend the verification code after 60 seconds.",
+  "auth_otp_rate_limited": "Too many verification codes have been requested. Please wait a while and try again.",
+  "auth_turnstile_failed": "Verification failed. Please reload the page and try again.",
   "auth_otp_change_email": "Change email address",
   "auth_otp_error_email_invalid": "The email address format is invalid.",
   "auth_otp_error_send": "Failed to send the verification code. Please wait a moment and try again.",

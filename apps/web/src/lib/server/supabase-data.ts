@@ -38,6 +38,7 @@
 //       });
 import { supa } from './supabase';
 import { partnerServiceClient } from './partners/admin-client';
+import { holdClientKey, holdErrorKind } from './hold-rate-limit';
 import type {
 	CalendarDay,
 	GuestInfo,
@@ -322,6 +323,12 @@ function mapQuote(q: {
 
 // ---------------------------------------------------------------- 予約系 RPC
 
+/**
+ * 仮押さえを作る（book.create_hold の新署名・service_role 専用・autumn-shared 20261009210747）。
+ * 会員の紐付けは auth.uid() ではなく memberUserId（呼び出し側が検証済みセッションから渡す。会員でなければ null）。
+ * clientKey は接続元 IP（DB 側の試行上限 10 分 20 件に使う）。service_role クライアントの既定スキーマは public なので
+ * schema('book') を明示する（v0.106.2 の教訓）。
+ */
 export async function createHold(
 	sessionId: string,
 	ratePlanId: string,
@@ -329,33 +336,37 @@ export async function createHold(
 	checkin: string,
 	nights: number,
 	adults: number,
-	client?: SupabaseClient
-): Promise<{ hold_id: string; expires_at: string; quote: Quote } | { error: 'sold_out' | string }> {
-	// 会員は authenticated client（member_user_id を記録）、ゲストは anon `supa()`。
-	const params = {
+	opts: { clientKey: string; memberUserId: string | null }
+): Promise<{ hold_id: string; expires_at: string; quote: Quote } | { error: 'sold_out' | 'rate_limited' | 'too_many_holds' }> {
+	const sb = partnerServiceClient();
+	if (!sb) throw new Error('create_hold: service_role クライアントが未設定');
+	const { data, error } = await sb.schema('book').rpc('create_hold', {
 		p_session_id: sessionId,
 		p_rate_plan_id: ratePlanId,
 		p_room_type_id: roomTypeId,
 		p_checkin: checkin,
 		p_nights: nights,
-		p_adults: adults
-	};
-	const { data, error } = client
-		? await client.schema('book').rpc('create_hold', params)
-		: await supa().rpc('create_hold', params);
+		p_adults: adults,
+		p_client_key: holdClientKey(opts.clientKey),
+		p_member_user_id: opts.memberUserId
+	});
 	if (error) {
-		if (error.message.includes('sold_out')) return { error: 'sold_out' };
+		const kind = holdErrorKind(error.message);
+		if (kind) return { error: kind };
 		throw error;
 	}
 	return { hold_id: data.hold_id, expires_at: data.expires_at, quote: mapQuote(data.quote) };
 }
 
 /**
- * 仮押さえを画面から解放する（book.release_hold・autumn-shared 20260926152750）。本人のセッションのものだけ。
- * 支払を始めた仮押さえは DB が解放しない（'in_payment'）。失敗しても画面の遷移は止めない（期限で解放される）。
+ * 仮押さえを画面から解放する（book.release_hold・autumn-shared 20260926152750。20261009210747 から service_role 専用）。
+ * 本人のセッションのものだけ。支払を始めた仮押さえは DB が解放しない（'in_payment'）。
+ * 失敗しても画面の遷移は止めない（期限で解放される）。
  */
 export async function releaseHold(holdId: string, sessionId: string): Promise<string> {
-	const { data, error } = await supa().rpc('release_hold', { p_hold_id: holdId, p_session_id: sessionId });
+	const sb = partnerServiceClient();
+	if (!sb) throw new Error('release_hold: service_role クライアントが未設定');
+	const { data, error } = await sb.schema('book').rpc('release_hold', { p_hold_id: holdId, p_session_id: sessionId });
 	if (error) throw error;
 	return String(data);
 }

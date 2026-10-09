@@ -329,6 +329,8 @@
   "auth_otp_verify_register": "確認して次へ",
   "auth_otp_resend": "確認コードを再送する",
   "auth_otp_resend_wait": "確認コードの再送は60秒後に可能です。",
+  "auth_otp_rate_limited": "確認コードの送信回数が上限に達しました。しばらく時間をおいてからお試しください。",
+  "auth_turnstile_failed": "確認に失敗しました。ページを読み直してから、もう一度お試しください。",
   "auth_otp_change_email": "メールアドレスを変更する",
   "auth_otp_error_email_invalid": "メールアドレスの形式が正しくありません。",
   "auth_otp_error_send": "確認コードの送信に失敗しました。時間をおいて再度お試しください。",

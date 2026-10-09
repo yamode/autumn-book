@@ -1,6 +1,7 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$app/forms';
+  import Turnstile from '$lib/components/Turnstile.svelte';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; loginId?: string } } = $props();
@@ -42,6 +43,7 @@
         <span class="mb-1 block text-base font-medium">パスワード</span>
         <input name="password" type="password" required autocomplete="current-password" class={inputClass} />
       </label>
+      <Turnstile action="partner-login" />
       <button type="submit" disabled={submitting} class="w-full rounded-lg bg-accent-600 px-4 py-3 text-base font-medium text-white transition hover:bg-accent-500 disabled:opacity-60">
         {submitting ? 'ログイン中…' : 'ログイン'}
       </button>

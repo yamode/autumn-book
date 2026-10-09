@@ -1,8 +1,8 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-10（管理画面の取引先詳細の施設タブ切替を軽くする v0.110.0／取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+> **最終更新**: 2026-10-10（管理画面の取引先詳細の施設タブ切替を軽くする v0.112.0／取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
-## 管理画面 取引先詳細の施設タブ切替を軽くする（2026-10-10・v0.110.0）
+## 管理画面 取引先詳細の施設タブ切替を軽くする（2026-10-10・v0.112.0）
 - 要望: `/admin/partners/[id]` の施設タブ（山人-yamado- / 山人-oga-）の切替が重い（施設に関係ない読み込みまで全部やり直していた）
 - **読み込みを分けた**: 施設に関係しないもの（ログインID・API キー・覚書・ファイル・PMS の顧客〔紐づけ・与信〕・予約一覧・アクセスログ・請求書・保存カード）を新しい `routes/admin/partners/[id]/+layout.server.ts` へ移した。この load は `?inv=` しか読まず、`event.url` の他の項目も読まないので、施設タブ（`?fac=`）・プレビューの開始日（`?preview=`）を変えてもやり直さない（SvelteKit は読んだ searchParams のキーだけを再実行の条件にする）。保存などの後は `update()`（invalidateAll）で両方読み直す。取引先は ab_fac の施設で合成する（使う設定〔請求条件・支払方法・与信・デポジット〕は共通のキーなので、タブで合成したときと同じ値）
 - **与信（受付枠）**: 設定（増加率・最低枠・楽観ロック用の更新時刻）は layout の `pmsLink.credit`、今後 12 か月の月別の判定（`rms_partner_credit_check`・施設ごとに数える）は page がタブの施設で合成した取引先で求めて後から流す（`creditMonths`・`tabId` で照合）
@@ -25,6 +25,72 @@
 - [ ] 旅行会社（与信 ON）の取引先で、施設タブを切り替えると受付枠の月別（上限・予約済み・残り）がその施設の数字になる（oga タブで yamado の数字が出ない）。与信の設定の保存は従来どおり
 - [ ] PMS の顧客の紐づけ・与信の表示と保存が従来どおり
 - [ ] スタッフ（閲覧のみ）でも開ける。アクセスできない施設の ?fac= はいまの施設に戻る
+
+## 認証強化 S2：取引先ログインの第1段階・会員の認証コードの制限（2026-10-10・v0.111.0）
+- 取引先ログイン: Turnstile → KV の制限（1 IP × 取引先 10回失敗/10分・取引先全体 60回/10分 → 15分停止。キーは取引先 ID）→ 照合。従来のアカウント単位ロック（5回・15分）も維持。失敗・ロック・制限はすべて同じ文言（内部ログは login_failed / login_locked / login_rate_limited で区別）
+- セッション: 発行から7日 または 最終アクセスから24時間の早い方（M3）。配備時点で24時間以上触っていないセッションは切れる
+- 端末クッキー `rms_partner_device`（path /p/<token>・1年）。直近90日のセッション・ログに同じ端末も同じ IP も無ければ「新しい環境」→ 本人（無ければマスタ）へログイン通知メール（応答の後に送信・`login_new_device` に結果）
+- アカウント →「セキュリティ」: ログイン中の端末一覧・直近30件の記録・他の端末からログアウト・端末ごとのログアウト。マスタは子ユーザーの「すべての端末からログアウト」
+- `/setup`・`/admin/login` にも Turnstile と IP 制限。会員の認証コード送信（ログイン・会員登録）: 1 IP 10分10通・1メール 1時間5通・全体10分300通、検証は同じメール10回失敗で10分停止（Cookie に依存しない）
+- Turnstile は `PUBLIC_TURNSTILE_SITE_KEY`（wrangler.jsonc）と `TURNSTILE_SECRET_KEY`（Pages の secret）が両方そろったときだけ有効。**ユーザー作業**: Cloudflare → Turnstile でウィジェット作成（Managed・book.yamado.app と autumn-book.pages.dev）→ サイトキーを wrangler.jsonc に → `npx wrangler pages secret put TURNSTILE_SECRET_KEY --project-name autumn-book`
+- 残: 公式サイトの仮押さえ（プラン詳細の `?/hold`）への Turnstile は S3 以降で付ける。access_logs の索引は行が増えたら（現在 472 行）
+
+### テストチェックリスト（認証強化 S2）
+- [ ] 取引先ログイン：同じ IP で10回失敗 → 11回目から統一文言（ID を変えても同じ）。15分後に通る。access_logs に login_rate_limited {scope:'ip'}
+- [ ] アカウントのロック（5回）とレート制限で文言が同じ。内部ログでは区別される
+- [ ] 成功で IP の数えが消える
+- [ ] Turnstile 未設定で全フォームが通る。設定後は部品が普段見えず、トークン無しの POST は失敗【本番で確認】
+- [ ] 新しいブラウザかつ初めての IP でログイン → 本人に通知メール（日時・ID・IP・ブラウザ・施設の電話）。同じブラウザ・同じ IP なら届かない
+- [ ] 本人にメールが無い子ユーザー → マスタに届く。どちらも無ければ notified:false のログだけ
+- [ ] 最後の操作から24時間で切れる。7日でも切れる
+- [ ] 「セキュリティ」：端末一覧に「このブラウザ」。別ブラウザを「他の端末からログアウト」で切れる。端末ごとのログアウトも効く。確認モードでは表示しない
+- [ ] マスタの「ユーザー管理」→ 子ユーザーの「すべての端末からログアウト」で子のセッションが切れる（停止はされない）。子ユーザーの POST は 403
+- [ ] /setup：無効なトークンを同じ IP で10回 → 11回目は正しいリンクでも「無効か期限切れ」（15分）
+- [ ] /admin/login：同じ IP で10回失敗 → 統一文言で止まる。成功で数えが消える
+- [ ] 会員の認証コード送信：Cookie を消しても同じメールへの6通目/時は 429。同じ IP から別メールでも10分で11通目は 429。未登録・登録済みで応答が同じ
+- [ ] 会員の認証コード検証：同じメールで10回間違える → 10分止まる
+- [ ] 管理画面の取引先詳細のアクセスログに新しい種類が日本語で出る
+
+## 認証強化 S8：公式サイトの仮押さえを service_role 経由に（2026-10-10・v0.110.1・autumn-shared 20261009210747）
+- `book.create_hold` に新署名 `(…, p_client_key, p_member_user_id, p_locale)` を追加（service_role 専用）。Book のサーバが接続元 IP と会員 id を渡す。DB 側の上限: 同じ接続元 10分20件・全体 10分500件で `rate_limited`。`book.holds.client_key` に接続元を記録
+- 旧署名（7引数）は **yamado-one（Expo アプリ）が anon で直接呼んでいるため残した**。中身は新署名を呼ぶ入口に差し替え（接続元は PostgREST の request.headers から `rest:<IP>`・会員は auth.uid()）。yamado-one をサーバ経由に移したら旧署名を drop する migration を別に切る
+- `book.release_hold` は service_role 専用に。Book の `releaseHold` も service_role
+- アプリ: プラン詳細の `?/hold` に KV の IP 制限（`lib/server/hold-rate-limit.ts`・10分20回）。`rate_limited` / `too_many_holds` は 429「お申し込みが集中しています」。Turnstile は S2 と統合するときに `?/hold` へ付ける
+
+### テストチェックリスト（認証強化 S8）
+- [ ] 非会員：公式サイトでプランを選んで仮押さえでき、予約確認へ進める。holds.client_key に接続元 IP が入る
+- [ ] 会員：仮押さえの member_user_id が本人。ポイント利用・会員限定プランの確定が従来どおり
+- [ ] 「プラン・お部屋を選び直す」で仮押さえが released になり在庫が戻る。同じセッションで選び直すと前の仮押さえが解放される
+- [ ] 同じ IP で10分に21回目の仮押さえは「お申し込みが集中しています」（429）
+- [ ] 公開キーで新署名 `rpc/create_hold`（p_client_key 付き）・`rpc/release_hold` を呼ぶと拒否される
+- [ ] yamado-one（実機）から仮押さえ・予約確定が従来どおり。holds.client_key が `rest:<IP>`（`rest:unknown` なら PostgREST がヘッダを渡していない）
+- [ ] カード決済（direct_payment_prepare → confirm）が従来どおり通る
+
+## 認証強化 S1・S5：DB の土台と管理画面の二段階認証（2026-10-10・v0.109.1〜v0.110.0・autumn-shared 20261009205246 / 20261009205248）
+設計書 `docs/auth-hardening.md` の S1・S5。M1〜M14 は推奨どおりで確定（2026-10-10）。
+- S1（v0.109.1）: 取引先の第2要素用の列・表（`rms_partners.mfa_policy`・`rms_partner_sessions.aal / mfa_at / device_id`・`rms_partner_passkeys`・`rms_partner_mfa_challenges`・access_logs の channel に admin）。`book.faq_log_query / faq_feedback` を anon から外し FAQ API は service_role 経由に。`_pb_store / _pb_token / sync_stay_token_window` も anon から外した。`_theory_pp` の search_path 固定は料金計算のインライン展開を壊すため見送り
+- S5（v0.110.0）: 管理画面の TOTP 二段階認証。`/admin/security`（本人の登録・削除）、`/admin/mfa`（ログイン後のコード入力）、`/admin/security/users`（admin のみ・aal2 の admin が他人の登録を削除・`book.admin_audit_logs` に `admin_mfa_reset`）。登録した人は毎回コードを求められる。`ADMIN_MFA_REQUIRED`（wrangler.jsonc・既定 false）を true にすると未登録者は登録するまで他の画面を開けない。関所は hooks（フォーム送信・+server.ts は 403）と admin の layout（画面遷移）
+- 前提（ユーザー作業）: Supabase の Authentication → Multi-Factor で TOTP を有効化（Enroll・Verify）。admin を 2 名以上に。必須化の日に `ADMIN_MFA_REQUIRED` を "true" にしてデプロイ
+- 既知の限界: DB 側（RLS・admin RPC）は aal を見ていない。パスワードだけの aal1 トークンで PostgREST を直接叩けば従来どおり操作できる。完全に効かせるには `auth.jwt()->>'aal' = 'aal2'` を RLS / `_require_admin` 系に足す migration が要る（RMS と共有のため要相談）
+
+### テストチェックリスト（認証強化 S1・S5）
+- [ ] FAQ ウィジェットで検索でき、「解決した／しなかった」が記録される（`book.faq_queries` に行が増える）
+- [ ] 公開キーで `rpc/faq_log_query`・`rpc/_pb_token` を呼ぶと拒否される
+- [ ] 貸切風呂の予約・取消、食事時間の表示が今までどおり動く
+- [ ] 宿泊のステータス変更で客室案内コードの有効期間が今までどおり追従する
+- [ ] 取引先ログインが今までどおり通る
+- [ ] demo（AUTH_MODE=demo）で `/admin/security`・`/admin/security/users` が「使えません」と出て落ちない。`/admin/mfa` は `/admin` へ
+- [ ] TOTP 無効の Supabase で「登録を始める」→ Multi-Factor の設定場所を案内するエラー。既存のログインは通る
+- [ ] `/admin/security` で QR を読み取り → 6桁で有効化 → 一覧に名前・登録日。手入力キーでも登録できる
+- [ ] 「登録をやめる」で途中の登録が消え、再登録しても名前の重複エラーにならない
+- [ ] ログアウト → ログイン → `/admin/mfa` → コード入力で元の画面へ戻る。違うコードではエラー
+- [ ] aal1 のまま `/admin/partners` を直接開くと `/admin/mfa?next=…` へ。CSV も開けない。フォーム送信は 403
+- [ ] `/admin/mfa` でログアウトできる（ループしない）
+- [ ] `ADMIN_MFA_REQUIRED=false`: 未登録でも全画面が使え、上部にバナー（`/admin/security` では出ない）
+- [ ] `ADMIN_MFA_REQUIRED=true`: 未登録は `/admin/security?enroll=1` から出られない。登録後は通常どおり
+- [ ] admin（aal2）が `/admin/security/users` で他人の登録を削除 → 監査ログに `admin_mfa_reset` → 本人は再登録できる
+- [ ] aal1 の admin は削除できない（サーバも 403）。staff は `/admin/security/users` が 403。admin が1名だけだと警告
+- [ ] RMS（`*.yamado.app` の共有セッション）が従来どおり動く【RMS で確認】
 
 ## 取引先ページのメニュー切替を軽くする（2026-10-10・v0.109.0）
 - 要望: メインメニューの切替が重い → 先にページを切り替え、読み込みは後から

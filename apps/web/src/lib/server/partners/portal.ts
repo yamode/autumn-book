@@ -18,6 +18,7 @@ import {
 } from './store';
 import { isPartnerBookingOpen } from './booking';
 import { PARTNER_PREVIEW_COOKIE, PREVIEW_ACCOUNT_ID, PREVIEW_DENIED_MESSAGE, verifyPreviewToken } from './preview';
+import { randomToken, sha256Hex } from './crypto';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -35,6 +36,28 @@ export function setPartnerSessionCookie(cookies: Cookies, urlToken: string, sess
 
 export function clearPartnerSessionCookie(cookies: Cookies, urlToken: string) {
   cookies.delete(PARTNER_SESSION_COOKIE, { path: cookiePath(urlToken) });
+}
+
+// ---- 端末クッキー（新しい環境からのログインの判定・docs/auth-hardening.md §4.3） ----
+// rms_partner_device（path /p/<token>・httpOnly・secure・Lax・1 年・乱数 16B）。ログイン・パスワード設定のときに無ければ発行する。
+// DB（セッションの device_id・ログの detail.device）には値そのものではなくハッシュの頭 32 文字を残す。
+export const PARTNER_DEVICE_COOKIE = 'rms_partner_device';
+const DEVICE_COOKIE_MAX_AGE = 365 * 24 * 3600;
+
+/** この端末の識別子（ハッシュ）。クッキーが無い・形が違えば新しく発行してクッキーに書く */
+export async function partnerDeviceId(event: Pick<RequestEvent, 'params' | 'cookies'>): Promise<string> {
+  let value = event.cookies.get(PARTNER_DEVICE_COOKIE) ?? '';
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(value)) {
+    value = randomToken(16);
+    event.cookies.set(PARTNER_DEVICE_COOKIE, value, {
+      path: cookiePath(event.params.token ?? ''),
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      maxAge: DEVICE_COOKIE_MAX_AGE
+    });
+  }
+  return (await sha256Hex(`device:${value}`)).slice(0, 32);
 }
 
 // ---- 選択中の施設（複数施設化・docs/partner-multi-facility.md §7.8・決定 N1・2026-10-09） ----
@@ -154,6 +177,15 @@ export function requestMeta(event: Pick<RequestEvent, 'request'>): RequestMeta {
     ip: event.request.headers.get('cf-connecting-ip') ?? event.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
     userAgent: event.request.headers.get('user-agent')
   };
+}
+
+/** 接続元の国・都市（ログイン通知用）。Cloudflare の request.cf（platform.cf）から。無ければ cf-ipcountry ヘッダ、それも無ければ null */
+export function requestLocation(event: Pick<RequestEvent, 'request'> & { platform?: App.Platform }): string | null {
+  const cf = (event.platform as { cf?: { country?: unknown; city?: unknown } } | undefined)?.cf;
+  const country = typeof cf?.country === 'string' ? cf.country : event.request.headers.get('cf-ipcountry');
+  const city = typeof cf?.city === 'string' ? cf.city : null;
+  const parts = [country && country !== 'XX' ? country : null, city].filter(Boolean);
+  return parts.length ? parts.join(' ') : null;
 }
 
 // 取引先ページ共通の応答ヘッダ。URL にトークンを含むので、リファラで外へ漏らさない・検索に載せない・保存させない。

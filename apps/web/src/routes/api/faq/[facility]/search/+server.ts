@@ -3,7 +3,7 @@
 // 設計書 autumn_book_faq_bot_design.md §4・§5
 import type { RequestHandler } from './$types';
 import { DEFAULT_ANSWER_THRESHOLD, normalize, searchFaqs } from '$lib/server/faq/search';
-import { supa } from '$lib/server/supabase';
+import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import {
 	allowRequest,
 	answerHtml,
@@ -52,19 +52,26 @@ export const POST: RequestHandler = async ({ request, params, platform, getClien
 	const answered = !!top && top.score >= DEFAULT_ANSWER_THRESHOLD;
 
 	// 質問ログ（失敗しても検索結果は返す）
+	// book.faq_log_query は service_role 専用（auth-hardening.md §9・S1）。anon から直接叩いてログを汚せないよう、
+	// IP 制限を通したこのサーバからだけ呼ぶ。service_role クライアントの既定スキーマは public なので book を明示する。
 	let queryId: string | null = null;
-	const { data, error } = await supa().rpc('faq_log_query', {
-		p_facility_id: f.uuid,
-		p_query: q,
-		p_normalized: normalize(q),
-		p_top_faq_id: top?.faq.id ?? null,
-		p_top_score: top?.score ?? null,
-		p_answered: answered,
-		p_locale: locale,
-		p_page_path: page
-	});
-	if (error) console.error('faq_log_query error:', error.message);
-	else queryId = (data as string) ?? null;
+	const sb = partnerServiceClient();
+	if (!sb) {
+		console.error('faq_log_query error: service_role クライアントが未設定');
+	} else {
+		const { data, error } = await sb.schema('book').rpc('faq_log_query', {
+			p_facility_id: f.uuid,
+			p_query: q,
+			p_normalized: normalize(q),
+			p_top_faq_id: top?.faq.id ?? null,
+			p_top_score: top?.score ?? null,
+			p_answered: answered,
+			p_locale: locale,
+			p_page_path: page
+		});
+		if (error) console.error('faq_log_query error:', error.message);
+		else queryId = (data as string) ?? null;
+	}
 
 	return faqJson(request, slug, {
 		queryId,

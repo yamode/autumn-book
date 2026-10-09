@@ -6,7 +6,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { friendlyId } from './crypto';
 import { sendPartnerMail } from './mail';
 import { childLoginIdPrefix, partnerSetupBrand } from './setup-brand';
-import { SETUP_TOKEN_TTL_HOURS, type PartnerContext } from './store';
+import { findLoginNoticeRecipient, logPartnerAccess, SETUP_TOKEN_TTL_HOURS, type LoginResult, type PartnerContext, type RequestMeta } from './store';
+import { loadInvoiceFacilities } from './invoices';
+import { formatJst, summarizeUserAgent } from '$lib/partner-login-security';
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -72,5 +74,102 @@ export async function sendChildSetupEmail(
       : `【${brand.subjectName}】取引先専用ページのログインID発行のお知らせ`,
     html,
     text
+  });
+}
+
+// ---- 新しい環境からのログイン通知（docs/auth-hardening.md §4.3・S2） ----
+// 端末（rms_partner_device）も IP も直近 90 日に無いログインのとき、本人のメール（無ければマスタ・M9）へ知らせる。
+// 送信の失敗はログインを止めない。結果は access_logs の login_new_device（notified・宛先の種類）に残す（宛先そのものは残さない）。
+
+export type LoginNoticeArgs = {
+  partner: Pick<PartnerContext, 'id' | 'name' | 'facility_id' | 'facility_name' | 'facilities' | 'primary_facility_id'>;
+  to: string;
+  /** 宛先がマスタ（本人にメールが無い）のとき true。本文の書き出しを変える */
+  toMaster: boolean;
+  loginId: string;
+  displayName: string | null;
+  at: Date;
+  ip: string | null;
+  location: string | null;
+  userAgent: string | null;
+  loginUrl: string;
+  facilityTel: string | null;
+};
+
+/** 通知メールの件名・本文（純関数に近い形。テストしやすいように送信と分けた） */
+export function buildLoginNoticeEmail(args: LoginNoticeArgs & { subjectName: string; label: string }) {
+  const who = args.toMaster ? `${args.partner.name} マスタユーザー 様` : `${args.partner.name} ${args.displayName ? `${args.displayName} 様` : '様'}`;
+  const intro = args.toMaster
+    ? `${args.label} の取引先専用ページで、貴社のユーザー（ログインID: ${args.loginId}）が新しい環境からログインしました。このユーザーにメールアドレスが登録されていないため、マスタユーザーの方へお知らせしています。`
+    : `${args.label} の取引先専用ページに、新しい環境からログインがありました。`;
+  const where = [args.ip ?? '不明', args.location].filter(Boolean).join('（') + (args.location ? '）' : '');
+  const contact = args.facilityTel ? `宿（${args.label}・電話 ${args.facilityTel}）` : `宿（${args.label}）`;
+  const lines = [
+    `日時: ${formatJst(args.at)}（日本時間）`,
+    `ログインID: ${args.loginId}`,
+    `接続元: ${where}`,
+    `ブラウザ: ${summarizeUserAgent(args.userAgent)}`
+  ];
+  const caution = [
+    'お心当たりがない場合は、貴社のマスタユーザーに連絡してパスワードの再設定とログアウトを依頼するか、' + `${contact}までご連絡ください。`,
+    'ご本人のログインであれば、このメールへの対応は不要です。',
+    '※宿がメールや電話でパスワードや認証コードをお尋ねすることはありません。'
+  ];
+  const text = [who, '', intro, '', ...lines, '', ...caution, '', `取引先専用ページ: ${args.loginUrl}`].join('\n');
+  const html = `<p>${escapeHtml(who)}</p>
+<p>${escapeHtml(intro)}</p>
+<p>${lines.map(escapeHtml).join('<br>')}</p>
+<p>${escapeHtml(caution[0])}<br>${escapeHtml(caution[1])}</p>
+<p style="color:#666;font-size:12px">${escapeHtml(caution[2])}</p>
+<p>取引先専用ページ: <a href="${escapeHtml(args.loginUrl)}">${escapeHtml(args.loginUrl)}</a></p>`;
+  return { subject: `【${args.subjectName}】取引先専用ページに新しい環境からログインがありました`, text, html };
+}
+
+/** 新しい環境からのログイン通知を送り、結果をログに残す。呼び出し側は deferTask に渡す（応答を待たせない） */
+export async function notifyNewEnvironmentLogin(
+  db: SupabaseClient,
+  args: {
+    partner: LoginNoticeArgs['partner'];
+    account: Extract<LoginResult, { ok: true }>['account'];
+    meta: RequestMeta;
+    location: string | null;
+    loginUrl: string;
+  }
+): Promise<void> {
+  const { partner, account, meta } = args;
+  const recipient = await findLoginNoticeRecipient(db, partner.id, account).catch(() => null);
+  let notified = false;
+  let reason: string | null = recipient ? null : 'no_email';
+  if (recipient) {
+    const brand = partnerSetupBrand(partner);
+    const tel = await loadInvoiceFacilities(db)
+      .then((list) => list.find((f) => f.id === brand.facilityId)?.tel ?? null)
+      .catch(() => null);
+    const mail = buildLoginNoticeEmail({
+      partner,
+      to: recipient.email,
+      toMaster: recipient.to === 'master',
+      loginId: account.login_id,
+      displayName: account.display_name,
+      at: new Date(),
+      ip: meta.ip,
+      location: args.location,
+      userAgent: meta.userAgent,
+      loginUrl: args.loginUrl,
+      facilityTel: tel,
+      subjectName: brand.subjectName,
+      label: brand.label
+    });
+    const result = await sendPartnerMail(db, brand.facilityId, { to: [recipient.email], ...mail }).catch(() => ({ sent: false, reason: 'error' }));
+    notified = result.sent;
+    if (!result.sent) reason = 'send_failed';
+  }
+  await logPartnerAccess(db, {
+    partnerId: partner.id,
+    accountId: account.id,
+    channel: 'web',
+    action: 'login_new_device',
+    detail: { notified, to: recipient?.to ?? null, ...(reason ? { reason } : {}) },
+    ip: meta.ip
   });
 }

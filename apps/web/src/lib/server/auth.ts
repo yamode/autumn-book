@@ -16,6 +16,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { SessionUser } from './session';
 import { DATA_SOURCE } from './supabase';
+import { parseAdminMfaRequired, type AdminAal } from '$lib/admin-mfa';
 
 export const AUTH_MODE: 'demo' | 'supabase' = env.AUTH_MODE === 'supabase' ? 'supabase' : 'demo';
 
@@ -29,6 +30,13 @@ export const MEMBER_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE 
 // cookie 束縛の authenticated クライアントから呼ぶため、これが false のときは機能ごと無効化する。
 // （デモ会員は user_id も device_tokens も持たず、通知を「送った体」にしかできない）
 export const ADMIN_SUPABASE: boolean = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
+
+// 管理画面の二段階認証（TOTP）を全員に必須にするか（docs/auth-hardening.md §7.2・M7）。
+// 既定 false＝登録は任意（登録した人だけ毎回コードを求める）。true にすると未登録の admin / staff は
+// /admin/security で登録するまで他の画面を開けない。本番は wrangler.jsonc の vars で切り替える。
+export function adminMfaRequired(): boolean {
+	return parseAdminMfaRequired(env.ADMIN_MFA_REQUIRED);
+}
 
 /** Book の Supabase Auth セッション cookie 名（RMS の共有 cookie と衝突させない）。 */
 const BOOK_AUTH_COOKIE = 'sb-autumn-book-auth-token';
@@ -83,6 +91,28 @@ export interface SupabaseAuthResolution {
 	user: SessionUser | null;
 	/** OTP 認証は済んだが book.members 未登録のユーザー（/auth/register のプロフィール入力で使う）。 */
 	pending: { id: string; email: string } | null;
+	/** 管理者/スタッフのときだけ: セッションの認証レベルと登録済みの第2要素の数（二段階認証の関所に使う）。 */
+	adminAal: AdminAal | null;
+}
+
+/**
+ * 管理者/スタッフのセッションの認証レベルを読む（docs/auth-hardening.md §7.2）。
+ * - current は getAuthenticatorAssuranceLevel() の currentLevel（＝cookie のアクセストークンの aal クレーム）。
+ *   直前の getUser() が同じトークンを Supabase で検証済みなので、クレームを信用してよい。
+ *   auth-js 2.108 の実装は引数なしならネットワークに出ず、トークンを decode するだけ。
+ * - 第2要素の数は getUser() が返した（＝サーバから取り直した）user.factors の verified を数える。
+ *   getAuthenticatorAssuranceLevel() の nextLevel は cookie に保存された古い user から計算されるため使わない。
+ * - 読めないときは「登録なし・aal1」扱い（required=false なら通る＝既存のログインを止めない）。
+ */
+async function readAdminAal(client: SupabaseClient, user: User): Promise<AdminAal> {
+	const verifiedFactors = (user.factors ?? []).filter((f) => f.status === 'verified').length;
+	try {
+		const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+		if (error || !data) return { current: null, verifiedFactors };
+		return { current: data.currentLevel ?? null, verifiedFactors };
+	} catch {
+		return { current: null, verifiedFactors };
+	}
 }
 
 /**
@@ -94,19 +124,19 @@ export interface SupabaseAuthResolution {
  */
 export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<SupabaseAuthResolution> {
 	const got = await getSupabaseUser(event);
-	if (!got) return { user: null, pending: null };
+	if (!got) return { user: null, pending: null, adminAal: null };
 	const { user, client } = got;
 
 	const role = (user.app_metadata as { role?: string } | null)?.role;
 	if (role === 'admin' || role === 'staff') {
 		const name = ((user.user_metadata as { name?: string } | null)?.name ?? user.email ?? '管理者') as string;
-		return { user: { id: user.id, role, name }, pending: null };
+		return { user: { id: user.id, role, name }, pending: null, adminAal: await readAdminAal(client, user) };
 	}
 
 	const meta = user.user_metadata as { member?: boolean; name?: string } | null;
 	if (meta?.member === true) {
 		const name = (meta.name ?? 'ゲスト') as string;
-		return { user: { id: user.id, role: 'member', name }, pending: null };
+		return { user: { id: user.id, role: 'member', name }, pending: null, adminAal: null };
 	}
 
 	// 他アプリ経由の会員や metadata 同期に失敗した会員も、実際の会員行で解決する。
@@ -114,11 +144,11 @@ export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<S
 	const { data: profile, error } = await client.schema('book').rpc('my_profile');
 	if (!error && profile?.user_id === user.id) {
 		const name = (profile.name as string | null) ?? meta?.name ?? 'ゲスト';
-		return { user: { id: user.id, role: 'member', name }, pending: null };
+		return { user: { id: user.id, role: 'member', name }, pending: null, adminAal: null };
 	}
 
 	// OTP 認証は済んだが register_member 前（＝会員行なし）。プロフィール入力へ誘導する。
-	return { user: null, pending: { id: user.id, email: user.email ?? '' } };
+	return { user: null, pending: { id: user.id, email: user.email ?? '' }, adminAal: null };
 }
 
 /**

@@ -55,13 +55,21 @@
 		},
 		{
 			label: 'システム',
-			items: [{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠', tenantWide: true }]
+			items: [
+				{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠', tenantWide: true },
+				{ href: '/admin/security', label: '二段階認証', icon: '🔐', tenantWide: true }
+			]
 		}
 	];
 
 	const navItems = navGroups.flatMap((g) => g.items);
 
-	let isLogin = $derived(page.url.pathname === '/admin/login');
+	// ログイン画面と二段階認証のコード入力画面は、メニューを出さない（まだ管理画面に入れていない状態）
+	let isLogin = $derived(page.url.pathname === '/admin/login' || page.url.pathname.startsWith('/admin/mfa'));
+	// 二段階認証が未登録（必須化前）なら、上部で登録を案内する。登録画面を開いている間は出さない
+	let showMfaBanner = $derived(
+		data.adminMfa.enabled && !data.adminMfa.enrolled && !page.url.pathname.startsWith('/admin/security')
+	);
 
 	function isActive(href: string) {
 		return href === '/admin' ? page.url.pathname === '/admin' : page.url.pathname.startsWith(href);
@@ -312,6 +320,13 @@
 					</a>
 				{/if}
 			</div>
+
+			{#if showMfaBanner}
+				<a href="/admin/security" class="block border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900 hover:bg-sky-100">
+					<span class="font-bold">🔐 二段階認証（認証アプリ）を登録してください。</span>
+					パスワードが漏れても管理画面に入られないようにします。近日中に全員必須になります。→ 登録する
+				</a>
+			{/if}
 
 			{#if demoOnlyHere}
 				<div class="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">

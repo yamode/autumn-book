@@ -10,6 +10,7 @@ import {
   logPartnerAccess,
   PartnerStoreError,
   reissueChildSetup,
+  revokeAccountSessions,
   setChildAccountActive,
   type PartnerAccountRow
 } from '$lib/server/partners/store';
@@ -160,6 +161,26 @@ export const actions = {
         ip: requestMeta(event).ip
       });
       return { updated: { loginId: account.login_id, active } };
+    } catch (e) {
+      return failure(e);
+    }
+  },
+
+  // 子ユーザーをすべての端末からログアウトさせる（停止はしない・docs/auth-hardening.md §4.4）
+  logout_all: async (event) => {
+    const s = await masterScope(event);
+    const fd = await event.request.formData();
+    try {
+      const { account, count } = await revokeAccountSessions(s.db, s.partner.id, s.session.id, String(fd.get('account_id') ?? ''));
+      await logPartnerAccess(s.db, {
+        partnerId: s.partner.id,
+        accountId: s.session.id,
+        channel: 'web',
+        action: 'child_logout_all',
+        detail: { targetAccountId: account.id, loginId: account.login_id, count },
+        ip: requestMeta(event).ip
+      });
+      return { loggedOut: { loginId: account.login_id, count } };
     } catch (e) {
       return failure(e);
     }
