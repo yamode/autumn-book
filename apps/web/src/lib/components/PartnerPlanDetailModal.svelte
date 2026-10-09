@@ -6,6 +6,7 @@
   // 日付未定（日程を選ぶ前の一覧から開いたとき）は料金を「〜」で出し、「日付を選択して予約」で、この部屋・プランに絞った
   // 日付パネルをモーダルの中に開く。日付を押したら、その日の料金でこの詳細を表示し直す（onPickDate）。
   // 料金とプランの内容を確かめてから「予約へ進む」。日程の欄を押しても同じパネルを開く。
+  import { page } from '$app/stores';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import PartnerContentBody from './PartnerContentBody.svelte';
@@ -131,11 +132,13 @@
     return () => io.disconnect();
   });
   // 「予約へ進む」の左に並べる特典のバナー（公式HP限定特典・取引先専用特典）。押すとモーダルで中身
+  // 取引先専用特典は「（取引先名）様専用特典」と出す（2026-10-09 指示）
+  const partnerPerkLabel = $derived($page.data.portal?.partnerName ? `${$page.data.portal.partnerName}様専用特典` : '取引先専用特典');
   const banners = $derived<PerkBanner[]>(
     detail
       ? [
           ...detail.officialPerks.map((p) => ({ key: `official:${p.key}`, label: p.label, kind: 'official' as const })),
-          ...(detail.perks.length ? [{ key: 'partner', label: '取引先専用特典', kind: 'partner' as const }] : [])
+          ...(detail.perks.length ? [{ key: 'partner', label: partnerPerkLabel, kind: 'partner' as const }] : [])
         ]
       : []
   );
@@ -143,7 +146,7 @@
   function openPerk(key: string) {
     if (!detail) return;
     if (key === 'partner') {
-      perkContent = { label: '取引先専用特典', perks: detail.perks, note: 'このページからご予約いただいた場合に付きます。' };
+      perkContent = { label: partnerPerkLabel, perks: detail.perks, note: 'このページからご予約いただいた場合に付きます。' };
       return;
     }
     const p = detail.officialPerks.find((x) => `official:${x.key}` === key);

@@ -810,9 +810,11 @@
         <li class="pl-[1.875rem] text-stone-700">{data.target.displayName}</li>
       </ul>
       {#if data.perks.length}
-        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。ボタンを押すとモーダルで中身を見せる -->
+        <!-- このプランに付く専用特典（予約の要望・確認メールにも載り、宿が当日ご用意します）。ボタンを押すとモーダルで中身を見せる。
+             「（取引先名）様専用特典」と出す（2026-10-09 指示） -->
+        {@const perkLabel = data.portal.partnerName ? `${data.portal.partnerName}様専用特典` : '取引先専用特典'}
         <div class="mt-4">
-          <PerkBanners items={[{ key: 'partner', label: '取引先専用特典', kind: 'partner' }]} onopen={() => (perkContent = { label: '取引先専用特典', perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
+          <PerkBanners items={[{ key: 'partner', label: perkLabel, kind: 'partner' }]} onopen={() => (perkContent = { label: perkLabel, perks: data.perks, note: 'このページからご予約いただいた場合に付きます。' })} />
         </div>
       {/if}
 
