@@ -1,5 +1,6 @@
 import type { SessionUser } from '$lib/server/session';
 import type { ExperimentAssignment } from '$lib/experiments';
+import type { AdminAal } from '$lib/admin-mfa';
 
 // KVNamespace は ambient.d.ts で global 宣言（本ファイルは import を持ちモジュール化するため
 // ここに書くと global にならない）。App.Platform からはその global 型を参照する。
@@ -15,6 +16,9 @@ declare global {
 			// OTP 認証は済んだが book.members 未登録のユーザー（/auth/register のプロフィール入力で使う）。
 			// AUTH_MODE=supabase のときのみ設定される。
 			pendingAuthUser: { id: string; email: string } | null;
+			// 管理者/スタッフのセッションの認証レベル（二段階認証の関所・docs/auth-hardening.md §7.2）。
+			// AUTH_MODE=supabase で admin / staff のときのみ設定。demo・会員・未ログインは null。
+			adminAal: AdminAal | null;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

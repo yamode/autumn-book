@@ -24,6 +24,10 @@
 //
 // 例外その4（2026-10-10・auth-hardening.md §9 S1）: FAQ ボットの質問ログ（routes/api/faq/[facility]/search・feedback）。
 //   book.faq_log_query / faq_feedback を anon から外し、IP 制限を通したサーバからだけ記録する（ログ汚染・集計改ざん対策）。
+// 例外その5（2026-10-10・docs/auth-hardening.md §7.4）: 管理画面の二段階認証の復旧（src/lib/server/admin-mfa.ts）。
+//   他の管理者の第2要素の一覧・削除は Supabase Auth の管理 API（auth.admin.listUsers / auth.admin.mfa.*）で service_role が要る。
+//   呼び出し元（routes/admin/security/users）は「操作者が admin・aal2」を確かめてから呼び、book.admin_audit_logs に
+//   admin_mfa_reset を記帳してから削除する。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

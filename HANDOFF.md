@@ -2,6 +2,32 @@
 
 > **最終更新**: 2026-10-10（取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
+## 認証強化 S1・S5：DB の土台と管理画面の二段階認証（2026-10-10・v0.109.1〜v0.110.0・autumn-shared 20261009205246 / 20261009205248）
+設計書 `docs/auth-hardening.md` の S1・S5。M1〜M14 は推奨どおりで確定（2026-10-10）。
+- S1（v0.109.1）: 取引先の第2要素用の列・表（`rms_partners.mfa_policy`・`rms_partner_sessions.aal / mfa_at / device_id`・`rms_partner_passkeys`・`rms_partner_mfa_challenges`・access_logs の channel に admin）。`book.faq_log_query / faq_feedback` を anon から外し FAQ API は service_role 経由に。`_pb_store / _pb_token / sync_stay_token_window` も anon から外した。`_theory_pp` の search_path 固定は料金計算のインライン展開を壊すため見送り
+- S5（v0.110.0）: 管理画面の TOTP 二段階認証。`/admin/security`（本人の登録・削除）、`/admin/mfa`（ログイン後のコード入力）、`/admin/security/users`（admin のみ・aal2 の admin が他人の登録を削除・`book.admin_audit_logs` に `admin_mfa_reset`）。登録した人は毎回コードを求められる。`ADMIN_MFA_REQUIRED`（wrangler.jsonc・既定 false）を true にすると未登録者は登録するまで他の画面を開けない。関所は hooks（フォーム送信・+server.ts は 403）と admin の layout（画面遷移）
+- 前提（ユーザー作業）: Supabase の Authentication → Multi-Factor で TOTP を有効化（Enroll・Verify）。admin を 2 名以上に。必須化の日に `ADMIN_MFA_REQUIRED` を "true" にしてデプロイ
+- 既知の限界: DB 側（RLS・admin RPC）は aal を見ていない。パスワードだけの aal1 トークンで PostgREST を直接叩けば従来どおり操作できる。完全に効かせるには `auth.jwt()->>'aal' = 'aal2'` を RLS / `_require_admin` 系に足す migration が要る（RMS と共有のため要相談）
+
+### テストチェックリスト（認証強化 S1・S5）
+- [ ] FAQ ウィジェットで検索でき、「解決した／しなかった」が記録される（`book.faq_queries` に行が増える）
+- [ ] 公開キーで `rpc/faq_log_query`・`rpc/_pb_token` を呼ぶと拒否される
+- [ ] 貸切風呂の予約・取消、食事時間の表示が今までどおり動く
+- [ ] 宿泊のステータス変更で客室案内コードの有効期間が今までどおり追従する
+- [ ] 取引先ログインが今までどおり通る
+- [ ] demo（AUTH_MODE=demo）で `/admin/security`・`/admin/security/users` が「使えません」と出て落ちない。`/admin/mfa` は `/admin` へ
+- [ ] TOTP 無効の Supabase で「登録を始める」→ Multi-Factor の設定場所を案内するエラー。既存のログインは通る
+- [ ] `/admin/security` で QR を読み取り → 6桁で有効化 → 一覧に名前・登録日。手入力キーでも登録できる
+- [ ] 「登録をやめる」で途中の登録が消え、再登録しても名前の重複エラーにならない
+- [ ] ログアウト → ログイン → `/admin/mfa` → コード入力で元の画面へ戻る。違うコードではエラー
+- [ ] aal1 のまま `/admin/partners` を直接開くと `/admin/mfa?next=…` へ。CSV も開けない。フォーム送信は 403
+- [ ] `/admin/mfa` でログアウトできる（ループしない）
+- [ ] `ADMIN_MFA_REQUIRED=false`: 未登録でも全画面が使え、上部にバナー（`/admin/security` では出ない）
+- [ ] `ADMIN_MFA_REQUIRED=true`: 未登録は `/admin/security?enroll=1` から出られない。登録後は通常どおり
+- [ ] admin（aal2）が `/admin/security/users` で他人の登録を削除 → 監査ログに `admin_mfa_reset` → 本人は再登録できる
+- [ ] aal1 の admin は削除できない（サーバも 403）。staff は `/admin/security/users` が 403。admin が1名だけだと警告
+- [ ] RMS（`*.yamado.app` の共有セッション）が従来どおり動く【RMS で確認】
+
 ## 取引先ページのメニュー切替を軽くする（2026-10-10・v0.109.0）
 - 要望: メインメニューの切替が重い → 先にページを切り替え、読み込みは後から
 - **画面を先に切り替える**（`routes/p/[token]/+layout.svelte`）: `$navigating` を見て、同じ取引先のメインメニューのページ（`/p/<token>/<menu>` ちょうど）へ移る間は、メニューの選択をすぐ行き先にし、120ms 後に本文を行き先の骨組み（`lib/components/PartnerPageSkeleton.svelte`）に差し替える。前の画面は消さずに隠すだけ（移れなかったら戻る）。対象外: 同じ pathname（?date= の検索等）・予約入力 / 支払い / アカウントのタブ等メニュー以外の行き先・フォーム送信。ナビの項目は `MENU` 定数にまとめた

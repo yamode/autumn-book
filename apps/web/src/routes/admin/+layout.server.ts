@@ -1,7 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { facilities } from '$lib/server/store';
 import { isMaintenanceOn } from '$lib/server/maintenance';
-import { ADMIN_SUPABASE, AUTH_MODE } from '$lib/server/auth';
+import { ADMIN_SUPABASE, AUTH_MODE, adminMfaRequired } from '$lib/server/auth';
+import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import type { LayoutServerLoad } from './$types';
 
@@ -10,6 +11,11 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies, platform })
 	if (!isLogin && locals.user?.role !== 'admin' && locals.user?.role !== 'staff') {
 		redirect(303, '/admin/login');
 	}
+	// 二段階認証の関所（hooks.server.ts と同じ判定。こちらはクライアント遷移のデータ要求に効かせるため）
+	const required = adminMfaRequired();
+	const gate = decideAdminMfaGate({ pathname: url.pathname, role: locals.user?.role, aal: locals.adminAal, required });
+	const target = adminMfaRedirectTarget(gate, url.pathname, url.search);
+	if (target) redirect(303, target);
 	const facId = cookies.get('ab_fac') ?? facilities[0].id;
 	const current = facilities.find((f) => f.id === facId) ?? facilities[0];
 	return {
@@ -20,6 +26,12 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies, platform })
 		// アプリ運用画面が「この環境では使えません」の理由を出せるようにする
 		adminSupabase: ADMIN_SUPABASE,
 		authMode: AUTH_MODE,
-		dataSource: DATA_SOURCE
+		dataSource: DATA_SOURCE,
+		// 二段階認証: 未登録で必須でないときに上部へ案内を出す（必須化は ADMIN_MFA_REQUIRED）
+		adminMfa: {
+			enabled: locals.adminAal !== null,
+			enrolled: (locals.adminAal?.verifiedFactors ?? 0) > 0,
+			required
+		}
 	};
 };
