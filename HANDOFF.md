@@ -2,8 +2,9 @@
 
 > **最終更新**: 2026-10-07（取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
-## セキュリティ修正（2026-10-09・v0.106.1・autumn-shared 20261009131735）
+## セキュリティ修正（2026-10-09・v0.106.1〜v0.106.2・autumn-shared 20261009131735）
 Fable によるセキュリティレビューの上位4件を修正。
+- v0.106.2: service_role クライアントは既定スキーマが public のため、照合 RPC を `.schema('book')` で呼ぶよう修正（v0.106.1 では客室コード入力が常に「違うコード」になっていた）
 - **客室案内の手入力コードの総当たり対策（H-1）**: `book.claim_stay_by_code` を anon から外し、`claim_stay_by_code(p_short_code, p_client_key)`（service_role 専用）に置き換え。Book のサーバが `partnerServiceClient()` で接続元 IP を添えて呼ぶ。DB 側でも失敗を `book.stay_code_failures` に記録し、同じ IP 10分10回・全体10分300回で `rate_limited`（画面は「ロック中」）。コード生成は `random()` → `gen_random_uuid()` 由来（CSPRNG）
 - **オープンリダイレクト（M-1）**: `/auth/login` と `/account/community` の `next` を `$lib/safe-next.ts` で同一サイトの相対パスに限定
 - **セキュリティヘッダ（M-2）**: `hooks.server.ts` → `lib/server/security-headers.ts` で全応答に X-Frame-Options: SAMEORIGIN・CSP `frame-ancestors 'self'`・nosniff・Referrer-Policy、本番ドメインだけ HSTS。既存のヘッダ（`/p/*` の no-referrer・請求書 HTML の CSP）は上書きしない。`_headers` は静的ファイル用

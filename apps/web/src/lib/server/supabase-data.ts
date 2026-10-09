@@ -1028,11 +1028,17 @@ export async function sbClaimStayByCode(
 ): Promise<string | null | 'rate_limited'> {
 	const sb = partnerServiceClient();
 	if (!sb) return null;
-	const { data, error } = await sb.rpc('claim_stay_by_code', {
+	// service_role クライアントの既定スキーマは public なので book を明示する
+	const { data, error } = await sb.schema('book').rpc('claim_stay_by_code', {
 		p_short_code: code,
 		p_client_key: clientKey
 	});
-	if (error) return error.message.includes('rate_limited') ? 'rate_limited' : null;
+	if (error) {
+		if (error.message.includes('rate_limited')) return 'rate_limited';
+		// 違うコードは例外ではなく token: null で返るので、ここに来るのは設定・権限の不具合
+		console.error('[claim_stay_by_code]', error.message);
+		return null;
+	}
 	return (data as { token: string | null }).token ?? null;
 }
 
