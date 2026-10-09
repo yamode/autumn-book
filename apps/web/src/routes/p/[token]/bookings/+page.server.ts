@@ -56,10 +56,21 @@ export const load = async (event) => {
     if (r === 'card_updated' && q.get('charge')) payment.charge = { status: q.get('charge') === 'paid' ? 'paid' : 'failed', message: '' };
   }
   const rows = await listPartnerBookings(db, { partnerId: partner.id, limit: 300 });
-  const s = partner.booking_settings;
   // 取消の期限は予約の施設の設定で判定する（N6: 施設ごとの cancelDays・2026-10-09 複数施設化）
   const byFacility = await contextsForBookings(db, partner, rows);
   const settingsOf = (b: (typeof rows)[number]) => (byFacility.get(b.facility_id) ?? partner).booking_settings;
+  // 取消の期限の文言も予約の施設の設定で（施設ごとに cancelDays・cutoffHour が違いうる）
+  const cancelTextOf = (b: (typeof rows)[number]) => {
+    const bs = settingsOf(b);
+    return bs.cancelDays == null ? null : describeDeadline(bs.cancelDays, bs.cutoffHour);
+  };
+  // 施設の列（複数施設化 S4・2026-10-09）: オンの施設が2つ以上か、一覧に2つ以上の施設の予約があるときだけ出す（1施設の取引先は今と同じ）
+  const facilityIds = new Set(rows.map((b) => b.facility_id).filter(Boolean));
+  const multiFacility = partner.facilities.filter((f) => f.enabled).length >= 2 || facilityIds.size >= 2;
+  // 絞り込みの施設（予約のある施設・施設の並び順）
+  const facilityFilter = multiFacility
+    ? partner.facilities.filter((f) => facilityIds.has(f.id)).map((f) => ({ id: f.id, name: f.name }))
+    : [];
   // 取り消せる予約のキャンセル料の見込み（確認欄に出す・取消時に同じ額かを確かめる）
   const previews = await previewPartnerCancels(
     db,
@@ -90,9 +101,14 @@ export const load = async (event) => {
     payment,
     // 同じ画面で払う決済部品（支払の再開・カードの登録し直し）に渡す公開可能キー。オンライン決済を出せないときは null
     stripeKey: stripePublishableKey(),
-    cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
+    multiFacility,
+    facilityFilter,
     bookings: rows.map((b) => ({
       id: b.id,
+      // 予約の施設（施設の列・絞り込み。取消・支払・添付はサーバで予約の施設に合成し直して動く）
+      facilityId: b.facility_id,
+      facilityName: partnerFacilityName(partner, b.facility_id),
+      cancelText: cancelTextOf(b),
       code: b.booking_code,
       status: b.status,
       checkedIn: !!b.checkedIn,

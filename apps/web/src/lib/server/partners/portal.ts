@@ -46,7 +46,7 @@ export function clearPartnerSessionCookie(cookies: Cookies, urlToken: string) {
 //   3. primary_facility_id（オンなら）
 //   4. オンの施設の先頭（sort_order → 施設の並び）
 //   5. オンが1つも無い → null（N9: ログインはできるが料金・予約は案内文。合成は facility_available=false）
-// 切替の画面（ヘッダーのセグメント・POST /p/<token>/facility）は S4。
+// 切替の画面: ヘッダーのセグメント（オンが2つ以上のときだけ・N12）→ POST /p/<token>/facility（f・next）→ 303（S4・2026-10-09）。
 
 export const PARTNER_FACILITY_COOKIE = 'rms_partner_facility';
 const FACILITY_COOKIE_MAX_AGE = 365 * 24 * 3600;
@@ -79,6 +79,32 @@ export function setPartnerFacilityCookie(cookies: Cookies, urlToken: string, slu
     sameSite: 'lax',
     maxAge: FACILITY_COOKIE_MAX_AGE
   });
+}
+
+/** ヘッダーの切替に出す施設（オンの施設・並び順）。2つ以上のときだけ切替を出す（N12: 1施設の取引先は今と同じ画面） */
+export function portalFacilityChoices(partner: Pick<PartnerContext, 'facilities'>): { slug: string; name: string }[] {
+  return partner.facilities.filter((f) => f.enabled).map((f) => ({ slug: f.slug, name: f.name }));
+}
+
+/**
+ * 施設を切り替えた後に戻る先（純関数）。next は切替を押したページ（パス＋クエリ）。
+ *   - /p/<token> の中のパスだけ（外・別トークン・不正な値はトップへ）
+ *   - ?f= は外す（残すと次の読み込みでクッキーより優先され、切り替えた施設が元に戻る）
+ *   - 予約入力（/book…）は前の施設の部屋・プランなので、料金カレンダーへ戻す
+ */
+export function facilitySwitchTarget(token: string, next: string | null | undefined): string {
+  const base = `/p/${token}`;
+  let u: URL;
+  try {
+    u = new URL(String(next ?? ''), 'http://portal.invalid');
+  } catch {
+    return base;
+  }
+  if (u.origin !== 'http://portal.invalid' || !(u.pathname === base || u.pathname.startsWith(`${base}/`))) return base;
+  if (/^\/book(\/|$)/.test(u.pathname.slice(base.length))) return `${base}/calendar`;
+  u.searchParams.delete('f');
+  const q = u.searchParams.toString();
+  return `${u.pathname}${q ? `?${q}` : ''}`;
 }
 
 // 取引先の施設の束から、リクエスト（?f=・クッキー）に従って施設を選んで合成する。?f= が効いたらクッキーも更新する。
@@ -190,11 +216,15 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
     // 選んでいる施設（予約画面の hidden facility_id・切替の現在地）と、オンの施設が無いときの案内（N9）
     facilityId: partner.facility_id,
     noFacilityMessage: partnerNoFacilityMessage(partner),
+    // ヘッダーの施設切替（オンの施設。2つ以上のときだけ出す・N12）
+    facilityChoices: portalFacilityChoices(partner),
     loginId: session?.login_id ?? null,
     isMaster: session?.is_master === true,
     // 管理画面からの確認モード（帯を出し、予約の確定ボタンを止める）
     preview: session?.preview === true,
-    bookingEnabled: isPartnerBookingOpen(partner)
+    // メニューの「予約一覧」: どれかのオンの施設で予約を受けていれば出す（選んでいる施設だけで決めない・2026-10-09 複数施設化）。
+    // 選んでいる施設の予約受付（料金カレンダーの「予約する」）は各ページの booking.enabled で別に判定する
+    bookingEnabled: isPartnerBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled)
   };
 }
 

@@ -195,6 +195,8 @@
       rooms: String(p.rooms),
       from: listHref(p)
     });
+    // 2施設以上の取引先は、見ている施設を ?f= で予約入力へ渡す（別のタブで施設を切り替えても、この料金の施設で予約入力を開く・2026-10-09）
+    if (data.portal.facilityChoices.length >= 2 && data.portal.facilitySlug) q.set('f', data.portal.facilitySlug);
     return `/p/${token}/book?${q}`;
   };
   // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から。

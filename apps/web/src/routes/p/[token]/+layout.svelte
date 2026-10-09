@@ -10,9 +10,35 @@
   let { children } = $props();
   const portal = $derived(
     $page.data.portal as
-      | { partnerName: string; facilityName: string; facilitySlug?: string; loginId?: string | null; bookingEnabled?: boolean; preview?: boolean; noFacilityMessage?: string | null }
+      | {
+          partnerName: string;
+          facilityName: string;
+          facilitySlug?: string;
+          facilityChoices?: { slug: string; name: string }[];
+          loginId?: string | null;
+          bookingEnabled?: boolean;
+          preview?: boolean;
+          noFacilityMessage?: string | null;
+        }
       | undefined
   );
+  // 施設の切替（複数施設化 S4・2026-10-09）: オンの施設が2つ以上の取引先だけ、施設名の位置をセグメント切替にする（N12）。
+  // 1施設の取引先は今までどおり施設名を出すだけ。切替は POST /p/<token>/facility（クッキー）→ 同じページへ戻る。
+  const choices = $derived(portal?.facilityChoices ?? []);
+  const here = $derived(`${$page.url.pathname}${$page.url.search}`);
+  function confirmSwitch(e: SubmitEvent) {
+    const slug = (e.submitter as HTMLButtonElement | null)?.value ?? '';
+    // 今の施設を押したときは何もしない
+    if (slug === portal?.facilitySlug) {
+      e.preventDefault();
+      return;
+    }
+    // 予約入力の途中（/book）は入力内容が消えるので確かめる。予約はフォームの施設で確定するので、切り替えても入力中の予約の施設は変わらない
+    const onBook = /^\/book(\/|$)/.test($page.url.pathname.slice(`/p/${$page.params.token}`.length));
+    if (onBook && !confirm('施設を切り替えると、入力中の予約の内容が消えます。切り替えますか？')) {
+      e.preventDefault();
+    }
+  }
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）
   const isActive = (path: string) => {
     const base = `/p/${$page.params.token}/`;
@@ -71,7 +97,24 @@
     <!-- 本文の表示領域を広く取るため高さを詰める（2026-10-06）: 上下の余白を小さくし、PCでは施設名と「専用料金」を横1行に並べる。 -->
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5 px-4 py-2 sm:px-6">
       <div class="flex min-w-0 flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:gap-3">
-        <h1 class="truncate font-display text-lg tracking-wide text-brand-900 sm:text-xl">{portal?.facilityName ?? ''}</h1>
+        {#if choices.length >= 2}
+          <h1 class="sr-only">{portal?.facilityName ?? ''}</h1>
+          <form method="POST" action={`/p/${$page.params.token}/facility`} onsubmit={confirmSwitch} class="flex max-w-full rounded-full border border-stone-200 bg-stone-50 p-0.5" aria-label="施設の切替">
+            <input type="hidden" name="next" value={here} />
+            {#each choices as f (f.slug)}
+              {@const current = f.slug === portal?.facilitySlug}
+              <button
+                type="submit"
+                name="f"
+                value={f.slug}
+                aria-pressed={current}
+                class={`truncate rounded-full px-3 py-1 font-display text-sm tracking-wide transition sm:text-base ${current ? 'bg-white font-bold text-[var(--pt-accent)] shadow-sm' : 'text-stone-500 hover:text-brand-900'}`}
+              >{f.name}</button>
+            {/each}
+          </form>
+        {:else}
+          <h1 class="truncate font-display text-lg tracking-wide text-brand-900 sm:text-xl">{portal?.facilityName ?? ''}</h1>
+        {/if}
         {#if portal?.partnerName}
           <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>

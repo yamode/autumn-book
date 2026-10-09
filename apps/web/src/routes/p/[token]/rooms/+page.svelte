@@ -34,7 +34,9 @@
   <h2 class="text-2xl font-bold">お部屋のご紹介</h2>
   <p class="mt-1 text-sm text-stone-500">料金・空室は<a class="underline" href={`/p/${token}/calendar`}>料金カレンダー</a>でご確認ください。</p>
 
-  {#if data.rooms.length === 0}
+  {#if data.portal.noFacilityMessage}
+    <!-- オンの施設が1つも無い取引先（N9・2026-10-09）: 紹介は出さない（案内はヘッダーの下に出ている） -->
+  {:else if data.rooms.length === 0}
     <p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">ご案内できるお部屋の紹介はまだありません。</p>
   {:else}
     <nav class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="お部屋の一覧">

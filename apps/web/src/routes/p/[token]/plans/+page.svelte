@@ -12,6 +12,8 @@
 <svelte:head><title>{partnerTitle(data.portal, 'プランのご紹介')}</title><meta name="robots" content="noindex, nofollow" /></svelte:head>
 
 <!-- 全プラン共通の専用特典（取引先専用ページからのご予約に付く）。検索バーの下・プラン一覧の上に、プランのカードと同じ形で出す（2026-10-09 指示） -->
+<!-- オンの施設が1つも無い取引先（N9）は検索・カードを出さない（ヘッダーの下の案内だけ・2026-10-09） -->
+{#if !data.portal.noFacilityMessage}
 <PartnerStaySearch {data} view="plan">
   {#snippet below()}
     {#if data.commonPerks.length}
@@ -23,3 +25,4 @@
     {/if}
   {/snippet}
 </PartnerStaySearch>
+{/if}

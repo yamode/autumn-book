@@ -18,5 +18,10 @@ export const load = async (event) => {
       ? partnerTokushoho(partner, await loadCancelAdminFeePercent(partner.facility_id))
       : getLegalPage(event.params.page, 'ja');
   if (!doc) throw error(404, 'ページが見つかりません。');
-  return { portal: portalHeader(partner, session), doc };
+  // 特商法の表記は選んでいる施設のもの。ほかのオンの施設の表記へのリンク（?f= で施設を切り替えて開く・§7.2・2026-10-09）
+  const otherFacilities =
+    event.params.page === 'tokushoho'
+      ? partner.facilities.filter((f) => f.enabled && f.id !== partner.facility_id).map((f) => ({ slug: f.slug, name: f.name }))
+      : [];
+  return { portal: portalHeader(partner, session), doc, otherFacilities };
 };
