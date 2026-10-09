@@ -29,8 +29,11 @@
       priceRangeState = 'hidden';
     }
   }
+  // 一覧（月の料金）の読み込みと DB を取り合わないよう、少し遅らせて取りに行く（2026-10-09: 開くのが重くなったため）。
+  // 計算済みならサーバの KV から即返る
   onMount(() => {
-    void loadPriceRange();
+    const t = setTimeout(() => void loadPriceRange(), 1500);
+    return () => clearTimeout(t);
   });
 
   const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;

@@ -321,6 +321,8 @@
       <span>{data.params.guests}名 税込</span>
       <span class="text-2xl font-bold tabular-nums">{num(r.perPerson * data.params.guests)}</span><span class="font-bold">円〜</span>
     </p>
+    <!-- 1名料金は常に併記する（2026-10-09 指示。日付ピッカーは1名1泊で出しているため） -->
+    <p class="text-sm font-semibold text-brand-900">1名1泊{dated && data.params.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(r.perPerson)}</span>円〜</p>
     <p class="text-xs text-stone-500">
       {#if dated}
         1室1泊{data.params.nights > 1 ? '（平均）' : ''}{#if r.total != null && (data.params.nights > 1 || data.params.rooms > 1)}・{data.params.rooms > 1 ? `${data.params.rooms}室` : ''}{data.params.nights}泊 合計 {num(r.total)}円{/if}

@@ -828,6 +828,8 @@
             <span class="font-bold">宿泊料金合計</span>
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
+              <!-- 1名料金は常に併記する（2026-10-09 指示）。全室・全泊の合計 ÷（大人の合計 × 泊数） -->
+              <p class="text-sm font-semibold text-brand-900">1名1泊{quote.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(Math.round(quote.rooms.reduce((t, r) => t + r.subtotal, 0) / Math.max(quote.rooms.reduce((t, r) => t + r.adults, 0) * quote.nights, 1)))}</span>円</p>
               <button type="button" aria-expanded={showBreakdown} onclick={() => (showBreakdown = !showBreakdown)} class="text-xs text-stone-500 hover:text-brand-900">料金明細を{showBreakdown ? '閉じる' : '表示'} <span aria-hidden="true" class={`inline-block transition ${showBreakdown ? 'rotate-180' : ''}`}>⌄</span></button>
             </div>
           </div>
@@ -835,7 +837,7 @@
             <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
               {#each quote.rooms as r, i}
                 <li class="flex justify-between gap-2">
-                  <span>{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊</span>
+                  <span>{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊<span class="ml-1 text-xs">（1名1泊{quote.nights > 1 ? '平均' : ''} {num(Math.round(r.subtotal / Math.max(r.adults * quote.nights, 1)))}円）</span></span>
                   <span class="tabular-nums">{num(r.subtotal)}円</span>
                 </li>
               {/each}

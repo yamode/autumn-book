@@ -101,14 +101,29 @@ export function partnerRankEnabled(db: SupabaseClient, partnerId: string, facili
     if (error) throw new Error(`料金の設定の読み込みに失敗しました: ${error.message}`);
     return (data as { enabled?: boolean } | null)?.enabled === true;
   })();
+  setRankCache(key, value);
+  return value;
+}
+
+function setRankCache(key: string, value: Promise<boolean>) {
   rankCache.delete(key);
-  rankCache.set(key, { at: now, value });
+  rankCache.set(key, { at: Date.now(), value });
   value.catch(() => rankCache.delete(key));
   for (const k of rankCache.keys()) {
     if (rankCache.size <= RANK_MAX_ENTRIES) break;
     rankCache.delete(k);
   }
-  return value;
+}
+
+// 期限内に分かっている暦の有無（無ければ undefined）
+function peekPartnerRank(partnerId: string, facilityId: string): Promise<boolean> | undefined {
+  const hit = rankCache.get(`${partnerId}|${facilityId}`);
+  return hit && Date.now() - hit.at < RANK_TTL_MS ? hit.value : undefined;
+}
+
+// RPC の返り値（priceSource）で分かった暦の有無を覚える
+function rememberPartnerRank(partnerId: string, facilityId: string, rank: boolean) {
+  setRankCache(`${partnerId}|${facilityId}`, Promise.resolve(rank));
 }
 
 function loadPartnerBase(
@@ -158,8 +173,17 @@ export async function loadPartnerRates(
 ): Promise<PartnerRatesResult> {
   // Book が扱う施設以外の料金は出さない（store の withFacility でも弾いているが二重に確かめる）。
   if (!isBookFacility(partner.facility_id)) throw new Error(`未登録の施設です: ${partner.facility_id}`);
-  const rank = await partnerRankEnabled(db, partner.id, partner.facility_id);
-  const { days: sourceDays, inventory, rooms, priceSource } = await loadPartnerBase(db, partner.id, partner.facility_id, range, rank);
+  // 暦を使うかが分かっていれば、使っていない取引先は施設で共有の元データを読む。まだ分からなければ（isolate の初回）
+  // 取引先付きで RPC を1回呼び、返り値の priceSource で覚える（暦の有無を別に問い合わせる往復を省く・2026-10-09 重さ対策）
+  const known = peekPartnerRank(partner.id, partner.facility_id);
+  let base: PartnerBase;
+  if (known) {
+    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, await known);
+  } else {
+    base = await loadPartnerBase(db, partner.id, partner.facility_id, range, true);
+    rememberPartnerRank(partner.id, partner.facility_id, base.priceSource === 'partner_rank');
+  }
+  const { days: sourceDays, inventory, rooms, priceSource } = base;
   const days = buildPartnerDays(sourceDays, inventory, {
     pricing: partner.pricing,
     rooms,
@@ -208,14 +232,26 @@ export type PartnerPriceRange = { min: PartnerPriceExtreme; max: PartnerPriceExt
 // 施設はキーに含める（複数施設化で、同じ取引先でも選んでいる施設で幅が違う）。暦の切替は次の読み込みで別のキーになる。
 const RANGE_TTL_MS = 10 * 60 * 1000;
 const RANGE_MAX_ENTRIES = 50;
-const RANGE_CONCURRENCY = 4;
+// 2026-10-09: 4 → 2。ページを開いた直後のカレンダー本体（月の料金）と DB を取り合って重くなっていたため
+const RANGE_CONCURRENCY = 2;
+// isolate をまたいで使い回す KV の保存期間（秒）。isolate は頻繁に入れ替わるので、KV が無いと開くたびに1年分を読み直す
+const RANGE_KV_TTL_SEC = 60 * 60;
+const RANGE_KV_PREFIX = 'partner-price-range:v1:';
+// KV の最小限の形（AB_CONFIG）。無い環境（vite dev 等）は isolate 内のキャッシュだけ
+type RangeKv = { get(key: string): Promise<string | null>; put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> };
+
+async function rangeKvKey(key: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+  return RANGE_KV_PREFIX + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
 const rangeCache = new Map<string, { at: number; value: Promise<PartnerPriceRange | null> }>();
 
 // 公開期間の1名1泊の最低・最高（部屋タイプ・人数・プランを問わない。休館・非表示は除く）。料金が1つも無ければ null。
 export async function loadPartnerPriceRange(
   db: SupabaseClient,
   partner: Pick<PartnerRow, 'id' | 'facility_id' | 'pricing' | 'show_inventory' | 'include_advance' | 'max_days_ahead' | 'valid_until'>,
-  today = todayJst()
+  today = todayJst(),
+  kv: RangeKv | null = null
 ): Promise<PartnerPriceRange | null> {
   const chunks = partnerRangeChunks(partner, today);
   const rank = await partnerRankEnabled(db, partner.id, partner.facility_id);
@@ -225,9 +261,30 @@ export async function loadPartnerPriceRange(
   if (hit && now - hit.at < RANGE_TTL_MS) return hit.value;
   const value = (async () => {
     if (!chunks.length) return null;
+    // KV（キーは isolate 内と同じ文字列のハッシュ＝料金設定・暦の切替・日付が変われば別のキー）
+    const kvKey = kv ? await rangeKvKey(key) : null;
+    if (kv && kvKey) {
+      try {
+        const cached = await kv.get(kvKey);
+        if (cached) return JSON.parse(cached) as PartnerPriceRange | null;
+      } catch {
+        // KV が読めなければ計算する
+      }
+    }
+    const result = await computeRange();
+    if (kv && kvKey) {
+      try {
+        await kv.put(kvKey, JSON.stringify(result), { expirationTtl: RANGE_KV_TTL_SEC });
+      } catch {
+        // 保存できなくても結果は返す
+      }
+    }
+    return result;
+  })();
+  async function computeRange(): Promise<PartnerPriceRange | null> {
     let min: PartnerPriceExtreme | null = null;
     let max: PartnerPriceExtreme | null = null;
-    // 同時に読むのは4本まで（RPC を一度に投げすぎない）
+    // 同時に読むのは RANGE_CONCURRENCY 本まで（RPC を一度に投げすぎない）
     let next = 0;
     const worker = async () => {
       while (next < chunks.length) {
@@ -244,7 +301,7 @@ export async function loadPartnerPriceRange(
     await Promise.all(Array.from({ length: Math.min(RANGE_CONCURRENCY, chunks.length) }, worker));
     if (!min || !max) return null;
     return { min, max, from: chunks[0].from, to: chunks[chunks.length - 1].to };
-  })();
+  }
   rangeCache.delete(key);
   rangeCache.set(key, { at: now, value });
   // 失敗した結果は残さない（次のアクセスで取り直す）。
