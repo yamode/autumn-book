@@ -160,14 +160,16 @@
   const payNowAmount = $derived(isDeposit && deposit ? deposit.amount : payTotal);
   const payMode = $derived<'payment' | 'setup'>(paymentOption === 'online_checkin' ? 'setup' : 'payment');
   const accent = $derived(partnerAccent(data.portal.facilitySlug));
-  const submitLabel = $derived(
+  // 確定ボタンは一般的な「予約を確定する」にそろえ、カードで何が起きるかはボタンの下に添える（2026-10-10）
+  const submitLabel = '予約を確定する';
+  const submitNote = $derived(
     isDeposit
-      ? `予約してデポジット ${yen(payNowAmount)} を支払う`
+      ? `デポジット ${yen(payNowAmount)} をこのカードでお支払いいただきます。`
       : paymentOption === 'online'
-        ? `予約して ${yen(payTotal)} を支払う`
+        ? `${yen(payTotal)} をこのカードでお支払いいただきます。`
         : paymentOption === 'online_checkin'
-          ? '予約してカードを登録する'
-          : 'この内容で予約を確定する'
+          ? `お支払いはチェックアウト日${quote.ok ? `（${fmt(quote.checkOut)}）` : ""}にこのカードで自動で行います。`
+          : ''
   );
   type Pending = {
     bookingId: string;
@@ -940,6 +942,7 @@
         <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="primary mt-4 w-full">
           {paying ? (paymentOption === 'online' || paymentOption === 'deposit_online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
         </button>
+        {#if submitNote}<p class="mt-2 text-center text-xs text-stone-500">{submitNote}</p>{/if}
         {#if pending}
           <button type="button" onclick={() => releasePending()} disabled={paying || releasing} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">{releasing ? '確保を解除しています…' : 'この予約をやめて入力に戻る'}</button>
         {:else}

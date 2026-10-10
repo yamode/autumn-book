@@ -81,12 +81,14 @@
   let payTarget = $state<Row | null>(null);
   let payRef: { submit: () => Promise<boolean> } | undefined = $state();
   let payBusy = $state(false);
-  const payLabel = (b: Row) =>
-    b.status === 'pending_payment'
-      ? b.payMode === 'setup'
-        ? 'カードを登録して予約を確定する'
-        : `${b.isDeposit ? 'デポジット ' : ''}${yen(b.payAmount)} を支払って予約を確定する`
-      : 'このカードに登録し直す';
+  const payLabel = (b: Row) => (b.status === 'pending_payment' ? '予約を確定する' : 'このカードに登録し直す');
+  // 確定ボタンの下に添える、カードで何が起きるかの説明（2026-10-10）
+  const payNote = (b: Row) =>
+    b.status !== 'pending_payment'
+      ? ''
+      : b.payMode === 'setup'
+        ? `お支払いはチェックアウト日（${fmt(b.checkOut)}）にこのカードで自動で行います。`
+        : `${b.isDeposit ? 'デポジット ' : ''}${yen(b.payAmount)} をこのカードでお支払いいただきます。`;
 
   // 本人確認（docs/auth-hardening.md §5.2・S4）: カードの登録し直しは本人確認が要る。支払待ちは、保存済みのカードを使うときだけ要る。
   // モーダルの中で認証コードを確かめ、済んだら決済部品を作り直す（保存カードが出る）
@@ -218,7 +220,7 @@
   {:else if data.payment?.status === 'card_expiry'}
     <!-- 登録カードの有効期限が請求日（チェックアウト日）より前（lib/partner-card.ts）。予約は支払待ちのまま -->
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
-      ご登録のカードは、有効期限がご請求日（チェックアウト日）に近く、カードの更新の時期と重なるおそれがあるため登録できませんでした{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。ご請求はしていません。お手数ですが、下の一覧の「カードを登録して予約を確定する」から、有効期限がチェックアウト日の月の2か月後以降のカードをご登録ください（お部屋の確保の期限内に限ります）。
+      ご登録のカードは、有効期限がご請求日（チェックアウト日）に近く、カードの更新の時期と重なるおそれがあるため登録できませんでした{data.payment.bookingCode ? `（予約番号 ${data.payment.bookingCode}）` : ''}。ご請求はしていません。お手数ですが、下の一覧の「お支払いへ進む」から、有効期限がチェックアウト日の月の2か月後以降のカードをご登録ください（お部屋の確保の期限内に限ります）。
     </p>
   {:else if data.payment?.status === 'card_late'}
     <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">
@@ -535,6 +537,7 @@
       <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey || savedTooSoon || needsStepUpFirst(b)} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
         {payBusy ? '確認しています…' : payLabel(b)}
       </button>
+      {#if payNote(b)}<p class="mt-2 text-center text-xs text-stone-500">{payNote(b)}</p>{/if}
       <button type="button" onclick={closePay} disabled={payBusy} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">閉じる</button>
     </div>
   </div>
