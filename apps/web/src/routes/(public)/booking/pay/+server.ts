@@ -15,7 +15,7 @@ import {
 	clearBookingDraft,
 	getBookingDraft,
 	sbFacilityByUuid,
-	sbGetHoldMapped,
+	sbGetHoldGroupMapped,
 	sbPlanByUuid,
 	setBookingDraft
 } from '$lib/server/supabase-data';
@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			if (Object.keys(parsed.errors).length > 0) {
 				return bad(Object.values(parsed.errors)[0], 400, { errors: parsed.errors });
 			}
-			const hold = await sbGetHoldMapped(parsed.holdId, sid);
+			const hold = await sbGetHoldGroupMapped(parsed.holdId, sid);
 			if (!hold || hold.status !== 'active') return bad(m.error_hold_expired(), 410, { expired: true });
 			const [basePlan, facility] = await Promise.all([sbPlanByUuid(hold.planId), sbFacilityByUuid(hold.facilityId)]);
 			if (!basePlan || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
@@ -107,7 +107,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			const holdId = String(form.get('holdId') ?? '');
 			const draft = getBookingDraft(cookies);
 			// 確定の前に仮押さえを読む（確定後は converted になるが、完了画面に施設・部屋・プランの id が要る）
-			const hold = await sbGetHoldMapped(holdId, sid);
+			const hold = await sbGetHoldGroupMapped(holdId, sid);
 			if (!hold) return bad(m.error_hold_expired(), 410, { expired: true });
 			const r = await confirmDirectIntent(intentId, hold.id);
 			if (r.result === 'paid' || r.result === 'already') {

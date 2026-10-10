@@ -15,16 +15,17 @@ import {
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import {
-	sbGetHoldMapped,
+	sbGetHoldGroupMapped,
 	sbPlanByUuid,
 	sbRoomTypeByUuid,
 	sbFacilityByUuid,
 	sbMyProfile,
 	sbPointBalance,
-	confirmBooking as sbConfirmBooking,
+	confirmBookingGroup as sbConfirmBooking,
 	bookingSessionId,
 	setLastBooking,
-	releaseHold as sbReleaseHold
+	lastBookingRoomsOf,
+	releaseHoldGroup as sbReleaseHold
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
@@ -70,7 +71,7 @@ export const load: PageServerLoad = async (event) => {
 
 	if (DATA_SOURCE === 'supabase') {
 		const sid = bookingSessionId(cookies);
-		const hold = await sbGetHoldMapped(url.searchParams.get('id') ?? '', sid);
+		const hold = await sbGetHoldGroupMapped(url.searchParams.get('id') ?? '', sid);
 		if (!hold || hold.status !== 'active') return { expired: true as const };
 
 		const [basePlan, room, facility] = await Promise.all([
@@ -221,7 +222,7 @@ export const actions: Actions = {
 
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);
-			const hold = await sbGetHoldMapped(holdId, sid);
+			const hold = await sbGetHoldGroupMapped(holdId, sid);
 			if (!hold || hold.status !== 'active') return fail(410, { message: m.error_hold_expired() });
 			if (Object.keys(errors).length > 0) return fail(400, { errors, values: guest });
 
@@ -274,7 +275,8 @@ export const actions: Actions = {
 				payment,
 				onsiteMethod,
 				discountAmount: result.discount ?? 0,
-				guest: { name: guest.name, kana: guest.kana, phone: guest.phone, email: guest.email }
+				guest: { name: guest.name, kana: guest.kana, phone: guest.phone, email: guest.email },
+				rooms: lastBookingRoomsOf(hold)
 			});
 			redirect(303, `/booking/complete/${result.booking_code}`);
 		}

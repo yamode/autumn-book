@@ -73,6 +73,7 @@ import type {
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
+import { childTotalOf, MAX_ROOMS_PER_BOOKING, type BookingRoom, type HoldGroup, type HoldGroupRoom } from '$lib/multi-room';
 import { paymentMethodsOf } from '$lib/member-payment';
 import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -323,140 +324,203 @@ function mapQuote(q: {
 
 // ---------------------------------------------------------------- 予約系 RPC
 
-/**
- * 仮押さえを作る（book.create_hold の新署名・service_role 専用・autumn-shared 20261009210747）。
- * 会員の紐付けは auth.uid() ではなく memberUserId（呼び出し側が検証済みセッションから渡す。会員でなければ null）。
- * clientKey は接続元 IP（DB 側の試行上限 10 分 20 件に使う）。service_role クライアントの既定スキーマは public なので
- * schema('book') を明示する（v0.106.2 の教訓）。
- */
-export async function createHold(
-	sessionId: string,
-	ratePlanId: string,
-	roomTypeId: string,
-	checkin: string,
-	nights: number,
-	adults: number,
-	opts: { clientKey: string; memberUserId: string | null }
-): Promise<{ hold_id: string; expires_at: string; quote: Quote } | { error: 'sold_out' | 'rate_limited' | 'too_many_holds' }> {
-	const sb = partnerServiceClient();
-	if (!sb) throw new Error('create_hold: service_role クライアントが未設定');
-	const { data, error } = await sb.schema('book').rpc('create_hold', {
-		p_session_id: sessionId,
-		p_rate_plan_id: ratePlanId,
-		p_room_type_id: roomTypeId,
-		p_checkin: checkin,
-		p_nights: nights,
-		p_adults: adults,
-		p_client_key: holdClientKey(opts.clientKey),
-		p_member_user_id: opts.memberUserId
-	});
-	if (error) {
-		const kind = holdErrorKind(error.message);
-		if (kind) return { error: kind };
-		throw error;
-	}
-	return { hold_id: data.hold_id, expires_at: data.expires_at, quote: mapQuote(data.quote) };
+// 仮押さえは「束（book.hold_groups）＋部屋（book.holds）」（docs/official-multi-room.md §2.3・autumn-shared 20261010092423）。
+// 束 id が /booking/hold?id= ・direct_payments.hold_id ・Stripe の metadata.hold_id に入る。1 室目の部屋 id は束 id と同じ値。
+
+/** 束に入れる 1 室（create_hold_group の p_rooms の要素） */
+export interface HoldRoomInput {
+	planId: string;
+	roomTypeId: string;
+	adults: number;
+}
+
+export type CreateHoldGroupError = 'sold_out' | 'rate_limited' | 'too_many_holds' | 'too_many_rooms' | 'invalid';
+
+/** 満室だった部屋タイプ（DB の例外 sold_out:<room_type_id> から。取れなければ null） */
+export function soldOutRoomTypeOf(message: string | null | undefined): string | null {
+	const m = /sold_out:([0-9a-f-]{36})/i.exec(message ?? '');
+	return m ? m[1] : null;
 }
 
 /**
- * 仮押さえを画面から解放する（book.release_hold・autumn-shared 20260926152750。20261009210747 から service_role 専用）。
- * 本人のセッションのものだけ。支払を始めた仮押さえは DB が解放しない（'in_payment'）。
+ * 仮押さえの束を作る（book.create_hold_group・service_role 専用）。rooms は 1〜4 室・並び順が部屋の番号。
+ * 会員の紐付けは auth.uid() ではなく memberUserId（呼び出し側が検証済みセッションから渡す。会員でなければ null）。
+ * clientKey は接続元 IP（DB 側の試行上限 10 分 20 束に使う）。service_role クライアントの既定スキーマは public なので
+ * schema('book') を明示する（v0.106.2 の教訓）。
+ * 戻りの holdId は束 id（従来の hold_id と同じ使い方ができる）。満室は soldOutRoomTypeId に部屋タイプ。
+ */
+export async function createHoldGroup(
+	sessionId: string,
+	facilityId: string,
+	checkin: string,
+	nights: number,
+	rooms: HoldRoomInput[],
+	opts: { clientKey: string; memberUserId: string | null; locale?: string }
+): Promise<
+	| { groupId: string; expiresAt: string; total: number; rooms: { index: number; holdId: string; quote: Quote }[] }
+	| { error: CreateHoldGroupError; soldOutRoomTypeId?: string | null }
+> {
+	if (rooms.length < 1 || rooms.length > MAX_ROOMS_PER_BOOKING) return { error: 'too_many_rooms' };
+	const sb = partnerServiceClient();
+	if (!sb) throw new Error('create_hold_group: service_role クライアントが未設定');
+	const { data, error } = await sb.schema('book').rpc('create_hold_group', {
+		p_session_id: sessionId,
+		p_facility_id: facilityId,
+		p_checkin: checkin,
+		p_nights: nights,
+		p_rooms: rooms.map((r) => ({ rate_plan_id: r.planId, room_type_id: r.roomTypeId, adults: r.adults })),
+		p_client_key: holdClientKey(opts.clientKey),
+		p_member_user_id: opts.memberUserId,
+		p_locale: opts.locale ?? 'ja'
+	});
+	if (error) {
+		if (error.message.includes('invalid_room_count')) return { error: 'too_many_rooms' };
+		// 入力・プラン・部屋タイプの誤り（URL いじり・公開を外したプラン等）は 400 で返す
+		if (/invalid_params|plan_not_found|room_not_found/.test(error.message)) return { error: 'invalid' };
+		const kind = holdErrorKind(error.message);
+		if (kind === 'sold_out') return { error: kind, soldOutRoomTypeId: soldOutRoomTypeOf(error.message) };
+		if (kind) return { error: kind };
+		throw error;
+	}
+	const r = data as {
+		group_id: string;
+		expires_at: string;
+		total: number;
+		rooms: { hold_id: string; room_index: number; quote: Parameters<typeof mapQuote>[0] }[];
+	};
+	return {
+		groupId: r.group_id,
+		expiresAt: r.expires_at,
+		total: r.total,
+		rooms: r.rooms.map((x) => ({ index: x.room_index, holdId: x.hold_id, quote: mapQuote(x.quote) }))
+	};
+}
+
+/**
+ * 仮押さえの束を画面から解放する（book.release_hold_group・service_role 専用）。
+ * 本人のセッションのものだけ。支払を始めた束は DB が解放しない（'in_payment'）。
  * 失敗しても画面の遷移は止めない（期限で解放される）。
  */
-export async function releaseHold(holdId: string, sessionId: string): Promise<string> {
+export async function releaseHoldGroup(groupId: string, sessionId: string): Promise<string> {
+	if (!UUID_RE.test(groupId)) return 'not_found';
 	const sb = partnerServiceClient();
-	if (!sb) throw new Error('release_hold: service_role クライアントが未設定');
-	const { data, error } = await sb.schema('book').rpc('release_hold', { p_hold_id: holdId, p_session_id: sessionId });
+	if (!sb) throw new Error('release_hold_group: service_role クライアントが未設定');
+	const { data, error } = await sb.schema('book').rpc('release_hold_group', { p_group_id: groupId, p_session_id: sessionId });
 	if (error) throw error;
 	return String(data);
 }
 
-export async function getHold(holdId: string, sessionId: string) {
-	const { data, error } = await supa().rpc('get_hold', { p_hold_id: holdId, p_session_id: sessionId });
-	if (error) throw error;
-	return data;
-}
-
-/** book.get_hold の結果を予約フロー（+page.server.ts / .svelte）が使う camelCase 形へ整形。
- *  本人以外・不在は RPC が null を返す → null に正規化。expiresAt はミリ秒（HoldTimer 用）。 */
-export interface SbHold {
-	id: string;
-	facilityId: string;
-	roomTypeId: string;
-	planId: string;
-	checkin: string;
-	nights: number;
-	adults: number;
-	/** 子どもの人数（holds.child_counts の合計。現状 create_hold が子ども未対応のため常に 0） */
-	children: number;
-	quote: Quote;
-	expiresAt: number;
-	status: string;
-}
+/** 予約フロー（+page.server.ts / .svelte）が使う形（lib/multi-room.ts の HoldGroup）。M0 は 1 室目の値を最上位にも写す */
+export type SbHold = HoldGroup;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function sbGetHoldMapped(
-	holdId: string,
+type HoldGroupRoomRow = {
+	hold_id: string;
+	room_index: number;
+	room_type_id: string;
+	rate_plan_id: string;
+	adult_count: number;
+	child_counts?: Record<string, number | string> | null;
+	quote: Parameters<typeof mapQuote>[0];
+};
+
+/**
+ * 束を読む（book.get_hold_group）。本人以外・不在は RPC が null を返す → null。expiresAt はミリ秒（HoldTimer 用）。
+ * id は束 id（部屋の仮押さえ id でも DB が束に読み替える）。
+ */
+export async function sbGetHoldGroupMapped(
+	groupId: string,
 	sessionId: string,
 	client?: SupabaseClient
-): Promise<SbHold | null> {
-	// UUID 形でない id（手入力・URL いじり等）は get_hold（p_hold_id uuid）が 22P02 で失敗するため、
-	// RPC を叩かず「期限切れ/不在」として null を返す（デモの getHold が unknown を undefined 扱いするのと対称）。
-	if (!UUID_RE.test(holdId)) return null;
-	const params = { p_hold_id: holdId, p_session_id: sessionId };
+): Promise<HoldGroup | null> {
+	// UUID 形でない id（手入力・URL いじり等）は RPC が 22P02 で失敗するため、叩かずに「期限切れ/不在」として null
+	if (!UUID_RE.test(groupId)) return null;
+	const params = { p_group_id: groupId, p_session_id: sessionId };
 	const { data, error } = client
-		? await client.schema('book').rpc('get_hold', params)
-		: await supa().rpc('get_hold', params);
+		? await client.schema('book').rpc('get_hold_group', params)
+		: await supa().rpc('get_hold_group', params);
 	if (error) throw error;
 	if (!data) return null;
 	const r = data as {
-		hold_id: string;
+		group_id: string;
 		facility_id: string;
-		room_type_id: string;
-		rate_plan_id: string;
 		checkin_date: string;
 		checkout_date: string;
-		adult_count: number;
-		child_counts?: Record<string, number | string> | null;
-		quote: Parameters<typeof mapQuote>[0];
 		expires_at: string;
 		status: string;
+		total: number;
+		rooms: HoldGroupRoomRow[];
 	};
+	const rooms: HoldGroupRoom[] = (r.rooms ?? []).map((x) => ({
+		index: x.room_index,
+		holdId: x.hold_id,
+		roomTypeId: x.room_type_id,
+		planId: x.rate_plan_id,
+		adults: x.adult_count,
+		children: childTotalOf(x.child_counts),
+		quote: mapQuote(x.quote)
+	}));
+	const first = rooms[0];
+	if (!first) return null;
 	return {
-		id: r.hold_id,
+		id: r.group_id,
 		facilityId: r.facility_id,
-		roomTypeId: r.room_type_id,
-		planId: r.rate_plan_id,
 		checkin: r.checkin_date,
 		nights: daysBetween(r.checkin_date, r.checkout_date),
-		adults: r.adult_count,
-		children: Object.values(r.child_counts ?? {}).reduce<number>((s, v) => s + (Number(v) || 0), 0),
-		quote: mapQuote(r.quote),
 		expiresAt: Date.parse(r.expires_at),
-		status: r.status
+		status: r.status,
+		total: r.total,
+		rooms,
+		roomTypeId: first.roomTypeId,
+		planId: first.planId,
+		adults: first.adults,
+		children: first.children,
+		quote: first.quote
 	};
 }
 
-export async function confirmBooking(
-	holdId: string,
+/** 部屋ごとの客の回答（confirm_booking_group の p_rooms_detail の要素）。M0 は 1 室なので未使用（男女は guest.male / female） */
+export interface RoomDetailInput {
+	male?: number;
+	female?: number;
+	/** その部屋の滞在（core.stays.notes）の先頭に入る回答の行 */
+	notes?: string;
+	answers?: Record<string, string>;
+}
+
+/**
+ * 束を確定する（現地払い・book.confirm_booking_group）。会員（ポイント・クーポン）は authenticated client、ゲストは anon `supa()`。
+ * 決済の内訳（予約時決済割・入湯税）は渡せない（オンライン決済は direct_payment_confirm が中で確定する）。
+ */
+export async function confirmBookingGroup(
+	groupId: string,
 	sessionId: string,
 	guest: GuestInfo,
-	opts: { client?: SupabaseClient; pointsUsed?: number; locale?: string; memberCouponId?: string | null } = {}
-): Promise<{ booking_code: string; total: number; points_used: number; points_earned: number; discount?: number } | { error: string }> {
-	// 会員（ポイント利用・クーポン）は authenticated client、ゲストは anon `supa()`。
-	// 会員のロケール（p_locale）・クーポン（p_member_coupon_id）は任意。
+	opts: { client?: SupabaseClient; pointsUsed?: number; locale?: string; memberCouponId?: string | null; rooms?: RoomDetailInput[] | null } = {}
+): Promise<
+	| {
+			booking_code: string;
+			total: number;
+			points_used: number;
+			points_earned: number;
+			discount?: number;
+			rooms?: { room_index: number; stay_id: string; reservation_code: string; charge: number }[];
+	  }
+	| { error: string }
+> {
 	const params = {
-		p_hold_id: holdId,
+		p_group_id: groupId,
 		p_session_id: sessionId,
 		p_guest: guest,
 		p_points_used: opts.pointsUsed ?? 0,
 		p_locale: opts.locale ?? 'ja',
-		p_member_coupon_id: opts.memberCouponId ?? null
+		p_member_coupon_id: opts.memberCouponId ?? null,
+		p_rooms_detail: opts.rooms ?? null
 	};
 	const { data, error } = opts.client
-		? await opts.client.schema('book').rpc('confirm_booking', params)
-		: await supa().rpc('confirm_booking', params);
+		? await opts.client.schema('book').rpc('confirm_booking_group', params)
+		: await supa().rpc('confirm_booking_group', params);
 	if (error) {
 		if (error.message.includes('hold_expired')) return { error: 'hold_expired' };
 		if (error.message.includes('forbidden')) return { error: 'forbidden' };
@@ -1444,6 +1508,23 @@ interface MyReservationRow {
 	points_earned: number;
 	guest: GuestInfo | null;
 	created_at: string;
+	/** 部屋の数・部屋ごとの内訳（autumn-shared 20261010092423 から。公式予約でない行は 1 / []） */
+	room_count?: number;
+	rooms?: MyReservationRoomRow[] | null;
+}
+
+interface MyReservationRoomRow {
+	room_index: number;
+	reservation_code: string;
+	room_type_id: string;
+	rate_plan_id: string | null;
+	adult_count: number;
+	stay_status: string;
+	room_total: number;
+	charge: number;
+	points_share: number;
+	cancelled_at: string | null;
+	cancel_fee: number;
 }
 
 export interface MemberReservation {
@@ -1466,6 +1547,10 @@ export interface MemberReservation {
 	guest: GuestInfo;
 	channel: 'autumn_booking';
 	createdAt: string;
+	/** 部屋の数（複数室予約・M1 の一覧の「3 室」）。デモ・古い DB は 1 */
+	roomCount?: number;
+	/** 部屋ごとの内訳（最上位の roomTypeUuid / ratePlanUuid / adults は 1 室目） */
+	rooms?: BookingRoom[];
 }
 
 function daysBetween(from: string, to: string): number {
@@ -1509,7 +1594,20 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 		pointsEarned: r.points_earned ?? 0,
 		guest: r.guest ?? { name: '', kana: '', phone: '', email: '' },
 		channel: 'autumn_booking',
-		createdAt: (r.created_at ?? '').slice(0, 10)
+		createdAt: (r.created_at ?? '').slice(0, 10),
+		roomCount: r.room_count ?? 1,
+		rooms: (r.rooms ?? []).map((x) => ({
+			index: x.room_index,
+			stayCode: x.reservation_code,
+			roomTypeId: x.room_type_id,
+			planId: x.rate_plan_id,
+			adults: x.adult_count,
+			roomTotal: x.room_total,
+			charge: x.charge,
+			pointsShare: x.points_share ?? 0,
+			cancelled: x.cancelled_at != null,
+			cancelFee: x.cancel_fee ?? 0
+		}))
 	};
 }
 
@@ -2465,6 +2563,16 @@ export interface LastBooking {
 	paidAmount?: number;
 	bathTax?: number;
 	guest: { name: string; kana: string; phone: string; email: string };
+	/**
+	 * 部屋ごとの内訳（複数室予約・docs/official-multi-room.md §8.4）。最上位の roomUuid / planUuid / adults は 1 室目。
+	 * total はその部屋の宿泊料金（割引前）。M0 の 1 室では 1 件。古い cookie には無い
+	 */
+	rooms?: { roomUuid: string; planUuid: string; adults: number; total: number }[];
+}
+
+/** 束（仮押さえ）から LastBooking.rooms を作る */
+export function lastBookingRoomsOf(hold: Pick<HoldGroup, 'rooms'>): NonNullable<LastBooking['rooms']> {
+	return hold.rooms.map((r) => ({ roomUuid: r.roomTypeId, planUuid: r.planId, adults: r.adults, total: r.quote.total }));
 }
 
 export function setLastBooking(cookies: Cookies, last: LastBooking): void {

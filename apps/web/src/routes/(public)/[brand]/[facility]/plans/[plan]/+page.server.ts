@@ -19,9 +19,11 @@ import {
 	sbPlanOffers,
 	sbPlanReferenceMinPrices,
 	offerToQuote,
-	createHold as sbCreateHold,
+	createHoldGroup,
+	sbRoomTypeByUuid,
 	bookingSessionId
 } from '$lib/server/supabase-data';
+import { MAX_ROOMS_PER_BOOKING, parseHoldRooms } from '$lib/multi-room';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { stayCalendar } from '$lib/server/stay-calendar';
@@ -125,6 +127,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 };
 
 const HOLD_RATE_LIMITED_MESSAGE = 'お申し込みが集中しています。しばらく時間をおいてからお試しください。';
+// 4 室目をかごに入れたときの注意と同じ文言（docs/official-multi-room.md §8.1）
+const TOO_MANY_ROOMS_MESSAGE = `1 回のご予約は ${MAX_ROOMS_PER_BOOKING} 室までです。${MAX_ROOMS_PER_BOOKING + 1} 室以上は、別のご予約にするか、お電話でお問い合わせください（日付が違うお部屋も別のご予約になります）。`;
 
 /** 接続元 IP（Cloudflare では cf-connecting-ip。取れなければ 'unknown'） */
 function clientIp(event: { request: Request; getClientAddress: () => string }): string {
@@ -138,15 +142,23 @@ function clientIp(event: { request: Request; getClientAddress: () => string }): 
 }
 
 export const actions: Actions = {
+	// 予約へ進む: 部屋（1〜4 室）をまとめて仮押さえ（束）して予約入力へ。
+	// 入力は rooms JSON `[{planId, roomTypeId, adults}]`（M1 のかご）か、従来の 1 室のフィールド planId / roomTypeId / adults。
+	// 成功 303 /booking/hold?id=<束 id>。失敗 fail(409, {message, soldOut:[{roomTypeId, roomName}]}) / fail(429) /
+	// fail(400, {message, code:'too_many_rooms'|'invalid'})（docs/official-multi-room.md §14.5）
 	hold: async (event) => {
-		const { request, locals, cookies } = event;
+		const { request, locals, cookies, params } = event;
 		const form = await request.formData();
-		const planId = String(form.get('planId'));
-		const roomTypeId = String(form.get('roomTypeId'));
-		const checkin = String(form.get('checkin'));
+		const checkin = String(form.get('checkin') ?? '');
 		const nights = Number(form.get('nights'));
-		const adults = Number(form.get('adults'));
-		if (!checkin || !planId || !roomTypeId) return fail(400, { message: '日付を選択してください' });
+		const parsed = parseHoldRooms((k) => form.get(k));
+		if (!checkin || (!parsed.ok && parsed.code === 'missing')) return fail(400, { message: '日付を選択してください' });
+		if (!parsed.ok) {
+			return parsed.code === 'too_many_rooms'
+				? fail(400, { message: TOO_MANY_ROOMS_MESSAGE, code: 'too_many_rooms' as const })
+				: fail(400, { message: 'お部屋の選び方を確認してください。', code: 'invalid' as const });
+		}
+		const rooms = parsed.rooms;
 		// 遷移経路（予約ボタンを押したページと、その手前のページ）を予約入力画面へ渡す
 		const rememberNav = (holdId: string) =>
 			cookies.set(HOLD_NAV_COOKIE, JSON.stringify({ id: holdId, back: safeLocalPath(String(form.get('back') ?? '')), via: safeLocalPath(String(form.get('via') ?? '')) }), {
@@ -169,17 +181,27 @@ export const actions: Actions = {
 			const sid = bookingSessionId(cookies);
 			// create_hold は service_role 専用（S8）。会員の紐付けは検証済みセッションの会員 id を渡す（会員でなければ null）
 			const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
-			const result = await sbCreateHold(sid, planId, roomTypeId, checkin, nights, adults, { clientKey: ip, memberUserId });
+			const facility = await sbFacilityBySlug(params.facility);
+			if (!facility || facility.brandSlug !== params.brand) return fail(400, { message: '施設が見つかりません', code: 'invalid' as const });
+			const result = await createHoldGroup(sid, facility.id, checkin, nights, rooms, { clientKey: ip, memberUserId, locale: getLocale() });
 			if ('error' in result) {
 				if (result.error === 'rate_limited' || result.error === 'too_many_holds') {
 					return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
 				}
-				return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
+				if (result.error === 'too_many_rooms') return fail(400, { message: TOO_MANY_ROOMS_MESSAGE, code: 'too_many_rooms' as const });
+				if (result.error === 'invalid') return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
+				// どの部屋が取れなかったか（M1 のかごはそのまま残して、この部屋タイプを出す）
+				const soldOut = result.soldOutRoomTypeId
+					? [{ roomTypeId: result.soldOutRoomTypeId, roomName: (await sbRoomTypeByUuid(result.soldOutRoomTypeId).catch(() => null))?.name ?? '' }]
+					: [];
+				return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。', soldOut });
 			}
-			rememberNav(String(result.hold_id));
-			redirect(303, `/booking/hold?id=${result.hold_id}`);
+			rememberNav(result.groupId);
+			redirect(303, `/booking/hold?id=${result.groupId}`);
 		}
 
+		// デモ（store.ts）は 1 室だけ
+		const { planId, roomTypeId, adults } = rooms[0];
 		const result = createHold(planId, roomTypeId, checkin, nights, adults, 0, locals.user?.role === 'member' ? locals.user.id : undefined);
 		if ('error' in result) {
 			return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });

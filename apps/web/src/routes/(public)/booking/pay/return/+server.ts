@@ -3,7 +3,7 @@
 // ここでも Stripe から Intent を取り直して検証してから確定する（URL の値は信用しない）。
 import { redirect, type RequestHandler } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { bookingSessionId, clearBookingDraft, getBookingDraft, sbGetHoldMapped } from '$lib/server/supabase-data';
+import { bookingSessionId, clearBookingDraft, getBookingDraft, sbGetHoldGroupMapped } from '$lib/server/supabase-data';
 import { confirmDirectIntent } from '$lib/server/direct-payments';
 import { finishDirectBooking } from '$lib/server/direct-booking-finish';
 
@@ -14,7 +14,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 	if (DATA_SOURCE !== 'supabase' || !holdId || !intentId) back('error');
 
 	const sid = bookingSessionId(cookies);
-	const hold = await sbGetHoldMapped(holdId, sid);
+	const hold = await sbGetHoldGroupMapped(holdId, sid);
 	if (!hold) redirect(303, '/search');
 
 	let r: Awaited<ReturnType<typeof confirmDirectIntent>>;

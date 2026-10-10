@@ -1,7 +1,7 @@
 // 公式サイト予約のオンライン決済が確定した後の画面側の後始末（完了画面へ渡す直近予約 cookie）。
 // /booking/pay（ブラウザからの確定の連絡）と /booking/pay/return（3Dセキュア等のリダイレクトの戻り）で共有する。
 import type { Cookies } from '@sveltejs/kit';
-import { setLastBooking, type BookingDraft, type SbHold } from '$lib/server/supabase-data';
+import { lastBookingRoomsOf, setLastBooking, type BookingDraft, type SbHold } from '$lib/server/supabase-data';
 import type { DirectConfirmResult } from '$lib/server/direct-payments';
 
 type Paid = Extract<DirectConfirmResult, { result: 'paid' | 'already' }>;
@@ -41,7 +41,8 @@ export function finishDirectBooking(cookies: Cookies, hold: SbHold, draft: Booki
 			kana: guest?.kana ?? '',
 			phone: guest?.phone ?? '',
 			email: guest?.email ?? ''
-		}
+		},
+		rooms: lastBookingRoomsOf(hold)
 	});
 }
 
