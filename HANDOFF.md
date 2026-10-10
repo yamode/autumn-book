@@ -1,6 +1,52 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-10（管理画面の取引先詳細の施設タブ切替を軽くする v0.112.0／取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
+> **最終更新**: 2026-10-10（セキュリティレビュー・認証強化 S1〜S8〔取引先ログインの制限・Turnstile・メール OTP・パスキー・管理画面の TOTP〕・今後の請求予定・Stripe メタデータ・v0.115.0／autumn-pms v4.744.0 取込時の入湯税）
+
+## セキュリティ強化：残作業と注意点（2026-10-10 時点・次セッションはここから）
+設計書 `docs/auth-hardening.md`（Fable）。S1〜S8 は実装・本番反映済み（下の各節）。v0.106.1〜v0.115.0。
+
+**⚠ 注意（訂正）**: 本番の Stripe は **本番モード（live）** で動いている（`rms_partners.stripe_livemode = true`。テスト取引先の保存カード Visa •••• 9987 は実カード）。下の古い節にある「本番の鍵はテストモード」は当時の記述で、現在は当てはまらない。取引先ページで保存カード・予約時決済を試すと実請求になる。試すならチェックアウト日決済の予約を作ってすぐ取消（請求されない）
+
+**完了（設定）**: Turnstile ウィジェット `autumn-book`（v0.114.1）・Supabase の TOTP は既定で Enabled（確認済み）
+
+**残作業（コード）**
+- [ ] 管理画面の二段階認証を DB 側でも効かせる（RLS / `_require_admin` 系に `auth.jwt()->>'aal' = 'aal2'`）。RMS と Auth を共有するため要相談
+- [ ] yamado-one の旧署名 `book.create_hold`（7引数・anon 可・上限付き）を廃止 ← yamado-one をサーバ経由に移してから drop
+- [ ] CSP の本格導入（script-src 等を Report-Only から。Stripe・GA4・Turnstile・地図タイル・Supabase を許可）
+- [ ] Low の残り: CRON_SECRET の timing-safe 比較・本番で AUTH_MODE=demo を拒否・markdown の `javascript:` リンク無害化・確認モードの HMAC 鍵を専用 secret に・アクセスログの IP 保持期限と削除
+- [ ] 開発用依存の脆弱性（vitest の tinypool Critical・wrangler/miniflare・vite/postcss）の更新
+- [ ] 取引先モジュールの管理者操作の監査ログ・週次の異常検知（ログイン失敗の急増・新 IP の管理者ログイン → Notion）
+- [ ] service_role を新方式 `sb_secret_` へ移行・用途別の鍵・ローテーション手順
+- [ ] ログイン画面のパスキーの案内に「パスワードでのログインも引き続き使えます」を足すか（ユーザー未回答）
+- [ ] PMS: チェックアウト日決済で未請求のまま取消された予約の入金行（rms_partner_prepaid）を外す（autumn-pms direct-booking/import.ts の cancelDirectGroup）。テスト予約 PB-2026-000009（滞在グループ d811dd33…）の入湯税・入金行の補修も未実施（PMS 画面で直すのが確実）
+
+**残作業（設定・運用・設計書 §12）**
+- [ ] Supabase: 漏洩パスワード照合（HIBP）を ON・Org の MFA 必須化・PITR の確認
+- [ ] 管理画面の二段階認証を admin/staff 全員が登録 → `ADMIN_MFA_REQUIRED=true`（wrangler.jsonc）。admin は2名以上
+- [ ] Cloudflare: `/admin*` を Access で保護・Rate Limiting・Bot Fight Mode
+- [ ] GitHub: 2FA 必須・Secret scanning＋Push protection・Dependabot・main の保護（入れるなら「migration は main 直 push」の CLAUDE.md ルールも同時に変える）
+- [ ] Stripe: 2FA・制限付きキー・Radar
+- [ ] Supabase 外のイミュータブルなバックアップ（R2 Object Lock・週次）と四半期の復元訓練
+- [ ] Supabase MCP の read-only 化・`96_Claude/secrets/*.env` を Dropbox 同期から外す・各 SaaS の MFA
+- [ ] インシデント対応1ページ（設計書 §13）を印刷して事務所に置く
+
+**テスト用データ**: テスト取引先「テスト」（限定URL `/p/Gav1jpnwSD10croOb-Aso85R`・マスタ `yamado`（パスキー登録済み）・子ユーザー `yamado-s34p63`（office@yamado.co.jp））。取引先料金をテスト用に 400円 に下げたまま（戻すこと）
+
+## 今後の請求予定の一覧・Stripe の SetupIntent のメタデータ（2026-10-10・v0.115.0）
+- 管理画面「今後の請求予定 📆」（`/admin/partners/charges`・CSV は `/admin/partners/charges/csv`）。対象は取引先予約のチェックアウト日決済（online_checkin）だけ（公式サイトには後日カードへ請求する経路が無い）。区分: 請求失敗（期間に関係なく先頭・赤枠）／キャンセル料のカード未請求（要確認）／請求予定（チェックアウト日順・件数と合計）／最近取り消したもの（30日・切替で表示）。期間は すべて／今月／来月／指定。権限・施設は予定請求書と同じ（staffPartnerScope）
+- 取消の判定は `status`（取消後も `payment_status` は scheduled のまま残る。請求の cron は status=confirmed だけを見るので請求はされない）
+- Stripe の SetupIntent の metadata: 作成時に `charge_on`・`charge_amount`・`booking_status`。カード登録完了で confirmed・`card`、請求成功で charged・`charged_at`・`payment_intent`、失敗で charge_failed・`charge_error`、取消で cancelled・`cancelled_at`（キャンセル料があれば `cancel_fee` 等）。請求・キャンセル料の PaymentIntent に `setup_intent`。Stripe の更新に失敗しても予約処理は止めない（警告ログ）。Stripe の管理画面で予約番号を検索 → SetupIntent を開くと見られる
+- 未対応: 支払期限切れ（DB 関数 rms_partner_expire_pending）は Book を通らないので SetupIntent は pending_payment のまま。カードの登録し直しで古い SetupIntent は更新しない。この版より前の SetupIntent には項目が無い（次の確定・取消・請求で入る）
+
+### テストチェックリスト（今後の請求予定・Stripe メタデータ）
+- [ ] 左メニュー「今後の請求予定」から開ける（admin・staff）。施設を切り替えるとその施設の予約だけになる
+- [ ] チェックアウト日決済の確定予約が請求予定日の順に並び、件数・合計額が合う。請求額＝宿泊料金＋入湯税−割引（内訳つき）
+- [ ] 今月・来月・指定で絞り込める。請求失敗は期間に関係なく先頭に出る
+- [ ] 取り消した予約は既定では出ず、「最近取り消したもの」で取消日時・キャンセル料つきで出る
+- [ ] 予約番号から予約管理の詳細、取引先名から取引先詳細へ飛べる。CSV が Excel で文字化けしない
+- [ ] チェックアウト日決済で予約 → Stripe の SetupIntent に charge_on・charge_amount・booking_status=confirmed・card
+- [ ] 取消 → booking_status=cancelled・cancelled_at。請求成功 → charged・charged_at・payment_intent。失敗 → charge_failed・charge_error
+- [ ] Stripe の API が失敗しても予約の確定・取消・請求は止まらない
 
 ## 管理画面 取引先詳細の施設タブ切替を軽くする（2026-10-10・v0.112.0）
 - 要望: `/admin/partners/[id]` の施設タブ（山人-yamado- / 山人-oga-）の切替が重い（施設に関係ない読み込みまで全部やり直していた）
@@ -2360,6 +2406,35 @@ autumn-book と autumn-rms は **同一 Supabase プロジェクト＝メール�
 - [ ] 取消メールに「キャンセル料: ◯円（2日前の取消 30%・不課税）→ 精算方法」が載る
 
 ## 作業ログ
+
+### 2026-10-10（セキュリティレビューと認証強化 S1〜S8）
+
+**実施内容:**
+- Fable によるセキュリティレビュー（アプリ/DB の脆弱性・認証強化/ランサムウェア対策）→ 上位4件を修正（客室コードの総当たり・オープンリダイレクト・セキュリティヘッダ・依存更新）
+- 設計書 `docs/auth-hardening.md` → S1（DB）・S2（取引先ログインの制限・Turnstile・ログイン通知・セキュリティ画面）・S3/S4（メール OTP の本人確認・保存カードの権限）・S5（管理画面の TOTP）・S6（パスキー・mfa_policy・リセット）・S8（仮押さえを service_role 経由に）を Opus エージェントで実装し、本番に反映
+- 本番でテスト取引先を使って通し確認（本人確認・パスキー登録とログイン・子ユーザーの権限・保存カードでの予約と取消）。見つかった不具合（ログアウトの CSRF 403・パスキーログインの UV 不足）を修正
+- 予約の確定ボタンを「予約を確定する」に統一（取引先・公式サイト）、管理画面「今後の請求予定」、Stripe の SetupIntent に請求予定・状態のメタデータ
+- autumn-pms v4.744.0: すべての取込予約で取込時に入湯税の明細を作る（取消で請求額がマイナスになる問題）
+- autumn-shared: 20261009131735 / 20261009205246 / 20261009205248 / 20261009210747 / 20261009215711（すべて本番適用済み）
+
+**バージョン:** `v0.115.0`（autumn-pms `v4.744.0`）
+
+**コミット（主なもの）:**
+- `f33cca7` / `f783c00` セキュリティ修正・客室コード照合の修正 (v0.106.1〜2)
+- `6660ca6` 認証強化とランサムウェア対策の設計書 (v0.107.1)
+- `79e0c5b` S1 FAQ の記録を service_role 経由に (v0.109.1)
+- `b62e1cc` S5 管理画面の二段階認証 (v0.110.0)
+- `c47a1dc` S8 公式サイトの仮押さえを service_role 経由に (v0.110.1)
+- `01b89fe` S2 取引先ログインの第1段階 (v0.111.0)
+- `6fd824f` S3/S4 本人確認・保存カードの権限 (v0.113.0)
+- `e7e84ab` S6 パスキー・方針・リセット (v0.114.0)
+- `2b7371f` Turnstile を有効化 (v0.114.1)
+- `436b2b3` ログアウトの CSRF 403 を修正 (v0.114.4)
+- `dc2c7da` パスキーでのログインの UV 修正 (v0.114.7)
+- `dbda5e2` 予約の確定ボタンの文言 (v0.114.12)
+- `f30c092` 今後の請求予定・Stripe メタデータ (v0.115.0)
+
+**残作業:** 先頭の「セキュリティ強化：残作業と注意点」を参照
 
 ---
 

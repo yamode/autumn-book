@@ -20,6 +20,7 @@
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/group-inquiries', label: '団体照会', icon: '👥', badge: true },
 				{ href: '/admin/partners/invoices', label: '予定請求書', icon: '🧾' },
+				{ href: '/admin/partners/charges', label: '今後の請求予定', icon: '📆' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
 				{ href: '/admin/payments', label: '支払方法', icon: '💳' },
 				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
