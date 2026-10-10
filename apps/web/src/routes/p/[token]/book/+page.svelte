@@ -357,6 +357,12 @@
       males = a.map((n, i) => (males[i] !== undefined && males[i] !== '' && Number(males[i]) <= n ? males[i] : ''));
     });
   });
+  // 料金明細の泊の表示（例: 4/15（水））
+  const NIGHT_WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+  const nightLabel = (iso: string) => {
+    const t = new Date(`${iso}T00:00:00Z`);
+    return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${NIGHT_WEEK[t.getUTCDay()]}）`;
+  };
 </script>
 
 <!-- 御社の受付枠（与信・Phase 3a・決定 #3）: 紐づけ先が与信 ON の旅行会社のときだけ見積に入る。月ごとに残りとこの予約の後の残り。
@@ -865,16 +871,16 @@
               <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
             </div>
           </div>
-          <!-- 料金明細は行が少ないので常に出す（2026-10-10 指示）。各室「1名あたり × 人数 ＝ 1室の料金」の形で、合計側には1名料金を重ねて出さない。
-               連泊は1名あたりを全泊分で出す（1泊ごとに料金が違っても、× 人数がそのまま1室の料金になるように） -->
+          <!-- 料金明細は常に出す（2026-10-10 指示）。1室1泊を1行（2室2泊なら4行）にし、各行「1名あたり × 人数 ＝ その部屋のその泊の料金」。
+               合計側には1名料金を重ねて出さない。1室1泊だけ（1行）のときは右の金額が真上の合計と同じなので出さない -->
+          {@const lines = quote.rooms.flatMap((r, i) => r.nights.map((n) => ({ room: i, adults: r.adults, date: n.date, unit: n.unit_price })))}
           <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
-            {#each quote.rooms as r, i}
+            {#each lines as l (`${l.room}-${l.date}`)}
               <li class="flex justify-between gap-2">
                 <span class="min-w-0">
-                  {quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}{#if r.adults > 1}1名あたり{quote.nights > 1 ? `（${quote.nights}泊分）` : ''} <span class="tabular-nums">{num(Math.round(r.subtotal / r.adults))}</span>円 × {r.adults}名{:else}大人1名{quote.nights > 1 ? ` × ${quote.nights}泊` : ''}{/if}
+                  {quote.rooms.length > 1 ? `${l.room + 1}室目 ` : ''}{#if lines.length > 1 || quote.nights > 1}<span class="tabular-nums">{nightLabel(l.date)}</span> {/if}{#if l.adults > 1}1名あたり <span class="tabular-nums">{num(l.unit)}</span>円 × {l.adults}名{:else}大人1名{/if}
                 </span>
-                <!-- 1室なら右の金額は真上の「宿泊料金合計」と同じなので出さない -->
-                {#if quote.rooms.length > 1}<span class="whitespace-nowrap tabular-nums">{num(r.subtotal)}円</span>{/if}
+                {#if lines.length > 1}<span class="whitespace-nowrap tabular-nums">{num(l.unit * l.adults)}円</span>{/if}
               </li>
             {/each}
           </ul>

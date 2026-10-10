@@ -675,20 +675,13 @@ export function quoteChargeOf(
   return { lodging, bathTax: q.bathTax, charge: lodging + q.bathTax, discounted };
 }
 
-// 料金の明細の「1泊1行」（2026-10-10 指示）。部屋ごとの泊別の1名単価から、泊ごとに「1名あたり × 人数」の内訳を作る。
-// 同じ泊で1名単価が同じ部屋はまとめる（例: 2室×2名・同額 → ¥X × 4名）。違う単価の部屋は同じ行に並べる。
-export type PartnerNightLine = { date: string; parts: { unit: number; adults: number }[]; amount: number };
+// 料金の明細の「1室1泊を1行」（2026-10-10 指示。2室2泊なら4行）。部屋ごと・泊ごとに「1名あたり × 人数」の内訳を作る。
+// 並びは部屋の順 → 泊の日付順。room は 0 始まりの部屋の番号（複数室のとき「N室目」と出す）。
+export type PartnerNightLine = { room: number; date: string; parts: { unit: number; adults: number }[]; amount: number };
 export function partnerNightLines(rooms: { adults: number; nights: { date: string; unit_price: number }[] }[]): PartnerNightLine[] {
-  const byDate = new Map<string, Map<number, number>>();
-  for (const r of rooms) {
-    for (const n of r.nights) {
-      const units = byDate.get(n.date) ?? new Map<number, number>();
-      units.set(n.unit_price, (units.get(n.unit_price) ?? 0) + r.adults);
-      byDate.set(n.date, units);
-    }
-  }
-  return [...byDate.keys()].sort().map((date) => {
-    const parts = [...byDate.get(date)!.entries()].map(([unit, adults]) => ({ unit, adults })).sort((a, b) => b.unit - a.unit);
-    return { date, parts, amount: parts.reduce((s, p) => s + p.unit * p.adults, 0) };
-  });
+  return rooms.flatMap((r, room) =>
+    [...r.nights]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((n) => ({ room, date: n.date, parts: [{ unit: n.unit_price, adults: r.adults }], amount: n.unit_price * r.adults }))
+  );
 }

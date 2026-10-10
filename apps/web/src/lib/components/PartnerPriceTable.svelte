@@ -26,13 +26,14 @@
 
   const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
   const basis = $derived(`大人${guests}名 × ${nights}泊`);
-  // 宿泊料金は1泊1行（2026-10-10 指示）。内訳の合計が宿泊料金と合うときだけ使い、合わない・無いときは1行にまとめる
+  // 宿泊料金は1室1泊を1行（2026-10-10 指示・2室2泊なら4行）。内訳の合計が宿泊料金と合うときだけ使い、合わない・無いときは1行にまとめる
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   const dayLabel = (iso: string) => {
     const t = new Date(`${iso}T00:00:00Z`);
     return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WEEK[t.getUTCDay()]}）`;
   };
   const perNight = $derived(nightLines.length > 0 && nightLines.reduce((s, l) => s + l.amount, 0) === lodging ? nightLines : null);
+  const multiRoom = $derived(new Set(nightLines.map((l) => l.room)).size > 1);
   const nightBasis = (l: PartnerNightLine) =>
     l.parts.length === 1 && l.parts[0].adults === 1
       ? '大人1名・税込'
@@ -56,9 +57,9 @@
   <caption class="mb-1.5 text-left text-xs font-medium text-stone-500">料金の明細</caption>
   <tbody class="divide-y divide-stone-200 border-y border-stone-200">
     {#if perNight}
-      {#each perNight as l (l.date)}
+      {#each perNight as l (`${l.room}-${l.date}`)}
         <tr>
-          <th scope="row" class="py-2 pr-3 text-left font-normal">宿泊料金 <span class="tabular-nums">{dayLabel(l.date)}</span><span class="ml-1 text-xs text-stone-500">（{nightBasis(l)}）</span></th>
+          <th scope="row" class="py-2 pr-3 text-left font-normal">宿泊料金 {multiRoom ? `${l.room + 1}室目 ` : ''}<span class="tabular-nums">{dayLabel(l.date)}</span><span class="ml-1 text-xs text-stone-500">（{nightBasis(l)}）</span></th>
           <td class="py-2 text-right tabular-nums">{yen(l.amount)}</td>
         </tr>
       {/each}

@@ -495,14 +495,16 @@ describe('splitPartnerBookingSettings（保存時の振り分け）', () => {
 });
 
 describe('partnerNightLines', () => {
-  it('泊ごとに1行・同じ単価の部屋はまとめ・違う単価は並べる', () => {
+  it('1室1泊を1行（部屋の順 → 日付順・同じ単価でもまとめない）', () => {
     const lines = partnerNightLines([
       { adults: 2, nights: [{ date: '2026-04-16', unit_price: 12000 }, { date: '2026-04-15', unit_price: 10000 }] },
       { adults: 3, nights: [{ date: '2026-04-15', unit_price: 10000 }, { date: '2026-04-16', unit_price: 11000 }] }
     ]);
     expect(lines).toEqual([
-      { date: '2026-04-15', parts: [{ unit: 10000, adults: 5 }], amount: 50000 },
-      { date: '2026-04-16', parts: [{ unit: 12000, adults: 2 }, { unit: 11000, adults: 3 }], amount: 57000 }
+      { room: 0, date: '2026-04-15', parts: [{ unit: 10000, adults: 2 }], amount: 20000 },
+      { room: 0, date: '2026-04-16', parts: [{ unit: 12000, adults: 2 }], amount: 24000 },
+      { room: 1, date: '2026-04-15', parts: [{ unit: 10000, adults: 3 }], amount: 30000 },
+      { room: 1, date: '2026-04-16', parts: [{ unit: 11000, adults: 3 }], amount: 33000 }
     ]);
   });
   it('部屋が無ければ空', () => {
