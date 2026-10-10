@@ -63,6 +63,11 @@
     };
   });
 
+  /** トークンを取り直す。別ページの action を自分で送る部品（予約かご）が、失敗のあとに呼ぶ（page.form が変わらないため） */
+  export function reset() {
+    if (api && widgetId) api.reset(widgetId);
+  }
+
   // フォームを送った結果が返ってきたら（失敗の表示など）新しいトークンを取り直す
   let lastForm: unknown = page.form;
   $effect(() => {

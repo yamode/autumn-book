@@ -19,15 +19,85 @@
 	import { safeLocalPath, viaCrumb, viaStorageKey } from '$lib/booking-nav';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
+	import BookingCart from '$lib/components/BookingCart.svelte';
+	import { canAddToCart, cartIsFull, MAX_ROOMS_PER_BOOKING, readCart, writeCart, type CartItem } from '$lib/multi-room';
 
 	let { data, form } = $props();
 
 	// 仮押さえの Turnstile（auth-hardening.md §9 S8）: 部品は 1 つだけ置き、押した部屋のフォームにトークンを足して送る
 	let turnstileBox: HTMLDivElement | undefined = $state();
+	// 予約かごは別ページの action を自分で送るので、失敗のあとにトークンの取り直しを頼む（page.form が変わらないため）
+	let turnstile = $state<ReturnType<typeof Turnstile> | null>(null);
+	const turnstileReset = () => turnstile?.reset();
+	const turnstileToken = () => turnstileBox?.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')?.value;
 	const withTurnstile: SubmitFunction = ({ formData }) => {
-		const token = turnstileBox?.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')?.value;
+		const token = turnstileToken();
 		if (token) formData.set('cf-turnstile-response', token);
 	};
+
+	// 予約かご（複数室・docs/official-multi-room.md §8.1・M1）: sessionStorage に置き、在庫は押さえない。
+	// 「＋ もう 1 室追加」で入れ、画面下のバーの「予約へ進む」で全室を一括で仮押さえする
+	let cart = $state<CartItem[]>([]);
+	let cartLoaded = $state(false);
+	let cartMessage = $state('');
+	$effect(() => {
+		try {
+			cart = readCart(sessionStorage);
+		} catch {
+			cart = [];
+		}
+		cartLoaded = true;
+	});
+	$effect(() => {
+		// 読み込む前に空で上書きしない
+		if (!cartLoaded) return;
+		try {
+			writeCart(sessionStorage, cart);
+		} catch {
+			/* 保存できない環境は画面の中だけで持つ */
+		}
+	});
+	let cartFull = $derived(cartIsFull(cart));
+	const fullNotice = () => m.cart_full_notice({ max: String(MAX_ROOMS_PER_BOOKING), next: String(MAX_ROOMS_PER_BOOKING + 1) });
+	function addToCart(r: { room: RoomType; quote: { total: number } | null; remaining: number | null }) {
+		if (!r.quote || !data.params.checkin) return;
+		const item: CartItem = {
+			key: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+			facilityId: data.facility.id,
+			brandSlug: data.facility.brandSlug,
+			facilitySlug: data.facility.slug,
+			facilityName: data.facility.name,
+			checkin: data.params.checkin,
+			nights: data.params.nights,
+			planId: data.plan.id,
+			planSlug: data.plan.slug,
+			planName: data.plan.name,
+			roomTypeId: r.room.id,
+			roomName: r.room.name,
+			adults: data.params.adults,
+			total: r.quote.total,
+			pay: { onsite: data.plan.payment.onsite, prepay: data.plan.payment.prepay },
+			remaining: r.remaining
+		};
+		let check = canAddToCart(cart, item);
+		if (!check.ok && check.reason === 'other_stay') {
+			// 別の施設・日程のかご: 空にしてから入れるか聞く（1 回のご予約は同じ施設・同じ日程だけ）
+			if (!confirm(m.cart_other_stay_confirm())) return;
+			cart = [];
+			check = canAddToCart(cart, item);
+		}
+		if (!check.ok) {
+			cartMessage =
+				check.reason === 'full'
+					? fullNotice()
+					: check.reason === 'mixed_payment'
+						? m.cart_mixed_payment()
+						: m.cart_no_remaining({ n: String(r.remaining ?? 0) });
+			return;
+		}
+		cart = [...cart, item];
+		cartMessage = cartIsFull(cart) ? '' : m.cart_added({ rooms: String(cart.length) });
+	}
 
 	// GA4 予約ファネル: プラン閲覧（設計書 §9）
 	$effect(() => {
@@ -147,7 +217,7 @@
 	<meta name="description" content={data.plan.headline} />
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-4 pb-24 pt-8 md:pb-8">
+<div class="mx-auto max-w-5xl px-4 pt-8 {cart.length > 0 ? 'pb-44' : 'pb-24 md:pb-8'}">
 	<nav class="mb-2 text-xs text-stone-400">
 		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> /
 		{#if crumb}
@@ -285,6 +355,17 @@
 									{m.plan_detail_book()}
 								</button>
 							</form>
+							{#if data.multiRoom}
+								<!-- 複数室: かごに入れる（4 室のあいだは押せない見た目・押しても同じ注意を出す） -->
+								<button
+									type="button"
+									onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(r))}
+									aria-disabled={cartFull}
+									class="mt-1.5 rounded-lg border px-4 py-1.5 text-sm font-medium {cartFull ? 'cursor-not-allowed border-stone-200 text-stone-400' : 'border-accent-500 text-accent-600 hover:bg-amber-50'}"
+								>
+									{m.cart_add_room()}
+								</button>
+							{/if}
 						{:else if data.params.checkin && r.fits}
 							<p class="text-sm font-medium text-stone-400">{m.plan_detail_sold_out()}</p>
 						{/if}
@@ -295,7 +376,7 @@
 	</section>
 
 	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない） -->
-	<div bind:this={turnstileBox}><Turnstile action="booking-hold" /></div>
+	<div bind:this={turnstileBox}><Turnstile bind:this={turnstile} action="booking-hold" /></div>
 
 	<PerkModal bind:content={perkContent} />
 	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />
@@ -308,7 +389,7 @@
 </div>
 
 <!-- モバイル: 下部固定の料金バー（客室セクション表示中は隠す） -->
-{#if !roomsInView}
+{#if !roomsInView && cart.length === 0}
 	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1 leading-tight">
@@ -338,3 +419,6 @@
 		</div>
 	</div>
 {/if}
+
+<!-- 予約かご（複数室・M1）。かごに部屋があるときだけ画面下に出す（モバイルの料金バーの代わり） -->
+<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} {turnstileToken} {turnstileReset} />

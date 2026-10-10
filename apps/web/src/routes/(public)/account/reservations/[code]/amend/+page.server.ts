@@ -96,6 +96,8 @@ export const load: PageServerLoad = async (event) => {
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
+		// 2 室以上の予約の日程変更（全室同時）は M2。今はお電話で（予約詳細に案内を出す）
+		if ((r.rooms?.length ?? 0) > 1) redirect(303, `/account/reservations/${params.code}`);
 		// オンライン決済済みの予約は変更させない（金額が変わると支払額と食い違うため。宿へ電話で）
 		if (await isPrepaidOnline(params.code)) redirect(303, `/account/reservations/${params.code}?amend=prepaid`);
 		const storeId = reverseFacilityUuid(r.facilityUuid);

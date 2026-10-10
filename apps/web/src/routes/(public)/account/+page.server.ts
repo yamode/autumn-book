@@ -21,7 +21,9 @@ export const load: PageServerLoad = async (event) => {
 				channel: r.channel,
 				checkin: r.checkin,
 				nights: r.nights,
-				adults: r.adults,
+				// 複数室（M1）は全室の大人の合計と室数（一覧の「3室」）
+				adults: r.rooms && r.rooms.length > 1 ? r.rooms.reduce((s, x) => s + x.adults, 0) : r.adults,
+				roomCount: r.roomCount ?? 1,
 				total: r.total,
 				pointsUsed: r.pointsUsed,
 				payment: r.payment,
@@ -44,7 +46,8 @@ export const load: PageServerLoad = async (event) => {
 		facilityName: facilityById(b.facilityId)!.name,
 		facilitySlug: `${facilityById(b.facilityId)!.brandSlug}/${facilityById(b.facilityId)!.slug}`,
 		roomName: roomTypeById(b.roomTypeId)!.name,
-		photo: facilityById(b.facilityId)!.photos[0].url
+		photo: facilityById(b.facilityId)!.photos[0].url,
+		roomCount: 1
 	}));
 	return {
 		upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),

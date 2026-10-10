@@ -23,6 +23,14 @@
 
 	let expiredNow = $state(false);
 
+	// 複数室（docs/official-multi-room.md §8.3・M1）: 部屋ごとのカード・男女・部屋ごとの質問を出す。1 室は従来の画面のまま
+	let rooms = $derived(data.expired ? [] : data.rooms);
+	let multi = $derived(rooms.length > 1);
+	let totalAdults = $derived(rooms.reduce((s, r) => s + r.adults, 0) || (data.expired ? 0 : data.hold.adults));
+	// 部屋ごとの男女の内訳（男性の人数。女性は部屋の大人の人数から引く）。0 始まりの部屋の番号ごと
+	let males = $state<string[]>([]);
+	const optionKey = (q: { id: string; scope: string }, i: number) => (q.scope === 'room' ? `${q.id}@${i}` : q.id);
+
 	// GA4 予約ファネル: 仮押さえ→ゲスト情報入力の開始（設計書 §9）
 	$effect(() => {
 		if (data.expired) return;
@@ -45,7 +53,9 @@
 	let prepayAmount = $derived(prepay?.detail.discount ?? 0);
 	// 割引行の名前: 早期決済割が当たっていれば「早期決済割（5%）」、定率なら従来の「予約時決済割引（10%OFF）」
 	let discountLabel = $derived(
-		prepay?.early
+		prepay?.mixedRates
+			? m.pay_discount_rooms()
+			: prepay?.early
 			? m.pay_early_line({ rate: percentText(prepay.detail.maxPermille / 10) })
 			: m.pay_discount_line({ rate: percentText((prepay?.detail.flatPermille ?? 0) / 10) })
 	);
@@ -69,7 +79,7 @@
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
 	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
 	let discountNow = $derived(isPrepay ? prepayAmount : 0);
-	let discountedTotal = $derived(data.expired ? 0 : data.hold.quote.total - discountNow);
+	let discountedTotal = $derived(data.expired ? 0 : data.groupQuote.total - discountNow);
 
 	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
 	// svelte-ignore state_referenced_locally
@@ -83,16 +93,16 @@
 					Math.max(0, Math.floor(Number(pointsInput) || 0)),
 					data.member.balance,
 					// 予約時決済の割引があるときは割引後の宿泊料金まで（DB と同じ）
-					data.hold.quote.total - discountNow
+					data.groupQuote.total - discountNow
 				)
 	);
 	let charge = $derived(
-		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.hold.quote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
+		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.groupQuote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
 	);
 
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
 	let summaryTotal = $derived(
-		data.expired ? 0 : inlineCard ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.hold.quote.total - pointsApplied
+		data.expired ? 0 : inlineCard ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.groupQuote.total - pointsApplied
 	);
 
 	let steps = $derived(isPrepay && !data.inline
@@ -248,9 +258,15 @@
 		<!-- モバイル: 予約内容の要約（明細の aside は長いフォームの下になるため、合計を先に見せる） -->
 		<div class="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-sm md:hidden">
 			<p class="font-medium text-brand-900">{data.facility.name}</p>
-			<p class="text-xs text-stone-500">{data.room.name} ／ {data.plan.name}</p>
+			{#if multi}
+				{#each rooms as r (r.index)}
+					<p class="text-xs text-stone-500">{m.hold_room_n({ n: String(r.index) })} {r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}</p>
+				{/each}
+			{:else}
+				<p class="text-xs text-stone-500">{data.room.name} ／ {data.plan.name}</p>
+			{/if}
 			<p class="mt-0.5 text-xs text-stone-600">
-				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults) })}
+				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}
 			</p>
 			<div class="mt-2 flex items-baseline justify-between border-t border-stone-100 pt-2">
 				<span class="text-stone-600">{inlineCard && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
@@ -356,7 +372,49 @@
 					</div>
 
 					<!-- 部屋ごとの男女の内訳（プランの設定・既定で聞く。必須・合計＝大人の人数。PMS の部屋別の男女に入る） -->
-					{#if data.askGender}
+					{#if multi}
+						<!-- 複数室: 部屋ごとのカード（部屋・プラン・人数）に、その部屋の男女の内訳と部屋ごとの質問。回答はその部屋の滞在の備考（PMS）へ -->
+						{#each rooms as r, i (r.index)}
+							<section class="space-y-3 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
+								<div>
+									<h3 class="text-sm font-medium text-brand-900">{m.hold_room_questions({ n: String(r.index) })}</h3>
+									<p class="text-xs text-stone-500">{r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}</p>
+								</div>
+								{#if r.askGender}
+									<label class="block text-sm">
+										<span class="text-stone-600">{m.hold_gender_label()} <span class="text-red-500">*</span></span>
+										<select name="male_{i}" bind:value={males[i]} required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+											<option value="">{m.hold_select_placeholder()}</option>
+											{#each Array.from({ length: r.adults + 1 }, (_, k) => k) as k (k)}<option value={String(k)}>{m.hold_gender_option({ male: String(k), female: String(r.adults - k) })}</option>{/each}
+										</select>
+										<input type="hidden" name="female_{i}" value={(males[i] ?? '') === '' ? '' : String(r.adults - Number(males[i]))} />
+									</label>
+								{/if}
+								{#each r.questions as q (q.id)}
+									{@const key = optionKey(q, i)}
+									{#if q.type === 'check'}
+										<label class="flex items-center gap-2 text-sm">
+											<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
+											<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+										</label>
+									{:else if q.type === 'select'}
+										<label class="block text-sm">
+											<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+											<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+												<option value="">{m.hold_select_placeholder()}</option>
+												{#each q.choices as c}<option value={c}>{c}</option>{/each}
+											</select>
+										</label>
+									{:else}
+										<label class="block text-sm">
+											<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+											<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2" />
+										</label>
+									{/if}
+								{/each}
+							</section>
+						{/each}
+					{:else if data.askGender}
 						{@const n = data.hold.adults}
 						<label class="block text-sm">
 							<span class="text-stone-600">男女の内訳 <span class="text-red-500">*</span></span>
@@ -433,9 +491,9 @@
 										{#if prepayAmount > 0}
 											<p class="font-medium text-brand-900">
 												{#if hasOnsite}
-													{m.pay_prepay_compare({ onsite: formatPrice(data.hold.quote.total), online: formatPrice(data.hold.quote.total - prepayAmount), save: formatPrice(prepayAmount) })}
+													{m.pay_prepay_compare({ onsite: formatPrice(data.groupQuote.total), online: formatPrice(data.groupQuote.total - prepayAmount), save: formatPrice(prepayAmount) })}
 												{:else}
-													{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.hold.quote.total - prepayAmount)}
+													{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.groupQuote.total - prepayAmount)}
 												{/if}
 											</p>
 											<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
@@ -612,13 +670,30 @@
 				<img src={data.room.photos[0]?.url} alt="" class="mb-3 h-32 w-full rounded-lg object-cover" />
 				<dl class="space-y-1.5 text-sm">
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_facility()}</dt><dd>{data.facility.name}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+					{#if multi}
+						<!-- 複数室: 部屋ごとのカード（部屋名／プラン名／大人 N 名／宿泊料金） -->
+						<div>
+							<dt class="text-stone-500">{m.hold_rooms_label({ n: String(rooms.length) })}</dt>
+							<dd class="mt-1 space-y-1.5">
+								{#each rooms as r (r.index)}
+									<div class="rounded-lg border border-stone-200 px-2.5 py-1.5">
+										<p class="text-xs text-stone-500">{m.hold_room_n({ n: String(r.index) })}</p>
+										<p class="font-medium text-brand-900">{r.roomName}</p>
+										<p class="text-xs text-stone-600">{r.planName}</p>
+										<p class="flex justify-between text-xs text-stone-600"><span>{m.hold_room_adults({ adults: String(r.adults) })}</span><span class="tabular-nums">{formatPrice(r.quote.total)}</span></p>
+									</div>
+								{/each}
+							</dd>
+						</div>
+					{:else}
+						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
+						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+					{/if}
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_checkin()}</dt><dd>{formatDateLong(data.hold.checkin)}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(data.hold.adults) })}</dd></div>
+					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
-					<PriceBreakdown quote={{ ...data.hold.quote, pointsUsed: pointsApplied, payable: data.hold.quote.total - pointsApplied }} />
+					<PriceBreakdown quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines }))} />
 					{#if inlineCard && charge.discount > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-red-600">
 							<span>{discountLabel}</span>
@@ -627,7 +702,7 @@
 					{/if}
 					{#if inlineCard && data.bathTax > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-stone-600">
-							<span>{m.pay_bath_tax_detail({ people: String(data.hold.adults), nights: String(data.hold.nights) })}</span>
+							<span>{m.pay_bath_tax_detail({ people: String(totalAdults), nights: String(data.hold.nights) })}</span>
 							<span class="tabular-nums">{formatPrice(charge.bathTax)}</span>
 						</div>
 					{/if}
@@ -640,9 +715,19 @@
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
 					{/if}
 				</div>
-				<p class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
-					<CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.hold.checkin} />
-				</p>
+				{#if multi}
+					<!-- キャンセル規定は部屋ごと（部屋ごとにプランが違うため） -->
+					{#each rooms as r (r.index)}
+						<p class="mt-2 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
+							<span class="font-medium">{m.hold_cancel_policy_room({ n: String(r.index) })}:</span>
+							<CancelPolicyNote policy={r.cancellationPolicy} checkin={data.hold.checkin} />
+						</p>
+					{/each}
+				{:else}
+					<p class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
+						<CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.hold.checkin} />
+					</p>
+				{/if}
 			</aside>
 		</div>
 	{/if}

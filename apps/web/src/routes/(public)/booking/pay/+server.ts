@@ -16,11 +16,11 @@ import {
 	getBookingDraft,
 	sbFacilityByUuid,
 	sbGetHoldGroupMapped,
-	sbPlanByUuid,
 	setBookingDraft
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { applyPlanAnswers } from '$lib/server/booking-questions';
+import { applyGroupAnswers } from '$lib/server/booking-questions';
+import { groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import {
 	confirmDirectIntent,
 	DirectPaymentError,
@@ -29,7 +29,6 @@ import {
 	prepareDirectPayment,
 	viewerIsMember
 } from '$lib/server/direct-payments';
-import { planForViewer } from '$lib/member-payment';
 import { payOptionsFor } from '$lib/direct-payment';
 import { finishDirectBooking, lateMessage } from '$lib/server/direct-booking-finish';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -59,21 +58,21 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			}
 			const hold = await sbGetHoldGroupMapped(parsed.holdId, sid);
 			if (!hold || hold.status !== 'active') return bad(m.error_hold_expired(), 410, { expired: true });
-			const [basePlan, facility] = await Promise.all([sbPlanByUuid(hold.planId), sbFacilityByUuid(hold.facilityId)]);
-			if (!basePlan || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
-			// 非会員は非会員の支払方法で判定（DB の direct_payment_prepare も同じ判定をする）
-			const plan = planForViewer(basePlan, viewerIsMember(locals));
-			if (!payOptionsFor(plan.payment, { live: true, onlineReady: true }).options.includes('card')) {
+			const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, viewerIsMember(locals)), sbFacilityByUuid(hold.facilityId)]);
+			if (!roomViews || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
+			// 非会員は非会員の支払方法で判定（DB の direct_payment_prepare も同じ判定をする）。複数室は全室のプランで許されているときだけ
+			if (!payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: true }).options.includes('card')) {
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);
 			}
-			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
-			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, hold.adults, parsed.guest);
+			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）。複数室は部屋ごとの男女・回答を guest.rooms に入れ、
+			// DB の direct_payment_confirm が確定のときに部屋ごとの回答（p_rooms_detail）として渡す（autumn-shared 20261010125453）
+			const answered = await applyGroupAnswers(form, hold.facilityId, hold.rooms.map((r) => ({ planId: r.planId, adults: r.adults })), parsed.guest);
 			if (!answered.ok) return bad(answered.message, 400, { errors: { questions: answered.message } });
 			const prepared = await prepareDirectPayment({
 				holdId: hold.id,
 				sessionId: sid,
 				memberUserId,
-				guest: answered.guest,
+				guest: answered.rooms ? { ...answered.guest, rooms: answered.rooms } : answered.guest,
 				pointsUsed: memberUserId ? parsed.pointsRequested : 0,
 				locale: getLocale(),
 				facilityName: facility.name,

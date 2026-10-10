@@ -61,6 +61,20 @@ export function formatDateLong(date: string): string {
 	}).format(d);
 }
 
+/** 料金の明細の泊の見出し用（ja: 4月15日（水）／ zh-TW: 4月15日（三）／ en: Apr 15 (Wed)）。日付だけなので UTC で読む */
+export function formatNightDate(date: string): string {
+	const locale = getLocale();
+	const d = new Date(date + 'T00:00:00Z');
+	if (Number.isNaN(d.getTime())) return date;
+	const mo = d.getUTCMonth() + 1;
+	const day = d.getUTCDate();
+	if (locale === 'ja') return `${mo}月${day}日（${['日', '月', '火', '水', '木', '金', '土'][d.getUTCDay()]}）`;
+	if (locale === 'zh-TW') return `${mo}月${day}日（${['日', '一', '二', '三', '四', '五', '六'][d.getUTCDay()]}）`;
+	const mon = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' }).format(d);
+	const wd = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'UTC' }).format(d);
+	return `${mon} ${day} (${wd})`;
+}
+
 // ---- 金額: ¥12,345 ---- //
 
 /** ロケール対応の価格表示（JPY のみ。換算なし）。ja は ¥12,345 形式を維持 */

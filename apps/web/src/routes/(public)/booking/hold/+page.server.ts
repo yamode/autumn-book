@@ -16,8 +16,6 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import {
 	sbGetHoldGroupMapped,
-	sbPlanByUuid,
-	sbRoomTypeByUuid,
 	sbFacilityByUuid,
 	sbMyProfile,
 	sbPointBalance,
@@ -30,8 +28,11 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { applyPlanAnswers, planBookingForm } from '$lib/server/booking-questions';
-import { directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
+import { applyGroupAnswers, groupBookingForms, planBookingForm } from '$lib/server/booking-questions';
+import { groupMemberOnsiteHint, groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
+import { combineQuotes } from '$lib/multi-room';
+import type { BookingQuestion } from '$lib/booking-questions';
+import { combinePrepayViews, directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
@@ -74,15 +75,13 @@ export const load: PageServerLoad = async (event) => {
 		const hold = await sbGetHoldGroupMapped(url.searchParams.get('id') ?? '', sid);
 		if (!hold || hold.status !== 'active') return { expired: true as const };
 
-		const [basePlan, room, facility] = await Promise.all([
-			sbPlanByUuid(hold.planId),
-			sbRoomTypeByUuid(hold.roomTypeId),
-			sbFacilityByUuid(hold.facilityId)
-		]);
-		if (!basePlan || !room || !facility) return { expired: true as const };
 		// 非会員は非会員の支払方法（book.plan_contents.nonmember_payment_method）で出す
 		const isMember = viewerIsMember(locals);
-		const plan = planForViewer(basePlan, isMember);
+		// 部屋ごとのプラン・部屋タイプ（複数室・M1）。1 室目の値を最上位の plan / room にも置く（1 室の画面はそのまま）
+		const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, isMember), sbFacilityByUuid(hold.facilityId)]);
+		if (!roomViews || !facility) return { expired: true as const };
+		const { plan, room } = roomViews[0];
+		const multi = roomViews.length > 1;
 
 		// 会員のみポイント残高・獲得見込みを表示（未ログインのゲストは null）。
 		let member: {
@@ -106,7 +105,8 @@ export const load: PageServerLoad = async (event) => {
 					phone: profile.phone,
 					email: profile.email,
 					balance,
-					earn: earnedPoints(hold.quote.total, rate)
+					// 付与見込みは予約全体（全室の宿泊料金の和）で 1 つ
+					earn: earnedPoints(hold.total, rate)
 				};
 			} catch {
 				member = null;
@@ -117,22 +117,41 @@ export const load: PageServerLoad = async (event) => {
 		// カードを出さず現地払いだけ（事前決済しか無いプランも現地払いで受ける＝予約を止めない）
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
-		const pay = payOptionsFor(plan.payment, { live: true, onlineReady });
-		const [bathTax, prepay, bookingForm, adminFeePercent] = await Promise.all([
+		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
+		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady });
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
-			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと）。金額の正は DB の direct_payment_prepare
-			prepayDiscountViewFor(hold.facilityId, plan, hold),
+			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
+			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
 			// 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は備考の先頭に入る
-			planBookingForm(hold.facilityId, { ratePlanId: hold.planId }),
+			multi ? Promise.resolve(null) : planBookingForm(hold.facilityId, { ratePlanId: hold.planId }),
+			// 複数室: 予約ごとの項目（全室のプランの和）と部屋ごとの項目・男女を聞くか
+			multi ? groupBookingForms(hold.facilityId, roomViews.map((r) => r.plan.id)) : Promise.resolve(null),
 			// 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。オンライン決済を選んだときに予約前に知らせる
 			loadCancelAdminFeePercent(hold.facilityId)
 		]);
+		const prepay = combinePrepayViews(prepayViews);
 
 		return {
 			expired: false as const,
 			hold,
 			plan,
 			room,
+			// 部屋ごとの表示（複数室のときに部屋カード・男女・部屋ごとの質問を出す。1 室は 1 件）
+			rooms: roomViews.map((r, i) => ({
+				index: r.index,
+				roomName: r.room.name,
+				photo: r.room.photos[0]?.url ?? '',
+				planName: r.plan.name,
+				adults: r.adults,
+				quote: r.quote,
+				cancellationPolicy: r.plan.cancellationPolicy,
+				prepayDiscount: prepayViews[i]?.detail.discount ?? 0,
+				askGender: groupForms ? groupForms.rooms[i].askGender : (bookingForm?.askGender ?? true),
+				questions: groupForms ? groupForms.rooms[i].questions : []
+			})),
+			// 全室の見積（合計・内消費税。1 室はその部屋の見積と同じ値）
+			groupQuote: combineQuotes(roomViews.map((r) => r.quote)),
 			facility,
 			member,
 			payOptions: pay.options,
@@ -143,10 +162,11 @@ export const load: PageServerLoad = async (event) => {
 			bathTax,
 			prepay,
 			adminFeePercent,
-			questions: bookingForm.questions,
-			askGender: bookingForm.askGender,
+			// 1 室: プランの項目（予約ごと・部屋ごとの両方）／複数室: 予約ごとの項目だけ（部屋ごとの項目は rooms[i].questions）
+			questions: bookingForm ? bookingForm.questions : (groupForms?.bookingQuestions ?? []),
+			askGender: bookingForm ? bookingForm.askGender : false,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
-			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(basePlan.payment, isMember),
+			memberOnsiteHint: MEMBER_SUPABASE && groupMemberOnsiteHint(roomViews, isMember),
 			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold))
 		};
 	}
@@ -162,12 +182,29 @@ export const load: PageServerLoad = async (event) => {
 	const plan = planForViewer(basePlan, isMember);
 	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
 	const facility = facilityById(hold.facilityId)!;
-	const prepay = await prepayDiscountViewFor(hold.facilityId, plan, hold);
+	const prepay = { ...(await prepayDiscountViewFor(hold.facilityId, plan, hold)), mixedRates: false };
+	const demoRoom = roomTypeById(hold.roomTypeId)!;
 	return {
 		expired: false as const,
 		hold,
 		plan,
-		room: roomTypeById(hold.roomTypeId)!,
+		room: demoRoom,
+		// デモ（store.ts）は 1 室だけ
+		rooms: [
+			{
+				index: 1,
+				roomName: demoRoom.name,
+				photo: demoRoom.photos[0]?.url ?? '',
+				planName: plan.name,
+				adults: hold.adults,
+				quote: hold.quote,
+				cancellationPolicy: plan.cancellationPolicy,
+				prepayDiscount: prepay.detail.discount,
+				askGender: false,
+				questions: [] as BookingQuestion[]
+			}
+		],
+		groupQuote: hold.quote,
 		facility,
 		payOptions: pay.options,
 		payFallback: pay.fallback,
@@ -229,15 +266,15 @@ export const actions: Actions = {
 			const useMember = MEMBER_SUPABASE && locals.user?.role === 'member';
 			const pointsUsed = useMember ? pointsRequested : 0;
 
-			const basePlan = await sbPlanByUuid(hold.planId);
-			if (!basePlan) return fail(410, { message: m.error_hold_expired() });
-			// 非会員は非会員の支払方法で判定する。book.confirm_booking（現地払いの確定）は他アプリと共用で
-			// 支払方法を見ないため、非会員に現地払いが無いプランはここで止める（画面で隠すだけにしない）
+			// 非会員は非会員の支払方法で判定する。book.confirm_booking_group（現地払いの確定）は他アプリと共用で
+			// 支払方法を見ないため、非会員に現地払いが無いプランはここで止める（画面で隠すだけにしない）。
+			// 複数室は全室のプランで現地払いが許されているときだけ（Q3）
 			const isMember = viewerIsMember(locals);
-			const plan = planForViewer(basePlan, isMember);
-			const pay = payOptionsFor(plan.payment, { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
+			const roomViews = await loadHoldGroupRooms(hold, isMember);
+			if (!roomViews) return fail(410, { message: m.error_hold_expired() });
+			const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
 			if (payment === 'onsite' && !pay.options.includes('onsite')) {
-				errors.payment = memberOnsiteHint(basePlan.payment, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+				errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
 				return fail(400, { errors, values: guest });
 			}
 			if (payment !== 'onsite') {
@@ -246,8 +283,8 @@ export const actions: Actions = {
 				return fail(400, { errors, values: guest });
 			}
 
-			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）
-			const answered = await applyPlanAnswers(form, hold.facilityId, hold.planId, hold.adults, guest);
+			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）。複数室は部屋ごとの男女・回答を rooms に
+			const answered = await applyGroupAnswers(form, hold.facilityId, hold.rooms.map((r) => ({ planId: r.planId, adults: r.adults })), guest);
 			if (!answered.ok) {
 				errors.questions = answered.message;
 				return fail(400, { errors, values: guest });
@@ -259,7 +296,7 @@ export const actions: Actions = {
 			const guestForBooking = onsiteMethod
 				? { ...answered.guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], answered.guest.notes].filter(Boolean).join(' ') }
 				: answered.guest;
-			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { client, pointsUsed, locale: getLocale() });
+			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { client, pointsUsed, locale: getLocale(), rooms: answered.rooms });
 			if ('error' in result) return fail(410, { message: m.error_hold_expired() });
 			setLastBooking(cookies, {
 				code: result.booking_code,

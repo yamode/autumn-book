@@ -5,6 +5,7 @@
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 	import { percentText } from '$lib/early-prepay';
+	import { writeCart } from '$lib/multi-room';
 
 	let { data } = $props();
 	let b = $derived(data.booking);
@@ -16,6 +17,14 @@
 			currency: 'JPY',
 			items: [{ item_id: data.room.id, item_name: data.room.name, item_brand: data.facility.name }]
 		});
+	});
+	// 予約が確定したので予約かご（複数室・sessionStorage）を空にする
+	$effect(() => {
+		try {
+			writeCart(sessionStorage, []);
+		} catch {
+			/* 保存できない環境は何もしない */
+		}
 	});
 	let isCard = $derived(b.payment !== 'onsite');
 	// 割引行の名前: 早期決済割なら「早期決済割（5%）」（泊ごとに率が違うときは率なし）、定率なら「予約時決済割引（10%OFF）」
@@ -75,7 +84,19 @@
 		<dl class="mx-auto mt-6 max-w-md space-y-1.5 rounded-xl bg-stone-50 p-4 text-left text-sm">
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_facility()}</dt><dd>{data.facility.name}</dd></div>
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_checkin()}</dt><dd>{formatDateLong(b.checkin)} {data.facility.checkinTime}〜</dd></div>
-			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_room_nights()}</dt><dd>{m.complete_nights_room({ room: data.room.name, nights: String(b.nights) })}</dd></div>
+			{#if data.rooms.length > 1}
+				<!-- 複数室: 部屋ごとの明細（部屋名・プラン名・人数・宿泊料金） -->
+				<div>
+					<dt class="text-stone-500">{m.hold_rooms_label({ n: String(data.rooms.length) })}・{m.searchbar_nights_option({ n: String(b.nights) })}</dt>
+					<dd class="mt-1 space-y-1">
+						{#each data.rooms as r (r.index)}
+							<p class="flex justify-between gap-2"><span>{m.complete_room_line({ n: String(r.index), room: r.roomName, plan: r.planName, adults: String(r.adults) })}</span><span class="whitespace-nowrap tabular-nums">{formatPrice(r.total)}</span></p>
+						{/each}
+					</dd>
+				</div>
+			{:else}
+				<div class="flex justify-between"><dt class="text-stone-500">{m.complete_room_nights()}</dt><dd>{m.complete_nights_room({ room: data.room.name, nights: String(b.nights) })}</dd></div>
+			{/if}
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_guest()}</dt><dd>{m.complete_guest_val({ name: b.guest.name, guests: guestsLabel(b.adults) })}</dd></div>
 			<div class="flex justify-between border-t border-stone-200 pt-1.5 font-medium">
 				<dt>{isCard ? m.complete_paid() : data.onsiteMethod === 'paypay' ? m.pay_onsite_paypay() : data.onsiteMethod === 'card' ? m.pay_onsite_card() : data.onsiteMethod === 'cash' ? m.pay_onsite_cash() : m.complete_local_pay()}</dt>

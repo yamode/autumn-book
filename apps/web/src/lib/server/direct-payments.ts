@@ -213,7 +213,8 @@ export async function prepareDirectPayment(args: {
   holdId: string;
   sessionId: string;
   memberUserId: string | null;
-  guest: GuestInfo;
+  // 複数室は rooms（部屋ごとの男女・回答）を足す（DB の direct_payment_confirm が p_rooms_detail に渡す・M1）
+  guest: GuestInfo & { rooms?: { male?: number; female?: number; notes?: string; answers?: Record<string, string> }[] };
   pointsUsed: number;
   locale: string;
   facilityName: string;
@@ -662,6 +663,37 @@ export function prepayDiscountViewOf(
 export async function prepayDiscountViewFor(facilityId: string, plan: Pick<RatePlan, 'payment'>, hold: HoldLike): Promise<PrepayDiscountView> {
   const settings = await loadEarlyPrepaySettings(facilityId);
   return prepayDiscountViewOf(settings, plan, hold);
+}
+
+/**
+ * 複数室の予約入力（docs/official-multi-room.md §8.3・M1）: 部屋ごとの予約時決済の割引をまとめた表示。
+ *   割引額・早期決済ポイントは部屋ごとの額の和（DB の direct_payment_prepare も部屋ごとに計算して足す）。
+ *   段階表は出す部屋のもの（段は施設で 1 つ・残り日数は全室同じ）。「あと N 日で下がる」は部屋ごとに違うので出さない。
+ *   mixedRates: 割引の当たった部屋どうしで率が違う（割引行の名前に率を出さない）。
+ * 1 室は部屋の表示そのもの（従来と同じ）。
+ */
+export function combinePrepayViews(views: PrepayDiscountView[]): PrepayDiscountView & { mixedRates: boolean } {
+  if (views.length <= 1) return { ...views[0], mixedRates: false };
+  const base = views.find((v) => v.showLadder) ?? views[0];
+  const hit = views.filter((v) => v.detail.discount > 0);
+  const rates = new Set(hit.map((v) => v.detail.maxPermille));
+  const max = (f: (v: PrepayDiscountView) => number) => views.reduce((mx, v) => Math.max(mx, f(v)), 0);
+  return {
+    ...base,
+    showLadder: views.some((v) => v.showLadder),
+    early: views.some((v) => v.early),
+    drop: null,
+    detail: {
+      ...base.detail,
+      discount: views.reduce((s, v) => s + v.detail.discount, 0),
+      bonusPoints: views.reduce((s, v) => s + v.detail.bonusPoints, 0),
+      maxPermille: max((v) => v.detail.maxPermille),
+      pointsPermille: max((v) => v.detail.pointsPermille),
+      flatPermille: rates.size > 1 ? 0 : (hit[0]?.detail.flatPermille ?? base.detail.flatPermille),
+      blackoutNights: max((v) => v.detail.blackoutNights)
+    },
+    mixedRates: rates.size > 1
+  };
 }
 
 /**

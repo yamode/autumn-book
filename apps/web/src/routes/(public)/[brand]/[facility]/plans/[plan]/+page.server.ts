@@ -21,9 +21,10 @@ import {
 	offerToQuote,
 	createHoldGroup,
 	sbRoomTypeByUuid,
+	sbPlanByUuid,
 	bookingSessionId
 } from '$lib/server/supabase-data';
-import { MAX_ROOMS_PER_BOOKING, parseHoldRooms } from '$lib/multi-room';
+import { MAX_ROOMS_PER_BOOKING, parseHoldRooms, payCompatible } from '$lib/multi-room';
 import { getLocale } from '$lib/paraglide/runtime';
 import { eachNight } from '@autumn-book/core';
 import { stayCalendar } from '$lib/server/stay-calendar';
@@ -86,6 +87,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
 			referenceMode: !checkin,
+			// 複数室（予約かご）は実データだけ（デモの store は 1 室）
+			multiRoom: true,
 			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
@@ -122,13 +125,14 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			calendarClosed: calendar.closed,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		referenceMode: false,
+		multiRoom: false,
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };
 
 const HOLD_RATE_LIMITED_MESSAGE = 'お申し込みが集中しています。しばらく時間をおいてからお試しください。';
-// 4 室目をかごに入れたときの注意と同じ文言（docs/official-multi-room.md §8.1）
-const TOO_MANY_ROOMS_MESSAGE = `1 回のご予約は ${MAX_ROOMS_PER_BOOKING} 室までです。${MAX_ROOMS_PER_BOOKING + 1} 室以上は、別のご予約にするか、お電話でお問い合わせください（日付が違うお部屋も別のご予約になります）。`;
+// 4 室目をかごに入れたときの注意と同じ文言（docs/official-multi-room.md §8.1）。言語は閲覧者に合わせる
+const tooManyRoomsMessage = () => m.cart_full_notice({ max: String(MAX_ROOMS_PER_BOOKING), next: String(MAX_ROOMS_PER_BOOKING + 1) });
 
 /** 接続元 IP（Cloudflare では cf-connecting-ip。取れなければ 'unknown'） */
 function clientIp(event: { request: Request; getClientAddress: () => string }): string {
@@ -155,7 +159,7 @@ export const actions: Actions = {
 		if (!checkin || (!parsed.ok && parsed.code === 'missing')) return fail(400, { message: '日付を選択してください' });
 		if (!parsed.ok) {
 			return parsed.code === 'too_many_rooms'
-				? fail(400, { message: TOO_MANY_ROOMS_MESSAGE, code: 'too_many_rooms' as const })
+				? fail(400, { message: tooManyRoomsMessage(), code: 'too_many_rooms' as const })
 				: fail(400, { message: 'お部屋の選び方を確認してください。', code: 'invalid' as const });
 		}
 		const rooms = parsed.rooms;
@@ -183,12 +187,23 @@ export const actions: Actions = {
 			const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 			const facility = await sbFacilityBySlug(params.facility);
 			if (!facility || facility.brandSlug !== params.brand) return fail(400, { message: '施設が見つかりません', code: 'invalid' as const });
+			// 支払方法が両立しないプランは同じ予約にできない（Q3。かごでも止めるが、ここでも止める）
+			if (rooms.length > 1) {
+				const isMember = viewerIsMember(locals);
+				const plans = await Promise.all([...new Set(rooms.map((r) => r.planId))].map((id) => sbPlanByUuid(id).catch(() => undefined)));
+				if (plans.some((p) => !p || p.facilityId !== facility.id)) {
+					return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
+				}
+				if (!payCompatible(plans.map((p) => planForViewer(p!, isMember).payment))) {
+					return fail(400, { message: m.cart_mixed_payment(), code: 'mixed_payment' as const });
+				}
+			}
 			const result = await createHoldGroup(sid, facility.id, checkin, nights, rooms, { clientKey: ip, memberUserId, locale: getLocale() });
 			if ('error' in result) {
 				if (result.error === 'rate_limited' || result.error === 'too_many_holds') {
 					return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
 				}
-				if (result.error === 'too_many_rooms') return fail(400, { message: TOO_MANY_ROOMS_MESSAGE, code: 'too_many_rooms' as const });
+				if (result.error === 'too_many_rooms') return fail(400, { message: tooManyRoomsMessage(), code: 'too_many_rooms' as const });
 				if (result.error === 'invalid') return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
 				// どの部屋が取れなかったか（M1 のかごはそのまま残して、この部屋タイプを出す）
 				const soldOut = result.soldOutRoomTypeId

@@ -783,6 +783,25 @@ export type BookingDetail = {
 		notes: string | null;
 		created_at: string;
 		amendments: number;
+		/** 公式予約の部屋の数・部屋ごとの内訳（autumn-shared 20261010092423・book._booking_rooms_view）。他は 1 / [] */
+		room_count?: number;
+		rooms?: {
+			room_index: number;
+			stay_id: string;
+			reservation_code: string;
+			room_name: string | null;
+			plan_name: string | null;
+			adults: number;
+			male: number | null;
+			female: number | null;
+			stay_status: string;
+			cancelled: boolean;
+			price_lines: { date: string; unit_price: number; adults: number; subtotal: number }[] | null;
+			room_total: number;
+			coupon_share: number;
+			charge: number;
+			cancel_fee: number | null;
+		}[];
 	};
 	guest: {
 		name: string | null;

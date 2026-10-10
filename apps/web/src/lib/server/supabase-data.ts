@@ -575,6 +575,16 @@ export type GuestCancelBooking = {
 	email_masked: string;
 	status: string;
 	is_member: boolean;
+	/** 部屋の数・部屋ごとの内訳（autumn-shared 20261010092423 から。stay_id は返らない） */
+	room_count?: number;
+	rooms?: {
+		room_index: number;
+		room_name: string | null;
+		plan_name: string | null;
+		adults: number;
+		charge: number;
+		cancelled: boolean;
+	}[];
 };
 
 export type GuestCancelFee = {

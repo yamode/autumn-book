@@ -869,3 +869,79 @@ select string_agg(pg_get_functiondef(p.oid) || ';', E'\n\n' order by p.oid::regp
 10. **公式予約でない行**（取引先・OTA）の扱い: `compute_cancel_fee` / `admin_booking_detail` / `my_reservations` / `guest_booking_by_token` / `mail_render_context` は従来の式で返す。`_cancel_booking_core` は `not_direct_booking`（従来は取引先予約も Book の経路で取り消せてしまい、公式の電文・在庫戻しが走っていた）。
 11. 本人確認を `is distinct from` に（`auth.uid()` が null のとき束の会員の比較が null になり素通りする穴を閉じた）。`create_hold_group` は部屋タイプが施設のものかも確かめる（`room_not_found`）。
 12. `reservation_code = コード` で引いている他の関数（`add_booking_options`・`list_my_booking_options`・`admin_resend_booking_mail`・`admin_rotate_cancel_token`・`admin_link_booking_member`・`admin_register_member_for_booking`・`list_my_amendments` 等）は **M0 では変えていない**（1 室は予約コード＝滞在コードなので従来どおり）。2 室以上の予約を作る M1 で `_booking_by_code` に向けること。
+
+---
+
+## 15. M1 実装メモ（画面の複数室・2026-10-10）
+
+> A／B を 1 人で実装。autumn-book・autumn-shared とも **commit / push なし・本番 DB 未適用**（読み取り SQL だけ）。親がレビューして反映する。
+
+### 15.1 migration（1 本・`autumn-shared/supabase/migrations/20261010125453_book_multi_room_m1.sql`）
+
+表の DDL なし・関数の差し替えだけ（写す元は PROD の `pg_get_functiondef`、`schema_migrations` は `20261010092423` まで）。使い捨てコンテナ（`supabase/postgres:17.6.1.084`・`check_function_bodies = off`）で 1 トランザクションとして流れることだけ確かめた（本文の実行検証はしていない）。
+
+| 節 | 中身 |
+|---|---|
+| 1 | 新 `book._stay_id_by_code(text) → uuid`（service_role）。公式予約（`_booking_by_code`）なら代表の滞在（`bookings.stay_id`＝1 室目）、それ以外は `reservation_code` 一致の滞在。1 室は従来と同じ結果 |
+| 2 | `book.direct_payment_confirm` — **オンライン決済の経路で部屋ごとの回答を渡す口**（§14.7 の残り）。Book が `direct_payment_prepare` の `p_guest.rooms = [{male, female, notes, answers}]` に入れ、確定で `_confirm_booking_group(p_guest - 'rooms', …, p_rooms_detail = guest.rooms, p_pay)`。`rooms` の無い行（M1 前に準備した支払・yamado-one）は従来どおり |
+| 3 | §14.10-12 の 7 関数を `_stay_id_by_code` に向けた: `add_booking_options`（M1 では代表の部屋に付く）・`list_my_booking_options` / `list_my_amendments`（予約 id で絞る＝全部屋）・`admin_resend_booking_mail`・`admin_rotate_cancel_token`・`admin_link_booking_member`（顧客の付け替えを全部屋の滞在に）・`admin_register_member_for_booking` |
+
+巻き戻しは関数を当て直して `drop function book._stay_id_by_code(text)`（末尾のコメント）。適用は M0 と同じ手順（`db push --linked --dry-run` → 本適用 → `migration list --linked`）。**Book のデプロイより前に当てる**こと（新 Book は複数室のオンライン決済で `guest.rooms` を送る。未適用だと `rooms` が `metadata.guest` に残り、男女は 1 室目以外が空になる）。
+
+### 15.2 画面の流れ
+
+```
+プラン詳細（部屋の行）
+  ├「この部屋で予約へ進む」… 1 室は今と同じ 1 タップ（?/hold に従来の 1 室のフィールド）
+  └「＋ もう 1 室追加」… sessionStorage（ab_booking_cart_v1）のかごへ。在庫は押さえない
+       別施設・別日程 → confirm「かごを空にしますか」／支払方法が両立しない → 理由（Q3）／残室超え → 理由
+       4 室目を入れた時点でバーの上に注意（§8.1 の文言）。4 室のあいだ「追加」は押せない見た目・押しても同じ文言
+画面下のかごバー（BookingCart）「N室・大人M名・合計 ¥」［内訳］［予約へ進む］
+  内訳: 同じ部屋・プラン・人数は「×2」・1 室ずつ外す・かごを空にする
+  予約へ進む → かごの施設のプラン詳細の ?/hold（rooms JSON）→ 303 /booking/hold?id=<束 id>
+     失敗はバーに理由（満室なら部屋名）・かごは残す
+予約入力 → 代表者 1 回・予約ごとの質問 1 回・部屋ごとのカード（男女の内訳・部屋ごとの質問）・ポイント／支払は合計 1 回
+完了（部屋ごとの行・かごを空に）→ 確認メール（部屋ごと）→ マイページ（一覧に「N室」・詳細に部屋カード）
+```
+
+- 料金の明細は **泊ごとの見出し → その下に部屋ごとの行**（2026-10-10 指示。`nightGroups`・`PriceBreakdown`・メール・管理画面）。1 室は行の「1室目」を省き、1 泊でも見出しを出す。「1名1泊」は使わない。**1 室の予約の明細もこの形に変わった**（指示どおり）。
+- 1 室の予約は、ボタンの文言（「この部屋で予約へ進む」）と明細の形以外は従来と同じ（予約入力の質問の並び・男女・支払・金額）。
+
+### 15.3 変えたファイル
+
+| ファイル | 中身 |
+|---|---|
+| `lib/multi-room.ts`（＋`multi-room-cart.test.ts`） | `CartItem`・`canAddToCart`（施設・日程 → 4 室 → 支払方法 → 残室）・`payCompatible`・`sameStay`・`cartIsFull`・`cartSummary`・`cartRoomsPayload`・`cartGroups`・`readCart` / `writeCart`（try/catch・壊れた値や別日程の混在は空・5 室以上は 4 室に切る）・`nightGroups`（泊の見出し → 部屋の行）・`combineQuotes`・`combinePayments` |
+| `lib/components/BookingCart.svelte`（新） | かごバー・内訳シート・一括仮押さえの送信（別ページの action なので結果は自分で処理） |
+| `lib/components/PriceBreakdown.svelte` | `rooms` を受けて泊の見出し → 部屋の行 |
+| `lib/format.ts` | `formatNightDate`（4月15日（水）／Apr 15 (Wed)／4月15日（三）） |
+| `lib/server/hold-group.ts`（新） | 束の部屋ごとのプラン・部屋タイプ（`loadHoldGroupRooms`）・全室で合わせた支払設定（`groupPayment`）・会員の現地払いの案内（`groupMemberOnsiteHint`） |
+| `lib/server/booking-questions.ts` | `applyGroupAnswers`（1 室は従来の `applyPlanAnswers` と同じ結果。複数室は予約ごとの項目を 1 回＝代表の備考へ、部屋ごとの項目と男女は `rooms[i]`＝その部屋の滞在の備考と `guest_detail` へ）・`groupBookingForms` |
+| `lib/server/direct-payments.ts` | `combinePrepayViews`（部屋ごとの割引・早期決済ポイントの和・率が違えば `mixedRates`）・`prepareDirectPayment` の guest に `rooms` |
+| `lib/server/supabase-data.ts` / `admin-app-data.ts` | `GuestCancelBooking.rooms` / `BookingDetail.booking.rooms` の型 |
+| プラン詳細 `+page.server.ts` / `+page.svelte` | `?/hold` で支払方法の両立を検査（`mixed_payment`）・プランの施設を検査・上限の文言を paraglide に・`multiRoom` フラグ（デモは false）・2 つのボタン・かご |
+| `booking/hold/+page.server.ts` / `+page.svelte` | `rooms[]`（部屋ごとの表示・質問・男女）・`groupQuote`（全室の見積）・支払方法は全室で合わせる・付与見込みは全室の和・部屋カード・部屋ごとのキャンセル規定 |
+| `booking/pay/+server.ts` | 全室の支払方法で判定・`applyGroupAnswers`・guest に `rooms` |
+| `booking/complete/[code]` | 部屋ごとの行（`LastBooking.rooms`）・人数は全室の和・かごを空に |
+| `booking/cancel/+page.svelte` | 複数室は部屋の一覧を表示（取消は従来どおり全室まとめて） |
+| `account/+page.*` | 一覧に「N室」・人数は全室の和 |
+| `account/reservations/[code]/*` | 部屋カード・2 室以上は取消／日程変更のボタンを出さず「お電話で」・`?/cancel` と `amend` の入口もサーバで止める |
+| `admin/reservations/[code]/+page.svelte` | 部屋の表（滞在コード・客室／プラン・人数・男女・金額・状態）と泊の見出し → 部屋の行の明細 |
+| `messages/{ja,en,zh-TW}.json` | `cart_*`・`hold_room_*`・`price_night_*`・`complete_room_line`・`account_rooms_badge`・`reservation_*`。`plan_detail_book` を「この部屋で予約へ進む」に |
+| autumn-shared `functions/send-booking-mail/templates.ts`（＋test） | `booking.rooms[]`（2 室以上）で部屋ごとの行・人数の合計・明細は泊の見出し → 部屋の行（1 室も）・規定が部屋ごとに違えば部屋ごとの節・取消メールは部屋を並べる |
+
+### 15.4 M2 に残したもの
+
+- 部屋ごとの取消（会員・非会員・管理画面）・部屋ごとの返金・`booking_room_cancelled` メール・全室同時の日程変更。M1 では **マイページは 2 室以上の取消・日程変更を「お電話で」**、非会員のリンク・管理画面の取消は M0 の **全室まとめての取消**のまま。
+- オプション（滞在アレンジ）の部屋の選択（M1 は代表＝1 室目の部屋に付く）。
+- `roomRefundPreview`（部屋ごとの返金見込み）。
+- 管理画面の予約一覧の「室数」の列（一覧は滞在 1 行のまま。滞在コード `-k` からも詳細に入れる）。
+- autumn-pms の `rooms[i].plan` 受け（電文には M0 から入っている）。
+
+### 15.5 設計から外れた点
+
+1. かごの内訳で **人数は変えられない**（料金の見積をやり直す必要があるため）。人数を変えるときは検索条件の人数を変えて部屋を足し直す。
+2. 予約入力の「あと N 日で率が下がる」は複数室では出さない（部屋ごとに違うため）。率が部屋ごとに違うときは割引行の名前を「予約時決済割引（お部屋ごとの率）」にする。
+3. 複数室の予約ごとの質問は、全室のプランの予約ごとの項目を id で重ねずに 1 回だけ聞き、回答は代表者の備考（全部屋の滞在に入る）。部屋ごとの項目の回答は「N室目」を付けずにその部屋の滞在の備考の先頭へ。
+4. かごバーは **プラン詳細にだけ**出す（プラン一覧・客室ページには出さない）。別の施設のプラン詳細でもバーは出し「かごのお部屋は ○○ のご予約です」と添える（「予約へ進む」はかごの施設へ送る）。
+5. 確認メールの「当日お支払い額」「現地にて承ります」の文面（オンライン決済でも同じ）は M1 では変えていない（既存の挙動）。

@@ -104,8 +104,28 @@
 		<dl class="mt-5 space-y-2 text-sm">
 			<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_checkin()}</dt><dd>{formatDateLong(b.checkin)} {data.facility.checkinTime}〜</dd></div>
 			<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_nights_adults()}</dt><dd>{b.nights}泊・大人{b.adults}名</dd></div>
-			<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_room()}</dt><dd>{data.room.name}</dd></div>
-			<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+			{#if data.multiRoom}
+				<!-- 複数室（M1）: 部屋ごとのカード（部屋名／プラン名／人数／金額／状態） -->
+				<div class="border-b border-stone-100 pb-2">
+					<dt class="text-stone-500">{m.reservation_rooms_heading({ n: String(data.rooms.length) })}</dt>
+					<dd class="mt-1.5 space-y-1.5">
+						{#each data.rooms as r (r.index)}
+							<div class="rounded-lg border border-stone-200 px-3 py-2 {r.cancelled ? 'bg-stone-50 text-stone-400' : ''}">
+								<p class="flex items-center justify-between gap-2 text-xs text-stone-500">
+									<span>{m.hold_room_n({ n: String(r.index) })}・{r.stayCode}</span>
+									{#if r.cancelled}<span class="rounded-full bg-stone-100 px-2 py-0.5">{m.reservation_room_cancelled()}</span>{/if}
+								</p>
+								<p class="font-medium text-brand-900">{r.roomName || '—'}</p>
+								<p class="text-xs text-stone-600">{r.planName || '—'}</p>
+								<p class="flex justify-between text-xs text-stone-600"><span>{m.hold_room_adults({ adults: String(r.adults) })}</span><span class="tabular-nums">{formatPrice(r.total)}</span></p>
+							</div>
+						{/each}
+					</dd>
+				</div>
+			{:else}
+				<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_room()}</dt><dd>{data.room.name}</dd></div>
+				<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+			{/if}
 			<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_guest()}</dt><dd>{m.reservation_guest_val({ name: b.guest.name })}</dd></div>
 			{#if b.guest.shuttle}
 				<div class="flex justify-between border-b border-stone-100 pb-2"><dt class="text-stone-500">{m.reservation_shuttle()}</dt><dd>{m.reservation_shuttle_val()}</dd></div>
@@ -161,6 +181,13 @@
 
 				{#if b.cancellationPolicy.note}<p class="mt-2 text-xs text-stone-400">{b.cancellationPolicy.note}</p>{/if}
 
+				{#if data.multiRoom}
+					<!-- 2 室以上: 取消は全室まとめて（2026-10-10 決定）。1 室だけの取消・日程の変更は M2 までお電話で -->
+					<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+						{m.reservation_multi_phone()}<br />
+						<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）
+					</p>
+				{/if}
 				{#if !showCancelConfirm}
 					<button type="button" onclick={() => (showCancelConfirm = true)} class="mt-3 w-full rounded-lg border border-red-300 py-2 text-red-600 hover:bg-red-50">{m.reservation_cancel_btn()}</button>
 				{:else}
@@ -197,7 +224,7 @@
 					{#if amend?.canAmend}
 						<p class="mb-2">{m.amend_intro({ n: String(amend.remaining) })}</p>
 						<a href="/account/reservations/{b.code}/amend" class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{m.amend_button()}</a>
-					{:else}
+					{:else if !data.multiRoom}
 						<p>
 							{m.amend_call_us()}<br />
 							<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）

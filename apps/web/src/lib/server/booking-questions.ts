@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
 import {
+  answerKey,
   answerLines,
   answersFromForm,
   mergePartnerQuestions,
@@ -208,6 +209,99 @@ export async function applyPlanAnswers<G extends { notes?: string }>(
   if (!r.ok) return r;
   if (!r.values.length) return { ok: true, guest: out };
   return { ok: true, guest: { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') } };
+}
+
+/** 部屋ごとの回答（confirm_booking_group の p_rooms_detail の要素と同じ形） */
+export type RoomAnswers = { male?: number; female?: number; notes?: string; answers?: Record<string, string> };
+
+/**
+ * 公式サイトの複数室予約（docs/official-multi-room.md §8.3・M1）: 部屋ごとのプランの項目と男女の内訳を検証する。
+ *   ・予約ごとの項目（scope='booking'）は全室のプランの項目を id で重ねずに 1 回だけ聞き、回答は代表者の備考（全室の滞在に入る）へ
+ *   ・部屋ごとの項目（scope='room'）は部屋のプランの項目を opt_<id>@<部屋の番号0始まり> で聞き、回答はその部屋の滞在の備考へ
+ *   ・男女の内訳は部屋のプランが聞くときだけ male_<i> / female_<i>
+ * 1 室のときは従来の applyPlanAnswers と同じ結果（rooms は null・男女は guest.male / female）にする。
+ */
+export async function applyGroupAnswers<G extends { notes?: string }>(
+  form: FormData,
+  facilityUuid: string,
+  rooms: { planId: string; adults: number }[],
+  guest: G
+): Promise<{ ok: true; guest: G & Partial<RoomGender>; rooms: RoomAnswers[] | null } | { ok: false; message: string }> {
+  if (rooms.length <= 1) {
+    const one = await applyPlanAnswers(form, facilityUuid, rooms[0]?.planId ?? '', rooms[0]?.adults ?? 1, guest);
+    return one.ok ? { ok: true, guest: one.guest, rooms: null } : one;
+  }
+  const forms = await groupBookingForms(facilityUuid, rooms.map((r) => r.planId));
+  const get = (k: string) => form.get(k) as string | null;
+
+  // 予約ごとの項目（1 回だけ）
+  const bookingQs = forms.bookingQuestions;
+  let out: G & Partial<RoomGender> = guest;
+  if (bookingQs.length) {
+    const r = resolveQuestionAnswers(bookingQs, answersFromForm(form, bookingQs, 1), 1);
+    if (!r.ok) return r;
+    if (r.values.length) out = { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') };
+  }
+
+  // 男女の内訳（聞かない部屋は人数どおりの値を渡して検証を通し、結果は使わない）
+  const adults = rooms.map((r) => r.adults);
+  const g = resolveRoomGenders(adults, (k) => {
+    const m = /^(male|female)_(\d+)$/.exec(k);
+    const i = m ? Number(m[2]) : -1;
+    if (i >= 0 && !forms.rooms[i]?.askGender) return m![1] === 'male' ? String(adults[i]) : '0';
+    return get(k);
+  });
+  if (!g.ok) return g;
+
+  const details: RoomAnswers[] = [];
+  for (const [i, room] of forms.rooms.entries()) {
+    const d: RoomAnswers = {};
+    if (room.askGender) {
+      d.male = g.rooms[i].male;
+      d.female = g.rooms[i].female;
+    }
+    if (room.questions.length) {
+      // その部屋の項目だけを 1 室として検証する（ラベルに「N室目」を付けない＝その部屋の滞在の備考に入るため）
+      const answers: Record<string, string> = {};
+      for (const q of room.questions) answers[answerKey(q, 0)] = String(form.get(`opt_${answerKey(q, i)}`) ?? '').trim();
+      const r = resolveQuestionAnswers(room.questions, answers, 1);
+      if (!r.ok) return { ok: false, message: `${i + 1}室目: ${r.message}` };
+      if (r.values.length) {
+        d.notes = answerLines(r.values);
+        d.answers = Object.fromEntries(r.values.map((v) => [v.label, v.value]));
+      }
+    }
+    details.push(d);
+  }
+  return { ok: true, guest: out, rooms: details };
+}
+
+/**
+ * 複数室の予約画面で聞く項目: 予約ごとの項目（全室のプランの和・id で重ねない）と、部屋ごとの項目・男女を聞くか。
+ * 同じプランはまとめて 1 回だけ読む。
+ */
+export async function groupBookingForms(
+  facilityUuid: string,
+  planIds: string[]
+): Promise<{ bookingQuestions: BookingQuestion[]; rooms: { questions: BookingQuestion[]; askGender: boolean }[] }> {
+  const unique = [...new Set(planIds)];
+  const loaded = new Map(await Promise.all(unique.map(async (id) => [id, await planBookingForm(facilityUuid, { ratePlanId: id })] as const)));
+  const seen = new Set<string>();
+  const bookingQuestions: BookingQuestion[] = [];
+  for (const id of planIds) {
+    for (const q of loaded.get(id)?.questions ?? []) {
+      if (q.scope === 'room' || seen.has(q.id)) continue;
+      seen.add(q.id);
+      bookingQuestions.push(q);
+    }
+  }
+  return {
+    bookingQuestions,
+    rooms: planIds.map((id) => {
+      const f = loaded.get(id) ?? { questions: [], askGender: true };
+      return { questions: f.questions.filter((q) => q.scope === 'room'), askGender: f.askGender };
+    })
+  };
 }
 
 // ---- 毎回聞く項目（アレルギー・備考）の見出し・例文（book.booking_form_settings・autumn-shared 20261006081330）----

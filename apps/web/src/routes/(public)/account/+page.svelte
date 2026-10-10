@@ -42,6 +42,7 @@
 				<div class="flex items-center gap-2">
 					<span class="rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
 					<span class="text-xs text-stone-400">{b.code}</span>
+					{#if b.roomCount > 1}<span class="rounded bg-brand-100 px-1.5 text-xs text-brand-700">{m.account_rooms_badge({ n: String(b.roomCount) })}</span>{/if}
 					{#if b.channel === 'ota'}<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-500">{m.account_ota_badge()}</span>{/if}
 				</div>
 				<h3 class="mt-1 text-lg font-semibold text-brand-900">{b.facilityName}</h3>

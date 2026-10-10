@@ -19,9 +19,12 @@ import {
 	sbListMyBookingOptions,
 	sbCancelBookingOption,
 	sbListMyAmendments,
-	reverseFacilityUuid
+	reverseFacilityUuid,
+	sbRoomTypeByUuid,
+	sbPlanByUuid
 } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
+import type { BookingRoom } from '$lib/multi-room';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
 import { directPaymentForBooking, directRefundPreviewOf, prepayBonusPointsOf, refundAfterCancel } from '$lib/server/direct-payments';
@@ -37,6 +40,27 @@ function amendGate(status: string, checkin: string, amendCount: number) {
 		deadlinePassed,
 		canAmend: status === 'reserved' && !deadlinePassed && remaining > 0
 	};
+}
+
+/** 複数室の予約の部屋ごとのカード（部屋名・プラン名・人数・金額・状態） */
+async function multiRoomCards(rooms: BookingRoom[]) {
+	const names = new Map<string, string>();
+	await Promise.all(
+		[...new Set(rooms.flatMap((x) => [`r:${x.roomTypeId}`, x.planId ? `p:${x.planId}` : '']).filter(Boolean))].map(async (k) => {
+			const id = k.slice(2);
+			const v = k.startsWith('r:') ? await sbRoomTypeByUuid(id).catch(() => undefined) : await sbPlanByUuid(id).catch(() => undefined);
+			names.set(k, v?.name ?? '');
+		})
+	);
+	return rooms.map((x) => ({
+		index: x.index,
+		stayCode: x.stayCode,
+		roomName: names.get(`r:${x.roomTypeId}`) ?? '',
+		planName: x.planId ? (names.get(`p:${x.planId}`) ?? '') : '',
+		adults: x.adults,
+		total: x.charge,
+		cancelled: x.cancelled
+	}));
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -88,13 +112,18 @@ export const load: PageServerLoad = async (event) => {
 		// 早期決済ポイント（施設が points のときの予約）。取消された予約には付与されないので出さない
 		const bonusPoints = pay && pay.status === 'paid' && r.status !== 'cancelled' ? prepayBonusPointsOf(pay) : 0;
 		const prepayBonus = bonusPoints > 0 ? { points: bonusPoints, granted: !!pay?.prepay_bonus_granted_at } : null;
+		// 複数室（M1）: 部屋ごとのカード。取消は全室まとめて（2026-10-10 決定）。1 室ずつの取消・日程変更は M2 までお電話で
+		const multiRoom = (r.rooms?.length ?? 0) > 1;
+		const rooms = multiRoom ? await multiRoomCards(r.rooms ?? []) : [];
 		return {
-			booking,
+			booking: multiRoom ? { ...booking, adults: rooms.reduce((s, x) => s + x.adults, 0) } : booking,
 			facility,
 			checkout: r.checkout,
 			options,
 			amendments,
-			amend: amendGate(r.status, r.checkin, amendments.length),
+			rooms,
+			multiRoom,
+			amend: multiRoom ? { remaining: 0, deadlinePassed: false, canAmend: false } : amendGate(r.status, r.checkin, amendments.length),
 			// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 			plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 			room: { name: '' },
@@ -114,6 +143,9 @@ export const load: PageServerLoad = async (event) => {
 		checkout: addDays(booking.checkin, booking.nights),
 		options,
 		amendments,
+		// デモ（store）は 1 室だけ
+		rooms: [] as Awaited<ReturnType<typeof multiRoomCards>>,
+		multiRoom: false,
 		amend: amendGate(booking.status, booking.checkin, amendments.length),
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
@@ -132,6 +164,7 @@ export const actions: Actions = {
 		const { params, locals } = event;
 
 		if (MEMBER_SUPABASE) {
+			// 2 室以上の予約は全室まとめての取消（2026-10-10 決定。1 室ずつの取消は M2。キャンセル料・返金・ポイントは全室分）
 			try {
 				// 所有者チェック・キャンセル料・ポイント巻き戻しは cancel_booking RPC が実施
 				await sbCancelBookingAsMember(createSupabaseServerClient(event), params.code);

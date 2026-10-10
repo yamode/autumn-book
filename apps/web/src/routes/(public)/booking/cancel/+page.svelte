@@ -170,22 +170,37 @@
 				<dt class="text-stone-500">チェックアウト</dt>
 				<dd>{formatDateLong(data.booking.check_out_date)}・{data.booking.nights}泊</dd>
 			</div>
-			{#if data.booking.room_name}
+			{#if (data.booking.rooms?.length ?? 0) > 1}
+				<!-- 複数室（M1）: 部屋ごとの表示。1 部屋ずつの取消は M2（今はすべてのお部屋をまとめて取り消す） -->
+				<div>
+					<dt class="text-stone-500">{m.hold_rooms_label({ n: String(data.booking.rooms?.length ?? 0) })}</dt>
+					<dd class="mt-1 space-y-1">
+						{#each data.booking.rooms ?? [] as r (r.room_index)}
+							<p class="flex justify-between gap-2">
+								<span>{m.complete_room_line({ n: String(r.room_index), room: r.room_name ?? '', plan: r.plan_name ?? '', adults: String(r.adults) })}</span>
+								<span class="whitespace-nowrap tabular-nums">{formatPrice(r.charge)}</span>
+							</p>
+						{/each}
+					</dd>
+				</div>
+			{:else}
+				{#if data.booking.room_name}
+					<div class="flex justify-between gap-4">
+						<dt class="shrink-0 text-stone-500">お部屋</dt>
+						<dd class="text-right">{data.booking.room_name}</dd>
+					</div>
+				{/if}
+				{#if data.booking.plan_name}
+					<div class="flex justify-between gap-4">
+						<dt class="shrink-0 text-stone-500">プラン</dt>
+						<dd class="text-right">{data.booking.plan_name}</dd>
+					</div>
+				{/if}
 				<div class="flex justify-between gap-4">
-					<dt class="shrink-0 text-stone-500">お部屋</dt>
-					<dd class="text-right">{data.booking.room_name}</dd>
+					<dt class="text-stone-500">ご人数</dt>
+					<dd>大人{data.booking.adult_count}名</dd>
 				</div>
 			{/if}
-			{#if data.booking.plan_name}
-				<div class="flex justify-between gap-4">
-					<dt class="shrink-0 text-stone-500">プラン</dt>
-					<dd class="text-right">{data.booking.plan_name}</dd>
-				</div>
-			{/if}
-			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">ご人数</dt>
-				<dd>大人{data.booking.adult_count}名</dd>
-			</div>
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">ご宿泊料金</dt>
 				<dd>{formatPrice(data.booking.total_amount)}（税込・現地払い）</dd>

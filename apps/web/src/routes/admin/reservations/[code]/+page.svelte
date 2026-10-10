@@ -11,12 +11,15 @@
 		partnerPaymentStatusLabel
 	} from '$lib/partner-reservation';
 	import { page } from '$app/state';
+	import { nightGroups } from '$lib/multi-room';
 
 	let { data, form } = $props();
 
 	// 会員登録ページ（お客様へ電話で伝える）
 	const registerUrl = $derived(`${page.url.origin}/auth/register`);
 	let b = $derived(data.detail.booking);
+	// 公式の複数室予約の部屋（admin_booking_detail の booking.rooms。1 室・取引先・OTA は空か 1 件）
+	let adminRooms = $derived(b.rooms ?? []);
 	let g = $derived(data.detail.guest);
 	let policy = $derived(data.detail.cancel_policy);
 
@@ -257,7 +260,7 @@
 				</div>
 				<div>
 					<dt class="text-xs text-stone-400">ゲスト</dt>
-					<dd>{g.name ?? '—'}{g.kana ? `（${g.kana}）` : ''} 大人{b.adult_count}名</dd>
+					<dd>{g.name ?? '—'}{g.kana ? `（${g.kana}）` : ''} 大人{adminRooms.length > 1 ? adminRooms.reduce((s, r) => s + r.adults, 0) : b.adult_count}名</dd>
 				</div>
 				<div>
 					<dt class="text-xs text-stone-400">連絡先</dt>
@@ -299,6 +302,40 @@
 					</div>
 				{/if}
 			</dl>
+
+			{#if adminRooms.length > 1}
+				<!-- 公式の複数室予約（M1）: 部屋ごとの表（状態・プラン・部屋・人数・金額・キャンセル料）と料金の明細（泊の見出し → 部屋の行） -->
+				<div class="mt-5 border-t border-stone-100 pt-4">
+					<h3 class="text-sm font-medium text-stone-700">お部屋（{adminRooms.length}室）</h3>
+					<div class="mt-2 overflow-x-auto">
+						<table class="w-full min-w-[36rem] text-sm">
+							<thead class="text-left text-xs text-stone-400">
+								<tr><th class="py-1 pr-2 font-normal">部屋</th><th class="py-1 pr-2 font-normal">滞在コード</th><th class="py-1 pr-2 font-normal">客室 / プラン</th><th class="py-1 pr-2 font-normal">人数</th><th class="py-1 pr-2 text-right font-normal">金額</th><th class="py-1 text-right font-normal">状態</th></tr>
+							</thead>
+							<tbody class="divide-y divide-stone-100">
+								{#each adminRooms as r (r.room_index)}
+									<tr class={r.cancelled ? 'text-stone-400' : ''}>
+										<td class="py-1.5 pr-2 whitespace-nowrap">{r.room_index}室目</td>
+										<td class="py-1.5 pr-2 font-mono text-xs">{r.reservation_code}</td>
+										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}</td>
+										<td class="py-1.5 pr-2 whitespace-nowrap">大人{r.adults}名{#if r.male != null && r.female != null}<span class="block text-xs text-stone-500">男性{r.male}・女性{r.female}</span>{/if}</td>
+										<td class="py-1.5 pr-2 text-right tabular-nums">{formatYen(r.charge)}{#if r.coupon_share > 0}<span class="block text-xs text-stone-500">クーポン −{formatYen(r.coupon_share)}</span>{/if}</td>
+										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（${formatYen(r.cancel_fee ?? 0)}）` : r.stay_status}</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+					<div class="mt-3 space-y-1 text-xs text-stone-600">
+						{#each nightGroups(adminRooms.map((r) => ({ lines: (r.price_lines ?? []).map((l) => ({ date: l.date, unitPrice: l.unit_price, adults: l.adults, subtotal: l.subtotal })) }))) as ng (ng.date)}
+							<p class="font-medium text-stone-500">{ng.night}泊目: {formatDateLongJa(ng.date)}</p>
+							{#each ng.rows as row (row.room)}
+								<p class="flex justify-between pl-3"><span>{row.room + 1}室目　1名様 {formatYen(row.unitPrice)} × {row.adults}名様</span><span class="tabular-nums">{formatYen(row.subtotal)}</span></p>
+							{/each}
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		{#if data.isPartner}
