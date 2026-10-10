@@ -759,7 +759,7 @@
   "inroom_code_title": "Enter your room code",
   "inroom_code_help": "Enter the 6-digit number on the guide card you received at check-in.",
   "inroom_browse_code_title": "For guests staying with us",
-  "inroom_browse_code_help": "Enter the 6-digit code given at check-in to see your meal times and private bath reservations.",
+  "inroom_browse_code_help": "Enter the 6-digit code given at check-in to see the Wi-Fi details, your meal times and private bath reservations.",
   "bath_code_help": "Enter the 6-digit code given at check-in to reserve the private bath.",
   "inroom_code_placeholder": "6-digit code",
   "inroom_code_submit": "Open",

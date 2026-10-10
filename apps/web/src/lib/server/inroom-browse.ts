@@ -16,6 +16,9 @@ export function rememberBrowseFacility(cookies: Cookies, slug: string | null, lo
 	return true;
 }
 
+/** コードなしでは出さない案内（Wi-Fi はコードを入れてから・2026-10-10 指示。入口QRの URL は施設名だけで推測できるため） */
+export const browseVisibleGuide = (g: { section: string }) => g.section !== 'wifi';
+
 /** 見ている施設（URL の f が優先・無ければ Cookie）。解決できなければ null */
 export function browseFacility(cookies: Cookies, slugParam: string | null, locale: Locale): EndedFacility | null {
 	return endedFacilityBySlug(slugParam, locale) ?? endedFacilityBySlug(cookies.get(BROWSE_FACILITY_COOKIE), locale);

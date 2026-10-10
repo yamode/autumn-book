@@ -13,7 +13,7 @@ import {
 	type EndedFacility
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
-import { browseFacility } from '$lib/server/inroom-browse';
+import { browseFacility, browseVisibleGuide } from '$lib/server/inroom-browse';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -66,7 +66,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		).catch(() => []);
 		return {
 			...noStay,
-			guides,
+			// Wi-Fi はコードを入れてから（browseVisibleGuide）
+			guides: guides.filter(browseVisibleGuide),
 			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
 			...(entryFacility.name ? { headerTitle: entryFacility.name } : {})
 		};

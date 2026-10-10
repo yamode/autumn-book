@@ -7,7 +7,7 @@ import { listHouseGuidesFor, resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbListHouseGuides, sbResolveStay } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import { browseFacility } from '$lib/server/inroom-browse';
+import { browseFacility, browseVisibleGuide } from '$lib/server/inroom-browse';
 import type { PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
@@ -25,7 +25,8 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
 	const guides =
 		DATA_SOURCE === 'supabase' ? await sbListHouseGuides(facilityId, locale) : listHouseGuidesFor(facilityId, locale);
 
-	const guide = guides.find((g) => g.id === params.id);
+	// コードなし（館内案内だけ）では Wi-Fi などは見せない（browseVisibleGuide）
+	const guide = guides.find((g) => g.id === params.id && (stay || browseVisibleGuide(g)));
 	if (!guide) redirect(303, '/r');
 
 	return { stay, facilitySlug: stay?.facility.slug ?? browse?.slug ?? '', guide, headerTitle: guide.title, headerBack: '/r' };

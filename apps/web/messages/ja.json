@@ -759,7 +759,7 @@
   "inroom_code_title": "客室コードの入力",
   "inroom_code_help": "チェックイン時にお渡しした案内カードの6桁の番号をご入力ください。",
   "inroom_browse_code_title": "ご滞在中のお客様へ",
-  "inroom_browse_code_help": "チェックイン時にお渡しした6桁のコードを入れると、お食事の時間や貸切風呂のご予約が表示されます。",
+  "inroom_browse_code_help": "チェックイン時にお渡しした6桁のコードを入れると、Wi-Fi のご案内・お食事の時間・貸切風呂のご予約が表示されます。",
   "bath_code_help": "チェックイン時にお渡しした6桁のコードを入れると、貸切風呂のご予約に進めます。",
   "inroom_code_placeholder": "6桁の番号",
   "inroom_code_submit": "この番号で開く",
