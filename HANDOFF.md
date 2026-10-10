@@ -35,6 +35,9 @@
 - S7: docs/ADMIN_APP_OPS.md の「service_role は一切無い」を訂正
 - 宿のリセットの記録は rms_partner_access_logs（channel=admin）のみ（book.admin_audit_logs には書かない）
 
+- 本番での確認（2026-10-10・テスト取引先「テスト」・Chrome）: セキュリティ画面・カード画面（マスタ・本人確認前の帯）・ユーザー管理・メールの認証コードで本人確認（aal2・12時間表示）・パスキー登録・パスキーでログイン（aal2・mfa_method='passkey'）・管理画面の取引先詳細（方針・第2要素の列・リセット・ログ表示）は OK。TOTP は Supabase で既に Enabled。直した不具合: ログアウトが CSRF で 403（v0.114.4・referrer-policy を same-origin に）、パスキーでログインが UV 不足で必ず失敗（v0.114.7・ログイン用 options を userVerification: required に）、検証失敗の理由をログに残す（v0.114.6）、ログ種別 memorandum_view の日本語表示（v0.114.8）
+- 未確認: 子ユーザーでのカード画面・保存カードでの予約（Stripe）・新しい環境からのログイン通知メール（同じ IP だと出ない）・passkey_only・Turnstile 有効時のログイン（内蔵ブラウザでは不可・Chrome で）
+
 ### テストチェックリスト（認証強化 S6・本番ドメインまたは localhost）
 - [ ] セキュリティ →「パスキーを追加」（aal1 なら /mfa）→ 生体認証 → 一覧に名前・登録日。登録完了メール。passkey_registered
 - [ ] 「パスキーでログイン」→ パスワード無しで /calendar。sessions が aal=2・mfa_method='passkey'。新しい環境なら通知メール

@@ -123,6 +123,7 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   passkey_removed: 'パスキーの削除',
   passkey_renamed: 'パスキーの名前の変更',
   passkey_failed: 'パスキーでの確認の失敗',
+  memorandum_view: '覚書の閲覧',
   mfa_reset: '第2要素のリセット',
   mfa_policy_change: '本人確認の方針の変更',
   child_mfa_reset: 'ユーザーの第2要素をリセット'
