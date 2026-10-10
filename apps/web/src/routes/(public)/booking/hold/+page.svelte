@@ -593,12 +593,14 @@
 						class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500 disabled:opacity-50"
 					>
 						{#if inlineCard}
-							{paying ? m.pay_processing_inline() : m.pay_submit_inline({ amount: formatPrice(charge.charge) })}
+							{paying ? m.pay_processing_inline() : m.pay_submit_inline()}
 						{:else}
 							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
 						{/if}
 					</button>
-					{#if !isPrepay}
+					{#if inlineCard}
+						<p class="text-center text-xs text-stone-400">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
+					{:else if !isPrepay}
 						<p class="text-center text-xs text-stone-400">{m.hold_local_payment_note()}</p>
 					{/if}
 				</form>
