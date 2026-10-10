@@ -2,6 +2,22 @@
 
 > **最終更新**: 2026-10-10（管理画面の取引先詳細の施設タブ切替を軽くする v0.112.0／取引先ページのメニュー切替を先に見せる・読み込みの後回し v0.109.0／取引先ランク暦への対応・料金の幅の復活・料金表 CSV / PDF・v0.107.0／取引先予約の添付ファイル・v0.103.0（v0.103.1 で有効化）・autumn-shared 20261007022950 / 20261007022953／マイページのカード登録〔保存カード〕・v0.102.0・autumn-shared 20261007022727 / 20261007022730／予約時決済の事務手数料・デポジット不足分の請求 v0.101.0・autumn-shared 20261007010002／取引先 × PMS 顧客マスタ Phase 3b v0.100.0）
 
+## 今後の請求予定の一覧・Stripe の SetupIntent のメタデータ（2026-10-10・v0.115.0）
+- 管理画面「今後の請求予定 📆」（`/admin/partners/charges`・CSV は `/admin/partners/charges/csv`）。対象は取引先予約のチェックアウト日決済（online_checkin）だけ（公式サイトには後日カードへ請求する経路が無い）。区分: 請求失敗（期間に関係なく先頭・赤枠）／キャンセル料のカード未請求（要確認）／請求予定（チェックアウト日順・件数と合計）／最近取り消したもの（30日・切替で表示）。期間は すべて／今月／来月／指定。権限・施設は予定請求書と同じ（staffPartnerScope）
+- 取消の判定は `status`（取消後も `payment_status` は scheduled のまま残る。請求の cron は status=confirmed だけを見るので請求はされない）
+- Stripe の SetupIntent の metadata: 作成時に `charge_on`・`charge_amount`・`booking_status`。カード登録完了で confirmed・`card`、請求成功で charged・`charged_at`・`payment_intent`、失敗で charge_failed・`charge_error`、取消で cancelled・`cancelled_at`（キャンセル料があれば `cancel_fee` 等）。請求・キャンセル料の PaymentIntent に `setup_intent`。Stripe の更新に失敗しても予約処理は止めない（警告ログ）。Stripe の管理画面で予約番号を検索 → SetupIntent を開くと見られる
+- 未対応: 支払期限切れ（DB 関数 rms_partner_expire_pending）は Book を通らないので SetupIntent は pending_payment のまま。カードの登録し直しで古い SetupIntent は更新しない。この版より前の SetupIntent には項目が無い（次の確定・取消・請求で入る）
+
+### テストチェックリスト（今後の請求予定・Stripe メタデータ）
+- [ ] 左メニュー「今後の請求予定」から開ける（admin・staff）。施設を切り替えるとその施設の予約だけになる
+- [ ] チェックアウト日決済の確定予約が請求予定日の順に並び、件数・合計額が合う。請求額＝宿泊料金＋入湯税−割引（内訳つき）
+- [ ] 今月・来月・指定で絞り込める。請求失敗は期間に関係なく先頭に出る
+- [ ] 取り消した予約は既定では出ず、「最近取り消したもの」で取消日時・キャンセル料つきで出る
+- [ ] 予約番号から予約管理の詳細、取引先名から取引先詳細へ飛べる。CSV が Excel で文字化けしない
+- [ ] チェックアウト日決済で予約 → Stripe の SetupIntent に charge_on・charge_amount・booking_status=confirmed・card
+- [ ] 取消 → booking_status=cancelled・cancelled_at。請求成功 → charged・charged_at・payment_intent。失敗 → charge_failed・charge_error
+- [ ] Stripe の API が失敗しても予約の確定・取消・請求は止まらない
+
 ## 管理画面 取引先詳細の施設タブ切替を軽くする（2026-10-10・v0.112.0）
 - 要望: `/admin/partners/[id]` の施設タブ（山人-yamado- / 山人-oga-）の切替が重い（施設に関係ない読み込みまで全部やり直していた）
 - **読み込みを分けた**: 施設に関係しないもの（ログインID・API キー・覚書・ファイル・PMS の顧客〔紐づけ・与信〕・予約一覧・アクセスログ・請求書・保存カード）を新しい `routes/admin/partners/[id]/+layout.server.ts` へ移した。この load は `?inv=` しか読まず、`event.url` の他の項目も読まないので、施設タブ（`?fac=`）・プレビューの開始日（`?preview=`）を変えてもやり直さない（SvelteKit は読んだ searchParams のキーだけを再実行の条件にする）。保存などの後は `update()`（invalidateAll）で両方読み直す。取引先は ab_fac の施設で合成する（使う設定〔請求条件・支払方法・与信・デポジット〕は共通のキーなので、タブで合成したときと同じ値）

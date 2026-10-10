@@ -70,6 +70,7 @@ import {
   isStripeResourceMissing,
   StripeError,
   stripeTestMode,
+  updateSetupIntentMetadata,
   type StripePaymentMethod
 } from '$lib/server/stripe';
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
@@ -85,6 +86,7 @@ import { loadCancelAdminFeePercent } from '../payment-settings';
 import { readAdminFeeTerms } from '$lib/cancel-admin-fee';
 import { bookingAttachmentNames, partnerBookingAttachmentsEnabled } from './booking-attachments';
 import { attachmentLine } from '$lib/partner-attachments';
+import { chargePlanMetadata, setupIntentEventMetadata, type SetupIntentChargeEvent } from '$lib/partner-upcoming-charges';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -668,6 +670,23 @@ const intentMetadata = (partner: PartnerContext, b: PartnerBookingRow, extra: Re
     refs: { [REF_KEY]: b.id, booking_code: b.booking_code, partner_id: partner.id, facility: partner.facility_slug, ...extra }
   });
 
+// チェックアウト日決済の SetupIntent（台帳の stripe_session_id が seti_ のもの）の metadata に、予約の出来事（カード登録・取消・
+// 請求の成否）と請求予定日・金額を書く（2026-10-10・Stripe の管理画面で予約番号を検索 → SetupIntent を開けば分かるように）。
+// 予約の処理は止めない: Stripe の失敗はログだけ（metadata は表示用で、請求・取消の判断には使わない）。
+async function syncSetupIntentMetadata(
+  b: Pick<PartnerBookingRow, 'booking_code' | 'payment_option' | 'stripe_session_id' | 'check_out_date' | 'total_amount' | 'bath_tax_amount' | 'prepay_discount_amount'>,
+  event: SetupIntentChargeEvent,
+  opts: { plan?: boolean } = {}
+): Promise<void> {
+  const id = b.stripe_session_id;
+  if (b.payment_option !== 'online_checkin' || !id || !isSetupIntentId(id)) return;
+  try {
+    await updateSetupIntentMetadata(id, { ...(opts.plan ? chargePlanMetadata(b) : {}), ...setupIntentEventMetadata(event) });
+  } catch (e) {
+    console.warn('[partner-booking] SetupIntent の metadata を更新できませんでした:', b.booking_code, id, e instanceof Error ? e.message : e);
+  }
+}
+
 // ブラウザに渡す決済の準備（予約・金額・同意文つき）
 export type PreparedPartnerPayment = PreparedIntent & {
   bookingId: string;
@@ -730,7 +749,13 @@ async function preparePartnerPayment(
         existingId: b.stripe_session_id,
         customer: cus,
         description: `${partner.facility_name} ご宿泊（${b.booking_code}）${b.check_out_date} チェックアウト日に ${chargeAmountOf(b).toLocaleString('ja-JP')}円 を請求`,
-        metadata: intentMetadata(partner, b, { consent_text: consentText }),
+        // 請求予定日（charge_on）・請求額（charge_amount）・予約の状態（booking_status）も付ける（2026-10-10）。
+        // 確定・取消・請求の後は syncSetupIntentMetadata で更新する
+        metadata: intentMetadata(partner, b, {
+          consent_text: consentText,
+          ...chargePlanMetadata(b),
+          ...setupIntentEventMetadata({ type: 'created', status: b.status })
+        }),
         refKey: REF_KEY,
         // 同時に2回押されても1本になるよう、前回の Intent（無ければ first）から作る
         idempotencyKey: `rms-partner-si-${b.id}-${b.stripe_session_id ?? 'first'}${keySuffix}`
@@ -807,6 +832,7 @@ export async function releasePendingBooking(db: SupabaseClient, partner: Partner
   const b = await getPartnerBooking(db, partner.id, bookingId);
   if (!b || b.status !== 'pending_payment') return false;
   await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: b.id, p_by: 'partner', p_reason: '予約画面で入力に戻りました' });
+  await syncSetupIntentMetadata(b, { type: 'cancelled', cancelledAt: new Date().toISOString() });
   return true;
 }
 
@@ -950,6 +976,10 @@ async function recordCardSaved(
       .eq('id', before.id);
   }
   const after = (await getPartnerBooking(db, ctx.partner.id, before.id)) ?? before;
+  if (result === 'saved' || result === 'updated') {
+    // Stripe の SetupIntent: 請求予定日・請求額・予約の状態（確定＝請求予定）・カード（2026-10-10）
+    await syncSetupIntentMetadata({ ...after, stripe_session_id: p.sessionId }, { type: 'card_saved', status: after.status, cardLabel: after.card_label }, { plan: true });
+  }
   if (result === 'saved') {
     await logPartnerAccess(db, { partnerId: ctx.partner.id, accountId: after.account_id, channel: 'web', action: 'card_saved', detail: { bookingCode: code } });
     await sendBookingMails(db, ctx.partner, after, 'new', origin, after.account_id).catch(() => false);
@@ -1015,7 +1045,9 @@ export async function chargeBooking(
         partner_booking_id: b.id,
         booking_code: b.booking_code,
         partner_id: partner.id,
-        trigger
+        trigger,
+        // カード登録の SetupIntent（Stripe の管理画面で請求とカード登録を行き来できるように・2026-10-10）
+        ...(b.stripe_session_id && isSetupIntentId(b.stripe_session_id) ? { setup_intent: b.stripe_session_id } : {})
       },
       idempotencyKey: `rms-partner-charge-${b.id}-${attempt}`
     });
@@ -1028,6 +1060,7 @@ export async function chargeBooking(
   if (failure) {
     await db.from('rms_partner_bookings').update({ payment_status: 'charge_failed', charge_error: failure.slice(0, 500) }).eq('id', b.id);
     await logPartnerAccess(db, { partnerId: partner.id, accountId: null, channel: 'web', action: 'charge_failed', detail: { bookingCode: b.booking_code, trigger, error: failure } });
+    await syncSetupIntentMetadata(b, { type: 'charge_failed', failedAt: new Date().toISOString(), error: failure, paymentIntent });
     const after = (await getPartnerBooking(db, partner.id, b.id)) ?? b;
     await sendChargeFailedMails(db, partner, after, origin, failure).catch(() => false);
     return { status: 'failed', message: failure };
@@ -1041,11 +1074,19 @@ export async function chargeBooking(
       .from('rms_partner_bookings')
       .update({ payment_status: 'paid', paid_at: new Date().toISOString(), paid_amount: chargeAmountOf(b), stripe_payment_intent_id: paymentIntent })
       .eq('id', b.id);
-  } else if (String(data) === 'not_active') {
+  }
+  const chargedAfterCancel = !error && String(data) === 'not_active';
+  if (chargedAfterCancel) {
     // 請求中に取り消された → 返金する
     const after = (await getPartnerBooking(db, partner.id, b.id)) ?? b;
     await refundBooking(db, after, 'charged_after_cancel');
   }
+  // Stripe の SetupIntent: 請求済み（請求日時・請求の PaymentIntent）。請求中に取り消された予約は取消のまま（返金済み）
+  await syncSetupIntentMetadata(b, {
+    type: chargedAfterCancel ? 'charged_after_cancel' : 'charged',
+    chargedAt: new Date().toISOString(),
+    paymentIntent
+  });
   await logPartnerAccess(db, { partnerId: partner.id, accountId: null, channel: 'web', action: 'charged', detail: { bookingCode: b.booking_code, trigger, amount: chargeAmountOf(b) } });
   return { status: 'paid' };
 }
@@ -1445,7 +1486,8 @@ async function chargeCancelFee(db: SupabaseClient, partner: PartnerContext, b: P
         partner_booking_id: b.id,
         booking_code: b.booking_code,
         partner_id: partner.id,
-        trigger: 'cancel_fee'
+        trigger: 'cancel_fee',
+        ...(b.stripe_session_id && isSetupIntentId(b.stripe_session_id) ? { setup_intent: b.stripe_session_id } : {})
       },
       idempotencyKey: `rms-partner-cancel-fee-${b.id}`
     });
@@ -1486,7 +1528,10 @@ export async function cancelPartnerBooking(
   // 支払待ち（仮押さえ）の取消はいつでもできる。PMS へは何も送っていない。キャンセル料もかからない。
   if (booking.status === 'pending_payment') {
     await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: booking.id, p_by: by, p_reason: (opts.reason ?? '').slice(0, 500) || null });
-    return (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
+    const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
+    // カード登録前の SetupIntent にも取消を残す（Stripe の管理画面で「取り消された予約」と分かるように）
+    await syncSetupIntentMetadata(after, { type: 'cancelled', cancelledAt: after.cancelled_at });
+    return after;
   }
   if (booking.checkedIn) throw new PartnerStoreError('チェックイン済みの予約は取り消せません。宿へご連絡ください。');
   if (by === 'partner' && !canPartnerCancel(booking.check_in_date, partner.booking_settings)) {
@@ -1566,6 +1611,14 @@ export async function cancelPartnerBooking(
   // チェックアウト日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
   if (settlement === 'card' && fee > 0) await chargeCancelFee(db, partner, booking, fee);
   const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
+  // Stripe の SetupIntent: 取消（取消日時・キャンセル料とカードへの請求の結果）。チェックアウト日の請求は行わない
+  await syncSetupIntentMetadata(after, {
+    type: 'cancelled',
+    cancelledAt: after.cancelled_at,
+    cancelFee: after.cancel_fee ?? fee,
+    cancelFeeSettlement: after.cancel_fee_settlement ?? null,
+    cancelFeeStatus: after.cancel_fee_status ?? null
+  });
   await sendBookingMails(db, partner, after, 'cancelled', opts.origin, booking.account_id).catch(() => false);
   return after;
 }

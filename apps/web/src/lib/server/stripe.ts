@@ -295,6 +295,11 @@ export const createSetupIntent = (args: { customer: string; description: string;
     args.idempotencyKey
   );
 
+// SetupIntent の metadata だけを更新する（succeeded の後も更新できる。送ったキーだけ上書き・値 '' はそのキーを消す）。
+// チェックアウト日決済の請求予定日・金額・予約の状態を Stripe の管理画面から読めるようにするため（2026-10-10）。
+export const updateSetupIntentMetadata = (id: string, metadata: Record<string, string>) =>
+  stripeFetch<SetupIntent>('POST', `/setup_intents/${encodeURIComponent(id)}`, { metadata });
+
 export const retrieveSetupIntent = (id: string, expandPaymentMethod = false) =>
   stripeFetch<SetupIntent>('GET', `/setup_intents/${encodeURIComponent(id)}`, expandPaymentMethod ? { expand: ['payment_method'] } : undefined);
 
