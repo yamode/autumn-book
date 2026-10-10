@@ -83,7 +83,7 @@
 - 端末クッキー `rms_partner_device`（path /p/<token>・1年）。直近90日のセッション・ログに同じ端末も同じ IP も無ければ「新しい環境」→ 本人（無ければマスタ）へログイン通知メール（応答の後に送信・`login_new_device` に結果）
 - アカウント →「セキュリティ」: ログイン中の端末一覧・直近30件の記録・他の端末からログアウト・端末ごとのログアウト。マスタは子ユーザーの「すべての端末からログアウト」
 - `/setup`・`/admin/login` にも Turnstile と IP 制限。会員の認証コード送信（ログイン・会員登録）: 1 IP 10分10通・1メール 1時間5通・全体10分300通、検証は同じメール10回失敗で10分停止（Cookie に依存しない）
-- Turnstile は `PUBLIC_TURNSTILE_SITE_KEY`（wrangler.jsonc）と `TURNSTILE_SECRET_KEY`（Pages の secret）が両方そろったときだけ有効。**ユーザー作業**: Cloudflare → Turnstile でウィジェット作成（Managed・book.yamado.app と autumn-book.pages.dev）→ サイトキーを wrangler.jsonc に → `npx wrangler pages secret put TURNSTILE_SECRET_KEY --project-name autumn-book`
+- Turnstile: ウィジェット `autumn-book`（Managed・book.yamado.app / autumn-book.pages.dev / localhost・Cloudflare アカウント 6aa45d10…）を 2026-10-10 に作成。サイトキー `0x4AAAAAAFS1Q2-p9tAqczQX` を wrangler.jsonc に、`TURNSTILE_SECRET_KEY` を Pages（production）の secret に登録済み（v0.114.1）。作成は wrangler の OAuth トークン（challenge-widgets.write）で Cloudflare API `POST /accounts/{id}/challenges/widgets`。プレビュー環境には secret が無いので検証はスキップされる。Claude の内蔵ブラウザでは Turnstile が自動操作と判定されて失敗するので、動作確認は普段の Chrome で
 - 残: 公式サイトの仮押さえ（プラン詳細の `?/hold`）への Turnstile は S3 以降で付ける。access_logs の索引は行が増えたら（現在 472 行）
 
 ### テストチェックリスト（認証強化 S2）
