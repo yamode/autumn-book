@@ -30,11 +30,9 @@
 
   // ---- パスキー（docs/auth-hardening.md §6.5・S6） ----
   let passkeySupported = $state(false);
-  let addName = $state('');
   let adding = $state(false);
   let addMessage = $state('');
   let addDone = $state('');
-  let renaming = $state<string | null>(null);
   onMount(() => {
     if (!data.passkeys?.enabled) return;
     void import('$lib/partner-passkey-client').then(async (m) => (passkeySupported = await m.passkeySupported()));
@@ -46,10 +44,9 @@
     addDone = '';
     try {
       const { registerPasskey } = await import('$lib/partner-passkey-client');
-      const r = await registerPasskey(token, addName);
+      const r = await registerPasskey(token, '');
       if (r.ok) {
         addDone = 'パスキーを登録しました。次回から「パスキーでログイン」・パスキーでの本人確認が使えます。';
-        addName = '';
         await invalidateAll();
       } else if (r.status === 403 && typeof r.data?.next === 'string') {
         // 本人確認がまだ → /mfa（済んだらこの画面へ戻る）
@@ -200,30 +197,17 @@
           {#each data.passkeys.items as p (p.id)}
             <li class="flex flex-wrap items-start justify-between gap-3 py-3">
               <div class="min-w-0">
-                {#if renaming === p.id}
-                  <form method="POST" action="?/passkey_rename" use:enhance={submit()} class="flex flex-wrap items-center gap-2" onsubmit={() => (renaming = null)}>
-                    <input type="hidden" name="passkey_id" value={p.id} />
-                    <input name="name" value={p.name} maxlength="60" required class="rounded-md border border-stone-300 px-2 py-1" />
-                    <button type="submit" disabled={busy} class="rounded-md bg-accent-600 px-3 py-1 text-white disabled:opacity-50">保存</button>
-                    <button type="button" onclick={() => (renaming = null)} class="rounded-md border border-stone-300 px-3 py-1">やめる</button>
-                  </form>
-                {:else}
-                  <p class="flex flex-wrap items-center gap-2">
-                    <span class="font-medium">{p.name}</span>
-                    {#if p.backedUp}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700" title="Apple / Google アカウント等で同期されるパスキー">同期済み</span>{/if}
-                  </p>
-                {/if}
+                <!-- 名前は登録した端末・ブラウザから自動で付く（利用者に名前を付けさせない・2026-10-10 指示） -->
+                <p class="flex flex-wrap items-center gap-2">
+                  <span class="font-medium">{p.name}</span>
+                  {#if p.backedUp}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700" title="Apple / Google アカウント等で同期されるパスキー">同期済み</span>{/if}
+                </p>
                 <p class="mt-0.5 text-xs text-stone-500">登録: {fmt(p.createdAt)} ／ 最終使用: {fmt(p.lastUsedAt)}</p>
               </div>
-              {#if renaming !== p.id}
-                <div class="flex gap-2">
-                  <button type="button" onclick={() => (renaming = p.id)} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50">名前を変更</button>
-                  <form method="POST" action="?/passkey_remove" use:enhance={submit(removeConfirm(data.passkeys.items.length))}>
-                    <input type="hidden" name="passkey_id" value={p.id} />
-                    <button type="submit" disabled={busy} class="rounded-md border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50 disabled:opacity-50">削除</button>
-                  </form>
-                </div>
-              {/if}
+              <form method="POST" action="?/passkey_remove" use:enhance={submit(removeConfirm(data.passkeys.items.length))}>
+                <input type="hidden" name="passkey_id" value={p.id} />
+                <button type="submit" disabled={busy} class="rounded-md border border-rose-300 px-3 py-1.5 text-rose-700 hover:bg-rose-50 disabled:opacity-50">削除</button>
+              </form>
             </li>
           {:else}
             <li class="py-3 text-stone-500">登録されたパスキーはありません。</li>
@@ -233,16 +217,12 @@
           <div class="mt-3 space-y-2 border-t border-stone-100 pt-3">
             {#if addMessage}<p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{addMessage}</p>{/if}
             {#if addDone}<p class="rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{addDone}</p>{/if}
-            <div class="flex flex-wrap items-end gap-2">
-              <label class="block min-w-[12rem] flex-1">
-                <span class="mb-1 block font-medium">パスキーの名前（任意）</span>
-                <input bind:value={addName} maxlength="60" placeholder="例: 事務所のPC・自分のiPhone" class={inputClass} />
-              </label>
+            <div>
               <button type="button" onclick={() => void addPasskey()} disabled={adding} class="rounded-md bg-accent-600 px-4 py-2 font-medium text-white hover:bg-accent-500 disabled:opacity-50">
                 {adding ? '登録しています…' : 'パスキーを追加'}
               </button>
             </div>
-            {#if data.mfa && !data.mfa.aal2}<p class="text-xs text-stone-500">追加・名前の変更・削除の前に本人確認をお願いします（「パスキーを追加」を押すと確認の画面へ進みます）。</p>{/if}
+            {#if data.mfa && !data.mfa.aal2}<p class="text-xs text-stone-500">追加・削除の前に本人確認をお願いします（「パスキーを追加」を押すと確認の画面へ進みます）。</p>{/if}
           </div>
         {:else if !data.passkeys.enabled}
           <p class="mt-3 text-xs text-stone-500">このページのアドレスではパスキーを登録・使用できません（正式なアドレスでお使いください）。</p>
@@ -257,25 +237,50 @@
       <!-- 本人確認の方針（§6.3・宿が設定。マスタは厳しくする方向だけ） -->
       <h3 class="mt-8 text-lg font-bold">本人確認の方針（貴社共通）</h3>
       <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
-        <p class="font-medium">{data.policy.label}</p>
-        <p class="mt-1 text-stone-600">{data.policy.help}</p>
+        {#if data.policy.value === 'passkey_only'}
+          <p class="font-medium">{data.policy.label}</p>
+          <p class="mt-1 text-stone-600">{data.policy.help}</p>
+        {:else}
+          <!-- オフ＝標準（重要な操作の前と新しい環境からのログインのときだけ確認）。オン＝ログインのたびに確認。マスタはオンにする方向だけ -->
+          {@const on = data.policy.value === 'always'}
+          <form
+            method="POST"
+            action="?/set_policy"
+            use:enhance={submit('貴社の全ユーザーが、ログインのたびに本人確認を求められるようになります。オフに戻すときは宿へご依頼ください。よろしいですか？')}
+            class="flex items-start justify-between gap-4"
+          >
+            <input type="hidden" name="policy" value="always" />
+            <div class="min-w-0">
+              <p class="font-medium">ログインのたびに本人確認を求める</p>
+              <p class="mt-1 text-stone-600">
+                {#if on}
+                  オン：ログインのたびに本人確認（メールの認証コードまたはパスキー）を求めています。
+                {:else}
+                  オフ（標準）：いまは、カードの登録・保存済みカードでのご予約・ユーザー管理などの前と、新しい環境からのログインのときだけ本人確認を求めています。オンにすると、ログインのたびに本人確認を求めます。
+                {/if}
+              </p>
+            </div>
+            <button
+              type="submit"
+              role="switch"
+              aria-checked={on}
+              aria-label="ログインのたびに本人確認を求める"
+              disabled={busy || on || !data.policy.canStrengthen}
+              class={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition disabled:cursor-not-allowed ${on ? 'bg-accent-600' : 'bg-stone-300'} ${!on && !data.policy.canStrengthen ? 'opacity-50' : ''}`}
+            >
+              <span class={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${on ? 'translate-x-5' : 'translate-x-0.5'}`}></span>
+            </button>
+          </form>
+        {/if}
         {#if form?.policyError}
           <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.policyError}</p>
         {:else if form?.policyMessage}
           <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.policyMessage}</p>
         {/if}
-        {#if data.policy.canStrengthen}
-          <form
-            method="POST"
-            action="?/set_policy"
-            use:enhance={submit('貴社の全ユーザーが、ログインのたびに本人確認を求められるようになります。元に戻すときは宿へご依頼ください。よろしいですか？')}
-            class="mt-3"
-          >
-            <input type="hidden" name="policy" value="always" />
-            <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">ログインのたびに本人確認を求める</button>
-          </form>
-        {/if}
-        <p class="mt-2 text-xs text-stone-500">方針を緩める・パスキーのみにする変更は、宿へご依頼ください。</p>
+        <p class="mt-3 text-xs text-stone-500">
+          {#if data.policy.value === 'step_up' && !data.policy.canStrengthen}切り替えられるのはマスタユーザーだけです。{/if}
+          オフに戻す・パスキーのみにする変更は、宿へご依頼ください。
+        </p>
       </div>
     {/if}
 

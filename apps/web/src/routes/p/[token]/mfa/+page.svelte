@@ -18,14 +18,13 @@
   // ---- passkey_only の初回登録（§6.8） ----
   let regBusy = $state(false);
   let regMessage = $state('');
-  let regName = $state('');
   async function registerAndVerify() {
     if (regBusy) return;
     regBusy = true;
     regMessage = '';
     try {
       const { registerPasskey, stepUpWithPasskey } = await import('$lib/partner-passkey-client');
-      const r = await registerPasskey(token, regName);
+      const r = await registerPasskey(token, '');
       if (!r.ok) {
         regMessage = r.message;
         return;
@@ -64,15 +63,6 @@
           この取引先では、ログインのたびにパスキーでの本人確認が必要です。まず、この端末にパスキーを登録してください（端末の生体認証・PIN を使います）。
         </p>
         {#if regMessage}<p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{regMessage}</p>{/if}
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium">パスキーの名前（任意）</span>
-          <input
-            bind:value={regName}
-            maxlength="60"
-            placeholder="例: 事務所のPC"
-            class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]"
-          />
-        </label>
         <button type="button" onclick={() => void registerAndVerify()} disabled={regBusy} class="w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">
           {regBusy ? '登録しています…' : 'パスキーを登録して続ける'}
         </button>
