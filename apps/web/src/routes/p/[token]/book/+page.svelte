@@ -137,7 +137,6 @@
   // 専用特典のモーダル
   let perkContent = $state<PerkModalContent | null>(null);
   // 右欄の料金明細の開閉
-  let showBreakdown = $state(false);
   const num = (n: number) => n.toLocaleString('ja-JP');
   // 予約時決済の割引（選んだときだけ合計に効く）
   const prepay = $derived(quote.ok ? quote.prepay : null);
@@ -861,22 +860,21 @@
             <span class="font-bold">宿泊料金合計</span>
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
-              <!-- 1名料金を併記する（2026-10-09 指示）。全室・全泊の合計 ÷（大人の合計 × 泊数）。どの部屋も1名なら出さない -->
-              {#if quote.rooms.some((r) => r.adults > 1)}<p class="text-sm font-semibold text-brand-900">1名あたり{quote.nights > 1 ? '（1泊平均）' : ''} <span class="tabular-nums">{num(Math.round(quote.rooms.reduce((t, r) => t + r.subtotal, 0) / Math.max(quote.rooms.reduce((t, r) => t + r.adults, 0) * quote.nights, 1)))}</span>円</p>{/if}
-              <button type="button" aria-expanded={showBreakdown} onclick={() => (showBreakdown = !showBreakdown)} class="text-xs text-stone-500 hover:text-brand-900">料金明細を{showBreakdown ? '閉じる' : '表示'} <span aria-hidden="true" class={`inline-block transition ${showBreakdown ? 'rotate-180' : ''}`}>⌄</span></button>
             </div>
           </div>
-          {#if showBreakdown}
-            <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
-              {#each quote.rooms as r, i}
-                <li class="flex justify-between gap-2">
-                  <!-- 1行に収める（2026-10-10 指示）。1室なら1名料金は上の合計の下に出ているので、明細では複数室のときだけ短く添える -->
-                  <span class="min-w-0 whitespace-nowrap">{quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}大人{r.adults}名 × {quote.nights}泊{#if quote.rooms.length > 1 && r.adults > 1}<span class="ml-1 text-xs">（1名 {num(Math.round(r.subtotal / Math.max(r.adults * quote.nights, 1)))}円）</span>{/if}</span>
-                  <span class="whitespace-nowrap tabular-nums">{num(r.subtotal)}円</span>
-                </li>
-              {/each}
-            </ul>
-          {/if}
+          <!-- 料金明細は行が少ないので常に出す（2026-10-10 指示）。各室「1名あたり × 人数 ＝ 1室の料金」の形で、合計側には1名料金を重ねて出さない。
+               連泊は1名あたりを全泊分で出す（1泊ごとに料金が違っても、× 人数がそのまま1室の料金になるように） -->
+          <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
+            {#each quote.rooms as r, i}
+              <li class="flex justify-between gap-2">
+                <span class="min-w-0">
+                  {quote.rooms.length > 1 ? `${i + 1}室目 ` : ''}{#if r.adults > 1}1名あたり{quote.nights > 1 ? `（${quote.nights}泊分）` : ''} <span class="tabular-nums">{num(Math.round(r.subtotal / r.adults))}</span>円 × {r.adults}名{:else}大人1名{quote.nights > 1 ? ` × ${quote.nights}泊` : ''}{/if}
+                </span>
+                <!-- 1室なら右の金額は真上の「宿泊料金合計」と同じなので出さない -->
+                {#if quote.rooms.length > 1}<span class="whitespace-nowrap tabular-nums">{num(r.subtotal)}円</span>{/if}
+              </li>
+            {/each}
+          </ul>
           {#if quote.bathTax > 0}
             <div class="mt-2.5 flex justify-between gap-2">
               <span class="font-bold">入湯税</span>
