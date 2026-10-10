@@ -1,5 +1,5 @@
 import { fail } from '@sveltejs/kit';
-import { canPartnerCancel, describeDeadline, intentAmountOf } from '$lib/partner-booking';
+import { canPartnerCancel, describeDeadline, intentAmountOf, partnerNightLines } from '$lib/partner-booking';
 import {
   cancelPartnerBooking,
   contextsForBookings,
@@ -160,6 +160,8 @@ export const load = async (event) => {
         // 入力項目の一覧（旧形式の「予約時決済割引」の行は料金の明細へ、予約者・交通手段・特典の行は上の項目へ移すので外す）
         options: splitExtraOptions(b.detail).filter((o) => o.label !== PREPAY_DISCOUNT_LABEL),
         ...priceOf(b),
+        // 料金の明細の1泊1行（予約時の部屋ごと・泊ごとの1名単価から）
+        nightLines: partnerNightLines(b.detail.rooms ?? []),
         notes: b.detail.notes ?? '',
         paymentMethodName: b.payment_method_name,
         bookedBy: b.booked_by,

@@ -374,6 +374,7 @@
                   bathTax={b.bathTax}
                   total={b.total}
                   totalNote={PAY_STATUS[b.paymentStatus] ?? ''}
+                  nightLines={b.nightLines}
                 />
               </div>
 

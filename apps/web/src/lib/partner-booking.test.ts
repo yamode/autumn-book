@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  partnerNightLines,
   DEFAULT_CREDIT_DEPOSIT,
   depositAmountOf,
   depositRemainderIdOf,
@@ -490,5 +491,21 @@ describe('splitPartnerBookingSettings（保存時の振り分け）', () => {
   it('partnerFacilityOverrides はキーの有無で判定する（0・null も上書き）', () => {
     expect(partnerFacilityOverrides({ leadDays: 0, cancelDays: null, notice: 'x', maxRooms: undefined })).toEqual(['leadDays', 'cancelDays']);
     expect(partnerFacilityOverrides(null)).toEqual([]);
+  });
+});
+
+describe('partnerNightLines', () => {
+  it('泊ごとに1行・同じ単価の部屋はまとめ・違う単価は並べる', () => {
+    const lines = partnerNightLines([
+      { adults: 2, nights: [{ date: '2026-04-16', unit_price: 12000 }, { date: '2026-04-15', unit_price: 10000 }] },
+      { adults: 3, nights: [{ date: '2026-04-15', unit_price: 10000 }, { date: '2026-04-16', unit_price: 11000 }] }
+    ]);
+    expect(lines).toEqual([
+      { date: '2026-04-15', parts: [{ unit: 10000, adults: 5 }], amount: 50000 },
+      { date: '2026-04-16', parts: [{ unit: 12000, adults: 2 }, { unit: 11000, adults: 3 }], amount: 57000 }
+    ]);
+  });
+  it('部屋が無ければ空', () => {
+    expect(partnerNightLines([])).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@
   import { fetchPartnerCustomerSession, type PartnerCustomerSession } from '$lib/partner-saved-cards';
   import PartnerStepUp from '$lib/components/PartnerStepUp.svelte';
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
-  import { quoteChargeOf } from '$lib/partner-booking';
+  import { partnerNightLines, quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
@@ -670,6 +670,7 @@
                 discountLabel={discounted && prepay ? prepay.label : ''}
                 bathTax={quote.bathTax}
                 total={payTotal}
+                nightLines={partnerNightLines(quote.rooms)}
               />
             </div>
             {#if quote.credit}<div class="max-w-md">{@render creditBox(quote.credit)}</div>{/if}
