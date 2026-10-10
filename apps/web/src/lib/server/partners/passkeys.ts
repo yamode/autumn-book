@@ -286,11 +286,11 @@ export async function passkeyStepUpOptions(db: SupabaseClient, args: { accountId
   return { challengeId, options };
 }
 
-/** 署名を確かめ、counter を進める（読んだ値のままのときだけ）。通れば true */
+/** 署名を確かめ、counter を進める（読んだ値のままのときだけ）。通れば null、通らなければ理由（ログの detail.reason に残す） */
 async function checkAssertion(
   db: SupabaseClient,
   args: { passkey: PasskeyRow; response: AuthenticationResponseJSON; challenge: string; rp: PasskeyRp; requireUserVerification: boolean }
-): Promise<boolean> {
+): Promise<string | null> {
   try {
     const v = await verifyAuthenticationResponse({
       response: args.response,
@@ -305,7 +305,7 @@ async function checkAssertion(
       },
       requireUserVerification: args.requireUserVerification
     });
-    if (!v.verified) return false;
+    if (!v.verified) return 'verify_failed:not_verified';
     const { data } = await db
       .from('rms_partner_passkeys')
       .update({ counter: v.authenticationInfo.newCounter, backed_up: v.authenticationInfo.credentialBackedUp, last_used_at: new Date().toISOString() })
@@ -313,9 +313,12 @@ async function checkAssertion(
       .eq('counter', args.passkey.counter)
       .select('id');
     // 同時に同じ counter で更新された（＝応答の使い回し）なら通さない
-    return (data ?? []).length > 0;
-  } catch {
-    return false;
+    return (data ?? []).length > 0 ? null : 'verify_failed:counter_conflict';
+  } catch (e) {
+    // ライブラリの検証エラー（オリジン・RP ID・UV・署名など）。原因を追えるよう理由に残す
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[passkey] 検証に失敗:', msg);
+    return `verify_failed:${msg.slice(0, 160)}`;
   }
 }
 
@@ -346,7 +349,8 @@ export async function verifyPasskeyStepUp(
   const passkey = await findPasskeyByCredential(db, response.id);
   // 自分のパスキーだけ（別のアカウントのパスキーでは通さない）
   if (!passkey || passkey.account_id !== args.accountId || passkey.partner_id !== args.partner.id) return fail('unknown_credential');
-  if (!(await checkAssertion(db, { passkey, response, challenge: taken.challenge, rp: args.rp, requireUserVerification: false }))) return fail('verify_failed');
+  const assertionError = await checkAssertion(db, { passkey, response, challenge: taken.challenge, rp: args.rp, requireUserVerification: false });
+  if (assertionError) return fail(assertionError);
   await markSessionAal2(db, { accountId: args.accountId, sessionId: args.sessionId, method: 'passkey' });
   await logPartnerAccess(db, { partnerId: args.partner.id, accountId: args.accountId, channel: 'web', action: 'mfa_ok', detail: { method: 'passkey', passkeyId: passkey.id }, ip: args.ip });
   return { ok: true };
@@ -383,8 +387,8 @@ export async function verifyPasskeyLogin(
   const passkey = await findPasskeyByCredential(db, response.id);
   // 別の取引先のパスキー・停止中のアカウントは「見つからない」扱い
   if (!passkey || passkey.partner_id !== args.partnerId || !passkey.is_active) return { ok: false, reason: 'unknown_credential' };
-  const ok = await checkAssertion(db, { passkey, response, challenge: taken.challenge, rp: args.rp, requireUserVerification: true });
-  if (!ok) return { ok: false, reason: 'verify_failed', accountId: passkey.account_id };
+  const assertionError = await checkAssertion(db, { passkey, response, challenge: taken.challenge, rp: args.rp, requireUserVerification: true });
+  if (assertionError) return { ok: false, reason: assertionError, accountId: passkey.account_id };
   return { ok: true, accountId: passkey.account_id, passkeyId: passkey.id };
 }
 
