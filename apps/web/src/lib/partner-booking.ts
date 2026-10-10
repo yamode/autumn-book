@@ -287,6 +287,20 @@ export type PartnerBookingSettings = {
   creditDeposit: CreditDeposit;
   // デポジットの残額の精算先。null = 既定（請求書払いの支払方法があれば請求書、無ければ現地）
   creditDepositRemainder: CreditDepositRemainder | null;
+  // ---- 団体予約（照会 → 宿が回答 → 承諾で予約・docs/partner-group-booking.md §5.3・2026-10-10）。取引先共通 ----
+  // 団体予約のメニューを出すか（kind=agent のときだけ意味を持つ・既定オフ＝取引先ごとに管理画面でオンにする・2026-10-10 変更）
+  groupInquiryEnabled: boolean;
+  // 1件の室数・泊数の上限、一括送信の件数の上限（個人予約の maxRooms / maxNights は見ない）
+  groupMaxRooms: number;
+  groupMaxNights: number;
+  groupMaxBatch: number;
+  // 受付締切: チェックイン日の N 日前まで照会できる（締切の時刻は cutoffHour）
+  groupLeadDays: number;
+  // 交通機関・夕食開始時間の選択肢（＋「その他」の自由記入は常にある）
+  groupTransportChoices: string[];
+  groupDinnerTimeChoices: string[];
+  // 回答の有効期限の既定（日・宿が回答時に変えられる）
+  groupAnswerDays: number;
 };
 
 export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
@@ -308,8 +322,24 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   notifyPartner: true,
   showOfficialPerks: false,
   creditDeposit: { type: 'percent', value: 30 },
-  creditDepositRemainder: null
+  creditDepositRemainder: null,
+  groupInquiryEnabled: false,
+  groupMaxRooms: 30,
+  groupMaxNights: 7,
+  groupMaxBatch: 20,
+  groupLeadDays: 3,
+  groupTransportChoices: ['大型バス1台', '中型バス1台', 'マイクロバス1台', 'JR', '自家用車'],
+  groupDinnerTimeChoices: ['17:30', '18:00', '18:30', '19:00'],
+  groupAnswerDays: 7
 };
+
+// 団体予約の選択肢（交通機関・夕食開始時間）の正規化: 前後の空白を落とし、空・重複を除き、1件 30 字・最大 12 件。
+// 配列でなければ既定、空配列はそのまま（「その他」の自由記入だけにする）
+export const MAX_GROUP_CHOICES = 12;
+function normalizeGroupChoices(raw: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(raw)) return [...fallback];
+  return [...new Set(raw.map((v) => String(v ?? '').trim().replace(/\s+/g, ' ').slice(0, 30)).filter(Boolean))].slice(0, MAX_GROUP_CHOICES);
+}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const clampInt = (v: unknown, min: number, max: number, fallback: number) => {
@@ -532,7 +562,15 @@ export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown
     notifyPartner: src.notifyPartner === undefined ? d.notifyPartner : src.notifyPartner === true,
     showOfficialPerks: src.showOfficialPerks === true,
     creditDeposit: normalizeCreditDeposit(src.creditDeposit),
-    creditDepositRemainder: normalizeCreditDepositRemainder(src.creditDepositRemainder)
+    creditDepositRemainder: normalizeCreditDepositRemainder(src.creditDepositRemainder),
+    groupInquiryEnabled: src.groupInquiryEnabled === true,
+    groupMaxRooms: clampInt(src.groupMaxRooms, 1, 100, d.groupMaxRooms),
+    groupMaxNights: clampInt(src.groupMaxNights, 1, 30, d.groupMaxNights),
+    groupMaxBatch: clampInt(src.groupMaxBatch, 1, 50, d.groupMaxBatch),
+    groupLeadDays: clampInt(src.groupLeadDays, 0, 90, d.groupLeadDays),
+    groupTransportChoices: normalizeGroupChoices(src.groupTransportChoices, d.groupTransportChoices),
+    groupDinnerTimeChoices: normalizeGroupChoices(src.groupDinnerTimeChoices, d.groupDinnerTimeChoices),
+    groupAnswerDays: clampInt(src.groupAnswerDays, 1, 60, d.groupAnswerDays)
   };
 }
 

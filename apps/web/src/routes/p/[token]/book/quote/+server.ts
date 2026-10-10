@@ -19,7 +19,8 @@ export const POST = async (event) => {
   }
   // 料金の再計算は読み取りなので確認モードも通す（公開停止中でも確認できるように）
   if ((partnerUnavailableReason(partner) && !session.preview) || !partner.booking_enabled) throw error(403, '現在ご予約を受け付けていません。');
-  const rooms = Array.isArray(body.rooms) ? body.rooms.slice(0, 20).map((r) => ({ adults: Math.round(Number((r as { adults?: unknown })?.adults)) || 0 })) : [];
+  // 室数は団体予約の入力（/group/new・最大 100 室）からも使うので 100 まで受ける（個人予約の上限は確定時に maxRooms で見る）
+  const rooms = Array.isArray(body.rooms) ? body.rooms.slice(0, 100).map((r) => ({ adults: Math.round(Number((r as { adults?: unknown })?.adults)) || 0 })) : [];
   const checkIn = String(body.checkIn ?? '');
   const quote = await quotePartnerBooking(db, partner, {
     roomCode: String(body.roomCode ?? ''),

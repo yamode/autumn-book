@@ -20,6 +20,7 @@ import { isPartnerBookingOpen } from './booking';
 import { PARTNER_PREVIEW_COOKIE, PREVIEW_ACCOUNT_ID, PREVIEW_DENIED_MESSAGE, verifyPreviewToken } from './preview';
 import { randomToken, sha256Hex } from './crypto';
 import { isAal2Valid, normalizeMfaPolicy, portalMfaGate, portalMfaUrl } from '$lib/partner-mfa';
+import { groupInquiryAvailable } from '$lib/partner-group';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -344,7 +345,10 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
     preview: session?.preview === true,
     // メニューの「予約一覧」: どれかのオンの施設で予約を受けていれば出す（選んでいる施設だけで決めない・2026-10-09 複数施設化）。
     // 選んでいる施設の予約受付（料金カレンダーの「予約する」）は各ページの booking.enabled で別に判定する
-    bookingEnabled: isPartnerBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled)
+    bookingEnabled: isPartnerBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled),
+    // メニューの「団体予約」（docs/partner-group-booking.md §8.1・2026-10-10）: 取引先の種類が旅行会社（kind='agent'）で、
+    // 管理画面の取引先詳細で団体予約をオンにしているときだけ（既定オフ）。kind そのものは画面へ渡さない
+    groupInquiry: groupInquiryAvailable(partner)
   };
 }
 

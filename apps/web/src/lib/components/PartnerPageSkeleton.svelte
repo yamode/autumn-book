@@ -29,6 +29,17 @@
       <div class="mt-5 grid gap-4 rounded-xl border border-stone-200 bg-white p-5 sm:grid-cols-2 sm:p-6">
         {#each [0, 1, 2, 3] as i (i)}<div class="space-y-1.5"><div class="shimmer h-3.5 w-20"></div><div class="shimmer h-10 w-full"></div></div>{/each}
       </div>
+    {:else if path === 'group'}
+      <!-- 団体予約の一覧: 状態タブ＋束ごとのカード（左に帯） -->
+      <div class="mt-5 shimmer h-9 w-80 max-w-full rounded-full"></div>
+      <div class="mt-4 grid gap-3">
+        {#each [0, 1] as i (i)}
+          <div class="space-y-3 rounded-xl border border-l-4 border-stone-200 bg-white p-4 sm:p-5">
+            <div class="shimmer h-3.5 w-40 opacity-70"></div>
+            {#each [0, 1] as j (j)}<div class="flex justify-between gap-3"><div class="shimmer h-5 w-2/3"></div><div class="shimmer h-5 w-20"></div></div>{/each}
+          </div>
+        {/each}
+      </div>
     {:else if path === 'bookings'}
       <div class="mt-5 shimmer h-9 w-80 max-w-full rounded-full"></div>
       <ul class="mt-4 grid gap-3">

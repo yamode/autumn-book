@@ -126,7 +126,14 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   memorandum_view: '覚書の閲覧',
   mfa_reset: '第2要素のリセット',
   mfa_policy_change: '本人確認の方針の変更',
-  child_mfa_reset: 'ユーザーの第2要素をリセット'
+  child_mfa_reset: 'ユーザーの第2要素をリセット',
+  // 団体予約（docs/partner-group-booking.md §9.3・2026-10-10）。管理画面のアクセスログで他の操作と並べて見る
+  group_inquiry_submit: '団体照会の送信',
+  group_inquiry_withdraw: '団体照会の取り下げ',
+  group_inquiry_accept: '団体照会の承諾（予約確定）',
+  group_inquiry_accept_failed: '団体照会の承諾の失敗',
+  group_inquiry_reject: '団体照会の辞退',
+  group_inquiry_answer: '団体照会への回答（宿）'
 };
 
 /** JST の日時（通知メール用） */

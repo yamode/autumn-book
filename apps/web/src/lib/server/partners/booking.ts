@@ -80,7 +80,7 @@ import { resolvePartnerCustomer } from '$lib/server/payments/saved-cards';
 import { addDaysIso, loadPartnerContextAt, logPartnerAccess, partnerCreditCheck, PartnerStoreError, pmsGuestFormalNames, saveBookerProfile, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { bookingNameLine, normalizeBookingNameMode, type BookingNameMode } from '$lib/pms-partner-guest';
 import { creditDepositNotice, creditOverLine, creditOverSubjectPrefix, requiresDeposit, showsCredit, stayRoomNightsByMonth, type CreditCheck } from '$lib/partner-credit';
-import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS } from './rates';
+import { clampPartnerRange, loadPartnerRates, PARTNER_MAX_RANGE_DAYS, type PartnerPriceMode } from './rates';
 import { loadCancelAdminFeePercent } from '../payment-settings';
 import { readAdminFeeTerms } from '$lib/cancel-admin-fee';
 import { bookingAttachmentNames, partnerBookingAttachmentsEnabled } from './booking-attachments';
@@ -206,7 +206,8 @@ export type BookingTarget = {
 
 // 入湯税（PMS の施設設定 pms.facility_billing_settings と同じ規則: 1人1泊の額 × 人泊・子供を含めるかは設定）。
 // 取引先予約は大人のみなので、額 × 大人の合計 × 泊数。PMS は請求書に同じ額の入湯税の明細を自動で起こす。
-async function bathTaxRule(db: SupabaseClient, facilityId: string): Promise<{ enabled: boolean; amount: number }> {
+// 団体予約の回答（group-inquiries.ts）でも同じ規則で計算するため export する
+export async function bathTaxRule(db: SupabaseClient, facilityId: string): Promise<{ enabled: boolean; amount: number }> {
   const { data } = await pmsDb(db)
     .from('facility_billing_settings')
     .select('bath_tax_enabled, bath_tax_amount')
@@ -246,6 +247,8 @@ export type BookingQuote =
       // デポジットの額・残額。それ以外は null（取引先の通常の支払方法のまま）。
       paymentChoices: QuotePaymentChoice[] | null;
       deposit: QuoteDeposit | null;
+      // 料金の出どころ（RMS の先計算＝precomputed／その場の計算＝live・loadPartnerRates の priceMode）。団体照会の quote_price_mode に写す
+      priceMode?: PartnerPriceMode;
     }
   | { ok: false; message: string };
 
@@ -306,7 +309,9 @@ export async function roomTypeRemaining(
 // opts.credit: 受付枠（与信）も読む（予約入力の画面・料金の再計算のとき）。確定（createPartnerBooking）では読まない
 export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerContext, t: BookingTarget, opts: { credit?: boolean } = {}): Promise<BookingQuote> {
   const nights = Math.round(t.nights);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(t.checkIn) || !(nights >= 1) || nights > PARTNER_MAX_RANGE_DAYS) {
+  // 実在しない日付（2026-02-30・2026-13-01）は日付の計算で例外になるので、ここで弾く（500 にしない）
+  const realDate = /^\d{4}-\d{2}-\d{2}$/.test(t.checkIn) && new Date(Date.parse(`${t.checkIn}T00:00:00Z`) || 0).toISOString().slice(0, 10) === t.checkIn;
+  if (!realDate || !(nights >= 1) || nights > PARTNER_MAX_RANGE_DAYS) {
     return { ok: false, message: '宿泊日・泊数が正しくありません。' };
   }
   if (!t.rooms.length || t.rooms.some((r) => !Number.isInteger(r.adults) || r.adults < 1 || r.adults > 20)) {
@@ -396,7 +401,8 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     remaining: remaining.min,
     credit,
     paymentChoices,
-    deposit
+    deposit,
+    priceMode: rates.priceMode
   };
 }
 
@@ -464,7 +470,8 @@ export function friendlyRpcError(message: string): string {
 
 // 作成直後の台帳 detail に予約者・交通手段・特典と、取引先向けのプラン名（予約時点）を足す（DB 関数が作った detail を読み、マージして書き戻す）。
 // service_role で触るので id と partner_id の両方で絞る。失敗しても予約は有効（PMS へは options で届いている）。
-async function attachBookingExtras(db: SupabaseClient, partnerId: string, bookingId: string, extras: BookingExtras, planDisplayName: string): Promise<void> {
+// 団体予約の承諾（group-inquiries.ts の acceptGroupInquiry）からも呼ぶ
+export async function attachBookingExtras(db: SupabaseClient, partnerId: string, bookingId: string, extras: BookingExtras, planDisplayName: string): Promise<void> {
   const { data } = await db.from('rms_partner_bookings').select('detail').eq('id', bookingId).eq('partner_id', partnerId).maybeSingle();
   if (!data) return;
   const detail = {
@@ -1220,6 +1227,8 @@ export type PartnerBookingRow = {
     perks?: { title: string; description: string }[] | null;
     // 2026-10-03〜: 取引先向けのプラン名（予約時点）。無い予約は plan_name から既定の表示名を作る
     plan_display_name?: string | null;
+    // 2026-10-10〜: 団体の照会からの予約（DB 関数が p.group から写す・docs/partner-group-booking.md §5.4）
+    group?: { inquiry_id?: string | null; inquiry_code?: string | null; group_name?: string | null; batch_id?: string | null } | null;
   };
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -1313,7 +1322,7 @@ async function currentCancelPolicy(db: SupabaseClient, facilityId: string, planC
 // 予約時点の規定を台帳（cancel_policy）に残す。opts.adminFee のとき、事務手数料の率（admin_fee_percent）も同じ jsonb に残す
 // （予約時決済の取消で返金しない率・2026-10-07。率の無い予約＝導入前・後払いの予約は事務手数料なし）。
 // 規定の段が無いプランでも率だけは残す（readCancelPolicy は段も不泊も無ければ null を返すので、取消時は今の規定を読む）。
-async function snapshotCancelPolicy(
+export async function snapshotCancelPolicy(
   db: SupabaseClient,
   facilityId: string,
   bookingId: string,
@@ -1588,6 +1597,8 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
   const g = b.detail.guest ?? {};
   const rooms = b.detail.rooms ?? [];
   const lines = [
+    // 団体の照会からの予約（2026-10-10）: 先頭に団体名と照会番号
+    ...[groupSummaryLine(b)].filter((l): l is string => !!l),
     `予約番号: ${b.booking_code}`,
     `宿泊日: ${b.check_in_date}（${b.nights}泊）〜 ${b.check_out_date} チェックアウト`,
     `お部屋: ${b.room_name ?? b.room_code ?? ''} × ${b.room_count}室`,
@@ -1643,6 +1654,18 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
   ];
   return lines;
 }
+
+/** 団体の照会からの予約の1行（「団体: 270413精華旅行社（照会 GI-2026-000001）」）。団体でなければ null */
+export function groupSummaryLine(b: Pick<PartnerBookingRow, 'detail'>): string | null {
+  const g = b.detail?.group;
+  const name = String(g?.group_name ?? '').trim();
+  if (!name) return null;
+  const code = String(g?.inquiry_code ?? '').trim();
+  return `団体: ${name}${code ? `（照会 ${code}）` : ''}`;
+}
+
+/** 団体の照会からの予約か（メールの件名に【団体】を付ける） */
+export const isGroupBooking = (b: Pick<PartnerBookingRow, 'detail'>) => !!groupSummaryLine(b);
 
 /**
  * デポジット予約のお支払の説明（メール・一覧）。デポジットでない・支払前は null。
@@ -1730,7 +1753,8 @@ export function partnerBilledNotice(
 export const partnerBookingsUrl = (origin: string, partner: Pick<PartnerContext, 'url_token' | 'facility_slug'>) =>
   `${origin}/p/${partner.url_token}/bookings${partner.facility_slug ? `?f=${encodeURIComponent(partner.facility_slug)}` : ''}`;
 
-async function sendBookingMails(
+// 団体予約の承諾（group-inquiries.ts）からも呼ぶ。台帳の detail.group がある予約は件名に【団体】を付ける
+export async function sendBookingMails(
   db: SupabaseClient,
   viewer: AnyPartner,
   b: PartnerBookingRow,
@@ -1757,7 +1781,7 @@ async function sendBookingMails(
     if (to.length) {
       const text = [`${partner.name} 様`, '', `${facilityName} です。以下の内容で${title}。`, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
       const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(facilityName)} です。以下の内容で${title}。</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
-      const r = await sendPartnerMail(db, partner.facility_id, { to, subject: `【${facilityName}】${title}（${b.booking_code}）`, html, text });
+      const r = await sendPartnerMail(db, partner.facility_id, { to, subject: `【${facilityName}】${isGroupBooking(b) ? '【団体】' : ''}${title}（${b.booking_code}）`, html, text });
       sent = sent || r.sent;
     }
   }
@@ -1780,7 +1804,7 @@ async function sendBookingMails(
     const html = `<p>${escapeHtml(head)}</p>${creditHtml}${billedHtml}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(facilitySummary.join('\n'))}</pre><p style="color:#666;font-size:12px">PMS には1分ほどで取り込まれます（予約経路: 取引先予約（RMS））。</p>`;
     const r = await sendFacilityNotice(db, partner.facility_id, {
       to: s.notifyEmails,
-      subject: `${creditLine ? creditOverSubjectPrefix(b.credit_result) : ''}【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,
+      subject: `${creditLine ? creditOverSubjectPrefix(b.credit_result) : ''}${isGroupBooking(b) ? '【団体】' : ''}【取引先予約${kind === 'new' ? '' : '・取消'}】${partner.name} ${b.check_in_date} ${b.guest_name} 様（${b.booking_code}）`,
       html,
       text
     });

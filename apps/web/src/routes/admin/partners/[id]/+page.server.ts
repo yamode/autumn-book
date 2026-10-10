@@ -79,6 +79,7 @@ import {
 	StaffScopeError
 } from '$lib/server/partners/staff';
 import { isEmail, parsePartnerCommonForm, parsePartnerFacilityForm } from '$lib/server/partners/staff-form';
+import { listRecentGroupInquiriesOfPartner } from '$lib/server/partners/group-inquiries';
 import {
 	deletePartnerDocument,
 	PARTNER_DOCUMENT_ACCEPT,
@@ -308,6 +309,11 @@ export const load: PageServerLoad = async (event) => {
 		// 「確認ページを開く」: タブの施設で開く（取引先ページは ?f=<slug> のオンの施設を選ぶ）
 		previewUrl: `/admin/partners/${partner.id}/preview?f=${encodeURIComponent(partner.facility_slug)}`,
 		canEdit: scope.canEdit,
+		// 団体予約（docs/partner-group-booking.md §8.3・2026-10-10）: 旅行会社（kind='agent'）のときだけ、この取引先の照会の直近 20 件。
+		// オン/オフと上限・選択肢は共通の予約設定（commonSettings.group*）に入っていて、?/saveCommon の booking（JSON）でそのまま保存される。
+		// 画面の表示を待たせないよう Promise のまま流す（読めなければ []）
+		groupInquiries:
+			partner.kind === 'agent' ? listRecentGroupInquiriesOfPartner(scope.db, partner.id, 20).catch(() => []) : Promise.resolve([]),
 		kindLabels: PARTNER_KIND_LABELS,
 		today,
 		partner: {

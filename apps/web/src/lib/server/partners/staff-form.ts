@@ -76,7 +76,12 @@ export type PartnerCommonFormInput = ReturnType<typeof parseCommonFields> & {
   booking_settings: PartnerBookingSettings;
 };
 
-/** 共通セクション（?/saveCommon）。支払方法が要るかどうか（予約受付がオンの施設があるか）は呼び出し側で確かめる */
+/**
+ * 共通セクション（?/saveCommon）。支払方法が要るかどうか（予約受付がオンの施設があるか）は呼び出し側で確かめる。
+ * 団体予約の設定（groupInquiryEnabled・groupMax*・groupLeadDays・選択肢・groupAnswerDays・docs/partner-group-booking.md §5.3）も
+ * booking（JSON）に入れて送る。normalizePartnerBookingSettings が既定・範囲を埋める（取引先共通に保存）。
+ * kind を agent 以外に変えても値は残す（団体予約は kind='agent' のときだけ効くので害は無い・§7.10）。
+ */
 export function parsePartnerCommonForm(fd: FormData): PartnerCommonFormInput {
   const common = parseCommonFields(fd);
   const bookingSettings = normalizePartnerBookingSettings(parseJsonField(fd, 'booking', '予約受付の設定'));

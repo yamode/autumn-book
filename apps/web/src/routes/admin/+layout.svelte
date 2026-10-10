@@ -11,13 +11,14 @@
 	// 1項目は1箇所にしか置かない。両属性の項目は画面内の相互リンクで辿らせる。
 	// tenantWide = 施設に紐づかない画面（施設セレクトを出すと「切り替えても変わらない」混乱を生む）
 	// demoOnly = まだ本番データに繋がっていない画面（デモストアを読み書きする）。本番では注意を出し、保存はサーバで止める（lib/server/admin-demo-guard.ts）
-	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean }[] }[] = [
+	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean; badge?: boolean }[] }[] = [
 		{
 			label: '宿泊・直販',
 			items: [
 				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
+				{ href: '/admin/group-inquiries', label: '団体照会', icon: '👥', badge: true },
 				{ href: '/admin/partners/invoices', label: '予定請求書', icon: '🧾' },
 				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
 				{ href: '/admin/payments', label: '支払方法', icon: '💳' },
@@ -227,6 +228,10 @@
 				>
 					{item.icon} {item.label}
 					{#if item.tenantWide}<span class="ml-1 rounded bg-white/5 px-1 text-[10px] text-stone-500">全施設</span>{/if}
+					{#if item.badge}
+						<!-- 団体照会の回答待ち（submitted）の件数。layout の load が Promise のまま流す（0・null は出さない・docs/partner-group-booking.md §7.8） -->
+						{#await data.groupInquiryBadge then n}{#if n}<span class="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white tabular-nums" title="回答待ちの団体照会">{n}</span>{/if}{/await}
+					{/if}
 					{#if live && item.demoOnly}<span class="ml-1 rounded bg-white/10 px-1 text-[10px] text-stone-400">未接続</span>{/if}
 				</a>
 			{/each}

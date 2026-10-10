@@ -18,6 +18,7 @@
           facilityChoices?: { slug: string; name: string }[];
           loginId?: string | null;
           bookingEnabled?: boolean;
+          groupInquiry?: boolean;
           preview?: boolean;
           noFacilityMessage?: string | null;
         }
@@ -40,17 +41,21 @@
       e.preventDefault();
     }
   }
-  // メインメニュー（並び順どおり。予約一覧は予約を受け付けている取引先だけ）
+  // メインメニュー（並び順どおり。予約一覧は予約を受け付けている取引先だけ。
+  // 団体予約は旅行会社で団体予約をオンにしている取引先だけ・portal.groupInquiry・docs/partner-group-booking.md §8.1）
   const MENU: [string, string][] = [
     ['calendar', '料金カレンダー'],
     ['rooms', 'お部屋'],
     ['plans', 'プラン'],
     ['rate-sheet', '料金表'],
     ['bookings', '予約一覧'],
+    ['group', '団体予約'],
     ['memorandum', '覚書'],
     ['account', 'アカウント']
   ];
-  const menu = $derived(MENU.filter(([path]) => path !== 'bookings' || portal?.bookingEnabled));
+  const menu = $derived(
+    MENU.filter(([path]) => (path !== 'bookings' || portal?.bookingEnabled) && (path !== 'group' || portal?.groupInquiry))
+  );
 
   // ---- メニューの切替を先に見せる（2026-10-10）----
   // SvelteKit は行き先の load が終わるまで前の画面のままなので、同じ取引先のメインメニューのページ（/p/<token>/<menu> ちょうど）へ

@@ -1,6 +1,8 @@
 <script lang="ts">
   import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
   import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
+  import PartnerGroupSettings from '$lib/components/admin/PartnerGroupSettings.svelte';
+  import { describeGroupStay, GROUP_STATUS_LABELS_STAFF } from '$lib/partner-group';
   import { untrack } from 'svelte';
   import { LOGIN_LOG_LABELS } from '$lib/partner-login-security';
   import { deserialize, enhance } from '$app/forms';
@@ -76,6 +78,8 @@
   const accessLogs = streamed(() => data.accessLogs);
   const invoiceData = streamed(() => data.invoiceData);
   const savedCardsData = streamed(() => data.savedCards);
+  // 団体予約（docs/partner-group-booking.md §8.3）: この取引先の照会の直近 20 件（旅行会社のときだけ・後から届く）
+  const groupInquiriesData = streamed(() => data.groupInquiries);
   // プレビュー・料金の元・計算の状態は、いま開いているタブの読み込みのときだけ使う（切替直後に前のタブの結果を出さない）
   // 開始日（?preview=）を変えたときも、その期間の結果が届くまで枠に戻す
   const pvInfo = $derived(
@@ -1428,6 +1432,10 @@
           <input type="checkbox" bind:checked={booking.notifyPartner} class="mt-0.5" />
           <span>取引先にも予約確認メールを送る<span class="block text-[11px] text-stone-500">予約したログインIDのメールと、上の「連絡先メール」へ（宿への通知先は施設タブ）</span></span>
         </label>
+        {#if settings.kind === 'agent'}
+          <!-- 団体予約（旅行会社だけ・既定オフ・docs/partner-group-booking.md §8.3）。種別を旅行会社以外にすると節が消える（設定は残る・害なし） -->
+          <PartnerGroupSettings bind:booking {inputClass} />
+        {/if}
       </fieldset>
 
       <input type="hidden" name="booking" value={bookingJson} />
@@ -2060,6 +2068,34 @@
       {/if}
     </div>
 
+    {#if data.partner.kind === 'agent'}
+      <!-- 団体照会（直近 20 件・docs/partner-group-booking.md §8.3）。回答は団体照会の画面で -->
+      <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-stone-900">団体照会（直近20件）</h2>
+            <p class="mt-1 text-xs text-stone-500">この取引先が取引先ページの「団体予約」から送った照会です（すべての施設）。{data.partner.commonSettings.groupInquiryEnabled ? '' : '団体予約はオフです（上の共通の設定でオンにできます）。'}</p>
+          </div>
+          <a href={`/admin/group-inquiries?status=all&partner=${data.partner.id}`} class={smallBtn}>団体照会の画面で見る →</a>
+        </div>
+        {#if !groupInquiriesData.current}
+          <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-10 w-full opacity-70"></div>{/each}</div>
+        {:else if groupInquiriesData.current.length === 0}
+          <p class="mt-3 text-sm text-stone-500">まだ照会はありません。</p>
+        {:else}
+          <ul class="mt-3 divide-y divide-stone-100 text-sm">
+            {#each groupInquiriesData.current as g (g.id)}
+              <li>
+                <a href={`/admin/group-inquiries/${g.id}`} class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 hover:bg-stone-50">
+                  <span class="min-w-0"><span class="font-mono text-xs text-stone-500">{g.inquiry_code}</span> <span class="font-medium">{g.group_name}</span> ・ {describeGroupStay(g.check_in_date, g.nights)} ・ {g.room_name} × {g.room_count}室 ・ 大人{g.adult_total}名{#if g.facilityName}<span class="ml-1 text-xs text-stone-500">（{g.facilityName}）</span>{/if}</span>
+                  <span class="text-xs text-stone-600">{GROUP_STATUS_LABELS_STAFF[g.status]}{g.bookingCode ? `・${g.bookingCode}` : ''}</span>
+                </a>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
+    {/if}
     <!-- ご請求書（ご利用明細書＋適格請求書） -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">ご請求書</h2>

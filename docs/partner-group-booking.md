@@ -278,7 +278,7 @@ grant all on public.rms_partner_group_inquiry_events to service_role;
 
 | キー | 型 | 既定 | 意味 |
 |---|---|---|---|
-| `groupInquiryEnabled` | boolean | **`true`**（kind=agent のとき意味を持つ） | 団体予約メニューを出すか。管理画面で切れる |
+| `groupInquiryEnabled` | boolean | **`false`**（2026-10-10 変更: 既定オフ・取引先ごとにオン。kind=agent のとき意味を持つ） | 団体予約メニューを出すか。管理画面の取引先詳細で切る |
 | `groupMaxRooms` | number | 30 | 1 件の室数の上限（個人予約の `maxRooms` は見ない） |
 | `groupMaxNights` | number | 7 | 1 件の泊数の上限 |
 | `groupMaxBatch` | number | 20 | 一括送信の件数の上限 |
@@ -455,7 +455,7 @@ offered ──取引先が取り下げ──▶ withdrawn
 
 ### 7.10 取引先の種類（kind）と `member`
 
-- 団体予約を出す条件（`groupInquiryAvailable(partner)`・純関数）: `partner.kind === 'agent' && booking_settings.groupInquiryEnabled && facility_available && booking_enabled(その施設) && 団体の支払方法の候補が 1 つ以上`。
+- 団体予約を出す条件（`groupInquiryAvailable(partner)`・純関数）: `partner.kind === 'agent' && booking_settings.groupInquiryEnabled === true`（2026-10-10 変更: これだけ。環境変数のフラグは作らない）。選んでいる施設がオフ・予約受付オフ・団体の支払方法が無いときは、メニューは出したまま入力画面で理由を出して送れなくする（`groupInquiryBlockReason`）。
 - **許可リスト方式**（`kind === 'agent'` のときだけ）。`corporate` / `other` / 将来の `member`（特別会員）・`ambassador`（アンバサダー会員・`docs/vip-member-page.md` §12）では出ない。`docs/vip-member-page.md` §4.1 の「member で使わない列・機能」に本機能（`groupInquiry*`・団体予約メニュー・`/p/[token]/group/**`）を足す一文を、VIP 実装時に加える（本書からの申し送り）。`PARTNER_KIND_LABELS` の `member` の表示名は「特別会員」。
 - 管理画面の取引先詳細に「団体予約」の節（§8.3）は kind=agent のときだけ出す。kind を agent 以外に変えると節が消え、設定は jsonb に残る（害なし）。
 - サーバ側も `requireGroupInquiry(partner)` で同じ判定をして 404（メニューを隠すだけにしない）。
@@ -545,9 +545,10 @@ offered ──取引先が取り下げ──▶ withdrawn
 
 `group_inquiry_submit`（detail: batch_id・件数・inquiry_codes）/ `group_inquiry_withdraw` / `group_inquiry_accept`（booking_code）/ `group_inquiry_accept_failed`（reason）/ `group_inquiry_reject`（web）、`group_inquiry_answer`（channel `admin`・answer・total 変更の有無・credit_override）。管理画面のアクセスログの日本語名の表に追加。
 
-### 9.4 機能フラグ
+### 9.4 機能フラグ（2026-10-10 変更: 作らない）
 
-- 環境変数 `PARTNER_GROUP_INQUIRY`（既定 off・添付の `PARTNER_BOOKING_ATTACHMENTS` と同じ流儀）。off のあいだはメニュー・管理画面に出さず、API は 404。本番で migration 適用 → 動作確認 → on。
+- 環境変数の機能フラグ（旧案 `PARTNER_GROUP_INQUIRY`）は作らない。代わりに **既定オフ・取引先ごとにオン**（`booking_settings.groupInquiryEnabled`・管理画面の取引先詳細で切る）。既存の取引先も全部オフのまま始まる。
+- 本番は migration 適用 → テスト取引先だけオンにして動作確認 → 使う旅行会社ごとにオン。
 
 ---
 
@@ -555,7 +556,7 @@ offered ──取引先が取り下げ──▶ withdrawn
 
 | 段階 | 内容 |
 |---|---|
-| **MVP（今回）** | 表 2 本・RPC の 2 キー、取引先の一覧／入力（束・複製・自動計算・前回の条件・localStorage の下書き）／送信／承諾・辞退・取り下げ、宿の一覧／詳細／回答（料金変更は管理者）／受付枠超過の承認、メール（受付・回答・承諾失敗）、期限切れ cron、取引先詳細の設定節、監査、機能フラグ |
+| **MVP（今回）** | 表 2 本・RPC の 2 キー、取引先の一覧／入力（束・複製・自動計算・前回の条件・localStorage の下書き）／送信／承諾・辞退・取り下げ、宿の一覧／詳細／回答（料金変更は管理者）／受付枠超過の承認、メール（受付・回答・承諾失敗）、期限切れ cron、取引先詳細の設定節、監査、取引先ごとのオン/オフ（既定オフ） |
 | 後回し A | 回答時の仮押さえ（在庫を期限まで押さえる・N6） |
 | 後回し B | 束の一括回答の細かい制御（件ごとに違う料金を一括で）、回答のテンプレート文、サーバ側の下書き（別端末で続き・N7） |
 | 後回し C | 子ども料金・添い寝（取引先予約全体が大人のみのため、個人予約と一緒に） |
@@ -580,6 +581,8 @@ offered ──取引先が取り下げ──▶ withdrawn
 
 ## 12. 要確認（ユーザーに聞く・各々に推奨案）
 
+> **2026-10-10 決定: N1〜N15 はすべて推奨どおり**（ユーザー回答）。
+
 | # | 論点 | 推奨 |
 |---|---|---|
 | N1 | 新表の置き場所: `public.rms_partner_group_inquiries`（既存の取引先表と同じ）か、プロジェクト規約の `book` スキーマか | **`public.rms_partner_*`**。取引先の子表はすべてここ・service_role 専用の運用も同じ。ファイル名は `…_rms_partner_group_inquiry.sql` |
@@ -591,7 +594,7 @@ offered ──取引先が取り下げ──▶ withdrawn
 | N7 | 下書き（束）の保存場所 | **ブラウザ（localStorage）だけ**。別端末で続きは後回し B |
 | N8 | 期限切れ・辞退・取り下げのメール | 期限切れは**送らない**、辞退・取り下げは**宿へ 1 通** |
 | N9 | 束を同時に回答したときの取引先へのメール | **1 通にまとめる**（件ごとの可否と料金を表で） |
-| N10 | 団体予約の既定（kind=agent の取引先で最初からオンか） | **オン**（`groupInquiryEnabled=true`）。ただし環境変数のフラグが on になるまで出ない |
+| N10 | 団体予約の既定（kind=agent の取引先で最初からオンか） | ~~オン~~ → **2026-10-10 変更: 既定オフ・取引先ごとにオン**（`groupInquiryEnabled=false`。環境変数のフラグは作らない・§9.4） |
 | N11 | 回答の有効期限の既定 | **7 日**（取引先ごとに変更可・回答時にも変更可） |
 | N12 | 室数の上限の既定 `groupMaxRooms` | **30**（男鹿・西和賀の総室数以内。施設の部屋タイプの室数を超える値は入力時に警告） |
 | N13 | 受付枠（与信）を超えた照会を**送信の時点で**止めるか | **止めない**（宿が判断・回答で「受付枠を超えても受ける」を管理者が付ける） |
@@ -627,4 +630,104 @@ offered ──取引先が取り下げ──▶ withdrawn
 - [ ] 束の「全件を受けられるにする」で複数件が一度に回答済みになり、取引先へのメールが 1 通
 - [ ] 取引先詳細（agent）に「団体予約」の節。オフにするとメニューが消える。other に変えると節が消える
 - [ ] アクセスログに `group_inquiry_*` が日本語で出る
-- [ ] `PARTNER_GROUP_INQUIRY=false` ではメニュー・サイドバー・API（404）とも出ない。cron は落ちない
+- [ ] 団体予約をオンにしていない取引先（既定）ではメニューが出ず、`/p/<token>/group`・`/group/new`・`/group/submit` とも 404。オンにすると出る。cron は表が無い環境でも落ちない
+
+---
+
+## 14. 実装メモ（サーバ側の契約）
+
+> 2026-10-10・担当 A（DB／サーバ）。画面担当 B はここと型の所在だけを見て `+page.svelte`・部品を作る。
+> 仕様変更（2026-10-10 ユーザー指示）: **既定オフ・取引先（kind='agent'）ごとにオン**。環境変数の機能フラグは作らない（§9.4）。
+
+### 14.1 DB（autumn-shared `20261010053641_rms_partner_group_inquiry.sql`・未 push）
+
+- 表 `public.rms_partner_group_inquiries`（§5.1 に `quote_message text` を追加。`check (check_out_date > check_in_date)`・`booking_id` の部分索引も追加）／`public.rms_partner_group_inquiry_events`（§5.2 のまま）。service_role 専用。
+- 照会番号の採番 RPC `public.rms_partner_next_group_inquiry_codes(p_count int) returns text[]`（`GI-YYYY-000001`・service_role 専用）。PostgREST から sequence を直接進められないため追加（設計からの追加）。
+- `rms_partner_create_booking`（20261009054024 を丸ごと写して追加）: `p.group {inquiry_id, inquiry_code, group_name, batch_id}` があれば台帳 `detail.group`・`booking.bookings.metadata.rms_partner_group_inquiry_id`・滞在の備考の先頭「団体: 団体名（照会 GI-…）」、**室数の上限を 20 → 100**（団体のときだけ。個人予約は 20 のまま）。`p.credit_override`（group があるときだけ効く）で受付枠超過でも deposit 方式で止めず、`credit_result.overridden=true`・備考【受付枠超過・宿承認】。
+- `_rms_partner_requests`（20261007002617 を丸ごと写して追加）: 先頭に `{label:'団体', value:'団体名（照会 GI-…）'}`。そのため TS は options に「団体」行を**入れない**（§7.6 の表の「options 先頭」は RPC 側で実現・二重にしない）。
+
+### 14.2 純関数 `lib/partner-group.ts`（画面で使うもの）
+
+| 名前 | 用途 |
+|---|---|
+| 型 `GroupInquiryStatus` / `GroupAnswer` / `GroupQuoteStatus` / `GroupDraftItem` / `GroupChoiceInput` / `GroupPriceRoom` / `GroupSettings` / `GroupInquiryExtras` | 下書き1件・状態・料金の部屋 |
+| `groupInquiryAvailable({kind, booking_settings})` | メニュー・ページを出すか（kind='agent' かつ groupInquiryEnabled） |
+| `groupInquiryBlockReason({booking_settings, facility_available, booking_enabled})` | 選んでいる施設で送れない理由（null なら送れる） |
+| `groupPaymentChoices(settings)` | 支払方法の候補（`invoice_monthly` と `custom_*`・`{id,label}[]`） |
+| `splitAdultsEvenly(total, rooms)` / `suggestRoomCount(adults, capacityMax)` | 均等割（3-2-2-2-2）・室数の目安 |
+| `resolveGroupChoice(input, choices, what)` / `GROUP_CHOICE_OTHER`（'other'） | 交通機関・夕食時間の「選択肢＋その他」 |
+| `validateGroupDraft(items, settings, {bounds, now, capacityOf, paymentIds})` / `normalizeGroupDraftItem` / `describeGroupIssues` | 画面でも同じ検証を先にかけられる（サーバでもう一度かける） |
+| `canInquireFor(checkIn, s)` / `describeGroupDeadline(s)` | 締切（チェックイン日の groupLeadDays 日前の cutoffHour 時） |
+| `canAccept` / `canReject` / `canWithdraw` / `canWithdrawBy` / `canAnswer` / `isAnswerExpired` | ボタンの出し分け（サーバでも確かめる） |
+| `GROUP_STATUS_LABELS_PARTNER` / `GROUP_STATUS_LABELS_STAFF` / `groupStatusLabel` / `GROUP_STATUS_TABS` / `groupStatusTab` / `GROUP_ANSWER_LABELS` / `GROUP_EVENT_LABELS` / `GROUP_QUOTE_STATUS_TEXT` | 表示名 |
+| `overrideUnitPrices` / `spreadTotalOverRooms` / `groupRoomsTotal` / `unitPricesByAdults` / `groupNightDates` / `isValidPriceRooms` | 管理画面の回答フォームで料金のプレビュー（保存時はサーバで同じ計算） |
+| `describeGroupStay(checkIn, nights)`（「4/15（水）〜1泊」）/ `describeRoomAdults(rooms)`（「2名×5室」）/ `shortDateJa` | 表示 |
+| `MAX_GROUP_NAME_LENGTH`（60）/ `MAX_GROUP_NOTE_LENGTH`（500）/ `MAX_GROUP_ANSWER_MESSAGE_LENGTH`（1000） | 入力の上限 |
+
+- 設定キー（`lib/partner-booking.ts` の `PartnerBookingSettings`・取引先共通）: `groupInquiryEnabled`（既定 false）・`groupMaxRooms`（30・1〜100）・`groupMaxNights`（7・1〜30）・`groupMaxBatch`（20・1〜50）・`groupLeadDays`（3・0〜90）・`groupTransportChoices`・`groupDinnerTimeChoices`（各最大 12 件・1 件 30 字）・`groupAnswerDays`（7・1〜60）。
+- アクセスログの表示名（`group_inquiry_*`）は `lib/partner-login-security.ts` の `LOGIN_LOG_LABELS` に足した（管理画面の `ACTION_LABELS` は既にこれを展開しているので画面の変更は不要）。
+
+### 14.3 取引先ページ
+
+**MENU の表示条件**: `data.portal.groupInquiry`（`portalHeader` が返す boolean ＝ `groupInquiryAvailable(partner)`）。パスは `group`、表示名「団体予約」。
+
+**`/p/[token]/group`（一覧・load）** — 返り値:
+- `portal`、`inquiries: (PartnerGroupInquiry & { actions: { accept, reject, withdraw } })[]`（型は `lib/server/partners/group-inquiries.ts`。取引先の**全施設**の照会・新しい順・最大 200。`facilityName`・予約確定なら `bookingCode` / `bookingStatus`。宿のスタッフ名・id は含まない）
+- `statusTabs`（`GROUP_STATUS_TABS`）・`statusLabels`・`blockReason`（string|null。「新しい照会」ボタンの代わりに出す）・`done`（`?done=` の値）・`loadError`
+- 行の主なフィールド（DB の列名のまま）: `id, inquiry_code, batch_id, batch_seq, status, group_name, facility_id, room_name, plan_display_name, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, rooms[{adults}], payment_label, extras{transport{choice,other,value}, dinnerTime{…}, note}, booker, quote_status, quote_message, quote_rooms, quote_total, quote_bath_tax, quote_remaining, quote_credit, answer, answer_total, answer_bath_tax, answer_rooms, answer_message, answer_expires_at, account_id, submitted_by, created_at`
+- 承諾・辞退・取り下げのボタンは `./[id]?/accept` 等へ POST（下）。
+
+**`/p/[token]/group/new`（入力・load）** — 返り値:
+- `portal`、`facility {id, name, slug}`（照会の `facilityId` に入れる）、`blockReason`、`today`、`bounds {earliest, latest}`、`deadlineText`、`settings: GroupSettings`、`paymentChoices {id,label}[]`、`choiceOther`（'other'）、`limits {groupName, note}`、`showInventory`、`booker: PartnerBooker`（マイページの既定）、`latest: GroupDraftItem | null`（「前回の内容を使う」・団体名は空）、`draftKey`（localStorage のキー `ab:group-draft:<token>`）
+- `catalog: GroupCatalogRoom[]` ＝ `{ code, name, capacityMax, plans: [{ planCode, planName, displayName, mealType, minPerPerson }] }[]`（料金カレンダーの「今後3か月の最安」に出る部屋×プラン。`planName` は PMS の元の名前＝見積・送信に使う。表示は `displayName`）
+- 見積: **既存の `POST /p/[token]/book/quote`（JSON）をそのまま使う**。入力 `{ facilityId, roomCode, planCode, planName, checkIn, nights, rooms: [{adults}] }` → 出力 `{ quote: BookingQuote, canBook }`（`BookingQuote` は `lib/server/partners/booking.ts`。`quote.ok` が false なら `quote.message`。`remaining`・`credit`・`bathTax`・`total`・`rooms[].nights[].unit_price`）。室数は 100 まで受けるようにした。**`canBook` は個人予約の締切（leadDays）なので団体では使わず**、`canInquireFor(checkIn, settings)` で判定すること。`quote.paymentChoices`・`deposit`・`prepay` は団体では無視（団体は後払いだけ）。
+
+**`POST /p/[token]/group/submit`（JSON）**
+- 入力 `{ items: GroupDraftItem[] }`（`facilityId` は `data.facility.id`、`rooms` の長さ＝室数、`adults`＝合計、`transport` / `dinnerTime` は `{choice, other}`、`booker` は予約者）。
+- 出力 200 `{ ok: true, batchId, inquiries: [{ id, inquiryCode, quoteStatus }], warnings: [{index, message}] }` → 一覧へ `?done=batch` で遷移・localStorage を消す。
+- 出力 400 `{ ok: false, message, errors: [{index, message}], warnings }`（index は items の添字、-1 は全体。1件でも誤りがあれば全件送っていない）。401 未ログイン／403 公開停止・確認モード・本人確認待ち／404 団体予約を使えない取引先。
+
+**`/p/[token]/group/[id]`（詳細・load）** — 返り値: `portal`、`inquiry: PartnerGroupInquiry`、`nightLines: PartnerNightLine[]`（1泊1行・回答額→自動計算額）、`events: GroupInquiryEvent[]`（古い順・スタッフの名前は「宿」）、`labels {status, answer, event, quote}`、`actions {accept, reject, withdraw}`、`attachmentsEnabled`（承諾後の「名簿は予約一覧の添付から」の案内を出すか）。
+
+**form actions（`/p/[token]/group/[id]`）**
+
+| 名前 | fields | 成功 | 失敗 |
+|---|---|---|---|
+| `?/accept` | なし | `{ accepted: true, bookingCode, bookingId }`（予約一覧 `/p/<token>/bookings?done=<bookingCode>` へ案内してよい） | `fail(409, { message, code })`（`code`: `expired` / `conflict` / `no_price` / `accept_failed`〈満室・受付枠超過。message は「満室のため確定できませんでした。宿からご連絡します。」等〉） |
+| `?/reject` | `reason`（任意） | `{ rejected: true }` | `fail(4xx, { message, code })` |
+| `?/withdraw` | `reason`（任意） | `{ withdrawn: true }` | `fail(403/409, { message, code })`（本人かマスタ以外は 403） |
+
+### 14.4 管理画面
+
+**サイドバー「団体照会」**: **常に出す**（0件ならバッジ無し）。バッジは `admin/+layout.server.ts` の `data.groupInquiryBadge: Promise<number | null>`（回答待ち＝submitted の件数・スタッフがアクセスできる施設の範囲。Promise のまま流すので `{#await}` で。null・0 はバッジ無し）。
+
+**`/admin/group-inquiries`（一覧・load）** — クエリ `?status=open|all|submitted,offered…`（既定 open＝回答待ち＋回答済み）・`?fac=<Book の施設 ID>`・`?partner=<取引先 id>`・`?from=` `?to=`（チェックイン日）。返り値:
+- `live`・`error`（使えない環境・権限なしの理由）・`filters`・`facilities {id(Book の ID), name}[]`・`partners {id,name}[]`・`isAdmin`・`statusLabels`・`answerLabels`・`quoteText`
+- `inquiries: StaffGroupInquiry[]`（全列＋`facilityName`・`bookingCode`・`bookingStatus`）、`batches: { batchId, partnerId, partnerName, createdAt, items: StaffGroupInquiry[] }[]`（束ごとのカード用）
+- action `?/answerBatch`（「全件を受けられるにする」）: fields `batchId`・`message`（任意）・`expiresOn`（任意 YYYY-MM-DD）→ `{ batchAnswered: number, skipped: [{inquiryCode, reason}] }`／`fail(400, { message, skipped })`。回答待ちで自動計算できた件だけを自動計算額で「受けられる」に（取引先へは取引先×施設ごとに 1 通）。
+
+**`/admin/group-inquiries/[id]`（詳細・load）** — 返り値:
+- `live`・`error`、`inquiry: StaffGroupInquiry`（`answered_by_name`・`credit_override` を含む）、`events`（スタッフ名あり）、`nightly: {date, remaining}[]`（泊ごとの残室・いまの値）、`credit: PartnerQuoteCredit | null`（月別の受付枠・この照会ぶんを足した後。`months[].{month, limit, booked, adding, remaining, over}`・`over`）、`siblings`（同じ束のほかの照会）、`nightLines`
+- `form: { canAnswer, isAdmin, unitPrices: Record<人数, 単価>, adultsSteps: number[], defaultExpiresOn: 'YYYY-MM-DD', defaultPriceMode: 'auto'|'keep'|'unit' }`、`labels`
+- action `?/answer`: fields `answer`（ok / conditional / declined）・`message`（条件付きは必須）・`expiresOn`（空なら既定）・`priceMode`（auto / keep / unit / total。**unit・total は管理者のみ**）・`unit_<人数>`（例 `unit_2=20000`）・`total`・`creditOverride=on`（**管理者のみ**・受付枠超過のときだけ出す）→ `{ answered: true, status }`／`fail(400/403/409, { message })`。
+
+**取引先詳細 `/admin/partners/[id]`**: 設定は `data.partner.commonSettings.group*`。画面の `booking` に入っていれば既存の `?/saveCommon`（hidden `booking` の JSON）でそのまま保存される（サーバの追加は不要だった）。`data.groupInquiries: Promise<StaffGroupInquiry[]>`（kind=agent のときだけ直近 20 件・それ以外は []）。節は `data.partner.kind === 'agent'` のときだけ出す。
+
+### 14.5 未実装・後回し・判断したこと
+
+- 承諾時に取引先特典（perks）は付けない（§7.6 の表に無いため）。交通機関・予約者・夕食開始時間は options、照会の備考＋宿の一言は notes。
+- 名義（N5）: TS は `family_name=団体名`、`given_name` は「旅行会社名義（booking_name_mode='partner' かつ紐づけあり）なら空・それ以外は『御一行』」、電話＝予約者の電話。そのため**予約者の電話を照会の送信時に必須**にした（RPC が電話を必須にしているため）。
+- 回答の権限: 設計 §7.9 の「`staffPartnerScope('edit')`・staff でも可」は 'edit' が管理者専用で矛盾するため、**`'view'`＋照会の施設へのアクセス**で回答を許し、料金の変更・受付枠超過の承認だけ管理者に限った。
+- 一覧（取引先ページ）は選んでいる施設で絞らず、取引先の全施設の照会を出す（`facilityName` 付き）。入力は選んでいる施設だけ。
+- 回答の有効期限: 既定は今日＋groupAnswerDays 日の 23:59 JST（チェックイン日の前日を超えない）。チェックイン日を超える期限は保存できない。
+- 「受付枠」の表示用 `credit` は終了・確定済みの照会では null（足す室数 0 で読まないため）。
+- 仮押さえ（N6）・サーバ側の下書き（N7）・REST API からの照会（後回し E）は未実装。
+
+### 14.6 レビュー指摘の対応（2026-10-10）
+
+- 承諾の楽観ロック: ロック条件に `updated_at`（読んだ時点）を足し、`.select(COLUMNS)` で返ったロック後の行から RPC の料金・予約者・付帯情報・入湯税・`credit_override` を組む。承諾フォームは hidden `updatedAt`（画面で見ていた値）を送り、違えば 409「宿の回答が更新されました…」。ロックできなかったときは読み直して、期限切れなら `expired`・回答の更新なら上の文言・それ以外は `conflict`。
+- 承諾の途中で止まった照会（`accepted`・`booking_id` なし・`accepted_at` が10分より前）は、cron（`/api/cron/partner-charge`）の `recoverStuckGroupAccepts` が期限切れの前に後始末する: 予約を `booking.bookings.metadata.rms_partner_group_inquiry_id`（読めなければ台帳 `detail.group.inquiry_id`）で逆引きし、あれば台帳の id を `booking_id` に結び直す（events `accepted`・`recovered:true`）、無ければ `offered` に戻す（events `accept_failed`・`reason:'interrupted'`）。
+- 送信: 各件の部屋タイプ × プラン（コード・元の名前）が、その施設の `groupFormCatalog`（入力画面の選択肢）に無ければその件をエラーにする。`quote_price_mode` は見積の `priceMode`（precomputed / live）を写す。
+- 上限（DB の check・integer に合わせる）: 大人の合計 ≤ 600・室数 ≤ 100・泊数 ≤ 30（`validateGroupDraft`）。回答の 1名1泊 ≤ 1,000,000 円・合計 < 2,000,000,000 円（`groupPriceLimitError`）。日付は実在するものだけ（`isRealIsoDate`・回答の期限・チェックイン日。不正は 400）。
+- 回答のメール: `answerGroupInquiry` は `{ row, mailed }`、`answerGroupBatch` は `mailed`（送れた件数）を返し、管理画面は実際に送ったときだけ「取引先へメールでお知らせしました」を出す。
+- 下書き（localStorage）には予約者を保存しない。読み戻した行の予約者は入力欄の予約者で補う（`withDraftBooker`）。

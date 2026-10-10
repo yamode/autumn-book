@@ -4,9 +4,12 @@ import { isMaintenanceOn } from '$lib/server/maintenance';
 import { ADMIN_SUPABASE, AUTH_MODE, adminMfaRequired } from '$lib/server/auth';
 import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { DATA_SOURCE } from '$lib/server/supabase';
+import { countSubmittedGroupInquiries } from '$lib/server/partners/group-inquiries';
+import { staffGroupScope } from '$lib/server/partners/group-staff';
 import type { LayoutServerLoad } from './$types';
 
-export const load: LayoutServerLoad = async ({ locals, url, cookies, platform }) => {
+export const load: LayoutServerLoad = async (event) => {
+	const { locals, url, cookies, platform } = event;
 	const isLogin = url.pathname === '/admin/login';
 	if (!isLogin && locals.user?.role !== 'admin' && locals.user?.role !== 'staff') {
 		redirect(303, '/admin/login');
@@ -32,6 +35,14 @@ export const load: LayoutServerLoad = async ({ locals, url, cookies, platform })
 			enabled: locals.adminAal !== null,
 			enrolled: (locals.adminAal?.verifiedFactors ?? 0) > 0,
 			required
-		}
+		},
+		// サイドバー「団体照会」のバッジ（回答待ちの件数・スタッフがアクセスできる施設の範囲・docs/partner-group-booking.md §7.8）。
+		// 画面の表示を待たせないよう Promise のまま流す（読めない・この環境では使えないときは null＝バッジを出さない）
+		groupInquiryBadge:
+			isLogin || !ADMIN_SUPABASE
+				? Promise.resolve(null as number | null)
+				: staffGroupScope(event)
+						.then(({ scope, facilities: facs }) => countSubmittedGroupInquiries(scope.db, scope.tenantId, facs.map((f) => f.id)))
+						.catch(() => null as number | null)
 	};
 };
