@@ -3,7 +3,7 @@
 //   ・他サイトへの埋め込み禁止（クリックジャッキング対策）: X-Frame-Options と CSP frame-ancestors。
 //     同じサイト内の埋め込み（管理画面のプレビュー等）は許す。HP の FAQ は widget.js で読み込むので影響しない
 //   ・nosniff: ブラウザに Content-Type を推測させない
-//   ・Referrer-Policy: 外部へ URL のパス・クエリを渡さない（取引先ページは portal.ts で no-referrer を付けており、それを優先）
+//   ・Referrer-Policy: 外部へ URL のパス・クエリを渡さない（取引先ページは portal.ts で same-origin を付けており、それを優先）
 //   ・HSTS: 本番ドメインだけ（プレビューの *.pages.dev には付けない）
 // 既に同じヘッダがある応答（請求書 HTML の CSP など）は上書きしない。
 // CSP の本格導入（script-src 等）は Stripe・GA4・地図のタイル等の洗い出しが要るため別途（Report-Only から）。

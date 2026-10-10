@@ -190,9 +190,11 @@ export function requestLocation(event: Pick<RequestEvent, 'request'> & { platfor
 }
 
 // 取引先ページ共通の応答ヘッダ。URL にトークンを含むので、リファラで外へ漏らさない・検索に載せない・保存させない。
+// referrer-policy は same-origin（外部サイトへはリファラを送らない）。no-referrer にするとブラウザが通常のフォーム送信
+// （ログアウト等の画面遷移を伴う POST）で `Origin: null` を送り、SvelteKit の CSRF 検査で 403 になる（2026-10-10 修正）
 export const PORTAL_HEADERS = {
   'cache-control': 'private, no-store',
-  'referrer-policy': 'no-referrer',
+  'referrer-policy': 'same-origin',
   'x-robots-tag': 'noindex, nofollow'
 };
 

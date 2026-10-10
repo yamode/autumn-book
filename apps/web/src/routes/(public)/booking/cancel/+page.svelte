@@ -60,7 +60,7 @@
 		})}</title
 	>
 	<meta name="robots" content="noindex,nofollow" />
-	<meta name="referrer" content="no-referrer" />
+	<meta name="referrer" content="same-origin" />
 </svelte:head>
 
 <div class="mx-auto max-w-2xl px-4 py-10">
