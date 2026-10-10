@@ -697,6 +697,9 @@ export type BookingListRow = {
 	mail_status: string | null;
 	mail_sent_at: string | null;
 	created_at: string;
+	/** 公式予約の部屋の数（それ以外は 1）・その滞在が何室目か（autumn-shared 20261010204933 から） */
+	room_count?: number;
+	room_index?: number | null;
 };
 
 export type BookingQuery = {
@@ -801,6 +804,14 @@ export type BookingDetail = {
 			coupon_share: number;
 			charge: number;
 			cancel_fee: number | null;
+			/** 部屋ごとのお金（_booking_rooms_view） */
+			points_share?: number;
+			prepay_discount?: number;
+			bath_tax?: number;
+			paid_share?: number;
+			cancel_kept?: number;
+			cancel_waived?: boolean;
+			cancelled_at?: string | null;
 		}[];
 	};
 	guest: {
@@ -818,6 +829,8 @@ export type BookingDetail = {
 		rate?: number;
 		fee?: number;
 		rules: { days_before: number; rate: number }[];
+		/** 2 室以上: 生きている部屋ごとのキャンセル料（book._booking_cancel_fee の rooms[]） */
+		rooms?: { room_index: number; fee: number; rate: number }[];
 	};
 	mails: BookingMailRow[];
 	cancel_token: CancelTokenState;
@@ -837,6 +850,20 @@ export const adminCancelBooking = (
 		c,
 		'admin_cancel_booking',
 		{ p_booking_code: code, p_waive_fee: waiveFee, p_reason: reason }
+	);
+
+/** 1 室だけの取消（管理者・理由必須・book.admin_cancel_booking_room・M2）。最後の 1 室なら予約全体の取消になる */
+export const adminCancelBookingRoom = (
+	c: BookClient,
+	code: string,
+	roomIndex: number,
+	waiveFee: boolean,
+	reason: string
+) =>
+	rpc<{ booking_code: string; room_index: number; cancellation_fee: number; rate: number; waived: boolean; remaining_rooms: number; booking_cancelled: boolean }>(
+		c,
+		'admin_cancel_booking_room',
+		{ p_booking_code: code, p_room_index: roomIndex, p_waive_fee: waiveFee, p_reason: reason }
 	);
 
 /**

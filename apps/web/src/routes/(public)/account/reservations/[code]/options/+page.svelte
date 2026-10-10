@@ -67,6 +67,17 @@
 	<p class="mt-6 rounded-2xl border border-stone-200 bg-white p-6 text-sm text-stone-400">{m.options_catalog_empty()}</p>
 {:else}
 	<form method="POST" action="?/add" use:enhance class="mt-6 space-y-8">
+		{#if data.rooms.length > 1}
+			<!-- 複数室の予約（M2）: どのお部屋のアレンジか -->
+			<label class="block rounded-2xl border border-stone-200 bg-white p-4 text-sm text-stone-600">
+				{m.options_room_label()}
+				<select name="roomIndex" class="mt-1 block w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+					{#each data.rooms as r (r.index)}
+						<option value={r.index}>{m.hold_room_n({ n: String(r.index) })} {r.roomName}（{m.hold_room_adults({ adults: String(r.adults) })}）</option>
+					{/each}
+				</select>
+			</label>
+		{/if}
 		{#each grouped as g (g.cat)}
 			<section>
 				<h2 class="mb-3 text-sm font-medium text-brand-900">{categoryLabel(g.cat)}</h2>

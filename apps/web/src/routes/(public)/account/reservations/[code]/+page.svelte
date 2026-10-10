@@ -8,6 +8,9 @@
 	let { data, form } = $props();
 	let b = $derived(data.booking);
 	let showCancelConfirm = $state(false);
+	// 1 室ずつの取消（M2）: 確認を開いている部屋の番号
+	let confirmRoom = $state<number | null>(null);
+	let liveCount = $derived((data.rooms ?? []).filter((r) => !r.cancelled).length);
 
 	// 変更履歴・変更可否
 	let amendments = $derived((data.amendments ?? []) as BookingAmendment[]);
@@ -66,8 +69,10 @@
 {#if page.url.searchParams.get('amend') === 'prepaid'}
 	<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{m.amend_prepaid_blocked()}</p>
 {/if}
-{#if form?.cancelled}
-	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.reservation_cancelled_ok()}</p>
+{#if form?.cancelled || form?.roomCancelled}
+	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+		{form?.roomCancelled && !form.roomCancelled.bookingCancelled ? m.reservation_room_cancelled_ok({ n: String(form.roomCancelled.index) }) : m.reservation_cancelled_ok()}
+	</p>
 	{#if form.refund?.kind === 'refunded'}
 		<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
 			{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}
@@ -118,6 +123,30 @@
 								<p class="font-medium text-brand-900">{r.roomName || '—'}</p>
 								<p class="text-xs text-stone-600">{r.planName || '—'}</p>
 								<p class="flex justify-between text-xs text-stone-600"><span>{m.hold_room_adults({ adults: String(r.adults) })}</span><span class="tabular-nums">{formatPrice(r.total)}</span></p>
+								{#if r.cancelled && r.cancelFee > 0}
+									<p class="mt-0.5 text-right text-xs text-red-600">{m.reservation_cancel_fee()} {formatPrice(r.cancelFee)}</p>
+								{/if}
+								{#if r.canCancel}
+									<!-- 1 室ずつの取消（M2）。押すと確認（キャンセル料・返金の見込み）→ 確定 -->
+									{#if confirmRoom !== r.index}
+										<button type="button" onclick={() => (confirmRoom = r.index)} class="mt-1.5 w-full rounded-md border border-red-200 py-1 text-xs text-red-600 hover:bg-red-50">{m.reservation_room_cancel_btn()}</button>
+									{:else}
+										<div class="mt-1.5 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+											<p class="font-medium">{m.reservation_room_cancel_confirm({ n: String(r.index) })}</p>
+											<p class="mt-0.5">{m.reservation_room_cancel_fee({ fee: formatPrice(r.fee?.fee ?? 0) })}</p>
+											{#if r.refundPreview}
+												{@const rp = r.refundPreview}
+												<p class="mt-0.5">{rp.refund > 0 ? m.reservation_room_refund_preview({ refund: formatPrice(rp.refund), deducted: formatPrice(rp.deducted) }) : m.cancel_refund_none()}</p>
+											{/if}
+											{#if liveCount === 1}<p class="mt-0.5">{m.reservation_room_cancel_last()}</p>{/if}
+											<form method="POST" action="?/cancelRoom" use:enhance={() => async ({ update }) => { await update(); confirmRoom = null; }} class="mt-1.5 flex gap-2">
+												<input type="hidden" name="roomIndex" value={r.index} />
+												<button type="submit" class="flex-1 rounded bg-red-600 py-1 text-white hover:bg-red-500">{m.reservation_cancel_confirm_btn()}</button>
+												<button type="button" onclick={() => (confirmRoom = null)} class="flex-1 rounded border border-stone-300 bg-white py-1 text-stone-700">{m.reservation_back()}</button>
+											</form>
+										</div>
+									{/if}
+								{/if}
 							</div>
 						{/each}
 					</dd>
@@ -182,14 +211,11 @@
 				{#if b.cancellationPolicy.note}<p class="mt-2 text-xs text-stone-400">{b.cancellationPolicy.note}</p>{/if}
 
 				{#if data.multiRoom}
-					<!-- 2 室以上: 取消は全室まとめて（2026-10-10 決定）。1 室だけの取消・日程の変更は M2 までお電話で -->
-					<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-						{m.reservation_multi_phone()}<br />
-						<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）
-					</p>
+					<!-- 2 室以上（M2）: お部屋ごとに取り消せる（左のお部屋のカード）。ここは残りのお部屋をすべて取り消す -->
+					<p class="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">{m.reservation_multi_cancel_note()}</p>
 				{/if}
 				{#if !showCancelConfirm}
-					<button type="button" onclick={() => (showCancelConfirm = true)} class="mt-3 w-full rounded-lg border border-red-300 py-2 text-red-600 hover:bg-red-50">{m.reservation_cancel_btn()}</button>
+					<button type="button" onclick={() => (showCancelConfirm = true)} class="mt-3 w-full rounded-lg border border-red-300 py-2 text-red-600 hover:bg-red-50">{data.multiRoom ? m.reservation_cancel_all_btn() : m.reservation_cancel_btn()}</button>
 				{:else}
 					<div class="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
 						<p class="font-medium text-red-700">{m.reservation_cancel_confirm_heading()}</p>
@@ -223,8 +249,8 @@
 				<div class="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
 					{#if amend?.canAmend}
 						<p class="mb-2">{m.amend_intro({ n: String(amend.remaining) })}</p>
-						<a href="/account/reservations/{b.code}/amend" class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{m.amend_button()}</a>
-					{:else if !data.multiRoom}
+						<a href="/account/reservations/{b.code}/amend" class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{amend.datesOnly ? m.amend_dates_button() : m.amend_button()}</a>
+					{:else}
 						<p>
 							{m.amend_call_us()}<br />
 							<a href="tel:{data.facility.phone}" class="font-medium text-brand-800">{data.facility.phone}</a>（{data.facility.name}）
@@ -251,6 +277,7 @@
 										<p class="truncate font-medium text-stone-700">{o.name}</p>
 										<p class="mt-0.5 text-xs text-stone-400">
 											{categoryLabel(o.category)}
+											{#if data.multiRoom && o.roomIndex}・{m.hold_room_n({ n: String(o.roomIndex) })}{/if}
 											{#if o.serviceDate}・{formatDate(o.serviceDate)}{/if}
 											{#if o.quantity > 1}・{m.options_qty({ n: String(o.quantity) })}{/if}
 										</p>

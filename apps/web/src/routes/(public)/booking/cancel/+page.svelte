@@ -4,6 +4,10 @@
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
+	// 1 室だけ取り消した後は、action が返した最新の表示（残りのお部屋）を使う（URL から ?t= を落としているため再読込できない）
+	let v = $derived(form && 'view' in form && form.view ? form.view : data);
+	/** 1 室ずつの取消（M2）: 確認を開いている部屋の番号 */
+	let confirmRoom = $state<number | null>(null);
 
 	/** 主ボタン → 確認パネル → 確定、の二段。ブラウザ confirm() は文言が読みにくいので使わない */
 	let confirming = $state(false);
@@ -18,7 +22,7 @@
 	 * 「リンクをもう一度お開きください」になる（トークンはページ状態にだけ持つ）。
 	 */
 	$effect(() => {
-		if (data.state === 'ready' && typeof history !== 'undefined' && location.search) {
+		if (v.state === 'ready' && typeof history !== 'undefined' && location.search) {
 			history.replaceState(history.state, '', location.pathname);
 		}
 	});
@@ -32,11 +36,12 @@
 		token_revoked: { h: m.gcancel_err_revoked_h(), body: m.gcancel_err_revoked(), phone: true },
 		checked_in: { h: m.gcancel_err_stayed_h(), body: m.gcancel_err_stayed(), phone: false },
 		checked_out: { h: m.gcancel_err_stayed_h(), body: m.gcancel_err_stayed(), phone: false },
+		room_not_cancellable: { h: m.gcancel_err_room_h(), body: m.gcancel_err_room(), phone: true },
 		error: { h: m.gcancel_err_generic_h(), body: m.gcancel_err_generic(), phone: true }
 	};
 
 	let blocked = $derived(
-		data.state === 'blocked' ? (REASON_TEXT[data.reason] ?? REASON_TEXT.not_found) : null
+		v.state === 'blocked' ? (REASON_TEXT[v.reason] ?? REASON_TEXT.not_found) : null
 	);
 
 	function ruleLabel(daysBefore: number): string {
@@ -56,7 +61,7 @@
 <svelte:head>
 	<title
 		>{m.gcancel_title({
-			facility: data.state === 'ready' || data.state === 'blocked' ? (data.booking?.facility_name ?? '') : ''
+			facility: v.state === 'ready' || v.state === 'blocked' ? (v.booking?.facility_name ?? '') : ''
 		})}</title
 	>
 	<meta name="robots" content="noindex,nofollow" />
@@ -66,7 +71,7 @@
 <div class="mx-auto max-w-2xl px-4 py-10">
 	<h1 class="font-display text-2xl text-brand-900">{m.gcancel_heading()}</h1>
 
-	{#if data.unavailable}
+	{#if v.unavailable}
 		<p class="mt-6 rounded-xl bg-stone-50 p-4 text-stone-600">
 			この画面は本番環境でのみご利用いただけます。
 		</p>
@@ -92,154 +97,202 @@
 			{:else if form?.refund?.kind === 'nothing_due'}
 				<p class="mt-2 text-stone-700">{m.cancel_refund_none()}</p>
 			{/if}
-			{#if data.state === 'ready'}
+			{#if v.state === 'ready'}
 				<p class="mt-2 text-sm text-stone-500">
-					{m.gcancel_done_mail({ email: data.booking.email_masked })}
+					{m.gcancel_done_mail({ email: v.booking.email_masked })}
 				</p>
 				<p class="mt-4 text-stone-600">{m.gcancel_done_thanks()}</p>
 				<a
 					class="mt-6 inline-block rounded-lg border border-brand-800 px-5 py-2.5 text-brand-800"
-					href="/yamado/{data.booking.facility_slug}"
-					>{m.gcancel_to_facility({ facility: data.booking.facility_name })}</a
+					href="/yamado/{v.booking.facility_slug}"
+					>{m.gcancel_to_facility({ facility: v.booking.facility_name })}</a
 				>
 			{/if}
 		</div>
-	{:else if data.state === 'reload'}
+	{:else if v.state === 'reload'}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">{m.gcancel_reload_h()}</h2>
 			<p class="mt-2 text-stone-600">{m.gcancel_reload()}</p>
 		</div>
-	{:else if data.state === 'rate_limited'}
+	{:else if v.state === 'rate_limited'}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">しばらく時間をおいてお試しください</h2>
 			<p class="mt-2 text-stone-600">
-				アクセスが集中しています。{Math.ceil((data.retryInSec ?? 60) / 60)}分ほどおいてから、もう一度リンクをお開きください。
+				アクセスが集中しています。{Math.ceil((v.retryInSec ?? 60) / 60)}分ほどおいてから、もう一度リンクをお開きください。
 			</p>
 		</div>
-	{:else if data.state === 'error'}
+	{:else if v.state === 'error'}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">{m.gcancel_err_generic_h()}</h2>
 			<p class="mt-2 text-stone-600">{m.gcancel_err_generic()}</p>
 		</div>
-	{:else if data.state === 'blocked' && blocked}
+	{:else if v.state === 'blocked' && blocked}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">{blocked.h}</h2>
 			<p class="mt-2 text-stone-600">
-				{#if data.reason === 'token_used' || data.reason === 'already_cancelled'}
-					{m.gcancel_err_used({ code: data.booking?.code ?? '' })}
+				{#if v.reason === 'token_used' || v.reason === 'already_cancelled'}
+					{m.gcancel_err_used({ code: v.booking?.code ?? '' })}
 				{:else}
 					{blocked.body}
 				{/if}
 			</p>
 			{#if blocked.phone}
 				<p class="mt-4 text-stone-700">
-					{#if data.booking?.facility_phone}
-						{m.gcancel_phone({ phone: data.booking.facility_phone })}
+					{#if v.booking?.facility_phone}
+						{m.gcancel_phone({ phone: v.booking.facility_phone })}
 					{:else}
 						山人-yamado- 0197-82-2222 ／ 山人-oga- 0185-47-7776
 					{/if}
 				</p>
-			{:else if data.booking}
+			{:else if v.booking}
 				<a
 					class="mt-4 inline-block rounded-lg border border-brand-800 px-5 py-2.5 text-brand-800"
-					href="/yamado/{data.booking.facility_slug}"
-					>{m.gcancel_to_facility({ facility: data.booking.facility_name })}</a
+					href="/yamado/{v.booking.facility_slug}"
+					>{m.gcancel_to_facility({ facility: v.booking.facility_name })}</a
 				>
 			{/if}
 		</div>
-	{:else if data.state === 'ready'}
+	{:else if v.state === 'ready'}
+		{#if form && 'roomCancelled' in form && form.roomCancelled}
+			<!-- 1 室だけ取り消した（M2）。予約は残りのお部屋で続く -->
+			<div class="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
+				<p class="font-medium">{m.gcancel_room_done({ n: String(form.roomCancelled.index) })}</p>
+				<p class="mt-1">{form.roomCancelled.fee > 0 ? m.gcancel_done_fee({ fee: formatPrice(form.roomCancelled.fee) }) : m.gcancel_fee_none()}</p>
+				{#if form.refund?.kind === 'refunded'}
+					<p class="mt-1">{m.cancel_refund_done({ amount: formatPrice(form.refund.amount) })}</p>
+				{:else if form.refund?.kind === 'failed'}
+					<p class="mt-1 text-red-700">{m.cancel_refund_failed()}</p>
+				{/if}
+				<p class="mt-1 text-emerald-700">{m.gcancel_room_done_mail({ email: v.booking.email_masked })}</p>
+			</div>
+		{/if}
 		<p class="mt-4 whitespace-pre-line text-stone-700">
-			{m.gcancel_intro({ name: data.booking.guest_name })}
+			{m.gcancel_intro({ name: v.booking.guest_name })}
 		</p>
 
 		<!-- ご予約内容 -->
 		<dl class="mt-6 space-y-2 rounded-xl border border-stone-200 bg-white p-5 text-sm">
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">予約番号</dt>
-				<dd class="font-bold tracking-wider text-brand-900">{data.booking.code}</dd>
+				<dd class="font-bold tracking-wider text-brand-900">{v.booking.code}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">ご宿泊施設</dt>
-				<dd>{data.booking.facility_name}</dd>
+				<dd>{v.booking.facility_name}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">チェックイン</dt>
-				<dd>{formatDateLong(data.booking.check_in_date)}</dd>
+				<dd>{formatDateLong(v.booking.check_in_date)}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">チェックアウト</dt>
-				<dd>{formatDateLong(data.booking.check_out_date)}・{data.booking.nights}泊</dd>
+				<dd>{formatDateLong(v.booking.check_out_date)}・{v.booking.nights}泊</dd>
 			</div>
-			{#if (data.booking.rooms?.length ?? 0) > 1}
-				<!-- 複数室（M1）: 部屋ごとの表示。1 部屋ずつの取消は M2（今はすべてのお部屋をまとめて取り消す） -->
+			{#if v.multi}
+				<!-- 複数室: 部屋ごとのカード（M1）・この部屋を取り消す（M2） -->
 				<div>
-					<dt class="text-stone-500">{m.hold_rooms_label({ n: String(data.booking.rooms?.length ?? 0) })}</dt>
-					<dd class="mt-1 space-y-1">
-						{#each data.booking.rooms ?? [] as r (r.room_index)}
-							<p class="flex justify-between gap-2">
-								<span>{m.complete_room_line({ n: String(r.room_index), room: r.room_name ?? '', plan: r.plan_name ?? '', adults: String(r.adults) })}</span>
-								<span class="whitespace-nowrap tabular-nums">{formatPrice(r.charge)}</span>
-							</p>
+					<dt class="text-stone-500">{m.hold_rooms_label({ n: String(v.roomsView.length) })}</dt>
+					<dd class="mt-1 space-y-2">
+						{#each v.roomsView as r (r.index)}
+							<div class="rounded-lg border border-stone-200 p-3 {r.cancelled ? 'bg-stone-50 text-stone-400' : ''}">
+								<p class="flex justify-between gap-2">
+									<span>{m.complete_room_line({ n: String(r.index), room: r.roomName, plan: r.planName, adults: String(r.adults) })}</span>
+									<span class="whitespace-nowrap tabular-nums">{r.cancelled ? m.reservation_room_cancelled() : formatPrice(r.charge)}</span>
+								</p>
+								{#if !r.cancelled}
+									<p class="mt-1 text-xs text-stone-600">
+										{r.fee > 0 ? m.gcancel_room_fee({ fee: formatPrice(r.fee), rate: String(Math.round(r.rate * 100)) }) : m.gcancel_fee_none()}
+										{#if r.refund}・{r.refund.refund > 0 ? m.reservation_room_refund_preview({ refund: formatPrice(r.refund.refund), deducted: formatPrice(r.refund.deducted) }) : m.cancel_refund_none()}{/if}
+									</p>
+									{#if confirmRoom !== r.index}
+										<button type="button" class="mt-2 h-10 w-full rounded-lg border border-red-300 text-sm text-red-600" onclick={() => (confirmRoom = r.index)}>{m.reservation_room_cancel_btn()}</button>
+									{:else}
+										<div class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+											<p class="text-brand-900">{m.reservation_room_cancel_confirm({ n: String(r.index) })}</p>
+											<p class="mt-1 text-stone-700">{m.gcancel_confirm_irreversible()}</p>
+											{#if v.liveRooms === 1}<p class="mt-1 text-stone-700">{m.reservation_room_cancel_last()}</p>{/if}
+											<form
+												method="POST"
+												action="?/cancelRoom"
+												class="mt-3 flex gap-2"
+												use:enhance={() => {
+													submitting = true;
+													return async ({ update }) => {
+														await update({ invalidateAll: false });
+														submitting = false;
+														confirmRoom = null;
+													};
+												}}
+											>
+												<input type="hidden" name="token" value={v.token} />
+												<input type="hidden" name="roomIndex" value={r.index} />
+												<button type="button" class="h-11 flex-1 rounded-lg border border-stone-300 bg-white" disabled={submitting} onclick={() => (confirmRoom = null)}>{m.gcancel_back()}</button>
+												<button type="submit" class="h-11 flex-1 rounded-lg bg-red-600 text-white disabled:opacity-60" disabled={submitting}>{submitting ? m.gcancel_submitting() : m.gcancel_submit()}</button>
+											</form>
+										</div>
+									{/if}
+								{/if}
+							</div>
 						{/each}
 					</dd>
 				</div>
 			{:else}
-				{#if data.booking.room_name}
+				{#if v.booking.room_name}
 					<div class="flex justify-between gap-4">
 						<dt class="shrink-0 text-stone-500">お部屋</dt>
-						<dd class="text-right">{data.booking.room_name}</dd>
+						<dd class="text-right">{v.booking.room_name}</dd>
 					</div>
 				{/if}
-				{#if data.booking.plan_name}
+				{#if v.booking.plan_name}
 					<div class="flex justify-between gap-4">
 						<dt class="shrink-0 text-stone-500">プラン</dt>
-						<dd class="text-right">{data.booking.plan_name}</dd>
+						<dd class="text-right">{v.booking.plan_name}</dd>
 					</div>
 				{/if}
 				<div class="flex justify-between gap-4">
 					<dt class="text-stone-500">ご人数</dt>
-					<dd>大人{data.booking.adult_count}名</dd>
+					<dd>大人{v.booking.adult_count}名</dd>
 				</div>
 			{/if}
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">ご宿泊料金</dt>
-				<dd>{formatPrice(data.booking.total_amount)}（税込・現地払い）</dd>
+				<dd>{formatPrice(v.booking.total_amount)}（税込・現地払い）</dd>
 			</div>
 			<div class="flex justify-between gap-4">
 				<dt class="text-stone-500">ご連絡先</dt>
-				<dd>{data.booking.phone_masked} ／ {data.booking.email_masked}</dd>
+				<dd>{v.booking.phone_masked} ／ {v.booking.email_masked}</dd>
 			</div>
 		</dl>
 
 		<!-- キャンセル料 -->
 		<h2 class="mt-8 text-sm text-stone-500">
-			{m.gcancel_fee_heading({ date: formatDateLong(data.fee.as_of) })}
+			{m.gcancel_fee_heading({ date: formatDateLong(v.fee.as_of) })}
 		</h2>
 		<div class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 			<p class="text-2xl font-bold text-brand-900">
-				{data.fee.fee > 0 ? formatPrice(data.fee.fee) : m.gcancel_fee_none()}
+				{v.fee.fee > 0 ? formatPrice(v.fee.fee) : m.gcancel_fee_none()}
 			</p>
-			{#if data.fee.fee > 0}
-				{@const d = daysUntil(data.booking.check_in_date, data.fee.as_of)}
+			{#if v.fee.fee > 0}
+				{@const d = daysUntil(v.booking.check_in_date, v.fee.as_of)}
 				<p class="mt-1 text-sm text-stone-600">
 					{#if d <= 0}
-						{m.gcancel_fee_today({ rate: String(Math.round(data.fee.rate * 100)) })}
+						{m.gcancel_fee_today({ rate: String(Math.round(v.fee.rate * 100)) })}
 					{:else}
 						{m.gcancel_fee_line({
-							rate: String(Math.round(data.fee.rate * 100)),
+							rate: String(Math.round(v.fee.rate * 100)),
 							days: String(d)
 						})}
 					{/if}
 				</p>
 			{/if}
-			{#if data.fee.rules.length > 0}
+			{#if v.fee.rules.length > 0}
 				<details class="mt-3">
 					<summary class="cursor-pointer text-sm text-brand-800">
-						{data.fee.rules_source === 'plan' ? m.gcancel_rules_plan() : m.gcancel_rules_rank()}
+						{v.fee.rules_source === 'plan' ? m.gcancel_rules_plan() : m.gcancel_rules_rank()}
 					</summary>
 					<table class="mt-2 text-sm">
 						<tbody>
-							{#each [...data.fee.rules].sort((a, b) => b.days_before - a.days_before) as r (r.days_before)}
+							{#each [...v.fee.rules].sort((a, b) => b.days_before - a.days_before) as r (r.days_before)}
 								<tr>
 									<td class="py-0.5 pr-6 text-stone-600">{ruleLabel(r.days_before)}</td>
 									<td class="py-0.5">ご宿泊料金の{Math.round(r.rate * 100)}%</td>
@@ -250,35 +303,35 @@
 				</details>
 			{/if}
 		</div>
-		{#if data.refund}
+		{#if v.refund}
 			<!-- オンライン決済済み: キャンセル料を差し引いてカードへ返金（入湯税はキャンセル料の対象外） -->
 			<p class="mt-2 rounded-lg bg-stone-50 p-3 text-sm text-stone-700">
-				{#if data.refund.refund <= 0}
+				{#if v.refund.refund <= 0}
 					{m.cancel_refund_none()}
-				{:else if data.refund.adminFeePercent != null && data.refund.reason !== 'prepay_discount'}
+				{:else if v.refund.adminFeePercent != null && v.refund.reason !== 'prepay_discount'}
 					<!-- 事務手数料（2026-10-07）: キャンセル料と事務手数料の大きい方を差し引く -->
 					{m.cancel_refund_preview_admin_fee({
-						paid: formatPrice(data.refund.paid),
-						fee: formatPrice(data.refund.fee),
-						adminFee: formatPrice(data.refund.adminFee),
-						percent: `${data.refund.adminFeePercent}%`,
-						deducted: formatPrice(data.refund.deducted),
-						refund: formatPrice(data.refund.refund)
+						paid: formatPrice(v.refund.paid),
+						fee: formatPrice(v.refund.fee),
+						adminFee: formatPrice(v.refund.adminFee),
+						percent: `${v.refund.adminFeePercent}%`,
+						deducted: formatPrice(v.refund.deducted),
+						refund: formatPrice(v.refund.refund)
 					})}
-				{:else if data.refund.discount > 0}
+				{:else if v.refund.discount > 0}
 					<!-- 予約時決済の割引額は返金しない: キャンセル料と割引額の大きい方を差し引く -->
 					{m.cancel_refund_preview_discount({
-						paid: formatPrice(data.refund.paid),
-						fee: formatPrice(data.refund.fee),
-						discount: formatPrice(data.refund.discount),
-						deducted: formatPrice(data.refund.deducted),
-						refund: formatPrice(data.refund.refund)
+						paid: formatPrice(v.refund.paid),
+						fee: formatPrice(v.refund.fee),
+						discount: formatPrice(v.refund.discount),
+						deducted: formatPrice(v.refund.deducted),
+						refund: formatPrice(v.refund.refund)
 					})}
 				{:else}
-					{m.cancel_refund_preview({ paid: formatPrice(data.refund.paid), fee: formatPrice(data.refund.fee), refund: formatPrice(data.refund.refund) })}
+					{m.cancel_refund_preview({ paid: formatPrice(v.refund.paid), fee: formatPrice(v.refund.fee), refund: formatPrice(v.refund.refund) })}
 				{/if}
 			</p>
-		{:else if data.fee.fee > 0}
+		{:else if v.fee.fee > 0}
 			<p class="mt-2 text-sm text-stone-500">{m.gcancel_fee_note()}</p>
 		{/if}
 
@@ -293,21 +346,21 @@
 			<button
 				type="button"
 				class="mt-6 h-[52px] w-full rounded-lg bg-brand-800 text-white"
-				onclick={() => (confirming = true)}>{m.gcancel_btn()}</button
+				onclick={() => (confirming = true)}>{v.multi ? m.gcancel_btn_all() : m.gcancel_btn()}</button
 			>
 		{:else}
 			<div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
 				<h2 class="text-lg text-brand-900">{m.gcancel_confirm_heading()}</h2>
 				<p class="mt-2 text-stone-700">{m.gcancel_confirm_irreversible()}</p>
 				<p class="mt-1 text-stone-700">
-					{#if data.fee.fee > 0}
-						{m.gcancel_confirm_fee({ fee: formatPrice(data.fee.fee) })}
+					{#if v.fee.fee > 0}
+						{m.gcancel_confirm_fee({ fee: formatPrice(v.fee.fee) })}
 					{:else}
 						{m.gcancel_fee_none()}
 					{/if}
 				</p>
 				<p class="mt-1 text-sm text-stone-600">
-					{m.gcancel_confirm_mail({ email: data.booking.email_masked })}
+					{m.gcancel_confirm_mail({ email: v.booking.email_masked })}
 				</p>
 				<form
 					method="POST"
@@ -322,7 +375,7 @@
 						};
 					}}
 				>
-					<input type="hidden" name="token" value={data.token} />
+					<input type="hidden" name="token" value={v.token} />
 					<button
 						type="button"
 						class="h-[52px] flex-1 rounded-lg border border-stone-300"
@@ -340,9 +393,9 @@
 		{/if}
 
 		<p class="mt-6 text-sm text-stone-500">{m.gcancel_keep()}</p>
-		{#if data.booking.facility_phone}
+		{#if v.booking.facility_phone}
 			<p class="text-sm text-stone-500">
-				{m.gcancel_phone({ phone: data.booking.facility_phone })}
+				{m.gcancel_phone({ phone: v.booking.facility_phone })}
 			</p>
 		{/if}
 	{/if}

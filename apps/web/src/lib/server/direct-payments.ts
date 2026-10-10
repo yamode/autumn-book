@@ -392,6 +392,10 @@ type RefundDueRow =
       fee: number;
       refunded: number;
       due: number;
+      /** 1 室ずつ取り消した予約の式で計算したか（autumn-shared 20261010204933 から） */
+      partial?: boolean;
+      /** 生きている部屋の支払分の和（partial のとき） */
+      live_share?: number;
     };
 
 const keptOf = (due: { prepay_discount_kept?: number }) => Math.max(0, Number(due.prepay_discount_kept) || 0);
@@ -414,7 +418,16 @@ export async function setDirectAdminFeeWaived(bookingCode: string, waived: boole
   }
 }
 
-export async function refundAfterCancel(bookingCode: string, reason: string): Promise<DirectRefundOutcome> {
+/**
+ * 取消のあとの返金（DB の direct_payment_refund_due が「今あるべき返金額の累計 − 返金済み」を返す）。
+ * opts.roomIndex: 1 室だけ取り消したとき（複数室 M2）。返金の記録（refunds[]）と電文 refunded に部屋の番号を付ける。
+ * 冪等キーは「予約・返金済み額」なので、1 室ずつ取り消して 2 回目の返金をしても別のキーになる。
+ */
+export async function refundAfterCancel(
+  bookingCode: string,
+  reason: string,
+  opts: { roomIndex?: number } = {}
+): Promise<DirectRefundOutcome> {
   if (!partnerServiceClient()) return { kind: 'none' };
   let due: RefundDueRow;
   try {
@@ -428,18 +441,25 @@ export async function refundAfterCancel(bookingCode: string, reason: string): Pr
   const extra = extraOf(due);
   if (due.due <= 0) return { kind: 'nothing_due', paid: due.amount, fee: due.fee, kept, ...extra };
   try {
-    // 冪等キーは「予約・返金済み額」で作る（同じ取消で2回呼ばれても1回だけ返金）
+    // 冪等キーは「予約・返金済み額・今回の返金額」（同じ取消で 2 回呼ばれても同じキー＝1 回だけ返金。1 室ずつ取り消した次の返金は別のキー）
     const r = await createRefund(
       due.payment_intent_id,
-      `book-direct-cancel-${due.booking_id}-${due.refunded}`,
-      { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_DIRECT_BOOKING, booking_code: bookingCode },
+      `book-direct-cancel-${due.booking_id}-${due.refunded}-${due.due}`,
+      {
+        app: STRIPE_APP_BOOK,
+        purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
+        booking_code: bookingCode,
+        ...(opts.roomIndex != null ? { room_index: String(opts.roomIndex) } : {})
+      },
       due.due
     );
     await rpc('direct_payment_record_refund', {
       p_payment_intent_id: due.payment_intent_id,
       p_refund_id: r.id,
       p_amount: r.amount ?? due.due,
-      p_reason: `cancel:${reason}`.slice(0, 200)
+      p_reason: `cancel:${reason}${opts.roomIndex != null ? `:room${opts.roomIndex}` : ''}`.slice(0, 200),
+      // 部屋の番号つきの 5 引数版（autumn-shared 20261010204933）。予約全体の返金は従来の 4 引数版
+      ...(opts.roomIndex != null ? { p_room_index: opts.roomIndex } : {})
     });
     return { kind: 'refunded', amount: r.amount ?? due.due, paid: due.amount, fee: due.fee, kept, ...extra };
   } catch (e) {

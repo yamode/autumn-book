@@ -229,6 +229,8 @@ export interface BookingOptionOrder {
 	note?: string;
 	requiresServiceDate: boolean;
 	createdAt: string;
+	/** 複数室の予約で、どの部屋のオプションか（1 始まり・M2） */
+	roomIndex?: number;
 }
 
 // ---------------------------------------------------------------- 予約変更（book.booking_amendments / quote_amendment / amend_booking 対称・P2）

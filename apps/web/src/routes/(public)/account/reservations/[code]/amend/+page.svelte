@@ -13,7 +13,7 @@
 
 	// 確定可能: 変更対象・締切前・残回数あり・差分あり・ペナルティ外・見積エラー無し
 	let canConfirm = $derived(
-		!!q && q.amendable && !q.isNoop && !q.inPenalty && !data.quoteError
+		!!q && q.amendable && !q.isNoop && !q.inPenalty && !data.quoteError && (!data.datesOnly || data.available)
 	);
 
 	function offerValue(o: { ratePlanId: string; roomTypeId: string }): string {
@@ -59,17 +59,41 @@
 					{/each}
 				</select>
 			</label>
-			<label class="text-xs text-stone-500">
-				{m.amend_field_adults()}
-				<select name="adults" class="mt-1 block rounded-md border border-stone-300 px-2 py-1.5 text-sm">
-					{#each ADULTS as a}
-						<option value={a} selected={a === data.adults}>{m.amend_adults_val({ n: String(a) })}</option>
-					{/each}
-				</select>
-			</label>
+			{#if !data.datesOnly}
+				<label class="text-xs text-stone-500">
+					{m.amend_field_adults()}
+					<select name="adults" class="mt-1 block rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+						{#each ADULTS as a}
+							<option value={a} selected={a === data.adults}>{m.amend_adults_val({ n: String(a) })}</option>
+						{/each}
+					</select>
+				</label>
+			{/if}
 		</div>
+		{#if data.datesOnly}
+			<!-- 2 室以上（M2）: 日付・泊数だけを全室同時に変える。お部屋・プラン・人数はそのまま -->
+			<p class="mt-3 text-xs text-stone-500">{m.amend_dates_only_note()}</p>
+		{/if}
 	</section>
 
+	{#if data.datesOnly}
+		<section class="rounded-2xl border border-stone-200 bg-white p-5">
+			<h2 class="text-sm font-medium text-brand-900">{m.reservation_rooms_heading({ n: String(data.roomsView.length) })}</h2>
+			<ul class="mt-3 space-y-2 text-sm">
+				{#each data.roomsView as r (r.index)}
+					<li class="rounded-lg border border-stone-200 px-3 py-2">
+						<p class="text-xs text-stone-500">{m.hold_room_n({ n: String(r.index) })}</p>
+						<p class="font-medium text-stone-800">{r.roomName || m.amend_room_fallback()}</p>
+						<p class="text-xs text-stone-500">{r.planName || m.amend_plan_fallback()}・{m.amend_adults_val({ n: String(r.adults) })}</p>
+						<p class="mt-1 flex justify-between text-xs text-stone-600">
+							<span class="tabular-nums">{formatPrice(r.total)}</span>
+							{#if r.newTotal != null}<span class="tabular-nums">→ {formatPrice(r.newTotal)}</span>{/if}
+						</p>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{:else}
 	<section class="rounded-2xl border border-stone-200 bg-white p-5">
 		<h2 class="text-sm font-medium text-brand-900">{m.amend_step_offer()}</h2>
 		{#if data.offers.length === 0}
@@ -91,6 +115,7 @@
 			</div>
 		{/if}
 	</section>
+	{/if}
 
 	<div class="flex justify-end">
 		<button type="submit" class="rounded-lg border border-brand-300 bg-white px-5 py-2 text-sm font-medium text-brand-800 hover:bg-brand-50">{m.amend_recalc()}</button>
@@ -139,6 +164,9 @@
 
 		{#if q.isNoop}
 			<p class="mt-4 rounded-lg bg-stone-50 px-4 py-3 text-sm text-stone-500">{m.amend_err_no_change()}</p>
+		{:else if data.datesOnly && !data.available}
+			<!-- 全室ぶんの在庫が取れない日程は変更できない（部分的な変更はしない・§6.3） -->
+			<p class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{m.amend_err_sold_out_all()}</p>
 		{:else if q.inPenalty}
 			<p class="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{m.amend_penalty_blocked()}</p>
 		{/if}
@@ -152,6 +180,7 @@
 			<input type="hidden" name="checkin" value={data.checkin} />
 			<input type="hidden" name="nights" value={data.nights} />
 			<input type="hidden" name="adults" value={data.adults} />
+			{#if data.datesOnly}<input type="hidden" name="datesOnly" value="1" />{/if}
 			<button
 				type="submit"
 				disabled={!canConfirm}

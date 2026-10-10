@@ -11,7 +11,7 @@
 		partnerPaymentStatusLabel
 	} from '$lib/partner-reservation';
 	import { page } from '$app/state';
-	import { nightGroups } from '$lib/multi-room';
+	import { nightGroups, remainingRefundPreview, roomRefundPreview } from '$lib/multi-room';
 
 	let { data, form } = $props();
 
@@ -25,6 +25,26 @@
 
 	let showCancel = $state(false);
 	let waive = $state(false);
+	// 取消の範囲（複数室 M2）: all＝予約全体（残りの全室）／room＝この部屋だけ
+	let cancelScope = $state<'all' | 'room'>('all');
+	let cancelRoomIndex = $state<number | null>(null);
+	// 生きている部屋（取り消していない）
+	let liveAdminRooms = $derived(adminRooms.filter((r) => !r.cancelled));
+	// 操作できる状態か。2 室以上は「生きている部屋がすべて reserved」のときだけ（DB の全室一括・1 室取消と同じ条件）。
+	// 代表の 1 室目が取消済みでも、残りが予約中なら取り消せる
+	let canCancelNow = $derived(
+		adminRooms.length > 1
+			? b.booking_status !== 'cancelled' && liveAdminRooms.length > 0 && liveAdminRooms.every((r) => r.stay_status === 'reserved')
+			: b.stay_status === 'reserved'
+	);
+	/** 生きている部屋ごとの今日のキャンセル料（admin_booking_detail の cancel_policy.rooms[]）。
+	 *  生きている部屋が 1 室だけのとき DB は rooms[] を返さず、全体の fee がその部屋の値 */
+	function roomFeeOf(index: number): number {
+		const hit = (policy.rooms ?? []).find((x) => x.room_index === index);
+		if (hit) return hit.fee ?? 0;
+		if ((policy.rooms ?? []).length === 0 && liveAdminRooms.length === 1 && liveAdminRooms[0].room_index === index) return policy.fee ?? 0;
+		return 0;
+	}
 	// 事務手数料も免除する（予約時決済で率の残っている予約だけ。既定は差し引く・2026-10-07）
 	let adminWaive = $state(false);
 
@@ -39,6 +59,25 @@
 	let cancelRefund = $derived.by(() => {
 		const p = data.payment;
 		if (!p || p.status !== 'paid') return null;
+		// 複数室（M2）: この部屋だけ／残りの全室は、部屋の支払分から（DB の _room_cancel_kept・direct_payment_refund_due と同じ式）
+		if (adminRooms.length > 1 && adminRooms.every((r) => r.paid_share != null)) {
+			const terms = { adminFeePercent: adminPercent, adminFeeWaived: adminWaive, waived: waive };
+			const shareOf = (r: (typeof adminRooms)[number]) => ({ paidShare: r.paid_share ?? 0, bathTax: r.bath_tax, prepayDiscount: r.prepay_discount });
+			const target = cancelScope === 'room' ? liveAdminRooms.find((r) => r.room_index === cancelRoomIndex) : null;
+			const rp =
+				cancelScope === 'room'
+					? target
+						? roomRefundPreview(shareOf(target), roomFeeOf(target.room_index), terms)
+						: null
+					: remainingRefundPreview(
+							{ amount: p.amount, refunded: p.refunded_amount, bathTax: p.bath_tax_amount, prepayDiscount: p.prepay_discount_amount ?? 0 },
+							liveAdminRooms.map((r) => ({ ...shareOf(r), fee: roomFeeOf(r.room_index) })),
+							adminRooms.filter((r) => r.cancelled).map((r) => ({ cancelKept: r.cancel_kept ?? 0 })),
+							terms
+						);
+			if (!rp) return null;
+			return { paid: rp.paid, rule: rp.fee, discount: rp.discount, deducted: rp.deducted, kept: rp.kept, refund: rp.refund, adminFee: rp.adminFee, reason: rp.reason };
+		}
 		const discount = Math.max(0, p.prepay_discount_amount ?? 0);
 		const rule = waive ? 0 : Math.max(0, data.feePreview ?? 0);
 		const bathTax = Math.max(0, p.bath_tax_amount ?? 0);
@@ -70,7 +109,8 @@
 
 	const MAIL_KIND: Record<string, string> = {
 		booking_confirmation: '予約確認',
-		booking_cancelled: 'キャンセル受付'
+		booking_cancelled: 'キャンセル受付',
+		booking_room_cancelled: '1室の取消受付'
 	};
 
 	const MAIL_STATUS: Record<string, string> = {
@@ -155,9 +195,13 @@
 	<a href="/admin/reservations" class="hover:underline">予約管理</a> / {b.code}
 </nav>
 
-{#if form?.cancelled}
+{#if form?.cancelled || form?.roomCancelled}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-		キャンセル処理を実行しました（キャンセル料 {formatYen(form.fee ?? 0)}・監査ログに記録）。お客様にキャンセル受付メールを送信します。
+		{#if form?.roomCancelled && !form.roomCancelled.bookingCancelled}
+			{form.roomCancelled.index}室目だけを取り消しました（この部屋のキャンセル料 {formatYen(form.fee ?? 0)}・監査ログに記録）。お客様に「お部屋のお取り消し」のメールを送信します。予約は残りのお部屋で続きます。
+		{:else}
+			キャンセル処理を実行しました（キャンセル料 {formatYen(form?.fee ?? 0)}・監査ログに記録）。お客様にキャンセル受付メールを送信します。
+		{/if}
 	</p>
 	{#if form.refund?.kind === 'refunded'}
 		<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">オンライン決済の {formatYen(form.refund.amount)} をカードへ返金しました（支払額 {formatYen(form.refund.paid)} − {keptReasonLabel(form.refund.reason, form.refund.adminFeePercent) || 'キャンセル料'} {formatYen(form.refund.fee)}）。PMS に返金行の電文を送りました。</p>
@@ -320,7 +364,7 @@
 										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}</td>
 										<td class="py-1.5 pr-2 whitespace-nowrap">大人{r.adults}名{#if r.male != null && r.female != null}<span class="block text-xs text-stone-500">男性{r.male}・女性{r.female}</span>{/if}</td>
 										<td class="py-1.5 pr-2 text-right tabular-nums">{formatYen(r.charge)}{#if r.coupon_share > 0}<span class="block text-xs text-stone-500">クーポン −{formatYen(r.coupon_share)}</span>{/if}</td>
-										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（${formatYen(r.cancel_fee ?? 0)}）` : r.stay_status}</td>
+										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -573,7 +617,7 @@
 					{#if p.payment_intent_id}<dt class="text-stone-500">Stripe</dt><dd class="break-all font-mono text-xs">{p.payment_intent_id}</dd>{/if}
 					{#if p.refund_error}<dt class="text-stone-500">返金エラー</dt><dd class="text-red-700">{p.refund_error}</dd>{/if}
 				</dl>
-				{#if data.canOperate && p.status === 'paid' && b.booking_status === 'cancelled' && p.refund_status !== 'full'}
+				{#if data.canOperate && p.status === 'paid' && (b.booking_status === 'cancelled' || adminRooms.some((r) => r.cancelled)) && p.refund_status !== 'full'}
 					<form method="POST" action="?/retryRefund" class="mt-3">
 						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">返金を再実行する（支払額 − 差し引く額 の残り）</button>
 					</form>
@@ -735,7 +779,7 @@
 			<p class="rounded-xl border border-stone-200 bg-stone-50 p-4 text-sm text-stone-600">
 				OTA・電話経由のご予約です。取り消しは OTA 側で行ってください（PMS へ反映されます）。
 			</p>
-		{:else if data.canOperate && b.stay_status === 'reserved'}
+		{:else if data.canOperate && canCancelNow}
 			<div class="rounded-xl border border-stone-200 bg-white p-4">
 				<h2 class="text-sm font-medium text-stone-700">操作</h2>
 
@@ -769,6 +813,28 @@
 					>
 				{:else}
 					<form method="POST" action="?/cancel" class="mt-4 space-y-2 rounded-lg bg-amber-50 p-3">
+						{#if liveAdminRooms.length > 1}
+							<!-- 複数室（M2）: 予約全体か、この部屋だけか -->
+							<fieldset class="space-y-1 rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
+								<legend class="px-1 text-xs text-stone-500">取り消す範囲</legend>
+								<label class="flex items-center gap-2">
+									<input type="radio" name="scope" value="all" bind:group={cancelScope} />
+									<span>予約全体（残りの {liveAdminRooms.length} 室すべて）</span>
+								</label>
+								<label class="flex items-center gap-2">
+									<input type="radio" name="scope" value="room" bind:group={cancelScope} />
+									<span>この部屋だけ</span>
+								</label>
+								{#if cancelScope === 'room'}
+									<select name="roomIndex" bind:value={cancelRoomIndex} required class="mt-1 w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+										<option value={null} disabled>お部屋を選んでください</option>
+										{#each liveAdminRooms as r (r.room_index)}
+											<option value={r.room_index}>{r.room_index}室目・{r.room_name ?? '—'}／{r.plan_name ?? '—'}・大人{r.adults}名（{r.reservation_code}）</option>
+										{/each}
+									</select>
+								{/if}
+							</fieldset>
+						{/if}
 						<!-- 取り違え防止: どの予約を取り消すのかを確定前に必ず見せる -->
 						<div class="rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">
 							<p class="text-xs text-stone-500">この予約をキャンセルします</p>
@@ -798,7 +864,7 @@
 							</label>
 						{/if}
 						<p class="text-sm text-stone-700">
-							適用キャンセル料：{waive ? formatYen(0) : formatYen(data.feePreview ?? 0)}
+							適用キャンセル料：{waive ? formatYen(0) : formatYen(cancelScope === 'room' && cancelRoomIndex != null ? roomFeeOf(cancelRoomIndex) : (data.feePreview ?? 0))}
 						</p>
 						<input
 							name="reason"
@@ -816,7 +882,7 @@
 								onclick={() => (showCancel = false)}>戻る</button
 							>
 							<button type="submit" class="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm text-white"
-								>この予約をキャンセルする</button
+								>{cancelScope === 'room' ? 'この部屋だけキャンセルする' : 'この予約をキャンセルする'}</button
 							>
 						</div>
 					</form>

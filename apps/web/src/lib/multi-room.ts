@@ -2,8 +2,11 @@
 //
 // M0: 室数の上限・按分（DB の book._allocate と同じ式）・仮押さえの束と予約の部屋の型。
 // M1: 予約かご（CartItem / canAddToCart〔施設・日程・支払方法の両立・4 室・残室〕・sessionStorage）・
-//     1 室 1 泊 1 行の明細・全室の見積と支払方法の合わせ方。roomRefundPreview は部屋ごとの取消（M2）で足す。
+//     1 室 1 泊 1 行の明細・全室の見積と支払方法の合わせ方。
+// M2: 部屋ごとの取消の返金見込み（roomRefundPreview / remainingRefundPreview・DB の book._room_cancel_kept・
+//     direct_payment_refund_due と同じ式）・生きている部屋の見方（liveRooms / roomsStatus）。
 import type { Quote } from '@autumn-book/core';
+import { deductionOf, type KeptReason } from './cancel-admin-fee';
 
 /** 1 回の予約で取れる部屋の数（DB の book._max_rooms_per_booking() と同じ値。超えるときは電話） */
 export const MAX_ROOMS_PER_BOOKING = 4;
@@ -90,6 +93,14 @@ export interface BookingRoom {
 	pointsShare: number;
 	cancelled: boolean;
 	cancelFee: number;
+	/** 滞在の状態（core.stays.status。reserved / checked_in …） */
+	stayStatus?: string;
+	/** この部屋の支払分（宿泊料金 − クーポン − ポイント − 予約時決済割 ＋ 入湯税・autumn-shared 20261010204933 から） */
+	paidShare?: number;
+	bathTax?: number;
+	prepayDiscount?: number;
+	/** 取り消した部屋の返金しなかった額 */
+	cancelKept?: number;
 }
 
 /** 仮押さえに渡す 1 室（プラン詳細の ?/hold の rooms JSON の要素） */
@@ -366,4 +377,145 @@ export function combinePayments<M extends string>(
 	const prepay = payments.every((p) => p.prepay);
 	const methods = prepay ? payments[0].prepayMethods.filter((m) => payments.every((p) => p.prepayMethods.includes(m))) : [];
 	return { onsite, prepay: prepay && methods.length > 0, prepayMethods: methods };
+}
+
+// ---------------------------------------------------------------------------
+// M2: 部屋ごとの取消
+// ---------------------------------------------------------------------------
+
+/** 生きている（取り消していない）部屋 */
+export const liveRooms = <R extends { cancelled: boolean }>(rooms: readonly R[]): R[] => rooms.filter((r) => !r.cancelled);
+
+/**
+ * 予約の状態を部屋から決める（2 室以上の予約は代表の 1 室目が取り消されていても、生きている部屋があれば予約中）。
+ *   予約が cancelled か、生きている部屋が無ければ cancelled。生きている部屋のどれかが泊まり終えていれば stayed。
+ */
+export function roomsStatus(
+	bookingStatus: string,
+	rooms: readonly { cancelled: boolean; stayStatus?: string }[]
+): 'reserved' | 'cancelled' | 'stayed' {
+	const live = liveRooms(rooms);
+	if (bookingStatus === 'cancelled' || live.length === 0) return 'cancelled';
+	if (live.some((r) => ['checked_out', 'stayed', 'departed'].includes(r.stayStatus ?? ''))) return 'stayed';
+	if (live.every((r) => r.stayStatus === 'cancelled' || r.stayStatus === 'no_show')) return 'cancelled';
+	return 'reserved';
+}
+
+/** 返金の見込み（画面の文言 cancel_refund_preview* にそのまま渡せる形。lib/server/direct-payments.ts の DirectRefundPreview と同じキー） */
+export interface RoomRefundPreview {
+	/** 取り消す部屋の支払額の和 */
+	paid: number;
+	/** 規定のキャンセル料（支払額まで） */
+	fee: number;
+	/** 予約時決済の割引額（返金しない） */
+	discount: number;
+	/** 差し引く額（返金しない額） */
+	deducted: number;
+	/** 規定のキャンセル料を超えて差し引く分 */
+	kept: number;
+	/** 返金額 */
+	refund: number;
+	adminFee: number;
+	adminFeePercent: number | null;
+	reason: KeptReason;
+}
+
+/** 部屋の支払分（予約時決済の予約だけ） */
+export interface RoomPayShare {
+	paidShare: number;
+	bathTax?: number;
+	prepayDiscount?: number;
+}
+
+export interface RefundTerms {
+	/** 予約時の事務手数料の率（%）。率の無い予約は null */
+	adminFeePercent: number | null;
+	adminFeeWaived?: boolean;
+	/** キャンセル料の免除（割引額も返す） */
+	waived?: boolean;
+}
+
+/**
+ * 1 室を取り消したときの返金見込み。DB の book._room_cancel_kept と同じ式:
+ *   差し引く額 = max(キャンセル料〔支払分まで〕, 予約時決済割〔入湯税を除いた支払分まで〕, 事務手数料〔floor(支払分 × 率)・同〕)
+ *   返金 = 支払分 − 差し引く額
+ */
+export function roomRefundPreview(room: RoomPayShare, fee: number, terms: RefundTerms): RoomRefundPreview {
+	const paid = Math.max(0, Math.round(room.paidShare));
+	const d = deductionOf({
+		paid,
+		bathTax: room.bathTax ?? 0,
+		fee: terms.waived ? 0 : fee,
+		discount: terms.waived ? 0 : (room.prepayDiscount ?? 0),
+		adminFeePercent: terms.adminFeePercent,
+		adminFeeWaived: terms.adminFeeWaived
+	});
+	return {
+		paid,
+		fee: d.cancelFee,
+		discount: Math.max(0, room.prepayDiscount ?? 0),
+		deducted: d.kept,
+		kept: Math.max(0, d.kept - d.cancelFee),
+		refund: Math.max(0, paid - d.kept),
+		adminFee: d.adminFee,
+		adminFeePercent: terms.adminFeePercent,
+		reason: d.reason
+	};
+}
+
+/**
+ * 残りの部屋をすべて取り消したときの返金見込み（DB の direct_payment_refund_due と同じ考え方）。
+ *   - まだ 1 室も取り消していない予約（1 室の予約を含む）: 従来の式（請求額全体に対して max(キャンセル料の和, 割引, 事務手数料)）
+ *   - 1 室ずつ取り消したことがある予約: 生きている部屋ごとの見込みの和 ＋ まだ返していない分
+ *       （まだ返していない分 = 請求額 − 生きている部屋の支払分 − 取り消した部屋の返金しない額 − 返金済み。ふつうは 0）
+ */
+export function remainingRefundPreview(
+	pay: { amount: number; refunded: number; bathTax?: number; prepayDiscount?: number },
+	live: readonly (RoomPayShare & { fee: number })[],
+	cancelled: readonly { cancelKept: number }[],
+	terms: RefundTerms
+): RoomRefundPreview {
+	const ruleFee = live.reduce((s, r) => s + Math.max(0, r.fee), 0);
+	if (cancelled.length === 0) {
+		const d = deductionOf({
+			paid: pay.amount,
+			bathTax: pay.bathTax ?? 0,
+			fee: terms.waived ? 0 : ruleFee,
+			discount: terms.waived ? 0 : (pay.prepayDiscount ?? 0),
+			adminFeePercent: terms.adminFeePercent,
+			adminFeeWaived: terms.adminFeeWaived
+		});
+		return {
+			paid: pay.amount,
+			fee: d.cancelFee,
+			discount: Math.max(0, pay.prepayDiscount ?? 0),
+			deducted: d.kept,
+			kept: Math.max(0, d.kept - d.cancelFee),
+			refund: Math.max(0, pay.amount - d.kept - Math.max(0, pay.refunded)),
+			adminFee: d.adminFee,
+			adminFeePercent: terms.adminFeePercent,
+			reason: d.reason
+		};
+	}
+	const each = live.map((r) => roomRefundPreview(r, r.fee, terms));
+	const liveShare = live.reduce((s, r) => s + Math.max(0, Math.round(r.paidShare)), 0);
+	const keptBefore = cancelled.reduce((s, r) => s + Math.max(0, r.cancelKept), 0);
+	const leftover = Math.max(0, pay.amount - liveShare - keptBefore - Math.max(0, pay.refunded));
+	const sumOf = (k: 'paid' | 'fee' | 'discount' | 'deducted' | 'kept' | 'refund' | 'adminFee') => each.reduce((s, x) => s + x[k], 0);
+	const deducted = sumOf('deducted');
+	const fee = sumOf('fee');
+	const adminFee = sumOf('adminFee');
+	const discount = sumOf('discount');
+	const reason: KeptReason = deducted <= 0 ? 'none' : deducted <= fee ? 'cancel_fee' : adminFee >= discount ? 'admin_fee' : 'prepay_discount';
+	return {
+		paid: sumOf('paid'),
+		fee,
+		discount,
+		deducted,
+		kept: Math.max(0, deducted - fee),
+		refund: sumOf('refund') + leftover,
+		adminFee,
+		adminFeePercent: terms.adminFeePercent,
+		reason
+	};
 }

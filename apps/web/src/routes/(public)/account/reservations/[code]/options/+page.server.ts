@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { bookings, facilityById, listOptionItems, addBookingOptions } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbMyReservations, sbListOptionItems, sbAddBookingOptions } from '$lib/server/supabase-data';
+import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
@@ -30,7 +30,19 @@ export const load: PageServerLoad = async (event) => {
 		if (!r) error(404, m.error_booking_not_found());
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
 		const items = await sbListOptionItems(r.facilityUuid, locale);
-		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items };
+		// 複数室の予約（M2）: どのお部屋のアレンジかを選ぶ（生きている部屋だけ）
+		const live = (r.rooms ?? []).filter((x) => !x.cancelled);
+		const rooms =
+			(r.rooms?.length ?? 0) > 1
+				? await Promise.all(
+						live.map(async (x) => ({
+							index: x.index,
+							roomName: (await sbRoomTypeByUuid(x.roomTypeId).catch(() => undefined))?.name ?? '',
+							adults: x.adults
+						}))
+					)
+				: [];
+		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items, rooms };
 	}
 
 	const booking = bookings.get(params.code);
@@ -41,7 +53,9 @@ export const load: PageServerLoad = async (event) => {
 		code: booking.code,
 		checkin: booking.checkin,
 		checkout: addDays(booking.checkin, booking.nights),
-		items
+		items,
+		// デモ（store）は 1 室だけ
+		rooms: [] as { index: number; roomName: string; adults: number }[]
 	};
 };
 
@@ -80,10 +94,17 @@ export const actions: Actions = {
 			.filter((x): x is NonNullable<typeof x> => x !== null);
 
 		if (items.length === 0) return fail(400, { message: m.options_err_select() });
+		// 付けるお部屋（複数室の予約だけ。1 室・未選択は DB が生きている部屋の最初に付ける）
+		const roomIndexRaw = Number(form.get('roomIndex'));
+		const roomIndex = Number.isInteger(roomIndexRaw) && roomIndexRaw >= 1 ? roomIndexRaw : null;
 
 		try {
 			if (MEMBER_SUPABASE) {
-				await sbAddBookingOptions(createSupabaseServerClient(event), params.code, items);
+				await sbAddBookingOptions(
+					createSupabaseServerClient(event),
+					params.code,
+					items.map((i) => ({ ...i, roomIndex }))
+				);
 			} else {
 				addBookingOptions(params.code, items, locals.user!.id);
 			}

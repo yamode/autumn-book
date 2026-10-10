@@ -73,7 +73,7 @@ import type {
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
-import { childTotalOf, MAX_ROOMS_PER_BOOKING, type BookingRoom, type HoldGroup, type HoldGroupRoom } from '$lib/multi-room';
+import { childTotalOf, MAX_ROOMS_PER_BOOKING, roomsStatus, type BookingRoom, type HoldGroup, type HoldGroupRoom } from '$lib/multi-room';
 import { paymentMethodsOf } from '$lib/member-payment';
 import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -556,7 +556,9 @@ export type GuestCancelReason =
 	| 'already_cancelled'
 	| 'checked_in'
 	| 'checked_out'
-	| 'past_checkin';
+	| 'past_checkin'
+	/** 1 室の取消で、その部屋がもう取り消せない（取消済みなど・autumn-shared 20261010204933） */
+	| 'room_not_cancellable';
 
 export type GuestCancelBooking = {
 	code: string;
@@ -584,7 +586,18 @@ export type GuestCancelBooking = {
 		adults: number;
 		charge: number;
 		cancelled: boolean;
+		/** 部屋ごとの支払分の内訳（返金見込み用・20261010092423 から） */
+		room_total?: number;
+		paid_share?: number;
+		bath_tax?: number;
+		prepay_discount?: number;
+		cancel_kept?: number;
+		cancel_fee?: number | null;
+		/** 今日取り消したときのその部屋のキャンセル料（_cancel_fee の戻り・取消済みは null・20261010204933 から） */
+		fee?: { fee: number; rate: number; base?: number; rules_source?: string } | null;
 	}[];
+	/** 生きている部屋の数（20261010204933 から） */
+	live_rooms?: number;
 };
 
 export type GuestCancelFee = {
@@ -622,6 +635,27 @@ export async function guestCancelBooking(token: string): Promise<GuestCancelResu
 	const { data, error } = await supa().rpc('guest_cancel_booking', { p_token: token });
 	if (error) throw error;
 	return data as GuestCancelResult;
+}
+
+export type GuestCancelRoomResult =
+	| {
+			ok: true;
+			booking_code: string;
+			room_index: number;
+			cancellation_fee: number;
+			rate: number;
+			waived: boolean;
+			remaining_rooms: number;
+			/** 最後の 1 室だった（予約全体が取消になった） */
+			booking_cancelled: boolean;
+	  }
+	| { ok: false; reason: GuestCancelReason };
+
+/** トークンで 1 室だけ取り消す（book.guest_cancel_booking_room・M2）。最後の 1 室なら予約全体の取消になる */
+export async function guestCancelBookingRoom(token: string, roomIndex: number): Promise<GuestCancelRoomResult> {
+	const { data, error } = await supa().rpc('guest_cancel_booking_room', { p_token: token, p_room_index: roomIndex });
+	if (error) throw error;
+	return data as GuestCancelRoomResult;
 }
 
 // ---------------------------------------------------------------- フォーラム RPC（設計書 §5.3）
@@ -1535,6 +1569,12 @@ interface MyReservationRoomRow {
 	points_share: number;
 	cancelled_at: string | null;
 	cancel_fee: number;
+	/** 20261010204933 から */
+	coupon_share?: number;
+	prepay_discount?: number;
+	bath_tax?: number;
+	paid_share?: number;
+	cancel_kept?: number;
 }
 
 export interface MemberReservation {
@@ -1582,7 +1622,7 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 			? 'paid'
 			: r.payment_status === 'refunded'
 				? 'refunded'
-				: r.payment_status === 'partial_refund'
+				: r.payment_status === 'partial_refund' || r.payment_status === 'partial'
 					? 'partial_refund'
 					: 'unpaid';
 	return {
@@ -1594,7 +1634,14 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 		checkout: r.check_out_date,
 		nights: daysBetween(r.check_in_date, r.check_out_date),
 		adults: r.adult_count,
-		status: reservationStatus(r.stay_status, r.booking_status),
+		// 2 室以上は生きている部屋で決める（代表の 1 室目だけ取り消した予約も「予約中」・M2）
+		status:
+			(r.rooms?.length ?? 0) > 1
+				? roomsStatus(
+						r.booking_status,
+						(r.rooms ?? []).map((x) => ({ cancelled: x.cancelled_at != null, stayStatus: x.stay_status }))
+					)
+				: reservationStatus(r.stay_status, r.booking_status),
 		paymentStatus,
 		payment: paymentStatus === 'paid' || paymentStatus === 'refunded' || paymentStatus === 'partial_refund' ? 'card' : 'onsite',
 		total: r.total_amount,
@@ -1616,7 +1663,12 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 			charge: x.charge,
 			pointsShare: x.points_share ?? 0,
 			cancelled: x.cancelled_at != null,
-			cancelFee: x.cancel_fee ?? 0
+			cancelFee: x.cancel_fee ?? 0,
+			stayStatus: x.stay_status,
+			paidShare: x.paid_share,
+			bathTax: x.bath_tax,
+			prepayDiscount: x.prepay_discount,
+			cancelKept: x.cancel_kept
 		}))
 	};
 }
@@ -1643,6 +1695,31 @@ export async function sbCancelBookingAsMember(
 	return data as { booking_code: string; cancellation_fee: number; rank_benefit: unknown };
 }
 
+export type CancelRoomResult = {
+	booking_code: string;
+	room_index: number;
+	cancellation_fee: number;
+	remaining_rooms: number;
+	/** 最後の 1 室だった（予約全体が取消になった） */
+	booking_cancelled: boolean;
+};
+
+/** 会員本人による 1 室の取消（book.cancel_booking_room・M2）。最後の 1 室なら予約全体の取消になる */
+export async function sbCancelBookingRoomAsMember(
+	client: SupabaseClient,
+	bookingCode: string,
+	roomIndex: number
+): Promise<CancelRoomResult> {
+	const { data, error } = await client.schema('book').rpc('cancel_booking_room', {
+		p_booking_code: bookingCode,
+		p_room_index: roomIndex,
+		p_waive_fee: false,
+		p_reason: null
+	});
+	if (error) throw error;
+	return data as CancelRoomResult;
+}
+
 // ---------------------------------------------------------------- グレード別キャンセル料規定（P3・設計書 §3.3 / §4.3）
 // book.compute_cancel_fee（本人 or スタッフ・プレビュー）と book.rank_cancel_policies（公開 read）の薄いアダプタ。
 // 料率 = プラン規定 snapshot 非空 → プラン規定、空 → 予約作成会員 rank のルール表 → standard（SQL と同式）。
@@ -1654,17 +1731,25 @@ interface ComputeCancelFeeRow {
 	fee: number;
 	total_amount: number;
 	check_in_date: string;
+	/** 2 室以上: 生きている部屋ごとの内訳（book._booking_cancel_fee） */
+	rooms?: { room_index: number; fee: number; rate: number; rules_source?: string }[];
 }
+
+/** 部屋ごとのキャンセル料（2 室以上の予約だけ。1 室は空） */
+export type RoomCancelFee = { index: number; fee: number; rate: number; rulesSource: 'plan' | 'rank' };
 
 /** store.computeCancelFee 相当。compute_cancel_fee RPC を叩き、適用ルール表を除く結果を返す。
  *  表示用の rules は呼び出し側で（plan なら予約 snapshot、rank なら sbListRankCancelPolicies から）補う。 */
 export async function sbComputeCancelFee(
 	client: SupabaseClient,
 	code: string,
-	asOf?: string
-): Promise<Omit<CancelFeePreview, 'rules'>> {
-	const args: { p_booking_code: string; p_as_of?: string } = { p_booking_code: code };
-	if (asOf) args.p_as_of = asOf;
+	asOf?: string,
+	roomIndex?: number
+): Promise<Omit<CancelFeePreview, 'rules'> & { rooms: RoomCancelFee[] }> {
+	// 部屋を指定したときだけ 3 引数版（1 室のキャンセル料・autumn-shared 20261010204933）
+	const args: { p_booking_code: string; p_as_of?: string; p_room_index?: number } = { p_booking_code: code };
+	if (asOf || roomIndex != null) args.p_as_of = asOf ?? todayStr();
+	if (roomIndex != null) args.p_room_index = roomIndex;
 	const { data, error } = await client.schema('book').rpc('compute_cancel_fee', args);
 	if (error) throw error;
 	const r = data as ComputeCancelFeeRow;
@@ -1674,7 +1759,13 @@ export async function sbComputeCancelFee(
 		rate: r.rate,
 		fee: r.fee,
 		totalAmount: r.total_amount,
-		checkInDate: r.check_in_date
+		checkInDate: r.check_in_date,
+		rooms: (r.rooms ?? []).map((x) => ({
+			index: x.room_index,
+			fee: x.fee ?? 0,
+			rate: x.rate ?? 0,
+			rulesSource: x.rules_source === 'plan' ? 'plan' : 'rank'
+		}))
 	};
 }
 
@@ -1797,7 +1888,7 @@ export async function sbListOptionItems(facilityUuid: string, locale: Locale = '
 export async function sbAddBookingOptions(
 	client: SupabaseClient,
 	code: string,
-	items: { optionId: string; serviceDate?: string | null; quantity: number; note?: string }[]
+	items: { optionId: string; serviceDate?: string | null; quantity: number; note?: string; roomIndex?: number | null }[]
 ): Promise<{ total_added: number }> {
 	const { data, error } = await client.schema('book').rpc('add_booking_options', {
 		p_booking_code: code,
@@ -1805,7 +1896,9 @@ export async function sbAddBookingOptions(
 			option_id: i.optionId,
 			service_date: i.serviceDate ?? null,
 			quantity: i.quantity,
-			note: i.note ?? null
+			note: i.note ?? null,
+			// 複数室の予約で付ける部屋（M2・autumn-shared 20261010204933。無ければ生きている部屋の最初）
+			...(i.roomIndex != null ? { room_index: i.roomIndex } : {})
 		}))
 	});
 	if (error) throw error;
@@ -1831,6 +1924,8 @@ interface MyBookingOptionRow {
 	note: string | null;
 	requires_service_date: boolean;
 	created_at: string;
+	/** どの部屋のオプションか（20261010204933 から・公式予約でなければ null） */
+	room_index?: number | null;
 }
 
 /** store.listMyBookingOptions 相当。本人・cancelled 以外を作成順で返す。
@@ -1850,7 +1945,8 @@ export async function sbListMyBookingOptions(client: SupabaseClient, code: strin
 		status: r.status,
 		note: r.note ?? undefined,
 		requiresServiceDate: r.requires_service_date,
-		createdAt: r.created_at
+		createdAt: r.created_at,
+		roomIndex: r.room_index ?? undefined
 	}));
 }
 
@@ -1985,6 +2081,64 @@ export async function sbAmendBooking(
 		p_checkin: p.checkin,
 		p_nights: p.nights,
 		p_adults: p.adults
+	});
+	if (error) throw error;
+	return data as AmendResult;
+}
+
+/** 全室同時の日程変更の見積（book.quote_amendment_dates・M2）。AmendQuote ＋ 部屋ごと・在庫 */
+export type AmendDatesQuote = AmendQuote & {
+	/** 新しい日程で全室ぶんの在庫があるか（目安。確定は amend_booking_dates が行ロックの下で確かめる） */
+	available: boolean;
+	/** 足りない部屋タイプ（UUID） */
+	soldOut: string[];
+	liveRooms: number;
+	rooms: { index: number; roomTypeId: string; planId: string; adults: number; oldTotal: number; newTotal: number; charge: number; inPenalty: boolean }[];
+};
+
+export async function sbQuoteAmendmentDates(
+	client: SupabaseClient,
+	code: string,
+	checkin: string,
+	nights: number
+): Promise<AmendDatesQuote> {
+	const { data, error } = await client.schema('book').rpc('quote_amendment_dates', {
+		p_booking_code: code,
+		p_checkin: checkin,
+		p_nights: nights
+	});
+	if (error) throw error;
+	const raw = data as Record<string, unknown>;
+	const rooms = (Array.isArray(raw.rooms) ? raw.rooms : []) as Record<string, unknown>[];
+	return {
+		...mapAmendQuote(raw),
+		available: raw.available !== false,
+		soldOut: Array.isArray(raw.sold_out) ? (raw.sold_out as string[]) : [],
+		liveRooms: Number(raw.live_rooms ?? rooms.length),
+		rooms: rooms.map((x) => ({
+			index: Number(x.room_index),
+			roomTypeId: String(x.room_type_id ?? ''),
+			planId: String(x.rate_plan_id ?? ''),
+			adults: Number(x.adults ?? 0),
+			oldTotal: Number(x.old_room_total ?? 0),
+			newTotal: Number(x.new_total ?? 0),
+			charge: Number(x.charge ?? 0),
+			inPenalty: Boolean(x.in_penalty)
+		}))
+	};
+}
+
+/** 全室同時の日程変更の確定（book.amend_booking_dates・本人）。RPC 例外（sold_out:<id> など）はそのまま throw */
+export async function sbAmendBookingDates(
+	client: SupabaseClient,
+	code: string,
+	checkin: string,
+	nights: number
+): Promise<AmendResult> {
+	const { data, error } = await client.schema('book').rpc('amend_booking_dates', {
+		p_booking_code: code,
+		p_checkin: checkin,
+		p_nights: nights
 	});
 	if (error) throw error;
 	return data as AmendResult;

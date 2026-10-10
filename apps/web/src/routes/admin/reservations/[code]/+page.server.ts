@@ -17,6 +17,7 @@ import { todayStr } from '$lib/format';
 import {
 	adminBookingDetail,
 	adminCancelBooking,
+	adminCancelBookingRoom,
 	adminFindMembers,
 	adminLinkBookingMember,
 	linkMemberErrorText,
@@ -126,9 +127,11 @@ export const load: PageServerLoad = async (event) => {
 
 		// オンライン決済（公式サイト予約・v0.43.0）の台帳。現地払い・未適用の環境は null
 		const payment = detail.booking.booking_id ? await directPaymentForBooking(event.params.code).catch(() => null) : null;
-		// 取消済みのオンライン決済: 返金の内訳（規定のキャンセル料・返金しない予約時決済の割引額）を DB から
+		// 取消済みのオンライン決済: 返金の内訳（規定のキャンセル料・返金しない予約時決済の割引額）を DB から。
+		// 1 室だけ取り消した予約（M2）も、取り消した部屋の分の返金の内訳を出す
+		const someRoomCancelled = (detail.booking.rooms ?? []).some((r) => r.cancelled);
 		const refundDue =
-			payment?.status === 'paid' && detail.booking.booking_status === 'cancelled'
+			payment?.status === 'paid' && (detail.booking.booking_status === 'cancelled' || someRoomCancelled)
 				? await directRefundDueFor(event.params.code).catch(() => null)
 				: null;
 		return {
@@ -142,7 +145,12 @@ export const load: PageServerLoad = async (event) => {
 			isPartner: false,
 			partner: NO_PARTNER,
 			today: todayJst(),
-			feePreview: detail.booking.stay_status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
+			// 2 室以上は代表の 1 室目を取り消していても、生きている部屋があれば取り消せる（M2）
+			feePreview:
+				detail.booking.stay_status === 'reserved' ||
+				(detail.booking.booking_status !== 'cancelled' && (detail.booking.rooms ?? []).some((r) => !r.cancelled && r.stay_status === 'reserved'))
+					? (detail.cancel_policy.fee ?? 0)
+					: null
 		};
 	}
 
@@ -231,6 +239,12 @@ export const actions: Actions = {
 
 		const form = await event.request.formData();
 		const waive = form.get('waive') === 'on';
+		// 取消の範囲: all（予約全体・既定）／room（この部屋だけ・複数室 M2）
+		const scope = form.get('scope') === 'room' ? 'room' : 'all';
+		const roomIndex = Number(form.get('roomIndex'));
+		if (scope === 'room' && (!Number.isInteger(roomIndex) || roomIndex < 1)) {
+			return fail(400, { message: '取り消すお部屋を選んでください。' });
+		}
 		// 事務手数料も免除する（既定は差し引く・キャンセル料の免除とは別・2026-10-07）
 		const adminFeeWaive = form.get('adminFeeWaive') === 'on';
 		const reason = String(form.get('reason') ?? '').trim();
@@ -239,6 +253,24 @@ export const actions: Actions = {
 		}
 
 		if (ADMIN_SUPABASE) {
+			if (scope === 'room') {
+				try {
+					const res = await adminCancelBookingRoom(bookAdmin(event), event.params.code, roomIndex, waive, reason);
+					if (adminFeeWaive) await setDirectAdminFeeWaived(event.params.code, true);
+					// オンライン決済済みなら、この部屋の分（支払分 − 返金しない額）をカードへ返金
+					const refund: DirectRefundOutcome = await refundAfterCancel(event.params.code, 'staff', { roomIndex }).catch(() => ({
+						kind: 'none' as const
+					}));
+					return {
+						cancelled: res.booking_cancelled,
+						roomCancelled: { index: roomIndex, bookingCancelled: res.booking_cancelled },
+						fee: res.cancellation_fee,
+						refund
+					};
+				} catch (e) {
+					return fail(400, { message: mapRpcError(e) });
+				}
+			}
 			try {
 				const res = await adminCancelBooking(bookAdmin(event), event.params.code, waive, reason);
 				// 返金額の計算（DB の direct_payment_refund_due）より先に、事務手数料の免除を支払の記録に残す

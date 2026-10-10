@@ -945,3 +945,177 @@ select string_agg(pg_get_functiondef(p.oid) || ';', E'\n\n' order by p.oid::regp
 3. 複数室の予約ごとの質問は、全室のプランの予約ごとの項目を id で重ねずに 1 回だけ聞き、回答は代表者の備考（全部屋の滞在に入る）。部屋ごとの項目の回答は「N室目」を付けずにその部屋の滞在の備考の先頭へ。
 4. かごバーは **プラン詳細にだけ**出す（プラン一覧・客室ページには出さない）。別の施設のプラン詳細でもバーは出し「かごのお部屋は ○○ のご予約です」と添える（「予約へ進む」はかごの施設へ送る）。
 5. 確認メールの「当日お支払い額」「現地にて承ります」の文面（オンライン決済でも同じ）は M1 では変えていない（既存の挙動）。
+
+---
+
+## 16. M2 実装メモ（1 室ずつの取消・部屋ごとの返金・全室同時の日程変更・2026-10-11）
+
+> A／B を 1 人で実装。autumn-book・autumn-shared とも **commit / push なし・本番 DB 未適用**（読み取り SQL だけ）。親がレビューして反映する。
+> 検証: 使い捨てコンテナ（`supabase/postgres:17.6.1.084`）に M0 と同じスタブ（本番の列を写した最小スキーマ）→ M0 → M1 → **M2** を当て、主な RPC と巻き戻しを流した（§16.6）。
+
+### 16.1 migration（1 本・`autumn-shared/supabase/migrations/20261010204933_book_multi_room_m2.sql`）
+
+写す元は PROD の `pg_get_functiondef`（`schema_migrations` は `20261010125453` まで）。M0・M1 で再定義した関数はそのファイルの定義（＝PROD）。表の DDL は `book.mail_outbox` の kind の check だけ（`booking_room_cancelled` を足す）。`booking.bookings` / `core.stays` の DDL なし。
+
+| 節 | 関数 | 新規／写す元 | 中身 |
+|---|---|---|---|
+| 0 | `book.mail_outbox` の check | — | kind に `booking_room_cancelled` |
+| 1 | `_cancel_room_core(booking_id, room_index, waive, by, rank, dp, now, today, cancel_options)` | 新規（M0 `_cancel_booking_core` のループの中身） | 部屋 1 つ: キャンセル料（部屋の規定 × 部屋の宿泊料金）・`cancel_kept`・滞在 cancelled・在庫 +1・（1 室取消のときだけ）その部屋のオプションを cancelled |
+| 1 | `_cancel_booking_core` | M0 | 部屋ごとの処理を `_cancel_room_core` に（金額・順番は同じ）。取消日時を `clock_timestamp()` に。電文 cancelled の `cancel` に `total_fee`・`rooms[]` を追加 |
+| 1 | `_cancel_booking_room_core(code, room_index, waive, reason, by, actor)` | 新規 | 生きている最後の 1 室 → `_cancel_booking_core`（全体取消）に任せる。それ以外 → `total_amount −= 部屋の charge`（`accommodation/net/tax` も）・`cancellation_fee = Σ`・ポイント按分の返還・付与見込みを `floor(残り ÷ 1.10 × ランクの率)` へ（減らすだけ）・電文 `modified`（`room_cancelled`）・メール `booking_room_cancelled`・監査 `cancel_booking_room`・`_assert_booking_totals`。クーポンは使用済みのまま・リンクは生きたまま |
+| 1 | `cancel_booking_room` / `admin_cancel_booking_room` / `guest_cancel_booking_room(token, room_index)` | 新規（`cancel_booking` / `admin_cancel_booking` / `guest_cancel_booking`） | 認可は写し元と同じ。非会員は取消済みの部屋に `reason='room_not_cancellable'` |
+| 1 | `compute_cancel_fee(code, as_of, room_index)` | 新規の 3 引数版（2 引数版は残す） | 部屋 1 つのキャンセル料 ＋ `total_amount`（部屋の charge）・`cancelled` |
+| 1 | `guest_booking_by_token` | M0 | 2 室以上は**生きている部屋**で取消の可否（代表の 1 室目が取消済みでも可）。`rooms[i].fee`（今日のその部屋のキャンセル料）・`live_rooms` |
+| 1 | `mail_render_context` | M0 | `booking_room_cancelled` の `cancel = {waived, fee, by, room_index, room, points_returned, remaining_rooms}` |
+| 2 | `direct_payment_refund_due` | PROD（20261007010002） | 部屋の記録が無い・**全室を一度に取り消した**（1 室の予約を含む）→ **従来の式そのまま**（`partial:false`）。1 室ずつ取り消した → `due = A − Σ生きている部屋の paid_share − Σ取り消した部屋の cancel_kept − 返金済み`（`partial:true`・`live_share`・`rooms[]`）。生きている予約でも取り消した部屋があれば `result='due'` |
+| 2 | `direct_payment_record_refund(…, p_room_index)` | 新規の 5 引数版（4 引数版は残す） | `refunds[]` と電文 `refunded.refund` に `room_index`・`reservation_code`。一部返金なら `bookings.payment_status='partial'`（全額は `refunded`） |
+| 2 | `direct_payment_set_admin_fee_waived` | M0 | 計算し直すのは**直近の取消の部屋だけ**（返金済みの部屋の返金しない額を後から変えない） |
+| 3 | `_amend_compute_dates(booking, checkin, nights)` / `quote_amendment_dates` / `amend_booking_dates` | 新規（`_amend_compute` / `quote_amendment` / `amend_booking`） | §16.3 |
+| 4 | `my_reservations` | M0 | 列は同じ。`rooms[]` に `coupon_share / prepay_discount / bath_tax / paid_share / cancel_kept` |
+| 4 | `admin_list_bookings` | M0 | drop → create。末尾に `room_count`・`room_index` |
+| 4 | `add_booking_options` | M1 | `items[].room_index` で部屋を選ぶ（無ければ生きている部屋の最初）。状態は「予約 confirmed かつ付ける部屋が生きていて reserved」 |
+| 4 | `list_my_booking_options` | M1 | drop → create。末尾に `room_index` |
+| 5 | `_emit_pms_event` | M0 | 1 室ずつ取り消して予約が生きているときは `amounts.bath_tax / prepay_discount` も生きている部屋の和（他の amounts は M0 から生きている部屋の和）。それ以外は従来どおり |
+
+権限: 内部関数（`_cancel_room_core`・`_cancel_booking_room_core`・`_amend_compute_dates`・5 引数の `record_refund`）は service_role だけ。`cancel_booking_room`・`admin_cancel_booking_room`・3 引数の `compute_cancel_fee`・`quote_amendment_dates`・`amend_booking_dates`・作り直した 2 本は authenticated・service_role。`guest_cancel_booking_room` は anon・authenticated・service_role。
+
+### 16.2 PMS 電文（autumn-pms の受け口の前提に合わせた形）
+
+- **1 室取消（最後の 1 室以外）**: `event='modified'`・`amendment.kind='room_cancelled'`。`rooms[]` は**生きている部屋だけ**。`amounts` も生きている部屋の和。`amendment.cancelled_rooms[]` に今回取り消した部屋（必須: `room_index`・`stay_id`・`reservation_code`〔`YB-…-k`〕・`room_type_name`・`fee`。加えて `cancelled_at`・`cancelled_by`・`waived`・`cancellation_policy`〔その部屋の規定の写し〕・`room_type_id`）。
+- **最後の 1 室の取消・全室一括**: 従来どおり `event='cancelled'`（`rooms[]` は全室）。`cancel.fee` は今回取り消した部屋の和（従来）、`cancel.total_fee` は予約全体、`cancel.rooms[]` は全室の取消の内訳（M2 で追加）。
+- **部屋ごとの返金**: `event='refunded'` の `refund` に `room_index`・`reservation_code`（予約全体の返金・遅延返金・Stripe の管理画面からの返金は null）。
+- **全室同時の日程変更**: `event='modified'`・`amendment.kind='dates'`・`before/after` に `checkin / checkout / total / points_used / coupon_discount / rooms[]`（`after.rooms[i].price_snapshot` は部屋の見積）。`rooms[]` は生きている部屋（新しい泊明細）。
+- PMS は取り消した部屋の請求書の宿泊明細を自動では外さない（現場が手で外す）。
+
+**1 室取消の電文の例**（コンテナで 2 室のオンライン決済の予約の 2 室目をスタッフが取り消したときの実物。`guest`・`booker`・`stay` 等は省略、id は短縮）:
+
+```json
+{
+  "schema": "autumn.direct_booking/1",
+  "event": "modified",
+  "sequence": 3,
+  "booking": { "booking_id": "df6c7079-…", "booking_code": "YB-2026-006002", "status": "confirmed", "locale": "ja" },
+  "rooms": [
+    {
+      "room_index": 1, "stay_id": "47f694cb-…", "reservation_code": "YB-2026-006002-1",
+      "room_type_id": "a000…000a", "room_type_code": "WA", "room_type_name": "和室",
+      "adults": 2, "male": null, "female": null, "children": { "a": 0, "b": 0, "c": 0, "d": 0, "e": 0 },
+      "nights": [ { "date": "2026-11-09", "unit_price": 30000, "subtotal": 60000 } ],
+      "plan": { "rate_plan_id": "b000…0001", "code": "P1", "name": "朝夕食", "meal_plan": "2食", "rms_plan_template_id": null }
+    }
+  ],
+  "plan": { "rate_plan_id": "b000…0001", "code": "P1", "name": "朝夕食", "meal_plan": "2食", "rms_plan_template_id": null },
+  "amounts": {
+    "gross_total": 60000, "discount_total": 0, "points_used": 0, "total_amount": 60000, "charge": 60000,
+    "bath_tax": 300, "prepay_discount": 3000, "tax_included": 5455, "coupon": null, "points_earned": 0
+  },
+  "payment": { "method": "deposit", "status": "paid", "option": "online", "method_name": "オンライン決済(stripe)", "payment_intent_id": "pi_B", "paid_amount": 77450 },
+  "cancellation_policy": { "rules": [ { "days_before": 3, "rate": 0.3 }, { "days_before": 0, "rate": 1 } ] },
+  "amendment": {
+    "kind": "room_cancelled",
+    "cancelled_at": "2026-10-10T21:01:17.050628+00:00",
+    "by": "staff", "waived": false, "reason": "テスト",
+    "cancelled_rooms": [
+      {
+        "room_index": 2, "stay_id": "807468f7-…", "reservation_code": "YB-2026-006002-2",
+        "room_type_id": "a000…000b", "room_type_name": "洋室", "fee": 0,
+        "cancelled_at": "2026-10-10T21:01:17.050628+00:00", "cancelled_by": "staff", "waived": false,
+        "cancellation_policy": []
+      }
+    ],
+    "remaining_rooms": 1
+  },
+  "cancel": null, "charge": null, "refund": null,
+  "price_snapshot": {
+    "lines": [ { "date": "2026-11-09", "adults": 2, "unit_price": 30000, "subtotal": 60000 } ],
+    "total": 60000, "per_person": 30000, "tax_included": 5455, "locale": "ja",
+    "rooms": [ { "room_index": 1, "lines": [ { "date": "2026-11-09", "adults": 2, "unit_price": 30000, "subtotal": 60000 } ], "total": 60000 } ]
+  }
+}
+```
+
+**部屋ごとの返金の電文（`event='refunded'`）の `refund`**:
+
+```json
+{ "amount": 19143, "refunded_at": "2026-10-10T21:01:17.060908+00:00", "refund_id": "re_1", "reason": "cancel:staff:room2",
+  "room_index": 2, "reservation_code": "YB-2026-006002-2", "total_refunded": 19143, "method_name": "オンライン決済(stripe)" }
+```
+
+**最後の 1 室の取消（`event='cancelled'`）の `cancel`**:
+
+```json
+{ "cancelled_at": "2026-10-10T21:01:17.066969+00:00", "by": "staff", "fee": 0, "waived": false, "reason": "テスト",
+  "total_fee": 0,
+  "rooms": [ { "room_index": 1, "stay_id": "47f694cb-…", "fee": 0, "waived": false, "cancelled_at": "2026-10-10T21:01:17.066969+00:00" },
+             { "room_index": 2, "stay_id": "807468f7-…", "fee": 0, "waived": false, "cancelled_at": "2026-10-10T21:01:17.050628+00:00" } ] }
+```
+
+### 16.3 全室同時の日程変更
+
+- `_amend_compute_dates`: 生きている部屋ごとに `book.quote(同じプラン・同じ部屋タイプ・新しい日程・同じ人数)`。クーポンは percent なら新しい合計で、fixed なら `least(今の割引〔生きている部屋の和〕, 新しい合計)`、`_allocate` で部屋の宿泊料金の比に按分。ポイントは `least(今の利用, 新しい支払額)` を部屋の支払額の比で按分（差は返還）。ペナルティは部屋ごとの規定で、1 室でも率 > 0（かつ `allow_amend_in_penalty` でない）なら `in_penalty`。戻りのキーは `_amend_compute` と同じ（画面の `AmendQuote`）＋ `rooms[]`・`available`・`sold_out[]`（在庫の目安・自分の部屋を足し戻して判定）。
+- `amend_booking_dates`: 本人・confirmed・生きている部屋がすべて reserved・2 回まで・締切前・ペナルティ外・**オンライン決済済み（返金し切っていない）は `prepaid_online`**。在庫は旧区間を部屋タイプごとに +N → 新区間を行ロック → 部屋タイプごとに全泊 `available − buffer ≥ N` → −N。足りなければ `sold_out:<room_type_id>` で全体が戻る。滞在の日付は**予約の全部屋（取り消した部屋も）**をそろえる（予約の日程は 1 つ・代表の滞在から日程を読む画面があるため）。部屋のお金は生きている部屋だけ更新。`booking_amendments` に `kind='dates'`。
+- 1 室の予約の `amend_booking`（部屋・プラン・人数・日程）は変えていない。2 室以上は従来どおり `use_amend_dates`。
+
+### 16.4 Book（autumn-book）
+
+| ファイル | 中身 |
+|---|---|
+| `lib/multi-room.ts`（＋`multi-room-cancel.test.ts`） | `roomRefundPreview`（1 室の返金見込み・`_room_cancel_kept` と同じ式）・`remainingRefundPreview`（残りの全室・まだ 1 室も取り消していなければ従来の式）・`liveRooms`・`roomsStatus`。`BookingRoom` に `stayStatus / paidShare / bathTax / prepayDiscount / cancelKept` |
+| `lib/server/supabase-data.ts` | `sbCancelBookingRoomAsMember`・`guestCancelBookingRoom`（`GuestCancelReason` に `room_not_cancellable`）・`sbComputeCancelFee(…, roomIndex?)`（`rooms[]` も返す）・`sbQuoteAmendmentDates` / `sbAmendBookingDates`（`AmendDatesQuote`）・`sbAddBookingOptions` の `roomIndex`・`sbListMyBookingOptions` の `roomIndex`。マイページの予約の状態は 2 室以上なら生きている部屋で決める |
+| `lib/server/direct-payments.ts` | `refundAfterCancel(code, reason, { roomIndex })`（5 引数の `record_refund`・Stripe の metadata に `room_index`） |
+| `lib/server/admin-app-data.ts` | `adminCancelBookingRoom`・一覧の `room_count / room_index`・詳細の部屋のお金の型・`cancel_policy.rooms` |
+| `lib/types.ts` | `BookingOptionOrder.roomIndex` |
+| `account/reservations/[code]` | 部屋カードに「この部屋を取り消す」（その部屋のキャンセル料・返金の見込み・最後の 1 室なら全体取消の注意）→ `?/cancelRoom`。下のボタンは「すべてのお部屋を取り消す」（返金見込みは残りの全室）。日程変更は「日程を変更する（全室）」。M1 の「1 室だけはお電話で」を削除 |
+| `…/amend` | 2 室以上は日付・泊数だけ（`datesOnly`）。部屋ごとの今と変更後の金額・全室を確保できない日程は「全室のお部屋を確保できない」 |
+| `…/options` | 2 室以上は「どのお部屋のアレンジですか」を選ぶ。予約詳細のオプションに「N室目」 |
+| `booking/cancel` | 部屋カードごとに「この部屋を取り消す」（二段確認）→ `?/cancelRoom`。取消後は action が返す最新の表示（URL から `?t=` を落としているため）。全室は「すべてのお部屋を取り消す」 |
+| `admin/reservations/[code]` | 取消フォームに「予約全体／この部屋だけ」（部屋の選択）・部屋ごとの返金見込み・部屋の表に返金しない額と支払分・1 室取消の後も返金の内訳と再実行・代表の 1 室目が取消済みでも操作を出す・メールの種類「1室の取消受付」 |
+| `admin/reservations` | 一覧に「室数」の列（`N室`・2 室以上は `k室目`） |
+| `messages/{ja,en,zh-TW}.json` | `reservation_room_*`・`reservation_cancel_all_btn`・`reservation_multi_cancel_note`・`amend_dates_*`・`amend_err_sold_out_all`・`options_room_label`・`gcancel_room_*`・`gcancel_btn_all`・`gcancel_err_room*`。`reservation_multi_phone` を削除 |
+| autumn-shared `functions/send-booking-mail/templates.ts`（＋test） | `buildRoomCancelledMail`（取り消したお部屋・その部屋のキャンセル料〔基準はその部屋の宿泊料金〕・戻したポイント・引き続きご予約のお部屋と合計）。`renderMail` が kind で振り分け |
+
+### 16.5 本番に当てる順番と条件
+
+1. 適用前に巻き戻し用の関数定義を保存（読み取り・migration 末尾のコメントの SQL・10 本）→ `autumn-shared/docs/rollback/20261010204933_functions_before.sql`。
+2. `supabase db push --linked --dry-run` で対象がこの 1 本（ほかに未適用の migration があればその中身も）か確認 → 本適用 → `migration list --linked`。`information_schema.routines` で `cancel_booking_room` 等ができたこと、`admin_list_bookings` の戻りに `room_count` があること。
+3. **send-booking-mail を同時にデプロイ**（`supabase functions deploy send-booking-mail --no-verify-jwt`）。古い関数のままだと `booking_room_cancelled` を予約確認メールの文面で送ってしまう（migration を当てる前に新しい関数をデプロイしても害は無い）。
+4. Book のデプロイは migration の後（新 Book は `cancel_booking_room` / `quote_amendment_dates` 等と `my_reservations` の新しいキーを使う。旧 Book は新 DB でそのまま動く）。
+5. autumn-pms の `room_cancelled` の受け口は先にデプロイ済みが望ましい（無くても壊れない: 現状の `modified` は `rooms[]` に無い滞在を触らない・滞在は Book が cancelled にしトリガーで部屋割りが解放される）。
+
+### 16.6 確認した範囲（使い捨てコンテナ）
+
+- M0 → M1 → M2 が 1 トランザクションで当たる（M2 は `check_function_bodies = on`）。
+- 会員 3 室（60,000 / 20,000 / 40,000・クーポン 1,000・ポイント 3,000）: 2 室目の取消で滞在 cancelled・洋室の在庫 +1・`total_amount` 119,000 → 99,167・ポイント +500 返還・付与見込み 1,081 → 901・クーポン used のまま・電文 `modified/room_cancelled`（`rooms[]` 2 件）・メール `booking_room_cancelled`・`mail_render_context.cancel`。非会員リンクの `rooms[i].fee`・取消済みの部屋は `room_not_cancellable`。3 室目にオプション（`room_index` 付き）。全室同時の日程変更（+1 日・2 泊）で全滞在の日付・部屋のお金・在庫（旧区間 +2・新区間 −2）・電文 `dates`。リンクで 1 室目 → 3 室目（最後）を取消 → 予約 cancelled・電文 cancelled（`cancel.rooms` 3 件）・クーポン復帰・リンク無効・ポイントの差し引きが 0。
+- オンライン決済 2 室（請求 77,450・事務手数料 5%）: 2 室目の取消で `refund_due` = 20,150 − 1,007 = **19,143**（`partial:true`）→ 5 引数の記録で `refunds[].room_index`・電文 `refunded` に `room_index / reservation_code`・`refund_status=partial`・`payment_status=paid` のまま → 1 室目（最後）で残り **54,300**（= 57,300 − 割引 3,000）。事務手数料の免除は直近の部屋だけ計算し直す。
+- 1 室のオンライン決済の予約を `_cancel_booking_room_core` で取り消すと全体取消の経路・`refund_due` は従来の式（`partial:false`・54,300）。
+- 在庫不足（新しい日の和室の残り 1 に 2 室）: 見積 `available:false / sold_out:[和室]`、確定は `sold_out:<id>` で日付・在庫とも変わらない。2 室で `amend_booking` → `use_amend_dates`。ペナルティ期間の部屋が 1 つあると `amend_in_penalty`。anon は内部関数を呼べない。
+- 巻き戻し: M1 適用後の 10 本の定義を保存 → M2 → 末尾のコメントの SQL で新しい関数が消え、`admin_list_bookings` が旧の形に戻り、旧の `_cancel_booking_core`・`guest_booking_by_token`・`admin_list_bookings` が 1 室ずつ取り消したデータの上で動く。
+- `svelte-check --threshold error` 0 件・`vitest` 712 件・send-booking-mail の vitest 34 件。画面はブラウザで見ていない（実データ接続が要るため）。
+
+### 16.7 設計から外れた点
+
+1. **全室を一度に取り消した複数室の予約の返金は従来の式**（請求額全体に対する max(キャンセル料の和, 割引, 事務手数料)）。1 室ずつの和とは事務手数料の基準が違い、例の予約では 3,872 と 4,007 で 135 円差（§5.5 の「1〜2 円差」より大きいことがある）。どちらの式かは `refund_due.partial` で分かる。
+2. 部屋ごとの一部返金（5 引数の `record_refund`）では `booking.bookings.payment_status='partial'`（本番の check にある値。`partial_refund` は無く、共有表の DDL はしない）。全額なら従来どおり `refunded`、4 引数版（遅延返金・Stripe 管理画面の同期）は従来どおり変えない。Book の `mapReservationRow` は `partial` を `partial_refund`（一部返金）として表示する。1 室ずつ取り消した予約は、返金しない額があるので最後まで `partial` のまま（全額返金にならない）。
+3. 付与見込みの再計算は「会員ランクの率 × 残りの合計」で、元の見込みより**増やさない**（宿泊後の `_finalize_booking` が最終的に合わせる）。日程変更では付与見込みを変えない（従来の `amend_booking` と同じ）。
+4. 1 室取消ではその部屋のオプションを取消にするが、**全室一括・最後の 1 室の取消ではオプションに触らない**（従来の全体取消と同じ動きを保つため）。
+5. 事務手数料の免除の印（`cancel_admin_fee_waived`）は予約に 1 つなので、管理画面で免除した後に会員が別の部屋を取り消すと、その部屋も免除になる。
+6. 日程変更で取り消した部屋の滞在の日付もそろえる（お金の記録・泊明細は取消時のまま）。
+7. 非会員の画面の取消後の表示は、action が `guestBookingByToken` をもう一度引いて返す（`update({ invalidateAll: false })`）。
+8. 1 室取消で付けた電文 `cancelled_rooms[]` の項目は autumn-pms の受け口の前提（2026-10-11 の指示）に合わせて、設計 §7.2 より多い（`cancelled_at`・`cancelled_by`・`waived`・`cancellation_policy`）。
+
+### 16.7a レビュー（Fable）を受けて直した点（2026-10-11）
+
+- **中-2** 生きている部屋が 1 室だけのとき、`_booking_cancel_fee` は `rooms[]` を返さない（全体の `fee`／`rate` がその部屋の値）。マイページ（`account/reservations/[code]/+page.server.ts`）と管理画面（`roomFeeOf`）で、`rooms[]` が空で生きている部屋が 1 つならその部屋に全体の値を割り当てる（DB は変えない）。部屋カードのキャンセル料 0 円・返金見込みの過大を直した。
+- **中-3** Stripe の冪等キーを `book-direct-cancel-<予約 id>-<返金済み額>-<今回の返金額>` に。同じ取消で 2 回呼ばれても同じキー（記録後は due=0 で返金しない）。
+- **中-4** `_cancel_booking_room_core` は全室一括と同じく「生きている部屋がすべて reserved」のときだけ（別の部屋がチェックイン済みなら `not_cancellable`）。`guest_booking_by_token` の可否も reserved でない生きている部屋を優先して見る（`checked_in` 等）。マイページの「この部屋を取り消す」・管理画面の操作も同じ条件で出す。
+- **低-1** `_emit_pms_event` の `price_snapshot` で代表（1 室目）の見積の形を使うのは「部屋が全体で 1 つ」の予約だけ。2 室以上で生きている部屋が 1 つのときは生きている部屋で組む（取消済みの 1 室目の明細にならない）。
+- **低-4** 上の 16.7-2。
+- 電文 `cancelled_rooms[].cancelled_by` はそのまま（PMS 側が読む）。
+- 再確認: コンテナで M0→M1→M2 と §16.6 の RPC を流し直し、加えて「2 室目がチェックイン済みで 1 室目の取消が `not_cancellable`・リンクの理由が `checked_in`」「2 室目だけ生きている予約の電文 `price_snapshot` が 2 室目の明細」「部屋の一部返金で `payment_status='partial'`」を確認。`svelte-check` 0 件・`vitest` 712 件・メール 34 件。
+
+### 16.8 M3 に残したもの
+
+- 複数室の予約の部屋ごとの部屋・プラン・人数の変更、子ども区分、退避表 `_mr_backup_*` の drop（Q11）。
+- 確認メールの再送（管理画面）は 1 室ずつ取り消した後も取り消した部屋を並べる（M1 の `templates.ts` は `rooms[]` を全部出す）。
+- 取り消した部屋の請求書の宿泊明細の自動での除外（autumn-pms）。
+- 予約全体の取消・最後の 1 室の取消でのオプションの扱い（今は触らない）。

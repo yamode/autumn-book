@@ -198,6 +198,7 @@
 				<th class="px-3">ゲスト</th>
 				<th class="px-3">チェックイン</th>
 				<th class="px-3">泊数・人数</th>
+				<th class="px-3">室数</th>
 				<th class="px-3">部屋</th>
 				<th class="px-3 text-right">金額</th>
 				<th class="px-3">経路</th>
@@ -225,6 +226,8 @@
 					</td>
 					<td class="px-3 whitespace-nowrap">{formatDateJa(b.check_in_date)}</td>
 					<td class="px-3 whitespace-nowrap">{b.nights}泊・{b.adult_count}名</td>
+					<!-- 公式の複数室予約（M2）: 予約の室数と、この行（滞在）が何室目か -->
+					<td class="px-3 whitespace-nowrap">{b.room_count ?? 1}室{#if (b.room_count ?? 1) > 1 && b.room_index}<span class="block text-[10px] text-stone-400">{b.room_index}室目</span>{/if}</td>
 					<td class="max-w-[180px] truncate px-3">{b.room_name ?? '—'}</td>
 					<td class="px-3 text-right whitespace-nowrap">{b.total_amount != null ? formatYen(b.total_amount) : '—'}</td>
 					<td class="px-3 text-xs">{channelLabel(b)}</td>
@@ -238,7 +241,7 @@
 					</td>
 				</tr>
 			{:else}
-				<tr><td colspan="9" class="px-3 py-8 text-center text-stone-500">該当する予約がありません。期間や条件を変えてみてください。</td></tr>
+				<tr><td colspan="10" class="px-3 py-8 text-center text-stone-500">該当する予約がありません。期間や条件を変えてみてください。</td></tr>
 			{/each}
 		</tbody>
 	</table>

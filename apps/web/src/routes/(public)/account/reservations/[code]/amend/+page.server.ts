@@ -14,6 +14,10 @@ import {
 	sbPlanOffers,
 	sbQuoteAmendment,
 	sbAmendBooking,
+	sbQuoteAmendmentDates,
+	sbAmendBookingDates,
+	sbPlanByUuid,
+	sbRoomTypeByUuid,
 	sbListPlansMapped,
 	sbListRoomTypesMapped,
 	reverseFacilityUuid
@@ -29,8 +33,10 @@ async function isPrepaidOnline(code: string): Promise<boolean> {
 	return !!pay && pay.status === 'paid' && pay.refund_status !== 'full';
 }
 
-// RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）
-function amendErrorMessage(msg: string): string {
+// RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）。datesOnly: 2 室以上の全室同時の日程変更
+function amendErrorMessage(msg: string, datesOnly = false): string {
+	if (msg.includes('prepaid_online')) return m.amend_prepaid_blocked();
+	if (datesOnly && msg.includes('sold_out')) return m.amend_err_sold_out_all();
 	if (msg.includes('past_deadline')) return m.amend_err_past_deadline();
 	if (msg.includes('amend_limit')) return m.amend_err_limit();
 	if (msg.includes('amend_in_penalty')) return m.amend_err_penalty();
@@ -96,10 +102,65 @@ export const load: PageServerLoad = async (event) => {
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
-		// 2 室以上の予約の日程変更（全室同時）は M2。今はお電話で（予約詳細に案内を出す）
-		if ((r.rooms?.length ?? 0) > 1) redirect(303, `/account/reservations/${params.code}`);
 		// オンライン決済済みの予約は変更させない（金額が変わると支払額と食い違うため。宿へ電話で）
 		if (await isPrepaidOnline(params.code)) redirect(303, `/account/reservations/${params.code}?amend=prepaid`);
+		// 2 室以上の予約（M2）: 日付・泊数だけを全室同時に変える（部屋・プラン・人数は変えない・§6.3）
+		if ((r.rooms?.length ?? 0) > 1) {
+			const f2 = reverseFacilityUuid(r.facilityUuid);
+			const fac = f2 ? facilityById(f2) : undefined;
+			if (!fac) error(404, m.error_booking_not_found());
+			const live = (r.rooms ?? []).filter((x) => !x.cancelled);
+			const names = new Map<string, string>();
+			await Promise.all(
+				[...new Set(live.flatMap((x) => [`r:${x.roomTypeId}`, x.planId ? `p:${x.planId}` : '']).filter(Boolean))].map(async (k) => {
+					const id = k.slice(2);
+					const v = k.startsWith('r:') ? await sbRoomTypeByUuid(id).catch(() => undefined) : await sbPlanByUuid(id).catch(() => undefined);
+					names.set(k, v?.name ?? '');
+				})
+			);
+			const checkin = url.searchParams.get('checkin') || r.checkin;
+			const nights = clampInt(url.searchParams.get('nights'), r.nights, 1, 5);
+			let quote: Awaited<ReturnType<typeof sbQuoteAmendmentDates>> | null = null;
+			let quoteError: string | null = null;
+			try {
+				quote = await sbQuoteAmendmentDates(client, params.code, checkin, nights);
+			} catch (e) {
+				quoteError = amendErrorMessage(e instanceof Error ? e.message : String(e), true);
+			}
+			const adults = live.reduce((s, x) => s + x.adults, 0);
+			return {
+				code: params.code,
+				facility: { name: fac.name, phone: fac.phone },
+				facilityKey: r.facilityUuid,
+				current: {
+					ratePlanId: r.ratePlanUuid,
+					roomTypeId: r.roomTypeUuid,
+					planName: '',
+					roomName: '',
+					checkin: r.checkin,
+					nights: r.nights,
+					adults,
+					total: r.total
+				} satisfies AmendCurrent,
+				checkin,
+				nights,
+				adults,
+				offers: [] as AmendOfferView[],
+				selected: null,
+				quote: quote as AmendQuote | null,
+				quoteError,
+				datesOnly: true as boolean,
+				available: quote?.available ?? true,
+				roomsView: live.map((x) => ({
+					index: x.index,
+					roomName: names.get(`r:${x.roomTypeId}`) ?? '',
+					planName: x.planId ? (names.get(`p:${x.planId}`) ?? '') : '',
+					adults: x.adults,
+					total: x.charge,
+					newTotal: quote?.rooms.find((q) => q.index === x.index)?.charge ?? null
+				}))
+			};
+		}
 		const storeId = reverseFacilityUuid(r.facilityUuid);
 		const f = storeId ? facilityById(storeId) : undefined;
 		if (!f) error(404, m.error_booking_not_found());
@@ -210,7 +271,10 @@ export const load: PageServerLoad = async (event) => {
 		offers,
 		selected: sel ? { ratePlanId: sel.ratePlanId, roomTypeId: sel.roomTypeId } : null,
 		quote,
-		quoteError
+		quoteError,
+		datesOnly: false as boolean,
+		available: true,
+		roomsView: [] as { index: number; roomName: string; planName: string; adults: number; total: number; newTotal: number | null }[]
 	};
 };
 
@@ -218,6 +282,19 @@ export const actions: Actions = {
 	confirm: async (event) => {
 		const { request, params, locals } = event;
 		const form = await request.formData();
+		// 2 室以上（M2）: 全室同時の日程変更（日付・泊数だけ）
+		if (form.get('datesOnly') === '1') {
+			const checkin = String(form.get('checkin') ?? '');
+			const nights = clampInt(String(form.get('nights') ?? ''), 1, 1, 5);
+			if (!checkin || !MEMBER_SUPABASE) return fail(400, { message: m.amend_failed() });
+			if (await isPrepaidOnline(params.code)) return fail(400, { message: m.amend_prepaid_blocked() });
+			try {
+				await sbAmendBookingDates(createSupabaseServerClient(event), params.code, checkin, nights);
+			} catch (e) {
+				return fail(400, { message: amendErrorMessage(e instanceof Error ? e.message : String(e), true) });
+			}
+			redirect(303, `/account/reservations/${params.code}`);
+		}
 		const p: AmendParams = {
 			ratePlanId: String(form.get('ratePlanId') ?? ''),
 			roomTypeId: String(form.get('roomTypeId') ?? ''),
