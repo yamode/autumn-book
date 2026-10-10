@@ -120,7 +120,7 @@
         </fieldset>
       {/if}
 
-      <p class="text-xs leading-5 text-stone-500">料金は1名1泊・税込・入湯税別です。残室により予約できない日があります。発行日時点の料金です。</p>
+      <p class="text-xs leading-5 text-stone-500">料金は1名あたり・税込・入湯税別です。残室により予約できない日があります。発行日時点の料金です。</p>
       <div>
         <button
           type="submit"

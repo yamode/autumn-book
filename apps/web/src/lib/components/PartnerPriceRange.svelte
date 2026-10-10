@@ -76,7 +76,7 @@
 <section class="relative z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-stone-200 bg-white px-4 py-3 sm:px-5">
   {#if priceRangeState !== 'hidden'}
     <div class="min-w-0 flex-1">
-      <p class="text-xs text-stone-500">公開期間の料金（1名1泊・税込・入湯税別）</p>
+      <p class="text-xs text-stone-500">公開期間の料金（1名あたり・税込・入湯税別）</p>
       {#if priceRangeState === 'loading' || !priceRange}
         <div class="mt-1.5 h-7 w-56 max-w-full animate-pulse rounded bg-stone-100" aria-label="読み込み中"></div>
       {:else}
@@ -116,7 +116,7 @@
             class="absolute left-2 right-2 top-full mt-1 rounded-lg border border-stone-200 bg-white p-3 text-sm shadow-lg sm:left-4 sm:right-auto sm:w-[28rem]"
           >
             <p class="mb-1.5 font-medium text-brand-900">
-              {tipFor.kind === 'min' ? '最低料金' : '最高料金'} {yen(tipFor.ex.price)}（1名1泊）
+              {tipFor.kind === 'min' ? '最低料金' : '最高料金'} {yen(tipFor.ex.price)}（1名あたり）
               {#if tipFor.ex.count > 1}<span class="text-xs font-normal text-stone-500">・該当 {tipFor.ex.count.toLocaleString('ja-JP')} 件</span>{/if}
             </p>
             <ul class="space-y-1">

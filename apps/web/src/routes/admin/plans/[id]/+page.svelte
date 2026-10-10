@@ -75,7 +75,7 @@
 		</div>
 		<dl class="mt-3 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
 			<div class="flex gap-2"><dt class="text-stone-400">プラン名</dt><dd class="font-medium">{p.name}</dd></div>
-			<div class="flex gap-2"><dt class="text-stone-400">基準料金</dt><dd>{formatYen(p.basePrice)} / 大人1名1泊（平日）</dd></div>
+			<div class="flex gap-2"><dt class="text-stone-400">基準料金</dt><dd>{formatYen(p.basePrice)} / 大人1名あたり（平日）</dd></div>
 			<div class="flex gap-2"><dt class="text-stone-400">食事</dt><dd>{p.mealPlan}</dd></div>
 			<div class="flex gap-2"><dt class="text-stone-400">支払</dt><dd>下の「決済設定」を参照</dd></div>
 			<div class="flex gap-2"><dt class="text-stone-400">対象客室</dt><dd>{d.rooms.join(' / ')}</dd></div>

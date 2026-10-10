@@ -359,7 +359,7 @@ table.pt tbody.grp tr:last-child td.room { border-bottom-color: #a8a29e; }
 function headerHtml(meta: RateSheetMeta): string {
   const period = `${jpDate(meta.range.from)}〜${jpDate(meta.range.to)}`;
   return `<div class="hd"><h1>${esc(meta.partnerName)} 様 専用料金表</h1><div class="m"><span>${esc(meta.facilityName)}</span>　<span>期間 ${period}</span>　<span>発行日 ${jpDate(meta.issuedOn)}</span></div></div>
-<p class="nt">料金は1名1泊・税込・入湯税別です。残室により予約できない日があります。発行日時点の料金です（料金は変わることがあります）。</p>`;
+<p class="nt">料金は1名あたり・税込・入湯税別です。残室により予約できない日があります。発行日時点の料金です（料金は変わることがあります）。</p>`;
 }
 
 function monthHtml(ym: string, meta: RateSheetMeta, dayMap: Map<string, RateSheetDay>, colorOf: Map<string, string>): string {

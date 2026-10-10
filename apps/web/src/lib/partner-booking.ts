@@ -167,10 +167,10 @@ export function applyPrepayDiscount(unit: number, d: PrepayDiscount): number {
   return Math.max(1, v);
 }
 
-// 画面・メール・PMS 備考用の説明（例: 「5%引き」「1名1泊 1,000円引き」）。
+// 画面・メール・PMS 備考用の説明（例: 「5%引き」「1名あたり1泊 1,000円引き」）。
 export function describePrepayDiscount(d: PrepayDiscount): string {
   if (!hasPrepayDiscount(d)) return '';
-  return d.type === 'percent' ? `${d.value}%引き` : `1名1泊 ${d.value.toLocaleString('ja-JP')}円引き`;
+  return d.type === 'percent' ? `${d.value}%引き` : `1名あたり1泊 ${d.value.toLocaleString('ja-JP')}円引き`;
 }
 
 // ---- デポジット（Phase 3b・受付枠を超えた予約。docs/partner-pms-customer-link.md §5.3・決定 #2・N2 N3 N6） ----

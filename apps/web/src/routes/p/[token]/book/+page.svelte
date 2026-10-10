@@ -862,7 +862,7 @@
             <div class="text-right">
               <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
               <!-- 1名料金を併記する（2026-10-09 指示）。全室・全泊の合計 ÷（大人の合計 × 泊数）。どの部屋も1名なら出さない -->
-              {#if quote.rooms.some((r) => r.adults > 1)}<p class="text-sm font-semibold text-brand-900">1名1泊{quote.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(Math.round(quote.rooms.reduce((t, r) => t + r.subtotal, 0) / Math.max(quote.rooms.reduce((t, r) => t + r.adults, 0) * quote.nights, 1)))}</span>円</p>{/if}
+              {#if quote.rooms.some((r) => r.adults > 1)}<p class="text-sm font-semibold text-brand-900">1名あたり{quote.nights > 1 ? '（1泊平均）' : ''} <span class="tabular-nums">{num(Math.round(quote.rooms.reduce((t, r) => t + r.subtotal, 0) / Math.max(quote.rooms.reduce((t, r) => t + r.adults, 0) * quote.nights, 1)))}</span>円</p>{/if}
               <button type="button" aria-expanded={showBreakdown} onclick={() => (showBreakdown = !showBreakdown)} class="text-xs text-stone-500 hover:text-brand-900">料金明細を{showBreakdown ? '閉じる' : '表示'} <span aria-hidden="true" class={`inline-block transition ${showBreakdown ? 'rotate-180' : ''}`}>⌄</span></button>
             </div>
           </div>

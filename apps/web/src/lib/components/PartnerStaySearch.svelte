@@ -338,7 +338,7 @@
     </p>
     <!-- 1名料金を併記する（2026-10-09 指示。日付ピッカーは1名1泊で出しているため）。1名のときは1室料金と同じなので出さない -->
     {#if data.params.guests > 1}
-      <p class="text-sm font-semibold text-brand-900">1名1泊{dated && data.params.nights > 1 ? '（平均）' : ''} <span class="tabular-nums">{num(r.perPerson)}</span>円〜</p>
+      <p class="text-sm font-semibold text-brand-900">1名あたり{dated && data.params.nights > 1 ? '（1泊平均）' : ''} <span class="tabular-nums">{num(r.perPerson)}</span>円〜</p>
     {/if}
     <p class="text-xs text-stone-500">
       {#if dated}

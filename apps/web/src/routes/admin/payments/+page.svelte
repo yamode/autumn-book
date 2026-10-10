@@ -459,7 +459,7 @@
 						<select name="discount_type" bind:value={partnerDiscountType[p.id]} class="rounded-md border border-stone-300 px-2 py-1 text-sm">
 							<option value="none">なし</option>
 							<option value="percent">%引き</option>
-							<option value="yen">1名1泊 円引き</option>
+							<option value="yen">1名あたり1泊 円引き</option>
 						</select>
 						{#if partnerDiscountType[p.id] !== 'none'}
 							<input type="number" name="discount_value" value={p.prepayDiscount.value || ''} min="1" max={partnerDiscountType[p.id] === 'percent' ? 50 : 100000} class="w-24 rounded-md border border-stone-300 px-2 py-1 text-right" />

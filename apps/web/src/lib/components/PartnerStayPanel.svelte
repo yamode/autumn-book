@@ -138,7 +138,7 @@
       日付指定なし
     </label>
     {#if loading}<span class="text-sm text-stone-500" role="status">空き状況を確認中…</span>{:else if failed}<span class="text-sm text-rose-700" role="status">料金を読み込めませんでした</span>{:else}<span class="text-sm text-stone-400">泊数を変えると空き日がすぐ変わります</span>{/if}
-    <span class="ml-auto text-sm text-stone-500">大人{guests}名{rooms > 1 ? `×${rooms}室` : '・1室'}・1名1泊の最安</span>
+    <span class="ml-auto text-sm text-stone-500">大人{guests}名{rooms > 1 ? `×${rooms}室` : '・1室'}・1名あたりの最安</span>
     <button type="button" onclick={onClose} class="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100" aria-label="閉じる">×</button>
   </div>
   <div class="relative mt-3 grid gap-6 md:grid-cols-2">

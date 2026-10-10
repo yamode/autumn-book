@@ -122,7 +122,7 @@ describe('予約時決済の割引', () => {
     expect(applyPrepayDiscount(29350, { type: 'yen', value: 1000 })).toBe(28350);
     expect(applyPrepayDiscount(500, { type: 'yen', value: 1000 })).toBe(1);
     expect(applyPrepayDiscount(29350, { type: 'none', value: 0 })).toBe(29350);
-    expect(describePrepayDiscount({ type: 'yen', value: 1000 })).toBe('1名1泊 1,000円引き');
+    expect(describePrepayDiscount({ type: 'yen', value: 1000 })).toBe('1名あたり1泊 1,000円引き');
     expect(describePrepayDiscount({ type: 'percent', value: 5 })).toBe('5%引き');
   });
 

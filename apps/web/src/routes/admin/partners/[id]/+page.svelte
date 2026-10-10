@@ -1334,7 +1334,7 @@
               <select bind:value={booking.prepayDiscount.type} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
                 <option value="none">なし</option>
                 <option value="percent">％引き</option>
-                <option value="yen">1名1泊あたり円引き</option>
+                <option value="yen">1名あたり1泊 円引き</option>
               </select>
               {#if booking.prepayDiscount.type !== 'none'}
                 <input
@@ -1650,9 +1650,9 @@
           <dl class="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">
             <dt class="text-xs text-stone-500">端数処理</dt>
             <dd>{pricing.roundingUnit}円単位で{ROUNDING_MODE_LABELS[pricing.roundingMode]}</dd>
-            <dt class="text-xs text-stone-500">最高料金（1名1泊）</dt>
+            <dt class="text-xs text-stone-500">最高料金（1名あたり）</dt>
             <dd>{pricing.maxPricePerPerson != null ? `${yen(pricing.maxPricePerPerson)}円` : 'なし'}</dd>
-            <dt class="text-xs text-stone-500">最低料金（1名1泊）</dt>
+            <dt class="text-xs text-stone-500">最低料金（1名あたり）</dt>
             <dd>{pricing.minPricePerPerson != null ? `${yen(pricing.minPricePerPerson)}円` : 'なし'}</dd>
           </dl>
           <p class="mt-1 text-[11px] text-stone-500">プラン料金が最高・最低を外れるときは、その額で上書きして取引先に見せます（端数処理の後）。</p>
@@ -1703,7 +1703,7 @@
                             <select bind:value={overrides.prepayDiscount.type} class="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs">
                               <option value="none">なし</option>
                               <option value="percent">％引き</option>
-                              <option value="yen">1名1泊あたり円引き</option>
+                              <option value="yen">1名あたり1泊 円引き</option>
                             </select>
                             {#if overrides.prepayDiscount.type !== 'none'}
                               <input

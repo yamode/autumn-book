@@ -20,13 +20,14 @@
     </p>
   {/if}
 
-  <nav class="mt-5 flex gap-1 overflow-x-auto border-b border-stone-200 text-sm" aria-label="アカウントのメニュー">
+  <!-- 下線は inset の影で描く（-mb-px で下へはみ出すと縦スクロールバーが出るため）。横にはみ出す幅ではスクロールできるが、バーは隠す -->
+  <nav class="mt-5 flex gap-1 overflow-x-auto overflow-y-hidden text-sm shadow-[inset_0_-1px_0_var(--color-stone-200,#e7e5e4)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="アカウントのメニュー">
     {#each tabs as tab}
       {@const active = current === tab.path}
       <a
         href={tab.path ? `${base}/${tab.path}` : base}
         aria-current={active ? 'page' : undefined}
-        class={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-4 py-2 transition ${active ? 'border-[var(--pt-accent)] font-medium text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}`}
+        class={`shrink-0 whitespace-nowrap border-b-2 px-4 py-2 transition ${active ? 'border-[var(--pt-accent)] font-medium text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}`}
       >
         {tab.label}
       </a>
