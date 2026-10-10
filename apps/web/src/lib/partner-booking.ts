@@ -685,3 +685,24 @@ export function partnerNightLines(rooms: { adults: number; nights: { date: strin
       .map((n) => ({ room, date: n.date, parts: [{ unit: n.unit_price, adults: r.adults }], amount: n.unit_price * r.adults }))
   );
 }
+
+// 料金の明細の見出し（2026-10-10 指示）: 泊ごとに「N泊目: M月D日（曜）」→ その下に部屋ごとの行。
+export type PartnerNightGroup = { night: number; date: string; label: string; lines: PartnerNightLine[] };
+const NIGHT_WEEK = ['日', '月', '火', '水', '木', '金', '土'];
+export function partnerNightHeading(night: number, iso: string): string {
+  const t = new Date(`${iso}T00:00:00Z`);
+  return `${night}泊目: ${t.getUTCMonth() + 1}月${t.getUTCDate()}日（${NIGHT_WEEK[t.getUTCDay()]}）`;
+}
+export function groupNightLines(lines: PartnerNightLine[]): PartnerNightGroup[] {
+  const dates = [...new Set(lines.map((l) => l.date))].sort();
+  return dates.map((date, i) => ({
+    night: i + 1,
+    date,
+    label: partnerNightHeading(i + 1, date),
+    lines: lines.filter((l) => l.date === date).sort((a, b) => a.room - b.room)
+  }));
+}
+/** 行の中身（例: 「1名様 83,000円 × 2名様」） */
+export function partnerNightLineText(l: PartnerNightLine): string {
+  return l.parts.map((p) => `1名様 ${p.unit.toLocaleString('ja-JP')}円 × ${p.adults}名様`).join(' ＋ ');
+}

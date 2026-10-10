@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  groupNightLines,
+  partnerNightLineText,
   partnerNightLines,
   DEFAULT_CREDIT_DEPOSIT,
   depositAmountOf,
@@ -509,5 +511,19 @@ describe('partnerNightLines', () => {
   });
   it('部屋が無ければ空', () => {
     expect(partnerNightLines([])).toEqual([]);
+  });
+});
+
+describe('groupNightLines', () => {
+  it('泊ごとに見出し（N泊目: M月D日（曜））→ 部屋の順', () => {
+    const g = groupNightLines(
+      partnerNightLines([
+        { adults: 2, nights: [{ date: '2026-04-15', unit_price: 83000 }, { date: '2026-04-16', unit_price: 83000 }] },
+        { adults: 2, nights: [{ date: '2026-04-15', unit_price: 83000 }, { date: '2026-04-16', unit_price: 90000 }] }
+      ])
+    );
+    expect(g.map((x) => x.label)).toEqual(['1泊目: 4月15日（水）', '2泊目: 4月16日（木）']);
+    expect(g[1].lines.map((l) => [l.room, l.amount])).toEqual([[0, 166000], [1, 180000]]);
+    expect(partnerNightLineText(g[0].lines[0])).toBe('1名様 83,000円 × 2名様');
   });
 });

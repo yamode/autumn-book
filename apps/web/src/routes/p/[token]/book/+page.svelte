@@ -15,7 +15,7 @@
   import { fetchPartnerCustomerSession, type PartnerCustomerSession } from '$lib/partner-saved-cards';
   import PartnerStepUp from '$lib/components/PartnerStepUp.svelte';
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
-  import { partnerNightLines, quoteChargeOf } from '$lib/partner-booking';
+  import { groupNightLines, partnerNightLineText, partnerNightLines, quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
@@ -357,12 +357,6 @@
       males = a.map((n, i) => (males[i] !== undefined && males[i] !== '' && Number(males[i]) <= n ? males[i] : ''));
     });
   });
-  // 料金明細の泊の表示（例: 4/15（水））
-  const NIGHT_WEEK = ['日', '月', '火', '水', '木', '金', '土'];
-  const nightLabel = (iso: string) => {
-    const t = new Date(`${iso}T00:00:00Z`);
-    return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${NIGHT_WEEK[t.getUTCDay()]}）`;
-  };
 </script>
 
 <!-- 御社の受付枠（与信・Phase 3a・決定 #3）: 紐づけ先が与信 ON の旅行会社のときだけ見積に入る。月ごとに残りとこの予約の後の残り。
@@ -871,19 +865,25 @@
               <p class="text-lg font-bold tabular-nums">{num(quote.rooms.reduce((t, r) => t + r.subtotal, 0))}<span class="text-sm">円</span></p>
             </div>
           </div>
-          <!-- 料金明細は常に出す（2026-10-10 指示）。1室1泊を1行（2室2泊なら4行）にし、各行「1名あたり × 人数 ＝ その部屋のその泊の料金」。
-               合計側には1名料金を重ねて出さない。1室1泊だけ（1行）のときは右の金額が真上の合計と同じなので出さない -->
-          {@const lines = quote.rooms.flatMap((r, i) => r.nights.map((n) => ({ room: i, adults: r.adults, date: n.date, unit: n.unit_price })))}
-          <ul class="mt-2 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
-            {#each lines as l (`${l.room}-${l.date}`)}
-              <li class="flex justify-between gap-2">
-                <span class="min-w-0">
-                  {quote.rooms.length > 1 ? `${l.room + 1}室目 ` : ''}{#if lines.length > 1 || quote.nights > 1}<span class="tabular-nums">{nightLabel(l.date)}</span> {/if}{#if l.adults > 1}1名あたり <span class="tabular-nums">{num(l.unit)}</span>円 × {l.adults}名{:else}大人1名{/if}
-                </span>
-                {#if lines.length > 1}<span class="whitespace-nowrap tabular-nums">{num(l.unit * l.adults)}円</span>{/if}
-              </li>
+          <!-- 料金明細は常に出す（2026-10-10 指示）。泊ごとに「N泊目: M月D日（曜）」の見出し → その下に部屋ごとの行
+               「（N室目）1名様 ○円 × ○名様　○円」。合計側には1名料金を重ねて出さない。1室1泊だけのときは右の金額が真上の合計と同じなので出さない -->
+          {@const groups = groupNightLines(partnerNightLines(quote.rooms))}
+          {@const single = groups.length === 1 && groups[0].lines.length === 1}
+          <div class="mt-2 space-y-2 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">
+            {#each groups as g (g.date)}
+              <div>
+                <p class="font-medium text-stone-700">{g.label}</p>
+                <ul class="mt-0.5 space-y-0.5">
+                  {#each g.lines as l (`${l.room}-${l.date}`)}
+                    <li class="flex justify-between gap-2 pl-3">
+                      <span class="min-w-0">{#if quote.rooms.length > 1}<span class="mr-2">{l.room + 1}室目</span>{/if}<span class="tabular-nums">{partnerNightLineText(l)}</span></span>
+                      {#if !single}<span class="whitespace-nowrap tabular-nums">{num(l.amount)}円</span>{/if}
+                    </li>
+                  {/each}
+                </ul>
+              </div>
             {/each}
-          </ul>
+          </div>
           {#if quote.bathTax > 0}
             <div class="mt-2.5 flex justify-between gap-2">
               <span class="font-bold">入湯税</span>
