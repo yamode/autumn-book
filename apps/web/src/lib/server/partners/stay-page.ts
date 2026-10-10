@@ -7,6 +7,7 @@ import { describeDeadline, partnerPaymentChoices, paymentOptionLabel, perksForPl
 import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
 import { deferTask, portalHeader, PORTAL_HEADERS, requestMeta, resolvePortal } from '$lib/server/partners/portal';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
+import { loadPortalReference } from '$lib/server/partners/portal-reference';
 
 // 取引先専用ページ: 料金カレンダー（部屋タイプごと）とプランのご紹介（プランごと）で共通の読み込み。
 // 最初から全幅カードを並べ（日付前は今後3か月の最安〜）、日程・泊数・人数・室数を選ぶと
@@ -88,6 +89,14 @@ export async function loadStayPage(
         [...new Set(contents.plans.map((p) => p.planCode))].map((code) => [code, perksForPlan(s.perks, code).map(toPerk)])
       )
     }));
+  // 日付を選ぶ前の「今後3か月の最安」（部屋 × プランごと）。ページの読み込みと同時に始めて後から流す（portal-reference.ts）。
+  // 日程ありの料金は今までどおり画面が月の JSON を読む。失敗は ok: false で返し、画面がお知らせを出す
+  const reference = date
+    ? null
+    : loadPortalReference(event, db, partner, guests, todayJst()).then(
+        (plans) => ({ ok: true as const, plans }),
+        () => ({ ok: false as const, plans: [] })
+      );
   // 読めなかったときは一覧を料金だけで出す（画面へ流す Promise は失敗させない）
   const stay = stayLoad.catch(
     (): Awaited<typeof stayLoad> => ({ times: null, credit: null, rooms: [], planAnchors: [], planContents: [], planTerms: {}, planPerks: {} })
@@ -109,7 +118,9 @@ export async function loadStayPage(
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     paymentLabels: partnerPaymentChoices(s).filter((o) => payIds.includes(o.id)).map((o) => paymentOptionLabel(o.id, s)),
     // 後から流し込む一覧の中身（上のコメント）
-    stay
+    stay,
+    // 日付を選ぶ前の最安（日程ありは null）
+    reference
   };
 }
 

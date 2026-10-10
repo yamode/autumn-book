@@ -1,8 +1,8 @@
 <script lang="ts">
   // 取引先専用ページ: 料金カレンダー（view="room"・部屋タイプごとのカード）と
   // プランのご紹介（view="plan"・プランごとのカード）で共通の、検索バー＋一休型の一覧。
-  // 日付を選ぶ前から全カードを出し、料金は今後3か月の最安〜。日程を選ぶと、その日程・人数・室数で
-  // 予約できるプランと料金に切り替える。料金・空室は月の JSON（fetchPortalMonth）から画面側で組み立て、
+  // 日付を選ぶ前から全カードを出し、料金は今後3か月の最安〜（サーバで組み立てて data.reference で届く）。日程を選ぶと、その日程・人数・室数で
+  // 予約できるプランと料金に切り替える。日程ありの料金・空室は月の JSON（fetchPortalMonth）から画面側で組み立て、
   // 予約の金額・在庫は予約入力・確定時にサーバで改めて確かめる。
   import type { Snippet } from 'svelte';
   import { goto } from '$app/navigation';
@@ -16,7 +16,7 @@
   import { roomParts, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import { fetchPortalMonth } from '$lib/partner-month-client';
   import type { PartnerRateDay } from '$lib/partner-pricing';
-  import { addDaysIsoClient, partnerReferencePlans, partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
+  import { addDaysIsoClient, partnerStayOffers, type PartnerReferencePlan, type PartnerStayOffer } from '$lib/partner-stay';
   import type { StayPageData, StayPageExtras } from '$lib/server/partners/stay-page';
   import { planSummary } from '$lib/plan-summary';
   import { streamed } from '$lib/streamed.svelte';
@@ -37,11 +37,6 @@
   const fmt = (iso: string) => {
     const t = new Date(`${iso}T00:00:00Z`);
     return `${t.getUTCMonth() + 1}月${t.getUTCDate()}日（${WEEK[t.getUTCDay()]}）`;
-  };
-  const shiftYm = (ym: string, d: number) => {
-    const [y, m] = ym.split('-').map(Number);
-    const t = new Date(Date.UTC(y, m - 1 + d, 1));
-    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}`;
   };
 
   // ---- 検索条件（下書き → 「検索」で URL に反映） ----
@@ -67,27 +62,43 @@
     void goto(`${$page.url.pathname}?${q}`, { noScroll: true, keepFocus: true });
   }
 
-  // ---- 料金の読み込み（日程あり: チェックインから泊数ぶん／日程なし: 今後3か月） ----
+  // ---- 料金の読み込み（日程あり: チェックインから泊数ぶんの月の JSON／日程なし: サーバが組み立てた今後3か月の最安） ----
   const dated = $derived(!!data.params.date);
   // 表示中の一覧のもと（読み込みが終わった条件と日別データ）。読み込み中は前の一覧を薄くして残し、
   // 揃ってから一度に入れ替える（読み込み中の枠に置き換えるとページが縮み、スクロール位置が飛ぶため）
-  type Shown = { params: { date: string; nights: number; guests: number; rooms: number }; index: Map<string, PartnerRateDay> };
+  // reference … 日程なしのときの部屋 × プランごとの最安（stay-page.ts の reference・ページの読み込みと同時にサーバで作る・2026-10-10）
+  type Shown = { params: { date: string; nights: number; guests: number; rooms: number }; index: Map<string, PartnerRateDay>; reference: PartnerReferencePlan[] };
   let shown = $state<Shown | null>(null);
   let loading = $state(true);
   let loadError = $state('');
   $effect(() => {
     const { date: d, nights: n, guests: g, rooms: rc } = data.params;
-    const yms = d
-      ? [...new Set(Array.from({ length: n }, (_, i) => addDaysIsoClient(d, i).slice(0, 7)))]
-      : [0, 1, 2].map((i) => shiftYm(data.today.slice(0, 7), i));
+    const ref = data.reference;
+    if (!d) {
+      let cancelled = false;
+      loading = true;
+      loadError = '';
+      Promise.resolve(ref)
+        .then((r) => {
+          if (cancelled) return;
+          if (!r?.ok) loadError = '料金を読み込めませんでした。時間をおいてお試しください。';
+          else shown = { params: { date: d, nights: n, guests: g, rooms: rc }, index: new Map(), reference: r.plans };
+        })
+        .finally(() => {
+          if (!cancelled) loading = false;
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+    const yms = [...new Set(Array.from({ length: n }, (_, i) => addDaysIsoClient(d, i).slice(0, 7)))];
     let cancelled = false;
     loading = true;
     loadError = '';
-    // 日程なしの2・3か月目は公開範囲外なら空でよい（取れなくても1か月目で出す）
-    Promise.all(yms.map((ym, i) => (d || i === 0 ? fetchPortalMonth(token, ym, g) : fetchPortalMonth(token, ym, g).catch(() => null))))
+    Promise.all(yms.map((ym) => fetchPortalMonth(token, ym, g)))
       .then((ms) => {
         if (cancelled) return;
-        shown = { params: { date: d, nights: n, guests: g, rooms: rc }, index: new Map(ms.flatMap((m) => (m ? m.days.map((day) => [day.date, day] as const) : []))) };
+        shown = { params: { date: d, nights: n, guests: g, rooms: rc }, index: new Map(ms.flatMap((m) => m.days.map((day) => [day.date, day] as const))), reference: [] };
       })
       .catch(() => {
         if (!cancelled) loadError = '料金を読み込めませんでした。時間をおいてお試しください。';
@@ -117,14 +128,14 @@
   };
   const rows = $derived.by((): Row[] => {
     if (!shown) return [];
-    const { params: p, index } = shown;
+    const { params: p, index, reference } = shown;
     if (p.date) {
       return (partnerStayOffers((x) => index.get(x), p.date, p.nights, p.guests, { showInventory: data.showInventory, rooms: p.rooms }) ?? []).map((o) => ({
         ...o,
         total: o.totalPerPerson * p.guests * p.rooms
       }));
     }
-    return partnerReferencePlans([...index.values()], p.guests, { showInventory: data.showInventory, from: data.today }).map((o) => ({
+    return reference.map((o) => ({
       ...o,
       perPerson: o.minPerPerson,
       total: null,

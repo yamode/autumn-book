@@ -2,8 +2,8 @@
 // 先読み（view=0）はアクセスログに残さず、実際に表示した月（view=1）だけ記録する。
 import { error, json } from '@sveltejs/kit';
 import { logPartnerAccess, partnerUnavailableReason } from '$lib/server/partners/store';
-import { loadPortalMonth, parsePortalQuery } from '$lib/server/partners/portal-month';
-import { cachedPortalMonth, portalMonthCacheKey } from '$lib/server/partners/portal-month-cache';
+import { parsePortalQuery } from '$lib/server/partners/portal-month';
+import { getPortalMonth } from '$lib/server/partners/portal-reference';
 import { todayJst } from '$lib/server/partners/store';
 import { PORTAL_HEADERS, requestMeta, resolvePortal } from '$lib/server/partners/portal';
 
@@ -19,18 +19,8 @@ export const GET = async (event) => {
   const q = parsePortalQuery(event.url);
   const view = event.url.searchParams.get('view') === '1';
   const [body] = await Promise.all([
-    // KV に一時保存（3分は新しいもの・20分までは先に返して裏で取り直す。portal-month-cache.ts）
-    (async () => {
-      const today = todayJst();
-      const key = await portalMonthCacheKey(partner, q, today);
-      const ctx = event.platform?.context;
-      return cachedPortalMonth(
-        event.platform?.env?.AB_CONFIG ?? null,
-        key,
-        () => loadPortalMonth(db, partner, q, today),
-        ctx ? (p) => ctx.waitUntil(p) : null
-      );
-    })(),
+    // KV に一時保存（portal-month-cache.ts）。日付未指定の最安（portal-reference.ts）と共通
+    getPortalMonth(event, db, partner, q, todayJst()),
     view
       ? logPartnerAccess(db, {
           partnerId: partner.id,
