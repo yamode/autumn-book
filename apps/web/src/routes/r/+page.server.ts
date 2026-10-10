@@ -1,17 +1,9 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { resolveStay, listHouseGuidesFor, claimStayByCode } from '$lib/server/store';
-// 試行レート制限は KV（AB_CONFIG）に数える。store.ts のプロセス内 Map は
-// Workers では isolate ごとに分かれて揮発するため、本番で効かない（設計レビュー M1）。
-import {
-	claimRateCheck,
-	claimRecordFailure,
-	claimRecordSuccess
-} from '$lib/server/claim-rate-limit';
+import { redirect } from '@sveltejs/kit';
+import { resolveStay, listHouseGuidesFor, getFacilityById } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbResolveStay, sbListHouseGuides, sbClaimStayByCode } from '$lib/server/supabase-data';
+import { sbResolveStay, sbListHouseGuides } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
 import { sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
-import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { intercomStatusFor } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -21,6 +13,8 @@ import {
 	type EndedFacility
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
+import { browseFacility } from '$lib/server/inroom-browse';
+import { claimStayFromForm } from '$lib/server/stay-claim';
 import type { Actions, PageServerLoad } from './$types';
 
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
@@ -46,14 +40,36 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 黒ヘッダーの中央タイトル（layout が拾う）。施設が分かれば施設名
 		...(facility?.name ? { headerTitle: facility.name } : {})
 	});
-	const noStay = { stay: null, guides: [], bathReservations: [], meals: [] as StayMeal[], expired: false, invalidQr, endedFacility: null, banners: [] };
+	const noStay = {
+		stay: null,
+		guides: [] as Awaited<ReturnType<typeof sbListHouseGuides>>,
+		bathReservations: [],
+		meals: [] as StayMeal[],
+		expired: false,
+		invalidQr,
+		endedFacility: null,
+		banners: [],
+		// コードなしで見る館内案内（入口QRから・2026-10-10）。施設が分からなければ null（コード入力だけ出す）
+		browse: null as { name: string; slug: string; phone: string } | null
+	};
 
 	if (!token) {
 		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）。
 		// 客室の入口QR（/r/start?f=<slug>）から来たときは、黒ヘッダーに施設名を出す
 		if (endedQr) return thanks(endedFacilityBySlug(url.searchParams.get('f'), locale));
-		const entryFacility = endedFacilityBySlug(url.searchParams.get('f'), locale);
-		return entryFacility?.name ? { ...noStay, headerTitle: entryFacility.name } : noStay;
+		// 入口QRから来た（URL の f か、入口QRで覚えた Cookie）ときは、館内案内を先に見せ、トップでコードを入れてもらう
+		const entryFacility = browseFacility(cookies, url.searchParams.get('f'), locale);
+		if (!entryFacility) return noStay;
+		const guides = await (DATA_SOURCE === 'supabase'
+			? sbListHouseGuides(entryFacility.id, locale)
+			: Promise.resolve(listHouseGuidesFor(entryFacility.id, locale))
+		).catch(() => []);
+		return {
+			...noStay,
+			guides,
+			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
+			...(entryFacility.name ? { headerTitle: entryFacility.name } : {})
+		};
 	}
 
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
@@ -93,36 +109,16 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		expired: false,
 		invalidQr,
 		endedFacility: null,
-		banners: []
+		banners: [],
+		browse: null
 	};
 };
 
 export const actions: Actions = {
-	// 手入力の6桁コード（2026-10-09 以前の発行分は8桁）→ トークン交換 → Cookie 発行。簡易レート制限（5回失敗で10分ロック）付き。
+	// 手入力の6桁コード（2026-10-09 以前の発行分は8桁）→ トークン交換 → Cookie 発行（stay-claim.ts・貸切風呂のコード入力と共通）
 	claim: async (event) => {
-		const key = event.getClientAddress();
-		const rl = await claimRateCheck(event.platform, key);
-		if (rl.locked) return fail(429, { claimError: 'locked' as const, retryInSec: rl.retryInSec });
-
-		const form = await event.request.formData();
-		const code = String(form.get('code') ?? '');
-
-		const token = DATA_SOURCE === 'supabase' ? await sbClaimStayByCode(code, key) : claimStayByCode(code);
-		if (token === 'rate_limited') return fail(429, { claimError: 'locked' as const, retryInSec: 600 });
-		if (!token) {
-			await claimRecordFailure(event.platform, key);
-			return fail(400, { claimError: 'fail' as const });
-		}
-		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		if (!stay) return fail(400, { claimError: 'fail' as const });
-
-		await claimRecordSuccess(event.platform, key);
-		event.cookies.set(STAY_COOKIE, token, {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'lax',
-			maxAge: stayCookieMaxAge(stay.validTo)
-		});
+		const failed = await claimStayFromForm(event);
+		if (failed) return failed;
 		redirect(303, '/r');
 	}
 };

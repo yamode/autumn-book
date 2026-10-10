@@ -1,8 +1,40 @@
 <script lang="ts">
 	// 客室に常設する「客室案内の入口QR」の印刷（2026-10-09）。貸切風呂の客室POP（/admin/bath/pop）と同じ紙の形。
 	import QrCode from '$lib/components/QrCode.svelte';
+	import { qrSvg } from '$lib/qr';
 	let { data } = $props();
 	const otherSize = $derived(data.size === 'A6' ? 'A7' : 'A6');
+
+	// QRコードだけを PNG で保存する（2026-10-10 指示。チラシ・館内掲示など別の版下に貼る用）。
+	// 画面の SVG と同じ形（$lib/qr・周りの余白込み）を白地に描いてダウンロードさせる。
+	// 1辺はおよそ 1024px 以上（印刷にも足りる）。1マスを整数ピクセルにして縁をにじませない
+	const MIN_PX = 1024;
+	function downloadPng() {
+		const qr = qrSvg(data.qrUrl);
+		if (qr.size <= 0) return;
+		const cell = Math.ceil(MIN_PX / qr.size);
+		const px = qr.size * cell;
+		const canvas = document.createElement('canvas');
+		canvas.width = px;
+		canvas.height = px;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		ctx.imageSmoothingEnabled = false;
+		ctx.fillStyle = '#ffffff';
+		ctx.fillRect(0, 0, px, px);
+		ctx.scale(cell, cell);
+		ctx.fillStyle = '#000000';
+		ctx.fill(new Path2D(qr.path));
+		canvas.toBlob((blob) => {
+			if (!blob) return;
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `客室案内の入口QR_${data.facilityName}.png`;
+			a.click();
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+		}, 'image/png');
+	}
 </script>
 
 <svelte:head>
@@ -26,6 +58,7 @@
 			<span>{data.facilityName}</span>
 			<span class="ml-auto">用紙: {data.size}</span>
 			<a href={`/admin/inroom/entry?size=${otherSize}`} class="rounded border px-3 py-2">{otherSize}に切り替え</a>
+			<button type="button" onclick={downloadPng} class="rounded border px-3 py-2">QRコードをPNGで保存</button>
 			<button type="button" onclick={() => window.print()} class="rounded bg-stone-800 px-4 py-2 text-white">印刷する</button>
 		</div>
 	</div>

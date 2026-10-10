@@ -7,6 +7,7 @@ import { listHouseGuidesFor, resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbListHouseGuides, sbResolveStay } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import { browseFacility } from '$lib/server/inroom-browse';
 import type { PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
@@ -14,19 +15,18 @@ const STAY_COOKIE = 'ab_stay';
 export const load: PageServerLoad = async ({ cookies, params }) => {
 	const locale = getLocale();
 	const token = cookies.get(STAY_COOKIE);
-	// トークンが無い／失効しているときは、案内も出さずに /r（コード入力・終了案内）へ寄せる。
-	if (!token) redirect(303, '/r');
-
-	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
-	if (!stay) redirect(303, '/r');
+	const stay = token ? (DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale)) : null;
+	// 滞在が無くても、入口QRで覚えた施設（Cookie ab_facility）の案内は見られる（2026-10-10・inroom-browse.ts）。
+	// どちらも無ければ /r（コード入力・終了案内）へ寄せる
+	const browse = stay ? null : browseFacility(cookies, null, locale);
+	const facilityId = stay?.facility.id ?? browse?.id;
+	if (!facilityId) redirect(303, '/r');
 
 	const guides =
-		DATA_SOURCE === 'supabase'
-			? await sbListHouseGuides(stay.facility.id, locale)
-			: listHouseGuidesFor(stay.facility.id, locale);
+		DATA_SOURCE === 'supabase' ? await sbListHouseGuides(facilityId, locale) : listHouseGuidesFor(facilityId, locale);
 
 	const guide = guides.find((g) => g.id === params.id);
 	if (!guide) redirect(303, '/r');
 
-	return { stay, guide, headerTitle: guide.title, headerBack: '/r' };
+	return { stay, facilitySlug: stay?.facility.slug ?? browse?.slug ?? '', guide, headerTitle: guide.title, headerBack: '/r' };
 };

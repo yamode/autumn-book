@@ -5,7 +5,7 @@
 
 	let { data } = $props();
 
-	const img = $derived(inroomCardImage(data.stay.facility.slug, data.guide.section));
+	const img = $derived(inroomCardImage(data.facilitySlug, data.guide.section));
 </script>
 
 <svelte:head><title>{data.guide.title} ｜ YAMADO</title></svelte:head>

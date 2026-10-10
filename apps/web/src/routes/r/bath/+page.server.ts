@@ -16,8 +16,10 @@ const STAY_COOKIE = 'ab_stay';
 
 export const load: PageServerLoad = async ({ cookies }) => {
 	const token = cookies.get(STAY_COOKIE);
-	// トークンが無い／デモ運用のときは、コード入力のある /r へ戻す。
-	if (!token || DATA_SOURCE !== 'supabase') redirect(303, '/r');
+	// デモ運用は /r へ。トークンが無い（館内案内からコードなしで来た）ときは、先に6桁コードを入れてもらう（2026-10-10）。
+	// 館内図の QR（/r/c/<token>?next=bath）はトークン入りなので、ここを通らずそのまま予約フォームへ来る
+	if (DATA_SOURCE !== 'supabase') redirect(303, '/r');
+	if (!token) redirect(303, '/r/bath/code');
 
 	const ctx = await sbBathContext(token);
 	// 失効・チェックアウト後は /r 側の「ご滞在は終了しました」に任せる（案内を1か所に寄せる）。

@@ -87,7 +87,10 @@
 		groupByDay(upcomingItems(data.bathReservations, (r) => ({ date: r.date, start: r.from, end: r.to }), now))
 	);
 
-	const slug = $derived(data.stay?.facility.slug ?? data.endedFacility?.slug ?? '');
+	const slug = $derived(data.stay?.facility.slug ?? data.browse?.slug ?? data.endedFacility?.slug ?? '');
+	// コードなしで見る館内案内（入口QRから・2026-10-10）。滞在の情報（食事・貸切風呂・内線）は出さず、トップでコードを入れてもらう
+	const facilityName = $derived(data.stay?.facility.name ?? data.browse?.name ?? '');
+	const facilityPhone = $derived(data.stay?.facility.phone ?? data.browse?.phone ?? '');
 	const hero = $derived(inroomHero(slug));
 	// Wi-Fi は現行アプリと同じくヒーロー直下に常時出す。残りはカードに並べる。
 	const wifi = $derived(data.guides.find((g) => g.section === 'wifi'));
@@ -96,10 +99,18 @@
 
 <svelte:head><title>{m.inroom_header()} ｜ YAMADO</title></svelte:head>
 
-{#if data.stay}
+{#snippet codeErrors()}
+	{#if form?.claimError === 'fail'}
+		<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_code()}</p>
+	{:else if form?.claimError === 'locked'}
+		<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_locked()}</p>
+	{/if}
+{/snippet}
+
+{#if data.stay || data.browse}
 	<!-- ============ ヒーロー ============ -->
 	{#if hero}
-		<img src={hero} alt={data.stay.facility.name} class="h-48 w-full object-cover" />
+		<img src={hero} alt={facilityName} class="h-48 w-full object-cover" />
 	{/if}
 
 	<!-- ============ Wi-Fi 帯 ============ -->
@@ -121,6 +132,15 @@
 	{/if}
 
 	<div class="space-y-3 px-4 py-3">
+		{#if !data.stay}
+			<!-- ============ コードの入力（館内案内を見ている方が、滞在に紐づけるとき）============ -->
+			{@render codeErrors()}
+			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
+				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_browse_code_title()}</h1>
+				<p class="mt-1 text-sm text-stone-500">{m.inroom_browse_code_help()}</p>
+				<StayCodeInput autofocus={false} />
+			</section>
+		{:else}
 		<!-- ============ 滞在カード ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card">
 			<p class="text-[15px] font-medium text-stone-900">
@@ -141,6 +161,7 @@
 				</div>
 			</dl>
 		</section>
+		{/if}
 
 		{#if mealDays.length}
 			<!-- ============ お食事の時間（PMS の伺い書で決まった時間）。過ぎた分は隠し、日ごとにまとめる ============ -->
@@ -198,6 +219,7 @@
 		{/if}
 
 		<!-- ============ 機能ナビ（横並び） ============ -->
+		<!-- 貸切風呂: コードなし（館内案内）で押すと、先にコード入力（/r/bath/code）→ 予約フォーム -->
 		<nav class="flex items-stretch rounded-lg bg-white shadow-card">
 			<a href="/r/bath" class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
 				<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -221,9 +243,9 @@
 					<span class="text-[10px] text-stone-400">{!intercom.open ? m.intercom_closed() : !intercom.online ? m.intercom_offline() : m.intercom_call_sub()}</span>
 				</button>
 			{/if}
-			{#if data.stay.facility.phone}
+			{#if facilityPhone}
 				<div class="my-3 w-px bg-stone-200"></div>
-				<a href={telHref(data.stay.facility.phone)} class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
+				<a href={telHref(facilityPhone)} class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
 					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M6.5 3h3l1.5 4-2 1.5a12 12 0 0 0 5.5 5.5L16 12l4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 6.2 2 2 0 0 1 6.5 3z" />
 					</svg>
@@ -232,7 +254,7 @@
 			{/if}
 		</nav>
 		{#if intercom?.enabled}
-			<IntercomSheet bind:this={sheet} bind:open={sheetOpen} phone={data.stay.facility.phone} />
+			<IntercomSheet bind:this={sheet} bind:open={sheetOpen} phone={facilityPhone} />
 		{/if}
 
 		<!-- ============ 館内のご案内（カード） ============ -->
@@ -300,11 +322,7 @@
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_invalid_qr()}</p>
 		{/if}
 
-		{#if form?.claimError === 'fail'}
-			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_code()}</p>
-		{:else if form?.claimError === 'locked'}
-			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.inroom_err_locked()}</p>
-		{/if}
+		{@render codeErrors()}
 
 		{#snippet codeForm(autofocus: boolean)}
 			<!-- 6桁のマスに打つ入力欄（そろったら自動で送る・違えば揺らして打ち直し。2026-10-09） -->
