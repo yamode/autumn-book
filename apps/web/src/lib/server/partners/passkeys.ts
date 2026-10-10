@@ -13,7 +13,8 @@
 //   「チャレンジの partner_id が限定URLの取引先」かつ「パスキーの持ち主がこの取引先の有効なアカウント」を両方確かめる。
 //   本人の登録・本人確認のチャレンジは account_id で持ち、partner_id は null（ログイン用と取り違えない）。
 // - counter: ライブラリが「保存値以下なら拒否」を確かめ、保存は「読んだ値のままのとき」だけ進める（同時の再利用で戻さない）。
-// - userVerification は 'preferred'。パスワード無しで入るログインだけは UV（生体認証・PIN）を必須にする。
+// - userVerification は 'preferred'。パスワード無しで入るログインだけは UV（生体認証・PIN）を必須にし、ログイン用の options も 'required' で出す
+//   （preferred で出すと Chrome の Google パスワードマネージャー等が UV を省き、サーバの UV 必須で必ず失敗する・2026-10-10）。
 import { env } from '$env/dynamic/private';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -358,7 +359,7 @@ export async function verifyPasskeyStepUp(
 
 /** ログイン画面: 誰のパスキーでもよい options（allowCredentials 無し＝端末に保存されたパスキーから選ぶ・Conditional UI 兼用） */
 export async function passkeyLoginOptions(db: SupabaseClient, args: { partnerId: string; rp: PasskeyRp; ip: string | null }) {
-  const options = await generateAuthenticationOptions({ rpID: args.rp.rpID, userVerification: 'preferred', timeout: LOGIN_TTL_MINUTES * 60_000 });
+  const options = await generateAuthenticationOptions({ rpID: args.rp.rpID, userVerification: 'required', timeout: LOGIN_TTL_MINUTES * 60_000 });
   const challengeId = await saveChallenge(db, {
     owner: { partnerId: args.partnerId },
     kind: 'passkey_auth',
