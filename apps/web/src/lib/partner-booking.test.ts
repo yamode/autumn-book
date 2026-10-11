@@ -41,7 +41,8 @@ import {
   mergePartnerSettingsRaw,
   splitPartnerBookingSettings,
   partnerFacilityOverrides,
-  PARTNER_FACILITY_SETTING_KEYS
+  PARTNER_FACILITY_SETTING_KEYS,
+  PARTNER_FACILITY_MEMBER_KEYS
 } from './partner-booking';
 
 describe('normalizePartnerBookingSettings', () => {
@@ -469,7 +470,8 @@ describe('splitPartnerBookingSettings（保存時の振り分け）', () => {
 
   it('施設ごとのキーは施設へ、それ以外（N6 の上書きキーを含む）は共通へ', () => {
     const { common, facility } = splitPartnerBookingSettings(s);
-    expect(Object.keys(facility).sort()).toEqual([...PARTNER_FACILITY_SETTING_KEYS].sort());
+    // 特別会員のキャンセル方式・規定（PARTNER_FACILITY_MEMBER_KEYS）も施設へ（2026-10-11）
+    expect(Object.keys(facility).sort()).toEqual([...PARTNER_FACILITY_SETTING_KEYS, ...PARTNER_FACILITY_MEMBER_KEYS].sort());
     expect(facility.planNames).toEqual({ a001: '取引先向け' });
     expect(common.leadDays).toBe(2);
     expect(common.prepayDiscount).toEqual({ type: 'percent', value: 5 });

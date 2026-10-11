@@ -2,6 +2,8 @@
   import { navigating, page } from '$app/stores';
   import { partnerAccent } from '$lib/partner-theme';
   import PartnerPageSkeleton from '$lib/components/PartnerPageSkeleton.svelte';
+  import PartnerBookingCart from '$lib/components/partner/PartnerBookingCart.svelte';
+  import { memberCart } from '$lib/member-cart.svelte';
 
   // 取引先向けページの枠（autumn-rms から移設・2026-09-26）。Book の公開サイト共通ヘッダー/フッターは出さない
   // （/p は (public) グループの外に置いているので、上位は root layout だけ。解析・デバッグは root 側で /p を除外）。
@@ -21,6 +23,11 @@
           groupInquiry?: boolean;
           preview?: boolean;
           noFacilityMessage?: string | null;
+          facilityId?: string;
+          /** 'member' = 特別会員の専用ページ（docs/vip-member-page.md §13.4.2） */
+          kind?: 'partner' | 'member';
+          member?: { name: string; rankCode: string; rankLabel: string; rewardRate: number; balance: number; via: 'self' | 'family' } | null;
+          mypageHref?: string | null;
         }
       | undefined
   );
@@ -43,6 +50,9 @@
   }
   // メインメニュー（並び順どおり。予約一覧は予約を受け付けている取引先だけ。
   // 団体予約は旅行会社で団体予約をオンにしている取引先だけ・portal.groupInquiry・docs/partner-group-booking.md §8.1）
+  // 特別会員の専用ページは 料金カレンダー・お部屋・プラン・料金表・ご予約一覧 だけ（団体予約・覚書・アカウントは無い・§13.4.2）
+  const isMember = $derived(portal?.kind === 'member');
+  const MEMBER_MENU = new Set(['calendar', 'rooms', 'plans', 'rate-sheet', 'bookings']);
   const MENU: [string, string][] = [
     ['calendar', '料金カレンダー'],
     ['rooms', 'お部屋'],
@@ -54,8 +64,23 @@
     ['account', 'アカウント']
   ];
   const menu = $derived(
-    MENU.filter(([path]) => (path !== 'bookings' || portal?.bookingEnabled) && (path !== 'group' || portal?.groupInquiry))
+    isMember
+      ? MENU.filter(([path]) => MEMBER_MENU.has(path)).map(([path, lbl]): [string, string] => [path, path === 'bookings' ? 'ご予約一覧' : lbl])
+      : MENU.filter(([path]) => (path !== 'bookings' || portal?.bookingEnabled) && (path !== 'group' || portal?.groupInquiry))
   );
+
+  // ---- 特別会員のかご（画面下のバー・§13.4.3）----
+  // 会員でログインしているときだけ。予約の確認（/book）とご予約一覧（/bookings）では出さない（送り先の画面・別の流れのため）
+  $effect(() => {
+    if (isMember && portal?.member) memberCart.load($page.params.token ?? '');
+  });
+  const showCart = $derived.by(() => {
+    if (!isMember || !portal?.member) return false;
+    const rest = $page.url.pathname.slice(`/p/${$page.params.token}`.length);
+    return !/^\/(book|bookings)(\/|$)/.test(rest);
+  });
+  const cartOpen = $derived(showCart && memberCart.items.length > 0);
+  const pointText = (n: number) => `${n.toLocaleString('ja-JP')}pt`;
 
   // ---- メニューの切替を先に見せる（2026-10-10）----
   // SvelteKit は行き先の load が終わるまで前の画面のままなので、同じ取引先のメインメニューのページ（/p/<token>/<menu> ちょうど）へ
@@ -162,10 +187,20 @@
         {:else}
           <h1 class="truncate font-display text-lg tracking-wide text-brand-900 sm:text-xl">{portal?.facilityName ?? ''}</h1>
         {/if}
-        {#if portal?.partnerName}
+        {#if isMember && portal?.member}
+          <!-- 特別会員: 「○○ 様 専用ページ」・グレード・保有ポイント（§5.2） -->
+          <div class="flex max-w-full flex-wrap items-center gap-1.5">
+            <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
+              <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
+              {portal.member.name} 様 専用ページ
+            </p>
+            <span class={`rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${portal.member.rankCode === 'platinum' ? 'border-slate-700 bg-slate-800 text-slate-100' : portal.member.rankCode === 'gold' ? 'border-amber-400 bg-amber-50 text-amber-700' : portal.member.rankCode === 'silver' ? 'border-slate-400 bg-slate-100 text-slate-600' : 'border-stone-300 bg-stone-100 text-stone-600'}`}>◆ {portal.member.rankLabel}</span>
+            <span class="text-xs text-stone-600">保有 <span class="font-bold tabular-nums">{pointText(portal.member.balance)}</span></span>
+          </div>
+        {:else if portal?.partnerName}
           <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
-            {portal.partnerName} 様 専用料金
+            {isMember ? portal.partnerName : `${portal.partnerName} 様 専用料金`}
           </p>
         {/if}
       </div>
@@ -179,7 +214,10 @@
           {/each}
         </nav>
       {/if}
-      {#if portal?.loginId}
+      {#if isMember && portal?.member}
+        <!-- 会員のログアウト・マイページは公式サイトのもの（専用ページにはログアウトのルートが無い） -->
+        <a href={portal.mypageHref ?? '/account'} class="shrink-0 rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">マイページへ</a>
+      {:else if portal?.loginId && !isMember}
         <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-sm">
           <span class="hidden text-stone-500 sm:inline">{portal.loginId}</span>
           <button type="submit" class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">
@@ -194,7 +232,7 @@
     <p class="mx-auto mt-4 max-w-6xl rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6" role="status">{portal.noFacilityMessage}</p>
   {/if}
   {#if skeleton}
-    <PartnerPageSkeleton path={skeleton} label={MENU.find(([path]) => path === skeleton)?.[1] ?? ''} />
+    <PartnerPageSkeleton path={skeleton} label={(menu.find(([path]) => path === skeleton) ?? MENU.find(([path]) => path === skeleton))?.[1] ?? ''} />
   {/if}
   <!-- 骨組みを出している間は前の画面を隠すだけ（消さない） -->
   <div class={skeleton ? 'hidden' : 'contents'}>
@@ -202,11 +240,23 @@
   </div>
   <!-- 規約3点は取引先ページの中で見せる（公式サイトはまだ非公開のため。中身は公式サイトと同じ・legal/[page]） -->
   <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-sm leading-6 text-stone-500 sm:px-6">
-    このページは貴社専用です。URL・ログイン情報は社外へ共有しないでください。
+    {#if isMember}
+      このページはご招待の会員さま専用です。URL は他の方へ共有しないでください。
+    {:else}
+      このページは貴社専用です。URL・ログイン情報は社外へ共有しないでください。
+    {/if}
     <nav class="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-      <a href={`/p/${$page.params.token}/legal/tokushoho`} class="underline hover:text-stone-700">特定商取引法に基づく表記</a>
-      <a href={`/p/${$page.params.token}/legal/privacy`} class="underline hover:text-stone-700">プライバシーポリシー</a>
+      <!-- 特別会員の専用ページは公式サイトの規約（/p/<token>/legal は使わない） -->
+      <a href={isMember ? '/legal/tokushoho' : `/p/${$page.params.token}/legal/tokushoho`} class="underline hover:text-stone-700">特定商取引法に基づく表記</a>
+      <a href={isMember ? '/legal/privacy' : `/p/${$page.params.token}/legal/privacy`} class="underline hover:text-stone-700">プライバシーポリシー</a>
       <!-- 宿泊約款は正式な文面ができるまで出さない（2026-10-06 指示） -->
     </nav>
   </footer>
+  {#if cartOpen}
+    <!-- かごバーの高さぶんの余白（バーに本文が隠れないように） -->
+    <div class="h-28" aria-hidden="true"></div>
+  {/if}
+  {#if showCart}
+    <PartnerBookingCart token={$page.params.token ?? ''} limit={memberCart.limit} currentFacilityId={portal?.facilityId ?? ''} preview={portal?.preview === true} />
+  {/if}
 </div>

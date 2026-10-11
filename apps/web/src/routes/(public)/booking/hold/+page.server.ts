@@ -23,6 +23,7 @@ import {
 	bookingSessionId,
 	setLastBooking,
 	lastBookingRoomsOf,
+	lastBookingMemberPageOf,
 	releaseHoldGroup as sbReleaseHold
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -38,6 +39,7 @@ import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
+import { CANCEL_POLICY_LABELS } from '$lib/partner-member-page';
 
 // 選び直し・パンくず用: この仮押さえのプラン詳細（日程・人数つき）
 function planHrefOf(
@@ -148,7 +150,9 @@ export const load: PageServerLoad = async (event) => {
 				cancellationPolicy: r.plan.cancellationPolicy,
 				prepayDiscount: prepayViews[i]?.detail.discount ?? 0,
 				askGender: groupForms ? groupForms.rooms[i].askGender : (bookingForm?.askGender ?? true),
-				questions: groupForms ? groupForms.rooms[i].questions : []
+				questions: groupForms ? groupForms.rooms[i].questions : [],
+				// 特別会員の専用ページ経由の束: この部屋（プラン）の専用特典（無ければ null・docs/vip-member-page.md §14）
+				memberPerks: hold.rooms[i]?.memberPerks ?? null
 			})),
 			// 全室の見積（合計・内消費税。1 室はその部屋の見積と同じ値）
 			groupQuote: combineQuotes(roomViews.map((r) => r.quote)),
@@ -167,7 +171,16 @@ export const load: PageServerLoad = async (event) => {
 			askGender: bookingForm ? bookingForm.askGender : false,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && groupMemberOnsiteHint(roomViews, isMember),
-			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold))
+			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
+			// 特別会員の専用ページ経由の束（見出し「{pageName} 経由・専用料金」・キャンセル方式・「選び直す」は専用ページへ）。公式の束は null
+			memberPage: hold.memberPage
+				? {
+						pageName: hold.memberPage.pageName,
+						via: hold.memberPage.via,
+						cancelMode: { mode: hold.memberPage.cancelPolicyMode, label: CANCEL_POLICY_LABELS[hold.memberPage.cancelPolicyMode] },
+						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref
+					}
+				: null
 		};
 	}
 
@@ -201,7 +214,8 @@ export const load: PageServerLoad = async (event) => {
 				cancellationPolicy: plan.cancellationPolicy,
 				prepayDiscount: prepay.detail.discount,
 				askGender: false,
-				questions: [] as BookingQuestion[]
+				questions: [] as BookingQuestion[],
+				memberPerks: null as import('$lib/partner-member-page').MemberPerkSnapshot[] | null
 			}
 		],
 		groupQuote: hold.quote,
@@ -217,6 +231,8 @@ export const load: PageServerLoad = async (event) => {
 		askGender: false,
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
+		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
+		memberPage: null as { pageName: string; via: 'self' | 'family'; cancelMode: { mode: string; label: string }; backHref: string } | null,
 		member: member
 			? {
 					name: member.name,
@@ -313,7 +329,8 @@ export const actions: Actions = {
 				onsiteMethod,
 				discountAmount: result.discount ?? 0,
 				guest: { name: guest.name, kana: guest.kana, phone: guest.phone, email: guest.email },
-				rooms: lastBookingRoomsOf(hold)
+				rooms: lastBookingRoomsOf(hold),
+				memberPage: lastBookingMemberPageOf(hold)
 			});
 			redirect(303, `/booking/complete/${result.booking_code}`);
 		}

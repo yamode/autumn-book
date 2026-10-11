@@ -132,7 +132,10 @@ export const load: PageServerLoad = async ({ url, setHeaders, getClientAddress, 
 			unavailable: false as const,
 			state: 'blocked' as const,
 			reason: (lookup.reason ?? 'not_found') as GuestCancelReason,
-			booking: lookup.booking
+			booking: lookup.booking,
+			// 特別会員の専用ページ経由の予約（reason='member_page'）: 取消ボタンは出さず、専用ページのご予約一覧へ案内する
+			// （docs/vip-member-page.md §13.4.4。通常は取消リンクを発行しないが、管理画面の「取消リンク再発行」などで来たとき）
+			memberPage: lookup.member_page ? { url: lookup.member_page_url ?? null } : null
 		};
 	}
 
@@ -148,6 +151,9 @@ export const actions: Actions = {
 		if (!token) return fail(400, { reason: 'not_found' as GuestCancelReason });
 
 		try {
+			// 特別会員の専用ページ経由の予約は、このリンクからは取り消せない（DB のガードでも止まる・member_page_booking）
+			const look = await guestBookingByToken(token).catch(() => null);
+			if (look && look.ok && look.member_page) return fail(403, { reason: 'member_page' as GuestCancelReason, memberPage: { url: look.member_page_url ?? null } });
 			const res = await guestCancelBooking(token);
 			if (!res.ok) return fail(400, { reason: res.reason });
 			// 事前決済済みなら返金（失敗しても取消は成立済み。台帳に failed が残り、管理画面から再実行できる）
@@ -179,6 +185,8 @@ export const actions: Actions = {
 		if (!token || !Number.isInteger(roomIndex) || roomIndex < 1) return fail(400, { reason: 'not_found' as GuestCancelReason });
 
 		try {
+			const look = await guestBookingByToken(token).catch(() => null);
+			if (look && look.ok && look.member_page) return fail(403, { reason: 'member_page' as GuestCancelReason, memberPage: { url: look.member_page_url ?? null } });
 			const res = await guestCancelBookingRoom(token, roomIndex);
 			if (!res.ok) return fail(400, { reason: res.reason });
 			const refund = await refundAfterCancel(res.booking_code, 'guest', { roomIndex }).catch(() => ({ kind: 'none' as const }));

@@ -5,7 +5,8 @@
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 	import { percentText } from '$lib/early-prepay';
-	import { writeCart } from '$lib/multi-room';
+	import { writeCart, writeCartWith } from '$lib/multi-room';
+	import { MEMBER_CART_STORAGE_KEY } from '$lib/partner-member-page';
 
 	let { data } = $props();
 	let b = $derived(data.booking);
@@ -22,6 +23,8 @@
 	$effect(() => {
 		try {
 			writeCart(sessionStorage, []);
+			// 特別会員の専用ページのかご（ab_member_cart_v1）も空にする
+			if (data.memberPageUrl) writeCartWith(sessionStorage, MEMBER_CART_STORAGE_KEY, []);
 		} catch {
 			/* 保存できない環境は何もしない */
 		}
@@ -76,7 +79,10 @@
 		<p class="mt-2 text-sm text-stone-500">{m.complete_booking_number_label()}</p>
 		<p class="text-2xl font-bold tracking-wider text-brand-900">{b.code}</p>
 		<p class="mt-3 text-sm text-stone-600">{m.complete_email_sent({ email: b.guest.email })}</p>
-		{#if !data.isMember}
+		{#if data.memberPageUrl}
+			<!-- 特別会員の専用ページ経由: 確認・変更・取消は専用ページのご予約一覧から（公式マイページは参照のみ・§13.4.4） -->
+			<p class="mt-1 text-sm text-stone-600">{m.complete_member_page()}</p>
+		{:else if !data.isMember}
 			<!-- 非会員はマイページを持たないため、取消の入口が確認メールのリンクしかないことを先に伝える -->
 			<p class="mt-1 text-sm text-stone-600">{m.complete_cancel_hint()}</p>
 		{/if}
@@ -126,7 +132,9 @@
 
 		<div class="mt-6 flex flex-wrap justify-center gap-3">
 			<a href={icsHref} download="{b.code}.ics" class="rounded-lg border border-stone-300 px-5 py-2 text-sm hover:bg-stone-50">{m.complete_calendar()}</a>
-			{#if data.isMember}
+			{#if data.memberPageUrl}
+				<a href={data.memberPageUrl} class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{m.complete_member_page_link()}</a>
+			{:else if data.isMember}
 				<a href="/account" class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{m.complete_mypage()}</a>
 			{/if}
 		</div>

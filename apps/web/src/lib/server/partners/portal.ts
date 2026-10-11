@@ -1,5 +1,7 @@
 // 限定URL（/p/<token>）の共通処理: 取引先の解決・セッションクッキー・リクエスト情報。
 import { error, redirect, type Cookies, type RequestEvent } from '@sveltejs/kit';
+import { getSupabaseUser, MEMBER_SUPABASE } from '$lib/server/auth';
+import { isMemberPage, memberPageBookingOpen, rankLabelOf } from '$lib/partner-member-page';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   composePartnerContext,
@@ -7,6 +9,8 @@ import {
   findPartnerBundleByUrlToken,
   getPartnerSession,
   loadPartnerContext,
+  MEMBER_PORTAL_ACCOUNT_ID,
+  memberPageAccess,
   NO_PARTNER_FACILITY_MESSAGE,
   partnerAdminClient,
   partnerUnavailableReason,
@@ -14,6 +18,8 @@ import {
   SESSION_TTL_HOURS,
   type PartnerBundle,
   type PartnerContext,
+  type PartnerSessionAccount,
+  type PortalMember,
   type RequestMeta
 } from './store';
 import { isPartnerBookingOpen } from './booking';
@@ -241,12 +247,117 @@ export function clearPartnerBundleCache() {
   bundleCache.clear();
 }
 
+// ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §13.4.1） ----
+// 取引先のログイン（rms_partner_session）は見ず、公式サイトの会員ログイン（cookie sb-autumn-book-auth-token・path /）を
+// Supabase で検証して、対象の会員（本人か PMS の家族）なら取引先セッションの形（PartnerSessionAccount）に載せる。
+// hooks.server.ts は /p/* で locals.user を null にしたまま（取引先ページに会員状態を持ち込まない）。対象の判定は毎回 DB。
+
+/** 専用ページの会員の状態: ok = 対象の会員／anonymous = 未ログイン（会員でない・未登録を含む）／denied = 会員だが対象外 */
+export type PortalMemberState = 'ok' | 'anonymous' | 'denied';
+
+async function resolvePortalMember(
+  event: Pick<RequestEvent, 'cookies'>,
+  db: SupabaseClient,
+  partnerId: string
+): Promise<{ state: PortalMemberState; member: PortalMember | null; name: string | null }> {
+  if (!MEMBER_SUPABASE) return { state: 'anonymous', member: null, name: null };
+  // createSupabaseServerClient は cookies しか使わない
+  const got = await getSupabaseUser(event as RequestEvent);
+  if (!got) return { state: 'anonymous', member: null, name: null };
+  const { user, client } = got;
+  const role = (user.app_metadata as { role?: string } | null)?.role;
+  // 運営のログイン（admin / staff）は会員ではない（会員の画面と混ぜない）
+  if (role === 'admin' || role === 'staff') return { state: 'denied', member: null, name: null };
+  const [profile, access, direct, row] = await Promise.all([
+    client
+      .schema('book')
+      .rpc('my_profile')
+      .then(({ data, error: e }) => (e || !data ? null : (data as Record<string, unknown>)), () => null),
+    memberPageAccess(db, partnerId, user.id),
+    db
+      .from('rms_partner_members')
+      .select('member_user_id')
+      .eq('partner_id', partnerId)
+      .eq('member_user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => !!data, () => false),
+    db
+      .schema('book')
+      .from('members')
+      .select('guest_id')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => (data as { guest_id: string | null } | null) ?? null, () => null)
+  ]);
+  // OTP は済んだが会員登録前（my_profile が通らない）は未ログイン扱い（会員登録へ誘導する）
+  if (!profile || profile.user_id !== user.id) return { state: 'anonymous', member: null, name: null };
+  const name = String(profile.name ?? '') || 'ゲスト';
+  if (!access) return { state: 'denied', member: null, name };
+  const rankCode = String(profile.rank_code ?? 'standard');
+  const [rank, balance] = await Promise.all([
+    db
+      .schema('book')
+      .from('member_ranks')
+      .select('label, reward_rate')
+      .eq('code', rankCode)
+      .maybeSingle()
+      .then(({ data }) => (data as { label: string | null; reward_rate: number | string | null } | null) ?? null, () => null),
+    client
+      .schema('book')
+      .rpc('point_balance', { p_user: null })
+      .then(({ data, error: e }) => (e ? 0 : Number(data ?? 0) || 0), () => 0)
+  ]);
+  return {
+    state: 'ok',
+    name,
+    member: {
+      userId: user.id,
+      memberCode: String(profile.member_code ?? ''),
+      name,
+      email: (profile.email as string | null) ?? user.email ?? null,
+      rankCode,
+      rankLabel: rankLabelOf(rankCode, rank?.label ?? null),
+      rewardRate: Number(rank?.reward_rate ?? 0) || 0,
+      balance,
+      guestId: row?.guest_id ?? null,
+      via: direct ? 'self' : 'family'
+    }
+  };
+}
+
+/**
+ * 特別会員の専用ページでは使わないルート（/p/<token> の後ろ）。取引先のログイン・アカウント・請求・団体予約・覚書・
+ * 取引先予約の入力（/book/reserve・添付）・取引先予約の添付・規約（公式の /legal/* を使う）・ログアウト（公式の /auth/logout を使う）。
+ * resolvePortal が 404 にする（各ルートに 1 行ずつ足す代わりにここで一括・§13.4.1）
+ */
+export const MEMBER_PORTAL_DENIED =
+  /^\/(?:group|memorandum|account|mfa|passkey|setup|payment|stay|legal|logout)(?:\/|$)|^\/book\/(?:attachments|reserve)(?:\/|$)|^\/bookings\/[^/]+\/attachments(?:\/|$)/;
+
+/** 専用ページで使わないルートか（純関数・テスト用）。sub は /p/<token> の後ろ（先頭 / つき） */
+export const isMemberPortalDenied = (sub: string) => MEMBER_PORTAL_DENIED.test(sub);
+
+/** 専用ページの会員を取引先セッションの形にする（id は DB に書かない固定値・ログイン ID は会員番号） */
+function memberSession(member: PortalMember): PartnerSessionAccount {
+  return {
+    id: MEMBER_PORTAL_ACCOUNT_ID,
+    login_id: member.memberCode || member.name,
+    display_name: member.name,
+    is_master: false,
+    sessionId: '',
+    member
+  };
+}
+
 export async function resolvePortal(
-  event: Pick<RequestEvent, 'params' | 'cookies'> & { url?: URL; request?: Request; platform?: App.Platform }
+  event: Pick<RequestEvent, 'params' | 'cookies'> & { url: URL; request?: Request; platform?: App.Platform }
 ): Promise<{
   db: SupabaseClient;
   partner: PartnerContext;
   session: Awaited<ReturnType<typeof getPartnerSession>>;
+  /** 特別会員の専用ページだけ: 会員の状態（取引先は null）。確認モードでは null */
+  memberState: PortalMemberState | null;
+  /** 会員だが対象外のとき・対象のときの会員名（案内画面の「○○様」）。それ以外は null */
+  memberName: string | null;
 }> {
   const db = partnerAdminClient();
   if (!db) throw error(503, '現在ご利用いただけません。');
@@ -277,11 +388,47 @@ export async function resolvePortal(
   const partner = await partnerPromise;
   if (!partner) throw error(404, 'ページが見つかりません。');
   let session = await sessionPromise;
+  let memberState: PortalMemberState | null = null;
+  let memberName: string | null = null;
+  // 特別会員の専用ページ: 取引先のログインは使わない（あっても見ない）。公式サイトの会員ログインで対象者か確かめる
+  if (isMemberPage(partner.kind)) {
+    const sub = (event.url?.pathname ?? '').slice(`/p/${token}`.length) || '/';
+    if (isMemberPortalDenied(sub)) throw error(404, 'ページが見つかりません。');
+    session = null;
+    const m = await resolvePortalMember(event, db, partner.id);
+    memberState = m.state;
+    memberName = m.name;
+    if (m.member) session = memberSession(m.member);
+  }
   // 取引先のログインが無く、管理画面の「確認ページを開く」の署名付きクッキーがあれば確認モード（preview.ts）
   if (!session && (await verifyPreviewToken(event.cookies.get(PARTNER_PREVIEW_COOKIE), partner.id))) {
     session = { id: PREVIEW_ACCOUNT_ID, login_id: '管理者の確認', display_name: '管理者の確認', is_master: false, sessionId: '', preview: true };
+    memberState = null;
   }
-  return { db, partner, session };
+  return { db, partner, session, memberState, memberName };
+}
+
+/** 特別会員の専用ページでは使わないルート（取引先のログイン・請求・団体予約・覚書など・§13.4.1）。member なら 404 */
+export function requireMemberPortalAbsent(partner: Pick<PartnerContext, 'kind'>) {
+  if (isMemberPage(partner.kind)) throw error(404, 'ページが見つかりません。');
+}
+
+/** 特別会員の専用ページだけのルート（ご予約一覧の詳細・日程変更・オプション）。member でなければ 404 */
+export function requireMemberPortal(partner: Pick<PartnerContext, 'kind'>) {
+  if (!isMemberPage(partner.kind)) throw error(404, 'ページが見つかりません。');
+}
+
+/**
+ * アクセスログの記録者（Z11）: 取引先のアカウントは account_id、専用ページの会員は account_id を null にして detail.member_user_id。
+ * 使い方: logPartnerAccess(db, { partnerId, ...portalLogActor(session, { page }), channel, action, ip })
+ */
+export function portalLogActor(
+  session: Pick<PartnerSessionAccount, 'id' | 'member'>,
+  detail: Record<string, unknown> = {}
+): { accountId: string | null; detail: Record<string, unknown> } {
+  return session.member
+    ? { accountId: null, detail: { ...detail, member_user_id: session.member.userId } }
+    : { accountId: session.id, detail };
 }
 
 // 確認モードは見るだけ。GET 以外（予約の確定・取消・保存・アップロード等）は入口で一律に断る
@@ -313,7 +460,7 @@ export const portalAal2 = (session: { aal?: number; mfaAt?: string | null; previ
 
 // ログイン済みの取引先ページ共通: セッションが無い・公開停止中ならログイン画面へ戻す。
 export async function requirePortalSession(
-  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform },
+  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url: URL; platform?: App.Platform },
   opts: PortalGateOptions = {}
 ) {
   const { db, partner, session } = await resolvePortal(event);
@@ -322,15 +469,32 @@ export async function requirePortalSession(
   // 確認モードは公開停止中でも見られる（公開前の確認のため）
   if (partnerUnavailableReason(partner) && !session.preview) throw redirect(303, `/p/${token}`);
   denyPreviewWrite(event, session);
-  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw redirect(303, portalMfaUrl(token, gateNext(event, token)));
+  // 本人確認（第2要素）の関所は取引先のログインだけ（専用ページの会員は Supabase Auth 側の本人確認・§13.4.1）
+  if (!session.member && opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw redirect(303, portalMfaUrl(token, gateNext(event, token)));
   return { db, partner, session };
 }
 
 // 取引先ページのヘッダー（layout）に渡す情報。
 // isMaster: マスタユーザー（Book が発行したログインID）か。アカウント画面の「ユーザー管理」タブの表示に使う
 // （表示だけ。ユーザー管理の読み書きは store.ts の requireMasterAccount で毎回 DB を確かめる）。
-export function portalHeader(partner: PartnerContext, session: { login_id: string; is_master?: boolean; preview?: boolean } | null) {
+export function portalHeader(partner: PartnerContext, session: { login_id: string; is_master?: boolean; preview?: boolean; member?: PortalMember } | null) {
+  const member = isMemberPage(partner.kind);
   return {
+    // 'member' = 特別会員の専用ページ（会員ヘッダー・メニューの絞り込み）。kind そのものは出さない
+    kind: member ? ('member' as const) : ('partner' as const),
+    // 専用ページの会員（名前・グレード・還元率・保有ポイント・本人か家族か）。取引先・確認モード・未ログインは null
+    member: session?.member
+      ? {
+          name: session.member.name,
+          rankCode: session.member.rankCode,
+          rankLabel: session.member.rankLabel,
+          rewardRate: session.member.rewardRate,
+          balance: session.member.balance,
+          via: session.member.via
+        }
+      : null,
+    // 公式サイトのマイページ（専用ページの右端のリンク）
+    mypageHref: member ? '/account' : null,
     partnerName: partner.name,
     facilityName: partner.facility_name,
     facilitySlug: partner.facility_slug,
@@ -345,7 +509,10 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
     preview: session?.preview === true,
     // メニューの「予約一覧」: どれかのオンの施設で予約を受けていれば出す（選んでいる施設だけで決めない・2026-10-09 複数施設化）。
     // 選んでいる施設の予約受付（料金カレンダーの「予約する」）は各ページの booking.enabled で別に判定する
-    bookingEnabled: isPartnerBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled),
+    // 専用ページは支払方法を見ない（公式予約の支払方法）。ご予約一覧は会員がいれば出す
+    bookingEnabled: member
+      ? memberPageBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled) || !!session?.member
+      : isPartnerBookingOpen(partner) || partner.facilities.some((f) => f.enabled && f.bookingEnabled),
     // メニューの「団体予約」（docs/partner-group-booking.md §8.1・2026-10-10）: 取引先の種類が旅行会社（kind='agent'）で、
     // 管理画面の取引先詳細で団体予約をオンにしているときだけ（既定オフ）。kind そのものは画面へ渡さない
     groupInquiry: groupInquiryAvailable(partner)
@@ -354,13 +521,13 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
 
 // 取引先ページの JSON API（予約の仮押さえ・決済の準備と確定）共通: 未ログイン 401・公開停止 403（リダイレクトしない）。
 export async function requirePortalApi(
-  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url?: URL; platform?: App.Platform },
+  event: Pick<RequestEvent, 'params' | 'cookies' | 'request'> & { url: URL; platform?: App.Platform },
   opts: PortalGateOptions = {}
 ) {
   const { db, partner, session } = await resolvePortal(event);
   if (!session) throw error(401, 'ログインしてください。');
   if (partnerUnavailableReason(partner) && !session.preview) throw error(403, '現在ご利用いただけません。');
   denyPreviewWrite(event, session);
-  if (opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw error(403, '本人確認（メールの認証コードまたはパスキー）が済んでいません。画面を読み直してください。');
+  if (!session.member && opts.mfaGate !== false && portalNeedsMfa(partner, session)) throw error(403, '本人確認（メールの認証コードまたはパスキー）が済んでいません。画面を読み直してください。');
   return { db, partner, session };
 }

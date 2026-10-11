@@ -1,6 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { bookings, facilityById, listOptionItems, addBookingOptions } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { MEMBER_PAGE_BOOKING_MESSAGE } from '$lib/server/member-reservation-detail';
+import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -28,6 +30,8 @@ export const load: PageServerLoad = async (event) => {
 		const reservations = await sbMyReservations(client);
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
+		// 特別会員の専用ページ経由の予約は公式マイページではアレンジを付けない（専用ページのご予約一覧から・§13.4.4）
+		if (r.memberPage) redirect(303, `/account/reservations/${params.code}`);
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
 		const items = await sbListOptionItems(r.facilityUuid, locale);
 		// 複数室の予約（M2）: どのお部屋のアレンジかを選ぶ（生きている部屋だけ）
@@ -70,6 +74,10 @@ export const actions: Actions = {
 			const reservations = await sbMyReservations(createSupabaseServerClient(event));
 			const r = reservations.find((x) => x.code === params.code);
 			if (!r) return fail(404, { message: m.error_booking_not_found() });
+			if (r.memberPage) {
+				const href = await memberPageHrefFor(r.memberPage.partnerId, r.code).catch(() => null);
+				return fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href });
+			}
 			catalog = await sbListOptionItems(r.facilityUuid);
 		} else {
 			const booking = bookings.get(params.code);

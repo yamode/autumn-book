@@ -1,6 +1,8 @@
 <script lang="ts">
   import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
   import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
+  import PartnerMemberList from '$lib/components/admin/PartnerMemberList.svelte';
+  import PartnerCancelPolicyForm from '$lib/components/admin/PartnerCancelPolicyForm.svelte';
   import PartnerGroupSettings from '$lib/components/admin/PartnerGroupSettings.svelte';
   import { describeGroupStay, GROUP_STATUS_LABELS_STAFF } from '$lib/partner-group';
   import { untrack } from 'svelte';
@@ -70,6 +72,9 @@
     invoiceResult?: { kind: 'issued' | 'existing' | 'empty' | 'sent' | 'voided' | 'error'; message: string };
   };
   let { data, form }: { data: PageData; form?: FormResult } = $props();
+  // 特別会員の専用ページ（kind='member'）: 法人向けの欄（請求・与信・PMS の顧客・ログインID・API・覚書・団体予約・支払方法）を隠し、
+  // 対象の会員・キャンセル規定を出す（docs/vip-member-page.md §13.4.5）
+  const isMember = $derived(data.isMemberPage);
 
   // ---- 後から届くもの（2026-10-10・+layout.server.ts / +page.server.ts がストリーミングで返す）----
   // 届くまでは null（枠を出す）。保存の後の読み直しの間は前の値を残し、届いたら入れ替える（lib/streamed.svelte.ts）
@@ -419,7 +424,8 @@
   // 保存前に、画面で分かる入力ミスを知らせる。
   function checkCommonBeforeSave(): string | null {
     if (!settings.name.trim()) return '取引先名を入力してください。';
-    if (acceptingFacilities.length && !booking.paymentOptions.length) {
+    // 特別会員の専用ページは支払方法を持たない（公式予約の支払方法・Z12）
+    if (!isMember && acceptingFacilities.length && !booking.paymentOptions.length) {
       return `予約を受け付けている施設（${acceptingFacilities.map((t) => t.name).join('・')}）があるため、支払方法を1つ以上選んでください。`;
     }
     for (const [i, o] of booking.customPaymentOptions.entries()) {
@@ -433,11 +439,11 @@
   }
   // 施設タブ: 特典のタイトル・予約受付には共通の支払方法（保存済み）が要る
   function checkFacilityBeforeSave(): string | null {
-    if (fac.enabled && fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length) {
+    if (!isMember && fac.enabled && fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length) {
       return '予約を受け付けるときは、共通の「支払方法」を1つ以上選んで保存してください。';
     }
     for (const [i, perk] of own.perks.entries()) {
-      if (!perk.title.trim()) return `取引先特典${i + 1}: タイトルを入れてください（不要なら削除）。`;
+      if (!perk.title.trim()) return `${isMember ? '専用特典' : '取引先特典'}${i + 1}: タイトルを入れてください（不要なら削除）。`;
     }
     return null;
   }
@@ -765,7 +771,13 @@
     child_enable: 'ユーザー再開',
     child_disable: 'ユーザー停止',
     child_delete: 'ユーザー削除',
-    logout_all: '宿が全端末をログアウト'
+    logout_all: '宿が全端末をログアウト',
+    // 特別会員の専用ページ（会員の閲覧・予約・ご予約一覧の操作）
+    member_hold: '予約へ進む（仮押さえ）',
+    booking_view: 'ご予約一覧・詳細の閲覧',
+    booking_cancel: 'ご予約の取消',
+    booking_amend: 'ご予約の日程変更',
+    booking_options: '滞在アレンジの追加'
   };
 
   // ---- 本人確認の方針（docs/auth-hardening.md §6.3・S6）----
@@ -817,7 +829,11 @@
     <!-- 限定URL -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
+      {#if isMember}
+        <p class="mt-1 text-xs text-stone-500">この会員さま専用のページです。公式サイトの会員ログイン（メールの認証コード）で、下の「対象の会員」とそのご家族だけが見られます（URL だけでは料金は見えません）。「確認ページを開く」は、会員なしでこのページを開きます（2時間・見るだけで、予約へは進めません）。</p>
+      {:else}
       <p class="mt-1 text-xs text-stone-500">この取引先専用のログイン画面です。下で発行したログインIDとパスワードでログインします。「確認ページを開く」は、ログインなしでこの取引先から見た画面を開きます（2時間・見るだけで、予約の確定・取消はできません）。</p>
+      {/if}
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>
         <button type="button" class={smallBtn} onclick={() => copy(data.portalUrl)}>コピー</button>
@@ -838,10 +854,11 @@
         {/if}
       </div>
       {#if !data.partner.isActive}
-        <p class="mt-2 text-xs text-amber-700">現在「公開停止」です。取引先はログインできません（下の共通の設定で公開にしてください）。</p>
+        <p class="mt-2 text-xs text-amber-700">現在「公開停止」です。{isMember ? '会員はこのページを開けません' : '取引先はログインできません'}（下の共通の設定で公開にしてください）。</p>
       {/if}
     </div>
 
+    {#if !isMember}
     <!-- 覚書（本文・ファイル） -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <h2 class="text-lg font-bold text-stone-900">覚書</h2>
@@ -989,6 +1006,13 @@
       {/if}
     </div>
 
+    {/if}
+
+    {#if isMember}
+      <!-- 特別会員: 対象の会員（追加・外す）と家族として使える会員（読み取り）・docs/vip-member-page.md §13.4.5 -->
+      <PartnerMemberList members={data.members} {canEdit} {form} />
+    {/if}
+
     <!-- 共通の設定（rms_partners・全施設に効く）。施設タブとは別のフォーム・別の保存（複数施設化 S3・§7.12） -->
     <form
       method="POST"
@@ -1006,9 +1030,16 @@
         </label>
         <label class="block">
           <span class="mb-0.5 block text-xs text-stone-500">種別</span>
+          {#if isMember}
+            <!-- 特別会員のページは種別を変えない（会員詳細の「専用ページを作る」で作ったもの） -->
+            <input type="hidden" name="kind" value="member" />
+            <p class="rounded-md border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-sm text-stone-600">{data.kindLabels.member}</p>
+          {:else}
           <select name="kind" bind:value={settings.kind} class={inputClass}>
-            {#each Object.entries(data.kindLabels) as [value, label]}<option {value}>{label}</option>{/each}
+            <!-- 特別会員には変えられない（会員詳細から作る） -->
+            {#each Object.entries(data.kindLabels).filter(([v]) => v !== 'member') as [value, label]}<option {value}>{label}</option>{/each}
           </select>
+          {/if}
         </label>
         <label class="flex cursor-pointer items-center gap-3 self-end rounded-lg border border-stone-200 bg-white px-3 py-2">
           <input type="checkbox" name="is_active" bind:checked={settings.isActive} class="peer sr-only" />
@@ -1044,6 +1075,7 @@
         </label>
       </fieldset>
 
+      {#if !isMember}
       <!-- PMS の顧客マスタとの紐づけ（Phase 1・docs/partner-pms-customer-link.md §6.1）。保存フォームとは別に即時保存 -->
       <section class="mt-6 rounded-lg border border-stone-200 bg-stone-50/60 p-4">
         <h3 class="text-base font-bold text-stone-900">PMS の顧客マスタとの紐づけ</h3>
@@ -1280,13 +1312,21 @@
           {/if}
         {/if}
       </section>
+      {/if}
 
+      {#if isMember}
+        <!-- 特別会員: 支払方法・請求条件は無い（公式予約の支払方法・現地払い／事前決済）。受付ルールの既定だけ -->
+        <h3 class="mb-1 mt-6 text-[15px] font-bold text-stone-800">受付ルール</h3>
+        <p class="mb-3 text-xs leading-5 text-stone-500">専用ページの「予約へ進む」から、会員の公式予約（お支払いは公式サイトと同じ）になります。予約を受けるかどうかは施設タブで施設ごとに決めます。</p>
+      {:else}
       <!-- 支払方法と請求条件（共通） -->
       <h3 class="mb-1 mt-6 text-[15px] font-bold text-stone-800">支払方法と請求条件 {#if acceptingFacilities.length}<span class="text-xs font-normal text-rose-700">支払方法は1つ以上必須（予約を受け付けている施設があります）</span>{/if}</h3>
       <p class="mb-3 text-xs leading-5 text-stone-500">
         限定URLの料金カレンダーから、取引先がそのまま予約できます（予約を受けるかどうかは施設タブで施設ごとに決めます）。予約は即時確定し、PMS に「取引先予約（RMS）」として1分ほどで取り込まれます。
       </p>
+      {/if}
       <fieldset disabled={!canEdit} class="grid gap-4 rounded-lg border border-stone-200 bg-stone-50 p-4">
+        {#if !isMember}
         <div>
           <div class="grid gap-1.5">
             {#each PARTNER_PAYMENT_OPTIONS as o (o.id)}
@@ -1379,9 +1419,10 @@
             </span>
           </div>
         </div>
+        {/if}
 
         <div>
-          <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">受付ルールの既定 <span class="text-xs font-normal text-stone-500">（施設タブで施設ごとに変えられます）</span></h3>
+          <h3 class={`mb-1.5 mt-1 text-[15px] font-bold text-stone-800 ${isMember ? '' : 'border-t border-stone-300 pt-4'}`}>受付ルールの既定 <span class="text-xs font-normal text-stone-500">（施設タブで施設ごとに変えられます）</span></h3>
           <div class="grid gap-3 sm:grid-cols-4">
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">予約の締切</span>
@@ -1395,6 +1436,7 @@
                 {#each Array.from({ length: 24 }, (_, h) => h) as h}<option value={h}>{h}時まで</option>{/each}
               </select>
             </label>
+            {#if !isMember}
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">取引先による取消</span>
               <select
@@ -1406,10 +1448,11 @@
                 {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={String(d)}>{d === 0 ? '当日' : `${d}日前`}の同時刻まで</option>{/each}
               </select>
             </label>
+            {/if}
             <div class="grid grid-cols-2 gap-2">
               <label class="block">
-                <span class="mb-0.5 block text-xs text-stone-500">最大室数</span>
-                <input type="number" min="1" max="20" bind:value={booking.maxRooms} class={inputClass} />
+                <span class="mb-0.5 block text-xs text-stone-500">最大室数{#if isMember}（1〜4）{/if}</span>
+                <input type="number" min="1" max={isMember ? 4 : 20} bind:value={booking.maxRooms} class={inputClass} />
               </label>
               <label class="block">
                 <span class="mb-0.5 block text-xs text-stone-500">最大泊数</span>
@@ -1419,6 +1462,9 @@
           </div>
         </div>
 
+        {#if isMember}
+          <p class="text-[11px] leading-5 text-stone-500">取消は会員の公式予約と同じく、専用ページの「ご予約一覧」から行います（キャンセル料は施設タブの「キャンセル規定」）。最大室数は公式と同じく 4 室までです。</p>
+        {:else}
         <div>
           <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
           <p class="mb-2 text-[11px] text-stone-500">
@@ -1435,6 +1481,7 @@
         {#if settings.kind === 'agent'}
           <!-- 団体予約（旅行会社だけ・既定オフ・docs/partner-group-booking.md §8.3）。種別を旅行会社以外にすると節が消える（設定は残る・害なし） -->
           <PartnerGroupSettings bind:booking {inputClass} />
+        {/if}
         {/if}
       </fieldset>
 
@@ -1568,8 +1615,12 @@
                   <span class="font-medium">予約受付</span>
                   <span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${fac.bookingEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{fac.bookingEnabled ? 'オン' : 'オフ'}</span>
                   <span class="mt-0.5 block text-[11px] text-stone-500">
+                    {#if isMember}
+                      {fac.bookingEnabled ? '専用ページに「予約する」が出ます（締切前・空室のある日だけ）' : '会員は料金を見るだけで、予約はできません'}
+                    {:else}
                     {fac.bookingEnabled ? '取引先の料金パネルに「予約する」が出ます（締切前・空室のある日だけ）' : '取引先は料金を見るだけで、予約はできません'}
-                    {#if fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length}<span class="block text-rose-700">共通の「支払方法」を1つ以上選んで保存してください。</span>{/if}
+                    {/if}
+                    {#if !isMember && fac.bookingEnabled && !data.partner.commonSettings.paymentOptions.length}<span class="block text-rose-700">共通の「支払方法」を1つ以上選んで保存してください。</span>{/if}
                   </span>
                 </span>
               </label>
@@ -1666,13 +1717,14 @@
           <p class="mt-1 text-[11px] text-stone-500">プラン料金が最高・最低を外れるときは、その額で上書きして取引先に見せます（端数処理の後）。</p>
 
             <!-- 早期決済割・受付ルール（N6）: 共通の既定を使う／この施設だけ変える。戻すと facility_settings からキーを消す -->
-            <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">早期決済割・受付ルール</h2>
+            <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">{isMember ? '受付ルール' : '早期決済割・受付ルール'}</h2>
             <p class="mb-3 text-xs leading-5 text-stone-500">
               ふだんは共通の設定の既定を使います。この施設だけ変えるときは「この施設だけ変える」を選びます（0 や「当日」も施設の値として残ります）。「共通の既定を使う」に戻すと、共通の値に戻ります。
             </p>
             <fieldset disabled={!canEdit} class="grid gap-2 rounded-lg border border-stone-200 bg-stone-50 p-4">
               {#each PARTNER_FACILITY_OVERRIDE_KEYS as k (k)}
-                {#if k !== 'prepayDiscount' || booking.paymentOptions.includes('online') || isOverridden(k)}
+                <!-- 特別会員: 早期決済割は公式のもの（Q3）・取消は公式予約の取消なので、この 2 つは出さない -->
+                {#if !(isMember && (k === 'prepayDiscount' || k === 'cancelDays')) && (k !== 'prepayDiscount' || booking.paymentOptions.includes('online') || isOverridden(k))}
                   <div class="grid gap-2 rounded-md border border-stone-200 bg-white p-2.5 sm:grid-cols-[11rem_1fr] sm:items-center">
                     <span class="text-sm font-medium text-stone-800">{PARTNER_FACILITY_OVERRIDE_LABELS[k]}</span>
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
@@ -1703,7 +1755,7 @@
                             {#each [0, 1, 2, 3, 5, 7, 10, 14, 21, 30] as d}<option value={String(d)}>{d === 0 ? '当日' : `${d}日前`}の同時刻まで</option>{/each}
                           </select>
                         {:else if k === 'maxRooms' && overrides.maxRooms !== undefined}
-                          <span class="inline-flex items-center gap-1"><input type="number" min="1" max="20" bind:value={overrides.maxRooms} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm" />室</span>
+                          <span class="inline-flex items-center gap-1"><input type="number" min="1" max={isMember ? 4 : 20} bind:value={overrides.maxRooms} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm" />室{#if isMember}<span class="text-[11px] text-stone-500">（1〜4）</span>{/if}</span>
                         {:else if k === 'maxNights' && overrides.maxNights !== undefined}
                           <span class="inline-flex items-center gap-1"><input type="number" min="1" max="30" bind:value={overrides.maxNights} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm" />泊</span>
                         {:else if k === 'prepayDiscount' && overrides.prepayDiscount}
@@ -1730,11 +1782,32 @@
                   </div>
                 {/if}
               {/each}
+              {#if isMember}
+              <p class="text-[11px] text-stone-500">
+                この施設での受付: 締切は宿泊日の{effective.leadDays === 0 ? '当日' : `${effective.leadDays}日前`}の{effective.cutoffHour}時まで・1回の予約は{Math.min(4, effective.maxRooms)}室・{effective.maxNights}泊まで。早期決済割・予約時決済割は公式サイトと同じものが付きます。
+              </p>
+              {:else}
               <p class="text-[11px] text-stone-500">
                 この施設での受付: 締切は宿泊日の{effective.leadDays === 0 ? '当日' : `${effective.leadDays}日前`}の{effective.cutoffHour}時まで・取引先による取消は{effective.cancelDays == null ? '画面からは不可' : `${effective.cancelDays === 0 ? '当日' : `${effective.cancelDays}日前`}の${effective.cutoffHour}時まで`}・1回の予約は{effective.maxRooms}室・{effective.maxNights}泊まで。
                 {#if !booking.paymentOptions.includes('online') && !isOverridden('prepayDiscount')}予約時決済の割引は、共通の支払方法で「オンライン決済（予約時）」を選ぶと設定できます。{/if}
               </p>
+              {/if}
             </fieldset>
+
+            {#if isMember}
+              <!-- 特別会員: キャンセル方式と専用ページの規定（この施設・own.cancelPolicyMode / own.cancelRules を facility_booking で保存） -->
+              <div class="mt-6">
+                <PartnerCancelPolicyForm
+                  mode={own.cancelPolicyMode}
+                  rules={own.cancelRules}
+                  disabled={!canEdit}
+                  onchange={(m, r) => {
+                    own.cancelPolicyMode = m;
+                    own.cancelRules = r;
+                  }}
+                />
+              </div>
+            {/if}
 
             <fieldset disabled={!canEdit} class="mt-6 grid gap-4">
               <label class="block">
@@ -1743,7 +1816,7 @@
               </label>
 
               <div>
-                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">取引先特典 <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件・この施設）</span></h3>
+                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">{isMember ? '専用特典' : '取引先特典'} <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件・この施設）</span></h3>
                 <p class="mb-2 text-[11px] leading-5 text-stone-500">
                   この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
                 </p>
@@ -1954,6 +2027,13 @@
     </div>
     {/if}
 
+    {#if isMember}
+      <!-- 特別会員: 予約は会員の公式予約（予約管理で見る）。予約一覧・ご請求書・ログインID・REST API は無い -->
+      <p class="mb-6 rounded-xl border border-stone-200 bg-white p-5 text-sm leading-6 text-stone-600">
+        この専用ページからの予約は会員の公式予約です。<a href="/admin/reservations" class="text-brand-800 underline">予約管理</a>で「特別会員の専用ページ経由」と表示されます。
+        ご請求書・ログインID・REST API はありません（会員は公式サイトの会員ログインで入ります）。
+      </p>
+    {:else}
     <!-- 取引先予約 -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
@@ -2543,6 +2623,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
         </form>
       {/if}
     </div>
+    {/if}
 
     <!-- アクセスログ -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
@@ -2561,7 +2642,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
                 <td class="py-1.5 pr-3 whitespace-nowrap">{dt(l.at)}</td>
                 <td class="pr-3">{l.channel === 'api' ? 'API' : l.channel === 'admin' ? '宿（管理画面）' : '画面'}</td>
                 <td class={`pr-3 ${l.action.startsWith('login_') ? 'text-rose-700' : ''}`}>{ACTION_LABELS[l.action] ?? l.action}</td>
-                <td class="pr-3 font-mono">{l.who ?? (l.detail?.loginId as string | undefined) ?? ''}</td>
+                <td class="pr-3 font-mono">{l.who ?? (l.detail?.loginId as string | undefined) ?? (l.detail?.member_user_id ? '会員' : '')}</td>
                 <td class="pr-3 text-stone-500">{l.detail?.from ? `${l.detail.from}〜${l.detail.to}` : (l.detail?.month ?? '')}</td>
                 <td class="text-stone-500">{l.ip ?? ''}</td>
               </tr>

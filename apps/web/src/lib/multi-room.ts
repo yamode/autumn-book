@@ -7,6 +7,7 @@
 //     direct_payment_refund_due と同じ式）・生きている部屋の見方（liveRooms / roomsStatus）。
 import type { Quote } from '@autumn-book/core';
 import { deductionOf, type KeptReason } from './cancel-admin-fee';
+import type { MemberPageSnapshot, MemberPerkSnapshot } from './partner-member-page';
 
 /** 1 回の予約で取れる部屋の数（DB の book._max_rooms_per_booking() と同じ値。超えるときは電話） */
 export const MAX_ROOMS_PER_BOOKING = 4;
@@ -52,6 +53,8 @@ export interface HoldGroupRoom {
 	adults: number;
 	children: number;
 	quote: Quote;
+	/** 特別会員の専用ページ経由の束: この部屋（プラン）に付く専用特典の写し（無ければ null・docs/vip-member-page.md §14） */
+	memberPerks?: MemberPerkSnapshot[] | null;
 }
 
 /**
@@ -71,6 +74,8 @@ export interface HoldGroup {
 	/** 全室の宿泊料金の和（割引前） */
 	total: number;
 	rooms: HoldGroupRoom[];
+	/** 特別会員の専用ページ経由の束（どのページ・本人か家族か・キャンセル方式）。公式の束は null */
+	memberPage?: MemberPageSnapshot | null;
 	// ---- 1 室目の写し（M0 の 1 室の画面の互換）
 	roomTypeId: string;
 	planId: string;
@@ -101,6 +106,8 @@ export interface BookingRoom {
 	prepayDiscount?: number;
 	/** 取り消した部屋の返金しなかった額 */
 	cancelKept?: number;
+	/** 特別会員の専用ページ経由の予約: この部屋の専用特典の写し（booking_rooms.member_perks） */
+	memberPerks?: MemberPerkSnapshot[] | null;
 }
 
 /** 仮押さえに渡す 1 室（プラン詳細の ?/hold の rooms JSON の要素） */
@@ -201,6 +208,12 @@ export function payCompatible(pays: readonly { onsite: boolean; prepay: boolean 
 
 type StayKey = Pick<CartItem, 'facilityId' | 'checkin' | 'nights'>;
 
+/**
+ * かごの判定に要る値（公式のかご CartItem・特別会員の専用ページのかご MemberCartItem で共用・docs/vip-member-page.md §13.4.3）。
+ * roomTypeId は「同じ部屋タイプ」の判定に使う識別（公式は部屋タイプの UUID・専用ページは PMS の部屋タイプのコード）
+ */
+export type CartLike = Pick<CartItem, 'facilityId' | 'checkin' | 'nights' | 'roomTypeId' | 'pay' | 'remaining'>;
+
 /** 同じ予約にできる（同じ施設・同じチェックイン日・同じ泊数）か */
 export function sameStay(a: StayKey, b: StayKey): boolean {
 	return a.facilityId === b.facilityId && a.checkin === b.checkin && a.nights === b.nights;
@@ -210,12 +223,13 @@ export function sameStay(a: StayKey, b: StayKey): boolean {
  * かごに 1 室を足せるか。判定の順は 施設・日程 → 室数（4 室）→ 支払方法 → 残室。
  *   other_stay は「かごを空にしますか」を出す（空にしてから足せる）。それ以外は理由を出して足さない。
  */
-export function canAddToCart(
-	cart: readonly CartItem[],
-	item: Pick<CartItem, 'facilityId' | 'checkin' | 'nights' | 'roomTypeId' | 'pay' | 'remaining'>
+export function canAddToCart<T extends CartLike>(
+	cart: readonly T[],
+	item: CartLike,
+	maxRooms: number = MAX_ROOMS_PER_BOOKING
 ): { ok: true } | { ok: false; reason: CartAddBlock } {
 	if (cart.length > 0 && !sameStay(cart[0], item)) return { ok: false, reason: 'other_stay' };
-	if (cart.length >= MAX_ROOMS_PER_BOOKING) return { ok: false, reason: 'full' };
+	if (cart.length >= Math.min(maxRooms, MAX_ROOMS_PER_BOOKING)) return { ok: false, reason: 'full' };
 	if (!payCompatible([...cart.map((c) => c.pay), item.pay])) return { ok: false, reason: 'mixed_payment' };
 	if (item.remaining !== null) {
 		const same = cart.filter((c) => c.roomTypeId === item.roomTypeId).length;
@@ -242,10 +256,13 @@ export function cartRoomsPayload(cart: readonly Pick<CartItem, 'planId' | 'roomT
 }
 
 /** 内訳の表示用に同じ部屋タイプ・プラン・人数をまとめる（「和室 ×2」） */
-export function cartGroups(cart: readonly CartItem[]): { item: CartItem; count: number; keys: string[] }[] {
-	const out: { item: CartItem; count: number; keys: string[] }[] = [];
+export function cartGroups<T extends { key: string; roomTypeId: string; adults: number }>(
+	cart: readonly T[],
+	planOf: (c: T) => string = (c) => String((c as unknown as { planId?: string }).planId ?? '')
+): { item: T; count: number; keys: string[] }[] {
+	const out: { item: T; count: number; keys: string[] }[] = [];
 	for (const c of cart) {
-		const g = out.find((x) => x.item.roomTypeId === c.roomTypeId && x.item.planId === c.planId && x.item.adults === c.adults);
+		const g = out.find((x) => x.item.roomTypeId === c.roomTypeId && planOf(x.item) === planOf(c) && x.item.adults === c.adults);
 		if (g) {
 			g.count += 1;
 			g.keys.push(c.key);
@@ -257,7 +274,41 @@ export function cartGroups(cart: readonly CartItem[]): { item: CartItem; count: 
 /** sessionStorage のキー（タブを閉じれば消える） */
 export const CART_STORAGE_KEY = 'ab_booking_cart_v1';
 
-type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+/**
+ * かごを読む（共通）。読めない・壊れている・別の日程が混ざっているときは空（プライベートモード等で例外になっても空）。
+ * key は保存キー（公式 ab_booking_cart_v1・専用ページ ab_member_cart_v1）、isItem / normalize は要素の検査と整形
+ */
+export function readCartWith<T extends Pick<CartItem, 'facilityId' | 'checkin' | 'nights'>>(
+	storage: StorageLike | null | undefined,
+	key: string,
+	isItem: (v: unknown) => v is T,
+	normalize: (c: T) => T = (c) => c
+): T[] {
+	try {
+		const raw = storage?.getItem(key);
+		if (!raw) return [];
+		const v: unknown = JSON.parse(raw);
+		if (!Array.isArray(v)) return [];
+		const items = v.filter(isItem).map(normalize);
+		if (items.some((c) => !sameStay(items[0], c))) return [];
+		return items.slice(0, MAX_ROOMS_PER_BOOKING);
+	} catch {
+		return [];
+	}
+}
+
+/** かごを書く（共通・空なら消す）。書けなくても画面は動かす */
+export function writeCartWith(storage: StorageLike | null | undefined, key: string, cart: readonly unknown[]): void {
+	try {
+		if (!storage) return;
+		if (cart.length === 0) storage.removeItem(key);
+		else storage.setItem(key, JSON.stringify(cart.slice(0, MAX_ROOMS_PER_BOOKING)));
+	} catch {
+		/* 保存できない環境（プライベートモード・容量超過）は画面の中だけで持つ */
+	}
+}
 
 function isCartItem(v: unknown): v is CartItem {
 	if (!v || typeof v !== 'object') return false;
@@ -281,34 +332,18 @@ function isCartItem(v: unknown): v is CartItem {
 
 /** かごを読む。読めない・壊れている・別の日程が混ざっているときは空（プライベートモード等で例外になっても空） */
 export function readCart(storage: StorageLike | null | undefined): CartItem[] {
-	try {
-		const raw = storage?.getItem(CART_STORAGE_KEY);
-		if (!raw) return [];
-		const v: unknown = JSON.parse(raw);
-		if (!Array.isArray(v)) return [];
-		const items: CartItem[] = v.filter(isCartItem).map((c) => ({
-			...c,
-			planName: String(c.planName ?? ''),
-			roomName: String(c.roomName ?? ''),
-			pay: { onsite: c.pay.onsite === true, prepay: c.pay.prepay === true },
-			remaining: typeof c.remaining === 'number' ? c.remaining : null
-		}));
-		if (items.some((c) => !sameStay(items[0], c))) return [];
-		return items.slice(0, MAX_ROOMS_PER_BOOKING);
-	} catch {
-		return [];
-	}
+	return readCartWith(storage, CART_STORAGE_KEY, isCartItem, (c) => ({
+		...c,
+		planName: String(c.planName ?? ''),
+		roomName: String(c.roomName ?? ''),
+		pay: { onsite: c.pay.onsite === true, prepay: c.pay.prepay === true },
+		remaining: typeof c.remaining === 'number' ? c.remaining : null
+	}));
 }
 
 /** かごを書く（空なら消す）。書けなくても画面は動かす */
 export function writeCart(storage: StorageLike | null | undefined, cart: readonly CartItem[]): void {
-	try {
-		if (!storage) return;
-		if (cart.length === 0) storage.removeItem(CART_STORAGE_KEY);
-		else storage.setItem(CART_STORAGE_KEY, JSON.stringify(cart.slice(0, MAX_ROOMS_PER_BOOKING)));
-	} catch {
-		/* 保存できない環境（プライベートモード・容量超過）は画面の中だけで持つ */
-	}
+	writeCartWith(storage, CART_STORAGE_KEY, cart);
 }
 
 // =============================================================================

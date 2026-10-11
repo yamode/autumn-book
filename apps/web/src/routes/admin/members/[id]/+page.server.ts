@@ -2,8 +2,14 @@
 //
 // 実データ側で出せないもの（意図的に空にし、UI で理由を出す）:
 //   - おたより台帳 … book.otayori_ledger に staff select policy が無い（残高のみ表示）
-//   - ランク手動変更 … 更新 RPC が未整備（book.members は members_own_update のみ）
-import { error, fail } from '@sveltejs/kit';
+// ランク手動変更（V0・2026-10-11）: 実データは book.admin_set_member_rank（管理者のみ・理由必須・監査ログ change_rank）。
+// 特別会員の専用ページ（docs/vip-member-page.md §13.4.5）: この会員が対象の専用ページ（本人・家族）の一覧（memberPages）と
+// 「専用ページを作る」（?/createMemberPage・admin のみ・公開停止・予約受付オフで作り、対象の会員に入れて取引先詳細へ）。
+import { error, fail, redirect } from '@sveltejs/kit';
+import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
+import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
+import { addPartnerMember, createPartner, deletePartner, memberForMemberPage, memberPagesForAdmin, PartnerStoreError } from '$lib/server/partners/store';
+import { actionFailure, staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
 
 import { ADMIN_SUPABASE } from '$lib/server/auth';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
@@ -13,6 +19,7 @@ import {
 	adminListBookings,
 	adminListMembers,
 	adminMemberDevices,
+	adminSetMemberRank,
 	bookAdmin,
 	grantOtayoriOf,
 	listMemberNotifications,
@@ -87,9 +94,18 @@ export const load: PageServerLoad = async (event) => {
 				}).catch(() => [])
 			]);
 
+		// 専用ページ（本人・家族）。取引先モジュールが使えない環境・権限なしは空
+		const memberPages = await staffPartnerScope(event, 'view')
+			.then((scope) => memberPagesForAdmin(scope.db, scope.tenantId, id))
+			.catch(() => []);
+
 		return {
 			live: true as const,
 			isAdmin,
+			// この会員が対象の専用ページ（via=self）と家族のつながりで使えるページ（via=family）
+			memberPages,
+			// 「専用ページを作る」（管理者のみ・退会者には作らない）
+			canCreateMemberPage: isAdmin && !member.withdrawn_at,
 			m: {
 				id,
 				memberCode: member.member_code ?? '—',
@@ -132,6 +148,8 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		live: false as const,
 		isAdmin,
+		memberPages: [] as Awaited<ReturnType<typeof memberPagesForAdmin>>,
+		canCreateMemberPage: false,
 		m: {
 			id: member.id,
 			memberCode: member.memberCode,
@@ -204,7 +222,16 @@ export const actions: Actions = {
 	rank: async (event) => {
 		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
 		if (ADMIN_SUPABASE) {
-			return fail(400, { message: 'ランクの手動変更は未対応です（更新 RPC が未整備のため）。' });
+			const form = await event.request.formData();
+			const rank = String(form.get('rank') ?? '');
+			const reason = String(form.get('rankReason') ?? '').trim();
+			if (!reason) return fail(400, { message: 'ランク変更の理由を入力してください（監査ログに記録）' });
+			try {
+				await adminSetMemberRank(bookAdmin(event), event.params.id, rank, reason);
+			} catch (e) {
+				return fail(400, { message: mapRpcError(e) });
+			}
+			return { rankChanged: true };
 		}
 		const member = memberById(event.params.id);
 		if (!member) return fail(404, {});
@@ -223,6 +250,56 @@ export const actions: Actions = {
 			detail: `${member.id} → ${rank}: ${reason}`
 		});
 		return { rankChanged: true };
+	},
+
+	// 特別会員の専用ページを作る（admin のみ・Q5）: kind='member'・公開停止・予約受付オフで、ab_fac の施設に作る（他の施設は
+	// 取引先詳細の施設タブでオン）。この会員を対象の会員に入れて、取引先詳細へ移る
+	createMemberPage: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
+		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境では専用ページを作れません（DATA_SOURCE / AUTH_MODE が supabase ではありません）。' });
+		let partnerId: string;
+		try {
+			const scope = await staffPartnerScope(event, 'edit');
+			const memberUserId = event.params.id;
+			// 会員は 1 件だけ引く（同じテナント・service_role・一覧から探さない）
+			const member = await memberForMemberPage(scope.db, scope.tenantId, memberUserId);
+			if (!member) return fail(404, { message: '会員が見つかりません' });
+			if (member.withdrawnAt) return fail(400, { message: '退会した会員には専用ページを作れません。' });
+			const name = `${(member.name ?? '').trim() || member.memberCode || '会員'}様 専用ページ`.slice(0, 120);
+			const partner = await createPartner(
+				scope.db,
+				{ tenantId: scope.tenantId, facilityId: scope.facilityId, userId: scope.userId },
+				{
+					name,
+					kind: 'member',
+					contact_name: null,
+					contact_email: null,
+					is_active: false,
+					valid_from: null,
+					valid_until: null,
+					max_days_ahead: 365,
+					show_inventory: true,
+					include_advance: true,
+					pricing: DEFAULT_PARTNER_PRICING,
+					note: null,
+					booking_enabled: false,
+					// 室数は公式と同じ 4 室まで・支払方法は使わない（公式予約の支払方法）
+					booking_settings: { ...DEFAULT_PARTNER_BOOKING_SETTINGS, paymentOptions: [], maxRooms: 4 }
+				}
+			);
+			try {
+				await addPartnerMember(scope.db, partner, memberUserId, scope.userId);
+			} catch (e) {
+				// 対象の会員を入れられなければ作ったページも残さない
+				await deletePartner(scope.db, partner).catch(() => undefined);
+				throw e;
+			}
+			partnerId = partner.id;
+		} catch (e) {
+			if (e instanceof StaffScopeError || e instanceof PartnerStoreError) return actionFailure(e);
+			return fail(400, { message: mapRpcError(e) });
+		}
+		redirect(303, `/admin/partners/${partnerId}`);
 	},
 
 	// おたよりポイント手動付与（admin 限定・設計書 §9）。1pt=1,000円相当。正負可。

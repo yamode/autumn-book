@@ -199,6 +199,34 @@
 	</div>
 
 	<aside class="space-y-4">
+		{#if data.memberPages.length || data.canCreateMemberPage}
+			<!-- 特別会員の専用ページ（docs/vip-member-page.md §7・§13.4.5）: この会員が対象のページ（本人）と家族のつながりで使えるページ -->
+			<section class="rounded-xl border border-amber-200 bg-amber-50/40 p-4 text-sm">
+				<h2 class="font-medium text-stone-700">専用ページ（特別会員）</h2>
+				{#if data.memberPages.length}
+					<ul class="mt-2 space-y-1.5">
+						{#each data.memberPages as p (p.partnerId)}
+							<li class="rounded-lg border border-stone-200 bg-white px-3 py-2">
+								<a href="/admin/partners/{p.partnerId}" class="font-medium text-accent-600 hover:underline">{p.name}</a>
+								<p class="mt-0.5 flex flex-wrap gap-x-2 text-xs text-stone-500">
+									<span class={p.isActive ? 'text-emerald-700' : 'text-stone-500'}>{p.isActive ? '公開中' : '公開停止'}</span>
+									{#if p.facilityNames.length}<span>{p.facilityNames.join('・')}</span>{/if}
+									{#if p.via === 'family'}<span class="text-amber-800">家族のつながりで利用</span>{/if}
+								</p>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="mt-1 text-xs text-stone-500">この会員の専用ページはまだありません。</p>
+				{/if}
+				{#if data.canCreateMemberPage}
+					<form method="POST" action="?/createMemberPage" use:enhance class="mt-3">
+						<button type="submit" class="w-full rounded-md bg-brand-800 py-1.5 text-white hover:bg-brand-700">専用ページを作る</button>
+						<p class="mt-1 text-[11px] leading-4 text-stone-500">公開停止・予約受付オフで作り、この会員を対象に入れて設定画面へ移ります（料金・特典・キャンセル規定を設定してから公開してください）。</p>
+					</form>
+				{/if}
+			</section>
+		{/if}
 		{#if data.isAdmin}
 			<form method="POST" action="?/adjust" use:enhance class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 				<h2 class="font-medium text-stone-700">ポイント手動調整</h2>
@@ -208,20 +236,17 @@
 				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-1.5 text-white hover:bg-brand-700">調整を実行</button>
 			</form>
 
-			<!-- ランク更新の RPC が未整備のため、実データでは出さない -->
-			<form
-				method="POST"
-				action="?/rank"
-				use:enhance
-				class="rounded-xl border border-stone-200 bg-white p-4 text-sm {data.live ? 'hidden' : ''}"
-			>
+			<!-- ランク手動変更（V0・2026-10-11）: 実データは book.admin_set_member_rank（管理者のみ・理由必須・監査ログ）。
+			     自動昇格は無いので、特別会員の専用ページの方などのグレードはここで上げる -->
+			<form method="POST" action="?/rank" use:enhance class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 				<h2 class="font-medium text-stone-700">ランク手動変更</h2>
+				<p class="mt-1 text-xs text-stone-400">還元率・グレード別キャンセル料が変わります（次の予約から・キャンセル料は取消の時点のグレード）。理由は監査ログに記録されます。</p>
 				<select name="rank" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5">
-					{#each ['standard', 'silver', 'gold'] as r}
-						<option value={r} selected={r === data.m.rank}>{r}</option>
+					{#each ['standard', 'silver', 'gold', 'platinum'] as r}
+						<option value={r} selected={r === data.m.rank}>{r.toUpperCase()}{r === data.m.rank ? '（現在）' : ''}</option>
 					{/each}
 				</select>
-				<input name="rankReason" placeholder="理由（必須）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
+				<input name="rankReason" required placeholder="理由（必須）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
 				<button type="submit" class="mt-2 w-full rounded-md border border-stone-300 py-1.5 hover:bg-stone-50">変更する</button>
 			</form>
 

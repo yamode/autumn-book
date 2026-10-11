@@ -17,6 +17,19 @@
 	}
 	const adjustRules = (p: (typeof data.partners)[number]) => p.pricing.rules.filter((r) => r.action === 'adjust').length;
 	const hideRules = (p: (typeof data.partners)[number]) => p.pricing.rules.filter((r) => r.action === 'hide').length;
+	// 一覧の URL（範囲 ?all=1 と種別 ?kind= を組み合わせる・種別の既定は「すべて」・docs/vip-member-page.md §13.8 Q6）
+	const listHref = (all: boolean, kind: 'all' | 'partner' | 'member') => {
+		const q = new URLSearchParams();
+		if (all) q.set('all', '1');
+		if (kind !== 'all') q.set('kind', kind);
+		const s = q.toString();
+		return s ? `/admin/partners?${s}` : '/admin/partners';
+	};
+	const KIND_FILTERS: ['all' | 'partner' | 'member', string][] = [
+		['all', 'すべての種別'],
+		['partner', '取引先'],
+		['member', '特別会員']
+	];
 </script>
 
 <svelte:head><title>取引先 ｜ 山人管理</title></svelte:head>
@@ -64,7 +77,8 @@
 			<label class="block text-sm">
 				<span class="text-xs text-stone-500">種別</span>
 				<select name="kind" class="mt-0.5 {inputCls}">
-					{#each Object.entries(data.kindLabels) as [value, label]}
+					<!-- 特別会員は会員詳細の「専用ページを作る」から作る（ここの選択肢には出さない） -->
+					{#each Object.entries(data.createKindLabels) as [value, label]}
 						<option {value}>{label}</option>
 					{/each}
 				</select>
@@ -82,8 +96,14 @@
 	<!-- 一覧の範囲（N8・2026-10-09 複数施設化）: 既定は今の施設で設定のある取引先、「すべて」でテナントの取引先すべて -->
 	<div class="mb-2 flex flex-wrap items-center gap-2">
 		<div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
-			<a href="/admin/partners" class={`px-3 py-1.5 ${!data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{data.facilityName}の取引先</a>
-			<a href="/admin/partners?all=1" class={`px-3 py-1.5 ${data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>すべて</a>
+			<a href={listHref(false, data.kindFilter)} class={`px-3 py-1.5 ${!data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{data.facilityName}の取引先</a>
+			<a href={listHref(true, data.kindFilter)} class={`px-3 py-1.5 ${data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>すべて</a>
+		</div>
+		<!-- 種別の絞り込み（取引先＝旅行会社・法人・その他／特別会員） -->
+		<div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs" role="group" aria-label="種別の絞り込み">
+			{#each KIND_FILTERS as [k, label] (k)}
+				<a href={listHref(data.showAll, k)} aria-current={data.kindFilter === k ? 'true' : undefined} class={`px-3 py-1.5 ${data.kindFilter === k ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{label}</a>
+			{/each}
 		</div>
 		<p class="text-[11px] text-stone-400">
 			{data.showAll ? '全施設の取引先です。施設のバッジは販売中（濃）／停止中（薄）。' : `${data.facilityName}に設定のある取引先です（販売停止中を含む）。`}
@@ -96,13 +116,26 @@
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm font-medium text-stone-800">
 						{p.name}
-						<span class="ml-1 text-xs font-normal text-stone-400">{data.kindLabels[p.kind]}</span>
+						{#if p.kind === 'member'}
+							<span class="ml-1 rounded bg-amber-100 px-1.5 text-xs font-normal text-amber-800">{data.kindLabels[p.kind]}</span>
+						{:else}
+							<span class="ml-1 text-xs font-normal text-stone-400">{data.kindLabels[p.kind]}</span>
+						{/if}
 					</p>
+					{#if p.kind === 'member'}
+						<!-- 特別会員の専用ページ: ログインID・API キーは無い（公式サイトの会員ログイン） -->
+						<p class="mt-0.5 text-[11px] text-stone-400">
+							会員ログインで見る専用ページ
+							・{adjustRules(p) ? `公開ルール ${adjustRules(p)}件` : '公開プラン未設定'}{hideRules(p) ? `・非表示ルール ${hideRules(p)}件` : ''}
+							{#if p.validFrom || p.validUntil}・公開期間 {p.validFrom ?? '—'} 〜 {p.validUntil ?? '—'}{/if}
+						</p>
+					{:else}
 					<p class="mt-0.5 text-[11px] text-stone-400">
 						ログインID {p.activeAccounts}/{p.accounts}（利用可/発行数）・API キー {p.apiKeys}
 						・{adjustRules(p) ? `公開ルール ${adjustRules(p)}件` : '公開プラン未設定'}{hideRules(p) ? `・非表示ルール ${hideRules(p)}件` : ''}
 						{#if p.validFrom || p.validUntil}・公開期間 {p.validFrom ?? '—'} 〜 {p.validUntil ?? '—'}{/if}
 					</p>
+					{/if}
 				</div>
 				<div class="flex shrink-0 flex-wrap items-center gap-1.5">
 					{#if data.showAll || p.facilities.length > 1}

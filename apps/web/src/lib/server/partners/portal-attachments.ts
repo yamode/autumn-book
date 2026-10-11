@@ -16,7 +16,7 @@ import {
 import { PORTAL_HEADERS, requestMeta, requirePortalApi } from './portal';
 import { logPartnerAccess, PartnerStoreError } from './store';
 
-type PortalEvent = Pick<RequestEvent, 'params' | 'cookies' | 'request'>;
+type PortalEvent = Pick<RequestEvent, 'params' | 'cookies' | 'request' | 'url'>;
 
 /** 入口: 機能の有効化 → 取引先ページの API の検証 */
 export async function requireAttachmentApi(event: PortalEvent) {

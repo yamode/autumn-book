@@ -31,6 +31,13 @@
 // 例外その6（2026-10-10・auth-hardening.md §9 S8）: 公式サイトの仮押さえ（supabase-data.ts createHold / releaseHold）。
 //   book.create_hold（新署名）/ release_hold を anon から外し、KV `hold:<ip>` を通したサーバが接続元 IP と
 //   検証済みセッションの会員 id を添えて呼ぶ（在庫枯渇攻撃の対策。DB 側にも 10 分 20 件の上限）。
+// 例外その7（2026-10-11・docs/vip-member-page.md §13.5）: 特別会員の専用ページ（rms_partners.kind='member'）。
+//   - マイページの「あなた専用のページ」（public.rms_member_pages_for）と、公式マイページ・完了画面・非会員リンクの
+//     専用ページへのリンク（rms_partners.url_token の解決）
+//   - 専用ページの仮押さえ book.create_member_page_hold_group と、取消・日程変更・オプションの入口 book.member_page_*
+//     （lib/server/partners/member-hold.ts・member-bookings.ts）。サーバが Supabase で検証した会員 id と、
+//     料金ルールでサーバが計算した泊明細を渡す（RPC の中でも対象者・予約の持ち主・ページの一致を確かめる）
+//   - 会員のグレードの還元率（book.member_ranks）・部屋タイプ／プランのコードと UUID の対応（booking.rate_plans・pms.room_types）
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

@@ -33,6 +33,26 @@
 	</p>
 {/if}
 
+{#if data.memberPages.length > 0}
+	<!-- あなた専用のページ（本人・家族が対象の特別会員の専用ページ・docs/vip-member-page.md §5.5 D2）。押すとログインのまま専用ページへ -->
+	<section class="mb-8">
+		<h2 class="mb-1 text-lg text-brand-900">{m.account_member_pages_heading()}</h2>
+		<p class="mb-3 text-sm text-stone-500">{m.account_member_pages_note()}</p>
+		<div class="grid gap-3 sm:grid-cols-2">
+			{#each data.memberPages as p (p.href)}
+				<a href={p.href} class="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 transition hover:shadow-md">
+					<div class="min-w-0 flex-1">
+						<p class="break-words font-semibold text-brand-900">{p.name}</p>
+						{#if p.facilityNames.length}<p class="mt-0.5 text-xs text-stone-600">{p.facilityNames.join('・')}</p>{/if}
+						{#if p.via === 'family'}<p class="mt-1 text-xs text-amber-800">{m.account_member_pages_family()}</p>{/if}
+					</div>
+					<span class="shrink-0 text-stone-400">→</span>
+				</a>
+			{/each}
+		</div>
+	</section>
+{/if}
+
 <section>
 	<h2 class="mb-4 text-lg text-brand-900">{m.account_upcoming()}</h2>
 	{#each data.upcoming as b}
@@ -44,6 +64,7 @@
 					<span class="text-xs text-stone-400">{b.code}</span>
 					{#if b.roomCount > 1}<span class="rounded bg-brand-100 px-1.5 text-xs text-brand-700">{m.account_rooms_badge({ n: String(b.roomCount) })}</span>{/if}
 					{#if b.channel === 'ota'}<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-500">{m.account_ota_badge()}</span>{/if}
+					{#if b.memberPage}<span class="rounded bg-amber-100 px-1.5 text-xs text-amber-800">{m.member_page_badge()}</span>{/if}
 				</div>
 				<h3 class="mt-1 text-lg font-semibold text-brand-900">{b.facilityName}</h3>
 				<p class="text-[15px] text-stone-600">{formatDateLong(b.checkin)} から {b.nights}泊 ・ {b.roomName} ・ 大人{b.adults}名</p>
@@ -66,6 +87,7 @@
 				<a href="/account/reservations/{b.code}" class="flex items-center gap-3 px-4 py-3 text-sm hover:bg-stone-50">
 					<span class="rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
 					<span class="flex-1">{b.facilityName} ／ {formatDateLong(b.checkin)}〜</span>
+					{#if b.memberPage}<span class="hidden rounded bg-amber-100 px-1.5 text-xs text-amber-800 sm:inline">{m.member_page_badge()}</span>{/if}
 					<span class="text-stone-400">{b.code}</span>
 				</a>
 			{/each}

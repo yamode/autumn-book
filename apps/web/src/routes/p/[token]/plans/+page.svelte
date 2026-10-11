@@ -18,7 +18,8 @@
   {#snippet below()}
     {#if data.commonPerks.length}
       <section class="mt-6">
-        <p class="text-lg font-bold">{data.portal.partnerName ? `${data.portal.partnerName}様専用特典` : '専用特典'}（すべてのプラン）</p>
+        <!-- 特別会員の専用ページは「（会員名）様専用特典」（§5.2） -->
+        <p class="text-lg font-bold">{data.portal.kind === 'member' ? `${data.portal.member?.name ?? '会員'}様専用特典` : data.portal.partnerName ? `${data.portal.partnerName}様専用特典` : '専用特典'}（すべてのプラン）</p>
         <p class="text-sm text-stone-500">このページからご予約いただいた場合に付きます。</p>
         <div class="mt-4"><PartnerPerkList perks={data.commonPerks} variant="plan" /></div>
       </section>

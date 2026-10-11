@@ -26,6 +26,12 @@
 	// 複数室（docs/official-multi-room.md §8.3・M1）: 部屋ごとのカード・男女・部屋ごとの質問を出す。1 室は従来の画面のまま
 	let rooms = $derived(data.expired ? [] : data.rooms);
 	let multi = $derived(rooms.length > 1);
+	// 特別会員の専用ページ経由の束（docs/vip-member-page.md §13.4.3-4）。公式の束は null
+	let memberPage = $derived(data.expired ? null : data.memberPage);
+	function memberCancelModeLabel(mode: string): string {
+		return mode === 'page' ? m.member_cancel_mode_page() : mode === 'rank' ? m.member_cancel_mode_rank() : m.member_cancel_mode_favorable();
+	}
+	const perkTitles = (list: { title: string }[] | null | undefined) => (list ?? []).map((p) => p.title).filter(Boolean).join('／');
 	let totalAdults = $derived(rooms.reduce((s, r) => s + r.adults, 0) || (data.expired ? 0 : data.hold.adults));
 	// 部屋ごとの男女の内訳（男性の人数。女性は部屋の大人の人数から引く）。0 始まりの部屋の番号ごと
 	let males = $state<string[]>([]);
@@ -223,6 +229,14 @@
 		</div>
 	{:else}
 		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
+		{#if memberPage}
+			<!-- 特別会員の専用ページから: 戻り先は専用ページ（料金カレンダー） -->
+			<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
+				<a href={memberPage.backHref} class="max-w-[16rem] truncate hover:underline">{memberPage.pageName}</a>
+				<span aria-hidden="true">/</span>
+				<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
+			</nav>
+		{:else}
 		<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
 			<a href="/search?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.common_facility_list()}</a>
 			<span aria-hidden="true">/</span>
@@ -237,7 +251,15 @@
 			<span aria-hidden="true">/</span>
 			<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
 		</nav>
+		{/if}
 		<Stepper {steps} current={1} />
+		{#if memberPage}
+			<!-- 特別会員の専用ページ経由・専用料金（専用特典は部屋ごと・右の予約内容に） -->
+			<div class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
+				<p class="font-medium text-brand-900">{m.hold_member_page_heading({ page: memberPage.pageName })}</p>
+				<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
+			</div>
+		{/if}
 		<!-- 選び直し: 仮押さえを解放してからプラン詳細へ（押さえたまま戻ると期限まで部屋が減ったまま） -->
 		<form method="POST" action="?/release" class="mt-2 flex flex-wrap items-baseline gap-x-2">
 			<input type="hidden" name="holdId" value={data.hold.id} />
@@ -681,6 +703,7 @@
 										<p class="font-medium text-brand-900">{r.roomName}</p>
 										<p class="text-xs text-stone-600">{r.planName}</p>
 										<p class="flex justify-between text-xs text-stone-600"><span>{m.hold_room_adults({ adults: String(r.adults) })}</span><span class="tabular-nums">{formatPrice(r.quote.total)}</span></p>
+										{#if perkTitles(r.memberPerks)}<p class="mt-0.5 text-xs text-amber-800">{m.member_page_perks()}: {perkTitles(r.memberPerks)}</p>{/if}
 									</div>
 								{/each}
 							</dd>
@@ -688,6 +711,9 @@
 					{:else}
 						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
 						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+						{#if perkTitles(rooms[0]?.memberPerks)}
+							<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.member_page_perks()}</dt><dd class="max-w-[60%] text-right text-amber-800">{perkTitles(rooms[0]?.memberPerks)}</dd></div>
+						{/if}
 					{/if}
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_checkin()}</dt><dd>{formatDateLong(data.hold.checkin)}</dd></div>
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
@@ -715,6 +741,10 @@
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
 					{/if}
 				</div>
+				{#if memberPage}
+					<!-- 特別会員: キャンセル料の計算の方式（下の規定はプランの規定。方式が「お客さまに有利な方」なら安い方で計算） -->
+					<p class="mt-3 text-xs text-stone-600">{m.member_page_cancel_mode({ mode: memberCancelModeLabel(memberPage.cancelMode.mode) })}</p>
+				{/if}
 				{#if multi}
 					<!-- キャンセル規定は部屋ごと（部屋ごとにプランが違うため） -->
 					{#each rooms as r (r.index)}

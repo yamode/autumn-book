@@ -21,6 +21,8 @@
   import { planSummary } from '$lib/plan-summary';
   import { streamed } from '$lib/streamed.svelte';
   import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
+  import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
+  import { memberCart } from '$lib/member-cart.svelte';
 
   // below: 検索バーの下・一覧の上に差し込む中身（プランのご紹介の「専用特典」）
   let { data, view, below }: { data: StayPageData; view: 'room' | 'plan'; below?: Snippet } = $props();
@@ -312,6 +314,39 @@
     const id = decodeURIComponent(location.hash.slice(1));
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
+  // ---- 特別会員の専用ページ（docs/vip-member-page.md §13.4.2・§13.4.3）----
+  // 会員でログインしているときだけ「＋ もう 1 室追加」（かご）と会員特典の 2 段目を出す。確認モード（会員なし）は出さない
+  const memberMode = $derived(data.portal.kind === 'member' && !!data.portal.member);
+  $effect(() => {
+    if (memberMode) memberCart.limit = data.booking.maxRooms;
+  });
+  const payOf = (planCode: string, planName: string) =>
+    data.cartPlans.find((c) => c.planCode === planCode && c.planName === planName)?.pay ?? { onsite: true, prepay: true };
+  /** 1 室をかごへ（同じ日程・同じ人数の 1 室ぶん。金額は表示用・確定はサーバが計算し直す） */
+  function addToCart(r: Row, p: Params): boolean {
+    if (!p.date) return false;
+    const perRoom = r.total != null ? Math.round(r.total / Math.max(1, p.rooms)) : r.perPerson * p.guests * p.nights;
+    return memberCart.add(
+      {
+        facilityId: data.portal.facilityId,
+        facilitySlug: data.portal.facilitySlug,
+        checkin: p.date,
+        nights: p.nights,
+        roomCode: r.roomCode,
+        roomTypeId: r.roomCode,
+        roomName: r.roomName,
+        planCode: r.planCode,
+        planName: r.planName,
+        displayName: partnerPlanName(data.planNames, r.planCode, r.planName),
+        adults: p.guests,
+        total: perRoom,
+        pay: payOf(r.planCode, r.planName),
+        remaining: r.remaining
+      },
+      data.booking.maxRooms,
+      () => confirm('かごには別の日程・施設のお部屋が入っています。かごを空にして、このお部屋を入れますか？')
+    );
+  }
   const checkout = $derived(dated ? addDaysIsoClient(data.params.date, data.params.nights) : '');
   const guestText = $derived(`大人${data.params.guests}名${data.params.rooms > 1 ? ` × ${data.params.rooms}室` : ''}`);
   const capacityText = (r: PartnerRoomContent) => (r.capacityMin === r.capacityMax ? `${r.capacityMax}名` : `${r.capacityMin}名〜${r.capacityMax}名`);
@@ -360,6 +395,10 @@
     </p>
     {#if dated && canBook}
       <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
+      {#if memberMode}
+        <!-- 特別会員: 別のお部屋・プランと合わせて 1 回で予約するかご（最大 4 室） -->
+        <button type="button" onclick={() => addToCart(r, data.params)} class="rounded-md border border-green-600 px-3 py-1.5 text-sm font-bold text-green-700 hover:bg-green-50">＋ もう 1 室追加</button>
+      {/if}
     {:else if !dated}
       <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
     {/if}
@@ -383,6 +422,12 @@
     />
   </div>
   {#if below}{@render below()}{/if}
+  {#if memberMode && data.memberBenefits}
+    <!-- 特典の 2 段目（会員制度から自動で付くもの）。1 段目の専用特典はプランの「専用特典つき」・プラン詳細で -->
+    <div class="mt-6">
+      <MemberBenefitList rankLabel={data.portal.member?.rankLabel ?? ''} lines={data.memberBenefits} cancelRules={data.memberCancel?.mode === 'rank' ? null : (data.memberCancel?.rules ?? null)} />
+    </div>
+  {/if}
 
   <div class="mt-6 flex flex-wrap items-end justify-between gap-3">
     <div>
@@ -615,5 +660,8 @@
   onPickDate={pickDateForDetail}
   onUndated={undateDetail}
   onChangeGuests={() => reopenSearch('guests')}
+  memberBenefits={memberMode ? data.memberBenefits : null}
+  memberRankLabel={data.portal.member?.rankLabel ?? ''}
+  onAddToCart={memberMode ? () => (detailRow ? addToCart(detailRow, detailParams) : false) : null}
 />
 <PartnerRoomModal bind:room={infoRoom} {token} />

@@ -3,6 +3,7 @@
 // 特別レート（pricing）は読まない（2026-10-09・docs/partner-rank-rates.md §7: 編集は RMS。旧 parsePartnerSettings は削除）。
 import {
   normalizePartnerBookingSettings,
+  PARTNER_FACILITY_MEMBER_KEYS,
   PARTNER_FACILITY_SETTING_KEYS,
   readPartnerFacilityOverrides,
   validatePartnerBookingSettings,
@@ -107,8 +108,14 @@ export function parsePartnerFacilityForm(fd: FormData): PartnerFacilityFormInput
   if (!facilityRef) throw new PartnerFormError('施設を選び直してください（画面を再読み込みしてください）。');
   const sortOrder = Math.round(Number(str(fd, 'sort_order') || 0));
   if (!Number.isFinite(sortOrder) || sortOrder < -999 || sortOrder > 999) throw new PartnerFormError('並び順は -999〜999 の整数で指定してください。');
-  const normalized = normalizePartnerBookingSettings(parseJsonField(fd, 'facility_booking', '施設の予約設定'));
-  const own = Object.fromEntries(PARTNER_FACILITY_SETTING_KEYS.map((k) => [k, normalized[k]])) as PartnerFacilityOwnSettings;
+  const raw = parseJsonField(fd, 'facility_booking', '施設の予約設定');
+  const normalized = normalizePartnerBookingSettings(raw);
+  const own = Object.fromEntries(PARTNER_FACILITY_SETTING_KEYS.map((k) => [k, normalized[k]])) as unknown as PartnerFacilityOwnSettings;
+  // 特別会員のキャンセル方式・専用ページの規定（docs/vip-member-page.md §13.4.5）: 送られてきたときだけ（取引先の施設タブは送らない＝今の値のまま）
+  const rawObj = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  for (const k of PARTNER_FACILITY_MEMBER_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(rawObj, k)) (own as Record<string, unknown>)[k] = normalized[k];
+  }
   return {
     facilityRef,
     patch: {

@@ -73,6 +73,29 @@
 <main class="mx-auto max-w-md px-4 py-12 sm:py-16">
   {#if data.unavailable}
     <p class="rounded-xl border border-stone-200 bg-white p-6 text-base leading-6">{data.unavailable}</p>
+  {:else if data.memberState}
+    <!-- 特別会員の専用ページ（docs/vip-member-page.md §13.4.1）: 取引先のログインフォームは出さない。
+         料金・特典・プラン名は出さず、施設名と会員ログインの案内だけ（対象の会員はサーバが料金カレンダーへ移す） -->
+    <section class="rounded-xl border border-stone-200 bg-white p-6 sm:p-8">
+      {#if data.memberState === 'denied'}
+        <h2 class="mb-2 text-2xl font-bold">ご招待の会員さま専用です</h2>
+        <p class="mb-5 text-base leading-7 text-stone-600">
+          {#if data.memberName}{data.memberName} 様、{/if}このページはご招待した会員さま専用のページです。ご招待の会員さまのアカウントでログインしてください。
+        </p>
+        <div class="flex flex-col gap-2 sm:flex-row">
+          <!-- 公式のログアウトは POST（ログアウト後は公式サイトのトップへ） -->
+          <form method="POST" action={data.memberLogoutHref ?? '/auth/logout'} data-sveltekit-reload class="contents">
+            <button type="submit" class="rounded-lg border border-stone-300 px-4 py-3 text-center text-base font-medium text-stone-700 transition hover:bg-stone-50">ログアウト</button>
+          </form>
+          <a href="/account" class="rounded-lg px-4 py-3 text-center text-base text-stone-500 underline hover:text-stone-700">マイページへ</a>
+        </div>
+      {:else}
+        <h2 class="mb-2 text-2xl font-bold">会員ログイン</h2>
+        <p class="mb-6 text-base leading-7 text-stone-600">ご招待の会員さま専用のページです。公式サイトの会員アカウント（メールアドレスに届く認証コード）でログインしてください。</p>
+        <a href={data.memberLoginHref ?? '/auth/login'} data-sveltekit-reload class="block w-full rounded-lg bg-accent-600 px-4 py-3 text-center text-base font-medium text-white transition hover:bg-accent-500">会員ログイン</a>
+        <p class="mt-4 text-sm leading-6 text-stone-500">公式サイトでログイン済みの場合は、そのままこのページが開きます。ログイン後に表示されないときは、ご招待した宿へお問い合わせください。</p>
+      {/if}
+    </section>
   {:else}
     <form
       method="POST"

@@ -37,12 +37,22 @@
 		checked_in: { h: m.gcancel_err_stayed_h(), body: m.gcancel_err_stayed(), phone: false },
 		checked_out: { h: m.gcancel_err_stayed_h(), body: m.gcancel_err_stayed(), phone: false },
 		room_not_cancellable: { h: m.gcancel_err_room_h(), body: m.gcancel_err_room(), phone: true },
+		// 特別会員の専用ページ経由の予約（取消・変更は専用ページのご予約一覧から・docs/vip-member-page.md §13.4.4）
+		member_page: { h: m.gcancel_member_page_h(), body: m.gcancel_member_page(), phone: false },
 		error: { h: m.gcancel_err_generic_h(), body: m.gcancel_err_generic(), phone: true }
 	};
 
 	let blocked = $derived(
 		v.state === 'blocked' ? (REASON_TEXT[v.reason] ?? REASON_TEXT.not_found) : null
 	);
+	// 特別会員の専用ページの予約詳細（/p/<token>/bookings/<予約番号>）。会員ログインのうえで開く
+	let memberPageUrl = $derived.by(() => {
+		const fromView = v.state === 'blocked' && 'memberPage' in v ? v.memberPage?.url : null;
+		const fromForm = form && 'memberPage' in form ? (form.memberPage as { url: string | null } | undefined)?.url : null;
+		const url = fromView ?? fromForm ?? null;
+		// 同じサイトの相対パスだけ（念のため）
+		return url && url.startsWith('/p/') ? url : null;
+	});
 
 	function ruleLabel(daysBefore: number): string {
 		if (daysBefore < 0) return 'ご連絡なく不泊';
@@ -136,7 +146,11 @@
 					{blocked.body}
 				{/if}
 			</p>
-			{#if blocked.phone}
+			{#if v.reason === 'member_page'}
+				{#if memberPageUrl}
+					<a class="mt-4 inline-block rounded-lg bg-brand-800 px-5 py-2.5 text-white hover:bg-brand-700" href={memberPageUrl}>{m.gcancel_member_page_link()}</a>
+				{/if}
+			{:else if blocked.phone}
 				<p class="mt-4 text-stone-700">
 					{#if v.booking?.facility_phone}
 						{m.gcancel_phone({ phone: v.booking.facility_phone })}
@@ -339,6 +353,9 @@
 		{#if form?.reason}
 			<p class="mt-6 rounded-lg bg-red-50 p-3 text-sm text-red-700">
 				{REASON_TEXT[form.reason]?.body || m.gcancel_err_generic()}
+				{#if form.reason === 'member_page' && memberPageUrl}
+					<a href={memberPageUrl} class="mt-2 block font-medium underline">{m.gcancel_member_page_link()}</a>
+				{/if}
 			</p>
 		{/if}
 

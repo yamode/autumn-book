@@ -17,11 +17,142 @@ import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import { listStagedAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
 import { portalAttachmentView } from '$lib/server/partners/portal-attachments';
 import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
+import type { RequestEvent } from '@sveltejs/kit';
+import {
+  CANCEL_POLICY_LABELS,
+  earnEstimateOf,
+  isMemberPage,
+  memberBenefitLines,
+  memberMaxRooms,
+  memberPageBookingOpen,
+  perksSnapshotOf,
+  type MemberHoldRoom
+} from '$lib/partner-member-page';
+import { loadMemberPagePlans, memberHoldBack, memberPageHold, memberPlanKey } from '$lib/server/partners/member-hold';
+import { HOLD_NAV_COOKIE } from '$lib/booking-nav';
+import { holdRateCheck } from '$lib/server/hold-rate-limit';
+import { bookingSessionId } from '$lib/server/supabase-data';
+import { logPartnerAccess, type PartnerContext, type PartnerSessionAccount } from '$lib/server/partners/store';
+import { deferTask, portalLogActor } from '$lib/server/partners/portal';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+// ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §13.4.3・§14） ----
+// 確認画面（GET）: 部屋ごとの専用料金・このプランの専用特典・会員特典・獲得予定ポイントの目安・キャンセル方式と「予約へ進む」だけ。
+// 宿泊者・支払・ポイントの入力は公式の予約確認（/booking/hold）に任せる。
+async function memberBookLoad(
+  event: RequestEvent<{ token: string }>,
+  ctx: { db: SupabaseClient; partner: PartnerContext; session: PartnerSessionAccount }
+) {
+  const { db, partner, session } = ctx;
+  const token = event.params.token;
+  if (!memberPageBookingOpen(partner)) throw redirect(303, `/p/${token}/calendar`);
+  const q = event.url.searchParams;
+  const roomCode = q.get('room') ?? '';
+  const planCode = q.get('plan') ?? '';
+  const planName = q.get('name') ?? '';
+  if (!roomCode || !planCode) throw redirect(303, `/p/${token}/calendar`);
+  const s = partner.booking_settings;
+  const checkIn = /^\d{4}-\d{2}-\d{2}$/.test(q.get('date') ?? '') ? (q.get('date') as string) : todayJst();
+  const guests = Math.min(6, Math.max(1, Math.round(Number(q.get('guests') ?? 2)) || 2));
+  const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
+  const roomCount = Math.min(memberMaxRooms(s), Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
+  const holdRooms: MemberHoldRoom[] = Array.from({ length: roomCount }, () => ({ roomCode, planCode, planName, adults: guests }));
+  const [quote, plans, contents] = await Promise.all([
+    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: holdRooms.map((r) => ({ adults: r.adults })) }, { credit: false }),
+    loadMemberPagePlans(db, partner.facility_id).catch(() => new Map()),
+    loadPartnerContents(db, partner).catch(() => null)
+  ]);
+  const plan = plans.get(memberPlanKey(planCode, planName)) ?? null;
+  const total = quote.ok ? quote.total : 0;
+  const roomContent = contents?.rooms.find((r) => r.code === roomCode);
+  deferTask(
+    event,
+    logPartnerAccess(db, {
+      partnerId: partner.id,
+      ...portalLogActor(session, { page: 'book', roomCode, planCode, date: checkIn, nights, rooms: roomCount }),
+      channel: 'web',
+      action: 'view',
+      ip: requestMeta(event).ip
+    })
+  );
+  return {
+    portal: portalHeader(partner, session),
+    // 予約の施設（フォームの hidden facility_id）
+    facilityId: partner.facility_id,
+    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights, roomCount },
+    photo: roomContent?.photos[0]?.url ?? null,
+    // 専用料金（部屋ごとの泊明細 quote.rooms[i].nights・合計・入湯税）。取引先の予約時決済割（quote.prepay）は使わない（公式の早期決済割が付く・Q3）
+    quote,
+    // このプランに付く専用特典（1 段目）
+    perks: perksSnapshotOf(s.perks, planCode) ?? [],
+    // 会員特典（2 段目・還元率・キャンセル方式・ポイント利用可）。確認モードは null
+    memberBenefits: session.member ? memberBenefitLines(session.member.rankLabel, session.member.rewardRate, s.cancelPolicyMode) : null,
+    // 獲得予定ポイントの目安（専用料金の合計 × 還元率。ポイント利用・割引の前）
+    earnEstimate: session.member ? earnEstimateOf(total, session.member.rewardRate) : 0,
+    cancelMode: { mode: s.cancelPolicyMode, label: CANCEL_POLICY_LABELS[s.cancelPolicyMode], rules: s.cancelPolicyMode === 'rank' ? null : s.cancelRules },
+    // このプランの支払方法（会員）。公式サイトで公開していないプランは null（予約へ進めない・Q1）
+    pay: plan?.pay ?? null,
+    canBook: quote.ok && !!plan && canBookFor(checkIn, s) && !session.preview,
+    deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
+    back: partnerBackTarget(token, q.get('from')),
+    // 「予約へ進む」のフォームの hidden rooms（JSON）の元
+    holdRooms
+  };
+}
+
+/** 専用ページの確認画面の data.member（docs/vip-member-page.md §14） */
+export type MemberBookData = Awaited<ReturnType<typeof memberBookLoad>>;
+
+// 専用ページの「予約へ進む」（POST・default）: 仮押さえ → 公式の予約確認へ
+async function memberBookHold(
+  event: RequestEvent<{ token: string }>,
+  ctx: { db: SupabaseClient; partner: PartnerContext; session: PartnerSessionAccount }
+) {
+  const fd = await event.request.formData();
+  const ip = event.request.headers.get('cf-connecting-ip') ?? requestMeta(event).ip ?? 'unknown';
+  // 接続元ごとの回数制限（公式と同じ KV hold:<ip>）。DB 側にも同じ上限がある（束で数える・公式と共用）
+  if (!(await holdRateCheck(event.platform, ip))) {
+    return fail(429, { message: 'お申し込みが集中しています。しばらく時間をおいてからお試しください。', code: 'rate_limited' as const });
+  }
+  let partner: PartnerContext;
+  try {
+    partner = await portalFacilityContext(ctx.db, ctx.partner, String(fd.get('facility_id') ?? ''));
+  } catch (e) {
+    if (e instanceof PartnerStoreError) return fail(409, { message: e.message, code: 'invalid' as const });
+    throw e;
+  }
+  const res = await memberPageHold({ db: ctx.db, partner, session: ctx.session, fd, sessionId: bookingSessionId(event.cookies), clientKey: ip });
+  if (!res.ok) return fail(res.status, { message: res.message, code: res.code, ...(res.soldOut ? { soldOut: res.soldOut } : {}) });
+  const back = memberHoldBack(event.params.token, partner, res.checkIn, res.nights, res.rooms);
+  event.cookies.set(HOLD_NAV_COOKIE, JSON.stringify({ id: res.groupId, back, via: '' }), {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 2
+  });
+  deferTask(
+    event,
+    logPartnerAccess(ctx.db, {
+      partnerId: partner.id,
+      ...portalLogActor(ctx.session, { group_id: res.groupId, date: res.checkIn, nights: res.nights, rooms: res.rooms.length }),
+      channel: 'web',
+      action: 'member_hold',
+      ip
+    })
+  );
+  throw redirect(303, `/booking/hold?id=${res.groupId}`);
+}
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
   const { db, partner, session } = await requirePortalSession(event);
   const token = event.params.token;
+  // 特別会員の専用ページ: data は { portal, member }（取引先の項目は無い）。画面は data.portal.kind === 'member' で
+  // data.member だけを使う（型は取引先の形のまま・member は MemberBookData | null。docs/vip-member-page.md §14）
+  if (isMemberPage(partner.kind)) {
+    const member = await memberBookLoad(event, { db, partner, session });
+    return { portal: member.portal, member } as never;
+  }
   if (!isPartnerBookingOpen(partner)) throw redirect(303, `/p/${token}/calendar`);
 
   const q = event.url.searchParams;
@@ -78,6 +209,8 @@ export const load = async (event) => {
 
   return {
     portal: portalHeader(partner, session),
+    // 特別会員の専用ページの確認画面（取引先は null）
+    member: null as MemberBookData | null,
     // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
     target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights, roomCount },
     // 右欄の見出し（一休の形: 写真・施設名・所在地）と左カラムのキャンセルポリシー・注意事項
@@ -141,6 +274,8 @@ export const load = async (event) => {
 export const actions = {
   default: async (event) => {
     const { db, partner: selected, session } = await requirePortalSession(event);
+    // 特別会員の専用ページ: 仮押さえ → 公式の予約確認（/booking/hold）へ（取引先予約の確定はしない）
+    if (isMemberPage(selected.kind)) return memberBookHold(event, { db, partner: selected, session });
     const fd = await event.request.formData();
     const input = parseBookingForm(fd);
     try {

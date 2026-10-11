@@ -11,14 +11,20 @@
 // 開ける（ab_fac を切り替えても一覧へ戻さない）。施設タブの操作は requireStaffFacility（Book の施設・アクセス）を通す。
 // 読み込みの分担（2026-10-10・施設タブの切替を軽くする）: 施設に関係しない読み込みは ./+layout.server.ts（?fac= を読まないので
 // タブの切替ではやり直さない）。この load は施設タブの分だけで、プレビュー・料金の元・計算の状態は後から流す（previewInfo）。
+// 特別会員の専用ページ（kind='member'・2026-10-11・docs/vip-member-page.md §13.4.5）: isMemberPage・対象の会員（members・
+// ?/addMember・?/removeMember・?/searchMembers・admin のみ）・施設タブのキャンセル方式と規定（facility.cancelPolicy・
+// ?/saveFacility の facility_booking に cancelPolicyMode / cancelRules）・最大室数は 1〜4。支払方法は要らない（公式予約の支払方法）。
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { redirect, type RequestEvent } from '@sveltejs/kit';
+import { fail, redirect, type RequestEvent } from '@sveltejs/kit';
+import { isMemberPage, memberMaxRooms } from '$lib/partner-member-page';
+import { adminFindMembers, bookAdmin, linkMemberErrorText } from '$lib/server/admin-app-data';
 import { ADVANCE_PLAN_CODE, isRetiredPlanName } from '$lib/partner-pricing';
 import {
 	buildPartnerFacilitySettings,
 	normalizeCreditDeposit,
 	normalizeCreditDepositRemainder,
 	normalizePartnerBookingSettings,
+	PARTNER_FACILITY_MEMBER_KEYS,
 	PARTNER_FACILITY_SETTING_KEYS,
 	readPartnerFacilityOverrides,
 	type PartnerFacilityOwnSettings
@@ -40,7 +46,10 @@ import {
 } from '$lib/server/partners/booking';
 import {
 	addDaysIso,
+	addPartnerMember,
 	bookFacilityMeta,
+	listPartnerMembers,
+	removePartnerMember,
 	createPartnerAccount,
 	deletePartner,
 	deletePartnerAccount,
@@ -299,7 +308,12 @@ export const load: PageServerLoad = async (event) => {
 					pricing: row.pricing,
 					sortOrder: row.sort_order,
 					// 施設ごとのキー（取引先ページに出ている値。施設に無いキーは共通の旧い値で補われる）
-					own: Object.fromEntries(PARTNER_FACILITY_SETTING_KEYS.map((k) => [k, partner.booking_settings[k]])) as PartnerFacilityOwnSettings,
+					own: Object.fromEntries(
+						[...PARTNER_FACILITY_SETTING_KEYS, ...PARTNER_FACILITY_MEMBER_KEYS].map((k) => [k, partner.booking_settings[k]])
+					) as unknown as PartnerFacilityOwnSettings,
+					// 特別会員: キャンセル方式（favorable / page / rank）と専用ページの規定（rate は 0〜1）・最大室数（1〜4）
+					cancelPolicy: { mode: partner.booking_settings.cancelPolicyMode, rules: partner.booking_settings.cancelRules },
+					maxRooms: isMemberPage(partner.kind) ? memberMaxRooms(partner.booking_settings) : partner.booking_settings.maxRooms,
 					// N6 の上書き（キーがあるものだけ）
 					overrides: readPartnerFacilityOverrides(row.facility_settings),
 					bookingOpen: isPartnerBookingOpen(partner),
@@ -315,6 +329,10 @@ export const load: PageServerLoad = async (event) => {
 		groupInquiries:
 			partner.kind === 'agent' ? listRecentGroupInquiriesOfPartner(scope.db, partner.id, 20).catch(() => []) : Promise.resolve([]),
 		kindLabels: PARTNER_KIND_LABELS,
+		// 特別会員の専用ページか（法人向けの欄を隠し、対象の会員・キャンセル規定を出す）
+		isMemberPage: isMemberPage(partner.kind),
+		// 対象の会員（self）と家族として使える会員（family・読み取り）。取引先は []。後から流す（読めなければ []）
+		members: isMemberPage(partner.kind) ? listPartnerMembers(scope.db, partner.id).catch(() => []) : Promise.resolve([]),
 		today,
 		partner: {
 			id: partner.id,
@@ -556,6 +574,8 @@ export const actions: Actions = {
 		try {
 			const { db, partner, userId, view } = await commonScope(event);
 			const input = parsePartnerCommonForm(await event.request.formData());
+			// 種別: 特別会員のページは特別会員のまま（フォームの選択肢に無い）。取引先を特別会員には変えない（会員詳細から作る）
+			if (isMemberPage(partner.kind)) input.kind = 'member';
 			// デポジットの設定は専用のアクション（setCreditDeposit）で保存する。画面に残った古い値で上書きしないよう、今の DB の値を残す
 			const current = normalizePartnerBookingSettings(partner.common_settings);
 			input.booking_settings = {
@@ -565,7 +585,7 @@ export const actions: Actions = {
 			};
 			// 予約を受け付けている施設があるときは、支払方法が要る
 			const accepting = view.bundle.facilities.filter((f) => !f.synthetic && f.enabled && f.booking_enabled);
-			if (accepting.length && !input.booking_settings.paymentOptions.length) {
+			if (!isMemberPage(partner.kind) && accepting.length && !input.booking_settings.paymentOptions.length) {
 				throw new PartnerStoreError(`予約を受け付けている施設（${accepting.map((f) => f.name).join('・')}）があるため、支払方法を1つ以上選んでください。`);
 			}
 			await updatePartnerCommon(db, partner, userId, input);
@@ -583,9 +603,13 @@ export const actions: Actions = {
 			const input = parsePartnerFacilityForm(fd);
 			const { db, userId, fac, view } = await facilityScope(event, input.facilityRef);
 			if (!view.row) throw new PartnerStoreError(`${fac.name}では販売していません。先に「この施設で販売する」でオンにしてください。`, 409, 'facility_off');
-			if (input.patch.enabled && input.patch.booking_enabled && !normalizePartnerBookingSettings(view.partner.common_settings).paymentOptions.length) {
+			const member = isMemberPage(view.partner.kind);
+			if (!member && input.patch.enabled && input.patch.booking_enabled && !normalizePartnerBookingSettings(view.partner.common_settings).paymentOptions.length) {
 				throw new PartnerStoreError('予約を受け付けるときは、共通の「支払方法」を1つ以上選んで保存してください。');
 			}
+			// 特別会員: 最大室数は 1〜4（公式と同じ・DB の上限が 4）。取引先はキャンセル方式・規定を保存しない
+			if (member && input.overrides.maxRooms !== undefined) input.overrides.maxRooms = memberMaxRooms({ maxRooms: input.overrides.maxRooms });
+			if (!member) for (const k of PARTNER_FACILITY_MEMBER_KEYS) delete (input.own as Record<string, unknown>)[k];
 			await savePartnerFacility(
 				db,
 				view.partner,
@@ -595,6 +619,51 @@ export const actions: Actions = {
 			);
 			return { facilitySaved: fac.bookFacilityId };
 		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	// ---- 特別会員の専用ページ: 対象の会員（admin のみ・取引先の共通の操作と同じ権限） ----
+	// 会員を探す（会員番号・メールアドレス・電話番号）
+	searchMembers: async (event) => {
+		try {
+			const { partner } = await commonScope(event);
+			if (!isMemberPage(partner.kind)) return fail(400, { memberError: '特別会員のページではありません。' });
+			const q = String((await event.request.formData()).get('q') ?? '').trim();
+			if (q.length < 3) return fail(400, { memberQuery: q, memberError: '会員番号・メールアドレス・電話番号を入れてください。' });
+			try {
+				const found = (await adminFindMembers(bookAdmin(event), q)) ?? [];
+				return { memberQuery: q, candidates: found };
+			} catch (e) {
+				return fail(400, { memberQuery: q, memberError: linkMemberErrorText(e) });
+			}
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+	// 対象の会員に足す（member_user_id）
+	addMember: async (event) => {
+		try {
+			const { db, partner, userId } = await commonScope(event);
+			const memberUserId = String((await event.request.formData()).get('member_user_id') ?? '').trim();
+			await addPartnerMember(db, partner, memberUserId, userId);
+			return { memberAdded: memberUserId };
+		} catch (e) {
+			if (e instanceof PartnerStoreError) return fail(e.status, { memberError: e.message });
+			return actionFailure(e);
+		}
+	},
+	// 対象の会員から外す（家族として使えている会員は PMS の家族で外す）
+	removeMember: async (event) => {
+		try {
+			const { db, partner } = await commonScope(event);
+			if (!isMemberPage(partner.kind)) throw new PartnerStoreError('特別会員のページではありません。');
+			const memberUserId = String((await event.request.formData()).get('member_user_id') ?? '').trim();
+			// このページ経由で生きている予約が残っている会員は外せない（「このページ経由のご予約が残っているため外せません（N件）」・DB でも止まる）
+			await removePartnerMember(db, partner.id, memberUserId);
+			return { memberRemoved: memberUserId };
+		} catch (e) {
+			if (e instanceof PartnerStoreError) return fail(e.status, { memberError: e.message });
 			return actionFailure(e);
 		}
 	},

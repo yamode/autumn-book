@@ -31,6 +31,55 @@ import {
 } from '$lib/server/partners/booking-attachments';
 import { portalAttachmentView } from '$lib/server/partners/portal-attachments';
 import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
+import { error, type RequestEvent } from '@sveltejs/kit';
+import { isMemberPage, memberPageHrefOf } from '$lib/partner-member-page';
+import { createSupabaseServerClient } from '$lib/server/auth';
+import { sbMyReservations } from '$lib/server/supabase-data';
+import { memberPageReservations } from '$lib/server/partners/member-bookings';
+import { deferTask, portalLogActor } from '$lib/server/partners/portal';
+import { logPartnerAccess, type PartnerContext, type PartnerSessionAccount } from '$lib/server/partners/store';
+
+// ---- 特別会員の専用ページの「ご予約一覧」（docs/vip-member-page.md §13.4.3b） ----
+// 会員の authenticated クライアントで公式マイページと同じ my_reservations を読み、このページから本人が予約した分だけ。
+// 施設タブで絞らない（ページ全体の予約・施設名は予約の施設）。確認モード（会員なし）は一覧を出さない
+async function memberBookingsLoad(event: RequestEvent<{ token: string }>, ctx: { partner: PartnerContext; session: PartnerSessionAccount; db: import('@supabase/supabase-js').SupabaseClient }) {
+  const { partner, session } = ctx;
+  const token = event.params.token;
+  if (!session.member) {
+    return { portal: portalHeader(partner, session), preview: true as const, reservations: [], message: '確認モードではご予約一覧は表示されません。' };
+  }
+  let all;
+  try {
+    all = await sbMyReservations(createSupabaseServerClient(event as RequestEvent));
+  } catch {
+    throw error(503, 'ご予約一覧を読み込めませんでした。時間をおいてお試しください。');
+  }
+  const facilityName = (id: string) => partner.facilities.find((f) => f.id === id)?.name ?? '';
+  const reservations = memberPageReservations(all, partner.id, session.member.userId).map((r) => ({
+    code: r.code,
+    href: memberPageHrefOf(token, r.code),
+    status: r.status,
+    checkin: r.checkin,
+    checkout: r.checkout,
+    nights: r.nights,
+    adults: r.rooms && r.rooms.length > 1 ? r.rooms.filter((x) => !x.cancelled).reduce((s, x) => s + x.adults, 0) || r.rooms.reduce((s, x) => s + x.adults, 0) : r.adults,
+    roomCount: r.roomCount ?? 1,
+    liveRooms: (r.rooms ?? []).filter((x) => !x.cancelled).length || (r.status === 'cancelled' ? 0 : 1),
+    total: r.total,
+    pointsUsed: r.pointsUsed,
+    pointsEarned: r.pointsEarned,
+    payment: r.payment,
+    paymentStatus: r.paymentStatus,
+    facilityId: r.facilityUuid,
+    facilityName: facilityName(r.facilityUuid),
+    createdAt: r.createdAt
+  }));
+  deferTask(event, logPartnerAccess(ctx.db, { partnerId: partner.id, ...portalLogActor(session, { page: 'bookings' }), channel: 'web', action: 'booking_view', ip: requestMeta(event).ip }));
+  return { portal: portalHeader(partner, session), preview: false as const, reservations, message: null as string | null };
+}
+
+/** 専用ページの「ご予約一覧」の data.member */
+export type MemberBookingsData = Awaited<ReturnType<typeof memberBookingsLoad>>;
 
 // 予約画面・支払の再開から戻ったときに出す結果（ブラウザが確定の連絡を済ませた後。表示だけに使う）
 const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'unpaid', 'refunded_late', 'card_saved', 'card_updated', 'card_late', 'card_expiry']);
@@ -38,6 +87,11 @@ const RESULT_STATUSES = new Set<PaymentResult['status']>(['paid', 'already', 'un
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
   const { db, partner, session } = await requirePortalSession(event);
+  // 特別会員の専用ページ: data は { portal, member }（取引先の項目は無い）。画面は data.portal.kind === 'member' で data.member を使う
+  if (isMemberPage(partner.kind)) {
+    const member = await memberBookingsLoad(event, { db, partner, session });
+    return { portal: member.portal, member } as never;
+  }
   let payment: PaymentResult | { status: 'error'; message: string } | null = null;
   const q = event.url.searchParams;
   // Stripe の本人認証でリダイレクトした決済手段の戻り（?payment_intent= / ?setup_intent=。カードは通常モーダルで済み、ここへは来ない）:
@@ -195,6 +249,8 @@ export const load = async (event) => {
     })
   );
   return {
+    // 特別会員の専用ページのご予約一覧（取引先は null）
+    member: null as MemberBookingsData | null,
     // 添付ファイルの欄の設定（off なら null・画面に出さない）
     attachmentConfig: attEnabled ? { accept: PARTNER_ATTACHMENT_ACCEPT, hint: PARTNER_ATTACHMENT_HINT } : null,
     portal: portalHeader(partner, session),
@@ -231,6 +287,8 @@ function priceOf(b: {
 export const actions = {
   cancel: async (event) => {
     const { db, partner, session } = await requirePortalSession(event);
+    // 特別会員の専用ページの取消は予約詳細（/bookings/<予約番号>）から
+    if (isMemberPage(partner.kind)) throw error(404, 'ページが見つかりません。');
     const fd = await event.request.formData();
     try {
       const b = await cancelPartnerBooking(db, partner, String(fd.get('id') ?? ''), 'partner', {

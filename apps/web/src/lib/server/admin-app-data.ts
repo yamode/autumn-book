@@ -11,6 +11,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createSupabaseServerClient } from './auth';
+import { CANCEL_POLICY_LABELS, parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot, type MemberPerkSnapshot } from '$lib/partner-member-page';
 
 /** book スキーマに束縛した authenticated クライアント（PostgrestClient） */
 export type BookClient = ReturnType<SupabaseClient['schema']>;
@@ -42,6 +43,9 @@ const RPC_MESSAGES: [string, string][] = [
 	],
 	['not_cancellable', 'このご予約は取り消せません（既に取り消し済み、またはご滞在済みです）。'],
 	['mail_no_recipient', 'この予約にはメールアドレスが登録されていないため、メールを送信できません。'],
+	['member_page_booking', 'このご予約は特別会員の専用ページ経由のため、お客様の操作は専用ページのご予約一覧から行います。'],
+	['bad_rank', 'グレードを選び直してください。'],
+	['member_not_found', '会員が見つかりません。'],
 	[
 		'forbidden',
 		'この操作には管理者権限が必要です（Supabase の app_metadata.role と core.memberships の tenant_admin の両方が必要です）。'
@@ -812,7 +816,15 @@ export type BookingDetail = {
 			cancel_kept?: number;
 			cancel_waived?: boolean;
 			cancelled_at?: string | null;
+			/** 特別会員の専用ページ経由: この部屋の専用特典（DB の生の値・autumn-shared 20261010221207 から） */
+			member_perks?: unknown;
+			/** 上の member_perks を整えたもの（adminBookingDetail が足す） */
+			memberPerks?: MemberPerkSnapshot[] | null;
 		}[];
+		/** 特別会員の専用ページ経由の予約（DB の生の値・bookings.metadata.member_page） */
+		member_page?: unknown;
+		/** 上の member_page を整えたもの（adminBookingDetail が足す）。公式サイト・取引先・OTA は null */
+		memberPage?: (MemberPageSnapshot & { cancelModeLabel: string }) | null;
 	};
 	guest: {
 		name: string | null;
@@ -838,7 +850,24 @@ export type BookingDetail = {
 };
 
 export const adminBookingDetail = (c: BookClient, code: string) =>
-	rpc<BookingDetail>(c, 'admin_booking_detail', { p_booking_code: code });
+	rpc<BookingDetail>(c, 'admin_booking_detail', { p_booking_code: code }).then(withMemberPage);
+
+/** 特別会員の専用ページ経由の予約: 経由のページ・方式（booking.memberPage）と部屋ごとの特典（rooms[i].memberPerks）を足す */
+export function withMemberPage(d: BookingDetail): BookingDetail {
+	if (!d?.booking) return d;
+	const mp = parseMemberPageSnapshot(d.booking.member_page);
+	d.booking.memberPage = mp ? { ...mp, cancelModeLabel: CANCEL_POLICY_LABELS[mp.cancelPolicyMode] } : null;
+	if (d.booking.rooms) d.booking.rooms = d.booking.rooms.map((r) => ({ ...r, memberPerks: parseMemberPerks(r.member_perks) }));
+	return d;
+}
+
+/** 会員のグレードを手動で変える（管理者のみ・理由必須・監査ログ change_rank・autumn-shared 20261010221207・V0） */
+export const adminSetMemberRank = (c: BookClient, memberUserId: string, rankCode: string, reason: string) =>
+	rpc<{ member_user_id: string; from: string; to: string; changed: boolean }>(c, 'admin_set_member_rank', {
+		p_member_user_id: memberUserId,
+		p_rank_code: rankCode,
+		p_reason: reason
+	});
 
 export const adminCancelBooking = (
 	c: BookClient,

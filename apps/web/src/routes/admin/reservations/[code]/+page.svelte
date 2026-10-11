@@ -294,6 +294,20 @@
 						{channelLabel}{#if b.source === 'autumn_booking'}（{b.is_member ? '会員' : '非会員'}）{/if}
 					</dd>
 				</div>
+				{#if b.memberPage}
+					<!-- 特別会員の専用ページ経由（docs/vip-member-page.md §13.4.5）。部屋ごとの特典は下の部屋の表・1 室なら下の行 -->
+					<div class="sm:col-span-2">
+						<dt class="text-xs text-stone-400">特別会員</dt>
+						<dd>
+							<span class="rounded bg-amber-100 px-1.5 text-xs text-amber-800">専用ページ経由</span>
+							<a href="/admin/partners/{b.memberPage.partnerId}" class="ml-1 text-accent-600 hover:underline">{b.memberPage.pageName}</a>
+							<span class="text-xs text-stone-500">・キャンセル料: {b.memberPage.cancelModeLabel}{b.memberPage.via === 'family' ? '・家族のつながりで予約' : ''}</span>
+							{#if adminRooms.length <= 1 && adminRooms[0]?.memberPerks?.length}
+								<span class="block text-xs text-amber-800">専用特典: {adminRooms[0].memberPerks.map((p) => p.title).join('／')}</span>
+							{/if}
+						</dd>
+					</div>
+				{/if}
 				<div>
 					<dt class="text-xs text-stone-400">チェックイン</dt>
 					<dd>{formatDateLongJa(b.check_in_date)}・{b.nights}泊</dd>
@@ -361,7 +375,7 @@
 									<tr class={r.cancelled ? 'text-stone-400' : ''}>
 										<td class="py-1.5 pr-2 whitespace-nowrap">{r.room_index}室目</td>
 										<td class="py-1.5 pr-2 font-mono text-xs">{r.reservation_code}</td>
-										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}</td>
+										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}{#if r.memberPerks?.length}<span class="block text-xs text-amber-800">特典: {r.memberPerks.map((p) => p.title).join('／')}</span>{/if}</td>
 										<td class="py-1.5 pr-2 whitespace-nowrap">大人{r.adults}名{#if r.male != null && r.female != null}<span class="block text-xs text-stone-500">男性{r.male}・女性{r.female}</span>{/if}</td>
 										<td class="py-1.5 pr-2 text-right tabular-nums">{formatYen(r.charge)}{#if r.coupon_share > 0}<span class="block text-xs text-stone-500">クーポン −{formatYen(r.coupon_share)}</span>{/if}</td>
 										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}</td>

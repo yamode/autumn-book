@@ -3,6 +3,7 @@ import { bookings, facilityById, planById, roomTypeById } from '$lib/server/stor
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { getLastBooking, sbFacilityByUuid, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
 import type { Booking } from '$lib/types';
+import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, cookies, locals }) => {
@@ -62,7 +63,21 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		const paid = raw.paidAmount != null ? { amount: raw.paidAmount, bathTax: raw.bathTax ?? 0 } : null;
 		// 早期決済ポイント（施設が points のとき・宿泊後に付与予定）
 		const prepayBonus = (raw.prepayBonusPoints ?? 0) > 0 ? { points: raw.prepayBonusPoints ?? 0, rate: raw.prepayBonusRate ?? 0 } : null;
-		return { booking, facility, plan: plan ?? null, room, rooms, paid, prepayBonus, onsiteMethod: raw.onsiteMethod ?? null, isMember: locals.user?.role === 'member' };
+		// 特別会員の専用ページ経由の予約: 「ご予約の確認・変更は特別会員ページのご予約一覧から」（docs/vip-member-page.md §13.4.4）
+		const memberPageUrl = raw.memberPage ? await memberPageHrefFor(raw.memberPage.partnerId, raw.code).catch(() => null) : null;
+		return {
+			booking,
+			facility,
+			plan: plan ?? null,
+			room,
+			rooms,
+			paid,
+			prepayBonus,
+			onsiteMethod: raw.onsiteMethod ?? null,
+			isMember: locals.user?.role === 'member',
+			memberPageUrl,
+			memberPageName: raw.memberPage?.pageName ?? null
+		};
 	}
 
 	const booking = bookings.get(params.code);
@@ -77,6 +92,8 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		// デモ（store）は早期決済割（discount）だけ
 		prepayBonus: null,
 		onsiteMethod: null,
-		isMember: locals.user?.role === 'member'
+		isMember: locals.user?.role === 'member',
+		memberPageUrl: null as string | null,
+		memberPageName: null as string | null
 	};
 };

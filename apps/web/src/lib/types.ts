@@ -316,8 +316,8 @@ export interface RankCancelPolicy {
 /** キャンセル料プレビュー（book.compute_cancel_fee 戻り値の camelCase・本人 or スタッフ）。
  *  プラン規定 snapshot が非空ならプラン規定、空なら会員グレードのルール表を適用した結果。 */
 export interface CancelFeePreview {
-	/** 適用したルールの出所（'plan'＝プラン規定 / 'rank'＝グレード規定） */
-	rulesSource: 'plan' | 'rank';
+	/** 適用したルールの出所（'plan'＝プラン規定 / 'rank'＝グレード規定 / 'member_page'＝特別会員の専用ページの規定） */
+	rulesSource: 'plan' | 'rank' | 'member_page';
 	/** 適用したグレード（キャンセル操作時点の予約作成会員 rank・非会員は 'standard'） */
 	rankCode: string;
 	/** キャンセル料率（0〜1・表示は ×100） */

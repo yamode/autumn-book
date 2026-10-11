@@ -1,6 +1,6 @@
 import { logPartnerAccess, todayJst } from '$lib/server/partners/store';
 import { loadPartnerContents } from '$lib/server/partners/contents';
-import { deferTask, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { deferTask, portalHeader, portalLogActor, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
 
 // 取引先専用ページ: お部屋（部屋タイプ）の紹介。中身は autumn-book の紹介（公式サイトと共通）。
 // 紹介（写真・文章）は後から流す（contents: Promise・2026-10-10）。画面は届くまで枠を出す。
@@ -12,10 +12,9 @@ export const load = async (event) => {
     event,
     logPartnerAccess(db, {
       partnerId: partner.id,
-      accountId: session.id,
+      ...portalLogActor(session, { page: 'rooms' }),
       channel: 'web',
       action: 'view',
-      detail: { page: 'rooms' },
       ip: requestMeta(event).ip
     })
   );

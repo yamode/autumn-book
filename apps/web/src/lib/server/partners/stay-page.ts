@@ -8,6 +8,9 @@ import { buildPlanTerms, type PlanTerms } from '$lib/partner-plan-terms';
 import { deferTask, portalHeader, PORTAL_HEADERS, requestMeta, resolvePortal } from '$lib/server/partners/portal';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { loadPortalReference } from '$lib/server/partners/portal-reference';
+import { portalLogActor } from '$lib/server/partners/portal';
+import { CANCEL_POLICY_LABELS, isMemberPage, memberBenefitLines, memberMaxRooms, memberPageBookingOpen } from '$lib/partner-member-page';
+import { loadMemberPagePlans } from '$lib/server/partners/member-hold';
 
 // 取引先専用ページ: 料金カレンダー（部屋タイプごと）とプランのご紹介（プランごと）で共通の読み込み。
 // 最初から全幅カードを並べ（日付前は今後3か月の最安〜）、日程・泊数・人数・室数を選ぶと
@@ -35,16 +38,18 @@ export async function loadStayPage(
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   const guestsRaw = Math.round(Number(q.get('guests') ?? 2));
   const guests = guestsRaw >= 1 && guestsRaw <= 6 ? guestsRaw : 2;
-  const rooms = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
+  // 特別会員の専用ページ（§13.4.2）: 室数は公式と同じ 4 室まで・予約受付は支払方法を見ない
+  const member = isMemberPage(partner.kind);
+  const maxRooms = member ? memberMaxRooms(s) : s.maxRooms;
+  const rooms = Math.min(maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
 
   deferTask(
     event,
     logPartnerAccess(db, {
       partnerId: partner.id,
-      accountId: session.id,
+      ...portalLogActor(session, { page, date, nights, guests, rooms }),
       channel: 'web',
       action: 'view',
-      detail: { page, date, nights, guests, rooms },
       ip: requestMeta(event).ip
     })
   );
@@ -61,7 +66,13 @@ export async function loadStayPage(
       ? partnerCreditCheck(db, partner, creditMonths).catch(() => null)
       : Promise.resolve(null);
   const toPerk = (p: { id: string; title: string; description: string; imageUrl: string }) => ({ id: p.id, title: p.title, description: p.description, imageUrl: p.imageUrl });
-  const payIds = availablePaymentOptions(partner);
+  const payIds = member ? [] : availablePaymentOptions(partner);
+  // 専用ページ: かごの支払方法（会員の支払方法）を出すプランの一覧（公式サイトで公開しているプランだけ・Q1）
+  const cartPlans = member
+    ? await loadMemberPagePlans(db, partner.facility_id)
+        .then((m) => [...m.values()].map((p) => ({ planCode: p.planCode, planName: p.planLabel, pay: p.pay })))
+        .catch(() => [] as { planCode: string; planName: string; pay: { onsite: boolean; prepay: boolean } }[])
+    : [];
 
   // 一覧に後から足すもの（写真・紹介・規定・受付枠・IN/OUT）。失敗しない Promise にして画面へ流す
   const stayLoad = Promise.all([
@@ -108,14 +119,28 @@ export async function loadStayPage(
     params: { date, nights, guests, rooms },
     showInventory: partner.show_inventory,
     planNames: s.planNames,
-    booking: { enabled: isPartnerBookingOpen(partner), leadDays: s.leadDays, cutoffHour: s.cutoffHour, maxNights: s.maxNights, maxRooms: s.maxRooms },
+    booking: {
+      enabled: member ? memberPageBookingOpen(partner) && !session.preview : isPartnerBookingOpen(partner),
+      leadDays: s.leadDays,
+      cutoffHour: s.cutoffHour,
+      maxNights: s.maxNights,
+      maxRooms
+    },
+    // ---- 特別会員の専用ページだけ（取引先は null / []） ----
+    // 会員特典の 2 段目（還元率・キャンセル方式・ポイント利用可の 3 行・Q8）。確認モード（会員なし）は null
+    memberBenefits: member && session.member ? memberBenefitLines(session.member.rankLabel, session.member.rewardRate, s.cancelPolicyMode) : null,
+    // キャンセル方式（施設の設定）と専用ページの規定（rate は 0〜1）
+    memberCancel: member ? { mode: s.cancelPolicyMode, label: CANCEL_POLICY_LABELS[s.cancelPolicyMode], rules: s.cancelRules } : null,
+    // かごの支払方法（プランごと・会員の支払方法）。キーは planCode と planName（料金カレンダーのプラン）
+    cartPlans,
     // 専用特典の付くプラン（「専用特典」のしるし用。全プラン対象の特典があれば全部に付く）
     perkPlanCodes: [...new Set(s.perks.flatMap((p) => p.planCodes))],
     commonPerk: s.perks.some((p) => !p.planCodes.length),
     commonPerks: s.perks.filter((p) => !p.planCodes.length).map(toPerk),
     // 予約受付の締切・取消の期限・使える支払方法（表示用。確定時にサーバで再確認する）
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
-    cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
+    // 取引先による取消の期限（特別会員の専用ページは公式予約の取消なので出さない）
+    cancelText: member || s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     paymentLabels: partnerPaymentChoices(s).filter((o) => payIds.includes(o.id)).map((o) => paymentOptionLabel(o.id, s)),
     // 後から流し込む一覧の中身（上のコメント）
     stay,

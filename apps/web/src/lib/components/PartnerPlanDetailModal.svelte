@@ -16,6 +16,7 @@
   import PartnerTermsTable from './PartnerTermsTable.svelte';
   import MarkdownView from './MarkdownView.svelte';
   import PartnerStayPanel from './PartnerStayPanel.svelte';
+  import MemberBenefitList from './MemberBenefitList.svelte';
   import type { PartnerStayOffer } from '$lib/partner-stay';
   import { roomParts, type ContentPhoto, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
   import { freeCancelText, type PlanTerms } from '$lib/partner-plan-terms';
@@ -59,7 +60,10 @@
     isBookable,
     onPickDate,
     onUndated,
-    onChangeGuests
+    onChangeGuests,
+    memberBenefits = null,
+    memberRankLabel = '',
+    onAddToCart = null
   }: {
     detail: PlanDetail | null;
     params: { date: string; nights: number; guests: number; rooms: number };
@@ -79,7 +83,15 @@
     /** 日付パネルの「日付指定なし」で日付未定に戻した（泊数はそのまま） */
     onUndated: (nights: number) => void;
     onChangeGuests: () => void;
+    /** 特別会員の専用ページ: 会員特典の 2 段目（還元率・キャンセル方式・ポイント利用可）。取引先は null */
+    memberBenefits?: string[] | null;
+    memberRankLabel?: string;
+    /** 特別会員の専用ページ: 「＋ もう 1 室追加」（かごへ）。入れたら true（モーダルを閉じてかごを見せる）。取引先は null */
+    onAddToCart?: (() => boolean) | null;
   } = $props();
+  function addToCart() {
+    if (onAddToCart?.()) detail = null;
+  }
 
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
   const num = (n: number) => n.toLocaleString('ja-JP');
@@ -133,7 +145,14 @@
   });
   // 「予約へ進む」の左に並べる特典のバナー（公式HP限定特典・取引先専用特典）。押すとモーダルで中身
   // 取引先専用特典は「（取引先名）様専用特典」と出す（2026-10-09 指示）
-  const partnerPerkLabel = $derived($page.data.portal?.partnerName ? `${$page.data.portal.partnerName}様専用特典` : '取引先専用特典');
+  // 特別会員の専用ページは「（会員名）様専用特典」（ページ名ではなく会員の名前・§5.2）
+  const partnerPerkLabel = $derived(
+    $page.data.portal?.kind === 'member'
+      ? `${$page.data.portal?.member?.name ?? '会員'}様専用特典`
+      : $page.data.portal?.partnerName
+        ? `${$page.data.portal.partnerName}様専用特典`
+        : '取引先専用特典'
+  );
   const banners = $derived<PerkBanner[]>(
     detail
       ? [
@@ -267,6 +286,10 @@
                   <span class="block text-lg font-bold">予約へ進む</span>
                   {#if freeText}<span class="block text-xs font-medium">{freeText}</span>{/if}
                 </a>
+                {#if onAddToCart}
+                  <!-- 特別会員: 別のお部屋・プランと合わせて 1 回で予約する（かご・最大 4 室） -->
+                  <button type="button" onclick={addToCart} class="mt-2 block w-full rounded-md border border-green-600 py-2.5 text-center text-base font-bold text-green-700 hover:bg-green-50">＋ もう 1 室追加</button>
+                {/if}
               {:else}
                 <p class="rounded-md bg-stone-100 py-4 text-center text-base text-stone-500">この宿泊日のご予約は受付を締め切りました</p>
               {/if}
@@ -298,6 +321,9 @@
               <h3 class="mb-3 text-xl font-bold">お部屋</h3>
               <PartnerContentBody photos={detail.room.photos} description={detail.room.description} specs={detail.room.specs} sections={detail.room.sections} amenities={detail.room.amenities} detailLabel="浴室・アメニティ・設備" />
             </section>
+          {/if}
+          {#if memberBenefits?.length}
+            <MemberBenefitList rankLabel={memberRankLabel} lines={memberBenefits} />
           {/if}
           {#if detail.terms}
             <PartnerTermsTable title="キャンセルポリシー" rows={detail.terms.cancellation} note={detail.terms.cancellationNote} />

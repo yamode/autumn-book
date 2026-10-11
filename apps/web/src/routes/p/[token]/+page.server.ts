@@ -15,17 +15,27 @@ import { ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/lo
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
 import { portalMfaUrl } from '$lib/partner-mfa';
 import { passkeyRp } from '$lib/server/partners/passkeys';
+import { isMemberPage } from '$lib/partner-member-page';
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
-  const { partner, session } = await resolvePortal(event);
+  const { partner, session, memberState, memberName } = await resolvePortal(event);
   const unavailable = partnerUnavailableReason(partner);
   if (session && (!unavailable || session.preview)) throw redirect(303, `/p/${event.params.token}/calendar`);
+  // 特別会員の専用ページ（§13.4.1）: 取引先のログインフォームは出さない。
+  //   anonymous → 「会員ログイン」（公式のメール OTP・ログイン後に料金カレンダーへ戻る）
+  //   denied    → 「このページはご招待の会員さま専用です」（会員名とログアウト）
+  // 料金・特典・プラン名は出さない（施設名とページ名だけ）
+  const member = isMemberPage(partner.kind);
   return {
     portal: portalHeader(partner, session),
     unavailable,
+    memberState: member ? (memberState ?? 'anonymous') : null,
+    memberName: member ? memberName : null,
+    memberLoginHref: member ? `/auth/login?next=${encodeURIComponent(`/p/${event.params.token}/calendar`)}` : null,
+    memberLogoutHref: member ? '/auth/logout' : null,
     // パスキーでログイン（本番ドメインとローカルだけ・*.pages.dev のプレビューでは出さない・§6.5）
-    passkeyEnabled: Boolean(passkeyRp(event))
+    passkeyEnabled: !member && Boolean(passkeyRp(event))
   };
 };
 
@@ -38,6 +48,8 @@ export const load = async (event) => {
 export const actions = {
   default: async (event) => {
     const { db, partner } = await resolvePortal(event);
+    // 特別会員の専用ページには取引先のログインが無い（公式サイトの会員ログイン）
+    if (isMemberPage(partner.kind)) return fail(404, { message: 'ページが見つかりません。', loginId: '' });
     const unavailable = partnerUnavailableReason(partner);
     if (unavailable) return fail(403, { message: unavailable, loginId: '' });
     const fd = await event.request.formData();

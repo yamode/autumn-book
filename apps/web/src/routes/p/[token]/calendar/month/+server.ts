@@ -5,7 +5,7 @@ import { logPartnerAccess, partnerUnavailableReason } from '$lib/server/partners
 import { parsePortalQuery } from '$lib/server/partners/portal-month';
 import { getPortalMonth } from '$lib/server/partners/portal-reference';
 import { todayJst } from '$lib/server/partners/store';
-import { PORTAL_HEADERS, requestMeta, resolvePortal } from '$lib/server/partners/portal';
+import { PORTAL_HEADERS, portalLogActor, requestMeta, resolvePortal } from '$lib/server/partners/portal';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -24,10 +24,9 @@ export const GET = async (event) => {
     view
       ? logPartnerAccess(db, {
           partnerId: partner.id,
-          accountId: session.id,
+          ...portalLogActor(session, { month: `${q.year}-${pad(q.month)}`, guests: q.guests }),
           channel: 'web',
           action: 'view',
-          detail: { month: `${q.year}-${pad(q.month)}`, guests: q.guests },
           ip: requestMeta(event).ip
         })
       : Promise.resolve()

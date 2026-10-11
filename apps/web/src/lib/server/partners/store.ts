@@ -62,12 +62,22 @@ import {
   type CreditSettingsPatch
 } from '$lib/partner-credit';
 
-export type PartnerKind = 'agent' | 'corporate' | 'other';
+// member = 特別会員の専用ページ（docs/vip-member-page.md §13・2026-10-11）。DB の check には ambassador（アンバサダー会員）も
+// 入っているが、今回は TS に出さない（§13.8 Q7）。読み込みで知らない種別は 'other' 扱い
+export type PartnerKind = 'agent' | 'corporate' | 'other' | 'member';
 export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
   agent: '旅行会社・エージェント',
   corporate: '法人',
-  other: 'その他'
+  other: 'その他',
+  member: '特別会員'
 };
+/** 管理画面の「取引先を作る」で選べる種別（特別会員は会員詳細の「専用ページを作る」から作る・§13.4.5） */
+export const PARTNER_CREATE_KIND_LABELS: Record<Exclude<PartnerKind, 'member'>, string> = {
+  agent: PARTNER_KIND_LABELS.agent,
+  corporate: PARTNER_KIND_LABELS.corporate,
+  other: PARTNER_KIND_LABELS.other
+};
+const KNOWN_KINDS = new Set<string>(['agent', 'corporate', 'other', 'member']);
 
 // ---- 取引先共通と施設ごと（複数施設化 Phase B・docs/partner-multi-facility.md §4・§7.9・2026-10-09） ----
 //
@@ -268,7 +278,7 @@ function toCommon(row: Record<string, unknown>): PartnerCommonRow {
     primary_facility_id: (row.primary_facility_id as string | null) ?? null,
     legacy_facility_id: (row.legacy_facility_id as string | null) ?? null,
     name: String(row.name ?? ''),
-    kind: (row.kind as PartnerKind) ?? 'other',
+    kind: KNOWN_KINDS.has(String(row.kind)) ? (row.kind as PartnerKind) : 'other',
     contact_name: (row.contact_name as string | null) ?? null,
     contact_email: (row.contact_email as string | null) ?? null,
     url_token: String(row.url_token ?? ''),
@@ -1093,13 +1103,20 @@ export async function regeneratePartnerUrl(db: SupabaseClient, partner: Pick<Par
 }
 
 export async function deletePartner(db: SupabaseClient, partner: Pick<PartnerRow, 'id'>): Promise<void> {
+  // 特別会員の専用ページ: このページ経由で生きている予約が残っていれば消さない（会員が予約を操作できなくなるため・DB のトリガーでも止まる）
+  const live = await memberPageLiveBookings(db, partner.id);
+  if (live > 0) throw new PartnerStoreError(memberPageHasBookingsMessage('このページは削除できません', live), 409, 'member_page_has_bookings');
   // 覚書ファイルの実体（Storage）を先に消す。台帳は FK cascade で消える
   await removeAllPartnerDocumentFiles(db, partner.id);
   // 取引先予約の添付ファイルの実体も（2026-10-07。台帳は FK cascade。PMS の写しの行は PMS の運用に任せる）
   await removeAllBookingAttachmentFiles(db, partner.id);
   // 施設設定（rms_partner_facilities）は FK cascade で消える
   const { error } = await db.from('rms_partners').delete().eq('id', partner.id);
-  if (error) raise(error, '取引先を削除できませんでした。');
+  if (error) {
+    const n = memberPageHasBookingsCount(error.message);
+    if (n != null) throw new PartnerStoreError(memberPageHasBookingsMessage('このページは削除できません', n), 409, 'member_page_has_bookings');
+    raise(error, '取引先を削除できませんでした。');
+  }
 }
 
 export async function listPartnerAccounts(db: SupabaseClient, partnerId: string): Promise<PartnerAccountRow[]> {
@@ -1298,6 +1315,9 @@ export async function logPartnerAccess(
 ) {
   // 管理画面からの確認モードは記録しない（取引先の利用状況に運営の確認を混ぜない）
   if (entry.accountId === PREVIEW_ACCOUNT_ID) return;
+  // 特別会員の専用ページの会員は取引先アカウントではない（account_id は rms_partner_accounts への FK）。
+  // 会員は detail.member_user_id で残す（呼び出し側の portalLogActor・§13.4.1・Z11）
+  if (entry.accountId === MEMBER_PORTAL_ACCOUNT_ID) entry = { ...entry, accountId: null };
   // 記録の失敗で閲覧を止めない。
   await db
     .from('rms_partner_access_logs')
@@ -1536,7 +1556,29 @@ export type PartnerSessionAccount = Pick<PartnerAccountRow, 'id' | 'login_id' | 
   createdAt?: string | null;
   /** 管理画面からの確認モード（preview.ts）。見るだけで、書き込みは入口で断る */
   preview?: boolean;
+  /** 特別会員の専用ページ（kind='member'）の会員。取引先のログインではなく公式サイトの会員ログイン（§13.4.1） */
+  member?: PortalMember;
 };
+
+/** 専用ページの会員（ヘッダーの会員名・グレード・ポイント・本人か家族か） */
+export type PortalMember = {
+  userId: string;
+  memberCode: string;
+  name: string;
+  email: string | null;
+  rankCode: string;
+  rankLabel: string;
+  /** グレードの還元率（book.member_ranks.reward_rate・0.03 = 3%） */
+  rewardRate: number;
+  /** 保有ポイント */
+  balance: number;
+  guestId: string | null;
+  /** 対象に入っている本人か、PMS の家族のつながりで使えている会員か */
+  via: 'self' | 'family';
+};
+
+/** 専用ページの会員のセッションの id（DB には書かない・アクセスログでは null に置き換える） */
+export const MEMBER_PORTAL_ACCOUNT_ID = '00000000-0000-4000-8000-00000000c0de';
 
 // クッキーのセッションから、この取引先のアカウントを引く。別の取引先のセッションは通さない。
 // partner は取引先の読み込みと並べて走らせられるよう Promise でも受ける（セッションの問い合わせを先に投げる・2026-10-10）。
@@ -2138,3 +2180,169 @@ export async function countPasskeysByAccount(db: SupabaseClient, accountIds: rea
   for (const r of (data ?? []) as { account_id: string }[]) out.set(r.account_id, (out.get(r.account_id) ?? 0) + 1);
   return out;
 }
+
+// ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §13.3.2・§13.4.5） ----
+// rms_partner_members（専用ページを使える会員）の読み書きと、家族を含めた判定（DB 関数）。どれも service_role（取引先モジュール内）
+
+export type PartnerMemberListRow = {
+  member_user_id: string;
+  member_code: string;
+  name: string | null;
+  email: string | null;
+  rank_code: string;
+  /** self = 対象に入れた会員／family = PMS の家族でつながっている会員（読み取り表示のみ） */
+  via: 'self' | 'family';
+  withdrawn: boolean;
+  created_at: string | null;
+};
+
+/** 対象の会員（本人）と家族として使える会員の一覧 */
+export async function listPartnerMembers(db: SupabaseClient, partnerId: string): Promise<PartnerMemberListRow[]> {
+  const { data, error } = await db.rpc('rms_partner_member_list', { p_partner_id: partnerId });
+  if (error) {
+    if (isMissingTableError(error) || error.code === 'PGRST202') return [];
+    raise(error, '対象の会員を読み込めませんでした。');
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    member_user_id: String(r.member_user_id),
+    member_code: String(r.member_code ?? ''),
+    name: (r.name as string | null) ?? null,
+    email: (r.email as string | null) ?? null,
+    rank_code: String(r.rank_code ?? 'standard'),
+    via: r.via === 'family' ? 'family' : 'self',
+    withdrawn: r.withdrawn === true,
+    created_at: (r.created_at as string | null) ?? null
+  }));
+}
+
+/** 対象の会員を足す（特別会員のページだけ・同じテナントの退会していない会員だけ）。既にいれば何もしない */
+export async function addPartnerMember(
+  db: SupabaseClient,
+  partner: Pick<PartnerRow, 'id' | 'tenant_id' | 'kind'>,
+  memberUserId: string,
+  userId: string | null
+): Promise<void> {
+  if (partner.kind !== 'member') throw new PartnerStoreError('特別会員のページではありません。', 400, 'not_member_page');
+  if (!/^[0-9a-f-]{36}$/i.test(memberUserId)) throw new PartnerStoreError('会員を選び直してください。', 400, 'bad_member');
+  const { data: m, error: me } = await db
+    .schema('book')
+    .from('members')
+    .select('user_id, tenant_id, withdrawn_at')
+    .eq('user_id', memberUserId)
+    .maybeSingle();
+  if (me) raise(me, '会員を確かめられませんでした。');
+  if (!m || String(m.tenant_id) !== partner.tenant_id || m.withdrawn_at) {
+    throw new PartnerStoreError('この会員は追加できません（退会済み・別の会員組織）。', 400, 'bad_member');
+  }
+  const { error } = await db
+    .from('rms_partner_members')
+    .upsert({ partner_id: partner.id, member_user_id: memberUserId, created_by: userId }, { onConflict: 'partner_id,member_user_id', ignoreDuplicates: true });
+  if (error) raise(error, '対象の会員を追加できませんでした。');
+}
+
+/**
+ * 対象の会員を外す（家族として使えている会員は外せない＝PMS の家族を変える）。
+ * その会員がこのページ経由で生きている予約（取消でない・チェックアウト日が今日以降）を持っていれば外さない
+ * （外すと専用ページから自分の予約を操作できなくなるため・2026-10-11 レビュー指摘 1）。DB のトリガーでも止まる
+ */
+export async function removePartnerMember(db: SupabaseClient, partnerId: string, memberUserId: string): Promise<void> {
+  const live = await memberPageLiveBookings(db, partnerId, memberUserId);
+  if (live > 0) throw new PartnerStoreError(memberPageHasBookingsMessage('外せません', live), 409, 'member_page_has_bookings');
+  const { error } = await db.from('rms_partner_members').delete().eq('partner_id', partnerId).eq('member_user_id', memberUserId);
+  if (error) {
+    const n = memberPageHasBookingsCount(error.message);
+    if (n != null) throw new PartnerStoreError(memberPageHasBookingsMessage('外せません', n), 409, 'member_page_has_bookings');
+    raise(error, '対象の会員を外せませんでした。');
+  }
+}
+
+/** このページ経由で生きている予約の件数（memberUserId を渡せばその会員が予約した分）。読めなければ 0（DB のトリガーが最後に止める） */
+export async function memberPageLiveBookings(db: SupabaseClient, partnerId: string, memberUserId?: string | null): Promise<number> {
+  const { data, error } = await db.rpc('rms_member_page_live_bookings', { p_partner_id: partnerId, p_member_user_id: memberUserId ?? null });
+  return error ? 0 : Number(data ?? 0) || 0;
+}
+
+/** DB の例外 member_page_has_bookings:<件数> の件数（該当しなければ null） */
+export function memberPageHasBookingsCount(message: string | null | undefined): number | null {
+  const m = /member_page_has_bookings:(\d+)/.exec(message ?? '');
+  return m ? Number(m[1]) : null;
+}
+
+/** 「このページ経由のご予約が残っているため外せません（N件）」 */
+export const memberPageHasBookingsMessage = (what: string, n: number) => `このページ経由のご予約が残っているため${what}（${n}件）。`;
+
+/** 会員が専用ページを使えるか（本人か PMS の家族が対象者・退会者は false）。読めなければ false */
+export async function memberPageAccess(db: SupabaseClient, partnerId: string, memberUserId: string): Promise<boolean> {
+  const { data, error } = await db.rpc('rms_member_page_access', { p_partner_id: partnerId, p_member_user_id: memberUserId });
+  return !error && data === true;
+}
+
+export type MemberPageLink = { partnerId: string; name: string; urlToken: string; via: 'self' | 'family'; facilityNames: string[] };
+
+/** 会員（本人・家族）が使える公開中の専用ページ（マイページのリンク）。読めなければ空 */
+export async function memberPagesFor(db: SupabaseClient, memberUserId: string): Promise<MemberPageLink[]> {
+  const { data, error } = await db.rpc('rms_member_pages_for', { p_member_user_id: memberUserId });
+  if (error || !Array.isArray(data)) return [];
+  return (data as Record<string, unknown>[]).map((r) => ({
+    partnerId: String(r.partner_id),
+    name: String(r.name ?? ''),
+    urlToken: String(r.url_token ?? ''),
+    via: r.via === 'family' ? 'family' : 'self',
+    facilityNames: Array.isArray(r.facility_names) ? (r.facility_names as unknown[]).map(String) : []
+  }));
+}
+
+export type MemberPageAdminRow = { partnerId: string; name: string; isActive: boolean; facilityNames: string[]; via: 'self' | 'family' };
+
+/**
+ * 会員詳細（管理画面）の「専用ページ」欄: この会員が対象の専用ページ（本人）と、家族のつながりで使えるページ。
+ * 公開停止中のページも出す（管理用）
+ */
+export async function memberPagesForAdmin(db: SupabaseClient, tenantId: string, memberUserId: string): Promise<MemberPageAdminRow[]> {
+  const { data: rows, error } = await db.from('rms_partners').select('id, name, is_active').eq('tenant_id', tenantId).eq('kind', 'member');
+  if (error || !rows?.length) return [];
+  const ids = rows.map((r) => String(r.id));
+  const [{ data: direct }, access, { data: facs }, facilityMeta] = await Promise.all([
+    db.from('rms_partner_members').select('partner_id').eq('member_user_id', memberUserId).in('partner_id', ids),
+    Promise.all(ids.map(async (id) => [id, await memberPageAccess(db, id, memberUserId)] as const)),
+    db.from('rms_partner_facilities').select('partner_id, facility_id, enabled').in('partner_id', ids),
+    bookFacilityMeta(db).catch(() => [] as { id: string; slug: string; name: string }[])
+  ]);
+  const self = new Set((direct ?? []).map((r) => String(r.partner_id)));
+  const allowed = new Set(access.filter(([, ok]) => ok).map(([id]) => id));
+  const nameOf = new Map(facilityMeta.map((f) => [f.id, f.name]));
+  return rows
+    .filter((r) => self.has(String(r.id)) || allowed.has(String(r.id)))
+    .map((r) => ({
+      partnerId: String(r.id),
+      name: String(r.name ?? ''),
+      isActive: r.is_active === true,
+      facilityNames: (facs ?? [])
+        .filter((f) => String(f.partner_id) === String(r.id) && f.enabled !== false)
+        .map((f) => nameOf.get(String(f.facility_id)) ?? String(f.facility_id)),
+      via: self.has(String(r.id)) ? ('self' as const) : ('family' as const)
+    }));
+}
+
+/** 専用ページを作る会員を 1 件引く（同じテナント・会員番号・氏名・退会日）。無ければ null（2026-10-11 レビュー指摘 2: 一覧から探さない） */
+export async function memberForMemberPage(
+  db: SupabaseClient,
+  tenantId: string,
+  memberUserId: string
+): Promise<{ userId: string; memberCode: string; name: string | null; withdrawnAt: string | null } | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(memberUserId)) return null;
+  const { data, error } = await db
+    .schema('book')
+    .from('members')
+    .select('user_id, tenant_id, member_code, guest_id, withdrawn_at')
+    .eq('user_id', memberUserId)
+    .maybeSingle();
+  if (error) raise(error, '会員を確かめられませんでした。');
+  const m = data as { user_id: string; tenant_id: string; member_code: string | null; guest_id: string | null; withdrawn_at: string | null } | null;
+  if (!m || m.tenant_id !== tenantId) return null;
+  const guest = m.guest_id
+    ? ((await db.schema('core').from('guests').select('name').eq('id', m.guest_id).maybeSingle()).data as { name: string | null } | null)
+    : null;
+  return { userId: m.user_id, memberCode: m.member_code ?? '', name: guest?.name ?? null, withdrawnAt: m.withdrawn_at };
+}
+

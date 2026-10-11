@@ -8,6 +8,7 @@ import {
 	createPartner,
 	listPartners,
 	listTenantPartners,
+	PARTNER_CREATE_KIND_LABELS,
 	PARTNER_KIND_LABELS,
 	PartnerStoreError
 } from '$lib/server/partners/store';
@@ -20,8 +21,14 @@ export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	// 「すべて」（N8・2026-10-09 複数施設化 S3）: テナントの取引先すべてを施設バッジ付きで。既定は ab_fac の施設に行がある取引先だけ
 	const showAll = event.url.searchParams.get('all') === '1';
+	// 種別の絞り込み（?kind=partner〔旅行会社・法人・その他〕／member〔特別会員〕・既定は「すべて」・docs/vip-member-page.md §13.8 Q6）
+	const kindParam = event.url.searchParams.get('kind');
+	const kindFilter: 'all' | 'partner' | 'member' = kindParam === 'partner' || kindParam === 'member' ? kindParam : 'all';
 	const base = {
 		kindLabels: PARTNER_KIND_LABELS,
+		// 「取引先を作る」の種別の選択肢（特別会員は会員詳細の「専用ページを作る」から作るので出さない）
+		createKindLabels: PARTNER_CREATE_KIND_LABELS,
+		kindFilter,
 		facilityName: currentFacility.name,
 		canEdit: canEditPartners(event),
 		showAll
@@ -31,7 +38,9 @@ export const load: PageServerLoad = async (event) => {
 		const listed = showAll
 			? await listTenantPartners(scope.db, scope.tenantId, scope.facilityId)
 			: (await listPartners(scope.db, scope.facilityId)).map((partner) => ({ partner, onCurrent: true }));
-		const partners = listed.map((l) => l.partner);
+		const partners = listed
+			.map((l) => l.partner)
+			.filter((p) => (kindFilter === 'all' ? true : kindFilter === 'member' ? p.kind === 'member' : p.kind !== 'member'));
 		const onCurrent = new Map(listed.map((l) => [l.partner.id, l.onCurrent]));
 		const [counts, billing] = await Promise.all([
 			countPartnerCredentials(scope.db, partners.map((p) => p.id)),

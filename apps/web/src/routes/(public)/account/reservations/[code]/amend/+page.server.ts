@@ -9,6 +9,7 @@ import {
 	amendBooking
 } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { MEMBER_PAGE_BOOKING_MESSAGE, memberPageBookingOf } from '$lib/server/member-reservation-detail';
 import {
 	sbMyReservations,
 	sbPlanOffers,
@@ -101,6 +102,8 @@ export const load: PageServerLoad = async (event) => {
 		const reservations = await sbMyReservations(client);
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
+		// 特別会員の専用ページ経由の予約は公式マイページでは変更しない（専用ページのご予約一覧から・§13.4.4）
+		if (r.memberPage) redirect(303, `/account/reservations/${params.code}`);
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
 		// オンライン決済済みの予約は変更させない（金額が変わると支払額と食い違うため。宿へ電話で）
 		if (await isPrepaidOnline(params.code)) redirect(303, `/account/reservations/${params.code}?amend=prepaid`);
@@ -282,6 +285,10 @@ export const actions: Actions = {
 	confirm: async (event) => {
 		const { request, params, locals } = event;
 		const form = await request.formData();
+		if (MEMBER_SUPABASE) {
+			const mp = await memberPageBookingOf(createSupabaseServerClient(event), params.code);
+			if (mp) return fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href: mp.href });
+		}
 		// 2 室以上（M2）: 全室同時の日程変更（日付・泊数だけ）
 		if (form.get('datesOnly') === '1') {
 			const checkin = String(form.get('checkin') ?? '');

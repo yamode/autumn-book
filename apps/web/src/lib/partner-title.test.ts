@@ -10,4 +10,9 @@ describe('partnerTitle', () => {
   it('取引先名が無ければ省く', () => {
     expect(partnerTitle({ facilityName: '山人-oga-' }, '覚書')).toBe('山人-oga- 専用予約｜覚書');
   });
+  it('特別会員の専用ページはページ名をそのまま使う', () => {
+    const m = { facilityName: '山人-yamado-', partnerName: '山田太郎様 専用ページ', kind: 'member' as const };
+    expect(partnerTitle(m, '料金カレンダー')).toBe('山人-yamado- 山田太郎様 専用ページ｜料金カレンダー');
+    expect(partnerTitle({ ...m, partnerName: '' })).toBe('山人-yamado- 会員さま専用ページ');
+  });
 });

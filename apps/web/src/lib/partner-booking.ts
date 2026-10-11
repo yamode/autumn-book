@@ -4,6 +4,7 @@
 // 直販予約と同じ電文で PMS へ届ける（migration 20260926054852）。ここは「受け付けてよいか」の判断と、
 // RMS の設定画面・取引先の予約画面で使う形の定義だけを持つ。
 import { displayPlanName } from '$lib/partner-contents';
+import { normalizeCancelPolicyMode, normalizeCancelRules, type CancelPolicyMode, type MemberCancelRule } from '$lib/partner-member-page';
 import { normalizeBookingQuestions, resolveQuestionAnswers, validateBookingQuestions, type BookingQuestion, type BookingQuestionType } from '$lib/booking-questions';
 
 export type PartnerBookingOptionType = BookingQuestionType;
@@ -301,6 +302,10 @@ export type PartnerBookingSettings = {
   groupDinnerTimeChoices: string[];
   // 回答の有効期限の既定（日・宿が回答時に変えられる）
   groupAnswerDays: number;
+  // ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §6.3・D1）。施設ごと（PARTNER_FACILITY_SETTING_KEYS） ----
+  // キャンセル方式（お客さまに有利な方〔既定〕／専用ページの規定／会員グレードの規定）と、専用ページの規定（rate は 0〜1）
+  cancelPolicyMode: CancelPolicyMode;
+  cancelRules: MemberCancelRule[];
 };
 
 export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
@@ -330,7 +335,9 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   groupLeadDays: 3,
   groupTransportChoices: ['大型バス1台', '中型バス1台', 'マイクロバス1台', 'JR', '自家用車'],
   groupDinnerTimeChoices: ['17:30', '18:00', '18:30', '19:00'],
-  groupAnswerDays: 7
+  groupAnswerDays: 7,
+  cancelPolicyMode: 'favorable',
+  cancelRules: []
 };
 
 // 団体予約の選択肢（交通機関・夕食開始時間）の正規化: 前後の空白を落とし、空・重複を除き、1件 30 字・最大 12 件。
@@ -362,10 +369,16 @@ function perkImageUrl(v: unknown): string {
 
 /** 施設ごとにだけ持つキー（施設のプラン・特典・案内・通知先）。保存時は常に facility_settings へ */
 export const PARTNER_FACILITY_SETTING_KEYS = ['planNames', 'perks', 'notice', 'notifyEmails', 'showOfficialPerks'] as const;
+/**
+ * 特別会員の専用ページ（kind='member'）だけが使う、施設ごとにだけ持つキー（キャンセル方式と専用ページの規定・docs/vip-member-page.md §13.1 Z14）。
+ * 保存時は施設（facility_settings）へ。施設タブのフォームに無ければ今の値のまま（取引先の施設タブは送らない）
+ */
+export const PARTNER_FACILITY_MEMBER_KEYS = ['cancelPolicyMode', 'cancelRules'] as const;
 /** 共通の既定を施設で上書きできるキー（決定 N6）。既定は共通に置き、施設で上書きしているときだけ facility_settings へ */
 export const PARTNER_FACILITY_OVERRIDE_KEYS = ['prepayDiscount', 'leadDays', 'cutoffHour', 'maxRooms', 'maxNights', 'cancelDays'] as const;
 
 export type PartnerFacilitySettingKey = (typeof PARTNER_FACILITY_SETTING_KEYS)[number];
+export type PartnerFacilityMemberKey = (typeof PARTNER_FACILITY_MEMBER_KEYS)[number];
 export type PartnerFacilityOverrideKey = (typeof PARTNER_FACILITY_OVERRIDE_KEYS)[number];
 
 const asSettingsObject = (v: unknown): Record<string, unknown> =>
@@ -395,6 +408,7 @@ export function splitPartnerBookingSettings(
   const overridden = new Set(overriddenKeys);
   const facilityKeys = new Set<string>([
     ...PARTNER_FACILITY_SETTING_KEYS,
+    ...PARTNER_FACILITY_MEMBER_KEYS,
     ...PARTNER_FACILITY_OVERRIDE_KEYS.filter((k) => overridden.has(k))
   ]);
   const common: Record<string, unknown> = {};
@@ -416,8 +430,9 @@ export function partnerFacilityOverrides(facility: unknown): PartnerFacilityOver
 
 /** 施設で上書きしている N6 の値（キーがある = この施設だけ変える。値が 0・空・null でも上書き） */
 export type PartnerFacilityOverrides = Partial<Pick<PartnerBookingSettings, PartnerFacilityOverrideKey>>;
-/** 施設ごとにだけ持つ値（プラン名・特典・案内文・通知先・公式特典） */
-export type PartnerFacilityOwnSettings = Pick<PartnerBookingSettings, PartnerFacilitySettingKey>;
+/** 施設ごとにだけ持つ値（プラン名・特典・案内文・通知先・公式特典）。特別会員のキャンセル方式・規定は送ったときだけ */
+export type PartnerFacilityOwnSettings = Pick<PartnerBookingSettings, PartnerFacilitySettingKey> &
+  Partial<Pick<PartnerBookingSettings, PartnerFacilityMemberKey>>;
 
 /**
  * facility_settings（または施設タブの画面から来た上書き）から、上書きしている N6 のキーと値（正規化済み）を取り出す。
@@ -445,6 +460,7 @@ export function buildPartnerFacilitySettings(
   const out: Record<string, unknown> = { ...asSettingsObject(current) };
   for (const k of PARTNER_FACILITY_OVERRIDE_KEYS) delete out[k];
   for (const k of PARTNER_FACILITY_SETTING_KEYS) out[k] = own[k];
+  for (const k of PARTNER_FACILITY_MEMBER_KEYS) if (own[k] !== undefined) out[k] = own[k];
   for (const k of PARTNER_FACILITY_OVERRIDE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(overrides, k) && overrides[k] !== undefined) out[k] = overrides[k];
   }
@@ -570,13 +586,16 @@ export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown
     groupLeadDays: clampInt(src.groupLeadDays, 0, 90, d.groupLeadDays),
     groupTransportChoices: normalizeGroupChoices(src.groupTransportChoices, d.groupTransportChoices),
     groupDinnerTimeChoices: normalizeGroupChoices(src.groupDinnerTimeChoices, d.groupDinnerTimeChoices),
-    groupAnswerDays: clampInt(src.groupAnswerDays, 1, 60, d.groupAnswerDays)
+    groupAnswerDays: clampInt(src.groupAnswerDays, 1, 60, d.groupAnswerDays),
+    cancelPolicyMode: normalizeCancelPolicyMode(src.cancelPolicyMode),
+    cancelRules: normalizeCancelRules(src.cancelRules)
   };
 }
 
 // 保存時の検証（normalize で吸収できない入力ミス）。
-export function validatePartnerBookingSettings(s: PartnerBookingSettings, bookingEnabled = false): string | null {
-  if (bookingEnabled && !s.paymentOptions.length) return '予約を受け付けるときは、支払方法を1つ以上選んでください。';
+// kind: 取引先の種別。特別会員（member）は公式予約の支払方法を使うので、支払方法が無くても予約受付をオンにできる（Z12）
+export function validatePartnerBookingSettings(s: PartnerBookingSettings, bookingEnabled = false, kind?: string): string | null {
+  if (bookingEnabled && kind !== 'member' && !s.paymentOptions.length) return '予約を受け付けるときは、支払方法を1つ以上選んでください。';
   const q = validateBookingQuestions(s.options);
   return q ? `この取引先だけ追加で聞く項目 — ${q}` : null;
 }

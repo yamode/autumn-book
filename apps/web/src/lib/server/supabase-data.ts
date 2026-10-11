@@ -36,6 +36,7 @@
 //         }
 //         return merged;
 //       });
+import { parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot } from '$lib/partner-member-page';
 import { supa } from './supabase';
 import { partnerServiceClient } from './partners/admin-client';
 import { holdClientKey, holdErrorKind } from './hold-rate-limit';
@@ -423,6 +424,8 @@ type HoldGroupRoomRow = {
 	adult_count: number;
 	child_counts?: Record<string, number | string> | null;
 	quote: Parameters<typeof mapQuote>[0];
+	/** 特別会員の専用ページ経由の束の部屋の特典（autumn-shared 20261010221207 から） */
+	member_perks?: unknown;
 };
 
 /**
@@ -451,6 +454,7 @@ export async function sbGetHoldGroupMapped(
 		status: string;
 		total: number;
 		rooms: HoldGroupRoomRow[];
+		member_page?: unknown;
 	};
 	const rooms: HoldGroupRoom[] = (r.rooms ?? []).map((x) => ({
 		index: x.room_index,
@@ -459,7 +463,8 @@ export async function sbGetHoldGroupMapped(
 		planId: x.rate_plan_id,
 		adults: x.adult_count,
 		children: childTotalOf(x.child_counts),
-		quote: mapQuote(x.quote)
+		quote: mapQuote(x.quote),
+		memberPerks: parseMemberPerks(x.member_perks)
 	}));
 	const first = rooms[0];
 	if (!first) return null;
@@ -472,6 +477,7 @@ export async function sbGetHoldGroupMapped(
 		status: r.status,
 		total: r.total,
 		rooms,
+		memberPage: parseMemberPageSnapshot(r.member_page),
 		roomTypeId: first.roomTypeId,
 		planId: first.planId,
 		adults: first.adults,
@@ -558,7 +564,9 @@ export type GuestCancelReason =
 	| 'checked_out'
 	| 'past_checkin'
 	/** 1 室の取消で、その部屋がもう取り消せない（取消済みなど・autumn-shared 20261010204933） */
-	| 'room_not_cancellable';
+	| 'room_not_cancellable'
+	/** 特別会員の専用ページ経由の予約（このリンクからは取り消せない。専用ページのご予約一覧へ案内・20261010221207） */
+	| 'member_page';
 
 export type GuestCancelBooking = {
 	code: string;
@@ -601,7 +609,7 @@ export type GuestCancelBooking = {
 };
 
 export type GuestCancelFee = {
-	rules_source: 'plan' | 'rank';
+	rules_source: 'plan' | 'rank' | 'member_page';
 	rank_code: string;
 	rate: number;
 	fee: number;
@@ -616,6 +624,10 @@ export type GuestBookingLookup =
 			reason: GuestCancelReason | null;
 			booking: GuestCancelBooking;
 			fee: GuestCancelFee;
+			/** 特別会員の専用ページ経由の予約か（autumn-shared 20261010221207 から。古い DB は undefined） */
+			member_page?: boolean;
+			/** 専用ページの予約詳細（/p/<token>/bookings/<予約番号>）。専用ページ経由でなければ null */
+			member_page_url?: string | null;
 	  }
 	| { ok: false; reason: GuestCancelReason };
 
@@ -1555,6 +1567,8 @@ interface MyReservationRow {
 	/** 部屋の数・部屋ごとの内訳（autumn-shared 20261010092423 から。公式予約でない行は 1 / []） */
 	room_count?: number;
 	rooms?: MyReservationRoomRow[] | null;
+	/** 特別会員の専用ページ経由の予約（bookings.metadata.member_page・autumn-shared 20261010221207 から） */
+	member_page?: unknown;
 }
 
 interface MyReservationRoomRow {
@@ -1575,6 +1589,8 @@ interface MyReservationRoomRow {
 	bath_tax?: number;
 	paid_share?: number;
 	cancel_kept?: number;
+	/** 20261010221207 から */
+	member_perks?: unknown;
 }
 
 export interface MemberReservation {
@@ -1601,6 +1617,9 @@ export interface MemberReservation {
 	roomCount?: number;
 	/** 部屋ごとの内訳（最上位の roomTypeUuid / ratePlanUuid / adults は 1 室目） */
 	rooms?: BookingRoom[];
+	/** 特別会員の専用ページ経由の予約（どのページ・方式）。公式サイトから予約した分・古い DB は null。
+	 *  公式マイページでは参照のみ（取消・変更・オプションは専用ページから・docs/vip-member-page.md §13.4.4） */
+	memberPage?: MemberPageSnapshot | null;
 }
 
 function daysBetween(from: string, to: string): number {
@@ -1668,8 +1687,10 @@ function mapReservationRow(r: MyReservationRow): MemberReservation {
 			paidShare: x.paid_share,
 			bathTax: x.bath_tax,
 			prepayDiscount: x.prepay_discount,
-			cancelKept: x.cancel_kept
-		}))
+			cancelKept: x.cancel_kept,
+			memberPerks: parseMemberPerks(x.member_perks)
+		})),
+		memberPage: parseMemberPageSnapshot(r.member_page)
 	};
 }
 
@@ -1735,8 +1756,11 @@ interface ComputeCancelFeeRow {
 	rooms?: { room_index: number; fee: number; rate: number; rules_source?: string }[];
 }
 
+/** compute_cancel_fee の rules_source（'member_page' は特別会員の専用ページの規定が効いたとき・autumn-shared 20261010221207） */
+const rulesSourceOf = (v: unknown): 'plan' | 'rank' | 'member_page' => (v === 'plan' ? 'plan' : v === 'member_page' ? 'member_page' : 'rank');
+
 /** 部屋ごとのキャンセル料（2 室以上の予約だけ。1 室は空） */
-export type RoomCancelFee = { index: number; fee: number; rate: number; rulesSource: 'plan' | 'rank' };
+export type RoomCancelFee = { index: number; fee: number; rate: number; rulesSource: 'plan' | 'rank' | 'member_page' };
 
 /** store.computeCancelFee 相当。compute_cancel_fee RPC を叩き、適用ルール表を除く結果を返す。
  *  表示用の rules は呼び出し側で（plan なら予約 snapshot、rank なら sbListRankCancelPolicies から）補う。 */
@@ -1754,7 +1778,7 @@ export async function sbComputeCancelFee(
 	if (error) throw error;
 	const r = data as ComputeCancelFeeRow;
 	return {
-		rulesSource: r.rules_source === 'plan' ? 'plan' : 'rank',
+		rulesSource: rulesSourceOf(r.rules_source),
 		rankCode: r.rank_code,
 		rate: r.rate,
 		fee: r.fee,
@@ -1764,7 +1788,7 @@ export async function sbComputeCancelFee(
 			index: x.room_index,
 			fee: x.fee ?? 0,
 			rate: x.rate ?? 0,
-			rulesSource: x.rules_source === 'plan' ? 'plan' : 'rank'
+			rulesSource: rulesSourceOf(x.rules_source)
 		}))
 	};
 }
@@ -2108,7 +2132,11 @@ export async function sbQuoteAmendmentDates(
 		p_nights: nights
 	});
 	if (error) throw error;
-	const raw = data as Record<string, unknown>;
+	return mapAmendDatesQuote(data as Record<string, unknown>);
+}
+
+/** quote_amendment_dates（・特別会員の member_page_quote_amendment_dates）の jsonb → AmendDatesQuote */
+export function mapAmendDatesQuote(raw: Record<string, unknown>): AmendDatesQuote {
 	const rooms = (Array.isArray(raw.rooms) ? raw.rooms : []) as Record<string, unknown>[];
 	return {
 		...mapAmendQuote(raw),
@@ -2732,11 +2760,18 @@ export interface LastBooking {
 	 * total はその部屋の宿泊料金（割引前）。M0 の 1 室では 1 件。古い cookie には無い
 	 */
 	rooms?: { roomUuid: string; planUuid: string; adults: number; total: number }[];
+	/** 特別会員の専用ページ経由の予約（完了画面の「特別会員ページのご予約一覧で確認」・docs/vip-member-page.md §13.4.3-7） */
+	memberPage?: { partnerId: string; pageName: string } | null;
 }
 
 /** 束（仮押さえ）から LastBooking.rooms を作る */
 export function lastBookingRoomsOf(hold: Pick<HoldGroup, 'rooms'>): NonNullable<LastBooking['rooms']> {
 	return hold.rooms.map((r) => ({ roomUuid: r.roomTypeId, planUuid: r.planId, adults: r.adults, total: r.quote.total }));
+}
+
+/** 束（仮押さえ）から LastBooking.memberPage を作る（専用ページ経由でなければ null） */
+export function lastBookingMemberPageOf(hold: Pick<HoldGroup, 'memberPage'>): LastBooking['memberPage'] {
+	return hold.memberPage ? { partnerId: hold.memberPage.partnerId, pageName: hold.memberPage.pageName } : null;
 }
 
 export function setLastBooking(cookies: Cookies, last: LastBooking): void {
