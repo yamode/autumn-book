@@ -5,11 +5,13 @@
 	import * as m from '$lib/paraglide/messages';
 
 	// quote: 合計（複数室は全室の和）。rooms: 部屋ごとの泊の明細（省略時は quote.lines を 1 室として出す）
-	let { quote, rooms, showLines = true }: { quote: Quote; rooms?: { lines: QuoteLine[] }[]; showLines?: boolean } = $props();
+	let { quote, rooms, showLines = true }: { quote: Quote; rooms?: { lines: QuoteLine[]; name?: string }[]; showLines?: boolean } = $props();
 
 	// 料金の明細は「泊ごとの見出し → その下に部屋ごとの行」（2026-10-10 指示）。1 室は行の「1室目」を省く・1 泊でも見出しを出す
 	let groups = $derived(nightGroups(rooms && rooms.length > 0 ? rooms : [{ lines: quote.lines }]));
 	let multi = $derived((rooms?.length ?? 1) > 1);
+	// 部屋タイプが異なる複数室のときだけ、行の下に部屋名を添える（同じ部屋タイプなら不要）
+	let showNames = $derived(multi && new Set(rooms?.map((r) => r.name ?? '')).size > 1);
 </script>
 
 <div class="space-y-1.5 text-sm">
@@ -23,6 +25,7 @@
 							{multi
 								? m.price_night_room_row({ room: String(r.room + 1), unit: formatPrice(r.unitPrice), adults: String(r.adults) })
 								: m.price_night_row({ unit: formatPrice(r.unitPrice), adults: String(r.adults) })}
+							{#if showNames && rooms?.[r.room]?.name}<span class="block text-xs text-stone-400">{rooms[r.room].name}</span>{/if}
 						</span>
 						<span class="whitespace-nowrap tabular-nums">{formatPrice(r.subtotal)}</span>
 					</div>

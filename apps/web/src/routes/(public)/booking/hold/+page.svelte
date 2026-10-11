@@ -719,7 +719,7 @@
 					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
-					<PriceBreakdown quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines }))} />
+					<PriceBreakdown quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines, name: r.roomName }))} />
 					{#if inlineCard && charge.discount > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-red-600">
 							<span>{discountLabel}</span>

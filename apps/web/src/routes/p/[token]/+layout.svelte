@@ -161,7 +161,8 @@
 </svelte:head>
 
 <div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
-  <header bind:this={headerEl} class="sticky top-0 z-40 border-b border-stone-200 bg-white/95 backdrop-blur">
+  <!-- z-[45]: 本文の公開期間の料金カード（z-40）より上に置き、スクロール時にカードがヘッダーへ重ならないようにする -->
+  <header bind:this={headerEl} class="sticky top-0 z-[45] border-b border-stone-200 bg-white/95 backdrop-blur">
     {#if portal?.preview}
       <!-- 管理画面の「確認ページを開く」から開いた確認モード（見るだけ・予約の確定や取消はできない） -->
       <p class="bg-amber-400 px-4 py-1 text-center text-xs font-bold text-amber-950 sm:text-sm" role="status">管理者の確認モード — 取引先から見た画面です。予約の最終確認まで進めますが、確定・取消・保存はできません。</p>
