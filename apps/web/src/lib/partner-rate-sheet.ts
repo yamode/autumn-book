@@ -340,6 +340,7 @@ table.cal td.blank { border: none; }
 .legend span { display: inline-flex; align-items: center; gap: 1.2mm; }
 .legend .legend-note { flex-basis: 100%; color: #57534e; }
 .legend i { display: inline-block; width: 6mm; height: 4mm; border: 1px solid #a8a29e; font-style: normal; text-align: center; font-size: 7pt; font-weight: 700; line-height: 3.6mm; }
+.blk { margin-top: 6mm; }
 table.pt { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.6pt; }
 table.pt thead tr.top th { border: none; background: none; padding: 0 0 2.5mm; text-align: left; font-weight: 400; }
 table.pt th, table.pt td { border: 1px solid #a8a29e; padding: 0.8mm 1mm; vertical-align: top; overflow-wrap: anywhere; }
@@ -391,12 +392,14 @@ function monthHtml(ym: string, meta: RateSheetMeta, dayMap: Map<string, RateShee
   return `<div class="month"><h2>${y}年${m}月</h2><table class="cal"><thead><tr>${head}</tr></thead><tbody>${weeks.join('')}</tbody></table></div>`;
 }
 
+// 人数ごと・区分の列の塊ごとの表。人数帯が複数でも改ページで区切らず、続けて詰めて並べる（2026-10-11 指示）。
+// ページの見出し（headerHtml）は料金表の先頭に1回だけ（priceTablesSectionHtml）。表の見出しは thead に入れ、ページをまたぐ表では毎ページに繰り返す
 function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number): string {
   // その人数で料金のある行・区分だけ
   const rows = sheet.rows.filter((r) => sheet.categories.some((c) => c.prices[comboKey(r.roomCode, r.planCode, guests)] != null));
   const cats = sheet.categories.filter((c) => rows.some((r) => c.prices[comboKey(r.roomCode, r.planCode, guests)] != null));
   if (!rows.length || !cats.length) {
-    return `<div class="page">${headerHtml(meta)}<p class="pt-title">${guests}名1室の料金</p><p class="empty">この人数で予約できる料金はありません。</p></div>`;
+    return `<div class="blk"><p class="pt-title">${guests}名1室の料金</p><p class="empty">この人数で予約できる料金はありません。</p></div>`;
   }
   const chunks = chunkCategoryColumns(cats);
   return chunks
@@ -404,7 +407,7 @@ function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number):
       const span = 3 + chunk.length;
       const suffix = chunks.length > 1 ? `（区分 ${chunk[0].label}〜${chunk[chunk.length - 1].label}）` : '';
       // 縦の紙幅（188mm）: 部屋 30mm・プラン 40mm・食事 10mm、残り（約108mm）を区分の列で等分（8列で約13.5mm）
-      const head = `<tr class="top"><th colspan="${span}">${headerHtml(meta)}<p class="pt-title">区分別の料金表　${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
+      const head = `<tr class="top"><th colspan="${span}"><p class="pt-title">区分別の料金表　${guests}名1室の料金（1名あたり・下段は1室合計）${suffix}</p></th></tr>
 <tr><th style="width:30mm">部屋タイプ</th><th style="width:40mm">プラン</th><th style="width:10mm">食事</th>${chunk
         .map((c) => `<th class="cat" style="background:${c.color}">区分${esc(c.label)}</th>`)
         .join('')}</tr>`;
@@ -432,9 +435,15 @@ function priceTablesHtml(sheet: RateSheet, meta: RateSheetMeta, guests: number):
           return `<tbody class="grp">${trs}</tbody>`;
         })
         .join('');
-      return `<div class="page"><table class="pt"><thead>${head}</thead>${body}</table></div>`;
+      return `<div class="blk"><table class="pt"><thead>${head}</thead>${body}</table></div>`;
     })
     .join('');
+}
+
+// 料金表の部分: 先頭に見出しを1回だけ出し、人数帯の表を続けて並べる
+function priceTablesSectionHtml(sheet: RateSheet, meta: RateSheetMeta): string {
+  const tables = meta.guests.map((g) => priceTablesHtml(sheet, meta, g)).join('');
+  return `<div class="page">${headerHtml(meta)}${tables}</div>`;
 }
 
 /** 料金表の紙面（A4 縦）: 月カレンダー（1ページに2か月を上下に・区分の凡例つき）＋人数ごとの区分の料金表 */
@@ -457,7 +466,7 @@ export function renderRateSheetHtml(sheet: RateSheet, meta: RateSheetMeta): stri
       .join('');
     calPages.push(`<div class="page">${headerHtml(meta)}<div class="months">${inner}</div>${legend}</div>`);
   }
-  const tables = sheet.categories.length ? meta.guests.map((g) => priceTablesHtml(sheet, meta, g)).join('') : '';
+  const tables = sheet.categories.length ? priceTablesSectionHtml(sheet, meta) : '';
   const title = `${meta.partnerName} 様 専用料金表 ${meta.facilityName}`;
   const script = meta.autoPrintNonce
     ? `<script nonce="${esc(meta.autoPrintNonce)}">window.addEventListener('load',function(){setTimeout(function(){window.print();},300);});</script>`

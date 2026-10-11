@@ -270,4 +270,15 @@ describe('renderRateSheetHtml', () => {
     expect(tables).toHaveLength(2);
     for (const t of tables) expect((t.match(/<th class="cat"/g) ?? []).length).toBeLessThanOrEqual(8);
   });
+
+  it('人数帯を複数選んでも、人数ごとに改ページせず料金表を続けて並べる', () => {
+    const s = buildRateSheet([day('2026-10-11', 10000), day('2026-10-12', 12000)], {});
+    const html = renderRateSheetHtml(s, { ...meta, guests: [2, 3] });
+    const body = html.slice(html.indexOf('</style>'));
+    expect(body).toContain('2名1室の料金');
+    expect(body).toContain('3名1室の料金');
+    // 料金表のページは1つ（カレンダーのページ ＋ 料金表の1ページ）
+    const calPages = (body.match(/<div class="months">/g) ?? []).length;
+    expect((body.match(/<div class="page">/g) ?? []).length).toBe(calPages + 1);
+  });
 });
