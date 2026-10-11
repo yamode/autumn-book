@@ -2,6 +2,53 @@
 
 > **最終更新**: 2026-10-10（セキュリティレビュー・認証強化 S1〜S8〔取引先ログインの制限・Turnstile・メール OTP・パスキー・管理画面の TOTP〕・今後の請求予定・Stripe メタデータ・v0.115.0／autumn-pms v4.744.0 取込時の入湯税）
 
+## 公式予約の複数室 M3（部屋ごとの部屋タイプ・プラン・人数の変更）（2026-10-11・v0.121.0・autumn-shared 20261011030642・autumn-pms v4.746.0〜v4.746.1）
+
+- 部屋ごとに部屋タイプ・プラン・人数を変えられる: 公式マイページ（`amend/room/[index]`・1 室の公式予約は従来のウィザード）・特別会員の専用ページ（専用料金・新プランの専用特典）・管理画面（**staff も可**〔担当施設の予約だけ〕・理由必須・締切／ペナルティを越える force・チェックイン日を過ぎた予約は force でも不可）。日程は変えない（全室同時の日程変更は M2 のまま）
+- 規則: 回数は日程変更と合わせて `2 + (室数 − 1)`、オンライン決済済みは不可、ペナルティ期間は不可（**1 室の予約も、日程を変えないプラン・部屋・人数の変更をペナルティ期間は止めるようになった**）、支払方法が合わない・定員超え・満室は不可。部屋タイプの在庫は振り替え、プランが変わる部屋は新しいプランの規定（特別会員は予約時の方式で合成）
+- あわせて: 予約全体の取消・最後の 1 室の取消で**オプションも取り消す**／確認メール（再送）は取り消した部屋を載せない
+- PMS（autumn-pms）: v4.746.0 で 1 室取消の部屋の宿泊明細を下書きの請求書から自動で外す（Book 由来の印 `book_lodging` の行だけ・印の無い古い行と確定済みの請求書は注記）。v4.746.1 で部屋タイプが変わった部屋を新しいタイプで割り当て直す・部屋ごとの変更点を変更ログに。**部屋・プランの変更・日程変更で請求書の宿泊明細は作り直さない（現場で直す）**
+- **2026-11-09 以降にやること**: 退避表 `book._mr_backup_*` の drop。autumn-shared `docs/rollback/_draft_book_multi_room_drop_backup.sql` を `new-migration.sh autumn-shared book_multi_room_drop_backup` で作った migration に写して当てる（当日まで `migrations/` に置かない・消すと M0 の巻き戻しは不可）
+- 設計・実装メモ: `docs/official-multi-room.md` §17・§18（§18.10 レビュー対応）。巻き戻し用: autumn-shared `docs/rollback/20261011030642_*`
+- **未確認（要・手動）**: 3 つの画面ともブラウザ未確認（2 室以上の実データが要る）。下のチェックリスト
+
+### テストチェックリスト
+
+#### DB（M3）
+- [ ] `amend_booking_rooms`（会員・3 室の予約・2 室目を 和室 2 名 → 洋室 3 名・プランも変更）: `core.stays.room_type_id / adult_count` と `booking_rooms.rate_plan_id / price_lines / room_total / cancellation_policy_snapshot`（新プランの規定）が変わり、1・3 室目の `price_lines` は据え置き、`coupon_share / points_share` は全室で再按分、`total_amount` ＝ 新しい和、在庫は和室 +1・洋室 −1（滞在期間）、`booking_amendments(kind='composite')`、電文 `modified`（`amendment.scope='rooms'`・`changed_rooms` 1 件・`rooms[]` 3 件の新値）、`notifications` 1 件、`_assert_booking_totals` が通る
+- [ ] 同じタイプで人数だけ変更 → 在庫は動かない（`kind='party'`）。`guest_detail.male/female` が null に
+- [ ] 洋室の残り 0 で部屋タイプを洋室へ → `sold_out:<id>`・何も変わらない（和室の在庫も戻っていない）。見積は `available:false`
+- [ ] 定員超え（洋室 `capacity_max=2` に 3 名）→ 公式は `not_sellable`、専用ページは `over_capacity`
+- [ ] 現地払い不可のプラン（`payment_method='prepayment'`）へ → `payment_incompatible`
+- [ ] ペナルティ期間（率 > 0）の部屋 → `amend_in_penalty`。スタッフの `p_force=true` は通る（理由必須・監査ログに `forced`）。締切後も同様。回数と `prepaid_online` は `force` でも不可
+- [ ] オンライン決済済み（`direct_payments.status='paid'`）→ `prepaid_online`（会員・専用ページ・管理画面とも）
+- [ ] 回数: 日程変更 1 回 → 部屋の変更で `amended_count` が共有で増える。上限（【要確認 M1】の値）で `amend_limit`。`amend_remaining` が `quote_amendment / _dates / _rooms` で同じ
+- [ ] 取消済みの部屋・2 室目がチェックイン済みの予約 → `room_not_found` / `not_amendable`
+- [ ] `member_page_amend_booking_rooms`（専用ページ経由・2 室）: `lines` が専用料金で `room_total` に入る・`lines` の長さ／日付／`adults`／`subtotal` の不一致は `invalid_lines`・プラン変更で `booking_rooms.member_perks` が新プランの特典に・`core.stays.notes` の先頭行「【特別会員特典】…」が差し替わる（特典なしのプランなら行が消え、回答・代表の要望は残る）・`cancellation_policy_snapshot` が予約時の方式（`page` / `favorable`）で合成される（`_confirm_booking_group` と同じ結果）
+- [ ] ガード: 専用ページ経由の予約に会員の `amend_booking_rooms` / `quote_amendment_rooms` → `member_page_booking`。`admin_amend_booking_rooms` は通る
+- [ ] 1 室の予約: 公式マイページは従来の `amend_booking`（日程を含む）がそのまま。専用ページは `member_page_amend_booking_rooms` で部屋・プラン・人数が変わる
+- [ ] `_confirm_booking_group`（差し替え後）: 公式・専用ページ（page / favorable / rank）の規定の合成が従来と同じ（コンテナで md5 でなく結果を比べる）
+- [ ] §17.5.1: 1 室目を取り消した 2 室の予約で `admin_resend_booking_mail` → `mail_render_context` の `rooms` が生きている 1 件・`room / plan / adult_count / price_lines` が 2 室目・文面に 1 室目が出ない。`booking_cancelled` / `booking_room_cancelled` の文面は従来どおり
+- [ ] §17.5.2: オプション（`reserved`・`needs_reschedule`）の付いた 2 室の予約を全室一括で取消 → 全部 `cancelled`・`cancelled_at`。最後の 1 室の取消でも同じ。`fulfilled` は変わらない。1 室取消は従来どおりその部屋の分だけ
+- [ ] （【要確認 M3】で揃える場合）1 室の `amend_booking` でペナルティ期間のプランだけの変更が `amend_in_penalty` になる
+
+#### 公式マイページ
+- [ ] 2 室以上の予約詳細の部屋カードに「このお部屋を変更」。候補（プラン × 部屋タイプ・残室）と人数を選ぶと、この部屋の今／変更後と予約全体の今／変更後・返還ポイント・あと N 回が出る。確定で予約詳細に戻り、金額・部屋・プランが変わっている
+- [ ] 在庫が無い候補は選べない（「満室」）。確定の瞬間に無くなっていたら「満室になりました」でかごは残らない（部屋の変更にかごは無い）
+- [ ] 1 室の予約は従来の変更画面のまま。カード払い済みは「変更できません」の案内。専用ページ経由の予約はボタンが無く、専用ページへのリンク
+- [ ] 変更後に PMS の予約詳細で部屋ごとの部屋タイプ・プラン名・人数・泊ごとの料金が変わり、部屋割りが新しいタイプの部屋になっている（autumn-pms P1）
+
+#### 専用ページ
+- [ ] 1 室・2 室の予約とも部屋カードに「このお部屋を変更」。候補の料金が**専用料金**（料金カレンダーの同じ日の金額と一致）・特典がプランごとに出る。専用料金の無いプラン・部屋は候補に出ない
+- [ ] 確定後、予約詳細の部屋カードの特典・方式・金額が変わり、PMS の要望欄の特典の行が新しいプランのもの
+- [ ] 公式マイページからは変えられない（403・DB も `member_page_booking`）
+
+#### 管理画面
+- [ ] 部屋の表の行の「変更」→ 部屋タイプ・プラン・人数・理由・（必要なら）強制 → 見積 → 確定。監査ログ `amend_booking_rooms`。カード払い済みは不可の案内
+- [ ] 専用ページ経由の予約も変えられ、料金が専用料金・特典が差し替わる
+- [ ] 確認メール再送で取り消した部屋が載らず、変更後の部屋・金額で出る
+- [ ] 全室取消・最後の 1 室取消でオプションが取消済みになる（予約詳細のオプション欄）
+
 ## 特別会員の専用ページ（2026-10-11・v0.120.0・autumn-shared 20261010221207）
 
 - 取引先の種類に **特別会員（kind='member'）**。管理画面の会員詳細「専用ページを作る」で作成（作成直後は公開停止・予約受付オフ）。対象の会員は取引先詳細で追加。PMS の家族でつながる会員も同じページを使える（グレード不問）。アンバサダー会員（ambassador）は DB の種類の制約にだけ入っている（画面なし）

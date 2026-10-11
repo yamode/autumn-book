@@ -23,6 +23,8 @@ import {
 	linkMemberErrorText,
 	adminResendBookingMail,
 	adminRotateCancelToken,
+	adminAmendBookingRooms,
+	adminQuoteAmendRooms,
 	bookAdmin,
 	mapRpcError,
 	type BookingDetail
@@ -59,6 +61,19 @@ import {
 } from '$lib/server/partners/admin-reservations';
 import { actionFailure } from '$lib/server/partners/staff';
 import { todayJst } from '$lib/server/partners/store';
+import { partnerServiceClient } from '$lib/server/partners/admin-client';
+import { loadMemberPagePlans } from '$lib/server/partners/member-hold';
+import { staffMemberAmendRoomInput } from '$lib/server/partners/member-bookings';
+import { sbListPlansMapped, sbListRoomTypesMapped } from '$lib/server/supabase-data';
+import {
+	AMEND_ROOM_MESSAGES_JA,
+	amendLimitOf,
+	amendRoomErrorCode,
+	amendRoomErrorStatus,
+	parseAdults,
+	type AmendRoomInput
+} from '$lib/multi-room';
+import type { DirectPaymentInfo } from '$lib/server/direct-payments';
 import type { Actions, PageServerLoad } from './$types';
 
 const UNAVAILABLE = 'この環境では利用できません（DATA_SOURCE / AUTH_MODE が supabase ではありません）。';
@@ -91,6 +106,119 @@ async function rejectPartner(event: RequestEvent, memberScope = false) {
 
 const NO_PARTNER: PartnerLedgerResult = { ledger: null, error: null };
 
+// ---------------------------------------------------------------- 部屋ごとの部屋タイプ・プラン・人数の変更（公式の複数室 M3・§17.3.3）
+
+/** 部屋の変更の可否（予約全体）と選択肢。B は rooms[i].canAmend と amendOptions を使う */
+type AmendRoomsState = {
+	/** 予約全体として変えられるか（直販・confirmed・全室 reserved・オンライン決済済みでない・回数が残る）。締切・ペナルティは force で越えられるので見ない */
+	ok: boolean;
+	remaining: number;
+	limit: number;
+	prepaidOnline: boolean;
+	/** 専用ページ経由（料金は専用料金。専用ページで扱っていないプランは選べない） */
+	memberPage: boolean;
+};
+type AmendOptions = {
+	roomTypes: { id: string; name: string; capacity: number }[];
+	/** onsite: 会員の現地払いを許すプラン（false のプランは選べない）。memberPage: 専用ページで扱うプラン（専用ページ経由の予約では false は選べない） */
+	plans: { id: string; name: string; onsite: boolean; memberPage: boolean }[];
+};
+const NO_AMEND: { amendRooms: AmendRoomsState; amendOptions: AmendOptions } = {
+	amendRooms: { ok: false, remaining: 0, limit: 2, prepaidOnline: false, memberPage: false },
+	amendOptions: { roomTypes: [], plans: [] }
+};
+
+const PREPAID_ADMIN_MESSAGE =
+	'カードでお支払い済みのご予約は、お部屋・プラン・人数を変更できません。取消 → 取り直し（キャンセル料がかからない期間なら全額返金）でご案内ください。';
+
+/** 部屋の変更の可否を detail.booking.rooms[i].canAmend に書き、選択肢（施設の部屋タイプ・公開プラン）を読む */
+async function amendRoomsOf(detail: BookingDetail, payment: DirectPaymentInfo | null) {
+	const b = detail.booking;
+	const rooms = b.rooms ?? [];
+	const live = rooms.filter((r) => !r.cancelled);
+	const prepaidOnline = payment?.status === 'paid' && payment.refund_status !== 'full';
+	const limit = amendLimitOf(Math.max(1, rooms.length));
+	const remaining = Math.max(0, limit - (b.amendments ?? 0));
+	const ok =
+		b.booking_id !== null &&
+		b.booking_status === 'confirmed' &&
+		!prepaidOnline &&
+		remaining > 0 &&
+		live.length > 0 &&
+		live.every((r) => r.stay_status === 'reserved');
+	for (const r of rooms) r.canAmend = ok && !r.cancelled;
+	const state: AmendRoomsState = { ok, remaining, limit, prepaidOnline, memberPage: !!b.memberPage };
+	if (!ok) return { amendRooms: state, amendOptions: NO_AMEND.amendOptions };
+	const sb = b.memberPage ? partnerServiceClient() : null;
+	const [roomTypes, plans, memberPlans] = await Promise.all([
+		sbListRoomTypesMapped(b.facility_id).catch(() => []),
+		sbListPlansMapped(b.facility_id).catch(() => []),
+		sb ? loadMemberPagePlans(sb, b.facility_id).catch(() => null) : Promise.resolve(null)
+	]);
+	const memberIds = memberPlans ? new Set([...memberPlans.values()].map((p) => p.ratePlanId)) : null;
+	return {
+		amendRooms: state,
+		amendOptions: {
+			roomTypes: roomTypes.map((t) => ({ id: t.id, name: t.name, capacity: t.capacity })),
+			plans: plans.map((p) => ({ id: p.id, name: p.name, onsite: p.payment.onsite, memberPage: memberIds ? memberIds.has(p.id) : true }))
+		}
+	};
+}
+
+/** フォーム（roomIndex・ratePlanId・roomTypeId・adults）→ RPC の入力。専用ページ経由の予約は専用料金の泊明細と特典を付ける */
+async function adminRoomInput(
+	event: RequestEvent,
+	form: FormData
+): Promise<{ ok: true; input: AmendRoomInput; roomIndex: number } | { ok: false; status: number; message: string }> {
+	const roomIndex = Number(form.get('roomIndex'));
+	const ratePlanId = String(form.get('ratePlanId') ?? '');
+	const roomTypeId = String(form.get('roomTypeId') ?? '');
+	const adults = parseAdults(form.get('adults'));
+	if (!Number.isInteger(roomIndex) || roomIndex < 1 || !ratePlanId || !roomTypeId || adults === null) {
+		return { ok: false, status: 400, message: '変更するお部屋・部屋タイプ・プラン・人数（1〜6 名）を選んでください。' };
+	}
+	let detail: BookingDetail;
+	try {
+		detail = await adminBookingDetail(bookAdmin(event), event.params.code ?? '');
+	} catch (e) {
+		return { ok: false, status: 400, message: mapRpcError(e) };
+	}
+	const b = detail.booking;
+	if (!b.memberPage) return { ok: true, roomIndex, input: { index: roomIndex, ratePlanId, roomTypeId, adults } };
+	const built = await staffMemberAmendRoomInput({
+		partnerId: b.memberPage.partnerId,
+		facilityId: b.facility_id,
+		bookingCode: b.code,
+		checkIn: b.check_in_date,
+		nights: b.nights,
+		rooms: (b.rooms ?? []).map((r) => ({
+			index: r.room_index,
+			cancelled: r.cancelled,
+			stayStatus: r.stay_status,
+			adults: r.adults,
+			roomTypeId: r.room_type_id ?? '',
+			ratePlanId: r.rate_plan_id ?? '',
+			roomTotal: r.room_total
+		})),
+		roomIndex,
+		change: { ratePlanId, roomTypeId, adults }
+	}).catch((e) => ({ ok: false as const, message: e instanceof Error ? e.message : String(e) }));
+	if (!built.ok) return { ok: false, status: 400, message: built.message };
+	return { ok: true, roomIndex, input: built.input };
+}
+
+/** 部屋の変更の DB の例外 → 管理画面の文言 */
+function amendRoomFailure(e: unknown) {
+	const code = amendRoomErrorCode(e);
+	const message =
+		code === 'prepaid_online'
+			? PREPAID_ADMIN_MESSAGE
+			: code === 'forbidden' || code === 'error'
+				? mapRpcError(e)
+				: AMEND_ROOM_MESSAGES_JA[code];
+	return fail(amendRoomErrorStatus(code), { amendRoomError: message, amendRoomCode: code });
+}
+
 export const load: PageServerLoad = async (event) => {
 	const isAdmin = event.locals.user?.role === 'admin';
 
@@ -121,7 +249,8 @@ export const load: PageServerLoad = async (event) => {
 				isPartner: true,
 				partner: await loadPartnerLedgerForReservation(event, event.params.code),
 				today: todayJst(),
-				feePreview: null
+				feePreview: null,
+				...NO_AMEND
 			};
 		}
 
@@ -150,7 +279,9 @@ export const load: PageServerLoad = async (event) => {
 				detail.booking.stay_status === 'reserved' ||
 				(detail.booking.booking_status !== 'cancelled' && (detail.booking.rooms ?? []).some((r) => !r.cancelled && r.stay_status === 'reserved'))
 					? (detail.cancel_policy.fee ?? 0)
-					: null
+					: null,
+			// 部屋ごとの部屋タイプ・プラン・人数の変更（M3）: detail.booking.rooms[i].canAmend・amendRooms・amendOptions
+			...(await amendRoomsOf(detail, payment))
 		};
 	}
 
@@ -226,11 +357,71 @@ export const load: PageServerLoad = async (event) => {
 		isPartner: false,
 		partner: NO_PARTNER,
 		today: todayJst(),
-		feePreview: booking.status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null
+		feePreview: booking.status === 'reserved' ? (detail.cancel_policy.fee ?? 0) : null,
+		// デモ（store）は部屋の変更（M3）を出さない
+		...NO_AMEND
 	};
 };
 
 export const actions: Actions = {
+	/**
+	 * 部屋の変更の見積（M3・admin / staff。テナント・施設の権限は DB の _require_staff / has_facility_access が確かめる）。
+	 * 入力 roomIndex・ratePlanId・roomTypeId・adults → { roomQuote, roomIndex }／fail(status, { amendRoomError, amendRoomCode })
+	 */
+	quoteRoom: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { amendRoomError: UNAVAILABLE, amendRoomCode: 'invalid' });
+		// 決定 M4: admin / staff とも可（施設の権限・実際の役割は DB の admin_*_rooms が確かめる）
+		const role = event.locals.user?.role;
+		if (role !== 'admin' && role !== 'staff') return fail(403, { amendRoomError: '権限がありません。', amendRoomCode: 'forbidden' });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
+		const built = await adminRoomInput(event, await event.request.formData());
+		if (!built.ok) return fail(built.status, { amendRoomError: built.message, amendRoomCode: 'invalid' });
+		try {
+			const roomQuote = await adminQuoteAmendRooms(bookAdmin(event), event.params.code, [built.input]);
+			return { roomQuote, roomIndex: built.roomIndex };
+		} catch (e) {
+			return amendRoomFailure(e);
+		}
+	},
+
+	/**
+	 * 部屋の変更の確定（M3・理由必須・監査ログ amend_booking_rooms）。force=on でキャンセル料がかかる期間・締切後でも変える
+	 * （回数とオンライン決済済みは越えない）。入力 roomIndex・ratePlanId・roomTypeId・adults・reason・force
+	 * → { amended: { roomIndex, amendmentNo, kind, diff, newTotal, pointsRefund, forced, changed } }
+	 */
+	amendRoom: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { amendRoomError: UNAVAILABLE, amendRoomCode: 'invalid' });
+		// 決定 M4: admin / staff とも可（施設の権限・実際の役割は DB の admin_*_rooms が確かめる）
+		const role = event.locals.user?.role;
+		if (role !== 'admin' && role !== 'staff') return fail(403, { amendRoomError: '権限がありません。', amendRoomCode: 'forbidden' });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
+		const form = await event.request.formData();
+		const reason = String(form.get('reason') ?? '').trim();
+		if (!reason) return fail(400, { amendRoomError: '変更の理由を入力してください（監査ログに記録されます）。', amendRoomCode: 'reason_required' });
+		const force = form.get('force') === 'on';
+		const built = await adminRoomInput(event, form);
+		if (!built.ok) return fail(built.status, { amendRoomError: built.message, amendRoomCode: 'invalid' });
+		try {
+			const res = await adminAmendBookingRooms(bookAdmin(event), event.params.code, [built.input], reason, force);
+			return {
+				amended: {
+					roomIndex: built.roomIndex,
+					amendmentNo: res.amendment_no,
+					kind: res.kind,
+					diff: res.diff,
+					newTotal: res.new_total,
+					pointsRefund: res.points_refund,
+					forced: res.forced,
+					changed: res.changed
+				}
+			};
+		} catch (e) {
+			return amendRoomFailure(e);
+		}
+	},
+
 	cancel: async (event) => {
 		const denied = requireAdmin(event.locals.user?.role, 'ご予約の取り消し');
 		if (denied) return fail(403, { message: denied });

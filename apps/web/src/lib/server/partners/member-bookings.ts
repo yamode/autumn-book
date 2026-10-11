@@ -3,12 +3,26 @@
 //   読み取り: 会員の authenticated クライアントで公式マイページと同じ RPC（my_reservations など）を呼び、このページから本人が予約した分だけ
 //   操作:     service_role の入口 book.member_page_*（対象者・このページの予約・予約した本人を DB で確かめ、会員を名乗って既存の RPC を呼ぶ）
 //   日程変更: 専用料金で計算し直す（生きている部屋ごとに quotePartnerBooking → 泊明細 → member_page_*_dates）
+//   部屋の変更（M3）: 変える部屋の専用料金と新しいプランの特典 → member_page_*_rooms
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { memberPageBookingsOf, memberPageCalendarHrefOf, memberPageHrefOf, type MemberAmendRoomLines, type MemberHoldRoom } from '$lib/partner-member-page';
-import { mapAmendDatesQuote, type AmendDatesQuote, type AmendResult, type MemberReservation } from '$lib/server/supabase-data';
+import { memberPageBookingsOf, memberPageCalendarHrefOf, memberPageHrefOf, perksSnapshotOf, type MemberAmendRoomLines, type MemberHoldRoom } from '$lib/partner-member-page';
+import { perksForPlan } from '$lib/partner-booking';
+import { amendRoomsPayload, type AmendRoomInput } from '$lib/multi-room';
+import {
+  mapAmendDatesQuote,
+  mapAmendRoomsQuote,
+  mapAmendRoomsResult,
+  type AmendDatesQuote,
+  type AmendResult,
+  type AmendRoomsQuote,
+  type AmendRoomsResult,
+  type MemberReservation
+} from '$lib/server/supabase-data';
 import { partnerServiceClient } from './admin-client';
-import { quoteMemberRooms } from './member-hold';
-import { loadPartnerContext, memberPagesFor, type PartnerContext } from './store';
+import { quotePartnerBooking } from './booking';
+import { loadMemberPagePlans, memberPlanKey, quoteMemberRooms } from './member-hold';
+import { loadPartnerRates } from './rates';
+import { addDaysIso, loadPartnerContext, memberPagesFor, type PartnerContext } from './store';
 
 /** このページから本人が予約した分（家族・公式・別ページの予約は出さない・Q10） */
 export const memberPageReservations = (all: readonly MemberReservation[], partnerId: string, memberUserId: string): MemberReservation[] =>
@@ -164,4 +178,215 @@ export async function listMemberPagesFor(memberUserId: string): Promise<{ name: 
   if (!sb) return [];
   const pages = await memberPagesFor(sb, memberUserId).catch(() => []);
   return pages.map((p) => ({ name: p.name, href: memberPageCalendarHrefOf(p.urlToken), facilityNames: p.facilityNames, via: p.via }));
+}
+
+// ---------------------------------------------------------------------------
+// 部屋ごとの部屋タイプ・プラン・人数の変更（公式の複数室 M3・docs/official-multi-room.md §17.3.2・§18）
+//   専用ページは室数を問わず（1 室も）。料金は専用料金（quotePartnerBooking）で計算し直し、泊明細と新しいプランの専用特典を
+//   book.member_page_quote_amendment_rooms / member_page_amend_booking_rooms に渡す（画面の金額は受け取らない）。
+//   部屋タイプ・プランは料金カレンダーの識別（部屋タイプのコード・planCode■planName）のまま RPC に渡す（DB がこの施設の中で解決する）
+// ---------------------------------------------------------------------------
+
+/** 予約した施設の取引先コンテキスト（選んでいる施設ではなく予約の施設の料金ルール・特典で計算する） */
+async function bookingFacilityContext(db: SupabaseClient, partner: PartnerContext, facilityId: string): Promise<PartnerContext | null> {
+  const ctx = facilityId && facilityId !== partner.facility_id ? await loadPartnerContext(db, partner.id, facilityId) : partner;
+  return ctx && ctx.facility_available ? ctx : null;
+}
+
+/** 専用ページの部屋の変更の候補（部屋タイプ × プラン・今の日程・指定の人数の専用料金） */
+export type MemberRoomCandidate = {
+  roomCode: string;
+  roomName: string;
+  planCode: string;
+  planName: string;
+  /** この部屋の専用料金（今の日程・指定の人数） */
+  total: number;
+  perPerson: number;
+  /** 残室（今の空き。自分の部屋の分は含まない）。分からなければ null */
+  remaining: number | null;
+  /** このプランの専用特典（無ければ null） */
+  perks: ReturnType<typeof perksSnapshotOf>;
+  /** 今の部屋と同じ部屋タイプ・プラン */
+  current: boolean;
+  /** 選べるか（現地払いのできるプラン・残室あり〔同じ部屋タイプは残室を問わない〕） */
+  selectable: boolean;
+  blocked: 'payment' | 'sold_out' | null;
+};
+
+/**
+ * 変更の候補（料金カレンダーで今の日程の全泊に出ている部屋タイプ × 公開プランの組み合わせのうち、専用料金を出せるもの）。
+ * 専用料金を出せない組み合わせは候補から外す。
+ */
+export async function memberRoomCandidates(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  booking: MemberBookingRooms,
+  roomIndex: number,
+  adults: number
+): Promise<{ ok: true; candidates: MemberRoomCandidate[] } | { ok: false; message: string }> {
+  const room = booking.rooms.find((r) => r.index === roomIndex && !r.cancelled);
+  if (!room) return { ok: false, message: 'このお部屋は変更できません。' };
+  const ctx = await bookingFacilityContext(db, partner, booking.facilityId);
+  if (!ctx) return { ok: false, message: 'ご予約の施設は現在専用ページでご案内していないため、お部屋を変更できません。お電話でお問い合わせください。' };
+  const lastNight = addDaysIso(booking.checkIn, booking.nights - 1);
+  const [rates, plans] = await Promise.all([
+    loadPartnerRates(db, ctx, { from: booking.checkIn, to: lastNight }, { guests: [adults] }),
+    loadMemberPagePlans(db, ctx.facility_id)
+  ]);
+  // 全泊に出ている（休館でない）部屋タイプ × プラン
+  const counts = new Map<string, { roomCode: string; planCode: string; planName: string; n: number }>();
+  for (const day of rates.days) {
+    if (day.date < booking.checkIn || day.date > lastNight || day.closed) continue;
+    for (const r of day.rooms) {
+      for (const p of r.plans) {
+        const key = `${r.roomCode}\t${p.planCode}\t${p.planName}`;
+        const c = counts.get(key) ?? { roomCode: r.roomCode, planCode: p.planCode, planName: p.planName, n: 0 };
+        c.n += 1;
+        counts.set(key, c);
+      }
+    }
+  }
+  const combos = [...counts.values()].filter((c) => c.n === booking.nights && plans.has(memberPlanKey(c.planCode, c.planName)));
+  const quoted = await Promise.all(
+    combos.map((c) =>
+      quotePartnerBooking(
+        db,
+        ctx,
+        { roomCode: c.roomCode, planCode: c.planCode, planName: c.planName, checkIn: booking.checkIn, nights: booking.nights, rooms: [{ adults }] },
+        { credit: false }
+      ).then((q) => ({ c, q }))
+    )
+  );
+  const candidates: MemberRoomCandidate[] = [];
+  for (const { c, q } of quoted) {
+    if (!q.ok) continue;
+    const pay = plans.get(memberPlanKey(c.planCode, c.planName))?.pay ?? { onsite: true, prepay: false };
+    const sameType = c.roomCode === room.roomCode;
+    const blocked: MemberRoomCandidate['blocked'] = !pay.onsite ? 'payment' : !sameType && q.remaining !== null && q.remaining < 1 ? 'sold_out' : null;
+    const total = q.rooms[0]?.subtotal ?? q.total;
+    candidates.push({
+      roomCode: c.roomCode,
+      roomName: q.roomName,
+      planCode: c.planCode,
+      planName: c.planName,
+      total,
+      perPerson: Math.round(total / Math.max(1, adults)),
+      remaining: q.remaining,
+      perks: perksSnapshotOf(perksForPlan(ctx.booking_settings.perks, c.planCode), c.planCode),
+      current: sameType && c.planCode === room.planCode && c.planName === room.planLabel,
+      selectable: blocked === null,
+      blocked
+    });
+  }
+  candidates.sort((a, b) => a.roomCode.localeCompare(b.roomCode) || a.planCode.localeCompare(b.planCode) || a.total - b.total);
+  return { ok: true, candidates };
+}
+
+/** 選んだ変更（料金カレンダーの識別） */
+export type MemberRoomChange = { roomCode: string; planCode: string; planName: string; adults: number };
+
+/**
+ * 1 室の変更を RPC の入力（AmendRoomInput）にする: 専用料金の泊明細を quotePartnerBooking で作り直し、
+ * プランが変わるなら新しいプランの専用特典（今の専用ページの設定・§17.1.10）を添える。料金を出せなければ { ok: false, message }。
+ */
+export async function memberAmendRoomInput(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  booking: MemberBookingRooms,
+  roomIndex: number,
+  change: MemberRoomChange
+): Promise<{ ok: true; input: AmendRoomInput } | { ok: false; message: string }> {
+  const room = booking.rooms.find((r) => r.index === roomIndex && !r.cancelled);
+  if (!room) return { ok: false, message: 'このお部屋は変更できません。' };
+  const ctx = await bookingFacilityContext(db, partner, booking.facilityId);
+  if (!ctx) return { ok: false, message: 'ご予約の施設は現在専用ページでご案内していないため、お部屋を変更できません。お電話でお問い合わせください。' };
+  const plans = await loadMemberPagePlans(db, ctx.facility_id);
+  if (!plans.has(memberPlanKey(change.planCode, change.planName))) {
+    return { ok: false, message: 'このプランは専用ページからお選びいただけません。別のプランをお選びください。' };
+  }
+  const q = await quoteMemberRooms(db, ctx, [change], booking.checkIn, booking.nights, { ignoreRemaining: true });
+  if (!q.ok) return { ok: false, message: `このお部屋・プランには変更できません。${q.message}` };
+  const planChanged = change.planCode !== room.planCode || change.planName !== room.planLabel;
+  return {
+    ok: true,
+    input: {
+      index: roomIndex,
+      ratePlanCode: memberPlanKey(change.planCode, change.planName),
+      roomTypeCode: change.roomCode,
+      adults: change.adults,
+      lines: q.rooms[0].lines,
+      ...(planChanged ? { memberPerks: q.rooms[0].perks } : {})
+    }
+  };
+}
+
+/** 部屋の変更の見積（専用料金・この部屋の今と変更後・予約全体の再按分・回数・在庫の目安） */
+export async function memberPageQuoteAmendRooms(w: Who, rooms: readonly AmendRoomInput[]): Promise<AmendRoomsQuote> {
+  const { data, error } = await service()
+    .schema('book')
+    .rpc('member_page_quote_amendment_rooms', { ...whoArgs(w), p_rooms: amendRoomsPayload(rooms) });
+  if (error) throw error;
+  return mapAmendRoomsQuote(data as Record<string, unknown>);
+}
+
+/** 部屋の変更の確定（専用料金・新しいプランの特典と規定に差し替え） */
+export async function memberPageAmendRooms(w: Who, rooms: readonly AmendRoomInput[]): Promise<AmendRoomsResult> {
+  const { data, error } = await service()
+    .schema('book')
+    .rpc('member_page_amend_booking_rooms', { ...whoArgs(w), p_rooms: amendRoomsPayload(rooms) });
+  if (error) throw error;
+  return mapAmendRoomsResult(data as Record<string, unknown>);
+}
+
+/**
+ * 管理画面（スタッフ）が専用ページ経由の予約の部屋を変えるとき（§17.1.4・§17.3.3）: 管理画面の選択（UUID）を料金カレンダーの識別
+ * （部屋タイプのコード・planCode■planName）に直し、予約時の専用ページ・予約の施設の料金ルールで泊明細と新しいプランの特典を作る。
+ * 専用料金を出せない（このプランは専用ページで扱っていない・休館・料金なし）ときは { ok: false, message }。
+ * 予約した会員が対象から外れていても使える（会員の確認はしない。スタッフの操作は DB のガードを通る）
+ */
+export async function staffMemberAmendRoomInput(args: {
+  partnerId: string;
+  facilityId: string;
+  bookingCode: string;
+  checkIn: string;
+  nights: number;
+  rooms: readonly { index: number; cancelled: boolean; stayStatus: string; adults: number; roomTypeId: string; ratePlanId: string; roomTotal: number }[];
+  roomIndex: number;
+  change: { ratePlanId: string; roomTypeId: string; adults: number };
+}): Promise<{ ok: true; input: AmendRoomInput } | { ok: false; message: string }> {
+  const db = service();
+  const ctx = await loadPartnerContext(db, args.partnerId, args.facilityId).catch(() => null);
+  if (!ctx) return { ok: false, message: 'この予約の専用ページの料金を読み込めませんでした（専用ページが削除されたか、施設がオフです）。' };
+  const plans = await loadMemberPagePlans(db, args.facilityId);
+  const planById = new Map([...plans.values()].map((p) => [p.ratePlanId, p]));
+  const { data } = await db.schema('pms').from('room_types').select('id, code, name').eq('facility_id', args.facilityId);
+  const rtById = new Map(((data ?? []) as { id: string; code: string; name: string }[]).map((r) => [r.id, r]));
+  const newPlan = planById.get(args.change.ratePlanId);
+  if (!newPlan) return { ok: false, message: '専用料金が設定されていません（このプランは専用ページでご案内していません）。' };
+  const newRoom = rtById.get(args.change.roomTypeId);
+  if (!newRoom) return { ok: false, message: 'この部屋タイプは選べません。' };
+  const booking: MemberBookingRooms = {
+    bookingCode: args.bookingCode,
+    facilityId: args.facilityId,
+    checkIn: args.checkIn,
+    nights: args.nights,
+    status: 'confirmed',
+    rooms: args.rooms.map((r) => ({
+      index: r.index,
+      cancelled: r.cancelled,
+      stayStatus: r.stayStatus,
+      adults: r.adults,
+      roomCode: rtById.get(r.roomTypeId)?.code ?? '',
+      roomName: rtById.get(r.roomTypeId)?.name ?? '',
+      planCode: planById.get(r.ratePlanId)?.planCode ?? '',
+      planLabel: planById.get(r.ratePlanId)?.planLabel ?? '',
+      roomTotal: r.roomTotal
+    }))
+  };
+  return memberAmendRoomInput(db, ctx, booking, args.roomIndex, {
+    roomCode: newRoom.code,
+    planCode: newPlan.planCode,
+    planName: newPlan.planLabel,
+    adults: args.change.adults
+  });
 }

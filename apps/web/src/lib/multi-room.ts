@@ -5,6 +5,8 @@
 //     1 室 1 泊 1 行の明細・全室の見積と支払方法の合わせ方。
 // M2: 部屋ごとの取消の返金見込み（roomRefundPreview / remainingRefundPreview・DB の book._room_cancel_kept・
 //     direct_payment_refund_due と同じ式）・生きている部屋の見方（liveRooms / roomsStatus）。
+// M3: 部屋ごとの部屋タイプ・プラン・人数の変更（amendLimitOf・AmendRoomInput / amendRoomsPayload・見積の写像・
+//     canAmendRoomOf・amendRoomErrorCode）。
 import type { Quote } from '@autumn-book/core';
 import { deductionOf, type KeptReason } from './cancel-admin-fee';
 import type { MemberPageSnapshot, MemberPerkSnapshot } from './partner-member-page';
@@ -554,3 +556,306 @@ export function remainingRefundPreview(
 		reason
 	};
 }
+
+// ---------------------------------------------------------------------------
+// M3: 部屋ごとの部屋タイプ・プラン・人数の変更（docs/official-multi-room.md §17・§18）
+//   DB: book.quote_amendment_rooms / amend_booking_rooms（会員）・admin_*（管理画面）・member_page_*（専用ページ）
+// ---------------------------------------------------------------------------
+
+/**
+ * 予約の変更回数の上限（日程変更と部屋の変更で共有・決定 M1）。DB の book._amend_limit と同じ式:
+ * 2 + (室数 − 1)。室数は取り消した部屋を含む予約時の室数で、1〜4 に丸める（1 室 2・2 室 3・3 室 4・4 室 5）
+ */
+export function amendLimitOf(roomCount: number): number {
+	const n = Math.min(MAX_ROOMS_PER_BOOKING, Math.max(1, Math.floor(Number(roomCount) || 1)));
+	return 2 + (n - 1);
+}
+
+/** 変える部屋 1 つ（RPC の p_rooms の要素）。省いた値は今のまま。UUID かコード（この施設の rate_plans.code / room_types.code）のどちらか */
+export interface AmendRoomInput {
+	/** 部屋の番号（room_index・1 始まり） */
+	index: number;
+	ratePlanId?: string;
+	roomTypeId?: string;
+	/** 専用ページ: 料金カレンダーの planCode■planName（= booking.rate_plans.code） */
+	ratePlanCode?: string;
+	/** 専用ページ: pms.room_types.code */
+	roomTypeCode?: string;
+	adults?: number;
+	/** 専用ページ経由の予約では必須（専用料金の泊明細・quotePartnerBooking から作る） */
+	lines?: readonly { date: string; unit_price: number; adults: number; subtotal: number }[];
+	/** 専用ページ経由の予約でプランが変わるとき: 新しいプランの専用特典（無ければ null） */
+	memberPerks?: readonly MemberPerkSnapshot[] | null;
+}
+
+/** AmendRoomInput[] → RPC の p_rooms（snake_case。undefined のキーは送らない） */
+export function amendRoomsPayload(rooms: readonly AmendRoomInput[]): Record<string, unknown>[] {
+	return rooms.map((r) => {
+		const o: Record<string, unknown> = { room_index: r.index };
+		if (r.ratePlanId) o.rate_plan_id = r.ratePlanId;
+		else if (r.ratePlanCode) o.rate_plan_code = r.ratePlanCode;
+		if (r.roomTypeId) o.room_type_id = r.roomTypeId;
+		else if (r.roomTypeCode) o.room_type_code = r.roomTypeCode;
+		if (r.adults != null) o.adults = r.adults;
+		if (r.lines) o.lines = r.lines.map((l) => ({ date: l.date, unit_price: l.unit_price, adults: l.adults, subtotal: l.subtotal }));
+		if (r.memberPerks !== undefined) o.member_perks = r.memberPerks ?? [];
+		return o;
+	});
+}
+
+/** 変えた部屋の変更前・変更後（電文 amendment.changed_rooms[] と同じ中身の camelCase） */
+export interface ChangedRoomSide {
+	roomTypeId: string;
+	roomTypeName: string;
+	ratePlanId: string;
+	planCode: string;
+	planName: string;
+	adults: number;
+	total: number;
+}
+export interface ChangedRoom {
+	index: number;
+	stayId: string;
+	stayCode: string;
+	before: ChangedRoomSide;
+	after: ChangedRoomSide;
+}
+
+const sideOf = (raw: unknown): ChangedRoomSide => {
+	const x = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+	return {
+		roomTypeId: String(x.room_type_id ?? ''),
+		roomTypeName: String(x.room_type_name ?? ''),
+		ratePlanId: String(x.rate_plan_id ?? ''),
+		planCode: String(x.plan_code ?? ''),
+		planName: String(x.plan_name ?? ''),
+		adults: Number(x.adults ?? 0),
+		total: Number(x.total ?? 0)
+	};
+};
+
+/** RPC の changed_rooms（snake_case）→ ChangedRoom[] */
+export function mapChangedRooms(raw: unknown): ChangedRoom[] {
+	if (!Array.isArray(raw)) return [];
+	return (raw as Record<string, unknown>[]).map((x) => ({
+		index: Number(x.room_index),
+		stayId: String(x.stay_id ?? ''),
+		stayCode: String(x.reservation_code ?? ''),
+		before: sideOf(x.before),
+		after: sideOf(x.after)
+	}));
+}
+
+/** 見積の部屋ごとの行（生きている全室。変えない部屋は changed=false で今の値。クーポン・ポイントは全室で按分し直した後） */
+export interface AmendRoomsQuoteRoom {
+	index: number;
+	changed: boolean;
+	kind: 'none' | 'plan' | 'room' | 'party' | 'composite';
+	roomTypeId: string;
+	planId: string;
+	adults: number;
+	oldRoomTypeId: string;
+	oldPlanId: string;
+	oldAdults: number;
+	/** 今の宿泊料金・クーポン按分・ポイント按分 */
+	oldTotal: number;
+	oldCouponShare: number;
+	oldPointsShare: number;
+	/** 変更後の宿泊料金・按分・この部屋の予約金額（宿泊料金 − クーポン按分） */
+	newTotal: number;
+	couponShare: number;
+	pointsShare: number;
+	charge: number;
+	/** この部屋がキャンセル料のかかる期間か（変える部屋だけ判定） */
+	inPenalty: boolean;
+	/** 変更後の泊明細（変える部屋は引き直した値・変えない部屋は今の値。画面の「N泊目 → 部屋の行」に使う） */
+	lines: { date: string; unitPrice: number; adults: number; subtotal: number }[];
+	/** 変更後のキャンセル規定（プランが変わる部屋は新しいプランの規定・特別会員は予約時の方式を合成した値。画面は policyRulesOf で読む） */
+	cancellationPolicy: unknown;
+}
+
+/** 見積の rooms[i].quote.lines（snake_case）→ 泊明細 */
+function quoteLinesOf(raw: unknown): AmendRoomsQuoteRoom['lines'] {
+	const q = raw && typeof raw === 'object' ? (raw as { lines?: unknown }).lines : null;
+	if (!Array.isArray(q)) return [];
+	return (q as Record<string, unknown>[]).map((l) => ({
+		date: String(l.date ?? ''),
+		unitPrice: Number(l.unit_price ?? 0),
+		adults: Number(l.adults ?? 0),
+		subtotal: Number(l.subtotal ?? 0)
+	}));
+}
+
+/**
+ * キャンセル規定の写し（booking_rooms.cancellation_policy_snapshot の形: 配列 or {rules, source?, member_page?}）→ 画面の表示用。
+ *   source … 'member_page'（専用ページの規定）／'plan'（プランの規定）／'rank'（規定が無い＝会員グレードの規定）
+ */
+export function policyRulesOf(raw: unknown): { source: 'plan' | 'rank' | 'member_page'; rules: { days_before: number; rate: number }[] } {
+	const obj = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as { rules?: unknown; source?: unknown }) : null;
+	const arr = Array.isArray(raw) ? raw : Array.isArray(obj?.rules) ? (obj.rules as unknown[]) : [];
+	const rules = (arr as Record<string, unknown>[])
+		.filter((r) => r && typeof r === 'object')
+		.map((r) => ({ days_before: Number(r.days_before ?? 0), rate: Number(r.rate ?? 0) }))
+		.sort((a, b) => b.days_before - a.days_before);
+	if (obj?.source === 'member_page') return { source: 'member_page', rules };
+	return { source: rules.length > 0 ? 'plan' : 'rank', rules };
+}
+
+const ROOM_KINDS = ['none', 'plan', 'room', 'party', 'composite'] as const;
+
+/** RPC の rooms[]（snake_case）→ AmendRoomsQuoteRoom[] */
+export function mapAmendRoomsQuoteRooms(raw: unknown): AmendRoomsQuoteRoom[] {
+	if (!Array.isArray(raw)) return [];
+	return (raw as Record<string, unknown>[]).map((x) => ({
+		index: Number(x.room_index),
+		changed: x.changed === true,
+		kind: (ROOM_KINDS as readonly string[]).includes(String(x.kind)) ? (x.kind as AmendRoomsQuoteRoom['kind']) : 'none',
+		roomTypeId: String(x.room_type_id ?? ''),
+		planId: String(x.rate_plan_id ?? ''),
+		adults: Number(x.adults ?? 0),
+		oldRoomTypeId: String(x.old_room_type_id ?? ''),
+		oldPlanId: String(x.old_rate_plan_id ?? ''),
+		oldAdults: Number(x.old_adults ?? 0),
+		oldTotal: Number(x.old_room_total ?? 0),
+		oldCouponShare: Number(x.old_coupon_share ?? 0),
+		oldPointsShare: Number(x.old_points_share ?? 0),
+		newTotal: Number(x.new_total ?? 0),
+		couponShare: Number(x.coupon_share ?? 0),
+		pointsShare: Number(x.points_share ?? 0),
+		charge: Number(x.charge ?? 0),
+		inPenalty: x.in_penalty === true,
+		lines: quoteLinesOf(x.quote),
+		cancellationPolicy: x.cancellation_policy ?? null
+	}));
+}
+
+/**
+ * 「このお部屋を変更」を出せるか（画面の案内用。最終の判定は DB）。
+ * 予約中・締切前・残り回数あり・オンライン決済済みでない・この部屋が生きていて、生きている部屋がすべて reserved（1 室でもチェックイン済みなら不可）
+ */
+export function canAmendRoomOf(args: {
+	reserved: boolean;
+	deadlinePassed: boolean;
+	remaining: number;
+	prepaidOnline: boolean;
+	room: { cancelled: boolean; stayStatus?: string | null };
+	rooms: readonly { cancelled: boolean; stayStatus?: string | null }[];
+}): boolean {
+	const { room, rooms } = args;
+	return (
+		args.reserved &&
+		!args.deadlinePassed &&
+		args.remaining > 0 &&
+		!args.prepaidOnline &&
+		!room.cancelled &&
+		(room.stayStatus ?? 'reserved') === 'reserved' &&
+		rooms.filter((r) => !r.cancelled).every((r) => (r.stayStatus ?? 'reserved') === 'reserved')
+	);
+}
+
+/** 人数の入力（1〜6 の整数）。範囲外・数でなければ null */
+export function parseAdults(raw: unknown): number | null {
+	if (raw === null || raw === undefined || raw === '') return null;
+	const n = Number(raw);
+	return Number.isInteger(n) && n >= 1 && n <= 6 ? n : null;
+}
+
+/** 部屋の変更の DB の例外 → 画面のコード（文言は呼び出し側。公式は paraglide・専用ページは日本語） */
+export type AmendRoomErrorCode =
+	| 'prepaid_online'
+	| 'past_deadline'
+	| 'past_checkin'
+	| 'amend_limit'
+	| 'in_penalty'
+	| 'no_change'
+	| 'sold_out'
+	| 'payment_incompatible'
+	| 'over_capacity'
+	| 'room_not_found'
+	| 'plan_not_found'
+	| 'not_sellable'
+	| 'min_stay'
+	| 'invalid_lines'
+	| 'member_page_booking'
+	| 'not_amendable'
+	| 'reason_required'
+	| 'forbidden'
+	| 'not_found'
+	| 'invalid'
+	| 'error';
+
+/** 判定の順（具体的な語から。room_not_found / plan_not_found が not_found に先に当たらないように） */
+const AMEND_ROOM_ERROR_WORDS: readonly (readonly [string, AmendRoomErrorCode])[] = [
+	['prepaid_online', 'prepaid_online'],
+	['not_member_page_booking', 'not_found'],
+	['member_page_booking', 'member_page_booking'],
+	['past_deadline', 'past_deadline'],
+	['past_checkin', 'past_checkin'],
+	['amend_limit', 'amend_limit'],
+	['amend_in_penalty', 'in_penalty'],
+	['no_change', 'no_change'],
+	['sold_out', 'sold_out'],
+	['payment_incompatible', 'payment_incompatible'],
+	['over_capacity', 'over_capacity'],
+	['room_not_found', 'room_not_found'],
+	['plan_not_found', 'plan_not_found'],
+	['not_sellable', 'not_sellable'],
+	['min_stay_violation', 'min_stay'],
+	['invalid_lines', 'invalid_lines'],
+	['not_amendable', 'not_amendable'],
+	['reason_required', 'reason_required'],
+	['forbidden', 'forbidden'],
+	['not_authenticated', 'forbidden'],
+	['not_found', 'not_found'],
+	['invalid_params', 'invalid']
+];
+
+/** 例外の文の中の語（英小文字と _ のかたまり。sold_out:<id> は sold_out）で判定する */
+export function amendRoomErrorCode(e: unknown): AmendRoomErrorCode {
+	const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message ?? '') : String(e ?? '');
+	const words = new Set(msg.match(/[a-z_]+/g) ?? []);
+	for (const [w, code] of AMEND_ROOM_ERROR_WORDS) if (words.has(w)) return code;
+	return 'error';
+}
+
+/** 部屋の変更の失敗の HTTP ステータス */
+export function amendRoomErrorStatus(code: AmendRoomErrorCode): number {
+	switch (code) {
+		case 'sold_out':
+			return 409;
+		case 'member_page_booking':
+		case 'forbidden':
+			return 403;
+		case 'not_found':
+			return 404;
+		case 'error':
+			return 500;
+		default:
+			return 400;
+	}
+}
+
+/** 部屋の変更の失敗の文言（日本語。専用ページ・管理画面で使う。公式マイページは paraglide の amend_* を使う） */
+export const AMEND_ROOM_MESSAGES_JA: Record<AmendRoomErrorCode, string> = {
+	prepaid_online: 'カードでお支払い済みのご予約は、お部屋を変更できません。取り消して取り直すか、お電話でお問い合わせください。',
+	past_deadline: '変更の受付期限（チェックイン当日の朝9時）を過ぎています。お電話でお問い合わせください。',
+	past_checkin: 'チェックイン日を過ぎたご予約は、お部屋・プラン・人数を変更できません。',
+	amend_limit: 'このご予約の変更回数の上限に達しています。お電話でお問い合わせください。',
+	in_penalty: 'キャンセル料がかかる期間のため、お部屋を変更できません。お電話でお問い合わせください。',
+	no_change: 'お部屋・プラン・人数が変わっていません。',
+	sold_out: 'ご希望のお部屋が満室のため変更できません。別のお部屋をお選びください。',
+	payment_incompatible: 'このプランは現地でのお支払いに対応していないため、このご予約では選べません。',
+	over_capacity: 'このお部屋の定員を超えています。人数かお部屋を選び直してください。',
+	room_not_found: 'このお部屋は変更できません（取り消し済みか、選べないお部屋です）。',
+	plan_not_found: 'このプランは選べません。別のプランをお選びください。',
+	not_sellable: 'この条件ではご予約いただけません（料金が設定されていない日があります）。',
+	min_stay: 'この条件（泊数・人数）ではご予約いただけません。別のお部屋・プランをお選びください。',
+	invalid_lines: '料金を確かめられませんでした。画面を読み直してください。',
+	member_page_booking: 'このご予約の変更は、特別会員ページのご予約一覧から行えます。',
+	not_amendable: 'このご予約は現在変更できません（チェックイン済みのお部屋があるなど）。',
+	reason_required: '理由を入力してください。',
+	forbidden: 'このご予約は変更できません。',
+	not_found: 'ご予約が見つかりません。',
+	invalid: '入力を確かめてください。',
+	error: '変更できませんでした。時間をおいてお試しください。'
+};

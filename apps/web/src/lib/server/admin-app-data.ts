@@ -12,6 +12,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createSupabaseServerClient } from './auth';
 import { CANCEL_POLICY_LABELS, parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot, type MemberPerkSnapshot } from '$lib/partner-member-page';
+import { amendRoomsPayload, type AmendRoomInput } from '$lib/multi-room';
+import { mapAmendRoomsQuote, mapAmendRoomsResult, type AmendRoomsQuote, type AmendRoomsResult } from './supabase-data';
 
 /** book スキーマに束縛した authenticated クライアント（PostgrestClient） */
 export type BookClient = ReturnType<SupabaseClient['schema']>;
@@ -796,6 +798,9 @@ export type BookingDetail = {
 			room_index: number;
 			stay_id: string;
 			reservation_code: string;
+			/** 部屋タイプ・プラン（UUID・_booking_rooms_view） */
+			room_type_id?: string | null;
+			rate_plan_id?: string | null;
 			room_name: string | null;
 			plan_name: string | null;
 			adults: number;
@@ -820,6 +825,8 @@ export type BookingDetail = {
 			member_perks?: unknown;
 			/** 上の member_perks を整えたもの（adminBookingDetail が足す） */
 			memberPerks?: MemberPerkSnapshot[] | null;
+			/** この部屋の部屋タイプ・プラン・人数を変えられるか（管理画面の load が足す・公式の複数室 M3） */
+			canAmend?: boolean;
 		}[];
 		/** 特別会員の専用ページ経由の予約（DB の生の値・bookings.metadata.member_page） */
 		member_page?: unknown;
@@ -894,6 +901,31 @@ export const adminCancelBookingRoom = (
 		'admin_cancel_booking_room',
 		{ p_booking_code: code, p_room_index: roomIndex, p_waive_fee: waiveFee, p_reason: reason }
 	);
+
+/**
+ * 部屋ごとの部屋タイプ・プラン・人数の変更の見積（管理画面・admin / staff・公式の複数室 M3・book.admin_quote_amendment_rooms）。
+ * 専用ページ経由の予約は rooms[i].lines（専用料金）と memberPerks を付けて渡す（partners/member-bookings.ts の staffMemberAmendRoomInput）
+ */
+export const adminQuoteAmendRooms = (c: BookClient, code: string, rooms: readonly AmendRoomInput[]): Promise<AmendRoomsQuote> =>
+	rpc<Record<string, unknown>>(c, 'admin_quote_amendment_rooms', { p_booking_code: code, p_rooms: amendRoomsPayload(rooms) }).then(mapAmendRoomsQuote);
+
+/**
+ * 部屋ごとの変更の確定（管理画面・理由必須・監査ログ amend_booking_rooms）。force はキャンセル料がかかる期間・締切後でも変える
+ * （回数とオンライン決済済みは越えない）。電文 modified（amendment.scope='rooms'）・お知らせは DB が出す
+ */
+export const adminAmendBookingRooms = (
+	c: BookClient,
+	code: string,
+	rooms: readonly AmendRoomInput[],
+	reason: string,
+	force: boolean
+): Promise<AmendRoomsResult> =>
+	rpc<Record<string, unknown>>(c, 'admin_amend_booking_rooms', {
+		p_booking_code: code,
+		p_rooms: amendRoomsPayload(rooms),
+		p_reason: reason,
+		p_force: force
+	}).then(mapAmendRoomsResult);
 
 /**
  * 予約確認メールの再送。

@@ -45,7 +45,13 @@ export const load: PageServerLoad = async (event) => {
 		const storeId = reverseFacilityUuid(r.facilityUuid);
 		const facility = storeId ? facilityById(storeId) : undefined;
 		if (!facility) error(404, m.error_booking_not_found());
-		const detail = await reservationDetailOf(event, client, r);
+		// 2 室以上の予約は部屋カードに「このお部屋を変更」（M3・1 室は従来の変更ウィザード）。専用ページ経由の予約は参照のみなので出さない
+		const detail = await reservationDetailOf(
+			event,
+			client,
+			r,
+			r.memberPage ? {} : { roomAmend: { scope: 'multi', hrefOf: (i) => `/account/reservations/${r.code}/amend/room/${i}` } }
+		);
 		// 特別会員の専用ページ経由の予約は参照のみ（取消・日程変更・オプションは専用ページのご予約一覧から・docs/vip-member-page.md §13.4.4）
 		const memberPageHref = detail.memberPage ? await memberPageHrefFor(detail.memberPage.partnerId, r.code).catch(() => null) : null;
 		return {
@@ -70,6 +76,9 @@ export const load: PageServerLoad = async (event) => {
 		rooms: [] as Awaited<ReturnType<typeof multiRoomCards>>,
 		multiRoom: false,
 		amend: { ...amendGate(booking.status, booking.checkin, amendments.length), datesOnly: false },
+		// デモ（store）は部屋の変更（M3）を出さない
+		roomAmend: [] as Awaited<ReturnType<typeof reservationDetailOf>>['roomAmend'],
+		prepaidOnline: false,
 		// デモ（store）には特別会員の専用ページ経由の予約は無い
 		memberPerks: null,
 		memberPage: null as (Awaited<ReturnType<typeof reservationDetailOf>>['memberPage'] & { href: string | null }) | null,

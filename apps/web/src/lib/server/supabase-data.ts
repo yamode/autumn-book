@@ -74,7 +74,20 @@ import type {
 } from '$lib/types';
 import type { Quote, CancellationPolicy, CancellationRule } from '@autumn-book/core';
 import { normalizeSpecs, normalizeSections } from '$lib/content-blocks';
-import { childTotalOf, MAX_ROOMS_PER_BOOKING, roomsStatus, type BookingRoom, type HoldGroup, type HoldGroupRoom } from '$lib/multi-room';
+import {
+	amendRoomsPayload,
+	childTotalOf,
+	mapAmendRoomsQuoteRooms,
+	mapChangedRooms,
+	MAX_ROOMS_PER_BOOKING,
+	roomsStatus,
+	type AmendRoomInput,
+	type AmendRoomsQuoteRoom,
+	type BookingRoom,
+	type ChangedRoom,
+	type HoldGroup,
+	type HoldGroupRoom
+} from '$lib/multi-room';
 import { paymentMethodsOf } from '$lib/member-payment';
 import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -2170,6 +2183,90 @@ export async function sbAmendBookingDates(
 	});
 	if (error) throw error;
 	return data as AmendResult;
+}
+
+// ---------------------------------------------------------------- 部屋ごとの部屋タイプ・プラン・人数の変更（公式の複数室 M3）
+// book.quote_amendment_rooms / amend_booking_rooms（会員）。管理画面は admin-app-data.ts、専用ページは partners/member-bookings.ts。
+// 日程は変えない（日程は amend_booking_dates）。回数は日程変更と共有（2 + (室数 − 1)）。
+
+/** 部屋の変更の見積（AmendQuote ＋ 部屋ごと・変えた部屋の変更前後・在庫の目安・回数の上限・オンライン決済済みか） */
+export type AmendRoomsQuote = AmendQuote & {
+	/** 部屋タイプを変える部屋ぶんの在庫があるか（目安。確定は行ロックの下で DB が確かめる） */
+	available: boolean;
+	/** 足りない部屋タイプ（UUID） */
+	soldOut: string[];
+	roomCount: number;
+	liveRooms: number;
+	/** 回数の上限（2 + (室数 − 1)） */
+	amendLimit: number;
+	/** オンライン決済済み（変更不可・取消 → 取り直しか電話） */
+	prepaidOnline: boolean;
+	/** 専用ページ経由の予約（料金は専用料金） */
+	memberPage: boolean;
+	roomChanged: boolean;
+	partyChanged: boolean;
+	changedCount: number;
+	rooms: AmendRoomsQuoteRoom[];
+	changed: ChangedRoom[];
+};
+
+/** quote_amendment_rooms（・admin_* / member_page_*）の jsonb → AmendRoomsQuote */
+export function mapAmendRoomsQuote(raw: Record<string, unknown>): AmendRoomsQuote {
+	const rooms = mapAmendRoomsQuoteRooms(raw.rooms);
+	return {
+		...mapAmendQuote(raw),
+		available: raw.available !== false,
+		soldOut: Array.isArray(raw.sold_out) ? (raw.sold_out as string[]) : [],
+		roomCount: Number(raw.room_count ?? rooms.length),
+		liveRooms: Number(raw.live_rooms ?? rooms.length),
+		amendLimit: Number(raw.amend_limit ?? 2),
+		prepaidOnline: raw.prepaid_online === true,
+		memberPage: raw.member_page === true,
+		roomChanged: raw.room_changed === true,
+		partyChanged: raw.party_changed === true,
+		changedCount: Number(raw.changed_count ?? 0),
+		rooms,
+		changed: mapChangedRooms(raw.changed_rooms)
+	};
+}
+
+/** 部屋の変更の確定の戻り */
+export interface AmendRoomsResult extends AmendResult {
+	forced: boolean;
+	changed: ChangedRoom[];
+}
+
+export function mapAmendRoomsResult(raw: Record<string, unknown>): AmendRoomsResult {
+	return {
+		booking_code: String(raw.booking_code ?? ''),
+		amendment_no: Number(raw.amendment_no ?? 0),
+		diff: Number(raw.diff ?? 0),
+		new_total: Number(raw.new_total ?? 0),
+		points_refund: Number(raw.points_refund ?? 0),
+		kind: (raw.kind as AmendmentKind) ?? 'composite',
+		forced: raw.forced === true,
+		changed: mapChangedRooms(raw.changed_rooms)
+	};
+}
+
+/** 会員（公式マイページ）の部屋の変更の見積。RPC の例外（member_page_booking / room_not_found / not_sellable …）はそのまま throw */
+export async function sbQuoteAmendmentRooms(client: SupabaseClient, code: string, rooms: readonly AmendRoomInput[]): Promise<AmendRoomsQuote> {
+	const { data, error } = await client.schema('book').rpc('quote_amendment_rooms', {
+		p_booking_code: code,
+		p_rooms: amendRoomsPayload(rooms)
+	});
+	if (error) throw error;
+	return mapAmendRoomsQuote(data as Record<string, unknown>);
+}
+
+/** 会員（公式マイページ）の部屋の変更の確定（本人）。RPC の例外（sold_out:<id> など）はそのまま throw */
+export async function sbAmendBookingRooms(client: SupabaseClient, code: string, rooms: readonly AmendRoomInput[]): Promise<AmendRoomsResult> {
+	const { data, error } = await client.schema('book').rpc('amend_booking_rooms', {
+		p_booking_code: code,
+		p_rooms: amendRoomsPayload(rooms)
+	});
+	if (error) throw error;
+	return mapAmendRoomsResult(data as Record<string, unknown>);
 }
 
 interface AmendmentRow {

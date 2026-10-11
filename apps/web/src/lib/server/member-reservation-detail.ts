@@ -4,7 +4,16 @@
 // 読み取りはどちらも会員の authenticated クライアント（book.my_reservations / compute_cancel_fee / list_my_*）。
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { liveRooms, remainingRefundPreview, roomRefundPreview, type BookingRoom, type RefundTerms, type RoomRefundPreview } from '$lib/multi-room';
+import {
+	amendLimitOf,
+	canAmendRoomOf,
+	liveRooms,
+	remainingRefundPreview,
+	roomRefundPreview,
+	type BookingRoom,
+	type RefundTerms,
+	type RoomRefundPreview
+} from '$lib/multi-room';
 import { todayStr } from '$lib/format';
 import {
 	sbComputeCancelFee,
@@ -21,12 +30,15 @@ import { directPaymentForBooking, directRefundPreviewOf, prepayBonusPointsOf, ty
 import { CANCEL_POLICY_LABELS, type MemberPerkSnapshot } from '$lib/partner-member-page';
 
 // 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
-// 締切 = チェックイン日 9:00 施設TZ（≒ JST）。9:00 JST = 当日 00:00 UTC。上限2回。
-export function amendGate(status: string, checkin: string, amendCount: number) {
+// 締切 = チェックイン日 9:00 施設TZ（≒ JST）。9:00 JST = 当日 00:00 UTC。
+// 上限は 2 + (室数 − 1)（日程変更と部屋の変更で共有・公式の複数室 M3・DB の book._amend_limit と同じ）。
+export function amendGate(status: string, checkin: string, amendCount: number, roomCount = 1) {
 	const deadlinePassed = Date.now() >= Date.parse(checkin + 'T00:00:00Z');
-	const remaining = Math.max(0, 2 - amendCount);
+	const limit = amendLimitOf(roomCount);
+	const remaining = Math.max(0, limit - amendCount);
 	return {
 		remaining,
+		limit,
 		deadlinePassed,
 		canAmend: status === 'reserved' && !deadlinePassed && remaining > 0
 	};
@@ -100,11 +112,25 @@ export function multiRemainingRefund(rooms: BookingRoom[], fees: Map<number, { f
 	);
 }
 
+/** 部屋の変更（公式の複数室 M3）の入口の出し方 */
+export type RoomAmendOptions = {
+	/** 'multi' … 2 室以上のときだけ（公式マイページ。1 室は従来の変更ウィザード）／'all' … 室数を問わず（専用ページ） */
+	scope: 'multi' | 'all';
+	/** 部屋の番号 → 「このお部屋を変更」の URL */
+	hrefOf: (index: number) => string;
+};
+
 /**
  * 実データの予約詳細（MEMBER_SUPABASE）。client は会員の authenticated クライアント。
  * 戻りは公式マイページの load の形（facility を除く）＋ memberPage（専用ページ経由なら方式の表示名つき）
+ * ＋ roomAmend（部屋ごとの「このお部屋を変更」の可否と URL・M3。opts.roomAmend が無ければ空）
  */
-export async function reservationDetailOf(event: RequestEvent, client: SupabaseClient, r: MemberReservation) {
+export async function reservationDetailOf(
+	event: RequestEvent,
+	client: SupabaseClient,
+	r: MemberReservation,
+	opts: { roomAmend?: RoomAmendOptions } = {}
+) {
 	const today = todayStr();
 	const booking = {
 		code: r.code,
@@ -169,15 +195,41 @@ export async function reservationDetailOf(event: RequestEvent, client: SupabaseC
 			})
 		: [];
 	const shown = rooms.some((x) => !x.cancelled) ? rooms.filter((x) => !x.cancelled) : rooms;
+	const amend = { ...amendGate(r.status, r.checkin, amendments.length, Math.max(1, r.rooms?.length ?? 1)), datesOnly: multiRoom };
+	// 部屋ごとの「このお部屋を変更」（M3）。オンライン決済済み（返金し切っていない）は変更不可（取消 → 取り直しか電話・決定 M2）
+	const prepaidOnline = !!pay && pay.status === 'paid' && pay.refund_status !== 'full';
+	const roomList = r.rooms ?? [];
+	const ra = opts.roomAmend;
+	const roomAmend =
+		ra && (ra.scope === 'all' || multiRoom)
+			? liveRooms(roomList).map((x) => {
+					const can = canAmendRoomOf({
+						reserved: r.status === 'reserved',
+						deadlinePassed: amend.deadlinePassed,
+						remaining: amend.remaining,
+						prepaidOnline,
+						room: x,
+						rooms: roomList
+					});
+					return { index: x.index, canAmend: can, href: can ? ra.hrefOf(x.index) : null };
+				})
+			: [];
 	return {
 		booking: multiRoom ? { ...booking, adults: shown.reduce((s, x) => s + x.adults, 0) } : booking,
 		checkout: r.checkout,
 		options,
 		amendments,
-		rooms,
+		// 2 室以上の部屋カードに「このお部屋を変更」の可否と URL（M3・roomAmend と同じ値）
+		rooms: rooms.map((x) => {
+			const a = roomAmend.find((y) => y.index === x.index);
+			return { ...x, canAmendRoom: a?.canAmend ?? false, amendRoomHref: a?.href ?? null };
+		}),
 		multiRoom,
-		// 2 室以上は日付・泊数だけの変更（全室同時・M2）。規則（締切・2 回まで）は 1 室と同じ
-		amend: { ...amendGate(r.status, r.checkin, amendments.length), datesOnly: multiRoom },
+		// 2 室以上は日付・泊数だけの変更（全室同時・M2）。規則（締切・回数）は 1 室と同じ。回数の上限は 2 + (室数 − 1)（M3）
+		amend,
+		// 部屋ごとの部屋タイプ・プラン・人数の変更（M3）。生きている部屋ごと。opts.roomAmend が無い・1 室で scope='multi' なら空
+		roomAmend,
+		prepaidOnline,
 		// プラン/客室マスタ（rate_plan_id / room_type_id UUID）は公開コンテンツ未投入のため名称未解決
 		plan: { name: '', cancellationPolicy: r.cancellationPolicy },
 		room: { name: '' },

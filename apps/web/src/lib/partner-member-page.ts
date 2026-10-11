@@ -352,7 +352,7 @@ const MEMBER_PAGE_OP_ERRORS: [string, MemberPageOpError][] = [
   ['member_page_booking', { code: 'forbidden', status: 403, message: 'このご予約はお手続きいただけません。' }],
   ['amend_in_penalty', { code: 'in_penalty', status: 400, message: 'キャンセル料がかかる期間のため、日程を変更できません。お電話でお問い合わせください。' }],
   ['prepaid_online', { code: 'prepaid_online', status: 400, message: 'オンライン決済済みのご予約は日程を変更できません。お電話でお問い合わせください。' }],
-  ['amend_limit', { code: 'amend_limit', status: 400, message: '日程の変更は2回までです。' }],
+  ['amend_limit', { code: 'amend_limit', status: 400, message: 'このご予約の変更回数の上限に達しています（日程とお部屋の変更で共通）。お電話でお問い合わせください。' }],
   ['past_deadline', { code: 'deadline_passed', status: 400, message: '受付期限を過ぎています。お電話でお問い合わせください。' }],
   ['no_change', { code: 'no_change', status: 400, message: '日程が変わっていません。' }],
   ['past_checkin', { code: 'invalid', status: 400, message: '過去の日付には変更できません。' }],

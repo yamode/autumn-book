@@ -39,7 +39,10 @@ export const load = async (event) => {
   const token = event.params.token;
   const code = event.params.id;
   const r = await ownReservation(event, partner, session, code);
-  const detail = await reservationDetailOf(event, createSupabaseServerClient(event), r);
+  // 部屋ごとの「このお部屋を変更」（公式の複数室 M3）は室数を問わず（1 室も）。可否と URL は detail.roomAmend / rooms[i].canAmendRoom
+  const detail = await reservationDetailOf(event, createSupabaseServerClient(event), r, {
+    roomAmend: { scope: 'all', hrefOf: (i) => `${memberPageHrefOf(token, code)}/amend/room/${i}` }
+  });
   deferTask(
     event,
     logPartnerAccess(db, { partnerId: partner.id, ...portalLogActor(session, { code }), channel: 'web', action: 'booking_view', ip: requestMeta(event).ip })

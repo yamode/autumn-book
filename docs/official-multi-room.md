@@ -1119,3 +1119,505 @@ select string_agg(pg_get_functiondef(p.oid) || ';', E'\n\n' order by p.oid::regp
 - 確認メールの再送（管理画面）は 1 室ずつ取り消した後も取り消した部屋を並べる（M1 の `templates.ts` は `rooms[]` を全部出す）。
 - 取り消した部屋の請求書の宿泊明細の自動での除外（autumn-pms）。
 - 予約全体の取消・最後の 1 室の取消でのオプションの扱い（今は触らない）。
+
+---
+
+## 17. M3 設計（2026-10-11）
+
+> 作成: 2026-10-11（autumn-book v0.120.0・autumn-shared は `20261010221207`〔特別会員〕まで本番適用済み）。読み取り調査のみ。コード・migration・DB 書き込みは未着手。
+> 写す元は **PROD の `pg_get_functiondef`**（M0〜VIP の作法）。本節で「最新定義」と書いた関数は、本番の `schema_migrations` が `20261010221207` まで一致していることを先に確かめてから写す。
+> 事実には出典（migration の version・ファイル・行）を付ける。判断は【判断】、ユーザーに聞くものは【要確認 Mn】（§17.9）。
+
+### 17.0 決定（ユーザー・2026-10-11）と範囲
+
+| # | 決定 |
+|---|---|
+| 1 | **部屋ごとの部屋タイプ・プラン・人数の変更**を作る（複数室の予約・1 室の予約とも）。公式マイページと、**特別会員の専用ページの「ご予約一覧」でも**（専用ページは専用料金で計算し直す。公式マイページは専用ページ経由の予約を操作しない方針は維持）。管理画面（スタッフ）からもできるようにする（推奨案 §17.3.3） |
+| 2 | 子どもの料金区分は今回も入れない（列と電文は従来どおり用意だけ） |
+| 3 | 退避表 `book._mr_backup_*` は **2026-11-09 以降に drop**（M0 本番適用 2026-10-10 ＋ 30 日）。drop の SQL は別 migration として**用意だけ**し、M3 本体には含めない（§17.6） |
+| 4 | PMS の請求書の宿泊明細の自動除外は **autumn-pms 側で別エージェントが実装**（電文の形に変更が要るものは §17.4 に書く） |
+| 5 | あわせて直す: **管理画面からの確認メール再送で取り消した部屋を載せない**／**予約全体の取消・最後の 1 室の取消でオプションも取り消す**（§17.5） |
+
+M3 に**含めないもの**: 日程変更の中身（M2 の `amend_booking_dates` のまま）・オンライン決済済みの予約の変更（§17.1.8・【要確認 M2】）・子ども区分・部屋の追加（室数を増やす変更。かごで別予約にする）・部屋の分割／統合・PMS 側の表示（autumn-pms の別エージェント）。
+
+### 17.1 変更の単位と規則
+
+#### 17.1.1 単位（1 回の操作で何を変えるか）
+
+- **1 回の操作 ＝ 1 予約の「生きている部屋」のうち 1〜N 室の `部屋タイプ・プラン・人数` を変える。日程（チェックイン日・泊数）は含めない。** 日程は従来どおり `amend_booking_dates`（全室同時・M2 §16.3）／1 室の公式予約は従来の `amend_booking`（日程を含む複合変更）でそのまま【判断】。
+  - 理由: (a) 日程と部屋の変更を同時に受けると、在庫の振替（旧区間 ＋N → 新区間 −N）と部屋タイプの振替（旧タイプ ＋1 → 新タイプ −1）が交差して全体巻き戻しの条件が複雑になる、(b) ペナルティ期間の判定が「日程を動かすか」で変わる（§17.1.6）、(c) 画面が「日程を変える」「このお部屋を変える」の 2 つの入口になり迷わない。
+  - RPC の入力は**配列**（`p_rooms = [{room_index, rate_plan_id, room_type_id, adults, …}]`・1〜生きている室数）。クーポン・ポイントの再按分は**生きている全室**に効く（§17.1.5）ので、1 室でも N 室でも計算は同じ。**M3 の画面は 1 室ずつ送る**（部屋カードの「このお部屋を変更」→ 1 回の操作）。まとめて変える画面は作らない（回数 §17.1.7 と関係する）。
+- 「変化なし」（部屋タイプ・プラン・人数のどれも同じ）は `no_change`。
+- **部屋の追加・削除はしない**（室数は変わらない。削除は 1 室取消〔M2〕・追加は別の予約）。`room_index` は変わらない。滞在コード `YB-…-k` も変わらない。
+
+#### 17.1.2 できる条件（既存の規則の写し・出典は M0 `amend_booking` 2515 行〜・M2 `amend_booking_dates` 1217 行〜）
+
+| 条件 | 規則 | 例外名 |
+|---|---|---|
+| 本人 | 会員: `members.guest_id = 代表滞在の guest_id`（`auth.uid()`）。専用ページ: `_member_page_booking_check`（対象者・このページ経由・予約した本人〔Q10 A〕）。スタッフ: `_require_admin`（admin / staff）・理由必須 | `forbidden` / `reason_required` |
+| 専用ページ経由の予約のガード | `_member_page_guard(metadata, by)`。公式マイページ（`by='member'`）からは `member_page_booking`。専用ページの入口（`book.member_page_ctx`）とスタッフ（`by in ('staff','admin')`）は通る（VIP §13.3.10） | `member_page_booking` |
+| 予約・部屋の状態 | 予約 `confirmed`、**生きている部屋がすべて `core.stays.status = 'reserved'`**（M2 §16.7a 中-4 と同じ。1 室でもチェックイン済みなら全体を変えない。PMS も in-house の予約に `modified` が来ると例外を投げる〔autumn-pms `import.ts` 322 行〕） | `not_amendable` |
+| 変更対象 | `p_rooms[i].room_index` が生きている部屋（`booking_rooms.cancelled_at is null`）。取消済みの部屋は変えられない | `room_not_found` |
+| 締切 | チェックイン日 9:00（施設 TZ）前（従来） | `past_deadline` |
+| 回数 | 予約で 1 つの `metadata.amended_count`。日程変更と**共有**。上限は §17.1.7（【要確認 M1】） | `amend_limit` |
+| オンライン決済済み | `direct_payments.status='paid' and refund_status <> 'full'` の予約は**不可**（M2 の日程変更と同じ・§17.1.8） | `prepaid_online` |
+| ペナルティ | §17.1.6 | `amend_in_penalty` |
+| プラン | 施設のプランで `public_on_direct and is_active`＋`plan_contents.is_published`（`_amend_compute` と同じ） | `plan_not_found` |
+| 部屋タイプ | `pms.room_types.facility_id = 予約の施設`・`is_active` | `room_not_found` |
+| 人数 | 1〜6（`price_adult_1〜6`）かつ **`room_types.capacity_max >= adults`**（公式は `book.quote` の join で落ちる〔`20260611100400` 52 行〕。専用ページの `lines` 経路は RPC が明示的に確かめる） | `over_capacity`（専用）／`not_sellable`（公式） |
+| 支払方法の両立（決定 Q3 の延長） | 予約の支払は現地払い（オンライン決済済みは変更不可のため）。**新しいプランが会員の現地払いを許すこと**（`book.v_plans.payment_method in ('onsite','deposit')`）。両立しなければ拒否 | `payment_incompatible` |
+| 在庫 | §17.1.3 | `sold_out:<room_type_id>` |
+
+#### 17.1.3 在庫（部屋タイプの振り替え）
+
+`amend_booking_dates` の「部屋タイプごとに集計 → 行ロック → 全泊確認 → 一括更新」をそのまま使う。期間は**今の滞在期間**（変わらない）。
+
+1. 変更する部屋ごとに `旧タイプ → 新タイプ` を出し、**部屋タイプごとの純増 `n[type] = (新で使う数) − (旧で手放す数)`** を集計する。同じタイプで人数だけ変える部屋は純増 0。
+2. 純増が負のタイプ: `available_rooms = least(available_rooms + |n|, total_rooms)`（解放）。
+3. 純増が正のタイプ: `booking.availability` を滞在期間で `for update` → 全泊 `available_rooms − buffer_rooms >= n and not stop_sell` → 1 泊でも足りなければ `sold_out:<room_type_id>` で**全体を巻き戻す**（部分変更はしない・日程変更と同じ）→ `available_rooms −= n`。
+4. 見積（`quote_amendment_rooms`）は在庫の**目安**を返す（`available` / `sold_out[]`。自分が手放す分を足し戻して判定する `_amend_compute_dates` の式と同じ）。確定は行ロックの下で確かめる。
+
+#### 17.1.4 料金の引き直し
+
+| 経路 | 新しい部屋の見積 | 検証 |
+|---|---|---|
+| 公式（マイページ・管理画面の公式予約） | **`book.quote(新 rate_plan_id, 新 room_type_id, 今の checkin, 今の nights, 新 adults)`**（`_amend_compute` M0 と同じ） | `quote` が null（休館・料金なし・定員超え・min_stay）なら `not_sellable` |
+| 専用ページ経由（専用ページ・管理画面からの専用ページ経由の予約） | **TS が渡す `p_rooms[i].lines`**（`quotePartnerBooking` で出した専用料金の泊明細。VIP §13.3.11 の `_amend_compute_member_dates` と同じ流儀） | `book._member_lines(lines, checkin, nights, 新 adults)`（長さ ＝ 泊数・日付連続・`unit_price ≥ 1`・`adults` ＝ 新しい人数・`subtotal = unit_price × adults`）。違えば `invalid_lines`。料金の正しさは TS が持つ |
+
+- 変えない部屋は `price_lines` / `room_total` を据え置く（引き直さない）。変える部屋だけ新しい `price_lines`・`room_total`。
+- 専用ページ経由の予約を**スタッフが管理画面から**変えるときも `lines` が要る（§17.3.3。Book の管理画面サーバが `loadPartnerContext(db, member_page.partner_id, facility)` → `quoteMemberRooms` で組む。組めない日・プランは「専用料金を出せません」で止める）。
+
+#### 17.1.5 クーポン・ポイントの再按分（`_amend_compute_dates` の規則を「生きている全室」に適用）
+
+- クーポン: `percent` → 新しい合計（生きている全室の `room_total` の和）で再計算、`fixed` → `least(今の割引〔生きている部屋の和〕, 新合計)`。**`_allocate(新割引, 生きている全室の room_total[])`** で部屋ごとの `coupon_share` を書き直す（変えない部屋の按分も動く・日程変更と同じ）。
+- ポイント: `new_use = least(今の利用〔和〕, 新しい支払額）`、`_allocate(new_use, charge[])`。減った分は返還（`point_ledger` に正の delta・退会済みはスキップ〔H-2〕）。増やす方向には使わない（従来）。
+- 付与見込み `metadata.points_earned` は変えない（従来の `amend_booking` と同じ・宿泊後の `_finalize_booking` が合わせる）。
+- 予約時決済割・早期決済割（`prepay_discount` / `prepay_detail`）・入湯税（`bath_tax`）は**触らない**（オンライン決済済みは変更不可なので 0 のまま。§17.1.8）。
+- `bookings.total_amount / accommodation_amount / net_amount / tax_amount` は新しい `Σ charge`。最後に `_assert_booking_totals`。
+
+#### 17.1.6 ペナルティ期間
+
+- 変更する部屋ごとに `_cancel_fee(その部屋の cancellation_policy_snapshot, room_total, checkin, 今日, rank)`。**率 > 0 の部屋が 1 つでもあれば `amend_in_penalty`**（`rank_cancel_policies.allow_amend_in_penalty` なら通す）。日程変更（M2）と同じ。
+- 注: 既存の 1 室の `_amend_compute`（最新 `20261010221207` 1897 行〜）は `in_penalty = date_changed and rate > 0` で、**日程を動かさないプラン・部屋・人数の変更はペナルティ期間でも通る**。安いプラン・少ない人数へ変えるとキャンセル料の基準額（`room_total`）が下がる抜け道になるので、新 RPC では塞ぐ。既存の `amend_booking` も揃えるかは【要確認 M3】（推奨: 揃える。`_amend_compute` の 1 行の差し替え）。
+- スタッフ（管理画面）は `p_force = true` でペナルティ・締切を越えられる（理由必須・監査ログ）。回数とオンライン決済済みは越えられない（§17.1.7・§17.1.8）。
+
+#### 17.1.7 回数（日程変更と共有）【要確認 M1】
+
+- 今は予約で **2 回**（`metadata.amended_count`・`booking_amendments.amendment_no check (between 1 and 2)`〔`20260711075937` 29 行〕・画面の「あと N 回」は `amend_remaining`）。日程変更と部屋の変更が同じ数を使うと、2 室の予約で「日程 1 回 ＋ 部屋 1 室」で尽きる。
+- 推奨: **上限を `2 + (室数 − 1)`**（1 室: 2〔従来どおり〕・2 室: 3・4 室: 5）にし、`book._amend_limit(booking_id)` 1 か所で返す。DDL は `booking_amendments` の check を `between 1 and 5` に広げるだけ（Book 専用表・共有表ではない）。`quote_amendment(_dates/_rooms)` の `amend_remaining` も同じ関数から。
+- 代案: 2 回のまま（DDL なし）。足りないときは電話。
+
+#### 17.1.8 オンライン決済済み（prepaid_online）の扱い【要確認 M2】
+
+- 現状: M2 の日程変更は `prepaid_online` で不可（金額が変わると Stripe の請求額と食い違うため）。1 室の `amend_booking` も TS（`isPrepaidOnline`）で止めている。
+- **推奨（M3）: 部屋の変更も不可のまま。** 理由: (a) 増額なら新しい PaymentIntent（保存カード or メールのリンク）と `direct_payments` の 2 本目の記録、減額なら `refund_due` の式に「変更による返金」を足す必要があり、`_assert_booking_totals` の `paid_amount` 検査（`amended_count = 0` のときだけ）や `booking_rooms.prepay_discount / bath_tax` の再計算（早期決済割の段は予約日で固定・入湯税は人数×泊）も要る。M3 の範囲を超える。(b) お客さまには「取消 → 取り直し」（キャンセル料がかからない期間なら全額返金）か電話で案内（画面の文言は既存 `amend_prepaid_blocked`）。
+- 将来（M4 の種）: 減額だけ先に許す案 — 変更後に `refund_due` を「`A − Σ生きている部屋の paid_share − Σ取消部屋の cancel_kept − refunded`」で引き直せば差額が自然に返金額になる（部屋の `paid_share` が `booking_rooms` から導けるため）。増額は保存カードへの追加請求（取引先のチェックアウト日決済の仕組みの流用）。いずれも設計は別途。
+
+#### 17.1.9 キャンセル規定の写し・特別会員の方式の合成
+
+- **プランが変わる部屋は、新しいプランの規定を写す**（既存 `amend_booking` と同じ: `rate_plans.cancellation_policy` → `booking_rooms.cancellation_policy_snapshot`）。プランが同じ（部屋タイプ・人数だけ）なら据え置き。
+- 特別会員の予約（`bookings.metadata.member_page` あり）: プラン規定に**予約時の方式**（`member_page.cancel_policy_mode` / `cancel_rules`。`bookings.metadata` に写してあるので今の専用ページの設定ではなく予約時の値）を合成する。合成の式は `_confirm_booking_group`（`20261010221207` 238〜245 行: 配列を `{rules}` に正規化 → `page` なら `{rules: 専用規定, source:'member_page'}`・`favorable` なら `|| {member_page:{mode, rules}}`・`rank` はそのまま）にある。**純関数 `book._member_policy_snapshot(p_plan_policy jsonb, p_member_page jsonb) returns jsonb` に切り出し**、`_confirm_booking_group`（写して差し替え）と新 RPC の両方が呼ぶ【判断・同じ式を 2 か所に書かない】。
+- 変えない部屋の規定は触らない。
+
+#### 17.1.10 専用特典（`member_perks`）と要望欄の特典の行
+
+- 専用ページ経由の予約でプランが変わる部屋: **`booking_rooms.member_perks` を新しいプランの特典に差し替える**。特典は TS が `p_rooms[i].member_perks`（`perksSnapshotOf(s.perks, 新 planCode)`・`_member_perks_of` で `id/title/description` に絞る）で渡す（仮押さえと同じ流儀）。渡さなければ null（特典なし）。**今の専用ページの設定**から取る（予約時の特典の表は保存していない）【判断】。
+- `core.stays.notes` の先頭の「【特別会員特典】title／title」の行（`_confirm_booking_group` 167〜170 行が付ける）を**差し替える**: `notes` の先頭行が `【特別会員特典】` で始まればその行を外し、新しい特典があれば新しい行を先頭に置く（それ以外の行〔部屋ごとの回答・代表の要望〕は残す）。公式の予約（`member_page` なし）は何もしない。
+- プランが同じなら特典も行も触らない。
+
+#### 17.1.11 人数が変わるときの男女の内訳・回答
+
+- `booking_rooms.guest_detail.male / female` は合計が人数と合わなくなるので **null に戻す**（PMS は 0/0 を「不明」として扱う〔autumn-pms `import.ts` 523〜525 行〕）【判断・画面で聞き直さない】。`guest_detail.answers`・`core.stays.notes` の部屋ごとの回答は残す（プランが変わって質問が合わなくなっても消さない。現場が要望欄で読む）。
+- `core.stays.adult_count = party_size = 新 adults`、`room_type_id = 新 room_type_id`（既存 `amend_booking` と同じ列）。
+
+#### 17.1.12 4 室上限・定員
+
+- 室数は変わらないので `_max_rooms_per_booking()` の検査は不要。定員は §17.1.2（`capacity_max`）。
+
+#### 17.1.13 PMS 電文（§17.4 に autumn-pms 側の要点）
+
+- `_emit_pms_event(booking_id, 'modified', amendment)`。`rooms[]` は生きている部屋（新しい部屋タイプ・プラン・人数・泊明細）、`amounts` は生きている部屋の和（M2 から）。`amendment` は次の形:
+
+```jsonc
+{
+  "amendment_no": 2,
+  "kind": "plan" | "room" | "party" | "composite",   // booking_amendments.kind と同じ語彙（変えた部屋の変更の種類を合成。2 種類以上なら composite）
+  "scope": "rooms",                                   // 新。日程変更は "dates"（kind='dates'）、1 室取消は kind='room_cancelled'
+  "by": "member" | "staff" | "admin", "reason": "…" | null, "forced": false,
+  "changed_rooms": [                                  // 新。変えた部屋だけ
+    { "room_index": 2, "stay_id": "…", "reservation_code": "YB-2026-000123-2",
+      "before": { "room_type_id": "…", "room_type_name": "和室", "rate_plan_id": "…", "plan_code": "P1", "plan_name": "朝夕食", "adults": 2, "total": 60000 },
+      "after":  { "room_type_id": "…", "room_type_name": "洋室", "rate_plan_id": "…", "plan_code": "P2", "plan_name": "朝食のみ", "adults": 3, "total": 66000 } }
+  ],
+  "before": { "total": 119000, "points_used": 3000, "coupon_discount": 1000, "rooms": [ /* 生きている全室の旧値（dates と同じ形） */ ] },
+  "after":  { "total": 125000, "points_used": 3000, "coupon_discount": 1000, "rooms": [ /* 新値・price_snapshot 付き */ ] }
+}
+```
+
+- `booking_amendments` には 1 行（`kind` は上の語彙・`stay_id` は変えた部屋の滞在〔複数なら若い `room_index`〕・`before/after` は上と同じ・`member_user_id` は会員〔スタッフ操作でも予約の会員・null 不可のため〕）。DDL 不要（`kind` の check は既存の語彙で足りる）。
+
+#### 17.1.14 メール・通知
+
+- **新しいメールの種類は作らない**【判断】。既存の日程変更も `book.notifications`（マイページのお知らせ）だけでメールは送っていない（`amend_booking` / `amend_booking_dates` に `_enqueue_booking_mail` は無い）。部屋の変更も同じく `notifications`（専用ページ経由は URL を専用ページの予約詳細に）。
+- 変更後の内容をメールで送りたいときは、管理画面の**確認メール再送**を使う（§17.5.1 の修正後は「今の部屋だけ・今の金額」で出る）。会員向けの「変更内容のご案内」メールが要るなら【要確認 M5】。
+
+### 17.2 DB（autumn-shared・migration 1 本 ＋ 退避表 drop は別ファイル）
+
+`bash ~/.claude/new-migration.sh autumn-shared book_multi_room_m3`。写す元は PROD の最新定義（M2・VIP 適用後）。
+
+#### 17.2.1 新しい関数
+
+| 関数 | 権限 | 中身 |
+|---|---|---|
+| `book._member_policy_snapshot(p_plan_policy jsonb, p_member_page jsonb) returns jsonb` | service_role | §17.1.9 の合成（`_confirm_booking_group` 238〜245 行を切り出す） |
+| `book._amend_limit(p_booking_id uuid) returns integer` | service_role | 回数の上限（【要確認 M1】の結果。既定は 2） |
+| `book._amend_compute_rooms(p_booking booking.bookings, p_rooms jsonb, p_by text) returns jsonb` | service_role | 見積の本体（`_amend_compute_dates` を写し、ループを「変える部屋は新しい値・変えない部屋は今の値」に）。先頭で `_member_page_guard(p_booking.metadata, p_by)`。`p_rooms[i] = {room_index, rate_plan_id, room_type_id, adults, lines?, member_perks?}`。見積は `p_booking.metadata ? 'member_page'` なら `lines` 必須（`_member_lines`・`capacity_max`）、無ければ `book.quote`。戻りは `_amend_compute_dates` と同じキー（`quote`・`kind`・`is_noop`・`deadline_at`・`past_deadline`・`old_charge`・`new_total`・`new_charge`・`diff`・`points_refund`・`new_points_used`・`coupon`・`new_discount`・`in_penalty`・`available`・`sold_out[]`・`rooms[]`）＋ `changed_rooms[]`（§17.1.13 の形）・`amend_remaining` |
+| `book._amend_booking_rooms_core(p_booking_code text, p_rooms jsonb, p_by text, p_actor uuid, p_reason text, p_force boolean) returns jsonb` | service_role | 確定の本体（`amend_booking_dates` を写す）: ロック（予約・全滞在・全部屋）→ 条件（§17.1.2）→ `_amend_compute_rooms` → 在庫（§17.1.3）→ `core.stays`（変えた部屋の `room_type_id / adult_count / party_size`・特典の行〔§17.1.10〕）→ `booking_rooms`（変えた部屋: `rate_plan_id / price_lines / room_total / cancellation_policy_snapshot / member_perks / guest_detail`、全室: `coupon_share / points_share`）→ `bookings`（合計・`amended_count`・`last_amended_at`）→ ポイント返還 → `booking_amendments` → 電文 `modified` → `notifications` → 監査（スタッフ）→ `_assert_booking_totals`。戻り `{booking_code, amendment_no, diff, new_total, points_refund, kind, changed_rooms}`。M2 の `_cancel_booking_room_core` ＋ 薄い入口の作法 |
+| `book.quote_amendment_rooms(p_booking_code text, p_rooms jsonb)` / `book.amend_booking_rooms(p_booking_code text, p_rooms jsonb)` | authenticated・service_role | 会員（公式マイページ）。`auth.uid()` の本人確認は `amend_booking_dates` と同じ。`p_by='member'`。専用ページ経由の予約はガードで `member_page_booking` |
+| `book.admin_quote_amendment_rooms(p_booking_code, p_rooms)` / `book.admin_amend_booking_rooms(p_booking_code, p_rooms, p_reason, p_force boolean default false)` | authenticated（`_require_admin`）・service_role | 管理画面。理由必須。`p_by='admin'`（`admin_cancel_booking_room` と同じ・admin / staff）。`p_force` はペナルティ・締切だけ越える（§17.1.6）。専用ページ経由の予約は `p_rooms[i].lines`（専用料金）と `member_perks` を Book の管理画面サーバが付けて渡す |
+| `book.member_page_quote_amendment_rooms(p_partner_id, p_member_user_id, p_booking_code, p_rooms)` / `book.member_page_amend_booking_rooms(…)` | service_role | 専用ページ。`_member_page_booking_check` → `set_config('request.jwt.claim.sub', 会員)`・`set_config('book.member_page_ctx', partner)` → `_amend_compute_rooms` / `_amend_booking_rooms_core(…, 'member', 会員, null, false)`。通知の URL は専用ページ（`member_page_amend_booking_dates` と同じ） |
+
+#### 17.2.2 差し替える既存関数（巻き戻し用に PROD の定義を保存する）
+
+| 関数 | 写す元 | 差分 |
+|---|---|---|
+| `book._confirm_booking_group` | `20261010221207` | 規定の合成を `_member_policy_snapshot` の呼び出しに（結果は同じ） |
+| `book._cancel_booking_core` | `20261010221207` | §17.5.2（オプションの取消） |
+| `book.mail_render_context` | `20261010204933` | §17.5.1（確認メールは生きている部屋だけ） |
+| `book._amend_compute` | `20261010221207` | 【要確認 M3】が「揃える」なら `in_penalty` を `rate > 0 and not allow`（日程に限らない）に。`amend_remaining` を `_amend_limit` から |
+| `book.quote_amendment` / `quote_amendment_dates` | `20261010092423` / `20261010204933` | `amend_remaining` を `_amend_limit` から（【要確認 M1】で上限を変えるとき） |
+| `book.amend_booking` / `amend_booking_dates` / `member_page_amend_booking_dates` | 同上 | `amend_limit` の判定を `_amend_limit` に（同上） |
+
+**DDL**: 【要確認 M1】で上限を変えるなら `alter table book.booking_amendments drop constraint …; add constraint … check (amendment_no between 1 and 5)`（制約名は `\d` で実名を確かめる）。それ以外の DDL は無し（`booking.bookings` / `core.stays` / `mail_outbox` は触らない。`booking_amendments.kind` の check は既存の語彙で足りる）。
+
+権限: 内部 4 本は service_role だけ。会員用 2 本と管理用 2 本は authenticated・service_role。専用ページ用 2 本は service_role。巻き戻しは「新しい関数を drop・差し替えた関数を `docs/rollback/<version>_functions_before.sql` から当て直す・check を戻す」を migration 末尾のコメントに。
+
+### 17.3 画面
+
+#### 17.3.1 公式マイページ（`/account/reservations/[code]`）
+
+- **1 室の公式予約**: 従来の変更ウィザード（`amend/`・日程・部屋・プラン・人数をまとめて・`amend_booking`）を**そのまま残す**【判断・既存の動きを変えない】。
+- **2 室以上**: 予約詳細の部屋カードに **「このお部屋を変更」**（生きている部屋・`canAmend` と同じ条件〔reserved・締切前・残回数・現地払い〕）→ 新ルート **`amend/room/[index]`**: 現在（部屋名・プラン名・人数・金額）／候補（`sbPlanOffers(facility, checkin, nights, adults)` のプラン × 部屋タイプ・残室つき・人数のセレクタ 1〜6）／見積（`quote_amendment_rooms`: この部屋の今と変更後・予約全体の今と変更後〔クーポン／ポイントの再按分後〕・返還ポイント・あと N 回・在庫の目安）／確定 → 予約詳細へ 303。失敗の文言は `amend_*` の既存キー ＋ `amend_err_payment_incompatible`・`amend_err_over_capacity`（新）。
+- 「日程を変更する（全室）」（既存・`amend/`・`datesOnly`）はそのまま。
+- 専用ページ経由の予約は従来どおり参照のみ（ボタンを出さない・action は 403・DB のガード）。
+
+#### 17.3.2 専用ページの「ご予約一覧」（`/p/[token]/bookings/[id]`）
+
+- **室数を問わず**（1 室も）部屋カードに「このお部屋を変更」→ 新ルート `bookings/[id]/amend/room/[index]`。候補は専用ページの料金で出す: プランは `member_page_plans(facility_id)`（公開プラン・支払方法）、部屋タイプは `loadStayPage` と同じ部屋一覧、料金は候補ごとに `quoteMemberRooms`（`ignoreRemaining: true`・残室は DB が確かめる）。選んだ候補の `lines`・`member_perks` を `member_page_quote_amendment_rooms` → 確定で作り直して `member_page_amend_booking_rooms`（画面の金額は受け取らない・日程変更と同じ）。専用料金を出せない組み合わせは候補から外す。
+- 既存の「日程を変更する（全室）」（`bookings/[id]/amend`）はそのまま。
+- 確認モード（会員なし）では出さない。アクセスログ `booking_amend`（`detail` に `room_index`）。
+
+#### 17.3.3 管理画面（`/admin/reservations/[code]`）【推奨案】
+
+- 部屋の表（`BookingRoomsTable`）の各行に **「変更」**（生きている部屋・予約 confirmed・全室 reserved・現地払い）→ 行の下に開くフォーム: 部屋タイプ（施設の部屋タイプ）・プラン（公開プラン）・人数・理由（必須）・「キャンセル料がかかる期間・締切後でも変更する（`force`）」・見積（`admin_quote_amendment_rooms`）→ 確定 `?/amendRoom`（`admin_amend_booking_rooms`）→ 監査ログ `amend_booking_rooms`。
+- 専用ページ経由の予約: 管理画面サーバが `member_page.partner_id` の取引先コンテキストを読み（`loadPartnerContext`）、候補の料金を `quoteMemberRooms` で出して `lines` と `member_perks`（`perksSnapshotOf`）を付けて渡す。専用料金を出せない候補は選べない（「専用料金が設定されていません」）。
+- オンライン決済済みは管理画面でも不可（文言: 「カードでお支払い済みのご予約は変更できません。取消 → 取り直し、または返金後に…」）。
+- 管理画面に**日程変更は従来どおり無い**（M3 では足さない。足すなら `amend_booking_dates` の admin 版を同じ作法で）。
+
+### 17.4 autumn-pms への依頼（別エージェント・電文の形は §17.1.13）
+
+| # | 内容 | 必須か |
+|---|---|---|
+| P1 | **部屋ごとの変更の受け**: `modified` で `amendment.scope = 'rooms'` のとき、`expandDirectBooking` の既存の展開で足りることを確かめる。泊行は `rooms[i].room_type_id / adults / plan` で作り直される（`import.ts` 527〜545 行）、`core.stays.room_type_id / adult_count` は Book が書く（PMS は `room_type_id` を**補完のみ**・509 行）。**部屋割り**: 部屋タイプが変わった滞在は `assigner.plan` が元の部屋（`keepByDate` / `fallbackKeepRoomId`）を**維持しない**こと（351〜362 行のコメントどおりか）を確認。違えば `after.room_type_id ≠ 旧` の滞在は `assigned_room_id` を外して再割当 | 要確認（壊れないが要検証） |
+| P2 | **変更ログ**: 今の差分検知はトップの `plan.name`（1 室目）・大人の合計・室数・合計金額だけ（392〜399 行）。2 室目のプラン・部屋タイプの変更が `notes` に残らない。`amendment.changed_rooms[]` を読んで「2室目: 和室→洋室・朝夕食→朝食のみ・2名→3名」を予約グループの `notes` と `cancellation_logs` 相当の変更ログに書く | 推奨 |
+| P3 | プランが変わった部屋の `stay_nights.dinner_option`（人が入れた値は最優先・空のときだけ既定で埋める・579〜580 行）: 旧プランの既定コースが残る。`changed_rooms[].before.plan_code ≠ after.plan_code` の滞在は、`dinner_option` が旧プランの既定値と同じなら新プランの既定値に差し替える（人が変えた値は残す） | 推奨 |
+| P4 | 請求書の宿泊明細の自動除外（決定 4・1 室取消 `room_cancelled` のとき取り消した部屋の泊行を請求から外す）。電文は M2 の `cancelled_rooms[]`（`stay_id`・`reservation_code`）で足りる。**電文の形の変更は不要** | PMS 側で実装 |
+| P5 | `modified` の `amendment.kind` の語彙が増える（`scope='rooms'` の `plan / room / party / composite`）。既存は `room_cancelled` 以外を「従来どおりの変更」として展開しているので壊れない（1668 行のログにも出る） | 情報 |
+
+### 17.5 あわせて直すもの（決定 5）
+
+#### 17.5.1 管理画面からの確認メール再送で取り消した部屋を載せない
+
+- 事実: `admin_resend_booking_mail`（`20261010221207` 2285 行〜）は `booking_confirmation` を `_enqueue_booking_mail` するだけ。`mail_render_context`（M2 669 行〜）は `rooms = _booking_rooms_view(booking_id)`（**取消済みを含む全室・`cancelled` フラグ付き**）、代表の `room / plan / adult_count / price_lines` は `bookings.stay_id`（1 室目）から。`templates.ts` の `multiRoomsOf` は `rooms.length > 1` なら全部並べる（276 行）。1 室目が取消済みで 2 室目だけ生きている予約を再送すると、1 室の文面に**取り消した 1 室目**が出る。
+- 直し方（DB 1 か所・テンプレートは小改修）: `mail_render_context` で **`kind = 'booking_confirmation'` のときは `rooms` を生きている部屋だけ**（`cancelled_at is null`）にし、代表（`room / plan / adult_count / price_lines / total_amount`）も**生きている部屋の最初**から組む（`total_amount` は `bookings.total_amount`＝生きている部屋の和でよい）。`booking_cancelled` / `booking_room_cancelled` は全室のまま（取り消した部屋を並べる文面に要る）。`templates.ts` は `multiRoomsOf` が 1 件なら 1 室の文面に落ちる（既存の分岐）ので変更は最小（人数の合計・`rooms.length` の「N室」が生きている数になることをテストで確かめる）。
+- 再送は「今の内容」のメールとして日程変更・部屋の変更の後にも使える（§17.1.14）。
+
+#### 17.5.2 予約全体の取消・最後の 1 室の取消でオプションも取り消す
+
+- 事実: `_cancel_room_core(…, p_cancel_options)` は 1 室取消のときだけ `true`（M2 1814 行）。全室一括と最後の 1 室（`_cancel_booking_core` 経由・1644 行）は `false` で、オプション（`booking_option_orders`）が `reserved` のまま残る（§16.7-4）。
+- 直し方: `_cancel_booking_core` のループで **`p_cancel_options => true`** にし、さらにループの後に `update book.booking_option_orders set status = 'cancelled', cancelled_at = now() where booking_id = v_booking.id and status in ('reserved','needs_reschedule')`（部屋に紐づかない行・M1 以前に代表の部屋へ付いた行の取りこぼしを拾う）。`fulfilled` は触らない。オプションは現地払い（`booking_option_orders` に決済の列は無い〔`20260711070733`〕）なので返金処理は無い。
+- メール `booking_cancelled` にオプションの取消を書くかは任意（M3 では書かない【判断】）。
+
+### 17.6 退避表 `book._mr_backup_*` の drop（2026-11-09 以降・別 migration）
+
+- 対象: `book._mr_backup_bookings`・`book._mr_backup_holds`（M0 `20261010092423` 159〜171 行。service_role の select だけ）。
+- **M3 本体には含めない。** ファイルは **2026-11-09 以降に** `bash ~/.claude/new-migration.sh autumn-shared book_multi_room_drop_backup` で切る（実 UTC 秒。先に切って main に置くと次の `db push` で当たってしまうため、**当日まで `supabase/migrations/` に置かない**。SQL は下書きとして `autumn-shared/docs/rollback/_draft_book_multi_room_drop_backup.sql` に置く）。
+- 事前確認（読み取り・当日）: `select book._assert_booking_totals(b.id) from booking.bookings b where exists (select 1 from book.booking_rooms r where r.booking_id = b.id)` が全件通る／`select count(*) from book._mr_backup_bookings`・`_mr_backup_holds` を記録／巻き戻しの予定が無いこと。`docs/rollback/20261010092423_*.sql` は記録として残す（表を消しても M0 の巻き戻し手順書は読めるが、**実行はできなくなる**ことを HANDOFF に書く）。
+- SQL（下書き）:
+
+```sql
+-- book_multi_room_drop_backup: M0（20261010092423）のバックフィル退避表を消す（M0 本番適用 2026-10-10 から 30 日後・Q11）
+do $$ begin
+  if to_regclass('book._mr_backup_bookings') is null and to_regclass('book._mr_backup_holds') is null then
+    raise notice '[book_multi_room_drop_backup] 退避表は既に無い'; return;
+  end if;
+  raise notice '[book_multi_room_drop_backup] _mr_backup_bookings=% _mr_backup_holds=%',
+    (select count(*) from book._mr_backup_bookings), (select count(*) from book._mr_backup_holds);
+end $$;
+drop table if exists book._mr_backup_bookings;
+drop table if exists book._mr_backup_holds;
+-- 巻き戻し: できない（退避表は M0 適用前の値の写し。消した後に M0 を巻き戻す手段は無くなる）
+```
+
+### 17.7 実装の分担と契約（A: DB・サーバ → B: 画面。団体予約・複数室・特別会員と同じ流儀）
+
+| 担当 | ファイル |
+|---|---|
+| **A** | autumn-shared: migration 1 本（§17.2）・巻き戻し用の関数定義の保存（差し替える 7〜9 本）・`functions/send-booking-mail/templates.ts`（§17.5.1 のテスト）・`docs/rollback/_draft_book_multi_room_drop_backup.sql`（§17.6）。autumn-book: `lib/multi-room.ts`（型 `AmendRoomInput` / `AmendRoomsQuote` / `ChangedRoom`・`amendLimitOf(roomCount)`〔DB の `_amend_limit` と同じ式・テスト〕）、`lib/server/supabase-data.ts`（`sbQuoteAmendmentRooms` / `sbAmendBookingRooms`・`mapAmendRoomsQuote`）、`lib/server/partners/member-bookings.ts`（`memberAmendRoomLines(db, partner, booking, changes)`・`memberPageQuoteAmendRooms` / `memberPageAmendRooms`・候補 `memberRoomCandidates`）、`lib/server/admin-app-data.ts`（`adminQuoteAmendRooms` / `adminAmendBookingRooms`・専用ページ経由の `lines` の組み立て）、`lib/server/member-reservation-detail.ts`（部屋カードの `canAmendRoom`・`hrefs.amendRoom(index)`）、routes: `account/reservations/[code]/amend/room/[index]/+page.server.ts`（新）、`p/[token]/bookings/[id]/amend/room/[index]/+page.server.ts`（新）、`admin/reservations/[code]/+page.server.ts`（`?/quoteRoom`・`?/amendRoom`）、`messages/*.json` の新キー |
+| **B** | `account/reservations/[code]/+page.svelte`（部屋カードの「このお部屋を変更」）・`amend/room/[index]/+page.svelte`（新・候補の一覧 → 人数 → 見積 → 確定。`lib/components/booking/AmendRoomPicker.svelte` を切り出して専用ページと共用）、`p/[token]/bookings/[id]/+page.svelte`・`amend/room/[index]/+page.svelte`（新）、`admin/reservations/[code]/+page.svelte`・`lib/components/admin/BookingRoomsTable.svelte`（行の「変更」とフォーム） |
+
+**A → B の契約（骨子。A が実装後に正式版を §18 として書く）**
+
+- `/account/reservations/[code]` load: `rooms[i].canAmendRoom: boolean`・`hrefs.amendRoom: (index) => string`。
+- `/account/reservations/[code]/amend/room/[index]` load: `{ code, facility:{name, phone}, room:{ index, roomName, planName, adults, total, roomTypeId, planId }, candidates:[{ ratePlanId, roomTypeId, planName, roomName, total, perPerson, remaining }]（?adults= の人数で）, adults, selected:{ratePlanId, roomTypeId}|null, quote: AmendRoomsQuote|null, quoteError: string|null, amendRemaining }`。action `?/confirm(ratePlanId, roomTypeId, adults)` → 303 予約詳細／`fail(400, {message})`。
+- `AmendRoomsQuote = AmendQuote & { rooms:[{index, oldTotal, newTotal, charge, couponShare, pointsShare}], changed:[{index, before:{…}, after:{…}}], available, soldOut: string[] }`。
+- `/p/[token]/bookings/[id]` load: `rooms[i].canAmendRoom`・`hrefs.amendRoom`。`…/amend/room/[index]` load は上と同じ形（候補は専用料金・`candidates[i].perks`）。action `?/confirm(planCode, planName, roomCode, adults)`。
+- `/admin/reservations/[code]`: `detail.booking.rooms[i].canAmend`・`amendOptions:{ roomTypes:[{id, name, capacity}], plans:[{id, name, onsite}] }`。actions `?/quoteRoom(roomIndex, ratePlanId, roomTypeId, adults)` → `{ roomQuote }`／`?/amendRoom(roomIndex, ratePlanId, roomTypeId, adults, reason, force)` → `{ amended:{…} }`／`fail(status, {message})`。
+- 失敗の文言キー（新）: `amend_err_payment_incompatible`・`amend_err_over_capacity`・`amend_err_room_not_found`。既存: `amend_prepaid_blocked`・`amend_err_penalty`・`amend_err_past_deadline`・`amend_err_limit`・`amend_err_no_change`・`amend_err_sold_out`・`amend_err_not_sellable`。
+
+**順序**: A が migration を書く → 使い捨てコンテナで M0→M1→M2→VIP→**M3** を当て、§17.8 の DB 項目を流す → PROD から差し替える関数の定義を保存（`docs/rollback/<version>_functions_before.sql`）→ main に push → `supabase db push --linked --dry-run`（対象がこの 1 本だけ）→ 本適用 → `migration list --linked`・`pg_proc` で新関数・`booking_amendments` の check → **`send-booking-mail` をデプロイ**（§17.5.1 のテンプレート修正と同時）→ TS → §18 → B。Book のデプロイは migration の後（旧 Book は新 DB でそのまま動く）。親がレビュー・結合・バージョン（MINOR）・HANDOFF.md の転記。autumn-pms（§17.4）は別エージェント・前後どちらでもよい（P1 は先に確認しておくと安心）。
+
+### 17.8 テストチェックリスト（HANDOFF.md 転記用）
+
+#### DB（M3）
+- [ ] `amend_booking_rooms`（会員・3 室の予約・2 室目を 和室 2 名 → 洋室 3 名・プランも変更）: `core.stays.room_type_id / adult_count` と `booking_rooms.rate_plan_id / price_lines / room_total / cancellation_policy_snapshot`（新プランの規定）が変わり、1・3 室目の `price_lines` は据え置き、`coupon_share / points_share` は全室で再按分、`total_amount` ＝ 新しい和、在庫は和室 +1・洋室 −1（滞在期間）、`booking_amendments(kind='composite')`、電文 `modified`（`amendment.scope='rooms'`・`changed_rooms` 1 件・`rooms[]` 3 件の新値）、`notifications` 1 件、`_assert_booking_totals` が通る
+- [ ] 同じタイプで人数だけ変更 → 在庫は動かない（`kind='party'`）。`guest_detail.male/female` が null に
+- [ ] 洋室の残り 0 で部屋タイプを洋室へ → `sold_out:<id>`・何も変わらない（和室の在庫も戻っていない）。見積は `available:false`
+- [ ] 定員超え（洋室 `capacity_max=2` に 3 名）→ 公式は `not_sellable`、専用ページは `over_capacity`
+- [ ] 現地払い不可のプラン（`payment_method='prepayment'`）へ → `payment_incompatible`
+- [ ] ペナルティ期間（率 > 0）の部屋 → `amend_in_penalty`。スタッフの `p_force=true` は通る（理由必須・監査ログに `forced`）。締切後も同様。回数と `prepaid_online` は `force` でも不可
+- [ ] オンライン決済済み（`direct_payments.status='paid'`）→ `prepaid_online`（会員・専用ページ・管理画面とも）
+- [ ] 回数: 日程変更 1 回 → 部屋の変更で `amended_count` が共有で増える。上限（【要確認 M1】の値）で `amend_limit`。`amend_remaining` が `quote_amendment / _dates / _rooms` で同じ
+- [ ] 取消済みの部屋・2 室目がチェックイン済みの予約 → `room_not_found` / `not_amendable`
+- [ ] `member_page_amend_booking_rooms`（専用ページ経由・2 室）: `lines` が専用料金で `room_total` に入る・`lines` の長さ／日付／`adults`／`subtotal` の不一致は `invalid_lines`・プラン変更で `booking_rooms.member_perks` が新プランの特典に・`core.stays.notes` の先頭行「【特別会員特典】…」が差し替わる（特典なしのプランなら行が消え、回答・代表の要望は残る）・`cancellation_policy_snapshot` が予約時の方式（`page` / `favorable`）で合成される（`_confirm_booking_group` と同じ結果）
+- [ ] ガード: 専用ページ経由の予約に会員の `amend_booking_rooms` / `quote_amendment_rooms` → `member_page_booking`。`admin_amend_booking_rooms` は通る
+- [ ] 1 室の予約: 公式マイページは従来の `amend_booking`（日程を含む）がそのまま。専用ページは `member_page_amend_booking_rooms` で部屋・プラン・人数が変わる
+- [ ] `_confirm_booking_group`（差し替え後）: 公式・専用ページ（page / favorable / rank）の規定の合成が従来と同じ（コンテナで md5 でなく結果を比べる）
+- [ ] §17.5.1: 1 室目を取り消した 2 室の予約で `admin_resend_booking_mail` → `mail_render_context` の `rooms` が生きている 1 件・`room / plan / adult_count / price_lines` が 2 室目・文面に 1 室目が出ない。`booking_cancelled` / `booking_room_cancelled` の文面は従来どおり
+- [ ] §17.5.2: オプション（`reserved`・`needs_reschedule`）の付いた 2 室の予約を全室一括で取消 → 全部 `cancelled`・`cancelled_at`。最後の 1 室の取消でも同じ。`fulfilled` は変わらない。1 室取消は従来どおりその部屋の分だけ
+- [ ] （【要確認 M3】で揃える場合）1 室の `amend_booking` でペナルティ期間のプランだけの変更が `amend_in_penalty` になる
+
+#### 公式マイページ
+- [ ] 2 室以上の予約詳細の部屋カードに「このお部屋を変更」。候補（プラン × 部屋タイプ・残室）と人数を選ぶと、この部屋の今／変更後と予約全体の今／変更後・返還ポイント・あと N 回が出る。確定で予約詳細に戻り、金額・部屋・プランが変わっている
+- [ ] 在庫が無い候補は選べない（「満室」）。確定の瞬間に無くなっていたら「満室になりました」でかごは残らない（部屋の変更にかごは無い）
+- [ ] 1 室の予約は従来の変更画面のまま。カード払い済みは「変更できません」の案内。専用ページ経由の予約はボタンが無く、専用ページへのリンク
+- [ ] 変更後に PMS の予約詳細で部屋ごとの部屋タイプ・プラン名・人数・泊ごとの料金が変わり、部屋割りが新しいタイプの部屋になっている（autumn-pms P1）
+
+#### 専用ページ
+- [ ] 1 室・2 室の予約とも部屋カードに「このお部屋を変更」。候補の料金が**専用料金**（料金カレンダーの同じ日の金額と一致）・特典がプランごとに出る。専用料金の無いプラン・部屋は候補に出ない
+- [ ] 確定後、予約詳細の部屋カードの特典・方式・金額が変わり、PMS の要望欄の特典の行が新しいプランのもの
+- [ ] 公式マイページからは変えられない（403・DB も `member_page_booking`）
+
+#### 管理画面
+- [ ] 部屋の表の行の「変更」→ 部屋タイプ・プラン・人数・理由・（必要なら）強制 → 見積 → 確定。監査ログ `amend_booking_rooms`。カード払い済みは不可の案内
+- [ ] 専用ページ経由の予約も変えられ、料金が専用料金・特典が差し替わる
+- [ ] 確認メール再送で取り消した部屋が載らず、変更後の部屋・金額で出る
+- [ ] 全室取消・最後の 1 室取消でオプションが取消済みになる（予約詳細のオプション欄）
+
+### 17.9 要確認（実装を左右するものだけ・推奨案つき）
+
+> **2026-10-11 決定: M1〜M5 はすべて推奨どおり**（ユーザー回答）。回数 `2 + (室数 − 1)`・オンライン決済済みは不可・1 室の `amend_booking` もペナルティ期間のプラン／部屋／人数の変更を止める・管理画面は admin / staff とも可（理由必須・force 可）・変更後のメールは送らない。
+
+| # | 論点 | 選択肢 | 推奨 |
+|---|---|---|---|
+| M1 | 変更回数の上限（日程変更と共有・今は予約で 2 回・`booking_amendments.amendment_no` の check） | A. **`2 + (室数 − 1)`**（1 室は従来どおり 2・4 室で 5。check を `between 1 and 5` に・`_amend_limit` 1 か所）／B. 2 回のまま（DDL なし・足りないときは電話） | **A** |
+| M2 | オンライン決済済みの予約の部屋の変更 | A. **M3 は不可のまま**（取消 → 取り直し・電話）／B. 減額だけ許し差額を一部返金（`refund_due` の拡張・`prepay_discount` / `bath_tax` の再計算が要る）／C. 増額の追加請求まで（保存カード・新 PaymentIntent） | **A**（B・C は別設計） |
+| M3 | 既存の 1 室の `amend_booking` が「日程を動かさないプラン・部屋・人数の変更はペナルティ期間でも通る」点を新 RPC に揃えるか | A. **揃える**（`_amend_compute` の `in_penalty` を日程に限らない 1 行の差し替え・安いプランへ逃げる抜け道を塞ぐ）／B. 既存はそのまま（新 RPC だけ塞ぐ・1 室と複数室で規則が違う） | **A** |
+| M4 | 管理画面（スタッフ）の部屋の変更の権限と強制 | A. **admin / staff とも可・理由必須・`force`（ペナルティ・締切を越える）は admin / staff とも可**（取消の免除と同じ扱い）／B. `force` は admin だけ | **A** |
+| M5 | 変更後の内容をお客さまにメールするか | A. **送らない**（マイページのお知らせ ＋ 管理画面の確認メール再送〔§17.5.1 後は今の内容〕で足りる・既存の日程変更と同じ）／B. 新しい種類 `booking_amended` を作る（`mail_outbox` の check・テンプレート・日程変更にも付ける） | **A**（B は要望が出てから） |
+
+> 上記以外は本節の【判断】で置いた（1 回の操作は部屋だけ・日程は別／RPC は配列入力・画面は 1 室ずつ／1 室の公式予約はマイページの従来ウィザードを残す／特典は今の専用ページの設定から／人数が変わる部屋の男女は null／オプション取消のメール追記はしない／電文は `scope='rooms'` ＋ `changed_rooms[]`・`kind` は既存の語彙）。親のレビューで覆してよい。
+
+---
+
+## 18. M3 実装メモ（サーバ側の契約・2026-10-11）
+
+> A（DB／サーバ）。autumn-book・autumn-shared とも **commit / push なし・本番 DB 未適用**（読み取り SQL だけ）。`.svelte` は作っていない・触っていない（B が本節を読んで作る）。
+> 検証: 使い捨てコンテナ（`supabase/postgres:17.6.1.084`）に M0〜特別会員と同じスタブ＋M3 用のスタブ（`pms.room_types.capacity_max / is_active`・`booking_amendments` の check 2 本・`booking_option_orders.status` の check・現地払い不可のプラン P3）→ M0 → M1 → M2 → 特別会員（20261010221207）→ **M3** を当て、§18.8 の RPC と巻き戻しを流した。`svelte-check --threshold error` 0 件・`vitest` 778 件（新規 `multi-room-amend.test.ts`）・send-booking-mail の vitest 42 件（新規 3 件）。
+
+### 18.1 migration（1 本・`autumn-shared/supabase/migrations/20261011030642_book_multi_room_m3.sql`）
+
+写す元は PROD の `pg_get_functiondef`。本番の `schema_migrations` が `20261010221207` まで一致していること、差し替える 10 本の `md5(prosrc)` がコンテナ（M0〜特別会員を当てたもの）と PROD で一致することを確かめてから写した（各関数の直前に写す元）。
+
+| 節 | 中身 |
+|---|---|
+| 0 | `book.booking_amendments_amendment_no_check` を `between 1 and 5` に（PROD の制約名で確認済み）。新 `book._amend_limit(booking_id) → 2 + (室数 − 1)`（室数は取り消した部屋を含む・1〜4 に丸める・`booking_rooms` が無い行は 2） |
+| 1 | 新 `book._member_policy_snapshot(plan_policy, member_page)`（`_confirm_booking_group` の規定の合成を切り出し。`member_page` が null なら `plan_policy` をそのまま返す＝公式の予約は従来と同じ値） |
+| 2 | 新: `_amend_compute_rooms`・`_amend_rooms_quote_extra`・`_amend_booking_rooms_core`（内部）、入口 `quote_amendment_rooms` / `amend_booking_rooms`（会員）・`admin_quote_amendment_rooms` / `admin_amend_booking_rooms`（管理画面）・`member_page_quote_amendment_rooms` / `member_page_amend_booking_rooms`（専用ページ） |
+| 3 | 差し替え 10 本（下表） |
+| 4 | 権限・`notify pgrst`。末尾のコメントに巻き戻し |
+
+| 差し替えた関数 | 写す元 | 差分 |
+|---|---|---|
+| `_confirm_booking_group` | 20261010221207 | 規定の合成を `_member_policy_snapshot` の呼び出しに（結果は同じ。コンテナで page / favorable / rank / 規定なし / 配列形 / null の 7 通りを旧の式と比べて一致） |
+| `_cancel_booking_core` | 20261010221207 | §17.5.2: 部屋ごとの `_cancel_room_core(…, p_cancel_options => true)`＋ループの後に予約の `reserved / needs_reschedule` のオプションを `cancelled`（部屋に紐づかない行も）。`fulfilled` は触らない |
+| `mail_render_context` | 20261010204933 | §17.5.1: `kind='booking_confirmation'` かつ生きている部屋があるとき、`rooms` は生きている部屋だけ・代表（`room / plan / adult_count / price_lines` と `cancel_policy`）は生きている部屋の最初・`discount / points_used / room_count` も生きている部屋の値。取消のメールは全室のまま |
+| `_amend_compute` | 20261010221207 | 決定 M3: `in_penalty = 変更あり and 率 > 0 and not allow_amend_in_penalty`（日程に限らない） |
+| `quote_amendment` / `amend_booking` | 20261010092423 | 回数の上限・`amend_remaining` を `_amend_limit` から（`amend_limit` キーも返す） |
+| `quote_amendment_dates` / `amend_booking_dates` | 20261010204933 | 同上 |
+| `member_page_quote_amendment_dates` / `member_page_amend_booking_dates` | 20261010221207 | 同上 |
+
+- 表の DDL は `booking_amendments` の check だけ（`booking.bookings` / `core.stays` / `mail_outbox` は触らない。`booking_amendments.kind` の check は既存の語彙で足りる）。
+- 権限: 内部 5 本（`_amend_limit`・`_member_policy_snapshot`・`_amend_compute_rooms`・`_amend_rooms_quote_extra`・`_amend_booking_rooms_core`）と専用ページの 2 本は service_role だけ。会員の 2 本・管理画面の 2 本は authenticated・service_role。anon は全部不可（コンテナで `has_function_privilege` を確認）。
+- 巻き戻し用の適用前の定義: `autumn-shared/docs/rollback/20261011030642_functions_before.sql`（コンテナから保存・10 本。**本番に当てる直前に migration 末尾のコメントの SQL で PROD から取り直して上書きする**）。
+- 退避表の drop の下書き: `autumn-shared/docs/rollback/_draft_book_multi_room_drop_backup.sql`（§17.6 のとおり。`supabase/migrations/` には置いていない）。
+
+### 18.2 RPC の入出力
+
+**入力 `p_rooms`（全入口で同じ）**: `[{ room_index, rate_plan_id? | rate_plan_code?, room_type_id? | room_type_code?, adults?, lines?, member_perks? }]`（1〜4 件・`room_index` の重複不可・省いた値は今のまま）。
+
+- コード: `rate_plan_code` ＝ この施設の `booking.rate_plans.code`（専用ページは `planCode■planName`）、`room_type_code` ＝ `pms.room_types.code`。見つからなければ `plan_not_found` / `room_not_found`。
+- `lines`（専用ページ経由の予約では変える部屋に必須）: `[{date, unit_price, adults, subtotal}]`・長さ ＝ 泊数・日付は今のチェックインから連続・`adults` ＝ 新しい人数・`subtotal = unit_price × adults`（`_member_lines`）。違えば `invalid_lines`。公式の予約では見ない（`book.quote` で引き直す）。
+- `member_perks`: 専用ページ経由でプランが変わる部屋だけ使う（`_member_perks_of` で `id / title / description`・20 件まで）。プランが変わらない部屋は据え置き。
+
+**検査の順（`_amend_booking_rooms_core`）**: `invalid_params`（`p_by`）→ `not_found` → ガード `member_page_booking`（公式の会員経路・専用ページ経由の予約）→ `not_amendable`（予約 confirmed でない・生きている部屋が無い・生きている部屋に reserved でないものがある）→ `amend_limit`（`amended_count >= _amend_limit`・force でも越えない）→ `prepaid_online`（force でも越えない）→ 見積（`_amend_compute_rooms`: `invalid_params` / `room_not_found`〔取消済み・存在しない部屋・別施設の部屋タイプ〕/ `plan_not_found` / `payment_incompatible`〔新しいプランの `v_plans.payment_method` が `onsite / deposit` でない〕/ 定員 `over_capacity`〔専用ページ〕・`not_sellable`〔公式〕/ `invalid_lines` / `not_sellable`〔`book.quote` が出せない〕）→ `past_deadline`（force で越える）→ `no_change` → `amend_in_penalty`（変える部屋のうち 1 つでも今の規定 × 今の宿泊料金で率 > 0・force で越える）→ 在庫 `sold_out:<room_type_id>`（部屋タイプごとの純増が正のタイプだけ・全泊・行ロック・1 泊でも足りなければ全体が戻る）。
+
+**見積の戻り**（`quote_amendment_rooms`・`admin_quote_amendment_rooms`・`member_page_quote_amendment_rooms` 共通）: `_amend_compute_dates` と同じキー（`quote{lines,total,per_person,tax_included}`・`kind`〔none / plan / room / party / composite〕・`is_noop`・`deadline_at`・`past_deadline`・`old_charge`・`new_total`・`new_charge`・`diff`・`points_refund`・`new_points_used`・`coupon`・`new_discount`・`in_penalty`・`date_changed:false`・`plan_changed`・`current_checkin`・`current_nights`・`available`・`sold_out[]`）＋ `room_changed`・`party_changed`・`member_page`・`changed_count`・`changed_rooms[]`（§18.3 の形）・`rooms[]`（生きている全室: `room_index, stay_id, reservation_code, changed, kind, room_type_id, rate_plan_id, adults, old_room_type_id, old_rate_plan_id, old_adults, quote, old_room_total, old_coupon_share, old_points_share, new_total, coupon_share, points_share, charge, in_penalty, cancellation_policy, member_perks`）＋ `ok`・`amend_remaining`・`amend_limit`・`room_count`・`live_rooms`・`prepaid_online`・`amendable`（`ok and 回数が残る and not prepaid_online and not past_deadline`）。見積は条件違反（ペナルティ・締切・回数）を例外にせずフラグで返す（入力・プラン・定員・`lines` の不正は例外）。
+
+**確定の戻り**（`amend_booking_rooms`・`admin_amend_booking_rooms`・`member_page_amend_booking_rooms`）: `{ booking_code, amendment_no, diff, new_total, points_refund, kind, forced, changed_rooms }`。
+
+**書くもの**: 変えた部屋の `core.stays.room_type_id / adult_count / party_size`（専用ページ経由でプランが変わる部屋は `notes` の先頭の「【特別会員特典】…」の行を新しい特典に差し替え・特典なしなら行を外す・他の行は残す）、`booking_rooms.rate_plan_id / price_lines / room_total / cancellation_policy_snapshot`（プランが変わる部屋だけ新しいプランの規定・特別会員は予約時の方式を合成）`/ member_perks / guest_detail`（人数が変わる部屋は `male / female` を外す・`answers` は残す）、生きている全室の `coupon_share / points_share`、`bookings.total_amount / accommodation_amount / net_amount / tax_amount`・`metadata.amended_count / last_amended_at`、ポイント返還（退会済みはスキップ）、`booking_amendments`（`kind` は上の語彙・`stay_id` は変えた部屋の最初・`member_user_id` は予約の会員〔非会員の予約はスタッフ〕・`after` に `scope:'rooms'` と `changed_rooms`）、電文 `modified`、お知らせ（専用ページ経由は `/p/<token>/bookings/<予約番号>`・メールは送らない〔決定 M5〕）、監査ログ `amend_booking_rooms`（スタッフ・管理者: `reason`・`forced`・`kind`・`diff`・`changed_rooms`）、`_assert_booking_totals`。付与見込み `points_earned` は変えない（従来）。
+
+**専用ページの入口**: `_member_page_booking_check`（対象者・このページ経由・予約した本人）→ `request.jwt.claim.sub` と `book.member_page_ctx` を立てて見積・確定 → 戻す（`member_page_cancel_booking` と同じ作法・`p_by='member'`）。**管理画面**: `_require_admin(_admin_tenant())`（`admin_cancel_booking_room` と同じ・admin / staff）・予約のテナントが違えば `not_found`・`p_by='admin'`・確定は理由必須（`reason_required`）。
+
+### 18.3 PMS 電文（`event='modified'`・`amendment.scope='rooms'`）
+
+`rooms[]` は生きている部屋（新しい部屋タイプ・プラン・人数・泊明細・`male/female` は人数が変わった部屋は null）、`amounts` は生きている部屋の和（`_emit_pms_event` は変えていない）。§16.2 と同じ作法で、コンテナの 3 室の予約（クーポン 1,000・ポイント 3,000）の 2 室目を「和室・朝夕食・2 名 → 洋室・朝食のみ・2 名」に変えたときの実物（`guest` 等は省略・`rooms[]` は 2 室目だけ・`before/after.rooms` は 1 件に省略）:
+
+```json
+{
+  "schema": "autumn.direct_booking/1",
+  "event": "modified",
+  "sequence": 2,
+  "booking": { "booking_id": "4c6fbfdb-…", "booking_code": "YB-2026-008001", "status": "confirmed", "locale": "ja" },
+  "rooms": [
+    { "room_index": 2, "stay_id": "e1126c9b-…", "reservation_code": "YB-2026-008001-2",
+      "room_type_id": "a000…000b", "room_type_code": "YO", "room_type_name": "洋室",
+      "adults": 2, "male": 2, "female": 0, "children": { "a": 0, "b": 0, "c": 0, "d": 0, "e": 0 },
+      "nights": [ { "date": "2026-11-10", "unit_price": 20000, "subtotal": 40000 }, { "date": "2026-11-11", "unit_price": 20000, "subtotal": 40000 } ],
+      "plan": { "rate_plan_id": "b000…0002", "code": "P2", "name": "朝食のみ", "meal_plan": "朝", "rms_plan_template_id": null },
+      "member_perks": null }
+  ],
+  "amounts": { "gross_total": 240000, "discount_total": 1000, "points_used": 3000, "total_amount": 239000, "charge": 236000,
+               "bath_tax": 0, "prepay_discount": 0, "tax_included": 21727, "points_earned": 2536,
+               "coupon": { "name": "千円引き", "discount": 1000, "coupon_id": "cc00…", "member_coupon_id": "cd00…" } },
+  "amendment": {
+    "amendment_no": 1,
+    "kind": "composite",
+    "scope": "rooms",
+    "by": "member",
+    "reason": null,
+    "forced": false,
+    "changed_rooms": [
+      { "room_index": 2, "stay_id": "e1126c9b-…", "reservation_code": "YB-2026-008001-2",
+        "before": { "room_type_id": "a000…000a", "room_type_name": "和室", "rate_plan_id": "b000…0001", "plan_code": "P1", "plan_name": "朝夕食", "adults": 2, "total": 120000 },
+        "after":  { "room_type_id": "a000…000b", "room_type_name": "洋室", "rate_plan_id": "b000…0002", "plan_code": "P2", "plan_name": "朝食のみ", "adults": 2, "total": 80000 } }
+    ],
+    "before": { "checkin": "2026-11-10", "checkout": "2026-11-12", "total": 279000, "points_used": 3000, "coupon_discount": 1000,
+                "rooms": [ { "room_index": 2, "rate_plan_id": "b000…0001", "room_type_id": "a000…000a", "adults": 2, "total": 120000, "coupon_share": 428, "points_share": 1286 } ] },
+    "after":  { "checkin": "2026-11-10", "checkout": "2026-11-12", "total": 239000, "points_used": 3000, "coupon_discount": 1000,
+                "price_snapshot": { "lines": [ "…全室の泊明細…" ], "total": 240000, "per_person": 48000, "tax_included": 21818 },
+                "rooms": [ { "room_index": 2, "rate_plan_id": "b000…0002", "room_type_id": "a000…000b", "adults": 2, "total": 80000, "coupon_share": 333, "points_share": 1000,
+                             "price_snapshot": { "lines": [ { "date": "2026-11-10", "adults": 2, "unit_price": 20000, "subtotal": 40000 }, { "date": "2026-11-11", "adults": 2, "unit_price": 20000, "subtotal": 40000 } ], "total": 80000, "per_person": 40000, "tax_included": 7273 } } ] }
+  },
+  "cancel": null, "charge": null, "refund": null
+}
+```
+
+- `before.rooms` / `after.rooms` は**生きている全室**（変えない部屋も・按分し直した値）。変えた部屋は `changed_rooms[]` で分かる。
+- スタッフの操作は `by: "admin"`・`reason`（入力した理由）・`forced`（締切・ペナルティを force で越えたとき true）。
+- autumn-pms への依頼（§17.4 P1〜P3・P5）は電文の形の変更なしで足りる。P1（部屋タイプが変わった滞在の部屋割り）は PMS 側で要確認。
+
+### 18.4 Book のサーバ関数（autumn-book）
+
+| ファイル | 中身 |
+|---|---|
+| `lib/multi-room.ts`（＋`multi-room-amend.test.ts` 33 件） | `amendLimitOf(roomCount)`（DB の `_amend_limit` と同じ式）・型 `AmendRoomInput`（`index`・`ratePlanId? / ratePlanCode?`・`roomTypeId? / roomTypeCode?`・`adults?`・`lines?`・`memberPerks?`）・`amendRoomsPayload`（→ `p_rooms`）・型 `ChangedRoom` / `ChangedRoomSide` と `mapChangedRooms`・型 `AmendRoomsQuoteRoom` と `mapAmendRoomsQuoteRooms`・`canAmendRoomOf`（画面の案内用の可否）・`parseAdults`（1〜6）・`amendRoomErrorCode(e)`（DB の例外の語 → `AmendRoomErrorCode`・具体的な語から）・`amendRoomErrorStatus`・`AMEND_ROOM_MESSAGES_JA`（専用ページ・管理画面の文言） |
+| `lib/server/supabase-data.ts` | 型 `AmendRoomsQuote`（`AmendQuote` ＋ `available`・`soldOut`・`roomCount`・`liveRooms`・`amendLimit`・`prepaidOnline`・`memberPage`・`roomChanged`・`partyChanged`・`changedCount`・`rooms: AmendRoomsQuoteRoom[]`・`changed: ChangedRoom[]`）・`mapAmendRoomsQuote`・型 `AmendRoomsResult`（`AmendResult` ＋ `forced`・`changed`）・`mapAmendRoomsResult`・`sbQuoteAmendmentRooms(client, code, rooms)`・`sbAmendBookingRooms(client, code, rooms)`（会員の authenticated クライアント） |
+| `lib/server/partners/member-bookings.ts` | `memberRoomCandidates(db, partner, booking, roomIndex, adults)`（料金カレンダーで今の日程の全泊に出ている部屋タイプ × 公開プランを人数ごとに `quotePartnerBooking`・専用料金を出せない組は外す）→ `MemberRoomCandidate[]`・`memberAmendRoomInput(db, partner, booking, roomIndex, {roomCode, planCode, planName, adults})`（泊明細を作り直し、プランが変わるなら今の専用ページの特典を添える）→ `AmendRoomInput`・`memberPageQuoteAmendRooms(who, rooms)` / `memberPageAmendRooms(who, rooms)`・`staffMemberAmendRoomInput({partnerId, facilityId, bookingCode, checkIn, nights, rooms, roomIndex, change:{ratePlanId, roomTypeId, adults}})`（管理画面の UUID を料金カレンダーの識別に直して専用料金の入力を作る・会員の対象判定はしない） |
+| `lib/server/admin-app-data.ts` | `adminQuoteAmendRooms(c, code, rooms)` / `adminAmendBookingRooms(c, code, rooms, reason, force)`・`BookingDetail.booking.rooms[i]` に `room_type_id?`・`rate_plan_id?`・`canAmend?` |
+| `lib/server/member-reservation-detail.ts` | `amendGate(status, checkin, amendCount, roomCount = 1)`（`remaining` は `amendLimitOf(roomCount) − amendCount`・`limit` を足した）・`reservationDetailOf(event, client, r, { roomAmend?: { scope: 'multi' \| 'all', hrefOf } })` の戻りに `roomAmend`・`prepaidOnline`・`rooms[i].canAmendRoom / amendRoomHref` |
+| `lib/partner-member-page.ts` | `memberPageOpError` の `amend_limit` の文言（「2回まで」→「変更回数の上限に達しています（日程とお部屋の変更で共通）」） |
+| `messages/{ja,en,zh-TW}.json` | 新 `amend_err_payment_incompatible`・`amend_err_over_capacity`・`amend_err_room_not_found`。`amend_err_limit`（「（2回）」を外す）・`amend_err_penalty`（「宿泊日は」→「ご予約を」）の文言を直した |
+| autumn-shared `functions/send-booking-mail/templates.ts`（＋test 3 件） | `liveRoomsContext(ctx)`: 予約確認メールは取消済みの部屋（`rooms[i].cancelled`）を除いて組む（古い DB の行でも載せない・生きている部屋が 1 件なら 1 室の文面）。取消のメールは従来どおり |
+
+### 18.5 各ルートの load / actions（B が使う契約）
+
+**`/account/reservations/[code]`（既存・load に追加）**: `roomAmend: { index, canAmend, href: string | null }[]`（**2 室以上のときだけ**・生きている部屋ごと・専用ページ経由の予約は空）・`rooms[i].canAmendRoom: boolean`・`rooms[i].amendRoomHref: string | null`（`/account/reservations/<code>/amend/room/<index>`）・`prepaidOnline: boolean`・`amend.limit`（回数の上限）。`amend.remaining` は `2 + (室数 − 1) − 変更回数` になった。
+
+**`/account/reservations/[code]/amend/room/[index]`（新）**
+- load: 1 室の予約は `…/amend`（従来のウィザード）へ 303、専用ページ経由・予約中でない → 予約詳細へ 303、オンライン決済済み → `?amend=prepaid` 付きで予約詳細へ 303、取消済み・無い部屋は 404。戻り `{ code, facility:{name, phone}, checkin, nights, room:{ index, stayCode, roomTypeId, planId, roomName, planName, adults, total, charge }, candidates: AmendRoomCandidate[], adults, selected:{ratePlanId, roomTypeId} | null, quote: AmendRoomsQuote | null, quoteError: string | null, amendRemaining, amendLimit, hrefs:{ back, self } }`。
+  - `AmendRoomCandidate = { ratePlanId, roomTypeId, planName, roomName, total, perPerson, remaining, current, selectable, blocked: 'payment' | 'sold_out' | 'capacity' | null }`（`sbPlanOffers(施設, 今の checkin, 泊数, adults)`。同じ部屋タイプは残室を問わない）。
+  - クエリ: `?adults=`（1〜6・既定は今の人数）・`?offer=<ratePlanId>__<roomTypeId>`（既定は今の組み合わせ）。今と違う組み合わせ・人数のときだけ `quote` を出す。
+- action `?/confirm`: `ratePlanId`・`roomTypeId`・`adults` → 成功 303 予約詳細／`fail(status, { code: AmendRoomErrorCode | 'invalid', message })`（専用ページ経由は `fail(403, { code:'member_page_booking', message, href })`）。
+
+**`/p/[token]/bookings/[id]`（既存・load に追加）**: 上と同じ `roomAmend`（**室数を問わず・1 室も**）・`rooms[i].canAmendRoom / amendRoomHref`（2 室以上のカード）・`prepaidOnline`・`amend.limit`。URL は `/p/<token>/bookings/<予約番号>/amend/room/<index>`。
+
+**`/p/[token]/bookings/[id]/amend/room/[index]`（新・member だけ・取引先は 404）**
+- load: 確認モードは 404、予約が confirmed でなければ予約詳細へ 303、無い部屋は 404。戻り `{ portal, code, checkin, nights, room:{ index, roomCode, roomName, planCode, planName, adults, total }, adults, candidates: MemberRoomCandidate[], selected:{roomCode, planCode, planName} | null, quote: AmendRoomsQuote | null, quoteError: string | null, unavailable: string | null, amendRemaining, amendLimit, hrefs:{ back, self } }`。
+  - `MemberRoomCandidate = { roomCode, roomName, planCode, planName, total, perPerson, remaining: number | null, perks: {id,title,description}[] | null, current, selectable, blocked: 'payment' | 'sold_out' | null }`（専用料金・候補ごとの専用特典）。
+  - クエリ: `?adults=`・`?room=<部屋タイプのコード>&plan=<planCode>&name=<planName>`（既定は今の組み合わせ）。
+  - `unavailable`: オンライン決済済み・予約の施設が専用ページでオフなど（そのとき `candidates` は空）。
+- action `?/confirm`: `roomCode`・`planCode`・`planName`・`adults` → 成功 303 予約詳細／`fail(status, { code, message })`（`code` は `AmendRoomErrorCode` か `invalid` / `unavailable` / `forbidden`）。アクセスログ `booking_amend`（`detail` に `room_index / room / plan / adults`）。
+
+**`/admin/reservations/[code]`（既存）**
+- load に追加: `amendRooms: { ok, remaining, limit, prepaidOnline, memberPage }`・`amendOptions: { roomTypes: { id, name, capacity }[], plans: { id, name, onsite, memberPage }[] }`（`ok` のときだけ中身あり）・`detail.booking.rooms[i].canAmend`（`ok` かつ生きている部屋）。締切・ペナルティは force で越えられるので `ok` には入れていない。専用ページ経由の予約では `plans[i].memberPage=false` のプランは選べない（専用料金なし）、`onsite=false` は選べない。
+- actions（admin / staff とも可・それ以外は 403。テナント・施設の権限は DB の `_require_staff`・`private.has_facility_access`・§18.10 H-1）:
+  - `?/quoteRoom`: `roomIndex`・`ratePlanId`・`roomTypeId`・`adults` → `{ roomQuote: AmendRoomsQuote, roomIndex }`／`fail(status, { amendRoomError, amendRoomCode })`。
+  - `?/amendRoom`: 上 ＋ `reason`（必須）・`force`（`on`）→ `{ amended: { roomIndex, amendmentNo, kind, diff, newTotal, pointsRefund, forced, changed: ChangedRoom[] } }`／`fail(status, { amendRoomError, amendRoomCode })`。
+  - 取引先予約は従来どおり `rejectPartner`（`fail(409, { message })`）。
+
+### 18.6 B（画面）へのメモ
+
+- 部屋の変更の画面は公式（`account/…/amend/room/[index]`）と専用ページ（`p/…/amend/room/[index]`）で候補の型が違う（公式は UUID、専用ページはコード）。共通部品 `AmendRoomPicker.svelte` は「候補の一覧（名前・料金・残室・選べない理由）→ 人数 → 見積 → 確定」の見た目だけにして、候補の識別子とフォームの hidden は呼び出し側で渡すと楽。
+- 見積の表示: この部屋の今（`quote.rooms` の `changed` の行の `oldTotal`）と変更後（`newTotal`・`charge`）、予約全体の今（`quote.oldCharge`）と変更後（`quote.newCharge`）・差額 `quote.diff`・返還ポイント `quote.pointsRefund`・あと `quote.amendRemaining` 回・在庫の目安 `quote.available`（false なら「満室」）・`quote.inPenalty`（会員の画面では確定できない旨）・`quote.pastDeadline`。
+- 失敗の文言は action の `message`（公式は paraglide、専用ページ・管理画面は日本語）をそのまま出せばよい。
+- 管理画面の部屋の表（`BookingRoomsTable`）の各行の「変更」は `detail.booking.rooms[i].canAmend`。フォームの選択肢は `amendOptions`、見積は `?/quoteRoom`（`use:enhance` で `form.roomQuote`）、確定は `?/amendRoom`。`amendRooms.prepaidOnline` なら「カードでお支払い済みのご予約は変更できません」の案内。
+
+### 18.7 本番に当てる順番と条件
+
+1. 事前確認（読み取り）: `schema_migrations` の最新が `20261010221207`・差し替える 10 本の `md5(prosrc)` が §18.1 の確認時と同じ（PROD とコンテナで一致を確認済み）。`select booking_id, amendment_no from book.booking_amendments order by 2 desc limit 5`（check を広げるだけなので既存行は影響なし）。`docs/rollback/20261011030642_functions_before.sql` を migration 末尾のコメントの SQL で PROD から取り直して上書き。
+2. `supabase db push --linked --dry-run`（対象がこの 1 本だけ）→ 本適用 → `migration list --linked`。`pg_proc` で新関数 13 本（§18.10 で 2 本増えた）、`pg_constraint` で `booking_amendments_amendment_no_check` が `1〜5` になったことを確認。
+3. **`send-booking-mail` をデプロイ**（`supabase functions deploy send-booking-mail --no-verify-jwt`）。DB だけ先でも、DB が生きている部屋だけを返すので確認メールの再送は直る（テンプレートの修正は古い DB への備え）。
+4. Book のデプロイは migration の後（新 Book は `quote_amendment_rooms` 等と `amend_limit` を使う。旧 Book は新 DB でそのまま動く: 旧 Book の画面の「あと N 回」は 2 回基準のまま出るが、DB は 2 + (室数 − 1) で判定する）。
+5. autumn-pms（§17.4）は前後どちらでもよい。P1（部屋タイプが変わった滞在の部屋割り）は先に確かめておくと安心。
+
+### 18.8 確認した範囲（使い捨てコンテナ）
+
+- 会員 3 室（和室 P1 2 名 ×2・洋室 P2 1 名・2 泊・クーポン 1,000・ポイント 3,000）: 2 室目を洋室・P2・2 名へ → `kind='composite'`・`total_amount` 279,000 → 239,000・クーポン／ポイントの再按分（429/428/143 → 500/333/167・1,286/1,286/428 → 1,500/1,000/500）・2 室目の規定が P2 の規定に・1 室目の泊明細は据え置き・在庫 和室 +1／洋室 −1（滞在期間だけ）・`booking_amendments`（`member_user_id` ＝ 会員・`after.scope='rooms'`）・電文 `modified/composite/rooms`（`rooms[]` 3 件の新値）・お知らせ 1 件・`_assert_booking_totals` 通過。
+- 同じタイプで人数だけ（1 室目 2→3 名）→ `party`・在庫は動かない・`guest_detail` の `male/female` が消え `answers` は残る。
+- 洋室の残り 0 で和室 → 洋室: 見積 `available:false / sold_out:[洋室]`・確定 `sold_out:<洋室 id>`・和室の在庫も滞在も変わらない。
+- 定員超え（洋室 capacity 2 に 3 名）→ 公式 `not_sellable`・専用ページ `over_capacity`。予約時決済だけのプラン → `payment_incompatible`。`room_index` の重複・形の不正 → `invalid_params`・存在しない部屋・取消済みの部屋 → `room_not_found`・変化なし → `no_change`。存在しないコード → `plan_not_found` / `room_not_found`。
+- 回数: 3 室の予約で上限 4（`quote_amendment_dates` と `quote_amendment_rooms` の `amend_remaining` が同じ 2）→ 日程変更で 3 回目 → 部屋の変更で 4 回目 → 5 回目は `amend_limit`（管理画面の force でも）。1 室の予約は従来どおり 2（`quote_amendment.amend_remaining`）。
+- ペナルティ（+2 日・P1 規定 3 日前 30%）: 会員のプラン変更 → `amend_in_penalty`・同じ予約の P2（規定なし → standard 1 日前）の部屋は通る・管理画面は理由なしで `reason_required`・`force` で通り監査ログ `forced:true`・電文 `by:'admin', forced:true, reason`・`booking_amendments.member_user_id` は予約の会員。**決定 M3**: 1 室の公式予約の `amend_booking` でプランだけの変更が `amend_in_penalty`（見積も `in_penalty:true`・変化なしの見積は false）。
+- オンライン決済済み → `prepaid_online`（会員・管理画面の force とも）・見積は `prepaid_online:true / amendable:false`。2 室目がチェックイン済み → `not_amendable`。
+- 特別会員（favorable・専用規定 7 日前 10%）2 室: 公式マイページの経路は見積・確定とも `member_page_booking`。専用ページで 1 室目を P2（特典なし）・1 名・専用料金 16,000 へ → `member_perks` null・要望欄の「【特別会員特典】…」の行だけ消え回答・代表の要望は残る・規定は P2 の規定に favorable を合成・お知らせの URL が専用ページ・`book.member_page_ctx` と `request.jwt.claim.sub` が戻っている。2 室目を P1（特典あり）へ → 特典の行が先頭に付き、電文 `rooms[i].member_perks` に新しい特典。`lines` 無し・人数の不一致 → `invalid_lines`。管理画面は `lines` 付きで通り、`lines` 無しは `invalid_lines`。1 室の予約（page 方式）も部屋タイプ・プラン・人数がまとめて変わる（規定 `{rules: 専用規定, source:'member_page'}` のまま）。
+- `_member_policy_snapshot` が旧の `_confirm_booking_group` の式と 7 通りで一致。
+- §17.5.1: 1 室目を取り消した 2 室の予約の確認メールの文脈 → `rooms` 1 件（2 室目）・`room`=洋室・`plan`=朝食のみ・`adult_count`=1・`room_count`=1・`price_lines` は 2 室目だけ。`booking_room_cancelled` は全室のまま。取り消していない予約は従来と同じ。
+- §17.5.2: 全室一括の取消で `reserved` / `needs_reschedule`（部屋に紐づかない行も）が `cancelled`・`fulfilled` は残る。1 室取消はその部屋だけ、最後の 1 室の取消で残りも `cancelled`。
+- 巻き戻し: 適用前の 10 本の定義を保存 → M3 → 末尾のコメントの SQL（`amendment_no >= 3` の行を消してから）で 10 本の `md5` が適用前と一致・新関数 11 本が消え・check が `1〜2` に戻る。
+- 画面はブラウザで見ていない（`.svelte` が無い・実データ接続が要るため）。
+
+### 18.9 設計から外れた点
+
+1. **部屋タイプ・プランをコードでも受ける**（`rate_plan_code` / `room_type_code`）。専用ページは `booking` スキーマを読めないため（`create_member_page_hold_group` と同じ理由）。公式と管理画面は UUID。
+2. **専用ページの泊明細の組み立ては `member-bookings.ts` に置いた**（設計は管理画面の分を `admin-app-data.ts`）。管理画面用は `staffMemberAmendRoomInput`（UUID → コード → `memberAmendRoomInput`）で、予約した会員が対象から外れていても使える（会員の判定をしない・`member_page_booking_rooms` を通さない）。
+3. **load の `hrefs.amendRoom(index)` は関数にできない**（load の戻りはシリアライズされる）ので、`roomAmend[i].href`・`rooms[i].amendRoomHref` に URL の文字列を入れた。
+4. **管理画面の部屋の変更は admin / staff とも可**（決定 M4）。§18.10 H-1 で DB の権限を `_require_staff`＋施設の権限に直し、`p_by` は実際の役割（admin / staff）。管理画面の取消は従来どおり TS で admin に限っている（扱いが違う）。
+5. **`booking_amendments.member_user_id`**（not null・auth.users への FK）は、予約の会員 → 無ければ操作したスタッフ（非会員の公式予約を管理画面から変えたとき）。
+6. **公式マイページの 1 室の予約は `amend/room/[index]` に来たら従来の `amend/` へ 303**（入口を 1 つに保つ）。RPC `amend_booking_rooms` 自体は 1 室の予約でも動く（専用ページは 1 室も使う）。
+7. **見積は条件違反（締切・ペナルティ・回数・オンライン決済済み）を例外にせずフラグで返す**（`_amend_compute_dates` の見積と同じ扱い）。入力・プラン・定員・`lines` の不正は例外。
+8. **`amend_err_limit`・`amend_err_penalty`・専用ページの `amend_limit` の文言を直した**（回数が室数で変わる・ペナルティ期間は日程以外も不可になったため。日程変更の画面にも出る）。
+9. 管理画面の `canAmend` は締切・ペナルティを見ない（force で越えられる）。回数・オンライン決済済み・チェックイン済みの部屋があると false。
+10. 確認メールのテンプレートにも取消済みの部屋を除く処理を入れた（`liveRoomsContext`・DB の修正の二重化。DB だけ先に当たっても足りる）。
+
+### 18.10 レビュー（Fable）を受けて直した点（2026-10-11）
+
+- **H-1（決定 M4）**: `admin_quote_amendment_rooms` / `admin_amend_booking_rooms` の `_require_admin` をやめ、新しい内部関数 `book._admin_amend_rooms_booking(code)`（`_require_staff(テナント)` → 予約を引いてテナント一致〔違えば `not_found`〕→ `private.has_facility_access(テナント, 予約の施設)` でなければ `forbidden`）を通すようにした。`p_by` は新しい `book._admin_actor_role()`（`private.is_tenant_admin(テナント) or private.is_superadmin()` なら `'admin'`、それ以外は `'staff'`）で、監査ログの `detail.by`・電文の `amendment.by` に実際の役割が出る。新関数 2 本は service_role だけ（巻き戻しの drop にも足した）。TS（`admin/reservations/[code]` の `?/quoteRoom`・`?/amendRoom`）は admin / staff 以外を `fail(403, { amendRoomError: '権限がありません。', amendRoomCode: 'forbidden' })`（同じページの会員まわりの action と同じ作法）。
+- **M-1**: 公式マイページの `amend/room/[index]` で、今の部屋タイプが `book.plan_offers`（残室 0 で落ちる）から消える件。今の部屋タイプは、`plan_offers` に出なかった公開プラン（そのプランの部屋タイプに今の部屋タイプが含まれるもの）ごとに `book.quote`（`supabase-data.ts` の `quote`）で見積を引いて候補に足す。今の部屋タイプの候補は `remaining: null`（純増 0 なので在庫を問わない・残室は出さない）。`AmendRoomCandidate.remaining` は `number | null` になった。`plan_offers` は変えていない。
+- **M-2**: `_amend_compute_rooms` の `rate_plan_code` の解決を「この施設の `is_active and public_on_direct` のプラン」に限り、2 件以上当たれば曖昧として `plan_not_found`。PROD の `select facility_id, code, count(*) from booking.rate_plans group by 1,2 having count(*)>1` は **0 行**（2026-10-11 読み取り）。コンテナで「非公開の同じコードは無視して解決」「公開の同じコードが 2 件で `plan_not_found`」を確認。
+- **M-4**: チェックイン日（今の滞在の最初の生きている部屋）が今日（JST）より前の予約は、見積も確定も（管理画面の force でも）`past_checkin`。判定は `_amend_compute_rooms` の今の日程を読んだ直後（`book.quote` が過去日で `not_sellable` を先に投げるため）。TS: `AmendRoomErrorCode` に `past_checkin`・新キー `amend_err_past_checkin`（日英繁）・`AMEND_ROOM_MESSAGES_JA.past_checkin`。
+- **L-2**: `min_stay_violation` を `not_sellable` から分け、コード `min_stay`・新キー `amend_err_min_stay`（「この条件（泊数・人数）ではご予約いただけません。…」・日英繁）・`AMEND_ROOM_MESSAGES_JA.min_stay`。
+- **L-3**: `_amend_compute_rooms` の先頭のコメントを実際の動き（日程は変えない・コードは公開中だけ・`book.quote` は例外を投げる・変えない部屋の `lines` は見ない・例外とフラグの分け方・戻りのキー）に直した。
+- **M-3（デッドロック）は今回は直していない。**
+- 再確認: コンテナで M0 → M1 → M2 → 特別会員 → M3 と §18.8 の RPC を流し直し（結果は前回と同じ）、加えて「施設のあるスタッフは見積・確定でき監査・電文の `by` が `staff`」「別の施設のスタッフ・権限の無い利用者は `forbidden`」「テナント管理者は `by` が `admin`」「チェックイン日を過ぎた予約は見積も force の確定も `past_checkin`」「プランのコードの重複」を確認（想定外のエラー 0 件）。巻き戻しで差し替えた 10 本の `md5` が適用前と一致・新関数 13 本が消え・check が `1〜2` に戻る。`svelte-check --threshold error` 0 件・`vitest` 781 件・send-booking-mail 42 件。

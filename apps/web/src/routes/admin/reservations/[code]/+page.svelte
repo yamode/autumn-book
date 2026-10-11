@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PartnerCancelFeeFields from '$lib/components/admin/PartnerCancelFeeFields.svelte';
 	import PartnerAttachments from '$lib/components/PartnerAttachments.svelte';
+	import RoomAmendForm from '$lib/components/admin/RoomAmendForm.svelte';
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { directRefundDueOf } from '$lib/direct-payment';
 	import { deductionOf, keptReasonLabel } from '$lib/cancel-admin-fee';
@@ -45,6 +46,14 @@
 		if ((policy.rooms ?? []).length === 0 && liveAdminRooms.length === 1 && liveAdminRooms[0].room_index === index) return policy.fee ?? 0;
 		return 0;
 	}
+	// 部屋ごとの部屋タイプ・プラン・人数の変更（公式の複数室 M3・§17.3.3）: フォームを開いている部屋の番号。
+	// admin / staff とも開ける（決定 M4。権限は DB の _require_admin が確かめる）
+	let amendIndex = $state<number | null>(null);
+	let amendRoom = $derived(amendIndex == null ? null : (adminRooms.find((r) => r.room_index === amendIndex && r.canAmend) ?? null));
+	let roomQuote = $derived(form?.roomQuote && form.roomIndex === amendIndex ? form.roomQuote : null);
+	let amendRoomError = $derived(form?.amendRoomError ?? null);
+	// カード払い済みで変更できない旨（予約中の公式予約で部屋の行があるとき）
+	let amendPrepaidNote = $derived(data.amendRooms.prepaidOnline && b.booking_status === 'confirmed' && liveAdminRooms.length > 0);
 	// 事務手数料も免除する（予約時決済で率の残っている予約だけ。既定は差し引く・2026-10-07）
 	let adminWaive = $state(false);
 
@@ -263,6 +272,11 @@
 				: `請求しませんでした: ${form.partnerCharge.message ?? ''}`}
 	</p>
 {/if}
+{#if form?.amended}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		{form.amended.roomIndex}室目を変更しました（差額 {form.amended.diff > 0 ? '+' : ''}{formatYen(form.amended.diff)}・予約の合計 {formatYen(form.amended.newTotal)}{form.amended.pointsRefund > 0 ? `・ポイント返還 ${form.amended.pointsRefund}pt` : ''}{form.amended.forced ? '・締切／キャンセル料の期間を越えて変更' : ''}・監査ログに記録）。PMS に変更の電文を送りました。お客さまへのメールは送っていません（必要なら予約確認メールを再送してください）。
+	</p>
+{/if}
 {#if form?.message}
 	<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 {/if}
@@ -361,6 +375,25 @@
 				{/if}
 			</dl>
 
+			{#if adminRooms.length === 1 && (adminRooms[0].canAmend || amendPrepaidNote)}
+				<!-- 1 室の公式予約の部屋タイプ・プラン・人数の変更（M3・管理画面は室数を問わず） -->
+				<div class="mt-5 border-t border-stone-100 pt-4">
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<h3 class="text-sm font-medium text-stone-700">お部屋・プラン・人数の変更</h3>
+						{#if adminRooms[0].canAmend}
+							<button type="button" onclick={() => (amendIndex = amendIndex === adminRooms[0].room_index ? null : adminRooms[0].room_index)} class="rounded border border-brand-300 px-3 py-1 text-xs text-brand-800 hover:bg-brand-50">{amendIndex === adminRooms[0].room_index ? '閉じる' : '部屋を変更'}</button>
+						{/if}
+					</div>
+					{#if amendRoom}
+						{#key amendRoom.room_index}
+							<RoomAmendForm room={amendRoom} options={data.amendOptions} memberPage={data.amendRooms.memberPage} multiRoom={false} quote={roomQuote} error={amendRoomError} onclose={() => (amendIndex = null)} />
+						{/key}
+					{/if}
+					{#if amendPrepaidNote}
+						<p class="mt-2 text-xs text-stone-500">カードでお支払い済みのご予約は、お部屋・プラン・人数を変更できません（取消 → 取り直しでご案内ください）。</p>
+					{/if}
+				</div>
+			{/if}
 			{#if adminRooms.length > 1}
 				<!-- 公式の複数室予約（M1）: 部屋ごとの表（状態・プラン・部屋・人数・金額・キャンセル料）と料金の明細（泊の見出し → 部屋の行） -->
 				<div class="mt-5 border-t border-stone-100 pt-4">
@@ -378,12 +411,20 @@
 										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}{#if r.memberPerks?.length}<span class="block text-xs text-amber-800">特典: {r.memberPerks.map((p) => p.title).join('／')}</span>{/if}</td>
 										<td class="py-1.5 pr-2 whitespace-nowrap">大人{r.adults}名{#if r.male != null && r.female != null}<span class="block text-xs text-stone-500">男性{r.male}・女性{r.female}</span>{/if}</td>
 										<td class="py-1.5 pr-2 text-right tabular-nums">{formatYen(r.charge)}{#if r.coupon_share > 0}<span class="block text-xs text-stone-500">クーポン −{formatYen(r.coupon_share)}</span>{/if}</td>
-										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}</td>
+										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}{#if r.canAmend}<button type="button" onclick={() => (amendIndex = amendIndex === r.room_index ? null : r.room_index)} class="mt-1 block w-full rounded border border-brand-300 px-2 py-0.5 text-brand-800 hover:bg-brand-50">{amendIndex === r.room_index ? '閉じる' : '変更'}</button>{/if}</td>
 									</tr>
 								{/each}
 							</tbody>
 						</table>
 					</div>
+					{#if amendRoom}
+						{#key amendRoom.room_index}
+							<RoomAmendForm room={amendRoom} options={data.amendOptions} memberPage={data.amendRooms.memberPage} multiRoom={true} quote={roomQuote} error={amendRoomError} onclose={() => (amendIndex = null)} />
+						{/key}
+					{/if}
+					{#if amendPrepaidNote}
+						<p class="mt-2 text-xs text-stone-500">カードでお支払い済みのご予約は、お部屋・プラン・人数を変更できません（取消 → 取り直しでご案内ください）。</p>
+					{/if}
 					<div class="mt-3 space-y-1 text-xs text-stone-600">
 						{#each nightGroups(adminRooms.map((r) => ({ lines: (r.price_lines ?? []).map((l) => ({ date: l.date, unitPrice: l.unit_price, adults: l.adults, subtotal: l.subtotal })) }))) as ng (ng.date)}
 							<p class="font-medium text-stone-500">{ng.night}泊目: {formatDateLongJa(ng.date)}</p>

@@ -25,6 +25,6 @@
     memberPage={data.memberPage ? { pageName: data.memberPage.pageName, cancelMode: data.memberPage.cancelMode } : null}
   />
   {#if data.booking.status === 'reserved' && data.booking.payment !== 'onsite' && data.amend.canAmend}
-    <p class="mt-4 text-xs leading-5 text-stone-500">事前決済（カード）のご予約は、この画面から日程を変更できません。お手数ですが宿へお問い合わせください。</p>
+    <p class="mt-4 text-xs leading-5 text-stone-500">事前決済（カード）のご予約は、この画面から日程やお部屋を変更できません。お手数ですが宿へお問い合わせください。</p>
   {/if}
 </main>

@@ -16,6 +16,9 @@
 		fee: { fee: number } | null;
 		refundPreview: { refund: number; deducted: number } | null;
 		memberPerks?: { title: string }[] | null;
+		/** 「このお部屋を変更」（公式の複数室 M3）を出すか・行き先。公式マイページは 2 室以上・専用ページは室数を問わず */
+		canAmendRoom?: boolean;
+		amendRoomHref?: string | null;
 	};
 	export type ReservationDetailData = {
 		booking: {
@@ -39,6 +42,8 @@
 		rooms?: ReservationDetailRoom[] | null;
 		multiRoom: boolean;
 		amend: { canAmend: boolean; remaining: number; datesOnly: boolean };
+		/** 部屋ごとの「このお部屋を変更」（M3・生きている部屋ごと）。1 室の予約は部屋カードが無いので、ここの 1 件目を右欄に出す */
+		roomAmend?: { index: number; canAmend: boolean; href: string | null }[] | null;
 		plan: { name: string };
 		room: { name: string };
 		cancelPreview: { fee: number; rate: number; rules?: { days_before: number; rate: number }[] | null; rulesSource?: string | null } | null;
@@ -108,6 +113,10 @@
 	let amendments = $derived(data.amendments ?? []);
 	let amend = $derived(data.amend);
 	let showAmend = $derived(!readOnly && (canAmend ?? amend?.canAmend ?? false));
+	// 1 室の予約の「このお部屋を変更」（M3・専用ページだけ。公式マイページの 1 室は従来の変更ウィザード〔roomAmend は空〕）
+	let singleRoomAmend = $derived(
+		!readOnly && !data.multiRoom ? ((data.roomAmend ?? []).find((x) => x.canAmend && x.href) ?? null) : null
+	);
 
 	// 特別会員: キャンセル方式の表示名（言語ごと）
 	function cancelModeLabel(mode: string): string {
@@ -234,6 +243,10 @@
 								<p class="flex justify-between text-xs text-stone-600"><span>{m.hold_room_adults({ adults: String(r.adults) })}</span><span class="tabular-nums">{formatPrice(r.total)}</span></p>
 								{#if perkTitles(r.memberPerks)}
 									<p class="mt-0.5 text-xs text-amber-800">{m.member_page_perks()}: {perkTitles(r.memberPerks)}</p>
+								{/if}
+								{#if r.canAmendRoom && r.amendRoomHref && !readOnly}
+									<!-- お部屋ごとの部屋タイプ・プラン・人数の変更（M3） -->
+									<a href={r.amendRoomHref} class="mt-1.5 block w-full rounded-md border border-brand-300 py-1 text-center text-xs font-medium text-brand-800 hover:bg-brand-50">{m.amend_room_button()}</a>
 								{/if}
 								{#if r.cancelled && r.cancelFee > 0}
 									<p class="mt-0.5 text-right text-xs text-red-600">{m.reservation_cancel_fee()} {formatPrice(r.cancelFee)}</p>
@@ -363,9 +376,14 @@
 					{/if}
 
 					<div class="mt-4 border-t border-stone-100 pt-3 text-xs text-stone-500">
-						{#if showAmend}
+						{#if showAmend || singleRoomAmend}
 							<p class="mb-2">{m.amend_intro({ n: String(amend.remaining) })}</p>
-							<a href={hrefs.amend} class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{amend.datesOnly ? m.amend_dates_button() : m.amend_button()}</a>
+							{#if showAmend}
+								<a href={hrefs.amend} class="block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{amend.datesOnly ? m.amend_dates_button() : singleRoomAmend ? m.amend_dates_single_button() : m.amend_button()}</a>
+							{/if}
+							{#if singleRoomAmend?.href}
+								<a href={singleRoomAmend.href} class="mt-2 block w-full rounded-lg border border-brand-300 py-2 text-center font-medium text-brand-800 hover:bg-brand-50">{m.amend_room_button()}</a>
+							{/if}
 						{:else}
 							<p>
 								{m.amend_call_us()}<br />
