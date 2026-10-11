@@ -1,6 +1,6 @@
 # autumn-book HANDOFF
 
-> **最終更新**: 2026-10-10（セキュリティレビュー・認証強化 S1〜S8〔取引先ログインの制限・Turnstile・メール OTP・パスキー・管理画面の TOTP〕・今後の請求予定・Stripe メタデータ・v0.115.0／autumn-pms v4.744.0 取込時の入湯税）
+> **最終更新**: 2026-10-11（公式予約の複数室 M0〜M3・特別会員の専用ページ・団体予約・v0.121.0／autumn-pms v4.746.1）
 
 ## 公式予約の複数室 M3（部屋ごとの部屋タイプ・プラン・人数の変更）（2026-10-11・v0.121.0・autumn-shared 20261011030642・autumn-pms v4.746.0〜v4.746.1）
 
@@ -11,6 +11,12 @@
 - **2026-11-09 以降にやること**: 退避表 `book._mr_backup_*` の drop。autumn-shared `docs/rollback/_draft_book_multi_room_drop_backup.sql` を `new-migration.sh autumn-shared book_multi_room_drop_backup` で作った migration に写して当てる（当日まで `migrations/` に置かない・消すと M0 の巻き戻しは不可）
 - 設計・実装メモ: `docs/official-multi-room.md` §17・§18（§18.10 レビュー対応）。巻き戻し用: autumn-shared `docs/rollback/20261011030642_*`
 - **未確認（要・手動）**: 3 つの画面ともブラウザ未確認（2 室以上の実データが要る）。下のチェックリスト
+- **残したもの（指示待ち・未着手）**:
+  - PMS の請求書の宿泊明細の作り直し（部屋・プラン・人数・日程の変更時。いまは現場で手直し）
+  - 子ども料金（公式・複数室・団体予約とも大人のみ）
+  - 特別会員: 家族が予約した分を専用ページで操作（Q10 B）・確認メールに特典を載せる・PMS 側の表示（V6）・`pointMultiplier`
+  - アンバサダー会員の実装（設計は `docs/vip-member-page.md` §12。DB は種類の制約だけ）
+  - M-3 デッドロック（同時操作時のロック順。`docs/official-multi-room.md` §18.10）
 
 ### テストチェックリスト
 
