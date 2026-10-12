@@ -15,6 +15,7 @@
 	let { data } = $props();
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
+	let alertHref = $derived(`/account/availability-alerts?${new URLSearchParams({ facility: data.facility.id, checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}`);
 	let expandedRooms = $state<Record<string, boolean>>({});
 	let introExpanded = $state(false);
 	let calendarOpen = $state(false);
@@ -88,6 +89,13 @@
 		</div>
 		<p class="text-xs text-stone-500">⌖ {data.facility.prefecture}{data.facility.addressPublic ? ` · ${data.facility.addressPublic}` : ''} · IN {data.facility.checkinTime} / OUT {data.facility.checkoutTime}</p>
 	</header>
+
+	{#if data.params.checkin}
+		<div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+			<p class="text-sm text-stone-600">ご希望のお部屋が見つからないときは、空室が出たらメールでお知らせします。</p>
+			<a href={alertHref} class="rounded-lg border border-brand-800 px-4 py-2 text-sm font-medium text-brand-900">空室通知を登録（会員限定）</a>
+		</div>
+	{/if}
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
 		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} closed={data.calendarClosed} facilityId={data.facility.id} />
