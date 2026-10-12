@@ -7,7 +7,7 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = async (event) => {
 	const { locals, url } = event;
 	if (locals.user?.role !== 'member') {
-		redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname)}`);
+		redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
 	}
 
 	if (MEMBER_SUPABASE) {
