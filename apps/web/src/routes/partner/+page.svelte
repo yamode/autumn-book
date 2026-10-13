@@ -5,7 +5,6 @@
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import Turnstile from '$lib/components/Turnstile.svelte';
-  import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
   import { PARTNER_DEFAULT_ACCENT } from '$lib/partner-theme';
   import type { PageData } from './$types';
 
@@ -134,7 +133,6 @@
         </button>
       {/if}
       <p class="mt-4 text-sm leading-5 text-stone-500">パスワードを忘れた場合は、貴社のマスタユーザーまたはご担当の宿へ再設定をご依頼ください。</p>
-      <p class="mt-3 border-t border-stone-100 pt-3 text-xs leading-5 text-stone-500">{ONE_PERSON_ONE_ID_NOTICE}</p>
     </form>
   </main>
 </div>

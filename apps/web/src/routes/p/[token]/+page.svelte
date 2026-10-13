@@ -5,7 +5,6 @@
   import { page } from '$app/stores';
   import { onDestroy, onMount } from 'svelte';
   import Turnstile from '$lib/components/Turnstile.svelte';
-  import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; loginId?: string } } = $props();
@@ -155,7 +154,6 @@
         <p class="mt-2 text-xs leading-5 text-stone-500">「アカウント」→「セキュリティ」でパスキーを登録すると、パスワード無しでログインできます。</p>
       {/if}
       <p class="mt-4 text-sm leading-5 text-stone-500">パスワードを忘れた場合は、ご担当の宿へ再設定リンクの発行をご依頼ください。</p>
-      <p class="mt-3 border-t border-stone-100 pt-3 text-xs leading-5 text-stone-500">{ONE_PERSON_ONE_ID_NOTICE}</p>
     </form>
   {/if}
 </main>
