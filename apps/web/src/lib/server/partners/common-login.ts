@@ -50,14 +50,18 @@ export async function partnerPasswordMatches(db: SupabaseClient, partnerId: stri
 
 /**
  * 共通画面のリクエストを、引いた取引先の限定URLのリクエストとして解決する（resolvePortal と同じ取引先の合成）。
- * 共通画面には取引先のセッション・施設のクッキーが来ない（path が違う）ので、セッションは無し・施設は既定の施設になる
+ * 共通画面には取引先のセッション・施設のクッキーが来ない（path が違う）ので、セッションは無し・施設は既定の施設になる。
+ * アクセス制限は入口では見ない（ID・パスワードを確かめてから portalAccessDenial で判定し、制限の有無で ID の有無を漏らさない）
  */
 export function resolveCommonPortal(event: RequestEvent, urlToken: string) {
-  return resolvePortal({
-    params: { token: urlToken },
-    cookies: event.cookies,
-    url: event.url,
-    request: event.request,
-    platform: event.platform
-  });
+  return resolvePortal(
+    {
+      params: { token: urlToken },
+      cookies: event.cookies,
+      url: event.url,
+      request: event.request,
+      platform: event.platform
+    },
+    { skipAccessCheck: true }
+  );
 }

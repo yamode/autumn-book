@@ -113,6 +113,10 @@ export type PartnerCommonRow = {
   credit_over_action: PartnerCreditOverAction;
   /** 第2要素の方針（docs/auth-hardening.md §6.3・既定 step_up）。古いテストの行には無いので省略可 */
   mfa_policy?: PartnerMfaPolicy;
+  /** アクセス制限（docs/partner-access-restriction.md・既定はオフ）。許可する接続元（IPv4 / IPv6 / CIDR）。空なら IP の制限なし */
+  access_allowed_ips?: string[];
+  /** アクセス制限: true なら日本以外からの接続を拒否 */
+  access_block_foreign?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -262,7 +266,7 @@ function raise(error: { code?: string; message?: string } | null, fallback: stri
 }
 
 const COMMON_COLUMNS =
-  'id, tenant_id, primary_facility_id, legacy_facility_id:facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, note, booking_settings, pms_guest_id, booking_name_mode, credit_over_action, mfa_policy, created_at, updated_at';
+  'id, tenant_id, primary_facility_id, legacy_facility_id:facility_id, name, kind, contact_name, contact_email, url_token, is_active, valid_from, valid_until, note, booking_settings, pms_guest_id, booking_name_mode, credit_over_action, mfa_policy, access_allowed_ips, access_block_foreign, created_at, updated_at';
 const FACILITY_COLUMNS =
   'partner_id, facility_id, tenant_id, enabled, booking_enabled, max_days_ahead, show_inventory, include_advance, pricing, payment_method_id, facility_settings, sort_order, updated_at';
 const ACCOUNT_COLUMNS =
@@ -291,6 +295,8 @@ function toCommon(row: Record<string, unknown>): PartnerCommonRow {
     booking_name_mode: normalizeBookingNameMode(row.booking_name_mode),
     credit_over_action: normalizeCreditOverAction(row.credit_over_action),
     mfa_policy: normalizeMfaPolicy(row.mfa_policy),
+    access_allowed_ips: Array.isArray(row.access_allowed_ips) ? (row.access_allowed_ips as unknown[]).map(String).filter(Boolean) : [],
+    access_block_foreign: row.access_block_foreign === true,
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? '')
   };
@@ -2076,6 +2082,60 @@ export async function setPartnerMfaPolicy(
     ip: args.ip ?? null
   });
   return { changed: true, from };
+}
+
+/**
+ * アクセス制限（docs/partner-access-restriction.md）を保存する。宿（管理画面）だけが呼ぶ。
+ * 入力の検査（parseAllowList）は呼ぶ側で済ませ、検査済みの一覧を渡す。変えたら access_logs に access_restriction_change
+ */
+export async function setPartnerAccessRestriction(
+  db: SupabaseClient,
+  args: { partnerId: string; allowedIps: string[]; blockForeign: boolean; by: string; ip?: string | null }
+): Promise<{ changed: boolean }> {
+  const { data, error } = await db.from('rms_partners').select('access_allowed_ips, access_block_foreign').eq('id', args.partnerId).maybeSingle();
+  if (error) raise(error, '取引先を読み込めませんでした。');
+  if (!data) throw new PartnerStoreError('取引先が見つかりません。', 404, 'not_found');
+  const row = data as { access_allowed_ips: string[] | null; access_block_foreign: boolean | null };
+  const from = { allowedIps: row.access_allowed_ips ?? [], blockForeign: row.access_block_foreign === true };
+  if (from.blockForeign === args.blockForeign && from.allowedIps.join('\n') === args.allowedIps.join('\n')) return { changed: false };
+  const { error: e } = await db
+    .from('rms_partners')
+    .update({ access_allowed_ips: args.allowedIps, access_block_foreign: args.blockForeign })
+    .eq('id', args.partnerId);
+  if (e) raise(e, 'アクセス制限を保存できませんでした。');
+  await logPartnerAccess(db, {
+    partnerId: args.partnerId,
+    channel: 'admin',
+    action: 'access_restriction_change',
+    detail: { from, to: { allowedIps: args.allowedIps, blockForeign: args.blockForeign }, by: args.by },
+    ip: args.ip ?? null
+  });
+  return { changed: true };
+}
+
+/** 直近のログイン元（管理画面のアクセス制限で「この IP を追加」に使う）。新しい順・IP ごとに最終日時と回数 */
+export async function recentPartnerLoginIps(
+  db: SupabaseClient,
+  partnerId: string,
+  days = 60
+): Promise<{ ip: string; lastAt: string; count: number }[]> {
+  const { data, error } = await db
+    .from('rms_partner_access_logs')
+    .select('ip, created_at')
+    .eq('partner_id', partnerId)
+    .in('action', ['login', 'passkey_login', 'password_set'])
+    .gte('created_at', new Date(Date.now() - days * 86400_000).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) return [];
+  const map = new Map<string, { ip: string; lastAt: string; count: number }>();
+  for (const r of (data ?? []) as { ip: string | null; created_at: string }[]) {
+    if (!r.ip) continue;
+    const hit = map.get(r.ip);
+    if (hit) hit.count += 1;
+    else map.set(r.ip, { ip: r.ip, lastAt: r.created_at, count: 1 });
+  }
+  return [...map.values()].slice(0, 10);
 }
 
 /**

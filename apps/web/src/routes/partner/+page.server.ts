@@ -7,7 +7,8 @@
 //   5. 成功: 端末クッキー（両 path）・セッションクッキー（/p/<token>）・新しい環境なら通知メール・本人確認が要れば /mfa
 import { fail, redirect } from '@sveltejs/kit';
 import { GENERIC_LOGIN_ERROR, loginPartner, logPartnerAccess, partnerAdminClient, partnerUnavailableReason } from '$lib/server/partners/store';
-import { deferTask, partnerDeviceId, PORTAL_HEADERS, requestLocation, requestMeta, setPartnerSessionCookie } from '$lib/server/partners/portal';
+import { deferTask, partnerDeviceId, portalAccessDenial, PORTAL_HEADERS, requestLocation, requestMeta, setPartnerSessionCookie } from '$lib/server/partners/portal';
+import { ACCESS_DENIED_MESSAGE } from '$lib/partner-ip-access';
 import { findPartnerTokenByLoginId, partnerPasswordMatches, resolveCommonPortal } from '$lib/server/partners/common-login';
 import { notifyNewEnvironmentLogin } from '$lib/server/partners/portal-users';
 import { verifyPassword } from '$lib/server/partners/crypto';
@@ -79,6 +80,11 @@ export const actions = {
     if (unavailable) {
       if (!(await partnerPasswordMatches(db, partner.id, loginId, password))) return failed();
       return fail(403, { message: unavailable, loginId });
+    }
+    // アクセス制限（docs/partner-access-restriction.md）: 許可外の場所なら、正しい ID・パスワードのときだけ案内（セッションは作らない）
+    if (portalAccessDenial(event, db, partner, 'common')) {
+      if (!(await partnerPasswordMatches(db, partner.id, loginId, password))) return failed();
+      return fail(403, { message: ACCESS_DENIED_MESSAGE, loginId });
     }
 
     const deviceId = await partnerDeviceId(event, token);

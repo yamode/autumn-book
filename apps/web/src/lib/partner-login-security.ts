@@ -98,7 +98,9 @@ export const SECURITY_LOG_ACTIONS = [
   'passkey_registered',
   'passkey_removed',
   'passkey_failed',
-  'mfa_reset'
+  'mfa_reset',
+  // アクセス制限（docs/partner-access-restriction.md）: 許可外の場所からのアクセス
+  'access_denied'
 ] as const;
 
 /** アクセスログの表示名（取引先ページのセキュリティ・管理画面のアクセスログ共通） */
@@ -127,6 +129,8 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   mfa_reset: '第2要素のリセット',
   mfa_policy_change: '本人確認の方針の変更',
   child_mfa_reset: 'ユーザーの第2要素をリセット',
+  access_denied: '許可外の場所からのアクセス（拒否）',
+  access_restriction_change: 'アクセス制限の変更（宿）',
   // 団体予約（docs/partner-group-booking.md §9.3・2026-10-10）。管理画面のアクセスログで他の操作と並べて見る
   group_inquiry_submit: '団体照会の送信',
   group_inquiry_withdraw: '団体照会の取り下げ',

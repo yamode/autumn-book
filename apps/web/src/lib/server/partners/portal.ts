@@ -9,6 +9,7 @@ import {
   findPartnerBundleByUrlToken,
   getPartnerSession,
   loadPartnerContext,
+  logPartnerAccess,
   MEMBER_PORTAL_ACCOUNT_ID,
   memberPageAccess,
   NO_PARTNER_FACILITY_MESSAGE,
@@ -28,6 +29,8 @@ import { randomToken, sha256Hex } from './crypto';
 import { isAal2Valid, normalizeMfaPolicy, portalMfaGate, portalMfaUrl } from '$lib/partner-mfa';
 import { groupInquiryAvailable } from '$lib/partner-group';
 import { PARTNER_COMMON_LOGIN_PATH } from '$lib/partner-common-login';
+import { accessDenial, ACCESS_DENIED_MESSAGE, type AccessDenial } from '$lib/partner-ip-access';
+import { dev } from '$app/environment';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -350,7 +353,8 @@ function memberSession(member: PortalMember): PartnerSessionAccount {
 }
 
 export async function resolvePortal(
-  event: Pick<RequestEvent, 'params' | 'cookies'> & { url: URL; request?: Request; platform?: App.Platform }
+  event: Pick<RequestEvent, 'params' | 'cookies'> & { url: URL; request?: Request; platform?: App.Platform },
+  opts: { skipAccessCheck?: boolean } = {}
 ): Promise<{
   db: SupabaseClient;
   partner: PartnerContext;
@@ -406,7 +410,58 @@ export async function resolvePortal(
     session = { id: PREVIEW_ACCOUNT_ID, login_id: '管理者の確認', display_name: '管理者の確認', is_master: false, sessionId: '', preview: true };
     memberState = null;
   }
+  // アクセス制限（docs/partner-access-restriction.md）: ログイン画面を含む取引先ページのすべての入口で、毎回確かめる。
+  // 確認モード（宿の管理者）と特別会員の専用ページは対象外。共通ログイン画面はパスワードを確かめてから自分で判定する（skipAccessCheck）
+  if (!opts.skipAccessCheck && !session?.preview && !isMemberPage(partner.kind) && event.request) {
+    assertPortalAccess(event as Pick<RequestEvent, 'request'> & { platform?: App.Platform }, db, partner);
+  }
   return { db, partner, session, memberState, memberName };
+}
+
+/** 接続元の国（Cloudflare の 2 文字）。判定できないときは null */
+export function requestCountry(event: Pick<RequestEvent, 'request'> & { platform?: App.Platform }): string | null {
+  const cf = (event.platform as { cf?: { country?: unknown } } | undefined)?.cf;
+  const country = typeof cf?.country === 'string' ? cf.country : event.request.headers.get('cf-ipcountry');
+  return country ? country.toUpperCase() : null;
+}
+
+/** アクセス制限の判定。拒否ならアクセスログ（access_denied）に残して null 以外を返す（ログは応答の後で書く） */
+export function portalAccessDenial(
+  event: Pick<RequestEvent, 'request'> & { platform?: App.Platform },
+  db: SupabaseClient,
+  partner: Pick<PartnerContext, 'id' | 'access_allowed_ips' | 'access_block_foreign'>,
+  via?: string
+): AccessDenial {
+  const ip = requestMeta(event).ip;
+  const country = requestCountry(event);
+  const denial = accessDenial(
+    { allowedIps: partner.access_allowed_ips ?? [], blockForeign: partner.access_block_foreign === true },
+    { ip, country },
+    // ローカル開発（Cloudflare を通らない）は国が分からないので通す
+    { allowUnknownCountry: dev }
+  );
+  if (denial) {
+    deferTask(
+      event,
+      logPartnerAccess(db, {
+        partnerId: partner.id,
+        channel: 'web',
+        action: 'access_denied',
+        detail: { reason: denial, country, path: new URL(event.request.url).pathname.replace(/^\/p\/[^/]+/, '/p/…'), ...(via ? { via } : {}) },
+        ip
+      })
+    );
+  }
+  return denial;
+}
+
+/** アクセス制限に掛かれば 403（どの条件かは出さない） */
+export function assertPortalAccess(
+  event: Pick<RequestEvent, 'request'> & { platform?: App.Platform },
+  db: SupabaseClient,
+  partner: Pick<PartnerContext, 'id' | 'access_allowed_ips' | 'access_block_foreign'>
+) {
+  if (portalAccessDenial(event, db, partner)) throw error(403, ACCESS_DENIED_MESSAGE);
 }
 
 /** 特別会員の専用ページでは使わないルート（取引先のログイン・請求・団体予約・覚書など・§13.4.1）。member なら 404 */

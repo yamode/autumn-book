@@ -5,7 +5,8 @@
 //   - 試行の制限: 共通画面の 1 IP。取引先が分かれば取引先URLと同じ「IP × 取引先」「取引先全体」も合算
 import { json } from '@sveltejs/kit';
 import { passkeyRp, verifyPasskeyLogin } from '$lib/server/partners/passkeys';
-import { deferTask, partnerDeviceId, PORTAL_HEADERS, requestLocation, requestMeta, setPartnerSessionCookie } from '$lib/server/partners/portal';
+import { deferTask, partnerDeviceId, portalAccessDenial, PORTAL_HEADERS, requestLocation, requestMeta, setPartnerSessionCookie } from '$lib/server/partners/portal';
+import { ACCESS_DENIED_MESSAGE } from '$lib/partner-ip-access';
 import { findPartnerTokenById, resolveCommonPortal } from '$lib/server/partners/common-login';
 import { notifyNewEnvironmentLogin } from '$lib/server/partners/portal-users';
 import { loginPartnerWithPasskey, logPartnerAccess, partnerAdminClient, partnerUnavailableReason } from '$lib/server/partners/store';
@@ -51,6 +52,8 @@ export const POST = async (event) => {
   // 停止中・公開期間外（パスキーの署名は確かめ済み＝本人なので案内を出す）
   const unavailable = partnerUnavailableReason(partner);
   if (unavailable) return json({ ok: false, message: unavailable }, { status: 403, headers: PORTAL_HEADERS });
+  // アクセス制限（docs/partner-access-restriction.md）: 許可外の場所ならセッションを作らない
+  if (portalAccessDenial(event, db, partner, 'common')) return json({ ok: false, message: ACCESS_DENIED_MESSAGE }, { status: 403, headers: PORTAL_HEADERS });
 
   const deviceId = await partnerDeviceId(event, token);
   const login = await loginPartnerWithPasskey(db, partner, result.accountId, { ...meta, deviceId, passkeyId: result.passkeyId });

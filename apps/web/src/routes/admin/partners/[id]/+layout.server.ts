@@ -34,6 +34,7 @@ import {
 	countPasskeysByAccount,
 	listPartnerApiKeys,
 	PartnerStoreError,
+	recentPartnerLoginIps,
 	todayJst,
 	type StaffPartnerView
 } from '$lib/server/partners/store';
@@ -105,6 +106,8 @@ export const load: LayoutServerLoad = async (event) => {
 		accounts.map((a) => a.id)
 	);
 	const mfaPolicy = normalizeMfaPolicy(partner.mfa_policy);
+	// アクセス制限（docs/partner-access-restriction.md）: 登録の参考に、直近のログイン元 IP（読めなければ空）
+	const recentLoginIps = await recentPartnerLoginIps(db, partner.id).catch(() => []);
 	const accountLabel = new Map(accounts.map((a) => [a.id, a.login_id]));
 	const keyLabel = new Map(apiKeys.map((k) => [k.id, k.label || k.key_prefix]));
 	const facilityNames = new Map(facilityMetas.map((m) => [m.id, m.name]));
@@ -323,6 +326,12 @@ export const load: LayoutServerLoad = async (event) => {
 		mfaPolicy: {
 			value: mfaPolicy,
 			options: PARTNER_MFA_POLICIES.map((p) => ({ value: p, label: PARTNER_MFA_POLICY_LABELS[p], help: PARTNER_MFA_POLICY_HELP[p] }))
+		},
+		// アクセス制限（rms_partners.access_*）。変更は ?/setAccessRestriction（admin）
+		accessRestriction: {
+			allowedIps: partner.access_allowed_ips ?? [],
+			blockForeign: partner.access_block_foreign === true,
+			recentLoginIps
 		},
 		apiKeys: apiKeys.map((k) => ({
 			id: k.id,
