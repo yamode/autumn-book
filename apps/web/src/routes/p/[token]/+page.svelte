@@ -151,7 +151,6 @@
         >
           {passkeyBusy ? '確認しています…' : 'パスキーでログイン'}
         </button>
-        <p class="mt-2 text-xs leading-5 text-stone-500">「アカウント」→「セキュリティ」でパスキーを登録すると、パスワード無しでログインできます。</p>
       {/if}
       <p class="mt-4 text-sm leading-5 text-stone-500">パスワードを忘れた場合は、ご担当の宿へ再設定リンクの発行をご依頼ください。</p>
     </form>

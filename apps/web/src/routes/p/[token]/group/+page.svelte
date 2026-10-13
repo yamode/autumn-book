@@ -118,7 +118,7 @@
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div>
       <h2 class="text-2xl font-bold">団体予約</h2>
-      <p class="mt-1 text-sm text-stone-500">団体の条件を照会し、宿の回答を承諾するとご予約になります（承諾したご予約は予約一覧に出ます）。</p>
+      <p class="mt-1 text-sm text-stone-500">条件を照会し、宿の回答を承諾するとご予約になります。</p>
     </div>
     {#if !data.blockReason && !data.portal.preview}
       <a href={`/p/${token}/group/new`} class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">＋ 新しい団体予約の照会</a>
@@ -131,7 +131,7 @@
   {#if data.done === 'batch'}
     <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3">
       <p class="font-bold text-[var(--pt-accent)]">✓ 照会を送信しました</p>
-      <p class="mt-1 text-sm text-stone-600">宿が受けられるかを確認してご回答します。回答はメールと、この一覧の「回答あり」でお知らせします。</p>
+      <p class="mt-1 text-sm text-stone-600">回答はメールと、この一覧でお知らせします。</p>
     </div>
   {/if}
   {#if result}

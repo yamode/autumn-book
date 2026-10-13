@@ -130,27 +130,22 @@
   {#if data.preview}
     <p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">確認モードでは、ログイン中の端末とログイン履歴は表示しません。</p>
   {:else}
-    <p class="text-sm leading-6 text-stone-600">
-      このログインIDでログインしている端末と、ログインの記録です。心当たりのない端末や記録があれば「他の端末からログアウト」を押し、貴社のマスタユーザーまたは宿へパスワードの再設定をご依頼ください。
-    </p>
-
     {#if form?.message}
-      <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+      <p class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
     {:else if form?.loggedOut != null}
-      <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      <p class="mb-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
         {form.loggedOut > 0 ? `${form.loggedOut}台の端末をログアウトしました。` : 'ログアウトする端末はありませんでした。'}
       </p>
     {/if}
     {#if data.loadError}
-      <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{data.loadError}</p>
+      <p class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{data.loadError}</p>
     {/if}
 
     {#if data.mfa}
       <!-- 本人確認（docs/auth-hardening.md §6.4・S3）: 認証コードの送り先と、このブラウザの本人確認の状態 -->
-      <h3 class="mt-6 text-lg font-bold">本人確認（メールの認証コード）</h3>
+      <h3 class="text-lg font-bold">本人確認（メールの認証コード）</h3>
       <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
-        <p class="text-stone-600">カードの登録・保存済みカードでのご予約・ユーザー管理などの前に、このメールアドレスへ届く認証コードで本人確認をお願いしています。</p>
-        <dl class="mt-3 grid gap-2 sm:grid-cols-[10rem_1fr]">
+        <dl class="grid gap-2 sm:grid-cols-[10rem_1fr]">
           <dt class="text-stone-500">認証コードの送り先</dt>
           <dd>
             {#if data.mfa.hasEmail}
@@ -185,14 +180,11 @@
                 <span class="mb-1 block font-medium">確認のため、いまのパスワード</span>
                 <input name="password" type="password" required autocomplete="current-password" class={inputClass} />
               </label>
-            {:else if !data.mfa.aal2}
-              <p class="text-xs text-stone-500">変更の前に、いまのメールアドレスでの本人確認をお願いします（「変更する」を押すと確認の画面へ進みます）。</p>
             {/if}
             <div class="flex flex-wrap gap-2">
               <button type="submit" disabled={busy} class="rounded-md bg-accent-600 px-4 py-2 font-medium text-white hover:bg-accent-500 disabled:opacity-50">{data.mfa.hasEmail ? '変更する' : '登録する'}</button>
               {#if data.mfa.hasEmail}<button type="button" onclick={() => (editingEmail = false)} class="rounded-md border border-stone-300 px-4 py-2 hover:bg-stone-50">やめる</button>{/if}
             </div>
-            <p class="text-xs leading-5 text-stone-500">変更すると、変更前のアドレス（無ければ貴社のマスタユーザー）へお知らせのメールが届きます。</p>
           </form>
         {:else}
           <button type="button" onclick={() => (editingEmail = true)} class="mt-4 rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50">メールアドレスを変更する</button>
@@ -204,9 +196,7 @@
       <!-- パスキー（§6.5・S6） -->
       <h3 class="mt-8 text-lg font-bold">パスキー</h3>
       <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
-        <p class="text-stone-600">
-          パスキーを登録すると、パスワード無しで「パスキーでログイン」できます。本人確認もパスキー（端末の生体認証・PIN）で行えます。偽のログイン画面（フィッシング）にも強い方法です。
-        </p>
+        <p class="text-stone-600">登録すると、パスワード無しで、端末の生体認証や PIN でログイン・本人確認できます。</p>
         {#if form?.passkeyError}
           <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.passkeyError}</p>
         {:else if form?.passkeyMessage}
@@ -242,14 +232,12 @@
                 {adding ? '登録しています…' : 'パスキーを追加'}
               </button>
             </div>
-            {#if data.mfa && !data.mfa.aal2}<p class="text-xs text-stone-500">追加・削除の前に本人確認をお願いします（「パスキーを追加」を押すと確認の画面へ進みます）。</p>{/if}
           </div>
         {:else if !data.passkeys.enabled}
           <p class="mt-3 text-xs text-stone-500">このページのアドレスではパスキーを登録・使用できません（正式なアドレスでお使いください）。</p>
         {:else}
           <p class="mt-3 text-xs text-stone-500">このブラウザはパスキーに対応していません。</p>
         {/if}
-        <p class="mt-3 text-xs leading-5 text-stone-500">{data.policy?.oneIdNotice}</p>
       </div>
     {/if}
 
@@ -273,11 +261,7 @@
             <div class="min-w-0">
               <p class="font-medium">ログインのたびに本人確認を求める</p>
               <p class="mt-1 text-stone-600">
-                {#if on}
-                  オン：ログインのたびに本人確認（メールの認証コードまたはパスキー）を求めています。
-                {:else}
-                  オフ（標準）：いまは、カードの登録・保存済みカードでのご予約・ユーザー管理などの前と、新しい環境からのログインのときだけ本人確認を求めています。オンにすると、ログインのたびに本人確認を求めます。
-                {/if}
+                {on ? 'オン：ログインのたびに本人確認します。' : 'オフ（標準）：重要な操作の前と、新しい環境からのログインのときだけ本人確認します。'}
               </p>
             </div>
             <button
@@ -298,8 +282,7 @@
           <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.policyMessage}</p>
         {/if}
         <p class="mt-3 text-xs text-stone-500">
-          {#if data.policy.value === 'step_up' && !data.policy.canStrengthen}切り替えられるのはマスタユーザーだけです。{/if}
-          オフに戻す・パスキーのみにする変更は、宿へご依頼ください。
+          {#if data.policy.value === 'step_up' && !data.policy.canStrengthen}切り替えはマスタユーザーのみ。{/if}オフに戻すときは宿へご依頼ください。
         </p>
       </div>
     {/if}
@@ -309,10 +292,9 @@
       <h3 class="mt-8 text-lg font-bold">アクセス制限（貴社共通）</h3>
       <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
         <p class="text-stone-600">
-          このページ（ログイン画面を含む）に入れる場所を、貴社のネットワークなどに限れます。許可外の場所からは、ログインも操作もできなくなります。
-          現在: <span class="font-medium text-brand-900">{accessOn ? '制限あり' : '制限なし'}</span>
+          このページに入れる場所を限定します。現在: <span class="font-medium text-brand-900">{accessOn ? '制限あり' : '制限なし'}</span>
         </p>
-        <p class="mt-1 text-xs text-stone-500">今お使いの接続元: <code class="font-mono">{data.access.currentIp ?? '不明'}</code>{#if data.access.currentCountry}（{data.access.currentCountry === 'JP' ? '国内' : data.access.currentCountry}）{/if}</p>
+        <p class="mt-1 text-xs text-stone-500">今の接続元: <code class="font-mono">{data.access.currentIp ?? '不明'}</code>{#if data.access.currentCountry}（{data.access.currentCountry === 'JP' ? '国内' : data.access.currentCountry}）{/if}</p>
 
         {#if data.access.canEdit}
           <form method="POST" action="?/set_access" use:enhance={submit('アクセス制限を保存します。許可外の場所からは、貴社のどのユーザーも入れなくなります。よろしいですか？')} class="mt-4 space-y-4">
@@ -320,7 +302,7 @@
               <input type="checkbox" name="block_foreign" bind:checked={accessForeign} class="mt-1" />
               <span>
                 <span class="block font-medium">国外からのアクセスを拒否する</span>
-                <span class="text-xs text-stone-500">日本国外からの接続を止めます。海外出張中や、海外を経由する VPN からも入れなくなります。</span>
+                <span class="text-xs text-stone-500">海外出張中や、海外経由の VPN からも入れなくなります。</span>
               </span>
             </label>
             <div>
@@ -333,9 +315,7 @@
                 placeholder={'例）\n203.0.113.10        # 本社\n198.51.100.0/24     # 支店'}
                 class={`${inputClass} font-mono text-sm`}
               ></textarea>
-              <p class="mt-1 text-xs leading-5 text-stone-500">
-                1行に1つ（IPv4・IPv6・範囲の CIDR）。# 以降はメモ。空なら IP の制限なし。固定IPのネットワーク（社内・VPN など）に限ってお使いください。IP が変わる回線（家庭向けの光回線・モバイル回線など）を登録すると、変わった時点で入れなくなります。
-              </p>
+              <p class="mt-1 text-xs leading-5 text-stone-500">1行に1つ（範囲の CIDR 可）。# 以降はメモ。空なら制限なし。IP が変わる回線（家庭向けの光回線・モバイル回線）は登録しないでください。</p>
               <div class="mt-2 flex flex-wrap gap-2">
                 {#if data.access.currentIp}
                   <button type="button" class="rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50" onclick={() => addAccessIp(data.access?.currentIp ?? null, '今の接続元')}>今の接続元を追加</button>
@@ -357,7 +337,6 @@
             </div>
             <div class="flex flex-wrap items-center gap-3">
               <button type="submit" disabled={busy} class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-60">保存する</button>
-              <span class="text-xs text-stone-500">保存には本人確認が要ります。今の接続元が入れなくなる設定は保存できません。</span>
             </div>
           </form>
         {:else if accessOn}
@@ -372,8 +351,7 @@
           <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.accessMessage}</p>
         {/if}
         <p class="mt-3 text-xs text-stone-500">
-          {#if !data.access.canEdit}変更できるのはマスタユーザーだけです。{/if}
-          IP が変わるなどして入れなくなったときは、ご担当の宿へご連絡ください（宿で制限を解除できます）。
+          {#if !data.access.canEdit}変更はマスタユーザーのみ。{/if}入れなくなったときは宿へご連絡ください（宿で解除できます）。
         </p>
       </div>
     {/if}
@@ -409,7 +387,7 @@
         <li class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-500">ログイン中の端末はありません。</li>
       {/each}
     </ul>
-    <p class="mt-2 text-xs text-stone-500">ログインは、最後の操作から24時間、またはログインから7日で切れます。</p>
+    <p class="mt-2 text-xs text-stone-500">心当たりのない端末は、ログアウトしてパスワードの再設定を宿へご依頼ください。</p>
 
     <h3 class="mt-8 text-lg font-bold">ログインの記録（直近30件）</h3>
     <div class="mt-3 overflow-x-auto rounded-xl border border-stone-200 bg-white">

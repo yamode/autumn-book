@@ -513,7 +513,7 @@
   <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
     <div>
       <h2 class="text-2xl font-bold">団体予約の照会</h2>
-      <p class="mt-1 text-sm text-stone-500">条件を入れて「束に追加」し、まとめて送信します。宿が受けられるか（必要なら料金）をご回答し、承諾いただくとご予約になります。</p>
+      <p class="mt-1 text-sm text-stone-500">条件を「束に追加」してまとめて送信します。宿の回答を承諾するとご予約になります。</p>
     </div>
     {#if data.latest && !data.blockReason}
       <button type="button" onclick={useLatest} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:border-[var(--pt-accent)]">前回の内容を使う</button>
@@ -708,7 +708,7 @@
   <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" role="presentation" onclick={(e) => e.target === e.currentTarget && !busy && (confirmOpen = false)} onkeydown={(e) => e.key === 'Escape' && !busy && (confirmOpen = false)}>
     <div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-xl sm:p-6" role="dialog" aria-modal="true" aria-labelledby="g-confirm-title">
       <h3 id="g-confirm-title" class="text-lg font-bold">{entries.length} 件の照会を送信します</h3>
-      <p class="mt-1 text-sm text-stone-500">宿へ届き、回答をメールでお知らせします。送信の時点ではまだご予約ではありません（承諾で確定）。</p>
+      <p class="mt-1 text-sm text-stone-500">送信の時点ではまだご予約ではありません。回答はメールでお知らせします。</p>
       <ol class="mt-4 divide-y divide-stone-200 border-y border-stone-200 text-sm">
         {#each entries as e, i (e.key)}
           <li class="flex flex-wrap items-start justify-between gap-x-3 gap-y-0.5 py-2">

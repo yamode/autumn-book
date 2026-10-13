@@ -68,15 +68,11 @@
 </svelte:head>
 
 <section>
-  <p class="text-sm leading-6 text-stone-600">
-    貴社内でこのページを使う方のログインID（ユーザー）を作れます。作成したユーザーは、ユーザー管理以外のすべて（予約・予約一覧・覚書・ご請求書・ご自身の担当者情報）を使えます。
-    マスタユーザーの追加・停止は宿へご依頼ください。
-  </p>
-  <p class="mt-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-xs leading-5 text-stone-600">{data.oneIdNotice}</p>
+  <p class="text-sm leading-6 text-stone-600">ログインIDは1人につき1つ作成してください（共有しないでください）。マスタユーザーの追加は宿へご依頼ください。</p>
 
   {#if !data.aal2}
     <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <span>ユーザーの追加・停止・削除・ログアウトなどの操作の前に、本人確認（メールの認証コードまたはパスキー）をお願いします。</span>
+      <span>操作の前に本人確認をお願いします。</span>
       <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
     </p>
   {/if}
@@ -156,7 +152,7 @@
                 <form
                   method="POST"
                   action="?/reset_mfa"
-                  use:enhance={submit(`「${u.loginId}」の第2要素をリセットします。登録済みのパスキーをすべて削除し、すべての端末からログアウトさせ、パスワード設定リンクを送り直します。ご本人であることを（電話・対面などで）確かめてから行ってください。よろしいですか？`)}
+                  use:enhance={submit(`「${u.loginId}」のパスキーをすべて削除してログアウトさせ、パスワード設定リンクを送り直します。ご本人に確かめてから行ってください。よろしいですか？`)}
                 >
                   <input type="hidden" name="account_id" value={u.id} />
                   <button type="submit" disabled={busy} class="rounded-md border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50">第2要素をリセット</button>
@@ -183,14 +179,14 @@
   <!-- 子ユーザーの作成 -->
   <form method="POST" action="?/create" use:enhance={createSubmit} class="mt-8 rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
     <h3 class="text-lg font-bold">ユーザーを追加する</h3>
-    <p class="mt-1 text-sm leading-6 text-stone-600">入力したメールアドレスへ、パスワード設定のご案内（有効期限7日）をお送りします。</p>
+    <p class="mt-1 text-sm leading-6 text-stone-600">入力したメールアドレスへ、パスワード設定のご案内をお送りします。</p>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       <label class="block"><span class={label}>お名前 <em class="req">必須</em></span><input name="display_name" value={form?.values?.display_name ?? ''} required maxlength="80" class={input} /></label>
       <label class="block"><span class={label}>メールアドレス <em class="req">必須</em></span><input name="email" type="email" value={form?.values?.email ?? ''} required maxlength="254" autocomplete="off" class={input} /></label>
       <label class="block sm:col-span-2">
         <span class={label}>ログインID</span>
         <input name="login_id" value={form?.values?.login_id ?? ''} maxlength="64" pattern={LOGIN_ID_PATTERN} autocomplete="off" placeholder="空欄なら自動で決めます" class={`${input} font-mono`} />
-        <span class="mt-1 block text-xs text-stone-500">英数字と . _ - で4〜64文字（先頭は英数字）。大文字・小文字は区別しません。</span>
+        <span class="mt-1 block text-xs text-stone-500">英数字と . _ - で4〜64文字。</span>
       </label>
     </div>
     <button type="submit" disabled={busy} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">

@@ -18,14 +18,10 @@
 </svelte:head>
 
 <section>
-  <p class="text-sm leading-6 text-stone-600">
-    毎月末日の15時ごろ、その月にチェックアウトしたご予約のご請求書・ご利用明細書を発行し、メールでお送りします。ここからいつでもダウンロードできます。
-  </p>
+  <p class="text-sm leading-6 text-stone-600">毎月末日に、その月にチェックアウトしたご予約分を発行し、メールでもお送りします。</p>
 
   {#if data.invoices.length === 0}
-    <p class="mt-5 rounded-xl border border-stone-200 bg-white px-5 py-8 text-center text-stone-500">
-      まだ発行されたご請求書はありません。<br />毎月末日の15時ごろ、その月にチェックアウトしたご予約のご請求書を発行し、メールでお送りします。
-    </p>
+    <p class="mt-5 rounded-xl border border-stone-200 bg-white px-5 py-8 text-center text-stone-500">まだご請求書はありません。</p>
   {:else}
     <!-- PC は表、スマホはカード -->
     <div class="mt-5 hidden overflow-x-auto rounded-xl border border-stone-200 bg-white sm:block">
@@ -88,6 +84,5 @@
         </li>
       {/each}
     </ul>
-    <p class="mt-3 text-xs leading-5 text-stone-500">「印刷用」はブラウザで開きます。PDF が開けないときは、印刷用を開いてブラウザの印刷から PDF に保存してください。</p>
   {/if}
 </section>

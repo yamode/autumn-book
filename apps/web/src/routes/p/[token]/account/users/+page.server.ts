@@ -5,7 +5,6 @@ import { requireAal2 } from '$lib/server/partners/mfa';
 import { portalMfaUrl } from '$lib/partner-mfa';
 import { autoChildLoginId, portalUrl, sendChildSetupEmail } from '$lib/server/partners/portal-users';
 import { isEmail } from '$lib/server/partners/staff-form';
-import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
 import { partnerCommonLoginUrl } from '$lib/partner-common-login';
 import {
   countPasskeysByAccount,
@@ -65,7 +64,6 @@ export const load = async (event) => {
     portal: portalHeader(partner, session),
     users,
     aal2: portalAal2(session),
-    oneIdNotice: ONE_PERSON_ONE_ID_NOTICE,
     mfaHref: portalMfaUrl(event.params.token, `/p/${event.params.token}/account/users`)
   };
 };

@@ -613,7 +613,7 @@
         <!-- 添付ファイル（任意・2026-10-07）: 名簿・行程表など。1件ずつ仮置きし、予約の確定で予約に結ぶ。宿（PMS）の予約詳細にも出る -->
         <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
           <h3 class="card-title">添付ファイル（任意）</h3>
-          <p class="-mt-2 mb-3 text-sm leading-6 text-stone-500">名簿・行程表・配車表などをお付けください。宿の予約管理（PMS）にも同じファイルが届きます。予約の後でも予約一覧から追加・削除できます。</p>
+          <p class="-mt-2 mb-3 text-sm leading-6 text-stone-500">名簿・行程表などをお付けください。予約の後でも追加できます。</p>
           {#if attachmentsReset}<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{attachmentsReset}</p>{/if}
           <PartnerAttachments
             bind:items={attachments}

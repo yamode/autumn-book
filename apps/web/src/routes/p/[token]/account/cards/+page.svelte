@@ -101,10 +101,7 @@
 </svelte:head>
 
 <section>
-  <p class="text-sm leading-6 text-stone-600">
-    ここで登録したカードは、御社の全ユーザーが予約時に選べます。<strong class="font-medium text-brand-900">登録・削除はマスタユーザーのみ</strong>。選んで確定するときは本人確認（メールの認証コードまたはパスキー）が必要です。
-    請求はご予約ごとの同意（予約画面の文面）に基づいて行います。カードの番号は Stripe が保管し、当サイトには保存されません。
-  </p>
+  <p class="text-sm leading-6 text-stone-600">登録したカードは、貴社の全ユーザーが予約時に選べます。カード番号は当サイトには保存されません。</p>
 
   {#if data.preview}
     <p class="mt-5 rounded-xl border border-stone-200 bg-white px-5 py-8 text-center text-stone-500">確認モードではカードを表示しません。</p>
@@ -126,12 +123,7 @@
       <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{data.loadError}</p>
     {/if}
     {#if !data.canManage}
-      <p class="mt-4 rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-stone-600">カードの登録・削除は貴社のマスタユーザーが行えます。</p>
-    {:else if !data.aal2}
-      <p class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <span>カードの登録・削除・既定の変更の前に、本人確認（メールの認証コードまたはパスキー）をお願いします。</span>
-        <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
-      </p>
+      <p class="mt-4 text-sm text-stone-500">登録・削除はマスタユーザーのみ行えます。</p>
     {/if}
 
     {#if data.cards.length === 0}
@@ -205,7 +197,6 @@
           onbusychange={(v) => (payBusy = v)}
         />
       </div>
-      <p class="mt-3 text-xs leading-5 text-stone-500">この同意はカードの保存についてのものです。ご予約ごとの請求（請求日・金額）は、予約画面でご確認・ご同意いただきます。</p>
       <button type="button" onclick={() => void payRef?.submit()} disabled={payBusy || !data.stripeKey} class="mt-4 w-full rounded-lg bg-accent-600 px-4 py-3 font-medium text-white transition hover:bg-accent-500 disabled:opacity-40">
         {payBusy ? 'カードを確認しています…' : 'このカードを保存する'}
       </button>

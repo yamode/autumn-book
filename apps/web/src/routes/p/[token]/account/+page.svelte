@@ -42,9 +42,7 @@
     class="rounded-xl border border-stone-200 bg-white p-5 sm:p-6"
   >
     <h3 class="text-lg font-bold">予約担当者（ご予約者）</h3>
-    <p class="mt-1 text-sm leading-6 text-stone-600">
-      予約フォームの『ご予約者』に最初から入ります。予約確認・取消・お支払いに関するメールはこのメールアドレスへお送りします（ご宿泊者様へはお送りしません）。
-    </p>
+    <p class="mt-1 text-sm leading-6 text-stone-600">予約フォームの「ご予約者」に入ります。予約に関するメールはこのアドレスへお送りします。</p>
     {#if !values}
       {#if profile.current?.error}
         <p class="mt-4 rounded-lg bg-rose-700/5 px-4 py-3 text-sm text-rose-700">{profile.current.error}</p>

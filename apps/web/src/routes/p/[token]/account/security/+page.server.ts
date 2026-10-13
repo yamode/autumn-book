@@ -17,7 +17,7 @@ import { changeAccountEmail, loadMfaAccount, requireAal2 } from '$lib/server/par
 import { isEmail } from '$lib/server/partners/staff-form';
 import { ipKey, RATE_RULES, rateCheck, rateHit } from '$lib/server/login-rate-limit';
 import { maskEmail, MFA_AAL2_HOURS, normalizeMfaPolicy, PARTNER_MFA_POLICY_LABELS, portalMfaUrl, type PartnerMfaPolicy } from '$lib/partner-mfa';
-import { masterCanChangeMfaPolicy, ONE_PERSON_ONE_ID_NOTICE, PARTNER_MFA_POLICY_HELP } from '$lib/partner-passkey';
+import { masterCanChangeMfaPolicy, PARTNER_MFA_POLICY_HELP } from '$lib/partner-passkey';
 import { listPasskeys, passkeyRp, removePasskey, renamePasskey } from '$lib/server/partners/passkeys';
 import { recentPartnerLoginIps, requireMasterAccount, setPartnerAccessRestriction, setPartnerMfaPolicy } from '$lib/server/partners/store';
 
@@ -72,8 +72,7 @@ export const load = async (event) => {
     label: PARTNER_MFA_POLICY_LABELS[policyValue],
     help: PARTNER_MFA_POLICY_HELP[policyValue],
     // マスタは厳しくする方向（step_up → always）だけ
-    canStrengthen: session.is_master === true && masterCanChangeMfaPolicy(policyValue, 'always'),
-    oneIdNotice: ONE_PERSON_ONE_ID_NOTICE
+    canStrengthen: session.is_master === true && masterCanChangeMfaPolicy(policyValue, 'always')
   };
   try {
     const [sessions, logs] = await Promise.all([listOwnSessions(db, session.id), listOwnSecurityLogs(db, partner.id, session.id, 30)]);
