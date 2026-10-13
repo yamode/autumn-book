@@ -87,6 +87,8 @@ export function previewLink(origin: string): string | null {
 export function isPartnerPath(pathname: string): boolean {
 	return (
 		pathname.startsWith('/p/') ||
+		// 共通ログイン画面（docs/partner-common-login.md）
+		pathname === '/partner' || pathname.startsWith('/partner/') ||
 		pathname.startsWith('/api/partner/') ||
 		pathname === '/api/cron/partner-charge' || pathname === '/api/cron/upgrade-payments'
 	);

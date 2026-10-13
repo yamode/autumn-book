@@ -109,6 +109,7 @@ import { BOOKING_NAME_MODES, pmsGuestUrl, type BookingNameMode } from '$lib/pms-
 import { isSelectableCreditOverAction, nextMonths, parseCreditSettingsInput } from '$lib/partner-credit';
 import { requestMeta } from '$lib/server/partners/portal';
 import { normalizeMfaPolicy, PARTNER_MFA_POLICIES, PARTNER_MFA_POLICY_LABELS, type PartnerMfaPolicy } from '$lib/partner-mfa';
+import { partnerCommonLoginUrl } from '$lib/partner-common-login';
 import type { Actions, PageServerLoad } from './$types';
 
 const PREVIEW_DAYS = 14;
@@ -351,6 +352,8 @@ export const load: PageServerLoad = async (event) => {
 			updatedAt: partner.updated_at
 		},
 		portalUrl: partnerPortalUrl(origin, partner.url_token),
+		// 取引先へ案内するログイン画面（全取引先で共通・docs/partner-common-login.md）
+		commonLoginUrl: partnerCommonLoginUrl(origin),
 		documentAccept: PARTNER_DOCUMENT_ACCEPT,
 		apiEndpoint: `${origin}/api/partner/v1/rates`,
 		// API の facility（オンの施設の slug・2つ以上なら必須・複数施設化 S5b・2026-10-09）
@@ -430,7 +433,8 @@ async function issueSetupLink(
 	sendTo: string | null
 ) {
 	const origin = event.url.origin;
-	const loginUrl = partnerPortalUrl(origin, s.partner.url_token);
+	// 次回以降のログインは共通ログイン画面（docs/partner-common-login.md）。設定リンクは取引先URLの下のまま
+	const loginUrl = partnerCommonLoginUrl(origin);
 	const setupUrl = partnerPortalUrl(origin, s.partner.url_token, `/setup?token=${encodeURIComponent(setupToken)}`);
 	let emailResult: { sent: boolean; reason?: string } | null = null;
 	if (sendTo) {

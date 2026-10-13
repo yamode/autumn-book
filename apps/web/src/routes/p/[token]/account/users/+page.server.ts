@@ -6,6 +6,7 @@ import { portalMfaUrl } from '$lib/partner-mfa';
 import { autoChildLoginId, portalUrl, sendChildSetupEmail } from '$lib/server/partners/portal-users';
 import { isEmail } from '$lib/server/partners/staff-form';
 import { ONE_PERSON_ONE_ID_NOTICE } from '$lib/partner-passkey';
+import { partnerCommonLoginUrl } from '$lib/partner-common-login';
 import {
   countPasskeysByAccount,
   createChildAccount,
@@ -97,7 +98,8 @@ async function deliverSetupLink(event: RequestEvent, s: Scope, account: PartnerA
         loginId: account.login_id,
         issuedBy: s.session.display_name || s.session.login_id,
         setupUrl,
-        loginUrl: portalUrl(origin, token),
+        // 次回以降のログインは共通ログイン画面（docs/partner-common-login.md）
+        loginUrl: partnerCommonLoginUrl(origin),
         isReset
       })
     : { sent: false, reason: 'メールアドレスがありません。' };

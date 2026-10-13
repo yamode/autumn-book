@@ -60,10 +60,12 @@ export async function stepUpWithPasskey(token: string): Promise<PasskeyResult> {
  * パスキーでログインする（ログイン画面）。autofill=true は Conditional UI（ログインID欄の候補から選ぶ・選ばれるまで待つ）。
  * 成功すれば data.next（料金カレンダー）。取りやめ（別の操作で中断）は message 空で返す。
  */
-export async function loginWithPasskey(token: string, opts: { autofill?: boolean } = {}): Promise<PasskeyResult> {
+export async function loginWithPasskey(token: string | null, opts: { autofill?: boolean } = {}): Promise<PasskeyResult> {
   const { startAuthentication, browserSupportsWebAuthnAutofill } = await lib();
   if (opts.autofill && !(await browserSupportsWebAuthnAutofill().catch(() => false))) return { ok: false, message: '' };
-  const opt = await postJson(`/p/${token}/passkey/login/options`, {});
+  // token が null は共通ログイン画面（/partner・docs/partner-common-login.md §2.3）
+  const base = token === null ? '/partner/passkey' : `/p/${token}/passkey/login`;
+  const opt = await postJson(`${base}/options`, {});
   if (!opt.json?.ok) return { ok: false, status: opt.status, message: opts.autofill ? '' : String(opt.json?.message ?? 'パスキーでログインできませんでした。') };
   let response;
   try {
@@ -73,7 +75,7 @@ export async function loginWithPasskey(token: string, opts: { autofill?: boolean
     if (opts.autofill) return { ok: false, message: '' };
     return { ok: false, message: passkeyErrorMessage(e, 'auth') };
   }
-  const v = await postJson(`/p/${token}/passkey/login/verify`, { challengeId: opt.json.challengeId, response });
+  const v = await postJson(`${base}/verify`,{ challengeId: opt.json.challengeId, response });
   if (!v.json?.ok) return { ok: false, status: v.status, message: String(v.json?.message ?? 'パスキーでログインできませんでした。') };
   return { ok: true, data: v.json };
 }

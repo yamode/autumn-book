@@ -823,16 +823,24 @@
     {#if form?.message && lastSubmit === 'other'}
       <p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
     {:else if form?.urlRegenerated}
-      <p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">限定URLを再発行しました。旧URLとログイン中の画面は使えなくなりました。新しいURLを取引先へお知らせください。</p>
+      <p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">限定URLを再発行しました。旧URLとログイン中の画面は使えなくなりました。{isMember ? '新しいURLを会員さまへお知らせください。' : '取引先は共通のログイン画面からそのまま入れます。'}</p>
     {/if}
 
-    <!-- 限定URL -->
+    <!-- ログイン画面（共通）と限定URL -->
     <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
       {#if isMember}
+        <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
         <p class="mt-1 text-xs text-stone-500">この会員さま専用のページです。公式サイトの会員ログイン（メールの認証コード）で、下の「対象の会員」とそのご家族だけが見られます（URL だけでは料金は見えません）。「確認ページを開く」は、会員なしでこのページを開きます（2時間・見るだけで、予約へは進めません）。</p>
       {:else}
-      <p class="mt-1 text-xs text-stone-500">この取引先専用のログイン画面です。下で発行したログインIDとパスワードでログインします。「確認ページを開く」は、ログインなしでこの取引先から見た画面を開きます（2時間・見るだけで、予約の確定・取消はできません）。</p>
+        <!-- 取引先へ案内するのは共通のログイン画面（docs/partner-common-login.md）。ログインIDから取引先を判別する -->
+        <h2 class="text-lg font-bold text-stone-900">ログイン画面</h2>
+        <p class="mt-1 text-xs text-stone-500">取引先へはこのURLをお知らせください（全取引先で共通）。下で発行したログインIDとパスワードで入ると、この取引先のページが開きます。</p>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.commonLoginUrl}</code>
+          <button type="button" class={smallBtn} onclick={() => copy(data.commonLoginUrl)}>コピー</button>
+        </div>
+        <h3 class="mt-5 text-sm font-bold text-stone-700">この取引先専用のURL（従来）</h3>
+        <p class="mt-1 text-xs text-stone-500">以前お知らせしたURLです。今も使えます（同じログイン画面が開きます）。「確認ページを開く」は、ログインなしでこの取引先から見た画面を開きます（2時間・見るだけで、予約の確定・取消はできません）。「URLを再発行」は、このURLが外部に漏れたときだけ使います（共通のログイン画面には影響しません）。</p>
       {/if}
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>

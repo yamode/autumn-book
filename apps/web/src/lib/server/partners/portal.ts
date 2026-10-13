@@ -27,6 +27,7 @@ import { PARTNER_PREVIEW_COOKIE, PREVIEW_ACCOUNT_ID, PREVIEW_DENIED_MESSAGE, ver
 import { randomToken, sha256Hex } from './crypto';
 import { isAal2Valid, normalizeMfaPolicy, portalMfaGate, portalMfaUrl } from '$lib/partner-mfa';
 import { groupInquiryAvailable } from '$lib/partner-group';
+import { PARTNER_COMMON_LOGIN_PATH } from '$lib/partner-common-login';
 
 export const PARTNER_SESSION_COOKIE = 'rms_partner_session';
 
@@ -52,18 +53,18 @@ export function clearPartnerSessionCookie(cookies: Cookies, urlToken: string) {
 export const PARTNER_DEVICE_COOKIE = 'rms_partner_device';
 const DEVICE_COOKIE_MAX_AGE = 365 * 24 * 3600;
 
-/** この端末の識別子（ハッシュ）。クッキーが無い・形が違えば新しく発行してクッキーに書く */
-export async function partnerDeviceId(event: Pick<RequestEvent, 'params' | 'cookies'>): Promise<string> {
+/**
+ * この端末の識別子（ハッシュ）。クッキーが無い・形が違えば新しく発行する。
+ * 値は取引先の path（/p/<token>）と共通ログイン画面の path（/partner）の両方に書く（ログイン・パスワード設定のときだけ呼ばれる）。
+ * どちらの画面から入っても同じ端末と分かるように（§2.1）。urlToken は共通画面から呼ぶとき（params に token が無い）に渡す
+ */
+export async function partnerDeviceId(event: Pick<RequestEvent, 'params' | 'cookies'>, urlToken?: string): Promise<string> {
   let value = event.cookies.get(PARTNER_DEVICE_COOKIE) ?? '';
-  if (!/^[A-Za-z0-9_-]{16,64}$/.test(value)) {
-    value = randomToken(16);
-    event.cookies.set(PARTNER_DEVICE_COOKIE, value, {
-      path: cookiePath(event.params.token ?? ''),
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      maxAge: DEVICE_COOKIE_MAX_AGE
-    });
+  if (!/^[A-Za-z0-9_-]{16,64}$/.test(value)) value = randomToken(16);
+  const token = urlToken ?? (event.params as { token?: string }).token ?? '';
+  const paths = token ? [cookiePath(token), PARTNER_COMMON_LOGIN_PATH] : [PARTNER_COMMON_LOGIN_PATH];
+  for (const path of paths) {
+    event.cookies.set(PARTNER_DEVICE_COOKIE, value, { path, httpOnly: true, secure: true, sameSite: 'lax', maxAge: DEVICE_COOKIE_MAX_AGE });
   }
   return (await sha256Hex(`device:${value}`)).slice(0, 32);
 }

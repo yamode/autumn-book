@@ -8,7 +8,8 @@
 
 	// 取引先専用ページ（/p/<token>）は URL に限定トークンを含むため、アクセス解析（GA4）の読み込みも
 	// 同意バナーも出さない（トークンを外部へ送らない）。社外向けの画面なのでデバッグパネルも出さない。
-	const isPartnerPortal = $derived(page.url.pathname.startsWith('/p/'));
+	// 共通ログイン画面（/partner）も取引先向けなので同じ扱い
+	const isPartnerPortal = $derived(page.url.pathname.startsWith('/p/') || page.url.pathname === '/partner' || page.url.pathname.startsWith('/partner/'));
 </script>
 
 {@render children()}

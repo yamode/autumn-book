@@ -10,7 +10,8 @@ import {
   resolvePortal,
   setPartnerSessionCookie
 } from '$lib/server/partners/portal';
-import { notifyNewEnvironmentLogin, portalUrl } from '$lib/server/partners/portal-users';
+import { notifyNewEnvironmentLogin } from '$lib/server/partners/portal-users';
+import { partnerCommonLoginUrl } from '$lib/partner-common-login';
 import { ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
 import { portalMfaUrl } from '$lib/partner-mfa';
@@ -96,7 +97,7 @@ export const actions = {
           account: result.account,
           meta,
           location: requestLocation(event),
-          loginUrl: portalUrl(event.url.origin, event.params.token)
+          loginUrl: partnerCommonLoginUrl(event.url.origin)
         })
       );
     }

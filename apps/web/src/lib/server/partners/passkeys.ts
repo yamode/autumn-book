@@ -83,7 +83,8 @@ export async function countPasskeys(db: SupabaseClient, accountId: string): Prom
 // ---------------------------------------------------------------------------
 
 /** チャレンジの持ち主: 本人（登録・本人確認）か、限定URLの取引先（ログイン・passkey_auth だけ） */
-type ChallengeOwner = { accountId: string } | { partnerId: string };
+// 本人用（登録・本人確認）/ 取引先URLのログイン用 / 共通ログイン画面用（どの取引先か分かる前・docs/partner-common-login.md §2.3）
+type ChallengeOwner = { accountId: string } | { partnerId: string } | { common: true };
 
 async function saveChallenge(
   db: SupabaseClient,
@@ -126,8 +127,13 @@ async function takeChallenge(
     .eq('kind', args.kind)
     .is('used_at', null)
     .gt('expires_at', new Date().toISOString());
-  // 持ち主で絞る（本人用は partner_id が null、ログイン用は account_id が null のものだけ＝互いに使い回せない）
-  q = 'accountId' in args.owner ? q.eq('account_id', args.owner.accountId).is('partner_id', null) : q.eq('partner_id', args.owner.partnerId).is('account_id', null);
+  // 持ち主で絞る（本人用は partner_id が null、ログイン用は account_id が null、共通画面用は両方 null のものだけ＝互いに使い回せない）
+  q =
+    'accountId' in args.owner
+      ? q.eq('account_id', args.owner.accountId).is('partner_id', null)
+      : 'partnerId' in args.owner
+        ? q.eq('partner_id', args.owner.partnerId).is('account_id', null)
+        : q.is('partner_id', null).is('account_id', null);
   const { data, error } = await q.select('challenge, account_id, partner_id');
   if (error) return null;
   const row = (data ?? [])[0] as { challenge: string | null; account_id: string | null; partner_id: string | null } | undefined;
@@ -357,11 +363,14 @@ export async function verifyPasskeyStepUp(
   return { ok: true };
 }
 
-/** ログイン画面: 誰のパスキーでもよい options（allowCredentials 無し＝端末に保存されたパスキーから選ぶ・Conditional UI 兼用） */
-export async function passkeyLoginOptions(db: SupabaseClient, args: { partnerId: string; rp: PasskeyRp; ip: string | null }) {
+/**
+ * ログイン画面: 誰のパスキーでもよい options（allowCredentials 無し＝端末に保存されたパスキーから選ぶ・Conditional UI 兼用）。
+ * partnerId が null は共通ログイン画面（/partner）用のチャレンジ（取引先なし・docs/partner-common-login.md §2.3）
+ */
+export async function passkeyLoginOptions(db: SupabaseClient, args: { partnerId: string | null; rp: PasskeyRp; ip: string | null }) {
   const options = await generateAuthenticationOptions({ rpID: args.rp.rpID, userVerification: 'required', timeout: LOGIN_TTL_MINUTES * 60_000 });
   const challengeId = await saveChallenge(db, {
-    owner: { partnerId: args.partnerId },
+    owner: args.partnerId === null ? { common: true } : { partnerId: args.partnerId },
     kind: 'passkey_auth',
     challenge: options.challenge,
     ttlMinutes: LOGIN_TTL_MINUTES,
@@ -373,24 +382,26 @@ export async function passkeyLoginOptions(db: SupabaseClient, args: { partnerId:
 /**
  * ログイン画面: パスキーの応答を確かめ、ログインしてよいアカウントの id を返す（だめなら null・理由はログ用）。
  * credential_id → パスキー → アカウント → partner_id が限定URLの取引先と一致すること、アカウントが有効なことを必ず確かめる。
+ * partnerId が null（共通ログイン画面）は取引先を問わず、パスキーの持ち主の取引先を返す（取引先の公開状態は呼ぶ側で確かめる）。
  * セッションを作るのは呼ぶ側（store.ts の loginPartnerWithPasskey）。
  */
 export async function verifyPasskeyLogin(
   db: SupabaseClient,
-  args: { partnerId: string; challengeId: unknown; response: unknown; rp: PasskeyRp }
-): Promise<{ ok: true; accountId: string; passkeyId: string } | { ok: false; reason: string; accountId?: string }> {
-  // この取引先（限定URL）で発行したログイン用のチャレンジだけを使う（別の取引先のものは使い切りにもしない）
-  const taken = await takeChallenge(db, { id: args.challengeId, kind: 'passkey_auth', owner: { partnerId: args.partnerId } });
+  args: { partnerId: string | null; challengeId: unknown; response: unknown; rp: PasskeyRp }
+): Promise<{ ok: true; accountId: string; partnerId: string; passkeyId: string } | { ok: false; reason: string; accountId?: string; partnerId?: string }> {
+  // この取引先（限定URL）／共通画面で発行したログイン用のチャレンジだけを使う（別の持ち主のものは使い切りにもしない）
+  const owner: ChallengeOwner = args.partnerId === null ? { common: true } : { partnerId: args.partnerId };
+  const taken = await takeChallenge(db, { id: args.challengeId, kind: 'passkey_auth', owner });
   if (!taken) return { ok: false, reason: 'challenge_expired' };
   if (!loginChallengeMatches(taken, args.partnerId)) return { ok: false, reason: 'challenge_partner' };
   const response = args.response as AuthenticationResponseJSON;
   if (!response || typeof response !== 'object' || !isCredentialId(response.id)) return { ok: false, reason: 'bad_response' };
   const passkey = await findPasskeyByCredential(db, response.id);
   // 別の取引先のパスキー・停止中のアカウントは「見つからない」扱い
-  if (!passkey || passkey.partner_id !== args.partnerId || !passkey.is_active) return { ok: false, reason: 'unknown_credential' };
+  if (!passkey || (args.partnerId !== null && passkey.partner_id !== args.partnerId) || !passkey.is_active) return { ok: false, reason: 'unknown_credential' };
   const assertionError = await checkAssertion(db, { passkey, response, challenge: taken.challenge, rp: args.rp, requireUserVerification: true });
-  if (assertionError) return { ok: false, reason: assertionError, accountId: passkey.account_id };
-  return { ok: true, accountId: passkey.account_id, passkeyId: passkey.id };
+  if (assertionError) return { ok: false, reason: assertionError, accountId: passkey.account_id, partnerId: passkey.partner_id };
+  return { ok: true, accountId: passkey.account_id, partnerId: passkey.partner_id, passkeyId: passkey.id };
 }
 
 // ---------------------------------------------------------------------------

@@ -34,6 +34,11 @@ export const RATE_RULES = {
   partnerIp: { prefix: 'login_rate:partner_ip:', max: 10, windowSec: 600, lockSec: 900 },
   /** 取引先ログイン: 限定URL 全体（分散 IP からの集中） */
   partner: { prefix: 'login_rate:partner:', max: 60, windowSec: 600, lockSec: 900 },
+  /**
+   * 取引先の共通ログイン画面（/partner）: 1 IP（全取引先で共通・ID を変えても止まる・docs/partner-common-login.md §2.2）。
+   * ID から取引先が分かれば partnerIp / partner も合わせて数える（取引先URLのログインと合算）
+   */
+  commonIp: { prefix: 'login_rate:common_ip:', max: 10, windowSec: 600, lockSec: 900 },
   /** パスキーでのログインの準備（チャレンジの発行）: 1 IP × 取引先あたり 10 分 30 回（表に行を作るので数を絞る・S6） */
   passkeyLoginOptionsIp: { prefix: 'login_rate:passkey_opts_ip:', max: 30, windowSec: 600 },
   /** パスワード設定リンク: 1 IP × 限定URL */

@@ -131,6 +131,13 @@ describe('loginChallengeMatches（ログイン用チャレンジの持ち主）'
     expect(loginChallengeMatches(null, 'p1')).toBe(false);
     expect(loginChallengeMatches({ account_id: null, partner_id: '' }, '')).toBe(false);
   });
+  it('共通ログイン画面（partnerId = null）は account_id・partner_id とも null の行だけ', () => {
+    expect(loginChallengeMatches({ account_id: null, partner_id: null }, null)).toBe(true);
+    // 取引先URL用・本人用のチャレンジは共通画面で使わせない
+    expect(loginChallengeMatches({ account_id: null, partner_id: 'p1' }, null)).toBe(false);
+    expect(loginChallengeMatches({ account_id: 'a1', partner_id: null }, null)).toBe(false);
+    expect(loginChallengeMatches(null, null)).toBe(false);
+  });
 });
 
 describe('文言', () => {

@@ -15,7 +15,8 @@ import {
   resolvePortal,
   setPartnerSessionCookie
 } from '$lib/server/partners/portal';
-import { notifyNewEnvironmentLogin, portalUrl } from '$lib/server/partners/portal-users';
+import { notifyNewEnvironmentLogin } from '$lib/server/partners/portal-users';
+import { partnerCommonLoginUrl } from '$lib/partner-common-login';
 import { loginPartnerWithPasskey, logPartnerAccess, partnerUnavailableReason } from '$lib/server/partners/store';
 import { ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 
@@ -58,7 +59,7 @@ export const POST = async (event) => {
         account: login.account,
         meta,
         location: requestLocation(event),
-        loginUrl: portalUrl(event.url.origin, event.params.token)
+        loginUrl: partnerCommonLoginUrl(event.url.origin)
       })
     );
   }

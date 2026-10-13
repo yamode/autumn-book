@@ -95,9 +95,12 @@ export const ONE_PERSON_ONE_ID_NOTICE =
 /**
  * ログイン用のチャレンジ（rms_partner_mfa_challenges・セッション無し）が、この限定URLの取引先のものか。
  * ログイン用は account_id が null で partner_id を持つ（autumn-shared 20261009215711）。本人用（account_id あり）は使わせない。
+ * partnerId が null は共通ログイン画面（/partner）用: account_id・partner_id とも null の行だけ（docs/partner-common-login.md §2.3）。
  */
-export function loginChallengeMatches(row: { account_id: string | null; partner_id: string | null } | null, partnerId: string): boolean {
-  return Boolean(row && partnerId && row.account_id === null && row.partner_id === partnerId);
+export function loginChallengeMatches(row: { account_id: string | null; partner_id: string | null } | null, partnerId: string | null): boolean {
+  if (!row || row.account_id !== null) return false;
+  if (partnerId === null) return row.partner_id === null;
+  return Boolean(partnerId && row.partner_id === partnerId);
 }
 
 /** credential_id（base64url）として受け付ける形か。長さは WebAuthn の上限（1023 バイト）を base64url にした程度まで */
