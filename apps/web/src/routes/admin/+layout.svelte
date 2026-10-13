@@ -17,6 +17,7 @@
 			items: [
 				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
 				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
+				{ href: '/admin/upgrades', label: 'アップグレード提案', icon: '🛏' },
 				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
 				{ href: '/admin/group-inquiries', label: '団体照会', icon: '👥', badge: true },
 				{ href: '/admin/partners/invoices', label: '予定請求書', icon: '🧾' },

@@ -88,7 +88,7 @@ export function isPartnerPath(pathname: string): boolean {
 	return (
 		pathname.startsWith('/p/') ||
 		pathname.startsWith('/api/partner/') ||
-		pathname === '/api/cron/partner-charge'
+		pathname === '/api/cron/partner-charge' || pathname === '/api/cron/upgrade-payments'
 	);
 }
 

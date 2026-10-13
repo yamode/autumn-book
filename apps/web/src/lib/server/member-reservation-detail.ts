@@ -196,6 +196,8 @@ export async function reservationDetailOf(
 		: [];
 	const shown = rooms.some((x) => !x.cancelled) ? rooms.filter((x) => !x.cancelled) : rooms;
 	const amend = { ...amendGate(r.status, r.checkin, amendments.length, Math.max(1, r.rooms?.length ?? 1)), datesOnly: multiRoom };
+	const hasUpgrade = options.some((o) => o.isUpgrade && o.status !== 'cancelled');
+	if (hasUpgrade) amend.canAmend = false;
 	// 部屋ごとの「このお部屋を変更」（M3）。オンライン決済済み（返金し切っていない）は変更不可（取消 → 取り直しか電話・決定 M2）
 	const prepaidOnline = !!pay && pay.status === 'paid' && pay.refund_status !== 'full';
 	const roomList = r.rooms ?? [];
@@ -203,7 +205,7 @@ export async function reservationDetailOf(
 	const roomAmend =
 		ra && (ra.scope === 'all' || multiRoom)
 			? liveRooms(roomList).map((x) => {
-					const can = canAmendRoomOf({
+					const can = !hasUpgrade && canAmendRoomOf({
 						reserved: r.status === 'reserved',
 						deadlinePassed: amend.deadlinePassed,
 						remaining: amend.remaining,

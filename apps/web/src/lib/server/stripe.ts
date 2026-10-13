@@ -278,6 +278,7 @@ export const createPaymentIntent = (args: {
   );
 
 export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
+export const cancelPaymentIntent = (id: string, idempotencyKey: string) => stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey);
 
 // チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
 // マイページの保存カードの登録にも使う（冪等キー無し＝毎回新しく作る・N8）。

@@ -216,6 +216,9 @@ export interface OptionItem {
 
 /** オプション予約明細（book.booking_option_orders 対称・list_my_booking_options の行に対応） */
 export interface BookingOptionOrder {
+	paymentMode?: 'onsite' | 'online';
+	paidAmount?: number;
+	isUpgrade?: boolean;
 	orderId: string;
 	optionId: string;
 	name: string;

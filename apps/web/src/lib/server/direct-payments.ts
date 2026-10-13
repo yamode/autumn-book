@@ -13,6 +13,7 @@
 // その migration が未適用・鍵が無い環境では directPaymentsReady() が false になり、画面は現地払いだけにする。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
+import { refundCancelledUpgrades } from './upgrade-payments';
 import {
   createRefund,
   inlinePaymentReady,
@@ -428,6 +429,7 @@ export async function refundAfterCancel(
   reason: string,
   opts: { roomIndex?: number } = {}
 ): Promise<DirectRefundOutcome> {
+  try { await refundCancelledUpgrades(bookingCode); } catch { console.error('[upgrade-refund] retry required; reconciliation will retry'); }
   if (!partnerServiceClient()) return { kind: 'none' };
   let due: RefundDueRow;
   try {

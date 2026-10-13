@@ -1970,7 +1970,14 @@ interface MyBookingOptionRow {
 export async function sbListMyBookingOptions(client: SupabaseClient, code: string): Promise<BookingOptionOrder[]> {
 	const { data, error } = await client.schema('book').rpc('list_my_booking_options', { p_booking_code: code });
 	if (error) throw error;
+	const optionRows = (data ?? []) as MyBookingOptionRow[];
+	const paymentRows = optionRows.length ? await client.schema('book').from('booking_option_orders').select('id,payment_mode,paid_amount').in('id', optionRows.map((r) => r.order_id)) : null;
+	if (paymentRows?.error && paymentRows.error.code !== '42703') throw paymentRows.error;
+	const optionPayments = new Map((paymentRows?.data ?? []).map((r) => [String(r.id), r]));
 	return ((data ?? []) as MyBookingOptionRow[]).map((r) => ({
+		paymentMode: optionPayments.get(r.order_id)?.payment_mode === 'online' ? 'online' : 'onsite',
+		paidAmount: Number(optionPayments.get(r.order_id)?.paid_amount ?? 0),
+		isUpgrade: r.name === '客室アップグレード',
 		orderId: r.order_id,
 		optionId: r.option_id,
 		name: r.name,

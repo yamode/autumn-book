@@ -159,13 +159,13 @@
 
 	// 提供日（無ければチェックイン日）の前日まで取消可（表示判定・強制は RPC/store 側）
 	function canCancelOption(o: BookingOptionOrder): boolean {
-		if (readOnly || o.status !== 'reserved') return false;
+		if (readOnly || o.status !== 'reserved' || o.isUpgrade) return false;
 		const basis = o.serviceDate ?? b.checkin;
 		return todayStr() < basis;
 	}
 
 	let options = $derived(data.options ?? []);
-	let optionsTotal = $derived(options.reduce((s, o) => s + o.amount, 0));
+	let optionsTotal = $derived(options.reduce((s, o) => s + Math.max(0, o.amount - (o.paidAmount ?? 0)), 0));
 	// 宿泊日変更でオプションの提供日が滞在期間外になった明細があるか（取り直し導線用）
 	let hasNeedsReschedule = $derived(options.some((o) => o.status === 'needs_reschedule'));
 </script>
@@ -423,6 +423,7 @@
 									</div>
 									<span class="shrink-0 text-xs font-medium {o.amount === 0 ? 'text-emerald-700' : 'text-stone-700'}">
 										{o.amount === 0 ? m.options_free() : formatPrice(o.amount)}
+										{#if o.paymentMode === 'online'}<span class="ml-1 text-emerald-700">オンライン決済済み</span>{/if}
 									</span>
 								</div>
 								{#if canCancelOption(o)}
@@ -441,6 +442,7 @@
 						<span class="font-medium text-stone-700">{optionsTotal === 0 ? m.options_free() : formatPrice(optionsTotal)}</span>
 					</div>
 				{/if}
+				{#if options.some((o) => o.isUpgrade)}<p class="mt-3 text-xs leading-6 text-stone-500">アップグレード済みのご予約の変更は施設へお問い合わせください。お部屋をキャンセルした場合、オンライン決済済みのアップグレード追加料金は宿泊料金の返金とは別に全額返金します。</p>{/if}
 			</div>
 		{/if}
 

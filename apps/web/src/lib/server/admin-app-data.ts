@@ -27,6 +27,7 @@ export function bookAdmin(event: RequestEvent): BookClient {
 // ---------------------------------------------------------------------------
 
 const RPC_MESSAGES: [string, string][] = [
+	['upgrade_not_cancellable_separately', 'アップグレード料金だけの取消はできません。客室の取消または施設での変更をご確認ください。'],
 	['not_authenticated', 'セッションが切れています。ログインし直してください。'],
 	['coupon_invalid', 'このクーポンは無効か期限切れのため配布できません。'],
 	[

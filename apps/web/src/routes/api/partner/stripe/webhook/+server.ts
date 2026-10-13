@@ -22,6 +22,7 @@ import { confirmCheckoutSession, confirmPartnerIntent, syncRefundFromStripe } fr
 import { partnerAdminClient } from '$lib/server/partners/store';
 import { routeStripeEvent } from '$lib/server/payments/webhook-route';
 import { confirmDirectIntent, syncDirectRefundFromStripe } from '$lib/server/direct-payments';
+import { confirmUpgradeIntent, UPGRADE_PAYMENT_PURPOSE } from '$lib/server/upgrade-payments';
 import {
   STRIPE_APP,
   STRIPE_APP_BOOK,
@@ -38,6 +39,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
     event = await verifyWebhook(payload, request.headers.get('stripe-signature'));
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : 'invalid' }, { status: e instanceof StripeError ? e.status : 400 });
+  }
+  const upgradeMeta = event.data.object.metadata as Record<string, unknown> | undefined;
+  if (event.type === 'payment_intent.succeeded' && upgradeMeta?.app === 'autumn-book' && upgradeMeta.purpose === UPGRADE_PAYMENT_PURPOSE) {
+    try { return json({ received: true, result: await confirmUpgradeIntent(String(event.data.object.id ?? '')) }); }
+    catch { return json({ error: 'upgrade confirmation requires retry' }, { status: 500 }); }
   }
   const route = routeStripeEvent(event, {
     app: STRIPE_APP,
