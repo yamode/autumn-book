@@ -13,6 +13,9 @@ export const load = async (event) => {
   const { db, partner } = await resolvePortal(event);
   const setupToken = event.url.searchParams.get('token') ?? '';
   const account = await findAccountBySetupToken(db, partner, setupToken);
+  // 使用済み・期限切れのリンク（パスワード設定後にメールのリンクを開き直した等）は、その取引先のログイン画面へ移して案内を出す。
+  // 取引先のトークンは元のURLに入っているので、移しても新しく分かることはない。存在しない取引先は resolvePortal が 404
+  if (!account) throw redirect(303, `/p/${event.params.token}?setup=expired`);
   return {
     portal: { ...portalHeader(partner, null), bookingEnabled: false },
     unavailable: partnerUnavailableReason(partner),

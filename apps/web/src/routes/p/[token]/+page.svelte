@@ -11,6 +11,7 @@
   let { data, form }: { data: PageData; form?: { message?: string; loginId?: string } } = $props();
   let submitting = $state(false);
   const token = $derived($page.params.token ?? '');
+  const setupExpired = $derived($page.url.searchParams.get('setup') === 'expired');
   const inputClass =
     'w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
 
@@ -110,6 +111,12 @@
     >
       <h2 class="mb-1 text-2xl font-bold">ログイン</h2>
       <p class="mb-6 text-sm leading-5 text-stone-500">貴社専用の料金カレンダーです。発行されたログインIDでお入りください。</p>
+      <!-- 使用済み・期限切れのパスワード設定リンクから移ってきたとき（setup/+page.server.ts） -->
+      {#if setupExpired && !form?.message}
+        <p class="mb-4 rounded-lg border border-amber-700/30 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-900" role="status">
+          このパスワード設定のリンクは使用済みか、有効期限が切れています。設定済みの方は、下からログインしてください。パスワードをお忘れの場合は、貴社のマスタユーザーまたはご担当の宿へ再設定をご依頼ください。
+        </p>
+      {/if}
       {#if form?.message}
         <p class="mb-4 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-base text-rose-700">{form.message}</p>
       {/if}
