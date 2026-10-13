@@ -130,7 +130,7 @@ export const LOGIN_LOG_LABELS: Record<string, string> = {
   mfa_policy_change: '本人確認の方針の変更',
   child_mfa_reset: 'ユーザーの第2要素をリセット',
   access_denied: '許可外の場所からのアクセス（拒否）',
-  access_restriction_change: 'アクセス制限の変更（宿）',
+  access_restriction_change: 'アクセス制限の変更',
   // 団体予約（docs/partner-group-booking.md §9.3・2026-10-10）。管理画面のアクセスログで他の操作と並べて見る
   group_inquiry_submit: '団体照会の送信',
   group_inquiry_withdraw: '団体照会の取り下げ',

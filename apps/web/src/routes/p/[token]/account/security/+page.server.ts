@@ -1,6 +1,8 @@
 import { fail } from '@sveltejs/kit';
 import { LOGIN_LOG_LABELS, summarizeUserAgent } from '$lib/partner-login-security';
-import { portalAal2, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { portalAal2, portalHeader, PORTAL_HEADERS, requestCountry, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { parseAllowList, selfLockoutMessage } from '$lib/partner-ip-access';
+import { dev } from '$app/environment';
 import {
   GENERIC_LOGIN_ERROR,
   listOwnSecurityLogs,
@@ -17,7 +19,7 @@ import { ipKey, RATE_RULES, rateCheck, rateHit } from '$lib/server/login-rate-li
 import { maskEmail, MFA_AAL2_HOURS, normalizeMfaPolicy, PARTNER_MFA_POLICY_LABELS, portalMfaUrl, type PartnerMfaPolicy } from '$lib/partner-mfa';
 import { masterCanChangeMfaPolicy, ONE_PERSON_ONE_ID_NOTICE, PARTNER_MFA_POLICY_HELP } from '$lib/partner-passkey';
 import { listPasskeys, passkeyRp, removePasskey, renamePasskey } from '$lib/server/partners/passkeys';
-import { requireMasterAccount, setPartnerMfaPolicy } from '$lib/server/partners/store';
+import { recentPartnerLoginIps, requireMasterAccount, setPartnerAccessRestriction, setPartnerMfaPolicy } from '$lib/server/partners/store';
 
 // 取引先専用ページ: アカウント → セキュリティ（docs/auth-hardening.md §4.4・S2）。
 // 自分のログイン中の端末と、直近 30 件のログイン関係の記録を出し、他の端末をログアウトできる。
@@ -33,7 +35,7 @@ export const load = async (event) => {
   const { db, partner, session } = await requirePortalSession(event, { mfaGate: false });
   // 管理画面からの確認モードは取引先のアカウントではないので出さない
   if (session.preview)
-    return { portal: portalHeader(partner, session), preview: true, sessions: [], logs: [], loadError: null, mfa: null, passkeys: null, policy: null };
+    return { portal: portalHeader(partner, session), preview: true, sessions: [], logs: [], loadError: null, mfa: null, passkeys: null, policy: null, access: null };
   const token = event.params.token;
   const aal2 = portalAal2(session);
   const mfa = await loadMfaAccount(db, partner.id, session.id)
@@ -55,6 +57,16 @@ export const load = async (event) => {
       error: null as string | null
     }))
     .catch((e) => ({ enabled: Boolean(rp), items: [], error: e instanceof PartnerStoreError ? e.message : 'パスキーを読み込めませんでした。' }));
+  // アクセス制限（貴社共通・docs/partner-access-restriction.md）: 表示は全員、変更はマスタだけ（本人確認が要る）
+  const meta = requestMeta(event);
+  const access = {
+    allowedIps: partner.access_allowed_ips ?? [],
+    blockForeign: partner.access_block_foreign === true,
+    canEdit: session.is_master === true,
+    currentIp: meta.ip,
+    currentCountry: requestCountry(event),
+    recentLoginIps: session.is_master === true ? await recentPartnerLoginIps(db, partner.id).catch(() => []) : []
+  };
   const policy = {
     value: policyValue,
     label: PARTNER_MFA_POLICY_LABELS[policyValue],
@@ -71,6 +83,7 @@ export const load = async (event) => {
       mfa,
       passkeys,
       policy,
+      access,
       sessions: sessions.map((s) => ({
         id: s.id,
         createdAt: s.created_at,
@@ -91,7 +104,7 @@ export const load = async (event) => {
     };
   } catch (e) {
     if (!(e instanceof PartnerStoreError)) throw e;
-    return { portal: portalHeader(partner, session), preview: false, sessions: [], logs: [], loadError: e.message, mfa, passkeys, policy };
+    return { portal: portalHeader(partner, session), preview: false, sessions: [], logs: [], loadError: e.message, mfa, passkeys, policy, access };
   }
 };
 
@@ -181,6 +194,39 @@ export const actions = {
       return { policyMessage: r.changed ? `本人確認の方針を「${PARTNER_MFA_POLICY_LABELS[to]}」にしました。` : '変更はありませんでした。' };
     } catch (e) {
       if (e instanceof PartnerStoreError) return fail(e.status === 403 ? 403 : 400, { policyError: e.message });
+      throw e;
+    }
+  },
+
+  // アクセス制限（貴社共通・docs/partner-access-restriction.md）: マスタだけ・本人確認が要る。
+  // 許可するIP（空なら制限なし）と国外の拒否。今の接続元が入れなくなる設定（自分の締め出し）は保存しない
+  set_access: async (event) => {
+    const { db, partner, session } = await requirePortalSession(event);
+    requireAal2(event, session, { next: `/p/${event.params.token}/account/security` });
+    const fd = await event.request.formData();
+    const text = String(fd.get('allowed_ips') ?? '');
+    const blockForeign = fd.get('block_foreign') === 'on';
+    try {
+      const actor = await requireMasterAccount(db, partner.id, session.id);
+      const parsed = parseAllowList(text);
+      if (parsed.errors.length) {
+        return fail(400, { accessError: `書き方を確かめてください: ${parsed.errors.join('、')}（IPv4・IPv6・範囲の CIDR。範囲は IPv4 /8・IPv6 /16 より狭く）`, accessText: text, accessForeign: blockForeign });
+      }
+      const meta = requestMeta(event);
+      const lockout = selfLockoutMessage({ allowedIps: parsed.entries, blockForeign }, { ip: meta.ip, country: requestCountry(event) }, { allowUnknownCountry: dev });
+      if (lockout) return fail(400, { accessError: lockout, accessText: text, accessForeign: blockForeign });
+      const r = await setPartnerAccessRestriction(db, {
+        partnerId: partner.id,
+        allowedIps: parsed.entries,
+        blockForeign,
+        by: `master:${actor.id}`,
+        channel: 'web',
+        accountId: actor.id,
+        ip: meta.ip
+      });
+      return { accessMessage: r.changed ? 'アクセス制限を保存しました（反映まで最大30秒）。' : '変更はありませんでした。' };
+    } catch (e) {
+      if (e instanceof PartnerStoreError) return fail(e.status === 403 ? 403 : 400, { accessError: e.message, accessText: text, accessForeign: blockForeign });
       throw e;
     }
   },

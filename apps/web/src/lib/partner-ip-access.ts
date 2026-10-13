@@ -150,5 +150,20 @@ export function accessDenial(
   return null;
 }
 
+/**
+ * 自分を締め出す設定か（取引先のマスタがセキュリティ画面で保存するとき）。今の接続元が新しい設定で拒否されるなら、その理由の文言。
+ * 保存したとたんに自分も入れなくなる設定は受け付けない（戻せるのは宿だけになるため）
+ */
+export function selfLockoutMessage(
+  r: AccessRestriction,
+  current: { ip: string | null | undefined; country: string | null | undefined },
+  opts: { allowUnknownCountry?: boolean } = {}
+): string | null {
+  const denial = accessDenial(r, current, opts);
+  if (denial === 'country') return '今お使いの接続元が日本国内と判定されないため、「国外からのアクセスを拒否」にすると、このまま入れなくなります。国内のネットワークから設定してください。';
+  if (denial === 'ip') return `今お使いの接続元（${current.ip ?? '不明'}）が一覧に含まれていないため、保存するとこのまま入れなくなります。今の接続元を一覧に加えてから保存してください。`;
+  return null;
+}
+
 /** 制限が掛かっているか（管理画面の表示用） */
 export const accessRestricted = (r: AccessRestriction) => r.blockForeign || r.allowedIps.length > 0;

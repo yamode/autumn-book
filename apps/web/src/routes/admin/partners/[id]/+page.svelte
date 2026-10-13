@@ -62,7 +62,6 @@
     accountMessage?: string;
     mfaPolicySaved?: string;
     accessRestrictionSaved?: string;
-    accessRestrictionError?: string;
     keyRevoked?: boolean;
     bookingCancelled?: string;
     chargeResult?: { status: 'paid' | 'failed' | 'skipped'; message?: string };
@@ -788,22 +787,8 @@
     // 保存後・読み直しで DB の値に戻す
     mfaPolicyChoice = data.mfaPolicy.value;
   });
-  // ---- アクセス制限（docs/partner-access-restriction.md）----
-  let allowedIpsText = $state('');
-  let blockForeign = $state(false);
-  $effect.pre(() => {
-    // 保存後・読み直しで DB の値に戻す
-    allowedIpsText = data.accessRestriction.allowedIps.join('\n');
-    blockForeign = data.accessRestriction.blockForeign;
-  });
-  const allowedIpsDirty = $derived(
-    allowedIpsText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).join('\n') !== data.accessRestriction.allowedIps.join('\n') ||
-      blockForeign !== data.accessRestriction.blockForeign
-  );
-  function addAllowedIp(ip: string) {
-    const lines = allowedIpsText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
-    if (!lines.some((l) => l.replace(/#.*$/, '').trim() === ip)) allowedIpsText = [...lines, ip].join('\n');
-  }
+  // ---- アクセス制限（docs/partner-access-restriction.md）: 設定は取引先のマスタ。宿は表示と解除だけ ----
+  const accessOn = $derived(data.accessRestriction.blockForeign || data.accessRestriction.allowedIps.length > 0);
   const passkeyOnlyBlocked = $derived(data.accounts.filter((a) => a.isActive && a.passkeyCount === 0).map((a) => a.loginId));
 
   const inputClass = 'w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm disabled:bg-stone-50 disabled:text-stone-500';
@@ -2408,68 +2393,57 @@
     </div>
 
     {#if !isMember}
-      <!-- アクセス制限（docs/partner-access-restriction.md・共通の設定・admin のみ変更・既定はオフ） -->
+      <!-- アクセス制限（docs/partner-access-restriction.md）。設定は取引先のマスタが「アカウント → セキュリティ」で行う。宿は表示と解除だけ -->
       <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-        <h2 class="text-lg font-bold text-stone-900">アクセス制限</h2>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-lg font-bold text-stone-900">アクセス制限</h2>
+          <span class={`rounded-full px-2.5 py-0.5 text-xs ${accessOn ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500'}`}>{accessOn ? '制限あり' : '制限なし'}</span>
+        </div>
         <p class="mt-1 text-xs text-stone-500">
-          取引先ページ（ログイン画面を含む）に入れる場所を制限します。何も設定しなければ制限なしです。許可外の場所からは「許可された場所からのみご利用いただけます」と出て、ログインも操作もできません（宿の「確認ページを開く」は対象外）。拒否したアクセスはアクセスログに残ります。
+          取引先のマスタユーザーが、取引先ページの「アカウント → セキュリティ」で設定します（許可するIP・国外の拒否）。許可外の場所からは、ログインも操作もできません（宿の「確認ページを開く」は対象外）。
+          取引先の IP が変わって入れなくなったときなどは、ここで解除できます。
         </p>
-        <form
-          method="POST"
-          action={`?/setAccessRestriction`}
-          use:enhance={async ({ cancel }) => {
-            lastSubmit = 'other';
-            const turningOn = (allowedIpsText.trim() && !data.accessRestriction.allowedIps.length) || (blockForeign && !data.accessRestriction.blockForeign);
-            if (turningOn && !(await askConfirm({ message: '取引先のIPアドレス（または国内からの接続であること）を確かめてから有効にしてください。誤っていると、取引先がログインできなくなります（ここで解除すれば30秒ほどで戻ります）。', confirmLabel: '保存する' }))) cancel();
-            return async ({ update }) => update({ reset: false });
-          }}
-          class="mt-3 grid gap-4 lg:grid-cols-2"
-        >
-          <fieldset disabled={!canEdit} class="space-y-3">
-            <label class="flex cursor-pointer items-start gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm">
-              <input type="checkbox" name="block_foreign" bind:checked={blockForeign} class="mt-0.5" />
-              <span>
-                <span class="block font-medium text-stone-800">国外からのアクセスを拒否する</span>
-                <span class="text-xs text-stone-500">日本以外（Cloudflare の判定）からの接続を止めます。海外出張中や、海外を経由する VPN からも入れなくなります。</span>
-              </span>
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-sm font-medium text-stone-800">許可するIPアドレス</span>
-              <textarea
-                name="allowed_ips"
-                rows="5"
-                bind:value={allowedIpsText}
-                placeholder={'例）\n203.0.113.10        # 本社\n198.51.100.0/24     # 支店\n240b:13:4740::/48'}
-                class={`${inputClass} font-mono`}
-              ></textarea>
-              <span class="mt-1 block text-[11px] leading-4 text-stone-500">1行に1つ（IPv4・IPv6・範囲の CIDR）。# 以降はメモ。空なら IP の制限なし。最大50件。光回線の家庭向け契約などは IP が変わるので、固定IPの会社に限って使ってください。</span>
-            </label>
-            {#if canEdit}
-              <div class="flex flex-wrap items-center gap-2">
-                <button type="submit" class={smallBtn} disabled={!allowedIpsDirty}>アクセス制限を保存</button>
-                <span class="text-[11px] text-stone-500">変更はアクセスログに残ります。取引先のマスタユーザーは変更できません。</span>
-              </div>
-            {/if}
-            {#if form?.accessRestrictionError}<p class="text-xs text-red-700">{form.accessRestrictionError}</p>{/if}
-            {#if form?.accessRestrictionSaved}<p class="text-xs text-emerald-700">{form.accessRestrictionSaved}</p>{/if}
-          </fieldset>
-          <div class="rounded-md border border-stone-200 p-3">
-            <p class="text-sm font-medium text-stone-800">直近60日のログイン元</p>
-            <p class="mt-0.5 text-[11px] text-stone-500">登録の参考に。取引先の社内から入った記録か、取引先に確かめてから追加してください。</p>
-            {#if data.accessRestriction.recentLoginIps.length}
-              <ul class="mt-2 divide-y divide-stone-100 text-xs">
-                {#each data.accessRestriction.recentLoginIps as r (r.ip)}
-                  <li class="flex items-center justify-between gap-2 py-1.5">
-                    <span class="min-w-0"><code class="break-all font-mono">{r.ip}</code><span class="ml-2 text-stone-500">{new Date(r.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}・{r.count}回</span></span>
-                    {#if canEdit}<button type="button" class={smallBtn} onclick={() => addAllowedIp(r.ip)}>追加</button>{/if}
-                  </li>
-                {/each}
-              </ul>
-            {:else}
-              <p class="mt-2 text-xs text-stone-500">記録はまだありません。</p>
-            {/if}
+        {#if accessOn}
+          <div class="mt-3 grid gap-3 text-sm lg:grid-cols-2">
+            <div class="rounded-md border border-stone-200 bg-stone-50 p-3">
+              <p>国外からのアクセス: <span class="font-medium">{data.accessRestriction.blockForeign ? '拒否' : '許可'}</span></p>
+              <p class="mt-2">許可するIPアドレス{data.accessRestriction.allowedIps.length ? `（${data.accessRestriction.allowedIps.length}件）` : '：制限なし'}</p>
+              {#if data.accessRestriction.allowedIps.length}
+                <ul class="mt-1 space-y-0.5 font-mono text-xs">
+                  {#each data.accessRestriction.allowedIps as ip (ip)}<li class="break-all">{ip}</li>{/each}
+                </ul>
+              {/if}
+            </div>
+            <div class="rounded-md border border-stone-200 p-3">
+              <p class="font-medium">直近60日のログイン元</p>
+              {#if data.accessRestriction.recentLoginIps.length}
+                <ul class="mt-1 divide-y divide-stone-100 text-xs">
+                  {#each data.accessRestriction.recentLoginIps as r (r.ip)}
+                    <li class="py-1"><code class="break-all font-mono">{r.ip}</code><span class="ml-2 text-stone-500">{new Date(r.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}・{r.count}回</span></li>
+                  {/each}
+                </ul>
+              {:else}
+                <p class="mt-1 text-xs text-stone-500">記録はまだありません。</p>
+              {/if}
+            </div>
           </div>
-        </form>
+          {#if canEdit}
+            <form
+              method="POST"
+              action={`?/clearAccessRestriction`}
+              use:enhance={async ({ cancel }) => {
+                lastSubmit = 'other';
+                if (!(await askConfirm({ message: 'この取引先のアクセス制限を解除します（許可するIPを空・国外の拒否をオフ）。どこからでも入れる状態に戻ります。取引先から依頼を受けたとき（本人確認のうえ）に使ってください。', confirmLabel: '解除する' }))) cancel();
+                return async ({ update }) => update({ reset: false });
+              }}
+              class="mt-3 flex flex-wrap items-center gap-2"
+            >
+              <button type="submit" class={smallBtn}>アクセス制限を解除</button>
+              <span class="text-[11px] text-stone-500">解除はアクセスログに残ります。設定し直すのは取引先のマスタユーザーです。</span>
+            </form>
+          {/if}
+        {/if}
+        {#if form?.accessRestrictionSaved}<p class="mt-2 text-xs text-emerald-700">{form.accessRestrictionSaved}</p>{/if}
       </div>
     {/if}
 

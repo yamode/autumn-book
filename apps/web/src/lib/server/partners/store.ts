@@ -2085,12 +2085,21 @@ export async function setPartnerMfaPolicy(
 }
 
 /**
- * アクセス制限（docs/partner-access-restriction.md）を保存する。宿（管理画面）だけが呼ぶ。
- * 入力の検査（parseAllowList）は呼ぶ側で済ませ、検査済みの一覧を渡す。変えたら access_logs に access_restriction_change
+ * アクセス制限（docs/partner-access-restriction.md）を保存する。設定するのは取引先のマスタ（セキュリティ画面・channel web）、
+ * 宿（管理画面・channel admin）は締め出されたときの解除だけ。
+ * 入力の検査（parseAllowList）と締め出しの検査は呼ぶ側で済ませ、検査済みの一覧を渡す。変えたら access_logs に access_restriction_change
  */
 export async function setPartnerAccessRestriction(
   db: SupabaseClient,
-  args: { partnerId: string; allowedIps: string[]; blockForeign: boolean; by: string; ip?: string | null }
+  args: {
+    partnerId: string;
+    allowedIps: string[];
+    blockForeign: boolean;
+    by: string;
+    channel: 'admin' | 'web';
+    accountId?: string | null;
+    ip?: string | null;
+  }
 ): Promise<{ changed: boolean }> {
   const { data, error } = await db.from('rms_partners').select('access_allowed_ips, access_block_foreign').eq('id', args.partnerId).maybeSingle();
   if (error) raise(error, '取引先を読み込めませんでした。');
@@ -2105,7 +2114,8 @@ export async function setPartnerAccessRestriction(
   if (e) raise(e, 'アクセス制限を保存できませんでした。');
   await logPartnerAccess(db, {
     partnerId: args.partnerId,
-    channel: 'admin',
+    accountId: args.accountId ?? null,
+    channel: args.channel,
     action: 'access_restriction_change',
     detail: { from, to: { allowedIps: args.allowedIps, blockForeign: args.blockForeign }, by: args.by },
     ip: args.ip ?? null

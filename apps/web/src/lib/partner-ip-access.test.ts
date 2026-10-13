@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { accessDenial, ipAllowed, parseAllowList, parseIp, parseRange } from './partner-ip-access';
+import { accessDenial, ipAllowed, parseAllowList, parseIp, parseRange, selfLockoutMessage } from './partner-ip-access';
+
+describe('selfLockoutMessage（マスタが自分を締め出す設定は保存しない）', () => {
+  const here = { ip: '203.0.113.9', country: 'JP' };
+  it('今の接続元が通る設定なら null', () => {
+    expect(selfLockoutMessage({ allowedIps: ['203.0.113.0/24 # 本社'], blockForeign: true }, here)).toBeNull();
+    expect(selfLockoutMessage({ allowedIps: [], blockForeign: false }, here)).toBeNull();
+  });
+  it('今の接続元が一覧に無い・国外なら理由の文言', () => {
+    expect(selfLockoutMessage({ allowedIps: ['198.51.100.1'], blockForeign: false }, here)).toContain('203.0.113.9');
+    expect(selfLockoutMessage({ allowedIps: [], blockForeign: true }, { ip: '203.0.113.9', country: 'US' })).toContain('国内');
+  });
+});
 
 describe('parseIp', () => {
   it('IPv4・IPv6・IPv4 埋め込みの IPv6 を読む', () => {

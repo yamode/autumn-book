@@ -24,6 +24,10 @@
       passkeyError?: string;
       policyMessage?: string;
       policyError?: string;
+      accessMessage?: string;
+      accessError?: string;
+      accessText?: string;
+      accessForeign?: boolean;
     };
   } = $props();
   const token = $derived($page.params.token ?? '');
@@ -66,6 +70,21 @@
   };
   let editingEmail = $state(false);
 
+  // ---- アクセス制限（貴社共通・docs/partner-access-restriction.md）----
+  let accessText = $state('');
+  let accessForeign = $state(false);
+  $effect.pre(() => {
+    // 保存に失敗したときは入力を残し、それ以外は保存済みの値に戻す
+    accessText = form?.accessText ?? (data.access?.allowedIps ?? []).join('\n');
+    accessForeign = form?.accessForeign ?? data.access?.blockForeign ?? false;
+  });
+  const accessOn = $derived(Boolean(data.access && (data.access.blockForeign || data.access.allowedIps.length)));
+  function addAccessIp(ip: string | null, memo = '') {
+    if (!ip) return;
+    const lines = accessText.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (!lines.some((l) => l.replace(/#.*$/, '').trim() === ip)) accessText = [...lines, memo ? `${ip}  # ${memo}` : ip].join('\n');
+  }
+
   let busy = $state(false);
   const submit =
     (confirmMessage?: string): SubmitFunction =>
@@ -96,7 +115,8 @@
     action === 'passkey_registered' ||
     action === 'passkey_removed' ||
     action === 'passkey_failed' ||
-    action === 'mfa_reset';
+    action === 'mfa_reset' ||
+    action === 'access_denied';
   const inputClass =
     'w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-base outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
 </script>
@@ -280,6 +300,80 @@
         <p class="mt-3 text-xs text-stone-500">
           {#if data.policy.value === 'step_up' && !data.policy.canStrengthen}切り替えられるのはマスタユーザーだけです。{/if}
           オフに戻す・パスキーのみにする変更は、宿へご依頼ください。
+        </p>
+      </div>
+    {/if}
+
+    {#if data.access}
+      <!-- アクセス制限（貴社共通・docs/partner-access-restriction.md）。表示は全員、変更はマスタだけ（本人確認が要る） -->
+      <h3 class="mt-8 text-lg font-bold">アクセス制限（貴社共通）</h3>
+      <div class="mt-3 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+        <p class="text-stone-600">
+          このページ（ログイン画面を含む）に入れる場所を、貴社のネットワークなどに限れます。許可外の場所からは、ログインも操作もできなくなります。
+          現在: <span class="font-medium text-brand-900">{accessOn ? '制限あり' : '制限なし'}</span>
+        </p>
+        <p class="mt-1 text-xs text-stone-500">今お使いの接続元: <code class="font-mono">{data.access.currentIp ?? '不明'}</code>{#if data.access.currentCountry}（{data.access.currentCountry === 'JP' ? '国内' : data.access.currentCountry}）{/if}</p>
+
+        {#if data.access.canEdit}
+          <form method="POST" action="?/set_access" use:enhance={submit('アクセス制限を保存します。許可外の場所からは、貴社のどのユーザーも入れなくなります。よろしいですか？')} class="mt-4 space-y-4">
+            <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <input type="checkbox" name="block_foreign" bind:checked={accessForeign} class="mt-1" />
+              <span>
+                <span class="block font-medium">国外からのアクセスを拒否する</span>
+                <span class="text-xs text-stone-500">日本国外からの接続を止めます。海外出張中や、海外を経由する VPN からも入れなくなります。</span>
+              </span>
+            </label>
+            <div>
+              <label for="allowed-ips" class="mb-1 block font-medium">許可するIPアドレス</label>
+              <textarea
+                id="allowed-ips"
+                name="allowed_ips"
+                rows="4"
+                bind:value={accessText}
+                placeholder={'例）\n203.0.113.10        # 本社\n198.51.100.0/24     # 支店'}
+                class={`${inputClass} font-mono text-sm`}
+              ></textarea>
+              <p class="mt-1 text-xs leading-5 text-stone-500">
+                1行に1つ（IPv4・IPv6・範囲の CIDR）。# 以降はメモ。空なら IP の制限なし。固定IPのネットワーク（社内・VPN など）に限ってお使いください。IP が変わる回線（家庭向けの光回線・モバイル回線など）を登録すると、変わった時点で入れなくなります。
+              </p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                {#if data.access.currentIp}
+                  <button type="button" class="rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50" onclick={() => addAccessIp(data.access?.currentIp ?? null, '今の接続元')}>今の接続元を追加</button>
+                {/if}
+              </div>
+              {#if data.access.recentLoginIps.length}
+                <details class="mt-2 text-xs text-stone-600">
+                  <summary class="cursor-pointer">直近60日のログイン元（貴社のユーザー全員）</summary>
+                  <ul class="mt-1 divide-y divide-stone-100">
+                    {#each data.access.recentLoginIps as r (r.ip)}
+                      <li class="flex items-center justify-between gap-2 py-1">
+                        <span class="min-w-0"><code class="break-all font-mono">{r.ip}</code><span class="ml-2 text-stone-500">{fmt(r.lastAt)}・{r.count}回</span></span>
+                        <button type="button" class="rounded-md border border-stone-300 bg-white px-2 py-0.5 hover:bg-stone-50" onclick={() => addAccessIp(r.ip)}>追加</button>
+                      </li>
+                    {/each}
+                  </ul>
+                </details>
+              {/if}
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <button type="submit" disabled={busy} class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-60">保存する</button>
+              <span class="text-xs text-stone-500">保存には本人確認が要ります。今の接続元が入れなくなる設定は保存できません。</span>
+            </div>
+          </form>
+        {:else if accessOn}
+          <p class="mt-2 text-xs text-stone-500">
+            {#if data.access.blockForeign}国外からのアクセスを拒否しています。{/if}
+            {#if data.access.allowedIps.length}許可された {data.access.allowedIps.length} 件の接続元からのみ入れます。{/if}
+          </p>
+        {/if}
+        {#if form?.accessError}
+          <p class="mt-3 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-rose-700" role="alert">{form.accessError}</p>
+        {:else if form?.accessMessage}
+          <p class="mt-3 rounded-lg border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-3 py-2 text-brand-900" role="status">{form.accessMessage}</p>
+        {/if}
+        <p class="mt-3 text-xs text-stone-500">
+          {#if !data.access.canEdit}変更できるのはマスタユーザーだけです。{/if}
+          IP が変わるなどして入れなくなったときは、ご担当の宿へご連絡ください（宿で制限を解除できます）。
         </p>
       </div>
     {/if}

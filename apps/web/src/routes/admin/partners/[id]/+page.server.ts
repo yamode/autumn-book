@@ -111,7 +111,6 @@ import { isSelectableCreditOverAction, nextMonths, parseCreditSettingsInput } fr
 import { requestMeta } from '$lib/server/partners/portal';
 import { normalizeMfaPolicy, PARTNER_MFA_POLICIES, PARTNER_MFA_POLICY_LABELS, type PartnerMfaPolicy } from '$lib/partner-mfa';
 import { partnerCommonLoginUrl } from '$lib/partner-common-login';
-import { parseAllowList } from '$lib/partner-ip-access';
 import type { Actions, PageServerLoad } from './$types';
 
 const PREVIEW_DAYS = 14;
@@ -897,24 +896,21 @@ export const actions: Actions = {
 		}
 	},
 
-	// アクセス制限（docs/partner-access-restriction.md）。共通の設定なので commonScope（admin・全施設）。
-	// 許可するIP（空なら制限なし）と国外の拒否。変更は access_logs（channel='admin'・access_restriction_change）に残る
-	setAccessRestriction: async (event) => {
+	// アクセス制限の解除（docs/partner-access-restriction.md）。設定は取引先のマスタがセキュリティ画面で行い、
+	// 宿は IP が変わって締め出されたときなどの救済として解除だけできる（許可するIPを空・国外の拒否をオフ）。
+	// 共通の設定なので commonScope（admin・全施設）。変更は access_logs（channel='admin'・access_restriction_change）に残る
+	clearAccessRestriction: async (event) => {
 		try {
 			const s = await commonScope(event);
-			const fd = await event.request.formData();
-			const parsed = parseAllowList(String(fd.get('allowed_ips') ?? ''));
-			if (parsed.errors.length) {
-				return fail(400, { accessRestrictionError: `書き方を確かめてください: ${parsed.errors.join('、')}（IPv4・IPv6・CIDR。範囲は IPv4 /8・IPv6 /16 より狭く）` });
-			}
 			const r = await setPartnerAccessRestriction(s.db, {
 				partnerId: s.partner.id,
-				allowedIps: parsed.entries,
-				blockForeign: fd.get('block_foreign') === 'on',
+				allowedIps: [],
+				blockForeign: false,
 				by: `admin:${s.userId ?? 'unknown'}`,
+				channel: 'admin',
 				ip: requestMeta(event).ip
 			});
-			return { accessRestrictionSaved: r.changed ? 'アクセス制限を保存しました（反映まで最大30秒）。' : '変更はありませんでした。' };
+			return { accessRestrictionSaved: r.changed ? 'アクセス制限を解除しました（反映まで最大30秒）。取引先へお知らせください。' : 'アクセス制限は掛かっていませんでした。' };
 		} catch (e) {
 			return actionFailure(e);
 		}
