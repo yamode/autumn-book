@@ -10,6 +10,7 @@ import {
 	endedFacilityBySlug,
 	loadThanksBanners,
 	stayEndedFacility,
+	stayUpcoming,
 	type EndedFacility
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
@@ -52,6 +53,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		banners: [],
 		// コードなしで見る館内案内（入口QRから・2026-10-10）。施設が分からなければ null（コード入力だけ出す）
 		browse: null as { name: string; slug: string; phone: string } | null,
+		// チェックイン前に館内図の QR を読んだ（ご利用の開始時刻・2026-10-15）。コード入力の代わりに開始時刻を案内する
+		upcomingFrom: null as string | null,
 		// 「フロントへお電話」メニューを出すか（管理画面で施設ごとに切り替え・2026-10-15）
 		showFrontCall: true
 	};
@@ -82,6 +85,25 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale);
 	if (!stay) {
+		// チェックイン前（開始前）: 館内案内（コードなしと同じ範囲）を見せ、トップで開始時刻を案内する。Cookie は残す
+		const upcoming = await stayUpcoming(token, locale);
+		if (upcoming) {
+			const [guides, settings] = await Promise.all([
+				(DATA_SOURCE === 'supabase'
+					? sbListHouseGuides(upcoming.facility.id, locale)
+					: Promise.resolve(listHouseGuidesFor(upcoming.facility.id, locale))
+				).catch(() => []),
+				loadInroomSettings(upcoming.facility.id)
+			]);
+			return {
+				...noStay,
+				guides: guides.filter(browseVisibleGuide),
+				browse: { name: upcoming.facility.name, slug: upcoming.facility.slug, phone: upcoming.facility.phone },
+				upcomingFrom: upcoming.validFrom,
+				showFrontCall: settings.showFrontCall,
+				...(upcoming.facility.name ? { headerTitle: upcoming.facility.name } : {})
+			};
+		}
 		// Cookie はあるが無効（失効/期間外）＝ ご滞在終了。Cookie は消さず「終了」表示に使う
 		if (invalidQr) return noStay;
 		return thanks(

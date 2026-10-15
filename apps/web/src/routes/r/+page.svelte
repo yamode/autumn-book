@@ -136,7 +136,13 @@
 	{/if}
 
 	<div class="space-y-3 px-4 py-3">
-		{#if !data.stay}
+		{#if !data.stay && data.upcomingFrom}
+			<!-- ============ チェックイン前に館内図の QR を読んだ（2026-10-15）。コードは入れなくてよい（QR に入っている）============ -->
+			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
+				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_upcoming_title()}</h1>
+				<p class="mt-1 text-sm text-stone-500">{m.inroom_upcoming_body({ date: fmtDate(data.upcomingFrom) })}</p>
+			</section>
+		{:else if !data.stay}
 			<!-- ============ コードの入力（館内案内を見ている方が、滞在に紐づけるとき）============ -->
 			{@render codeErrors()}
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">

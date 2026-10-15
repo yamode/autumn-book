@@ -761,6 +761,8 @@
   "inroom_code_help": "館内図に記載の6桁の滞在コードをご入力ください。",
   "inroom_browse_code_title": "ご滞在中のお客様へ",
   "inroom_browse_code_help": "館内図に記載の6桁の滞在コードを入れると、Wi-Fi のご案内・お食事の時間・貸切風呂のご予約が表示されます。",
+  "inroom_upcoming_title": "ご到着をお待ちしております",
+  "inroom_upcoming_body": "お食事の時間・貸切風呂のご予約・Wi-Fi のご案内は、{date} 12:00 から表示されます。その時刻を過ぎたら、このページを開き直してください。",
   "bath_code_help": "館内図に記載の6桁の滞在コードを入れると、貸切風呂のご予約に進めます。",
   "inroom_code_placeholder": "6桁の滞在コード",
   "inroom_code_submit": "滞在コードで開く",

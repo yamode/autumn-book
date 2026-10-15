@@ -70,6 +70,32 @@ export async function stayEndedFacility(token: string, locale: Locale): Promise<
 	}
 }
 
+/** チェックイン前のトークン（失効しておらず、まだ開始時刻＝チェックイン日 12:00 前）の施設と期間。それ以外は null */
+export type UpcomingStay = { facility: EndedFacility & { phone: string }; validFrom: string; validTo: string };
+
+/**
+ * 館内図の QR をチェックイン前に読んだとき用（2026-10-15）。
+ * stay_info は「まだ始まっていない」と「無効」を区別しないため、別の RPC（book.stay_upcoming_facility）で引く。
+ */
+export async function stayUpcoming(token: string, locale: Locale): Promise<UpcomingStay | null> {
+	if (DATA_SOURCE !== 'supabase') {
+		const t = stayTokens.find((x) => x.token === token.trim());
+		if (!t || t.revokedAt || Date.now() >= new Date(t.validFrom).getTime()) return null;
+		const f = getFacilityById(t.facilityId, locale);
+		return f ? { facility: { id: f.id, slug: f.slug, name: f.name, phone: f.phone ?? '' }, validFrom: t.validFrom, validTo: t.validTo } : null;
+	}
+	try {
+		const { data, error } = await supa().rpc('stay_upcoming_facility', { p_token: token });
+		if (error || !data) return null;
+		const d = data as { id: string; slug: string; name: string; phone: string | null; valid_from: string; valid_to: string };
+		const id = demoIdOfUuid(d.id);
+		const f = getFacilityById(id, locale);
+		return { facility: { id, slug: d.slug, name: f?.name ?? d.name, phone: d.phone || f?.phone || '' }, validFrom: d.valid_from, validTo: d.valid_to };
+	} catch {
+		return null;
+	}
+}
+
 // ---------------------------------------------------------------- demo（プロセス内）
 
 const demoBanners: InroomBanner[] = [];

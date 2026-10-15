@@ -3,7 +3,7 @@ import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
-import { stayEndedFacility } from '$lib/server/inroom-banners';
+import { stayEndedFacility, stayUpcoming } from '$lib/server/inroom-banners';
 import type { RequestHandler } from './$types';
 
 // 印刷スリップの QR（/r/c/<token>）着地点。
@@ -24,6 +24,19 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 			maxAge: stayCookieMaxAge(stay.validTo)
 		});
 		redirect(302, url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r');
+	}
+
+	// チェックイン前（開始はチェックイン日 12:00）の QR も Cookie に交換して /r へ。/r が「○日 12:00 からご利用いただけます」を出し、
+	// 時刻が来れば同じスマホはそのまま客室案内になる（もう一度 QR を読んだりコードを入れたりしなくてよい。2026-10-15）
+	const upcoming = await stayUpcoming(token, 'ja');
+	if (upcoming) {
+		cookies.set(STAY_COOKIE, token, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			maxAge: stayCookieMaxAge(upcoming.validTo)
+		});
+		redirect(302, '/r');
 	}
 
 	// チェックアウト後（期限切れ・失効）の QR はサンクス表示へ。施設は f=slug で渡す（バナーを施設別に出すため）

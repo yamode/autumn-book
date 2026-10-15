@@ -761,6 +761,8 @@
   "inroom_code_help": "請輸入館內圖上記載的6位數住宿代碼。",
   "inroom_browse_code_title": "致住宿中的貴賓",
   "inroom_browse_code_help": "輸入館內圖上記載的6位數住宿代碼，即可查看Wi-Fi資訊、用餐時間及包租浴池的預約。",
+  "inroom_upcoming_title": "期待您的光臨",
+  "inroom_upcoming_body": "用餐時間、包租浴池預約及Wi-Fi資訊將於{date} 12:00起顯示。屆時請重新開啟此頁面。",
   "bath_code_help": "輸入館內圖上記載的6位數住宿代碼，即可預約包租浴池。",
   "inroom_code_placeholder": "6位數住宿代碼",
   "inroom_code_submit": "開啟",
