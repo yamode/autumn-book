@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 印刷専用スリップ（A6 カード風）。チェックイン時にゲストへお渡しする。
 	// QR（/r/c/<token> の絶対URL）＋6桁コード（2026-10-09 以前の発行分は8桁）＋3言語の案内。印刷時は管理画面の枠と操作ボタンを隠す。
+	import { downloadQrPng } from '$lib/qr-png';
 	let { data } = $props();
 
 	function fmtDate(iso: string): string {
@@ -19,11 +20,18 @@
 	<!-- 操作バー（印刷時は非表示） -->
 	<div class="no-print mb-4 flex items-center justify-between">
 		<a href="/admin/inroom?all=1" class="text-sm text-stone-400 hover:text-stone-600">← 一覧へ戻る</a>
-		<button
-			type="button"
-			onclick={() => window.print()}
-			class="rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700"
-		>🖨 印刷する</button>
+		<div class="flex items-center gap-2">
+			<button
+				type="button"
+				onclick={() => downloadQrPng(data.claimUrl, `客室スリップQR_${data.token.roomCode}${data.token.guestName ? `_${data.token.guestName}様` : ''}`)}
+				class="rounded-md border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50"
+			>QRをPNGで保存</button>
+			<button
+				type="button"
+				onclick={() => window.print()}
+				class="rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700"
+			>🖨 印刷する</button>
+		</div>
 	</div>
 
 	<!-- スリップ本体（A6 相当） -->

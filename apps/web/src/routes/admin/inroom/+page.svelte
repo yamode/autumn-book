@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
+	import { downloadQrPng } from '$lib/qr-png';
 	import type { StayToken } from '$lib/types';
 	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
 
@@ -430,6 +431,11 @@
 									onclick={() => copy(qrUrl)}
 									class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-white"
 								>{copied === qrUrl ? '✔ コピーしました' : 'URLをコピー'}</button>
+								<button
+									type="button"
+									onclick={() => downloadQrPng(qrUrl, `客室案内QR_${form.qr.roomCode}${form.qr.guestName ? `_${form.qr.guestName}様` : ''}`)}
+									class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-white"
+								>QRをPNGで保存</button>
 							</div>
 							<p class="mt-3 text-xs text-stone-500">
 								手入力コード <span class="font-mono text-base tracking-widest text-brand-900">{form.qr.shortCode}</span>
@@ -540,6 +546,11 @@
 											onclick={() => copy(guestUrl(t.token))}
 											class="mt-2 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
 										>{copied === guestUrl(t.token) ? '✔ コピーしました' : 'URLをコピー'}</button>
+										<button
+											type="button"
+											onclick={() => downloadQrPng(guestUrl(t.token), `客室案内QR_${t.roomCode}${t.guestName ? `_${t.guestName}様` : ''}`)}
+											class="mt-2 ml-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+										>QRをPNGで保存</button>
 										<p class="mt-3 text-xs text-stone-500">
 											手入力コード <span class="font-mono text-base tracking-widest text-brand-900">{t.shortCode}</span>
 										</p>
