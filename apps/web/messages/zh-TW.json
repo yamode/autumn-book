@@ -745,6 +745,7 @@
   "inroom_header": "客房資訊",
   "inroom_welcome": "歡迎 {name}",
   "inroom_welcome_generic": "歡迎蒞臨",
+  "inroom_demo_badge": "這是範例（展示用）客房指南。在此預約的包租浴池為實際預約。",
   "inroom_room": "客房",
   "inroom_checkout": "退房",
   "inroom_bath_manage": "查看或更改",

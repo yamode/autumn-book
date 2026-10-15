@@ -745,6 +745,7 @@
   "inroom_header": "In-Room Guide",
   "inroom_welcome": "Welcome, {name}",
   "inroom_welcome_generic": "Welcome",
+  "inroom_demo_badge": "This is a sample (demo) room guide. Private bath reservations made here are real.",
   "inroom_room": "Room",
   "inroom_checkout": "Check-out",
   "inroom_bath_manage": "View or change",

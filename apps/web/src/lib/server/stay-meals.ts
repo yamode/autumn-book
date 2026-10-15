@@ -38,6 +38,19 @@ export function normalizeStayMeals(raw: unknown): StayMeal[] {
 }
 
 /** 滞在トークンの食事時間。読めなければ空（トップの表示を止めない） */
+/**
+ * 見本（デモ）の館内図のトークン用の食事時間（2026-10-15）。滞在に紐づかないので、見本の値を出す。
+ * 夕食＝今日 18:00・朝食＝明日 08:00（施設の日付＝JST）。
+ */
+export function demoStayMeals(now = new Date()): StayMeal[] {
+  const today = new Date(now.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const tomorrow = new Date(now.getTime() + 33 * 3600 * 1000).toISOString().slice(0, 10);
+  return [
+    { date: today, type: 'dinner', time: '18:00', status: 'confirmed' },
+    { date: tomorrow, type: 'breakfast', time: '08:00', status: 'confirmed' }
+  ];
+}
+
 export async function sbStayMealTimes(token: string): Promise<StayMeal[]> {
   const { data, error } = await supa().rpc('stay_meal_times', { p_token: token });
   if (error) return [];

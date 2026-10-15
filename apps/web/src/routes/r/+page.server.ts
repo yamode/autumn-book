@@ -3,7 +3,7 @@ import { resolveStay, listHouseGuidesFor, getFacilityById } from '$lib/server/st
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
-import { sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
+import { demoStayMeals, sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
 import { intercomStatusFor } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
@@ -118,7 +118,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		DATA_SOURCE === 'supabase' ? sbBathContext(token).catch(() => null) : Promise.resolve(null),
 		intercomStatusFor(token),
 		// PMS で決まった食事時間（夕食・朝食）。読めなければ出さない
-		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
+		// 見本（デモ）の館内図は滞在に紐づかないので、見本の食事時間を出す
+		stay.isDemo ? Promise.resolve(demoStayMeals()) : DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
 		loadInroomSettings(stay.facility.id)
 	]);
 

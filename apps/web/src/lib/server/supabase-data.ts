@@ -1137,6 +1137,7 @@ interface StayInfoRow {
 	guest_name: string | null;
 	valid_from: string;
 	valid_to: string;
+	is_demo?: boolean;
 	facility: { id: string; slug: string; name: string; phone: string | null };
 }
 
@@ -1156,7 +1157,8 @@ export async function sbResolveStay(token: string): Promise<StayInfo | null> {
 			slug: r.facility.slug,
 			name: r.facility.name,
 			phone: r.facility.phone ?? undefined
-		}
+		},
+		isDemo: r.is_demo === true
 	};
 }
 

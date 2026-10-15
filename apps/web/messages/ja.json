@@ -745,6 +745,7 @@
   "inroom_header": "客室のご案内",
   "inroom_welcome": "ようこそ {name} 様",
   "inroom_welcome_generic": "ようこそいらっしゃいませ",
+  "inroom_demo_badge": "見本（デモ）の客室案内です。貸切風呂のご予約は実際の予約になります。",
   "inroom_room": "お部屋",
   "inroom_checkout": "チェックアウト",
   "inroom_bath_manage": "確認・変更",

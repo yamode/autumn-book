@@ -654,4 +654,6 @@ export interface StayInfo {
 	validFrom: string; // ISO
 	validTo: string; // ISO
 	facility: { id: string; slug: string; name: string; phone?: string };
+	/** 見本（デモ）の館内図のトークン（PMS で刷る見本・滞在に紐づかない・2026-10-15） */
+	isDemo?: boolean;
 }

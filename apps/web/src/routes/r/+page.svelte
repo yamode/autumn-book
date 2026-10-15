@@ -155,6 +155,10 @@
 		{:else}
 		<!-- ============ 滞在カード ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card">
+			{#if data.stay.isDemo}
+				<!-- 見本（デモ）の館内図から開いた（PMS で刷る見本・2026-10-15）。貸切風呂の予約は本番の台帳に入る -->
+				<p class="mb-2 inline-block rounded bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">{m.inroom_demo_badge()}</p>
+			{/if}
 			<p class="text-[15px] font-medium text-stone-900">
 				{#if data.stay.guestName}
 					{m.inroom_welcome({ name: data.stay.guestName })}
