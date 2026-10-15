@@ -7,7 +7,11 @@
 	import { tick } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	let { autofocus = false }: { autofocus?: boolean } = $props();
+	let {
+		autofocus = false,
+		/** コードを入れたあとに開く案内ページ（ページ1件だけの QR から来たとき・2026-10-15） */
+		guideId = null
+	}: { autofocus?: boolean; guideId?: string | null } = $props();
 
 	const LEN = 6;
 	const LEGACY_LEN = 8;
@@ -79,6 +83,7 @@
 		};
 	}}
 >
+	{#if guideId}<input type="hidden" name="g" value={guideId} />{/if}
 	<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 	<div class="relative mx-auto w-fit" class:shake onclick={() => inputEl?.focus()}>
 		<div class={`flex ${slots > LEN ? 'gap-1.5' : 'gap-2'}`} aria-hidden="true">

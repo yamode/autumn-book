@@ -6,7 +6,8 @@ import {
 	deleteHouseGuide,
 	issueStayToken,
 	revokeStayToken,
-	addAuditLog
+	addAuditLog,
+	facilities
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
@@ -85,7 +86,9 @@ export const load: PageServerLoad = async (event) => {
 			intercomError = e instanceof Error ? e.message : String(e);
 		}
 	}
-	const base = { includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, intercom, intercomCalls, intercomError };
+	// 案内ページ1件だけの QR（/r/start?f=<slug>&g=<id>）に入れる施設の slug（2026-10-15）
+	const facilitySlug = facilities.find((f) => f.id === currentFacility.id)?.slug ?? '';
+	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, intercom, intercomCalls, intercomError };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);

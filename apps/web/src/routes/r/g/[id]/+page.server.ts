@@ -25,9 +25,14 @@ export const load: PageServerLoad = async ({ cookies, params }) => {
 	const guides =
 		DATA_SOURCE === 'supabase' ? await sbListHouseGuides(facilityId, locale) : listHouseGuidesFor(facilityId, locale);
 
-	// コードなし（館内案内だけ）では Wi-Fi などは見せない（browseVisibleGuide）
-	const guide = guides.find((g) => g.id === params.id && (stay || browseVisibleGuide(g)));
+	const guide = guides.find((g) => g.id === params.id);
 	if (!guide) redirect(303, '/r');
+	// コードなし（館内案内だけ）では Wi-Fi などは見せない（browseVisibleGuide）。
+	// ページ1件だけの QR から来た方のために、コードを入れたらこのページへ戻す（?g・2026-10-15）
+	if (!stay && !browseVisibleGuide(guide)) {
+		const q = new URLSearchParams({ ...(browse?.slug ? { f: browse.slug } : {}), g: guide.id });
+		redirect(303, `/r?${q.toString()}`);
+	}
 
 	return { stay, facilitySlug: stay?.facility.slug ?? browse?.slug ?? '', guide, headerTitle: guide.title, headerBack: '/r' };
 };

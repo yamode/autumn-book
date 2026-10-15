@@ -21,6 +21,15 @@
 	// 一覧の行ごとに QR を開くためのトグル（開いた行の id）
 	let openQr = $state<string | null>(null);
 
+	// 館内案内のページ1件だけの QR（ルームサービス・Wi-Fi など。2026-10-15 指示）。
+	// /r/g/<id> を直接入れると、初めて読むスマホには Cookie が無くトップへ戻されるため、入口QR（/r/start）に
+	// ページ（g）を添えて、施設を覚えさせてからそのページへ着地させる。Wi-Fi などコードが要るページは、コードを入れたあとに開く
+	let openGuideQr = $state<string | null>(null);
+	const guideQrUrl = (guideId: string) => {
+		const q = new URLSearchParams({ ...(data.facilitySlug ? { f: data.facilitySlug } : {}), g: guideId });
+		return `${page.url.origin}/r/start?${q.toString()}`;
+	};
+
 	// ご予約の行から公開URLを直接新しいタブで開く。発行済みならそのまま、未発行なら issueQr で発行（取り出し）してから開く。
 	// ポップアップブロックを避けるため、クリックの瞬間に空のタブを開いておき、URL が決まってから移動させる。
 	let openingStay = $state<string | null>(null);
@@ -270,10 +279,45 @@
 						{#if form?.guideSaved === g.id}<span class="text-xs text-emerald-600">✔ 保存</span>{/if}
 					</div>
 					<MarkdownEditor value={g.body} name="body" rows={8} />
-					<div class="flex items-center gap-2">
+					<div class="flex items-center gap-3">
 						<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
+						<button
+							type="button"
+							onclick={() => (openGuideQr = openGuideQr === g.id ? null : g.id)}
+							class="text-xs text-brand-700 hover:text-brand-800">▣ このページのQR</button>
 					</div>
 				</form>
+				{#if openGuideQr === g.id}
+					{@const url = guideQrUrl(g.id)}
+					<div class="mt-3 flex flex-wrap items-start gap-4 rounded-lg bg-stone-50 p-3">
+						<div class="rounded-lg bg-white p-2">
+							<QrCode value={url} px={168} label={`${g.title} のQRコード`} />
+						</div>
+						<div class="min-w-0 flex-1 text-sm">
+							<p class="font-medium text-stone-800">{g.title}</p>
+							<p class="mt-1 text-xs text-stone-500">読み取ると、客室案内のトップではなく、このページが直接開きます。</p>
+							{#if !g.isPublished}
+								<p class="mt-1 text-xs text-amber-700">⚠ 非公開のため、今は読み取ってもトップが開きます。公開にしてからお使いください。</p>
+							{/if}
+							{#if g.section === 'wifi'}
+								<p class="mt-1 text-xs text-stone-500">Wi-Fi のページは、6桁のコードを入れたあとに開きます。</p>
+							{/if}
+							<p class="mt-2 break-all font-mono text-xs text-stone-700">{url}</p>
+							<div class="mt-2 flex flex-wrap items-center gap-2">
+								<button
+									type="button"
+									onclick={() => downloadQrPng(url, `客室案内QR_${data.currentFacility.name}_${g.title}`)}
+									class="rounded-md bg-brand-800 px-3 py-1.5 text-xs text-white hover:bg-brand-700"
+								>QRをPNGで保存</button>
+								<button
+									type="button"
+									onclick={() => copy(url)}
+									class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
+								>{copied === url ? '✔ コピーしました' : 'URLをコピー'}</button>
+							</div>
+						</div>
+					</div>
+				{/if}
 				<form method="POST" action="?/guideDelete" use:enhance class="mt-2 border-t border-stone-100 pt-2">
 					<input type="hidden" name="guideId" value={g.id} />
 					<button

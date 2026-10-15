@@ -13,7 +13,7 @@ import {
 	type EndedFacility
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
-import { browseFacility, browseVisibleGuide } from '$lib/server/inroom-browse';
+import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/inroom-browse';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -117,9 +117,11 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 
 export const actions: Actions = {
 	// 手入力の6桁コード（2026-10-09 以前の発行分は8桁）→ トークン交換 → Cookie 発行（stay-claim.ts・貸切風呂のコード入力と共通）
+	// ページ1件だけの QR（Wi-Fi など）から来た方は、入れたあとそのページへ戻す（g・2026-10-15）
 	claim: async (event) => {
+		const guideId = guideIdParam((await event.request.clone().formData()).get('g'));
 		const failed = await claimStayFromForm(event);
 		if (failed) return failed;
-		redirect(303, '/r');
+		redirect(303, guideId ? `/r/g/${encodeURIComponent(guideId)}` : '/r');
 	}
 };

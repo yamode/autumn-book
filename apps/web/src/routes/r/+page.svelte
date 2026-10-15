@@ -13,8 +13,12 @@
 	import { inroomCardImage, inroomHero, inroomIcon } from '$lib/inroom-visuals';
 	import IntercomSheet from '$lib/components/IntercomSheet.svelte';
 	import StayCodeInput from '$lib/components/StayCodeInput.svelte';
+	import { page } from '$app/state';
 
 	let { data, form } = $props();
+
+	// ページ1件だけの QR（Wi-Fi など）から来て、コードを求められている（入れたらそのページへ戻す・2026-10-15）
+	const returnGuideId = $derived(page.url.searchParams.get('g'));
 
 	// 客室内線（Wi-Fi データ通話）。/admin/inroom で施設ごとに ON にしたときだけ出す
 	let sheetOpen = $state(false);
@@ -138,7 +142,7 @@
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
 				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_browse_code_title()}</h1>
 				<p class="mt-1 text-sm text-stone-500">{m.inroom_browse_code_help()}</p>
-				<StayCodeInput autofocus={false} />
+				<StayCodeInput autofocus={!!returnGuideId} guideId={returnGuideId} />
 			</section>
 		{:else}
 		<!-- ============ 滞在カード ============ -->
@@ -326,7 +330,7 @@
 
 		{#snippet codeForm(autofocus: boolean)}
 			<!-- 6桁のマスに打つ入力欄（そろったら自動で送る・違えば揺らして打ち直し。2026-10-09） -->
-			<StayCodeInput {autofocus} />
+			<StayCodeInput {autofocus} guideId={returnGuideId} />
 		{/snippet}
 
 		{#if data.expired}

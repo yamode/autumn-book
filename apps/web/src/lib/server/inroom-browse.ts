@@ -19,6 +19,13 @@ export function rememberBrowseFacility(cookies: Cookies, slug: string | null, lo
 /** コードなしでは出さない案内（Wi-Fi はコードを入れてから・2026-10-10 指示。入口QRの URL は施設名だけで推測できるため） */
 export const browseVisibleGuide = (g: { section: string }) => g.section !== 'wifi';
 
+/**
+ * 案内ページ1件だけの QR（/r/start?f=<slug>&g=<id>・2026-10-15 指示）の g を検査する。
+ * ルームサービス・Wi-Fi などを、その紙の近くに貼って直接開かせる用。形が変なら null（トップへ）
+ */
+export const guideIdParam = (v: FormDataEntryValue | string | null | undefined): string | null =>
+	typeof v === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(v) ? v : null;
+
 /** 見ている施設（URL の f が優先・無ければ Cookie）。解決できなければ null */
 export function browseFacility(cookies: Cookies, slugParam: string | null, locale: Locale): EndedFacility | null {
 	return endedFacilityBySlug(slugParam, locale) ?? endedFacilityBySlug(cookies.get(BROWSE_FACILITY_COOKIE), locale);
