@@ -142,6 +142,8 @@
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
 				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_browse_code_title()}</h1>
 				<p class="mt-1 text-sm text-stone-500">{m.inroom_browse_code_help()}</p>
+				<!-- 食事時間は PMS の伺い書から入るため、チェックイン直後はまだ出ないことがある（2026-10-15 指示） -->
+				<p class="mt-1 text-xs text-stone-400">※ {m.inroom_meals_delay_note()}</p>
 				<StayCodeInput autofocus={!!returnGuideId} guideId={returnGuideId} />
 			</section>
 		{:else}
@@ -193,6 +195,7 @@
 					{/each}
 				</div>
 				<p class="mt-2 text-xs text-stone-500">{m.inroom_meals_note()}</p>
+				<p class="mt-1 text-xs text-stone-400">※ {m.inroom_meals_delay_note()}</p>
 			</section>
 		{/if}
 
