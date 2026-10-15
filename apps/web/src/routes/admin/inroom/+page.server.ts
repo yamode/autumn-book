@@ -26,6 +26,7 @@ import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$
 import type { Locale } from '$lib/types';
 import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
 import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
+import { loadInroomSettings, saveInroomSettingsDemo, sbSaveInroomSettings } from '$lib/server/inroom-settings';
 import { sbAdminIntercom, sbListIntercomCalls, sbSaveIntercom, type AdminIntercom, type BusinessHours, type IntercomCall } from '$lib/server/intercom';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -70,7 +71,7 @@ export const load: PageServerLoad = async (event) => {
 			staysError = e instanceof Error ? e.message : String(e);
 		}
 	}
-	const snsLinks = await loadSnsLinks(currentFacility.id);
+	const [snsLinks, inroomSettings] = await Promise.all([loadSnsLinks(currentFacility.id), loadInroomSettings(currentFacility.id)]);
 	// 内線（客室からの Wi-Fi 通話）の設定と通話ログ。実データに繋がっているときだけ
 	let intercom: AdminIntercom | null = null;
 	let intercomCalls: IntercomCall[] = [];
@@ -88,7 +89,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 	// 案内ページ1件だけの QR（/r/start?f=<slug>&g=<id>）に入れる施設の slug（2026-10-15）
 	const facilitySlug = facilities.find((f) => f.id === currentFacility.id)?.slug ?? '';
-	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, intercom, intercomCalls, intercomError };
+	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, inroomSettings, intercom, intercomCalls, intercomError };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);
@@ -208,6 +209,24 @@ export const actions: Actions = {
 			saveSnsLinksDemo(facilityId, links);
 		}
 		return { snsSaved: true };
+	},
+
+	// ---- 客室案内の表示設定（admin のみ・2026-10-15）----
+	inroomSettingsSave: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const settings = { showFrontCall: form.get('showFrontCall') === 'on' };
+		if (useSupabaseAdmin) {
+			try {
+				await sbSaveInroomSettings(createSupabaseServerClient(event), facilityId, settings);
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+			}
+		} else {
+			saveInroomSettingsDemo(facilityId, settings);
+		}
+		return { inroomSettingsSaved: true };
 	},
 
 	// ---- 館内案内（admin のみ）----

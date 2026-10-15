@@ -232,6 +232,19 @@
 		{/if}
 	</section>
 
+	<!-- ===== 客室案内のメニューの表示（施設ごと・2026-10-15） ===== -->
+	{#if form?.inroomSettingsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">表示設定を保存しました。</p>{/if}
+	<form method="POST" action="?/inroomSettingsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+		<h2 class="font-medium text-stone-700">🧭 客室案内のメニュー — {data.currentFacility.name}</h2>
+		<label class="mt-3 flex items-center gap-2">
+			<input type="checkbox" name="showFrontCall" checked={data.inroomSettings.showFrontCall} class="h-4 w-4" />
+			<span>「フロントへお電話」を出す</span>
+		</label>
+		<p class="mt-1 text-xs text-stone-400">外しても、内線（Wi-Fi通話）がつながらないときの電話のご案内は出ます。</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+	</form>
+
 	<!-- ===== フッターの SNS ボタン（施設ごと。空欄のボタンは出さない） ===== -->
 	{#if form?.snsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">SNSのURLを保存しました。</p>{/if}
 	<form method="POST" action="?/snsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">

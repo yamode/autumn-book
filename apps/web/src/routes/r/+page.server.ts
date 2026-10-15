@@ -14,6 +14,7 @@ import {
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
 import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/inroom-browse';
+import { loadInroomSettings } from '$lib/server/inroom-settings';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -50,7 +51,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		endedFacility: null,
 		banners: [],
 		// コードなしで見る館内案内（入口QRから・2026-10-10）。施設が分からなければ null（コード入力だけ出す）
-		browse: null as { name: string; slug: string; phone: string } | null
+		browse: null as { name: string; slug: string; phone: string } | null,
+		// 「フロントへお電話」メニューを出すか（管理画面で施設ごとに切り替え・2026-10-15）
+		showFrontCall: true
 	};
 
 	if (!token) {
@@ -60,12 +63,16 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 入口QRから来た（URL の f か、入口QRで覚えた Cookie）ときは、館内案内を先に見せ、トップでコードを入れてもらう
 		const entryFacility = browseFacility(cookies, url.searchParams.get('f'), locale);
 		if (!entryFacility) return noStay;
-		const guides = await (DATA_SOURCE === 'supabase'
-			? sbListHouseGuides(entryFacility.id, locale)
-			: Promise.resolve(listHouseGuidesFor(entryFacility.id, locale))
-		).catch(() => []);
+		const [guides, settings] = await Promise.all([
+			(DATA_SOURCE === 'supabase'
+				? sbListHouseGuides(entryFacility.id, locale)
+				: Promise.resolve(listHouseGuidesFor(entryFacility.id, locale))
+			).catch(() => []),
+			loadInroomSettings(entryFacility.id)
+		]);
 		return {
 			...noStay,
+			showFrontCall: settings.showFrontCall,
 			// Wi-Fi はコードを入れてから（browseVisibleGuide）
 			guides: guides.filter(browseVisibleGuide),
 			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
@@ -82,14 +89,15 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		);
 	}
 
-	const [guides, bathContext, intercom, meals] = await Promise.all([
+	const [guides, bathContext, intercom, meals, settings] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
 		DATA_SOURCE === 'supabase' ? sbBathContext(token).catch(() => null) : Promise.resolve(null),
 		intercomStatusFor(token),
 		// PMS で決まった食事時間（夕食・朝食）。読めなければ出さない
-		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[])
+		DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
+		loadInroomSettings(stay.facility.id)
 	]);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
@@ -111,7 +119,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		invalidQr,
 		endedFacility: null,
 		banners: [],
-		browse: null
+		browse: null,
+		showFrontCall: settings.showFrontCall
 	};
 };
 

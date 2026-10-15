@@ -250,7 +250,8 @@
 					<span class="text-[10px] text-stone-400">{!intercom.open ? m.intercom_closed() : !intercom.online ? m.intercom_offline() : m.intercom_call_sub()}</span>
 				</button>
 			{/if}
-			{#if facilityPhone}
+			<!-- 管理画面で施設ごとに出さない設定にできる（2026-10-15）。内線シートの「電話でご連絡ください」は残す -->
+			{#if facilityPhone && data.showFrontCall !== false}
 				<div class="my-3 w-px bg-stone-200"></div>
 				<a href={telHref(facilityPhone)} class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
 					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
