@@ -57,9 +57,9 @@
 			<span class="text-stone-400">Scan the QR code with your phone ／ 請用手機掃描</span>
 		</p>
 
-		<!-- 手入力コード -->
+		<!-- 滞在コード（QRが読めないときに手入力） -->
 		<div class="mt-4 rounded-xl bg-stone-50 py-3">
-			<p class="text-xs text-stone-500">QRが読み取れない場合 / Enter code manually</p>
+			<p class="text-xs text-stone-500">QRが読み取れない場合の滞在コード / Stay code ／ 住宿代碼</p>
 			<p class="mt-1 text-xs text-stone-500">{data.manualUrl}</p>
 			<p class="font-mono text-3xl font-bold tracking-[0.35em] text-brand-900">{data.token.shortCode}</p>
 		</div>

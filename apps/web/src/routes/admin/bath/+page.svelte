@@ -212,7 +212,7 @@
 							<p class="font-medium">{form.qr.roomCode}</p>
 							<p class="mt-1 break-all text-xs text-stone-500">{qrUrl}</p>
 							<p class="mt-2 text-stone-600">
-								手入力コード <span class="font-mono text-base tracking-widest">{form.qr.short_code}</span>
+								滞在コード <span class="font-mono text-base tracking-widest">{form.qr.short_code}</span>
 							</p>
 							<p class="mt-2 text-xs text-stone-400">
 								QR を読むと httpOnly Cookie に交換され、URL からトークンは消えます。

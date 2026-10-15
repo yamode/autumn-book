@@ -131,7 +131,7 @@
 
 <h1 class="mb-1 text-lg font-bold text-stone-800">客室案内 — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">
-	ゲストの客室スマホに表示する滞在カード・館内案内と、チェックイン時にお渡しする印刷スリップ（QR＋手入力コード）を管理します。
+	ゲストの客室スマホに表示する滞在カード・館内案内と、チェックイン時にお渡しする印刷スリップ（QR＋滞在コード）を管理します。
 </p>
 
 {#if data.loadError}
@@ -313,7 +313,7 @@
 								<p class="mt-1 text-xs text-amber-700">⚠ 非公開のため、今は読み取ってもトップが開きます。公開にしてからお使いください。</p>
 							{/if}
 							{#if g.section === 'wifi'}
-								<p class="mt-1 text-xs text-stone-500">Wi-Fi のページは、6桁のコードを入れたあとに開きます。</p>
+								<p class="mt-1 text-xs text-stone-500">Wi-Fi のページは、6桁の滞在コードを入れたあとに開きます。</p>
 							{/if}
 							<p class="mt-2 break-all font-mono text-xs text-stone-700">{url}</p>
 							<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -384,7 +384,7 @@
 					<span class="ml-1 font-medium text-stone-800">{form.issued.roomCode}</span>
 				</div>
 				<div>
-					<span class="text-xs text-stone-500">手入力コード</span>
+					<span class="text-xs text-stone-500">滞在コード</span>
 					<span class="ml-1 font-mono text-xl font-bold tracking-widest text-brand-900">{form.issued.shortCode}</span>
 				</div>
 				<a
@@ -495,7 +495,7 @@
 								>QRをPNGで保存</button>
 							</div>
 							<p class="mt-3 text-xs text-stone-500">
-								手入力コード <span class="font-mono text-base tracking-widest text-brand-900">{form.qr.shortCode}</span>
+								滞在コード <span class="font-mono text-base tracking-widest text-brand-900">{form.qr.shortCode}</span>
 							</p>
 							<p class="mt-2 text-xs text-stone-400">
 								開くとトークンは httpOnly Cookie に交換され、URL から消えます。確認用に開いた場合は、
@@ -609,7 +609,7 @@
 											class="mt-2 ml-1 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50"
 										>QRをPNGで保存</button>
 										<p class="mt-3 text-xs text-stone-500">
-											手入力コード <span class="font-mono text-base tracking-widest text-brand-900">{t.shortCode}</span>
+											滞在コード <span class="font-mono text-base tracking-widest text-brand-900">{t.shortCode}</span>
 										</p>
 									</div>
 								</div>
