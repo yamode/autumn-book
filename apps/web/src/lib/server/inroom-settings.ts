@@ -4,12 +4,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
+import { normalizeSpringBands, type SpringBand } from '$lib/spring-level';
 
 // 全館の湯量の残量目安（スタッフが手入力）。percent が null（未入力）なら出さない
-export type SpringLevel = { enabled: boolean; percent: number | null; note: string; updatedAt: string | null };
+// bands は段階ごとの言葉・色（null なら既定・$lib/spring-level.ts）
+export type SpringLevel = { enabled: boolean; percent: number | null; note: string; updatedAt: string | null; bands: SpringBand[] | null };
 export type InroomSettings = { showFrontCall: boolean; springLevel: SpringLevel };
 
-const SPRING_DEFAULT: SpringLevel = { enabled: false, percent: null, note: '', updatedAt: null };
+const SPRING_DEFAULT: SpringLevel = { enabled: false, percent: null, note: '', updatedAt: null, bands: null };
 const DEFAULTS: InroomSettings = { showFrontCall: true, springLevel: SPRING_DEFAULT };
 const demoStore = new Map<string, InroomSettings>();
 
@@ -19,7 +21,7 @@ export async function loadInroomSettings(facilityId: string): Promise<InroomSett
 	try {
 		const { data, error } = await supa()
 			.from('inroom_settings')
-			.select('show_front_call, spring_level_enabled, spring_level_percent, spring_level_note, spring_level_updated_at')
+			.select('show_front_call, spring_level_enabled, spring_level_percent, spring_level_note, spring_level_updated_at, spring_level_bands')
 			.eq('facility_id', uuid)
 			.maybeSingle();
 		if (error || !data) return DEFAULTS;
@@ -29,7 +31,8 @@ export async function loadInroomSettings(facilityId: string): Promise<InroomSett
 				enabled: data.spring_level_enabled === true,
 				percent: typeof data.spring_level_percent === 'number' ? data.spring_level_percent : null,
 				note: data.spring_level_note ?? '',
-				updatedAt: data.spring_level_updated_at ?? null
+				updatedAt: data.spring_level_updated_at ?? null,
+				bands: normalizeSpringBands(data.spring_level_bands)
 			}
 		};
 	} catch {
@@ -54,7 +57,7 @@ export async function sbSaveInroomSettings(client: SupabaseClient, facilityId: s
 	if (error) throw new Error('客室案内の表示設定を保存できませんでした（' + error.message + '）');
 }
 
-type SpringInput = { enabled: boolean; percent: number | null; note: string };
+type SpringInput = { enabled: boolean; percent: number | null; note: string; bands: SpringBand[] | null };
 
 export function saveSpringLevelDemo(facilityId: string, s: SpringInput): void {
 	const cur = demoStore.get(facilityId) ?? DEFAULTS;
@@ -68,7 +71,8 @@ export async function sbSaveSpringLevel(client: SupabaseClient, facilityId: stri
 		p_facility_id: FACILITY_UUID[facilityId] ?? facilityId,
 		p_enabled: s.enabled,
 		p_percent: s.percent,
-		p_note: s.note
+		p_note: s.note,
+		p_bands: s.bands
 	});
 	if (error) throw new Error('湯量の目安を保存できませんでした（' + error.message + '）');
 }

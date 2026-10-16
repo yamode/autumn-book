@@ -43,6 +43,7 @@ import {
 	type AdminInroomNotice
 } from '$lib/server/inroom-notices';
 import { sbAdminIntercom, sbListIntercomCalls, sbSaveIntercom, type AdminIntercom, type BusinessHours, type IntercomCall } from '$lib/server/intercom';
+import { normalizeSpringBands } from '$lib/spring-level';
 import type { Actions, PageServerLoad } from './$types';
 
 // 本番系（実データ + 実認証）でのみ Supabase アダプタを使う。
@@ -269,7 +270,18 @@ export const actions: Actions = {
 		}
 		const note = String(form.get('note') ?? '').trim();
 		if (note.length > 300) return fail(400, { message: '説明は300文字以内で入力してください' });
-		const input = { enabled: form.get('enabled') === 'on', percent, note };
+		// 段階ごとの表現（画面で組み立てた JSON・2026-10-17）。空・壊れていれば既定に戻す
+		let bandsRaw: unknown = null;
+		try {
+			bandsRaw = JSON.parse(String(form.get('bands') ?? 'null'));
+		} catch {
+			return fail(400, { message: '表現の設定を読み取れませんでした。もう一度お試しください' });
+		}
+		const bands = form.get('bandsDefault') === 'on' ? null : normalizeSpringBands(bandsRaw);
+		if (bands && !bands.some((b) => b.min === 0)) {
+			return fail(400, { message: '表現は「0%以上」の段階を必ず1つ入れてください（残量が少ないときに出す言葉です）' });
+		}
+		const input = { enabled: form.get('enabled') === 'on', percent, note, bands };
 		if (useSupabaseAdmin) {
 			try {
 				await sbSaveSpringLevel(createSupabaseServerClient(event), facilityId, input);

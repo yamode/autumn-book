@@ -8,8 +8,49 @@
 	import { downloadQrPng } from '$lib/qr-png';
 	import type { StayToken } from '$lib/types';
 	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
+	import {
+		DEFAULT_SPRING_BANDS,
+		SPRING_TONES,
+		SPRING_TONE_BAR,
+		SPRING_TONE_LABEL,
+		springBandFor,
+		springBandRange,
+		type SpringBand
+	} from '$lib/spring-level';
 
 	let { data, form } = $props();
+
+	// ---- 全館の湯量（2026-10-17）。表現（段階ごとの言葉と色）の編集 ----
+	const cloneBands = (b: SpringBand[] | null) => (b ?? DEFAULT_SPRING_BANDS).map((x) => ({ ...x }));
+	// 初期値は下の $effect で data から入れる
+	let springPercent = $state<number | null>(null);
+	let springBands = $state<SpringBand[]>(cloneBands(null));
+	let springBandsDefault = $state(false);
+	// 保存・施設の切り替えで読み直したら、編集欄も読み直す
+	$effect(() => {
+		springPercent = data.inroomSettings.springLevel.percent;
+		springBands = cloneBands(data.inroomSettings.springLevel.bands);
+		springBandsDefault = false;
+	});
+	const springPreview = $derived.by(() => {
+		if (springPercent === null || springPercent === undefined || String(springPercent) === '') return null;
+		const level = Math.max(0, Math.min(100, Math.round(Number(springPercent))));
+		if (!Number.isFinite(level)) return null;
+		const b = springBandFor(level, springBandsDefault ? null : springBands);
+		return { level, ja: b.ja, tone: b.tone };
+	});
+	function setBandMin(i: number, v: string) {
+		const n = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+		springBands[i].min = n;
+		springBands = [...springBands].sort((a, b) => a.min - b.min);
+	}
+	function addBand() {
+		const top = springBands.at(-1)?.min ?? 0;
+		springBands = [...springBands, { min: Math.min(100, top + 10), ja: '', en: '', zh: '', tone: 'green' as const }].sort((a, b) => a.min - b.min);
+	}
+	function removeBand(i: number) {
+		springBands = springBands.filter((_, j) => j !== i);
+	}
 
 	// お知らせ・湯量の日時（JST・月日 時分）
 	const fmtNoticeTime = (iso: string) =>
@@ -261,7 +302,7 @@
 		</label>
 		<label class="mt-3 block">
 			<span class="text-xs text-stone-600">残りの目安（%）</span>
-			<span class="mt-1 flex items-center gap-2">
+			<span class="mt-1 flex flex-wrap items-center gap-2">
 				<input
 					type="number"
 					name="percent"
@@ -269,13 +310,86 @@
 					max="100"
 					step="1"
 					inputmode="numeric"
-					value={data.inroomSettings.springLevel.percent ?? ''}
+					bind:value={springPercent}
 					class="w-28 rounded-md border border-stone-300 px-3 py-2 text-right"
 				/>
 				<span class="text-stone-500">%</span>
-				<span class="text-xs text-stone-400">60%以上「たっぷり」・30%以上「ふつう」・それ未満「少なめ」と表示</span>
+				{#if springPreview}
+					<!-- いまの値でお客様に見える表示（下の「表現」の設定どおり） -->
+					<span class="flex items-center gap-2 text-xs text-stone-500">
+						→
+						<span class="inline-block h-1.5 w-24 overflow-hidden rounded-full bg-stone-100">
+							<span class="block h-full rounded-full {SPRING_TONE_BAR[springPreview.tone]}" style="width:{springPreview.level}%"></span>
+						</span>
+						<span class="font-medium text-stone-700">{springPreview.level}% {springPreview.ja}</span>
+					</span>
+				{/if}
 			</span>
 		</label>
+
+		<!-- 表現（段階ごとの言葉と色・2026-10-17 指示）。残量に応じて言葉とバーの色が変わる -->
+		<div class="mt-4 rounded-lg border border-stone-200 p-3">
+			<p class="text-xs font-medium text-stone-600">表現（残量ごとの言葉とバーの色）</p>
+			<p class="mt-0.5 text-xs text-stone-400">
+				「何%から」を入れると、次の段階の手前までがその段階になります（例：1% から → 1〜29%）。0% から の段階は必ず1つ入れてください。英語・繁体字が空なら日本語を出します。
+			</p>
+			<input type="hidden" name="bands" value={JSON.stringify(springBands)} />
+			<div class="mt-2 overflow-x-auto">
+				<table class="w-full min-w-[640px] text-xs">
+					<thead class="text-left text-stone-500">
+						<tr>
+							<th class="py-1 pr-2 font-normal">何%から</th>
+							<th class="py-1 pr-2 font-normal">範囲</th>
+							<th class="py-1 pr-2 font-normal">日本語</th>
+							<th class="py-1 pr-2 font-normal">英語</th>
+							<th class="py-1 pr-2 font-normal">繁体字</th>
+							<th class="py-1 pr-2 font-normal">色</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each springBands as b, i (i)}
+							<tr class="align-middle">
+								<td class="py-1 pr-2">
+									<input
+										type="number"
+										min="0"
+										max="100"
+										step="1"
+										value={b.min}
+										onchange={(e) => setBandMin(i, e.currentTarget.value)}
+										class="w-16 rounded border border-stone-300 px-2 py-1 text-right"
+									/>
+								</td>
+								<td class="whitespace-nowrap py-1 pr-2 tabular-nums text-stone-500">{springBandRange(springBands, i)}</td>
+								<td class="py-1 pr-2"><input bind:value={b.ja} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
+								<td class="py-1 pr-2"><input bind:value={b.en} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
+								<td class="py-1 pr-2"><input bind:value={b.zh} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
+								<td class="py-1 pr-2">
+									<span class="flex items-center gap-1.5">
+										<span class="inline-block h-3 w-3 shrink-0 rounded-full {SPRING_TONE_BAR[b.tone]}"></span>
+										<select bind:value={b.tone} class="rounded border border-stone-300 px-1.5 py-1">
+											{#each SPRING_TONES as t (t)}<option value={t}>{SPRING_TONE_LABEL[t]}</option>{/each}
+										</select>
+									</span>
+								</td>
+								<td class="py-1">
+									<button type="button" onclick={() => removeBand(i)} disabled={springBands.length <= 1} class="whitespace-nowrap text-stone-400 hover:text-red-600 disabled:opacity-30">削除</button>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+			<div class="mt-2 flex flex-wrap gap-3 text-xs">
+				<button type="button" onclick={addBand} disabled={springBands.length >= 10} class="rounded border border-stone-300 px-2.5 py-1 text-stone-700 hover:bg-stone-50 disabled:opacity-40">＋ 段階を足す</button>
+				<label class="flex items-center gap-1.5 text-stone-500">
+					<input type="checkbox" name="bandsDefault" bind:checked={springBandsDefault} class="h-3.5 w-3.5" />
+					既定の表現に戻す（保存すると上の設定は消えます）
+				</label>
+			</div>
+		</div>
+
 		<label class="mt-3 block">
 			<span class="text-xs text-stone-600">ⓘ を押したときの説明（何を表しているか・任意・日本語のお客様向け）</span>
 			<textarea

@@ -121,7 +121,7 @@
 
 	<!-- ============ 全館の湯量の残りの目安（管理画面で手入力・出す設定の施設だけ。2026-10-17）============ -->
 	{#if data.springLevel && data.springLevel.percent !== null}
-		<SpringLevelBand percent={data.springLevel.percent} note={data.springLevel.note} updatedAt={data.springLevel.updatedAt} />
+		<SpringLevelBand percent={data.springLevel.percent} note={data.springLevel.note} updatedAt={data.springLevel.updatedAt} bands={data.springLevel.bands} />
 	{/if}
 
 	<!-- ============ 全客室へのお知らせ（この端末で「確認しました」を押すまで出す。2026-10-17）============ -->

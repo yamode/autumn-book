@@ -4,20 +4,24 @@
 	// 説明は管理画面で書き換えられる（日本語）。空のとき・日本語以外では既定文を出す。
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { SPRING_TONE_BAR, springBandFor, springBandLabel, type SpringBand } from '$lib/spring-level';
 
-	let { percent, note = '', updatedAt = null }: { percent: number; note?: string; updatedAt?: string | null } = $props();
+	let {
+		percent,
+		note = '',
+		updatedAt = null,
+		bands = null
+	}: { percent: number; note?: string; updatedAt?: string | null; bands?: SpringBand[] | null } = $props();
 
 	let open = $state(false);
 	let hovered = false;
 	let wrap = $state<HTMLElement | null>(null);
 
 	const level = $derived(Math.max(0, Math.min(100, Math.round(percent))));
-	// 目安の言葉と色（多い・ふつう・少なめ）
-	const tier = $derived(level >= 60 ? 'high' : level >= 30 ? 'mid' : 'low');
-	const stateLabel = $derived(
-		tier === 'high' ? m.spring_level_high() : tier === 'mid' ? m.spring_level_mid() : m.spring_level_low()
-	);
-	const barColor = $derived(tier === 'high' ? 'bg-sky-400/80' : tier === 'mid' ? 'bg-emerald-400/80' : 'bg-amber-400/90');
+	// 目安の言葉と色（施設ごとに管理画面で決めた段階・無ければ既定。$lib/spring-level.ts）
+	const band = $derived(springBandFor(level, bands));
+	const stateLabel = $derived(springBandLabel(band, getLocale()));
+	const barColor = $derived(SPRING_TONE_BAR[band.tone]);
 	const tip = $derived(getLocale() === 'ja' && note.trim() ? note.trim() : m.spring_level_default_note());
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
