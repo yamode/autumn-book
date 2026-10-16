@@ -4,7 +4,7 @@
   //   部屋ごとの専用料金（泊ごとの見出し → 部屋ごとの行）・このプランの専用特典（1 段目）・会員特典（2 段目）・
   //   獲得予定ポイントの目安・キャンセル方式 と「予約へ進む」だけ。
   // 宿泊者・支払方法・ポイント利用の入力は公式の予約確認（/booking/hold）で行う（「予約へ進む」で全室を仮押さえして移る）。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { page } from '$app/stores';
   import { partnerTitle } from '$lib/partner-title';
   import { groupNightLines, partnerNightLines, partnerNightLineText } from '$lib/partner-booking';

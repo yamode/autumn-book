@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { deserialize, enhance } from '$app/forms';
+	import { deserialize } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { invalidateAll } from '$app/navigation';
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
@@ -39,10 +40,12 @@
 		const b = springBandFor(level, springBandsDefault ? null : springBands);
 		return { level, ja: b.ja, tone: b.tone };
 	});
-	function setBandMin(i: number, v: string) {
-		const n = Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
-		springBands[i].min = n;
-		springBands = [...springBands].sort((a, b) => a.min - b.min);
+	// 「何%から」を入れ終えたら 0〜100 の整数にそろえて並べ直す。
+	// 欄は bind:value にする（value だけだと、保存後に use:enhance がフォームをリセットしたとき空に戻る・2026-10-17）
+	function sortBands() {
+		springBands = springBands
+			.map((b) => ({ ...b, min: Math.max(0, Math.min(100, Math.round(Number(b.min) || 0))) }))
+			.sort((a, b) => a.min - b.min);
 	}
 	function addBand() {
 		const top = springBands.at(-1)?.min ?? 0;
@@ -51,6 +54,11 @@
 	function removeBand(i: number) {
 		springBands = springBands.filter((_, j) => j !== i);
 	}
+
+	// 編集中のお知らせ（id）
+	let editingNotice = $state<string | null>(null);
+	// ISO → datetime-local の値（JST）
+	const toJstLocal = (iso: string | null) => (iso ? new Date(Date.parse(iso) + 9 * 60 * 60 * 1000).toISOString().slice(0, 16) : '');
 
 	// お知らせ・湯量の日時（JST・月日 時分）
 	const fmtNoticeTime = (iso: string) =>
@@ -227,6 +235,7 @@
 
 	<!-- ===== 全客室へのお知らせ（2026-10-17）。開いた端末で「確認しました」を押すまで、客室案内のトップに出る ===== -->
 	{#if form?.noticeSent}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">お知らせを出しました。客室案内を開いている端末に表示されます。</p>{/if}
+	{#if form?.noticeEdited}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.noticeEdited === 'reshow' ? 'お知らせを出し直しました。確認済みの端末にも、もう一度表示されます。' : 'お知らせを書き換えました。まだ確認していない端末に、新しい内容で表示されます。'}</p>{/if}
 	{#if form?.noticeEnded}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">お知らせを取り下げました。</p>{/if}
 	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
 		<h2 class="font-medium text-stone-700">📣 全客室へのお知らせ — {data.currentFacility.name}</h2>
@@ -234,7 +243,7 @@
 			客室案内を開いた全員に、トップでお知らせを出します（断水・停電・催しのご案内など）。
 			お客様がその端末で「確認しました」を押すと、その端末には次から出ません。掲載中に新しく開いた方にも出ます。
 		</p>
-		<form method="POST" action="?/noticeSend" use:enhance class="mt-3 space-y-3">
+		<form method="POST" action="?/noticeSend" data-reset use:enhance class="mt-3 space-y-3">
 			<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 			<label class="block">
 				<span class="text-xs text-stone-600">タイトル（任意）</span>
@@ -268,10 +277,42 @@
 									{fmtNoticeTime(n.startsAt)} 〜 {n.endedAt ? `${fmtNoticeTime(n.endedAt)}（取り下げ）` : n.endsAt ? fmtNoticeTime(n.endsAt) : '取り下げまで'}
 								</span>
 							</p>
-							{#if n.title}<p class="mt-1 font-medium text-stone-800">{n.title}</p>{/if}
-							<p class="mt-0.5 line-clamp-2 whitespace-pre-line text-stone-600">{n.body}</p>
+							{#if editingNotice === n.id}
+								<!-- 掲載中のお知らせの編集（2026-10-17）。既定は書き換えるだけ（確認済みの端末には出ない） -->
+								<form
+									method="POST"
+									action="?/noticeSend"
+									use:enhance={() => async ({ result, update }) => {
+										await update();
+										if (result.type === 'success') editingNotice = null;
+									}}
+									class="mt-2 space-y-2"
+								>
+									<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+									<input type="hidden" name="noticeId" value={n.id} />
+									<input name="title" maxlength="100" value={n.title} placeholder="タイトル（任意）" class="w-full rounded-md border border-stone-300 px-3 py-1.5" />
+									<textarea name="body" required maxlength="2000" rows="5" value={n.body} class="w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
+									<label class="block">
+										<span class="text-xs text-stone-600">掲載終了（空なら取り下げるまで）</span>
+										<input type="datetime-local" name="endsAt" value={toJstLocal(n.endsAt)} class="mt-1 rounded-md border border-stone-300 px-3 py-1.5" />
+									</label>
+									<label class="flex items-start gap-2 text-xs text-stone-600">
+										<input type="checkbox" name="reshow" class="mt-0.5 h-3.5 w-3.5" />
+										<span>「確認しました」を押した端末にも、もう一度出す（大事な変更のとき。今のお知らせを取り下げ、新しいお知らせとして出し直します）</span>
+									</label>
+									<div class="flex gap-2">
+										<button type="submit" class="rounded-lg bg-brand-800 px-4 py-1.5 text-sm text-white hover:bg-brand-700">保存する</button>
+										<button type="button" onclick={() => (editingNotice = null)} class="rounded-lg border border-stone-300 px-4 py-1.5 text-sm text-stone-600 hover:bg-stone-50">やめる</button>
+									</div>
+								</form>
+							{:else}
+								{#if n.title}<p class="mt-1 font-medium text-stone-800">{n.title}</p>{/if}
+								<p class="mt-0.5 line-clamp-2 whitespace-pre-line text-stone-600">{n.body}</p>
+							{/if}
 						</div>
-						{#if n.live}
+						{#if n.live && editingNotice !== n.id}
+							<div class="flex shrink-0 flex-col items-end gap-1.5">
+							<button type="button" onclick={() => (editingNotice = n.id)} class="text-xs text-stone-500 hover:text-brand-800">編集</button>
 							<form method="POST" action="?/noticeEnd" use:enhance class="shrink-0">
 								<input type="hidden" name="noticeId" value={n.id} />
 								<button
@@ -280,6 +321,7 @@
 									onclick={confirmSubmit({ message: 'このお知らせを取り下げます。まだ確認していない端末にも出なくなります。', confirmLabel: '取り下げる' })}
 								>取り下げる</button>
 							</form>
+							</div>
 						{/if}
 					</li>
 				{/each}
@@ -356,8 +398,8 @@
 										min="0"
 										max="100"
 										step="1"
-										value={b.min}
-										onchange={(e) => setBandMin(i, e.currentTarget.value)}
+										bind:value={b.min}
+										onchange={sortBands}
 										class="w-16 rounded border border-stone-300 px-2 py-1 text-right"
 									/>
 								</td>
@@ -582,7 +624,7 @@
 	</div>
 
 	<!-- 新規追加 -->
-	<form method="POST" action="?/guideAdd" use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
+	<form method="POST" action="?/guideAdd" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 		<h2 class="mb-2 font-medium text-stone-700">＋ 新しい館内案内を追加</h2>
 		<div class="flex flex-wrap items-center gap-2">

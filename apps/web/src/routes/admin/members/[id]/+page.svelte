@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { formatDateJa } from '$lib/format';
 

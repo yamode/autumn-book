@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 
 	let { data, form } = $props();
@@ -188,7 +188,7 @@
 		{/each}
 	</div>
 
-	<form method="POST" action="?/add" use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
+	<form method="POST" action="?/add" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 		<h2 class="font-medium text-stone-700">＋ 新しい FAQ を追加</h2>
 		<div class="mt-2 flex flex-wrap gap-2">
@@ -237,7 +237,7 @@
 				</div>
 
 				{#if creatingFor === g.ids[0]}
-					<form method="POST" action="?/add" use:enhance class="mt-3 rounded-lg border border-dashed border-stone-300 p-3">
+					<form method="POST" action="?/add" data-reset use:enhance class="mt-3 rounded-lg border border-dashed border-stone-300 p-3">
 						<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 						<input type="hidden" name="queryIds" value={g.ids.join(',')} />
 						<div class="flex flex-wrap gap-2">

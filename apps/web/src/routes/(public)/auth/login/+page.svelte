@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import Turnstile from '$lib/components/Turnstile.svelte';

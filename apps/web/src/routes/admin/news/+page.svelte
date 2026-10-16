@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 
 	let { data, form } = $props();
@@ -14,7 +14,7 @@
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 
 <!-- 新規作成 -->
-<form method="POST" action="?/add" use:enhance class="mb-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
+<form method="POST" action="?/add" data-reset use:enhance class="mb-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 	<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 	<h2 class="font-medium text-stone-700">＋ 新しいお知らせ</h2>
 	<div class="mt-2 flex flex-wrap gap-2">

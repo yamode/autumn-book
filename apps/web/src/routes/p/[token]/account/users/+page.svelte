@@ -1,7 +1,7 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → ユーザー管理（マスタユーザーだけ）。子ユーザーの作成・停止/再開・削除・設定リンクの再送。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { ACCOUNT_STATUS_LABELS } from '$lib/partner-account-roles';
   import type { PageData } from './$types';
@@ -177,7 +177,7 @@
   </ul>
 
   <!-- 子ユーザーの作成 -->
-  <form method="POST" action="?/create" use:enhance={createSubmit} class="mt-8 rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
+  <form method="POST" action="?/create" data-reset use:enhance={createSubmit} class="mt-8 rounded-xl border border-stone-200 bg-white p-5 sm:p-6">
     <h3 class="text-lg font-bold">ユーザーを追加する</h3>
     <p class="mt-1 text-sm leading-6 text-stone-600">入力したメールアドレスへ、パスワード設定のご案内をお送りします。</p>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">

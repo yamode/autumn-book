@@ -4,7 +4,7 @@
   //   「予約へ進む」は POST /p/<token>/book（default action）に rooms JSON を送り、全室を一括で仮押さえする（成功は公式の予約確認へ）。
   //   失敗（満室・回数制限・支払方法）は理由をバーの上に出し、かごはそのまま残す。Turnstile は付けない（Q4）。
   //   上限（min(4, 最大室数)）に達したら、バーの上に「1 回のご予約は 4 室まで…」を出す。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { goto } from '$app/navigation';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { cartGroups, cartSummary } from '$lib/multi-room';

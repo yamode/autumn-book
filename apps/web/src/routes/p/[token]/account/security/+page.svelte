@@ -1,7 +1,7 @@
 <script lang="ts">
   // 取引先専用ページ: アカウント → セキュリティ（ログイン中の端末・ログイン履歴・他端末ログアウト。docs/auth-hardening.md §4.4）
   import { partnerTitle } from '$lib/partner-title';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';

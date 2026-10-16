@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { formatPrice, formatDate } from '$lib/format';
 	import { addDays } from '@autumn-book/core';
 	import * as m from '$lib/paraglide/messages';

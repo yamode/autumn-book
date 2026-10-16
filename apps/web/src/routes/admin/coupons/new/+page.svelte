@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 
 	import CouponFields from '$lib/components/admin/CouponFields.svelte';
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';

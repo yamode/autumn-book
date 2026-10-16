@@ -3,7 +3,7 @@
   // 室数を問わず（1 室の予約も）。日程は変えない（日程は amend/）。料金は専用料金（料金カレンダーと同じ）で計算し直す。
   // ① 人数（GET ?adults=）→ ② 候補（押すと ?room=&plan=&name= で見積）→ ③ 見積 → 確定（POST ?/confirm → 予約詳細へ 303）。
   // 候補・見積の部品（AmendRoomPicker / AmendRoomReview）は公式マイページと共用（文言は paraglide。/p は日本語で出る）。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { partnerTitle } from '$lib/partner-title';
   import AmendRoomPicker, { type AmendRoomPickerItem } from '$lib/components/booking/AmendRoomPicker.svelte';
   import AmendRoomReview from '$lib/components/booking/AmendRoomReview.svelte';

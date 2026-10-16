@@ -2,7 +2,7 @@
 	// マイページ → お支払いカード（保存カード・2026-10-07・docs/saved-cards.md §6.2）。
 	// 一覧・追加（モーダル・StripePayment の mode='setup'・Apple Pay 等は出さない）・削除・既定。
 	// ここでの同意はカードの「保存」の同意。お支払いはご予約ごとの画面で確認していただく。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { invalidateAll } from '$app/navigation';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import { renderForumBody } from '$lib/forum-format';
 

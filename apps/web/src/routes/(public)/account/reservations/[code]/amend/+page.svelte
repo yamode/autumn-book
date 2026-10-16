@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { formatPrice, formatDate, formatDateLong, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
 

@@ -2,7 +2,7 @@
   // 取引先ページ: 団体予約の照会の詳細（条件・料金・宿の回答・やりとり）と、承諾・辞退・取り下げ（docs/partner-group-booking.md §6・§8.1・§14.3）。
   // 承諾で既存の予約（PB-…）ができ、以後は予約一覧で扱う。確認モードではボタンを出さない（サーバも 403）。
   import { partnerTitle } from '$lib/partner-title';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';

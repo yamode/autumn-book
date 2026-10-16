@@ -35,6 +35,7 @@ import {
 } from '$lib/server/inroom-settings';
 import {
 	endNoticeDemo,
+	updateNoticeDemo,
 	listNoticesDemo,
 	saveNoticeDemo,
 	sbEndNotice,
@@ -315,15 +316,29 @@ export const actions: Actions = {
 			if (d.getTime() <= Date.now()) return fail(400, { message: '掲載終了は今より後の日時にしてください' });
 			endsAt = d.toISOString();
 		}
+		// 掲載中のお知らせの編集（2026-10-17）。既定は書き換えるだけ（確認済みの端末には出さない）。
+		// 「確認済みの端末にももう一度出す」なら、今のを取り下げて新しいお知らせとして出し直す（既読は id ごとのため）
+		const editId = String(form.get('noticeId') ?? '');
+		const reshow = form.get('reshow') === 'on';
+		const input = { title, body, endsAt };
 		if (useSupabaseAdmin) {
 			try {
-				await sbSaveNotice(createSupabaseServerClient(event), facilityId, { title, body, endsAt });
+				const client = createSupabaseServerClient(event);
+				if (editId && !reshow) await sbSaveNotice(client, facilityId, input, editId);
+				else {
+					if (editId) await sbEndNotice(client, editId);
+					await sbSaveNotice(client, facilityId, input);
+				}
 			} catch (e) {
 				return fail(500, { message: e instanceof Error ? e.message : 'お知らせを出せませんでした' });
 			}
+		} else if (editId && !reshow) {
+			updateNoticeDemo(editId, input);
 		} else {
-			saveNoticeDemo(facilityId, { title, body, endsAt });
+			if (editId) endNoticeDemo(editId);
+			saveNoticeDemo(facilityId, input);
 		}
+		if (editId) return { noticeEdited: reshow ? 'reshow' : 'quiet' };
 		return { noticeSent: true };
 	},
 	noticeEnd: async (event) => {

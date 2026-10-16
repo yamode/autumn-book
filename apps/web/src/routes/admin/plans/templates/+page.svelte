@@ -2,7 +2,7 @@
 	// 管理画面: プラン紹介文のテンプレートブロック。
 	// 紹介文に {{tpl:キー}} と書くと、表示するときにここの見出し・本文に置き換わる（テンプレートを直せば全プランが変わる）。
 	// 種類「特典」は本文に出さず、予約ボタンの横のバナー（押すとモーダル）に出す。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { templateToken } from '$lib/plan-templates';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 

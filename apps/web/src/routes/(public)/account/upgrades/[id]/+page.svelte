@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { invalidateAll } from '$app/navigation';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import { UPGRADE_STATUS } from '$lib/room-upgrades';

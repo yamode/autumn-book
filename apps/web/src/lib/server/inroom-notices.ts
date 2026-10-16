@@ -63,6 +63,11 @@ export function saveNoticeDemo(facilityId: string, input: { title: string; body:
 	});
 }
 
+export function updateNoticeDemo(id: string, input: { title: string; body: string; endsAt: string | null }): void {
+	const n = demoNotices.find((x) => x.id === id);
+	if (n) Object.assign(n, input);
+}
+
 export function endNoticeDemo(id: string): void {
 	const n = demoNotices.find((x) => x.id === id);
 	if (n && !n.endedAt) n.endedAt = new Date().toISOString();
@@ -83,11 +88,13 @@ export async function sbListNotices(client: SupabaseClient, facilityId: string):
 export async function sbSaveNotice(
 	client: SupabaseClient,
 	facilityId: string,
-	input: { title: string; body: string; endsAt: string | null }
+	input: { title: string; body: string; endsAt: string | null },
+	/** 書き換えるお知らせ（無ければ新しく出す） */
+	id: string | null = null
 ): Promise<void> {
 	const { error } = await client.schema('book').rpc('admin_save_inroom_notice', {
 		p_facility_id: FACILITY_UUID[facilityId] ?? facilityId,
-		p_id: null,
+		p_id: id,
 		p_title: input.title,
 		p_body: input.body,
 		p_ends_at: input.endsAt

@@ -2,7 +2,7 @@
   // お子様の受け入れ（施設で1件・全プラン共通）。区分と内容の表＋補足。
   // 区分も内容も自由入力（例: 小学生高学年 → 「大人料金の70%」「受入不可」）。内容が空の行は保存しない。
   import { untrack } from 'svelte';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
 
   let { data, form } = $props();
 

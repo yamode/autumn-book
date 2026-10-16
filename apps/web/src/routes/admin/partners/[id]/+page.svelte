@@ -7,7 +7,8 @@
   import { describeGroupStay, GROUP_STATUS_LABELS_STAFF } from '$lib/partner-group';
   import { untrack } from 'svelte';
   import { LOGIN_LOG_LABELS } from '$lib/partner-login-security';
-  import { deserialize, enhance } from '$app/forms';
+  import { deserialize } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { navigating } from '$app/state';
   import { streamed } from '$lib/streamed.svelte';

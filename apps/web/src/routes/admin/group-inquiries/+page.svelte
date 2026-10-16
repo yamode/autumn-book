@@ -2,7 +2,7 @@
 	// 管理画面: 団体照会の一覧（全取引先・docs/partner-group-booking.md §8.3・§14.4）。
 	// 束（取引先が一括送信したまとまり）ごとに1枚のカード。束に対して「全件を受けられるにする」（自動計算額で一括回答）。
 	// 料金を変える回答・受付枠超過の承認は詳細（./[id]）で管理者が行う。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { describeGroupStay, describeRoomAdults, type GroupInquiryStatus } from '$lib/partner-group';

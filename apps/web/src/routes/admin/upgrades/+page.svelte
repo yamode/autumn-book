@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { UPGRADE_CHANNEL, UPGRADE_STATUS } from '$lib/room-upgrades';
 	let { data, form } = $props();
 	let busy = $state(false);

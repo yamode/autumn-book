@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import ForumPostView from '$lib/components/ForumPostView.svelte';
 	import ForumCta from '$lib/components/ForumCta.svelte';
@@ -46,7 +46,7 @@
 					<a href="/account/community?next={encodeURIComponent(`/community/threads/${data.thread.id}`)}" class="underline">{m.forum_nickname_settings_heading()}</a>
 				</p>
 			{/if}
-			<form method="POST" action="?/reply" use:enhance class="rounded-2xl border border-stone-200 bg-white p-4">
+			<form method="POST" action="?/reply" data-reset use:enhance class="rounded-2xl border border-stone-200 bg-white p-4">
 				<h2 class="mb-2 text-sm font-medium text-stone-700">{m.forum_reply_heading()}</h2>
 				<textarea name="body" rows="4" required maxlength="4000" placeholder={m.forum_body_ph()} class="w-full rounded-md border border-stone-300 px-3 py-2 text-sm">{form?.body ?? ''}</textarea>
 				<button type="submit" class="mt-2 rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.forum_submit_reply()}</button>

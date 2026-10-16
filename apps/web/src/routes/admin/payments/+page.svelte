@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 	import { EARLY_PREPAY_MAX_TIERS, percentText, RECOMMENDED_EARLY_PREPAY_TIERS, type EarlyPrepayMode } from '$lib/early-prepay';
 	import { ADMIN_FEE_MAX_PERCENT, adminFeeNotice, STRIPE_FEE_PERCENT } from '$lib/cancel-admin-fee';

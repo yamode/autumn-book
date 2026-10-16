@@ -1,7 +1,7 @@
 <script lang="ts">
   // 取引先の共通ログイン画面（docs/partner-common-login.md）。全取引先で同じURL。
   // 見た目は取引先ページ（/p/<token> のログイン）と同じ部品。取引先が分からないので施設名・取引先名は出さず、差し色は既定。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { goto } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
   import Turnstile from '$lib/components/Turnstile.svelte';

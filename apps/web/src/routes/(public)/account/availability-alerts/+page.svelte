@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { untrack } from 'svelte';
 	import { ALERT_STATUS, type AlertConditions } from '$lib/availability-alerts';
 	import { addDays } from '$lib/format';
@@ -30,7 +30,7 @@
 {:else if data.loadError}
 	<p role="alert" class="mt-6 rounded-xl bg-red-50 p-5 text-red-700">空室通知を読み込めませんでした。時間をおいて画面を更新してください。</p>
 {:else}
-	<form method="POST" action="?/create" class="mt-6 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6" use:enhance={() => { busy = true; return async ({ update }) => { try { await update(); } finally { busy = false; } }; }}>
+	<form method="POST" action="?/create" data-reset class="mt-6 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6" use:enhance={() => { busy = true; return async ({ update }) => { try { await update(); } finally { busy = false; } }; }}>
 		<h3 class="font-semibold text-brand-900">新しい空室通知を登録</h3>
 		<p class="mt-1 text-sm text-stone-500">登録中 {activeCount} / 10件 · 1室ごとに同じ人数・お部屋・プランの条件です。</p>
 		<fieldset disabled={busy || activeCount >= 10} class="mt-4 grid gap-4 sm:grid-cols-2">

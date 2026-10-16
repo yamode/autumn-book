@@ -8,7 +8,7 @@
 	// ご予約かは QR のトークンで確定しており、控えはこの画面の「貸切風呂の予約時間」で確認できるため。
 	// ただし入力欄が無いと「部屋も名前も入れずに大丈夫？」と不安になるので、STEP1 の先頭に
 	// お名前・お部屋を表示専用で出しておく。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 

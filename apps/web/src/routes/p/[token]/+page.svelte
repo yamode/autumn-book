@@ -1,6 +1,6 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { onDestroy, onMount } from 'svelte';

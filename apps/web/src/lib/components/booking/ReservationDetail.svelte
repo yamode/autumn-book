@@ -73,7 +73,7 @@
 </script>
 
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { formatPrice, formatDateLong, formatDate, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
 	import type { AmendmentKind } from '$lib/types';

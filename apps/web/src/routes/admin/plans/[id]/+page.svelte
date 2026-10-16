@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import ContentEditor from '$lib/components/admin/ContentEditor.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { formatYen } from '$lib/format';

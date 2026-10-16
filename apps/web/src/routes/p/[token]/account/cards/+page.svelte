@@ -4,7 +4,7 @@
   // 登録したカードは御社の全ユーザーが予約時に選べる。登録はモーダル（StripePayment・mode='setup'・Apple Pay 等は出さない・N4）、
   // 削除・既定は form action。請求はご予約ごとの同意に基づく（ここでの同意は「保存」の同意）。
   // 登録・削除・既定はマスタユーザーだけ＋本人確認（docs/auth-hardening.md §5.1・S4）。子ユーザーには一覧だけを出す。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
   import type { SubmitFunction } from '@sveltejs/kit';

@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 管理画面: 予約時の注意事項（施設ごと・Markdown）。取引先ページの予約入力の左カラム下部に出る。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 
 	let { data, form } = $props();

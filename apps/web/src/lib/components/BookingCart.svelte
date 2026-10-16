@@ -4,7 +4,7 @@
 	//   「予約へ進む」はかごの施設のプラン詳細の ?/hold に rooms JSON を送り、全室を一括で仮押さえする（成功は予約入力へ）。
 	//   失敗（満室・回数制限・支払方法）は理由をバーの上に出し、かごはそのまま残す。
 	//   4 室入っているときはバーの上に「1 回のご予約は 4 室まで…」を出す。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { goto } from '$app/navigation';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import { cartGroups, cartIsFull, cartRoomsPayload, cartSummary, MAX_ROOMS_PER_BOOKING, type CartItem } from '$lib/multi-room';

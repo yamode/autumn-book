@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 
 	let { data, form } = $props();
 
@@ -67,7 +67,7 @@
 {/if}
 
 {#if creating}
-	<form method="POST" action="?/create" use:enhance={() => { billingSubmitted = false; }} class="mb-4 space-y-3 rounded-xl border border-stone-200 bg-white p-5">
+	<form method="POST" action="?/create" data-reset use:enhance={() => { billingSubmitted = false; }} class="mb-4 space-y-3 rounded-xl border border-stone-200 bg-white p-5">
 		<h2 class="text-sm font-bold text-stone-700">取引先を追加</h2>
 		<div class="grid gap-3 sm:grid-cols-[1fr_220px]">
 			<label class="block text-sm">

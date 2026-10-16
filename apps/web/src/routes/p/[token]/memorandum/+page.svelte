@@ -2,7 +2,7 @@
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: 覚書。宿が書いた取引条件のまとめ（本文）と、宿・貴社の双方が保存するファイル。
   // 本文はプレーンテキスト（改行はそのまま表示。リンクの自動変換はしない）。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { page } from '$app/stores';
   import { streamed } from '$lib/streamed.svelte';
   import type { PageData } from './$types';

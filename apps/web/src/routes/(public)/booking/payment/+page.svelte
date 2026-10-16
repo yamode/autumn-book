@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import Stepper from '$lib/components/Stepper.svelte';
 	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';

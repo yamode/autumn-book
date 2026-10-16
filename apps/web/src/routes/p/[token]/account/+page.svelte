@@ -2,7 +2,7 @@
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → 担当者情報。予約担当者（ご予約者）の情報を設定する（見出し・タブは ./+layout.svelte）。
   // ここで保存した内容が予約フォームの「予約者」に最初から入り、予約確認などのメールはこのメールアドレスへ届く。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import type { PartnerBooker } from '$lib/partner-booking';
   import { streamed } from '$lib/streamed.svelte';
   import type { PageData } from './$types';

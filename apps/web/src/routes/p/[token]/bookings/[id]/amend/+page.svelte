@@ -2,7 +2,7 @@
   // 特別会員の専用ページ: ご予約の日程変更（docs/vip-member-page.md §13.4.3b・Q9）。
   // 日付・泊数だけ（全室同時。お部屋・プラン・人数はそのまま）。変更後の金額は専用ページの料金（料金カレンダーと同じ）で計算し直す。
   // ① 新しい日程を選ぶ（GET で見積）→ ② お部屋ごとの今と変更後・差額 → ③ 変更を確定（POST ?/amend）。
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { partnerTitle } from '$lib/partner-title';
 
   let { data, form } = $props();

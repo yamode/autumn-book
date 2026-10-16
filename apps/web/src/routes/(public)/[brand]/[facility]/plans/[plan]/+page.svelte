@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import PhotoGallery from '$lib/components/PhotoGallery.svelte';

@@ -2,7 +2,7 @@
 	// 管理画面: 団体照会の詳細と回答（docs/partner-group-booking.md §8.3・§7.2・§7.3・§7.5・§14.4）。
 	// 左に条件とやりとり、右に在庫（泊ごとの残室）・料金（自動計算の内訳）・受付枠（月別）。下に回答フォーム。
 	// 料金の変更（1名あたりの単価・合計）と「受付枠を超えても受ける」は管理者だけ（form.isAdmin・サーバでも確かめる）。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { untrack } from 'svelte';
 	import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
 	import { creditMonthLabel } from '$lib/partner-credit';

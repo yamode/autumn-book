@@ -3,7 +3,7 @@
 	//
 	// 未入力の欄はアプリの既定文言がそのまま出るので、**空のまま保存しても画面は壊れない**。
 	// 写真の追加・削除・並べ替えは押した時点で保存する（持ち帰って消えるのを防ぐ）。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { page } from '$app/stores';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import type { BathContent, BathContentKey } from '$lib/private-bath-content';
@@ -124,7 +124,7 @@
 
 			<form
 				method="POST"
-				action="?/addPhoto"
+				action="?/addPhoto" data-reset
 				enctype="multipart/form-data"
 				use:enhance
 				class="mt-3 flex flex-wrap items-center gap-2">

@@ -1,6 +1,6 @@
 <script lang="ts">
 	// 管理画面: 予約時に聞く項目のテンプレート（施設ごと）。プランの編集画面で「テンプレート」を選ぶと、ここの項目を聞く。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import type { BookingQuestion } from '$lib/booking-questions';

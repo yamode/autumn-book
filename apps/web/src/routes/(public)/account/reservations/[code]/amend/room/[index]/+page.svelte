@@ -2,7 +2,7 @@
 	// 公式マイページ: 2 室以上のご予約の「このお部屋を変更」（部屋タイプ・プラン・人数・公式の複数室 M3・docs/official-multi-room.md §17.3.1・§18.5）。
 	// ① 人数（GET ?adults=）→ ② 候補（プラン × 部屋タイプ。押すと ?offer=planId__roomTypeId で見積）→ ③ 見積 → 確定（POST ?/confirm → 予約詳細へ 303）。
 	// 日程は変えない（日程は amend/ の全室同時の変更）。規則（締切・回数・ペナルティ・在庫・定員・支払方法）は DB が確かめる。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { formatPrice } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
 	import AmendRoomPicker, { type AmendRoomPickerItem } from '$lib/components/booking/AmendRoomPicker.svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import ContentEditor from '$lib/components/admin/ContentEditor.svelte';
 
 	let { data, form } = $props();

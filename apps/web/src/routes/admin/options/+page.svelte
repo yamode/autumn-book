@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 
 	let { data, form } = $props();
 
@@ -167,7 +167,7 @@
 </div>
 
 <!-- 新規追加 -->
-<form method="POST" action="?/add" use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
+<form method="POST" action="?/add" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 	<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 	<h2 class="font-medium text-stone-700">＋ 新しいオプションを追加</h2>
 	<div class="mt-2 flex flex-wrap gap-2">

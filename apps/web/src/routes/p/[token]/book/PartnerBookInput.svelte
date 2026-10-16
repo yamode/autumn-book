@@ -7,7 +7,7 @@
   import PartnerTermsTable from '$lib/components/PartnerTermsTable.svelte';
   import MarkdownView from '$lib/components/MarkdownView.svelte';
   import PerkModal, { type PerkModalContent } from '$lib/components/PerkModal.svelte';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { page } from '$app/stores';
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import StripePayment from '$lib/components/payment/StripePayment.svelte';

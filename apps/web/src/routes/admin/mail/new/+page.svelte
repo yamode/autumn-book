@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 
 	let { form } = $props();

@@ -2,7 +2,7 @@
   // 特別会員の専用ページ: 対象の会員（docs/vip-member-page.md §4.2・§13.4.5）。
   //   対象の会員（self）: 会員を検索して追加・外す（admin のみ・?/searchMembers・?/addMember・?/removeMember）
   //   家族として使える会員（family）: PMS の家族でつながっている会員。読み取りのみ（家族の編集は PMS で）
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import { streamed } from '$lib/streamed.svelte';
   import { MEMBER_RANK_LABELS } from '$lib/partner-member-page';

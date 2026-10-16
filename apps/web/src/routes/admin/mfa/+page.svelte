@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	let { data, form } = $props();
 	let loading = $state(false);
 	// 選ばれている認証アプリ（ふつうは 1 つ）

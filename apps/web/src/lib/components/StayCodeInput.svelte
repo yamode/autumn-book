@@ -3,7 +3,7 @@
 	// 見た目は6つのマス。実体は1つの <input>（数字キーボード・ワンタイムコードの自動入力・貼り付けに対応）をマスの上に
 	// 透明で重ね、打った数字をマスに映す。6桁そろったら少し待って自動で送る（2026-10-09 以前に発行した8桁の番号は
 	// 続けて打てばマスが8つに増え、8桁そろった時点で送る）。違っていたら揺らして消し、すぐ打ち直せるようにする。
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { tick } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 

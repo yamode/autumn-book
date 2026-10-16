@@ -6,7 +6,8 @@
 	// ■ 写真は選んだ時点で ?/upload に上げて URL だけ受け取り、一覧・ブロックへ差し込む。
 	//   **行への書き込みは「保存」を押したとき**（他の編集と一緒に書く）。
 	// ■ 保存後はページ側が {#key updatedAt} で作り直すので、正規化後の値で表示し直される。
-	import { enhance, deserialize } from '$app/forms';
+	import { deserialize } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { invalidateAll } from '$app/navigation';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import type { PlanTextTemplate } from '$lib/plan-templates';

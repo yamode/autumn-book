@@ -1,6 +1,6 @@
 <script lang="ts">
   import { partnerTitle } from '$lib/partner-title';
-  import { enhance } from '$app/forms';
+  import { enhance } from '$lib/enhance';
   import Turnstile from '$lib/components/Turnstile.svelte';
   import type { PageData } from './$types';
 

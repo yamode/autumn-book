@@ -30,7 +30,7 @@
 	// 見積（?/quoteRoom）→ 理由（必須）・必要なら「キャンセル料がかかる期間・締切後でも変更する」（force）→ 確定（?/amendRoom・監査ログ amend_booking_rooms）。
 	// 回数とオンライン決済済みは force でも越えない（DB が確かめる）。専用ページ経由の予約は専用料金で計算し直す（サーバが泊明細と特典を付ける）。
 	import { untrack } from 'svelte';
-	import { enhance } from '$app/forms';
+	import { enhance } from '$lib/enhance';
 	import { formatYen, formatDateLongJa } from '$lib/format';
 	import { nightGroups, policyRulesOf } from '$lib/multi-room';
 
