@@ -411,6 +411,54 @@ export async function createHoldGroup(
 }
 
 /**
+ * 1 室だけの仮押さえ（book.create_hold の 9 引数版・service_role 専用）。
+ *
+ * 公開アプリ yamado-one 用（auth-hardening.md S8）。アプリは Supabase を直叩きせず
+ * /api/hold を経由し、そこからこの関数を呼ぶ。こうすると Web と同じ Cloudflare KV の
+ * IP 別制限（hold-rate-limit.ts）を通せる。
+ *
+ * ⚠ p_client_key は**必ずサーバが決めた接続元 IP** を渡すこと。呼び出し側から受け取った値を
+ * そのまま流すと、DB 側の接続元別の上限（10 分 20 件）を回し放題になる。
+ * （anon が直接呼べる 7 引数版は、DB の中で request.headers の cf-connecting-ip から
+ *   組み立てている。p_client_key を引数で受け取る署名が service_role 専用なのはそのため）
+ *
+ * 会員の紐付けは auth.uid() ではなく memberUserId（呼び出し側が検証済みトークンから渡す）。
+ */
+export async function createHoldSingle(
+	sessionId: string,
+	planId: string,
+	roomTypeId: string,
+	checkin: string,
+	nights: number,
+	adults: number,
+	opts: { clientKey: string; memberUserId: string | null; locale?: string }
+): Promise<{ holdId: string; expiresAt: string; quote: Quote } | { error: CreateHoldGroupError }> {
+	const sb = partnerServiceClient();
+	if (!sb) throw new Error('create_hold: service_role クライアントが未設定');
+	const { data, error } = await sb.schema('book').rpc('create_hold', {
+		p_session_id: sessionId,
+		p_rate_plan_id: planId,
+		p_room_type_id: roomTypeId,
+		p_checkin: checkin,
+		p_nights: nights,
+		p_adults: adults,
+		p_client_key: holdClientKey(opts.clientKey),
+		p_member_user_id: opts.memberUserId,
+		p_locale: opts.locale ?? 'ja'
+	});
+	if (error) {
+		if (/invalid_params|invalid_locale|plan_not_found|room_not_found|not_sellable|min_stay_violation/.test(error.message)) {
+			return { error: 'invalid' };
+		}
+		const kind = holdErrorKind(error.message);
+		if (kind) return { error: kind };
+		throw error;
+	}
+	const r = data as { hold_id: string; expires_at: string; quote: Parameters<typeof mapQuote>[0] };
+	return { holdId: r.hold_id, expiresAt: r.expires_at, quote: mapQuote(r.quote) };
+}
+
+/**
  * 仮押さえの束を画面から解放する（book.release_hold_group・service_role 専用）。
  * 本人のセッションのものだけ。支払を始めた束は DB が解放しない（'in_payment'）。
  * 失敗しても画面の遷移は止めない（期限で解放される）。
