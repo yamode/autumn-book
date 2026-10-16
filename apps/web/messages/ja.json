@@ -812,7 +812,7 @@
   "bath_price_free": "ご利用は無料です。",
   "bath_price_paid": "ご利用料金 {price}（ご滞在のお会計に加算されます）",
   "bath_limit": "お一部屋につき、1日あたり午前・午後の各時間帯 {count} 枠までご予約いただけます。",
-  "bath_mine_title": "ご予約中の時間",
+  "bath_mine_title": "貸切風呂の予約時間",
   "bath_mine_empty": "まだご予約はありません。",
   "bath_cancel": "取り消す",
   "bath_change": "時間を変更する",

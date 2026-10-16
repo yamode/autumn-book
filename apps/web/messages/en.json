@@ -812,7 +812,7 @@
   "bath_price_free": "Complimentary.",
   "bath_price_paid": "Fee: {price} (added to your room account)",
   "bath_limit": "Up to {count} slot(s) per room in each morning or afternoon period, per day.",
-  "bath_mine_title": "Your reservations",
+  "bath_mine_title": "Your private bath reservations",
   "bath_mine_empty": "No reservations yet.",
   "bath_cancel": "Cancel",
   "bath_change": "Change time",

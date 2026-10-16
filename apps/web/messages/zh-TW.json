@@ -812,7 +812,7 @@
   "bath_price_free": "免費使用。",
   "bath_price_paid": "使用費用 {price}（將計入您的住宿帳單）",
   "bath_limit": "每間客房每天的上午及下午時段，各最多可預約 {count} 個時段。",
-  "bath_mine_title": "您已預約的時段",
+  "bath_mine_title": "包租浴池預約時段",
   "bath_mine_empty": "尚無預約。",
   "bath_cancel": "取消",
   "bath_change": "更改時間",

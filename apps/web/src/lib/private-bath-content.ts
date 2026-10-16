@@ -11,7 +11,7 @@ export const BATH_CONTENT_FIELDS = [
 	{ key: 'title', label: '見出し', hint: '画面のいちばん上。未入力なら「貸切風呂のご予約」' },
 	{ key: 'lead', label: '説明文', hint: '見出しの下。未入力なら「ご希望の時間をお選びください。」' },
 	{ key: 'price_note', label: '料金の注記', hint: '料金の行に添える一言。未入力なら金額だけを出す' },
-	{ key: 'notice', label: '注意事項', hint: 'ご予約中の時間の下。未入力なら電話予約の注意文' },
+	{ key: 'notice', label: '注意事項', hint: '貸切風呂の予約時間の下。未入力なら電話予約の注意文' },
 	{ key: 'done', label: '完了メッセージ', hint: '予約できたときの一行。未入力なら「ご予約を承りました。」' }
 ] as const;
 
