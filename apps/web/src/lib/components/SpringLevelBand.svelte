@@ -17,7 +17,7 @@
 	const stateLabel = $derived(
 		tier === 'high' ? m.spring_level_high() : tier === 'mid' ? m.spring_level_mid() : m.spring_level_low()
 	);
-	const barColor = $derived(tier === 'high' ? 'bg-sky-500' : tier === 'mid' ? 'bg-emerald-500' : 'bg-amber-500');
+	const barColor = $derived(tier === 'high' ? 'bg-sky-400/80' : tier === 'mid' ? 'bg-emerald-400/80' : 'bg-amber-400/90');
 	const tip = $derived(getLocale() === 'ja' && note.trim() ? note.trim() : m.spring_level_default_note());
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
@@ -55,16 +55,18 @@
 	});
 </script>
 
-<section class="border-b border-stone-100 bg-white px-5 py-4" aria-labelledby="spring-level-title">
+<!-- 控えめな帯（2026-10-17 指示）。帯は全幅、中身は1カラムで中央の8割幅（見出し行の下に細いバー）。更新時刻は ⓘ の説明に入れる -->
+<section class="border-b border-stone-100 bg-white py-2.5" aria-labelledby="spring-level-title">
+	<div class="mx-auto w-4/5">
 	<div class="flex items-center justify-between gap-3">
-		<div class="relative flex items-center gap-1.5" bind:this={wrap}>
-			<svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0 text-sky-700" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<div class="relative flex min-w-0 items-center gap-1" bind:this={wrap}>
+			<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0 text-stone-400" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
 			</svg>
-			<h2 id="spring-level-title" class="text-[15px] font-semibold text-stone-900">{m.spring_level_title()}</h2>
+			<h2 id="spring-level-title" class="text-xs text-stone-500">{m.spring_level_title()}</h2>
 			<button
 				type="button"
-				class="flex h-6 w-6 items-center justify-center rounded-full text-stone-400 hover:text-stone-700"
+				class="flex h-6 w-6 items-center justify-center rounded-full text-stone-300 hover:text-stone-600"
 				aria-label={m.spring_level_info_label()}
 				aria-expanded={open}
 				aria-describedby={open ? 'spring-level-tip' : undefined}
@@ -83,7 +85,7 @@
 					open = false;
 				}}
 			>
-				<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+				<svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
 					<circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><circle cx="12" cy="7.6" r="0.6" fill="currentColor" />
 				</svg>
 			</button>
@@ -91,28 +93,27 @@
 				<div
 					id="spring-level-tip"
 					role="tooltip"
-					class="absolute left-0 top-full z-30 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-lg bg-stone-900 px-3 py-2.5 text-xs leading-relaxed text-white shadow-lg"
+					class="absolute left-0 top-full z-30 mt-1 w-[min(18rem,calc(100vw-2.5rem))] rounded-lg bg-stone-900 px-3 py-2.5 text-xs leading-relaxed text-white shadow-lg"
 				>
 					<span class="whitespace-pre-line">{tip}</span>
+					{#if updatedLabel}<span class="mt-1.5 block text-stone-400">{updatedLabel}</span>{/if}
 				</div>
 			{/if}
 		</div>
-		<p class="shrink-0 text-right">
-			<strong class="text-2xl font-semibold tabular-nums text-stone-900">{level}</strong><span class="ml-0.5 text-sm text-stone-500">%</span>
+		<p class="shrink-0 text-xs text-stone-500">
+			<span class="font-medium tabular-nums text-stone-700">{level}%</span>
+			<span class="ml-1">{stateLabel}</span>
 		</p>
 	</div>
-	<div
-		class="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-stone-100"
-		role="meter"
-		aria-valuemin="0"
-		aria-valuemax="100"
-		aria-valuenow={level}
-		aria-labelledby="spring-level-title"
-	>
-		<div class={`h-full rounded-full ${barColor} transition-[width]`} style={`width:${level}%`}></div>
-	</div>
-	<div class="mt-1.5 flex items-baseline justify-between text-xs">
-		<span class="font-medium text-stone-700">{stateLabel}</span>
-		{#if updatedLabel}<span class="text-stone-400">{updatedLabel}</span>{/if}
+		<div
+			class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-stone-100"
+			role="meter"
+			aria-valuemin="0"
+			aria-valuemax="100"
+			aria-valuenow={level}
+			aria-labelledby="spring-level-title"
+		>
+			<div class={`h-full rounded-full ${barColor} transition-[width]`} style={`width:${level}%`}></div>
+		</div>
 	</div>
 </section>

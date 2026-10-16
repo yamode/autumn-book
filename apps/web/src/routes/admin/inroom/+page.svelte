@@ -248,7 +248,7 @@
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 		<h2 class="font-medium text-stone-700">♨️ 全館の湯量（残りの目安） — {data.currentFacility.name}</h2>
 		<p class="mt-1 text-xs text-stone-400">
-			客室案内のトップ（写真のすぐ下）に、残りの目安をメーターで出します。値を変えると「○時○分 更新」が今の時刻になります。
+			客室案内のトップ（写真のすぐ下）に、残りの目安を細い1行のメーターで出します。値を変えると「○時○分 更新」が今の時刻になります。
 			{#if data.inroomSettings.springLevel.updatedAt}最終更新 {fmtNoticeTime(data.inroomSettings.springLevel.updatedAt)}。{/if}
 		</p>
 		<label class="mt-3 flex items-center gap-2">
