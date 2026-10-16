@@ -15,7 +15,8 @@ import {
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
 import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/inroom-browse';
-import { loadInroomSettings } from '$lib/server/inroom-settings';
+import { loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/server/inroom-settings';
+import { loadLiveNotices, type InroomNotice } from '$lib/server/inroom-notices';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -39,6 +40,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		invalidQr: false,
 		endedFacility: facility,
 		banners: facility ? await loadThanksBanners(facility.id, locale) : [],
+		notices: [] as InroomNotice[],
+		springLevel: null as SpringLevel | null,
 		// 黒ヘッダーの中央タイトル（layout が拾う）。施設が分かれば施設名
 		...(facility?.name ? { headerTitle: facility.name } : {})
 	});
@@ -56,7 +59,11 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// チェックイン前に館内図の QR を読んだ（ご利用の開始時刻・2026-10-15）。コード入力の代わりに開始時刻を案内する
 		upcomingFrom: null as string | null,
 		// 「フロントへお電話」メニューを出すか（管理画面で施設ごとに切り替え・2026-10-15）
-		showFrontCall: true
+		showFrontCall: true,
+		// 全客室へのお知らせ（掲載中のもの。既読は端末の localStorage で判定・2026-10-17）
+		notices: [] as InroomNotice[],
+		// 全館の湯量の残量目安（出す設定の施設だけ・2026-10-17）
+		springLevel: null as SpringLevel | null
 	};
 
 	if (!token) {
@@ -76,6 +83,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		return {
 			...noStay,
 			showFrontCall: settings.showFrontCall,
+			notices: await loadLiveNotices(entryFacility.id),
+			springLevel: visibleSpringLevel(settings),
 			// Wi-Fi はコードを入れてから（browseVisibleGuide）
 			guides: guides.filter(browseVisibleGuide),
 			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
@@ -101,6 +110,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 				browse: { name: upcoming.facility.name, slug: upcoming.facility.slug, phone: upcoming.facility.phone },
 				upcomingFrom: upcoming.validFrom,
 				showFrontCall: settings.showFrontCall,
+				notices: await loadLiveNotices(upcoming.facility.id),
+				springLevel: visibleSpringLevel(settings),
 				...(upcoming.facility.name ? { headerTitle: upcoming.facility.name } : {})
 			};
 		}
@@ -111,7 +122,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		);
 	}
 
-	const [guides, bathContext, intercom, meals, settings] = await Promise.all([
+	const [guides, bathContext, intercom, meals, settings, notices] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
@@ -120,7 +131,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// PMS で決まった食事時間（夕食・朝食）。読めなければ出さない
 		// 見本（デモ）の館内図は滞在に紐づかないので、見本の食事時間を出す
 		stay.isDemo ? Promise.resolve(demoStayMeals()) : DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
-		loadInroomSettings(stay.facility.id)
+		loadInroomSettings(stay.facility.id),
+		loadLiveNotices(stay.facility.id)
 	]);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
@@ -143,7 +155,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		endedFacility: null,
 		banners: [],
 		browse: null,
-		showFrontCall: settings.showFrontCall
+		showFrontCall: settings.showFrontCall,
+		notices,
+		springLevel: visibleSpringLevel(settings)
 	};
 };
 

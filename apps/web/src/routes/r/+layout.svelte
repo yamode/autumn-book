@@ -9,7 +9,7 @@
 	//
 	// /r は (public) グループ外の独立ルート。検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
-	import { invalidateAll } from '$app/navigation';
+	import { afterNavigate, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import * as m from '$lib/paraglide/messages';
@@ -28,6 +28,23 @@
 	const path = $derived(page.url.pathname);
 	// 滞在が確定している画面（/r で claim 済み・/r/bath・案内の詳細）だけタブを2本出す。
 	const bathEnabled = $derived(Boolean(page.data.stay ?? page.data.ctx));
+
+	// アクセスログ（2026-10-17）。ページを表示するたびに1回だけ送る（自動の再読込 invalidateAll は数えない）。
+	// 滞在コードの紐づき（部屋）はサーバーが Cookie から判定する
+	afterNavigate(({ to }) => {
+		const path = to?.url.pathname;
+		if (!path) return;
+		try {
+			fetch('/r/api/view', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ path }),
+				keepalive: true
+			}).catch(() => {});
+		} catch {
+			// 送れなくても画面には関係ない
+		}
+	});
 
 	// PMS の職員が枠を追加・変更したら、開きっぱなしの客室画面にも反映する。
 	// 表示中だけ再読込し、バックグラウンドから戻った時もすぐに更新する。

@@ -13,6 +13,8 @@
 	import { inroomCardImage, inroomHero, inroomIcon } from '$lib/inroom-visuals';
 	import IntercomSheet from '$lib/components/IntercomSheet.svelte';
 	import StayCodeInput from '$lib/components/StayCodeInput.svelte';
+	import InroomNoticeSheet from '$lib/components/InroomNoticeSheet.svelte';
+	import SpringLevelBand from '$lib/components/SpringLevelBand.svelte';
 	import { page } from '$app/state';
 
 	let { data, form } = $props();
@@ -116,6 +118,14 @@
 	{#if hero}
 		<img src={hero} alt={facilityName} class="h-48 w-full object-cover" />
 	{/if}
+
+	<!-- ============ 全館の湯量の残りの目安（管理画面で手入力・出す設定の施設だけ。2026-10-17）============ -->
+	{#if data.springLevel && data.springLevel.percent !== null}
+		<SpringLevelBand percent={data.springLevel.percent} note={data.springLevel.note} updatedAt={data.springLevel.updatedAt} />
+	{/if}
+
+	<!-- ============ 全客室へのお知らせ（この端末で「確認しました」を押すまで出す。2026-10-17）============ -->
+	<InroomNoticeSheet notices={data.notices ?? []} />
 
 	<!-- ============ Wi-Fi 帯 ============ -->
 	{#if wifi}

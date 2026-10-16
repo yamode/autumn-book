@@ -26,7 +26,22 @@ import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$
 import type { Locale } from '$lib/types';
 import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
 import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
-import { loadInroomSettings, saveInroomSettingsDemo, sbSaveInroomSettings } from '$lib/server/inroom-settings';
+import {
+	loadInroomSettings,
+	saveInroomSettingsDemo,
+	saveSpringLevelDemo,
+	sbSaveInroomSettings,
+	sbSaveSpringLevel
+} from '$lib/server/inroom-settings';
+import {
+	endNoticeDemo,
+	listNoticesDemo,
+	saveNoticeDemo,
+	sbEndNotice,
+	sbListNotices,
+	sbSaveNotice,
+	type AdminInroomNotice
+} from '$lib/server/inroom-notices';
 import { sbAdminIntercom, sbListIntercomCalls, sbSaveIntercom, type AdminIntercom, type BusinessHours, type IntercomCall } from '$lib/server/intercom';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -87,9 +102,21 @@ export const load: PageServerLoad = async (event) => {
 			intercomError = e instanceof Error ? e.message : String(e);
 		}
 	}
+	// 全客室へのお知らせ（2026-10-17）。取れなくても画面は落とさない
+	let notices: AdminInroomNotice[] = [];
+	let noticesError: string | null = null;
+	if (useSupabaseAdmin) {
+		try {
+			notices = await sbListNotices(createSupabaseServerClient(event), currentFacility.id);
+		} catch (e) {
+			noticesError = e instanceof Error ? e.message : String(e);
+		}
+	} else {
+		notices = listNoticesDemo(currentFacility.id);
+	}
 	// 案内ページ1件だけの QR（/r/start?f=<slug>&g=<id>）に入れる施設の slug（2026-10-15）
 	const facilitySlug = facilities.find((f) => f.id === currentFacility.id)?.slug ?? '';
-	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, inroomSettings, intercom, intercomCalls, intercomError };
+	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, inroomSettings, notices, noticesError, intercom, intercomCalls, intercomError };
 
 	if (useSupabaseAdmin) {
 		const client = createSupabaseServerClient(event);
@@ -227,6 +254,81 @@ export const actions: Actions = {
 			saveInroomSettingsDemo(facilityId, settings);
 		}
 		return { inroomSettingsSaved: true };
+	},
+
+	// ---- 全館の湯量の残りの目安（スタッフも入力できる・2026-10-17）----
+	springLevelSave: async (event) => {
+		const user = event.locals.user;
+		if (!user || (user.role !== 'admin' && user.role !== 'staff')) return fail(403, { message: '権限がありません' });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const raw = String(form.get('percent') ?? '').trim();
+		const percent = raw === '' ? null : Number(raw);
+		if (percent !== null && (!Number.isInteger(percent) || percent < 0 || percent > 100)) {
+			return fail(400, { message: '湯量の目安は 0〜100 の整数（%）で入力してください' });
+		}
+		const note = String(form.get('note') ?? '').trim();
+		if (note.length > 300) return fail(400, { message: '説明は300文字以内で入力してください' });
+		const input = { enabled: form.get('enabled') === 'on', percent, note };
+		if (useSupabaseAdmin) {
+			try {
+				await sbSaveSpringLevel(createSupabaseServerClient(event), facilityId, input);
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+			}
+		} else {
+			saveSpringLevelDemo(facilityId, input);
+		}
+		return { springLevelSaved: true };
+	},
+
+	// ---- 全客室へのお知らせ（スタッフも出せる・2026-10-17）----
+	noticeSend: async (event) => {
+		const user = event.locals.user;
+		if (!user || (user.role !== 'admin' && user.role !== 'staff')) return fail(403, { message: '権限がありません' });
+		const form = await event.request.formData();
+		const facilityId = String(form.get('facilityId') ?? '');
+		const title = String(form.get('title') ?? '').trim();
+		const body = String(form.get('body') ?? '').trim();
+		if (!body) return fail(400, { message: 'お知らせの本文を入力してください' });
+		if (title.length > 100 || body.length > 2000) return fail(400, { message: 'タイトルは100文字・本文は2000文字までです' });
+		// 掲載終了（datetime-local は JST として読む）。空なら取り下げるまで出す
+		const endsRaw = String(form.get('endsAt') ?? '').trim();
+		let endsAt: string | null = null;
+		if (endsRaw) {
+			const d = new Date(`${endsRaw}:00+09:00`);
+			if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(endsRaw) || isNaN(d.getTime())) {
+				return fail(400, { message: '掲載終了の日時を正しく入力してください' });
+			}
+			if (d.getTime() <= Date.now()) return fail(400, { message: '掲載終了は今より後の日時にしてください' });
+			endsAt = d.toISOString();
+		}
+		if (useSupabaseAdmin) {
+			try {
+				await sbSaveNotice(createSupabaseServerClient(event), facilityId, { title, body, endsAt });
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : 'お知らせを出せませんでした' });
+			}
+		} else {
+			saveNoticeDemo(facilityId, { title, body, endsAt });
+		}
+		return { noticeSent: true };
+	},
+	noticeEnd: async (event) => {
+		const user = event.locals.user;
+		if (!user || (user.role !== 'admin' && user.role !== 'staff')) return fail(403, { message: '権限がありません' });
+		const id = String((await event.request.formData()).get('noticeId') ?? '');
+		if (!id) return fail(400, { message: '対象が不明です' });
+		if (useSupabaseAdmin) {
+			try {
+				await sbEndNotice(createSupabaseServerClient(event), id);
+			} catch (e) {
+				return fail(500, { message: e instanceof Error ? e.message : '取り下げに失敗しました' });
+			}
+		} else {
+			endNoticeDemo(id);
+		}
+		return { noticeEnded: true };
 	},
 
 	// ---- 館内案内（admin のみ）----

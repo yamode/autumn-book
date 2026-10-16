@@ -4,8 +4,29 @@
     {
       "name": "autumn-book",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["-C", "apps/web", "dev", "--port", "5173"],
+      "runtimeArgs": [
+        "-C",
+        "apps/web",
+        "dev",
+        "--port",
+        "5173"
+      ],
       "port": 5173
+    },
+    {
+      "name": "autumn-book-demo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "apps/web",
+        "dev",
+        "--port",
+        "5174"
+      ],
+      "env": {
+        "DATA_SOURCE": "demo"
+      },
+      "port": 5174
     }
   ]
 }

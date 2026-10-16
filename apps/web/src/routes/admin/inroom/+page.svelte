@@ -11,6 +11,10 @@
 
 	let { data, form } = $props();
 
+	// お知らせ・湯量の日時（JST・月日 時分）
+	const fmtNoticeTime = (iso: string) =>
+		new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 	// ?all=1 で来たら「客室スリップ」タブを初期表示（失効一覧の再読込を跨いでも維持）
 	let tab = $state<'guides' | 'slips'>(page.url.searchParams.get('all') ? 'slips' : 'guides');
 
@@ -161,6 +165,10 @@
 		href="/admin/inroom/entry"
 		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
 	>🖨 入口QR（客室に常設）</a>
+	<a
+		href="/admin/inroom/access"
+		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
+	>📈 アクセスログ</a>
 </div>
 
 {#if form?.message}
@@ -171,6 +179,113 @@
 	<!-- ============================ 館内案内 ============================ -->
 	{#if form?.guideAdded}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}
 	{#if form?.guideDeleted}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">削除しました。</p>{/if}
+
+	<!-- ===== 全客室へのお知らせ（2026-10-17）。開いた端末で「確認しました」を押すまで、客室案内のトップに出る ===== -->
+	{#if form?.noticeSent}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">お知らせを出しました。客室案内を開いている端末に表示されます。</p>{/if}
+	{#if form?.noticeEnded}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">お知らせを取り下げました。</p>{/if}
+	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<h2 class="font-medium text-stone-700">📣 全客室へのお知らせ — {data.currentFacility.name}</h2>
+		<p class="mt-1 text-xs text-stone-400">
+			客室案内を開いた全員に、トップでお知らせを出します（断水・停電・催しのご案内など）。
+			お客様がその端末で「確認しました」を押すと、その端末には次から出ません。掲載中に新しく開いた方にも出ます。
+		</p>
+		<form method="POST" action="?/noticeSend" use:enhance class="mt-3 space-y-3">
+			<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+			<label class="block">
+				<span class="text-xs text-stone-600">タイトル（任意）</span>
+				<input name="title" maxlength="100" placeholder="例：大浴場の清掃時間変更のお知らせ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			</label>
+			<label class="block">
+				<span class="text-xs text-stone-600">本文</span>
+				<textarea name="body" required maxlength="2000" rows="4" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"></textarea>
+			</label>
+			<label class="block">
+				<span class="text-xs text-stone-600">掲載終了（任意・空なら取り下げるまで出します）</span>
+				<input type="datetime-local" name="endsAt" class="mt-1 rounded-md border border-stone-300 px-3 py-2" />
+			</label>
+			<button
+				type="submit"
+				class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700"
+				onclick={confirmSubmit({ message: '客室案内を開いている全客室に、このお知らせを一斉に出します。', confirmLabel: '一斉に出す' })}
+			>全客室に出す</button>
+		</form>
+		{#if data.noticesError}
+			<p class="mt-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">{data.noticesError}</p>
+		{:else if data.notices.length}
+			<ul class="mt-4 divide-y divide-stone-100 border-t border-stone-100">
+				{#each data.notices as n (n.id)}
+					<li class="flex items-start justify-between gap-3 py-2.5">
+						<div class="min-w-0">
+							<p class="text-xs">
+								{#if n.live}<span class="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">掲載中</span>
+								{:else}<span class="rounded bg-stone-100 px-1.5 py-0.5 text-stone-500">終了</span>{/if}
+								<span class="ml-1 text-stone-400">
+									{fmtNoticeTime(n.startsAt)} 〜 {n.endedAt ? `${fmtNoticeTime(n.endedAt)}（取り下げ）` : n.endsAt ? fmtNoticeTime(n.endsAt) : '取り下げまで'}
+								</span>
+							</p>
+							{#if n.title}<p class="mt-1 font-medium text-stone-800">{n.title}</p>{/if}
+							<p class="mt-0.5 line-clamp-2 whitespace-pre-line text-stone-600">{n.body}</p>
+						</div>
+						{#if n.live}
+							<form method="POST" action="?/noticeEnd" use:enhance class="shrink-0">
+								<input type="hidden" name="noticeId" value={n.id} />
+								<button
+									type="submit"
+									class="text-xs text-stone-400 hover:text-red-600"
+									onclick={confirmSubmit({ message: 'このお知らせを取り下げます。まだ確認していない端末にも出なくなります。', confirmLabel: '取り下げる' })}
+								>取り下げる</button>
+							</form>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+	</section>
+
+	<!-- ===== 全館の湯量の残りの目安（2026-10-17・西和賀で使う）。出す設定で値があるときだけ、客室案内のトップに出る ===== -->
+	{#if form?.springLevelSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">湯量の目安を保存しました。</p>{/if}
+	<form method="POST" action="?/springLevelSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
+		<h2 class="font-medium text-stone-700">♨️ 全館の湯量（残りの目安） — {data.currentFacility.name}</h2>
+		<p class="mt-1 text-xs text-stone-400">
+			客室案内のトップ（写真のすぐ下）に、残りの目安をメーターで出します。値を変えると「○時○分 更新」が今の時刻になります。
+			{#if data.inroomSettings.springLevel.updatedAt}最終更新 {fmtNoticeTime(data.inroomSettings.springLevel.updatedAt)}。{/if}
+		</p>
+		<label class="mt-3 flex items-center gap-2">
+			<input type="checkbox" name="enabled" checked={data.inroomSettings.springLevel.enabled} class="h-4 w-4" />
+			<span>客室案内に出す</span>
+		</label>
+		<label class="mt-3 block">
+			<span class="text-xs text-stone-600">残りの目安（%）</span>
+			<span class="mt-1 flex items-center gap-2">
+				<input
+					type="number"
+					name="percent"
+					min="0"
+					max="100"
+					step="1"
+					inputmode="numeric"
+					value={data.inroomSettings.springLevel.percent ?? ''}
+					class="w-28 rounded-md border border-stone-300 px-3 py-2 text-right"
+				/>
+				<span class="text-stone-500">%</span>
+				<span class="text-xs text-stone-400">60%以上「たっぷり」・30%以上「ふつう」・それ未満「少なめ」と表示</span>
+			</span>
+		</label>
+		<label class="mt-3 block">
+			<span class="text-xs text-stone-600">ⓘ を押したときの説明（何を表しているか・任意・日本語のお客様向け）</span>
+			<textarea
+				name="note"
+				maxlength="300"
+				rows="3"
+				placeholder="空欄なら既定の説明：館内の大浴場・貸切風呂でお使いいただける温泉のお湯が、いまどのくらい残っているかの目安です。スタッフが確認して手で更新しているため、実際とは少し異なる場合があります。"
+				value={data.inroomSettings.springLevel.note}
+				class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+			></textarea>
+			<span class="text-xs text-stone-400">英語・繁体字のお客様には既定の説明（翻訳済み）を出します。</span>
+		</label>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+	</form>
 
 	<!-- ===== 内線（客室からフロントへの Wi-Fi 通話・受電は autumn-call アプリ） ===== -->
 	{#if form?.intercomSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">内線の設定を保存しました。</p>{/if}
