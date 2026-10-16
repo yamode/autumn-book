@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SPRING_BANDS, normalizeSpringBands, springBandFor, springBandLabel, springBandRange } from './spring-level';
+import { DEFAULT_SPRING_BANDS, SPRING_TONES, SPRING_TONE_ICON, normalizeSpringBands, springBandFor, springBandLabel, springBandRange } from './spring-level';
 
 describe('全館の湯量の表現', () => {
 	it('既定では 0% は「お湯がありません」、1% から「少なめ」', () => {
@@ -47,5 +47,9 @@ describe('全館の湯量の表現', () => {
 
 	it('管理画面の範囲表示', () => {
 		expect(DEFAULT_SPRING_BANDS.map((_, i) => springBandRange(DEFAULT_SPRING_BANDS, i))).toEqual(['0%', '1〜29%', '30〜59%', '60〜100%']);
+	});
+
+	it('どの色にも「?」アイコンの色がある', () => {
+		for (const t of SPRING_TONES) expect(SPRING_TONE_ICON[t].dot).toMatch(/^bg-/);
 	});
 });

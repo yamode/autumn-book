@@ -4,7 +4,7 @@
 	// 説明は管理画面で書き換えられる（日本語）。空のとき・日本語以外では既定文を出す。
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import { SPRING_TONE_BAR, springBandFor, springBandLabel, type SpringBand } from '$lib/spring-level';
+	import { SPRING_TONE_BAR, SPRING_TONE_ICON, springBandFor, springBandLabel, type SpringBand } from '$lib/spring-level';
 
 	let {
 		percent,
@@ -41,6 +41,8 @@
 	const band = $derived(springBandFor(level, bands));
 	const stateLabel = $derived(springBandLabel(band, getLocale()));
 	const barColor = $derived(SPRING_TONE_BAR[band.tone]);
+	// 「?」アイコンもいまの段階の色に合わせる
+	const icon = $derived(SPRING_TONE_ICON[band.tone]);
 	const tip = $derived(getLocale() === 'ja' && note.trim() ? note.trim() : m.spring_level_default_note());
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
@@ -110,9 +112,9 @@
 					open = false;
 				}}
 			>
-				<!-- タップしたくなる目印（2026-10-17 指示）。塗りの丸に「?」。まだ開いたことのない端末は、淡い波紋で誘う -->
-				{#if !seen}<span class="absolute inset-1 animate-ping rounded-full bg-sky-400/40" aria-hidden="true"></span>{/if}
-				<span class="relative flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-[11px] font-bold leading-none text-white shadow-sm ring-2 ring-sky-100" aria-hidden="true">?</span>
+				<!-- タップしたくなる目印（2026-10-17 指示）。塗りの丸に「?」（色は残量の段階の色）。まだ開いたことのない端末は、淡い波紋で誘う -->
+				{#if !seen}<span class="absolute inset-1 animate-ping rounded-full {icon.ping}" aria-hidden="true"></span>{/if}
+				<span class="relative flex h-5 w-5 items-center justify-center rounded-full {icon.dot} text-[11px] font-bold leading-none text-white shadow-sm ring-2 ring-white" aria-hidden="true">?</span>
 			</button>
 			{#if open}
 				<div

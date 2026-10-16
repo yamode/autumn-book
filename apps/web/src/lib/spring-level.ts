@@ -25,6 +25,16 @@ export const SPRING_TONE_BAR: Record<SpringTone, string> = {
 	gray: 'bg-stone-300'
 };
 
+// 説明の「?」アイコンの色（段階の色と同じ系統・白い「?」が読める濃さ）と、初回の波紋の色（2026-10-17 指示）
+export const SPRING_TONE_ICON: Record<SpringTone, { dot: string; ping: string }> = {
+	blue: { dot: 'bg-sky-600', ping: 'bg-sky-400/40' },
+	green: { dot: 'bg-emerald-600', ping: 'bg-emerald-400/40' },
+	yellow: { dot: 'bg-yellow-500', ping: 'bg-yellow-400/40' },
+	orange: { dot: 'bg-orange-500', ping: 'bg-orange-400/40' },
+	red: { dot: 'bg-red-500', ping: 'bg-red-400/40' },
+	gray: { dot: 'bg-stone-400', ping: 'bg-stone-300/50' }
+};
+
 export const DEFAULT_SPRING_BANDS: SpringBand[] = [
 	{ min: 0, ja: 'お湯がありません', en: 'Currently empty', zh: '目前無溫泉水', tone: 'gray' },
 	{ min: 1, ja: '少なめ', en: 'Low', zh: '偏少', tone: 'orange' },
