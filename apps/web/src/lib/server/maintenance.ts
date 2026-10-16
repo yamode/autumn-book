@@ -119,6 +119,11 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	if (url.pathname.startsWith('/api/faq/') || url.pathname.startsWith('/faq/')) return true;
 	// お知らせの公開 API も同様に、施設HP（Xserver の PHP）が一覧・詳細の描画に使う（2026-10-03 ユーザー指示: 両HPのお知らせを Book で管理）
 	if (url.pathname.startsWith('/api/news/')) return true;
+	// 公開アプリ yamado-one の仮押さえ API も、ポータル本体の公開状況と関係なく稼働させる
+	// （2026-10-17 ユーザー指示・auth-hardening.md S8）。アプリはストアに出る別プロダクトで、
+	// ポータルの公開前・メンテナンス中でも予約できなければならない。ここを通さないと
+	// アプリの「予約へ進む」が 503 のメンテナンス HTML を受け取って必ず失敗する。
+	if (url.pathname === '/api/hold') return true;
 
 	// 法定表記（特商法・プライバシーポリシー・宿泊約款）は、取引先ページからのリンク先であり、
 	// 決済サービスの審査でも開ける必要があるため、ポータル本体の公開前から見られるようにする。
