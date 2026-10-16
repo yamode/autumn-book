@@ -2,10 +2,13 @@
 	// 客室案内の全客室へのお知らせ（2026-10-17）。管理画面（/admin/inroom）から施設ごとに一斉に出す。
 	// 開いた端末で「確認しました」を押すと、その端末では次から出さない（既読は localStorage・inroom-notice-read.ts）。
 	// サーバーでは既読が分からないので、表示はブラウザで既読を読んでから（最初の描画では出さない）。
+	// 画面の中央に出し、掲載日時を添える。出ている間は後ろの画面をスクロールさせない（2026-10-17 指示）。
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
+	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { addReadIds, loadReadIds, saveReadIds, unreadNotices } from '$lib/inroom-notice-read';
 
-	type Notice = { id: string; title: string; body: string };
+	type Notice = { id: string; title: string; body: string; startsAt?: string };
 	let { notices = [] }: { notices?: Notice[] } = $props();
 
 	let readIds = $state<string[] | null>(null);
@@ -13,6 +16,36 @@
 		readIds = loadReadIds();
 	});
 	const unread = $derived(readIds === null ? [] : unreadNotices(notices, readIds));
+
+	// 出ている間は後ろの画面のスクロールを止める（閉じたら元に戻す）
+	$effect(() => {
+		if (!unread.length) return;
+		const html = document.documentElement;
+		const prev = { html: html.style.overflow, body: document.body.style.overflow };
+		html.style.overflow = 'hidden';
+		document.body.style.overflow = 'hidden';
+		return () => {
+			html.style.overflow = prev.html;
+			document.body.style.overflow = prev.body;
+		};
+	});
+
+	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
+	function postedLabel(iso?: string): string {
+		if (!iso) return '';
+		try {
+			const t = new Intl.DateTimeFormat(localeTag[getLocale()] ?? 'ja-JP', {
+				month: 'long',
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit',
+				timeZone: 'Asia/Tokyo'
+			}).format(new Date(iso));
+			return m.inroom_notice_posted({ time: t });
+		} catch {
+			return '';
+		}
+	}
 
 	function confirmRead() {
 		const next = addReadIds(readIds ?? [], unread.map((n) => n.id));
@@ -22,9 +55,9 @@
 </script>
 
 {#if unread.length}
-	<div class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center" role="presentation">
+	<div class="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/50 p-4" role="presentation">
 		<div
-			class="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-xl"
+			class="max-h-[85dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-xl bg-white p-5 shadow-xl"
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="inroom-notice-heading"
@@ -39,7 +72,8 @@
 				{#each unread as n (n.id)}
 					<section class="py-3 first:pt-0 last:pb-0">
 						{#if n.title}<h2 class="text-[15px] font-semibold text-stone-900">{n.title}</h2>{/if}
-						<p class="mt-1 whitespace-pre-line text-sm leading-relaxed text-stone-700">{n.body}</p>
+						{#if postedLabel(n.startsAt)}<p class="mt-0.5 text-xs tabular-nums text-stone-400">{postedLabel(n.startsAt)}</p>{/if}
+						<div class="notice-body mt-1.5 text-sm text-stone-700"><MarkdownView source={n.body} /></div>
 					</section>
 				{/each}
 			</div>
@@ -53,3 +87,14 @@
 		</div>
 	</div>
 {/if}
+
+<style>
+	/* お知らせ本文（Markdown）は詰めて出す */
+	.notice-body :global(p) {
+		margin: 0.35em 0;
+		line-height: 1.75;
+	}
+	.notice-body :global(p:first-child) {
+		margin-top: 0;
+	}
+</style>

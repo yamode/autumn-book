@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SPRING_BANDS, normalizeSpringBands, springBandFor, springBandLabel, springBandRange } from './spring-level';
 
 describe('全館の湯量の表現', () => {
-	it('既定では 0% は「ただいまお湯はありません」、1% から「少なめ」', () => {
-		expect(springBandFor(0, null).ja).toBe('ただいまお湯はありません');
+	it('既定では 0% は「お湯がありません」、1% から「少なめ」', () => {
+		expect(springBandFor(0, null).ja).toBe('お湯がありません');
 		expect(springBandFor(1, null).ja).toBe('少なめ');
 		expect(springBandFor(29, null).ja).toBe('少なめ');
 		expect(springBandFor(30, null).ja).toBe('ふつう');

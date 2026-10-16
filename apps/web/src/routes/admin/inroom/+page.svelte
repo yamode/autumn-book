@@ -5,6 +5,7 @@
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import { downloadQrPng } from '$lib/qr-png';
 	import type { StayToken } from '$lib/types';
@@ -57,6 +58,9 @@
 
 	// 編集中のお知らせ（id）
 	let editingNotice = $state<string | null>(null);
+	let editingBody = $state('');
+	// 新しいお知らせの本文（エディタ）
+	let noticeBody = $state('');
 	// ISO → datetime-local の値（JST）
 	const toJstLocal = (iso: string | null) => (iso ? new Date(Date.parse(iso) + 9 * 60 * 60 * 1000).toISOString().slice(0, 16) : '');
 
@@ -243,16 +247,25 @@
 			客室案内を開いた全員に、トップでお知らせを出します（断水・停電・催しのご案内など）。
 			お客様がその端末で「確認しました」を押すと、その端末には次から出ません。掲載中に新しく開いた方にも出ます。
 		</p>
-		<form method="POST" action="?/noticeSend" data-reset use:enhance class="mt-3 space-y-3">
+		<form
+			method="POST"
+			action="?/noticeSend"
+			data-reset
+			use:enhance={() => async ({ result, update }) => {
+				await update();
+				if (result.type === 'success') noticeBody = '';
+			}}
+			class="mt-3 space-y-3"
+		>
 			<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 			<label class="block">
 				<span class="text-xs text-stone-600">タイトル（任意）</span>
 				<input name="title" maxlength="100" placeholder="例：大浴場の清掃時間変更のお知らせ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 			</label>
-			<label class="block">
-				<span class="text-xs text-stone-600">本文</span>
-				<textarea name="body" required maxlength="2000" rows="4" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"></textarea>
-			</label>
+			<div>
+				<span class="text-xs text-stone-600">本文（太字・赤字・リンクが使えます）</span>
+				<div class="mt-1"><MarkdownEditor bind:value={noticeBody} name="body" rows={6} /></div>
+			</div>
 			<label class="block">
 				<span class="text-xs text-stone-600">掲載終了（任意・空なら取り下げるまで出します）</span>
 				<input type="datetime-local" name="endsAt" class="mt-1 rounded-md border border-stone-300 px-3 py-2" />
@@ -291,7 +304,7 @@
 									<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 									<input type="hidden" name="noticeId" value={n.id} />
 									<input name="title" maxlength="100" value={n.title} placeholder="タイトル（任意）" class="w-full rounded-md border border-stone-300 px-3 py-1.5" />
-									<textarea name="body" required maxlength="2000" rows="5" value={n.body} class="w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
+									<MarkdownEditor bind:value={editingBody} name="body" rows={6} />
 									<label class="block">
 										<span class="text-xs text-stone-600">掲載終了（空なら取り下げるまで）</span>
 										<input type="datetime-local" name="endsAt" value={toJstLocal(n.endsAt)} class="mt-1 rounded-md border border-stone-300 px-3 py-1.5" />
@@ -307,12 +320,15 @@
 								</form>
 							{:else}
 								{#if n.title}<p class="mt-1 font-medium text-stone-800">{n.title}</p>{/if}
-								<p class="mt-0.5 line-clamp-2 whitespace-pre-line text-stone-600">{n.body}</p>
+								<div class="mt-0.5 line-clamp-3 text-stone-600"><MarkdownView source={n.body} /></div>
 							{/if}
 						</div>
 						{#if n.live && editingNotice !== n.id}
 							<div class="flex shrink-0 flex-col items-end gap-1.5">
-							<button type="button" onclick={() => (editingNotice = n.id)} class="text-xs text-stone-500 hover:text-brand-800">編集</button>
+							<button type="button" onclick={() => {
+								editingBody = n.body;
+								editingNotice = n.id;
+							}} class="text-xs text-stone-500 hover:text-brand-800">編集</button>
 							<form method="POST" action="?/noticeEnd" use:enhance class="shrink-0">
 								<input type="hidden" name="noticeId" value={n.id} />
 								<button

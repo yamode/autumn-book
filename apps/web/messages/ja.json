@@ -779,6 +779,7 @@
   "inroom_front_call": "フロントへお電話",
   "inroom_notice_heading": "お知らせ",
   "inroom_notice_ok": "確認しました",
+  "inroom_notice_posted": "{time} 掲載",
   "spring_level_title": "全館の湯量（目安）",
   "spring_level_info_label": "湯量の目安について",
   "spring_level_default_note": "館内の大浴場・貸切風呂でお使いいただける温泉のお湯が、いまどのくらい残っているかの目安です。スタッフが確認して手で更新しているため、実際とは少し異なる場合があります。",

@@ -14,6 +14,25 @@
 	}: { percent: number; note?: string; updatedAt?: string | null; bands?: SpringBand[] | null } = $props();
 
 	let open = $state(false);
+	// 説明を一度でも開いた端末か（開くまで波紋を出す・localStorage が使えなければ毎回出す）
+	const SEEN_KEY = 'ab_spring_tip_seen';
+	let seen = $state(true);
+	$effect(() => {
+		try {
+			seen = localStorage.getItem(SEEN_KEY) === '1';
+		} catch {
+			seen = false;
+		}
+	});
+	function markSeen() {
+		if (seen) return;
+		seen = true;
+		try {
+			localStorage.setItem(SEEN_KEY, '1');
+		} catch {
+			// 保存できない端末は、このページを開いている間だけ止める
+		}
+	}
 	let hovered = false;
 	let wrap = $state<HTMLElement | null>(null);
 
@@ -63,25 +82,27 @@
 <section class="border-b border-stone-100 bg-white py-2.5" aria-labelledby="spring-level-title">
 	<div class="mx-auto w-4/5">
 	<div class="flex items-center justify-between gap-3">
-		<div class="relative flex min-w-0 items-center gap-1" bind:this={wrap}>
+		<div class="relative flex shrink-0 items-center gap-1" bind:this={wrap}>
 			<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0 text-stone-400" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 				<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />
 			</svg>
-			<h2 id="spring-level-title" class="text-xs text-stone-500">{m.spring_level_title()}</h2>
+			<h2 id="spring-level-title" class="whitespace-nowrap text-xs text-stone-500">{m.spring_level_title()}</h2>
 			<button
 				type="button"
-				class="flex h-6 w-6 items-center justify-center rounded-full text-stone-300 hover:text-stone-600"
+				class="relative ml-0.5 flex h-7 w-7 items-center justify-center rounded-full"
 				aria-label={m.spring_level_info_label()}
 				aria-expanded={open}
 				aria-describedby={open ? 'spring-level-tip' : undefined}
 				onclick={() => {
 					// マウスでかざして開いているときは、押しても閉じない（タップは押すたびに開閉）
 					open = hovered ? true : !open;
+					markSeen();
 				}}
 				onpointerenter={(e) => {
 					if (e.pointerType !== 'mouse') return;
 					hovered = true;
 					open = true;
+					markSeen();
 				}}
 				onpointerleave={(e) => {
 					if (e.pointerType !== 'mouse') return;
@@ -89,9 +110,9 @@
 					open = false;
 				}}
 			>
-				<svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-					<circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><circle cx="12" cy="7.6" r="0.6" fill="currentColor" />
-				</svg>
+				<!-- タップしたくなる目印（2026-10-17 指示）。塗りの丸に「?」。まだ開いたことのない端末は、淡い波紋で誘う -->
+				{#if !seen}<span class="absolute inset-1 animate-ping rounded-full bg-sky-400/40" aria-hidden="true"></span>{/if}
+				<span class="relative flex h-5 w-5 items-center justify-center rounded-full bg-sky-600 text-[11px] font-bold leading-none text-white shadow-sm ring-2 ring-sky-100" aria-hidden="true">?</span>
 			</button>
 			{#if open}
 				<div
@@ -104,9 +125,9 @@
 				</div>
 			{/if}
 		</div>
-		<p class="shrink-0 text-xs text-stone-500">
+		<p class="min-w-0 text-right text-xs leading-snug text-stone-500">
 			<span class="font-medium tabular-nums text-stone-700">{level}%</span>
-			<span class="ml-1">{stateLabel}</span>
+			<span class="ml-1 inline-block">{stateLabel}</span>
 		</p>
 	</div>
 		<div

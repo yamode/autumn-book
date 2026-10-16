@@ -1,8 +1,46 @@
 // Markdown → HTML（設計書 §2.3: 生 HTML 不許可。先にエスケープしてから marked でパース）
-import { marked } from 'marked';
+// 2026-10-17: 赤字（==文字==）を追加。リンクは http(s)・tel・mailto と サイト内（/…）だけ通す（javascript: 等は文字だけにする）
+import { marked, type Tokens } from 'marked';
 import { stripMore } from './plan-summary';
 
-marked.setOptions({ gfm: true, breaks: true });
+/** 赤字の色（メール本文でも効くよう、クラスではなく style で付ける） */
+export const MD_RED = '#dc2626';
+
+const SAFE_HREF = /^(https?:\/\/|tel:|mailto:|\/(?!\/)|#)/i;
+
+marked.use({
+	gfm: true,
+	breaks: true,
+	extensions: [
+		{
+			// ==赤字== （エディタの「赤字」ボタンが入れる）
+			name: 'red',
+			level: 'inline',
+			start(src: string) {
+				const i = src.indexOf('==');
+				return i < 0 ? undefined : i;
+			},
+			tokenizer(src: string) {
+				const m = /^==(?=\S)([\s\S]*?\S)==/.exec(src);
+				if (!m) return undefined;
+				return { type: 'red', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) };
+			},
+			renderer(token) {
+				return `<span style="color:${MD_RED};font-weight:600">${this.parser.parseInline(token.tokens ?? [])}</span>`;
+			}
+		}
+	],
+	renderer: {
+		link(token: Tokens.Link) {
+			const text = this.parser.parseInline(token.tokens);
+			// エスケープ済みの本文から来るので & は &amp; のまま。危ない形のリンクは文字だけ残す
+			const href = token.href.trim();
+			if (!SAFE_HREF.test(href)) return text;
+			const title = token.title ? ` title="${token.title.replace(/"/g, '&quot;')}"` : '';
+			return `<a href="${href.replace(/"/g, '%22')}"${title}>${text}</a>`;
+		}
+	}
+});
 
 export function renderMarkdown(src: string): string {
 	// プラン紹介文の一覧用の区切り（<!--more-->）は表示しない

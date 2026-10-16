@@ -779,6 +779,7 @@
   "inroom_front_call": "致電櫃檯",
   "inroom_notice_heading": "通知",
   "inroom_notice_ok": "我知道了",
+  "inroom_notice_posted": "{time} 發布",
   "spring_level_title": "全館溫泉水量",
   "spring_level_info_label": "關於水量參考",
   "spring_level_default_note": "表示館內大浴場與包租浴池可使用的溫泉水目前大約剩餘多少。由工作人員確認後手動更新，可能與實際情況略有不同。",

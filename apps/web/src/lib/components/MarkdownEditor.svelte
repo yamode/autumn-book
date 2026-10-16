@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MarkdownView from './MarkdownView.svelte';
+	import { MD_RED } from '$lib/markdown';
 	import type { Photo } from '$lib/types';
 	import { expandPlanText, templateToken, type PlanTextTemplate } from '$lib/plan-templates';
 	import { MORE_MARKER } from '$lib/plan-summary';
@@ -32,6 +33,37 @@
 	let showPicker = $state(false);
 	let mobileTab = $state<'edit' | 'preview'>('edit');
 
+	// 選んだ文字を before/after で囲む。選んでいなければ placeholder を入れて、それを選んだ状態にする
+	function wrap(before: string, after: string, placeholder: string) {
+		const start = textarea.selectionStart ?? value.length;
+		const end = textarea.selectionEnd ?? value.length;
+		const selected = value.slice(start, end) || placeholder;
+		value = value.slice(0, start) + before + selected + after + value.slice(end);
+		queueMicrotask(() => {
+			textarea.focus();
+			textarea.selectionStart = start + before.length;
+			textarea.selectionEnd = start + before.length + selected.length;
+		});
+	}
+
+	// リンク: 選んだ文字（無ければ「リンクの文字」）を [文字](URL) にする。URL は聞いて入れる（空ならやめる）
+	function addLink() {
+		const start = textarea.selectionStart ?? value.length;
+		const end = textarea.selectionEnd ?? value.length;
+		const selected = value.slice(start, end);
+		const url = window.prompt('リンク先のURL（https://… ・電話は tel:0197… ）', /^https?:\/\//.test(selected) ? selected : 'https://');
+		if (!url || url === 'https://') return;
+		const label = selected && !/^https?:\/\//.test(selected) ? selected : 'リンクの文字';
+		const snippet = `[${label}](${url.trim()})`;
+		value = value.slice(0, start) + snippet + value.slice(end);
+		queueMicrotask(() => {
+			textarea.focus();
+			// 文字を選んでいなかったときは、差し替えやすいよう「リンクの文字」を選んでおく
+			textarea.selectionStart = start + 1;
+			textarea.selectionEnd = start + 1 + label.length;
+		});
+	}
+
 	function insert(snippet: string) {
 		const start = textarea.selectionStart ?? value.length;
 		const end = textarea.selectionEnd ?? value.length;
@@ -46,7 +78,10 @@
 <div class="rounded-xl border border-stone-300 bg-white">
 	<div class="flex flex-wrap items-center gap-1 border-b border-stone-200 px-2 py-1.5">
 		<button type="button" class="tb" onclick={() => insert('\n## 見出し\n')}>見出し</button>
-		<button type="button" class="tb font-bold" onclick={() => insert('**強調**')}>B</button>
+		<!-- 文字を選んで押すと、その文字を囲む（選んでいなければ見本の文字を入れて選ぶ・2026-10-17） -->
+		<button type="button" class="tb font-bold" title="太字" onclick={() => wrap('**', '**', '太字')}>B</button>
+		<button type="button" class="tb font-semibold" style="color:{MD_RED}" title="赤字（==文字==）" onclick={() => wrap('==', '==', '赤字')}>赤字</button>
+		<button type="button" class="tb" title="リンク（[文字](https://…)）" onclick={addLink}>🔗 リンク</button>
 		<button type="button" class="tb" onclick={() => insert('\n- 項目\n- 項目\n')}>リスト</button>
 		<button type="button" class="tb" onclick={() => insert('\n| 列1 | 列2 |\n|---|---|\n| 内容 | 内容 |\n')}>表</button>
 		{#if moreButton}

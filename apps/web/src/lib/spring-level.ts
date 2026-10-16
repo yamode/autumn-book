@@ -26,7 +26,7 @@ export const SPRING_TONE_BAR: Record<SpringTone, string> = {
 };
 
 export const DEFAULT_SPRING_BANDS: SpringBand[] = [
-	{ min: 0, ja: 'ただいまお湯はありません', en: 'Currently empty', zh: '目前無溫泉水', tone: 'gray' },
+	{ min: 0, ja: 'お湯がありません', en: 'Currently empty', zh: '目前無溫泉水', tone: 'gray' },
 	{ min: 1, ja: '少なめ', en: 'Low', zh: '偏少', tone: 'orange' },
 	{ min: 30, ja: 'ふつう', en: 'Normal', zh: '普通', tone: 'green' },
 	{ min: 60, ja: 'たっぷり', en: 'Plenty', zh: '充足', tone: 'blue' }
