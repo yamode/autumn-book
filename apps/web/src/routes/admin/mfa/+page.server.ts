@@ -3,6 +3,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { adminMfaErrorText, normalizeTotpCode, safeAdminNext } from '$lib/admin-mfa';
+import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -14,16 +15,23 @@ export const load: PageServerLoad = async (event) => {
 	if (locals.adminAal.verifiedFactors === 0) redirect(303, '/admin/security');
 	if (locals.adminAal.current === 'aal2') redirect(303, next);
 
+	// パスキー（登録していて、このアドレスで使えるとき）。認証アプリと両方あればどちらでも確認できる
+	const passkeys = locals.adminAal.passkeys ?? 0;
+	const passkey = { count: passkeys, usable: passkeys > 0 && adminPasskeyAvailable(event) };
+	if ((locals.adminAal.totpFactors ?? locals.adminAal.verifiedFactors) === 0) {
+		return { next, passkey, factors: [] as { id: string; friendlyName: string | null }[], loadError: null as string | null };
+	}
 	try {
 		const { data, error } = await createSupabaseServerClient(event).auth.mfa.listFactors();
 		if (error) throw error;
 		return {
 			next,
+			passkey,
 			factors: data.totp.map((f) => ({ id: f.id, friendlyName: f.friendly_name ?? null })),
 			loadError: null as string | null
 		};
 	} catch (e) {
-		return { next, factors: [], loadError: adminMfaErrorText(e as { code?: string; message?: string }) };
+		return { next, passkey, factors: [], loadError: adminMfaErrorText(e as { code?: string; message?: string }) };
 	}
 };
 

@@ -6,6 +6,8 @@ import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient } from '$lib/se
 import { adminMfaErrorText, normalizeTotpCode } from '$lib/admin-mfa';
 import type { Actions, PageServerLoad } from './$types';
 import type { RequestEvent } from '@sveltejs/kit';
+import { AdminPasskeyError, adminPasskeyAvailable, listAdminPasskeys, removeAdminPasskey, type AdminPasskeyView } from '$lib/server/admin-passkeys';
+import { clientIp } from '$lib/server/login-rate-limit';
 
 /** 画面に出す登録の形（秘密は含めない）。 */
 type FactorRow = { id: string; friendlyName: string | null; createdAt: string; lastUsedAt: string | null };
@@ -19,7 +21,16 @@ export const load: PageServerLoad = async (event) => {
 		isAdmin: locals.user?.role === 'admin'
 	};
 	if (AUTH_MODE !== 'supabase' || !locals.adminAal) {
-		return { ...base, available: false as const, factors: [] as FactorRow[], loadError: null, aal: null };
+		return { ...base, available: false as const, factors: [] as FactorRow[], loadError: null, aal: null, passkey: { usable: false, list: [] as AdminPasskeyView[], loadError: null as string | null } };
+	}
+	// パスキー（本番ドメインとローカルだけ。読めなくても認証アプリの画面は出す）
+	const passkey = { usable: adminPasskeyAvailable(event), list: [] as AdminPasskeyView[], loadError: null as string | null };
+	if (passkey.usable && locals.user) {
+		try {
+			passkey.list = await listAdminPasskeys(locals.user.id);
+		} catch (e) {
+			passkey.loadError = e instanceof AdminPasskeyError ? e.message : 'パスキーを読み込めませんでした。';
+		}
 	}
 	try {
 		const client = createSupabaseServerClient(event);
@@ -31,14 +42,15 @@ export const load: PageServerLoad = async (event) => {
 			createdAt: f.created_at,
 			lastUsedAt: f.last_challenged_at ?? null
 		}));
-		return { ...base, available: true as const, factors, loadError: null, aal: locals.adminAal.current };
+		return { ...base, available: true as const, factors, loadError: null, aal: locals.adminAal.current, passkey };
 	} catch (e) {
 		return {
 			...base,
 			available: true as const,
 			factors: [] as FactorRow[],
 			loadError: adminMfaErrorText(e as { code?: string; message?: string }),
-			aal: locals.adminAal.current
+			aal: locals.adminAal.current,
+			passkey
 		};
 	}
 };
@@ -116,6 +128,21 @@ export const actions: Actions = {
 				.catch(() => {});
 		}
 		return { cancelled: true };
+	},
+
+	// 自分のパスキーを削除する（関所により、確認済みのセッションでしか来られない）
+	removePasskey: async (event) => {
+		const blocked = guard(event);
+		if (blocked) return blocked;
+		const form = await event.request.formData();
+		const passkeyId = String(form.get('passkeyId') ?? '');
+		try {
+			const name = await removeAdminPasskey({ userId: event.locals.user!.id, passkeyId, ip: clientIp(event.request) });
+			return { passkeyRemoved: name };
+		} catch (e) {
+			if (e instanceof AdminPasskeyError) return fail(e.status, { message: e.message });
+			return fail(500, { message: 'パスキーを削除できませんでした。' });
+		}
 	},
 
 	// 自分の登録を削除する（Supabase が aal2 を要求する。確認済みのセッションでしか消せない）

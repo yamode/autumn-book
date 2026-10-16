@@ -4,10 +4,22 @@ import { safeNext } from './safe-next';
 
 /** hooks が locals.adminAal に載せる、管理者/スタッフのセッションの認証レベル。 */
 export interface AdminAal {
-	/** いまのセッションの認証レベル（JWT の aal クレーム）。'aal1' | 'aal2' | null */
+	/**
+	 * いまのセッションの認証レベル。'aal1' | 'aal2' | null。
+	 * JWT の aal クレーム（認証アプリで確認すると aal2）に加え、このセッションをパスキーで確認済みなら aal2 とする
+	 * （book.admin_passkey_sessions・lib/server/admin-passkeys.ts）。
+	 */
 	current: string | null;
-	/** 確認済み（verified）の第2要素の数。1 以上なら aal2 まで上げられる＝上げなければならない */
+	/** 確認済み（verified）の第2要素の数（認証アプリ＋パスキー）。1 以上なら aal2 まで上げられる＝上げなければならない */
 	verifiedFactors: number;
+	/** 認証アプリ（TOTP）の数。Supabase の操作（認証アプリの削除）は JWT の aal2 が要るので分けて持つ */
+	totpFactors?: number;
+	/** パスキーの数 */
+	passkeys?: number;
+	/** JWT の aal クレームそのもの（パスキーの確認は反映しない） */
+	jwtAal?: string | null;
+	/** Supabase Auth のセッション id（JWT の session_id）。パスキーで確認した印の鍵 */
+	sessionId?: string | null;
 }
 
 /**
@@ -27,6 +39,11 @@ export function isAdminPath(pathname: string): boolean {
 	return pathname === '/admin' || pathname.startsWith('/admin/');
 }
 
+/** path が base そのものか、その下（base/...）か */
+function isUnder(path: string, base: string): boolean {
+	return path === base || path.startsWith(base + '/');
+}
+
 /** 末尾のスラッシュを落とす（'/admin/mfa/' と '/admin/mfa' を同じに扱う）。 */
 function trimSlash(pathname: string): string {
 	return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -38,7 +55,8 @@ function trimSlash(pathname: string): string {
  *   （登録したのに確認を飛ばせるなら登録の意味がない）。
  * - 未登録の人は、required=true のときだけ /admin/security（登録画面そのもの）以外を開けない。
  *   /admin/security/users（他人のリセット）は登録画面に含めない。
- * - /admin/login は常に通す。ログアウトは /auth/logout（/admin の外）なので関所にかからない。
+ * - /admin/login（とその下のパスキーでのログイン）は常に通す。ログアウトは /auth/logout（/admin の外）なので関所にかからない。
+ * - /admin/mfa の下（パスキーでの確認 API）は確認画面と同じ扱い。/admin/security/passkey の下（パスキーの登録 API）は登録画面と同じ扱い。
  * - adminAal が null（demo モード・管理者以外）は判定しない。
  */
 export function decideAdminMfaGate(args: {
@@ -48,17 +66,17 @@ export function decideAdminMfaGate(args: {
 	required: boolean;
 }): AdminMfaGate {
 	const path = trimSlash(args.pathname);
-	if (!isAdminPath(path) || path === ADMIN_LOGIN_PATH) return 'ok';
+	if (!isAdminPath(path) || isUnder(path, ADMIN_LOGIN_PATH)) return 'ok';
 	if (args.role !== 'admin' && args.role !== 'staff') return 'ok';
 	if (!args.aal) return 'ok';
 
 	if (args.aal.verifiedFactors > 0) {
 		if (args.aal.current === 'aal2') return 'ok';
-		return path === ADMIN_MFA_PATH ? 'ok' : 'challenge';
+		return isUnder(path, ADMIN_MFA_PATH) ? 'ok' : 'challenge';
 	}
 	// 未登録
 	if (!args.required) return 'ok';
-	return path === ADMIN_SECURITY_PATH ? 'ok' : 'enroll';
+	return path === ADMIN_SECURITY_PATH || isUnder(path, `${ADMIN_SECURITY_PATH}/passkey`) ? 'ok' : 'enroll';
 }
 
 /** 関所の結果から転送先を作る。challenge は元の画面へ戻れるよう next を付ける。 */
@@ -81,7 +99,7 @@ export function safeAdminNext(next: string | null | undefined): string {
 	if (!safe) return '/admin';
 	const pathOnly = trimSlash(safe.split(/[?#]/)[0]);
 	if (!isAdminPath(pathOnly)) return '/admin';
-	if (pathOnly === ADMIN_MFA_PATH || pathOnly === ADMIN_LOGIN_PATH) return '/admin';
+	if (isUnder(pathOnly, ADMIN_MFA_PATH) || isUnder(pathOnly, ADMIN_LOGIN_PATH)) return '/admin';
 	return safe;
 }
 
@@ -121,7 +139,7 @@ export function adminMfaErrorText(err: { code?: string | null; message?: string 
 		case 'too_many_enrolled_mfa_factors':
 			return '登録できる数の上限です。使っていない登録を削除してください。';
 		case 'insufficient_aal':
-			return 'この操作の前に、二段階認証のコードで本人確認をしてください。';
+			return 'この操作には認証アプリのコードでの確認が要ります（パスキーでの確認では足りません）。いちどログアウトし、ログイン後の確認で認証アプリのコードを入力してから操作してください。';
 		case 'mfa_verification_rejected':
 		case 'over_request_rate_limit':
 			return '試行回数が多すぎます。しばらく待ってからやり直してください。';

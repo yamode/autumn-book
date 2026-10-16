@@ -6,17 +6,17 @@
 
 	const fmt = (iso: string | null) =>
 		iso ? new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'medium', timeStyle: 'short' }) : '—';
-	const verifiedCount = (u: (typeof data.users)[number]) => u.factors.filter((f) => f.status === 'verified').length;
+	const verifiedCount = (u: (typeof data.users)[number]) => u.factors.filter((f) => f.status === 'verified').length + u.passkeys;
 	let adminCount = $derived(data.users.filter((u) => u.role === 'admin').length);
 </script>
 
 <svelte:head><title>二段階認証の登録状況 ｜ 山人管理</title></svelte:head>
 
-<p class="mb-2 text-sm"><a href="/admin/security" class="text-stone-500 hover:text-stone-700">← 二段階認証</a></p>
-<h1 class="mb-1 text-lg font-bold text-stone-800">管理者・スタッフの二段階認証</h1>
+<p class="mb-2 text-sm"><a href="/admin/security" class="text-stone-500 hover:text-stone-700">← 二段階認証・パスキー</a></p>
+<h1 class="mb-1 text-lg font-bold text-stone-800">管理者・スタッフの二段階認証・パスキー</h1>
 <p class="mb-4 text-sm text-stone-500">
-	スマートフォンを失くした・機種変更で引き継げなかった人の登録を削除します。削除すると、その人は次のログインでパスワードだけで入れるので、すぐに「二段階認証」の画面で登録し直してもらってください。
-	削除は監査ログ（admin_mfa_reset）に残ります。<strong>本人からの依頼であることを、電話や対面で確かめてから</strong>削除してください。
+	スマートフォン・パスキーを失くした・機種変更で引き継げなかった人の登録（パスキーと認証アプリ）を削除します。削除すると、その人は次のログインでパスワードだけで入れるので、すぐに「二段階認証・パスキー」の画面で登録し直してもらってください。
+	削除は監査ログ（admin_mfa_reset・admin_passkey_reset）に残ります。<strong>本人からの依頼であることを、電話や対面で確かめてから</strong>削除してください。
 </p>
 
 {#if !data.available}
@@ -70,6 +70,9 @@
 							{:else}
 								<span class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">未登録</span>
 							{/if}
+							{#if u.passkeys > 0}
+								<p class="mt-1 text-xs text-stone-500">🔑 パスキー {u.passkeys} 件</p>
+							{/if}
 							{#each u.factors as f (f.id)}
 								<p class="mt-1 text-xs text-stone-500">
 									{f.friendlyName ?? f.type}・{f.status === 'verified' ? '有効' : '登録途中'}・{fmt(f.createdAt)}
@@ -77,7 +80,7 @@
 							{/each}
 						</td>
 						<td class="px-3 py-2 text-right">
-							{#if u.id !== data.selfId && u.factors.length > 0}
+							{#if u.id !== data.selfId && (u.factors.length > 0 || u.passkeys > 0)}
 								<form method="POST" action="?/reset" use:enhance data-no-guard>
 									<input type="hidden" name="userId" value={u.id} />
 									<button
@@ -85,7 +88,7 @@
 										disabled={!data.selfAal2}
 										class="rounded-md border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50"
 										onclick={confirmSubmit({
-											message: `${u.email} の二段階認証の登録をすべて削除します。本人からの依頼であることを確かめましたか？`,
+											message: `${u.email} の二段階認証・パスキーの登録をすべて削除します。本人からの依頼であることを確かめましたか？`,
 											confirmLabel: '削除する'
 										})}
 									>

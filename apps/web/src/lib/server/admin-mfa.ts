@@ -41,6 +41,8 @@ export interface StaffMfaView {
 	name: string;
 	role: 'admin' | 'staff';
 	factors: StaffFactorView[];
+	/** パスキーの数（book.admin_passkeys・lib/server/admin-passkeys.ts） */
+	passkeys: number;
 }
 
 function serviceOrThrow(): SupabaseClient {
@@ -80,7 +82,8 @@ export async function listStaffMfa(): Promise<StaffMfaView[]> {
 				email: u.email ?? '',
 				name,
 				role,
-				factors: (u.factors ?? []).map(toFactorView)
+				factors: (u.factors ?? []).map(toFactorView),
+				passkeys: 0
 			});
 		}
 		if (data.users.length < 1000) break;
@@ -96,6 +99,18 @@ async function writeAudit(svc: SupabaseClient, actorId: string, action: string, 
 		detail
 	});
 	return error;
+}
+
+/** 復旧の対象（自分でなく、管理画面のアカウント）か確かめて、id とメールを返す */
+export async function staffResetTarget(args: { actorId: string; targetUserId: string }): Promise<{ id: string; email: string | null }> {
+	if (args.actorId === args.targetUserId) {
+		throw new AdminMfaError('ご自身の登録は「二段階認証・パスキー」の画面から削除してください。');
+	}
+	const svc = serviceOrThrow();
+	const { data: got, error: getErr } = await svc.auth.admin.getUserById(args.targetUserId);
+	if (getErr || !got?.user) throw new AdminMfaError('対象のアカウントが見つかりません。', 404);
+	if (!staffRoleOf(got.user)) throw new AdminMfaError('管理画面のアカウント（管理者・スタッフ）だけが対象です。', 403);
+	return { id: got.user.id, email: got.user.email ?? null };
 }
 
 /**

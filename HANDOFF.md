@@ -1,5 +1,32 @@
 # autumn-book HANDOFF
 
+## 管理画面のパスキー（2026-10-17・v0.138.0）
+
+**ユーザー指示: 管理画面でパスキーを有効にして。**
+
+- 方式: 取引先ページと同じ独自 WebAuthn（@simplewebauthn・RP ID `book.yamado.app`。localhost も可、`*.pages.dev` では出さない）。Supabase 標準のパスキーは共有プロジェクトで RP ID が1つになるため使わない
+- DB: autumn-shared `20261016224412_book_admin_passkeys`（本番適用・表と関数の実体を確認済み）。`book.admin_passkeys`（公開鍵）・`book.admin_passkey_challenges`（1回限り・登録/確認5分・ログイン10分）・`book.admin_passkey_sessions`（パスキーで確認した Supabase セッション＝JWT の session_id・12時間）・`book.admin_passkey_state(user, session)`。すべて service_role だけ（admin-client.ts「例外その8」）
+- 関所: Supabase の aal は TOTP でしか aal2 にならないため、`readAdminAal`（auth.ts）が `admin_passkey_state` を読み、パスキーで確認済みのセッションを aal2 と同じに扱う。パスキーも第2要素に数える（登録した人はパスワードでログイン後 /admin/mfa でパスキーか認証アプリの確認が要る）。読めなければ「パスキーなし」扱い（既存ログインを止めない）
+- 画面:
+  - `/admin/login`「🔑 パスキーでログイン」（パスワード不要・UV 必須・メール欄の候補＝Conditional UI）。署名を確かめたら、持ち主が今も admin/staff で停止されていないことを確かめ、管理 API の `generateLink(magiclink)` → `verifyOtp(token_hash)` で Supabase セッションを作り、確認済みにする（メールは送られない）。失敗は管理ログインと同じ IP 制限に数える
+  - `/admin/mfa`「🔑 パスキーで確認する」（認証アプリと両方あればどちらでも）
+  - `/admin/security`（ナビ名「二段階認証・パスキー」）: パスキーの一覧・追加（名前任意・discoverable 必須）・削除。追加するとそのセッションは確認済みになる
+  - `/admin/security/users`: パスキーの件数を表示。「登録を削除」でパスキーと認証アプリを両方消す（監査 `admin_passkey_reset`）
+- 監査ログ（book.admin_audit_logs）: `admin_passkey_registered` / `_removed` / `_login` / `_reset`
+- ⚠ パスキーだけで確認したセッションは JWT 上は aal1 のままなので、Supabase が aal2 を要求する「認証アプリの削除」はできない（ログアウト→認証アプリのコードで確認してから）。文言で案内済み
+- 未確認: 本番での登録・ログイン・確認の通し（実ログインが要る）。ローカル（AUTH_MODE=demo）では画面が出ること・型チェック・テスト・ビルドを確認
+
+### テストチェックリスト（管理画面のパスキー）
+- [ ] 「二段階認証・パスキー」で「パスキーを追加」→ 生体認証 → 一覧に名前・登録日（Chrome・Safari・iPhone 実機）
+- [ ] ログアウト →「パスキーでログイン」でパスワード無しに /admin へ。/admin/mfa は出ない
+- [ ] メール欄をタップするとパスキーの候補が出て、選ぶとログインできる
+- [ ] パスワードでログインすると /admin/mfa でパスキー（または認証アプリ）の確認を求められ、パスキーで通る
+- [ ] 12時間たつと /admin/mfa でもう一度確認を求められる
+- [ ] 権限を外した（app_metadata.role なし）アカウントのパスキーではログインできない
+- [ ] パスキーを削除できる。最後の1つの削除で確認が出る
+- [ ] 別の管理者が「登録を削除」するとパスキーも消え、その人はパスキーで入れなくなる
+- [ ] プレビュー（*.pages.dev）ではパスキーのボタンが出ない
+
 ## お知らせの表示・エディタの装飾・湯量の「?」アイコン（2026-10-17・v0.137.0）
 
 **ユーザー指示: (1) お知らせを画面中央に・掲載日時を表示・表示中は背景をスクロールさせない。(2) エディタで太字・赤字・リンクを使えるように。(3) 湯量のツールチップを目立たせ、タップしたくなるアイコンに。**

@@ -48,6 +48,18 @@ describe('decideAdminMfaGate', () => {
 		expect(decideAdminMfaGate({ pathname: '/admin/security/', role: 'staff', aal: notEnrolled, required: true })).toBe('ok');
 	});
 
+	it('パスキーの API: 確認（/admin/mfa/passkey）は確認画面と同じ、登録（/admin/security/passkey）は登録画面と同じ、ログインは常に通す', () => {
+		expect(decideAdminMfaGate({ pathname: '/admin/mfa/passkey/options', role: 'admin', aal: enrolledAal1, required: false })).toBe('ok');
+		expect(decideAdminMfaGate({ pathname: '/admin/mfa/passkey/verify', role: 'staff', aal: enrolledAal1, required: true })).toBe('ok');
+		// 登録済みで未確認なら、パスキーの追加も確認が先
+		expect(decideAdminMfaGate({ pathname: '/admin/security/passkey/options', role: 'admin', aal: enrolledAal1, required: false })).toBe('challenge');
+		// 未登録・必須なら、パスキーの追加はできる（登録画面の一部）。他人の削除（users）はできない
+		expect(decideAdminMfaGate({ pathname: '/admin/security/passkey/options', role: 'staff', aal: notEnrolled, required: true })).toBe('ok');
+		expect(decideAdminMfaGate({ pathname: '/admin/security/passkeyx', role: 'staff', aal: notEnrolled, required: true })).toBe('enroll');
+		expect(decideAdminMfaGate({ pathname: '/admin/login/passkey/verify', role: 'admin', aal: enrolledAal1, required: true })).toBe('ok');
+		expect(decideAdminMfaGate({ pathname: '/admin/loginx', role: 'admin', aal: enrolledAal1, required: true })).toBe('challenge');
+	});
+
 	it('ログイン画面・/admin 外・管理者以外・demo（aal なし）は判定しない', () => {
 		expect(decideAdminMfaGate({ pathname: '/admin/login', role: 'admin', aal: enrolledAal1, required: true })).toBe('ok');
 		expect(decideAdminMfaGate({ pathname: '/auth/logout', role: 'admin', aal: enrolledAal1, required: true })).toBe('ok');
@@ -73,6 +85,10 @@ describe('safeAdminNext', () => {
 	it('/admin 配下だけを許す', () => {
 		expect(safeAdminNext('/admin/partners?x=1')).toBe('/admin/partners?x=1');
 		expect(safeAdminNext('/admin')).toBe('/admin');
+	});
+	it('確認画面・ログイン画面（とその下の API）には戻さない', () => {
+		expect(safeAdminNext('/admin/mfa/passkey/verify')).toBe('/admin');
+		expect(safeAdminNext('/admin/login/passkey/options')).toBe('/admin');
 	});
 	it('外部・プロトコル相対・バックスラッシュ・/admin 外は /admin に落とす', () => {
 		for (const bad of ['/admin/../p/token', '/admin\n', 'https://evil.example/admin', '//evil.example/admin', '/\\evil.example', '/p/token', '/administrator', 'admin', '', null, undefined]) {

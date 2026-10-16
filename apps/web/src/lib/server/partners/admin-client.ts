@@ -38,6 +38,9 @@
 //     （lib/server/partners/member-hold.ts・member-bookings.ts）。サーバが Supabase で検証した会員 id と、
 //     料金ルールでサーバが計算した泊明細を渡す（RPC の中でも対象者・予約の持ち主・ページの一致を確かめる）
 //   - 会員のグレードの還元率（book.member_ranks）・部屋タイプ／プランのコードと UUID の対応（booking.rate_plans・pms.room_types）
+// 例外その8（2026-10-17）: 管理画面のパスキー（src/lib/server/admin-passkeys.ts・book.admin_passkey*）。
+//   表は service_role だけに grant している。呼ぶ側（routes/admin/**）は getUser() で検証した本人の id で絞り、
+//   パスワード無しのログインは署名を確かめてから管理 API（generateLink → verifyOtp）でセッションを作る。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

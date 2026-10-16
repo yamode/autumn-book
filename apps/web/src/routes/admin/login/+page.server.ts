@@ -3,13 +3,15 @@ import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { clientIp, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
+import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
 
 // ログインの失敗・制限中で同じ文言（制限中かを外から区別させない・docs/auth-hardening.md §4.5）
 const LOGIN_FAILED_MESSAGE = 'メールアドレスまたはパスワードが違うか、しばらくの間ログインを制限しています。数分おいてからお試しください。';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	return { authMode: AUTH_MODE };
+export const load: PageServerLoad = async (event) => {
+	// パスキーは本番ドメイン（book.yamado.app）とローカルだけ（*.pages.dev のプレビューではボタンを出さない）
+	return { authMode: AUTH_MODE, passkeyEnabled: AUTH_MODE === 'supabase' && adminPasskeyAvailable(event) };
 };
 
 export const actions: Actions = {

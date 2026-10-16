@@ -60,7 +60,7 @@
 			label: 'システム',
 			items: [
 				{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠', tenantWide: true },
-				{ href: '/admin/security', label: '二段階認証', icon: '🔐', tenantWide: true }
+				{ href: '/admin/security', label: '二段階認証・パスキー', icon: '🔐', tenantWide: true }
 			]
 		}
 	];
@@ -330,7 +330,7 @@
 
 			{#if showMfaBanner}
 				<a href="/admin/security" class="block border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900 hover:bg-sky-100">
-					<span class="font-bold">🔐 二段階認証（認証アプリ）を登録してください。</span>
+					<span class="font-bold">🔐 パスキーか二段階認証（認証アプリ）を登録してください。</span>
 					パスワードが漏れても管理画面に入られないようにします。近日中に全員必須になります。→ 登録する
 				</a>
 			{/if}

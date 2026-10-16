@@ -7,7 +7,7 @@
 // book スキーマは yamado-one（モバイル会員アプリ）と共有するため、
 //   ・会員行の作成は必ず book.register_member RPC 経由（テーブル直 insert 禁止）
 //   ・user_id = auth.users.id の 1:1 を崩さない
-// パスキーはドメイン確定後（Phase 3）に Supabase 側 RP 設定のうえで有効化する。
+// 管理画面のパスキーは Book のサーバで検証する（lib/server/admin-passkeys.ts・Supabase 標準のパスキーは使わない）。
 import { createServerClient } from '@supabase/ssr';
 import { env } from '$env/dynamic/private';
 // PUBLIC_* は $env/dynamic/private には含まれない（SvelteKit が公開プレフィックスを分離するため）。
@@ -17,6 +17,8 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { SessionUser } from './session';
 import { DATA_SOURCE } from './supabase';
 import { parseAdminMfaRequired, type AdminAal } from '$lib/admin-mfa';
+import { jwtSessionId } from '$lib/admin-passkey';
+import { adminPasskeyState } from './admin-passkeys';
 
 export const AUTH_MODE: 'demo' | 'supabase' = env.AUTH_MODE === 'supabase' ? 'supabase' : 'demo';
 
@@ -103,16 +105,31 @@ export interface SupabaseAuthResolution {
  * - 第2要素の数は getUser() が返した（＝サーバから取り直した）user.factors の verified を数える。
  *   getAuthenticatorAssuranceLevel() の nextLevel は cookie に保存された古い user から計算されるため使わない。
  * - 読めないときは「登録なし・aal1」扱い（required=false なら通る＝既存のログインを止めない）。
+ * - パスキー（lib/server/admin-passkeys.ts）も第2要素に数え、このセッションをパスキーで確認済みなら aal2 とする。
  */
 async function readAdminAal(client: SupabaseClient, user: User): Promise<AdminAal> {
-	const verifiedFactors = (user.factors ?? []).filter((f) => f.status === 'verified').length;
+	const totpFactors = (user.factors ?? []).filter((f) => f.status === 'verified').length;
+	let jwtAal: string | null = null;
+	let sessionId: string | null = null;
 	try {
 		const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-		if (error || !data) return { current: null, verifiedFactors };
-		return { current: data.currentLevel ?? null, verifiedFactors };
+		if (!error && data) jwtAal = data.currentLevel ?? null;
+		// パスキーで確認した印の鍵（同じトークンは直前の getUser() で検証済み）
+		const { data: s } = await client.auth.getSession();
+		sessionId = jwtSessionId(s.session?.access_token);
 	} catch {
-		return { current: null, verifiedFactors };
+		// 読めなければ aal1 扱い
 	}
+	// パスキー（book.admin_passkeys）の数と、このセッションをパスキーで確認済みか。読めなければ「なし」（既存のログインを止めない）
+	const pk = await adminPasskeyState(user.id, sessionId);
+	return {
+		current: pk.verified ? 'aal2' : jwtAal,
+		verifiedFactors: totpFactors + pk.passkeys,
+		totpFactors,
+		passkeys: pk.passkeys,
+		jwtAal,
+		sessionId
+	};
 }
 
 /**

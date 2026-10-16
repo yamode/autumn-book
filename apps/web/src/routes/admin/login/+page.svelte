@@ -1,8 +1,57 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import Turnstile from '$lib/components/Turnstile.svelte';
+	import { goto } from '$app/navigation';
+	import { onDestroy, onMount } from 'svelte';
 	let { data, form } = $props();
 	let loading = $state(false);
+
+	// ---- パスキーでログイン（パスワード不要・メールアドレス欄の候補からも選べる＝Conditional UI） ----
+	let passkeyReady = $state(false);
+	let passkeyBusy = $state(false);
+	let passkeyMessage = $state('');
+	let destroyed = false;
+
+	async function finish(next: unknown) {
+		await goto(typeof next === 'string' && next.startsWith('/admin') ? next : '/admin', { invalidateAll: true });
+	}
+
+	async function startConditional() {
+		const { loginWithAdminPasskey } = await import('$lib/admin-passkey-client');
+		const r = await loginWithAdminPasskey({ autofill: true });
+		if (destroyed) return;
+		if (r.ok) await finish(r.data?.next);
+		else if (r.message) passkeyMessage = r.message;
+	}
+
+	onMount(() => {
+		if (!data.passkeyEnabled) return;
+		void (async () => {
+			const { passkeySupported } = await import('$lib/admin-passkey-client');
+			passkeyReady = await passkeySupported();
+			if (passkeyReady) void startConditional();
+		})();
+	});
+	onDestroy(() => {
+		destroyed = true;
+	});
+
+	async function passkeyLogin() {
+		if (passkeyBusy) return;
+		passkeyBusy = true;
+		passkeyMessage = '';
+		try {
+			const { loginWithAdminPasskey } = await import('$lib/admin-passkey-client');
+			const r = await loginWithAdminPasskey();
+			if (r.ok) await finish(r.data?.next);
+			else {
+				passkeyMessage = r.message;
+				void startConditional();
+			}
+		} finally {
+			passkeyBusy = false;
+		}
+	}
 </script>
 
 <div class="flex min-h-screen items-center justify-center bg-brand-900 px-4">
@@ -12,6 +61,9 @@
 
 		{#if form?.message}
 			<p class="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700">{form.message}</p>
+		{/if}
+		{#if passkeyMessage}
+			<p class="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700" role="alert">{passkeyMessage}</p>
 		{/if}
 
 		{#if data.authMode === 'supabase'}
@@ -33,7 +85,7 @@
 					<input
 						name="email"
 						type="email"
-						autocomplete="username"
+						autocomplete={data.passkeyEnabled ? 'username webauthn' : 'username'}
 						required
 						value={(form as { email?: string } | null)?.email ?? ''}
 						class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5 text-sm focus:border-brand-700 focus:outline-none"
@@ -57,7 +109,22 @@
 					{loading ? 'ログイン中…' : 'ログイン'}
 				</button>
 			</form>
-			<p class="mt-4 text-center text-[11px] text-stone-400">パスキーは正式ドメイン移行後に有効化予定です。</p>
+			{#if passkeyReady}
+				<div class="mt-4 flex items-center gap-3 text-[11px] text-stone-400">
+					<span class="h-px flex-1 bg-stone-200"></span>または<span class="h-px flex-1 bg-stone-200"></span>
+				</div>
+				<button
+					type="button"
+					onclick={() => void passkeyLogin()}
+					disabled={passkeyBusy}
+					class="mt-4 w-full rounded-lg border border-brand-800 py-2.5 text-sm font-medium text-brand-800 hover:bg-brand-50 disabled:opacity-60"
+				>
+					{passkeyBusy ? '確認しています…' : '🔑 パスキーでログイン'}
+				</button>
+				<p class="mt-2 text-center text-[11px] text-stone-500">
+					パスキーは「二段階認証・パスキー」の画面で登録できます。パスワードでのログインも引き続き使えます。
+				</p>
+			{/if}
 		{:else}
 			<!-- デモ：ワンクリックログイン（dev・移行前のみ） -->
 			<p class="mt-2 text-center text-[11px] text-amber-600">デモモード（AUTH_MODE=demo）。本番は Supabase Auth に切り替わります。</p>
