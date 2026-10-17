@@ -491,8 +491,8 @@ PROD の `book._pb_slots` で検証した最終状態:
 
 1. **館内図 QR の導入テスト**（新しい館内図を従来版と切り替えて、印刷原寸とスマホ読取を現場で確認する）。
 2. ~~**段階0のデータ整備**~~ 済（§5 冒頭）。
-3. **販売条件の設定 UI**。いまは `metadata.private_bath.public` を直接書く必要がある
-   （既定は `enabled=false` / `price=0` なので、入れるまで何も起きない）。
+3. **販売条件の設定 UI**。料金（有料／無料・1枠の料金・無料にする経路）は 2026-10-17 に
+   book 管理画面「貸切風呂」へ追加済み（v0.153.0）。受付の可否・締切などは今も `metadata.private_bath.public` を直接書く。
 4. **`fm_channel_id` → `channel_code` の移行**（別作業・決定済み）。完了したら
    `private-bath-pricing` の `freeFmCodes` の枝と、8箇所のフォールバックを外せる。
 
@@ -538,6 +538,8 @@ PROD の `book._pb_slots` で検証した最終状態:
 ---
 
 ## 8. 変更履歴
+
+- 2026-10-17 料金設定の画面（book `/admin/bath`）と、予約確定と同時の明細計上（`pms.private_bath_slots` のトリガー → `book._pb_sync_bill_items`。PMS の同期と同じ規則）。migration `20261017141139_book_private_bath_pricing_bill_sync`。
 
 - 2026-08-31 初版（設計レビュー）。要件1〜9 に対する Blocker 4 / Major 8 / Minor 5 と、段階1〜3 の推奨設計。
 - 2026-09-01 book 管理画面 `/admin/bath`（予約フォームの文章・写真の編集 ＋ 実際の予約での QR テスト）。migration `20260831234706_book_private_bath_contents`。

@@ -200,3 +200,36 @@ export async function sbUploadBathPhoto(
 	if (error) throw error;
 	return client.storage.from('book-photos').getPublicUrl(path).data.publicUrl;
 }
+
+// ---------------------------------------------------------------------------
+// 料金設定（施設ごと・有料／無料と無料にする経路）
+// ---------------------------------------------------------------------------
+// 保存先は PMS の施設設定（metadata.private_bath.public）。書くのは料金と経路だけで、
+// 受付の可否・締切・時間枠は RPC 側でそのまま残す。
+import { normalizeBathPricing, type BathPricing } from '$lib/private-bath-pricing';
+
+export async function sbBathPricingAdmin(
+	client: SupabaseClient,
+	facilityUuid: string
+): Promise<BathPricing> {
+	const { data, error } = await client
+		.schema('book')
+		.rpc('admin_private_bath_pricing', { p_facility: facilityUuid });
+	if (error) throw error;
+	return normalizeBathPricing(data);
+}
+
+export async function sbBathPricingSave(
+	client: SupabaseClient,
+	facilityUuid: string,
+	p: BathPricing
+): Promise<BathPricing> {
+	const { data, error } = await client.schema('book').rpc('admin_save_private_bath_pricing', {
+		p_facility: facilityUuid,
+		p_price: p.price,
+		p_free_channels: p.freeChannels,
+		p_free_fm_codes: p.freeFmCodes
+	});
+	if (error) throw error;
+	return normalizeBathPricing(data);
+}

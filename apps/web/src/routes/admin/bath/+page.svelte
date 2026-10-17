@@ -21,6 +21,25 @@
 	// QR の宛先は管理画面と同じオリジン。本番で開けばそのまま本番の URL になる。
 	const qrUrl = $derived(form?.qr ? `${$page.url.origin}/r/c/${form.qr.token}` : '');
 
+	// 料金設定。保存し直して data が変わったら画面の選択も追従させる。
+	let paid = $state(false);
+	let priceInput = $state('');
+	let freeSet = $state<string[]>([]);
+	$effect.pre(() => {
+		paid = data.pricing.price > 0;
+		priceInput = data.pricing.price > 0 ? String(data.pricing.price) : '';
+		freeSet = [...data.pricing.freeChannels];
+	});
+	const channelGroups = $derived([
+		{ title: '公式サイト・自社', opts: data.channelOptions.filter((c) => c.own) },
+		{ title: 'OTA・旅行会社ほか', opts: data.channelOptions.filter((c) => !c.own) }
+	]);
+	const PAID_CHOICES = [
+		{ v: false, label: '無料' },
+		{ v: true, label: '有料' }
+	];
+	const yen = (n: number) => `¥${n.toLocaleString('ja-JP')}`;
+
 	const dateHref = (d: string) => {
 		const p = new URLSearchParams($page.url.search);
 		if (d) p.set('date', d);
@@ -49,6 +68,75 @@
 			{LANG_LABEL[form.saved] ?? form.saved} を保存しました。
 		</p>
 	{/if}
+
+	<!-- ============ 料金 ============ -->
+	<section class="mb-5 rounded-xl border border-stone-200 bg-white">
+		<header class="border-b border-stone-200 px-4 py-3">
+			<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="receipt" class="h-4 w-4 shrink-0 text-stone-500" />料金</h2>
+			<p class="mt-1 text-xs text-stone-500">
+				有料のときは予約フォームに料金が出て、予約が入ると PMS のその部屋の請求書に「貸切風呂」の明細が自動で入ります（1枠ごと・税込・税10%）。取り消すと明細も外れます。
+			</p>
+		</header>
+
+		{#if data.pricingError || form?.pricingError}
+			<p class="mx-4 mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{form?.pricingError ?? data.pricingError}</p>
+		{:else if form?.pricingSaved}
+			<p class="mx-4 mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+				料金を保存しました。{form.demo ? '（デモ環境のため、この画面の中だけの保存です）' : 'これから入る予約に効きます（入っている予約の金額は変わりません）。'}
+			</p>
+		{/if}
+
+		<form method="POST" action="?/savePricing" use:enhance class="space-y-4 px-4 py-4">
+			<fieldset>
+				<legend class="text-sm font-medium text-stone-700">{data.facilityName} の貸切風呂は</legend>
+				<div class="mt-2 flex flex-wrap gap-2">
+					{#each PAID_CHOICES as { v, label } (label)}
+						<label class="flex min-h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border px-4 text-sm sm:flex-none {paid === v ? 'border-brand-700 bg-brand-50 font-medium text-brand-900' : 'border-stone-300 text-stone-600 hover:bg-stone-50'}">
+							<input type="radio" name="paid" value={v ? '1' : '0'} checked={paid === v} onchange={() => (paid = v)} class="sr-only" />
+							{label}
+						</label>
+					{/each}
+				</div>
+			</fieldset>
+
+			{#if paid}
+				<label class="block">
+					<span class="text-sm font-medium text-stone-700">1枠の料金（税込）</span>
+					<span class="mt-1 flex items-center gap-2">
+						<input name="price" inputmode="numeric" bind:value={priceInput} placeholder="2200" class="w-36 rounded-md border border-stone-300 px-3 py-2 text-right text-sm" />
+						<span class="text-sm text-stone-600">円</span>
+					</span>
+				</label>
+
+				<fieldset>
+					<legend class="text-sm font-medium text-stone-700">この予約経路のお客様は無料にする</legend>
+					<p class="text-xs text-stone-400">チェックした経路の予約は 0円 で予約でき、明細も入りません。経路の分からない予約も無料として扱います。</p>
+					{#each channelGroups as g (g.title)}
+						<p class="mt-3 text-xs font-medium text-stone-500">{g.title}</p>
+						<div class="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-3">
+							{#each g.opts as c (c.code)}
+								<label class="flex min-h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-stone-50">
+									<input type="checkbox" name="freeChannel" value={c.code} bind:group={freeSet} class="h-4 w-4 rounded border-stone-300" />
+									{c.name}
+								</label>
+							{/each}
+						</div>
+					{/each}
+				</fieldset>
+			{:else}
+				<!-- 無料の施設でも経路の選択は持ち越す（有料に戻したときに選び直さないため） -->
+				{#each freeSet as c (c)}<input type="hidden" name="freeChannel" value={c} />{/each}
+				<p class="text-sm text-stone-500">どの経路のお客様も無料です。予約フォームには「無料」と出て、明細は入りません。</p>
+			{/if}
+
+			<div class="flex flex-wrap items-center gap-3">
+				<button type="submit" class="w-full rounded-lg bg-brand-800 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">料金を保存</button>
+				<span class="text-xs text-stone-500">
+					いまの設定: {data.pricing.price > 0 ? `有料 ${yen(data.pricing.price)}／枠（無料の経路 ${data.pricing.freeChannels.length}件）` : '無料'}
+				</span>
+			</div>
+		</form>
+	</section>
 
 	<!-- ============ 予約フォームの中身 ============ -->
 	<section class="rounded-xl border border-stone-200 bg-white">

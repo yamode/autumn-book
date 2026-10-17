@@ -18,6 +18,8 @@ import { FACILITY_UUID } from '$lib/server/supabase-data';
 import {
 	sbBathContentSave,
 	sbBathContentsAdmin,
+	sbBathPricingAdmin,
+	sbBathPricingSave,
 	sbGetOrIssueStayToken,
 	sbListBookableStays,
 	sbUploadBathPhoto,
@@ -29,7 +31,23 @@ import {
 	normalizeBathContent,
 	type BathContent
 } from '$lib/private-bath-content';
+import {
+	BATH_CHANNEL_OPTIONS,
+	buildBathPricing,
+	normalizeBathPricing,
+	parseBathPrice,
+	type BathPricing
+} from '$lib/private-bath-pricing';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
+
+// デモ（実データに繋がっていない環境）の料金設定。プロセス内だけで持つ ──
+// 画面の動きを確かめるためのもので、Workers では isolate ごとに初期値へ戻る。
+const demoPricing: Record<string, BathPricing> = {
+	'f-nishiwaga': normalizeBathPricing({ price: 0 }),
+	'f-oga': normalizeBathPricing({ price: 2200 })
+};
+const demoPricingOf = (facId: string): BathPricing =>
+	demoPricing[facId] ?? normalizeBathPricing({ price: 0 });
 
 const LANGS = ['ja', 'en', 'zh-TW'] as const;
 type Lang = (typeof LANGS)[number];
@@ -100,7 +118,21 @@ export const load: PageServerLoad = async (event) => {
 		}
 	}
 
+	// 料金設定。読めなくても画面は落とさない（エラーだけ出す）。
+	let pricing: BathPricing = demoPricingOf(currentFacility.id);
+	let pricingError: string | null = null;
+	if (useSupabaseAdmin) {
+		try {
+			pricing = await sbBathPricingAdmin(createSupabaseServerClient(event), facilityUuid);
+		} catch (e) {
+			pricingError = messageOf(e);
+		}
+	}
+
 	return {
+		pricing,
+		pricingError,
+		channelOptions: BATH_CHANNEL_OPTIONS,
 		fields: BATH_CONTENT_FIELDS,
 		langs: LANGS,
 		contents,
@@ -127,6 +159,37 @@ function contentFromForm(fd: FormData): BathContent {
 }
 
 export const actions: Actions = {
+	// 料金設定（有料／無料・1枠の料金・無料にする経路）。
+	// 「無料」を選んだら料金0円で保存する（PMS と DB は 0円＝無料として扱う）。
+	// 経路の選択は残すので、有料に戻したときに選び直さなくてよい。
+	savePricing: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		const currentFacility = currentFacilityOf(event);
+		const fd = await event.request.formData();
+		const paid = fd.get('paid') === '1';
+		const price = paid ? parseBathPrice(fd.get('price')) : 0;
+		if (price === null || (paid && price <= 0)) {
+			return fail(400, { pricingError: '料金は1円以上の数字で入れてください（無料なら「無料」を選びます）。' });
+		}
+		const chosen = fd.getAll('freeChannel').map(String);
+
+		if (!useSupabaseAdmin) {
+			const next = buildBathPricing(price, chosen, demoPricingOf(currentFacility.id));
+			demoPricing[currentFacility.id] = next;
+			return { pricingSaved: true, demo: true };
+		}
+		try {
+			const client = createSupabaseServerClient(event);
+			const facilityUuid = facilityUuidOf(currentFacility.id);
+			const prev = await sbBathPricingAdmin(client, facilityUuid);
+			await sbBathPricingSave(client, facilityUuid, buildBathPricing(price, chosen, prev));
+			return { pricingSaved: true };
+		} catch (e) {
+			return fail(400, { pricingError: messageOf(e) });
+		}
+	},
+
 	// 文章の保存（写真は下の action で即時保存されるので、ここでは持ち回った値をそのまま書く）
 	save: async (event) => {
 		const denied = denyIfNotStaff(event);
