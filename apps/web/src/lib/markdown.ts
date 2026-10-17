@@ -13,6 +13,26 @@ marked.use({
 	breaks: true,
 	extensions: [
 		{
+			// **太字**（エディタの「B」ボタンが入れる）。2026-10-17: 日本語の文中で効かないことがあったため自前で拾う。
+			// CommonMark の決まりでは、閉じる ** の内側が記号（」）など）で外側が文字だと太字にならない
+			// （例:「料金は**¥1,000（税込）**です」）。日本語では普通の書き方なので、前後の文字を問わず ** と ** の間を太字にする。
+			// 開く ** の直後・閉じる ** の直前が空白のときと、*** の並びは従来どおり marked に任せる
+			name: 'strongJa',
+			level: 'inline',
+			start(src: string) {
+				const i = src.indexOf('**');
+				return i < 0 ? undefined : i;
+			},
+			tokenizer(src: string) {
+				const m = /^\*\*(?=[^\s*])([\s\S]*?[^\s*\\])\*\*(?!\*)/.exec(src);
+				if (!m) return undefined;
+				return { type: 'strongJa', raw: m[0], tokens: this.lexer.inlineTokens(m[1]) };
+			},
+			renderer(token) {
+				return `<strong>${this.parser.parseInline(token.tokens ?? [])}</strong>`;
+			}
+		},
+		{
 			// ==赤字== （エディタの「赤字」ボタンが入れる）
 			name: 'red',
 			level: 'inline',
