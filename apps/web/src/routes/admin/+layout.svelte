@@ -11,7 +11,8 @@
 	// 1項目は1箇所にしか置かない。両属性の項目は画面内の相互リンクで辿らせる。
 	// tenantWide = 施設に紐づかない画面（施設セレクトを出すと「切り替えても変わらない」混乱を生む）
 	// demoOnly = まだ本番データに繋がっていない画面（デモストアを読み書きする）。本番では注意を出し、保存はサーバで止める（lib/server/admin-demo-guard.ts）
-	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean; badge?: boolean }[] }[] = [
+	// adminOnly = 管理者（admin）だけに出す（スタッフには項目ごと出さない）
+	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean; badge?: boolean; adminOnly?: boolean }[] }[] = [
 		{
 			label: '宿泊・直販',
 			items: [
@@ -60,6 +61,7 @@
 			label: 'システム',
 			items: [
 				{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠', tenantWide: true },
+				{ href: '/admin/users', label: 'ユーザー管理', icon: '👥', tenantWide: true, adminOnly: true },
 				{ href: '/admin/security', label: '二段階認証・パスキー', icon: '🔐', tenantWide: true }
 			]
 		}
@@ -68,7 +70,8 @@
 	const navItems = navGroups.flatMap((g) => g.items);
 
 	// ログイン画面と二段階認証のコード入力画面は、メニューを出さない（まだ管理画面に入れていない状態）
-	let isLogin = $derived(page.url.pathname === '/admin/login' || page.url.pathname.startsWith('/admin/mfa'));
+	// （/admin/login/reset＝パスワードの再設定もメニューを出さない）
+	let isLogin = $derived(page.url.pathname.startsWith('/admin/login') || page.url.pathname.startsWith('/admin/mfa'));
 	// 二段階認証が未登録（必須化前）なら、上部で登録を案内する。登録画面を開いている間は出さない
 	let showMfaBanner = $derived(
 		data.adminMfa.enabled && !data.adminMfa.enrolled && !page.url.pathname.startsWith('/admin/security')
@@ -220,7 +223,7 @@
 			{group.label}
 		</p>
 		<div class="space-y-0.5">
-			{#each group.items as item}
+			{#each group.items.filter((i) => !i.adminOnly || data.user?.role === 'admin') as item}
 				<a
 					href={item.href}
 					aria-current={item === activeItem ? 'page' : undefined}

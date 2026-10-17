@@ -62,6 +62,9 @@
 		{#if form?.message}
 			<p class="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700">{form.message}</p>
 		{/if}
+		{#if data.resetDone && !form?.message}
+			<p class="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-center text-sm text-emerald-800">パスワードを変えました。新しいパスワードでログインしてください。</p>
+		{/if}
 		{#if passkeyMessage}
 			<p class="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-sm text-red-700" role="alert">{passkeyMessage}</p>
 		{/if}

@@ -11,7 +11,12 @@ import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	// パスキーは本番ドメイン（book.yamado.app）とローカルだけ（*.pages.dev のプレビューではボタンを出さない）
-	return { authMode: AUTH_MODE, passkeyEnabled: AUTH_MODE === 'supabase' && adminPasskeyAvailable(event) };
+	return {
+		authMode: AUTH_MODE,
+		passkeyEnabled: AUTH_MODE === 'supabase' && adminPasskeyAvailable(event),
+		// パスワードの再設定（/admin/login/reset）から戻ってきた
+		resetDone: event.url.searchParams.get('reset') === '1'
+	};
 };
 
 export const actions: Actions = {

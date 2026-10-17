@@ -10,7 +10,8 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
 	const { locals, url, cookies, platform } = event;
-	const isLogin = url.pathname === '/admin/login';
+	// ログイン画面とパスワードの再設定（/admin/login/reset・メールのリンクから未ログインで開く）
+	const isLogin = url.pathname === '/admin/login' || url.pathname.startsWith('/admin/login/');
 	if (!isLogin && locals.user?.role !== 'admin' && locals.user?.role !== 'staff') {
 		redirect(303, '/admin/login');
 	}
