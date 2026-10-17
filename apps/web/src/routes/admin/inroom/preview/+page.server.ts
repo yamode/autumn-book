@@ -10,6 +10,7 @@ import { facilities } from '$lib/server/store';
 import { demoStayToken } from '$lib/server/inroom-demo-token';
 import { loadDemoPreview, saveDemoPreviewDemo, sbSaveDemoPreview } from '$lib/server/inroom-settings';
 import { parsePreviewBillFlags } from '$lib/inroom-bill';
+import { inroomTestPaymentBlocker } from '$lib/server/inroom-bill';
 import { normalizePreviewNotice, normalizePreviewSpring, type DemoPreview } from '$lib/inroom-preview';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -38,7 +39,8 @@ export const load: PageServerLoad = async (event) => {
 	} catch (e) {
 		qrError = e instanceof Error ? e.message : '見本の滞在を用意できませんでした。';
 	}
-	return { demoPreview, qr, qrError };
+	// 本番の Stripe での ¥100 のテスト決済を、この端末で試せるか（できなければ理由・2026-10-17）
+	return { demoPreview, qr, qrError, testPaymentBlocker: inroomTestPaymentBlocker(event.locals) };
 };
 
 export const actions: Actions = {

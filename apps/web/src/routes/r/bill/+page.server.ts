@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
-import { canTestInroomPayment, inroomPaymentReady, loadStayBill } from '$lib/server/inroom-bill';
+import { inroomPaymentReady, inroomTestPaymentBlocker, loadStayBill } from '$lib/server/inroom-bill';
 import { stripePublishableKey } from '$lib/server/stripe';
 import { anyBillFlag } from '$lib/inroom-bill';
 import { loadDemoPreview } from '$lib/server/inroom-settings';
@@ -25,13 +25,15 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
 	// オンライン決済は、出す設定・本物の滞在・決済の環境（鍵・service_role）が揃ったときだけ入力欄を出す
 	const canPay = bill.flags.online && !bill.isDemo && inroomPaymentReady();
 	// プレビュー（見本の滞在）で管理者だけ: 本番の Stripe で ¥100 のテスト決済（2026-10-17）。お客様・本物の滞在には出ない
-	const testPayment = bill.flags.online && bill.isDemo && stay.isDemo === true && inroomPaymentReady() && canTestInroomPayment(locals);
+	const testBlocker = bill.flags.online && bill.isDemo ? inroomTestPaymentBlocker(locals) : null;
+	const testPayment = bill.flags.online && bill.isDemo && stay.isDemo === true && inroomPaymentReady() && testBlocker === null;
 	return {
 		bill,
 		stripeKey: canPay || testPayment ? stripePublishableKey() : null,
 		testPayment,
-		// 見本の滞在をスタッフ（管理者以外）が見ているとき「管理者だけが試せます」と添える
-		testPaymentStaffOnly: bill.flags.online && bill.isDemo && !testPayment && locals.user?.role === 'staff',
+		// 見本の滞在でテスト決済を出せないとき、その理由（見本の滞在は社内のデモ用なので、ログインしていない端末にも出す・2026-10-17）。
+		// プレビューの QR をスマホで読んだ端末は管理画面にログインしていないことが多く、黙って隠すと原因が分からない
+		testBlocker: !testPayment && stay.isDemo === true ? testBlocker : null,
 		paymentResult: url.searchParams.get('payment'),
 		headerTitle: m.inroom_bill_title(),
 		headerBack: '/r'

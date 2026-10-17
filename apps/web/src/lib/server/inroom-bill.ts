@@ -19,6 +19,8 @@ import {
 	createRefund,
 	inlinePaymentReady,
 	listRefunds,
+	publishableKeyProblem,
+	stripeKeyKind,
 	retrievePaymentIntent,
 	STRIPE_APP_BOOK
 } from './stripe';
@@ -37,6 +39,7 @@ import {
 import type { StayInfo } from '$lib/types';
 import { decideAdminMfaGate } from '$lib/admin-mfa';
 import { adminMfaRequired } from './auth';
+import { describePublishableKeyIssue } from './payments/keys';
 
 export const STRIPE_PURPOSE_INROOM_BILL = 'book_inroom_bill';
 
@@ -283,6 +286,25 @@ export function canTestInroomPayment(locals: App.Locals): boolean {
 	const user = locals.user;
 	if (user?.role !== 'admin') return false;
 	return decideAdminMfaGate({ pathname: '/admin', role: user.role, aal: locals.adminAal, required: adminMfaRequired() }) === 'ok';
+}
+
+/**
+ * テスト決済を出せない理由（2026-10-17・「プレビューで決済テストが表示されない」）。出せるなら null。
+ * 見本の滞在でオンライン決済を出す見本のときに、管理画面のスタッフ向けに理由を出す（黙って隠さない）。
+ * キーの値は出さない（未登録・形式・テスト/本番の食い違いだけ）
+ */
+export function inroomTestPaymentBlocker(locals: App.Locals): string | null {
+	if (DATA_SOURCE !== 'supabase') return 'デモ（DATA_SOURCE=demo）では Stripe に繋がないため、テスト決済はできません';
+	const kind = stripeKeyKind();
+	if (kind === 'missing') return 'Stripe のシークレットキー（STRIPE_SECRET_KEY）が Book に登録されていません（Cloudflare のシークレット）';
+	if (kind !== 'secret' && kind !== 'restricted') return 'Stripe のシークレットキー（STRIPE_SECRET_KEY）の形式が違います（sk_ / rk_ で始まるキーを登録してください）';
+	const pk = publishableKeyProblem();
+	if (pk) return describePublishableKeyIssue(pk);
+	if (!partnerServiceClient()) return 'SUPABASE_SERVICE_ROLE_KEY が Book に登録されていません';
+	const user = locals.user;
+	if (user?.role !== 'admin') return user?.role === 'staff' ? 'テスト決済は管理者だけが試せます（スタッフでログイン中）' : 'この端末は管理画面に管理者としてログインしていません';
+	if (!canTestInroomPayment(locals)) return '二段階認証（パスキーか認証アプリ）の確認が済んでいません。管理画面で確認してから開き直してください';
+	return null;
 }
 
 /** テスト決済の準備（¥100 の PaymentIntent。同じ台帳行なら作り直さない） */

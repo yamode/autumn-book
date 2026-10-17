@@ -249,8 +249,11 @@
 				</button>
 			{:else}
 				<p class="text-sm text-stone-500">{bill.isDemo ? m.inroom_bill_demo_note() : m.inroom_bill_pay_unavailable()}</p>
-				{#if data.testPaymentStaffOnly}
-					<p class="text-xs text-stone-400">本番の Stripe でのテスト決済（¥{INROOM_TEST_AMOUNT}）は、管理者だけがプレビューから試せます。</p>
+				{#if data.testBlocker}
+					<!-- 管理画面にログイン中の人にだけ、本番のテスト決済を出せない理由を出す（黙って隠さない） -->
+					<p class="rounded-md bg-stone-100 px-3 py-2 text-xs leading-relaxed text-stone-600">
+						本番の Stripe でのテスト決済（¥{INROOM_TEST_AMOUNT}）を出せません：{data.testBlocker}
+					</p>
 				{/if}
 			{/if}
 		</section>

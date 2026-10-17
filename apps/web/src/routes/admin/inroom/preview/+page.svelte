@@ -141,6 +141,16 @@
 				<p class="text-[11px] leading-relaxed text-stone-400">
 					明細は見本です。案内文は施設の設定を出します（空なら見本の文）。オンライン決済を出すと、<b>管理者だけ</b>は本番の Stripe で <b>¥100 のテスト決済</b>を試せます（実際に請求されます・PMS には入りません・自動では返金しないので Stripe の管理画面から手で返金）。スタッフには「お支払いはできません」と出ます。トップの「ご精算」カードから開けます。
 				</p>
+				<!-- 本番のテスト決済をこの端末で試せるか（できなければ理由）。スマホの QR から開いた端末は管理画面にログインしていないと出ない -->
+				{#if data.testPaymentBlocker}
+					<p class="rounded bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-800">
+						⚠ この端末では本番のテスト決済（¥100）を出せません：{data.testPaymentBlocker}
+					</p>
+				{:else}
+					<p class="rounded bg-emerald-50 px-2 py-1.5 text-[11px] leading-relaxed text-emerald-800">
+						✓ この端末では本番のテスト決済（¥100）を試せます（「オンライン決済」にチェック → 保存 → 枠の「ご精算」）。スマホの QR から開くときは、そのスマホでも管理画面に管理者としてログインしてください。
+					</p>
+				{/if}
 			</div>
 
 			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
