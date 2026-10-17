@@ -3,14 +3,15 @@
 
 	import CouponFields from '$lib/components/admin/CouponFields.svelte';
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 </script>
 
 <svelte:head><title>新しいクーポン ｜ 山人管理</title></svelte:head>
 
-<a href="/admin/coupons" class="text-xs text-stone-400 underline">← クーポン一覧</a>
-<h1 class="mt-1 mb-4 text-lg font-bold text-stone-800">新しいクーポン</h1>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/coupons" class="hover:underline">← クーポン一覧</a></p>
+<PageHeader title="新しいクーポン" description="作成しただけでは誰にも届きません。作成後の詳細画面から配布します。" />
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -29,12 +30,12 @@
 	>
 		<CouponFields facilities={data.facilities ?? []} />
 
-		<div class="mt-5 flex items-center gap-2">
+		<div class="mt-5 flex flex-wrap items-center gap-2">
 			<a
 				href="/admin/coupons"
-				class="rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-700">キャンセル</a
+				class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">キャンセル</a
 			>
-			<button type="submit" class="bg-accent-600 rounded-lg px-4 py-2 text-sm font-medium text-white">
+			<button type="submit" class="min-h-10 rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
 				作成する
 			</button>
 		</div>

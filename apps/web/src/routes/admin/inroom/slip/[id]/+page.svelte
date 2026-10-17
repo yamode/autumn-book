@@ -2,6 +2,7 @@
 	// 印刷専用スリップ（A6 カード風）。チェックイン時にゲストへお渡しする。
 	// QR（/r/c/<token> の絶対URL）＋6桁コード（2026-10-09 以前の発行分は8桁）＋3言語の案内。印刷時は管理画面の枠と操作ボタンを隠す。
 	import { downloadQrPng } from '$lib/qr-png';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 
 	function fmtDate(iso: string): string {
@@ -18,20 +19,22 @@
 
 <div class="mx-auto max-w-md">
 	<!-- 操作バー（印刷時は非表示） -->
-	<div class="no-print mb-4 flex items-center justify-between">
-		<a href="/admin/inroom?all=1" class="text-sm text-stone-400 hover:text-stone-600">← 一覧へ戻る</a>
-		<div class="flex items-center gap-2">
-			<button
-				type="button"
-				onclick={() => downloadQrPng(data.claimUrl, `客室スリップQR_${data.token.roomCode}${data.token.guestName ? `_${data.token.guestName}様` : ''}`)}
-				class="rounded-md border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50"
-			>QRをPNGで保存</button>
-			<button
-				type="button"
-				onclick={() => window.print()}
-				class="rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700"
-			>🖨 印刷する</button>
-		</div>
+	<div class="no-print">
+		<a href="/admin/inroom?all=1" class="mb-2 inline-block text-sm text-stone-500 hover:text-stone-700">← 一覧へ戻る</a>
+		<PageHeader title="客室スリップ" facility={data.token.roomCode}>
+			{#snippet actions()}
+				<button
+					type="button"
+					onclick={() => downloadQrPng(data.claimUrl, `客室スリップQR_${data.token.roomCode}${data.token.guestName ? `_${data.token.guestName}様` : ''}`)}
+					class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm hover:bg-stone-50"
+				>QRをPNGで保存</button>
+				<button
+					type="button"
+					onclick={() => window.print()}
+					class="rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+				>印刷する</button>
+			{/snippet}
+		</PageHeader>
 	</div>
 
 	<!-- スリップ本体（A6 相当） -->
@@ -80,6 +83,13 @@
 	.slip-card {
 		width: 105mm;
 		min-height: 148mm;
+	}
+
+	/* スマホの画面ではカードを画面の幅に収める（印刷の大きさは変えない） */
+	@media screen and (max-width: 30rem) {
+		.slip-card {
+			width: 100%;
+		}
 	}
 
 	@media print {

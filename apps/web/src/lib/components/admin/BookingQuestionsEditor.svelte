@@ -6,7 +6,7 @@
   let { questions = $bindable(), disabled = false }: { questions: BookingQuestion[]; disabled?: boolean } = $props();
 
   const inputClass = 'w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm disabled:bg-stone-50 disabled:text-stone-500';
-  const smallBtn = 'rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
+  const smallBtn = 'rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-50';
 
   const add = () => (questions = [...questions, newBookingQuestion()]);
   const remove = (i: number) => (questions = questions.filter((_, k) => k !== i));

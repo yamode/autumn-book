@@ -5,6 +5,8 @@
 	import { formatYen } from '$lib/format';
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
 	import type { BookingQuestion, PlanQuestionMode } from '$lib/booking-questions';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 
 	let { data, form } = $props();
 	let c = $derived(data.content);
@@ -44,20 +46,18 @@
 
 <svelte:head><title>プラン編集 ｜ 山人管理</title></svelte:head>
 
-<nav class="mb-3 text-xs text-stone-400"><a href="/admin/plans" class="hover:underline">プラン</a> / {c.name}</nav>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/plans" class="hover:underline">← プラン一覧</a></p>
 
-<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-	<div>
-		<h1 class="text-lg font-bold text-stone-800">{c.name}</h1>
-		<p class="text-xs text-stone-400">
-			{c.code || c.slug}
-			{#if !c.isActive || !c.publicOnDirect}<span class="text-rose-600">・rms で直販対象外（公開しても表示されません）</span>{/if}
-		</p>
-	</div>
-	{#if data.previewBase && c.slug && c.isPublished}
-		<a href="{data.previewBase}/plans/{c.slug}" target="_blank" class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">公開ページを開く ↗</a>
-	{/if}
-</div>
+<PageHeader title={c.name} description={c.code || c.slug}>
+	{#snippet actions()}
+		{#if data.previewBase && c.slug && c.isPublished}
+			<a href="{data.previewBase}/plans/{c.slug}" target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを開く <AdminIcon name="external" class="h-4 w-4" /></a>
+		{/if}
+	{/snippet}
+</PageHeader>
+{#if !c.isActive || !c.publicOnDirect}
+	<p class="-mt-3 mb-4 inline-block rounded-full bg-rose-50 px-2.5 py-0.5 text-xs text-rose-700">rms で直販対象外（公開しても表示されません）</p>
+{/if}
 
 {#if data.namesError}
 	<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{data.namesError}</p>
@@ -69,7 +69,7 @@
 	{@const p = d.plan}
 	<!-- Step 1: 料金プラン（rms 管理・読み取り専用） -->
 	<section class="rounded-xl border border-stone-200 bg-white p-5">
-		<div class="flex items-center justify-between">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="text-sm font-bold text-stone-700">Step 1 ─ 料金プラン（rms で管理）</h2>
 			<span class="rounded bg-stone-100 px-2 py-0.5 text-xs text-stone-500">読み取り専用</span>
 		</div>
@@ -88,9 +88,9 @@
 {#if data.live}
 	<!-- 支払方法（本番）。booking.rate_plans.payment_method を Book で決める（rms 同期は上書きしない） -->
 	<form method="POST" action="?/setPaymentMethod" use:enhance class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
-		<div class="flex items-center justify-between">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="text-sm font-bold text-stone-700">支払方法</h2>
-			{#if form?.paymentSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+			{#if form?.paymentSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		{#if (form as { paymentError?: string } | null)?.paymentError}
 			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { paymentError?: string }).paymentError}</p>
@@ -131,9 +131,9 @@
 {#if data.live}
 	<!-- 予約時に聞く項目（book.plan_contents.question_mode）。公式サイト・取引先ページの予約で聞き、回答は PMS の予約備考に入る -->
 	<form method="POST" action="?/setQuestions" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-4 rounded-xl border border-stone-200 bg-white p-5">
-		<div class="flex items-center justify-between">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="text-sm font-bold text-stone-700">予約時に聞く項目</h2>
-			{#if (form as { questionSaved?: boolean } | null)?.questionSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+			{#if (form as { questionSaved?: boolean } | null)?.questionSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		{#if (form as { questionError?: string } | null)?.questionError}
 			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { questionError?: string }).questionError}</p>
@@ -214,9 +214,9 @@
 	{@const p = d.plan}
 	<!-- 決済設定（現地払い / 事前決済=即時決済 / PayPay / 事前割引 最大20%） -->
 	<form method="POST" action="?/savePayment" use:enhance class="mt-6 space-y-4 rounded-xl border border-stone-200 bg-white p-5">
-		<div class="flex items-center justify-between">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="text-sm font-bold text-stone-700">決済設定 <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">デモ専用（メモリ上のみ）</span></h2>
-			{#if form?.paymentSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+			{#if form?.paymentSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		{#if (form as { paymentError?: string } | null)?.paymentError}<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { paymentError?: string }).paymentError}</p>{/if}
 
@@ -231,7 +231,7 @@
 					<input type="checkbox" name="prepay" checked={p.payment.prepay} class="h-4 w-4" />
 					事前決済 <span class="text-xs text-stone-400">— ご予約時の即時決済（宿泊後請求ではない）</span>
 				</label>
-				<div class="ml-6 mt-1 flex gap-4 text-xs">
+				<div class="ml-6 mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
 					<label class="flex items-center gap-1.5">
 						<input type="checkbox" name="m_card" checked={p.payment.prepayMethods.includes('card')} class="h-3.5 w-3.5" /> クレジットカード
 					</label>
@@ -264,7 +264,7 @@
 		<h2 class="mb-3 text-sm font-bold text-stone-700">翻訳（コンテンツ多言語化） <span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-800">デモ専用（メモリ上のみ）</span></h2>
 		<p class="mb-3 text-xs text-stone-400">en / zh-TW の翻訳を入力・公開すると顧客画面に反映されます。未入力フィールドは日本語がフォールバック表示されます。</p>
 
-		<div class="mb-4 flex gap-2">
+		<div class="mb-4 flex flex-wrap gap-2">
 			{#each (['en', 'zh-TW'] as const) as loc}
 				<button
 					type="button"
@@ -325,7 +325,7 @@
 				</div>
 			</div>
 
-			<div class="flex items-center gap-4 border-t border-stone-100 pt-4">
+			<div class="flex flex-wrap items-center gap-4 border-t border-stone-100 pt-4">
 				<label class="flex items-center gap-2 text-sm">
 					<input type="checkbox" name="isPublished" checked={d.translations[translationLocale]?.isPublished ?? false} class="h-4 w-4" />
 					<span>公開する（顧客画面に反映）</span>

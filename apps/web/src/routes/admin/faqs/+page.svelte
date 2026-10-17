@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -36,11 +37,11 @@
 
 <svelte:head><title>FAQ ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">FAQ — {data.currentFacility.name}</h1>
-<p class="mb-4 text-xs text-stone-400">
-	公開中の FAQ は施設HPの「よくある質問」ボタン（FAQ ボット）と施設ページに表示されます。回答は Markdown 可。
-	言い換え（別の聞き方）を登録すると、検索で当たりやすくなります。
-</p>
+<PageHeader
+	title="FAQ"
+	facility={data.currentFacility.name}
+	description="公開中の FAQ は施設HPの「よくある質問」ボタン（FAQ ボット）と施設ページに表示されます。回答は Markdown 可。言い換え（別の聞き方）を登録すると、検索で当たりやすくなります。"
+/>
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました。</p>{/if}
 {#if form?.linked}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">既存の FAQ に紐付けました（質問文を言い換えに追加）。</p>{/if}
@@ -57,10 +58,10 @@
 	</div>
 {/if}
 
-<div class="mb-4 flex gap-2 border-b border-stone-200">
-	<button type="button" onclick={() => (tab = 'faqs')} class="-mb-px border-b-2 px-3 py-2 text-sm {tab === 'faqs' ? 'border-brand-800 font-bold text-brand-800' : 'border-transparent text-stone-500'}">FAQ（{data.faqs.length}）</button>
+<div class="mb-4 flex gap-2 overflow-x-auto border-b border-stone-200">
+	<button type="button" onclick={() => (tab = 'faqs')} class="-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap {tab === 'faqs' ? 'border-brand-800 font-bold text-brand-800' : 'border-transparent text-stone-500'}">FAQ（{data.faqs.length}）</button>
 	{#if data.real}
-		<button type="button" onclick={() => (tab = 'queries')} class="-mb-px border-b-2 px-3 py-2 text-sm {tab === 'queries' ? 'border-brand-800 font-bold text-brand-800' : 'border-transparent text-stone-500'}">未回答の質問（{data.groups.length}）</button>
+		<button type="button" onclick={() => (tab = 'queries')} class="-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm whitespace-nowrap {tab === 'queries' ? 'border-brand-800 font-bold text-brand-800' : 'border-transparent text-stone-500'}">未回答の質問（{data.groups.length}）</button>
 	{/if}
 </div>
 
@@ -84,7 +85,7 @@
 				>
 					<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 					<input type="hidden" name="index" value={s.index} />
-					<button type="submit" disabled={importing} class="mr-2 mt-1 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs text-amber-900 hover:bg-amber-100 disabled:opacity-50">{s.label} を取り込む</button>
+					<button type="submit" disabled={importing} class="mr-2 mt-1 rounded-md border border-amber-300 bg-white px-3 py-2 text-xs text-amber-900 hover:bg-amber-100 disabled:opacity-50">{s.label} を取り込む</button>
 				</form>
 			{/each}
 			{#if importing}<p class="mt-2 text-xs text-amber-800">取り込み中です（1分ほどかかります）。このままお待ちください…</p>{/if}
@@ -92,9 +93,9 @@
 	{/if}
 
 	{#if data.real}
-		<form method="GET" class="mb-4 flex gap-2 text-sm">
-			<input name="test" value={data.testQuery} placeholder="検索テスト（例: 駐車場ある？）" class="flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
-			<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50">この質問で検索テスト</button>
+		<form method="GET" class="mb-4 flex flex-wrap gap-2 text-sm">
+			<input name="test" value={data.testQuery} placeholder="検索テスト（例: 駐車場ある？）" class="min-w-0 flex-1 basis-48 rounded-md border border-stone-300 px-3 py-2" />
+			<button type="submit" class="rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50">この質問で検索テスト</button>
 		</form>
 		{#if data.testQuery}
 			<div class="mb-4 rounded-lg border border-stone-200 bg-white p-3 text-xs">
@@ -120,14 +121,14 @@
 						<label class="flex items-center gap-1.5 text-xs">
 							<input type="checkbox" name="isPublished" checked={q.isPublished} class="h-4 w-4" /> 公開
 						</label>
-						{#if form?.saved === q.id}<span class="text-xs text-emerald-600">✔</span>{/if}
+						{#if form?.saved === q.id}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 					</div>
 					<textarea name="answer" rows="2" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm">{q.answer}</textarea>
 					{#if data.real}
 						<textarea name="keywords" rows="1" placeholder="言い換え（改行・読点区切り。例: 何時から入れますか、到着時間）" class="mt-1 w-full rounded-md border border-stone-200 px-3 py-1.5 text-xs">{q.keywords.join('、')}</textarea>
 					{/if}
 					<div class="mt-2 flex flex-wrap items-center gap-2">
-						<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
+						<button type="submit" class="rounded-md bg-brand-800 px-4 py-2 text-xs text-white hover:bg-brand-700">保存</button>
 						<button
 							type="button"
 							onclick={() => { expandedTrFaq = expandedTrFaq === q.id ? null : q.id; }}
@@ -142,7 +143,7 @@
 
 				{#if expandedTrFaq === q.id}
 					<div class="border-t border-stone-100 px-4 pb-4 pt-3">
-						<div class="mb-3 flex gap-2">
+						<div class="mb-3 flex flex-wrap gap-2">
 							{#each (['en', 'zh-TW'] as const) as loc}
 								<button
 									type="button"
@@ -178,7 +179,7 @@
 										<input type="checkbox" name="isPublished" checked={data.faqTranslations[q.id]?.[trLocale(q.id)]?.isPublished ?? false} class="h-4 w-4" />
 										<span>公開</span>
 									</label>
-									<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-white hover:bg-brand-700">翻訳を保存</button>
+									<button type="submit" class="rounded-md bg-brand-800 px-4 py-2 text-white hover:bg-brand-700">翻訳を保存</button>
 								</div>
 							</div>
 						</form>
@@ -190,7 +191,7 @@
 
 	<form method="POST" action="?/add" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="font-medium text-stone-700">＋ 新しい FAQ を追加</h2>
+		<h2 class="font-medium text-stone-700">新しい FAQ を追加</h2>
 		<div class="mt-2 flex flex-wrap gap-2">
 			<input name="category" placeholder="カテゴリ" class="w-28 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
 			<input name="question" placeholder="質問" class="min-w-48 flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
@@ -199,7 +200,7 @@
 		{#if data.real}
 			<textarea name="keywords" rows="1" placeholder="言い換え（改行・読点区切り）" class="mt-1 w-full rounded-md border border-stone-200 px-3 py-1.5 text-xs"></textarea>
 		{/if}
-		<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-1.5 text-xs text-white hover:bg-accent-500">追加（下書きで作成）</button>
+		<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-2 text-xs text-white hover:bg-accent-500">追加（下書きで作成）</button>
 	</form>
 {:else}
 	<p class="mb-3 text-xs text-stone-500">
@@ -210,7 +211,7 @@
 			<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 				<div class="flex flex-wrap items-center gap-2">
 					<span class="rounded bg-stone-800 px-2 py-0.5 text-xs text-white">{g.count} 件</span>
-					<span class="font-medium">{g.sample}</span>
+					<span class="min-w-0 font-medium">{g.sample}</span>
 					<span class="rounded px-1.5 py-0.5 text-xs {g.reason === 'unanswered' ? 'bg-amber-100 text-amber-800' : 'bg-red-50 text-red-700'}">{g.reason === 'unanswered' ? '回答なし' : '解決しなかった'}</span>
 					{#if g.locale !== 'ja'}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-700">{g.locale}</span>{/if}
 					<span class="ml-auto text-xs text-stone-400">最終 {fmt(g.lastAt)}{g.pages.length ? `・${g.pages.join(' ')}` : ''}</span>
@@ -218,21 +219,21 @@
 				<div class="mt-3 flex flex-wrap items-center gap-2">
 					<button type="button" onclick={() => (creatingFor = creatingFor === g.ids[0] ? null : g.ids[0])} class="rounded-md bg-brand-800 px-3 py-1.5 text-xs text-white hover:bg-brand-700">回答を作成</button>
 
-					<form method="POST" action="?/linkQuery" use:enhance class="flex items-center gap-1">
+					<form method="POST" action="?/linkQuery" use:enhance class="flex flex-wrap items-center gap-1">
 						<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 						<input type="hidden" name="queryIds" value={g.ids.join(',')} />
 						<input type="hidden" name="phrase" value={g.sample} />
-						<select name="faqId" bind:value={linkFaqId[g.ids[0]]} class="max-w-56 rounded-md border border-stone-300 px-2 py-1.5 text-xs">
+						<select name="faqId" bind:value={linkFaqId[g.ids[0]]} class="max-w-full rounded-md border sm:max-w-56 border-stone-300 px-2 py-1.5 text-xs">
 							<option value="">既存の FAQ を選ぶ…</option>
 							{#each data.faqs as f}<option value={f.id}>{f.question}</option>{/each}
 						</select>
-						<button type="submit" disabled={!linkFaqId[g.ids[0]]} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-40">に紐付け</button>
+						<button type="submit" disabled={!linkFaqId[g.ids[0]]} class="rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-40">に紐付け</button>
 					</form>
 
 					<form method="POST" action="?/ignoreQuery" use:enhance>
 						<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 						<input type="hidden" name="queryIds" value={g.ids.join(',')} />
-						<button type="submit" class="rounded-md px-3 py-1.5 text-xs text-stone-400 hover:bg-stone-50">対象外</button>
+						<button type="submit" class="rounded-md px-3 py-2 text-xs text-stone-400 hover:bg-stone-50">対象外</button>
 					</form>
 				</div>
 
@@ -246,7 +247,7 @@
 						</div>
 						<textarea name="answer" rows="3" placeholder="回答（Markdown 可）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
 						<label class="mt-1 flex items-center gap-1.5 text-xs"><input type="checkbox" name="isPublished" class="h-4 w-4" /> すぐに公開する</label>
-						<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-1.5 text-xs text-white hover:bg-accent-500">FAQ を作成（{g.count} 件の質問を対応済みにする）</button>
+						<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-2 text-xs text-white hover:bg-accent-500">FAQ を作成（{g.count} 件の質問を対応済みにする）</button>
 					</form>
 				{/if}
 			</div>

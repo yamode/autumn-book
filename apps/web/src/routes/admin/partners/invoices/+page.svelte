@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { periodLabel } from '$lib/partner-invoice';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data } = $props();
 
@@ -27,29 +28,30 @@
 	const q = (period: string, all = data.all) => `?period=${ym(period)}${all ? '&all=1' : ''}`;
 	const csvUrl = $derived(`/admin/partners/invoices/csv${q(data.period)}`);
 	const draftUrl = (partnerId: string, format: 'html' | 'pdf') => `/admin/partners/${partnerId}/invoices/preview?period=${data.period}&format=${format}`;
-	const smallBtn = 'inline-block rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs whitespace-nowrap text-stone-700 hover:bg-stone-50';
+	const smallBtn = 'inline-flex min-h-8 items-center rounded-md border border-stone-300 bg-white px-3 py-1 text-xs whitespace-nowrap text-stone-700 hover:bg-stone-50';
 	const tabCls = (active: boolean) =>
-		`rounded-full px-3 py-1 text-xs whitespace-nowrap ${active ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`;
+		`inline-flex min-h-8 items-center rounded-full px-3 py-1 text-xs whitespace-nowrap ${active ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`;
 </script>
 
 <svelte:head><title>予定請求書 ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4">
-	<p class="mb-1 text-xs text-stone-400"><a href="/admin/partners" class="hover:underline">取引先</a> ／ 予定請求書</p>
-	<h1 class="mb-1 text-lg font-bold text-stone-800">予定請求書 — {data.all ? 'すべての取引先' : data.facilityName}</h1>
-	<p class="max-w-3xl text-xs leading-5 text-stone-500">
-		その月の今日までにチェックアウトした確定予約で計算した予定のご請求です。月末日の15時ごろに正式なご請求書を発行し、取引先へ送ります。
-		金額は予約時の金額で、ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした支払方法だけです（それ以外はご利用明細に載り、ご請求は 0 円）。
-	</p>
-	<p class="mt-1 max-w-3xl text-xs leading-5 text-stone-500">
-		ご請求書は取引先ごとに全施設分を1枚にまとめます。金額はいつも全施設分で、施設が2つ以上ある月は施設別の小計も出します（入金の消込は施設別小計の CSV で）。
-	</p>
-</div>
+<PageHeader
+	title="予定請求書"
+	facility={data.all ? 'すべての取引先' : data.facilityName}
+	description="その月の今日までにチェックアウトした確定予約で計算した予定のご請求です。月末日の15時ごろに正式なご請求書を発行し、取引先へ送ります。金額は予約時の金額で、ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした支払方法だけです（それ以外はご利用明細に載り、ご請求は 0 円）。"
+>
+	{#snippet actions()}
+		<a href="/admin/partners" class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">取引先の一覧</a>
+	{/snippet}
+</PageHeader>
+<p class="-mt-3 mb-4 max-w-3xl text-xs leading-5 text-stone-500">
+	ご請求書は取引先ごとに全施設分を1枚にまとめます。金額はいつも全施設分で、施設が2つ以上ある月は施設別の小計も出します（入金の消込は施設別小計の CSV で）。
+</p>
 
 <!-- 対象月（未来の月は選べない） -->
 <div class="mb-3 flex flex-wrap items-center gap-2">
 	<a href={q(data.prevPeriod)} class={smallBtn}>← 前月</a>
-	<span class="px-2 text-sm font-bold text-stone-800">{periodLabel(data.period)}</span>
+	<span class="px-2 text-sm font-semibold text-stone-800">{periodLabel(data.period)}</span>
 	{#if data.nextPeriod}
 		<a href={q(data.nextPeriod)} class={smallBtn}>翌月 →</a>
 	{:else}
@@ -58,7 +60,7 @@
 	{#if !isCurrent}
 		<a href={q(data.currentPeriod)} class="text-xs text-brand-800 hover:underline">当月へ</a>
 	{/if}
-	<span class="text-xs text-stone-500">
+	<span class="w-full text-xs text-stone-500 sm:w-auto">
 		{#if isCurrent}
 			{md(data.today)}までのチェックアウト（試算日 {md(data.today)}）
 		{:else}
@@ -100,10 +102,10 @@
 	{/if}
 
 	<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-		<table class="w-full text-sm">
+		<table class="w-full min-w-[56rem] text-sm">
 			<thead class="bg-stone-50 text-left text-xs text-stone-500">
 				<tr>
-					<th class="px-3 py-2 font-medium">取引先（宛名）</th>
+					<th class="sticky left-0 z-10 min-w-[10rem] bg-stone-50 px-3 py-2 font-medium">取引先（宛名）</th>
 					<th class="px-3 py-2 text-right font-medium">対象件数<div class="font-normal text-stone-400">ご請求／全件</div></th>
 					<th class="px-3 py-2 text-right font-medium">ご利用総額</th>
 					<th class="px-3 py-2 text-right font-medium">ご請求額<div class="font-normal text-stone-400">全施設</div></th>
@@ -120,12 +122,12 @@
 			<tbody>
 				{#each data.rows as r (r.partnerId)}
 					<tr class="border-t border-stone-100 align-top">
-						<td class="px-3 py-2.5">
+						<td class="sticky left-0 z-10 min-w-[10rem] bg-white px-3 py-2.5">
 							<a href="/admin/partners/{r.partnerId}?inv={ym(data.period)}{r.detailFac ? `&fac=${r.detailFac}` : ''}" class="font-medium text-stone-800 hover:underline">{r.partnerName}</a>
 							{#if r.recipientName !== r.partnerName}<div class="text-xs text-stone-500">宛名: {r.recipientName} 御中</div>{/if}
 							<div class="mt-0.5 flex flex-wrap gap-1">
-								{#if r.bookingEnabled}<span class="rounded-full bg-brand-100 px-2 py-0.5 text-[11px] text-brand-800">予約受付</span>{/if}
-								{#if !r.isActive}<span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">公開停止</span>{/if}
+								{#if r.bookingEnabled}<span class="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-800 ring-1 ring-brand-700/20 ring-inset">予約受付</span>{/if}
+								{#if !r.isActive}<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600 ring-1 ring-stone-500/20 ring-inset">公開停止</span>{/if}
 							</div>
 							{#if r.chargeFailed.length}
 								<div class="mt-1 text-[11px] text-amber-800">カード決済失敗（要確認）: {r.chargeFailed.join('、')}（ご請求に含めません）</div>
@@ -157,7 +159,7 @@
 						{/if}
 						<td class="px-3 py-2.5 text-xs">
 							{#if r.issued}
-								<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">発行済み</span>
+								<span class="rounded-full bg-emerald-50 px-2 py-0.5 font-medium whitespace-nowrap text-emerald-700 ring-1 ring-emerald-600/20 ring-inset">発行済み</span>
 								<div class="mt-0.5 font-mono text-stone-700">{r.issued.invoiceNo}</div>
 								<div class="text-stone-500">{r.issued.issueDate}・{r.issued.issuedBy === 'auto' ? '自動' : 'スタッフ'}・{yen(r.issued.billedTotal)}（{r.issued.bookingCount}件）</div>
 								{#if r.issued.sentAt}
@@ -202,7 +204,7 @@
 			{#if data.rows.length > 1}
 				<tfoot>
 					<tr class="border-t border-stone-300 bg-stone-50 font-semibold">
-						<td class="px-3 py-2">合計（{data.rows.length}社）</td>
+						<td class="sticky left-0 z-10 bg-stone-50 px-3 py-2">合計（{data.rows.length}社）</td>
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{sum.billable}／{sum.total}件</td>
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{yen(sum.usage)}</td>
 						<td class="px-3 py-2 text-right tabular-nums whitespace-nowrap">{yen(sum.billed)}</td>

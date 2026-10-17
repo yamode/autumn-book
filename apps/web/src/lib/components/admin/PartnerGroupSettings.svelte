@@ -14,7 +14,7 @@
 </script>
 
 <div>
-	<h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">団体予約 <span class="text-xs font-normal text-stone-500">（旅行会社のみ・照会 → 宿が回答 → 取引先が承諾で予約）</span></h3>
+	<h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-semibold text-stone-800">団体予約 <span class="text-xs font-normal text-stone-500">（旅行会社のみ・照会 → 宿が回答 → 取引先が承諾で予約）</span></h3>
 	<label class="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-200 bg-white px-3 py-2 sm:max-w-md">
 		<input type="checkbox" bind:checked={booking.groupInquiryEnabled} class="peer sr-only" />
 		<span class={`relative h-6 w-11 shrink-0 rounded-full transition ${booking.groupInquiryEnabled ? 'bg-emerald-500' : 'bg-stone-300'} peer-focus-visible:ring-2 peer-focus-visible:ring-brand-600`}>
@@ -22,7 +22,7 @@
 		</span>
 		<span class="text-sm">
 			<span class="font-medium">団体予約を使う</span>
-			<span class={`ml-1.5 rounded px-1.5 py-0.5 text-xs font-bold ${booking.groupInquiryEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}`}>{booking.groupInquiryEnabled ? 'オン' : 'オフ'}</span>
+			<span class={`ml-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${booking.groupInquiryEnabled ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' : 'bg-stone-100 text-stone-500 ring-stone-500/20'}`}>{booking.groupInquiryEnabled ? 'オン' : 'オフ'}</span>
 			<span class="mt-0.5 block text-[11px] text-stone-500">オンにすると取引先ページのメニューに「団体予約」が出ます（既定はオフ）</span>
 		</span>
 	</label>
@@ -33,7 +33,7 @@
 	{/if}
 
 	{#if booking.groupInquiryEnabled}
-		<div class="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+		<div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
 			<label class="block">
 				<span class="mb-0.5 block text-xs text-stone-500">1件の最大室数</span>
 				<input type="number" min="1" max="100" bind:value={booking.groupMaxRooms} class={inputClass} />

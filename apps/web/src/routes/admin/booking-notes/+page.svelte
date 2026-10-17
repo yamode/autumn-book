@@ -2,6 +2,7 @@
 	// 管理画面: 予約時の注意事項（施設ごと・Markdown）。取引先ページの予約入力の左カラム下部に出る。
 	import { enhance } from '$lib/enhance';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 	// svelte-ignore state_referenced_locally
@@ -11,10 +12,11 @@
 
 <svelte:head><title>予約時の注意事項 ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4">
-	<h1 class="text-lg font-bold text-stone-800">予約時の注意事項 — {data.currentFacility.name}</h1>
-	<p class="mt-1 text-sm text-stone-500">予約入力の画面の下部に、キャンセルポリシー・お子様についてと並べて表示します（いまは取引先ページの予約入力）。取引先ごとの「予約画面に出す案内」は、この下に続けて表示されます。</p>
-</div>
+<PageHeader
+	title="予約時の注意事項"
+	facility={data.currentFacility.name}
+	description="予約入力の画面の下部に、キャンセルポリシー・お子様についてと並べて表示します（いまは取引先ページの予約入力）。取引先ごとの「予約画面に出す案内」は、この下に続けて表示されます。"
+/>
 
 {#if data.loadError}<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{data.loadError}</p>{/if}
 {#if form?.error}<p class="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{form.error}</p>{/if}

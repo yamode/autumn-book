@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data } = $props();
 
@@ -26,7 +27,7 @@
 
 <svelte:head><title>{c?.title ?? '配信'} ｜ 山人管理</title></svelte:head>
 
-<a href="/admin/push" class="text-xs text-stone-400 underline">← アプリ通知</a>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/push" class="hover:underline">← アプリ通知</a></p>
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -35,13 +36,14 @@
 		{data.error ?? '配信が見つかりません。'}
 	</div>
 {:else}
-	<h1 class="mt-1 text-lg font-bold text-stone-800">{c.title}</h1>
-	<p class="mb-4 text-xs text-stone-400">
-		{c.type} ／ {dt(c.scheduled_at)} ／ 宛先: {TARGET_LABEL[c.target?.mode ?? 'all'] ??
-			c.target?.mode}
-		{c.recipient_count} 名 ／ 実行者: {c.actor_name ?? '—'}
-		{#if c.cancelled_at}　<span class="text-red-700">取消済（{dt(c.cancelled_at)}）</span>{/if}
-	</p>
+	<PageHeader
+		title={c.title}
+		description={`${c.type} ／ ${dt(c.scheduled_at)} ／ 宛先: ${TARGET_LABEL[c.target?.mode ?? 'all'] ?? c.target?.mode} ${c.recipient_count} 名 ／ 実行者: ${c.actor_name ?? '—'}`}
+	>
+		{#snippet actions()}
+			{#if c.cancelled_at}<span class="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs text-red-700">取消済（{dt(c.cancelled_at)}）</span>{/if}
+		{/snippet}
+	</PageHeader>
 
 	<div class="max-w-3xl space-y-4">
 		<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">

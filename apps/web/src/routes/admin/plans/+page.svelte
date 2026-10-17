@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 	const PAYMENT_LABEL = { onsite: '現地払い', prepayment: '事前決済', deposit: '事前・現地' } as const;
 	let filter = $state<'all' | 'published' | 'draft'>('all');
@@ -10,13 +11,15 @@
 
 <svelte:head><title>プラン ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-	<h1 class="text-lg font-bold text-stone-800">プラン — {data.currentFacility.name}</h1>
-	<div class="flex flex-wrap items-center gap-3">
-		<p class="text-xs text-stone-400">プランの新規作成（料金・在庫・キャンセル規定）は rms 側で行い、ここで「見せ方」を作ります</p>
-		<a href="/admin/plans/templates" class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:border-brand-800">紹介文テンプレート</a>
-	</div>
-</div>
+<PageHeader
+	title="プラン"
+	facility={data.currentFacility.name}
+	description="プランの新規作成（料金・在庫・キャンセル規定）は rms 側で行い、ここで「見せ方」を作ります"
+>
+	{#snippet actions()}
+		<a href="/admin/plans/templates" class="inline-flex min-h-10 items-center rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:border-brand-800">紹介文テンプレート</a>
+	{/snippet}
+</PageHeader>
 
 {#if data.loadError}
 	<p class="mb-4 rounded-lg px-3 py-2 text-sm {data.live ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}">{data.loadError}</p>
@@ -25,12 +28,12 @@
 	<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{data.namesError}（プラン名の代わりに識別子を表示しています）</p>
 {/if}
 
-<div class="mb-3 flex gap-1 text-xs">
+<div class="mb-4 flex flex-wrap gap-1.5 text-xs">
 	{#each [['all', `すべて ${data.plans.length}`], ['published', `公開中 ${publishedCount}`], ['draft', `下書き ${data.plans.length - publishedCount}`]] as [k, label] (k)}
 		<button
 			type="button"
 			onclick={() => (filter = k as typeof filter)}
-			class="rounded-full px-3 py-1 {filter === k ? 'bg-brand-800 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}"
+			class="rounded-full px-3 py-1.5 {filter === k ? 'bg-brand-800 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'}"
 		>{label}</button>
 	{/each}
 </div>

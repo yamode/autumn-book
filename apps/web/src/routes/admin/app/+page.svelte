@@ -2,6 +2,7 @@
 	import Sparkline from '$lib/components/admin/Sparkline.svelte';
 	import StatCard from '$lib/components/admin/StatCard.svelte';
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data } = $props();
 
@@ -34,10 +35,7 @@
 
 <svelte:head><title>アプリ運用 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">アプリ運用</h1>
-<p class="mb-4 text-xs text-stone-400">
-	YAMADO 公式アプリの状態と、気づけていない運用の穴をまとめて表示します。
-</p>
+<PageHeader title="アプリ運用" description="YAMADO 公式アプリの状態と、気づけていない運用の穴をまとめて表示します。" />
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -83,7 +81,7 @@
 	</div>
 
 	<h2 class="mt-6 mb-2 text-sm font-bold text-stone-700">
-		{acting.length > 0 ? `⚠ 要対応（${acting.length}）` : '要対応の項目はありません'}
+		{acting.length > 0 ? `要対応（${acting.length}）` : '要対応の項目はありません'}
 	</h2>
 	{#if alerts.length === 0}
 		<p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-500">
@@ -96,7 +94,7 @@
 					class="flex flex-wrap items-center gap-2 rounded-lg border p-3 text-sm {levelStyle[a.level]}"
 				>
 					<span>{a.level === 'info' ? '○' : '●'}</span>
-					<span class="flex-1">{a.message}</span>
+					<span class="min-w-0 flex-1">{a.message}</span>
 					{#if a.link}
 						<a href={a.link.href} class="shrink-0 font-medium underline">{a.link.label} →</a>
 					{/if}
@@ -110,7 +108,7 @@
 		<table class="w-full min-w-[820px] text-sm">
 			<thead class="bg-stone-50 text-xs text-stone-500">
 				<tr>
-					<th class="px-3 py-2 text-left">施設</th>
+					<th class="sticky left-0 z-10 bg-stone-50 px-3 py-2 text-left">施設</th>
 					<th class="px-3 py-2 text-right">公開プラン</th>
 					<th class="px-3 py-2 text-right">写真ありプラン</th>
 					<th class="px-3 py-2 text-right">公開客室</th>
@@ -123,7 +121,7 @@
 			<tbody>
 				{#each d.facilities as f}
 					<tr class="border-t border-stone-100">
-						<td class="px-3 py-2 font-medium text-stone-800">{f.name}</td>
+						<td class="sticky left-0 z-10 bg-white px-3 py-2 font-medium whitespace-nowrap text-stone-800">{f.name}</td>
 						<td class="px-3 py-2 text-right {ratioTone(f.plans_published, f.plans_total)}">
 							<a href="/admin/switch?f={f.facility_id}&back=%2Fadmin%2Fplans" class="underline">
 								{f.plans_published}/{f.plans_total}
@@ -200,7 +198,7 @@
 			<tbody>
 				{#each d.audit as l}
 					<tr class="border-t border-stone-100 first:border-t-0">
-						<td class="w-32 px-3 py-2 text-xs text-stone-400">{dt(l.created_at)}</td>
+						<td class="sticky left-0 w-32 bg-white px-3 py-2 text-xs whitespace-nowrap text-stone-400">{dt(l.created_at)}</td>
 						<td class="w-48 px-3 py-2 font-mono text-xs text-stone-600">{l.action}</td>
 						<td class="px-3 py-2 text-xs text-stone-600">
 							{l.detail?.title ?? l.detail?.name ?? l.detail?.label ?? ''}

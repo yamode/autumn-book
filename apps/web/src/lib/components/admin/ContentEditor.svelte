@@ -9,6 +9,7 @@
 	import { deserialize } from '$app/forms';
 	import { enhance } from '$lib/enhance';
 	import { invalidateAll } from '$app/navigation';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import type { PlanTextTemplate } from '$lib/plan-templates';
 	import {
@@ -267,9 +268,9 @@
 
 	<!-- 仕様表 -->
 	<section class="rounded-xl border border-stone-200 bg-white p-5">
-		<div class="mb-3 flex items-center justify-between">
+		<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 			<h2 class="text-sm font-bold text-stone-700">仕様表 <span class="text-xs font-normal text-stone-400">（例: 広さ／48㎡、ベッド／ツイン…）</span></h2>
-			<button type="button" onclick={addSpec} class="rounded-md border border-stone-300 px-3 py-1 text-xs hover:bg-stone-50">＋ 行を追加</button>
+			<button type="button" onclick={addSpec} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">＋ 行を追加</button>
 		</div>
 		{#if specs.length === 0}
 			<p class="text-xs text-stone-400">まだありません。</p>
@@ -282,7 +283,7 @@
 					<div class="flex shrink-0 gap-1">
 						<button type="button" class={iconBtn} disabled={i === 0} onclick={() => moveSpec(i, -1)} aria-label="上へ">↑</button>
 						<button type="button" class={iconBtn} disabled={i === specs.length - 1} onclick={() => moveSpec(i, 1)} aria-label="下へ">↓</button>
-						<button type="button" class="{iconBtn} text-rose-600" onclick={() => removeSpec(i)} aria-label="削除">✕</button>
+						<button type="button" class="{iconBtn} text-rose-600" onclick={() => removeSpec(i)} aria-label="削除"><AdminIcon name="close" class="h-3.5 w-3.5" /></button>
 					</div>
 				</div>
 			{/each}
@@ -291,9 +292,9 @@
 
 	<!-- 紹介ブロック -->
 	<section class="rounded-xl border border-stone-200 bg-white p-5">
-		<div class="mb-1 flex items-center justify-between">
+		<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
 			<h2 class="text-sm font-bold text-stone-700">紹介ブロック</h2>
-			<button type="button" onclick={addSection} class="rounded-md border border-stone-300 px-3 py-1 text-xs hover:bg-stone-50">＋ ブロックを追加</button>
+			<button type="button" onclick={addSection} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">＋ ブロックを追加</button>
 		</div>
 		<p class="mb-3 text-xs text-stone-400">同じ「見出し」が続くブロックは、公開ページで1つの見出しの下にまとめて表示されます。</p>
 		{#if sections.length === 0}
@@ -361,9 +362,9 @@
 
 	<!-- 写真 -->
 	<section class="rounded-xl border border-stone-200 bg-white p-5">
-		<div class="mb-1 flex items-center justify-between">
+		<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
 			<h2 class="text-sm font-bold text-stone-700">写真 <span class="text-xs font-normal text-stone-400">（先頭が一覧・ページ上部の代表写真）</span></h2>
-			<label class="cursor-pointer rounded-md border border-stone-300 px-3 py-1 text-xs hover:bg-stone-50 {live ? '' : 'pointer-events-none opacity-40'}">
+			<label class="cursor-pointer rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 {live ? '' : 'pointer-events-none opacity-40'}">
 				{uploading === 'photos' ? 'アップロード中…' : '＋ 写真をアップロード'}
 				<input type="file" accept={accept} multiple class="hidden" disabled={!live || uploading !== null} onchange={onPhotosPicked} />
 			</label>
@@ -385,7 +386,7 @@
 						</select>
 						<button type="button" class={iconBtn} disabled={i === 0} onclick={() => movePhoto(i, -1)} aria-label="前へ">←</button>
 						<button type="button" class={iconBtn} disabled={i === photos.length - 1} onclick={() => movePhoto(i, 1)} aria-label="後ろへ">→</button>
-						<button type="button" class="{iconBtn} text-rose-600" onclick={() => removePhoto(i)} aria-label="削除">✕</button>
+						<button type="button" class="{iconBtn} text-rose-600" onclick={() => removePhoto(i)} aria-label="削除"><AdminIcon name="close" class="h-3.5 w-3.5" /></button>
 					</div>
 				</div>
 			{/each}

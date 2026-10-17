@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 </script>
 
 <svelte:head><title>お知らせ ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">お知らせ — {data.currentFacility.name}</h1>
-<p class="mb-4 text-xs text-stone-400">施設HPの「お知らせ」に表示されます（WP のニュース機能の置き換え）。本文は Markdown 可。</p>
+<PageHeader title="お知らせ" facility={data.currentFacility.name} description="施設HPの「お知らせ」に表示されます（WP のニュース機能の置き換え）。本文は Markdown 可。" />
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態。公開チェックを入れて保存すると表示されます）。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
@@ -16,13 +16,13 @@
 <!-- 新規作成 -->
 <form method="POST" action="?/add" data-reset use:enhance class="mb-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
 	<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-	<h2 class="font-medium text-stone-700">＋ 新しいお知らせ</h2>
+	<h2 class="font-medium text-stone-700">新しいお知らせ</h2>
 	<div class="mt-2 flex flex-wrap gap-2">
 		<input type="date" name="publishedAt" class="rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-		<input name="title" placeholder="タイトル" class="min-w-64 flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
+		<input name="title" placeholder="タイトル" class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-64 border border-stone-300 px-3 py-1.5" />
 	</div>
 	<textarea name="body" rows="3" placeholder="本文（Markdown 可）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
-	<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-1.5 text-xs text-white hover:bg-accent-500">追加（下書きで作成）</button>
+	<button type="submit" class="mt-2 min-h-9 rounded-md bg-accent-600 px-4 py-2 text-sm text-white hover:bg-accent-500">追加（下書きで作成）</button>
 </form>
 
 <!-- 一覧・編集 -->
@@ -34,8 +34,8 @@
 					{post.isPublished ? '公開中' : '下書き'}
 				</span>
 				<time class="tabular-nums text-stone-400">{post.publishedAt}</time>
-				<span class="font-medium">{post.title}</span>
-				{#if form?.saved === post.id}<span class="text-xs text-emerald-600">✔ 保存済み</span>{/if}
+				<span class="min-w-0 font-medium">{post.title}</span>
+				{#if form?.saved === post.id}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 				<!-- 公開済みの記事だけアプリ通知へ導線を出す（未公開記事のリンクは踏ませない） -->
 				{#if data.adminSupabase && post.isPublished}
 					<a
@@ -50,7 +50,7 @@
 				<input type="hidden" name="postId" value={post.id} />
 				<div class="flex flex-wrap gap-2">
 					<input type="date" name="publishedAt" value={post.publishedAt} class="rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-					<input name="title" value={post.title} class="min-w-64 flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
+					<input name="title" value={post.title} class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-64 border border-stone-300 px-3 py-1.5" />
 					<label class="flex items-center gap-1.5 text-xs">
 						<input type="checkbox" name="isPublished" checked={post.isPublished} class="h-4 w-4" /> 公開
 					</label>
@@ -61,7 +61,7 @@
 						<MarkdownView source={post.body} />
 					</div>
 				</div>
-				<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
+				<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
 			</form>
 		</details>
 	{:else}

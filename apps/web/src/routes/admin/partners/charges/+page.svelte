@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import type { PageData } from './$types';
 
 	type UpcomingChargeRow = PageData['scheduled'][number];
@@ -50,9 +51,9 @@
 		customTo = data.range.to ?? '';
 	});
 
-	const smallBtn = 'inline-block rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs whitespace-nowrap text-stone-700 hover:bg-stone-50';
+	const smallBtn = 'inline-flex min-h-8 items-center rounded-md border border-stone-300 bg-white px-3 py-1 text-xs whitespace-nowrap text-stone-700 hover:bg-stone-50';
 	const tabCls = (active: boolean) =>
-		`rounded-full px-3 py-1 text-xs whitespace-nowrap ${active ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`;
+		`inline-flex min-h-8 items-center rounded-full px-3 py-1 text-xs whitespace-nowrap ${active ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-50'}`;
 	const reservationUrl = (code: string) => `/admin/reservations/${encodeURIComponent(code)}`;
 	const settlementLabel = (s: string | null) => (s === 'card' ? 'カード' : s === 'invoice' ? '請求書' : s === 'refund' ? '差し引き' : s === 'deposit' ? 'デポジット' : '');
 </script>
@@ -74,26 +75,27 @@
 	<td class="px-3 py-2.5">{r.guestName} 様</td>
 {/snippet}
 
-<div class="mb-4">
-	<p class="mb-1 text-xs text-stone-400"><a href="/admin/partners" class="hover:underline">取引先</a> ／ 今後の請求予定</p>
-	<h1 class="mb-1 text-lg font-bold text-stone-800">今後の請求予定 — {data.facilityName}</h1>
-	<p class="max-w-3xl text-xs leading-5 text-stone-500">
-		取引先予約の「オンライン決済（チェックアウト日）」で、登録カードへこれから請求する予約です。チェックアウト日に自動で請求します（毎時の定期処理）。
-		請求額は宿泊料金＋入湯税−割引です。公式サイトの予約は予約時に請求が済むため、ここには出ません。
-	</p>
-</div>
+<PageHeader
+	title="今後の請求予定"
+	facility={data.facilityName}
+	description="取引先予約の「オンライン決済（チェックアウト日）」で、登録カードへこれから請求する予約です。チェックアウト日に自動で請求します（毎時の定期処理）。請求額は宿泊料金＋入湯税−割引です。公式サイトの予約は予約時に請求が済むため、ここには出ません。"
+>
+	{#snippet actions()}
+		<a href="/admin/partners" class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">取引先の一覧</a>
+	{/snippet}
+</PageHeader>
 
 <!-- 期間（請求予定日＝チェックアウト日） -->
-<div class="mb-2 flex flex-wrap items-center gap-2">
+<div class="mb-3 flex flex-wrap items-center gap-2">
 	<a href={q({ range: 'all' })} class={tabCls(data.range.preset === 'all')}>すべて</a>
 	<a href={q({ range: 'this_month' })} class={tabCls(data.range.preset === 'this_month')}>今月</a>
 	<a href={q({ range: 'next_month' })} class={tabCls(data.range.preset === 'next_month')}>来月</a>
 	<form method="GET" class="flex flex-wrap items-center gap-1.5 text-xs" data-no-guard>
 		<input type="hidden" name="range" value="custom" />
 		{#if data.includeCancelled}<input type="hidden" name="cancelled" value="1" />{/if}
-		<input type="date" name="from" bind:value={customFrom} class="rounded-md border border-stone-300 px-1.5 py-0.5 text-xs" aria-label="開始日" />
+		<input type="date" name="from" bind:value={customFrom} class="min-h-8 rounded-md border border-stone-300 px-2 py-1 text-xs" aria-label="開始日" />
 		<span>〜</span>
-		<input type="date" name="to" bind:value={customTo} class="rounded-md border border-stone-300 px-1.5 py-0.5 text-xs" aria-label="終了日" />
+		<input type="date" name="to" bind:value={customTo} class="min-h-8 rounded-md border border-stone-300 px-2 py-1 text-xs" aria-label="終了日" />
 		<button type="submit" class={data.range.preset === 'custom' ? tabCls(true) : smallBtn}>指定</button>
 	</form>
 	{#if data.live && !data.error}
@@ -124,13 +126,13 @@
 	<!-- 請求失敗（要対応・期間に関係なくすべて） -->
 	{#if data.failed.length}
 		<section class="mb-5">
-			<h2 class="mb-1.5 text-sm font-bold text-rose-700">請求失敗（要対応）{data.failed.length}件・{yen(failedTotal)}</h2>
+			<h2 class="mb-1.5 text-sm font-semibold text-rose-700">請求失敗（要対応）{data.failed.length}件・{yen(failedTotal)}</h2>
 			<p class="mb-2 text-xs text-stone-500">自動では再請求しません。予約番号から予約の詳細を開き、カードの登録し直しを取引先へ依頼するか「再請求」してください。</p>
 			<div class="overflow-x-auto rounded-xl border border-rose-300 bg-rose-50/40">
-				<table class="w-full text-sm">
+				<table class="w-full min-w-[52rem] text-sm">
 					<thead class="bg-rose-50 text-left text-xs text-rose-800">
 						<tr>
-							<th class="px-3 py-2 font-medium">請求予定日</th>
+							<th class="sticky left-0 z-10 bg-rose-50 px-3 py-2 font-medium">請求予定日</th>
 							<th class="px-3 py-2 font-medium">予約番号</th>
 							<th class="px-3 py-2 font-medium">取引先</th>
 							<th class="px-3 py-2 font-medium">宿泊日</th>
@@ -143,12 +145,12 @@
 					<tbody>
 						{#each data.failed as r (r.id)}
 							<tr class="border-t border-rose-200 align-top">
-								<td class="px-3 py-2.5 whitespace-nowrap">{md(r.chargeOn)}</td>
+								<td class="sticky left-0 z-10 bg-rose-50 px-3 py-2.5 whitespace-nowrap">{md(r.chargeOn)}</td>
 								{@render bookingCells(r)}
 								<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap font-semibold">{yen(r.amount)}</td>
 								<td class="px-3 py-2.5 text-xs whitespace-nowrap">{r.cardLabel ?? '—'}</td>
 								<td class="px-3 py-2.5 text-xs">
-									<span class="rounded-full bg-rose-600 px-2 py-0.5 whitespace-nowrap text-white">請求失敗</span>
+									<span class="rounded-full bg-rose-50 px-2 py-0.5 font-medium whitespace-nowrap text-rose-700 ring-1 ring-rose-600/20 ring-inset">請求失敗</span>
 									{#if r.error}<div class="mt-1 text-rose-700">{r.error}</div>{/if}
 									<div class="text-stone-500">試行 {r.chargeAttempts}回</div>
 								</td>
@@ -163,13 +165,13 @@
 	<!-- キャンセル料のカード請求が残っているもの -->
 	{#if data.cancelFees.length}
 		<section class="mb-5">
-			<h2 class="mb-1.5 text-sm font-bold text-amber-800">キャンセル料（カードへ未請求）{data.cancelFees.length}件・{yen(feeTotal)}</h2>
+			<h2 class="mb-1.5 text-sm font-semibold text-amber-800">キャンセル料（カードへ未請求）{data.cancelFees.length}件・{yen(feeTotal)}</h2>
 			<p class="mb-2 text-xs text-stone-500">キャンセル料は取消と同時に登録カードへ請求します。ここに残っているのは、取消のときの請求が完了していない予約です（要確認）。</p>
 			<div class="overflow-x-auto rounded-xl border border-amber-300 bg-white">
-				<table class="w-full text-sm">
+				<table class="w-full min-w-[52rem] text-sm">
 					<thead class="bg-amber-50 text-left text-xs text-amber-900">
 						<tr>
-							<th class="px-3 py-2 font-medium">取消日時</th>
+							<th class="sticky left-0 z-10 bg-amber-50 px-3 py-2 font-medium">取消日時</th>
 							<th class="px-3 py-2 font-medium">予約番号</th>
 							<th class="px-3 py-2 font-medium">取引先</th>
 							<th class="px-3 py-2 font-medium">宿泊日</th>
@@ -181,7 +183,7 @@
 					<tbody>
 						{#each data.cancelFees as r (r.id)}
 							<tr class="border-t border-stone-100 align-top">
-								<td class="px-3 py-2.5 text-xs whitespace-nowrap">{dt(r.cancelledAt)}</td>
+								<td class="sticky left-0 z-10 bg-white px-3 py-2.5 text-xs whitespace-nowrap">{dt(r.cancelledAt)}</td>
 								{@render bookingCells(r)}
 								<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">{yen(r.amount)}{#if r.error}<div class="text-[11px] text-rose-700">{r.error}</div>{/if}</td>
 								<td class="px-3 py-2.5 text-xs whitespace-nowrap">{r.cardLabel ?? '—'}</td>
@@ -195,12 +197,12 @@
 
 	<!-- 請求予定 -->
 	<section class="mb-5">
-		<h2 class="mb-1.5 text-sm font-bold text-stone-800">請求予定 {data.scheduled.length}件・{yen(scheduledTotal)}</h2>
+		<h2 class="mb-1.5 text-sm font-semibold text-stone-800">請求予定 {data.scheduled.length}件・{yen(scheduledTotal)}</h2>
 		<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-			<table class="w-full text-sm">
+			<table class="w-full min-w-[52rem] text-sm">
 				<thead class="bg-stone-50 text-left text-xs text-stone-500">
 					<tr>
-						<th class="px-3 py-2 font-medium">請求予定日<div class="font-normal text-stone-400">チェックアウト日</div></th>
+						<th class="sticky left-0 z-10 bg-stone-50 px-3 py-2 font-medium">請求予定日<div class="font-normal text-stone-400">チェックアウト日</div></th>
 						<th class="px-3 py-2 font-medium">予約番号</th>
 						<th class="px-3 py-2 font-medium">取引先</th>
 						<th class="px-3 py-2 font-medium">宿泊日</th>
@@ -213,7 +215,7 @@
 				<tbody>
 					{#each data.scheduled as r (r.id)}
 						<tr class="border-t border-stone-100 align-top">
-							<td class="px-3 py-2.5 whitespace-nowrap {r.chargeOn <= data.today ? 'font-semibold text-amber-800' : ''}">{md(r.chargeOn)}</td>
+							<td class="sticky left-0 z-10 bg-white px-3 py-2.5 whitespace-nowrap {r.chargeOn <= data.today ? 'font-semibold text-amber-800' : ''}">{md(r.chargeOn)}</td>
 							{@render bookingCells(r)}
 							<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
 								{yen(r.amount)}
@@ -223,7 +225,7 @@
 							</td>
 							<td class="px-3 py-2.5 text-xs whitespace-nowrap">{r.cardLabel ?? '—'}</td>
 							<td class="px-3 py-2.5 text-xs">
-								<span class="rounded-full bg-brand-100 px-2 py-0.5 whitespace-nowrap text-brand-800">請求予定</span>
+								<span class="rounded-full bg-brand-50 px-2 py-0.5 font-medium whitespace-nowrap text-brand-800 ring-1 ring-brand-700/20 ring-inset">請求予定</span>
 								{#if r.chargeOn <= data.today}<div class="mt-0.5 text-amber-800">今日の定期処理で請求</div>{/if}
 							</td>
 						</tr>
@@ -247,12 +249,12 @@
 	<!-- 最近取り消したもの（請求なし） -->
 	{#if data.includeCancelled}
 		<section class="mb-5">
-			<h2 class="mb-1.5 text-sm font-bold text-stone-600">最近取り消したもの（{data.recentCancelDays}日以内）{data.cancelled.length}件</h2>
+			<h2 class="mb-1.5 text-sm font-semibold text-stone-600">最近取り消したもの（{data.recentCancelDays}日以内）{data.cancelled.length}件</h2>
 			<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-				<table class="w-full text-sm">
+				<table class="w-full min-w-[52rem] text-sm">
 					<thead class="bg-stone-50 text-left text-xs text-stone-500">
 						<tr>
-							<th class="px-3 py-2 font-medium">取消日時</th>
+							<th class="sticky left-0 z-10 bg-stone-50 px-3 py-2 font-medium">取消日時</th>
 							<th class="px-3 py-2 font-medium">予約番号</th>
 							<th class="px-3 py-2 font-medium">取引先</th>
 							<th class="px-3 py-2 font-medium">宿泊日</th>
@@ -264,7 +266,7 @@
 					<tbody>
 						{#each data.cancelled as r (r.id)}
 							<tr class="border-t border-stone-100 align-top text-stone-600">
-								<td class="px-3 py-2.5 text-xs whitespace-nowrap">{dt(r.cancelledAt)}</td>
+								<td class="sticky left-0 z-10 bg-white px-3 py-2.5 text-xs whitespace-nowrap">{dt(r.cancelledAt)}</td>
 								{@render bookingCells(r)}
 								<td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-stone-400 line-through">{yen(r.lodging + r.bathTax - r.discount)}</td>
 								<td class="px-3 py-2.5 text-xs">

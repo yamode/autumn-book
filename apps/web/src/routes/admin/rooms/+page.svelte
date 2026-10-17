@@ -1,13 +1,15 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 </script>
 
 <svelte:head><title>部屋編集 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">部屋編集 — {data.currentFacility.name}</h1>
-<p class="mb-4 text-xs text-stone-400">
-	部屋タイプの新設・室数・定員の変更は PMS 側（pms.room_types）。ここでは公式サイトと取引先ページでの見せ方を編集します。
-</p>
+<PageHeader
+	title="部屋編集"
+	facility={data.currentFacility.name}
+	description="部屋タイプの新設・室数・定員の変更は PMS 側（pms.room_types）。ここでは公式サイトと取引先ページでの見せ方を編集します。"
+/>
 
 {#if data.loadError}
 	<p class="mb-4 rounded-lg px-3 py-2 text-sm {data.live ? 'bg-rose-50 text-rose-800' : 'bg-amber-50 text-amber-900'}">{data.loadError}</p>
@@ -15,11 +17,11 @@
 
 <div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
 	{#each data.rooms as room (room.id)}
-		<a href="/admin/rooms/{room.id}" class="flex items-center gap-4 border-b border-stone-100 p-3 last:border-b-0 hover:bg-stone-50">
+		<a href="/admin/rooms/{room.id}" class="flex items-center gap-3 border-b border-stone-100 p-3 last:border-b-0 hover:bg-stone-50 sm:gap-4">
 			{#if room.photos[0]}
-				<img src={room.photos[0].url} alt={room.name} class="h-16 w-24 shrink-0 rounded-md object-cover" />
+				<img src={room.photos[0].url} alt={room.name} class="h-14 w-20 shrink-0 rounded-md object-cover sm:h-16 sm:w-24" />
 			{:else}
-				<div class="flex h-16 w-24 shrink-0 items-center justify-center rounded-md bg-stone-100 text-[10px] text-stone-400">写真なし</div>
+				<div class="flex h-14 w-20 shrink-0 sm:h-16 sm:w-24 items-center justify-center rounded-md bg-stone-100 text-[10px] text-stone-400">写真なし</div>
 			{/if}
 			<div class="min-w-0 flex-1">
 				<p class="truncate text-sm font-medium text-stone-800">

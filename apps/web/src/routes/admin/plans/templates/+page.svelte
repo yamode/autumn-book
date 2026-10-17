@@ -5,6 +5,7 @@
 	import { enhance } from '$lib/enhance';
 	import { templateToken } from '$lib/plan-templates';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 	let creating = $state<{ title: string; body: string; key: string; kind: 'body' | 'perk'; bannerLabel: string } | null>(null);
@@ -32,13 +33,12 @@
 
 <svelte:head><title>紹介文テンプレート ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-	<div>
-		<p class="text-xs text-stone-500"><a href="/admin/plans" class="hover:underline">プラン</a> / 紹介文テンプレート</p>
-		<h1 class="text-lg font-bold text-stone-800">紹介文テンプレート — {data.currentFacility.name}</h1>
-	</div>
-	<button type="button" onclick={() => (creating = { title: '■--■', body: '', key: '', kind: 'body', bannerLabel: '' })} class="rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">＋ 新しいテンプレート</button>
-</div>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/plans" class="hover:underline">← プラン一覧</a></p>
+<PageHeader title="紹介文テンプレート" facility={data.currentFacility.name}>
+	{#snippet actions()}
+		<button type="button" onclick={() => (creating = { title: '■--■', body: '', key: '', kind: 'body', bannerLabel: '' })} class="min-h-10 rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">＋ 新しいテンプレート</button>
+	{/snippet}
+</PageHeader>
 
 <div class="mb-5 rounded-lg bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-600">
 	<p>プランの紹介文に <code class="rounded bg-white px-1">{'{{tpl:キー}}'}</code> と書くと、表示するときにテンプレートの見出しと本文に置き換わります。テンプレートを直せば、それを入れた全プランが変わります。</p>

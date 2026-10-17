@@ -3,6 +3,7 @@
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import type { CampaignRow } from '$lib/server/admin-app-data';
 
 	let { data, form } = $props();
@@ -35,6 +36,15 @@
 		return c.failed > 0 ? `完了(失敗${c.failed})` : '完了';
 	}
 
+	// 状態のバッジの色（取消=灰・予約=青・送信中=黄・完了=緑・失敗あり=赤）
+	function statusTone(c: CampaignRow): string {
+		if (c.cancelled_at) return 'bg-stone-100 text-stone-600';
+		if (c.pending > 0 || c.processing > 0) {
+			return new Date(c.scheduled_at).getTime() > Date.now() ? 'bg-sky-50 text-sky-700' : 'bg-amber-50 text-amber-700';
+		}
+		return c.failed > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700';
+	}
+
 	const canCancel = (c: CampaignRow) =>
 		!c.cancelled_at && c.pending > 0 && new Date(c.scheduled_at).getTime() > Date.now();
 
@@ -55,19 +65,29 @@
 
 <svelte:head><title>アプリ通知 ｜ 山人管理</title></svelte:head>
 
-<div class="mb-1 flex flex-wrap items-center justify-between gap-2">
-	<h1 class="text-lg font-bold text-stone-800">アプリ通知</h1>
-	{#if !data.unavailable && isAdmin}
-		<a href="/admin/push/new" class="bg-accent-600 rounded-lg px-4 py-2 text-sm font-medium text-white">
-			＋ 新しい通知
-		</a>
-	{/if}
-</div>
-<p class="mb-4 text-xs text-stone-400">
-	会員のアプリへ push 通知を送ります。通知センターにも残ります。<strong
-		class="text-stone-600">送信は取り消せません。</strong
+<PageHeader title="アプリ通知" description="会員のアプリへ push 通知を送ります。通知センターにも残ります。送信は取り消せません。">
+	{#snippet actions()}
+		{#if !data.unavailable && isAdmin}
+			<a href="/admin/push/new" class="inline-flex min-h-10 items-center rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">
+				＋ 新しい通知
+			</a>
+		{/if}
+	{/snippet}
+</PageHeader>
+
+{#snippet cancelForm(c: CampaignRow)}
+	<form
+		method="POST"
+		action="?/cancel"
+		use:enhance={async ({ cancel }) => {
+			if (!(await askConfirm({ message: `予約配信「${c.title}」を取り消します。`, confirmLabel: '配信を取り消す' }))) cancel();
+		}}
+		class="mt-1"
 	>
-</p>
+		<input type="hidden" name="campaignId" value={c.id} />
+		<button type="submit" class="py-1 text-xs text-red-700 underline">取消</button>
+	</form>
+{/snippet}
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -110,18 +130,18 @@
 		</div>
 	{/if}
 
-	<div class="mb-3 flex gap-1 border-b border-stone-200">
+	<div class="mb-3 flex gap-1 overflow-x-auto border-b border-stone-200">
 		<button
 			type="button"
 			onclick={() => (tab = 'manual')}
-			class="px-3 py-2 text-sm {tab === 'manual'
+			class="shrink-0 px-3 py-2.5 text-sm whitespace-nowrap {tab === 'manual'
 				? 'border-brand-800 text-brand-900 -mb-px border-b-2 font-medium'
 				: 'text-stone-500'}">手動配信</button
 		>
 		<button
 			type="button"
 			onclick={() => (tab = 'auto')}
-			class="px-3 py-2 text-sm {tab === 'auto'
+			class="shrink-0 px-3 py-2.5 text-sm whitespace-nowrap {tab === 'auto'
 				? 'border-brand-800 text-brand-900 -mb-px border-b-2 font-medium'
 				: 'text-stone-500'}">自動通知（リマインド・サンクス）</button
 		>
@@ -133,7 +153,23 @@
 				まだ通知を送っていません。「＋ 新しい通知」から作成し、まずテスト受信者に送ります。
 			</p>
 		{:else}
-			<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+			<!-- スマホ: カード状の並び（md 以上は表） -->
+			<ul class="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white md:hidden">
+				{#each data.campaigns as c (c.id)}
+					<li class="px-4 py-3 text-sm">
+						<div class="flex items-start justify-between gap-2">
+							<a href="/admin/push/{c.id}" class="min-w-0 font-medium text-stone-800 underline">{c.title}</a>
+							<span class="shrink-0 rounded-full px-2 py-0.5 text-xs {statusTone(c)}">{statusOf(c)}</span>
+						</div>
+						<p class="mt-1 text-xs text-stone-500">{dt(c.scheduled_at)}・{c.type}・{TARGET_LABEL[c.target?.mode ?? 'all'] ?? c.target?.mode}</p>
+						<p class="mt-0.5 text-xs text-stone-500">
+							宛先 {c.recipient_count}・送信 {c.sent}・<span class={c.failed > 0 ? 'text-red-700' : ''}>失敗 {c.failed}</span>・既読 {c.read}
+						</p>
+						{#if isAdmin && canCancel(c)}{@render cancelForm(c)}{/if}
+					</li>
+				{/each}
+			</ul>
+			<div class="hidden overflow-x-auto rounded-xl border border-stone-200 bg-white md:block">
 				<table class="w-full min-w-[900px] text-sm">
 					<thead class="bg-stone-50 text-xs text-stone-500">
 						<tr>
@@ -166,20 +202,8 @@
 								</td>
 								<td class="px-3 py-2 text-right text-stone-600">{c.read}</td>
 								<td class="px-3 py-2 text-xs text-stone-600">
-									{statusOf(c)}
-									{#if isAdmin && canCancel(c)}
-										<form
-											method="POST"
-											action="?/cancel"
-											use:enhance={async ({ cancel }) => {
-												if (!(await askConfirm({ message: `予約配信「${c.title}」を取り消します。`, confirmLabel: '配信を取り消す' }))) cancel();
-											}}
-											class="mt-1"
-										>
-											<input type="hidden" name="campaignId" value={c.id} />
-											<button type="submit" class="text-xs text-red-700 underline">取消</button>
-										</form>
-									{/if}
+									<span class="inline-block rounded-full px-2 py-0.5 {statusTone(c)}">{statusOf(c)}</span>
+									{#if isAdmin && canCancel(c)}{@render cancelForm(c)}{/if}
 								</td>
 							</tr>
 						{/each}
@@ -192,7 +216,7 @@
 			<table class="w-full min-w-[640px] text-sm">
 				<thead class="bg-stone-50 text-xs text-stone-500">
 					<tr>
-						<th class="px-3 py-2 text-left">日付</th>
+						<th class="sticky left-0 bg-stone-50 px-3 py-2 text-left">日付</th>
 						<th class="px-3 py-2 text-left">リマインド（積 / 送 / 失 / 読）</th>
 						<th class="px-3 py-2 text-left">サンクス（積 / 送 / 失 / 読）</th>
 					</tr>
@@ -200,7 +224,7 @@
 				<tbody>
 					{#each autoByDay as [day, types]}
 						<tr class="border-t border-stone-100">
-							<td class="px-3 py-2 text-stone-600">{day}</td>
+							<td class="sticky left-0 bg-white px-3 py-2 whitespace-nowrap text-stone-600">{day}</td>
 							<td class="px-3 py-2 text-stone-600">{fmt(types.reminder)}</td>
 							<td class="px-3 py-2 text-stone-600">{fmt(types.thanks)}</td>
 						</tr>

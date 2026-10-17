@@ -7,6 +7,8 @@
 	import { NOTICE_READ_KEY } from '$lib/inroom-notice-read';
 	import { PREVIEW_NOTICE_DEFAULT, PREVIEW_NOTICE_MAX_BODY, PREVIEW_NOTICE_MAX_TITLE, type PreviewMode } from '$lib/inroom-preview';
 	import { enhance } from '$lib/enhance';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -66,12 +68,11 @@
 
 <svelte:head><title>客室案内のプレビュー ｜ 管理画面</title></svelte:head>
 
-<div class="mb-4">
-	<h1 class="mt-1 text-lg font-semibold text-stone-800">📱 客室案内のプレビュー — {data.currentFacility.name}</h1>
-	<p class="mt-1 text-xs text-stone-400">
-		お客様のスマートフォンと同じ幅で、客室案内を開きます。館内案内・お知らせ・湯量・精算案内・メニューの表示を確かめられます。
-	</p>
-</div>
+<PageHeader
+	title="客室案内のプレビュー"
+	facility={data.currentFacility.name}
+	description="お客様のスマートフォンと同じ幅で、客室案内を開きます。館内案内・お知らせ・湯量・精算案内・メニューの表示を確かめられます。"
+/>
 
 <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
 	<!-- 操作 -->
@@ -97,8 +98,8 @@
 		</div>
 
 		<!-- スマホで開く QR（見本の滞在の入口・PMS の見本の館内図と同じ滞在） -->
-		<div class="rounded-lg border border-stone-200 bg-white px-3 py-3 text-center text-sm">
-			<p class="text-xs font-medium text-stone-600">📷 スマホで開く（ご滞在中・見本）</p>
+		<div class="rounded-xl border border-stone-200 bg-white px-3 py-3 text-center text-sm">
+			<p class="flex items-center justify-center gap-1.5 text-xs font-medium text-stone-600"><AdminIcon name="qr" class="h-3.5 w-3.5 text-stone-500" />スマホで開く（ご滞在中・見本）</p>
 			{#if data.qr}
 				<div class="mx-auto mt-2 w-40 [&>svg]:h-auto [&>svg]:w-full">{@html data.qr.svg}</div>
 				<p class="mt-2 text-[11px] leading-relaxed text-stone-500">スマホのカメラで読むと、その端末で見本の客室案内が開きます（ログイン不要）。保存した見本が出ます。</p>
@@ -122,8 +123,8 @@
 				};
 			}}
 		>
-			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-				<p class="text-xs font-medium text-stone-500">💴 精算案内（見本）</p>
+			<div class="space-y-2 rounded-xl border border-stone-200 bg-white px-3 py-3">
+				<p class="flex items-center gap-1.5 text-xs font-medium text-stone-600"><AdminIcon name="receipt" class="h-3.5 w-3.5 text-stone-500" />精算案内（見本）</p>
 				<label class="flex items-center gap-2 text-xs">
 					<input type="radio" name="billMode" bind:group={billMode} value="custom" class="h-3.5 w-3.5" />
 					<span>選んだものを出す</span>
@@ -152,9 +153,9 @@
 				{/if}
 			</div>
 
-			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-				<p class="text-xs font-medium text-stone-500">📣 全客室へのお知らせ（見本）</p>
-				<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+			<div class="space-y-2 rounded-xl border border-stone-200 bg-white px-3 py-3">
+				<p class="flex items-center gap-1.5 text-xs font-medium text-stone-600"><AdminIcon name="megaphone" class="h-3.5 w-3.5 text-stone-500" />全客室へのお知らせ（見本）</p>
+				<div class="flex flex-wrap gap-x-4 gap-y-2 text-xs">
 					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="settings" class="h-3.5 w-3.5" />掲載中のとおり</label>
 					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="sample" class="h-3.5 w-3.5" />見本を出す</label>
 					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="none" class="h-3.5 w-3.5" />出さない</label>
@@ -166,9 +167,9 @@
 				{/if}
 			</div>
 
-			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-				<p class="text-xs font-medium text-stone-500">♨️ 全館の湯量（見本）</p>
-				<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+			<div class="space-y-2 rounded-xl border border-stone-200 bg-white px-3 py-3">
+				<p class="flex items-center gap-1.5 text-xs font-medium text-stone-600"><AdminIcon name="droplet" class="h-3.5 w-3.5 text-stone-500" />全館の湯量（見本）</p>
+				<div class="flex flex-wrap gap-x-4 gap-y-2 text-xs">
 					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="settings" class="h-3.5 w-3.5" />設定どおり</label>
 					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="sample" class="h-3.5 w-3.5" />見本の残量</label>
 					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="none" class="h-3.5 w-3.5" />出さない</label>
@@ -178,11 +179,11 @@
 						<input type="range" name="springPercent" min="0" max="100" step="1" bind:value={springPercent} class="flex-1" />
 						<span class="w-10 text-right tabular-nums">{springPercent}%</span>
 					</label>
-					<p class="text-[11px] leading-relaxed text-stone-400">言葉・色・「?」の説明は「♨️ 全館の湯量」の表現の設定を使います。</p>
+					<p class="text-[11px] leading-relaxed text-stone-400">言葉・色・「?」の説明は「全館の湯量」の表現の設定を使います。</p>
 				{/if}
 			</div>
 
-			<button type="submit" disabled={saving} class="w-full rounded-lg bg-brand-800 px-3 py-2 text-white hover:bg-brand-700 disabled:opacity-60">
+			<button type="submit" disabled={saving} class="w-full rounded-lg bg-brand-800 px-3 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60">
 				{saving ? '保存しています…' : '見本を保存して反映'}
 			</button>
 			{#if (form as { saved?: boolean } | null)?.saved}<p class="rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-800">見本を保存しました（この施設の見本の滞在すべてに出ます）。</p>{/if}
@@ -194,12 +195,12 @@
 
 		<div class="space-y-2">
 			<button type="button" onclick={() => (nonce += 1)} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">↻ 最初から開き直す</button>
-			<button type="button" onclick={resetNoticeRead} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">📣 お知らせをもう一度出す（既読を消す）</button>
+			<button type="button" onclick={resetNoticeRead} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">お知らせをもう一度出す（既読を消す）</button>
 			<a href={src} target="_blank" rel="noopener" class="block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-center text-stone-700 hover:bg-stone-50">新しいタブで開く ↗</a>
 			{#if message}<p class="rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{message}</p>{/if}
 		</div>
 
-		<div class="space-y-1.5 rounded-lg bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
+		<div class="space-y-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
 			<p>⚠ 見本から入れた<b>貸切風呂の予約は本番の枠を埋めます</b>（PMS の見本の館内図と同じ）。試したら取り消してください。</p>
 			<p>この端末で開いていた客室案内（実際のご滞在）は、プレビューで切り替わります。</p>
 			<p>プレビューで開いた分もアクセスログに「見本」として残ります。</p>

@@ -13,6 +13,9 @@
 	} from '$lib/partner-reservation';
 	import { page } from '$app/state';
 	import { nightGroups, remainingRefundPreview, roomRefundPreview } from '$lib/multi-room';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import { STAY_STATUS, stayStatusClass, BADGE } from '../stay-status';
 
 	let { data, form } = $props();
 
@@ -107,15 +110,6 @@
 	/** 送信内容を開いている outbox 行 */
 	let openMail = $state<string | null>(null);
 
-	const STAY_STATUS: Record<string, string> = {
-		reserved: '予約済',
-		checked_in: 'チェックイン済',
-		checked_out: '宿泊済',
-		stayed: '宿泊済',
-		cancelled: 'キャンセル',
-		no_show: '不泊'
-	};
-
 	const MAIL_KIND: Record<string, string> = {
 		booking_confirmation: '予約確認',
 		booking_cancelled: 'キャンセル受付',
@@ -200,9 +194,18 @@
 
 <svelte:head><title>{b.code} ｜ 予約管理</title></svelte:head>
 
-<nav class="mb-3 text-xs text-stone-400">
-	<a href="/admin/reservations" class="hover:underline">予約管理</a> / {b.code}
-</nav>
+<!-- 画面見出し: 予約番号・施設・状態。一覧へ戻るリンクは右側（スマホでは見出しの下に回る） -->
+<PageHeader title={b.code} facility={b.facility_name}>
+	{#snippet actions()}
+		<span class={stayStatusClass(b.stay_status)}>{STAY_STATUS[b.stay_status] ?? b.stay_status}</span>
+		{#if paymentLabel.prepaid}
+			<span class="{BADGE} bg-emerald-600 text-white ring-emerald-600">事前決済済・現地精算なし</span>
+		{/if}
+		<a href="/admin/reservations" class="inline-flex min-h-9 items-center gap-1 rounded-md border border-stone-300 bg-white px-3 text-xs text-stone-600 hover:bg-stone-50">
+			<AdminIcon name="chevron" class="h-3.5 w-3.5 rotate-180" />予約一覧へ
+		</a>
+	{/snippet}
+</PageHeader>
 
 {#if form?.cancelled || form?.roomCancelled}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -281,26 +284,11 @@
 	<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 {/if}
 
-<div class="grid gap-4 lg:grid-cols-[1fr_320px]">
-	<div class="space-y-4">
-		<div class="rounded-xl border border-stone-200 bg-white p-5">
-			<div class="flex flex-wrap items-center justify-between gap-2">
-				<h1 class="text-lg font-bold tracking-wider text-stone-800">{b.code}</h1>
-				<span
-					class="rounded-full px-3 py-1 text-xs {b.stay_status === 'reserved'
-						? 'bg-emerald-50 text-emerald-700'
-						: b.stay_status === 'cancelled' || b.stay_status === 'no_show'
-							? 'bg-stone-100 text-stone-500'
-							: 'bg-blue-50 text-blue-600'}"
-				>
-					{STAY_STATUS[b.stay_status] ?? b.stay_status}
-				</span>
-				{#if paymentLabel.prepaid}
-					<span class="rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white">事前決済済・現地精算なし</span>
-				{/if}
-			</div>
-
-			<dl class="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+	<div class="min-w-0 space-y-4">
+		<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+			<h2 class="text-[15px] font-semibold text-stone-900">予約の内容</h2>
+			<dl class="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
 				<div><dt class="text-xs text-stone-400">施設</dt><dd>{b.facility_name}</dd></div>
 				<div>
 					<dt class="text-xs text-stone-400">経路</dt>
@@ -379,9 +367,9 @@
 				<!-- 1 室の公式予約の部屋タイプ・プラン・人数の変更（M3・管理画面は室数を問わず） -->
 				<div class="mt-5 border-t border-stone-100 pt-4">
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<h3 class="text-sm font-medium text-stone-700">お部屋・プラン・人数の変更</h3>
+						<h3 class="text-sm font-semibold text-stone-800">お部屋・プラン・人数の変更</h3>
 						{#if adminRooms[0].canAmend}
-							<button type="button" onclick={() => (amendIndex = amendIndex === adminRooms[0].room_index ? null : adminRooms[0].room_index)} class="rounded border border-brand-300 px-3 py-1 text-xs text-brand-800 hover:bg-brand-50">{amendIndex === adminRooms[0].room_index ? '閉じる' : '部屋を変更'}</button>
+							<button type="button" onclick={() => (amendIndex = amendIndex === adminRooms[0].room_index ? null : adminRooms[0].room_index)} class="min-h-9 rounded-md border border-brand-300 px-3 py-1.5 text-xs text-brand-800 hover:bg-brand-50">{amendIndex === adminRooms[0].room_index ? '閉じる' : '部屋を変更'}</button>
 						{/if}
 					</div>
 					{#if amendRoom}
@@ -397,21 +385,21 @@
 			{#if adminRooms.length > 1}
 				<!-- 公式の複数室予約（M1）: 部屋ごとの表（状態・プラン・部屋・人数・金額・キャンセル料）と料金の明細（泊の見出し → 部屋の行） -->
 				<div class="mt-5 border-t border-stone-100 pt-4">
-					<h3 class="text-sm font-medium text-stone-700">お部屋（{adminRooms.length}室）</h3>
+					<h3 class="text-sm font-semibold text-stone-800">お部屋（{adminRooms.length}室）</h3>
 					<div class="mt-2 overflow-x-auto">
 						<table class="w-full min-w-[36rem] text-sm">
 							<thead class="text-left text-xs text-stone-400">
-								<tr><th class="py-1 pr-2 font-normal">部屋</th><th class="py-1 pr-2 font-normal">滞在コード</th><th class="py-1 pr-2 font-normal">客室 / プラン</th><th class="py-1 pr-2 font-normal">人数</th><th class="py-1 pr-2 text-right font-normal">金額</th><th class="py-1 text-right font-normal">状態</th></tr>
+								<tr><th class="sticky left-0 bg-white py-1 pr-2 font-normal">部屋</th><th class="py-1 pr-2 font-normal">滞在コード</th><th class="py-1 pr-2 font-normal">客室 / プラン</th><th class="py-1 pr-2 font-normal">人数</th><th class="py-1 pr-2 text-right font-normal">金額</th><th class="py-1 text-right font-normal">状態</th></tr>
 							</thead>
 							<tbody class="divide-y divide-stone-100">
 								{#each adminRooms as r (r.room_index)}
 									<tr class={r.cancelled ? 'text-stone-400' : ''}>
-										<td class="py-1.5 pr-2 whitespace-nowrap">{r.room_index}室目</td>
+										<td class="sticky left-0 bg-white py-1.5 pr-2 whitespace-nowrap">{r.room_index}室目</td>
 										<td class="py-1.5 pr-2 font-mono text-xs">{r.reservation_code}</td>
 										<td class="py-1.5 pr-2">{r.room_name ?? '—'} ／ {r.plan_name ?? '—'}{#if r.memberPerks?.length}<span class="block text-xs text-amber-800">特典: {r.memberPerks.map((p) => p.title).join('／')}</span>{/if}</td>
 										<td class="py-1.5 pr-2 whitespace-nowrap">大人{r.adults}名{#if r.male != null && r.female != null}<span class="block text-xs text-stone-500">男性{r.male}・女性{r.female}</span>{/if}</td>
 										<td class="py-1.5 pr-2 text-right tabular-nums">{formatYen(r.charge)}{#if r.coupon_share > 0}<span class="block text-xs text-stone-500">クーポン −{formatYen(r.coupon_share)}</span>{/if}</td>
-										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}{#if r.canAmend}<button type="button" onclick={() => (amendIndex = amendIndex === r.room_index ? null : r.room_index)} class="mt-1 block w-full rounded border border-brand-300 px-2 py-0.5 text-brand-800 hover:bg-brand-50">{amendIndex === r.room_index ? '閉じる' : '変更'}</button>{/if}</td>
+										<td class="py-1.5 text-right text-xs whitespace-nowrap">{r.cancelled ? `取消済み（キャンセル料 ${formatYen(r.cancel_fee ?? 0)}${(r.cancel_kept ?? 0) > 0 ? `・返金しない額 ${formatYen(r.cancel_kept ?? 0)}` : ''}）` : (STAY_STATUS[r.stay_status] ?? r.stay_status)}{#if !r.cancelled && r.paid_share != null && data.payment?.status === 'paid'}<span class="block text-stone-500">支払分 {formatYen(r.paid_share)}</span>{/if}{#if r.canAmend}<button type="button" onclick={() => (amendIndex = amendIndex === r.room_index ? null : r.room_index)} class="mt-1 block min-h-8 w-full rounded border border-brand-300 px-2 py-1 text-brand-800 hover:bg-brand-50">{amendIndex === r.room_index ? '閉じる' : '変更'}</button>{/if}</td>
 									</tr>
 								{/each}
 							</tbody>
@@ -439,9 +427,9 @@
 
 		{#if data.isPartner}
 			<!-- 取引先予約（限定URL /p/<token> から入った予約）の台帳。取消・再請求は右の「取引先予約の操作」から -->
-			<div class="rounded-xl border border-amber-200 bg-amber-50/40 p-5 text-sm">
+			<div class="rounded-xl border border-amber-200 bg-amber-50/40 p-4 sm:p-5 text-sm">
 				<div class="flex flex-wrap items-center justify-between gap-2">
-					<h2 class="flex flex-wrap items-center gap-2 font-medium text-stone-700">
+					<h2 class="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-stone-900">
 						取引先予約
 						{#if pl?.billedToPartner}
 							<!-- 取引先払い（2026-10-02 指示）: 宿泊料金・入湯税は取引先へ月末に請求。お客様には請求しない -->
@@ -455,7 +443,7 @@
 				{#if !pl}
 					<p class="mt-2 text-xs text-amber-800">{data.partner.error ?? '取引先予約の台帳を読み込めませんでした。'}</p>
 				{:else}
-					<dl class="mt-3 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-stone-700">
+					<dl class="mt-3 grid grid-cols-[6.5rem_minmax(0,1fr)] sm:grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-stone-700">
 						<dt class="text-stone-500">取引先</dt>
 						<dd>{pl.partnerName}</dd>
 						<dt class="text-stone-500">予約番号</dt>
@@ -531,8 +519,8 @@
 				memberError?: string;
 				candidates?: { user_id: string; member_code: string; name: string | null; kana: string | null; email: string | null; phone: string | null; guest_id: string | null }[];
 			} | null}
-			<div class="rounded-xl border border-sky-200 bg-sky-50/40 p-5 text-sm">
-				<h2 class="font-medium text-stone-700">会員登録を代行する（非会員の予約）</h2>
+			<div class="rounded-xl border border-sky-200 bg-sky-50/40 p-4 sm:p-5 text-sm">
+				<h2 class="text-[15px] font-semibold text-stone-900">会員登録を代行する（非会員の予約）</h2>
 				<p class="mt-1 text-xs leading-relaxed text-stone-500">
 					「非会員で予約したが会員になりたい」というお電話のときに、施設側で会員登録をします。予約のお客様情報で会員になり、
 					この予約は会員の予約になります（マイページに表示・入会ボーナス（会員の画面で設定）・ご宿泊後に会員ポイント）。
@@ -553,7 +541,7 @@
 					</div>
 					<label class="flex flex-wrap items-center gap-2">
 						<span class="w-24 text-xs text-stone-500">メールアドレス</span>
-						<input name="email" type="email" required value={g.email ?? ''} class="w-72 rounded-md border border-stone-300 px-2 py-1.5" />
+						<input name="email" type="email" required value={g.email ?? ''} class="w-full rounded-md border border-stone-300 px-2 py-2 sm:w-72 sm:py-1.5" />
 						<span class="text-xs text-stone-400">ログインに使います。お電話で確認してください</span>
 					</label>
 					<label class="flex items-center gap-2 text-xs text-stone-600">
@@ -578,7 +566,7 @@
 						name="q"
 						value={mf?.memberQuery ?? g.email ?? ''}
 						placeholder="YM-001234 / メールアドレス / 電話番号"
-						class="w-72 rounded-md border border-stone-300 px-2 py-1.5"
+						class="w-full rounded-md border border-stone-300 px-2 py-2 sm:w-72 sm:py-1.5"
 					/>
 					<button class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs hover:bg-stone-50">会員を探す</button>
 				</form>
@@ -618,8 +606,8 @@
 
 		<!-- キャンセル規定（取引先予約は取引先の設定に従うので出さない） -->
 		{#if !data.isPartner}
-		<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
-			<h2 class="font-medium text-stone-700">
+		<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
+			<h2 class="text-[15px] font-semibold text-stone-900">
 				キャンセル規定{policy.rules_source === 'rank' ? '（当館の基本規定）' : '（プラン規定）'}
 			</h2>
 			{#if policy.rules?.length}
@@ -644,9 +632,9 @@
 		{#if data.payment}
 			<!-- オンライン決済（公式サイト予約・Stripe）。取消時は「支払額 − キャンセル料」を自動で返金する -->
 			{@const p = data.payment}
-			<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
-				<h2 class="font-medium text-stone-700">オンライン決済（Stripe）</h2>
-				<dl class="mt-2 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-stone-700">
+			<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
+				<h2 class="text-[15px] font-semibold text-stone-900">オンライン決済（Stripe）</h2>
+				<dl class="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] sm:grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-stone-700">
 					<dt class="text-stone-500">状態</dt>
 					<dd>{p.status === 'paid' ? '支払済み' : p.status === 'late' ? '期限後の支払（予約にせず返金）' : '支払待ち'}{#if p.refund_status === 'full'}・全額返金済み{:else if p.refund_status === 'partial'}・一部返金済み{:else if p.refund_status === 'failed'}<span class="text-red-700">・返金失敗</span>{/if}</dd>
 					<dt class="text-stone-500">支払額</dt>
@@ -683,8 +671,8 @@
 		{#if data.live}
 			<!-- メール（取引先予約は予約者＝取引先宛てに別経路で送るので、book のメール履歴は出さない） -->
 			{#if !data.isPartner}
-			<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
-				<h2 class="font-medium text-stone-700">メール</h2>
+			<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
+				<h2 class="text-[15px] font-semibold text-stone-900">メール</h2>
 				{#if data.detail.mails.length === 0}
 					<p class="mt-2 text-stone-400">送信履歴はありません。</p>
 				{:else}
@@ -704,7 +692,7 @@
 										? `（${mail.attempts}回目）`
 										: ''}
 								</span>
-								<span class="text-xs text-stone-400">{mail.to_email}</span>
+								<span class="break-all text-xs text-stone-400">{mail.to_email}</span>
 								{#if mail.last_error}<span class="text-xs text-red-500">{mail.last_error}</span>{/if}
 								{#if data.canOperate && mail.body_text}
 									<button
@@ -729,8 +717,8 @@
 
 			{#if data.isDirect}
 				<!-- 取り消しリンク -->
-				<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
-					<h2 class="font-medium text-stone-700">取り消しリンク（お客様用）</h2>
+				<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
+					<h2 class="text-[15px] font-semibold text-stone-900">取り消しリンク（お客様用）</h2>
 					<p class="mt-1 text-stone-600">
 						{tokenState}{#if token}・最終閲覧 {dt(token.last_seen_at)}・閲覧 {token.view_count} 回{/if}
 					</p>
@@ -741,8 +729,8 @@
 			{/if}
 
 			<!-- 変更・監査 -->
-			<div class="rounded-xl border border-stone-200 bg-white p-5 text-sm">
-				<h2 class="font-medium text-stone-700">変更履歴・操作ログ</h2>
+			<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
+				<h2 class="text-[15px] font-semibold text-stone-900">変更履歴・操作ログ</h2>
 				<p class="mt-1 text-stone-600">予約変更 {b.amendments} 件</p>
 				{#if data.detail.audits.length > 0}
 					<ul class="mt-2 space-y-1 text-xs text-stone-500">
@@ -760,7 +748,7 @@
 		{#if data.isPartner}
 			<!-- 取引先予約: book 側の操作（取消・メール再送・取消リンク）は出さない。取消は取引先予約として行う -->
 			<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
-				<h2 class="font-medium text-stone-700">取引先予約の操作</h2>
+				<h2 class="text-[15px] font-semibold text-stone-900">取引先予約の操作</h2>
 				<p class="mt-1 text-xs leading-relaxed text-stone-500">
 					取引先ページ（限定URL）からのご予約です。予約確認・取消のメールは予約者（取引先）宛てで、宿泊者へは送りません。
 				</p>
@@ -836,7 +824,7 @@
 			</p>
 		{:else if data.canOperate && canCancelNow}
 			<div class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="text-sm font-medium text-stone-700">操作</h2>
+				<h2 class="text-[15px] font-semibold text-stone-900">操作</h2>
 
 				{#if data.live}
 					<form method="POST" action="?/resend" class="mt-3">

@@ -79,19 +79,19 @@
 {#if preview}
   <fieldset class="space-y-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm">
     <legend class="px-1 text-xs text-stone-600">キャンセル料（基準: 予約金額 {yen(preview.base)}・割引前・入湯税を除く）</legend>
-    <label class="flex items-center gap-2"><input type="radio" name="feeMode" value="rule" bind:group={mode} />規定どおり（{preview.basis} {preview.rate}% → {yen(preview.fee)}）</label>
-    <label class="flex items-center gap-2"><input type="radio" name="feeMode" value="no_show" bind:group={mode} />不泊（{preview.noShowRate}% → {yen(preview.noShowFee)}）</label>
-    <label class="flex flex-wrap items-center gap-2">
+    <label class="flex items-start gap-2 py-0.5"><input type="radio" class="mt-1" name="feeMode" value="rule" bind:group={mode} />規定どおり（{preview.basis} {preview.rate}% → {yen(preview.fee)}）</label>
+    <label class="flex items-start gap-2 py-0.5"><input type="radio" class="mt-1" name="feeMode" value="no_show" bind:group={mode} />不泊（{preview.noShowRate}% → {yen(preview.noShowFee)}）</label>
+    <label class="flex flex-wrap items-center gap-2 py-0.5">
       <input type="radio" name="feeMode" value="custom" bind:group={mode} />金額を変える
       <input name="customFee" type="number" min="0" max={preview.base} step="1" inputmode="numeric" bind:value={custom} onfocus={() => (mode = 'custom')} class="w-28 rounded-md border border-stone-300 px-2 py-1 text-sm" />円
     </label>
-    <label class="flex items-center gap-2"><input type="radio" name="feeMode" value="waive" bind:group={mode} />免除する（施設都合など）</label>
+    <label class="flex items-start gap-2 py-0.5"><input type="radio" class="mt-1" name="feeMode" value="waive" bind:group={mode} />免除する（施設都合など）</label>
     {#if mode === 'custom' || mode === 'waive'}
       <input name="feeNote" maxlength="500" placeholder="変更・免除の理由（社内メモ）" class="w-full rounded-md border border-stone-300 px-2 py-1 text-sm" />
     {/if}
     {#if adminPercent != null}
-      <label class="flex items-center gap-2"
-        ><input type="checkbox" name="adminFeeWaive" bind:checked={adminWaive} />事務手数料（予約時決済の取消で返金しない {adminPercent}%）も免除する</label
+      <label class="flex items-start gap-2 py-0.5"
+        ><input type="checkbox" class="mt-1" name="adminFeeWaive" bind:checked={adminWaive} />事務手数料（予約時決済の取消で返金しない {adminPercent}%）も免除する</label
       >
     {/if}
     <p class="text-xs text-stone-600">キャンセル料 <span class="font-bold">{fee > 0 ? yen(fee) : 'なし'}</span>{how ? `・${how}` : ''}</p>

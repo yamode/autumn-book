@@ -4,6 +4,7 @@
 	import { EARLY_PREPAY_MAX_TIERS, percentText, RECOMMENDED_EARLY_PREPAY_TIERS, type EarlyPrepayMode } from '$lib/early-prepay';
 	import { ADMIN_FEE_MAX_PERCENT, adminFeeNotice, STRIPE_FEE_PERCENT } from '$lib/cancel-admin-fee';
 	import type { SubmitFunction } from '@sveltejs/kit';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -95,17 +96,18 @@
 
 <svelte:head><title>支払方法 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">支払方法</h1>
-<p class="mb-4 max-w-3xl text-xs text-stone-400">
-	{data.facilityName} の支払方法をここでまとめて設定します。公式サイトのお客様向け（基本・早期決済割・プラン別）と、取引先ページ向け（取引先別）があります。
-</p>
+<PageHeader
+	title="支払方法"
+	facility={data.facilityName}
+	description="この施設の支払方法をここでまとめて設定します。公式サイトのお客様向け（基本・早期決済割・プラン別）と、取引先ページ向け（取引先別）があります。"
+/>
 
-<nav class="mb-4 flex gap-1 border-b border-stone-200 text-sm">
+<nav class="mb-4 flex gap-1 overflow-x-auto border-b border-stone-200 text-sm">
 	{#each TABS as t (t.id)}
 		<a
 			href="?tab={t.id}"
 			data-sveltekit-noscroll
-			class="-mb-px rounded-t-md border px-3 py-2 {tab === t.id
+			class="-mb-px shrink-0 whitespace-nowrap rounded-t-md border px-3 py-2.5 {tab === t.id
 				? 'border-stone-200 border-b-white bg-white font-medium text-stone-800'
 				: 'border-transparent text-stone-500 hover:text-stone-800'}">{t.label}</a
 		>
@@ -121,12 +123,12 @@
 		<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			<h2 class="mb-2 font-medium text-stone-800">公式サイトのお客様</h2>
 			<dl class="space-y-1.5 text-stone-600">
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">現地払い</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">現地払い</dt>
 					<dd>現地PayPay決済・現地カード決済・現地現金決済（予約確認画面で選択。PayPay を先頭に表示）</dd>
 				</div>
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">予約時決済</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">予約時決済</dt>
 					<dd>
 						オンライン決済（Stripe・カード / Apple Pay / Google Pay）
 						{#if data.status?.directOnline}
@@ -136,8 +138,8 @@
 						{/if}
 					</dd>
 				</div>
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">どれを出すか</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">どれを出すか</dt>
 					<dd>料金プランごとに決めます → <a href="?tab=plans" class="text-sky-700 hover:underline">プラン別</a></dd>
 				</div>
 			</dl>
@@ -145,12 +147,12 @@
 		<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			<h2 class="mb-2 font-medium text-stone-800">取引先ページ</h2>
 			<dl class="space-y-1.5 text-stone-600">
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">支払方法</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">支払方法</dt>
 					<dd>月末締め翌月末銀行振込／オンライン決済（予約時）／オンライン決済（チェックアウト日）</dd>
 				</div>
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">オンライン決済</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">オンライン決済</dt>
 					<dd>
 						{#if data.status?.partnerOnline}
 							<span class="rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">利用できます</span>
@@ -159,8 +161,8 @@
 						{/if}
 					</dd>
 				</div>
-				<div class="flex gap-2">
-					<dt class="w-28 shrink-0 text-stone-400">どれを出すか</dt>
+				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">どれを出すか</dt>
 					<dd>取引先ごとに決めます → <a href="?tab=partners" class="text-sky-700 hover:underline">取引先別</a>（早期決済割は取引先には効きません）</dd>
 				</div>
 			</dl>
@@ -169,9 +171,9 @@
 
 	<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。公式サイト・取引先ページの両方に効く -->
 	<section class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
-		<div class="mb-1 flex items-center justify-between">
+		<div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="font-medium text-stone-800">事務手数料（予約時決済の取消で返金しない率）</h2>
-			{#if f?.scope === 'adminFee' && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+			{#if f?.scope === 'adminFee' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		<p class="mb-3 max-w-3xl text-xs text-stone-500">
 			予約時にオンライン決済（全額・取引先のデポジットを含む）で払った予約を取り消したとき、この率の額はキャンセル料の期間に関係なく返金しません。
@@ -196,7 +198,7 @@
 							class="w-24 rounded-md border border-stone-300 px-2 py-1.5 text-right"
 						/>
 					</label>
-					<button type="submit" class="rounded-md bg-stone-800 px-3 py-1.5 text-white hover:bg-stone-700">保存</button>
+					<button type="submit" class="min-h-9 rounded-md bg-stone-800 px-4 py-2 text-white hover:bg-stone-700">保存</button>
 				</fieldset>
 				<p class="w-full max-w-3xl text-xs text-stone-500">お客様への表示: {adminFeeNotice(data.settings.cancelAdminFeePercent, 'partner')}</p>
 			</form>
@@ -204,9 +206,9 @@
 	</section>
 
 	<section class="rounded-xl border border-stone-200 bg-white p-4">
-		<div class="mb-1 flex items-center justify-between">
+		<div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="font-medium text-stone-800">早期決済割／早期決済ポイント（公式サイトの予約時決済）</h2>
-			{#if f?.scope === 'early' && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+			{#if f?.scope === 'early' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		<p class="mb-3 max-w-3xl text-xs text-stone-500">
 			ご宿泊日が先の予約ほど、予約時に決済したときの還元が大きくなります。率は「予約した日から宿泊初日までの日数」で決まります。対象はプラン別で「対象」にしたプランだけです。
@@ -220,8 +222,8 @@
 		{#if !data.canEditAdmin}<p class="mb-3 text-xs text-stone-400">閲覧のみ（変更は管理者だけができます）。</p>{/if}
 
 		<form method="POST" action="?/saveEarlyPrepay" use:enhance={keep} class="text-sm">
-			<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="space-y-5">
-				<label class="flex items-center gap-2">
+			<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="min-w-0 space-y-5">
+				<label class="flex flex-wrap items-center gap-x-2 gap-y-1">
 					<input type="checkbox" name="enabled" bind:checked={early.enabled} class="h-4 w-4" />
 					<span class="font-medium text-stone-700">早期決済割を使う</span>
 					<span class="text-xs text-stone-400">（オフにすると段階表は効かず、プランの定率割引だけになります）</span>
@@ -236,7 +238,7 @@
 					{/if}
 				</div>
 
-				<div class="grid gap-6 lg:grid-cols-2">
+				<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
 					<!-- 段階表 -->
 					<div>
 						<h3 class="mb-2 text-xs font-medium text-stone-500">段階表（最大 {EARLY_PREPAY_MAX_TIERS} 段・日数も率も上の段より大きく）</h3>
@@ -267,7 +269,7 @@
 							<input type="number" bind:value={sample} min="0" step="1000" class="w-28 rounded-md border border-stone-300 px-2 py-1 text-right text-sm" />
 							円の予約
 						</div>
-						<table class="w-full text-xs">
+						<div class="overflow-x-auto"><table class="w-full min-w-[22rem] text-xs">
 							<thead class="text-stone-400">
 								<tr><th class="py-1 text-left font-normal">予約の時期</th><th class="text-right font-normal">{unit}</th><th class="text-right font-normal">{early.mode === 'points' ? '付与pt' : 'お得額'}</th><th class="text-right font-normal">お支払い</th><th class="text-right font-normal" title="還元（額面）＋Stripe 手数料 3.6%">宿の負担</th></tr>
 							</thead>
@@ -282,7 +284,7 @@
 									</tr>
 								{/each}
 							</tbody>
-						</table>
+						</table></div>
 						<p class="mt-2 text-[11px] leading-relaxed text-stone-400">宿の負担＝還元の額面＋Stripe 手数料（約3.6%）。OTA の手数料（概ね 10〜15%）を下回る範囲が目安です。ポイントは使われない分（ホテル業界で15〜25%）や再来の効果があり、実質の負担は額面の5〜6割程度とされます。</p>
 					</div>
 				</div>
@@ -346,7 +348,7 @@
 		<table class="w-full min-w-[760px] text-sm">
 			<thead class="bg-stone-50 text-xs text-stone-500">
 				<tr>
-					<th class="px-3 py-2 text-left font-normal">プラン</th>
+					<th class="sticky left-0 z-10 min-w-[8rem] bg-stone-50 px-3 py-2 text-left font-normal">プラン</th>
 					<th class="px-3 py-2 text-left font-normal">支払方法（会員／非会員）</th>
 					<th class="px-3 py-2 text-left font-normal">定率割引</th>
 					<th class="px-3 py-2 text-left font-normal">早期決済割</th>
@@ -359,7 +361,7 @@
 					{@const onsite = planMethod[p.id] === 'onsite'}
 					{@const shown = p.isActive && p.publicOnDirect && p.isPublished}
 					<tr class="border-t border-stone-100 align-top {shown ? '' : 'bg-stone-50/60 text-stone-500'}">
-						<td class="px-3 py-2">
+						<td class="sticky left-0 z-10 min-w-[8rem] max-w-[10rem] px-3 py-2 sm:max-w-none {shown ? 'bg-white' : 'bg-stone-50'}">
 							<div class="font-medium">{p.headline || p.name}</div>
 							<div class="text-xs text-stone-400">
 								{p.code}{#if p.headline && p.headline !== p.name}・{p.name}{/if}
@@ -413,8 +415,8 @@
 							{#if f?.scope === 'plan' && f.planId === p.id && f.error}<p class="mt-1 text-xs text-red-600">{f.error}</p>{/if}
 						</td>
 						<td class="whitespace-nowrap px-3 py-2 text-right">
-							{#if f?.scope === 'plan' && f.planId === p.id && f.saved}<span class="mr-2 text-xs text-emerald-600">✔</span>{/if}
-							<button type="submit" form="plan-{p.id}" disabled={!p.hasContent} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-40">保存</button>
+							{#if f?.scope === 'plan' && f.planId === p.id && f.saved}<span class="mr-2 text-xs text-emerald-600">保存しました</span>{/if}
+							<button type="submit" form="plan-{p.id}" disabled={!p.hasContent} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs hover:bg-stone-50 disabled:opacity-40">保存</button>
 						</td>
 					</tr>
 				{:else}
@@ -445,7 +447,7 @@
 					<span class="text-xs text-stone-400">{data.kindLabels[p.kind as keyof typeof data.kindLabels] ?? p.kind}</span>
 					{#if !p.isActive}<span class="rounded bg-stone-200 px-1.5 text-[10px] text-stone-600">無効</span>{/if}
 					<span class="rounded px-1.5 text-[10px] {p.bookingEnabled ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-500'}">{p.bookingEnabled ? '予約受付中' : '予約受付なし'}</span>
-					{#if f?.scope === 'partner' && f.partnerId === p.id && f.saved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+					{#if f?.scope === 'partner' && f.partnerId === p.id && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 				</div>
 				<fieldset disabled={!data.canEditAdmin} class="flex flex-wrap items-center gap-x-5 gap-y-2">
 					{#each p.paymentChoices as o (o.id)}
@@ -466,7 +468,7 @@
 							<span class="text-xs text-stone-500">{partnerDiscountType[p.id] === 'percent' ? '%' : '円'}</span>
 						{/if}
 					</span>
-					<button type="submit" class="ml-auto rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">保存</button>
+					<button type="submit" class="ml-auto min-h-9 rounded-md border border-stone-300 px-4 py-2 text-xs hover:bg-stone-50">保存</button>
 				</fieldset>
 				{#if f?.scope === 'partner' && f.partnerId === p.id && f.error}<p class="mt-2 text-xs text-red-600">{f.error}</p>{/if}
 			</form>

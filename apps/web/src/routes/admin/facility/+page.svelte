@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 
 	let { data, form } = $props();
 	let f = $derived(data.facility);
@@ -24,10 +26,11 @@
 
 <svelte:head><title>施設ページ編集 ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4 flex items-center justify-between">
-	<h1 class="text-lg font-bold text-stone-800">施設ページ編集 — {f.name}</h1>
-	<a href="/{f.brandSlug}/{f.slug}" target="_blank" class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm hover:bg-stone-50">公開ページを確認 ↗</a>
-</div>
+<PageHeader title="施設ページ編集" facility={f.name}>
+	{#snippet actions()}
+		<a href="/{f.brandSlug}/{f.slug}" target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを確認 <AdminIcon name="external" class="h-4 w-4" /></a>
+	{/snippet}
+</PageHeader>
 
 {#if form?.saved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">保存しました。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
@@ -73,11 +76,11 @@
 
 <!-- 写真管理（Supabase Storage 接続予定） -->
 <section class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
-	<div class="flex items-center justify-between">
+	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h2 class="text-sm font-medium text-stone-700">写真管理</h2>
 		<button type="button" disabled class="rounded-md border border-dashed border-stone-300 px-3 py-1.5 text-xs text-stone-400" title="Supabase Storage 接続後に有効化">＋ アップロード（Storage 接続後に有効化）</button>
 	</div>
-	<div class="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+	<div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
 		{#each f.photos as photo, i}
 			<div class="rounded-lg border border-stone-200 p-2">
 				<img src={photo.url} alt={photo.caption} class="h-24 w-full rounded object-cover" />
@@ -107,7 +110,7 @@
 	<p class="mb-3 text-xs text-stone-400">en / zh-TW の翻訳を入力し公開すると、各言語の顧客画面に反映されます。未入力フィールドは日本語がフォールバック表示されます。</p>
 
 	<!-- ロケール切替 -->
-	<div class="mb-4 flex gap-2">
+	<div class="mb-4 flex flex-wrap gap-2">
 		{#each (['en', 'zh-TW'] as const) as loc}
 			<button
 				type="button"
@@ -170,7 +173,7 @@
 			</div>
 		</div>
 
-		<div class="flex items-center gap-4 border-t border-stone-100 pt-4">
+		<div class="flex flex-wrap items-center gap-4 border-t border-stone-100 pt-4">
 			<label class="flex items-center gap-2 text-sm">
 				<input type="checkbox" name="isPublished" checked={data.translations[translationLocale]?.isPublished ?? false} class="h-4 w-4" />
 				<span>公開する（顧客画面に反映）</span>

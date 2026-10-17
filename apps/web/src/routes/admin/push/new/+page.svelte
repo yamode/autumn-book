@@ -4,6 +4,7 @@
 
 	import ConfirmPanel from '$lib/components/admin/ConfirmPanel.svelte';
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import { DEEP_LINK_PRESETS } from '$lib/admin-deep-links';
 
 	let { data, form } = $props();
@@ -34,8 +35,8 @@
 
 <svelte:head><title>新しい通知 ｜ 山人管理</title></svelte:head>
 
-<a href="/admin/push" class="text-xs text-stone-400 underline">← アプリ通知</a>
-<h1 class="mt-1 mb-4 text-lg font-bold text-stone-800">新しい通知</h1>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/push" class="hover:underline">← アプリ通知</a></p>
+<PageHeader title="新しい通知" description="まずテスト受信者に送り、実機で表示とタップ先を確かめてから本番送信します。" />
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -56,8 +57,8 @@
 			<div class="mb-3 flex flex-wrap gap-4 text-sm">
 				<span class="text-xs text-stone-500">種別</span>
 				{#each [['news', 'お知らせ'], ['coupon', 'クーポン'], ['custom', 'その他']] as [v, label]}
-					<label class="flex items-center gap-1">
-						<input type="radio" value={v} bind:group={type} />
+					<label class="flex items-center gap-1.5 py-0.5">
+						<input type="radio" value={v} bind:group={type} class="h-4 w-4" />
 						{label}
 					</label>
 				{/each}
@@ -86,19 +87,19 @@
 			</label>
 
 			<div class="mt-3 flex flex-wrap items-end gap-2">
-				<label class="text-sm">
+				<label class="w-full min-w-0 text-sm sm:w-auto">
 					<span class="mb-1 block text-xs text-stone-500">タップ先</span>
 					<select
 						value={url}
 						onchange={(e) => (url = e.currentTarget.value)}
-						class="rounded-md border border-stone-300 px-2 py-2 text-sm"
+						class="w-full max-w-full rounded-md border border-stone-300 px-2 py-2 text-sm sm:w-auto"
 					>
 						{#each DEEP_LINK_PRESETS as p}
 							<option value={p.url}>{p.label}（{p.url}）</option>
 						{/each}
 					</select>
 				</label>
-				<label class="flex-1 text-sm">
+				<label class="min-w-0 flex-1 basis-48 text-sm">
 					<span class="mb-1 block text-xs text-stone-500">またはパス</span>
 					<input
 						bind:value={url}
@@ -115,7 +116,7 @@
 			<div class="mt-4 rounded-xl border border-stone-200 bg-stone-100 p-3">
 				<p class="mb-1 text-xs text-stone-400">プレビュー</p>
 				<div class="rounded-xl bg-white p-3 shadow-sm">
-					<p class="text-xs text-stone-400">🏔 YAMADO　いま</p>
+					<p class="flex items-center gap-1.5 text-xs text-stone-400"><span class="inline-block h-3.5 w-3.5 rounded bg-brand-800" aria-hidden="true"></span>YAMADO　いま</p>
 					<p class="mt-0.5 text-sm font-bold text-stone-800">{title || '（タイトル）'}</p>
 					{#if body}<p class="text-sm text-stone-600">{body}</p>{/if}
 				</div>
@@ -185,14 +186,14 @@
 				<button
 					type="submit"
 					disabled={!title.trim()}
-					class="mt-3 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 disabled:opacity-40"
+					class="mt-3 min-h-10 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-40"
 				>
 					テスト受信者に送る
 				</button>
 			{/if}
 			{#if tested}
 				<p class="mt-2 text-sm text-emerald-700">
-					✔ テスト送信済み（{form?.testedCount} 件）。実機で表示とタップ先を確認してください。
+					テスト送信済み（{form?.testedCount} 件）。実機で表示とタップ先を確認してください。
 				</p>
 			{:else if form?.tested}
 				<p class="mt-2 text-sm text-amber-700">
@@ -210,7 +211,7 @@
 					type="button"
 					disabled={!canConfirm}
 					onclick={() => (confirming = true)}
-					class="bg-accent-600 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+					class="min-h-10 rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-40"
 				>
 					内容を確認する
 				</button>

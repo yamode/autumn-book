@@ -1,5 +1,6 @@
 <script lang="ts">
 	import QrCode from '$lib/components/QrCode.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 	const back = $derived(`/admin/bath${data.date ? `?date=${data.date}` : ''}`);
 	const otherSize = $derived(data.size === 'A6' ? 'A7' : 'A6');
@@ -11,19 +12,20 @@
 	{@html `<style>@page { size: ${data.size === 'A7' ? '74mm 105mm' : '105mm 148mm'}; margin: 0; }</style>`}
 </svelte:head>
 
-<div class="print-shell mx-auto max-w-3xl px-4 py-6">
-	<div class="print-hide mb-5 flex flex-wrap items-center gap-3">
-		<a href={back} class="text-sm text-stone-600 underline">← 貸切風呂管理へ</a>
-		<h1 class="text-lg font-semibold">客室用インフォメーションPOP</h1>
+<div class="print-shell mx-auto max-w-3xl px-0 py-2 sm:px-4 sm:py-6">
+	<!-- 画面の見出し（印刷では出さない） -->
+	<div class="print-hide">
+		<a href={back} class="mb-2 inline-block text-sm text-stone-500 hover:text-stone-700">← 貸切風呂へ戻る</a>
+		<PageHeader title="客室用インフォメーションPOP" facility={data.facilityName} />
 	</div>
 	{#if data.error || !data.stay}
 		<p class="rounded bg-rose-50 px-4 py-3 text-sm text-rose-800">{data.error}</p>
 	{:else}
-		<div class="print-hide mb-5 flex flex-wrap items-center gap-2 text-sm">
-			<span>{data.stay.room_code}・{data.stay.guest_name}</span>
-			<span class="ml-auto">用紙: {data.size}</span>
-			<a href={changeSize} class="rounded border px-3 py-2">{otherSize}に切り替え</a>
-			<button type="button" onclick={() => window.print()} class="rounded bg-stone-800 px-4 py-2 text-white">印刷する</button>
+		<div class="print-hide mb-5 grid grid-cols-2 items-center gap-2 rounded-xl border border-stone-200 bg-white p-3 text-sm sm:flex sm:flex-wrap">
+			<span class="col-span-2 font-medium text-stone-800 sm:col-span-1">{data.stay.room_code}・{data.stay.guest_name}</span>
+			<span class="col-span-2 text-stone-600 sm:col-span-1 sm:ml-auto">用紙: <span class="font-medium text-stone-800">{data.size}</span></span>
+			<a href={changeSize} class="rounded-lg border border-stone-300 px-3 py-2 text-center hover:bg-stone-50">{otherSize}に切り替え</a>
+			<button type="button" onclick={() => window.print()} class="rounded-lg bg-brand-800 px-4 py-2 font-medium text-white hover:bg-brand-700">印刷する</button>
 		</div>
 		<div class="pop mx-auto flex flex-col items-center justify-between border border-stone-200 bg-white p-[8mm] text-center shadow-md" class:small={data.size === 'A7'}>
 			<div class="w-full">
@@ -47,6 +49,10 @@
 	.pop.small { width: 74mm; height: 105mm; padding: 5mm; }
 	.pop.small :global(.qr svg) { width: 32mm; height: 32mm; }
 	.pop:not(.small) :global(.qr svg) { width: 45mm; height: 45mm; }
+	/* スマホの画面では紙の見本を縮めて横にはみ出さないようにする（印刷の大きさは変えない） */
+	@media screen and (max-width: 30rem) {
+		.pop:not(.small) { zoom: 0.8; }
+	}
 	@media print {
 		:global(body) { margin: 0; background: white !important; }
 		:global(header), :global(nav), :global(aside), .print-hide { display: none !important; }

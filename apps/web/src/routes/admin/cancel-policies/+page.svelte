@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -27,11 +28,10 @@
 
 <svelte:head><title>キャンセル規定 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">キャンセル規定</h1>
-<p class="mb-4 max-w-3xl text-xs text-stone-400">
-	会員グレードごとに「チェックイン◯日前から◯%」のキャンセル料ルールを設定します。スタンダード行が非会員・退会者にも適用される基準規定です。
-	ルールが空のグレードはキャンセル料がかかりません（現行と同じ挙動）。プラン独自のキャンセル規定があるプランでは、そちらが優先されます。
-</p>
+<PageHeader
+	title="キャンセル規定"
+	description="会員グレードごとに「チェックイン◯日前から◯%」のキャンセル料ルールを設定します。スタンダード行が非会員・退会者にも適用される基準規定です。ルールが空のグレードはキャンセル料がかかりません（現行と同じ挙動）。プラン独自のキャンセル規定があるプランでは、そちらが優先されます。"
+/>
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 
@@ -40,12 +40,12 @@
 		<div class="rounded-xl border border-stone-200 bg-white p-4">
 			<form method="POST" action="?/save" use:enhance class="text-sm">
 				<input type="hidden" name="rankCode" value={ed.rankCode} />
-				<div class="flex items-center justify-between">
+				<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 					<h2 class="font-medium text-stone-800">
 						{ed.label}
 						<span class="ml-1 text-xs font-normal text-stone-400">（{ed.rankCode}・還元 {Math.round(ed.rewardRate * 100)}%）</span>
 					</h2>
-					{#if form?.saved === ed.rankCode}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+					{#if form?.saved === ed.rankCode}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 				</div>
 
 				<!-- ルール表（◯日前から◯%） -->
@@ -83,13 +83,13 @@
 					<button
 						type="button"
 						onclick={() => addRow(idx)}
-						class="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-stone-50">＋ 行を追加</button
+						class="rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50">＋ 行を追加</button
 					>
 				</div>
 
 				<!-- ペナルティ期間内の日程変更許可 -->
-				<label class="mt-3 flex items-center gap-2 text-xs text-stone-600">
-					<input type="checkbox" name="allowAmendInPenalty" bind:checked={ed.allowAmendInPenalty} class="h-4 w-4" />
+				<label class="mt-3 flex items-start gap-2 text-xs text-stone-600">
+					<input type="checkbox" name="allowAmendInPenalty" bind:checked={ed.allowAmendInPenalty} class="mt-px h-4 w-4 shrink-0" />
 					キャンセル料発生期間内でも宿泊日の変更を許可する（グレード特典）
 				</label>
 
@@ -104,7 +104,7 @@
 					/>
 				</label>
 
-				<button type="submit" class="mt-3 rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
+				<button type="submit" class="mt-4 min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
 			</form>
 		</div>
 	{/each}

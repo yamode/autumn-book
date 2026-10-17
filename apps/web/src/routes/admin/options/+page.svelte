@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -30,10 +31,11 @@
 
 <svelte:head><title>オプション ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">オプション — {data.currentFacility.name}</h1>
-<p class="mb-4 text-xs text-stone-400">
-	会員が予約詳細から事前予約できるオプション商品です。会計は宿泊料金と分離し、現地精算で扱います。公開すると会員のオプション追加画面に表示されます。
-</p>
+<PageHeader
+	title="オプション"
+	facility={data.currentFacility.name}
+	description="会員が予約詳細から事前予約できるオプション商品です。会計は宿泊料金と分離し、現地精算で扱います。公開すると会員のオプション追加画面に表示されます。"
+/>
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
@@ -44,10 +46,11 @@
 	{#if data.todayOrders.length === 0}
 		<p class="mt-2 text-xs text-stone-400">本日提供予定のオプションはありません。</p>
 	{:else}
-		<table class="mt-2 w-full text-left text-xs">
+		<div class="-mx-4 mt-2 overflow-x-auto px-4">
+		<table class="w-full min-w-[36rem] text-left text-xs">
 			<thead class="text-stone-400">
 				<tr>
-					<th class="py-1">予約番号</th>
+					<th class="sticky left-0 bg-white py-1 pr-2">予約番号</th>
 					<th class="py-1">ご宿泊者</th>
 					<th class="py-1">オプション</th>
 					<th class="py-1">区分</th>
@@ -58,7 +61,7 @@
 			<tbody>
 				{#each data.todayOrders as o (o.orderId)}
 					<tr class="border-t border-stone-100">
-						<td class="py-1 font-mono">{o.bookingCode}</td>
+						<td class="sticky left-0 bg-white py-1 pr-2 font-mono">{o.bookingCode}</td>
 						<td class="py-1">{o.guestName}</td>
 						<td class="py-1">{o.optionName}</td>
 						<td class="py-1 text-stone-500">{categoryLabel(o.category)}</td>
@@ -68,6 +71,7 @@
 				{/each}
 			</tbody>
 		</table>
+		</div>
 	{/if}
 </div>
 
@@ -78,12 +82,12 @@
 			<form method="POST" action="?/save" use:enhance class="p-4 text-sm">
 				<input type="hidden" name="optionId" value={o.id} />
 				<div class="flex flex-wrap items-center gap-2">
-					<input name="name" value={o.name} placeholder="商品名" class="min-w-48 flex-1 rounded-md border border-stone-300 px-3 py-1.5 font-medium" />
+					<input name="name" value={o.name} placeholder="商品名" class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-48 border border-stone-300 px-3 py-1.5 font-medium" />
 					<input name="code" value={o.code} placeholder="コード" class="w-32 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
 					<label class="flex items-center gap-1.5 text-xs">
 						<input type="checkbox" name="isActive" checked={o.isActive} class="h-4 w-4" /> 公開
 					</label>
-					{#if form?.saved === o.id}<span class="text-xs text-emerald-600">✔</span>{/if}
+					{#if form?.saved === o.id}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 				</div>
 				<textarea name="description" rows="2" placeholder="説明（Markdown 可）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm">{o.description}</textarea>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
@@ -121,8 +125,8 @@
 					<label class="flex items-center gap-1.5"><input type="checkbox" name="memberOnly" checked={o.memberOnly} class="h-4 w-4" /> 会員限定</label>
 				</div>
 				<div class="mt-3 flex items-center gap-2">
-					<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
-					<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-500 hover:bg-stone-50">
+					<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
+					<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">
 						{expandedTr === o.id ? '翻訳を閉じる ▲' : '翻訳 ▼'}
 					</button>
 				</div>
@@ -130,7 +134,7 @@
 
 			{#if expandedTr === o.id}
 				<div class="border-t border-stone-100 px-4 pb-4 pt-3">
-					<div class="mb-3 flex gap-2">
+					<div class="mb-3 flex flex-wrap gap-2">
 						{#each (['en', 'zh-TW'] as const) as loc}
 							<button type="button" onclick={() => { trLocaleById = { ...trLocaleById, [o.id]: loc }; }}
 								class="rounded-md px-3 py-1 text-xs font-medium transition-colors {trLocale(o.id) === loc ? 'bg-brand-800 text-white' : 'border border-stone-300 bg-white text-stone-500 hover:bg-stone-50'}">
@@ -171,7 +175,7 @@
 	<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 	<h2 class="font-medium text-stone-700">＋ 新しいオプションを追加</h2>
 	<div class="mt-2 flex flex-wrap gap-2">
-		<input name="name" placeholder="商品名" class="min-w-48 flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
+		<input name="name" placeholder="商品名" class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-48 border border-stone-300 px-3 py-1.5" />
 		<input name="code" placeholder="コード（例 spa-basic）" class="w-40 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
 	</div>
 	<textarea name="description" rows="2" placeholder="説明（Markdown 可）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
@@ -201,5 +205,5 @@
 		<label class="flex items-center gap-1.5"><input type="checkbox" name="memberOnly" checked class="h-4 w-4" /> 会員限定</label>
 		<label class="flex items-center gap-1.5"><input type="checkbox" name="isActive" class="h-4 w-4" /> すぐに公開</label>
 	</div>
-	<button type="submit" class="mt-3 rounded-md bg-accent-600 px-4 py-1.5 text-xs text-white hover:bg-accent-500">追加</button>
+	<button type="submit" class="mt-3 min-h-9 rounded-md bg-accent-600 px-5 py-2 text-sm text-white hover:bg-accent-500">追加</button>
 </form>

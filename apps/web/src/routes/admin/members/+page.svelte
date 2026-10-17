@@ -2,6 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 	// 保存後も入力を残す
@@ -10,20 +11,16 @@
 
 <svelte:head><title>会員 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">会員</h1>
-<p class="mb-4 text-xs text-stone-400">
-	{#if data.live}
-		アプリ・Web 共通の会員（book.members）です。
-	{:else}
-		デモデータを表示しています（本番接続時は実会員が表示されます）。
-	{/if}
-</p>
+<PageHeader
+	title="会員"
+	description={data.live ? 'アプリ・Web 共通の会員（book.members）です。' : 'デモデータを表示しています（本番接続時は実会員が表示されます）。'}
+/>
 
 <!-- 入会ボーナス（検討中のため、先に設定できるようにしておく） -->
 <section class="mb-5 max-w-3xl rounded-xl border border-stone-200 bg-white p-4 text-sm">
 	<div class="mb-1 flex items-center justify-between">
 		<h2 class="font-medium text-stone-800">入会ボーナス</h2>
-		{#if form?.programSaved}<span class="text-xs text-emerald-600">✔ 保存しました</span>{/if}
+		{#if form?.programSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 	</div>
 	<p class="mb-3 text-xs leading-relaxed text-stone-500">
 		会員登録したときに付けるポイントです（お客様ご自身の登録・施設側の代行登録とも）。0 にすると付けません（登録画面の「入会で ○pt プレゼント」の案内も消えます）。
@@ -49,7 +46,7 @@
 						<span class="text-stone-500">日</span>
 					</span>
 				</label>
-				<button class="rounded-md bg-stone-800 px-4 py-2 text-xs text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
+				<button class="min-h-9 rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
 			</fieldset>
 		</form>
 		<p class="mt-2 text-xs text-stone-400">
@@ -67,17 +64,44 @@
 	</div>
 {/if}
 
-<form method="GET" class="mb-4 flex gap-2">
+<form method="GET" class="mb-4 flex max-w-md gap-2">
 	<input
 		name="q"
 		value={data.q}
 		placeholder={data.live ? '氏名・フリガナ・会員番号で検索' : '氏名・メール・会員番号で検索'}
-		class="w-72 rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm"
+		class="min-w-0 flex-1 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm"
 	/>
-	<button type="submit" class="bg-brand-800 rounded-md px-4 py-1.5 text-sm text-white">検索</button>
+	<button type="submit" class="shrink-0 rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">検索</button>
 </form>
 
-<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+<!-- スマホ: カード状の並び（md 以上は下の表） -->
+<ul class="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white md:hidden">
+	{#each data.members as m}
+		<li>
+			<a href="/admin/members/{m.id}" class="block px-4 py-3 active:bg-stone-50">
+				<div class="flex items-center justify-between gap-2">
+					<span class="min-w-0 truncate font-medium text-stone-800">{m.name}</span>
+					<RankBadge rank={m.rank} />
+				</div>
+				<p class="mt-0.5 truncate text-xs text-stone-500"><span class="font-mono text-accent-600">{m.memberCode}</span>{m.email ? `・${m.email}` : ''}</p>
+				<p class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-stone-400">
+					{#if data.live}
+						<span>アプリ {m.deviceCount && m.deviceCount > 0 ? `${m.deviceCount} 台${m.pushOptIn ? '' : '（受信オフ）'}` : '—'}</span>
+						<span>最終宿泊 {m.lastStay ?? '—'}</span>
+					{:else}
+						<span>{(m.balance ?? 0).toLocaleString()} pt</span>
+						<span>メルマガ {m.mailOptIn ? '受信' : '—'}</span>
+					{/if}
+					<span>登録 {m.joinedAt}</span>
+				</p>
+			</a>
+		</li>
+	{:else}
+		<li class="px-4 py-8 text-center text-sm text-stone-400">該当する会員がいません</li>
+	{/each}
+</ul>
+
+<div class="hidden overflow-x-auto rounded-xl border border-stone-200 bg-white md:block">
 	<table class="w-full min-w-[720px] text-sm">
 		<thead>
 			<tr class="border-b border-stone-200 bg-stone-50 text-left text-xs text-stone-500">
@@ -120,7 +144,7 @@
 						<td class="text-right">{(m.balance ?? 0).toLocaleString()} pt</td>
 					{/if}
 					<td class="text-xs">{m.joinedAt}</td>
-					{#if !data.live}<td class="text-xs">{m.mailOptIn ? '✔ 受信' : '—'}</td>{/if}
+					{#if !data.live}<td class="text-xs">{m.mailOptIn ? '受信' : '—'}</td>{/if}
 				</tr>
 			{:else}
 				<tr>

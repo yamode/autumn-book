@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 
 	const statusLabel = { draft: '下書き', scheduled: '予約済', sending: '配信中', sent: '配信済' } as const;
@@ -12,22 +13,23 @@
 
 <svelte:head><title>メルマガ ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4 flex items-center justify-between">
-	<h1 class="text-lg font-bold text-stone-800">メルマガ</h1>
-	<a href="/admin/mail/new" class="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">＋ 新しいメルマガ</a>
-</div>
+<PageHeader title="メルマガ" description="メルマガ受信 ON（オプトイン）の会員に配信します。">
+	{#snippet actions()}
+		<a href="/admin/mail/new" class="inline-flex min-h-10 items-center rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">＋ 新しいメルマガ</a>
+	{/snippet}
+</PageHeader>
 
 <div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
 	<table class="w-full min-w-[640px] text-sm">
 		<thead>
 			<tr class="border-b border-stone-200 bg-stone-50 text-left text-xs text-stone-500">
-				<th class="px-3 py-2">タイトル</th><th>セグメント</th><th>状態</th><th>配信日時</th><th class="text-right">送信 / 開封</th>
+				<th class="sticky left-0 bg-stone-50 px-3 py-2">タイトル</th><th>セグメント</th><th>状態</th><th>配信日時</th><th class="text-right">送信 / 開封</th>
 			</tr>
 		</thead>
 		<tbody>
 			{#each data.campaigns as c}
 				<tr class="border-b border-stone-100">
-					<td class="px-3 py-2.5">
+					<td class="sticky left-0 max-w-[11rem] bg-white px-3 py-2.5 sm:max-w-none">
 						<p class="font-medium text-stone-800">{c.title}</p>
 						<p class="text-xs text-stone-400">{c.subject}</p>
 					</td>

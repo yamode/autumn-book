@@ -2,6 +2,8 @@
 	import { enhance } from '$lib/enhance';
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { invalidateAll } from '$app/navigation';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -82,8 +84,8 @@
 
 <svelte:head><title>二段階認証・パスキー ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">二段階認証・パスキー</h1>
-<p class="mb-4 text-sm text-stone-500">
+<PageHeader title="二段階認証・パスキー" />
+<p class="-mt-3 mb-5 max-w-3xl text-sm leading-relaxed text-stone-500">
 	パスワードが漏れても管理画面に入られないよう、<strong>パスキー</strong>（この端末の指紋・顔認証・PIN）か<strong>認証アプリ</strong>（Google Authenticator・Microsoft Authenticator・1Password など）の
 	6 桁の数字で本人確認をします。どちらかを登録すると、パスワードでログインしたあとに毎回確認を求めます。パスキーなら、パスワードを入れずに「パスキーでログイン」だけで入れます。
 </p>
@@ -119,8 +121,8 @@
 	{/if}
 
 	<!-- パスキー -->
-	<div class="mb-4 rounded-xl border border-stone-200 bg-white p-4">
-		<h2 class="text-sm font-medium text-stone-700">🔑 パスキー</h2>
+	<div class="mb-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="shield" class="h-4 w-4 shrink-0 text-stone-500" />パスキー</h2>
 		{#if !data.passkey.usable}
 			<p class="mt-2 text-sm text-stone-500">このアドレスではパスキーを使えません。https://book.yamado.app/admin から開いてください。</p>
 		{:else}
@@ -143,16 +145,16 @@
 			{:else}
 				<ul class="mt-2 divide-y divide-stone-100">
 					{#each data.passkey.list as p (p.id)}
-						<li class="flex flex-wrap items-center gap-3 py-2 text-sm">
+						<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
 							<span class="font-medium text-stone-800">{p.name}</span>
-							{#if p.backedUp}<span class="rounded bg-sky-50 px-1.5 py-0.5 text-[11px] text-sky-800">同期パスキー</span>{/if}
-							<span class="text-xs text-stone-500">登録 {fmt(p.createdAt)}／最後に使用 {fmt(p.lastUsedAt)}</span>
+							{#if p.backedUp}<span class="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800 ring-1 ring-sky-200 ring-inset">同期パスキー</span>{/if}
+							<span class="w-full text-xs text-stone-500 sm:w-auto">登録 {fmt(p.createdAt)}／最後に使用 {fmt(p.lastUsedAt)}</span>
 							<form method="POST" action="?/removePasskey" use:enhance={submitting} class="ml-auto">
 								<input type="hidden" name="passkeyId" value={p.id} />
 								<button
 									type="submit"
 									disabled={busy}
-									class="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-60"
+									class="min-h-9 rounded-lg border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-60"
 									onclick={confirmSubmit({
 										message:
 											enrolledCount === 1
@@ -170,16 +172,16 @@
 				</ul>
 			{/if}
 			{#if passkeySupported}
-				<div class="mt-3 flex flex-wrap items-end gap-3">
-					<label class="block text-sm">
+				<div class="mt-4 flex flex-wrap items-end gap-3">
+					<label class="block w-full text-sm sm:w-auto">
 						<span class="text-stone-600">名前（任意・どの端末か分かるように）</span>
-						<input bind:value={passkeyName} maxlength="60" placeholder="例: 事務所の PC" class="mt-1 w-64 rounded-md border border-stone-300 px-3 py-2 text-sm" />
+						<input bind:value={passkeyName} maxlength="60" placeholder="例: 事務所の PC" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm sm:w-64" />
 					</label>
 					<button
 						type="button"
 						onclick={() => void addPasskey()}
 						disabled={passkeyBusy}
-						class="rounded-md bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+						class="w-full rounded-lg bg-brand-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60 sm:w-auto sm:py-2"
 					>
 						{passkeyBusy ? '登録しています…' : 'パスキーを追加'}
 					</button>
@@ -192,10 +194,10 @@
 			{/if}
 			<!-- スマホに追加する QR。PC に Bluetooth が無いと、ブラウザの「別のデバイス（スマホ）」が出ないための代わり（2026-10-17） -->
 			<div class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3">
-				<p class="text-sm font-medium text-stone-700">📲 スマホに追加する</p>
+				<p class="flex items-center gap-2 text-sm font-medium text-stone-700"><AdminIcon name="phone" class="h-4 w-4 shrink-0 text-stone-500" />スマホに追加する</p>
 				<p class="mt-1 text-[11px] leading-relaxed text-stone-500">
 					QR を出してスマホのカメラで読むと、そのスマホにあなたのパスキーを登録できます（PC の Bluetooth は不要）。10 分間・1 回だけ使えます。出し直すと前の QR は使えなくなります。
-					登録後はスマホのログイン画面の「🔑 パスキーでログイン」で入れます。<b>この QR はほかの人に見せないでください</b>（読んだ端末にあなたのパスキーが作られます）。
+					登録後はスマホのログイン画面の「パスキーでログイン」で入れます。<b>この QR はほかの人に見せないでください</b>（読んだ端末にあなたのパスキーが作られます）。
 				</p>
 				{#if enrollMessage}<p class="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-700">{enrollMessage}</p>{/if}
 				{#if enrollQr && enrollLeft > 0}
@@ -204,7 +206,7 @@
 						<div class="text-xs text-stone-600">
 							<p>スマホのカメラで読んでください。</p>
 							<p class="mt-1 tabular-nums">残り {Math.floor(enrollLeft / 60)}:{String(enrollLeft % 60).padStart(2, '0')}</p>
-							<button type="button" onclick={() => (enrollQr = null)} class="mt-2 rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-600 hover:bg-stone-50">閉じる</button>
+							<button type="button" onclick={() => (enrollQr = null)} class="mt-2 min-h-9 rounded-lg border border-stone-300 bg-white px-3 py-1 text-xs text-stone-600 hover:bg-stone-50">閉じる</button>
 						</div>
 					</div>
 				{:else}
@@ -213,7 +215,7 @@
 						type="button"
 						onclick={() => void showEnrollQr()}
 						disabled={enrollBusy}
-						class="mt-2 rounded-md border border-brand-800 bg-white px-3 py-1.5 text-sm font-medium text-brand-900 hover:bg-brand-50 disabled:opacity-60"
+						class="mt-2 w-full rounded-lg border border-brand-800 bg-white px-3 py-2 text-sm font-medium text-brand-900 hover:bg-brand-50 disabled:opacity-60 sm:w-auto sm:py-1.5"
 					>
 						{enrollBusy ? '用意しています…' : 'スマホに追加する QR を出す'}
 					</button>
@@ -223,22 +225,22 @@
 	</div>
 
 	<!-- 登録済み -->
-	<div class="rounded-xl border border-stone-200 bg-white p-4">
-		<h2 class="text-sm font-medium text-stone-700">📱 登録済みの認証アプリ</h2>
+	<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="phone" class="h-4 w-4 shrink-0 text-stone-500" />登録済みの認証アプリ</h2>
 		{#if data.factors.length === 0}
 			<p class="mt-2 text-sm text-stone-500">まだ登録していません。</p>
 		{:else}
 			<ul class="mt-2 divide-y divide-stone-100">
 				{#each data.factors as f (f.id)}
-					<li class="flex flex-wrap items-center gap-3 py-2 text-sm">
+					<li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
 						<span class="font-medium text-stone-800">{f.friendlyName ?? '認証アプリ'}</span>
-						<span class="text-xs text-stone-500">登録 {fmt(f.createdAt)}／最後に使用 {fmt(f.lastUsedAt)}</span>
+						<span class="w-full text-xs text-stone-500 sm:w-auto">登録 {fmt(f.createdAt)}／最後に使用 {fmt(f.lastUsedAt)}</span>
 						<form method="POST" action="?/remove" use:enhance={submitting} class="ml-auto">
 							<input type="hidden" name="factorId" value={f.id} />
 							<button
 								type="submit"
 								disabled={busy}
-								class="rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-60"
+								class="min-h-9 rounded-lg border border-stone-300 px-3 py-1 text-xs text-stone-600 hover:bg-stone-50 disabled:opacity-60"
 								onclick={confirmSubmit({
 									message:
 										enrolledCount === 1
@@ -261,16 +263,16 @@
 	</div>
 
 	<!-- 登録 -->
-	<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4">
-		<h2 class="text-sm font-medium text-stone-700">{data.factors.length === 0 ? '認証アプリを登録する' : '認証アプリの別の端末を追加する'}</h2>
+	<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800">{data.factors.length === 0 ? '認証アプリを登録する' : '認証アプリの別の端末を追加する'}</h2>
 
 		{#if !enrolling}
 			<form method="POST" action="?/enroll" use:enhance={submitting} class="mt-3 flex flex-wrap items-end gap-3" data-no-guard>
-				<label class="block text-sm">
+				<label class="block w-full text-sm sm:w-auto">
 					<span class="text-stone-600">名前（任意・どの端末か分かるように）</span>
-					<input name="friendlyName" maxlength="40" placeholder="例: 佐藤の iPhone" class="mt-1 w-64 rounded-md border border-stone-300 px-3 py-2 text-sm" />
+					<input name="friendlyName" maxlength="40" placeholder="例: 佐藤の iPhone" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm sm:w-64" />
 				</label>
-				<button type="submit" disabled={busy} class="rounded-md bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+				<button type="submit" disabled={busy} class="w-full rounded-lg bg-brand-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60 sm:w-auto sm:py-2">
 					{busy ? '準備中…' : '登録を始める'}
 				</button>
 			</form>
@@ -300,7 +302,7 @@
 							placeholder="123456"
 							class="w-36 rounded-md border border-stone-300 px-3 py-2 text-center font-mono text-lg tracking-widest"
 						/>
-						<button type="submit" disabled={busy} class="rounded-md bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+						<button type="submit" disabled={busy} class="rounded-lg bg-brand-800 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60 sm:py-2">
 							{busy ? '確認中…' : '有効にする'}
 						</button>
 					</form>
@@ -308,14 +310,16 @@
 			</ol>
 			<form method="POST" action="?/cancel" use:enhance={submitting} class="mt-4" data-no-guard>
 				<input type="hidden" name="factorId" value={enrolling.factorId} />
-				<button type="submit" class="text-xs text-stone-500 underline hover:text-stone-700">登録をやめる</button>
+				<button type="submit" class="min-h-9 text-xs text-stone-500 underline hover:text-stone-700">登録をやめる</button>
 			</form>
 		{/if}
 	</div>
 
 	{#if data.isAdmin}
-		<p class="mt-4 text-sm">
-			<a href="/admin/security/users" class="text-brand-800 underline hover:text-brand-700">ほかの管理者・スタッフの登録状況と、登録の削除（スマートフォン・パスキーを失くした人の復旧）→</a>
-		</p>
+		<a href="/admin/security/users" class="mt-4 flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm text-brand-800 hover:border-stone-300 hover:bg-stone-50">
+			<AdminIcon name="users" class="h-4 w-4 shrink-0 text-stone-500" />
+			<span class="min-w-0 flex-1">ほかの管理者・スタッフの登録状況と、登録の削除（スマートフォン・パスキーを失くした人の復旧）</span>
+			<AdminIcon name="chevron" class="h-4 w-4 shrink-0" />
+		</a>
 	{/if}
 {/if}

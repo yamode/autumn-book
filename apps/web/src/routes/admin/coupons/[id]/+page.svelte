@@ -5,6 +5,7 @@
 	import ConfirmPanel from '$lib/components/admin/ConfirmPanel.svelte';
 	import CouponFields from '$lib/components/admin/CouponFields.svelte';
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import type { MemberCouponRow } from '$lib/server/admin-app-data';
 
 	let { data, form } = $props();
@@ -22,6 +23,14 @@
 		used: '使用済',
 		revoked: '取消',
 		expired: '期限切れ'
+	};
+
+	// 状態のバッジの色（配布済=青・使用済=緑・取消/期限切れ=灰）
+	const STATUS_TONE: Record<string, string> = {
+		issued: 'bg-sky-50 text-sky-700',
+		used: 'bg-emerald-50 text-emerald-700',
+		revoked: 'bg-stone-100 text-stone-500',
+		expired: 'bg-stone-100 text-stone-500'
 	};
 
 	let mode = $state('all');
@@ -51,7 +60,7 @@
 
 <svelte:head><title>{coupon?.name ?? 'クーポン'} ｜ 山人管理</title></svelte:head>
 
-<a href="/admin/coupons" class="text-xs text-stone-400 underline">← クーポン一覧</a>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/coupons" class="hover:underline">← クーポン一覧</a></p>
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -60,10 +69,15 @@
 		{data.error ?? 'クーポンが見つかりません。'}
 	</div>
 {:else}
-	<h1 class="mt-1 mb-4 text-lg font-bold text-stone-800">
-		{coupon.name}
-		{#if !coupon.is_active}<span class="ml-2 text-sm font-normal text-stone-400">（無効）</span>{/if}
-	</h1>
+	<PageHeader title={coupon.name}>
+		{#snippet actions()}
+			{#if coupon.is_active}
+				<span class="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs text-emerald-700">有効</span>
+			{:else}
+				<span class="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs text-stone-500">無効</span>
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if form?.message}
 		<div class="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -95,7 +109,7 @@
 	>
 		<CouponFields {coupon} facilities={data.facilities ?? []} {frozen} disabled={!isAdmin} />
 		{#if isAdmin}
-			<button type="submit" class="bg-brand-800 mt-5 rounded-lg px-4 py-2 text-sm font-medium text-white">
+			<button type="submit" class="mt-5 min-h-10 rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700">
 				保存
 			</button>
 		{/if}
@@ -157,7 +171,7 @@
 							<input
 								name="q"
 								placeholder="山田 / YM-000123"
-								class="w-64 rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+								class="w-64 max-w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm"
 							/>
 						</div>
 					{/if}
@@ -165,7 +179,7 @@
 
 				<button
 					type="submit"
-					class="mt-3 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700"
+					class="mt-3 min-h-10 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
 				>
 					対象を数える
 				</button>
@@ -190,7 +204,7 @@
 						<button
 							type="button"
 							onclick={() => (confirmingIssue = true)}
-							class="bg-accent-600 mt-3 rounded-lg px-4 py-2 text-sm font-medium text-white"
+							class="mt-3 min-h-10 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500"
 						>
 							{counted.ids.length} 名に配布する
 						</button>
@@ -217,7 +231,7 @@
 	</h2>
 	<label class="mb-2 block text-sm text-stone-600">
 		状態:
-		<select bind:value={statusFilter} class="rounded-md border border-stone-300 px-2 py-1 text-sm">
+		<select bind:value={statusFilter} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
 			<option value="all">すべて</option>
 			<option value="issued">配布済</option>
 			<option value="used">使用済</option>
@@ -232,7 +246,35 @@
 				: 'この状態の配布はありません。'}
 		</p>
 	{:else}
-		<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
+		{#snippet revokeForm(r: MemberCouponRow)}
+			<form
+				method="POST"
+				action="?/revoke"
+				use:enhance={async ({ cancel }) => {
+					if (!(await askConfirm({ message: `${r.member_code ?? ''} ${r.member_name ?? ''} さんへの配布を取り消します。会員のアプリから消えます。よろしいですか？`, confirmLabel: '配布を取り消す' }))) cancel();
+				}}
+			>
+				<input type="hidden" name="memberUserId" value={r.member_user_id} />
+				<button type="submit" class="py-1 text-xs text-red-700 underline">配布を取り消す</button>
+			</form>
+		{/snippet}
+		<!-- スマホ: カード状の並び（md 以上は表） -->
+		<ul class="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white md:hidden">
+			{#each visibleList as r (r.id)}
+				<li class="px-4 py-3 text-sm">
+					<div class="flex items-start justify-between gap-2">
+						<span class="min-w-0 font-medium text-stone-800">{r.member_name ?? '—'}</span>
+						<span class="shrink-0 rounded-full px-2 py-0.5 text-xs {STATUS_TONE[r.status] ?? 'bg-stone-100 text-stone-600'}">{STATUS_LABEL[r.status] ?? r.status}</span>
+					</div>
+					<p class="mt-0.5 text-xs text-stone-500"><span class="font-mono">{r.member_code ?? '—'}</span>・{r.rank_code ?? '—'}</p>
+					<p class="mt-0.5 text-xs text-stone-500">
+						配布 {dt(r.issued_at)}{#if r.used_at}・使用 {dt(r.used_at)}{/if}{#if r.booking_code}・<span class="font-mono">{r.booking_code}</span>{/if}
+					</p>
+					{#if isAdmin && r.status === 'issued'}<div class="mt-1">{@render revokeForm(r)}</div>{/if}
+				</li>
+			{/each}
+		</ul>
+		<div class="hidden overflow-x-auto rounded-xl border border-stone-200 bg-white md:block">
 			<table class="w-full min-w-[760px] text-sm">
 				<thead class="bg-stone-50 text-xs text-stone-500">
 					<tr>
@@ -252,23 +294,12 @@
 							<td class="px-3 py-2 font-mono text-xs text-stone-600">{r.member_code ?? '—'}</td>
 							<td class="px-3 py-2 text-stone-800">{r.member_name ?? '—'}</td>
 							<td class="px-3 py-2 text-stone-500">{r.rank_code ?? '—'}</td>
-							<td class="px-3 py-2 text-stone-600">{STATUS_LABEL[r.status] ?? r.status}</td>
+							<td class="px-3 py-2"><span class="rounded-full px-2 py-0.5 text-xs {STATUS_TONE[r.status] ?? 'bg-stone-100 text-stone-600'}">{STATUS_LABEL[r.status] ?? r.status}</span></td>
 							<td class="px-3 py-2 text-xs text-stone-500">{dt(r.issued_at)}</td>
 							<td class="px-3 py-2 text-xs text-stone-500">{dt(r.used_at)}</td>
 							<td class="px-3 py-2 font-mono text-xs text-stone-500">{r.booking_code ?? '—'}</td>
 							<td class="px-3 py-2 text-right">
-								{#if isAdmin && r.status === 'issued'}
-									<form
-										method="POST"
-										action="?/revoke"
-										use:enhance={async ({ cancel }) => {
-											if (!(await askConfirm({ message: `${r.member_code ?? ''} ${r.member_name ?? ''} さんへの配布を取り消します。会員のアプリから消えます。よろしいですか？`, confirmLabel: '配布を取り消す' }))) cancel();
-										}}
-									>
-										<input type="hidden" name="memberUserId" value={r.member_user_id} />
-										<button type="submit" class="text-xs text-red-700 underline">配布を取り消す</button>
-									</form>
-								{/if}
+								{#if isAdmin && r.status === 'issued'}{@render revokeForm(r)}{/if}
 							</td>
 						</tr>
 					{/each}
@@ -286,7 +317,7 @@
 					<button
 						type="button"
 						onclick={() => (confirmingDeactivate = true)}
-						class="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
+						class="min-h-10 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
 					>
 						このクーポンを無効化する
 					</button>
@@ -309,7 +340,7 @@
 					<input type="hidden" name="active" value="true" />
 					<button
 						type="submit"
-						class="rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700"
+						class="min-h-10 rounded-lg border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50"
 					>
 						再び有効にする
 					</button>

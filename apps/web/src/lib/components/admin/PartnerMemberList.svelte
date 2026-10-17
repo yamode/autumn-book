@@ -42,11 +42,11 @@
     if (typeof f.memberQuery === 'string') query = f.memberQuery;
   });
   let busy = $state(false);
-  const smallBtn = 'rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
+  const smallBtn = 'inline-flex min-h-8 items-center justify-center rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
 </script>
 
-<div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-  <h2 class="text-lg font-bold text-stone-900">対象の会員</h2>
+<div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+  <h2 class="text-base font-semibold tracking-tight text-stone-900">対象の会員</h2>
   <p class="mt-1 text-xs leading-5 text-stone-500">
     このページを見られる会員です（公式サイトの会員ログインで入ります）。対象の会員と PMS の家族でつながっている会員も使えます（グレードは問いません・予約は予約した本人の会員予約になります）。
   </p>
@@ -62,11 +62,11 @@
   {:else}
     <ul class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200">
       {#each selfRows as r (r.member_user_id)}
-        <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+        <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
           <a href={`/admin/members/${r.member_user_id}`} class="min-w-0 font-medium text-brand-800 hover:underline">{r.name || '（名前なし）'}</a>
           <span class="font-mono text-xs text-stone-500">{r.member_code}</span>
-          <span class="rounded-full border border-stone-300 px-2 py-0.5 text-[11px] text-stone-600">{rank(r.rank_code)}</span>
-          {#if r.withdrawn}<span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">退会済み（使えません）</span>{/if}
+          <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-600 ring-1 ring-stone-300 ring-inset">{rank(r.rank_code)}</span>
+          {#if r.withdrawn}<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600 ring-1 ring-stone-500/20 ring-inset">退会済み（使えません）</span>{/if}
           {#if r.email}<span class="min-w-0 break-all text-xs text-stone-500">{r.email}</span>{/if}
           {#if canEdit}
             <form
@@ -89,14 +89,14 @@
     </ul>
 
     {#if familyRows.length}
-      <h3 class="mt-4 text-sm font-bold text-stone-800">家族として使える会員 <span class="text-xs font-normal text-stone-500">（読み取りのみ・家族の編集は PMS で）</span></h3>
+      <h3 class="mt-4 text-sm font-semibold text-stone-800">家族として使える会員 <span class="text-xs font-normal text-stone-500">（読み取りのみ・家族の編集は PMS で）</span></h3>
       <ul class="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-stone-50/60">
         {#each familyRows as r (r.member_user_id)}
-          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+          <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
             <a href={`/admin/members/${r.member_user_id}`} class="min-w-0 text-brand-800 hover:underline">{r.name || '（名前なし）'}</a>
             <span class="font-mono text-xs text-stone-500">{r.member_code}</span>
-            <span class="rounded-full border border-stone-300 px-2 py-0.5 text-[11px] text-stone-600">{rank(r.rank_code)}</span>
-            {#if r.withdrawn}<span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">退会済み（使えません）</span>{/if}
+            <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-600 ring-1 ring-stone-300 ring-inset">{rank(r.rank_code)}</span>
+            {#if r.withdrawn}<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600 ring-1 ring-stone-500/20 ring-inset">退会済み（使えません）</span>{/if}
           </li>
         {/each}
       </ul>
@@ -117,11 +117,11 @@
         };
       }}
     >
-      <label class="block min-w-0 flex-1 text-sm">
+      <label class="block min-w-0 flex-1 basis-56 text-sm">
         <span class="mb-0.5 block text-xs text-stone-500">会員を探す（会員番号・メールアドレス・電話番号）</span>
         <input name="q" bind:value={query} minlength="3" required class="w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm" autocomplete="off" />
       </label>
-      <button type="submit" disabled={busy} class="rounded-lg border border-brand-800 bg-white px-4 py-1.5 text-sm text-brand-800 hover:bg-brand-50 disabled:opacity-50">{busy ? '探しています…' : '探す'}</button>
+      <button type="submit" disabled={busy} class="min-h-10 w-full rounded-lg border border-brand-800 bg-white px-4 py-1.5 text-sm text-brand-800 hover:bg-brand-50 disabled:opacity-50 sm:w-auto">{busy ? '探しています…' : '探す'}</button>
     </form>
     {#if f.memberError}
       <p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.memberError}</p>
@@ -132,10 +132,10 @@
       {:else}
         <ul class="mt-2 divide-y divide-stone-100 rounded-lg border border-stone-200">
           {#each f.candidates as c (c.user_id)}
-            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+            <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
               <span class="font-medium">{c.name || '（名前なし）'}</span>
               <span class="font-mono text-xs text-stone-500">{c.member_code}</span>
-              <span class="rounded-full border border-stone-300 px-2 py-0.5 text-[11px] text-stone-600">{rank(c.rank_code)}</span>
+              <span class="rounded-full bg-white px-2 py-0.5 text-[11px] text-stone-600 ring-1 ring-stone-300 ring-inset">{rank(c.rank_code)}</span>
               {#if c.email}<span class="min-w-0 break-all text-xs text-stone-500">{c.email}</span>{/if}
               {#if selfIds.has(c.user_id)}
                 <span class="ml-auto text-xs text-stone-500">追加済み</span>

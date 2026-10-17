@@ -19,6 +19,9 @@
 		type GroupAnswer
 	} from '$lib/partner-group';
 	import type { PageData } from './$types';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import { inquiryStatusClass } from '../inquiry-status';
 
 	type FormResult = { answered?: true; status?: string; mailed?: boolean; message?: string } | null | undefined;
 	let { data, form }: { data: PageData; form?: FormResult } = $props();
@@ -96,27 +99,37 @@
 
 <svelte:head><title>{r ? `${r.group_name} ${r.inquiry_code}` : '団体照会'} ｜ 山人管理</title></svelte:head>
 
-<nav class="mb-3 text-xs text-stone-400"><a href="/admin/group-inquiries" class="hover:underline">団体照会</a>{#if r} / {r.inquiry_code}{/if}</nav>
+{#snippet backLink()}
+	<a href="/admin/group-inquiries" class="inline-flex min-h-9 items-center gap-1 rounded-md border border-stone-300 bg-white px-3 text-xs text-stone-600 hover:bg-stone-50">
+		<AdminIcon name="chevron" class="h-3.5 w-3.5 rotate-180" />団体照会の一覧へ
+	</a>
+{/snippet}
 
 {#if data.error || !r || !f || !data.labels}
+	<PageHeader title="団体照会">
+		{#snippet actions()}{@render backLink()}{/snippet}
+	</PageHeader>
 	<p class="rounded-lg px-3 py-2 text-sm {data.live ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}">{data.error ?? '照会を読み込めませんでした。'}</p>
 {:else}
 	{@const labels = data.labels}
-	<div class="mb-4">
-		<div class="flex flex-wrap items-center gap-2">
-			<h1 class="text-lg font-bold text-stone-800">{r.group_name}</h1>
-			<span class="rounded-full bg-stone-700 px-2 py-0.5 text-[11px] text-white">{labels.status[r.status]}</span>
-			{#if r.answer}<span class="text-xs text-stone-500">回答: {labels.answer[r.answer]}{r.answered_by_name ? `（${r.answered_by_name}・${dt(r.answered_at)}）` : ''}</span>{/if}
-		</div>
-		<p class="mt-0.5 text-xs text-stone-500">
-			{r.inquiry_code} ・ {dt(r.created_at)} 受付 ・
-			{#if r.partner_id}<a href={`/admin/partners/${r.partner_id}`} class="underline">{r.partner_name}</a>{:else}{r.partner_name}{/if}{r.submitted_by ? `（${r.submitted_by}）` : ''}
+	<!-- 画面見出し: 団体名・状態。照会番号・受付日時・取引先は見出しの下の1行に -->
+	<PageHeader title={r.group_name}>
+		{#snippet actions()}
+			<span class={inquiryStatusClass(r.status)}>{labels.status[r.status]}</span>
+			{@render backLink()}
+		{/snippet}
+	</PageHeader>
+	<div class="-mt-3 mb-4 space-y-0.5 text-xs text-stone-500">
+		<p>
+			<span class="font-mono">{r.inquiry_code}</span> ・ {dt(r.created_at)} 受付 ・
+			{#if r.partner_id}<a href={`/admin/partners/${r.partner_id}`} class="text-accent-600 hover:underline">{r.partner_name}</a>{:else}{r.partner_name}{/if}{r.submitted_by ? `（${r.submitted_by}）` : ''}
 			{#if r.bookingCode} ・ <span class="text-emerald-700">予約 {r.bookingCode}{r.bookingStatus === 'cancelled' ? '（取消）' : ''}</span>{/if}
 		</p>
+		{#if r.answer}<p>回答: {labels.answer[r.answer]}{r.answered_by_name ? `（${r.answered_by_name}・${dt(r.answered_at)}）` : ''}</p>{/if}
 	</div>
 
 	{#if form?.answered}
-		<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">✓ 回答しました（{labels.status[(form.status ?? r.status) as typeof r.status] ?? form.status}）。{form.mailed ? '取引先へメールでお知らせしました。' : 'メールは送っていません（通知オフ・宛先なし等）。'}</p>
+		<p class="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">回答しました（{labels.status[(form.status ?? r.status) as typeof r.status] ?? form.status}）。{form.mailed ? '取引先へメールでお知らせしました。' : 'メールは送っていません（通知オフ・宛先なし等）。'}</p>
 	{:else if form?.message}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{form.message}</p>
 	{/if}
@@ -125,7 +138,7 @@
 		<!-- 左: 条件・やりとり -->
 		<div class="min-w-0 space-y-4">
 			<section class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="mb-2 text-[15px] font-bold text-stone-900">照会の条件</h2>
+				<h2 class="mb-2 text-[15px] font-semibold text-stone-900">照会の条件</h2>
 				<dl class="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm">
 					<dt class="text-stone-500">取引先</dt><dd>{r.partner_name}</dd>
 					<dt class="text-stone-500">施設</dt><dd>{r.facilityName}</dd>
@@ -143,7 +156,7 @@
 
 			{#if data.siblings.length}
 				<section class="rounded-xl border border-stone-200 bg-white p-4">
-					<h2 class="mb-2 text-[15px] font-bold text-stone-900">同じ束のほかの照会（{data.siblings.length}件）</h2>
+					<h2 class="mb-2 text-[15px] font-semibold text-stone-900">同じ束のほかの照会（{data.siblings.length}件）</h2>
 					<ul class="divide-y divide-stone-100 text-sm">
 						{#each data.siblings as s (s.id)}
 							<li><a href={`/admin/group-inquiries/${s.id}`} class="flex flex-wrap justify-between gap-2 py-1.5 hover:underline"><span>{s.inquiry_code} ・ {describeGroupStay(s.check_in_date, s.nights)} ・ {s.room_name} × {s.room_count}室</span><span class="text-xs text-stone-500">{labels.status[s.status]}</span></a></li>
@@ -153,7 +166,7 @@
 			{/if}
 
 			<section class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="mb-2 text-[15px] font-bold text-stone-900">やりとり</h2>
+				<h2 class="mb-2 text-[15px] font-semibold text-stone-900">やりとり</h2>
 				{#if data.events.length === 0}
 					<p class="text-sm text-stone-500">まだありません。</p>
 				{:else}
@@ -174,7 +187,7 @@
 		<!-- 右: 在庫・料金・受付枠 -->
 		<div class="min-w-0 space-y-4">
 			<section class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="mb-2 text-[15px] font-bold text-stone-900">在庫（{r.room_name}・いまの残室）</h2>
+				<h2 class="mb-2 text-[15px] font-semibold text-stone-900">在庫（{r.room_name}・いまの残室）</h2>
 				{#if data.nightly.length === 0}
 					<p class="text-sm text-stone-500">残室を読み込めませんでした。</p>
 				{:else}
@@ -188,7 +201,7 @@
 			</section>
 
 			<section class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="text-[15px] font-bold text-stone-900">料金（{r.answer_total != null ? '回答額' : '自動計算'}）</h2>
+				<h2 class="text-[15px] font-semibold text-stone-900">料金（{r.answer_total != null ? '回答額' : '自動計算'}）</h2>
 				{#if r.answer_total != null || r.quote_total != null}
 					{@const lodging = r.answer_total ?? r.quote_total ?? 0}
 					{@const bath = (r.answer_total != null ? r.answer_bath_tax : r.quote_bath_tax) ?? 0}
@@ -205,15 +218,15 @@
 			</section>
 
 			<section class="rounded-xl border border-stone-200 bg-white p-4">
-				<h2 class="mb-2 text-[15px] font-bold text-stone-900">受付枠（与信）</h2>
+				<h2 class="mb-2 text-[15px] font-semibold text-stone-900">受付枠（与信）</h2>
 				{#if data.credit}
 					<div class="overflow-x-auto">
 						<table class="w-full text-xs tabular-nums">
-							<thead class="text-left text-stone-500"><tr><th class="py-1 pr-2 font-medium">月</th><th class="pr-2 text-right font-medium">上限</th><th class="pr-2 text-right font-medium">予約済み</th><th class="pr-2 text-right font-medium">この照会</th><th class="text-right font-medium">残り</th></tr></thead>
+							<thead class="text-left text-stone-500"><tr><th class="sticky left-0 bg-white py-1 pr-2 font-medium">月</th><th class="pr-2 text-right font-medium">上限</th><th class="pr-2 text-right font-medium">予約済み</th><th class="pr-2 text-right font-medium">この照会</th><th class="text-right font-medium">残り</th></tr></thead>
 							<tbody>
 								{#each data.credit.months as m (m.month)}
 									<tr class="border-t border-stone-100 {m.over ? 'bg-red-50 font-bold text-red-700' : ''}">
-										<td class="py-1 pr-2 whitespace-nowrap">{creditMonthLabel(m.month)}</td>
+										<td class="sticky left-0 py-1 pr-2 whitespace-nowrap {m.over ? 'bg-red-50' : 'bg-white'}">{creditMonthLabel(m.month)}</td>
 										<td class="pr-2 text-right">{m.limit}</td>
 										<td class="pr-2 text-right">{m.booked}</td>
 										<td class="pr-2 text-right">{m.adding}</td>
@@ -233,7 +246,7 @@
 
 	<!-- 回答 -->
 	<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
-		<h2 class="text-lg font-bold text-stone-900">{r.status === 'offered' ? '回答の修正' : '回答'}</h2>
+		<h2 class="text-base font-semibold text-stone-900">{r.status === 'offered' ? '回答の修正' : '回答'}</h2>
 		{#if !f.canAnswer}
 			<p class="mt-2 text-sm text-stone-500">この照会には回答できません（{labels.status[r.status]}）。{r.status === 'accepted' ? '変更・取消は予約側（取引先詳細の予約一覧・PMS）で行ってください。' : ''}</p>
 		{:else}
@@ -252,7 +265,7 @@
 				<fieldset class="flex flex-wrap gap-2">
 					<legend class="mb-1 text-xs text-stone-500">可否</legend>
 					{#each ['ok', 'conditional', 'declined'] as const as a (a)}
-						<label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-sm ${answer === a ? (a === 'declined' ? 'border-stone-700 bg-stone-100' : 'border-emerald-600 bg-emerald-50') : 'border-stone-300'}`}>
+						<label class={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${answer === a ? (a === 'declined' ? 'border-stone-700 bg-stone-100' : 'border-emerald-600 bg-emerald-50') : 'border-stone-300'}`}>
 							<input type="radio" name="answer" value={a} bind:group={answer} />{labels.answer[a]}
 						</label>
 					{/each}
@@ -260,12 +273,12 @@
 
 				{#if answer !== 'declined'}
 					<fieldset class="rounded-lg border border-stone-200 p-3">
-						<legend class="px-1 text-sm font-bold text-stone-800">料金</legend>
+						<legend class="px-1 text-sm font-semibold text-stone-800">料金</legend>
 						<div class="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-							<label class="flex items-center gap-1.5 {r.quote_status !== 'ok' ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="auto" bind:group={priceMode} disabled={r.quote_status !== 'ok'} />自動計算額のまま</label>
-							{#if r.answer_rooms}<label class="flex items-center gap-1.5"><input type="radio" name="priceMode" value="keep" bind:group={priceMode} />今の回答額のまま</label>{/if}
-							<label class="flex items-center gap-1.5 {!isAdmin ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="unit" bind:group={priceMode} disabled={!isAdmin} />1名あたりの料金を変える</label>
-							<label class="flex items-center gap-1.5 {!isAdmin ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="total" bind:group={priceMode} disabled={!isAdmin} />合計を入れる</label>
+							<label class="flex min-h-8 items-center gap-1.5 {r.quote_status !== 'ok' ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="auto" bind:group={priceMode} disabled={r.quote_status !== 'ok'} />自動計算額のまま</label>
+							{#if r.answer_rooms}<label class="flex min-h-8 items-center gap-1.5"><input type="radio" name="priceMode" value="keep" bind:group={priceMode} />今の回答額のまま</label>{/if}
+							<label class="flex min-h-8 items-center gap-1.5 {!isAdmin ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="unit" bind:group={priceMode} disabled={!isAdmin} />1名あたりの料金を変える</label>
+							<label class="flex min-h-8 items-center gap-1.5 {!isAdmin ? 'text-stone-400' : ''}"><input type="radio" name="priceMode" value="total" bind:group={priceMode} disabled={!isAdmin} />合計を入れる</label>
 						</div>
 						{#if !isAdmin}
 							<p class="mt-1 text-[11px] text-stone-500">料金を変えられるのは管理者だけです。{r.quote_status !== 'ok' && !r.answer_rooms ? '自動計算の料金が無いため、「受けられる」の回答は管理者に依頼してください（「受けられない」はスタッフでも回答できます）。' : ''}</p>
@@ -320,7 +333,7 @@
 				</div>
 
 				<div class="flex flex-wrap items-center gap-3 border-t border-stone-200 pt-3">
-					<button type="submit" disabled={busy || needsMessage || (answer !== 'declined' && !preview)} class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-40">
+					<button type="submit" disabled={busy || needsMessage || (answer !== 'declined' && !preview)} class="min-h-11 w-full rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-40 sm:min-h-10 sm:w-auto">
 						{busy ? '回答しています…' : answer === 'declined' ? '受けられないと回答する' : r.status === 'offered' ? '回答を修正して送る' : '回答して取引先に知らせる'}
 					</button>
 					<span class="text-xs text-stone-500">送ると取引先へメールが届きます。{answer !== 'declined' && preview ? `回答額 ${yen(preview.total + bathTax)}（入湯税込み）` : ''}</span>

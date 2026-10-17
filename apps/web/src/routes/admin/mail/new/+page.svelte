@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { form } = $props();
 
@@ -23,7 +24,8 @@
 
 <svelte:head><title>メルマガ作成 ｜ 山人管理</title></svelte:head>
 
-<nav class="mb-3 text-xs text-stone-400"><a href="/admin/mail" class="hover:underline">メルマガ</a> / 新規作成</nav>
+<p class="mb-2 text-xs text-stone-500"><a href="/admin/mail" class="hover:underline">← メルマガ一覧</a></p>
+<PageHeader title="メルマガ作成" description="本文を作り、宛先を決めて、テスト送信で確かめてから配信します。" />
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 {#if form?.tested}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">テストメールを送信しました（自分宛・デモ）。</p>{/if}
@@ -56,7 +58,7 @@
 	<!-- ステップ2: 宛先 -->
 	<section class="rounded-xl border border-stone-200 bg-white p-5">
 		<h2 class="mb-3 text-sm font-bold text-stone-700">② 宛先（セグメント）</h2>
-		<p class="mb-2 text-xs text-stone-500">☑ メルマガ受信 ON の会員のみ（固定）</p>
+		<p class="mb-2 text-xs text-stone-500">メルマガ受信 ON の会員のみ（固定）</p>
 		<div class="flex flex-wrap gap-4 text-sm">
 			{#each ranks as r}
 				<label class="flex items-center gap-1.5">
@@ -67,12 +69,12 @@
 			<span class="text-xs text-stone-400">（未選択 = 全ランク）</span>
 		</div>
 		<p class="mt-2 text-xs text-stone-400">宿泊履歴・お気に入り施設による絞り込みは P7 で追加（設計書 §15.5）。</p>
-		<div class="mt-3 flex items-center gap-3">
-			<button formaction="?/count" class="rounded-md border border-stone-300 px-4 py-1.5 text-sm hover:bg-stone-50">対象者を数える</button>
+		<div class="mt-3 flex flex-wrap items-center gap-3">
+			<button formaction="?/count" class="min-h-10 rounded-md border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">対象者を数える</button>
 			{#if form?.count !== undefined}
 				<span class="text-sm font-medium text-brand-900">現在 {form.count} 名が対象です</span>
 			{/if}
-			<button formaction="?/test" class="rounded-md border border-stone-300 px-4 py-1.5 text-sm hover:bg-stone-50">テスト送信（自分宛）</button>
+			<button formaction="?/test" class="min-h-10 rounded-md border border-stone-300 px-4 py-2 text-sm hover:bg-stone-50">テスト送信（自分宛）</button>
 		</div>
 	</section>
 
@@ -81,9 +83,9 @@
 		<h2 class="mb-3 text-sm font-bold text-stone-700">③ 配信</h2>
 		<div class="flex flex-wrap items-center gap-4 text-sm">
 			<label class="flex items-center gap-1.5"><input type="radio" name="schedule" value="now" checked class="h-4 w-4" /> 今すぐ配信</label>
-			<label class="flex items-center gap-1.5">
+			<label class="flex flex-wrap items-center gap-1.5">
 				<input type="radio" name="schedule" value="later" class="h-4 w-4" /> 日時指定
-				<input type="datetime-local" name="scheduledAt" class="rounded-md border border-stone-300 px-2 py-1" />
+				<input type="datetime-local" name="scheduledAt" class="rounded-md border border-stone-300 px-2 py-1.5" />
 			</label>
 		</div>
 
@@ -95,7 +97,7 @@
 			<div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">
 				<p class="font-medium text-amber-900">この内容で配信します。よろしいですか？（二段確認）</p>
 				<p class="mt-1 text-xs text-amber-800">配信後の取り消しはできません。対象者数は「対象者を数える」で必ず確認してください。</p>
-				<div class="mt-3 flex gap-2">
+				<div class="mt-3 flex flex-wrap gap-2">
 					<button formaction="?/send" class="rounded-md bg-brand-800 px-6 py-2 text-white hover:bg-brand-700">配信を確定する</button>
 					<button type="button" onclick={() => (confirming = false)} class="rounded-md border border-stone-300 bg-white px-6 py-2">戻る</button>
 				</div>

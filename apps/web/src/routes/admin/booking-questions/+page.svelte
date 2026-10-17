@@ -5,6 +5,7 @@
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import type { BookingQuestion } from '$lib/booking-questions';
 	import { STANDARD_FIELDS } from '$lib/booking-standard-fields';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -45,18 +46,17 @@
 
 <svelte:head><title>予約時に聞く項目 ｜ 山人管理</title></svelte:head>
 
-<div class="mb-4 flex flex-wrap items-start justify-between gap-3">
-	<div>
-		<h1 class="text-lg font-bold text-stone-800">予約時に聞く項目 — {data.currentFacility.name}</h1>
-		<p class="mt-1 text-sm text-stone-500">
-			送迎希望・記念日・夕食時間など、予約のときにお客様へ聞く項目のテンプレートです。各プランの編集画面で「テンプレートを使う」か「プラン独自に決める」かを選びます。
-			回答は PMS の予約備考に入ります（公式サイト・取引先ページの両方の予約）。取引先ごとに足す項目は、取引先の設定で決めます。
-		</p>
-	</div>
-	{#if data.live && !adding}
-		<button type="button" onclick={startAdd} class="rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">＋ テンプレートを追加</button>
-	{/if}
-</div>
+<PageHeader
+	title="予約時に聞く項目"
+	facility={data.currentFacility.name}
+	description="送迎希望・記念日・夕食時間など、予約のときにお客様へ聞く項目のテンプレートです。各プランの編集画面で「テンプレートを使う」か「プラン独自に決める」かを選びます。回答は PMS の予約備考に入ります（公式サイト・取引先ページの両方の予約）。取引先ごとに足す項目は、取引先の設定で決めます。"
+>
+	{#snippet actions()}
+		{#if data.live && !adding}
+			<button type="button" onclick={startAdd} class="min-h-10 rounded-md bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">＋ テンプレートを追加</button>
+		{/if}
+	{/snippet}
+</PageHeader>
 
 {#if data.loadError}<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{data.loadError}</p>{/if}
 {#if form?.error}<p class="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{form.error}</p>{/if}

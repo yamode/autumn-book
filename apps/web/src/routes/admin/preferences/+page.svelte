@@ -3,6 +3,7 @@
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 
 	import Unavailable from '$lib/components/admin/Unavailable.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import type { PreferenceItem, PreferenceOption } from '$lib/server/admin-app-data';
 
 	let { data, form } = $props();
@@ -48,10 +49,7 @@
 
 <svelte:head><title>好み登録項目 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">好み登録項目</h1>
-<p class="mb-4 text-xs text-stone-400">
-	アプリのマイページ「ご滞在の好み」に表示される設問です。回答は PMS のスタッフ画面で閲覧できます。
-</p>
+<PageHeader title="好み登録項目" description="アプリのマイページ「ご滞在の好み」に表示される設問です。回答は PMS のスタッフ画面で閲覧できます。" />
 
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
@@ -174,13 +172,13 @@
 											name="optValue"
 											value={opt.value}
 											disabled={!isAdmin}
-											class="w-32 rounded-md border border-stone-300 px-2 py-1 font-mono text-xs"
+											class="w-28 rounded-md border border-stone-300 px-2 py-1.5 font-mono text-xs sm:w-32"
 										/>
 										<input
 											name="optLabel"
 											value={opt.label}
 											disabled={!isAdmin}
-											class="w-48 rounded-md border border-stone-300 px-2 py-1 text-sm"
+											class="min-w-0 flex-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm sm:w-48 sm:flex-none"
 										/>
 										<span class="text-xs {used > 0 ? 'text-amber-700' : 'text-stone-400'}">
 											{used} 件{used > 0 ? '（使用中・削除不可）' : ''}
@@ -192,12 +190,12 @@
 										<input
 											name="optValue"
 											placeholder="value"
-											class="w-32 rounded-md border border-stone-300 px-2 py-1 font-mono text-xs"
+											class="w-28 rounded-md border border-stone-300 px-2 py-1.5 font-mono text-xs sm:w-32"
 										/>
 										<input
 											name="optLabel"
 											placeholder="ラベル"
-											class="w-48 rounded-md border border-stone-300 px-2 py-1 text-sm"
+											class="min-w-0 flex-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm sm:w-48 sm:flex-none"
 										/>
 										<span class="text-xs text-stone-400">新規 {i + 1}</span>
 									</div>
@@ -218,13 +216,13 @@
 
 					<div class="mt-3 flex flex-wrap items-center gap-4">
 						<label class="flex items-center gap-2 text-sm text-stone-700">
-							<input type="checkbox" name="isActive" checked={item.is_active} disabled={!isAdmin} />
+							<input type="checkbox" name="isActive" checked={item.is_active} disabled={!isAdmin} class="h-4 w-4" />
 							アプリに表示する
 						</label>
 						{#if isAdmin}
 							<button
 								type="submit"
-								class="rounded-lg bg-brand-800 px-4 py-1.5 text-sm font-medium text-white"
+								class="min-h-10 rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700"
 								onclick={(e) => {
 									// 公開中の項目を非表示にする保存だけ確認する
 									if (item.is_active && !e.currentTarget.form?.isActive?.checked) {
@@ -244,7 +242,7 @@
 	{/each}
 
 	{#if isAdmin}
-		<h2 class="mt-8 mb-2 text-sm font-bold text-stone-700">＋ 新しい項目</h2>
+		<h2 class="mt-8 mb-2 text-sm font-bold text-stone-700">新しい項目を追加</h2>
 		<form
 			method="POST"
 			action="?/save"
@@ -305,16 +303,16 @@
 					<p class="mb-1 text-xs text-stone-500">選択肢</p>
 					<div class="space-y-1.5">
 						{#each newOptions as _, i}
-							<div class="flex items-center gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								<input
 									name="optValue"
 									placeholder="value"
-									class="w-32 rounded-md border border-stone-300 px-2 py-1 font-mono text-xs"
+									class="w-28 rounded-md border border-stone-300 px-2 py-1.5 font-mono text-xs sm:w-32"
 								/>
 								<input
 									name="optLabel"
 									placeholder="ラベル"
-									class="w-48 rounded-md border border-stone-300 px-2 py-1 text-sm"
+									class="min-w-0 flex-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm sm:w-48 sm:flex-none"
 								/>
 								<span class="text-xs text-stone-400">{i + 1}</span>
 							</div>
@@ -328,12 +326,12 @@
 				</div>
 			{/if}
 
-			<div class="mt-3 flex items-center gap-4">
+			<div class="mt-3 flex flex-wrap items-center gap-4">
 				<label class="flex items-center gap-2 text-sm text-stone-700">
-					<input type="checkbox" name="isActive" checked />
+					<input type="checkbox" name="isActive" checked class="h-4 w-4" />
 					すぐに表示する
 				</label>
-				<button type="submit" class="rounded-lg bg-accent-600 px-4 py-1.5 text-sm font-medium text-white">
+				<button type="submit" class="min-h-10 rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
 					追加する
 				</button>
 			</div>

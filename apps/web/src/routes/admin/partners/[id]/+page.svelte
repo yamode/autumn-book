@@ -4,6 +4,8 @@
   import PartnerMemberList from '$lib/components/admin/PartnerMemberList.svelte';
   import PartnerCancelPolicyForm from '$lib/components/admin/PartnerCancelPolicyForm.svelte';
   import PartnerGroupSettings from '$lib/components/admin/PartnerGroupSettings.svelte';
+  import PageHeader from '$lib/components/admin/PageHeader.svelte';
+  import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
   import { describeGroupStay, GROUP_STATUS_LABELS_STAFF } from '$lib/partner-group';
   import { untrack } from 'svelte';
   import { LOGIN_LOG_LABELS } from '$lib/partner-login-security';
@@ -793,7 +795,7 @@
   const passkeyOnlyBlocked = $derived(data.accounts.filter((a) => a.isActive && a.passkeyCount === 0).map((a) => a.loginId));
 
   const inputClass = 'w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm disabled:bg-stone-50 disabled:text-stone-500';
-  const smallBtn = 'rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
+  const smallBtn = 'inline-flex min-h-8 items-center justify-center gap-1 rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-50';
   const chip = (on: boolean) =>
     `rounded-full border px-2.5 py-0.5 text-xs transition ${on ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-200 text-stone-500 hover:bg-stone-50'}`;
 </script>
@@ -802,26 +804,32 @@
 
 <!-- 未保存の離脱確認はこの画面独自の beforeNavigate で行う（レイアウト共通のガードは data-own-unsaved-guard で外す） -->
 <div data-own-unsaved-guard>
-    <nav class="mb-3 text-xs text-stone-400"><a href="/admin/partners" class="hover:underline">取引先</a> / {data.partner.name}</nav>
-    <div class="mb-4">
-      <div class="flex flex-wrap items-center gap-2">
-        <h1 class="text-lg font-bold text-stone-800">{data.partner.name}</h1>
+    <PageHeader
+      title={data.partner.name}
+      facility={data.kindLabels[data.partner.kind]}
+      description={canEdit ? null : '閲覧のみ（編集は管理者だけができます）'}
+    >
+      {#snippet actions()}
+        <a href="/admin/partners" class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">取引先の一覧</a>
+      {/snippet}
+    </PageHeader>
+    <div class="-mt-2 mb-5">
+      <div class="flex flex-wrap items-center gap-1.5">
         {#if data.partner.isActive}
-          <span class="rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] text-white">公開中</span>
+          <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-600/20 ring-inset">公開中</span>
         {:else}
-          <span class="rounded-full bg-stone-600 px-2 py-0.5 text-[11px] text-white">公開停止中</span>
+          <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600 ring-1 ring-stone-500/20 ring-inset">公開停止中</span>
         {/if}
         <!-- 施設ごとの販売・予約受付（複数施設化 S3）。設定は下の施設タブ -->
         {#each data.facilityTabs.filter((t) => t.hasRow) as t (t.id)}
           <span
-            class={`rounded-full border px-2 py-0.5 text-[11px] ${!t.enabled ? 'border-stone-200 text-stone-400 line-through' : t.bookingEnabled ? 'border-brand-800 bg-brand-100 text-brand-800' : 'border-stone-300 text-stone-600'}`}
+            class={`rounded-full border px-2 py-0.5 text-[11px] ${!t.enabled ? 'border-stone-200 text-stone-400 line-through' : t.bookingEnabled ? 'border-brand-700/30 bg-brand-50 text-brand-800' : 'border-stone-300 text-stone-600'}`}
             title={!t.enabled ? 'この施設では販売していません' : t.bookingEnabled ? '販売中・予約受付中' : '販売中（予約受付なし・閲覧のみ）'}
           >{t.name}{t.enabled ? (t.bookingEnabled ? '・予約受付中' : '・閲覧のみ') : ''}</span>
         {:else}
-          <span class="rounded-full bg-stone-200 px-2 py-0.5 text-[11px] text-stone-600">販売している施設がありません</span>
+          <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-600 ring-1 ring-stone-500/20 ring-inset">販売している施設がありません</span>
         {/each}
       </div>
-      <p class="mt-0.5 text-xs text-stone-400">{data.kindLabels[data.partner.kind]}{#if !canEdit}・閲覧のみ（編集は管理者だけができます）{/if}</p>
     </div>
 
     {#if form?.message && lastSubmit === 'other'}
@@ -831,26 +839,26 @@
     {/if}
 
     <!-- ログイン画面（共通）と限定URL -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
       {#if isMember}
-        <h2 class="text-lg font-bold text-stone-900">限定URL</h2>
+        <h2 class="text-base font-semibold tracking-tight text-stone-900">限定URL</h2>
         <p class="mt-1 text-xs text-stone-500">この会員さま専用のページです。公式サイトの会員ログイン（メールの認証コード）で、下の「対象の会員」とそのご家族だけが見られます（URL だけでは料金は見えません）。「確認ページを開く」は、会員なしでこのページを開きます（2時間・見るだけで、予約へは進めません）。</p>
       {:else}
         <!-- 取引先へ案内するのは共通のログイン画面（docs/partner-common-login.md）。ログインIDから取引先を判別する -->
-        <h2 class="text-lg font-bold text-stone-900">ログイン画面</h2>
+        <h2 class="text-base font-semibold tracking-tight text-stone-900">ログイン画面</h2>
         <p class="mt-1 text-xs text-stone-500">取引先へはこのURLをお知らせください（全取引先で共通）。下で発行したログインIDとパスワードで入ると、この取引先のページが開きます。</p>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.commonLoginUrl}</code>
           <button type="button" class={smallBtn} onclick={() => copy(data.commonLoginUrl)}>コピー</button>
         </div>
-        <h3 class="mt-5 text-sm font-bold text-stone-700">この取引先専用のURL（従来）</h3>
+        <h3 class="mt-5 text-sm font-semibold text-stone-700">この取引先専用のURL（従来）</h3>
         <p class="mt-1 text-xs text-stone-500">以前お知らせしたURLです。今も使えます（同じログイン画面が開きます）。「確認ページを開く」は、ログインなしでこの取引先から見た画面を開きます（2時間・見るだけで、予約の確定・取消はできません）。「URLを再発行」は、このURLが外部に漏れたときだけ使います（共通のログイン画面には影響しません）。</p>
       {/if}
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <code class="break-all rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs">{data.portalUrl}</code>
         <button type="button" class={smallBtn} onclick={() => copy(data.portalUrl)}>コピー</button>
         <!-- 取引先のアカウントなしで、その取引先から見た画面を開く（確認モード・予約の確定はできない）。施設タブの施設で開く -->
-        <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}） ↗</a>
+        <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}）<AdminIcon name="external" class="h-3.5 w-3.5" /></a>
         {#if canEdit}
           <form
             method="POST"
@@ -872,8 +880,8 @@
 
     {#if !isMember}
     <!-- 覚書（本文・ファイル） -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">覚書</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">覚書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         取引条件のまとめ（料金・支払条件・特典・連絡先など）です。<strong class="font-medium text-stone-700">取引先ページの「覚書」にそのまま表示されます</strong>（社内向けのメモは「公開設定」の社内メモへ）。
       </p>
@@ -936,7 +944,7 @@
         </div>
       </form>
 
-      <h3 class="mt-5 text-[15px] font-bold text-stone-800">ファイル</h3>
+      <h3 class="mt-5 text-[15px] font-semibold text-stone-800">ファイル</h3>
       <p class="mt-0.5 text-[11px] text-stone-500">契約書・見積書などを宿と取引先の双方で保存できます（取引先ページの「覚書」にも出ます）。1ファイル 20MB まで。</p>
       {#if lastSubmit === 'doc' && form?.message}
         <p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
@@ -951,14 +959,14 @@
         <p class="mt-2 text-sm text-stone-500">まだファイルはありません。</p>
       {:else}
         <div class="mt-2 overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full min-w-[36rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
-              <tr><th class="py-1.5 pr-3 font-medium">ファイル</th><th class="pr-3 text-right font-medium">サイズ</th><th class="pr-3 font-medium">保存者</th><th class="pr-3 font-medium">日時</th><th></th></tr>
+              <tr><th class="sticky left-0 z-10 bg-white py-1.5 pr-3 font-medium">ファイル</th><th class="pr-3 text-right font-medium">サイズ</th><th class="pr-3 font-medium">保存者</th><th class="pr-3 font-medium">日時</th><th></th></tr>
             </thead>
             <tbody>
               {#each data.documents as d (d.id)}
                 <tr class="border-t border-stone-100 align-top">
-                  <td class="py-2 pr-3">
+                  <td class="sticky left-0 z-10 max-w-[12rem] bg-white py-2 pr-3 sm:max-w-none">
                     <a href={`/admin/partners/${data.partner.id}/documents/${d.id}`} target="_blank" rel="noopener" class="break-all text-brand-800 hover:underline">{d.fileName}</a>
                     {#if d.note}<div class="text-[11px] text-stone-500">{d.note}</div>{/if}
                   </td>
@@ -1013,7 +1021,7 @@
             <span class="mb-0.5 block text-xs text-stone-500">メモ（任意）</span>
             <input name="note" maxlength="200" placeholder="例: 2026年度 契約書" class={inputClass} autocomplete="off" />
           </label>
-          <button type="submit" disabled={docUploading} class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{docUploading ? '保存中…' : 'ファイルを保存'}</button>
+          <button type="submit" disabled={docUploading} class="min-h-10 rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{docUploading ? '保存中…' : 'ファイルを保存'}</button>
         </form>
       {/if}
     </div>
@@ -1030,11 +1038,11 @@
       method="POST"
       action={`?/saveCommon`}
       use:enhance={saveEnhance('common')}
-      class="mb-6 rounded-xl border border-stone-200 bg-white p-5"
+      class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5"
     >
-      <h2 class="text-lg font-bold text-stone-900">共通の設定</h2>
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">共通の設定</h2>
       <p class="mb-3 mt-1 text-xs leading-5 text-stone-500">取引先名・公開・支払方法・請求条件・受付ルールの既定などです。<strong class="font-medium text-stone-700">すべての施設に効きます</strong>（施設ごとの料金・特典・案内文は下の施設タブで）。</p>
-      <h3 class="mb-2 text-[15px] font-bold text-stone-800">公開設定</h3>
+      <h3 class="mb-2 text-[15px] font-semibold text-stone-800">公開設定</h3>
       <fieldset disabled={!canEdit} class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label class="block">
           <span class="mb-0.5 block text-xs text-stone-500">取引先名</span>
@@ -1090,7 +1098,7 @@
       {#if !isMember}
       <!-- PMS の顧客マスタとの紐づけ（Phase 1・docs/partner-pms-customer-link.md §6.1）。保存フォームとは別に即時保存 -->
       <section class="mt-6 rounded-lg border border-stone-200 bg-stone-50/60 p-4">
-        <h3 class="text-base font-bold text-stone-900">PMS の顧客マスタとの紐づけ</h3>
+        <h3 class="text-base font-semibold text-stone-900">PMS の顧客マスタとの紐づけ</h3>
         <p class="mt-1 text-xs leading-5 text-stone-500">
           この取引先を、PMS の顧客マスタにある旅行会社・法人に紐づけます。紐づけると、<strong class="font-medium text-stone-700">この取引先からの予約の「予約者」として PMS にこの顧客が入ります</strong>（PMS の顧客カルテの紹介実績に数えられます）。宿泊者（代表者）はこれまでどおりお客様です（予約名義を「旅行会社名で取る」にしたときは、代表者がこの顧客になります）。
           紐づけ・解除・予約名義は押した時点で保存されます（下の「保存する」は不要です）。
@@ -1213,7 +1221,7 @@
                               <td class="pr-3 text-right">{m.limit} 室</td>
                               <td class="pr-3 text-right">{m.booked} 室</td>
                               <td class={`pr-3 text-right ${rest <= 0 ? 'font-bold text-amber-800' : ''}`}>{rest} 室</td>
-                              <td>{#if rest < 0}<span class="rounded-full bg-amber-100 px-1.5 py-px text-[11px] text-amber-800">超過 {-rest} 室</span>{:else if rest === 0}<span class="text-[11px] text-stone-500">満枠</span>{/if}</td>
+                              <td>{#if rest < 0}<span class="rounded-full bg-amber-50 ring-1 ring-amber-600/20 ring-inset px-1.5 py-px text-[11px] text-amber-800">超過 {-rest} 室</span>{:else if rest === 0}<span class="text-[11px] text-stone-500">満枠</span>{/if}</td>
                             </tr>
                           {/each}
                         </tbody>
@@ -1328,11 +1336,11 @@
 
       {#if isMember}
         <!-- 特別会員: 支払方法・請求条件は無い（公式予約の支払方法・現地払い／事前決済）。受付ルールの既定だけ -->
-        <h3 class="mb-1 mt-6 text-[15px] font-bold text-stone-800">受付ルール</h3>
+        <h3 class="mb-1 mt-6 text-[15px] font-semibold text-stone-800">受付ルール</h3>
         <p class="mb-3 text-xs leading-5 text-stone-500">専用ページの「予約へ進む」から、会員の公式予約（お支払いは公式サイトと同じ）になります。予約を受けるかどうかは施設タブで施設ごとに決めます。</p>
       {:else}
       <!-- 支払方法と請求条件（共通） -->
-      <h3 class="mb-1 mt-6 text-[15px] font-bold text-stone-800">支払方法と請求条件 {#if acceptingFacilities.length}<span class="text-xs font-normal text-rose-700">支払方法は1つ以上必須（予約を受け付けている施設があります）</span>{/if}</h3>
+      <h3 class="mb-1 mt-6 text-[15px] font-semibold text-stone-800">支払方法と請求条件 {#if acceptingFacilities.length}<span class="text-xs font-normal text-rose-700">支払方法は1つ以上必須（予約を受け付けている施設があります）</span>{/if}</h3>
       <p class="mb-3 text-xs leading-5 text-stone-500">
         限定URLの料金カレンダーから、取引先がそのまま予約できます（予約を受けるかどうかは施設タブで施設ごとに決めます）。予約は即時確定し、PMS に「取引先予約（RMS）」として1分ほどで取り込まれます。
       </p>
@@ -1434,7 +1442,7 @@
         {/if}
 
         <div>
-          <h3 class={`mb-1.5 mt-1 text-[15px] font-bold text-stone-800 ${isMember ? '' : 'border-t border-stone-300 pt-4'}`}>受付ルールの既定 <span class="text-xs font-normal text-stone-500">（施設タブで施設ごとに変えられます）</span></h3>
+          <h3 class={`mb-1.5 mt-1 text-[15px] font-semibold text-stone-800 ${isMember ? '' : 'border-t border-stone-300 pt-4'}`}>受付ルールの既定 <span class="text-xs font-normal text-stone-500">（施設タブで施設ごとに変えられます）</span></h3>
           <div class="grid gap-3 sm:grid-cols-4">
             <label class="block">
               <span class="mb-0.5 block text-xs text-stone-500">予約の締切</span>
@@ -1478,7 +1486,7 @@
           <p class="text-[11px] leading-5 text-stone-500">取消は会員の公式予約と同じく、専用ページの「ご予約一覧」から行います（キャンセル料は施設タブの「キャンセル規定」）。最大室数は公式と同じく 4 室までです。</p>
         {:else}
         <div>
-          <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-bold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
+          <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-4 text-[15px] font-semibold text-stone-800">この取引先だけ追加で聞く項目 <span class="text-xs font-normal text-stone-500">（回答は PMS の予約備考に入ります）</span></h3>
           <p class="mb-2 text-[11px] text-stone-500">
             プランで設定した「予約時に聞く項目」（<a href="/admin/booking-questions" class="underline">テンプレート</a>またはプラン独自）の後ろに、この取引先からの予約のときだけ足して聞きます。
           </p>
@@ -1521,12 +1529,12 @@
               {/if}
             </div>
             {#if commonDirty && !commonSave.saving}
-              <button type="button" onclick={revertCommon} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
+              <button type="button" onclick={revertCommon} class="min-h-10 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
             {/if}
             <button
               type="submit"
               disabled={commonSave.saving || (!commonDirty && !commonSave.error)}
-              class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
+              class="min-h-10 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
             >{commonSave.saving ? '保存中…' : commonDirty ? '共通の設定を保存' : '保存済み'}</button>
           </div>
         </div>
@@ -1542,7 +1550,7 @@
             role="tab"
             aria-selected={t.id === selectedTabId}
             onclick={() => switchTab(t.id)}
-            class={`-mb-px rounded-t-lg border px-4 py-2 text-sm ${t.id === selectedTabId ? 'border-stone-200 border-b-white bg-white font-bold text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
+            class={`-mb-px min-h-10 rounded-t-lg border px-3 py-2 text-sm sm:px-4 ${t.id === selectedTabId ? 'border-stone-200 border-b-white bg-white font-semibold text-stone-900' : 'border-transparent text-stone-500 hover:text-stone-800'}`}
           >
             {t.name}
             {#if !t.hasRow || !t.enabled}<span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-normal text-stone-500">販売なし</span>
@@ -1553,11 +1561,11 @@
         {/each}
       </div>
 
-      <div class="p-5">
+      <div class="p-4 sm:p-5">
         {#if pendingTab}
           <!-- 施設タブの切替中（読み込みが終わるまで）: 見出しはすぐ行き先に、設定欄は枠だけ -->
           <div aria-busy="true">
-            <h2 class="text-lg font-bold text-stone-900">{pendingTab.name}の設定</h2>
+            <h2 class="text-base font-semibold tracking-tight text-stone-900">{pendingTab.name}の設定</h2>
             <p class="mt-1 text-xs leading-5 text-stone-500">読み込んでいます…</p>
             <div class="mt-3 grid gap-3 sm:grid-cols-2">
               {#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-14 w-full"></div>{/each}
@@ -1585,7 +1593,7 @@
                 class="mt-3"
               >
                 <input type="hidden" name="facility_id" value={data.tab.id} />
-                <button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{data.tab.name}で販売する（オンにする）</button>
+                <button type="submit" class="min-h-10 rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{data.tab.name}で販売する（オンにする）</button>
               </form>
             {/if}
           </div>
@@ -1598,10 +1606,10 @@
             <input type="hidden" name="facility_id" value={data.tab.id} />
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 class="text-lg font-bold text-stone-900">{data.tab.name}の設定</h2>
+                <h2 class="text-base font-semibold tracking-tight text-stone-900">{data.tab.name}の設定</h2>
                 <p class="mt-1 text-xs leading-5 text-stone-500">この施設の取引先ページにだけ効きます（他の施設は変わりません）。</p>
               </div>
-              <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}） ↗</a>
+              <a href={data.previewUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>確認ページを開く（{data.tab.name}）<AdminIcon name="external" class="h-3.5 w-3.5" /></a>
             </div>
             {#if !fac.enabled}
               <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">この施設は「販売」がオフです。取引先ページの施設の切替に出ず、料金も予約も API も出しません（確認ページは販売中の施設で開きます）。</p>
@@ -1652,8 +1660,8 @@
 
           <!-- 特別レート（2026-10-09・docs/partner-rank-rates.md §7）: 編集は RMS へ移した。ここは読み取り専用の要約と計算の状態 -->
           <div class="mb-1 mt-8 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 class="text-lg font-bold text-stone-900">特別レート</h2>
-            <a href={data.rmsUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>RMS で編集する ↗</a>
+            <h2 class="text-base font-semibold tracking-tight text-stone-900">特別レート</h2>
+            <a href={data.rmsUrl} target="_blank" rel="noopener" class={`${smallBtn} border-brand-900 font-bold text-brand-900`}>RMS で編集する<AdminIcon name="external" class="h-3.5 w-3.5" /></a>
           </div>
           <p class="mb-3 text-xs leading-5 text-stone-500">
             特別レートは RMS の「取引先料金」で編集します（ここでは変えられません）。RMS で保存すると DB が最終料金を計算し直し、取引先ページはその料金を出します。
@@ -1729,7 +1737,7 @@
           <p class="mt-1 text-[11px] text-stone-500">プラン料金が最高・最低を外れるときは、その額で上書きして取引先に見せます（端数処理の後）。</p>
 
             <!-- 早期決済割・受付ルール（N6）: 共通の既定を使う／この施設だけ変える。戻すと facility_settings からキーを消す -->
-            <h2 class="mb-1 mt-8 text-lg font-bold text-stone-900">{isMember ? '受付ルール' : '早期決済割・受付ルール'}</h2>
+            <h2 class="mb-1 mt-8 text-base font-semibold tracking-tight text-stone-900">{isMember ? '受付ルール' : '早期決済割・受付ルール'}</h2>
             <p class="mb-3 text-xs leading-5 text-stone-500">
               ふだんは共通の設定の既定を使います。この施設だけ変えるときは「この施設だけ変える」を選びます（0 や「当日」も施設の値として残ります）。「共通の既定を使う」に戻すと、共通の値に戻ります。
             </p>
@@ -1828,7 +1836,7 @@
               </label>
 
               <div>
-                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">{isMember ? '専用特典' : '取引先特典'} <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件・この施設）</span></h3>
+                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-semibold text-stone-800">{isMember ? '専用特典' : '取引先特典'} <span class="text-xs font-normal text-stone-500">（最大{MAX_PARTNER_PERKS}件・この施設）</span></h3>
                 <p class="mb-2 text-[11px] leading-5 text-stone-500">
                   この取引先ページから予約した場合だけ付く特典です。対象プランを絞ると「取引先専用プラン」として見せられます。予約の要望（PMS）と確認メールに「取引先特典」として載ります。
                 </p>
@@ -1879,7 +1887,7 @@
               </div>
 
               <div>
-                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-bold text-stone-800">プラン名（取引先向け）</h3>
+                <h3 class="mb-1.5 mt-1 border-t border-stone-300 pt-5 text-[15px] font-semibold text-stone-800">プラン名（取引先向け）</h3>
                 <p class="mb-2 text-[11px] leading-5 text-stone-500">
                   取引先ページ・取引先宛てのメール・請求書に出すプラン名です。空欄のプランは右の既定の名前で出ます。PMS・宿への通知には元のプラン名のまま届きます。
                 </p>
@@ -1934,12 +1942,12 @@
                     {/if}
                   </div>
                   {#if facilityDirty && !facilitySave.saving}
-                    <button type="button" onclick={revertFacility} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
+                    <button type="button" onclick={revertFacility} class="min-h-10 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">元に戻す</button>
                   {/if}
                   <button
                     type="submit"
                     disabled={facilitySave.saving || (!facilityDirty && !facilitySave.error)}
-                    class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
+                    class="min-h-10 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white transition hover:bg-brand-700 disabled:cursor-default disabled:opacity-40"
                   >{facilitySave.saving ? '保存中…' : facilityDirty ? `${data.tab.name}の設定を保存` : '保存済み'}</button>
                 </div>
               </div>
@@ -1953,15 +1961,15 @@
     <!-- プレビュー（施設タブの施設・保存済みの最終料金と特別レート前の料金） -->
     {#if pendingTab}
     <!-- 施設タブの切替中: プレビューは枠だけ -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5" aria-busy="true">
-      <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{pendingTab.name}）</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5" aria-busy="true">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">プレビュー（取引先に見える価格・{pendingTab.name}）</h2>
       <div class="mt-3 space-y-2">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
     </div>
     {:else if data.facility}
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-lg font-bold text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
+          <h2 class="text-base font-semibold tracking-tight text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
           <p class="mt-1 text-xs text-stone-500">
             {#if !pvInfo}
               読み込んでいます…
@@ -2041,21 +2049,21 @@
 
     {#if isMember}
       <!-- 特別会員: 予約は会員の公式予約（予約管理で見る）。予約一覧・ご請求書・ログインID・REST API は無い -->
-      <p class="mb-6 rounded-xl border border-stone-200 bg-white p-5 text-sm leading-6 text-stone-600">
+      <p class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm leading-6 text-stone-600">
         この専用ページからの予約は会員の公式予約です。<a href="/admin/reservations" class="text-brand-800 underline">予約管理</a>で「特別会員の専用ページ経由」と表示されます。
         ご請求書・ログインID・REST API はありません（会員は公式サイトの会員ログインで入ります）。
       </p>
     {:else}
     <!-- 取引先予約 -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-lg font-bold text-stone-900">予約一覧</h2>
+          <h2 class="text-base font-semibold tracking-tight text-stone-900">予約一覧</h2>
           <p class="mt-1 text-xs text-stone-500">この取引先が限定URLから入れた予約です（すべての施設）。取消はここ（または取引先の画面）から行います。PMS の画面からは取り消せません。</p>
         </div>
         <div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs">
-          <button type="button" onclick={() => (bookingFilter = 'upcoming')} class={`px-3 py-1.5 ${bookingFilter === 'upcoming' ? 'bg-brand-800 text-white' : ''}`}>これから</button>
-          <button type="button" onclick={() => (bookingFilter = 'all')} class={`px-3 py-1.5 ${bookingFilter === 'all' ? 'bg-brand-800 text-white' : ''}`}>すべて（{bookings.length}）</button>
+          <button type="button" onclick={() => (bookingFilter = 'upcoming')} class={`px-3 py-2 sm:py-1.5 ${bookingFilter === 'upcoming' ? 'bg-brand-800 text-white' : ''}`}>これから</button>
+          <button type="button" onclick={() => (bookingFilter = 'all')} class={`px-3 py-2 sm:py-1.5 ${bookingFilter === 'all' ? 'bg-brand-800 text-white' : ''}`}>すべて（{bookings.length}）</button>
         </div>
       </div>
       {#if form?.chargeResult}
@@ -2074,18 +2082,18 @@
         <p class="mt-3 text-sm text-stone-500">{bookingFilter === 'upcoming' ? 'これからの予約はありません。' : 'まだ予約はありません。'}</p>
       {:else}
         <div class="mt-3 overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full min-w-[52rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
-              <tr><th class="py-1.5 pr-3 font-medium">予約番号</th>{#if showBookingFacility}<th class="pr-3 font-medium">施設</th>{/if}<th class="pr-3 font-medium">宿泊日</th><th class="pr-3 font-medium">宿泊者</th><th class="pr-3 font-medium">部屋・プラン</th><th class="pr-3 text-right font-medium">合計</th><th class="pr-3 font-medium">状態</th><th></th></tr>
+              <tr><th class="sticky left-0 z-10 bg-white py-1.5 pr-3 font-medium">予約番号</th>{#if showBookingFacility}<th class="pr-3 font-medium">施設</th>{/if}<th class="pr-3 font-medium">宿泊日</th><th class="pr-3 font-medium">宿泊者</th><th class="pr-3 font-medium">部屋・プラン</th><th class="pr-3 text-right font-medium">合計</th><th class="pr-3 font-medium">状態</th><th></th></tr>
             </thead>
             <tbody>
               {#each shownBookings as b (b.id)}
                 <tr class="border-t border-stone-100 align-top">
-                  <td class="py-2 pr-3 font-mono text-xs">{b.code}{#if b.attachmentCount}<span class="ml-1 font-sans whitespace-nowrap" title="添付ファイル（予約管理の詳細で見る・追加・削除）">📎 {b.attachmentCount}</span>{/if}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
+                  <td class="sticky left-0 z-10 bg-white py-2 pr-3 font-mono text-xs">{b.code}{#if b.attachmentCount}<span class="ml-1 font-sans whitespace-nowrap" title="添付ファイル（予約管理の詳細で見る・追加・削除）">添付{b.attachmentCount}</span>{/if}<div class="font-sans text-[11px] text-stone-500">{dt(b.createdAt)}{b.bookedBy ? ` ${b.bookedBy}` : ''}</div></td>
                   {#if showBookingFacility}<td class="py-2 pr-3 text-xs whitespace-nowrap">{b.facilityName || '—'}</td>{/if}
                   <td class="py-2 pr-3 whitespace-nowrap">{b.checkIn}<span class="text-xs text-stone-500"> {b.nights}泊</span></td>
                   <td class="py-2 pr-3">
-                    {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-100 px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-1 rounded-full bg-amber-100 px-1.5 py-px text-[11px] whitespace-nowrap text-amber-800" title={b.creditOverText ?? ''}>受付枠超過</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
+                    {b.guestName}{#if b.nameMode === 'partner'}<span class="ml-1 rounded-full bg-brand-50 ring-1 ring-brand-700/20 ring-inset px-1.5 py-px text-[11px] whitespace-nowrap text-brand-800">旅行会社名義</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-1 rounded-full bg-amber-50 ring-1 ring-amber-600/20 ring-inset px-1.5 py-px text-[11px] whitespace-nowrap text-amber-800" title={b.creditOverText ?? ''}>受付枠超過</span>{/if}<div class="text-[11px] text-stone-500">{b.phone ?? ''}</div>
                     {#if b.nameLine}<div class="text-[11px] text-stone-500">{b.nameLine}</div>{/if}
                     {#if b.transport}<div class="text-[11px] text-stone-500">交通: {b.transport}</div>{/if}
                     {#if b.booker}<div class="text-[11px] text-stone-500">予約者: {b.booker}</div>{/if}
@@ -2162,10 +2170,10 @@
 
     {#if data.partner.kind === 'agent'}
       <!-- 団体照会（直近 20 件・docs/partner-group-booking.md §8.3）。回答は団体照会の画面で -->
-      <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+      <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
         <div class="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 class="text-lg font-bold text-stone-900">団体照会（直近20件）</h2>
+            <h2 class="text-base font-semibold tracking-tight text-stone-900">団体照会（直近20件）</h2>
             <p class="mt-1 text-xs text-stone-500">この取引先が取引先ページの「団体予約」から送った照会です（すべての施設）。{data.partner.commonSettings.groupInquiryEnabled ? '' : '団体予約はオフです（上の共通の設定でオンにできます）。'}</p>
           </div>
           <a href={`/admin/group-inquiries?status=all&partner=${data.partner.id}`} class={smallBtn}>団体照会の画面で見る →</a>
@@ -2189,8 +2197,8 @@
       </div>
     {/if}
     <!-- ご請求書（ご利用明細書＋適格請求書） -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">ご請求書</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">ご請求書</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         チェックアウト日基準・月末締めで、ご利用明細書とご請求書（適格請求書）をセットで発行します。月末日の15:00に自動で発行し、取引先（連絡先メール・マスタユーザー）へメールで送ります。
         金額は予約時の金額です。ご請求の対象は「月末締め翌月末銀行振込」と「請求書で精算する」にした自由入力の支払方法だけで、それ以外はご利用明細に 0 円のご請求として載ります。お支払期限は「予約受付」の設定（この取引先は{describeInvoiceDue(data.partner.bookingSettings.invoiceDue)}）、宛名は{data.partner.bookingSettings.invoiceRecipientName ? `「${data.partner.bookingSettings.invoiceRecipientName}」` : linkedRecipient ? `PMS の紐づけ先の正式名称「${linkedRecipient}」` : '取引先名'}です。取引先は取引先ページの「アカウント → ご請求書」からいつでもダウンロードできます。
@@ -2219,10 +2227,10 @@
         <p class="mt-3 text-sm text-stone-500">まだご請求書はありません。</p>
       {:else}
         <div class="mt-3 overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full min-w-[44rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
               <tr>
-                <th class="py-1.5 pr-3 font-medium">番号</th>
+                <th class="sticky left-0 z-10 bg-white py-1.5 pr-3 font-medium">番号</th>
                 <th class="pr-3 font-medium">対象月</th>
                 <th class="pr-3 font-medium">発行日</th>
                 <th class="pr-3 text-right font-medium">ご請求額</th>
@@ -2234,7 +2242,7 @@
             <tbody>
               {#each invoices.rows as inv (inv.id)}
                 <tr class={`border-t border-stone-100 align-top ${inv.status === 'void' ? 'text-stone-400' : ''}`}>
-                  <td class="py-2 pr-3 font-mono text-xs whitespace-nowrap">{inv.invoiceNo}</td>
+                  <td class="sticky left-0 z-10 bg-white py-2 pr-3 font-mono text-xs whitespace-nowrap">{inv.invoiceNo}</td>
                   <td class="py-2 pr-3 text-xs whitespace-nowrap">{periodLabel(inv.period)}<div class="text-stone-500">{inv.bookingCount}件</div></td>
                   <td class="py-2 pr-3 text-xs whitespace-nowrap">{inv.issueDate}<div class="text-stone-500">{inv.issuedBy === 'auto' ? '自動' : 'スタッフ'}・期限 {inv.dueDate}</div></td>
                   <td class="py-2 pr-3 text-right tabular-nums whitespace-nowrap">{yen(inv.billedTotal)}円<div class="text-[11px] text-stone-500">利用 {yen(inv.usageTotal)}円</div></td>
@@ -2249,10 +2257,10 @@
                   </td>
                   <td class="py-2 pr-3 text-xs whitespace-nowrap">
                     {#if inv.status === 'void'}
-                      <span class="rounded-full bg-stone-200 px-2 py-0.5 text-stone-600">取消</span>
+                      <span class="rounded-full bg-stone-100 ring-1 ring-stone-500/20 ring-inset px-2 py-0.5 text-stone-600">取消</span>
                       <div class="mt-0.5 whitespace-normal text-stone-500">{dt(inv.voidedAt)}{inv.voidReason ? `・${inv.voidReason}` : ''}</div>
                     {:else}
-                      <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800">発行済み</span>
+                      <span class="rounded-full bg-emerald-50 ring-1 ring-emerald-600/20 ring-inset px-2 py-0.5 text-emerald-800">発行済み</span>
                     {/if}
                   </td>
                   <td class="py-2">
@@ -2324,10 +2332,10 @@
             <p class="mt-3 text-sm text-stone-500">この月（今日まで）にチェックアウトの確定予約はありません（発行されません）。</p>
           {:else}
             <div class="mt-3 overflow-x-auto">
-              <table class="w-full bg-white text-xs">
+              <table class="w-full min-w-[40rem] bg-white text-xs">
                 <thead class="text-left text-stone-500">
                   <tr class="border-b border-stone-200">
-                    <th class="px-2 py-1.5 font-medium">チェックアウト</th>
+                    <th class="sticky left-0 z-10 bg-white px-2 py-1.5 font-medium">チェックアウト</th>
                     <th class="px-2 font-medium">予約番号</th>
                     <th class="px-2 font-medium">宿泊者・お部屋</th>
                     <th class="px-2 font-medium">お支払方法</th>
@@ -2338,7 +2346,7 @@
                 <tbody>
                   {#each pv.lines as l (l.bookingId)}
                     <tr class="border-t border-stone-100 align-top">
-                      <td class="px-2 py-1.5 whitespace-nowrap">{l.checkOut}<div class="text-stone-500">{l.nights}泊</div></td>
+                      <td class="sticky left-0 z-10 bg-white px-2 py-1.5 whitespace-nowrap">{l.checkOut}<div class="text-stone-500">{l.nights}泊</div></td>
                       <td class="px-2 py-1.5 font-mono">{l.bookingCode}</td>
                       <td class="px-2 py-1.5">{l.guestName} 様<div class="text-stone-500">{l.roomName} {l.roomCount}室・{l.adults}名</div></td>
                       <td class="px-2 py-1.5">{l.paymentLabel}</td>
@@ -2385,7 +2393,7 @@
             >
               <input type="hidden" name="period" value={invoices.period} />
               <label class="flex items-center gap-1.5 text-xs"><input type="checkbox" name="send" checked />取引先へメールで送信する</label>
-              <button type="submit" disabled={invoiceBusy} class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{invoiceBusy ? '処理中…' : '今すぐ発行'}</button>
+              <button type="submit" disabled={invoiceBusy} class="min-h-10 rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700 disabled:opacity-50">{invoiceBusy ? '処理中…' : '今すぐ発行'}</button>
               {#if issuingMidMonth}<span class="text-[11px] text-amber-800">月の途中です。今日より後にチェックアウトする予約は載りません（発行せずに待てば月末に自動発行されます）。</span>{/if}
             </form>
           {/if}
@@ -2395,9 +2403,9 @@
 
     {#if !isMember}
       <!-- アクセス制限（docs/partner-access-restriction.md）。設定は取引先のマスタが「アカウント → セキュリティ」で行う。宿は表示と解除だけ -->
-      <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
+      <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-lg font-bold text-stone-900">アクセス制限</h2>
+          <h2 class="text-base font-semibold tracking-tight text-stone-900">アクセス制限</h2>
           <span class={`rounded-full px-2.5 py-0.5 text-xs ${accessOn ? 'bg-amber-100 text-amber-800' : 'bg-stone-100 text-stone-500'}`}>{accessOn ? '制限あり' : '制限なし'}</span>
         </div>
         <p class="mt-1 text-xs text-stone-500">
@@ -2449,8 +2457,8 @@
     {/if}
 
     <!-- ログインID -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">ログインID</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">ログインID</h2>
 
       <!-- 本人確認の方針（§6.3・共通の設定・admin のみ変更） -->
       <form
@@ -2509,17 +2517,17 @@
 
       {#if data.accounts.length}
         <div class="mt-3 overflow-x-auto">
-          <table class="w-full text-sm">
+          <table class="w-full min-w-[48rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
-              <tr><th class="py-1.5 pr-3 font-medium">ログインID</th><th class="pr-3 font-medium">名前・メール</th><th class="pr-3 font-medium">状態</th><th class="pr-3 font-medium">第2要素</th><th class="pr-3 font-medium">最終ログイン</th><th></th></tr>
+              <tr><th class="sticky left-0 z-10 bg-white py-1.5 pr-3 font-medium">ログインID</th><th class="pr-3 font-medium">名前・メール</th><th class="pr-3 font-medium">状態</th><th class="pr-3 font-medium">第2要素</th><th class="pr-3 font-medium">最終ログイン</th><th></th></tr>
             </thead>
             <tbody>
               {#each data.accounts as a (a.id)}
                 <tr class="border-t border-stone-100 align-top">
-                  <td class="py-2 pr-3">
+                  <td class="sticky left-0 z-10 bg-white py-2 pr-3">
                     <span class="font-mono">{a.loginId}</span>
                     {#if a.isMaster}
-                      <span class="ml-1 rounded-full bg-brand-100 px-1.5 py-0.5 text-[10px] text-brand-800">マスタ</span>
+                      <span class="ml-1 rounded-full bg-brand-50 ring-1 ring-brand-700/20 ring-inset px-1.5 py-0.5 text-[10px] text-brand-800">マスタ</span>
                     {:else}
                       <span class="ml-1 rounded-full bg-stone-100 px-1.5 py-0.5 text-[10px] text-stone-600">子ユーザー</span>
                       {#if a.createdBy}<div class="text-[11px] text-stone-500">作成: <span class="font-mono">{a.createdBy}</span></div>{/if}
@@ -2623,8 +2631,8 @@
     </div>
 
     <!-- API -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">REST API</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">REST API</h2>
       <p class="mt-1 text-xs leading-5 text-stone-500">
         取引先のシステムから特別レート・残室を JSON で取得できます。API キーは発行時に1度だけ表示します（キー本体は保存しません）。
       </p>
@@ -2648,7 +2656,8 @@ Authorization: Bearer rmsp_xxxxxxxx
 curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guests=2{data.apiFacilities.length >= 2 ? `&facility=${data.apiFacilities[0]}` : ''}"</pre>
 
       {#if data.apiKeys.length}
-        <table class="mt-3 w-full text-sm">
+        <div class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[32rem] text-sm">
           <thead class="text-left text-xs text-stone-500">
             <tr><th class="py-1.5 pr-3 font-medium">キー</th><th class="pr-3 font-medium">用途</th><th class="pr-3 font-medium">発行</th><th class="pr-3 font-medium">最終利用</th><th></th></tr>
           </thead>
@@ -2679,6 +2688,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
             {/each}
           </tbody>
         </table>
+        </div>
       {/if}
       {#if canEdit}
         <form method="POST" action={`?/issueKey`} use:enhance={() => { lastSubmit = 'other'; }} class="mt-4 flex flex-wrap items-end gap-2 border-t border-stone-200 pt-4">
@@ -2686,15 +2696,15 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
             <span class="mb-0.5 block text-xs text-stone-500">用途（任意）</span>
             <input name="label" maxlength="80" placeholder="例: 予約システム連携" class={inputClass} autocomplete="off" />
           </label>
-          <button type="submit" class="rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">API キーを発行</button>
+          <button type="submit" class="min-h-10 rounded-lg bg-brand-800 px-4 py-2 text-sm text-white hover:bg-brand-700">API キーを発行</button>
         </form>
       {/if}
     </div>
     {/if}
 
     <!-- アクセスログ -->
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-5">
-      <h2 class="text-lg font-bold text-stone-900">アクセスログ（直近50件）</h2>
+    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+      <h2 class="text-base font-semibold tracking-tight text-stone-900">アクセスログ（直近50件）</h2>
       {#if !accessLogs.current}
         <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-6 w-full opacity-70"></div>{/each}</div>
       {:else if accessLogs.current.error}
@@ -2702,11 +2712,12 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
       {:else if logs.length === 0}
         <p class="mt-2 text-sm text-stone-500">まだアクセスはありません。</p>
       {:else}
-        <table class="mt-3 w-full text-xs">
+        <div class="mt-3 overflow-x-auto">
+        <table class="w-full min-w-[36rem] text-xs">
           <tbody>
             {#each logs as l (l.id)}
               <tr class="border-t border-stone-100">
-                <td class="py-1.5 pr-3 whitespace-nowrap">{dt(l.at)}</td>
+                <td class="sticky left-0 z-10 bg-white py-1.5 pr-3 whitespace-nowrap">{dt(l.at)}</td>
                 <td class="pr-3">{l.channel === 'api' ? 'API' : l.channel === 'admin' ? '宿（管理画面）' : '画面'}</td>
                 <td class={`pr-3 ${l.action.startsWith('login_') ? 'text-rose-700' : ''}`}>{ACTION_LABELS[l.action] ?? l.action}</td>
                 <td class="pr-3 font-mono">{l.who ?? (l.detail?.loginId as string | undefined) ?? (l.detail?.member_user_id ? '会員' : '')}</td>
@@ -2716,6 +2727,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
             {/each}
           </tbody>
         </table>
+        </div>
       {/if}
     </div>
 
@@ -2728,7 +2740,7 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
         }}
         class="text-right"
       >
-        <button type="submit" class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-rose-600 hover:bg-rose-50">取引先を削除</button>
+        <button type="submit" class="min-h-10 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-rose-600 hover:bg-rose-50">取引先を削除</button>
       </form>
     {/if}
   </div>

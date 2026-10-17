@@ -128,6 +128,8 @@
 		.admin-main h1 { font-size: 1.25rem; line-height: 1.4; font-weight: 600; letter-spacing: -0.01em; color: #1c1917; }
 		.admin-main :is(section, form, div).rounded-xl > h2:first-child,
 		.admin-main :is(section, form, div).rounded-xl > header > h2 { font-weight: 600; color: #292524; }
+		/* fieldset は既定で中身より狭くならず、スマホで横にはみ出す（2026-10-17 支払方法で発生）。全画面で縮めるようにする */
+		.admin-main fieldset { min-width: 0; }
 		/* カードの角を少し丸く・余白をスマホで詰める */
 		.admin-main :is(.rounded-xl, .rounded-2xl).border.bg-white { border-radius: 0.875rem; }
 		@media (max-width: 639px) {

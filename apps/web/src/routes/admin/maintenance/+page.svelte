@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -18,14 +19,13 @@
 
 <svelte:head><title>メンテナンス ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">メンテナンス</h1>
-<p class="mb-4 text-sm text-stone-500">正式公開前・メンテナンス作業中に、一般ユーザーへサイトを非公開にします。運営（管理者・スタッフ）はログイン中ならそのまま閲覧できます。</p>
+<PageHeader title="メンテナンス" description="正式公開前・メンテナンス作業中に、一般ユーザーへサイトを非公開にします。運営（管理者・スタッフ）はログイン中ならそのまま閲覧できます。" />
 
 <!-- 現在の状態 -->
-<div class="rounded-xl border p-4 {data.active ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-white'}">
+<div class="rounded-xl border p-4 sm:p-5 {data.active ? 'border-amber-300 bg-amber-50' : 'border-stone-200 bg-white'}">
 	<div class="flex items-center gap-3">
-		<span class="inline-flex h-3 w-3 rounded-full {data.active ? 'bg-amber-500' : 'bg-emerald-500'}"></span>
-		<p class="text-base font-bold {data.active ? 'text-amber-800' : 'text-stone-800'}">
+		<span class="inline-flex h-3 w-3 shrink-0 rounded-full {data.active ? 'bg-amber-500' : 'bg-emerald-500'}"></span>
+		<p class="text-base font-semibold {data.active ? 'text-amber-800' : 'text-stone-800'}">
 			{data.active ? 'メンテナンス中（一般ユーザーへ非公開）' : '公開中（通常運用）'}
 		</p>
 	</div>
@@ -50,8 +50,8 @@
 {/if}
 
 <!-- トグル -->
-<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4">
-	<h2 class="text-sm font-medium text-stone-700">切替（即時）</h2>
+<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+	<h2 class="text-sm font-semibold text-stone-800">切替（即時）</h2>
 	{#if !data.isAdmin}
 		<p class="mt-2 text-sm text-stone-400">切替は管理者のみ可能です（スタッフは閲覧のみ）。</p>
 	{:else if data.envForced}
@@ -60,11 +60,11 @@
 		<form method="POST" action="?/toggle" use:enhance class="mt-2">
 			<input type="hidden" name="on" value={data.toggleOn ? 'false' : 'true'} />
 			{#if data.toggleOn}
-				<button class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500">
+				<button class="w-full rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-500 sm:w-auto sm:py-2">
 					メンテナンスを解除して公開する
 				</button>
 			{:else}
-				<button class="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500">
+				<button class="w-full rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-amber-500 sm:w-auto sm:py-2">
 					メンテナンスモードにする（一般非公開）
 				</button>
 			{/if}
@@ -80,13 +80,13 @@
 </div>
 
 <!-- プレビュー共有リンク -->
-<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4">
-	<h2 class="text-sm font-medium text-stone-700">関係者へのプレビュー共有</h2>
+<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+	<h2 class="text-sm font-semibold text-stone-800">関係者へのプレビュー共有</h2>
 	{#if data.previewLink}
 		<p class="mt-2 text-xs text-stone-500">アカウントを持たない関係者にも、このリンクからメンテナンス中のサイトを見てもらえます（1日有効の cookie を発行）。</p>
 		<div class="mt-2 flex flex-wrap items-center gap-2">
-			<input readonly value={data.previewLink} class="min-w-0 flex-1 rounded-md border border-stone-300 bg-stone-50 px-2 py-1.5 text-xs text-stone-600" />
-			<button type="button" onclick={copyPreview} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-100">
+			<input readonly value={data.previewLink} class="min-w-0 flex-1 rounded-md border border-stone-300 bg-stone-50 px-2 py-2 text-xs text-stone-600" />
+			<button type="button" onclick={copyPreview} class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-100">
 				{copied ? 'コピーしました' : 'コピー'}
 			</button>
 		</div>
@@ -96,8 +96,8 @@
 </div>
 
 <!-- 補足 -->
-<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-xs leading-relaxed text-stone-500">
-	<h2 class="mb-2 text-sm font-medium text-stone-700">仕組みと補足</h2>
+<div class="mt-4 rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-xs leading-relaxed text-stone-500">
+	<h2 class="mb-2 text-sm font-semibold text-stone-800">仕組みと補足</h2>
 	<ul class="list-disc space-y-1 pl-4">
 		<li>通常はこの画面のトグルで切替（保存先は Cloudflare KV・<code class="rounded bg-stone-100 px-1">AB_CONFIG</code>）。全 edge に共有・永続します。</li>
 		<li>メンテナンス時、公開ページは HTTP 503（<code class="rounded bg-stone-100 px-1">noindex</code>・<code class="rounded bg-stone-100 px-1">Retry-After</code>）を返し、検索エンジンに「準備中」が索引されません。</li>

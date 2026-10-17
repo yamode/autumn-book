@@ -2,6 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import { renderForumBody } from '$lib/forum-format';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 
@@ -26,8 +27,7 @@
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">おたより</h1>
-<p class="mb-4 text-xs text-stone-400">YouTube 視聴者からのおたよりをレビューします。承認すると会員に1pt（＝1,000円相当）が付与されます（承認は管理者のみ）。却下・一覧閲覧はスタッフも可能です。操作は監査ログに記録されます。</p>
+<PageHeader title="おたより" description="YouTube 視聴者からのおたよりをレビューします。承認すると会員に1pt（＝1,000円相当）が付与されます（承認は管理者のみ）。却下・一覧閲覧はスタッフも可能です。操作は監査ログに記録されます。" />
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 {#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりを承認し、1pt を付与しました（監査ログに記録）。</p>{/if}
@@ -44,8 +44,8 @@
 	{:else}
 		<form method="GET" class="mb-3 flex flex-wrap gap-2 text-sm">
 			<input type="hidden" name="status" value={data.status} />
-			<input name="q" value={data.q} placeholder="氏名・カナ・会員番号・メールで検索" class="flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
-			<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-white hover:bg-brand-700">検索</button>
+			<input name="q" value={data.q} placeholder="氏名・カナ・会員番号・メールで検索" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2" />
+			<button type="submit" class="shrink-0 rounded-md bg-brand-800 px-4 py-2 text-white hover:bg-brand-700">検索</button>
 		</form>
 
 		{#if data.q && data.found.length === 0}
@@ -60,9 +60,9 @@
 							<span class="text-xs text-stone-400">（{mem.memberCode}）</span>
 							<span class="ml-2 text-xs text-stone-500">残高 {mem.balance.toLocaleString()}pt</span>
 						</div>
-						<input type="number" name="delta" placeholder="+1 / -1" class="w-24 rounded-md border border-stone-300 px-2 py-1.5" />
-						<input name="reason" placeholder="理由（必須）" class="w-48 rounded-md border border-stone-300 px-2 py-1.5" />
-						<button type="submit" class="rounded-md bg-brand-800 px-3 py-1.5 text-white hover:bg-brand-700">付与</button>
+						<input type="number" name="delta" placeholder="+1 / -1" class="w-full rounded-md sm:w-24 border border-stone-300 px-2 py-1.5" />
+						<input name="reason" placeholder="理由（必須）" class="w-full rounded-md sm:w-48 border border-stone-300 px-2 py-1.5" />
+						<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-4 py-2 text-white hover:bg-brand-700">付与</button>
 					</form>
 				{/each}
 			</div>
@@ -72,12 +72,12 @@
 
 <!-- 投稿レビュー：タブ -->
 <section class="rounded-xl border border-stone-200 bg-white p-4">
-	<div class="mb-4 flex gap-1 border-b border-stone-200">
+	<div class="mb-4 flex gap-1 overflow-x-auto border-b border-stone-200">
 		{#each tabs as t}
 			<button
 				type="button"
 				onclick={() => go(t.key)}
-				class="border-b-2 px-4 py-2 text-sm transition {data.status === t.key
+				class="shrink-0 border-b-2 px-4 py-2.5 text-sm whitespace-nowrap transition {data.status === t.key
 					? 'border-brand-800 font-medium text-brand-900'
 					: 'border-transparent text-stone-500 hover:text-brand-800'}"
 			>
@@ -105,7 +105,7 @@
 							{#if data.isAdmin}
 								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
 									<input type="hidden" name="postId" value={it.id} />
-									<button class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500">承認して1pt付与</button>
+									<button class="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500">承認して1pt付与</button>
 								</form>
 							{:else}
 								<span class="text-xs text-stone-400">承認（付与）は管理者のみ</span>
@@ -115,12 +115,12 @@
 							{#if rejectingId === it.id}
 								<form method="POST" action="?/reject" use:enhance class="flex flex-wrap items-center gap-2">
 									<input type="hidden" name="postId" value={it.id} />
-									<input name="note" placeholder="却下理由（任意）" class="w-56 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-									<button class="rounded-md border border-red-200 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50">却下する</button>
-									<button type="button" onclick={() => (rejectingId = null)} class="text-xs text-stone-400 hover:text-stone-600">取消</button>
+									<input name="note" placeholder="却下理由（任意）" class="w-56 max-w-full rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
+									<button class="rounded-md border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50">却下する</button>
+									<button type="button" onclick={() => (rejectingId = null)} class="px-1 py-2 text-xs text-stone-400 hover:text-stone-600">取消</button>
 								</form>
 							{:else}
-								<button type="button" onclick={() => (rejectingId = it.id)} class="rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50">却下</button>
+								<button type="button" onclick={() => (rejectingId = it.id)} class="rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50">却下</button>
 							{/if}
 						{:else if data.status === 'approved'}
 							<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">承認済み（1pt付与済み）</span>
@@ -130,7 +130,7 @@
 							{#if data.isAdmin}
 								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
 									<input type="hidden" name="postId" value={it.id} />
-									<button class="rounded-md border border-emerald-300 px-3 py-1.5 text-xs text-emerald-700 hover:bg-emerald-50">やはり承認する</button>
+									<button class="rounded-md border border-emerald-300 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">やはり承認する</button>
 								</form>
 							{/if}
 						{/if}

@@ -5,6 +5,7 @@
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import StatusCard from '$lib/components/admin/StatusCard.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -203,9 +204,9 @@
 	}
 	const statusLabel = { active: '有効', revoked: '失効', expired: '期限切れ' } as const;
 	const statusClass = {
-		active: 'bg-emerald-50 text-emerald-700',
-		revoked: 'bg-stone-100 text-stone-500',
-		expired: 'bg-amber-50 text-amber-700'
+		active: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
+		revoked: 'bg-stone-50 text-stone-500 ring-stone-200',
+		expired: 'bg-amber-50 text-amber-800 ring-amber-200'
 	} as const;
 
 	function fmtDateTime(iso: string): string {
@@ -264,8 +265,8 @@
 	{#if form?.noticeSent}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">お知らせを出しました。客室案内を開いている端末に表示されます。</p>{/if}
 	{#if form?.noticeEdited}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.noticeEdited === 'reshow' ? 'お知らせを出し直しました。確認済みの端末にも、もう一度表示されます。' : 'お知らせを書き換えました。まだ確認していない端末に、新しい内容で表示されます。'}</p>{/if}
 	{#if form?.noticeEnded}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">お知らせを取り下げました。</p>{/if}
-	<section id="notices" class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm">
-		<h2 class="font-medium text-stone-700">📣 全客室へのお知らせ — {data.currentFacility.name}</h2>
+	<section id="notices" class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="megaphone" class="h-4 w-4 shrink-0 text-stone-500" />全客室へのお知らせ</h2>
 		<p class="mt-1 text-xs text-stone-400">
 			客室案内を開いた全員に、トップでお知らせを出します（断水・停電・催しのご案内など）。
 			お客様がその端末で「確認しました」を押すと、その端末には次から出ません。掲載中に新しく開いた方にも出ます。
@@ -295,7 +296,7 @@
 			</label>
 			<button
 				type="submit"
-				class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700"
+				class="w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto"
 				onclick={confirmSubmit({ message: '客室案内を開いている全客室に、このお知らせを一斉に出します。', confirmLabel: '一斉に出す' })}
 			>全客室に出す</button>
 		</form>
@@ -304,11 +305,11 @@
 		{:else if data.notices.length}
 			<ul class="mt-4 divide-y divide-stone-100 border-t border-stone-100">
 				{#each data.notices as n (n.id)}
-					<li class="flex items-start justify-between gap-3 py-2.5">
+					<li class="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
 						<div class="min-w-0">
 							<p class="text-xs">
-								{#if n.live}<span class="rounded bg-emerald-50 px-1.5 py-0.5 font-medium text-emerald-700">掲載中</span>
-								{:else}<span class="rounded bg-stone-100 px-1.5 py-0.5 text-stone-500">終了</span>{/if}
+								{#if n.live}<span class="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 ring-1 ring-emerald-200 ring-inset">掲載中</span>
+								{:else}<span class="inline-flex items-center rounded-full bg-stone-50 px-2 py-0.5 text-[11px] font-medium text-stone-500 ring-1 ring-stone-200 ring-inset">終了</span>{/if}
 								<span class="ml-1 text-stone-400">
 									{fmtNoticeTime(n.startsAt)} 〜 {n.endedAt ? `${fmtNoticeTime(n.endedAt)}（取り下げ）` : n.endsAt ? fmtNoticeTime(n.endsAt) : '取り下げまで'}
 								</span>
@@ -347,16 +348,16 @@
 							{/if}
 						</div>
 						{#if n.live && editingNotice !== n.id}
-							<div class="flex shrink-0 flex-col items-end gap-1.5">
+							<div class="flex shrink-0 items-center gap-2 sm:flex-col sm:items-end sm:gap-1">
 							<button type="button" onclick={() => {
 								editingBody = n.body;
 								editingNotice = n.id;
-							}} class="text-xs text-stone-500 hover:text-brand-800">編集</button>
+							}} class="min-h-9 rounded-lg border border-stone-300 px-3 text-xs text-stone-600 hover:bg-stone-50 sm:min-h-0 sm:border-0 sm:px-0 sm:hover:bg-transparent sm:hover:text-brand-800">編集</button>
 							<form method="POST" action="?/noticeEnd" use:enhance class="shrink-0">
 								<input type="hidden" name="noticeId" value={n.id} />
 								<button
 									type="submit"
-									class="text-xs text-stone-400 hover:text-red-600"
+									class="min-h-9 rounded-lg border border-stone-300 px-3 text-xs text-stone-500 hover:text-red-600 sm:min-h-0 sm:border-0 sm:px-0"
 									onclick={confirmSubmit({ message: 'このお知らせを取り下げます。まだ確認していない端末にも出なくなります。', confirmLabel: '取り下げる' })}
 								>取り下げる</button>
 							</form>
@@ -370,9 +371,9 @@
 
 	<!-- ===== 全館の湯量の残りの目安（2026-10-17・西和賀で使う）。出す設定で値があるときだけ、客室案内のトップに出る ===== -->
 	{#if form?.springLevelSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">湯量の目安を保存しました。</p>{/if}
-	<form id="spring" method="POST" action="?/springLevelSave" use:enhance class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<form id="spring" method="POST" action="?/springLevelSave" use:enhance class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="font-medium text-stone-700">♨️ 全館の湯量（残りの目安） — {data.currentFacility.name}</h2>
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="droplet" class="h-4 w-4 shrink-0 text-stone-500" />全館の湯量（残りの目安）</h2>
 		<p class="mt-1 text-xs text-stone-400">
 			客室案内のトップ（写真のすぐ下）に、残りの目安を細い1行のメーターで出します。値を変えると「○時○分 更新」が今の時刻になります。
 			{#if data.inroomSettings.springLevel.updatedAt}最終更新 {fmtNoticeTime(data.inroomSettings.springLevel.updatedAt)}。{/if}
@@ -419,94 +420,89 @@
 				「説明」を開くと、その段階のときに「?」を押して出す説明を書けます（例：少ないときだけ「差し湯バルブを閉めて節約にご協力ください」）。
 			</p>
 			<input type="hidden" name="bands" value={JSON.stringify(springBands)} />
-			<div class="mt-2 overflow-x-auto">
-				<table class="w-full min-w-[720px] text-xs">
-					<thead class="text-left text-stone-500">
-						<tr>
-							<th class="py-1 pr-2 font-normal">何%から</th>
-							<th class="py-1 pr-2 font-normal">範囲</th>
-							<th class="py-1 pr-2 font-normal">日本語</th>
-							<th class="py-1 pr-2 font-normal">英語</th>
-							<th class="py-1 pr-2 font-normal">繁体字</th>
-							<th class="py-1 pr-2 font-normal">色</th>
-							<th class="py-1 pr-2 font-normal">「?」の説明</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each springBands as b, i (i)}
-							<tr class="align-middle">
-								<td class="py-1 pr-2">
-									<input
-										type="number"
-										min="0"
-										max="100"
-										step="1"
-										bind:value={b.min}
-										onchange={sortBands}
-										class="w-16 rounded border border-stone-300 px-2 py-1 text-right"
-									/>
-								</td>
-								<td class="whitespace-nowrap py-1 pr-2 tabular-nums text-stone-500">{springBandRange(springBands, i)}</td>
-								<td class="py-1 pr-2"><input bind:value={b.ja} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
-								<td class="py-1 pr-2"><input bind:value={b.en} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
-								<td class="py-1 pr-2"><input bind:value={b.zh} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1" /></td>
-								<td class="py-1 pr-2">
-									<span class="flex items-center gap-1.5">
-										<span class="inline-block h-3 w-3 shrink-0 rounded-full {SPRING_TONE_BAR[b.tone]}"></span>
-										<select bind:value={b.tone} class="rounded border border-stone-300 px-1.5 py-1">
-											{#each SPRING_TONES as t (t)}<option value={t}>{SPRING_TONE_LABEL[t]}</option>{/each}
-										</select>
-									</span>
-								</td>
-								<td class="py-1 pr-2">
-									<button
-										type="button"
-										onclick={() => (tipOpen[i] = !(tipOpen[i] ?? hasTip(b)))}
-										class="whitespace-nowrap rounded border px-2 py-1 {hasTip(b) ? 'border-sky-300 bg-sky-50 text-sky-800' : 'border-stone-300 text-stone-600 hover:bg-stone-50'}"
-										aria-expanded={tipOpen[i] ?? hasTip(b)}
-									>
-										{hasTip(b) ? '説明あり' : '説明'}
-										{(tipOpen[i] ?? hasTip(b)) ? '▲' : '▼'}
-									</button>
-								</td>
-								<td class="py-1">
-									<button type="button" onclick={() => removeBand(i)} disabled={springBands.length <= 1} class="whitespace-nowrap text-stone-400 hover:text-red-600 disabled:opacity-30">削除</button>
-								</td>
-							</tr>
-							{#if tipOpen[i] ?? hasTip(b)}
-								<!-- この段階のときに「?」を押すと出す説明（2026-10-17 指示）。空なら下の「共通の説明」 -->
-								<tr>
-									<td></td>
-									<td colspan="7" class="pb-3 pr-2">
-										<div class="rounded-md bg-stone-50 p-2">
-											<p class="mb-1 text-[11px] text-stone-500">
-												{springBandRange(springBands, i)}（{b.ja || '—'}）のときに「?」を押すと出す説明。日本語が空なら下の「共通の説明」、英語・繁体字が空なら日本語を出します。
-											</p>
-											<div class="grid gap-2 md:grid-cols-3">
-												<label class="block">
-													<span class="text-[11px] text-stone-500">日本語</span>
-													<textarea bind:value={b.tipJa} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
-												</label>
-												<label class="block">
-													<span class="text-[11px] text-stone-500">英語</span>
-													<textarea bind:value={b.tipEn} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
-												</label>
-												<label class="block">
-													<span class="text-[11px] text-stone-500">繁体字</span>
-													<textarea bind:value={b.tipZh} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
-												</label>
-											</div>
-										</div>
-									</td>
-								</tr>
-							{/if}
-						{/each}
-					</tbody>
-				</table>
+			<!-- スマホ（md 未満）は1段階＝1枚のカード（欄の名前つき）。md 以上は表と同じ並び（見出しの行を出す） -->
+			<div class="mt-3 hidden gap-2 border-b border-stone-200 pb-1 text-xs text-stone-500 md:grid md:grid-cols-[4.5rem_5rem_repeat(3,minmax(0,1fr))_8.5rem_6.5rem_2.5rem]">
+				<span>何%から</span><span>範囲</span><span>日本語</span><span>英語</span><span>繁体字</span><span>色</span><span>「?」の説明</span><span></span>
 			</div>
-			<div class="mt-2 flex flex-wrap gap-3 text-xs">
-				<button type="button" onclick={addBand} disabled={springBands.length >= 10} class="rounded border border-stone-300 px-2.5 py-1 text-stone-700 hover:bg-stone-50 disabled:opacity-40">＋ 段階を足す</button>
+			<div class="mt-2 space-y-2 md:mt-0 md:space-y-0">
+				{#each springBands as b, i (i)}
+					<div class="rounded-lg border border-stone-200 p-2.5 text-xs md:rounded-none md:border-0 md:border-b md:border-stone-100 md:p-0 md:py-1.5">
+						<div class="grid grid-cols-2 items-end gap-2 md:items-center md:grid-cols-[4.5rem_5rem_repeat(3,minmax(0,1fr))_8.5rem_6.5rem_2.5rem]">
+							<label class="block">
+								<span class="mb-0.5 block text-[11px] text-stone-500 md:hidden">何%から</span>
+								<input
+									type="number"
+									min="0"
+									max="100"
+									step="1"
+									bind:value={b.min}
+									onchange={sortBands}
+									class="w-full rounded border border-stone-300 px-2 py-1.5 text-right md:py-1"
+								/>
+							</label>
+							<span class="pb-1.5 whitespace-nowrap tabular-nums text-stone-500 md:pb-0"><span class="text-[11px] md:hidden">範囲 </span>{springBandRange(springBands, i)}</span>
+							<label class="col-span-2 block md:col-span-1">
+								<span class="mb-0.5 block text-[11px] text-stone-500 md:hidden">日本語</span>
+								<input bind:value={b.ja} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1.5 md:py-1" />
+							</label>
+							<label class="block">
+								<span class="mb-0.5 block text-[11px] text-stone-500 md:hidden">英語</span>
+								<input bind:value={b.en} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1.5 md:py-1" />
+							</label>
+							<label class="block">
+								<span class="mb-0.5 block text-[11px] text-stone-500 md:hidden">繁体字</span>
+								<input bind:value={b.zh} maxlength="40" class="w-full rounded border border-stone-300 px-2 py-1.5 md:py-1" />
+							</label>
+							<label class="block">
+								<span class="mb-0.5 block text-[11px] text-stone-500 md:hidden">色</span>
+								<span class="flex items-center gap-1.5">
+									<span class="inline-block h-3 w-3 shrink-0 rounded-full {SPRING_TONE_BAR[b.tone]}"></span>
+									<select bind:value={b.tone} class="min-w-0 flex-1 rounded border border-stone-300 px-1.5 py-1.5 md:py-1">
+										{#each SPRING_TONES as t (t)}<option value={t}>{SPRING_TONE_LABEL[t]}</option>{/each}
+									</select>
+								</span>
+							</label>
+							<!-- スマホでは「説明」と「削除」を1つの欄に並べる -->
+							<div class="flex items-center justify-end gap-2 md:contents">
+								<button
+									type="button"
+									onclick={() => (tipOpen[i] = !(tipOpen[i] ?? hasTip(b)))}
+									class="min-h-9 whitespace-nowrap rounded border px-2 py-1 md:min-h-0 {hasTip(b) ? 'border-sky-300 bg-sky-50 text-sky-800' : 'border-stone-300 text-stone-600 hover:bg-stone-50'}"
+									aria-expanded={tipOpen[i] ?? hasTip(b)}
+								>
+									{hasTip(b) ? '説明あり' : '説明'}
+									{(tipOpen[i] ?? hasTip(b)) ? '▲' : '▼'}
+								</button>
+								<button type="button" onclick={() => removeBand(i)} disabled={springBands.length <= 1} class="min-h-9 whitespace-nowrap px-1 text-stone-400 hover:text-red-600 disabled:opacity-30 md:min-h-0">削除</button>
+							</div>
+						</div>
+						{#if tipOpen[i] ?? hasTip(b)}
+							<!-- この段階のときに「?」を押すと出す説明（2026-10-17 指示）。空なら下の「共通の説明」 -->
+							<div class="mt-2 rounded-md bg-stone-50 p-2 md:mb-1.5 md:ml-[5rem]">
+								<p class="mb-1 text-[11px] text-stone-500">
+									{springBandRange(springBands, i)}（{b.ja || '—'}）のときに「?」を押すと出す説明。日本語が空なら下の「共通の説明」、英語・繁体字が空なら日本語を出します。
+								</p>
+								<div class="grid gap-2 md:grid-cols-3">
+									<label class="block">
+										<span class="text-[11px] text-stone-500">日本語</span>
+										<textarea bind:value={b.tipJa} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+									</label>
+									<label class="block">
+										<span class="text-[11px] text-stone-500">英語</span>
+										<textarea bind:value={b.tipEn} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+									</label>
+									<label class="block">
+										<span class="text-[11px] text-stone-500">繁体字</span>
+										<textarea bind:value={b.tipZh} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+									</label>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+			<div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
+				<button type="button" onclick={addBand} disabled={springBands.length >= 10} class="min-h-9 rounded-lg border border-stone-300 px-3 py-1 text-stone-700 hover:bg-stone-50 disabled:opacity-40">＋ 段階を足す</button>
 				<label class="flex items-center gap-1.5 text-stone-500">
 					<input type="checkbox" name="bandsDefault" bind:checked={springBandsDefault} class="h-3.5 w-3.5" />
 					既定の表現に戻す（保存すると上の設定は消えます）
@@ -526,7 +522,7 @@
 			></textarea>
 			<span class="text-xs text-stone-400">段階ごとの説明が無いとき、英語・繁体字のお客様には既定の説明（翻訳済み）を出します。</span>
 		</label>
-		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+		<button type="submit" class="mt-4 w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">保存する</button>
 	</form>
 
 {:else if tab === 'settings'}
@@ -539,8 +535,8 @@
 
 	<!-- ===== 内線（客室からフロントへの Wi-Fi 通話・受電は autumn-call アプリ） ===== -->
 	{#if form?.intercomSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">内線の設定を保存しました。</p>{/if}
-	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
-		<h2 class="font-medium text-stone-700">📞 内線（客室からフロントを呼ぶ） — {data.currentFacility.name}</h2>
+	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="phone" class="h-4 w-4 shrink-0 text-stone-500" />内線（客室からフロントを呼ぶ）</h2>
 		<p class="mt-1 text-xs text-stone-400">
 			ON にすると、客室案内に「フロントを呼ぶ（Wi-Fi通話）」ボタンが出ます。受電は事務室の iPhone の受電アプリ（autumn-call）で受けます。
 			受電アプリが1台も動いていない（10分以上応答がない）ときは、客室のボタンは押せなくなり、電話ボタンをご案内します。
@@ -552,38 +548,42 @@
 			{@const firstHours = Object.values(ic.businessHours)[0]?.[0]}
 			<form method="POST" action="?/intercomSave" use:enhance class="mt-3 space-y-3">
 				<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-				<label class="flex items-center gap-2">
+				<label class="flex flex-wrap items-center gap-x-2 gap-y-1">
 					<input type="checkbox" name="isEnabled" checked={ic.isEnabled} class="h-4 w-4" />
 					<span>内線を使う（客室にボタンを出す）</span>
-					<span class="text-xs {ic.onlineDevices ? 'text-emerald-700' : 'text-red-600'}">受電端末 {ic.devices} 台（稼働中 {ic.onlineDevices} 台{ic.lastSeenAt ? `・最終確認 ${new Date(ic.lastSeenAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}）</span>
+					<span class="w-full pl-6 text-xs sm:w-auto sm:pl-0 {ic.onlineDevices ? 'text-emerald-700' : 'text-red-600'}">受電端末 {ic.devices} 台（稼働中 {ic.onlineDevices} 台{ic.lastSeenAt ? `・最終確認 ${new Date(ic.lastSeenAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}）</span>
 				</label>
-				<div class="flex flex-wrap items-center gap-3">
-					<label class="flex items-center gap-2">
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+					<label class="flex w-full items-center gap-2 sm:w-auto">
 						<input type="checkbox" name="allDay" checked={!firstHours} class="h-4 w-4" />
 						<span>24時間受け付ける</span>
 					</label>
 					<span class="text-xs text-stone-500">受付時間（毎日・JST）</span>
-					<input type="time" name="from" value={firstHours?.[0] ?? '07:00'} class="rounded-md border border-stone-300 px-2 py-1" />
-					<span>〜</span>
-					<input type="time" name="to" value={firstHours?.[1] ?? '22:00'} class="rounded-md border border-stone-300 px-2 py-1" />
+					<span class="flex items-center gap-2">
+						<input type="time" name="from" value={firstHours?.[0] ?? '07:00'} class="rounded-md border border-stone-300 px-2 py-1.5" />
+						<span>〜</span>
+						<input type="time" name="to" value={firstHours?.[1] ?? '22:00'} class="rounded-md border border-stone-300 px-2 py-1.5" />
+					</span>
 				</div>
-				<label class="flex items-center gap-2">
+				<label class="flex flex-wrap items-center gap-2">
 					<span class="text-xs text-stone-500">呼出時間（秒・この時間出なければ「応答なし」）</span>
-					<input type="number" name="ringTimeoutSec" min="10" max="120" value={ic.ringTimeoutSec} class="w-20 rounded-md border border-stone-300 px-2 py-1" />
+					<input type="number" name="ringTimeoutSec" min="10" max="120" value={ic.ringTimeoutSec} class="w-20 rounded-md border border-stone-300 px-2 py-1.5" />
 				</label>
-				<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+				<button type="submit" class="w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">保存する</button>
 			</form>
 			<details class="mt-4">
-				<summary class="cursor-pointer text-xs text-stone-500">通話ログ（直近7日・{data.intercomCalls.length}件）</summary>
+				<summary class="cursor-pointer py-1 text-xs text-stone-500">通話ログ（直近7日・{data.intercomCalls.length}件）</summary>
 				{#if data.intercomCalls.length === 0}
 					<p class="mt-2 text-xs text-stone-400">まだ通話はありません。</p>
 				{:else}
-					<table class="mt-2 w-full text-xs">
-						<thead class="text-left text-stone-400"><tr><th class="py-1">日時</th><th>部屋</th><th>結果</th><th>通話</th><th>応答端末</th></tr></thead>
+					<!-- スマホでは横スクロール（日時の列は固定） -->
+					<div class="mt-2 overflow-x-auto">
+					<table class="w-full min-w-[420px] text-xs">
+						<thead class="text-left text-stone-400"><tr><th class="sticky left-0 bg-white py-1 pr-2 font-medium">日時</th><th class="pr-2 font-medium">部屋</th><th class="pr-2 font-medium">結果</th><th class="pr-2 font-medium">通話</th><th class="font-medium">応答端末</th></tr></thead>
 						<tbody>
 							{#each data.intercomCalls as c (c.id)}
 								<tr class="border-t border-stone-100">
-									<td class="py-1">{new Date(c.createdAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+									<td class="sticky left-0 bg-white py-1.5 pr-2 whitespace-nowrap">{new Date(c.createdAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
 									<td>{c.roomCode}</td>
 									<td class={c.status === 'missed' ? 'font-medium text-red-600' : ''}>{({ ringing: '呼出中', active: '通話中', ended: '通話', missed: '不在', declined: '拒否', canceled: '取消' } as Record<string, string>)[c.status] ?? c.status}</td>
 									<td>{c.durationSec != null ? `${Math.floor(c.durationSec / 60)}分${c.durationSec % 60}秒` : '—'}</td>
@@ -592,6 +592,7 @@
 							{/each}
 						</tbody>
 					</table>
+					</div>
 				{/if}
 			</details>
 		{/if}
@@ -599,22 +600,22 @@
 
 	<!-- ===== 客室案内のメニューの表示（施設ごと・2026-10-15） ===== -->
 	{#if form?.inroomSettingsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">表示設定を保存しました。</p>{/if}
-	<form method="POST" action="?/inroomSettingsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<form method="POST" action="?/inroomSettingsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="font-medium text-stone-700">🧭 客室案内のメニュー — {data.currentFacility.name}</h2>
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="menu" class="h-4 w-4 shrink-0 text-stone-500" />客室案内のメニュー</h2>
 		<label class="mt-3 flex items-center gap-2">
 			<input type="checkbox" name="showFrontCall" checked={data.inroomSettings.showFrontCall} class="h-4 w-4" />
 			<span>「フロントへお電話」を出す</span>
 		</label>
 		<p class="mt-1 text-xs text-stone-400">外しても、内線（Wi-Fi通話）がつながらないときの電話のご案内は出ます。</p>
-		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+		<button type="submit" class="mt-4 w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">保存する</button>
 	</form>
 
 	<!-- ===== フッターの SNS ボタン（施設ごと。空欄のボタンは出さない） ===== -->
 	{#if form?.snsSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">SNSのURLを保存しました。</p>{/if}
-	<form method="POST" action="?/snsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<form method="POST" action="?/snsSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="font-medium text-stone-700">🔗 客室案内フッターのSNSボタン — {data.currentFacility.name}</h2>
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="globe" class="h-4 w-4 shrink-0 text-stone-500" />客室案内フッターのSNSボタン</h2>
 		<p class="mt-1 text-xs text-stone-400">URL（https://…）を入れたSNSだけ、客室案内の下部にボタンで出ます。空欄なら出ません。</p>
 		<div class="mt-3 grid gap-3 sm:grid-cols-2">
 			{#each SNS_KINDS as k (k)}
@@ -630,7 +631,7 @@
 				</label>
 			{/each}
 		</div>
-		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
+		<button type="submit" class="mt-4 w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">保存する</button>
 	</form>
 
 {:else if tab === 'guides'}
@@ -640,14 +641,14 @@
 
 	<div class="space-y-3">
 		{#each data.guides as g (g.id)}
-			<div class="rounded-xl border border-stone-200 bg-white p-4">
+			<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
 				<form method="POST" action="?/guideSave" use:enhance class="space-y-3 text-sm">
 					<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 					<input type="hidden" name="guideId" value={g.id} />
-					<div class="flex flex-wrap items-center gap-2">
-						<input name="section" value={g.section} placeholder="section" class="w-32 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-						<input name="title" value={g.title} placeholder="タイトル" class="min-w-40 flex-1 rounded-md border border-stone-300 px-3 py-1.5 font-medium" />
-						<select name="lang" value={g.lang} class="rounded-md border border-stone-300 px-2 py-1.5 text-xs">
+					<div class="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+						<input name="section" value={g.section} placeholder="section" class="rounded-md border border-stone-300 px-2 py-2 text-xs sm:w-32 sm:py-1.5" />
+						<input name="title" value={g.title} placeholder="タイトル" class="order-first col-span-2 rounded-md border border-stone-300 px-3 py-2 font-medium sm:order-none sm:min-w-40 sm:flex-1 sm:py-1.5" />
+						<select name="lang" value={g.lang} class="rounded-md border border-stone-300 px-2 py-2 text-xs sm:py-1.5">
 							{#each Object.entries(langLabel) as [code, label]}
 								<option value={code}>{label}</option>
 							{/each}
@@ -659,15 +660,15 @@
 						<label class="flex items-center gap-1.5 text-xs">
 							<input type="checkbox" name="isPublished" checked={g.isPublished} class="h-4 w-4" /> 公開
 						</label>
-						{#if form?.guideSaved === g.id}<span class="text-xs text-emerald-600">✔ 保存</span>{/if}
+						{#if form?.guideSaved === g.id}<span class="text-xs text-emerald-700">✔ 保存しました</span>{/if}
 					</div>
 					<MarkdownEditor value={g.body} name="body" rows={8} />
-					<div class="flex items-center gap-3">
-						<button type="submit" class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700">保存</button>
+					<div class="flex items-center gap-4">
+						<button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700">保存</button>
 						<button
 							type="button"
 							onclick={() => (openGuideQr = openGuideQr === g.id ? null : g.id)}
-							class="text-xs text-brand-700 hover:text-brand-800">▣ このページのQR</button>
+							class="inline-flex min-h-9 items-center gap-1 text-xs text-brand-700 hover:text-brand-800"><AdminIcon name="qr" class="h-3.5 w-3.5" />このページのQR</button>
 					</div>
 				</form>
 				{#if openGuideQr === g.id}
@@ -705,7 +706,7 @@
 					<input type="hidden" name="guideId" value={g.id} />
 					<button
 						type="submit"
-						class="text-xs text-stone-400 hover:text-red-600"
+						class="min-h-9 text-xs text-stone-400 hover:text-red-600"
 						onclick={confirmSubmit({ message: 'この館内案内を削除します。', confirmLabel: '削除する' })}
 					>削除</button>
 				</form>
@@ -719,13 +720,13 @@
 	</div>
 
 	<!-- 新規追加 -->
-	<form method="POST" action="?/guideAdd" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
+	<form method="POST" action="?/guideAdd" data-reset use:enhance class="mt-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm sm:p-5">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="mb-2 font-medium text-stone-700">＋ 新しい館内案内を追加</h2>
-		<div class="flex flex-wrap items-center gap-2">
-			<input name="section" placeholder="section（例: onsen）" class="w-40 rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-			<input name="title" placeholder="タイトル" class="min-w-40 flex-1 rounded-md border border-stone-300 px-3 py-1.5" />
-			<select name="lang" class="rounded-md border border-stone-300 px-2 py-1.5 text-xs">
+		<h2 class="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="book" class="h-4 w-4 shrink-0 text-stone-500" />新しい館内案内を追加</h2>
+		<div class="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+			<input name="section" placeholder="section（例: onsen）" class="rounded-md border border-stone-300 px-2 py-2 text-xs sm:w-40 sm:py-1.5" />
+			<input name="title" placeholder="タイトル" class="order-first col-span-2 rounded-md border border-stone-300 px-3 py-2 sm:order-none sm:min-w-40 sm:flex-1 sm:py-1.5" />
+			<select name="lang" class="rounded-md border border-stone-300 px-2 py-2 text-xs sm:py-1.5">
 				{#each Object.entries(langLabel) as [code, label]}
 					<option value={code}>{label}</option>
 				{/each}
@@ -741,7 +742,7 @@
 		<div class="mt-2">
 			<MarkdownEditor name="body" rows={8} />
 		</div>
-		<button type="submit" class="mt-2 rounded-md bg-accent-600 px-4 py-1.5 text-xs text-white hover:bg-accent-500">追加（下書きで作成）</button>
+		<button type="submit" class="mt-3 w-full rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-500 sm:w-auto">追加（下書きで作成）</button>
 	</form>
 {:else}
 	<!-- ============================ 客室スリップ ============================ -->
@@ -761,7 +762,7 @@
 					href={`/admin/inroom/slip/${form.issued.id}`}
 					target="_blank"
 					class="rounded-md bg-brand-800 px-4 py-1.5 text-xs text-white hover:bg-brand-700"
-				>🖨 印刷スリップを開く</a>
+				>印刷スリップを開く</a>
 			</div>
 		</div>
 	{/if}
@@ -770,7 +771,7 @@
 	<!-- ============ 実際のご予約から公開URL・QRを出す（貸切風呂と同じ仕組み） ============ -->
 	<section class="mb-6 rounded-xl border border-stone-200 bg-white">
 		<header class="border-b border-stone-200 px-4 py-3">
-			<h2 class="text-sm font-medium text-stone-700">🔗 ご予約から公開URL・QRを出す</h2>
+			<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="qr" class="h-4 w-4 shrink-0 text-stone-500" />ご予約から公開URL・QRを出す</h2>
 			<p class="mt-1 text-xs text-stone-400">
 				その日にご滞在のお客様を選ぶと、そのお部屋の客室案内の公開URLとQRが出ます。管理画面からそのまま開いて確認できます。<br />
 				同じご予約なら何度押しても同じURL・同じQRです（発行済みなら取り出すだけ）。
@@ -789,7 +790,7 @@
 						class="ml-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm text-stone-800"
 					/>
 				</label>
-				<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">この日の予約を出す</button>
+				<button type="submit" class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">この日の予約を出す</button>
 				{#if data.date}
 					<a href={dateHref('')} class="text-xs text-stone-400 underline hover:text-stone-600">今日に戻す</a>
 				{/if}
@@ -807,14 +808,14 @@
 							<span class="text-stone-600">{s.guest_name}</span>
 							<span class="text-xs text-stone-400">{s.check_in_date}〜{s.check_out_date}</span>
 							{#if s.token}
-								<span class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500">発行済み</span>
+								<span class="inline-flex items-center rounded-full bg-stone-50 px-2 py-0.5 text-[11px] font-medium text-stone-500 ring-1 ring-stone-200 ring-inset">発行済み</span>
 							{/if}
 							<!-- 公開URLを直接開く（発行済みはそのまま、未発行はその場で発行してから開く） -->
 							<button
 								type="button"
 								disabled={!data.live || openingStay === s.stay_id}
 								onclick={() => openStayUrl(s)}
-								class="ml-auto rounded-md bg-brand-800 px-3 py-1.5 text-xs text-white hover:bg-brand-700 disabled:opacity-40"
+								class="ml-auto min-h-9 rounded-lg bg-brand-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700 disabled:opacity-40"
 							>{openingStay === s.stay_id ? '開いています…' : '開く ↗'}</button>
 							<form method="POST" action="?/issueQr" use:enhance>
 								<input type="hidden" name="facilityId" value={data.currentFacility.id} />
@@ -825,7 +826,7 @@
 								<button
 									type="submit"
 									disabled={!data.live}
-									class="rounded-md border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-40"
+									class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-40"
 								>URL・QRを出す</button>
 							</form>
 						</li>
@@ -879,30 +880,30 @@
 	</section>
 
 	<!-- 発行フォーム -->
-	<form method="POST" action="?/tokenIssue" use:enhance class="mb-6 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<form method="POST" action="?/tokenIssue" use:enhance class="mb-6 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-		<h2 class="mb-2 font-medium text-stone-700">＋ 滞在スリップを発行</h2>
-		<div class="flex flex-wrap items-end gap-3">
+		<h2 class="mb-3 flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="ticket" class="h-4 w-4 shrink-0 text-stone-500" />滞在スリップを発行</h2>
+		<div class="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
 			<label class="text-xs text-stone-500">
 				部屋名 <span class="text-red-500">*</span>
-				<input name="roomCode" required placeholder="例: 雪椿" class="mt-1 block w-40 rounded-md border border-stone-300 px-3 py-1.5 text-sm text-stone-800" />
+				<input name="roomCode" required placeholder="例: 雪椿" class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-800 sm:w-40 sm:py-1.5" />
 			</label>
 			<label class="text-xs text-stone-500">
 				ゲスト名（任意）
-				<input name="guestName" placeholder="例: 山田 太郎" class="mt-1 block w-44 rounded-md border border-stone-300 px-3 py-1.5 text-sm text-stone-800" />
+				<input name="guestName" placeholder="例: 山田 太郎" class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-800 sm:w-44 sm:py-1.5" />
 			</label>
 			<label class="text-xs text-stone-500">
 				チェックアウト日 <span class="text-red-500">*</span>
-				<input name="checkout" type="date" required class="mt-1 block rounded-md border border-stone-300 px-3 py-1.5 text-sm text-stone-800" />
+				<input name="checkout" type="date" required class="mt-1 block w-full rounded-md border border-stone-300 px-3 py-2 text-sm text-stone-800 sm:w-auto sm:py-1.5" />
 			</label>
-			<button type="submit" class="rounded-md bg-accent-600 px-4 py-2 text-xs text-white hover:bg-accent-500">発行する</button>
+			<button type="submit" class="rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-accent-500 sm:py-2">発行する</button>
 		</div>
 		<p class="mt-2 text-xs text-stone-400">有効期限はチェックアウト日の 11:00（JST）までです。</p>
 	</form>
 
 	<!-- 一覧 -->
 	<div class="mb-2 flex items-center justify-between">
-		<h2 class="text-sm font-medium text-stone-700">発行済みスリップ</h2>
+		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800">発行済みスリップ</h2>
 		{#if data.includeInactive}
 			<a href="/admin/inroom?tab=slips" class="text-xs text-stone-400 hover:text-stone-600">← 有効なもののみ表示</a>
 		{:else}
@@ -910,11 +911,12 @@
 		{/if}
 	</div>
 
+	<!-- スマホでは横スクロール（部屋の列は固定） -->
 	<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-		<table class="w-full text-left text-sm">
-			<thead class="border-b border-stone-200 text-xs text-stone-400">
+		<table class="w-full min-w-[600px] text-left text-sm">
+			<thead class="border-b border-stone-200 bg-stone-50 text-xs text-stone-500">
 				<tr>
-					<th class="px-3 py-2 font-medium">部屋</th>
+					<th class="sticky left-0 bg-stone-50 px-3 py-2 font-medium">部屋</th>
 					<th class="px-3 py-2 font-medium">ゲスト</th>
 					<th class="px-3 py-2 font-medium">コード</th>
 					<th class="px-3 py-2 font-medium">期限</th>
@@ -926,15 +928,15 @@
 				{#each data.tokens as t (t.id)}
 					{@const st = tokenStatus(t)}
 					<tr class="border-b border-stone-100 last:border-0">
-						<td class="px-3 py-2 font-medium text-stone-800">{t.roomCode}</td>
+						<td class="sticky left-0 bg-white px-3 py-2 font-medium text-stone-800">{t.roomCode}</td>
 						<td class="px-3 py-2 text-stone-600">{t.guestName ?? '—'}</td>
 						<td class="px-3 py-2 font-mono tracking-wider text-stone-700">{t.shortCode}</td>
 						<td class="px-3 py-2 text-xs text-stone-500">{fmtDateTime(t.validTo)}</td>
 						<td class="px-3 py-2">
-							<span class="rounded-full px-2 py-0.5 text-xs {statusClass[st]}">{statusLabel[st]}</span>
+							<span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset {statusClass[st]}">{statusLabel[st]}</span>
 						</td>
 						<td class="px-3 py-2">
-							<div class="flex items-center gap-3">
+							<div class="flex items-center gap-4 whitespace-nowrap">
 								<a
 									href={guestUrl(t.token)}
 									target="_blank"
@@ -943,8 +945,8 @@
 								<button
 									type="button"
 									onclick={() => (openQr = openQr === t.id ? null : t.id)}
-									class="text-xs text-brand-700 hover:text-brand-800">▣ QR</button>
-								<a href={`/admin/inroom/slip/${t.id}`} target="_blank" class="text-xs text-brand-700 hover:text-brand-800">🖨 印刷</a>
+									class="text-xs text-brand-700 hover:text-brand-800">QR</button>
+								<a href={`/admin/inroom/slip/${t.id}`} target="_blank" class="text-xs text-brand-700 hover:text-brand-800">印刷</a>
 								{#if st === 'active'}
 									<form method="POST" action="?/tokenRevoke" use:enhance class="inline">
 										<input type="hidden" name="tokenId" value={t.id} />
@@ -961,7 +963,8 @@
 					{#if openQr === t.id}
 						<tr class="border-b border-stone-100 bg-stone-50 last:border-0">
 							<td colspan="6" class="px-3 py-4">
-								<div class="flex flex-wrap items-start gap-4">
+								<!-- 横スクロールしても QR が画面の左に残るように -->
+								<div class="sticky left-3 flex max-w-[calc(100vw-4rem)] flex-wrap items-start gap-4 md:max-w-none">
 									<div class="rounded-lg bg-white p-2">
 										<QrCode value={guestUrl(t.token)} px={168} label={`${t.roomCode} の客室案内へのQRコード`} />
 									</div>

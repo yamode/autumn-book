@@ -59,8 +59,8 @@
   const dupDays = $derived(new Set(list.map((r) => r.days_before)).size !== list.length);
 </script>
 
-<section class="rounded-lg border border-stone-200 bg-stone-50 p-4">
-  <h3 class="text-[15px] font-bold text-stone-800">キャンセル規定 <span class="text-xs font-normal text-stone-500">（この施設・会員の公式予約のキャンセル料）</span></h3>
+<section class="rounded-lg border border-stone-200 bg-stone-50 p-3 sm:p-4">
+  <h3 class="text-[15px] font-semibold text-stone-800">キャンセル規定 <span class="text-xs font-normal text-stone-500">（この施設・会員の公式予約のキャンセル料）</span></h3>
   <p class="mt-1 text-[11px] leading-5 text-stone-500">予約の時点の方式と規定が予約に写ります。変えても、すでに入っている予約のキャンセル料は変わりません。</p>
   <fieldset {disabled} class="mt-3 grid gap-2">
     {#each CANCEL_POLICY_MODES as m (m)}
@@ -99,14 +99,14 @@
                     class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm tabular-nums"
                   />%
                 </span>
-                <button type="button" onclick={() => removeRule(i)} class="rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs text-stone-600 hover:bg-stone-50">削除</button>
+                <button type="button" onclick={() => removeRule(i)} class="min-h-8 rounded-md border border-stone-300 bg-white px-3 py-1 text-xs text-stone-600 hover:bg-stone-50">削除</button>
               </li>
             {/each}
           </ul>
         {/if}
         {#if dupDays}<p class="mt-1 text-xs text-rose-700">同じ日数の段があります。保存すると後の段だけが残ります。</p>{/if}
         {#if list.length < MAX_MEMBER_CANCEL_RULES}
-          <button type="button" onclick={addRule} class="mt-2 rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 段を追加</button>
+          <button type="button" onclick={addRule} class="mt-2 min-h-8 rounded-md border border-dashed border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50">＋ 段を追加</button>
         {/if}
         {#if list.length}
           <p class="mt-2 text-[11px] text-stone-500">会員に見える形: {[...list].sort((a, b) => b.days_before - a.days_before).map(describeCancelRule).join('・')}</p>
