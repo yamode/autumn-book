@@ -97,3 +97,17 @@ describe('プレビューの精算の見本（Cookie ab_preview_bill）', () => 
 		expect(previewBillCookieValue({ items: false, front: false, online: false })).toBe('none');
 	});
 });
+
+describe('連結予約の請求書の並び（泊まった日の順）', () => {
+	it('明細のいちばん早い日付で並べ、日付の無いものは後ろ', async () => {
+		const { billStayDate, sortBillsByStay } = await import('./inroom-bill');
+		const it_ = (date: string | null) => ({ date, name: 'x', quantity: 1, unitPrice: 1, amount: 1 });
+		const cover = { id: 'cover', items: [it_('2026-10-21'), it_('2026-10-21')] };
+		const a = { id: 'a', items: [it_('2026-10-16'), it_('2026-10-17')] };
+		const b = { id: 'b', items: [it_('2026-10-17')] };
+		const none = { id: 'none', items: [it_(null)] };
+		expect(billStayDate(a)).toBe('2026-10-16');
+		expect(billStayDate(none)).toBeNull();
+		expect(sortBillsByStay([cover, none, b, a]).map((x) => x.id)).toEqual(['a', 'b', 'cover', 'none']);
+	});
+});

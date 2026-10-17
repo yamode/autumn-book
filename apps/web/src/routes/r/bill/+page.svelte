@@ -8,7 +8,7 @@
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import type { PaymentLocale, PaymentTexts } from '$lib/components/payment/types';
-	import { frontNoteFor, INROOM_TEST_AMOUNT } from '$lib/inroom-bill';
+	import { billStayDate, frontNoteFor, INROOM_TEST_AMOUNT, sortBillsByStay } from '$lib/inroom-bill';
 
 	let { data } = $props();
 
@@ -28,6 +28,19 @@
 			return ymd;
 		}
 	}
+	// 1泊ずつの見出し用（「10/16（金）」・英語は「Fri, 10/16」）
+	function fmtDayOfWeek(ymd: string): string {
+		try {
+			return new Intl.DateTimeFormat(localeTag[getLocale()] ?? 'ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'Asia/Tokyo' }).format(
+				new Date(`${ymd}T00:00:00+09:00`)
+			);
+		} catch {
+			return ymd;
+		}
+	}
+	// 連結予約は表紙（最終泊）が先に来るので、泊まった日の順に並べ直す
+	const sortedBills = $derived(sortBillsByStay(bill.bills));
+	const multiBill = $derived(bill.bills.length > 1);
 	const qty = (q: number) => (Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, ''));
 
 	const payTexts: PaymentTexts = {
@@ -118,9 +131,14 @@
 			{#if bill.bills.every((b) => b.items.length === 0)}
 				<p class="mt-2 text-sm text-stone-500">{m.inroom_bill_items_empty()}</p>
 			{:else}
-				{#each bill.bills as b (b.id)}
-					{#if bill.bills.length > 1 && b.billNo != null}
-						<p class="mt-3 text-xs font-medium text-stone-500">{m.inroom_bill_bill_no({ no: String(b.billNo) })}</p>
+				{#each sortedBills as b (b.id)}
+					<!-- 請求書が複数（連結予約など）は、泊まった日の順に1泊ずつ枠で区切り、見出しは「○/○（曜）のご宿泊」（2026-10-17 指示・案A） -->
+					<div class={multiBill ? 'mt-3 rounded-lg border border-stone-200 px-3 py-3' : ''}>
+					{#if multiBill}
+						{@const stayDate = billStayDate(b)}
+						<p class="text-sm font-semibold text-stone-800">
+							{stayDate ? m.inroom_bill_stay_on({ date: fmtDayOfWeek(stayDate) }) : b.billNo != null ? m.inroom_bill_bill_no({ no: String(b.billNo) }) : ''}
+						</p>
 					{/if}
 					<ul class="mt-2 divide-y divide-stone-100 text-sm">
 						{#each b.items as item, i (i)}
@@ -166,6 +184,7 @@
 							</div>
 						{/if}
 					</dl>
+					</div>
 				{/each}
 			{/if}
 			<p class="mt-3 text-xs leading-relaxed text-stone-400">※ {m.inroom_bill_note_live()}</p>

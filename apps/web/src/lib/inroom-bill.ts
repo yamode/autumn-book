@@ -190,3 +190,21 @@ export const PREVIEW_FRONT_NOTE: FrontNote = {
 	en: '',
 	zh: ''
 };
+
+// ---------------------------------------------------------------------------
+// 連結予約（1泊ずつの予約をつないだ連泊・最終泊の請求書が表紙で他泊が繰り越しの子）の並び（2026-10-17 指示「案A 泊まった日の順・請求書ごと」）
+// ---------------------------------------------------------------------------
+/** 請求書の「泊まった日」= 明細の日付のうちいちばん早い日（YYYY-MM-DD）。明細に日付が無ければ null */
+export function billStayDate(b: Pick<StayBill, 'items'>): string | null {
+	let min: string | null = null;
+	for (const i of b.items) if (i.date && (min === null || i.date < min)) min = i.date;
+	return min;
+}
+
+/** 請求書を泊まった日の順に並べる（日付の無い請求書は元の順のまま後ろへ） */
+export function sortBillsByStay<T extends Pick<StayBill, 'items'>>(bills: T[]): T[] {
+	return bills
+		.map((b, i) => ({ b, i, d: billStayDate(b) }))
+		.sort((x, y) => (x.d && y.d ? (x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i) : x.d ? -1 : y.d ? 1 : x.i - y.i))
+		.map((x) => x.b);
+}

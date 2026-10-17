@@ -1107,6 +1107,7 @@
   "inroom_bill_refund": "Refund",
   "inroom_bill_paid": "Paid",
   "inroom_bill_bill_no": "Invoice No.{no}",
+  "inroom_bill_stay_on": "Stay on {date}",
   "inroom_bill_note_live": "Charges are shown as recorded by the front desk. They may take time to appear or may change at checkout. Prices include tax.",
   "inroom_bill_front_title": "Paying at the front desk",
   "inroom_bill_online_title": "Pay online",

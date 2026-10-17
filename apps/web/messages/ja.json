@@ -1107,6 +1107,7 @@
   "inroom_bill_refund": "ご返金",
   "inroom_bill_paid": "お支払い済み",
   "inroom_bill_bill_no": "請求書 No.{no}",
+  "inroom_bill_stay_on": "{date}のご宿泊",
   "inroom_bill_note_live": "明細はフロントでの登録をもとに表示しています。反映に時間がかかる場合や、ご精算時に変わる場合があります。金額は税込です。",
   "inroom_bill_front_title": "フロントでのご精算",
   "inroom_bill_online_title": "オンラインでお支払い",

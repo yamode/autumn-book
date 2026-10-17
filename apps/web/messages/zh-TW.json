@@ -1107,6 +1107,7 @@
   "inroom_bill_refund": "退款",
   "inroom_bill_paid": "已付款",
   "inroom_bill_bill_no": "帳單 No.{no}",
+  "inroom_bill_stay_on": "{date} 住宿",
   "inroom_bill_note_live": "明細依櫃檯登錄內容顯示，可能需要一些時間才會更新，結帳時也可能有所變動。金額皆含稅。",
   "inroom_bill_front_title": "於櫃檯結帳",
   "inroom_bill_online_title": "線上付款",
