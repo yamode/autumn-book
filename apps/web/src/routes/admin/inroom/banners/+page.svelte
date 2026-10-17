@@ -38,7 +38,6 @@
 
 <svelte:head><title>サンクスページのバナー ｜ 山人管理</title></svelte:head>
 
-<p class="mb-2 text-xs"><a href="/admin/inroom" class="text-stone-400 hover:text-stone-600">← 客室案内</a></p>
 <h1 class="mb-1 text-lg font-bold text-stone-800">サンクスページのバナー — {data.currentFacility.name}</h1>
 <p class="mb-4 text-xs text-stone-400">
 	チェックアウト後にお客様が客室案内のQRを読んだときの「ご利用ありがとうございました」のページに、販促バナーを並べて出します。

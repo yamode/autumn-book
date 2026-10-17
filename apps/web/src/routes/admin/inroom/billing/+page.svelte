@@ -41,7 +41,6 @@
 <svelte:head><title>客室案内の精算案内 ｜ 管理画面</title></svelte:head>
 
 <div class="mb-4">
-	<a href="/admin/inroom" class="text-xs text-stone-500 hover:underline">← 館内案内・客室スリップ</a>
 	<h1 class="mt-1 text-lg font-semibold text-stone-800">💴 精算案内 — {data.currentFacility.name}</h1>
 	<p class="mt-1 text-xs text-stone-500">
 		客室案内（お客様のスマホ）のトップに「ご精算」を出し、利用明細・フロントでの早め精算のご案内・オンライン決済（Stripe）を見せます。

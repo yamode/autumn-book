@@ -18,7 +18,6 @@
 
 <div class="print-shell mx-auto max-w-3xl px-4 py-6">
 	<div class="print-hide mb-5 flex flex-wrap items-center gap-3">
-		<a href="/admin/inroom" class="text-sm text-stone-600 underline">← 客室案内へ</a>
 		<h1 class="text-lg font-semibold">客室案内の入口QR（客室に常設）</h1>
 	</div>
 	<div class="print-hide mb-5 space-y-2 text-sm">

@@ -67,7 +67,6 @@
 <svelte:head><title>客室案内のプレビュー ｜ 管理画面</title></svelte:head>
 
 <div class="mb-4">
-	<a href="/admin/inroom" class="text-xs text-stone-500 hover:underline">← 館内案内・客室スリップ</a>
 	<h1 class="mt-1 text-lg font-semibold text-stone-800">📱 客室案内のプレビュー — {data.currentFacility.name}</h1>
 	<p class="mt-1 text-xs text-stone-400">
 		お客様のスマートフォンと同じ幅で、客室案内を開きます。館内案内・お知らせ・湯量・精算案内・メニューの表示を確かめられます。

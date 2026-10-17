@@ -86,7 +86,8 @@
 		new Date(iso).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 	// ?all=1 で来たら「客室スリップ」タブを初期表示（失効一覧の再読込を跨いでも維持）
-	let tab = $state<'guides' | 'slips'>(page.url.searchParams.get('all') ? 'slips' : 'guides');
+	// 館内案内・客室スリップの切り替えは共通のタブ（+layout.svelte）の ?tab=slips（従来の ?all も客室スリップ）
+	const tab = $derived<'guides' | 'slips'>(page.url.searchParams.get('tab') === 'slips' || page.url.searchParams.get('all') ? 'slips' : 'guides');
 
 	// 公開URL は管理画面と同じオリジン。本番で開けばそのまま本番の URL になる。
 	const guestUrl = (token: string) => `${page.url.origin}/r/c/${token}`;
@@ -213,41 +214,6 @@
 		⚠ {data.loadError}
 	</div>
 {/if}
-
-<!-- タブ -->
-<div class="mb-5 flex gap-1 border-b border-stone-200">
-	<button
-		type="button"
-		onclick={() => (tab = 'guides')}
-		class="border-b-2 px-4 py-2 text-sm font-medium {tab === 'guides' ? 'border-brand-800 text-brand-900' : 'border-transparent text-stone-400 hover:text-stone-600'}"
-	>📖 館内案内</button>
-	<button
-		type="button"
-		onclick={() => (tab = 'slips')}
-		class="border-b-2 px-4 py-2 text-sm font-medium {tab === 'slips' ? 'border-brand-800 text-brand-900' : 'border-transparent text-stone-400 hover:text-stone-600'}"
-	>🎫 客室スリップ</button>
-	<a
-		href="/admin/inroom/banners"
-		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
-	>🎁 サンクスページのバナー</a>
-	<!-- 客室に常設する入口QR（お客様によらず同じ・6桁コードで開く。2026-10-09） -->
-	<a
-		href="/admin/inroom/entry"
-		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
-	>🖨 入口QR（客室に常設）</a>
-	<a
-		href="/admin/inroom/billing"
-		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
-	>💴 精算案内</a>
-	<a
-		href="/admin/inroom/preview"
-		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
-	>📱 プレビュー</a>
-	<a
-		href="/admin/inroom/access"
-		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
-	>📈 アクセスログ</a>
-</div>
 
 {#if form?.message}
 	<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>

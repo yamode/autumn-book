@@ -55,7 +55,6 @@
 
 <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
 	<div>
-		<a href="/admin/inroom" class="text-xs text-stone-500 hover:underline">← 館内案内・客室スリップ</a>
 		<h1 class="mt-1 text-lg font-semibold text-stone-800">📈 客室案内のアクセスログ — {data.currentFacility.name}</h1>
 		<p class="mt-1 text-xs text-stone-400">
 			客室案内のページを開くたびに記録します（開いたままの自動更新は数えません）。滞在コードが紐づいていれば、どの部屋の方かが出ます。
