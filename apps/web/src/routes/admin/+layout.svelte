@@ -6,71 +6,22 @@
 	// autumn 各アプリ（RMS・PMS・Order・Book）を切り替えるスイッチャー（autumn-shared から写したもの・2026-10-17）
 	import AppSwitcher from '$lib/autumn-shared/components/AppSwitcher.svelte';
 	import Toast from '$lib/components/admin/Toast.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import { ADMIN_NAV, activeNav, visibleNav } from '$lib/admin-nav';
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 
 	let { data, children } = $props();
 
-	// 「誰が・何をきっかけに操作するか」でグループ化する（docs/ADMIN_APP_OPS.md §2）。
-	// 1項目は1箇所にしか置かない。両属性の項目は画面内の相互リンクで辿らせる。
-	// tenantWide = 施設に紐づかない画面（施設セレクトを出すと「切り替えても変わらない」混乱を生む）
-	// demoOnly = まだ本番データに繋がっていない画面（デモストアを読み書きする）。本番では注意を出し、保存はサーバで止める（lib/server/admin-demo-guard.ts）
-	// adminOnly = 管理者（admin）だけに出す（スタッフには項目ごと出さない）
-	const navGroups: { label: string; items: { href: string; label: string; icon: string; tenantWide?: boolean; demoOnly?: boolean; badge?: boolean; adminOnly?: boolean }[] }[] = [
-		{
-			label: '宿泊・直販',
-			items: [
-				{ href: '/admin', label: 'ダッシュボード', icon: '📊' },
-				{ href: '/admin/reservations', label: '予約管理', icon: '📅' },
-				{ href: '/admin/upgrades', label: 'アップグレード提案', icon: '🛏' },
-				{ href: '/admin/partners', label: '取引先', icon: '🤝' },
-				{ href: '/admin/group-inquiries', label: '団体照会', icon: '👥', badge: true },
-				{ href: '/admin/partners/invoices', label: '予定請求書', icon: '🧾' },
-				{ href: '/admin/partners/charges', label: '今後の請求予定', icon: '📆' },
-				{ href: '/admin/plans', label: 'プラン', icon: '📝' },
-				{ href: '/admin/payments', label: '支払方法', icon: '💳' },
-				{ href: '/admin/rooms', label: '部屋編集', icon: '🛏' },
-				{ href: '/admin/options', label: 'オプション', icon: '🧺', demoOnly: true },
-				{ href: '/admin/cancel-policies', label: 'キャンセル規定', icon: '🚫', tenantWide: true, demoOnly: true },
-				{ href: '/admin/children', label: 'お子様の受け入れ', icon: '🧒' },
-				{ href: '/admin/booking-notes', label: '予約時の注意事項', icon: '📌' },
-				{ href: '/admin/booking-questions', label: '予約時に聞く項目', icon: '❓' },
-				{ href: '/admin/bath', label: '貸切風呂', icon: '♨️' },
-				{ href: '/admin/inroom', label: '客室案内', icon: '📱' }
-			]
-		},
-		{
-			label: 'アプリ・会員',
-			items: [
-				{ href: '/admin/app', label: 'アプリ運用', icon: '📲', tenantWide: true },
-				{ href: '/admin/push', label: 'アプリ通知', icon: '🔔', tenantWide: true },
-				{ href: '/admin/coupons', label: 'クーポン', icon: '🎫', tenantWide: true },
-				{ href: '/admin/preferences', label: '好み登録項目', icon: '🧩', tenantWide: true },
-				{ href: '/admin/members', label: '会員', icon: '👤', tenantWide: true },
-				{ href: '/admin/community', label: 'コミュニティ', icon: '💬', tenantWide: true },
-				{ href: '/admin/otayori', label: 'おたより', icon: '📨', tenantWide: true }
-			]
-		},
-		{
-			label: 'サイト・コンテンツ',
-			items: [
-				{ href: '/admin/facility', label: '施設ページ編集', icon: '🏠', demoOnly: true },
-				{ href: '/admin/news', label: 'お知らせ', icon: '📰' },
-				{ href: '/admin/faqs', label: 'FAQ', icon: '❓' },
-				{ href: '/admin/mail', label: 'メルマガ', icon: '✉', demoOnly: true },
-				{ href: '/admin/sequences', label: 'ステップメール', icon: '🔁', demoOnly: true }
-			]
-		},
-		{
-			label: 'システム',
-			items: [
-				{ href: '/admin/maintenance', label: 'メンテナンス', icon: '🛠', tenantWide: true },
-				{ href: '/admin/users', label: 'ユーザー管理', icon: '👥', tenantWide: true, adminOnly: true },
-				{ href: '/admin/security', label: '二段階認証・パスキー', icon: '🔐', tenantWide: true }
-			]
-		}
-	];
-
-	const navItems = navGroups.flatMap((g) => g.items);
+	// メニューは $lib/admin-nav.ts（2026-10-17 モダン化・メニュー整理）。関係する画面は1項目の下にまとめ、開閉できる
+	const navGroups = $derived(visibleNav(data.user?.role));
+	// いま開いている画面（項目と、その下の子）。客室案内は ?tab で分ける
+	const current = $derived(activeNav(page.url.pathname, page.url.searchParams));
+	// 開いている項目（いまの画面の項目は自動で開く。ほかはクリックで開閉）
+	let openItems = $state<Record<string, boolean>>({});
+	const isOpen = (href: string) => openItems[href] ?? current?.item.href === href;
+	function toggle(href: string) {
+		openItems = { ...openItems, [href]: !isOpen(href) };
+	}
 
 	// ログイン画面と二段階認証のコード入力画面は、メニューを出さない（まだ管理画面に入れていない状態）
 	// （/admin/login/reset＝パスワードの再設定もメニューを出さない）
@@ -80,18 +31,18 @@
 		data.adminMfa.enabled && !data.adminMfa.enrolled && !page.url.pathname.startsWith('/admin/security')
 	);
 
-	function isActive(href: string) {
-		return href === '/admin' ? page.url.pathname === '/admin' : page.url.pathname.startsWith(href);
-	}
-
-	// 最長一致で現在地を決める（/admin は他ページの前方一致になるため）
-	let activeItem = $derived(
-		navItems.filter((i) => isActive(i.href)).sort((a, b) => b.href.length - a.href.length)[0]
-	);
-	let tenantWide = $derived(activeItem?.tenantWide ?? false);
+	let tenantWide = $derived(current?.leaf.tenantWide ?? current?.item.tenantWide ?? false);
 	// 本番（実データ）なのに、デモストアしか読み書きしない画面を開いている
 	let live = $derived(data.dataSource === 'supabase');
-	let demoOnlyHere = $derived(live && (activeItem?.demoOnly ?? false));
+	let demoOnlyHere = $derived(live && (current?.leaf.demoOnly ?? false));
+	// 画面の上の現在地（グループ › 項目 › 子）
+	const crumbs = $derived.by(() => {
+		if (!current || current.item.href === '/admin') return [] as string[];
+		const group = navGroups.find((g) => g.items.includes(current.item))?.label ?? ADMIN_NAV.find((g) => g.items.some((i) => i.href === current.item.href))?.label;
+		const list = [group, current.item.label];
+		if (current.item.children && current.leaf.label !== current.item.label) list.push(current.leaf.label);
+		return list.filter(Boolean) as string[];
+	});
 
 	// 施設ごとの色（別施設の編集事故を防ぐため、どの施設を触っているかを色でも見せる）
 	const FACILITY_TONES = ['bg-brand-800 text-white', 'bg-accent-600 text-white', 'bg-sky-700 text-white'];
@@ -173,6 +124,16 @@
 			--color-stone-400: oklch(55.3% 0.013 58.071);
 			--color-stone-500: oklch(44.4% 0.011 73.639);
 		}
+		/* 2026-10-17 モダン化: 画面ごとにばらばらだった見出しの大きさ・太さをそろえる（各画面の h1・カードの h2） */
+		.admin-main h1 { font-size: 1.25rem; line-height: 1.4; font-weight: 600; letter-spacing: -0.01em; color: #1c1917; }
+		.admin-main :is(section, form, div).rounded-xl > h2:first-child,
+		.admin-main :is(section, form, div).rounded-xl > header > h2 { font-weight: 600; color: #292524; }
+		/* カードの角を少し丸く・余白をスマホで詰める */
+		.admin-main :is(.rounded-xl, .rounded-2xl).border.bg-white { border-radius: 0.875rem; }
+		@media (max-width: 639px) {
+			.admin-main :is(section, form, div).rounded-xl.border.bg-white.p-4 { padding: 0.875rem; }
+			.admin-main .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+		}
 		.admin-main :is(.rounded-xl, .rounded-2xl).border.bg-white {
 			box-shadow: 0 1px 2px rgb(41 37 36 / 0.05), 0 1px 1px rgb(41 37 36 / 0.03);
 		}
@@ -221,27 +182,56 @@
 </svelte:head>
 
 {#snippet navList()}
-	{#each navGroups as group, gi}
-		<p class="px-3 pb-1 text-[10px] font-medium tracking-wider text-stone-500 uppercase {gi === 0 ? 'pt-0' : 'pt-4'}">
-			{group.label}
-		</p>
+	{#each navGroups as group, gi (gi)}
+		{#if group.label}
+			<p class="px-3 pb-1 text-[11px] font-medium tracking-wide text-stone-500 {gi === 0 ? 'pt-0' : 'pt-5'}">{group.label}</p>
+		{/if}
 		<div class="space-y-0.5">
-			{#each group.items.filter((i) => !i.adminOnly || data.user?.role === 'admin') as item}
-				<a
-					href={item.href}
-					aria-current={item === activeItem ? 'page' : undefined}
-					class="block rounded-lg px-3 py-2 text-sm transition {item === activeItem
-						? 'bg-white/10 font-medium text-white'
-						: 'hover:bg-white/5 hover:text-white'}"
-				>
-					{item.icon} {item.label}
-					{#if item.tenantWide}<span class="ml-1 rounded bg-white/5 px-1 text-[10px] text-stone-500">全施設</span>{/if}
-					{#if item.badge}
-						<!-- 団体照会の回答待ち（submitted）の件数。layout の load が Promise のまま流す（0・null は出さない・docs/partner-group-booking.md §7.8） -->
-						{#await data.groupInquiryBadge then n}{#if n}<span class="ml-1 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white tabular-nums" title="回答待ちの団体照会">{n}</span>{/if}{/await}
+			{#each group.items as item (item.href + item.label)}
+				{@const here = current?.item.href === item.href && current?.item.label === item.label}
+				{#if item.children}
+					<!-- 子のある項目: 押すと開閉（いまの画面の項目は最初から開く） -->
+					<button
+						type="button"
+						onclick={() => toggle(item.href)}
+						aria-expanded={isOpen(item.href)}
+						class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition {here ? 'text-white' : 'hover:bg-white/5 hover:text-white'}"
+					>
+						<AdminIcon name={item.icon} class="h-[18px] w-[18px] shrink-0 {here ? 'text-white' : 'text-stone-400'}" />
+						<span class="min-w-0 flex-1 truncate {here ? 'font-medium' : ''}">{item.label}</span>
+						<AdminIcon name="chevron" class="h-3.5 w-3.5 shrink-0 text-stone-500 transition-transform {isOpen(item.href) ? 'rotate-90' : ''}" />
+					</button>
+					{#if isOpen(item.href)}
+						<div class="mt-0.5 mb-1 ml-[1.35rem] space-y-0.5 border-l border-white/10 pl-2.5">
+							{#each item.children as leaf (leaf.href)}
+								{@const on = current?.leaf.href === leaf.href && current?.leaf.label === leaf.label}
+								<a
+									href={leaf.href}
+									aria-current={on ? 'page' : undefined}
+									class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition {on ? 'bg-white/10 font-medium text-white' : 'text-stone-400 hover:bg-white/5 hover:text-white'}"
+								>
+									<span class="min-w-0 truncate">{leaf.label}</span>
+									{#if leaf.tenantWide && !item.tenantWide}<span class="shrink-0 rounded bg-white/5 px-1 text-[10px] text-stone-500">全施設</span>{/if}
+									{#if live && leaf.demoOnly}<span class="shrink-0 rounded bg-white/10 px-1 text-[10px] text-stone-400">未接続</span>{/if}
+								</a>
+							{/each}
+						</div>
 					{/if}
-					{#if live && item.demoOnly}<span class="ml-1 rounded bg-white/10 px-1 text-[10px] text-stone-400">未接続</span>{/if}
-				</a>
+				{:else}
+					<a
+						href={item.href}
+						aria-current={here ? 'page' : undefined}
+						class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition {here ? 'bg-white/10 font-medium text-white' : 'hover:bg-white/5 hover:text-white'}"
+					>
+						<AdminIcon name={item.icon} class="h-[18px] w-[18px] shrink-0 {here ? 'text-white' : 'text-stone-400'}" />
+						<span class="min-w-0 flex-1 truncate">{item.label}</span>
+						{#if item.tenantWide}<span class="shrink-0 rounded bg-white/5 px-1 text-[10px] text-stone-500">全施設</span>{/if}
+						{#if item.badge === 'groupInquiries'}
+							<!-- 団体照会の回答待ち（submitted）の件数。layout の load が Promise のまま流す（0・null は出さない・docs/partner-group-booking.md §7.8） -->
+							{#await data.groupInquiryBadge then n}{#if n}<span class="shrink-0 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white tabular-nums" title="回答待ちの団体照会">{n}</span>{/if}{/await}
+						{/if}
+					</a>
+				{/if}
 			{/each}
 		</div>
 	{/each}
@@ -274,13 +264,13 @@
 		{#if menuOpen}
 			<div class="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="管理メニュー">
 				<button type="button" class="absolute inset-0 bg-black/40" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}></button>
-				<div class="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-brand-900 text-stone-300 shadow-xl">
+				<div class="absolute inset-y-0 left-0 flex w-80 max-w-[88%] flex-col bg-brand-900 text-stone-300 shadow-xl">
 					<div class="flex items-center justify-between px-5 py-4">
 						<div class="flex items-center gap-2">
 							<div class="relative z-40 shrink-0 text-stone-800"><AppSwitcher currentAppId="book" theme="dark" /></div>
 							<a href="/admin" class="rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-7 w-auto" /></a>
 						</div>
-						<button type="button" class="text-2xl leading-none text-stone-400 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}>×</button>
+						<button type="button" class="rounded-lg p-2 text-stone-400 hover:bg-white/10 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}><AdminIcon name="close" class="h-5 w-5" /></button>
 					</div>
 					<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4">
 						{@render navList()}
@@ -296,15 +286,15 @@
 		<div class="admin-main flex min-w-0 flex-1 flex-col">
 			<!-- 上部バーはスクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
 			<div class="sticky top-0 z-30">
-				<header class="flex items-center gap-3 border-b border-stone-200 bg-white px-4 py-2.5">
+				<header class="flex items-center gap-2 border-b border-stone-200 bg-white/95 px-3 py-2 backdrop-blur sm:gap-3 sm:px-4 sm:py-2.5">
 					<button
 						type="button"
-						class="rounded-md border border-stone-300 px-2.5 py-1.5 text-sm md:hidden"
+						class="-ml-1 rounded-lg p-2 text-stone-600 hover:bg-stone-100 md:hidden"
 						aria-label="メニューを開く"
 						aria-expanded={menuOpen}
 						onclick={() => (menuOpen = true)}
 					>
-						☰
+						<AdminIcon name="menu" class="h-5 w-5" />
 					</button>
 					<a href="/admin" class="shrink-0 md:hidden" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo markOnly class="h-7 w-auto" /></a>
 
@@ -327,9 +317,15 @@
 					{/if}
 
 					<div class="ml-auto flex items-center gap-3 text-sm">
-						<span class="hidden text-stone-500 sm:inline">{data.user?.name}（{data.user?.role === 'admin' ? '管理者' : 'スタッフ'}）</span>
+						<span class="hidden items-center gap-2 text-stone-600 sm:flex">
+							<span class="flex h-7 w-7 items-center justify-center rounded-full bg-stone-100 text-xs font-medium text-stone-600">{(data.user?.name ?? '?').slice(0, 1)}</span>
+							<span class="max-w-40 truncate">{data.user?.name}</span>
+							{#if data.user?.name !== (data.user?.role === 'admin' ? '管理者' : 'スタッフ')}<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-500">{data.user?.role === 'admin' ? '管理者' : 'スタッフ'}</span>{/if}
+						</span>
 						<form method="POST" action="/auth/logout" data-no-guard>
-							<button type="submit" class="text-xs text-stone-400 hover:text-stone-600">ログアウト</button>
+							<button type="submit" class="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-700" title="ログアウト">
+								<AdminIcon name="logout" class="h-4 w-4" /><span class="hidden sm:inline">ログアウト</span>
+							</button>
 						</form>
 					</div>
 				</header>
@@ -355,7 +351,16 @@
 				</div>
 			{/if}
 
-			<main class="min-w-0 flex-1 p-4 md:p-6" oninput={markDirty} onchange={markDirty} onsubmit={markClean}>
+			<main class="min-w-0 flex-1 px-3 py-4 sm:px-4 md:p-6" oninput={markDirty} onchange={markDirty} onsubmit={markClean}>
+				{#if crumbs.length}
+					<!-- 現在地（どのグループのどの画面か・メニュー整理で場所が変わったので目印に） -->
+					<nav class="print-hide mb-2 flex flex-wrap items-center gap-1 text-xs text-stone-500 print:hidden" aria-label="現在地">
+						{#each crumbs as c, i (i)}
+							{#if i > 0}<AdminIcon name="chevron" class="h-3 w-3 text-stone-400" />{/if}
+							<span class={i === crumbs.length - 1 ? 'font-medium text-stone-700' : ''}>{c}</span>
+						{/each}
+					</nav>
+				{/if}
 				{@render children()}
 			</main>
 		</div>

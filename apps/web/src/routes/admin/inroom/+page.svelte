@@ -5,6 +5,8 @@
 	import { confirmSubmit } from '$lib/components/admin/confirm-dialog.svelte';
 	import { page } from '$app/state';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
+	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import StatusCard from '$lib/components/admin/StatusCard.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import { downloadQrPng } from '$lib/qr-png';
@@ -87,7 +89,23 @@
 
 	// ?all=1 で来たら「客室スリップ」タブを初期表示（失効一覧の再読込を跨いでも維持）
 	// 館内案内・客室スリップの切り替えは共通のタブ（+layout.svelte）の ?tab=slips（従来の ?all も客室スリップ）
-	const tab = $derived<'guides' | 'slips'>(page.url.searchParams.get('tab') === 'slips' || page.url.searchParams.get('all') ? 'slips' : 'guides');
+	// 2026-10-17 メニュー整理: ?tab なし＝きょうの運用（お知らせ・湯量）／guides＝館内案内の内容／slips＝客室スリップ（従来の ?all も）／settings＝表示の設定
+	type InroomTab = 'ops' | 'guides' | 'slips' | 'settings';
+	const tab = $derived.by<InroomTab>(() => {
+		const t = page.url.searchParams.get('tab');
+		if (t === 'slips' || page.url.searchParams.get('all')) return 'slips';
+		return t === 'guides' || t === 'settings' ? t : 'ops';
+	});
+	const TAB_DESCRIPTION: Record<InroomTab, string> = {
+		ops: 'お客様のスマホの客室案内に、いま出しているものです。お知らせ・湯量はここで更新します。',
+		guides: 'Wi-Fi・お食事・お風呂など、客室案内に載せる館内案内のページを編集します。',
+		slips: 'チェックイン時にお渡しする印刷スリップ（QR＋滞在コード）と、ご予約ごとの公開URLを出します。',
+		settings: 'メニューの表示・内線・SNS ボタンなど、一度決めればしばらく変えない設定です。'
+	};
+	// きょうの運用の状態カード
+	const liveNotices = $derived(data.notices.filter((n) => n.live));
+	const springNow = $derived(data.inroomSettings.springLevel);
+
 
 	// 公開URL は管理画面と同じオリジン。本番で開けばそのまま本番の URL になる。
 	const guestUrl = (token: string) => `${page.url.origin}/r/c/${token}`;
@@ -204,10 +222,7 @@
 
 <svelte:head><title>客室案内 ｜ 山人管理</title></svelte:head>
 
-<h1 class="mb-1 text-lg font-bold text-stone-800">客室案内 — {data.currentFacility.name}</h1>
-<p class="mb-4 text-xs text-stone-400">
-	ゲストの客室スマホに表示する滞在カード・館内案内と、チェックイン時にお渡しする印刷スリップ（QR＋滞在コード）を管理します。
-</p>
+<PageHeader title="客室案内" facility={data.currentFacility.name} description={TAB_DESCRIPTION[tab]} />
 
 {#if data.loadError}
 	<div class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -219,16 +234,37 @@
 	<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 {/if}
 
-{#if tab === 'guides'}
-	<!-- ============================ 館内案内 ============================ -->
-	{#if form?.guideAdded}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}
-	{#if form?.guideDeleted}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">削除しました。</p>{/if}
+{#if tab === 'ops'}
+	<!-- ============================ きょうの運用 ============================ -->
+	<!-- いま出しているもの（押すと下の欄・それぞれの画面へ） -->
+	<div class="mb-6 grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+		<StatusCard
+			icon="megaphone"
+			title="全客室へのお知らせ"
+			status={liveNotices.length ? `掲載中 ${liveNotices.length}件` : 'なし'}
+			tone={liveNotices.length ? 'on' : 'off'}
+			detail={liveNotices[0]?.title ?? 'いまは出していません。'}
+			href="#notices"
+			action={liveNotices.length ? '編集・新しく出す' : 'お知らせを出す'}
+		/>
+		<StatusCard
+			icon="droplet"
+			title="全館の湯量"
+			status={springNow.enabled && springNow.percent !== null ? '表示中' : '出していない'}
+			tone={springNow.enabled && springNow.percent !== null ? 'on' : 'off'}
+			detail={springNow.percent !== null ? `いま ${springNow.percent}%「${springBandFor(springNow.percent, springNow.bands).ja}」${springNow.updatedAt ? `・${fmtNoticeTime(springNow.updatedAt)} 更新` : ''}` : '残量が入っていません。'}
+			href="#spring"
+			action="残量を更新"
+		/>
+		<StatusCard icon="receipt" title="精算案内" detail="利用明細・フロント案内・オンライン決済の出し分け" href="/admin/inroom/billing" action="設定を開く" />
+		<StatusCard icon="ticket" title="客室スリップ" detail="チェックイン時にお渡しする QR と滞在コード" href="/admin/inroom?tab=slips" action="発行・印刷" />
+	</div>
 
 	<!-- ===== 全客室へのお知らせ（2026-10-17）。開いた端末で「確認しました」を押すまで、客室案内のトップに出る ===== -->
 	{#if form?.noticeSent}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">お知らせを出しました。客室案内を開いている端末に表示されます。</p>{/if}
 	{#if form?.noticeEdited}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.noticeEdited === 'reshow' ? 'お知らせを出し直しました。確認済みの端末にも、もう一度表示されます。' : 'お知らせを書き換えました。まだ確認していない端末に、新しい内容で表示されます。'}</p>{/if}
 	{#if form?.noticeEnded}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">お知らせを取り下げました。</p>{/if}
-	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<section id="notices" class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm">
 		<h2 class="font-medium text-stone-700">📣 全客室へのお知らせ — {data.currentFacility.name}</h2>
 		<p class="mt-1 text-xs text-stone-400">
 			客室案内を開いた全員に、トップでお知らせを出します（断水・停電・催しのご案内など）。
@@ -334,7 +370,7 @@
 
 	<!-- ===== 全館の湯量の残りの目安（2026-10-17・西和賀で使う）。出す設定で値があるときだけ、客室案内のトップに出る ===== -->
 	{#if form?.springLevelSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">湯量の目安を保存しました。</p>{/if}
-	<form method="POST" action="?/springLevelSave" use:enhance class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+	<form id="spring" method="POST" action="?/springLevelSave" use:enhance class="mb-5 scroll-mt-24 rounded-xl border border-stone-200 bg-white p-4 text-sm">
 		<input type="hidden" name="facilityId" value={data.currentFacility.id} />
 		<h2 class="font-medium text-stone-700">♨️ 全館の湯量（残りの目安） — {data.currentFacility.name}</h2>
 		<p class="mt-1 text-xs text-stone-400">
@@ -493,6 +529,14 @@
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
 	</form>
 
+{:else if tab === 'settings'}
+	<!-- ============================ 表示の設定 ============================ -->
+	<!-- 別の画面にある設定 -->
+	<div class="mb-6 grid gap-3 sm:grid-cols-2">
+		<StatusCard icon="qr" title="入口QR（客室に常設）" detail="客室に置く QR の印刷。読むと館内案内が開き、滞在コードを入れてもらいます。" href="/admin/inroom/entry" action="印刷画面を開く" />
+		<StatusCard icon="book" title="サンクスページのバナー" detail="ご滞在が終わったあとに客室案内に出すバナー（次回のご予約の案内など）。" href="/admin/inroom/banners" action="バナーを編集" />
+	</div>
+
 	<!-- ===== 内線（客室からフロントへの Wi-Fi 通話・受電は autumn-call アプリ） ===== -->
 	{#if form?.intercomSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">内線の設定を保存しました。</p>{/if}
 	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm">
@@ -588,6 +632,11 @@
 		</div>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
 	</form>
+
+{:else if tab === 'guides'}
+	<!-- ============================ 館内案内の内容 ============================ -->
+	{#if form?.guideAdded}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態）。</p>{/if}
+	{#if form?.guideDeleted}<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">削除しました。</p>{/if}
 
 	<div class="space-y-3">
 		{#each data.guides as g (g.id)}
@@ -855,7 +904,7 @@
 	<div class="mb-2 flex items-center justify-between">
 		<h2 class="text-sm font-medium text-stone-700">発行済みスリップ</h2>
 		{#if data.includeInactive}
-			<a href="/admin/inroom" class="text-xs text-stone-400 hover:text-stone-600">← 有効なもののみ表示</a>
+			<a href="/admin/inroom?tab=slips" class="text-xs text-stone-400 hover:text-stone-600">← 有効なもののみ表示</a>
 		{:else}
 			<a href="/admin/inroom?all=1" class="text-xs text-stone-400 hover:text-stone-600">失効済みも表示 →</a>
 		{/if}

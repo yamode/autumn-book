@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>管理画面のモダン化（案）</title>
+<style>
+body{margin:0;padding:16px;background:#f5f4f0;font-family:"Yu Gothic UI","Hiragino Sans",sans-serif;color:#2c2c2a;font-size:13px}
+h1{font-size:16px;margin:0 0 4px}
+p.lead{margin:0 0 12px;color:#5f5e5a;font-size:12px}
+.wrap{display:grid;grid-template-columns:210px 1fr;border:1px solid #e2e0d8;border-radius:12px;overflow:hidden;background:#fff;max-width:900px}
+.sb{background:#1f1d1a;color:#c9c6bc;padding:14px 10px}
+.logo{color:#fff;font-weight:600;margin:0 6px 10px}
+.g{font-size:11px;color:#8a877e;margin:14px 8px 4px;letter-spacing:.05em}
+.it{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+.ic{width:16px;height:16px;border:1.5px solid currentColor;border-radius:4px;opacity:.8}
+.on{background:rgba(255,255,255,.12);color:#fff}
+.sub{margin-left:22px;border-left:1px solid #3a3833;padding-left:6px}
+.sub .it{padding:4px 8px;font-size:12px}
+.sub .cur{color:#fff}
+.arr{margin-left:auto;color:#77746b}
+.main{padding:18px 20px}
+.crumb{color:#8a877e;font-size:11px}
+.h{font-size:17px;font-weight:600;margin:2px 0 12px}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;border-bottom:1px solid #e2e0d8;margin-bottom:14px}
+.tb{padding:7px 10px;color:#77746b;border-bottom:2px solid transparent;font-size:12px}
+.tb.cur{color:#2c2c2a;border-color:#2c2c2a;font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.card{border:1px solid #e2e0d8;border-radius:10px;padding:12px}
+.ct{display:flex;align-items:center;gap:6px;font-weight:600}
+.cs{color:#77746b;font-size:12px;margin-top:4px}
+.pill{font-size:11px;padding:1px 8px;border-radius:999px;background:#eaf3de;color:#3b6d11;margin-left:auto;font-weight:500}
+.pill.off{background:#f1efe8;color:#77746b}
+.btn{display:inline-block;margin-top:10px;font-size:12px;padding:4px 12px;border:1px solid #c9c6bc;border-radius:6px}
+@media (max-width:640px){.wrap{grid-template-columns:1fr}.cards{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<h1>管理画面のモダン化（案）</h1>
+<p class="lead">左：新しいサイドバー（仕事のまとまりで分ける・関係する画面は1項目にまとめて開く）／右：客室案内の新しい構成（「きょうの運用」で状態が一目で分かる）</p>
+<div class="wrap">
+<div class="sb">
+<div class="logo">山人 管理</div>
+<div class="it"><span class="ic"></span>ダッシュボード</div>
+<div class="g">予約・販売</div>
+<div class="it"><span class="ic"></span>予約管理</div>
+<div class="it"><span class="ic"></span>団体照会</div>
+<div class="it"><span class="ic"></span>アップグレード提案</div>
+<div class="it"><span class="ic"></span>取引先<span class="arr">›</span></div>
+<div class="g">滞在中のお客様</div>
+<div class="it on"><span class="ic"></span>客室案内</div>
+<div class="sub">
+<div class="it cur">きょうの運用</div>
+<div class="it">館内案内の内容</div>
+<div class="it">精算案内</div>
+<div class="it">表示の設定</div>
+<div class="it">プレビュー・QR</div>
+<div class="it">アクセスログ</div>
+</div>
+<div class="it"><span class="ic"></span>貸切風呂</div>
+<div class="g">商品・ルール</div>
+<div class="it"><span class="ic"></span>プラン・部屋・オプション<span class="arr">›</span></div>
+<div class="it"><span class="ic"></span>予約時のルール<span class="arr">›</span></div>
+<div class="g">アプリ・会員／サイト</div>
+<div class="it"><span class="ic"></span>会員・アプリ<span class="arr">›</span></div>
+<div class="it"><span class="ic"></span>サイト・メール<span class="arr">›</span></div>
+<div class="g">システム</div>
+<div class="it"><span class="ic"></span>ユーザー・セキュリティ<span class="arr">›</span></div>
+</div>
+<div class="main">
+<div class="crumb">滞在中のお客様 › 客室案内</div>
+<div class="h">客室案内 — 山人 -yamado-</div>
+<div class="tabs"><span class="tb cur">きょうの運用</span><span class="tb">館内案内の内容</span><span class="tb">精算案内</span><span class="tb">表示の設定</span><span class="tb">プレビュー・QR</span><span class="tb">アクセスログ</span></div>
+<div class="cards">
+<div class="card"><div class="ct">📣 全客室へのお知らせ<span class="pill">掲載中 1件</span></div><div class="cs">大浴場の清掃のお知らせ・15:00まで</div><span class="btn">編集・新しく出す</span></div>
+<div class="card"><div class="ct">♨️ 全館の湯量<span class="pill">表示中</span></div><div class="cs">いま 45%「ふつう」・10:20 更新</div><span class="btn">残量を更新</span></div>
+<div class="card"><div class="ct">💴 精算案内<span class="pill off">一部のみ</span></div><div class="cs">明細・フロント案内を表示・オンライン決済オフ</div><span class="btn">設定を開く</span></div>
+<div class="card"><div class="ct">🎫 客室スリップ</div><div class="cs">有効 12枚・今日チェックイン 5室</div><span class="btn">発行・印刷</span></div>
+</div>
+</div>
+</div>
+</body>
+</html>
