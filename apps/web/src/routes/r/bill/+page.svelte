@@ -142,10 +142,8 @@
 						<ul class="mt-1 divide-y divide-stone-100 text-sm">
 							{#each b.payments as p, i (i)}
 								<li class="flex items-baseline justify-between gap-3 py-1.5">
-									<span class="min-w-0 text-stone-700">
-										{#if p.date}<span class="mr-1.5 text-xs tabular-nums text-stone-400">{fmtDate(p.date)}</span>{/if}
-										{p.method || m.inroom_bill_paid()}
-									</span>
+									<!-- お支払いの行は日付を出さない（2026-10-17 指示） -->
+									<span class="min-w-0 text-stone-700">{p.method || m.inroom_bill_paid()}</span>
 									<span class="shrink-0 tabular-nums text-stone-900">{minusYen(p.amount)}</span>
 								</li>
 							{/each}
