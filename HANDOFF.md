@@ -23,7 +23,7 @@
   - アクセスログに `/r/bill` を「ご精算（明細・お支払い）」と表示
 - Webhook（`/api/partner/stripe/webhook`）: `payment_intent.succeeded` の app=autumn-book / purpose=`book_inroom_bill` を `confirmInroomIntent`。`charge.refunded` は取引先 → 客室案内 → 公式サイト予約の順に台帳を見る
 - デモ（DATA_SOURCE=demo）・見本の館内図: 見本の明細を出す（出し分けは本物どおり）。オンライン決済は「お支払いはできません」
-- ⚠ **autumn-pms の改修が要る**: `square-core.ts` の `INTEGRATION_PAYMENT_SOURCES` に `'book_inroom'` を足す（足さないと請求書画面で人が消せる・`[自動]` 行の扱いで人の行扱い）
+- ✅ autumn-pms 側の対応済み（v4.773.0）: `square-core.ts` の `INTEGRATION_PAYMENT_SOURCES` に `'book_inroom'` を追加。請求書画面ではこの入金行が読み取り専用（「客」の印・返金は「↩客」）で、保存し直し・現地決済方法の選び直しでも消えない
 - ⚠ 本番で出すには: 管理画面で施設の既定（または滞在ごと）を「出す」にする。既定はすべて「出さない」
 - 未確認: Stripe テストモードでの実決済の通し（本番の鍵・実滞在が要る）・PMS の請求書画面での入金行の見え方。デモで画面の出し分けと3言語、本番 DB で明細・残額の読み出し（書き込みは巻き戻して）を確認済み
 
