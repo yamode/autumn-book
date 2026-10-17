@@ -17,7 +17,7 @@ describe('決済のお知らせメール', () => {
 		expect(m.subject).toBe('【客室案内】オンライン決済がありました（201・¥1,700）');
 		expect(m.text).toContain('お客様: 山人 太郎 様');
 		expect(m.text).toContain('pi_123');
-		expect(m.text).toContain('オンライン決済（アプリ）');
+		expect(m.text).toContain('客室内オンライン決済');
 	});
 	it('テスト決済は件名に【テスト】、PMS に入れていない旨', () => {
 		const m = buildInroomPaidMail(row, 'test', '山人 -yamado-');
