@@ -163,3 +163,16 @@ describe('請求書の見出し・宛名・選んで払う（2026-10-18）', () 
 		expect(payableBills(bills).map((b) => b.id)).toEqual(['early', 'late']);
 	});
 });
+
+describe('見本の請求書2枚（2026-10-18）', () => {
+	it('連泊（2泊）と宛名違い（1泊）の2枚で、どちらも払える', async () => {
+		const { demoStayBill, billStayRange, billAddressee, payableBills, NO_FLAGS, EMPTY_NOTE } = await import('./inroom-bill');
+		const v = demoStayBill(NO_FLAGS, EMPTY_NOTE, new Date('2026-10-18T03:00:00Z'), 0, 2);
+		expect(v.bills).toHaveLength(2);
+		expect(billStayRange(v.bills[0])?.nights).toBe(2);
+		expect(billStayRange(v.bills[1])?.nights).toBe(1);
+		expect(billAddressee(v.bills[1], v.guestName)).toBe('株式会社見本商事');
+		expect(payableBills(v.bills)).toHaveLength(2);
+		expect(v.dueTotal).toBe(v.bills[0].due + v.bills[1].due);
+	});
+});

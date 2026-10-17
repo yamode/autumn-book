@@ -52,7 +52,8 @@ describe('施設ごとに保存する見本（demo_preview）', () => {
 		const p = {
 			bill: { items: true, front: false, online: true },
 			notice: normalizePreviewNotice('sample', '見出し', '本文')!,
-			spring: normalizePreviewSpring('sample', 20)!
+			spring: normalizePreviewSpring('sample', 20)!,
+			billCount: 2 as const
 		};
 		expect(normalizeDemoPreview(JSON.parse(JSON.stringify(demoPreviewJson(p))))).toEqual(p);
 		// 精算案内を全部外した見本は「出さない」
