@@ -39,6 +39,7 @@ import {
 import type { StayInfo } from '$lib/types';
 import { decideAdminMfaGate } from '$lib/admin-mfa';
 import { adminMfaRequired } from './auth';
+import { notifyInroomPayment, type InroomPaidRow } from './inroom-payment-notify';
 import { describePublishableKeyIssue } from './payments/keys';
 
 export const STRIPE_PURPOSE_INROOM_BILL = 'book_inroom_bill';
@@ -360,7 +361,7 @@ export async function confirmInroomIntent(intentId: string, expectedTokenId?: st
 	}
 	const db = service();
 	const got = await db.rpc('inroom_payment_get', { p_id: intent.metadata.inroom_payment_id });
-	const row = got.data as { id: string; token_id: string | null; amount: number; payment_intent_id: string | null; status: string } | null;
+	const row = got.data as (InroomPaidRow & { token_id: string | null; status: string }) | null;
 	if (got.error || !row?.id) throw new Error('not_found');
 	if (row.payment_intent_id !== intent.id || row.amount !== intent.amount || intent.currency !== 'jpy') throw new Error('intent_mismatch');
 	if (expectedTokenId && row.token_id !== expectedTokenId) throw new Error('intent_mismatch');
@@ -369,9 +370,17 @@ export async function confirmInroomIntent(intentId: string, expectedTokenId?: st
 	const fin = await db.rpc('inroom_payment_finalize', { p_id: row.id, p_intent: intent.id, p_amount: row.amount });
 	if (fin.error) throw new Error(fin.error.message);
 	const result = (fin.data as { result?: string } | null)?.result;
-	if (result === 'paid') return 'paid';
+	// 施設の共有ID へ決済のお知らせ（確定したこの1回だけ。'already' は別の経路が確定済み）。
+	// テスト決済は確定済みでも 'test_paid' が返るので、確定前の状態が pending のときだけ送る
+	if (result === 'paid') {
+		await notifyInroomPayment({ ...row, paid_at: new Date().toISOString() }, 'paid');
+		return 'paid';
+	}
 	if (result === 'already') return 'already';
-	if (result === 'test_paid') return 'test';
+	if (result === 'test_paid') {
+		if (row.status === 'pending') await notifyInroomPayment({ ...row, paid_at: new Date().toISOString() }, 'test');
+		return 'test';
+	}
 	// mismatch: 残額が足りなかった → その決済を全額返金
 	await refundInroomMismatch(row.id, intent.id, row.amount);
 	return 'refunded';

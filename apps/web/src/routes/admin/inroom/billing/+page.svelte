@@ -45,10 +45,16 @@
 	<p class="mt-1 text-xs text-stone-500">
 		客室案内（お客様のスマホ）のトップに「ご精算」を出し、利用明細・フロントでの早め精算のご案内・オンライン決済（Stripe）を見せます。
 		明細と残額は PMS の請求書から読みます（入金済みを差し引いた残り。<code>[自動]</code> の現地入金行は差し引きません）。
-		オンライン決済が通ると、PMS の請求書に「オンライン決済(stripe)」の入金行が自動で入ります。
+		オンライン決済が通ると、PMS の請求書に「オンライン決済(stripe)」の入金行が自動で入り（PMS の画面では「オンライン決済（アプリ）」と表示）、施設の共有ID のメールアドレスにお知らせが届きます。
 	</p>
 </div>
 
+{#if data.live}
+	<!-- 決済のお知らせの宛先（施設の共有ID・Book のスタッフ権限のアカウント） -->
+	<p class="mb-3 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-600">
+		📧 決済のお知らせ先：{#if data.notifyTo.length}{data.notifyTo.join('、')}（この施設の共有ID）{:else}<span class="text-amber-700">見つかりません。ユーザー管理で、この施設に割り当てたスタッフ（共有ID）のアカウントを用意してください</span>{/if}
+	</p>
+{/if}
 {#if data.loadError}
 	<div class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">⚠ {data.loadError}</div>
 {/if}

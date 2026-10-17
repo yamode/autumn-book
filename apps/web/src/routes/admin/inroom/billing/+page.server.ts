@@ -14,6 +14,8 @@ import {
 	type AdminStayBills,
 	type BillOverride
 } from '$lib/server/inroom-bill';
+import { facilitySharedEmails } from '$lib/server/inroom-payment-notify';
+import { FACILITY_UUID } from '$lib/server/supabase-data';
 import type { Actions, PageServerLoad } from './$types';
 
 // 客室案内の精算案内（2026-10-17 指示）。
@@ -43,7 +45,11 @@ export const load: PageServerLoad = async (event) => {
 		loadError,
 		live: useSupabaseAdmin,
 		paymentReady: inroomPaymentReady(),
-		isAdmin: event.locals.user?.role === 'admin'
+		isAdmin: event.locals.user?.role === 'admin',
+		// 決済のお知らせの宛先（施設の共有ID・2026-10-17）。読めなければ空
+		notifyTo: useSupabaseAdmin
+			? await facilitySharedEmails(FACILITY_UUID[currentFacility.id] ?? currentFacility.id).catch(() => [] as string[])
+			: ([] as string[])
 	};
 };
 
