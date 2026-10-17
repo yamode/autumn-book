@@ -18,7 +18,11 @@ import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/in
 import { loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/server/inroom-settings';
 import { loadLiveNotices, type InroomNotice } from '$lib/server/inroom-notices';
 import { claimStayFromForm } from '$lib/server/stay-claim';
+import { loadStayBill } from '$lib/server/inroom-bill';
+import { anyBillFlag, type BillFlags } from '$lib/inroom-bill';
 import type { Actions, PageServerLoad } from './$types';
+
+type BillSummary = { flags: BillFlags; dueTotal: number; isDemo: boolean };
 
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
 const STAY_COOKIE = 'ab_stay';
@@ -42,6 +46,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		banners: facility ? await loadThanksBanners(facility.id, locale) : [],
 		notices: [] as InroomNotice[],
 		springLevel: null as SpringLevel | null,
+		billSummary: null as BillSummary | null,
 		// 黒ヘッダーの中央タイトル（layout が拾う）。施設が分かれば施設名
 		...(facility?.name ? { headerTitle: facility.name } : {})
 	});
@@ -63,7 +68,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 全客室へのお知らせ（掲載中のもの。既読は端末の localStorage で判定・2026-10-17）
 		notices: [] as InroomNotice[],
 		// 全館の湯量の残量目安（出す設定の施設だけ・2026-10-17）
-		springLevel: null as SpringLevel | null
+		springLevel: null as SpringLevel | null,
+		// 精算案内のカード（滞在コードがあるときだけ・2026-10-17）
+		billSummary: null as BillSummary | null
 	};
 
 	if (!token) {
@@ -122,7 +129,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		);
 	}
 
-	const [guides, bathContext, intercom, meals, settings, notices] = await Promise.all([
+	const [guides, bathContext, intercom, meals, settings, notices, bill] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
@@ -132,7 +139,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 見本（デモ）の館内図は滞在に紐づかないので、見本の食事時間を出す
 		stay.isDemo ? Promise.resolve(demoStayMeals()) : DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
 		loadInroomSettings(stay.facility.id),
-		loadLiveNotices(stay.facility.id)
+		loadLiveNotices(stay.facility.id),
+		// 精算案内（明細・フロント案内・オンライン決済の出し分け・2026-10-17）。読めなければ出さない
+		loadStayBill(token, stay)
 	]);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
@@ -157,7 +166,12 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		browse: null,
 		showFrontCall: settings.showFrontCall,
 		notices,
-		springLevel: visibleSpringLevel(settings)
+		springLevel: visibleSpringLevel(settings),
+		// トップのカード用（中身は /r/bill）。出す設定が無ければ null
+		billSummary:
+			bill && anyBillFlag(bill.flags)
+				? ({ flags: bill.flags, dueTotal: bill.dueTotal, isDemo: bill.isDemo } satisfies BillSummary)
+				: null
 	};
 };
 

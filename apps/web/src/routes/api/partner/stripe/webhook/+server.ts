@@ -17,12 +17,17 @@
 // 同じ宛先で受ける（lib/server/direct-payments.ts）:
 //   - payment_intent.succeeded … direct_payment_confirm で予約確定（期限切れなら全額返金）
 //   - charge.refunded          … 取引先予約の台帳に無ければ、公式サイト予約の台帳で返金を記録（PMS に refunded の電文）
+//
+// 客室案内の精算のオンライン決済（2026-10-17・app=autumn-book / purpose=book_inroom_bill・lib/server/inroom-bill.ts）も受ける:
+//   - payment_intent.succeeded … inroom_payment_finalize で PMS の請求書に入金行（残額が足りなければ全額返金）
+//   - charge.refunded          … 取引先予約の台帳に無ければ、客室案内の台帳 → 公式サイト予約の台帳の順に見る
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { confirmCheckoutSession, confirmPartnerIntent, syncRefundFromStripe } from '$lib/server/partners/booking';
 import { partnerAdminClient } from '$lib/server/partners/store';
 import { routeStripeEvent } from '$lib/server/payments/webhook-route';
 import { confirmDirectIntent, syncDirectRefundFromStripe } from '$lib/server/direct-payments';
 import { confirmUpgradeIntent, UPGRADE_PAYMENT_PURPOSE } from '$lib/server/upgrade-payments';
+import { confirmInroomIntent, STRIPE_PURPOSE_INROOM_BILL, syncInroomRefundFromStripe } from '$lib/server/inroom-bill';
 import {
   STRIPE_APP,
   STRIPE_APP_BOOK,
@@ -45,6 +50,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
     try { return json({ received: true, result: await confirmUpgradeIntent(String(event.data.object.id ?? '')) }); }
     catch { return json({ error: 'upgrade confirmation requires retry' }, { status: 500 }); }
   }
+  if (event.type === 'payment_intent.succeeded' && upgradeMeta?.app === STRIPE_APP_BOOK && upgradeMeta.purpose === STRIPE_PURPOSE_INROOM_BILL) {
+    try { return json({ received: true, result: await confirmInroomIntent(String(event.data.object.id ?? '')) }); }
+    catch (e) { return json({ error: e instanceof Error ? e.message : 'inroom confirmation requires retry' }, { status: 500 }); }
+  }
   const route = routeStripeEvent(event, {
     app: STRIPE_APP,
     purposes: [STRIPE_PURPOSE_PARTNER_BOOKING],
@@ -60,6 +69,8 @@ export const POST: RequestHandler = async ({ request, url }) => {
       // 取引先予約かどうかは payment_intent で台帳を引いて決める（他アプリの決済なら not_ours）
       const partner = await syncRefundFromStripe(db, route.object);
       if (partner !== 'not_ours') return json({ received: true, result: partner });
+      const inroom = await syncInroomRefundFromStripe(route.object);
+      if (inroom !== 'not_ours') return json({ received: true, result: inroom });
       return json({ received: true, result: await syncDirectRefundFromStripe(route.object) });
     }
     if (route.kind === 'checkout_session') {

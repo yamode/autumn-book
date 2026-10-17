@@ -1,5 +1,46 @@
 # autumn-book HANDOFF
 
+## 客室案内の精算案内（明細・フロント案内・オンライン決済）（2026-10-17・v0.139.0）
+
+**ユーザー指示: 客室ごとに精算案内を出せるように。利用明細の表示・フロントでの早め精算のご案内（自由記述）・Stripe によるオンライン決済（Book からその場で決済）。それぞれを出し分けられるように。**
+
+- 決めたこと（ユーザー確認済み）: ①決済が通ったら Book が PMS の請求書に入金行を自動で立てる ②出し分けは「施設の既定＋滞在（滞在コード）ごとの上書き」 ③払えるのは「その時点の残額全額・滞在中いつでも」
+- DB: autumn-shared `20261017005358_book_inroom_bill`（**push 後も未反映だったので `db push --linked` で適用**・表と関数の実体、実データでの残額・明細の読み出しを確認済み）
+  - `book.inroom_settings` に `bill_show_items / bill_show_front / bill_show_online / bill_front_note(_en/_zh)`（施設の既定）
+  - `book.stay_bill_overrides`（滞在トークンごとの上書き・null は既定どおり）・`book.inroom_payments`（決済の台帳）。どちらも RPC 経由のみ
+  - 公開: `book.stay_bill(token)`（anon。出し分け・案内文・請求書ごとの明細／入金／残額）
+  - 決済（service_role のみ・admin-client.ts「例外その9」）: `inroom_payment_prepare`（残額を DB で数え直し、画面の額と違えば `amount_changed`・30分以内の同額 pending は使い回し）→ `inroom_payment_bind` → `inroom_payment_finalize`（請求書を行ロック→数え直し→`[自動]` の現地入金行を外す→入金行を立てる）・`inroom_payment_sync_refund`・`inroom_payment_mark_mismatch_refunded`・`inroom_payment_get`
+  - 管理: `admin_save_inroom_bill_settings` / `admin_set_stay_bill_override` / `admin_list_stay_bills`（has_facility_access）
+- 対象の請求書: 滞在（連泊なら全泊＝`_stay_chain`）の予約グループの `pms.bills`（削除・請求しない no_pay 1/2・別の表紙へ繰り越した子は除く）。1グループに請求書が複数ならこの滞在の明細がある請求書だけ。繰り越しを受けている表紙は子も含む。**1つの請求書にまとめている団体（複数室）は、どの部屋からも請求書全体が見え・払える**
+- 残額 = 明細（数量×単価を1行ずつ丸め）− 入金（`[自動]` で始まる現地入金行＝機械の穴埋めは差し引かない）。PMS の Square 精算（square-core.ts）と同じ数え方
+- PMS への入金行: `pms.bill_payments`（支払方法＝施設の「オンライン決済(stripe)」・集計区分 online・`source='book_inroom'`・行ID＝`md5('book_inroom:<決済id>:<請求書id>')` で二重に入らない・note「オンライン決済（客室案内 pi_…）」・入金日＝JST の当日）。複数の請求書には古い順に残額まで割り当て
+- 金額の食い違い: 確定時の残額が決済額より少ない（支払い中にフロントで精算された等）→ 入金行を立てず、その決済を**全額返金**（`mismatch` → `mismatch_refunded`／失敗は `refund_failed`・管理画面で「返金を再実行する」）
+- Stripe の管理画面からの返金: Webhook `charge.refunded` → 差額だけマイナスの入金行（同じ支払方法・source=book_inroom）
+- 画面:
+  - ゲスト `/r` トップの滞在カードの下に「ご精算」カード（残額つき）→ `/r/bill`（現在のご精算額・ご利用明細・フロントでのご精算・オンラインでお支払い）。3言語（フロント案内文は英語・繁体字が空なら日本語）
+  - 決済 API `/r/bill/pay`（prepare / confirm）・`/r/bill/pay/return`（3Dセキュア等の戻り）。滞在は Cookie `ab_stay` で決まり、確定時に決済がその滞在のものか確かめる
+  - 管理 `/admin/inroom/billing`（館内案内のタブ「💴 精算案内」）: 施設の既定（管理者だけ）・滞在ごとの出し分け（スタッフも・残額とオンライン決済額つき）・最近のオンライン決済（状態・返金の再実行）
+  - アクセスログに `/r/bill` を「ご精算（明細・お支払い）」と表示
+- Webhook（`/api/partner/stripe/webhook`）: `payment_intent.succeeded` の app=autumn-book / purpose=`book_inroom_bill` を `confirmInroomIntent`。`charge.refunded` は取引先 → 客室案内 → 公式サイト予約の順に台帳を見る
+- デモ（DATA_SOURCE=demo）・見本の館内図: 見本の明細を出す（出し分けは本物どおり）。オンライン決済は「お支払いはできません」
+- ⚠ **autumn-pms の改修が要る**: `square-core.ts` の `INTEGRATION_PAYMENT_SOURCES` に `'book_inroom'` を足す（足さないと請求書画面で人が消せる・`[自動]` 行の扱いで人の行扱い）
+- ⚠ 本番で出すには: 管理画面で施設の既定（または滞在ごと）を「出す」にする。既定はすべて「出さない」
+- 未確認: Stripe テストモードでの実決済の通し（本番の鍵・実滞在が要る）・PMS の請求書画面での入金行の見え方。デモで画面の出し分けと3言語、本番 DB で明細・残額の読み出し（書き込みは巻き戻して）を確認済み
+
+### テストチェックリスト（精算案内）
+- [ ] 管理画面「💴 精算案内」で施設の既定の3つを入れて保存すると、客室案内のトップに「ご精算」カードが出る。全部外すと出ない
+- [ ] 滞在ごとに「出さない」にした項目は、その滞在の /r/bill に出ない（他の滞在は既定どおり）。「既定」に戻すと施設の既定になる
+- [ ] 明細が PMS の請求書と一致する（品目・数量・金額・入金済み・残額）。`[自動]` の現地入金行は入金に数えない
+- [ ] フロント案内文が日本語・英語・繁体字で出る（英語・繁体字が空なら日本語）
+- [ ] Stripe テストモード 4242 で残額を払うと「お支払いが完了しました」・PMS の請求書に「オンライン決済(stripe)」の入金行が1本・残額 0
+- [ ] 3Dセキュア（4000 0027 6000 3184）・拒否（…0002 → 4242 で再試行）でも1本だけ入る
+- [ ] 支払い後にタブを閉じても Webhook で入金行が入る（payment_intent.succeeded が 200）
+- [ ] 支払画面を開いたままフロントで精算 → 支払うと「全額返金しました」・入金行は入らず、管理画面に「金額の食い違い（返金済み）」
+- [ ] 支払い後に明細が増えると、その差額だけがまた払える
+- [ ] Stripe の管理画面で一部返金すると、PMS にマイナスの入金行が入り、管理画面に「一部返金」
+- [ ] 見本の館内図・デモでは見本の明細が出て、決済はできない
+- [ ] 連泊（chain）の滞在は全泊の請求書が、部屋ごとに請求書を分けた予約はその部屋の請求書だけが出る
+
 ## 管理画面のパスキー（2026-10-17・v0.138.0）
 
 **ユーザー指示: 管理画面でパスキーを有効にして。**

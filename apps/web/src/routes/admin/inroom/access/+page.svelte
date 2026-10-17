@@ -16,6 +16,7 @@
 		if (path === '/r/bath') return '貸切風呂';
 		if (path === '/r/bath/code') return '貸切風呂（コード入力）';
 		if (path === '/r/bath/complete') return '貸切風呂（予約完了）';
+		if (path === '/r/bill') return 'ご精算（明細・お支払い）';
 		return path;
 	}
 	const LOCALE_LABEL: Record<string, string> = { ja: '日本語', en: '英語', 'zh-TW': '繁体字' };

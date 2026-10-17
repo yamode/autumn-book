@@ -189,6 +189,29 @@
 		</section>
 		{/if}
 
+		{#if data.stay && data.billSummary}
+			<!-- ============ ご精算（明細・フロント案内・オンライン決済。出し分けは管理画面・2026-10-17）============ -->
+			{@const bs = data.billSummary}
+			<a href="/r/bill" class="flex items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card">
+				<svg viewBox="0 0 24 24" class="h-6 w-6 shrink-0 text-stone-700" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="5" y="3" width="14" height="18" rx="1.5" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
+				</svg>
+				<div class="min-w-0 flex-1">
+					<p class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_title()}</p>
+					<p class="mt-0.5 text-xs text-stone-500">
+						{bs.flags.items || bs.flags.online ? m.inroom_bill_card_sub() : m.inroom_bill_card_front()}
+					</p>
+				</div>
+				{#if (bs.flags.items || bs.flags.online) && bs.dueTotal > 0}
+					<span class="shrink-0 text-right">
+						<span class="block text-[10px] text-stone-400">{m.inroom_bill_due()}</span>
+						<span class="text-base font-semibold tabular-nums text-stone-900">¥{Math.round(bs.dueTotal).toLocaleString('ja-JP')}</span>
+					</span>
+				{/if}
+				<span class="shrink-0 text-stone-300">›</span>
+			</a>
+		{/if}
+
 		{#if mealDays.length}
 			<!-- ============ お食事の時間（PMS の伺い書で決まった時間）。過ぎた分は隠し、日ごとにまとめる ============ -->
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="meal-times-title">

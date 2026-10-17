@@ -41,6 +41,9 @@
 // 例外その8（2026-10-17）: 管理画面のパスキー（src/lib/server/admin-passkeys.ts・book.admin_passkey*）。
 //   表は service_role だけに grant している。呼ぶ側（routes/admin/**）は getUser() で検証した本人の id で絞り、
 //   パスワード無しのログインは署名を確かめてから管理 API（generateLink → verifyOtp）でセッションを作る。
+// 例外その9（2026-10-17）: 客室案内の精算のオンライン決済（src/lib/server/inroom-bill.ts・book.inroom_payment_*）。
+//   お客様はログインしていない（滞在トークンの Cookie だけ）うえ、Webhook はお客様のセッションが無いところで確定するため。
+//   RPC の中で滞在トークン・残額・決済額を確かめ、PMS の請求書に入金行を立てる。台帳 book.inroom_payments は service_role だけ。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

@@ -219,6 +219,10 @@
 		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
 	>🖨 入口QR（客室に常設）</a>
 	<a
+		href="/admin/inroom/billing"
+		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
+	>💴 精算案内</a>
+	<a
 		href="/admin/inroom/preview"
 		class="border-b-2 border-transparent px-4 py-2 text-sm font-medium text-stone-400 hover:text-stone-600"
 	>📱 プレビュー</a>
