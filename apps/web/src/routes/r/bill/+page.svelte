@@ -17,8 +17,6 @@
 	const frontNote = $derived(frontNoteFor(bill.frontNote, getLocale()));
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
 	const yen = (n: number) => `¥${Math.round(n).toLocaleString('ja-JP')}`;
-	// 入金は差し引く額なので「−」を付ける。返金（マイナスの入金）は「＋」で戻す
-	const minusYen = (n: number) => (n < 0 ? `+${yen(-n)}` : `−${yen(n)}`);
 	const paidSum = (ps: { amount: number }[]) => ps.reduce((s, p) => s + p.amount, 0);
 	function fmtDate(ymd: string | null): string {
 		if (!ymd) return '';
@@ -130,35 +128,38 @@
 							</li>
 						{/each}
 					</ul>
-					<dl class="mt-1 border-t border-stone-200 pt-2 text-sm">
+					{#if b.payments.length > 0}
+						<!-- お支払い済み・割引（入金を1行ずつ・日付は出さない・2026-10-17 指示）。
+						     「−」は使わず、見出しで「お支払い済み」と分かるようにする。返金の行は「（ご返金）」を添える -->
+						<p class="mt-4 text-xs font-medium text-stone-500">{m.inroom_bill_payments_title()}</p>
+						<ul class="mt-1 divide-y divide-stone-100 text-sm">
+							{#each b.payments as p, i (i)}
+								<li class="flex items-baseline justify-between gap-3 py-1.5">
+									<span class="min-w-0 text-stone-700">
+										{p.method || m.inroom_bill_paid()}{#if p.amount < 0}<span class="ml-1 text-xs text-stone-400">（{m.inroom_bill_refund()}）</span>{/if}
+									</span>
+									<span class="shrink-0 tabular-nums text-stone-700">{yen(Math.abs(p.amount))}</span>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<!-- まとめ: ご利用合計 → お支払い済み・割引 → 残りのご精算額（引き算の記号を使わず、段で見せる） -->
+					<dl class="mt-3 space-y-1.5 rounded-md bg-stone-50 px-3 py-2.5 text-sm">
 						<div class="flex items-baseline justify-between">
 							<dt class="text-stone-500">{m.inroom_bill_subtotal()}</dt>
 							<dd class="tabular-nums text-stone-900">{yen(b.itemsTotal)}</dd>
 						</div>
-					</dl>
-					{#if b.payments.length > 0}
-						<!-- お支払い（入金を1行ずつ・2026-10-17 指示「合計にまとめず1行ずつ」） -->
-						<p class="mt-3 text-xs font-medium text-stone-500">{m.inroom_bill_payments_title()}</p>
-						<ul class="mt-1 divide-y divide-stone-100 text-sm">
-							{#each b.payments as p, i (i)}
-								<li class="flex items-baseline justify-between gap-3 py-1.5">
-									<!-- お支払いの行は日付を出さない（2026-10-17 指示） -->
-									<span class="min-w-0 text-stone-700">{p.method || m.inroom_bill_paid()}</span>
-									<span class="shrink-0 tabular-nums text-stone-900">{minusYen(p.amount)}</span>
-								</li>
-							{/each}
-						</ul>
-						<dl class="mt-1 space-y-1 border-t border-stone-200 pt-2 text-sm">
+						{#if b.payments.length > 0}
 							<div class="flex items-baseline justify-between">
 								<dt class="text-stone-500">{m.inroom_bill_paid_total()}</dt>
-								<dd class="tabular-nums text-stone-900">{minusYen(paidSum(b.payments))}</dd>
+								<dd class="tabular-nums text-stone-900">{yen(paidSum(b.payments))}</dd>
 							</div>
-							<div class="flex items-baseline justify-between font-medium">
-								<dt class="text-stone-700">{m.inroom_bill_bill_due()}</dt>
-								<dd class="tabular-nums text-stone-900">{yen(b.due)}</dd>
+							<div class="flex items-baseline justify-between border-t border-stone-200 pt-1.5">
+								<dt class="font-medium text-stone-800">{m.inroom_bill_bill_due()}</dt>
+								<dd class="text-base font-semibold tabular-nums text-stone-900">{yen(b.due)}</dd>
 							</div>
-						</dl>
-					{/if}
+						{/if}
+					</dl>
 				{/each}
 			{/if}
 			<p class="mt-3 text-xs leading-relaxed text-stone-400">※ {m.inroom_bill_note_live()}</p>

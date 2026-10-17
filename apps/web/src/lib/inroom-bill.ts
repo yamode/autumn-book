@@ -115,10 +115,10 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 		{ date: today, name: '生ビール', quantity: 2, unitPrice: 800, amount: 1600 },
 		{ date: today, name: '日本酒（地酒）', quantity: 1, unitPrice: 1400, amount: 1400 }
 	];
-	// 支払いは1行ずつ出すので、見本も2行（事前決済と、ラウンジで払った生ビール）
+	// 支払いは1行ずつ出すので、見本も2行（事前決済と会員割引）
 	const payments: BillPayment[] = [
 		{ date: today, method: 'オンライン事前決済', amount: 52800, online: false },
-		{ date: today, method: '現金', amount: 1600, online: false }
+		{ date: today, method: '公式サイト会員割引', amount: 1600, online: false }
 	];
 	if (paidOnline > 0) payments.push({ date: today, method: 'オンライン決済(stripe)', amount: paidOnline, online: true });
 	const itemsTotal = items.reduce((s, i) => s + i.amount, 0);
