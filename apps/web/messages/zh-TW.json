@@ -1094,6 +1094,7 @@
   "amend_err_min_stay": "此條件（住宿天數・人數）無法預約。請選擇其他房型或方案。",
   "inroom_bill_title": "結帳",
   "inroom_bill_card_sub": "消費明細與付款",
+  "inroom_bill_card_items": "消費明細",
   "inroom_bill_card_front": "櫃檯結帳說明",
   "inroom_bill_due": "目前應付金額",
   "inroom_bill_due_none": "目前沒有需要支付的金額。",
@@ -1115,5 +1116,6 @@
   "inroom_bill_err_changed": "應付金額已變更，請重新整理頁面後再付款。",
   "inroom_bill_err_generic": "無法完成付款，請洽詢櫃檯。",
   "inroom_bill_demo_note": "此為範例明細（無法付款）。",
+  "inroom_bill_demo_note_view": "此為範例明細。",
   "inroom_bill_back": "返回首頁"
 }

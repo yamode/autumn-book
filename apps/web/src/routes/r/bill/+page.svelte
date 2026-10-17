@@ -80,7 +80,8 @@
 
 <div class="space-y-3 px-4 py-4">
 	{#if bill.isDemo}
-		<p class="rounded-lg bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">{m.inroom_bill_demo_note()}</p>
+		<!-- オンライン決済を出さないときは「お支払いはできません」に触れない -->
+		<p class="rounded-lg bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">{flags.online ? m.inroom_bill_demo_note() : m.inroom_bill_demo_note_view()}</p>
 	{/if}
 
 	{#if shownResult === 'paid'}

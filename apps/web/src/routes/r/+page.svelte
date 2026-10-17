@@ -199,7 +199,7 @@
 				<div class="min-w-0 flex-1">
 					<p class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_title()}</p>
 					<p class="mt-0.5 text-xs text-stone-500">
-						{bs.flags.items || bs.flags.online ? m.inroom_bill_card_sub() : m.inroom_bill_card_front()}
+						{bs.flags.online ? (bs.flags.items ? m.inroom_bill_card_sub() : m.inroom_bill_online_title()) : bs.flags.items ? m.inroom_bill_card_items() : m.inroom_bill_card_front()}
 					</p>
 				</div>
 				{#if (bs.flags.items || bs.flags.online) && bs.dueTotal > 0}

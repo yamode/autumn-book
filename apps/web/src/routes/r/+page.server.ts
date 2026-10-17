@@ -19,7 +19,7 @@ import { loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/s
 import { loadLiveNotices, type InroomNotice } from '$lib/server/inroom-notices';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import { loadStayBill } from '$lib/server/inroom-bill';
-import { anyBillFlag, type BillFlags } from '$lib/inroom-bill';
+import { anyBillFlag, parsePreviewBillFlags, PREVIEW_BILL_COOKIE, type BillFlags } from '$lib/inroom-bill';
 import type { Actions, PageServerLoad } from './$types';
 
 type BillSummary = { flags: BillFlags; dueTotal: number; isDemo: boolean };
@@ -141,7 +141,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		loadInroomSettings(stay.facility.id),
 		loadLiveNotices(stay.facility.id),
 		// 精算案内（明細・フロント案内・オンライン決済の出し分け・2026-10-17）。読めなければ出さない
-		loadStayBill(token, stay)
+		// 管理画面のプレビューで選んだ出し分けは見本の滞在にだけ効く
+		loadStayBill(token, stay, parsePreviewBillFlags(cookies.get(PREVIEW_BILL_COOKIE)))
 	]);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。

@@ -84,3 +84,16 @@ describe('決済のエラーの種類', () => {
 		expect(billPayErrorKind(new Error('boom'))).toBe('generic');
 	});
 });
+
+describe('プレビューの精算の見本（Cookie ab_preview_bill）', () => {
+	it('値 → 出し分け。無い・空・読めないなら null（設定どおり）', async () => {
+		const { parsePreviewBillFlags, previewBillCookieValue } = await import('./inroom-bill');
+		expect(parsePreviewBillFlags('items,front,online')).toEqual({ items: true, front: true, online: true });
+		expect(parsePreviewBillFlags('front')).toEqual({ items: false, front: true, online: false });
+		expect(parsePreviewBillFlags('none')).toEqual({ items: false, front: false, online: false });
+		expect(parsePreviewBillFlags(undefined)).toBeNull();
+		expect(parsePreviewBillFlags('xxx')).toBeNull();
+		expect(previewBillCookieValue({ items: true, front: false, online: true })).toBe('items,online');
+		expect(previewBillCookieValue({ items: false, front: false, online: false })).toBe('none');
+	});
+});

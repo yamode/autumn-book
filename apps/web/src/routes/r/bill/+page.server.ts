@@ -4,7 +4,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { inroomPaymentReady, loadStayBill } from '$lib/server/inroom-bill';
 import { stripePublishableKey } from '$lib/server/stripe';
-import { anyBillFlag } from '$lib/inroom-bill';
+import { anyBillFlag, parsePreviewBillFlags, PREVIEW_BILL_COOKIE } from '$lib/inroom-bill';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
@@ -16,7 +16,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 	if (!token) redirect(303, '/r');
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
 	if (!stay) redirect(303, '/r');
-	const bill = await loadStayBill(token, stay);
+	// 管理画面のプレビューで選んだ出し分けは見本の滞在にだけ効く
+	const bill = await loadStayBill(token, stay, parsePreviewBillFlags(cookies.get(PREVIEW_BILL_COOKIE)));
 	if (!bill || !anyBillFlag(bill.flags)) redirect(303, '/r');
 
 	// オンライン決済は、出す設定・本物の滞在・決済の環境（鍵・service_role）が揃ったときだけ入力欄を出す

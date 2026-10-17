@@ -1094,6 +1094,7 @@
   "amend_err_min_stay": "This room or plan is not available for this length of stay or number of guests. Please choose another.",
   "inroom_bill_title": "Checkout & payment",
   "inroom_bill_card_sub": "Your charges and payment",
+  "inroom_bill_card_items": "Your charges",
   "inroom_bill_card_front": "About paying at the front desk",
   "inroom_bill_due": "Amount due",
   "inroom_bill_due_none": "Nothing is due at the moment.",
@@ -1115,5 +1116,6 @@
   "inroom_bill_err_changed": "The amount due has changed. Please refresh the page before paying.",
   "inroom_bill_err_generic": "We could not complete your payment. Please contact the front desk.",
   "inroom_bill_demo_note": "This is a sample (payment is not available).",
+  "inroom_bill_demo_note_view": "This is a sample.",
   "inroom_bill_back": "Back to top"
 }

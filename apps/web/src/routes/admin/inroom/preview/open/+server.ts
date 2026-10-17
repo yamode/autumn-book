@@ -5,12 +5,15 @@ import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { BROWSE_FACILITY_COOKIE, rememberBrowseFacility } from '$lib/server/inroom-browse';
+import { parsePreviewBillFlags, previewBillCookieValue, PREVIEW_BILL_COOKIE } from '$lib/inroom-bill';
 import type { RequestHandler } from './$types';
 
 // 管理画面の「客室案内のプレビュー」（2026-10-17 指示）の入口。この端末の Cookie を切り替えて客室案内（/r）へ送る。
 //   mode=stay   … 見本（デモ）の滞在トークン（PMS の「見本の館内図」と同じ・施設ごとに1本）で、ご滞在中のお客様の表示
 //   mode=browse … 滞在の Cookie を消し、入口QRと同じ「コード入力前（館内案内だけ）」の表示
 // 見本の貸切風呂の予約は本番の台帳に入る（PMS の見本と同じ）。トークンはブラウザの URL に出さない（Cookie だけ）。
+// bill=items,front,online / none … 精算案内の見本の出し分け（Cookie ab_preview_bill・見本の滞在にだけ効く）。
+//   bill=settings か省略 … 管理画面「精算案内」の設定どおり（Cookie を消す）
 // +server.ts は管理画面の layout の関所を通らないので、ここでもスタッフかを確かめる。
 const STAY_COOKIE = 'ab_stay';
 const useSupabaseAdmin = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
@@ -30,6 +33,7 @@ export const GET: RequestHandler = async (event) => {
 
 	if (mode === 'browse') {
 		cookies.delete(STAY_COOKIE, { path: '/' });
+		cookies.delete(PREVIEW_BILL_COOKIE, { path: '/' });
 		rememberBrowseFacility(cookies, facility.slug, 'ja');
 		redirect(303, `/r?f=${encodeURIComponent(facility.slug)}`);
 	}
@@ -54,6 +58,14 @@ export const GET: RequestHandler = async (event) => {
 	if (!token) error(400, 'この環境では見本の滞在を用意できません（管理画面が実データに繋がっていません）。「コード入力前」の表示はお試しいただけます。');
 
 	cookies.set(STAY_COOKIE, token, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: stayCookieMaxAge(validTo) });
+	// 精算案内の見本の出し分け（2026-10-17）。'settings'・省略なら設定どおり
+	const bill = url.searchParams.get('bill');
+	const billFlags = bill && bill !== 'settings' ? parsePreviewBillFlags(bill) : null;
+	if (bill && bill !== 'settings') {
+		cookies.set(PREVIEW_BILL_COOKIE, billFlags ? previewBillCookieValue(billFlags) : 'none', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: stayCookieMaxAge(validTo) });
+	} else {
+		cookies.delete(PREVIEW_BILL_COOKIE, { path: '/' });
+	}
 	// 入口QRで覚えた施設は、見本の施設に合わせておく（滞在が切れたときの館内案内）
 	if (cookies.get(BROWSE_FACILITY_COOKIE) !== facility.slug) rememberBrowseFacility(cookies, facility.slug, 'ja');
 	redirect(303, '/r');

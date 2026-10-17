@@ -26,6 +26,7 @@ import {
 	demoStayBill,
 	EMPTY_NOTE,
 	NO_FLAGS,
+	PREVIEW_FRONT_NOTE,
 	normalizeStayBill,
 	resolveBillFlags,
 	type BillFlags,
@@ -190,11 +191,17 @@ export async function sbListStayBills(client: SupabaseClient, facilityId: string
 // ---------------------------------------------------------------------------
 // ゲスト面: 精算案内の中身
 // ---------------------------------------------------------------------------
-/** 滞在の精算案内。読めなければ null（客室案内の表示を止めない） */
-export async function loadStayBill(token: string, stay: StayInfo): Promise<StayBillView | null> {
+/**
+ * 滞在の精算案内。読めなければ null（客室案内の表示を止めない）。
+ * preview は管理画面のプレビューで選んだ出し分け（Cookie ab_preview_bill）。見本の滞在にだけ効かせる
+ * （本物の滞在には効かない。見本は決済できないので、オンライン決済を出しても払えない旨の表示になる）。
+ */
+export async function loadStayBill(token: string, stay: StayInfo, preview: BillFlags | null = null): Promise<StayBillView | null> {
+	const previewBill = (flags: BillFlags, note: FrontNote) =>
+		demoStayBill(preview ?? flags, preview?.front && !note.ja.trim() ? PREVIEW_FRONT_NOTE : note);
 	if (DATA_SOURCE !== 'supabase') {
 		const s = demoSettings.get(stay.facility.id) ?? { flags: NO_FLAGS, note: EMPTY_NOTE };
-		return demoStayBill(resolveBillFlags(s.flags, demoOverrides.get(stay.tokenId)), s.note);
+		return previewBill(resolveBillFlags(s.flags, demoOverrides.get(stay.tokenId)), s.note);
 	}
 	try {
 		const { data, error } = await supa().rpc('stay_bill', { p_token: token });
@@ -202,7 +209,7 @@ export async function loadStayBill(token: string, stay: StayInfo): Promise<StayB
 		const view = normalizeStayBill(data);
 		if (!view) return null;
 		// 見本（デモ）の館内図は滞在に紐づかないので、出し分けだけ本物で、明細は見本
-		if (view.isDemo || stay.isDemo) return demoStayBill(view.flags, view.frontNote);
+		if (view.isDemo || stay.isDemo) return previewBill(view.flags, view.frontNote);
 		return view;
 	} catch {
 		return null;

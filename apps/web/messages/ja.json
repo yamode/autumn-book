@@ -1094,6 +1094,7 @@
   "amend_err_min_stay": "この条件（泊数・人数）ではご予約いただけません。別のお部屋・プランをお選びください。",
   "inroom_bill_title": "ご精算",
   "inroom_bill_card_sub": "ご利用明細・お支払い",
+  "inroom_bill_card_items": "ご利用明細",
   "inroom_bill_card_front": "フロントでのご精算のご案内",
   "inroom_bill_due": "現在のご精算額",
   "inroom_bill_due_none": "現在、お支払いいただく金額はありません。",
@@ -1115,5 +1116,6 @@
   "inroom_bill_err_changed": "ご精算額が変わりました。画面を更新してからお支払いください。",
   "inroom_bill_err_generic": "お支払いを完了できませんでした。フロントへお問い合わせください。",
   "inroom_bill_demo_note": "見本の明細です（お支払いはできません）。",
+  "inroom_bill_demo_note_view": "見本の明細です。",
   "inroom_bill_back": "トップへ戻る"
 }

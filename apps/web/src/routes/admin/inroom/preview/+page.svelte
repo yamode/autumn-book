@@ -12,7 +12,18 @@
 	let mode = $state<Mode>('stay');
 	// iframe を開き直すための番号（同じモードで「最初から」を押したとき）
 	let nonce = $state(0);
-	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&n=${nonce}`);
+
+	// 精算案内の見本（2026-10-17 指示）。見本の滞在にだけ効く。既定は3つとも出す（本番の設定が「出さない」でも見られるように）
+	let billMode = $state<'custom' | 'settings'>('custom');
+	let billItems = $state(true);
+	let billFront = $state(true);
+	let billOnline = $state(true);
+	const billParam = $derived(
+		billMode === 'settings'
+			? 'settings'
+			: [billItems && 'items', billFront && 'front', billOnline && 'online'].filter(Boolean).join(',') || 'none'
+	);
+	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&bill=${billParam}&n=${nonce}`);
 	let message = $state('');
 
 	function open(m: Mode) {
@@ -39,7 +50,7 @@
 	<a href="/admin/inroom" class="text-xs text-stone-500 hover:underline">← 館内案内・客室スリップ</a>
 	<h1 class="mt-1 text-lg font-semibold text-stone-800">📱 客室案内のプレビュー — {data.currentFacility.name}</h1>
 	<p class="mt-1 text-xs text-stone-400">
-		お客様のスマートフォンと同じ幅で、客室案内を開きます。館内案内・お知らせ・湯量・メニューの表示を確かめられます。
+		お客様のスマートフォンと同じ幅で、客室案内を開きます。館内案内・お知らせ・湯量・精算案内・メニューの表示を確かめられます。
 	</p>
 </div>
 
@@ -65,6 +76,29 @@
 				<span class="block text-xs text-stone-500">客室の入口QRを読んだだけの表示</span>
 			</button>
 		</div>
+
+		{#if mode === 'stay'}
+			<!-- 精算案内の見本。明細は見本（宿泊料・入湯税・飲み物）、オンライン決済は見本なので払えない -->
+			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+				<p class="text-xs font-medium text-stone-500">💴 精算案内（見本）</p>
+				<label class="flex items-center gap-2 text-xs">
+					<input type="radio" bind:group={billMode} value="custom" class="h-3.5 w-3.5" />
+					<span>選んだものを出す</span>
+				</label>
+				<div class="space-y-1 pl-5 text-xs {billMode === 'custom' ? '' : 'opacity-40'}">
+					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billItems} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />利用明細</label>
+					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billFront} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />フロントでの早め精算のご案内</label>
+					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billOnline} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />オンライン決済（Stripe）</label>
+				</div>
+				<label class="flex items-center gap-2 text-xs">
+					<input type="radio" bind:group={billMode} value="settings" class="h-3.5 w-3.5" />
+					<span>管理画面「<a href="/admin/inroom/billing" class="underline">精算案内</a>」の設定どおり</span>
+				</label>
+				<p class="text-[11px] leading-relaxed text-stone-400">
+					明細は見本です。案内文は施設の設定を出します（空なら見本の文）。オンライン決済は見本のため、支払いの欄は「お支払いはできません」と出ます。トップの「ご精算」カードから開けます。
+				</p>
+			</div>
+		{/if}
 
 		<div class="space-y-2">
 			<button type="button" onclick={() => (nonce += 1)} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">↻ 最初から開き直す</button>

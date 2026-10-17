@@ -150,3 +150,31 @@ export const INROOM_PAYMENT_STATUS: Record<string, string> = {
 	mismatch_refunded: '金額の食い違い（返金済み）',
 	refund_failed: '返金に失敗'
 };
+
+// ---------------------------------------------------------------------------
+// 管理画面のプレビュー（/admin/inroom/preview）で見せる精算の見本（2026-10-17 指示「プレビューでも精算のデモが見えるように」）
+// ---------------------------------------------------------------------------
+/** プレビューで選んだ出し分けを覚える Cookie（見本の滞在にだけ効く。本物の滞在・決済には関係しない） */
+export const PREVIEW_BILL_COOKIE = 'ab_preview_bill';
+
+/** Cookie の値（"items,front,online" / "none"）→ 出し分け。無い・読めないときは null（＝管理画面の設定どおり） */
+export function parsePreviewBillFlags(v: string | null | undefined): BillFlags | null {
+	if (!v) return null;
+	if (v === 'none') return { ...NO_FLAGS };
+	const parts = v.split(',');
+	const flags = { items: parts.includes('items'), front: parts.includes('front'), online: parts.includes('online') };
+	return anyBillFlag(flags) ? flags : null;
+}
+
+/** 出し分け → Cookie の値 */
+export function previewBillCookieValue(f: BillFlags): string {
+	const parts = (['items', 'front', 'online'] as const).filter((k) => f[k]);
+	return parts.length ? parts.join(',') : 'none';
+}
+
+/** プレビューで案内文が空のときに出す見本の文（管理画面の「精算案内」で書いた文がここに出る） */
+export const PREVIEW_FRONT_NOTE: FrontNote = {
+	ja: '（見本）ここに、管理画面「精算案内」で書いたフロントでの早め精算のご案内が出ます。\n\n例：ご出発の朝はフロントが混み合います。前日の夜 21:00 までにフロントへお越しいただければ、先にご精算いただけます。',
+	en: '',
+	zh: ''
+};
