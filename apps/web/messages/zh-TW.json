@@ -1101,9 +1101,9 @@
   "inroom_bill_items_title": "消費明細",
   "inroom_bill_items_empty": "目前尚無明細。",
   "inroom_bill_subtotal": "消費合計",
-  "inroom_bill_payments_title": "已付款・折扣",
+  "inroom_bill_payments_title": "已付款・調整金額",
   "inroom_bill_paid_total": "已付款・折扣",
-  "inroom_bill_bill_due": "尚需支付金額",
+  "inroom_bill_bill_due": "應付金額",
   "inroom_bill_refund": "退款",
   "inroom_bill_paid": "已付款",
   "inroom_bill_bill_no": "帳單 No.{no}",
@@ -1122,5 +1122,11 @@
   "inroom_bill_err_generic": "無法完成付款，請洽詢櫃檯。",
   "inroom_bill_demo_note": "此為範例明細（無法付款）。",
   "inroom_bill_demo_note_view": "此為範例明細。",
-  "inroom_bill_back": "返回首頁"
+  "inroom_bill_back": "返回首頁",
+  "inroom_bill_paid_title": "付款完成",
+  "inroom_bill_paid_body": "謝謝您。付款內容也會反映在消費明細中。",
+  "inroom_bill_paid_amount": "付款金額",
+  "inroom_bill_close": "關閉",
+  "inroom_bill_go_top": "返回首頁",
+  "inroom_bill_total": "合計"
 }

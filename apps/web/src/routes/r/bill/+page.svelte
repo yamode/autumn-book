@@ -2,7 +2,8 @@
 	// 客室案内の精算案内（2026-10-17）。管理画面の出し分けどおりに、
 	//   ① 現在のご精算額 ② ご利用明細 ③ フロントでのご精算のご案内 ④ オンラインでお支払い（Stripe）
 	// を出す。金額は DB が数え直すので、画面の額と変わっていれば決済の前に断られる（画面を更新してもらう）。
-	import { invalidateAll } from '$app/navigation';
+	import { invalidateAll, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
@@ -64,6 +65,33 @@
 	// 決済の結果（このページで払った直後・リダイレクトの戻り ?payment=）
 	let result = $state<string | null>(null);
 	const shownResult = $derived(result ?? data.paymentResult);
+	// 決済完了は画面の中央のモーダルで知らせる（上部の帯だと気づきにくい・2026-10-17 指示）。
+	// 閉じる／トップページに戻る。開いている間は後ろをスクロールさせない。閉じたら URL の ?payment= を消す（再読み込みで出し直さない）
+	let paidModalDismissed = $state(false);
+	let paidAmount = $state<number | null>(null);
+	const paidModalOpen = $derived((shownResult === 'paid' || shownResult === 'test') && !paidModalDismissed);
+	function closePaidModal() {
+		paidModalDismissed = true;
+		if (page.url.searchParams.has('payment')) {
+			const u = new URL(page.url);
+			u.searchParams.delete('payment');
+			replaceState(u.pathname + u.search, page.state);
+		}
+	}
+	$effect(() => {
+		if (!paidModalOpen) return;
+		const html = document.documentElement;
+		const prev = { html: html.style.overflow, body: document.body.style.overflow };
+		html.style.overflow = 'hidden';
+		document.body.style.overflow = 'hidden';
+		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && closePaidModal();
+		window.addEventListener('keydown', onKey);
+		return () => {
+			html.style.overflow = prev.html;
+			document.body.style.overflow = prev.body;
+			window.removeEventListener('keydown', onKey);
+		};
+	});
 	// プレビュー（見本の滞在）で管理者が試す本番の Stripe のテスト決済（¥100 固定・2026-10-17）。文言は社内向けなので日本語だけ
 	const payAmount = $derived(data.testPayment ? INROOM_TEST_AMOUNT : bill.dueTotal);
 
@@ -87,6 +115,8 @@
 
 	async function onPaid(p: { intentId: string }) {
 		const r = await payRequest('confirm', { intentId: p.intentId });
+		paidAmount = payAmount;
+		paidModalDismissed = false;
 		result = r.result === 'test' ? 'test' : r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
 		await invalidateAll();
 	}
@@ -100,13 +130,44 @@
 		<p class="rounded-lg bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">{flags.online && !data.testPayment ? m.inroom_bill_demo_note() : m.inroom_bill_demo_note_view()}</p>
 	{/if}
 
-	{#if shownResult === 'test'}
-		<p class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="status">
-			テスト決済（本番・¥{INROOM_TEST_AMOUNT}）が完了しました。PMS には入れていません。<strong>返金は Stripe の管理画面から手で行ってください</strong>（管理画面「精算案内」の一覧に「テスト決済」として残ります）。
-		</p>
-	{:else if shownResult === 'paid'}
-		<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{m.inroom_bill_paid_done()}</p>
-	{:else if shownResult === 'refunded'}
+	{#if paidModalOpen}
+		<!-- ============ 決済完了のモーダル（画面の中央） ============ -->
+		<div class="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/50 p-4" role="presentation">
+			<div
+				class="max-h-[85dvh] w-full max-w-sm overflow-y-auto overscroll-contain rounded-xl bg-white p-6 text-center shadow-xl"
+				role="alertdialog"
+				aria-modal="true"
+				aria-labelledby="paid-modal-title"
+			>
+				<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
+					<svg viewBox="0 0 24 24" class="h-8 w-8 text-emerald-600" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M5 12.5l4.5 4.5L19 7.5" />
+					</svg>
+				</div>
+				<h2 id="paid-modal-title" class="mt-4 text-lg font-semibold text-stone-900">{m.inroom_bill_paid_title()}</h2>
+				{#if paidAmount}
+					<p class="mt-2 text-sm text-stone-500">{m.inroom_bill_paid_amount()}</p>
+					<p class="text-2xl font-semibold tabular-nums text-stone-900">{yen(paidAmount)}</p>
+				{/if}
+				{#if shownResult === 'test'}
+					<!-- 管理者のプレビューでのテスト決済（社内向けなので日本語だけ） -->
+					<p class="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-left text-xs leading-relaxed text-red-800">
+						テスト決済（本番・¥{INROOM_TEST_AMOUNT}）です。PMS には入れていません。<strong>返金は Stripe の管理画面から手で行ってください</strong>（管理画面「精算案内」の一覧に「テスト決済」として残ります）。
+					</p>
+				{:else}
+					<p class="mt-3 text-sm leading-relaxed text-stone-600">{m.inroom_bill_paid_body()}</p>
+				{/if}
+				<div class="mt-6 space-y-2">
+					<a href="/r" class="block w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white active:bg-stone-700">{m.inroom_bill_go_top()}</a>
+					<button type="button" onclick={closePaidModal} class="block w-full rounded-lg border border-stone-300 bg-white py-3 text-sm font-medium text-stone-700 active:bg-stone-50">
+						{m.inroom_bill_close()}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
+	{#if shownResult === 'refunded'}
 		<p class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">{m.inroom_bill_pay_refunded()}</p>
 	{:else if shownResult === 'pending'}
 		<p class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">{m.inroom_bill_pay_pending()}</p>
@@ -152,9 +213,14 @@
 							</li>
 						{/each}
 					</ul>
+					<!-- 明細の最後に合計（2026-10-17 指示） -->
+					<div class="flex items-baseline justify-between gap-3 border-t border-stone-300 py-1.5 text-sm">
+						<span class="font-medium text-stone-700">{m.inroom_bill_subtotal()}</span>
+						<span class="shrink-0 font-semibold tabular-nums text-stone-900">{yen(b.itemsTotal)}</span>
+					</div>
 					{#if b.payments.length > 0}
-						<!-- お支払い済み・割引（入金を1行ずつ・日付は出さない・2026-10-17 指示）。
-						     「−」は使わず、見出しで「お支払い済み」と分かるようにする。返金の行は「（ご返金）」を添える -->
+						<!-- お支払い済み・調整額（入金を1行ずつ・日付は出さない）。「−」は使わず見出しで分かるようにし、最後に合計。
+						     返金の行は「（ご返金）」を添える -->
 						<p class="mt-4 text-xs font-medium text-stone-500">{m.inroom_bill_payments_title()}</p>
 						<ul class="mt-1 divide-y divide-stone-100 text-sm">
 							{#each b.payments as p, i (i)}
@@ -166,24 +232,16 @@
 								</li>
 							{/each}
 						</ul>
-					{/if}
-					<!-- まとめ: ご利用合計 → お支払い済み・割引 → 残りのご精算額（引き算の記号を使わず、段で見せる） -->
-					<dl class="mt-3 space-y-1.5 rounded-md bg-stone-50 px-3 py-2.5 text-sm">
-						<div class="flex items-baseline justify-between">
-							<dt class="text-stone-500">{m.inroom_bill_subtotal()}</dt>
-							<dd class="tabular-nums text-stone-900">{yen(b.itemsTotal)}</dd>
+						<div class="flex items-baseline justify-between gap-3 border-t border-stone-300 py-1.5 text-sm">
+							<span class="font-medium text-stone-700">{m.inroom_bill_total()}</span>
+							<span class="shrink-0 font-semibold tabular-nums text-stone-900">{yen(paidSum(b.payments))}</span>
 						</div>
-						{#if b.payments.length > 0}
-							<div class="flex items-baseline justify-between">
-								<dt class="text-stone-500">{m.inroom_bill_paid_total()}</dt>
-								<dd class="tabular-nums text-stone-900">{yen(paidSum(b.payments))}</dd>
-							</div>
-							<div class="flex items-baseline justify-between border-t border-stone-200 pt-1.5">
-								<dt class="font-medium text-stone-800">{m.inroom_bill_bill_due()}</dt>
-								<dd class="text-base font-semibold tabular-nums text-stone-900">{yen(b.due)}</dd>
-							</div>
-						{/if}
-					</dl>
+						<!-- 最後のご精算額は1行だけ（太い線で区切る。上の「現在のご精算額」と同じ額を何度も並べない・2026-10-17 指示） -->
+						<div class="mt-3 flex items-baseline justify-between gap-3 border-t-2 border-stone-800 pt-2">
+							<span class="text-sm font-semibold text-stone-900">{m.inroom_bill_bill_due()}</span>
+							<span class="shrink-0 text-lg font-semibold tabular-nums text-stone-900">{yen(b.due)}</span>
+						</div>
+					{/if}
 					</div>
 				{/each}
 			{/if}

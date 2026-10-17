@@ -1101,9 +1101,9 @@
   "inroom_bill_items_title": "ご利用明細",
   "inroom_bill_items_empty": "まだ明細はありません。",
   "inroom_bill_subtotal": "ご利用合計",
-  "inroom_bill_payments_title": "お支払い済み・割引",
+  "inroom_bill_payments_title": "お支払い済み・調整額",
   "inroom_bill_paid_total": "お支払い済み・割引",
-  "inroom_bill_bill_due": "残りのご精算額",
+  "inroom_bill_bill_due": "ご精算額",
   "inroom_bill_refund": "ご返金",
   "inroom_bill_paid": "お支払い済み",
   "inroom_bill_bill_no": "請求書 No.{no}",
@@ -1122,5 +1122,11 @@
   "inroom_bill_err_generic": "お支払いを完了できませんでした。フロントへお問い合わせください。",
   "inroom_bill_demo_note": "見本の明細です（お支払いはできません）。",
   "inroom_bill_demo_note_view": "見本の明細です。",
-  "inroom_bill_back": "トップへ戻る"
+  "inroom_bill_back": "トップへ戻る",
+  "inroom_bill_paid_title": "お支払いが完了しました",
+  "inroom_bill_paid_body": "ありがとうございました。お支払いの内容はご利用明細にも反映されます。",
+  "inroom_bill_paid_amount": "お支払い額",
+  "inroom_bill_close": "閉じる",
+  "inroom_bill_go_top": "トップページに戻る",
+  "inroom_bill_total": "合計"
 }

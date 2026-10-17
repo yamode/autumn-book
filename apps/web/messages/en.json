@@ -1101,9 +1101,9 @@
   "inroom_bill_items_title": "Your charges",
   "inroom_bill_items_empty": "No charges yet.",
   "inroom_bill_subtotal": "Total charges",
-  "inroom_bill_payments_title": "Paid / discounts",
+  "inroom_bill_payments_title": "Paid & adjustments",
   "inroom_bill_paid_total": "Paid / discounts",
-  "inroom_bill_bill_due": "Remaining balance",
+  "inroom_bill_bill_due": "Amount due",
   "inroom_bill_refund": "Refund",
   "inroom_bill_paid": "Paid",
   "inroom_bill_bill_no": "Invoice No.{no}",
@@ -1122,5 +1122,11 @@
   "inroom_bill_err_generic": "We could not complete your payment. Please contact the front desk.",
   "inroom_bill_demo_note": "This is a sample (payment is not available).",
   "inroom_bill_demo_note_view": "This is a sample.",
-  "inroom_bill_back": "Back to top"
+  "inroom_bill_back": "Back to top",
+  "inroom_bill_paid_title": "Payment complete",
+  "inroom_bill_paid_body": "Thank you. The payment will also appear in your charges.",
+  "inroom_bill_paid_amount": "Amount paid",
+  "inroom_bill_close": "Close",
+  "inroom_bill_go_top": "Back to the top page",
+  "inroom_bill_total": "Total"
 }
