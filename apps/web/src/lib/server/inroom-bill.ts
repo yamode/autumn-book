@@ -249,10 +249,11 @@ function service() {
 type PreparedRow = { id: string; amount: number; payment_intent_id: string | null; room_code: string | null };
 
 /** 準備: DB が残額を数え直し、画面の額と一致したら PaymentIntent を作る（同じ台帳行なら作り直さない） */
-export async function prepareInroomPayment(token: string, expected: number): Promise<{ clientSecret: string; amount: number }> {
+export async function prepareInroomPayment(token: string, expected: number, billId: string | null = null): Promise<{ clientSecret: string; amount: number }> {
 	if (!inroomPaymentReady()) throw new Error('unavailable');
 	const db = service();
-	const prepared = await db.rpc('inroom_payment_prepare', { p_token: token, p_expected: expected });
+	// 請求書が複数ある滞在は、お客様が選んだ請求書の残額だけ（DB が公開済みか・残額を確かめる・2026-10-18）
+	const prepared = await db.rpc('inroom_payment_prepare', billId ? { p_token: token, p_expected: expected, p_bill: billId } : { p_token: token, p_expected: expected });
 	if (prepared.error) throw new Error(prepared.error.message);
 	const row = prepared.data as PreparedRow;
 	const intent = row.payment_intent_id

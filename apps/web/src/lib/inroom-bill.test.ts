@@ -135,3 +135,31 @@ describe('請求内容チェックが済んだ請求書だけ公開（2026-10-17
 		expect(v?.publishedCount).toBe(1);
 	});
 });
+
+describe('請求書の見出し・宛名・選んで払う（2026-10-18）', () => {
+	const it_ = (date: string | null) => ({ date, name: 'x', quantity: 1, unitPrice: 1, amount: 1 });
+	it('明細の日付の範囲から泊数とご出発日を出す（連泊を1泊に見せない）', async () => {
+		const { billStayRange } = await import('./inroom-bill');
+		expect(billStayRange({ items: [it_('2026-10-16'), it_('2026-10-17')] })).toEqual({ from: '2026-10-16', checkout: '2026-10-18', nights: 2 });
+		expect(billStayRange({ items: [it_('2026-10-16')] })).toEqual({ from: '2026-10-16', checkout: '2026-10-17', nights: 1 });
+		// 未公開の請求書は明細が無く、DB が返した範囲を使う
+		expect(billStayRange({ items: [], stayDate: '2026-10-19', stayDateTo: '2026-10-20' })?.nights).toBe(2);
+		expect(billStayRange({ items: [it_(null)] })).toBeNull();
+	});
+	it('宛名はお客様名と違うときだけ（空白・様は無視）', async () => {
+		const { billAddressee } = await import('./inroom-bill');
+		expect(billAddressee({ name: '株式会社シンキ製作所' }, '塩津 広之')).toBe('株式会社シンキ製作所');
+		expect(billAddressee({ name: '塩津広之 様' }, '塩津 広之')).toBeNull();
+		expect(billAddressee({ name: '' }, '塩津 広之')).toBeNull();
+	});
+	it('払える請求書は公開済みで残額があるものだけ・泊まった日の順', async () => {
+		const { payableBills } = await import('./inroom-bill');
+		const bills = [
+			{ id: 'late', items: [it_('2026-10-18')], published: true, due: 500 },
+			{ id: 'paid', items: [it_('2026-10-15')], published: true, due: 0 },
+			{ id: 'hidden', items: [], published: false, due: 0, stayDate: '2026-10-14' },
+			{ id: 'early', items: [it_('2026-10-16')], published: true, due: 1200 }
+		];
+		expect(payableBills(bills).map((b) => b.id)).toEqual(['early', 'late']);
+	});
+});

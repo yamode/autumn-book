@@ -24,7 +24,10 @@ export const POST: RequestHandler = async ({ cookies, request, url, locals }) =>
 		if (fd.get('action') === 'prepare') {
 			const amount = Number(fd.get('amount'));
 			if (!Number.isInteger(amount) || amount < 50) throw new Error('amount_changed');
-			const r = await prepareInroomPayment(token, amount);
+			// 選んだ請求書（請求書が複数ある滞在だけ）。形が違えば指定なし扱いにせず断る
+			const billRaw = String(fd.get('billId') ?? '').trim();
+			if (billRaw && !/^[0-9a-f-]{36}$/i.test(billRaw)) throw new Error('amount_changed');
+			const r = await prepareInroomPayment(token, amount, billRaw || null);
 			return json({ ok: true, ...r, returnUrl: `${url.origin}/r/bill/pay/return` }, { headers });
 		}
 		if (fd.get('action') === 'confirm') {

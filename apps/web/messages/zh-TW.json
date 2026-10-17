@@ -1129,5 +1129,9 @@
   "inroom_bill_close": "關閉",
   "inroom_bill_go_top": "返回首頁",
   "inroom_bill_total": "合計",
-  "inroom_bill_pending_check": "櫃檯正在確認您的消費明細，確認完成後將顯示於此。"
+  "inroom_bill_pending_check": "櫃檯正在確認您的消費明細，確認完成後將顯示於此。",
+  "inroom_bill_stay_range": "{from}〜{to}（{nights}晚）",
+  "inroom_bill_addressee": "抬頭：{name}",
+  "inroom_bill_choose": "請選擇要付款的帳單",
+  "inroom_bill_choose_due": "應付 {amount}"
 }

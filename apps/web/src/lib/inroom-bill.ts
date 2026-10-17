@@ -25,8 +25,9 @@ export type StayBill = {
 	 * false のあいだは明細・入金・金額を持たず（DB が返さない）、画面は「フロントで確認中」と出す
 	 */
 	published: boolean;
-	/** 未公開の請求書の泊まった日（明細のいちばん早い日・見出し用）。公開済みは明細から出す */
+	/** 泊まった日の範囲（明細のいちばん早い日・遅い日。見出し用）。未公開の請求書は明細を持たないのでこれだけが手がかり */
 	stayDate: string | null;
+	stayDateTo: string | null;
 };
 
 export type StayBillView = {
@@ -37,6 +38,8 @@ export type StayBillView = {
 	dueTotal: number;
 	/** 公開済みの請求書の枚数。0 なら金額も決済の欄も出さない */
 	publishedCount: number;
+	/** 滞在コードのお客様名（請求書の宛名がこれと違うときだけ宛名を出す・2026-10-18） */
+	guestName: string | null;
 	/** この滞在でオンライン決済された額（返金を除く） */
 	paidOnline: number;
 	isDemo: boolean;
@@ -103,7 +106,8 @@ export function normalizeStayBill(raw: unknown): StayBillView | null {
 				.map((p) => ({ date: ymd(p.date), method: str(p.method), amount: num(p.amount), online: p.online === true })),
 			// published が無い（古い DB 関数）ときは公開扱い（従来どおり）
 			published: b.published !== false,
-			stayDate: ymd(b.stay_date)
+			stayDate: ymd(b.stay_date),
+			stayDateTo: ymd(b.stay_date_to)
 		}));
 	return {
 		flags: { items: r.show_items === true, front: r.show_front === true, online: r.show_online === true },
@@ -111,6 +115,7 @@ export function normalizeStayBill(raw: unknown): StayBillView | null {
 		bills,
 		dueTotal: Math.max(0, num(r.due_total)),
 		publishedCount: r.published_count == null ? bills.filter((b) => b.published).length : Math.max(0, num(r.published_count)),
+		guestName: str(r.guest_name).trim() || null,
 		paidOnline: Math.max(0, num(r.paid_online)),
 		isDemo: r.is_demo === true,
 		hasStay: r.has_stay === true
@@ -141,9 +146,10 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 	return {
 		flags,
 		frontNote,
-		bills: [{ id: 'demo-bill', billNo: 1, name: null, itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null }],
+		bills: [{ id: 'demo-bill', billNo: 1, name: null, itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null, stayDateTo: null }],
 		dueTotal: due,
 		publishedCount: 1,
+		guestName: null,
 		paidOnline,
 		isDemo: true,
 		hasStay: true
@@ -155,6 +161,7 @@ export type BillPayErrorKind = 'changed' | 'unavailable' | 'nothing' | 'generic'
 export function billPayErrorKind(e: unknown): BillPayErrorKind {
 	const msg = e instanceof Error ? e.message : String(e ?? '');
 	if (/amount_changed|nothing_due/.test(msg)) return msg.includes('nothing_due') ? 'nothing' : 'changed';
+	if (/bill_not_available/.test(msg)) return 'changed';
 	if (/online_disabled|demo|no_stay|invalid_token|unavailable|amount_too_small|amount_too_large/.test(msg)) return 'unavailable';
 	return 'generic';
 }
@@ -215,6 +222,49 @@ export function billStayDate(b: Pick<StayBill, 'items'> & { stayDate?: string | 
 	for (const i of b.items) if (i.date && (min === null || i.date < min)) min = i.date;
 	// 未公開の請求書は明細を持たないので、DB が返した泊まった日を使う
 	return min ?? b.stayDate ?? null;
+}
+
+/** YYYY-MM-DD に日数を足す（暦の日付のまま） */
+function addDaysYmd(ymd: string, days: number): string {
+	const d = new Date(`${ymd}T00:00:00Z`);
+	d.setUTCDate(d.getUTCDate() + days);
+	return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 請求書の泊まった日の範囲（2026-10-18 指示「連泊なのに1泊分の見出しに見える」）。
+ * 明細の日付のいちばん早い日〜いちばん遅い日を泊まった夜とみなし、ご出発はその翌日。日付が無ければ null
+ */
+export function billStayRange(
+	b: Pick<StayBill, 'items'> & { stayDate?: string | null; stayDateTo?: string | null }
+): { from: string; checkout: string; nights: number } | null {
+	let min: string | null = null;
+	let max: string | null = null;
+	for (const i of b.items) {
+		if (!i.date) continue;
+		if (min === null || i.date < min) min = i.date;
+		if (max === null || i.date > max) max = i.date;
+	}
+	min = min ?? b.stayDate ?? null;
+	max = max ?? b.stayDateTo ?? min;
+	if (!min || !max) return null;
+	const nights = Math.max(1, Math.round((Date.parse(`${max}T00:00:00Z`) - Date.parse(`${min}T00:00:00Z`)) / 86400000) + 1);
+	return { from: min, checkout: addDaysYmd(max, 1), nights };
+}
+
+/** 宛名を比べるための形（空白・敬称を除く） */
+const nameKey = (s: string | null | undefined) => (s ?? '').replace(/[\s\u3000]+/g, '').replace(/(様|さま|殿)$/, '');
+
+/** 請求書の宛名（お客様名と違うときだけ。同じ・空なら null） */
+export function billAddressee(b: Pick<StayBill, 'name'>, guestName: string | null): string | null {
+	const name = (b.name ?? '').trim();
+	if (!name) return null;
+	return nameKey(name) === nameKey(guestName) ? null : name;
+}
+
+/** お客様が選んで払える請求書（公開済みで残額があるもの）。並びは泊まった日の順 */
+export function payableBills<T extends Pick<StayBill, 'items' | 'published' | 'due'> & { stayDate?: string | null }>(bills: T[]): T[] {
+	return sortBillsByStay(bills).filter((b) => b.published && b.due > 0);
 }
 
 /** 請求書を泊まった日の順に並べる（日付の無い請求書は元の順のまま後ろへ） */

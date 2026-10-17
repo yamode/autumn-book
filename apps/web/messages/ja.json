@@ -1129,5 +1129,9 @@
   "inroom_bill_close": "閉じる",
   "inroom_bill_go_top": "トップページに戻る",
   "inroom_bill_total": "合計",
-  "inroom_bill_pending_check": "ご利用明細はフロントで確認中です。確認が済みしだい表示します。"
+  "inroom_bill_pending_check": "ご利用明細はフロントで確認中です。確認が済みしだい表示します。",
+  "inroom_bill_stay_range": "{from}〜{to}（{nights}泊）",
+  "inroom_bill_addressee": "{name} 様",
+  "inroom_bill_choose": "お支払いいただく請求書を選んでください",
+  "inroom_bill_choose_due": "残り {amount}"
 }

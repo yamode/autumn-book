@@ -9,7 +9,7 @@
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import type { PaymentLocale, PaymentTexts } from '$lib/components/payment/types';
-	import { billStayDate, frontNoteFor, INROOM_TEST_AMOUNT, sortBillsByStay } from '$lib/inroom-bill';
+	import { billStayDate, frontNoteFor, INROOM_TEST_AMOUNT, sortBillsByStay, billStayRange, billAddressee, payableBills } from '$lib/inroom-bill';
 
 	let { data } = $props();
 
@@ -42,6 +42,20 @@
 	// 連結予約は表紙（最終泊）が先に来るので、泊まった日の順に並べ直す
 	const sortedBills = $derived(sortBillsByStay(bill.bills));
 	const multiBill = $derived(bill.bills.length > 1);
+	// 請求書の見出し（2026-10-18 指示）: 連泊は「10/16(金)〜10/18(日)（2泊）」、1泊は「10/16(金)のご宿泊」。日付が無ければ請求書番号
+	function billHeading(b: (typeof bill.bills)[number]): string {
+		const r = billStayRange(b);
+		if (!r) return b.billNo != null ? m.inroom_bill_bill_no({ no: String(b.billNo) }) : '';
+		return r.nights >= 2
+			? m.inroom_bill_stay_range({ from: fmtDayOfWeek(r.from), to: fmtDayOfWeek(r.checkout), nights: String(r.nights) })
+			: m.inroom_bill_stay_on({ date: fmtDayOfWeek(r.from) });
+	}
+	// 請求書の宛名（お客様名と違うときだけ）
+	const addresseeOf = (b: (typeof bill.bills)[number]) => billAddressee(b, bill.guestName);
+	// 請求書が複数ある滞在は、払う請求書を選ぶ（公開済みで残額があるものだけ・2026-10-18 指示「支払いは請求単位で」）
+	const payable = $derived(payableBills(bill.bills));
+	let chosenBillId = $state<string | null>(null);
+	const chosenBill = $derived(multiBill ? (payable.find((b) => b.id === chosenBillId) ?? payable[0] ?? null) : null);
 	const qty = (q: number) => (Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, ''));
 
 	const payTexts: PaymentTexts = {
@@ -93,7 +107,7 @@
 		};
 	});
 	// プレビュー（見本の滞在）で管理者が試す本番の Stripe のテスト決済（¥100 固定・2026-10-17）。文言は社内向けなので日本語だけ
-	const payAmount = $derived(data.testPayment ? INROOM_TEST_AMOUNT : bill.dueTotal);
+	const payAmount = $derived(data.testPayment ? INROOM_TEST_AMOUNT : multiBill ? (chosenBill?.due ?? 0) : bill.dueTotal);
 
 	const errorText = (kind: string | undefined) =>
 		kind === 'changed' || kind === 'nothing' ? m.inroom_bill_err_changed() : kind === 'unavailable' ? m.inroom_bill_pay_unavailable() : m.inroom_bill_err_generic();
@@ -108,7 +122,10 @@
 
 	async function preparePayment() {
 		payMessage = '';
-		const r = await payRequest('prepare', { amount: String(payAmount) });
+		const r = await payRequest('prepare', {
+			amount: String(payAmount),
+			...(multiBill && chosenBill && !data.testPayment ? { billId: chosenBill.id } : {})
+		});
 		if (!r.ok || !r.clientSecret || !r.returnUrl) throw new Error(errorText(r.kind));
 		return { clientSecret: r.clientSecret, returnUrl: r.returnUrl };
 	}
@@ -200,11 +217,12 @@
 				{#each sortedBills as b (b.id)}
 					<!-- 請求書が複数（連結予約など）は、泊まった日の順に1泊ずつ枠で区切り、見出しは「○/○（曜）のご宿泊」（2026-10-17 指示・案A） -->
 					<div class={multiBill ? 'mt-3 rounded-lg border border-stone-200 px-3 py-3' : ''}>
-					{#if multiBill}
-						{@const stayDate = billStayDate(b)}
-						<p class="text-sm font-semibold text-stone-800">
-							{stayDate ? m.inroom_bill_stay_on({ date: fmtDayOfWeek(stayDate) }) : b.billNo != null ? m.inroom_bill_bill_no({ no: String(b.billNo) }) : ''}
-						</p>
+					{#if multiBill || addresseeOf(b)}
+						<!-- 見出し: 泊まった日の範囲と泊数（連泊を1泊に見せない）・宛名（お客様名と違うとき）・2026-10-18 -->
+						<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+							{#if multiBill}<p class="text-sm font-semibold text-stone-800">{billHeading(b)}</p>{/if}
+							{#if addresseeOf(b)}<p class="text-xs font-medium text-stone-600">{m.inroom_bill_addressee({ name: addresseeOf(b) ?? '' })}</p>{/if}
+						</div>
 					{/if}
 					{#if !b.published}
 						<!-- PMS の「請求内容チェック」で明細・入金がすべてチェックされるまで出さない（2026-10-17）。連結予約は泊ごと -->
@@ -216,7 +234,7 @@
 								<span class="min-w-0 text-stone-700">
 									{#if item.date}<span class="mr-1.5 text-xs tabular-nums text-stone-400">{fmtDate(item.date)}</span>{/if}
 									{item.name}
-									{#if item.quantity !== 1}<span class="ml-1 text-xs text-stone-400">{yen(item.unitPrice)} × {qty(item.quantity)}</span>{/if}
+									<span class="ml-1 text-xs text-stone-400">{yen(item.unitPrice)} × {qty(item.quantity)}</span>
 								</span>
 								<span class="shrink-0 tabular-nums text-stone-900">{yen(item.amount)}</span>
 							</li>
@@ -269,7 +287,7 @@
 		</section>
 	{/if}
 
-	{#if flags.online && (bill.dueTotal > 0 || data.testPayment) && shownResult !== 'paid'}
+	{#if flags.online && ((multiBill ? payable.length > 0 : bill.dueTotal > 0) || data.testPayment) && shownResult !== 'paid'}
 		<!-- ============ オンラインでお支払い（Stripe） ============ -->
 		<section class="space-y-3 rounded-lg bg-white px-4 py-4 shadow-card" aria-labelledby="bill-online-title">
 			<h2 id="bill-online-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_online_title()}</h2>
@@ -284,6 +302,23 @@
 				</div>
 			{:else if data.stripeKey}
 				<p class="text-sm text-stone-600">{m.inroom_bill_online_help()}</p>
+			{/if}
+			{#if data.stripeKey && multiBill && !data.testPayment && payable.length}
+				<!-- 請求書が複数ある滞在は、払う請求書を選んでその請求書の残額だけを払う（公開前・残額なしの請求書は出さない） -->
+				<fieldset class="space-y-2" disabled={paying}>
+					<legend class="text-xs font-medium text-stone-500">{m.inroom_bill_choose()}</legend>
+					{#each payable as b (b.id)}
+						{@const addressee = addresseeOf(b)}
+						<label class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm {chosenBill?.id === b.id ? 'border-stone-900 bg-stone-50' : 'border-stone-200'}">
+							<input type="radio" name="payBill" value={b.id} checked={chosenBill?.id === b.id} onchange={() => (chosenBillId = b.id)} class="h-4 w-4 shrink-0" />
+							<span class="min-w-0 flex-1">
+								<span class="block font-medium text-stone-800">{billHeading(b)}</span>
+								{#if addressee}<span class="block text-xs text-stone-500">{m.inroom_bill_addressee({ name: addressee })}</span>{/if}
+							</span>
+							<span class="shrink-0 tabular-nums font-semibold text-stone-900">{m.inroom_bill_choose_due({ amount: yen(b.due) })}</span>
+						</label>
+					{/each}
+				</fieldset>
 			{/if}
 			{#if data.stripeKey}
 				<StripePayment
@@ -313,7 +348,7 @@
 						? m.inroom_bill_paying()
 						: data.testPayment
 							? `本番でテスト決済する（¥${INROOM_TEST_AMOUNT}）`
-							: m.inroom_bill_pay_button({ amount: Math.round(bill.dueTotal).toLocaleString('ja-JP') })}
+							: m.inroom_bill_pay_button({ amount: Math.round(payAmount).toLocaleString('ja-JP') })}
 				</button>
 			{:else}
 				<p class="text-sm text-stone-500">{bill.isDemo ? m.inroom_bill_demo_note() : m.inroom_bill_pay_unavailable()}</p>

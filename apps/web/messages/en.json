@@ -1129,5 +1129,9 @@
   "inroom_bill_close": "Close",
   "inroom_bill_go_top": "Back to the top page",
   "inroom_bill_total": "Total",
-  "inroom_bill_pending_check": "The front desk is checking your charges. They will appear here once confirmed."
+  "inroom_bill_pending_check": "The front desk is checking your charges. They will appear here once confirmed.",
+  "inroom_bill_stay_range": "{from} – {to} ({nights} nights)",
+  "inroom_bill_addressee": "Addressed to {name}",
+  "inroom_bill_choose": "Choose the invoice to pay",
+  "inroom_bill_choose_due": "{amount} due"
 }
