@@ -17,6 +17,7 @@ import { upcomingItems } from '$lib/inroom-day';
 import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/inroom-browse';
 import { loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/server/inroom-settings';
 import { loadLiveNotices, type InroomNotice } from '$lib/server/inroom-notices';
+import { applyPreviewNotices, applyPreviewSpring, decodePreviewNotice, decodePreviewSpring, PREVIEW_NOTICE_COOKIE, PREVIEW_SPRING_COOKIE } from '$lib/inroom-preview';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import { loadStayBill } from '$lib/server/inroom-bill';
 import { anyBillFlag, parsePreviewBillFlags, PREVIEW_BILL_COOKIE, type BillFlags } from '$lib/inroom-bill';
@@ -33,6 +34,14 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 	// チェックアウト後に QR を読んだ（/r/c/<token> が e=ended で戻す）
 	const endedQr = url.searchParams.get('e') === 'ended';
 	const token = cookies.get(STAY_COOKIE);
+	// 管理画面のプレビューで選んだお知らせ・湯量の見本（Cookie はプレビューだけが置く）。
+	// 効かせるのはコード入力前の表示と見本の滞在だけ（本物の滞在・チェックイン前の滞在には効かない）
+	const previewNotice = decodePreviewNotice(cookies.get(PREVIEW_NOTICE_COOKIE));
+	const previewSpring = decodePreviewSpring(cookies.get(PREVIEW_SPRING_COOKIE));
+	const withPreview = (settings: Awaited<ReturnType<typeof loadInroomSettings>>, notices: InroomNotice[]) => ({
+		notices: applyPreviewNotices(notices, previewNotice) as InroomNotice[],
+		springLevel: applyPreviewSpring(visibleSpringLevel(settings), settings.springLevel, previewSpring)
+	});
 
 	// サンクス表示（ご滞在終了）。施設が分かれば、その施設の販促バナーを添える
 	const thanks = async (facility: EndedFacility | null) => ({
@@ -90,8 +99,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		return {
 			...noStay,
 			showFrontCall: settings.showFrontCall,
-			notices: await loadLiveNotices(entryFacility.id),
-			springLevel: visibleSpringLevel(settings),
+			...withPreview(settings, await loadLiveNotices(entryFacility.id)),
 			// Wi-Fi はコードを入れてから（browseVisibleGuide）
 			guides: guides.filter(browseVisibleGuide),
 			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
@@ -166,8 +174,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		banners: [],
 		browse: null,
 		showFrontCall: settings.showFrontCall,
-		notices,
-		springLevel: visibleSpringLevel(settings),
+		...(stay.isDemo || DATA_SOURCE !== 'supabase' ? withPreview(settings, notices) : { notices, springLevel: visibleSpringLevel(settings) }),
 		// トップのカード用（中身は /r/bill）。出す設定が無ければ null
 		billSummary:
 			bill && anyBillFlag(bill.flags)

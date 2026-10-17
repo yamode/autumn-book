@@ -5,6 +5,7 @@
 	//   ・コード入力前   … 入口QRを読んだだけの表示（館内案内のみ・滞在コードの入力欄）
 	// この端末の客室案内の Cookie を切り替えるので、スタッフのスマホで実際の滞在を開いていた場合は入れ直しになる。
 	import { NOTICE_READ_KEY } from '$lib/inroom-notice-read';
+	import { PREVIEW_NOTICE_DEFAULT, PREVIEW_NOTICE_MAX_BODY, PREVIEW_NOTICE_MAX_TITLE, type PreviewMode } from '$lib/inroom-preview';
 
 	let { data } = $props();
 
@@ -23,7 +24,27 @@
 			? 'settings'
 			: [billItems && 'items', billFront && 'front', billOnline && 'online'].filter(Boolean).join(',') || 'none'
 	);
-	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&bill=${billParam}&n=${nonce}`);
+
+	// お知らせ・全館の湯量の見本（2026-10-17 指示「独立して設定できるように」）。見本の滞在とコード入力前の表示にだけ効く。
+	// 文字は入力中に枠を開き直さないよう、「見本を反映」を押したときだけ使う（下書き → 反映）
+	let noticeMode = $state<PreviewMode>('settings');
+	let noticeTitleDraft = $state(PREVIEW_NOTICE_DEFAULT.title);
+	let noticeBodyDraft = $state(PREVIEW_NOTICE_DEFAULT.body);
+	let noticeApplied = $state({ title: PREVIEW_NOTICE_DEFAULT.title, body: PREVIEW_NOTICE_DEFAULT.body });
+	let springMode = $state<PreviewMode>('settings');
+	let springDraft = $state(30);
+	let springApplied = $state(30);
+	const noticeParam = $derived(
+		noticeMode === 'sample'
+			? `notice=sample&nt=${encodeURIComponent(noticeApplied.title)}&nb=${encodeURIComponent(noticeApplied.body)}`
+			: `notice=${noticeMode}`
+	);
+	const springParam = $derived(springMode === 'sample' ? `spring=sample&sp=${springApplied}` : `spring=${springMode}`);
+	function applyNotice() {
+		noticeApplied = { title: noticeTitleDraft, body: noticeBodyDraft };
+	}
+
+	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&bill=${billParam}&${noticeParam}&${springParam}&n=${nonce}`);
 	let message = $state('');
 
 	function open(m: Mode) {
@@ -99,6 +120,39 @@
 				</p>
 			</div>
 		{/if}
+
+		<!-- お知らせの見本（本物の掲載とは別に試す） -->
+		<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+			<p class="text-xs font-medium text-stone-500">📣 全客室へのお知らせ（見本）</p>
+			<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="settings" class="h-3.5 w-3.5" />掲載中のとおり</label>
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="sample" class="h-3.5 w-3.5" />見本を出す</label>
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+			</div>
+			{#if noticeMode === 'sample'}
+				<input bind:value={noticeTitleDraft} maxlength={PREVIEW_NOTICE_MAX_TITLE} placeholder="見出し" class="w-full rounded border border-stone-300 px-2 py-1 text-xs" />
+				<textarea bind:value={noticeBodyDraft} maxlength={PREVIEW_NOTICE_MAX_BODY} rows="4" placeholder="本文（太字・赤字・リンクも使えます）" class="w-full rounded border border-stone-300 px-2 py-1 text-xs"></textarea>
+				<button type="button" onclick={applyNotice} class="w-full rounded border border-stone-300 px-2 py-1 text-xs text-stone-700 hover:bg-stone-50">見本を反映</button>
+				<p class="text-[11px] leading-relaxed text-stone-400">本物のお客様には出ません。内容を変えると、確認済みでももう一度出ます。</p>
+			{/if}
+		</div>
+
+		<!-- 湯量の見本（段階の言葉・色・説明は施設の設定を使う） -->
+		<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+			<p class="text-xs font-medium text-stone-500">♨️ 全館の湯量（見本）</p>
+			<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="settings" class="h-3.5 w-3.5" />設定どおり</label>
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="sample" class="h-3.5 w-3.5" />見本の残量</label>
+				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+			</div>
+			{#if springMode === 'sample'}
+				<label class="flex items-center gap-2 text-xs">
+					<input type="range" min="0" max="100" step="1" bind:value={springDraft} onchange={() => (springApplied = springDraft)} class="flex-1" />
+					<span class="w-10 text-right tabular-nums">{springDraft}%</span>
+				</label>
+				<p class="text-[11px] leading-relaxed text-stone-400">つまみを離すと反映します。言葉・色・「?」の説明は「♨️ 全館の湯量」の表現の設定を使います。</p>
+			{/if}
+		</div>
 
 		<div class="space-y-2">
 			<button type="button" onclick={() => (nonce += 1)} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">↻ 最初から開き直す</button>
