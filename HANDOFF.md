@@ -1,5 +1,19 @@
 # autumn-book HANDOFF
 
+## 管理画面のサイドバー上部に autumn のアプリスイッチャー（2026-10-17・v0.147.0）
+
+**ユーザー指示: autumn book にも、autumn-shared のアプリスイッチャーをサイドバー上部に表示して。**
+
+- サイドバー上部（PC）とスマホのメニュー（ドロワー）のロゴの左に、9つの点のボタン。押すと RMS・PMS・Order（準備中）・Book（表示中）の一覧。共通ログイン（.yamado.app の Cookie）なので切り替えに再ログイン不要（PMS・RMS と同じ）
+- 部品は autumn-shared の `src/apps.ts`・`components/AppSwitcher.svelte`・`components/AppIcon.svelte` を **そのまま写したもの**（`apps/web/src/lib/autumn-shared/`・コミットする）。PMS / RMS のように preinstall で autumn-shared を clone しないのは、Book の Cloudflare のビルドに GitHub のトークン（GH_PAT）が無いため
+- ⚠ autumn-shared でアプリ一覧やスイッチャーを変えたら `bash apps/web/scripts/sync-autumn-shared-switcher.sh` を流してコミットし直す（今は autumn-shared 9870346 の写し）
+- スイッチャーが使う配色の名前（popover・border・muted・accent・ring など）を `app.css` の @theme に足した（Book のほかの画面では使っていない名前）。サイドバーが濃い色なので、一覧の文字色は包む側で濃くしている（写したファイルは変えない）
+
+### テストチェックリスト（アプリスイッチャー）
+- [ ] 管理画面のサイドバー上部・スマホのメニューに9つの点のボタンが出て、押すと4つのアプリの一覧（Book は「表示中」・Order は「準備中」）
+- [ ] RMS・PMS を押すとログインし直さずにそのアプリが開く
+- [ ] 一覧の外を押す・Esc で閉じる
+
 ## 客室案内の管理画面のタブを全ページ共通に（2026-10-17・v0.146.1）
 
 **ユーザー指示: 客室案内の各タブメニューは、ずっとその位置でどのメニューからでも切り替えられるようにして。**

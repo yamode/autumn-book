@@ -10,6 +10,17 @@
 	--color-accent-500: #b08d3e;
 	--color-accent-600: #95742c;
 	--font-serif-jp: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
+	/* autumn-shared のアプリスイッチャー（$lib/autumn-shared/components/AppSwitcher.svelte）が使う
+	   shadcn 系の名前（PMS / RMS と同じ）。Book のほかの画面では使っていない（2026-10-17） */
+	--color-popover: #ffffff;
+	--color-border: #e7e5e4;
+	--color-input: #d6d3d1;
+	--color-background: #ffffff;
+	--color-foreground: #1c1917;
+	--color-muted: #f5f5f4;
+	--color-muted-foreground: #78716c;
+	--color-accent: #f5f5f4;
+	--color-ring: #78716c;
 }
 
 html {
