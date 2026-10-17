@@ -249,7 +249,8 @@
 							{#each b.payments as p, i (i)}
 								<li class="flex items-baseline justify-between gap-3 py-1.5">
 									<span class="min-w-0 text-stone-700">
-										{p.method || m.inroom_bill_paid()}{#if p.amount < 0}<span class="ml-1 text-xs text-stone-400">（{m.inroom_bill_refund()}）</span>{/if}
+										<!-- 客室案内で払った行は、支払方法マスタの名前（オンライン決済(stripe)）ではなく「客室内オンライン決済」と出す（2026-10-18 指示） -->
+										{p.online ? m.inroom_bill_paid_online_label() : p.method || m.inroom_bill_paid()}{#if p.amount < 0}<span class="ml-1 text-xs text-stone-400">（{m.inroom_bill_refund()}）</span>{/if}
 									</span>
 									<span class="shrink-0 tabular-nums text-stone-700">{yen(Math.abs(p.amount))}</span>
 								</li>
@@ -357,5 +358,4 @@
 		</section>
 	{/if}
 
-	<a href="/r" class="block py-2 text-center text-sm text-stone-500 underline underline-offset-2">{m.inroom_bill_back()}</a>
 </div>

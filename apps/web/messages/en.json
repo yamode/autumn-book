@@ -1133,5 +1133,6 @@
   "inroom_bill_stay_range": "{from} – {to} ({nights} nights)",
   "inroom_bill_addressee": "{name}",
   "inroom_bill_choose": "Choose the invoice to pay",
-  "inroom_bill_choose_due": "{amount} due"
+  "inroom_bill_choose_due": "{amount} due",
+  "inroom_bill_paid_online_label": "In-room online payment"
 }

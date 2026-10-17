@@ -1133,5 +1133,6 @@
   "inroom_bill_stay_range": "{from}〜{to}（{nights}晚）",
   "inroom_bill_addressee": "{name}",
   "inroom_bill_choose": "請選擇要付款的帳單",
-  "inroom_bill_choose_due": "應付 {amount}"
+  "inroom_bill_choose_due": "應付 {amount}",
+  "inroom_bill_paid_online_label": "客房內線上付款"
 }

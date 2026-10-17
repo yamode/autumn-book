@@ -1133,5 +1133,6 @@
   "inroom_bill_stay_range": "{from}〜{to}（{nights}泊）",
   "inroom_bill_addressee": "{name} 様",
   "inroom_bill_choose": "お支払いいただく請求書を選んでください",
-  "inroom_bill_choose_due": "残り {amount}"
+  "inroom_bill_choose_due": "残り {amount}",
+  "inroom_bill_paid_online_label": "客室内オンライン決済"
 }
