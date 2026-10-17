@@ -174,6 +174,33 @@
 		}
 		/* zoom は高さ（h-screen=100vh）も同じ倍率にするので、画面いっぱいになるよう割り戻す */
 		.admin-sidebar { zoom: 1.0588; height: calc(100vh / 1.0588); }
+		/* 保存ボタンの中の状態（$lib/save-state.ts・2026-10-18）。元の文字とアイコンを隠し、data-save-label を出す。
+		   ボタンの大きさは中身に合わせて変わる（短い「保存」でも「✓ 保存しました」が収まる） */
+		.admin-main [data-save-state] { font-size: 0 !important; gap: 0 !important; }
+		.admin-main [data-save-state] > * { display: none !important; }
+		.admin-main [data-save-state]::after {
+			content: attr(data-save-label);
+			font-size: 0.875rem;
+			line-height: 1.25rem;
+			font-weight: 500;
+			white-space: nowrap;
+		}
+		.admin-main [data-save-state='saving'] { pointer-events: none; opacity: 0.85; cursor: progress; }
+		.admin-main [data-save-state='saving']::before {
+			content: '';
+			display: inline-block;
+			width: 0.85rem;
+			height: 0.85rem;
+			margin-right: 0.4rem;
+			vertical-align: -0.12rem;
+			border: 2px solid currentColor;
+			border-right-color: transparent;
+			border-radius: 9999px;
+			animation: save-spin 0.7s linear infinite;
+		}
+		.admin-main [data-save-state='done'] { background-color: #047857 !important; border-color: #047857 !important; color: #fff !important; }
+		.admin-main [data-save-state='error'] { background-color: #b91c1c !important; border-color: #b91c1c !important; color: #fff !important; }
+		@keyframes save-spin { to { transform: rotate(360deg); } }
 		.nav-progress { opacity: 0; animation: nav-progress-in 0s linear 150ms forwards; }
 		.nav-progress > div { animation: nav-progress-move 1s ease-in-out infinite; }
 		@keyframes nav-progress-in { to { opacity: 1; } }

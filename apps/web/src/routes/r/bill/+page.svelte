@@ -303,10 +303,11 @@
 			{:else if data.stripeKey}
 				<p class="text-sm text-stone-600">{m.inroom_bill_online_help()}</p>
 			{/if}
-			{#if data.stripeKey && multiBill && !data.testPayment && payable.length}
+			{#if multiBill && payable.length}
 				<!-- 請求書が複数ある滞在は、払う請求書を選んでその請求書の残額だけを払う（公開前・残額なしの請求書は出さない） -->
 				<fieldset class="space-y-2" disabled={paying}>
 					<legend class="text-xs font-medium text-stone-500">{m.inroom_bill_choose()}</legend>
+					{#if data.testPayment}<p class="text-[11px] text-red-700">見本の請求書を選んでも、テスト決済は ¥{INROOM_TEST_AMOUNT} です。</p>{/if}
 					{#each payable as b (b.id)}
 						{@const addressee = addresseeOf(b)}
 						<label class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm {chosenBill?.id === b.id ? 'border-stone-900 bg-stone-50' : 'border-stone-200'}">

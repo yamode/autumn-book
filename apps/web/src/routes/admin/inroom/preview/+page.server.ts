@@ -58,7 +58,9 @@ export const actions: Actions = {
 		const preview: DemoPreview = {
 			bill: billMode === 'custom' ? (parsePreviewBillFlags(billParts.join(',')) ?? { items: false, front: false, online: false }) : null,
 			notice: normalizePreviewNotice(form.get('noticeMode'), form.get('noticeTitle'), form.get('noticeBody')),
-			spring: normalizePreviewSpring(form.get('springMode'), form.get('springPercent'))
+			spring: normalizePreviewSpring(form.get('springMode'), form.get('springPercent')),
+			// 見本の請求書の枚数（2＝連泊と宛名違いの2枚）
+			billCount: String(form.get('billCount') ?? '1') === '2' ? 2 : 1
 		};
 		try {
 			if (useSupabaseAdmin) await sbSaveDemoPreview(createSupabaseServerClient(event), facility.id, preview);

@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
 	if (!stay) redirect(303, '/r');
 	// 見本の滞在は、施設ごとに DB に持つ見本の出し分け（PMS の見本の館内図と Book のプレビューで共通）
 	const demo = stay.isDemo === true || DATA_SOURCE !== 'supabase' ? await loadDemoPreview(stay.facility.id) : null;
-	const bill = await loadStayBill(token, stay, demo?.bill ?? null);
+	const bill = await loadStayBill(token, stay, demo?.bill ?? null, demo?.billCount ?? 1);
 	if (!bill || !anyBillFlag(bill.flags)) redirect(303, '/r');
 
 	// オンライン決済は、出す設定・本物の滞在・決済の環境（鍵・service_role）が揃ったときだけ入力欄を出す

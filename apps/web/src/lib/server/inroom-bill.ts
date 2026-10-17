@@ -214,9 +214,15 @@ export async function sbListStayBills(client: SupabaseClient, facilityId: string
  * preview は管理画面のプレビューで選んだ出し分け（Cookie ab_preview_bill）。見本の滞在にだけ効かせる
  * （本物の滞在には効かない。見本は決済できないので、オンライン決済を出しても払えない旨の表示になる）。
  */
-export async function loadStayBill(token: string, stay: StayInfo, preview: BillFlags | null = null): Promise<StayBillView | null> {
+export async function loadStayBill(
+	token: string,
+	stay: StayInfo,
+	preview: BillFlags | null = null,
+	billCount: 1 | 2 = 1
+): Promise<StayBillView | null> {
+	// billCount: 見本の請求書の枚数（プレビューで選ぶ・見本の滞在にだけ効く）
 	const previewBill = (flags: BillFlags, note: FrontNote) =>
-		demoStayBill(preview ?? flags, preview?.front && !note.ja.trim() ? PREVIEW_FRONT_NOTE : note);
+		demoStayBill(preview ?? flags, preview?.front && !note.ja.trim() ? PREVIEW_FRONT_NOTE : note, new Date(), 0, billCount);
 	if (DATA_SOURCE !== 'supabase') {
 		const s = demoSettings.get(stay.facility.id) ?? { flags: NO_FLAGS, note: EMPTY_NOTE };
 		return previewBill(resolveBillFlags(s.flags, demoOverrides.get(stay.tokenId)), s.note);

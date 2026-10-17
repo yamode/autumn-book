@@ -101,8 +101,9 @@ export function applyPreviewSpring<T extends { enabled: boolean; percent: number
 // 見本の滞在（PMS の「見本の館内図」と Book のプレビューで共通の1本）は、どの端末で開いてもこれを使う。
 // ---------------------------------------------------------------------------
 
-export type DemoPreview = { bill: BillFlags | null; notice: PreviewNotice | null; spring: PreviewSpring | null };
-export const EMPTY_DEMO_PREVIEW: DemoPreview = { bill: null, notice: null, spring: null };
+/** billCount: 見本の請求書の枚数（1＝1枚・2＝連泊と宛名違いの2枚・2026-10-18） */
+export type DemoPreview = { bill: BillFlags | null; notice: PreviewNotice | null; spring: PreviewSpring | null; billCount: 1 | 2 };
+export const EMPTY_DEMO_PREVIEW: DemoPreview = { bill: null, notice: null, spring: null, billCount: 1 };
 
 /** DB の jsonb → 見本（読めない部分は「本物の設定どおり」） */
 export function normalizeDemoPreview(raw: unknown): DemoPreview {
@@ -113,16 +114,18 @@ export function normalizeDemoPreview(raw: unknown): DemoPreview {
 	return {
 		bill: typeof o.bill === 'string' ? parsePreviewBillFlags(o.bill) : null,
 		notice: n ? normalizePreviewNotice(n.mode, n.title, n.body) : null,
-		spring: s ? normalizePreviewSpring(s.mode, s.percent) : null
+		spring: s ? normalizePreviewSpring(s.mode, s.percent) : null,
+		billCount: o.bill_count === 2 ? 2 : 1
 	};
 }
 
 /** 見本 → DB に入れる jsonb（すべて「設定どおり」なら null） */
 export function demoPreviewJson(p: DemoPreview): Record<string, unknown> | null {
-	if (!p.bill && !p.notice && !p.spring) return null;
+	if (!p.bill && !p.notice && !p.spring && p.billCount !== 2) return null;
 	return {
 		bill: p.bill ? previewBillCookieValue(p.bill) : null,
 		notice: p.notice,
-		spring: p.spring
+		spring: p.spring,
+		bill_count: p.billCount
 	};
 }

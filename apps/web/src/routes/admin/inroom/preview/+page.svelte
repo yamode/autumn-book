@@ -24,6 +24,8 @@
 	let billItems = $state(true);
 	let billFront = $state(true);
 	let billOnline = $state(true);
+	// 見本の請求書の枚数（1枚／2枚＝連泊と宛名違い・2026-10-18）
+	let billCount = $state<1 | 2>(1);
 	let noticeMode = $state<PreviewMode>('settings');
 	let noticeTitle = $state(PREVIEW_NOTICE_DEFAULT.title);
 	let noticeBody = $state(PREVIEW_NOTICE_DEFAULT.body);
@@ -35,6 +37,7 @@
 		billItems = dp.bill ? dp.bill.items : true;
 		billFront = dp.bill ? dp.bill.front : true;
 		billOnline = dp.bill ? dp.bill.online : true;
+		billCount = dp.billCount === 2 ? 2 : 1;
 		noticeMode = dp.notice ? dp.notice.mode : 'settings';
 		if (dp.notice?.mode === 'sample') {
 			noticeTitle = dp.notice.title;
@@ -138,6 +141,12 @@
 					<input type="radio" name="billMode" bind:group={billMode} value="settings" class="h-3.5 w-3.5" />
 					<span>管理画面「<a href="/admin/inroom/billing" class="underline">精算案内</a>」の設定どおり</span>
 				</label>
+				<!-- 見本の請求書の枚数。2枚にすると、連泊の見出し（2泊）・宛名違い（株式会社見本商事）・請求書を選んで払う欄を試せる -->
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-stone-100 pt-2 text-xs">
+					<span class="text-stone-500">見本の請求書</span>
+					<label class="flex items-center gap-1.5"><input type="radio" name="billCount" value="1" bind:group={billCount} class="h-3.5 w-3.5" />1枚</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="billCount" value="2" bind:group={billCount} class="h-3.5 w-3.5" />2枚（連泊・宛名違い）</label>
+				</div>
 				<p class="text-[11px] leading-relaxed text-stone-400">
 					明細は見本です。案内文は施設の設定を出します（空なら見本の文）。オンライン決済を出すと、<b>管理者だけ</b>は本番の Stripe で <b>¥100 のテスト決済</b>を試せます（実際に請求されます・PMS には入りません・自動では返金しないので Stripe の管理画面から手で返金）。スタッフには「お支払いはできません」と出ます。トップの「ご精算」カードから開けます。
 				</p>

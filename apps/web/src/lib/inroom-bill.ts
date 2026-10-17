@@ -126,8 +126,9 @@ export function normalizeStayBill(raw: unknown): StayBillView | null {
  * 見本（デモ）の館内図・DATA_SOURCE=demo で出す見本の明細（2026-10-17）。実際の請求書には紐づかない。
  * 宿泊料金・入湯税・お飲み物、事前のお支払い済みを並べる。
  */
-export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new Date(), paidOnline = 0): StayBillView {
+export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new Date(), paidOnline = 0, billCount: 1 | 2 = 1): StayBillView {
 	const today = new Date(now.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+	if (billCount === 2) return demoStayBillTwo(flags, frontNote, today);
 	const items: BillItem[] = [
 		{ date: today, name: 'ご宿泊料金（1泊2食付・2名様）', quantity: 1, unitPrice: 52800, amount: 52800 },
 		{ date: today, name: '入湯税', quantity: 2, unitPrice: 150, amount: 300 },
@@ -151,6 +152,57 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 		publishedCount: 1,
 		guestName: null,
 		paidOnline,
+		isDemo: true,
+		hasStay: true
+	};
+}
+
+/**
+ * 見本の請求書2枚（2026-10-18「デモも複数請求書を表示できるように」）。
+ *   1枚目: お客様ご本人の宛名・2泊（昨日・今日）・事前決済あり
+ *   2枚目: 会社の宛名（株式会社見本商事）・1泊（今日）・入金なし
+ * どちらも公開済みで残額があるので、見出し（泊数）・宛名・請求書を選んで払う欄を試せる
+ */
+function demoStayBillTwo(flags: BillFlags, frontNote: FrontNote, today: string): StayBillView {
+	const d = new Date(`${today}T00:00:00Z`);
+	d.setUTCDate(d.getUTCDate() - 1);
+	const yesterday = d.toISOString().slice(0, 10);
+	const make = (id: string, billNo: number, name: string | null, items: BillItem[], payments: BillPayment[]): StayBill => {
+		const itemsTotal = items.reduce((s, i) => s + i.amount, 0);
+		const paidTotal = payments.reduce((s, p) => s + p.amount, 0);
+		return { id, billNo, name, itemsTotal, paidTotal, due: Math.max(0, itemsTotal - paidTotal), items, payments, published: true, stayDate: null, stayDateTo: null };
+	};
+	const a = make(
+		'demo-bill-1',
+		1,
+		null,
+		[
+			{ date: yesterday, name: 'ご宿泊料金（1泊2食付・2名様）', quantity: 1, unitPrice: 52800, amount: 52800 },
+			{ date: yesterday, name: '入湯税', quantity: 2, unitPrice: 150, amount: 300 },
+			{ date: today, name: 'ご宿泊料金（1泊2食付・2名様）', quantity: 1, unitPrice: 52800, amount: 52800 },
+			{ date: today, name: '入湯税', quantity: 2, unitPrice: 150, amount: 300 },
+			{ date: today, name: '生ビール', quantity: 2, unitPrice: 800, amount: 1600 }
+		],
+		[{ date: yesterday, method: 'オンライン事前決済', amount: 105600, online: false }]
+	);
+	const b = make(
+		'demo-bill-2',
+		2,
+		'株式会社見本商事',
+		[
+			{ date: today, name: 'ご宿泊料金（1泊朝食付・1名様）', quantity: 1, unitPrice: 19800, amount: 19800 },
+			{ date: today, name: '入湯税', quantity: 1, unitPrice: 150, amount: 150 }
+		],
+		[]
+	);
+	return {
+		flags,
+		frontNote,
+		bills: [a, b],
+		dueTotal: a.due + b.due,
+		publishedCount: 2,
+		guestName: null,
+		paidOnline: 0,
 		isDemo: true,
 		hasStay: true
 	};

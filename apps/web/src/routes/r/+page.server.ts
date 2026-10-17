@@ -169,7 +169,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		isDemoStay ? loadDemoPreview(stay.facility.id) : Promise.resolve(EMPTY_DEMO_PREVIEW)
 	]);
 	// 精算案内（明細・フロント案内・オンライン決済の出し分け・2026-10-17）。読めなければ出さない。見本の滞在は見本の出し分け
-	const bill = await loadStayBill(token, stay, demoPreview.bill);
+	const bill = await loadStayBill(token, stay, demoPreview.bill, demoPreview.billCount);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
 	// 画面を開いたままでも時間が過ぎた分は消える（+page.svelte が1分ごとに同じ判定をし直す）
