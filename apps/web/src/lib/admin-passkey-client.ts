@@ -44,6 +44,22 @@ export async function registerAdminPasskey(name: string): Promise<AdminPasskeyRe
 	return { ok: true, data: v.json };
 }
 
+/** スマホ用の登録 QR から、このスマホにパスキーを登録する（/admin/login/enroll・2026-10-17）。t は QR の中身 */
+export async function enrollAdminPasskey(t: string, name: string): Promise<AdminPasskeyResult> {
+	const opt = await postJson('/admin/login/enroll/options', { t });
+	if (!opt.json?.ok) return fail(opt, 'パスキーを登録できませんでした。');
+	let response;
+	try {
+		const { startRegistration } = await lib();
+		response = await startRegistration({ optionsJSON: opt.json.options as never });
+	} catch (e) {
+		return { ok: false, message: passkeyErrorMessage(e, 'register') };
+	}
+	const v = await postJson('/admin/login/enroll/verify', { t, challengeId: opt.json.challengeId, response, name });
+	if (!v.json?.ok) return fail(v, 'パスキーを登録できませんでした。');
+	return { ok: true, data: v.json };
+}
+
 /** 二段階認証の確認をパスキーで行う（/admin/mfa）。成功すれば data.next */
 export async function stepUpWithAdminPasskey(next: string): Promise<AdminPasskeyResult> {
 	const opt = await postJson('/admin/mfa/passkey/options', {});

@@ -56,7 +56,7 @@ export class AdminPasskeyError extends Error {
 	}
 }
 
-type ChallengeKind = 'passkey_reg' | 'passkey_auth' | 'passkey_login';
+type ChallengeKind = 'passkey_reg' | 'passkey_auth' | 'passkey_login' | 'passkey_enroll';
 
 export type AdminPasskeyRow = {
 	id: string;
@@ -250,6 +250,17 @@ export async function verifyAdminPasskeyRegistration(
 	args: { userId: string; challengeId: unknown; response: unknown; deviceName: unknown; rp: PasskeyRp; ip: string | null }
 ): Promise<AdminPasskeyView> {
 	const svc = db();
+	const row = await saveRegistration(svc, { ...args, userAgent: event.request.headers.get('user-agent'), via: 'security' });
+	const sessionId = await currentSessionId(event);
+	if (sessionId) await markSessionVerified(svc, { userId: args.userId, sessionId, passkeyId: row.id });
+	return toView(row);
+}
+
+/** 登録の応答を確かめて admin_passkeys に入れる（/admin/security と、スマホ用の登録 QR の共通部分） */
+async function saveRegistration(
+	svc: SupabaseClient,
+	args: { userId: string; challengeId: unknown; response: unknown; deviceName: unknown; rp: PasskeyRp; ip: string | null; userAgent: string | null; via: 'security' | 'enroll_link' }
+): Promise<AdminPasskeyRow> {
 	const challenge = await takeChallenge(svc, { id: args.challengeId, kind: 'passkey_reg', userId: args.userId });
 	if (!challenge) throw new AdminPasskeyError('登録の有効期限が切れました。もう一度「パスキーを追加」からお試しください。');
 	const response = args.response as RegistrationResponseJSON;
@@ -271,7 +282,7 @@ export async function verifyAdminPasskeyRegistration(
 		console.error('[admin-passkey] 登録の検証に失敗:', e instanceof Error ? e.message : String(e));
 		throw new AdminPasskeyError('パスキーを登録できませんでした。');
 	}
-	const name = passkeyDeviceName(args.deviceName, summarizeUserAgent(event.request.headers.get('user-agent')));
+	const name = passkeyDeviceName(args.deviceName, summarizeUserAgent(args.userAgent));
 	const { data, error } = await book(svc)
 		.from('admin_passkeys')
 		.insert({
@@ -291,9 +302,116 @@ export async function verifyAdminPasskeyRegistration(
 		throw new AdminPasskeyError('パスキーを保存できませんでした。', 500);
 	}
 	const row = data as AdminPasskeyRow;
-	await audit(svc, args.userId, 'admin_passkey_registered', { passkey_id: row.id, name, backed_up: info.credentialBackedUp, ip: args.ip });
-	const sessionId = await currentSessionId(event);
-	if (sessionId) await markSessionVerified(svc, { userId: args.userId, sessionId, passkeyId: row.id });
+	await audit(svc, args.userId, 'admin_passkey_registered', { passkey_id: row.id, name, backed_up: info.credentialBackedUp, ip: args.ip, via: args.via });
+	return row;
+}
+
+// ---------------------------------------------------------------------------
+// スマホ用の1回限りの登録 QR（2026-10-17・autumn-shared 20261017055749）
+//   PC に Bluetooth が無いと、ブラウザの「別のデバイス（スマホ）に保存」の QR が出ない。
+//   PC でログイン中の本人（関所を通った人）が QR を出し、スマホで読むと、そのスマホにその人のパスキーを登録できる。
+//   ・QR の中身は /admin/login/enroll?t=<行id>.<秘密>。DB には秘密の SHA-256 だけ（admin_passkey_challenges kind='passkey_enroll'）
+//   ・10 分・1 回限り（登録を終えた時点で使い切り）。新しい QR を出すと、同じ人の古い QR は使えなくする
+//   ・スマホはログインしていなくてよい。登録を終えたら「パスキーでログイン」で入る（二段階認証も済んだ扱い）
+// ---------------------------------------------------------------------------
+export const ADMIN_PASSKEY_ENROLL_MINUTES = 10;
+
+const sha256Hex = async (text: string) =>
+	[...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+/** QR の中身（<行id>.<秘密>）を分ける。形が違えば null */
+export function parseEnrollToken(token: unknown): { id: string; secret: string } | null {
+	const m = /^([0-9a-f-]{36})\.([A-Za-z0-9_-]{32,64})$/i.exec(String(token ?? ''));
+	return m ? { id: m[1], secret: m[2] } : null;
+}
+
+/** QR を出す（PC・ログイン中の本人）。URL と期限を返す */
+export async function issueAdminPasskeyEnrollLink(args: { userId: string; origin: string; ip: string | null }): Promise<{ url: string; expiresAt: string }> {
+	const svc = db();
+	const existing = await listRows(svc, args.userId);
+	if (existing.length >= ADMIN_PASSKEY_MAX) throw new AdminPasskeyError(`パスキーは ${ADMIN_PASSKEY_MAX} 個まで登録できます。使っていないものを削除してください。`, 409);
+	// 同じ人の使っていない古い QR は使えなくする（いま画面にある QR だけが有効）
+	await book(svc)
+		.from('admin_passkey_challenges')
+		.update({ used_at: new Date().toISOString() })
+		.eq('user_id', args.userId)
+		.eq('kind', 'passkey_enroll')
+		.is('used_at', null);
+	const secret = isoBase64URL.fromBuffer(crypto.getRandomValues(new Uint8Array(32)));
+	const id = await saveChallenge(svc, { userId: args.userId, kind: 'passkey_enroll', challenge: await sha256Hex(secret), ttlMinutes: ADMIN_PASSKEY_ENROLL_MINUTES, ip: args.ip });
+	await audit(svc, args.userId, 'admin_passkey_enroll_link', { challenge_id: id, ip: args.ip });
+	return { url: `${args.origin}/admin/login/enroll?t=${id}.${secret}`, expiresAt: new Date(Date.now() + ADMIN_PASSKEY_ENROLL_MINUTES * 60_000).toISOString() };
+}
+
+type EnrollOwner = { userId: string; email: string; name: string };
+
+/** QR の持ち主（未使用・期限内・秘密が合う・持ち主が今も管理画面のアカウント）。使い切らない */
+async function enrollOwner(svc: SupabaseClient, token: unknown): Promise<EnrollOwner | null> {
+	const t = parseEnrollToken(token);
+	if (!t) return null;
+	const { data } = await book(svc)
+		.from('admin_passkey_challenges')
+		.select('user_id, challenge')
+		.eq('id', t.id)
+		.eq('kind', 'passkey_enroll')
+		.is('used_at', null)
+		.gt('expires_at', new Date().toISOString())
+		.maybeSingle();
+	const row = data as { user_id: string | null; challenge: string } | null;
+	if (!row?.user_id || row.challenge !== (await sha256Hex(t.secret))) return null;
+	const { data: got, error } = await svc.auth.admin.getUserById(row.user_id);
+	const user = got?.user;
+	if (error || !user?.email || !adminRoleOf(user.app_metadata)) return null;
+	if (isBanned((user as { banned_until?: string | null }).banned_until)) return null;
+	const name = String((user.user_metadata as { name?: string } | null)?.name ?? '');
+	return { userId: user.id, email: user.email, name };
+}
+
+/** スマホの登録画面に出す持ち主（無効なら null） */
+export async function adminPasskeyEnrollOwner(token: unknown): Promise<{ email: string; name: string } | null> {
+	const o = await enrollOwner(db(), token);
+	return o ? { email: o.email, name: o.name } : null;
+}
+
+const ENROLL_EXPIRED = 'この QR は使えません（10 分を過ぎた・使用済み・新しい QR を出した のどれか）。PC の「二段階認証・パスキー」で QR を出し直してください。';
+
+/** スマホでの登録の options（QR を確かめ、その人のパスキーとして作る） */
+export async function adminPasskeyEnrollOptions(args: { token: unknown; rp: PasskeyRp; ip: string | null }) {
+	const owner = await enrollOwner(db(), args.token);
+	if (!owner) throw new AdminPasskeyError(ENROLL_EXPIRED, 410);
+	return adminPasskeyRegistrationOptions({ userId: owner.userId, email: owner.email, name: owner.name, rp: args.rp, ip: args.ip });
+}
+
+/** スマホでの登録を確かめて保存する。QR はここで使い切る。スマホのセッションは作らない（このあと「パスキーでログイン」で入る） */
+export async function verifyAdminPasskeyEnroll(
+	event: RequestEvent,
+	args: { token: unknown; challengeId: unknown; response: unknown; deviceName: unknown; rp: PasskeyRp; ip: string | null }
+): Promise<AdminPasskeyView> {
+	const svc = db();
+	const owner = await enrollOwner(svc, args.token);
+	const t = parseEnrollToken(args.token);
+	if (!owner || !t) throw new AdminPasskeyError(ENROLL_EXPIRED, 410);
+	// QR を使い切る（同時に2台で読まれても、使えるのは先の1台だけ）
+	const { data: taken } = await book(svc)
+		.from('admin_passkey_challenges')
+		.update({ used_at: new Date().toISOString() })
+		.eq('id', t.id)
+		.eq('kind', 'passkey_enroll')
+		.eq('user_id', owner.userId)
+		.is('used_at', null)
+		.gt('expires_at', new Date().toISOString())
+		.select('id');
+	if (!(taken ?? []).length) throw new AdminPasskeyError(ENROLL_EXPIRED, 410);
+	const row = await saveRegistration(svc, {
+		userId: owner.userId,
+		challengeId: args.challengeId,
+		response: args.response,
+		deviceName: args.deviceName,
+		rp: args.rp,
+		ip: args.ip,
+		userAgent: event.request.headers.get('user-agent'),
+		via: 'enroll_link'
+	});
 	return toView(row);
 }
 

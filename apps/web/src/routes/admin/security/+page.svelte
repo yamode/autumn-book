@@ -44,6 +44,33 @@
 		}
 	}
 
+	// ---- スマホに追加する QR（PC に Bluetooth が無くても、スマホで読めばそのスマホに登録できる・2026-10-17）----
+	let enrollQr = $state<{ svg: string; expiresAt: string } | null>(null);
+	let enrollBusy = $state(false);
+	let enrollMessage = $state('');
+	let enrollNow = $state(Date.now());
+	$effect(() => {
+		if (!enrollQr) return;
+		const timer = setInterval(() => (enrollNow = Date.now()), 1000);
+		return () => clearInterval(timer);
+	});
+	const enrollLeft = $derived(enrollQr ? Math.max(0, Math.floor((new Date(enrollQr.expiresAt).getTime() - enrollNow) / 1000)) : 0);
+	async function showEnrollQr() {
+		if (enrollBusy) return;
+		enrollBusy = true;
+		enrollMessage = '';
+		try {
+			const res = await fetch('/admin/security/passkey/enroll-link', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+			const j = (await res.json().catch(() => null)) as { ok?: boolean; svg?: string; expiresAt?: string; message?: string } | null;
+			if (j?.ok && j.svg && j.expiresAt) {
+				enrollQr = { svg: j.svg, expiresAt: j.expiresAt };
+				enrollNow = Date.now();
+			} else enrollMessage = j?.message ?? 'QR を出せませんでした。画面を開き直してください。';
+		} finally {
+			enrollBusy = false;
+		}
+	}
+
 	const submitting = () => {
 		busy = true;
 		return async ({ update }: { update: (opts?: { reset?: boolean }) => Promise<void> }) => {
@@ -163,6 +190,35 @@
 			{:else}
 				<p class="mt-2 text-xs text-stone-500">このブラウザではパスキーを使えません。</p>
 			{/if}
+			<!-- スマホに追加する QR。PC に Bluetooth が無いと、ブラウザの「別のデバイス（スマホ）」が出ないための代わり（2026-10-17） -->
+			<div class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3">
+				<p class="text-sm font-medium text-stone-700">📲 スマホに追加する</p>
+				<p class="mt-1 text-[11px] leading-relaxed text-stone-500">
+					QR を出してスマホのカメラで読むと、そのスマホにあなたのパスキーを登録できます（PC の Bluetooth は不要）。10 分間・1 回だけ使えます。出し直すと前の QR は使えなくなります。
+					登録後はスマホのログイン画面の「🔑 パスキーでログイン」で入れます。<b>この QR はほかの人に見せないでください</b>（読んだ端末にあなたのパスキーが作られます）。
+				</p>
+				{#if enrollMessage}<p class="mt-2 rounded bg-red-50 px-2 py-1.5 text-xs text-red-700">{enrollMessage}</p>{/if}
+				{#if enrollQr && enrollLeft > 0}
+					<div class="mt-3 flex flex-wrap items-center gap-4">
+						<div class="w-40 rounded bg-white p-1 [&>svg]:h-auto [&>svg]:w-full">{@html enrollQr.svg}</div>
+						<div class="text-xs text-stone-600">
+							<p>スマホのカメラで読んでください。</p>
+							<p class="mt-1 tabular-nums">残り {Math.floor(enrollLeft / 60)}:{String(enrollLeft % 60).padStart(2, '0')}</p>
+							<button type="button" onclick={() => (enrollQr = null)} class="mt-2 rounded border border-stone-300 bg-white px-2 py-1 text-xs text-stone-600 hover:bg-stone-50">閉じる</button>
+						</div>
+					</div>
+				{:else}
+					{#if enrollQr}<p class="mt-2 text-xs text-stone-500">QR の期限が切れました。もう一度出してください。</p>{/if}
+					<button
+						type="button"
+						onclick={() => void showEnrollQr()}
+						disabled={enrollBusy}
+						class="mt-2 rounded-md border border-brand-800 bg-white px-3 py-1.5 text-sm font-medium text-brand-900 hover:bg-brand-50 disabled:opacity-60"
+					>
+						{enrollBusy ? '用意しています…' : 'スマホに追加する QR を出す'}
+					</button>
+				{/if}
+			</div>
 		{/if}
 	</div>
 
