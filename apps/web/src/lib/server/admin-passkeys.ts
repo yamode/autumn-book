@@ -37,6 +37,7 @@ import {
 import { summarizeUserAgent } from '$lib/partner-login-security';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { createSupabaseServerClient } from '$lib/server/auth';
+import { TtlCache } from '$lib/server/ttl-cache';
 
 // 山人テナント（admin-mfa.ts と同じ値）
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -121,7 +122,26 @@ export async function listAdminPasskeys(userId: string): Promise<AdminPasskeyVie
  * 関所が毎回読む状態: パスキーの数と、このセッションがパスキーで確認済みか（book.admin_passkey_state・1 回の往復）。
  * service_role が無い・表がまだ無い・読めないときは「パスキーなし・未確認」（既存のログインを止めない）。
  */
+// 画面遷移のたびに DB へ聞かないよう、同じ isolate の中で 60 秒覚える（2026-10-18 高速化）。
+// ただし「パスキーがあるのに未確認」は覚えない（確認した直後に関所を通れるように・別の isolate でも同じ）。
+// 覚えたままずれるのは「確認済み」「パスキーなし」の側だけで、どちらも最大 60 秒。
+const passkeyStateCache = new TtlCache<{ passkeys: number; verified: boolean }>(60_000);
+
 export async function adminPasskeyState(userId: string, sessionId: string | null): Promise<{ passkeys: number; verified: boolean }> {
+	const key = `${userId}:${sessionId ?? ''}`;
+	const hit = passkeyStateCache.get(key);
+	if (hit) return hit;
+	const r = await readAdminPasskeyState(userId, sessionId);
+	if (r.verified || r.passkeys === 0) passkeyStateCache.set(key, r);
+	return r;
+}
+
+/** パスキーを足した・消した・確認したら、その人の覚えを消す（同じ isolate のぶん） */
+export function forgetAdminPasskeyState(): void {
+	passkeyStateCache.clear();
+}
+
+async function readAdminPasskeyState(userId: string, sessionId: string | null): Promise<{ passkeys: number; verified: boolean }> {
 	const svc = partnerServiceClient();
 	if (!svc) return { passkeys: 0, verified: false };
 	try {
@@ -188,6 +208,7 @@ async function takeChallenge(svc: SupabaseClient, args: { id: unknown; kind: Cha
 // ---------------------------------------------------------------------------
 
 async function markSessionVerified(svc: SupabaseClient, args: { userId: string; sessionId: string; passkeyId: string | null }) {
+	forgetAdminPasskeyState();
 	// 期限切れの印の掃除（ついでに）
 	await book(svc)
 		.from('admin_passkey_sessions')
@@ -556,6 +577,7 @@ export async function loginWithAdminPasskey(
 // ---------------------------------------------------------------------------
 
 export async function removeAdminPasskey(args: { userId: string; passkeyId: string; ip: string | null }) {
+	forgetAdminPasskeyState();
 	if (!UUID.test(args.passkeyId)) throw new AdminPasskeyError('パスキーが見つかりません。', 404);
 	const svc = db();
 	const { data, error } = await book(svc).from('admin_passkeys').delete().eq('id', args.passkeyId).eq('user_id', args.userId).select('id, device_name');
@@ -579,6 +601,7 @@ export async function countAdminPasskeysByUser(): Promise<Map<string, number>> {
 
 /** 別の管理者が、対象のパスキーと「確認済み」の印を全部消す（復旧）。監査ログを書いてから消す。消した数を返す */
 export async function resetAdminPasskeys(args: { actorId: string; targetUserId: string; targetEmail: string | null }): Promise<number> {
+	forgetAdminPasskeyState();
 	const svc = db();
 	const { data: rows, error: listErr } = await book(svc).from('admin_passkeys').select('id').eq('user_id', args.targetUserId);
 	if (listErr) throw new AdminPasskeyError('パスキーを読み込めませんでした。', 502);

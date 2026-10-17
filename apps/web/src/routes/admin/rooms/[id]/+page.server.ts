@@ -28,6 +28,9 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const uuid = facilityUuidOf(currentFacility.id);
 	const client = createSupabaseServerClient(event);
+	// 部屋タイプと施設 slug は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	// プレビューの URL は公開ビューの施設 slug から作る（読めなければリンクを出さない）
+	const facilityLoad = sbFacilityByUuid(uuid).catch(() => undefined);
 	let room;
 	try {
 		room = await sbGetRoomContentAdmin(client, uuid, event.params.id);
@@ -35,8 +38,7 @@ export const load: PageServerLoad = async (event) => {
 		error(500, messageOf(e));
 	}
 	if (!room) error(404, '部屋タイプが見つかりません（施設を切り替えた場合は一覧から選び直してください）');
-	// プレビューの URL は公開ビューの施設 slug から作る（読めなければリンクを出さない）
-	const f = await sbFacilityByUuid(uuid).catch(() => undefined);
+	const f = await facilityLoad;
 	return { room, live: true, previewBase: f ? `/${f.brandSlug}/${f.slug}` : null };
 };
 

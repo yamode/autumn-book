@@ -34,15 +34,10 @@ export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	if (LIVE) {
 		const uuid = facilityUuidOf(currentFacility.id);
-		let r;
-		try {
-			r = await sbGetPlanContentAdmin(createSupabaseServerClient(event), uuid, event.params.id);
-		} catch (e) {
-			error(500, messageOf(e));
-		}
-		if (!r.plan) error(404, NOT_FOUND);
 		const client = createSupabaseServerClient(event);
-		const [f, templates, questionTemplates, questionSetting] = await Promise.all([
+		// プランの中身とテンプレート等は URL の id だけで引けるので同時に投げる（2026-10-18 高速化）。
+		// 500 / 404 の判定は従来どおりプランの中身を先に受け取ってから行う
+		const restLoad = Promise.all([
 			sbFacilityByUuid(uuid).catch(() => undefined),
 			// 紹介文のテンプレート（エディタの挿入ボタン・プレビュー用。読めなくても編集はできる）
 			loadPlanTemplates(uuid, client),
@@ -50,6 +45,15 @@ export const load: PageServerLoad = async (event) => {
 			loadQuestionTemplates(uuid, client),
 			loadPlanQuestionSetting(client, uuid, event.params.id).catch(() => null)
 		]);
+		restLoad.catch(() => {});
+		let r;
+		try {
+			r = await sbGetPlanContentAdmin(client, uuid, event.params.id);
+		} catch (e) {
+			error(500, messageOf(e));
+		}
+		if (!r.plan) error(404, NOT_FOUND);
+		const [f, templates, questionTemplates, questionSetting] = await restLoad;
 		return {
 			live: true as const,
 			templates,

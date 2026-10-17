@@ -20,12 +20,15 @@ const facilityOf = (id: string | undefined) => facilities.find((f) => f.id === i
 export const load: PageServerLoad = async (event) => {
 	event.setHeaders({ 'cache-control': 'no-store' });
 	const facility = facilityOf(event.cookies.get('ab_fac'));
+	// 見本の中身と見本の滞在は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const tokenLoad = demoStayToken(event, facility.id);
+	tokenLoad.catch(() => {});
 	const demoPreview = await loadDemoPreview(facility.id);
 	// 見本の滞在の QR（用意できない環境・失敗は null＝QR を出さず理由を出す）
 	let qr: { svg: string; url: string } | null = null;
 	let qrError: string | null = null;
 	try {
-		const t = await demoStayToken(event, facility.id);
+		const t = await tokenLoad;
 		if (t) {
 			const url = `${event.url.origin}/r/c/${t.token}`;
 			const q = qrcode(0, 'M');

@@ -41,10 +41,19 @@ export function isDurable(platform: Platform): boolean {
 }
 
 /** 管理画面トグルの保存値を取得（KV があれば KV、無ければメモリ）。 */
+// KV の値は全リクエストで読む（hooks と管理画面のレイアウトで1回ずつ）ので、同じ isolate の中で 10 秒覚える
+// （2026-10-18 高速化）。切り替えた isolate では setMaintenance がすぐ書き換える。ほかの isolate のずれは最大 10 秒。
+let toggleCache: { on: boolean; expires: number } | null = null;
+const TOGGLE_TTL_MS = 10_000;
+
 async function getToggle(platform: Platform): Promise<boolean> {
 	const ns = kv(platform);
-	if (ns) return (await ns.get(KV_KEY)) === 'on';
-	return memoryOn;
+	if (!ns) return memoryOn;
+	const now = Date.now();
+	if (toggleCache && toggleCache.expires > now) return toggleCache.on;
+	const on = (await ns.get(KV_KEY)) === 'on';
+	toggleCache = { on, expires: now + TOGGLE_TTL_MS };
+	return on;
 }
 
 /** 管理画面トグルを保存（KV があれば KV、無ければメモリ）。 */
@@ -52,6 +61,7 @@ export async function setMaintenance(platform: Platform, on: boolean): Promise<v
 	const ns = kv(platform);
 	if (ns) await ns.put(KV_KEY, on ? 'on' : 'off');
 	else memoryOn = on;
+	toggleCache = { on, expires: Date.now() + TOGGLE_TTL_MS };
 }
 
 /** 実際にメンテナンス中か（環境変数の強制 ON もしくはトグル ON）。 */

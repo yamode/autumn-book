@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { APP_VERSION } from '$lib/version';
 	import AutumnBookLogo from '$lib/components/admin/AutumnBookLogo.svelte';
@@ -174,6 +174,10 @@
 		}
 		/* zoom は高さ（h-screen=100vh）も同じ倍率にするので、画面いっぱいになるよう割り戻す */
 		.admin-sidebar { zoom: 1.0588; height: calc(100vh / 1.0588); }
+		.nav-progress { opacity: 0; animation: nav-progress-in 0s linear 150ms forwards; }
+		.nav-progress > div { animation: nav-progress-move 1s ease-in-out infinite; }
+		@keyframes nav-progress-in { to { opacity: 1; } }
+		@keyframes nav-progress-move { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 		.admin-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 		.admin-nav:hover { scrollbar-color: rgb(255 255 255 / 0.22) transparent; }
 		.admin-nav::-webkit-scrollbar { width: 6px; }
@@ -238,6 +242,11 @@
 		</div>
 	{/each}
 {/snippet}
+
+<!-- 画面を移っている間、上端に細い帯を出す（押したことがすぐ分かるように・2026-10-18 高速化）。150ms 以内に終わる遷移では出さない -->
+{#if navigating.to}
+	<div class="nav-progress pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden" aria-hidden="true"><div class="h-full w-1/3 bg-amber-500"></div></div>
+{/if}
 
 {#if isLogin}
 	{@render children()}

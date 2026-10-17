@@ -11,7 +11,20 @@ const LEGACY_HOST = 'autumn-book.pages.dev';
 const PRIMARY_ORIGIN = 'https://book.yamado.app';
 
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
-export const handle: Handle = async (input) => applySecurityHeaders(await handleRequest(input), input.event.url);
+export const handle: Handle = async (input) => {
+	const started = performance.now();
+	const res = applySecurityHeaders(await handleRequest(input), input.event.url);
+	// 管理画面だけ、処理時間の内訳を Server-Timing で返す（2026-10-18 高速化・ブラウザの開発者ツールの Network → Timing で見られる）
+	if (input.event.url.pathname.startsWith('/admin')) {
+		try {
+			const auth = input.event.locals.authMs;
+			res.headers.append('server-timing', `${auth !== undefined ? `auth;dur=${auth.toFixed(1)}, ` : ''}total;dur=${(performance.now() - started).toFixed(1)}`);
+		} catch {
+			// ヘッダーを足せない応答（リダイレクトの一部など）はそのまま
+		}
+	}
+	return res;
+};
 
 const handleRequest: Handle = async ({ event, resolve }) => {
 	// 本番ドメインは book.yamado.app（2026-09-26）。旧ドメイン（autumn-book.pages.dev 本体）で開かれたら同じパスへ転送する。
@@ -35,7 +48,9 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		// admin/staff/member をすべて Supabase Auth の検証済みセッションからのみ解決する。
 		// demo cookie は一切信用しない（偽造 cookie で誰にもなれない）。
 		// OTP 認証済みだが未登録のユーザーは pendingAuthUser に載せ、/auth/register へ誘導する。
+		const authStarted = performance.now();
 		const { user, pending, adminAal } = await resolveSupabaseSessionUser(event);
+		event.locals.authMs = performance.now() - authStarted;
 		event.locals.user = user;
 		event.locals.pendingAuthUser = pending;
 		event.locals.adminAal = adminAal;

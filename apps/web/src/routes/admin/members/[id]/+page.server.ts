@@ -55,49 +55,54 @@ type Audit = { at: string; actor: string; action: string; detail: string };
 export const load: PageServerLoad = async (event) => {
 	const isAdmin = event.locals.user?.role === 'admin';
 
-	// 予約履歴の施設名を引くための対応表（admin_list_bookings は facility_id しか返さない）
-	const { facilities } = await event.parent();
-	// admin_list_bookings は実 UUID を返すので、対応表も UUID キーで作る
-	const facilityName = new Map(facilities.map((f) => [toFacilityUuidStrict(f.id), f.name]));
-
 	if (ADMIN_SUPABASE) {
 		const client = bookAdmin(event);
 		const id = event.params.id;
 
+		// 会員の確認・詳細の各欄・専用ページ・施設名の対応表は URL の id だけで引けるので同時に投げる（2026-10-18 高速化）。
+		// 500 / 404 の判定は従来どおり会員の確認を先に受け取ってから行う
+		// 予約履歴の施設名を引くための対応表（admin_list_bookings は facility_id しか返さない）
+		const parentLoad = event.parent();
+		parentLoad.catch(() => {});
 		// admin_list_members に user_id 絞り込みが無いため取得して突き合わせる。
 		// 会員数が 1000 を超えたら RPC に p_user_id を足すこと（HANDOFF 参照）。
+		const membersLoad = adminListMembers(client, { limit: 1000, includeWithdrawn: true });
+		membersLoad.catch(() => {});
+		// policy 未整備のテーブルがあるため、1つ落ちても画面が開くようにする
+		const detailLoad = Promise.all([
+			pointBalanceOf(client, id).catch(() => 0),
+			otayoriBalanceOf(client, id).catch(() => 0),
+			listPointLedger(client, id).catch(() => []),
+			adminListMemberCoupons(client, { memberUserId: id }).catch(() => [] as MemberCouponRow[]),
+			adminMemberDevices(client, id).catch(() => [] as DeviceRow[]),
+			listMemberNotifications(client, id).catch(() => [] as MemberNotificationRow[]),
+			listMemberPreferences(client, id).catch(() => [] as MemberPreferenceRow[]),
+			// 会員軸の予約履歴。施設は跨いで見たいので p_facility_id は null、期間も無指定
+			adminListBookings(client, {
+				facilityId: null,
+				source: null,
+				memberUserId: id,
+				limit: 50
+			}).catch(() => [])
+		]);
+		// 専用ページ（本人・家族）。取引先モジュールが使えない環境・権限なしは空
+		const memberPagesLoad = staffPartnerScope(event, 'view')
+			.then((scope) => memberPagesForAdmin(scope.db, scope.tenantId, id))
+			.catch(() => []);
+
 		let member;
 		try {
-			const rows = await adminListMembers(client, { limit: 1000, includeWithdrawn: true });
+			const rows = await membersLoad;
 			member = rows.find((m) => m.user_id === id) ?? null;
 		} catch (e) {
 			error(500, mapRpcError(e));
 		}
 		if (!member) error(404, '会員が見つかりません');
 
-		// policy 未整備のテーブルがあるため、1つ落ちても画面が開くようにする
-		const [balance, otayori, ledger, coupons, devices, notifications, preferences, stays] =
-			await Promise.all([
-				pointBalanceOf(client, id).catch(() => 0),
-				otayoriBalanceOf(client, id).catch(() => 0),
-				listPointLedger(client, id).catch(() => []),
-				adminListMemberCoupons(client, { memberUserId: id }).catch(() => [] as MemberCouponRow[]),
-				adminMemberDevices(client, id).catch(() => [] as DeviceRow[]),
-				listMemberNotifications(client, id).catch(() => [] as MemberNotificationRow[]),
-				listMemberPreferences(client, id).catch(() => [] as MemberPreferenceRow[]),
-				// 会員軸の予約履歴。施設は跨いで見たいので p_facility_id は null、期間も無指定
-				adminListBookings(client, {
-					facilityId: null,
-					source: null,
-					memberUserId: id,
-					limit: 50
-				}).catch(() => [])
-			]);
-
-		// 専用ページ（本人・家族）。取引先モジュールが使えない環境・権限なしは空
-		const memberPages = await staffPartnerScope(event, 'view')
-			.then((scope) => memberPagesForAdmin(scope.db, scope.tenantId, id))
-			.catch(() => []);
+		const [[balance, otayori, ledger, coupons, devices, notifications, preferences, stays], memberPages, { facilities }] =
+			await Promise.all([detailLoad, memberPagesLoad, parentLoad]);
+		// admin_list_bookings は実 UUID を返すので、対応表も UUID キーで作る
+		const facilityName = new Map(facilities.map((f) => [toFacilityUuidStrict(f.id), f.name]));
 
 		return {
 			live: true as const,

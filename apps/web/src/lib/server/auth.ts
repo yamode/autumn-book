@@ -17,7 +17,8 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import type { SessionUser } from './session';
 import { DATA_SOURCE } from './supabase';
 import { parseAdminMfaRequired, type AdminAal } from '$lib/admin-mfa';
-import { jwtSessionId } from '$lib/admin-passkey';
+import { isBanned } from '$lib/admin-passkey';
+import { TtlCache } from './ttl-cache';
 import { adminPasskeyState } from './admin-passkeys';
 
 export const AUTH_MODE: 'demo' | 'supabase' = env.AUTH_MODE === 'supabase' ? 'supabase' : 'demo';
@@ -97,30 +98,55 @@ export interface SupabaseAuthResolution {
 	adminAal: AdminAal | null;
 }
 
-/**
- * 管理者/スタッフのセッションの認証レベルを読む（docs/auth-hardening.md §7.2）。
- * - current は getAuthenticatorAssuranceLevel() の currentLevel（＝cookie のアクセストークンの aal クレーム）。
- *   直前の getUser() が同じトークンを Supabase で検証済みなので、クレームを信用してよい。
- *   auth-js 2.108 の実装は引数なしならネットワークに出ず、トークンを decode するだけ。
- * - 第2要素の数は getUser() が返した（＝サーバから取り直した）user.factors の verified を数える。
- *   getAuthenticatorAssuranceLevel() の nextLevel は cookie に保存された古い user から計算されるため使わない。
- * - 読めないときは「登録なし・aal1」扱い（required=false なら通る＝既存のログインを止めない）。
- * - パスキー（lib/server/admin-passkeys.ts）も第2要素に数え、このセッションをパスキーで確認済みなら aal2 とする。
- */
-async function readAdminAal(client: SupabaseClient, user: User): Promise<AdminAal> {
-	const totpFactors = (user.factors ?? []).filter((f) => f.status === 'verified').length;
-	let jwtAal: string | null = null;
-	let sessionId: string | null = null;
+// ---------------------------------------------------------------------------
+// ログインの確認（2026-10-18 高速化）
+//   以前は画面遷移のたびに getUser()（Supabase の認証サーバへの往復）をしていた。
+//   いまは getClaims() でアクセストークンの署名をその場で確かめる（ES256・公開鍵は auth-js が isolate 内で覚える＝往復なし）。
+//   管理者/スタッフは、権限の外し忘れ・利用停止・第2要素の数を取りこぼさないよう、認証サーバの最新の user を
+//   ユーザーごとに 60 秒だけ覚えて使う（ずれは最大 60 秒）。会員の扱いは従来どおり。
+// ---------------------------------------------------------------------------
+type Claims = {
+	sub: string;
+	email?: string;
+	aal?: string;
+	session_id?: string;
+	app_metadata?: { role?: string } | null;
+	user_metadata?: { member?: boolean; name?: string } | null;
+};
+
+const staffUserCache = new TtlCache<User | null>(60_000);
+
+/** 管理者/スタッフの最新の user（認証サーバの値・60 秒覚える）。読めなければ null */
+async function freshStaffUser(client: SupabaseClient, userId: string): Promise<User | null> {
+	const hit = staffUserCache.get(userId);
+	if (hit !== undefined) return hit;
 	try {
-		const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
-		if (!error && data) jwtAal = data.currentLevel ?? null;
-		// パスキーで確認した印の鍵（同じトークンは直前の getUser() で検証済み）
-		const { data: s } = await client.auth.getSession();
-		sessionId = jwtSessionId(s.session?.access_token);
+		const { data, error } = await client.auth.getUser();
+		const user = !error && data.user?.id === userId ? data.user : null;
+		staffUserCache.set(userId, user);
+		return user;
 	} catch {
-		// 読めなければ aal1 扱い
+		return null;
 	}
-	// パスキー（book.admin_passkeys）の数と、このセッションをパスキーで確認済みか。読めなければ「なし」（既存のログインを止めない）
+}
+
+/** 権限・第2要素を変えたあと、すぐ反映させたいとき（同じ isolate のぶん） */
+export function forgetStaffUser(userId?: string): void {
+	if (userId) staffUserCache.delete(userId);
+	else staffUserCache.clear();
+}
+
+/**
+ * 管理者/スタッフのセッションの認証レベル（docs/auth-hardening.md §7.2）。
+ * - jwtAal / sessionId は getClaims() で署名を確かめたトークンのクレーム。
+ * - 第2要素の数は認証サーバの user.factors の verified（freshStaffUser・60 秒覚える）。
+ * - パスキー（lib/server/admin-passkeys.ts）も第2要素に数え、このセッションをパスキーで確認済みなら aal2 とする。
+ * - 読めないときは「登録なし・aal1」扱い（required=false なら通る＝既存のログインを止めない）。
+ */
+async function readAdminAal(claims: Claims, user: User): Promise<AdminAal> {
+	const totpFactors = (user.factors ?? []).filter((f) => f.status === 'verified').length;
+	const jwtAal = claims.aal ?? null;
+	const sessionId = typeof claims.session_id === 'string' ? claims.session_id.toLowerCase() : null;
 	const pk = await adminPasskeyState(user.id, sessionId);
 	return {
 		current: pk.verified ? 'aal2' : jwtAal,
@@ -134,38 +160,53 @@ async function readAdminAal(client: SupabaseClient, user: User): Promise<AdminAa
 
 /**
  * Supabase セッションから locals へ載せる SessionUser を解決する。
- *   1. app_metadata.role が admin / staff  → その role（Phase 1）
+ *   1. app_metadata.role が admin / staff  → その role（認証サーバの最新の値で確かめる）
  *   2. user_metadata.member === true        → member（Phase 2・register_member 済み）
  *   3. フラグがなくても book.my_profile が通る → member（別アプリで登録した会員）
  *   4. それ以外（OTP 済み・未登録）          → pending（会員登録のプロフィール入力へ）
  */
 export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<SupabaseAuthResolution> {
-	const got = await getSupabaseUser(event);
-	if (!got) return { user: null, pending: null, adminAal: null };
-	const { user, client } = got;
-
-	const role = (user.app_metadata as { role?: string } | null)?.role;
-	if (role === 'admin' || role === 'staff') {
-		const name = ((user.user_metadata as { name?: string } | null)?.name ?? user.email ?? '管理者') as string;
-		return { user: { id: user.id, role, name }, pending: null, adminAal: await readAdminAal(client, user) };
+	let client: SupabaseClient;
+	let claims: Claims;
+	try {
+		client = createSupabaseServerClient(event);
+		const { data, error } = await client.auth.getClaims();
+		if (error || !data?.claims?.sub) return { user: null, pending: null, adminAal: null };
+		claims = data.claims as unknown as Claims;
+	} catch {
+		// Supabase 未設定/到達不可でも公開サイトは落とさない（未ログイン扱い）
+		return { user: null, pending: null, adminAal: null };
 	}
 
-	const meta = user.user_metadata as { member?: boolean; name?: string } | null;
+	// トークンの役割が admin / staff なら、認証サーバの最新の値で確かめる（外された・停止された人を通さない）
+	const claimRole = claims.app_metadata?.role;
+	if (claimRole === 'admin' || claimRole === 'staff') {
+		const user = await freshStaffUser(client, claims.sub);
+		if (!user || isBanned((user as { banned_until?: string | null }).banned_until)) return { user: null, pending: null, adminAal: null };
+		const role = (user.app_metadata as { role?: string } | null)?.role;
+		if (role === 'admin' || role === 'staff') {
+			const name = ((user.user_metadata as { name?: string } | null)?.name ?? user.email ?? '管理者') as string;
+			return { user: { id: user.id, role, name }, pending: null, adminAal: await readAdminAal(claims, user) };
+		}
+		// 権限を外された人は、以下の会員の判定へ
+	}
+
+	const meta = claims.user_metadata ?? null;
 	if (meta?.member === true) {
 		const name = (meta.name ?? 'ゲスト') as string;
-		return { user: { id: user.id, role: 'member', name }, pending: null, adminAal: null };
+		return { user: { id: claims.sub, role: 'member', name }, pending: null, adminAal: null };
 	}
 
 	// 他アプリ経由の会員や metadata 同期に失敗した会員も、実際の会員行で解決する。
 	// OTP 検証後に my_profile が成功しても metadata だけを見るとログインへ戻ってしまう。
 	const { data: profile, error } = await client.schema('book').rpc('my_profile');
-	if (!error && profile?.user_id === user.id) {
+	if (!error && profile?.user_id === claims.sub) {
 		const name = (profile.name as string | null) ?? meta?.name ?? 'ゲスト';
-		return { user: { id: user.id, role: 'member', name }, pending: null, adminAal: null };
+		return { user: { id: claims.sub, role: 'member', name }, pending: null, adminAal: null };
 	}
 
 	// OTP 認証は済んだが register_member 前（＝会員行なし）。プロフィール入力へ誘導する。
-	return { user: null, pending: { id: user.id, email: user.email ?? '' }, adminAal: null };
+	return { user: null, pending: { id: claims.sub, email: claims.email ?? '' }, adminAal: null };
 }
 
 /**

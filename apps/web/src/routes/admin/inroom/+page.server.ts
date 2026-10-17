@@ -23,7 +23,7 @@ import {
 // 実際のご予約から公開URL/QRを出す部分は貸切風呂（/admin/bath）と同じ RPC を使う。
 // get-or-create なので、同じご予約なら何度押しても同じ URL・同じ QR になる。
 import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$lib/server/private-bath';
-import type { Locale } from '$lib/types';
+import type { Locale, StayToken } from '$lib/types';
 import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
 import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
 import {
@@ -74,80 +74,70 @@ export const load: PageServerLoad = async (event) => {
 	const dateParam = event.url.searchParams.get('date') ?? '';
 	const date = /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
 
-	// 実際のご予約の一覧（公開URL・QR を出す元）。取れなくても画面は落とさない。
-	let stays: BookableStay[] = [];
-	let staysError: string | null = useSupabaseAdmin ? null : STAYS_NOT_LIVE;
-	if (useSupabaseAdmin) {
-		try {
-			stays = await sbListBookableStays(
-				createSupabaseServerClient(event),
-				FACILITY_UUID[currentFacility.id] ?? currentFacility.id,
-				date
-			);
-		} catch (e) {
-			staysError = e instanceof Error ? e.message : String(e);
-		}
-	}
-	const [snsLinks, inroomSettings] = await Promise.all([loadSnsLinks(currentFacility.id), loadInroomSettings(currentFacility.id)]);
+	// 以下の読み込みは互いに依存しないので、同時に投げる（2026-10-18 高速化。以前は 6 回の往復を順番に待っていた）。
+	// どれも取れなくても画面は落とさない（それぞれの欄に理由を出す）。
+	const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+	const client = useSupabaseAdmin ? createSupabaseServerClient(event) : null;
+	const facilityUuid = FACILITY_UUID[currentFacility.id] ?? currentFacility.id;
+
+	// 実際のご予約の一覧（公開URL・QR を出す元）
+	const staysP: Promise<{ stays: BookableStay[]; staysError: string | null }> = client
+		? sbListBookableStays(client, facilityUuid, date).then(
+				(stays) => ({ stays, staysError: null }),
+				(e) => ({ stays: [] as BookableStay[], staysError: errText(e) })
+			)
+		: Promise.resolve({ stays: [] as BookableStay[], staysError: STAYS_NOT_LIVE });
 	// 内線（客室からの Wi-Fi 通話）の設定と通話ログ。実データに繋がっているときだけ
-	let intercom: AdminIntercom | null = null;
-	let intercomCalls: IntercomCall[] = [];
-	let intercomError: string | null = useSupabaseAdmin ? null : STAYS_NOT_LIVE;
-	if (useSupabaseAdmin) {
-		try {
-			const client = createSupabaseServerClient(event);
-			[intercom, intercomCalls] = await Promise.all([
-				sbAdminIntercom(client, currentFacility.id),
-				sbListIntercomCalls(client, currentFacility.id, 7)
-			]);
-		} catch (e) {
-			intercomError = e instanceof Error ? e.message : String(e);
-		}
-	}
-	// 全客室へのお知らせ（2026-10-17）。取れなくても画面は落とさない
-	let notices: AdminInroomNotice[] = [];
-	let noticesError: string | null = null;
-	if (useSupabaseAdmin) {
-		try {
-			notices = await sbListNotices(createSupabaseServerClient(event), currentFacility.id);
-		} catch (e) {
-			noticesError = e instanceof Error ? e.message : String(e);
-		}
-	} else {
-		notices = listNoticesDemo(currentFacility.id);
-	}
+	const intercomP: Promise<{ intercom: AdminIntercom | null; intercomCalls: IntercomCall[]; intercomError: string | null }> = client
+		? Promise.all([sbAdminIntercom(client, currentFacility.id), sbListIntercomCalls(client, currentFacility.id, 7)]).then(
+				([intercom, intercomCalls]) => ({ intercom, intercomCalls, intercomError: null }),
+				(e) => ({ intercom: null, intercomCalls: [] as IntercomCall[], intercomError: errText(e) })
+			)
+		: Promise.resolve({ intercom: null, intercomCalls: [] as IntercomCall[], intercomError: STAYS_NOT_LIVE });
+	// 全客室へのお知らせ（2026-10-17）
+	const noticesP: Promise<{ notices: AdminInroomNotice[]; noticesError: string | null }> = client
+		? sbListNotices(client, currentFacility.id).then(
+				(notices) => ({ notices, noticesError: null }),
+				(e) => ({ notices: [] as AdminInroomNotice[], noticesError: errText(e) })
+			)
+		: Promise.resolve({ notices: listNoticesDemo(currentFacility.id), noticesError: null });
+	// 客室スリップと館内案内。管理用ガイド一覧（未公開含む）RPC は P8a には無い（P5 Auth 本接続時に追加）。
+	// 暫定で公開済みガイドのみ anon RPC 経由で表示する。未公開の確認は demo モードでのみ可能。
+	// 管理者の core.memberships 未登録（forbidden）や Supabase 到達不可でも管理画面自体は落とさない（v0.12.1 と同じ安全側設計）
+	const listsP: Promise<{ guides: Awaited<ReturnType<typeof sbListHouseGuides>>; tokens: StayToken[]; loadError: string | null }> = client
+		? Promise.all([sbListStayTokens(client, facilityUuid, includeInactive), sbListHouseGuides(facilityUuid, 'ja')]).then(
+				([tokens, guides]) => ({ guides, tokens, loadError: null }),
+				(e) => ({
+					guides: [],
+					tokens: [] as StayToken[],
+					loadError:
+						'Supabase からの取得に失敗しました。管理者アカウントの core.memberships 登録（施設アクセス権）を確認してください。' +
+						(e instanceof Error ? `（${e.message}）` : '')
+				})
+			)
+		: Promise.resolve({ guides: listHouseGuidesAdmin(currentFacility.id), tokens: listStayTokens(currentFacility.id, includeInactive), loadError: null });
+
+	const [staysR, snsLinks, inroomSettings, intercomR, noticesR, listsR] = await Promise.all([
+		staysP,
+		loadSnsLinks(currentFacility.id),
+		loadInroomSettings(currentFacility.id),
+		intercomP,
+		noticesP,
+		listsP
+	]);
 	// 案内ページ1件だけの QR（/r/start?f=<slug>&g=<id>）に入れる施設の slug（2026-10-15）
 	const facilitySlug = facilities.find((f) => f.id === currentFacility.id)?.slug ?? '';
-	const base = { facilitySlug, includeInactive, stays, staysError, date, live: useSupabaseAdmin, snsLinks, inroomSettings, notices, noticesError, intercom, intercomCalls, intercomError };
-
-	if (useSupabaseAdmin) {
-		const client = createSupabaseServerClient(event);
-		const facilityUuid = FACILITY_UUID[currentFacility.id] ?? currentFacility.id;
-		try {
-			const tokens = await sbListStayTokens(client, facilityUuid, includeInactive);
-			// 管理用ガイド一覧（未公開含む）RPC は P8a には無い（P5 Auth 本接続時に追加）。
-			// 暫定で公開済みガイドのみ anon RPC 経由で表示する。未公開の確認は demo モードでのみ可能。
-			const guides = await sbListHouseGuides(facilityUuid, 'ja');
-			return { ...base, guides, tokens, loadError: null };
-		} catch (e) {
-			// 管理者の core.memberships 未登録（forbidden）や Supabase 到達不可でも
-			// 管理画面自体は落とさない（v0.12.1 と同じ安全側設計）
-			return {
-				...base,
-				guides: [],
-				tokens: [],
-				loadError:
-					'Supabase からの取得に失敗しました。管理者アカウントの core.memberships 登録（施設アクセス権）を確認してください。' +
-					(e instanceof Error ? `（${e.message}）` : '')
-			};
-		}
-	}
-
 	return {
-		...base,
-		guides: listHouseGuidesAdmin(currentFacility.id),
-		tokens: listStayTokens(currentFacility.id, includeInactive),
-		loadError: null
+		facilitySlug,
+		includeInactive,
+		date,
+		live: useSupabaseAdmin,
+		snsLinks,
+		inroomSettings,
+		...staysR,
+		...intercomR,
+		...noticesR,
+		...listsR
 	};
 };
 

@@ -2,7 +2,7 @@
 // enroll → QR と手入力用の秘密 → challengeAndVerify で有効化。有効化と同時にこのセッションは aal2 になる。
 // Supabase 側で TOTP が無効なら、登録時のエラーで設定場所を案内するだけ（既存のログインには影響しない）。
 import { fail } from '@sveltejs/kit';
-import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient } from '$lib/server/auth';
+import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, forgetStaffUser } from '$lib/server/auth';
 import { adminMfaErrorText, normalizeTotpCode } from '$lib/admin-mfa';
 import type { Actions, PageServerLoad } from './$types';
 import type { RequestEvent } from '@sveltejs/kit';
@@ -25,16 +25,21 @@ export const load: PageServerLoad = async (event) => {
 	}
 	// パスキー（本番ドメインとローカルだけ。読めなくても認証アプリの画面は出す）
 	const passkey = { usable: adminPasskeyAvailable(event), list: [] as AdminPasskeyView[], loadError: null as string | null };
-	if (passkey.usable && locals.user) {
-		try {
-			passkey.list = await listAdminPasskeys(locals.user.id);
-		} catch (e) {
-			passkey.loadError = e instanceof AdminPasskeyError ? e.message : 'パスキーを読み込めませんでした。';
-		}
-	}
+	// パスキーの一覧と認証アプリの一覧は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const passkeyLoad =
+		passkey.usable && locals.user
+			? listAdminPasskeys(locals.user.id).then(
+					(list) => {
+						passkey.list = list;
+					},
+					(e) => {
+						passkey.loadError = e instanceof AdminPasskeyError ? e.message : 'パスキーを読み込めませんでした。';
+					}
+				)
+			: Promise.resolve();
 	try {
 		const client = createSupabaseServerClient(event);
-		const { data, error } = await client.auth.mfa.listFactors();
+		const [{ data, error }] = await Promise.all([client.auth.mfa.listFactors(), passkeyLoad]);
 		if (error) throw error;
 		const factors: FactorRow[] = data.totp.map((f) => ({
 			id: f.id,
@@ -44,6 +49,8 @@ export const load: PageServerLoad = async (event) => {
 		}));
 		return { ...base, available: true as const, factors, loadError: null, aal: locals.adminAal.current, passkey };
 	} catch (e) {
+		// 認証アプリ側が失敗してもパスキーの欄は読み終わってから返す（passkeyLoad は失敗しない）
+		await passkeyLoad;
 		return {
 			...base,
 			available: true as const,
@@ -113,6 +120,7 @@ export const actions: Actions = {
 		const client = createSupabaseServerClient(event);
 		const { error } = await client.auth.mfa.challengeAndVerify({ factorId, code });
 		if (error) return fail(400, { message: adminMfaErrorText(error), enroll: keep });
+		forgetStaffUser(event.locals.user?.id);
 		return { verified: true };
 	},
 
@@ -154,6 +162,7 @@ export const actions: Actions = {
 		if (!factorId) return fail(400, { message: '削除する登録を選んでください。' });
 		const { error } = await createSupabaseServerClient(event).auth.mfa.unenroll({ factorId });
 		if (error) return fail(400, { message: adminMfaErrorText(error) });
+		forgetStaffUser(event.locals.user?.id);
 		return { removed: true };
 	}
 };

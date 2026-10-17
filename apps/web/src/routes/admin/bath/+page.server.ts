@@ -105,29 +105,27 @@ export const load: PageServerLoad = async (event) => {
 		? (event.url.searchParams.get('date') as string)
 		: null;
 
-	const { contents, error } = await loadContents(event, facilityUuid);
-
+	// 中身・QR テスト用の滞在・料金設定は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const client = useSupabaseAdmin ? createSupabaseServerClient(event) : null;
 	// QR テスト用の滞在一覧。権限が無い・繋がらないだけで画面を落とさない。
-	let stays: BookableStay[] = [];
-	let staysError: string | null = useSupabaseAdmin ? null : NOT_LIVE;
-	if (useSupabaseAdmin) {
-		try {
-			stays = await sbListBookableStays(createSupabaseServerClient(event), facilityUuid, date);
-		} catch (e) {
-			staysError = messageOf(e);
-		}
-	}
-
+	const staysLoad: Promise<{ stays: BookableStay[]; staysError: string | null }> = client
+		? sbListBookableStays(client, facilityUuid, date).then(
+				(stays) => ({ stays, staysError: null }),
+				(e) => ({ stays: [] as BookableStay[], staysError: messageOf(e) })
+			)
+		: Promise.resolve({ stays: [] as BookableStay[], staysError: NOT_LIVE });
 	// 料金設定。読めなくても画面は落とさない（エラーだけ出す）。
-	let pricing: BathPricing = demoPricingOf(currentFacility.id);
-	let pricingError: string | null = null;
-	if (useSupabaseAdmin) {
-		try {
-			pricing = await sbBathPricingAdmin(createSupabaseServerClient(event), facilityUuid);
-		} catch (e) {
-			pricingError = messageOf(e);
-		}
-	}
+	const pricingLoad: Promise<{ pricing: BathPricing; pricingError: string | null }> = client
+		? sbBathPricingAdmin(client, facilityUuid).then(
+				(pricing) => ({ pricing, pricingError: null }),
+				(e) => ({ pricing: demoPricingOf(currentFacility.id), pricingError: messageOf(e) })
+			)
+		: Promise.resolve({ pricing: demoPricingOf(currentFacility.id), pricingError: null });
+	const [{ contents, error }, { stays, staysError }, { pricing, pricingError }] = await Promise.all([
+		loadContents(event, facilityUuid),
+		staysLoad,
+		pricingLoad
+	]);
 
 	return {
 		pricing,

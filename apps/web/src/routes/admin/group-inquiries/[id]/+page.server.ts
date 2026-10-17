@@ -37,7 +37,8 @@ export const load: PageServerLoad = async (event) => {
   try {
     const { scope, facilities, staff, row } = await inquiryForStaff(event);
     const db = scope.db;
-    const [events, nightly, credit, siblings, partnerRow] = await Promise.all([
+    // 予約の確定状態も照会の行だけで引けるので、ほかと同時に投げる（2026-10-18 高速化）
+    const [events, nightly, credit, siblings, partnerRow, { data: booking }] = await Promise.all([
       listGroupInquiryEvents(db, row.id, 'staff').catch(() => []),
       groupNightlyRemaining(db, row).catch(() => []),
       groupInquiryCredit(db, row).catch(() => null),
@@ -46,13 +47,13 @@ export const load: PageServerLoad = async (event) => {
         (all) => all.filter((r) => r.id !== row.id),
         () => []
       ),
-      row.partner_id ? db.from('rms_partners').select('booking_settings').eq('id', row.partner_id).maybeSingle() : Promise.resolve({ data: null })
+      row.partner_id ? db.from('rms_partners').select('booking_settings').eq('id', row.partner_id).maybeSingle() : Promise.resolve({ data: null }),
+      row.booking_id
+        ? db.from('rms_partner_bookings').select('booking_code, status').eq('id', row.booking_id).maybeSingle()
+        : Promise.resolve({ data: null })
     ]);
     const settings = normalizePartnerBookingSettings((partnerRow.data as { booking_settings?: unknown } | null)?.booking_settings);
     const priced = row.answer_rooms ?? row.quote_rooms;
-    const { data: booking } = row.booking_id
-      ? await db.from('rms_partner_bookings').select('booking_code, status').eq('id', row.booking_id).maybeSingle()
-      : { data: null };
     return {
       live: true,
       error: null as string | null,

@@ -19,6 +19,8 @@ declare global {
 			// 管理者/スタッフのセッションの認証レベル（二段階認証の関所・docs/auth-hardening.md §7.2）。
 			// AUTH_MODE=supabase で admin / staff のときのみ設定。demo・会員・未ログインは null。
 			adminAal: AdminAal | null;
+			// ログインの確認にかかった時間（ミリ秒・管理画面の Server-Timing に出す）
+			authMs?: number;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

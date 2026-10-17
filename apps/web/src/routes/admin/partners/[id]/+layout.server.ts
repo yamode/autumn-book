@@ -80,6 +80,9 @@ export const load: LayoutServerLoad = async (event) => {
 	const invoicePeriod = invPeriodRaw && invPeriodRaw <= currentPeriod ? invPeriodRaw : currentPeriod;
 
 	// ---- 待つもの（フォームの初期値・ラベルに使う） ----
+	// アクセス制限（docs/partner-access-restriction.md）: 登録の参考に、直近のログイン元 IP（読めなければ空）
+	// ほかの結果を使わないので最初にまとめて投げる（2026-10-18 高速化）
+	const recentLoginIpsLoad = recentPartnerLoginIps(db, partner.id).catch(() => []);
 	const [accounts, apiKeys, memo, documents, pmsGuest, facilityMetas] = await Promise.all([
 		listPartnerAccounts(db, partner.id),
 		listPartnerApiKeys(db, partner.id),
@@ -97,17 +100,18 @@ export const load: LayoutServerLoad = async (event) => {
 		// 予約の施設名（予約一覧の施設の列）
 		bookFacilityMeta(db).catch(() => [] as { id: string; slug: string; name: string }[])
 	]);
-	// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
-	const credit = pmsGuest.guest?.guestType === 'group' ? await loadCreditSection(event, scope, partner) : null;
-
-	// アカウントごとのパスキーの数（第2要素の状態・docs/auth-hardening.md §6.7・S6）。読めなければ 0
-	const passkeyCounts = await countPasskeysByAccount(
-		db,
-		accounts.map((a) => a.id)
-	);
+	// 与信とパスキーの数は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const [credit, passkeyCounts, recentLoginIps] = await Promise.all([
+		// 与信（受付枠・Phase 3a）: 紐づけ先が旅行会社のときだけ読む（法人・未紐づけでは出さない）
+		pmsGuest.guest?.guestType === 'group' ? loadCreditSection(event, scope, partner) : Promise.resolve(null),
+		// アカウントごとのパスキーの数（第2要素の状態・docs/auth-hardening.md §6.7・S6）。読めなければ 0
+		countPasskeysByAccount(
+			db,
+			accounts.map((a) => a.id)
+		),
+		recentLoginIpsLoad
+	]);
 	const mfaPolicy = normalizeMfaPolicy(partner.mfa_policy);
-	// アクセス制限（docs/partner-access-restriction.md）: 登録の参考に、直近のログイン元 IP（読めなければ空）
-	const recentLoginIps = await recentPartnerLoginIps(db, partner.id).catch(() => []);
 	const accountLabel = new Map(accounts.map((a) => [a.id, a.login_id]));
 	const keyLabel = new Map(apiKeys.map((k) => [k.id, k.label || k.key_prefix]));
 	const facilityNames = new Map(facilityMetas.map((m) => [m.id, m.name]));

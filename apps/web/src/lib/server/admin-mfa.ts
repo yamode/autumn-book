@@ -11,6 +11,7 @@
 // 記帳できなければ削除しない（記録の無いリセットを作らない）。
 import type { Factor, SupabaseClient, User } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
+import { forgetStaffUser } from '$lib/server/auth';
 
 // 山人テナント（supabase-data.ts・faq/admin.ts と同じ値）
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -155,6 +156,7 @@ export async function resetStaffFactors(args: {
 		const { error } = await svc.auth.admin.mfa.deleteFactor({ id: f.id, userId: target.id });
 		if (error) failed.push({ id: f.id, message: error.message });
 		else deleted++;
+		forgetStaffUser(target.id);
 	}
 	if (failed.length > 0) {
 		await writeAudit(svc, args.actorId, 'admin_mfa_reset_failed', { ...detail, failed });

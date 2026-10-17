@@ -255,14 +255,17 @@ export const load: PageServerLoad = async (event) => {
 		}
 
 		// オンライン決済（公式サイト予約・v0.43.0）の台帳。現地払い・未適用の環境は null
-		const payment = detail.booking.booking_id ? await directPaymentForBooking(event.params.code).catch(() => null) : null;
 		// 取消済みのオンライン決済: 返金の内訳（規定のキャンセル料・返金しない予約時決済の割引額）を DB から。
 		// 1 室だけ取り消した予約（M2）も、取り消した部屋の分の返金の内訳を出す
 		const someRoomCancelled = (detail.booking.rooms ?? []).some((r) => r.cancelled);
-		const refundDue =
-			payment?.status === 'paid' && (detail.booking.booking_status === 'cancelled' || someRoomCancelled)
-				? await directRefundDueFor(event.params.code).catch(() => null)
-				: null;
+		const cancelledAny = detail.booking.booking_status === 'cancelled' || someRoomCancelled;
+		// 決済の台帳と返金の内訳は同時に投げる（2026-10-18 高速化）。返金の内訳は取消があるときだけ先に読み、
+		// 使うのは従来どおり決済が paid のときだけ
+		const [payment, refundDueRead] = await Promise.all([
+			detail.booking.booking_id ? directPaymentForBooking(event.params.code).catch(() => null) : Promise.resolve(null),
+			detail.booking.booking_id && cancelledAny ? directRefundDueFor(event.params.code).catch(() => null) : Promise.resolve(null)
+		]);
+		const refundDue = payment?.status === 'paid' && cancelledAny ? refundDueRead : null;
 		return {
 			live: true as const,
 			canOperate: isAdmin,

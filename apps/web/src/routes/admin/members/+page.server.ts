@@ -90,17 +90,21 @@ const loadList = async (event: Parameters<PageServerLoad>[0]) => {
 // 入会ボーナスの設定（book.member_program_settings・autumn-shared 20260927001351）。
 // 閲覧はスタッフも可、保存は管理者のみ（金額に関わるため。DB もテナント管理者に限る）。
 export const load: PageServerLoad = async (event) => {
-	const list = await loadList(event);
 	const canEditProgram = event.locals.user?.role === 'admin';
 	if (!ADMIN_SUPABASE) {
+		const list = await loadList(event);
 		const demo: MemberProgram = { welcomeBonusPoints: DEFAULT_WELCOME_BONUS, welcomeBonusValidDays: 365, updatedAt: null, grantedTotal: 0, granted30d: 0 };
 		return { ...list, program: demo, programError: null as string | null, canEditProgram };
 	}
-	try {
-		return { ...list, program: await sbAdminMemberProgram(createSupabaseServerClient(event)), programError: null as string | null, canEditProgram };
-	} catch (e) {
-		return { ...list, program: null, programError: e instanceof Error ? e.message : String(e), canEditProgram };
-	}
+	// 会員一覧と入会ボーナスの設定は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const [list, programResult] = await Promise.all([
+		loadList(event),
+		sbAdminMemberProgram(createSupabaseServerClient(event)).then(
+			(program) => ({ program, programError: null as string | null }),
+			(e) => ({ program: null, programError: e instanceof Error ? e.message : String(e) })
+		)
+	]);
+	return { ...list, ...programResult, canEditProgram };
 };
 
 export const actions: Actions = {

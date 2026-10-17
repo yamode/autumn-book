@@ -6,7 +6,20 @@ import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { countSubmittedGroupInquiries } from '$lib/server/partners/group-inquiries';
 import { staffGroupScope } from '$lib/server/partners/group-staff';
+import { TtlCache } from '$lib/server/ttl-cache';
 import type { LayoutServerLoad } from './$types';
+
+const badgeCache = new TtlCache<number | null>(60_000);
+
+async function groupBadge(event: Parameters<LayoutServerLoad>[0], userId: string): Promise<number | null> {
+	const hit = badgeCache.get(userId);
+	if (hit !== undefined) return hit;
+	const n = await staffGroupScope(event)
+		.then(({ scope, facilities: facs }) => countSubmittedGroupInquiries(scope.db, scope.tenantId, facs.map((f) => f.id)))
+		.catch(() => null as number | null);
+	if (n !== null) badgeCache.set(userId, n);
+	return n;
+}
 
 export const load: LayoutServerLoad = async (event) => {
 	const { locals, url, cookies, platform } = event;
@@ -39,11 +52,7 @@ export const load: LayoutServerLoad = async (event) => {
 		},
 		// サイドバー「団体照会」のバッジ（回答待ちの件数・スタッフがアクセスできる施設の範囲・docs/partner-group-booking.md §7.8）。
 		// 画面の表示を待たせないよう Promise のまま流す（読めない・この環境では使えないときは null＝バッジを出さない）
-		groupInquiryBadge:
-			isLogin || !ADMIN_SUPABASE
-				? Promise.resolve(null as number | null)
-				: staffGroupScope(event)
-						.then(({ scope, facilities: facs }) => countSubmittedGroupInquiries(scope.db, scope.tenantId, facs.map((f) => f.id)))
-						.catch(() => null as number | null)
+		// 画面遷移のたびに数え直さないよう、ユーザーごとに 60 秒覚える（2026-10-18 高速化）
+		groupInquiryBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : groupBadge(event, locals.user.id)
 	};
 };

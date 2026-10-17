@@ -38,11 +38,15 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const client = bookAdmin(event);
 	try {
+		// 一覧と配布済みの一覧は URL の id だけで引けるので同時に投げる（2026-10-18 高速化）。
+		// 見つからないときの 404 を優先するため、配布済みの失敗は一覧を確かめてから受け取る
+		const issuedLoad = adminListMemberCoupons(client, { couponId: event.params.id });
+		issuedLoad.catch(() => {});
 		const coupons = await adminListCoupons(client, true);
 		const coupon = coupons.find((c) => c.id === event.params.id) ?? null;
 		if (!coupon) error(404, 'クーポンが見つかりません');
 
-		const issuedList = await adminListMemberCoupons(client, { couponId: coupon.id });
+		const issuedList = await issuedLoad;
 		return { unavailable: false as const, coupon, issuedList };
 	} catch (e) {
 		if (e && typeof e === 'object' && 'status' in e) throw e;

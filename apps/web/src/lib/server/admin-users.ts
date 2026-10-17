@@ -16,6 +16,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { sendHtmlEmail } from '$lib/server/mailer';
 import { adminRoleOf, isBanned } from '$lib/admin-passkey';
+import { forgetStaffUser } from '$lib/server/auth';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const MAX_PAGES = 20;
@@ -194,6 +195,7 @@ export async function setBookRole(args: { actorId: string; targetId: string; rol
 	if (from === 'admin' && (await countAdmins(svc)) <= 1) throw new AdminUserError('最後の管理者は外せません。先に別の人を管理者にしてください。', 409);
 	await audit(svc, args.actorId, 'admin_user_role', { target_user_id: target.id, target_email: target.email ?? null, from, to: args.role });
 	const { error } = await svc.auth.admin.updateUserById(target.id, { app_metadata: { ...(target.app_metadata ?? {}), role: args.role } });
+	forgetStaffUser(target.id);
 	if (error) throw new AdminUserError(`権限を変えられませんでした（${error.message}）`, 502);
 }
 

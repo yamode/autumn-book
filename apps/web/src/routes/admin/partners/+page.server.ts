@@ -35,6 +35,11 @@ export const load: PageServerLoad = async (event) => {
 	};
 	try {
 		const scope = await staffPartnerScope(event, 'view');
+		// 請求書の発行元設定（会社で1つ・ab_fac に依らない・2026-10-09 N3。読めなくても一覧は出す）
+		// 取引先一覧を待たずに同時に投げる（2026-10-18 高速化）
+		const billingLoad = loadInvoiceIssuer(scope.db, scope.tenantId)
+			.then((settings) => ({ settings, error: null as string | null }))
+			.catch((e) => ({ settings: null, error: e instanceof Error ? e.message : String(e) }));
 		const listed = showAll
 			? await listTenantPartners(scope.db, scope.tenantId, scope.facilityId)
 			: (await listPartners(scope.db, scope.facilityId)).map((partner) => ({ partner, onCurrent: true }));
@@ -44,10 +49,7 @@ export const load: PageServerLoad = async (event) => {
 		const onCurrent = new Map(listed.map((l) => [l.partner.id, l.onCurrent]));
 		const [counts, billing] = await Promise.all([
 			countPartnerCredentials(scope.db, partners.map((p) => p.id)),
-			// 請求書の発行元設定（会社で1つ・ab_fac に依らない・2026-10-09 N3。読めなくても一覧は出す）
-			loadInvoiceIssuer(scope.db, scope.tenantId)
-				.then((settings) => ({ settings, error: null as string | null }))
-				.catch((e) => ({ settings: null, error: e instanceof Error ? e.message : String(e) }))
+			billingLoad
 		]);
 		return {
 			...base,

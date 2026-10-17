@@ -27,6 +27,21 @@
         "DATA_SOURCE": "demo"
       },
       "port": 5174
+    },
+    {
+      "name": "autumn-book-sbauth",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "apps/web",
+        "dev",
+        "--port",
+        "5175"
+      ],
+      "env": {
+        "AUTH_MODE": "supabase"
+      },
+      "port": 5175
     }
   ]
 }

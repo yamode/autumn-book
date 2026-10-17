@@ -26,18 +26,22 @@ const useSupabaseAdmin = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
 
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
-	const settings = await loadBillSettings(currentFacility.id);
-	let list: AdminStayBills = { stays: [], payments: [] };
-	let loadError: string | null = null;
-	if (useSupabaseAdmin) {
-		try {
-			list = await sbListStayBills(createSupabaseServerClient(event), currentFacility.id);
-		} catch (e) {
-			loadError = e instanceof Error ? e.message : String(e);
-		}
-	} else {
-		list = listStayBillsDemo(currentFacility.id);
-	}
+	// 既定・滞在ごとの一覧・お知らせの宛先は互いに依存しないので同時に投げる（2026-10-18 高速化）
+	const listLoad: Promise<{ list: AdminStayBills; loadError: string | null }> = useSupabaseAdmin
+		? sbListStayBills(createSupabaseServerClient(event), currentFacility.id).then(
+				(list) => ({ list, loadError: null }),
+				(e) => ({ list: { stays: [], payments: [] } as AdminStayBills, loadError: e instanceof Error ? e.message : String(e) })
+			)
+		: Promise.resolve({ list: listStayBillsDemo(currentFacility.id), loadError: null });
+	// 決済のお知らせの宛先（施設の共有ID・2026-10-17）。読めなければ空
+	const notifyLoad: Promise<string[]> = useSupabaseAdmin
+		? facilitySharedEmails(FACILITY_UUID[currentFacility.id] ?? currentFacility.id).catch(() => [] as string[])
+		: Promise.resolve([] as string[]);
+	const [settings, { list, loadError }, notifyTo] = await Promise.all([
+		loadBillSettings(currentFacility.id),
+		listLoad,
+		notifyLoad
+	]);
 	return {
 		settings,
 		stays: list.stays,
@@ -46,10 +50,7 @@ export const load: PageServerLoad = async (event) => {
 		live: useSupabaseAdmin,
 		paymentReady: inroomPaymentReady(),
 		isAdmin: event.locals.user?.role === 'admin',
-		// 決済のお知らせの宛先（施設の共有ID・2026-10-17）。読めなければ空
-		notifyTo: useSupabaseAdmin
-			? await facilitySharedEmails(FACILITY_UUID[currentFacility.id] ?? currentFacility.id).catch(() => [] as string[])
-			: ([] as string[])
+		notifyTo
 	};
 };
 

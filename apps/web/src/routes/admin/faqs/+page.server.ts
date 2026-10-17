@@ -60,11 +60,16 @@ export const load: PageServerLoad = async (event) => {
 	if (DATA_SOURCE === 'supabase') {
 		const client = createSupabaseServerClient(event);
 		const facilityId = realFacilityId(currentFacility.id);
+		// 未回答のまとまり・集計は FAQ 一覧を待たずに同時に投げる（2026-10-18 高速化）。訳だけ一覧の id が要る
+		const groupsLoad = listUnansweredGroups(client, facilityId);
+		const statsLoad = faqStats(client, facilityId);
+		groupsLoad.catch(() => {});
+		statsLoad.catch(() => {});
 		const list = await listFaqsAdmin(client, facilityId);
 		const [faqTranslations, groups, stats] = await Promise.all([
 			listFaqTranslations(client, list.map((f) => f.id)),
-			listUnansweredGroups(client, facilityId),
-			faqStats(client, facilityId)
+			groupsLoad,
+			statsLoad
 		]);
 		// 検索テスト（?test=質問文）: 公開・下書きを問わず現在の FAQ で照合し、スコアを見せる
 		const testQuery = event.url.searchParams.get('test')?.trim() ?? '';
