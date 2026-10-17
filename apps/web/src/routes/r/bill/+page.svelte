@@ -8,7 +8,7 @@
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import type { PaymentLocale, PaymentTexts } from '$lib/components/payment/types';
-	import { frontNoteFor } from '$lib/inroom-bill';
+	import { frontNoteFor, INROOM_TEST_AMOUNT } from '$lib/inroom-bill';
 
 	let { data } = $props();
 
@@ -51,6 +51,8 @@
 	// 決済の結果（このページで払った直後・リダイレクトの戻り ?payment=）
 	let result = $state<string | null>(null);
 	const shownResult = $derived(result ?? data.paymentResult);
+	// プレビュー（見本の滞在）で管理者が試す本番の Stripe のテスト決済（¥100 固定・2026-10-17）。文言は社内向けなので日本語だけ
+	const payAmount = $derived(data.testPayment ? INROOM_TEST_AMOUNT : bill.dueTotal);
 
 	const errorText = (kind: string | undefined) =>
 		kind === 'changed' || kind === 'nothing' ? m.inroom_bill_err_changed() : kind === 'unavailable' ? m.inroom_bill_pay_unavailable() : m.inroom_bill_err_generic();
@@ -65,14 +67,14 @@
 
 	async function preparePayment() {
 		payMessage = '';
-		const r = await payRequest('prepare', { amount: String(bill.dueTotal) });
+		const r = await payRequest('prepare', { amount: String(payAmount) });
 		if (!r.ok || !r.clientSecret || !r.returnUrl) throw new Error(errorText(r.kind));
 		return { clientSecret: r.clientSecret, returnUrl: r.returnUrl };
 	}
 
 	async function onPaid(p: { intentId: string }) {
 		const r = await payRequest('confirm', { intentId: p.intentId });
-		result = r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
+		result = r.result === 'test' ? 'test' : r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
 		await invalidateAll();
 	}
 </script>
@@ -82,10 +84,14 @@
 <div class="space-y-3 px-4 py-4">
 	{#if bill.isDemo}
 		<!-- オンライン決済を出さないときは「お支払いはできません」に触れない -->
-		<p class="rounded-lg bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">{flags.online ? m.inroom_bill_demo_note() : m.inroom_bill_demo_note_view()}</p>
+		<p class="rounded-lg bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800">{flags.online && !data.testPayment ? m.inroom_bill_demo_note() : m.inroom_bill_demo_note_view()}</p>
 	{/if}
 
-	{#if shownResult === 'paid'}
+	{#if shownResult === 'test'}
+		<p class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="status">
+			テスト決済（本番・¥{INROOM_TEST_AMOUNT}）が完了しました。PMS には入れていません。<strong>返金は Stripe の管理画面から手で行ってください</strong>（管理画面「精算案内」の一覧に「テスト決済」として残ります）。
+		</p>
+	{:else if shownResult === 'paid'}
 		<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{m.inroom_bill_paid_done()}</p>
 	{:else if shownResult === 'refunded'}
 		<p class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">{m.inroom_bill_pay_refunded()}</p>
@@ -176,17 +182,28 @@
 		</section>
 	{/if}
 
-	{#if flags.online && bill.dueTotal > 0 && shownResult !== 'paid'}
+	{#if flags.online && (bill.dueTotal > 0 || data.testPayment) && shownResult !== 'paid'}
 		<!-- ============ オンラインでお支払い（Stripe） ============ -->
 		<section class="space-y-3 rounded-lg bg-white px-4 py-4 shadow-card" aria-labelledby="bill-online-title">
 			<h2 id="bill-online-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_online_title()}</h2>
-			{#if data.stripeKey}
+			{#if data.stripeKey && data.testPayment}
+				<!-- 管理者のプレビューだけ。本物のカードに本当に請求されることをはっきり出す -->
+				<div class="rounded-md border-2 border-red-400 bg-red-50 px-3 py-2.5 text-sm text-red-800" role="note">
+					<p class="font-semibold">⚠ 本番の決済です（少額のテスト）</p>
+					<p class="mt-1 leading-relaxed">
+						見本の滞在から、本番の Stripe で <strong>¥{INROOM_TEST_AMOUNT}</strong> を実際にカードに請求します（見本の明細の金額ではありません）。PMS には入りません。
+						自動では返金しないので、<strong>Stripe の管理画面から手で返金</strong>してください。管理者がログイン中のプレビューにだけ出ています。
+					</p>
+				</div>
+			{:else if data.stripeKey}
 				<p class="text-sm text-stone-600">{m.inroom_bill_online_help()}</p>
+			{/if}
+			{#if data.stripeKey}
 				<StripePayment
 					bind:this={payRef}
 					publishableKey={data.stripeKey}
 					mode="payment"
-					amount={bill.dueTotal}
+					amount={payAmount}
 					express={false}
 					locale={stripeLocale()}
 					texts={payTexts}
@@ -205,10 +222,17 @@
 					onclick={() => payRef?.submit()}
 					class="w-full rounded-lg bg-stone-900 py-3 text-base font-medium text-white disabled:opacity-50"
 				>
-					{paying ? m.inroom_bill_paying() : m.inroom_bill_pay_button({ amount: Math.round(bill.dueTotal).toLocaleString('ja-JP') })}
+					{paying
+						? m.inroom_bill_paying()
+						: data.testPayment
+							? `本番でテスト決済する（¥${INROOM_TEST_AMOUNT}）`
+							: m.inroom_bill_pay_button({ amount: Math.round(bill.dueTotal).toLocaleString('ja-JP') })}
 				</button>
 			{:else}
 				<p class="text-sm text-stone-500">{bill.isDemo ? m.inroom_bill_demo_note() : m.inroom_bill_pay_unavailable()}</p>
+				{#if data.testPaymentStaffOnly}
+					<p class="text-xs text-stone-400">本番の Stripe でのテスト決済（¥{INROOM_TEST_AMOUNT}）は、管理者だけがプレビューから試せます。</p>
+				{/if}
 			{/if}
 		</section>
 	{/if}

@@ -44,6 +44,7 @@
 // 例外その9（2026-10-17）: 客室案内の精算のオンライン決済（src/lib/server/inroom-bill.ts・book.inroom_payment_*）。
 //   お客様はログインしていない（滞在トークンの Cookie だけ）うえ、Webhook はお客様のセッションが無いところで確定するため。
 //   RPC の中で滞在トークン・残額・決済額を確かめ、PMS の請求書に入金行を立てる。台帳 book.inroom_payments は service_role だけ。
+//   プレビューでの本番のテスト決済（v0.142.0・inroom_test_payment_prepare）も同じ。見本の滞在トークンと、アプリが確かめた管理者の id で呼ぶ。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';

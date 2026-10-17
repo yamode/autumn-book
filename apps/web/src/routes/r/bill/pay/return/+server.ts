@@ -12,6 +12,7 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 		try {
 			const stay = await sbResolveStay(token);
 			const r = await confirmInroomIntent(url.searchParams.get('payment_intent') ?? '', stay?.tokenId);
+			// test はプレビューでのテスト決済（画面で「返金は手で」と出す）
 			outcome = r === 'paid' || r === 'already' ? 'paid' : r;
 		} catch {
 			outcome = 'pending';

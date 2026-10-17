@@ -27,6 +27,7 @@ import {
 	EMPTY_NOTE,
 	NO_FLAGS,
 	PREVIEW_FRONT_NOTE,
+	INROOM_TEST_AMOUNT,
 	normalizeStayBill,
 	resolveBillFlags,
 	type BillFlags,
@@ -34,6 +35,8 @@ import {
 	type StayBillView
 } from '$lib/inroom-bill';
 import type { StayInfo } from '$lib/types';
+import { decideAdminMfaGate } from '$lib/admin-mfa';
+import { adminMfaRequired } from './auth';
 
 export const STRIPE_PURPOSE_INROOM_BILL = 'book_inroom_bill';
 
@@ -126,6 +129,8 @@ export type AdminInroomPayment = {
 	refundedAmount: number;
 	message: string | null;
 	createdAt: string;
+	/** プレビューでのテスト決済（PMS に入れない・返金は手で） */
+	isTest: boolean;
 };
 export type AdminStayBills = { stays: AdminStayBillRow[]; payments: AdminInroomPayment[] };
 
@@ -183,7 +188,8 @@ export async function sbListStayBills(client: SupabaseClient, facilityId: string
 			paidAt: (p.paid_at as string | null) ?? null,
 			refundedAmount: Number(p.refunded_amount ?? 0),
 			message: (p.message as string | null) ?? null,
-			createdAt: String(p.created_at ?? '')
+			createdAt: String(p.created_at ?? ''),
+			isTest: p.is_test === true
 		}))
 	};
 }
@@ -267,7 +273,58 @@ export async function prepareInroomPayment(token: string, expected: number): Pro
 	return { clientSecret: intent.client_secret, amount: row.amount };
 }
 
-export type InroomConfirmResult = 'paid' | 'already' | 'pending' | 'refunded';
+// ---------------------------------------------------------------------------
+// プレビューでの本番 Stripe のテスト決済（2026-10-17・autumn-shared 20261017035503）
+//   見本（デモ）の滞在トークン＋管理画面にログイン中の管理者（二段階認証の関所を通った人）だけ。
+//   金額は DB が決める ¥100 固定。PMS には入れず、自動で返金もしない（Stripe の管理画面から手で返金）
+// ---------------------------------------------------------------------------
+/** テスト決済を使える人か（管理者・/admin と同じ二段階認証の関所を通っている） */
+export function canTestInroomPayment(locals: App.Locals): boolean {
+	const user = locals.user;
+	if (user?.role !== 'admin') return false;
+	return decideAdminMfaGate({ pathname: '/admin', role: user.role, aal: locals.adminAal, required: adminMfaRequired() }) === 'ok';
+}
+
+/** テスト決済の準備（¥100 の PaymentIntent。同じ台帳行なら作り直さない） */
+export async function prepareInroomTestPayment(token: string, adminId: string): Promise<{ clientSecret: string; amount: number }> {
+	if (!inroomPaymentReady()) throw new Error('unavailable');
+	const db = service();
+	const prepared = await db.rpc('inroom_test_payment_prepare', { p_token: token, p_admin: adminId });
+	if (prepared.error) throw new Error(prepared.error.message);
+	const row = prepared.data as PreparedRow;
+	if (row.amount !== INROOM_TEST_AMOUNT) throw new Error('intent_mismatch');
+	const intent = row.payment_intent_id
+		? await retrievePaymentIntent(row.payment_intent_id)
+		: await createPaymentIntent({
+				amount: row.amount,
+				description: `客室案内のテスト決済（プレビュー・見本の滞在${row.room_code ? `・${row.room_code}` : ''}）`,
+				metadata: { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_INROOM_BILL, inroom_payment_id: row.id, test: 'preview' },
+				idempotencyKey: `inroom-test-${row.id}`
+			});
+	if (
+		!intent.client_secret ||
+		intent.amount !== row.amount ||
+		intent.currency !== 'jpy' ||
+		intent.metadata.inroom_payment_id !== row.id ||
+		intent.metadata.purpose !== STRIPE_PURPOSE_INROOM_BILL ||
+		intent.metadata.app !== STRIPE_APP_BOOK
+	) {
+		throw new Error('intent_mismatch');
+	}
+	// 払い済みの Intent を使い回さない（確定させて、次は新しい台帳行で）
+	if (intent.status === 'succeeded') {
+		await confirmInroomIntent(intent.id);
+		throw new Error('amount_changed');
+	}
+	if (!row.payment_intent_id) {
+		const bound = await db.rpc('inroom_payment_bind', { p_id: row.id, p_intent: intent.id });
+		if (bound.error) throw new Error(bound.error.message);
+	}
+	return { clientSecret: intent.client_secret, amount: row.amount };
+}
+
+/** 'test' はプレビューでのテスト決済が通った（PMS には入れない・返金は手で） */
+export type InroomConfirmResult = 'paid' | 'already' | 'pending' | 'refunded' | 'test';
 
 /**
  * 確定: Stripe から Intent を取り直して検証し、DB で入金行を立てる。
@@ -292,6 +349,7 @@ export async function confirmInroomIntent(intentId: string, expectedTokenId?: st
 	const result = (fin.data as { result?: string } | null)?.result;
 	if (result === 'paid') return 'paid';
 	if (result === 'already') return 'already';
+	if (result === 'test_paid') return 'test';
 	// mismatch: 残額が足りなかった → その決済を全額返金
 	await refundInroomMismatch(row.id, intent.id, row.amount);
 	return 'refunded';

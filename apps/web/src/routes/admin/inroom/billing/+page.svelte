@@ -162,6 +162,7 @@
 	<h2 class="text-sm font-semibold text-stone-800">最近のオンライン決済</h2>
 	<p class="mt-1 text-xs text-stone-500">
 		入金済みは PMS の請求書に入金行（オンライン決済(stripe)）が入っています。Stripe の管理画面から返金すると、PMS にマイナスの入金行が入ります。
+		「テスト」はプレビュー（見本の滞在）で管理者が試した本番の決済で、PMS には入れていません。返金は Stripe の管理画面から手で行ってください（返金すると「返金済み」になります）。
 		「金額の食い違い」は、お支払いの間にフロントで先に精算された等で残額が足りなかった決済で、全額を返金しています（入金行は入れていません）。
 	</p>
 	{#if form?.refundRetried}<p class="mt-2 rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">返金しました。</p>{/if}
@@ -192,6 +193,7 @@
 								<span class={p.status === 'paid' ? 'text-emerald-700' : p.status === 'refund_failed' || p.status === 'mismatch' ? 'text-red-700' : 'text-stone-600'}>
 									{INROOM_PAYMENT_STATUS[p.status] ?? p.status}
 								</span>
+								{#if p.isTest}<span class="ml-1 rounded bg-red-50 px-1.5 text-[11px] font-medium text-red-700">テスト</span>{/if}
 								{#if p.message}<span class="block text-[11px] text-stone-400">{p.message}</span>{/if}
 								{#if data.isAdmin && (p.status === 'refund_failed' || p.status === 'mismatch')}
 									<form method="POST" action="?/retryRefund" use:enhance class="mt-1">

@@ -152,8 +152,16 @@ export const INROOM_PAYMENT_STATUS: Record<string, string> = {
 	partially_refunded: '一部返金',
 	mismatch: '金額の食い違い（返金待ち）',
 	mismatch_refunded: '金額の食い違い（返金済み）',
-	refund_failed: '返金に失敗'
+	refund_failed: '返金に失敗',
+	test_paid: 'テスト決済（プレビュー・未返金）',
+	test_refunded: 'テスト決済（返金済み）'
 };
+
+/**
+ * プレビュー（見本の滞在）で管理者が試す、本番 Stripe のテスト決済の額（円・2026-10-17）。
+ * 実際の額は DB（book.inroom_test_payment_prepare）が決める。画面の表示用
+ */
+export const INROOM_TEST_AMOUNT = 100;
 
 // ---------------------------------------------------------------------------
 // 管理画面のプレビュー（/admin/inroom/preview）で見せる精算の見本（2026-10-17 指示「プレビューでも精算のデモが見えるように」）
