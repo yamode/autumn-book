@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AutumnBookLogo from '$lib/components/admin/AutumnBookLogo.svelte';
 	import { enhance } from '$lib/enhance';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import { goto } from '$app/navigation';
@@ -56,7 +57,8 @@
 
 <div class="flex min-h-screen items-center justify-center bg-brand-900 px-4">
 	<div class="w-full max-w-sm rounded-2xl bg-white p-8">
-		<p class="font-display text-center text-2xl text-brand-900">山人 管理画面</p>
+		<div class="flex justify-center"><AutumnBookLogo class="h-auto w-full max-w-[260px]" /></div>
+		<p class="mt-3 text-center text-sm text-stone-600">管理画面</p>
 		<p class="mt-2 text-center text-xs text-stone-500">施設スタッフ専用。</p>
 
 		{#if form?.message}

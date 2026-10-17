@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { APP_VERSION } from '$lib/version';
+	import AutumnBookLogo from '$lib/components/admin/AutumnBookLogo.svelte';
 	import Toast from '$lib/components/admin/Toast.svelte';
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 
@@ -250,7 +251,7 @@
 {:else}
 	<div class="admin-shell flex min-h-screen bg-[#f0eeeb]">
 		<aside class="admin-sidebar sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
-			<p class="px-5 pt-4 font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
+			<a href="/admin" class="mx-4 mt-4 block rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-auto w-full" /></a>
 			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
 				{tenantWide ? '全施設共通' : data.currentFacility.name}
 			</p>
@@ -269,7 +270,7 @@
 				<button type="button" class="absolute inset-0 bg-black/40" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}></button>
 				<div class="absolute inset-y-0 left-0 flex w-72 max-w-[85%] flex-col bg-brand-900 text-stone-300 shadow-xl">
 					<div class="flex items-center justify-between px-5 py-4">
-						<p class="font-display text-lg text-white">山人 <span class="text-xs text-stone-400">管理</span></p>
+						<a href="/admin" class="rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-7 w-auto" /></a>
 						<button type="button" class="text-2xl leading-none text-stone-400 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}>×</button>
 					</div>
 					<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4">
@@ -296,7 +297,7 @@
 					>
 						☰
 					</button>
-					<span class="truncate text-sm font-medium text-stone-700 md:hidden">{activeItem?.label ?? ''}</span>
+					<a href="/admin" class="shrink-0 md:hidden" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo markOnly class="h-7 w-auto" /></a>
 
 					<!-- 施設切替（設計書 §4.1）。テナント横断の画面では出さない -->
 					{#if tenantWide}
