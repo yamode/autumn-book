@@ -147,7 +147,7 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 	return {
 		flags,
 		frontNote,
-		bills: [{ id: 'demo-bill', billNo: 1, name: null, itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null, stayDateTo: null }],
+		bills: [{ id: 'demo-bill', billNo: 1, name: '山人 太郎', itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null, stayDateTo: null }],
 		dueTotal: due,
 		publishedCount: 1,
 		guestName: null,
@@ -175,7 +175,7 @@ function demoStayBillTwo(flags: BillFlags, frontNote: FrontNote, today: string):
 	const a = make(
 		'demo-bill-1',
 		1,
-		null,
+		'山人 太郎',
 		[
 			{ date: yesterday, name: 'ご宿泊料金（1泊2食付・2名様）', quantity: 1, unitPrice: 52800, amount: 52800 },
 			{ date: yesterday, name: '入湯税', quantity: 2, unitPrice: 150, amount: 300 },

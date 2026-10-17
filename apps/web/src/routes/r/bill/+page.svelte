@@ -42,16 +42,15 @@
 	// 連結予約は表紙（最終泊）が先に来るので、泊まった日の順に並べ直す
 	const sortedBills = $derived(sortBillsByStay(bill.bills));
 	const multiBill = $derived(bill.bills.length > 1);
-	// 請求書の見出し（2026-10-18 指示）: 連泊は「10/16(金)〜10/18(日)（2泊）」、1泊は「10/16(金)のご宿泊」。日付が無ければ請求書番号
+	// 請求書の見出しは領収書名（PMS の請求書の宛名）だけ。複数あるときは「#1」「#2」を付けて見分ける（2026-10-18 指示）。
+	// 宛名が空ならお客様名。番号は画面の並び（泊まった日の順）
+	const billNumber = $derived(new Map(sortedBills.map((b, i) => [b.id, i + 1])));
 	function billHeading(b: (typeof bill.bills)[number]): string {
-		const r = billStayRange(b);
-		if (!r) return b.billNo != null ? m.inroom_bill_bill_no({ no: String(b.billNo) }) : '';
-		return r.nights >= 2
-			? m.inroom_bill_stay_range({ from: fmtDayOfWeek(r.from), to: fmtDayOfWeek(r.checkout), nights: String(r.nights) })
-			: m.inroom_bill_stay_on({ date: fmtDayOfWeek(r.from) });
+		const name = (b.name ?? '').trim() || (bill.guestName ?? '').trim();
+		const label = name ? m.inroom_bill_addressee({ name }) : '';
+		if (!multiBill) return label;
+		return `#${billNumber.get(b.id) ?? ''}${label ? ` ${label}` : ''}`;
 	}
-	// 請求書の宛名（お客様名と違うときだけ）
-	const addresseeOf = (b: (typeof bill.bills)[number]) => billAddressee(b, bill.guestName);
 	// 請求書が複数ある滞在は、払う請求書を選ぶ（公開済みで残額があるものだけ・2026-10-18 指示「支払いは請求単位で」）
 	const payable = $derived(payableBills(bill.bills));
 	let chosenBillId = $state<string | null>(null);
@@ -217,12 +216,9 @@
 				{#each sortedBills as b (b.id)}
 					<!-- 請求書が複数（連結予約など）は、泊まった日の順に1泊ずつ枠で区切り、見出しは「○/○（曜）のご宿泊」（2026-10-17 指示・案A） -->
 					<div class={multiBill ? 'mt-3 rounded-lg border border-stone-200 px-3 py-3' : ''}>
-					{#if multiBill || addresseeOf(b)}
-						<!-- 見出し: 泊まった日の範囲と泊数（連泊を1泊に見せない）・宛名（お客様名と違うとき）・2026-10-18 -->
-						<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-							{#if multiBill}<p class="text-sm font-semibold text-stone-800">{billHeading(b)}</p>{/if}
-							{#if addresseeOf(b)}<p class="text-xs font-medium text-stone-600">{m.inroom_bill_addressee({ name: addresseeOf(b) ?? '' })}</p>{/if}
-						</div>
+					{#if billHeading(b)}
+						<!-- 見出し: 領収書名（請求書の宛名）。複数あるときは #1・#2（2026-10-18 指示） -->
+						<p class="text-sm font-semibold text-stone-800">{billHeading(b)}</p>
 					{/if}
 					{#if !b.published}
 						<!-- PMS の「請求内容チェック」で明細・入金がすべてチェックされるまで出さない（2026-10-17）。連結予約は泊ごと -->
@@ -309,12 +305,10 @@
 					<legend class="text-xs font-medium text-stone-500">{m.inroom_bill_choose()}</legend>
 					{#if data.testPayment}<p class="text-[11px] text-red-700">見本の請求書を選んでも、テスト決済は ¥{INROOM_TEST_AMOUNT} です。</p>{/if}
 					{#each payable as b (b.id)}
-						{@const addressee = addresseeOf(b)}
 						<label class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm {chosenBill?.id === b.id ? 'border-stone-900 bg-stone-50' : 'border-stone-200'}">
 							<input type="radio" name="payBill" value={b.id} checked={chosenBill?.id === b.id} onchange={() => (chosenBillId = b.id)} class="h-4 w-4 shrink-0" />
 							<span class="min-w-0 flex-1">
 								<span class="block font-medium text-stone-800">{billHeading(b)}</span>
-								{#if addressee}<span class="block text-xs text-stone-500">{m.inroom_bill_addressee({ name: addressee })}</span>{/if}
 							</span>
 							<span class="shrink-0 tabular-nums font-semibold text-stone-900">{m.inroom_bill_choose_due({ amount: yen(b.due) })}</span>
 						</label>
