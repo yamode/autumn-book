@@ -6,45 +6,44 @@
 	// この端末の客室案内の Cookie を切り替えるので、スタッフのスマホで実際の滞在を開いていた場合は入れ直しになる。
 	import { NOTICE_READ_KEY } from '$lib/inroom-notice-read';
 	import { PREVIEW_NOTICE_DEFAULT, PREVIEW_NOTICE_MAX_BODY, PREVIEW_NOTICE_MAX_TITLE, type PreviewMode } from '$lib/inroom-preview';
+	import { enhance } from '$lib/enhance';
 
-	let { data } = $props();
+	let { data, form } = $props();
 
 	type Mode = 'stay' | 'browse';
 	let mode = $state<Mode>('stay');
 	// iframe を開き直すための番号（同じモードで「最初から」を押したとき）
 	let nonce = $state(0);
 
-	// 精算案内の見本（2026-10-17 指示）。見本の滞在にだけ効く。既定は3つとも出す（本番の設定が「出さない」でも見られるように）
-	let billMode = $state<'custom' | 'settings'>('custom');
+	// 見本（精算案内・お知らせ・湯量）は施設ごとに DB に保存する（+page.server.ts・2026-10-17 指示「表示先を一緒に」）。
+	// 保存すると枠を開き直す。PMS の「見本の館内図」の QR・下の QR から開いても同じ見本が出る。
+	const dp = $derived(data.demoPreview);
+	let billMode = $state<'custom' | 'settings'>('settings');
 	let billItems = $state(true);
 	let billFront = $state(true);
 	let billOnline = $state(true);
-	const billParam = $derived(
-		billMode === 'settings'
-			? 'settings'
-			: [billItems && 'items', billFront && 'front', billOnline && 'online'].filter(Boolean).join(',') || 'none'
-	);
-
-	// お知らせ・全館の湯量の見本（2026-10-17 指示「独立して設定できるように」）。見本の滞在とコード入力前の表示にだけ効く。
-	// 文字は入力中に枠を開き直さないよう、「見本を反映」を押したときだけ使う（下書き → 反映）
 	let noticeMode = $state<PreviewMode>('settings');
-	let noticeTitleDraft = $state(PREVIEW_NOTICE_DEFAULT.title);
-	let noticeBodyDraft = $state(PREVIEW_NOTICE_DEFAULT.body);
-	let noticeApplied = $state({ title: PREVIEW_NOTICE_DEFAULT.title, body: PREVIEW_NOTICE_DEFAULT.body });
+	let noticeTitle = $state(PREVIEW_NOTICE_DEFAULT.title);
+	let noticeBody = $state(PREVIEW_NOTICE_DEFAULT.body);
 	let springMode = $state<PreviewMode>('settings');
-	let springDraft = $state(30);
-	let springApplied = $state(30);
-	const noticeParam = $derived(
-		noticeMode === 'sample'
-			? `notice=sample&nt=${encodeURIComponent(noticeApplied.title)}&nb=${encodeURIComponent(noticeApplied.body)}`
-			: `notice=${noticeMode}`
-	);
-	const springParam = $derived(springMode === 'sample' ? `spring=sample&sp=${springApplied}` : `spring=${springMode}`);
-	function applyNotice() {
-		noticeApplied = { title: noticeTitleDraft, body: noticeBodyDraft };
-	}
+	let springPercent = $state(30);
+	// 保存済みの見本を欄に入れる（読み直し・施設の切り替えのたび）
+	$effect(() => {
+		billMode = dp.bill ? 'custom' : 'settings';
+		billItems = dp.bill ? dp.bill.items : true;
+		billFront = dp.bill ? dp.bill.front : true;
+		billOnline = dp.bill ? dp.bill.online : true;
+		noticeMode = dp.notice ? dp.notice.mode : 'settings';
+		if (dp.notice?.mode === 'sample') {
+			noticeTitle = dp.notice.title;
+			noticeBody = dp.notice.body;
+		}
+		springMode = dp.spring ? dp.spring.mode : 'settings';
+		if (dp.spring?.mode === 'sample') springPercent = dp.spring.percent;
+	});
+	let saving = $state(false);
 
-	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&bill=${billParam}&${noticeParam}&${springParam}&n=${nonce}`);
+	const src = $derived(`/admin/inroom/preview/open?mode=${mode}&n=${nonce}`);
 	let message = $state('');
 
 	function open(m: Mode) {
@@ -98,61 +97,91 @@
 			</button>
 		</div>
 
-		{#if mode === 'stay'}
-			<!-- 精算案内の見本。明細は見本（宿泊料・入湯税・飲み物）、オンライン決済は見本なので払えない -->
+		<!-- スマホで開く QR（見本の滞在の入口・PMS の見本の館内図と同じ滞在） -->
+		<div class="rounded-lg border border-stone-200 bg-white px-3 py-3 text-center text-sm">
+			<p class="text-xs font-medium text-stone-600">📷 スマホで開く（ご滞在中・見本）</p>
+			{#if data.qr}
+				<div class="mx-auto mt-2 w-40 [&>svg]:h-auto [&>svg]:w-full">{@html data.qr.svg}</div>
+				<p class="mt-2 text-[11px] leading-relaxed text-stone-500">スマホのカメラで読むと、その端末で見本の客室案内が開きます（ログイン不要）。保存した見本が出ます。</p>
+				<p class="mt-1 text-[11px] leading-relaxed text-amber-700">この QR は見本の滞在に入れる鍵です。社外の人に見せないでください。</p>
+			{:else}
+				<p class="mt-2 text-xs text-stone-500">{data.qrError}</p>
+			{/if}
+		</div>
+
+		<!-- 見本の設定（施設ごとに保存・見本の滞在にだけ効く。本物のお客様には出ない） -->
+		<form
+			method="POST"
+			action="?/save"
+			class="space-y-3"
+			use:enhance={() => {
+				saving = true;
+				return async ({ update }) => {
+					await update();
+					saving = false;
+					nonce += 1;
+				};
+			}}
+		>
 			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
 				<p class="text-xs font-medium text-stone-500">💴 精算案内（見本）</p>
 				<label class="flex items-center gap-2 text-xs">
-					<input type="radio" bind:group={billMode} value="custom" class="h-3.5 w-3.5" />
+					<input type="radio" name="billMode" bind:group={billMode} value="custom" class="h-3.5 w-3.5" />
 					<span>選んだものを出す</span>
 				</label>
 				<div class="space-y-1 pl-5 text-xs {billMode === 'custom' ? '' : 'opacity-40'}">
-					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billItems} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />利用明細</label>
-					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billFront} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />フロントでの早め精算のご案内</label>
-					<label class="flex items-center gap-2"><input type="checkbox" bind:checked={billOnline} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />オンライン決済（Stripe）</label>
+					<label class="flex items-center gap-2"><input type="checkbox" name="bill" value="items" bind:checked={billItems} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />利用明細</label>
+					<label class="flex items-center gap-2"><input type="checkbox" name="bill" value="front" bind:checked={billFront} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />フロントでの早め精算のご案内</label>
+					<label class="flex items-center gap-2"><input type="checkbox" name="bill" value="online" bind:checked={billOnline} disabled={billMode !== 'custom'} class="h-3.5 w-3.5" />オンライン決済（Stripe）</label>
 				</div>
 				<label class="flex items-center gap-2 text-xs">
-					<input type="radio" bind:group={billMode} value="settings" class="h-3.5 w-3.5" />
+					<input type="radio" name="billMode" bind:group={billMode} value="settings" class="h-3.5 w-3.5" />
 					<span>管理画面「<a href="/admin/inroom/billing" class="underline">精算案内</a>」の設定どおり</span>
 				</label>
 				<p class="text-[11px] leading-relaxed text-stone-400">
 					明細は見本です。案内文は施設の設定を出します（空なら見本の文）。オンライン決済を出すと、<b>管理者だけ</b>は本番の Stripe で <b>¥100 のテスト決済</b>を試せます（実際に請求されます・PMS には入りません・自動では返金しないので Stripe の管理画面から手で返金）。スタッフには「お支払いはできません」と出ます。トップの「ご精算」カードから開けます。
 				</p>
 			</div>
-		{/if}
 
-		<!-- お知らせの見本（本物の掲載とは別に試す） -->
-		<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-			<p class="text-xs font-medium text-stone-500">📣 全客室へのお知らせ（見本）</p>
-			<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="settings" class="h-3.5 w-3.5" />掲載中のとおり</label>
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="sample" class="h-3.5 w-3.5" />見本を出す</label>
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={noticeMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+				<p class="text-xs font-medium text-stone-500">📣 全客室へのお知らせ（見本）</p>
+				<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="settings" class="h-3.5 w-3.5" />掲載中のとおり</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="sample" class="h-3.5 w-3.5" />見本を出す</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="noticeMode" bind:group={noticeMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+				</div>
+				{#if noticeMode === 'sample'}
+					<input name="noticeTitle" bind:value={noticeTitle} maxlength={PREVIEW_NOTICE_MAX_TITLE} placeholder="見出し" class="w-full rounded border border-stone-300 px-2 py-1 text-xs" />
+					<textarea name="noticeBody" bind:value={noticeBody} maxlength={PREVIEW_NOTICE_MAX_BODY} rows="4" placeholder="本文（太字・赤字・リンクも使えます）" class="w-full rounded border border-stone-300 px-2 py-1 text-xs"></textarea>
+					<p class="text-[11px] leading-relaxed text-stone-400">内容を変えると、確認済みの端末にももう一度出ます。</p>
+				{/if}
 			</div>
-			{#if noticeMode === 'sample'}
-				<input bind:value={noticeTitleDraft} maxlength={PREVIEW_NOTICE_MAX_TITLE} placeholder="見出し" class="w-full rounded border border-stone-300 px-2 py-1 text-xs" />
-				<textarea bind:value={noticeBodyDraft} maxlength={PREVIEW_NOTICE_MAX_BODY} rows="4" placeholder="本文（太字・赤字・リンクも使えます）" class="w-full rounded border border-stone-300 px-2 py-1 text-xs"></textarea>
-				<button type="button" onclick={applyNotice} class="w-full rounded border border-stone-300 px-2 py-1 text-xs text-stone-700 hover:bg-stone-50">見本を反映</button>
-				<p class="text-[11px] leading-relaxed text-stone-400">本物のお客様には出ません。内容を変えると、確認済みでももう一度出ます。</p>
-			{/if}
-		</div>
 
-		<!-- 湯量の見本（段階の言葉・色・説明は施設の設定を使う） -->
-		<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
-			<p class="text-xs font-medium text-stone-500">♨️ 全館の湯量（見本）</p>
-			<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="settings" class="h-3.5 w-3.5" />設定どおり</label>
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="sample" class="h-3.5 w-3.5" />見本の残量</label>
-				<label class="flex items-center gap-1.5"><input type="radio" bind:group={springMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+			<div class="space-y-2 rounded-lg border border-stone-200 bg-white px-3 py-2.5">
+				<p class="text-xs font-medium text-stone-500">♨️ 全館の湯量（見本）</p>
+				<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="settings" class="h-3.5 w-3.5" />設定どおり</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="sample" class="h-3.5 w-3.5" />見本の残量</label>
+					<label class="flex items-center gap-1.5"><input type="radio" name="springMode" bind:group={springMode} value="none" class="h-3.5 w-3.5" />出さない</label>
+				</div>
+				{#if springMode === 'sample'}
+					<label class="flex items-center gap-2 text-xs">
+						<input type="range" name="springPercent" min="0" max="100" step="1" bind:value={springPercent} class="flex-1" />
+						<span class="w-10 text-right tabular-nums">{springPercent}%</span>
+					</label>
+					<p class="text-[11px] leading-relaxed text-stone-400">言葉・色・「?」の説明は「♨️ 全館の湯量」の表現の設定を使います。</p>
+				{/if}
 			</div>
-			{#if springMode === 'sample'}
-				<label class="flex items-center gap-2 text-xs">
-					<input type="range" min="0" max="100" step="1" bind:value={springDraft} onchange={() => (springApplied = springDraft)} class="flex-1" />
-					<span class="w-10 text-right tabular-nums">{springDraft}%</span>
-				</label>
-				<p class="text-[11px] leading-relaxed text-stone-400">つまみを離すと反映します。言葉・色・「?」の説明は「♨️ 全館の湯量」の表現の設定を使います。</p>
-			{/if}
-		</div>
+
+			<button type="submit" disabled={saving} class="w-full rounded-lg bg-brand-800 px-3 py-2 text-white hover:bg-brand-700 disabled:opacity-60">
+				{saving ? '保存しています…' : '見本を保存して反映'}
+			</button>
+			{#if (form as { saved?: boolean } | null)?.saved}<p class="rounded bg-emerald-50 px-3 py-2 text-xs text-emerald-800">見本を保存しました（この施設の見本の滞在すべてに出ます）。</p>{/if}
+			{#if (form as { message?: string } | null)?.message}<p class="rounded bg-red-50 px-3 py-2 text-xs text-red-700">{(form as { message: string }).message}</p>{/if}
+			<p class="text-[11px] leading-relaxed text-stone-400">
+				見本は施設ごとに1つで、PMS の「見本の館内図」の QR・上の QR・この枠のどれで開いても同じに出ます。本物のお客様の客室案内には出ません。
+			</p>
+		</form>
 
 		<div class="space-y-2">
 			<button type="button" onclick={() => (nonce += 1)} class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-stone-700 hover:bg-stone-50">↻ 最初から開き直す</button>

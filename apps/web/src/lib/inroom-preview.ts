@@ -3,6 +3,8 @@
 // preview/open が Cookie に置き、客室案内（/r）は見本の滞在とコード入力前の表示にだけ使う（本物の滞在には効かない）。
 // 精算案内の見本（$lib/inroom-bill.ts PREVIEW_BILL_COOKIE）と同じ考え方。
 
+import { parsePreviewBillFlags, previewBillCookieValue, type BillFlags } from './inroom-bill';
+
 export const PREVIEW_NOTICE_COOKIE = 'ab_preview_notice';
 export const PREVIEW_SPRING_COOKIE = 'ab_preview_spring';
 
@@ -92,4 +94,35 @@ export function applyPreviewSpring<T extends { enabled: boolean; percent: number
 	if (!preview) return visible;
 	if (preview.mode === 'none') return null;
 	return { ...base, enabled: true, percent: preview.percent, updatedAt: now.toISOString() };
+}
+
+// ---------------------------------------------------------------------------
+// 施設ごとに DB に持つ見本（book.inroom_settings.demo_preview・2026-10-17 指示「表示先を一緒に」）。
+// 見本の滞在（PMS の「見本の館内図」と Book のプレビューで共通の1本）は、どの端末で開いてもこれを使う。
+// ---------------------------------------------------------------------------
+
+export type DemoPreview = { bill: BillFlags | null; notice: PreviewNotice | null; spring: PreviewSpring | null };
+export const EMPTY_DEMO_PREVIEW: DemoPreview = { bill: null, notice: null, spring: null };
+
+/** DB の jsonb → 見本（読めない部分は「本物の設定どおり」） */
+export function normalizeDemoPreview(raw: unknown): DemoPreview {
+	if (!raw || typeof raw !== 'object') return EMPTY_DEMO_PREVIEW;
+	const o = raw as Record<string, unknown>;
+	const n = (o.notice ?? null) as Record<string, unknown> | null;
+	const s = (o.spring ?? null) as Record<string, unknown> | null;
+	return {
+		bill: typeof o.bill === 'string' ? parsePreviewBillFlags(o.bill) : null,
+		notice: n ? normalizePreviewNotice(n.mode, n.title, n.body) : null,
+		spring: s ? normalizePreviewSpring(s.mode, s.percent) : null
+	};
+}
+
+/** 見本 → DB に入れる jsonb（すべて「設定どおり」なら null） */
+export function demoPreviewJson(p: DemoPreview): Record<string, unknown> | null {
+	if (!p.bill && !p.notice && !p.spring) return null;
+	return {
+		bill: p.bill ? previewBillCookieValue(p.bill) : null,
+		notice: p.notice,
+		spring: p.spring
+	};
 }

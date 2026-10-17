@@ -15,12 +15,22 @@ import {
 } from '$lib/server/inroom-banners';
 import { upcomingItems } from '$lib/inroom-day';
 import { browseFacility, browseVisibleGuide, guideIdParam } from '$lib/server/inroom-browse';
-import { loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/server/inroom-settings';
+import { loadDemoPreview, loadInroomSettings, visibleSpringLevel, type SpringLevel } from '$lib/server/inroom-settings';
 import { loadLiveNotices, type InroomNotice } from '$lib/server/inroom-notices';
-import { applyPreviewNotices, applyPreviewSpring, decodePreviewNotice, decodePreviewSpring, PREVIEW_NOTICE_COOKIE, PREVIEW_SPRING_COOKIE } from '$lib/inroom-preview';
+import {
+	applyPreviewNotices,
+	applyPreviewSpring,
+	decodePreviewNotice,
+	decodePreviewSpring,
+	EMPTY_DEMO_PREVIEW,
+	PREVIEW_NOTICE_COOKIE,
+	PREVIEW_SPRING_COOKIE,
+	type PreviewNotice,
+	type PreviewSpring
+} from '$lib/inroom-preview';
 import { claimStayFromForm } from '$lib/server/stay-claim';
 import { loadStayBill } from '$lib/server/inroom-bill';
-import { anyBillFlag, parsePreviewBillFlags, PREVIEW_BILL_COOKIE, type BillFlags } from '$lib/inroom-bill';
+import { anyBillFlag, type BillFlags } from '$lib/inroom-bill';
 import type { Actions, PageServerLoad } from './$types';
 
 type BillSummary = { flags: BillFlags; dueTotal: number; isDemo: boolean };
@@ -34,14 +44,20 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 	// チェックアウト後に QR を読んだ（/r/c/<token> が e=ended で戻す）
 	const endedQr = url.searchParams.get('e') === 'ended';
 	const token = cookies.get(STAY_COOKIE);
-	// 管理画面のプレビューで選んだお知らせ・湯量の見本（Cookie はプレビューだけが置く）。
-	// 効かせるのはコード入力前の表示と見本の滞在だけ（本物の滞在・チェックイン前の滞在には効かない）
-	const previewNotice = decodePreviewNotice(cookies.get(PREVIEW_NOTICE_COOKIE));
-	const previewSpring = decodePreviewSpring(cookies.get(PREVIEW_SPRING_COOKIE));
-	const withPreview = (settings: Awaited<ReturnType<typeof loadInroomSettings>>, notices: InroomNotice[]) => ({
-		notices: applyPreviewNotices(notices, previewNotice) as InroomNotice[],
-		springLevel: applyPreviewSpring(visibleSpringLevel(settings), settings.springLevel, previewSpring)
+	// お知らせ・湯量の見本。見本の滞在は施設ごとに DB に持つ見本（loadDemoPreview・PMS の見本の館内図と共通）を使う。
+	// コード入力前の表示は、管理画面のプレビューが置いた Cookie のときだけ（本物の滞在・チェックイン前の滞在には効かない）
+	const withPreview = (
+		settings: Awaited<ReturnType<typeof loadInroomSettings>>,
+		notices: InroomNotice[],
+		p: { notice: PreviewNotice | null; spring: PreviewSpring | null }
+	) => ({
+		notices: applyPreviewNotices(notices, p.notice) as InroomNotice[],
+		springLevel: applyPreviewSpring(visibleSpringLevel(settings), settings.springLevel, p.spring)
 	});
+	const cookiePreview = {
+		notice: decodePreviewNotice(cookies.get(PREVIEW_NOTICE_COOKIE)),
+		spring: decodePreviewSpring(cookies.get(PREVIEW_SPRING_COOKIE))
+	};
 
 	// サンクス表示（ご滞在終了）。施設が分かれば、その施設の販促バナーを添える
 	const thanks = async (facility: EndedFacility | null) => ({
@@ -99,7 +115,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		return {
 			...noStay,
 			showFrontCall: settings.showFrontCall,
-			...withPreview(settings, await loadLiveNotices(entryFacility.id)),
+			...withPreview(settings, await loadLiveNotices(entryFacility.id), cookiePreview),
 			// Wi-Fi はコードを入れてから（browseVisibleGuide）
 			guides: guides.filter(browseVisibleGuide),
 			browse: { name: entryFacility.name, slug: entryFacility.slug, phone: getFacilityById(entryFacility.id, locale)?.phone ?? '' },
@@ -137,7 +153,8 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		);
 	}
 
-	const [guides, bathContext, intercom, meals, settings, notices, bill] = await Promise.all([
+	const isDemoStay = stay.isDemo === true || DATA_SOURCE !== 'supabase';
+	const [guides, bathContext, intercom, meals, settings, notices, demoPreview] = await Promise.all([
 		DATA_SOURCE === 'supabase'
 			? sbListHouseGuides(stay.facility.id, locale)
 			: Promise.resolve(listHouseGuidesFor(stay.facility.id, locale)),
@@ -148,10 +165,11 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		stay.isDemo ? Promise.resolve(demoStayMeals()) : DATA_SOURCE === 'supabase' ? sbStayMealTimes(token) : Promise.resolve([] as StayMeal[]),
 		loadInroomSettings(stay.facility.id),
 		loadLiveNotices(stay.facility.id),
-		// 精算案内（明細・フロント案内・オンライン決済の出し分け・2026-10-17）。読めなければ出さない
-		// 管理画面のプレビューで選んだ出し分けは見本の滞在にだけ効く
-		loadStayBill(token, stay, parsePreviewBillFlags(cookies.get(PREVIEW_BILL_COOKIE)))
+		// 見本の滞在に出す見本（精算案内・お知らせ・湯量）。本物の滞在は読まない
+		isDemoStay ? loadDemoPreview(stay.facility.id) : Promise.resolve(EMPTY_DEMO_PREVIEW)
 	]);
+	// 精算案内（明細・フロント案内・オンライン決済の出し分け・2026-10-17）。読めなければ出さない。見本の滞在は見本の出し分け
+	const bill = await loadStayBill(token, stay, demoPreview.bill);
 
 	// 過ぎた予定だけ隠す（食事は始まりから60分・貸切風呂は枠の終わりまで出す。2026-10-09）。
 	// 画面を開いたままでも時間が過ぎた分は消える（+page.svelte が1分ごとに同じ判定をし直す）
@@ -174,7 +192,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		banners: [],
 		browse: null,
 		showFrontCall: settings.showFrontCall,
-		...(stay.isDemo || DATA_SOURCE !== 'supabase' ? withPreview(settings, notices) : { notices, springLevel: visibleSpringLevel(settings) }),
+		...(isDemoStay ? withPreview(settings, notices, demoPreview) : { notices, springLevel: visibleSpringLevel(settings) }),
 		// トップのカード用（中身は /r/bill）。出す設定が無ければ null
 		billSummary:
 			bill && anyBillFlag(bill.flags)

@@ -43,3 +43,23 @@ describe('プレビューのお知らせ・湯量の見本', () => {
 		expect(s.updatedAt).not.toBeNull();
 	});
 });
+
+describe('施設ごとに保存する見本（demo_preview）', () => {
+	it('DB の jsonb との往復。すべて「設定どおり」なら null', async () => {
+		const { normalizeDemoPreview, demoPreviewJson, EMPTY_DEMO_PREVIEW } = await import('./inroom-preview');
+		expect(demoPreviewJson(EMPTY_DEMO_PREVIEW)).toBeNull();
+		expect(normalizeDemoPreview(null)).toEqual(EMPTY_DEMO_PREVIEW);
+		const p = {
+			bill: { items: true, front: false, online: true },
+			notice: normalizePreviewNotice('sample', '見出し', '本文')!,
+			spring: normalizePreviewSpring('sample', 20)!
+		};
+		expect(normalizeDemoPreview(JSON.parse(JSON.stringify(demoPreviewJson(p))))).toEqual(p);
+		// 精算案内を全部外した見本は「出さない」
+		expect(normalizeDemoPreview(demoPreviewJson({ ...EMPTY_DEMO_PREVIEW, bill: { items: false, front: false, online: false } })).bill).toEqual({
+			items: false,
+			front: false,
+			online: false
+		});
+	});
+});

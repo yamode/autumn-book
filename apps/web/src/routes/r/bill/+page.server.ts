@@ -4,7 +4,8 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { canTestInroomPayment, inroomPaymentReady, loadStayBill } from '$lib/server/inroom-bill';
 import { stripePublishableKey } from '$lib/server/stripe';
-import { anyBillFlag, parsePreviewBillFlags, PREVIEW_BILL_COOKIE } from '$lib/inroom-bill';
+import { anyBillFlag } from '$lib/inroom-bill';
+import { loadDemoPreview } from '$lib/server/inroom-settings';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
@@ -16,8 +17,9 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
 	if (!token) redirect(303, '/r');
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
 	if (!stay) redirect(303, '/r');
-	// 管理画面のプレビューで選んだ出し分けは見本の滞在にだけ効く
-	const bill = await loadStayBill(token, stay, parsePreviewBillFlags(cookies.get(PREVIEW_BILL_COOKIE)));
+	// 見本の滞在は、施設ごとに DB に持つ見本の出し分け（PMS の見本の館内図と Book のプレビューで共通）
+	const demo = stay.isDemo === true || DATA_SOURCE !== 'supabase' ? await loadDemoPreview(stay.facility.id) : null;
+	const bill = await loadStayBill(token, stay, demo?.bill ?? null);
 	if (!bill || !anyBillFlag(bill.flags)) redirect(303, '/r');
 
 	// オンライン決済は、出す設定・本物の滞在・決済の環境（鍵・service_role）が揃ったときだけ入力欄を出す

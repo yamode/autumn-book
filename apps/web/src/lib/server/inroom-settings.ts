@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
 import { normalizeSpringBands, type SpringBand } from '$lib/spring-level';
+import { demoPreviewJson, EMPTY_DEMO_PREVIEW, normalizeDemoPreview, type DemoPreview } from '$lib/inroom-preview';
 
 // 全館の湯量の残量目安（スタッフが手入力）。percent が null（未入力）なら出さない
 // bands は段階ごとの言葉・色（null なら既定・$lib/spring-level.ts）
@@ -75,4 +76,35 @@ export async function sbSaveSpringLevel(client: SupabaseClient, facilityId: stri
 		p_bands: s.bands
 	});
 	if (error) throw new Error('湯量の目安を保存できませんでした（' + error.message + '）');
+}
+
+// ---- 見本の滞在に出す見本（精算案内・お知らせ・湯量・book.inroom_settings.demo_preview・2026-10-17）----
+// 本体（loadInroomSettings）とは別に読む（列がまだ無い環境でも本体の表示を止めない）
+const demoPreviewStore = new Map<string, DemoPreview>();
+
+export async function loadDemoPreview(facilityId: string): Promise<DemoPreview> {
+	if (DATA_SOURCE !== 'supabase') return demoPreviewStore.get(facilityId) ?? EMPTY_DEMO_PREVIEW;
+	try {
+		const { data, error } = await supa()
+			.from('inroom_settings')
+			.select('demo_preview')
+			.eq('facility_id', FACILITY_UUID[facilityId] ?? facilityId)
+			.maybeSingle();
+		if (error || !data) return EMPTY_DEMO_PREVIEW;
+		return normalizeDemoPreview(data.demo_preview);
+	} catch {
+		return EMPTY_DEMO_PREVIEW;
+	}
+}
+
+export function saveDemoPreviewDemo(facilityId: string, p: DemoPreview): void {
+	demoPreviewStore.set(facilityId, p);
+}
+
+export async function sbSaveDemoPreview(client: SupabaseClient, facilityId: string, p: DemoPreview): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_save_inroom_demo_preview', {
+		p_facility_id: FACILITY_UUID[facilityId] ?? facilityId,
+		p_preview: demoPreviewJson(p)
+	});
+	if (error) throw new Error('見本の設定を保存できませんでした（' + error.message + '）');
 }
