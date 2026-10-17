@@ -17,6 +17,8 @@
 		SPRING_TONE_LABEL,
 		springBandFor,
 		springBandRange,
+		springTipFor,
+		MAX_SPRING_TIP,
 		type SpringBand
 	} from '$lib/spring-level';
 
@@ -39,8 +41,19 @@
 		const level = Math.max(0, Math.min(100, Math.round(Number(springPercent))));
 		if (!Number.isFinite(level)) return null;
 		const b = springBandFor(level, springBandsDefault ? null : springBands);
-		return { level, ja: b.ja, tone: b.tone };
+		// 「?」を押したときに日本語のお客様に出る説明（段階の説明 → 共通の説明 → 既定文）
+		const tip = springTipFor(b, 'ja', springNote) ?? SPRING_DEFAULT_TIP_JA;
+		return { level, ja: b.ja, tone: b.tone, tip };
 	});
+	// 共通の説明（段階の説明が空のとき・日本語）。プレビューに使うので bind する
+	let springNote = $state('');
+	$effect(() => {
+		springNote = data.inroomSettings.springLevel.note;
+	});
+	const SPRING_DEFAULT_TIP_JA =
+		'館内の大浴場・貸切風呂でお使いいただける温泉のお湯が、いまどのくらい残っているかの目安です。スタッフが確認して手で更新しているため、実際とは少し異なる場合があります。';
+	// 段階ごとの説明欄を開いている行（説明が入っている段階ははじめから開く）
+	let tipOpen = $state<Record<number, boolean>>({});
 	// 「何%から」を入れ終えたら 0〜100 の整数にそろえて並べ直す。
 	// 欄は bind:value にする（value だけだと、保存後に use:enhance がフォームをリセットしたとき空に戻る・2026-10-17）
 	function sortBands() {
@@ -50,11 +63,15 @@
 	}
 	function addBand() {
 		const top = springBands.at(-1)?.min ?? 0;
-		springBands = [...springBands, { min: Math.min(100, top + 10), ja: '', en: '', zh: '', tone: 'green' as const }].sort((a, b) => a.min - b.min);
+		springBands = [...springBands, { min: Math.min(100, top + 10), ja: '', en: '', zh: '', tone: 'green' as const, tipJa: '', tipEn: '', tipZh: '' }].sort(
+			(a, b) => a.min - b.min
+		);
 	}
 	function removeBand(i: number) {
 		springBands = springBands.filter((_, j) => j !== i);
+		tipOpen = {};
 	}
+	const hasTip = (b: SpringBand) => Boolean(b.tipJa?.trim() || b.tipEn?.trim() || b.tipZh?.trim());
 
 	// 編集中のお知らせ（id）
 	let editingNotice = $state<string | null>(null);
@@ -385,6 +402,9 @@
 						</span>
 						<span class="font-medium text-stone-700">{springPreview.level}% {springPreview.ja}</span>
 					</span>
+					<span class="block w-full text-xs text-stone-500">
+						「?」の説明（日本語）: <span class="whitespace-pre-line text-stone-700">{springPreview.tip}</span>
+					</span>
 				{/if}
 			</span>
 		</label>
@@ -394,10 +414,11 @@
 			<p class="text-xs font-medium text-stone-600">表現（残量ごとの言葉とバーの色）</p>
 			<p class="mt-0.5 text-xs text-stone-400">
 				「何%から」を入れると、次の段階の手前までがその段階になります（例：1% から → 1〜29%）。0% から の段階は必ず1つ入れてください。英語・繁体字が空なら日本語を出します。
+				「説明」を開くと、その段階のときに「?」を押して出す説明を書けます（例：少ないときだけ「差し湯バルブを閉めて節約にご協力ください」）。
 			</p>
 			<input type="hidden" name="bands" value={JSON.stringify(springBands)} />
 			<div class="mt-2 overflow-x-auto">
-				<table class="w-full min-w-[640px] text-xs">
+				<table class="w-full min-w-[720px] text-xs">
 					<thead class="text-left text-stone-500">
 						<tr>
 							<th class="py-1 pr-2 font-normal">何%から</th>
@@ -406,6 +427,7 @@
 							<th class="py-1 pr-2 font-normal">英語</th>
 							<th class="py-1 pr-2 font-normal">繁体字</th>
 							<th class="py-1 pr-2 font-normal">色</th>
+							<th class="py-1 pr-2 font-normal">「?」の説明</th>
 							<th></th>
 						</tr>
 					</thead>
@@ -435,10 +457,48 @@
 										</select>
 									</span>
 								</td>
+								<td class="py-1 pr-2">
+									<button
+										type="button"
+										onclick={() => (tipOpen[i] = !(tipOpen[i] ?? hasTip(b)))}
+										class="whitespace-nowrap rounded border px-2 py-1 {hasTip(b) ? 'border-sky-300 bg-sky-50 text-sky-800' : 'border-stone-300 text-stone-600 hover:bg-stone-50'}"
+										aria-expanded={tipOpen[i] ?? hasTip(b)}
+									>
+										{hasTip(b) ? '説明あり' : '説明'}
+										{(tipOpen[i] ?? hasTip(b)) ? '▲' : '▼'}
+									</button>
+								</td>
 								<td class="py-1">
 									<button type="button" onclick={() => removeBand(i)} disabled={springBands.length <= 1} class="whitespace-nowrap text-stone-400 hover:text-red-600 disabled:opacity-30">削除</button>
 								</td>
 							</tr>
+							{#if tipOpen[i] ?? hasTip(b)}
+								<!-- この段階のときに「?」を押すと出す説明（2026-10-17 指示）。空なら下の「共通の説明」 -->
+								<tr>
+									<td></td>
+									<td colspan="7" class="pb-3 pr-2">
+										<div class="rounded-md bg-stone-50 p-2">
+											<p class="mb-1 text-[11px] text-stone-500">
+												{springBandRange(springBands, i)}（{b.ja || '—'}）のときに「?」を押すと出す説明。日本語が空なら下の「共通の説明」、英語・繁体字が空なら日本語を出します。
+											</p>
+											<div class="grid gap-2 md:grid-cols-3">
+												<label class="block">
+													<span class="text-[11px] text-stone-500">日本語</span>
+													<textarea bind:value={b.tipJa} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+												</label>
+												<label class="block">
+													<span class="text-[11px] text-stone-500">英語</span>
+													<textarea bind:value={b.tipEn} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+												</label>
+												<label class="block">
+													<span class="text-[11px] text-stone-500">繁体字</span>
+													<textarea bind:value={b.tipZh} maxlength={MAX_SPRING_TIP} rows="3" class="mt-0.5 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+												</label>
+											</div>
+										</div>
+									</td>
+								</tr>
+							{/if}
 						{/each}
 					</tbody>
 				</table>
@@ -453,16 +513,16 @@
 		</div>
 
 		<label class="mt-3 block">
-			<span class="text-xs text-stone-600">ⓘ を押したときの説明（何を表しているか・任意・日本語のお客様向け）</span>
+			<span class="text-xs text-stone-600">「?」を押したときの共通の説明（段階ごとの説明が空のとき・任意・日本語のお客様向け）</span>
 			<textarea
 				name="note"
 				maxlength="300"
 				rows="3"
-				placeholder="空欄なら既定の説明：館内の大浴場・貸切風呂でお使いいただける温泉のお湯が、いまどのくらい残っているかの目安です。スタッフが確認して手で更新しているため、実際とは少し異なる場合があります。"
-				value={data.inroomSettings.springLevel.note}
+				placeholder={`空欄なら既定の説明：${SPRING_DEFAULT_TIP_JA}`}
+				bind:value={springNote}
 				class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
 			></textarea>
-			<span class="text-xs text-stone-400">英語・繁体字のお客様には既定の説明（翻訳済み）を出します。</span>
+			<span class="text-xs text-stone-400">段階ごとの説明が無いとき、英語・繁体字のお客様には既定の説明（翻訳済み）を出します。</span>
 		</label>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
 	</form>

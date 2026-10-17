@@ -1,10 +1,10 @@
 <script lang="ts">
 	// 全館の湯量の残量目安（客室案内のトップ・ヒーロー直下。2026-10-17・西和賀で使う）。
 	// 値はスタッフが管理画面（/admin/inroom）で手入力する。ⓘ を押す（PC はかざす）と、何を表しているかを出す。
-	// 説明は管理画面で書き換えられる（日本語）。空のとき・日本語以外では既定文を出す。
+	// 説明は管理画面で段階ごと（3言語）と共通（日本語）に書ける。どれも無ければ既定文を出す（springTipFor）。
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import { SPRING_TONE_BAR, SPRING_TONE_ICON, springBandFor, springBandLabel, type SpringBand } from '$lib/spring-level';
+	import { SPRING_TONE_BAR, SPRING_TONE_ICON, springBandFor, springBandLabel, springTipFor, type SpringBand } from '$lib/spring-level';
 
 	let {
 		percent,
@@ -43,7 +43,8 @@
 	const barColor = $derived(SPRING_TONE_BAR[band.tone]);
 	// 「?」アイコンもいまの段階の色に合わせる
 	const icon = $derived(SPRING_TONE_ICON[band.tone]);
-	const tip = $derived(getLocale() === 'ja' && note.trim() ? note.trim() : m.spring_level_default_note());
+	// いまの段階の説明 → 共通の説明 → 既定文
+	const tip = $derived(springTipFor(band, getLocale(), note) ?? m.spring_level_default_note());
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
 	const updatedLabel = $derived.by(() => {

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SPRING_BANDS, SPRING_TONES, SPRING_TONE_ICON, normalizeSpringBands, springBandFor, springBandLabel, springBandRange } from './spring-level';
+import {
+	DEFAULT_SPRING_BANDS,
+	SPRING_TONES,
+	SPRING_TONE_ICON,
+	normalizeSpringBands,
+	springBandFor,
+	springBandLabel,
+	springBandRange,
+	springTipFor
+} from './spring-level';
 
 describe('全館の湯量の表現', () => {
 	it('既定では 0% は「お湯がありません」、1% から「少なめ」', () => {
@@ -51,5 +60,20 @@ describe('全館の湯量の表現', () => {
 
 	it('どの色にも「?」アイコンの色がある', () => {
 		for (const t of SPRING_TONES) expect(SPRING_TONE_ICON[t].dot).toMatch(/^bg-/);
+	});
+
+	it('「?」の説明: 段階の説明（その言語）→ 日本語 → 共通の説明（日本語のみ）→ null（既定文）', () => {
+		const low = normalizeSpringBands([
+			{ min: 0, ja: '少なめ', tone: 'orange', tipJa: '差し湯バルブを閉めてください。\r\n節約にご協力ください。', tipEn: 'Please close the valve.' },
+			{ min: 50, ja: 'ふつう', tone: 'green' }
+		])!;
+		const ja = '差し湯バルブを閉めてください。\n節約にご協力ください。';
+		expect(low[0].tipJa).toBe(ja);
+		expect(springTipFor(low[0], 'ja', '共通')).toBe(ja);
+		expect(springTipFor(low[0], 'en', '共通')).toBe('Please close the valve.');
+		expect(springTipFor(low[0], 'zh-TW', '共通')).toBe(ja);
+		expect(springTipFor(low[1], 'ja', '共通')).toBe('共通');
+		expect(springTipFor(low[1], 'en', '共通')).toBeNull();
+		expect(springTipFor(low[1], 'ja', '  ')).toBeNull();
 	});
 });

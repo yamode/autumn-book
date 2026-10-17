@@ -5,7 +5,8 @@
 // 段階の色（2026-10-17 指示「残量に応じて色が変わるように。何%以下ならオレンジ、みたいに」）
 export const SPRING_TONES = ['blue', 'green', 'yellow', 'orange', 'red', 'gray'] as const;
 export type SpringTone = (typeof SPRING_TONES)[number];
-export type SpringBand = { min: number; ja: string; en: string; zh: string; tone: SpringTone };
+// tipJa / tipEn / tipZh は「?」を押したときの説明（段階ごと・任意・2026-10-17 指示「％の範囲ごとに説明文を設定できるように」）
+export type SpringBand = { min: number; ja: string; en: string; zh: string; tone: SpringTone; tipJa?: string; tipEn?: string; tipZh?: string };
 
 export const SPRING_TONE_LABEL: Record<SpringTone, string> = {
 	blue: '青',
@@ -44,6 +45,13 @@ export const DEFAULT_SPRING_BANDS: SpringBand[] = [
 
 const MAX_BANDS = 10;
 const MAX_LABEL = 40;
+export const MAX_SPRING_TIP = 300;
+
+const tipText = (v: unknown) =>
+	String(v ?? '')
+		.replace(/\r\n?/g, '\n')
+		.trim()
+		.slice(0, MAX_SPRING_TIP);
 
 /** DB・フォームから来た値を整える。使えない値なら null（＝既定を使う） */
 export function normalizeSpringBands(raw: unknown): SpringBand[] | null {
@@ -61,7 +69,10 @@ export function normalizeSpringBands(raw: unknown): SpringBand[] | null {
 			ja,
 			en: String(o.en ?? '').trim().slice(0, MAX_LABEL),
 			zh: String(o.zh ?? '').trim().slice(0, MAX_LABEL),
-			tone
+			tone,
+			tipJa: tipText(o.tipJa),
+			tipEn: tipText(o.tipEn),
+			tipZh: tipText(o.tipZh)
 		});
 	}
 	if (!out.length) return null;
@@ -93,4 +104,17 @@ export function springBandLabel(band: SpringBand, locale: string): string {
 	if (locale === 'en') return band.en || band.ja;
 	if (locale === 'zh-TW') return band.zh || band.ja;
 	return band.ja;
+}
+
+/**
+ * 「?」を押したときの説明。順に:
+ *   1. 段階の説明（その言語）
+ *   2. 段階の説明（日本語）… 言葉と同じく、英語・繁体字が空なら日本語を出す（水圧が下がっている等の大事なお知らせを落とさない）
+ *   3. 共通の説明（管理画面の「共通の説明」・日本語のお客様だけ）
+ *   4. null … 呼ぶ側が既定文（翻訳済み）を出す
+ */
+export function springTipFor(band: SpringBand, locale: string, commonNote: string | null | undefined): string | null {
+	const own = locale === 'en' ? band.tipEn : locale === 'zh-TW' ? band.tipZh : band.tipJa;
+	const text = own?.trim() || band.tipJa?.trim() || (locale === 'ja' ? commonNote?.trim() : '') || '';
+	return text || null;
 }
