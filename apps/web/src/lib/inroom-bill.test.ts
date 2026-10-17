@@ -111,3 +111,27 @@ describe('連結予約の請求書の並び（泊まった日の順）', () => {
 		expect(sortBillsByStay([cover, none, b, a]).map((x) => x.id)).toEqual(['a', 'b', 'cover', 'none']);
 	});
 });
+
+describe('請求内容チェックが済んだ請求書だけ公開（2026-10-17）', () => {
+	it('published と泊まった日を読み、公開済みの枚数を数える', async () => {
+		const { normalizeStayBill, billStayDate } = await import('./inroom-bill');
+		const v = normalizeStayBill({
+			ok: true,
+			due_total: 1300,
+			published_count: 1,
+			bills: [
+				{ id: 'a', published: true, due: 1300, items: [{ date: '2026-10-16', name: 'x', quantity: 1, unit_price: 1300, amount: 1300 }], payments: [] },
+				{ id: 'b', published: false, stay_date: '2026-10-17', items: [], payments: [] }
+			]
+		});
+		expect(v?.publishedCount).toBe(1);
+		expect(v?.bills.map((b) => b.published)).toEqual([true, false]);
+		expect(billStayDate(v!.bills[1])).toBe('2026-10-17');
+	});
+	it('published が無い（古い DB 関数）なら公開扱い', async () => {
+		const { normalizeStayBill } = await import('./inroom-bill');
+		const v = normalizeStayBill({ ok: true, bills: [{ id: 'a', items: [], payments: [] }] });
+		expect(v?.bills[0].published).toBe(true);
+		expect(v?.publishedCount).toBe(1);
+	});
+});

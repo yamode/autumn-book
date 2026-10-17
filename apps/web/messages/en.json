@@ -1128,5 +1128,6 @@
   "inroom_bill_paid_amount": "Amount paid",
   "inroom_bill_close": "Close",
   "inroom_bill_go_top": "Back to the top page",
-  "inroom_bill_total": "Total"
+  "inroom_bill_total": "Total",
+  "inroom_bill_pending_check": "The front desk is checking your charges. They will appear here once confirmed."
 }

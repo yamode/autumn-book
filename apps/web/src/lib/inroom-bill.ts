@@ -20,13 +20,23 @@ export type StayBill = {
 	due: number;
 	items: BillItem[];
 	payments: BillPayment[];
+	/**
+	 * お客様に出してよいか（PMS の「請求内容チェック」で明細・入金がすべてチェック済み・2026-10-17）。
+	 * false のあいだは明細・入金・金額を持たず（DB が返さない）、画面は「フロントで確認中」と出す
+	 */
+	published: boolean;
+	/** 未公開の請求書の泊まった日（明細のいちばん早い日・見出し用）。公開済みは明細から出す */
+	stayDate: string | null;
 };
 
 export type StayBillView = {
 	flags: BillFlags;
 	frontNote: FrontNote;
 	bills: StayBill[];
+	/** 公開済みの請求書の残額の合計（未公開の請求書は数えない） */
 	dueTotal: number;
+	/** 公開済みの請求書の枚数。0 なら金額も決済の欄も出さない */
+	publishedCount: number;
 	/** この滞在でオンライン決済された額（返金を除く） */
 	paidOnline: number;
 	isDemo: boolean;
@@ -90,13 +100,17 @@ export function normalizeStayBill(raw: unknown): StayBillView | null {
 				})),
 			payments: (Array.isArray(b.payments) ? b.payments : [])
 				.filter((p): p is Record<string, unknown> => !!p && typeof p === 'object')
-				.map((p) => ({ date: ymd(p.date), method: str(p.method), amount: num(p.amount), online: p.online === true }))
+				.map((p) => ({ date: ymd(p.date), method: str(p.method), amount: num(p.amount), online: p.online === true })),
+			// published が無い（古い DB 関数）ときは公開扱い（従来どおり）
+			published: b.published !== false,
+			stayDate: ymd(b.stay_date)
 		}));
 	return {
 		flags: { items: r.show_items === true, front: r.show_front === true, online: r.show_online === true },
 		frontNote: { ja: str(note.ja), en: str(note.en), zh: str(note.zh) },
 		bills,
 		dueTotal: Math.max(0, num(r.due_total)),
+		publishedCount: r.published_count == null ? bills.filter((b) => b.published).length : Math.max(0, num(r.published_count)),
 		paidOnline: Math.max(0, num(r.paid_online)),
 		isDemo: r.is_demo === true,
 		hasStay: r.has_stay === true
@@ -127,8 +141,9 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 	return {
 		flags,
 		frontNote,
-		bills: [{ id: 'demo-bill', billNo: 1, name: null, itemsTotal, paidTotal, due, items, payments }],
+		bills: [{ id: 'demo-bill', billNo: 1, name: null, itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null }],
 		dueTotal: due,
+		publishedCount: 1,
 		paidOnline,
 		isDemo: true,
 		hasStay: true
@@ -195,14 +210,15 @@ export const PREVIEW_FRONT_NOTE: FrontNote = {
 // 連結予約（1泊ずつの予約をつないだ連泊・最終泊の請求書が表紙で他泊が繰り越しの子）の並び（2026-10-17 指示「案A 泊まった日の順・請求書ごと」）
 // ---------------------------------------------------------------------------
 /** 請求書の「泊まった日」= 明細の日付のうちいちばん早い日（YYYY-MM-DD）。明細に日付が無ければ null */
-export function billStayDate(b: Pick<StayBill, 'items'>): string | null {
+export function billStayDate(b: Pick<StayBill, 'items'> & { stayDate?: string | null }): string | null {
 	let min: string | null = null;
 	for (const i of b.items) if (i.date && (min === null || i.date < min)) min = i.date;
-	return min;
+	// 未公開の請求書は明細を持たないので、DB が返した泊まった日を使う
+	return min ?? b.stayDate ?? null;
 }
 
 /** 請求書を泊まった日の順に並べる（日付の無い請求書は元の順のまま後ろへ） */
-export function sortBillsByStay<T extends Pick<StayBill, 'items'>>(bills: T[]): T[] {
+export function sortBillsByStay<T extends Pick<StayBill, 'items'> & { stayDate?: string | null }>(bills: T[]): T[] {
 	return bills
 		.map((b, i) => ({ b, i, d: billStayDate(b) }))
 		.sort((x, y) => (x.d && y.d ? (x.d < y.d ? -1 : x.d > y.d ? 1 : x.i - y.i) : x.d ? -1 : y.d ? 1 : x.i - y.i))

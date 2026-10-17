@@ -60,6 +60,7 @@
 />
 <p class="-mt-3 mb-4 max-w-3xl text-xs leading-relaxed text-stone-500">
 	明細と残額は PMS の請求書から読みます（入金済みを差し引いた残り。<code>[自動]</code> の現地入金行は差し引きません）。
+	請求書は PMS の「請求内容チェック」で<b>明細と入金がすべてチェック済み</b>（入金が無い請求書は「入金なし」のチェック）になってからお客様に出ます。それまでは「フロントで確認中」と出て、残額・オンライン決済にも入りません（連結予約は請求書ごと）。
 	オンライン決済が通ると、PMS の請求書に「オンライン決済(stripe)」の入金行が自動で入り（PMS の画面では「オンライン決済（アプリ）」と表示）、施設の共有ID のメールアドレスにお知らせが届きます。
 </p>
 
@@ -155,6 +156,14 @@
 							<span class="text-right text-sm tabular-nums">
 								<span class="text-[11px] text-stone-400 lg:hidden">残額 </span>{s.hasStay ? yen(s.dueTotal) : '—'}
 								{#if s.paidOnline > 0}<span class="block text-[11px] text-emerald-700">オンライン {yen(s.paidOnline)}</span>{/if}
+								<!-- 公開済み（PMS の請求内容チェックが全行済み）の請求書の枚数。未公開の請求書はお客様に出ず、残額にも入らない -->
+								{#if s.hasStay && s.billsTotal}
+									{#if s.billsPublished === s.billsTotal}
+										<span class="block text-[11px] text-emerald-700">公開済み{s.billsTotal > 1 ? `（${s.billsTotal}枚）` : ''}</span>
+									{:else}
+										<span class="block text-[11px] text-amber-700" title="PMS の「請求内容チェック」で明細・入金がすべてチェックされた請求書から、お客様に出ます">確認中 {s.billsPublished ?? 0}/{s.billsTotal} 枚公開</span>
+									{/if}
+								{/if}
 							</span>
 						</div>
 						<form method="POST" action="?/setOverride" use:enhance class="mt-3 grid gap-2 border-t border-stone-100 pt-3 lg:mt-0 lg:grid-cols-[repeat(3,minmax(0,1fr))_4.5rem] lg:items-center lg:border-0 lg:pt-0">

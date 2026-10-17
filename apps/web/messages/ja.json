@@ -1128,5 +1128,6 @@
   "inroom_bill_paid_amount": "お支払い額",
   "inroom_bill_close": "閉じる",
   "inroom_bill_go_top": "トップページに戻る",
-  "inroom_bill_total": "合計"
+  "inroom_bill_total": "合計",
+  "inroom_bill_pending_check": "ご利用明細はフロントで確認中です。確認が済みしだい表示します。"
 }

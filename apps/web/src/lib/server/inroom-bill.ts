@@ -119,7 +119,11 @@ export type AdminStayBillRow = {
 	hasStay: boolean;
 	override: BillOverride;
 	flags: BillFlags;
+	/** 公開済みの請求書の残額（未公開は数えない） */
 	dueTotal: number | null;
+	/** 請求書の枚数と、そのうち公開済み（PMS の請求内容チェックが全行済み）の枚数・2026-10-17 */
+	billsTotal: number | null;
+	billsPublished: number | null;
 	paidOnline: number;
 };
 export type AdminInroomPayment = {
@@ -157,6 +161,8 @@ export function listStayBillsDemo(facilityId: string): AdminStayBills {
 				override,
 				flags: resolveBillFlags(defaults, override),
 				dueTotal: sample.dueTotal,
+				billsTotal: 1,
+				billsPublished: 1,
 				paidOnline: 0
 			};
 		}),
@@ -180,6 +186,8 @@ export async function sbListStayBills(client: SupabaseClient, facilityId: string
 			override: { items: boolOrNull(r.override_items), front: boolOrNull(r.override_front), online: boolOrNull(r.override_online) },
 			flags: { items: r.show_items === true, front: r.show_front === true, online: r.show_online === true },
 			dueTotal: r.due_total == null ? null : Number(r.due_total),
+			billsTotal: r.bills_total == null ? null : Number(r.bills_total),
+			billsPublished: r.bills_published == null ? null : Number(r.bills_published),
 			paidOnline: Number(r.paid_online ?? 0)
 		})),
 		payments: (d.payments ?? []).map((p) => ({

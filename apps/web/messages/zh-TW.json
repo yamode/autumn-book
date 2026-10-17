@@ -1128,5 +1128,6 @@
   "inroom_bill_paid_amount": "付款金額",
   "inroom_bill_close": "關閉",
   "inroom_bill_go_top": "返回首頁",
-  "inroom_bill_total": "合計"
+  "inroom_bill_total": "合計",
+  "inroom_bill_pending_check": "櫃檯正在確認您的消費明細，確認完成後將顯示於此。"
 }

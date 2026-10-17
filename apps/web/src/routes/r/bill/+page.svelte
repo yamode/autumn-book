@@ -173,8 +173,8 @@
 		<p class="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800" role="status">{m.inroom_bill_pay_pending()}</p>
 	{/if}
 
-	{#if flags.items || flags.online}
-		<!-- ============ 現在のご精算額 ============ -->
+	{#if (flags.items || flags.online) && bill.publishedCount > 0}
+		<!-- ============ 現在のご精算額（公開済みの請求書の残額だけ。公開済みが無ければ出さない・2026-10-17） ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card">
 			<p class="text-xs text-stone-400">{m.inroom_bill_due()}</p>
 			{#if bill.dueTotal > 0}
@@ -185,11 +185,16 @@
 		</section>
 	{/if}
 
+	{#if !flags.items && flags.online && !bill.isDemo && bill.bills.length > 0 && bill.publishedCount === 0}
+		<!-- 明細は出さずオンライン決済だけの設定で、請求書がまだ確認中（金額も決済の欄も出さない・2026-10-17） -->
+		<p class="rounded-lg bg-white px-4 py-4 text-sm leading-relaxed text-stone-600 shadow-card">{m.inroom_bill_pending_check()}</p>
+	{/if}
+
 	{#if flags.items}
 		<!-- ============ ご利用明細（PMS の請求書） ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card" aria-labelledby="bill-items-title">
 			<h2 id="bill-items-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_items_title()}</h2>
-			{#if bill.bills.every((b) => b.items.length === 0)}
+			{#if bill.bills.length === 0 || bill.bills.every((b) => b.published && b.items.length === 0)}
 				<p class="mt-2 text-sm text-stone-500">{m.inroom_bill_items_empty()}</p>
 			{:else}
 				{#each sortedBills as b (b.id)}
@@ -201,6 +206,10 @@
 							{stayDate ? m.inroom_bill_stay_on({ date: fmtDayOfWeek(stayDate) }) : b.billNo != null ? m.inroom_bill_bill_no({ no: String(b.billNo) }) : ''}
 						</p>
 					{/if}
+					{#if !b.published}
+						<!-- PMS の「請求内容チェック」で明細・入金がすべてチェックされるまで出さない（2026-10-17）。連結予約は泊ごと -->
+						<p class="mt-2 rounded-md bg-stone-50 px-3 py-2.5 text-sm leading-relaxed text-stone-600">{m.inroom_bill_pending_check()}</p>
+					{:else}
 					<ul class="mt-2 divide-y divide-stone-100 text-sm">
 						{#each b.items as item, i (i)}
 							<li class="flex items-baseline justify-between gap-3 py-1.5">
@@ -241,6 +250,7 @@
 							<span class="text-sm font-semibold text-stone-900">{m.inroom_bill_bill_due()}</span>
 							<span class="shrink-0 text-lg font-semibold tabular-nums text-stone-900">{yen(b.due)}</span>
 						</div>
+					{/if}
 					{/if}
 					</div>
 				{/each}
