@@ -23,6 +23,7 @@ import {
 // 実際のご予約から公開URL/QRを出す部分は貸切風呂（/admin/bath）と同じ RPC を使う。
 // get-or-create なので、同じご予約なら何度押しても同じ URL・同じ QR になる。
 import { sbGetOrIssueStayToken, sbListBookableStays, type BookableStay } from '$lib/server/private-bath';
+import { todayJstIso } from '$lib/early-prepay';
 import type { Locale, StayToken } from '$lib/types';
 import { SNS_KINDS, normalizeSnsLinks } from '$lib/sns-links';
 import { loadSnsLinks, saveSnsLinksDemo, sbSaveSnsLinks } from '$lib/server/sns-links';
@@ -81,12 +82,35 @@ export const load: PageServerLoad = async (event) => {
 	const facilityUuid = FACILITY_UUID[currentFacility.id] ?? currentFacility.id;
 
 	// 実際のご予約の一覧（公開URL・QR を出す元）
-	const staysP: Promise<{ stays: BookableStay[]; staysError: string | null }> = client
-		? sbListBookableStays(client, facilityUuid, date).then(
-				(stays) => ({ stays, staysError: null }),
-				(e) => ({ stays: [] as BookableStay[], staysError: errText(e) })
-			)
-		: Promise.resolve({ stays: [] as BookableStay[], staysError: STAYS_NOT_LIVE });
+	// 日付を指定しないとき（既定の表示）は「昨日宿泊のお客様」と「本日チェックインのお客様」の2つ（2026-10-18 指示）。
+	//   ・昨日宿泊 … 昨夜泊まった方（今日チェックアウトの方と連泊中の方）。ご精算の案内を出すのはこの方たち
+	//   ・本日チェックイン … チェックイン日が今日の方だけ（連泊中の方は昨日宿泊のほうに出ているので重ねない）
+	// 日付を指定したときは従来どおり、その日にご滞在のお客様を1つの一覧で出す。
+	const today = todayJstIso();
+	const yesterday = todayJstIso(new Date(Date.now() - 86_400_000));
+	type StaysR = {
+		stays: BookableStay[];
+		yesterdayStays: BookableStay[];
+		todayStays: BookableStay[];
+		staysError: string | null;
+	};
+	const noStays = { stays: [] as BookableStay[], yesterdayStays: [] as BookableStay[], todayStays: [] as BookableStay[] };
+	const staysP: Promise<StaysR> = !client
+		? Promise.resolve({ ...noStays, staysError: STAYS_NOT_LIVE })
+		: date
+			? sbListBookableStays(client, facilityUuid, date).then(
+					(stays) => ({ ...noStays, stays, staysError: null }),
+					(e) => ({ ...noStays, staysError: errText(e) })
+				)
+			: Promise.all([sbListBookableStays(client, facilityUuid, yesterday), sbListBookableStays(client, facilityUuid, today)]).then(
+					([y, t]) => ({
+						...noStays,
+						yesterdayStays: y,
+						todayStays: t.filter((s) => s.check_in_date === today),
+						staysError: null
+					}),
+					(e) => ({ ...noStays, staysError: errText(e) })
+				);
 	// 内線（客室からの Wi-Fi 通話）の設定と通話ログ。実データに繋がっているときだけ
 	const intercomP: Promise<{ intercom: AdminIntercom | null; intercomCalls: IntercomCall[]; intercomError: string | null }> = client
 		? Promise.all([sbAdminIntercom(client, currentFacility.id), sbListIntercomCalls(client, currentFacility.id, 7)]).then(
@@ -131,6 +155,8 @@ export const load: PageServerLoad = async (event) => {
 		facilitySlug,
 		includeInactive,
 		date,
+		today,
+		yesterday,
 		live: useSupabaseAdmin,
 		snsLinks,
 		inroomSettings,

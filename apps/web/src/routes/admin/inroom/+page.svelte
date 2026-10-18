@@ -185,6 +185,12 @@
 	}
 	let copied = $state<string | null>(null);
 
+	// 2026-10-18 → 10/18（日）
+	const fmtYmd = (ymd: string) => {
+		const [y, mo, d] = ymd.split('-').map(Number);
+		return `${mo}/${d}（${'日月火水木金土'[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()]}）`;
+	};
+
 	// 日付フィルタのリンク（?date= を差し替えつつ ?all=1 等は保つ）
 	const dateHref = (d: string) => {
 		const p = new URLSearchParams(page.url.search);
@@ -792,17 +798,44 @@
 				</label>
 				<button type="submit" class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50">この日の予約を出す</button>
 				{#if data.date}
-					<a href={dateHref('')} class="text-xs text-stone-400 underline hover:text-stone-600">今日に戻す</a>
+					<a href={dateHref('')} class="text-xs text-stone-400 underline hover:text-stone-600">昨日宿泊・本日チェックインに戻す</a>
 				{/if}
 			</form>
 
 			{#if data.staysError}
 				<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{data.staysError}</p>
+			{:else if !data.date}
+				<!-- 既定の表示: 昨日宿泊のお客様 ＋ 本日チェックインのお客様（2026-10-18 指示） -->
+				<div class="mt-4">
+					<h3 class="text-xs font-semibold text-stone-700">
+						昨日宿泊のお客様<span class="ml-2 font-normal text-stone-400">{fmtYmd(data.yesterday)} の夜・{data.yesterdayStays.length}件</span>
+					</h3>
+					<p class="mt-0.5 text-[11px] text-stone-400">今日チェックアウトの方と連泊中の方です。</p>
+					{#if data.yesterdayStays.length === 0}
+						<p class="mt-2 text-xs text-stone-400">昨日ご宿泊のお客様はいません。</p>
+					{:else}
+						{@render stayRows(data.yesterdayStays)}
+					{/if}
+				</div>
+				<div class="mt-5 border-t border-stone-200 pt-4">
+					<h3 class="text-xs font-semibold text-stone-700">
+						本日チェックインのお客様<span class="ml-2 font-normal text-stone-400">{fmtYmd(data.today)}・{data.todayStays.length}件</span>
+					</h3>
+					{#if data.todayStays.length === 0}
+						<p class="mt-2 text-xs text-stone-400">本日チェックインのお客様はいません。</p>
+					{:else}
+						{@render stayRows(data.todayStays)}
+					{/if}
+				</div>
 			{:else if data.stays.length === 0}
 				<p class="mt-3 text-xs text-stone-400">この日にご滞在のお客様はいません。</p>
 			{:else}
-				<ul class="mt-3 divide-y divide-stone-100">
-					{#each data.stays as s (s.stay_id)}
+				{@render stayRows(data.stays)}
+			{/if}
+
+			{#snippet stayRows(list: typeof data.stays)}
+				<ul class="mt-2 divide-y divide-stone-100">
+					{#each list as s (s.stay_id)}
 						<li class="flex flex-wrap items-center gap-3 py-2 text-sm">
 							<span class="min-w-16 font-medium text-stone-800">{s.room_code}</span>
 							<span class="text-stone-600">{s.guest_name}</span>
@@ -832,7 +865,7 @@
 						</li>
 					{/each}
 				</ul>
-			{/if}
+			{/snippet}
 
 			{#if form?.qr}
 				<div class="mt-4 rounded-xl border border-stone-200 bg-stone-50 p-4">
