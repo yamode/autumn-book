@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { createSupabaseServerClient, ADMIN_SUPABASE } from '$lib/server/auth';
-import { aiConfigured, history, inquiry, makeDraft } from '$lib/server/inquiries';
+import { aiConfigured, history, inquiry, makeDraft,draftJob } from '$lib/server/inquiries';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 
 export const load: PageServerLoad = async event => {
@@ -13,7 +13,8 @@ export const load: PageServerLoad = async event => {
   event.cookies.set('ab_fac','f-nishiwaga',{path:'/',httpOnly:true,sameSite:'lax',secure:event.url.protocol==='https:'});
   redirect(303,event.url.pathname);
  }
- return {item,messages:await history(db,item.id),aiConfigured:aiConfigured()};
+ const [messages,job]=await Promise.all([history(db,item.id),draftJob(db,item.id)]);
+ return {item,messages,job,aiConfigured:aiConfigured()};
 };
 export const actions: Actions = {
  default: async event => {
@@ -31,9 +32,11 @@ export const actions: Actions = {
     if(he)throw new Error(he.message);
     return {message:action==='history_enable'?'過去メールの参考利用を再開しました。':'過去メールの参考利用を停止しました。'};
    }
-   const args: Record<string,unknown>={p_id:item.id,p_revision:revision,p_action:action,p_body:body};
+   const expectedVersion=Number(form.get('draftVersion'));
+   if(['ai','save','send'].includes(action)&&expectedVersion!==item.draft_version)return fail(409,{message:'他の担当者の下書きが更新されました。入力本文をコピーし、再読み込みしてください。',body});
+   const args: Record<string,unknown>={p_id:item.id,p_revision:revision,p_action:action,p_body:body,p_expected_draft_version:item.draft_version};
    if(action==='ai') {
-    const draft=await makeDraft(db,item,await history(db,item.id));
+    const draft=await makeDraft(db,item);
     Object.assign(args,{p_body:draft.text,p_sources:draft.sources,p_model:draft.model});
    }
    if(action==='status') Object.assign(args,{p_status:String(form.get('status')),p_assignee:String(form.get('assignee')??'')});
