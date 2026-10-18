@@ -145,6 +145,8 @@ export async function sbBathContentSave(
 export type BookableStay = {
 	stay_id: string;
 	room_code: string;
+	/** 部屋番号（pms.rooms.room_number）。一覧はこの昇順で返る（2026-10-18） */
+	room_number?: string | null;
 	guest_name: string;
 	check_in_date: string;
 	check_out_date: string;
