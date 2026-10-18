@@ -20,7 +20,7 @@ Autumn共通Supabase Functionsに登録済みの`ANTHROPIC_API_KEY`を、スタ�
 
 受付控え・担当者通知・担当者の回答は`book.inquiry_messages`にキューとして保存し、既存の`send-booking-mail`のSMTP処理で送る。施設の`pms.mail_settings`を利用し、返信先は`info@yamado.co.jp`にする。件名の`[YI-ランダム32桁]`と決定的なMessage-IDで会話を識別する。
 
-`sync-inquiry-mail`は既存のinfoメールボックスをIMAPで読み取り、件名またはReferences/In-Reply-Toの識別子と元のお客様のメールアドレスを照合する。UIDVALIDITYとUIDを保存し、同じメールを二重に取り込まない。メールボックスの既読状態・移動・削除は変更しない。1回100 UIDの範囲を処理する。初回・UIDVALIDITY変更時は直近500 UIDから開始する。問い合わせ番号のない従来メールや別の差出人は自動取込しない。
+`sync-inquiry-mail`は既存のinfoメールボックスをIMAPで読み取り、件名またはReferences/In-Reply-Toの識別子と元のお客様のメールアドレスを照合する。UIDVALIDITYとUIDを保存し、同じメールを二重に取り込まない。メールボックスの既読状態・移動・削除は変更しない。Edgeでは期限付きのネイティブTLS接続でEXAMINEとBODY.PEEKを使い、受信処理が停止したまま残らないようにする。1回500 UIDの範囲を処理する。初回・UIDVALIDITY変更時は直近500 UIDから開始する。問い合わせ番号のない従来メールや別の差出人は自動取込しない。
 
 添付はファイル名を会話に記録し、原本はメールボックスで確認する。本文は28,000文字まで取り込み、8MiBを超える対象メールは同期エラーとして止める。エラーと最終同期時刻は一覧に表示する。受信が止まった場合は管理者が対象メールを確認して対処する。
 
