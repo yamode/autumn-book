@@ -330,7 +330,7 @@ export const chargeSavedCard = (args: {
   );
 
 export const listRefunds = (paymentIntent: string) =>
-  stripeFetch<{ data: Array<{ id: string; amount: number; status: string }> }>('GET', '/refunds', { payment_intent: paymentIntent, limit: 10 });
+  stripeFetch<{ data: Array<{ id: string; amount: number; status: string }> }>('GET', '/refunds', { payment_intent: paymentIntent, limit: 100 });
 
 // amount を省くと全額（残り全部）を返金する。一部返金（キャンセル料を差し引いた返金）は amount（円）を渡す
 export const createRefund = (paymentIntent: string, idempotencyKey: string, metadata: Record<string, string> = {}, amount?: number) =>

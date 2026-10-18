@@ -54,6 +54,7 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/inroom?tab=guides', label: '館内案内の内容', tab: 'guides' },
 					{ href: '/admin/inroom?tab=slips', label: '客室スリップ', tab: 'slips' },
 					{ href: '/admin/inroom/billing', label: '精算案内' },
+					{ href: '/admin/inroom/settled', label: '精算済み・返金' },
 					{ href: '/admin/inroom?tab=settings', label: '表示の設定', tab: 'settings', also: ['/admin/inroom/banners', '/admin/inroom/entry'] },
 					{ href: '/admin/inroom/preview', label: 'プレビュー・QR' },
 					{ href: '/admin/inroom/access', label: 'アクセスログ' }

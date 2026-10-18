@@ -197,8 +197,8 @@
 		<AdminIcon name="receipt" class="h-4 w-4 text-stone-500" />最近のオンライン決済
 	</h2>
 	<p class="mt-1 text-xs leading-relaxed text-stone-500">
-		入金済みは PMS の請求書に入金行（オンライン決済(stripe)）が入っています。Stripe の管理画面から返金すると、PMS にマイナスの入金行が入ります。
-		「テスト」はプレビュー（見本の滞在）で管理者が試した本番の決済で、PMS には入れていません。返金は Stripe の管理画面から手で行ってください（返金すると「返金済み」になります）。
+		入金済みは PMS の請求書に入金行（オンライン決済(stripe)）が入っています。返金（全額・一部）は<a href="/admin/inroom/settled" class="font-medium text-stone-700 underline">「精算済み・返金」</a>からできます（Stripe の管理画面から返金しても、PMS にマイナスの入金行が入ります）。
+		「テスト」はプレビュー（見本の滞在）で管理者が試した本番の決済で、PMS には入れていません。返金は「精算済み・返金」からできます。
 		「金額の食い違い」は、お支払いの間にフロントで先に精算された等で残額が足りなかった決済で、全額を返金しています（入金行は入れていません）。
 	</p>
 	{#if form?.refundRetried}<p class="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">返金しました。</p>{/if}

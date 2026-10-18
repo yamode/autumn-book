@@ -10,7 +10,7 @@
 
 export type SaveState = 'saving' | 'done' | 'error';
 
-const VERBS = ['保存', '追加', '削除', '送信', '発行', '更新', '変更', '反映', '登録', '取り下げ', '失効', '取消', '作成'] as const;
+const VERBS = ['保存', '追加', '削除', '返金', '送信', '発行', '更新', '変更', '反映', '登録', '取り下げ', '失効', '取消', '作成'] as const;
 
 /** ボタンの文字から、状態ごとの言葉を作る（「保存」→「保存中…」「✓ 保存しました」） */
 export function saveStateLabel(buttonText: string, state: SaveState): string {
