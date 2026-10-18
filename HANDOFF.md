@@ -1,3 +1,25 @@
+## 西和賀問い合わせ管理のBook統合（2026-10-19）
+
+- 本番運用開始：Book v0.158.5／autumn-shared v2.10.3／hp-yamado v1.6.0。mainへ直接commit/push。山人-oga-は未変更。
+- 管理画面：https://book.yamado.app/admin/inquiries
+- HP受付をDBへ保存。AI下書き・編集・送信と、お客様返信の同一履歴への取込を実装。Autumn共通AI接続を流用。
+- info@yamado.co.jpのみで受付控え、AI下書き、編集済み回答の実送信、返信1件の取込、完了操作を確認。
+- migration 20261018210132_book_inquiry_deskを共通リポジトリからsupabase db push --linkedで適用。
+- AIはFAQと承認済み回答例を参照。送信は人が行う。添付原本はメールボックスで確認。
+- Supabase Previewは削除済み。Branching／Preview／PRは明示指示時のみ。通常はmain直接push。
+- 完了報告・確認ログ：D:/山人 Dropbox/96_Claude/output/book-inquiry-validation/完了報告.md
+
+### テストチェックリスト（問い合わせ管理）
+
+- [ ] 西和賀HPの受付がBookへ1件保存され、受付控えが届く
+- [ ] 施設権限のあるスタッフだけが履歴を閲覧・編集できる
+- [ ] AI下書きと参照元が表示され、編集・保存・送信できる
+- [ ] お客様の返信が同じ履歴へ1件取り込まれ、未対応へ戻る
+- [ ] 二重受付・二重送信を防ぎ、同時更新では再読み込みを求める
+- [ ] 送信結果不明時は自動再送せず、確認操作を求める
+- [ ] 回答例の承認・期限・利用停止がAI参照へ反映される
+- [ ] iPhone実機で一覧・詳細・回答編集を確認する（実機未確認）
+
 # autumn-book HANDOFF
 
 ## 精算案内: 請求書ごとの「公開する部屋」（2026-10-19・v0.158.6／autumn-shared 20261018215447）
