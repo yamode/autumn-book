@@ -1100,6 +1100,7 @@
   "inroom_bill_due_none": "目前沒有需要支付的金額。",
   "inroom_bill_items_title": "消費明細",
   "inroom_bill_items_empty": "目前尚無明細。",
+  "inroom_bill_items_none": "沒有使用明細。",
   "inroom_bill_subtotal": "消費合計",
   "inroom_bill_payments_title": "已付款・調整金額",
   "inroom_bill_paid_total": "已付款・折扣",

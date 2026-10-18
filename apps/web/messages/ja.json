@@ -1100,6 +1100,7 @@
   "inroom_bill_due_none": "現在、お支払いいただく金額はありません。",
   "inroom_bill_items_title": "ご利用明細",
   "inroom_bill_items_empty": "まだ明細はありません。",
+  "inroom_bill_items_none": "利用明細はありません。",
   "inroom_bill_subtotal": "ご利用合計",
   "inroom_bill_payments_title": "お支払い済み・調整額",
   "inroom_bill_paid_total": "お支払い済み・割引",

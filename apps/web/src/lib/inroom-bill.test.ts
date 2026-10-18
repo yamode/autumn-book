@@ -176,3 +176,13 @@ describe('見本の請求書2枚（2026-10-18）', () => {
 		expect(v.dueTotal).toBe(v.bills[0].due + v.bills[1].due);
 	});
 });
+
+// PMS の「お客様に公開しない」請求書（2026-10-18）
+describe('非公開の請求書', () => {
+	it('hidden_count を読み、無いときは 0', () => {
+		const hidden = normalizeStayBill({ ok: true, show_items: true, bills: [], hidden_count: 2 });
+		expect(hidden?.hiddenCount).toBe(2);
+		expect(hidden?.bills).toHaveLength(0);
+		expect(normalizeStayBill({ ok: true, show_items: true, bills: [] })?.hiddenCount).toBe(0);
+	});
+});

@@ -38,6 +38,8 @@ export type StayBillView = {
 	dueTotal: number;
 	/** 公開済みの請求書の枚数。0 なら金額も決済の欄も出さない */
 	publishedCount: number;
+	/** PMS で「お客様に公開しない」にした請求書の枚数（一覧にも出さない）。非公開だけなら「利用明細はありません」・2026-10-18 */
+	hiddenCount: number;
 	/** 滞在コードのお客様名（請求書の宛名がこれと違うときだけ宛名を出す・2026-10-18） */
 	guestName: string | null;
 	/** この滞在でオンライン決済された額（返金を除く） */
@@ -115,6 +117,7 @@ export function normalizeStayBill(raw: unknown): StayBillView | null {
 		bills,
 		dueTotal: Math.max(0, num(r.due_total)),
 		publishedCount: r.published_count == null ? bills.filter((b) => b.published).length : Math.max(0, num(r.published_count)),
+		hiddenCount: Math.max(0, num(r.hidden_count)),
 		guestName: str(r.guest_name).trim() || null,
 		paidOnline: Math.max(0, num(r.paid_online)),
 		isDemo: r.is_demo === true,
@@ -150,6 +153,7 @@ export function demoStayBill(flags: BillFlags, frontNote: FrontNote, now = new D
 		bills: [{ id: 'demo-bill', billNo: 1, name: '山人 太郎', itemsTotal, paidTotal, due, items, payments, published: true, stayDate: null, stayDateTo: null }],
 		dueTotal: due,
 		publishedCount: 1,
+		hiddenCount: 0,
 		guestName: null,
 		paidOnline,
 		isDemo: true,
@@ -201,6 +205,7 @@ function demoStayBillTwo(flags: BillFlags, frontNote: FrontNote, today: string):
 		bills: [a, b],
 		dueTotal: a.due + b.due,
 		publishedCount: 2,
+		hiddenCount: 0,
 		guestName: null,
 		paidOnline: 0,
 		isDemo: true,

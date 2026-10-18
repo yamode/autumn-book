@@ -201,6 +201,11 @@
 		</section>
 	{/if}
 
+	{#if !flags.items && flags.online && bill.bills.length === 0 && bill.hiddenCount > 0}
+		<!-- 請求書が「お客様に公開しない」ものだけ（PMS の請求書のオプション・2026-10-18） -->
+		<p class="rounded-lg bg-white px-4 py-4 text-sm leading-relaxed text-stone-600 shadow-card">{m.inroom_bill_items_none()}</p>
+	{/if}
+
 	{#if !flags.items && flags.online && !bill.isDemo && bill.bills.length > 0 && bill.publishedCount === 0}
 		<!-- 明細は出さずオンライン決済だけの設定で、請求書がまだ確認中（金額も決済の欄も出さない・2026-10-17） -->
 		<p class="rounded-lg bg-white px-4 py-4 text-sm leading-relaxed text-stone-600 shadow-card">{m.inroom_bill_pending_check()}</p>
@@ -210,7 +215,10 @@
 		<!-- ============ ご利用明細（PMS の請求書） ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card" aria-labelledby="bill-items-title">
 			<h2 id="bill-items-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_items_title()}</h2>
-			{#if bill.bills.length === 0 || bill.bills.every((b) => b.published && b.items.length === 0)}
+			{#if bill.bills.length === 0 && bill.hiddenCount > 0}
+				<!-- 請求書が「お客様に公開しない」ものだけ（PMS の請求書のオプション・2026-10-18 指示）。まだ無い、とは言わない -->
+				<p class="mt-2 text-sm text-stone-500">{m.inroom_bill_items_none()}</p>
+			{:else if bill.bills.length === 0 || bill.bills.every((b) => b.published && b.items.length === 0)}
 				<p class="mt-2 text-sm text-stone-500">{m.inroom_bill_items_empty()}</p>
 			{:else}
 				{#each sortedBills as b (b.id)}
