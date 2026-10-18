@@ -26,6 +26,11 @@ export const actions: Actions = {
    const action=String(form.get('action')??'save');
    const revision=Number(form.get('revision'));
    if(revision!==item.revision) return fail(409,{message:'新しい返信または他の担当者の変更があります。入力内容を控えて再読み込みしてください。',body});
+   if(action==='history_enable'||action==='history_disable') {
+    const {error:he}=await db.schema('book').rpc('admin_inquiry_history_reference',{p_id:item.id,p_revision:revision,p_message:String(form.get('messageId')),p_enable:action==='history_enable'});
+    if(he)throw new Error(he.message);
+    return {message:action==='history_enable'?'過去メールの参考利用を再開しました。':'過去メールの参考利用を停止しました。'};
+   }
    const args: Record<string,unknown>={p_id:item.id,p_revision:revision,p_action:action,p_body:body};
    if(action==='ai') {
     const draft=await makeDraft(db,item,await history(db,item.id));

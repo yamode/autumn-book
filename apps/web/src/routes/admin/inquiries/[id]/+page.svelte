@@ -20,7 +20,8 @@
 <svelte:head><title>{data.item.subject} | お問い合わせ</title></svelte:head>
 <div class="space-y-5">
  <div class="flex flex-wrap gap-3 justify-between"><a href="/admin/inquiries" class="underline">← お問い合わせ一覧</a><button class="border rounded px-3 py-1" onclick={()=>invalidateAll()}>履歴を更新</button></div>
- <header><h1>{data.item.subject || 'お問い合わせ'}</h1><p class="mt-2">{data.item.name} 様 ／ {data.item.email}</p><div class="text-sm mt-2">{#each Object.entries(data.item.profile) as [key,value]}{#if value}<span class="inline-block mr-4">{key}：{value}</span>{/if}{/each}</div></header>
+ <header><h1>{data.item.subject || 'お問い合わせ'}</h1><p class="mt-2">{data.item.name} 様 ／ {data.item.email}</p><div class="text-sm mt-2">{#each Object.entries(data.item.profile) as [key,value]}{#if value&&key!=='history_account'}<span class="inline-block mr-4">{key==='source'?'受付元':key}：{value}</span>{/if}{/each}</div></header>
+ {#if data.item.profile.history_account}<p class="rounded border bg-amber-50 p-3 text-sm">過去のinfoメールから取り込んだ履歴です。回答当時の条件を含みます。現在の運用と照らして確認してください。取り込みによるメール送信は行いません。</p>{/if}
  {#if form?.message}<p role="status" class="rounded-xl border bg-amber-50 p-4 whitespace-pre-wrap">{form.message}</p>{/if}
  <form method="post" use:enhance class="rounded-xl border bg-white p-4 flex flex-wrap items-end gap-3">
   <input type="hidden" name="revision" value={data.item.revision}/><input type="hidden" name="action" value="status"/>
@@ -35,6 +36,13 @@
     {#if message.error}<p class="mt-3 text-sm text-red-800">{message.error}</p>{/if}
     {#if message.state==='failed' || message.state==='uncertain'}<form method="post" use:enhance onsubmit={(e)=>{if(!confirm(message.state==='failed'?'同じ内容を再送しますか？':((e.submitter as HTMLButtonElement)?.value==='resolve_unsent'?'メールサーバーの履歴で未送信を確認しましたか？':'メールサーバーの履歴で送信済みを確認しましたか？'))) e.preventDefault();}} class="mt-3"><input type="hidden" name="revision" value={data.item.revision}/><input type="hidden" name="messageId" value={message.id}/><button name="action" value={message.state==='failed'?'retry':'resolve_sent'} class="rounded border px-3 py-2 text-sm">{message.state==='failed'?'再送する':'送信済みを確認した'}</button>{#if message.state==='uncertain'}<button name="action" value="resolve_unsent" class="rounded border px-3 py-2 text-sm ml-2">未送信を確認した</button><p class="text-sm mt-2">メールサーバーの履歴で結果を確認してから操作してください。未送信を確認した場合だけ再送できます。</p>{/if}</form>{/if}
     {#if message.direction==='out' && message.state==='sent'}
+     {#if message.history_source?.account}
+      <details class="mt-4 border-t pt-3 text-sm"><summary class="cursor-pointer">過去メール：{message.reusable?'承認済み':message.history_reference?'AIの参考利用中':'AIの参考利用停止中'}</summary>
+       <p class="my-2">個人情報と引用を除去した参考本文です。現在のルールとして承認した回答とは区別されます。</p>
+       <p class="whitespace-pre-wrap my-2">質問：{message.knowledge_question??'参考本文なし'}</p><p class="whitespace-pre-wrap my-2">回答：{message.knowledge_answer??'参考本文なし'}</p>
+       <form method="post" use:enhance><input type="hidden" name="revision" value={data.item.revision}/><input type="hidden" name="messageId" value={message.id}/><button name="action" value={message.history_reference||message.reusable?'history_disable':'history_enable'} disabled={!message.knowledge_question||!message.knowledge_answer} class="rounded border px-3 py-2">{message.history_reference||message.reusable?'AIの参考利用を停止':'AIの参考利用を再開'}</button></form>
+      </details>
+     {/if}
      <details class="mt-4 border-t pt-3 text-sm"><summary class="cursor-pointer">{message.reusable?'回答例として利用中':'AI用の回答例として登録する'}</summary>
       <p class="my-2">氏名・予約番号・個別の特別対応を除き、再利用できる質問と回答に整えてください。</p>
       <form method="post" use:enhance class="space-y-2"><input type="hidden" name="revision" value={data.item.revision}/><input type="hidden" name="messageId" value={message.id}/><label class="block">一般化した質問<textarea class="block w-full border rounded p-2" name="question" maxlength="1000" required>{message.knowledge_question??''}</textarea></label><label class="block">一般化した回答<textarea class="block w-full border rounded p-2" name="answer" rows="5" maxlength="10000" required>{message.knowledge_answer??''}</textarea></label><label class="block">有効期限（任意）<input type="date" name="until" value={message.valid_until??''} class="block border rounded p-2"/></label><button name="action" value="approve" class="border rounded px-3 py-2">承認して登録</button>{#if message.reusable}<button name="action" value="revoke" formnovalidate class="border rounded px-3 py-2 ml-2">利用を停止</button>{/if}</form>
@@ -50,7 +58,7 @@
     <div class="flex flex-wrap gap-2"><button name="action" value="ai" disabled={busy||!data.aiConfigured} class="rounded border px-3 py-2 disabled:opacity-50">{busy?'処理中…':'AI下書きを作成'}</button><button name="action" value="save" disabled={busy} class="rounded border px-3 py-2">下書きを保存</button><button name="action" value="send" disabled={busy||!body.trim()||data.messages.some(m=>m.direction==='out'&&['queued','sending','uncertain'].includes(m.state))} class="rounded bg-brand-800 text-white px-4 py-2 disabled:opacity-50">確認して送信</button></div>
     {#if !data.aiConfigured}<p class="text-sm text-amber-800">AI接続の設定待ちです。手動での回答は作成できます。</p>{/if}
    </form>
-   <div class="border-t pt-3"><h3 class="font-semibold text-sm">AIが参照した資料</h3>{#each data.item.ai_sources as source}<details class="mt-2 text-sm"><summary class="cursor-pointer">{source.kind}：{source.question}</summary><p class="whitespace-pre-wrap mt-2">{source.answer}</p></details>{:else}<p class="text-sm mt-2">参照資料はありません。AIは不足する情報に要確認の印を付けます。</p>{/each}</div>
+   <div class="border-t pt-3"><h3 class="font-semibold text-sm">AIが参照した資料</h3>{#each data.item.ai_sources as source}<details class="mt-2 text-sm"><summary class="cursor-pointer">{source.kind}：{source.question}</summary>{#if source.answered_at}<p class="text-xs mt-2">回答日：{time(source.answered_at)} ／ 当時の参考例です。</p>{/if}<p class="whitespace-pre-wrap mt-2">{source.answer}</p>{#if source.inquiry_id}<a class="inline-block underline mt-2" href="/admin/inquiries/{source.inquiry_id}">元のやり取りを確認</a>{/if}</details>{:else}<p class="text-sm mt-2">参照資料はありません。AIは不足する情報に要確認の印を付けます。</p>{/each}</div>
   </section>
  </div>
 </div>
