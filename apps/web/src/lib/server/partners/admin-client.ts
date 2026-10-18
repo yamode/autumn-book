@@ -46,6 +46,8 @@
 //   RPC の中で滞在トークン・残額・決済額を確かめ、PMS の請求書に入金行を立てる。台帳 book.inroom_payments は service_role だけ。
 //   プレビューでの本番のテスト決済（v0.142.0・inroom_test_payment_prepare）も同じ。見本の滞在トークンと、アプリが確かめた管理者の id で呼ぶ。
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+// 例外その10: 西和賀HPの署名検証済み受付API（/api/inquiries/nishiwaga）。
+// 公開受付からは service-only の inquiry_accept だけを呼ぶ。社内の閲覧・変更は利用者JWTと施設権限で行う。
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 
