@@ -10,7 +10,7 @@
 
 ## AI下書き
 
-Autumn PMSと同じ`ANTHROPIC_API_KEY`をBookのCloudflareシークレットにも登録する。PMSのシークレットを読み出す処理は作らない。モデルは共通の`core.tenants.metadata.ai_models.mail_draft`を読み、未設定時の既定もPMSと同じ`claude-haiku-4-5-20251001`。確認時の設定値は`claude-sonnet-5`。
+Autumn共通Supabase Functionsに登録済みの`ANTHROPIC_API_KEY`を、スタッフJWTで保護した`draft-inquiry-reply`から使用する。Bookへキーを複製しない。問い合わせ・参照資料は利用者JWTと施設RLSで再確認し、クライアントから任意のプロンプトを渡す方式にはしない。モデルは共通の`core.tenants.metadata.ai_models.mail_draft`を読み、未設定時の既定もPMSと同じ`claude-haiku-4-5-20251001`。確認時の設定値は`claude-sonnet-5`。
 
 同じ施設の公開FAQと、スタッフが一般化して承認した送信済み回答だけを検索する。期限切れ・利用停止の回答例は除く。本文から既知の氏名・メール・電話番号を置換し、住所等のプロフィールを送らない。ただし自由記入中のすべての個人情報を完全に匿名化する保証はない。プロンプトは問い合わせや参照文書内の命令に従わず、不明点を【要確認】として残す。参照資料と元のAI下書きを保存し、送信内容との比較ができる。AIは送信しない。
 
@@ -30,11 +30,11 @@ SMTPには厳密な一度だけの送信保証がない。送信開始後のエ�
 
 | 配置 | 設定 |
 |---|---|
-| Book Cloudflareシークレット | `ANTHROPIC_API_KEY`：既存Autumnと同じキー。`INQUIRY_HP_SECRET`：新規32バイトhex秘密 |
+| Book Cloudflareシークレット | `INQUIRY_HP_SECRET`：新規32バイトhex秘密 |
 | Book Cloudflare変数 | `INQUIRY_NISHIWAGA_ENABLED=true`（受付を有効化） |
 | Supabase Functionsシークレット | `BOOK_INQUIRIES_ENABLED=true`、`BOOK_INQUIRY_REPLY_TO=info@yamado.co.jp` |
 | Supabase Functionsシークレット | `BOOK_INQUIRY_IMAP`：`{"facilityId":"10000000-0000-0000-0000-000000000001","email":"info@yamado.co.jp","host":"実際のIMAPホスト","port":993,"username":"実際のユーザー名","password":"実際のパスワード"}` |
-| 既存設定を流用 | `SUPABASE_SERVICE_ROLE_KEY`、`BOOK_SEND_BOOKING_MAIL_SECRET`、SMTPの施設設定、Vaultの`book_send_booking_mail_url`／`book_send_booking_mail_secret` |
+| 既存設定を流用 | `ANTHROPIC_API_KEY`（Autumn共通・登録済み）、`SUPABASE_SERVICE_ROLE_KEY`、`BOOK_SEND_BOOKING_MAIL_SECRET`、SMTPの施設設定、Vaultの`book_send_booking_mail_url`／`book_send_booking_mail_secret` |
 | Xserver公開領域外 | `yamado-private/book-inquiry-config.php`の`enabled`と`secret`（Book側と同じ値） |
 
 秘密はチャット・git・デバッグログに出さない。受付本文のDEBUGログも出さず、エラー種別だけ記録する。
@@ -42,7 +42,7 @@ SMTPには厳密な一度だけの送信保証がない。送信開始後のエ�
 ## 公開手順
 
 1. autumn-sharedのmigrationをチェックリストで確認してmainへ直接commit/pushし、`supabase db push --linked`で適用する。Branching／Preview Branch／PRはユーザーが明示的に指示した場合だけ使う。StudioやMCPでDDLを実行しない。
-2. `send-booking-mail`と`sync-inquiry-mail`を`--no-verify-jwt`でデプロイする。どちらも既存の共有秘密を定数時間比較で検証する。cronはmigrationで追加する。
+2. `send-booking-mail`・`sync-inquiry-mail`・`draft-inquiry-reply`を`--no-verify-jwt`でデプロイする。メール送受信は既存の共有秘密を定数時間比較で検証し、AIは本人JWTと施設RLSを検証する。cronはmigrationで追加する。
 3. BookのシークレットとFunctionsの設定を登録し、Bookをビルド・公開する。受信同期の最終時刻とSMTP設定を確認する。
 4. 西和賀HPを`build:xserver`で生成して公開する。既存のフォームは切替までメール直送のまま動く。
 5. 同じ`INQUIRY_HP_SECRET`を環境変数に設定し、`INQUIRY_ENABLE=false`で`node scripts/setup-book-inquiry.mjs`を実行する。既存configを保全して専用設定を追加する。
