@@ -29,6 +29,8 @@
 		"REPORT_EMAIL_FROM": "rms@yamado.app",
 		"AUTH_MODE": "supabase",
 		"DATA_SOURCE": "supabase",
+		// 西和賀問い合わせの受付。AI/IMAP接続と社内での一巡確認後に true にする。
+		"INQUIRY_NISHIWAGA_ENABLED": "false",
 		"PRIVATE_BATH_PMS_ENABLED": "true",
 		"PUBLIC_GA4_MEASUREMENT_ID": "G-JFW5QS8QKH",
 		"PUBLIC_SUPABASE_URL": "https://opkocyapzmsjzhbwlguh.supabase.co",
