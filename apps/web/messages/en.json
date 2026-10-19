@@ -835,7 +835,7 @@
   "bath_choose": "Please select a time.",
   "bath_done": "Your reservation is confirmed.",
   "bath_canceled": "Your reservation has been cancelled.",
-  "bath_err_taken": "Sorry, that time has just been taken. Please choose another.",
+  "bath_err_taken": "Another guest booked that time before your submission was processed. Your reservation has not been confirmed. Please choose another time.",
   "bath_err_limit": "You have already reached the limit for that time period.",
   "bath_err_cutoff": "Reservations for that time have closed.",
   "bath_err_generic": "We could not complete your reservation. Please contact the front desk.",
@@ -1135,5 +1135,9 @@
   "inroom_bill_addressee": "{name}",
   "inroom_bill_choose": "Choose the invoice to pay",
   "inroom_bill_choose_due": "{amount} due",
-  "inroom_bill_paid_online_label": "In-room online payment"
+  "inroom_bill_paid_online_label": "In-room online payment",
+  "bath_err_unavailable": "That time is no longer available. Please choose again from the latest available times.",
+  "bath_err_refresh": "We could not refresh availability. Please refresh before choosing again.",
+  "bath_refresh": "Refresh available times",
+  "bath_availability_refreshed": "Availability has been updated. Please select a time again and proceed to confirmation."
 }

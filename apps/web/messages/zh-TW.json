@@ -835,7 +835,7 @@
   "bath_choose": "請選擇時段。",
   "bath_done": "已完成預約。",
   "bath_canceled": "已取消預約。",
-  "bath_err_taken": "很抱歉，該時段剛被預約。請選擇其他時段。",
+  "bath_err_taken": "您所選的時段在送出前已被其他客人預約。本次預約尚未成立，請選擇其他時段。",
   "bath_err_limit": "該時段已達預約上限。",
   "bath_err_cutoff": "該時段已截止受理。",
   "bath_err_generic": "無法完成預約，請洽櫃檯。",
@@ -1135,5 +1135,9 @@
   "inroom_bill_addressee": "{name}",
   "inroom_bill_choose": "請選擇要付款的帳單",
   "inroom_bill_choose_due": "應付 {amount}",
-  "inroom_bill_paid_online_label": "客房內線上付款"
+  "inroom_bill_paid_online_label": "客房內線上付款",
+  "bath_err_unavailable": "目前無法預約所選時段，請從最新的空位重新選擇。",
+  "bath_err_refresh": "無法更新空位資訊，請更新後重新選擇。",
+  "bath_refresh": "更新空位資訊",
+  "bath_availability_refreshed": "已更新空位資訊。請重新選擇時段並前往確認畫面。"
 }

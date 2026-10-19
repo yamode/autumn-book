@@ -1,3 +1,4 @@
+import {cleanInquiryText} from './inquiry-text';
 export type MailPart = { kind: 'body' | 'quote' | 'signature'; text: string };
 
 const quotedLine = (line: string) => /^\s*[>＞]/.test(line);
@@ -29,11 +30,12 @@ function signatureAt(lines: string[]): number {
 
 /** Display only: the stored email and AI reference text are never changed. */
 export function splitInquiryMail(raw: string): MailPart[] {
+ raw=cleanInquiryText(raw);
  const lines = raw.replace(/\r\n?/g, '\n').split('\n');
  const parts: MailPart[] = [];
  let pending: string[] = [];
  const flush = (kind: MailPart['kind']) => {
-  const text = pending.join('\n').trim();
+  const text = cleanInquiryText(pending.join('\n'));
   if (text) parts.push({ kind, text });
   pending = [];
  };
@@ -58,7 +60,7 @@ export function splitInquiryMail(raw: string): MailPart[] {
   if (body) result.push({ kind: 'body', text: body });
   result.push({ kind: 'signature', text: ownLines.slice(start).join('\n').trim() });
  }
- return result.length ? result : [{ kind: 'body', text: raw }];
+ return result.length ? result : [{ kind: 'body', text: cleanInquiryText(raw) }];
 }
 
 export function inquiryMailPreview(parts: MailPart[]): string {

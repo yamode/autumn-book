@@ -61,7 +61,7 @@ export async function sbBathContext(token: string): Promise<BathContext | null> 
  */
 export type BathReserveResult =
 	| { ok: true; made: number; price_yen: number }
-	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'other' };
+	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'slot_unavailable' | 'other' };
 
 export async function sbBathReserve(
 	token: string,
@@ -75,6 +75,7 @@ export async function sbBathReserve(
 	});
 	if (error) {
 		const head = String(error.message ?? '').split(':')[0].trim();
+		if (head === 'slot_not_available') return { ok: false, code: 'slot_unavailable' };
 		if (head === 'slot_taken') return { ok: false, code: 'slot_taken' };
 		if (head === 'per_room_limit') return { ok: false, code: 'per_room_limit' };
 		if (head === 'past_cutoff') return { ok: false, code: 'past_cutoff' };

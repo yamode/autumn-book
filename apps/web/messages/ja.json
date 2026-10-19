@@ -835,7 +835,7 @@
   "bath_choose": "時間を選んでください。",
   "bath_done": "ご予約を承りました。",
   "bath_canceled": "ご予約を取り消しました。",
-  "bath_err_taken": "申し訳ございません。その時間は先にご予約が入りました。別の時間をお選びください。",
+  "bath_err_taken": "選択した時間は、送信するまでの間に別のお客様のご予約が入りました。今回の予約は確定していません。別の時間をお選びください。",
   "bath_err_limit": "その時間帯はすでに上限までご予約いただいています。",
   "bath_err_cutoff": "その時間は受付を終了しました。",
   "bath_err_generic": "ご予約できませんでした。お手数ですがフロントへお申しつけください。",
@@ -1135,5 +1135,9 @@
   "inroom_bill_addressee": "{name} 様",
   "inroom_bill_choose": "お支払いいただく請求書を選んでください",
   "inroom_bill_choose_due": "残り {amount}",
-  "inroom_bill_paid_online_label": "客室内オンライン決済"
+  "inroom_bill_paid_online_label": "客室内オンライン決済",
+  "bath_err_unavailable": "選択した時間は現在ご予約いただけません。最新の空き枠から選び直してください。",
+  "bath_err_refresh": "空き枠の更新ができませんでした。更新してから、もう一度お選びください。",
+  "bath_refresh": "空き枠を更新する",
+  "bath_availability_refreshed": "空き枠を更新しました。時間を選び直して、確認画面へお進みください。"
 }

@@ -9,11 +9,13 @@
 	// ただし入力欄が無いと「部屋も名前も入れずに大丈夫？」と不安になるので、STEP1 の先頭に
 	// お名前・お部屋を表示専用で出しておく。
 	import { enhance } from '$lib/enhance';
+ import {tick} from 'svelte';
+ import type {SubmitFunction} from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 
 	let { data, form } = $props();
-	const ctx = $derived(data.ctx);
+	const ctx = $derived(form?.refreshedCtx ?? data.ctx);
 	const bookingOpen = $derived(data.pmsEnabled && ctx.ok && ctx.enabled);
 	// 管理画面（/admin/bath）で入れた文章。未入力の欄は null なので既定文言に落ちる。
 	const c = $derived(data.content?.fields ?? {});
@@ -39,6 +41,7 @@
 		if (code === 'slot_taken') return m.bath_err_taken();
 		if (code === 'per_room_limit') return m.bath_err_limit();
 		if (code === 'past_cutoff') return m.bath_err_cutoff();
+		if (code === 'slot_unavailable') return m.bath_err_unavailable();
 		if (code === 'choose') return m.bath_choose();
 		return m.bath_err_generic();
 	};
@@ -48,6 +51,7 @@
 	let pickedBath = $state<string | null>(null); // null = 先頭の浴室
 	let date = $state('');
 	let from = $state('');
+ let submitting=$state(false),transportError=$state(false);
 
 	const baths = $derived(ctx.baths ?? []);
 	const mine = $derived(ctx.mine ?? []);
@@ -56,8 +60,9 @@
 	function period(from: string): 'morning' | 'afternoon' {
 		return Number(from.slice(0, 2)) < 12 ? 'morning' : 'afternoon';
 	}
-	function isBookable(date: string, slot: { from: string; taken: boolean; closed: boolean }): boolean {
-		return !slot.taken && !slot.closed &&
+	function isBookable(date: string, slot: { from: string; taken: boolean; closed: boolean }, unitBathId?: string | null): boolean {
+		return !form?.availabilityRefreshFailed && !slot.taken && !slot.closed &&
+   !(form?.error==='slot_taken'&&form.attempted?.date===date&&form.attempted.from===slot.from&&(form.attempted.bathId??'')===((unitBathId===undefined?bath?.bath_id:unitBathId)??'')) &&
 			mine.filter((r) => r.date === date && period(r.from) === period(slot.from)).length < (ctx.per_room_per_range ?? 1);
 	}
 	const bath = $derived(
@@ -68,15 +73,21 @@
 	const slots = $derived((days.find((d) => d.date === date)?.slots ?? []).filter((s) => isBookable(date, s)));
 	const pickedSlot = $derived(slots.find((s) => s.from === from));
 	const canConfirm = $derived(Boolean(date && pickedSlot));
-	const hasBookableSlot = $derived(baths.some((b) => b.days.some((d) => d.slots.some((s) => isBookable(d.date, s)))));
+	const hasBookableSlot = $derived(baths.some((b) => b.days.some((d) => d.slots.some((s) => isBookable(d.date, s, b.bath_id)))));
 
 	// 確定成功時は専用の完了ページへ遷移する。
 	$effect(() => {
-		if (form?.error) step = 1;
+		if (form?.error) {
+   step = 1;
+   from = '';
+   if(form.attempted)date=days.some(d=>d.date===form.attempted.date)?form.attempted.date:'';
+   void tick().then(()=>document.getElementById('bath-reservation-error')?.focus());
+  }
 		if (form?.done === 'canceled' || form?.done === 'change_started') reset();
 	});
 
 	function onBathChange(v: string) {
+  transportError=false;
 		pickedBath = v;
 		date = '';
 		from = '';
@@ -91,7 +102,17 @@
 		from = '';
 	}
 
-	const stepNo = $derived(step);
+	const reserveSubmit:SubmitFunction=({cancel})=>{
+  if(submitting){cancel();return;}
+  submitting=true;transportError=false;
+  return async({result,update})=>{
+   try{
+    if(result.type==='error'){transportError=true;step=1;from='';void tick().then(()=>document.getElementById('bath-reservation-error')?.focus());return;}
+    await update({reset:false,invalidateAll:result.type!=='failure'});
+   }finally{submitting=false;}
+  };
+ };
+ const stepNo = $derived(step);
 	const STEPS = $derived([m.bath_step1(), m.bath_step2(), m.bath_step3()]);
 </script>
 
@@ -192,6 +213,13 @@
 		</p>
 	{/if}
 
+ {#if form?.error || transportError}
+  <section id="bath-reservation-error" role="alert" tabindex="-1" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-800 focus:outline-none">
+   <p>{transportError?m.bath_err_generic():errorText(form?.error)}</p>
+   {#if form?.availabilityRefreshFailed}<p class="mt-2">{m.bath_err_refresh()}</p><a href="/r/bath" data-sveltekit-reload class="mt-3 inline-flex min-h-11 items-center rounded border border-rose-300 bg-white px-4 font-medium">{m.bath_refresh()}</a>
+   {:else if form?.refreshedCtx}<p class="mt-2">{m.bath_availability_refreshed()}</p>{/if}
+  </section>
+ {/if}
 	{#if bookingOpen && hasBookableSlot}
 		<div id="new-reservation"></div>
 		<!-- ============ ステップ表示 ============ -->
@@ -344,24 +372,24 @@
 					{/if}
 				</p>
 
-				<form method="POST" action="?/reserve" use:enhance class="mt-6 text-center">
+				<form method="POST" action="?/reserve" use:enhance={reserveSubmit} class="mt-6 text-center">
 					<input type="hidden" name="bathId" value={bath?.bath_id ?? ''} />
 					<input type="hidden" name="date" value={date} />
 					<input type="hidden" name="from" value={from} />
-					<button type="submit" class="w-full max-w-[220px] rounded bg-[#48575f] py-3 text-[15px] text-white">
+					<button type="submit" disabled={submitting} aria-busy={submitting} class="w-full max-w-[220px] rounded bg-[#48575f] py-3 text-[15px] text-white disabled:opacity-50">
 						{m.bath_send()}
 					</button>
 				</form>
 				<div class="mt-3 text-center">
-					<button type="button" onclick={() => (step = 1)} class="text-sm text-stone-500 underline">
+					<button type="button" disabled={submitting} onclick={() => (step = 1)} class="text-sm text-stone-500 underline">
 						{m.bath_back_edit()}
 					</button>
 				</div>
 			</section>
 		{/if}
-	{:else if bookingOpen && mine.length}
+	{:else if bookingOpen && !form?.availabilityRefreshFailed && mine.length}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached()}</p>
-	{:else if bookingOpen}
+	{:else if bookingOpen && !form?.availabilityRefreshFailed}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_no_availability()}</p>
 	{/if}
 	{#if !mine.length}

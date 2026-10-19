@@ -1,4 +1,5 @@
 <script lang="ts">
+ import {cleanInquiryText} from '$lib/inquiry-text';
  import '$lib/styles/inquiry-interactions.css';
  import { enhance } from '$app/forms';
  import { beforeNavigate,goto,invalidateAll } from '$app/navigation';
@@ -181,7 +182,7 @@
    </form>
    <section class="translation-panel draft-translation" aria-label="返信の日本語訳">
     <div class="translation-heading"><strong>返信の日本語訳{#if draftJaCurrent&&draftJa}<span>原文：{languageLabel(draftJa.language)}</span>{/if}</strong><button type="button" class="quiet-button" disabled={busy||saving||!body.trim()||translationBusy.draft} onclick={()=>void translate('draft')}>{translationBusy.draft?'翻訳中…':draftJaCurrent?'訳を更新':'日本語訳を表示'}</button></div>
-    {#if draftJaCurrent&&draftJa}<div class="translation-text">{draftJa.text_ja}</div>{:else if draftJa}<p class="translation-stale">返信本文が変更されています。日本語訳を更新してください。</p>{/if}
+    {#if draftJaCurrent&&draftJa}<div class="translation-text">{cleanInquiryText(draftJa.text_ja)}</div>{:else if draftJa}<p class="translation-stale">返信本文が変更されています。日本語訳を更新してください。</p>{/if}
     {#if translationError.draft}<p class="translation-error" role="alert">{translationError.draft}</p>{/if}
    </section>
    <p class="send-note">{activeSend?'送信処理中の回答があります。結果を確認してから次の返信を作成してください。':'AIから自動送信されることはありません。送信前に宛先と本文を確認します。'}</p>
@@ -197,7 +198,7 @@
      <div class="message-content"><InquiryMailBody parts={message.parts} original={message.body}/>
      {#if message.direction==='in'}<section class="translation-panel" aria-label="受信メールの日本語訳">
       <div class="translation-heading"><strong>日本語訳{#if messageJa[message.id]}<span>原文：{languageLabel(messageJa[message.id].language)}</span>{/if}</strong><button type="button" class="quiet-button" disabled={translationBusy[message.id]} onclick={()=>void translate(message.id)}>{translationBusy[message.id]?'翻訳中…':messageJa[message.id]?'訳を更新':'日本語訳を表示'}</button></div>
-      {#if messageJa[message.id]}<details open={message.id===latestMessage}><summary>本文の訳を見る</summary><div class="translation-text">{messageJa[message.id].text_ja}</div></details>{/if}
+      {#if messageJa[message.id]}<details open={message.id===latestMessage}><summary>本文の訳を見る</summary><div class="translation-text">{cleanInquiryText(messageJa[message.id].text_ja)}</div></details>{/if}
       {#if !messageJa[message.id]&&['pending','running'].includes(receptionState(message.id)?.state??'')}<p class="translation-status">日本語訳を自動作成中です。</p>{:else if !messageJa[message.id]&&receptionState(message.id)?.state==='failed'}<p class="translation-error">自動翻訳できませんでした。「日本語訳を表示」から再作成できます。</p>{/if}
       {#if translationError[message.id]}<p class="translation-error" role="alert">{translationError[message.id]}</p>{/if}
      </section>{/if}

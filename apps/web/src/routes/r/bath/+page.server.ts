@@ -52,7 +52,17 @@ export const actions: Actions = {
 		}
 
 		const r = await sbBathReserve(token, bathId, [{ date, from }]);
-		if (!r.ok) return fail(400, { error: r.code });
+		if (!r.ok) {
+   // The reservation RPC is authoritative. Refresh only AFTER its transaction
+   // has rejected the booking; a preflight availability check cannot prevent races.
+   const retryable = ['slot_taken','per_room_limit','past_cutoff','slot_unavailable'].includes(r.code);
+   if (retryable) {
+    const refreshedCtx = await sbBathContext(token);
+    return fail(409, { error:r.code, refreshedCtx, availabilityRefreshFailed:!refreshedCtx?.ok,
+     attempted:{date,from,bathId},retryAt:Date.now() });
+   }
+   return fail(400, {error:r.code});
+  }
 		const query = new URLSearchParams({ date, from, bath: bathId ?? '' });
 		redirect(303, `/r/bath/complete?${query}`);
 	},
