@@ -29,6 +29,7 @@ export const ADMIN_NAV: NavGroup[] = [
 		items: [
 			{ href: '/admin/reservations', label: '予約管理', icon: 'calendar' },
 			{ href: '/admin/inquiries', label: 'お問い合わせ', icon: 'phone' },
+			{ href: '/admin/staff-directory', label: 'スタッフマスタ', icon: 'users' },
 			{ href: '/admin/group-inquiries', label: '団体照会', icon: 'users', badge: 'groupInquiries' },
 			{ href: '/admin/upgrades', label: 'アップグレード提案', icon: 'upgrade' },
 			{
