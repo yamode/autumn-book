@@ -9,8 +9,11 @@ const decoration = (line: string) => /^[\s─━―—ー\-=_＊*◆◇■□●
 const contact = (line: string) => /(?:[\w.+-]+@[\w.-]+\.[a-z]{2,}|https?:\/\/|www\.|(?:TEL|FAX|電話|携帯|〒)\s*[:：\d０-９]?|\d{2,4}[-－]\d{2,4}[-－]\d{3,4})/i.test(line);
 
 function signatureAt(lines: string[]): number {
+ // An explicit signature boundary takes precedence over contact-text guesses.
+ // Otherwise a final sentence containing an email address can be hidden with it.
+ const explicit = lines.findIndex(line => /^-- $/.test(line));
+ if (explicit >= 0) return explicit;
  for (let i = 0; i < lines.length; i++) {
-  if (/^-- $/.test(lines[i])) return i;
   const tail = lines.slice(i);
   if (/^\s*(?:Sent from my (?:iPhone|iPad|Android)|iPhoneから送信|iPadから送信|Androidから送信)/i.test(lines[i]) && tail.filter(l => l.trim()).length <= 3) return i;
   // Decorative separators are only treated as signatures with contact details below.
