@@ -1,0 +1,24 @@
+import {json} from '@sveltejs/kit';
+import type {RequestHandler} from './$types';
+import {ADMIN_SUPABASE,createSupabaseServerClient} from '$lib/server/auth';
+import {currentBookFacility,staffHasFacilityAccess} from '$lib/server/partners/staff';
+import {FACILITY_UUID} from '$lib/server/supabase-data';
+import {newsForm} from '$lib/server/news/editor';
+import {photoFileProblem} from '$lib/content-blocks';
+export const POST:RequestHandler=async event=>{
+ const reply=(data:unknown,status=200)=>json(data,{status,headers:{'cache-control':'no-store'}});
+ if(!ADMIN_SUPABASE||event.locals.user?.role!=='admin')return reply({error:'画像の追加には管理者権限が必要です。'},403);
+ if(event.request.headers.get('origin')!==event.url.origin)return reply({error:'不正なリクエストです。'},403);
+ const form=await newsForm(event.request,11*1024*1024),facility=currentBookFacility(event),facilityId=FACILITY_UUID[facility.id];
+ if(form.get('facilityId')!==facility.id||!facilityId||!await staffHasFacilityAccess(event,facilityId))return reply({error:'施設のアクセス権限を確認してください。'},403);
+ const file=form.get('file'),problem=photoFileProblem(file instanceof File?file:null);if(problem)return reply({error:problem},400);
+ const image=file as File,bytes=new Uint8Array(await image.arrayBuffer());
+ const text=(a:number,b:number)=>String.fromCharCode(...bytes.slice(a,b));
+ const valid=image.type==='image/png'?bytes.slice(0,8).join(',')==='137,80,78,71,13,10,26,10':image.type==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:image.type==='image/webp'?text(0,4)==='RIFF'&&text(8,12)==='WEBP':image.type==='image/avif'?text(4,8)==='ftyp'&&/avif|avis/.test(text(8,32)):false;
+ if(!valid)return reply({error:'画像ファイルの形式を確認してください。'},400);
+ const ext=({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/avif':'avif'} as Record<string,string>)[image.type];
+ const path='news/'+facilityId+'/'+crypto.randomUUID()+'.'+ext,db=createSupabaseServerClient(event);
+ const {error}=await db.storage.from('book-photos').upload(path,bytes,{contentType:image.type,upsert:false,cacheControl:'31536000'});
+ if(error)return reply({error:'画像をアップロードできませんでした。'},503);
+ return reply({url:db.storage.from('book-photos').getPublicUrl(path).data.publicUrl,name:image.name});
+};

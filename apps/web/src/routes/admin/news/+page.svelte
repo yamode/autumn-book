@@ -1,70 +1,16 @@
 <script lang="ts">
-	import { enhance } from '$lib/enhance';
-	import MarkdownView from '$lib/components/MarkdownView.svelte';
-	import PageHeader from '$lib/components/admin/PageHeader.svelte';
-
-	let { data, form } = $props();
+ import NewsPostEditor from '$lib/components/admin/NewsPostEditor.svelte';
+ let {data,form}=$props();let creating=$state(false),newDirty=$state(false),search=$state(''),filter=$state('all');
+ const canEdit=$derived(data.user?.role==='admin');
+ const filtered=$derived(data.posts.filter(post=>(filter==='all'||(filter==='draft'?!post.isPublished:post.isPublished))&&post.title.includes(search)));
 </script>
-
-<svelte:head><title>お知らせ ｜ 山人管理</title></svelte:head>
-
-<PageHeader title="お知らせ" facility={data.currentFacility.name} description="施設HPの「お知らせ」に表示されます（WP のニュース機能の置き換え）。本文は Markdown 可。" />
-
-{#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました（下書き状態。公開チェックを入れて保存すると表示されます）。</p>{/if}
-{#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
-
-<!-- 新規作成 -->
-<form method="POST" action="?/add" data-reset use:enhance class="mb-6 rounded-xl border border-dashed border-stone-300 bg-white p-4 text-sm">
-	<input type="hidden" name="facilityId" value={data.currentFacility.id} />
-	<h2 class="font-medium text-stone-700">新しいお知らせ</h2>
-	<div class="mt-2 flex flex-wrap gap-2">
-		<input type="date" name="publishedAt" class="rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-		<input name="title" placeholder="タイトル" class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-64 border border-stone-300 px-3 py-1.5" />
-	</div>
-	<textarea name="body" rows="3" placeholder="本文（Markdown 可）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5"></textarea>
-	<button type="submit" class="mt-2 min-h-9 rounded-md bg-accent-600 px-4 py-2 text-sm text-white hover:bg-accent-500">追加（下書きで作成）</button>
-</form>
-
-<!-- 一覧・編集 -->
-<div class="space-y-3">
-	{#each data.posts as post}
-		<details class="rounded-xl border border-stone-200 bg-white">
-			<summary class="flex cursor-pointer flex-wrap items-center gap-3 px-4 py-3 text-sm">
-				<span class="rounded-full px-2 py-0.5 text-xs font-medium {post.isPublished ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-100 text-stone-500'}">
-					{post.isPublished ? '公開中' : '下書き'}
-				</span>
-				<time class="tabular-nums text-stone-400">{post.publishedAt}</time>
-				<span class="min-w-0 font-medium">{post.title}</span>
-				{#if form?.saved === post.id}<span class="text-xs text-emerald-600">保存しました</span>{/if}
-				<!-- 公開済みの記事だけアプリ通知へ導線を出す（未公開記事のリンクは踏ませない） -->
-				{#if data.adminSupabase && post.isPublished}
-					<a
-						href="/admin/push/new?type=news&title={encodeURIComponent(
-							post.title
-						)}&url={encodeURIComponent(`/news/${post.id}`)}"
-						class="text-brand-800 ml-auto text-xs underline">アプリに通知する →</a
-					>
-				{/if}
-			</summary>
-			<form method="POST" action="?/save" use:enhance class="space-y-2 border-t border-stone-100 p-4 text-sm">
-				<input type="hidden" name="postId" value={post.id} />
-				<div class="flex flex-wrap gap-2">
-					<input type="date" name="publishedAt" value={post.publishedAt} class="rounded-md border border-stone-300 px-2 py-1.5 text-xs" />
-					<input name="title" value={post.title} class="min-w-0 basis-full flex-1 rounded-md sm:basis-auto sm:min-w-64 border border-stone-300 px-3 py-1.5" />
-					<label class="flex items-center gap-1.5 text-xs">
-						<input type="checkbox" name="isPublished" checked={post.isPublished} class="h-4 w-4" /> 公開
-					</label>
-				</div>
-				<div class="grid gap-3 lg:grid-cols-2">
-					<textarea name="body" rows="6" class="w-full rounded-md border border-stone-300 px-3 py-1.5 font-mono text-xs">{post.body}</textarea>
-					<div class="rounded-md bg-stone-50 p-3 text-sm">
-						<MarkdownView source={post.body} />
-					</div>
-				</div>
-				<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
-			</form>
-		</details>
-	{:else}
-		<p class="rounded-xl border border-stone-200 bg-white p-6 text-center text-sm text-stone-400">お知らせはまだありません</p>
-	{/each}
-</div>
+<svelte:head><title>お知らせ | Autumn Book</title></svelte:head>
+<section class="news-admin"><header><div><p>{data.currentFacility.name}</p><h1>お知らせ</h1></div>{#if canEdit}<button class="new-post-button" onclick={()=>{if(creating&&newDirty&&!confirm('新しいお知らせの未保存の変更を破棄しますか？'))return;creating=!creating;newDirty=false;}}>{creating?'新規作成を閉じる':'＋ お知らせを作成'}</button>{/if}</header>
+ {#if form?.message}<p class="page-error" role="alert">{form.message}</p>{/if}
+ {#if creating}<section class="new-post"><h2>新しいお知らせ</h2>{#key form?.added??'new'}<NewsPostEditor facilityId={data.currentFacility.id} hpPreviewSupported={data.hpPreviewSupported} {canEdit} onDirty={value=>newDirty=value}/>{/key}</section>{/if}
+ <div class="news-toolbar"><nav aria-label="掲載状態の絞り込み">{#each [{id:'all',label:'すべて'},{id:'draft',label:'下書き'},{id:'published',label:'公開中'}] as item}<button class:active={filter===item.id} aria-pressed={filter===item.id} onclick={()=>filter=item.id}>{item.label}</button>{/each}</nav><input bind:value={search} aria-label="お知らせを検索" placeholder="タイトルで検索"/><span>{filtered.length}件</span></div>
+ <div class="news-posts">{#each data.posts as post(post.id)}<details class="news-card" hidden={!filtered.some(item=>item.id===post.id)} open={form?.added===post.id}><summary><span class="state" class:published={post.isPublished}>{post.isPublished?'公開中':'下書き'}</span><time>{post.publishedAt}</time><strong>{post.title}</strong><span class="chevron">⌄</span></summary><NewsPostEditor {post} facilityId={data.currentFacility.id} hpPreviewSupported={data.hpPreviewSupported} {canEdit}/>{#if data.adminSupabase&&post.isPublished}<div class="push-link"><a href={`/admin/push/new?type=news&title=${encodeURIComponent(post.title)}&url=${encodeURIComponent('/news/'+post.id)}`}>アプリに通知する →</a></div>{/if}</details>{/each}{#if !filtered.length}<p class="empty">該当するお知らせはありません。</p>{/if}</div>
+</section>
+<style>
+.news-admin{max-width:1500px;margin:auto;color:#33482f}.news-admin>header{display:flex;justify-content:space-between;gap:1rem;align-items:center;margin-bottom:1.7rem}header p{color:#8b987d;font-size:.72rem;margin-bottom:.35rem}h1{font-size:1.8rem;font-weight:650;letter-spacing:-.03em}.new-post-button{border:1px solid #57764a;background:#57764a;color:#fff;padding:.7rem 1rem;border-radius:.6rem;font-size:.78rem;transition:background .15s,box-shadow .15s,transform .15s}.new-post-button:hover{background:#3f5c33;box-shadow:0 3px 9px #30472820;transform:translateY(-1px)}.new-post{background:#fff;border:1px solid #dfe6d5;border-radius:.9rem;margin-bottom:1.5rem;overflow:hidden}.new-post h2{padding:1rem 1.3rem;border-bottom:1px solid #e7ecdf;font-size:.9rem;font-weight:550}.news-toolbar{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1.1rem}.news-toolbar nav{display:flex;gap:.3rem}.news-toolbar nav button{padding:.5rem .75rem;border-radius:.5rem;font-size:.75rem;color:#87947b;transition:background .15s}.news-toolbar nav button:hover{background:#e9f0df}.news-toolbar nav .active{background:#e9f1df;color:#5c7a45;font-weight:550}.news-toolbar>input{margin-left:auto;border:1px solid #dfe6d5;background:#fff;padding:.6rem .8rem;font-size:.75rem;border-radius:.55rem;min-width:220px;color:#627a50}.news-toolbar>span{font-size:.72rem;color:#95a086}.news-posts{display:grid;gap:.85rem}.news-card{border:1px solid #e0e6d7;background:#fff;border-radius:.85rem;overflow:hidden}.news-card>summary{display:flex;gap:1rem;align-items:center;padding:1.2rem;cursor:pointer;list-style:none;transition:background .15s}.news-card>summary:hover{background:#f4f7ed}.news-card>summary::-webkit-details-marker{display:none}.news-card[open]>summary{border-bottom:1px solid #e6ecdd}.state{padding:.25rem .65rem;border-radius:1rem;background:#f0f0e9;color:#8a927e;font-size:.65rem;white-space:nowrap}.state.published{background:#eaf3e1;color:#6d8954}.news-card time{font-size:.72rem;color:#9aa58d;font-variant-numeric:tabular-nums;white-space:nowrap}.news-card strong{font-size:.86rem;font-weight:550;line-height:1.7}.chevron{margin-left:auto;color:#98a68b}.push-link{padding:0 1.3rem 1rem;font-size:.7rem;color:#8a9a7b;text-align:right}.push-link a:hover{text-decoration:underline}.page-error{background:#fff0e8;color:#9f6548;padding:.8rem 1rem;border-radius:.6rem;font-size:.8rem;margin-bottom:1rem}.empty{padding:3rem;background:#fff;border:1px solid #e1e7d8;border-radius:.8rem;text-align:center;font-size:.85rem;color:#8f9e80}button:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid #86a36c;outline-offset:2px}@media(max-width:650px){h1{font-size:1.5rem}.news-card>summary{flex-wrap:wrap;gap:.65rem;padding:1rem}.news-card strong{width:calc(100% - 30px);order:2}.chevron{order:3}.news-toolbar{gap:.65rem}.news-toolbar>input{min-width:0;flex:1}.news-toolbar nav{width:100%}.new-post-button{font-size:.72rem;padding:.65rem .8rem}}
+</style>
