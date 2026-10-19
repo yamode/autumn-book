@@ -238,10 +238,6 @@
 			{/each}
 		</ol>
 
-		{#if form?.error}
-			<p class="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-800">{errorText(form.error)}</p>
-		{/if}
-
 		{#if step === 1}
 			<!-- ============ STEP1 フォームのご入力 ============ -->
 			<section class="rounded-lg bg-white px-5 py-5 shadow-card">
