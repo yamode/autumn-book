@@ -323,7 +323,7 @@
 
 		<div class="admin-main flex min-w-0 flex-1 flex-col">
 			<!-- 上部バーはスクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
-			<div class="sticky top-0 z-30">
+			<div class="sticky top-0 z-30" data-admin-header>
 				<header class="flex items-center gap-2 border-b border-stone-200 bg-white/95 px-3 py-2 backdrop-blur sm:gap-3 sm:px-4 sm:py-2.5">
 					<button
 						type="button"
