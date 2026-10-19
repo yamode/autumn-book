@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { renderMarkdown } from '$lib/markdown';
+	import { renderNewsMarkdown } from '$lib/news-markdown';
+	import '$lib/news-cta.css';
 
-	let { source }: { source: string } = $props();
-	let html = $derived(renderMarkdown(source));
+	let { source, news = false }: { source: string; news?: boolean } = $props();
+	let html = $derived(news ? renderNewsMarkdown(source) : renderMarkdown(source));
 </script>
 
 <!-- 生 HTML は renderMarkdown 側でエスケープ済み（設計書 §2.3） -->

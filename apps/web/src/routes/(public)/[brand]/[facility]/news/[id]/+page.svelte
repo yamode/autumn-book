@@ -19,7 +19,7 @@
 		<time class="text-sm text-stone-400">{formatDateLong(data.post.publishedAt)}</time>
 		<h1 class="font-display mt-2 text-2xl leading-snug text-brand-900">{data.post.title}</h1>
 		<div class="mt-6">
-			<MarkdownView source={data.post.body} />
+			<MarkdownView source={data.post.body} news />
 		</div>
 	</article>
 

@@ -1,0 +1,10 @@
+/* News CTA template: shared visual contract with hp-yamado/server/news-cta.css. */
+a.news-cta{box-sizing:border-box;display:inline-flex!important;align-items:center;justify-content:center;gap:1.4em;max-width:100%;min-height:56px;margin:18px 0;padding:16px 30px!important;border:1px solid #665b3e!important;border-radius:3px;background:#665b3e!important;color:#fff!important;font-size:15px;font-weight:500;line-height:1.6!important;text-align:center;text-decoration:none!important;letter-spacing:.04em;overflow-wrap:anywhere;vertical-align:middle;transition:background .18s,border-color .18s,box-shadow .18s,transform .18s}
+a.news-cta::after{content:'→';flex:none;font-size:1.1em;transition:transform .18s}
+a.news-cta:hover{background:#453d29!important;border-color:#453d29!important;color:#fff!important;box-shadow:0 5px 16px #362b2026;transform:translateY(-2px)}
+a.news-cta:hover::after{transform:translateX(4px)}
+a.news-cta:focus-visible{outline:3px solid #a9925c;outline-offset:4px}
+a.news-cta.news-cta--outline{background:transparent!important;color:#665b3e!important}
+a.news-cta.news-cta--outline:hover{background:#f1eee6!important;color:#453d29!important}
+@media(max-width:600px){a.news-cta{display:flex!important;width:100%;padding:15px 20px!important;gap:1em}}
+@media(prefers-reduced-motion:reduce){a.news-cta,a.news-cta::after{transition:none!important;transform:none!important}}

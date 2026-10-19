@@ -2,7 +2,7 @@
 // 認証なし・読み取りのみ（RLS で公開分だけが返る）。施設の識別子は FAQ と同じ（oga / nishiwaga）。
 import { json } from '@sveltejs/kit';
 import { supa } from '$lib/server/supabase';
-import { renderMarkdown } from '$lib/markdown';
+import { renderNewsMarkdown } from '$lib/news-markdown';
 import { corsHeaders, facilityBySlug } from '$lib/server/faq/public';
 
 export { facilityBySlug };
@@ -16,7 +16,7 @@ export function newsJson(request: Request, slug: string, body: unknown, init: { 
 
 /** 本文 Markdown → HTML。本文中のリンクは新しいタブで開く（生 HTML はエスケープ済みなので、残る <a> は marked が生成したものだけ） */
 export function newsBodyHtml(md: string): string {
-	return renderMarkdown(md).replace(/<a\s/g, '<a target="_blank" rel="noopener noreferrer" ');
+	return renderNewsMarkdown(md).replace(/<a\s/g, '<a target="_blank" rel="noopener noreferrer" ');
 }
 
 export interface NewsRow {
