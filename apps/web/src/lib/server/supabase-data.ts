@@ -158,7 +158,7 @@ export async function listPlans(facilityId: string) {
 export async function listNews(facilityId: string, limit?: number) {
 	let q = supa()
 		.from('news_posts')
-		.select('id, title, body, published_at')
+		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
 		.eq('facility_id', facilityId)
 		.order('published_at', { ascending: false });
 	if (limit) q = q.limit(limit);
@@ -171,7 +171,7 @@ export async function listNews(facilityId: string, limit?: number) {
 export async function getNewsPost(facilityId: string, id: string) {
 	const { data, error } = await supa()
 		.from('news_posts')
-		.select('id, title, body, published_at')
+		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
 		.eq('facility_id', facilityId)
 		.eq('id', id)
 		.maybeSingle();
@@ -189,7 +189,7 @@ export async function listNewsAdmin(client: SupabaseClient, facilityId: string):
 	const { data, error } = await client
 		.schema('book')
 		.from('news_posts')
-		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
 		.eq('facility_id', facilityId)
 		.order('published_at', { ascending: false });
 	if (error) throw error;
@@ -199,7 +199,7 @@ export async function listNewsAdmin(client: SupabaseClient, facilityId: string):
 export async function addNewsAdmin(
 	client: SupabaseClient,
 	facilityId: string,
-	input: { title: string; body: string; publishedAt: string }
+	input: { title: string; body: string; publishedAt: string; coverImageUrl?:string|null; coverImageAlt?:string }
 ): Promise<NewsPost> {
 	const { data, error } = await client
 		.schema('book')
@@ -210,9 +210,10 @@ export async function addNewsAdmin(
 			title: input.title,
 			body: input.body,
 			published_at: input.publishedAt,
+ cover_image_url: input.coverImageUrl||null,cover_image_alt:input.coverImageAlt??'',
 			is_published: false
 		})
-		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
 		.single();
 	if (error) throw error;
 	return mapNewsRow(data);
@@ -221,7 +222,7 @@ export async function addNewsAdmin(
 export async function updateNewsAdmin(
 	client: SupabaseClient,
 	postId: string,
-	input: { title: string; body: string; publishedAt: string; isPublished: boolean }
+	input: { title: string; body: string; publishedAt: string; isPublished: boolean; coverImageUrl?:string|null; coverImageAlt?:string }
 ): Promise<NewsPost> {
 	const { data, error } = await client
 		.schema('book')
@@ -230,10 +231,11 @@ export async function updateNewsAdmin(
 			title: input.title,
 			body: input.body,
 			published_at: input.publishedAt,
+ cover_image_url: input.coverImageUrl||null,cover_image_alt:input.coverImageAlt??'',
 			is_published: input.isPublished
 		})
 		.eq('id', postId)
-		.select('id, facility_id, title, body, published_at, is_published, created_at')
+		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
 		.single();
 	if (error) throw error;
 	return mapNewsRow(data);
@@ -246,13 +248,13 @@ function mapNewsRow(row: {
 	body: string | null;
 	published_at: string;
 	is_published: boolean;
-	created_at: string;
+	created_at: string;cover_image_url?:string|null;cover_image_alt?:string;
 }): NewsPost {
 	return {
 		id: row.id,
 		facilityId: row.facility_id,
 		title: row.title,
-		body: row.body ?? '',
+		body: row.body ?? '',coverImageUrl:row.cover_image_url??null,coverImageAlt:row.cover_image_alt??'',
 		publishedAt: row.published_at,
 		isPublished: row.is_published,
 		createdAt: row.created_at

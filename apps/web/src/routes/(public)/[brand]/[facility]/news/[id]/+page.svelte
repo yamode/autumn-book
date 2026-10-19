@@ -18,6 +18,7 @@
 	<article class="rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
 		<time class="text-sm text-stone-400">{formatDateLong(data.post.publishedAt)}</time>
 		<h1 class="font-display mt-2 text-2xl leading-snug text-brand-900">{data.post.title}</h1>
+		{#if data.post.coverImageUrl}<img class="mt-6 w-full rounded-lg" src={data.post.coverImageUrl} alt={data.post.coverImageAlt||''}/>{/if}
 		<div class="mt-6">
 			<MarkdownView source={data.post.body} news />
 		</div>

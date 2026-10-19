@@ -13,7 +13,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 		const r = await getPublicNews(f.uuid, params.id);
 		if (!r) return newsJson(request, params.facility, { error: 'not_found' }, { status: 404 });
 		return newsJson(request, params.facility, {
-			post: { id: r.post.id, title: r.post.title, publishedAt: r.post.published_at, bodyHtml: newsBodyHtml(r.post.body) },
+			post: { id: r.post.id, title: r.post.title, publishedAt: r.post.published_at, bodyHtml: newsBodyHtml(r.post.body), coverImageUrl:r.post.cover_image_url,coverImageAlt:r.post.cover_image_alt },
 			prev: r.prev,
 			next: r.next
 		});

@@ -11,5 +11,8 @@ export function newsInput(form:FormData){
  if(!title||title.length>200)throw Error('タイトルは1〜200文字で入力してください。');
  if(body.length>100000)throw Error('本文は100,000文字以内で入力してください。');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt)||Number.isNaN(Date.parse(publishedAt+'T00:00:00Z')))throw Error('掲載日を指定してください。');
- return {title,body,publishedAt};
+ const coverImageUrl=String(form.get('coverImageUrl')??'').trim(),coverImageAlt=String(form.get('coverImageAlt')??'').trim();
+ if(coverImageAlt.length>200||coverImageUrl.length>2000)throw Error('アイキャッチの入力が長すぎます。');
+ if(coverImageUrl){try{const u=new URL(coverImageUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error();}catch{throw Error('アイキャッチ画像のURLを確認してください。');}}
+ return {title,body,publishedAt,coverImageUrl:coverImageUrl||null,coverImageAlt};
 }

@@ -22,7 +22,7 @@ export const actions:Actions={
   if(event.locals.user?.role!=='admin')return fail(403,{message:'編集権限がありません。'});
   try{const {form,input,facilityId,bookFacilityId}=await inputFor(event),id=String(form.get('postId')??'');
    if(DATA_SOURCE==='supabase'){const db=createSupabaseServerClient(event);if(!id){const created=await addNewsAdmin(db,facilityId,input);return {saved:created.id};}
-    const {data,error}=await db.schema('book').from('news_posts').update({title:input.title,body:input.body,published_at:input.publishedAt}).eq('id',id).eq('facility_id',facilityId).select('id').maybeSingle();if(error||!data)return fail(409,{message:'自動保存できませんでした。'});return {saved:id};}
+    const {data,error}=await db.schema('book').from('news_posts').update({title:input.title,body:input.body,published_at:input.publishedAt,cover_image_url:input.coverImageUrl,cover_image_alt:input.coverImageAlt}).eq('id',id).eq('facility_id',facilityId).select('id').maybeSingle();if(error||!data)return fail(409,{message:'自動保存できませんでした。'});return {saved:id};}
    if(!id){addNews({facilityId:bookFacilityId,...input,isPublished:false});return {saved:demoList(bookFacilityId)[0]?.id};}
    const post=newsPosts.find(n=>n.id===id&&n.facilityId===bookFacilityId);if(!post)return fail(404,{message:'お知らせが見つかりません。'});Object.assign(post,input);return {saved:id};
   }catch(e){return fail(400,{message:message(e)});}
@@ -53,7 +53,7 @@ export const actions:Actions={
    const {form,input,facilityId}=await inputFor(event),id=String(form.get('postId')??'');
    if(facilityId!==NEWS_PREVIEW_FACILITY)return fail(403,{message:'この施設のHPプレビューは利用できません。'});
    const token=await issueNewsPreview(id,facilityId);if(!token)return fail(503,{message:'HPプレビューの設定を確認してください。'});
-   const {data,error}=await createSupabaseServerClient(event).schema('book').from('news_posts').update({title:input.title,body:input.body,published_at:input.publishedAt}).eq('id',id).eq('facility_id',facilityId).eq('is_published',false).select('id').maybeSingle();
+   const {data,error}=await createSupabaseServerClient(event).schema('book').from('news_posts').update({title:input.title,body:input.body,published_at:input.publishedAt,cover_image_url:input.coverImageUrl,cover_image_alt:input.coverImageAlt}).eq('id',id).eq('facility_id',facilityId).eq('is_published',false).select('id').maybeSingle();
    if(error||!data)return fail(409,{message:'下書きを保存できませんでした。公開状態や施設の権限を確認してください。'});
    return {previewUrl:NEWS_PREVIEW_ORIGIN+'/news/'+id+'/?preview='+encodeURIComponent(token),saved:id};
   }catch(e){return fail(400,{message:message(e)});}

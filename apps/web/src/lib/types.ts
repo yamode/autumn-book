@@ -90,6 +90,8 @@ export interface SitePage {
 
 /** お知らせ（book.news_posts 対称・WP のニュース機能を置換） */
 export interface NewsPost {
+ coverImageUrl?:string|null;
+ coverImageAlt?:string;
 	id: string;
 	facilityId: string;
 	title: string;

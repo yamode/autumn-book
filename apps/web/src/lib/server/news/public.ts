@@ -23,14 +23,14 @@ export interface NewsRow {
 	id: string;
 	title: string;
 	body: string;
-	published_at: string;
+	published_at: string;cover_image_url?:string|null;cover_image_alt?:string;
 }
 
 export async function listPublicNews(facilityUuid: string, page: number, per: number) {
 	const from = (page - 1) * per;
 	const { data, error, count } = await supa()
 		.from('news_posts')
-		.select('id, title, body, published_at', { count: 'exact' })
+		.select('id, title, body, published_at, cover_image_url, cover_image_alt', { count: 'exact' })
 		.eq('facility_id', facilityUuid)
 		.eq('is_published', true)
 		.order('published_at', { ascending: false })
@@ -44,7 +44,7 @@ export async function listPublicNews(facilityUuid: string, page: number, per: nu
 export async function getPublicNews(facilityUuid: string, id: string) {
 	const { data: post, error } = await supa()
 		.from('news_posts')
-		.select('id, title, body, published_at')
+		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
 		.eq('facility_id', facilityUuid)
 		.eq('is_published', true)
 		.eq('id', id)

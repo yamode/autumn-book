@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ params }) => {
 				id: row.id,
 				facilityId: facility.id,
 				title: row.title,
-				body: row.body ?? '',
+				body: row.body ?? '',coverImageUrl:row.cover_image_url,coverImageAlt:row.cover_image_alt,
 				publishedAt: row.published_at,
 				isPublished: true,
 				createdAt: row.published_at
