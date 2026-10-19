@@ -55,8 +55,7 @@ export const actions: Actions = {
 		if (!r.ok) {
    // The reservation RPC is authoritative. Refresh only AFTER its transaction
    // has rejected the booking; a preflight availability check cannot prevent races.
-   const retryable = ['slot_taken','per_room_limit','past_cutoff','slot_unavailable'].includes(r.code);
-   if (retryable) {
+   if (r.code === 'slot_taken' || r.code === 'per_room_limit' || r.code === 'past_cutoff' || r.code === 'slot_unavailable') {
     const refreshedCtx = await sbBathContext(token);
     return fail(409, { error:r.code, refreshedCtx, availabilityRefreshFailed:!refreshedCtx?.ok,
      attempted:{date,from,bathId},retryAt:Date.now() });

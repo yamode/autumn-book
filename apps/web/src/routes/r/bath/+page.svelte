@@ -80,7 +80,8 @@
 		if (form?.error) {
    step = 1;
    from = '';
-   if(form.attempted)date=days.some(d=>d.date===form.attempted.date)?form.attempted.date:'';
+   const attempted = form.attempted;
+   if(attempted)date=days.some(d=>d.date===attempted.date)?attempted.date:'';
    void tick().then(()=>document.getElementById('bath-reservation-error')?.focus());
   }
 		if (form?.done === 'canceled' || form?.done === 'change_started') reset();
