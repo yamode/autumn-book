@@ -6,7 +6,7 @@
  import type {NewsPost} from '$lib/types';
  let {post,facilityId,hpPreviewSupported=false,canEdit=true,onDirty=(_dirty:boolean)=>{}}:{onDirty?:(dirty:boolean)=>void;post?:NewsPost;facilityId:string;hpPreviewSupported?:boolean;canEdit?:boolean}=$props();
  const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
- let title=$state(untrack(()=>post?.title??'')),body=$state(untrack(()=>post?.body??'')),publishedAt=$state(untrack(()=>post?.publishedAt??today())),isPublished=$state(untrack(()=>post?.isPublished??false));
+ let title=$state(untrack(()=>post?.title??'')),body=$state(untrack(()=>(post?.body??'').replace(/\r\n?/g,'\n'))),publishedAt=$state(untrack(()=>post?.publishedAt??today())),isPublished=$state(untrack(()=>post?.isPublished??false));
  let saved=$state(untrack(()=>JSON.stringify({title,body,publishedAt,isPublished}))),busy=$state(false),uploading=$state(false),notice=$state(''),error=$state('');
  let formEl:HTMLFormElement;
  const dirty=$derived(JSON.stringify({title,body,publishedAt,isPublished})!==saved),locked=$derived(busy||uploading||!canEdit);

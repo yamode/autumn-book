@@ -7,7 +7,7 @@ export async function newsForm(request:Request,maxBytes=512*1024){
  try{return await new Response(bytes,{headers:{'content-type':request.headers.get('content-type')??''}}).formData();}catch{error(400,'入力データを読み取れません。');}
 }
 export function newsInput(form:FormData){
- const title=String(form.get('title')??'').trim(),body=String(form.get('body')??''),publishedAt=String(form.get('publishedAt')??'');
+ const title=String(form.get('title')??'').trim(),body=String(form.get('body')??'').replace(/\r\n?/g,'\n'),publishedAt=String(form.get('publishedAt')??'');
  if(!title||title.length>200)throw Error('タイトルは1〜200文字で入力してください。');
  if(body.length>100000)throw Error('本文は100,000文字以内で入力してください。');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(publishedAt)||Number.isNaN(Date.parse(publishedAt+'T00:00:00Z')))throw Error('掲載日を指定してください。');
