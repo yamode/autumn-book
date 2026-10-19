@@ -26,7 +26,9 @@ export const POST: RequestHandler = async ({request,params}) => {
  const name=field('name',100),email=field('email',254),subject=field('subject',200)||'お問い合わせ',body=field('body',10000),id=field('requestKey',36);
  if(!name || !body || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id))error(400,'Invalid input');
  const db=partnerServiceClient();if(!db)error(503,'受付準備中です。');
- const profile:Record<string,string>={};for(const [k,max] of [['kana',100],['tel',30],['address',300]] as const)profile[k]=field(k,max);
+ const inquiryType=field('inquiryType',20)||'guest';
+ if(!['guest','business','media'].includes(inquiryType))error(400,'Invalid inquiry type');
+ const profile:Record<string,string>={inquiry_type:inquiryType};for(const [k,max] of [['kana',100],['tel',30],['address',300]] as const)profile[k]=field(k,max);
  const {data,error:e}=await db.schema('book').rpc('inquiry_accept',{p_facility:FACILITY_UUID['f-nishiwaga'],p_key:id,p_name:name,p_email:email,p_subject:subject,p_body:body,p_profile:profile,p_notice:'info@yamado.co.jp'});
  if(e){console.error('[inquiry] accept failed',e.code);error(503,'受付処理に失敗しました。時間をおいて再度お試しください。');}
  return json({ok:true,id:data},{headers:{'cache-control':'no-store'}});
