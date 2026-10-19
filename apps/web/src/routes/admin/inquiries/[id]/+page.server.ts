@@ -13,8 +13,9 @@ export const load: PageServerLoad = async event => {
   event.cookies.set('ab_fac','f-nishiwaga',{path:'/',httpOnly:true,sameSite:'lax',secure:event.url.protocol==='https:'});
   redirect(303,event.url.pathname);
  }
- const [messages,job]=await Promise.all([history(db,item.id),draftJob(db,item.id)]);
- return {item,messages,job,aiConfigured:aiConfigured()};
+ const [messages,job,files,signature]=await Promise.all([history(db,item.id),draftJob(db,item.id),db.schema('book').from('inquiry_attachments').select('id,inquiry_id,message_id,filename,mime_type,size_bytes,created_at').eq('inquiry_id',item.id).order('created_at'),db.schema('book').from('inquiry_signatures').select('template,version').eq('facility_id',item.facility_id).single()]);
+ if(files.error||signature.error)error(503,'添付・署名の設定を取得できません。');
+ return {item,messages,job,attachments:files.data??[],signature:signature.data!,aiConfigured:aiConfigured()};
 };
 export const actions: Actions = {
  default: async event => {
@@ -39,7 +40,7 @@ export const actions: Actions = {
     const draft=await makeDraft(db,item);
     Object.assign(args,{p_body:draft.text,p_sources:draft.sources,p_model:draft.model});
    }
-   if(action==='status') Object.assign(args,{p_status:String(form.get('status')),p_assignee:String(form.get('assignee')??'')});
+   if(action==='status') Object.assign(args,{p_status:String(form.get('status')),p_assignee:item.assignee});
    if(['approve','revoke','retry','resolve_sent','resolve_unsent'].includes(action)) args.p_message=String(form.get('messageId'));
    if(action==='approve') Object.assign(args,{p_question:String(form.get('question')??''),p_answer:String(form.get('answer')??''),p_until:String(form.get('until')??'')||null});
    const {error:e}=await db.schema('book').rpc('admin_inquiry_edit',args);
