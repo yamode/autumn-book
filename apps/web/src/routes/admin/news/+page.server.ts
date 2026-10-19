@@ -18,6 +18,15 @@ async function inputFor(event:RequestEvent){
 }
 function message(e:unknown){return e instanceof Error?e.message:'保存できませんでした。';}
 export const actions:Actions={
+ autosave:async event=>{
+  if(event.locals.user?.role!=='admin')return fail(403,{message:'編集権限がありません。'});
+  try{const {form,input,facilityId,bookFacilityId}=await inputFor(event),id=String(form.get('postId')??'');
+   if(DATA_SOURCE==='supabase'){const db=createSupabaseServerClient(event);if(!id){const created=await addNewsAdmin(db,facilityId,input);return {saved:created.id};}
+    const {data,error}=await db.schema('book').from('news_posts').update({title:input.title,body:input.body,published_at:input.publishedAt}).eq('id',id).eq('facility_id',facilityId).select('id').maybeSingle();if(error||!data)return fail(409,{message:'自動保存できませんでした。'});return {saved:id};}
+   if(!id){addNews({facilityId:bookFacilityId,...input,isPublished:false});return {saved:demoList(bookFacilityId)[0]?.id};}
+   const post=newsPosts.find(n=>n.id===id&&n.facilityId===bookFacilityId);if(!post)return fail(404,{message:'お知らせが見つかりません。'});Object.assign(post,input);return {saved:id};
+  }catch(e){return fail(400,{message:message(e)});}
+ },
  add:async event=>{
   if(event.locals.user?.role!=='admin')return fail(403,{message:'編集権限がありません。'});
   try{
