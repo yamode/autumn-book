@@ -1,4 +1,5 @@
 <script lang="ts">
+ import '$lib/styles/inquiry-interactions.css';
  import { enhance } from '$app/forms';
  import { beforeNavigate,goto,invalidateAll } from '$app/navigation';
  import { onMount,tick,untrack } from 'svelte';

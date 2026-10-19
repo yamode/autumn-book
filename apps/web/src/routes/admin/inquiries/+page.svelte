@@ -1,4 +1,5 @@
 <script lang="ts">
+ import '$lib/styles/inquiry-interactions.css';
  import type { PageData } from './$types';
  import { STATES } from '$lib/inquiries';
  import { invalidateAll } from '$app/navigation';

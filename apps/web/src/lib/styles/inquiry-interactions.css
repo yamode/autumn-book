@@ -1,0 +1,97 @@
+/* Shared interaction states for the inquiry inbox, editor and confirmation dialog. */
+.inbox :is(button, a),
+.inquiry-desk :is(button, a, summary),
+.review-dialog button {
+ transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease,
+  box-shadow 150ms ease, transform 150ms ease;
+}
+.inbox button:not(:disabled), .inquiry-desk button:not(:disabled), .review-dialog button:not(:disabled) { cursor: pointer; }
+.inbox :is(button, a):focus-visible,
+.inquiry-desk :is(button, a, summary):focus-visible,
+.review-dialog button:focus-visible {
+ outline: 2px solid #59794b;
+ outline-offset: 3px;
+}
+.inbox button:disabled, .inquiry-desk button:disabled, .review-dialog button:disabled { cursor: not-allowed; }
+.inquiry-desk .primary-button:disabled:hover, .review-dialog .primary-button:disabled:hover {
+ background: #2f4a3d;
+ box-shadow: 0 2px 4px #233b3210;
+ transform: none;
+}
+.inbox button:not(:disabled):active,
+.inquiry-desk button:not(:disabled):active,
+.review-dialog button:not(:disabled):active { transform: translateY(0) scale(.98); }
+.inquiry-desk :is(.quiet-button, .secondary-button),
+.review-dialog .secondary-button, .inbox .inbox-actions button {
+ color: #526449;
+ border-color: #cbd5c4;
+ box-shadow: 0 1px 2px #253b2410;
+}
+.inquiry-desk .thread-actions button { padding: .3rem .45rem; border-radius: .4rem; }
+.inquiry-desk .attachment-list button { border-radius: .35rem; min-width: 1.5rem; }
+.inbox .row-arrow, .inquiry-desk .primary-button>span, .review-dialog .primary-button>span { transition: transform 150ms ease, color 150ms ease; }
+
+@media (hover: hover) and (pointer: fine) {
+ .inbox .inbox-actions button:not(:disabled):hover,
+ .inquiry-desk :is(.quiet-button, .secondary-button):not(:disabled):hover,
+ .review-dialog .secondary-button:not(:disabled):hover,
+ .inquiry-desk .knowledge button:not(:disabled):hover {
+  background: #e7efdf;
+  color: #294331;
+  border-color: #92a77f;
+  box-shadow: 0 3px 8px #29432822;
+  transform: translateY(-1px);
+ }
+ .inquiry-desk .primary-button:not(:disabled):hover,
+ .review-dialog .primary-button:not(:disabled):hover {
+  background: #193d2b;
+  color: #fff;
+  box-shadow: 0 4px 12px #193d2b40, inset 0 0 0 1px #ffffff18;
+  transform: translateY(-1px);
+ }
+ .inquiry-desk .primary-button:not(:disabled):hover>span { transform: translateX(3px); }
+ .inbox .inbox-origins a:hover, .inquiry-desk .mobile-tabs button:not(:disabled):hover {
+  background: #e8efdf;
+  color: #294d2b;
+  box-shadow: inset 0 -2px #7a9663;
+ }
+ .inbox .table-toolbar nav a:hover { background: #e7eedf; color: #294d2b; }
+ .inbox .table-toolbar nav a.active:hover { background: #dce8d0; }
+ .inbox .table-toolbar form button:not(:disabled):hover { background: #e4eddb; color: #34582d; border-radius: .4rem; }
+ .inbox .overview-stat:hover { background: #e6eedc; border-radius: .5rem; box-shadow: 0 2px 6px #304a2012; }
+ .inbox .overview-stat:hover :is(strong, span) { color: #35582c; }
+ .inbox .inquiry-row:hover { background: #eef4e7; box-shadow: inset 3px 0 #6d8d55; }
+ .inbox .inquiry-row:hover .row-arrow { transform: translateX(3px); color: #35582c; }
+ .inbox .table-footer a:hover, .inbox .empty-state a:hover,
+ .inquiry-desk .back:hover, .inquiry-desk .source-card a:hover {
+  color: #294d2b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+ }
+ .inquiry-desk .thread-actions button:not(:disabled):hover { background: #e2ecd7; color: #315327; text-decoration: none; }
+ .inquiry-desk .message-summary:hover { background: #edf3e6; box-shadow: inset 3px 0 #809c68; }
+ .inquiry-desk .staff-message>.message-summary:hover { background: #e1ecd7; }
+ .inquiry-desk :is(.sources, .signature-settings, .system-messages, .knowledge, .reply-signature)>summary:hover {
+  color: #34562b;
+  background: #e8efdf;
+  border-radius: .3rem;
+  box-shadow: 0 0 0 4px #e8efdf;
+ }
+ .inquiry-desk :is(.source-card, .mail-fold)>summary:hover { background: #e6eedc; color: #34562b; border-radius: .35rem; }
+ .inquiry-desk :is(.original-mail, .long-body)>summary:hover { color: #34562b; text-decoration: underline; text-underline-offset: 3px; }
+ .inquiry-desk .attachment-list a:hover { color: #244a29; text-decoration-thickness: 2px; }
+ .inquiry-desk .attachment-list button:not(:disabled):hover { background: #fbe6e1; color: #a13d2b; box-shadow: 0 0 0 1px #edc6ba; }
+ .inquiry-desk .save-error button:not(:disabled):hover { background: #faeee1; color: #824d31; }
+ .review-dialog>header button:not(:disabled):hover { background: #e7efdf; color: #294331; border-radius: .4rem; box-shadow: 0 0 0 4px #e7efdf; }
+ .inbox button:not(:disabled):hover:active,
+ .inquiry-desk button:not(:disabled):hover:active,
+ .review-dialog button:not(:disabled):hover:active {
+  transform: translateY(0) scale(.98);
+  box-shadow: inset 0 1px 3px #193d2b25;
+ }
+}
+@media (prefers-reduced-motion: reduce) {
+ .inbox :is(button, a, .row-arrow),
+ .inquiry-desk :is(button, a, summary, .primary-button>span),
+ .review-dialog button { transition: none; transform: none !important; }
+}
