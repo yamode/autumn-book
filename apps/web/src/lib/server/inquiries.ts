@@ -24,7 +24,7 @@ export async function makeDraft(db: SupabaseClient, item: Inquiry) {
  if (!aiConfigured()) throw new Error('本番データ環境で利用できます。');
  const {data:result,error}=await db.functions.invoke('draft-inquiry-reply',{body:{id:item.id,revision:item.revision}});
  if(error||!result?.text)throw new Error(result?.error||'AI下書きを作成できませんでした。時間をおいて再度お試しください。');
- return result as {text:string;sources:Source[];model:string};
+ return result as {text:string;sources:Source[];model:string;language:string;japanese:string};
 }
 export type DraftJob={state:string;error:string|null;updated_at:string};
 export async function draftJob(db:SupabaseClient,id:string){
