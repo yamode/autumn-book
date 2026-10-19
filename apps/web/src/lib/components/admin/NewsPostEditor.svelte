@@ -41,7 +41,7 @@ async function uploadCover(files:FileList|null){const file=files?.[0];if(!file||
  </header>
  <input class="cover-file" bind:this={coverFile} type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="アイキャッチ画像を選択" onchange={e=>void uploadCover(e.currentTarget.files)}/>
  <div class="post-document"><label class="title-field"><span class="sr-only">タイトル</span><input bind:value={title} maxlength="200" placeholder="お知らせのタイトル" disabled={locked}/></label>
- <NewsMarkdownEditor bind:value={body} {source} {facilityId} disabled={busy||!canEdit} onBusy={v=>uploading=v} onSave={()=>void persist()} onToolbar={v=>tools=v}/></div>
+ <NewsMarkdownEditor bind:value={body} {source} {facilityId} disabled={busy||uploading||!canEdit} onBusy={v=>uploading=v} onSave={()=>void persist()} onToolbar={v=>tools=v}/></div>
 </form>
 <style>
 .news-post-editor{background:#fff;color:#3c5134;min-width:0;--news-admin-offset:64px}

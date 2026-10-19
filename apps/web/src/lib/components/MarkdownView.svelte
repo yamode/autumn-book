@@ -2,6 +2,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import { renderNewsMarkdown } from '$lib/news-markdown';
 	import '$lib/news-cta.css';
+	import '$lib/news-image.css';
 
 	let { source, news = false }: { source: string; news?: boolean } = $props();
 	let html = $derived(news ? renderNewsMarkdown(source) : renderMarkdown(source));
@@ -56,6 +57,7 @@
 		border-radius: 0.5rem;
 		margin: 0.75em 0;
 	}
+	.prose-ab :global(.news-image img) { margin: 0; width: 100%; }
 	.prose-ab :global(a) {
 		color: #95742c;
 		text-decoration: underline;
