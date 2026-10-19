@@ -1,11 +1,12 @@
 <script lang="ts">
+ import {invalidateAll} from '$app/navigation';
  import NewsPostEditor from '$lib/components/admin/NewsPostEditor.svelte';
  let {data,form}=$props();let creating=$state(false),newDirty=$state(false),search=$state(''),filter=$state('all');
  const canEdit=$derived(data.user?.role==='admin');
  const filtered=$derived(data.posts.filter(post=>(filter==='all'||(filter==='draft'?!post.isPublished:post.isPublished))&&post.title.includes(search)));
 </script>
 <svelte:head><title>お知らせ | Autumn Book</title></svelte:head>
-<section class="news-admin"><header><div><p>{data.currentFacility.name}</p><h1>お知らせ</h1></div>{#if canEdit}<button class="new-post-button" onclick={()=>{if(creating&&newDirty&&!confirm('新しいお知らせの未保存の変更を破棄しますか？'))return;creating=!creating;newDirty=false;}}>{creating?'新規作成を閉じる':'＋ お知らせを作成'}</button>{/if}</header>
+<section class="news-admin"><header><div><p>{data.currentFacility.name}</p><h1>お知らせ</h1></div>{#if canEdit}<button class="new-post-button" onclick={()=>{if(creating&&newDirty&&!confirm('新しいお知らせの未保存の変更を破棄しますか？'))return;creating=!creating;newDirty=false;if(!creating)void invalidateAll();}}>{creating?'新規作成を閉じる':'＋ お知らせを作成'}</button>{/if}</header>
  {#if form?.message}<p class="page-error" role="alert">{form.message}</p>{/if}
  {#if creating}<section class="new-post"><h2>新しいお知らせ</h2>{#key form?.added??'new'}<NewsPostEditor facilityId={data.currentFacility.id} hpPreviewSupported={data.hpPreviewSupported} {canEdit} onDirty={value=>newDirty=value}/>{/key}</section>{/if}
  <div class="news-toolbar"><nav aria-label="掲載状態の絞り込み">{#each [{id:'all',label:'すべて'},{id:'draft',label:'下書き'},{id:'published',label:'公開中'}] as item}<button class:active={filter===item.id} aria-pressed={filter===item.id} onclick={()=>filter=item.id}>{item.label}</button>{/each}</nav><input bind:value={search} aria-label="お知らせを検索" placeholder="タイトルで検索"/><span>{filtered.length}件</span></div>

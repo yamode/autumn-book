@@ -53,6 +53,7 @@
  <input class="file-input" tabindex="-1" bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple aria-label="挿入する画像を選択" onchange={event=>void upload(Array.from(event.currentTarget.files??[]))}/>
  <div class="editor-panes" class:split={mode==='split'} role="group" aria-label="本文の編集領域" ondragover={event=>{if(Array.from(event.dataTransfer?.types??[]).includes('Files')){event.preventDefault();dragging=true;}}} ondragleave={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node))dragging=false;}} ondrop={drop}>
   <textarea bind:this={area} value={value} {name} aria-label="お知らせ本文" onkeydown={shortcuts} maxlength="100000" spellcheck="false" disabled={locked} oninput={event=>change(event.currentTarget.value)} onselect={remember} onkeyup={remember} onclick={remember} onpaste={paste} class:off={mode==='preview'} placeholder="本文を入力してください。画像はドラッグ＆ドロップでも追加できます。"></textarea>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (Scrollable preview needs keyboard focus.) -->
   <div class="editor-preview" class:off={mode==='edit'} role="region" tabindex="0" aria-label="本文プレビュー">{#if value.trim()}<MarkdownView source={value} news/>{:else}<p class="empty-preview">本文のプレビューが表示されます。</p>{/if}</div>
  </div>
  <div class="editor-status" aria-live="polite"><span>{uploading?'画像をアップロード中…':dragging?'画像をドロップして挿入':'画像のドラッグ＆ドロップ・貼り付けに対応'}</span><span>{value.length.toLocaleString()}文字</span></div>
