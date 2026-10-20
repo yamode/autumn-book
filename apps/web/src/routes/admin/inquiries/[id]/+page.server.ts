@@ -17,13 +17,14 @@ export const load: PageServerLoad = async event => {
  }
  const [messages,job,files,signature]=await Promise.all([history(db,item.id),draftJob(db,item.id),db.schema('book').from('inquiry_attachments').select('id,inquiry_id,message_id,filename,mime_type,size_bytes,created_at').eq('inquiry_id',item.id).order('created_at'),db.schema('book').from('inquiry_signatures').select('template,version').eq('facility_id',item.facility_id).single()]);
  if(files.error||signature.error)error(503,'添付・署名の設定を取得できません。');
- const [draftTranslation,messageTranslations,staff,receptionJobs]=await Promise.all([
+ const [draftTranslation,messageTranslations,staff,receptionJobs,pmsLinks]=await Promise.all([
   db.schema('book').rpc('admin_inquiry_translation_get',{p_id:item.id,p_target:'draft',p_source:replyWithoutSignature(item.draft,item.draft_signature).trimEnd()}),
   db.schema('book').from('inquiry_translations').select('target,text_ja,language,created_at').eq('inquiry_id',item.id).neq('target','draft').neq('text_ja','').order('created_at',{ascending:false}).limit(250),
   facilityStaff(db,item.facility_id),
-  db.schema('book').from('inquiry_reception_jobs').select('message_id,state,error').eq('inquiry_id',item.id)
+  db.schema('book').from('inquiry_reception_jobs').select('message_id,state,error').eq('inquiry_id',item.id),
+  db.schema('book').rpc('admin_inquiry_pms_links',{p_id:item.id})
  ]);
- return {item,messages,job,staff,receptionJobs:receptionJobs.data??[],draftTranslation:draftTranslation.data as {source_text:string;text_ja:string;language:string}|null,messageTranslations:messageTranslations.data??[],attachments:files.data??[],signature:signature.data!,aiConfigured:aiConfigured()};
+ return {pmsLinks:pmsLinks.data??[],pmsLinkError:pmsLinks.error?'予約との連携情報を取得できません。履歴を更新して再度お試しください。':'',item,messages,job,staff,receptionJobs:receptionJobs.data??[],draftTranslation:draftTranslation.data as {source_text:string;text_ja:string;language:string}|null,messageTranslations:messageTranslations.data??[],attachments:files.data??[],signature:signature.data!,aiConfigured:aiConfigured()};
 };
 export const actions: Actions = {
  default: async event => {

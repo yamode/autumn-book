@@ -8,6 +8,7 @@
  import type { PageData,ActionData } from './$types';
  import { STATES,INQUIRY_TYPES,canDraftInquiry,inquiryGuestLabel,INQUIRY_REPLY_LANGUAGES } from '$lib/inquiries';
  import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+ import InquiryPmsLink from '$lib/components/admin/InquiryPmsLink.svelte';
  import InquiryKnowledge from '$lib/components/admin/InquiryKnowledge.svelte';
  import InquiryMailBody from '$lib/components/admin/InquiryMailBody.svelte';
  import {splitInquiryMail,inquiryMailPreview} from '$lib/inquiry-mail-display';
@@ -178,6 +179,7 @@
   <label>対応状況 <select name="status" value={data.item.status}>{#each Object.entries(STATES) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>
   <button class="quiet-button" disabled={busy||saving}>変更を保存</button>
  </form>
+ {#key data.item.id}<InquiryPmsLink inquiryId={data.item.id} links={data.pmsLinks} error={data.pmsLinkError}/>{/key}
  <nav class="mobile-tabs" aria-label="表示切替"><button class:active={mobilePane==='conversation'} onclick={()=>mobilePane='conversation'}>やり取り <span>{visibleMessages.length}</span></button><button class:active={mobilePane==='reply'} onclick={()=>mobilePane='reply'}>返信を作成 {#if data.item.draft}<i></i>{/if}</button></nav>
  <div class="workspace">
   <section class="composer-panel" class:mobile-hidden={mobilePane!=='reply'} aria-label="返信を作成">
