@@ -5,7 +5,7 @@
  import {replaceState,beforeNavigate} from '$app/navigation';
  import NewsMarkdownEditor from './NewsMarkdownEditor.svelte';
  import type {NewsPost} from '$lib/types';
- let {post,facilityId,hpPreviewSupported=false,canEdit=true,onDirty=(_v:boolean)=>{}}:{post?:NewsPost;facilityId:string;hpPreviewSupported?:boolean;canEdit?:boolean;onDirty?:(v:boolean)=>void}=$props();
+ let {post,facilityId,hpPreviewSupported=false,publicNewsBase=null,canEdit=true,onDirty=(_v:boolean)=>{}}:{post?:NewsPost;facilityId:string;hpPreviewSupported?:boolean;publicNewsBase?:string|null;canEdit?:boolean;onDirty?:(v:boolean)=>void}=$props();
  let id=$state(untrack(()=>post?.id??'')),title=$state(untrack(()=>post?.title??'')),body=$state(untrack(()=>(post?.body??'').replace(/\r\n?/g,'\n'))),publishedAt=$state(untrack(()=>post?.publishedAt??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo'}).format(new Date()))),published=$state(untrack(()=>post?.isPublished??false));
  let coverImageUrl=$state(untrack(()=>post?.coverImageUrl??'')),coverImageAlt=$state(untrack(()=>post?.coverImageAlt??'')),coverFile:HTMLInputElement;
  const snapshot=()=>JSON.stringify({title,body,publishedAt,coverImageUrl,coverImageAlt});
@@ -34,7 +34,7 @@ async function uploadCover(files:FileList|null){const file=files?.[0];if(!file||
     <div class="edit-mode" aria-label="本文の編集方法"><button type="button" disabled={uploading} class:active={!source} aria-pressed={!source} onclick={()=>source=false}>見たまま編集</button><button type="button" disabled={uploading} class:active={source} aria-pressed={source} onclick={()=>source=true}>Markdown</button></div>
     <details class="cover-menu"><summary>{#if coverImageUrl}<img src={coverImageUrl} alt=""/>{:else}<span class="cover-empty" aria-hidden="true">＋</span>{/if}<span>アイキャッチ</span></summary><div class="cover-popover"><strong>アイキャッチ画像</strong>{#if coverImageUrl}<img class="cover-preview" src={coverImageUrl} alt={coverImageAlt||'アイキャッチ画像'}/><label>画像の説明<input bind:value={coverImageAlt} maxlength="200" disabled={locked}/></label>{/if}{#if canEdit}<div class="cover-actions"><button type="button" disabled={locked} onclick={()=>coverFile.click()}>{coverImageUrl?'画像を変更':'画像を選択'}</button>{#if coverImageUrl}<button type="button" disabled={locked} onclick={()=>{coverImageUrl='';coverImageAlt='';}}>外す</button>{/if}</div>{/if}</div></details>
     <details class="date-menu"><summary>掲載日 <span class="date-value">{publishedAt.replaceAll('-','/')}</span></summary><div class="date-popover"><label>掲載日<input type="date" bind:value={publishedAt} disabled={locked}/></label></div></details>
-    {#if hpPreviewSupported&&canEdit&&!published}<button type="button" disabled={locked} onclick={()=>void preview()}>HPでプレビュー ↗</button>{:else if hpPreviewSupported&&published}<a class="action-link" href={'https://www.yamado.co.jp/news/'+id+'/'} target="_blank" rel="noopener noreferrer">HPで確認 ↗</a>{/if}
+    {#if hpPreviewSupported&&canEdit&&!published}<button type="button" disabled={locked} onclick={()=>void preview()}>HPでプレビュー ↗</button>{/if}{#if publicNewsBase&&published&&id}<a class="action-link" href={publicNewsBase+encodeURIComponent(id)+'/'} target="_blank" rel="noopener noreferrer">本番ページを開く ↗</a>{/if}
     {#if canEdit}<button type="button" disabled={locked} onclick={()=>void persist()}>今すぐ保存</button><button type="button" class="publish-button" disabled={locked||saving} onclick={()=>void changePublication()}>{published?'非公開に戻す':'公開する'}</button>{/if}
    </div>
   </div>

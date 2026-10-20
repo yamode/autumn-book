@@ -9,7 +9,7 @@ import {newsForm,newsInput} from '$lib/server/news/editor';
 import {issueNewsPreview,NEWS_PREVIEW_FACILITY,NEWS_PREVIEW_ORIGIN} from '$lib/server/news/preview';
 export const load:PageServerLoad=async event=>{
  const {currentFacility}=await event.parent(),facilityId=FACILITY_UUID[currentFacility.id];
- return {posts:DATA_SOURCE==='supabase'?await listNewsAdmin(createSupabaseServerClient(event),facilityId):demoList(currentFacility.id),hpPreviewSupported:DATA_SOURCE==='supabase'&&facilityId===NEWS_PREVIEW_FACILITY};
+ return {posts:DATA_SOURCE==='supabase'?await listNewsAdmin(createSupabaseServerClient(event),facilityId):demoList(currentFacility.id),publicNewsBase:DATA_SOURCE==='supabase'?({'f-nishiwaga':'https://www.yamado.co.jp/news/','f-oga':'https://oga.yamado.co.jp/news/'} as Record<string,string>)[currentFacility.id]??null:null,hpPreviewSupported:DATA_SOURCE==='supabase'&&facilityId===NEWS_PREVIEW_FACILITY};
 };
 async function inputFor(event:RequestEvent){
  const form=await newsForm(event.request),selected=currentBookFacility(event);
