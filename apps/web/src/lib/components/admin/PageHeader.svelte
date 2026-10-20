@@ -17,5 +17,5 @@
 		</h1>
 		{#if description}<p class="mt-1 max-w-3xl text-sm leading-relaxed text-stone-500">{description}</p>{/if}
 	</div>
-	{#if actions}<div class="flex shrink-0 flex-wrap items-center gap-2">{@render actions()}</div>{/if}
+	{#if actions}<div class="flex max-w-full shrink-0 flex-wrap items-center gap-2">{@render actions()}</div>{/if}
 </div>

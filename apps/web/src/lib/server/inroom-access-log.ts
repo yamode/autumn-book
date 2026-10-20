@@ -147,3 +147,100 @@ export async function sbListAccess(client: SupabaseClient, facilityId: string, d
 		visitorId: r.visitor_id
 	}));
 }
+
+// ---- 期間集計（2026-10-21 指示）。月間など任意の期間で、どのページが何回見られたか ----
+
+export type AccessCount = { views: number; visitors: number };
+export type AccessSummary = {
+	totals: AccessCount & { rooms: number };
+	byPage: (AccessCount & { path: string; guideId: string | null })[];
+	byDay: (AccessCount & { day: string })[];
+	byRoom: (AccessCount & { roomCode: string | null })[];
+	byLocale: { key: string | null; views: number }[];
+	byDevice: { key: string | null; views: number }[];
+};
+
+/** 集計できる最長の期間（日数・両端を含めない差）。DB 側の上限と揃える */
+export const MAX_SUMMARY_SPAN_DAYS = 366;
+
+const jstDay = (iso: string) => new Date(Date.parse(iso) + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/** 行の一覧から期間集計を作る（見本環境用。DB の book.admin_inroom_access_summary と同じ形・見本の滞在は除く） */
+export function summarizeAccess(rows: AccessLogRow[]): AccessSummary {
+	const real = rows.filter((r) => !r.isDemo);
+	const group = <K>(key: (r: AccessLogRow) => K) => {
+		const m = new Map<K, { views: number; visitors: Set<string> }>();
+		for (const r of real) {
+			const k = key(r);
+			const cur = m.get(k) ?? { views: 0, visitors: new Set<string>() };
+			cur.views += 1;
+			if (r.visitorId) cur.visitors.add(r.visitorId);
+			m.set(k, cur);
+		}
+		return [...m.entries()].map(([k, v]) => ({ k, views: v.views, visitors: v.visitors.size }));
+	};
+	return {
+		totals: {
+			views: real.length,
+			visitors: new Set(real.map((r) => r.visitorId).filter(Boolean)).size,
+			rooms: new Set(real.map((r) => r.roomCode).filter(Boolean)).size
+		},
+		byPage: group((r) => `${r.path}\u0000${r.guideId ?? ''}`)
+			.map(({ k, views, visitors }) => {
+				const [path, guideId] = k.split('\u0000');
+				return { path, guideId: guideId || null, views, visitors };
+			})
+			.sort((a, b) => b.views - a.views || a.path.localeCompare(b.path)),
+		byDay: group((r) => jstDay(r.createdAt))
+			.map(({ k, views, visitors }) => ({ day: k, views, visitors }))
+			.sort((a, b) => a.day.localeCompare(b.day)),
+		byRoom: group((r) => r.roomCode)
+			.map(({ k, views, visitors }) => ({ roomCode: k, views, visitors }))
+			.sort((a, b) => (a.roomCode === null ? 1 : b.roomCode === null ? -1 : a.roomCode.localeCompare(b.roomCode))),
+		byLocale: group((r) => r.locale)
+			.map(({ k, views }) => ({ key: k, views }))
+			.sort((a, b) => b.views - a.views),
+		byDevice: group((r) => r.device)
+			.map(({ k, views }) => ({ key: k, views }))
+			.sort((a, b) => b.views - a.views)
+	};
+}
+
+/** 見本環境：プロセス内の記録から期間（JST の日付・両端を含む）で集計 */
+export function summarizeAccessDemo(facilityId: string, from: string, to: string): AccessSummary {
+	const start = Date.parse(`${from}T00:00:00+09:00`);
+	const end = jstDayRange(to)[1];
+	return summarizeAccess(
+		demoLogs
+			.filter((l) => l.facilityId === facilityId && Date.parse(l.createdAt) >= start && Date.parse(l.createdAt) < end)
+			.map(({ facilityId: _f, ...r }) => r)
+	);
+}
+
+type DbCount = { views: number; visitors: number };
+type DbSummary = {
+	totals: DbCount & { rooms: number };
+	by_page: (DbCount & { path: string; guide_id: string | null })[];
+	by_day: (DbCount & { day: string })[];
+	by_room: (DbCount & { room_code: string | null })[];
+	by_locale: { key: string | null; views: number }[];
+	by_device: { key: string | null; views: number }[];
+};
+
+export async function sbSummarizeAccess(client: SupabaseClient, facilityId: string, from: string, to: string): Promise<AccessSummary> {
+	const { data, error } = await client.schema('book').rpc('admin_inroom_access_summary', {
+		p_facility_id: FACILITY_UUID[facilityId] ?? facilityId,
+		p_from: from,
+		p_to: to
+	});
+	if (error) throw new Error('アクセスログを集計できませんでした（' + error.message + '）');
+	const d = data as DbSummary;
+	return {
+		totals: d.totals,
+		byPage: d.by_page.map((r) => ({ path: r.path, guideId: r.guide_id, views: r.views, visitors: r.visitors })),
+		byDay: d.by_day.map((r) => ({ day: r.day, views: r.views, visitors: r.visitors })),
+		byRoom: d.by_room.map((r) => ({ roomCode: r.room_code, views: r.views, visitors: r.visitors })),
+		byLocale: d.by_locale,
+		byDevice: d.by_device
+	};
+}
