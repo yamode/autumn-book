@@ -1,3 +1,17 @@
+## アクセス解析の同意バナーを地域で出し分け（2026-10-21・v0.183.0）
+
+- 同意バナーは EEA・英国・スイス・国不明からのアクセスだけに出す（`src/lib/consent-region.ts`）。それ以外は確認なしで GA4 計測。国は Cloudflare の `cf.country`（`src/lib/server/geo.ts`）。
+- 本人の選択（localStorage `ab_consent`）が最優先。プライバシーポリシー（/legal/privacy）の下に「アクセス解析を停止する／許可する」（`AnalyticsOptOut.svelte`）。止めると読み込み済みの GA もその場で止まる。
+- `/api/geo`：国コードと同意要否だけ返す。施設 HP（www.yamado.co.jp・oga.yamado.co.jp）から CORS で呼べる。hp-yamado v1.12.0 が使う。
+- プライバシーポリシー第7条を改定（改定日 2026年10月21日）。開発中は `.env` の `DEV_GEO_COUNTRY=JP|DE` で国を試せる。
+
+### テストチェックリスト（同意バナーの地域出し分け）
+- [ ] 日本から開くとバナーが出ず、GA4 の page_view が送られる
+- [ ] VPN 等で EU（例: ドイツ）から開くとバナーが出て、同意するまで GA が読み込まれない
+- [ ] 一度「同意しない」を選んだブラウザは、日本からでも計測されない
+- [ ] /legal/privacy の「アクセス解析を停止する」で止まり、別ページに移っても page_view が送られない。「許可する」で再開する
+- [ ] `https://book.yamado.app/api/geo` が国コードと consentRequired を返す。www.yamado.co.jp からの fetch が CORS で通る
+
 ## 男鹿のお知らせHPプレビュー・削除（2026-10-20・v0.180.0）
 
 - 未公開記事のHPプレビューを男鹿にも対応。HMAC署名に記事ID・施設UUID・1時間の期限を含め、APIで署名確認後に同じ施設の記事だけを取得。西和賀の既存URLとの互換性を維持。

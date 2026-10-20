@@ -1,5 +1,7 @@
 <script lang="ts">
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
+	import AnalyticsOptOut from '$lib/components/AnalyticsOptOut.svelte';
+	import { page } from '$app/state';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -21,4 +23,9 @@
 	{/if}
 
 	<MarkdownView source={data.page.body} />
+
+	{#if page.params.page === 'privacy'}
+		<!-- アクセス解析の停止・再開（2026-10-21） -->
+		<AnalyticsOptOut />
+	{/if}
 </div>

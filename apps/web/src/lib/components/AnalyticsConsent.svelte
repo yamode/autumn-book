@@ -1,5 +1,7 @@
 <script lang="ts">
 	// GA4 ローダー + Consent Mode v2 同意バナー（設計書 §9）。
+	// バナーは EEA・英国・スイス・国不明からのアクセスだけに出す（2026-10-21。判定は $lib/consent-region・サーバーの国情報）。
+	// それ以外の地域は確認を出さずに計測し、プライバシーポリシーの「停止する」（AnalyticsOptOut）で止められる。
 	// PUBLIC_GA4_MEASUREMENT_ID 未設定なら何も描画・ロードしない。
 	// 文言はメンテナンスページと同じ自己完結ロケール分岐（messages/*.json には持たない）。
 	import { browser } from '$app/environment';
@@ -8,7 +10,14 @@
 	import { env } from '$env/dynamic/public';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { dbg } from '$lib/debug';
-	import { discardGaEvents, flushGaEvents } from '$lib/analytics';
+	import {
+		CONSENT_CHANGE_EVENT,
+		consent as effectiveConsent,
+		discardGaEvents,
+		flushGaEvents,
+		saveConsent,
+		setConsentRegion
+	} from '$lib/analytics';
 	import type { ExperimentAssignment } from '$lib/experiments';
 
 	const gaId = env.PUBLIC_GA4_MEASUREMENT_ID ?? '';
@@ -72,16 +81,32 @@
 
 	function ensureInit() {
 		if (!browser || !gaId || isExcluded(location.pathname)) return;
-		let stored: 'granted' | 'denied' | null = null;
-		try {
-			const v = localStorage.getItem('ab_consent');
-			if (v === 'granted' || v === 'denied') stored = v;
-		} catch {
-			/* localStorage 不可なら毎回バナー表示 */
-		}
-		if (stored === 'granted') initGtag();
-		if (consent === 'ssr') consent = stored ?? 'unset';
+		// 本人の選択（localStorage）が最優先。選んでいなければ地域で決まる（同意の要らない地域は granted）
+		setConsentRegion(page.data.consentRequired !== false);
+		const c = effectiveConsent();
+		if (c === 'granted') initGtag();
+		if (consent === 'ssr') consent = c;
 	}
+
+	// プライバシーポリシーの「停止する／再開する」から変わったとき（読み込み済みの GA もその場で止める）
+	function applyConsentChange() {
+		const w = window as any;
+		const next = effectiveConsent();
+		consent = next;
+		if (next === 'granted') {
+			delete w[`ga-disable-${gaId}`];
+			if (w.gtag) w.gtag('consent', 'update', { analytics_storage: 'granted' });
+		} else {
+			w[`ga-disable-${gaId}`] = true;
+			if (w.gtag) w.gtag('consent', 'update', { analytics_storage: 'denied' });
+			discardGaEvents();
+		}
+	}
+	$effect(() => {
+		if (!browser || !gaId) return;
+		window.addEventListener(CONSENT_CHANGE_EVENT, applyConsentChange);
+		return () => window.removeEventListener(CONSENT_CHANGE_EVENT, applyConsentChange);
+	});
 
 	function pageLocation() {
 		// GA に予約コードや URL の検索条件・トークンを送らない。
@@ -129,12 +154,8 @@
 	});
 
 	function choose(granted: boolean) {
+		saveConsent(granted ? 'granted' : 'denied');
 		consent = granted ? 'granted' : 'denied';
-		try {
-			localStorage.setItem('ab_consent', consent);
-		} catch {
-			/* noop */
-		}
 		if (granted) trackPage();
 		else discardGaEvents();
 		dbg('ga4 consent', consent);
