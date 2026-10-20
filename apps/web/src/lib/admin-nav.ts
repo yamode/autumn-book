@@ -117,7 +117,7 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/news', label: 'お知らせ' },
 					{ href: '/admin/faqs', label: 'FAQ' },
 					{ href: '/admin/facility', label: '施設ページ編集', demoOnly: true },
-					{ href: '/admin/mail', label: 'メルマガ', demoOnly: true },
+					{ href: '/admin/mail', label: 'メルマガ' },
 					{ href: '/admin/sequences', label: 'ステップメール', demoOnly: true }
 				]
 			}

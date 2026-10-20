@@ -25,6 +25,7 @@ declare global {
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {
 			env?: {
+				AI?: Env['AI'];
 				AB_CONFIG?: KVNamespace;
 				// FAQ ボット公開 API のレート制限（KV: autumn-book-rate）
 				AB_RATE?: KVNamespace;

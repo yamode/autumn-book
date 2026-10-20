@@ -1,50 +1,7 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { countSegment, mailCampaigns } from '$lib/server/store';
-import type { Actions } from './$types';
-import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
-
-function parseForm(form: FormData) {
-	return {
-		title: String(form.get('title') ?? '').trim(),
-		subject: String(form.get('subject') ?? '').trim(),
-		body: String(form.get('body') ?? ''),
-		ranks: form.getAll('ranks').map(String),
-		schedule: String(form.get('schedule') ?? 'now'),
-		scheduledAt: String(form.get('scheduledAt') ?? '')
-	};
-}
-
-export const actions: Actions = {
-	count: async ({ request }) => {
-		const values = parseForm(await request.formData());
-		return { values, count: countSegment({ ranks: values.ranks }) };
-	},
-	test: async ({ request, locals }) => {
-		const blocked = denyDemoStoreWrite();
-		if (blocked) return blocked;
-		const values = parseForm(await request.formData());
-		return { values, tested: true, testTo: locals.user?.name ?? '' };
-	},
-	send: async ({ request, locals }) => {
-		const blocked = denyDemoStoreWrite();
-		if (blocked) return blocked;
-		if (locals.user?.role !== 'admin') return fail(403, { message: '配信権限がありません' });
-		const values = parseForm(await request.formData());
-		if (!values.subject || !values.body) return fail(400, { values, message: '件名と本文を入力してください' });
-		const count = countSegment({ ranks: values.ranks });
-		const now = new Date();
-		const isScheduled = values.schedule === 'later' && values.scheduledAt;
-		mailCampaigns.push({
-			id: `mc-${Date.now()}`,
-			title: values.title || values.subject,
-			subject: values.subject,
-			body: values.body,
-			segment: { ranks: values.ranks },
-			status: isScheduled ? 'scheduled' : 'sent',
-			scheduledAt: isScheduled ? values.scheduledAt.replace('T', ' ') : now.toISOString().slice(0, 16).replace('T', ' '),
-			stats: isScheduled ? undefined : { sent: count, opened: 0, failed: 0 },
-			createdAt: now.toISOString().slice(0, 10)
-		});
-		redirect(303, '/admin/mail');
-	}
+import type {PageServerLoad} from './$types';
+import {newsletterContext} from '$lib/server/newsletter';
+export const load:PageServerLoad=async event=>{
+ const {db,tenant,facility}=await newsletterContext(event);
+ const [assets,lists,settings]=await Promise.all([db.from('newsletter_assets').select('id,name,kind,document').eq('tenant_id',tenant),db.from('newsletter_lists').select('id,name,tags').eq('tenant_id',tenant),db.from('newsletter_settings').select('from_name,from_email,reply_to').eq('facility_id',facility).maybeSingle()]);
+ return {facility,campaign:null,defaults:settings.data,assets:assets.data??[],lists:lists.data??[],deliveries:[]};
 };

@@ -109,6 +109,7 @@ export function isPartnerPath(pathname: string): boolean {
  * preview トークンが一致したら cookie を発行し、以後の遷移でも通るようにする。
  */
 export function isMaintenanceBypassed(event: RequestEvent): boolean {
+ if(event.url.pathname==='/mail/unsubscribe')return true;
 	const { url, locals, cookies } = event;
 
 	// 管理エリアは常に到達可能（/admin/login でログイン → バイパス取得するため）

@@ -1,0 +1,24 @@
+import {json} from '@sveltejs/kit';
+import type {RequestHandler} from './$types';
+import {newsletterContext} from '$lib/server/newsletter';
+import {createSupabaseServerClient} from '$lib/server/auth';
+import {newsForm} from '$lib/server/news/editor';
+import {photoFileProblem} from '$lib/content-blocks';
+export const POST:RequestHandler=async event=>{
+ const {facility,db:book}=await newsletterContext(event,true),form=await newsForm(event.request,11*1024*1024);
+ if(form.get('facilityId')!==facility)return json({error:'施設が切り替わっています。'},{status:409});
+ const file=form.get('file'),problem=photoFileProblem(file instanceof File?file:null);
+ if(problem)return json({error:problem},{status:400});
+ const image=file as File,bytes=new Uint8Array(await image.arrayBuffer());
+ const text=(a:number,b:number)=>String.fromCharCode(...bytes.slice(a,b));
+ const valid=image.type==='image/png'?bytes.slice(0,8).join(',')==='137,80,78,71,13,10,26,10':image.type==='image/jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:image.type==='image/webp'?text(0,4)==='RIFF'&&text(8,12)==='WEBP':image.type==='image/avif'?text(4,8)==='ftyp'&&/avif|avis/.test(text(8,32)):false;
+ if(!valid)return json({error:'画像ファイルの形式を確認してください。'},{status:400});
+ const ext=({'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/avif':'avif'} as Record<string,string>)[image.type];
+ const path=`news/${facility}/mail-${crypto.randomUUID()}.${ext}`,db=createSupabaseServerClient(event);
+ const {error}=await db.storage.from('book-photos').upload(path,bytes,{contentType:image.type,upsert:false,cacheControl:'31536000'});
+ if(error)return json({error:'アップロードできませんでした。'},{status:503});
+ const url=db.storage.from('book-photos').getPublicUrl(path).data.publicUrl;
+ const {error:assetError}=await book.rpc('admin_newsletter_asset',{p_facility:facility,p_kind:'image',p_name:image.name.slice(0,170)+' '+new Date().toISOString(),p_document:{url,alt:image.name}});
+ if(assetError)return json({error:'画像をライブラリに登録できませんでした。'},{status:503});
+ return json({url});
+};

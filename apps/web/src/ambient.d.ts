@@ -1,4 +1,5 @@
 // 環境まわりの ambient（global）型宣言。
+type Ai = import('@cloudflare/workers-types').Ai;
 // app.d.ts は `import type { SessionUser }` を持つためモジュール扱いになり、そこに書いた
 // トップレベル宣言は global にならない。global/ambient が必要な型は import を持たない本ファイルに置く。
 

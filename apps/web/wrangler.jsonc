@@ -5,6 +5,7 @@
 	"compatibility_date": "2025-05-05",
 	// Paraglide の server.js が async_hooks(AsyncLocalStorage) を動的 import するため必須
 	"compatibility_flags": ["nodejs_compat"],
+ "ai": { "binding": "AI" },
 	// アプリ設定フラグ（メンテナンスモード等）を edge 間で共有する KV。
 	// 管理画面トグルの保存先。本番では pages deploy がこのバインドを適用する。
 	// AB_RATE: FAQ ボット公開 API のレート制限（設計書 autumn_book_faq_bot_design.md §5）。

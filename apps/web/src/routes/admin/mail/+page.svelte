@@ -1,57 +1,12 @@
 <script lang="ts">
-	import PageHeader from '$lib/components/admin/PageHeader.svelte';
-	let { data } = $props();
-
-	const statusLabel = { draft: '下書き', scheduled: '予約済', sending: '配信中', sent: '配信済' } as const;
-	const statusCls = {
-		draft: 'bg-stone-100 text-stone-500',
-		scheduled: 'bg-amber-50 text-amber-700',
-		sending: 'bg-blue-50 text-blue-600',
-		sent: 'bg-emerald-50 text-emerald-700'
-	} as const;
+ import MailNav from '$lib/components/newsletter/MailNav.svelte';
+ let {data}=$props();let query=$state('');let status=$state('all');
+ const labels:Record<string,string>={draft:'下書き',scheduled:'予約済み',sending:'配信中',sent:'送信処理完了',cancelled:'取消済み'};
+ let campaigns=$derived(data.campaigns.filter(c=>(status==='all'||c.status===status)&&`${c.name} ${c.subject}`.toLowerCase().includes(query.toLowerCase())));
 </script>
-
-<svelte:head><title>メルマガ ｜ 山人管理</title></svelte:head>
-
-<PageHeader title="メルマガ" description="メルマガ受信 ON（オプトイン）の会員に配信します。">
-	{#snippet actions()}
-		<a href="/admin/mail/new" class="inline-flex min-h-10 items-center rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">＋ 新しいメルマガ</a>
-	{/snippet}
-</PageHeader>
-
-<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-	<table class="w-full min-w-[640px] text-sm">
-		<thead>
-			<tr class="border-b border-stone-200 bg-stone-50 text-left text-xs text-stone-500">
-				<th class="sticky left-0 bg-stone-50 px-3 py-2">タイトル</th><th>セグメント</th><th>状態</th><th>配信日時</th><th class="text-right">送信 / 開封</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each data.campaigns as c}
-				<tr class="border-b border-stone-100">
-					<td class="sticky left-0 max-w-[11rem] bg-white px-3 py-2.5 sm:max-w-none">
-						<p class="font-medium text-stone-800">{c.title}</p>
-						<p class="text-xs text-stone-400">{c.subject}</p>
-					</td>
-					<td class="text-xs text-stone-500">
-						{c.segment.ranks.length === 0 ? '全会員' : c.segment.ranks.join(' / ')}
-					</td>
-					<td><span class="rounded-full px-2 py-0.5 text-xs {statusCls[c.status]}">{statusLabel[c.status]}</span></td>
-					<td class="text-xs">{c.scheduledAt ?? '—'}</td>
-					<td class="text-right text-xs">
-						{#if c.stats}
-							{c.stats.sent}通 ／ 開封率 {Math.round((c.stats.opened / c.stats.sent) * 100)}%
-							{#if c.stats.failed > 0}<span class="text-red-500">（失敗{c.stats.failed}）</span>{/if}
-						{:else}
-							—
-						{/if}
-					</td>
-				</tr>
-			{:else}
-				<tr><td colspan="5" class="px-3 py-8 text-center text-stone-400">配信履歴はありません</td></tr>
-			{/each}
-		</tbody>
-	</table>
-</div>
-
-<p class="mt-3 text-xs text-stone-400">配信基盤：Resend（予定）。メルマガ受信 ON（オプトイン）の会員のみが対象になります。配信停止リンクは全メールに自動付与されます。</p>
+<svelte:head><title>メール ｜ 山人管理</title></svelte:head>
+<MailNav active="emails" />
+<header class="mb-6 flex flex-wrap items-center justify-between gap-4"><div><h1 class="text-2xl font-bold">メール</h1><p class="mt-1 text-sm text-stone-500">コンテンツを作成して、必要なお客様へ届けます。</p></div><a class="rounded-lg bg-stone-900 px-5 py-3 text-sm font-semibold text-white" href="/admin/mail/new">＋ メールを作成</a></header>
+<div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">{#each [['配信可能',data.counts.active],['配信停止',data.counts.unsubscribed],['エラー・苦情',data.counts.bounced+data.counts.complained],['同意確認待ち',data.counts.unconfirmed]] as [label,n]}<section class="rounded-xl border border-stone-200 bg-white p-5"><p class="text-sm text-stone-500">{label}</p><p class="mt-2 text-3xl font-semibold">{n}</p></section>{/each}</div>
+{#if data.unavailable}<p role="alert" class="mb-4 rounded-lg bg-amber-50 p-4 text-sm">{data.unavailable}</p>{/if}
+<section class="rounded-xl border border-stone-200 bg-white"><div class="flex flex-wrap gap-3 border-b border-stone-200 p-4"><input aria-label="メールを検索" placeholder="メールを検索" bind:value={query} class="min-h-11 flex-1 rounded-lg border border-stone-300 px-3 text-sm"/><select aria-label="状態" bind:value={status} class="rounded-lg border border-stone-300 px-3 text-sm"><option value="all">すべての状態</option>{#each Object.entries(labels) as [value,label]}<option {value}>{label}</option>{/each}</select></div><div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="bg-stone-50 text-stone-500"><tr><th class="p-4">メール名</th><th>状態</th><th>更新日</th><th>配信予定</th></tr></thead><tbody>{#each campaigns as c}<tr class="border-t border-stone-100 hover:bg-stone-50"><td class="p-4"><a class="font-semibold hover:underline" href={'/admin/mail/'+c.id}>{c.name}</a><p class="mt-1 text-stone-500">{c.subject||'件名未設定'}</p></td><td><span class="rounded-full bg-stone-100 px-3 py-1">{labels[c.status]??c.status}</span></td><td>{new Date(c.updated_at).toLocaleDateString('ja-JP',{timeZone:'Asia/Tokyo'})}</td><td>{c.scheduled_at?new Date(c.scheduled_at).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'}):'—'}</td></tr>{:else}<tr><td colspan="4" class="p-12 text-center text-stone-500">メールはまだありません。テンプレートから作成できます。</td></tr>{/each}</tbody></table></div></section>
