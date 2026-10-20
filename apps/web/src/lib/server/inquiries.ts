@@ -19,10 +19,10 @@ export async function history(db: SupabaseClient, id: string) {
  return data as Message[];
 }
 export function aiConfigured() { return env.DATA_SOURCE==='supabase'; }
-export async function makeDraft(db: SupabaseClient, item: Inquiry) {
+export async function makeDraft(db: SupabaseClient, item: Inquiry,instructions='') {
  if (!canDraftInquiry(item)) throw new Error('このお問い合わせはAI下書きの対象外です。');
  if (!aiConfigured()) throw new Error('本番データ環境で利用できます。');
- const {data:result,error}=await db.functions.invoke('draft-inquiry-reply',{body:{id:item.id,revision:item.revision}});
+ const {data:result,error}=await db.functions.invoke('draft-inquiry-reply',{body:{id:item.id,revision:item.revision,draftVersion:item.draft_version,instructions}});
  if(error||!result?.text)throw new Error(result?.error||'AI下書きを作成できませんでした。時間をおいて再度お試しください。');
  return result as {text:string;sources:Source[];model:string;language:string;japanese:string};
 }

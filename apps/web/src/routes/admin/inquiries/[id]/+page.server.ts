@@ -46,7 +46,9 @@ export const actions: Actions = {
    let generated:{text:string;japanese:string;language:string;model:string}|null=null;
    const args: Record<string,unknown>={p_id:item.id,p_revision:revision,p_action:action,p_body:body,p_expected_draft_version:item.draft_version};
    if(action==='ai') {
-    const draft=await makeDraft(db,item);generated=draft;
+    const instructions=String(form.get('aiInstructions')??'').trim();
+    if(instructions.length>2000)return fail(400,{message:'書き直しの指示は2,000文字以内で入力してください。',body});
+    const draft=await makeDraft(db,item,instructions);generated=draft;
     Object.assign(args,{p_body:draft.text,p_sources:draft.sources,p_model:draft.model});
    }
    if(action==='status') Object.assign(args,{p_status:String(form.get('status')),p_assignee:item.assignee});
