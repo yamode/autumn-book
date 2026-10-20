@@ -5,14 +5,16 @@
  import MailNav from './MailNav.svelte';
  import MailDialog from './MailDialog.svelte';
  import MailRichText from './MailRichText.svelte';
- type StudioData={facility:string;campaign:Record<string,any>|null;defaults?:Record<string,any>|null;assets:Record<string,any>[];lists:Record<string,any>[];deliveries:Record<string,any>[];summary?:Record<string,number>|null};
+ type StudioData={facility:string;campaign:Record<string,any>|null;defaults?:Record<string,any>|null;template?:MailDocument;assets:Record<string,any>[];lists:Record<string,any>[];deliveries:Record<string,any>[];summary?:Record<string,number>|null};
  let {data}:{data:StudioData}=$props();
  // svelte-ignore state_referenced_locally
  const initial=data.campaign;
  // svelte-ignore state_referenced_locally
  const defaults=data.defaults;
+ // svelte-ignore state_referenced_locally
+ const template=data.template;
  let id=$state<string|null>(initial?.id??null),revision=$state<number>(initial?.revision??0);
- let doc=$state<MailDocument>(initial?.document?.blocks?normalizeDocument(initial.document):emptyDocument());
+ let doc=$state<MailDocument>(initial?.document?.blocks?normalizeDocument(initial.document):template?normalizeDocument(template):emptyDocument());
  let name=$state(initial?.name??'名称未設定'),subject=$state(initial?.subject??''),preheader=$state(initial?.preheader??'');
  let fromName=$state(initial?.from_name??defaults?.from_name??'山人-yamado-'),fromEmail=$state(initial?.from_email??defaults?.from_email??''),replyTo=$state(initial?.reply_to??defaults?.reply_to??'info@yamado.co.jp');
  let tags=$state<string[]>(initial?.audience_tags??[]),selected=$state(''),tab=$state('design'),mobile=$state(false),palette=$state('content');

@@ -32,5 +32,16 @@ export function renderDocument(input:MailDocument,preheader=''): string {
  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><style>@media(max-width:600px){.mail-shell{width:100%!important;}.mail-shell td{overflow-wrap:anywhere;}}</style></head><body style="margin:0;background:${d.background};font-family:Arial,'Yu Gothic',Meiryo,sans-serif;"><div style="display:none;max-height:0;overflow:hidden;">${e(preheader)}</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="${d.background}"><tr><td align="center" style="padding:24px 8px;"><table role="presentation" class="mail-shell" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#fff;">${blocks}</table></td></tr></table></body></html>`;
 }
 export function auditDocument(d:MailDocument): string[] {
- return d.blocks.flatMap((b,i)=>{const issues=[];if(['heading','text','richtext','button','html'].includes(b.kind)&&!b.text.trim())issues.push('内容が空です');if(['image','button'].includes(b.kind)&&!safeUrl(b.url,b.kind==='image'))issues.push('有効なURLを指定してください');if(b.kind==='image'&&!b.alt.trim())issues.push('代替テキストを入力してください');return issues.map(s=>`${i+1}. ${blockLabels[b.kind]}：${s}`);});
+ const attr=(tag:string,name:string)=>tag.match(new RegExp('\\s'+name+'\\s*=\\s*(?:"([^"]*)"|\'([^\']*)\'|([^\\s>]+))','i'))?.slice(1).find(v=>v!==undefined)??'';
+ return d.blocks.flatMap((b,i)=>{
+  const issues=[];
+  if(['heading','text','richtext','button','html'].includes(b.kind)&&!b.text.replace(/<[^>]*>/g,'').replace(/&nbsp;|&#160;/g,' ').trim()&&!/<img\b/i.test(b.text))issues.push('内容が空です');
+  if(['image','button'].includes(b.kind)&&!safeUrl(b.url,b.kind==='image'))issues.push('有効なURLを指定してください');
+  if(b.kind==='image'&&!b.alt.trim())issues.push('代替テキストを入力してください');
+  if(['html','richtext'].includes(b.kind)){
+   for(const tag of b.text.match(/<a\b[^>]*>/gi)??[])if(!safeUrl(attr(tag,'href')))issues.push('本文内のリンク先を確認してください');
+   for(const tag of b.text.match(/<img\b[^>]*>/gi)??[]){if(!safeUrl(attr(tag,'src'),true))issues.push('本文内の画像URLを確認してください');if(!attr(tag,'alt').trim())issues.push('本文内の画像に代替テキストを入力してください');}
+  }
+  return [...new Set(issues)].map(s=>`${i+1}. ${blockLabels[b.kind]}：${s}`);
+ });
 }

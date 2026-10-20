@@ -1,0 +1,11 @@
+import {newBlock,type MailBlock,type MailDocument,type BlockKind} from './newsletter';
+const block=(kind:BlockKind,options:Partial<MailBlock>)=>({...newBlock(kind),...options});
+export function newsletterTemplates():{id:string;name:string;kind:'template';document:MailDocument}[]{
+ const brand=()=>block('text',{text:'山 人  - y a m a d o -',color:'#9a7b46',align:'center',size:16,padding:28});
+ const closing=()=>block('text',{text:'皆さまをお迎えできる日を、心よりお待ちしております。\n山人 スタッフ一同',size:14,padding:28});
+ return [
+  {id:'builtin-letter',name:'季節の便り',kind:'template',document:{background:'#f2f0eb',accent:'#775f36',blocks:[brand(),block('richtext',{text:'<p style="text-align:center;color:#9a7b46;font-size:14px;">SEASONAL LETTER</p><h2 style="font-family:\'Yu Mincho\',serif;text-align:center;font-size:28px;line-height:1.7;">季節の移ろいを、<br>山人から。</h2>',padding:32}),block('divider',{padding:24}),block('text',{text:'いつも山人をご愛顧いただき、ありがとうございます。\n\nここに季節の情景や、お客様にお伝えしたいお知らせを入力してください。段落を短くまとめると、スマートフォンでも心地よくお読みいただけます。',padding:32,size:16}),block('button',{text:'詳しいご案内を見る',padding:32}),closing()]}},
+  {id:'builtin-product',name:'商品・おせちのご案内',kind:'template',document:{background:'#f4f1eb',accent:'#7a2f35',blocks:[brand(),block('text',{text:'山人からの特別なご案内',color:'#9a7b46',align:'center',padding:12,size:14}),block('heading',{text:'大切なひとときに、\n山人の味わいを。',size:28,padding:28}),block('image',{alt:'商品の写真と特徴を説明してください',padding:0}),block('text',{text:'商品の魅力や、届けたい想いをここに入力してください。\n\n素材・数量・価格・予約期限・お届け日など、お客様の購入判断に必要な情報を確認して記載してください。',padding:32}),block('richtext',{text:'<p style="background-color:#f4f1eb;padding:24px;line-height:1.85;"><strong>ご予約のご案内</strong><br>販売価格：入力してください<br>予約期限：入力してください<br>お届け日：入力してください</p>',padding:24}),block('button',{text:'商品・ご予約の詳細を見る',padding:32}),closing()]}},
+  {id:'builtin-stay',name:'宿泊・プランのご案内',kind:'template',document:{background:'#edf0f0',accent:'#2b4847',blocks:[brand(),block('heading',{text:'何もしない贅沢を、\n山人で。',size:28,padding:32}),block('image',{alt:'施設や客室の魅力が伝わる写真の説明',padding:0}),block('text',{text:'風景、温泉、お食事。そして、静かな時間。\n\nこの季節ならではの滞在の魅力や、プランのご案内をここに入力してください。',padding:32}),block('divider',{padding:24}),block('heading',{text:'おすすめの過ごし方',align:'left',size:22,padding:24}),block('text',{text:'お客様が滞在をイメージできるよう、見どころや体験を具体的にご紹介ください。料金・期間・利用条件は公開前に確認してください。',padding:24}),block('button',{text:'プラン・空室状況を見る',padding:32}),closing()]}}
+ ];
+}

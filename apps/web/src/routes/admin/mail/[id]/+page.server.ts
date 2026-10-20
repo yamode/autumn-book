@@ -1,6 +1,7 @@
 import {error} from '@sveltejs/kit';
 import type {PageServerLoad} from './$types';
 import {newsletterContext} from '$lib/server/newsletter';
+import {newsletterTemplates} from '$lib/newsletter-templates';
 export const load:PageServerLoad=async event=>{
  const {db,tenant,facility}=await newsletterContext(event);
  const [c,assets,lists,deliveries,summary]=await Promise.all([
@@ -10,5 +11,5 @@ export const load:PageServerLoad=async event=>{
   db.rpc('admin_newsletter_delivery_summary',{p_facility:facility,p_id:event.params.id})
  ]);
  if(c.error||!c.data)error(404,'メールが見つかりません。');
- return {facility,campaign:c.data,assets:assets.data??[],lists:lists.data??[],deliveries:deliveries.data??[],summary:summary.error?null:summary.data};
+ return {facility,campaign:c.data,assets:[...newsletterTemplates(),...(assets.data??[])],lists:lists.data??[],deliveries:deliveries.data??[],summary:summary.error?null:summary.data};
 };

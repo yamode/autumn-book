@@ -21,6 +21,7 @@ export const POST:RequestHandler=async event=>{
    result=await db.rpc('admin_newsletter_asset',{p_facility:facility,p_kind:kind,p_name:String(data.name??''),p_document:document});
   }
   else if(action==='contact')result=await db.rpc('admin_newsletter_contact',{p_facility:facility,p_id:data.id,p_version:Number(data.version),p_name:String(data.name??''),p_tags:data.tags,p_suppress:data.suppress===true});
+  else if(action==='profile')result=await db.rpc('admin_newsletter_profile',{p_facility:facility,p_id:data.id,p_data:data.update??null});
   else if(action==='settings')result=await db.rpc('admin_newsletter_settings',{p_facility:facility,p_data:data});
   else if(action==='count'){
    let query=db.from('newsletter_contacts').select('id',{count:'exact',head:true}).eq('tenant_id',tenant).eq('status','active');
