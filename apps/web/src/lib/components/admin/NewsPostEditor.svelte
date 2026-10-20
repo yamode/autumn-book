@@ -2,7 +2,7 @@
  import {untrack,onMount} from 'svelte';
  import type {Snippet} from 'svelte';
  import {deserialize} from '$app/forms';
- import {replaceState,beforeNavigate} from '$app/navigation';
+ import {replaceState,beforeNavigate,goto} from '$app/navigation';
  import NewsMarkdownEditor from './NewsMarkdownEditor.svelte';
  import type {NewsPost} from '$lib/types';
  let {post,facilityId,hpPreviewSupported=false,publicNewsBase=null,canEdit=true,onDirty=(_v:boolean)=>{}}:{post?:NewsPost;facilityId:string;hpPreviewSupported?:boolean;publicNewsBase?:string|null;canEdit?:boolean;onDirty?:(v:boolean)=>void}=$props();
@@ -10,18 +10,30 @@
  let coverImageUrl=$state(untrack(()=>post?.coverImageUrl??'')),coverImageAlt=$state(untrack(()=>post?.coverImageAlt??'')),coverFile:HTMLInputElement;
  const snapshot=()=>JSON.stringify({title,body,publishedAt,coverImageUrl,coverImageAlt});
  let saved=$state(untrack(snapshot)),saving=$state(false),busy=$state(false),uploading=$state(false),error=$state(''),ready=$state(false);
+ let removing=$state(false),removed=$state(false);
  let flight:Promise<boolean>|null=null,formEl:HTMLFormElement;
  let source=$state(false),tools=$state.raw<Snippet>();
- const dirty=$derived(snapshot()!==saved),locked=$derived(busy||uploading||!canEdit);
+ const dirty=$derived(snapshot()!==saved),locked=$derived(busy||uploading||removed||!canEdit);
  onMount(()=>{ready=true;const header=document.querySelector('[data-admin-header]');const observer=new ResizeObserver(()=>{formEl.style.setProperty('--news-admin-offset',`${header?.getBoundingClientRect().height??0}px`);});if(header)observer.observe(header);return()=>{ready=false;observer.disconnect();};});
  $effect(()=>onDirty(dirty));
- $effect(()=>{const changed=snapshot();if(!ready||!canEdit||uploading||changed===saved)return;const timer=setTimeout(()=>void persist(),900);return()=>clearTimeout(timer);});
- beforeNavigate(nav=>{if((dirty||uploading||saving)&&!confirm('まだ保存していない変更があります。移動しますか？'))nav.cancel();});
+ $effect(()=>{const changed=snapshot();if(!ready||!canEdit||uploading||removing||removed||changed===saved)return;const timer=setTimeout(()=>void persist(),900);return()=>clearTimeout(timer);});
+ beforeNavigate(nav=>{if(!removed&&(dirty||uploading||saving)&&!confirm('まだ保存していない変更があります。移動しますか？'))nav.cancel();});
  async function action(kind:string,form:FormData){const response=await fetch('/admin/news?/'+kind,{method:'POST',body:form,headers:{accept:'application/json','x-sveltekit-action':'true'},signal:AbortSignal.timeout(25000)});const result=deserialize(await response.text());if(result.type!=='success')throw Error(result.type==='failure'?String(result.data?.message??'保存できません。'):'保存できません。');return result.data;}
  function payload(){const f=new FormData();f.set('facilityId',facilityId);if(id)f.set('postId',id);f.set('title',title.trim()||'無題のお知らせ');f.set('coverImageUrl',coverImageUrl);f.set('coverImageAlt',coverImageAlt);f.set('body',body);f.set('publishedAt',publishedAt);return f;}
- async function persist():Promise<boolean>{if(!canEdit||uploading)return false;if(flight){if(!await flight)return false;if(snapshot()!==saved)return persist();return !error;}if(snapshot()===saved&&id)return true;const pending=snapshot(),form=payload();saving=true;error='';flight=(async()=>{try{const data=await action('autosave',form);if(typeof data?.saved!=='string')throw Error('保存結果を確認できません。');id=data.saved;if(window.location.pathname==='/admin/news/new')replaceState('/admin/news/'+id,{});saved=pending;return true;}catch(e){error=e instanceof Error?e.message:'自動保存できません。';return false;}finally{saving=false;flight=null;}})();return flight;}
+ async function persist():Promise<boolean>{if(!canEdit||uploading||removing||removed)return false;if(flight){if(!await flight)return false;if(snapshot()!==saved)return persist();return !error;}if(snapshot()===saved&&id)return true;const pending=snapshot(),form=payload();saving=true;error='';flight=(async()=>{try{const data=await action('autosave',form);if(typeof data?.saved!=='string')throw Error('保存結果を確認できません。');id=data.saved;if(window.location.pathname==='/admin/news/new')replaceState('/admin/news/'+id,{});saved=pending;return true;}catch(e){error=e instanceof Error?e.message:'自動保存できません。';return false;}finally{saving=false;flight=null;}})();return flight;}
  async function changePublication(){if(locked||!await persist())return;busy=true;error='';try{const f=payload();if(!published)f.set('isPublished','on');await action('save',f);published=!published;}catch(e){error=e instanceof Error?e.message:'公開状態を変更できません。';}finally{busy=false;}}
- async function preview(){if(locked)return;const popup=window.open('about:blank','_blank');if(!popup){error='プレビューのポップアップを許可してください。';return;}popup.opener=null;busy=true;try{if(!await persist())throw Error(error||'自動保存を確認してください。');const data=await action('preview',payload());const url=new URL(String(data?.previewUrl));if(url.origin!=='https://www.yamado.co.jp')throw Error('プレビューURLを確認できません。');popup.location.href=url.href;}catch(e){popup.close();error=e instanceof Error?e.message:'プレビューを開けません。';}finally{busy=false;}}
+ async function deletePost(){
+  if(locked||!id||!confirm(`「${title.trim()||'無題のお知らせ'}」を削除しますか？\n削除すると元に戻せません。公開中の場合はHPからも削除されます（反映まで約1分）。`))return;
+  removing=true;busy=true;error='';
+  try{
+   if(flight)await flight;
+   const f=new FormData();f.set('facilityId',facilityId);f.set('postId',id);f.set('confirmDelete',id);
+   const data=await action('delete',f);if(data?.deleted!==id)throw Error('削除結果を確認できません。');
+   removed=true;onDirty(false);await goto('/admin/news',{invalidateAll:true});
+  }catch(e){error=e instanceof Error?e.message:'削除できませんでした。';}
+  finally{removing=false;busy=false;}
+ }
+ async function preview(){if(locked)return;const popup=window.open('about:blank','_blank');if(!popup){error='プレビューのポップアップを許可してください。';return;}popup.opener=null;busy=true;try{if(!await persist())throw Error(error||'自動保存を確認してください。');const data=await action('preview',payload());const url=new URL(String(data?.previewUrl));if(!publicNewsBase||url.origin!==new URL(publicNewsBase).origin||url.pathname!=='/news/'+id+'/')throw Error('プレビューURLを確認できません。');popup.location.href=url.href;}catch(e){popup.close();error=e instanceof Error?e.message:'プレビューを開けません。';}finally{busy=false;}}
 async function uploadCover(files:FileList|null){const file=files?.[0];if(!file||locked)return;uploading=true;error='';try{const data=new FormData();data.set('facilityId',facilityId);data.set('file',file);const r=await fetch('/admin/news/images',{method:'POST',body:data,signal:AbortSignal.timeout(60000)});const j=await r.json();if(!r.ok)throw Error(j.error||'画像を追加できません。');coverImageUrl=j.url;}catch(e){error=e instanceof Error?e.message:'画像を追加できません。';}finally{uploading=false;if(coverFile)coverFile.value='';}}
  function fitTitle(node:HTMLTextAreaElement,_value:string){const fit=()=>{node.style.height='auto';node.style.height=node.scrollHeight+'px';};const observer=new ResizeObserver(()=>{if(node.clientWidth!==width){width=node.clientWidth;fit();}});let width=node.clientWidth;observer.observe(node);fit();return {update:()=>queueMicrotask(fit),destroy:()=>observer.disconnect()};}
 </script>
@@ -29,13 +41,13 @@ async function uploadCover(files:FileList|null){const file=files?.[0];if(!file||
  <div class="editor-page-title"><h1>{post?'お知らせを編集':'新しいお知らせ'}</h1></div>
  <header class="post-editor-header">
   <div class="post-action-row">
-   <div class="post-location"><a href="/admin/news">← お知らせ一覧</a><span class="publication" class:published>{published?'公開中':'下書き'}</span><span class="save-status" class:unsaved={dirty} role="status">{error?'保存に失敗しました':uploading?'画像を追加中…':saving?'自動保存中…':dirty?'変更を保存します…':id?'保存済み':'自動保存'}</span></div>
+   <div class="post-location"><a href="/admin/news">← お知らせ一覧</a><span class="publication" class:published>{published?'公開中':'下書き'}</span><span class="save-status" class:unsaved={dirty} role="status">{error?'操作に失敗しました':uploading?'画像を追加中…':saving?'自動保存中…':dirty?'変更を保存します…':id?'保存済み':'自動保存'}</span></div>
    <div class="post-actions">
     <div class="edit-mode" aria-label="本文の編集方法"><button type="button" disabled={uploading} class:active={!source} aria-pressed={!source} onclick={()=>source=false}>見たまま編集</button><button type="button" disabled={uploading} class:active={source} aria-pressed={source} onclick={()=>source=true}>Markdown</button></div>
     <details class="cover-menu"><summary>{#if coverImageUrl}<img src={coverImageUrl} alt=""/>{:else}<span class="cover-empty" aria-hidden="true">＋</span>{/if}<span>アイキャッチ</span></summary><div class="cover-popover"><strong>アイキャッチ画像</strong>{#if coverImageUrl}<img class="cover-preview" src={coverImageUrl} alt={coverImageAlt||'アイキャッチ画像'}/><label>画像の説明<input bind:value={coverImageAlt} maxlength="200" disabled={locked}/></label>{/if}{#if canEdit}<div class="cover-actions"><button type="button" disabled={locked} onclick={()=>coverFile.click()}>{coverImageUrl?'画像を変更':'画像を選択'}</button>{#if coverImageUrl}<button type="button" disabled={locked} onclick={()=>{coverImageUrl='';coverImageAlt='';}}>外す</button>{/if}</div>{/if}</div></details>
     <details class="date-menu"><summary>掲載日 <span class="date-value">{publishedAt.replaceAll('-','/')}</span></summary><div class="date-popover"><label>掲載日<input type="date" bind:value={publishedAt} disabled={locked}/></label></div></details>
     {#if hpPreviewSupported&&canEdit&&!published}<button type="button" disabled={locked} onclick={()=>void preview()}>HPでプレビュー ↗</button>{/if}{#if publicNewsBase&&published&&id}<a class="action-link" href={publicNewsBase+encodeURIComponent(id)+'/'} target="_blank" rel="noopener noreferrer">本番ページを開く ↗</a>{/if}
-    {#if canEdit}<button type="button" disabled={locked} onclick={()=>void persist()}>今すぐ保存</button><button type="button" class="publish-button" disabled={locked||saving} onclick={()=>void changePublication()}>{published?'非公開に戻す':'公開する'}</button>{/if}
+    {#if canEdit}{#if id}<button type="button" class="delete-button" disabled={locked||saving} onclick={()=>void deletePost()}>{removing?'削除中…':'削除'}</button>{/if}<button type="button" disabled={locked} onclick={()=>void persist()}>今すぐ保存</button><button type="button" class="publish-button" disabled={locked||saving} onclick={()=>void changePublication()}>{published?'非公開に戻す':'公開する'}</button>{/if}
    </div>
   </div>
   {#if tools}<div class="post-tools"><span class="tools-label">本文ツール</span><div class="tools-content">{@render tools()}</div></div>{/if}
@@ -43,9 +55,11 @@ async function uploadCover(files:FileList|null){const file=files?.[0];if(!file||
  </header>
  <input class="cover-file" bind:this={coverFile} type="file" accept="image/jpeg,image/png,image/webp,image/avif" aria-label="アイキャッチ画像を選択" onchange={e=>void uploadCover(e.currentTarget.files)}/>
  <div class="post-document"><label class="title-field"><span class="field-heading"><span>タイトル</span><span class="field-count">{title.length} / 200字</span></span><textarea bind:value={title} use:fitTitle={title} rows="1" maxlength="200" placeholder="お知らせのタイトル" disabled={locked}></textarea></label><div class="body-field-heading"><span>本文</span><span class="field-count">{body.length.toLocaleString()}文字</span></div>
- <NewsMarkdownEditor bind:value={body} {source} {facilityId} disabled={busy||uploading||!canEdit} onBusy={v=>uploading=v} onSave={()=>void persist()} onToolbar={v=>tools=v}/></div>
+ <NewsMarkdownEditor bind:value={body} {source} {facilityId} disabled={busy||uploading||removed||!canEdit} onBusy={v=>uploading=v} onSave={()=>void persist()} onToolbar={v=>tools=v}/></div>
 </form>
 <style>
+.post-actions .delete-button{color:#a33434;border-color:#e4c5c5}.post-actions .delete-button:hover:not(:disabled){background:#fff1f1;border-color:#b96868}
+
 .news-post-editor{background:#fff;color:#3c5134;min-width:0;--news-admin-offset:64px}
 .post-editor-header{position:sticky;top:var(--news-admin-offset);z-index:20;background:#fff;border-bottom:1px solid #dfe5da;box-shadow:0 3px 12px #26331d08}
 .post-action-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 18px}
