@@ -19,7 +19,12 @@ export type AccessLogInput = {
 	locale: string;
 	device: string;
 	visitorId: string;
+	/** 外部リンクのクリックならリンク先（2026-10-21）。ページ表示は undefined */
+	linkUrl?: string;
 };
+
+/** view=ページを表示 / link=客室案内の外へのリンクを押した */
+export type AccessEvent = 'view' | 'link';
 
 export type AccessLogRow = {
 	id: string;
@@ -33,6 +38,8 @@ export type AccessLogRow = {
 	locale: string | null;
 	device: string | null;
 	visitorId: string | null;
+	event: AccessEvent;
+	linkUrl: string | null;
 };
 
 const demoLogs: (AccessLogRow & { facilityId: string })[] = [];
@@ -58,13 +65,50 @@ export function normalizeInroomPath(path: unknown): { path: string; guideId: str
 	return null;
 }
 
+/**
+ * 押されたリンクのうち、客室案内の外へ出るものだけ記録用の形にする（2026-10-21）。
+ * ・他サイト（http/https）… origin + path + query（# 以降は捨てる）
+ * ・同じサイトで /r 以外（予約サイトのページなど）… path だけ（query に滞在コード等が載りうるので捨てる）
+ * ・tel: / mailto: … そのまま
+ * 客室案内の中の移動（/r 以下）や javascript: などは null
+ */
+export function normalizeLinkUrl(href: unknown, origin: string): string | null {
+	if (typeof href !== 'string' || !href || href.length > 2000) return null;
+	if (/^(tel|mailto):/i.test(href)) return href.slice(0, 300);
+	let u: URL;
+	try {
+		u = new URL(href, origin);
+	} catch {
+		return null;
+	}
+	if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+	if (u.origin === origin) {
+		// 言語の切替（/en/r・/zh-TW/r/...）も客室案内の中
+		const p = u.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, '');
+		if (p === '/r' || p.startsWith('/r/')) return null;
+		return u.pathname.slice(0, 300);
+	}
+	return (u.origin + u.pathname + u.search).slice(0, 300);
+}
+
 export async function logInroomAccess(input: AccessLogInput): Promise<void> {
 	const sb = DATA_SOURCE === 'supabase' ? partnerServiceClient() : null;
 	if (!sb) {
 		logDemo(input);
 		return;
 	}
-	const { error } = await sb.schema('book').rpc('log_inroom_access', {
+	const { error } = input.linkUrl
+		? await sb.schema('book').rpc('log_inroom_link_click', {
+				p_token: input.token ?? '',
+				p_facility_slug: input.facilitySlug ?? '',
+				p_path: input.path,
+				p_guide_id: input.guideId ?? '',
+				p_url: input.linkUrl,
+				p_locale: input.locale,
+				p_device: input.device,
+				p_visitor_id: input.visitorId
+			})
+		: await sb.schema('book').rpc('log_inroom_access', {
 		p_token: input.token ?? '',
 		p_facility_slug: input.facilitySlug ?? '',
 		p_path: input.path,
@@ -92,7 +136,9 @@ function logDemo(input: AccessLogInput): void {
 		guideId: input.guideId,
 		locale: input.locale,
 		device: input.device,
-		visitorId: input.visitorId
+		visitorId: input.visitorId,
+		event: input.linkUrl ? 'link' : 'view',
+		linkUrl: input.linkUrl ?? null
 	});
 	if (demoLogs.length > 5000) demoLogs.splice(0, demoLogs.length - 5000);
 }
@@ -125,6 +171,8 @@ type DbRow = {
 	locale: string | null;
 	device: string | null;
 	visitor_id: string | null;
+	event?: string | null;
+	link_url?: string | null;
 };
 
 export async function sbListAccess(client: SupabaseClient, facilityId: string, date: string): Promise<AccessLogRow[]> {
@@ -144,7 +192,9 @@ export async function sbListAccess(client: SupabaseClient, facilityId: string, d
 		guideId: r.guide_id,
 		locale: r.locale,
 		device: r.device,
-		visitorId: r.visitor_id
+		visitorId: r.visitor_id,
+		event: r.event === 'link' ? 'link' : 'view',
+		linkUrl: r.link_url ?? null
 	}));
 }
 
@@ -152,12 +202,14 @@ export async function sbListAccess(client: SupabaseClient, facilityId: string, d
 
 export type AccessCount = { views: number; visitors: number };
 export type AccessSummary = {
-	totals: AccessCount & { rooms: number };
+	totals: AccessCount & { rooms: number; clicks: number };
 	byPage: (AccessCount & { path: string; guideId: string | null })[];
 	byDay: (AccessCount & { day: string })[];
 	byRoom: (AccessCount & { roomCode: string | null })[];
 	byLocale: { key: string | null; views: number }[];
 	byDevice: { key: string | null; views: number }[];
+	/** 押された外部リンク（リンク先・押したページごと。回数の多い順） */
+	byLink: { url: string; path: string; guideId: string | null; clicks: number; visitors: number }[];
 };
 
 /** 集計できる最長の期間（日数・両端を含めない差）。DB 側の上限と揃える */
@@ -167,10 +219,12 @@ const jstDay = (iso: string) => new Date(Date.parse(iso) + 9 * 60 * 60 * 1000).t
 
 /** 行の一覧から期間集計を作る（見本環境用。DB の book.admin_inroom_access_summary と同じ形・見本の滞在は除く） */
 export function summarizeAccess(rows: AccessLogRow[]): AccessSummary {
-	const real = rows.filter((r) => !r.isDemo);
-	const group = <K>(key: (r: AccessLogRow) => K) => {
+	const all = rows.filter((r) => !r.isDemo);
+	const real = all.filter((r) => r.event !== 'link');
+	const links = all.filter((r) => r.event === 'link');
+	const group = <K>(key: (r: AccessLogRow) => K, src = real) => {
 		const m = new Map<K, { views: number; visitors: Set<string> }>();
-		for (const r of real) {
+		for (const r of src) {
 			const k = key(r);
 			const cur = m.get(k) ?? { views: 0, visitors: new Set<string>() };
 			cur.views += 1;
@@ -183,7 +237,8 @@ export function summarizeAccess(rows: AccessLogRow[]): AccessSummary {
 		totals: {
 			views: real.length,
 			visitors: new Set(real.map((r) => r.visitorId).filter(Boolean)).size,
-			rooms: new Set(real.map((r) => r.roomCode).filter(Boolean)).size
+			rooms: new Set(real.map((r) => r.roomCode).filter(Boolean)).size,
+			clicks: links.length
 		},
 		byPage: group((r) => `${r.path}\u0000${r.guideId ?? ''}`)
 			.map(({ k, views, visitors }) => {
@@ -202,7 +257,13 @@ export function summarizeAccess(rows: AccessLogRow[]): AccessSummary {
 			.sort((a, b) => b.views - a.views),
 		byDevice: group((r) => r.device)
 			.map(({ k, views }) => ({ key: k, views }))
-			.sort((a, b) => b.views - a.views)
+			.sort((a, b) => b.views - a.views),
+		byLink: group((r) => `${r.linkUrl ?? ''}\u0000${r.path}\u0000${r.guideId ?? ''}`, links)
+			.map(({ k, views, visitors }) => {
+				const [url, path, guideId] = k.split('\u0000');
+				return { url, path, guideId: guideId || null, clicks: views, visitors };
+			})
+			.sort((a, b) => b.clicks - a.clicks || a.url.localeCompare(b.url))
 	};
 }
 
@@ -219,12 +280,13 @@ export function summarizeAccessDemo(facilityId: string, from: string, to: string
 
 type DbCount = { views: number; visitors: number };
 type DbSummary = {
-	totals: DbCount & { rooms: number };
+	totals: DbCount & { rooms: number; clicks?: number };
 	by_page: (DbCount & { path: string; guide_id: string | null })[];
 	by_day: (DbCount & { day: string })[];
 	by_room: (DbCount & { room_code: string | null })[];
 	by_locale: { key: string | null; views: number }[];
 	by_device: { key: string | null; views: number }[];
+	by_link?: { url: string; path: string; guide_id: string | null; clicks: number; visitors: number }[];
 };
 
 export async function sbSummarizeAccess(client: SupabaseClient, facilityId: string, from: string, to: string): Promise<AccessSummary> {
@@ -236,11 +298,12 @@ export async function sbSummarizeAccess(client: SupabaseClient, facilityId: stri
 	if (error) throw new Error('アクセスログを集計できませんでした（' + error.message + '）');
 	const d = data as DbSummary;
 	return {
-		totals: d.totals,
+		totals: { ...d.totals, clicks: d.totals.clicks ?? 0 },
 		byPage: d.by_page.map((r) => ({ path: r.path, guideId: r.guide_id, views: r.views, visitors: r.visitors })),
 		byDay: d.by_day.map((r) => ({ day: r.day, views: r.views, visitors: r.visitors })),
 		byRoom: d.by_room.map((r) => ({ roomCode: r.room_code, views: r.views, visitors: r.visitors })),
 		byLocale: d.by_locale,
-		byDevice: d.by_device
+		byDevice: d.by_device,
+		byLink: (d.by_link ?? []).map((r) => ({ url: r.url, path: r.path, guideId: r.guide_id, clicks: r.clicks, visitors: r.visitors }))
 	};
 }

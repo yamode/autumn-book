@@ -31,19 +31,40 @@
 
 	// アクセスログ（2026-10-17）。ページを表示するたびに1回だけ送る（自動の再読込 invalidateAll は数えない）。
 	// 滞在コードの紐づき（部屋）はサーバーが Cookie から判定する
-	afterNavigate(({ to }) => {
-		const path = to?.url.pathname;
-		if (!path) return;
+	function sendLog(body: { path: string; link?: string }) {
 		try {
 			fetch('/r/api/view', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ path }),
+				body: JSON.stringify(body),
 				keepalive: true
 			}).catch(() => {});
 		} catch {
 			// 送れなくても画面には関係ない
 		}
+	}
+	afterNavigate(({ to }) => {
+		const path = to?.url.pathname;
+		if (path) sendLog({ path });
+	});
+
+	// 外部リンクのクリック（2026-10-21）。客室案内の外へ出るリンク（他サイト・予約サイト側・電話・メール）を押したら1回送る。
+	// 案内本文・バナー・SNS・電話ボタンなど出どころが多いので、ページ全体のクリックで拾う。どれを残すかはサーバーが決める
+	onMount(() => {
+		const onClick = (e: MouseEvent) => {
+			const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+			if (!a) return;
+			const href = a.getAttribute('href') ?? '';
+			if (!/^(tel|mailto):/i.test(href)) {
+				const u = new URL(a.href, location.href);
+				const p = u.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, '');
+				if (u.origin === location.origin && (p === '/r' || p.startsWith('/r/'))) return;
+				if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+			}
+			sendLog({ path: location.pathname, link: a.href });
+		};
+		document.addEventListener('click', onClick, true);
+		return () => document.removeEventListener('click', onClick, true);
 	});
 
 	// PMS の職員が枠を追加・変更したら、開きっぱなしの客室画面にも反映する。

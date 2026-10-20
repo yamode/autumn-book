@@ -21,26 +21,38 @@
 		if (path === '/r/bill') return 'ご精算（明細・お支払い）';
 		return path;
 	}
+	// 押されたリンクの表示（2026-10-21）。電話・メール・予約サイト側（/ で始まる）・他サイト
+	function linkLabel(url: string | null): string {
+		if (!url) return '—';
+		if (/^tel:/i.test(url)) return `電話 ${url.slice(4)}`;
+		if (/^mailto:/i.test(url)) return `メール ${url.slice(7)}`;
+		if (url.startsWith('/')) return `予約サイト ${url}`;
+		return url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+	}
 	const LOCALE_LABEL: Record<string, string> = { ja: '日本語', en: '英語', 'zh-TW': '繁体字' };
 
 	const roomKey = (r: { roomCode: string | null }) => r.roomCode ?? '-';
+	// 数字（回数・端末・部屋）はページ表示だけで数える。リンクのクリックは別に数える
+	const views = $derived(data.rows.filter((r) => r.event !== 'link'));
+	const clickCount = $derived(data.rows.length - views.length);
 	const filtered = $derived(room ? data.rows.filter((r) => roomKey(r) === room) : data.rows);
 
 	// 部屋ごとのまとめ（開いた回数・端末の数・最後に開いた時刻）。コードなしは最後に1行
 	const byRoom = $derived.by(() => {
-		const map = new Map<string, { key: string; roomCode: string | null; guestName: string | null; views: number; visitors: Set<string>; last: string; isDemo: boolean }>();
+		const map = new Map<string, { key: string; roomCode: string | null; guestName: string | null; views: number; clicks: number; visitors: Set<string>; last: string; isDemo: boolean }>();
 		for (const r of data.rows) {
 			const key = roomKey(r);
-			const cur = map.get(key) ?? { key, roomCode: r.roomCode, guestName: r.guestName, views: 0, visitors: new Set<string>(), last: r.createdAt, isDemo: r.isDemo };
-			cur.views += 1;
-			if (r.visitorId) cur.visitors.add(r.visitorId);
+			const cur = map.get(key) ?? { key, roomCode: r.roomCode, guestName: r.guestName, views: 0, clicks: 0, visitors: new Set<string>(), last: r.createdAt, isDemo: r.isDemo };
+			if (r.event === 'link') cur.clicks += 1;
+			else cur.views += 1;
+			if (r.visitorId && r.event !== 'link') cur.visitors.add(r.visitorId);
 			if (r.createdAt > cur.last) cur.last = r.createdAt;
 			cur.guestName ??= r.guestName;
 			map.set(key, cur);
 		}
 		return [...map.values()].sort((a, b) => (a.key === '-' ? 1 : b.key === '-' ? -1 : a.key.localeCompare(b.key, 'ja', { numeric: true })));
 	});
-	const totalVisitors = $derived(new Set(data.rows.map((r) => r.visitorId).filter(Boolean)).size);
+	const totalVisitors = $derived(new Set(views.map((r) => r.visitorId).filter(Boolean)).size);
 	const roomsWithCode = $derived(byRoom.filter((r) => r.key !== '-').length);
 
 	function changeDate(v: string) {
@@ -101,7 +113,7 @@
 <PageHeader
 	title="客室案内のアクセスログ"
 	facility={data.currentFacility.name}
-	description="客室案内のページを開くたびに記録します（開いたままの自動更新は数えません）。滞在コードが紐づいていれば、どの部屋の方かが出ます。IP アドレスは残さず、同じ端末かどうかだけを見分けます。記録は180日で消えます。"
+	description="客室案内のページを開くたびに記録します（開いたままの自動更新は数えません）。滞在コードが紐づいていれば、どの部屋の方かが出ます。客室案内の外へのリンク（他サイト・予約サイト・電話・メール）を押したときも記録します。IP アドレスは残さず、同じ端末かどうかだけを見分けます。記録は180日で消えます。"
 >
 	{#snippet actions()}
 		<div class="inline-flex rounded-lg border border-stone-300 bg-white p-0.5 text-sm">
@@ -134,10 +146,10 @@
 {#if data.view === 'period'}
 	{@render periodView()}
 {:else}
-<div class="mb-5 grid grid-cols-3 gap-2 text-center sm:gap-3">
+<div class="mb-5 grid grid-cols-2 gap-2 text-center sm:grid-cols-4 sm:gap-3">
 	<div class="rounded-xl border border-stone-200 bg-white p-3">
 		<p class="text-[11px] text-stone-500 sm:text-xs">開いた回数</p>
-		<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{data.rows.length}</p>
+		<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{views.length}</p>
 	</div>
 	<div class="rounded-xl border border-stone-200 bg-white p-3">
 		<p class="text-[11px] text-stone-500 sm:text-xs">端末の数</p>
@@ -146,6 +158,10 @@
 	<div class="rounded-xl border border-stone-200 bg-white p-3">
 		<p class="text-[11px] text-stone-500 sm:text-xs">開いた部屋の数</p>
 		<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{roomsWithCode}</p>
+	</div>
+	<div class="rounded-xl border border-stone-200 bg-white p-3">
+		<p class="text-[11px] text-stone-500 sm:text-xs">外部リンクを押した回数</p>
+		<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{clickCount}</p>
 	</div>
 </div>
 
@@ -165,6 +181,7 @@
 					<th class="px-3 py-2 font-medium">お客様</th>
 					<th class="px-3 py-2 text-right font-medium">開いた回数</th>
 					<th class="px-3 py-2 text-right font-medium">端末</th>
+					<th class="px-3 py-2 text-right font-medium">リンク</th>
 					<th class="px-3 py-2 font-medium">最後に開いた</th>
 				</tr>
 			</thead>
@@ -179,6 +196,7 @@
 						<td class="px-3 py-2.5 whitespace-nowrap text-stone-600">{r.guestName ?? '—'}</td>
 						<td class="px-3 py-2.5 text-right tabular-nums">{r.views}</td>
 						<td class="px-3 py-2.5 text-right tabular-nums">{r.visitors.size}</td>
+						<td class="px-3 py-2.5 text-right tabular-nums {r.clicks ? '' : 'text-stone-300'}">{r.clicks}</td>
 						<td class="px-3 py-2.5 tabular-nums text-stone-500">{fmtTime(r.last)}</td>
 					</tr>
 				{/each}
@@ -201,7 +219,7 @@
 					<span class="shrink-0 font-medium text-stone-800">{r.roomCode ?? '—'}</span>
 					{#if r.guestName}<span class="min-w-0 truncate text-stone-500">{r.guestName}</span>{/if}
 				</div>
-				<p class="mt-0.5 text-stone-700">{pageLabel(r.path, r.guideId)}</p>
+				<p class="mt-0.5 text-stone-700">{@render pageCell(r)}</p>
 				<p class="mt-0.5 text-[11px] text-stone-400">
 					{r.locale ? (LOCALE_LABEL[r.locale] ?? r.locale) : '—'}・{r.device ?? '—'}・<span class="font-mono">{r.visitorId ? r.visitorId.slice(0, 6) : '—'}</span>
 				</p>
@@ -219,7 +237,7 @@
 						<td class="whitespace-nowrap px-3 py-1.5 tabular-nums text-stone-600">{fmtTime(r.createdAt)}</td>
 						<td class="whitespace-nowrap px-3 py-1.5">{r.roomCode ?? '—'}</td>
 						<td class="whitespace-nowrap px-3 py-1.5 text-stone-600">{r.guestName ?? '—'}</td>
-						<td class="px-3 py-1.5">{pageLabel(r.path, r.guideId)}</td>
+						<td class="px-3 py-1.5">{@render pageCell(r)}</td>
 						<td class="whitespace-nowrap px-3 py-1.5 text-stone-500">{r.locale ? (LOCALE_LABEL[r.locale] ?? r.locale) : '—'}</td>
 						<td class="whitespace-nowrap px-3 py-1.5 text-stone-500">{r.device ?? '—'}</td>
 						<td class="whitespace-nowrap px-3 py-1.5 font-mono text-xs text-stone-400">{r.visitorId ? r.visitorId.slice(0, 6) : '—'}</td>
@@ -242,7 +260,7 @@
 	{/if}
 	{#if sum}
 		<p class="mb-2 text-xs text-stone-500">{dayLabel(data.from)} 〜 {dayLabel(data.to)}（{days.length}日間）。見本の滞在コードで開いた分は数えません。</p>
-		<div class="mb-5 grid grid-cols-3 gap-2 text-center sm:gap-3">
+		<div class="mb-5 grid grid-cols-2 gap-2 text-center sm:grid-cols-4 sm:gap-3">
 			<div class="rounded-xl border border-stone-200 bg-white p-3">
 				<p class="text-[11px] text-stone-500 sm:text-xs">開いた回数</p>
 				<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{sum.totals.views.toLocaleString()}</p>
@@ -254,6 +272,10 @@
 			<div class="rounded-xl border border-stone-200 bg-white p-3">
 				<p class="text-[11px] text-stone-500 sm:text-xs">開いた部屋の数</p>
 				<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{sum.totals.rooms.toLocaleString()}</p>
+			</div>
+			<div class="rounded-xl border border-stone-200 bg-white p-3">
+				<p class="text-[11px] text-stone-500 sm:text-xs">外部リンクを押した回数</p>
+				<p class="mt-1 text-xl font-semibold tabular-nums text-stone-800 sm:text-2xl">{sum.totals.clicks.toLocaleString()}</p>
 			</div>
 		</div>
 
@@ -290,6 +312,43 @@
 					</tbody>
 				</table>
 			</section>
+
+			<!-- 押された外部リンク（リンク先・押したページごと） -->
+			<h2 class="mb-2 flex items-center gap-2 text-sm font-semibold text-stone-800">
+				押された外部リンク <span class="text-xs font-normal text-stone-400">他サイト・予約サイト・電話・メール</span>
+			</h2>
+			{#if sum.byLink.length === 0}
+				<p class="mb-5 rounded-xl border border-dashed border-stone-300 bg-white px-4 py-5 text-center text-sm text-stone-400">この期間に押された外部リンクはありません。</p>
+			{:else}
+				<section class="mb-5 overflow-x-auto rounded-xl border border-stone-200 bg-white">
+					<table class="w-full min-w-[560px] text-sm">
+						<thead class="bg-stone-50 text-left text-xs text-stone-500">
+							<tr>
+								<th class="px-3 py-2 font-medium">リンク先</th>
+								<th class="px-3 py-2 font-medium">押したページ</th>
+								<th class="px-3 py-2 text-right font-medium">押した回数</th>
+								<th class="px-3 py-2 text-right font-medium">端末</th>
+							</tr>
+						</thead>
+						<tbody class="divide-y divide-stone-100">
+							{#each sum.byLink as c (c.url + c.path + (c.guideId ?? ''))}
+								<tr>
+									<td class="max-w-xs px-3 py-2">
+										{#if /^https?:/.test(c.url)}
+											<a href={c.url} target="_blank" rel="noopener noreferrer" class="break-all text-stone-800 underline decoration-stone-300 hover:decoration-stone-600">{linkLabel(c.url)}</a>
+										{:else}
+											<span class="break-all">{linkLabel(c.url)}</span>
+										{/if}
+									</td>
+									<td class="px-3 py-2 text-stone-600">{pageLabel(c.path, c.guideId)}</td>
+									<td class="px-3 py-2 text-right tabular-nums">{c.clicks.toLocaleString()}</td>
+									<td class="px-3 py-2 text-right tabular-nums text-stone-500">{c.visitors.toLocaleString()}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</section>
+			{/if}
 
 			<!-- 日ごと（期間の全日。押すとその日の一覧へ） -->
 			<h2 class="mb-2 flex items-center gap-2 text-sm font-semibold text-stone-800">
@@ -344,5 +403,14 @@
 				{/each}
 			</div>
 		{/if}
+	{/if}
+{/snippet}
+
+{#snippet pageCell(r: { event: string; path: string; guideId: string | null; linkUrl: string | null })}
+	{#if r.event === 'link'}
+		<span class="text-sky-800">↗ {linkLabel(r.linkUrl)}</span>
+		<span class="text-xs text-stone-400">（{pageLabel(r.path, r.guideId)}から）</span>
+	{:else}
+		{pageLabel(r.path, r.guideId)}
 	{/if}
 {/snippet}
