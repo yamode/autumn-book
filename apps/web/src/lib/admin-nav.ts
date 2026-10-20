@@ -111,17 +111,30 @@ export const ADMIN_NAV: NavGroup[] = [
 			},
 			{
 				href: '/admin/news',
-				label: 'サイト・メール',
+				label: 'サイト管理',
 				icon: 'globe',
 				children: [
 					{ href: '/admin/news', label: 'お知らせ' },
 					{ href: '/admin/faqs', label: 'FAQ' },
-					{ href: '/admin/facility', label: '施設ページ編集', demoOnly: true },
-					{ href: '/admin/mail', label: 'メルマガ' },
-					{ href: '/admin/sequences', label: 'ステップメール', demoOnly: true }
+					{ href: '/admin/facility', label: '施設ページ編集', demoOnly: true }
 				]
 			}
 		]
+	},
+	{
+		label: 'メルマガ',
+		items: [{
+			href: '/admin/mail', label: 'メルマガ', icon: 'megaphone', adminOnly: true,
+			children: [
+				{ href: '/admin/mail', label: 'メール作成・一覧' },
+				{ href: '/admin/mail/contacts', label: 'コンタクト', tab: null },
+				{ href: '/admin/mail/contacts?tab=lists', label: 'リスト・タグ', tab: 'lists' },
+				{ href: '/admin/mail/templates', label: 'テンプレート' },
+				{ href: '/admin/mail/reports', label: 'レポート' },
+				{ href: '/admin/mail/settings', label: '配信設定' },
+				{ href: '/admin/sequences', label: 'ステップメール', demoOnly: true }
+			]
+		}]
 	},
 	{
 		label: 'システム',
@@ -160,8 +173,9 @@ export function activeNav(pathname: string, search: URLSearchParams): { item: Na
 				const base = pathOf(leaf.href);
 				if (leaf.tab !== undefined) {
 					if (path === base) {
-						const tab = search.get('tab') ?? (search.get('all') ? 'slips' : null);
-						if ((tab ?? null) === leaf.tab || (leaf.tab === null && !['guides', 'slips', 'settings'].includes(tab ?? ''))) score = 2000;
+						const tab = search.get('tab') ?? (path === '/admin/inroom' && search.get('all') ? 'slips' : null);
+						const knownTabs = (item.children ?? []).filter(c => pathOf(c.href) === base && c.tab != null).map(c => c.tab);
+						if ((tab ?? null) === leaf.tab || (leaf.tab === null && !knownTabs.includes(tab ?? ''))) score = 2000;
 					}
 				} else if (under(path, base)) {
 					score = 1000 + base.length;
