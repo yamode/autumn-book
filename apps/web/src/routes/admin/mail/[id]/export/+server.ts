@@ -5,5 +5,6 @@ export const GET:RequestHandler=async event=>{
  const {db,tenant,facility}=await newsletterContext(event);
  const {data,error:e}=await db.from('newsletter_campaigns').select('id,html').eq('id',event.params.id).eq('tenant_id',tenant).eq('facility_id',facility).single();
  if(e||!data)error(404,'メールが見つかりません。');
- return new Response(data.html,{headers:{'Content-Type':'text/html;charset=utf-8','Content-Disposition':`attachment; filename="newsletter-${data.id}.html"`,'Content-Security-Policy':"sandbox; default-src 'none'; img-src https:; style-src 'unsafe-inline';",'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+ // Treat this as a file so edge HTML analytics cannot inject web-only scripts.
+ return new Response(data.html,{headers:{'Content-Type':'application/octet-stream','Content-Disposition':`attachment; filename="newsletter-${data.id}.html"`,'Content-Security-Policy':"sandbox; default-src 'none'; img-src https:; style-src 'unsafe-inline';",'Cache-Control':'no-store, no-transform','X-Content-Type-Options':'nosniff'}});
 };
