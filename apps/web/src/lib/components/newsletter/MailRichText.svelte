@@ -1,5 +1,5 @@
 <script lang="ts">
- import {onMount} from 'svelte';
+ import {onMount,untrack} from 'svelte';
  import {Editor} from '@tiptap/core';
  import StarterKit from '@tiptap/starter-kit';
  import Link from '@tiptap/extension-link';
@@ -10,8 +10,8 @@
  let host:HTMLDivElement,editor:Editor|undefined=$state.raw();
  let revision=$state(0);
  onMount(()=>{editor=new Editor({element:host,content:value,editable:!disabled,extensions:[StarterKit.configure({link:false}),TextStyleKit,TextAlign.configure({types:['heading','paragraph']}),Link.configure({openOnClick:false,protocols:['https','http','mailto','tel']})],editorProps:{attributes:{'aria-label':'装飾付きの本文',role:'textbox','aria-multiline':'true'}},onUpdate:({editor:e})=>{value=e.getHTML();revision++;},onSelectionUpdate:()=>{revision++;}});return()=>editor?.destroy();});
- $effect(()=>{editor?.setEditable(!disabled);});
- $effect(()=>{if(editor&&value!==editor.getHTML())editor.commands.setContent(value,{emitUpdate:false});});
+ $effect(()=>{const current=editor,editable=!disabled;untrack(()=>current?.setEditable(editable));});
+ $effect(()=>{const current=editor,html=value;untrack(()=>{if(current&&html!==current.getHTML())current.commands.setContent(html,{emitUpdate:false});});});
  function active(name:string){void revision;return editor?.isActive(name)??false;}
  function link(){const current=editor?.getAttributes('link').href??'',url=window.prompt('リンク先URL',current);if(url===null)return;if(!url){editor?.chain().focus().unsetLink().run();return;}if(!safeUrl(url)){window.alert('http(s)・mailto・telのURLを入力してください。');return;}editor?.chain().focus().extendMarkRange('link').setLink({href:url}).run();}
 </script>

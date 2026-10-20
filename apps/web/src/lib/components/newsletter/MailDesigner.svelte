@@ -6,7 +6,8 @@
  import MailDialog from './MailDialog.svelte';
  let {doc=$bindable(),preheader='',assets,facility,disabled=false,onRefresh,onNotice,onSubject}:{doc:MailDocument;preheader?:string;assets:Record<string,any>[];facility:string;disabled?:boolean;onRefresh:()=>Promise<void>;onNotice:(message:string)=>void;onSubject:(subject:string)=>void}=$props();
  let panel=$state('content'),selected=$state(''),mobile=$state(false),history=$state<string[]>([]),future=$state<string[]>([]),dragId=$state(''),token=$state(''),height=$state(850),uploadBusy=$state(false);
- let iframe:HTMLIFrameElement,canvas:HTMLDivElement;
+ let iframe=$state<HTMLIFrameElement>();
+ let canvas:HTMLDivElement;
  let canvasWidth=$state(660);
  let frameWidth=$derived(mobile?390:660),scale=$derived(Math.min(1,Math.max(240,canvasWidth-36)/frameWidth));
  let search=$state(''),saveKind=$state<'template'|'block'|null>(null),saveName=$state(''),savingAsset=$state(false),replaceTemplate=$state<MailDocument|null>(null);
@@ -52,7 +53,7 @@
  </aside>
  <div class="workspace">
   <div class="canvas-toolbar"><div class="history"><button aria-label="元に戻す" title="元に戻す" disabled={disabled||!history.length} onclick={undo}>↶</button><button aria-label="やり直す" title="やり直す" disabled={disabled||!future.length} onclick={redo}>↷</button></div><div class="device"><button class:active={!mobile} onclick={()=>mobile=false}>PC</button><button class:active={mobile} onclick={()=>mobile=true}>モバイル</button></div><span class="width-hint">{mobile?'390':'600'}px</span></div>
-  <div class="canvas-scroll" bind:this={canvas}><p class="canvas-tip">編集したい箇所をクリックしてください</p><div class="email-canvas" style:width={frameWidth*scale+'px'} style:height={height*scale+'px'}><iframe bind:this={iframe} title="メールプレビュー・クリックで編集" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc={preview} style:width={frameWidth+'px'} style:height={height+'px'} style:transform={'scale('+scale+')'} onload={highlight}></iframe></div><div class="end-note">メール本文の終わり<span>配信時に送信者情報・配信停止リンクが追加されます</span></div></div>
+  <div class="canvas-scroll" bind:this={canvas}><p class="canvas-tip">編集したい箇所をクリックしてください</p><div class="email-canvas" style:width={frameWidth*scale+'px'} style:height={height*scale+'px'}>{#key preview}<iframe bind:this={iframe} title="メールプレビュー・クリックで編集" sandbox="allow-scripts" referrerpolicy="no-referrer" srcdoc={preview} style:width={frameWidth+'px'} style:height={height+'px'} style:transform={'scale('+scale+')'} onload={highlight}></iframe>{/key}</div><div class="end-note">メール本文の終わり<span>配信時に送信者情報・配信停止リンクが追加されます</span></div></div>
  </div>
  <aside class="inspector" aria-label="選択ブロックの設定">{#if block}{#key block.id}<MailBlockProperties {block} {disabled} onPatch={patch} onUpload={(file,id)=>void upload([file],id)} onDuplicate={duplicate} onDelete={remove} onSave={()=>{saveKind='block';saveName=block?.label??'';}} onCheckpoint={checkpoint}/>{/key}{:else}<div class="inspector-empty"><div class="pointer">↖</div><h2>クリックして編集</h2><p>プレビューの画像や文章を選ぶと、ここに設定が表示されます。</p><p>左の「追加」から、新しいブロックを追加できます。</p></div>{/if}</aside>
 </section>
