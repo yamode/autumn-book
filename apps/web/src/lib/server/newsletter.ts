@@ -22,10 +22,11 @@ export async function newsletterContext(event:RequestEvent,write=false){
 export function newsletterHtml(document:MailDocument,preheader:string){
  return sanitizeHtml(renderDocument(document,preheader),{
   allowedTags:['html','head','body','meta','style','table','tbody','tr','td','th','div','span','p','h1','h2','h3','h4','strong','b','em','i','u','s','br','hr','a','img','ul','ol','li','blockquote'],
-  allowedAttributes:{'*':['style','class','role','align','width','height','bgcolor','cellpadding','cellspacing'],meta:['charset','name','content'],a:['href','title'],img:['src','alt','width','height']},
+  allowedAttributes:{'*':['style','class','role','align','width','height','bgcolor','background','cellpadding','cellspacing'],meta:['charset','name','content'],a:['href','title'],img:['src','alt','width','height']},
   allowedSchemes:['https','http','mailto','tel'],allowedSchemesByTag:{img:['https']},allowProtocolRelative:false,
   allowedStyles:{'*':{
    color:[/^#[a-f0-9]{3,8}$/i], 'background-color':[/^#[a-f0-9]{3,8}$/i],background:[/^#[a-f0-9]{3,8}$/i],
+   'background-image':[/^url\(['"]https:\/\/[^'"\s<>()\\]+['"]\)$/i],'background-size':[/^cover$/],'background-position':[/^center$/],'mso-hide':[/^all$/],
    'font-family':[/^[\w\s,'"-]+$/], 'font-size':[/^\d+(px|%)$/], 'font-weight':[/^(normal|bold|[1-9]00)$/],
    'line-height':[/^[\d.]+(px|%)?$/], 'text-align':[/^(left|center|right)$/], 'text-decoration':[/^(none|underline|line-through)$/],
    padding:[/^[\d.\s]+(px)?([\s\d.px]+)?$/],margin:[/^[\d.px\sauto-]+$/], 'margin-top':[/^\d+px$/], 'margin-bottom':[/^\d+px$/],
