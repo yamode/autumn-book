@@ -2,6 +2,7 @@ import {json,error} from '@sveltejs/kit';
 import type {RequestHandler} from './$types';
 import {newsletterContext,campaignInput,auditDocument,newsletterDebug} from '$lib/server/newsletter';
 import {newsForm} from '$lib/server/news/editor';
+import {audienceFilter} from '$lib/newsletter-audience';
 export const POST:RequestHandler=async event=>{
  const {db,facility,tenant}=await newsletterContext(event,true);
  const form=await newsForm(event.request,2*1024*1024);
@@ -14,6 +15,7 @@ export const POST:RequestHandler=async event=>{
   if(action==='save')result=await db.rpc('admin_newsletter_save',{p_facility:facility,p_id:data.id||null,p_revision:Number(data.revision)||0,p_data:campaignInput(data)});
   else if(action==='import')result=await db.rpc('admin_newsletter_import',{p_facility:facility,p_name:String(data.name??''),p_rows:data.rows});
   else if(action==='list')result=await db.rpc('admin_newsletter_list',{p_facility:facility,p_name:String(data.name??''),p_tags:data.tags});
+  else if(action==='filtered-list')result=await db.rpc('admin_newsletter_filtered_list',{p_facility:facility,p_name:String(data.name??''),p_tags:data.tags,p_filter:audienceFilter(data.filter)});
   else if(action==='asset'){
    const kind=String(data.kind??'');
    if(!['template','block','brand'].includes(kind))error(400,'保存する種類を確認してください。');
@@ -24,10 +26,8 @@ export const POST:RequestHandler=async event=>{
   else if(action==='profile')result=await db.rpc('admin_newsletter_profile',{p_facility:facility,p_id:data.id,p_data:data.update??null});
   else if(action==='settings')result=await db.rpc('admin_newsletter_settings',{p_facility:facility,p_data:data});
   else if(action==='count'){
-   let query=db.from('newsletter_contacts').select('id',{count:'exact',head:true}).eq('tenant_id',tenant).eq('status','active');
    const tags=Array.isArray(data.tags)?data.tags.map(String).slice(0,100):[];
-   if(tags.length)query=query.overlaps('tags',tags);
-   const {count,error:e}=await query;
+   const {data:count,error:e}=await db.rpc('admin_newsletter_audience_count',{p_facility:facility,p_tags:tags,p_filter:audienceFilter(data.filter)});
    if(e)throw Error('対象件数を取得できませんでした。');
    return json({data:{count:count??0}});
   }

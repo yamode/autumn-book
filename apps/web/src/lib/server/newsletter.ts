@@ -5,6 +5,7 @@ import {ADMIN_SUPABASE,createSupabaseServerClient} from './auth';
 import {currentBookFacility} from './partners/staff';
 import {FACILITY_UUID} from './supabase-data';
 import {normalizeDocument,renderDocument,auditDocument,type MailDocument} from '$lib/newsletter';
+import {audienceFilter} from '$lib/newsletter-audience';
 const DEBUG=env.NEWSLETTER_DEBUG==='true';
 export function newsletterDebug(action:string,details:Record<string,string|number|boolean>){if(DEBUG)console.info('[newsletter]',action,details);}
 export async function newsletterContext(event:RequestEvent,write=false){
@@ -46,6 +47,6 @@ export function campaignInput(raw:Record<string,unknown>){
  const html=newsletterHtml(document,preheader);if(html.length>500000)throw Error('メールの容量が大きすぎます。');
  const text=document.blocks.map(b=>['html','richtext'].includes(b.kind)?sanitizeHtml(b.text,{allowedTags:[],allowedAttributes:{}}):b.kind==='button'?`${b.text}\n${b.url}`:b.kind==='image'?b.alt:b.text).join('\n\n');
  const email=(value:unknown)=>{const v=String(value??'').trim();if(v&&!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v))throw Error('メールアドレスを確認してください。');return v;};
- return {name:String(raw.name??'名称未設定').slice(0,200),subject,preheader,document,html,plain_text:text,from_name:String(raw.from_name??'').slice(0,100),from_email:email(raw.from_email),reply_to:email(raw.reply_to),audience_tags:Array.isArray(raw.audience_tags)?raw.audience_tags.map(String).slice(0,100):[]};
+ return {name:String(raw.name??'名称未設定').slice(0,200),subject,preheader,document,html,plain_text:text,from_name:String(raw.from_name??'').slice(0,100),from_email:email(raw.from_email),reply_to:email(raw.reply_to),audience_tags:Array.isArray(raw.audience_tags)?raw.audience_tags.map(String).slice(0,100):[],audience_filter:audienceFilter(raw.audience_filter)};
 }
 export {auditDocument};

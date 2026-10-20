@@ -2,12 +2,18 @@
  import {invalidateAll} from '$app/navigation';
  import MailDialog from '$lib/components/newsletter/MailDialog.svelte';
  import MailNav from '$lib/components/newsletter/MailNav.svelte';
+ import MailAudience from '$lib/components/newsletter/MailAudience.svelte';
+ import {audienceFilter,savedAudience,type AudienceFilter} from '$lib/newsletter-audience';
  import {readContactCsv,contactRows,readContactArchive,type ContactArchive} from '$lib/newsletter-csv';
  let {data}=$props();
  const labels:Record<string,string>={active:'配信可能',unconfirmed:'同意未確認',unsubscribed:'配信停止',bounced:'バウンス',complained:'苦情による抑止'};
  let message=$state(''),busy=$state(false),csv=$state<{headers:string[];rows:string[][]}|null>(null),emailColumn=$state(''),nameColumn=$state(''),importStatus=$state('unconfirmed'),tag=$state(''),consent=$state(''),fileName=$state(''),preview=$state(false),listName=$state(''),listTags=$state('');
  let edit=$state<{id:string;version:number;name:string;tags:string;email:string;status:string;fields:Record<string,unknown>}|null>(null),suppress=$state(false);
  let archive=$state<ContactArchive|null>(null);
+ let listFilter=$state<AudienceFilter>({}),listCount=$state<number|null>(null);
+ const currentList=()=>({name:listName.trim(),tags:listTags.split(',').map(t=>t.trim()).filter(Boolean),filter:audienceFilter(listFilter)});
+ async function saveList(){try{await api('filtered-list',currentList());listName='';listTags='';listFilter={};listCount=null;await invalidateAll();message='リストを保存しました。';}catch(e){message=String(e);}}
+ async function countList(){const p=currentList(),key=JSON.stringify(p);try{const r=await api('count',p);if(key===JSON.stringify(currentList()))listCount=r.count;}catch(e){message=String(e);}}
  let customFields=$state(''),profileMessage=$state(''),activity=$state<Record<string,any>[]>([]),stats=$state<Record<string,number>|null>(null);
  async function openContact(c:typeof data.contacts[number]){edit={...c,tags:c.tags.join(', '),fields:c.fields as Record<string,unknown>};suppress=false;activity=[];stats=null;profileMessage='反応履歴を読み込み中…';customFields=JSON.stringify(Object.fromEntries(Object.entries(edit.fields).filter(([k])=>!['benchmark_lists','benchmark_status_sources'].includes(k))),null,2);const contactId=c.id;try{const r=await api('profile',{id:contactId});if(edit?.id===contactId){activity=r.activity;stats=r.stats;profileMessage='';}}catch(e){if(edit?.id===contactId)profileMessage=String(e);}}
  async function api(action:string,value:unknown){const f=new FormData();f.set('facility',data.facility);f.set('action',action);f.set('data',JSON.stringify(value));const r=await fetch('/admin/mail/api',{method:'POST',body:f}),j=await r.json();if(!r.ok)throw Error(j.error);return j.data;}
@@ -24,8 +30,8 @@
 <header class="mb-6"><h1 class="text-2xl font-semibold">{data.tab==='lists'?'リスト・タグ':'コンタクト'}</h1><p class="mt-2 text-sm text-stone-500">同じメールアドレスは1人として管理し、複数のリストにはタグで所属します。</p></header>
 {#if message}<p role="status" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">{message}</p>{/if}
 {#if data.tab==='lists'}
- <section class="panel mb-6"><h2>リストを作成</h2><label>リスト名<input bind:value={listName}/></label><label>対象タグ（カンマ区切り・いずれかに一致）<input bind:value={listTags}/></label><button disabled={!listName.trim()||!listTags.trim()} onclick={async()=>{try{await api('list',{name:listName.trim(),tags:listTags.split(',').map(t=>t.trim()).filter(Boolean)});listName='';listTags='';await invalidateAll();}catch(e){message=String(e);}}}>保存</button></section>
- <div class="grid gap-4 md:grid-cols-3">{#each data.lists as list}<article class="panel"><h2>{list.name}</h2><p class="text-sm text-stone-500">{list.tags.join(' / ')}</p></article>{:else}<p>リストはまだありません。</p>{/each}</div>
+ <section class="panel mb-6 space-y-4"><h2>リストを作成・更新</h2><label>リスト名<input bind:value={listName}/></label><label>対象タグ（カンマ区切り・いずれかに一致）<input bind:value={listTags}/></label><MailAudience bind:value={listFilter}/><p class="text-sm text-stone-500">タグと詳細条件の両方を満たす方が対象です。同じリスト名で保存すると条件を更新します。</p><div class="flex items-center gap-3"><button onclick={()=>void countList()}>現在の配信可能件数</button>{#if listCount!==null}<span>{listCount.toLocaleString()}件</span>{/if}<button class="primary" disabled={!listName.trim()} onclick={()=>void saveList()}>保存</button></div></section>
+ <div class="grid gap-4 md:grid-cols-3">{#each data.lists as list}<article class="panel"><h2>{list.name}</h2><p class="text-sm text-stone-500">{list.tags.join(' / ')||'タグ指定なし'}</p>{#if list.query&&list.query!=='{}'}<p class="mt-2 text-sm">詳細条件あり</p>{/if}<button class="mt-3" onclick={()=>{listName=list.name;listTags=list.tags.join(', ');listFilter=savedAudience(list.query);listCount=null;}}>条件を編集</button></article>{:else}<p>リストはまだありません。</p>{/each}</div>
 {:else}
  <form method="GET" class="mb-4 flex flex-wrap items-end gap-3"><label>検索対象<select name="field" value={data.field}><option value="email">メールアドレス</option><option value="name">名前</option></select></label><label>検索<input name="q" value={data.q}/></label><label>状態<select name="status" value={data.status}><option value="">すべて</option>{#each Object.entries(labels) as [v,l]}<option value={v}>{l}</option>{/each}</select></label><button>絞り込む</button><span class="py-3 text-sm">{data.count.toLocaleString()}件</span></form>
  <div class="overflow-auto rounded-xl border border-stone-200 bg-white"><table class="w-full text-left text-sm"><thead class="bg-stone-50"><tr><th>メールアドレス</th><th>名前</th><th>状態</th><th>タグ</th></tr></thead><tbody>{#each data.contacts as c}<tr class="border-t border-stone-100"><td><button class="border-0 text-left underline" onclick={()=>void openContact(c)}>{c.email}</button></td><td>{c.name}</td><td>{labels[c.status]}</td><td>{c.tags.join(' / ')}</td></tr>{:else}<tr><td colspan="4">該当するコンタクトはありません。</td></tr>{/each}</tbody></table></div>

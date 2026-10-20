@@ -5,6 +5,8 @@
  import MailNav from './MailNav.svelte';
  import MailDialog from './MailDialog.svelte';
  import MailRichText from './MailRichText.svelte';
+ import MailAudience from './MailAudience.svelte';
+ import {audienceFilter,savedAudience,type AudienceFilter} from '$lib/newsletter-audience';
  type StudioData={facility:string;campaign:Record<string,any>|null;defaults?:Record<string,any>|null;template?:MailDocument;assets:Record<string,any>[];lists:Record<string,any>[];deliveries:Record<string,any>[];summary?:Record<string,number>|null};
  let {data}:{data:StudioData}=$props();
  // svelte-ignore state_referenced_locally
@@ -18,15 +20,17 @@
  let name=$state(initial?.name??'名称未設定'),subject=$state(initial?.subject??''),preheader=$state(initial?.preheader??'');
  let fromName=$state(initial?.from_name??defaults?.from_name??'山人-yamado-'),fromEmail=$state(initial?.from_email??defaults?.from_email??''),replyTo=$state(initial?.reply_to??defaults?.reply_to??'info@yamado.co.jp');
  let tags=$state<string[]>(initial?.audience_tags??[]),selected=$state(''),tab=$state('design'),mobile=$state(false),palette=$state('content');
+ let filter=$state<AudienceFilter>(audienceFilter(initial?.audience_filter));
  let saving=$state(false),message=$state(''),savedKey=$state(''),lastAuto=$state(''),ready=$state(false),savedTime=$state('');
  let history=$state<string[]>([]),future=$state<string[]>([]),dragId=$state(''),count=$state<number|null>(null),confirming=$state(false),confirmCount=$state(''),schedule=$state('');
  let aiPrompt=$state(''),aiTone=$state('丁寧で上品'),aiKind=$state('body'),aiResult=$state(''),aiBusy=$state(false);
  let disabled=$derived((data.campaign?.status??'draft')!=='draft');
- const payload=()=>({id,revision,name,subject,preheader,document:doc,from_name:fromName,from_email:fromEmail,reply_to:replyTo,audience_tags:tags});
- const key=()=>JSON.stringify({name,subject,preheader,document:doc,fromName,fromEmail,replyTo,tags});
+ const payload=()=>({id,revision,name,subject,preheader,document:doc,from_name:fromName,from_email:fromEmail,reply_to:replyTo,audience_tags:tags,audience_filter:filter});
+ const key=()=>JSON.stringify({name,subject,preheader,document:doc,fromName,fromEmail,replyTo,tags,filter});
  let dirty=$derived(ready&&key()!==savedKey);
  let block=$derived(doc.blocks.find(b=>b.id===selected));
  let issues=$derived(auditDocument(doc));
+ $effect(()=>{JSON.stringify(filter);tags.join('\n');count=null;});
  let preview=$derived(renderDocument(doc,preheader).replace('<head>','<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src https:; style-src \'unsafe-inline\';">'));
  onMount(()=>{savedKey=key();ready=true;const timer=setInterval(()=>{if(id&&!dirty&&!saving&&!aiBusy&&document.visibilityState==='visible')void invalidateAll().catch(()=>{});},10000);return()=>clearInterval(timer);});
  beforeNavigate(({cancel})=>{if(dirty&&!window.confirm('変更を保存していません。移動しますか？'))cancel();});
@@ -42,7 +46,7 @@
  async function saveAsset(kind:'template'|'block'){const label=window.prompt(kind==='template'?'テンプレート名':'保存ブロック名');if(!label)return;try{await api('asset',{kind,name:label,document:kind==='block'?{...doc,blocks:block?[block]:[]}:doc});message='保存しました。';await invalidateAll();}catch(e){message=String(e);}}
  function useAsset(document:MailDocument){checkpoint();doc=normalizeDocument({...document,blocks:document.blocks.map(b=>({...b,id:crypto.randomUUID()}))});}
  async function test(){if(dirty||!id){message='最新の内容を保存してからテスト送信してください。';return;}try{const r=await api('test',{id,revision});message=`テストメールを ${r.email} 宛に送信待ちへ登録しました。結果は配信状況に表示されます。`;await invalidateAll();}catch(e){message=String(e);}}
- async function audience(){try{const r=await api('count',{tags});count=r.count;confirmCount='';}catch(e){message=String(e);}}
+ async function audience(){const requested=JSON.stringify({tags,filter});try{const r=await api('count',{tags,filter});if(requested===JSON.stringify({tags,filter})){count=r.count;confirmCount='';}}catch(e){message=String(e);}}
  async function dispatch(){try{const at=schedule?new Date(schedule).toISOString():new Date().toISOString();await api('schedule',{id,revision,scheduled_at:at,count});confirming=false;await invalidateAll();message='配信を予約しました。';}catch(e){message=String(e);}}
  async function cancel(){try{await api('cancel',{id,revision});await invalidateAll();}catch(e){message=String(e);}}
  function chooseImage(url:string,alt:string){checkpoint();const target=doc.blocks.find(b=>b.id===selected&&b.kind==='image');if(target){target.url=url;target.alt=alt;}else{const next=newBlock('image');next.url=url;next.alt=alt;doc.blocks=[...doc.blocks,next];selected=next.id;}}
@@ -80,7 +84,7 @@
 {:else if tab==='checklist'}
  <div class="checklist"><section class="panel"><h2>件名・差出人</h2><label>件名<input bind:value={subject} disabled={disabled}/></label><label>プレヘッダー<input bind:value={preheader} disabled={disabled}/></label><label>差出人名<input bind:value={fromName} disabled={disabled}/></label><label>差出人メール<input type="email" bind:value={fromEmail} disabled={disabled}/></label><label>返信先<input type="email" bind:value={replyTo} disabled={disabled}/></label><p class="text-sm text-stone-500">差出人はResendで認証済みのドメインを指定してください。</p></section>
  <section class="panel"><h2>配信前チェック</h2>{#if issues.length}<ul class="space-y-2 text-sm text-amber-800">{#each issues as issue}<li>△ {issue}</li>{/each}</ul>{:else}<p class="text-sm text-emerald-700">✓ 空のブロック・リンク・代替テキストを確認しました。</p>{/if}<p class="text-sm text-stone-500">配信停止リンクと送信者情報は送信時に追加します。</p><button class="btn" disabled={dirty||disabled||!id} onclick={()=>void test()}>自分宛にテスト送信</button><p class="text-sm">最新テスト：{data.campaign?.tested_revision===revision?'送信済み':'未完了'}</p></section>
- <section class="panel"><h2>配信先</h2><p class="text-sm text-stone-500">未選択は配信可能な全コンタクト。複数選択は、いずれかのタグに該当する方が対象です。</p>{#each data.lists as list}<label class="flex items-center gap-2"><input type="checkbox" disabled={disabled} checked={list.tags.every((t:string)=>tags.includes(t))} onchange={e=>{tags=e.currentTarget.checked?[...new Set([...tags,...list.tags])]:tags.filter(t=>!list.tags.includes(t));count=null;}}/>{list.name}</label>{/each}<button class="btn" onclick={()=>void audience()}>対象者数を確認</button>{#if count!==null}<p class="text-xl font-semibold">{count.toLocaleString()}件</p>{/if}</section>
+ <section class="panel"><h2>配信先</h2><p class="text-sm text-stone-500">未選択は配信可能な全コンタクト。複数選択は、いずれかのタグに該当する方が対象です。</p>{#each data.lists as list}<label class="flex items-center gap-2"><input type="checkbox" disabled={disabled} checked={list.tags.every((t:string)=>tags.includes(t))} onchange={e=>{tags=e.currentTarget.checked?[...new Set([...tags,...list.tags])]:tags.filter(t=>!list.tags.includes(t));count=null;}}/>{list.name}</label>{/each}<details><summary class="cursor-pointer text-sm font-semibold">条件付きリスト・詳細な絞り込み</summary><div class="mt-4 space-y-4">{#each data.lists.filter(l=>l.query&&l.query!=='{}') as list}<button class="btn" disabled={disabled} onclick={()=>{filter=savedAudience(list.query);tags=[...list.tags];}}>{list.name}の条件を使用</button>{/each}<MailAudience bind:value={filter} {disabled}/><button class="btn" disabled={disabled} onclick={()=>filter={}}>条件をクリア</button></div></details><button class="btn" onclick={()=>void audience()}>対象者数を確認</button>{#if count!==null}<p class="text-xl font-semibold">{count.toLocaleString()}件</p>{/if}</section>
  <section class="panel"><h2>配信日時</h2><label>日時を指定（空欄なら今すぐ）<input type="datetime-local" bind:value={schedule} disabled={disabled}/></label><p class="text-sm text-stone-500">端末のタイムゾーンで設定されます。</p>{#if data.campaign?.status==='scheduled'}<button class="btn" onclick={()=>void cancel()}>予約を取り消す</button>{:else}<button class="btn primary" disabled={disabled||dirty||!id||count===null||!count||data.campaign?.tested_revision!==revision} onclick={()=>confirming=true}>配信内容を確認</button>{/if}</section>
  </div>
 {:else}<section class="panel"><h2>配信状況</h2><button class="btn" onclick={()=>void invalidateAll()}>更新</button><div class="grid grid-cols-2 gap-4 md:grid-cols-4">{#each [['送信',data.summary?.sent??'—'],['開封',data.summary?.opened??'—'],['クリック',data.summary?.clicked??'—'],['失敗・要確認',data.summary?.failed??'—']] as [label,n]}<div class="rounded-lg bg-stone-50 p-4"><p class="text-sm">{label}</p><p class="text-2xl font-semibold">{n}</p></div>{/each}</div>{#each data.deliveries.filter(d=>d.error) as d}<p class="text-sm text-red-700">{d.kind==='test'?'テスト':'本配信'}：{d.error}</p>{/each}</section>{/if}

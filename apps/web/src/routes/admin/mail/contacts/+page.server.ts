@@ -5,7 +5,7 @@ export const load:PageServerLoad=async event=>{
  let query=db.from('newsletter_contacts').select('id,email,name,status,tags,fields,version,source,created_at,updated_at',{count:'exact'}).eq('tenant_id',tenant).order('email').range((page-1)*50,page*50-1);
  if(q)query=query.ilike(field,'%'+q.replace(/[%_\\]/g,'\\$&')+'%');
  if(['active','unconfirmed','unsubscribed','bounced','complained'].includes(status))query=query.eq('status',status);
- const [contacts,lists,imports]=await Promise.all([query,db.from('newsletter_lists').select('id,name,tags').eq('tenant_id',tenant).order('name'),db.from('newsletter_imports').select('id,name,imported,suppressed,created_at').eq('tenant_id',tenant).order('created_at',{ascending:false}).limit(15)]);
+ const [contacts,lists,imports]=await Promise.all([query,db.from('newsletter_lists').select('id,name,tags,query').eq('tenant_id',tenant).order('name'),db.from('newsletter_imports').select('id,name,imported,suppressed,created_at').eq('tenant_id',tenant).order('created_at',{ascending:false}).limit(15)]);
  if(contacts.error)throw Error('コンタクトを読み込めませんでした。');
  return {facility,contacts:contacts.data??[],count:contacts.count??0,lists:lists.data??[],imports:imports.data??[],page,q,status,field,tab:event.url.searchParams.get('tab')??'contacts'};
 };
