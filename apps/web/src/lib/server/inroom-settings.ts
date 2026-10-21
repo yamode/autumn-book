@@ -10,10 +10,10 @@ import { demoPreviewJson, EMPTY_DEMO_PREVIEW, normalizeDemoPreview, type DemoPre
 // 全館の湯量の残量目安（スタッフが手入力）。percent が null（未入力）なら出さない
 // bands は段階ごとの言葉・色（null なら既定・$lib/spring-level.ts）
 export type SpringLevel = { enabled: boolean; percent: number | null; note: string; updatedAt: string | null; bands: SpringBand[] | null };
-export type InroomSettings = { showFrontCall: boolean; springLevel: SpringLevel };
+export type InroomSettings = { showFrontCall: boolean; frontPhone: string; springLevel: SpringLevel };
 
 const SPRING_DEFAULT: SpringLevel = { enabled: false, percent: null, note: '', updatedAt: null, bands: null };
-const DEFAULTS: InroomSettings = { showFrontCall: true, springLevel: SPRING_DEFAULT };
+const DEFAULTS: InroomSettings = { showFrontCall: true, frontPhone: '', springLevel: SPRING_DEFAULT };
 const demoStore = new Map<string, InroomSettings>();
 
 export async function loadInroomSettings(facilityId: string): Promise<InroomSettings> {
@@ -22,12 +22,13 @@ export async function loadInroomSettings(facilityId: string): Promise<InroomSett
 	try {
 		const { data, error } = await supa()
 			.from('inroom_settings')
-			.select('show_front_call, spring_level_enabled, spring_level_percent, spring_level_note, spring_level_updated_at, spring_level_bands')
+			.select('show_front_call, front_phone, spring_level_enabled, spring_level_percent, spring_level_note, spring_level_updated_at, spring_level_bands')
 			.eq('facility_id', uuid)
 			.maybeSingle();
 		if (error || !data) return DEFAULTS;
 		return {
 			showFrontCall: data.show_front_call !== false,
+			frontPhone: data.front_phone ?? '',
 			springLevel: {
 				enabled: data.spring_level_enabled === true,
 				percent: typeof data.spring_level_percent === 'number' ? data.spring_level_percent : null,
@@ -46,14 +47,15 @@ export function visibleSpringLevel(s: InroomSettings): SpringLevel | null {
 	return s.springLevel.enabled && s.springLevel.percent !== null ? s.springLevel : null;
 }
 
-export function saveInroomSettingsDemo(facilityId: string, s: { showFrontCall: boolean }): void {
-	demoStore.set(facilityId, { ...(demoStore.get(facilityId) ?? DEFAULTS), showFrontCall: s.showFrontCall });
+export function saveInroomSettingsDemo(facilityId: string, s: { showFrontCall: boolean; frontPhone: string }): void {
+	demoStore.set(facilityId, { ...(demoStore.get(facilityId) ?? DEFAULTS), ...s });
 }
 
-export async function sbSaveInroomSettings(client: SupabaseClient, facilityId: string, s: { showFrontCall: boolean }): Promise<void> {
-	const { error } = await client.schema('book').rpc('admin_save_inroom_settings', {
+export async function sbSaveInroomSettings(client: SupabaseClient, facilityId: string, s: { showFrontCall: boolean; frontPhone: string }): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_save_inroom_contact', {
 		p_facility_id: FACILITY_UUID[facilityId] ?? facilityId,
-		p_show_front_call: s.showFrontCall
+		p_show_front_call: s.showFrontCall,
+		p_front_phone: s.frontPhone
 	});
 	if (error) throw new Error('客室案内の表示設定を保存できませんでした（' + error.message + '）');
 }

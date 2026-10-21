@@ -261,7 +261,11 @@ export const actions: Actions = {
 		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
 		const form = await event.request.formData();
 		const facilityId = String(form.get('facilityId') ?? '');
-		const settings = { showFrontCall: form.get('showFrontCall') === 'on' };
+		const frontPhone = String(form.get('frontPhone') ?? '').normalize('NFKC').trim();
+		if (frontPhone && (frontPhone.length > 32 || !/^\+?[0-9 ()-]+$/.test(frontPhone) || !/[0-9]/.test(frontPhone))) {
+			return fail(400, { message: '電話番号は32文字以内の数字・ハイフン・括弧・先頭の+で入力してください。' });
+		}
+		const settings = { showFrontCall: form.get('showFrontCall') === 'on', frontPhone };
 		if (useSupabaseAdmin) {
 			try {
 				await sbSaveInroomSettings(createSupabaseServerClient(event), facilityId, settings);

@@ -96,7 +96,7 @@
 	const slug = $derived(data.stay?.facility.slug ?? data.browse?.slug ?? data.endedFacility?.slug ?? '');
 	// コードなしで見る館内案内（入口QRから・2026-10-10）。滞在の情報（食事・貸切風呂・内線）は出さず、トップでコードを入れてもらう
 	const facilityName = $derived(data.stay?.facility.name ?? data.browse?.name ?? '');
-	const facilityPhone = $derived(data.stay?.facility.phone ?? data.browse?.phone ?? '');
+	const facilityPhone = $derived(data.frontPhone ?? '');
 	const hero = $derived(inroomHero(slug));
 	// Wi-Fi は現行アプリと同じくヒーロー直下に常時出す。残りはカードに並べる。
 	const wifi = $derived(data.guides.find((g) => g.section === 'wifi'));

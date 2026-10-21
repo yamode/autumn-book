@@ -614,6 +614,11 @@
 			<span>「フロントへお電話」を出す</span>
 		</label>
 		<p class="mt-1 text-xs text-stone-400">外しても、内線（Wi-Fi通話）がつながらないときの電話のご案内は出ます。</p>
+		<label class="mt-4 block">
+			<span class="font-medium">客室案内用の電話番号</span>
+			<input type="tel" name="frontPhone" value={data.inroomSettings.frontPhone} maxlength="32" placeholder="例：0197-82-2222" class="mt-2 block w-full rounded-lg border border-stone-300 px-3 py-2 sm:max-w-sm" />
+		</label>
+		<p class="mt-2 text-xs text-stone-500">この施設の客室案内で、滞在コード入力前後と内線がつながらないときに使います。空欄の場合は従来の施設電話番号を使います。</p>
 		<button type="submit" class="mt-4 w-full rounded-lg bg-brand-800 px-6 py-2.5 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto">保存する</button>
 	</form>
 

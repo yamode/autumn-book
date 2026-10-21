@@ -40,6 +40,8 @@ const STAY_COOKIE = 'ab_stay';
 
 export const load: PageServerLoad = async ({ cookies, url }) => {
 	const locale = getLocale();
+	const frontPhoneFor = (settings: Awaited<ReturnType<typeof loadInroomSettings>>, slug: string) =>
+		settings.frontPhone || getFacilityById(`f-${slug}`, locale)?.phone || '';
 	const invalidQr = url.searchParams.get('e') === 'invalid';
 	// チェックアウト後に QR を読んだ（/r/c/<token> が e=ended で戻す）
 	const endedQr = url.searchParams.get('e') === 'ended';
@@ -61,6 +63,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 
 	// サンクス表示（ご滞在終了）。施設が分かれば、その施設の販促バナーを添える
 	const thanks = async (facility: EndedFacility | null) => ({
+		frontPhone: '',
 		stay: null,
 		guides: [],
 		bathReservations: [],
@@ -90,6 +93,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		upcomingFrom: null as string | null,
 		// 「フロントへお電話」メニューを出すか（管理画面で施設ごとに切り替え・2026-10-15）
 		showFrontCall: true,
+		frontPhone: '',
 		// 全客室へのお知らせ（掲載中のもの。既読は端末の localStorage で判定・2026-10-17）
 		notices: [] as InroomNotice[],
 		// 全館の湯量の残量目安（出す設定の施設だけ・2026-10-17）
@@ -115,6 +119,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		return {
 			...noStay,
 			showFrontCall: settings.showFrontCall,
+			frontPhone: frontPhoneFor(settings, entryFacility.slug),
 			...withPreview(settings, await loadLiveNotices(entryFacility.id), cookiePreview),
 			// Wi-Fi はコードを入れてから（browseVisibleGuide）
 			guides: guides.filter(browseVisibleGuide),
@@ -138,6 +143,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 			return {
 				...noStay,
 				guides: guides.filter(browseVisibleGuide),
+				frontPhone: frontPhoneFor(settings, upcoming.facility.slug),
 				browse: { name: upcoming.facility.name, slug: upcoming.facility.slug, phone: upcoming.facility.phone },
 				upcomingFrom: upcoming.validFrom,
 				showFrontCall: settings.showFrontCall,
@@ -192,6 +198,7 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		banners: [],
 		browse: null,
 		showFrontCall: settings.showFrontCall,
+		frontPhone: frontPhoneFor(settings, stay.facility.slug),
 		...(isDemoStay ? withPreview(settings, notices, demoPreview) : { notices, springLevel: visibleSpringLevel(settings) }),
 		// トップのカード用（中身は /r/bill）。出す設定が無ければ null
 		billSummary:
