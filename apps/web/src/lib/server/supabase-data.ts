@@ -597,15 +597,7 @@ export async function confirmBookingGroup(
 		p_member_coupon_id: opts.memberCouponId ?? null,
 		p_rooms_detail: opts.rooms ?? null
 	};
-	let { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
-	// 移行用（2026-10-21）: autumn-shared 20261021003205 の適用前（関数がまだ無い＝PGRST202）は旧関数で確定する。
-	//   アプリを先にデプロイしてから migration を当てるため。service_role から呼ぶので会員扱いにはならない
-	//   （数分間だけ。適用後は通らない）。migration の適用を確かめたらこの分岐は消してよい。
-	if (error && (error.code === 'PGRST202' || /confirm_booking_server/.test(error.message) && /find|exist/i.test(error.message))) {
-		console.warn('[confirmBookingGroup] confirm_booking_server が未適用のため旧関数で確定');
-		const { p_member_user_id: _m, ...legacy } = params;
-		({ data, error } = await sb.schema('book').rpc('confirm_booking_group', legacy));
-	}
+	const { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
 	if (error) {
 		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'onsite_not_allowed'] as const) {
 			if (error.message.includes(code)) return { error: code };
