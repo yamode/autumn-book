@@ -60,12 +60,12 @@ export const actions: Actions = {
 	// デモのワンクリックログイン（AUTH_MODE=demo のときのみ。本番 supabase モードでは無効）
 	admin: async ({ cookies }) => {
 		if (AUTH_MODE !== 'demo') return fail(400, { message: 'デモログインは無効です' });
-		setSession(cookies, { id: 'admin-demo', role: 'admin', name: '管理者' });
+		await setSession(cookies, { id: 'admin-demo', role: 'admin', name: '管理者' });
 		redirect(303, '/admin');
 	},
 	staff: async ({ cookies }) => {
 		if (AUTH_MODE !== 'demo') return fail(400, { message: 'デモログインは無効です' });
-		setSession(cookies, { id: 'staff-demo', role: 'staff', name: 'スタッフ' });
+		await setSession(cookies, { id: 'staff-demo', role: 'staff', name: 'スタッフ' });
 		redirect(303, '/admin');
 	}
 };

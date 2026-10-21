@@ -28,7 +28,7 @@ export const actions: Actions = {
 		const member = members.find((me) => me.email === email && me.password === password);
 		// 退会済み（論理削除）はログイン不可
 		if (!member || withdrawnMembers.has(member.id)) return fail(401, { message: m.error_login_failed(), email });
-		setSession(cookies, { id: member.id, role: 'member', name: member.name });
+		await setSession(cookies, { id: member.id, role: 'member', name: member.name });
 		redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	},
 

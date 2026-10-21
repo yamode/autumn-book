@@ -26,7 +26,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		return new Response(null);
 	}
 	if (r.result === 'paid' || r.result === 'already') {
-		finishDirectBooking(cookies, hold, getBookingDraft(cookies), r);
+		await finishDirectBooking(cookies, hold, getBookingDraft(cookies), r);
 		clearBookingDraft(cookies);
 		redirect(303, `/booking/complete/${r.bookingCode}`);
 	}

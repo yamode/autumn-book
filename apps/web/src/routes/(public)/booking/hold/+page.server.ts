@@ -322,7 +322,7 @@ export const actions: Actions = {
 				}
 				return fail(410, { message: m.error_hold_expired() });
 			}
-			setLastBooking(cookies, {
+			await setLastBooking(cookies, {
 				code: result.booking_code,
 				facilityUuid: hold.facilityId,
 				roomUuid: hold.roomTypeId,

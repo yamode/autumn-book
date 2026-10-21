@@ -6,11 +6,11 @@ import type { DirectConfirmResult } from '$lib/server/direct-payments';
 
 type Paid = Extract<DirectConfirmResult, { result: 'paid' | 'already' }>;
 
-export function finishDirectBooking(cookies: Cookies, hold: SbHold, draft: BookingDraft | null, r: Paid): void {
+export async function finishDirectBooking(cookies: Cookies, hold: SbHold, draft: BookingDraft | null, r: Paid): Promise<void> {
 	const guest = draft && draft.holdId === hold.id ? draft.guest : null;
 	const bathTax = r.bathTax ?? 0;
 	const detail = draft && draft.holdId === hold.id ? (draft.prepayDetail ?? null) : null;
-	setLastBooking(cookies, {
+	await setLastBooking(cookies, {
 		code: r.bookingCode,
 		facilityUuid: hold.facilityId,
 		roomUuid: hold.roomTypeId,

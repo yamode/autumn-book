@@ -12,6 +12,7 @@
 //   - admin / staff でログイン中のユーザー（公開サイトのプレビュー用）
 //   - プレビュートークン一致（MAINTENANCE_BYPASS_TOKEN・関係者への共有用）
 import { env } from '$env/dynamic/private';
+import { timingSafeEqualText } from '$lib/partner-mfa';
 import type { RequestEvent } from '@sveltejs/kit';
 
 const PREVIEW_COOKIE = 'ab_preview';
@@ -140,6 +141,8 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	if (url.pathname === '/api/hold') return true;
 	// 予約の確定も同じ理由でアプリ用の入口を通す（2026-10-21 監査で確定 RPC を service_role 専用にした）
 	if (url.pathname === '/api/confirm') return true;
+	// CSP の違反報告（Report-Only）はメンテナンス中のプレビューからも届く。HTML を返さず受ける
+	if (url.pathname === '/api/csp-report') return true;
 	// アクセス元の国の判定（同意バナーの出し分け）も、施設HP（Xserver・国が分からない）がブラウザから呼ぶ
 	// 独立した機能なので、ポータル本体の公開状況と関係なく稼働させる（2026-10-21）。
 	if (url.pathname === '/api/geo') return true;
@@ -156,7 +159,7 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	const token = bypassToken();
 	if (token) {
 		const q = url.searchParams.get('preview');
-		if (q && q === token) {
+		if (q && timingSafeEqualText(q, token)) {
 			cookies.set(PREVIEW_COOKIE, token, {
 				path: '/',
 				httpOnly: true,
@@ -165,7 +168,8 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 			});
 			return true;
 		}
-		if (cookies.get(PREVIEW_COOKIE) === token) return true;
+		// ★2026-10-21 監査: 合言葉は時間一定で比べる
+		if (timingSafeEqualText(cookies.get(PREVIEW_COOKIE) ?? '', token)) return true;
 	}
 
 	return false;

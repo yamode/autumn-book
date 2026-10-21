@@ -234,12 +234,21 @@ const LOCK_MINUTES = 15;
 export const API_KEY_PREFIX = 'rmsp_';
 
 export class PartnerStoreError extends Error {
+  /** 画面に出さない内部の詳細（DB・Storage・Stripe の生のエラー文）。ログ用 */
+  public detail: string | null = null;
   constructor(
     message: string,
     public status = 400,
     public code = 'bad_request'
   ) {
-    super(message);
+    // ★2026-10-21 監査: 5xx（DB・外部サービスの失敗）は「…できませんでした（<生のエラー文>）」の形で
+    //   テーブル名・制約名・SQL の断片が取引先の画面に出ていた。括弧の中身は画面に出さずログにだけ残す。
+    const inner = status >= 500 ? /（([^（）]*)）\s*。?$/.exec(message) : null;
+    super(inner ? message.slice(0, inner.index) + (message.trimEnd().endsWith('。') ? '。' : '') : message);
+    if (inner) {
+      this.detail = inner[1];
+      console.error('[PartnerStoreError]', code, inner[1]);
+    }
   }
 }
 

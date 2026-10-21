@@ -55,7 +55,7 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		event.locals.pendingAuthUser = pending;
 		event.locals.adminAal = adminAal;
 	} else {
-		event.locals.user = getSession(event.cookies);
+		event.locals.user = await getSession(event.cookies);
 		event.locals.pendingAuthUser = null;
 		event.locals.adminAal = null;
 	}

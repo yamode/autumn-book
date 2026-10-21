@@ -39,6 +39,7 @@
 import { parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot } from '$lib/partner-member-page';
 import { supa } from './supabase';
 import { partnerServiceClient } from './partners/admin-client';
+import { signCookieValue, verifyCookieValue } from './signed-cookie';
 import { holdClientKey, holdErrorKind } from './hold-rate-limit';
 import type {
 	CalendarDay,
@@ -596,7 +597,15 @@ export async function confirmBookingGroup(
 		p_member_coupon_id: opts.memberCouponId ?? null,
 		p_rooms_detail: opts.rooms ?? null
 	};
-	const { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
+	let { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
+	// 移行用（2026-10-21）: autumn-shared 20261021003205 の適用前（関数がまだ無い＝PGRST202）は旧関数で確定する。
+	//   アプリを先にデプロイしてから migration を当てるため。service_role から呼ぶので会員扱いにはならない
+	//   （数分間だけ。適用後は通らない）。migration の適用を確かめたらこの分岐は消してよい。
+	if (error && (error.code === 'PGRST202' || /confirm_booking_server/.test(error.message) && /find|exist/i.test(error.message))) {
+		console.warn('[confirmBookingGroup] confirm_booking_server が未適用のため旧関数で確定');
+		const { p_member_user_id: _m, ...legacy } = params;
+		({ data, error } = await sb.schema('book').rpc('confirm_booking_group', legacy));
+	}
 	if (error) {
 		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'onsite_not_allowed'] as const) {
 			if (error.message.includes(code)) return { error: code };
@@ -2936,8 +2945,9 @@ export function lastBookingMemberPageOf(hold: Pick<HoldGroup, 'memberPage'>): La
 	return hold.memberPage ? { partnerId: hold.memberPage.partnerId, pageName: hold.memberPage.pageName } : null;
 }
 
-export function setLastBooking(cookies: Cookies, last: LastBooking): void {
-	cookies.set(LAST_COOKIE, encodeURIComponent(JSON.stringify(last)), {
+// ★2026-10-21 監査: 署名付き（書き換えた Cookie で偽の予約完了画面を出させない）
+export async function setLastBooking(cookies: Cookies, last: LastBooking): Promise<void> {
+	cookies.set(LAST_COOKIE, await signCookieValue(LAST_COOKIE, encodeURIComponent(JSON.stringify(last))), {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
@@ -2945,8 +2955,8 @@ export function setLastBooking(cookies: Cookies, last: LastBooking): void {
 	});
 }
 
-export function getLastBooking(cookies: Cookies): LastBooking | null {
-	const raw = cookies.get(LAST_COOKIE);
+export async function getLastBooking(cookies: Cookies): Promise<LastBooking | null> {
+	const raw = await verifyCookieValue(LAST_COOKIE, cookies.get(LAST_COOKIE));
 	if (!raw) return null;
 	try {
 		return JSON.parse(decodeURIComponent(raw)) as LastBooking;

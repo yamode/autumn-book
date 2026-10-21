@@ -110,7 +110,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			if (!hold) return bad(m.error_hold_expired(), 410, { expired: true });
 			const r = await confirmDirectIntent(intentId, hold.id);
 			if (r.result === 'paid' || r.result === 'already') {
-				finishDirectBooking(cookies, hold, draft, r);
+				await finishDirectBooking(cookies, hold, draft, r);
 				clearBookingDraft(cookies);
 				return json({ ok: true, redirect: `/booking/complete/${r.bookingCode}` }, { headers: noStore });
 			}

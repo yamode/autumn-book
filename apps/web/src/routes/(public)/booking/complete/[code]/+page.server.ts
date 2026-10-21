@@ -9,7 +9,7 @@ import type { PageServerLoad } from './$types';
 export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 	if (DATA_SOURCE === 'supabase') {
 		// 確定直後に確定アクションが書いた直近予約 cookie から復元する（anon で booking を再取得する RPC が無いため）。
-		const raw = getLastBooking(cookies);
+		const raw = await getLastBooking(cookies);
 		if (!raw || raw.code !== params.code) error(404, '予約が見つかりません');
 
 		const [facility, room, plan] = await Promise.all([

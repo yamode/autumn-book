@@ -172,7 +172,7 @@ export const actions: Actions = {
 			return fail(409, { step: 'demo', errors: dupErrors, values: input });
 		}
 		// 本実装：core.guest_identities 照合による既存ゲスト名寄せがここで走る（設計書 §3.2）
-		setSession(cookies, { id: result.id, role: 'member', name: result.name });
+		await setSession(cookies, { id: result.id, role: 'member', name: result.name });
 		redirect(303, '/account?welcome=1');
 	}
 };

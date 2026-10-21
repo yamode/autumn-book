@@ -13,6 +13,7 @@
 // あわせて、承諾の途中で止まった照会（accepted・予約なし・10分超）の後始末（recoverStuckGroupAccepts）もここで行う。
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
+import { timingSafeEqualText } from '$lib/partner-mfa';
 import { chargeDueBookings, onlinePaymentReady } from '$lib/server/partners/booking';
 import { maintainBookingAttachments } from '$lib/server/partners/booking-attachments';
 import { expireGroupInquiries, recoverStuckGroupAccepts } from '$lib/server/partners/group-inquiries';
@@ -21,7 +22,8 @@ import { partnerAdminClient } from '$lib/server/partners/store';
 function isAuthorized(request: Request, secret: string): boolean {
   const header = request.headers.get('authorization') ?? '';
   const presented = header.startsWith('Bearer ') ? header.slice(7) : header;
-  return presented.length > 0 && presented === secret;
+  // ★2026-10-21 監査: === は先頭から一致した長さで時間が変わるので、時間一定で比べる
+  return presented.length > 0 && timingSafeEqualText(presented, secret);
 }
 
 export const POST: RequestHandler = async ({ request, url, platform }) => {
