@@ -1,4 +1,6 @@
 import { redirect } from '@sveltejs/kit';
+import { facilities } from '$lib/server/store';
+import { FACILITY_UUID } from '$lib/server/supabase-data';
 import type { RequestHandler } from './$types';
 
 /**
@@ -14,8 +16,20 @@ function sectionRoot(back: string | null): string {
 	return m ? m[0] : '/admin';
 }
 
+/**
+ * ?f= を Book の施設 ID（f-nishiwaga 等）にそろえる。
+ * PMS のトップの「Book」ボタンは、PMS で開いている施設の UUID（core.facilities.id）を渡してくる（2026-10-22）。
+ * 知らない値は無視する（以前は何でも Cookie に入れていた）。
+ */
+function bookFacilityId(raw: string | null): string | null {
+	if (!raw) return null;
+	if (facilities.some((f) => f.id === raw)) return raw;
+	const byUuid = Object.entries(FACILITY_UUID).find(([, uuid]) => uuid === raw.toLowerCase());
+	return byUuid ? byUuid[0] : null;
+}
+
 export const GET: RequestHandler = async ({ url, cookies }) => {
-	const f = url.searchParams.get('f');
+	const f = bookFacilityId(url.searchParams.get('f'));
 	// ブラウザを閉じても選んだ施設を覚えておく（閉じると先頭の施設に戻り、別施設を編集する事故になるため）
 	if (f) cookies.set('ab_fac', f, { path: '/admin', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 });
 	redirect(303, sectionRoot(url.searchParams.get('back')));
