@@ -306,14 +306,22 @@ export const actions: Actions = {
 				return fail(400, { errors, values: guest });
 			}
 
-			const client = useMember ? createSupabaseServerClient(event) : undefined;
+			// 確定はサーバの service_role 経由（book.confirm_booking_server）。会員は検証済みセッションの id を渡す
+			const memberUserId = useMember ? (locals.user?.id ?? null) : null;
 			// 現地払いの内訳（現地PayPay・現地カード・現地現金）は宿への申し送り（core.stays.notes → PMS の備考）に載せる。
 			// 予約の metadata.guest にも onsitePayment として残す
 			const guestForBooking = onsiteMethod
 				? { ...answered.guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], answered.guest.notes].filter(Boolean).join(' ') }
 				: answered.guest;
-			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { client, pointsUsed, locale: getLocale(), rooms: answered.rooms });
-			if ('error' in result) return fail(410, { message: m.error_hold_expired() });
+			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, locale: getLocale(), rooms: answered.rooms });
+			if ('error' in result) {
+				// 画面の判定をすり抜けても DB が支払方法を検査する（onsite_not_allowed）
+				if (result.error === 'onsite_not_allowed') {
+					errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+					return fail(400, { errors, values: guest });
+				}
+				return fail(410, { message: m.error_hold_expired() });
+			}
 			setLastBooking(cookies, {
 				code: result.booking_code,
 				facilityUuid: hold.facilityId,

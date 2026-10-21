@@ -559,17 +559,23 @@ export interface RoomDetailInput {
 }
 
 /**
- * 束を確定する（現地払い・book.confirm_booking_group）。会員（ポイント・クーポン）は authenticated client、ゲストは anon `supa()`。
+ * 束を確定する（現地払い・book.confirm_booking_server・service_role 専用）。
+ * 2026-10-21 監査: 旧 confirm_booking / confirm_booking_group は anon・authenticated から外した（直叩きで
+ * 支払方法・必須質問を飛ばせたため）。呼び出し側（予約確認画面・/api/confirm）が必須質問を検証し、
+ * 検証済みの会員 id（会員でなければ null）を memberUserId で渡す。DB は全室の支払方法（非会員の現地払い可否）を
+ * 検査し、許されなければ onsite_not_allowed を返す。
  * 決済の内訳（予約時決済割・入湯税）は渡せない（オンライン決済は direct_payment_confirm が中で確定する）。
  */
 export async function confirmBookingGroup(
 	groupId: string,
 	sessionId: string,
 	guest: GuestInfo,
-	opts: { client?: SupabaseClient; pointsUsed?: number; locale?: string; memberCouponId?: string | null; rooms?: RoomDetailInput[] | null } = {}
+	opts: { memberUserId?: string | null; pointsUsed?: number; locale?: string; memberCouponId?: string | null; rooms?: RoomDetailInput[] | null } = {}
 ): Promise<
 	| {
 			booking_code: string;
+			stay_id?: string;
+			booking_id?: string;
 			total: number;
 			points_used: number;
 			points_earned: number;
@@ -578,7 +584,10 @@ export async function confirmBookingGroup(
 	  }
 	| { error: string }
 > {
+	const sb = partnerServiceClient();
+	if (!sb) throw new Error('confirm_booking_server: service_role クライアントが未設定');
 	const params = {
+		p_member_user_id: opts.memberUserId ?? null,
 		p_group_id: groupId,
 		p_session_id: sessionId,
 		p_guest: guest,
@@ -587,14 +596,11 @@ export async function confirmBookingGroup(
 		p_member_coupon_id: opts.memberCouponId ?? null,
 		p_rooms_detail: opts.rooms ?? null
 	};
-	const { data, error } = opts.client
-		? await opts.client.schema('book').rpc('confirm_booking_group', params)
-		: await supa().rpc('confirm_booking_group', params);
+	const { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
 	if (error) {
-		if (error.message.includes('hold_expired')) return { error: 'hold_expired' };
-		if (error.message.includes('forbidden')) return { error: 'forbidden' };
-		if (error.message.includes('invalid_guest')) return { error: 'invalid_guest' };
-		if (error.message.includes('coupon_invalid')) return { error: 'coupon_invalid' };
+		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'onsite_not_allowed'] as const) {
+			if (error.message.includes(code)) return { error: code };
+		}
 		throw error;
 	}
 	return data;

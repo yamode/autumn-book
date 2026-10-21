@@ -138,6 +138,8 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// ポータルの公開前・メンテナンス中でも予約できなければならない。ここを通さないと
 	// アプリの「予約へ進む」が 503 のメンテナンス HTML を受け取って必ず失敗する。
 	if (url.pathname === '/api/hold') return true;
+	// 予約の確定も同じ理由でアプリ用の入口を通す（2026-10-21 監査で確定 RPC を service_role 専用にした）
+	if (url.pathname === '/api/confirm') return true;
 	// アクセス元の国の判定（同意バナーの出し分け）も、施設HP（Xserver・国が分からない）がブラウザから呼ぶ
 	// 独立した機能なので、ポータル本体の公開状況と関係なく稼働させる（2026-10-21）。
 	if (url.pathname === '/api/geo') return true;
