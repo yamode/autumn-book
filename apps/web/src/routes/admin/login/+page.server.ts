@@ -8,6 +8,7 @@ import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
 // ログインの失敗・制限中で同じ文言（制限中かを外から区別させない・docs/auth-hardening.md §4.5）
 const LOGIN_FAILED_MESSAGE = 'メールアドレスまたはパスワードが違うか、しばらくの間ログインを制限しています。数分おいてからお試しください。';
 import type { Actions, PageServerLoad } from './$types';
+import { logAccessEvent } from '$lib/server/access-log';
 
 export const load: PageServerLoad = async (event) => {
 	// パスキーは本番ドメイン（book.yamado.app）とローカルだけ（*.pages.dev のプレビューではボタンを出さない）
@@ -31,9 +32,17 @@ export const actions: Actions = {
 		// Turnstile（未設定なら素通り）と、1 IP 10 回/10 分の失敗で 15 分止める（docs/auth-hardening.md §4.1・§4.2・S2）
 		const ip = clientIp(event.request);
 		const turnstile = await checkTurnstile(form, ip);
-		if (!turnstile.ok) return fail(400, { message: TURNSTILE_FAILED_MESSAGE, email });
+		// アクセスログ（不正アクセスの追跡・検知用・2026-10-22）: 管理画面のログインの成否を理由つきで残す
+		const failed = (reason: string, status: number) => logAccessEvent(event, { event: 'login_failure', email, status, detail: { reason } });
+		if (!turnstile.ok) {
+			failed('turnstile', 400);
+			return fail(400, { message: TURNSTILE_FAILED_MESSAGE, email });
+		}
 		const rateKey = ipKey(ip);
-		if ((await rateCheck(event.platform, RATE_RULES.adminIp, rateKey)).locked) return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
+		if ((await rateCheck(event.platform, RATE_RULES.adminIp, rateKey)).locked) {
+			failed('ip_locked', 401);
+			return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
+		}
 
 		let supabase;
 		try {
@@ -43,6 +52,7 @@ export const actions: Actions = {
 		}
 		const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 		if (error || !data.user) {
+			failed('invalid_credentials', 401);
 			await rateHit(event.platform, RATE_RULES.adminIp, rateKey);
 			return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
 		}
@@ -51,9 +61,11 @@ export const actions: Actions = {
 		const role = (data.user.app_metadata as { role?: string } | null)?.role;
 		if (role !== 'admin' && role !== 'staff') {
 			// 管理権限のないアカウント（会員等）でのログインは拒否し、発行されたセッションを破棄
+			logAccessEvent(event, { event: 'login_failure', email, user: { id: data.user.id, email: data.user.email ?? email }, status: 403, detail: { reason: 'not_staff' } });
 			await supabase.auth.signOut();
 			return fail(403, { message: 'この画面にアクセスする権限がありません', email });
 		}
+		logAccessEvent(event, { event: 'login_success', user: { id: data.user.id, email: data.user.email ?? email }, status: 303, detail: { method: 'password' } });
 		redirect(303, '/admin');
 	},
 

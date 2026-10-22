@@ -6,6 +6,7 @@ import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageH
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import { experimentsForRequest } from '$lib/server/experiments';
 import { applySecurityHeaders } from '$lib/server/security-headers';
+import { logAdminAccess } from '$lib/server/access-log';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 const PRIMARY_ORIGIN = 'https://book.yamado.app';
@@ -13,7 +14,17 @@ const PRIMARY_ORIGIN = 'https://book.yamado.app';
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
 export const handle: Handle = async (input) => {
 	const started = performance.now();
-	const res = applySecurityHeaders(await handleRequest(input), input.event.url);
+	let res: Response;
+	try {
+		res = applySecurityHeaders(await handleRequest(input), input.event.url);
+	} catch (err) {
+		// 管理画面のアクセスログ（例外で抜けたリダイレクト等もステータスを拾って残す）
+		const status = (err as { status?: number })?.status;
+		logAdminAccess(input.event, typeof status === 'number' ? status : 500);
+		throw err;
+	}
+	// 管理画面のアクセスログ（core.access_logs・2026-10-22・/admin 配下だけ）
+	logAdminAccess(input.event, res.status);
 	// 管理画面だけ、処理時間の内訳を Server-Timing で返す（2026-10-18 高速化・ブラウザの開発者ツールの Network → Timing で見られる）
 	if (input.event.url.pathname.startsWith('/admin')) {
 		try {
