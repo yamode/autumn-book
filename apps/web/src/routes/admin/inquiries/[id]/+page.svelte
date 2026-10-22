@@ -1,5 +1,5 @@
 <script lang="ts">
- import {cleanInquiryText} from '$lib/inquiry-text';
+ import {cleanInquiryText,isJapaneseText} from '$lib/inquiry-text';
  import '$lib/styles/inquiry-interactions.css';
  import { enhance } from '$app/forms';
  import { beforeNavigate,goto,invalidateAll } from '$app/navigation';
@@ -74,7 +74,7 @@
  const otherDirtyForms=new Set<HTMLFormElement>();let allowOtherFormLeave=false;
  function trackForm(e:Event){const form=e.target instanceof Element?e.target.closest('form'):null;if(form instanceof HTMLFormElement&&form.method==='post'&&form.dataset.noGuard===undefined){otherDirtyForms.add(form);allowOtherFormLeave=false;}}
  const dirty=$derived(body!==savedBody||assignee!==savedAssignee||!!body.trim()&&signature!==savedSignature);
- const visibleMessages=$derived(data.messages.filter(m=>m.direction==='in'||m.direction==='out').map(m=>{const parts=splitInquiryMail(m.body);return {...m,parts,preview:inquiryMailPreview(parts)};}));
+ const visibleMessages=$derived(data.messages.filter(m=>m.direction==='in'||m.direction==='out').map(m=>{const parts=splitInquiryMail(m.body);return {...m,parts,preview:inquiryMailPreview(parts),japanese:isJapaneseText(parts.filter(p=>p.kind==='body').map(p=>p.text).join('\n'))};}));
  let panelOpen=$state<Record<string,boolean>>({});
  const latestMessage=$derived(visibleMessages.at(-1)?.id);
  function setPanels(open:boolean){panelOpen=Object.fromEntries(visibleMessages.map(m=>[m.id,open]));}
@@ -222,7 +222,7 @@
     <details class="message-card" class:staff-message={message.direction==='out'} open={panelOpen[message.id]??(message.id===latestMessage||['queued','sending','failed','uncertain'].includes(message.state))} ontoggle={event=>{panelOpen[message.id]=event.currentTarget.open;}}>
      <summary class="message-summary"><div class="message-heading"><span class="mini-avatar" class:staff-avatar={message.direction==='out'}>{message.direction==='in'?data.item.name.slice(0,1):'宿'}</span><div><strong>{message.direction==='in'?inquiryGuestLabel(data.item.name):message.actor_name||'山人-yamado-'}</strong><span>{message.direction==='in'?'受信':stateLabel[message.state]}{#if message.id===latestMessage} · 最新{/if}</span></div><time>{time(message.created_at)}</time><span class="message-chevron">›</span></div><p class="message-preview">{message.preview}</p></summary>
      <div class="message-content"><InquiryMailBody parts={message.parts} original={message.body}/>
-     {#if message.direction==='in'}<section class="translation-panel" aria-label="受信メールの日本語訳">
+     {#if message.direction==='in'&&!message.japanese&&messageJa[message.id]?.language!=='ja'}<section class="translation-panel" aria-label="受信メールの日本語訳">
       <div class="translation-heading"><strong>日本語訳{#if messageJa[message.id]}<span>原文：{languageLabel(messageJa[message.id].language)}</span>{/if}</strong><button type="button" class="quiet-button" disabled={translationBusy[message.id]} onclick={()=>void translate(message.id)}>{translationBusy[message.id]?'翻訳中…':messageJa[message.id]?'訳を更新':'日本語訳を表示'}</button></div>
       {#if messageJa[message.id]}<details open={message.id===latestMessage}><summary>本文の訳を見る</summary><div class="translation-text">{cleanInquiryText(messageJa[message.id].text_ja)}</div></details>{/if}
       {#if !messageJa[message.id]&&['pending','running'].includes(receptionState(message.id)?.state??'')}<p class="translation-status">日本語訳を自動作成中です。</p>{:else if !messageJa[message.id]&&receptionState(message.id)?.state==='failed'}<p class="translation-error">自動翻訳できませんでした。「日本語訳を表示」から再作成できます。</p>{/if}

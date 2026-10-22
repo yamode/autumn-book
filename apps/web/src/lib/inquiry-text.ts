@@ -17,3 +17,5 @@ export function inquiryHtmlText(html:string):string{
 export function inquiryMailText(mail:{text?:string;html?:string|false}){return cleanInquiryText(mail.text?.trim()|| (typeof mail.html==='string'?inquiryHtmlText(mail.html):''));}
 export function cleanInquiryNotice(body:string){return body.split(/(【日本語訳[^\n]*】|【受信原文】|【お問い合わせ内容】)/).map((part,index)=>index>0&&index%2===0?'\n'+cleanInquiryText(part)+'\n':part).join('');}
 
+// 日本語の本文は翻訳不要。かなが一定量・一定割合あれば日本語とみなす（中国語・英語の中の固有名詞程度では反応しない）。
+export function isJapaneseText(text:string){const letters=text.replace(/[\s\p{P}\p{S}\d]/gu,'').length,kana=(text.match(/[぀-ゟ゠-ヿ]/g)??[]).length;return kana>=5&&kana>=letters*0.1;}
