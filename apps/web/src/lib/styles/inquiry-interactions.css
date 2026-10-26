@@ -78,7 +78,7 @@
   box-shadow: 0 0 0 4px #e8efdf;
  }
  .inquiry-desk :is(.source-card, .mail-fold)>summary:hover { background: #e6eedc; color: #34562b; border-radius: .35rem; }
- .inquiry-desk :is(.original-mail, .long-body)>summary:hover { color: #34562b; text-decoration: underline; text-underline-offset: 3px; }
+ .inquiry-desk .long-body>summary:hover { color: #34562b; text-decoration: underline; text-underline-offset: 3px; }
  .inquiry-desk .attachment-list a:hover { color: #244a29; text-decoration-thickness: 2px; }
  .inquiry-desk .attachment-list button:not(:disabled):hover { background: #fbe6e1; color: #a13d2b; box-shadow: 0 0 0 1px #edc6ba; }
  .inquiry-desk .save-error button:not(:disabled):hover { background: #faeee1; color: #824d31; }

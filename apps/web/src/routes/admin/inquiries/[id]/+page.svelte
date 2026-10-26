@@ -9,6 +9,7 @@
  import { STATES,INQUIRY_TYPES,canDraftInquiry,inquiryGuestLabel,INQUIRY_REPLY_LANGUAGES } from '$lib/inquiries';
  import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
  import InquiryPmsLink from '$lib/components/admin/InquiryPmsLink.svelte';
+ import InquiryPmsCopy from '$lib/components/admin/InquiryPmsCopy.svelte';
  import InquiryKnowledge from '$lib/components/admin/InquiryKnowledge.svelte';
  import InquiryMailBody from '$lib/components/admin/InquiryMailBody.svelte';
  import {splitInquiryMail,inquiryMailPreview} from '$lib/inquiry-mail-display';
@@ -195,7 +196,7 @@
   <label>対応状況 <select name="status" value={data.item.status}>{#each Object.entries(STATES) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>
   <button class="quiet-button" disabled={busy||saving}>変更を保存</button>
  </form>
- {#key data.item.id}<InquiryPmsLink inquiryId={data.item.id} messages={data.messages} links={data.pmsLinks} error={data.pmsLinkError}/>{/key}
+ {#key data.item.id}<InquiryPmsLink inquiryId={data.item.id} links={data.pmsLinks} error={data.pmsLinkError}/>{/key}
  <nav class="mobile-tabs" aria-label="表示切替"><button class:active={mobilePane==='conversation'} onclick={()=>mobilePane='conversation'}>やり取り <span>{visibleMessages.length}</span></button><button class:active={mobilePane==='reply'} onclick={()=>mobilePane='reply'}>返信を作成 {#if data.item.draft}<i></i>{/if}</button></nav>
  <div class="workspace">
   <section class="composer-panel" class:mobile-hidden={mobilePane!=='reply'} aria-label="返信を作成">
@@ -237,7 +238,7 @@
    {#each visibleMessages as message (message.id)}
     <details class="message-card" class:staff-message={message.direction==='out'} open={panelOpen[message.id]??(message.id===latestMessage||['queued','sending','failed','uncertain'].includes(message.state))} ontoggle={event=>{panelOpen[message.id]=event.currentTarget.open;}}>
      <summary class="message-summary"><div class="message-heading"><span class="mini-avatar" class:staff-avatar={message.direction==='out'}>{message.direction==='in'?data.item.name.slice(0,1):'宿'}</span><div><strong>{message.direction==='in'?inquiryGuestLabel(data.item.name):message.actor_name||'山人-yamado-'}</strong><span>{message.direction==='in'?'受信':stateLabel[message.state]}{#if message.id===latestMessage} · 最新{/if}</span></div><time>{time(message.created_at)}</time><span class="message-chevron">›</span></div><p class="message-preview">{message.preview}</p></summary>
-     <div class="message-content"><InquiryMailBody parts={message.parts} original={message.body}/>
+     <div class="message-content"><InquiryMailBody parts={message.parts}/>
      {#if message.direction==='in'&&!message.japanese&&messageJa[message.id]?.language!=='ja'}<section class="translation-panel" aria-label="受信メールの日本語訳">
       <div class="translation-heading"><strong>日本語訳{#if messageJa[message.id]}<span>原文：{languageLabel(messageJa[message.id].language)}</span>{/if}</strong><button type="button" class="quiet-button" disabled={translationBusy[message.id]} onclick={()=>void translate(message.id)}>{translationBusy[message.id]?'翻訳中…':messageJa[message.id]?'訳を更新':'日本語訳を表示'}</button></div>
       {#if messageJa[message.id]}<details open={message.id===latestMessage}><summary>本文の訳を見る</summary><div class="translation-text">{cleanInquiryText(messageJa[message.id].text_ja)}</div></details>{/if}
@@ -247,6 +248,7 @@
      {#if attachments.some(f=>f.message_id===message.id)}<ul class="attachment-list sent-files">{#each attachments.filter(f=>f.message_id===message.id) as file}<li><a href="/admin/inquiries/{data.item.id}/attachments/{file.id}" download>{file.filename}<span>{attachmentSize(file.size_bytes)}</span></a></li>{/each}</ul>{/if}
      {#if message.error}<p class="message-error">{message.error}</p>{/if}
      {#if message.state==='failed'||message.state==='uncertain'}<form method="post" use:enhance={submitAction} data-no-guard class="recovery-form" onsubmit={e=>{if(!confirm(message.state==='failed'?'同じ内容を再送しますか？':'メールサーバーの送信履歴で結果を確認しましたか？'))e.preventDefault();}}><input type="hidden" name="revision" value={revision}/><input type="hidden" name="messageId" value={message.id}/><button name="action" value={message.state==='failed'?'retry':'resolve_sent'} class="quiet-button">{message.state==='failed'?'再送する':'送信済みを確認した'}</button>{#if message.state==='uncertain'}<button name="action" value="resolve_unsent" class="quiet-button">未送信を確認した</button>{/if}</form>{/if}
+     {#if data.pmsLinks.length&&(message.direction==='in'||message.state==='sent')}<InquiryPmsCopy inquiryId={data.item.id} email={message} links={data.pmsLinks}/>{/if}
      {#if message.direction==='out'&&message.state==='sent'}<InquiryKnowledge {message} {revision} submit={submitAction}/>{/if}
      </div>
     </details>
