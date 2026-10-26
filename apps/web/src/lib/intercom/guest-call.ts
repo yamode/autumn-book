@@ -17,6 +17,8 @@
 //   ・音声を出す要素が無い／muted で無音 → 通話シート側で非 muted の隠し <video playsinline autoplay> に結線
 //   ・STUN だけでは対称 NAT（モバイル回線など）で繋がらない → TURN（Cloudflare Realtime）を /r/api/intercom が発行。未設定なら STUN のみ
 
+import { setCallAudioSession } from './audio-session';
+
 export type GuestCallState =
 	| 'idle'
 	| 'starting' // マイク許可・呼の作成中
@@ -118,6 +120,8 @@ export class GuestCall {
 	async start(): Promise<void> {
 		if (this.state !== 'idle') return;
 		this.set('starting');
+		// 相手の声の出力を通話モード（受話口）にする。ユーザー操作の中・getUserMedia の前に切り替える
+		setCallAudioSession(true);
 		try {
 			this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
 		} catch {
@@ -330,6 +334,7 @@ export class GuestCall {
 		this.local = null;
 		void this.wakeLock?.release().catch(() => {});
 		this.wakeLock = null;
+		setCallAudioSession(false);
 		this.set('ended', end);
 	}
 }

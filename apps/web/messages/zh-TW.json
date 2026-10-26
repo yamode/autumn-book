@@ -793,6 +793,7 @@
   "intercom_active": "通話中",
   "intercom_reconnecting": "訊號不穩，正在重新連線…",
   "intercom_keep_open": "通話期間請保持此畫面開啟",
+  "intercom_speaker_note": "此裝置會以喇叭播放櫃檯的聲音",
   "intercom_mute": "靜音",
   "intercom_unmute": "取消靜音",
   "intercom_hangup": "結束",

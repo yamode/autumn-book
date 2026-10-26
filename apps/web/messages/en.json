@@ -793,6 +793,7 @@
   "intercom_active": "On call",
   "intercom_reconnecting": "Unstable connection. Reconnecting…",
   "intercom_keep_open": "Please keep this screen open during the call",
+  "intercom_speaker_note": "On this device, the front desk's voice plays through the speaker",
   "intercom_mute": "Mute",
   "intercom_unmute": "Unmute",
   "intercom_hangup": "End",

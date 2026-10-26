@@ -5,8 +5,12 @@
 	import { onDestroy } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { GuestCall, type GuestCallEnd, type GuestCallState } from '$lib/intercom/guest-call';
+	import { isSpeakerOnlyDevice } from '$lib/intercom/audio-session';
 
 	let { open = $bindable(false), phone }: { open: boolean; phone?: string } = $props();
+
+	// Android など、相手の声が必ずスピーカーから出る端末では、通話中にその旨を表示する（シートが開いたときに判定）
+	const speakerOnly = $derived(open && isSpeakerOnlyDevice());
 
 	let phase = $state<GuestCallState>('idle');
 	let end = $state<GuestCallEnd | undefined>(undefined);
@@ -117,6 +121,9 @@
 			</p>
 			{#if phase === 'active' || phase === 'connecting' || phase === 'ringing'}
 				<p class="text-xs text-white/60">{m.intercom_keep_open()}</p>
+				{#if speakerOnly}
+					<p class="text-xs text-white/60">{m.intercom_speaker_note()}</p>
+				{/if}
 			{/if}
 		</div>
 

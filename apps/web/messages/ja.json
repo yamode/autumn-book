@@ -793,6 +793,7 @@
   "intercom_active": "通話中",
   "intercom_reconnecting": "電波が不安定です。再接続しています…",
   "intercom_keep_open": "通話中はこの画面を表示したままにしてください",
+  "intercom_speaker_note": "この端末では、フロントの声はスピーカーから聞こえます",
   "intercom_mute": "ミュート",
   "intercom_unmute": "ミュート解除",
   "intercom_hangup": "終了",
