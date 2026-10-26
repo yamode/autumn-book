@@ -9,7 +9,7 @@
  const copied=(booking:Booking)=>booking.copied_message_ids?.includes(email.id)??false;
  async function copy(booking:Booking){
   if(busy||copied(booking))return;
-  if(!confirm('予約 #'+booking.group_code+'（'+booking.guest_name+'）の事前応対記録に、このメールを転記します。\n'+date(email.sent_at??email.created_at)+' · '+(email.subject||'件名なし')+'\nよろしいですか？'))return;
+  if(!confirm('予約 #'+booking.group_code+'（'+booking.guest_name+'）の事前応対記録に、このメールを転記します（引用部分は除きます）。\n'+date(email.sent_at??email.created_at)+' · '+(email.subject||'件名なし')+'\nよろしいですか？'))return;
   busy=booking.id;message='';
   try{
    const res=await fetch('/admin/inquiries/'+inquiryId+'/pms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action:'copy',group:booking.id,message:email.id})}),value=await res.json();

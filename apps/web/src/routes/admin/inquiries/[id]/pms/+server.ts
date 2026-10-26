@@ -3,6 +3,7 @@ import type {RequestHandler} from './$types';
 import {ADMIN_SUPABASE,createSupabaseServerClient} from '$lib/server/auth';
 import {inquiry} from '$lib/server/inquiries';
 import {FACILITY_UUID} from '$lib/server/supabase-data';
+import {splitInquiryMail} from '$lib/inquiry-mail-display';
 export const POST:RequestHandler=async event=>{
  const reply=(value:unknown,status=200)=>json(value,{status,headers:{'cache-control':'no-store'}});
  if(event.request.headers.get('origin')!==event.url.origin)return reply({error:'許可されていないアクセスです。'},403);
@@ -17,7 +18,13 @@ export const POST:RequestHandler=async event=>{
  try{
   const db=createSupabaseServerClient(event),item=await inquiry(db,event.params.id);
   if(!item||item.facility_id!==FACILITY_UUID['f-nishiwaga'])return reply({error:'お問い合わせが見つかりません。'},404);
-  const args=input.action==='search'?{p_id:item.id,p_query:input.query??''}:{p_id:item.id,p_group:input.group,...(input.action==='copy'?{p_message:input.message}:{})};
+  const args:Record<string,unknown>=input.action==='search'?{p_id:item.id,p_query:input.query??''}:{p_id:item.id,p_group:input.group};
+  if(input.action==='copy'){
+   // 引用部分は転記しない。本文はブラウザから受け取らず、DB のメールから作る
+   const {data:mail,error:me}=await db.schema('book').from('inquiry_messages').select('body').eq('id',input.message).eq('inquiry_id',item.id).maybeSingle();
+   if(me||!mail)return reply({error:'転記するメールが見つかりません。'},404);
+   Object.assign(args,{p_message:input.message,p_body:splitInquiryMail(mail.body).filter(p=>p.kind!=='quote').map(p=>p.text).join('\n\n')});
+  }
   const {data,error}=await db.schema('book').rpc('admin_inquiry_pms_'+input.action,args);
   if(error)return reply({error:'予約との連携を保存できませんでした。施設・権限を確認し、再度お試しください。'},409);
   return reply({data});
