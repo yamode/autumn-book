@@ -3,9 +3,11 @@
  import type { SubmitFunction } from '@sveltejs/kit';
  import type { Message } from '$lib/server/inquiries';
  let {message,revision,submit}: {message:Message;revision:number;submit:SubmitFunction}=$props();
+ // Book から送った返信は、承認しなくても自動でAI下書きの参考になる（停止したものを除く）
+ const bookReply=$derived(!message.history_source?.account);
 </script>
 <details class="knowledge">
- <summary>{message.reusable?'承認済みの回答例':message.history_source?.account?'過去メールの参考設定':'この回答を次の応対に活かす'}</summary>
+ <summary>{message.reusable?'承認済みの回答例':message.history_source?.account?'過去メールの参考設定':message.ai_reference_off?'AIの参考設定（停止中）':'AIの参考設定'}</summary>
  <div class="knowledge-body">
  {#if message.history_source?.account}
   <p>過去メールの参考本文です。現在のルールとして承認した回答とは区別されます。</p>
@@ -13,6 +15,13 @@
    <input type="hidden" name="revision" value={revision}/><input type="hidden" name="messageId" value={message.id}/>
    <button name="action" value={message.history_reference||message.reusable?'history_disable':'history_enable'} disabled={!message.knowledge_question||!message.knowledge_answer}>{message.history_reference||message.reusable?'AIの参考利用を停止':'AIの参考利用を再開'}</button>
   </form>
+ {:else if bookReply&&!message.reusable}
+  <p>{message.ai_reference_off?'この返信はAIの参考にしていません。':'この返信は、直前のお客様のメールとあわせて、自動でAI下書きの参考にしています（お名前・連絡先などは伏せます）。'}</p>
+  <form method="post" use:enhance={submit} data-no-guard>
+   <input type="hidden" name="revision" value={revision}/><input type="hidden" name="messageId" value={message.id}/>
+   <button name="action" value={message.ai_reference_off?'sent_enable':'sent_disable'}>{message.ai_reference_off?'AIの参考利用を再開':'AIの参考利用を停止'}</button>
+  </form>
+  <p>質問と回答を整えて承認すると、参考例として優先して使われます。</p>
  {/if}
  <p>氏名・予約番号・個別の特別対応を除き、再利用できる質問と回答に整えてください。</p>
  <form method="post" use:enhance={submit}>

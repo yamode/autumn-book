@@ -42,6 +42,11 @@ export const actions: Actions = {
     if(he)throw new Error(he.message);
     return {message:action==='history_enable'?'過去メールの参考利用を再開しました。':'過去メールの参考利用を停止しました。'};
    }
+   if(action==='sent_enable'||action==='sent_disable') {
+    const {error:se}=await db.schema('book').rpc('admin_inquiry_sent_reference',{p_id:item.id,p_revision:revision,p_message:String(form.get('messageId')),p_enable:action==='sent_enable'});
+    if(se)throw new Error(se.message);
+    return {message:action==='sent_enable'?'この返信のAI参考利用を再開しました。':'この返信のAI参考利用を停止しました。'};
+   }
    const expectedVersion=Number(form.get('draftVersion'));
    if(['ai','save','send'].includes(action)&&expectedVersion!==item.draft_version)return fail(409,{message:'他の担当者の下書きが更新されました。入力本文をコピーし、再読み込みしてください。',body});
    let generated:{text:string;japanese:string;language:string;model:string}|null=null;
