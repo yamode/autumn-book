@@ -1143,5 +1143,12 @@
   "bath_err_unavailable": "That time is no longer available. Please choose again from the latest available times.",
   "bath_err_refresh": "We could not refresh availability. Please refresh before choosing again.",
   "bath_refresh": "Refresh available times",
-  "bath_availability_refreshed": "Availability has been updated. Please select a time again and proceed to confirmation."
+  "bath_availability_refreshed": "Availability has been updated. Please select a time again and proceed to confirmation.",
+  "bath_group_shared": "This reservation shares private bath slots among the rooms in your group ({rooms}).",
+  "bath_limit_group": "Together, the rooms in your group can book up to (number of rooms staying that night × {count}) slot(s) in each morning or afternoon period, per day.",
+  "bath_group_title": "Reservations by other rooms in your group",
+  "bath_group_room": "Room {room}",
+  "bath_group_cancel_note": "Reservations by other rooms can be changed or cancelled from that room's screen.",
+  "bath_err_limit_group": "Your group has already reached the limit for that time period.",
+  "bath_limit_reached_group": "Your group has booked all available time periods. To change a time, cancel it from the screen of the room that booked it, then choose again."
 }

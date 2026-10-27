@@ -34,6 +34,8 @@
 			return ymd;
 		}
 	}
+	// 部屋番号の並べ方（ja: 101・102／en: 101, 102／zh-TW: 101、102）
+	const roomSep: Record<string, string> = { ja: '・', en: ', ', 'zh-TW': '、' };
 	const yen = (v: number) => `¥${v.toLocaleString('ja-JP')}`;
 	// 基本の利用料金が無料なら、入力欄・確認画面の料金表示は出さない（概要の「無料です」だけで足りる）。
 	const isPaid = $derived((ctx.price_yen ?? 0) > 0);
@@ -42,7 +44,7 @@
 	const errorText = (code: string | undefined): string => {
 		if (code === 'not_open') return m.bath_closed();
 		if (code === 'slot_taken') return m.bath_err_taken();
-		if (code === 'per_room_limit') return m.bath_err_limit();
+		if (code === 'per_room_limit') return groupShared ? m.bath_err_limit_group() : m.bath_err_limit();
 		if (code === 'past_cutoff') return m.bath_err_cutoff();
 		if (code === 'slot_unavailable') return m.bath_err_unavailable();
 		if (code === 'choose') return m.bath_choose();
@@ -58,15 +60,30 @@
 
 	const baths = $derived(ctx.baths ?? []);
 	const mine = $derived(ctx.mine ?? []);
+	// 予約グループで枠を分け合っているとき（PMS で予約グループごとに設定・既定オフ）。
+	// 古い DB では group が来ないので、共有なしとして今までどおり動く。
+	const group = $derived(ctx.group?.shared ? ctx.group : null);
+	const groupShared = $derived(group !== null);
+	const groupRooms = $derived(group?.rooms ?? []);
+	const groupReservations = $derived(group?.reservations ?? []);
+	const bathName = (id: string | null) => baths.find((b) => (b.bath_id ?? '') === (id ?? ''))?.bath_name ?? '';
 	// PMS の午前・午後の時間帯と同じ単位で、取得済みの時間帯をフォームから外す。
 	// 確定時には RPC が実際の設定範囲と上限を再検証する。
 	function period(from: string): 'morning' | 'afternoon' {
 		return Number(from.slice(0, 2)) < 12 ? 'morning' : 'afternoon';
 	}
-	function isBookable(date: string, slot: { from: string; taken: boolean; closed: boolean }, unitBathId?: string | null): boolean {
+	/**
+	 * 上限に達しているか。DB が limit_reached（共有ならグループで数えた値）を返していればそれを正とし、
+	 * 返さない古い DB のときだけ、自分の予約と午前/午後の推測で判定する。
+	 */
+	function limitReached(date: string, slot: { from: string; limit_reached?: boolean }): boolean {
+		if (typeof slot.limit_reached === 'boolean') return slot.limit_reached;
+		return mine.filter((r) => r.date === date && period(r.from) === period(slot.from)).length >= (ctx.per_room_per_range ?? 1);
+	}
+	function isBookable(date: string, slot: { from: string; taken: boolean; closed: boolean; limit_reached?: boolean }, unitBathId?: string | null): boolean {
 		return !form?.availabilityRefreshFailed && !slot.taken && !slot.closed &&
    !(form?.error==='slot_taken'&&form.attempted?.date===date&&form.attempted.from===slot.from&&(form.attempted.bathId??'')===((unitBathId===undefined?bath?.bath_id:unitBathId)??'')) &&
-			mine.filter((r) => r.date === date && period(r.from) === period(slot.from)).length < (ctx.per_room_per_range ?? 1);
+			!limitReached(date, slot);
 	}
 	const bath = $derived(
 		(pickedBath === null ? null : baths.find((b) => (b.bath_id ?? '') === pickedBath)) ?? baths[0]
@@ -144,7 +161,11 @@
 					{#if c.price_note}
 						<p class="mt-1 whitespace-pre-line">{c.price_note}</p>
 					{/if}
-					<p class="mt-2 text-stone-400">{m.bath_limit({ count: ctx.per_room_per_range ?? 1 })}</p>
+					<p class="mt-2 text-stone-400">
+						{groupShared
+							? m.bath_limit_group({ count: ctx.per_room_per_range ?? 1 })
+							: m.bath_limit({ count: ctx.per_room_per_range ?? 1 })}
+					</p>
 				</div>
 			</details>
 		{:else}
@@ -163,6 +184,13 @@
 				</figure>
 			{/each}
 		</section>
+	{/if}
+
+	{#if bookingOpen && groupShared && groupRooms.length}
+		<!-- グループで枠を分け合っている案内。上限が「部屋ごと」でないことを先に伝える -->
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-700">
+			{m.bath_group_shared({ rooms: groupRooms.join(roomSep[getLocale()] ?? '・') })}
+		</p>
 	{/if}
 
 	{#if mine.length}
@@ -208,6 +236,30 @@
 				{/each}
 			</ul>
 			<p class="mt-4 whitespace-pre-line text-xs leading-5 text-stone-400">{c.notice || m.bath_note_phone()}</p>
+		</section>
+	{/if}
+
+	{#if groupShared && groupReservations.length}
+		<!-- 同じグループのほかの部屋が取った枠。見えるだけで、取消はその部屋の画面から（ボタンは出さない） -->
+		<section class="rounded-lg bg-white px-5 py-5 shadow-card">
+			<h2 class="text-base font-semibold text-stone-900">{m.bath_group_title()}</h2>
+			<ul class="mt-3 space-y-3">
+				{#each groupReservations as r, i (`${r.date}-${r.from}-${r.bath_id ?? ''}-${r.room ?? ''}-${i}`)}
+					<li class="rounded-lg border border-stone-200 bg-stone-50 p-4 text-sm">
+						<div class="flex items-baseline justify-between gap-2">
+							<p class="font-medium text-stone-800">{fmtDate(r.date)}</p>
+							{#if r.room}
+								<p class="shrink-0 text-xs text-stone-500">{m.bath_group_room({ room: r.room })}</p>
+							{/if}
+						</div>
+						<p class="mt-1 text-lg font-semibold tabular-nums text-stone-900">{r.from}{r.to ? `〜${r.to}` : ''}</p>
+						{#if baths.length > 1 && bathName(r.bath_id)}
+							<p class="mt-1 text-xs text-stone-500">{bathName(r.bath_id)}</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+			<p class="mt-4 text-xs leading-5 text-stone-400">{m.bath_group_cancel_note()}</p>
 		</section>
 	{/if}
 
@@ -397,6 +449,8 @@
 				</div>
 			</section>
 		{/if}
+	{:else if bookingOpen && !form?.availabilityRefreshFailed && groupShared && (mine.length || groupReservations.length)}
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached_group()}</p>
 	{:else if bookingOpen && !form?.availabilityRefreshFailed && mine.length}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached()}</p>
 	{:else if bookingOpen && !form?.availabilityRefreshFailed}

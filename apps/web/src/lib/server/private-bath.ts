@@ -13,6 +13,16 @@ export type BathSlot = {
 	slot_id: string | null;
 	/** 締切（利用の N 分前）を過ぎている。 */
 	closed: boolean;
+	/**
+	 * グループ共有のとき、グループの部屋が取った枠ならその部屋番号（それ以外は null）。
+	 * 古い DB（20261027082101 より前）では来ない。
+	 */
+	room?: string | null;
+	/**
+	 * この部屋（共有ならグループ）が、その日のその時間帯で取れる数に達しているか。
+	 * 古い DB では来ないので、来ないときは画面側の推測（午前/午後）に任せる。
+	 */
+	limit_reached?: boolean;
 };
 
 export type BathDay = { date: string; slots: BathSlot[] };
@@ -30,6 +40,25 @@ export type BathReservation = {
 	cancelable: boolean;
 };
 
+/** グループで共有しているとき、同じグループのほかの部屋が取った枠（取消はその部屋だけ）。 */
+export type BathGroupReservation = {
+	date: string;
+	from: string;
+	to: string | null;
+	bath_id: string | null;
+	room: string | null;
+};
+
+/** 予約グループで貸切風呂の枠を分け合っているか（PMS で予約グループごとに設定・既定オフ）。 */
+export type BathGroup =
+	| { shared: false }
+	| {
+			shared: true;
+			/** グループの部屋番号（自分の部屋も含む）。 */
+			rooms: string[];
+			reservations: BathGroupReservation[];
+	  };
+
 export type BathContext = {
 	ok: boolean;
 	/** ok=false のときだけ。stay_not_linked / stay_not_found。 */
@@ -46,6 +75,8 @@ export type BathContext = {
 	cancel_min?: number;
 	baths?: BathUnit[];
 	mine?: BathReservation[];
+	/** 古い DB では来ない（＝共有なし扱い）。 */
+	group?: BathGroup;
 };
 
 /** 公開画面が1回で必要な情報を全部取る。無効なトークンは null。 */

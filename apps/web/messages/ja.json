@@ -1143,5 +1143,12 @@
   "bath_err_unavailable": "選択した時間は現在ご予約いただけません。最新の空き枠から選び直してください。",
   "bath_err_refresh": "空き枠の更新ができませんでした。更新してから、もう一度お選びください。",
   "bath_refresh": "空き枠を更新する",
-  "bath_availability_refreshed": "空き枠を更新しました。時間を選び直して、確認画面へお進みください。"
+  "bath_availability_refreshed": "空き枠を更新しました。時間を選び直して、確認画面へお進みください。",
+  "bath_group_shared": "このご予約は、グループのお部屋（{rooms}）で貸切風呂の枠を分け合っています。",
+  "bath_limit_group": "グループのお部屋あわせて、1日あたり午前・午後の各時間帯「その晩にお泊まりのお部屋の数 × {count} 枠」までご予約いただけます。",
+  "bath_group_title": "グループのほかのお部屋のご予約",
+  "bath_group_room": "{room} 号室",
+  "bath_group_cancel_note": "ほかのお部屋のご予約は、そのお部屋の画面から変更・取消できます。",
+  "bath_err_limit_group": "その時間帯は、グループで取れる数に達しています。",
+  "bath_limit_reached_group": "グループで取れる時間帯はすべて予約済みです。時間を変更する場合は、予約したお部屋の画面で取り消してから選び直してください。"
 }
