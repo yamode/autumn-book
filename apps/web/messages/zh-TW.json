@@ -1147,7 +1147,7 @@
   "bath_group_shared": "本預約由團體內的客房（{rooms}）共同分配包租浴池時段。",
   "bath_limit_group": "團體內的客房合計，每天的上午及下午時段，各最多可預約「當晚入住客房數 × {count}」個時段。",
   "bath_group_title": "團體內其他客房的預約",
-  "bath_group_room": "{room} 號房",
+  "bath_group_room": "房間：{room}",
   "bath_group_cancel_note": "其他客房的預約，請由該客房的畫面更改或取消。",
   "bath_err_limit_group": "該時段已達團體可預約的上限。",
   "bath_limit_reached_group": "團體可預約的時段均已預約。如需更改時間，請由預約的客房畫面取消後再重新選擇。"
