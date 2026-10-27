@@ -35,9 +35,9 @@
 		}
 	}
 	const yen = (v: number) => `¥${v.toLocaleString('ja-JP')}`;
-	const reservationPrice = $derived((ctx.price_yen ?? 0) > 0
-		? m.bath_price_per_booking({ price: (ctx.price_yen ?? 0).toLocaleString('ja-JP') })
-		: m.bath_price_free());
+	// 基本の利用料金が無料なら、入力欄・確認画面の料金表示は出さない（概要の「無料です」だけで足りる）。
+	const isPaid = $derived((ctx.price_yen ?? 0) > 0);
+	const reservationPrice = $derived(m.bath_price_per_booking({ price: (ctx.price_yen ?? 0).toLocaleString('ja-JP') }));
 
 	const errorText = (code: string | undefined): string => {
 		if (code === 'not_open') return m.bath_closed();
@@ -323,11 +323,13 @@
 					{/if}
 				</div>
 
-				<dl class="mt-5 rounded-lg border border-stone-300 bg-stone-50 px-4 py-3" aria-live="polite">
-					<dt class="text-sm text-stone-600">{m.bath_label_price()}</dt>
-					<dd class="mt-1 text-lg font-semibold tabular-nums text-stone-900">{reservationPrice}</dd>
-					{#if (ctx.price_yen ?? 0) > 0}<dd class="mt-1 text-xs text-stone-600">{m.bath_price_bill_note()}</dd>{/if}
-				</dl>
+				{#if isPaid}
+					<dl class="mt-5 rounded-lg border border-stone-300 bg-stone-50 px-4 py-3" aria-live="polite">
+						<dt class="text-sm text-stone-600">{m.bath_label_price()}</dt>
+						<dd class="mt-1 text-lg font-semibold tabular-nums text-stone-900">{reservationPrice}</dd>
+						<dd class="mt-1 text-xs text-stone-600">{m.bath_price_bill_note()}</dd>
+					</dl>
+				{/if}
 
 				<div class="mt-6 text-center">
 					<button
@@ -368,19 +370,17 @@
 							{from}{pickedSlot?.to ? `-${pickedSlot.to}` : ''}
 						</dd>
 					</div>
-					<div class="flex flex-wrap items-baseline justify-between gap-2 py-3">
-						<dt class="text-stone-600">{m.bath_label_price()}</dt>
-						<dd class="text-lg font-semibold tabular-nums text-stone-900">{reservationPrice}</dd>
-					</div>
+					{#if isPaid}
+						<div class="flex flex-wrap items-baseline justify-between gap-2 py-3">
+							<dt class="text-stone-600">{m.bath_label_price()}</dt>
+							<dd class="text-lg font-semibold tabular-nums text-stone-900">{reservationPrice}</dd>
+						</div>
+					{/if}
 				</dl>
 
-				<p class="mt-3 text-xs text-stone-500">
-					{#if (ctx.price_yen ?? 0) > 0}
-						{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}
-					{:else}
-						{m.bath_price_free()}
-					{/if}
-				</p>
+				{#if isPaid}
+					<p class="mt-3 text-xs text-stone-500">{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}</p>
+				{/if}
 
 				<form method="POST" action="?/reserve" use:enhance={reserveSubmit} class="mt-6 text-center">
 					<input type="hidden" name="bathId" value={bath?.bath_id ?? ''} />
