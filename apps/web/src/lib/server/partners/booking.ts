@@ -4,6 +4,7 @@
 // 1トランザクションで行い、直販予約と同じ電文で PMS へ届ける（migration 20260926054852）。
 // ここは「取引先に見せた料金で・受付ルールの範囲で」受け付けるための前後の処理を持つ。
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { todayJstIso } from '$lib/early-prepay';
 import {
   applyPrepayDiscount,
   chargeAmountOf,
@@ -18,6 +19,11 @@ import {
   describeCreditDeposit,
   firstNightLodgingOf,
   intentAmountOf,
+  advanceDueDateOf,
+  isAdvanceBankOption,
+  isPartialAdvanceOption,
+  ADVANCE_BANK_OPTION,
+  DEPOSIT_BANK_OPTION,
   isDepositPaymentOption,
   isDepositRemainderBilled,
   PARTNER_PAYMENT_OPTIONS,
@@ -175,7 +181,8 @@ export function resolvePaymentOption(
 ): { option: string; overOnly: boolean } | null {
   const base = availablePaymentOptions(partner);
   const req = String(requested ?? '');
-  if (req && base.includes(req) && !isDepositPaymentOption(req)) return { option: req, overOnly: false };
+  // deposit_online は取引先の設定で許可していれば通常の支払方法（2026-10-28 一部事前支払）。許可していなければ超過時だけ
+  if (req && base.includes(req)) return { option: req, overOnly: false };
   if (req && creditOverPaymentOptions(partner).includes(req)) return { option: req, overOnly: true };
   return base.length === 1 ? { option: base[0], overOnly: false } : null;
 }
@@ -192,6 +199,10 @@ export type QuoteDeposit = {
   basis: string;
   notice: string;
 };
+
+// 事前支払（一部事前支払・前受金・2026-10-28）の見積。取引先が許可した支払方法ごと。額・期限は DB 関数と同じ規則の見込み
+// （確定時は DB が計算し直す）。dueDate は銀行振込の期限（カードは null）
+export type QuotePrepayment = QuoteDeposit & { dueDate: string | null };
 
 // ---------------------------------------------------------------------------
 // 見積もり
@@ -249,6 +260,8 @@ export type BookingQuote =
       // デポジットの額・残額。それ以外は null（取引先の通常の支払方法のまま）。
       paymentChoices: QuotePaymentChoice[] | null;
       deposit: QuoteDeposit | null;
+      // 一部事前支払・前受金（取引先が許可した支払方法ごと）。許可が無ければ null
+      prepayments: Partial<Record<string, QuotePrepayment>> | null;
       // 料金の出どころ（RMS の先計算＝precomputed／その場の計算＝live・loadPartnerRates の priceMode）。団体照会の quote_price_mode に写す
       priceMode?: PartnerPriceMode;
     }
@@ -385,6 +398,29 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
       notice: creditDepositNotice(credit.months, amount)
     };
   }
+  // 一部事前支払・前受金: 許可された支払方法ごとの額・残額・期限（額・残額はデポジットの設定を共用）
+  let prepayments: Partial<Record<string, QuotePrepayment>> | null = null;
+  const prepayIds = availablePaymentOptions(partner).filter((id) => isPartialAdvanceOption(id) || id === ADVANCE_BANK_OPTION);
+  if (prepayIds.length) {
+    const s = partner.booking_settings;
+    const bank = { dueDate: advanceDueDateOf(t.checkIn, todayJstIso(), s.advanceDueDays) };
+    const partial = depositAmountOf(s.creditDeposit, { lodging: total, bathTax, rooms: rooms.length, nights, firstNight: firstNightLodgingOf(rooms, t.checkIn) });
+    const remainderBilled = depositRemainderModeOf(s) === 'invoice';
+    prepayments = {};
+    for (const id of prepayIds) {
+      const full = id === ADVANCE_BANK_OPTION;
+      const amount = full ? total + bathTax : partial;
+      prepayments[id] = {
+        amount,
+        remainder: Math.max(0, total + bathTax - amount),
+        remainderBilled: full ? false : remainderBilled,
+        remainderText: full ? '' : depositRemainderText(remainderBilled),
+        basis: full ? '宿泊料金＋入湯税の全額' : describeCreditDeposit(s.creditDeposit),
+        notice: '',
+        dueDate: isAdvanceBankOption(id) ? bank.dueDate : null
+      };
+    }
+  }
   return {
     ok: true,
     roomCode: t.roomCode,
@@ -404,6 +440,7 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     credit,
     paymentChoices,
     deposit,
+    prepayments,
     priceMode: rates.priceMode
   };
 }
@@ -1240,6 +1277,11 @@ export type PartnerBookingRow = {
   // deposit_amount = 予約時に受ける額（決済後は paid_amount と同じ）。remainder_option = 残額の精算（invoice_monthly / custom_* / onsite）
   deposit_amount?: number | null;
   remainder_option?: string | null;
+  // 銀行振込の事前支払（前受金・autumn-shared 20261028104906）: payment_option='deposit_bank' / 'advance_bank' のときだけ。
+  // advance_amount = 前受金の額・advance_due_date = 振込期限（JST の日付）・advance_invoice_id = 前受金のご請求書
+  advance_amount?: number | null;
+  advance_due_date?: string | null;
+  advance_invoice_id?: string | null;
   card_consent_text: string | null;
   card_consent_at: string | null;
   payment_method_name: string | null;

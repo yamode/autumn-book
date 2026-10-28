@@ -132,7 +132,10 @@
   // 請求書払い（取引先払い）: ご宿泊者様には請求しないことを支払方法の近くに出す（2026-10-02 指示）
   const billedToPartner = $derived(payChoices.find((o) => o.id === paymentOption)?.billable ?? false);
   // デポジット（受付枠を超えたときだけ・Phase 3b）。額は見積の見込み（確定時はサーバが計算し直す）
-  const deposit = $derived(quote.ok ? quote.deposit : null);
+  // 一部事前支払（カード）は取引先が許可していれば通常時も選べる（2026-10-28）。額は見積の prepayments
+  const deposit = $derived(quote.ok ? (quote.deposit ?? quote.prepayments?.deposit_online ?? null) : null);
+  // 銀行振込の事前支払（一部事前支払・前受金）: 額・残額・振込期限の見込み。予約は即確定し、前受金のご請求書をお渡しする
+  const bankPrepay = $derived(quote.ok && (paymentOption === 'deposit_bank' || paymentOption === 'advance_bank') ? (quote.prepayments?.[paymentOption] ?? null) : null);
   const isDeposit = $derived(paymentOption === 'deposit_online' && !!deposit);
   const BILLED_NOTE = 'ご宿泊者様へのご請求はありません（宿泊料金・入湯税は貴社へご請求します）';
   // 専用特典のモーダル
@@ -660,7 +663,7 @@
             {/each}
             {#if values.notes}<dt>{data.standardFields.notes.label}</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
             {#if attachments.length}<dt>添付ファイル</dt><dd>{attachments.map((a) => `${a.fileName}（${a.size}）`).join('、')}</dd>{/if}
-            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}{#if isDeposit && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">デポジット {yen(deposit.amount)} を予約時にお支払い・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}</dd>{/if}
+            {#if paymentLabel}<dt>お支払</dt><dd>{paymentLabel}{discounted && prepay ? `（${prepay.label}）` : ''}{#if billedToPartner}<span class="block text-sm font-medium text-[var(--pt-accent)]">{BILLED_NOTE}</span>{/if}{#if isDeposit && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">{quote.ok && quote.deposit ? 'デポジット' : '事前支払'} {yen(deposit.amount)} を予約時にお支払い・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}{#if bankPrepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">前受金 {yen(bankPrepay.amount)} を {bankPrepay.dueDate ? ymdJa(bankPrepay.dueDate) : ''} までに銀行振込{bankPrepay.remainder > 0 ? `・残額 ${yen(bankPrepay.remainder)} は${bankPrepay.remainderText}` : '（全額）'}</span>{/if}</dd>{/if}
           </dl>
           {#if quote.ok}
             <!-- 料金の明細（表）。宿泊料金は割引前（キャンセル料の基準・入湯税を含まない） -->
@@ -700,7 +703,11 @@
                       {#if o.id === 'online' && prepay}<span class="ml-1.5 rounded bg-[var(--pt-accent)] px-1.5 py-0.5 text-xs font-bold text-white">{prepay.label}</span>{/if}
                       <span class="block text-sm text-stone-500">{o.note}</span>
                       {#if o.id === 'online' && prepay}<span class="block text-sm font-medium text-[var(--pt-accent)]">合計 {yen(prepay.total + (quote.ok ? quote.bathTax : 0))}（{yen(prepay.discount)} お得）</span>{/if}
-                      {#if o.id === 'deposit_online' && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">デポジット {yen(deposit.amount)}（{deposit.basis}）・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}
+                      {#if o.id === 'deposit_online' && deposit}<span class="block text-sm font-medium text-[var(--pt-accent)]">{quote.ok && quote.deposit ? 'デポジット' : '事前支払'} {yen(deposit.amount)}（{deposit.basis}）・残額 {yen(deposit.remainder)} は{deposit.remainderText}</span>{/if}
+                      {#if quote.ok && (o.id === 'deposit_bank' || o.id === 'advance_bank') && quote.prepayments?.[o.id]}
+                        {@const bp = quote.prepayments[o.id]!}
+                        <span class="block text-sm font-medium text-[var(--pt-accent)]">前受金 {yen(bp.amount)}{bp.dueDate ? `を ${ymdJa(bp.dueDate)} までに銀行振込` : ''}{bp.remainder > 0 ? `・残額 ${yen(bp.remainder)} は${bp.remainderText}` : '（全額）'}</span>
+                      {/if}
                     </span>
                   </label>
                 {/each}
@@ -911,6 +918,20 @@
               <span>残額（{deposit.remainderBilled ? '請求書' : '現地'}）</span>
               <span class="tabular-nums">{num(deposit.remainder)}円</span>
             </div>
+          {/if}
+          {#if bankPrepay}
+            <!-- 銀行振込の事前支払（前受金）: 予約は即確定。前受金のご請求書をお渡しし、期限までにお振込み -->
+            <div class="mt-2.5 flex justify-between gap-2 text-[var(--pt-accent)]">
+              <span class="font-bold">前受金（銀行振込）</span>
+              <span class="font-bold tabular-nums">{num(bankPrepay.amount)}円</span>
+            </div>
+            {#if bankPrepay.dueDate}<p class="mt-1 text-right text-sm text-stone-600">お振込期限 {ymdJa(bankPrepay.dueDate)}（ご請求書は予約後にマイページからダウンロードできます）</p>{/if}
+            {#if bankPrepay.remainder > 0}
+              <div class="mt-1 flex justify-between gap-2 text-sm text-stone-600">
+                <span>残額（{bankPrepay.remainderBilled ? '請求書' : '現地'}）</span>
+                <span class="tabular-nums">{num(bankPrepay.remainder)}円</span>
+              </div>
+            {/if}
           {/if}
           {#if prepay && !discounted && payChoices.some((o) => o.id === 'online')}
             <p class="mt-2 text-right text-xs text-[var(--pt-accent)]">予約時にお支払いいただくと {num(prepay.total + quote.bathTax)}円（{prepay.label}）</p>
