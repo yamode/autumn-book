@@ -382,7 +382,7 @@ alter table public.rms_partner_access_logs add constraint rms_partner_access_log
 - 認証アプリを失った管理者: 別の **admin** が `/admin/security/users`（新設・admin のみ・`auth.admin.mfa.deleteFactor` は service_role が要る → `partnerServiceClient()` 経由の管理 API を `lib/server/admin-mfa.ts` に閉じ込める）で factor を削除 → 本人が再登録。`book.admin_audit_logs` に `admin_mfa_reset` を残す（既存の監査表）。
 - admin が 1 人しかいない場合: Supabase ダッシュボード（Owner）で Authentication → Users → 該当ユーザー → Factors を削除。**admin は必ず 2 名以上**（§12.1）。
 
-### 7.5 デスクトップ SSO（`POST /admin/sso`・2026-10-28・**ユーザー確認待ち**）
+### 7.5 デスクトップ SSO（`POST /admin/sso`・2026-10-28・**配備済み（U-6 承認・2026-10-28）**）
 
 autumn-pms のデスクトップアプリ（v0.20.0〜のタブ型シェル）で、PMS にログインすれば Book の管理画面にも入れるようにする口
 （設計: autumn-pms `desktop/docs/tabbed-shell-design.md` §2）。ブランチ `feat/admin-sso` のまま。**main には入れていない**。
@@ -407,7 +407,7 @@ autumn-pms のデスクトップアプリ（v0.20.0〜のタブ型シェル）�
   一度 Access を通っていれば同じ Cookie 置き場の `CF_Authorization` が付くので通るが、通っていないと Access のログイン画面に転送され、
   シェルは失敗（ログイン画面のまま）とみなす。Access を使うなら `/admin/sso` を Access の対象から外すか、Service Token を検討する。
 - 実装: `routes/admin/sso/+server.ts`、純関数 `lib/admin-desktop-sso.ts`（テスト `admin-desktop-sso.test.ts`）。service_role は `partnerServiceClient()`（例外その12）。
-- 確認待ち（U-6）: Book に置いてよいか。よければ `feat/admin-sso` を main へ入れて配備する。未配備の間、シェルは 404 を「未配備」とみなし、Book タブはログイン画面のまま動く。
+- U-6（Book に置いてよいか）は 2026-10-28 に承認され、main へ取り込み・配備済み。シェル側は 404 を「未配備」とみなす作りのままなので、ロールバックしても Book タブはログイン画面のまま動く。
 
 ---
 
