@@ -67,7 +67,7 @@
 |---|---|---|---|
 | 0 | 11 月中旬まで | §4 の要確認を潰す（特に Q1 ホスト・Q2 旧マイページ URL・Q5 tripla の停止方法・Q6 在庫） | — |
 | 1 | 11 月中 | Book の公開前チェック（HANDOFF の既存チェックリスト・特に「公開前必須」: キャンセル規定投入・特商法/約款の文面確定・noindex 解除・DBG パネル非表示）。`HANDOFF.md:2062-2072, 2832, 3403` | — |
-| 2 | 11 月中 | §7 P1（Book の「ご予約の確認」ページと旧マイページ動線）をデプロイ。URL は wrangler の vars。tripla 停止前から出していてよい（「旧」ではなくまだ「現行」なので、文言は日付で切り替える・§7 P1） | revert して再デプロイ |
+| 2 | 11 月第 3 週まで | §7 P1（Book の「ご予約の確認」ページと旧マイページ動線）をデプロイ。URL は wrangler の vars。tripla 停止前から出していてよい（「旧」ではなくまだ「現行」なので、文言は日付で切り替える・§7 P1）。**同じデプロイに `hp-book-integration.md` の P1-Book（UTM 保持・完了画面の戻りリンク・HP に置く検索バーのスクリプト `embed/search-bar.js`・`/api/stay-calendar` の CORS）を同乗させる**（2026-10-29 決定: 検索バーはローンチ必須・最初からスクリプト版） | revert して再デプロイ |
 | 3 | 11/24 ごろ | お知らせ記事を **Book の `/admin/news` で両施設に公開**（HP はお知らせ API を読むので HP のデプロイ不要・`hp-oga/HANDOFF.md`・`hp-yamado/HANDOFF.md:93-94`）。文面は §6.1 | 記事を非公開に戻す |
 | 4 | 11/24 ごろ | tripla 管理画面で**プランの販売期間の終了日を 11/29 に設定**（★Q5。予約日基準で閉じられるならそれを使う。宿泊日基準でしか閉じられないなら当日の手動停止になる） | 販売期間を戻す |
 | 5 | 11/29 まで | HP の変更をステージング相当で用意（hp-yamado は git ブランチ、hp-oga は `site/` の変更をローカルで確認）。内容は §7 P1-HP | デプロイしない |
@@ -77,7 +77,7 @@
 | 順 | 時刻（目安） | 何を | 確認 | 戻し方 |
 |---|---|---|---|---|
 | A | 前夜〜早朝 | Book のメンテナンスモードを OFF（まだ ON なら）。`/admin/maintenance` | 匿名のブラウザで `/`・`/yamado/oga` が 200。`/robots.txt`・`<meta name=robots>` に noindex が残っていない | トグルを ON に戻す（即時・KV） |
-| B | 09:00 | **HP の予約導線を Book に向ける**（hp-yamado: デプロイ／hp-oga: `npm run deploy:xserver`）。「ご予約」→ `https://book.yamado.app/yamado/nishiwaga`（男鹿は `/yamado/oga`）。予約ウィジェットを開く属性・リンクを外す | HP の「ご予約」から Book の施設予約トップに着地する（PC・スマホ・英語ページ） | 直前のビルドを再デプロイ（hp-oga は FTP で上書き・削除はしないので旧ファイルに戻すだけ） |
+| B | 09:00 | **HP の予約導線を Book に向ける**（hp-yamado: デプロイ／hp-oga: `npm run deploy:xserver`）。「ご予約」→ `https://book.yamado.app/yamado/nishiwaga`（男鹿は `/yamado/oga`）。予約ウィジェットを開く属性・リンクを外す。トップの検索バー（Book 配布スクリプト）・フッターの会員／ご予約の確認リンク・西和賀 `/reservation/` の 301・言語メタ（L0）も同じデプロイ（`hp-book-integration.md` §4・`hp-i18n-design.md` §5.1） | HP の「ご予約」から Book の施設予約トップに着地する（PC・スマホ・英語ページ）。トップの検索バーがバー表示になり、検索でプラン一覧に着地する | 直前のビルドを再デプロイ（hp-oga は FTP で上書き・削除はしないので旧ファイルに戻すだけ） |
 | C | 09:30 | **tripla の新規受付を閉じる**（手順 4 で販売終了日を入れてあれば自動。入れていなければ管理画面で販売停止） | tripla のウィジェット／`reserve.489ban.net/client/yamado/0/plan` を開いてプランが出ない。**signIn（マイページ）は開ける** | 販売を再開 |
 | D | 10:00 | Book で**テスト予約 1 件**（現地払い）→ PMS に電文 `new` が入る → 管理画面から取消。既存のチェックリスト「公式サイト」の手順 | 確認メール・PMS 取込・取消の電文 | — |
 | E | 10:30 | FAQ を書き換える（`/admin/faqs`・男鹿の 3 件・§6.4）。Book のお知らせ記事を「切替完了」の文面に更新（§6.1） | HP の `/faq/` で新しい回答が出る | 回答を元に戻す |
@@ -101,7 +101,7 @@
 | リンク先の形 | できる条件 | Book から直接リンクできるか |
 |---|---|---|
 | (i) tripla がホストするマイページ URL（例: `reserve.489ban.net/client/yamado/0/…` の配下。**存在は未確認**） | tripla にそういう画面がある | **できる**（最も単純） |
-| (ii) HP のページ上でウィジェットを開く `https://oga.yamado.co.jp/?tripla_booking_widget_open=signIn`（西和賀は `https://www.yamado.co.jp/reservation/?tripla_booking_widget_open=signIn` ★動作未確認） | **HP のそのページに tripla SDK が残っている** | できる（HP を経由） |
+| (ii) HP のページ上でウィジェットを開く `https://oga.yamado.co.jp/?tripla_booking_widget_open=signIn`（西和賀は **トップ** `https://www.yamado.co.jp/?tripla_booking_widget_open=signIn`。SDK はトップの head にある `hp-yamado/src/lib/content/top.head.html:1`。★動作未確認＝`hp-book-integration.md` Q13。**2026-10-29: 西和賀 HP の `/reservation/` は廃止が決まった**ので `/reservation/?…` は使わない） | **HP のそのページに tripla SDK が残っている** | できる（HP を経由） |
 | (iii) Book 自身が tripla SDK を読み込む | — | **やらない**。Book の CSP・同意バナー・解析（tripla SDK は自前の GA を読む・`hp-oga/HANDOFF.md:39`）に第三者スクリプトを持ち込むことになる |
 
 → **(i) があれば (i)、無ければ (ii)**。(ii) のときは「HP のどのページに SDK を残すか」を §7 P1-HP で決める（両 HP とも最低 1 ページ）。
@@ -112,9 +112,9 @@
 |---|---|---|---|
 | **A. フッターにリンク 1 本** | フッター「ご案内」に「2026年11月29日以前のご予約の確認（旧予約システム）」を足す | 変更が 1 ファイル。目立たないので新規予約の導線を邪魔しない | 困っている人（メールを無くした非会員・OTA 予約の人）がフッターまで来ない。外すときも同じ 1 行だが、「予約の確認」の説明の置き場が無いまま |
 | **B. 「ご予約の確認」案内ページを新設し、そこに集約（推奨）** | 新ページ `/booking/lookup`（名称は「ご予約の確認」）。①Book で予約した方（会員→マイページ／非会員→確認メールのリンク）②**2026年11月29日以前に旧予約システムで予約した方→旧マイページ**③旅行会社・予約サイト→予約元 ④お電話→施設の電話、を 1 枚で案内。フッター・マイページの予約一覧（上部の小さな注記）・取消ページのトークン無し表示・FAQ・HP からここへ誘導 | 旧マイページのリンクが**1 か所**に集まり、外すときも 1 か所。非会員のメール紛失・OTA の案内という既存の空白も埋まる。文言の日付切替（11/30 まで「現在のご予約システム」・11/30 から「旧」）もこのページだけ | 新ページ 1 枚と文言 3 言語分の作業。ページを増やすので内容は最小限にする |
-| **C. 施設 HP 側だけに置く** | hp-yamado の `/reservation/` と hp-oga の 1 ページに「以前のご予約の確認」として signIn ウィジェットのリンクを残す。Book は触らない | Book のコード変更ゼロ。SDK がある場所で完結する | ユーザー指示「予約システムのどこかから確認できる動線」を満たさない。HP が 2 つあるので外すときも 2 か所。Book の非会員が迷子のまま |
+| **C. 施設 HP 側だけに置く** | hp-yamado の `/reservation/` と hp-oga の 1 ページに「以前のご予約の確認」として signIn ウィジェットのリンクを残す。Book は触らない | Book のコード変更ゼロ。SDK がある場所で完結する | ユーザー指示「予約システムのどこかから確認できる動線」を満たさない。HP が 2 つあるので外すときも 2 か所。Book の非会員が迷子のまま。**2026-10-29: 西和賀 `/reservation/` の廃止が決まり、置き場自体が無くなった（成立しない）** |
 
-**推奨: B**（リンク先は §3.1 のとおり ★Q2 次第）。理由: 旧マイページは期限付きの動線なので、**足すときも外すときも 1 か所**にしたい。かつ、Book には非会員向けの「予約の確認」説明がまだ無く、ローンチ直後に最も問い合わせが来るのはここ（tripla で予約した人が Book のマイページにログインして「予約が無い」と言う）。ヘッダーには置かない（ヘッダーは検索バーと 3 リンクで既に詰まっており、モバイルは 1 行に抑える設計・`+layout.svelte:30-31`）。
+**推奨: B**（リンク先は §3.1 のとおり ★Q2 次第）。**2026-10-29 補足**: 西和賀 HP の `/reservation/` が廃止になった（`docs/hp-book-integration.md` §3.9）ため、HP 側には旧マイページの段を**作らない**。両 HP からは**フッター（とスマホメニュー）の「ご予約の確認」→ Book `/booking/lookup`** の 1 本だけで辿り、旧マイページのリンクは `/booking/lookup` にしか置かない。西和賀の signIn のリンク先は HP トップ（§3.1 (ii)）。理由: 旧マイページは期限付きの動線なので、**足すときも外すときも 1 か所**にしたい。かつ、Book には非会員向けの「予約の確認」説明がまだ無く、ローンチ直後に最も問い合わせが来るのはここ（tripla で予約した人が Book のマイページにログインして「予約が無い」と言う）。ヘッダーには置かない（ヘッダーは検索バーと 3 リンクで既に詰まっており、モバイルは 1 行に抑える設計・`+layout.svelte:30-31`）。
 
 ### 3.3 案 B の画面（最小限）
 
@@ -240,7 +240,7 @@
 | 段階 | 内容 | 変更ファイルの見込み | DB |
 |---|---|---|---|
 | **P1（Book・ローンチ前）** | 「ご予約の確認」ページ＋旧マイページの段＋期限の自動切替＋フッター／マイページ／取消ページからの導線＋3 言語 | 新規 `apps/web/src/routes/(public)/booking/lookup/+page.svelte`・`+page.server.ts`（vars を読む）／新規 `apps/web/src/lib/legacy-mypage.ts`＋`legacy-mypage.test.ts`（表示状態の純関数）／`routes/(public)/+layout.svelte`（フッター「ご案内」に 1 行）／`routes/(public)/account/+page.svelte`（上部の注記）／`routes/(public)/booking/cancel/+page.svelte`（reload 表示に 1 行）／`apps/web/messages/ja.json`・`en.json`・`zh-TW.json`／`apps/web/wrangler.jsonc`（vars `LEGACY_MYPAGE_URL`・`LEGACY_MYPAGE_UNTIL`・`BOOK_LAUNCH_DATE=2026-12-01`）／`apps/web/src/lib/server/maintenance.ts`（★メンテ中も `/booking/lookup` を通すか。公開と同時なら不要） | **なし** |
-| **P1-HP（hp-yamado / hp-oga・別リポ・ローンチ前に用意、当日デプロイ）** | 「ご予約」を Book のディープリンク（E1）へ。予約ウィジェットを開く属性・リンクを外す。SDK は ★Q4 の結論まで残す。`/reservation/`（西和賀）には「以前の予約システムでご予約の方」の段と signIn リンク（★Q2 が (ii) のとき） | hp-yamado: `src/lib/content/top.body.html`（バナー）・`reservation.body.html`（バナー・SDK・旧マイページ段）・`english/chinese/korean.body.html`（予約リンク）・各 body の `<a href="/reservation/">ご予約</a>` は据え置き可（ページの中身を変える）／hp-oga: `site/index.php`・`tripla_booking_widget_open=search` を含む 33 ファイル（`tools/postprocess.mjs` に置換を足して一括）・CSP は SDK を残す間そのまま | なし |
+| **P1-HP（hp-yamado / hp-oga・別リポ・ローンチ前に用意、当日デプロイ）** | 「ご予約」を Book のディープリンク（E1）へ**直接**。予約ウィジェットを開く属性・リンクを外す。SDK は ★Q4 の結論まで残す。**西和賀の `/reservation/` は廃止・Book E1 へ 301**（2026-10-29 決定・`docs/hp-book-integration.md` §3.9）。旧マイページの段は HP に作らず、両 HP の**フッターとスマホメニューに「ご予約の確認」→ Book `/booking/lookup`** を足す（会員ログイン／マイページのリンクも同時に。同 §3.3） | hp-yamado: `src/lib/content/top.body.html`（バナー）・各 body の `<a href="/reservation/">ご予約</a>` と `footer__nav`（一括置換）・`english/chinese/korean.body.html`（予約リンク）・`manifest.json`（`/reservation/` を外す）・`.htaccess` か `scripts/build-xserver.mjs`（301）・`tokushoho.body.html:88`（料金表の参照先を Book のプラン一覧へ）／hp-oga: `site/index.php`（ドロワー・フッター）・`tripla_booking_widget_open=search` を含む 33 ファイル（`tools/postprocess.mjs` に置換を足して一括）・CSP は SDK を残す間そのまま | なし |
 | **P2（当日・運用のみ）** | §2.2 の A〜F。お知らせ記事・FAQ の書き換え・tripla 販売停止・テスト予約 | コード変更なし（管理画面と tripla 管理画面） | なし |
 | **P3（切替後・任意）** | 確認メール末尾の 1 行（§6.3・期限付き）／seed `oga-talkappi.json` の tripla リンクを Book と旧マイページに直す（再投入用） | autumn-shared `supabase/functions/send-booking-mail/templates.ts`＋`templates.test.ts`（別リポ・Edge Function の再デプロイ）／`apps/web/src/lib/server/faq/seeds/oga-talkappi.json` | なし |
 | **P4（tripla の予約が尽きた後）** | PMS の支払方法「オンライン事前決済」（tripla）を「公式サイト決済」に統合（migration コメントの予定）。貸切風呂の既定無料経路から `tripla` を外すかは任意（残っていても害は無い） | autumn-shared `supabase/migrations/<実UTC秒>_pms_merge_tripla_payment_method.sql`（★既存の支払行を参照している入金が無いか先に確認）／`apps/web/src/lib/private-bath-pricing.ts` | **あり（autumn-shared・PMS 側の確認のうえで）** |
@@ -266,10 +266,11 @@
 - [ ] 旧マイページのリンク先が実際に tripla のログイン画面を開く（西和賀・男鹿それぞれ。PC・iPhone）【本番の HP で確認】
 
 ### 施設 HP の予約導線（P1-HP・両 HP）
-- [ ] 西和賀 HP のトップ・`/reservation/`・英語・中国語・韓国語ページの「ご予約」が `book.yamado.app/yamado/nishiwaga`（英語は `/en/...`）に着地する
+- [ ] 西和賀 HP のトップ・英語・中国語・韓国語ページの「ご予約」が `book.yamado.app/yamado/nishiwaga`（英語・韓国語は `/en/...`、中国語は `/zh-TW/...`）に着地する
+- [ ] 西和賀 HP の `/reservation/` が Book の施設トップに 301 で転送される（特商法ページの料金表リンクは Book のプラン一覧へ）
 - [ ] 男鹿 HP のトップ・客室・プランなど 33 か所の予約リンクが `book.yamado.app/yamado/oga` に着地する。`?tripla_booking_widget_open=search` が残っていない（grep）
 - [ ] tripla のボットが従来どおり出る（残す場合）／出ない（止める場合）
-- [ ] 西和賀 HP `/reservation/` の「以前の予約システムでご予約の方」から tripla のログインが開く（★Q2 が (ii) のとき）
+- [ ] 両 HP のフッター・スマホメニューの「ご予約の確認」から Book `/booking/lookup` が開き、そこから旧マイページのリンク（西和賀は HP **トップ**の signIn・男鹿は HP トップの signIn）で tripla のログインが開く（★Q2 が (ii) のとき・`hp-book-integration.md` Q13）
 - [ ] hp-oga の CSP で Book・tripla の両方がブロックされない（コンソールに CSP エラーが無い）
 
 ### 切替当日（P2・運用）
