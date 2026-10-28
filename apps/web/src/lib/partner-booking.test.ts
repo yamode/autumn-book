@@ -42,7 +42,9 @@ import {
   splitPartnerBookingSettings,
   partnerFacilityOverrides,
   PARTNER_FACILITY_SETTING_KEYS,
-  PARTNER_FACILITY_MEMBER_KEYS
+  PARTNER_FACILITY_MEMBER_KEYS,
+  advanceDueDateOf,
+  ADVANCE_PAYMENT_ENABLED
 } from './partner-booking';
 
 describe('normalizePartnerBookingSettings', () => {
@@ -527,5 +529,32 @@ describe('groupNightLines', () => {
     expect(g.map((x) => x.label)).toEqual(['1泊目: 4月15日（水）', '2泊目: 4月16日（木）']);
     expect(g[1].lines.map((l) => [l.room, l.amount])).toEqual([[0, 166000], [1, 180000]]);
     expect(partnerNightLineText(g[0].lines[0])).toBe('1名様 83,000円 × 2名様');
+  });
+});
+
+// ---- 2026-10-28: 事前支払（一部事前支払・前受金）の設定と振込期限 ----
+describe('advanceDueDateOf（前受金の振込期限）', () => {
+  it('宿泊日の N 日前', () => {
+    expect(advanceDueDateOf('2026-12-20', '2026-11-01', 7)).toBe('2026-12-13');
+  });
+  it('直前の予約は予約日+3日', () => {
+    expect(advanceDueDateOf('2026-11-10', '2026-11-08', 7)).toBe('2026-11-09');
+    expect(advanceDueDateOf('2026-11-20', '2026-11-15', 7)).toBe('2026-11-18');
+  });
+  it('チェックイン日の前日を超えず、予約日より前にならない', () => {
+    expect(advanceDueDateOf('2026-11-10', '2026-11-09', 7)).toBe('2026-11-09');
+    expect(advanceDueDateOf('2026-11-10', '2026-11-10', 7)).toBe('2026-11-10');
+  });
+});
+
+describe('normalizePartnerBookingSettings（事前支払）', () => {
+  it('advanceDueDays は 1〜60 に収め、既定は 7', () => {
+    expect(normalizePartnerBookingSettings({}).advanceDueDays).toBe(7);
+    expect(normalizePartnerBookingSettings({ advanceDueDays: 0 }).advanceDueDays).toBe(1);
+    expect(normalizePartnerBookingSettings({ advanceDueDays: 999 }).advanceDueDays).toBe(60);
+  });
+  it('機能が無効の間は事前支払の支払方法を落とす', () => {
+    const s = normalizePartnerBookingSettings({ paymentOptions: ['invoice_monthly', 'advance_bank', 'deposit_bank'] });
+    expect(s.paymentOptions).toEqual(ADVANCE_PAYMENT_ENABLED ? ['invoice_monthly', 'deposit_bank', 'advance_bank'] : ['invoice_monthly']);
   });
 });

@@ -33,11 +33,33 @@ export const DEPOSIT_PAYMENT_LABEL = 'デポジット（予約時にオンライ
 export const DEPOSIT_PAYMENT_NOTE = '予約時に一部（デポジット）をクレジットカードでお支払い（Stripe）。残額は後日精算';
 export const isDepositPaymentOption = (id: string | null | undefined) => id === DEPOSIT_PAYMENT_OPTION;
 
+// 事前支払（2026-10-28 指示・docs/partner-prepayment.md）: 取引先が選べる「一部事前支払」と「前受金」。
+//   deposit_online … 一部事前支払（カード）。予約時に一部をカード決済（上のデポジットと同じ仕組み・受付枠を超えたときの差し込みも従来どおり）
+//   deposit_bank   … 一部事前支払（銀行振込）。予約は即確定し、一部を期限までに銀行振込（前受金の請求書）
+//   advance_bank   … 前受金（全額・銀行振込）。予約は即確定し、全額を宿泊日前の期限までに銀行振込（前受金の請求書）
+// 額（一部のとき）と残額の精算先はデポジットの設定（creditDeposit / creditDepositRemainder）を共用する。
+// DB・請求書が整うまで取引先・管理画面には出さない（フェーズ2〜4で true にする）。
+export const ADVANCE_PAYMENT_ENABLED = false;
+export const DEPOSIT_BANK_OPTION = 'deposit_bank';
+export const ADVANCE_BANK_OPTION = 'advance_bank';
+export const PARTNER_ADVANCE_PAYMENT_OPTIONS: { id: string; label: string; note: string }[] = [
+  { id: DEPOSIT_PAYMENT_OPTION, label: '一部事前支払（カード）', note: '予約時に一部をクレジットカードでお支払い（Stripe）。残額は後日精算' },
+  { id: DEPOSIT_BANK_OPTION, label: '一部事前支払（銀行振込）', note: '予約時に前受金のご請求書をお渡しし、一部を期限までに銀行振込。残額は後日精算' },
+  { id: ADVANCE_BANK_OPTION, label: '前受金（全額・銀行振込）', note: '予約時に前受金のご請求書をお渡しし、全額を宿泊日前の期限までに銀行振込' }
+];
+// 銀行振込で事前に払う支払方法（前受金の請求書を出す）
+export const isAdvanceBankOption = (id: string | null | undefined) => id === DEPOSIT_BANK_OPTION || id === ADVANCE_BANK_OPTION;
+// 一部だけ事前に払う支払方法（額は creditDeposit・残額は creditDepositRemainder）
+export const isPartialAdvanceOption = (id: string | null | undefined) => id === DEPOSIT_PAYMENT_OPTION || id === DEPOSIT_BANK_OPTION;
+
 // 支払方法の表示名。自由入力の支払方法（customPaymentOptions）は設定を渡すと名前を引ける。
 export const paymentOptionLabel = (id: string, s?: Pick<PartnerBookingSettings, 'customPaymentOptions'> | null) =>
   isDepositPaymentOption(id)
     ? DEPOSIT_PAYMENT_LABEL
-    : (PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ?? s?.customPaymentOptions.find((o) => o.id === id)?.label ?? id);
+    : (PARTNER_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ??
+      PARTNER_ADVANCE_PAYMENT_OPTIONS.find((o) => o.id === id)?.label ??
+      s?.customPaymentOptions.find((o) => o.id === id)?.label ??
+      id);
 // Stripe を使う支払方法
 export const isStripePaymentOption = (id: string) => id === 'online' || id === 'online_checkin' || id === DEPOSIT_PAYMENT_OPTION;
 
@@ -52,7 +74,20 @@ export const isCustomPaymentOption = (id: string) => id.startsWith(CUSTOM_PAYMEN
 
 // 取引先の画面に出す支払方法の一覧（固定の3種＋自由入力。並びは固定 → 自由入力）。
 export function partnerPaymentChoices(s: Pick<PartnerBookingSettings, 'customPaymentOptions'>): { id: string; label: string; note: string }[] {
-  return [...PARTNER_PAYMENT_OPTIONS, ...s.customPaymentOptions];
+  return [...PARTNER_PAYMENT_OPTIONS, ...(ADVANCE_PAYMENT_ENABLED ? PARTNER_ADVANCE_PAYMENT_OPTIONS : []), ...s.customPaymentOptions];
+}
+
+// 銀行振込の事前支払（前受金）の振込期限（YYYY-MM-DD）。宿泊日の days 日前。
+// 予約が期限より後（直前の予約）なら予約日+3日。ただしチェックイン日の前日を超えず、予約日より前にはしない。
+export const ADVANCE_DUE_MIN_DAYS_AFTER_BOOKING = 3;
+export function advanceDueDateOf(checkIn: string, bookedOn: string, days: number): string {
+  const add = (iso: string, n: number) => new Date(new Date(`${iso}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
+  const base = add(checkIn, -Math.max(0, days));
+  const earliest = add(bookedOn, ADVANCE_DUE_MIN_DAYS_AFTER_BOOKING);
+  const due = base < earliest ? earliest : base;
+  const latest = add(checkIn, -1);
+  const capped = due > latest ? latest : due;
+  return capped < bookedOn ? bookedOn : capped;
 }
 
 // ---- 月次のご請求書（2026-10-02 指示: 支払期限は取引先ごと・宛名は正式社名を別に設定） ----
@@ -288,6 +323,8 @@ export type PartnerBookingSettings = {
   creditDeposit: CreditDeposit;
   // デポジットの残額の精算先。null = 既定（請求書払いの支払方法があれば請求書、無ければ現地）
   creditDepositRemainder: CreditDepositRemainder | null;
+  // 銀行振込の事前支払（前受金）の振込期限: 宿泊日の N 日前（既定 7）。直前の予約は予約日+3日（advanceDueDateOf）
+  advanceDueDays: number;
   // ---- 団体予約（照会 → 宿が回答 → 承諾で予約・docs/partner-group-booking.md §5.3・2026-10-10）。取引先共通 ----
   // 団体予約のメニューを出すか（kind=agent のときだけ意味を持つ・既定オフ＝取引先ごとに管理画面でオンにする・2026-10-10 変更）
   groupInquiryEnabled: boolean;
@@ -328,6 +365,7 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   showOfficialPerks: false,
   creditDeposit: { type: 'percent', value: 30 },
   creditDepositRemainder: null,
+  advanceDueDays: 7,
   groupInquiryEnabled: false,
   groupMaxRooms: 30,
   groupMaxNights: 7,
@@ -536,7 +574,11 @@ export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown
     .filter((o) => o.label)
     .slice(0, MAX_CUSTOM_PAYMENT_OPTIONS);
   // 並びは固定の3種 → 自由入力（定義の順）。定義に無い id（削除された自由入力など）は落とす。
-  const payIds = [...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string), ...customPaymentOptions.map((o) => o.id)];
+  const payIds = [
+    ...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string),
+    ...(ADVANCE_PAYMENT_ENABLED ? PARTNER_ADVANCE_PAYMENT_OPTIONS.map((o) => o.id) : []),
+    ...customPaymentOptions.map((o) => o.id)
+  ];
   const paymentOptions = Array.isArray(src.paymentOptions)
     ? payIds.filter((id) => (src.paymentOptions as unknown[]).includes(id))
     : [...d.paymentOptions];
@@ -579,6 +621,7 @@ export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown
     showOfficialPerks: src.showOfficialPerks === true,
     creditDeposit: normalizeCreditDeposit(src.creditDeposit),
     creditDepositRemainder: normalizeCreditDepositRemainder(src.creditDepositRemainder),
+    advanceDueDays: clampInt(src.advanceDueDays, 1, 60, d.advanceDueDays),
     groupInquiryEnabled: src.groupInquiryEnabled === true,
     groupMaxRooms: clampInt(src.groupMaxRooms, 1, 100, d.groupMaxRooms),
     groupMaxNights: clampInt(src.groupMaxNights, 1, 30, d.groupMaxNights),

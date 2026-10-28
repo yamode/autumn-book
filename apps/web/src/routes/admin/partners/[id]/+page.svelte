@@ -36,6 +36,10 @@
     PARTNER_FACILITY_OVERRIDE_KEYS,
     PARTNER_FACILITY_OVERRIDE_LABELS,
     PARTNER_PAYMENT_OPTIONS,
+    ADVANCE_PAYMENT_ENABLED,
+    PARTNER_ADVANCE_PAYMENT_OPTIONS,
+    isAdvanceBankOption,
+    isPartialAdvanceOption,
     type CreditDepositType,
     type PartnerBookingSettings,
     type PartnerFacilityOverrideKey,
@@ -186,7 +190,11 @@
   const effective = $derived({ ...booking, ...overrides } as PartnerBookingSettings);
   // 支払方法の並びは 固定の3種 → 自由入力（定義の順）。サーバの normalize と同じ並びにして、未保存の差分が出ないようにする
   function togglePayment(id: string) {
-    const order = [...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string), ...booking.customPaymentOptions.map((o) => o.id)];
+    const order = [
+      ...PARTNER_PAYMENT_OPTIONS.map((o) => o.id as string),
+      ...(ADVANCE_PAYMENT_ENABLED ? PARTNER_ADVANCE_PAYMENT_OPTIONS.map((o) => o.id) : []),
+      ...booking.customPaymentOptions.map((o) => o.id)
+    ];
     booking.paymentOptions = booking.paymentOptions.includes(id)
       ? booking.paymentOptions.filter((x) => x !== id)
       : order.filter((x) => x === id || booking.paymentOptions.includes(x));
@@ -1360,7 +1368,55 @@
                 </span>
               </label>
             {/each}
+            {#if ADVANCE_PAYMENT_ENABLED}
+              {#each PARTNER_ADVANCE_PAYMENT_OPTIONS as o (o.id)}
+                <label class="flex items-start gap-2 text-sm">
+                  <input type="checkbox" checked={booking.paymentOptions.includes(o.id)} onchange={() => togglePayment(o.id)} class="mt-0.5" />
+                  <span>
+                    {o.label}
+                    <span class="block text-[11px] text-stone-500">{o.note}{#if isStripePaymentOption(o.id) && !data.onlinePaymentReady}<span class="text-amber-700">（Stripe 接続後に取引先の画面に出ます）</span>{/if}</span>
+                  </span>
+                </label>
+              {/each}
+            {/if}
           </div>
+          {#if ADVANCE_PAYMENT_ENABLED && booking.paymentOptions.some((id) => isPartialAdvanceOption(id) || isAdvanceBankOption(id))}
+            <!-- 事前支払の条件（額・残額はデポジットと共通。保存は下の「保存する」） -->
+            <div class="mt-2 grid gap-2 rounded-md border border-stone-200 bg-white p-2.5 text-sm">
+              <p class="text-xs font-medium">事前支払の条件</p>
+              {#if booking.paymentOptions.some((id) => isPartialAdvanceOption(id))}
+                <div class="grid gap-1">
+                  <span class="text-xs text-stone-500">一部事前支払で先に受ける額（受付枠を超えたときのデポジットと共通）</span>
+                  {#each CREDIT_DEPOSIT_TYPES as t (t.id)}
+                    <label class="flex flex-wrap items-center gap-2 py-0.5">
+                      <input type="radio" value={t.id} checked={booking.creditDeposit.type === t.id} onchange={() => (booking.creditDeposit = { type: t.id, value: t.id === 'first_night' ? 0 : t.id === 'percent' ? 30 : 10000 })} />
+                      <span>{t.label}</span>
+                      {#if t.id !== 'first_night' && booking.creditDeposit.type === t.id}
+                        <input type="number" min="1" max={t.id === 'percent' ? 100 : 1000000} bind:value={booking.creditDeposit.value} class="w-28 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm tabular-nums" />
+                        <span class="text-xs text-stone-500">{t.unit}</span>
+                      {/if}
+                      <span class="text-xs text-stone-500">{t.note}</span>
+                    </label>
+                  {/each}
+                </div>
+                <div>
+                  <span class="block text-xs text-stone-500">残額の精算</span>
+                  <label class="mr-4 inline-flex items-center gap-1.5"><input type="radio" value={null} bind:group={booking.creditDepositRemainder} />既定（請求書払いの支払方法があれば請求書、無ければ現地）</label>
+                  <label class="mr-4 inline-flex items-center gap-1.5"><input type="radio" value="invoice" bind:group={booking.creditDepositRemainder} />月末の請求書で取引先へ</label>
+                  <label class="inline-flex items-center gap-1.5"><input type="radio" value="onsite" bind:group={booking.creditDepositRemainder} />現地でお客様から</label>
+                </div>
+              {/if}
+              {#if booking.paymentOptions.some((id) => isAdvanceBankOption(id))}
+                <label class="flex flex-wrap items-center gap-2">
+                  <span class="text-xs text-stone-500">銀行振込の期限</span>
+                  宿泊日の
+                  <input type="number" min="1" max="60" bind:value={booking.advanceDueDays} class="w-20 rounded-md border border-stone-300 bg-white px-2 py-1 text-right text-sm tabular-nums" />
+                  日前
+                  <span class="text-[11px] text-stone-500">直前の予約は予約日の3日後（宿泊日の前日まで）。期限を過ぎても自動では取り消しません。</span>
+                </label>
+              {/if}
+            </div>
+          {/if}
           {#if savedCards}
             <!-- 取引先のお支払いカード（保存カード・2026-10-07）: 枚数と最終登録だけ（操作は取引先ページの「アカウント → お支払いカード」） -->
             <p class="mt-1.5 text-xs text-stone-600">お支払いカード（取引先が保存したカード）: {savedCards.count} 枚{#if savedCards.lastAt}（最終登録 {new Date(savedCards.lastAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', dateStyle: 'short', timeStyle: 'short' })}）{/if}</p>
