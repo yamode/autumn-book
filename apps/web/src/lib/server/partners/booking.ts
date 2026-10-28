@@ -1691,6 +1691,11 @@ export async function cancelPartnerBooking(
   // 銀行振込の前受金（2026-10-28）は Stripe で返金できない: 入金済みなら差額は宿が銀行振込で返す（管理画面の「返金済みにする」）
   const bank = isAdvanceBankOption(booking.payment_option);
   const paid = (cancelled as { payment_status?: string } | null)?.payment_status === 'paid';
+  // 取消の読み取りの後に入金確認が先に確定した（settlement を入金待ちの前提で決めた）ときは、入金済みの前受金の扱い（キャンセル料へ充当）に直す
+  if (bank && paid && booking.payment_status !== 'paid' && settlement !== 'deposit') {
+    const { error: fixError } = await db.from('rms_partner_bookings').update({ cancel_fee_settlement: 'deposit' }).eq('id', booking.id);
+    if (fixError) console.error('[partner-booking] 入金確認と取消の競合で精算先を直せませんでした:', booking.booking_code, fixError.message);
+  }
   if (bank) {
     // 入金待ちのまま取り消した前受金: 前受金のご請求書を取り消す（受け取っていない前受金を請求し続けない）。失敗しても取消は止めない
     if (!paid) await voidAdvanceInvoiceOnCancel(db, partner.id, booking);

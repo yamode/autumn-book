@@ -13,6 +13,9 @@ export const GET = async (event) => {
   const format = event.url.searchParams.get('format') === 'html' ? 'html' : 'pdf';
   const row = await getAdvanceInvoice(db, partner.id, id);
   if (!row || row.status !== 'issued') throw error(404, 'ご請求書が見つかりません。');
+  // 取消済みの予約の請求書は出さない（一覧の「ご予約取消」と同じ扱い。URL を直接開かれても返さない）
+  const { data: booking } = await db.from('rms_partner_bookings').select('status').eq('id', row.booking_id).eq('partner_id', partner.id).maybeSingle();
+  if (!booking || booking.status === 'cancelled') throw error(404, 'ご請求書が見つかりません。');
   await logPartnerAccess(db, {
     partnerId: partner.id,
     accountId: session.id,

@@ -8,7 +8,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { readBookingExtras } from './booking-extras';
 import { isPartnerBilledBooking } from '$lib/partner-invoice';
 import { describeBooker, chargeAmountOf, isAdvanceBankOption, DEPOSIT_BANK_OPTION } from '$lib/partner-booking';
-import { advanceInvoiceStateOf, ADVANCE_INVOICE_STATE_LABEL, type AdvanceInvoiceState } from '$lib/partner-advance-invoice';
+import { advanceInvoiceProblem, advanceInvoiceStateOf, ADVANCE_INVOICE_STATE_LABEL, type AdvanceInvoiceState } from '$lib/partner-advance-invoice';
 import {
 	advanceBadgeOf,
 	advancePaidLabel,
@@ -455,6 +455,12 @@ export async function retryPartnerReservationCharge(event: RequestEvent, reserva
  */
 export async function reissuePartnerAdvanceInvoice(event: RequestEvent, reservationCode: string): Promise<{ invoiceNo: string; sent: boolean; reason: string | null }> {
 	const { db, partner, row, userId } = await partnerEditTarget(event, reservationCode);
+	// 取り消す前に、新しく発行できる状態かを確かめる（発行できないのに今の1枚だけ取り消して、有効な請求書が無くなるのを防ぐ）
+	const problem = advanceInvoiceProblem(row);
+	if (problem) throw new PartnerStoreError(problem, 409);
+	if (row.status !== 'confirmed' || row.payment_status === 'paid') {
+		throw new PartnerStoreError('確定済みで入金待ちの予約だけ、前受金のご請求書を再発行できます。', 409);
+	}
 	const current = (await listAdvanceInvoicesForBooking(db, partner.id, row.id)).find((r) => r.status === 'issued');
 	if (current) await voidAdvanceInvoice(db, current.id, { reason: '再発行', staffId: userId, partnerId: partner.id });
 	const r = await issueAdvanceInvoice(db, partner, row, { by: 'staff', staffId: userId, send: true, origin: event.url.origin });
@@ -485,6 +491,22 @@ export async function markPartnerAdvancePaid(
 	if (!isAdvanceBooking(row)) throw new PartnerStoreError('銀行振込の前受金の予約ではありません。');
 	if (row.payment_status === 'paid') throw new PartnerStoreError('この前受金はすでに入金済みになっています。', 409);
 	if (row.status !== 'confirmed') throw new PartnerStoreError('確定済みの予約ではない（取消済みなど）ため、入金済みにできません。', 409);
+	// 月次請求書に「前受金 未入金のため全額ご請求」で載せて発行済みの予約は、入金済みにすると二重に受け取る。
+	// 月次請求書の是正（取消→再発行）が先
+	const { data: monthly, error: monthlyError } = await db
+		.from('rms_partner_invoices')
+		.select('invoice_no')
+		.eq('partner_id', partner.id)
+		.eq('status', 'issued')
+		.contains('booking_ids', [row.id])
+		.limit(1);
+	if (monthlyError) throw new PartnerStoreError('月次請求書の発行状況を確認できませんでした。時間をおいてお試しください。', 503);
+	if (monthly?.length) {
+		throw new PartnerStoreError(
+			`この予約は月次請求書（${(monthly[0] as { invoice_no: string }).invoice_no}）に全額ご請求として載っています。二重に受け取らないよう、先に月次請求書を取り消して作り直してください。`,
+			409
+		);
+	}
 	const input = parseAdvancePaidInput(raw, { advanceAmount: row.advance_amount ?? 0, maxAmount: chargeAmountOf(row), today: todayJst() });
 	if (!input.ok) throw new PartnerStoreError(input.message);
 	const { data, error } = await db.rpc('rms_partner_mark_advance_paid', {
@@ -521,13 +543,18 @@ export async function markPartnerAdvanceRefunded(
 	if (!due) throw new PartnerStoreError('取消済みで入金済みの前受金だけ返金済みにできます。', 409);
 	const input = parseAdvanceRefundInput(raw, { refundDue: due.refund, paid: due.paid, today: todayJst() });
 	if (!input.ok) throw new PartnerStoreError(input.message);
+	// detail は読んだ時点のコピーで上書きしないよう、直前に読み直して重ねる（間に別の更新が入っても巻き戻さない範囲を狭める）
+	const { data: fresh } = await db.from('rms_partner_bookings').select('detail').eq('id', row.id).maybeSingle();
 	const { data, error } = await db
 		.from('rms_partner_bookings')
 		.update({
 			payment_status: 'refunded',
 			refund_amount: input.amount,
 			refund_error: null,
-			detail: { ...(row.detail ?? {}), advance_refund: { amount: input.amount, refunded_on: input.refundedOn, by: userId, at: new Date().toISOString() } }
+			detail: {
+				...((fresh?.detail as Record<string, unknown> | null) ?? row.detail ?? {}),
+				advance_refund: { amount: input.amount, refunded_on: input.refundedOn, by: userId, at: new Date().toISOString() }
+			}
 		})
 		.eq('id', row.id)
 		.eq('payment_status', 'paid')
