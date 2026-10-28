@@ -159,6 +159,10 @@
 
 	// 支払の表示。オンライン決済（Stripe）の記録があればそれを正とし、無ければ現地払い。
 	// 現地払いの内訳（PayPay / カード / 現金）は予約時に備考の先頭へ【現地○○決済希望】で入る（v0.44.0）
+	// 前受金（全額）を入金済み（返金記録後を含む）の予約は、取引先へ請求するものがない（「取引先へ請求」の表示を出さない）
+	let billedToPartnerShown = $derived(
+		!!pl?.billedToPartner && !(pl.advance && !pl.advance.partial && (pl.paymentStatus === 'paid' || pl.paymentStatus === 'refunded'))
+	);
 	let paymentLabel = $derived.by(() => {
 		// 取引先予約は台帳の支払方法・支払状況が正（booking.bookings の payment_status は見ない）
 		if (data.isPartner) {
@@ -166,7 +170,7 @@
 			// 銀行振込の前受金は「入金待ち」「入金済み（日付・金額）」（unpaid を「支払待ち（オンライン決済）」と読まない）
 			const status = pl.advance ? `前受金 ${pl.advance.stateLabel}` : partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel);
 			// 一部の前受金は入金済みでも残額がある（事前決済済の印は出さない）
-			return { text: `${pl.paymentName ?? '—'}・${status}`, prepaid: pl.paymentStatus === 'paid' && !pl.advance?.partial };
+			return { text: `${pl.paymentName ?? '—'}・${status}`, prepaid: pl.paymentStatus === 'paid' && !pl.advance?.partial && b.booking_status !== 'cancelled' };
 		}
 		const p = data.payment;
 		if (p) {
@@ -470,7 +474,7 @@
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<h2 class="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-stone-900">
 						取引先予約
-						{#if pl?.billedToPartner}
+						{#if billedToPartnerShown}
 							<!-- 取引先払い（2026-10-02 指示）: 宿泊料金・入湯税は取引先へ月末に請求。お客様には請求しない -->
 							<span class="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">取引先へ請求（お客様には請求しない）</span>
 						{/if}
@@ -509,7 +513,7 @@
 						<dd>
 							{pl.paymentName ?? '—'}
 							{#if pl.depositText}<span class="block text-xs font-medium text-amber-800">{pl.depositText}</span>{/if}
-							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">{pl.advance ? (pl.advance.partial ? '残額（前受金が未入金なら全額）' : '前受金が未入金のままご宿泊なら宿泊料金・入湯税') : pl.depositText ? '残額' : '宿泊料金・入湯税'}は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
+							{#if billedToPartnerShown}<span class="block text-xs font-medium text-red-700">{pl.advance ? (pl.advance.partial ? '残額（前受金が未入金なら全額）' : '前受金が未入金のままご宿泊なら宿泊料金・入湯税') : pl.depositText ? '残額' : '宿泊料金・入湯税'}は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
 						</dd>
 						<dt class="text-stone-500">支払状況</dt>
 						<dd class={pl.paymentStatus === 'charge_failed' || pl.paymentStatus === 'refund_failed' ? 'text-red-700' : ''}>
