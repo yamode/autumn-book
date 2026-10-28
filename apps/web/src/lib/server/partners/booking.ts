@@ -94,7 +94,8 @@ import { bookingAttachmentNames, partnerBookingAttachmentsEnabled } from './book
 import { attachmentLine } from '$lib/partner-attachments';
 import { chargePlanMetadata, setupIntentEventMetadata, type SetupIntentChargeEvent } from '$lib/partner-upcoming-charges';
 import { advanceBookingMailLine } from '$lib/partner-advance-invoice';
-import { issueAdvanceInvoice, sendAdvanceInvoiceMail } from './advance-invoices';
+import { findIssuedAdvanceInvoice, issueAdvanceInvoice, sendAdvanceInvoiceMail, voidAdvanceInvoice } from './advance-invoices';
+import { isAdvanceBooking, jstDateOf } from '$lib/partner-advance';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -1339,6 +1340,8 @@ export type PartnerBookingRow = {
     plan_display_name?: string | null;
     // 2026-10-10〜: 団体の照会からの予約（DB 関数が p.group から写す・docs/partner-group-booking.md §5.4）
     group?: { inquiry_id?: string | null; inquiry_code?: string | null; group_name?: string | null; batch_id?: string | null } | null;
+    // 2026-10-28〜: 銀行振込の前受金を取消後に宿が銀行振込で返した記録（管理画面の「返金済みにする」・返金額は refund_amount と同じ）
+    advance_refund?: { amount: number; refunded_on: string; by?: string | null; at?: string } | null;
   };
   cancelled_at: string | null;
   cancelled_by: string | null;
@@ -1476,6 +1479,8 @@ export type CancelPreview = {
   refund: PartnerRefund | null;
   // デポジット予約のとき: 残額を請求書で受けるか（表示用。取消の不足分は 2026-10-07 から精算先にかかわらず請求書）。デポジットでなければ null
   depositRemainderBilled: boolean | null;
+  // 銀行振込の前受金の予約か（2026-10-28）。入金済みなら差額は宿が銀行振込で返す（カードへ返金しない）・入金待ちなら請求書
+  advanceBank: boolean;
   // 精算の一文（画面に出す）
   settlementText: string;
   // 事務手数料（2026-10-07）: 予約に残した率（無い予約は null）と、スタッフの取消フォームで返金額を計算し直すための値
@@ -1496,8 +1501,10 @@ function previewFrom(b: PartnerBookingRow, policy: CancelPolicy | null, now = ne
     table: cancelPolicyTable(policy, q.daysBefore),
     settlement,
     refund,
-    depositRemainderBilled: isDepositPaymentOption(b.payment_option) ? isDepositRemainderBilled(b.remainder_option) : null,
-    settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund),
+    depositRemainderBilled:
+      isDepositPaymentOption(b.payment_option) || b.payment_option === DEPOSIT_BANK_OPTION ? isDepositRemainderBilled(b.remainder_option) : null,
+    advanceBank: isAdvanceBankOption(b.payment_option),
+    settlementText: settlementText(settlement, q.fee, invoiceMonthLabel(b.check_out_date), refund, { bank: isAdvanceBankOption(b.payment_option) }),
     adminFeePercent: refund ? readAdminFeeTerms(b.cancel_policy).percent : null,
     prepayDiscount: Math.max(0, b.prepay_discount_amount ?? 0),
     bathTax: Math.max(0, b.bath_tax_amount ?? 0)
@@ -1681,8 +1688,13 @@ export async function cancelPartnerBooking(
   }
   // 予約時決済（支払済み）: max(キャンセル料, 割引額, 事務手数料) を差し引いて返金。キャンセル料の免除は割引分も返す（事務手数料は別に選ぶ）。
   // スタッフの取消で「返金しない」を選んだときは Stripe に触らない（宿で扱う）
+  // 銀行振込の前受金（2026-10-28）は Stripe で返金できない: 入金済みなら差額は宿が銀行振込で返す（管理画面の「返金済みにする」）
+  const bank = isAdvanceBankOption(booking.payment_option);
   const paid = (cancelled as { payment_status?: string } | null)?.payment_status === 'paid';
-  if (paid && (by === 'partner' || opts.refund !== false)) {
+  if (bank) {
+    // 入金待ちのまま取り消した前受金: 前受金のご請求書を取り消す（受け取っていない前受金を請求し続けない）。失敗しても取消は止めない
+    if (!paid) await voidAdvanceInvoiceOnCancel(db, partner.id, booking);
+  } else if (paid && (by === 'partner' || opts.refund !== false)) {
     const r = partnerRefundOf(booking, fee, waived, adminFeeWaived);
     if (r.refund > 0) await refundBooking(db, booking, by === 'partner' ? 'partner_cancel' : 'staff_cancel', r.kept > 0 ? r.refund : undefined);
   }
@@ -1756,6 +1768,8 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
           `お支払: ${b.payment_method_name}${
             depositSummary(b)
               ? `（${depositSummary(b)}）`
+              : advanceSummary(b)
+                ? `（${advanceSummary(b)}）`
               : b.payment_status === 'paid'
               ? `（お支払い済み ${yen(b.paid_amount ?? chargeAmountOf(b))}）`
               : b.payment_status === 'scheduled'
@@ -1801,6 +1815,37 @@ export function depositSummary(
   return `デポジット ${yen(st.deposit)} お支払い済み・残額 ${yen(st.remainder)}（${isDepositRemainderBilled(b.remainder_option) ? '請求書' : '現地'}）`;
 }
 
+// 入金待ちのまま取り消した銀行振込の前受金のご請求書を取り消す（失敗はログだけ・予約の取消は止めない）
+async function voidAdvanceInvoiceOnCancel(db: SupabaseClient, partnerId: string, b: PartnerBookingRow): Promise<void> {
+  try {
+    const inv = await findIssuedAdvanceInvoice(db, b.id);
+    if (inv) await voidAdvanceInvoice(db, inv.id, { reason: 'ご予約の取消（入金前）', partnerId });
+  } catch (e) {
+    console.error('[partner-booking] 前受金のご請求書を取り消せませんでした:', b.booking_code, e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * 銀行振込の前受金のお支払の説明（メール・一覧）。前受金でない・取消済みは null（取消後はキャンセル料・返金の説明を出す）。
+ * 「前受金 50,000円 入金待ち（期限 2026-11-20）・残額 51,500円（請求書）」／「前受金 50,000円 入金済み（2026-11-10）…」
+ */
+export function advanceSummary(
+  b: Pick<
+    PartnerBookingRow,
+    'payment_option' | 'payment_status' | 'status' | 'total_amount' | 'bath_tax_amount' | 'prepay_discount_amount' | 'advance_amount' | 'advance_due_date' | 'paid_amount' | 'paid_at' | 'remainder_option'
+  >
+): string | null {
+  if (!isAdvanceBooking(b) || b.status === 'cancelled') return null;
+  const paid = b.payment_status === 'paid';
+  const amount = paid ? (b.paid_amount ?? b.advance_amount ?? 0) : (b.advance_amount ?? 0);
+  const head = paid
+    ? `前受金 ${yen(amount)} 入金済み${b.paid_at ? `（${jstDateOf(b.paid_at)}）` : ''}`
+    : `前受金 ${yen(amount)} 入金待ち${b.advance_due_date ? `（期限 ${b.advance_due_date}）` : ''}`;
+  if (b.payment_option !== DEPOSIT_BANK_OPTION) return head;
+  const rest = Math.max(0, chargeAmountOf(b) - amount);
+  return `${head}・残額 ${yen(rest)}（${isDepositRemainderBilled(b.remainder_option) ? '請求書' : '現地'}）`;
+}
+
 // 取消済みの予約のキャンセル料（メール・一覧）。0円なら「なし」を明記する
 export function cancelFeeLines(b: PartnerBookingRow): string[] {
   if (b.status !== 'cancelled' || !b.cancel_fee_settlement) return [];
@@ -1842,9 +1887,14 @@ export function cancelFeeSettlementLabel(b: PartnerBookingRow): string {
       return '→ お支払い済みの金額から差し引き';
     case 'deposit': {
       // デポジットから充当。不足分は精算先にかかわらず請求書へ（2026-10-07 変更・旧 N3 廃止）
+      // 銀行振込の前受金（入金済み）も同じ。差額は宿が銀行振込でお返しする（2026-10-28）
+      const bank = isAdvanceBankOption(b.payment_option);
+      const word = bank ? '前受金' : 'デポジット';
       const r = partnerRefundOf(b, b.cancel_fee ?? 0, !!b.cancel_fee_waived);
-      if (r.shortage <= 0) return '→ お支払い済みのデポジットから充当';
-      return `→ デポジットから充当（超える ${yen(r.shortage)} は ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求）`;
+      // 銀行振込は返金の記録前（paid のまま）だけ「差額は銀行振込でお返し」を添える
+      const back = bank && b.payment_status === 'paid' && r.refund > 0 ? `・差額 ${yen(r.refund)} は銀行振込でお返しします` : '';
+      if (r.shortage <= 0) return `→ お支払い済みの${word}から充当${back}`;
+      return `→ ${word}から充当（超える ${yen(r.shortage)} は ${invoiceMonthLabel(b.check_out_date)}分の請求書でご請求）${back}`;
     }
     default:
       return '';
@@ -1863,6 +1913,15 @@ export function partnerBilledNotice(
     return isDepositRemainderBilled(b.remainder_option)
       ? `【ご請求】デポジット ${yen(dep.deposit)} はお支払い済み。残額 ${yen(dep.remainder)} は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`
       : `【デポジット】${yen(dep.deposit)} はお支払い済みです。残額 ${yen(dep.remainder)} は現地でお客様からお受け取りください。`;
+  }
+  // 銀行振込の前受金（2026-10-28）: 全額は取引先から前受金で受ける。一部は残額の精算先で（入金は管理画面で確認する）
+  if (b.payment_option === ADVANCE_BANK_OPTION) {
+    return `【ご請求】宿泊料金・入湯税は ${partner.name} 様から前受金（銀行振込）でお受けします（未入金のままご宿泊なら月末の請求書でご請求）。お客様（ご宿泊者）には請求しないでください。`;
+  }
+  if (b.payment_option === DEPOSIT_BANK_OPTION) {
+    return isDepositRemainderBilled(b.remainder_option)
+      ? `【ご請求】一部を前受金（銀行振込）で、残額を ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`
+      : `【前受金】一部を ${partner.name} 様から前受金（銀行振込）でお受けします。残額は現地でお客様からお受け取りください。`;
   }
   if (!isBillablePaymentOption(b.payment_option, partner.booking_settings)) return null;
   return `【ご請求】宿泊料金・入湯税は ${partner.name} 様へ月末にご請求します。お客様（ご宿泊者）には請求しないでください。`;

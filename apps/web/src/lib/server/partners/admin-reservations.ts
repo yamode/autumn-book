@@ -10,6 +10,21 @@ import { isPartnerBilledBooking } from '$lib/partner-invoice';
 import { describeBooker, chargeAmountOf, isAdvanceBankOption, DEPOSIT_BANK_OPTION } from '$lib/partner-booking';
 import { advanceInvoiceStateOf, ADVANCE_INVOICE_STATE_LABEL, type AdvanceInvoiceState } from '$lib/partner-advance-invoice';
 import {
+	advanceBadgeOf,
+	advancePaidLabel,
+	advancePaidRpcMessage,
+	advanceRefundNotice,
+	isAdvanceBooking,
+	isAdvanceOverdue,
+	isAdvanceUnpaidAtCheckout,
+	isAdvanceWaiting,
+	jstDateOf,
+	parseAdvancePaidInput,
+	parseAdvanceRefundInput,
+	type AdvanceBadge
+} from '$lib/partner-advance';
+import { partnerRefundOf } from '$lib/partner-cancel-fee';
+import {
 	advanceInvoiceDownloadResponse,
 	getAdvanceInvoice,
 	issueAdvanceInvoice,
@@ -22,6 +37,7 @@ import {
 	cancelFeeBasisLabel,
 	cancelFeeSettlementLabel,
 	cancelKeptNote,
+	advanceSummary,
 	cancelPartnerBooking,
 	depositSummary,
 	getPartnerBooking,
@@ -41,7 +57,7 @@ import {
 	type AttachmentView
 } from './booking-attachments';
 import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
-import { PartnerStoreError, requireStaffPartner, todayJst } from './store';
+import { logPartnerAccess, PartnerStoreError, requireStaffPartner, todayJst } from './store';
 
 /** 前受金のご請求書の1枚（予約詳細の表示用） */
 export type AdvanceInvoiceView = {
@@ -73,6 +89,23 @@ export type PartnerAdvanceView = {
 	voided: AdvanceInvoiceView[];
 	/** 発行・再発行できるか（確定済み・入金前） */
 	canIssue: boolean;
+	/** 入金確認（フェーズ4・2026-10-28）: 入金済みにできるか（確定済み・入金待ち）と、入金額の上限（ご利用額＝宿泊料金＋入湯税） */
+	canMarkPaid: boolean;
+	maxAmount: number;
+	/** 入金済みなら入金日（JST）と入金額 */
+	paidOn: string | null;
+	paidAmount: number | null;
+	/** 期限超過（確定済み・入金待ち・期限が今日より前）。自動取消はしない */
+	overdue: boolean;
+	/**
+	 * 入金待ちのままチェックアウトした（月次請求書で全額を請求する）のに、前受金のご請求書が有効なまま。
+	 * 二重請求になるので取り消してもらう（自動では取り消さない）
+	 */
+	voidSuggested: boolean;
+	/** 取消済み・入金済み: キャンセル料に充当する額と、宿が銀行振込で返す額（返金済みにする前だけ） */
+	refundDue: { paid: number; kept: number; refund: number; notice: string } | null;
+	/** 返金済み（宿が銀行振込で返したと記録した）の額と日付 */
+	refunded: { amount: number; on: string | null } | null;
 };
 
 const advanceInvoiceView = (r: AdvanceInvoiceRow): AdvanceInvoiceView => ({
@@ -90,25 +123,47 @@ const advanceInvoiceView = (r: AdvanceInvoiceRow): AdvanceInvoiceView => ({
 	voidReason: r.void_reason
 });
 
-/** 予約詳細の前受金の欄（銀行振込の事前支払でなければ null）。請求書が読めなくても欄は出す */
-async function ledgerAdvance(db: SupabaseClient, b: PartnerBookingRow): Promise<PartnerAdvanceView | null> {
+/** 取消済み・入金済み（返金の記録前）の前受金の返金の見込み（取消の精算 partnerRefundOf と同じ額）。対象でなければ null */
+function advanceRefundDueOf(b: PartnerBookingRow): { paid: number; kept: number; refund: number } | null {
+	if (!isAdvanceBooking(b) || b.status !== 'cancelled' || b.payment_status !== 'paid' || b.cancel_fee_settlement !== 'deposit') return null;
+	const r = partnerRefundOf(b, b.cancel_fee ?? 0, !!b.cancel_fee_waived);
+	return { paid: r.paid, kept: r.kept, refund: r.refund };
+}
+
+/** 予約詳細の前受金の欄（銀行振込の事前支払でなければ null）。請求書が読めなくても欄は出す。billed は請求書と同じ取引先払いの判定 */
+async function ledgerAdvance(db: SupabaseClient, b: PartnerBookingRow, billed: boolean): Promise<PartnerAdvanceView | null> {
 	if (!isAdvanceBankOption(b.payment_option) || !b.advance_amount || !b.advance_due_date || !b.partner_id) return null;
 	const rows = await listAdvanceInvoicesForBooking(db, b.partner_id, b.id).catch(() => [] as AdvanceInvoiceRow[]);
 	const current = rows.find((r) => r.status === 'issued') ?? null;
+	const today = todayJst();
 	const state = advanceInvoiceStateOf(
 		current ?? { status: rows.length ? 'void' : 'issued', due_date: b.advance_due_date },
 		b,
-		todayJst()
+		today
 	);
+	const paidNow = b.payment_status === 'paid' || b.payment_status === 'refunded';
+	const due = advanceRefundDueOf(b);
 	return {
 		amount: b.advance_amount,
 		dueDate: b.advance_due_date,
 		partial: b.payment_option === DEPOSIT_BANK_OPTION,
 		state,
-		stateLabel: ADVANCE_INVOICE_STATE_LABEL[state],
+		// 入金済みは「入金済み（日付・金額）」
+		stateLabel: state === 'paid' ? advancePaidLabel(b).replace(/^前受金 /, '') : ADVANCE_INVOICE_STATE_LABEL[state],
 		current: current ? advanceInvoiceView(current) : null,
 		voided: rows.filter((r) => r.status === 'void').map(advanceInvoiceView),
-		canIssue: b.status === 'confirmed' && b.payment_status !== 'paid' && b.payment_status !== 'refunded' && b.payment_status !== 'refund_failed'
+		canIssue: b.status === 'confirmed' && b.payment_status !== 'paid' && b.payment_status !== 'refunded' && b.payment_status !== 'refund_failed',
+		canMarkPaid: isAdvanceWaiting(b),
+		maxAmount: chargeAmountOf(b),
+		paidOn: paidNow ? jstDateOf(b.paid_at) || null : null,
+		paidAmount: paidNow ? (b.paid_amount ?? null) : null,
+		overdue: isAdvanceOverdue(b, today),
+		voidSuggested: !!current && isAdvanceUnpaidAtCheckout(b, today, billed),
+		refundDue: due ? { ...due, notice: advanceRefundNotice(due.paid, due.kept, due.refund) } : null,
+		refunded:
+			b.payment_status === 'refunded'
+				? { amount: b.refund_amount ?? b.detail?.advance_refund?.amount ?? 0, on: b.detail?.advance_refund?.refunded_on ?? null }
+				: null
 	};
 }
 
@@ -209,7 +264,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 		paymentOption: b.payment_option,
 		paymentStatus: b.payment_status,
 		billedToPartner,
-		depositText: depositSummary(b),
+		depositText: depositSummary(b) ?? advanceSummary(b),
 		cardLabel: b.card_label,
 		chargeError: b.charge_error,
 		refundError: b.refund_error,
@@ -319,7 +374,7 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 		const preview = row.checkedIn ? null : await previewPartnerCancel(scope.db, scope.facilityId, row).catch(() => null);
 		const view = toView(row, event.locals.user?.role === 'admin', billed, preview);
 		view.attachments = await ledgerAttachments(scope.db, reservationCode, row);
-		view.advance = await ledgerAdvance(scope.db, row);
+		view.advance = await ledgerAdvance(scope.db, row, billed);
 		return { ledger: view, error: null };
 	} catch (e) {
 		if (e instanceof StaffScopeError || e instanceof PartnerStoreError) return { ledger: null, error: e.message };
@@ -327,29 +382,38 @@ export async function loadPartnerLedgerForReservation(event: RequestEvent, reser
 	}
 }
 
+/** 予約管理の一覧の取引先予約の行に足す情報（取引先名・前受金の印〔入金待ち・期限超過・返金待ち〕） */
+export type PartnerListInfo = { name: string | null; advance: AdvanceBadge | null };
+
 /**
- * 予約管理の一覧で、取引先予約の行に取引先名を付けるための対応表（台帳の booking_code → 取引先名）。
+ * 予約管理の一覧で、取引先予約の行に取引先名と前受金の印を付けるための対応表（台帳の booking_code → 情報）。
  * いま選んでいる施設の台帳だけを見る。使えない環境・権限なしは空（一覧はチャネル名のまま出す）。
+ * 前受金の印は一覧で気づかせたいもの（入金待ち・期限超過・取消後の返金待ち）だけ。入金済みは出さない。
  */
-export async function partnerNamesForCodes(event: RequestEvent, reservationCodes: string[]): Promise<Map<string, string>> {
+export async function partnerInfoForCodes(event: RequestEvent, reservationCodes: string[]): Promise<Map<string, PartnerListInfo>> {
 	const codes = [...new Set(reservationCodes.map(partnerBookingCodeOf).filter((c): c is string => !!c))];
-	const names = new Map<string, string>();
-	if (!codes.length) return names;
+	const out = new Map<string, PartnerListInfo>();
+	if (!codes.length) return out;
 	try {
 		const scope = await staffPartnerScope(event, 'view');
 		const { data, error } = await scope.db
 			.from('rms_partner_bookings')
-			.select('booking_code, partner_name')
+			.select(
+				'booking_code, partner_name, status, payment_option, payment_status, advance_amount, advance_due_date, paid_amount, paid_at, refund_amount, cancel_fee, cancel_fee_waived, cancel_fee_settlement, cancel_policy, total_amount, bath_tax_amount, prepay_discount_amount, deposit_amount'
+			)
 			.eq('facility_id', scope.facilityId)
 			.in('booking_code', codes);
-		if (error) return names;
-		for (const r of (data ?? []) as { booking_code: string; partner_name: string | null }[]) {
-			if (r.partner_name) names.set(r.booking_code, r.partner_name);
+		if (error) return out;
+		const today = todayJst();
+		for (const r of (data ?? []) as (PartnerBookingRow & { booking_code: string })[]) {
+			const due = advanceRefundDueOf(r);
+			const badge = advanceBadgeOf(r, today, due?.refund ?? 0);
+			out.set(r.booking_code, { name: r.partner_name || null, advance: badge && badge.tone !== 'paid' ? badge : null });
 		}
 	} catch {
-		// 取引先名は付加情報。取れなくても一覧は出す
+		// 取引先名・前受金の印は付加情報。取れなくても一覧は出す
 	}
-	return names;
+	return out;
 }
 
 /** 取消・再請求の共通: 管理者・施設・台帳・取引先の所属を確かめる（/admin/partners/[id] の editScope と同じ確認） */
@@ -405,6 +469,79 @@ export async function voidPartnerAdvanceInvoice(event: RequestEvent, reservation
 	if (!inv || inv.booking_id !== row.id) throw new PartnerStoreError('前受金のご請求書が見つかりません。', 404);
 	const voided = await voidAdvanceInvoice(db, inv.id, { reason, staffId: userId, partnerId: partner.id });
 	return voided.invoice_no;
+}
+
+/**
+ * 前受金の入金確認（管理者のみ・取消と同じ partnerEditTarget の確認・2026-10-28 フェーズ4）。
+ * 金額（空なら前受金の額）・入金日（空なら今日 JST・未来日は不可）を確かめ、rms_partner_mark_advance_paid（service_role）を呼ぶ。
+ * DB 関数が台帳・予約を paid にし、PMS へ電文 paid を出す。'already' / 'not_confirmed' / 例外は日本語の案内で返す（PartnerStoreError）。
+ */
+export async function markPartnerAdvancePaid(
+	event: RequestEvent,
+	reservationCode: string,
+	raw: { amount: unknown; paidOn: unknown }
+): Promise<{ bookingCode: string; amount: number; paidOn: string }> {
+	const { db, partner, row, userId } = await partnerEditTarget(event, reservationCode);
+	if (!isAdvanceBooking(row)) throw new PartnerStoreError('銀行振込の前受金の予約ではありません。');
+	if (row.payment_status === 'paid') throw new PartnerStoreError('この前受金はすでに入金済みになっています。', 409);
+	if (row.status !== 'confirmed') throw new PartnerStoreError('確定済みの予約ではない（取消済みなど）ため、入金済みにできません。', 409);
+	const input = parseAdvancePaidInput(raw, { advanceAmount: row.advance_amount ?? 0, maxAmount: chargeAmountOf(row), today: todayJst() });
+	if (!input.ok) throw new PartnerStoreError(input.message);
+	const { data, error } = await db.rpc('rms_partner_mark_advance_paid', {
+		p_partner_booking_id: row.id,
+		p_amount: input.amount,
+		p_paid_on: input.paidOn
+	});
+	const r = advancePaidRpcMessage(error ? null : String(data ?? ''), error?.message ?? null);
+	if (!r.ok) throw new PartnerStoreError(r.message, error ? 400 : 409);
+	await logPartnerAccess(db, {
+		partnerId: partner.id,
+		channel: 'admin',
+		action: 'staff_advance_paid',
+		detail: { bookingCode: row.booking_code, amount: input.amount, paidOn: input.paidOn, staff: userId }
+	}).catch(() => undefined);
+	return { bookingCode: row.booking_code, amount: input.amount, paidOn: input.paidOn };
+}
+
+/**
+ * 取消済み・入金済みの前受金を「返金済み」にする（管理者のみ・宿が銀行振込で返したあと）。
+ * 銀行振込は Stripe で返金できないので、Stripe・rms_partner_mark_refunded は呼ばない。台帳を service_role の update で
+ * payment_status='refunded'・refund_amount に更新し、返金日は detail.advance_refund に残す（返金日の列が無いため）。
+ * ※ booking.bookings の payment_status と PMS（電文 refunded）は更新しない（DB 関数が要る・最終報告に記載）。
+ */
+export async function markPartnerAdvanceRefunded(
+	event: RequestEvent,
+	reservationCode: string,
+	raw: { amount: unknown; refundedOn: unknown }
+): Promise<{ bookingCode: string; amount: number; refundedOn: string }> {
+	const { db, partner, row, userId } = await partnerEditTarget(event, reservationCode);
+	if (!isAdvanceBooking(row)) throw new PartnerStoreError('銀行振込の前受金の予約ではありません。');
+	if (row.payment_status === 'refunded') throw new PartnerStoreError('この前受金はすでに返金済みになっています。', 409);
+	const due = advanceRefundDueOf(row);
+	if (!due) throw new PartnerStoreError('取消済みで入金済みの前受金だけ返金済みにできます。', 409);
+	const input = parseAdvanceRefundInput(raw, { refundDue: due.refund, paid: due.paid, today: todayJst() });
+	if (!input.ok) throw new PartnerStoreError(input.message);
+	const { data, error } = await db
+		.from('rms_partner_bookings')
+		.update({
+			payment_status: 'refunded',
+			refund_amount: input.amount,
+			refund_error: null,
+			detail: { ...(row.detail ?? {}), advance_refund: { amount: input.amount, refunded_on: input.refundedOn, by: userId, at: new Date().toISOString() } }
+		})
+		.eq('id', row.id)
+		.eq('payment_status', 'paid')
+		.select('id')
+		.maybeSingle();
+	if (error) throw new PartnerStoreError(`返金済みにできませんでした（${error.message}）。`, 503);
+	if (!data) throw new PartnerStoreError('支払の状態が変わったため、返金済みにできませんでした。画面を読み込み直してください。', 409);
+	await logPartnerAccess(db, {
+		partnerId: partner.id,
+		channel: 'admin',
+		action: 'staff_advance_refunded',
+		detail: { bookingCode: row.booking_code, amount: input.amount, refundedOn: input.refundedOn, staff: userId }
+	}).catch(() => undefined);
+	return { bookingCode: row.booking_code, amount: input.amount, refundedOn: input.refundedOn };
 }
 
 /**

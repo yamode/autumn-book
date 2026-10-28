@@ -15,6 +15,8 @@
     refund: { paid: number; kept: number; refund: number } | null;
     // デポジット予約（Phase 3b）: 残額を請求書で受けるか（キャンセル料がデポジットを超えた不足分の扱い）
     depositRemainderBilled?: boolean | null;
+    // 銀行振込の前受金（2026-10-28）: 入金済みならデポジットと同じ充当。差額は宿が銀行振込で返す（カードへ返金しない）
+    advanceBank?: boolean;
     // 事務手数料（予約時決済の取消で返金しない率・無い予約は null）と、返金額の計算に使う値
     adminFeePercent?: number | null;
     prepayDiscount?: number;
@@ -42,7 +44,9 @@
     const kept = Math.max(feeKept, admin);
     const over = fee - feeKept;
     const what = admin > feeKept ? `事務手数料（${adminPercent}%）として ${yen(kept)}` : yen(kept);
-    const head = kept <= 0 ? `デポジット ${yen(dep)} を全額返金します` : `デポジット ${yen(dep)} から ${what} を充当し、${yen(dep - kept)} を返金します`;
+    const word = preview.advanceBank ? '前受金' : 'デポジット';
+    const back = preview.advanceBank ? '銀行振込でお返しします（取消後に宿が振り込み、前受金の欄で「返金済みにする」）' : '返金します';
+    const head = kept <= 0 ? `${word} ${yen(dep)} を全額${back}` : `${word} ${yen(dep)} から ${what} を充当し、${yen(dep - kept)} を${back}`;
     if (over <= 0) return head;
     return `${head}。超える ${yen(over)} は${invoiceMonth ? `${invoiceMonth}分の` : ''}月末の請求書でご請求します（不課税）`;
   });

@@ -130,6 +130,50 @@ describe('デポジット（Phase 3b）の取消', () => {
   });
 });
 
+describe('銀行振込の前受金（2026-10-28 フェーズ4）の取消', () => {
+  // 宿泊料金 100,000・入湯税 1,500。一部（deposit_bank）は前受金 30,450、全額（advance_bank）は 101,500
+  const part = {
+    status: 'confirmed',
+    total_amount: 100_000,
+    bath_tax_amount: 1_500,
+    prepay_discount_amount: 0,
+    payment_status: 'unpaid',
+    payment_option: 'deposit_bank',
+    advance_amount: 30_450,
+    paid_amount: null,
+    remainder_option: 'invoice_monthly'
+  };
+  const full = { ...part, payment_option: 'advance_bank', advance_amount: 101_500, remainder_option: null };
+  it('入金待ち: 受け取ったお金が無いので、キャンセル料は請求書（0 なら none）', () => {
+    expect(settlementOf(part, 10_000)).toBe('invoice');
+    expect(settlementOf(full, 10_000)).toBe('invoice');
+    expect(settlementOf(part, 0)).toBe('none');
+  });
+  it('入金済み: デポジットと同じく deposit で充当（キャンセル料 0 でも返金のため）', () => {
+    expect(settlementOf({ ...part, payment_status: 'paid', paid_amount: 30_450 }, 10_000)).toBe('deposit');
+    expect(settlementOf({ ...full, payment_status: 'paid', paid_amount: 101_500 }, 0)).toBe('deposit');
+  });
+  it('入金済み（全額）: キャンセル料を差し引いて、差額を銀行振込で返す', () => {
+    const b = { ...full, payment_status: 'paid', paid_amount: 101_500 };
+    const r = partnerRefundOf(b, 30_000);
+    expect(r).toMatchObject({ paid: 101_500, kept: 30_000, refund: 71_500, shortage: 0, adminFee: 0 });
+    expect(settlementText('deposit', 30_000, '2026年10月', r, { bank: true })).toBe(
+      'お支払い済みの前受金 101,500円 から 30,000円 をキャンセル料に充当し、71,500円 を銀行振込でお返しします'
+    );
+    expect(settlementText('deposit', 0, '2026年10月', partnerRefundOf(b, 0), { bank: true })).toBe('お支払い済みの前受金 101,500円 を全額銀行振込でお返しします');
+  });
+  it('入金済み（一部）: キャンセル料が前受金を超えた分は請求書へ', () => {
+    const r = partnerRefundOf({ ...part, payment_status: 'paid', paid_amount: 30_450 }, 50_000);
+    expect(r).toMatchObject({ paid: 30_450, kept: 30_450, refund: 0, shortage: 19_550 });
+    expect(settlementText('deposit', 50_000, '2026年10月', r, { bank: true })).toBe(
+      'お支払い済みの前受金 30,450円 から 30,450円 をキャンセル料に充当し、返金はありません。前受金を超える 19,550円 は 2026年10月分の請求書でご請求します'
+    );
+  });
+  it('入金額が台帳の paid_amount に無いときは前受金の額で計算する', () => {
+    expect(partnerRefundOf({ ...part, payment_status: 'paid' }, 10_000)).toMatchObject({ paid: 30_450, kept: 10_000, refund: 20_450 });
+  });
+});
+
 describe('無料の最終日', () => {
   it('最初に料率がかかる日の前日', async () => {
     const { freeCancelUntil } = await import('./partner-cancel-fee');

@@ -303,7 +303,7 @@
         <li class="rounded-xl border border-stone-200 bg-white">
           <button type="button" class="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left sm:p-5" onclick={() => (open = open === b.id ? null : b.id)}>
             <div class="min-w-0">
-              <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-2 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="ご予約時に御社の受付枠を超えていました。宿で確認のうえご連絡することがあります。">受付枠超過</span>{/if}</p>
+              <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}{#if b.advance && b.advance.tone !== 'paid'}<span class={`ml-2 rounded px-1.5 text-xs font-medium ${b.advance.tone === 'overdue' ? 'bg-rose-700/10 text-rose-700' : 'bg-amber-700/10 text-amber-700'}`}>{b.advance.label}</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-2 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="ご予約時に御社の受付枠を超えていました。宿で確認のうえご連絡することがあります。">受付枠超過</span>{/if}</p>
               {#if multiFacility}<p class="mt-1"><span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">{b.facilityName}</span></p>{/if}
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
               <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
@@ -333,7 +333,7 @@
                 {#if b.perks.length}<dt>専用特典</dt><dd>{#each b.perks as p}<span class="block"><span class="font-medium">{p.title}</span>{#if p.description}<span class="block whitespace-pre-wrap text-sm text-stone-500">{p.description}</span>{/if}</span>{/each}</dd>{/if}
                 {#each b.options as o}<dt>{o.label}</dt><dd>{o.value}</dd>{/each}
                 {#if b.notes}<dt>備考</dt><dd class="whitespace-pre-wrap">{b.notes}</dd>{/if}
-                {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}{#if b.depositText}<span class="block text-sm font-medium text-amber-800">{b.depositText}</span>{/if}</dd>{/if}
+                {#if b.paymentMethodName}<dt>お支払</dt><dd>{b.paymentMethodName}{#if b.advance}{#if !b.depositText}（{b.advance.label}）{/if}{:else if PAY_STATUS[b.paymentStatus]}（{PAY_STATUS[b.paymentStatus]}{b.cardLabel && (b.paymentStatus === 'scheduled' || b.paymentStatus === 'charge_failed') ? `・${b.cardLabel}` : ''}）{/if}{#if b.paymentStatus === 'charge_failed' && b.chargeError}<span class="block text-sm text-rose-700">{b.chargeError}</span>{/if}{#if b.depositText}<span class="block text-sm font-medium text-amber-800">{b.depositText}</span>{/if}</dd>{/if}
                 <dt>予約日時</dt><dd>{dt(b.createdAt)}{b.bookedBy ? `（${b.bookedBy}）` : ''}</dd>
                 {#if b.cancelledAt}<dt>取消日時</dt><dd>{dt(b.cancelledAt)}（{b.cancelledBy === 'staff' ? '宿で取消' : '取引先で取消'}）</dd>{/if}
                 {#if b.cancelFee}
@@ -376,7 +376,7 @@
                   discountLabel={b.discountLabel}
                   bathTax={b.bathTax}
                   total={b.total}
-                  totalNote={PAY_STATUS[b.paymentStatus] ?? ''}
+                  totalNote={b.advance ? b.advance.label : (PAY_STATUS[b.paymentStatus] ?? '')}
                   nightLines={b.nightLines}
                 />
               </div>
@@ -416,7 +416,7 @@
                         {#if cp}<input type="hidden" name="expectedFee" value={cp.fee} />{/if}
                         <p class="text-sm font-medium text-rose-700">
                           {b.status === 'pending_payment' ? 'このご予約をやめます（お部屋の確保を解除します）。' : 'このご予約を取り消します。取り消すと元に戻せません。'}
-                          {#if b.paymentStatus === 'paid' && (!cp || (cp.refund && cp.refund.kept === 0))}お支払い済みの金額は全額返金します。{/if}
+                          {#if b.paymentStatus === 'paid' && (!cp || (cp.refund && cp.refund.kept === 0))}{b.advance ? 'お支払い済みの前受金は全額を銀行振込でお返しします。' : 'お支払い済みの金額は全額返金します。'}{/if}
                         </p>
                         {#if cp && cp.table.length}
                           <!-- キャンセル規定（今の段に印）と、今取り消したときの金額 -->

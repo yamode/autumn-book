@@ -56,6 +56,8 @@ import {
 import {
 	cancelPartnerReservation,
 	loadPartnerLedgerForReservation,
+	markPartnerAdvancePaid,
+	markPartnerAdvanceRefunded,
 	reissuePartnerAdvanceInvoice,
 	retryPartnerReservationCharge,
 	voidPartnerAdvanceInvoice,
@@ -644,7 +646,7 @@ export const actions: Actions = {
 
 	/**
 	 * 取引先予約の前受金のご請求書の再発行（管理者のみ・取消と同じ権限）。有効な1枚は「再発行」で取り消し、新しく発行して予約者へメールする。
-	 * 入金の確認（入金済みにする）はフェーズ4で別に作る。
+	 * 入金の確認は partnerAdvancePaid（下）。
 	 */
 	partnerAdvanceReissue: async (event) => {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
@@ -681,6 +683,52 @@ export const actions: Actions = {
 		try {
 			const invoiceNo = await voidPartnerAdvanceInvoice(event, event.params.code, String(fd.get('invoiceId') ?? ''), reason);
 			return { advanceVoided: invoiceNo };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	/**
+	 * 取引先予約の前受金（銀行振込）を入金済みにする（管理者のみ・取消と同じ権限・2026-10-28 フェーズ4）。
+	 * 入力 amount（空なら前受金の額）・paidOn（空なら今日 JST・未来日は不可）。DB 関数 rms_partner_mark_advance_paid が PMS へ電文 paid を出す
+	 */
+	partnerAdvancePaid: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '前受金の入金確認');
+		if (denied) return fail(403, { message: denied });
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		const fd = await event.request.formData();
+		try {
+			const r = await markPartnerAdvancePaid(event, event.params.code, { amount: fd.get('amount'), paidOn: fd.get('paidOn') });
+			return { advancePaid: r };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	/**
+	 * 取消済み・入金済みの前受金を返金済みにする（管理者のみ・宿が銀行振込で返したあと）。Stripe の返金は行わない。
+	 * 入力 amount（空なら返金すべき額）・refundedOn（空なら今日 JST）
+	 */
+	partnerAdvanceRefunded: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '前受金の返金の記録');
+		if (denied) return fail(403, { message: denied });
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		const fd = await event.request.formData();
+		try {
+			const r = await markPartnerAdvanceRefunded(event, event.params.code, { amount: fd.get('amount'), refundedOn: fd.get('refundedOn') });
+			return { advanceRefunded: r };
 		} catch (e) {
 			return actionFailure(e);
 		}

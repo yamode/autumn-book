@@ -13,6 +13,15 @@
 //   「ご請求の対象」としてデポジットを差し引いた残額だけを請求し、明細に「うちデポジット ○円 お支払い済み」を出す。
 //   残額が現地なら請求額 0（別途精算）。デポジットは宿泊料金（10%）から先に差し引き、超えた分を入湯税から差し引く。
 //   取消時はデポジットをキャンセル料に充当し、超えた分を不課税で請求する（2026-10-07 変更: 残額の精算先が現地でも請求する・旧 N3 廃止）。
+// 銀行振込の前受金（deposit_bank / advance_bank・2026-10-28 フェーズ4・docs/partner-prepayment.md §5）:
+//   - ご請求の対象は DB 関数 _rms_partner_billed_to_partner と同じ: advance_bank（全額）は常に取引先払い、
+//     deposit_bank（一部）は残額の精算先（remainder_option）が onsite 以外なら取引先払い。
+//   - 入金済み（payment_status='paid'）の前受金はデポジットと同じ形で差し引く（行の deposit・advance: true）。
+//     全額入金済みならご請求 0 のため対象外の行（「お支払い済み（前受金）」）にする。紙面は「うち前受金 ○円 お支払い済み」。
+//   - 入金待ちのままチェックアウトした前受金は、受け取っていないので全額をご請求し、行に「前受金 未入金のため全額ご請求」。
+//     前受金のご請求書が有効なままだと二重請求になるので、管理画面の予約詳細で「取り消してください」と出す（自動で取り消さない）。
+//   - 取消: 入金済みなら cancel_fee_settlement='deposit'（デポジットと同じ充当）。返金（宿が銀行振込で返す）を記録する前は
+//     充当＝min(キャンセル料, 入金額)として扱う（デポジットの「返金しなかった＝全額受け取ったまま」とは違う）。
 // 紙面（HTML）は Cloudflare Browser Rendering で PDF にする（lib/server/partners/invoice-pdf.ts）。
 // PDF が作れない環境でも、同じ HTML をそのまま開いて印刷できる。
 //
@@ -22,7 +31,16 @@
 //   - 施設の小計は 10%対象（税込）・入湯税・キャンセル料・ご請求額だけ（M3）。消費税は請求書1枚で1回だけ端数処理する。
 //   - 載っている施設が1つだけなら、施設の見出し・小計を出さず従来（version 1）と同じ紙面にする。
 //   - 発行済みの version 1（施設ごとの請求書）は document に固定されたまま、従来どおり描ける。
-import { chargeAmountOf, isDepositPaymentOption, isDepositRemainderBilled, type PartnerBookingSettings } from '$lib/partner-booking';
+import {
+  ADVANCE_BANK_OPTION,
+  chargeAmountOf,
+  DEPOSIT_BANK_OPTION,
+  isAdvanceBankOption,
+  isDepositPaymentOption,
+  isDepositRemainderBilled,
+  type PartnerBookingSettings
+} from '$lib/partner-booking';
+import { ADVANCE_UNPAID_INVOICE_NOTE } from '$lib/partner-advance';
 
 export const INVOICE_TAX_RATE = 10;
 
@@ -60,6 +78,8 @@ export type InvoiceBookingSource = {
   // デポジット（Phase 3b）。payment_option='deposit_online' のときだけ
   deposit_amount?: number | null;
   remainder_option?: string | null;
+  // 銀行振込の前受金（payment_option='deposit_bank' / 'advance_bank'・2026-10-28）。入金済みなら paid_amount と同じ値
+  advance_amount?: number | null;
   // 予約の施設（台帳 rms_partner_bookings.facility_id）と施設名（2026-10-09 全施設分1枚・N3）
   facility_id?: string | null;
   facility_name?: string | null;
@@ -92,6 +112,10 @@ export type InvoiceLine = {
   cancelNote?: string; // 「2日前の取消 30%」など
   // デポジット（Phase 3b）: ご利用額のうちお支払い済みのデポジット（取消の行は充当した額）。ご請求額＝ご利用額−これ
   deposit?: number;
+  // deposit が銀行振込の前受金のとき true（紙面の言葉を「デポジット」→「前受金」に。2026-10-28）
+  advance?: boolean;
+  // 行の注記（例: 「前受金 未入金のため全額ご請求」）。ご請求の対象の行にも出す
+  lineNote?: string;
   // 予約の施設（2026-10-09 全施設分1枚・N3）。取消・デポジット不足分・返金しない額の行もその予約の施設に帰属。version 1 の紙面には無い
   facilityId?: string;
   facilityName?: string;
@@ -202,7 +226,9 @@ export function isPartnerBilledBooking(
   b: { payment_option: string | null | undefined; remainder_option?: string | null },
   s: Pick<PartnerBookingSettings, 'customPaymentOptions'>
 ): boolean {
-  if (isDepositPaymentOption(b.payment_option)) return isDepositRemainderBilled(b.remainder_option);
+  // 銀行振込の前受金（DB 関数 _rms_partner_billed_to_partner と同じ・20261028104906）: 全額は取引先払い、一部は残額の精算先で
+  if (b.payment_option === ADVANCE_BANK_OPTION) return true;
+  if (isDepositPaymentOption(b.payment_option) || b.payment_option === DEPOSIT_BANK_OPTION) return isDepositRemainderBilled(b.remainder_option);
   return isBillablePaymentOption(b.payment_option, s);
 }
 
@@ -224,19 +250,30 @@ export const isInvoiceTarget = (b: InvoiceTargetSource, period: string, today?: 
   b.check_out_date <= invoiceCutoffDate(period, today);
 
 type InvoiceTargetSource = Pick<InvoiceBookingSource, 'status' | 'check_out_date'> &
-  Partial<Pick<InvoiceBookingSource, 'cancel_fee' | 'cancel_fee_settlement' | 'paid_amount' | 'refund_amount' | 'payment_status' | 'deposit_amount' | 'remainder_option'>>;
+  Partial<
+    Pick<
+      InvoiceBookingSource,
+      'cancel_fee' | 'cancel_fee_settlement' | 'paid_amount' | 'refund_amount' | 'payment_status' | 'deposit_amount' | 'remainder_option' | 'payment_option' | 'advance_amount'
+    >
+  >;
 
 /**
  * デポジット予約の取消（cancel_fee_settlement='deposit'）で受け取る額の内訳。
  *   kept      … デポジットから充当した額（返金後は 支払額−返金額。返金前は min(キャンセル料, デポジット)）
+ *               銀行振込の前受金（入金済み）は、宿が銀行振込で返したと記録する（refunded）までは min(キャンセル料, 入金額)
  *   shortage  … キャンセル料がデポジットを超えた額（請求書で請求する。2026-10-07 から残額の精算先が現地でも請求）
  */
 export function depositCancelPartsOf(b: Omit<InvoiceTargetSource, 'status' | 'check_out_date'>): { kept: number; shortage: number } {
   const fee = Math.max(0, b.cancel_fee ?? 0);
-  const paid = Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0);
-  // 返金済みなら 支払額−返金額。返金していない（スタッフの取消で「返金しない」・キャンセル料がデポジット以上）なら全額を受け取ったまま
+  const paid = Math.max(0, b.paid_amount ?? b.deposit_amount ?? b.advance_amount ?? 0);
+  // 返金済みなら 支払額−返金額。返金していない（スタッフの取消で「返金しない」・キャンセル料がデポジット以上）なら全額を受け取ったまま。
+  // 銀行振込の前受金は返金を手で記録するので、記録前（paid のまま）は返す予定の額を除いた min(キャンセル料, 入金額)
   const kept =
-    b.payment_status === 'refunded' ? Math.max(0, paid - (b.refund_amount ?? paid)) : b.payment_status === 'paid' ? paid : Math.min(fee, paid);
+    b.payment_status === 'refunded'
+      ? Math.max(0, paid - (b.refund_amount ?? paid))
+      : b.payment_status === 'paid' && !isAdvanceBankOption(b.payment_option)
+        ? paid
+        : Math.min(fee, paid);
   const over = Math.max(0, fee - Math.min(fee, paid));
   return { kept, shortage: over };
 }
@@ -318,6 +355,7 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         const charge = cancelChargeOf(b);
         // デポジット（Phase 3b）: 充当した額はお支払い済み、超えた分（残額が請求書のときだけ）をご請求
         const dep = b.cancel_fee_settlement === 'deposit' ? depositCancelPartsOf(b) : null;
+        const bank = isAdvanceBankOption(b.payment_option);
         const billable = b.cancel_fee_settlement === 'invoice' || (!!dep && dep.shortage > 0);
         const note =
           b.cancel_fee_settlement === 'refund'
@@ -325,7 +363,9 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
             : b.cancel_fee_settlement === 'card'
               ? 'カード決済済み'
               : dep
-                ? 'デポジットから充当済み'
+                ? bank
+                  ? '前受金から充当済み'
+                  : 'デポジットから充当済み'
                 : '';
         return {
           bookingId: b.id,
@@ -351,7 +391,7 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
           cancelFee: charge,
           cancelledOn: jstDay(b.cancelled_at),
           cancelNote: cancelNoteOf(b),
-          ...(dep && dep.kept > 0 ? { deposit: dep.kept } : {}),
+          ...(dep && dep.kept > 0 ? { deposit: dep.kept, ...(bank ? { advance: true } : {}) } : {}),
           ...facilityOfSource(b)
         };
       }
@@ -359,10 +399,29 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
       const bathTax = b.bath_tax_amount ?? 0;
       const discount = b.prepay_discount_amount ?? 0;
       const usage = chargeAmountOf(b);
+      // 銀行振込の前受金（2026-10-28）: 入金済みなら差し引く。入金待ちなら受け取っていないので差し引かない（全額をご請求・注記）
+      const bank = isAdvanceBankOption(b.payment_option);
+      const bankPaid = bank && b.payment_status === 'paid';
       // デポジット（Phase 3b）: お支払い済みのデポジットを差し引いた残額を請求（残額が現地なら対象外・別途精算）
-      const deposit = isDepositPaymentOption(b.payment_option) ? Math.min(usage, Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0)) : 0;
-      const billable = isPartnerBilledBooking(b, s);
-      const note = deposit > 0 && !billable ? `デポジット ${yen(deposit)} お支払い済み・残額は現地で精算` : paymentNote(b);
+      const deposit = isDepositPaymentOption(b.payment_option)
+        ? Math.min(usage, Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0))
+        : bankPaid
+          ? Math.min(usage, Math.max(0, b.paid_amount ?? b.advance_amount ?? 0))
+          : 0;
+      // 前受金で全額お支払い済みなら、ご請求 0 の対象外の行（ご利用明細書の「お支払い済み」に載せる）
+      const fullyPaid = bankPaid && deposit >= usage;
+      const billable = isPartnerBilledBooking(b, s) && !fullyPaid;
+      const note = bank
+        ? fullyPaid
+          ? 'お支払い済み（前受金）'
+          : bankPaid
+            ? `前受金 ${yen(deposit)} お支払い済み・残額は現地で精算`
+            : '前受金 未入金（要確認）・現地で精算'
+        : deposit > 0 && !billable
+          ? `デポジット ${yen(deposit)} お支払い済み・残額は現地で精算`
+          : paymentNote(b);
+      // 入金待ちのまま月次請求の対象になった前受金（取引先払い）: 全額をご請求する旨
+      const lineNote = bank && !bankPaid && billable ? ADVANCE_UNPAID_INVOICE_NOTE : '';
       return {
         bookingId: b.id,
         bookingCode: b.booking_code,
@@ -385,7 +444,8 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         usage,
         billable,
         billed: billable ? usage - deposit : 0,
-        ...(deposit > 0 ? { deposit } : {}),
+        ...(deposit > 0 ? { deposit, ...(bank ? { advance: true } : {}) } : {}),
+        ...(lineNote ? { lineNote } : {}),
         ...facilityOfSource(b)
       };
     })
@@ -607,6 +667,9 @@ function headerBlock(doc: InvoiceDocument, title: string, sub: string, draft = f
 const periodSub = (doc: InvoiceDocument) =>
   `${periodLabel(doc.period)}ご利用分（${ymd(doc.period)}〜${ymd(lastDayOfMonth(doc.period))} チェックアウト）`;
 
+// 先に受けた額の呼び名（デポジット / 銀行振込の前受金）
+const depositWord = (l: Pick<InvoiceLine, 'advance'>) => (l.advance ? '前受金' : 'デポジット');
+
 // お部屋・人数の1行（例: 「オーシャンスイート57平米 1室・2名」）
 const roomLine = (l: InvoiceLine) => `${esc(l.roomName)} ${l.roomCount}室・${l.adults}名`;
 
@@ -619,7 +682,7 @@ function invoicePage(doc: InvoiceDocument, draft = false): string {
     l.cancelFee != null
       ? `${esc(l.cancelNote ?? 'キャンセル料')}（不課税）<br><span class="muted">ご宿泊予定 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}　${esc(l.guestName)} 様${l.cancelledOn ? `・${md(l.cancelledOn)} 取消` : ''}</span>`
       : `ご宿泊 <span class="nw">${md(l.checkIn)}〜${l.nights}泊</span>　${roomLine(l)}<br><span class="muted">${esc(l.guestName)} 様</span>`
-  }${l.deposit ? `<br><span class="muted small">ご利用額 ${yen(l.usage)} のうちデポジット ${yen(l.deposit)} お支払い済み（差し引き後の額）</span>` : ''}</td>
+  }${l.deposit ? `<br><span class="muted small">ご利用額 ${yen(l.usage)} のうち${depositWord(l)} ${yen(l.deposit)} お支払い済み（差し引き後の額）</span>` : ''}${l.lineNote ? `<br><span class="small">${esc(l.lineNote)}</span>` : ''}</td>
   <td class="n">${l.cancelFee != null ? '—' : yen(l.lodging - l.discount - depositSplitOf(l).lodging)}</td>
   <td class="n">${l.cancelFee == null && l.bathTax - depositSplitOf(l).bathTax ? yen(l.bathTax - depositSplitOf(l).bathTax) : '—'}</td>
   <td class="n">${yen(l.billed)}</td>
@@ -724,8 +787,8 @@ function statementPage(doc: InvoiceDocument, draft = false): string {
   <td>${esc(l.guestName)} 様${l.bookerName ? `<br><span class="muted small">ご予約者 ${esc(l.bookerName)}</span>` : ''}</td>
   <td class="n">${l.cancelFee != null ? '—' : `${yen(l.lodging)}${l.discount ? `<br><span class="muted small">割引 −${yen(l.discount)}</span>` : ''}`}</td>
   <td class="n">${l.bathTax ? yen(l.bathTax) : '—'}</td>
-  <td class="n">${yen(l.usage)}${l.deposit ? `<br><span class="muted small wrap">うちデポジット ${yen(l.deposit)} お支払い済み</span>` : ''}</td>
-  <td class="n">${l.billable ? yen(l.billed) : `—${l.paymentNote ? `<br><span class="muted small wrap">${esc(l.paymentNote)}</span>` : ''}`}</td>
+  <td class="n">${yen(l.usage)}${l.deposit ? `<br><span class="muted small wrap">うち${depositWord(l)} ${yen(l.deposit)} お支払い済み</span>` : ''}</td>
+  <td class="n">${l.billable ? `${yen(l.billed)}${l.lineNote ? `<br><span class="small wrap">${esc(l.lineNote)}</span>` : ''}` : `—${l.paymentNote ? `<br><span class="muted small wrap">${esc(l.paymentNote)}</span>` : ''}`}</td>
 </tr>`
         )
         .join('');

@@ -31,6 +31,10 @@
 		return b.channel_name ?? b.source ?? '—';
 	}
 
+	// 取引先予約の前受金（銀行振込）の印: 入金待ち・期限超過・取消後の返金待ち（2026-10-28）
+	const advanceBadgeClass = (tone: string) =>
+		tone === 'overdue' ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-amber-50 text-amber-800 ring-amber-200';
+
 	const MAIL_LABEL: Record<string, string> = {
 		sent: '送信済',
 		pending: '送信待ち',
@@ -174,7 +178,7 @@
 				</p>
 				<p class="truncate text-[13px] text-stone-600">{b.room_name ?? '—'}</p>
 				<div class="mt-2 flex items-center justify-between gap-2 border-t border-stone-100 pt-2 text-xs text-stone-500">
-					<span class="min-w-0 truncate">{channelLabel(b)}</span>
+					<span class="min-w-0 truncate">{channelLabel(b)}{#if b.partner_advance}<span class="ml-1 rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</span>
 					{#if b.source === 'autumn_booking'}
 						<span class="inline-flex shrink-0 items-center gap-1 {mailClass(b.mail_status)}">
 							<span class="h-1.5 w-1.5 rounded-full {mailDot(b.mail_status)}" aria-hidden="true"></span>
@@ -229,7 +233,7 @@
 					<td class="px-3 whitespace-nowrap">{b.room_count ?? 1}室{#if (b.room_count ?? 1) > 1 && b.room_index}<span class="block text-[10px] text-stone-400">{b.room_index}室目</span>{/if}</td>
 					<td class="max-w-[180px] truncate px-3">{b.room_name ?? '—'}</td>
 					<td class="px-3 text-right whitespace-nowrap tabular-nums">{b.total_amount != null ? formatYen(b.total_amount) : '—'}</td>
-					<td class="px-3 text-xs">{channelLabel(b)}</td>
+					<td class="px-3 text-xs">{channelLabel(b)}{#if b.partner_advance}<span class="mt-0.5 block w-fit rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</td>
 					<td class="px-3 text-xs whitespace-nowrap {mailClass(b.mail_status)}">
 						{#if b.source === 'autumn_booking' && MAIL_LABEL[b.mail_status ?? '']}
 							<span class="inline-flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full {mailDot(b.mail_status)}" aria-hidden="true"></span>{MAIL_LABEL[b.mail_status ?? '']}</span>

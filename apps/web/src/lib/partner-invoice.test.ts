@@ -419,6 +419,112 @@ describe('デポジット（Phase 3b）', () => {
   });
 });
 
+describe('銀行振込の前受金（2026-10-28 フェーズ4）', () => {
+  // 宿泊料金 100,000・入湯税 1,500。一部（deposit_bank）は前受金 30,450（残額は請求書）、全額（advance_bank）は 101,500
+  const part = (over: Partial<InvoiceBookingSource> = {}) =>
+    booking({
+      total_amount: 100_000,
+      bath_tax_amount: 1_500,
+      payment_option: 'deposit_bank',
+      payment_method_name: '一部事前支払（銀行振込）',
+      payment_status: 'paid',
+      paid_amount: 30_450,
+      advance_amount: 30_450,
+      remainder_option: 'invoice_monthly',
+      ...over
+    });
+  const full = (over: Partial<InvoiceBookingSource> = {}) =>
+    part({ payment_option: 'advance_bank', payment_method_name: '前受金（全額・銀行振込）', paid_amount: 101_500, advance_amount: 101_500, remainder_option: null, ...over });
+  const docOf = (lines: ReturnType<typeof buildInvoiceLines>): InvoiceDocument => ({
+    version: 1,
+    invoiceNo: 'PI-202610-00001',
+    period: '2026-10-01',
+    issueDate: '2026-10-31',
+    dueDate: '2026-11-30',
+    recipient: { name: '株式会社テスト' },
+    issuer: { name: '株式会社山人', facilityName: '', address: '', tel: '', registrationNumber: '', bankAccount: '', note: '' },
+    lines,
+    totals: invoiceTotals(lines)
+  });
+
+  it('取引先払いの判定（DB の _rms_partner_billed_to_partner と同じ）: 全額は常に、一部は残額の精算先で', () => {
+    expect(isPartnerBilledBooking({ payment_option: 'advance_bank', remainder_option: null }, settings)).toBe(true);
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_bank', remainder_option: 'invoice_monthly' }, settings)).toBe(true);
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_bank', remainder_option: 'custom_bill' }, settings)).toBe(true);
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_bank', remainder_option: 'onsite' }, settings)).toBe(false);
+    expect(isPartnerBilledBooking({ payment_option: 'deposit_bank', remainder_option: null }, settings)).toBe(false);
+  });
+  it('一部・入金済み・残額は請求書: デポジットと同じく前受金を差し引いた残額を請求', () => {
+    const [l] = buildInvoiceLines([part()], settings);
+    expect(l).toMatchObject({ usage: 101_500, billable: true, billed: 71_050, deposit: 30_450, advance: true, paymentNote: '' });
+    expect(l.lineNote).toBeUndefined();
+    const t = invoiceTotals([l]);
+    expect(t).toMatchObject({ billedTotal: 71_050, paidTotal: 30_450, taxable10: 69_550, nonTaxable: 1_500 });
+    const html = renderInvoiceHtml(docOf([l]));
+    expect(html).toContain('うち前受金 30,450円 お支払い済み');
+    expect(html).toContain('のうち前受金 30,450円 お支払い済み（差し引き後の額）');
+    expect(html).not.toContain('デポジット');
+  });
+  it('全額・入金済み: ご請求 0（対象外の行・「お支払い済み（前受金）」）', () => {
+    const [l] = buildInvoiceLines([full()], settings);
+    expect(l).toMatchObject({ usage: 101_500, billable: false, billed: 0, deposit: 101_500, advance: true, paymentNote: 'お支払い済み（前受金）' });
+    const t = invoiceTotals([l]);
+    expect(t).toMatchObject({ billedTotal: 0, paidTotal: 101_500, taxable10: 0, nonTaxable: 0 });
+    // ご請求 0 円ならご利用明細書だけ
+    const html = renderInvoiceHtml(docOf([l]));
+    expect(html).toContain('お支払い済み（前受金）');
+    expect(html).not.toContain('適格請求書');
+  });
+  it('全額・一部の入金（振込額が少ない）: 差額を請求する', () => {
+    const [l] = buildInvoiceLines([full({ paid_amount: 100_000 })], settings);
+    expect(l).toMatchObject({ billable: true, billed: 1_500, deposit: 100_000 });
+  });
+  it('入金待ちのままチェックアウト（全額）: 全額をご請求し、「前受金 未入金のため全額ご請求」の注記', () => {
+    const [l] = buildInvoiceLines([full({ payment_status: 'unpaid', paid_amount: null })], settings);
+    expect(l).toMatchObject({ usage: 101_500, billable: true, billed: 101_500, lineNote: '前受金 未入金のため全額ご請求' });
+    expect(l.deposit).toBeUndefined();
+    const html = renderInvoiceHtml(docOf([l]));
+    expect(html).toContain('前受金 未入金のため全額ご請求');
+    expect(invoiceTotals([l])).toMatchObject({ taxable10: 100_000, nonTaxable: 1_500, billedTotal: 101_500 });
+  });
+  it('入金待ちのままチェックアウト（一部・残額は請求書）: 全額をご請求', () => {
+    const [l] = buildInvoiceLines([part({ payment_status: 'unpaid', paid_amount: null })], settings);
+    expect(l).toMatchObject({ billable: true, billed: 101_500, lineNote: '前受金 未入金のため全額ご請求' });
+  });
+  it('一部・残額は現地: ご請求の対象外（入金済みは前受金の額、入金待ちは要確認の注記）', () => {
+    const [paid] = buildInvoiceLines([part({ remainder_option: 'onsite' })], settings);
+    expect(paid).toMatchObject({ billable: false, billed: 0, deposit: 30_450, paymentNote: '前受金 30,450円 お支払い済み・残額は現地で精算' });
+    const [unpaid] = buildInvoiceLines([part({ remainder_option: 'onsite', payment_status: 'unpaid', paid_amount: null })], settings);
+    expect(unpaid).toMatchObject({ billable: false, billed: 0 });
+    expect(unpaid.paymentNote).toContain('前受金 未入金');
+    expect(unpaid.lineNote).toBeUndefined();
+  });
+  it('取消・入金済み・返金の記録前: 充当は min(キャンセル料, 入金額)（返す予定の額は受け取ったままにしない）', () => {
+    const c = full({ status: 'cancelled', cancelled_at: '2026-10-08T05:00:00Z', cancel_fee: 30_000, cancel_fee_rate: 30, cancel_fee_basis: '3日前', cancel_fee_settlement: 'deposit' });
+    expect(depositCancelPartsOf(c)).toEqual({ kept: 30_000, shortage: 0 });
+    expect(cancelChargeOf(c)).toBe(30_000);
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ usage: 30_000, billable: false, billed: 0, deposit: 30_000, advance: true, paymentNote: '前受金から充当済み' });
+  });
+  it('取消・入金済み・返金済み（宿が銀行振込で返した）: 入金額−返金額', () => {
+    const c = full({ status: 'cancelled', cancel_fee: 30_000, cancel_fee_settlement: 'deposit', payment_status: 'refunded', refund_amount: 71_500 });
+    expect(depositCancelPartsOf(c)).toEqual({ kept: 30_000, shortage: 0 });
+  });
+  it('取消・入金済み（一部）・キャンセル料が前受金を超える: 不足分を不課税で請求', () => {
+    const c = part({ status: 'cancelled', cancel_fee: 50_000, cancel_fee_settlement: 'deposit' });
+    expect(depositCancelPartsOf(c)).toEqual({ kept: 30_450, shortage: 19_550 });
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ billable: true, billed: 19_550, cancelFee: 50_000, deposit: 30_450, advance: true });
+  });
+  it('取消・入金待ち: キャンセル料は請求書（invoice）で通常どおり', () => {
+    const c = full({ status: 'cancelled', payment_status: 'unpaid', paid_amount: null, cancel_fee: 30_000, cancel_fee_settlement: 'invoice' });
+    expect(cancelChargeOf(c)).toBe(30_000);
+    const [l] = buildInvoiceLines([c], settings);
+    expect(l).toMatchObject({ billable: true, billed: 30_000, cancelFee: 30_000 });
+    expect(l.deposit).toBeUndefined();
+  });
+});
+
 describe('全施設分を1枚（version 2・決定 N3・2026-10-09）', () => {
   const NW = { id: 'fac-nw', name: '山人-yamado-', address: '〒029-5514 岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222' };
   const OGA = { id: 'fac-oga', name: '山人-oga-', address: '〒010-0531 秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776' };

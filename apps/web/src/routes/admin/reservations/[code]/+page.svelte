@@ -65,6 +65,9 @@
 	let showPartnerCancel = $state(false);
 	// 前受金のご請求書の取消フォーム（銀行振込の事前支払・2026-10-28）
 	let showAdvanceVoid = $state(false);
+	// 前受金の入金確認・返金の記録のフォーム（フェーズ4・2026-10-28）
+	let showAdvancePaid = $state(false);
+	let showAdvanceRefund = $state(false);
 	const advanceStateClass = (s: string) =>
 		s === 'paid'
 			? 'bg-emerald-50 text-emerald-700'
@@ -160,8 +163,10 @@
 		// 取引先予約は台帳の支払方法・支払状況が正（booking.bookings の payment_status は見ない）
 		if (data.isPartner) {
 			if (!pl) return { text: '取引先の条件に従う（台帳を確認できません）', prepaid: false };
-			const status = partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel);
-			return { text: `${pl.paymentName ?? '—'}・${status}`, prepaid: pl.paymentStatus === 'paid' };
+			// 銀行振込の前受金は「入金待ち」「入金済み（日付・金額）」（unpaid を「支払待ち（オンライン決済）」と読まない）
+			const status = pl.advance ? `前受金 ${pl.advance.stateLabel}` : partnerPaymentStatusLabel(pl.paymentStatus, pl.cardLabel);
+			// 一部の前受金は入金済みでも残額がある（事前決済済の印は出さない）
+			return { text: `${pl.paymentName ?? '—'}・${status}`, prepaid: pl.paymentStatus === 'paid' && !pl.advance?.partial };
 		}
 		const p = data.payment;
 		if (p) {
@@ -297,6 +302,16 @@
 {#if form?.advanceVoided}
 	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
 		前受金のご請求書 {form.advanceVoided} を取り消しました（取引先には連絡していません。必要なら再発行してください）。
+	</p>
+{/if}
+{#if form?.advancePaid}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		前受金 {formatYen(form.advancePaid.amount)} を入金済みにしました（入金日 {formatDateLongJa(form.advancePaid.paidOn)}）。PMS へ入金の電文を送りました。
+	</p>
+{/if}
+{#if form?.advanceRefunded}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		前受金の返金 {formatYen(form.advanceRefunded.amount)}（{formatDateLongJa(form.advanceRefunded.refundedOn)}）を記録しました。取引先・PMS へは連絡していません（必要ならお知らせください）。
 	</p>
 {/if}
 {#if form?.amended}
@@ -494,7 +509,7 @@
 						<dd>
 							{pl.paymentName ?? '—'}
 							{#if pl.depositText}<span class="block text-xs font-medium text-amber-800">{pl.depositText}</span>{/if}
-							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">{pl.depositText ? '残額' : '宿泊料金・入湯税'}は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
+							{#if pl.billedToPartner}<span class="block text-xs font-medium text-red-700">{pl.advance ? (pl.advance.partial ? '残額（前受金が未入金なら全額）' : '前受金が未入金のままご宿泊なら宿泊料金・入湯税') : pl.depositText ? '残額' : '宿泊料金・入湯税'}は {pl.partnerName} 様へ月末に請求します（お客様には請求しない）</span>{/if}
 						</dd>
 						<dt class="text-stone-500">支払状況</dt>
 						<dd class={pl.paymentStatus === 'charge_failed' || pl.paymentStatus === 'refund_failed' ? 'text-red-700' : ''}>
@@ -543,7 +558,15 @@
 								<dt class="text-stone-500">前受金の額</dt>
 								<dd>{formatYen(adv.amount)}{#if adv.partial}<span class="text-xs text-stone-500">（ご利用総額 {formatYen(pl.chargeAmount)}・残額 {formatYen(Math.max(0, pl.chargeAmount - adv.amount))}）</span>{/if}</dd>
 								<dt class="text-stone-500">お振込期限</dt>
-								<dd>{formatDateLongJa(adv.dueDate)}</dd>
+									<dd class={adv.overdue ? 'font-medium text-red-700' : ''}>{formatDateLongJa(adv.dueDate)}{#if adv.overdue}<span class="ml-1 text-xs">（期限超過・未入金）</span>{/if}</dd>
+									{#if adv.paidOn || adv.paidAmount != null}
+										<dt class="text-stone-500">入金</dt>
+										<dd>{adv.paidOn ? formatDateLongJa(adv.paidOn) : '—'}{adv.paidAmount != null ? `・${formatYen(adv.paidAmount)}` : ''}</dd>
+									{/if}
+									{#if adv.refunded}
+										<dt class="text-stone-500">返金</dt>
+										<dd>{formatYen(adv.refunded.amount)}{adv.refunded.on ? `（${formatDateLongJa(adv.refunded.on)}・銀行振込）` : ''}</dd>
+									{/if}
 								<dt class="text-stone-500">ご請求書</dt>
 								<dd>
 									{#if adv.current}
@@ -573,8 +596,19 @@
 									{/if}
 								</dd>
 							</dl>
-							{#if adv.state === 'booking_cancelled'}
+							{#if adv.overdue}
+								<p class="mt-2 text-xs text-red-700">お振込期限を過ぎていますが、まだ入金を確認していません。取引先へご確認ください（自動では取り消しません）。</p>
+							{/if}
+							{#if adv.voidSuggested}
+								<p class="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-800">
+									前受金が未入金のままチェックアウトしたため、月次のご請求書で全額をご請求します。二重請求を避けるため、前受金のご請求書（{adv.current?.invoiceNo}）を取り消してください。
+								</p>
+							{/if}
+							{#if adv.state === 'booking_cancelled' && adv.current && !adv.refundDue && !adv.refunded}
 								<p class="mt-2 text-xs text-amber-800">ご予約は取り消し済みです。未入金なら前受金のご請求書を取り消してください（二重請求を防ぐ）。</p>
+							{/if}
+							{#if adv.refundDue}
+								<p class="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-800">{adv.refundDue.notice}{adv.refundDue.refund > 0 ? '（銀行振込は Stripe で返金できません。お返ししたら「返金済みにする」で記録してください）' : ''}</p>
 							{/if}
 							{#if data.canOperate}
 								<div class="mt-3 flex flex-wrap gap-2">
@@ -589,10 +623,59 @@
 											>
 										</form>
 									{/if}
+									{#if adv.canMarkPaid && !showAdvancePaid}
+										<button type="button" class="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500" onclick={() => (showAdvancePaid = true)}>入金済みにする</button>
+									{/if}
+									{#if adv.refundDue && !showAdvanceRefund}
+										<button type="button" class="rounded-md border border-stone-300 px-3 py-1.5 text-xs" onclick={() => (showAdvanceRefund = true)}>返金済みにする</button>
+									{/if}
 									{#if adv.current && !showAdvanceVoid}
 										<button type="button" class="rounded-md border border-red-300 px-3 py-1.5 text-xs text-red-700" onclick={() => (showAdvanceVoid = true)}>ご請求書を取り消す</button>
 									{/if}
 								</div>
+								{#if adv.canMarkPaid && showAdvancePaid}
+									<!-- 入金確認（手動・自動消込はしない）。金額は振込額が違うときだけ直す。入金の取り消しは無い（誤入力に注意） -->
+									<form method="POST" action="?/partnerAdvancePaid" class="mt-2 space-y-2 rounded-lg bg-emerald-50 p-3">
+										<p class="text-xs text-stone-700">銀行振込の入金を確認したら記録します。PMS へ入金の電文を送ります（取り消せません）。</p>
+										<label class="flex flex-wrap items-center gap-2 text-sm">
+											<span class="w-16 text-xs text-stone-600">入金額</span>
+											<input name="amount" type="number" min="1" max={adv.maxAmount} step="1" inputmode="numeric" value={adv.amount} required class="w-32 rounded-md border border-stone-300 px-2 py-1 text-sm" />円
+											<span class="text-xs text-stone-500">（前受金の額 {formatYen(adv.amount)}）</span>
+										</label>
+										<label class="flex flex-wrap items-center gap-2 text-sm">
+											<span class="w-16 text-xs text-stone-600">入金日</span>
+											<input name="paidOn" type="date" max={data.today} value={data.today} required class="rounded-md border border-stone-300 px-2 py-1 text-sm" />
+										</label>
+										<div class="flex gap-2">
+											<button type="button" class="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-xs" onclick={() => (showAdvancePaid = false)}>戻る</button>
+											<button
+												type="submit"
+												class="flex-1 rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white"
+												onclick={(e) => {
+													if (!confirm('前受金を入金済みにします。PMS へ入金の電文を送り、元に戻せません。よろしいですか？')) e.preventDefault();
+												}}>入金済みにする</button
+											>
+										</div>
+									</form>
+								{/if}
+								{#if adv.refundDue && showAdvanceRefund}
+									<form method="POST" action="?/partnerAdvanceRefunded" class="mt-2 space-y-2 rounded-lg bg-amber-50 p-3">
+										<p class="text-xs text-stone-700">銀行振込でお返ししたあとに記録します（Stripe の返金は行いません）。</p>
+										<label class="flex flex-wrap items-center gap-2 text-sm">
+											<span class="w-16 text-xs text-stone-600">返金額</span>
+											<input name="amount" type="number" min="0" max={adv.refundDue.paid} step="1" inputmode="numeric" value={adv.refundDue.refund} required class="w-32 rounded-md border border-stone-300 px-2 py-1 text-sm" />円
+											<span class="text-xs text-stone-500">（お返しする額 {formatYen(adv.refundDue.refund)}）</span>
+										</label>
+										<label class="flex flex-wrap items-center gap-2 text-sm">
+											<span class="w-16 text-xs text-stone-600">返金日</span>
+											<input name="refundedOn" type="date" max={data.today} value={data.today} required class="rounded-md border border-stone-300 px-2 py-1 text-sm" />
+										</label>
+										<div class="flex gap-2">
+											<button type="button" class="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-xs" onclick={() => (showAdvanceRefund = false)}>戻る</button>
+											<button type="submit" class="flex-1 rounded-md bg-stone-800 px-3 py-1.5 text-xs text-white">返金済みにする</button>
+										</div>
+									</form>
+								{/if}
 								{#if adv.current && showAdvanceVoid}
 									<form method="POST" action="?/partnerAdvanceVoid" class="mt-2 space-y-2 rounded-lg bg-amber-50 p-3">
 										<input type="hidden" name="invoiceId" value={adv.current.id} />
@@ -885,7 +968,10 @@
 									{/if}
 								</div>
 								<PartnerCancelFeeFields preview={pl.cancelPreview} paid={pl.paymentStatus === 'paid'} card={pl.hasCard} invoiceMonth={pl.invoiceMonth} />
-								{#if pl.paymentStatus === 'paid'}
+								{#if pl.paymentStatus === 'paid' && pl.advance}
+									<!-- 銀行振込の前受金は Stripe で返金できない（取消後に宿が銀行振込で返し、前受金の欄の「返金済みにする」で記録） -->
+									<p class="text-xs text-stone-600">前受金（{formatYen(pl.paidAmount ?? pl.advance.amount)}・銀行振込）からキャンセル料を差し引いた額は、取消後に銀行振込でお返しください。</p>
+								{:else if pl.paymentStatus === 'paid'}
 									<label class="flex items-start gap-2 text-sm">
 										<input type="checkbox" name="refund" checked class="mt-1" />
 										<span>オンライン決済を返金する（{formatYen(pl.paidAmount ?? pl.chargeAmount)} からキャンセル料を差し引く。免除なら全額）</span>

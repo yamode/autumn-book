@@ -17,10 +17,14 @@
 //       事務手数料（2026-10-07）もデポジットから差し引く: 充当＝min(max(キャンセル料, デポジット × 率), デポジット)。
 //       デポジットもカードで受けたお金（決済手数料がかかる）なので、全額の予約時決済と同じ「大きい方」の規則にそろえた。
 //       不足分（請求書へ回す額）はキャンセル料だけから出す（事務手数料はデポジット以下なので不足は生まない）
+//     銀行振込の前受金（deposit_bank / advance_bank・2026-10-28 フェーズ4・docs/partner-prepayment.md §4.6）:
+//       入金済みならデポジットと同じ（deposit で充当・不足分は請求書へ）。ただし銀行振込は Stripe で返金できないので、
+//       差額は宿が手で銀行振込で返す（管理画面の「返金済みにする」）。入金待ちなら受け取ったお金が無いので、
+//       キャンセル料は請求書払いと同じく月末の請求書へ（invoice）。予約時に事務手数料の率は残さない（カード決済ではない）
 //     キャンセル料の免除（waived）は事務手数料の免除ではない。事務手数料も免除するかは cancel_policy.admin_fee_waived（スタッフが選ぶ）
 // - 請求書上は「逸失利益に対する損害賠償金」として不課税で計上する（消費税の対象外）。
 import { normalizeRules, type Rule } from '$lib/partner-plan-terms';
-import { isDepositPaymentOption } from '$lib/partner-booking';
+import { isAdvanceBankOption, isDepositPaymentOption } from '$lib/partner-booking';
 import { adminFeeOf, deductionOf, keptReasonLabel, readAdminFeeTerms, type KeptReason } from '$lib/cancel-admin-fee';
 
 export type CancelPolicy = { rules: Rule[]; noShowPercent: number | null };
@@ -131,14 +135,20 @@ export type SettlementSource = {
   stripe_payment_method_id?: string | null;
   // デポジット（payment_option='deposit_online'・Phase 3b）
   deposit_amount?: number | null;
+  // 銀行振込の前受金（payment_option='deposit_bank' / 'advance_bank'・2026-10-28）。入金済みなら paid_amount と同じ値
+  advance_amount?: number | null;
   remainder_option?: string | null;
   // 予約時に残した規定（事務手数料の率 admin_fee_percent・免除 admin_fee_waived もここ）
   cancel_policy?: unknown;
 };
 
+/** 先に一部（または全額）を受け、取消時にキャンセル料へ充当する支払方法か（デポジット・銀行振込の前受金） */
+export const isPrepaidPartOption = (id: string | null | undefined) => isDepositPaymentOption(id) || isAdvanceBankOption(id);
+
 export function settlementOf(b: SettlementSource, fee: number): CancelSettlement {
   if (b.status === 'pending_payment') return 'none';
-  if (b.payment_status === 'paid' && isDepositPaymentOption(b.payment_option)) return 'deposit';
+  // デポジット・銀行振込の前受金（入金済み）は充当。前受金が入金待ちなら下の invoice（受け取ったお金が無い）
+  if (b.payment_status === 'paid' && isPrepaidPartOption(b.payment_option)) return 'deposit';
   if (b.payment_status === 'paid') return 'refund';
   if (fee <= 0) return 'none';
   if (b.payment_option === 'online_checkin' && b.stripe_payment_method_id && (b.payment_status === 'scheduled' || b.payment_status === 'charge_failed')) return 'card';
@@ -164,12 +174,13 @@ export type PartnerRefund = {
  * 差し引く額 = max(キャンセル料, 割引額, 事務手数料)〔割引額・事務手数料は入湯税を除いた支払額まで＝入湯税は必ず返す〕。
  * キャンセル料を免除したとき（waived）は割引額も差し引かない。事務手数料は adminFeeWaived（省略時は予約の cancel_policy.admin_fee_waived）。
  * デポジット（deposit_online）は割引が無いので、充当＝min(max(キャンセル料, 事務手数料), デポジット)・返金＝デポジット−充当。
+ * 銀行振込の前受金（入金済み）も同じ式（入金額を「デポジット」として扱う。事務手数料の率は残していないので 0）。
  */
 export function partnerRefundOf(b: SettlementSource, fee: number, waived = false, adminFeeWaived?: boolean): PartnerRefund {
   const terms = readAdminFeeTerms(b.cancel_policy);
   const adminWaived = adminFeeWaived ?? terms.waived;
-  if (isDepositPaymentOption(b.payment_option)) {
-    const deposit = Math.max(0, b.paid_amount ?? b.deposit_amount ?? 0);
+  if (isPrepaidPartOption(b.payment_option)) {
+    const deposit = Math.max(0, b.paid_amount ?? b.deposit_amount ?? b.advance_amount ?? 0);
     const f = waived ? 0 : Math.max(0, fee);
     // 事務手数料はデポジットのうち宿泊料金に充てた分まで（デポジットが宿泊料金を超えた分＝入湯税は必ず返す。全額決済と同じ）
     const adminCap = Math.min(deposit, Math.max(0, b.total_amount));
@@ -215,7 +226,9 @@ export function settlementText(
     shortageBilled?: number;
     reason?: KeptReason;
     adminFeePercent?: number | null;
-  } | null
+  } | null,
+  // 銀行振込の前受金（入金済み）: 「前受金」と呼び、差額は銀行振込でお返しする（カードへ返金しない）
+  opts: { bank?: boolean } = {}
 ): string {
   const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
   // 差し引く額の理由（事務手数料・割引のときだけ言葉を足す。キャンセル料は従来の文のまま）
@@ -223,6 +236,15 @@ export function settlementText(
   switch (s) {
     case 'deposit': {
       if (!refund) return '';
+      if (opts.bank) {
+        const paid = refund.paid ?? refund.kept + refund.refund;
+        const head =
+          refund.kept > 0
+            ? `お支払い済みの前受金 ${yen(paid)} から ${yen(refund.kept)} をキャンセル料に充当し、${refund.refund > 0 ? `${yen(refund.refund)} を銀行振込でお返しします` : '返金はありません'}`
+            : `お支払い済みの前受金 ${yen(paid)} を全額銀行振込でお返しします`;
+        const short = refund.shortage ?? 0;
+        return short > 0 ? `${head}。前受金を超える ${yen(short)} は ${invoiceMonth}分の請求書でご請求します` : head;
+      }
       const head =
         refund.kept > 0
           ? `お支払い済みのデポジット ${yen(refund.paid ?? refund.kept + refund.refund)} から ${yen(refund.kept)} を${why || 'キャンセル料'}に充当し、${refund.refund > 0 ? `${yen(refund.refund)} をカードへ返金します` : '返金はありません'}`

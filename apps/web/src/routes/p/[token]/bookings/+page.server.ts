@@ -9,6 +9,7 @@ import {
   confirmPartnerIntent,
   bookingPlanName,
   depositSummary,
+  advanceSummary,
   cancelFeeBasisLabel,
   cancelFeeSettlementLabel,
   cancelKeptNote,
@@ -17,7 +18,8 @@ import {
   type PaymentResult
 } from '$lib/server/partners/booking';
 import { readBookingExtras, splitExtraOptions } from '$lib/server/partners/booking-extras';
-import { PartnerStoreError } from '$lib/server/partners/store';
+import { PartnerStoreError, todayJst } from '$lib/server/partners/store';
+import { advanceBadgeOf } from '$lib/partner-advance';
 import { bookingNameHolderText } from '$lib/pms-partner-guest';
 import { isCreditOver } from '$lib/partner-credit';
 import { portalAal2, portalHeader, PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
@@ -182,7 +184,10 @@ export const load = async (event) => {
         // 支払の再開で払う額（デポジットはデポジットの額・Phase 3b）
         payAmount: intentAmountOf(b),
         // デポジット予約: 「デポジット ○円 お支払い済み・残額 ○円（請求書／現地）」（支払後だけ）
-        depositText: depositSummary(b),
+        // 銀行振込の前受金: 「前受金 ○円 入金待ち（期限 …）」「前受金 ○円 入金済み（…）」（2026-10-28）
+        depositText: depositSummary(b) ?? advanceSummary(b),
+        // 銀行振込の前受金の印（入金待ち・期限超過・入金済み）。payment_status='unpaid' を「お支払い待ち（オンライン決済）」と出さない
+        advance: advanceBadgeOf(b, todayJst()),
         isDeposit: b.payment_option === 'deposit_online',
         // カード登録の同意文（入力欄の直下に出し、登録完了時に同じ文面を記録する）
         consentText: b.payment_option === 'online_checkin' ? cardConsentText(partnerFacilityName(partner, b.facility_id), b) : null,

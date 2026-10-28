@@ -106,7 +106,7 @@ const INVOICE_COLUMNS =
   'id, tenant_id, facility_id, facility_ids, partner_id, partner_name, period, invoice_no, issue_date, due_date, status, booking_ids, usage_total, paid_total, billed_total, taxable_10, tax_10, non_taxable, document, issued_by, issued_by_staff, sent_at, sent_to, send_error, voided_at, voided_by, void_reason, created_at, updated_at';
 
 const BOOKING_SOURCE_COLUMNS =
-  'id, facility_id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id, cancelled_at, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_settlement, cancel_fee_status, paid_amount, refund_amount, deposit_amount, remainder_option';
+  'id, facility_id, booking_code, status, check_in_date, check_out_date, nights, room_name, room_count, adult_total, plan_name, guest_name, booked_by, total_amount, bath_tax_amount, prepay_discount_amount, payment_option, payment_method_name, payment_status, detail, room_type_id, cancelled_at, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_settlement, cancel_fee_status, paid_amount, refund_amount, deposit_amount, remainder_option, advance_amount';
 
 // 取引先（共通）の列。旧 rms_partners.facility_id / booking_enabled は読まない（施設は rms_partner_facilities・台帳の facility_id）
 const PARTNER_COLUMNS = 'id, tenant_id, primary_facility_id, name, contact_email, url_token, booking_settings, is_active, pms_guest_id';
