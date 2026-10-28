@@ -34,6 +34,7 @@ import { holdRateCheck } from '$lib/server/hold-rate-limit';
 import { bookingSessionId } from '$lib/server/supabase-data';
 import { logPartnerAccess, type PartnerContext, type PartnerSessionAccount } from '$lib/server/partners/store';
 import { deferTask, portalLogActor } from '$lib/server/partners/portal';
+import { waitUntilOf } from '$lib/server/access-log-core';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 // ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §13.4.3・§14） ----
@@ -286,7 +287,9 @@ export const actions = {
       if (isStripePaymentOption(option)) return fail(400, { message: 'お支払い情報を入力してから予約してください。' });
       const created = await createPartnerBooking(db, partner, { id: session.id, login_id: session.login_id }, input, {
         ip: requestMeta(event).ip,
-        origin: event.url.origin
+        origin: event.url.origin,
+        // 前受金のご請求書のメール（PDF 生成）は応答の後に回す
+        waitUntil: waitUntilOf(event.platform)
       });
       throw redirect(303, `/p/${event.params.token}/bookings?done=${encodeURIComponent(created.bookingCode)}`);
     } catch (e) {

@@ -93,6 +93,8 @@ import { readAdminFeeTerms } from '$lib/cancel-admin-fee';
 import { bookingAttachmentNames, partnerBookingAttachmentsEnabled } from './booking-attachments';
 import { attachmentLine } from '$lib/partner-attachments';
 import { chargePlanMetadata, setupIntentEventMetadata, type SetupIntentChargeEvent } from '$lib/partner-upcoming-charges';
+import { advanceBookingMailLine } from '$lib/partner-advance-invoice';
+import { issueAdvanceInvoice, sendAdvanceInvoiceMail } from './advance-invoices';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -531,7 +533,8 @@ export async function createPartnerBooking(
   input: CreateBookingInput,
   // allowSavedCards: 予約した人のセッションが本人確認済み（aal2）か。そうでなければ Intent に取引先共有の Customer を付けない
   // （＝保存カードでは確定できない・docs/auth-hardening.md §5.2・S4）。省略は false
-  meta: { ip: string | null; origin: string; allowSavedCards?: boolean }
+  // waitUntil: 応答の後も続けてよい処理（前受金のご請求書のメール・PDF 生成）を載せる先（Cloudflare の waitUntil）。無ければ待ってから返す
+  meta: { ip: string | null; origin: string; allowSavedCards?: boolean; waitUntil?: ((p: Promise<unknown>) => void) | null }
 ): Promise<CreatedBooking> {
   const s = partner.booking_settings;
   // オンの施設が無い（N9）・この施設で受付をしていない
@@ -687,8 +690,32 @@ export async function createPartnerBooking(
   let emailed = false;
   if (booking) {
     emailed = await sendBookingMails(db, partner, booking, 'new', meta.origin, account.id).catch(() => false);
+    // 銀行振込の事前支払（deposit_bank / advance_bank）: 前受金のご請求書を発行して予約者へ送る（docs/partner-prepayment.md §4.3）。
+    // 失敗しても予約は確定のまま（管理画面の予約詳細から再発行できる）
+    if (isAdvanceBankOption(booking.payment_option)) await issueAdvanceInvoiceAfterBooking(db, partner, booking, meta);
   }
   return { id: created.id, bookingCode: created.booking_code, total: created.total_amount, emailed };
+}
+
+// 予約確定の直後の前受金のご請求書。発行（DB）はその場で、メール（PDF 生成で数十秒かかりうる）は waitUntil があれば応答の後に回す
+async function issueAdvanceInvoiceAfterBooking(
+  db: SupabaseClient,
+  partner: PartnerContext,
+  booking: PartnerBookingRow,
+  meta: { origin: string; waitUntil?: ((p: Promise<unknown>) => void) | null }
+): Promise<void> {
+  try {
+    const issued = await issueAdvanceInvoice(db, partner, booking, { by: 'auto', send: false, origin: meta.origin });
+    if (!issued.created) return;
+    const mail = sendAdvanceInvoiceMail(db, partner, issued.invoice, booking, meta.origin, {
+      // 応答の後に回すときは Cloudflare の待ち時間（約30秒）に収まるよう短く・レート制限でも待たない
+      pdf: meta.waitUntil ? { timeoutMs: 20_000, backoff: false } : undefined
+    }).catch((e) => console.error('[partner-booking] 前受金のご請求書を送れませんでした:', booking.booking_code, e instanceof Error ? e.message : e));
+    if (meta.waitUntil) meta.waitUntil(mail);
+    else await mail;
+  } catch (e) {
+    console.error('[partner-booking] 前受金のご請求書を発行できませんでした:', booking.booking_code, e instanceof Error ? e.message : e);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1348,7 +1375,7 @@ export const bookingNameLineOf = (b: Pick<PartnerBookingRow, 'name_mode' | 'name
   bookingNameLine(b.name_mode, b.name_holder, b.guest_name, b.partner_name);
 
 const BOOKING_COLUMNS =
-  'id, tenant_id, facility_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result, deposit_amount, remainder_option';
+  'id, tenant_id, facility_id, partner_id, partner_name, account_id, booked_by, booking_code, status, stay_ids, room_code, room_name, plan_code, plan_name, meal_type, check_in_date, check_out_date, nights, room_count, adult_total, guest_name, guest_kana, guest_phone, guest_email, total_amount, bath_tax_amount, prepay_discount_amount, card_consent_text, card_consent_at, payment_method_name, payment_option, payment_status, payment_expires_at, paid_at, paid_amount, stripe_session_id, refund_error, stripe_customer_id, stripe_payment_method_id, card_label, charge_attempts, charge_error, detail, cancelled_at, cancelled_by, created_at, cancel_reason, cancel_policy, cancel_fee, cancel_fee_rate, cancel_fee_basis, cancel_fee_waived, cancel_fee_settlement, cancel_fee_status, cancel_fee_error, cancel_fee_note, refund_amount, pms_guest_id, name_mode, credit_result, deposit_amount, remainder_option, advance_amount, advance_due_date, advance_invoice_id';
 
 async function attachStayState(db: SupabaseClient, rows: PartnerBookingRow[]): Promise<PartnerBookingRow[]> {
   rows = await attachNameHolder(db, rows);
@@ -1874,8 +1901,10 @@ export async function sendBookingMails(
   if (s.notifyPartner) {
     const to = await partnerRecipients(db, partner, b, accountId);
     if (to.length) {
-      const text = [`${partner.name} 様`, '', `${facilityName} です。以下の内容で${title}。`, '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
-      const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(facilityName)} です。以下の内容で${title}。</p><pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
+      // 銀行振込の事前支払（前受金）: 振込のお願いの1行（ご請求書は別メール・docs/partner-prepayment.md §4.3）
+      const advanceLine = kind === 'new' && b.status === 'confirmed' ? advanceBookingMailLine(b) : null;
+      const text = [`${partner.name} 様`, '', `${facilityName} です。以下の内容で${title}。`, ...(advanceLine ? ['', advanceLine] : []), '', ...summary, '', `予約一覧: ${listUrl}`].join('\n');
+      const html = `<p>${escapeHtml(partner.name)} 様</p><p>${escapeHtml(facilityName)} です。以下の内容で${title}。</p>${advanceLine ? `<p style="font-weight:bold">${escapeHtml(advanceLine)}</p>` : ''}<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(summary.join('\n'))}</pre><p>予約一覧: <a href="${escapeHtml(listUrl)}">${escapeHtml(listUrl)}</a></p>`;
       const r = await sendPartnerMail(db, partner.facility_id, { to, subject: `【${facilityName}】${isGroupBooking(b) ? '【団体】' : ''}${title}（${b.booking_code}）`, html, text });
       sent = sent || r.sent;
     }

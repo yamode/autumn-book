@@ -1,0 +1,25 @@
+import { error } from '@sveltejs/kit';
+import { advanceInvoiceDownloadResponse, getAdvanceInvoice } from '$lib/server/partners/advance-invoices';
+import { PORTAL_HEADERS, requestMeta, requirePortalSession } from '$lib/server/partners/portal';
+import { logPartnerAccess } from '$lib/server/partners/store';
+
+// 取引先専用ページ: 前受金のご請求書のダウンロード（GET ?format=pdf|html）。2026-10-28 追加（docs/partner-prepayment.md §5）。
+// 月次の [id]/+server.ts と同じ認可: セッションで確かめた取引先（partner.id）の請求書だけを読む
+// （別の取引先の ID を渡されても見つからない扱い）。発行済み（issued）だけ。取消済み（void）は取引先には出さない。
+export const GET = async (event) => {
+  const { db, partner, session } = await requirePortalSession(event);
+  const id = event.params.id ?? '';
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw error(404, 'ご請求書が見つかりません。');
+  const format = event.url.searchParams.get('format') === 'html' ? 'html' : 'pdf';
+  const row = await getAdvanceInvoice(db, partner.id, id);
+  if (!row || row.status !== 'issued') throw error(404, 'ご請求書が見つかりません。');
+  await logPartnerAccess(db, {
+    partnerId: partner.id,
+    accountId: session.id,
+    channel: 'web',
+    action: 'advance_invoice_download',
+    detail: { invoiceId: row.id, invoiceNo: row.invoice_no, bookingId: row.booking_id, format },
+    ip: requestMeta(event).ip
+  });
+  return advanceInvoiceDownloadResponse(row, format, PORTAL_HEADERS);
+};

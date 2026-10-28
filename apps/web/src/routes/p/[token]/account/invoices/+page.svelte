@@ -10,6 +10,16 @@
   const ym = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月`;
   const ymd = (iso: string) => `${Number(iso.slice(0, 4))}年${Number(iso.slice(5, 7))}月${Number(iso.slice(8, 10))}日`;
   const href = (id: string, format: 'pdf' | 'html') => `/p/${$page.params.token}/account/invoices/${id}?format=${format}`;
+  // 前受金のご請求書（銀行振込の事前支払・2026-10-28）
+  const advanceHref = (id: string, format: 'pdf' | 'html') => `/p/${$page.params.token}/account/invoices/advance/${id}?format=${format}`;
+  const stateClass = (s: string) =>
+    s === 'paid'
+      ? 'bg-emerald-50 text-emerald-700'
+      : s === 'overdue'
+        ? 'bg-red-50 text-red-700'
+        : s === 'waiting'
+          ? 'bg-amber-50 text-amber-800'
+          : 'bg-stone-100 text-stone-500';
 </script>
 
 <svelte:head>
@@ -86,3 +96,77 @@
     </ul>
   {/if}
 </section>
+
+{#if data.advanceInvoices.length}
+  <!-- 前受金のご請求書（銀行振込の事前支払。ご予約ごとに1枚・予約確定と同時に発行） -->
+  <section class="mt-10">
+    <h2 class="text-base font-bold">前受金のご請求書</h2>
+    <p class="mt-1 text-sm leading-6 text-stone-600">銀行振込で事前にお支払いいただくご予約の分です。お振込期限までにお振込みください。</p>
+
+    <div class="mt-4 hidden overflow-x-auto rounded-xl border border-stone-200 bg-white sm:block">
+      <table class="w-full text-sm">
+        <thead class="bg-stone-50 text-left text-stone-500">
+          <tr>
+            <th class="px-4 py-2.5 font-medium">予約番号</th>
+            <th class="px-4 py-2.5 font-medium">ご請求書番号</th>
+            <th class="px-4 py-2.5 text-right font-medium">前受金</th>
+            <th class="px-4 py-2.5 font-medium">お振込期限</th>
+            <th class="px-4 py-2.5 font-medium">状態</th>
+            <th class="px-4 py-2.5 font-medium">ダウンロード</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100">
+          {#each data.advanceInvoices as inv (inv.id)}
+            <tr>
+              <td class="whitespace-nowrap px-4 py-3">
+                <span class="font-mono text-xs">{inv.bookingCode}</span>
+                <div class="text-xs text-stone-500">{inv.facilityName}{inv.checkIn ? `・${ymd(inv.checkIn)} ご宿泊` : ''}</div>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3 font-mono text-xs">{inv.invoiceNo}</td>
+              <td class="whitespace-nowrap px-4 py-3 text-right">
+                {yen(inv.amount)}
+                <div class="text-xs text-stone-500">{inv.partial ? '一部' : '全額'}</div>
+              </td>
+              <td class="whitespace-nowrap px-4 py-3">{ymd(inv.dueDate)}</td>
+              <td class="whitespace-nowrap px-4 py-3"><span class="rounded-full px-2 py-0.5 text-xs font-medium {stateClass(inv.state)}">{inv.stateLabel}</span></td>
+              <td class="whitespace-nowrap px-4 py-3">
+                {#if inv.downloadable}
+                  <a href={advanceHref(inv.id, 'pdf')} class="rounded-md bg-accent-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-500">PDF</a>
+                  <a href={advanceHref(inv.id, 'html')} target="_blank" rel="noopener noreferrer" class="ml-1 rounded-md border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50">印刷用</a>
+                {:else}
+                  <span class="text-xs text-stone-400">—</span>
+                {/if}
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="mt-4 space-y-3 sm:hidden">
+      {#each data.advanceInvoices as inv (inv.id)}
+        <li class="rounded-xl border border-stone-200 bg-white p-4">
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="font-mono text-sm font-bold">{inv.bookingCode}</span>
+            <span class="rounded-full px-2 py-0.5 text-xs font-medium {stateClass(inv.state)}">{inv.stateLabel}</span>
+          </div>
+          <p class="mt-0.5 text-xs text-stone-500">{inv.facilityName}{inv.checkIn ? `・${ymd(inv.checkIn)} ご宿泊` : ''}</p>
+          <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt class="text-stone-500">前受金</dt>
+            <dd>{yen(inv.amount)}（{inv.partial ? '一部' : '全額'}）</dd>
+            <dt class="text-stone-500">お振込期限</dt>
+            <dd>{ymd(inv.dueDate)}</dd>
+            <dt class="text-stone-500">ご請求書番号</dt>
+            <dd class="font-mono text-xs leading-5">{inv.invoiceNo}</dd>
+          </dl>
+          {#if inv.downloadable}
+            <div class="mt-3 flex gap-2">
+              <a href={advanceHref(inv.id, 'pdf')} class="flex-1 rounded-md bg-accent-600 px-3 py-2 text-center text-sm font-medium text-white hover:bg-accent-500">PDF</a>
+              <a href={advanceHref(inv.id, 'html')} target="_blank" rel="noopener noreferrer" class="flex-1 rounded-md border border-stone-300 px-3 py-2 text-center text-sm text-stone-600 hover:bg-stone-50">印刷用</a>
+            </div>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </section>
+{/if}

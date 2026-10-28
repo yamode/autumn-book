@@ -63,6 +63,18 @@
 	// 取引先予約（source='rms_partner'）の台帳。取引先予約でない・台帳を引けないときは null
 	let pl = $derived(data.isPartner ? data.partner.ledger : null);
 	let showPartnerCancel = $state(false);
+	// 前受金のご請求書の取消フォーム（銀行振込の事前支払・2026-10-28）
+	let showAdvanceVoid = $state(false);
+	const advanceStateClass = (s: string) =>
+		s === 'paid'
+			? 'bg-emerald-50 text-emerald-700'
+			: s === 'overdue'
+				? 'bg-red-50 text-red-700'
+				: s === 'waiting'
+					? 'bg-amber-50 text-amber-800'
+					: 'bg-stone-100 text-stone-500';
+	const advanceHref = (id: string, format: 'pdf' | 'html') =>
+		`/admin/reservations/${encodeURIComponent(b.code)}/advance-invoice/${id}?format=${format}`;
 
 	// 取消前の返金の見込み（オンライン決済済みのとき）。予約時決済の割引額・事務手数料は返金しない:
 	// 差し引く額 = max(キャンセル料, 割引額, 事務手数料)。施設都合（キャンセル料免除）は割引額も返す。事務手数料は「事務手数料も免除」のときだけ返す
@@ -273,6 +285,18 @@
 			: form.partnerCharge.status === 'failed'
 				? `請求に失敗しました: ${form.partnerCharge.message ?? ''}`
 				: `請求しませんでした: ${form.partnerCharge.message ?? ''}`}
+	</p>
+{/if}
+{#if form?.advanceReissued}
+	<p class="mb-3 rounded-lg px-3 py-2 text-sm {form.advanceReissued.sent ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}">
+		前受金のご請求書 {form.advanceReissued.invoiceNo} を発行しました。{form.advanceReissued.sent
+			? '予約者へメールで送りました。'
+			: `メールは送れませんでした（${form.advanceReissued.reason ?? '理由不明'}）。PDF をダウンロードしてお渡しください。`}
+	</p>
+{/if}
+{#if form?.advanceVoided}
+	<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+		前受金のご請求書 {form.advanceVoided} を取り消しました（取引先には連絡していません。必要なら再発行してください）。
 	</p>
 {/if}
 {#if form?.amended}
@@ -505,6 +529,82 @@
 								note={pl.attachments.note}
 								notifiedText="PMS へは数分以内に反映されます。"
 							/>
+						</div>
+					{/if}
+					{#if pl.advance}
+						{@const adv = pl.advance}
+						<!-- 前受金（銀行振込の事前支払・docs/partner-prepayment.md §4 §5）。入金の確認（入金済みにする）はフェーズ4で別に作る -->
+						<div class="mt-3 border-t border-stone-200 pt-3">
+							<p class="mb-2 flex items-center gap-2 text-sm font-medium text-stone-700">
+								前受金（{adv.partial ? '一部・銀行振込' : '全額・銀行振込'}）
+								<span class="rounded-full px-2 py-0.5 text-xs font-medium {advanceStateClass(adv.state)}">{adv.stateLabel}</span>
+							</p>
+							<dl class="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5 text-sm">
+								<dt class="text-stone-500">前受金の額</dt>
+								<dd>{formatYen(adv.amount)}{#if adv.partial}<span class="text-xs text-stone-500">（ご利用総額 {formatYen(pl.chargeAmount)}・残額 {formatYen(Math.max(0, pl.chargeAmount - adv.amount))}）</span>{/if}</dd>
+								<dt class="text-stone-500">お振込期限</dt>
+								<dd>{formatDateLongJa(adv.dueDate)}</dd>
+								<dt class="text-stone-500">ご請求書</dt>
+								<dd>
+									{#if adv.current}
+										<span class="font-mono text-xs">{adv.current.invoiceNo}</span>
+										<span class="text-xs text-stone-500">（{adv.current.issueDate} 発行・{adv.current.issuedBy === 'auto' ? '自動' : '宿'}）</span>
+										<span class="mt-1 flex gap-2">
+											<a href={advanceHref(adv.current.id, 'pdf')} class="rounded-md bg-accent-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-accent-500">PDF</a>
+											<a href={advanceHref(adv.current.id, 'html')} target="_blank" rel="noopener noreferrer" class="rounded-md border border-stone-300 px-2.5 py-1 text-xs text-stone-600 hover:bg-stone-50">印刷用</a>
+										</span>
+										{#if adv.current.sentAt}
+											<span class="block text-xs text-stone-500">メール送信 {dt(adv.current.sentAt)}（{adv.current.sentTo.join('、')}）</span>
+										{:else if adv.current.sendError}
+											<span class="block text-xs text-red-700">メール未送信: {adv.current.sendError}</span>
+										{:else}
+											<span class="block text-xs text-stone-500">メール未送信</span>
+										{/if}
+									{:else}
+										<span class="text-xs text-amber-800">有効なご請求書がありません{adv.voided.length ? '（取消済み）' : '（発行に失敗した可能性があります）'}。</span>
+									{/if}
+									{#if adv.voided.length}
+										<span class="mt-1 block text-xs text-stone-500">
+											取消済み:
+											{#each adv.voided as v (v.id)}
+												<a href={advanceHref(v.id, 'pdf')} class="font-mono underline">{v.invoiceNo}</a>{v.voidReason ? `（${v.voidReason}）` : ''}{' '}
+											{/each}
+										</span>
+									{/if}
+								</dd>
+							</dl>
+							{#if adv.state === 'booking_cancelled'}
+								<p class="mt-2 text-xs text-amber-800">ご予約は取り消し済みです。未入金なら前受金のご請求書を取り消してください（二重請求を防ぐ）。</p>
+							{/if}
+							{#if data.canOperate}
+								<div class="mt-3 flex flex-wrap gap-2">
+									{#if adv.canIssue}
+										<form method="POST" action="?/partnerAdvanceReissue">
+											<button
+												type="submit"
+												class="rounded-md border border-stone-300 px-3 py-1.5 text-xs"
+												onclick={(e) => {
+													if (!confirm(adv.current ? `${adv.current.invoiceNo} を取り消して新しい番号で発行し、予約者へメールします。よろしいですか？` : '前受金のご請求書を発行し、予約者へメールします。よろしいですか？')) e.preventDefault();
+												}}>{adv.current ? '再発行してメールする' : '発行してメールする'}</button
+											>
+										</form>
+									{/if}
+									{#if adv.current && !showAdvanceVoid}
+										<button type="button" class="rounded-md border border-red-300 px-3 py-1.5 text-xs text-red-700" onclick={() => (showAdvanceVoid = true)}>ご請求書を取り消す</button>
+									{/if}
+								</div>
+								{#if adv.current && showAdvanceVoid}
+									<form method="POST" action="?/partnerAdvanceVoid" class="mt-2 space-y-2 rounded-lg bg-amber-50 p-3">
+										<input type="hidden" name="invoiceId" value={adv.current.id} />
+										<p class="text-xs text-stone-700"><span class="font-mono">{adv.current.invoiceNo}</span> を取り消します（番号は欠番。取引先ページには出なくなります）。</p>
+										<input name="reason" required maxlength="300" placeholder="理由（必須）" class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm" />
+										<div class="flex gap-2">
+											<button type="button" class="flex-1 rounded-md border border-stone-300 px-3 py-1.5 text-xs" onclick={() => (showAdvanceVoid = false)}>戻る</button>
+											<button type="submit" class="flex-1 rounded-md bg-red-600 px-3 py-1.5 text-xs text-white">取り消す</button>
+										</div>
+									</form>
+								{/if}
+							{/if}
 						</div>
 					{/if}
 				{/if}

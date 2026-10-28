@@ -202,7 +202,7 @@ export function contentDisposition(kind: 'attachment' | 'inline', fileName: stri
 }
 
 // HTML（印刷用）を同一オリジンで開くので、スクリプトを一切動かさない CSP を付ける
-const HTML_CSP =
+export const HTML_CSP =
   "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; base-uri 'none'; form-action 'none'";
 
 /**
@@ -510,7 +510,7 @@ export function dueDateFor(period: string, issueDate: string, rule: PartnerInvoi
  * 同じテナントの旅行会社・法人でなければ使わない（統合・種別変更で外れた紐づけは取引先名に戻る）。
  * 読めなかったときは宛名を取り違えないよう、発行を止める（raise）。
  */
-async function linkedRecipientNames(db: SupabaseClient, partners: InvoicePartner[]): Promise<Map<string, string>> {
+export async function linkedRecipientNames(db: SupabaseClient, partners: InvoicePartner[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const linked = partners.filter((p) => p.pms_guest_id && UUID_RE.test(p.pms_guest_id));
   if (!linked.length) return out;
@@ -845,7 +845,7 @@ export type SendInvoiceMailResult = {
 };
 
 /** 送信先: 取引先の連絡先メール ＋ マスタユーザー（有効）のメールとご予約者情報のメール。大文字小文字を無視して重複を除く。 */
-async function invoiceRecipients(db: SupabaseClient, partner: InvoicePartner): Promise<string[]> {
+export async function invoiceRecipients(db: SupabaseClient, partner: InvoicePartner): Promise<string[]> {
   const list: string[] = [];
   if (partner.contact_email) list.push(partner.contact_email);
   const { data, error } = await db

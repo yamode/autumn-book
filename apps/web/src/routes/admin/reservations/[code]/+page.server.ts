@@ -56,7 +56,9 @@ import {
 import {
 	cancelPartnerReservation,
 	loadPartnerLedgerForReservation,
+	reissuePartnerAdvanceInvoice,
 	retryPartnerReservationCharge,
+	voidPartnerAdvanceInvoice,
 	type PartnerLedgerResult
 } from '$lib/server/partners/admin-reservations';
 import { actionFailure } from '$lib/server/partners/staff';
@@ -635,6 +637,50 @@ export const actions: Actions = {
 		try {
 			const r = await retryPartnerReservationCharge(event, event.params.code);
 			return { partnerCharge: r };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	/**
+	 * 取引先予約の前受金のご請求書の再発行（管理者のみ・取消と同じ権限）。有効な1枚は「再発行」で取り消し、新しく発行して予約者へメールする。
+	 * 入金の確認（入金済みにする）はフェーズ4で別に作る。
+	 */
+	partnerAdvanceReissue: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '前受金のご請求書の再発行');
+		if (denied) return fail(403, { message: denied });
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		try {
+			const r = await reissuePartnerAdvanceInvoice(event, event.params.code);
+			return { advanceReissued: r };
+		} catch (e) {
+			return actionFailure(e);
+		}
+	},
+
+	/** 取引先予約の前受金のご請求書の取消（管理者のみ・理由必須） */
+	partnerAdvanceVoid: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, '前受金のご請求書の取消');
+		if (denied) return fail(403, { message: denied });
+		try {
+			const detail = await adminBookingDetail(bookAdmin(event), event.params.code);
+			if (!isPartnerStay(detail.booking)) return fail(400, { message: '取引先予約ではありません。' });
+		} catch (e) {
+			return fail(400, { message: mapRpcError(e) });
+		}
+		const fd = await event.request.formData();
+		const reason = String(fd.get('reason') ?? '').trim();
+		if (!reason) return fail(400, { message: '取消の理由を入力してください。' });
+		try {
+			const invoiceNo = await voidPartnerAdvanceInvoice(event, event.params.code, String(fd.get('invoiceId') ?? ''), reason);
+			return { advanceVoided: invoiceNo };
 		} catch (e) {
 			return actionFailure(e);
 		}

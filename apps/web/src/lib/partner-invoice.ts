@@ -567,6 +567,9 @@ const DRAFT_STYLE = `
 .draft-wm { position: fixed; top: 42%; left: 0; right: 0; text-align: center; font-size: 120pt; font-weight: 700; color: rgba(180, 83, 9, .08); transform: rotate(-30deg); pointer-events: none; z-index: 0; letter-spacing: .2em; }
 `;
 
+// 前受金のご請求書（$lib/partner-advance-invoice）も同じ体裁にするため、紙面の CSS を共用する（月次の紙面は変えない）
+export { STYLE as INVOICE_STYLE, DRAFT_STYLE as INVOICE_DRAFT_STYLE };
+
 // 施設が2つ以上の紙面（全施設分1枚・N3）だけに足す CSS（1施設・version 1 の紙面は従来と同じ HTML のまま）
 const FACILITY_STYLE = `
 table.t tr.fac td { background: #e7e5e4; font-weight: 700; font-size: 9pt; }
