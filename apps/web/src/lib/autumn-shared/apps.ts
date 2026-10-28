@@ -1,4 +1,4 @@
-// 写し元: autumn-shared 8b93a42 src/apps.ts（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す）
+// 写し元: autumn-shared 133004d src/apps.ts（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す）
 // Registry of autumn ecosystem apps for the app switcher.
 // All apps live on *.yamado.app subdomains and share one Supabase project, so a
 // session cookie scoped to `.yamado.app` (see createAutumnServerClient
@@ -63,8 +63,9 @@ export const ECOSYSTEM_APPS: AutumnApp[] = [
     description: '注文・メニュー',
     prodUrl: 'https://autumn-order.yamado.app',
     defaultPath: '/',
-    // 2026-10-28: 統合ヘッダーのタブから開けるよう live に（デスクトップのタブでは v0.20.0 から開いている）。
-    status: 'live',
+    // 2026-10-28: いったん live にしたが、実運用はまだ先なのでタブをグレーアウト（準備中）に戻した。
+    // 使えるようになったら 'live' に戻す（AppHeaderTabs・AppList・AppSwitcher がこの値で出し分ける）。
+    status: 'planned',
     inSwitcher: true
   },
   {
