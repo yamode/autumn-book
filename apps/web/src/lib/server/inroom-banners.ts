@@ -70,7 +70,7 @@ export async function stayEndedFacility(token: string, locale: Locale): Promise<
 	}
 }
 
-/** チェックイン前のトークン（失効しておらず、まだ開始時刻＝チェックイン日 12:00 前）の施設と期間。それ以外は null */
+/** チェックイン前のトークン（失効しておらず、まだ開始時刻＝チェックイン日 9:00 前）の施設と期間。それ以外は null */
 export type UpcomingStay = { facility: EndedFacility & { phone: string }; validFrom: string; validTo: string };
 
 /**

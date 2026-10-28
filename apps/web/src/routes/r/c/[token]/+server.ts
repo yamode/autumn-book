@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 		redirect(302, localizeHref(url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r'));
 	}
 
-	// チェックイン前（開始はチェックイン日 12:00）の QR も Cookie に交換して /r へ。/r が「○日 12:00 からご利用いただけます」を出し、
+	// チェックイン前（開始はチェックイン日 9:00）の QR も Cookie に交換して /r へ。/r が「○日 9:00 からご利用いただけます」を出し、
 	// 時刻が来れば同じスマホはそのまま客室案内になる（もう一度 QR を読んだりコードを入れたりしなくてよい。2026-10-15）
 	const upcoming = await stayUpcoming(token, 'ja');
 	if (upcoming) {

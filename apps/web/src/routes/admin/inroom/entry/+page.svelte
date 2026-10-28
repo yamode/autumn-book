@@ -27,7 +27,7 @@
 			お客様・日付によらず同じQRです。客室に置いたままで使えます。読み取ったお客様が、館内図に記載の6桁の滞在コードを入れると、その方のその日の客室案内（食事時間・貸切風呂のご予約など）が開きます。
 		</p>
 		<p class="text-stone-600">
-			コードが使えるのは <b>チェックイン日の 12:00 〜 チェックアウト日の 11:00</b> です。一度入れたスマートフォンは、次からコードなしで開きます。
+			コードが使えるのは <b>チェックイン日の 9:00 〜 チェックアウト日の 11:00</b> です。一度入れたスマートフォンは、次からコードなしで開きます。
 		</p>
 		<div class="grid grid-cols-2 items-center gap-2 rounded-xl border border-stone-200 bg-white p-3 sm:flex sm:flex-wrap">
 			<span class="col-span-2 text-stone-600 sm:col-span-1 sm:mr-auto">用紙: <span class="font-medium text-stone-800">{data.size}</span></span>
@@ -47,7 +47,7 @@
 		<div class="w-full">
 			<p class="text-[10px] leading-relaxed">スマートフォンで読み取り、<br />館内図に記載の<br />6桁の滞在コードを入力してください。</p>
 			<p class="mt-1.5 text-[8.5px] leading-snug text-stone-500">Scan and enter the 6-digit stay code<br />shown on the floor map.</p>
-			<p class="mt-3 border-t border-stone-300 pt-2 text-[9px] text-stone-500">ご利用: チェックイン日 12:00 〜 チェックアウト日 11:00</p>
+			<p class="mt-3 border-t border-stone-300 pt-2 text-[9px] text-stone-500">ご利用: チェックイン日 9:00 〜 チェックアウト日 11:00</p>
 		</div>
 	</div>
 	<p class="print-hide mt-4 break-all text-center font-mono text-xs text-stone-500">{data.qrUrl}</p>
