@@ -13,6 +13,8 @@
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 
 	let { data, children } = $props();
+	// 上部バーの高さ（サイドバーはこの分だけ下げて、残りの高さに収める）
+	let headerH = $state(0);
 
 	// メニューは $lib/admin-nav.ts（2026-10-17 モダン化・メニュー整理）。関係する画面は1項目の下にまとめ、開閉できる
 	const navGroups = $derived(visibleNav(data.user?.role));
@@ -175,7 +177,7 @@
 			outline: none;
 		}
 		/* zoom は高さ（h-screen=100vh）も同じ倍率にするので、画面いっぱいになるよう割り戻す */
-		.admin-sidebar { zoom: 1.0588; height: calc(100vh / 1.0588); }
+		.admin-sidebar { zoom: 1.0588; top: calc(var(--admin-header-h, 0px) / 1.0588); height: calc((100vh - var(--admin-header-h, 0px)) / 1.0588); }
 		/* 保存ボタンの中の状態（$lib/save-state.ts・2026-10-18）。元の文字とアイコンを隠し、data-save-label を出す。
 		   ボタンの大きさは中身に合わせて変わる（短い「保存」でも「✓ 保存しました」が収まる） */
 		.admin-main [data-save-state] { font-size: 0 !important; gap: 0 !important; }
@@ -281,51 +283,11 @@
 	{@render children()}
 	<p class="fixed right-3 bottom-2 font-mono text-[11px] text-stone-400">v{APP_VERSION}</p>
 {:else}
-	<div class="admin-shell flex min-h-screen bg-[#f0eeeb]">
-		<aside class="admin-sidebar sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
-			<!-- サイドバー上部: ロゴ（アプリ切替は上部ヘッダーのタブ・2026-10-28） -->
-			<div class="mx-4 mt-4 flex items-center gap-2">
-				<a href="/admin" class="block min-w-0 flex-1 rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-auto w-full" /></a>
-			</div>
-			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
-				{tenantWide ? '全施設共通' : data.currentFacility.name}
-			</p>
-			<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
-				{@render navList()}
-			</nav>
-			<div class="flex items-center justify-between px-5 py-4 text-xs">
-				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
-				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
-			</div>
-		</aside>
-
-		<!-- モバイル用ドロワー -->
-		{#if menuOpen}
-			<div class="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="管理メニュー">
-				<button type="button" class="absolute inset-0 bg-black/40" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}></button>
-				<div class="absolute inset-y-0 left-0 flex w-80 max-w-[88%] flex-col bg-brand-900 text-stone-300 shadow-xl">
-					<div class="flex items-center justify-between px-5 py-4">
-						<div class="flex items-center gap-2">
-							<a href="/admin" class="rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-7 w-auto" /></a>
-						</div>
-						<button type="button" class="rounded-lg p-2 text-stone-400 hover:bg-white/10 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}><AdminIcon name="close" class="h-5 w-5" /></button>
-					</div>
-					<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4">
-						{@render navList()}
-					</nav>
-					<div class="flex items-center justify-between px-5 py-4 text-xs">
-				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
-				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
-			</div>
-				</div>
-			</div>
-		{/if}
-
-		<div class="admin-main flex min-w-0 flex-1 flex-col">
-			<!-- 上部バーはスクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
-			<div class="sticky top-0 z-30" data-admin-header>
-				<header
-					class="admin-topbar flex items-center gap-2 border-b border-stone-200 bg-white/95 px-3 py-2 backdrop-blur sm:gap-3 sm:px-4 sm:py-2.5"
+	<div class="admin-shell flex min-h-screen flex-col bg-[#f0eeeb]">
+		<!-- 上部バーは PMS/RMS/Order と同じく最上段いっぱい（左サイドバーの上）。スクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
+		<div class="sticky top-0 z-30" data-admin-header bind:clientHeight={headerH}>
+			<header
+					class="admin-topbar app-header flex items-center gap-2.5 border-b border-stone-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6 lg:px-8"
 					style="--foreground: #292524; --muted-foreground: #78716c; --accent: #f5f5f4; --border: #e7e5e4; --popover: #ffffff; --background: #ffffff; --ring: #44403c; --app-header-tab-h: 2.25rem"
 				>
 					<button
@@ -380,7 +342,46 @@
 						🛠 メンテナンスモード有効 — 一般ユーザーへ非公開中（運営はプレビュー可）
 					</a>
 				{/if}
+		</div>
+
+		<div class="flex min-w-0 flex-1">
+		<aside class="admin-sidebar sticky hidden w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex" style="--admin-header-h: {headerH}px">
+			<!-- ロゴとアプリ切替は上部ヘッダーのタブ（2026-10-28） -->
+			<p class="mx-5 mt-4 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
+				{tenantWide ? '全施設共通' : data.currentFacility.name}
+			</p>
+			<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4" aria-label="管理メニュー">
+				{@render navList()}
+			</nav>
+			<div class="flex items-center justify-between px-5 py-4 text-xs">
+				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
+				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
 			</div>
+		</aside>
+
+		<!-- モバイル用ドロワー -->
+		{#if menuOpen}
+			<div class="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="管理メニュー">
+				<button type="button" class="absolute inset-0 bg-black/40" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}></button>
+				<div class="absolute inset-y-0 left-0 flex w-80 max-w-[88%] flex-col bg-brand-900 text-stone-300 shadow-xl">
+					<div class="flex items-center justify-between px-5 py-4">
+						<div class="flex items-center gap-2">
+							<a href="/admin" class="rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-7 w-auto" /></a>
+						</div>
+						<button type="button" class="rounded-lg p-2 text-stone-400 hover:bg-white/10 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}><AdminIcon name="close" class="h-5 w-5" /></button>
+					</div>
+					<nav class="admin-nav flex-1 overflow-y-auto px-2 pb-4">
+						{@render navList()}
+					</nav>
+					<div class="flex items-center justify-between px-5 py-4 text-xs">
+				<a href="/" class="text-stone-500 hover:text-white">← 顧客サイトへ</a>
+				<span class="font-mono text-stone-400" title="管理画面のバージョン">v{APP_VERSION}</span>
+			</div>
+				</div>
+			</div>
+		{/if}
+
+		<div class="admin-main flex min-w-0 flex-1 flex-col">
 
 			{#if showMfaBanner}
 				<a href="/admin/security" class="block border-b border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-900 hover:bg-sky-100">
@@ -408,6 +409,7 @@
 				{/if}
 				{@render children()}
 			</main>
+		</div>
 		</div>
 	</div>
 	<Toast />
