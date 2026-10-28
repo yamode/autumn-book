@@ -240,3 +240,22 @@
 - 対象: 代表者 1 通（複数室の公式予約は部屋ごとの食事入力をフォーム内で）。取引先経由（`rms_partner`）は除外。
 - 基本情報の修正は Book に保存し、スタッフが確認して PMS に反映（P5 で PMS 側）。食事は承認なしで確定。
 - P2 の送信はメールの手動ボタンのみ（SMS 自動送信は P4）。
+
+## 18. NTT CPaaS SMS の仕様（公式ドキュメント確認・2026-10-29）
+
+出典: docs.nttcpaas.com スタートアップガイド（SMS）、nttcpaas.com チュートリアル「双方向SMSを利用するAPI」。管理画面（マイページ）はこのセッションからは未ログインのため見ていない。
+
+- 送信: `POST https://{baseURL}.ibapi.nttcpaas.com/sms/3/messages`、ヘッダー `Authorization: App {API_KEY}`、`Content-Type: application/json`。本文 `{"messages":[{"sender":"…","destinations":[{"to":"819012345678"}],"content":{"text":"…"},"notifyUrl":"…","validityPeriod":…}]}`。`to` は国際形式（+ なし）。baseURL はマイページ「ディベロッパー」タブで確認。flash パラメータは不可。
+- **受信・返信: 対応している（双方向 SMS）。** 双方向は SenderID が「キャリア共通番号 `0005`＋4〜6桁」。単方向（`SD`＋8桁）は返信を受けられない。受信は Webhook（POST）で、マイページの「番号詳細 → SMS のインバウンド構成」に URL を登録する。ペイロードは `results[].from / to / message / receivedAt / messageId / pairedMessageId`（どの送信への返信か）。**送信元番号に電話をかけてもつながらない**ので、問い合わせ先（電話・フォーム）を本文に入れる。
+- 送達結果（DLR）: 送信時の `notifyUrl`、またはマイページ「サブスクリプション管理」で Webhook を登録。ステータスは PENDING / DELIVERED / REJECTED / UNDELIVERABLE / EXPIRED など。ポーリング `GET /sms/3/reports` は取得するとキューから消える。Webhook の認証は Basic / OAuth / HMAC。
+- 制限: 同一番号へ、同一メッセージは 1 時間に 6 通まで、異なるメッセージは 20 通まで。再送は 1 時間以上あける。国内宛のみ（海外宛は別契約）。
+- トライアル: SenderID は `ServiceSMS` 固定、送信 100 通まで、送信先は**ポータルに最初にログインしたユーザーの携帯番号のみ**。端末表示は 0032079000（docomo/au/楽天）・0032069000（SoftBank）。
+- 本番: 請求先情報の登録と SenderID の払い出し申請が必要（開通まで 3〜5 営業日）。**12/1 ローンチに合わせるなら、早めに申請する。**
+- 設定（環境変数・シークレット。リポジトリに書かない）: `NTT_CPAAS_BASE_URL`、`NTT_CPAAS_API_KEY`、`NTT_CPAAS_SENDER`、`NTT_CPAAS_WEBHOOK_SECRET`（Webhook の検証用）。
+
+### 要確認（Q13〜Q15）
+| # | 質問 | 暫定 |
+|---|---|---|
+| Q13 | 本番の SenderID は双方向（0005…）か単方向（SD…）か。双方向なら返信を誰がどこで見るか（管理画面の回答詳細に出す案） | 双方向。返信は管理画面の事前チェックイン詳細に表示 |
+| Q14 | 本番申請（請求先情報・SenderID）の担当と時期 | ユーザー |
+| Q15 | 自動送信（当日 9:00）をいつ有効にするか | 初期は OFF。手動の「SMSで送る」で試してから ON |
