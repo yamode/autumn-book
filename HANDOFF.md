@@ -1,3 +1,18 @@
+## 書体を星のや寄りに・検索バーを共通コンポーネント化（2026-10-29・v0.211.0）
+
+- ユーザー指示: 「サイト全体のフォントが AI っぽい。星のやを参考に自然に」「検索バーは取引先ページのノウハウ（文字の大きさ等）が生きていない。共通コンポーネントで同じデザインに」。
+- 書体: hoshinoresorts.com の実測（見出し Shippori Mincho B1・細め・字間 0.05em／本文 Noto Sans JP 400・行間 1.75）に合わせた。`app.css` の `html`・`.font-display`・マイページ/掲示板の見出し。自前配信（`@fontsource-variable/noto-sans-jp`・`@fontsource/shippori-mincho-b1`・日本語は unicode-range 分割）。以前の「x.com 風の太めゴシック 500」は廃止。管理画面（独自指定）・取引先ページ（一休と同じ書体）・施設別シェル（YamadoShell／OgaShell）は変えていない。
+- 検索バー: 共通 Svelte コンポーネント `lib/components/stay-search/StaySearchBar.svelte`＋`StaySearchPanel.svelte`（データ取得・遷移は props で注入）。取引先ページ（PartnerSearchBar／PartnerStayPanel は薄いラッパー）と HP 配布 `<yamado-search-bar>` が同じ部品。embed は `vite.embed.config.ts` で単一 IIFE（約 85kB・gzip 30kB）にビルドし、`static/embed/search-bar.js` に出す（**生成物・コミット対象**。`pnpm build` は embed→本体の順。手動は `pnpm --filter @autumn-book/web build:embed`。**共通部品を直したら再生成してコミット**）。rem は 18px 基準の px に変換し、PC/スマホは host 幅の container query で切替。書体は HP から継承。純関数は `lib/stay-search/params.ts`（テストは `stay-search.test.ts`）。旧 `embed-search-bar.test.ts` は置き換えて削除。
+- 副次的な見た目の変更（取引先ページにも反映）: スマホの日付パネル上段を 2 行に詰めた。スマホ幅（<640px）では日付マスの「円」を省略（重なり防止）。
+- 未確認: ①実際の取引先ページ（token あり・料金入り・プラン詳細からの日付選び）②旧 embed の Esc でのフォーカス復帰は無くなった（取引先ページの挙動に統一）③HP 側に z-index の高い要素があるとパネルが潜る可能性（ホストに z-index を付ける）④書体変更後の公式サイト全ページの目視（見出しの大きさ・折り返し。`font-bold` 等の太字指定は .font-display が上書きして 400 になる）。
+
+### テストチェックリスト（書体・検索バー共通化）
+- [ ] 公式サイト（トップ・施設・プラン・予約フロー・マイページ・掲示板）で見出しが明朝（細め）、本文がゴシック（400）になり、折り返し・はみ出しがない（PC・iPhone）
+- [ ] 管理画面・取引先ページ・客室案内 /r・事前チェックイン /ci の書体が意図どおり（管理画面と取引先は従来のまま）
+- [ ] 取引先ページの検索バー・日付パネル・人数室数パネルが従来どおり動く（料金入りのカレンダー・プラン詳細からの日付選び・スマホ）
+- [ ] HP の `<yamado-search-bar>` が取引先ページと同じ大きさ・同じ見た目（文字 18px・PC 1 本／スマホ縦積み）。HP の html が 16px でも小さくならない
+- [ ] `pnpm build` が通り、`static/embed/search-bar.js` が更新される（コミット漏れがない）
+
 ## HP 接続 P1-Book・ご予約の確認ページ・旧マイページ動線・検索バー部品（2026-10-29・v0.210.0）
 
 - 設計: `docs/hp-book-integration.md`（§3・§6・§7）と `docs/launch-tripla-cutover.md`（§3・§5・§7 P1）。**DB 変更なし**。HP（hp-yamado／hp-oga）側の変更は各リポの HANDOFF に記録（このリポでは触らない）。
