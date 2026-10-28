@@ -101,7 +101,10 @@ export function isPartnerPath(pathname: string): boolean {
 		// 共通ログイン画面（docs/partner-common-login.md）
 		pathname === '/partner' || pathname.startsWith('/partner/') ||
 		pathname.startsWith('/api/partner/') ||
-		pathname === '/api/cron/partner-charge' || pathname === '/api/cron/upgrade-payments'
+		pathname === '/api/cron/partner-charge' || pathname === '/api/cron/upgrade-payments' ||
+		// 事前チェックイン P4: 当日 9:00 の自動送信（CRON_SECRET）と NTT CPaaS の Webhook（Basic 認証）。
+		// 会員・運営のセッションは要らず、ポータル本体の公開状況（メンテナンス）と関係なく動かす
+		pathname === '/api/cron/precheckin-send' || pathname.startsWith('/api/webhooks/ntt-cpaas/')
 	);
 }
 
@@ -121,6 +124,8 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// メンテナンス中でも必ず開けなければならない（紙は刷り直せない）。
 	// 言語プレフィックス付き（/en/r・/zh-TW/r）も同じ扱いにする。
 	if (/^\/(?:en\/|zh-TW\/)?r(?:\/|$)/.test(url.pathname)) return true;
+	// 事前チェックインのフォーム（/ci/<token>）も、SMS・メールで送ったリンクの着地点なので同じ扱い（P4）
+	if (/^\/(?:en\/|zh-TW\/)?ci(?:\/|$)/.test(url.pathname)) return true;
 
 	// 取引先専用ページ（限定URL /p/<token>・取引先 API・Stripe Webhook・請求 cron）は
 	// ポータル本体の公開状況と関係なく稼働させる（2026-09-26 ユーザー指示。autumn-rms から移設）。

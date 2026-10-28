@@ -1,5 +1,5 @@
 <script lang="ts">
-	// 事前チェックインの状況一覧（P2）。送信はメールの手動ボタンのみ（SMS・自動送信は P4）。
+	// 事前チェックインの状況一覧（P2）。送信はメールの手動ボタンと、携帯番号のときの「SMSで送る／再送」（P4）。
 	import { enhance } from '$lib/enhance';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import { channelBadgeClass, channelLabel } from '$lib/booking-channel';
@@ -8,12 +8,15 @@
 		PRECHECKIN_STATE_CLASS,
 		PRECHECKIN_STATE_LABEL,
 		canSend,
+		expiresAtOf,
+		isBefore,
 		isMobileJp,
 		maskEmail,
 		maskPhone,
 		precheckinState,
 		shortJst
 	} from '$lib/precheckin';
+	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, smsTarget, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
 
@@ -23,7 +26,28 @@
 		{ label: '本日〜7日後', from: data.filters.today, to: addDays(data.filters.today, 7) }
 	]);
 	const isPreset = (p: { from: string; to: string }) => p.from === data.filters.from && p.to === data.filters.to;
-	const rows = $derived(data.list.map((r) => ({ ...r, state: precheckinState(r) })));
+	const smsOf = $derived(new Map<string, SmsStatusRow>((data.sms ?? []).map((x) => [x.precheckin_id, x])));
+	// 携帯番号があれば SMS で送れるので「連絡先なし」にしない
+	const rows = $derived(
+		data.list.map((r) => {
+			const base = precheckinState(r);
+			const mobile = Boolean(smsTarget(r.phone));
+			return {
+				...r,
+				mobile,
+				sms: r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null,
+				state: base === 'no_contact' && mobile ? ('unsent' as const) : base
+			};
+		})
+	);
+	const canSms = (r: { mobile: boolean; check_out_date: string }) => r.mobile && isBefore(expiresAtOf(r.check_out_date));
+	const confirmSmsSend = (e: MouseEvent, lastHour: number) => {
+		const msg =
+			lastHour > 0
+				? '直近 1 時間以内に SMS を送っています。新しいリンクでもう一度送りますか？（前のリンクは使えなくなります）'
+				: 'SMS を送ります。前に送ったリンクがあれば使えなくなります。よろしいですか？';
+		if (!confirm(msg)) e.preventDefault();
+	};
 	const counts = $derived(
 		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: rows.filter((r) => r.state === s).length }))
 	);
@@ -36,7 +60,7 @@
 
 <PageHeader
 	title="事前チェックイン"
-	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメールで送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。"
+	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメール、または携帯番号へ SMS で送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。"
 />
 
 {#if !data.live}
@@ -63,6 +87,23 @@
 		<p class="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{form.sendError}</p>
 	{:else if form && 'sentTo' in form && form.sentTo}
 		<p class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{maskEmail(form.sentTo)} へ送りました。</p>
+	{:else if form && 'smsSentTo' in form && form.smsSentTo}
+		<p class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.smsSentTo} へ SMS を送りました。届いたかは「SMS 到達」の印で確かめられます。</p>
+	{/if}
+	{#if form && 'smsConfirmStay' in form && form.smsConfirmStay}
+		<div class="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+			<span>直近 1 時間以内（{form.smsLastAt ? shortJst(form.smsLastAt) : '—'}）に SMS を送っています。同じ番号へ続けて送ると届かないことがあります。それでも送りますか？</span>
+			<form method="POST" action="?/sms" use:enhance>
+				<input type="hidden" name="stay_id" value={form.smsConfirmStay} />
+				<input type="hidden" name="force" value="1" />
+				<button class="rounded-lg bg-amber-700 px-3 py-1.5 text-xs text-white">それでも送る</button>
+			</form>
+		</div>
+	{/if}
+	{#if !data.smsReady}
+		<p class="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
+			SMS未設定: NTT CPaaS の接続情報（NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER）が登録されていないため、SMS は送れません。メールは送れます。
+		</p>
 	{/if}
 
 	<div class="mb-3 flex flex-wrap gap-2 text-xs">
@@ -91,23 +132,43 @@
 					</div>
 					<div class="flex shrink-0 flex-col items-end gap-1.5">
 						<span class="rounded-full px-2.5 py-0.5 text-xs ring-1 {PRECHECKIN_STATE_CLASS[r.state]}">{PRECHECKIN_STATE_LABEL[r.state]}</span>
-						{#if canSend(r)}
-							<form method="POST" action="?/send" use:enhance>
-								<input type="hidden" name="stay_id" value={r.stay_id} />
-								<button
-									class="rounded-lg px-3 py-1.5 text-xs {r.sent_at || r.precheckin_id ? 'bg-white text-stone-700 ring-1 ring-stone-300' : 'bg-stone-900 text-white'}"
-									onclick={(e) => confirmResend(e, Boolean(r.sent_at || r.precheckin_id))}
-								>{r.sent_at || r.precheckin_id ? '再送' : '送る'}</button>
-							</form>
+						{#if r.sms?.sms_status}
+							<span class="rounded-full px-2.5 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[r.sms.sms_status]}">{SMS_STATUS_LABEL[r.sms.sms_status]}</span>
 						{/if}
+						{#if r.sms && r.sms.inbound_count > 0}
+							<a href="/admin/precheckin/{r.stay_id}" class="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs text-violet-800 ring-1 ring-violet-200">返信あり {r.sms.inbound_count}</a>
+						{/if}
+						<div class="flex flex-wrap justify-end gap-1.5">
+							{#if canSms(r)}
+								<form method="POST" action="?/sms" use:enhance>
+									<input type="hidden" name="stay_id" value={r.stay_id} />
+									<button
+										class="rounded-lg px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50 {r.sms?.sms_count ? 'bg-white text-stone-700 ring-1 ring-stone-300' : 'bg-sky-800 text-white'}"
+										disabled={!data.smsReady}
+										title={data.smsReady ? '' : 'SMS未設定のため送れません'}
+										onclick={(e) => confirmSmsSend(e, r.sms?.sms_last_hour ?? 0)}
+									>{r.sms?.sms_count ? 'SMSで再送' : 'SMSで送る'}</button>
+								</form>
+							{/if}
+							{#if canSend(r)}
+								<form method="POST" action="?/send" use:enhance>
+									<input type="hidden" name="stay_id" value={r.stay_id} />
+									<button
+										class="rounded-lg px-3 py-1.5 text-xs {r.sent_at || r.precheckin_id ? 'bg-white text-stone-700 ring-1 ring-stone-300' : 'bg-stone-900 text-white'}"
+										onclick={(e) => confirmResend(e, Boolean(r.sent_at || r.precheckin_id))}
+									>{r.sent_at || r.precheckin_id ? 'メールで再送' : 'メールで送る'}</button>
+								</form>
+							{/if}
+						</div>
 					</div>
 				</div>
-				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error}
+				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error || r.sms?.sms_error}
 					<div class="mt-2 flex flex-wrap gap-x-3 border-t border-stone-100 pt-2 text-xs text-stone-500">
 						{#if r.sent_at}<span>送信 {shortJst(r.sent_at)}（{r.send_count}回）</span>{/if}
 						{#if r.first_opened_at}<span>開封 {shortJst(r.first_opened_at)}</span>{/if}
 						{#if r.answered_at}<span class="text-emerald-700">回答 {shortJst(r.answered_at)}</span>{/if}
 						{#if r.status === 'failed' && r.send_error}<span class="text-red-700">失敗: {r.send_error}</span>{/if}
+						{#if r.sms && (r.sms.sms_status === 'failed' || r.sms.sms_status === 'undeliverable') && r.sms.sms_error}<span class="text-red-700">SMS: {r.sms.sms_error}</span>{/if}
 					</div>
 				{/if}
 			</li>
