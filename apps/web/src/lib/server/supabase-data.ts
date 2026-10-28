@@ -2455,7 +2455,7 @@ function templateForSlug(slug: string): Facility['template'] {
 
 /** 施設スラッグ→オリジナル独立公式サイトURL。デモ（store.ts）の websiteUrl 割当に合わせる（未知は undefined）。 */
 function websiteUrlForSlug(slug: string): string | undefined {
-	if (slug === 'nishiwaga') return 'https://yamado.co.jp/';
+	if (slug === 'nishiwaga') return 'https://www.yamado.co.jp/';
 	if (slug === 'oga') return 'https://oga.yamado.co.jp/';
 	return undefined;
 }

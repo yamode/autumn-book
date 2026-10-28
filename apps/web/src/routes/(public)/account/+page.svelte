@@ -27,6 +27,10 @@
 	</p>
 {/if}
 
+{#if data.legacyActive}
+	<p class="mb-4 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">{@html m.account_legacy_note()}</p>
+{/if}
+
 {#if data.expiring > 0}
 	<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
 		{m.account_expiring_points({ points: data.expiring.toLocaleString() })} <a href="/search" class="underline">{m.account_expiring_search()}</a>

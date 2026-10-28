@@ -47,6 +47,16 @@
 		"PUBLIC_TURNSTILE_SITE_KEY": "0x4AAAAAAFS1Q2-p9tAqczQX",
 		// 取引先ページのパスキー（WebAuthn）の RP ID（docs/auth-hardening.md §6.5・S6）。このホスト名で開いたときだけパスキーを使える
 		// （*.autumn-book.pages.dev のプレビューでは出さない）。ローカル（localhost）は設定なしで使える。空ならローカル以外は無効
-		"PASSKEY_RP_ID": "book.yamado.app"
+		"PASSKEY_RP_ID": "book.yamado.app",
+		// 旧 tripla マイページへの動線（docs/launch-tripla-cutover.md §3・§5）。リンク先が空なら /booking/lookup の「以前の予約システム」の段を出さない。
+		// ★リンク先は未確定（要確認 Q2・hp-book-integration Q13）。候補: 西和賀 https://www.yamado.co.jp/?tripla_booking_widget_open=signIn ／ 男鹿 https://oga.yamado.co.jp/?tripla_booking_widget_open=signIn
+		// 両施設同じなら LEGACY_MYPAGE_URL、施設別なら _NISHIWAGA／_OGA（施設別が優先）。
+		"LEGACY_MYPAGE_URL": "",
+		"LEGACY_MYPAGE_URL_NISHIWAGA": "",
+		"LEGACY_MYPAGE_URL_OGA": "",
+		// この日（日本時間）を過ぎたら「終了しました」に変わる。暫定 2027-08-31（最終チェックイン 2027-07-31 の約 1 か月後・★Q7 で見直し）
+		"LEGACY_MYPAGE_UNTIL": "2027-08-31",
+		// この日から文言が「以前の予約システム」になる（それまでは「現在の予約システム」）
+		"BOOK_LAUNCH_DATE": "2026-12-01"
 	}
 }

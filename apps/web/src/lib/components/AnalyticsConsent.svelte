@@ -10,6 +10,7 @@
 	import { env } from '$env/dynamic/public';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { dbg } from '$lib/debug';
+	import { gaPageLocation } from '$lib/ga-page-location';
 	import {
 		CONSENT_CHANGE_EVENT,
 		consent as effectiveConsent,
@@ -109,11 +110,8 @@
 	});
 
 	function pageLocation() {
-		// GA に予約コードや URL の検索条件・トークンを送らない。
-		const safePath = location.pathname
-			.replace(/(\/booking\/complete\/)[^/]+/, '$1:code')
-			.replace(/(\/account\/reservations\/)[^/]+/, '$1:code');
-		return `${location.origin}${safePath}`;
+		// GA に予約コードや URL の検索条件・トークンを送らない（utm_* だけは流入元の計測に残す）。
+		return gaPageLocation(location.origin, location.pathname, location.search);
 	}
 
 	function trackPage() {

@@ -94,7 +94,7 @@ export const facilities: Facility[] = [
 			{ url: '/site-assets/yamado/top_fig_02.jpg', caption: '西和賀の四季', category: 'view' }
 		],
 		template: 'yamado-v1',
-		websiteUrl: 'https://yamado.co.jp/',
+		websiteUrl: 'https://www.yamado.co.jp/',
 		isPublished: true
 	},
 	{

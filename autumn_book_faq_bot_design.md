@@ -39,7 +39,7 @@
 [ウィジェット]  widget.js（依存なしの素の JS・Shadow DOM で HP の CSS と干渉しない）
    │  fetch（CORS 許可済みのオリジンのみ）
    ▼
-[autumn-book]  SvelteKit サーバールート（Cloudflare Pages: booking.yamado.co.jp）
+[autumn-book]  SvelteKit サーバールート（Cloudflare Pages: book.yamado.app）
    │  GET  /api/faq/{facility}            … 公開FAQ一覧（カテゴリ別・初期表示用）
    │  POST /api/faq/{facility}/search     … 検索（サーバー側でスコアリング）＋質問ログ記録
    │  POST /api/faq/{facility}/feedback   … 「解決した／しなかった」・候補クリック
@@ -207,7 +207,7 @@
 
 ### 9.1 oga（Xserver 静的サイト）
 - `site/` の全ページの talkappi スクリプトを削除し、`widget.js` を追加（hp-oga の `tools/postprocess.mjs` で一括）。
-- `.htaccess` の CSP に `booking.yamado.co.jp`（script-src / connect-src）を追加し、talkappi を外す。
+- `.htaccess` の CSP に `book.yamado.app`（script-src / connect-src）を追加し、talkappi を外す。
 - ⚠ **tripla の SDK（`tripla.min.js`）は外さない**。予約の検索バー（SearchBar）も同じ SDK から読まれているため。
   tripla の**ボット部分だけ**を止める方法（`data-triplabot-code` 属性の削除で済むか、tripla 管理画面でボットを無効化するか）を、着手時に検証する。
 

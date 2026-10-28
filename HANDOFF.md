@@ -1,3 +1,42 @@
+## HP 接続 P1-Book・ご予約の確認ページ・旧マイページ動線・検索バー部品（2026-10-29・v0.210.0）
+
+- 設計: `docs/hp-book-integration.md`（§3・§6・§7）と `docs/launch-tripla-cutover.md`（§3・§5・§7 P1）。**DB 変更なし**。HP（hp-yamado／hp-oga）側の変更は各リポの HANDOFF に記録（このリポでは触らない）。
+- 実装:
+  - GA4 `page_location`: 純関数 `lib/ga-page-location.ts`（テスト付き）。`utm_*` だけ残し、他のクエリ・予約コードは落とす。`AnalyticsConsent.svelte` から使う。
+  - 予約完了画面に「← {施設名}のサイトへ戻る」（`websiteUrl`）。西和賀の `websiteUrl` を `https://www.yamado.co.jp/` に（`supabase-data.ts`・`store.ts`）。
+  - `/booking/lookup`「ご予約の確認」（ja/en/zh-TW）。公式（会員→マイページ／非会員→確認メール）・旧予約システム・旅行会社・電話の 4 段。照会フォームは無い。導線: フッター「ご案内」・マイページ予約一覧の上の注記・取消ページのトークン無し表示・男鹿 FAQ seed（`oga-talkappi.json` の tripla リンクを Book に差し替え。本番の FAQ は `/admin/faqs` で書き換える）。
+  - 旧マイページ: `lib/legacy-mypage.ts`（`legacyMypageState`・テスト付き）＋`lib/server/legacy-mypage-env.ts`。wrangler の vars: `LEGACY_MYPAGE_URL`（両施設共通）／`LEGACY_MYPAGE_URL_NISHIWAGA`・`_OGA`（施設別・優先）／`LEGACY_MYPAGE_UNTIL`（暫定 `2027-08-31`・日本時間でこの日の翌日から「終了しました」）／`BOOK_LAUNCH_DATE`（`2026-12-01`・この日から「以前の予約システム」の言い回し）。**URL は今は空＝旧マイページの段は出ない**（リンク先が未確定・cutover ★Q2／hp-book-integration ★Q13）。決まったら vars に入れて再デプロイ。https 以外の URL は無効扱い。
+  - `/api/stay-calendar`: 両 HP のオリジンだけ CORS（`lib/server/hp-cors.ts`・テスト付き）。`facility` は slug（nishiwaga／oga）でも ID でも受ける。
+  - 検索バー `static/embed/search-bar.js`（`<yamado-search-bar>`・素の JS・Shadow DOM）: HP の同じ 2 行（`<yamado-search-bar facility lang utm-source utm-content>`＋`<script src="https://book.yamado.app/embed/search-bar.js" defer>`）で動く。取引先バー風（PC 1 本・スマホ縦積み）・2 か月の日付パネルに空き日と最安・人数室数の ±・ja/en/zh-TW 同梱。遷移先は E2 `/yamado/{facility}/plans?checkin&nights&adults[&rooms]&utm_*`（同一タブ）、遷移前に `dataLayer.push({event:'search_submit',…})`。facility 不正・スクリプト失敗時は中の代替フォームがそのまま見える。色は CSS 変数 `--yamado-search-accent`／`-soft`／`--yamado-search-font` で上書き可。純関数は `globalThis.__yamadoSearchBar`、テストは `embed-search-bar.test.ts`（配布 JS を vm で読み込む）。空き日の表示は 1 室分の判定（API が rooms を受けない）。祝日の色分けなし。パネルは absolute で浮くので HP 側の親が overflow:hidden だと切れる（要確認）。`/embed/search-bar.js` のキャッシュ期間は未設定
+  - ディープリンク契約を v1.1 に（ホスト `book.yamado.app`・`rooms`・`utm_*`・`nights` 1〜7／`adults` 1〜6・検索バーは E2）。ほかの設計書（architecture_decision／design／faq_bot／portal_sitemap／private_bath）の `booking.yamado.co.jp` も `book.yamado.app` に（private_bath の変更履歴 1 行は当時の記録として残した）。
+- 未確認・判断待ち: ①旧マイページのリンク先 URL（上記）②メンテナンスモード中の `/booking/lookup`・`/api/stay-calendar`・`/embed/*` の扱い（`/api/stay-calendar` は maintenance のバイパス対象外。ローンチ前に OFF にする前提）③本番でのブラウザ確認（HP ドメインからの CORS・iPhone Safari）は未実施。
+
+### テストチェックリスト（HP 接続 P1-Book）
+
+#### Book 側
+- [ ] `?utm_source=hp_oga&utm_content=header&checkin=2026-12-20` 付きで `/yamado/oga` を開き GA4 に同意すると、`page_location` に `utm_*` だけが残り `checkin` は落ちている
+- [ ] `/booking/complete/<code>` の `page_location` が `:code` に置き換わったまま
+- [ ] 予約完了画面に「← 山人 -oga- のサイトへ戻る」が出て `https://oga.yamado.co.jp/` へ。西和賀は `https://www.yamado.co.jp/`
+- [ ] 施設トップの戻り帯の西和賀リンクが `www` 付きで 200
+- [ ] `/en/yamado/nishiwaga`・`/zh-TW/yamado/oga` が言語付きで開く
+- [ ] 未ログインで `/account?utm_source=hp_oga&utm_campaign=member` を開くと `/auth/login?next=/account…` に飛び、ログイン後に `/account` に戻る。ログイン済みなら直接マイページ
+
+#### ご予約の確認・旧マイページ動線
+- [ ] `/booking/lookup` が ja / en / zh-TW で開き、段（公式・旅行会社・電話）が出る。スマートフォン幅で崩れない
+- [ ] 会員ログイン済みでも未ログインでも「マイページを開く」が `/account` へ（未ログインはログイン経由）
+- [ ] `LEGACY_MYPAGE_URL*` を空にすると旧マイページの段が出ない（今の本番はこの状態）。マイページ `/account` の注記も出ない
+- [ ] URL を入れ `LEGACY_MYPAGE_UNTIL` を昨日にすると「終了しました」の文面に変わり、リンクが出ない
+- [ ] `BOOK_LAUNCH_DATE` より前は「現在の予約システム」、以後は「以前の予約システム」の見出しになる
+- [ ] フッター「ご案内」・マイページ `/account` の注記・取消ページのトークン無し表示（`/booking/cancel`）から `/booking/lookup` へ行ける
+- [ ] 旧マイページのリンクは新しいタブで開き、`rel="noopener noreferrer"`。↗ が付く。施設別 URL を入れると 2 本、同じ URL なら両施設とも同じ宛先
+- [ ] `/booking/lookup` にトークンや個人情報を入れる欄が無い
+- [ ] 旧マイページのリンク先が実際に tripla のログイン画面を開く（西和賀・男鹿それぞれ。PC・iPhone）【本番の HP で確認】
+
+#### 検索バー部品（Book 側）
+- [ ] `/api/stay-calendar?facility=oga&nights=1&adults=2` が `Origin: https://oga.yamado.co.jp` で `Access-Control-Allow-Origin` を返し、他のオリジンでは返さない。`OPTIONS` が 204
+- [ ] `facility=nishiwaga`／`facility=oga`（slug）で空き日が返る
+- [ ] 以降の HP 上の確認項目は `docs/hp-book-integration.md` §7「検索バー」のとおり（HP 側の置き込み後）
+
 ## 事前チェックイン P2: 受付・フォーム・管理画面の状況一覧（2026-10-29・v0.209.0）
 
 - 設計: `docs/pre-checkin.md`（§4 トークン・§5 フォーム・§12 DB・§17 P2 の範囲）。送信は**メールの手動ボタンのみ**（SMS・自動送信・cron は P4）。貸切風呂のフォーム内予約・OTA 誘導バナーは P3。

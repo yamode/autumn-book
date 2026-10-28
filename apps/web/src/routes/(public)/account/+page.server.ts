@@ -3,9 +3,10 @@ import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyReservations, sbPointLedger, sumExpiringPoints, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
 import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
+import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async (event) => {
+const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 	const { locals } = event;
 	const today = todayStr();
 
@@ -66,3 +67,9 @@ export const load: PageServerLoad = async (event) => {
 		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
 	};
 };
+
+// 旧 tripla マイページへの案内（予約一覧の上に 1 行・期限まで）
+export const load: PageServerLoad = async (event) => ({
+	...(await loadReservations(event)),
+	legacyActive: legacyMypageFromEnv().kind === 'active'
+});

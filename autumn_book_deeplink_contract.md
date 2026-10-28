@@ -1,6 +1,6 @@
-# autumn-book ディープリンク URL 契約 v1
+# autumn-book ディープリンク URL 契約 v1.1
 
-- **ステータス**: 確定（2026-07-10・Fable 5 展開）
+- **ステータス**: 確定（v1: 2026-07-10・Fable 5 展開／v1.1: 2026-10-29 ホスト変更・検索バー・範囲の実装反映）
 - **位置づけ**: `autumn_book_architecture_decision.md`（ADR-0001）「実装上の決めごと 1. ディープリンクのハンドオフ契約」の具体化。`autumn_book_portal_sitemap.md` §7 の宿題。
 - **利用者**: 施設HP（hp-yamado / hp-oga 刷新版）・メルマガ・SNS・QR 等、ポータル外からの予約導線すべて。
 
@@ -14,8 +14,8 @@
 
 ## 1. ホスト
 
-- **ポータルホストは `booking.yamado.co.jp` に確定**（2026-08-31）。本契約はパス以下に加えてホストも固定する。
-- 現行: `https://autumn-book.pages.dev` ／ 本番: `https://booking.yamado.co.jp`。HP 側のリンク先ホストはこれに一括置換する。
+- **ポータルホストは `book.yamado.app` に確定**（v1.1・2026-10-29。v1 の `booking.yamado.co.jp` は実運用に至らなかった）。本契約はパス以下に加えてホストも固定する。
+- 本番: `https://book.yamado.app` ／ 開発: `https://autumn-book.pages.dev`。HP 側のリンク先ホストはこれに一括置換する。
 - ⚠ **紙に刷った QR（館内図の貸切風呂予約・`autumn_book_private_bath_design.md`）はホストを後から変えられない。** 本ホストは恒久。
 
 ## 2. エントリ URL（安定契約）
@@ -37,8 +37,10 @@
 | パラメータ | 形式 | 既定 | 正規化ルール |
 |---|---|---|---|
 | `checkin` | `YYYY-MM-DD` | なし（未選択） | 過去日・366日超・形式不正は無視（未指定扱い） |
-| `nights` | `1`〜`5` | `1` | 範囲外・非数値は clamp / 既定へ |
-| `adults` | `1`〜`4` | `2` | 同上 |
+| `nights` | `1`〜`7` | `1` | 範囲外・非数値は clamp / 既定へ（E2 の上限。E1・E5 の泊数セレクトは 1〜5） |
+| `adults` | `1`〜`6` | `2` | 同上（1 室あたり。E2 の上限。E5 は 1〜4） |
+| `rooms` | `1`〜`4` | `1` | **E2 のみ**。2 以上で残室の足りない部屋タイプを外し、部屋タイプ横断の組み合わせを出す。1 のときは付けなくてよい |
+| `utm_source` / `utm_medium` / `utm_campaign` / `utm_content` | 文字列 | なし | 流入計測用。GA4 の `page_location` に残る（他のクエリは残さない）。命名は `docs/hp-book-integration.md` §3.1 |
 
 例:
 ```
@@ -61,11 +63,12 @@ https://<PORTAL>/yamado/nishiwaga/plans?checkin=2026-09-01&nights=2&adults=3
 ## 6. HP 側実装ガイド
 
 - 「ご予約」ボタン（日程未定）: → E1 をそのまま。
-- HP に日程ピッカーを置く場合: 選択値を `checkin / nights / adults` に載せて E1 へ。
+- HP に日程ピッカー（検索バー）を置く場合: 選択値を `checkin / nights / adults / rooms` に載せて **E2（`/plans`）へ**。E1 は `checkin` しか読まない（v1.1）。Book が配る `<yamado-search-bar>`（`https://book.yamado.app/embed/search-bar.js`・`docs/hp-book-integration.md` §3.8）を使う。
 - 特定プランの訴求バナー: 当面 E2（プラン一覧）+ 日程。P3 本接続後に E3 直行へ格上げ可。
-- `target=_blank` は不要（同タブ遷移を推奨。ファネル計測は GA4 クロスドメイン設定で接続・設計書 §9）。
+- `target=_blank` は不要（同タブ遷移を推奨。HP と Book は別の GA4 プロパティなので、ファネル計測は `utm_*` で接続する）。
 
 ## 7. 変更履歴
 
 - 2026-07-10 v1 確定。施設トップのカレンダー初期月連動を実装（`[facility]/+page.server.ts`）。E1/E5・クエリ3種は既存実装で充足済みを確認。
 - 2026-08-31 **ポータルホストを `booking.yamado.co.jp` に確定**（従来の `stay.yamado.co.jp` は仮称だった）。館内図の紙 QR がこのホストを焼き込むため恒久扱いとする。
+- 2026-10-29 **v1.1**: ホストを `book.yamado.app` に変更。`rooms`（E2）と `utm_*` を追加し、`nights` 1〜7・`adults` 1〜6 に実装を反映。検索バーの遷移先を E2 に。HP 向けの検索バー部品 `embed/search-bar.js` を追加（`/api/stay-calendar` は HP の 3 オリジンに CORS 許可）。
