@@ -385,7 +385,7 @@ alter table public.rms_partner_access_logs add constraint rms_partner_access_log
 ### 7.5 デスクトップ SSO（`POST /admin/sso`・2026-10-28・**配備済み（U-6 承認・2026-10-28）**）
 
 autumn-pms のデスクトップアプリ（v0.20.0〜のタブ型シェル）で、PMS にログインすれば Book の管理画面にも入れるようにする口
-（設計: autumn-pms `desktop/docs/tabbed-shell-design.md` §2）。ブランチ `feat/admin-sso` のまま。**main には入れていない**。
+（設計: autumn-pms `desktop/docs/tabbed-shell-design.md` §2）。2026-10-28 に main へ取り込み・配備済み（v0.193.0）。ブラウザ・デスクトップ共通の新方式は §7.6。
 
 - 流れ: シェル（メインプロセス）が PMS / RMS の共有セッション（`Domain=.yamado.app`）から **access_token だけ**を読み、
   `Authorization: Bearer <access_token>`・`x-autumn-desktop: <端末名 / アプリ版>` で POST → Book が検証して
