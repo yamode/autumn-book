@@ -1150,5 +1150,12 @@
   "bath_group_room": "お部屋：{room}",
   "bath_group_cancel_note": "ほかのお部屋のご予約は、そのお部屋の画面から変更・取消できます。",
   "bath_err_limit_group": "その時間帯は、グループで取れる数に達しています。",
-  "bath_limit_reached_group": "グループで取れる時間帯はすべて予約済みです。時間を変更する場合は、予約したお部屋の画面で取り消してから選び直してください。"
+  "bath_limit_reached_group": "グループで取れる時間帯はすべて予約済みです。時間を変更する場合は、予約したお部屋の画面で取り消してから選び直してください。",
+  "searchbar_rooms": "室数",
+  "searchbar_rooms_option": "{n}室",
+  "plans_combo_title": "{n}室は、お部屋タイプを組み合わせるとご予約いただけます",
+  "plans_combo_desc": "1つのお部屋タイプでは{n}室に足りないため、同じプランで空いているお部屋を組み合わせました。",
+  "plans_combo_each": "各室 大人{n}名",
+  "plans_combo_total": "{nights}泊 合計",
+  "plans_combo_go": "この組み合わせで予約へ"
 }

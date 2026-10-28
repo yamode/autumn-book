@@ -8,6 +8,8 @@ import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
+import { crossTypeCombos } from '$lib/partner-room-combos';
+import { MAX_ROOMS_PER_BOOKING } from '$lib/multi-room';
 import type { RatePlan, RoomType } from '$lib/types';
 import type { PageServerLoad } from './$types';
 
@@ -19,7 +21,52 @@ type RoomPlanPrice = {
 	remaining: number | null;
 };
 
-function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPrice[], adults: number) {
+/**
+ * 必要な室数を部屋タイプ横断で満たす組み合わせ（どの部屋タイプも単独では足りないとき。同じプランの部屋タイプを合わせる）。
+ * 予約かごに入れて予約へ進む（かごは部屋タイプを混ぜて 1 回で仮押さえできる）。
+ */
+function combosFor(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPrice[], adults: number, nights: number, roomCount: number) {
+	if (roomCount < 2) return [];
+	const planById = new Map(plans.map((plan) => [plan.id, plan]));
+	const roomById = new Map(rooms.map((room) => [room.id, room]));
+	const offers = prices.flatMap((price) => {
+		const plan = planById.get(price.ratePlanId);
+		const room = roomById.get(price.roomTypeId);
+		if (!plan || !room || price.total === null || price.remaining === null || room.capacity < adults) return [];
+		return [
+			{
+				roomCode: room.id,
+				roomName: room.name,
+				planCode: plan.id,
+				planName: plan.name,
+				mealType: null,
+				perPerson: Math.round(price.total / (adults * nights)),
+				totalPerPerson: price.total / adults,
+				remaining: price.remaining
+			}
+		];
+	});
+	return crossTypeCombos(offers, roomCount, adults).map((combo) => {
+		const plan = planById.get(combo.planCode)!;
+		return {
+			planId: plan.id,
+			planSlug: plan.slug,
+			planName: plan.name,
+			pay: { onsite: plan.payment.onsite, prepay: plan.payment.prepay },
+			total: combo.total,
+			parts: combo.parts.map((part) => ({
+				roomTypeId: part.roomCode,
+				roomName: part.roomName,
+				rooms: part.rooms,
+				// その部屋 1 室の宿泊料金（全泊・割引前）
+				roomTotal: Math.round(part.totalPerPerson * adults),
+				remaining: part.remaining
+			}))
+		};
+	});
+}
+
+function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPrice[], adults: number, roomCount = 1) {
 	const planById = new Map(plans.map((plan) => [plan.id, plan]));
 	const pricesByRoom = new Map<string, RoomPlanPrice[]>();
 	for (const price of prices) {
@@ -37,6 +84,8 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 					return plan ? { plan, total: price.total, referencePrice: price.referencePrice, remaining: price.remaining } : null;
 				})
 				.filter((item): item is NonNullable<typeof item> => item !== null)
+				// 室数を指定したときは、その室数に残室が足りない部屋タイプ・プランは一覧に出さない（組み合わせは別枠で出す）
+				.filter((item) => roomCount < 2 || item.remaining === null || item.remaining >= roomCount)
 				.sort((a, b) => (a.total ?? a.referencePrice ?? Infinity) - (b.total ?? b.referencePrice ?? Infinity))
 		}))
 		.sort((a, b) => Number(b.plans.length > 0) - Number(a.plans.length > 0));
@@ -47,6 +96,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
+	const roomCount = Math.min(MAX_ROOMS_PER_BOOKING, Math.max(1, Number(url.searchParams.get('rooms') ?? 1) || 1));
 	const tag = url.searchParams.get('tag') || undefined;
 	const today = todayJst();
 
@@ -71,14 +121,15 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			: referencePrices.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null }));
 		return {
 			facility,
-			rooms: roomsWithPlans(allRooms, plans, prices, adults),
+			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
+			combos: combosFor(allRooms, plans, prices, adults, nights, roomCount),
 			allTags,
 			calendarDays: calendar.days,
 			calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
 			today,
 			referenceMode: !checkin,
-			params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
+			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
 		};
 	}
 
@@ -107,13 +158,14 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const calendar = await stayCalendar(facility.id, nights, adults);
 	return {
 		facility,
-		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults),
+		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults, roomCount),
+		combos: combosFor(getRoomTypes(facility.id, locale), plans, prices, adults, nights, roomCount),
 		allTags,
 		calendarDays: calendar.days,
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
 		today,
 		referenceMode: false,
-		params: { checkin: checkin ?? '', nights, adults, tag: tag ?? '' }
+		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
 	};
 };

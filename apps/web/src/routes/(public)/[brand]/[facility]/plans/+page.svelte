@@ -7,6 +7,8 @@
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
+	import { goto } from '$app/navigation';
+	import { writeCart, type CartItem } from '$lib/multi-room';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
 	import type { RoomType } from '$lib/types';
@@ -61,6 +63,42 @@
 		return `${base}/plans/${slug}?${query}#room-${roomSlug}`;
 	}
 
+	type Combo = (typeof data.combos)[number];
+	// 組み合わせの各室（部屋タイプ・人数つき）を予約かごに入れて、そのプランの詳細へ。かごのバーの「予約へ進む」で全室をまとめて仮押さえする
+	function bookCombo(combo: Combo) {
+		const stamp = Date.now().toString(36);
+		const items: CartItem[] = [];
+		for (const part of combo.parts) {
+			for (let i = 0; i < part.rooms; i++) {
+				items.push({
+					key: `${stamp}${items.length}${Math.random().toString(36).slice(2, 6)}`,
+					facilityId: data.facility.id,
+					brandSlug: data.facility.brandSlug,
+					facilitySlug: data.facility.slug,
+					facilityName: data.facility.name,
+					checkin: data.params.checkin,
+					nights: data.params.nights,
+					planId: combo.planId,
+					planSlug: combo.planSlug,
+					planName: combo.planName,
+					roomTypeId: part.roomTypeId,
+					roomName: part.roomName,
+					adults: data.params.adults,
+					total: part.roomTotal,
+					pay: combo.pay,
+					remaining: part.remaining
+				});
+			}
+		}
+		try {
+			writeCart(sessionStorage, items);
+		} catch {
+			/* 保存できない環境では、プラン詳細で入れ直してもらう */
+		}
+		const query = new URLSearchParams({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) });
+		void goto(`${base}/plans/${combo.planSlug}?${query}`);
+	}
+
 	function roomPhoto(room: RoomItem['room']) {
 		return room.photos[0]?.url ?? data.facility.photos.find((photo) => photo.category === 'room')?.url ?? facilityThumbnailUrl(data.facility.slug, data.facility.photos[0]?.url ?? '');
 	}
@@ -100,6 +138,26 @@
 	<div id="plan-search" class="mt-5 scroll-mt-28">
 		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} closed={data.calendarClosed} facilityId={data.facility.id} />
 	</div>
+
+	{#if data.combos.length}
+		<!-- 部屋タイプ横断の組み合わせ: 1 つの部屋タイプでは室数に足りないとき -->
+		<section class="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label={m.plans_combo_title({ n: String(data.params.rooms) })}>
+			<p class="text-base font-bold text-brand-900">{m.plans_combo_title({ n: String(data.params.rooms) })}</p>
+			<p class="mt-0.5 text-sm text-stone-600">{m.plans_combo_desc({ n: String(data.params.rooms) })}</p>
+			<ul class="mt-3 space-y-3">
+				{#each data.combos as combo (combo.planId)}
+					<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+						<div class="min-w-0">
+							<p class="text-sm font-semibold text-brand-900">{combo.planName}</p>
+							<p class="mt-0.5 text-base text-brand-900">{combo.parts.map((part) => `${part.roomName} ×${part.rooms}`).join(" ＋ ")}<span class="ml-2 text-sm text-stone-500">{m.plans_combo_each({ n: String(data.params.adults) })}</span></p>
+							<p class="text-sm text-stone-600">{m.plans_combo_total({ nights: String(data.params.nights) })} <span class="text-lg font-bold tabular-nums text-brand-900">{formatPrice(combo.total)}</span></p>
+						</div>
+						<button type="button" onclick={() => bookCombo(combo)} class="min-h-11 rounded-lg bg-sky-600 px-5 text-base font-semibold text-white hover:bg-sky-700">{m.plans_combo_go()}</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	{/if}
 
 	<section id="rooms" class="mt-6 scroll-mt-28">
 		<h2 class="font-display mb-3 text-xl text-brand-900">{headingVariant === 'b' ? m.plans_heading_alternative() : m.plans_heading()}</h2>

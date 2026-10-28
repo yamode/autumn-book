@@ -57,7 +57,7 @@ export function crossTypeCombos(offers: readonly ComboOffer[], rooms: number, gu
 			planName: group[0].planName,
 			mealType: group[0].mealType,
 			parts,
-			total: parts.reduce((s, p) => s + p.totalPerPerson * guests * p.rooms, 0)
+			total: parts.reduce((s, p) => s + Math.round(p.totalPerPerson * guests) * p.rooms, 0)
 		});
 	}
 	return out.sort((a, b) => a.total - b.total || a.planName.localeCompare(b.planName, 'ja'));

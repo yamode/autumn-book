@@ -1150,5 +1150,12 @@
   "bath_group_room": "房間：{room}",
   "bath_group_cancel_note": "其他客房的預約，請由該客房的畫面更改或取消。",
   "bath_err_limit_group": "該時段已達團體可預約的上限。",
-  "bath_limit_reached_group": "團體可預約的時段均已預約。如需更改時間，請由預約的客房畫面取消後再重新選擇。"
+  "bath_limit_reached_group": "團體可預約的時段均已預約。如需更改時間，請由預約的客房畫面取消後再重新選擇。",
+  "searchbar_rooms": "房間數",
+  "searchbar_rooms_option": "{n}間",
+  "plans_combo_title": "組合不同房型即可預訂{n}間",
+  "plans_combo_desc": "單一房型不足{n}間，因此為您組合同一方案中尚有空房的房型。",
+  "plans_combo_each": "每間 {n}位大人",
+  "plans_combo_total": "{nights}晚 合計",
+  "plans_combo_go": "以此組合前往預訂"
 }

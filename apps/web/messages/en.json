@@ -1150,5 +1150,12 @@
   "bath_group_room": "Room: {room}",
   "bath_group_cancel_note": "Reservations by other rooms can be changed or cancelled from that room's screen.",
   "bath_err_limit_group": "Your group has already reached the limit for that time period.",
-  "bath_limit_reached_group": "Your group has booked all available time periods. To change a time, cancel it from the screen of the room that booked it, then choose again."
+  "bath_limit_reached_group": "Your group has booked all available time periods. To change a time, cancel it from the screen of the room that booked it, then choose again.",
+  "searchbar_rooms": "Rooms",
+  "searchbar_rooms_option": "{n} room(s)",
+  "plans_combo_title": "{n} rooms are available by combining room types",
+  "plans_combo_desc": "No single room type has {n} rooms left, so we combined available rooms under the same plan.",
+  "plans_combo_each": "Each room: {n} adult(s)",
+  "plans_combo_total": "{nights} night(s) total",
+  "plans_combo_go": "Book this combination"
 }
