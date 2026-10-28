@@ -1,3 +1,23 @@
+## 管理画面の自動ログイン（共有セッション Cookie・2026-10-28・v0.196.0）
+
+- PMS / RMS / Order にログインしているブラウザ（とデスクトップの Book タブ）で book.yamado.app/admin を開くと、共有 Cookie（`sb-<ref>-auth-token`・Domain=.yamado.app）の access_token を確かめて **Book 専用の新しいセッション**を作り、開こうとした画面へそのまま進む。共有 Cookie のコピーはしない・refresh_token は読まない。
+- 入口は hooks（`/admin` 配下・トップレベルの GET 遷移だけ・Book のセッションが無いときだけ）。管理者ロール必須・停止中は不可・TOTP／パスキー登録済みの人は従来どおり `/admin/mfa`・IP 制限（adminIp）・アクセスログ `method: shared_cookie_sso`。デモ認証では動かない。
+- Book でログアウトすると `ab_admin_sso_pause` を付け、PMS でログアウトするか、PMS で別のセッションにログインし直すか、12 時間たつか、パスワードで手でログインするまで自動ログインしない。
+- `POST /admin/sso`（デスクトップ v0.20.x）は残す。既に同じ人の Book セッションがあれば 204 で何もしない／ログアウト直後は 403。**将来 desktop 整理時に廃止**。
+- 設計: `docs/auth-hardening.md` §7.6。実装: `src/lib/admin-shared-sso.ts`（純関数＋テスト）・`src/lib/server/admin-shared-sso.ts`。DB 変更なし。
+
+### テストチェックリスト（管理画面の自動ログイン）
+- [ ] ブラウザで PMS にログイン → 新しいタブで https://book.yamado.app/admin/reservations を開く → ログイン画面を経ずに予約一覧が開く（アクセスログに login_success・shared_cookie_sso）
+- [ ] PMS の画面のリンクから Book の管理画面へ移っても同じく入れる
+- [ ] TOTP またはパスキー登録済みの人は自動ログイン後に /admin/mfa が出て、確認後に元の画面へ進む
+- [ ] Book で「ログアウト」→ /admin を開き直してもログイン画面のまま（PMS にはログインしたまま）。パスワードで手でログインすれば入れる
+- [ ] Book でログアウト後、PMS をログアウト → PMS にログインし直す → Book の /admin で再び自動で入れる
+- [ ] PMS をログアウトした状態（共有 Cookie なし）では通常のログイン画面になる
+- [ ] 管理者ロールの無いアカウント（会員など）で PMS 側にログインしていても自動では入れず、ログイン画面のまま（リダイレクトが往復しない）
+- [ ] Book に会員としてログインしているブラウザでは、会員のセッションが勝手に管理者に切り替わらない
+- [ ] デスクトップ（タブ型シェル）の Book タブで、従来どおり PMS のログインだけで Book に入れる。Book でログアウトすると勝手に入り直さない（/admin/sso も 403 で止まる）【デスクトップで確認】
+- [ ] Cloudflare Access を /admin* に掛けている場合、Access の画面を通ってから自動ログインになる【本番で確認】
+
 ## 貸切風呂ご予約画面のお名前・部屋表示・文章の翻訳（2026-10-28・v0.195.0）
 
 - お名前: PMS の館内図で予約ごとに選んだ表示（自動＝部屋ごとの顧客名→予約者名／予約者名／ツアー名）を、トークンの `display_name` / `display_kind` で受け取って出す（ツアー名は「様」なし）。**display_name の無い旧トークンは従来どおり guest_name**。組み立ては `src/lib/private-bath-display.ts`。

@@ -408,6 +408,49 @@ autumn-pms のデスクトップアプリ（v0.20.0〜のタブ型シェル）�
   シェルは失敗（ログイン画面のまま）とみなす。Access を使うなら `/admin/sso` を Access の対象から外すか、Service Token を検討する。
 - 実装: `routes/admin/sso/+server.ts`、純関数 `lib/admin-desktop-sso.ts`（テスト `admin-desktop-sso.test.ts`）。service_role は `partnerServiceClient()`（例外その12）。
 - U-6（Book に置いてよいか）は 2026-10-28 に承認され、main へ取り込み・配備済み。シェル側は 404 を「未配備」とみなす作りのままなので、ロールバックしても Book タブはログイン画面のまま動く。
+- **§7.6 の自動ログイン（v0.196.0）が入ったので、この口は将来 desktop を整理するときに廃止する**（削除は desktop 側の呼び出しを外すのと同時に別作業）。
+  それまでは呼ばれても害がないように、(1) 既に同じ人の Book セッションがあれば何もせず 204（新しいセッションを作らない）、
+  (2) Book でログアウトした直後（§7.6 のログアウトの印がその共有セッションに効いている）は 403 `desktop_sso_paused`（数えない）にした。
+
+### 7.6 共有セッション Cookie による自動ログイン（ブラウザ・デスクトップ共通・2026-10-28・v0.196.0）
+
+PMS・RMS・Order は Supabase の Cookie `sb-<project-ref>-auth-token`（`Domain=.yamado.app`）でセッションを共有している。
+同じ親ドメインなので、ブラウザでも `book.yamado.app` に自動で送られてくる。これを使い、PMS 等にログインしていれば
+Book の管理画面にもそのまま入れるようにした（§7.5 のデスクトップ専用の口を、ブラウザでも同じにしたもの）。
+
+- 方式: 共有 Cookie から **access_token だけ**を読み（`lib/admin-shared-sso.ts readSharedAccessToken`・`.0`/`.1` の分割・`base64-` 接頭辞・旧 JSON/配列形式）、
+  `auth.getUser(access_token)` で確かめてから、§7.5 と同じ `generateLink` → `verifyOtp` で **Book 専用 Cookie に独立した新しいセッション（別の refresh token 家族）**を作る。
+  共有 Cookie のコピーはしない（同じ refresh token を 2 か所で使うとローテーションの再利用検知で家族ごと失効する・2026-06-12 の事故）。refresh_token は読まない・ログに出さない。
+- 入口: **`hooks.server.ts`**（`/admin` 配下・セッション解決の直後・二段階認証の関所の前）→ `lib/server/admin-shared-sso.ts trySharedCookieSso`。
+  `/admin/login` の load ではなく hooks にした理由: レイアウトの load は未ログインを `/admin/login` へ飛ばすときに元のパスを捨てる（`next` が無い）ので、
+  hooks なら「開こうとした画面」へそのまま 303 で戻せる。成功時は `redirect` を throw する（SvelteKit が新しい Cookie を応答に付ける）。
+- 発動する条件（すべて満たすときだけ。どれか外れたら何もせず通常のログイン画面）:
+
+  | 条件 | 中身 |
+  |---|---|
+  | 認証方式 | `AUTH_MODE=supabase`（デモ認証の環境では動かさない） |
+  | Book のセッション | 無い（`locals.user` も `pendingAuthUser` も null。会員でログイン中なら触らない） |
+  | ページ遷移 | GET・`Sec-Fetch-Mode: navigate`・`Sec-Fetch-Site` が `same-origin` / `same-site` / `none`・`Sec-Fetch-Dest` があれば `document`・先読み（`Sec-Purpose: prefetch` 等）でない。`__data.json` は対象外。Sec-Fetch-* を送らない古いブラウザも対象外 |
+  | パス | `/admin` 配下（`/admin/login` は `/admin` へ戻す）。`/admin/login/…`（再設定・パスキー）と `/admin/sso` は対象外。戻す先は `safeNext` を通した同じ origin の `/admin` 配下だけ（オープンリダイレクトにしない） |
+  | 共有 Cookie | `PUBLIC_SUPABASE_URL` から導いた ref の Cookie だけ。他プロジェクト・`sb-autumn-book-auth-token` は読まない。access_token の `exp` が切れていれば認証サーバに問い合わせない |
+  | ログアウトの印 | `ab_admin_sso_pause` が今の共有セッション（JWT の `session_id` の指紋）に効いていない |
+  | 失敗の印 | `ab_admin_sso_tried`（失敗した access_token の指紋・1 時間）と同じトークンでない＝同じトークンで何度も試さない（リダイレクトの往復・ログの洪水を防ぐ） |
+  | IP 制限 | `RATE_RULES.adminIp`（1 IP 10 回/10 分で 15 分）が掛かっていない |
+  | 本人 | `getUser` が通り、`app_metadata.role ∈ {admin, staff}`・`banned_until` が過去・メールあり（§7.5 と同じ `desktopSsoUserProblem`） |
+
+- ログアウト直後の再ログイン防止: `/auth/logout` で、共有 Cookie があれば `ab_admin_sso_pause`（値＝共有セッションの `session_id` の SHA-256 指紋・httpOnly・12 時間）を付ける。
+  解けるのは (1) 共有 Cookie が消えた（PMS 等でログアウトした）のを `/admin` で見たとき、(2) PMS 等で別のセッションにログインし直したとき（`session_id` が変わる）、(3) 12 時間たったとき、(4) `/admin/login` のパスワードで手でログインしたとき。
+  `session_id` が読めないトークンのときは `any`（時間で解けるまで止める）。
+- 守りは弱めていない: 作るセッションは aal1 なので、TOTP / パスキー登録済みの人は 303 の先で hooks の関所どおり `/admin/mfa` を通る。
+  `ADMIN_MFA_REQUIRED` の扱いも同じ。失敗は `adminIp` に数える（`invalid_jwt` / `not_staff` / `banned` / `no_email`。サーバ側の失敗は数えない）。
+- 追跡: `core.access_logs` に `login_success`（`method: shared_cookie_sso`）／`login_failure`（`reason: shared_cookie_sso_*`）。トークン・Cookie の値は残さない（印の Cookie も指紋だけ）。
+- CSRF の考え方: GET でログイン状態を変えるので、上の「ページ遷移」の条件で他サイトからの遷移・埋め込み・サブリソース・先読みを外している。
+  仮に発動しても作られるのは**ブラウザの持ち主本人（共有 Cookie の人）**のセッションで、戻す先も同じ origin の `/admin` 配下だけ。
+- Cloudflare Access（§7.1）との関係: Access を `/admin*` に掛けている場合、Access の確認はエッジで先に行われ、通ったリクエストだけが Book に届く。
+  自動ログインは **Access を飛ばさない**（Access 未通過のブラウザは Access の画面になり、通過後に自動ログイン）。Access のセッション（24 時間）が切れていれば、その都度 Access を通る。追加の設定は不要。
+- デスクトップ: タブ型シェルの Book タブ（同じ Cookie 置き場）でも同じ条件で効く（Electron の `loadURL` は `Sec-Fetch-Site: none` の遷移）。シェルが従来どおり `/admin/sso` を呼んでも、
+  先に自動ログインが済んでいれば 204 で何もしない（§7.5 末尾）。
+- 実装: `lib/admin-shared-sso.ts`（純関数・テスト `admin-shared-sso.test.ts`）・`lib/server/admin-shared-sso.ts`・`hooks.server.ts`・`routes/(public)/auth/logout/+page.server.ts`・`routes/admin/login/+page.server.ts`・`routes/admin/sso/+server.ts`。service_role は `partnerServiceClient()`（例外その13）。DB 変更なし。
 
 ---
 

@@ -7,6 +7,8 @@ import { paraglideMiddleware } from '$lib/paraglide/server';
 import { experimentsForRequest } from '$lib/server/experiments';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { logAdminAccess } from '$lib/server/access-log';
+import { trySharedCookieSso } from '$lib/server/admin-shared-sso';
+import { isAdminPath } from '$lib/admin-mfa';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 const PRIMARY_ORIGIN = 'https://book.yamado.app';
@@ -70,6 +72,12 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		event.locals.pendingAuthUser = null;
 		event.locals.adminAal = null;
 	}
+
+	// 共有セッション Cookie による管理画面の自動ログイン（docs/auth-hardening.md §7.6）。
+	// Book のセッションが無いまま /admin をページとして開いたとき、PMS / RMS / Order の共有 Cookie（Domain=.yamado.app）の
+	// access_token を確かめて Book 専用の新しいセッションを作り、同じ画面へ 303（redirect を throw する）。
+	// できないときは何もせず、下の通常の処理（レイアウトの load がログイン画面へ）に進む。
+	if (isAdminPath(event.url.pathname)) await trySharedCookieSso(event);
 
 	// 管理画面の二段階認証の関所（docs/auth-hardening.md §7.2）。
 	// レイアウトの load は画面の表示にしか効かず、フォームの action・+server.ts（CSV・添付など）には効かないため、

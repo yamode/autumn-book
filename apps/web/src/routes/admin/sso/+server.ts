@@ -9,11 +9,17 @@
 //   メールは送られない（generateLink の magiclink を、その場で verifyOtp に使う。パスキーのログインと同じ手）。
 // ★セッションは aal1。二段階認証を登録済みの人は hooks の関所どおり /admin/mfa でコードを求められる（肩代わりしない）
 // ★失敗は管理画面のログインと同じ「1 IP 10 回/10 分で 15 分止める」に数え、アクセスログに login_failure（desktop_sso_*）で残す
+// ★2026-10-28（v0.196.0）: ブラウザ・デスクトップとも、共有 Cookie による自動ログイン（hooks・auth-hardening.md §7.6）が先に効く。
+//   この口は将来 desktop を整理するときに廃止する。それまでは呼ばれても害がないように:
+//   - 既に同じ人の Book セッションがあれば何もしない（204・新しいセッションを作らない）
+//   - Book でログアウトした直後（ab_admin_sso_pause がこの共有セッションに効いている）は 403（シェルはログイン画面のまま）
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { clientIp, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { logAccessEvent } from '$lib/server/access-log';
 import { desktopSsoPrecheck, desktopSsoUserProblem } from '$lib/admin-desktop-sso';
+import { peekJwt } from '$lib/admin-shared-sso';
+import { sharedSsoPausedFor } from '$lib/server/admin-shared-sso';
 
 const HEADERS = { 'cache-control': 'no-store' };
 const reply = (status: number) => new Response(null, { status, headers: HEADERS });
@@ -51,6 +57,18 @@ export const POST = async (event) => {
 		return failed(problem ?? 'invalid_jwt', problem === 'invalid_jwt' || !user ? 401 : 403, {
 			user: user ? { id: user.id, email: user.email ?? null } : undefined
 		});
+	}
+
+	// 既に同じ人の Book セッションがある（自動ログインが先に効いた等）なら作り直さない
+	const cur = event.locals.user;
+	if (cur && (cur.role === 'admin' || cur.role === 'staff') && cur.id === user.id) {
+		await rateReset(event.platform, RATE_RULES.adminIp, key);
+		return reply(204);
+	}
+	// Book でログアウトした直後は入れない（ブラウザの自動ログインと同じ扱い）
+	const peek = peekJwt(pre.token);
+	if (await sharedSsoPausedFor(event, { accessToken: pre.token, exp: peek?.exp ?? null, sessionId: peek?.sessionId ?? null })) {
+		return failed('paused', 403, { count: false, user: { id: user.id, email: user.email } });
 	}
 
 	// Book 専用 Cookie に新しいセッションを作る（メールは送られない）

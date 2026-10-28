@@ -4,6 +4,7 @@ import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { clientIp, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
 import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
+import { clearSharedSsoPause } from '$lib/server/admin-shared-sso';
 
 // ログインの失敗・制限中で同じ文言（制限中かを外から区別させない・docs/auth-hardening.md §4.5）
 const LOGIN_FAILED_MESSAGE = 'メールアドレスまたはパスワードが違うか、しばらくの間ログインを制限しています。数分おいてからお試しください。';
@@ -66,6 +67,8 @@ export const actions: Actions = {
 			return fail(403, { message: 'この画面にアクセスする権限がありません', email });
 		}
 		logAccessEvent(event, { event: 'login_success', user: { id: data.user.id, email: data.user.email ?? email }, status: 303, detail: { method: 'password' } });
+		// 手でログインし直したら、ログアウト時に付けた「自動ログインしない」印を外す（docs/auth-hardening.md §7.6）
+		clearSharedSsoPause(event);
 		redirect(303, '/admin');
 	},
 

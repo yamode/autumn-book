@@ -52,6 +52,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // 例外その12（2026-10-28・docs/auth-hardening.md §7.5）: デスクトップアプリからの管理画面 SSO（routes/admin/sso/+server.ts）。
 //   Bearer の access_token を auth.getUser(jwt) で確かめ、admin / staff・停止なしを確認してから、パスキーのログイン（例外その8）と
 //   同じ generateLink → verifyOtp で Book 専用 Cookie にセッションを作る。メールアドレスは検証済みトークンの user.email だけを使う。
+// 例外その13（2026-10-28・docs/auth-hardening.md §7.6）: 共有セッション Cookie による管理画面の自動ログイン（lib/server/admin-shared-sso.ts）。
+//   例外その12 と同じ確かめ方（共有 Cookie の access_token を auth.getUser(jwt)・admin / staff・停止なし）のあと、同じ手で Book 専用のセッションを作る。
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 
