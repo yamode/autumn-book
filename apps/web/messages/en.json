@@ -1232,5 +1232,6 @@
   "lookup_phone_h": "Booked by phone, or other inquiries",
   "lookup_phone_body": "Please call the property.",
   "account_legacy_note": "If you booked with our previous reservation system on or before 29 November 2026, please check <a href=\"/booking/lookup\" class=\"underline\">here</a>.",
-  "gcancel_reload_lookup": "See \"Check your reservation\" for how to check your booking."
+  "gcancel_reload_lookup": "See \"Check your reservation\" for how to check your booking.",
+  "ci_demo_notice": "This is a sample screen. Nothing you enter or save here is applied to a real reservation or the PMS."
 }

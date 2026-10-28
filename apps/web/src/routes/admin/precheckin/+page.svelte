@@ -2,6 +2,7 @@
 	// 事前チェックインの状況一覧（P2）。送信はメールの手動ボタンのみ（SMS・自動送信は P4）。
 	import { enhance } from '$lib/enhance';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
 	import { channelBadgeClass, channelLabel } from '$lib/booking-channel';
 	import { formatDateJa, addDays } from '$lib/format';
 	import {
@@ -38,6 +39,11 @@
 	title="事前チェックイン"
 	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメールで送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。"
 />
+
+<p class="mb-3 text-sm">
+	<a href="/ci/{DEMO_PRECHECKIN_TOKEN}" target="_blank" rel="noopener" class="text-stone-700 underline underline-offset-2">お客様フォームの見本を開く ↗</a>
+	<span class="text-xs text-stone-500">（SMS・メールのリンク先と同じ画面。見本の予約で、入力しても実際の予約・PMS には反映されません）</span>
+</p>
 
 {#if !data.live}
 	<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

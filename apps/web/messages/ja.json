@@ -1232,5 +1232,6 @@
   "lookup_phone_h": "お電話でご予約の方・その他のお問い合わせ",
   "lookup_phone_body": "各施設までお電話ください。",
   "account_legacy_note": "2026年11月29日以前に以前の予約システムでご予約の方は、<a href=\"/booking/lookup\" class=\"underline\">こちら</a>からご確認ください。",
-  "gcancel_reload_lookup": "ご予約の確認方法は「ご予約の確認」をご覧ください。"
+  "gcancel_reload_lookup": "ご予約の確認方法は「ご予約の確認」をご覧ください。",
+  "ci_demo_notice": "これは見本の画面です。入力・保存しても、実際のご予約や PMS には反映されません。"
 }

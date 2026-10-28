@@ -5,7 +5,7 @@
 	import { page } from '$app/state';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { shortJst } from '$lib/precheckin';
+	import { DEMO_PRECHECKIN_CODE, shortJst } from '$lib/precheckin';
 
 	let { data, children } = $props();
 
@@ -39,6 +39,9 @@
 
 		<main class="flex-1 px-4 pb-10 pt-4">
 			{#if data.ctx}
+				{#if data.ctx.bookingCode === DEMO_PRECHECKIN_CODE}
+					<p class="mb-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 ring-1 ring-sky-200">{m.ci_demo_notice()}</p>
+				{/if}
 				<h1 class="text-lg font-semibold">{m.ci_title()}</h1>
 				<ol class="mt-3 flex gap-1.5 text-[11px]" aria-label={m.ci_title()}>
 					{#each steps as label, i (label)}

@@ -39,16 +39,16 @@ const RATE_PREFIX = 'ci:';
 
 // ---------------------------------------------------------------- 見本（DATA_SOURCE=demo）
 
-// 見本の回答はプロセス内だけに持つ（ローカル確認用）
+// 見本（DEMO_PRECHECKIN_TOKEN）はどのデータ源でも開ける。DB には一切触れず、回答はプロセス内だけに持つ（再起動・別の isolate では消える）。
+// 本番でも、お客様に届く画面（/ci・食事の時間）をスタッフが確かめられるようにするため（管理画面の「お客様フォームの見本」から）。
 let demoAnswers: PcAnswers = {};
 
 // ---------------------------------------------------------------- フォーム（anon）
 
 /** トークンからフォームの中身を引く。開いた時刻も DB に残る */
 export async function pcContext(token: string): Promise<PcContext | { error: PcError }> {
-	if (DATA_SOURCE !== 'supabase') {
-		return token === DEMO_PRECHECKIN_TOKEN ? demoPrecheckinContext(demoAnswers) : { error: 'invalid_token' };
-	}
+	if (token === DEMO_PRECHECKIN_TOKEN) return demoPrecheckinContext(demoAnswers);
+	if (DATA_SOURCE !== 'supabase') return { error: 'invalid_token' };
 	const { data, error } = await supa().rpc('precheckin_context', { p_token: token });
 	if (error) {
 		dbg('context error', error.message);
@@ -72,22 +72,22 @@ function rpcResult(data: unknown, error: { message: string } | null): PcSaveResu
 }
 
 export async function pcSaveAnswers(token: string, answers: PcAnswers): Promise<PcSaveResult> {
-	if (DATA_SOURCE !== 'supabase') {
-		if (token !== DEMO_PRECHECKIN_TOKEN) return { ok: false, error: 'invalid_token' };
+	if (token === DEMO_PRECHECKIN_TOKEN) {
 		demoAnswers = { ...demoAnswers, ...answers, basic_saved_at: new Date().toISOString() };
 		return { ok: true };
 	}
+	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'invalid_token' };
 	const { data, error } = await supa().rpc('precheckin_save_answers', { p_token: token, p_answers: answers });
 	if (error) dbg('save_answers error', error.message);
 	return rpcResult(data, error);
 }
 
 export async function pcSaveMeals(token: string, meals: PcMealChoice[]): Promise<PcSaveResult> {
-	if (DATA_SOURCE !== 'supabase') {
-		if (token !== DEMO_PRECHECKIN_TOKEN) return { ok: false, error: 'invalid_token' };
+	if (token === DEMO_PRECHECKIN_TOKEN) {
 		demoAnswers = { ...demoAnswers, meals: meals.filter((m) => m.time), meals_saved_at: new Date().toISOString() };
 		return { ok: true };
 	}
+	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'invalid_token' };
 	const { data, error } = await supa().rpc('precheckin_save_meals', { p_token: token, p_meals: meals });
 	if (error) dbg('save_meals error', error.message);
 	return rpcResult(data, error);
