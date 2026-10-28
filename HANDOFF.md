@@ -1,3 +1,16 @@
+## 事前チェックイン P1: 予約管理の一覧に OTA 名を出す（2026-10-29・v0.207.0）
+
+- 設計: `docs/pre-checkin.md`（P2 以降は設計案。ユーザー回答: 送信は**当日 9:00・SMS（NTT CPaaS はトライアル契約中）**／食事時間は**スタッフ承認なしでそのまま確定**）。
+- DB: autumn-shared `20261028213735_book_admin_list_bookings_ota_channel.sql`（**作成のみ・未コミット・未適用。本番適用はユーザーの指示を待つ**）。`book.admin_list_bookings` を drop→create し、`channel_name` を `booking.channels` → 無ければ販売先マスタ `pms.ota_channels.name`、戻りの末尾に `channel_code`・`channel_category`、`p_source='ota'`（区分が agency/net/engine/agt）で OTA 経由のみ。
+- 画面: `/admin/reservations` の経路欄に色付きの印（OTA=青・公式=緑・その他=灰）。経路の絞り込みに「OTA経由のみ」。純関数 `src/lib/booking-channel.ts`（テストあり）。
+- **未対応**: 予約詳細ページ（`admin_booking_detail`）の経路名は従来どおりコード表示。`pms.ota_channels` に当該 `channel_code` の行が無い経路は名前が出ずコード表示。
+
+### テストチェックリスト（OTA 名の表示）
+- [ ] （DB 適用後）一覧の経路欄に OTA 名（楽天トラベル・じゃらん・一休・Booking.com・Expedia・tripla など）が青い印で出る
+- [ ] 経路を「OTA経由のみ」にすると OTA・予約エンジン経由だけになり、直販・取引先・電話は出ない
+- [ ] 既定（直販のみ）・取引先・「OTA・電話も含む」の絞り込みが従来どおり
+- [ ] スマホ幅のカード表示でも経路の印が崩れない
+
 ## 取引先の複数部屋タイプ予約 P2（表示・請求書・メール・全体取消の部屋の行）（2026-10-29・v0.206.0）
 
 - P1（v0.205.0・autumn-shared `20261028125440`）の続き。設計: `docs/partner-multi-room-type.md`。DB 変更なし。

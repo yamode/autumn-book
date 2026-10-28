@@ -707,6 +707,9 @@ export type BookingListRow = {
 	/** 公式予約の部屋の数（それ以外は 1）・その滞在が何室目か（autumn-shared 20261010204933 から） */
 	room_count?: number;
 	room_index?: number | null;
+	/** 経路のコード（core.stays.channel_code）と販売先マスタの区分（agency/net/engine/agt = OTA 系）。autumn-shared 20261028213735 から */
+	channel_code?: string | null;
+	channel_category?: string | null;
 };
 
 export type BookingQuery = {
@@ -714,7 +717,7 @@ export type BookingQuery = {
 	facilityId: string | null;
 	/** null = すべて */
 	status?: string | null;
-	/** 'autumn_booking'（既定）または null（OTA 等も含めてすべて） */
+	/** 'autumn_booking'（既定）・'rms_partner'・'ota'（OTA 経由のみ）または null（OTA 等も含めてすべて） */
 	source?: string | null;
 	q?: string | null;
 	checkinFrom?: string | null;

@@ -35,7 +35,7 @@ type ListRow = BookingListRow & { partner_name: string | null; partner_advance?:
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	const status = event.url.searchParams.get('status') ?? '';
-	// 既定は直販のみ。'' を渡すと OTA・電話予約も含めた全 source になる。'rms_partner' は取引先予約（限定URL）だけ
+	// 既定は直販のみ。'' を渡すと OTA・電話予約も含めた全 source になる。'rms_partner' は取引先予約（限定URL）だけ、'ota' は OTA・旅行会社・予約エンジン経由だけ
 	const channel = event.url.searchParams.get('channel') ?? 'autumn_booking';
 	const q = event.url.searchParams.get('q') ?? '';
 	const range = defaultRange();
@@ -118,6 +118,8 @@ export const load: PageServerLoad = async (event) => {
 			facility_id: b.facilityId,
 			source: b.channel === 'ota' ? 'ota' : 'autumn_booking',
 			channel_name: b.channel === 'ota' ? 'OTA' : '公式サイト',
+			channel_code: b.channel,
+			channel_category: b.channel === 'ota' ? 'net' : null,
 			client: b.channel === 'ota' ? null : 'web',
 			guest_name: b.guest.name,
 			guest_kana: b.guest.kana,

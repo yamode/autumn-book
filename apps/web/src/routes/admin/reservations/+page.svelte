@@ -3,6 +3,7 @@
 	import { formatYen, formatDateJa, todayStr, addDays } from '$lib/format';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import { STAY_STATUS, stayStatusClass } from './stay-status';
+	import { channelLabel, channelBadgeClass } from '$lib/booking-channel';
 
 	let { data } = $props();
 
@@ -23,13 +24,6 @@
 		return `?${q}`;
 	}
 	const detailHref = (code: string) => `/admin/reservations/${encodeURIComponent(code)}`;
-
-	/** 経路。直販はサイト／アプリまで割り、取引先予約は取引先名、それ以外はチャネル名（OTA 等） */
-	function channelLabel(b: (typeof data.list)[number]): string {
-		if (b.source === 'autumn_booking') return b.client === 'app' ? 'アプリ' : 'サイト';
-		if (b.source === 'rms_partner') return b.partner_name ? `取引先：${b.partner_name}` : (b.channel_name ?? '取引先予約');
-		return b.channel_name ?? b.source ?? '—';
-	}
 
 	// 取引先予約の前受金（銀行振込）の印: 入金待ち・期限超過・取消後の返金待ち（2026-10-28）
 	const advanceBadgeClass = (tone: string) =>
@@ -117,6 +111,7 @@
 			<select name="channel" class={fieldCls}>
 				<option value="autumn_booking" selected={data.filters.channel === 'autumn_booking'}>直販のみ（サイト・アプリ）</option>
 				<option value="rms_partner" selected={data.filters.channel === 'rms_partner'}>取引先予約（限定URL）</option>
+				<option value="ota" selected={data.filters.channel === 'ota'}>OTA経由のみ（閲覧のみ）</option>
 				<option value="" selected={data.filters.channel === ''}>OTA・電話も含む（閲覧のみ）</option>
 			</select>
 		</label>
@@ -178,7 +173,7 @@
 				</p>
 				<p class="truncate text-[13px] text-stone-600">{b.room_name ?? '—'}</p>
 				<div class="mt-2 flex items-center justify-between gap-2 border-t border-stone-100 pt-2 text-xs text-stone-500">
-					<span class="min-w-0 truncate">{channelLabel(b)}{#if b.partner_advance}<span class="ml-1 rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</span>
+					<span class="min-w-0 truncate"><span class="rounded px-1.5 py-0.5 text-[11px] {channelBadgeClass(b)}">{channelLabel(b)}</span>{#if b.partner_advance}<span class="ml-1 rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</span>
 					{#if b.source === 'autumn_booking'}
 						<span class="inline-flex shrink-0 items-center gap-1 {mailClass(b.mail_status)}">
 							<span class="h-1.5 w-1.5 rounded-full {mailDot(b.mail_status)}" aria-hidden="true"></span>
@@ -233,7 +228,7 @@
 					<td class="px-3 whitespace-nowrap">{b.room_count ?? 1}室{#if (b.room_count ?? 1) > 1 && b.room_index}<span class="block text-[10px] text-stone-400">{b.room_index}室目</span>{/if}</td>
 					<td class="max-w-[180px] truncate px-3">{b.room_name ?? '—'}</td>
 					<td class="px-3 text-right whitespace-nowrap tabular-nums">{b.total_amount != null ? formatYen(b.total_amount) : '—'}</td>
-					<td class="px-3 text-xs">{channelLabel(b)}{#if b.partner_advance}<span class="mt-0.5 block w-fit rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</td>
+					<td class="px-3 text-xs"><span class="inline-block rounded px-1.5 py-0.5 {channelBadgeClass(b)}">{channelLabel(b)}</span>{#if b.partner_advance}<span class="mt-0.5 block w-fit rounded px-1 py-0.5 text-[11px] ring-1 {advanceBadgeClass(b.partner_advance.tone)}">{b.partner_advance.label}</span>{/if}</td>
 					<td class="px-3 text-xs whitespace-nowrap {mailClass(b.mail_status)}">
 						{#if b.source === 'autumn_booking' && MAIL_LABEL[b.mail_status ?? '']}
 							<span class="inline-flex items-center gap-1"><span class="h-1.5 w-1.5 rounded-full {mailDot(b.mail_status)}" aria-hidden="true"></span>{MAIL_LABEL[b.mail_status ?? '']}</span>
@@ -251,7 +246,7 @@
 </div>
 
 <p class="mt-3 text-xs text-stone-400">
-	該当 {data.list.length} 件{data.filters.channel === 'autumn_booking' ? '（直販）' : data.filters.channel === 'rms_partner' ? '（取引先予約）' : ''}
+	該当 {data.list.length} 件{data.filters.channel === 'autumn_booking' ? '（直販）' : data.filters.channel === 'rms_partner' ? '（取引先予約）' : data.filters.channel === 'ota' ? '（OTA経由）' : ''}
 	{#if data.truncated}／ 表示は 200 件までです。期間を絞ってください。{/if}
 </p>
 <p class="mt-1 text-xs text-stone-400">
