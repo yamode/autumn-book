@@ -102,12 +102,12 @@
 						<path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round" />
 					</svg>
 				</a>
-				<span class="flex-1 truncate text-center text-[15px]">{title}</span>
-				<span class="h-10 w-10"></span>
+				<span class="flex-1 truncate pl-1 text-[15px]">{title}</span>
 			{:else}
 				<span class="flex-1 truncate text-[15px]">{title}</span>
-				<LocaleSwitcher />
 			{/if}
+			<!-- 言語切替は下層ページでも常にヘッダーに出す（貸切風呂など、どこからでも切り替えられるように） -->
+			<LocaleSwitcher />
 		</header>
 
 		<main class="flex-1 {snsEntries.length ? 'pb-4' : 'pb-16'}">

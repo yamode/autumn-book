@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
-import { getLocale } from '$lib/paraglide/runtime';
+import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { guideIdParam, rememberBrowseFacility } from '$lib/server/inroom-browse';
 import type { RequestHandler } from './$types';
 
@@ -23,10 +23,10 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const token = cookies.get(STAY_COOKIE);
 	if (token) {
 		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		if (stay) redirect(302, guidePath ?? '/r');
+		if (stay) redirect(302, localizeHref(guidePath ?? '/r'));
 		cookies.delete(STAY_COOKIE, { path: '/' });
 	}
 	const known = slug && /^[a-z0-9-]+$/.test(slug) ? rememberBrowseFacility(cookies, slug, getLocale()) : false;
-	if (known && guidePath) redirect(302, guidePath);
-	redirect(302, known && slug ? `/r?f=${encodeURIComponent(slug)}` : '/r');
+	if (known && guidePath) redirect(302, localizeHref(guidePath));
+	redirect(302, localizeHref(known && slug ? `/r?f=${encodeURIComponent(slug)}` : '/r'));
 };

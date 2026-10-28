@@ -4,6 +4,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { stayEndedFacility, stayUpcoming } from '$lib/server/inroom-banners';
+import { localizeHref } from '$lib/paraglide/runtime';
 import type { RequestHandler } from './$types';
 
 // 印刷スリップの QR（/r/c/<token>）着地点。
@@ -23,7 +24,7 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 			sameSite: 'lax',
 			maxAge: stayCookieMaxAge(stay.validTo)
 		});
-		redirect(302, url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r');
+		redirect(302, localizeHref(url.searchParams.get('next') === 'bath' ? '/r/bath' : '/r'));
 	}
 
 	// チェックイン前（開始はチェックイン日 12:00）の QR も Cookie に交換して /r へ。/r が「○日 12:00 からご利用いただけます」を出し、
@@ -36,12 +37,12 @@ export const GET: RequestHandler = async ({ params, cookies, url }) => {
 			sameSite: 'lax',
 			maxAge: stayCookieMaxAge(upcoming.validTo)
 		});
-		redirect(302, '/r');
+		redirect(302, localizeHref('/r'));
 	}
 
 	// チェックアウト後（期限切れ・失効）の QR はサンクス表示へ。施設は f=slug で渡す（バナーを施設別に出すため）
 	const ended = await stayEndedFacility(token, 'ja');
-	if (ended) redirect(302, `/r?e=ended&f=${encodeURIComponent(ended.slug)}`);
+	if (ended) redirect(302, localizeHref(`/r?e=ended&f=${encodeURIComponent(ended.slug)}`));
 
-	redirect(302, '/r?e=invalid');
+	redirect(302, localizeHref('/r?e=invalid'));
 };
