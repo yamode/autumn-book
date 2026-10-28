@@ -3,6 +3,7 @@
 	import { getLocale, localizeHref, type Locale } from '$lib/paraglide/runtime';
 
 	// 現在のロケールを取得（リアクティブに参照）
+	let { dark = false }: { dark?: boolean } = $props();
 	let locale = $derived(getLocale());
 
 	// ロケールの表示ラベル
@@ -22,16 +23,16 @@
 </script>
 
 <!-- 言語スイッチャ（設計書 §3）: 地球儀アイコン + ロケールリンク -->
-<div class="flex items-center gap-1 text-xs text-stone-500">
+<div class="flex items-center gap-1 text-xs {dark ? 'text-stone-300' : 'text-stone-500'}">
 	<span aria-hidden="true" class="text-base">🌐</span>
 	{#each locales as loc}
 		{#if loc === locale}
-			<span class="font-medium text-brand-900">{labels[loc]}</span>
+			<span class="font-medium {dark ? 'text-white' : 'text-brand-900'}">{labels[loc]}</span>
 		{:else}
-			<a href={hrefFor(loc)} class="hover:text-brand-800">{labels[loc]}</a>
+			<a href={hrefFor(loc)} data-sveltekit-reload class="px-1 py-2 {dark ? 'hover:text-white' : 'hover:text-brand-800'}">{labels[loc]}</a>
 		{/if}
 		{#if loc !== 'zh-TW'}
-			<span class="text-stone-300">|</span>
+			<span class="{dark ? 'text-stone-600' : 'text-stone-300'}">|</span>
 		{/if}
 	{/each}
 </div>

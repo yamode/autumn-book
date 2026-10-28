@@ -107,7 +107,7 @@
 				<span class="flex-1 truncate text-[15px]">{title}</span>
 			{/if}
 			<!-- 言語切替は下層ページでも常にヘッダーに出す（貸切風呂など、どこからでも切り替えられるように） -->
-			<LocaleSwitcher />
+			<LocaleSwitcher dark />
 		</header>
 
 		<main class="flex-1 {snsEntries.length ? 'pb-4' : 'pb-16'}">
