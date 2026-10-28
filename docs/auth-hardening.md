@@ -382,6 +382,33 @@ alter table public.rms_partner_access_logs add constraint rms_partner_access_log
 - 認証アプリを失った管理者: 別の **admin** が `/admin/security/users`（新設・admin のみ・`auth.admin.mfa.deleteFactor` は service_role が要る → `partnerServiceClient()` 経由の管理 API を `lib/server/admin-mfa.ts` に閉じ込める）で factor を削除 → 本人が再登録。`book.admin_audit_logs` に `admin_mfa_reset` を残す（既存の監査表）。
 - admin が 1 人しかいない場合: Supabase ダッシュボード（Owner）で Authentication → Users → 該当ユーザー → Factors を削除。**admin は必ず 2 名以上**（§12.1）。
 
+### 7.5 デスクトップ SSO（`POST /admin/sso`・2026-10-28・**ユーザー確認待ち**）
+
+autumn-pms のデスクトップアプリ（v0.20.0〜のタブ型シェル）で、PMS にログインすれば Book の管理画面にも入れるようにする口
+（設計: autumn-pms `desktop/docs/tabbed-shell-design.md` §2）。ブランチ `feat/admin-sso` のまま。**main には入れていない**。
+
+- 流れ: シェル（メインプロセス）が PMS / RMS の共有セッション（`Domain=.yamado.app`）から **access_token だけ**を読み、
+  `Authorization: Bearer <access_token>`・`x-autumn-desktop: <端末名 / アプリ版>` で POST → Book が検証して
+  **Book 専用 Cookie（`sb-autumn-book-auth-token`）に独立した新しいセッション**を作り 204。
+- 共有 Cookie を Book の名前でコピーする方式は採らない（同じ refresh token を 2 か所で使うとローテーションの再利用検知で家族ごと失効する・2026-06-12 の事故と同じ）。
+- 脅威と対策:
+
+  | 脅威 | 対策 |
+  |---|---|
+  | ページ（XSS・他サイト）から叩かせる | `Origin` / `Referer` 付きは 403。`x-autumn-desktop` 必須。CORS は付けない（応答も読めない） |
+  | 盗んだ・古いトークン | 認証サーバで `auth.getUser(jwt)` を確かめる（期限切れ・失効・別プロジェクトは 401）。access_token は 1 時間で切れる |
+  | 会員・権限を外された人・停止中の人 | `app_metadata.role ∈ {admin, staff}` と `banned_until` を確認（ログイン画面と同じ基準）。外れたら 403 |
+  | 本文で別人のメールを渡す | 本文は読まない。`generateLink` の宛先は検証済みトークンの `user.email` だけ |
+  | 総当たり | 失敗は `RATE_RULES.adminIp`（1 IP 10 回/10 分で 15 分）に数える。シェル側も同じトークンでの失敗は 1 回で打ち止め |
+  | 二段階認証の肩代わり | 作るセッションは aal1。TOTP / パスキー登録済みの人は hooks の関所どおり `/admin/mfa` を通る |
+  | 追跡 | `core.access_logs` に `login_success`（`method: desktop_sso`・`device`）／`login_failure`（`reason: desktop_sso_*`） |
+
+- 注意: §7.1 の Cloudflare Access を `/admin*` に掛けている場合、`/admin/sso` も Access の後ろに入る。デスクトップの Book タブで
+  一度 Access を通っていれば同じ Cookie 置き場の `CF_Authorization` が付くので通るが、通っていないと Access のログイン画面に転送され、
+  シェルは失敗（ログイン画面のまま）とみなす。Access を使うなら `/admin/sso` を Access の対象から外すか、Service Token を検討する。
+- 実装: `routes/admin/sso/+server.ts`、純関数 `lib/admin-desktop-sso.ts`（テスト `admin-desktop-sso.test.ts`）。service_role は `partnerServiceClient()`（例外その12）。
+- 確認待ち（U-6）: Book に置いてよいか。よければ `feat/admin-sso` を main へ入れて配備する。未配備の間、シェルは 404 を「未配備」とみなし、Book タブはログイン画面のまま動く。
+
 ---
 
 ## 8. 会員 OTP 送信のメール単位の制限【提案】

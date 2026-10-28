@@ -49,6 +49,9 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 // 例外その10: 西和賀HPの署名検証済み受付API（/api/inquiries/nishiwaga）。
 // 公開受付からは service-only の inquiry_accept だけを呼ぶ。社内の閲覧・変更は利用者JWTと施設権限で行う。
 // 例外その11: news/preview の署名・期限・記事ID・施設一致を検証した後に、その1記事だけを読む。
+// 例外その12（2026-10-28・docs/auth-hardening.md §7.5）: デスクトップアプリからの管理画面 SSO（routes/admin/sso/+server.ts）。
+//   Bearer の access_token を auth.getUser(jwt) で確かめ、admin / staff・停止なしを確認してから、パスキーのログイン（例外その8）と
+//   同じ generateLink → verifyOtp で Book 専用 Cookie にセッションを作る。メールアドレスは検証済みトークンの user.email だけを使う。
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 
