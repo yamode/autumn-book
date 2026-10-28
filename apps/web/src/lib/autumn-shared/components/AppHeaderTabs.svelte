@@ -1,4 +1,4 @@
-<!-- 写し元: autumn-shared 8b93a42 src/components/AppHeaderTabs.svelte（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す） -->
+<!-- 写し元: autumn-shared 2451512 src/components/AppHeaderTabs.svelte（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す） -->
 <script lang="ts">
   /**
    * 統合ヘッダーの左クラスタ（ロゴ＋アプリ切替タブ）— ブラウザ・デスクトップ共通。
@@ -197,11 +197,18 @@
     --aht-hover: var(--accent, #f2f5f8);
     --aht-line: var(--border, #dfe4ea);
     --aht-indicator: var(--aht-fg);
-    --aht-tab-h: var(--app-header-tab-h, 2.25rem);
+    /* 寸法の単位。アプリごとの root font-size（PMS 17px・RMS/Order 16px・Book 17px）に引きずられず、
+       どのアプリでも PMS と同じ実寸で描く（2026-10-28 指摘: Order だけ小さく見えた）。 */
+    --aht-u: var(--app-header-unit, 17px);
+    --aht-tab-h: var(--app-header-tab-h, calc(2.25 * var(--aht-u)));
+    /* フォントも各アプリの継承に任せない（Order は Segoe UI、Book は別の指定だった） */
+    font-family: var(--aht-font, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic UI', Meiryo, 'Noto Sans CJK JP', 'Noto Sans JP', IPAexGothic, IPAGothic, sans-serif);
+    font-weight: 400;
+    letter-spacing: normal;
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 0.5rem;
+    gap: calc(0.5 * var(--aht-u));
   }
   .autumn-header-tabs[data-theme='dark'] {
     --aht-fg: #ffffff;
@@ -228,7 +235,7 @@
   .logo {
     flex-shrink: 0;
     place-items: center;
-    border-radius: 0.5rem;
+    border-radius: calc(0.5 * var(--aht-u));
   }
   @media (min-width: 40rem) {
     .logo {
@@ -242,20 +249,20 @@
     outline-offset: 1px;
   }
   .autumn-header-tabs :global(.autumn-header-tabs-logo) {
-    width: 2rem;
-    height: 2rem;
+    width: calc(2 * var(--aht-u));
+    height: calc(2 * var(--aht-u));
     flex-shrink: 0;
   }
   .autumn-header-tabs :global(.autumn-header-tabs-mini) {
-    width: 1rem;
-    height: 1rem;
+    width: calc(1 * var(--aht-u));
+    height: calc(1 * var(--aht-u));
     flex-shrink: 0;
   }
 
   .tablist {
     min-width: 0;
     align-items: center;
-    gap: 0.125rem;
+    gap: calc(0.125 * var(--aht-u));
   }
   .tab {
     position: relative;
@@ -264,10 +271,10 @@
     min-width: 0;
     flex-shrink: 1;
     align-items: center;
-    gap: 0.375rem;
-    border-radius: 0.375rem;
-    padding: 0 0.75rem;
-    font-size: 0.875rem;
+    gap: calc(0.375 * var(--aht-u));
+    border-radius: calc(0.375 * var(--aht-u));
+    padding: 0 calc(0.75 * var(--aht-u));
+    font-size: calc(0.875 * var(--aht-u));
     line-height: 1;
     font-weight: 500;
     white-space: nowrap;
@@ -288,9 +295,9 @@
   .tab.selected::after {
     content: '';
     position: absolute;
-    left: 0.625rem;
-    right: 0.625rem;
-    bottom: 0.125rem;
+    left: calc(0.625 * var(--aht-u));
+    right: calc(0.625 * var(--aht-u));
+    bottom: calc(0.125 * var(--aht-u));
     height: 2px;
     border-radius: 1px;
     background: var(--aht-indicator);
@@ -304,8 +311,8 @@
     text-overflow: ellipsis;
   }
   .spinner {
-    width: 0.75rem;
-    height: 0.75rem;
+    width: calc(0.75 * var(--aht-u));
+    height: calc(0.75 * var(--aht-u));
     flex-shrink: 0;
     border-radius: 9999px;
     border: 2px solid var(--aht-line);
@@ -323,18 +330,18 @@
     }
   }
   .error-dot {
-    width: 0.5rem;
-    height: 0.5rem;
+    width: calc(0.5 * var(--aht-u));
+    height: calc(0.5 * var(--aht-u));
     flex-shrink: 0;
     border-radius: 9999px;
     background: #c62828;
   }
   .badge {
-    min-width: 1.125rem;
+    min-width: calc(1.125 * var(--aht-u));
     border-radius: 9999px;
     background: #c62828;
-    padding: 0.125rem 0.3rem;
-    font-size: 0.6875rem;
+    padding: calc(0.125 * var(--aht-u)) calc(0.3 * var(--aht-u));
+    font-size: calc(0.6875 * var(--aht-u));
     font-weight: 700;
     line-height: 1;
     text-align: center;
@@ -342,14 +349,14 @@
   }
   .notice {
     min-width: 0;
-    max-width: 24rem;
+    max-width: calc(24 * var(--aht-u));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     border-radius: 9999px;
     background: #fff6e0;
-    padding: 0.25rem 0.625rem;
-    font-size: 0.75rem;
+    padding: calc(0.25 * var(--aht-u)) calc(0.625 * var(--aht-u));
+    font-size: calc(0.75 * var(--aht-u));
     color: #6b4a00;
   }
 
@@ -361,11 +368,11 @@
     display: flex;
     height: var(--aht-tab-h);
     align-items: center;
-    gap: 0.125rem;
+    gap: calc(0.125 * var(--aht-u));
     border: 1px solid var(--aht-line);
-    border-radius: 0.375rem;
+    border-radius: calc(0.375 * var(--aht-u));
     background: transparent;
-    padding: 0 0.25rem 0 0.125rem;
+    padding: 0 calc(0.25 * var(--aht-u)) 0 calc(0.125 * var(--aht-u));
     color: var(--aht-muted);
   }
   .switcher:hover {
@@ -373,26 +380,26 @@
     color: var(--aht-fg);
   }
   .switcher :global(.autumn-header-tabs-logo) {
-    width: 1.75rem;
-    height: 1.75rem;
+    width: calc(1.75 * var(--aht-u));
+    height: calc(1.75 * var(--aht-u));
   }
   .chevron {
-    width: 0.875rem;
-    height: 0.875rem;
+    width: calc(0.875 * var(--aht-u));
+    height: calc(0.875 * var(--aht-u));
   }
   .menu {
     position: absolute;
     left: 0;
     z-index: 30;
-    margin-top: 0.5rem;
-    width: 18rem;
-    max-width: calc(100vw - 1rem);
+    margin-top: calc(0.5 * var(--aht-u));
+    width: calc(18 * var(--aht-u));
+    max-width: calc(100vw - calc(1 * var(--aht-u)));
     overflow: hidden;
     border: 1px solid var(--border, #dfe4ea);
-    border-radius: 0.5rem;
+    border-radius: calc(0.5 * var(--aht-u));
     background: var(--popover, #ffffff);
     color: var(--popover-foreground, #0b203d);
-    padding: 0.375rem;
+    padding: calc(0.375 * var(--aht-u));
     box-shadow:
       0 10px 15px -3px rgb(0 0 0 / 0.1),
       0 4px 6px -4px rgb(0 0 0 / 0.1);

@@ -288,7 +288,7 @@
 		<div class="sticky top-0 z-30" data-admin-header bind:clientHeight={headerH}>
 			<header
 					class="admin-topbar app-header flex items-center gap-2.5 border-b border-stone-200 bg-white/95 px-4 py-2.5 backdrop-blur sm:px-6 lg:px-8"
-					style="--foreground: #292524; --muted-foreground: #78716c; --accent: #f5f5f4; --border: #e7e5e4; --popover: #ffffff; --background: #ffffff; --ring: #44403c; --app-header-tab-h: 2.25rem"
+					style="--foreground: #292524; --muted-foreground: #78716c; --accent: #f5f5f4; --border: #e7e5e4; --popover: #ffffff; --background: #ffffff; --ring: #44403c"
 				>
 					<button
 						type="button"
