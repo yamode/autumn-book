@@ -14,7 +14,8 @@ import {
   isAdvanceBankOption,
   isDepositRemainderBilled
 } from '$lib/partner-booking';
-import { INVOICE_DRAFT_STYLE, INVOICE_STYLE, type InvoiceIssuer } from '$lib/partner-invoice';
+import { INVOICE_DRAFT_STYLE, INVOICE_STYLE, invoiceRoomText, type InvoiceIssuer } from '$lib/partner-invoice';
+import { partnerRoomTypeCounts } from '$lib/partner-room-types';
 
 // ---- 文言（★ 税の扱いが決まったらここだけ直す） ----
 
@@ -56,6 +57,8 @@ export type AdvanceInvoiceDocument = {
     nights: number;
     roomName: string;
     roomCount: number;
+    // 複数部屋タイプの予約（P2）だけ: 部屋タイプ別の室数。1つの部屋タイプなら無い（発行済みの紙面にも無い＝従来どおり）
+    roomTypes?: { name: string; count: number }[];
     adults: number;
     planName: string;
     guestName: string;
@@ -97,7 +100,8 @@ export type AdvanceInvoiceBookingSource = {
   advance_amount?: number | null;
   advance_due_date?: string | null;
   remainder_option?: string | null;
-  detail?: { booker?: { name?: string } | null; plan_display_name?: string | null } | null;
+  // rooms: 部屋ごとの部屋タイプ（複数部屋タイプの予約・room_code / room_name）
+  detail?: { booker?: { name?: string } | null; plan_display_name?: string | null; rooms?: unknown } | null;
 };
 
 // ---- 発行できるか ----
@@ -134,6 +138,8 @@ export function buildAdvanceInvoiceDocument(input: {
   const advance = Math.max(0, Math.min(b.advance_amount ?? 0, usage));
   const partial = b.payment_option === DEPOSIT_BANK_OPTION;
   const remainder = partial ? Math.max(0, usage - advance) : 0;
+  // 複数部屋タイプの予約は部屋タイプ別の室数（予約時の部屋ごとの部屋タイプ）
+  const roomTypes = partnerRoomTypeCounts(b);
   return {
     version: 1,
     kind: 'advance',
@@ -151,6 +157,7 @@ export function buildAdvanceInvoiceDocument(input: {
       nights: b.nights,
       roomName: (b.room_name ?? '').trim() || (b.room_code ?? ''),
       roomCount: b.room_count,
+      ...(roomTypes.length > 1 ? { roomTypes: roomTypes.map((c) => ({ name: c.name, count: c.count })) } : {}),
       adults: b.adult_total,
       // 取引先向けのプラン名（予約時点）。無い予約は元の名前
       planName: (b.detail?.plan_display_name ?? '').trim() || (b.plan_name ?? ''),
@@ -253,7 +260,7 @@ ${draft ? `<div class="draft-band">下書き — 正式な${esc(ADVANCE_INVOICE_
 <table class="t kv">
   <tr><th>施設</th><td>${esc(b.facilityName)}</td></tr>
   <tr><th>ご宿泊日</th><td>${ymd(b.checkIn)}〜${ymd(b.checkOut)}（${b.nights}泊）</td></tr>
-  <tr><th>お部屋</th><td>${esc(b.roomName)} ${b.roomCount}室・${b.adults}名</td></tr>
+  <tr><th>お部屋</th><td>${esc(invoiceRoomText(b))}・${b.adults}名</td></tr>
   <tr><th>プラン</th><td>${esc(b.planName)}</td></tr>
   <tr><th>ご宿泊者</th><td>${esc(b.guestName)} 様</td></tr>
   ${b.bookerName ? `<tr><th>ご予約者</th><td>${esc(b.bookerName)}</td></tr>` : ''}
@@ -298,7 +305,7 @@ export function advanceInvoiceMailBody(doc: AdvanceInvoiceDocument, pageUrl: str
     `${ADVANCE_INVOICE_TEXT.lead}${ADVANCE_INVOICE_TEXT.taxNote}`,
     '',
     `請求書番号: ${doc.invoiceNo}`,
-    `ご宿泊: ${ymd(b.checkIn)}（${b.nights}泊）　${b.roomName} ${b.roomCount}室・${b.adults}名　${b.guestName} 様`,
+    `ご宿泊: ${ymd(b.checkIn)}（${b.nights}泊）　${invoiceRoomText(b)}・${b.adults}名　${b.guestName} 様`,
     `ご利用総額: ${yen(a.usage)}`,
     a.partial ? `前受金（今回のご請求）: ${yen(a.advance)}` : `前受金（全額）: ${yen(a.advance)}`,
     ...(a.partial ? [`残額: ${yen(a.remainder)}（${a.remainderNote}）`] : []),

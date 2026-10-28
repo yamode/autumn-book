@@ -46,7 +46,7 @@
     type PartnerFacilityOverrides,
     type PartnerFacilityOwnSettings
   } from '$lib/partner-booking';
-  import { isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
+  import { invoiceRoomText, isLastDayOfMonth, periodLabel } from '$lib/partner-invoice';
   import { displayPlanName, partnerContentScope } from '$lib/partner-contents';
   import { PMS_PARTNER_GUEST_TYPE_LABELS, type PmsPartnerGuest } from '$lib/pms-partner-guest';
   import {
@@ -2155,7 +2155,7 @@
                     {#if b.booker}<div class="text-[11px] text-stone-500">予約者: {b.booker}</div>{/if}
                   </td>
                   <td class="py-2 pr-3 text-xs">
-                    {b.roomName} × {b.roomCount}室・{b.adultTotal}名<div class="text-stone-500">{b.planName}</div>
+                    {b.roomsText}・{b.adultTotal}名<div class="text-stone-500">{b.planName}</div>
                     {#if b.perks.length}<div class="text-[11px] text-amber-800">取引先特典: {b.perks.join('／')}</div>{/if}
                   </td>
                   <td class="py-2 pr-3 text-right tabular-nums">{yen(b.total)}円</td>
@@ -2404,7 +2404,7 @@
                     <tr class="border-t border-stone-100 align-top">
                       <td class="sticky left-0 z-10 bg-white px-2 py-1.5 whitespace-nowrap">{l.checkOut}<div class="text-stone-500">{l.nights}泊</div></td>
                       <td class="px-2 py-1.5 font-mono">{l.bookingCode}</td>
-                      <td class="px-2 py-1.5">{l.guestName} 様<div class="text-stone-500">{l.roomName} {l.roomCount}室・{l.adults}名</div></td>
+                      <td class="px-2 py-1.5">{l.guestName} 様<div class="text-stone-500">{invoiceRoomText(l)}・{l.adults}名</div></td>
                       <td class="px-2 py-1.5">{l.paymentLabel}</td>
                       <td class="px-2 py-1.5 text-right tabular-nums whitespace-nowrap">{yen(l.usage)}円{#if l.discount}<div class="text-stone-500">割引 −{yen(l.discount)}円</div>{/if}</td>
                       <td class={`px-2 py-1.5 text-right tabular-nums whitespace-nowrap ${l.billable ? 'font-semibold' : 'text-stone-400'}`}>{l.billable ? `${yen(l.billed)}円` : '—'}</td>

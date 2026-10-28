@@ -306,7 +306,7 @@
               <p class="text-sm text-stone-500">予約番号 {b.code}{#if b.status === 'pending_payment'}<span class="ml-2 rounded bg-amber-700/10 px-1.5 text-xs font-medium text-amber-700">お支払い待ち（{hm(b.paymentExpiresAt)} まで）</span>{:else if b.status === 'expired'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">お支払い期限切れ</span>{:else if b.status === 'cancelled'}<span class="ml-2 rounded bg-stone-200 px-1.5 text-xs">取消済み</span>{:else if b.checkedIn}<span class="ml-2 rounded bg-[var(--pt-accent-soft)] px-1.5 text-xs text-[var(--pt-accent)]">チェックイン済み</span>{/if}{#if b.advance && b.advance.tone !== 'paid'}<span class={`ml-2 rounded px-1.5 text-xs font-medium ${b.advance.tone === 'overdue' ? 'bg-rose-700/10 text-rose-700' : 'bg-amber-700/10 text-amber-700'}`}>{b.advance.label}</span>{/if}{#if b.creditOver && b.status !== 'cancelled' && b.status !== 'expired'}<span class="ml-2 rounded bg-amber-100 px-1.5 text-xs font-medium text-amber-800" title="ご予約時に御社の受付枠を超えていました。宿で確認のうえご連絡することがあります。">受付枠超過</span>{/if}</p>
               {#if multiFacility}<p class="mt-1"><span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">{b.facilityName}</span></p>{/if}
               <p class="mt-0.5 text-lg font-bold">{fmt(b.checkIn)} から {b.nights}泊 ・ {b.guestName} 様</p>
-              <p class="mt-0.5 text-sm text-stone-500">{b.roomName} × {b.roomCount}室 ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
+              <p class="mt-0.5 text-sm text-stone-500">{b.roomsText} ・ 大人{b.adultTotal}名 ・ {b.planName}</p>
               <p class="mt-0.5 text-sm text-stone-500">担当: {staffOf(b)}{#if b.attachments?.items.length}<span class="ml-2" title="添付ファイル">📎 {b.attachments.items.length}</span>{/if}</p>
             </div>
             <div class="text-right">
@@ -319,7 +319,7 @@
               <dl class="detail">
                 {#if multiFacility}<dt>施設</dt><dd>{b.facilityName}</dd>{/if}
                 <dt>宿泊日</dt><dd>{fmt(b.checkIn)} 〜 {fmt(b.checkOut)}（{b.nights}泊）</dd>
-                <dt>お部屋</dt><dd>{b.roomName} × {b.roomCount}室（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目 ${a}名` : `${a}名`)).join(' / ')}）</dd>
+                <dt>お部屋</dt><dd>{b.roomsText}（{b.rooms.map((a, i) => (b.rooms.length > 1 ? `${i + 1}室目${b.roomTypeLabels[i] ? `（${b.roomTypeLabels[i]}）` : ''} ${a}名` : `${a}名`)).join(' / ')}）</dd>
                 <dt>プラン</dt><dd>{b.planName}{b.mealType ? `（${mealLabel(b.mealType)}）` : ''}</dd>
                 {#if b.booker}<dt>ご予約者</dt><dd>{b.booker.name}{b.booker.kana ? `（${b.booker.kana}）` : ''}{b.booker.department ? ` ${b.booker.department}` : ''}{#if b.booker.phone || b.booker.email}<span class="block text-sm text-stone-500">{[b.booker.phone, b.booker.email].filter(Boolean).join(' / ')}</span>{/if}</dd>{/if}
                 {#if b.nameHolder}<dt>ご予約名義</dt><dd>{b.nameHolder}</dd>{/if}

@@ -24,6 +24,7 @@ import {
 	type AdvanceBadge
 } from '$lib/partner-advance';
 import { partnerRefundOf } from '$lib/partner-cancel-fee';
+import { partnerRoomsText } from '$lib/partner-room-types';
 import {
 	advanceInvoiceDownloadResponse,
 	getAdvanceInvoice,
@@ -182,6 +183,8 @@ export type PartnerLedgerView = {
 	roomCount: number;
 	adultTotal: number;
 	roomName: string;
+	/** お部屋の文言（複数部屋タイプの予約は「メゾネット × 2室／ハリウッドツイン × 1室」・1つなら「和室 × 2室」） */
+	roomsText: string;
 	planName: string;
 	/** 予約したログインID */
 	bookedBy: string | null;
@@ -255,6 +258,7 @@ function toView(b: PartnerBookingRow, isAdmin: boolean, billedToPartner: boolean
 		roomCount: b.room_count,
 		adultTotal: b.adult_total,
 		roomName: b.room_name ?? b.room_code ?? '',
+		roomsText: partnerRoomsText(b),
 		planName: b.plan_name ?? '',
 		bookedBy: b.booked_by,
 		booker: x.booker?.name ? describeBooker(x.booker) : null,

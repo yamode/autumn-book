@@ -40,6 +40,7 @@ import { sbMyReservations } from '$lib/server/supabase-data';
 import { memberPageReservations } from '$lib/server/partners/member-bookings';
 import { deferTask, portalLogActor } from '$lib/server/partners/portal';
 import { logPartnerAccess, type PartnerContext, type PartnerSessionAccount } from '$lib/server/partners/store';
+import { partnerRoomsText, roomTypeLabelsByIndex } from '$lib/partner-room-types';
 
 // ---- 特別会員の専用ページの「ご予約一覧」（docs/vip-member-page.md §13.4.3b） ----
 // 会員の authenticated クライアントで公式マイページと同じ my_reservations を読み、このページから本人が予約した分だけ。
@@ -198,6 +199,10 @@ export const load = async (event) => {
         nights: b.nights,
         roomName: b.room_name ?? b.room_code ?? '',
         roomCount: b.room_count,
+        // お部屋の文言（複数部屋タイプの予約は「メゾネット × 2室／ハリウッドツイン × 1室」・1つなら「和室 × 2室」）と、
+        // 部屋ごとの部屋タイプ名（複数部屋タイプのときだけ。「1室目（メゾネット）」に使う）
+        roomsText: partnerRoomsText(b),
+        roomTypeLabels: roomTypeLabelsByIndex(b),
         // 取引先向けのプラン名（予約時点）。無い予約は元の名前から既定の表示名
         planName: bookingPlanName(b),
         mealType: b.meal_type,

@@ -41,6 +41,7 @@ import {
   type PartnerBookingSettings
 } from '$lib/partner-booking';
 import { ADVANCE_UNPAID_INVOICE_NOTE } from '$lib/partner-advance';
+import { partnerRoomTypeCounts, roomTypeCountsText } from '$lib/partner-room-types';
 
 export const INVOICE_TAX_RATE = 10;
 
@@ -54,6 +55,8 @@ export type InvoiceBookingSource = {
   nights: number;
   room_name: string | null;
   room_short_name?: string | null; // 部屋タイプの短縮名（紙面ではこちらを優先）
+  // 複数部屋タイプの予約（P2）: 部屋タイプ別の室数（短縮名つき・サーバが部屋ごとの行から付ける）。無ければ detail.rooms から作る
+  room_types?: { name: string; count: number }[] | null;
   room_count: number;
   adult_total: number;
   plan_name: string | null;
@@ -65,7 +68,8 @@ export type InvoiceBookingSource = {
   payment_option: string | null;
   payment_method_name: string | null;
   payment_status: string;
-  detail?: { booker?: { name?: string } | null; plan_display_name?: string | null } | null;
+  // rooms: 部屋ごとの部屋タイプ（複数部屋タイプの予約・room_code / room_name）
+  detail?: { booker?: { name?: string } | null; plan_display_name?: string | null; rooms?: unknown } | null;
   // 取消済みの予約のキャンセル料（2026-10-06〜・不課税）。無い列（古いデータ）は 0 扱い
   cancelled_at?: string | null;
   cancel_fee?: number | null;
@@ -93,6 +97,8 @@ export type InvoiceLine = {
   nights: number;
   roomName: string;
   roomCount: number;
+  // 複数部屋タイプの予約（P2）だけ: 部屋タイプ別の室数（紙面は「メゾネット 2室／ハリウッドツイン 1室」）。1つの部屋タイプなら無い
+  roomTypes?: { name: string; count: number }[];
   adults: number;
   planName: string;
   guestName: string;
@@ -320,6 +326,17 @@ export function sendFailureMessage(previous: string | null | undefined, reason: 
   return `[送信失敗 ${n}回目] ${reason.replace(SEND_FAILURE_RE, '')}`.slice(0, 500);
 }
 
+// 複数部屋タイプの予約（P2）: 行に部屋タイプ別の室数を持たせる（1つの部屋タイプなら何も足さない＝従来の紙面）。
+// サーバが付けた短縮名つきの室数（room_types）→ 無ければ予約時の部屋ごとの部屋タイプ（detail.rooms）
+function roomTypesOfSource(b: InvoiceBookingSource): Pick<InvoiceLine, 'roomTypes'> {
+  const counts = b.room_types?.length ? b.room_types : partnerRoomTypeCounts(b);
+  return counts.length > 1 ? { roomTypes: counts.map((c) => ({ name: c.name, count: c.count })) } : {};
+}
+
+/** 行の「お部屋」（エスケープ前の文字列）。例: 「オーシャンスイート 1室」「メゾネット 2室／ハリウッドツイン 1室」 */
+export const invoiceRoomText = (l: Pick<InvoiceLine, 'roomName' | 'roomCount' | 'roomTypes'>): string =>
+  l.roomTypes && l.roomTypes.length > 1 ? roomTypeCountsText(l.roomTypes, { joiner: ' ' }) : `${l.roomName} ${l.roomCount}室`;
+
 const paymentNote = (b: InvoiceBookingSource): string => {
   if (b.payment_status === 'paid') return 'オンライン決済済み';
   if (b.payment_status === 'charge_failed') return 'カード決済失敗（要確認）';
@@ -375,6 +392,7 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
           nights: b.nights,
           roomName: (b.room_short_name ?? '').trim() || (b.room_name ?? ''),
           roomCount: b.room_count,
+          ...roomTypesOfSource(b),
           adults: b.adult_total,
           planName: (b.detail?.plan_display_name ?? '').trim() || (b.plan_name ?? ''),
           guestName: b.guest_name,
@@ -430,6 +448,7 @@ export function buildInvoiceLines(bookings: InvoiceBookingSource[], s: Pick<Part
         nights: b.nights,
         roomName: (b.room_short_name ?? '').trim() || (b.room_name ?? ''),
         roomCount: b.room_count,
+        ...roomTypesOfSource(b),
         adults: b.adult_total,
         // 取引先向けのプラン名（予約時点）。無い予約は元の名前
         planName: (b.detail?.plan_display_name ?? '').trim() || (b.plan_name ?? ''),
@@ -671,7 +690,8 @@ const periodSub = (doc: InvoiceDocument) =>
 const depositWord = (l: Pick<InvoiceLine, 'advance'>) => (l.advance ? '前受金' : 'デポジット');
 
 // お部屋・人数の1行（例: 「オーシャンスイート57平米 1室・2名」）
-const roomLine = (l: InvoiceLine) => `${esc(l.roomName)} ${l.roomCount}室・${l.adults}名`;
+// 複数部屋タイプの予約は「メゾネット 2室／ハリウッドツイン 1室・8名」
+const roomLine = (l: InvoiceLine) => `${esc(invoiceRoomText(l))}・${l.adults}名`;
 
 function invoicePage(doc: InvoiceDocument, draft = false): string {
   const t = doc.totals;

@@ -47,6 +47,7 @@ import { pmsGuestCreditUrl, pmsGuestUrl } from '$lib/pms-partner-guest';
 import { bookActorUserId, creditOverLine, creditUpdatedSource, isCreditOver } from '$lib/partner-credit';
 import { normalizeMfaPolicy, PARTNER_MFA_POLICIES, PARTNER_MFA_POLICY_LABELS } from '$lib/partner-mfa';
 import { PARTNER_MFA_POLICY_HELP } from '$lib/partner-passkey';
+import { partnerRoomsText } from '$lib/partner-room-types';
 import type { LayoutServerLoad } from './$types';
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -161,6 +162,8 @@ export const load: LayoutServerLoad = async (event) => {
 				nights: b.nights,
 				roomName: b.room_name ?? b.room_code ?? '',
 				roomCount: b.room_count,
+				// お部屋の文言（複数部屋タイプの予約は部屋タイプ別の室数）
+				roomsText: partnerRoomsText(b),
 				adultTotal: b.adult_total,
 				planName: b.plan_name ?? '',
 				guestName: b.guest_name,

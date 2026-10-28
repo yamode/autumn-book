@@ -96,6 +96,7 @@ import { chargePlanMetadata, setupIntentEventMetadata, type SetupIntentChargeEve
 import { advanceBookingMailLine } from '$lib/partner-advance-invoice';
 import { findIssuedAdvanceInvoice, issueAdvanceInvoice, sendAdvanceInvoiceMail, voidAdvanceInvoice } from './advance-invoices';
 import { isAdvanceBooking, jstDateOf } from '$lib/partner-advance';
+import { partnerRoomsText, roomTypeLabelsByIndex } from '$lib/partner-room-types';
 
 type AnySchema = { schema: (s: string) => SupabaseClient };
 const pmsDb = (db: SupabaseClient) => (db as unknown as AnySchema).schema('pms');
@@ -688,6 +689,7 @@ export async function createPartnerBooking(
     } catch (e) {
       // 決済の準備ができなければ仮押さえを解放して、やり直してもらう
       await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: created.id, p_by: 'partner', p_reason: '決済の準備ができませんでした' });
+      await markBookingRoomsCancelled(db, created.id);
       throw new PartnerStoreError(`オンライン決済を開始できませんでした。時間をおいてお試しください。${e instanceof Error ? `（${e.message}）` : ''}`, 502);
     }
   }
@@ -865,7 +867,7 @@ async function preparePartnerPayment(
   const { prepared, created } = await preparePaymentIntent({
     existingId: b.stripe_session_id,
     amount: intentAmountOf(b),
-    description: `${partner.facility_name} ご宿泊${isDepositPaymentOption(b.payment_option) ? 'のデポジット' : ''}（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${b.room_name ?? ''} ${b.room_count}室・${b.guest_name} 様`,
+    description: `${partner.facility_name} ご宿泊${isDepositPaymentOption(b.payment_option) ? 'のデポジット' : ''}（${b.booking_code}）${b.check_in_date} から ${b.nights}泊・${partnerRoomsText(b, { joiner: ' ' })}・${b.guest_name} 様`,
     metadata: intentMetadata(partner, b),
     refKey: REF_KEY,
     idempotencyKey: `rms-partner-pi-${b.id}-${b.stripe_session_id ?? 'first'}`,
@@ -918,6 +920,7 @@ export async function releasePendingBooking(db: SupabaseClient, partner: Partner
   const b = await getPartnerBooking(db, partner.id, bookingId);
   if (!b || b.status !== 'pending_payment') return false;
   await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: b.id, p_by: 'partner', p_reason: '予約画面で入力に戻りました' });
+  await markBookingRoomsCancelled(db, b.id);
   await syncSetupIntentMetadata(b, { type: 'cancelled', cancelledAt: new Date().toISOString() });
   return true;
 }
@@ -1341,7 +1344,8 @@ export type PartnerBookingRow = {
   charge_attempts: number;
   charge_error: string | null;
   detail: {
-    rooms?: { adults: number; nights: { date: string; unit_price: number }[] }[];
+    // room_code / room_name: 部屋ごとの部屋タイプ（複数部屋タイプの予約・P1〜）。古い予約には無い（＝代表の部屋タイプ）
+    rooms?: { adults: number; room_code?: string; room_name?: string; nights: { date: string; unit_price: number }[] }[];
     guest?: Record<string, string>;
     arrival?: string | null;
     options?: { label: string; value: string }[];
@@ -1598,6 +1602,21 @@ async function chargeCancelFee(db: SupabaseClient, partner: PartnerContext, b: P
   }
 }
 
+/**
+ * 予約全体の取消のあと、部屋ごとの行（rms_partner_booking_rooms・P1）も取消にする（status='cancelled'・cancelled_at）。
+ * 取消の DB 関数（rms_partner_cancel_booking）は予約本体・滞在だけを取消にし、部屋の行は confirmed のまま残すため、アプリ側で揃える。
+ * 部屋単位の取消（P3）までは「予約が取消なら全室が取消」。cancelledAt は予約本体の取消日時（無ければ今）。
+ * 失敗しても取消は成り立っている（部屋の行は表示・請求に使っていない）ので、ログだけ残して止めない。
+ */
+export async function markBookingRoomsCancelled(db: SupabaseClient, partnerBookingId: string, cancelledAt?: string | null): Promise<void> {
+  const { error } = await db
+    .from('rms_partner_booking_rooms')
+    .update({ status: 'cancelled', cancelled_at: cancelledAt || new Date().toISOString() })
+    .eq('partner_booking_id', partnerBookingId)
+    .eq('status', 'confirmed');
+  if (error) console.error('[partner-booking] 部屋ごとの行を取消にできませんでした:', partnerBookingId, error.message);
+}
+
 export async function cancelPartnerBooking(
   db: SupabaseClient,
   viewer: AnyPartner,
@@ -1628,6 +1647,7 @@ export async function cancelPartnerBooking(
   if (booking.status === 'pending_payment') {
     await db.rpc('rms_partner_cancel_booking', { p_partner_booking_id: booking.id, p_by: by, p_reason: (opts.reason ?? '').slice(0, 500) || null });
     const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
+    if (after.status === 'cancelled') await markBookingRoomsCancelled(db, booking.id, after.cancelled_at);
     // カード登録前の SetupIntent にも取消を残す（Stripe の管理画面で「取り消された予約」と分かるように）
     await syncSetupIntentMetadata(after, { type: 'cancelled', cancelledAt: after.cancelled_at });
     return after;
@@ -1720,6 +1740,7 @@ export async function cancelPartnerBooking(
   // チェックアウト日決済（カード登録のみ）: キャンセル料を登録カードへ。失敗したら月末の請求書へ回す
   if (settlement === 'card' && fee > 0) await chargeCancelFee(db, partner, booking, fee);
   const after = (await getPartnerBooking(db, partner.id, bookingId)) ?? booking;
+  await markBookingRoomsCancelled(db, booking.id, after.cancelled_at);
   // Stripe の SetupIntent: 取消（取消日時・キャンセル料とカードへの請求の結果）。チェックアウト日の請求は行わない
   await syncSetupIntentMetadata(after, {
     type: 'cancelled',
@@ -1749,14 +1770,17 @@ export function bookingSummaryLines(b: PartnerBookingRow, audience: 'partner' | 
     audience === 'facility' && b.plan_name && shown !== b.plan_name ? `${b.plan_name}（取引先向けの名前: ${shown}）` : shown;
   const g = b.detail.guest ?? {};
   const rooms = b.detail.rooms ?? [];
+  const typeLabels = roomTypeLabelsByIndex(b);
   const lines = [
     // 団体の照会からの予約（2026-10-10）: 先頭に団体名と照会番号
     ...[groupSummaryLine(b)].filter((l): l is string => !!l),
     `予約番号: ${b.booking_code}`,
     `宿泊日: ${b.check_in_date}（${b.nights}泊）〜 ${b.check_out_date} チェックアウト`,
-    `お部屋: ${b.room_name ?? b.room_code ?? ''} × ${b.room_count}室`,
+    // 複数部屋タイプの予約は部屋タイプ別の室数（例: メゾネット × 2室／ハリウッドツイン × 1室）
+    `お部屋: ${partnerRoomsText(b)}`,
     `プラン: ${planLine}${b.meal_type ? `（${mealLabel(b.meal_type)}）` : ''}`,
-    `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目 ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
+    // 複数部屋タイプの予約は「1室目（メゾネット）2名」のように部屋タイプを添える
+    `人数: ${rooms.map((r, i) => `${rooms.length > 1 ? `${i + 1}室目${typeLabels[i] ? `（${typeLabels[i]}）` : ''} ` : ''}${r.adults}名`).join(' / ') || `${b.adult_total}名`}`,
     // ご予約者（ご担当者）・交通手段・専用特典（detail に構造化して残したもの）
     ...extraSummaryLines(b.detail),
     // 旅行会社名義（Phase 2）: 名義人と部屋の宿泊者名。宿泊者名義の予約には出さない

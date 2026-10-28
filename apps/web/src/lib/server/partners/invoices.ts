@@ -51,6 +51,7 @@ import { FACILITY_UUID, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { fitsAttachmentLimit, type MailAttachment } from '$lib/server/mail-attachments';
 import { sendHtmlEmail } from '$lib/server/mailer';
 import { sendPartnerMail } from './mail';
+import { countRoomTypes, isMixedRoomTypes } from '$lib/partner-room-types';
 import { renderInvoicePdf, type RenderInvoicePdfOptions } from './invoice-pdf';
 import { isMissingTableError, loadPartnerContext, PartnerStoreError, todayJst, type PartnerContext, type PartnerRow } from './store';
 import { isPmsPartnerGuestType, pmsGuestFormalName, type PmsGuestNameFields } from '$lib/pms-partner-guest';
@@ -475,8 +476,25 @@ async function loadTargetBookings(
 
 // 紙面の部屋名は短縮名（2026-10-02 指示）。優先順: Book 部屋設定の「取引先向けの短縮名」
 // （book.room_type_contents.partner_short_name）→ PMS の短縮名（pms.room_types.short_name・社内向けの略称）→ 正式名
+// 複数部屋タイプの予約（P2）は、部屋ごとの行（rms_partner_booking_rooms）の部屋タイプにも短縮名を付けて room_types（部屋タイプ別の室数）にする。
 async function applyRoomShortNames<T extends InvoiceBookingSource & { room_type_id?: string | null }>(db: SupabaseClient, rows: T[]): Promise<T[]> {
-  const typeIds = [...new Set(rows.map((b) => b.room_type_id).filter((x): x is string => !!x))];
+  // 部屋ごとの行（複数部屋タイプの予約だけ読む）。読めなければ予約時の detail.rooms（正式名）のまま
+  const mixedIds = rows.filter((b) => isMixedRoomTypes(b)).map((b) => b.id);
+  const roomRows = new Map<string, { room_index: number; room_type_id: string | null; room_code: string; room_name: string }[]>();
+  if (mixedIds.length) {
+    const { data, error } = await db
+      .from('rms_partner_booking_rooms')
+      .select('partner_booking_id, room_index, room_type_id, room_code, room_name')
+      .in('partner_booking_id', mixedIds)
+      .order('room_index');
+    if (error) console.error('[partner-invoice] 部屋ごとの行を読めませんでした:', error.message);
+    for (const r of (data ?? []) as { partner_booking_id: string; room_index: number; room_type_id: string | null; room_code: string; room_name: string }[]) {
+      roomRows.set(r.partner_booking_id, [...(roomRows.get(r.partner_booking_id) ?? []), r]);
+    }
+  }
+  const typeIds = [
+    ...new Set([...rows.map((b) => b.room_type_id), ...[...roomRows.values()].flat().map((r) => r.room_type_id)].filter((x): x is string => !!x))
+  ];
   if (typeIds.length) {
     const [{ data: contents }, { data: types }] = await Promise.all([
       db.schema('book').from('room_type_contents').select('room_type_id, partner_short_name').in('room_type_id', typeIds),
@@ -490,6 +508,12 @@ async function applyRoomShortNames<T extends InvoiceBookingSource & { room_type_
       if (!b.room_type_id) continue;
       const s = partnerShort.get(b.room_type_id) || pmsShort.get(b.room_type_id) || '';
       if (s) b.room_short_name = s;
+    }
+    for (const b of rows) {
+      const rr = roomRows.get(b.id);
+      if (!rr?.length) continue;
+      const shortOf = (id: string | null) => (id ? partnerShort.get(id) || pmsShort.get(id) || '' : '');
+      b.room_types = countRoomTypes(rr.map((r) => ({ code: r.room_code, name: shortOf(r.room_type_id) || r.room_name || r.room_code }))).map((c) => ({ name: c.name, count: c.count }));
     }
   }
   return rows;

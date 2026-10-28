@@ -21,6 +21,7 @@
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
   import PartnerAttachments, { type AttachmentItem } from '$lib/components/PartnerAttachments.svelte';
+  import { countRoomTypes } from '$lib/partner-room-types';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string } } = $props();
@@ -861,7 +862,8 @@
         {#if quote.ok}
           <li class="flex gap-2.5">
             <svg viewBox="0 0 20 20" class="mt-0.5 h-5 w-5 shrink-0 text-stone-500" aria-hidden="true"><path d="M2.5 15V6.5M2.5 11.5h15V15M17.5 11.5V10a2 2 0 0 0-2-2H9.5v3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /><circle cx="6" cy="9" r="1.6" fill="none" stroke="currentColor" stroke-width="1.4" /></svg>
-            <span>{quote.roomName}</span>
+            <!-- 複数部屋タイプ（同じプランの部屋タイプ違い）は部屋タイプ別の室数を1行ずつ。1つの部屋タイプなら部屋名だけ（室数は上の行） -->
+            <span>{#if mixedRooms}{#each countRoomTypes(quote.rooms.map((r, i) => ({ code: r.roomCode ?? roomCodes[i] ?? '', name: r.roomName ?? roomLabelOf(i) }))) as c, i (c.code)}{#if i > 0}<br />{/if}{c.name} × {c.count}室{/each}{:else}{quote.roomName}{/if}</span>
           </li>
         {/if}
         <li class="pl-[1.875rem] text-stone-700">{data.target.displayName}</li>
@@ -896,7 +898,7 @@
                 <ul class="mt-0.5 space-y-0.5">
                   {#each g.lines as l (`${l.room}-${l.date}`)}
                     <li class="flex justify-between gap-2 pl-3">
-                      <span class="min-w-0">{#if quote.rooms.length > 1}<span class="mr-2">{l.room + 1}室目</span>{/if}<span class="tabular-nums">{partnerNightLineText(l)}</span></span>
+                      <span class="min-w-0">{#if quote.rooms.length > 1}<span class="mr-2">{l.room + 1}室目{mixedRooms ? `（${roomLabelOf(l.room)}）` : ''}</span>{/if}<span class="tabular-nums">{partnerNightLineText(l)}</span></span>
                       {#if !single}<span class="whitespace-nowrap tabular-nums">{num(l.amount)}円</span>{/if}
                     </li>
                   {/each}

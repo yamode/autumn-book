@@ -27,6 +27,7 @@ import {
   groupStatementByFacility,
   invoiceFacilityCsv,
   invoiceFacilityNames,
+  invoiceRoomText,
   isMultiFacilityInvoice,
   type InvoiceBookingSource,
   type InvoiceDocument,
@@ -191,6 +192,40 @@ const docOf = (bookings: InvoiceBookingSource[], over: Partial<InvoiceDocumentV1
     ...over
   };
 };
+
+describe('複数部屋タイプの予約（P2）', () => {
+  const mixedDetail = {
+    rooms: [
+      { adults: 2, room_code: 'm', room_name: 'メゾネット' },
+      { adults: 2, room_code: 'm', room_name: 'メゾネット' },
+      { adults: 2, room_code: 'h1', room_name: 'ハリウッドツイン麓花坊' }
+    ]
+  };
+  it('行に部屋タイプ別の室数が付き、紙面の「お部屋」が部屋タイプ別になる', () => {
+    const [l] = buildInvoiceLines([booking({ room_name: 'メゾネット', room_count: 3, adult_total: 6, detail: mixedDetail })], settings);
+    expect(l.roomTypes).toEqual([
+      { name: 'メゾネット', count: 2 },
+      { name: 'ハリウッドツイン麓花坊', count: 1 }
+    ]);
+    expect(invoiceRoomText(l)).toBe('メゾネット 2室／ハリウッドツイン麓花坊 1室');
+    const html = renderInvoiceHtml(docOf([booking({ room_name: 'メゾネット', room_count: 3, adult_total: 6, detail: mixedDetail })]));
+    expect(html).toContain('メゾネット 2室／ハリウッドツイン麓花坊 1室・6名');
+    expect(html).not.toContain('メゾネット 3室');
+  });
+  it('サーバが付けた短縮名つきの室数（room_types）を優先', () => {
+    const [l] = buildInvoiceLines([booking({ room_count: 3, detail: mixedDetail, room_types: [{ name: 'メゾ', count: 2 }, { name: '花坊', count: 1 }] })], settings);
+    expect(invoiceRoomText(l)).toBe('メゾ 2室／花坊 1室');
+  });
+  it('取消の行も部屋タイプ別', () => {
+    const [l] = buildInvoiceLines([booking({ status: 'cancelled', room_count: 3, detail: mixedDetail, cancel_fee: 1000, cancel_fee_settlement: 'invoice', cancelled_at: '2026-10-05T00:00:00Z' })], settings);
+    expect(invoiceRoomText(l)).toBe('メゾネット 2室／ハリウッドツイン麓花坊 1室');
+  });
+  it('1つの部屋タイプの予約は従来どおり（roomTypes を持たない）', () => {
+    const [l] = buildInvoiceLines([booking({ room_count: 2, detail: { rooms: [{ adults: 2 }, { adults: 2 }] } })], settings);
+    expect(l.roomTypes).toBeUndefined();
+    expect(invoiceRoomText(l)).toBe('和室 2室');
+  });
+});
 
 describe('紙面（HTML）', () => {
   it('ご請求ありなら請求書＋利用明細書', () => {

@@ -108,6 +108,36 @@ describe('advanceAmountRows', () => {
   });
 });
 
+describe('複数部屋タイプの予約（P2）', () => {
+  const mixed = booking({
+    room_name: 'メゾネット',
+    room_count: 3,
+    adult_total: 6,
+    detail: {
+      booker: { name: '鈴木 花子' },
+      rooms: [
+        { adults: 2, room_code: 'm', room_name: 'メゾネット' },
+        { adults: 2, room_code: 'h1', room_name: 'ハリウッドツイン麓花坊' },
+        { adults: 2, room_code: 'm', room_name: 'メゾネット' }
+      ]
+    }
+  });
+  it('紙面とメールの「お部屋」が部屋タイプ別の室数', () => {
+    const d = build(mixed);
+    expect(d.booking.roomTypes).toEqual([
+      { name: 'メゾネット', count: 2 },
+      { name: 'ハリウッドツイン麓花坊', count: 1 }
+    ]);
+    expect(renderAdvanceInvoiceHtml(d)).toContain('メゾネット 2室／ハリウッドツイン麓花坊 1室・6名');
+    expect(advanceInvoiceMailBody(d, 'u', false).text).toContain('メゾネット 2室／ハリウッドツイン麓花坊 1室・6名');
+  });
+  it('1つの部屋タイプは従来どおり', () => {
+    const d = build();
+    expect(d.booking.roomTypes).toBeUndefined();
+    expect(renderAdvanceInvoiceHtml(d)).toContain('萌木 1室・2名');
+  });
+});
+
 describe('renderAdvanceInvoiceHtml', () => {
   it('題名・金額・期限・振込先・注記が載り、消費税の区分・登録番号は載せない', () => {
     const html = renderAdvanceInvoiceHtml(build());

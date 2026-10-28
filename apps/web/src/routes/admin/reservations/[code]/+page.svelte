@@ -508,7 +508,8 @@
 							{:else}—{/if}
 						</dd>
 						<dt class="text-stone-500">部屋・プラン</dt>
-						<dd>{pl.roomName} × {pl.roomCount}室・大人{pl.adultTotal}名／{pl.planName || '—'}</dd>
+						<!-- 複数部屋タイプの予約は部屋タイプ別の室数（例: メゾネット × 2室／ハリウッドツイン × 1室） -->
+						<dd>{pl.roomsText}・大人{pl.adultTotal}名／{pl.planName || '—'}</dd>
 						<dt class="text-stone-500">支払方法</dt>
 						<dd>
 							{pl.paymentName ?? '—'}
@@ -965,7 +966,7 @@
 									<p class="text-xs text-stone-500">この取引先予約を取り消します</p>
 									<p class="font-medium text-stone-800">{pl.partnerName}・<span class="font-mono">{pl.bookingCode}</span></p>
 									<p class="text-xs text-stone-600">
-										{g.name ?? '—'} 様・{formatDateLongJa(pl.checkIn)} から {pl.nights}泊・{pl.roomName} × {pl.roomCount}室
+										{g.name ?? '—'} 様・{formatDateLongJa(pl.checkIn)} から {pl.nights}泊・{pl.roomsText}
 									</p>
 									{#if pl.roomCount > 1}
 										<p class="mt-1 text-xs text-amber-700">複数室の予約です。{pl.roomCount}室すべてが取り消されます。</p>
