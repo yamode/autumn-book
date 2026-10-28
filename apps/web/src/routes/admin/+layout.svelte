@@ -3,8 +3,10 @@
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { APP_VERSION } from '$lib/version';
 	import AutumnBookLogo from '$lib/components/admin/AutumnBookLogo.svelte';
-	// autumn 各アプリ（RMS・PMS・Order・Book）を切り替えるスイッチャー（autumn-shared から写したもの・2026-10-17）
-	import AppSwitcher from '$lib/autumn-shared/components/AppSwitcher.svelte';
+	// 統合ヘッダー（ロゴ＋PMS/RMS/Order/Book のタブ・autumn-shared から写したもの・2026-10-28）。
+	// 設計: autumn-pms/desktop/docs/integrated-header-design.md §6.5。サイドバーの AppSwitcher はこれに置き換えた
+	import AppHeaderTabs from '$lib/autumn-shared/components/AppHeaderTabs.svelte';
+	import DesktopShellMenuButton from '$lib/autumn-shared/components/DesktopShellMenuButton.svelte';
 	import Toast from '$lib/components/admin/Toast.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { ADMIN_NAV, activeNav, visibleNav } from '$lib/admin-nav';
@@ -281,9 +283,8 @@
 {:else}
 	<div class="admin-shell flex min-h-screen bg-[#f0eeeb]">
 		<aside class="admin-sidebar sticky top-0 hidden h-screen w-56 shrink-0 flex-col bg-brand-900 text-stone-300 md:flex">
-			<!-- サイドバー上部: アプリスイッチャー（autumn-shared）＋ロゴ -->
+			<!-- サイドバー上部: ロゴ（アプリ切替は上部ヘッダーのタブ・2026-10-28） -->
 			<div class="mx-4 mt-4 flex items-center gap-2">
-				<div class="relative z-40 shrink-0 text-stone-800"><AppSwitcher currentAppId="book" theme="dark" /></div>
 				<a href="/admin" class="block min-w-0 flex-1 rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-auto w-full" /></a>
 			</div>
 			<p class="mx-5 mt-2 mb-3 truncate rounded px-2 py-1 text-xs font-medium ring-1 ring-white/20 {facilityTone}" title="いま操作している施設">
@@ -305,7 +306,6 @@
 				<div class="absolute inset-y-0 left-0 flex w-80 max-w-[88%] flex-col bg-brand-900 text-stone-300 shadow-xl">
 					<div class="flex items-center justify-between px-5 py-4">
 						<div class="flex items-center gap-2">
-							<div class="relative z-40 shrink-0 text-stone-800"><AppSwitcher currentAppId="book" theme="dark" /></div>
 							<a href="/admin" class="rounded-lg bg-white px-3 py-2.5" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo class="h-7 w-auto" /></a>
 						</div>
 						<button type="button" class="rounded-lg p-2 text-stone-400 hover:bg-white/10 hover:text-white" aria-label="メニューを閉じる" onclick={() => (menuOpen = false)}><AdminIcon name="close" class="h-5 w-5" /></button>
@@ -324,7 +324,10 @@
 		<div class="admin-main flex min-w-0 flex-1 flex-col">
 			<!-- 上部バーはスクロールしても残す（施設切替・メンテナンス表示を常に見せる） -->
 			<div class="sticky top-0 z-30" data-admin-header>
-				<header class="flex items-center gap-2 border-b border-stone-200 bg-white/95 px-3 py-2 backdrop-blur sm:gap-3 sm:px-4 sm:py-2.5">
+				<header
+					class="admin-topbar flex items-center gap-2 border-b border-stone-200 bg-white/95 px-3 py-2 backdrop-blur sm:gap-3 sm:px-4 sm:py-2.5"
+					style="--foreground: #292524; --muted-foreground: #78716c; --accent: #f5f5f4; --border: #e7e5e4; --popover: #ffffff; --background: #ffffff; --ring: #44403c; --app-header-tab-h: 2.25rem"
+				>
 					<button
 						type="button"
 						class="-ml-1 rounded-lg p-2 text-stone-600 hover:bg-stone-100 md:hidden"
@@ -334,7 +337,9 @@
 					>
 						<AdminIcon name="menu" class="h-5 w-5" />
 					</button>
-					<a href="/admin" class="shrink-0 md:hidden" aria-label="Autumn Book 管理画面のホーム"><AutumnBookLogo markOnly class="h-7 w-auto" /></a>
+					<!-- ロゴ＋アプリ切替タブ（ブラウザは他アプリへのリンク・デスクトップのタブ型では View 切替＋Electron のタブバーを畳む）。
+					     幅が狭いとロゴ＋▾ に畳む（旧: スマホ用のマークだけのロゴ）。ログイン・二段階認証の画面には出さない＝宣言しない -->
+					<AppHeaderTabs currentAppId="book" homeHref="/admin" class="shrink-0" />
 
 					<!-- 施設切替（設計書 §4.1）。テナント横断の画面では出さない -->
 					{#if tenantWide}
@@ -365,6 +370,8 @@
 								<AdminIcon name="logout" class="h-4 w-4" /><span class="hidden sm:inline">ログアウト</span>
 							</button>
 						</form>
+						<!-- デスクトップのタブ型だけ「⋯」（更新・表示設定・ログアウト（全アプリ））。それ以外では何も描かない -->
+						<DesktopShellMenuButton />
 					</div>
 				</header>
 

@@ -1,3 +1,18 @@
+## 統合ヘッダー（ロゴ＋アプリ切替タブ）（2026-10-28・v0.197.0）
+
+- 管理画面の上部ヘッダー左（モバイルのメニューボタンの右・施設の選択の左）に autumn-shared の `AppHeaderTabs`（ロゴ＋PMS/RMS/Order/Book のタブ）、右端に `DesktopShellMenuButton`（デスクトップのタブ型だけ「⋯」）。
+- サイドバー（PC・ドロワー）の AppSwitcher は外した（ロゴは残す）。スマホ用のマークだけのロゴは、タブ側の折りたたみ（ロゴ＋▾）に置き換えた。
+- `/admin/login*`・`/admin/mfa*` はヘッダーが無い＝宣言しない＝デスクトップでは Electron のタブバーが出る（意図どおり）。
+- 部品は `apps/web/src/lib/autumn-shared/` に手コピー（先頭に写し元 SHA `8b93a42`）。autumn-shared を直したら写し直す。
+- 設計: autumn-pms/desktop/docs/integrated-header-design.md §6.5。
+
+### テストチェックリスト（統合ヘッダー）
+- [ ] 管理画面の上部ヘッダーに [ロゴ][PMS][RMS][Order][Book]。タブで他アプリへ移る（ブラウザは同じウィンドウ）
+- [ ] 幅が狭いとロゴ＋▾ に畳まれ、押すとアプリ一覧が出る。メニューボタン・施設の選択・ログアウトが押し出されない
+- [ ] サイドバーのロゴ・版表示は従来どおり
+- [ ] デスクトップ v0.21.0 のタブ型: ログイン後に Electron のタブバーが畳まれる。ログイン・二段階認証の画面ではタブバーが出る
+- [ ] zoom／106.25% でタブのクリック位置がずれない（実機）
+
 ## 管理画面の自動ログイン（共有セッション Cookie・2026-10-28・v0.196.0）
 
 - PMS / RMS / Order にログインしているブラウザ（とデスクトップの Book タブ）で book.yamado.app/admin を開くと、共有 Cookie（`sb-<ref>-auth-token`・Domain=.yamado.app）の access_token を確かめて **Book 専用の新しいセッション**を作り、開こうとした画面へそのまま進む。共有 Cookie のコピーはしない・refresh_token は読まない。

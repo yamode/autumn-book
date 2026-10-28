@@ -1,3 +1,4 @@
+<!-- 写し元: autumn-shared 8b93a42 src/components/AppSwitcher.svelte（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す） -->
 <script lang="ts">
   /**
    * 共通アプリスイッチャー (AppSwitcher) — Autumn エコシステム共通コンポーネント
@@ -12,11 +13,13 @@
    * autumn 系アプリは shadcn-svelte ベースで同一トークンを共有する前提。
    *
    * 一覧の各行には各アプリのロゴ（AppIcon・brand の app-icon と同じ形と色）を出す（2026-10-17 に絵文字から置き換え）。
+   * 一覧の中身は AppList.svelte（統合ヘッダー AppHeaderTabs のスマホ幅の折りたたみと共用・2026-10-28）。
    *
    * 範囲外クリック・Esc で閉じる。
    */
-  import { ECOSYSTEM_APPS, getAppUrl, type AutumnAppId } from '../apps';
-  import AppIcon from './AppIcon.svelte';
+  import type { AutumnApp, AutumnAppId } from '../apps';
+  import { getDesktopOpen, getDesktopTabsBridge } from '../desktop-tabs';
+  import AppList from './AppList.svelte';
 
   interface Props {
     /** 現在表示中のアプリ。一覧内でハイライトされる。 */
@@ -30,7 +33,41 @@
   let open = $state(false);
   let rootEl = $state<HTMLElement | null>(null);
 
-  const apps = ECOSYSTEM_APPS.filter((app) => app.inSwitcher);
+  /**
+   * デスクトップでは、他アプリへのリンクをシェルに渡す（2026-10-28・統合ヘッダー設計 §6.1）。
+   *   v0.21.0〜 のタブ型（tabs.state() が非 null）… activate でタブ切替（状態が残る）
+   *   v0.20.x の tabs.open だけある版 …………… open（タブ型ならそのタブ・従来表示なら既定ブラウザ）
+   *   ブラウザ ………………………………………… 普通のリンクのまま（同じウィンドウで移動）
+   * 自分のアプリの行は常に普通のリンク（ホームへ戻る）。
+   */
+  async function onSelect(app: AutumnApp, event: MouseEvent) {
+    if (app.id === currentAppId) return;
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    const bridge = getDesktopTabsBridge();
+    if (bridge) {
+      event.preventDefault();
+      open = false;
+      try {
+        const st = await bridge.state();
+        if (st && st.tabs.some((t) => t.id === app.id) && (await bridge.activate(app.id))) return;
+      } catch {
+        /* 下の open／リンクへ */
+      }
+      const o = getDesktopOpen();
+      if (o) {
+        void o(app.id, app.defaultPath);
+        return;
+      }
+      location.href = (event.currentTarget as HTMLAnchorElement).href;
+      return;
+    }
+    const o = getDesktopOpen();
+    if (o) {
+      event.preventDefault();
+      open = false;
+      void o(app.id, app.defaultPath);
+    }
+  }
 
   function handleWindowClick(event: MouseEvent) {
     if (!open) return;
@@ -64,36 +101,7 @@
 
   {#if open}
     <div class="absolute left-0 z-30 mt-2 w-72 overflow-hidden rounded-lg border border-border bg-popover p-1.5 shadow-lg">
-      <p class="px-2 py-1.5 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">autumn アプリ</p>
-      {#each apps as app (app.id)}
-        {#if app.status === 'live'}
-          <a
-            href={getAppUrl(app)}
-            class="flex items-center gap-3 rounded-md px-2 py-2 transition hover:bg-accent {app.id ===
-            currentAppId
-              ? 'bg-accent'
-              : ''}"
-          >
-            <AppIcon colors={app.icon} label={app.name} class="size-8 shrink-0" />
-            <span>
-              <span class="block text-sm font-medium">
-                {app.name}{#if app.id === currentAppId}<span class="ml-1 text-xs font-normal text-muted-foreground">（表示中）</span>{/if}
-              </span>
-              <span class="block text-xs text-muted-foreground">{app.description}</span>
-            </span>
-          </a>
-        {:else}
-          <div class="flex items-center gap-3 rounded-md px-2 py-2 opacity-50">
-            <AppIcon colors={app.icon} label={app.name} class="size-8 shrink-0" />
-            <span>
-              <span class="flex items-center gap-1.5 text-sm font-medium">
-                {app.name}<span class="rounded border border-border bg-muted px-1 text-[10px] font-normal text-muted-foreground">準備中</span>
-              </span>
-              <span class="block text-xs text-muted-foreground">{app.description}</span>
-            </span>
-          </div>
-        {/if}
-      {/each}
+      <AppList {currentAppId} {onSelect} />
     </div>
   {/if}
 </div>

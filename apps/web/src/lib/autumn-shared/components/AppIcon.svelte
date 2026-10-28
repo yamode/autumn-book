@@ -1,3 +1,4 @@
+<!-- 写し元: autumn-shared 8b93a42 src/components/AppIcon.svelte（Book は vendored しないので手で写す。直すときは autumn-shared を先に直して写し直す） -->
 <script lang="ts">
   /**
    * autumn 各アプリのアプリアイコン（角丸の地＋共通の A＋斜線アクセント）。
