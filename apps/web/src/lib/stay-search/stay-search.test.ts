@@ -187,7 +187,7 @@ describe('Shadow DOM 用の CSS の書き換え（embed のビルド）', () => 
 		);
 		expect(out).toContain('font-size:13.5px');
 		expect(out).toContain('--spacing:4.5px');
-		expect(out).toContain('@container (min-width: 768px)');
+		expect(out).toContain('@container (min-width: 900px)'); // PC の 1 本バーは HP の 1 カラム幅では 900px から
 		expect(out).toContain('@container (min-width: 640px)');
 		expect(out).toContain('@media (prefers-reduced-motion:reduce)');
 		expect(out).not.toMatch(/\drem/);

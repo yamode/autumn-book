@@ -18,6 +18,8 @@
 :host {
 	display: block;
 	position: relative;
+	/* HP の後ろの要素（z-index 付き）にパネルが隠れないよう高くする。HP 側で --yamado-search-z で上書きできる */
+	z-index: var(--yamado-search-z, 1000);
 	container-type: inline-size;
 	/* 書体は HP のものに馴染ませる。大きさは取引先ページと同じ 18px 基準で固定 */
 	font-family: inherit;
