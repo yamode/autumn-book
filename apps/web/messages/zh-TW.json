@@ -1211,5 +1211,22 @@
   "ci_err_slot_full": "您選擇的時間（{time}）已額滿，請選擇其他時間。",
   "ci_err_invalid_meal": "包含無法選擇的時間，請重新選擇。",
   "ci_err_field": "請確認輸入內容。",
-  "ci_err_closed": "線上填寫已截止。"
+  "ci_err_closed": "線上填寫已截止。",
+  "ci_step_bath": "包租浴池",
+  "ci_next": "下一步",
+  "ci_bath_lead": "包租浴池可在抵達前預約（非必填）。空檔查詢、預約與取消，請在包租浴池預約頁面辦理。",
+  "ci_bath_mine": "已預約的時段",
+  "ci_bath_none": "尚無預約。",
+  "ci_bath_reserve": "預約包租浴池",
+  "ci_bath_change": "查看或變更預約",
+  "ci_bath_note": "費用、預約截止及取消期限，以預約頁面的說明為準。",
+  "ci_bath_not_answered": "請先送出用餐時間，之後即可預約包租浴池。",
+  "ci_bath_not_yet": "包租浴池自入住當天 9:00 起受理預約。請於當天再次開啟本頁面。",
+  "ci_bath_closed": "線上預辦入住已截止。如需預約包租浴池，請以客房內的 QR 碼或 6 位數代碼開啟客房指南辦理。",
+  "ci_bath_unavailable": "目前無法從此處預約包租浴池。抵達後請洽櫃檯。",
+  "ci_ota_title": "下次住宿，透過官方網站預訂最划算",
+  "ci_ota_points": "免費加入會員並透過官方網站預訂，每次住宿皆可累積點數。1 點＝1 日圓，可折抵下次預訂。",
+  "ci_ota_welcome": "現在加入即贈 {points} 點。",
+  "ci_ota_cta": "前往官方網站",
+  "ci_ota_strip": "下次住宿，透過官方網站預訂最划算。"
 }

@@ -1,9 +1,12 @@
 <script lang="ts">
-	// ③ 完了。選んだ食事の時間をまとめて出し、客室案内（/r）へ案内する。
-	// 貸切風呂のフォーム内予約・OTA 誘導バナーは P3（ここでは客室案内への案内だけ）。
+	// ④ 完了。選んだ食事の時間をまとめて出し、客室案内（/r）・貸切風呂（/r/bath）へ案内する。
+	// 案内のリンクは /ci/go を通す: 回答済み・チェックイン日 12:00 より前なら滞在トークンを Cookie（ab_stay）に入れてから移るので、
+	// 6 桁コードを入れずに開ける（P3）。OTA 経由の予約には公式サイトへの誘導カードを出す。
+	import PrecheckinOtaBanner from '$lib/components/PrecheckinOtaBanner.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { slashDate, type PcMealType } from '$lib/precheckin';
+	import { otaBannerHref } from '$lib/precheckin-p3';
 
 	let { data } = $props();
 	const ctx = $derived(data.ctx!);
@@ -17,6 +20,8 @@
 			)
 		)
 	);
+	const go = (to: 'inroom' | 'bath') => `${localizeHref('/ci/go')}?to=${to}`;
+	const bannerHref = $derived(data.otaBanner ? otaBannerHref(ctx.facility, localizeHref) : null);
 </script>
 
 <section class="rounded-2xl bg-white p-5 text-sm shadow-sm">
@@ -45,8 +50,12 @@
 
 <section class="mt-4 rounded-2xl bg-white p-5 text-sm shadow-sm">
 	<p class="leading-relaxed">{m.ci_done_inroom_help()}</p>
-	<p class="mt-2 leading-relaxed text-stone-600">{m.ci_done_bath()}</p>
-	<a href={localizeHref('/r')} class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
+	<a href={go('inroom')} class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
+	<a href={go('bath')} class="mt-3 block w-full rounded-xl bg-white py-3 text-center text-sm text-stone-700 ring-1 ring-stone-300">{m.ci_bath_reserve()}</a>
 </section>
+
+{#if bannerHref}
+	<PrecheckinOtaBanner href={bannerHref} variant="card" welcomeBonus={data.welcomeBonus} />
+{/if}
 
 <p class="mt-4 text-center text-xs text-stone-500">{slashDate(ctx.checkIn)} · {ctx.facility.name}</p>

@@ -27,7 +27,8 @@ export type PcAnswers = {
 	meals_saved_at?: string;
 };
 export type PcContext = {
-	facility: { id: string; slug: string; name: string; timezone: string };
+	/** portalSlug = 予約トップ /yamado/<slug> の slug（book.facility_contents.slug。P3 の DB 前は null） */
+	facility: { id: string; slug: string; name: string; timezone: string; portalSlug: string | null };
 	bookingCode: string;
 	checkIn: string;
 	checkOut: string;
@@ -43,6 +44,10 @@ export type PcContext = {
 	answeredAt: string | null;
 	rooms: PcRoom[];
 	slots: Record<PcMealType, Record<string, PcSlot[]>>;
+	/** 公式サイト予約か（source=autumn_booking）。P3 の DB（20261028223603）より前は null = 不明 */
+	isOfficial: boolean | null;
+	/** 取引先経由か（rms_partner） */
+	isPartner: boolean;
 };
 /** フォームを開けない理由 */
 export type PcError = 'invalid_token' | 'expired' | 'cancelled' | 'locked' | 'none';
@@ -291,7 +296,13 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 		};
 	});
 	return {
-		facility: { id: str(f.id), slug: str(f.slug), name: str(f.name), timezone: str(f.timezone) || 'Asia/Tokyo' },
+		facility: {
+			id: str(f.id),
+			slug: str(f.slug),
+			name: str(f.name),
+			timezone: str(f.timezone) || 'Asia/Tokyo',
+			portalSlug: str(f.portal_slug) || null
+		},
 		bookingCode: str(r.booking_code),
 		checkIn: str(r.check_in).slice(0, 10),
 		checkOut: str(r.check_out).slice(0, 10),
@@ -306,7 +317,9 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 		answers: (r.answers && typeof r.answers === 'object' ? r.answers : {}) as PcAnswers,
 		answeredAt: r.answered_at ? str(r.answered_at) : null,
 		rooms,
-		slots: { dinner: slotsOf(slots.dinner), breakfast: slotsOf(slots.breakfast) }
+		slots: { dinner: slotsOf(slots.dinner), breakfast: slotsOf(slots.breakfast) },
+		isOfficial: typeof r.is_official === 'boolean' ? r.is_official : null,
+		isPartner: r.is_partner === true
 	};
 }
 
@@ -454,7 +467,10 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		answers.meals?.find((m) => m.stay_id === stayId && m.type === type && m.date === date)?.time ?? null;
 	const until = editableUntilOf(today);
 	return {
-		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo' },
+		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
+		// 見本は OTA 経由の予約にしておく（誘導バナーを確かめられるように）
+		isOfficial: false,
+		isPartner: false,
 		bookingCode: 'DEMO-0001',
 		checkIn: today,
 		checkOut: tomorrow,

@@ -3,6 +3,7 @@
 // DB: autumn-shared 20261028220125_book_precheckin_p2.sql（RPC のシグネチャはここと一致させる）
 //   フォーム（anon・トークン）: precheckin_context(p_token) / precheckin_save_answers(p_token, p_answers) /
 //                              precheckin_save_meals(p_token, p_meals)
+//   P3（20261028223603）: precheckin_stay_token(p_token) … 滞在トークン（ab_stay）を受け取る。context に is_official 等
 //   管理画面（authenticated）: admin_precheckin_list(p_facility, p_from, p_to) / admin_precheckin_detail(p_facility, p_stay_id) /
 //                              admin_precheckin_issue(p_facility, p_stay_id) / admin_precheckin_mark_sent(p_facility, p_id, p_ok, p_to, p_error) /
 //                              admin_precheckin_caps(p_facility) / admin_precheckin_save_caps(p_facility, p_caps)
@@ -27,6 +28,8 @@ import {
 	type PcError,
 	type PcMealChoice
 } from '$lib/precheckin';
+import { normalizeStayTokenResult, type StayTokenResult } from '$lib/precheckin-p3';
+import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 
 // 開発中はログを出す（リリース前に false）
 const DEBUG = true;
@@ -91,6 +94,37 @@ export async function pcSaveMeals(token: string, meals: PcMealChoice[]): Promise
 	const { data, error } = await supa().rpc('precheckin_save_meals', { p_token: token, p_meals: meals });
 	if (error) dbg('save_meals error', error.message);
 	return rpcResult(data, error);
+}
+
+// ---------------------------------------------------------------- 滞在トークン（P3: 客室案内・貸切風呂へ）
+
+const STAY_COOKIE = 'ab_stay';
+
+/**
+ * 事前チェックインのトークンから、その予約（代表の部屋）の滞在トークンを受け取る（book.precheckin_stay_token・P3）。
+ * 回答済み・チェックイン日 12:00 より前だけ。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
+ */
+export async function pcStayToken(token: string): Promise<StayTokenResult> {
+	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
+	const { data, error } = await supa().rpc('precheckin_stay_token', { p_token: token });
+	if (error) {
+		dbg('stay_token error', error.message);
+		return { ok: false, error: 'server' };
+	}
+	return normalizeStayTokenResult(data);
+}
+
+/**
+ * 滞在トークンを受け取り、客室案内と同じ httpOnly Cookie（ab_stay）に入れる（/r/c/[token] と同じ。URL には出さない）。
+ * 戻り値は受け取れた結果（呼び出し側が貸切風呂の予約状況を引くのに使う）。
+ */
+export async function ensureStayCookie(cookies: Cookies, pcToken: string): Promise<StayTokenResult> {
+	const r = await pcStayToken(pcToken);
+	if (r.ok) {
+		cookies.set(STAY_COOKIE, r.token, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: stayCookieMaxAge(r.validTo) });
+	}
+	dbg('stay cookie', r.ok ? 'set' : r.error);
+	return r;
 }
 
 // ---------------------------------------------------------------- Cookie とレート制限

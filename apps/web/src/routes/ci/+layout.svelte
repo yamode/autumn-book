@@ -1,17 +1,24 @@
 <script lang="ts">
 	// 事前チェックイン（/ci・お客様向け）のシェル。客室案内（/r）と同じ黒いヘッダーと淡いグレーの地にそろえる。
-	// 手順: ① ご予約内容（/ci）→ ② お食事の時間（/ci/meals）→ ③ 完了（/ci/done）
+	// 手順: ① ご予約内容（/ci）→ ② お食事の時間（/ci/meals）→ ③ 貸切風呂（/ci/bath・任意）→ ④ 完了（/ci/done）
+	// OTA 経由の予約には、各ステップの下に公式サイトへの控えめな帯を出す（完了画面はカード・P3）。
 	// 検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
+	import PrecheckinOtaBanner from '$lib/components/PrecheckinOtaBanner.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { shortJst } from '$lib/precheckin';
+	import { otaBannerHref } from '$lib/precheckin-p3';
 
 	let { data, children } = $props();
 
 	const path = $derived(page.url.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, ''));
-	const step = $derived(path.startsWith('/ci/done') ? 3 : path.startsWith('/ci/meals') ? 2 : 1);
-	const steps = $derived([m.ci_step_basic(), m.ci_step_meals(), m.ci_step_done()]);
+	const step = $derived(
+		path.startsWith('/ci/done') ? 4 : path.startsWith('/ci/bath') ? 3 : path.startsWith('/ci/meals') ? 2 : 1
+	);
+	const steps = $derived([m.ci_step_basic(), m.ci_step_meals(), m.ci_step_bath(), m.ci_step_done()]);
+	const bannerHref = $derived(data.ctx && data.otaBanner ? otaBannerHref(data.ctx.facility, localizeHref) : null);
 	const errorText = $derived(
 		data.ciError === 'expired'
 			? m.ci_err_expired()
@@ -64,6 +71,10 @@
 				<div class="mt-4">
 					{@render children()}
 				</div>
+				{#if bannerHref && step !== 4}
+					<!-- 完了画面はカードを本文の中に出す（ci/done/+page.svelte） -->
+					<PrecheckinOtaBanner href={bannerHref} variant="strip" />
+				{/if}
 			{:else}
 				<div class="mt-6 rounded-2xl bg-white p-5 text-sm shadow-sm">
 					<h1 class="text-base font-semibold">{m.ci_title()}</h1>

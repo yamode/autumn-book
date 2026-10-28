@@ -75,7 +75,7 @@
 	<div class="flex gap-3">
 		<a href={localizeHref('/ci')} class="flex-1 rounded-xl bg-white py-3 text-center text-sm text-stone-700 ring-1 ring-stone-300">{m.ci_back()}</a>
 		{#if ro}
-			<a href={localizeHref('/ci/done')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_step_done()}</a>
+			<a href={localizeHref('/ci/bath')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_next()}</a>
 		{:else}
 			<button type="submit" class="flex-[2] rounded-xl bg-stone-900 py-3 text-sm font-medium text-white">{m.ci_submit()}</button>
 		{/if}
