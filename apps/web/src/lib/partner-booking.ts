@@ -39,7 +39,7 @@ export const isDepositPaymentOption = (id: string | null | undefined) => id === 
 //   advance_bank   … 前受金（全額・銀行振込）。予約は即確定し、全額を宿泊日前の期限までに銀行振込（前受金の請求書）
 // 額（一部のとき）と残額の精算先はデポジットの設定（creditDeposit / creditDepositRemainder）を共用する。
 // DB・請求書が整うまで取引先・管理画面には出さない（フェーズ2〜4で true にする）。
-export const ADVANCE_PAYMENT_ENABLED = false;
+export const ADVANCE_PAYMENT_ENABLED = true;
 export const DEPOSIT_BANK_OPTION = 'deposit_bank';
 export const ADVANCE_BANK_OPTION = 'advance_bank';
 export const PARTNER_ADVANCE_PAYMENT_OPTIONS: { id: string; label: string; note: string }[] = [

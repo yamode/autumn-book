@@ -203,7 +203,7 @@ describe('paymentOptionLabel / partnerPaymentChoices', () => {
     expect(paymentOptionLabel('custom_zz', s)).toBe('custom_zz');
   });
   it('選択肢は固定の3種 → 自由入力', () => {
-    expect(partnerPaymentChoices(s).map((o) => o.id)).toEqual(['invoice_monthly', 'online', 'online_checkin', 'custom_a']);
+    expect(partnerPaymentChoices(s).map((o) => o.id)).toEqual(['invoice_monthly', 'online', 'online_checkin', 'deposit_online', 'deposit_bank', 'advance_bank', 'custom_a']);
     expect(isCustomPaymentOption('custom_a')).toBe(true);
     expect(isCustomPaymentOption('online')).toBe(false);
   });
@@ -385,8 +385,8 @@ describe('デポジット（Phase 3b・受付枠を超えた予約）', () => {
   it('支払方法 deposit_online: Stripe・表示名・Intent の額', () => {
     expect(isStripePaymentOption('deposit_online')).toBe(true);
     expect(paymentOptionLabel('deposit_online')).toBe('デポジット（予約時にオンライン決済・残額は後日）');
-    // 取引先の設定の支払方法には出さない
-    expect(normalizePartnerBookingSettings({ paymentOptions: ['deposit_online', 'online'] }).paymentOptions).toEqual(['online']);
+    // 取引先の設定の支払方法には、一部事前支払（2026-10-28〜）として選べば入る（並びは固定の3種 → 事前支払 → 自由入力）
+    expect(normalizePartnerBookingSettings({ paymentOptions: ['deposit_online', 'online'] }).paymentOptions).toEqual(['online', 'deposit_online']);
     const b = { total_amount: 100000, bath_tax_amount: 1500, prepay_discount_amount: 0, payment_option: 'deposit_online', deposit_amount: 30450, paid_amount: null };
     expect(intentAmountOf(b)).toBe(30450);
     expect(depositStateOf(b)).toEqual({ deposit: 30450, remainder: 71050 });
