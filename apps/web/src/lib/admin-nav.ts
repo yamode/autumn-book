@@ -47,6 +47,8 @@ export const ADMIN_NAV: NavGroup[] = [
 	{
 		label: '滞在中のお客様',
 		items: [
+			// 事前チェックイン（到着前のご案内メール・回答の確認。docs/pre-checkin.md P2）
+			{ href: '/admin/precheckin', label: '事前チェックイン', icon: 'receipt' },
 			{
 				href: '/admin/inroom',
 				label: '客室案内',

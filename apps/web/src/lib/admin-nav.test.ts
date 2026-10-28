@@ -16,6 +16,12 @@ describe('管理画面のメニューの現在地', () => {
 		expect(at('/admin/partners/invoices')).toBe('取引先 > 予定請求書');
 		expect(at('/admin/security/users')).toBe('ユーザー・セキュリティ > 二段階認証・パスキー');
 	});
+	it('事前チェックインは一覧も回答の詳細も同じ項目', () => {
+		expect(at('/admin/precheckin')).toBe('事前チェックイン > 事前チェックイン');
+		expect(at('/admin/precheckin/00000000-0000-4000-8000-000000000001')).toBe('事前チェックイン > 事前チェックイン');
+		const group = ADMIN_NAV.find((g) => g.items.some((i) => i.href === '/admin/precheckin'));
+		expect(group?.label).toBe('滞在中のお客様');
+	});
 	it('客室案内は ?tab で分ける（古い ?all は客室スリップ・バナーと入口QRは表示の設定）', () => {
 		expect(at('/admin/inroom')).toBe('客室案内 > きょうの運用');
 		expect(at('/admin/inroom?tab=guides')).toBe('客室案内 > 館内案内の内容');
