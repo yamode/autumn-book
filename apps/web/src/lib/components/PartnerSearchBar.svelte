@@ -15,6 +15,7 @@
     showInventory,
     today,
     open = $bindable<'' | 'date' | 'guests'>(''),
+    crossType = false,
     onSearch
   }: {
     token: string;
@@ -27,6 +28,8 @@
     showInventory: boolean;
     today: string;
     open?: '' | 'date' | 'guests';
+    /** 室数を部屋タイプ横断で数える（特別会員の専用ページ。足りなければ組み合わせを出す） */
+    crossType?: boolean;
     onSearch: () => void;
   } = $props();
 
@@ -104,7 +107,7 @@
     </div>
   {:else if open === 'guests'}
     <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] md:w-96" role="dialog" aria-label="ご利用人数・室数">
-      {#each [{ key: 'guests', title: '1室あたりの人数', sub: '大人', value: guests, min: 1, max: 6, unit: '名' }, { key: 'rooms', title: '室数', sub: '同じお部屋タイプ・各室同じ人数', value: rooms, min: 1, max: maxRooms, unit: '室' }] as row, i (row.key)}
+      {#each [{ key: 'guests', title: '1室あたりの人数', sub: '大人', value: guests, min: 1, max: 6, unit: '名' }, { key: 'rooms', title: crossType ? '必要な室数' : '室数', sub: crossType ? 'お部屋タイプは問いません・各室同じ人数' : '同じお部屋タイプ・各室同じ人数', value: rooms, min: 1, max: maxRooms, unit: '室' }] as row, i (row.key)}
         <div class={`flex items-center justify-between gap-4 py-3 ${i ? 'border-t border-stone-200' : ''}`}>
           <div>
             <p class="text-base font-semibold text-brand-900">{row.title}</p>
@@ -117,7 +120,9 @@
           </div>
         </div>
       {/each}
-      <p class="mt-1 text-xs leading-5 text-stone-500">お部屋タイプの違う組み合わせ（例: 和室1室＋洋室1室）は、お部屋ごとに分けてご予約ください。</p>
+      <p class="mt-1 text-xs leading-5 text-stone-500">
+        {#if crossType}1つのお部屋タイプで足りないときは、お部屋タイプを組み合わせた候補（例: 和室1室＋洋室1室）をお出しします。{:else}お部屋タイプの違う組み合わせ（例: 和室1室＋洋室1室）は、お部屋ごとに分けてご予約ください。{/if}
+      </p>
       <div class="mt-3 flex justify-end">
         <button type="button" onclick={() => { open = ''; onSearch(); }} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800">この条件で検索</button>
       </div>

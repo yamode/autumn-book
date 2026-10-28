@@ -23,6 +23,7 @@
   import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
   import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
   import { memberCart } from '$lib/member-cart.svelte';
+  import { crossTypeCombos, type RoomCombo } from '$lib/partner-room-combos';
 
   // below: 検索バーの下・一覧の上に差し込む中身（プランのご紹介の「専用特典」）
   let { data, view, below }: { data: StayPageData; view: 'room' | 'plan'; below?: Snippet } = $props();
@@ -347,6 +348,47 @@
       () => confirm('かごには別の日程・施設のお部屋が入っています。かごを空にして、このお部屋を入れますか？')
     );
   }
+  // 必要な室数を部屋タイプ横断で満たす組み合わせ（特別会員の専用ページだけ。かごは部屋タイプを混ぜて 1 回で予約できる）。
+  // 1 つの部屋タイプで足りるものは下の一覧に出るので、ここには「単独では足りないが、合わせれば足りる」プランだけを出す
+  const combos = $derived.by((): RoomCombo[] => {
+    if (!memberMode || !shown?.params.date || shown.params.rooms < 2 || !canBook) return [];
+    const { params: p, index } = shown;
+    const offers = partnerStayOffers((x) => index.get(x), p.date, p.nights, p.guests, { showInventory: data.showInventory, rooms: 1 }) ?? [];
+    return crossTypeCombos(offers, p.rooms, p.guests);
+  });
+  /** 組み合わせの各室（部屋タイプ・人数つき）をかごに入れる。かごの「予約へ進む」で全室をまとめて仮押さえする */
+  function addComboToCart(c: RoomCombo) {
+    if (!shown?.params.date) return;
+    const p = shown.params;
+    if (memberCart.items.length > 0 && !confirm('かごのお部屋を空にして、この組み合わせを入れますか？')) return;
+    memberCart.clear();
+    for (const part of c.parts) {
+      for (let i = 0; i < part.rooms; i++) {
+        const ok = memberCart.add(
+          {
+            facilityId: data.portal.facilityId,
+            facilitySlug: data.portal.facilitySlug,
+            checkin: p.date,
+            nights: p.nights,
+            roomCode: part.roomCode,
+            roomTypeId: part.roomCode,
+            roomName: part.roomName,
+            planCode: c.planCode,
+            planName: c.planName,
+            displayName: partnerPlanName(data.planNames, c.planCode, c.planName),
+            adults: p.guests,
+            total: part.totalPerPerson * p.guests,
+            pay: payOf(c.planCode, c.planName),
+            remaining: part.remaining
+          },
+          data.booking.maxRooms,
+          () => true
+        );
+        if (!ok) return;
+      }
+    }
+    memberCart.message = `${p.rooms}室の組み合わせをかごに入れました。画面下の「予約へ進む」からご予約ください。`;
+  }
   const checkout = $derived(dated ? addDaysIsoClient(data.params.date, data.params.nights) : '');
   const guestText = $derived(`大人${data.params.guests}名${data.params.rooms > 1 ? ` × ${data.params.rooms}室` : ''}`);
   const capacityText = (r: PartnerRoomContent) => (r.capacityMin === r.capacityMax ? `${r.capacityMax}名` : `${r.capacityMin}名〜${r.capacityMax}名`);
@@ -418,6 +460,7 @@
       maxRooms={data.booking.maxRooms}
       showInventory={data.showInventory}
       today={data.today}
+      crossType={memberMode}
       onSearch={search}
     />
   </div>
@@ -452,6 +495,27 @@
       {/each}
     </div>
   </div>
+  {#if combos.length && !pending}
+    <!-- 部屋タイプ横断の組み合わせ: 1 つの部屋タイプでは室数に足りないとき -->
+    <section class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label="お部屋タイプの組み合わせ">
+      <p class="text-base font-bold text-brand-900">{data.params.rooms}室は、お部屋タイプを組み合わせるとご予約いただけます</p>
+      <p class="mt-0.5 text-sm text-stone-600">1つのお部屋タイプでは{data.params.rooms}室に足りないため、同じプランで空いているお部屋を組み合わせました。</p>
+      <ul class="mt-3 space-y-3">
+        {#each combos as c (c.planCode + c.planName)}
+          <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-brand-900">
+                {#if c.mealType}<span class="mr-1.5 rounded-sm border border-amber-600 px-1 text-[11px] font-normal leading-4 text-amber-700">{mealLabel(c.mealType)}</span>{/if}{partnerPlanName(data.planNames, c.planCode, c.planName)}
+              </p>
+              <p class="mt-0.5 text-base text-brand-900">{c.parts.map((x) => `${x.roomName}${x.rooms}室`).join('＋')}<span class="ml-2 text-sm text-stone-500">各室 大人{data.params.guests}名</span></p>
+              <p class="text-sm text-stone-600">{data.params.nights}泊 合計 <span class="text-lg font-bold tabular-nums text-brand-900">{num(c.total)}</span>円（税込）</p>
+            </div>
+            <button type="button" onclick={() => addComboToCart(c)} class="rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">この組み合わせで予約へ</button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
   {#if dated && data.booking.enabled && !canBook}
     <p class="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">この宿泊日のご予約は受付を締め切りました。料金はご参考です。</p>
   {/if}
