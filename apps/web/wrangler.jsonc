@@ -25,7 +25,12 @@
 	//  - CF_ACCOUNT_ID：Cloudflare のアカウントID（秘密ではない）。メール送信（Email Sending）と請求書 PDF（Browser Rendering）の
 	//    REST API で使う。2026-10-01 まで本番に未登録で、取引先向けメールが一度も送られていなかった（送信不可は黙ってスキップする作り）。
 	//  - REPORT_EMAIL_FROM：差出人（yamado.app 配下。Email Sending 有効化済み）。
+	//  - 事前チェックインの SMS（NTT CPaaS・P4）は secret で登録する（ここに値を書かない）:
+	//    NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER / NTT_CPAAS_WEBHOOK_SECRET（Webhook の Basic 認証「ユーザー名:パスワード」）。
+	//    どれか欠けると SMS は送らず「SMS未設定」になる（メールは送れる）。
 	"vars": {
+		// 事前チェックインの当日 9:00 の自動送信（/api/cron/precheckin-send）。'1' のときだけ送る。'0' は対象件数だけ数える dry-run
+		"PRECHECKIN_AUTOSEND": "0",
 		"CF_ACCOUNT_ID": "6aa45d1081c1e08d7f1ce6d5aba5c3b7",
 		"REPORT_EMAIL_FROM": "rms@yamado.app",
 		"AUTH_MODE": "supabase",

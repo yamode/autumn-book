@@ -1,3 +1,48 @@
+## 事前チェックイン P4: NTT CPaaS の SMS 送信（手動＋当日 9:00 の自動送信）（2026-10-29・v0.211.0）
+
+- 設計: `docs/pre-checkin.md` §3・§9・§16・§18・§19。純関数 `src/lib/precheckin-sms.ts`（テスト `precheckin-sms.test.ts`）、サーバー `src/lib/server/precheckin-sms.ts`（`DEBUG=true`・テスト `precheckin-sms.test.ts`）。
+- DB: autumn-shared `20261028223741_book_precheckin_p4_sms.sql`（**作成のみ・未コミット・未適用**。P2 の `20261028220125` が先に適用されている前提）。
+  - 表: `book.precheckin_dispatch`（送信 1 回ごと・channel sms/email・status pending/sent/delivered/failed/undeliverable・宛先はマスクのみ・`dedupe_key`＝自動送信の受付×経路×送信日）、`book.precheckin_sms_inbound`（返信・90 日で消す想定・purge 未実装）。どちらも deny-all RLS・RPC のみ。
+  - 管理画面用（authenticated）: `admin_precheckin_dispatch_begin(p_facility, p_stay_id, p_channel, p_force)`・`admin_precheckin_dispatch_finish(...)`・`admin_precheckin_sms_status(p_facility, p_from, p_to)`・`admin_precheckin_sms_detail(p_facility, p_stay_id)`。
+  - サーバー用（service_role のみ）: `precheckin_autosend_targets(p_date)`・`precheckin_autosend_begin(p_stay_id, p_channel)`・`precheckin_dispatch_finish(...)`・`precheckin_dlr_apply(p_reports)`・`precheckin_sms_inbound_save(p_rows)`。
+  - pg_cron `precheckin_send`（`0 0 * * *`＝JST 9:00）。URL は Vault `book_precheckin_send_url`（**新規・ユーザーが登録**。無ければ何もしない）、認証は既存 Vault `autumn_rms_cron_secret`（中身は `Bearer <CRON_SECRET>`）。
+- ルート: `POST /api/cron/precheckin-send`（Bearer CRON_SECRET・即 202・`?wait=1` で結果・`?date=YYYY-MM-DD` は常に dry-run）、`POST /api/webhooks/ntt-cpaas/dlr`、`POST /api/webhooks/ntt-cpaas/inbound`（Basic 認証）。3 つともメンテナンス対象外・セッション解決なし（`isPartnerPath`）。`/ci` もメンテナンス対象外にした（SMS のリンクの着地点）。
+- 画面: `/admin/precheckin` に「SMSで送る／SMSで再送」（携帯番号のときだけ・SMS 未設定ならボタン無効＋理由）、SMS の状態（送信済・到達・失敗・未到達）と「返信あり」の印。直近 1 時間に送っていれば確認を出してから送る。メールのボタンは「メールで送る／再送」に改名して残した。`/admin/precheckin/<stay_id>` に「お客様からの返信（SMS）」と「送信の履歴」。
+
+### 必要な環境変数（Cloudflare Pages の secret。値はリポジトリ・ログに書かない）
+- `NTT_CPAAS_BASE_URL`（マイページ「ディベロッパー」のベース URL。`abc123`・`abc123.ibapi.nttcpaas.com`・`https://…` のどれでも可。*.ibapi.nttcpaas.com 以外は拒否）
+- `NTT_CPAAS_API_KEY`（`Authorization: App <key>`）、`NTT_CPAAS_SENDER`（トライアルは `ServiceSMS`）
+- `NTT_CPAAS_WEBHOOK_SECRET`（Webhook の Basic 認証。「ユーザー名:パスワード」）
+- 3 つ（BASE_URL / API_KEY / SENDER）のどれかが無いと SMS は送らず「SMS未設定」。`wrangler pages secret put <NAME> --project-name autumn-book`
+- `PRECHECKIN_AUTOSEND`（wrangler.jsonc の vars・既定 `"0"`＝dry-run。`"1"` で自動送信が実際に送る）
+
+### Webhook の登録（NTT CPaaS マイページ）
+1. 「サブスクリプション管理」で SMS の配信レポート（DLR）に `https://book.yamado.app/api/webhooks/ntt-cpaas/dlr` を登録。セキュリティ設定は BASIC（`NTT_CPAAS_WEBHOOK_SECRET` と同じユーザー名・パスワード）。
+2. 「番号詳細 → SMS のインバウンド構成」に `https://book.yamado.app/api/webhooks/ntt-cpaas/inbound` を登録（双方向 SenderID `0005…` のときだけ返信が届く）。認証は同じ BASIC。
+3. 送信ごとの `notifyUrl`（v3 の `webhooks.delivery.url`）は付けていない（Basic を載せられないため、サブスクリプションの設定を使う）。
+
+### 自動送信の有効化
+1. DB 適用後、Vault に `book_precheckin_send_url` を作る（値は本番 Book の `/api/cron/precheckin-send` の URL）。
+2. まず dry-run: `curl -X POST -H "Authorization: Bearer <CRON_SECRET>" "https://book.yamado.app/api/cron/precheckin-send?wait=1"` で対象件数（sms / email / no_contact / answered / already_sent）を確かめる。
+3. 手動の「SMSで送る」で本人の番号に届くこと（トライアルは最初にログインした人の携帯のみ・100 通まで）と DLR・返信の反映を確かめる。
+4. wrangler.jsonc の `PRECHECKIN_AUTOSEND` を `"1"` にしてデプロイ。
+
+- **未確認・判断待ち**: ①実 API・Webhook とも未疎通（fetch のモックでの単体テストのみ）②DB 未適用・SQL は未実行（構文は目視確認のみ）③DLR を送信ごとの URL ではなくサブスクリプションで受ける判断 ④Webhook 認証は BASIC（HMAC はヘッダー仕様が公開ドキュメントで確認できず）⑤自動送信はメールの対象にもメールを送る（携帯番号が無い予約）⑥返信の 90 日 purge は未実装 ⑦自動送信が送るたびトークンを発行するため、当日 9:00 より前にメールで送ったリンクは、9:00 の自動送信で無効になる（今日すでに送った予約は対象外なので、当日送信分は守られる）。
+
+### テストチェックリスト（事前チェックイン P4）
+- [ ] SMS 未設定の環境では「SMSで送る」が無効で、「SMS未設定」の説明が出る（メールは送れる）
+- [ ] 携帯番号（070/080/090・+81・ハイフン・全角）の予約にだけ「SMSで送る」が出る。固定電話・海外番号には出ない
+- [ ] 「SMSで送る」で本人の携帯に届く（トライアル番号）。本文に施設名・リンク・施設の電話が入り、2 通以内
+- [ ] リンクから /ci が開ける（メンテナンス中でも）
+- [ ] 届くと一覧が「SMS 到達」になる（DLR Webhook）。存在しない番号等は「SMS 未到達／失敗」と理由が出る
+- [ ] 1 時間以内に再送しようとすると確認が出て、「それでも送る」で送れる。1 時間に 5 通を超えると止まる
+- [ ] 送った SMS に返信すると、一覧に「返信あり」、詳細に「お客様からの返信」が出る（HTML がそのまま文字で出る）
+- [ ] Webhook に認証なし・違う認証で POST すると 401、`NTT_CPAAS_WEBHOOK_SECRET` 未設定だと 503
+- [ ] cron を `?wait=1` で叩くと、`PRECHECKIN_AUTOSEND` 未設定・"0" では dry-run で件数だけ返り、何も送られない
+- [ ] `PRECHECKIN_AUTOSEND="1"` で今日チェックインの代表 1 通に送られ、cron を 2 回走らせても 2 通目は送られない
+- [ ] 回答済み・今日送信済み・取消・取引先・連絡先なし（Expedia 等）は送られず、件数で返る
+- [ ] 自動送信の SMS が失敗しても、メールへ自動で切り替わらない（一覧に失敗が出る）
+
 ## 事前チェックイン P2: 受付・フォーム・管理画面の状況一覧（2026-10-29・v0.209.0）
 
 - 設計: `docs/pre-checkin.md`（§4 トークン・§5 フォーム・§12 DB・§17 P2 の範囲）。送信は**メールの手動ボタンのみ**（SMS・自動送信・cron は P4）。貸切風呂のフォーム内予約・OTA 誘導バナーは P3。

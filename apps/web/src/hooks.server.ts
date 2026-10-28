@@ -9,9 +9,9 @@ import { applySecurityHeaders } from '$lib/server/security-headers';
 import { logAdminAccess } from '$lib/server/access-log';
 import { trySharedCookieSso } from '$lib/server/admin-shared-sso';
 import { isAdminPath } from '$lib/admin-mfa';
+import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
-const PRIMARY_ORIGIN = 'https://book.yamado.app';
 
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
 export const handle: Handle = async (input) => {

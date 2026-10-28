@@ -3,6 +3,7 @@
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import { formatDateJa } from '$lib/format';
 	import { contactDiff, precheckinState, PRECHECKIN_STATE_CLASS, PRECHECKIN_STATE_LABEL, shortJst } from '$lib/precheckin';
+	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL } from '$lib/precheckin-sms';
 
 	let { data } = $props();
 	const d = $derived(data.detail);
@@ -101,6 +102,47 @@
 					</tbody>
 				</table>
 			{/each}
+		</section>
+
+		<section class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">お客様からの返信（SMS）</h2>
+			<p class="mt-1 text-xs text-stone-500">送った SMS への返信です。送信元の番号には電話がつながらないため、必要ならお客様へ折り返してください。</p>
+			{#if data.sms.inbound.length}
+				<ul class="mt-3 space-y-2">
+					{#each data.sms.inbound as m (m.id)}
+						<li class="rounded-lg bg-violet-50 px-3 py-2">
+							<div class="text-xs text-stone-500">{m.received_at ? shortJst(m.received_at) : shortJst(m.created_at)}・{m.from_masked}</div>
+							<p class="mt-1 whitespace-pre-wrap break-words text-stone-800">{m.message}</p>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				<p class="mt-3 text-stone-500">返信はありません。</p>
+			{/if}
+		</section>
+
+		<section class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">送信の履歴（SMS・自動送信）</h2>
+			{#if data.sms.dispatches.length}
+				<table class="mt-3 w-full text-left">
+					<thead class="text-xs text-stone-400"><tr><th class="py-1">日時</th><th>手段</th><th>宛先</th><th>状態</th></tr></thead>
+					<tbody>
+						{#each data.sms.dispatches as x (x.id)}
+							<tr class="border-t border-stone-100 align-top">
+								<td class="py-1.5 text-xs">{shortJst(x.sent_at ?? x.created_at)}{x.mode === 'auto' ? '（自動）' : ''}</td>
+								<td>{x.channel === 'sms' ? 'SMS' : 'メール'}</td>
+								<td class="text-xs text-stone-600">{x.to_masked ?? '—'}</td>
+								<td>
+									{#if x.status}<span class="rounded-full px-2 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[x.status]}">{x.channel === 'sms' ? SMS_STATUS_LABEL[x.status] : x.status}</span>{/if}
+									{#if x.last_error && x.status !== 'delivered' && x.status !== 'sent'}<div class="mt-0.5 text-xs text-red-700">{x.last_error}</div>{/if}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			{:else}
+				<p class="mt-3 text-stone-500">SMS・自動送信の記録はありません（メールの手動送信は上の「状態」に出ます）。</p>
+			{/if}
 		</section>
 	</div>
 {/if}
