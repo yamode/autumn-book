@@ -13,10 +13,15 @@
  import type {SubmitFunction} from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { bathGuestDisplay, bathRoomDisplay } from '$lib/private-bath-display';
 
 	let { data, form } = $props();
 	const ctx = $derived(form?.refreshedCtx ?? data.ctx);
 	const bookingOpen = $derived(data.pmsEnabled && ctx.ok && ctx.enabled);
+	// お名前（館内図で選んだ表示。ツアー名は敬称なし）とお部屋（部屋名（部屋番号））。旧トークンは従来の表示（2026-10-28）
+	const guestShown = $derived(bathGuestDisplay(ctx));
+	const guestText = $derived(guestShown ? (guestShown.honorific ? m.bath_guest_honorific({ name: guestShown.name }) : guestShown.name) : '');
+	const roomText = $derived(bathRoomDisplay(ctx, getLocale()));
 	// 管理画面（/admin/bath）で入れた文章。未入力の欄は null なので既定文言に落ちる。
 	const c = $derived(data.content?.fields ?? {});
 	const photos = $derived(data.content?.images ?? []);
@@ -301,18 +306,18 @@
 					<span class="text-sm text-stone-900">{m.bath_reserver()}</span>
 					<!-- 下の日付・時間帯と同じ「ラベルの下に左揃えの欄」の形にそろえる（表示専用なのでグレー地） -->
 					<dl class="mt-3 space-y-3">
-						{#if ctx.guest_name}
+						{#if guestText}
 							<div>
 								<dt class="text-xs text-stone-400">{m.bath_guest()}</dt>
 								<dd class="mt-1 rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 py-2 text-sm text-[#3d3f45]">
-									{m.bath_guest_honorific({ name: ctx.guest_name })}
+									{guestText}
 								</dd>
 							</div>
 						{/if}
 						<div>
 							<dt class="text-xs text-stone-400">{m.bath_room()}</dt>
 							<dd class="mt-1 rounded border border-[#e3e5e8] bg-[#f6f7f9] px-3 py-2 text-sm text-[#3d3f45]">
-								{ctx.room_code}
+								{roomText}
 							</dd>
 						</div>
 					</dl>
@@ -396,15 +401,15 @@
 			<!-- ============ STEP2 入力内容確認 ============ -->
 			<section class="rounded-lg bg-white px-5 py-5 shadow-card">
 				<dl class="divide-y divide-stone-100 text-sm">
-					{#if ctx.guest_name}
+					{#if guestText}
 						<div class="flex items-baseline justify-between py-2.5">
 							<dt class="text-stone-400">{m.bath_guest()}</dt>
-							<dd class="font-medium text-stone-800">{m.bath_guest_honorific({ name: ctx.guest_name })}</dd>
+							<dd class="font-medium text-stone-800">{guestText}</dd>
 						</div>
 					{/if}
 					<div class="flex items-baseline justify-between py-2.5">
 						<dt class="text-stone-400">{m.bath_room()}</dt>
-						<dd class="font-medium text-stone-800">{ctx.room_code}</dd>
+						<dd class="font-medium text-stone-800">{roomText}</dd>
 					</div>
 					{#if baths.length > 1}
 						<div class="flex items-baseline justify-between py-2.5">

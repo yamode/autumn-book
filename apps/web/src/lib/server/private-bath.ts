@@ -66,6 +66,17 @@ export type BathContext = {
 	facility?: { id: string; slug: string; name: string };
 	room_code?: string;
 	guest_name?: string | null;
+	/**
+	 * PMS の館内図で選んだお名前の表示（自動／予約者名／ツアー名）。旧トークン・古い DB では来ない（null）。
+	 * 組み立ては $lib/private-bath-display の bathGuestDisplay。
+	 */
+	display_name?: string | null;
+	/** guest＝敬称を付ける／tour＝ツアー名（敬称なし）。 */
+	display_kind?: 'guest' | 'tour' | null;
+	/** 施設設定どおりの部屋名・部屋番号・英語名（割当部屋から毎回引く。古い DB・見本では来ない）。 */
+	room_label?: string | null;
+	room_number?: string | null;
+	room_name_en?: string | null;
 	check_in_date?: string;
 	check_out_date?: string;
 	enabled?: boolean;

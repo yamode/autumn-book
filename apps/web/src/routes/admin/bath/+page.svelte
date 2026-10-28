@@ -18,6 +18,69 @@
 	const current = $derived<BathContent>(data.contents[lang] ?? { fields: {}, images: [] });
 	const imagesJson = $derived(JSON.stringify(current.images));
 
+	// 文章の入力中の値（言語ごと）。保存し直して data が変わったら保存済みの値に戻す。
+	// 「日本語から翻訳」はここへ下書きを入れるだけで、保存は人が確かめてから「保存」で行う（2026-10-28）。
+	let drafts = $state<Record<string, Record<string, string>>>({});
+	$effect.pre(() => {
+		const next: Record<string, Record<string, string>> = {};
+		for (const l of data.langs) next[l] = { ...((data.contents[l]?.fields ?? {}) as Record<string, string>) };
+		drafts = next;
+	});
+	const draftOf = (l: string, key: string) => drafts[l]?.[key] ?? '';
+	function setDraft(l: string, key: string, v: string) {
+		drafts[l] = { ...(drafts[l] ?? {}), [key]: v };
+	}
+
+	// 日本語は入っているのに、その言語が未登録の欄（お客様の画面では日本語のまま出る）
+	const savedField = (l: string, key: string) => (data.contents[l]?.fields?.[key as BathContentKey] ?? '').trim();
+	const missingByLang = $derived(
+		data.langs
+			.filter((l) => l !== 'ja')
+			.map((l) => ({ lang: l, fields: data.fields.filter((f) => savedField('ja', f.key) && !savedField(l, f.key)) }))
+			.filter((x) => x.fields.length)
+	);
+
+	let translating = $state(false);
+	let translateMessage = $state<{ ok: boolean; text: string } | null>(null);
+	async function translateFromJa() {
+		if (translating || lang === 'ja') return;
+		const source: Record<string, string> = {};
+		for (const f of data.fields) {
+			const v = draftOf('ja', f.key).trim();
+			if (v) source[f.key] = v;
+		}
+		if (!Object.keys(source).length) {
+			translateMessage = { ok: false, text: '翻訳する日本語の文章がありません。先に日本語を入れて保存してください。' };
+			return;
+		}
+		const target = lang;
+		const overwrite = data.fields.some((f) => source[f.key] && draftOf(target, f.key).trim());
+		if (overwrite && !confirm(`${LANG_LABEL[target] ?? target} に入っている文章も、翻訳した文章で置き換えます。よろしいですか？`)) return;
+		translating = true;
+		translateMessage = null;
+		try {
+			const res = await fetch('/admin/bath/translate', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lang: target, fields: source })
+			});
+			const r = (await res.json().catch(() => null)) as { fields?: Record<string, string>; error?: string } | null;
+			if (!res.ok || !r?.fields) {
+				translateMessage = { ok: false, text: r?.error ?? '翻訳できませんでした。時間をおいて再度お試しください。' };
+				return;
+			}
+			drafts[target] = { ...(drafts[target] ?? {}), ...r.fields };
+			translateMessage = {
+				ok: true,
+				text: '日本語から翻訳した下書きを入れました。内容を確かめて直し、「保存」を押してください（まだ保存していません）。'
+			};
+		} catch {
+			translateMessage = { ok: false, text: '翻訳できませんでした。接続をご確認ください。' };
+		} finally {
+			translating = false;
+		}
+	}
+
 	// QR の宛先は管理画面と同じオリジン。本番で開けばそのまま本番の URL になる。
 	const qrUrl = $derived(form?.qr ? `${$page.url.origin}/r/c/${form.qr.token}` : '');
 
@@ -150,7 +213,10 @@
 						class="min-h-9 flex-1 rounded-lg px-3 py-1 text-sm sm:flex-none {lang === l
 							? 'bg-stone-800 text-white'
 							: 'border border-stone-300 text-stone-600 hover:bg-stone-50'}"
-						onclick={() => (lang = l)}>{LANG_LABEL[l] ?? l}</button>
+						onclick={() => {
+							lang = l;
+							translateMessage = null;
+						}}>{LANG_LABEL[l] ?? l}{#if missingByLang.some((x) => x.lang === l)}<span class="ml-1 text-amber-500" title="未登録の欄があります">●</span>{/if}</button>
 				{/each}
 			</div>
 		</header>
@@ -158,6 +224,31 @@
 		<form method="POST" action="?/save" use:enhance class="space-y-4 px-4 py-4">
 			<input type="hidden" name="lang" value={lang} />
 			<input type="hidden" name="imagesJson" value={imagesJson} />
+
+			{#if missingByLang.length}
+				<!-- 未登録の言語があると、お客様の画面では英語の見出しの下に日本語の本文が並ぶ -->
+				<div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+					{#each missingByLang as x (x.lang)}
+						<p>{LANG_LABEL[x.lang] ?? x.lang}：{x.fields.map((f) => f.label).join('・')} が未登録です（お客様の画面では日本語のまま出ます）。</p>
+					{/each}
+				</div>
+			{/if}
+
+			{#if lang !== 'ja'}
+				<div class="flex flex-wrap items-center gap-2">
+					<button
+						type="button"
+						disabled={!data.live || translating}
+						onclick={translateFromJa}
+						class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-40">
+						{translating ? '翻訳しています…' : '日本語から翻訳（下書き）'}
+					</button>
+					<span class="text-xs text-stone-400">AI で日本語の文章から下書きを作ります。保存は内容を確かめてから。</span>
+				</div>
+				{#if translateMessage}
+					<p class="rounded-lg px-3 py-2 text-sm {translateMessage.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}" role="status">{translateMessage.text}</p>
+				{/if}
+			{/if}
 
 			{#each data.fields as f (f.key)}
 				<label class="block">
@@ -167,8 +258,9 @@
 						name={`f_${f.key}`}
 						rows={f.key === 'lead' || f.key === 'notice' ? 3 : 2}
 						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm"
-						placeholder="未入力なら既定の文言が出ます"
-						value={current.fields[f.key as BathContentKey] ?? ''}></textarea>
+						placeholder={lang === 'ja' ? '未入力なら既定の文言が出ます' : '未入力なら日本語の文章が出ます（日本語も未入力なら既定の文言）'}
+						value={draftOf(lang, f.key)}
+						oninput={(e) => setDraft(lang, f.key, (e.currentTarget as HTMLTextAreaElement).value)}></textarea>
 				</label>
 			{/each}
 

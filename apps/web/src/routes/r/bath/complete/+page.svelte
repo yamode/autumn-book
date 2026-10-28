@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import { bathRoomDisplay } from '$lib/private-bath-display';
 
 	let { data } = $props();
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
@@ -22,7 +23,7 @@
 		<p class="mt-3 whitespace-pre-line text-center text-sm leading-6 text-stone-700">{data.content.fields.done || m.bath_done()}</p>
 
 		<dl class="mt-7 divide-y divide-stone-100 rounded-lg border border-stone-200 px-4 text-sm">
-			<div class="flex justify-between gap-3 py-3"><dt class="text-stone-500">{m.bath_room()}</dt><dd class="font-medium text-stone-900">{data.ctx.room_code}</dd></div>
+			<div class="flex justify-between gap-3 py-3"><dt class="text-stone-500">{m.bath_room()}</dt><dd class="text-right font-medium text-stone-900">{bathRoomDisplay(data.ctx, getLocale())}</dd></div>
 			{#if data.bathName}<div class="flex justify-between gap-3 py-3"><dt class="text-stone-500">{m.bath_field_bath()}</dt><dd class="text-right font-medium text-stone-900">{data.bathName}</dd></div>{/if}
 			<div class="flex justify-between gap-3 py-3"><dt class="text-stone-500">{m.bath_label_date()}</dt><dd class="text-right font-medium text-stone-900">{dateLabel}</dd></div>
 			<div class="flex justify-between gap-3 py-3"><dt class="text-stone-500">{m.bath_label_time()}</dt><dd class="font-medium tabular-nums text-stone-900">{data.reservation.from}{data.reservation.to ? `〜${data.reservation.to}` : ''}</dd></div>
