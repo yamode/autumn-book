@@ -217,7 +217,8 @@ export type BookingTarget = {
   planName: string;
   checkIn: string;
   nights: number;
-  rooms: { adults: number }[];
+  // roomCode: 部屋ごとの部屋タイプ（複数部屋タイプの予約。同じプランの部屋タイプ違い）。無ければ roomCode（同じ部屋タイプ N 室）
+  rooms: { adults: number; roomCode?: string }[];
 };
 
 // 入湯税（PMS の施設設定 pms.facility_billing_settings と同じ規則: 1人1泊の額 × 人泊・子供を含めるかは設定）。
@@ -248,7 +249,7 @@ export type BookingQuote =
       checkIn: string;
       checkOut: string;
       nights: number;
-      rooms: { adults: number; nights: { date: string; unit_price: number }[]; subtotal: number }[];
+      rooms: { adults: number; roomCode?: string; roomName?: string; nights: { date: string; unit_price: number }[]; subtotal: number }[];
       total: number;
       // 入湯税（宿泊料金と一緒に請求する。キャンセル料の基準には含めない）
       bathTax: number;
@@ -341,19 +342,25 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     return { ok: false, message: 'ご案内できる期間を超えています。宿泊日・泊数をご確認ください。' };
   }
   const guests = [...new Set(t.rooms.map((r) => r.adults))];
-  const [rates, remaining, bathRule, credit] = await Promise.all([
-    loadPartnerRates(db, partner, { from: range.from, to: range.to }, { rooms: [t.roomCode], guests }),
-    roomTypeRemaining(db, partner.facility_id, t.roomCode, t.checkIn, addDaysIso(lastNight, 1)),
+  // 部屋ごとの部屋タイプ（複数部屋タイプ）。それぞれの室数ぶんの残りがあるかを部屋タイプごとに見る
+  const codeOf = (r: { roomCode?: string }) => r.roomCode || t.roomCode;
+  const typeCounts = new Map<string, number>();
+  for (const r of t.rooms) typeCounts.set(codeOf(r), (typeCounts.get(codeOf(r)) ?? 0) + 1);
+  const roomCodes = [...typeCounts.keys()];
+  const [rates, remainings, bathRule, credit] = await Promise.all([
+    loadPartnerRates(db, partner, { from: range.from, to: range.to }, { rooms: roomCodes, guests }),
+    Promise.all(roomCodes.map((code) => roomTypeRemaining(db, partner.facility_id, code, t.checkIn, addDaysIso(lastNight, 1)))),
     bathTaxRule(db, partner.facility_id),
     opts.credit ? partnerStayCredit(db, partner, t.checkIn, nights, t.rooms.length) : Promise.resolve(null)
   ]);
 
-  let roomName = t.roomCode;
+  const roomNames = new Map<string, string>();
   let mealType: string | null = null;
   let advance = false;
   const byDate = new Map(rates.days.map((d) => [d.date, d]));
-  const rooms: { adults: number; nights: { date: string; unit_price: number }[]; subtotal: number }[] = t.rooms.map((r) => ({
+  const rooms: { adults: number; roomCode: string; roomName?: string; nights: { date: string; unit_price: number }[]; subtotal: number }[] = t.rooms.map((r) => ({
     adults: r.adults,
+    roomCode: codeOf(r),
     nights: [],
     subtotal: 0
   }));
@@ -361,19 +368,23 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     const date = addDaysIso(t.checkIn, i);
     const day = byDate.get(date);
     if (!day || day.closed) return { ok: false, message: `${date} は休館日のため、ご予約いただけません。` };
-    const room = day.rooms.find((r) => r.roomCode === t.roomCode);
-    const plan = room?.plans.find((p) => p.planCode === t.planCode && p.planName === t.planName);
-    if (!room || !plan) return { ok: false, message: `${date} はこのお部屋・プランをご案内できません。宿泊日を変えてお試しください。` };
-    roomName = room.roomName;
-    mealType = plan.mealType;
-    advance = plan.advance;
+    for (const code of roomCodes) {
+      const room = day.rooms.find((r) => r.roomCode === code);
+      const plan = room?.plans.find((p) => p.planCode === t.planCode && p.planName === t.planName);
+      if (!room || !plan) return { ok: false, message: `${date} はこのお部屋・プランをご案内できません。宿泊日を変えてお試しください。` };
+      roomNames.set(code, room.roomName);
+      mealType = plan.mealType;
+      advance = plan.advance;
+    }
     for (const r of rooms) {
+      const plan = day.rooms.find((x) => x.roomCode === r.roomCode)!.plans.find((p) => p.planCode === t.planCode && p.planName === t.planName)!;
       const unit = plan.pricesPerPerson[String(r.adults)];
       if (unit == null) return { ok: false, message: `${date} は ${r.adults}名1室 の料金がありません。人数を変えてお試しください。` };
       r.nights.push({ date, unit_price: unit });
       r.subtotal += unit * r.adults;
     }
   }
+  for (const r of rooms) r.roomName = roomNames.get(r.roomCode);
   const total = rooms.reduce((s, r) => s + r.subtotal, 0);
   const d = partner.booking_settings.prepayDiscount;
   const prepayTotal =
@@ -426,8 +437,9 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
   }
   return {
     ok: true,
-    roomCode: t.roomCode,
-    roomName,
+    // 代表（1室目）の部屋タイプ。複数部屋タイプのときは rooms[i].roomCode が部屋ごとの値
+    roomCode: rooms[0].roomCode,
+    roomName: rooms[0].roomName ?? rooms[0].roomCode,
     planCode: t.planCode,
     planName: t.planName,
     mealType,
@@ -439,7 +451,9 @@ export async function quotePartnerBooking(db: SupabaseClient, partner: PartnerCo
     total,
     bathTax,
     prepay: prepayTotal == null ? null : { total: prepayTotal, discount: total - prepayTotal, label: describePrepayDiscount(d) },
-    remaining: remaining.min,
+    // 残室: 部屋タイプごとに「残り − その部屋タイプで取る室数」を出し、全室数を足した値の最小（画面の「残り < 室数」が全部屋タイプで成り立つ形）。
+    // 1つの部屋タイプなら従来の残りと同じ
+    remaining: remainings.some((r) => r.min == null) ? null : Math.min(...remainings.map((r, i) => (r.min as number) - (typeCounts.get(roomCodes[i]) ?? 0) + rooms.length)),
     credit,
     paymentChoices,
     deposit,
@@ -615,7 +629,7 @@ export async function createPartnerBooking(
       meal_type: quote.mealType,
       check_in: quote.checkIn,
       check_out: quote.checkOut,
-      rooms: rooms.map((r, i) => ({ adults: r.adults, nights: r.nights, ...(genderRooms?.[i] ?? {}) })),
+      rooms: rooms.map((r, i) => ({ adults: r.adults, room_code: r.roomCode, room_name: r.roomName, nights: r.nights, ...(genderRooms?.[i] ?? {}) })),
       guest: {
         family_name: g.familyName.trim().slice(0, 40),
         given_name: g.givenName.trim().slice(0, 40),

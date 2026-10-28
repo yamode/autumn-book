@@ -15,7 +15,7 @@
     showInventory,
     today,
     open = $bindable<'' | 'date' | 'guests'>(''),
-    crossType = false,
+    crossType = true,
     onSearch
   }: {
     token: string;
@@ -28,7 +28,7 @@
     showInventory: boolean;
     today: string;
     open?: '' | 'date' | 'guests';
-    /** 室数を部屋タイプ横断で数える（特別会員の専用ページ。足りなければ組み合わせを出す） */
+    /** 室数を部屋タイプ横断で数える（足りなければ組み合わせを出す。取引先・特別会員とも） */
     crossType?: boolean;
     onSearch: () => void;
   } = $props();

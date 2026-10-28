@@ -9,7 +9,9 @@ const str = (fd: FormData, k: string) => String(fd.get(k) ?? '').trim();
 // 予約時に聞く項目の回答は opt_<id> をすべて拾う（どの項目を聞くかはプラン＋取引先で決まり、検証は createPartnerBooking で行う）。
 export function parseBookingForm(fd: FormData): CreateBookingInput {
   const roomCount = Math.min(20, Math.max(1, Math.round(Number(str(fd, 'room_count'))) || 1));
-  const rooms = Array.from({ length: roomCount }, (_, i) => ({ adults: Math.round(Number(str(fd, `adults_${i}`))) || 0 }));
+  // room_codes: 部屋ごとの部屋タイプ（複数部屋タイプの予約・カンマ区切り・部屋の順）。無ければ room_code の同じ部屋タイプ N 室
+  const roomCodes = str(fd, 'room_codes').split(',').map((c) => c.trim());
+  const rooms = Array.from({ length: roomCount }, (_, i) => ({ adults: Math.round(Number(str(fd, `adults_${i}`))) || 0, ...(roomCodes.length === roomCount && roomCodes[i] ? { roomCode: roomCodes[i] } : {}) }));
   const answers: Record<string, string> = {};
   const genders: Record<string, string> = {};
   for (const [k, v] of fd.entries()) {

@@ -62,6 +62,10 @@
   );
   let nights = $state(init.target.nights ?? 1);
   let roomCount = $state(init.target.roomCount ?? 1);
+  // 複数部屋タイプの予約（同じプランの部屋タイプ違い）: 部屋ごとの部屋タイプ。室数は検索で決めた数で固定し、ここでは変えない
+  const roomCodes: string[] = init.target.roomCodes ?? [];
+  const mixedRooms = new Set(roomCodes).size > 1;
+  const roomLabelOf = (i: number) => (mixedRooms ? init.target.roomNames?.[roomCodes[i]] ?? roomCodes[i] : '');
   let adults = $state<number[]>(Array.from({ length: init.target.roomCount ?? 1 }, () => Math.min(init.capacity.max, Math.max(init.capacity.min, init.target.guests))));
   $effect(() => {
     // 室数を増減したら、部屋ごとの人数の欄を揃える（増やした部屋は1室目の人数で始める）
@@ -80,7 +84,7 @@
   let seq = 0;
   $effect(() => {
     void requote;
-    const body = { facilityId: data.portal.facilityId, roomCode: init.target.roomCode, planCode: init.target.planCode, planName: init.target.planName, checkIn, nights, rooms: adults.map((a) => ({ adults: a })) };
+    const body = { facilityId: data.portal.facilityId, roomCode: init.target.roomCode, planCode: init.target.planCode, planName: init.target.planName, checkIn, nights, rooms: adults.map((a, i) => ({ adults: a, ...(mixedRooms && roomCodes[i] ? { roomCode: roomCodes[i] } : {}) })) };
     const mine = ++seq;
     quoting = true;
     const t = setTimeout(async () => {
@@ -457,6 +461,7 @@
     <input type="hidden" name="plan_code" value={data.target.planCode} />
     <input type="hidden" name="plan_name" value={data.target.planName} />
     <input type="hidden" name="room_count" value={roomCount} />
+    {#if mixedRooms}<input type="hidden" name="room_codes" value={roomCodes.join(',')} />{/if}
     <!-- 仮置きした添付ファイルの id（確定時に DB 関数が予約へ結ぶ） -->
     <input type="hidden" name="attachment_ids" value={attachments.map((a) => a.id).join(',')} />
 
@@ -475,17 +480,24 @@
               {#each range(1, data.settings.maxNights) as n}<option value={n}>{n}泊</option>{/each}
             </select>
           </label>
-          <label class="block">
-            <span class={label}>室数</span>
-            <select bind:value={roomCount} class={input}>
-              {#each range(1, data.settings.maxRooms) as n}<option value={n}>{n}室</option>{/each}
-            </select>
-          </label>
+          {#if mixedRooms}
+            <div class="block">
+              <span class={label}>室数</span>
+              <p class="py-2 text-base">{roomCount}室（お部屋タイプの組み合わせ）</p>
+            </div>
+          {:else}
+            <label class="block">
+              <span class={label}>室数</span>
+              <select bind:value={roomCount} class={input}>
+                {#each range(1, data.settings.maxRooms) as n}<option value={n}>{n}室</option>{/each}
+              </select>
+            </label>
+          {/if}
         </div>
         <div class="mt-4 grid gap-3 sm:grid-cols-3">
           {#each adults as _, i}
             <label class="block">
-              <span class={label}>{roomCount > 1 ? `${i + 1}室目の人数` : '1室の人数'}</span>
+              <span class={label}>{roomCount > 1 ? `${i + 1}室目${mixedRooms ? `（${roomLabelOf(i)}）` : ''}の人数` : '1室の人数'}</span>
               <select name={`adults_${i}`} bind:value={adults[i]} class={input}>
                 {#each range(data.capacity.min, data.capacity.max) as g}<option value={g}>大人 {g}名</option>{/each}
               </select>
@@ -497,7 +509,7 @@
           <div class="mt-4 grid gap-3">
             {#each adults as a, i (i)}
               <div class="rounded-lg border border-stone-200 p-3">
-                {#if roomCount > 1}<p class="mb-2 text-sm font-medium">{i + 1}室目（大人{a}名）</p>{/if}
+                {#if roomCount > 1}<p class="mb-2 text-sm font-medium">{i + 1}室目{mixedRooms ? `（${roomLabelOf(i)}）` : ''}（大人{a}名）</p>{/if}
                 <div class="grid gap-3 sm:grid-cols-2">
                   {#if data.settings.askGender}
                     <label class="block">
@@ -636,7 +648,7 @@
           <h3 class="card-title">この内容で予約します</h3>
           <dl class="confirm">
             <dt>宿泊日</dt><dd>{fmt(checkIn)} から {nights}泊</dd>
-            {#if quote.ok}<dt>お部屋</dt><dd>{quote.roomName} × {roomCount}室</dd>
+            {#if quote.ok}<dt>お部屋</dt><dd>{#if mixedRooms}{#each roomCodes as _, i (i)}{#if i > 0}<br />{/if}{i + 1}室目 {roomLabelOf(i)}{/each}{:else}{quote.roomName} × {roomCount}室{/if}</dd>
               <dt>プラン</dt><dd>{data.target.displayName}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
             <dt>人数</dt><dd>{adults.map((a, i) => (roomCount > 1 ? `${i + 1}室目 大人${a}名` : `大人${a}名`)).join(' / ')}</dd>
             <dt>ご予約者</dt><dd>{values.booker_name}{values.booker_kana ? `（${values.booker_kana}）` : ''}{values.booker_department ? ` ${values.booker_department}` : ''}<span class="block text-sm text-stone-500">{[values.booker_phone, values.booker_email].filter(Boolean).join(' / ')}</span>{#if values.save_booker}<span class="block text-xs text-stone-500">この内容をアカウントの担当者情報に保存します</span>{/if}</dd>

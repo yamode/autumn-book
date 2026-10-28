@@ -169,9 +169,13 @@ export const load = async (event) => {
   const nights = Math.min(s.maxNights, Math.max(1, Math.round(Number(q.get('nights') ?? 1)) || 1));
   // 料金カレンダーで選んだ室数（同じ部屋タイプを N 室・各室とも guests 名）
   const roomCount = Math.min(s.maxRooms, Math.max(1, Math.round(Number(q.get('rooms') ?? 1)) || 1));
+  // 複数部屋タイプの予約（mix=部屋タイプのコードをカンマ区切りで部屋の順に・同じプランの部屋タイプ違い）。室数と合わなければ同じ部屋タイプ N 室
+  const mixCodes = (q.get('mix') ?? '').split(',').map((c) => c.trim()).filter(Boolean);
+  const roomCodes = mixCodes.length >= 2 && mixCodes.length <= s.maxRooms ? mixCodes : Array.from({ length: roomCount }, () => roomCode);
+  const roomCountEff = roomCodes.length;
   const [quote, rt, booker, profileRow, contents, terms, facility, bookingNote, bookingForm, standardFields, nameHolder, adminFeePercent] = await Promise.all([
-    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: Array.from({ length: roomCount }, () => ({ adults: guests })) }, { credit: true }),
-    db.schema('pms').from('room_types').select('capacity_min, capacity_max').eq('facility_id', partner.facility_id).eq('code', roomCode).maybeSingle(),
+    quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: roomCodes.map((code) => ({ adults: guests, roomCode: code })) }, { credit: true }),
+    db.schema('pms').from('room_types').select('code, name, capacity_min, capacity_max').eq('facility_id', partner.facility_id).in('code', [...new Set(roomCodes)]),
     // 予約者の既定値（マイページの設定。未設定ならアカウントの表示名・メール）
     getBookerProfile(db, partner.id, session.id).catch(() => null),
     // マイページで設定済みか（未設定なら「マイページで設定しておくと…」の案内を出す）
@@ -213,7 +217,19 @@ export const load = async (event) => {
     // 特別会員の専用ページの確認画面（取引先は null）
     member: null as MemberBookData | null,
     // displayName: 取引先向けのプラン名（画面表示用。予約の照合・PMS には元の planName を使う）
-    target: { roomCode, planCode, planName, displayName: partnerPlanName(s.planNames, planCode, planName), checkIn, guests, nights, roomCount },
+    target: {
+      roomCode,
+      planCode,
+      planName,
+      displayName: partnerPlanName(s.planNames, planCode, planName),
+      checkIn,
+      guests,
+      nights,
+      roomCount: roomCountEff,
+      // 部屋ごとの部屋タイプ（複数部屋タイプのとき。同じ部屋タイプ N 室なら全部同じ値）と、部屋タイプの名前
+      roomCodes,
+      roomNames: Object.fromEntries((rt.data ?? []).map((r) => [String(r.code), String(r.name ?? r.code)]))
+    },
     // 右欄の見出し（一休の形: 写真・施設名・所在地）と左カラムのキャンセルポリシー・注意事項
     summary: {
       photo: roomContent?.photos[0]?.url ?? planContent?.photos[0]?.url ?? null,
@@ -239,7 +255,11 @@ export const load = async (event) => {
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     adminFeePercent,
-    capacity: { min: Number(rt.data?.capacity_min ?? 1) || 1, max: Number(rt.data?.capacity_max ?? 6) || 6 },
+    // 1室の人数の選択肢: 複数部屋タイプのときは全部屋タイプで収まる範囲（下限の最大・上限の最小）
+    capacity: {
+      min: Math.max(1, ...(rt.data ?? []).map((r) => Number(r.capacity_min ?? 1) || 1)),
+      max: Math.min(...(rt.data?.length ? rt.data.map((r) => Number(r.capacity_max ?? 6) || 6) : [6]))
+    },
     settings: { maxRooms: s.maxRooms, maxNights: s.maxNights, notice: s.notice, options: bookingForm.questions, askGender: bookingForm.askGender },
     standardFields,
     // 予約名義の名義人（紐づけ先の正式名称）。null = 宿泊者名義（行を出さない）
