@@ -60,7 +60,8 @@
 		const query = new URLSearchParams(page.url.searchParams);
 		query.delete('tag');
 		query.set('room', roomSlug);
-		return `${base}/plans/${slug}?${query}#room-${roomSlug}`;
+		// 一覧から開いたときはページの先頭（プランの説明）から見せる。選んだ部屋の位置へは移動しない（2026-10-29 指示）
+		return `${base}/plans/${slug}?${query}`;
 	}
 
 	type Combo = (typeof data.combos)[number];

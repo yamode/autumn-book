@@ -160,7 +160,7 @@
 	});
 	const planHref = (offer: DayOffer) => {
 		const query = new URLSearchParams({ checkin: selected, nights: String(nights), adults: String(adults), room: offer.room.slug });
-		return `${base}/plans/${offer.plan.slug}?${query}#room-${offer.room.slug}`;
+		return `${base}/plans/${offer.plan.slug}?${query}`;
 	};
 
 	function onKeydown(event: KeyboardEvent) {
