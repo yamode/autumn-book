@@ -1,12 +1,12 @@
 {
   "name": "@autumn-book/web",
-  "version": "0.212.0",
+  "version": "0.212.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build -c vite.embed.config.ts && vite build",
-    "build:embed": "vite build -c vite.embed.config.ts",
+    "build": "svelte-kit sync && vite build -c vite.embed.config.ts && vite build",
+    "build:embed": "svelte-kit sync && vite build -c vite.embed.config.ts",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run"
