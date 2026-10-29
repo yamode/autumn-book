@@ -1,4 +1,9 @@
 @import 'tailwindcss';
+/* 書体は自前配信（外部の Google Fonts に依存しない）。星のやの公式サイトと同じ組み合わせ:
+   本文＝Noto Sans JP（400）、見出し＝Shippori Mincho B1。日本語は unicode-range で分割されるので、使う文字の分だけ読み込まれる。 */
+@import '@fontsource-variable/noto-sans-jp/wght.css';
+@import '@fontsource/shippori-mincho-b1/400.css';
+@import '@fontsource/shippori-mincho-b1/500.css';
 
 @theme {
 	--color-brand-50: #f6f5f1;
@@ -9,7 +14,8 @@
 	--color-brand-900: #1f1d15;
 	--color-accent-500: #b08d3e;
 	--color-accent-600: #95742c;
-	--font-serif-jp: 'Yu Mincho', 'Hiragino Mincho ProN', serif;
+	--font-serif-jp: 'Shippori Mincho B1', 'Yu Mincho', 'Hiragino Mincho ProN', serif;
+	--font-sans-jp: 'Noto Sans JP Variable', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', sans-serif;
 	/* autumn-shared のアプリスイッチャー（$lib/autumn-shared/components/AppSwitcher.svelte）が使う
 	   shadcn 系の名前（PMS / RMS と同じ）。Book のほかの画面では使っていない（2026-10-17） */
 	--color-popover: #ffffff;
@@ -24,25 +30,31 @@
 }
 
 html {
-	/* x.com 風の太めゴシック。読みやすさ優先で中太（500）を基準にする。
-	   OS標準のクリーンなサンセリフ＋日本語は Hiragino / Yu Gothic Medium / Meiryo / Noto Sans JP。 */
-	font-family:
-		system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans',
-		'Yu Gothic Medium', 'YuGothic', 'Meiryo', 'Noto Sans JP', sans-serif;
-	font-weight: 500;
+	/* 星のや（hoshinoresorts.com）の実測に合わせる（2026-10-29 指示「AI っぽい書体をやめて自然に」）:
+	   本文は Noto Sans JP・400・字間は標準・行間 1.75。以前の「x.com 風の太めゴシック（500・system-ui）」は廃止。 */
+	font-family: var(--font-sans-jp);
+	font-weight: 400;
+	line-height: 1.75;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	letter-spacing: 0.01em;
+	letter-spacing: normal;
+	font-feature-settings: 'palt' 1; /* 和文のかなを詰めて、ゴシックの間延びを抑える */
 }
 
 .font-display {
-	/* 以前は明朝（游明朝）。ユーザー要望で全体を太めゴシックに統一（x.com 風）。
-	   見出しは太字（700）のゴシックで力強く・読みやすく。 */
-	font-family:
-		system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans',
-		'Yu Gothic Medium', 'YuGothic', 'Meiryo', 'Noto Sans JP', sans-serif;
-	font-weight: 700;
-	letter-spacing: 0.02em;
+	/* 見出しは Shippori Mincho B1（星のやの見出しと同じ）。細め・字間は 0.05em・行間はゆったり。 */
+	font-family: var(--font-serif-jp);
+	font-weight: 400;
+	letter-spacing: 0.05em;
+	line-height: 1.5;
+}
+
+/* 公開サイト（(public) レイアウト）の見出しは、.font-display を付けていないものも明朝にそろえる（星のやの見出しと同じ）。
+   太字の指定（font-bold など）があっても 500 に抑える。マイページ・掲示板の見出しはゴシックのまま（下の指定が後ろにあるので勝つ）。 */
+.site-public :is(h1, h2, h3) {
+	font-family: var(--font-serif-jp);
+	font-weight: 500;
+	letter-spacing: 0.05em;
 }
 
 /* 取引先専用ページ（/p/[token]）: 一休と同じ文字（2026-10-06 指示「一休と同じフォントに」）。
@@ -67,8 +79,8 @@ html {
 }
 .account-shell :is(h1, h2, h3),
 .forum-shell :is(h1, h2, h3) {
-	font-family: 'Yu Gothic', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif;
-	letter-spacing: 0.01em;
+	font-family: var(--font-sans-jp);
+	letter-spacing: 0.02em;
 	color: #1c1917;
 }
 .account-shell h1,

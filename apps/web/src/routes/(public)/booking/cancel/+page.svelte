@@ -123,6 +123,7 @@
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">{m.gcancel_reload_h()}</h2>
 			<p class="mt-2 text-stone-600">{m.gcancel_reload()}</p>
+			<p class="mt-2 text-sm text-stone-600"><a href="/booking/lookup" class="underline">{m.gcancel_reload_lookup()}</a></p>
 		</div>
 	{:else if v.state === 'rate_limited'}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">

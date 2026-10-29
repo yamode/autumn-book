@@ -139,6 +139,12 @@
 			{/if}
 		</div>
 
+		{#if data.facility.websiteUrl}
+			<p class="mt-4 text-center text-sm">
+				<a href={data.facility.websiteUrl} class="text-stone-600 underline hover:text-brand-900">← {m.complete_back_to_site({ facility: data.facility.name })}</a>
+			</p>
+		{/if}
+
 		{#if !data.isMember}
 			<div class="mt-8 rounded-xl bg-amber-50 p-4 text-sm">
 				<p class="font-medium text-brand-900">{m.complete_register_prompt({ points: String(Math.floor(b.total / 110)) })}</p>

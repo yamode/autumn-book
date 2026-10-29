@@ -42,7 +42,7 @@
 
 トークンは**既存 `/r/c/[token]` → httpOnly Cookie 交換方式の再利用が正解**。新方式は作らない。
 
-**2026-08-31 の決定で B4（料金）と M8（ホスト）は解消**した ── 利用料は請求書へ**自動計上**、公開ホストは **`booking.yamado.co.jp`** に確定。自動計上は `first-bill.ts` の既存同期チェーンに乗せられることが分かったため、**段階1に前倒し**する（§4.5）。
+**2026-08-31 の決定で B4（料金）と M8（ホスト）は解消**した ── 利用料は請求書へ**自動計上**、公開ホストは **`book.yamado.app`** に確定。自動計上は `first-bill.ts` の既存同期チェーンに乗せられることが分かったため、**段階1に前倒し**する（§4.5）。
 
 ---
 
@@ -202,7 +202,7 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 ディープリンク契約はパス以下のみ固定で「ホスト名は未確定」だった（`autumn_book_deeplink_contract.md` §1）。
 **紙に刷った QR のホストは後から変えられない**ため、これが館内図 QR 配布の前提だった。
 
-→ **`booking.yamado.co.jp` に確定**（autumn-book 全体の運用ドメイン）。QR に載せる URL は `https://booking.yamado.co.jp/r/c/<64hex>`。ディープリンク契約側も更新済み。
+→ **`book.yamado.app` に確定**（autumn-book 全体の運用ドメイン）。QR に載せる URL は `https://book.yamado.app/r/c/<64hex>`。ディープリンク契約側も更新済み。
 
 ---
 
@@ -223,7 +223,7 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 | 1 | **料金** | **請求書へ自動計上する。** 男鹿の「公式サイト予約なら無料 / それ以外 2,200円」を `core.stays.channel_code` で判定し、`pms.bill_items` に自動で行を起こす。方式は §4.5 |
 | 2 | **受付期間** | **予約確定後すぐ 〜 利用の30分前まで。** 設定値 `openFrom='booking_confirmed'` / `cutoffMin=30`。ただし**段階1の到達手段は館内図 QR のみ**なので実際には「チェックイン後」から。確定後すぐが実効になるのは段階3（マイページ・事前チェックイン）から |
 | 3 | **ゲストのキャンセル・変更** | **キャンセルのみ可・利用の30分前まで。** 時間変更は「取り消して取り直し」で表現する（変更専用 RPC を作らない ＝ 旧枠の解放と新枠の確保を1トランザクションにする複雑さを持ち込まない）。取消は行削除（`stay-services.ts` の既存思想と揃える） |
-| 4 | **公開ホスト** | **`booking.yamado.co.jp`**（autumn-book 全体の運用ドメイン）。QR に載る URL は `https://booking.yamado.co.jp/r/c/<64hex>` |
+| 4 | **公開ホスト** | **`book.yamado.app`**（autumn-book 全体の運用ドメイン）。QR に載る URL は `https://book.yamado.app/r/c/<64hex>` |
 | 5 | **先行公開** | **`/r` 配下だけメンテナンス除外して先行公開。** 予約エンジン・ポータル本体は 503 のまま |
 | 6 | **電話予約** | **今後は予約詳細モーダル経由（stay 紐付け）に統一し、既存行も紐付け直す。** 男鹿の将来日付の `guest_name` 行が対象。過去日の行は `booked_via='import'` のまま放置してよい |
 | 7 | **浴室マスタ** | **男鹿の浴室を登録し、既存行の `bath_id` を一括バックフィルする**（西和賀 = 一寸）。Blocker B2 の解消 |
@@ -347,7 +347,7 @@ PMS の枠取得は既にサーバ側 `/api/calendar-panels` 経由なので、�
 | 0-1 | 男鹿の `pms.facility_baths` 登録 ＋ 既存行の `bath_id` 一括バックフィル（西和賀 = 一寸） | Blocker B2。決定7 |
 | 0-2 | 男鹿の将来日付 `guest_name` 行を stay へ紐付け直す ＋ 今後の電話予約は予約詳細モーダル経由に統一 | M5。決定6 |
 | 0-3 | `pms.items` に「貸切風呂」を登録（施設ごと・税率10%） | §4.5 |
-| 0-4 | `booking.yamado.co.jp` の DNS / Cloudflare Pages カスタムドメイン設定 | 決定4。**紙 QR を刷る前に必須** |
+| 0-4 | `book.yamado.app` の DNS / Cloudflare Pages カスタムドメイン設定 | 決定4。**紙 QR を刷る前に必須** |
 
 0-1 と 0-2 は migration ではなく**運用 SQL**（データ整備）。
 
@@ -394,7 +394,7 @@ PROD の `book._pb_slots` で検証した最終状態:
 
 - `pms.items` の「貸切風呂」登録は**まだ不要**。設定に `itemId` を入れなければ、
   品名「貸切風呂」・税率10%・部門なしで明細が立つ（部門を分けたくなった時点で登録すればよい）。
-- `booking.yamado.co.jp` の DNS / Cloudflare Pages カスタムドメインは**未設定**。館内図に QR を刷る前に必須。
+- `book.yamado.app` の DNS / Cloudflare Pages カスタムドメインは**未設定**。館内図に QR を刷る前に必須。
 
 **受付は無効・料金0円のまま**。男鹿の 2,200円 を入れると、その時点から
 スタッフが入れた枠にも金額が焼かれ請求明細が立つので、公開の準備が整ってから入れる。
@@ -407,7 +407,7 @@ PROD の `book._pb_slots` で検証した最終状態:
 |---|---|
 | migration① | `20260831223611_pms_private_bath_public_ready.sql`：`pms.private_bath_slots` に `booked_via text not null default 'staff' check (booked_via in ('staff','guest','import'))`・`source_token_id uuid`・`price_yen integer` を追加。既存の `stay_id is null` 行を `'import'` にバックフィル |
 | migration② | `20260831223711_book_private_bath_rpcs.sql`：<br>・`book.get_or_issue_stay_token(p_stay, p_facility, p_room_code, p_valid_to, p_guest_name)`（authenticated・`has_facility_access` 内部ガード。stay の有効トークン再利用 ＝ M3 の解消）<br>・内部関数 `book.private_bath_slot_starts(p_settings jsonb)`（`buildBathSlotGroups` の SQL 版・唯一の SQL 実装）<br>・`book.private_bath_context(p_token)`（anon。滞在・泊リスト・浴室・枠・埋まり・自分の予約・**適用料金**を1発で返す）<br>・`book.reserve_private_bath(p_token, p_bath, p_slots jsonb)`（anon。advisory lock ＋ 枠妥当性・滞在期間・**締切（利用30分前）**・`perRoomPerRange` を単一トランザクションで検証、`booked_via='guest'`・`source_token_id`・`price_yen` を書いて insert。一意違反は `slot_taken` に変換）<br>・`book.cancel_private_bath(p_token, p_slot_id)`（anon。自分の行のみ・利用30分前まで・行削除） |
-| PMS（館内図） | `RoomGuide` に stayId / トークン URL 追加 ＋ load で get-or-create 呼び出し／`MapBlock` に `kind:'qr'` 追加（エディタ含む）。URL は `https://booking.yamado.co.jp/r/c/<64hex>` |
+| PMS（館内図） | `RoomGuide` に stayId / トークン URL 追加 ＋ load で get-or-create 呼び出し／`MapBlock` に `kind:'qr'` 追加（エディタ含む）。URL は `https://book.yamado.app/r/c/<64hex>` |
 | PMS（一覧） | **`/operations` に日別の貸切風呂一覧**（浴室 × 枠 × 部屋 × `booked_via` バッジ・予約詳細へリンク）＝ 要件6 |
 | PMS（請求） | `first-bill.ts` の同期チェーンに **`syncPrivateBathItems`** を追加（`source='private_bath'`・memo 付き行は触らない・発行済みは警告のみ）＝ 要件7 |
 | book | `/r/bath`（枠選択・確定・自分の予約表示・キャンセル。`ab_stay` Cookie 前提、無ければ既存 claim へ誘導）<br>`maintenance.ts` に `/r` 除外（決定5）／claim レート制限を KV or DB へ（M1） |
@@ -512,7 +512,7 @@ PROD の `book._pb_slots` で検証した最終状態:
 
 **個別QRとPMS変更の反映:** PMSの新しい館内図とbook管理画面のA6/A7客室POPは、同じ `book.get_or_issue_stay_token` を滞在IDで呼ぶ。QRは `/r/c/<token>?next=bath` に進み、検証後にURLからトークンを消して予約フォームへ移る。トークンの有効期間は施設のタイムゾーンでチェックイン日15:00からチェックアウト日11:00まで。再印刷は同じトークンを使い、日程変更時は期限を更新する。予約枠はPMSとbookの共通台帳 `pms.private_bath_slots` を読み、PMS側で顧客の滞在IDに紐づけた予約は客室トップ・フォームの両方に表示する。客室画面を開いたままでも、画面復帰時と表示中30秒ごとにPMSの変更を再取得する。
 
-1. **段階0の前提作業**（済。§5 冒頭の実施記録を参照）。残るのは `booking.yamado.co.jp` のドメイン設定のみ。
+1. **段階0の前提作業**（済。§5 冒頭の実施記録を参照）。残るのは `book.yamado.app` のドメイン設定のみ。
 2. **migration①**（pms 列追加 ＋ import バックフィル）→ **migration②**（RPC 5本）。
    命名・適用は `autumn-shared` 方針（`main` へ直 push）。**pms へのは ALTER は他リポの未適用 migration を確認してから**（`autumn-book/CLAUDE.md`）。
 3. **book**: `/r/bath` ルート ＋ `/r` メンテ除外 ＋ claim レート制限の KV 化。

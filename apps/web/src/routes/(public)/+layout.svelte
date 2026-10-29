@@ -69,7 +69,7 @@
 	</style>
 </svelte:head>
 
-<div class="flex min-h-screen flex-col">
+<div class="site-public flex min-h-screen flex-col">
 	<!-- 施設HPへの戻り導線はスティッキーに含めない（スクロールで流れてよい・ヘッダーを低く保つ） -->
 	{#if facilityBackLink}
 		<div class="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs">
@@ -187,6 +187,7 @@
 				<p class="mb-2 font-medium text-white">{m.footer_guide()}</p>
 				<ul class="space-y-1 text-xs">
 					<li><a href="/membership" class="hover:underline">{m.nav_membership()}</a></li>
+					<li><a href="/booking/lookup" class="hover:underline">{m.footer_lookup()}</a></li>
 					<li><a href="/legal/tokushoho" class="hover:underline">{m.footer_tokushoho()}</a></li>
 					<li><a href="/legal/privacy" class="hover:underline">{m.footer_privacy()}</a></li>
 					<li><a href="/legal/yakkan" class="hover:underline">{m.footer_yakkan()}</a></li>

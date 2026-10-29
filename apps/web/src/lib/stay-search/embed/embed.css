@@ -1,0 +1,72 @@
+/*
+  HP 配布の <yamado-search-bar> の Shadow DOM に入れる CSS（main.ts が ?inline で取り込む）。
+  取引先ページと同じ Tailwind のクラスを、検索バーの部品で使っている分だけ生成する（source(none) ＋ @source）。
+  ビルド時（vite.embed.config.ts）に次の 2 つを書き換える:
+    - rem → px（1rem = 18px。取引先ページの基準と同じ。HP は html の文字の大きさがページごとに違い rem が当てにならないため）
+    - 画面幅の @media（sm / md）→ ホスト要素の幅の @container（HP の置き場所の幅で PC／スマホを切り替える）
+*/
+@import 'tailwindcss' source(none);
+@source '../../components/stay-search';
+@source './';
+
+@theme {
+	/* app.css と同じ色（検索バーで使う分） */
+	--color-brand-800: #2e2b20;
+	--color-brand-900: #1f1d15;
+}
+
+:host {
+	display: block;
+	position: relative;
+	/* HP の後ろの要素（z-index 付き）にパネルが隠れないよう高くする。HP 側で --yamado-search-z で上書きできる */
+	z-index: var(--yamado-search-z, 1000);
+	container-type: inline-size;
+	/* 書体は HP のものに馴染ませる。大きさは取引先ページと同じ 18px 基準で固定 */
+	font-family: inherit;
+	font-size: 18px;
+	line-height: 1.5;
+	font-weight: 400;
+	color: var(--color-brand-900);
+	letter-spacing: normal;
+	text-align: left;
+	text-transform: none;
+	white-space: normal;
+	-webkit-text-size-adjust: 100%;
+}
+:host([hidden]) {
+	display: none;
+}
+button,
+input,
+label {
+	-webkit-tap-highlight-color: transparent;
+}
+button:focus-visible {
+	outline: 2px solid var(--pt-accent);
+	outline-offset: 2px;
+}
+
+/* app.css の .shimmer と同じ（取得中の料金欄） */
+.shimmer {
+	border-radius: 0.375rem;
+	background-color: #ebe8e4;
+	background-image: linear-gradient(105deg, transparent 0%, transparent 38%, rgb(255 255 255 / 0.75) 50%, transparent 62%, transparent 100%);
+	background-size: 200% 100%;
+	background-attachment: fixed;
+	background-repeat: no-repeat;
+	animation: shimmer-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes shimmer-sweep {
+	0% {
+		background-position: 150% 0;
+	}
+	100% {
+		background-position: -50% 0;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.shimmer {
+		animation: none;
+		background-image: none;
+	}
+}

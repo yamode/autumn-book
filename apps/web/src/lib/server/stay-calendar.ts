@@ -2,7 +2,7 @@
 // 施設全体（プラン未指定）とプラン詳細の両方で使い、日付ピッカーで泊数を変えたときは /api/stay-calendar から取り直す。
 import { addDays, eachNight } from '@autumn-book/core';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbFacilityClosedDates, sbFacilityStayCalendar } from '$lib/server/supabase-data';
+import { FACILITY_UUID, sbFacilityClosedDates, sbFacilityStayCalendar } from '$lib/server/supabase-data';
 import { quoteFor, ratePlans, remainingRooms, roomTypes } from '$lib/server/store';
 
 export type StayCalendarDay = { date: string; price: number; remaining: number };
@@ -49,12 +49,23 @@ function demoStayCalendar(facilityId: string, nights: number, adults: number, pl
 	return days;
 }
 
+/**
+ * 施設の指定を ID に直す。HP 配布の検索バー（static/embed/search-bar.js）はデータ源を知らないので
+ * 施設 slug（nishiwaga / oga）で呼ぶ。slug なら demo は `f-<slug>`、supabase は UUID に。ID はそのまま返す。
+ */
+export function resolveStayFacility(raw: string, source: 'demo' | 'supabase' = DATA_SOURCE): string {
+	const demoId = `f-${raw}`;
+	if (!/^[a-z]+$/.test(raw) || !Object.prototype.hasOwnProperty.call(FACILITY_UUID, demoId)) return raw;
+	return source === 'supabase' ? FACILITY_UUID[demoId] : demoId;
+}
+
 export async function stayCalendar(
-	facilityId: string,
+	rawFacilityId: string,
 	nights: number,
 	adults: number,
 	options: { planId?: string; roomTypeId?: string; months?: number } = {}
 ): Promise<{ days: StayCalendarDay[]; through: string; closed: string[] }> {
+	const facilityId = resolveStayFacility(rawFacilityId);
 	const months = Math.min(6, Math.max(1, options.months ?? 2));
 	const through = monthsAfter(todayJst(), months);
 	if (DATA_SOURCE === 'supabase') {

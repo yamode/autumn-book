@@ -80,6 +80,80 @@
 - [ ] リンク先が施設の予約トップ（西和賀 /yamado/nishiwaga・男鹿 /yamado/oga）で、`utm_source=precheckin&utm_medium=ota&utm_campaign=<slug>` が付く。英語・繁体字では /en・/zh-TW の予約トップになる
 - [ ] 入会ボーナスの pt が会員制度の設定値と同じ（0 にすると行が消える）
 - [ ] ja / en / zh-TW で文言が出る・スマホで崩れない
+## 実機確認の追補：埋め込み検索バーの重なり順・幅、公開サイトの見出し（2026-10-29・v0.211.2）
+
+- 埋め込みバーを HP 想定のテストページ（html 16px・後ろに z-index:50 の要素）で確認して直した:
+  - 日付・人数室数パネルが後ろの z-index 付き要素の下に潜った → ホストに `z-index: var(--yamado-search-z, 1000)`（HP 側で上書き可）。
+  - ホスト幅 768〜900px で PC の 1 本バーだと「ご利用人数・室数」が折り返して値が切れた → 埋め込みでは PC バーの切替幅を 900px に（`EMBED_PC_BAR_MIN`・取引先ページは従来の 768px のまま）。900px 未満は縦積みカード。
+  - Esc で日付・人数室数どちらのパネルも閉じる（確認済み）。
+- 公開サイト（`.site-public`＝(public) レイアウト）の h1〜h3 を、`.font-display` を付けていないものも明朝（500）にそろえた。マイページ・掲示板・会員制度ページ（`account-shell`／`forum-shell`）の見出しは従来どおりゴシック。
+- dev（demo）で確認済み: 施設トップ・プラン一覧・プラン詳細・会員制度・ご予約の確認・ログイン・検索・特商法の表示と見出しの書体。未確認: 予約フロー（hold・決済・完了）・マイページ配下（要ログイン）、実データの取引先ページ。
+
+## 事前チェックインのお客様フォームの見本を本番でも開けるように（2026-10-29・v0.211.1）
+
+- 背景: SMS／メールのリンクを開いても中身を確かめられなかった。見本（`/ci/demo-precheckin-…`）は `DATA_SOURCE=demo` でしか開けなかったため。客室案内の見本（`/admin/inroom/preview`）と同じ位置づけで用意した。
+- 見本トークン `DEMO_PRECHECKIN_TOKEN` は**どのデータ源でも**開ける（`server/precheckin.ts` の pcContext／pcSaveAnswers／pcSaveMeals が最初に判定）。DB・PMS には一切触れず、回答はプロセス内だけ（再起動・別 isolate で消える）。見本は今日チェックイン・1 泊・1 室・夕食に満席の枠あり。当日 12:00 を過ぎても閲覧のみにならない（常に入力できる）。
+- 画面: フォーム上部に「これは見本の画面です…」の帯（ja/en/zh-TW・`ci_demo_notice`）。管理画面 `/admin/precheckin` の上部に「お客様フォームの見本を開く ↗」。
+- 未確認: 本番（supabase モード）での動作は未確認（demo モードで画面・食事の時間を確認。見本の判定は DB 呼び出しより前なので同じ挙動のはず）。見本のトークンは公開の固定文字列なので、URL を知っていれば誰でも開けるが、見せるのは見本の中身だけ。
+
+### テストチェックリスト（見本フォーム）
+- [ ] （本番）/admin/precheckin の「お客様フォームの見本を開く」から /ci が開き、見本の帯が出る。基本情報・夕食/朝食の時間の入力と保存ができ、完了画面まで進める
+- [ ] 見本の入力が実際の予約・PMS・precheckins に反映されない
+- [ ] 夕食の 18:00 が満席表示で選べない（見本の挙動）
+
+## 書体を星のや寄りに・検索バーを共通コンポーネント化（2026-10-29・v0.211.0）
+
+- ユーザー指示: 「サイト全体のフォントが AI っぽい。星のやを参考に自然に」「検索バーは取引先ページのノウハウ（文字の大きさ等）が生きていない。共通コンポーネントで同じデザインに」。
+- 書体: hoshinoresorts.com の実測（見出し Shippori Mincho B1・細め・字間 0.05em／本文 Noto Sans JP 400・行間 1.75）に合わせた。`app.css` の `html`・`.font-display`・マイページ/掲示板の見出し。自前配信（`@fontsource-variable/noto-sans-jp`・`@fontsource/shippori-mincho-b1`・日本語は unicode-range 分割）。以前の「x.com 風の太めゴシック 500」は廃止。管理画面（独自指定）・取引先ページ（一休と同じ書体）・施設別シェル（YamadoShell／OgaShell）は変えていない。
+- 検索バー: 共通 Svelte コンポーネント `lib/components/stay-search/StaySearchBar.svelte`＋`StaySearchPanel.svelte`（データ取得・遷移は props で注入）。取引先ページ（PartnerSearchBar／PartnerStayPanel は薄いラッパー）と HP 配布 `<yamado-search-bar>` が同じ部品。embed は `vite.embed.config.ts` で単一 IIFE（約 85kB・gzip 30kB）にビルドし、`static/embed/search-bar.js` に出す（**生成物・コミット対象**。`pnpm build` は embed→本体の順。手動は `pnpm --filter @autumn-book/web build:embed`。**共通部品を直したら再生成してコミット**）。rem は 18px 基準の px に変換し、PC/スマホは host 幅の container query で切替。書体は HP から継承。純関数は `lib/stay-search/params.ts`（テストは `stay-search.test.ts`）。旧 `embed-search-bar.test.ts` は置き換えて削除。
+- 副次的な見た目の変更（取引先ページにも反映）: スマホの日付パネル上段を 2 行に詰めた。スマホ幅（<640px）では日付マスの「円」を省略（重なり防止）。
+- 未確認: ①実際の取引先ページ（token あり・料金入り・プラン詳細からの日付選び）②旧 embed の Esc でのフォーカス復帰は無くなった（取引先ページの挙動に統一）③HP 側に z-index の高い要素があるとパネルが潜る可能性（ホストに z-index を付ける）④書体変更後の公式サイト全ページの目視（見出しの大きさ・折り返し。`font-bold` 等の太字指定は .font-display が上書きして 400 になる）。
+
+### テストチェックリスト（書体・検索バー共通化）
+- [ ] 公式サイト（トップ・施設・プラン・予約フロー・マイページ・掲示板）で見出しが明朝（細め）、本文がゴシック（400）になり、折り返し・はみ出しがない（PC・iPhone）
+- [ ] 管理画面・取引先ページ・客室案内 /r・事前チェックイン /ci の書体が意図どおり（管理画面と取引先は従来のまま）
+- [ ] 取引先ページの検索バー・日付パネル・人数室数パネルが従来どおり動く（料金入りのカレンダー・プラン詳細からの日付選び・スマホ）
+- [ ] HP の `<yamado-search-bar>` が取引先ページと同じ大きさ・同じ見た目（文字 18px・PC 1 本／スマホ縦積み）。HP の html が 16px でも小さくならない
+- [ ] `pnpm build` が通り、`static/embed/search-bar.js` が更新される（コミット漏れがない）
+
+## HP 接続 P1-Book・ご予約の確認ページ・旧マイページ動線・検索バー部品（2026-10-29・v0.210.0）
+
+- 設計: `docs/hp-book-integration.md`（§3・§6・§7）と `docs/launch-tripla-cutover.md`（§3・§5・§7 P1）。**DB 変更なし**。HP（hp-yamado／hp-oga）側の変更は各リポの HANDOFF に記録（このリポでは触らない）。
+- 実装:
+  - GA4 `page_location`: 純関数 `lib/ga-page-location.ts`（テスト付き）。`utm_*` だけ残し、他のクエリ・予約コードは落とす。`AnalyticsConsent.svelte` から使う。
+  - 予約完了画面に「← {施設名}のサイトへ戻る」（`websiteUrl`）。西和賀の `websiteUrl` を `https://www.yamado.co.jp/` に（`supabase-data.ts`・`store.ts`）。
+  - `/booking/lookup`「ご予約の確認」（ja/en/zh-TW）。公式（会員→マイページ／非会員→確認メール）・旧予約システム・旅行会社・電話の 4 段。照会フォームは無い。導線: フッター「ご案内」・マイページ予約一覧の上の注記・取消ページのトークン無し表示・男鹿 FAQ seed（`oga-talkappi.json` の tripla リンクを Book に差し替え。本番の FAQ は `/admin/faqs` で書き換える）。
+  - 旧マイページ: `lib/legacy-mypage.ts`（`legacyMypageState`・テスト付き）＋`lib/server/legacy-mypage-env.ts`。wrangler の vars: `LEGACY_MYPAGE_URL`（両施設共通）／`LEGACY_MYPAGE_URL_NISHIWAGA`・`_OGA`（施設別・優先）／`LEGACY_MYPAGE_UNTIL`（暫定 `2027-08-31`・日本時間でこの日の翌日から「終了しました」）／`BOOK_LAUNCH_DATE`（`2026-12-01`・この日から「以前の予約システム」の言い回し）。**URL は今は空＝旧マイページの段は出ない**（リンク先が未確定・cutover ★Q2／hp-book-integration ★Q13）。決まったら vars に入れて再デプロイ。https 以外の URL は無効扱い。
+  - `/api/stay-calendar`: 両 HP のオリジンだけ CORS（`lib/server/hp-cors.ts`・テスト付き）。`facility` は slug（nishiwaga／oga）でも ID でも受ける。
+  - 検索バー `static/embed/search-bar.js`（`<yamado-search-bar>`・素の JS・Shadow DOM）: HP の同じ 2 行（`<yamado-search-bar facility lang utm-source utm-content>`＋`<script src="https://book.yamado.app/embed/search-bar.js" defer>`）で動く。取引先バー風（PC 1 本・スマホ縦積み）・2 か月の日付パネルに空き日と最安・人数室数の ±・ja/en/zh-TW 同梱。遷移先は E2 `/yamado/{facility}/plans?checkin&nights&adults[&rooms]&utm_*`（同一タブ）、遷移前に `dataLayer.push({event:'search_submit',…})`。facility 不正・スクリプト失敗時は中の代替フォームがそのまま見える。色は CSS 変数 `--yamado-search-accent`／`-soft`／`--yamado-search-font` で上書き可。純関数は `globalThis.__yamadoSearchBar`、テストは `embed-search-bar.test.ts`（配布 JS を vm で読み込む）。空き日の表示は 1 室分の判定（API が rooms を受けない）。祝日の色分けなし。パネルは absolute で浮くので HP 側の親が overflow:hidden だと切れる（要確認）。`/embed/search-bar.js` のキャッシュ期間は未設定
+  - ディープリンク契約を v1.1 に（ホスト `book.yamado.app`・`rooms`・`utm_*`・`nights` 1〜7／`adults` 1〜6・検索バーは E2）。ほかの設計書（architecture_decision／design／faq_bot／portal_sitemap／private_bath）の `booking.yamado.co.jp` も `book.yamado.app` に（private_bath の変更履歴 1 行は当時の記録として残した）。
+- 未確認・判断待ち: ①旧マイページのリンク先 URL（上記）②メンテナンスモード中の `/booking/lookup`・`/api/stay-calendar`・`/embed/*` の扱い（`/api/stay-calendar` は maintenance のバイパス対象外。ローンチ前に OFF にする前提）③本番でのブラウザ確認（HP ドメインからの CORS・iPhone Safari）は未実施。
+
+### テストチェックリスト（HP 接続 P1-Book）
+
+#### Book 側
+- [ ] `?utm_source=hp_oga&utm_content=header&checkin=2026-12-20` 付きで `/yamado/oga` を開き GA4 に同意すると、`page_location` に `utm_*` だけが残り `checkin` は落ちている
+- [ ] `/booking/complete/<code>` の `page_location` が `:code` に置き換わったまま
+- [ ] 予約完了画面に「← 山人 -oga- のサイトへ戻る」が出て `https://oga.yamado.co.jp/` へ。西和賀は `https://www.yamado.co.jp/`
+- [ ] 施設トップの戻り帯の西和賀リンクが `www` 付きで 200
+- [ ] `/en/yamado/nishiwaga`・`/zh-TW/yamado/oga` が言語付きで開く
+- [ ] 未ログインで `/account?utm_source=hp_oga&utm_campaign=member` を開くと `/auth/login?next=/account…` に飛び、ログイン後に `/account` に戻る。ログイン済みなら直接マイページ
+
+#### ご予約の確認・旧マイページ動線
+- [ ] `/booking/lookup` が ja / en / zh-TW で開き、段（公式・旅行会社・電話）が出る。スマートフォン幅で崩れない
+- [ ] 会員ログイン済みでも未ログインでも「マイページを開く」が `/account` へ（未ログインはログイン経由）
+- [ ] `LEGACY_MYPAGE_URL*` を空にすると旧マイページの段が出ない（今の本番はこの状態）。マイページ `/account` の注記も出ない
+- [ ] URL を入れ `LEGACY_MYPAGE_UNTIL` を昨日にすると「終了しました」の文面に変わり、リンクが出ない
+- [ ] `BOOK_LAUNCH_DATE` より前は「現在の予約システム」、以後は「以前の予約システム」の見出しになる
+- [ ] フッター「ご案内」・マイページ `/account` の注記・取消ページのトークン無し表示（`/booking/cancel`）から `/booking/lookup` へ行ける
+- [ ] 旧マイページのリンクは新しいタブで開き、`rel="noopener noreferrer"`。↗ が付く。施設別 URL を入れると 2 本、同じ URL なら両施設とも同じ宛先
+- [ ] `/booking/lookup` にトークンや個人情報を入れる欄が無い
+- [ ] 旧マイページのリンク先が実際に tripla のログイン画面を開く（西和賀・男鹿それぞれ。PC・iPhone）【本番の HP で確認】
+
+#### 検索バー部品（Book 側）
+- [ ] `/api/stay-calendar?facility=oga&nights=1&adults=2` が `Origin: https://oga.yamado.co.jp` で `Access-Control-Allow-Origin` を返し、他のオリジンでは返さない。`OPTIONS` が 204
+- [ ] `facility=nishiwaga`／`facility=oga`（slug）で空き日が返る
+- [ ] 以降の HP 上の確認項目は `docs/hp-book-integration.md` §7「検索バー」のとおり（HP 側の置き込み後）
 
 ## 事前チェックイン P2: 受付・フォーム・管理画面の状況一覧（2026-10-29・v0.209.0）
 

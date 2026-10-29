@@ -453,12 +453,14 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 	return { subject, text, html };
 }
 
-// ---------------------------------------------------------------- 見本（DATA_SOURCE=demo）
+// ---------------------------------------------------------------- 見本
 
-/** 見本のトークン（ローカル確認用。DATA_SOURCE=demo のときだけ開ける） */
+/** 見本のトークン（どのデータ源でも開ける。DB に触れない見本で、管理画面の「お客様フォームの見本」の入口） */
 export const DEMO_PRECHECKIN_TOKEN = 'demo-precheckin-000000000000000000000000000';
 
 /** 見本の中身（今日チェックイン・1 泊・1 室） */
+export const DEMO_PRECHECKIN_CODE = 'DEMO-0001';
+
 export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date()): PcContext {
 	const today = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
 	const tomorrow = new Date(now.getTime() + 33 * 3600_000).toISOString().slice(0, 10);
@@ -471,7 +473,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		// 見本は OTA 経由の予約にしておく（誘導バナーを確かめられるように）
 		isOfficial: false,
 		isPartner: false,
-		bookingCode: 'DEMO-0001',
+		bookingCode: DEMO_PRECHECKIN_CODE,
 		checkIn: today,
 		checkOut: tomorrow,
 		nights: 1,
@@ -480,7 +482,8 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		children: 0,
 		guest: { name: '山人 太郎', nameKana: 'ヤマド タロウ', phoneMasked: maskPhone('090-1234-5678'), emailMasked: maskEmail('taro@example.com') },
 		editableUntil: until,
-		editable: isBefore(until, now),
+		// 見本はいつでも入力できる（当日 12:00 を過ぎても閲覧のみにしない）
+		editable: true,
 		expiresAt: expiresAtOf(tomorrow),
 		answers,
 		answeredAt: answers.meals_saved_at ?? null,

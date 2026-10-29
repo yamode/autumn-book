@@ -13,6 +13,12 @@ importers:
       '@autumn-book/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@fontsource-variable/noto-sans-jp':
+        specifier: ^5.3.1
+        version: 5.3.1
+      '@fontsource/shippori-mincho-b1':
+        specifier: ^5.3.0
+        version: 5.3.0
       '@simplewebauthn/browser':
         specifier: 14.0.0
         version: 14.0.0
@@ -494,6 +500,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource-variable/noto-sans-jp@5.3.1':
+    resolution: {integrity: sha512-/anGvJFc5y36f8DJ+3TSh2+KAvaRLA9PaLUMvneeY5s4j8m+8X4F3lE/sjTuG9YI5BX4sykvCk4TuJMG7ecMRQ==}
+
+  '@fontsource/shippori-mincho-b1@5.3.0':
+    resolution: {integrity: sha512-H4NvSJntaViHN8LjwmPTzZgJ8pyWcNetaJMHT4kfg6n1VR60QO2cYl/KDEIP4z2SR83//nlZb5gfQyZUpeNVNA==}
 
   '@hexagon/base64@1.1.28':
     resolution: {integrity: sha512-lhqDEAvWixy3bZ+UOYbPwUbBkwBq5C1LAJ/xPC8Oi+lL54oyakv/npbA0aU2hgCsx/1NUd4IBvV03+aUBWxerw==}
@@ -2319,6 +2331,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.3':
     optional: true
+
+  '@fontsource-variable/noto-sans-jp@5.3.1': {}
+
+  '@fontsource/shippori-mincho-b1@5.3.0': {}
 
   '@hexagon/base64@1.1.28': {}
 
