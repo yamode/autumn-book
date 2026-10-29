@@ -64,9 +64,9 @@
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && open === 'guests') open = ''; }} />
 
-<div bind:this={root} class="relative">
+<div bind:this={root} class="@container relative">
   <!-- PC: 1本の角丸バー -->
-  <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] md:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
+  <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
     <button type="button" class={`${segment('checkin')} flex-[1.3]`} onclick={() => toggle('date', 'checkin')} aria-expanded={open === 'date'}>
       <span class="text-xs font-bold tracking-wide text-brand-900">{labels.checkin}</span>
       <span class={`truncate text-base ${date ? 'text-brand-900' : 'text-stone-400'}`}>{date ? dateLabel : labels.addDate}</span>
@@ -87,7 +87,7 @@
   </div>
 
   <!-- スマホ: 縦に積んだカード -->
-  <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_3px_12px_rgba(0,0,0,0.08)] md:hidden">
+  <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:hidden">
     <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onclick={() => toggle('date')} aria-expanded={open === 'date'}>
       <span class="flex flex-col">
         <span class="text-xs font-bold text-brand-900">{labels.checkinNights}</span>
@@ -110,7 +110,7 @@
       {@render datePanel({ close: () => (open = '') })}
     </div>
   {:else if open === 'guests'}
-    <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] md:w-96" role="dialog" aria-label={labels.guests}>
+    <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-96" role="dialog" aria-label={labels.guests}>
       {#each [{ key: 'guests', title: labels.perRoom, sub: labels.adult, value: guests, min: 1, max: maxGuests, unit: labels.personUnit }, { key: 'rooms', title: labels.roomsTitle(crossType), sub: labels.roomsSub(crossType), value: rooms, min: 1, max: maxRooms, unit: labels.roomUnit }] as row, i (row.key)}
         <div class={`flex items-center justify-between gap-4 py-3 ${i ? 'border-t border-stone-200' : ''}`}>
           <div>

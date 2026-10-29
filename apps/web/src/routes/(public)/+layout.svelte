@@ -142,7 +142,7 @@
 
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
-				<div id="header-search-panel" class="w-full lg:ml-auto lg:w-auto {mobileSearchOpen ? '' : 'hidden md:block'}">
+				<div id="header-search-panel" class="w-full {mobileSearchOpen ? '' : 'hidden md:block'}">
 					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={page.params.facility ?? ''} action={page.params.facility ? '/' + page.params.brand + '/' + page.params.facility + '/plans' : '/search'} />
 				</div>
 			{/if}
