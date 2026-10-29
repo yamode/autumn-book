@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
 	import { formatDate } from '$lib/format';
-	import SearchBar from '$lib/components/SearchBar.svelte';
+	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -26,6 +26,7 @@
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
 	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));
+	let searchRooms = $derived(Number(page.url.searchParams.get('rooms') ?? 1));
 
 	// モバイル（<md）はスティッキーを1行に抑える: 検索は1行サマリのボタンに畳み、ナビ類はメニューへ。
 	// 844px 程度の画面でヘッダーが 200px 超を占めていたため（本文の視認領域を確保）
@@ -142,7 +143,7 @@
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
 				<div id="header-search-panel" class="w-full lg:ml-auto lg:w-auto {mobileSearchOpen ? '' : 'hidden md:block'}">
-					<SearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} />
+					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={page.params.facility ?? ''} action={page.params.facility ? '/' + page.params.brand + '/' + page.params.facility + '/plans' : '/search'} />
 				</div>
 			{/if}
 		</div>

@@ -1,3 +1,15 @@
+## 公開サイトの検索バーを共通部品に統一（2026-10-29・v0.213.0）
+
+トップ・施設ページ上部・ヘッダー・プラン一覧の検索バーを、取引先ページ／HP 配布と同じ共通部品（StaySearchBar + StaySearchPanel）に統一。`SiteSearchBar.svelte` が薄いラッパー（施設 slug があれば /api/stay-calendar で空き日と最安料金を出す）。
+削除: `SearchBar.svelte`・`PlanSearchBar.svelte`・`StayDatePanel.svelte`。残: `ScrollDatePicker`（プラン詳細の日付シート・空室カレンダーのモーダルで使用）。
+
+### テストチェックリスト
+- [ ] トップで日付・泊数・人数・室数を選んで検索すると /search に引き継がれる
+- [ ] /search のバーに選んだ条件が入っている。そこから施設ページへ移っても条件が残る
+- [ ] プラン一覧のバーで日付パネルに料金が出る。検索してもスクロールが飛ばない・tag（絞り込み）が残る
+- [ ] 英語・繁体字でバーの文言が切り替わる
+- [ ] 西和賀・男鹿の施設ページ上部のバーが動く（iPhone 実機）
+
 ## 事前チェックイン P4: NTT CPaaS の SMS 送信（手動＋当日 9:00 の自動送信）（2026-10-29・v0.211.0）
 
 - 設計: `docs/pre-checkin.md` §3・§9・§16・§18・§19。純関数 `src/lib/precheckin-sms.ts`（テスト `precheckin-sms.test.ts`）、サーバー `src/lib/server/precheckin-sms.ts`（`DEBUG=true`・テスト `precheckin-sms.test.ts`）。
