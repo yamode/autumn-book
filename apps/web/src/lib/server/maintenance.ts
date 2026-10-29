@@ -116,6 +116,17 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
  if(event.url.pathname==='/mail/unsubscribe')return true;
 	const { url, locals, cookies } = event;
 
+	// 運営（admin / staff）でログイン中なら、プレビュー cookie も一緒に発行しておく。
+	// 運営のまま会員ログインの試験をすると、セッションが会員に入れ替わって運営のバイパスを失い、
+	// ログイン直後に 503 になるため（2026-10-29）。cookie があれば会員になっても公開サイトを通せる。
+	const staffRole = locals.user?.role;
+	if (staffRole === 'admin' || staffRole === 'staff') {
+		const t = bypassToken();
+		if (t && !timingSafeEqualText(cookies.get(PREVIEW_COOKIE) ?? '', t)) {
+			cookies.set(PREVIEW_COOKIE, t, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 });
+		}
+	}
+
 	// 管理エリアは常に到達可能（/admin/login でログイン → バイパス取得するため）
 	if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) return true;
 
