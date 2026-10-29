@@ -53,6 +53,11 @@
         sitekey: siteKey,
         appearance: 'interaction-only',
         language: 'ja',
+        // 判定を通ったら枠を畳み、操作が要るとき・失敗・期限切れのときだけ出す（「成功しました」を出しっぱなしにしない）
+        callback: () => { if (el) el.style.display = 'none'; },
+        'before-interactive-callback': () => { if (el) el.style.display = ''; },
+        'expired-callback': () => { if (el) el.style.display = ''; },
+        'error-callback': () => { if (el) el.style.display = ''; },
         ...(action ? { action } : {})
       });
     });
