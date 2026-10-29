@@ -41,13 +41,16 @@
 				</label>
 				<button type="submit" class="w-full rounded-lg bg-brand-800 py-2.5 font-medium text-white hover:bg-brand-700">{m.auth_otp_verify()}</button>
 			</form>
-			<div class="mt-3 flex items-center justify-between text-sm">
-				<form method="POST" action="?/sendCode{nextQuery}" use:enhance>
+			<!-- 再送は Turnstile を別の行に出し、リンク 2 つは下の 1 行に並べる -->
+			<div class="mt-3 space-y-3 text-sm">
+				<form method="POST" action="?/sendCode{nextQuery}" use:enhance class="space-y-3">
 					<input type="hidden" name="email" value={email} />
 					<Turnstile action="member-otp" />
-					<button type="submit" class="text-accent-600 underline">{m.auth_otp_resend()}</button>
+					<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+						<button type="submit" class="text-accent-600 underline">{m.auth_otp_resend()}</button>
+						<a href="/auth/login{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-stone-500 underline">{m.auth_otp_change_email()}</a>
+					</div>
 				</form>
-				<a href="/auth/login{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-stone-500 underline">{m.auth_otp_change_email()}</a>
 			</div>
 		{:else}
 			<!-- step1: メールアドレス入力 -->
