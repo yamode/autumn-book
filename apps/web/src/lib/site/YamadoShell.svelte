@@ -3,7 +3,7 @@
 	// 実測値: 固定ヘッダー bg rgba(255,255,255,.8)・ロゴ130px・ナビ16px(#000, hover #b2b2b2)
 	//         ご予約ボタン bg#e5e5e5 padding 0 60px hover#4d4d4d / 本文 游明朝16px lh1.6 #333 / コンテナ980px
 	import { page } from '$app/state';
-	import SearchBar from '$lib/components/SearchBar.svelte';
+	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
 	import * as m from '$lib/paraglide/messages';
 	import type { ShellFacility, ShellUser } from './types';
@@ -95,11 +95,13 @@
 		{#if showSearch}
 			<div class="border-b border-[#e2e2e2] bg-[#faf9f6]">
 				<div class="mx-auto max-w-[980px] px-4 py-3">
-					<SearchBar
+					<SiteSearchBar
+						facility={facility.slug}
 						action="{base}/plans"
 						checkin={page.url.searchParams.get('checkin') ?? ''}
 						nights={Number(page.url.searchParams.get('nights') ?? 1)}
 						adults={Number(page.url.searchParams.get('adults') ?? 2)}
+						rooms={Number(page.url.searchParams.get('rooms') ?? 1)}
 					/>
 				</div>
 			</div>

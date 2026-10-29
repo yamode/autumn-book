@@ -1,5 +1,5 @@
 <script lang="ts">
-	import SearchBar from '$lib/components/SearchBar.svelte';
+	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import MapPanel from '$lib/components/MapPanel.svelte';
 	import { formatPrice } from '$lib/format';
 	import { goto } from '$app/navigation';
@@ -47,7 +47,7 @@
 		</div>
 		<div class="pt-8 sm:pt-10">
 			<p class="mb-4 text-sm font-semibold tracking-wider text-brand-900">{m.searchbar_submit()}</p>
-			<SearchBar large />
+			<SiteSearchBar />
 		</div>
 	</section>
 

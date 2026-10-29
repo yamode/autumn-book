@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
-	import PlanSearchBar from '$lib/components/PlanSearchBar.svelte';
+	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
 	import AvailabilityCalendarModal from '$lib/components/AvailabilityCalendarModal.svelte';
 	import { searchQuery } from '$lib/components/guests';
@@ -137,7 +137,7 @@
 	{/if}
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<PlanSearchBar {base} params={data.params} today={data.today} days={data.calendarDays} through={data.calendarThrough} closed={data.calendarClosed} facilityId={data.facility.id} />
+		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} tag={data.params.tag} keepScroll />
 	</div>
 
 	{#if data.combos.length}

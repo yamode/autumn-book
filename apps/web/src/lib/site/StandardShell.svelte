@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 標準シェル（新施設の既定）— シンプルな施設ヘッダー + 共通機能への導線
 	import { page } from '$app/state';
-	import SearchBar from '$lib/components/SearchBar.svelte';
+	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
 	import type { ShellFacility, ShellUser } from './types';
 
@@ -31,11 +31,13 @@
 		{#if showSearch}
 			<div class="border-b border-stone-200 bg-white">
 				<div class="mx-auto max-w-6xl px-4 py-3">
-					<SearchBar
+					<SiteSearchBar
+						facility={facility.slug}
 						action="{base}/plans"
 						checkin={page.url.searchParams.get('checkin') ?? ''}
 						nights={Number(page.url.searchParams.get('nights') ?? 1)}
 						adults={Number(page.url.searchParams.get('adults') ?? 2)}
+						rooms={Number(page.url.searchParams.get('rooms') ?? 1)}
 					/>
 				</div>
 			</div>
