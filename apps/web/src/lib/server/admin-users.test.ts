@@ -16,3 +16,13 @@ describe('ユーザー管理のパスワードの決まり', () => {
 		expect(normalizeBookRole('superadmin')).toBeNull();
 	});
 });
+
+describe('受電専用アカウントの作成（入力の検査）', () => {
+	it('施設が無い・メールが不正・パスワードが弱いときは作らずに断る', async () => {
+		const { createIntercomOperator } = await import('./admin-users');
+		const base = { actorId: 'a', email: 'review@example.com', name: '審査用', password: 'yamado2026ok', facilityIds: ['f1'] };
+		await expect(createIntercomOperator({ ...base, facilityIds: [] })).rejects.toThrow(/施設を 1 つ以上/);
+		await expect(createIntercomOperator({ ...base, email: 'not-an-email' })).rejects.toThrow(/メールアドレス/);
+		await expect(createIntercomOperator({ ...base, password: 'short1' })).rejects.toThrow(/10 文字以上/);
+	});
+});

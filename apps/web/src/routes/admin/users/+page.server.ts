@@ -8,6 +8,8 @@ import { FACILITY_UUID } from '$lib/server/supabase-data';
 import {
 	AdminUserError,
 	createAdminUser,
+	createIntercomOperator,
+	setOperatorFacilities,
 	listAdminUsers,
 	MIN_PASSWORD,
 	normalizeBookRole,
@@ -73,6 +75,17 @@ export const actions: Actions = {
 		const form = await event.request.formData();
 		const email = String(form.get('email') ?? '');
 		const r = await run(async () => {
+			// 受電専用（内線アプリだけ・Book と PMS には入れない）
+			if (form.get('role') === 'operator') {
+				const u = await createIntercomOperator({
+					actorId: event.locals.user!.id,
+					email,
+					name: String(form.get('name') ?? ''),
+					password: String(form.get('password') ?? ''),
+					facilityIds: facilityIdsFrom(form)
+				});
+				return `${u.email} を受電専用アカウントとして作りました。受電アプリ（Autumn Call）でログインできます。`;
+			}
 			const u = await createAdminUser({
 				actorId: event.locals.user!.id,
 				email,
@@ -104,6 +117,16 @@ export const actions: Actions = {
 		return run(async () => {
 			await setSharedFacilities({ actorId: event.locals.user!.id, targetId: String(form.get('userId') ?? ''), facilityIds: facilityIdsFrom(form) });
 			return '施設の割り当てを変えました。';
+		});
+	},
+
+	operatorFacilities: async (event) => {
+		const blocked = guard(event);
+		if (blocked) return blocked;
+		const form = await event.request.formData();
+		return run(async () => {
+			await setOperatorFacilities({ actorId: event.locals.user!.id, targetId: String(form.get('userId') ?? ''), facilityIds: facilityIdsFrom(form) });
+			return '受電する施設を変えました。';
 		});
 	},
 
