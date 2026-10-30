@@ -16,6 +16,8 @@
 	const ROLE_LABEL: Record<string, string> = { admin: '管理者', staff: 'スタッフ' };
 	// パスワードを変える欄を開いているアカウント
 	let pwOpen = $state<string | null>(null);
+	// 追加フォームの権限（受電専用のときは施設欄の説明を変える）
+	let newRole = $state('staff');
 </script>
 
 <svelte:head><title>ユーザー管理 ｜ 山人管理</title></svelte:head>
@@ -56,13 +58,16 @@
 			</label>
 			<label class="block">
 				<span class="text-xs text-stone-600">権限</span>
-				<select name="role" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
+				<select name="role" bind:value={newRole} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
 					<option value="staff">スタッフ（共有ID）</option>
 					<option value="admin">管理者（個人）</option>
+						<option value="operator">受電専用（受電アプリだけ・審査用など）</option>
 				</select>
 			</label>
 			<fieldset class="md:col-span-2">
-				<legend class="text-xs text-stone-600">施設の割り当て（PMS と共通）</legend>
+				<legend class="text-xs text-stone-600">
+					{newRole === 'operator' ? '受電する施設（Book・PMS には入れません）' : '施設の割り当て（PMS と共通）'}
+				</legend>
 				<div class="mt-1 flex flex-wrap gap-4">
 					{#each data.facilities as fac (fac.id)}
 						<label class="flex min-h-9 items-center gap-1.5"><input type="checkbox" name="facilityId" value={fac.id} class="h-4 w-4" />{fac.name}</label>
@@ -85,12 +90,31 @@
 					{#if u.id === data.selfId}<span class="text-[11px] text-stone-500">（自分）</span>{/if}
 					{#if u.bookRole}
 						<span class="{BADGE} {u.bookRole === 'admin' ? 'bg-brand-50 text-brand-900 ring-brand-100' : 'bg-sky-50 text-sky-800 ring-sky-200'}">{ROLE_LABEL[u.bookRole]}</span>
+					{:else if u.isOperator && !u.sharedFacilityIds.length && !u.otherMemberships.length}
+						<span class="{BADGE} bg-violet-50 text-violet-800 ring-violet-200">受電専用</span>
 					{:else}
 						<span class="{BADGE} bg-stone-50 text-stone-500 ring-stone-200">Book の権限なし（PMS のみ）</span>
 					{/if}
 					{#if u.banned}<span class="{BADGE} bg-red-50 text-red-700 ring-red-200">利用停止中</span>{/if}
 					<span class="w-full text-xs text-stone-400 sm:ml-auto sm:w-auto">最終ログイン {fmt(u.lastSignInAt)}・認証アプリ {u.totp}件</span>
 				</div>
+				{#if u.isOperator && !u.bookRole && !u.sharedFacilityIds.length && !u.otherMemberships.length}
+					<!-- 受電専用: 施設だけ（受電アプリで内線を受ける。全部外すと受電できなくなる） -->
+					<form method="POST" action="?/operatorFacilities" use:enhance class="mt-3 flex flex-wrap items-end gap-2">
+						<input type="hidden" name="userId" value={u.id} />
+						<fieldset>
+							<legend class="text-xs text-stone-600">受電する施設（Book・PMS には入れません）</legend>
+							<div class="mt-1 flex flex-wrap gap-3">
+								{#each data.facilities as fac (fac.id)}
+									<label class="flex min-h-9 items-center gap-1.5"
+										><input type="checkbox" name="facilityId" value={fac.id} checked={u.operatorFacilityIds.includes(fac.id)} class="h-4 w-4" />{fac.name}</label
+									>
+								{/each}
+							</div>
+						</fieldset>
+						<button type="submit" disabled={!data.selfAal2} class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 disabled:opacity-50">施設を保存</button>
+					</form>
+				{:else}
 
 				<div class="mt-3 grid gap-3 md:grid-cols-2">
 					<!-- 権限 -->
@@ -137,6 +161,7 @@
 					<p class="mt-2 text-[11px] text-stone-400">
 						PMS・RMS 側の割り当て（ここでは変えられません）: {u.otherMemberships.map((m) => `${facilityName(m.facilityId)}＝${m.role}`).join('、')}
 					</p>
+				{/if}
 				{/if}
 
 				<!-- パスワード -->

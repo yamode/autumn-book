@@ -23,6 +23,8 @@ const MAX_PAGES = 20;
 /** 施設の割り当てに使う memberships のロール（PMS の共有ID と同じ） */
 export const SHARED_ROLE = 'shared_login';
 export const MIN_PASSWORD = 10;
+/** 受電専用アカウントの印（user_metadata.kind）。施設の割り当てを全部外しても一覧に残すために使う */
+export const OPERATOR_KIND = 'intercom_operator';
 
 export class AdminUserError extends Error {
 	constructor(
@@ -44,6 +46,10 @@ export interface AdminUserView {
 	sharedFacilityIds: string[];
 	/** shared_login 以外の memberships（PMS・RMS 側で付けたもの。読むだけ） */
 	otherMemberships: { facilityId: string | null; role: string }[];
+	/** 受電専用（book.intercom_operators）の施設。受電アプリ（autumn-call）で内線を受けるだけで、Book・PMS には入れない */
+	operatorFacilityIds: string[];
+	/** 受電専用として作ったアカウント（施設を全部外しても一覧に残す印） */
+	isOperator: boolean;
 	/** 認証アプリの数 */
 	totp: number;
 	lastSignInAt: string | null;
@@ -72,6 +78,12 @@ export async function listAdminUsers(): Promise<AdminUserView[]> {
 	for (const m of (ms ?? []) as { user_id: string; facility_id: string | null; role: string }[]) {
 		byUser.set(m.user_id, [...(byUser.get(m.user_id) ?? []), m]);
 	}
+	const { data: ops, error: opsErr } = await svc.schema('book').from('intercom_operators').select('user_id, facility_id').eq('tenant_id', TENANT_ID);
+	if (opsErr) throw new AdminUserError(`受電専用の割り当てを読めませんでした（${opsErr.message}）`, 502);
+	const opsByUser = new Map<string, string[]>();
+	for (const o of (ops ?? []) as { user_id: string; facility_id: string }[]) {
+		opsByUser.set(o.user_id, [...(opsByUser.get(o.user_id) ?? []), o.facility_id]);
+	}
 	const out: AdminUserView[] = [];
 	for (let page = 1; page <= MAX_PAGES; page++) {
 		const { data, error } = await svc.auth.admin.listUsers({ page, perPage: 1000 });
@@ -79,8 +91,12 @@ export async function listAdminUsers(): Promise<AdminUserView[]> {
 		for (const u of data.users) {
 			const role = adminRoleOf(u.app_metadata);
 			const rows = byUser.get(u.id) ?? [];
-			if (!role && rows.length === 0) continue;
+			const operatorFacilityIds = opsByUser.get(u.id) ?? [];
+			const isOperator = (u.user_metadata as { kind?: string } | null)?.kind === OPERATOR_KIND || operatorFacilityIds.length > 0;
+			if (!role && rows.length === 0 && !isOperator) continue;
 			out.push({
+				operatorFacilityIds,
+				isOperator,
 				id: u.id,
 				email: u.email ?? '',
 				name: nameOf(u),
@@ -183,6 +199,63 @@ export async function createAdminUser(args: {
 	}
 	await syncSharedFacilities(svc, data.user.id, args.facilityIds);
 	return { id: data.user.id, email };
+}
+
+/** 受電専用の施設（book.intercom_operators の行）を指定どおりにする */
+async function syncOperatorFacilities(svc: SupabaseClient, userId: string, facilityIds: string[]) {
+	const want = new Set(facilityIds);
+	const { data, error } = await svc.schema('book').from('intercom_operators').select('facility_id').eq('tenant_id', TENANT_ID).eq('user_id', userId);
+	if (error) throw new AdminUserError(`受電専用の割り当てを読めませんでした（${error.message}）`, 502);
+	const have = new Set(((data ?? []) as { facility_id: string }[]).map((r) => r.facility_id));
+	const remove = [...have].filter((f) => !want.has(f));
+	const add = [...want].filter((f) => !have.has(f));
+	if (remove.length) {
+		const { error: e } = await svc.schema('book').from('intercom_operators').delete().eq('user_id', userId).eq('tenant_id', TENANT_ID).in('facility_id', remove);
+		if (e) throw new AdminUserError(`受電専用の割り当てを外せませんでした（${e.message}）`, 502);
+	}
+	if (add.length) {
+		const { error: e } = await svc
+			.schema('book')
+			.from('intercom_operators')
+			.insert(add.map((f) => ({ user_id: userId, tenant_id: TENANT_ID, facility_id: f })));
+		if (e) throw new AdminUserError(`受電専用の施設を割り当てられませんでした（${e.message}）`, 502);
+	}
+}
+
+/**
+ * 受電専用アカウントを作る（2026-10-30 指示・App Store の審査用アカウントなどを画面から作れるように）。
+ * Book の権限（app_metadata.role）も core.memberships も付けない。付けるのは book.intercom_operators の行だけ
+ * ＝受電アプリで内線を受けるだけで、Book の管理画面にも PMS にも入れない（契約書 §12.3）。
+ */
+export async function createIntercomOperator(args: { actorId: string; email: string; name: string; password: string; facilityIds: string[] }): Promise<{ id: string; email: string }> {
+	const email = args.email.trim().toLowerCase();
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new AdminUserError('メールアドレスの形が正しくありません。');
+	const pwErr = passwordProblem(args.password);
+	if (pwErr) throw new AdminUserError(pwErr);
+	if (args.facilityIds.length === 0) throw new AdminUserError('受電する施設を 1 つ以上選んでください。');
+	const svc = svcOrThrow();
+	await audit(svc, args.actorId, 'admin_user_create_operator', { email, facility_ids: args.facilityIds });
+	const { data, error } = await svc.auth.admin.createUser({
+		email,
+		password: args.password,
+		email_confirm: true,
+		user_metadata: { name: args.name.trim().slice(0, 60), kind: OPERATOR_KIND }
+	});
+	if (error || !data?.user) {
+		const msg = error?.message ?? '';
+		if (/already|registered|exists/i.test(msg)) throw new AdminUserError('このメールアドレスのアカウントは既にあります。', 409);
+		throw new AdminUserError(`アカウントを作れませんでした（${msg || '不明なエラー'}）`, 502);
+	}
+	await syncOperatorFacilities(svc, data.user.id, args.facilityIds);
+	return { id: data.user.id, email };
+}
+
+/** 受電専用の施設を変える（全部外す＝受電できなくなる。アカウントは残る） */
+export async function setOperatorFacilities(args: { actorId: string; targetId: string; facilityIds: string[] }) {
+	const svc = svcOrThrow();
+	const target = await getTarget(svc, args.targetId);
+	await audit(svc, args.actorId, 'admin_user_operator_facilities', { target_user_id: target.id, target_email: target.email ?? null, facility_ids: args.facilityIds });
+	await syncOperatorFacilities(svc, target.id, args.facilityIds);
 }
 
 /** Book の権限を変える（なし＝Book の管理画面に入れない。PMS の割り当てはそのまま） */
