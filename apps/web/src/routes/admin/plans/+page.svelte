@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { planAccessSummaryJa } from '$lib/plan-access';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data } = $props();
 	const PAYMENT_LABEL = { onsite: '現地払い', prepayment: '事前決済', deposit: '事前・現地' } as const;
@@ -55,6 +56,9 @@
 				{/if}
 			</div>
 			<div class="p-3">
+				{#if planAccessSummaryJa(plan.access)}
+					<span class="mb-1 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">◆ {planAccessSummaryJa(plan.access)}</span>
+				{/if}
 				<h2 class="line-clamp-2 text-sm font-medium text-stone-800 group-hover:underline">{plan.name}</h2>
 				<p class="mt-0.5 truncate text-xs text-stone-500">{plan.headline || '（見出し未入力）'}</p>
 				<p class="mt-1 text-[11px] text-stone-400">

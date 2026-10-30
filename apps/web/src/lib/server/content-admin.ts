@@ -6,6 +6,7 @@
 // ■ 部屋名・定員は pms.room_types、プラン名は booking.rate_plans が持つ。紹介テーブルには無いので結合して見せる。
 //   booking スキーマは Data API に出していないので、book.v_admin_rate_plans（security_invoker ビュー）から読む。
 //   読めなければプラン名の代わりに slug を出し、画面に理由を出す（一覧そのものは落とさない）。
+import { planAccessOf, type PlanAccess } from '$lib/plan-access';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
 	normalizePhotos,
@@ -57,6 +58,8 @@ export interface AdminPlanContent extends AdminContentBase {
 	paymentMethod: PlanPaymentMethod | null;
 	/** 予約時決済（オンラインのカード事前決済）の割引率 0〜0.2（book.plan_contents.prepay_discount_rate） */
 	prepayDiscountRate: number;
+	/** 公開範囲（シークレットプラン・book.plan_contents.audience / min_rank / link_only） */
+	access: PlanAccess;
 }
 
 /** onsite = 現地払いのみ / prepayment = 事前決済のみ / deposit = 事前決済と現地払いのどちらも選べる */
@@ -273,7 +276,8 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		paymentMethod: (PLAN_PAYMENT_METHODS as readonly string[]).includes(String(rp?.payment_method))
 			? (rp!.payment_method as PlanPaymentMethod)
 			: null,
-		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0
+		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0,
+		access: planAccessOf(c)
 	};
 }
 
@@ -378,6 +382,33 @@ export async function sbUploadContentPhoto(
  * 支払方法は booking.rate_plans.payment_method（rms 同期は既存プランを上書きしない）、割引率は book.plan_contents。
  * 現地払いのみ（onsite）にすると割引率は DB 側で 0 に戻る。
  */
+/** 公開範囲を保存する（book.admin_set_plan_access・スタッフ）。シークレットプラン */
+export async function sbSetPlanAccess(client: SupabaseClient, ratePlanId: string, access: PlanAccess): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_set_plan_access', {
+		p_rate_plan_id: ratePlanId,
+		p_audience: access.audience,
+		p_min_rank: access.minRank,
+		p_link_only: access.linkOnly
+	});
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('このプランの公開範囲を変更する権限がありません。');
+		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		if (/invalid_params|invalid_rank/.test(error.message)) throw new Error('公開範囲の値が正しくありません。');
+		throw error;
+	}
+}
+
+/** プランの専用 URL のトークン（book.admin_plan_share_link・無ければ作る。rotate で作り直す＝古い URL は使えなくなる） */
+export async function sbPlanShareToken(client: SupabaseClient, ratePlanId: string, rotate = false): Promise<string> {
+	const { data, error } = await client.schema('book').rpc('admin_plan_share_link', { p_rate_plan_id: ratePlanId, p_rotate: rotate });
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('このプランの専用URLを発行する権限がありません。');
+		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		throw error;
+	}
+	return String(data);
+}
+
 export async function sbSetPlanPayment(
 	client: SupabaseClient,
 	ratePlanId: string,

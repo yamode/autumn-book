@@ -4,6 +4,7 @@
 //     それ以外は**黙って成功させず** NOT_LIVE を返す（デモのメモリに書くと isolate ごとに消えるため）。
 //   - 編集できるのは admin と staff。
 //   - 施設は管理画面共通の ab_fac クッキーから解決し、FACILITY_UUID で実 UUID にする。
+import { PUBLIC_ACCESS } from '$lib/plan-access';
 import { fail, type RequestEvent } from '@sveltejs/kit';
 import { facilities, ratePlans, roomTypes } from '$lib/server/store';
 import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
@@ -134,6 +135,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			sections: p.sections,
 			photos: p.photos,
 			sortOrder: p.sortOrder,
-			updatedAt: null
+			updatedAt: null,
+			access: p.access ?? PUBLIC_ACCESS
 		}));
 }

@@ -1250,5 +1250,19 @@
   "lookup_phone_body": "各施設までお電話ください。",
   "account_legacy_note": "2026年11月29日以前に以前の予約システムでご予約の方は、<a href=\"/booking/lookup\" class=\"underline\">こちら</a>からご確認ください。",
   "gcancel_reload_lookup": "ご予約の確認方法は「ご予約の確認」をご覧ください。",
-  "ci_demo_notice": "これは見本の画面です。入力・保存しても、実際のご予約や PMS には反映されません。"
+  "ci_demo_notice": "これは見本の画面です。入力・保存しても、実際のご予約や PMS には反映されません。",
+  "plan_badge_members": "会員限定",
+  "plan_badge_rank": "{rank}会員以上限定",
+  "plan_badge_link": "限定公開",
+  "plan_gate_login_title": "会員限定のプランです",
+  "plan_gate_login_body": "ログインまたは会員登録（無料）をすると、料金の確認とご予約ができます。",
+  "plan_gate_login_rank_body": "{rank}会員以上の方がご予約いただけるプランです。ログインしてご確認ください。",
+  "plan_gate_login_cta": "ログイン・会員登録（無料）",
+  "plan_gate_rank_title": "{rank}会員以上の方限定のプランです",
+  "plan_gate_rank_body": "現在の会員グレードではご予約いただけません。会員グレードはご宿泊の実績に応じて上がります。",
+  "plan_gate_rank_cta": "会員制度を見る",
+  "plan_gate_hold_denied": "このプランはご予約いただける方が限られています。ログインの状態をご確認ください。",
+  "plan_link_invalid_title": "このリンクはご利用いただけません",
+  "plan_link_invalid_body": "リンクが変更されたか、無効になっています。お手数ですが、ご案内元へお問い合わせください。",
+  "plan_link_invalid_top": "トップページへ"
 }

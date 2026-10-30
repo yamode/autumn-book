@@ -9,7 +9,9 @@ import {
 	PLAN_PAYMENT_METHODS,
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
+	sbSetPlanAccess,
 	sbSetPlanPayment,
+	sbPlanShareToken,
 	type PlanPaymentMethod
 } from '$lib/server/content-admin';
 import {
@@ -26,12 +28,30 @@ import {
 import { loadPlanTemplates } from '$lib/server/plan-templates';
 import { loadPlanQuestionSetting, loadQuestionTemplates, savePlanQuestionSetting } from '$lib/server/booking-questions';
 import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestions, type PlanQuestionMode } from '$lib/booking-questions';
+import { customerLinkOrigin } from '$lib/server/public-origin';
+import { demoShareToken } from '$lib/server/secret-plans';
+import { RANK_CODES, isRankCode, planShareLinkPath, type PlanAccess } from '$lib/plan-access';
 import type { Actions, PageServerLoad } from './$types';
 
 const NOT_FOUND = 'プランが見つかりません（施設を切り替えた場合は一覧から選び直してください）';
 
+/** フォーム → 公開範囲（予約できる人: anyone / members / rank、一覧に出さない: link_only） */
+function accessFromForm(form: FormData): PlanAccess | null {
+	const who = String(form.get('who') ?? '');
+	const linkOnly = form.get('link_only') === 'on';
+	if (who === 'anyone') return { audience: 'public', minRank: null, linkOnly };
+	if (who === 'members') return { audience: 'members', minRank: null, linkOnly };
+	if (who === 'rank') {
+		const rank = String(form.get('min_rank') ?? '');
+		return isRankCode(rank) && rank !== 'standard' ? { audience: 'members', minRank: rank, linkOnly } : null;
+	}
+	return null;
+}
+
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
+	// 専用 URL（/plan/<token>）。お客様へ渡すリンクなので本番ドメインで組み立てる
+	const shareUrlOf = (token: string | null) => (token ? customerLinkOrigin(event.url) + planShareLinkPath(token) : null);
 	if (LIVE) {
 		const uuid = facilityUuidOf(currentFacility.id);
 		const client = createSupabaseServerClient(event);
@@ -54,8 +74,12 @@ export const load: PageServerLoad = async (event) => {
 		}
 		if (!r.plan) error(404, NOT_FOUND);
 		const [f, templates, questionTemplates, questionSetting] = await restLoad;
+		// 専用 URL は初めて開いたときに作る（どのプランにも 1 本。作り直すまで変わらない）
+		const shareToken = await sbPlanShareToken(client, event.params.id).catch(() => null);
 		return {
 			live: true as const,
+			shareUrl: shareUrlOf(shareToken),
+			ranks: RANK_CODES,
 			templates,
 			questionTemplates,
 			questionSetting,
@@ -74,6 +98,8 @@ export const load: PageServerLoad = async (event) => {
 	const trMap = translationStore.get(`plan:${plan.id}`);
 	return {
 		live: false as const,
+		shareUrl: shareUrlOf(demoShareToken(plan.id)),
+		ranks: RANK_CODES,
 		content,
 		namesError: null,
 		previewBase: `/${facility.brandSlug}/${facility.slug}`,
@@ -108,6 +134,41 @@ export const actions: Actions = {
 		}
 	},
 	upload: (event) => uploadPhotoAction(event, 'plans'),
+	// 公開範囲（シークレットプラン）: 予約できる人（誰でも / 会員 / グレード以上）と、一覧に出さない（URL 限定）
+	setAccess: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		const access = accessFromForm(await event.request.formData());
+		if (!access) return fail(400, { accessError: '予約できる人を選んでください（グレードを指定する場合はシルバー以上）。' });
+		if (!LIVE) {
+			// デモ: メモリ上のプランに書く（公開側の見え方を確かめる用）
+			const plan = planById(event.params.id);
+			if (!plan) return fail(404, { accessError: NOT_FOUND });
+			plan.access = access;
+			return { accessSaved: true };
+		}
+		try {
+			await sbSetPlanAccess(createSupabaseServerClient(event), event.params.id, access);
+			return { accessSaved: true };
+		} catch (e) {
+			return fail(400, { accessError: messageOf(e) });
+		}
+	},
+	// 専用 URL を作り直す（古い URL・それで開いた端末の Cookie は使えなくなる）
+	rotateLink: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) {
+			demoShareToken(event.params.id, true);
+			return { linkRotated: true };
+		}
+		try {
+			await sbPlanShareToken(createSupabaseServerClient(event), event.params.id, true);
+			return { linkRotated: true };
+		} catch (e) {
+			return fail(400, { accessError: messageOf(e) });
+		}
+	},
 	// 予約時に聞く項目: なし / テンプレート / プラン独自（book.plan_contents.question_mode）
 	setQuestions: async (event) => {
 		const denied = denyIfNotStaff(event);

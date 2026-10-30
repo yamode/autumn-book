@@ -34,9 +34,10 @@ import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
+import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url, locals }) => {
+export const load: PageServerLoad = async ({ params, url, locals, cookies }) => {
 	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
@@ -48,14 +49,20 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
-		const found = await sbPlanBySlug(facility.id, params.plan);
+		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
+		const open = await sbPlanBySlug(facility.id, params.plan);
+		const secret = open ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
+		const found = open ?? secret?.plan;
 		if (!found) error(404, 'プランが見つかりません');
+		const gate = secret?.gate ?? 'ok';
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
 		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
 		const expanded = expandPlanText(plan.description, await loadPlanTemplates(facility.id));
 		plan = { ...plan, description: expanded.text, perks: expanded.perks };
-		if (!checkin) {
+		// 会員限定で予約できない閲覧者（gate=login/rank）には、料金・空室・客室は出さず案内だけ出す
+		const bookable = gate === 'ok';
+		if (!checkin && bookable) {
 			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id);
 			plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
 		}
@@ -63,8 +70,10 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
 		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		const [calendar, offers, rooms] = await Promise.all([
-			stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS }),
-			checkin ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id) : Promise.resolve([]),
+			bookable
+				? stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS })
+				: Promise.resolve({ days: [], through: '', closed: [] }),
+			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id) : Promise.resolve([]),
 			sbListRoomTypesMapped(facility.id)
 		]);
 		const roomById = new Map(rooms.map((r) => [r.id, r]));
@@ -89,6 +98,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			referenceMode: !checkin,
 			// 複数室（予約かご）は実データだけ（デモの store は 1 室）
 			multiRoom: true,
+			// シークレットプランの扱い（ok 以外は料金・客室を出さず、ログイン・グレードの案内を出す）
+			gate,
 			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
@@ -98,9 +109,11 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	if (!facility) error(404, '施設が見つかりません');
 	const found = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
 	if (!found) error(404, 'プランが見つかりません');
+	const gate = await planGate(found, locals, cookies);
+	if (gate === 'hidden') error(404, 'プランが見つかりません');
 	const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 
-	const rooms = plan.roomTypeIds
+	const rooms = (gate === 'ok' ? plan.roomTypeIds : [])
 		.map((id) => roomTypes.find((r) => r.id === id)!)
 		.map((room) => {
 			if (!checkin || room.capacity < adults) {
@@ -126,6 +139,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		referenceMode: false,
 		multiRoom: false,
+		gate,
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };
@@ -179,6 +193,12 @@ export const actions: Actions = {
 		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
 		if (!(await holdRateCheck(event.platform, ip))) {
 			return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
+		}
+
+		// シークレットプラン（会員限定・グレード以上・URL 限定）は、閲覧者が予約できるものだけ通す。
+		// 仮押さえの RPC は service_role 専用で閲覧者を知らないので、ここが関所（かごの他プランも含めて確かめる）
+		if (!(await canBookPlans(rooms.map((r) => r.planId), locals, cookies))) {
+			return fail(403, { message: m.plan_gate_hold_denied(), code: 'invalid' as const });
 		}
 
 		if (DATA_SOURCE === 'supabase') {
