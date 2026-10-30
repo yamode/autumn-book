@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('$env/dynamic/private', () => ({ env: { MAINTENANCE_BYPASS_TOKEN: 'tok-123' } }));
 
-import { isMaintenanceBypassed } from './maintenance';
+import { isMaintenanceBypassed, isPartnerPath } from './maintenance';
 
 function ev(pathname: string, role: string | undefined, cookie?: string) {
 	const jar = new Map<string, string>(cookie ? [['ab_preview', cookie]] : []);
@@ -16,6 +16,10 @@ function ev(pathname: string, role: string | undefined, cookie?: string) {
 }
 
 describe('メンテナンスのバイパス', () => {
+	it('受電端末の更新通知の cron はメンテナンスの対象外（pg_cron が呼ぶため）', () => {
+		expect(isPartnerPath('/api/cron/intercom-device-notify')).toBe(true);
+		expect(isPartnerPath('/api/cron/other')).toBe(false);
+	});
 	it('運営が公開サイトを見たらプレビュー cookie を発行する（会員ログインに入れ替わっても通すため）', () => {
 		const { event, set } = ev('/auth/login', 'admin');
 		expect(isMaintenanceBypassed(event)).toBe(true);

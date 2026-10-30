@@ -104,7 +104,9 @@ export function isPartnerPath(pathname: string): boolean {
 		pathname === '/api/cron/partner-charge' || pathname === '/api/cron/upgrade-payments' ||
 		// 事前チェックイン P4: 当日 9:00 の自動送信（CRON_SECRET）と NTT CPaaS の Webhook（Basic 認証）。
 		// 会員・運営のセッションは要らず、ポータル本体の公開状況（メンテナンス）と関係なく動かす
-		pathname === '/api/cron/precheckin-send' || pathname.startsWith('/api/webhooks/ntt-cpaas/')
+		pathname === '/api/cron/precheckin-send' || pathname.startsWith('/api/webhooks/ntt-cpaas/') ||
+		// 受電端末の OS・アプリ更新の通知（pg_cron が 10 分ごとに呼ぶ・CRON_SECRET）。メンテナンス中でも止めない
+		pathname === '/api/cron/intercom-device-notify'
 	);
 }
 
