@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
-import { clientIp, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
+import { clientIp, hashKeyPart, ipKey, RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import { checkTurnstile, TURNSTILE_FAILED_MESSAGE } from '$lib/server/turnstile';
 import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
 import { clearSharedSsoPause } from '$lib/server/admin-shared-sso';
@@ -30,7 +30,8 @@ export const actions: Actions = {
 		const password = String(form.get('password') ?? '');
 		if (!email || !password) return fail(400, { message: 'メールアドレスとパスワードを入力してください', email });
 
-		// Turnstile（未設定なら素通り）と、1 IP 10 回/10 分の失敗で 15 分止める（docs/auth-hardening.md §4.1・§4.2・S2）
+		// Turnstile（未設定なら素通り）と、1 IP 10 回/10 分の失敗で 15 分止める（docs/auth-hardening.md §4.1・§4.2・S2）。
+		// 加えて 1 アカウント 1 時間 20 回の失敗で 30 分止める（IP を変えながら同じ管理者を狙うもの・2026-10-31）
 		const ip = clientIp(event.request);
 		const turnstile = await checkTurnstile(form, ip);
 		// アクセスログ（不正アクセスの追跡・検知用・2026-10-22）: 管理画面のログインの成否を理由つきで残す
@@ -40,8 +41,13 @@ export const actions: Actions = {
 			return fail(400, { message: TURNSTILE_FAILED_MESSAGE, email });
 		}
 		const rateKey = ipKey(ip);
-		if ((await rateCheck(event.platform, RATE_RULES.adminIp, rateKey)).locked) {
-			failed('ip_locked', 401);
+		const accountKey = await hashKeyPart(email);
+		const [ipLock, accountLock] = await Promise.all([
+			rateCheck(event.platform, RATE_RULES.adminIp, rateKey),
+			rateCheck(event.platform, RATE_RULES.adminAccount, accountKey)
+		]);
+		if (ipLock.locked || accountLock.locked) {
+			failed(ipLock.locked ? 'ip_locked' : 'account_locked', 401);
 			return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
 		}
 
@@ -54,10 +60,16 @@ export const actions: Actions = {
 		const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 		if (error || !data.user) {
 			failed('invalid_credentials', 401);
-			await rateHit(event.platform, RATE_RULES.adminIp, rateKey);
+			await Promise.all([
+				rateHit(event.platform, RATE_RULES.adminIp, rateKey),
+				rateHit(event.platform, RATE_RULES.adminAccount, accountKey)
+			]);
 			return fail(401, { message: LOGIN_FAILED_MESSAGE, email });
 		}
-		await rateReset(event.platform, RATE_RULES.adminIp, rateKey);
+		await Promise.all([
+			rateReset(event.platform, RATE_RULES.adminIp, rateKey),
+			rateReset(event.platform, RATE_RULES.adminAccount, accountKey)
+		]);
 
 		const role = (data.user.app_metadata as { role?: string } | null)?.role;
 		if (role !== 'admin' && role !== 'staff') {

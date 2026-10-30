@@ -45,6 +45,13 @@ export const RATE_RULES = {
   setupIp: { prefix: 'login_rate:setup_ip:', max: 10, windowSec: 600, lockSec: 900 },
   /** 管理ログイン: 1 IP */
   adminIp: { prefix: 'login_rate:admin_ip:', max: 10, windowSec: 600, lockSec: 900 },
+  /**
+   * 管理ログイン: 1 アカウント（メールのハッシュ）。IP を変えながら同じ管理者を狙う総当たりを止める（2026-10-31）。
+   * 本人を締め出せてしまうので IP より緩くする（1 時間 20 回で 30 分）。止まってもパスキーのログインは使える
+   */
+  adminAccount: { prefix: 'login_rate:admin_acct:', max: 20, windowSec: 3600, lockSec: 1800 },
+  /** 管理画面の二段階認証（認証アプリの 6 桁）: 1 ユーザーあたり 10 分 5 回の失敗で 15 分止める（パスワードが漏れたときの最後の壁・2026-10-31） */
+  adminMfa: { prefix: 'login_rate:admin_mfa:', max: 5, windowSec: 600, lockSec: 900 },
   /** 会員の認証コード送信: 1 IP あたり 10 分 10 通 */
   memberOtpIp: { prefix: 'login_rate:member_otp_ip:', max: 10, windowSec: 600 },
   /** 会員の認証コード送信: 1 メールあたり 1 時間 5 通 */

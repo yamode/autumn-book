@@ -161,3 +161,29 @@ describe('KV あり（AB_RATE）', () => {
     expect((await rateCheck(platform, RATE_RULES.partner, 'p1')).locked).toBe(false);
   });
 });
+
+describe('管理画面の追加の制限（2026-10-31）', () => {
+  beforeEach(() => clearRateMemory());
+
+  it('アカウント単位は 20 回の失敗で 30 分止まり、IP とは別に数える', async () => {
+    const r = RATE_RULES.adminAccount;
+    expect([r.max, r.windowSec, r.lockSec]).toEqual([20, 3600, 1800]);
+    for (let i = 0; i < 19; i++) await rateHit(undefined, r, 'acct');
+    expect((await rateCheck(undefined, r, 'acct')).locked).toBe(false);
+    expect((await rateCheck(undefined, RATE_RULES.adminIp, 'acct')).locked).toBe(false);
+    await rateHit(undefined, r, 'acct');
+    const c = await rateCheck(undefined, r, 'acct');
+    expect(c.locked).toBe(true);
+    expect(c.retryInSec).toBeGreaterThan(1700);
+  });
+
+  it('二段階認証のコードは 5 回の失敗で止まり、成功で数え直す', async () => {
+    const r = RATE_RULES.adminMfa;
+    for (let i = 0; i < 4; i++) await rateHit(undefined, r, 'u1');
+    await rateReset(undefined, r, 'u1');
+    for (let i = 0; i < 4; i++) await rateHit(undefined, r, 'u1');
+    expect((await rateCheck(undefined, r, 'u1')).locked).toBe(false);
+    await rateHit(undefined, r, 'u1');
+    expect((await rateCheck(undefined, r, 'u1')).locked).toBe(true);
+  });
+});

@@ -4,7 +4,12 @@ import { fail, redirect } from '@sveltejs/kit';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { adminMfaErrorText, normalizeTotpCode, safeAdminNext } from '$lib/admin-mfa';
 import { adminPasskeyAvailable } from '$lib/server/admin-passkeys';
+import { RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
+import { logAccessEvent } from '$lib/server/access-log';
 import type { Actions, PageServerLoad } from './$types';
+
+// 制限中と間違いで同じ文言にする（制限中かを外から区別させない・ログイン画面と同じ考え方）
+const MFA_FAILED_MESSAGE = 'コードが違うか、しばらくの間確認を制限しています。認証アプリの新しいコードで、数分おいてからお試しください。';
 
 export const load: PageServerLoad = async (event) => {
 	event.setHeaders({ 'cache-control': 'no-store' });
@@ -45,8 +50,21 @@ export const actions: Actions = {
 		if (!factorId) return fail(400, { message: '認証アプリを選んでください。' });
 		if (!code) return fail(400, { message: '認証アプリに表示されている 6 桁の数字を入力してください。' });
 
+		// 1 ユーザー 10 分 5 回の失敗で 15 分止める（6 桁の総当たりを止める・2026-10-31）。ユーザーが分からなければ止めない側に倒す
+		const userId = event.locals.user?.id ?? null;
+		const user = userId ? { id: userId } : null;
+		if (userId && (await rateCheck(event.platform, RATE_RULES.adminMfa, userId)).locked) {
+			logAccessEvent(event, { event: 'login_failure', user, status: 429, detail: { reason: 'mfa_locked' } });
+			return fail(429, { message: MFA_FAILED_MESSAGE });
+		}
+
 		const { error } = await createSupabaseServerClient(event).auth.mfa.challengeAndVerify({ factorId, code });
-		if (error) return fail(400, { message: adminMfaErrorText(error) });
+		if (error) {
+			if (userId) await rateHit(event.platform, RATE_RULES.adminMfa, userId);
+			logAccessEvent(event, { event: 'login_failure', user, status: 400, detail: { reason: 'mfa_invalid', code: error.code ?? null } });
+			return fail(400, { message: adminMfaErrorText(error) });
+		}
+		if (userId) await rateReset(event.platform, RATE_RULES.adminMfa, userId);
 		// 成功すると aal2 のトークンが cookie に書き戻される（createSupabaseServerClient の setAll）
 		redirect(303, next);
 	}
