@@ -358,6 +358,13 @@ alter table public.rms_partner_access_logs add constraint rms_partner_access_log
 - Zero Trust → Access → Applications → Self-hosted。ドメイン `book.yamado.app`、パス `/admin*`。ポリシー: Allow・Include「Emails ending in `@yamado.co.jp`」【要確認: 管理者のメールドメイン】・認証方法は One-time PIN（メール）または Google。セッション 24 時間。
 - 注意: `/admin/login` も Access の後ろに入る（Access の認証 → Supabase のログイン、の二段）。`/api/*`・`/p/*` は含めない。50 ユーザーまで無料【推測: 2026 年時点の Free プラン】。
 - Supabase MFA（§7.2）が入っても **残してよい**（多層）。運用が煩雑なら外す。
+- **2026-10-31 確認（設定前の洗い出し）**:
+  - 管理画面のアカウント（role admin / staff）のメールは `@yamado.co.jp` と `@oga.yamado.co.jp` の 2 種。「Emails ending in」に**両方**入れる（`@yamado.co.jp` だけでは oga のスタッフが入れない）。
+  - `/admin/sso`（§7.5 デスクトップの旧口）は Access の後ろだと失敗する。自動ログイン（§7.6）が代わりを務めるので、**別アプリ `book.yamado.app/admin/sso` を作ってポリシーを Bypass** にする（Bearer トークン必須・Origin 付きは 403 なので外に出しても守りは変わらない）。
+  - `/admin` 配下の `+server.ts`（翻訳・添付・CSV・パスキー等）はすべて管理画面のブラウザから同じ Cookie で呼ぶもので、Access の Cookie（`CF_Authorization`）が付くのでそのまま通る。
+  - 外部サーバから `/admin/*` を呼ぶもの（PMS・RMS・内線アプリ・cron）は無い。cron は `/api/cron/*` で対象外。
+  - パスワード再設定のメール（`/admin/login/reset`）・パスキー登録リンク（`/admin/security/passkey/enroll-link`）は、開いた端末で Access のメール確認を一度通ってから使う。
+  - 設定後の確認: `curl -sI https://book.yamado.app/admin` が `*.cloudflareaccess.com` への 302 になり、`/admin/sso` は 302 にならない（405 など Book 自身の応答）こと。
 
 ### 7.2 Supabase Auth の TOTP MFA（1 か月以内）
 
