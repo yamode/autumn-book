@@ -1,3 +1,38 @@
+## シークレットプラン（会員限定・グレード以上・URL 限定）と専用 URL（2026-10-30・v0.216.0）
+
+公式予約サイト（表の予約システム）の中で、プランごとに「予約できる人」と「一覧に出すか」を決められるようにした。特別会員の専用ページ（member_page）・取引先ページとは別物で、普通の会員制度（`book.members.rank_code`）だけで完結する。
+
+- DB: autumn-shared `20261030142707_book_secret_plans.sql`（**本番適用済み**・schema_migrations と列・表・関数の実在を確認）
+  - `book.plan_contents` に `audience`（public / members）・`min_rank`（members のときだけ・null＝グレード不問）・`link_only`（一覧・検索に出さない）。既定は従来どおりの普通のプラン。
+  - 専用 URL のトークンは `book.plan_share_links`（deny-all RLS・service_role と RPC だけ）。トークンを plan_contents に置かないのは、普通のプランだった間に anon から読めた値が URL 限定に切り替えたあとに残らないようにするため。
+  - 公開読み取りの RLS（`plan_contents_public_read`）を普通のプランだけに → anon / authenticated が読む `v_plans`（security_invoker）から秘密のプランが消える。スタッフのポリシーは従来どおり。
+  - 列挙系の DEFINER RPC（plan_offers・search_plans・search_availability・reference_min_price・facility_stay_calendar・plan_reference_min_prices・room_plan_reference_prices）は、**プランを指定しない列挙のときだけ**普通のプランに絞る（id 指定なら秘密のプランも返す）。`room_plan_reference_prices` に `p_rate_plan_id` を追加（作り直し・grant 付け直し済み）。
+  - 管理用 RPC: `admin_set_plan_access(p_rate_plan_id, p_audience, p_min_rank, p_link_only)`・`admin_plan_share_link(p_rate_plan_id, p_rotate)`（無ければ作る・rotate で作り直し）。どちらも監査ログあり。
+- 判定（純関数）`src/lib/plan-access.ts`（テスト `plan-access.test.ts`）、サーバー `src/lib/server/secret-plans.ts`（`DEBUG=true`）。
+  - 一覧: URL 限定は誰にも出さない。会員限定は対象の会員にだけ出す（プランごとに plan_offers / room_plan_reference_prices を取って足す）。
+  - 詳細: URL 限定で URL を開いていなければ 404。会員限定は中身を見せ、非会員には「ログイン・会員登録」、グレード不足には「◯◯会員以上の方限定」の案内（料金・空室・客室は出さない）。
+  - 仮押さえ: `create_hold_group` は service_role 専用で閲覧者を知らないので、プラン詳細の hold アクション（かごの他プランも含む）で `canBookPlans` が関所。yamado-one の `/api/hold` は秘密のプランを断る。
+  - `sbPlanByUuid` は anon で見えなければ service_role で読み直す（仮押さえ後・予約後の画面でプラン名などが出るように）。管理の予約詳細の変更候補にも秘密のプランを含めた。
+- 専用 URL `/plan/<token>`: トークンを Cookie `ab_plan_links`（httpOnly・90 日・最大 20 件）に足してプラン詳細へ 303。無効なトークンは「このリンクはご利用いただけません」。`no-store`・`noindex`。
+- 管理画面 `/admin/plans/<id>`: 「公開範囲」（予約できる人: 誰でも／会員だけ／グレード以上の会員＋「一覧・検索に出さない」）と「このプランの専用URL」（コピー・作り直し）。専用 URL は初めて開いたときに作る（本番ドメイン `book.yamado.app` で組み立て）。秘密のプランの「公開ページを開く」は専用 URL で開く。プラン一覧のカードに「◆ 会員限定」等の印。
+- 公開画面: プラン一覧のカード・詳細に「◆ 会員限定／◯◯会員以上限定／限定公開」の印（ja/en/zh-TW）。
+- 確認済み: dev（demo）で管理画面の保存 → 一覧から消える・詳細 404 → 専用 URL で開ける → 非会員は案内だけ → ゴールド会員は料金が出て仮押さえまで進める・Cookie なしの hold は 403。dev（supabase＝本番 DB）で既存プランの一覧・詳細（日付あり・なし）が正常。
+- **未確認**: 本番（ADMIN_SUPABASE）での「公開範囲を保存」「専用URLの発行・作り直し」（RPC は SQL の目視確認のみ・実データを書き換えるため未実行）、本番でのシークレットプランの通し予約。会員限定プランの料金は施設カレンダーの最安・検索結果には入らない（設計どおり）。
+
+### テストチェックリスト（シークレットプラン）
+- [ ] 管理画面のプラン編集で「公開範囲」を保存でき、再読み込みしても選んだ値が残る
+- [ ] 「このプランの専用URL」が表示され、「URLをコピー」でクリップボードに入る（本番ドメインの URL）
+- [ ] 「URLを作り直す」で URL が変わり、古い URL は「このリンクはご利用いただけません」になる。古い URL で開いていた端末も URL 限定プランが 404 に戻る
+- [ ] URL 限定（誰でも）: 一覧・検索・施設トップに出ない。詳細を直接開くと 404。専用 URL から開くと非会員でも予約できる
+- [ ] 会員限定（一覧に出す）: 非会員の一覧には出ない。ログインした会員の一覧には「◆ 会員限定」付きで出て、料金・予約まで進める
+- [ ] グレード以上（ゴールド）: スタンダード会員の一覧に出ず、URL で開くと「ゴールド会員以上の方限定」の案内（料金なし）。ゴールド・プラチナ会員は予約できる
+- [ ] 会員限定プランを非会員が URL で開くと「ログイン・会員登録（無料）」が出て、ログイン後に同じプランへ戻る
+- [ ] 検索結果（/search）・施設の空室カレンダーの最安料金に、シークレットプランの料金が入らない
+- [ ] かごに普通のプランとシークレットプランを入れ、条件を満たさない状態で予約へ進むと止まる
+- [ ] 予約完了・マイページ・管理画面の予約詳細で、シークレットプランの名前が出る
+- [ ] アプリ（yamado-one）からシークレットプランは予約できない（/api/hold が invalid）
+- [ ] ja / en / zh-TW で印・案内の文言が出る・スマホで崩れない
+
 ## 検索バーの 1 本バー切替を「画面幅」から「置かれた場所の幅」に（2026-10-29・v0.213.2）
 
 幅 1060px 前後のヘッダーで、1 本バーの「ご利用人数・室数」が縦に折り返す不具合を修正。`StaySearchBar` を画面幅（md）ではなくコンテナ幅（`@min-[900px]`）で切り替え、足りない幅は縦積みカードにした。ヘッダーの検索バーは常に 1 行幅（横に並べると 280px しか取れず崩れるため）。

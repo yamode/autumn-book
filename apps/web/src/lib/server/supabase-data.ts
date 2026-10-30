@@ -39,6 +39,7 @@
 import { parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot } from '$lib/partner-member-page';
 import { supa } from './supabase';
 import { partnerServiceClient } from './partners/admin-client';
+import { planAccessOf } from '$lib/plan-access';
 import { signCookieValue, verifyCookieValue } from './signed-cookie';
 import { holdClientKey, holdErrorKind } from './hold-rate-limit';
 import type {
@@ -2606,7 +2607,9 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		isPublished: true,
 		sortOrder: Number(row.sort_order ?? 0),
 		specs: normalizeSpecs(row.specs),
-		sections: normalizeSections(row.sections)
+		sections: normalizeSections(row.sections),
+		// 公開範囲（autumn-shared 20261030142707。列が無ければ普通のプラン）
+		access: planAccessOf(row)
 	};
 }
 
@@ -2682,11 +2685,14 @@ export async function sbPlanReferenceMinPrices(facilityUuid: string, adults: num
 /** 客室×プランごとの本日〜2か月後の参考最低料金（指定人数利用時の1名1泊）。 */
 export async function sbRoomPlanReferencePrices(
 	facilityUuid: string,
-	adults: number
+	adults: number,
+	ratePlanId?: string
 ): Promise<{ ratePlanId: string; roomTypeId: string; minPerPerson: number }[]> {
+	// プラン未指定は普通のプランだけ（会員限定プランは id を指定して取る・autumn-shared 20261030142707）
 	const { data, error } = await supa().rpc('room_plan_reference_prices', {
 		p_facility: facilityUuid,
-		p_adults: adults
+		p_adults: adults,
+		...(ratePlanId ? { p_rate_plan_id: ratePlanId } : {})
 	});
 	if (error) throw error;
 	return ((data ?? []) as { rate_plan_id: string; room_type_id: string; min_per_person: number }[]).map((row) => ({
@@ -2726,10 +2732,20 @@ export async function sbFacilityClosedDates(facilityUuid: string, months: number
 	return ((data ?? []) as { closed_date: string }[]).map((row) => row.closed_date);
 }
 
+/**
+ * id でプランを引く。シークレットプラン（anon の RLS では見えない）は service_role で読み直す。
+ * id は専用 URL・会員の判定を通ったあと（仮押さえ・予約後の画面）にしか出てこないので、id を知っていれば読ませてよい。
+ * 予約できるかの判定は $lib/server/secret-plans の canBookPlans（ここでは判定しない）。
+ */
 export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
 	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (error) throw error;
-	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+	if (data) return mapPlanRow(data as Record<string, unknown>);
+	const sb = partnerServiceClient();
+	if (!sb) return undefined;
+	const secret = await sb.schema('book').from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
+	if (secret.error) throw secret.error;
+	return secret.data ? mapPlanRow(secret.data as Record<string, unknown>) : undefined;
 }
 
 export async function sbPlanBySlug(facilityUuid: string, slug: string): Promise<RatePlan | undefined> {

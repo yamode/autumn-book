@@ -9,6 +9,8 @@
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
 	import PerkBanners from '$lib/components/PerkBanners.svelte';
+	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
+	import PlanGateNotice from '$lib/components/PlanGateNotice.svelte';
 	import PerkModal, { type PerkModalContent } from '$lib/components/PerkModal.svelte';
 	import type { RoomType } from '$lib/types';
 	import { formatDate, formatPrice, todayStr } from '$lib/format';
@@ -238,6 +240,7 @@
 					<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
 				{/each}
 			</div>
+			<PlanAccessBadge access={data.plan.access} />
 			<h1 class="font-display text-2xl leading-snug text-brand-900">{data.plan.name}</h1>
 			{#if data.plan.headline && data.plan.headline !== data.plan.name}
 				<p class="text-sm text-stone-600">{data.plan.headline}</p>
@@ -266,6 +269,10 @@
 				{/if}
 			</dl>
 
+			{#if data.gate !== 'ok'}
+				<!-- 会員限定のシークレットプラン: 予約できない閲覧者には料金を出さず、ログイン・グレードの案内だけ -->
+				<PlanGateNotice gate={data.gate} access={data.plan.access} next={page.url.pathname + page.url.search} />
+			{:else}
 			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる） -->
 			<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
 				{@render priceBlock()}
@@ -284,6 +291,7 @@
 				{/if}
 				{#if perkBanners.length}<div class="mt-3"><PerkBanners items={perkBanners} onopen={openPerk} /></div>{/if}
 			</div>
+			{/if}
 		</div>
 	</div>
 
@@ -298,6 +306,7 @@
 	<!-- 仕様表・紹介ブロック（book.plan_contents.specs / sections） -->
 	<ContentBlocks specs={data.plan.specs} sections={data.plan.sections} specsTitle={m.plan_detail_specs()} />
 
+	{#if data.gate === 'ok'}
 	<!-- 日付選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="cal">
 		<h2 class="font-display mb-1 text-xl text-brand-900">{m.plan_detail_price_calendar()}</h2>
@@ -374,6 +383,7 @@
 			{/each}
 		</div>
 	</section>
+	{/if}
 
 	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない） -->
 	<div bind:this={turnstileBox}><Turnstile bind:this={turnstile} action="booking-hold" /></div>
@@ -389,7 +399,7 @@
 </div>
 
 <!-- モバイル: 下部固定の料金バー（客室セクション表示中は隠す） -->
-{#if !roomsInView && cart.length === 0}
+{#if !roomsInView && cart.length === 0 && data.gate === 'ok'}
 	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1 leading-tight">

@@ -23,6 +23,7 @@ import { json } from '@sveltejs/kit';
 import { createHoldSingle } from '$lib/server/supabase-data';
 import { holdRateCheck } from '$lib/server/hold-rate-limit';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
+import { isSecretPlan } from '$lib/server/secret-plans';
 import type { RequestHandler } from './$types';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -101,6 +102,11 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	const memberUserId = await memberFromBearer(request);
+
+	// シークレットプラン（会員限定・URL 限定）はアプリからは予約させない（専用 URL を開いたかを判定できないため。公式サイトから予約する）
+	if (await isSecretPlan(planId)) {
+		return json({ error: 'invalid' }, { status: 400 });
+	}
 
 	try {
 		const result = await createHoldSingle(sessionId, planId, roomTypeId, checkin, nights, adults, {

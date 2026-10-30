@@ -69,6 +69,7 @@ import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { loadMemberPagePlans } from '$lib/server/partners/member-hold';
 import { staffMemberAmendRoomInput } from '$lib/server/partners/member-bookings';
 import { sbListPlansMapped, sbListRoomTypesMapped } from '$lib/server/supabase-data';
+import { plansIncludingSecret } from '$lib/server/secret-plans';
 import {
 	AMEND_ROOM_MESSAGES_JA,
 	amendLimitOf,
@@ -156,7 +157,10 @@ async function amendRoomsOf(detail: BookingDetail, payment: DirectPaymentInfo | 
 	const sb = b.memberPage ? partnerServiceClient() : null;
 	const [roomTypes, plans, memberPlans] = await Promise.all([
 		sbListRoomTypesMapped(b.facility_id).catch(() => []),
-		sbListPlansMapped(b.facility_id).catch(() => []),
+		// スタッフはシークレットプラン（会員限定・URL 限定）へも変更できる
+		sbListPlansMapped(b.facility_id)
+			.then((open) => plansIncludingSecret(b.facility_id, open))
+			.catch(() => []),
 		sb ? loadMemberPagePlans(sb, b.facility_id).catch(() => null) : Promise.resolve(null)
 	]);
 	const memberIds = memberPlans ? new Set([...memberPlans.values()].map((p) => p.ratePlanId)) : null;

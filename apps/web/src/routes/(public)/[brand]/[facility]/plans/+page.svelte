@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
 	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
@@ -219,6 +220,7 @@
 												{#if option.plan.payment.onsite}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.pay_onsite()}</span>{/if}
 												{#if option.plan.payment.prepay}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_card()}</span>{/if}
 											</div>
+											{#if option.plan.access}<PlanAccessBadge access={option.plan.access} size="sm" />{/if}
 											<h4 class="font-medium leading-6 text-stone-900">{option.plan.name}</h4>
 											{#if option.plan.headline && option.plan.headline !== option.plan.name}<p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{option.plan.headline}</p>{/if}
 											<p class="mt-2 text-xs text-stone-600">

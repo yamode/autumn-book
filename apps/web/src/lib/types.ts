@@ -1,6 +1,7 @@
 // 共有型定義（クライアント・サーバー両方から import 可）
 import type { CancellationPolicy, CancellationRule, Quote } from '@autumn-book/core';
 import type { ContentSpec, ContentSection } from './content-blocks';
+import type { PlanAccess } from './plan-access';
 export type { ContentSpec, ContentSection } from './content-blocks';
 
 // ---------------------------------------------------------------- i18n 型
@@ -186,6 +187,8 @@ export interface RatePlan {
 	sections: ContentSection[];
 	/** 紹介文テンプレートの「特典」（公式HP限定特典など）。予約ボタン横のバナーに出す。展開したときだけ入る */
 	perks?: { key: string; label: string; title: string; body: string }[];
+	/** 公開範囲（シークレットプラン・$lib/plan-access）。未設定は普通のプラン */
+	access?: PlanAccess;
 }
 
 // ---------------------------------------------------------------- オプション（滞在アレンジ・book.option_items / booking_option_orders 対称）

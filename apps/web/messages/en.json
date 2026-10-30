@@ -1250,5 +1250,19 @@
   "lookup_phone_body": "Please call the property.",
   "account_legacy_note": "If you booked with our previous reservation system on or before 29 November 2026, please check <a href=\"/booking/lookup\" class=\"underline\">here</a>.",
   "gcancel_reload_lookup": "See \"Check your reservation\" for how to check your booking.",
-  "ci_demo_notice": "This is a sample screen. Nothing you enter or save here is applied to a real reservation or the PMS."
+  "ci_demo_notice": "This is a sample screen. Nothing you enter or save here is applied to a real reservation or the PMS.",
+  "plan_badge_members": "Members only",
+  "plan_badge_rank": "{rank} members and above",
+  "plan_badge_link": "Private offer",
+  "plan_gate_login_title": "This plan is for members only",
+  "plan_gate_login_body": "Log in or sign up (free) to see rates and book.",
+  "plan_gate_login_rank_body": "This plan is available to {rank} members and above. Please log in to check.",
+  "plan_gate_login_cta": "Log in / Sign up (free)",
+  "plan_gate_rank_title": "This plan is for {rank} members and above",
+  "plan_gate_rank_body": "Your current membership tier cannot book this plan. Tiers go up with your stays.",
+  "plan_gate_rank_cta": "About membership",
+  "plan_gate_hold_denied": "This plan is only available to certain guests. Please check that you are logged in.",
+  "plan_link_invalid_title": "This link is not available",
+  "plan_link_invalid_body": "The link has been changed or is no longer valid. Please contact the person who shared it with you.",
+  "plan_link_invalid_top": "Go to top page"
 }

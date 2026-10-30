@@ -7,6 +7,7 @@
 	import type { BookingQuestion, PlanQuestionMode } from '$lib/booking-questions';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import { RANK_LABELS_JA, isOpenPlan, planAccessSummaryJa } from '$lib/plan-access';
 
 	let { data, form } = $props();
 	let c = $derived(data.content);
@@ -20,6 +21,31 @@
 		{ value: 'prepayment', label: '事前決済のみ', hint: '予約時にオンラインでカード決済' },
 		{ value: 'deposit', label: 'どちらも選べる', hint: 'お客様が事前決済か現地払いを選ぶ' }
 	] as const;
+
+	// 公開範囲（シークレットプラン・保存前の画面上の値）。予約できる人: 誰でも / 会員 / グレード以上
+	// svelte-ignore state_referenced_locally
+	const a0 = data.content.access;
+	let whoInput = $state<'anyone' | 'members' | 'rank'>(a0.audience === 'public' ? 'anyone' : a0.minRank && a0.minRank !== 'standard' ? 'rank' : 'members');
+	let rankInput = $state<string>(a0.minRank && a0.minRank !== 'standard' ? a0.minRank : 'gold');
+	let linkOnlyInput = $state(a0.linkOnly);
+	const WHO_OPTIONS = [
+		{ value: 'anyone', label: '誰でも', hint: '会員でなくても予約できる' },
+		{ value: 'members', label: '会員だけ', hint: 'ログインした会員なら予約できる' },
+		{ value: 'rank', label: 'グレード以上の会員', hint: '指定したグレード以上の会員だけ' }
+	] as const;
+	const accessSummary = $derived(planAccessSummaryJa(c.access));
+	let copied = $state(false);
+	async function copyShareUrl() {
+		if (!data.shareUrl) return;
+		try {
+			await navigator.clipboard.writeText(data.shareUrl);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			// クリップボードが使えないとき（http・権限なし）は欄を選んでコピーしてもらう
+			(document.getElementById('share-url') as HTMLInputElement | null)?.select();
+		}
+	}
 
 	// 予約時に聞く項目（保存前の画面上の値）。テンプレートを選んでいなくても、独自の項目は残しておく
 	// svelte-ignore state_referenced_locally
@@ -51,7 +77,8 @@
 <PageHeader title={c.name} description={c.code || c.slug}>
 	{#snippet actions()}
 		{#if data.previewBase && c.slug && c.isPublished}
-			<a href="{data.previewBase}/plans/{c.slug}" target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを開く <AdminIcon name="external" class="h-4 w-4" /></a>
+			<!-- シークレットプランは一覧から見えないので、専用 URL で開く（URL を開いた扱いになる） -->
+			<a href={!isOpenPlan(c.access) && data.shareUrl ? data.shareUrl : `${data.previewBase}/plans/${c.slug}`} target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを開く <AdminIcon name="external" class="h-4 w-4" /></a>
 		{/if}
 	{/snippet}
 </PageHeader>
@@ -84,6 +111,79 @@
 		<p class="mt-3 text-xs text-stone-400">料金・在庫・規定の変更は rms（料金管理）で行ってください。</p>
 	</section>
 {/if}
+
+<!-- 公開範囲（シークレットプラン）と専用 URL。特別会員の専用ページ・取引先ページとは別で、公式サイトの会員制度の中で完結する -->
+<form method="POST" action="?/setAccess" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
+	<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+		<h2 class="text-sm font-bold text-stone-700">
+			公開範囲
+			{#if accessSummary}<span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-normal text-amber-800">シークレット：{accessSummary}</span>{/if}
+		</h2>
+		{#if (form as { accessSaved?: boolean } | null)?.accessSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+	</div>
+	{#if (form as { accessError?: string } | null)?.accessError}
+		<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { accessError?: string }).accessError}</p>
+	{/if}
+	<p class="mt-1 text-xs text-stone-500">予約できる人</p>
+	<div class="mt-1 grid gap-2 sm:grid-cols-3">
+		{#each WHO_OPTIONS as o (o.value)}
+			<label class="flex cursor-pointer gap-2 rounded-lg border border-stone-200 p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50">
+				<input type="radio" name="who" value={o.value} bind:group={whoInput} class="mt-0.5 h-4 w-4" />
+				<span>
+					<span class="font-medium text-stone-800">{o.label}</span>
+					<span class="mt-0.5 block text-xs text-stone-500">{o.hint}</span>
+				</span>
+			</label>
+		{/each}
+	</div>
+	{#if whoInput === 'rank'}
+		<label class="mt-3 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+			<select name="min_rank" bind:value={rankInput} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+				{#each data.ranks.filter((r) => r !== 'standard') as r (r)}
+					<option value={r}>{RANK_LABELS_JA[r]}</option>
+				{/each}
+			</select>
+			以上の会員
+		</label>
+	{/if}
+	<label class="mt-3 flex cursor-pointer items-start gap-2 text-sm text-stone-700">
+		<input type="checkbox" name="link_only" bind:checked={linkOnlyInput} class="mt-0.5 h-4 w-4" />
+		<span>
+			プラン一覧・検索に出さない（専用URLを知っている人だけ）
+			<span class="mt-0.5 block text-xs text-stone-500">
+				{#if whoInput === 'anyone'}URL を開けば、会員でなくても予約できます。{:else}URL を開いたうえで、上の条件に合う会員だけが予約できます。{/if}
+				オフのときは、{whoInput === 'anyone' ? '普通のプランとして一覧に出ます' : '条件に合う会員にだけ一覧に出ます（ほかの方には出ません）'}。
+			</span>
+		</span>
+	</label>
+	<p class="mt-3 text-xs text-stone-400">
+		シークレットプランは、検索結果・空室カレンダーの最安料金・アプリ（yamado-one）の予約には出ません。
+		会員限定のプランをログインしていない方が URL から開くと、料金は出さずに「ログイン・会員登録」の案内を出します。
+	</p>
+	<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">公開範囲を保存</button>
+</form>
+
+<!-- 専用 URL（/plan/<token>）。どのプランにも 1 本あり、作り直すと古い URL は使えなくなる -->
+<section class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
+	<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+		<h2 class="text-sm font-bold text-stone-700">このプランの専用URL</h2>
+		{#if (form as { linkRotated?: boolean } | null)?.linkRotated}<span class="text-xs text-emerald-600">作り直しました（古いURLは使えません）</span>{/if}
+	</div>
+	{#if data.shareUrl}
+		<div class="mt-2 flex flex-col gap-2 sm:flex-row">
+			<input id="share-url" type="text" readonly value={data.shareUrl} onfocus={(e) => e.currentTarget.select()} class="min-w-0 flex-1 rounded-md border border-stone-300 bg-stone-50 px-3 py-2 font-mono text-xs text-stone-700" />
+			<button type="button" onclick={copyShareUrl} class="shrink-0 rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">{copied ? 'コピーしました' : 'URLをコピー'}</button>
+		</div>
+		<p class="mt-2 text-xs text-stone-500">
+			メール・SNS・会員向けのご案内に貼って使います。開いた端末では、一覧に出さないプランも見られて予約できるようになります（会員限定の条件はそのまま）。
+		</p>
+		<form method="POST" action="?/rotateLink" use:enhance class="mt-2" onsubmit={(e) => { if (!confirm('専用URLを作り直しますか？今のURLと、それで開いた端末では見られなくなります。')) e.preventDefault(); }}>
+			<button type="submit" class="text-xs text-stone-500 underline underline-offset-4 hover:text-stone-700">URLを作り直す（漏れたとき・配布を終えるとき）</button>
+		</form>
+	{:else}
+		<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">専用URLを読めませんでした。再読み込みしてください。</p>
+	{/if}
+</section>
 
 {#if data.live}
 	<!-- 支払方法（本番）。booking.rate_plans.payment_method を Book で決める（rms 同期は上書きしない） -->

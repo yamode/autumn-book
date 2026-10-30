@@ -8,6 +8,8 @@ import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { planForViewer } from '$lib/member-payment';
+import { listedSecretPlans, viewerOf } from '$lib/server/secret-plans';
+import { listPlanFor } from '$lib/plan-access';
 import { crossTypeCombos } from '$lib/partner-room-combos';
 import { MAX_ROOMS_PER_BOOKING } from '$lib/multi-room';
 import type { RatePlan, RoomType } from '$lib/types';
@@ -93,6 +95,8 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const isMember = viewerIsMember(locals);
+	// 会員限定のシークレットプランを一覧に足すかどうか（会員のグレードで決まる。URL 限定は一覧に出さない）
+	const viewer = await viewerOf(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
@@ -111,6 +115,22 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
 			stayCalendar(facility.id, nights, adults)
 		]);
+		// 対象の会員には会員限定プランも出す（列挙系 RPC は普通のプランだけを返すので、プランごとに料金を取る）
+		const memberPlans = await listedSecretPlans(facility.id, viewer);
+		if (memberPlans.length > 0) {
+			const extra = await Promise.all(
+				memberPlans.map((plan) =>
+					checkin
+						? sbPlanOffers(facility.id, checkin, nights, adults, plan.id).then((rows) => ({ offers: rows, refs: [] as typeof referencePrices }))
+						: sbRoomPlanReferencePrices(facility.id, adults, plan.id).then((rows) => ({ offers: [] as typeof datedOffers, refs: rows }))
+				).map((p) => p.catch(() => ({ offers: [] as typeof datedOffers, refs: [] as typeof referencePrices })))
+			);
+			allPlans.push(...memberPlans);
+			for (const e of extra) {
+				datedOffers.push(...e.offers);
+				referencePrices.push(...e.refs);
+			}
+		}
 		const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
 		const plans = withEarlyPrepayMax(
 			allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
@@ -136,7 +156,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
-	const allPlans = getRatePlans(facility.id, locale);
+	const allPlans = getRatePlans(facility.id, locale).filter((plan) => listPlanFor(plan.access, viewer));
 	const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
 	const plans = withEarlyPrepayMax(
 		allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
