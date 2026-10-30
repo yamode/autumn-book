@@ -60,6 +60,21 @@ export interface AdminPlanContent extends AdminContentBase {
 	prepayDiscountRate: number;
 	/** 公開範囲（シークレットプラン・book.plan_contents.audience / min_rank / link_only） */
 	access: PlanAccess;
+	/** 料金（rms）との関係。'awaiting' は Book で先に作って、rms の料金設定をまだ紐づけていないプラン */
+	rmsState: PlanRmsState;
+}
+
+/** rms = rms 先行（同期が作った）／ linked = Book 先行で rms に紐づけ済み／ awaiting = Book 先行で料金待ち */
+export type PlanRmsState = 'rms' | 'linked' | 'awaiting';
+
+/**
+ * v_admin_rate_plans の managed_by / book_origin から、料金の紐づけ状態を決める。
+ * book_origin（Book で作った）で managed_by が rms_sync なら紐づけ済み、book のままなら料金待ち。
+ * ビューを読めなかったとき（行が無い）は rms 先行として扱う。
+ */
+export function planRmsStateOf(rp: { managed_by?: unknown; book_origin?: unknown } | undefined): PlanRmsState {
+	if (rp?.book_origin !== true) return 'rms';
+	return rp.managed_by === 'rms_sync' ? 'linked' : 'awaiting';
 }
 
 /** onsite = 現地払いのみ / prepayment = 事前決済のみ / deposit = 事前決済と現地払いのどちらも選べる */
@@ -254,7 +269,7 @@ async function loadRatePlans(
 	let q = client
 		.schema('book')
 		.from('v_admin_rate_plans')
-		.select('id, code, name, is_active, public_on_direct, payment_method')
+		.select('id, code, name, is_active, public_on_direct, payment_method, managed_by, book_origin')
 		.eq('facility_id', facilityUuid);
 	if (ids) q = q.in('id', ids);
 	const { data, error } = await q;
@@ -277,11 +292,32 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 			? (rp!.payment_method as PlanPaymentMethod)
 			: null,
 		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0,
-		access: planAccessOf(c)
+		access: planAccessOf(c),
+		rmsState: planRmsStateOf(rp)
 	};
 }
 
-/** その施設の紹介行があるプラン（＝直販対象として rms 同期が作ったもの）を並び順で返す。 */
+/** プランを Book で新規に作る（book.admin_create_plan）。料金は無い状態で、rms からの紐づけを待つ。作った rate_plan の id を返す */
+export async function sbCreatePlan(
+	client: SupabaseClient,
+	facilityUuid: string,
+	name: string,
+	mealPlan: string | null
+): Promise<string> {
+	const { data, error } = await client.schema('book').rpc('admin_create_plan', {
+		p_facility_id: facilityUuid,
+		p_name: name,
+		p_meal_plan: mealPlan
+	});
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('この施設にプランを作る権限がありません。');
+		if (error.message.includes('invalid_params')) throw new Error('プラン名は 1〜60 文字で入力してください。');
+		throw error;
+	}
+	return String(data);
+}
+
+/** その施設の紹介行があるプラン（rms 同期が作ったもの、または Book で先に作ったもの）を並び順で返す。 */
 export async function sbListPlanContentsAdmin(
 	client: SupabaseClient,
 	facilityUuid: string

@@ -136,6 +136,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			photos: p.photos,
 			sortOrder: p.sortOrder,
 			updatedAt: null,
-			access: p.access ?? PUBLIC_ACCESS
+			access: p.access ?? PUBLIC_ACCESS,
+			rmsState: 'rms'
 		}));
 }

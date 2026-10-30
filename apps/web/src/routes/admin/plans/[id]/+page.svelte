@@ -82,7 +82,13 @@
 		{/if}
 	{/snippet}
 </PageHeader>
-{#if !c.isActive || !c.publicOnDirect}
+{#if c.rmsState === 'awaiting'}
+	<!-- Book で先に作ったプラン: 料金は rms のプランテンプレートを紐づけたときに入る -->
+	<p class="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+		<strong class="font-medium">料金待ち：</strong>このプランは Book で先に作りました。紹介文・写真・支払方法・公開範囲はここで設定できます。
+		料金・在庫・客室は、rms でプランを作り「Book のプランに紐づける」と入ります（最長3時間で反映）。紐づけるまでは、公開しても予約できません。
+	</p>
+{:else if !c.isActive || !c.publicOnDirect}
 	<p class="-mt-3 mb-4 inline-block rounded-full bg-rose-50 px-2.5 py-0.5 text-xs text-rose-700">rms で直販対象外（公開しても表示されません）</p>
 {/if}
 
