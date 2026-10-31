@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { navigating, page } from '$app/state';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
+	import { inDesktopApp, switchUserInDesktop } from '$lib/desktop-switch-user';
 	import AutumnBookLogo from '$lib/components/admin/AutumnBookLogo.svelte';
 	// 統合ヘッダー（ロゴ＋PMS/RMS/Order/Book のタブ・autumn-shared から写したもの・2026-10-28）。
 	// 設計: autumn-pms/desktop/docs/integrated-header-design.md §6.5。サイドバーの AppSwitcher はこれに置き換えた
@@ -13,6 +15,9 @@
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 
 	let { data, children } = $props();
+	// デスクトップアプリの中か（ログアウトのボタンを「ユーザーを切り替え」に差し替える）
+	let desktop = $state(false);
+	onMount(() => (desktop = inDesktopApp()));
 	// 上部バーの高さ（サイドバーはこの分だけ下げて、残りの高さに収める）
 	let headerH = $state(0);
 
@@ -327,9 +332,21 @@
 							<span class="max-w-40 truncate">{data.user?.name}</span>
 							{#if data.user?.name !== (data.user?.role === 'admin' ? '管理者' : 'スタッフ')}<span class="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-500">{data.user?.role === 'admin' ? '管理者' : 'スタッフ'}</span>{/if}
 						</span>
-						<form method="POST" action="/auth/logout" data-no-guard>
-							<button type="submit" class="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-700" title="ログアウト">
-								<AdminIcon name="logout" class="h-4 w-4" /><span class="hidden sm:inline">ログアウト</span>
+						<!-- デスクトップアプリではログアウトのボタンを出さず「ユーザーを切り替え」だけにする（2026-10-31）。
+						     共有ログインなので、シェルが全アプリをログアウトしてログイン画面へ戻す。 -->
+						<form
+							method="POST"
+							action="/auth/logout"
+							data-no-guard
+							onsubmit={async (e) => {
+								if (!desktop) return;
+								e.preventDefault();
+								const form = e.currentTarget;
+								if (!(await switchUserInDesktop())) form.submit();
+							}}
+						>
+							<button type="submit" class="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-700" title={desktop ? 'ユーザーを切り替え' : 'ログアウト'}>
+								<AdminIcon name="logout" class="h-4 w-4" /><span class="hidden sm:inline">{desktop ? 'ユーザーを切り替え' : 'ログアウト'}</span>
 							</button>
 						</form>
 						<!-- デスクトップのタブ型だけ「⋯」（更新・表示設定・ログアウト（全アプリ））。それ以外では何も描かない -->
