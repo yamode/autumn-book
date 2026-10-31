@@ -541,6 +541,7 @@
 
 	<!-- ===== 内線（客室からフロントへの Wi-Fi 通話・受電は autumn-call アプリ） ===== -->
 	{#if form?.intercomSaved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">内線の設定を保存しました。</p>{/if}
+	{#if form && 'intercom' in form && form.intercom && form.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">内線の設定を保存できませんでした：{form.message}</p>{/if}
 	<section class="mb-5 rounded-xl border border-stone-200 bg-white p-4 text-sm sm:p-5">
 		<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="phone" class="h-4 w-4 shrink-0 text-stone-500" />内線（客室からフロントを呼ぶ）</h2>
 		<p class="mt-1 text-xs text-stone-400">

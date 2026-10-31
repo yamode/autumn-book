@@ -199,10 +199,12 @@ async function saveGuide(event: Parameters<Actions[string]>[0], withId: boolean)
 }
 
 export const actions: Actions = {
-	// ---- 内線（客室からの Wi-Fi 通話）の設定（admin のみ。DB 側も施設の管理者に限る）----
+	// ---- 内線（客室からの Wi-Fi 通話）の設定（admin・staff。DB 側はその施設にアクセスできるスタッフに限る）----
+	// 失敗は intercom: true を付けて返し、内線の欄のそばにも出す（ページ上部だけだとスクロールで見えない）
 	intercomSave: async (event) => {
-		if (event.locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
-		if (!useSupabaseAdmin) return fail(400, { message: STAYS_NOT_LIVE });
+		const user = event.locals.user;
+		if (!user || (user.role !== 'admin' && user.role !== 'staff')) return fail(403, { message: '権限がありません', intercom: true });
+		if (!useSupabaseAdmin) return fail(400, { message: STAYS_NOT_LIVE, intercom: true });
 		const form = await event.request.formData();
 		const facilityId = String(form.get('facilityId') ?? '');
 		const allDay = form.get('allDay') === 'on';
@@ -211,7 +213,7 @@ export const actions: Actions = {
 		let businessHours: BusinessHours = {};
 		if (!allDay) {
 			if (!/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to) || from >= to) {
-				return fail(400, { message: '受付時間は「開始 < 終了」で入力してください（日をまたぐ設定はできません）' });
+				return fail(400, { message: '受付時間は「開始 < 終了」で入力してください（日をまたぐ設定はできません）', intercom: true });
 			}
 			const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 			businessHours = Object.fromEntries(days.map((d) => [d, [[from, to]]]));
@@ -225,7 +227,7 @@ export const actions: Actions = {
 				rateLimit: 5
 			});
 		} catch (e) {
-			return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました' });
+			return fail(500, { message: e instanceof Error ? e.message : '保存に失敗しました', intercom: true });
 		}
 		return { intercomSaved: true };
 	},

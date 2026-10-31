@@ -112,7 +112,7 @@ export async function sbSaveIntercom(
 	if (error) {
 		throw new Error(
 			error.message.includes('forbidden')
-				? '内線の設定は施設の管理者だけが変更できます'
+				? 'この施設の内線の設定を変更する権限がありません'
 				: error.message.includes('invalid_hours')
 					? '受付時間の形式が正しくありません（開始 < 終了）'
 					: '内線の設定を保存できませんでした（' + error.message + '）'
