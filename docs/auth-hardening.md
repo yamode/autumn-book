@@ -365,6 +365,10 @@ alter table public.rms_partner_access_logs add constraint rms_partner_access_log
   - 外部サーバから `/admin/*` を呼ぶもの（PMS・RMS・内線アプリ・cron）は無い。cron は `/api/cron/*` で対象外。
   - パスワード再設定のメール（`/admin/login/reset`）・パスキー登録リンク（`/admin/security/passkey/enroll-link`）は、開いた端末で Access のメール確認を一度通ってから使う。
   - 設定後の確認: `curl -sI https://book.yamado.app/admin` が `*.cloudflareaccess.com` への 302 になり、`/admin/sso` は 302 にならない（405 など Book 自身の応答）こと。
+- **2026-10-31 設定済み**（Zero Trust → アクセス制御 → アプリケーション）:
+  - 「Book 管理画面」: 宛先 `book.yamado.app/admin`・`autumn-book.pages.dev/admin`・`*.autumn-book.pages.dev/admin`（pages.dev の住所とプレビューからも管理画面に入れるため同じ保護に入れた）。ポリシー「山人スタッフ」（許可・末尾が `@yamado.co.jp` / `@oga.yamado.co.jp`）。ログイン方法は One-time PIN（組織で唯一の ID プロバイダー）。セッション 24 時間。
+  - 「Book 管理画面 SSO 除外」: 宛先 `book.yamado.app/admin/sso`・ポリシー「SSO 入口を通す」（バイパス・全員）。
+  - 外からの確認結果: `/admin`・`/admin/plans`・`autumn-book.pages.dev/admin` → `taskul.cloudflareaccess.com` へ 302。`/admin/sso` → 405（Book 自身）。`/partner` → 200（対象外のまま）。
 
 ### 7.2 Supabase Auth の TOTP MFA（1 か月以内）
 
