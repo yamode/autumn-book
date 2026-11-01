@@ -130,6 +130,7 @@ export class GuestCall {
 	private closed = false;
 	/** 呼出音・応答音・終話音（発信側が状況を音で分かるように） */
 	private tones: CallTones | null = null;
+	private toneLevel = 1;
 
 	constructor(ev: GuestCallEvents) {
 		this.ev = ev;
@@ -154,7 +155,7 @@ export class GuestCall {
 		if (this.state !== 'idle') return;
 		this.t0 = performance.now();
 		// 音の準備はユーザー操作の中（最初の await より前）でないと iOS で鳴らない
-		this.tones = new CallTones();
+		this.tones = new CallTones(this.toneLevel);
 		this.set('starting');
 		// 着信 push の送信関数を先に起こしておく（マイク許可を待つ間に起動と APNs 接続が済み、受電側が早く鳴る）
 		void api({ action: 'warm' }).catch(() => {});
@@ -197,6 +198,29 @@ export class GuestCall {
 
 	setMuted(muted: boolean) {
 		this.local?.getAudioTracks().forEach((t) => (t.enabled = !muted));
+	}
+
+	/** 音量スライダー（0〜2）。呼出音・応答音・話中音に掛ける（相手の声は通話シートの RemoteVolume が受け持つ） */
+	setToneLevel(level: number) {
+		this.toneLevel = level;
+		this.tones?.setLevel(level);
+	}
+
+	/** 相手から届いている音声の大きさ（0〜1・WebRTC の統計）。取れなければ null */
+	async inboundAudioLevel(): Promise<number | null> {
+		const pc = this.pc;
+		if (!pc) return null;
+		try {
+			const stats = await pc.getStats();
+			let level: number | null = null;
+			stats.forEach((s) => {
+				const r = s as { type?: string; kind?: string; audioLevel?: number };
+				if (r.type === 'inbound-rtp' && r.kind === 'audio' && typeof r.audioLevel === 'number') level = r.audioLevel;
+			});
+			return level;
+		} catch {
+			return null;
+		}
 	}
 
 	private async ringTimeout() {

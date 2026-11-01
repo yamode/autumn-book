@@ -5,6 +5,7 @@
 	import { onDestroy } from 'svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { GuestCall, type GuestCallEnd, type GuestCallState } from '$lib/intercom/guest-call';
+	import { RemoteVolume, loadVolume } from '$lib/intercom/remote-volume';
 
 	let { open = $bindable(false), phone }: { open: boolean; phone?: string } = $props();
 
@@ -16,6 +17,10 @@
 	let now = $state(Date.now());
 	let media = $state<HTMLVideoElement | null>(null);
 	let call: GuestCall | null = null;
+	// 音量スライダー（0〜2・端末に保存）。声は RemoteVolume、呼出音などは GuestCall が受け持つ
+	let volume = $state(1);
+	let voiceBroken = $state(false);
+	let rv: RemoteVolume | null = null;
 	let tick: ReturnType<typeof setInterval> | null = null;
 
 	const endText: Record<GuestCallEnd, () => string> = {
@@ -46,6 +51,15 @@
 		muted = false;
 		reconnecting = false;
 		startedAt = null;
+		rv?.dispose();
+		rv = new RemoteVolume(
+			() => call?.inboundAudioLevel() ?? Promise.resolve(null),
+			() => (voiceBroken = true)
+		);
+		// ユーザー操作の中で AudioContext を用意する（iOS）
+		rv.prime();
+		volume = rv.value;
+		voiceBroken = rv.broken;
 		call = new GuestCall({
 			onState: (s, e) => {
 				phase = s;
@@ -57,17 +71,25 @@
 					end = e;
 					if (tick) clearInterval(tick);
 					tick = null;
-					if (media) media.srcObject = null;
+					rv?.dispose();
+					rv = null;
 				}
 			},
 			onRemoteStream: (stream) => {
 				if (!media) return;
-				media.srcObject = stream;
-				void media.play().catch(() => {});
+				rv?.attach(media, stream);
 			},
 			onReconnecting: (r) => (reconnecting = r)
 		});
+		call.setToneLevel(volume);
 		void call.start();
+	}
+
+	function onVolume(e: Event) {
+		const v = Number((e.currentTarget as HTMLInputElement).value) / 100;
+		volume = v;
+		rv?.set(v);
+		call?.setToneLevel(v);
 	}
 
 	function hangup() {
@@ -87,6 +109,7 @@
 	onDestroy(() => {
 		if (tick) clearInterval(tick);
 		void call?.hangup();
+		rv?.dispose();
 	});
 
 	const tel = $derived(phone ? 'tel:' + phone.replace(/[^0-9+]/g, '') : '');
@@ -121,6 +144,18 @@
 		</div>
 
 		<div class="flex w-full flex-col items-center gap-4">
+			{#if phase === 'ringing' || phase === 'connecting' || phase === 'active'}
+				<label class="flex w-full items-center gap-3 text-xs text-white/80">
+					<svg viewBox="0 0 24 24" class="h-5 w-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 9h3l5-4v14l-5-4H4z" /><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11" />
+					</svg>
+					<input type="range" min="0" max="200" step="10" value={Math.round(volume * 100)} oninput={onVolume} aria-label={m.intercom_volume()} class="h-2 flex-1 accent-emerald-500" />
+					<span class="w-11 text-right tabular-nums">{Math.round(volume * 100)}%</span>
+				</label>
+				{#if voiceBroken}
+					<p class="-mt-2 text-[11px] text-white/50">{m.intercom_volume_voice_unavailable()}</p>
+				{/if}
+			{/if}
 			{#if phase === 'ended'}
 				{#if canRetry}
 					<button type="button" onclick={dial} class="w-full rounded-full bg-emerald-600 py-3 text-base font-medium">{m.intercom_retry()}</button>

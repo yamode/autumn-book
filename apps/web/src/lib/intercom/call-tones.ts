@@ -21,11 +21,15 @@ const VOLUME = 0.3;
 
 export class CallTones {
 	private ctx: Ctx | null = null;
+	/** 全体の音量（通話シートの音量スライダー。1 = 100%） */
+	private master: GainNode | null = null;
+	private level = 1;
 	private ringTimer: ReturnType<typeof setInterval> | null = null;
 	private ringNodes: AudioNode[] = [];
 	private ringGate: GainNode | null = null;
 
-	constructor() {
+	constructor(level = 1) {
+		this.level = level;
 		try {
 			const AC: typeof AudioContext | undefined =
 				typeof window === 'undefined'
@@ -33,6 +37,9 @@ export class CallTones {
 					: (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
 			if (!AC) return;
 			this.ctx = new AC();
+			this.master = this.ctx.createGain();
+			this.master.gain.value = this.level;
+			this.master.connect(this.ctx.destination);
 			void this.ctx.resume().catch(() => {});
 		} catch {
 			this.ctx = null;
@@ -45,6 +52,13 @@ export class CallTones {
 		if (!c || c.state === 'closed') return null;
 		if (c.state !== 'running') void c.resume().catch(() => {});
 		return c;
+	}
+
+	/** 音量スライダーの値（0〜2）を全体に掛ける */
+	setLevel(level: number): void {
+		this.level = level;
+		const c = this.ctx;
+		if (c && this.master) this.master.gain.setTargetAtTime(level, c.currentTime, 0.02);
 	}
 
 	/** 呼出音を鳴らし始める（stopRing まで繰り返す） */
@@ -65,7 +79,7 @@ export class CallTones {
 			// 1 秒鳴って 2 秒休むゲート
 			const gate = c.createGain();
 			gate.gain.value = 0;
-			carrier.connect(am).connect(gate).connect(c.destination);
+			carrier.connect(am).connect(gate).connect(this.master ?? c.destination);
 			carrier.start();
 			lfo.start();
 			this.ringNodes = [carrier, lfo, am, lfoDepth, gate];
@@ -119,7 +133,7 @@ export class CallTones {
 				g.gain.linearRampToValueAtTime(VOLUME, s + 0.015);
 				g.gain.setValueAtTime(VOLUME, s + len - 0.03);
 				g.gain.linearRampToValueAtTime(0, s + len);
-				o.connect(g).connect(c.destination);
+				o.connect(g).connect(this.master ?? c.destination);
 				o.start(s);
 				o.stop(s + len + 0.02);
 				end = Math.max(end, at + len);

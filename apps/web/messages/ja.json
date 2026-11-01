@@ -794,6 +794,8 @@
   "intercom_reconnecting": "電波が不安定です。再接続しています…",
   "intercom_keep_open": "通話中はこの画面を表示したままにしてください",
   "intercom_speaker_note": "この端末では、フロントの声はスピーカーから聞こえます",
+  "intercom_volume": "音量",
+  "intercom_volume_voice_unavailable": "この端末では、フロントの声の大きさは本体の音量ボタンで調整してください",
   "intercom_mute": "ミュート",
   "intercom_unmute": "ミュート解除",
   "intercom_hangup": "終了",
@@ -1228,7 +1230,8 @@
   "ci_ota_points": "会員登録（無料）のうえ公式サイトでご予約いただくと、ご宿泊ごとにポイントが貯まります。1ポイント＝1円として、次回以降のご予約にお使いいただけます。",
   "ci_ota_welcome": "いまなら入会で {points}pt をプレゼント。",
   "ci_ota_cta": "公式サイトを見る",
-  "ci_ota_strip": "次回のご宿泊は公式サイトが一番お得です。",
+  "ci_ota_strip": "次回のご宿泊は公式サイトが一番お得です。"
+,
   "complete_back_to_site": "{facility}のサイトへ戻る",
   "footer_lookup": "ご予約の確認",
   "lookup_title": "ご予約の確認",

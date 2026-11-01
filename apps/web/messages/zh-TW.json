@@ -794,6 +794,8 @@
   "intercom_reconnecting": "訊號不穩，正在重新連線…",
   "intercom_keep_open": "通話期間請保持此畫面開啟",
   "intercom_speaker_note": "此裝置會以喇叭播放櫃檯的聲音",
+  "intercom_volume": "音量",
+  "intercom_volume_voice_unavailable": "此裝置請使用音量鍵調整櫃檯的聲音",
   "intercom_mute": "靜音",
   "intercom_unmute": "取消靜音",
   "intercom_hangup": "結束",
@@ -1228,7 +1230,8 @@
   "ci_ota_points": "免費加入會員並透過官方網站預訂，每次住宿皆可累積點數。1 點＝1 日圓，可折抵下次預訂。",
   "ci_ota_welcome": "現在加入即贈 {points} 點。",
   "ci_ota_cta": "前往官方網站",
-  "ci_ota_strip": "下次住宿，透過官方網站預訂最划算。",
+  "ci_ota_strip": "下次住宿，透過官方網站預訂最划算。"
+,
   "complete_back_to_site": "返回{facility}的網站",
   "footer_lookup": "確認預約",
   "lookup_title": "確認預約",

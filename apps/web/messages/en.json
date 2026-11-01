@@ -794,6 +794,8 @@
   "intercom_reconnecting": "Unstable connection. Reconnecting…",
   "intercom_keep_open": "Please keep this screen open during the call",
   "intercom_speaker_note": "On this device, the front desk's voice plays through the speaker",
+  "intercom_volume": "Volume",
+  "intercom_volume_voice_unavailable": "On this device, use the volume buttons to adjust the front desk's voice",
   "intercom_mute": "Mute",
   "intercom_unmute": "Unmute",
   "intercom_hangup": "End",
@@ -1228,7 +1230,8 @@
   "ci_ota_points": "Join our free membership and book on our official site to earn points on every stay. 1 point = 1 yen off your next booking.",
   "ci_ota_welcome": "Get {points} points when you join.",
   "ci_ota_cta": "Visit our official site",
-  "ci_ota_strip": "Next time, book direct on our official site for the best deal.",
+  "ci_ota_strip": "Next time, book direct on our official site for the best deal."
+,
   "complete_back_to_site": "Back to the {facility} website",
   "footer_lookup": "Check your reservation",
   "lookup_title": "Check your reservation",
