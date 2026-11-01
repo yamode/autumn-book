@@ -18,6 +18,7 @@
 //   ・STUN だけでは対称 NAT（モバイル回線など）で繋がらない → TURN（Cloudflare Realtime）を /r/api/intercom が発行。未設定なら STUN のみ
 
 import { setCallAudioSession } from './audio-session';
+import { CallTones } from './call-tones';
 
 export type GuestCallState =
 	| 'idle'
@@ -106,6 +107,8 @@ export class GuestCall {
 	private iceServers: Promise<RTCIceServer[]> | null = null;
 	private offered = false;
 	private closed = false;
+	/** 呼出音・応答音・終話音（発信側が状況を音で分かるように） */
+	private tones: CallTones | null = null;
 
 	constructor(ev: GuestCallEvents) {
 		this.ev = ev;
@@ -113,12 +116,21 @@ export class GuestCall {
 
 	private set(state: GuestCallState, end?: GuestCallEnd) {
 		this.state = state;
+		if (state === 'ringing') this.tones?.startRing();
+		else if (state === 'connecting') this.tones?.answered();
+		else if (state === 'ended') {
+			// 自分で切った・マイクが使えないときは話中音を出さない
+			this.tones?.end(end === 'hangup' || end === 'mic');
+			this.tones = null;
+		}
 		this.ev.onState(state, end);
 	}
 
 	/** ボタン押下から呼ぶ（getUserMedia はユーザー操作の中で呼ぶ必要がある） */
 	async start(): Promise<void> {
 		if (this.state !== 'idle') return;
+		// 音の準備はユーザー操作の中（最初の await より前）でないと iOS で鳴らない
+		this.tones = new CallTones();
 		this.set('starting');
 		// 着信 push の送信関数を先に起こしておく（マイク許可を待つ間に起動と APNs 接続が済み、受電側が早く鳴る）
 		void api({ action: 'warm' }).catch(() => {});
