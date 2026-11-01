@@ -441,10 +441,15 @@
 			<thead class="bg-stone-50 text-xs text-stone-500">
 				<tr>
 					<th class="sticky left-0 z-10 min-w-[8rem] bg-stone-50 px-3 py-2 text-left font-normal">プラン</th>
-					<th class="px-3 py-2 text-left font-normal">支払方法（会員／非会員）</th>
-					<th class="px-3 py-2 text-left font-normal">定率割引</th>
-					<th class="px-3 py-2 text-left font-normal">早期決済割</th>
-					<th class="px-3 py-2 text-left font-normal">予約時決済の最大還元</th>
+					<!-- 見出しは行のフォームと同じ grid で並べる（列がずれて、定率割引のプルダウンが早期決済割の下に見えないように） -->
+					<th class="px-3 py-2 text-left font-normal" colspan="4">
+						<div class="grid grid-cols-[2.2fr_0.6fr_0.8fr_0.9fr] gap-3">
+							<span>支払方法（会員／非会員）</span>
+							<span title="予約時のオンライン決済で、日数に関係なく一律に引く率（プランごと）">定率割引</span>
+							<span title="チェックすると、基本タブの段階表（予約日から宿泊日までの日数で決まる率）がこのプランに効く">早期決済割（段階表）</span>
+							<span>予約時決済の最大還元</span>
+						</div>
+					</th>
 					<th class="px-3 py-2"></th>
 				</tr>
 			</thead>
