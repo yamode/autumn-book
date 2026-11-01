@@ -15,7 +15,9 @@ const RING_FREQ = 400;
 const RING_MOD = 16;
 const RING_ON = 1.0;
 const RING_CYCLE = 3.0;
-const VOLUME = 0.2;
+// 音量（0〜1）。呼出音は 16Hz で揺らすぶん実効が半分になるので大きめ
+const RING_VOLUME = 0.45;
+const VOLUME = 0.3;
 
 export class CallTones {
 	private ctx: Ctx | null = null;
@@ -75,8 +77,8 @@ export class CallTones {
 				const t = cc.currentTime + 0.02;
 				g.gain.cancelScheduledValues(t);
 				g.gain.setValueAtTime(0, t);
-				g.gain.linearRampToValueAtTime(VOLUME, t + 0.02);
-				g.gain.setValueAtTime(VOLUME, t + RING_ON - 0.02);
+				g.gain.linearRampToValueAtTime(RING_VOLUME, t + 0.02);
+				g.gain.setValueAtTime(RING_VOLUME, t + RING_ON - 0.02);
 				g.gain.linearRampToValueAtTime(0, t + RING_ON);
 			};
 			burst();

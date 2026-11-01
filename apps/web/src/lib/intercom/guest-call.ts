@@ -158,8 +158,8 @@ export class GuestCall {
 		this.set('starting');
 		// 着信 push の送信関数を先に起こしておく（マイク許可を待つ間に起動と APNs 接続が済み、受電側が早く鳴る）
 		void api({ action: 'warm' }).catch(() => {});
-		// 相手の声の出力を通話モード（受話口）にする。ユーザー操作の中・getUserMedia の前に切り替える
-		setCallAudioSession(true);
+		// 相手の声はスピーカーから出す（2026-11-01 変更・以前は通話モード＝受話口だったが、呼出音も声も小さく聞き取りにくかった）。
+		// iOS Safari は audioSession を 'play-and-record' にしなければスピーカーになるので、ここでは切り替えない
 		try {
 			this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
 		} catch {

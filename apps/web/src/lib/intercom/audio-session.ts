@@ -1,5 +1,7 @@
 // 客室内線の通話中だけ、ブラウザの音声セッションを「通話用」にする。
 //
+// ※2026-11-01 から通話は既定でスピーカー（setCallAudioSession(true) は呼んでいない）。終話時の false（auto に戻す）だけ残している。
+//
 // iOS Safari（16.4 以降）の Audio Session API（navigator.audioSession）。type を 'play-and-record' にすると
 // OS の通話と同じ扱いになり、相手の声の既定の出力先がスピーカーではなく受話口（通話モード）になる。
 // 通話が終わったら 'auto' に戻す（他の音声の扱いを変えたままにしない）。
