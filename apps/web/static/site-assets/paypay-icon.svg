@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+  <!-- 予約入力の「PayPay」に添える小さなアイコンの仮版（v0.231.0）。PayPay 加盟店向けの公式ロゴ素材を入手したら、このファイルを差し替える -->
+  <rect width="32" height="32" rx="7" fill="#ff0033"/>
+  <path d="M11 24V8h6.2c3.4 0 5.6 1.9 5.6 4.9s-2.2 4.9-5.6 4.9H14.4V24Zm3.4-9.1h2.6c1.5 0 2.4-.8 2.4-2s-.9-2-2.4-2h-2.6Z" fill="#fff"/>
+</svg>

@@ -11,7 +11,7 @@
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
 	import { directChargeOf, type PayOption } from '$lib/direct-payment';
 	import { percentText } from '$lib/early-prepay';
-	import { formatDateLong, formatPrice } from '$lib/format';
+	import { addDays, formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { guestsLabel } from '$lib/components/guests';
@@ -46,11 +46,12 @@
 
 	// 支払い方法（サーバがプランの決済設定とオンライン決済の可否から決めたもの）。
 	// 「オンライン決済（ご予約時）」と「現地決済（チェックアウト時）」の2グループに分けて見せる。
-	// 現地決済を選んだら、その中で PayPay / クレジットカード / 現金 を選ぶ（宿は店頭 PayPay へ誘導したいので PayPay を先頭・既定）。
+	// 現地決済を選んだら、その中で「チェックアウト時のお支払い予定方法」を 現金 / クレジットカード / PayPay の順で選ぶ（2026-11-01・既定は現金。
+	// PayPay は目立たせすぎない）。ふるさと納税 宿泊補助券を併用する人はチェックボックスで知らせる（furusatoVoucher=on）。
 	// サーバへは payment=card / paypay / onsite_paypay / onsite_card / onsite_cash で送る。現地払いは予約のまま備考で宿へ申し送る
 	type OnsiteMethod = 'paypay' | 'card' | 'cash';
 	type PayChoice = PayOption | `onsite_${OnsiteMethod}`;
-	const ONSITE_METHODS: OnsiteMethod[] = ['paypay', 'card', 'cash'];
+	const ONSITE_METHODS: OnsiteMethod[] = ['cash', 'card', 'paypay'];
 	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
 	let onlineOptions = $derived(data.expired ? [] : data.payOptions.filter((v): v is 'card' | 'paypay' => v !== 'onsite'));
 	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
@@ -75,16 +76,25 @@
 	let bonusRate = $derived(percentText((prepay?.detail.pointsPermille ?? 0) / 10));
 	// 非会員の会員登録導線（予約中の入力を消さないよう別タブで開く）
 	const registerHref = '/auth/register';
-	let selectedGroup = $state<'online' | 'onsite' | null>(null);
+	// オンライン決済（チェックアウト日・2026-11-01）: カード決済が使えるプランで、実データ（同じ画面で払う方式）のときだけ。
+	// 予約時にカードを登録し、チェックアウト日に請求する（予約時決済の割引・早期決済ポイント・事務手数料は付かない）
+	let hasCheckout = $derived(!data.expired && data.inline && onlineOptions.includes('card'));
+	let selectedGroup = $state<'online' | 'checkout' | 'onsite' | null>(null);
 	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : 'onsite'));
+	let checkoutCard = $derived(group === 'checkout' && hasCheckout);
+	// 請求日＝チェックアウト日（仮押さえの泊数から）
+	let chargeOnText = $derived(data.expired ? '' : formatDateLong(addDays(data.hold.checkin, data.hold.nights)));
 	let selectedOnline = $state<'card' | 'paypay' | null>(null);
-	let onsiteMethod = $state<OnsiteMethod>('paypay');
+	let onsiteMethod = $state<OnsiteMethod>('cash');
+	let furusatoVoucher = $state(false);
 	let payValue = $derived<PayChoice>(
-		group === 'online' ? (selectedOnline ?? onlineOptions[0] ?? 'card') : `onsite_${onsiteMethod}`
+		group === 'online' ? (selectedOnline ?? onlineOptions[0] ?? 'card') : group === 'checkout' ? 'card' : `onsite_${onsiteMethod}`
 	);
 	let isPrepay = $derived(group === 'online');
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
-	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card');
+	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card' && group === 'online');
+	// 同じ画面の決済部品を出すか（予約時のカード決済・チェックアウト日のカード登録）
+	let inlinePay = $derived(inlineCard || checkoutCard);
 	let discountNow = $derived(isPrepay ? prepayAmount : 0);
 	let discountedTotal = $derived(data.expired ? 0 : data.groupQuote.total - discountNow);
 
@@ -109,7 +119,7 @@
 
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
 	let summaryTotal = $derived(
-		data.expired ? 0 : inlineCard ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.groupQuote.total - pointsApplied
+		data.expired ? 0 : inlinePay ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.groupQuote.total - pointsApplied
 	);
 
 	let steps = $derived(isPrepay && !data.inline
@@ -173,6 +183,8 @@
 		const fd = new FormData(formEl);
 		fd.set('action', 'prepare');
 		fd.set('payment', 'card');
+		// チェックアウト日決済はカード登録（SetupIntent）。額は割引なしの請求予定額
+		if (checkoutCard) fd.set('timing', 'checkout');
 		// 画面の請求額。サーバは DB が決めた額（早期決済割を含む）と違えば Intent を作らずに止める
 		fd.set('expectedAmount', String(charge.charge));
 		const res = await fetch('/booking/pay', { method: 'POST', body: fd });
@@ -214,6 +226,8 @@
 		const p = page.url.searchParams.get('pay');
 		if (p === 'late') return m.pay_notice_late();
 		if (p === 'late_unrefunded') return m.pay_notice_late_unrefunded();
+		if (p === 'card_expiry') return m.pay_notice_card_expiry();
+		if (p === 'expired') return m.error_hold_expired();
 		if (p === 'failed' || p === 'error') return m.pay_notice_failed();
 		return '';
 	});
@@ -302,7 +316,7 @@
 				{formatDateLong(data.hold.checkin)}・{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}
 			</p>
 			<div class="mt-2 flex items-baseline justify-between border-t border-stone-100 pt-2">
-				<span class="text-stone-600">{inlineCard && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
+				<span class="text-stone-600">{inlinePay && data.bathTax > 0 ? m.pay_total_due() : m.price_breakdown_total()}</span>
 				<span class="text-lg font-bold tabular-nums text-brand-900">{formatPrice(summaryTotal)}</span>
 			</div>
 			<a href="#hold-summary" class="mt-1 block text-right text-xs text-accent-600 hover:underline">{m.hold_mobile_see_detail()} ↓</a>
@@ -326,8 +340,8 @@
 					method="POST"
 					action="?/submit"
 					use:enhance={({ cancel }) => {
-						// カードは同じ画面の決済部品で払う（Enter キーでの送信もここで止めて決済部品へ回す）
-						if (inlineCard) {
+						// カードは同じ画面の決済部品で払う・登録する（Enter キーでの送信もここで止めて決済部品へ回す）
+						if (inlinePay) {
 							cancel();
 							void payRef?.submit();
 						}
@@ -609,6 +623,19 @@
 							</div>
 						{/if}
 
+						{#if hasCheckout}
+							<!-- オンライン決済（チェックアウト日）: いまカードを登録し、チェックアウト日に請求（割引なし） -->
+							<div class="rounded-md border transition {group === 'checkout' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
+								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
+									<input type="radio" name="payGroup" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="h-4 w-4" />
+									<span class="flex-1 font-medium">{m.pay_group_checkout()}</span>
+								</label>
+								{#if group === 'checkout'}
+									<div class="border-t border-amber-200/60 px-3 py-2.5 pl-9 text-xs text-stone-600">{m.pay_checkout_note()}</div>
+								{/if}
+							</div>
+						{/if}
+
 						{#if hasOnsite}
 							<div class="rounded-md border transition {group === 'onsite' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
 								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
@@ -622,13 +649,20 @@
 											{#each ONSITE_METHODS as v (v)}
 												<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
 													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (onsiteMethod = v)} class="h-3.5 w-3.5" />
-													{#if v === 'paypay'}<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[10px] font-bold text-white">PayPay</span>{:else}{onsiteMethodLabel(v)}{/if}
+													<!-- PayPay はほかと同じ文字の大きさで、小さなアイコンを添えるだけ（目立たせすぎない） -->
+													{#if v === 'paypay'}<img src="/site-assets/paypay-icon.svg" alt="" class="h-4 w-4 rounded-[3px]" width="16" height="16" />{/if}{onsiteMethodLabel(v)}
 												</label>
 											{/each}
 										</div>
 										{#if onsiteMethod === 'paypay'}
-											<p class="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-700">{m.pay_onsite_paypay_note()}</p>
+											<p class="mt-2 text-xs text-stone-500">{m.pay_onsite_paypay_note()}</p>
 										{/if}
+										<!-- その他の支払方法の併用（チェックアウト時に現地で使うもの） -->
+										<p class="mb-1.5 mt-3 text-xs text-stone-500">{m.pay_onsite_other()}</p>
+										<label class="inline-flex cursor-pointer items-center gap-2 text-sm">
+											<input type="checkbox" name="furusatoVoucher" bind:checked={furusatoVoucher} class="h-4 w-4 rounded" />
+											{m.pay_onsite_furusato()}
+										</label>
 									</div>
 								{/if}
 							</div>
@@ -648,17 +682,20 @@
 						{/if}
 					</fieldset>
 
-					{#if inlineCard}
-						<!-- カードを選んだらこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない -->
+					{#if inlinePay}
+						<!-- カードを選んだらこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない。
+						     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は支払の方式ごとに作り直す -->
 						<section class="space-y-3 rounded-lg border border-stone-200 p-3">
 							<div class="flex items-baseline justify-between gap-3">
-								<h3 class="text-sm font-medium text-brand-900">{m.pay_card_heading()}</h3>
+								<h3 class="text-sm font-medium text-brand-900">{checkoutCard ? m.pay_checkout_heading() : m.pay_card_heading()}</h3>
 								<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
 							</div>
+							{#key checkoutCard}
 							<StripePayment
 								bind:this={payRef}
 								publishableKey={data.publishableKey}
-								mode="payment"
+								mode={checkoutCard ? 'setup' : 'payment'}
+								consentText={checkoutCard ? m.pay_checkout_consent({ date: chargeOnText, amount: formatPrice(charge.charge) }) : null}
 								amount={charge.charge}
 								locale={stripeLocale()}
 								texts={payTexts}
@@ -670,7 +707,8 @@
 								onerror={() => (payMessage = '')}
 								customerSession={loadMemberSession}
 							/>
-							<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>
+							{/key}
+							{#if !checkoutCard}<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>{/if}
 						</section>
 					{/if}
 
@@ -684,10 +722,12 @@
 
 					<button
 						type="submit"
-						disabled={paying || data.preview || (inlineCard && !data.publishableKey)}
+						disabled={paying || data.preview || (inlinePay && !data.publishableKey)}
 						class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500 disabled:opacity-50"
 					>
-						{#if inlineCard}
+						{#if checkoutCard}
+							{paying ? m.pay_checkout_processing() : m.pay_submit_inline()}
+						{:else if inlineCard}
 							{paying ? m.pay_processing_inline() : m.pay_submit_inline()}
 						{:else}
 							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
@@ -695,6 +735,8 @@
 					</button>
 					{#if data.preview}
 						<p class="text-center text-xs text-amber-800">プレビュー中のため、予約は確定できません。</p>
+					{:else if checkoutCard}
+						<p class="text-center text-xs text-stone-400">{m.pay_checkout_submit_note({ date: chargeOnText, amount: formatPrice(charge.charge) })}</p>
 					{:else if inlineCard}
 						<p class="text-center text-xs text-stone-400">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
 					{:else if !isPrepay}
@@ -743,18 +785,18 @@
 							<span class="tabular-nums">-{formatPrice(charge.discount)}</span>
 						</div>
 					{/if}
-					{#if inlineCard && data.bathTax > 0}
+					{#if inlinePay && data.bathTax > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-stone-600">
 							<span>{m.pay_bath_tax_detail({ people: String(totalAdults), nights: String(data.hold.nights) })}</span>
 							<span class="tabular-nums">{formatPrice(charge.bathTax)}</span>
 						</div>
 					{/if}
-					{#if inlineCard && (data.bathTax > 0 || charge.discount > 0)}
+					{#if inlinePay && (data.bathTax > 0 || charge.discount > 0)}
 						<div class="mt-1.5 flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold text-brand-900">
 							<span>{m.pay_total_due()}</span>
 							<span class="tabular-nums">{formatPrice(charge.charge)}</span>
 						</div>
-					{:else if data.bathTax > 0 && !inlineCard}
+					{:else if data.bathTax > 0 && !inlinePay}
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
 					{/if}
 				</div>

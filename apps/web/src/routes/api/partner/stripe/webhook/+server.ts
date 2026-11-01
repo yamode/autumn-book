@@ -25,7 +25,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 import { confirmCheckoutSession, confirmPartnerIntent, syncRefundFromStripe } from '$lib/server/partners/booking';
 import { partnerAdminClient } from '$lib/server/partners/store';
 import { routeStripeEvent } from '$lib/server/payments/webhook-route';
-import { confirmDirectIntent, syncDirectRefundFromStripe } from '$lib/server/direct-payments';
+import { confirmDirectIntent, confirmDirectSetup, syncDirectRefundFromStripe } from '$lib/server/direct-payments';
 import { confirmUpgradeIntent, UPGRADE_PAYMENT_PURPOSE } from '$lib/server/upgrade-payments';
 import { confirmInroomIntent, STRIPE_PURPOSE_INROOM_BILL, syncInroomRefundFromStripe } from '$lib/server/inroom-bill';
 import {
@@ -78,6 +78,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
     }
     if (route.kind === 'payment_intent' && route.purpose === STRIPE_PURPOSE_DIRECT_BOOKING) {
       const r = await confirmDirectIntent(route.id);
+      return json({ received: true, result: r.result });
+    }
+    // 公式サイトのオンライン決済（チェックアウト日）のカード登録（2026-11-01）
+    if (route.kind === 'setup_intent' && route.purpose === STRIPE_PURPOSE_DIRECT_BOOKING) {
+      const r = await confirmDirectSetup(route.id);
       return json({ received: true, result: r.result });
     }
     // payment_intent / setup_intent（取引先予約 rms_partner_booking）

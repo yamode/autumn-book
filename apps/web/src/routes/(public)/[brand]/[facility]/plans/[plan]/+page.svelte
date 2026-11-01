@@ -108,9 +108,33 @@
 		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
 	);
 
-	// 料金は「1名1泊・税込」を主、1室の合計を従で出す（全画面で単位を統一）。
-	// quote.perPerson は1名あたりの全泊合計なので、泊数で割って1名1泊にする。
+	// プランの写真が未登録なら「プラン専用画像掲載予定」の仮画像を 1 枚目に置く（施設の写真がプランの写真に見えないように）
+	let planPhotos = $derived(
+		data.plan.photos.length > 0 ? data.plan.photos : [{ url: '/site-assets/plan-photo-pending.svg', caption: '', category: 'exterior' as const }]
+	);
+
+	// 料金はプラン詳細では「1室の合計（税込）」を主、1名あたりを従で出す（2026-11-01・一休・自社 HP のプラン一覧と同じ）。
+	// 1名あたりは泊数で割った 1名1泊。
 	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
+	const totalSub = () => m.plan_price_total_sub({ adults: String(data.params.adults), nights: String(data.params.nights) });
+
+	// お食事（一休と同じく「朝食付き」「夕食付き」を並べ、夕食のコース名を添える）。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り
+	// 朝食・夕食の有無はプラン設定の「お食事」（v_plans.includes_breakfast / has_dinner）。読めない取得元は meal_plan から
+	let breakfast = $derived(data.plan.includesBreakfast ?? (data.plan.mealPlan === '2食' || data.plan.mealPlan === '朝食'));
+	let dinner = $derived(data.plan.hasDinner ?? data.plan.mealPlan === '2食');
+	let meals = $derived.by(() => {
+		if (data.plan.mealPlan === '日帰り') return [m.plan_meal_lunch()];
+		// 設定も無く、rms の食事区分（2食 / 朝食 / 素泊）でもない値（デモの「2食付」等）はそのまま出す
+		const known = ['2食', '朝食', '素泊'].includes(data.plan.mealPlan);
+		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan ? [data.plan.mealPlan] : [];
+		const list = [breakfast ? m.plan_meal_breakfast() : '', dinner ? m.plan_meal_dinner() : ''].filter(Boolean);
+		return list.length ? list : [m.plan_meal_none()];
+	});
+	let payText = $derived(
+		[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : '']
+			.filter(Boolean)
+			.join(' ／ ')
+	);
 
 	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）
 	let cheapest = $derived.by(() => {
@@ -252,12 +276,11 @@
 		</div>
 		<div class="text-right">
 			{#if r.quote}
+				<p class="text-[11px] text-stone-500">{totalSub()}</p>
 				<p class="text-lg font-bold text-brand-900">
-					{formatPrice(perPersonNight(r.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
-					<span class="block text-xs font-normal text-stone-500">
-						{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
-					</span>
+					{formatPrice(r.quote.total)}<span class="ml-0.5 text-xs font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
 				</p>
+				<p class="text-xs text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(r.quote.total)) })}</p>
 				{#if r.remaining !== null && r.remaining <= 2}
 					<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(r.remaining) })}</p>
 				{/if}
@@ -269,29 +292,68 @@
 	</div>
 {/snippet}
 
+{#snippet planInfo()}
+	<!-- お食事・お支払い（右カラムの料金枠の上段）。夕食付きはコース名を添える -->
+	<dl class="space-y-2 text-sm">
+		{#if meals.length}
+			<div class="flex gap-3">
+				<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_meal()}</dt>
+				<dd class="min-w-0">
+					<div class="flex flex-wrap gap-1">
+						{#each meals as meal}
+							<span class="rounded-sm border border-amber-600 px-1.5 text-xs leading-5 text-amber-700">{meal}</span>
+						{/each}
+					</div>
+					{#if data.plan.dinnerCourse && (dinner || data.plan.mealPlan === '日帰り')}
+						<p class="mt-1 font-medium text-brand-900">{data.plan.dinnerCourse}</p>
+					{/if}
+				</dd>
+			</div>
+		{/if}
+		<div class="flex gap-3">
+			<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_payment()}</dt>
+			<dd class="min-w-0">
+				{payText}
+				{#if earlyMax > 0 && !earlyPoints}
+					<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
+					<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
+				{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
+					<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+				{/if}
+				{#if earlyPoints}
+					<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
+					<span class="ml-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
+				{/if}
+				{#if data.memberOnsiteHint}
+					<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
+					<p class="mt-0.5 text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
+				{/if}
+			</dd>
+		</div>
+	</dl>
+{/snippet}
+
 {#snippet priceBlock()}
 	{#if chosen?.quote}
 		<!-- 選んで入ってきた客室の料金（最安ではなく、その部屋の額） -->
 		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
 		<p class="font-medium text-brand-900">{chosen.room.name}</p>
 		<p class="mt-1 text-xs text-stone-500">{formatDate(data.params.checkin)} · {m.searchbar_nights_option({ n: String(data.params.nights) })}</p>
-		<p class="mt-1 text-2xl font-bold text-brand-900">
-			{formatPrice(perPersonNight(chosen.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+		<p class="mt-2 text-xs text-stone-500">{totalSub()}</p>
+		<p class="text-2xl font-bold text-brand-900">
+			{formatPrice(chosen.quote.total)}<span class="ml-1 text-xs font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
 		</p>
-		<p class="text-xs text-stone-500">
-			{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(chosen.quote.total) })}
-		</p>
+		<p class="text-xs text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(chosen.quote.total)) })}</p>
 		{#if chosen.remaining !== null && chosen.remaining <= 2}
 			<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(chosen.remaining) })}</p>
 		{/if}
 	{:else if cheapest}
-		<p class="text-xs text-stone-500">{m.plan_price_dated_label()}</p>
+		<p class="text-xs font-medium text-stone-600">{m.plan_price_dated_label()}</p>
+		<p class="text-xs text-stone-500">{totalSub()}</p>
 		<p class="text-2xl font-bold text-brand-900">
-			{formatPrice(perPersonNight(cheapest.total))}〜<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+			{formatPrice(cheapest.total)}〜<span class="ml-1 text-xs font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
 		</p>
-		<p class="text-xs text-stone-500">
-			{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
-		</p>
+		<p class="text-xs text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(cheapest.total)) })}〜</p>
 	{:else if soldOut}
 		<p class="text-sm font-medium text-stone-500">{m.plan_price_sold_out()}</p>
 	{:else if data.plan.basePrice > 0}
@@ -344,44 +406,22 @@
 
 		<div class="md:col-start-1">
 			<!-- 客室まで選んで入ってきたら、プランの写真のあとにその客室の写真を続ける（区切りとラベル付き） -->
-			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} room={chosen ? { name: chosen.room.name, photos: chosen.room.photos } : null} />
+			<PlanPhotoGallery photos={[...planPhotos, ...data.facility.photos.slice(0, 3)]} room={chosen ? { name: chosen.room.name, photos: chosen.room.photos } : null} />
 		</div>
 
 		<!-- 右カラム: スクロールしても料金・予約ボタンが見えるよう追従させる（ヘッダー高さ分下げる） -->
 		<aside class="space-y-3 md:sticky md:top-32 md:col-start-2 md:row-span-3 md:row-start-1 md:self-start lg:top-24" style={stickyTop ? `top: ${stickyTop}px` : undefined}>
 			<!-- 追従中もどのプランの料金か分かるように、名前だけ小さく -->
 			<p class="hidden text-sm font-medium leading-snug text-brand-900 md:block">{data.plan.name}</p>
-			<dl class="space-y-1 rounded-lg bg-stone-100 p-3 text-sm">
-				<div class="flex justify-between"><dt class="text-stone-500">{m.plan_detail_meal()}</dt><dd>{data.plan.mealPlan}</dd></div>
-				<div class="flex justify-between">
-					<dt class="text-stone-500">{m.plan_detail_payment()}</dt>
-					<dd class="text-right">
-						{[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : ''].filter(Boolean).join(' ／ ')}
-						{#if earlyMax > 0 && !earlyPoints}
-							<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
-							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
-						{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
-							<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
-						{/if}
-						{#if earlyPoints}
-							<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
-							<span class="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
-						{/if}
-					</dd>
-				</div>
-				{#if data.memberOnsiteHint}
-					<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
-					<p class="text-right text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
-				{/if}
-			</dl>
-
 			{#if data.gate !== 'ok'}
-				<!-- 会員限定のシークレットプラン: 予約できない閲覧者には料金を出さず、ログイン・グレードの案内だけ -->
+				<!-- 会員限定のシークレットプラン: 予約できない閲覧者には料金を出さず、お食事・お支払いとログイン・グレードの案内だけ -->
+				<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">{@render planInfo()}</div>
 				<PlanGateNotice gate={data.gate} access={data.plan.access} next={page.url.pathname + page.url.search} />
 			{:else}
-			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる） -->
+			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる）。お食事・お支払いも同じ枠の上に入れる（一休と同じ並び） -->
 			<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
-				{@render priceBlock()}
+				{@render planInfo()}
+				<div class="mt-3 border-t border-stone-200 pt-3">{@render priceBlock()}</div>
 				{#if data.params.checkin && !soldOut}
 					<p class="mt-2 text-xs text-emerald-700">
 						{m.plan_detail_cancel()}: <CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.params.checkin} />
@@ -477,15 +517,15 @@
 				{#if chosen?.quote}
 					<p class="truncate text-[11px] text-stone-500">{chosen.room.name}</p>
 					<p class="text-lg font-bold text-brand-900">
-						{formatPrice(perPersonNight(chosen.quote.total))}<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+						{formatPrice(chosen.quote.total)}<span class="ml-0.5 whitespace-nowrap text-[11px] font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
 					</p>
+					<p class="truncate text-[11px] text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(chosen.quote.total)) })}</p>
 				{:else if cheapest}
+					<p class="truncate text-[11px] text-stone-500">{totalSub()}</p>
 					<p class="text-lg font-bold text-brand-900">
-						{formatPrice(perPersonNight(cheapest.total))}〜<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+						{formatPrice(cheapest.total)}〜<span class="ml-0.5 whitespace-nowrap text-[11px] font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
 					</p>
-					<p class="truncate text-[11px] text-stone-500">
-						{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(cheapest.total) })}
-					</p>
+					<p class="truncate text-[11px] text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(cheapest.total)) })}〜</p>
 				{:else if soldOut}
 					<p class="text-xs text-stone-500">{m.plan_price_sold_out()}</p>
 				{:else if data.plan.basePrice > 0}

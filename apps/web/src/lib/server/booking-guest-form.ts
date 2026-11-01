@@ -12,6 +12,8 @@ export type ParsedGuestForm = {
 	payment: 'onsite' | 'card' | 'paypay';
 	// 現地払いの内訳（現地PayPay・現地カード・現地現金）。payment は 'onsite' のまま。宿への申し送りに使う
 	onsiteMethod: OnsiteMethod | null;
+	// 現地払いで「ふるさと納税 宿泊補助券」を併用する予定（現地払いのときだけ true になりうる）
+	furusatoVoucher: boolean;
 	errors: Record<string, string>;
 };
 
@@ -54,6 +56,7 @@ export function parseGuestForm(form: FormData): ParsedGuestForm {
 		pointsRequested: Math.max(0, Math.floor(Number(form.get('points') ?? 0)) || 0),
 		payment,
 		onsiteMethod,
+		furusatoVoucher: onsiteMethod !== null && form.get('furusatoVoucher') === 'on',
 		errors
 	};
 }

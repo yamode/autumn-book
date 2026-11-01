@@ -74,6 +74,8 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 			paid,
 			prepayBonus,
 			onsiteMethod: raw.onsiteMethod ?? null,
+			// オンライン決済（チェックアウト日）: 請求日（paid は請求予定額）
+			chargeOn: raw.chargeOn ?? null,
 			isMember: locals.user?.role === 'member',
 			memberPageUrl,
 			memberPageName: raw.memberPage?.pageName ?? null
@@ -92,6 +94,7 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		// デモ（store）は早期決済割（discount）だけ
 		prepayBonus: null,
 		onsiteMethod: null,
+		chargeOn: null as string | null,
 		isMember: locals.user?.role === 'member',
 		memberPageUrl: null as string | null,
 		memberPageName: null as string | null

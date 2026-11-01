@@ -23,9 +23,11 @@ import { applyGroupAnswers } from '$lib/server/booking-questions';
 import { groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import {
 	confirmDirectIntent,
+	confirmDirectSetup,
 	DirectPaymentError,
 	directMemberCustomerSession,
 	directPaymentsReady,
+	prepareDirectCheckout,
 	prepareDirectPayment,
 	viewerIsMember
 } from '$lib/server/direct-payments';
@@ -75,7 +77,7 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			// DB の direct_payment_confirm が確定のときに部屋ごとの回答（p_rooms_detail）として渡す（autumn-shared 20261010125453）
 			const answered = await applyGroupAnswers(form, hold.facilityId, hold.rooms.map((r) => ({ planId: r.planId, adults: r.adults })), parsed.guest);
 			if (!answered.ok) return bad(answered.message, 400, { errors: { questions: answered.message } });
-			const prepared = await prepareDirectPayment({
+			const common = {
 				holdId: hold.id,
 				sessionId: sid,
 				memberUserId,
@@ -86,7 +88,27 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 				checkin: hold.checkin,
 				// 画面に出していた請求額（早期決済割を含む）。DB の額と違えば Intent を作らずに止める
 				expectedAmount: String(form.get('expectedAmount') ?? '').trim() ? Number(form.get('expectedAmount')) : null
-			});
+			};
+			// オンライン決済（チェックアウト日・2026-11-01）: カードを登録する SetupIntent を用意する（割引なし・請求はチェックアウト日）
+			if (form.get('timing') === 'checkout') {
+				const setup = await prepareDirectCheckout(common);
+				setBookingDraft(cookies, { holdId: hold.id, guest: parsed.guest, pointsUsed: setup.pointsUsed, payment: 'card', prepayDetail: null });
+				return json(
+					{
+						ok: true,
+						mode: 'setup',
+						clientSecret: setup.clientSecret,
+						returnUrl: `${url.origin}/booking/pay/return?hold=${encodeURIComponent(hold.id)}`,
+						amount: setup.amount,
+						bathTax: setup.bathTax,
+						chargeOn: setup.chargeOn,
+						consentText: setup.consentText,
+						expiresAt: Date.parse(setup.expiresAt)
+					},
+					{ headers: noStore }
+				);
+			}
+			const prepared = await prepareDirectPayment(common);
 			// 完了画面（予約番号・お客様名・割引の名前）用。3Dセキュアの戻り・Webhook 後の画面でも使う
 			setBookingDraft(cookies, {
 				holdId: hold.id,
@@ -115,13 +137,15 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			// 確定の前に仮押さえを読む（確定後は converted になるが、完了画面に施設・部屋・プランの id が要る）
 			const hold = await sbGetHoldGroupMapped(holdId, sid);
 			if (!hold) return bad(m.error_hold_expired(), 410, { expired: true });
-			const r = await confirmDirectIntent(intentId, hold.id);
+			// seti_ はオンライン決済（チェックアウト日）のカード登録
+			const r = intentId.startsWith('seti_') ? await confirmDirectSetup(intentId, hold.id) : await confirmDirectIntent(intentId, hold.id);
+			if (r.result === 'card_expiry') return bad('カードの有効期限がチェックアウト日より前に切れるため登録できません。別のカードをご登録ください。', 400);
 			if (r.result === 'paid' || r.result === 'already') {
 				await finishDirectBooking(cookies, hold, draft, r);
 				clearBookingDraft(cookies);
 				return json({ ok: true, redirect: `/booking/complete/${r.bookingCode}` }, { headers: noStore });
 			}
-			if (r.result === 'late') return bad(lateMessage(r.refunded), 409, { late: true });
+			if (r.result === 'late') return bad(r.noCharge ? m.error_hold_expired() : lateMessage(r.refunded), 409, { late: true });
 			if (r.result === 'not_succeeded') return bad('お支払いがまだ完了していません。', 409);
 			return bad('お支払いを確認できませんでした。', 400);
 		}

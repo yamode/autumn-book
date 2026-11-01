@@ -152,3 +152,44 @@ html {
 @media (prefers-reduced-motion: reduce) {
 	.shimmer { animation: none; background-image: none; }
 }
+
+/* 押したときの手応え（2026-11-01 指示「リンクやボタンを押したときのエフェクトがなく、押せているのか不安」）。全画面共通。
+   - ボタン: 押している間だけ少し縮む（scale プロパティ。Tailwind の translate / transform とは別なので位置はずれない）
+   - リンク: 押している間だけ少し薄くなる
+   - 画面全体を覆う背景のボタン（inset-0）は縮めない（モーダルの背景が動いて見えるため）
+   - 送信中のボタン（$lib/enhance が data-pending を付ける）は薄くして、待っていることが分かるように
+   - 画面遷移中は上端に細い帯（ルートの +layout.svelte の .nav-progress） */
+@layer base {
+	a[href],
+	button,
+	[role='button'],
+	summary,
+	label {
+		-webkit-tap-highlight-color: transparent;
+	}
+	:where(button, [role='button'], input[type='submit'], input[type='button']):not(:disabled, [aria-disabled='true'], [class~='inset-0']) {
+		transition-property: scale, opacity, color, background-color, border-color, box-shadow;
+		transition-duration: 120ms;
+	}
+	:where(button, [role='button'], input[type='submit'], input[type='button']):not(:disabled, [aria-disabled='true'], [class~='inset-0']):active {
+		scale: 0.97;
+	}
+	:where(a[href]):active {
+		opacity: 0.65;
+	}
+	:where(label):has(> input[type='radio'], > input[type='checkbox']):active {
+		opacity: 0.8;
+	}
+	:where(button, input[type='submit'])[data-pending] {
+		opacity: 0.6;
+		cursor: progress;
+	}
+}
+
+.nav-progress { opacity: 0; animation: nav-progress-in 0s linear 150ms forwards; }
+.nav-progress > div { animation: nav-progress-move 1s ease-in-out infinite; }
+@keyframes nav-progress-in { to { opacity: 1; } }
+@keyframes nav-progress-move { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) {
+	:where(button, [role='button'], input[type='submit'], input[type='button']):active { scale: none; }
+}

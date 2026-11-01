@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { navigating, page } from '$app/state';
+	import { page } from '$app/state';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { APP_VERSION } from '$lib/version';
@@ -210,10 +210,6 @@
 		.admin-main [data-save-state='done'] { background-color: #047857 !important; border-color: #047857 !important; color: #fff !important; }
 		.admin-main [data-save-state='error'] { background-color: #b91c1c !important; border-color: #b91c1c !important; color: #fff !important; }
 		@keyframes save-spin { to { transform: rotate(360deg); } }
-		.nav-progress { opacity: 0; animation: nav-progress-in 0s linear 150ms forwards; }
-		.nav-progress > div { animation: nav-progress-move 1s ease-in-out infinite; }
-		@keyframes nav-progress-in { to { opacity: 1; } }
-		@keyframes nav-progress-move { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
 		.admin-nav { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 		.admin-nav:hover { scrollbar-color: rgb(255 255 255 / 0.22) transparent; }
 		.admin-nav::-webkit-scrollbar { width: 6px; }
@@ -279,10 +275,7 @@
 	{/each}
 {/snippet}
 
-<!-- 画面を移っている間、上端に細い帯を出す（押したことがすぐ分かるように・2026-10-18 高速化）。150ms 以内に終わる遷移では出さない -->
-{#if navigating.to}
-	<div class="nav-progress pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden" aria-hidden="true"><div class="h-full w-1/3 bg-amber-500"></div></div>
-{/if}
+<!-- 画面遷移中の上端の帯は全画面共通（ルートの +layout.svelte・2026-11-01） -->
 
 {#if isLogin}
 	{@render children()}

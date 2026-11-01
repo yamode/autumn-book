@@ -10,6 +10,9 @@ import {
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
 	sbSetPlanSale,
+	sbSetPlanMeals,
+	sbListDinnerCourses,
+	sbAutoDinnerCourse,
 	sbSetPlanAccess,
 	sbSetPlanLimits,
 	sbListRoomContentsAdmin,
@@ -35,6 +38,7 @@ import { customerLinkOrigin } from '$lib/server/public-origin';
 import { demoShareToken } from '$lib/server/secret-plans';
 import { planLimitsFromForm } from '$lib/plan-limits';
 import { planSaleFromForm } from '$lib/plan-sale';
+import { defaultPlanMeals, planMealsFromForm, type DinnerCourseOption } from '$lib/plan-meals';
 import { RANK_CODES, isRankCode, planShareLinkPath, type PlanAccess } from '$lib/plan-access';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -85,8 +89,16 @@ export const load: PageServerLoad = async (event) => {
 			.then((rs) => rs.map((x) => ({ id: x.id, name: x.name, isActive: x.isActive })))
 			.catch(() => []);
 		const shareToken = await sbPlanShareToken(client, event.params.id).catch(() => null);
+		// お食事の設定: RMS の夕食コース（選択肢）と、未設定のときの初期値（料金テンプレートから推定）
+		const [dinnerCourses, autoCourse] = await Promise.all([
+			sbListDinnerCourses(client, uuid).catch(() => [] as DinnerCourseOption[]),
+			r.plan.meals ? Promise.resolve(null) : sbAutoDinnerCourse(client, event.params.id)
+		]);
+		const mealsForm = r.plan.meals ?? defaultPlanMeals(r.plan.mealPlan, autoCourse, dinnerCourses);
 		return {
 			live: true as const,
+			dinnerCourses,
+			mealsForm,
 			shareUrl: shareUrlOf(shareToken),
 			limitRooms,
 			ranks: RANK_CODES,
@@ -108,6 +120,8 @@ export const load: PageServerLoad = async (event) => {
 	const trMap = translationStore.get(`plan:${plan.id}`);
 	return {
 		live: false as const,
+		dinnerCourses: [] as DinnerCourseOption[],
+		mealsForm: defaultPlanMeals(plan.mealPlan, null, []),
 		shareUrl: shareUrlOf(demoShareToken(plan.id)),
 		limitRooms: [] as { id: string; name: string; isActive: boolean }[],
 		ranks: RANK_CODES,
@@ -177,6 +191,23 @@ export const actions: Actions = {
 			return { saleSaved: true };
 		} catch (e) {
 			return fail(400, { saleError: messageOf(e) });
+		}
+	},
+	// お食事（朝食の有無・夕食は RMS のどの食事コースか）。表示と申し送り用で、料金（rms の meal_plan）は変えない
+	setMeals: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { mealsError: NOT_LIVE });
+		const client = createSupabaseServerClient(event);
+		const uuid = currentFacilityOf(event).uuid;
+		const courses = await sbListDinnerCourses(client, uuid).catch(() => [] as DinnerCourseOption[]);
+		const parsed = planMealsFromForm(await event.request.formData(), courses);
+		if ('error' in parsed) return fail(400, { mealsError: parsed.error });
+		try {
+			await sbSetPlanMeals(client, uuid, event.params.id, parsed.meals);
+			return { mealsSaved: true };
+		} catch (e) {
+			return fail(400, { mealsError: messageOf(e) });
 		}
 	},
 	// 絞り込み（宿泊可能期間・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ

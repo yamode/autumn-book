@@ -15,19 +15,25 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { refundCancelledUpgrades } from './upgrade-payments';
 import {
+  cardLabelOf,
+  chargeSavedCard,
+  createCustomer,
   createRefund,
   inlinePaymentReady,
+  isStripeResourceMissing,
   listRefunds,
   retrievePaymentIntent,
+  retrieveSetupIntent,
   STRIPE_APP_BOOK,
   STRIPE_PURPOSE_DIRECT_BOOKING,
   stripePublishableKey,
   StripeError
 } from '$lib/server/stripe';
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
-import { preparePaymentIntent } from '$lib/server/payments/intents';
+import { preparePaymentIntent, prepareSetupIntent } from '$lib/server/payments/intents';
 import { createSavedCardSession, listSavedCards, resolveMemberCustomer } from '$lib/server/payments/saved-cards';
-import { checkPaymentIntent, isPaymentIntentId } from '$lib/server/payments/verify';
+import { checkPaymentIntent, checkSetupIntent, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
+import { cardExpiresBefore } from '$lib/partner-card';
 import type { GuestInfo, RatePlan } from '$lib/types';
 import { addDays } from '@autumn-book/core';
 import { directRefundDueOf } from '$lib/direct-payment';
@@ -275,6 +281,260 @@ export async function prepareDirectPayment(args: {
 }
 
 // ---------------------------------------------------------------------------
+// ①② オンライン決済（チェックアウト日）: カード登録の準備（2026-11-01・取引先ページのチェックアウト日決済と同じ考え方）
+//   予約時に SetupIntent でカードを登録（本人認証もここ）→ direct_payment_confirm_setup で予約を確定（未請求）
+//   → チェックアウト日に chargeDueDirect（/api/cron/partner-charge に相乗り）が off-session で請求する。
+//   予約時決済の割引・早期決済ポイント・事務手数料は付けない（DB の direct_payment_prepare_checkout）。
+// ---------------------------------------------------------------------------
+export type DirectSetupPrepared = {
+  clientSecret: string;
+  intentId: string;
+  /** チェックアウト日に請求する予定の額（宿泊料金 − ポイント ＋ 入湯税） */
+  amount: number;
+  bathTax: number;
+  pointsUsed: number;
+  /** 請求日（チェックアウト日） */
+  chargeOn: string;
+  consentText: string;
+  expiresAt: string;
+};
+
+type PrepareCheckoutRow = PrepareRow & { setup_intent_id: string | null; stripe_customer_id: string | null; checkout_date: string };
+
+const yen = (n: number) => `${n.toLocaleString('ja-JP')}円`;
+
+/** カード登録の同意文（画面に出し、SetupIntent の metadata にも残す） */
+export function directCardConsentText(facilityName: string, chargeOn: string, amount: number, bathTax: number): string {
+  const [y, m, d] = chargeOn.split('-').map(Number);
+  return (
+    `${facilityName}のご宿泊について、チェックアウト日の ${y}年${m}月${d}日に、このカードへ ${yen(amount)}` +
+    `${bathTax > 0 ? `（入湯税 ${yen(bathTax)} を含む）` : ''}を請求することに同意します。` +
+    'ご予約の変更で金額が変わった場合は変更後の金額を、キャンセル料がかかる日に取り消した場合はキャンセル料を、このカードへ請求します。'
+  );
+}
+
+export async function prepareDirectCheckout(args: {
+  holdId: string;
+  sessionId: string;
+  memberUserId: string | null;
+  guest: GuestInfo & { rooms?: { male?: number; female?: number; notes?: string; answers?: Record<string, string> }[] };
+  pointsUsed: number;
+  locale: string;
+  facilityName: string;
+  checkin: string;
+  /** 画面に出していた請求予定額。DB の額と違えば止める */
+  expectedAmount?: number | null;
+}): Promise<DirectSetupPrepared> {
+  const row = await rpc<PrepareCheckoutRow>('direct_payment_prepare_checkout', {
+    p_hold_id: args.holdId,
+    p_session_id: args.sessionId,
+    p_member_user_id: args.memberUserId,
+    p_guest: args.guest,
+    p_points_used: args.pointsUsed,
+    p_locale: args.locale
+  });
+  if (args.expectedAmount != null && Number.isFinite(args.expectedAmount) && args.expectedAmount !== row.amount) {
+    throw new DirectPaymentError(`画面の請求額 ${args.expectedAmount} と DB の請求額 ${row.amount} が違います`, 'amount_changed', 409);
+  }
+  const consentText = directCardConsentText(args.facilityName, row.checkout_date, row.amount, row.bath_tax_amount);
+  // Customer: 会員は会員の Customer（保存カードから選べる・無ければ作る）。非会員は仮押さえごとに作る
+  const bookingCustomer = async (suffix = '') =>
+    (
+      await createCustomer({
+        name: args.guest.name || 'ゲスト',
+        email: args.guest.email || null,
+        metadata: { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_DIRECT_BOOKING, [DIRECT_REF_KEY]: row.hold_id },
+        idempotencyKey: `book-direct-customer-${row.hold_id}${suffix}`
+      })
+    ).id;
+  let customer = row.stripe_customer_id;
+  if (!customer && args.memberUserId && MEMBER_SUPABASE) {
+    customer = await resolveMemberCustomer(db(), { userId: args.memberUserId, name: args.guest.name, email: args.guest.email }, { create: true }).catch(() => null);
+  }
+  if (!customer) customer = await bookingCustomer();
+  const metadata = buildIntentMetadata({
+    app: STRIPE_APP_BOOK,
+    purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
+    refs: { [DIRECT_REF_KEY]: row.hold_id, facility_id: row.facility_id, checkin: args.checkin, charge_on: row.checkout_date, charge_amount: String(row.amount) }
+  });
+  const setup = (cus: string, suffix = '') =>
+    prepareSetupIntent({
+      existingId: row.setup_intent_id,
+      customer: cus,
+      description: `${args.facilityName} ご宿泊（${args.checkin} チェックイン・公式サイト予約）${row.checkout_date} チェックアウト日に ${yen(row.amount)} を請求`,
+      metadata: { ...metadata, consent_text: consentText.slice(0, 500) },
+      refKey: DIRECT_REF_KEY,
+      idempotencyKey: `book-direct-si-${row.hold_id}-${row.setup_intent_id ?? 'first'}-${cus}${suffix}`
+    });
+  let r: Awaited<ReturnType<typeof setup>>;
+  try {
+    r = await setup(customer);
+  } catch (e) {
+    // Customer が Stripe 側で消えていた → 仮押さえごとの Customer を作り直す
+    if (!isStripeResourceMissing(e)) throw e;
+    const missing = customer;
+    customer = await bookingCustomer(`-${missing}`);
+    r = await setup(customer, `-${missing}`);
+  }
+  if (r.prepared.intentId !== row.setup_intent_id || customer !== row.stripe_customer_id) {
+    await rpc('direct_payment_attach_setup', { p_hold_id: row.hold_id, p_setup_intent_id: r.prepared.intentId, p_customer: customer });
+  }
+  return {
+    clientSecret: r.prepared.clientSecret,
+    intentId: r.prepared.intentId,
+    amount: row.amount,
+    bathTax: row.bath_tax_amount,
+    pointsUsed: row.points_used,
+    chargeOn: row.checkout_date,
+    consentText,
+    expiresAt: row.expires_at
+  };
+}
+
+type ConfirmSetupRow = Omit<ConfirmRow, 'result'> & { charge_on?: string; result: ConfirmRow['result'] | 'scheduled' };
+
+/**
+ * カード登録の完了（ブラウザからの連絡・3Dセキュアの戻り・Webhook setup_intent.succeeded）→ 予約を確定（未請求）。
+ * 結果は予約時決済と同じ形（result: 'paid' | 'already'）で返し、chargeOn に請求日を入れる。お金は動いていないので late でも返金しない。
+ */
+export async function confirmDirectSetup(
+  setupIntentId: string,
+  expectHoldId?: string
+): Promise<DirectConfirmResult | { result: 'card_expiry'; holdId: string }> {
+  if (!isSetupIntentId(setupIntentId)) return { result: 'not_ours' };
+  const si = await retrieveSetupIntent(setupIntentId, true);
+  const check = checkSetupIntent(si, { ...EXPECT, refId: expectHoldId });
+  if (!check.ok) {
+    if (check.reason === 'not_succeeded') return { result: 'not_succeeded', holdId: check.refId, status: check.status };
+    return { result: 'not_ours' };
+  }
+  const holdId = check.refId;
+  const pm = si.payment_method && typeof si.payment_method === 'object' ? si.payment_method : null;
+  const chargeOn = si.metadata?.charge_on ?? '';
+  // 有効期限が請求日（チェックアウト日）より前に切れるカードは登録しない（別のカードを登録してもらう）
+  if (chargeOn && cardExpiresBefore(pm?.card, chargeOn)) return { result: 'card_expiry', holdId };
+  const customer = typeof si.customer === 'string' ? si.customer : (si.customer?.id ?? '');
+  const pmId = pm?.id ?? (typeof si.payment_method === 'string' ? si.payment_method : '');
+  const row = await rpc<ConfirmSetupRow>('direct_payment_confirm_setup', {
+    p_hold_id: holdId,
+    p_setup_intent_id: si.id,
+    p_customer: customer,
+    p_payment_method: pmId,
+    p_card_label: cardLabelOf(pm)
+  });
+  if (row.result === 'scheduled' || row.result === 'already') {
+    return {
+      result: row.result === 'scheduled' ? 'paid' : 'already',
+      holdId,
+      bookingCode: row.booking_code ?? '',
+      total: row.total ?? null,
+      pointsUsed: row.points_used ?? null,
+      pointsEarned: row.points_earned ?? null,
+      discount: row.discount ?? null,
+      prepayDiscount: 0,
+      amount: row.amount ?? 0,
+      bathTax: row.bath_tax_amount ?? null,
+      chargeOn: row.charge_on ?? chargeOn
+    };
+  }
+  if (row.result === 'not_found' || row.result === 'mismatch') return { result: 'not_ours' };
+  // 仮押さえの期限切れ等: カードを登録しただけでお金は動いていない（返金不要）
+  return { result: 'late', holdId, reason: row.reason ?? row.result, refunded: true, noCharge: true };
+}
+
+// ---------------------------------------------------------------------------
+// オンライン決済（チェックアウト日）の請求（定期処理・取消・管理画面の再請求）
+// ---------------------------------------------------------------------------
+type ClaimRow =
+  | { result: 'skip'; reason: string }
+  | { result: 'void'; amount: number; booking_code: string | null }
+  | {
+      result: 'claimed';
+      hold_id: string;
+      booking_id: string;
+      booking_code: string;
+      facility_id: string;
+      customer: string;
+      payment_method: string;
+      setup_intent_id: string | null;
+      attempt: number;
+      amount: number;
+      cancelled: boolean;
+    };
+
+export type DirectChargeResult = { status: 'paid' | 'failed' | 'void' | 'skipped'; amount?: number; message?: string };
+
+function friendlyChargeError(e: unknown): string {
+  if (!(e instanceof StripeError)) return e instanceof Error ? e.message : String(e);
+  const reasons: Record<string, string> = {
+    authentication_required: 'カード会社の本人認証が必要なため、自動で請求できませんでした',
+    insufficient_funds: 'カードの利用可能額が不足しています',
+    expired_card: 'カードの有効期限が切れています',
+    card_declined: 'カードが利用できませんでした（カード会社が承認しませんでした）',
+    processing_error: 'カード会社との通信でエラーが起きました（時間をおいて再請求してください）'
+  };
+  return (e.code && reasons[e.code]) || e.message;
+}
+
+/** 1 件請求する（予約から請求額を計算・二重請求は DB の charging で防ぐ）。trigger: cron / cancel / staff */
+export async function chargeDirectBooking(holdId: string, trigger: 'cron' | 'cancel' | 'staff'): Promise<DirectChargeResult> {
+  // 取消の直後の請求（キャンセル料）は全室取消のときだけ（1 室だけの取消はチェックアウト日にまとめて請求）
+  const claim = await rpc<ClaimRow>('direct_payment_claim_charge', { p_hold_id: holdId, p_cancelled_only: trigger === 'cancel' });
+  if (claim.result === 'skip') return { status: 'skipped', message: claim.reason };
+  if (claim.result === 'void') return { status: 'void', amount: claim.amount };
+  let failure: string | null = null;
+  let intentId: string | null = null;
+  try {
+    const pi = await chargeSavedCard({
+      customer: claim.customer,
+      paymentMethod: claim.payment_method,
+      amount: claim.amount,
+      description: `${claim.cancelled ? 'キャンセル料' : 'ご宿泊'}（${claim.booking_code}・公式サイト予約）`,
+      metadata: {
+        app: STRIPE_APP_BOOK,
+        purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
+        [DIRECT_REF_KEY]: claim.hold_id,
+        booking_code: claim.booking_code,
+        facility_id: claim.facility_id,
+        flow: 'checkout_charge',
+        trigger,
+        ...(claim.setup_intent_id ? { setup_intent: claim.setup_intent_id } : {})
+      },
+      idempotencyKey: `book-direct-charge-${claim.hold_id}-${claim.attempt}`
+    });
+    intentId = pi.id;
+    if (pi.status !== 'succeeded') failure = `請求が完了しませんでした（${pi.status}）`;
+  } catch (e) {
+    failure = friendlyChargeError(e);
+  }
+  if (failure) {
+    await rpc('direct_payment_mark_charge_failed', { p_hold_id: claim.hold_id, p_error: failure }).catch(() => {});
+    console.error('[direct-payment] チェックアウト日決済の請求に失敗', claim.booking_code, failure);
+    return { status: 'failed', amount: claim.amount, message: failure };
+  }
+  try {
+    await rpc('direct_payment_mark_charged', { p_hold_id: claim.hold_id, p_payment_intent_id: intentId, p_amount: claim.amount });
+  } catch (e) {
+    // 請求そのものは成功している。記録の失敗は人に知らせる（台帳は charging のまま＝再請求されない）
+    console.error('[direct-payment] 請求の記録に失敗（請求は成功）', claim.booking_code, intentId, e instanceof Error ? e.message : e);
+  }
+  return { status: 'paid', amount: claim.amount };
+}
+
+/** 定期処理（毎時・/api/cron/partner-charge）: チェックアウト日を迎えた未請求の予約に請求する。失敗は自動では再請求しない */
+export async function chargeDueDirect(): Promise<{ target: number; paid: number; failed: number; skipped: number }> {
+  const out = { target: 0, paid: 0, failed: 0, skipped: 0 };
+  if (!partnerServiceClient()) return out;
+  const ids = await rpc<string[]>('direct_payment_due_charges', { p_today: todayJstIso(), p_limit: 50 }).catch(() => [] as string[]);
+  out.target = ids.length;
+  for (const id of ids) {
+    const r = await chargeDirectBooking(id, 'cron').catch((e) => ({ status: 'failed' as const, message: String(e) }));
+    out[r.status === 'paid' ? 'paid' : r.status === 'failed' ? 'failed' : 'skipped'] += 1;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // ④ 確定（ブラウザからの連絡・3Dセキュアの戻り・Webhook）
 // ---------------------------------------------------------------------------
 export type DirectConfirmResult =
@@ -290,9 +550,12 @@ export type DirectConfirmResult =
       prepayDiscount: number;
       amount: number;
       bathTax: number | null;
+      /** オンライン決済（チェックアウト日）: 請求日。予約時決済は無い */
+      chargeOn?: string;
     }
-  // 支払は通ったが予約にできなかった（期限切れ等）→ 全額返金した（refunded=false は返金に失敗＝要人手）
-  | { result: 'late'; holdId: string; reason: string; refunded: boolean }
+  // 支払は通ったが予約にできなかった（期限切れ等）→ 全額返金した（refunded=false は返金に失敗＝要人手）。
+  // noCharge: チェックアウト日決済のカード登録だけで、お金は動いていない
+  | { result: 'late'; holdId: string; reason: string; refunded: boolean; noCharge?: boolean }
   // まだ支払が済んでいない（3Dセキュア待ち・処理中・拒否）
   | { result: 'not_succeeded'; holdId: string; status: string }
   | { result: 'not_ours' };
@@ -314,6 +577,9 @@ type ConfirmRow = {
 export async function confirmDirectIntent(intentId: string, expectHoldId?: string): Promise<DirectConfirmResult> {
   if (!isPaymentIntentId(intentId)) return { result: 'not_ours' };
   const pi = await retrievePaymentIntent(intentId);
+  // チェックアウト日決済の請求（chargeDirectBooking が作る off-session の Intent）は予約の確定ではない。
+  // Webhook が記録より先に届くと「台帳と違う Intent」で全額返金してしまうので、ここでは扱わない
+  if (pi.metadata?.flow === 'checkout_charge') return { result: 'not_ours' };
   const check = checkPaymentIntent(pi, { ...EXPECT, refId: expectHoldId, expectedAmount: null });
   if (!check.ok) {
     if (check.reason === 'not_succeeded') return { result: 'not_succeeded', holdId: check.refId, status: check.status };
@@ -369,6 +635,8 @@ async function refundWhole(intentId: string, reason: string): Promise<boolean> {
 type RefundExtra = { reason: KeptReason; adminFee: number; adminFeePercent: number | null };
 export type DirectRefundOutcome =
   | { kind: 'none' } // オンライン決済の予約ではない（現地払い）
+  // オンライン決済（チェックアウト日）で未請求の予約を全室取り消した: キャンセル料を登録カードへ請求した結果（返金は無い）
+  | { kind: 'checkout_fee'; status: DirectChargeResult['status']; amount: number; message?: string }
   | ({ kind: 'nothing_due'; paid: number; fee: number; kept: number } & RefundExtra) // 差し引く額が支払額以上
   | ({ kind: 'refunded'; amount: number; paid: number; fee: number; kept: number } & RefundExtra)
   | ({ kind: 'failed'; amount: number; paid: number; fee: number; kept: number; message: string } & RefundExtra);
@@ -431,6 +699,14 @@ export async function refundAfterCancel(
 ): Promise<DirectRefundOutcome> {
   try { await refundCancelledUpgrades(bookingCode); } catch { console.error('[upgrade-refund] retry required; reconciliation will retry'); }
   if (!partnerServiceClient()) return { kind: 'none' };
+  // オンライン決済（チェックアウト日）でまだ請求していない予約: 返金は無い。全室取消ならキャンセル料を登録カードへ請求する
+  // （0 円なら void。1 室だけの取消は DB が断り、チェックアウト日にまとめて請求する）
+  const ledger = await directPaymentForBooking(bookingCode);
+  if (ledger?.charge_timing === 'checkout' && (ledger.status === 'scheduled' || ledger.status === 'charge_failed')) {
+    const r = await chargeDirectBooking(ledger.hold_id, 'cancel').catch((e) => ({ status: 'failed' as const, message: String(e) }) as DirectChargeResult);
+    if (r.status === 'skipped') return { kind: 'none' };
+    return { kind: 'checkout_fee', status: r.status, amount: r.amount ?? 0, message: r.message };
+  }
   let due: RefundDueRow;
   try {
     due = await rpc<RefundDueRow>('direct_payment_refund_due', { p_booking_code: bookingCode });
@@ -476,7 +752,12 @@ export async function refundAfterCancel(
 export type DirectPaymentInfo = {
   hold_id: string;
   booking_code: string | null;
-  status: 'pending' | 'paid' | 'late';
+  /** scheduled / charging / charge_failed / void はオンライン決済（チェックアウト日・20261101133553）だけ */
+  status: 'pending' | 'paid' | 'late' | 'scheduled' | 'charging' | 'charge_failed' | 'void';
+  /** 請求の時期（now＝予約時決済 / checkout＝チェックアウト日。20261101133553 より前の行は無い＝now） */
+  charge_timing?: 'now' | 'checkout';
+  card_label?: string | null;
+  charge_error?: string | null;
   amount: number;
   lodging_amount: number;
   bath_tax_amount: number;

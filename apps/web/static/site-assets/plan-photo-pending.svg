@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 640" width="960" height="640" role="img" aria-label="プラン専用画像掲載予定">
+  <!-- プランの写真が未登録のときの仮画像（公式サイトのプラン詳細・v0.231.0） -->
+  <rect width="960" height="640" fill="#efeae2"/>
+  <rect x="24" y="24" width="912" height="592" fill="none" stroke="#c9bfae" stroke-width="2" stroke-dasharray="10 8" rx="12"/>
+  <g transform="translate(480 262)" fill="none" stroke="#a3967f" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-70" y="-48" width="140" height="100" rx="12"/>
+    <path d="M-28 -48 l10 -18 h36 l10 18"/>
+    <circle cx="0" cy="2" r="28"/>
+  </g>
+  <text x="480" y="400" text-anchor="middle" font-family="'Noto Sans JP','Hiragino Sans','Yu Gothic',sans-serif" font-size="44" font-weight="600" fill="#6f6553" letter-spacing="4">プラン専用画像掲載予定</text>
+  <text x="480" y="450" text-anchor="middle" font-family="'Noto Sans JP','Hiragino Sans','Yu Gothic',sans-serif" font-size="22" fill="#8f846f" letter-spacing="2">Photos coming soon</text>
+</svg>

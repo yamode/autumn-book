@@ -106,6 +106,11 @@
 				<p class="mt-2 text-red-700">{m.cancel_refund_failed()}</p>
 			{:else if form?.refund?.kind === 'nothing_due'}
 				<p class="mt-2 text-stone-700">{m.cancel_refund_none()}</p>
+			{:else if form?.refund?.kind === 'checkout_fee'}
+				<!-- オンライン決済（チェックアウト日）の未請求の予約: 返金は無く、キャンセル料だけ登録カードへ -->
+				<p class="mt-2 {form.refund.status === 'failed' ? 'text-red-700' : 'text-stone-700'}">
+					{form.refund.status === 'paid' ? m.cancel_checkout_fee_charged({ amount: formatPrice(form.refund.amount) }) : form.refund.status === 'failed' ? m.cancel_checkout_fee_failed() : m.cancel_checkout_no_fee()}
+				</p>
 			{/if}
 			{#if v.state === 'ready'}
 				<p class="mt-2 text-sm text-stone-500">

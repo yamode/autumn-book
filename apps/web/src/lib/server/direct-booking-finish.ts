@@ -36,6 +36,8 @@ export async function finishDirectBooking(cookies: Cookies, hold: SbHold, draft:
 			: {}),
 		paidAmount: r.amount,
 		bathTax,
+		// オンライン決済（チェックアウト日）: まだ請求していない（paidAmount は請求予定額）
+		...(r.chargeOn ? { chargeOn: r.chargeOn } : {}),
 		guest: {
 			name: guest?.name ?? '',
 			kana: guest?.kana ?? '',

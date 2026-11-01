@@ -11,7 +11,11 @@
 // 2026-10-10: 団体予約の照会で、宿の回答の期限が過ぎたもの（offered）を expired にする処理も相乗り（expireGroupInquiries・
 // docs/partner-group-booking.md §6。メールは送らない・N8）。表が無い環境でも落とさない。
 // あわせて、承諾の途中で止まった照会（accepted・予約なし・10分超）の後始末（recoverStuckGroupAccepts）もここで行う。
+//
+// 2026-11-01: 公式サイトの「オンライン決済（チェックアウト日）」の請求（$lib/server/direct-payments の chargeDueDirect）も相乗り。
+// 取引先の請求とは独立（失敗しても他の結果は返す）。
 import { error, json, type RequestHandler } from '@sveltejs/kit';
+import { chargeDueDirect, directPaymentsReady } from '$lib/server/direct-payments';
 import { env as privateEnv } from '$env/dynamic/private';
 import { timingSafeEqualText } from '$lib/partner-mfa';
 import { chargeDueBookings, onlinePaymentReady } from '$lib/server/partners/booking';
@@ -41,7 +45,11 @@ export const POST: RequestHandler = async ({ request, url, platform }) => {
     // （請求・掃除とは独立。後始末で回答ありに戻した照会が期限を過ぎていれば、続く期限切れで expired になる）
     const groupAcceptRecovery = await recoverStuckGroupAccepts(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
     const groupInquiries = await expireGroupInquiries(db).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
-    return { ...charge, attachments, groupAcceptRecovery, groupInquiries };
+    // 公式サイトのチェックアウト日決済（取引先の請求とは独立）
+    const directCharge = (await directPaymentsReady())
+      ? await chargeDueDirect().catch((e) => ({ error: e instanceof Error ? e.message : String(e) }))
+      : { skipped: 'オンライン決済が使えません' };
+    return { ...charge, attachments, groupAcceptRecovery, groupInquiries, directCharge };
   };
   if (url.searchParams.get('wait') === '1' || !platform?.context?.waitUntil) return json(await run());
   platform.context.waitUntil(

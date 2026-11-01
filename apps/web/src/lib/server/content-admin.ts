@@ -8,6 +8,7 @@
 //   読めなければプラン名の代わりに slug を出し、画面に理由を出す（一覧そのものは落とさない）。
 import { planAccessOf, type PlanAccess } from '$lib/plan-access';
 import { planLimitsOf, type PlanLimits } from '$lib/plan-limits';
+import { planMealsOf, type DinnerCourseOption, type PlanMeals } from '$lib/plan-meals';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
 	normalizePhotos,
@@ -68,6 +69,10 @@ export interface AdminPlanContent extends AdminContentBase {
 	/** 販売表示期間（予約を受け付ける期間・日本時間の日付・空は制限なし）。book.plan_contents.booking_start / booking_end（autumn-shared 20261101045650） */
 	bookingStart: string | null;
 	bookingEnd: string | null;
+	/** 料金テンプレートの食事（booking.rate_plans.meal_plan: 2食 / 朝食 / 素泊 / 日帰り）。読めないときは空 */
+	mealPlan: string;
+	/** お食事の設定（book.plan_contents.meals・null＝料金テンプレートどおり。$lib/plan-meals） */
+	meals: PlanMeals | null;
 }
 
 /** rms = rms 先行（同期が作った）／ linked = Book 先行で rms に紐づけ済み／ awaiting = Book 先行で料金待ち */
@@ -302,8 +307,42 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		limits: planLimitsOf(rp),
 		rmsState: planRmsStateOf(rp),
 		bookingStart: dateOrNull(c.booking_start),
-		bookingEnd: dateOrNull(c.booking_end)
+		bookingEnd: dateOrNull(c.booking_end),
+		mealPlan: String(rp?.meal_plan ?? ''),
+		meals: planMealsOf(c.meals)
 	};
+}
+
+/** RMS の夕食コース（public.rms_meal_rates の「夕食」・並び順）。お食事設定の選択肢。読めなければ空 */
+export async function sbListDinnerCourses(client: SupabaseClient, facilityUuid: string): Promise<DinnerCourseOption[]> {
+	const { data, error } = await client
+		.from('rms_meal_rates')
+		.select('id, name, description, sort_order')
+		.eq('facility_id', facilityUuid)
+		.eq('category', '夕食')
+		.order('sort_order');
+	if (error) throw error;
+	return ((data ?? []) as Row[]).map((r) => ({ id: String(r.id), name: String(r.name ?? ''), description: String(r.description ?? '') }));
+}
+
+/** このプランの夕食コースの自動判定（料金テンプレートの食事メモから・book.plan_dinner_course）。設定が無いときの初期値の推定に使う */
+export async function sbAutoDinnerCourse(client: SupabaseClient, ratePlanId: string): Promise<string | null> {
+	const { data, error } = await client.schema('book').rpc('plan_dinner_course', { p_rate_plan_id: ratePlanId });
+	if (error) return null;
+	return typeof data === 'string' && data ? data : null;
+}
+
+/** お食事の設定を保存する（null で料金テンプレートどおりに戻す）。料金は変わらない */
+export async function sbSetPlanMeals(client: SupabaseClient, facilityUuid: string, ratePlanId: string, meals: PlanMeals | null): Promise<void> {
+	const { data, error } = await client
+		.schema('book')
+		.from('plan_contents')
+		.update({ meals, updated_at: new Date().toISOString() })
+		.eq('rate_plan_id', ratePlanId)
+		.eq('facility_id', facilityUuid)
+		.select('rate_plan_id');
+	if (error) throw error;
+	if ((data ?? []).length === 0) throw new Error('対象のプランが見つからないか、編集する権限がありません。');
 }
 
 const dateOrNull = (v: unknown): string | null => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? String(v) : null);

@@ -16,6 +16,8 @@ export function enhance(form: HTMLFormElement, submit: SubmitFunction = () => {}
 	const resetByDefault = form.hasAttribute('data-reset');
 	return kitEnhance(form, async (input) => {
 		const btn = saveStateButton(form, input.submitter as HTMLElement | null);
+		// 押した送信ボタンに「送信中」の印（全画面共通・見た目は app.css の [data-pending]・2026-11-01）
+		const pending = input.submitter instanceof HTMLElement ? input.submitter : form.querySelector<HTMLElement>('button[type="submit"], button:not([type])');
 		const label = btn?.textContent?.trim() ?? '';
 		let cancelled = false;
 		const after = await submit({
@@ -26,12 +28,14 @@ export function enhance(form: HTMLFormElement, submit: SubmitFunction = () => {}
 			}
 		});
 		if (btn && !cancelled) setSaveState(btn, 'saving', label);
+		if (pending && !cancelled) pending.setAttribute('data-pending', '');
 		return async (opts: Opts) => {
 			const update: Opts['update'] = (o) => opts.update({ reset: resetByDefault, ...o });
 			try {
 				if (typeof after === 'function') await after({ ...opts, update });
 				else await update();
 			} finally {
+				pending?.removeAttribute('data-pending');
 				if (btn && btn.isConnected) {
 					const ok = opts.result.type === 'success' || opts.result.type === 'redirect';
 					setSaveState(btn, ok ? 'done' : 'error', label);

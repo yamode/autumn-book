@@ -45,6 +45,8 @@ import {
 	setDirectAdminFeeWaived,
 	refundAfterCancel,
 	retryDirectRefund,
+	chargeDirectBooking,
+	type DirectChargeResult,
 	type DirectRefundOutcome
 } from '$lib/server/direct-payments';
 import {
@@ -510,6 +512,23 @@ export const actions: Actions = {
 		const refund = await retryDirectRefund(event.params.code);
 		if (refund.kind === 'failed') return fail(502, { message: `返金に失敗しました（${refund.message}）` });
 		return { refundRetried: true as const, refund };
+	},
+
+	/** オンライン決済（チェックアウト日）の再請求（請求に失敗した予約だけ・2026-11-01） */
+	retryCharge: async (event) => {
+		const denied = requireAdmin(event.locals.user?.role, '再請求');
+		if (denied) return fail(403, { message: denied });
+		const partnerDenied = await rejectPartner(event);
+		if (partnerDenied) return partnerDenied;
+		try {
+			await adminBookingDetail(bookAdmin(event), event.params.code);
+		} catch (e) {
+			return fail(403, { message: mapRpcError(e) });
+		}
+		const pay = await directPaymentForBooking(event.params.code);
+		if (!pay || pay.charge_timing !== 'checkout' || pay.status !== 'charge_failed') return fail(400, { message: '再請求できる状態ではありません。' });
+		const charge = await chargeDirectBooking(pay.hold_id, 'staff').catch((e) => ({ status: 'failed' as const, message: String(e) }) as DirectChargeResult);
+		return { chargeRetried: true as const, charge };
 	},
 
 	/**

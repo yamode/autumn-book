@@ -173,6 +173,11 @@ export interface RatePlan {
 	/** Markdown 原文（A-05 プラン作成画面で編集） */
 	description: string;
 	mealPlan: string;
+	/** 夕食のコース名（「スタンダードコース」等・book.v_plans.dinner_course。プランのお食事設定、無ければ rms 料金テンプレートから） */
+	dinnerCourse?: string;
+	/** 朝食付き・夕食付きか（book.v_plans。プランのお食事設定、無ければ meal_plan から）。undefined は meal_plan で判断する */
+	includesBreakfast?: boolean;
+	hasDinner?: boolean;
 	payment: PaymentConfig;
 	basePrice: number;
 	highlightTags: string[];

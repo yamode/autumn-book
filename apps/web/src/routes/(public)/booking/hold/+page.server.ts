@@ -35,7 +35,7 @@ import { combineQuotes } from '$lib/multi-room';
 import type { BookingQuestion } from '$lib/booking-questions';
 import { combinePrepayViews, directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
-import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
+import { payOptionsFor, ONSITE_METHOD_NOTE, FURUSATO_VOUCHER_NOTE } from '$lib/direct-payment';
 import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
@@ -281,7 +281,7 @@ export const actions: Actions = {
 	submit: async (event) => {
 		const { request, locals, cookies } = event;
 		const form = await request.formData();
-		const { holdId, guest, pointsRequested, payment, onsiteMethod, errors } = parseGuestForm(form);
+		const { holdId, guest, pointsRequested, payment, onsiteMethod, furusatoVoucher, errors } = parseGuestForm(form);
 		// 非会員の予約確定だけ Turnstile で確かめる（会員はログインで確かめ済み）。未設定の環境は素通り
 		if (!viewerIsMember(locals) && !(await checkTurnstile(form, clientIpOf(event))).ok) {
 			return fail(400, { message: m.auth_turnstile_failed(), values: guest });
@@ -326,8 +326,14 @@ export const actions: Actions = {
 			const memberUserId = useMember ? (locals.user?.id ?? null) : null;
 			// 現地払いの内訳（現地PayPay・現地カード・現地現金）は宿への申し送り（core.stays.notes → PMS の備考）に載せる。
 			// 予約の metadata.guest にも onsitePayment として残す
+			// ふるさと納税 宿泊補助券の併用予定も同じく申し送りの先頭に足し、metadata.guest に furusatoVoucher として残す
 			const guestForBooking = onsiteMethod
-				? { ...answered.guest, onsitePayment: onsiteMethod, notes: [ONSITE_METHOD_NOTE[onsiteMethod], answered.guest.notes].filter(Boolean).join(' ') }
+				? {
+						...answered.guest,
+						onsitePayment: onsiteMethod,
+						...(furusatoVoucher ? { furusatoVoucher: true } : {}),
+						notes: [ONSITE_METHOD_NOTE[onsiteMethod], furusatoVoucher ? FURUSATO_VOUCHER_NOTE : '', answered.guest.notes].filter(Boolean).join(' ')
+					}
 				: answered.guest;
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, locale: getLocale(), rooms: answered.rooms });
 			if ('error' in result) {

@@ -2599,6 +2599,11 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		headline: headline,
 		description: String(row.description ?? ''),
 		mealPlan: String(row.meal_plan ?? ''),
+		// 夕食のコース名（autumn-shared 20261101130545。列が無い取得元・コースの無いプランは undefined）
+		dinnerCourse: typeof row.dinner_course === 'string' && row.dinner_course.trim() ? row.dinner_course.trim() : undefined,
+		// 朝食・夕食の有無（autumn-shared 20261101132329。プランのお食事設定 → 無ければ meal_plan）
+		includesBreakfast: typeof row.includes_breakfast === 'boolean' ? row.includes_breakfast : undefined,
+		hasDinner: typeof row.has_dinner === 'boolean' ? row.has_dinner : undefined,
 		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate, row.early_prepay, row.nonmember_payment_method),
 		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
 		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
@@ -2941,6 +2946,8 @@ export interface LastBooking {
 	payment: 'onsite' | 'card' | 'paypay';
 	// 現地払いの内訳（現地PayPay・現地カード・現地現金）
 	onsiteMethod?: 'paypay' | 'card' | 'cash' | null;
+	/** オンライン決済（チェックアウト日）: 登録カードへ請求する日。paidAmount は請求予定額 */
+	chargeOn?: string;
 	discountAmount: number;
 	prepayDiscountRate?: number;
 	/** 割引が早期決済割（段階表）によるものか */

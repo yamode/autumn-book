@@ -106,7 +106,8 @@
 	let rooms = $derived(data.rooms ?? []);
 	let liveCount = $derived(rooms.filter((r) => !r.cancelled).length);
 	// form の中身（取消・オプション取消の結果）。ページごとに形が少し違うので、使う所だけを読む
-	type Refund = { kind: string; amount?: number; kept?: number; reason?: string; adminFee?: number; adminFeePercent?: number | null };
+	// status はオンライン決済（チェックアウト日）のキャンセル料の請求結果（kind: 'checkout_fee'）
+	type Refund = { kind: string; amount?: number; kept?: number; reason?: string; adminFee?: number; adminFeePercent?: number | null; status?: string };
 	let f = $derived((form ?? {}) as { cancelled?: boolean; roomCancelled?: { index: number; bookingCancelled: boolean }; refund?: Refund; optionCancelled?: boolean; message?: string });
 
 	// 変更履歴・変更可否
@@ -191,6 +192,11 @@
 		</p>
 	{:else if f.refund?.kind === 'failed'}
 		<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{m.cancel_refund_failed()}</p>
+	{:else if f.refund?.kind === 'checkout_fee'}
+		<!-- オンライン決済（チェックアウト日）の未請求の予約: キャンセル料だけ登録カードへ -->
+		<p class="mb-4 rounded-lg px-4 py-3 text-sm {f.refund.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}">
+			{f.refund.status === 'paid' ? m.cancel_checkout_fee_charged({ amount: formatPrice(f.refund.amount ?? 0) }) : f.refund.status === 'failed' ? m.cancel_checkout_fee_failed() : m.cancel_checkout_no_fee()}
+		</p>
 	{/if}
 {/if}
 {#if f.optionCancelled}

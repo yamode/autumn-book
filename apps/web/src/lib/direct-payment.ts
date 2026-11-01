@@ -10,13 +10,16 @@ export type PayOption = 'onsite' | 'card' | 'paypay';
 
 // 現地払いの内訳。画面では「現地PayPay決済」「現地カード決済」「現地現金決済」を選んでもらう
 // （宿は店頭 PayPay へ誘導したいので PayPay を先頭に置く）。予約は現地払いのまま、内訳は備考で宿へ申し送る
-export const ONSITE_METHODS = ['paypay', 'card', 'cash'] as const;
+// 並びは画面の順（現金・クレジットカード・PayPay・2026-11-01）
+export const ONSITE_METHODS = ['cash', 'card', 'paypay'] as const;
 export type OnsiteMethod = (typeof ONSITE_METHODS)[number];
 export const ONSITE_METHOD_NOTE: Record<OnsiteMethod, string> = {
   paypay: '【現地PayPay決済希望】',
   card: '【現地カード決済希望】',
   cash: '【現地現金決済希望】'
 };
+/** 現地払いで「ふるさと納税 宿泊補助券」を併用する予定のときの申し送り（core.stays.notes → PMS の備考） */
+export const FURUSATO_VOUCHER_NOTE = '【ふるさと納税 宿泊補助券 併用予定】';
 
 // 請求額 = 宿泊料金 − ポイント − 予約時決済割引 ＋ 入湯税。キャンセル料の基準は宿泊料金（割引前・入湯税を含まない）。
 // 割引（autumn-shared 20260926151458）= floor(宿泊料金 × 割引率)。割引率は 0〜0.2（小数3桁）。

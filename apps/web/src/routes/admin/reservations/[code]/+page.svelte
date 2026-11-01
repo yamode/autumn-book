@@ -157,6 +157,23 @@
 		return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 	}
 
+	// オンライン決済の欄の「状態」（チェックアウト日決済の状態も）
+	function paymentStateText(p: NonNullable<typeof data.payment>): string {
+		const ckout = p.charge_timing === 'checkout';
+		if (p.status === 'paid') return ckout ? 'チェックアウト日に請求済み' : '支払済み';
+		if (p.status === 'late') return ckout ? '期限切れ（カード登録のみ・請求なし）' : '期限後の支払（予約にせず返金）';
+		if (p.status === 'scheduled') return 'カード登録済み・チェックアウト日に請求予定';
+		if (p.status === 'charging') return '請求中';
+		if (p.status === 'charge_failed') return 'チェックアウト日の請求に失敗';
+		if (p.status === 'void') return '取消のため請求なし';
+		return '支払待ち';
+	}
+	function chargeRetryText(c: { status: string; amount?: number; message?: string }): string {
+		if (c.status === 'paid') return `登録カードへ ${formatYen(c.amount ?? 0)} を請求しました。`;
+		if (c.status === 'void') return '請求額が 0 円のため請求しませんでした。';
+		return `請求できませんでした（${c.message ?? ''}）。`;
+	}
+
 	// 支払の表示。オンライン決済（Stripe）の記録があればそれを正とし、無ければ現地払い。
 	// 現地払いの内訳（PayPay / カード / 現金）は予約時に備考の先頭へ【現地○○決済希望】で入る（v0.44.0）
 	// 前受金（全額）を入金済み（返金記録後を含む）の予約は、取引先へ請求するものがない（「取引先へ請求」の表示を出さない）
@@ -174,6 +191,14 @@
 		}
 		const p = data.payment;
 		if (p) {
+			// オンライン決済（チェックアウト日・2026-11-01）: 予約時はカード登録だけ。チェックアウト日に請求する
+			if (p.charge_timing === 'checkout') {
+				if (p.status === 'paid') return { text: 'オンライン決済（チェックアウト日）：請求済み', prepaid: true };
+				if (p.status === 'scheduled') return { text: 'オンライン決済（チェックアウト日）：カード登録済み・チェックアウト日に請求', prepaid: false };
+				if (p.status === 'charging') return { text: 'オンライン決済（チェックアウト日）：請求中', prepaid: false };
+				if (p.status === 'charge_failed') return { text: 'オンライン決済（チェックアウト日）：請求に失敗', prepaid: false };
+				if (p.status === 'void') return { text: 'オンライン決済（チェックアウト日）：取消のため請求なし', prepaid: false };
+			}
 			if (p.status === 'paid') return { text: 'オンライン決済済み（カード）', prepaid: true };
 			if (p.status === 'late') return { text: 'オンライン決済：期限後の支払（予約にせず返金）', prepaid: false };
 			return { text: 'オンライン決済：支払待ち', prepaid: false };
@@ -242,6 +267,13 @@
 		<p class="mb-3 rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-700">オンライン決済の支払額（{formatYen(form.refund.paid)}）が差し引く額（キャンセル料・返金しない割引額・事務手数料の大きい方 {formatYen(form.refund.fee)}）以下のため、返金はありません。</p>
 	{:else if form.refund?.kind === 'failed'}
 		<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">取消は完了しましたが、カードへの返金（{formatYen(form.refund.amount)}）に失敗しました: {form.refund.message}。下の「オンライン決済」から返金を再実行してください。</p>
+	{:else if form.refund?.kind === 'checkout_fee'}
+		<!-- オンライン決済（チェックアウト日）の未請求の予約: キャンセル料を登録カードへ請求した結果 -->
+		<p class="mb-3 rounded-lg px-3 py-2 text-sm {form.refund.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}">
+			{#if form.refund.status === 'paid'}オンライン決済（チェックアウト日）の登録カードへ、キャンセル料 {formatYen(form.refund.amount)} を請求しました。
+			{:else if form.refund.status === 'failed'}キャンセル料（{formatYen(form.refund.amount)}）を登録カードへ請求できませんでした: {form.refund.message}。お客様へ連絡してください。
+			{:else}キャンセル料がかからないため、登録カードへの請求はありません。{/if}
+		</p>
 	{/if}
 {/if}
 {#if form?.refundRetried}
@@ -824,7 +856,7 @@
 				<h2 class="text-[15px] font-semibold text-stone-900">オンライン決済（Stripe）</h2>
 				<dl class="mt-2 grid grid-cols-[6.5rem_minmax(0,1fr)] sm:grid-cols-[8rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-stone-700">
 					<dt class="text-stone-500">状態</dt>
-					<dd>{p.status === 'paid' ? '支払済み' : p.status === 'late' ? '期限後の支払（予約にせず返金）' : '支払待ち'}{#if p.refund_status === 'full'}・全額返金済み{:else if p.refund_status === 'partial'}・一部返金済み{:else if p.refund_status === 'failed'}<span class="text-red-700">・返金失敗</span>{/if}</dd>
+					<dd>{paymentStateText(p)}{#if p.refund_status === 'full'}・全額返金済み{:else if p.refund_status === 'partial'}・一部返金済み{:else if p.refund_status === 'failed'}<span class="text-red-700">・返金失敗</span>{/if}</dd>
 					<dt class="text-stone-500">支払額</dt>
 					<dd>{formatYen(p.amount)}（宿泊料金 {formatYen(p.lodging_amount)}{(p.prepay_discount_amount ?? 0) > 0 ? `・予約時決済割引 −${formatYen(p.prepay_discount_amount ?? 0)}` : ''}{p.bath_tax_amount > 0 ? `・入湯税 ${formatYen(p.bath_tax_amount)}` : ''}{p.points_used > 0 ? `・ポイント ${p.points_used.toLocaleString()}pt 利用後` : ''}）</dd>
 					{#if p.refunded_amount > 0}<dt class="text-stone-500">返金済み</dt><dd>{formatYen(p.refunded_amount)}</dd>{/if}
@@ -847,7 +879,20 @@
 					{#if p.paid_at}<dt class="text-stone-500">支払日時</dt><dd>{new Date(p.paid_at).toLocaleString('ja-JP')}</dd>{/if}
 					{#if p.payment_intent_id}<dt class="text-stone-500">Stripe</dt><dd class="break-all font-mono text-xs">{p.payment_intent_id}</dd>{/if}
 					{#if p.refund_error}<dt class="text-stone-500">返金エラー</dt><dd class="text-red-700">{p.refund_error}</dd>{/if}
+					{#if p.charge_timing === 'checkout'}
+						<!-- オンライン決済（チェックアウト日）: 登録カード・請求の失敗理由（支払額は請求予定額。予約の変更・1 室取消は請求時に計算し直す） -->
+						{#if p.card_label}<dt class="text-stone-500">登録カード</dt><dd>{p.card_label}</dd>{/if}
+						{#if p.charge_error}<dt class="text-stone-500">請求エラー</dt><dd class="text-red-700">{p.charge_error}</dd>{/if}
+					{/if}
 				</dl>
+				{#if data.canOperate && p.charge_timing === 'checkout' && p.status === 'charge_failed'}
+					<form method="POST" action="?/retryCharge" class="mt-3">
+						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">登録カードへ再請求する</button>
+					</form>
+				{/if}
+				{#if form?.chargeRetried}
+					<p class="mt-2 rounded-lg px-3 py-2 text-sm {form.charge.status === 'paid' ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}">{chargeRetryText(form.charge)}</p>
+				{/if}
 				{#if data.canOperate && p.status === 'paid' && (b.booking_status === 'cancelled' || adminRooms.some((r) => r.cancelled)) && p.refund_status !== 'full'}
 					<form method="POST" action="?/retryRefund" class="mt-3">
 						<button type="submit" class="rounded-md border border-stone-300 px-3 py-1.5 text-sm">返金を再実行する（支払額 − 差し引く額 の残り）</button>

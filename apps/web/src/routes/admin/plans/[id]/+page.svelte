@@ -325,6 +325,41 @@
 </section>
 
 {#if data.live}
+	<!-- お食事（book.plan_contents.meals）。朝食の有無と、夕食は RMS のどの食事コースか。公式サイトのプラン詳細に「朝食付き」「夕食付き ○○コース」と出る。
+	     料金（rms の食事区分）は変えない。未設定のプランは料金テンプレートから推定した値を初期値に出す -->
+	<form method="POST" action="?/setMeals" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<h2 class="text-sm font-bold text-stone-700">お食事</h2>
+			{#if (form as { mealsSaved?: boolean } | null)?.mealsSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+		</div>
+		{#if (form as { mealsError?: string } | null)?.mealsError}
+			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { mealsError?: string }).mealsError}</p>
+		{/if}
+		{#if !c.meals}
+			<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">まだ設定していません（料金テンプレート{c.mealPlan ? `「${c.mealPlan}」` : ''}から推定した値を出しています）。確かめて保存してください。</p>
+		{/if}
+		<div class="mt-3 grid gap-3 sm:grid-cols-[auto_1fr] sm:items-center sm:gap-x-6">
+			<label class="inline-flex cursor-pointer items-center gap-2 text-sm text-stone-800">
+				<input type="checkbox" name="breakfast" checked={data.mealsForm.breakfast} class="h-4 w-4 rounded" />
+				朝食付き
+			</label>
+			<label class="flex flex-wrap items-center gap-2 text-sm text-stone-800">
+				夕食
+				<select name="dinner" class="min-w-48 rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+					<option value="" selected={!data.mealsForm.dinnerRateId}>夕食なし</option>
+					{#each data.dinnerCourses as dc (dc.id)}
+						<option value={dc.id} selected={data.mealsForm.dinnerRateId === dc.id}>{dc.name}{dc.description ? `（${dc.description}）` : ''}</option>
+					{/each}
+				</select>
+			</label>
+		</div>
+		{#if data.dinnerCourses.length === 0}
+			<p class="mt-2 text-xs text-amber-800">RMS の食事コース（夕食）を読めませんでした。RMS の「食事料金」に夕食のコースがあるか確かめてください。</p>
+		{/if}
+		<p class="mt-3 text-xs text-stone-400">夕食のコースは RMS の食事料金（夕食）から選びます。公式サイトのプラン詳細に「朝食付き」「夕食付き」とコース名を出します。料金は変わりません。</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">お食事を保存</button>
+	</form>
+
 	<!-- 支払方法（本番）。booking.rate_plans.payment_method を Book で決める（rms 同期は上書きしない） -->
 	<form method="POST" action="?/setPaymentMethod" use:enhance class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">

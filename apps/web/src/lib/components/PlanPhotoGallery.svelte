@@ -39,6 +39,28 @@
 		box.scrollTo({ left, behavior: 'smooth' });
 	}
 	$effect(() => reveal(strip));
+
+	// サムネイル列の左右の ◀▶（はみ出しているときだけ、その向きにまだ続きがあれば出す）
+	let canLeft = $state(false);
+	let canRight = $state(false);
+	function updateEdges() {
+		if (!strip) return;
+		canLeft = strip.scrollLeft > 4;
+		canRight = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 4;
+	}
+	$effect(() => {
+		const box = strip;
+		if (!box) return;
+		void all.length;
+		updateEdges();
+		if (typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver(updateEdges);
+		ro.observe(box);
+		return () => ro.disconnect();
+	});
+	function scrollStrip(dir: -1 | 1) {
+		strip?.scrollBy({ left: dir * strip.clientWidth * 0.8, behavior: 'smooth' });
+	}
 	$effect(() => {
 		if (open) reveal(modalStrip);
 	});
@@ -136,8 +158,20 @@
 		</figure>
 
 		{#if count > 1}
-			<div bind:this={strip} class="relative mt-2 flex items-end gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-				{@render thumbs('page')}
+			<div class="relative mt-2">
+				<div bind:this={strip} onscroll={updateEdges} class="relative flex items-end gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+					{@render thumbs('page')}
+				</div>
+				{#if canLeft}
+					<button type="button" class="absolute inset-y-0 left-0 z-10 flex w-10 items-center justify-center bg-gradient-to-r from-white via-white/90 to-transparent text-stone-700 hover:text-brand-900" onclick={() => scrollStrip(-1)} aria-label={m.facility_gallery_prev()}>
+						<span class="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow ring-1 ring-stone-200">{@render chevron('left', 'h-4 w-4')}</span>
+					</button>
+				{/if}
+				{#if canRight}
+					<button type="button" class="absolute inset-y-0 right-0 z-10 flex w-10 items-center justify-center bg-gradient-to-l from-white via-white/90 to-transparent text-stone-700 hover:text-brand-900" onclick={() => scrollStrip(1)} aria-label={m.facility_gallery_next()}>
+						<span class="flex h-7 w-7 items-center justify-center rounded-full bg-white shadow ring-1 ring-stone-200">{@render chevron('right', 'h-4 w-4')}</span>
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
