@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { getLocale, localizeHref, type Locale } from '$lib/paraglide/runtime';
+	import { getLocale, localizeHref, setLocale, type Locale } from '$lib/paraglide/runtime';
 
 	// dark: 客室案内の黒いヘッダー上で使うときの配色
 	let { dark = false }: { dark?: boolean } = $props();
@@ -21,6 +21,14 @@
 	// 各ロケールへの遷移URL（現在のパスを維持）
 	function hrefFor(target: Locale): string {
 		return localizeHref(page.url.pathname + page.url.search, { locale: target });
+	}
+
+	// 選んだ言語を cookie に保存してから移動する（setLocale → locale-strategy.ts の setLocale）。接頭辞の無いリンクでもこの言語が保たれる
+	// （src/lib/locale-strategy.ts）。cookie を書き換えずに日本語の URL へ移ると、cookie の English に戻されてしまう。
+	function choose(e: MouseEvent, target: Locale) {
+		if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+		e.preventDefault();
+		setLocale(target);
 	}
 
 	let root: HTMLDetailsElement | undefined = $state();
@@ -55,7 +63,7 @@
 						{labels[loc]}<span aria-hidden="true">✓</span>
 					</span>
 				{:else}
-					<a href={hrefFor(loc)} data-sveltekit-reload class="block px-3 py-2 text-stone-700 hover:bg-stone-50">{labels[loc]}</a>
+					<a href={hrefFor(loc)} data-sveltekit-reload onclick={(e) => choose(e, loc)} class="block px-3 py-2 text-stone-700 hover:bg-stone-50">{labels[loc]}</a>
 				{/if}
 			</li>
 		{/each}

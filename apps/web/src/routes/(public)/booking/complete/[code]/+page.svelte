@@ -87,6 +87,13 @@
 			<p class="mt-1 text-sm text-stone-600">{m.complete_cancel_hint()}</p>
 		{/if}
 
+		{#each data.favoriteRooms as fr (fr.roomIndex)}
+			<!-- お気に入りの部屋の指定の結果（予約確認画面で選んだとき）。確定のときに空きを確かめて指定した -->
+			<p class="mx-auto mt-3 max-w-md rounded-lg px-3 py-2 text-left text-sm {fr.designated ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'}">
+				{fr.designated ? m.complete_fav_ok({ name: fr.name }) : m.complete_fav_ng({ name: fr.name })}
+			</p>
+		{/each}
+
 		<dl class="mx-auto mt-6 max-w-md space-y-1.5 rounded-xl bg-stone-50 p-4 text-left text-sm">
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_facility()}</dt><dd>{data.facility.name}</dd></div>
 			<div class="flex justify-between"><dt class="text-stone-500">{m.complete_checkin()}</dt><dd>{formatDateLong(b.checkin)} {data.facility.checkinTime}〜</dd></div>

@@ -6,7 +6,6 @@ import { planById, facilityById, roomTypeById, upsertTranslation, translationSto
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import {
-	PLAN_PAYMENT_METHODS,
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
 	sbSetPlanSale,
@@ -15,11 +14,12 @@ import {
 	sbAutoDinnerCourse,
 	sbSetPlanAccess,
 	sbSetPlanLimits,
+	sbSetPlanStayClosed,
 	sbListRoomContentsAdmin,
-	sbSetPlanPayment,
-	sbPlanShareToken,
-	type PlanPaymentMethod
+	sbPlanShareToken
 } from '$lib/server/content-admin';
+import { PLAN_PAY_OPTIONS, normalizeOptions } from '$lib/direct-payment';
+import { sbSetPlanPaymentOptions } from '$lib/server/payment-settings';
 import {
 	LIVE,
 	NOT_LIVE,
@@ -36,7 +36,7 @@ import { loadPlanQuestionSetting, loadQuestionTemplates, savePlanQuestionSetting
 import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestions, type PlanQuestionMode } from '$lib/booking-questions';
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { demoShareToken } from '$lib/server/secret-plans';
-import { planLimitsFromForm } from '$lib/plan-limits';
+import { planLimitsFromForm, stayClosedFromForm } from '$lib/plan-limits';
 import { planSaleFromForm } from '$lib/plan-sale';
 import { defaultPlanMeals, planMealsFromForm, type DinnerCourseOption } from '$lib/plan-meals';
 import { RANK_CODES, isRankCode, planShareLinkPath, type PlanAccess } from '$lib/plan-access';
@@ -210,15 +210,20 @@ export const actions: Actions = {
 			return fail(400, { mealsError: messageOf(e) });
 		}
 	},
-	// 絞り込み（宿泊可能期間・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ
+	// 絞り込み（宿泊可能期間・宿泊不可の期間と曜日・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ
 	setLimits: async (event) => {
 		const denied = denyIfNotStaff(event);
 		if (denied) return denied;
 		if (!LIVE) return fail(503, { limitsError: NOT_LIVE });
-		const parsed = planLimitsFromForm(await event.request.formData());
+		const formData = await event.request.formData();
+		const parsed = planLimitsFromForm(formData);
 		if ('error' in parsed) return fail(400, { limitsError: parsed.error });
+		const closed = stayClosedFromForm(formData);
+		if ('error' in closed) return fail(400, { limitsError: closed.error });
 		try {
-			await sbSetPlanLimits(createSupabaseServerClient(event), event.params.id, parsed.limits);
+			const client = createSupabaseServerClient(event);
+			await sbSetPlanLimits(client, event.params.id, parsed.limits);
+			await sbSetPlanStayClosed(client, event.params.id, closed.stayClosed);
 			return { limitsSaved: true };
 		} catch (e) {
 			return fail(400, { limitsError: messageOf(e) });
@@ -269,23 +274,21 @@ export const actions: Actions = {
 			return fail(400, { questionError: messageOf(e) });
 		}
 	},
-	// 支払方法（本番）。booking.rate_plans.payment_method を Book の管理画面で決める
+	// 支払方法（本番）。支払方法の組み合わせ（book.plan_contents.payment_options・2026-11-02）を Book の管理画面で決める
 	setPaymentMethod: async (event) => {
 		const denied = denyIfNotStaff(event);
 		if (denied) return denied;
 		if (!LIVE) return fail(503, { paymentError: NOT_LIVE });
 		const form = await event.request.formData();
-		const method = String(form.get('method') ?? '');
-		if (!(PLAN_PAYMENT_METHODS as readonly string[]).includes(method)) {
-			return fail(400, { paymentError: '支払方法を選んでください。' });
-		}
-		// 予約時決済の割引（%・0〜20）。現地払いのみなら 0
-		const pct = method === 'onsite' ? 0 : Math.round(Number(form.get('discount') ?? 0));
+		const options = normalizeOptions(PLAN_PAY_OPTIONS, form.getAll('opt').map(String));
+		if (options.length === 0) return fail(400, { paymentError: '支払方法を1つ以上選んでください。' });
+		// 予約時決済の割引（%・0〜20）。オンライン（予約時）が無ければ 0
+		const pct = options.includes('online_now') ? Math.round(Number(form.get('discount') ?? 0)) : 0;
 		if (!Number.isFinite(pct) || pct < 0 || pct > 20) {
 			return fail(400, { paymentError: '予約時決済の割引は 0〜20% で選んでください。' });
 		}
 		try {
-			await sbSetPlanPayment(createSupabaseServerClient(event), event.params.id, method as PlanPaymentMethod, pct / 100);
+			await sbSetPlanPaymentOptions(createSupabaseServerClient(event), event.params.id, options, pct / 100);
 			return { paymentSaved: true };
 		} catch (e) {
 			return fail(400, { paymentError: messageOf(e) });

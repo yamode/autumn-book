@@ -41,6 +41,26 @@
 			{#if f.types.length > 0}
 				<div class="divide-y divide-stone-100">
 					{#each f.types as t}
+						{#if t.rooms.length === 1}
+							<!-- 部屋が1つだけの客室タイプはパネルを開かずに、タイプの行そのものでお気に入りに登録・解除する -->
+							{@const r = t.rooms[0]}
+							<form method="POST" action="?/toggle" use:enhance>
+								<input type="hidden" name="roomId" value={r.roomId} />
+								<button
+									type="submit"
+									aria-pressed={r.favorited}
+									title={r.favorited ? m.favorites_remove() : m.favorites_add()}
+									class="flex w-full items-center gap-3 px-4 py-3.5 text-left transition {r.favorited ? 'bg-red-50/60' : 'hover:bg-stone-50'}"
+								>
+									<span class="text-xl leading-none {r.favorited ? 'text-red-500' : 'text-stone-300'}">{r.favorited ? '♥' : '♡'}</span>
+									<span class="min-w-0 flex-1">
+										<span class="block truncate font-medium text-brand-900">{t.name}</span>
+										{#if r.name !== t.name}<span class="block truncate text-sm text-stone-400">{r.name}{r.roomNumber && r.roomNumber !== r.name ? `（${r.roomNumber}）` : ''}</span>{/if}
+									</span>
+									<span class="text-sm text-stone-400">{m.favorites_room_count({ n: '1' })}</span>
+								</button>
+							</form>
+						{:else}
 						<!-- 客室タイプごとの折りたたみパネル。開閉はローカル保持（お気に入り操作で閉じない） -->
 						<details
 							class="group"
@@ -77,6 +97,7 @@
 								{/each}
 							</div>
 						</details>
+						{/if}
 					{/each}
 				</div>
 			{:else}

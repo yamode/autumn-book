@@ -91,6 +91,7 @@ import {
 	type HoldGroupRoom
 } from '$lib/multi-room';
 import { paymentMethodsOf } from '$lib/member-payment';
+import { ONSITE_METHODS, PLAN_PAY_OPTIONS, normalizeOptions, paymentMethodsOfOptions } from '$lib/direct-payment';
 import { addDays, todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
@@ -2432,6 +2433,62 @@ export async function sbListFavoriteRooms(client: SupabaseClient): Promise<strin
 	return ((data ?? []) as { room_id: string }[]).map((r) => r.room_id);
 }
 
+/** お気に入りの部屋がある部屋タイプ id（公開側の部屋タイプ id と同じ・autumn-shared 20261101212915）。読めなければ空 */
+export async function sbListFavoriteRoomTypes(client: SupabaseClient): Promise<string[]> {
+	const { data, error } = await client.schema('book').rpc('list_my_favorite_room_types');
+	if (error) return [];
+	return ((data ?? []) as { room_type_id: string }[]).map((r) => String(r.room_type_id));
+}
+
+/** お気に入りの部屋の指定（予約確認画面・autumn-shared 20261101214212）。部屋ごとの候補 */
+export interface FavoriteRoomChoice {
+	roomIndex: number;
+	roomId: string;
+	roomNumber: string;
+	name: string;
+}
+
+/** 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（会員本人だけ・読めなければ空） */
+export async function sbFavoriteRoomChoices(client: SupabaseClient, holdId: string, sessionId: string): Promise<FavoriteRoomChoice[]> {
+	const { data, error } = await client.schema('book').rpc('my_favorite_room_choices', { p_hold_id: holdId, p_session_id: sessionId });
+	if (error) return [];
+	return ((data ?? []) as { room_index: number; room_id: string; room_number: string; display_name: string }[]).map((r) => ({
+		roomIndex: Number(r.room_index),
+		roomId: String(r.room_id),
+		roomNumber: String(r.room_number ?? ''),
+		name: String(r.display_name ?? r.room_number ?? '')
+	}));
+}
+
+/** 選んだお気に入りの部屋を仮押さえに残す（空配列で取り消し）。確定のときに空きを確かめて部屋指定する */
+export async function sbSetHoldFavoriteRooms(
+	client: SupabaseClient,
+	holdId: string,
+	sessionId: string,
+	choices: { roomIndex: number; roomId: string }[]
+): Promise<void> {
+	const { error } = await client.schema('book').rpc('set_hold_favorite_rooms', {
+		p_hold_id: holdId,
+		p_session_id: sessionId,
+		p_choices: choices.map((c) => ({ room_index: c.roomIndex, room_id: c.roomId }))
+	});
+	if (error) throw new Error('お気に入りの部屋を指定できませんでした。選び直すか、指定せずに予約してください。');
+}
+
+/** 自分の予約のお気に入りの部屋指定の結果（完了画面）。無ければ空 */
+export async function sbMyBookingFavoriteRooms(
+	client: SupabaseClient,
+	code: string
+): Promise<{ roomIndex: number; name: string; designated: boolean }[]> {
+	const { data, error } = await client.schema('book').rpc('my_booking_favorite_rooms', { p_booking_code: code });
+	if (error || !Array.isArray(data)) return [];
+	return (data as { room_index: number; name: string | null; designated: boolean }[]).map((r) => ({
+		roomIndex: Number(r.room_index),
+		name: String(r.name ?? ''),
+		designated: r.designated === true
+	}));
+}
+
 /** お気に入り客室のトグル（true=登録した / false=解除した）。 */
 export async function sbToggleFavoriteRoom(client: SupabaseClient, roomId: string): Promise<boolean> {
 	const { data, error } = await client.schema('book').rpc('toggle_favorite_room', { p_room_id: roomId });
@@ -2509,11 +2566,30 @@ function mapPaymentMethod(
 	pm: string | null | undefined,
 	discountRate?: unknown,
 	earlyPrepay?: unknown,
-	nonMemberPm?: unknown
+	nonMemberPm?: unknown,
+	options?: unknown,
+	nonMemberOptions?: unknown,
+	onsiteMethods?: unknown
 ): PaymentConfig {
 	const rate = Math.min(Math.max(Number(discountRate) || 0, 0), 0.2);
 	// early_prepay 列は autumn-shared 20260926221912 で追加（v_plans は * で読むので、未適用なら undefined＝対象外）
 	const early = earlyPrepay === true;
+	// 施設でオンの現地払いの内訳（autumn-shared 20261101210350）。列が無ければ undefined＝全部
+	const onsiteM = Array.isArray(onsiteMethods) ? { onsiteMethods: normalizeOptions(ONSITE_METHODS, onsiteMethods) } : {};
+	// 支払方法の組み合わせ（autumn-shared 20261101210350・プランの組み合わせ ∩ 施設でオンの方法）。あればこちらを正とする
+	if (Array.isArray(options)) {
+		const own = paymentMethodsOfOptions(normalizeOptions(PLAN_PAY_OPTIONS, options));
+		const nonMember = Array.isArray(nonMemberOptions) ? paymentMethodsOfOptions(normalizeOptions(PLAN_PAY_OPTIONS, nonMemberOptions)) : undefined;
+		// 会員か非会員のどちらかに予約時決済があれば、割引・早期決済割の値は残す（閲覧者に合わせて paymentFor が消す）
+		const anyPrepay = own.prepay || !!nonMember?.prepay;
+		return {
+			...own,
+			prepayDiscountRate: anyPrepay ? rate : 0,
+			...(anyPrepay ? { earlyPrepay: early } : {}),
+			...(nonMember ? { nonMember } : {}),
+			...onsiteM
+		};
+	}
 	// 非会員の支払方法（autumn-shared 20260926232136）。null・列なし（未適用）は会員と同じ＝nonMember を付けない
 	const nonMember = paymentMethodsOf(nonMemberPm) ?? undefined;
 	const nm = nonMember ? { nonMember } : {};
@@ -2604,7 +2680,15 @@ export function mapPlanRow(row: Record<string, unknown>): RatePlan {
 		// 朝食・夕食の有無（autumn-shared 20261101132329。プランのお食事設定 → 無ければ meal_plan）
 		includesBreakfast: typeof row.includes_breakfast === 'boolean' ? row.includes_breakfast : undefined,
 		hasDinner: typeof row.has_dinner === 'boolean' ? row.has_dinner : undefined,
-		payment: mapPaymentMethod(row.payment_method as string | null, row.prepay_discount_rate, row.early_prepay, row.nonmember_payment_method),
+		payment: mapPaymentMethod(
+			row.payment_method as string | null,
+			row.prepay_discount_rate,
+			row.early_prepay,
+			row.nonmember_payment_method,
+			row.payment_options,
+			row.nonmember_payment_options,
+			row.onsite_methods
+		),
 		basePrice: 0, // 参考額はビューに無い。実料金は daily_rates（plan_offers / quote）。
 		highlightTags: Array.isArray(row.highlight_tags) ? (row.highlight_tags as string[]) : [],
 		photos: mapPhotos(row.photos, String(row.name ?? '')),

@@ -62,7 +62,8 @@ export async function loadHoldGroupRooms(hold: HoldGroup, isMember: boolean, loc
 export function groupPayment(rooms: Pick<HoldGroupRoomView, 'plan'>[]): PaymentConfig {
 	if (rooms.length === 1) return rooms[0].plan.payment;
 	const c = combinePayments(rooms.map((r) => r.plan.payment));
-	return { ...rooms[0].plan.payment, onsite: c.onsite, prepay: c.prepay, prepayMethods: c.prepayMethods };
+	// 現地払いの内訳は施設の設定（全室同じ施設）なので 1 室目のまま
+	return { ...rooms[0].plan.payment, onsite: c.onsite, prepay: c.prepay, prepayMethods: c.prepayMethods, checkout: c.checkout };
 }
 
 /** 非会員は予約時決済のみ・会員なら現地払いも選べる部屋があるか（「会員の方は現地払いも…」の案内） */

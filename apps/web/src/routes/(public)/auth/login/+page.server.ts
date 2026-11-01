@@ -6,12 +6,15 @@ import { sbMyProfile } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
 import { clientIp, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
 import { checkTurnstile } from '$lib/server/turnstile';
+import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
 import { safeNext } from '$lib/safe-next';
 import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // OTP 再送クールダウン（cookie の存在＝クールダウン中。maxAge で自動失効）
 const OTP_COOLDOWN = 'ab_otp_cooldown';
+// 最初の画面で Turnstile を通ったメールアドレス（署名付き）。コード入力画面の再送で Turnstile を出さないために使う
+const OTP_HUMAN = 'ab_otp_human';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	if (locals.user?.role === 'member') redirect(303, safeNext(url.searchParams.get('next'), '/account'));
@@ -41,9 +44,13 @@ export const actions: Actions = {
 		if (!EMAIL_RE.test(email)) return fail(400, { step: 'email', email, message: m.auth_otp_error_email_invalid() });
 		// 60秒クールダウン（再送含む）
 		if (cookies.get(OTP_COOLDOWN)) return fail(429, { step: 'code', email, message: m.auth_otp_resend_wait() });
-		// Turnstile（未設定なら素通り）と、サーバ側の送信数の制限（Cookie を捨てても効く・未登録メールでも同じ応答）
+		// Turnstile（未設定なら素通り）と、サーバ側の送信数の制限（Cookie を捨てても効く・未登録メールでも同じ応答）。
+		// コード入力画面からの再送は、最初の画面で Turnstile を通ったこと（同じメールアドレスの署名付き Cookie）で代える
+		// （同じ画面で2回目の確認を出さない・2026-11-02）。送信数の制限とクールダウンは再送にも効く
 		const ip = clientIp(request);
-		if (!(await checkTurnstile(form, ip)).ok) return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
+		const passedFor = await verifyCookieValue(OTP_HUMAN, cookies.get(OTP_HUMAN));
+		const resend = form.get('resend') === '1' && passedFor === email.toLowerCase();
+		if (!resend && !(await checkTurnstile(form, ip)).ok) return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
 		if (!(await memberOtpSendAllowed(event.platform, email, ip))) return fail(429, { step: 'email', email, message: m.auth_otp_rate_limited() });
 		let client;
 		try {
@@ -54,6 +61,16 @@ export const actions: Actions = {
 		const { error } = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
 		if (error) return fail(502, { step: 'email', email, message: m.auth_otp_error_send() });
 		cookies.set(OTP_COOLDOWN, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 });
+		// 再送で Turnstile を省くための印（このメールアドレスで確認済み・15分）。最初の送信のときだけ付け、再送では延ばさない
+		if (!resend) {
+			cookies.set(OTP_HUMAN, await signCookieValue(OTP_HUMAN, email.toLowerCase()), {
+				path: '/auth',
+				httpOnly: true,
+				secure: true,
+				sameSite: 'lax',
+				maxAge: 15 * 60
+			});
+		}
 		return { step: 'code', email };
 	},
 

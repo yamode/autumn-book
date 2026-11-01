@@ -17,8 +17,10 @@ export default defineConfig({
 		paraglideVitePlugin({
 			project: './project.inlang',
 			outdir: './src/lib/paraglide',
-			// ロケール判定戦略: URL → cookie → Accept-Language → baseLocale(ja)
-			strategy: ['url', 'cookie', 'preferredLanguage', 'baseLocale'],
+			// ロケール判定戦略: URL の接頭辞 → cookie（公式サイトのみ） → URL（接頭辞なし＝ja） → baseLocale(ja)
+			// custom-stickyLocale は src/lib/locale-strategy.ts（接頭辞の無い URL でも切り替えた言語を保つ・cookie の読み書きもここ）。
+			// 'cookie' を入れると管理画面を開いただけで cookie が ja に上書きされるので入れない（url が ja を必ず返すので preferredLanguage も届かない）
+			strategy: ['custom-stickyLocale', 'url', 'baseLocale'],
 			// URL戦略: ja はプレフィックスなし、en は /en/...、zh-TW は /zh-TW/...
 			urlPatterns: [
 				{

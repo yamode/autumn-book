@@ -5,6 +5,16 @@
 	import { ADMIN_FEE_MAX_PERCENT, adminFeeNotice, STRIPE_FEE_PERCENT } from '$lib/cancel-admin-fee';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import {
+		PAY_TEXT_LOCALES,
+		PLAN_PAY_OPTIONS,
+		facilityAllows,
+		type FacilityPayMethod,
+		type PayTextGroup,
+		type PayTextLocale,
+		type PlanPayOption
+	} from '$lib/direct-payment';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
 
@@ -16,11 +26,6 @@
 	];
 	const tab = $derived<Tab>(((t) => (t === 'plans' || t === 'partners' ? t : 'basic'))(page.url.searchParams.get('tab')));
 
-	const METHOD_LABEL: Record<string, string> = {
-		onsite: '現地払いのみ',
-		prepayment: '予約時決済のみ',
-		deposit: '予約時決済・現地払いを選べる'
-	};
 	const yen = (n: number) => `¥${Math.round(n).toLocaleString('ja-JP')}`;
 
 	// 保存後もフォームの入力を残す（既定の enhance はフォームをリセットする）
@@ -77,9 +82,34 @@
 		});
 	});
 
+	// ---- 施設全体のオン/オフ（公式サイト） ----
+	const methodsOn = $derived<string[]>(data.settings?.paymentMethods ?? []);
+	const ONSITE_TOGGLES = [
+		['onsite_cash', '現金'],
+		['onsite_card', 'クレジットカード'],
+		['onsite_paypay', 'PayPay']
+	] as const;
+	// 施設でその方法が使えるか（現地払いは内訳がどれか1つでもオンなら）
+	const facilityOn = (o: PlanPayOption) => facilityAllows(o, (data.settings?.paymentMethods ?? []) as FacilityPayMethod[]);
+
+	// ---- 予約確認画面の文言（既定の文言は各言語の messages から出して欄の薄い字に見せる） ----
+	const LOCALE_LABEL: Record<PayTextLocale, string> = { ja: '日本語', en: 'English', 'zh-TW': '繁體中文' };
+	const TEXT_GROUPS: { id: PayTextGroup; title: string; label: (l: PayTextLocale) => string; note: (l: PayTextLocale) => string }[] = [
+		{ id: 'online_now', title: 'オンライン決済（予約時）', label: (l) => m.pay_group_online({}, { locale: l }), note: () => '' },
+		{ id: 'online_checkout', title: 'オンライン決済（チェックアウト日）', label: (l) => m.pay_group_checkout({}, { locale: l }), note: (l) => m.pay_checkout_note({}, { locale: l }) },
+		{ id: 'onsite', title: '現地払い', label: (l) => m.pay_group_onsite({}, { locale: l }), note: () => '' }
+	];
+
 	// ---- プラン別 ----
-	const initPlanMethod = () => Object.fromEntries((data.settings?.plans ?? []).map((p) => [p.id, p.paymentMethod as string]));
-	let planMethod = $state<Record<string, string>>(initPlanMethod());
+	const PLAN_OPTION_LABEL: Record<PlanPayOption, string> = {
+		onsite: '現地払い',
+		online_now: 'オンライン（予約時）',
+		online_checkout: 'オンライン（チェックアウト日）'
+	};
+	const initPlanOpts = () => Object.fromEntries((data.settings?.plans ?? []).map((p) => [p.id, [...p.paymentOptions] as string[]]));
+	let planOpts = $state<Record<string, string[]>>(initPlanOpts());
+	const initNmSame = () => Object.fromEntries((data.settings?.plans ?? []).map((p) => [p.id, p.nonmemberPaymentOptions === null]));
+	let nmSame = $state<Record<string, boolean>>(initNmSame());
 	const earlyMax = $derived(
 		early.enabled ? Math.max(0, ...(data.settings?.earlyPrepay.tiers ?? []).map((t) => t.percent)) : 0
 	);
@@ -120,30 +150,44 @@
 {#if tab === 'basic'}
 	<!-- ============ 基本 ============ -->
 	<section class="mb-6 grid gap-3 md:grid-cols-2">
-		<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
-			<h2 class="mb-2 font-medium text-stone-800">公式サイトのお客様</h2>
-			<dl class="space-y-1.5 text-stone-600">
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">現地払い</dt>
-					<dd>現地PayPay決済・現地カード決済・現地現金決済（予約確認画面で選択。PayPay を先頭に表示）</dd>
+		<!-- 公式サイトの支払方法を施設全体でオン/オフ（2026-11-02）。どれを出すかはプランごと（プラン別）。全体でオフの方法はどのプランでも出ない -->
+		<form method="POST" action="?/saveMethods" use:enhance={keep} class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<div class="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+				<h2 class="font-medium text-stone-800">公式サイトのお客様</h2>
+				{#if f?.scope === 'methods' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+			</div>
+			<p class="mb-3 text-xs text-stone-500">施設として使う支払方法をオンにします。どれを出すかは<a href="?tab=plans" class="text-sky-700 hover:underline">プラン別</a>で決めます（ここでオフにした方法は、どのプランでも出ません）。</p>
+			{#if f?.scope === 'methods' && f.error}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.error}</p>{/if}
+			<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="space-y-2.5 text-stone-700">
+				<div>
+					<p class="text-xs text-stone-400">現地払い（チェックアウト時に現地で。予約確認画面でお支払い予定方法を選びます）</p>
+					<div class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+						{#each ONSITE_TOGGLES as [v, l] (v)}
+							<label class="flex items-center gap-1.5"><input type="checkbox" name="m" value={v} checked={methodsOn.includes(v)} class="h-4 w-4" /> {l}</label>
+						{/each}
+					</div>
 				</div>
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">予約時決済</dt>
-					<dd>
-						オンライン決済（Stripe・カード / Apple Pay / Google Pay）
-						{#if data.status?.directOnline}
-							<span class="ml-1 rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700">利用できます</span>
-						{:else}
-							<span class="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">未設定（事前決済のみのプランも現地払いで受けます）</span>
-						{/if}
-					</dd>
-				</div>
-				<div class="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
-					<dt class="shrink-0 text-xs text-stone-400 sm:w-28 sm:text-sm">どれを出すか</dt>
-					<dd>料金プランごとに決めます → <a href="?tab=plans" class="text-sky-700 hover:underline">プラン別</a></dd>
-				</div>
-			</dl>
-		</div>
+				<label class="flex flex-wrap items-center gap-1.5">
+					<input type="checkbox" name="m" value="online_now" checked={methodsOn.includes('online_now')} class="h-4 w-4" />
+					オンライン決済（予約時）
+					<span class="text-xs text-stone-400">カード / Apple Pay / Google Pay・割引と早期決済割の対象</span>
+				</label>
+				<label class="flex flex-wrap items-center gap-1.5">
+					<input type="checkbox" name="m" value="online_checkout" checked={methodsOn.includes('online_checkout')} class="h-4 w-4" />
+					オンライン決済（チェックアウト日）
+					<span class="text-xs text-stone-400">予約時にカードを登録し、チェックアウト日に自動で請求・割引なし</span>
+				</label>
+				<p class="text-xs">
+					オンライン決済:
+					{#if data.status?.directOnline}
+						<span class="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">利用できます</span>
+					{:else}
+						<span class="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">未設定（オンライン決済のみのプランも現地払いで受けます）</span>
+					{/if}
+				</p>
+				<button type="submit" class="min-h-9 rounded-md bg-stone-800 px-4 py-2 text-white hover:bg-stone-700">保存</button>
+			</fieldset>
+		</form>
 		<div class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			<h2 class="mb-2 font-medium text-stone-800">取引先ページ</h2>
 			<dl class="space-y-1.5 text-stone-600">
@@ -167,6 +211,52 @@
 				</div>
 			</dl>
 		</div>
+	</section>
+
+	<!-- 予約確認画面の支払方法の名前・説明文（施設ごとに書き換え・言語ごと・空欄は既定の文言・2026-11-02） -->
+	<section class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
+		<div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<h2 class="font-medium text-stone-800">予約確認画面の支払方法の文言</h2>
+			{#if f?.scope === 'texts' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+		</div>
+		<p class="mb-3 max-w-3xl text-xs text-stone-500">
+			公式サイトの予約確認画面で、支払方法ごとに出す名前と説明文です。空欄の欄は、薄く表示している既定の文言を使います。
+			英語・繁體中文が空欄のときは、その言語の既定の文言になります（日本語の文言は使いません）。説明文は改行がそのまま出ます。
+			割引額・事務手数料・現地払いのお支払い予定方法などの案内は、ここに書かなくても自動で出ます。
+		</p>
+		{#if f?.scope === 'texts' && f.error}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.error}</p>{/if}
+		<form method="POST" action="?/saveTexts" use:enhance={keep} class="text-sm">
+			<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="min-w-0 space-y-4">
+				{#each TEXT_GROUPS as g (g.id)}
+					<div class="rounded-lg border border-stone-200 p-3">
+						<h3 class="mb-2 text-xs font-medium text-stone-600">{g.title}</h3>
+						<div class="grid gap-3 lg:grid-cols-3">
+							{#each PAY_TEXT_LOCALES as l (l)}
+								<div class="grid content-start gap-1.5">
+									<span class="text-[11px] text-stone-400">{LOCALE_LABEL[l]}</span>
+									<input
+										name="{g.id}.label.{l}"
+										value={data.settings?.paymentTexts[g.id]?.label?.[l] ?? ''}
+										placeholder={g.label(l)}
+										maxlength="60"
+										aria-label="{g.title}の名前（{LOCALE_LABEL[l]}）"
+										class="w-full rounded-md border border-stone-300 px-2 py-1.5"
+									/>
+									<textarea
+										name="{g.id}.note.{l}"
+										rows="3"
+										maxlength="600"
+										placeholder={g.note(l) || '（説明文なし）'}
+										aria-label="{g.title}の説明文（{LOCALE_LABEL[l]}）"
+										class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-xs">{data.settings?.paymentTexts[g.id]?.note?.[l] ?? ''}</textarea>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/each}
+				<button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700">保存</button>
+			</fieldset>
+		</form>
 	</section>
 
 	<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。公式サイト・取引先ページの両方に効く -->
@@ -333,7 +423,9 @@
 {:else if tab === 'plans'}
 	<!-- ============ プラン別 ============ -->
 	<p class="mb-3 max-w-3xl text-xs text-stone-500">
-		料金プランごとに、お客様が選べる支払方法と割引を決めます。支払方法は会員（ログインした会員）と非会員で分けられます（例: 会員は現地払いも可・非会員は予約時決済のみ）。定率割引と早期決済割の対象は、会員の支払方法が「現地払いのみ」だと設定できません。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割／ポイントは
+		料金プランごとに、お客様が選べる支払方法をチェックで選び、割引を決めます。選べるのは
+		<a href="?tab=basic" class="text-sky-700 hover:underline">基本</a>
+		で施設全体がオンの方法だけです（オフの方法は薄く表示され、チェックしても公式サイトには出ません）。支払方法は会員（ログインした会員）と非会員で分けられます（例: 会員は現地払いも可・非会員はオンライン決済のみ）。定率割引と早期決済割の対象は、会員の支払方法に「オンライン（予約時）」があるときだけ設定できます。定率割引は予約時決済を選んだときの割引（0〜20%）、早期決済割／ポイントは
 		<a href="?tab=basic" class="text-sky-700 hover:underline">基本</a>
 		の段階表です。割引方式のときは定率割引と泊ごとに大きい方、ポイント方式のときは定率割引に加えてポイントが付きます。
 		{#if savedEarlyOn}
@@ -345,7 +437,7 @@
 	{#if data.settingsError}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.settingsError}</p>{/if}
 
 	<div class="overflow-x-auto rounded-xl border border-stone-200 bg-white">
-		<table class="w-full min-w-[760px] text-sm">
+		<table class="w-full min-w-[980px] text-sm">
 			<thead class="bg-stone-50 text-xs text-stone-500">
 				<tr>
 					<th class="sticky left-0 z-10 min-w-[8rem] bg-stone-50 px-3 py-2 text-left font-normal">プラン</th>
@@ -358,7 +450,7 @@
 			</thead>
 			<tbody>
 				{#each data.settings?.plans ?? [] as p (p.id)}
-					{@const onsite = planMethod[p.id] === 'onsite'}
+					{@const onsite = !(planOpts[p.id] ?? []).includes('online_now')}
 					{@const shown = p.isActive && p.publicOnDirect && p.isPublished}
 					<tr class="border-t border-stone-100 align-top {shown ? '' : 'bg-stone-50/60 text-stone-500'}">
 						<td class="sticky left-0 z-10 min-w-[8rem] max-w-[10rem] px-3 py-2 sm:max-w-none {shown ? 'bg-white' : 'bg-stone-50'}">
@@ -369,22 +461,34 @@
 							</div>
 						</td>
 						<td class="px-3 py-2" colspan="4">
-							<form id="plan-{p.id}" method="POST" action="?/savePlan" use:enhance={keep} class="grid grid-cols-[1.3fr_0.8fr_1fr_1fr] items-center gap-3">
+							<form id="plan-{p.id}" method="POST" action="?/savePlan" use:enhance={keep} class="grid grid-cols-[2.2fr_0.6fr_0.8fr_0.9fr] items-center gap-3">
 								<input type="hidden" name="planId" value={p.id} />
-								<div class="space-y-1">
-									<label class="flex items-center gap-1.5 text-xs text-stone-500">
-										<span class="w-10 shrink-0">会員</span>
-										<select name="method" bind:value={planMethod[p.id]} disabled={!p.hasContent} class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm text-stone-800">
-											{#each Object.entries(METHOD_LABEL) as [v, l] (v)}<option value={v}>{l}</option>{/each}
-										</select>
-									</label>
-									<label class="flex items-center gap-1.5 text-xs text-stone-500">
-										<span class="w-10 shrink-0">非会員</span>
-										<select name="nonmember" disabled={!p.hasContent} class="w-full rounded-md border border-stone-300 px-2 py-1.5 text-sm text-stone-800">
-											<option value="" selected={!p.nonmemberPaymentMethod}>会員と同じ</option>
-											{#each Object.entries(METHOD_LABEL) as [v, l] (v)}<option value={v} selected={p.nonmemberPaymentMethod === v}>{l}</option>{/each}
-										</select>
-									</label>
+								<!-- 支払方法の組み合わせ（チェック）。施設全体でオフの方法は薄く出し、選んでいても公式サイトには出ない -->
+								<div class="space-y-1.5 text-xs">
+									<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+										<span class="w-10 shrink-0 text-stone-500">会員</span>
+										{#each PLAN_PAY_OPTIONS as o (o)}
+											<label class="flex items-center gap-1 {facilityOn(o) ? 'text-stone-800' : 'text-stone-400'}" title={facilityOn(o) ? '' : '基本タブで施設全体がオフ（公式サイトには出ません）'}>
+												<input type="checkbox" name="opt" value={o} bind:group={planOpts[p.id]} disabled={!p.hasContent} class="h-3.5 w-3.5" />
+												{PLAN_OPTION_LABEL[o]}{#if !facilityOn(o)}<span class="text-[10px]">（全体でオフ）</span>{/if}
+											</label>
+										{/each}
+									</div>
+									<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+										<span class="w-10 shrink-0 text-stone-500">非会員</span>
+										<label class="flex items-center gap-1 text-stone-800">
+											<input type="checkbox" name="nm_same" bind:checked={nmSame[p.id]} disabled={!p.hasContent} class="h-3.5 w-3.5" />
+											会員と同じ
+										</label>
+										{#if !nmSame[p.id]}
+											{#each PLAN_PAY_OPTIONS as o (o)}
+												<label class="flex items-center gap-1 {facilityOn(o) ? 'text-stone-800' : 'text-stone-400'}">
+													<input type="checkbox" name="nm_opt" value={o} checked={(p.nonmemberPaymentOptions ?? p.paymentOptions).includes(o)} disabled={!p.hasContent} class="h-3.5 w-3.5" />
+													{PLAN_OPTION_LABEL[o]}
+												</label>
+											{/each}
+										{/if}
+									</div>
 								</div>
 								<select name="discount" disabled={onsite || !p.hasContent} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
 									{#each Array.from({ length: 21 }, (_, i) => i) as d (d)}

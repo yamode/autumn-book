@@ -1,6 +1,14 @@
 // 公式サイト予約のオンライン決済（v0.43.0）の純関数のテスト。`pnpm --filter @autumn-book/web test`
 import { describe, expect, it } from 'vitest';
-import { directChargeOf, directRefundDueOf, payOptionsFor } from './direct-payment';
+import {
+	directChargeOf,
+	directRefundDueOf,
+	facilityAllows,
+	normalizePaymentTexts,
+	paymentMethodsOfOptions,
+	payOptionsFor,
+	payTextFor
+} from './direct-payment';
 
 describe('請求額（宿泊料金 − ポイント ＋ 入湯税）', () => {
 	it('入湯税を足す', () => {
@@ -49,17 +57,49 @@ describe('支払方法の選択肢', () => {
 	const deposit = { onsite: true, prepay: true, prepayMethods: ['card' as const] };
 	const onsite = { onsite: true, prepay: false, prepayMethods: [] };
 	it('実データでオンライン決済が使えるとき', () => {
-		expect(payOptionsFor(prepayment, { live: true, onlineReady: true })).toEqual({ options: ['card'], fallback: false });
-		expect(payOptionsFor(deposit, { live: true, onlineReady: true })).toEqual({ options: ['card', 'onsite'], fallback: false });
-		expect(payOptionsFor(onsite, { live: true, onlineReady: true })).toEqual({ options: ['onsite'], fallback: false });
+		expect(payOptionsFor(prepayment, { live: true, onlineReady: true })).toEqual({ options: ['card'], checkout: true, fallback: false });
+		expect(payOptionsFor(deposit, { live: true, onlineReady: true })).toEqual({ options: ['card', 'onsite'], checkout: true, fallback: false });
+		expect(payOptionsFor(onsite, { live: true, onlineReady: true })).toEqual({ options: ['onsite'], checkout: false, fallback: false });
 	});
 	it('使えないときは現地払い（事前決済だけのプランも現地払いで受ける）', () => {
-		expect(payOptionsFor(prepayment, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], fallback: true });
-		expect(payOptionsFor(deposit, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], fallback: false });
+		expect(payOptionsFor(prepayment, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
+		expect(payOptionsFor(deposit, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: false });
 	});
 	it('実データでは PayPay を出さない・デモは従来どおり', () => {
 		const both = { onsite: true, prepay: true, prepayMethods: ['card' as const, 'paypay' as const] };
 		expect(payOptionsFor(both, { live: true, onlineReady: true }).options).toEqual(['card', 'onsite']);
 		expect(payOptionsFor(both, { live: false, onlineReady: false }).options).toEqual(['card', 'paypay', 'onsite']);
+	});
+});
+
+describe('支払方法の組み合わせ（施設全体のオン/オフ＋プランごと）', () => {
+	it('組み合わせ → 支払設定', () => {
+		expect(paymentMethodsOfOptions(['onsite', 'online_checkout'])).toEqual({ onsite: true, prepay: false, prepayMethods: [], checkout: true });
+		expect(paymentMethodsOfOptions(['online_now'])).toEqual({ onsite: false, prepay: true, prepayMethods: ['card'], checkout: false });
+	});
+	it('チェックアウト日決済だけのプランは現地払いに落とさない（オンライン決済が使えないときは落とす）', () => {
+		const p = paymentMethodsOfOptions(['online_checkout']);
+		expect(payOptionsFor(p, { live: true, onlineReady: true })).toEqual({ options: [], checkout: true, fallback: false });
+		expect(payOptionsFor(p, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
+	});
+	it('施設で使えるか（現地払いは内訳のどれか1つでもオンなら）', () => {
+		expect(facilityAllows('onsite', ['onsite_paypay'])).toBe(true);
+		expect(facilityAllows('onsite', ['online_now'])).toBe(false);
+		expect(facilityAllows('online_checkout', ['online_now'])).toBe(false);
+	});
+});
+
+describe('予約確認画面の支払方法の文言', () => {
+	const texts = normalizePaymentTexts({
+		online_checkout: { note: { ja: ' カードを登録します ', en: '' } },
+		unknown: { label: { ja: 'x' } }
+	});
+	it('知らないキー・空は落とし、前後の空白を取る', () => {
+		expect(texts).toEqual({ online_checkout: { note: { ja: 'カードを登録します' } } });
+	});
+	it('その言語の文言が無ければ null（既定の文言を使う）', () => {
+		expect(payTextFor(texts, 'online_checkout', 'note', 'ja')).toBe('カードを登録します');
+		expect(payTextFor(texts, 'online_checkout', 'note', 'en')).toBeNull();
+		expect(payTextFor(texts, 'onsite', 'label', 'ja')).toBeNull();
 	});
 });

@@ -199,15 +199,15 @@ describe('combineQuotes / combinePayments', () => {
 		expect(combinePayments([
 			{ onsite: true, prepay: true, prepayMethods: ['card', 'paypay'] },
 			{ onsite: true, prepay: true, prepayMethods: ['card'] }
-		])).toEqual({ onsite: true, prepay: true, prepayMethods: ['card'] });
+		])).toEqual({ onsite: true, prepay: true, prepayMethods: ['card'], checkout: true });
 		expect(combinePayments([
 			{ onsite: true, prepay: false, prepayMethods: [] },
 			{ onsite: true, prepay: true, prepayMethods: ['card'] }
-		])).toEqual({ onsite: true, prepay: false, prepayMethods: [] });
+		])).toEqual({ onsite: true, prepay: false, prepayMethods: [], checkout: false });
 		// 両立しない（かごを通らずに来た）組み合わせは何も残らない
 		expect(combinePayments([
 			{ onsite: true, prepay: false, prepayMethods: [] },
 			{ onsite: false, prepay: true, prepayMethods: ['card'] }
-		])).toEqual({ onsite: false, prepay: false, prepayMethods: [] });
+		])).toEqual({ onsite: false, prepay: false, prepayMethods: [], checkout: false });
 	});
 });

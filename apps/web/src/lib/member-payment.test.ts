@@ -18,9 +18,9 @@ const depositWithGuestPrepay: PaymentConfig = {
 
 describe('payment_method → 支払方法', () => {
 	it('onsite / prepayment / deposit を読み、不明・null は null（＝会員と同じ）', () => {
-		expect(paymentMethodsOf('onsite')).toEqual({ onsite: true, prepay: false, prepayMethods: [] });
-		expect(paymentMethodsOf('prepayment')).toEqual({ onsite: false, prepay: true, prepayMethods: ['card'] });
-		expect(paymentMethodsOf('deposit')).toEqual({ onsite: true, prepay: true, prepayMethods: ['card'] });
+		expect(paymentMethodsOf('onsite')).toEqual({ onsite: true, prepay: false, prepayMethods: [], checkout: false });
+		expect(paymentMethodsOf('prepayment')).toEqual({ onsite: false, prepay: true, prepayMethods: ['card'], checkout: true });
+		expect(paymentMethodsOf('deposit')).toEqual({ onsite: true, prepay: true, prepayMethods: ['card'], checkout: true });
 		expect(paymentMethodsOf(null)).toBeNull();
 		expect(paymentMethodsOf(undefined)).toBeNull();
 		expect(paymentMethodsOf('other')).toBeNull();
@@ -38,9 +38,9 @@ describe('閲覧者に合わせた支払設定', () => {
 		expect(p.prepayDiscountRate).toBe(0.1);
 		expect(p.earlyPrepayMaxRate).toBe(0.15);
 		// 現地払いは出さない（オンライン決済が使えるとき）
-		expect(payOptionsFor(p, { live: true, onlineReady: true })).toEqual({ options: ['card'], fallback: false });
+		expect(payOptionsFor(p, { live: true, onlineReady: true })).toEqual({ options: ['card'], checkout: true, fallback: false });
 		// オンライン決済が使えない環境では既存どおり現地払いで受ける
-		expect(payOptionsFor(p, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], fallback: true });
+		expect(payOptionsFor(p, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
 	});
 	it('非会員の設定が無ければ会員と同じ', () => {
 		const { nonMember: _, ...same } = depositWithGuestPrepay;

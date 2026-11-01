@@ -86,10 +86,12 @@ export function directRefundDueOf(p: {
 // 実データでオンライン決済が使えないときは事前決済を出さない。事前決済しか無いプラン（prepayment）は
 // 予約を止めないよう現地払いで受ける（fallback=true。画面で注記する）。
 // deposit（内金）は既存どおり「カード（全額の事前決済）か現地払いを選べる」扱い。
+//   checkout: オンライン決済（チェックアウト日）を出すか。実データでオンライン決済が使えないときは出さない。
+//   予約時決済・チェックアウト日決済・現地払いのどれも出せないときは現地払いで受ける（fallback）。
 export function payOptionsFor(
-  payment: Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods'>,
+  payment: Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods' | 'checkout'>,
   opts: { live: boolean; onlineReady: boolean }
-): { options: PayOption[]; fallback: boolean } {
+): { options: PayOption[]; checkout: boolean; fallback: boolean } {
   const out: PayOption[] = [];
   if (payment.prepay) {
     for (const m of payment.prepayMethods) {
@@ -98,6 +100,84 @@ export function payOptionsFor(
     }
   }
   if (payment.onsite) out.push('onsite');
-  if (out.length === 0) return { options: ['onsite'], fallback: true };
-  return { options: out, fallback: false };
+  const checkout = allowsCheckout(payment) && (!opts.live || opts.onlineReady);
+  if (out.length === 0 && !checkout) return { options: ['onsite'], checkout: false, fallback: true };
+  return { options: out, checkout, fallback: false };
+}
+
+/**
+ * プランの支払設定でオンライン決済（チェックアウト日）を受け付けるか。
+ * checkout が未設定（デモのプラン・列の無い取得元）は従来どおり「予約時のカード決済があれば出す」。
+ */
+export function allowsCheckout(payment: Pick<PaymentConfig, 'prepay' | 'prepayMethods' | 'checkout'>): boolean {
+  if (payment.checkout !== undefined) return payment.checkout;
+  return payment.prepay && payment.prepayMethods.includes('card');
+}
+
+// ---------------------------------------------------------------------------
+// 支払方法の組み合わせ（施設全体のオン/オフ＋プランごとの組み合わせ・2026-11-02・autumn-shared 20261101210350）
+// ---------------------------------------------------------------------------
+
+/** プランで選ぶ支払方法（book.plan_contents.payment_options の値） */
+export const PLAN_PAY_OPTIONS = ['onsite', 'online_now', 'online_checkout'] as const;
+export type PlanPayOption = (typeof PLAN_PAY_OPTIONS)[number];
+
+/** 施設全体でオン/オフする支払方法（book.payment_settings.payment_methods の値） */
+export const FACILITY_PAY_METHODS = ['onsite_cash', 'onsite_card', 'onsite_paypay', 'online_now', 'online_checkout'] as const;
+export type FacilityPayMethod = (typeof FACILITY_PAY_METHODS)[number];
+
+/** 値の配列を決まった並びにそろえ、知らない値と重複を落とす */
+export function normalizeOptions<T extends string>(all: readonly T[], v: unknown): T[] {
+  const arr = Array.isArray(v) ? v.map(String) : [];
+  return all.filter((x) => arr.includes(x));
+}
+
+/** 組み合わせ → 支払設定（onsite / prepay / prepayMethods / checkout）。実データの予約時決済はカードのみ */
+export function paymentMethodsOfOptions(options: readonly string[]): { onsite: boolean; prepay: boolean; prepayMethods: 'card'[]; checkout: boolean } {
+  const prepay = options.includes('online_now');
+  return { onsite: options.includes('onsite'), prepay, prepayMethods: prepay ? ['card'] : [], checkout: options.includes('online_checkout') };
+}
+
+/** 施設でその組み合わせの方法が使えるか（現地払いは内訳がどれか1つでもオンなら使える。DB の effective_payment_options と同じ） */
+export function facilityAllows(option: PlanPayOption, methods: readonly FacilityPayMethod[]): boolean {
+  if (option === 'onsite') return methods.some((m) => m.startsWith('onsite_'));
+  return methods.includes(option);
+}
+
+// ---------------------------------------------------------------------------
+// 予約確認画面の支払方法の名前・説明文（施設ごとに書き換えられる・autumn-shared 20261101211030）
+// ---------------------------------------------------------------------------
+
+export const PAY_TEXT_GROUPS = ['online_now', 'online_checkout', 'onsite'] as const;
+export type PayTextGroup = (typeof PAY_TEXT_GROUPS)[number];
+export const PAY_TEXT_LOCALES = ['ja', 'en', 'zh-TW'] as const;
+export type PayTextLocale = (typeof PAY_TEXT_LOCALES)[number];
+/** 1 つの文言（言語ごと。空は既定の文言） */
+export type LocalizedText = Partial<Record<PayTextLocale, string>>;
+export type PaymentTexts = Partial<Record<PayTextGroup, { label?: LocalizedText; note?: LocalizedText }>>;
+
+/** DB の payment_texts → 画面で使う形（知らないキー・空の値は落とす） */
+export function normalizePaymentTexts(v: unknown): PaymentTexts {
+  const src = v && typeof v === 'object' ? (v as Record<string, Record<string, Record<string, unknown>>>) : {};
+  const out: PaymentTexts = {};
+  for (const g of PAY_TEXT_GROUPS) {
+    const fields: { label?: LocalizedText; note?: LocalizedText } = {};
+    for (const f of ['label', 'note'] as const) {
+      const t: LocalizedText = {};
+      for (const l of PAY_TEXT_LOCALES) {
+        const s = src[g]?.[f]?.[l];
+        if (typeof s === 'string' && s.trim()) t[l] = s.trim();
+      }
+      if (Object.keys(t).length > 0) fields[f] = t;
+    }
+    if (fields.label || fields.note) out[g] = fields;
+  }
+  return out;
+}
+
+/** 表示する言語の文言。無ければ null（画面の既定の文言を使う）。日本語以外で未入力なら既定（日本語の上書きは使わない） */
+export function payTextFor(texts: PaymentTexts | null | undefined, group: PayTextGroup, field: 'label' | 'note', locale: string): string | null {
+  const t = texts?.[group]?.[field];
+  if (!t) return null;
+  return t[locale as PayTextLocale] ?? null;
 }

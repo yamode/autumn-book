@@ -36,7 +36,8 @@ import type { BookingQuestion } from '$lib/booking-questions';
 import { combinePrepayViews, directPaymentsReady, directPublishableKey, holdBathTax, prepayDiscountViewFor, viewerIsMember } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE, FURUSATO_VOUCHER_NOTE } from '$lib/direct-payment';
-import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
+import { loadCancelAdminFeePercent, loadPaymentTexts } from '$lib/server/payment-settings';
+import { favoriteRoomChoicesFor, saveFavoriteRoomChoices } from '$lib/server/favorites';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
@@ -125,7 +126,7 @@ export const load: PageServerLoad = async (event) => {
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
 		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady });
-		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent] = await Promise.all([
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
 			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
@@ -134,7 +135,11 @@ export const load: PageServerLoad = async (event) => {
 			// 複数室: 予約ごとの項目（全室のプランの和）と部屋ごとの項目・男女を聞くか
 			multi ? groupBookingForms(hold.facilityId, roomViews.map((r) => r.plan.id)) : Promise.resolve(null),
 			// 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。オンライン決済を選んだときに予約前に知らせる
-			loadCancelAdminFeePercent(hold.facilityId)
+			loadCancelAdminFeePercent(hold.facilityId),
+			// 支払方法の名前・説明文（施設ごとの上書き・管理画面の支払方法で編集）
+			loadPaymentTexts(hold.facilityId),
+			// 会員のお気に入りの部屋のうち、この日程に空いている部屋（予約確認画面で部屋指定を選べる・確定のときに空きを確かめ直す）
+			favoriteRoomChoicesFor(event, hold.id, sid)
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 
@@ -168,9 +173,15 @@ export const load: PageServerLoad = async (event) => {
 			needsTurnstile: !viewerIsMember(locals),
 			payOptions: pay.options,
 			payFallback: pay.fallback,
+			// オンライン決済（チェックアウト日）を出すか（プランの組み合わせ ∩ 施設でオン・オンライン決済が使えるとき）
+			checkoutOption: pay.checkout,
+			// 施設でオンの現地払いの内訳（無ければ全部）
+			onsiteMethods: groupPayment(roomViews).onsiteMethods ?? null,
+			paymentTexts,
+			favoriteChoices,
 			// true = カードはこの画面で払う（実データ）。false = デモ決済画面へ（DATA_SOURCE=demo）
 			inline: true as const,
-			publishableKey: pay.options.includes('card') ? directPublishableKey() : null,
+			publishableKey: pay.options.includes('card') || pay.checkout ? directPublishableKey() : null,
 			bathTax,
 			prepay,
 			adminFeePercent,
@@ -231,6 +242,10 @@ export const load: PageServerLoad = async (event) => {
 		facility,
 		payOptions: pay.options,
 		payFallback: pay.fallback,
+		checkoutOption: false,
+		onsiteMethods: plan.payment.onsiteMethods ?? null,
+		paymentTexts: {} as import('$lib/direct-payment').PaymentTexts,
+		favoriteChoices: {} as Record<number, import('$lib/server/supabase-data').FavoriteRoomChoice[]>,
 		inline: false as const,
 		publishableKey: null,
 		bathTax: 0,
@@ -309,6 +324,12 @@ export const actions: Actions = {
 				errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
 				return fail(400, { errors, values: guest });
 			}
+			// 現地払いの内訳は施設でオンのものだけ（管理画面の支払方法でオフにした内訳は受けない）
+			const allowedOnsite = groupPayment(roomViews).onsiteMethods;
+			if (payment === 'onsite' && onsiteMethod && allowedOnsite && !allowedOnsite.includes(onsiteMethod)) {
+				errors.payment = 'お支払い方法を選択してください';
+				return fail(400, { errors, values: guest });
+			}
 			if (payment !== 'onsite') {
 				// カードはこの画面の入力欄で払う（JavaScript が動かない等でここに来たときは選び直してもらう）
 				errors.payment = 'お支払い方法を選択してください';
@@ -335,6 +356,12 @@ export const actions: Actions = {
 						notes: [ONSITE_METHOD_NOTE[onsiteMethod], furusatoVoucher ? FURUSATO_VOUCHER_NOTE : '', answered.guest.notes].filter(Boolean).join(' ')
 					}
 				: answered.guest;
+			// お気に入りの部屋の指定（会員が選んだとき）を仮押さえに残す。確定のときに DB が空きを確かめて部屋指定する
+			const favError = await saveFavoriteRoomChoices(event, holdId, sid, form);
+			if (favError) {
+				errors.favoriteRoom = favError;
+				return fail(400, { errors, values: guest });
+			}
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, locale: getLocale(), rooms: answered.rooms });
 			if ('error' in result) {
 				// 画面の判定をすり抜けても DB が支払方法を検査する（onsite_not_allowed）

@@ -58,3 +58,72 @@ export function planLimitsFromForm(form: FormData): { limits: PlanLimits } | { e
 	const roomTypeIds = [...new Set(form.getAll('room_type_ids').map(String).filter(Boolean))];
 	return { limits: { salesStart, salesEnd, minGuests, maxGuests, roomTypeIds } };
 }
+
+// ---------------------------------------------------------------------------
+// 宿泊不可（期間・曜日）。book.plan_contents.stay_blackouts / stay_closed_dows（autumn-shared 20261101211300・20261101211430）。
+// 該当する宿泊日の日別料金を DB が閉じるので、検索・空室カレンダー・仮押さえに出なくなる。
+// ---------------------------------------------------------------------------
+
+export interface StayBlackout {
+	/** YYYY-MM-DD（両端を含む宿泊日） */
+	start: string;
+	end: string;
+}
+
+export interface StayClosed {
+	blackouts: StayBlackout[];
+	/** 宿泊日の曜日 0=日〜6=土 */
+	dows: number[];
+}
+
+export const NO_STAY_CLOSED: StayClosed = { blackouts: [], dows: [] };
+
+export const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const;
+
+const BLACKOUT_MAX = 100;
+
+/** DB の行（book.plan_contents）→ StayClosed。壊れた要素は捨てる */
+export function stayClosedOf(row: Record<string, unknown> | undefined): StayClosed {
+	const list = Array.isArray(row?.stay_blackouts) ? (row.stay_blackouts as unknown[]) : [];
+	const blackouts = list
+		.map((x) => {
+			const o = (x ?? {}) as Record<string, unknown>;
+			const start = dateOf(o.start);
+			const end = dateOf(o.end);
+			return start && end ? { start, end } : null;
+		})
+		.filter((x): x is StayBlackout => x != null);
+	const dows = Array.isArray(row?.stay_closed_dows)
+		? [...new Set(row.stay_closed_dows.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort()
+		: [];
+	return { blackouts, dows };
+}
+
+/** フォーム（blackout_start / blackout_end の組・closed_dows）→ StayClosed。両方空の行は捨てる。不正なら理由（日本語） */
+export function stayClosedFromForm(form: FormData): { stayClosed: StayClosed } | { error: string } {
+	const starts = form.getAll('blackout_start').map((v) => String(v).trim());
+	const ends = form.getAll('blackout_end').map((v) => String(v).trim());
+	const blackouts: StayBlackout[] = [];
+	for (let i = 0; i < Math.max(starts.length, ends.length); i++) {
+		const rawStart = starts[i] ?? '';
+		const rawEnd = ends[i] ?? '';
+		if (!rawStart && !rawEnd) continue;
+		// 片方だけなら 1 日だけの不可とみなす
+		const start = dateOf(rawStart || rawEnd);
+		const end = dateOf(rawEnd || rawStart);
+		if (!start || !end) return { error: '宿泊不可期間の日付が正しくありません。' };
+		if (start > end) return { error: '宿泊不可期間は、開始日が終了日より後にならないようにしてください。' };
+		blackouts.push({ start, end });
+	}
+	if (blackouts.length > BLACKOUT_MAX) return { error: `宿泊不可期間は ${BLACKOUT_MAX} 件までです。` };
+	blackouts.sort((a, b) => (a.start === b.start ? a.end.localeCompare(b.end) : a.start.localeCompare(b.start)));
+
+	const dows: number[] = [];
+	for (const v of form.getAll('closed_dows')) {
+		const n = Number(v);
+		if (!Number.isInteger(n) || n < 0 || n > 6) return { error: '宿泊不可の曜日が正しくありません。' };
+		if (!dows.includes(n)) dows.push(n);
+	}
+	dows.sort();
+	return { stayClosed: { blackouts, dows } };
+}

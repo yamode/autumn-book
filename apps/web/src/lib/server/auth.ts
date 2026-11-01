@@ -123,7 +123,9 @@ async function freshStaffUser(client: SupabaseClient, userId: string): Promise<U
 	try {
 		const { data, error } = await client.auth.getUser();
 		const user = !error && data.user?.id === userId ? data.user : null;
-		staffUserCache.set(userId, user);
+		// 確かめられた結果だけ覚える。通信の失敗など一時的なエラーで「管理者でない」を 60 秒覚えると、
+		// その間の保存がすべて「権限がありません」になる（2026-11-02）。外された人は error なしで別の値が返る
+		if (!error) staffUserCache.set(userId, user);
 		return user;
 	} catch {
 		return null;

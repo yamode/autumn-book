@@ -30,10 +30,16 @@ export function currentFacilityOf(event: RequestEvent): { id: string; name: stri
 
 /** 編集できるのは管理者・スタッフだけ（/admin/bath と同じ線引き）。 */
 export function denyIfNotStaff(event: RequestEvent) {
-	const role = event.locals.user?.role;
+	// ログインが切れたまま画面から保存したとき（セッションが無い）は「権限がない」ではなくログインし直しを案内する（2026-11-02）
+	if (!event.locals.user) return fail(401, { error: LOGIN_EXPIRED });
+	const role = event.locals.user.role;
 	if (role !== 'admin' && role !== 'staff') return fail(403, { error: '権限がありません。' });
 	return null;
 }
+
+/** 管理画面の保存でログインが切れていたときの案内（保存はされていない・入力はそのまま残る） */
+export const LOGIN_EXPIRED =
+	'ログインの有効期限が切れたため、保存できませんでした。別のタブで管理画面にログインし直してから、もう一度保存してください（入力した内容はこの画面に残っています）。';
 
 export function messageOf(e: unknown): string {
 	const m =
@@ -124,6 +130,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			isActive: true,
 			publicOnDirect: true,
 			paymentMethod: null,
+			paymentOptions: [...(p.payment.onsite ? ['onsite' as const] : []), ...(p.payment.prepay ? ['online_now' as const, 'online_checkout' as const] : [])],
 			prepayDiscountRate: p.payment.prepayDiscountRate,
 			hasContent: true,
 			slug: p.slug,
@@ -138,6 +145,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			updatedAt: null,
 			access: p.access ?? PUBLIC_ACCESS,
 			limits: { salesStart: null, salesEnd: null, minGuests: null, maxGuests: null, roomTypeIds: [] },
+			stayClosed: { blackouts: [], dows: [] },
 			rmsState: 'rms',
 			bookingStart: null,
 			bookingEnd: null,

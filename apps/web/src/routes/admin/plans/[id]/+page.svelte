@@ -9,6 +9,7 @@
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { qrSvg } from '$lib/qr';
 	import { planSaleState, type PlanSaleState } from '$lib/plan-sale';
+	import { DOW_LABELS } from '$lib/plan-limits';
 
 	// 販売の状態の表示（販売スイッチ＋販売表示期間。実際の出し分けは DB の book.plan_on_sale）
 	const SALE_BADGE: Record<PlanSaleState, { label: string; cls: string }> = {
@@ -22,14 +23,14 @@
 	let { data, form } = $props();
 	let c = $derived(data.content);
 
-	// 支払方法の選択（保存前の画面上の値）。予約時決済の割引は事前決済があるときだけ選べる
+	// 支払方法の組み合わせ（保存前の画面上の値・2026-11-02）。予約時決済の割引は「オンライン（予約時）」があるときだけ選べる
 	// svelte-ignore state_referenced_locally
-	let methodInput = $state<string | null>(data.content.paymentMethod);
+	let optsInput = $state<string[]>([...data.content.paymentOptions]);
 	const DISCOUNT_STEPS = [0, 3, 5, 7, 10, 15, 20];
 	const PAYMENT_OPTIONS = [
-		{ value: 'onsite', label: '現地払いのみ', hint: 'チェックアウト時に現地で精算' },
-		{ value: 'prepayment', label: '事前決済のみ', hint: '予約時にオンラインでカード決済' },
-		{ value: 'deposit', label: 'どちらも選べる', hint: 'お客様が事前決済か現地払いを選ぶ' }
+		{ value: 'onsite', label: '現地払い', hint: 'チェックアウト時に現地で精算' },
+		{ value: 'online_now', label: 'オンライン決済（予約時）', hint: '予約時にカード決済・割引の対象' },
+		{ value: 'online_checkout', label: 'オンライン決済（チェックアウト日）', hint: 'カードを登録し、チェックアウト日に請求' }
 	] as const;
 
 	// 公開範囲（シークレットプラン・保存前の画面上の値）。予約できる人: 誰でも / 会員 / グレード以上
@@ -38,6 +39,11 @@
 	let whoInput = $state<'anyone' | 'members' | 'rank'>(a0.audience === 'public' ? 'anyone' : a0.minRank && a0.minRank !== 'standard' ? 'rank' : 'members');
 	let rankInput = $state<string>(a0.minRank && a0.minRank !== 'standard' ? a0.minRank : 'gold');
 	let linkOnlyInput = $state(a0.linkOnly);
+	// 宿泊不可期間の入力行（何件でも足し引きできる。空の行は保存時に捨てる）
+	// svelte-ignore state_referenced_locally
+	let blackoutRows = $state(data.content.stayClosed.blackouts.map((b) => ({ ...b })));
+	const addBlackoutRow = () => blackoutRows.push({ start: '', end: '' });
+	const removeBlackoutRow = (i: number) => blackoutRows.splice(i, 1);
 	const WHO_OPTIONS = [
 		{ value: 'anyone', label: '誰でも', hint: '会員でなくても予約できる' },
 		{ value: 'members', label: '会員だけ', hint: 'ログインした会員なら予約できる' },
@@ -259,6 +265,35 @@
 		</div>
 		<p class="mt-1 text-xs text-stone-400">泊まれる日の範囲です。予約を受け付ける期間は、上の「販売」の販売表示期間で決めます。</p>
 
+		<p class="mt-3 text-xs font-medium text-stone-600">宿泊不可期間</p>
+		{#if blackoutRows.length}
+			<ul class="mt-1 space-y-1.5">
+				{#each blackoutRows as row, i (i)}
+					<li class="flex flex-wrap items-center gap-2 text-sm text-stone-700">
+						<input type="date" name="blackout_start" bind:value={row.start} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="宿泊不可期間{i + 1}の開始日" />
+						〜
+						<input type="date" name="blackout_end" bind:value={row.end} min={row.start || undefined} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="宿泊不可期間{i + 1}の終了日" />
+						<button type="button" onclick={() => removeBlackoutRow(i)} class="rounded-md px-2 py-1 text-xs text-red-700 hover:bg-red-50">削除</button>
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="mt-1 text-xs text-stone-400">設定なし</p>
+		{/if}
+		<button type="button" onclick={addBlackoutRow} class="mt-1.5 rounded-md border border-stone-300 px-3 py-1 text-xs text-stone-700 hover:bg-stone-50">＋ 期間を追加</button>
+		<p class="mt-1 text-xs text-stone-400">この期間に泊まる日は、検索・空室カレンダー・予約で選べなくなります（開始日・終了日の両日とも不可）。例: 12/29〜1/3。1日だけなら開始日だけ入れても構いません。</p>
+
+		<p class="mt-3 text-xs font-medium text-stone-600">宿泊不可の曜日</p>
+		<div class="mt-1 flex flex-wrap gap-3">
+			{#each DOW_LABELS as label, d (d)}
+				<label class="flex cursor-pointer items-center gap-1.5 text-sm text-stone-700">
+					<input type="checkbox" name="closed_dows" value={d} checked={c.stayClosed.dows.includes(d)} class="h-4 w-4" />
+					{label}
+				</label>
+			{/each}
+		</div>
+		<p class="mt-1 text-xs text-stone-400">チェックした曜日に泊まる日は選べなくなります（チェックアウト日ではなく、宿泊する日の曜日です）。</p>
+
 		<p class="mt-3 text-xs font-medium text-stone-600">ご利用人数（1部屋あたり）</p>
 		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">
 			最小
@@ -289,7 +324,7 @@
 		{/if}
 
 		<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-			保存した内容は、日別料金への反映に最大3時間かかります（同期のあとに販売ページへ反映されます）。
+			保存した内容は、日別料金への反映に最大3時間かかります（同期のあとに販売ページへ反映されます）。宿泊不可の期間・曜日は保存した時点で選べなくなり、外した日は数分で戻ります。
 		</p>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">絞り込みを保存</button>
 	</form>
@@ -360,7 +395,7 @@
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">お食事を保存</button>
 	</form>
 
-	<!-- 支払方法（本番）。booking.rate_plans.payment_method を Book で決める（rms 同期は上書きしない） -->
+	<!-- 支払方法（本番）。book.plan_contents.payment_options（組み合わせ）を Book で決める。rate_plans.payment_method は DB が3択に変換して書く -->
 	<form method="POST" action="?/setPaymentMethod" use:enhance class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 			<h2 class="text-sm font-bold text-stone-700">支払方法</h2>
@@ -369,13 +404,11 @@
 		{#if (form as { paymentError?: string } | null)?.paymentError}
 			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { paymentError?: string }).paymentError}</p>
 		{/if}
-		{#if c.paymentMethod === null}
-			<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">現在の支払方法を読めませんでした。選んで保存すると設定されます。</p>
-		{/if}
+		<p class="mt-2 text-xs text-stone-500">お客様に出す支払方法を選びます（複数可）。施設全体のオン/オフ・非会員の支払方法・文言は <a href="/admin/payments" class="text-sky-700 hover:underline">支払方法</a> の画面で設定します。</p>
 		<div class="mt-3 grid gap-2 sm:grid-cols-3">
 			{#each PAYMENT_OPTIONS as o}
 				<label class="flex cursor-pointer gap-2 rounded-lg border p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50 border-stone-200">
-					<input type="radio" name="method" value={o.value} bind:group={methodInput} class="mt-0.5 h-4 w-4" />
+					<input type="checkbox" name="opt" value={o.value} bind:group={optsInput} class="mt-0.5 h-4 w-4" />
 					<span>
 						<span class="font-medium text-stone-800">{o.label}</span>
 						<span class="mt-0.5 block text-xs text-stone-500">{o.hint}</span>
@@ -383,7 +416,7 @@
 				</label>
 			{/each}
 		</div>
-		{#if methodInput === 'prepayment' || methodInput === 'deposit'}
+		{#if optsInput.includes('online_now')}
 			<label class="mt-3 flex flex-wrap items-center gap-2 text-sm text-stone-700">
 				予約時決済の割引
 				<select name="discount" class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
@@ -395,8 +428,8 @@
 			</label>
 		{/if}
 		<p class="mt-3 text-xs text-stone-400">
-			現地払いでは、予約確認画面でお客様が PayPay・クレジットカード・現金から選びます（PMS の備考に申し送り）。
-			事前決済はオンラインのカード決済です。オンライン決済が使えない状態のときは、事前決済のみのプランも現地払いで受け付けます。
+			現地払いでは、予約確認画面でお客様が現金・クレジットカード・PayPay から選びます（PMS の備考に申し送り）。
+			オンライン決済が使えない状態のときは、オンライン決済のみのプランも現地払いで受け付けます。
 		</p>
 		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">支払方法を保存</button>
 	</form>

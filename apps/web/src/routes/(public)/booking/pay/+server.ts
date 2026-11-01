@@ -36,11 +36,13 @@ import { finishDirectBooking, lateMessage } from '$lib/server/direct-booking-fin
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
+import { saveFavoriteRoomChoices } from '$lib/server/favorites';
 
 const noStore = { 'cache-control': 'private, no-store' };
 const bad = (message: string, status = 400, extra: Record<string, unknown> = {}) => json({ ok: false, message, ...extra }, { status, headers: noStore });
 
-export const POST: RequestHandler = async ({ request, cookies, locals, url }) => {
+export const POST: RequestHandler = async (event) => {
+	const { request, cookies, locals, url } = event;
 	if (DATA_SOURCE !== 'supabase') return bad('この環境ではオンライン決済を使えません。', 503);
 	const form = await request.formData();
 	const action = String(form.get('action') ?? '');
@@ -70,13 +72,18 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			// 販売中でないプラン（スタッフのプレビュー）は決済に進ませない。お客様は上で読めず「期限切れ」になる
 			if (roomViews.some((r) => r.preview)) return bad('プレビュー中のため、予約は確定できません（このプランは販売中ではありません）。', 403);
 			// 非会員は非会員の支払方法で判定（DB の direct_payment_prepare も同じ判定をする）。複数室は全室のプランで許されているときだけ
-			if (!payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: true }).options.includes('card')) {
+			// 予約時決済はカード、チェックアウト日決済はそのプランで許されているときだけ（DB の direct_payment_prepare も同じ判定をする）
+			const allowed = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: true });
+			if (form.get('timing') === 'checkout' ? !allowed.checkout : !allowed.options.includes('card')) {
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);
 			}
 			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）。複数室は部屋ごとの男女・回答を guest.rooms に入れ、
 			// DB の direct_payment_confirm が確定のときに部屋ごとの回答（p_rooms_detail）として渡す（autumn-shared 20261010125453）
 			const answered = await applyGroupAnswers(form, hold.facilityId, hold.rooms.map((r) => ({ planId: r.planId, adults: r.adults })), parsed.guest);
 			if (!answered.ok) return bad(answered.message, 400, { errors: { questions: answered.message } });
+			// お気に入りの部屋の指定（会員が選んだとき）を仮押さえに残す。確定（支払の完了・カードの登録）のときに DB が空きを確かめて部屋指定する
+			const favError = await saveFavoriteRoomChoices(event, hold.id, sid, form);
+			if (favError) return bad(favError, 400, { errors: { favoriteRoom: favError } });
 			const common = {
 				holdId: hold.id,
 				sessionId: sid,

@@ -38,6 +38,7 @@ import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
 import { isStaffViewer, planOrPreview, previewPlanForHold } from '$lib/server/plan-preview';
 import type { RoomType } from '$lib/types';
+import { favoriteRoomTypeIds } from '$lib/server/favorites';
 import type { Actions, PageServerLoad } from './$types';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
@@ -50,6 +51,8 @@ async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUu
 
 export const load: PageServerLoad = async (event) => {
 	const { params, url, locals, cookies } = event;
+	// 会員のお気に入りの部屋がある部屋タイプ（客室の行に「お気に入り」と出す）。会員でなければ空
+	const favoritesP = favoriteRoomTypeIds(event);
 	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
@@ -113,6 +116,7 @@ export const load: PageServerLoad = async (event) => {
 			plan,
 			rooms: roomRows,
 			pickedRoom,
+			favoriteRoomTypeIds: await favoritesP,
 			calendar: calendar.days,
 			calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
@@ -159,6 +163,7 @@ export const load: PageServerLoad = async (event) => {
 		rooms,
 		// デモはプランの全客室が rooms に入る（選んだ客室はその中から探す）
 		pickedRoom: null as RoomType | null,
+		favoriteRoomTypeIds: await favoritesP,
 		calendar: calendar.days,
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,

@@ -9,7 +9,7 @@
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
-	import { directChargeOf, type PayOption } from '$lib/direct-payment';
+	import { directChargeOf, payTextFor, type PayOption, type PayTextGroup } from '$lib/direct-payment';
 	import { percentText } from '$lib/early-prepay';
 	import { addDays, formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
@@ -26,6 +26,15 @@
 
 	// 複数室（docs/official-multi-room.md §8.3・M1）: 部屋ごとのカード・男女・部屋ごとの質問を出す。1 室は従来の画面のまま
 	let rooms = $derived(data.expired ? [] : data.rooms);
+	// お気に入りの部屋の指定（会員）。部屋ごとの候補（その日程に空いているお気に入りの部屋）と、選んだ部屋 id（'' は指定しない）
+	let favRooms = $derived(
+		data.expired
+			? []
+			: rooms
+					.map((r) => ({ index: r.index, roomName: r.roomName, choices: data.favoriteChoices[r.index] ?? [] }))
+					.filter((r) => r.choices.length > 0)
+	);
+	let favPicked = $state<Record<number, string>>({});
 	let multi = $derived(rooms.length > 1);
 	// 特別会員の専用ページ経由の束（docs/vip-member-page.md §13.4.3-4）。公式の束は null
 	let memberPage = $derived(data.expired ? null : data.memberPage);
@@ -51,7 +60,13 @@
 	// サーバへは payment=card / paypay / onsite_paypay / onsite_card / onsite_cash で送る。現地払いは予約のまま備考で宿へ申し送る
 	type OnsiteMethod = 'paypay' | 'card' | 'cash';
 	type PayChoice = PayOption | `onsite_${OnsiteMethod}`;
-	const ONSITE_METHODS: OnsiteMethod[] = ['cash', 'card', 'paypay'];
+	// 施設でオンの内訳だけ（管理画面の支払方法でオン/オフ）。並びは 現金・カード・PayPay
+	let ONSITE_METHODS = $derived<OnsiteMethod[]>(
+		(data.expired ? null : data.onsiteMethods)?.filter((v): v is OnsiteMethod => v === 'cash' || v === 'card' || v === 'paypay') ?? ['cash', 'card', 'paypay']
+	);
+	// 支払方法の名前・説明文（施設が管理画面で書き換えていればそれ、無ければ既定の文言）
+	const payText = (group: PayTextGroup, field: 'label' | 'note', fallback: string) =>
+		(data.expired ? null : payTextFor(data.paymentTexts, group, field, getLocale())) ?? fallback;
 	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
 	let onlineOptions = $derived(data.expired ? [] : data.payOptions.filter((v): v is 'card' | 'paypay' => v !== 'onsite'));
 	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
@@ -78,14 +93,16 @@
 	const registerHref = '/auth/register';
 	// オンライン決済（チェックアウト日・2026-11-01）: カード決済が使えるプランで、実データ（同じ画面で払う方式）のときだけ。
 	// 予約時にカードを登録し、チェックアウト日に請求する（予約時決済の割引・早期決済ポイント・事務手数料は付かない）
-	let hasCheckout = $derived(!data.expired && data.inline && onlineOptions.includes('card'));
+	let hasCheckout = $derived(!data.expired && data.inline && data.checkoutOption);
 	let selectedGroup = $state<'online' | 'checkout' | 'onsite' | null>(null);
-	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : 'onsite'));
+	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : hasOnsite ? 'onsite' : hasCheckout ? 'checkout' : 'onsite'));
 	let checkoutCard = $derived(group === 'checkout' && hasCheckout);
 	// 請求日＝チェックアウト日（仮押さえの泊数から）
 	let chargeOnText = $derived(data.expired ? '' : formatDateLong(addDays(data.hold.checkin, data.hold.nights)));
 	let selectedOnline = $state<'card' | 'paypay' | null>(null);
-	let onsiteMethod = $state<OnsiteMethod>('cash');
+	let pickedOnsite = $state<OnsiteMethod | null>(null);
+	// 選んだ内訳が施設でオフなら、オンの先頭（既定は現金）
+	let onsiteMethod = $derived<OnsiteMethod>(pickedOnsite && ONSITE_METHODS.includes(pickedOnsite) ? pickedOnsite : (ONSITE_METHODS[0] ?? 'cash'));
 	let furusatoVoucher = $state(false);
 	let payValue = $derived<PayChoice>(
 		group === 'online' ? (selectedOnline ?? onlineOptions[0] ?? 'card') : group === 'checkout' ? 'card' : `onsite_${onsiteMethod}`
@@ -504,9 +521,39 @@
 						<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.hold_field_notes_ph()}></textarea>
 					</label>
 
+					{#if favRooms.length > 0}
+						<!-- お気に入りの部屋の指定（会員・その日程に空いているお気に入りの部屋があるときだけ）。料金はかからない。
+						     確定のときに DB がもう一度空きを確かめ、空いていれば部屋指定する（埋まっていたら指定せずに確定・完了画面で伝える） -->
+						<fieldset class="space-y-2 rounded-lg border border-red-100 bg-red-50/40 p-3 text-sm">
+							<legend class="px-1 font-medium text-brand-900">{m.hold_fav_heading()}</legend>
+							{#each favRooms as fr (fr.index)}
+								<div>
+									{#if multi}<p class="mb-1 text-xs text-stone-500">{m.hold_fav_room_n({ n: String(fr.index), room: fr.roomName })}</p>{/if}
+									<div class="flex flex-wrap gap-2" role="radiogroup">
+										<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {(favPicked[fr.index] ?? '') === '' ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
+											<input type="radio" name="fav_{fr.index}" value="" checked={(favPicked[fr.index] ?? '') === ''} onchange={() => (favPicked[fr.index] = '')} class="h-3.5 w-3.5" />
+											{m.hold_fav_none()}
+										</label>
+										{#each fr.choices as c (c.roomId)}
+											{@const takenElsewhere = Object.entries(favPicked).some(([i, id]) => Number(i) !== fr.index && id === c.roomId)}
+											<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {favPicked[fr.index] === c.roomId ? 'border-red-300 bg-white font-medium text-red-700' : 'border-stone-300 bg-white/70'} {takenElsewhere ? 'opacity-40' : ''}">
+												<input type="radio" name="fav_{fr.index}" value={c.roomId} checked={favPicked[fr.index] === c.roomId} disabled={takenElsewhere} onchange={() => (favPicked[fr.index] = c.roomId)} class="h-3.5 w-3.5" />
+												{m.hold_fav_room({ name: c.name, number: c.roomNumber })}
+											</label>
+										{/each}
+									</div>
+								</div>
+							{/each}
+							<p class="text-xs text-stone-500">{m.hold_fav_note()}</p>
+							{#if form?.errors && 'favoriteRoom' in form.errors && form.errors.favoriteRoom}
+								<p role="alert" class="text-xs text-red-600">{form.errors.favoriteRoom}</p>
+							{/if}
+						</fieldset>
+					{/if}
+
 					{#if data.member}
 						<div class="rounded-lg bg-emerald-50 p-3 text-sm">
-							<p class="font-medium text-emerald-800">{m.hold_points_label({ balance: String(data.member.balance), earn: String(data.member.earn) })}</p>
+							<p class="font-medium text-emerald-800">{m.hold_points_label({ balance: data.member.balance.toLocaleString() })}</p>
 							<div class="mt-2 flex items-center gap-2">
 								<input type="number" name="points" min="0" max={data.member.balance} bind:value={pointsInput} readonly={paying} class="w-32 rounded-md border border-stone-300 px-3 py-1.5" />
 								<span class="text-stone-500">{m.hold_points_use()}</span>
@@ -523,7 +570,7 @@
 							<div class="rounded-md border transition {group === 'online' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
 								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
 									<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{m.pay_group_online()}</span>
+									<span class="flex-1 font-medium">{payText('online_now', 'label', m.pay_group_online())}</span>
 									{#if prepayAmount > 0}
 										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
 									{/if}
@@ -616,6 +663,7 @@
 											<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
 										{/if}
 										{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
+										{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
 										<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
 										{#if data.adminFeePercent}<p class="text-xs text-amber-900">{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}</p>{/if}
 									</div>
@@ -628,10 +676,10 @@
 							<div class="rounded-md border transition {group === 'checkout' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
 								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
 									<input type="radio" name="payGroup" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{m.pay_group_checkout()}</span>
+									<span class="flex-1 font-medium">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
 								</label>
 								{#if group === 'checkout'}
-									<div class="border-t border-amber-200/60 px-3 py-2.5 pl-9 text-xs text-stone-600">{m.pay_checkout_note()}</div>
+									<div class="whitespace-pre-line border-t border-amber-200/60 px-3 py-2.5 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</div>
 								{/if}
 							</div>
 						{/if}
@@ -640,15 +688,16 @@
 							<div class="rounded-md border transition {group === 'onsite' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
 								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
 									<input type="radio" name="payGroup" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{m.pay_group_onsite()}</span>
+									<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
 								</label>
 								{#if group === 'onsite'}
 									<div class="border-t border-amber-200/60 px-3 py-2.5 pl-9">
+										{#if payText('onsite', 'note', '')}<p class="mb-2 whitespace-pre-line text-xs text-stone-600">{payText('onsite', 'note', '')}</p>{/if}
 										<p class="mb-1.5 text-xs text-stone-500">{m.pay_onsite_how()}</p>
 										<div class="flex flex-wrap gap-2" role="radiogroup" aria-label={m.pay_onsite_how()}>
 											{#each ONSITE_METHODS as v (v)}
 												<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
-													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (onsiteMethod = v)} class="h-3.5 w-3.5" />
+													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (pickedOnsite = v)} class="h-3.5 w-3.5" />
 													<!-- PayPay は公式ロゴ（static/site-assets/paypay-logo.png・余白込みの公式素材をそのまま）。文字と同じくらいの大きさで目立たせすぎない -->
 													{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 h-6 w-auto" width="66" height="24" />{:else}{onsiteMethodLabel(v)}{/if}
 												</label>
@@ -798,6 +847,14 @@
 						</div>
 					{:else if data.bathTax > 0 && !inlinePay}
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
+					{/if}
+					{#if data.member && data.member.earn > 0}
+						<!-- 付与予定のポイント（会員ランクの通常ポイント）。ポイント利用欄には今使える残高だけを出し、付与予定はここに分ける -->
+						<div class="mt-2 flex justify-between text-sm text-emerald-700">
+							<span>{m.hold_points_earn()}</span>
+							<span class="tabular-nums">+{data.member.earn.toLocaleString()}{m.common_point_unit()}</span>
+						</div>
+						<p class="text-right text-xs text-stone-500">{m.hold_points_earn_note()}</p>
 					{/if}
 				</div>
 				{#if memberPage}

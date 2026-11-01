@@ -1,12 +1,14 @@
 import { error } from '@sveltejs/kit';
 import { bookings, facilityById, planById, roomTypeById } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { getLastBooking, sbFacilityByUuid, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
+import { getLastBooking, sbFacilityByUuid, sbMyBookingFavoriteRooms, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
+import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import type { Booking } from '$lib/types';
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, cookies, locals }) => {
+export const load: PageServerLoad = async (event) => {
+	const { params, cookies, locals } = event;
 	if (DATA_SOURCE === 'supabase') {
 		// 確定直後に確定アクションが書いた直近予約 cookie から復元する（anon で booking を再取得する RPC が無いため）。
 		const raw = await getLastBooking(cookies);
@@ -64,6 +66,11 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		// 早期決済ポイント（施設が points のとき・宿泊後に付与予定）
 		const prepayBonus = (raw.prepayBonusPoints ?? 0) > 0 ? { points: raw.prepayBonusPoints ?? 0, rate: raw.prepayBonusRate ?? 0 } : null;
 		// 特別会員の専用ページ経由の予約: 「ご予約の確認・変更は特別会員ページのご予約一覧から」（docs/vip-member-page.md §13.4.4）
+		// お気に入りの部屋の指定の結果（会員が予約確認画面で選んだとき・確定のときに DB が空きを確かめて指定した）
+		const favoriteRooms =
+			MEMBER_SUPABASE && locals.user?.role === 'member'
+				? await sbMyBookingFavoriteRooms(createSupabaseServerClient(event), raw.code).catch(() => [])
+				: [];
 		const memberPageUrl = raw.memberPage ? await memberPageHrefFor(raw.memberPage.partnerId, raw.code).catch(() => null) : null;
 		return {
 			booking,
@@ -78,7 +85,8 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 			chargeOn: raw.chargeOn ?? null,
 			isMember: locals.user?.role === 'member',
 			memberPageUrl,
-			memberPageName: raw.memberPage?.pageName ?? null
+			memberPageName: raw.memberPage?.pageName ?? null,
+			favoriteRooms
 		};
 	}
 
@@ -97,6 +105,7 @@ export const load: PageServerLoad = async ({ params, cookies, locals }) => {
 		chargeOn: null as string | null,
 		isMember: locals.user?.role === 'member',
 		memberPageUrl: null as string | null,
-		memberPageName: null as string | null
+		memberPageName: null as string | null,
+		favoriteRooms: [] as { roomIndex: number; name: string; designated: boolean }[]
 	};
 };

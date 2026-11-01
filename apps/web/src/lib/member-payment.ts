@@ -7,12 +7,13 @@ import type { PaymentConfig, PaymentMethods } from '$lib/types';
 /** payment_method（onsite / prepayment / deposit）→ 支払方法。不明な値は null */
 export function paymentMethodsOf(pm: unknown): PaymentMethods | null {
 	switch (pm) {
+		// 予約時決済のあるプランはチェックアウト日決済も出す（組み合わせが入る前と同じ見え方・autumn-shared 20261101210350 の移行と同じ）
 		case 'prepayment':
-			return { onsite: false, prepay: true, prepayMethods: ['card'] };
+			return { onsite: false, prepay: true, prepayMethods: ['card'], checkout: true };
 		case 'deposit':
-			return { onsite: true, prepay: true, prepayMethods: ['card'] };
+			return { onsite: true, prepay: true, prepayMethods: ['card'], checkout: true };
 		case 'onsite':
-			return { onsite: true, prepay: false, prepayMethods: [] };
+			return { onsite: true, prepay: false, prepayMethods: [], checkout: false };
 		default:
 			return null;
 	}
@@ -26,7 +27,7 @@ export function paymentMethodsOf(pm: unknown): PaymentMethods | null {
 export function paymentFor<T extends PaymentConfig>(payment: T, isMember: boolean): T {
 	if (isMember || !payment.nonMember) return payment;
 	const nm = payment.nonMember;
-	const next: T = { ...payment, onsite: nm.onsite, prepay: nm.prepay, prepayMethods: [...nm.prepayMethods] };
+	const next: T = { ...payment, onsite: nm.onsite, prepay: nm.prepay, prepayMethods: [...nm.prepayMethods], checkout: nm.checkout };
 	if (!nm.prepay) {
 		next.prepayDiscountRate = 0;
 		delete next.earlyPrepayMaxRate;

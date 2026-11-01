@@ -13,6 +13,15 @@ import {
 } from '$lib/early-prepay';
 import type { PlanPaymentMethod } from '$lib/server/content-admin';
 import { DEFAULT_ADMIN_FEE_PERCENT, normalizeAdminFeePercent, roundAdminFeePercent } from '$lib/cancel-admin-fee';
+import {
+  FACILITY_PAY_METHODS,
+  PLAN_PAY_OPTIONS,
+  normalizeOptions,
+  normalizePaymentTexts,
+  type FacilityPayMethod,
+  type PaymentTexts,
+  type PlanPayOption
+} from '$lib/direct-payment';
 import { DATA_SOURCE, supa } from './supabase';
 import { FACILITY_UUID } from './supabase-data';
 
@@ -61,6 +70,22 @@ export async function loadCancelAdminFeePercent(facilityId: string): Promise<num
   }
 }
 
+/**
+ * 公開側: 予約確認画面の支払方法の名前・説明文（施設ごとの上書き・autumn-shared 20261101211030）。
+ * 読めなかったとき（migration 未適用・行が無い）は空＝画面の既定の文言。
+ */
+export async function loadPaymentTexts(facilityId: string): Promise<PaymentTexts> {
+  if (DATA_SOURCE !== 'supabase') return {};
+  const uuid = FACILITY_UUID[facilityId] ?? facilityId;
+  try {
+    const { data, error } = await supa().from('payment_settings').select('payment_texts').eq('facility_id', uuid).maybeSingle();
+    if (error || !data) return {};
+    return normalizePaymentTexts((data as { payment_texts?: unknown }).payment_texts);
+  } catch {
+    return {};
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 管理画面
 // ---------------------------------------------------------------------------
@@ -82,12 +107,20 @@ export type AdminPaymentPlan = {
   earlyPrepay: boolean;
   /** 非会員の支払方法（null = 会員と同じ） */
   nonmemberPaymentMethod: PlanPaymentMethod | null;
+  /** このプランで出す支払方法の組み合わせ（施設でオフの方法を含むことがある＝画面で薄く見せる） */
+  paymentOptions: PlanPayOption[];
+  /** 非会員の組み合わせ（null = 会員と同じ） */
+  nonmemberPaymentOptions: PlanPayOption[] | null;
 };
 
 export type AdminPaymentSettings = {
   earlyPrepay: EarlyPrepaySettings;
   /** 予約時決済の事務手数料（取消時に返金しない率・%）。既定 5 */
   cancelAdminFeePercent: number;
+  /** 施設全体でオンの支払方法 */
+  paymentMethods: FacilityPayMethod[];
+  /** 予約確認画面の支払方法の名前・説明文（上書き） */
+  paymentTexts: PaymentTexts;
   updatedAt: string | null;
   plans: AdminPaymentPlan[];
 };
@@ -115,6 +148,9 @@ export async function sbAdminPaymentSettings(client: SupabaseClient, facilityUui
   return {
     earlyPrepay: normalizeEarlyPrepaySettings(d),
     cancelAdminFeePercent: normalizeAdminFeePercent(d.cancel_admin_fee_percent),
+    // 列が無い（migration 未適用）ときは全部オン＝従来どおり
+    paymentMethods: Array.isArray(d.payment_methods) ? normalizeOptions(FACILITY_PAY_METHODS, d.payment_methods) : [...FACILITY_PAY_METHODS],
+    paymentTexts: normalizePaymentTexts(d.payment_texts),
     updatedAt: (d.updated_at as string | null) ?? null,
     plans: plans.map((p) => ({
       id: String(p.id),
@@ -128,9 +164,66 @@ export async function sbAdminPaymentSettings(client: SupabaseClient, facilityUui
       paymentMethod: METHODS.includes(p.payment_method as PlanPaymentMethod) ? (p.payment_method as PlanPaymentMethod) : 'onsite',
       prepayDiscountRate: Number(p.prepay_discount_rate ?? 0) || 0,
       earlyPrepay: p.early_prepay === true,
-      nonmemberPaymentMethod: METHODS.includes(p.nonmember_payment_method as PlanPaymentMethod) ? (p.nonmember_payment_method as PlanPaymentMethod) : null
+      nonmemberPaymentMethod: METHODS.includes(p.nonmember_payment_method as PlanPaymentMethod) ? (p.nonmember_payment_method as PlanPaymentMethod) : null,
+      paymentOptions: optionsOrLegacy(p.payment_options, p.payment_method) ?? ['onsite'],
+      nonmemberPaymentOptions: optionsOrLegacy(p.nonmember_payment_options, p.nonmember_payment_method)
     }))
   };
+}
+
+/** 組み合わせの列があればそれ、無ければ従来の3択から（null = 未設定） */
+function optionsOrLegacy(options: unknown, method: unknown): PlanPayOption[] | null {
+  if (Array.isArray(options)) {
+    const o = normalizeOptions(PLAN_PAY_OPTIONS, options);
+    return o.length > 0 ? o : null;
+  }
+  switch (method) {
+    case 'prepayment':
+      return ['online_now', 'online_checkout'];
+    case 'deposit':
+      return ['onsite', 'online_now', 'online_checkout'];
+    case 'onsite':
+      return ['onsite'];
+    default:
+      return null;
+  }
+}
+
+/** 施設全体の支払方法のオン/オフを保存する（管理者だけ・DB でも検査） */
+export async function sbSavePaymentMethods(client: SupabaseClient, facilityUuid: string, methods: FacilityPayMethod[]): Promise<void> {
+  const { error } = await client.schema('book').rpc('admin_save_payment_methods', { p_facility_id: facilityUuid, p_methods: methods });
+  if (error) {
+    if (error.message.includes('invalid_params')) throw new Error('支払方法を1つ以上オンにしてください。');
+    throw friendly(error, '支払方法のオン/オフを保存できませんでした');
+  }
+}
+
+/** 予約確認画面の支払方法の名前・説明文を保存する（管理者だけ） */
+export async function sbSavePaymentTexts(client: SupabaseClient, facilityUuid: string, texts: PaymentTexts): Promise<void> {
+  const { error } = await client.schema('book').rpc('admin_save_payment_texts', { p_facility_id: facilityUuid, p_texts: texts });
+  if (error) {
+    if (error.message.includes('text_too_long')) throw new Error('文言が長すぎます（名前は60文字、説明は600文字まで）。');
+    throw friendly(error, '支払方法の文言を保存できませんでした');
+  }
+}
+
+/** プランの支払方法の組み合わせと定率割引を保存する（スタッフも可） */
+export async function sbSetPlanPaymentOptions(client: SupabaseClient, ratePlanId: string, options: PlanPayOption[], prepayDiscountRate: number): Promise<void> {
+  const { error } = await client
+    .schema('book')
+    .rpc('admin_set_plan_payment_options', { p_rate_plan_id: ratePlanId, p_options: options, p_prepay_discount_rate: prepayDiscountRate });
+  if (error) {
+    if (error.message.includes('invalid_params')) throw new Error('支払方法を1つ以上選んでください（割引は 0〜20%）。');
+    throw friendly(error, 'プランの支払方法を保存できませんでした');
+  }
+}
+
+/** プランの非会員の組み合わせを保存する（null = 会員と同じ） */
+export async function sbSetPlanNonmemberOptions(client: SupabaseClient, ratePlanId: string, options: PlanPayOption[] | null): Promise<void> {
+  const { error } = await client
+    .schema('book')
+    .rpc('admin_set_plan_nonmember_options', { p_rate_plan_id: ratePlanId, p_options: options && options.length > 0 ? options : null });
+  if (error) throw friendly(error, '非会員の支払方法を保存できませんでした');
 }
 
 export async function sbSaveEarlyPrepaySettings(client: SupabaseClient, facilityUuid: string, s: EarlyPrepaySettings): Promise<void> {

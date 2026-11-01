@@ -407,13 +407,15 @@ export function combineQuotes(quotes: readonly Quote[]): Quote {
  * 予約時決済の手段は全室の共通部分。何も残らないとき（かごを通らずに来た組み合わせ）は onsite も prepay も false。
  */
 export function combinePayments<M extends string>(
-	payments: readonly { onsite: boolean; prepay: boolean; prepayMethods: readonly M[] }[]
-): { onsite: boolean; prepay: boolean; prepayMethods: M[] } {
-	if (payments.length === 0) return { onsite: false, prepay: false, prepayMethods: [] };
+	payments: readonly { onsite: boolean; prepay: boolean; prepayMethods: readonly M[]; checkout?: boolean }[]
+): { onsite: boolean; prepay: boolean; prepayMethods: M[]; checkout: boolean } {
+	if (payments.length === 0) return { onsite: false, prepay: false, prepayMethods: [], checkout: false };
 	const onsite = payments.every((p) => p.onsite);
 	const prepay = payments.every((p) => p.prepay);
 	const methods = prepay ? payments[0].prepayMethods.filter((m) => payments.every((p) => p.prepayMethods.includes(m))) : [];
-	return { onsite, prepay: prepay && methods.length > 0, prepayMethods: methods };
+	// チェックアウト日決済も全室で許されているときだけ（未設定は従来どおり「予約時のカード決済があれば」）
+	const checkout = payments.every((p) => (p.checkout !== undefined ? p.checkout : p.prepay && (p.prepayMethods as readonly string[]).includes('card')));
+	return { onsite, prepay: prepay && methods.length > 0, prepayMethods: methods, checkout };
 }
 
 // ---------------------------------------------------------------------------

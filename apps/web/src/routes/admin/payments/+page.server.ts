@@ -16,7 +16,15 @@ import {
 } from '$lib/partner-booking';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { LIVE, NOT_LIVE, currentFacilityOf, demoPlanContents, denyIfNotStaff, messageOf } from '$lib/server/admin-content-page';
-import { PLAN_PAYMENT_METHODS, sbSetPlanPayment, type PlanPaymentMethod } from '$lib/server/content-admin';
+import type { PlanPaymentMethod } from '$lib/server/content-admin';
+import {
+  FACILITY_PAY_METHODS,
+  PAY_TEXT_GROUPS,
+  PAY_TEXT_LOCALES,
+  PLAN_PAY_OPTIONS,
+  normalizeOptions,
+  type PaymentTexts
+} from '$lib/direct-payment';
 import { directPaymentsReady } from '$lib/server/direct-payments';
 import { listPartners, PARTNER_KIND_LABELS, PartnerStoreError, requireStaffPartner, updatePartner } from '$lib/server/partners/store';
 import { staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
@@ -25,8 +33,11 @@ import {
   sbAdminPaymentSettings,
   sbSaveCancelAdminFee,
   sbSaveEarlyPrepaySettings,
+  sbSavePaymentMethods,
+  sbSavePaymentTexts,
   sbSetPlanEarlyPrepay,
-  sbSetPlanNonmemberPayment
+  sbSetPlanNonmemberOptions,
+  sbSetPlanPaymentOptions
 } from '$lib/server/payment-settings';
 import { adminFeePercentError, DEFAULT_ADMIN_FEE_PERCENT } from '$lib/cancel-admin-fee';
 import { inlinePaymentReady } from '$lib/server/stripe';
@@ -56,13 +67,22 @@ export const load: PageServerLoad = async (event) => {
       paymentMethod: (p.prepayDiscountRate > 0 ? 'deposit' : 'onsite') as PlanPaymentMethod,
       prepayDiscountRate: p.prepayDiscountRate,
       earlyPrepay: true,
-      nonmemberPaymentMethod: null
+      nonmemberPaymentMethod: null,
+      paymentOptions: (p.prepayDiscountRate > 0 ? ['onsite', 'online_now', 'online_checkout'] : ['onsite']) as (typeof PLAN_PAY_OPTIONS)[number][],
+      nonmemberPaymentOptions: null
     }));
     return {
       ...base,
       live: false as const,
       notLive: NOT_LIVE,
-      settings: { earlyPrepay: await loadEarlyPrepaySettings(currentFacility.id), cancelAdminFeePercent: DEFAULT_ADMIN_FEE_PERCENT, updatedAt: null, plans },
+      settings: {
+        earlyPrepay: await loadEarlyPrepaySettings(currentFacility.id),
+        cancelAdminFeePercent: DEFAULT_ADMIN_FEE_PERCENT,
+        paymentMethods: [...FACILITY_PAY_METHODS],
+        paymentTexts: {} as PaymentTexts,
+        updatedAt: null,
+        plans
+      },
       settingsError: null,
       partners: [],
       partnersError: NOT_LIVE,
@@ -164,30 +184,69 @@ export const actions: Actions = {
     }
   },
 
-  // プラン別（支払方法・定率割引・早期決済割の対象）
+  // 施設全体の支払方法のオン/オフ（公式サイト・2026-11-02）。お客様に出す方法が変わるので管理者だけ（DB でも検査）
+  saveMethods: async (event) => {
+    if (!isAdmin(event)) return fail(403, { scope: 'methods', error: '支払方法のオン/オフは管理者だけが変更できます。' });
+    if (!LIVE) return fail(503, { scope: 'methods', error: NOT_LIVE });
+    const fd = await event.request.formData();
+    const methods = normalizeOptions(FACILITY_PAY_METHODS, fd.getAll('m').map(String));
+    if (methods.length === 0) return fail(400, { scope: 'methods', error: '支払方法を1つ以上オンにしてください。' });
+    try {
+      await sbSavePaymentMethods(createSupabaseServerClient(event), currentFacilityOf(event).uuid, methods);
+      return { scope: 'methods', saved: true };
+    } catch (e) {
+      return fail(400, { scope: 'methods', error: messageOf(e) });
+    }
+  },
+
+  // 予約確認画面の支払方法の名前・説明文（言語ごと・空欄は既定の文言）。管理者だけ
+  saveTexts: async (event) => {
+    if (!isAdmin(event)) return fail(403, { scope: 'texts', error: '支払方法の文言は管理者だけが変更できます。' });
+    if (!LIVE) return fail(503, { scope: 'texts', error: NOT_LIVE });
+    const fd = await event.request.formData();
+    const texts: PaymentTexts = {};
+    for (const g of PAY_TEXT_GROUPS) {
+      for (const field of ['label', 'note'] as const) {
+        for (const l of PAY_TEXT_LOCALES) {
+          const v = String(fd.get(`${g}.${field}.${l}`) ?? '').trim();
+          if (!v) continue;
+          const grp = (texts[g] ??= {});
+          (grp[field] ??= {})[l] = v;
+        }
+      }
+    }
+    try {
+      await sbSavePaymentTexts(createSupabaseServerClient(event), currentFacilityOf(event).uuid, texts);
+      return { scope: 'texts', saved: true };
+    } catch (e) {
+      return fail(400, { scope: 'texts', error: messageOf(e) });
+    }
+  },
+
+  // プラン別（支払方法の組み合わせ・定率割引・早期決済割の対象・非会員の組み合わせ）
   savePlan: async (event) => {
     const denied = denyIfNotStaff(event);
     if (denied) return denied;
     if (!LIVE) return fail(503, { scope: 'plan', error: NOT_LIVE });
     const fd = await event.request.formData();
     const planId = String(fd.get('planId') ?? '');
-    const method = String(fd.get('method') ?? '');
-    if (!(PLAN_PAYMENT_METHODS as readonly string[]).includes(method)) {
-      return fail(400, { scope: 'plan', planId, error: '支払方法を選んでください。' });
-    }
-    const pct = method === 'onsite' ? 0 : Math.round(Number(fd.get('discount') ?? 0));
+    const options = normalizeOptions(PLAN_PAY_OPTIONS, fd.getAll('opt').map(String));
+    if (options.length === 0) return fail(400, { scope: 'plan', planId, error: '支払方法を1つ以上選んでください。' });
+    const pct = options.includes('online_now') ? Math.round(Number(fd.get('discount') ?? 0)) : 0;
     if (!Number.isFinite(pct) || pct < 0 || pct > 20) {
       return fail(400, { scope: 'plan', planId, error: '定率の割引は 0〜20% で選んでください。' });
     }
     const early = fd.get('early') === 'on';
-    // 非会員の支払方法（空 = 会員と同じ）
-    const nm = String(fd.get('nonmember') ?? '');
-    const nonmember = (PLAN_PAYMENT_METHODS as readonly string[]).includes(nm) ? (nm as PlanPaymentMethod) : null;
+    // 非会員の組み合わせ（「会員と同じ」なら null）
+    const nonmember = fd.get('nm_same') === 'on' ? null : normalizeOptions(PLAN_PAY_OPTIONS, fd.getAll('nm_opt').map(String));
+    if (nonmember && nonmember.length === 0) {
+      return fail(400, { scope: 'plan', planId, error: '非会員の支払方法を1つ以上選ぶか、「会員と同じ」にしてください。' });
+    }
     const client = createSupabaseServerClient(event);
     try {
-      await sbSetPlanPayment(client, planId, method as PlanPaymentMethod, pct / 100);
+      await sbSetPlanPaymentOptions(client, planId, options, pct / 100);
       await sbSetPlanEarlyPrepay(client, planId, early);
-      await sbSetPlanNonmemberPayment(client, planId, nonmember);
+      await sbSetPlanNonmemberOptions(client, planId, nonmember);
       return { scope: 'plan', planId, saved: true };
     } catch (e) {
       return fail(400, { scope: 'plan', planId, error: messageOf(e) });

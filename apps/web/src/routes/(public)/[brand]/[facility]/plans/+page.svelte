@@ -197,6 +197,10 @@
 							<img src={roomPhoto(item.room)} alt={item.room.name} class="aspect-[16/9] w-full object-cover md:aspect-[16/11]" loading="lazy" />
 						</button>
 						<div class="p-4 sm:p-5">
+							{#if data.favoriteRoomTypeIds.includes(item.room.id)}
+								<!-- 会員のお気に入りの部屋がある部屋タイプ（マイページのお気に入りで登録） -->
+								<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
+							{/if}
 							<h3 class="font-display text-lg leading-snug text-brand-900">{item.room.name}</h3>
 							<p class="mt-2 text-xs text-stone-500">{m.room_card_capacity({ n: String(item.room.capacity), size: String(item.room.sizeM2) })}</p>
 							{#if item.room.amenities.length}
@@ -220,6 +224,7 @@
 												{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{option.plan.mealPlan}</span>{/if}
 												{#if option.plan.payment.onsite}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.pay_onsite()}</span>{/if}
 												{#if option.plan.payment.prepay}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_card()}</span>{/if}
+												{#if option.plan.payment.checkout}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_checkout()}</span>{/if}
 											</div>
 											{#if option.plan.access}<PlanAccessBadge access={option.plan.access} size="sm" />{/if}
 											<h4 class="font-medium leading-6 text-stone-900">{option.plan.name}</h4>

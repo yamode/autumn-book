@@ -4,6 +4,7 @@ import { AUTH_MODE, adminMfaRequired, resolveSupabaseSessionUser } from '$lib/se
 import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
+import '$lib/locale-strategy'; // 言語の持ち越し戦略（paraglideMiddleware より前に登録）
 import { experimentsForRequest } from '$lib/server/experiments';
 import { applySecurityHeaders } from '$lib/server/security-headers';
 import { logAdminAccess } from '$lib/server/access-log';

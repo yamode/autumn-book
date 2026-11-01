@@ -7,9 +7,10 @@
 //   booking スキーマは Data API に出していないので、book.v_admin_rate_plans（security_invoker ビュー）から読む。
 //   読めなければプラン名の代わりに slug を出し、画面に理由を出す（一覧そのものは落とさない）。
 import { planAccessOf, type PlanAccess } from '$lib/plan-access';
-import { planLimitsOf, type PlanLimits } from '$lib/plan-limits';
+import { planLimitsOf, stayClosedOf, type PlanLimits, type StayClosed } from '$lib/plan-limits';
 import { planMealsOf, type DinnerCourseOption, type PlanMeals } from '$lib/plan-meals';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PLAN_PAY_OPTIONS, normalizeOptions, type PlanPayOption } from '$lib/direct-payment';
 import {
 	normalizePhotos,
 	normalizeSections,
@@ -58,12 +59,16 @@ export interface AdminPlanContent extends AdminContentBase {
 	publicOnDirect: boolean;
 	/** 支払方法（booking.rate_plans.payment_method）。Book の管理画面で設定する。読めないときは null */
 	paymentMethod: PlanPaymentMethod | null;
+	/** 支払方法の組み合わせ（book.plan_contents.payment_options・2026-11-02）。未設定は payment_method から */
+	paymentOptions: PlanPayOption[];
 	/** 予約時決済（オンラインのカード事前決済）の割引率 0〜0.2（book.plan_contents.prepay_discount_rate） */
 	prepayDiscountRate: number;
 	/** 公開範囲（シークレットプラン・book.plan_contents.audience / min_rank / link_only） */
 	access: PlanAccess;
 	/** 絞り込み（販売期間・人数・部屋タイプ・booking.rate_plans）。読めないときは制限なし */
 	limits: PlanLimits;
+	/** 宿泊不可（期間・曜日）。book.plan_contents.stay_blackouts / stay_closed_dows（autumn-shared 20261101211300・20261101211430） */
+	stayClosed: StayClosed;
 	/** 料金（rms）との関係。'awaiting' は Book で先に作って、rms の料金設定をまだ紐づけていないプラン */
 	rmsState: PlanRmsState;
 	/** 販売表示期間（予約を受け付ける期間・日本時間の日付・空は制限なし）。book.plan_contents.booking_start / booking_end（autumn-shared 20261101045650） */
@@ -302,9 +307,17 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		paymentMethod: (PLAN_PAYMENT_METHODS as readonly string[]).includes(String(rp?.payment_method))
 			? (rp!.payment_method as PlanPaymentMethod)
 			: null,
+		paymentOptions: Array.isArray(c.payment_options)
+			? normalizeOptions(PLAN_PAY_OPTIONS, c.payment_options)
+			: rp?.payment_method === 'prepayment'
+				? ['online_now', 'online_checkout']
+				: rp?.payment_method === 'deposit'
+					? ['onsite', 'online_now', 'online_checkout']
+					: ['onsite'],
 		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0,
 		access: planAccessOf(c),
 		limits: planLimitsOf(rp),
+		stayClosed: stayClosedOf(c),
 		rmsState: planRmsStateOf(rp),
 		bookingStart: dateOrNull(c.booking_start),
 		bookingEnd: dateOrNull(c.booking_end),
@@ -551,6 +564,21 @@ export async function sbSetPlanLimits(client: SupabaseClient, ratePlanId: string
 		if (error.message.includes('forbidden')) throw new Error('このプランの絞り込みを変更する権限がありません。');
 		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
 		if (error.message.includes('invalid_params')) throw new Error('絞り込みの値が正しくありません（期間の開始≦終了、人数 1〜6 で最小≦最大、部屋タイプはこの施設のもの）。');
+		throw error;
+	}
+}
+
+/** 宿泊不可（期間・曜日）を保存する（book.admin_set_plan_blackouts・スタッフ）。値の検査は stayClosedFromForm で済ませてから呼ぶ */
+export async function sbSetPlanStayClosed(client: SupabaseClient, ratePlanId: string, s: StayClosed): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_set_plan_blackouts', {
+		p_rate_plan_id: ratePlanId,
+		p_blackouts: s.blackouts,
+		p_dows: s.dows
+	});
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('このプランの宿泊不可を変更する権限がありません。');
+		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		if (error.message.includes('invalid_params')) throw new Error('宿泊不可の値が正しくありません（期間は開始≦終了・100件まで、曜日は日〜土）。');
 		throw error;
 	}
 }

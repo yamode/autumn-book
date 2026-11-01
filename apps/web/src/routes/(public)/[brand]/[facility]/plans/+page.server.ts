@@ -13,6 +13,7 @@ import { listPlanFor } from '$lib/plan-access';
 import { crossTypeCombos } from '$lib/partner-room-combos';
 import { MAX_ROOMS_PER_BOOKING } from '$lib/multi-room';
 import type { RatePlan, RoomType } from '$lib/types';
+import { favoriteRoomTypeIds } from '$lib/server/favorites';
 import type { PageServerLoad } from './$types';
 
 type RoomPlanPrice = {
@@ -93,7 +94,10 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 		.sort((a, b) => Number(b.plans.length > 0) - Number(a.plans.length > 0));
 }
 
-export const load: PageServerLoad = async ({ params, url, locals }) => {
+export const load: PageServerLoad = async (event) => {
+	const { params, url, locals } = event;
+	// 会員のお気に入りの部屋がある部屋タイプ（ブロックに「お気に入り」と出す）。会員でなければ空
+	const favoritesP = favoriteRoomTypeIds(event);
 	const isMember = viewerIsMember(locals);
 	// 会員限定のシークレットプランを一覧に足すかどうか（会員のグレードで決まる。URL 限定は一覧に出さない）
 	const viewer = await viewerOf(locals);
@@ -149,6 +153,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			calendarClosed: calendar.closed,
 			today,
 			referenceMode: !checkin,
+			favoriteRoomTypeIds: await favoritesP,
 			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
 		};
 	}
@@ -186,6 +191,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 			calendarClosed: calendar.closed,
 		today,
 		referenceMode: false,
+		favoriteRoomTypeIds: await favoritesP,
 		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
 	};
 };

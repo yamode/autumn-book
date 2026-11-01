@@ -133,7 +133,13 @@
 		return list.length ? list : [m.plan_meal_none()];
 	});
 	let payText = $derived(
-		[data.plan.payment.onsite ? m.pay_onsite() : '', data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : 'カード') : '']
+		[
+			data.plan.payment.onsite ? m.pay_onsite() : '',
+			// 予約時のカード決済は「事前カード決済」（チェックアウト日のカード決済と並べても区別できる名前）
+			data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card()) : '',
+			// オンライン決済（チェックアウト日）。未設定のプランは従来どおり予約時のカード決済に含めて見せない
+			data.plan.payment.checkout ? m.plan_card_payment_checkout() : ''
+		]
 			.filter(Boolean)
 			.join(' ／ ')
 	);
@@ -276,6 +282,10 @@
 			<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
 		</button>
 		<div class="flex-1">
+			{#if data.favoriteRoomTypeIds.includes(r.room.id)}
+				<!-- 会員のお気に入りの部屋がある部屋タイプ -->
+				<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
+			{/if}
 			<h3 class="font-medium text-brand-900">{r.room.name}</h3>
 			<p class="text-xs text-stone-500">{m.plan_detail_capacity({ n: String(r.room.capacity), size: String(r.room.sizeM2) })}</p>
 			<button type="button" onclick={() => (infoRoom = r.room)} class="mt-1 text-xs font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">{m.room_info_show()}</button>

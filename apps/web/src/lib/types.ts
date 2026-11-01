@@ -139,6 +139,13 @@ export interface PaymentConfig {
 	prepay: boolean;
 	/** 事前決済の手段（カード / PayPay） */
 	prepayMethods: PrepayMethod[];
+	/**
+	 * オンライン決済（チェックアウト日・カードを預かり当日に自動決済）を受け付ける（book.v_plans.payment_options の online_checkout）。
+	 * undefined は従来どおり「予約時のカード決済があれば出す」（デモのプランなど）。判定は lib/direct-payment.ts の allowsCheckout
+	 */
+	checkout?: boolean;
+	/** 施設でオンの現地払いの内訳（book.v_plans.onsite_methods）。undefined は全部 */
+	onsiteMethods?: ('cash' | 'card' | 'paypay')[];
 	/** 事前決済割引率 0〜0.2 */
 	prepayDiscountRate: number;
 	/** 早期決済割（施設の段階表）の対象か（book.plan_contents.early_prepay）。未設定は対象外 */
@@ -162,7 +169,7 @@ export interface PaymentConfig {
 }
 
 /** 支払方法の組み合わせ（payment_method の onsite / prepayment / deposit に相当） */
-export type PaymentMethods = Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods'>;
+export type PaymentMethods = Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods' | 'checkout'>;
 
 export interface RatePlan {
 	id: string;
