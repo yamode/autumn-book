@@ -155,10 +155,11 @@ html {
 
 /* 押したときの手応え（2026-11-01 指示「リンクやボタンを押したときのエフェクトがなく、押せているのか不安」）。全画面共通。
    - ボタン: 押している間だけ少し縮む（scale プロパティ。Tailwind の translate / transform とは別なので位置はずれない）
-   - リンク: 押している間だけ少し薄くなる
+   - 文字のリンク: 押している間だけ色が変わる。ボタン風のリンク（背景色つき）・カードは少し薄くなる
    - 画面全体を覆う背景のボタン（inset-0）は縮めない（モーダルの背景が動いて見えるため）
-   - 送信中のボタン（$lib/enhance が data-pending を付ける）は薄くして、待っていることが分かるように
-   - 画面遷移中は上端に細い帯（ルートの +layout.svelte の .nav-progress） */
+   - 待っている間（2026-11-01 指示「画面上部ではなく、ボタンの中でぐるぐる」）: 押したボタン・ボタン風のリンクの中に回転する印、
+     文字のリンクは色を変えたまま。data-pending はフォーム送信中（$lib/enhance）と画面遷移中（ルートの +layout.svelte）に付く。
+     管理画面の保存ボタン（data-save-state）は自前の「保存中…」表示があるので除く */
 @layer base {
 	a[href],
 	button,
@@ -174,22 +175,35 @@ html {
 	:where(button, [role='button'], input[type='submit'], input[type='button']):not(:disabled, [aria-disabled='true'], [class~='inset-0']):active {
 		scale: 0.97;
 	}
-	:where(a[href]):active {
-		opacity: 0.65;
+	:where(a[href][class*='bg-']):active {
+		opacity: 0.7;
+	}
+	:where(a[href]:not([class*='bg-'])):active,
+	:where(a[href]:not([class*='bg-']))[data-pending] {
+		color: var(--color-accent-600);
 	}
 	:where(label):has(> input[type='radio'], > input[type='checkbox']):active {
 		opacity: 0.8;
 	}
-	:where(button, input[type='submit'])[data-pending] {
-		opacity: 0.6;
+	:where(button, a[href], input[type='submit'])[data-pending] {
 		cursor: progress;
+	}
+	:where(button:not([data-save-state]), a[href][class*='bg-'])[data-pending]::before {
+		content: '';
+		display: inline-block;
+		width: 1em;
+		height: 1em;
+		margin-right: 0.45em;
+		vertical-align: -0.15em;
+		border: 2px solid currentColor;
+		border-right-color: transparent;
+		border-radius: 9999px;
+		animation: pending-spin 0.7s linear infinite;
 	}
 }
 
-.nav-progress { opacity: 0; animation: nav-progress-in 0s linear 150ms forwards; }
-.nav-progress > div { animation: nav-progress-move 1s ease-in-out infinite; }
-@keyframes nav-progress-in { to { opacity: 1; } }
-@keyframes nav-progress-move { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@keyframes pending-spin { to { rotate: 360deg; } }
 @media (prefers-reduced-motion: reduce) {
 	:where(button, [role='button'], input[type='submit'], input[type='button']):active { scale: none; }
+	:where(button, a[href])[data-pending]::before { animation-duration: 2s; }
 }

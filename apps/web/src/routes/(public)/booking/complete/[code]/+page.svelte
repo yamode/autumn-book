@@ -108,7 +108,7 @@
 				<dt>{data.chargeOn ? m.complete_charge_on({ date: formatDateLong(data.chargeOn) }) : isCard ? m.complete_paid() : data.onsiteMethod === 'paypay' ? m.pay_onsite_paypay() : data.onsiteMethod === 'card' ? m.pay_onsite_card() : data.onsiteMethod === 'cash' ? m.pay_onsite_cash() : m.complete_local_pay()}</dt>
 				<dd>
 					{formatPrice(data.paid ? data.paid.amount : b.total - b.pointsUsed)}
-					{#if b.payment === 'paypay' || data.onsiteMethod === 'paypay'}<span class="ml-1 rounded bg-[#ff0033] px-1.5 py-0.5 text-[10px] font-bold text-white">PayPay</span>{/if}
+					{#if b.payment === 'paypay' || data.onsiteMethod === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 ml-1 inline-block h-6 w-auto align-middle" width="66" height="24" />{/if}
 				</dd>
 			</div>
 			{#if data.paid && data.paid.bathTax > 0}

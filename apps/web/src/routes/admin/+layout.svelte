@@ -275,7 +275,7 @@
 	{/each}
 {/snippet}
 
-<!-- 画面遷移中の上端の帯は全画面共通（ルートの +layout.svelte・2026-11-01） -->
+<!-- 画面遷移中の表示は全画面共通（押したボタンの中で回転・ルートの +layout.svelte と app.css・2026-11-01） -->
 
 {#if isLogin}
 	{@render children()}

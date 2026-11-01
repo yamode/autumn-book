@@ -37,6 +37,7 @@ import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments'
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
 import { isStaffViewer, planOrPreview, previewPlanForHold } from '$lib/server/plan-preview';
+import type { RoomType } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
@@ -103,11 +104,15 @@ export const load: PageServerLoad = async (event) => {
 				return { room, quote: offerToQuote(o), remaining: o.remaining, fits: true };
 			})
 			.filter((r): r is NonNullable<typeof r> => r !== null);
+		// 客室を選んで入ってきた（?room=）が、日付未指定・その日は満室で上の行に無いとき: 客室は選んだまま見せる（2026-11-01）
+		const roomSlug = url.searchParams.get('room') ?? '';
+		const pickedRoom = roomSlug && !roomRows.some((r) => r.room.slug === roomSlug) ? (rooms.find((r) => r.slug === roomSlug) ?? null) : null;
 
 		return {
 			facility,
 			plan,
 			rooms: roomRows,
+			pickedRoom,
 			calendar: calendar.days,
 			calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
@@ -152,6 +157,8 @@ export const load: PageServerLoad = async (event) => {
 		facility,
 		plan,
 		rooms,
+		// デモはプランの全客室が rooms に入る（選んだ客室はその中から探す）
+		pickedRoom: null as RoomType | null,
 		calendar: calendar.days,
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,

@@ -52,7 +52,8 @@
 		<h2 class="font-display mb-4 text-xl text-brand-900">{m.room_detail_plans()}</h2>
 		<div class="space-y-4">
 			{#each data.plans as plan}
-				<PlanCard {plan} href="{base}/plans/{plan.slug}" />
+				<!-- この客室を選んだ状態でプラン詳細を開く（room= が無いと客室が未選択のまま開いていた・2026-11-01） -->
+				<PlanCard {plan} href="{base}/plans/{plan.slug}?room={encodeURIComponent(data.room.slug)}" />
 			{:else}
 				<p class="text-sm text-stone-500">{m.room_detail_no_plans()}</p>
 			{/each}

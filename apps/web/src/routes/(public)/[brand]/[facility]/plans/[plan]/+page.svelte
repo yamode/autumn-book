@@ -118,16 +118,18 @@
 	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
 	const totalSub = () => m.plan_price_total_sub({ adults: String(data.params.adults), nights: String(data.params.nights) });
 
-	// お食事（一休と同じく「朝食付き」「夕食付き」を並べ、夕食のコース名を添える）。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り
+	// お食事。コースは夕食に付くもの（夕食と別の項目ではない）ので「夕食付き（スタンダードコース）」の形にし、夕食 → 朝食の順に 1 行ずつ出す
+	// （2026-11-01 指示）。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り。
 	// 朝食・夕食の有無はプラン設定の「お食事」（v_plans.includes_breakfast / has_dinner）。読めない取得元は meal_plan から
 	let breakfast = $derived(data.plan.includesBreakfast ?? (data.plan.mealPlan === '2食' || data.plan.mealPlan === '朝食'));
 	let dinner = $derived(data.plan.hasDinner ?? data.plan.mealPlan === '2食');
+	const withCourse = (label: string) => (data.plan.dinnerCourse ? `${label}（${data.plan.dinnerCourse}）` : label);
 	let meals = $derived.by(() => {
-		if (data.plan.mealPlan === '日帰り') return [m.plan_meal_lunch()];
+		if (data.plan.mealPlan === '日帰り') return [withCourse(m.plan_meal_lunch())];
 		// 設定も無く、rms の食事区分（2食 / 朝食 / 素泊）でもない値（デモの「2食付」等）はそのまま出す
 		const known = ['2食', '朝食', '素泊'].includes(data.plan.mealPlan);
 		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan ? [data.plan.mealPlan] : [];
-		const list = [breakfast ? m.plan_meal_breakfast() : '', dinner ? m.plan_meal_dinner() : ''].filter(Boolean);
+		const list = [dinner ? withCourse(m.plan_meal_dinner()) : '', breakfast ? m.plan_meal_breakfast() : ''].filter(Boolean);
 		return list.length ? list : [m.plan_meal_none()];
 	});
 	let payText = $derived(
@@ -148,7 +150,14 @@
 	// 日付・客室を選んで入ってきたとき（?checkin&room）: その客室を主役にし、ここで予約まで進める。
 	// ほかの客室は畳んでおく（もう選んだのに「客室を選ぶ」から始めさせない）。選んだ客室が満室なら従来どおり一覧から選ぶ
 	let chosen = $derived(data.params.checkin && selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom && r.quote) : undefined);
-	let otherRooms = $derived(chosen ? data.rooms.filter((r) => r !== chosen) : data.rooms);
+	// 客室を選んで入ってきたが、日付が未指定（客室ページ・日付なしの一覧から）または満室のとき: 客室は選んだまま見せ、日付を選んでもらう
+	// （以前は日付が無いと客室が未選択の画面になっていた・2026-11-01）
+	let picked = $derived(
+		chosen ??
+			(selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom) : undefined) ??
+			(data.pickedRoom ? { room: data.pickedRoom, quote: null, remaining: null, fits: true } : undefined)
+	);
+	let otherRooms = $derived(picked ? data.rooms.filter((r) => r !== picked) : data.rooms);
 	let showOthers = $state(false);
 	// 複数室: 検索で 2 室以上を選んだときだけ「予約リストに追加」で部屋を集め、画面下のバーから全室まとめて予約する。
 	// 1 室で検索したときは追加ボタンを出さない（そのまま「この部屋で予約へ進む」）。リストに部屋が入っていれば続きとして扱う
@@ -293,20 +302,13 @@
 {/snippet}
 
 {#snippet planInfo()}
-	<!-- お食事・お支払い（右カラムの料金枠の上段）。夕食付きはコース名を添える -->
+	<!-- お食事・お支払い（右カラムの料金枠の上段）。お食事は「夕食付き（○○コース）」「朝食付き」を 1 行ずつ -->
 	<dl class="space-y-2 text-sm">
 		{#if meals.length}
 			<div class="flex gap-3">
 				<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_meal()}</dt>
-				<dd class="min-w-0">
-					<div class="flex flex-wrap gap-1">
-						{#each meals as meal}
-							<span class="rounded-sm border border-amber-600 px-1.5 text-xs leading-5 text-amber-700">{meal}</span>
-						{/each}
-					</div>
-					{#if data.plan.dinnerCourse && (dinner || data.plan.mealPlan === '日帰り')}
-						<p class="mt-1 font-medium text-brand-900">{data.plan.dinnerCourse}</p>
-					{/if}
+				<dd class="min-w-0 space-y-0.5 text-stone-800">
+					{#each meals as meal}<p>{meal}</p>{/each}
 				</dd>
 			</div>
 		{/if}
@@ -346,6 +348,14 @@
 		<p class="text-xs text-stone-500">{m.plan_price_pp_night({ price: formatPrice(perPersonNight(chosen.quote.total)) })}</p>
 		{#if chosen.remaining !== null && chosen.remaining <= 2}
 			<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(chosen.remaining) })}</p>
+		{/if}
+	{:else if picked}
+		<!-- 客室を選んで入ってきたが、日付が未指定・その日は満室: 客室は選んだまま見せる -->
+		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
+		<p class="font-medium text-brand-900">{picked.room.name}</p>
+		{#if data.params.checkin}
+			<p class="mt-1 text-xs text-stone-500">{formatDate(data.params.checkin)} · {m.searchbar_nights_option({ n: String(data.params.nights) })}</p>
+			<p class="mt-1 text-sm font-medium text-stone-500">{m.plan_detail_sold_out()}</p>
 		{/if}
 	{:else if cheapest}
 		<p class="text-xs font-medium text-stone-600">{m.plan_price_dated_label()}</p>
@@ -406,7 +416,7 @@
 
 		<div class="md:col-start-1">
 			<!-- 客室まで選んで入ってきたら、プランの写真のあとにその客室の写真を続ける（区切りとラベル付き） -->
-			<PlanPhotoGallery photos={[...planPhotos, ...data.facility.photos.slice(0, 3)]} room={chosen ? { name: chosen.room.name, photos: chosen.room.photos } : null} />
+			<PlanPhotoGallery photos={[...planPhotos, ...data.facility.photos.slice(0, 3)]} room={picked ? { name: picked.room.name, photos: picked.room.photos } : null} />
 		</div>
 
 		<!-- 右カラム: スクロールしても料金・予約ボタンが見えるよう追従させる（ヘッダー高さ分下げる） -->
@@ -472,22 +482,23 @@
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">
-		<h2 class="font-display mb-3 text-xl text-brand-900">{chosen ? m.plan_detail_chosen_room() : m.plan_detail_select_room()}</h2>
+		<h2 class="font-display mb-3 text-xl text-brand-900">{picked ? m.plan_detail_chosen_room() : m.plan_detail_select_room()}</h2>
 		{#if form?.message}
 			<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 		{/if}
 		{#if !data.params.checkin}
 			<p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plan_detail_select_date()}</p>
 		{/if}
-		{#if chosen}
-			<div class="mt-3">{@render roomCard(chosen)}</div>
+		{#if picked}
+			<div class="mt-3">{@render roomCard(picked)}</div>
 			{#if otherRooms.length > 0}
 				<button type="button" onclick={() => (showOthers = !showOthers)} aria-expanded={showOthers} class="mt-4 text-sm font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">
 					{showOthers ? m.plan_detail_other_rooms_hide() : m.plan_detail_other_rooms({ n: String(otherRooms.length) })}
 				</button>
 			{/if}
 		{/if}
-		{#if !chosen || showOthers}
+		<!-- 選んだ客室がその日は満室なら、ほかの客室を最初から開いておく -->
+		{#if !picked || showOthers || (data.params.checkin && !chosen)}
 		<div class="mt-3 space-y-3">
 			{#each otherRooms as r}
 				{@render roomCard(r)}

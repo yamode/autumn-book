@@ -608,7 +608,7 @@
 											{#each onlineOptions as v (v)}
 												<label class="flex cursor-pointer items-center gap-2">
 													<input type="radio" name="payOnline" value={v} checked={payValue === v} onchange={() => (selectedOnline = v)} class="h-4 w-4" />
-													{#if v === 'paypay'}<span class="rounded bg-[#ff0033] px-1.5 py-0.5 text-[11px] font-bold text-white">PayPay</span>{/if}
+													{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="" class="-my-1 h-6 w-auto" width="66" height="24" />{/if}
 													<span>{v === 'card' ? m.pay_card() : m.pay_paypay()}</span>
 												</label>
 											{/each}
@@ -649,8 +649,8 @@
 											{#each ONSITE_METHODS as v (v)}
 												<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
 													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (onsiteMethod = v)} class="h-3.5 w-3.5" />
-													<!-- PayPay はほかと同じ文字の大きさで、小さなアイコンを添えるだけ（目立たせすぎない） -->
-													{#if v === 'paypay'}<img src="/site-assets/paypay-icon.svg" alt="" class="h-4 w-4 rounded-[3px]" width="16" height="16" />{/if}{onsiteMethodLabel(v)}
+													<!-- PayPay は公式ロゴ（static/site-assets/paypay-logo.png・余白込みの公式素材をそのまま）。文字と同じくらいの大きさで目立たせすぎない -->
+													{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 h-6 w-auto" width="66" height="24" />{:else}{onsiteMethodLabel(v)}{/if}
 												</label>
 											{/each}
 										</div>
