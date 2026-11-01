@@ -137,6 +137,7 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			sortOrder: p.sortOrder,
 			updatedAt: null,
 			access: p.access ?? PUBLIC_ACCESS,
+			limits: { salesStart: null, salesEnd: null, minGuests: null, maxGuests: null, roomTypeIds: [] },
 			rmsState: 'rms'
 		}));
 }

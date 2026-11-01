@@ -7,6 +7,7 @@
 //   booking スキーマは Data API に出していないので、book.v_admin_rate_plans（security_invoker ビュー）から読む。
 //   読めなければプラン名の代わりに slug を出し、画面に理由を出す（一覧そのものは落とさない）。
 import { planAccessOf, type PlanAccess } from '$lib/plan-access';
+import { planLimitsOf, type PlanLimits } from '$lib/plan-limits';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
 	normalizePhotos,
@@ -60,6 +61,8 @@ export interface AdminPlanContent extends AdminContentBase {
 	prepayDiscountRate: number;
 	/** 公開範囲（シークレットプラン・book.plan_contents.audience / min_rank / link_only） */
 	access: PlanAccess;
+	/** 絞り込み（販売期間・人数・部屋タイプ・booking.rate_plans）。読めないときは制限なし */
+	limits: PlanLimits;
 	/** 料金（rms）との関係。'awaiting' は Book で先に作って、rms の料金設定をまだ紐づけていないプラン */
 	rmsState: PlanRmsState;
 }
@@ -269,7 +272,7 @@ async function loadRatePlans(
 	let q = client
 		.schema('book')
 		.from('v_admin_rate_plans')
-		.select('id, code, name, meal_plan, is_active, public_on_direct, payment_method, managed_by, book_origin')
+		.select('id, code, name, meal_plan, is_active, public_on_direct, payment_method, managed_by, book_origin, sales_start, sales_end, min_guests, max_guests, room_type_ids')
 		.eq('facility_id', facilityUuid);
 	if (ids) q = q.in('id', ids);
 	const { data, error } = await q;
@@ -293,6 +296,7 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 			: null,
 		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0,
 		access: planAccessOf(c),
+		limits: planLimitsOf(rp),
 		rmsState: planRmsStateOf(rp)
 	};
 }
@@ -454,6 +458,24 @@ export async function sbSetPlanAccess(client: SupabaseClient, ratePlanId: string
 		if (error.message.includes('forbidden')) throw new Error('このプランの公開範囲を変更する権限がありません。');
 		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
 		if (/invalid_params|invalid_rank/.test(error.message)) throw new Error('公開範囲の値が正しくありません。');
+		throw error;
+	}
+}
+
+/** 絞り込みを保存する（book.admin_set_plan_limits・スタッフ）。値の検査は planLimitsFromForm で済ませてから呼ぶ */
+export async function sbSetPlanLimits(client: SupabaseClient, ratePlanId: string, l: PlanLimits): Promise<void> {
+	const { error } = await client.schema('book').rpc('admin_set_plan_limits', {
+		p_rate_plan_id: ratePlanId,
+		p_sales_start: l.salesStart,
+		p_sales_end: l.salesEnd,
+		p_min_guests: l.minGuests,
+		p_max_guests: l.maxGuests,
+		p_room_type_ids: l.roomTypeIds
+	});
+	if (error) {
+		if (error.message.includes('forbidden')) throw new Error('このプランの絞り込みを変更する権限がありません。');
+		if (error.message.includes('not_found')) throw new Error('プランが見つかりません。');
+		if (error.message.includes('invalid_params')) throw new Error('絞り込みの値が正しくありません（期間の開始≦終了、人数 1〜6 で最小≦最大、部屋タイプはこの施設のもの）。');
 		throw error;
 	}
 }

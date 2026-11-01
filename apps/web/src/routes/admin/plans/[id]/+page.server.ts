@@ -10,6 +10,8 @@ import {
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
 	sbSetPlanAccess,
+	sbSetPlanLimits,
+	sbListRoomContentsAdmin,
 	sbSetPlanPayment,
 	sbPlanShareToken,
 	type PlanPaymentMethod
@@ -30,6 +32,7 @@ import { loadPlanQuestionSetting, loadQuestionTemplates, savePlanQuestionSetting
 import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestions, type PlanQuestionMode } from '$lib/booking-questions';
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { demoShareToken } from '$lib/server/secret-plans';
+import { planLimitsFromForm } from '$lib/plan-limits';
 import { RANK_CODES, isRankCode, planShareLinkPath, type PlanAccess } from '$lib/plan-access';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -75,10 +78,15 @@ export const load: PageServerLoad = async (event) => {
 		if (!r.plan) error(404, NOT_FOUND);
 		const [f, templates, questionTemplates, questionSetting] = await restLoad;
 		// 専用 URL は初めて開いたときに作る（どのプランにも 1 本。作り直すまで変わらない）
+		// 絞り込みの部屋タイプ候補（同一施設の pms.room_types。読めなくても他は編集できる）
+		const limitRooms = await sbListRoomContentsAdmin(client, uuid)
+			.then((rs) => rs.map((x) => ({ id: x.id, name: x.name, isActive: x.isActive })))
+			.catch(() => []);
 		const shareToken = await sbPlanShareToken(client, event.params.id).catch(() => null);
 		return {
 			live: true as const,
 			shareUrl: shareUrlOf(shareToken),
+			limitRooms,
 			ranks: RANK_CODES,
 			templates,
 			questionTemplates,
@@ -99,6 +107,7 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		live: false as const,
 		shareUrl: shareUrlOf(demoShareToken(plan.id)),
+		limitRooms: [] as { id: string; name: string; isActive: boolean }[],
 		ranks: RANK_CODES,
 		content,
 		namesError: null,
@@ -152,6 +161,20 @@ export const actions: Actions = {
 			return { accessSaved: true };
 		} catch (e) {
 			return fail(400, { accessError: messageOf(e) });
+		}
+	},
+	// 絞り込み（販売期間・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ
+	setLimits: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { limitsError: NOT_LIVE });
+		const parsed = planLimitsFromForm(await event.request.formData());
+		if ('error' in parsed) return fail(400, { limitsError: parsed.error });
+		try {
+			await sbSetPlanLimits(createSupabaseServerClient(event), event.params.id, parsed.limits);
+			return { limitsSaved: true };
+		} catch (e) {
+			return fail(400, { limitsError: messageOf(e) });
 		}
 	},
 	// 専用 URL を作り直す（古い URL・それで開いた端末の Cookie は使えなくなる）

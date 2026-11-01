@@ -198,6 +198,62 @@
 	<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">公開範囲を保存</button>
 </form>
 
+<!-- 絞り込み（販売期間・人数・部屋タイプ）。料金はテンプレートと共有し、このプランでは狭めるだけ -->
+{#if data.live}
+	<form method="POST" action="?/setLimits" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<h2 class="text-sm font-bold text-stone-700">絞り込み（販売期間・人数・部屋タイプ）</h2>
+			{#if (form as { limitsSaved?: boolean } | null)?.limitsSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+		</div>
+		{#if (form as { limitsError?: string } | null)?.limitsError}
+			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { limitsError?: string }).limitsError}</p>
+		{/if}
+		<p class="mt-1 text-xs text-stone-500">料金は rms の料金テンプレートと共有し、このプランでは販売する範囲を狭めるだけです（広げることはできません）。空欄は制限なし（テンプレート・料金式どおり）です。</p>
+
+		<p class="mt-3 text-xs font-medium text-stone-600">販売期間（宿泊日）</p>
+		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+			<input type="date" name="sales_start" value={c.limits.salesStart ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売期間の開始日" />
+			〜
+			<input type="date" name="sales_end" value={c.limits.salesEnd ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売期間の終了日" />
+		</div>
+		<p class="mt-1 text-xs text-stone-400">予約を受け付ける期間ではなく、泊まれる日の範囲です。</p>
+
+		<p class="mt-3 text-xs font-medium text-stone-600">ご利用人数（1部屋あたり）</p>
+		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+			最小
+			<select name="min_guests" class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+				<option value="" selected={c.limits.minGuests == null}>指定なし</option>
+				{#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n} selected={c.limits.minGuests === n}>{n}名</option>{/each}
+			</select>
+			最大
+			<select name="max_guests" class="rounded-md border border-stone-300 px-2 py-1.5 text-sm">
+				<option value="" selected={c.limits.maxGuests == null}>指定なし</option>
+				{#each [1, 2, 3, 4, 5, 6] as n (n)}<option value={n} selected={c.limits.maxGuests === n}>{n}名</option>{/each}
+			</select>
+		</div>
+
+		<p class="mt-3 text-xs font-medium text-stone-600">対象の部屋タイプ</p>
+		{#if data.limitRooms.length}
+			<div class="mt-1 grid gap-1 sm:grid-cols-2">
+				{#each data.limitRooms as r (r.id)}
+					<label class="flex cursor-pointer items-center gap-2 text-sm text-stone-700">
+						<input type="checkbox" name="room_type_ids" value={r.id} checked={c.limits.roomTypeIds.includes(r.id)} class="h-4 w-4" />
+						{r.name}{#if !r.isActive}<span class="text-xs text-stone-400">（停止中）</span>{/if}
+					</label>
+				{/each}
+			</div>
+			<p class="mt-1 text-xs text-stone-400">1つも選ばないと、料金式が対応するすべての客室が対象です。</p>
+		{:else}
+			<p class="mt-1 text-xs text-stone-400">部屋タイプを読めませんでした。再読み込みしてください。</p>
+		{/if}
+
+		<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+			保存した内容は、日別料金への反映に最大3時間かかります（同期のあとに販売ページへ反映されます）。
+		</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">絞り込みを保存</button>
+	</form>
+{/if}
+
 <!-- 専用 URL（/plan/<token>）。どのプランにも 1 本あり、作り直すと古い URL は使えなくなる -->
 <section class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 	<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
