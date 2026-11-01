@@ -142,6 +142,8 @@
   "photo_gallery_open": "放大查看相片",
   "photo_gallery_close": "關閉",
   "photo_gallery_item": "相片 {n}",
+  "plan_gallery_group_plan": "方案",
+  "plan_gallery_group_room": "客房：{room}",
   "facility_rooms": "客房",
   "facility_recommend_plans": "推薦方案",
   "facility_all_plans": "查看所有方案 →",

@@ -343,7 +343,8 @@
 		</header>
 
 		<div class="md:col-start-1">
-			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
+			<!-- 客室まで選んで入ってきたら、プランの写真のあとにその客室の写真を続ける（区切りとラベル付き） -->
+			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} room={chosen ? { name: chosen.room.name, photos: chosen.room.photos } : null} />
 		</div>
 
 		<!-- 右カラム: スクロールしても料金・予約ボタンが見えるよう追従させる（ヘッダー高さ分下げる） -->

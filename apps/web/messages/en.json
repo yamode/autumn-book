@@ -142,6 +142,8 @@
   "photo_gallery_open": "View larger photo",
   "photo_gallery_close": "Close",
   "photo_gallery_item": "Photo {n}",
+  "plan_gallery_group_plan": "Plan",
+  "plan_gallery_group_room": "Room: {room}",
   "facility_rooms": "Rooms",
   "facility_recommend_plans": "Featured plans",
   "facility_all_plans": "View all plans →",

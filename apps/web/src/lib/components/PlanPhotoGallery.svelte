@@ -4,16 +4,24 @@
 	// - サムネイル: 横一列。はみ出す分は横スクロール（選んだものは見える位置へ寄せる）
 	// - メイン写真を押すと拡大表示（Esc で閉じる・背景を押しても閉じる）
 	// タイル状に並べると 1 枚あたりが小さく、写真が 1〜2 枚だと余白が目立つため（取引先ページの PartnerPhotoGallery と同じ作り）。
+	// - 客室を選んで入ってきたとき（room）: プランの写真のあとに、その客室の写真を続ける。サムネイルは「プラン｜お部屋：○○」で区切り、
+	//   客室の写真を出している間はメイン写真の左上に「お部屋：○○」を出す。1 枚目はプランの写真のまま（2026-11-01 案B）
 	import type { Photo } from '$lib/types';
 	import * as m from '$lib/paraglide/messages';
 
-	let { photos }: { photos: Photo[] } = $props();
+	let { photos, room = null }: { photos: Photo[]; room?: { name: string; photos: Photo[] } | null } = $props();
+
+	const roomPhotos = $derived(room?.photos ?? []);
+	const all = $derived([...photos, ...roomPhotos]);
+	const planCount = $derived(photos.length);
+	const grouped = $derived(roomPhotos.length > 0 && planCount > 0);
+	const isRoom = (i: number) => roomPhotos.length > 0 && i >= planCount;
 
 	let current = $state(0);
 	let open = $state(false);
-	const count = $derived(photos.length);
+	const count = $derived(all.length);
 	const index = $derived(Math.min(current, Math.max(count - 1, 0)));
-	const main = $derived(photos[index]);
+	const main = $derived(all[index]);
 
 	function go(d: number) {
 		if (count < 2) return;
@@ -24,7 +32,8 @@
 	let strip = $state<HTMLDivElement>();
 	let modalStrip = $state<HTMLDivElement>();
 	function reveal(box: HTMLDivElement | undefined) {
-		const el = box?.children[index] as HTMLElement | undefined;
+		// サムネイルは「プラン｜お部屋」の区切りで入れ子になるので、並び順ではなく data-i で探す（box を relative にして offsetLeft を box 基準に）
+		const el = box?.querySelector<HTMLElement>(`[data-i="${index}"]`);
 		if (!box || !el) return;
 		const left = el.offsetLeft - (box.clientWidth - el.clientWidth) / 2;
 		box.scrollTo({ left, behavior: 'smooth' });
@@ -70,6 +79,44 @@
 	<svg viewBox="0 0 24 24" class={size} fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d={dir === 'left' ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6'} /></svg>
 {/snippet}
 
+{#snippet thumbs(variant: 'page' | 'modal')}
+	{#snippet thumb(p: Photo, i: number)}
+		<button
+			type="button"
+			data-i={i}
+			class="shrink-0 overflow-hidden border-2 transition {variant === 'page'
+				? `aspect-[3/2] w-[88px] rounded-md sm:w-[104px] ${i === index ? 'border-brand-800' : 'border-transparent opacity-70 hover:opacity-100'}`
+				: `h-16 w-24 rounded sm:h-20 sm:w-32 ${i === index ? 'border-white' : 'border-transparent opacity-60 hover:opacity-100'}`}"
+			onclick={() => (current = i)}
+			aria-label={m.photo_gallery_item({ n: String(i + 1) })}
+			aria-pressed={i === index}
+		>
+			<img src={p.url} alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />
+		</button>
+	{/snippet}
+	{#if grouped}
+		<!-- プランと客室の写真を区切って並べる（見出しは小さく・長い客室名は省略） -->
+		{@const labelCls = variant === 'page' ? 'text-stone-500' : 'text-white/70'}
+		<div class="shrink-0">
+			<p class="mb-0.5 text-[11px] {labelCls}">{m.plan_gallery_group_plan()}</p>
+			<div class="flex gap-1.5">{#each photos as p, i (p.url + i)}{@render thumb(p, i)}{/each}</div>
+		</div>
+		<div class="mx-1 w-px shrink-0 self-stretch {variant === 'page' ? 'bg-stone-300' : 'bg-white/30'}" aria-hidden="true"></div>
+		<div class="shrink-0">
+			<p class="mb-0.5 max-w-[16rem] truncate text-[11px] {labelCls}">{m.plan_gallery_group_room({ room: room?.name ?? '' })}</p>
+			<div class="flex gap-1.5">{#each roomPhotos as p, j (p.url + j)}{@render thumb(p, planCount + j)}{/each}</div>
+		</div>
+	{:else}
+		{#each all as p, i (p.url + i)}{@render thumb(p, i)}{/each}
+	{/if}
+{/snippet}
+
+{#snippet roomBadge()}
+	{#if isRoom(index) && room}
+		<span class="pointer-events-none absolute left-2 top-2 max-w-[70%] truncate rounded bg-white/90 px-2 py-0.5 text-xs font-medium text-brand-900">{m.plan_gallery_group_room({ room: room.name })}</span>
+	{/if}
+{/snippet}
+
 {#if main}
 	<div>
 		<figure class="relative overflow-hidden rounded-xl bg-stone-200" ontouchstart={onTouchStart} ontouchend={onTouchEnd}>
@@ -85,21 +132,12 @@
 				<button type="button" class="{arrowBtn} right-2" onclick={() => go(1)} aria-label={m.facility_gallery_next()}>{@render chevron('right', 'h-5 w-5')}</button>
 				<span class="pointer-events-none absolute right-2 top-2 rounded bg-black/60 px-2 py-0.5 text-xs text-white">{index + 1}/{count}</span>
 			{/if}
+			{@render roomBadge()}
 		</figure>
 
 		{#if count > 1}
-			<div bind:this={strip} class="mt-2 flex gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-				{#each photos as p, i (p.url + i)}
-					<button
-						type="button"
-						class="aspect-[3/2] w-[calc((100%-1.125rem)/4)] shrink-0 overflow-hidden rounded-md border-2 transition sm:w-[calc((100%-1.875rem)/6)] {i === index ? 'border-brand-800' : 'border-transparent opacity-70 hover:opacity-100'}"
-						onclick={() => (current = i)}
-						aria-label={m.photo_gallery_item({ n: String(i + 1) })}
-						aria-pressed={i === index}
-					>
-						<img src={p.url} alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />
-					</button>
-				{/each}
+			<div bind:this={strip} class="relative mt-2 flex items-end gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+				{@render thumbs('page')}
 			</div>
 		{/if}
 	</div>
@@ -117,21 +155,12 @@
 						<button type="button" class="{arrowBtn} right-2 h-11 w-11" onclick={() => go(1)} aria-label={m.facility_gallery_next()}>{@render chevron('right', 'h-6 w-6')}</button>
 						<span class="pointer-events-none absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 text-xs text-white">{index + 1}/{count}</span>
 					{/if}
+					{@render roomBadge()}
 				</div>
 				{#if main.caption}<p class="relative mt-2 text-sm font-medium text-white">{main.caption}</p>{/if}
 				{#if count > 1}
-					<div bind:this={modalStrip} class="relative mt-3 flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-						{#each photos as p, i (p.url + i)}
-							<button
-								type="button"
-								class="h-16 w-24 shrink-0 overflow-hidden rounded border-2 transition sm:h-20 sm:w-32 {i === index ? 'border-white' : 'border-transparent opacity-60 hover:opacity-100'}"
-								onclick={() => (current = i)}
-								aria-label={m.photo_gallery_item({ n: String(i + 1) })}
-								aria-pressed={i === index}
-							>
-								<img src={p.url} alt="" class="h-full w-full object-cover" loading="lazy" decoding="async" />
-							</button>
-						{/each}
+					<div bind:this={modalStrip} class="relative mt-3 flex items-end gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+						{@render thumbs('modal')}
 					</div>
 				{/if}
 			</div>

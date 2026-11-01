@@ -142,6 +142,8 @@
   "photo_gallery_open": "写真を大きく見る",
   "photo_gallery_close": "閉じる",
   "photo_gallery_item": "写真 {n}",
+  "plan_gallery_group_plan": "プラン",
+  "plan_gallery_group_room": "お部屋：{room}",
   "facility_rooms": "客室",
   "facility_recommend_plans": "おすすめプラン",
   "facility_all_plans": "すべてのプラン →",
