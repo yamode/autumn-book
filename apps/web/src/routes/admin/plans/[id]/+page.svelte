@@ -7,6 +7,7 @@
 	import type { BookingQuestion, PlanQuestionMode } from '$lib/booking-questions';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import { qrSvg } from '$lib/qr';
 	import { RANK_LABELS_JA, isOpenPlan, planAccessSummaryJa } from '$lib/plan-access';
 
 	let { data, form } = $props();
@@ -45,6 +46,30 @@
 			// クリップボードが使えないとき（http・権限なし）は欄を選んでコピーしてもらう
 			(document.getElementById('share-url') as HTMLInputElement | null)?.select();
 		}
+	}
+
+	// 専用URLの QR コード。画面は SVG、ダウンロードは同じ path を canvas に描いて PNG にする
+	const qr = $derived(qrSvg(data.shareUrl ?? ''));
+	const QR_PNG_PX = 1024; // 余白込みの1辺。印刷にも使える大きさ
+	function downloadQrPng() {
+		if (!qr.size) return;
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = QR_PNG_PX;
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
+		ctx.fillStyle = '#ffffff';
+		ctx.fillRect(0, 0, QR_PNG_PX, QR_PNG_PX);
+		ctx.fillStyle = '#000000';
+		ctx.scale(QR_PNG_PX / qr.size, QR_PNG_PX / qr.size);
+		ctx.fill(new Path2D(qr.path));
+		canvas.toBlob((blob) => {
+			if (!blob) return;
+			const a = document.createElement('a');
+			a.href = URL.createObjectURL(blob);
+			a.download = `plan-qr-${c.slug}.png`;
+			a.click();
+			URL.revokeObjectURL(a.href);
+		}, 'image/png');
 	}
 
 	// 予約時に聞く項目（保存前の画面上の値）。テンプレートを選んでいなくても、独自の項目は残しておく
@@ -183,6 +208,13 @@
 		<p class="mt-2 text-xs text-stone-500">
 			メール・SNS・会員向けのご案内に貼って使います。開いた端末では、一覧に出さないプランも見られて予約できるようになります（会員限定の条件はそのまま）。
 		</p>
+		<div class="mt-3 flex items-center gap-4">
+			<svg viewBox="0 0 {qr.size} {qr.size}" class="h-32 w-32 shrink-0 rounded-md border border-stone-200 bg-white" role="img" aria-label="専用URLのQRコード" shape-rendering="crispEdges"><path d={qr.path} fill="#000" /></svg>
+			<div>
+				<button type="button" onclick={downloadQrPng} class="rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50">QRコードをダウンロード（PNG）</button>
+				<p class="mt-2 text-xs text-stone-500">チラシ・ポップに載せる用です。URLを作り直すと古いQRは使えなくなります。</p>
+			</div>
+		</div>
 		<form method="POST" action="?/rotateLink" use:enhance class="mt-2" onsubmit={(e) => { if (!confirm('専用URLを作り直しますか？今のURLと、それで開いた端末では見られなくなります。')) e.preventDefault(); }}>
 			<button type="submit" class="text-xs text-stone-500 underline underline-offset-4 hover:text-stone-700">URLを作り直す（漏れたとき・配布を終えるとき）</button>
 		</form>
