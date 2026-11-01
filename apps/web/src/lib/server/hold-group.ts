@@ -5,6 +5,9 @@ import { combinePayments } from '$lib/multi-room';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import type { PaymentConfig, RatePlan, RoomType } from '$lib/types';
 import { sbPlanByUuid, sbRoomTypeByUuid } from '$lib/server/supabase-data';
+import { planOrPreview } from '$lib/server/plan-preview';
+
+type Locals = Parameters<typeof planOrPreview>[1];
 
 export type HoldGroupRoomView = {
 	/** 1 始まり */
@@ -16,24 +19,38 @@ export type HoldGroupRoomView = {
 	basePlan: RatePlan;
 	adults: number;
 	quote: HoldGroup['rooms'][number]['quote'];
+	/** スタッフのプレビュー（販売中でないプラン）。予約は確定させない（$lib/server/plan-preview） */
+	preview: boolean;
 };
 
-/** 束の部屋ごとのプラン・部屋タイプ。読めない部屋があれば null（期限切れ扱い） */
-export async function loadHoldGroupRooms(hold: HoldGroup, isMember: boolean): Promise<HoldGroupRoomView[] | null> {
+/**
+ * 束の部屋ごとのプラン・部屋タイプ。読めない部屋があれば null（期限切れ扱い）。
+ * 販売中でなくなったプランは読めない＝お客様は確定できない。locals がスタッフなら、そのプランをプレビューとして読む（preview=true）
+ */
+export async function loadHoldGroupRooms(hold: HoldGroup, isMember: boolean, locals?: Locals): Promise<HoldGroupRoomView[] | null> {
 	const planIds = [...new Set(hold.rooms.map((r) => r.planId))];
 	const roomIds = [...new Set(hold.rooms.map((r) => r.roomTypeId))];
 	const [plans, rooms] = await Promise.all([
-		Promise.all(planIds.map(async (id) => [id, await sbPlanByUuid(id)] as const)),
+		Promise.all(
+			planIds.map(async (id) => {
+				if (!locals) {
+					const plan = await sbPlanByUuid(id);
+					return [id, plan ? { plan, preview: false } : undefined] as const;
+				}
+				return [id, await planOrPreview(id, locals)] as const;
+			})
+		),
 		Promise.all(roomIds.map(async (id) => [id, await sbRoomTypeByUuid(id)] as const))
 	]);
 	const planMap = new Map(plans);
 	const roomMap = new Map(rooms);
 	const out: HoldGroupRoomView[] = [];
 	for (const r of hold.rooms) {
-		const basePlan = planMap.get(r.planId);
+		const found = planMap.get(r.planId);
 		const room = roomMap.get(r.roomTypeId);
-		if (!basePlan || !room) return null;
-		out.push({ index: r.index, room, plan: planForViewer(basePlan, isMember), basePlan, adults: r.adults, quote: r.quote });
+		if (!found || !room) return null;
+		const basePlan = found.plan;
+		out.push({ index: r.index, room, plan: planForViewer(basePlan, isMember), basePlan, adults: r.adults, quote: r.quote, preview: found.preview });
 	}
 	return out;
 }

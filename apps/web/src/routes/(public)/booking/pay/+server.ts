@@ -63,8 +63,10 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			}
 			const hold = await sbGetHoldGroupMapped(parsed.holdId, sid);
 			if (!hold || hold.status !== 'active') return bad(m.error_hold_expired(), 410, { expired: true });
-			const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, viewerIsMember(locals)), sbFacilityByUuid(hold.facilityId)]);
+			const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, viewerIsMember(locals), locals), sbFacilityByUuid(hold.facilityId)]);
 			if (!roomViews || !facility) return bad(m.error_hold_expired(), 410, { expired: true });
+			// 販売中でないプラン（スタッフのプレビュー）は決済に進ませない。お客様は上で読めず「期限切れ」になる
+			if (roomViews.some((r) => r.preview)) return bad('プレビュー中のため、予約は確定できません（このプランは販売中ではありません）。', 403);
 			// 非会員は非会員の支払方法で判定（DB の direct_payment_prepare も同じ判定をする）。複数室は全室のプランで許されているときだけ
 			if (!payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: true }).options.includes('card')) {
 				return bad('このプランはオンライン決済をご利用いただけません。', 400);

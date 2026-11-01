@@ -22,7 +22,6 @@ import {
 	offerToQuote,
 	createHoldGroup,
 	sbRoomTypeByUuid,
-	sbPlanByUuid,
 	mapPlanRow,
 	bookingSessionId
 } from '$lib/server/supabase-data';
@@ -37,13 +36,13 @@ import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
+import { isStaffViewer, planOrPreview, previewPlanForHold } from '$lib/server/plan-preview';
 import type { Actions, PageServerLoad } from './$types';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
 async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUuid: string, slug: string) {
 	if (event.url.searchParams.get('preview') !== '1') return undefined;
-	const role = event.locals.user?.role;
-	if (role !== 'admin' && role !== 'staff') return undefined;
+	if (!isStaffViewer(event.locals)) return undefined;
 	const row = await sbPlanPreviewRow(createSupabaseServerClient(event), facilityUuid, slug).catch(() => undefined);
 	return row ? mapPlanRow(row) : undefined;
 }
@@ -64,13 +63,16 @@ export const load: PageServerLoad = async (event) => {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
-		// スタッフの ?preview=1 は、未公開・料金なし・直販対象外のプランも販売ページの見た目で確かめる（予約はできない）
-		const preview = await staffPreviewPlan(event, facility.id, params.plan);
-		const open = preview ? undefined : await sbPlanBySlug(facility.id, params.plan);
-		const secret = open || preview ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
-		const found = preview ?? open ?? secret?.plan;
+		// それでも無ければ（販売停止中・販売表示期間の外・料金なし）、スタッフの ?preview=1 だけ販売ページの見た目で確かめる。
+		// プレビューは本物の在庫・料金で仮押さえして予約入力画面まで進めるが、確定はできない（v0.230.0・$lib/server/plan-preview）
+		const open = await sbPlanBySlug(facility.id, params.plan);
+		const secret = open ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
+		const preview = open || secret ? undefined : await staffPreviewPlan(event, facility.id, params.plan);
+		const found = open ?? secret?.plan ?? preview;
 		if (!found) error(404, 'プランが見つかりません');
 		const gate = secret?.gate ?? 'ok';
+		// 料金・空室・仮押さえの RPC に「このプランを販売中と同じに扱う」印を付ける（スタッフのプレビューだけ）
+		const previewPlanId = preview ? preview.id : undefined;
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
 		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
@@ -79,7 +81,7 @@ export const load: PageServerLoad = async (event) => {
 		// 会員限定で予約できない閲覧者（gate=login/rank）には、料金・空室・客室は出さず案内だけ出す
 		const bookable = gate === 'ok';
 		if (!checkin && bookable) {
-			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id);
+			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId);
 			plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
 		}
 
@@ -87,9 +89,9 @@ export const load: PageServerLoad = async (event) => {
 		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		const [calendar, offers, rooms] = await Promise.all([
 			bookable
-				? stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS })
+				? stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS, previewPlanId })
 				: Promise.resolve({ days: [], through: '', closed: [] }),
-			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id) : Promise.resolve([]),
+			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
 			sbListRoomTypesMapped(facility.id)
 		]);
 		const roomById = new Map(rooms.map((r) => [r.id, r]));
@@ -220,6 +222,9 @@ export const actions: Actions = {
 		}
 
 		if (DATA_SOURCE === 'supabase') {
+			// スタッフのプレビュー（販売中でないプラン）は、そのプランを販売中と同じに扱わせて仮押さえする（確定は予約入力画面で止める）
+			const previewHold = await previewPlanForHold(rooms.map((r) => r.planId), locals);
+			if (previewHold.error) return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
 			const sid = bookingSessionId(cookies);
 			// create_hold は service_role 専用（S8）。会員の紐付けは検証済みセッションの会員 id を渡す（会員でなければ null）
 			const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
@@ -228,7 +233,9 @@ export const actions: Actions = {
 			// 支払方法が両立しないプランは同じ予約にできない（Q3。かごでも止めるが、ここでも止める）
 			if (rooms.length > 1) {
 				const isMember = viewerIsMember(locals);
-				const plans = await Promise.all([...new Set(rooms.map((r) => r.planId))].map((id) => sbPlanByUuid(id).catch(() => undefined)));
+				const plans = await Promise.all(
+					[...new Set(rooms.map((r) => r.planId))].map((id) => planOrPreview(id, locals).then((x) => x?.plan).catch(() => undefined))
+				);
 				if (plans.some((p) => !p || p.facilityId !== facility.id)) {
 					return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
 				}
@@ -236,7 +243,12 @@ export const actions: Actions = {
 					return fail(400, { message: m.cart_mixed_payment(), code: 'mixed_payment' as const });
 				}
 			}
-			const result = await createHoldGroup(sid, facility.id, checkin, nights, rooms, { clientKey: ip, memberUserId, locale: getLocale() });
+			const result = await createHoldGroup(sid, facility.id, checkin, nights, rooms, {
+				clientKey: ip,
+				memberUserId,
+				locale: getLocale(),
+				previewPlanId: previewHold.previewPlanId
+			});
 			if ('error' in result) {
 				if (result.error === 'rate_limited' || result.error === 'too_many_holds') {
 					return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });

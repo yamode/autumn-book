@@ -4,6 +4,7 @@
 import { json } from '@sveltejs/kit';
 import { hpCorsHeaders } from '$lib/server/hp-cors';
 import { stayCalendar } from '$lib/server/stay-calendar';
+import { isStaffViewer } from '$lib/server/plan-preview';
 import type { RequestHandler } from './$types';
 
 const clamp = (value: string | null, min: number, max: number, fallback: number) => {
@@ -11,19 +12,21 @@ const clamp = (value: string | null, min: number, max: number, fallback: number)
 	return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback;
 };
 
-export const GET: RequestHandler = async ({ url, request, setHeaders }) => {
+export const GET: RequestHandler = async ({ url, request, setHeaders, locals }) => {
 	const cors = hpCorsHeaders(request.headers.get('origin'));
 	const facility = url.searchParams.get('facility') ?? '';
 	if (!facility) return json({ error: 'facility_required' }, { status: 400, headers: cors });
 	const plan = url.searchParams.get('plan') || undefined;
+	// &preview=1: スタッフの販売ページプレビュー（販売中でないプランも本物の空室で返す・$lib/server/plan-preview）
+	const previewPlanId = plan && url.searchParams.get('preview') === '1' && isStaffViewer(locals) ? plan : undefined;
 	try {
 		const result = await stayCalendar(
 			facility,
 			clamp(url.searchParams.get('nights'), 1, 7, 1),
 			clamp(url.searchParams.get('adults'), 1, 6, 2),
-			{ planId: plan, roomTypeId: url.searchParams.get('room') || undefined, months: clamp(url.searchParams.get('months'), 1, 6, 2) }
+			{ planId: plan, roomTypeId: url.searchParams.get('room') || undefined, months: clamp(url.searchParams.get('months'), 1, 6, 2), previewPlanId }
 		);
-		setHeaders({ 'cache-control': 'private, max-age=60', ...cors });
+		setHeaders({ 'cache-control': previewPlanId ? 'private, no-store' : 'private, max-age=60', ...cors });
 		return json(result);
 	} catch (e) {
 		console.error('[api/stay-calendar]', e instanceof Error ? e.message : String(e));

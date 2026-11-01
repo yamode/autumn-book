@@ -67,6 +67,8 @@ function holdNav(cookies: Cookies, holdId: string, fallback: string): { planHref
 	return { planHref: fallback, backHref: fallback, via: '' };
 }
 
+const PREVIEW_CONFIRM_DENIED = 'プレビュー中のため、予約は確定できません（このプランは販売中ではありません）。';
+
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
 const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.05 };
 
@@ -81,7 +83,8 @@ export const load: PageServerLoad = async (event) => {
 		// 非会員は非会員の支払方法（book.plan_contents.nonmember_payment_method）で出す
 		const isMember = viewerIsMember(locals);
 		// 部屋ごとのプラン・部屋タイプ（複数室・M1）。1 室目の値を最上位の plan / room にも置く（1 室の画面はそのまま）
-		const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, isMember), sbFacilityByUuid(hold.facilityId)]);
+		// スタッフは販売中でないプランもプレビューとして読む（予約は確定させない・$lib/server/plan-preview）
+		const [roomViews, facility] = await Promise.all([loadHoldGroupRooms(hold, isMember, locals), sbFacilityByUuid(hold.facilityId)]);
 		if (!roomViews || !facility) return { expired: true as const };
 		const { plan, room } = roomViews[0];
 		const multi = roomViews.length > 1;
@@ -140,6 +143,8 @@ export const load: PageServerLoad = async (event) => {
 			hold,
 			plan,
 			room,
+			// スタッフのプレビュー（販売中でないプランを含む束）: 入力はできるが確定ボタン・カード決済を止める
+			preview: roomViews.some((r) => r.preview),
 			// 部屋ごとの表示（複数室のときに部屋カード・男女・部屋ごとの質問を出す。1 室は 1 件）
 			rooms: roomViews.map((r, i) => ({
 				index: r.index,
@@ -204,6 +209,7 @@ export const load: PageServerLoad = async (event) => {
 		expired: false as const,
 		hold,
 		plan,
+		preview: false,
 		room: demoRoom,
 		// デモ（store.ts）は 1 室だけ
 		rooms: [
@@ -294,8 +300,10 @@ export const actions: Actions = {
 			// 支払方法を見ないため、非会員に現地払いが無いプランはここで止める（画面で隠すだけにしない）。
 			// 複数室は全室のプランで現地払いが許されているときだけ（Q3）
 			const isMember = viewerIsMember(locals);
-			const roomViews = await loadHoldGroupRooms(hold, isMember);
+			const roomViews = await loadHoldGroupRooms(hold, isMember, locals);
 			if (!roomViews) return fail(410, { message: m.error_hold_expired() });
+			// 販売中でないプラン（スタッフのプレビュー）は確定しない。お客様は上で読めず「期限切れ」になる
+			if (roomViews.some((r) => r.preview)) return fail(403, { message: PREVIEW_CONFIRM_DENIED, values: guest });
 			const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
 			if (payment === 'onsite' && !pay.options.includes('onsite')) {
 				errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';

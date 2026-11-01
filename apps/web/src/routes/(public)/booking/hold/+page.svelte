@@ -258,6 +258,12 @@
 		</nav>
 		{/if}
 		<Stepper {steps} current={1} />
+		{#if data.preview}
+			<!-- スタッフの販売ページプレビュー（販売中でないプラン）。在庫は本物を押さえているので「選び直す」で戻してもらう -->
+			<p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+				プレビュー（スタッフ用）。このプランは販売中ではないため、予約は確定できません。仮押さえした部屋は期限まで在庫から減っています。確認が終わったら「選び直す」で戻してください。
+			</p>
+		{/if}
 		{#if memberPage}
 			<!-- 特別会員の専用ページ経由・専用料金（専用特典は部屋ごと・右の予約内容に） -->
 			<div class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
@@ -678,7 +684,7 @@
 
 					<button
 						type="submit"
-						disabled={paying || (inlineCard && !data.publishableKey)}
+						disabled={paying || data.preview || (inlineCard && !data.publishableKey)}
 						class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500 disabled:opacity-50"
 					>
 						{#if inlineCard}
@@ -687,7 +693,9 @@
 							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
 						{/if}
 					</button>
-					{#if inlineCard}
+					{#if data.preview}
+						<p class="text-center text-xs text-amber-800">プレビュー中のため、予約は確定できません。</p>
+					{:else if inlineCard}
 						<p class="text-center text-xs text-stone-400">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
 					{:else if !isPrepay}
 						<p class="text-center text-xs text-stone-400">{m.hold_local_payment_note()}</p>

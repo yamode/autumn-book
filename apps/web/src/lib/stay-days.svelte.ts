@@ -4,7 +4,8 @@
 export type StayDay = { date: string; price: number | null };
 /** closed: 休館日（「満室」と分けて「休館日」と出す） */
 export type StayDays = { days: StayDay[]; through: string; closed?: string[] };
-export type StaySource = { facilityId: string; planId?: string; roomTypeId?: string; months?: number };
+/** preview: スタッフの販売ページプレビュー（販売中でないプランも本物の空室で取る） */
+export type StaySource = { facilityId: string; planId?: string; roomTypeId?: string; months?: number; preview?: boolean };
 
 export class StayDaysLoader {
 	/** `${泊数}|${人数}` → 取り直した結果 */
@@ -41,6 +42,7 @@ export class StayDaysLoader {
 		if (source.planId) query.set('plan', source.planId);
 		if (source.roomTypeId) query.set('room', source.roomTypeId);
 		if (source.months) query.set('months', String(source.months));
+		if (source.preview) query.set('preview', '1');
 		this.loading = true;
 		this.failed = false;
 		fetch(`/api/stay-calendar?${query}`, { signal: controller.signal })

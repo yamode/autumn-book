@@ -38,7 +38,7 @@
 //       });
 import { parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot } from '$lib/partner-member-page';
 import { supa } from './supabase';
-import { partnerServiceClient } from './partners/admin-client';
+import { partnerServiceClient, previewServiceClient } from './partners/admin-client';
 import { planAccessOf } from '$lib/plan-access';
 import { signCookieValue, verifyCookieValue } from './signed-cookie';
 import { holdClientKey, holdErrorKind } from './hold-rate-limit';
@@ -373,13 +373,14 @@ export async function createHoldGroup(
 	checkin: string,
 	nights: number,
 	rooms: HoldRoomInput[],
-	opts: { clientKey: string; memberUserId: string | null; locale?: string }
+	opts: { clientKey: string; memberUserId: string | null; locale?: string; previewPlanId?: string }
 ): Promise<
 	| { groupId: string; expiresAt: string; total: number; rooms: { index: number; holdId: string; quote: Quote }[] }
 	| { error: CreateHoldGroupError; soldOutRoomTypeId?: string | null }
 > {
 	if (rooms.length < 1 || rooms.length > MAX_ROOMS_PER_BOOKING) return { error: 'too_many_rooms' };
-	const sb = partnerServiceClient();
+	// スタッフのプレビュー（販売中でないプラン）は、そのプランを販売中と同じに扱わせて本物の在庫を押さえる（確定は Book が止める）
+	const sb = opts.previewPlanId ? previewServiceClient(opts.previewPlanId) : partnerServiceClient();
 	if (!sb) throw new Error('create_hold_group: service_role クライアントが未設定');
 	const { data, error } = await sb.schema('book').rpc('create_hold_group', {
 		p_session_id: sessionId,
@@ -2671,9 +2672,25 @@ export async function sbListPlansMapped(facilityUuid: string): Promise<RatePlan[
 	return (rows ?? []).map((r) => mapPlanRow(r as Record<string, unknown>));
 }
 
+/**
+ * 公開情報の読み取り先。previewPlanId を渡すと、そのプランを販売中と同じに扱わせる service_role（スタッフのプレビュー・v0.230.0）。
+ * 渡すのはスタッフ（admin / staff）と確かめた呼び出し元だけ（$lib/server/plan-preview）
+ */
+function readClient(previewPlanId?: string): ReturnType<typeof supa> {
+	if (!previewPlanId) return supa();
+	const sb = previewServiceClient(previewPlanId);
+	if (!sb) throw new Error('preview: service_role クライアントが未設定');
+	return sb.schema('book') as unknown as ReturnType<typeof supa>;
+}
+
 /** 公開プランごとの本日〜2か月後の参考最低料金（指定人数利用時の1名1泊）。 */
-export async function sbPlanReferenceMinPrices(facilityUuid: string, adults: number, ratePlanId?: string): Promise<Map<string, number>> {
-	const { data, error } = await supa().rpc('plan_reference_min_prices', {
+export async function sbPlanReferenceMinPrices(
+	facilityUuid: string,
+	adults: number,
+	ratePlanId?: string,
+	previewPlanId?: string
+): Promise<Map<string, number>> {
+	const { data, error } = await readClient(previewPlanId).rpc('plan_reference_min_prices', {
 		p_facility: facilityUuid,
 		p_adults: adults,
 		p_rate_plan_id: ratePlanId ?? null
@@ -2707,9 +2724,9 @@ export async function sbFacilityStayCalendar(
 	facilityUuid: string,
 	nights: number,
 	adults: number,
-	options: { planId?: string; roomTypeId?: string; months?: number } = {}
+	options: { planId?: string; roomTypeId?: string; months?: number; previewPlanId?: string } = {}
 ): Promise<{ date: string; price: number; remaining: number }[]> {
-	const { data, error } = await supa().rpc('facility_stay_calendar', {
+	const { data, error } = await readClient(options.previewPlanId).rpc('facility_stay_calendar', {
 		p_facility: facilityUuid,
 		p_nights: nights,
 		p_adults: adults,
@@ -2793,9 +2810,10 @@ export async function sbPlanOffers(
 	checkin: string | undefined,
 	nights: number,
 	adults: number,
-	ratePlanId?: string
+	ratePlanId?: string,
+	previewPlanId?: string
 ): Promise<PlanOffer[]> {
-	const { data, error } = await supa().rpc('plan_offers', {
+	const { data, error } = await readClient(previewPlanId).rpc('plan_offers', {
 		p_facility: facilityUuid,
 		p_checkin: checkin ?? null,
 		p_nights: nights,

@@ -33,7 +33,7 @@
 		/** days が何名で計算されたものか（既定は source.adults） */
 		daysAdults?: number;
 		/** 指定すると、泊数を変えたときに /api/stay-calendar からその泊数で予約できる日を取り直す */
-		source?: { facilityId: string; planId?: string; adults: number; months?: number };
+		source?: { facilityId: string; planId?: string; adults: number; months?: number; preview?: boolean };
 		onSelect: (date: string, nights: number) => void;
 	} = $props();
 

@@ -326,7 +326,7 @@
 		<!-- プランの見出し（宿泊予約サイトと同じく写真の上に大きく） -->
 		<header class="space-y-2 md:col-start-1">
 			{#if data.preview}
-				<p class="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">プレビュー（スタッフ用）。公開前のため、料金・空室は出ず、予約もできません。</p>
+				<p class="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">プレビュー（スタッフ用）。このプランは販売中ではありません。料金・空室は本物で、予約入力画面まで進めますが、予約は確定できません（仮押さえした部屋は期限まで在庫から減ります。終わったら「選び直す」で戻してください）。</p>
 			{/if}
 			{#if data.plan.highlightTags.length}
 				<div class="flex flex-wrap gap-1.5">
@@ -428,7 +428,7 @@
 			📅 {data.params.checkin ? formatDate(data.params.checkin) : m.bath_select_date()} · {m.searchbar_nights_option({ n: String(data.params.nights) })}
 		</button>
 	</section>
-	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6 }} onSelect={chooseDate} />
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6, preview: data.preview }} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">

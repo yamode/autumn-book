@@ -73,3 +73,27 @@ export function partnerServiceClient(): SupabaseClient | null {
 	cached = { key, client };
 	return client;
 }
+
+// 例外その14（2026-11-01・v0.230.0）: スタッフの販売ページプレビュー（lib/server/plan-preview.ts）。
+//   販売中でないプランを本物の在庫・料金で確かめるため、x-book-preview-plan ヘッダー付きで呼ぶ（autumn-shared 20261101073819）。
+//   DB は service_role の呼び出しのときだけヘッダーを見る。呼ぶ側はログイン中の役割が admin / staff であることを確かめてから使う。
+const previewCache = new Map<string, SupabaseClient>();
+
+/** プレビュー中のプラン 1 つを販売中と同じに扱わせる service_role クライアント（鍵が無ければ null） */
+export function previewServiceClient(ratePlanId: string): SupabaseClient | null {
+	const base = partnerServiceClient();
+	if (!base) return null;
+	const serviceRoleKey = privateEnv.SUPABASE_SERVICE_ROLE_KEY!.trim();
+	const supabaseUrl = (privateEnv.SUPABASE_URL || publicEnv.PUBLIC_SUPABASE_URL)!.trim();
+	const key = `${supabaseUrl}|${serviceRoleKey}|${ratePlanId}`;
+	const hit = previewCache.get(key);
+	if (hit) return hit;
+	const client = createClient(supabaseUrl, serviceRoleKey, {
+		auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+		global: { headers: { 'x-book-preview-plan': ratePlanId } }
+	});
+	// プランの数だけ増えるので、ある程度で捨てる
+	if (previewCache.size > 50) previewCache.clear();
+	previewCache.set(key, client);
+	return client;
+}

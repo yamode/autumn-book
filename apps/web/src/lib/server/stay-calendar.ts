@@ -63,14 +63,15 @@ export async function stayCalendar(
 	rawFacilityId: string,
 	nights: number,
 	adults: number,
-	options: { planId?: string; roomTypeId?: string; months?: number } = {}
+	// previewPlanId: スタッフのプレビュー中のプラン（販売中でなくても本物の空室を返す・$lib/server/plan-preview）
+	options: { planId?: string; roomTypeId?: string; months?: number; previewPlanId?: string } = {}
 ): Promise<{ days: StayCalendarDay[]; through: string; closed: string[] }> {
 	const facilityId = resolveStayFacility(rawFacilityId);
 	const months = Math.min(6, Math.max(1, options.months ?? 2));
 	const through = monthsAfter(todayJst(), months);
 	if (DATA_SOURCE === 'supabase') {
 		const [days, closed] = await Promise.all([
-			sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, roomTypeId: options.roomTypeId, months }),
+			sbFacilityStayCalendar(facilityId, nights, adults, { planId: options.planId, roomTypeId: options.roomTypeId, months, previewPlanId: options.previewPlanId }),
 			// 休館日が取れなくてもカレンダーは出す（「満室」表示になるだけ）
 			sbFacilityClosedDates(facilityId, months).catch((e) => {
 				console.error('[stay-calendar] closed dates', e instanceof Error ? e.message : String(e));
