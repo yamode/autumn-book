@@ -8,6 +8,8 @@ import {
 	createHold
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
+import { createSupabaseServerClient } from '$lib/server/auth';
+import { sbPlanPreviewRow } from '$lib/server/content-admin';
 import { MEMBER_SUPABASE } from '$lib/server/auth';
 import { holdRateCheck } from '$lib/server/hold-rate-limit';
 import { checkTurnstile } from '$lib/server/turnstile';
@@ -22,6 +24,7 @@ import {
 	createHoldGroup,
 	sbRoomTypeByUuid,
 	sbPlanByUuid,
+	mapPlanRow,
 	bookingSessionId
 } from '$lib/server/supabase-data';
 import { MAX_ROOMS_PER_BOOKING, parseHoldRooms, payCompatible } from '$lib/multi-room';
@@ -37,7 +40,17 @@ import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, url, locals, cookies }) => {
+/** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
+async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUuid: string, slug: string) {
+	if (event.url.searchParams.get('preview') !== '1') return undefined;
+	const role = event.locals.user?.role;
+	if (role !== 'admin' && role !== 'staff') return undefined;
+	const row = await sbPlanPreviewRow(createSupabaseServerClient(event), facilityUuid, slug).catch(() => undefined);
+	return row ? mapPlanRow(row) : undefined;
+}
+
+export const load: PageServerLoad = async (event) => {
+	const { params, url, locals, cookies } = event;
 	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
@@ -50,9 +63,11 @@ export const load: PageServerLoad = async ({ params, url, locals, cookies }) => 
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
-		const open = await sbPlanBySlug(facility.id, params.plan);
-		const secret = open ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
-		const found = open ?? secret?.plan;
+		// スタッフの ?preview=1 は、未公開・料金なし・直販対象外のプランも販売ページの見た目で確かめる（予約はできない）
+		const preview = await staffPreviewPlan(event, facility.id, params.plan);
+		const open = preview ? undefined : await sbPlanBySlug(facility.id, params.plan);
+		const secret = open || preview ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
+		const found = preview ?? open ?? secret?.plan;
 		if (!found) error(404, 'プランが見つかりません');
 		const gate = secret?.gate ?? 'ok';
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
@@ -100,6 +115,7 @@ export const load: PageServerLoad = async ({ params, url, locals, cookies }) => 
 			multiRoom: true,
 			// シークレットプランの扱い（ok 以外は料金・客室を出さず、ログイン・グレードの案内を出す）
 			gate,
+			preview: !!preview,
 			params: { checkin: checkin ?? '', nights, adults }
 		};
 	}
@@ -140,6 +156,7 @@ export const load: PageServerLoad = async ({ params, url, locals, cookies }) => 
 		referenceMode: false,
 		multiRoom: false,
 		gate,
+		preview: false,
 		params: { checkin: checkin ?? '', nights, adults }
 	};
 };

@@ -240,6 +240,9 @@
 					<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
 				{/each}
 			</div>
+			{#if data.preview}
+				<p class="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">プレビュー（スタッフ用）。公開前のため、料金・空室は出ず、予約もできません。</p>
+			{/if}
 			<PlanAccessBadge access={data.plan.access} />
 			<h1 class="font-display text-2xl leading-snug text-brand-900">{data.plan.name}</h1>
 			{#if data.plan.headline && data.plan.headline !== data.plan.name}

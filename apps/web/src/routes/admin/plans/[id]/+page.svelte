@@ -101,6 +101,10 @@
 
 <PageHeader title={c.name} description={c.code || c.slug}>
 	{#snippet actions()}
+		{#if data.previewBase && c.slug}
+			<!-- 未公開・料金なしでも、販売ページの見た目を確かめられる（スタッフだけ。予約はできない） -->
+			<a href={`${data.previewBase}/plans/${c.slug}?preview=1`} target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">販売ページをプレビュー <AdminIcon name="external" class="h-4 w-4" /></a>
+		{/if}
 		{#if data.previewBase && c.slug && c.isPublished}
 			<!-- シークレットプランは一覧から見えないので、専用 URL で開く（URL を開いた扱いになる） -->
 			<a href={!isOpenPlan(c.access) && data.shareUrl ? data.shareUrl : `${data.previewBase}/plans/${c.slug}`} target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを開く <AdminIcon name="external" class="h-4 w-4" /></a>

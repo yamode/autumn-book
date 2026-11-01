@@ -269,7 +269,7 @@ async function loadRatePlans(
 	let q = client
 		.schema('book')
 		.from('v_admin_rate_plans')
-		.select('id, code, name, is_active, public_on_direct, payment_method, managed_by, book_origin')
+		.select('id, code, name, meal_plan, is_active, public_on_direct, payment_method, managed_by, book_origin')
 		.eq('facility_id', facilityUuid);
 	if (ids) q = q.in('id', ids);
 	const { data, error } = await q;
@@ -353,6 +353,30 @@ export async function sbGetPlanContentAdmin(
 	if (!pc.data) return { plan: null, namesError: null };
 	const { byId, error } = await loadRatePlans(client, facilityUuid, [ratePlanId]);
 	return { plan: planFromRows(pc.data as Row, byId.get(ratePlanId)), namesError: error };
+}
+
+/**
+ * 公開ページのプレビュー用に、未公開・料金なし・直販対象外のプランも slug で引く（スタッフだけが呼ぶ）。
+ * 公開側の book.v_plans は is_published と直販対象で絞るので、ここでは紹介の行と管理用ビューから行を組み立てる。
+ */
+export async function sbPlanPreviewRow(
+	client: SupabaseClient,
+	facilityUuid: string,
+	slug: string
+): Promise<Record<string, unknown> | undefined> {
+	const pc = await client
+		.schema('book')
+		.from('plan_contents')
+		.select('*')
+		.eq('facility_id', facilityUuid)
+		.eq('slug', slug)
+		.maybeSingle();
+	if (pc.error) throw pc.error;
+	if (!pc.data) return undefined;
+	const c = pc.data as Row;
+	const { byId } = await loadRatePlans(client, facilityUuid, [String(c.rate_plan_id)]);
+	const rp = byId.get(String(c.rate_plan_id));
+	return { ...c, name: rp?.name ?? c.slug, meal_plan: rp?.meal_plan ?? '', payment_method: rp?.payment_method ?? null };
 }
 
 /** プランの紹介を保存する（行は rms 同期が作るので更新のみ）。 */
