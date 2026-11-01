@@ -35,13 +35,23 @@
   import { onMount } from 'svelte';
   import { env } from '$env/dynamic/public';
   import { page } from '$app/state';
+  import * as m from '$lib/paraglide/messages';
 
-  let { action = undefined }: { action?: string } = $props();
+  // floating: フォームの流れと関係なく画面下に浮かべ、Cloudflare が操作を求めたときだけ出す
+  // （プラン詳細の「客室を選ぶ」のように、1 つの部品を複数のフォームで共有して本文の途中に置き場が無いとき）
+  let { action = undefined, floating = false }: { action?: string; floating?: boolean } = $props();
+  let needsCheck = $state(false);
 
   const siteKey = env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
   let el: HTMLDivElement | undefined = $state();
   let api: TurnstileApi | null = null;
   let widgetId: string | null = null;
+
+  function show(on: boolean) {
+    // floating は外枠ごと出し入れする（中の iframe は描いたまま。display:none にすると判定が止まるため）
+    if (floating) needsCheck = on;
+    else if (el) el.style.display = on ? '' : 'none';
+  }
 
   onMount(() => {
     if (!siteKey || !el) return;
@@ -54,10 +64,10 @@
         appearance: 'interaction-only',
         language: 'ja',
         // 判定を通ったら枠を畳み、操作が要るとき・失敗・期限切れのときだけ出す（「成功しました」を出しっぱなしにしない）
-        callback: () => { if (el) el.style.display = 'none'; },
-        'before-interactive-callback': () => { if (el) el.style.display = ''; },
-        'expired-callback': () => { if (el) el.style.display = ''; },
-        'error-callback': () => { if (el) el.style.display = ''; },
+        callback: () => show(false),
+        'before-interactive-callback': () => show(true),
+        'expired-callback': () => show(true),
+        'error-callback': () => show(true),
         ...(action ? { action } : {})
       });
     });
@@ -83,7 +93,17 @@
   });
 </script>
 
-{#if siteKey}
+{#if siteKey && floating}
+  <div
+    class="fixed inset-x-0 top-24 z-50 flex justify-center px-4 transition {needsCheck ? 'opacity-100' : 'pointer-events-none opacity-0'}"
+    aria-hidden={!needsCheck}
+  >
+    <div class="rounded-xl border border-stone-200 bg-white p-3 shadow-lg">
+      <p class="mb-2 text-xs text-stone-600">{m.turnstile_floating_note()}</p>
+      <div bind:this={el}></div>
+    </div>
+  </div>
+{:else if siteKey}
   <div bind:this={el}></div>
 {/if}
 

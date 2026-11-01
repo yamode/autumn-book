@@ -2,7 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
+	import PlanPhotoGallery from '$lib/components/PlanPhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
 	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
@@ -231,7 +231,7 @@
 
 	<div class="grid gap-6 md:grid-cols-[1fr_320px]">
 		<div>
-			<PhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
+			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
 		</div>
 		<!-- 右カラムはスクロールしても料金・CTA が見えるよう追従させる（ヘッダー高さ分下げる） -->
 		<div class="space-y-3 md:sticky md:top-32 md:self-start lg:top-24">
@@ -388,8 +388,9 @@
 	</section>
 	{/if}
 
-	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない） -->
-	<div bind:this={turnstileBox}><Turnstile bind:this={turnstile} action="booking-hold" /></div>
+	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない）。
+	     本文の途中（客室を選ぶの下）に枠が出ると不自然なので、操作が要るときだけ画面上部に浮かべる -->
+	<div bind:this={turnstileBox}><Turnstile bind:this={turnstile} action="booking-hold" floating /></div>
 
 	<PerkModal bind:content={perkContent} />
 	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />
