@@ -2,12 +2,14 @@
 // 契約書 autumn_book_intercom_contract.md の §3（状態機械）・§4（store-and-forward）・§9（異常系）に従う。
 //
 //   1. マイク許可 → /r/api/intercom start（呼を作る。受電アプリが鳴る）
-//   2. fetch をポーリングして呼の状態を見る。スタッフが応答（active）したら offer を作って送る
-//      （受電側の購読が確立してから offer を流す＝契約 §4.2 の順序規約）
-//   3. answer / ice を受けて P2P 接続。ICE は remoteDescription 前に来たら保留キューへ
-//   4. 呼出 ring_timeout_sec で timeout（missed）。declined / ended / bye で片付け
+//   2. 呼出中のうちに PeerConnection を作り、ICE 候補を集め終えた（または時間切れの）offer を DB に置く
+//      （先置き offer＝契約 §4.2 改訂 2026-11-01。受電側は intercom_answer で勝ってから backlog で受け取る）
+//   3. fetch をポーリングして呼の状態を見る。スタッフが応答（active）したら呼出音を止めて「おつなぎしています」
+//   4. answer / ice を受けて P2P 接続。ICE は remoteDescription 前に来たら保留キューへ
+//   5. 音声がつながった（connected）ときに初めて応答音と「通話中」（それより前に話しても相手に届かない）
+//   6. 呼出 ring_timeout_sec で timeout（missed）。declined / ended / bye で片付け
 //
-// シグナルの配送は DB が正（fetch）。Realtime の broadcast は使わず、接続までは 1 秒、
+// シグナルの配送は DB が正（fetch）。Realtime の broadcast は使わず、呼出中は 1 秒、応答から接続までは 250ms、
 // 通話中は 2 秒間隔のポーリングだけで成立させている（ゲストのブラウザに Supabase クライアントを持たせない）。
 //
 // taskul-one（app/src/lib/talk/call.ts・HANDOFF v0.15.0）で踏んだ轍への対策:
@@ -46,6 +48,18 @@ const STUN_FALLBACK: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }
 const CONNECT_TIMEOUT_MS = 20_000; // 応答後、この時間で音声が繋がらなければ終了
 const DISCONNECT_GRACE_MS = 6_000; // disconnected をこの時間許容してから ICE restart
 const MAX_ICE_RESTARTS = 3;
+const GATHER_TIMEOUT_MS = 2_500; // 先置き offer に ICE 候補を含めるため、収集の完了をこの時間まで待つ
+const POLL_RINGING_MS = 1_000;
+const POLL_CONNECTING_MS = 250; // 応答から音声が繋がるまでは短く（answer / ice を早く拾う）
+const POLL_CONNECTING_FOR_MS = 15_000; // 短い間隔はこの時間まで（以後は 1 秒）
+const POLL_ACTIVE_MS = 2_000;
+
+// 区間ごとの時刻（発信からの ms）をコンソールに出す。リリース時は false
+const DEBUG = true;
+function dbg(...args: unknown[]) {
+	if (!DEBUG) return;
+	console.log('[call:diag]', ...args);
+}
 
 /** Opus に in-band FEC / DTX を強制する（taskul-one call.ts の tuneOpus と同じ） */
 export function tuneOpus(sdp: string | undefined): string | undefined {
@@ -105,7 +119,14 @@ export class GuestCall {
 	private graceTimer: ReturnType<typeof setTimeout> | null = null;
 	private iceRestarts = 0;
 	private iceServers: Promise<RTCIceServer[]> | null = null;
-	private offered = false;
+	/** スタッフの応答（status=active）に気づいた */
+	private picked = false;
+	private pickedAt = 0;
+	/** offer を DB に置いた（以後に出た ICE 候補だけ trickle で送る） */
+	private offerSent = false;
+	/** 候補収集の待ちを打ち切る（応答に気づいたら待たずに送る） */
+	private gatherCut: (() => void) | null = null;
+	private t0 = 0;
 	private closed = false;
 	/** 呼出音・応答音・終話音（発信側が状況を音で分かるように） */
 	private tones: CallTones | null = null;
@@ -117,7 +138,9 @@ export class GuestCall {
 	private set(state: GuestCallState, end?: GuestCallEnd) {
 		this.state = state;
 		if (state === 'ringing') this.tones?.startRing();
-		else if (state === 'connecting') this.tones?.answered();
+		// 応答されても音声が繋がるまでは呼出音を止めるだけ。応答音は繋がってから（早すぎる合図で話し始めないように）
+		else if (state === 'connecting') this.tones?.stopRing();
+		else if (state === 'active') this.tones?.answered();
 		else if (state === 'ended') {
 			// 自分で切った・マイクが使えないときは話中音を出さない
 			this.tones?.end(end === 'hangup' || end === 'mic');
@@ -129,6 +152,7 @@ export class GuestCall {
 	/** ボタン押下から呼ぶ（getUserMedia はユーザー操作の中で呼ぶ必要がある） */
 	async start(): Promise<void> {
 		if (this.state !== 'idle') return;
+		this.t0 = performance.now();
 		// 音の準備はユーザー操作の中（最初の await より前）でないと iOS で鳴らない
 		this.tones = new CallTones();
 		this.set('starting');
@@ -153,10 +177,12 @@ export class GuestCall {
 		this.callId = String(r.callId);
 		this.secret = String(r.callSecret);
 		this.set('ringing');
-		// 応答を待つ間に TURN クレデンシャルを取っておく（応答後の接続を速くする）
+		this.diag('呼出開始');
+		// 応答を待つ間に TURN を取り、PeerConnection・offer・ICE 収集まで済ませて offer を DB に置いておく
 		this.iceServers = api({ action: 'ice', callId: this.callId, callSecret: this.secret })
 			.then((r) => ((r.iceServers as RTCIceServer[] | undefined)?.length ? (r.iceServers as RTCIceServer[]) : STUN_FALLBACK))
 			.catch(() => STUN_FALLBACK);
+		void this.prepare();
 		const ringMs = (Number(r.ringTimeoutSec) || 30) * 1000;
 		this.ringTimer = setTimeout(() => void this.ringTimeout(), ringMs);
 		this.poll();
@@ -191,9 +217,19 @@ export class GuestCall {
 		this.finish('missed');
 	}
 
+	private diag(what: string) {
+		const now = performance.now();
+		dbg(`+${Math.round(now - this.t0)}ms`, what, this.pickedAt ? `（応答の検知から +${Math.round(now - this.pickedAt)}ms）` : '');
+	}
+
 	private poll() {
 		if (this.closed) return;
-		const delay = this.state === 'active' ? 2000 : 1000;
+		const delay =
+			this.state === 'active'
+				? POLL_ACTIVE_MS
+				: this.picked && performance.now() - this.pickedAt < POLL_CONNECTING_FOR_MS
+					? POLL_CONNECTING_MS
+					: POLL_RINGING_MS;
 		this.pollTimer = setTimeout(async () => {
 			try {
 				const r = await api({ action: 'fetch', callId: this.callId, callSecret: this.secret, after: this.lastId });
@@ -210,7 +246,7 @@ export class GuestCall {
 		if (status === 'declined') return this.finish('declined');
 		if (status === 'missed') return this.finish('missed');
 		if (status === 'ended' || status === 'canceled') return this.finish('remote');
-		if (status === 'active' && !this.offered) await this.onActive();
+		if (status === 'active' && !this.picked) this.onActive();
 		for (const s of signals) {
 			if (s.id <= this.lastId) continue;
 			this.lastId = s.id;
@@ -219,11 +255,23 @@ export class GuestCall {
 		}
 	}
 
-	private async onActive() {
-		if (this.offered || this.closed) return;
-		this.offered = true;
+	/** スタッフが応答した（status=active）。音声はまだ。offer は prepare が（まだなら準備でき次第）送る */
+	private onActive() {
+		if (this.picked || this.closed) return;
+		this.picked = true;
+		this.pickedAt = performance.now();
+		this.diag('応答を検知');
 		if (this.ringTimer) clearTimeout(this.ringTimer);
-		this.set('connecting');
+		if (this.state === 'ringing') this.set('connecting');
+		// 候補の収集を待っている最中なら、待たずにいま集まった分で送る
+		this.gatherCut?.();
+		this.connectTimer = setTimeout(() => {
+			if (this.state !== 'active') void this.fail();
+		}, CONNECT_TIMEOUT_MS);
+	}
+
+	/** 呼出中に PeerConnection を作り、ICE 候補を含んだ offer を DB に置く（契約 §4.2・先置き offer） */
+	private async prepare() {
 		const servers = (await this.iceServers) ?? STUN_FALLBACK;
 		if (this.closed) return;
 		const pc = new RTCPeerConnection({ iceServers: servers, iceCandidatePoolSize: 1 });
@@ -231,16 +279,22 @@ export class GuestCall {
 		this.local?.getTracks().forEach((t) => pc.addTrack(t, this.local!));
 		pc.ontrack = (e) => this.ev.onRemoteStream(e.streams[0] ?? new MediaStream([e.track]));
 		pc.onicecandidate = (e) => {
-			if (e.candidate) void this.send('ice', { candidate: e.candidate.toJSON() });
+			// offer を送る前の候補は offer の SDP に入るので送らない。送った後に出た候補だけ trickle
+			if (e.candidate && this.offerSent) void this.send('ice', { candidate: e.candidate.toJSON() });
 		};
 		pc.onconnectionstatechange = () => {
 			const st = pc.connectionState;
 			if (st === 'connected') {
 				if (this.connectTimer) clearTimeout(this.connectTimer);
+				// 旧版の受電アプリは intercom_answer の前に answer を返すので、status より先に繋がることがある
+				if (this.ringTimer) clearTimeout(this.ringTimer);
 				this.clearGrace();
 				this.iceRestarts = 0;
 				this.ev.onReconnecting?.(false);
-				if (this.state !== 'active') this.set('active');
+				if (this.state !== 'active') {
+					this.diag('音声接続（connected）');
+					this.set('active');
+				}
 			} else if (st === 'disconnected') {
 				this.startGrace();
 			} else if (st === 'failed') {
@@ -248,10 +302,40 @@ export class GuestCall {
 				else void this.fail();
 			}
 		};
-		this.connectTimer = setTimeout(() => {
-			if (this.state !== 'active') void this.fail();
-		}, CONNECT_TIMEOUT_MS);
-		await this.makeOffer(false);
+		try {
+			const offer = await pc.createOffer({ offerToReceiveAudio: true });
+			offer.sdp = tuneOpus(offer.sdp);
+			await pc.setLocalDescription(offer);
+			await this.waitGathering(pc);
+			if (this.closed) return;
+			// 集まった候補は localDescription の SDP に入っている
+			const desc = pc.localDescription ?? offer;
+			this.offerSent = true;
+			const cands = (desc.sdp?.match(/^a=candidate:/gm) ?? []).length;
+			this.diag(`offer 送信（候補 ${cands} 個・収集 ${pc.iceGatheringState}）`);
+			await this.send('offer', { sdp: { type: desc.type, sdp: desc.sdp } });
+		} catch {
+			void this.fail();
+		}
+	}
+
+	/** ICE 候補の収集完了を待つ（時間切れ・応答の検知で打ち切り） */
+	private waitGathering(pc: RTCPeerConnection): Promise<void> {
+		if (pc.iceGatheringState === 'complete' || this.picked) return Promise.resolve();
+		return new Promise((resolve) => {
+			const done = () => {
+				clearTimeout(timer);
+				pc.removeEventListener('icegatheringstatechange', onChange);
+				this.gatherCut = null;
+				resolve();
+			};
+			const onChange = () => {
+				if (pc.iceGatheringState === 'complete') done();
+			};
+			const timer = setTimeout(done, GATHER_TIMEOUT_MS);
+			pc.addEventListener('icegatheringstatechange', onChange);
+			this.gatherCut = done;
+		});
 	}
 
 	private async makeOffer(iceRestart: boolean) {
@@ -306,6 +390,7 @@ export class GuestCall {
 			// have-local-offer のときだけ受ける（初回・ICE restart 後の再 answer。重複した answer は捨てる）
 			if (!sdp?.sdp || pc.signalingState !== 'have-local-offer') return;
 			await pc.setRemoteDescription(sdp).catch(() => {});
+			this.diag(this.picked ? 'answer 受信' : 'answer 受信（status=active より先）');
 			for (const c of this.pendingIce.splice(0)) await pc.addIceCandidate(c).catch(() => {});
 		} else if (s.kind === 'ice') {
 			const c = s.payload.candidate as RTCIceCandidateInit | undefined;

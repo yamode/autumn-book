@@ -789,7 +789,7 @@
   "intercom_closed": "非服務時間",
   "intercom_starting": "準備中…",
   "intercom_ringing": "正在呼叫櫃檯…",
-  "intercom_connecting": "連線中…",
+  "intercom_connecting": "正在為您轉接…",
   "intercom_active": "通話中",
   "intercom_reconnecting": "訊號不穩，正在重新連線…",
   "intercom_keep_open": "通話期間請保持此畫面開啟",

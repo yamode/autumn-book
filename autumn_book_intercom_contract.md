@@ -117,7 +117,9 @@ taskul-one `call.ts` の `Signal` 型を踏襲：
 | `bye` | `{}` | 双方向 |
 
 - broadcast イベント名は `signal`、payload は `{ id, kind, payload, sender }`（`sender: 'guest' | 'staff'`）。
-- **offer は必ずゲスト側（caller）が作る**。ただし taskul-one 同様、**スタッフが `intercom_answer` で active にした後に送る**（受端の購読確立前に offer を流さない）。store-and-forward により厳密には early-offer も救済されるが、順序規約として維持する。
+- **offer は必ずゲスト側（caller）が作る**。~~スタッフが `intercom_answer` で active にした後に送る~~ → **2026-11-01 改訂：呼出中（ringing）に先置きしてよい**（§12.5）。store-and-forward なので受端の購読前でも消えない。
+  - ゲストは呼出中に PeerConnection を作り、ICE 候補を集め終えてから（最長 2.5 秒・応答を検知したら打ち切り）候補を SDP に含んだ offer を `intercom_signal_send` で置く。それより後に出た候補だけ `ice` で trickle する。
+  - **受電側は `intercom_answer` で先勝ちに勝ってから** backlog（`intercom_signal_fetch`）を取り、offer に answer を返す。勝つ前に answer を返さない（複数端末が同時に応答したとき、負けた端末の answer をゲストが採ってしまうため）。
 - ICE candidate は remoteDescription 設定前に届いたら保留キューに積む（taskul-one `pendingCandidates` パターン）。
 
 ### 4.3 着信通知（ring）
@@ -319,3 +321,15 @@ facility_intercom(
   - secrets：`APNS_AUTH_KEY_P8` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_BUNDLE_ID`（未設定なら全端末 FCM にフォールバック）。本番→開発ホストの自動フォールバック（taskul-one `_shared/apns.ts` と同じ）。
 - 受電アプリは VoIP push を受けたら**毎回同期的に CallKit へ報告**し（iOS 要件）、CallKit が呼出時間の間ロック画面でも鳴らし続ける。**push は合図に過ぎず、応答は従来どおり `intercom_answer`（先勝ち）→ signal の store-and-forward**。他端末が先に応答した・取消・時間切れになったら、アプリが `intercom_pending` / status で裏取りして CallKit の着信を閉じる（呼出時間＋15 秒の安全弁もネイティブに持つ）。
 - ゲスト側（`/r`）とシグナリング・RPC は変更なし。
+
+### 12.5 追補（2026-11-01・応答から話せるまでのラグ短縮＝先置き offer）
+
+現場の指摘：受電側で応答してから話せるまで数秒かかり、発信側は「つながった」合図（応答音）で話し始めても相手に聞こえていない。
+原因は、応答後に「ゲストが active に気づく → PeerConnection 作成・offer → 受電側が拾う → answer → ゲストが拾う → ICE」を最大 1 秒のポーリング待ち 3〜4 回で直列に行っていたこと、応答音を音声接続より前（status=active の検知）で鳴らしていたこと。
+
+- **合図**：ゲストの応答音と「通話中」は **PeerConnection が connected になった時点**（UI 状態 `active`）。status=active を検知した時点（UI 状態 `connecting`）は呼出音を止めて「おつなぎしています…」。
+- **先置き offer**（§4.2 改訂）：ゲストは呼出中に offer（候補入り）を DB に置く。`intercom_signal_send` は元から `ringing` / `active` のどちらでも受け付けるので **DB の変更なし**。
+- **受電側の順序**：`intercom_answer` と PeerConnection の準備（TURN 取得）を並列に進め、勝ってから `intercom_signal_fetch` で offer を受けて answer を返す。answer の後に出た候補は従来どおり trickle（受電側は `gatherContinually` なので収集完了を待たない）。TURN は着信を CallKit に報告した時点で先に取っておく。
+- **ポーリング**：応答から音声接続までは両側とも **250ms**（最長 15 秒。以後 1 秒）。呼出中は 1 秒、通話中は 2 秒のまま。
+- **互換**：旧版の受電アプリ（autumn-call v0.9.0 / build 6 以前）は `intercom_answer` の前に backlog を取るため、先置き offer に応答前に answer を返す。単一端末では問題なく繋がる（ゲストは status=active より先に connected になりうるので、connected で呼出タイマーも止める）。複数端末がほぼ同時に応答した場合だけ、負けた旧版端末の answer を採って繋がらない（20 秒で failed）ことがありうる。新版（v0.10.0 / build 7）では起きない。
+- 計測：ゲストはブラウザのコンソール `[call:diag]`（発信からの ms・応答の検知からの ms）、受電側は `[call:diag]`（応答操作からの ms：`pc ready` / `answer won` / `offer recv` / `answered offer` / `connected`）。

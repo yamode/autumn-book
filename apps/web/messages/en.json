@@ -789,7 +789,7 @@
   "intercom_closed": "Outside service hours",
   "intercom_starting": "Preparing…",
   "intercom_ringing": "Calling the front desk…",
-  "intercom_connecting": "Connecting…",
+  "intercom_connecting": "Connecting you to the front desk…",
   "intercom_active": "On call",
   "intercom_reconnecting": "Unstable connection. Reconnecting…",
   "intercom_keep_open": "Please keep this screen open during the call",
