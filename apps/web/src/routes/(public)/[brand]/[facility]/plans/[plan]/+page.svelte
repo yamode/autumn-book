@@ -85,7 +85,13 @@
 			return;
 		}
 		cart = [...cart, item];
-		cartMessage = cartIsFull(cart) ? '' : m.cart_added({ rooms: String(cart.length) });
+		// 検索した部屋数まであと何部屋か／そろったかを出す（4 室ちょうどのときは上限の注意が出るので重ねない）
+		const want = Math.max(data.params.rooms ?? 1, cart.length);
+		cartMessage = cartIsFull(cart)
+			? ''
+			: cart.length < want
+				? m.cart_progress_more({ rest: String(want - cart.length) })
+				: m.cart_progress_done({ total: String(want) });
 	}
 
 	// GA4 予約ファネル: プラン閲覧（設計書 §9）
@@ -120,6 +126,23 @@
 	let chosen = $derived(data.params.checkin && selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom && r.quote) : undefined);
 	let otherRooms = $derived(chosen ? data.rooms.filter((r) => r !== chosen) : data.rooms);
 	let showOthers = $state(false);
+	// 複数室: 検索で 2 室以上を選んだときだけ「予約リストに追加」で部屋を集め、画面下のバーから全室まとめて予約する。
+	// 1 室で検索したときは追加ボタンを出さない（そのまま「この部屋で予約へ進む」）。リストに部屋が入っていれば続きとして扱う
+	let targetRooms = $derived(Math.max(data.params.rooms ?? 1, cart.length));
+	let multiSearch = $derived(data.multiRoom && targetRooms > 1);
+	let progressText = $derived(m.cart_progress({ total: String(targetRooms), n: String(Math.min(cart.length, targetRooms)) }));
+
+	// 右カラムの追従位置: サイトのヘッダー（検索バー込み・画面幅で高さが変わる）のすぐ下にする
+	let stickyTop = $state(0);
+	$effect(() => {
+		const header = document.querySelector<HTMLElement>('header.sticky');
+		if (!header || typeof ResizeObserver === 'undefined') return;
+		const update = () => (stickyTop = Math.round(header.getBoundingClientRect().height) + 16);
+		update();
+		const ro = new ResizeObserver(update);
+		ro.observe(header);
+		return () => ro.disconnect();
+	});
 	// 早期決済割・早期決済ポイントの最大率（withEarlyPrepayMax が入れる）。points は定率割引と並べて出す
 	let earlyMax = $derived(data.plan.payment.prepay ? (data.plan.payment.earlyPrepayMaxRate ?? 0) : 0);
 	let earlyPoints = $derived(earlyMax > 0 && data.plan.payment.earlyPrepayMode === 'points');
@@ -186,6 +209,18 @@
 </script>
 
 {#snippet holdForm(r: (typeof data.rooms)[number], size: 'lg' | 'md')}
+	{#if multiSearch}
+		<!-- 2 室以上で検索: 部屋を予約リストに集め、そろったら画面下のバーから全室まとめて予約する（4 室のあいだは押せない見た目・押しても同じ注意を出す） -->
+		<button
+			type="button"
+			onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(r))}
+			aria-disabled={cartFull}
+			class="rounded-lg text-sm font-medium {size === 'lg' ? 'mt-3 block w-full py-2.5' : 'mt-2 px-5 py-2'} {cartFull ? 'cursor-not-allowed bg-stone-200 text-stone-400' : 'bg-accent-600 text-white hover:bg-accent-500'}"
+		>
+			{m.cart_add_to_list()}
+		</button>
+		<p class="mt-1 text-xs text-stone-500 {size === 'lg' ? 'text-center' : ''}">{progressText}</p>
+	{:else}
 	<form method="POST" action="?/hold" use:enhance class={size === 'lg' ? 'mt-3' : 'mt-2'}>
 		<input type="hidden" name="planId" value={data.plan.id} />
 		<input type="hidden" name="roomTypeId" value={r.room.id} />
@@ -198,16 +233,6 @@
 			{m.plan_detail_book()}
 		</button>
 	</form>
-	{#if data.multiRoom}
-		<!-- 複数室: かごに入れる（4 室のあいだは押せない見た目・押しても同じ注意を出す） -->
-		<button
-			type="button"
-			onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(r))}
-			aria-disabled={cartFull}
-			class="mt-1.5 rounded-lg border text-sm font-medium {size === 'lg' ? 'block w-full py-2' : 'px-4 py-1.5'} {cartFull ? 'cursor-not-allowed border-stone-200 text-stone-400' : 'border-accent-500 text-accent-600 hover:bg-amber-50'}"
-		>
-			{m.cart_add_room()}
-		</button>
 	{/if}
 {/snippet}
 
@@ -294,25 +319,37 @@
 		{/if}
 	</nav>
 
-	<div class="grid gap-6 md:grid-cols-[1fr_320px]">
-		<div>
-			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
-		</div>
-		<!-- 右カラムはスクロールしても料金・CTA が見えるよう追従させる（ヘッダー高さ分下げる） -->
-		<div class="space-y-3 md:sticky md:top-32 md:self-start lg:top-24">
-			<div class="flex flex-wrap gap-1.5">
-				{#each data.plan.highlightTags as tag}
-					<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
-				{/each}
-			</div>
+	<!-- レイアウト（2026-11-01）: 左＝見出し・写真・本文・客室、右＝料金と予約ボタン（ページの最後まで追従）。
+	     右カラムを全行にまたがらせ、本文以降も同じグリッドに入れることで追従が写真の高さで止まらないようにする。
+	     スマホは 1 列で「見出し → 写真 → 料金・予約 → 本文」の順（DOM の順のまま） -->
+	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px] md:gap-x-8">
+		<!-- プランの見出し（宿泊予約サイトと同じく写真の上に大きく） -->
+		<header class="space-y-2 md:col-start-1">
 			{#if data.preview}
 				<p class="rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">プレビュー（スタッフ用）。公開前のため、料金・空室は出ず、予約もできません。</p>
 			{/if}
-			<PlanAccessBadge access={data.plan.access} />
-			<h1 class="font-display text-2xl leading-snug text-brand-900">{data.plan.name}</h1>
-			{#if data.plan.headline && data.plan.headline !== data.plan.name}
-				<p class="text-sm text-stone-600">{data.plan.headline}</p>
+			{#if data.plan.highlightTags.length}
+				<div class="flex flex-wrap gap-1.5">
+					{#each data.plan.highlightTags as tag}
+						<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
+					{/each}
+				</div>
 			{/if}
+			<PlanAccessBadge access={data.plan.access} />
+			<h1 class="font-display text-2xl leading-snug text-brand-900 md:text-3xl">{data.plan.name}</h1>
+			{#if data.plan.headline && data.plan.headline !== data.plan.name}
+				<p class="text-sm text-stone-600 md:text-base">{data.plan.headline}</p>
+			{/if}
+		</header>
+
+		<div class="md:col-start-1">
+			<PlanPhotoGallery photos={[...data.plan.photos, ...data.facility.photos.slice(0, 3)]} />
+		</div>
+
+		<!-- 右カラム: スクロールしても料金・予約ボタンが見えるよう追従させる（ヘッダー高さ分下げる） -->
+		<aside class="space-y-3 md:sticky md:top-32 md:col-start-2 md:row-span-3 md:row-start-1 md:self-start lg:top-24" style={stickyTop ? `top: ${stickyTop}px` : undefined}>
+			<!-- 追従中もどのプランの料金か分かるように、名前だけ小さく -->
+			<p class="hidden text-sm font-medium leading-snug text-brand-900 md:block">{data.plan.name}</p>
 			<dl class="space-y-1 rounded-lg bg-stone-100 p-3 text-sm">
 				<div class="flex justify-between"><dt class="text-stone-500">{m.plan_detail_meal()}</dt><dd>{data.plan.mealPlan}</dd></div>
 				<div class="flex justify-between">
@@ -366,13 +403,14 @@
 				{#if perkBanners.length}<div class="mt-3"><PerkBanners items={perkBanners} onopen={openPerk} /></div>{/if}
 			</div>
 			{/if}
-		</div>
-	</div>
+		</aside>
 
+	<!-- 左カラムの続き（本文・客室・キャンセルポリシー）。右カラムがここまで追従する -->
+	<div class="min-w-0 md:col-start-1">
 	<!-- プラン本文（A-05 で作成した Markdown） -->
 	<!-- 改行は Markdown の breaks:true でそのまま改行になる -->
 	{#if data.plan.description}
-		<section class="mt-10 max-w-3xl">
+		<section class="mt-4 max-w-3xl md:mt-6">
 			<MarkdownView source={data.plan.description} />
 		</section>
 	{/if}
@@ -426,6 +464,8 @@
 		<h2 class="mb-2 font-medium">{m.plan_detail_cancel_policy()}</h2>
 		<p class="text-stone-600">{data.plan.cancellationPolicy.note}</p>
 	</section>
+	</div>
+	</div>
 </div>
 
 <!-- モバイル: 下部固定の料金バー（客室セクション表示中は隠す） -->
@@ -455,7 +495,10 @@
 					<p class="text-xs text-stone-500">{m.plan_price_cta_dates()}</p>
 				{/if}
 			</div>
-			{#if chosen}
+			{#if chosen && multiSearch}
+				<!-- 2 室以上で検索: このバーから予約リストに追加（入れたあとはこのバーの代わりに予約リストのバーが出る） -->
+				<button type="button" onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(chosen!))} class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.cart_add_to_list()}</button>
+			{:else if chosen}
 				<!-- 選んだ客室はこのバーから予約へ進める -->
 				<form method="POST" action="?/hold" use:enhance class="shrink-0">
 					<input type="hidden" name="planId" value={data.plan.id} />
@@ -480,4 +523,4 @@
 {/if}
 
 <!-- 予約かご（複数室・M1）。かごに部屋があるときだけ画面下に出す（モバイルの料金バーの代わり） -->
-<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} />
+<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} target={data.params.rooms} />

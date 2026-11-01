@@ -16,7 +16,8 @@
 		message = $bindable(''),
 		currentFacilityId,
 		back,
-		via
+		via,
+		target = 1
 	}: {
 		items: CartItem[];
 		/** バーの上に出す案内（追加したとき・止めたときの理由）。空なら出さない */
@@ -25,7 +26,10 @@
 		/** 予約入力の「選び直す」で戻る先（このページ） */
 		back: string;
 		via: string;
+		/** 検索した部屋数。2 以上なら「N部屋中 M部屋 選択済み」をバーに出す */
+		target?: number;
 	} = $props();
+	let want = $derived(Math.max(target, items.length));
 
 	let open = $state(false);
 	let busy = $state(false);
@@ -110,6 +114,12 @@
 
 			<div class="flex items-center gap-2">
 				<button type="button" onclick={() => (open = !open)} class="min-w-0 flex-1 text-left leading-tight" aria-expanded={open}>
+					{#if want > 1}
+						<!-- 検索した部屋数のうち何部屋選んだか（足りないときは色を変える） -->
+						<p class="text-[11px] font-medium {items.length < want ? 'text-amber-700' : 'text-emerald-700'}">
+							{m.cart_progress({ total: String(want), n: String(items.length) })}
+						</p>
+					{/if}
 					<p class="truncate text-sm font-bold text-brand-900">
 						{m.cart_bar_summary({ rooms: String(summary.rooms), adults: String(summary.adults), total: formatPrice(summary.total) })}
 					</p>

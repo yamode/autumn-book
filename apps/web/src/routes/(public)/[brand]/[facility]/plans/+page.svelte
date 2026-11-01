@@ -97,7 +97,8 @@
 		} catch {
 			/* 保存できない環境では、プラン詳細で入れ直してもらう */
 		}
-		const query = new URLSearchParams({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) });
+		// 部屋数も渡す（プラン詳細の予約リストのバーに「N部屋中 M部屋 選択済み」を出すため）
+		const query = new URLSearchParams({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults), rooms: String(data.params.rooms) });
 		void goto(`${base}/plans/${combo.planSlug}?${query}`);
 	}
 

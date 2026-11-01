@@ -55,6 +55,8 @@ export const load: PageServerLoad = async (event) => {
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
+	// 検索した部屋数（一覧から持ってくる）。2 室以上のときだけ「予約リストに追加」で部屋を集めて一括予約する
+	const roomCount = Math.min(MAX_ROOMS_PER_BOOKING, Math.max(1, Number(url.searchParams.get('rooms') ?? 1) || 1));
 	// 日付ピッカー用: このプランで「指定泊数」泊まれる日（6か月先まで）。泊数を変えたら画面側で取り直す
 	const CALENDAR_MONTHS = 6;
 
@@ -115,7 +117,7 @@ export const load: PageServerLoad = async (event) => {
 			// シークレットプランの扱い（ok 以外は料金・客室を出さず、ログイン・グレードの案内を出す）
 			gate,
 			preview: !!preview,
-			params: { checkin: checkin ?? '', nights, adults }
+			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount }
 		};
 	}
 
@@ -156,7 +158,7 @@ export const load: PageServerLoad = async (event) => {
 		multiRoom: false,
 		gate,
 		preview: false,
-		params: { checkin: checkin ?? '', nights, adults }
+		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount }
 	};
 };
 
