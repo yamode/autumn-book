@@ -30,6 +30,27 @@ export async function inviteIntercomDevices(callId: string, callSecret: string):
 	}
 }
 
+/**
+ * 着信 push の送信関数（intercom-invite）を先に起こし、APNs の署名と接続を済ませておく。
+ * ゲストが「フロントを呼ぶ」を押した時点で呼ぶ。Edge Function の起き直し（約 1.5 秒）と
+ * APNs への初回接続を発信前に済ませることで、受電側が鳴るまでの時間を縮める。何も送らない。
+ */
+export async function warmIntercomInvite(): Promise<void> {
+	const url = publicEnv.PUBLIC_SUPABASE_URL;
+	const key = publicEnv.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+	if (!url || !key) return;
+	try {
+		await fetch(`${url}/functions/v1/intercom-invite`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', apikey: key },
+			body: JSON.stringify({ warm: true }),
+			signal: AbortSignal.timeout(8000)
+		});
+	} catch {
+		/* 下準備は補助。失敗しても発信は普通に進む */
+	}
+}
+
 export type IntercomStatus = { enabled: boolean; open: boolean; online: boolean; ringTimeoutSec: number };
 const OFF: IntercomStatus = { enabled: false, open: false, online: false, ringTimeoutSec: 30 };
 

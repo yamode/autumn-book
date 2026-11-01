@@ -120,6 +120,8 @@ export class GuestCall {
 	async start(): Promise<void> {
 		if (this.state !== 'idle') return;
 		this.set('starting');
+		// 着信 push の送信関数を先に起こしておく（マイク許可を待つ間に起動と APNs 接続が済み、受電側が早く鳴る）
+		void api({ action: 'warm' }).catch(() => {});
 		// 相手の声の出力を通話モード（受話口）にする。ユーザー操作の中・getUserMedia の前に切り替える
 		setCallAudioSession(true);
 		try {

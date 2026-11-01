@@ -1,4 +1,5 @@
 // 客室内線のゲスト側 API（/r の通話シートから fetch で叩く）。
+//   warm    … 着信 push の送信関数を先に起こす（「フロントを呼ぶ」を押した直後・マイク許可の前）。何も送らない
 //   start   … Cookie の stay token で呼を作る → { callId, callSecret, ringTimeoutSec }。受電端末へ push（intercom-invite）
 //   send    … シグナル（offer / ice / bye）送信
 //   fetch   … 相手のシグナルと呼の状態を after 以降だけ取得（store-and-forward の正）
@@ -9,7 +10,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { guestRpc, inviteIntercomDevices } from '$lib/server/intercom';
+import { guestRpc, inviteIntercomDevices, warmIntercomInvite } from '$lib/server/intercom';
 import type { RequestHandler } from './$types';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -43,6 +44,15 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 		return json({ error: 'invalid_params' }, { status: 400 });
 	}
 	const action = String(body.action ?? '');
+
+	if (action === 'warm') {
+		// 客室の Cookie がある人だけ（外から関数を起こし続けられないように）。待たずに返す
+		if (!cookies.get('ab_stay')) return json({ error: 'invalid_token' }, { status: 401 });
+		const w = warmIntercomInvite();
+		if (platform?.context?.waitUntil) platform.context.waitUntil(w);
+		else await w;
+		return json({ ok: true });
+	}
 
 	if (action === 'start') {
 		const token = cookies.get('ab_stay');
