@@ -38,6 +38,7 @@ import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE } from '$lib/direct-payment';
 import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import * as m from '$lib/paraglide/messages';
+import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
 import { CANCEL_POLICY_LABELS } from '$lib/partner-member-page';
 
@@ -158,6 +159,8 @@ export const load: PageServerLoad = async (event) => {
 			groupQuote: combineQuotes(roomViews.map((r) => r.quote)),
 			facility,
 			member,
+			// 会員ログイン中は Turnstile を出さない（ログインで本人確認済み）。非会員の予約確定だけ確かめる
+			needsTurnstile: !viewerIsMember(locals),
 			payOptions: pay.options,
 			payFallback: pay.fallback,
 			// true = カードはこの画面で払う（実データ）。false = デモ決済画面へ（DATA_SOURCE=demo）
@@ -233,6 +236,7 @@ export const load: PageServerLoad = async (event) => {
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
 		memberPage: null as { pageName: string; via: 'self' | 'family'; cancelMode: { mode: string; label: string }; backHref: string } | null,
+		needsTurnstile: !viewerIsMember(locals),
 		member: member
 			? {
 					name: member.name,
@@ -272,6 +276,10 @@ export const actions: Actions = {
 		const { request, locals, cookies } = event;
 		const form = await request.formData();
 		const { holdId, guest, pointsRequested, payment, onsiteMethod, errors } = parseGuestForm(form);
+		// 非会員の予約確定だけ Turnstile で確かめる（会員はログインで確かめ済み）。未設定の環境は素通り
+		if (!viewerIsMember(locals) && !(await checkTurnstile(form, clientIpOf(event))).ok) {
+			return fail(400, { message: m.auth_turnstile_failed(), values: guest });
+		}
 
 		if (DATA_SOURCE === 'supabase') {
 			const sid = bookingSessionId(cookies);

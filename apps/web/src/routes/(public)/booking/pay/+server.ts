@@ -33,6 +33,7 @@ import { payOptionsFor } from '$lib/direct-payment';
 import { finishDirectBooking, lateMessage } from '$lib/server/direct-booking-finish';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
+import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 
 const noStore = { 'cache-control': 'private, no-store' };
 const bad = (message: string, status = 400, extra: Record<string, unknown> = {}) => json({ ok: false, message, ...extra }, { status, headers: noStore });
@@ -55,6 +56,10 @@ export const POST: RequestHandler = async ({ request, cookies, locals, url }) =>
 			const parsed = parseGuestForm(form);
 			if (Object.keys(parsed.errors).length > 0) {
 				return bad(Object.values(parsed.errors)[0], 400, { errors: parsed.errors });
+			}
+			// 非会員のカード払いも予約確定と同じく Turnstile で確かめる（カードの試し打ち対策も兼ねる）。会員はログインで確かめ済み
+			if (!viewerIsMember(locals) && !(await checkTurnstile(form, clientIpOf({ request }))).ok) {
+				return bad(m.auth_turnstile_failed(), 400, { turnstile: true });
 			}
 			const hold = await sbGetHoldGroupMapped(parsed.holdId, sid);
 			if (!hold || hold.status !== 'active') return bad(m.error_hold_expired(), 410, { expired: true });

@@ -48,5 +48,11 @@ export async function checkTurnstile(fd: FormData, ip: string | null | undefined
   return { ok, skipped: false };
 }
 
+/** siteverify の remoteip に渡す接続元 IP（Cloudflare では cf-connecting-ip。無ければ null） */
+export function clientIpOf(event: { request: Request }): string | null {
+  const h = event.request.headers;
+  return h.get('cf-connecting-ip') ?? h.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+}
+
 /** 取引先ページ・管理ログインで Turnstile に失敗したときの文言（§4.2） */
 export const TURNSTILE_FAILED_MESSAGE = '確認に失敗しました。ページを読み直してください。';

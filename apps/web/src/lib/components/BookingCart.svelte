@@ -16,9 +16,7 @@
 		message = $bindable(''),
 		currentFacilityId,
 		back,
-		via,
-		turnstileToken,
-		turnstileReset = () => {}
+		via
 	}: {
 		items: CartItem[];
 		/** バーの上に出す案内（追加したとき・止めたときの理由）。空なら出さない */
@@ -27,9 +25,6 @@
 		/** 予約入力の「選び直す」で戻る先（このページ） */
 		back: string;
 		via: string;
-		turnstileToken: () => string | undefined;
-		/** 失敗のあとに Turnstile のトークンを取り直す（1回限りのトークンを使い回して2回目が必ず失敗しないように） */
-		turnstileReset?: () => void;
 	} = $props();
 
 	let open = $state(false);
@@ -53,14 +48,11 @@
 	}
 
 	// 送信: 別ページ（かごの施設のプラン詳細）の action なので、失敗の結果は自分でバーに出す（form には入らない）
-	const submit: SubmitFunction = ({ formData }) => {
-		const token = turnstileToken();
-		if (token) formData.set('cf-turnstile-response', token);
+	const submit: SubmitFunction = () => {
 		busy = true;
 		message = '';
 		return async ({ result }) => {
 			busy = false;
-			if (result.type !== 'redirect') turnstileReset();
 			if (result.type === 'redirect') {
 				await goto(result.location);
 				return;

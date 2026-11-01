@@ -12,7 +12,6 @@ import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbPlanPreviewRow } from '$lib/server/content-admin';
 import { MEMBER_SUPABASE } from '$lib/server/auth';
 import { holdRateCheck } from '$lib/server/hold-rate-limit';
-import { checkTurnstile } from '$lib/server/turnstile';
 import * as m from '$lib/paraglide/messages';
 import {
 	sbFacilityBySlug,
@@ -204,8 +203,8 @@ export const actions: Actions = {
 			});
 
 		const ip = clientIp(event);
-		// Turnstile（auth-hardening.md §9 S8・§4.2）。未設定（ローカル・プレビュー）なら素通り。文言は多言語（会員ログインと同じキー）
-		if (!(await checkTurnstile(form, ip)).ok) return fail(400, { message: m.auth_turnstile_failed() });
+		// 仮押さえでは Turnstile を使わない（2026-11-01）。人の確認は非会員の予約確定（/booking/hold・/booking/pay）と会員ログインで行い、
+		// ここは接続元ごとの回数制限（下）と DB 側の上限で守る
 
 		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
 		if (!(await holdRateCheck(event.platform, ip))) {

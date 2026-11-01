@@ -19,23 +19,10 @@
 	import { percentText } from '$lib/early-prepay';
 	import { searchQuery } from '$lib/components/guests';
 	import { safeLocalPath, viaCrumb, viaStorageKey } from '$lib/booking-nav';
-	import Turnstile from '$lib/components/Turnstile.svelte';
-	import type { SubmitFunction } from '@sveltejs/kit';
 	import BookingCart from '$lib/components/BookingCart.svelte';
 	import { canAddToCart, cartIsFull, MAX_ROOMS_PER_BOOKING, readCart, writeCart, type CartItem } from '$lib/multi-room';
 
 	let { data, form } = $props();
-
-	// 仮押さえの Turnstile（auth-hardening.md §9 S8）: 部品は 1 つだけ置き、押した部屋のフォームにトークンを足して送る
-	let turnstileBox: HTMLDivElement | undefined = $state();
-	// 予約かごは別ページの action を自分で送るので、失敗のあとにトークンの取り直しを頼む（page.form が変わらないため）
-	let turnstile = $state<ReturnType<typeof Turnstile> | null>(null);
-	const turnstileReset = () => turnstile?.reset();
-	const turnstileToken = () => turnstileBox?.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')?.value;
-	const withTurnstile: SubmitFunction = ({ formData }) => {
-		const token = turnstileToken();
-		if (token) formData.set('cf-turnstile-response', token);
-	};
 
 	// 予約かご（複数室・docs/official-multi-room.md §8.1・M1）: sessionStorage に置き、在庫は押さえない。
 	// 「＋ もう 1 室追加」で入れ、画面下のバーの「予約へ進む」で全室を一括で仮押さえする
@@ -128,6 +115,11 @@
 		return best;
 	});
 	let soldOut = $derived(!!data.params.checkin && cheapest === null);
+	// 日付・客室を選んで入ってきたとき（?checkin&room）: その客室を主役にし、ここで予約まで進める。
+	// ほかの客室は畳んでおく（もう選んだのに「客室を選ぶ」から始めさせない）。選んだ客室が満室なら従来どおり一覧から選ぶ
+	let chosen = $derived(data.params.checkin && selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom && r.quote) : undefined);
+	let otherRooms = $derived(chosen ? data.rooms.filter((r) => r !== chosen) : data.rooms);
+	let showOthers = $state(false);
 	// 早期決済割・早期決済ポイントの最大率（withEarlyPrepayMax が入れる）。points は定率割引と並べて出す
 	let earlyMax = $derived(data.plan.payment.prepay ? (data.plan.payment.earlyPrepayMaxRate ?? 0) : 0);
 	let earlyPoints = $derived(earlyMax > 0 && data.plan.payment.earlyPrepayMode === 'points');
@@ -193,8 +185,81 @@
 	});
 </script>
 
+{#snippet holdForm(r: (typeof data.rooms)[number], size: 'lg' | 'md')}
+	<form method="POST" action="?/hold" use:enhance class={size === 'lg' ? 'mt-3' : 'mt-2'}>
+		<input type="hidden" name="planId" value={data.plan.id} />
+		<input type="hidden" name="roomTypeId" value={r.room.id} />
+		<input type="hidden" name="checkin" value={data.params.checkin} />
+		<input type="hidden" name="nights" value={data.params.nights} />
+		<input type="hidden" name="adults" value={data.params.adults} />
+		<input type="hidden" name="back" value={backHref(r.room.slug)} />
+		<input type="hidden" name="via" value={via} />
+		<button type="submit" class="rounded-lg bg-accent-600 text-sm font-medium text-white hover:bg-accent-500 {size === 'lg' ? 'block w-full py-2.5' : 'px-5 py-2'}">
+			{m.plan_detail_book()}
+		</button>
+	</form>
+	{#if data.multiRoom}
+		<!-- 複数室: かごに入れる（4 室のあいだは押せない見た目・押しても同じ注意を出す） -->
+		<button
+			type="button"
+			onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(r))}
+			aria-disabled={cartFull}
+			class="mt-1.5 rounded-lg border text-sm font-medium {size === 'lg' ? 'block w-full py-2' : 'px-4 py-1.5'} {cartFull ? 'cursor-not-allowed border-stone-200 text-stone-400' : 'border-accent-500 text-accent-600 hover:bg-amber-50'}"
+		>
+			{m.cart_add_room()}
+		</button>
+	{/if}
+{/snippet}
+
+{#snippet roomCard(r: (typeof data.rooms)[number])}
+	<div id="room-{r.room.slug}" class="flex scroll-mt-28 flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center {selectedRoom === r.room.slug ? 'border-brand-800 ring-1 ring-brand-800' : 'border-stone-200'}">
+		<!-- 写真・客室名からも紹介モーダルを開ける（予約の流れを離れずに部屋を確かめる） -->
+		<button type="button" onclick={() => (infoRoom = r.room)} class="w-full shrink-0 sm:w-40" aria-label={`${r.room.name} ${m.room_info_show()}`}>
+			<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
+		</button>
+		<div class="flex-1">
+			<h3 class="font-medium text-brand-900">{r.room.name}</h3>
+			<p class="text-xs text-stone-500">{m.plan_detail_capacity({ n: String(r.room.capacity), size: String(r.room.sizeM2) })}</p>
+			<button type="button" onclick={() => (infoRoom = r.room)} class="mt-1 text-xs font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">{m.room_info_show()}</button>
+			{#if !r.fits}
+				<p class="mt-1 text-xs text-red-600">{m.plan_detail_no_fit()}</p>
+			{/if}
+		</div>
+		<div class="text-right">
+			{#if r.quote}
+				<p class="text-lg font-bold text-brand-900">
+					{formatPrice(perPersonNight(r.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+					<span class="block text-xs font-normal text-stone-500">
+						{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
+					</span>
+				</p>
+				{#if r.remaining !== null && r.remaining <= 2}
+					<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(r.remaining) })}</p>
+				{/if}
+				{@render holdForm(r, 'md')}
+			{:else if data.params.checkin && r.fits}
+				<p class="text-sm font-medium text-stone-400">{m.plan_detail_sold_out()}</p>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
 {#snippet priceBlock()}
-	{#if cheapest}
+	{#if chosen?.quote}
+		<!-- 選んで入ってきた客室の料金（最安ではなく、その部屋の額） -->
+		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
+		<p class="font-medium text-brand-900">{chosen.room.name}</p>
+		<p class="mt-1 text-xs text-stone-500">{formatDate(data.params.checkin)} · {m.searchbar_nights_option({ n: String(data.params.nights) })}</p>
+		<p class="mt-1 text-2xl font-bold text-brand-900">
+			{formatPrice(perPersonNight(chosen.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+		</p>
+		<p class="text-xs text-stone-500">
+			{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(chosen.quote.total) })}
+		</p>
+		{#if chosen.remaining !== null && chosen.remaining <= 2}
+			<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(chosen.remaining) })}</p>
+		{/if}
+	{:else if cheapest}
 		<p class="text-xs text-stone-500">{m.plan_price_dated_label()}</p>
 		<p class="text-2xl font-bold text-brand-900">
 			{formatPrice(perPersonNight(cheapest.total))}〜<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
@@ -286,8 +351,14 @@
 				{:else if !data.params.checkin}
 					<p class="mt-2 text-xs text-stone-500">{m.plan_price_base_note()}</p>
 				{/if}
-				<!-- 日付未指定・満室時は日付選択（料金カレンダー）へ、指定済みなら客室選択へ -->
-				{#if cheapest}
+				<!-- 客室まで選んで入ってきたらここで予約へ。日付未指定・満室時は日付選択（料金カレンダー）へ、日付だけ指定済みなら客室選択へ -->
+				{#if chosen}
+					{#if form?.message}
+						<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+					{/if}
+					{@render holdForm(chosen, 'lg')}
+					<a href="#rooms" onclick={() => (showOthers = true)} class="mt-2 block text-center text-xs text-stone-500 underline underline-offset-4 hover:text-stone-700">{m.plan_detail_other_rooms({ n: String(otherRooms.length) })}</a>
+				{:else if cheapest}
 					<a href="#rooms" class="mt-3 block rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_rooms()}</a>
 				{:else}
 					<button type="button" onclick={() => (datePickerOpen = true)} class="mt-3 block w-full rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_dates()}</button>
@@ -322,75 +393,30 @@
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">
-		<h2 class="font-display mb-3 text-xl text-brand-900">{m.plan_detail_select_room()}</h2>
+		<h2 class="font-display mb-3 text-xl text-brand-900">{chosen ? m.plan_detail_chosen_room() : m.plan_detail_select_room()}</h2>
 		{#if form?.message}
 			<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 		{/if}
 		{#if !data.params.checkin}
 			<p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plan_detail_select_date()}</p>
 		{/if}
+		{#if chosen}
+			<div class="mt-3">{@render roomCard(chosen)}</div>
+			{#if otherRooms.length > 0}
+				<button type="button" onclick={() => (showOthers = !showOthers)} aria-expanded={showOthers} class="mt-4 text-sm font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">
+					{showOthers ? m.plan_detail_other_rooms_hide() : m.plan_detail_other_rooms({ n: String(otherRooms.length) })}
+				</button>
+			{/if}
+		{/if}
+		{#if !chosen || showOthers}
 		<div class="mt-3 space-y-3">
-			{#each data.rooms as r}
-				<div id="room-{r.room.slug}" class="flex scroll-mt-28 flex-col gap-3 rounded-xl border bg-white p-4 sm:flex-row sm:items-center {selectedRoom === r.room.slug ? 'border-brand-800 ring-1 ring-brand-800' : 'border-stone-200'}">
-					<!-- 写真・客室名からも紹介モーダルを開ける（予約の流れを離れずに部屋を確かめる） -->
-					<button type="button" onclick={() => (infoRoom = r.room)} class="w-full shrink-0 sm:w-40" aria-label={`${r.room.name} ${m.room_info_show()}`}>
-						<img src={r.room.photos[0]?.url} alt={r.room.name} class="h-24 w-full rounded-lg object-cover sm:w-40" />
-					</button>
-					<div class="flex-1">
-						<h3 class="font-medium text-brand-900">{r.room.name}</h3>
-						<p class="text-xs text-stone-500">{m.plan_detail_capacity({ n: String(r.room.capacity), size: String(r.room.sizeM2) })}</p>
-						<button type="button" onclick={() => (infoRoom = r.room)} class="mt-1 text-xs font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">{m.room_info_show()}</button>
-						{#if !r.fits}
-							<p class="mt-1 text-xs text-red-600">{m.plan_detail_no_fit()}</p>
-						{/if}
-					</div>
-					<div class="text-right">
-						{#if r.quote}
-							<p class="text-lg font-bold text-brand-900">
-								{formatPrice(perPersonNight(r.quote.total))}<span class="text-xs font-normal text-stone-500">{m.price_unit_pp_night()}</span>
-								<span class="block text-xs font-normal text-stone-500">
-									{m.plan_detail_price_detail({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(r.quote.total) })}
-								</span>
-							</p>
-							{#if r.remaining !== null && r.remaining <= 2}
-								<p class="text-xs font-medium text-red-600">{m.plan_detail_remaining({ n: String(r.remaining) })}</p>
-							{/if}
-							<form method="POST" action="?/hold" use:enhance={withTurnstile} class="mt-2">
-								<input type="hidden" name="planId" value={data.plan.id} />
-								<input type="hidden" name="roomTypeId" value={r.room.id} />
-								<input type="hidden" name="checkin" value={data.params.checkin} />
-								<input type="hidden" name="nights" value={data.params.nights} />
-								<input type="hidden" name="adults" value={data.params.adults} />
-								<input type="hidden" name="back" value={backHref(r.room.slug)} />
-								<input type="hidden" name="via" value={via} />
-								<button type="submit" class="rounded-lg bg-accent-600 px-5 py-2 text-sm font-medium text-white hover:bg-accent-500">
-									{m.plan_detail_book()}
-								</button>
-							</form>
-							{#if data.multiRoom}
-								<!-- 複数室: かごに入れる（4 室のあいだは押せない見た目・押しても同じ注意を出す） -->
-								<button
-									type="button"
-									onclick={() => (cartFull ? (cartMessage = fullNotice()) : addToCart(r))}
-									aria-disabled={cartFull}
-									class="mt-1.5 rounded-lg border px-4 py-1.5 text-sm font-medium {cartFull ? 'cursor-not-allowed border-stone-200 text-stone-400' : 'border-accent-500 text-accent-600 hover:bg-amber-50'}"
-								>
-									{m.cart_add_room()}
-								</button>
-							{/if}
-						{:else if data.params.checkin && r.fits}
-							<p class="text-sm font-medium text-stone-400">{m.plan_detail_sold_out()}</p>
-						{/if}
-					</div>
-				</div>
+			{#each otherRooms as r}
+				{@render roomCard(r)}
 			{/each}
 		</div>
+		{/if}
 	</section>
 	{/if}
-
-	<!-- 仮押さえの Turnstile（部屋ごとのフォームで 1 つを共有する。送信のときにトークンを足す・未設定なら何も出ない）。
-	     本文の途中（客室を選ぶの下）に枠が出ると不自然なので、操作が要るときだけ画面上部に浮かべる -->
-	<div bind:this={turnstileBox}><Turnstile bind:this={turnstile} action="booking-hold" floating /></div>
 
 	<PerkModal bind:content={perkContent} />
 	<RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />
@@ -407,7 +433,12 @@
 	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1 leading-tight">
-				{#if cheapest}
+				{#if chosen?.quote}
+					<p class="truncate text-[11px] text-stone-500">{chosen.room.name}</p>
+					<p class="text-lg font-bold text-brand-900">
+						{formatPrice(perPersonNight(chosen.quote.total))}<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
+					</p>
+				{:else if cheapest}
 					<p class="text-lg font-bold text-brand-900">
 						{formatPrice(perPersonNight(cheapest.total))}〜<span class="whitespace-nowrap text-[11px] font-normal text-stone-500">{m.price_unit_pp_night()}</span>
 					</p>
@@ -424,15 +455,29 @@
 					<p class="text-xs text-stone-500">{m.plan_price_cta_dates()}</p>
 				{/if}
 			</div>
-			<a
-				href={cheapest ? '#rooms' : '#cal'}
-				class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500"
-			>
-				{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
-			</a>
+			{#if chosen}
+				<!-- 選んだ客室はこのバーから予約へ進める -->
+				<form method="POST" action="?/hold" use:enhance class="shrink-0">
+					<input type="hidden" name="planId" value={data.plan.id} />
+					<input type="hidden" name="roomTypeId" value={chosen.room.id} />
+					<input type="hidden" name="checkin" value={data.params.checkin} />
+					<input type="hidden" name="nights" value={data.params.nights} />
+					<input type="hidden" name="adults" value={data.params.adults} />
+					<input type="hidden" name="back" value={backHref(chosen.room.slug)} />
+					<input type="hidden" name="via" value={via} />
+					<button type="submit" class="rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.plan_detail_book()}</button>
+				</form>
+			{:else}
+				<a
+					href={cheapest ? '#rooms' : '#cal'}
+					class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500"
+				>
+					{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
+				</a>
+			{/if}
 		</div>
 	</div>
 {/if}
 
 <!-- 予約かご（複数室・M1）。かごに部屋があるときだけ画面下に出す（モバイルの料金バーの代わり） -->
-<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} {turnstileToken} {turnstileReset} />
+<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} />

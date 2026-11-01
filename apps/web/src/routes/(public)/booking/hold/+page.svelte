@@ -7,6 +7,7 @@
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
+	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
 	import { directChargeOf, type PayOption } from '$lib/direct-payment';
 	import { percentText } from '$lib/early-prepay';
@@ -121,6 +122,8 @@
 
 	// ---- 同じ画面で払う決済部品 ----
 	let formEl: HTMLFormElement | undefined = $state();
+	// 非会員だけ、予約確定の前に Turnstile（フォームの中に置き、現地払いの送信にもカードの準備にも同じトークンが乗る）
+	let turnstile = $state<ReturnType<typeof Turnstile> | null>(null);
 	let payRef: StripePayment | undefined = $state();
 	let paying = $state(false);
 	let payMessage = $state('');
@@ -173,6 +176,8 @@
 		// 画面の請求額。サーバは DB が決めた額（早期決済割を含む）と違えば Intent を作らずに止める
 		fd.set('expectedAmount', String(charge.charge));
 		const res = await fetch('/booking/pay', { method: 'POST', body: fd });
+		// Turnstile のトークンは 1 回限り。カードの失敗などでもう一度払うときに備えて取り直す
+		turnstile?.reset();
 		const j = (await res.json().catch(() => ({ ok: false, message: m.pay_el_failed() }))) as {
 			ok: boolean;
 			message?: string;
@@ -665,6 +670,10 @@
 
 					{#if payMessage}
 						<p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{payMessage}</p>
+					{/if}
+
+					{#if data.needsTurnstile}
+						<Turnstile bind:this={turnstile} action="booking-confirm" />
 					{/if}
 
 					<button
