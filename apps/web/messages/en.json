@@ -1279,5 +1279,10 @@
   "plan_gate_hold_denied": "This plan is only available to certain guests. Please check that you are logged in.",
   "plan_link_invalid_title": "This link is not available",
   "plan_link_invalid_body": "The link has been changed or is no longer valid. Please contact the person who shared it with you.",
+"plan_link_unavailable_title": "This plan is not available for booking",
+  "plan_link_before_body": "Sales for this plan start on {date}. Please open this link again after that date.",
+  "plan_link_ended_body": "Sales for this plan have ended.",
+  "plan_link_off_body": "This plan is not currently on sale.",
+  "plan_link_other_plans": "See plans at {facility}",
   "plan_link_invalid_top": "Go to top page"
 }

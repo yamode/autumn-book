@@ -65,6 +65,9 @@ export interface AdminPlanContent extends AdminContentBase {
 	limits: PlanLimits;
 	/** 料金（rms）との関係。'awaiting' は Book で先に作って、rms の料金設定をまだ紐づけていないプラン */
 	rmsState: PlanRmsState;
+	/** 販売表示期間（予約を受け付ける期間・日本時間の日付・空は制限なし）。book.plan_contents.booking_start / booking_end（autumn-shared 20261101045650） */
+	bookingStart: string | null;
+	bookingEnd: string | null;
 }
 
 /** rms = rms 先行（同期が作った）／ linked = Book 先行で rms に紐づけ済み／ awaiting = Book 先行で料金待ち */
@@ -297,9 +300,13 @@ function planFromRows(c: Row, rp: Row | undefined): AdminPlanContent {
 		prepayDiscountRate: Number(c.prepay_discount_rate ?? 0) || 0,
 		access: planAccessOf(c),
 		limits: planLimitsOf(rp),
-		rmsState: planRmsStateOf(rp)
+		rmsState: planRmsStateOf(rp),
+		bookingStart: dateOrNull(c.booking_start),
+		bookingEnd: dateOrNull(c.booking_end)
 	};
 }
+
+const dateOrNull = (v: unknown): string | null => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? '')) ? String(v) : null);
 
 /** プランを Book で新規に作る（book.admin_create_plan）。料金は無い状態で、rms からの紐づけを待つ。作った rate_plan の id を返す */
 export async function sbCreatePlan(
@@ -394,9 +401,9 @@ export async function sbSavePlanContent(
 		.schema('book')
 		.from('plan_contents')
 		.update({
+			// 販売スイッチ（is_published）はここでは書かない（sbSetPlanSale）。紹介文の保存で、開いたままの古い画面の値に戻さないため
 			headline: draft.headline,
 			description: draft.description,
-			is_published: draft.isPublished,
 			highlight_tags: draft.tags,
 			sort_order: draft.sortOrder,
 			specs: draft.specs,
@@ -408,6 +415,35 @@ export async function sbSavePlanContent(
 		.eq('facility_id', facilityUuid)
 		.select('rate_plan_id');
 	if (error) throw error;
+	if ((data ?? []).length === 0) throw new Error('対象のプランが見つからないか、編集する権限がありません。');
+}
+
+/**
+ * 販売スイッチ（販売中／停止中＝is_published）と販売表示期間（booking_start / booking_end）を保存する。
+ * 公式サイトで販売中かは DB の book.plan_on_sale が判定する（autumn-shared 20261101045650）。
+ */
+export async function sbSetPlanSale(
+	client: SupabaseClient,
+	facilityUuid: string,
+	ratePlanId: string,
+	sale: { onSale: boolean; bookingStart: string | null; bookingEnd: string | null }
+): Promise<void> {
+	const { data, error } = await client
+		.schema('book')
+		.from('plan_contents')
+		.update({
+			is_published: sale.onSale,
+			booking_start: sale.bookingStart,
+			booking_end: sale.bookingEnd,
+			updated_at: new Date().toISOString()
+		})
+		.eq('rate_plan_id', ratePlanId)
+		.eq('facility_id', facilityUuid)
+		.select('rate_plan_id');
+	if (error) {
+		if (error.message.includes('plan_contents_booking_window_check')) throw new Error('販売表示期間は、開始日が終了日より後にならないようにしてください。');
+		throw error;
+	}
 	if ((data ?? []).length === 0) throw new Error('対象のプランが見つからないか、編集する権限がありません。');
 }
 

@@ -1279,5 +1279,10 @@
   "plan_gate_hold_denied": "此方案僅限特定對象預訂。請確認登入狀態。",
   "plan_link_invalid_title": "此連結無法使用",
   "plan_link_invalid_body": "連結已變更或失效。請洽詢提供連結的人員。",
+"plan_link_unavailable_title": "此方案目前無法預訂",
+  "plan_link_before_body": "此方案將於 {date} 開始販售。請於開賣後再開啟此連結。",
+  "plan_link_ended_body": "此方案已結束販售。",
+  "plan_link_off_body": "此方案目前未販售。",
+  "plan_link_other_plans": "查看 {facility} 的方案",
   "plan_link_invalid_top": "前往首頁"
 }

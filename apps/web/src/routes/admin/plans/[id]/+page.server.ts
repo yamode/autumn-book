@@ -9,6 +9,7 @@ import {
 	PLAN_PAYMENT_METHODS,
 	sbGetPlanContentAdmin,
 	sbSavePlanContent,
+	sbSetPlanSale,
 	sbSetPlanAccess,
 	sbSetPlanLimits,
 	sbListRoomContentsAdmin,
@@ -33,6 +34,7 @@ import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestion
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { demoShareToken } from '$lib/server/secret-plans';
 import { planLimitsFromForm } from '$lib/plan-limits';
+import { planSaleFromForm } from '$lib/plan-sale';
 import { RANK_CODES, isRankCode, planShareLinkPath, type PlanAccess } from '$lib/plan-access';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -163,7 +165,21 @@ export const actions: Actions = {
 			return fail(400, { accessError: messageOf(e) });
 		}
 	},
-	// 絞り込み（販売期間・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ
+	// 販売スイッチ（販売中／停止中）と販売表示期間（予約を受け付ける期間）。公式サイトでの出し分けは DB の book.plan_on_sale
+	setSale: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { saleError: NOT_LIVE });
+		const parsed = planSaleFromForm(await event.request.formData());
+		if ('error' in parsed) return fail(400, { saleError: parsed.error });
+		try {
+			await sbSetPlanSale(createSupabaseServerClient(event), currentFacilityOf(event).uuid, event.params.id, parsed);
+			return { saleSaved: true };
+		} catch (e) {
+			return fail(400, { saleError: messageOf(e) });
+		}
+	},
+	// 絞り込み（宿泊可能期間・人数・部屋タイプ）。料金はテンプレート側で共有し、ここでは狭めるだけ
 	setLimits: async (event) => {
 		const denied = denyIfNotStaff(event);
 		if (denied) return denied;

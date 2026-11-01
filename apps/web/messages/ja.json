@@ -1279,5 +1279,10 @@
   "plan_gate_hold_denied": "このプランはご予約いただける方が限られています。ログインの状態をご確認ください。",
   "plan_link_invalid_title": "このリンクはご利用いただけません",
   "plan_link_invalid_body": "リンクが変更されたか、無効になっています。お手数ですが、ご案内元へお問い合わせください。",
+"plan_link_unavailable_title": "このプランは現在ご予約いただけません",
+  "plan_link_before_body": "このプランは {date} から販売を開始します。販売開始後に、もう一度このリンクを開いてください。",
+  "plan_link_ended_body": "このプランの販売は終了しました。",
+  "plan_link_off_body": "このプランは現在販売していません。",
+  "plan_link_other_plans": "{facility} のプランを見る",
   "plan_link_invalid_top": "トップページへ"
 }

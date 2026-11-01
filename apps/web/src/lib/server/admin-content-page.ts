@@ -138,6 +138,8 @@ export function demoPlanContents(facilityId: string): AdminPlanContent[] {
 			updatedAt: null,
 			access: p.access ?? PUBLIC_ACCESS,
 			limits: { salesStart: null, salesEnd: null, minGuests: null, maxGuests: null, roomTypeIds: [] },
-			rmsState: 'rms'
+			rmsState: 'rms',
+			bookingStart: null,
+			bookingEnd: null
 		}));
 }

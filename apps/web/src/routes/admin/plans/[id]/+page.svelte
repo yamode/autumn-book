@@ -8,6 +8,15 @@
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { qrSvg } from '$lib/qr';
+	import { planSaleState, type PlanSaleState } from '$lib/plan-sale';
+
+	// 販売の状態の表示（販売スイッチ＋販売表示期間。実際の出し分けは DB の book.plan_on_sale）
+	const SALE_BADGE: Record<PlanSaleState, { label: string; cls: string }> = {
+		on: { label: '販売中', cls: 'bg-emerald-100 text-emerald-800' },
+		before: { label: '販売開始前', cls: 'bg-sky-100 text-sky-800' },
+		ended: { label: '販売期間終了', cls: 'bg-stone-200 text-stone-700' },
+		off: { label: '停止中', cls: 'bg-rose-100 text-rose-800' }
+	};
 	import { RANK_LABELS_JA, isOpenPlan, planAccessSummaryJa } from '$lib/plan-access';
 
 	let { data, form } = $props();
@@ -147,6 +156,38 @@
 	</section>
 {/if}
 
+<!-- 販売（いちばん上）: 販売スイッチと販売表示期間。紹介文の保存とは別に保存する（古い画面から保存しても戻らないように） -->
+{#if data.live}
+	{@const sale = planSaleState(c.isPublished, c.bookingStart, c.bookingEnd)}
+	<form method="POST" action="?/setSale" use:enhance={() => async ({ update }) => update({ reset: false })} class="rounded-xl border-2 bg-white p-5 {sale === 'on' ? 'border-emerald-300' : 'border-stone-200'}">
+		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+			<h2 class="text-sm font-bold text-stone-700">
+				販売
+				<span class="ml-1 rounded-full px-2 py-0.5 text-xs font-normal {SALE_BADGE[sale].cls}">{SALE_BADGE[sale].label}</span>
+				{#if sale === 'before' && c.bookingStart}<span class="ml-1 text-xs font-normal text-stone-500">{c.bookingStart.replaceAll('-', '/')} から販売</span>{/if}
+			</h2>
+			{#if (form as { saleSaved?: boolean } | null)?.saleSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+		</div>
+		{#if (form as { saleError?: string } | null)?.saleError}
+			<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { saleError?: string }).saleError}</p>
+		{/if}
+		<label class="mt-3 flex cursor-pointer items-center gap-3 text-sm text-stone-800">
+			<input type="checkbox" name="on_sale" checked={c.isPublished} class="peer sr-only" />
+			<span class="relative h-6 w-11 shrink-0 rounded-full bg-stone-300 transition peer-checked:bg-emerald-600 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-5" aria-hidden="true"></span>
+			<span class="font-medium">公式サイトで販売する</span>
+			<span class="text-xs text-stone-500">オフ＝停止中（一覧・プラン詳細・専用URLのどれからも予約できない）</span>
+		</label>
+		<p class="mt-4 text-xs font-medium text-stone-600">販売表示期間（予約を受け付ける期間）</p>
+		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">
+			<input type="date" name="booking_start" value={c.bookingStart ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売表示期間の開始日" />
+			〜
+			<input type="date" name="booking_end" value={c.bookingEnd ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売表示期間の終了日" />
+		</div>
+		<p class="mt-1 text-xs text-stone-400">日本時間で、開始日の 0:00 から終了日の 23:59 まで、プランを表示して予約を受け付けます。空欄は制限なし。泊まれる日の範囲は、下の「宿泊可能期間」で決めます。</p>
+		<button type="submit" class="mt-3 rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">販売の設定を保存</button>
+	</form>
+{/if}
+
 <!-- 公開範囲（シークレットプラン）と専用 URL。特別会員の専用ページ・取引先ページとは別で、公式サイトの会員制度の中で完結する -->
 <form method="POST" action="?/setAccess" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 	<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
@@ -202,7 +243,7 @@
 {#if data.live}
 	<form method="POST" action="?/setLimits" use:enhance={() => async ({ update }) => update({ reset: false })} class="mt-2 rounded-xl border border-stone-200 bg-white p-5">
 		<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-			<h2 class="text-sm font-bold text-stone-700">絞り込み（販売期間・人数・部屋タイプ）</h2>
+			<h2 class="text-sm font-bold text-stone-700">絞り込み（宿泊可能期間・人数・部屋タイプ）</h2>
 			{#if (form as { limitsSaved?: boolean } | null)?.limitsSaved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 		</div>
 		{#if (form as { limitsError?: string } | null)?.limitsError}
@@ -210,13 +251,13 @@
 		{/if}
 		<p class="mt-1 text-xs text-stone-500">料金は rms の料金テンプレートと共有し、このプランでは販売する範囲を狭めるだけです（広げることはできません）。空欄は制限なし（テンプレート・料金式どおり）です。</p>
 
-		<p class="mt-3 text-xs font-medium text-stone-600">販売期間（宿泊日）</p>
+		<p class="mt-3 text-xs font-medium text-stone-600">宿泊可能期間</p>
 		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">
-			<input type="date" name="sales_start" value={c.limits.salesStart ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売期間の開始日" />
+			<input type="date" name="sales_start" value={c.limits.salesStart ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="宿泊可能期間の開始日" />
 			〜
-			<input type="date" name="sales_end" value={c.limits.salesEnd ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="販売期間の終了日" />
+			<input type="date" name="sales_end" value={c.limits.salesEnd ?? ''} class="rounded-md border border-stone-300 px-2 py-1.5 text-sm" aria-label="宿泊可能期間の終了日" />
 		</div>
-		<p class="mt-1 text-xs text-stone-400">予約を受け付ける期間ではなく、泊まれる日の範囲です。</p>
+		<p class="mt-1 text-xs text-stone-400">泊まれる日の範囲です。予約を受け付ける期間は、上の「販売」の販売表示期間で決めます。</p>
 
 		<p class="mt-3 text-xs font-medium text-stone-600">ご利用人数（1部屋あたり）</p>
 		<div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-stone-700">

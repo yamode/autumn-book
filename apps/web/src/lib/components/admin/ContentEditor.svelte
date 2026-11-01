@@ -259,10 +259,13 @@
 					<input type="number" bind:value={sortOrder} oninput={touch} min="0" class="w-24 rounded-md border border-stone-300 px-2.5 py-1.5" />
 				</label>
 			{/if}
-			<label class="flex items-center gap-2 text-sm">
-				<input type="checkbox" bind:checked={isPublished} onchange={touch} class="h-4 w-4" />
-				<span>公式サイトに公開する（OFF＝下書き）</span>
-			</label>
+			{#if kind === 'room'}
+				<!-- プランはページ上部の「販売」で切り替える（紹介文の保存では販売中／停止中を書き換えない・v0.229.0） -->
+				<label class="flex items-center gap-2 text-sm">
+					<input type="checkbox" bind:checked={isPublished} onchange={touch} class="h-4 w-4" />
+					<span>公式サイトに公開する（OFF＝下書き）</span>
+				</label>
+			{/if}
 		</div>
 	</section>
 

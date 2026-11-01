@@ -197,6 +197,32 @@ export async function planOfShareToken(token: string): Promise<RatePlan | undefi
 }
 
 /**
+ * 専用 URL のトークンは有効だが、プランが販売中でない（停止中・販売開始前・期間終了・rms で直販対象外）ときの中身。
+ * /plan/<token> が「リンクが無効」ではなく理由ごとの案内を出すため、販売の判定を通さずに紹介の行を読む。トークンが無効なら undefined
+ */
+export async function shareTokenPlanRow(
+	token: string
+): Promise<{ facilityId: string; slug: string; isPublished: boolean; bookingStart: string | null; bookingEnd: string | null } | undefined> {
+	if (!SHARE_TOKEN_RE.test(token) || DATA_SOURCE !== 'supabase') return undefined;
+	const planId = (await planIdsOfTokens([token])).get(token);
+	const sb = partnerServiceClient();
+	if (!planId || !sb) return undefined;
+	const { data, error } = await sb
+		.schema('book')
+		.from('plan_contents')
+		.select('facility_id, slug, is_published, booking_start, booking_end')
+		.eq('rate_plan_id', planId)
+		.maybeSingle();
+	if (error) {
+		dbg('shareTokenPlanRow', error.message);
+		return undefined;
+	}
+	if (!data) return undefined;
+	const r = data as { facility_id: string; slug: string; is_published: boolean; booking_start: string | null; booking_end: string | null };
+	return { facilityId: r.facility_id, slug: r.slug, isPublished: r.is_published === true, bookingStart: r.booking_start, bookingEnd: r.booking_end };
+}
+
+/**
  * 仮押さえの前に、閲覧者がそのプランを予約できるか確かめる（create_hold_group は service_role 専用で
  * DB は閲覧者を知らないため、ここが唯一の関所）。予約できないプランがあれば false。
  * 普通のプランは DB を読まずに通す（anon で読めるもの＝普通のプラン、とは限らないので id で確かめる）。
