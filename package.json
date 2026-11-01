@@ -1,10 +1,10 @@
 {
-  "name": "autumn-book",
-  "private": true,
-  "version": "0.233.0",
-  "scripts": {
-    "dev": "pnpm --filter @autumn-book/web dev",
-    "build": "pnpm --filter @autumn-book/web build",
-    "preview": "pnpm --filter @autumn-book/web preview"
-  }
+	"name": "autumn-book",
+	"private": true,
+	"version": "0.233.1",
+	"scripts": {
+		"dev": "pnpm --filter @autumn-book/web dev",
+		"build": "pnpm --filter @autumn-book/web build",
+		"preview": "pnpm --filter @autumn-book/web preview"
+	}
 }
