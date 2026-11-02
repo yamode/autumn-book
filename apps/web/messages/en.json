@@ -1356,5 +1356,6 @@
   "rooms_view_plans": "See plans for this room",
   "plans_view_switch": "Browse by",
   "plans_tab_plans": "By plan",
-  "plans_tab_rooms": "By room"
+  "plans_tab_rooms": "By room",
+  "room_capacity_only": "Up to {n} guests"
 }

@@ -1356,5 +1356,6 @@
   "rooms_view_plans": "查看此客房的方案",
   "plans_view_switch": "瀏覽方式",
   "plans_tab_plans": "依方案",
-  "plans_tab_rooms": "依客房"
+  "plans_tab_rooms": "依客房",
+  "room_capacity_only": "最多{n}位"
 }

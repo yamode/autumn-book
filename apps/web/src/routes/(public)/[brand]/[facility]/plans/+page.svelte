@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
@@ -209,7 +210,7 @@
 								<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
 							{/if}
 							<h3 class="font-display text-lg leading-snug text-brand-900">{item.room.name}</h3>
-							<p class="mt-2 text-xs text-stone-500">{m.room_card_capacity({ n: String(item.room.capacity), size: String(item.room.sizeM2) })}</p>
+							<p class="mt-2 text-xs text-stone-500">{roomCapacityText(item.room)}</p>
 							{#if item.room.amenities.length}
 								<div class="mt-2 flex flex-wrap gap-1.5">
 									{#each item.room.amenities.slice(0, 3) as amenity}<span class="rounded bg-stone-100 px-2 py-1 text-[11px] text-stone-600">{amenity}</span>{/each}

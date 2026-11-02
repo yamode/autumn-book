@@ -1356,5 +1356,6 @@
   "rooms_view_plans": "この部屋のプランを見る",
   "plans_view_switch": "探し方の切り替え",
   "plans_tab_plans": "プランから探す",
-  "plans_tab_rooms": "お部屋から探す"
+  "plans_tab_rooms": "お部屋から探す",
+  "room_capacity_only": "定員{n}名"
 }

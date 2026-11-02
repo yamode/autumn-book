@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { roomCapacityText } from '$lib/room-capacity';
 	// 客室一覧（施設 → 客室一覧 → 客室詳細の動線・2026-11-02 指示「取引先ページの客室ページの UI と共通化」）。
 	// 取引先ページの「お部屋のご紹介」（/p/[token]/rooms）と同じ作り: 部屋の名前のチップ → 部屋ごとの枠
 	// （写真のギャラリー＋説明・仕様・設備＋「浴室・アメニティ・設備」を開いて詳しい紹介）。枠の右下からその部屋のページ（プラン）へ。
@@ -39,7 +40,7 @@
 				<article id={anchor(r.slug)} class="scroll-mt-28 rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
 					<header class="mb-4">
 						<h2 class="text-xl font-bold leading-snug text-brand-900"><a href="{base}/rooms/{r.slug}" class="hover:underline">{r.name}</a></h2>
-						<p class="mt-1 text-sm text-stone-500">{#if r.headline && r.headline !== r.name}{r.headline}・{/if}{m.room_detail_capacity({ n: String(r.capacity), size: String(r.sizeM2) })}</p>
+						<p class="mt-1 text-sm text-stone-500">{#if r.headline && r.headline !== r.name}{r.headline}・{/if}{roomCapacityText(r)}</p>
 					</header>
 					<PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel={m.room_detail_more()}>
 						{#snippet actions()}

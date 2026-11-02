@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanCard from '$lib/components/PlanCard.svelte';
 	// 客室詳細（施設 → 客室一覧 → 客室詳細）。紹介は取引先ページのお部屋の紹介と同じ部品（2026-11-02）
 	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
@@ -22,7 +23,7 @@
 	<header class="mb-4">
 		<p class="text-xs tracking-wider text-stone-500">{data.facility.name}</p>
 		<h1 class="font-display text-2xl leading-snug text-brand-900 sm:text-3xl">{data.room.name}</h1>
-		<p class="mt-1 text-sm text-stone-500">{#if data.room.headline && data.room.headline !== data.room.name}{data.room.headline}・{/if}{m.room_detail_capacity({ n: String(data.room.capacity), size: String(data.room.sizeM2) })}</p>
+		<p class="mt-1 text-sm text-stone-500">{#if data.room.headline && data.room.headline !== data.room.name}{data.room.headline}・{/if}{roomCapacityText(data.room)}</p>
 	</header>
 	<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
 		<PartnerContentBody photos={data.room.photos} description={data.room.description} specs={data.room.specs} sections={data.room.sections} amenities={data.room.amenities} detailLabel={m.room_detail_more()} />

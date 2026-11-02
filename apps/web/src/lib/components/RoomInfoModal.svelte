@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { roomCapacityText } from '$lib/room-capacity';
 	// 客室の紹介をその場で見せるモーダル（プラン詳細の客室選択から開く。予約の流れを離れずに確認できる）。
 	// 本文は取引先ページのお部屋の紹介と同じ部品（写真のギャラリー → 説明・仕様・設備 → 「浴室・アメニティ・設備」を開いて詳しい紹介・2026-11-02）
 	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
@@ -32,7 +33,7 @@
 				<button type="button" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl text-stone-600 hover:bg-stone-100" aria-label={m.common_close()} onclick={close}>×</button>
 			</div>
 			<div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-6">
-				<p class="mb-4 mt-4 text-sm text-stone-500">{#if room.headline && room.headline !== room.name}{room.headline}・{/if}{m.room_detail_capacity({ n: String(room.capacity), size: String(room.sizeM2) })}</p>
+				<p class="mb-4 mt-4 text-sm text-stone-500">{#if room.headline && room.headline !== room.name}{room.headline}・{/if}{roomCapacityText(room)}</p>
 				<PartnerContentBody photos={room.photos} description={room.description} specs={room.specs} sections={room.sections} amenities={room.amenities} detailLabel={m.room_detail_more()} />
 			</div>
 			<div class="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-stone-200 px-4 py-3 sm:px-6">

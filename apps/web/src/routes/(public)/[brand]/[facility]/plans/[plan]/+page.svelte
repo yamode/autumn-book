@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { roomCapacityText } from '$lib/room-capacity';
 	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { navigating, page } from '$app/state';
@@ -300,7 +301,7 @@
 				<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
 			{/if}
 			<h3 class="font-medium text-brand-900">{r.room.name}</h3>
-			<p class="text-xs text-stone-500">{m.plan_detail_capacity({ n: String(r.room.capacity), size: String(r.room.sizeM2) })}</p>
+			<p class="text-xs text-stone-500">{roomCapacityText(r.room)}</p>
 			<button type="button" onclick={() => (infoRoom = r.room)} class="mt-1 text-xs font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">{m.room_info_show()}</button>
 			{#if !r.fits}
 				<p class="mt-1 text-xs text-red-600">{m.plan_detail_no_fit()}</p>
