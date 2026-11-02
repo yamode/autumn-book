@@ -17,11 +17,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const DEBUG = true;
 const dbg = (...a) => DEBUG && console.error('[DBG]', ...a);
 
-// 計測の対象。プロパティ ID は測定 ID から自動で引く（book の ID が控えに無いため）
+// 計測の対象。プロパティ ID は測定 ID から自動で引く（book=556111214・西和賀=558375809・男鹿=416414119）
+// Search Console は西和賀・男鹿ともドメインプロパティ。sc-domain:yamado.co.jp は oga・corporate も含むので gscPage で www に絞る
+// book（yamado.app）は Search Console 未登録（2026-11-02 時点）。登録したら gsc を足す
 const SITES = [
-	{ key: 'book', label: 'autumn-book（book.yamado.app）', measurementId: 'G-JFW5QS8QKH', gsc: 'sc-domain:yamado.app', funnel: true },
-	{ key: 'hp_yamado', label: '西和賀HP（www.yamado.co.jp）', measurementId: 'G-RN88NPRMNX', gsc: 'https://www.yamado.co.jp/', gtm: { account: '6272932827', container: '266787355' } },
-	{ key: 'hp_oga', label: '男鹿HP（oga.yamado.co.jp）', measurementId: 'G-30DJVL8YLG', gsc: 'https://oga.yamado.co.jp/', gtm: { account: '6272932827', container: '208438396' } }
+	{ key: 'book', label: 'autumn-book（book.yamado.app）', measurementId: 'G-JFW5QS8QKH', funnel: true },
+	{ key: 'hp_yamado', label: '西和賀HP（www.yamado.co.jp）', measurementId: 'G-RN88NPRMNX', gsc: 'sc-domain:yamado.co.jp', gscPage: 'https://www.yamado.co.jp/', gtm: { account: '6272932827', container: '266787355' } },
+	{ key: 'hp_oga', label: '男鹿HP（oga.yamado.co.jp）', measurementId: 'G-30DJVL8YLG', gsc: 'sc-domain:oga.yamado.co.jp', gtm: { account: '6272932827', container: '208438396' } }
 ];
 const FUNNEL_EVENTS = ['search', 'view_item', 'begin_checkout', 'purchase'];
 const SCOPES = [
@@ -141,8 +143,10 @@ async function ga4(call, property, site) {
 	return out;
 }
 
-async function gsc(call, siteUrl) {
-	const q = (body) => call(`https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, { ...range(), ...body }).then((r) => r.rows || []);
+async function gsc(call, siteUrl, pagePrefix) {
+	// ドメインプロパティから特定のホストだけを見るときは、ページの URL で絞る
+	const filter = pagePrefix ? { dimensionFilterGroups: [{ filters: [{ dimension: 'page', operator: 'contains', expression: pagePrefix }] }] } : {};
+	const q = (body) => call(`https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, { ...range(), ...filter, ...body }).then((r) => r.rows || []);
 	return {
 		daily: await q({ dimensions: ['date'] }),
 		queries: await q({ dimensions: ['query'], rowLimit: 100 }),
@@ -151,12 +155,12 @@ async function gsc(call, siteUrl) {
 }
 
 async function gtm(call, { account, container }) {
-	const base = `https://tagmanager.googleapis.com/tag-manager/v2/accounts/${account}/containers/${container}`;
+	const base = `https://tagmanager.googleapis.com/tagmanager/v2/accounts/${account}/containers/${container}`;
 	const live = await call(`${base}/versions:live`);
 	const ws = await call(`${base}/workspaces`);
 	const pending = [];
 	for (const w of ws.workspace || []) {
-		const st = await call(`https://tagmanager.googleapis.com/tag-manager/v2/${w.path}/status`).catch(() => ({}));
+		const st = await call(`https://tagmanager.googleapis.com/tagmanager/v2/${w.path}/status`).catch(() => ({}));
 		if ((st.workspaceChange || []).length) pending.push({ workspace: w.name, changes: st.workspaceChange.length, mergeConflicts: (st.mergeConflict || []).length });
 	}
 	return {
@@ -177,7 +181,7 @@ async function main() {
 		const p = props[site.measurementId];
 		if (p) r.ga4 = await ga4(call, p.property, site).catch((e) => ({ error: String(e) }));
 		else r.ga4 = { error: `測定ID ${site.measurementId} のプロパティが見つからない（サービスアカウントに GA4 の閲覧権限が無い可能性）` };
-		if (site.gsc) r.searchConsole = await gsc(call, site.gsc).catch((e) => ({ error: String(e) }));
+		if (site.gsc) r.searchConsole = await gsc(call, site.gsc, site.gscPage).catch((e) => ({ error: String(e) }));
 		if (site.gtm) r.gtm = await gtm(call, site.gtm).catch((e) => ({ error: String(e) }));
 	}
 	const json = JSON.stringify(result, null, 1);

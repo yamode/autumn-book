@@ -26,11 +26,18 @@ PHASE = 1
 
 ## 対象
 
-| キー | サイト | GA4 測定ID | Search Console | GTM |
+| キー | サイト | GA4 測定ID（プロパティ） | Search Console | GTM |
 |---|---|---|---|---|
-| book | book.yamado.app（予約エンジン） | G-JFW5QS8QKH | sc-domain:yamado.app | 直接 gtag |
-| hp_yamado | www.yamado.co.jp（西和賀） | G-RN88NPRMNX | https://www.yamado.co.jp/ | GTM-MKFGGV6J（266787355） |
-| hp_oga | oga.yamado.co.jp（男鹿） | G-30DJVL8YLG | https://oga.yamado.co.jp/ | GTM-PZL2T4L8（208438396） |
+| book | book.yamado.app（予約エンジン） | G-JFW5QS8QKH（556111214「Autumn Book」） | **未登録**（取得しない） | 直接 gtag |
+| hp_yamado | www.yamado.co.jp（西和賀） | G-RN88NPRMNX（558375809） | sc-domain:yamado.co.jp を `https://www.yamado.co.jp/` のページで絞る | GTM-MKFGGV6J（266787355） |
+| hp_oga | oga.yamado.co.jp（男鹿） | G-30DJVL8YLG（416414119） | sc-domain:oga.yamado.co.jp | GTM-PZL2T4L8（208438396） |
+
+- GA4 の3プロパティはすべてアカウント「株式会社 山人」（78624539）にある。GTM はアカウント YAMADO（6272932827）。
+- Search Console の持ち主：`sc-domain:yamado.co.jp` は yamode＠gmail.com、`sc-domain:oga.yamado.co.jp` は yamado2222＠gmail.com。
+  `sc-domain:yamado.co.jp` は oga・corporate など他のサブドメインも含むので、西和賀の数字は必ずページで絞ったものを使う。
+- book（yamado.app）は Search Console にまだ登録していない。book の検索流入は GA4 のチャネル（Organic Search）で見る。
+- 読み取り用のサービスアカウント：`growth-loop@taskul-498901.iam.gserviceaccount.com`（Google Cloud プロジェクト TASKUL `taskul-498901`）。
+  権限は GA4「閲覧者」・GTM「読み取り」（アカウントは「ユーザー」）・Search Console「制限付き」だけ。鍵は `96_Claude/secrets/google-growth-sa.json`。
 
 HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_source=hp_*`／`utm_content` で追える（book 側の `utm_source` 別レポート）。
 
@@ -38,6 +45,7 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
 
 - `node scripts/growth/google-pull.mjs --days 56 --out /tmp/growth.json`（環境変数 `GOOGLE_SA_KEY_B64`）。
   GA4・Search Console・GTM を **読み取り専用** で取る。失敗したサイト・API は `error` に理由が入る（権限の付け忘れの検出にも使う）。
+  2026-11-02 にローカルで全サイト・全 API が `error` なしで通ることを確認済み。
 - 予約の実数は本番 Supabase（`opkocyapzmsjzhbwlguh`）の `book` スキーマを **SELECT のみ** で見る（GA4 の purchase と突き合わせて計測漏れを検出するため）。
   宿泊者の氏名・連絡先は取らない（件数・金額・チャネル・施設・日付だけ）。
 - 変更履歴は autumn-book の `git log`・release notes、hp-yamado / hp-oga の `git log` を見る（流入の変化と、こちらの変更の時期を結びつけるため）。
