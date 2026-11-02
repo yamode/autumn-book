@@ -1315,5 +1315,13 @@
   "plan_link_ended_body": "このプランの販売は終了しました。",
   "plan_link_off_body": "このプランは現在販売していません。",
   "plan_link_other_plans": "{facility} のプランを見る",
-  "plan_link_invalid_top": "トップページへ"
+  "plan_link_invalid_top": "トップページへ",
+  "datepicker_per_room_note": "人数は1室あたりです。料金も1室分で表示しています。",
+  "datepicker_apply_same_date": "{date} のまま、この条件で料金を見る",
+  "plan_cond_title": "ご宿泊の条件",
+  "plan_cond_dates": "日程",
+  "plan_cond_guests": "人数",
+  "plan_cond_pick_date": "日付を選ぶ",
+  "plan_cond_guests_val": "大人{adults}名・{rooms}室",
+  "plan_cond_change": "変更"
 }

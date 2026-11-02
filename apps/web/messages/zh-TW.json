@@ -1315,5 +1315,13 @@
   "plan_link_ended_body": "此方案已結束販售。",
   "plan_link_off_body": "此方案目前未販售。",
   "plan_link_other_plans": "查看 {facility} 的方案",
-  "plan_link_invalid_top": "前往首頁"
+  "plan_link_invalid_top": "前往首頁",
+  "datepicker_per_room_note": "人數為每間客房的人數，價格亦以一間客房顯示。",
+  "datepicker_apply_same_date": "維持 {date}，以此條件查看價格",
+  "plan_cond_title": "住宿條件",
+  "plan_cond_dates": "日期",
+  "plan_cond_guests": "人數",
+  "plan_cond_pick_date": "選擇日期",
+  "plan_cond_guests_val": "成人{adults}位・{rooms}間",
+  "plan_cond_change": "變更"
 }

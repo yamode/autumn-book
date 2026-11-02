@@ -21,8 +21,16 @@
 	// 施設予約セクション（/[brand]/[facility]/**）を外部施設HPから深い誘導で開いた場合の戻り導線（ADR-0001）
 	let facilityBackLink = $derived(page.data.facilityBackLink as { name: string; href: string } | null | undefined);
 
-	// ヘッダーの検索バー（トップは本文ヒーローに、客室・プラン一覧はページ内に検索があるので出さない）
-	let showHeaderSearch = $derived(showSearch && page.url.pathname !== '/' && !isPlansListPath(page.url.pathname));
+	// ヘッダーの検索バーは「宿を探すページ」だけに出す（2026-11-02 指示「検索バーがヘッダーに常にあるのは不自然」）。
+	// 空室検索の結果と、施設のトップ・客室・お知らせ等の施設ページ。トップは本文ヒーローに、プラン一覧はページ内に検索があり、
+	// プラン詳細はページ内の「ご宿泊の条件」で日程・人数を選ぶので出さない。会員特典・コミュニティ・マイページ等も出さない
+	let routeId = $derived(page.route.id ?? '');
+	let showHeaderSearch = $derived(
+		showSearch &&
+			!isPlansListPath(page.url.pathname) &&
+			(routeId.startsWith('/(public)/search') ||
+				(routeId.startsWith('/(public)/[brand]/[facility]') && !routeId.startsWith('/(public)/[brand]/[facility]/plans/[plan]')))
+	);
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
 	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));

@@ -1315,5 +1315,13 @@
   "plan_link_ended_body": "Sales for this plan have ended.",
   "plan_link_off_body": "This plan is not currently on sale.",
   "plan_link_other_plans": "See plans at {facility}",
-  "plan_link_invalid_top": "Go to top page"
+  "plan_link_invalid_top": "Go to top page",
+  "datepicker_per_room_note": "Guests are per room. Prices are shown for one room.",
+  "datepicker_apply_same_date": "Keep {date} and show prices",
+  "plan_cond_title": "Your stay",
+  "plan_cond_dates": "Dates",
+  "plan_cond_guests": "Guests",
+  "plan_cond_pick_date": "Select dates",
+  "plan_cond_guests_val": "{adults} adults · {rooms} room(s)",
+  "plan_cond_change": "Change"
 }

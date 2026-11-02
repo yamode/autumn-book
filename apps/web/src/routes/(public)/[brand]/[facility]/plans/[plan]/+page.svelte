@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
+	import { fly } from 'svelte/transition';
 	import PlanPhotoGallery from '$lib/components/PlanPhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
@@ -105,7 +106,9 @@
 	let selectedRoom = $derived(page.url.searchParams.get('room') ?? '');
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	let qs = $derived(
-		data.params.checkin ? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}` : ''
+		data.params.checkin
+			? `checkin=${data.params.checkin}&nights=${data.params.nights}&adults=${data.params.adults}${(data.params.rooms ?? 1) > 1 ? `&rooms=${data.params.rooms}` : ''}`
+			: ''
 	);
 
 	// プランの写真が未登録なら「プラン専用画像掲載予定」の仮画像を 1 枚目に置く（施設の写真がプランの写真に見えないように）
@@ -231,11 +234,21 @@
 		query.set('room', roomSlug);
 		return `${page.url.pathname}?${query}#room-${roomSlug}`;
 	}
-	function chooseDate(date: string, nights: number) {
-		const query = new URLSearchParams({ checkin: date, nights: String(nights), adults: String(data.params.adults) });
+	function chooseDate(date: string, nights: number, adults = data.params.adults, rooms = data.params.rooms ?? 1) {
+		const query = new URLSearchParams({ checkin: date, nights: String(nights), adults: String(adults) });
+		if (rooms > 1) query.set('rooms', String(rooms));
 		if (selectedRoom) query.set('room', selectedRoom);
-		void goto(`${base}/plans/${data.plan.slug}?${query}#${selectedRoom ? `room-${selectedRoom}` : 'rooms'}`);
+		// 料金を取り直すあいだ、客室の欄を先に見せて読み込み中の表示（シマー）を出す（2026-11-02 指示）
+		// カレンダーが閉じて画面のスクロール止め（overflow: hidden）が外れてから動かす
+		setTimeout(() => document.getElementById('rooms')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+		void goto(`${base}/plans/${data.plan.slug}?${query}#${selectedRoom ? `room-${selectedRoom}` : 'rooms'}`, { noScroll: !selectedRoom });
 	}
+	// 同じプランのまま日付・人数を変えて料金を取り直している最中（客室の欄と右の料金をシマーにする）
+	let loadingRooms = $derived(
+		!!navigating.to && navigating.to.url.pathname === page.url.pathname && navigating.to.url.search !== page.url.search
+	);
+	// シマーの枚数は今の客室の数に合わせる（読み込み後に高さが大きく変わらないように）
+	let skeletonCount = $derived(Math.min(Math.max(data.rooms.length, 2), 5));
 	$effect(() => {
 		const el = document.getElementById('rooms');
 		if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -345,8 +358,32 @@
 	</dl>
 {/snippet}
 
+{#snippet conditions(wide: boolean)}
+	<!-- ご宿泊の条件（日程・人数）。どちらを押しても同じ料金カレンダーが開き、人数もそこで変えられる（2026-11-02） -->
+	<div class="divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white text-sm {wide ? 'max-w-xl' : ''}">
+		<button type="button" onclick={() => (datePickerOpen = true)} class="flex w-full items-center gap-3 px-3 text-left hover:bg-stone-50 {wide ? 'py-3.5' : 'py-2.5'}">
+			<span class="w-12 shrink-0 text-xs text-stone-500">{m.plan_cond_dates()}</span>
+			<span class="min-w-0 flex-1 font-medium {data.params.checkin ? 'text-brand-900' : 'text-accent-600'}">
+				{data.params.checkin ? `${formatDate(data.params.checkin)} · ${m.searchbar_nights_option({ n: String(data.params.nights) })}` : m.plan_cond_pick_date()}
+			</span>
+			<span class="shrink-0 text-xs text-stone-400" aria-hidden="true">{data.params.checkin ? m.plan_cond_change() : '›'}</span>
+		</button>
+		<button type="button" onclick={() => (datePickerOpen = true)} class="flex w-full items-center gap-3 px-3 text-left hover:bg-stone-50 {wide ? 'py-3.5' : 'py-2.5'}">
+			<span class="w-12 shrink-0 text-xs text-stone-500">{m.plan_cond_guests()}</span>
+			<span class="min-w-0 flex-1 font-medium text-brand-900">{m.plan_cond_guests_val({ adults: String(data.params.adults), rooms: String(data.params.rooms ?? 1) })}</span>
+			<span class="shrink-0 text-xs text-stone-400" aria-hidden="true">{m.plan_cond_change()}</span>
+		</button>
+	</div>
+{/snippet}
+
 {#snippet priceBlock()}
-	{#if chosen?.quote}
+	{#if loadingRooms}
+		<div class="space-y-2" aria-hidden="true">
+			<div class="shimmer h-3 w-28 opacity-70"></div>
+			<div class="shimmer h-7 w-40"></div>
+			<div class="shimmer h-3 w-32 opacity-70"></div>
+		</div>
+	{:else if chosen?.quote}
 		<!-- 選んで入ってきた客室の料金（最安ではなく、その部屋の額） -->
 		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
 		<p class="font-medium text-brand-900">{chosen.room.name}</p>
@@ -441,7 +478,11 @@
 			<!-- 料金サマリ＋CTA（ファーストビューで料金と予約導線を見せる）。お食事・お支払いも同じ枠の上に入れる（一休と同じ並び） -->
 			<div class="rounded-xl border border-stone-200 bg-white p-4 shadow-sm">
 				{@render planInfo()}
-				<div class="mt-3 border-t border-stone-200 pt-3">{@render priceBlock()}</div>
+				<div class="mt-3 border-t border-stone-200 pt-3">
+					<p class="mb-1.5 text-xs font-medium text-stone-600">{m.plan_cond_title()}</p>
+					{@render conditions(false)}
+				</div>
+				<div class="mt-3">{@render priceBlock()}</div>
 				{#if data.params.checkin && !soldOut}
 					<p class="mt-2 text-xs text-emerald-700">
 						{m.plan_detail_cancel()}: <CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.params.checkin} />
@@ -484,11 +525,9 @@
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="cal">
 		<h2 class="font-display mb-1 text-xl text-brand-900">{m.plan_detail_price_calendar()}</h2>
 		<p class="mb-3 text-sm text-stone-500">{m.plan_detail_calendar_sub()}</p>
-		<button type="button" onclick={() => (datePickerOpen = true)} class="w-full max-w-xl rounded-xl border border-stone-300 bg-white px-5 py-4 text-left text-sm font-medium text-brand-800 hover:border-brand-800">
-			📅 {data.params.checkin ? formatDate(data.params.checkin) : m.bath_select_date()} · {m.searchbar_nights_option({ n: String(data.params.nights) })}
-		</button>
+		{@render conditions(true)}
 	</section>
-	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6, preview: data.preview }} onSelect={chooseDate} />
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6, preview: data.preview }} guests={{ adults: data.params.adults, maxAdults: 6, rooms: data.params.rooms ?? 1, maxRooms: data.multiRoom ? MAX_ROOMS_PER_BOOKING : undefined }} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms">
@@ -499,8 +538,28 @@
 		{#if !data.params.checkin}
 			<p class="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{m.plan_detail_select_date()}</p>
 		{/if}
+		{#if loadingRooms}
+			<!-- 料金を取り直している最中: 客室カードの形のシマー -->
+			<div class="mt-3 space-y-3" aria-busy="true" aria-label={m.common_loading()}>
+				{#each Array.from({ length: skeletonCount }, (_, i) => i) as i (i)}
+					<div class="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center">
+						<div class="shimmer h-24 w-full shrink-0 sm:w-40"></div>
+						<div class="flex-1 space-y-2">
+							<div class="shimmer h-5 w-3/4"></div>
+							<div class="shimmer h-3 w-1/3 opacity-70"></div>
+							<div class="shimmer h-3 w-24 opacity-70"></div>
+						</div>
+						<div class="flex flex-col items-end gap-2">
+							<div class="shimmer h-3 w-24 opacity-70"></div>
+							<div class="shimmer h-6 w-28"></div>
+							<div class="shimmer h-9 w-44"></div>
+						</div>
+					</div>
+				{/each}
+			</div>
+		{:else}
 		{#if picked}
-			<div class="mt-3">{@render roomCard(picked)}</div>
+			<div class="mt-3" in:fly|global={{ y: 8, duration: 280 }}>{@render roomCard(picked)}</div>
 			{#if otherRooms.length > 0}
 				<button type="button" onclick={() => (showOthers = !showOthers)} aria-expanded={showOthers} class="mt-4 text-sm font-medium text-brand-700 underline underline-offset-4 hover:text-brand-900">
 					{showOthers ? m.plan_detail_other_rooms_hide() : m.plan_detail_other_rooms({ n: String(otherRooms.length) })}
@@ -510,10 +569,12 @@
 		<!-- 選んだ客室がその日は満室なら、ほかの客室を最初から開いておく -->
 		{#if !picked || showOthers || (data.params.checkin && !chosen)}
 		<div class="mt-3 space-y-3">
-			{#each otherRooms as r}
-				{@render roomCard(r)}
+			{#each otherRooms as r, i}
+				<!-- 読み込みが済んだら上から順にふわっと出す -->
+				<div in:fly|global={{ y: 8, duration: 280, delay: Math.min(i, 6) * 70 }}>{@render roomCard(r)}</div>
 			{/each}
 		</div>
+		{/if}
 		{/if}
 	</section>
 	{/if}
@@ -572,13 +633,11 @@
 					<input type="hidden" name="via" value={via} />
 					<button type="submit" class="rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.plan_detail_book()}</button>
 				</form>
+			{:else if cheapest}
+				<a href="#rooms" class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_rooms()}</a>
 			{:else}
-				<a
-					href={cheapest ? '#rooms' : '#cal'}
-					class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500"
-				>
-					{cheapest ? m.plan_price_cta_rooms() : m.plan_price_cta_dates()}
-				</a>
+				<!-- 日付が未指定・満室: その場で料金カレンダー（人数も選べる）を開く -->
+				<button type="button" onclick={() => (datePickerOpen = true)} class="shrink-0 rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.plan_price_cta_dates()}</button>
 			{/if}
 		</div>
 	</div>

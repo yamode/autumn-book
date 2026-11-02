@@ -17,6 +17,7 @@
 		daysNights = nights,
 		daysAdults,
 		source,
+		guests,
 		onSelect
 	}: {
 		open?: boolean;
@@ -34,7 +35,9 @@
 		daysAdults?: number;
 		/** 指定すると、泊数を変えたときに /api/stay-calendar からその泊数で予約できる日を取り直す */
 		source?: { facilityId: string; planId?: string; adults: number; months?: number; preview?: boolean };
-		onSelect: (date: string, nights: number) => void;
+		/** 指定すると、カレンダーの上で人数（と室数）も選べる。人数を変えるとその人数の料金で日付を取り直す（プラン詳細・2026-11-02） */
+		guests?: { adults: number; maxAdults: number; rooms?: number; maxRooms?: number };
+		onSelect: (date: string, nights: number, adults?: number, rooms?: number) => void;
 	} = $props();
 
 	// 泊数・人数を変えたら、その条件で予約できる日を取り直す（ページのデータや取得元が変わったら捨てる）
@@ -49,9 +52,23 @@
 	// svelte-ignore state_referenced_locally
 	let selectedNights = $state(nights);
 	let scrollRegion = $state<HTMLDivElement | null>(null);
+	// svelte-ignore state_referenced_locally
+	let selectedAdults = $state(guests?.adults ?? source?.adults ?? 2);
+	// svelte-ignore state_referenced_locally
+	let selectedRooms = $state(guests?.rooms ?? 1);
 	$effect(() => {
-		if (open) selectedNights = nights;
+		if (open) {
+			selectedNights = nights;
+			selectedAdults = guests?.adults ?? source?.adults ?? 2;
+			selectedRooms = guests?.rooms ?? 1;
+		}
 	});
+	// カレンダーの料金を計算する人数（人数の欄があれば選んでいる人数）
+	let adultsForDays = $derived(guests ? selectedAdults : (source?.adults ?? 0));
+	// 日付は決まっていて、泊数・人数・室数だけ変えたとき用の「決定」
+	let conditionChanged = $derived(
+		selectedNights !== nights || (!!guests && (selectedAdults !== guests.adults || selectedRooms !== (guests.rooms ?? 1)))
+	);
 	$effect(() => {
 		if (!open || !checkin) return;
 		const selectedMonth = checkin.slice(0, 7);
@@ -99,19 +116,20 @@
 		return result;
 	});
 	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
-	const isPageDays = $derived(selectedNights === daysNights && (!source || source.adults === (daysAdults ?? source.adults)));
+	const isPageDays = $derived(selectedNights === daysNights && (!source || adultsForDays === (daysAdults ?? source.adults)));
 	const current = $derived<StayDays | null>(
-		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(selectedNights, source.adults) : null
+		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(selectedNights, adultsForDays) : null
 	);
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
 	const closedDates = $derived(new Set(current?.closed ?? []));
 	$effect(() => {
-		if (open && source && !isPageDays) loader.load(source, selectedNights, source.adults);
+		if (open && source && !isPageDays) loader.load(source, selectedNights, adultsForDays);
 	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
 
 	function choose(date: string) {
-		onSelect(date, selectedNights);
+		if (guests) onSelect(date, selectedNights, selectedAdults, guests.maxRooms ? selectedRooms : undefined);
+		else onSelect(date, selectedNights);
 		open = false;
 	}
 </script>
@@ -133,12 +151,39 @@
 					<button type="button" disabled={selectedNights <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedNights--}>−</button>
 					<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_nights_option({ n: String(selectedNights) })}</span>
 					<button type="button" disabled={selectedNights >= 7} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedNights++}>+</button>
-					{#if loader.loading}
+					{#if !guests && loader.loading}
 						<span class="text-xs text-stone-500" role="status">{m.datepicker_loading()}</span>
-					{:else if loader.failed}
+					{:else if !guests && loader.failed}
 						<span class="text-xs text-red-600" role="status">{m.datepicker_load_failed()}</span>
 					{/if}
 				</div>
+				{#if guests}
+					<!-- 人数・室数。人数で 1 泊の料金が変わるので、日付と同じ画面で選ぶ -->
+					<div class="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+						<div class="flex items-center gap-4">
+							<span class="text-sm text-stone-600">{m.searchbar_adults()}</span>
+							<button type="button" disabled={selectedAdults <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedAdults--}>−</button>
+							<span class="min-w-14 text-center text-sm font-medium tabular-nums">{m.searchbar_adults_option({ n: String(selectedAdults) })}</span>
+							<button type="button" disabled={selectedAdults >= guests.maxAdults} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedAdults++}>+</button>
+						</div>
+						{#if guests.maxRooms && guests.maxRooms > 1}
+							<div class="flex items-center gap-4">
+								<span class="text-sm text-stone-600">{m.searchbar_rooms()}</span>
+								<button type="button" disabled={selectedRooms <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedRooms--}>−</button>
+								<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_rooms_option({ n: String(selectedRooms) })}</span>
+								<button type="button" disabled={selectedRooms >= guests.maxRooms} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedRooms++}>+</button>
+							</div>
+						{/if}
+					</div>
+					{#if guests.maxRooms && guests.maxRooms > 1 && selectedRooms > 1}
+						<p class="mt-1 text-xs text-stone-500">{m.datepicker_per_room_note()}</p>
+					{/if}
+					{#if loader.loading}
+						<p class="mt-1 text-xs text-stone-500" role="status">{m.datepicker_loading()}</p>
+					{:else if loader.failed}
+						<p class="mt-1 text-xs text-red-600" role="status">{m.datepicker_load_failed()}</p>
+					{/if}
+				{/if}
 			</div>
 			<div bind:this={scrollRegion} class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-8 sm:px-6">
 				{#each months as month (month.key)}
@@ -169,6 +214,12 @@
 					</section>
 				{/each}
 			</div>
+			{#if checkin && conditionChanged}
+				<!-- 日付はそのまま、泊数・人数・室数だけ変えるとき -->
+				<div class="shrink-0 border-t border-stone-200 bg-white px-4 py-3 sm:px-6">
+					<button type="button" onclick={() => choose(checkin)} class="block w-full rounded-lg bg-accent-600 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.datepicker_apply_same_date({ date: formatDate(checkin) })}</button>
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}
