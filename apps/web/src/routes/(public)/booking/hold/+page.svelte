@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
@@ -215,6 +216,8 @@
 	async function preparePayment(): Promise<PaymentPrepareResult> {
 		if (!formEl) throw new Error(m.pay_el_not_ready());
 		const fd = new FormData(formEl);
+		// カード会社のページへ移る認証（3Dセキュア）で失敗して戻ったとき、入力をやり直さずに済むよう控えておく
+		saveResume(fd);
 		fd.set('action', 'prepare');
 		fd.set('payment', 'card');
 		// チェックアウト日決済はカード登録（SetupIntent）。額は割引なしの請求予定額
@@ -294,6 +297,76 @@
 		step = 'input';
 		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
+
+	// ---- 3Dセキュア等でカード会社のページへ移り、失敗して戻ってきたとき（/booking/pay/return → ?pay=…）----
+	// ページを丸ごと移るので入力が消える。決済の準備のときにこのタブの sessionStorage へ入力を控え、戻ってきたら
+	// 欄を埋め直して確認の段から始める（別のカードですぐやり直せる）。控えは読んだら消す（タブを閉じても消える）
+	const resumeKey = () => (data.expired ? '' : `ab_hold_resume_${data.hold.id}`);
+	function saveResume(fd: FormData) {
+		try {
+			const entries = [...fd.entries()].filter(([k]) => k !== 'cf-turnstile-response').map(([k, v]) => [k, String(v)]);
+			sessionStorage.setItem(resumeKey(), JSON.stringify(entries));
+		} catch {
+			/* 保存できない環境は従来どおり入力からやり直し */
+		}
+	}
+	async function restoreResume(entries: [string, string][]) {
+		const get = (k: string) => entries.find(([n]) => n === k)?.[1];
+		// 画面の状態で持っている選択（交通手段・男女・支払方法・お気に入りの部屋・ポイント）を先に戻す
+		transport = get('transport') ?? '';
+		male0 = get('male_0') ?? '';
+		males = rooms.map((_, i) => get(`male_${i}`) ?? '');
+		const g = get('payGroup');
+		if (g === 'online' || g === 'checkout' || g === 'onsite') selectedGroup = g;
+		const po = get('payOnline');
+		if (po === 'card' || po === 'paypay') selectedOnline = po;
+		const pon = get('payOnsite');
+		if (pon === 'cash' || pon === 'card' || pon === 'paypay') pickedOnsite = pon;
+		furusatoVoucher = !!get('furusatoVoucher');
+		if (get('points') != null) pointsInput = Number(get('points')) || 0;
+		favPicked = Object.fromEntries(entries.filter(([k]) => k.startsWith('fav_')).map(([k, v]) => [Number(k.slice(4)), v]));
+		await tick();
+		// 残りの欄（氏名・連絡先・アレルギー・追加で聞く項目・備考など）。条件で出る欄は上の選択で出てから入れる。
+		// 確認の段に切り替えた直後に画面の描き直しで欄が初期値に戻ることがあるので、切り替えた後にもう一度入れる
+		const fill = () => {
+			for (const [k, v] of entries) {
+				for (const el of formEl?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[name="${CSS.escape(k)}"]`) ?? []) {
+					if (el instanceof HTMLInputElement && (el.type === 'radio' || el.type === 'checkbox')) {
+						if (el.type === 'radio' ? el.value === v : true) el.checked = true;
+					} else if (!(el instanceof HTMLInputElement && el.type === 'hidden')) {
+						el.value = v;
+					}
+				}
+			}
+			readAnswers();
+		};
+		fill();
+		await tick();
+		fill();
+		step = 'confirm';
+		await tick();
+		fill();
+		snapshot();
+	}
+	onMount(() => {
+		const p = page.url.searchParams.get('pay');
+		if (!p || p === 'expired' || data.expired) return;
+		let raw: string | null = null;
+		try {
+			raw = sessionStorage.getItem(resumeKey());
+			sessionStorage.removeItem(resumeKey());
+		} catch {
+			return;
+		}
+		if (!raw) return;
+		try {
+			const entries = JSON.parse(raw) as [string, string][];
+			// 画面の最初の描き込みが済んでから戻す
+			if (Array.isArray(entries)) setTimeout(() => void restoreResume(entries), 0);
+		} catch {
+			/* 壊れた控えは捨てる */
+		}
+	});
 	// 入力欄・見出しの形は取引先ページと共通（lib/booking-layout.ts）
 	const input = BOOKING_INPUT_CLASS;
 	const label = BOOKING_LABEL_CLASS;
