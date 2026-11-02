@@ -1330,5 +1330,6 @@
   "hold_field_transport_other": "Please describe (other)",
   "hold_field_pickup": "Pick-up time",
   "hold_transport_car": "Car",
-  "hold_transport_other": "Other"
+  "hold_transport_other": "Other",
+  "hold_arrival_undecided": "Not decided"
 }

@@ -1330,5 +1330,6 @@
   "hold_field_transport_other": "交通手段（その他）の内容",
   "hold_field_pickup": "お迎えの時間",
   "hold_transport_car": "車",
-  "hold_transport_other": "その他"
+  "hold_transport_other": "その他",
+  "hold_arrival_undecided": "未定"
 }

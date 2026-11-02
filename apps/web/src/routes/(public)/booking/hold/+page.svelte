@@ -443,11 +443,11 @@
 
 					<div class="grid gap-4 sm:grid-cols-2">
 						<label class="block text-sm">
-							<span class="text-stone-600">{m.hold_field_arrival()}</span>
-							<select name="arrival" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
-								{#each ['15:00', '16:00', '17:00', '18:00 以降'] as t}
-									<option>{t}</option>
-								{/each}
+							<span class="text-stone-600">{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</span>
+							<!-- 選択肢は施設ごとの毎回聞く項目（取引先ページと共通）。先頭は「未定」 -->
+							<select name="arrival" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+								<option value="">{m.hold_arrival_undecided()}</option>
+								{#each sf?.arrival.choices ?? [] as t (t)}<option value={t}>{t}</option>{/each}
 							</select>
 						</label>
 						{#if data.facility.access.shuttle.available}

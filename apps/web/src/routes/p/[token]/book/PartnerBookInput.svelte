@@ -112,11 +112,11 @@
 
   // ---- 予約者・交通手段 ----
   // 交通手段（「その他」を選んだときだけ自由入力の欄を出す）
+  // 選択肢は施設ごとの毎回聞く項目（管理画面「予約時に聞く項目」・既定 JR／車／その他）。値は選択肢の文字そのもの
   let transport = $state('');
   const transportLabel = (id: string, other: string) => {
-    const o = data.transportOptions.find((t) => t.id === id);
-    if (!o) return '';
-    return o.id === 'other' ? `その他${other ? `（${other}）` : ''}` : o.label;
+    if (!id || !data.standardFields.transport.choices.includes(id)) return '';
+    return id === 'その他' ? `その他${other ? `（${other}）` : ''}` : id;
   };
 
   // ---- 入力 → 確認 ----
@@ -352,7 +352,6 @@
 
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
   const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
-  const ARRIVALS = ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00'];
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
 
@@ -368,7 +367,7 @@
     liveAnswers = next;
   }
   const shown = (o: BookingQuestion, roomIndex = 0) =>
-    isQuestionShown(o, data.settings.options, { transport: data.transportOptions.find((t) => t.id === transport)?.label ?? '', answers: liveAnswers }, roomIndex);
+    isQuestionShown(o, data.settings.options, { transport, answers: liveAnswers }, roomIndex);
   // 部屋ごとの男女の内訳（男性の人数。女性は人数から引く）。部屋数・人数が変わったら選び直してもらう
   let males = $state<string[]>([]);
   $effect(() => {
@@ -585,18 +584,21 @@
         </p>
         <!-- 交通手段（任意）。その他は自由入力 -->
         <fieldset class="mt-4">
-          <legend class={label}>交通手段</legend>
+          <legend class={label}>{data.standardFields.transport.label}{#if data.standardFields.transport.required} <em class="req">必須</em>{/if}</legend>
+          {#if data.standardFields.transport.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.transport.help}</span>{/if}
           <div class="flex flex-wrap gap-2">
-            <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === '' ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
-              <input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--pt-accent)]" />未定
-            </label>
-            {#each data.transportOptions as t (t.id)}
-              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === t.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
-                <input type="radio" name="transport" value={t.id} bind:group={transport} class="accent-[var(--pt-accent)]" />{t.label}
+            {#if !data.standardFields.transport.required}
+              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === '' ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                <input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--pt-accent)]" />未定
+              </label>
+            {/if}
+            {#each data.standardFields.transport.choices as t (t)}
+              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === t ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                <input type="radio" name="transport" value={t} bind:group={transport} required={data.standardFields.transport.required} class="accent-[var(--pt-accent)]" />{t}
               </label>
             {/each}
           </div>
-          {#if transport === 'jr' && data.standardFields.pickup.choices.length}
+          {#if transport && transport === data.standardFields.pickup.when && data.standardFields.pickup.choices.length}
             <!-- JR のときのお迎え（西和賀＝乗合タクシー・男鹿＝迎えの車。文言・時間は管理画面「予約時に聞く項目」の毎回聞く項目） -->
             <label class="mt-3 block sm:max-w-sm">
               <span class={label}>{data.standardFields.pickup.label} <em class="req">必須</em></span>
@@ -607,7 +609,7 @@
               </select>
             </label>
           {/if}
-          {#if transport === 'other'}
+          {#if transport === 'その他'}
             <input name="transport_other" required maxlength="60" placeholder="例: 高速バス・タクシー" aria-label="交通手段（その他）" class={`${input} mt-2 sm:max-w-sm`} />
           {/if}
         </fieldset>
@@ -623,10 +625,11 @@
             <textarea name="allergies" rows="2" maxlength="500" placeholder={data.standardFields.allergies.placeholder} class={input}></textarea>
           </label>
           <label class="block sm:max-w-xs">
-            <span class={label}>到着予定時刻</span>
+            <span class={label}>{data.standardFields.arrival.label}</span>
+            {#if data.standardFields.arrival.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.arrival.help}</span>{/if}
             <select name="arrival" class={input}>
               <option value="">未定</option>
-              {#each ARRIVALS as t}<option value={t}>{t}</option>{/each}
+              {#each data.standardFields.arrival.choices as t (t)}<option value={t}>{t}</option>{/each}
             </select>
           </label>
           {#each bookingQuestions as o (o.id)}
@@ -677,7 +680,7 @@
             {#if values.allergies}<dt>{data.standardFields.allergies.label}</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
             <dt>到着予定</dt><dd>{values.arrival || '未定'}</dd>
             {#if values.transport}<dt>交通手段</dt><dd>{transportLabel(values.transport, values.transport_other ?? '')}</dd>{/if}
-            {#if values.transport === 'jr' && values.pickup_time}<dt>{data.standardFields.pickup.label}</dt><dd>{values.pickup_time}</dd>{/if}
+            {#if values.transport && values.transport === data.standardFields.pickup.when && values.pickup_time}<dt>{data.standardFields.pickup.label}</dt><dd>{values.pickup_time}</dd>{/if}
             {#if data.perks.length}<dt>専用特典</dt><dd>{data.perks.map((p) => p.title).join('／')}</dd>{/if}
             {#if data.settings.askGender}
               {#each adults as a, i (i)}

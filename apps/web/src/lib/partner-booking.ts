@@ -159,21 +159,32 @@ export function describeBooker(b: PartnerBooker): string {
   return [head, b.phone, b.email].filter(Boolean).join(' / ');
 }
 
-// ---- 交通手段（宿泊者情報。2026-10-01 指示: JR・車・その他（自由入力）から選ぶ） ----
-export type PartnerTransportId = 'jr' | 'car' | 'other';
-export const PARTNER_TRANSPORT_OPTIONS: { id: PartnerTransportId; label: string }[] = [
-  { id: 'jr', label: 'JR' },
-  { id: 'car', label: '車' },
-  { id: 'other', label: 'その他' }
-];
+// ---- 交通手段（宿泊者情報）----
+// 選択肢は施設ごとの「毎回聞く項目」（lib/booking-standard-fields.ts の transport・既定 JR／車／その他・2026-11-02）。
+// フォームは選択肢の文字をそのまま送る。旧フォームの記号（jr / car / other）も受ける（開いたままの画面から送られた分）。
+const LEGACY_TRANSPORT: Record<string, string> = { jr: 'JR', car: '車', other: 'その他' };
+export const DEFAULT_TRANSPORT_CHOICES = ['JR', '車', 'その他'];
+
+/** フォームの値を選択肢の文字にする（旧記号は読み替え。選択肢に無ければ ''） */
+export function transportChoiceOf(id: string, choices: readonly string[] = DEFAULT_TRANSPORT_CHOICES): string {
+  const v = String(id ?? '').trim();
+  if (!v) return '';
+  if (choices.includes(v)) return v;
+  const legacy = LEGACY_TRANSPORT[v];
+  return legacy && choices.includes(legacy) ? legacy : '';
+}
 
 // 交通手段の入力を表示用の文字列にする（未選択は ''。その他は自由入力があれば「その他（○○）」）。
-export function resolveTransport(id: string, other: string): { ok: true; value: string } | { ok: false; message: string } {
+export function resolveTransport(
+  id: string,
+  other: string,
+  choices: readonly string[] = DEFAULT_TRANSPORT_CHOICES
+): { ok: true; value: string } | { ok: false; message: string } {
   const v = String(id ?? '').trim();
   if (!v) return { ok: true, value: '' };
-  const opt = PARTNER_TRANSPORT_OPTIONS.find((o) => o.id === v);
-  if (!opt) return { ok: false, message: '交通手段の選択肢が正しくありません。' };
-  if (opt.id !== 'other') return { ok: true, value: opt.label };
+  const choice = transportChoiceOf(v, choices);
+  if (!choice) return { ok: false, message: '交通手段の選択肢が正しくありません。' };
+  if (choice !== 'その他') return { ok: true, value: choice };
   const text = String(other ?? '').trim().slice(0, 60);
   if (!text) return { ok: false, message: '交通手段（その他）の内容を入力してください。' };
   return { ok: true, value: `その他（${text}）` };

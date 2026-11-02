@@ -1,7 +1,7 @@
 // 予約入力で毎回聞く項目（アレルギー・備考など）の見出し・例文。施設ごとに管理画面「予約時に聞く項目」で変えられる
 // （book.booking_form_settings・autumn-shared 20261006081330）。文言だけの設定で、回答の行き先は変えない
 // （アレルギー → 顧客マスタ core.guests.allergies と PMS の事前質問「アレルギー」）。
-export type StandardFieldKey = 'allergies' | 'transport' | 'pickup' | 'notes';
+export type StandardFieldKey = 'arrival' | 'allergies' | 'transport' | 'pickup' | 'notes';
 
 // choices = 選択肢を持つ項目（交通手段・お迎え時間）。placeholder の代わりに選択肢を設定する。defaultChoices は未設定のときの選択肢
 export const STANDARD_FIELDS: readonly {
@@ -13,6 +13,16 @@ export const STANDARD_FIELDS: readonly {
   choices?: true;
   defaultChoices?: readonly string[];
 }[] = [
+  {
+    // 到着予定時刻（2026-11-02）。公式サイトと取引先ページの予約入力の選択肢。先頭に「未定」が付く
+    key: 'arrival',
+    name: '到着予定時刻',
+    label: '到着予定時刻',
+    placeholder: '',
+    note: '公式サイトと取引先ページの予約入力に出ます（先頭に「未定」が付きます）。回答は PMS の到着予定に入ります。',
+    choices: true,
+    defaultChoices: ['14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00', '17:30', '18:00', '18:30', '19:00']
+  },
   {
     key: 'allergies',
     name: '食物アレルギー・苦手な食材',
@@ -26,7 +36,7 @@ export const STANDARD_FIELDS: readonly {
     name: '宿までの交通手段',
     label: '宿までの交通手段',
     placeholder: '',
-    note: '公式サイトの予約入力に出ます（取引先ページは JR／車／その他 のまま）。「その他」を選ぶと内容を書く欄が出ます。回答は PMS の事前質問に入ります。追加で聞く項目の「条件」にも使えます。',
+    note: '公式サイトと取引先ページの予約入力に出ます。「その他」を選ぶと内容を書く欄が出ます。回答は PMS の事前質問に入ります。追加で聞く項目の「条件」にも使えます。',
     choices: true,
     defaultChoices: ['JR', '車', 'その他']
   },

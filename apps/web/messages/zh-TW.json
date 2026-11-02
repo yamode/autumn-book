@@ -1330,5 +1330,6 @@
   "hold_field_transport_other": "交通方式（其他）的內容",
   "hold_field_pickup": "接送時間",
   "hold_transport_car": "開車",
-  "hold_transport_other": "其他"
+  "hold_transport_other": "其他",
+  "hold_arrival_undecided": "未定"
 }

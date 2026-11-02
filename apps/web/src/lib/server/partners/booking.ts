@@ -36,8 +36,8 @@ import {
   normalizeBooker,
   partnerPlanName,
   perksForPlan,
-  PARTNER_TRANSPORT_OPTIONS,
   resolveTransport,
+  transportChoiceOf,
   validateBooker,
   type PartnerBooker,
   type PartnerBookingGuestInput
@@ -585,9 +585,10 @@ export async function createPartnerBooking(
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
   // 予約時に聞く項目（プランの項目＋この取引先だけの項目）。予約画面と同じ規則で決め直して検証する
   const form = await partnerBookingForm(db, partner, input.planCode, input.planName);
-  const answers = resolveQuestionAnswers(form.questions, input.answers, input.rooms.length, {
-    transport: PARTNER_TRANSPORT_OPTIONS.find((o) => o.id === input.transport?.id)?.label ?? ''
-  });
+  // 毎回聞く項目（交通手段・お迎え時間の選択肢は施設ごと）
+  const std = await loadStandardFieldTexts(partner.facility_id);
+  const transportChoice = transportChoiceOf(input.transport?.id ?? '', std.transport.choices);
+  const answers = resolveQuestionAnswers(form.questions, input.answers, input.rooms.length, { transport: transportChoice });
   // 部屋ごとの男女の内訳（必須・合計＝その部屋の大人の人数）。PMS へは電文の rooms[].male / female で渡る
   const genders = form.askGender ? resolveRoomGenders(input.rooms.map((r) => r.adults), (k) => input.genders?.[k]) : null;
   if (genders && !genders.ok) throw new PartnerStoreError(genders.message);
@@ -595,12 +596,13 @@ export async function createPartnerBooking(
   const booker = normalizeBooker(input.booker);
   const bookerProblem = validateBooker(booker);
   if (bookerProblem) throw new PartnerStoreError(bookerProblem);
-  const transport = resolveTransport(input.transport?.id ?? '', input.transport?.other ?? '');
+  const transport = resolveTransport(input.transport?.id ?? '', input.transport?.other ?? '', std.transport.choices);
   if (!transport.ok) throw new PartnerStoreError(transport.message);
+  if (!transportChoice && std.transport.required) throw new PartnerStoreError(`「${std.transport.label}」を選んでください。`);
   // JR のときのお迎え時間（西和賀＝乗合タクシー・男鹿＝迎えの車）。施設が選択肢を設定しているときだけ必須
-  const pickup = (await loadStandardFieldTexts(partner.facility_id)).pickup;
+  const pickup = std.pickup;
   let pickupRow: { label: string; value: string } | null = null;
-  if (input.transport?.id === 'jr' && pickup.choices.length) {
+  if (transportChoice && transportChoice === pickup.when && pickup.choices.length) {
     const t = String(input.pickupTime ?? '').trim();
     if (!t) throw new PartnerStoreError(`「${pickup.label}」を選んでください。`);
     if (!pickup.choices.includes(t)) throw new PartnerStoreError(`「${pickup.label}」の選択肢が正しくありません。`);

@@ -253,6 +253,10 @@ describe('resolveTransport', () => {
     expect(resolveTransport('other', ' 路線バス ')).toEqual({ ok: true, value: 'その他（路線バス）' });
     expect(resolveTransport('other', '  ').ok).toBe(false);
     expect(resolveTransport('plane', '').ok).toBe(false);
+    // 施設の選択肢の文字で受ける（旧記号も読み替える）。選択肢に無いものは止める
+    expect(resolveTransport('バス', '', ['JR', 'バス', 'その他'])).toEqual({ ok: true, value: 'バス' });
+    expect(resolveTransport('JR', '', ['JR', 'バス'])).toEqual({ ok: true, value: 'JR' });
+    expect(resolveTransport('car', '', ['JR', 'バス']).ok).toBe(false);
   });
 });
 
