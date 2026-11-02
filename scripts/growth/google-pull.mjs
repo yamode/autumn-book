@@ -75,10 +75,12 @@ function api(token) {
 }
 
 const ymd = (d) => d.toISOString().slice(0, 10);
+// JST の日付（GA4 の3プロパティ・Search Console の日付はすべて JST で扱う）
+const jstYmd = (ms) => ymd(new Date(ms + 9 * 3600e3));
 const range = () => {
-	const end = new Date(Date.now() - 864e5); // 前日まで（当日分は未確定）
-	const start = new Date(end.getTime() - (DAYS - 1) * 864e5);
-	return { startDate: ymd(start), endDate: ymd(end) };
+	const end = Date.now() - 864e5; // JST の前日まで（当日分は未確定）
+	const start = end - (DAYS - 1) * 864e5;
+	return { startDate: jstYmd(start), endDate: jstYmd(end) };
 };
 // 前年同期（同じ曜日に揃えるため 364 日前）
 const rangeLastYear = () => {
