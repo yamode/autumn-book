@@ -11,9 +11,14 @@ export const load: PageServerLoad = async event => {
  const db=createSupabaseServerClient(event);
  const item=await inquiry(db,event.params.id);
  if(!item || item.facility_id!==FACILITY_UUID['f-nishiwaga']) error(404,'お問い合わせが見つかりません。');
- if(event.cookies.get('ab_fac')!=='f-nishiwaga') {
-  event.cookies.set('ab_fac','f-nishiwaga',{path:'/',httpOnly:true,sameSite:'lax',secure:event.url.protocol==='https:'});
-  redirect(303,event.url.pathname);
+ // お問い合わせは西和賀の施設のもの。管理画面の施設選択（ab_fac）を西和賀にそろえて開き直す。
+ // Cookie は施設の切り替え（/admin/switch）と同じ path=/admin・1年で保存する（以前は path=/ で保存していたため、
+ // /admin の Cookie と2つ並んで /admin 側が優先され、開き直しが無限に続いていた・2026-11-02）。古い path=/ の Cookie は消す。
+ // 念のため開き直しは1回だけ（?fac=1 が付いていたらそのまま表示する）
+ if(event.cookies.get('ab_fac')!=='f-nishiwaga' && !event.url.searchParams.has('fac')) {
+  event.cookies.delete('ab_fac',{path:'/'});
+  event.cookies.set('ab_fac','f-nishiwaga',{path:'/admin',httpOnly:true,sameSite:'lax',maxAge:60*60*24*365});
+  redirect(303,`${event.url.pathname}?fac=1`);
  }
  const [messages,job,files,signature]=await Promise.all([history(db,item.id),draftJob(db,item.id),db.schema('book').from('inquiry_attachments').select('id,inquiry_id,message_id,filename,mime_type,size_bytes,created_at').eq('inquiry_id',item.id).order('created_at'),db.schema('book').from('inquiry_signatures').select('template,version').eq('facility_id',item.facility_id).single()]);
  if(files.error||signature.error)error(503,'添付・署名の設定を取得できません。');
