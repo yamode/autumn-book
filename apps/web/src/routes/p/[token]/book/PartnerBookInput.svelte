@@ -20,7 +20,8 @@
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
   import { expandQuestions, isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
-  import { BOOKING_COLUMNS_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
+  import { BOOKING_COLUMNS_CLASS, BOOKING_INPUT_CLASS, BOOKING_LABEL_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
+  import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
   import PartnerAttachments, { type AttachmentItem } from '$lib/components/PartnerAttachments.svelte';
   import { countRoomTypes } from '$lib/partner-room-types';
   import type { PageData } from './$types';
@@ -352,8 +353,9 @@
 
   const mealLabel = (m: string | null) => (m === '2食' ? '夕朝食付き' : m === '朝食' ? '朝食付き' : m === '素泊' ? '素泊まり' : (m ?? ''));
   const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);
-  const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
-  const label = 'mb-1 block text-sm font-medium';
+  // 入力欄・見出しの形は公式サイトの予約入力と共通（lib/booking-layout.ts・枠の色は --bk-accent＝施設の差し色）
+  const input = BOOKING_INPUT_CLASS;
+  const label = BOOKING_LABEL_CLASS;
 
   // 予約時に聞く項目: 予約ごと（食事・ご要望の欄）と部屋ごと（宿泊条件の部屋の欄）
   const bookingQuestions = $derived(data.settings.options.filter((o) => o.scope !== 'room'));
@@ -400,11 +402,11 @@
   {:else if o.type === 'check'}
     <label class="flex items-center gap-2.5">
       <input type="checkbox" name={`opt_${key}`} required={o.required} class="h-5 w-5 accent-[var(--pt-accent)]" />
-      <span>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+      <span>{o.label}{#if o.required} <em class="bk-req">必須</em>{/if}</span>
     </label>
   {:else if o.type === 'select'}
     <label class="block sm:max-w-sm">
-      <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+      <span class={label}>{o.label}{#if o.required} <em class="bk-req">必須</em>{/if}</span>
       <select name={`opt_${key}`} required={o.required} class={input}>
         <option value="">選択してください</option>
         {#each o.choices as c}<option value={c}>{c}</option>{/each}
@@ -412,7 +414,7 @@
     </label>
   {:else}
     <label class="block">
-      <span class={label}>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
+      <span class={label}>{o.label}{#if o.required} <em class="bk-req">必須</em>{/if}</span>
       <input name={`opt_${key}`} required={o.required} maxlength="500" class={input} />
     </label>
   {/if}
@@ -424,13 +426,10 @@
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<main class="{BOOKING_PAGE_CLASS} pb-10 pt-6">
+<!-- 枠・必須の印・確認の一覧・確定ボタンは公式サイトの予約入力と共通（app.css の .bk-*）。差し色は施設の色 -->
+<main class="{BOOKING_PAGE_CLASS} pb-10 pt-6" style="--bk-accent: var(--pt-accent); --bk-accent-soft: var(--pt-accent-soft)">
   <a href={data.back.href} class="text-sm text-stone-500 hover:text-brand-900">← {data.back.label}</a>
-  <h2 class="mt-2 text-2xl font-bold">{step === 'input' ? 'ご予約内容の入力' : 'ご予約内容の確認'}</h2>
-  <ol class="mt-3 flex gap-2 text-sm">
-    <li class={`rounded-full px-3 py-1 ${step === 'input' ? 'bg-brand-900 text-white' : 'bg-stone-200 text-stone-500'}`}>1. 入力</li>
-    <li class={`rounded-full px-3 py-1 ${step === 'confirm' ? 'bg-brand-900 text-white' : 'bg-stone-200 text-stone-500'}`}>2. 確認・確定</li>
-  </ol>
+  <BookingSteps level={2} {step} heading={step === 'input' ? 'ご予約内容の入力' : 'ご予約内容の確認'} inputLabel="1. 入力" confirmLabel="2. 確認・確定" />
 
   {#if form?.message}
     <p class="mt-4 rounded-lg border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
@@ -482,8 +481,8 @@
 
     <div class="grid gap-5">
       <!-- 宿泊条件 -->
-      <section id="stay-conditions" class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">ご宿泊の条件</h3>
+      <section id="stay-conditions" class={`bk-card ${step === 'confirm' ? 'hidden' : ''}`}>
+        <h3 class="bk-card-title">ご宿泊の条件</h3>
         <div class="grid gap-4 sm:grid-cols-3">
           <label class="block">
             <span class={label}>チェックイン日</span>
@@ -528,7 +527,7 @@
                 <div class="grid gap-3 sm:grid-cols-2">
                   {#if data.settings.askGender}
                     <label class="block">
-                      <span class={label}>男女の内訳 <em class="req">必須</em></span>
+                      <span class={label}>男女の内訳 <em class="bk-req">必須</em></span>
                       <select name={`male_${i}`} bind:value={males[i]} required class={input}>
                         <option value="">選択してください</option>
                         {#each range(0, a) as m (m)}<option value={String(m)}>男性{m}名・女性{a - m}名</option>{/each}
@@ -547,15 +546,15 @@
       </section>
 
       <!-- ご予約者（取引先のご担当者）。確認メールの宛先。マイページの設定が既定で入り、この予約の分だけ変えられる -->
-      <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">ご予約者（ご担当者）</h3>
+      <section class={`bk-card ${step === 'confirm' ? 'hidden' : ''}`}>
+        <h3 class="bk-card-title">ご予約者（ご担当者）</h3>
         <p class="-mt-2 mb-4 text-sm leading-6 text-stone-500">予約確認・取消・お支払いに関するメールは、ここに入力したメールアドレスへお送りします。</p>
         <div class="grid gap-4 sm:grid-cols-2">
-          <label class="block"><span class={label}>お名前 <em class="req">必須</em></span><input name="booker_name" value={init.booker.name} required maxlength="60" autocomplete="name" class={input} /></label>
+          <label class="block"><span class={label}>お名前 <em class="bk-req">必須</em></span><input name="booker_name" value={init.booker.name} required maxlength="60" autocomplete="name" class={input} /></label>
           <label class="block"><span class={label}>フリガナ</span><input name="booker_kana" value={init.booker.kana} maxlength="60" class={input} /></label>
           <label class="block"><span class={label}>部署</span><input name="booker_department" value={init.booker.department} maxlength="60" autocomplete="organization-title" class={input} /></label>
           <label class="block"><span class={label}>電話番号</span><input name="booker_phone" type="tel" value={init.booker.phone} minlength="8" maxlength="20" placeholder="03-1234-5678" autocomplete="tel" class={input} /></label>
-          <label class="block sm:col-span-2"><span class={label}>メールアドレス <em class="req">必須</em></span><input name="booker_email" type="email" value={init.booker.email} required maxlength="254" autocomplete="email" class={input} /></label>
+          <label class="block sm:col-span-2"><span class={label}>メールアドレス <em class="bk-req">必須</em></span><input name="booker_email" type="email" value={init.booker.email} required maxlength="254" autocomplete="email" class={input} /></label>
         </div>
         <label class="mt-4 flex items-center gap-2.5 text-sm">
           <input type="checkbox" name="save_booker" class="h-5 w-5 accent-[var(--pt-accent)]" />
@@ -567,14 +566,14 @@
       </section>
 
       <!-- ご宿泊者 -->
-      <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">ご宿泊者（代表者）</h3>
+      <section class={`bk-card ${step === 'confirm' ? 'hidden' : ''}`}>
+        <h3 class="bk-card-title">ご宿泊者（代表者）</h3>
         <div class="grid gap-4 sm:grid-cols-2">
-          <label class="block"><span class={label}>姓 <em class="req">必須</em></span><input name="family_name" required maxlength="40" autocomplete="off" class={input} /></label>
+          <label class="block"><span class={label}>姓 <em class="bk-req">必須</em></span><input name="family_name" required maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>名</span><input name="given_name" maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>セイ</span><input name="family_name_kana" maxlength="40" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>メイ</span><input name="given_name_kana" maxlength="40" autocomplete="off" class={input} /></label>
-          <label class="block"><span class={label}>電話番号 <em class="req">必須</em></span><input name="phone" type="tel" required minlength="8" maxlength="20" placeholder="090-1234-5678" autocomplete="off" class={input} /></label>
+          <label class="block"><span class={label}>電話番号 <em class="bk-req">必須</em></span><input name="phone" type="tel" required minlength="8" maxlength="20" placeholder="090-1234-5678" autocomplete="off" class={input} /></label>
           <label class="block"><span class={label}>メールアドレス</span><input name="email" type="email" autocomplete="off" aria-describedby="guest-email-note" class={input} /></label>
           <label class="block"><span class={label}>郵便番号</span><input name="zip_code" maxlength="10" placeholder="010-0531" autocomplete="off" class={input} /></label>
           <label class="block sm:col-span-2"><span class={label}>住所</span><input name="address" maxlength="200" autocomplete="off" class={input} /></label>
@@ -585,8 +584,8 @@
       </section>
 
       <!-- 食事・ご要望 -->
-      <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">ご到着・お食事・ご要望</h3>
+      <section class={`bk-card ${step === 'confirm' ? 'hidden' : ''}`}>
+        <h3 class="bk-card-title">ご到着・お食事・ご要望</h3>
         <!-- 並び順は管理画面「予約時に聞く項目」の毎回聞く項目で施設ごとに決める（公式サイトと共通・2026-11-02） -->
         <div class="grid gap-4">
           {#each data.standardFields.order as k (k)}
@@ -602,7 +601,7 @@
             {:else if k === 'transport'}
               <!-- 交通手段（その他は自由入力・お迎え時間は決めた交通手段のときだけ） -->
             <fieldset>
-              <legend class={label}>{data.standardFields.transport.label}{#if data.standardFields.transport.required} <em class="req">必須</em>{/if}</legend>
+              <legend class={label}>{data.standardFields.transport.label}{#if data.standardFields.transport.required} <em class="bk-req">必須</em>{/if}</legend>
               {#if data.standardFields.transport.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.transport.help}</span>{/if}
               <div class="flex flex-wrap gap-2">
                 {#if !data.standardFields.transport.required}
@@ -619,7 +618,7 @@
               {#if transport && transport === data.standardFields.pickup.when && data.standardFields.pickup.choices.length}
                 <!-- JR のときのお迎え（西和賀＝乗合タクシー・男鹿＝迎えの車。文言・時間は管理画面「予約時に聞く項目」の毎回聞く項目） -->
                 <label class="mt-3 block sm:max-w-sm">
-                  <span class={label}>{data.standardFields.pickup.label} <em class="req">必須</em></span>
+                  <span class={label}>{data.standardFields.pickup.label} <em class="bk-req">必須</em></span>
                   {#if data.standardFields.pickup.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.pickup.help}</span>{/if}
                   <select name="pickup_time" required class={input}>
                     <option value="">選択してください</option>
@@ -654,8 +653,8 @@
 
       {#if data.attachments}
         <!-- 添付ファイル（任意・2026-10-07）: 名簿・行程表など。1件ずつ仮置きし、予約の確定で予約に結ぶ。宿（PMS）の予約詳細にも出る -->
-        <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-          <h3 class="card-title">添付ファイル（任意）</h3>
+        <section class={`bk-card ${step === 'confirm' ? 'hidden' : ''}`}>
+          <h3 class="bk-card-title">添付ファイル（任意）</h3>
           <p class="-mt-2 mb-3 text-sm leading-6 text-stone-500">名簿・行程表などをお付けください。予約の後でも追加できます。</p>
           {#if attachmentsReset}<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{attachmentsReset}</p>{/if}
           <PartnerAttachments
@@ -672,9 +671,9 @@
 
       <!-- 確認 -->
       {#if step === 'confirm'}
-        <section class="card">
-          <h3 class="card-title">この内容で予約します</h3>
-          <dl class="confirm">
+        <section class="bk-card">
+          <h3 class="bk-card-title">この内容で予約します</h3>
+          <dl class="bk-confirm">
             <dt>宿泊日</dt><dd>{fmt(checkIn)} から {nights}泊</dd>
             {#if quote.ok}<dt>お部屋</dt><dd>{#if mixedRooms}{#each roomCodes as _, i (i)}{#if i > 0}<br />{/if}{i + 1}室目 {roomLabelOf(i)}{/each}{:else}{quote.roomName} × {roomCount}室{/if}</dd>
               <dt>プラン</dt><dd>{data.target.displayName}{quote.mealType ? `（${mealLabel(quote.mealType)}）` : ''}</dd>{/if}
@@ -725,15 +724,15 @@
       {/if}
 
       <!-- お支払い（入力・確認のどちらにも出す。カードを選んだ時点で入力欄が出る） -->
-      <section class="card">
-        <h3 class="card-title">お支払い</h3>
+      <section class="bk-card">
+        <h3 class="bk-card-title">お支払い</h3>
         <div class="grid gap-4">
           {#if noPayChoice}
             <p class="rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2.5 text-sm text-rose-700">御社の受付枠を超えるため、このご予約はオンライン決済（全額またはデポジット）でのお受けになりますが、現在オンライン決済をご利用いただけません。宿へお問い合わせください。</p>
           {/if}
           {#if payChoices.length > 1}
             <fieldset disabled={!!pending}>
-              <legend class={label}>お支払方法 <em class="req">必須</em></legend>
+              <legend class={label}>お支払方法 <em class="bk-req">必須</em></legend>
               <div class="grid gap-2 sm:grid-cols-2">
                 {#each payChoices as o (o.id)}
                   <label class={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition ${paymentOption === o.id ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
@@ -831,8 +830,8 @@
       </section>
 
       <!-- キャンセルポリシー・お子様について・注意事項（入力・確認のどちらでも出す・2026-10-06 指示） -->
-      <section id="cancel-policy" class="card">
-        <h3 class="card-title">キャンセルポリシー</h3>
+      <section id="cancel-policy" class="bk-card">
+        <h3 class="bk-card-title">キャンセルポリシー</h3>
         {#if data.terms && (data.terms.cancellation.length || data.terms.cancellationNote)}
           <PartnerTermsTable title="" rows={data.terms.cancellation} note={data.terms.cancellationNote} />
         {:else}
@@ -846,8 +845,8 @@
           <p class="mt-1 text-[15px] leading-7 text-stone-700">{adminFeeNotice(data.adminFeePercent, 'partner')}キャンセル料の期間に関係なくかかります。</p>
         {/if}
       </section>
-      <section class="card">
-        <h3 class="card-title">お子様について</h3>
+      <section class="bk-card">
+        <h3 class="bk-card-title">お子様について</h3>
         {#if data.terms && (data.terms.children.length || data.terms.childrenNote)}
           <PartnerTermsTable title="" rows={data.terms.children} note={data.terms.childrenNote} />
         {:else}
@@ -856,8 +855,8 @@
       </section>
       <!-- 注意事項は管理画面「予約時の注意事項」の文面（と取引先ごとの予約画面の案内）だけ。どちらも空ならセクションごと出さない（2026-10-06 指示） -->
       {#if data.bookingNote?.trim() || data.settings.notice?.trim()}
-        <section class="card">
-          <h3 class="card-title">注意事項</h3>
+        <section class="bk-card">
+          <h3 class="bk-card-title">注意事項</h3>
           {#if data.bookingNote?.trim()}<div class="text-[15px]"><MarkdownView source={data.bookingNote} /></div>{/if}
           {#if data.settings.notice}<p class="mt-3 whitespace-pre-wrap rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6">{data.settings.notice}</p>{/if}
         </section>
@@ -866,7 +865,7 @@
 
     <!-- 料金（一休の右欄の形: 写真・施設名・所在地 → 日程・人数・お部屋・プラン → 宿泊料金 → お支払い金額合計 → 取消の案内 → ボタン・2026-10-06） -->
     <!-- 追従はヘッダー（高さは --portal-header-h・レイアウトで測る）の下から -->
-    <aside class="card lg:sticky lg:top-[calc(var(--portal-header-h,6rem)+1rem)]">
+    <aside class="bk-card lg:sticky lg:top-[calc(var(--portal-header-h,6rem)+1rem)]">
       <div class="flex items-start gap-3">
         {#if data.summary.photo}<img src={data.summary.photo} alt="" class="h-[72px] w-[72px] shrink-0 rounded-lg object-cover" />{/if}
         <div class="min-w-0">
@@ -999,16 +998,16 @@
 
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
-        <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="primary mt-4 w-full">内容を確認する</button>
+        <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="bk-primary mt-4 w-full">内容を確認する</button>
       {:else if data.portal.preview}
         <!-- 管理画面からの確認モード: 最終確認までは見せ、確定（予約の作成・決済）はさせない。サーバ側でも GET 以外は断る -->
-        <button type="button" disabled class="primary mt-4 w-full">{submitLabel}</button>
+        <button type="button" disabled class="bk-primary mt-4 w-full">{submitLabel}</button>
         <p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">管理者の確認モードのため、予約は確定できません。</p>
         <button type="button" onclick={() => (step = 'input')} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
       {:else if isStripe}
         <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
         {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}
-        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="primary mt-4 w-full">
+        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="bk-primary mt-4 w-full">
           {paying ? (paymentOption === 'online' || paymentOption === 'deposit_online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
         </button>
         {#if submitNote}<p class="mt-2 text-center text-xs text-stone-500">{submitNote}</p>{/if}
@@ -1018,63 +1017,12 @@
           <button type="button" onclick={() => (step = 'input')} disabled={paying} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
         {/if}
       {:else}
-        <button type="submit" disabled={submitting || !ready} class="primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
+        <button type="submit" disabled={submitting || !ready} class="bk-primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
         <button type="button" onclick={() => (step = 'input')} disabled={submitting} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
       {/if}
     </aside>
   </form>
 </main>
 
-<style>
-  /* Book の公開予約フロー（/booking）のカードと同じ: rounded-xl・stone-200 の枠・影なし */
-  .card {
-    border-radius: 0.75rem;
-    border: 1px solid var(--color-stone-200, #e7e5e4);
-    background: var(--color-white, #fff);
-    padding: 1.25rem;
-  }
-  @media (min-width: 640px) {
-    .card {
-      padding: 1.5rem;
-    }
-  }
-  .card-title {
-    margin-bottom: 1rem;
-    font-size: 1.125rem;
-    font-weight: 700;
-  }
-  .req {
-    margin-left: 0.25rem;
-    border-radius: 0.25rem;
-    background: color-mix(in srgb, var(--color-rose-700, #be123c) 12%, transparent);
-    padding: 0 0.3rem;
-    font-size: 0.7rem;
-    font-style: normal;
-    color: var(--color-rose-700, #be123c);
-  }
-  /* Book の予約ボタン（rounded-lg・accent-600 → hover accent-500）に合わせる */
-  .primary {
-    border-radius: 0.5rem;
-    background: #16a34a;
-    padding: 0.75rem 1rem;
-    font-weight: 500;
-    color: #fff;
-    transition: background-color 0.15s;
-  }
-  .primary:hover:not(:disabled) {
-    background: #15803d;
-  }
-  .primary:disabled {
-    opacity: 0.4;
-  }
-  .confirm {
-    display: grid;
-    grid-template-columns: 7rem 1fr;
-    gap: 0.6rem 1rem;
-  }
-  .confirm dt {
-    color: var(--color-stone-500, #78716c);
-  }
-</style>
-
 <PerkModal bind:content={perkContent} />
+

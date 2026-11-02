@@ -207,3 +207,46 @@ html {
 	:where(button, [role='button'], input[type='submit'], input[type='button']):active { scale: none; }
 	:where(button, a[href])[data-pending]::before { animation-duration: 2s; }
 }
+
+/* 予約入力画面の共通の部品（取引先ページ /p/[token]/book と公式サイト /booking/hold・2026-11-02 指示「取引先ページの入力フォームを共通の UI に」）。
+   見出し付きの枠（.bk-card）・必須の印（.bk-req）・確認の一覧（.bk-confirm）・確定ボタン（.bk-primary）。
+   差し色はページで変数を決める: --bk-accent / --bk-accent-soft（入力欄の枠・選んだ選択肢）、--bk-primary / --bk-primary-hover（確定ボタン）。 */
+.bk-card {
+	border-radius: 0.75rem;
+	border: 1px solid var(--color-stone-200, #e7e5e4);
+	background: var(--color-white, #fff);
+	padding: 1.25rem;
+}
+@media (min-width: 640px) {
+	.bk-card { padding: 1.5rem; }
+}
+.bk-card-title {
+	margin-bottom: 1rem;
+	font-size: 1.125rem;
+	font-weight: 700;
+}
+.bk-req {
+	margin-left: 0.25rem;
+	border-radius: 0.25rem;
+	background: color-mix(in srgb, var(--color-rose-700, #be123c) 12%, transparent);
+	padding: 0 0.3rem;
+	font-size: 0.7rem;
+	font-style: normal;
+	color: var(--color-rose-700, #be123c);
+}
+.bk-primary {
+	border-radius: 0.5rem;
+	background: var(--bk-primary, #16a34a);
+	padding: 0.75rem 1rem;
+	font-weight: 500;
+	color: #fff;
+	transition: background-color 0.15s;
+}
+.bk-primary:hover:not(:disabled) { background: var(--bk-primary-hover, #15803d); }
+.bk-primary:disabled { opacity: 0.4; }
+.bk-confirm {
+	display: grid;
+	grid-template-columns: 7rem minmax(0, 1fr);
+	gap: 0.6rem 1rem;
+}
+.bk-confirm dt { color: var(--color-stone-500, #78716c); }

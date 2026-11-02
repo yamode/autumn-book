@@ -2,7 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import Stepper from '$lib/components/Stepper.svelte';
+	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
 	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
@@ -19,7 +19,7 @@
 	import { viaCrumb } from '$lib/booking-nav';
 	import { isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
 	import { DEFAULT_FIELD_ORDER, TRANSPORT_OTHER } from '$lib/booking-standard-fields';
-	import { BOOKING_COLUMNS_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
+	import { BOOKING_COLUMNS_CLASS, BOOKING_INPUT_CLASS, BOOKING_LABEL_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
 
 	let { data, form } = $props();
 	// プラン詳細の手前に通ってきたページ（パンくず用）
@@ -160,10 +160,6 @@
 		data.expired ? 0 : inlinePay ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.groupQuote.total - pointsApplied
 	);
 
-	let steps = $derived(isPrepay && !data.inline
-		? [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()]
-		: [m.steps_plan(), m.steps_info(), m.steps_complete()]);
-
 	// 仮押さえの期限（支払の準備で DB が延ばしたら更新する）
 	// svelte-ignore state_referenced_locally
 	let holdExpiresAt = $state(data.expired ? 0 : data.hold.expiresAt);
@@ -269,12 +265,71 @@
 		if (p === 'failed' || p === 'error') return m.pay_notice_failed();
 		return '';
 	});
+
+	// ---- 入力 → 確認・確定（取引先ページと同じ 2 段・2026-11-02）----
+	// 入力の段で必須項目を確かめてから確認の段へ。確認の段で内容を見直し、確定（現地払い）・カード決済をする。
+	// 入力欄は確認の段でも DOM に残す（隠すだけ）ので、送信・決済の準備はフォームの値をそのまま使う
+	let step = $state<'input' | 'confirm'>('input');
+	let clientError = $state('');
+	let values = $state<Record<string, string>>({});
+	function snapshot() {
+		if (!formEl) return;
+		const out: Record<string, string> = {};
+		for (const [k, v] of new FormData(formEl).entries()) out[k] = String(v);
+		values = out;
+	}
+	function toConfirm() {
+		clientError = '';
+		if (!formEl?.reportValidity()) return;
+		const err = validateGuest();
+		if (err) {
+			clientError = err;
+			return;
+		}
+		snapshot();
+		step = 'confirm';
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+	function backToInput() {
+		step = 'input';
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+	// 入力欄・見出しの形は取引先ページと共通（lib/booking-layout.ts）
+	const input = BOOKING_INPUT_CLASS;
+	const label = BOOKING_LABEL_CLASS;
+	// 確認の段に出す支払方法の名前
+	let payLabel = $derived(
+		group === 'online'
+			? `${payText('online_now', 'label', m.pay_group_online())} ／ ${payValue === 'paypay' ? m.pay_paypay() : m.pay_card()}`
+			: group === 'checkout'
+				? payText('online_checkout', 'label', m.pay_group_checkout())
+				: `${payText('onsite', 'label', m.pay_group_onsite())} ／ ${onsiteMethodLabel(onsiteMethod)}${furusatoVoucher ? ` ／ ${m.pay_onsite_furusato()}` : ''}`
+	);
+	// 確認の段に出す追加で聞く項目（1 室は予約ごと・部屋ごとの両方、複数室は予約ごとの項目と部屋ごとの項目）
+	let confirmAnswers = $derived.by(() => {
+		if (data.expired) return [] as { key: string; label: string; value: string }[];
+		const rows: { key: string; label: string; value: string }[] = [];
+		const add = (q: BookingQuestion, key: string, labelText: string) => {
+			const v = values[`opt_${key}`];
+			if (v) rows.push({ key, label: labelText, value: q.type === 'check' ? m.hold_confirm_yes() : v });
+		};
+		for (const q of data.questions) add(q, optionKey(q, 0), q.label);
+		if (multi) for (const [i, r] of rooms.entries()) for (const q of r.questions) add(q, optionKey(q, i), `${m.hold_room_n({ n: String(r.index) })} ${q.label}`);
+		return rows;
+	});
+	const favNameOf = (index: number, roomId: string) => {
+		const c = favRooms.find((f) => f.index === index)?.choices.find((x) => x.roomId === roomId);
+		return c ? m.hold_fav_room({ name: c.name, number: c.roomNumber }) : '';
+	};
 </script>
 
 <svelte:head><title>{m.hold_title()}</title></svelte:head>
 
-<!-- 幅と列は取引先ページの予約入力と共通（lib/booking-layout.ts） -->
-<div class="{BOOKING_PAGE_CLASS} py-8">
+<!-- 幅・列・枠・入力欄は取引先ページの予約入力と共通（lib/booking-layout.ts・app.css の .bk-*）。差し色は公式のアクセント色 -->
+<div
+	class="{BOOKING_PAGE_CLASS} py-8"
+	style="--bk-accent: var(--color-accent-600); --bk-accent-soft: color-mix(in srgb, var(--color-accent-500) 25%, transparent); --bk-primary: var(--color-accent-600); --bk-primary-hover: var(--color-accent-500)"
+>
 	{#if returnNotice}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{returnNotice}</p>
 	{/if}
@@ -289,13 +344,13 @@
 		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
 		{#if memberPage}
 			<!-- 特別会員の専用ページから: 戻り先は専用ページ（料金カレンダー） -->
-			<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
+			<nav aria-label="breadcrumb" class="mb-1 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
 				<a href={memberPage.backHref} class="max-w-[16rem] truncate hover:underline">{memberPage.pageName}</a>
 				<span aria-hidden="true">/</span>
 				<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
 			</nav>
 		{:else}
-		<nav aria-label="breadcrumb" class="mb-3 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
+		<nav aria-label="breadcrumb" class="mb-1 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
 			<a href="/search?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.common_facility_list()}</a>
 			<span aria-hidden="true">/</span>
 			<!-- 実際に通ってきたページ（一覧・施設トップ・客室ページ）を出す。経路が分からないときだけ一覧 -->
@@ -310,7 +365,8 @@
 			<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
 		</nav>
 		{/if}
-		<Stepper {steps} current={1} />
+		<!-- 見出しと「1. 入力 → 2. 確認・確定」（取引先ページと共通） -->
+		<BookingSteps {step} heading={step === 'input' ? m.hold_heading_input() : m.hold_heading_confirm()} inputLabel={m.hold_step_input()} confirmLabel={m.hold_step_confirm()} />
 		{#if data.preview}
 			<!-- スタッフの販売ページプレビュー（販売中でないプラン）。在庫は本物を押さえているので「選び直す」で戻してもらう -->
 			<p class="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
@@ -325,14 +381,14 @@
 			</div>
 		{/if}
 		<!-- 選び直し: 仮押さえを解放してからプラン詳細へ（押さえたまま戻ると期限まで部屋が減ったまま） -->
-		<form method="POST" action="?/release" class="mt-2 flex flex-wrap items-baseline gap-x-2">
+		<form method="POST" action="?/release" class="mt-3 flex flex-wrap items-baseline gap-x-2">
 			<input type="hidden" name="holdId" value={data.hold.id} />
 			<input type="hidden" name="back" value={data.backHref} />
 			<button type="submit" disabled={paying} class="text-sm text-accent-600 hover:underline disabled:opacity-50">{m.hold_change_plan()}</button>
 			<span class="text-xs text-stone-400">{m.hold_change_plan_note()}</span>
 		</form>
 
-		<div class="mt-6">
+		<div class="mt-4">
 			<!-- 支払の処理中は期限の表示で画面を切り替えない（確定の結果はサーバが判断する） -->
 			<HoldTimer expiresAt={holdExpiresAt} onexpire={() => { if (!paying) expiredNow = true; }} />
 		</div>
@@ -361,11 +417,38 @@
 			<a href="#hold-summary" class="mt-1 block text-right text-xs text-accent-600 hover:underline">{m.hold_mobile_see_detail()} ↓</a>
 		</div>
 
-		<div class="mt-6 {BOOKING_COLUMNS_CLASS}">
-			<!-- 入力フォーム -->
-			<div>
+		<form
+			bind:this={formEl}
+			method="POST"
+			action="?/submit"
+			oninput={readAnswers}
+			onchange={readAnswers}
+			use:enhance={({ cancel }) => {
+				// 入力の段で Enter キーを押したときは確定せず、確認の段へ進める
+				if (step === 'input') {
+					cancel();
+					toConfirm();
+					return;
+				}
+				// カードは同じ画面の決済部品で払う・登録する（Enter キーでの送信もここで止めて決済部品へ回す）
+				if (inlinePay) {
+					cancel();
+					void payRef?.submit();
+					return;
+				}
+				return async ({ result, update }) => {
+					await update({ reset: false });
+					// 確定できなかったとき（入力の誤り・満室など）は、直せるよう入力の段に戻す
+					if (result.type === 'failure' || result.type === 'error') backToInput();
+				};
+			}}
+			class="mt-5 {BOOKING_COLUMNS_CLASS}"
+		>
+			<input type="hidden" name="holdId" value={data.hold.id} />
+
+			<div class="grid min-w-0 gap-5">
 				{#if !data.member}
-					<div class="mb-5 rounded-xl border border-accent-500/40 bg-amber-50/60 p-4 text-sm">
+					<div class="rounded-xl border border-accent-500/40 bg-amber-50/60 p-4 text-sm {step === 'confirm' ? 'hidden' : ''}">
 						<p class="font-medium text-brand-900">{m.hold_login_prompt()}</p>
 						<div class="mt-2 flex gap-2">
 							<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="rounded-md bg-brand-800 px-4 py-1.5 text-white hover:bg-brand-700">{m.hold_login_btn()}</a>
@@ -374,239 +457,195 @@
 					</div>
 				{/if}
 
-				<form
-					bind:this={formEl}
-					method="POST"
-					action="?/submit"
-					oninput={readAnswers}
-					onchange={readAnswers}
-					use:enhance={({ cancel }) => {
-						// カードは同じ画面の決済部品で払う・登録する（Enter キーでの送信もここで止めて決済部品へ回す）
-						if (inlinePay) {
-							cancel();
-							void payRef?.submit();
-						}
-					}}
-					class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5"
-				>
-					<input type="hidden" name="holdId" value={data.hold.id} />
-					<h2 class="font-display text-lg text-brand-900">{m.hold_form_heading()}</h2>
-
-					<!-- 氏名（グローバル正規化: 姓 / 名 / ミドルネーム + カナ） -->
-					<div class="grid grid-cols-2 gap-3">
-						<label class="block text-sm">
-							<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
-							<input name="familyName" autocomplete="family-name" required aria-required="true" aria-invalid={form?.errors?.familyName ? 'true' : undefined} value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" />
+				<!-- ご宿泊者（代表者）。氏名はグローバル正規化（姓 / 名 / ミドルネーム + カナ） -->
+				<section class="bk-card {step === 'confirm' ? 'hidden' : ''}">
+					<h2 class="bk-card-title">{m.hold_card_guest()}</h2>
+					<div class="grid gap-4 sm:grid-cols-2">
+						<label class="block">
+							<span class={label}>{m.name_family()} <em class="bk-req">{m.hold_required()}</em></span>
+							<input name="familyName" autocomplete="family-name" required aria-required="true" aria-invalid={form?.errors?.familyName ? 'true' : undefined} value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="{input} {form?.errors?.familyName ? 'border-red-400' : ''}" />
 						</label>
-						<label class="block text-sm">
-							<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
-							<input name="givenName" autocomplete="given-name" required aria-required="true" aria-invalid={form?.errors?.givenName ? 'true' : undefined} value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" />
+						<label class="block">
+							<span class={label}>{m.name_given()} <em class="bk-req">{m.hold_required()}</em></span>
+							<input name="givenName" autocomplete="given-name" required aria-required="true" aria-invalid={form?.errors?.givenName ? 'true' : undefined} value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="{input} {form?.errors?.givenName ? 'border-red-400' : ''}" />
 						</label>
+						<label class="block">
+							<span class={label}>{m.name_family_kana()}</span>
+							<input name="familyNameKana" value={form?.values?.familyNameKana ?? data.member?.familyNameKana ?? ''} placeholder="ヤマダ" class={input} />
+						</label>
+						<label class="block">
+							<span class={label}>{m.name_given_kana()}</span>
+							<input name="givenNameKana" value={form?.values?.givenNameKana ?? data.member?.givenNameKana ?? ''} placeholder="タロウ" class={input} />
+						</label>
+						<label class="block sm:col-span-2">
+							<span class={label}>{m.name_middle()} <span class="text-xs font-normal text-stone-400">{m.name_optional()}</span></span>
+							<input name="middleName" autocomplete="additional-name" value={form?.values?.middleName ?? data.member?.middleName ?? ''} class={input} />
+						</label>
+						{#each [
+							{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone, ac: 'tel' as const, type: 'tel', im: 'tel' as const },
+							{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email, ac: 'email' as const, type: 'email', im: 'email' as const }
+						] as field}
+							<label class="block">
+								<span class={label}>{field.label} <em class="bk-req">{m.hold_required()}</em></span>
+								<input
+									name={field.key}
+									type={field.type}
+									inputmode={field.im}
+									autocomplete={field.ac}
+									required
+									aria-required="true"
+									aria-invalid={form?.errors?.[field.key] ? 'true' : undefined}
+									aria-describedby={form?.errors?.[field.key] ? `err-${field.key}` : undefined}
+									value={form?.values?.[field.key as 'phone'] ?? field.def ?? ''}
+									placeholder={field.ph}
+									class="{input} {form?.errors?.[field.key] ? 'border-red-400' : ''}"
+								/>
+								{#if form?.errors?.[field.key]}
+									<span id="err-{field.key}" class="text-xs text-red-600">{form.errors[field.key]}</span>
+								{/if}
+							</label>
+						{/each}
 					</div>
-					<label class="block text-sm">
-						<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
-						<input name="middleName" autocomplete="additional-name" value={form?.values?.middleName ?? data.member?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-					</label>
-					<div class="grid grid-cols-2 gap-3">
-						<label class="block text-sm">
-							<span class="text-stone-600">{m.name_family_kana()}</span>
-							<input name="familyNameKana" value={form?.values?.familyNameKana ?? data.member?.familyNameKana ?? ''} placeholder="ヤマダ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-						</label>
-						<label class="block text-sm">
-							<span class="text-stone-600">{m.name_given_kana()}</span>
-							<input name="givenNameKana" value={form?.values?.givenNameKana ?? data.member?.givenNameKana ?? ''} placeholder="タロウ" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-						</label>
-					</div>
-					{#each [
-						{ key: 'phone', label: m.hold_field_phone(), ph: '090-0000-0000', def: data.member?.phone, ac: 'tel' as const, type: 'tel', im: 'tel' as const },
-						{ key: 'email', label: m.hold_field_email(), ph: 'mail@example.com', def: data.member?.email, ac: 'email' as const, type: 'email', im: 'email' as const }
-					] as field}
-						<label class="block text-sm">
-							<span class="text-stone-600">{field.label} <span class="text-red-500">*</span></span>
-							<input
-								name={field.key}
-								type={field.type}
-								inputmode={field.im}
-								autocomplete={field.ac}
-								required
-								aria-required="true"
-								aria-invalid={form?.errors?.[field.key] ? 'true' : undefined}
-								aria-describedby={form?.errors?.[field.key] ? `err-${field.key}` : undefined}
-								value={form?.values?.[field.key as 'phone'] ?? field.def ?? ''}
-								placeholder={field.ph}
-								class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.[field.key] ? 'border-red-400' : 'border-stone-300'}"
-							/>
-							{#if form?.errors?.[field.key]}
-								<span id="err-{field.key}" class="text-xs text-red-600">{form.errors[field.key]}</span>
-							{/if}
-						</label>
-					{/each}
-
 
 					<!-- 部屋ごとの男女の内訳（プランの設定・既定で聞く。必須・合計＝大人の人数。PMS の部屋別の男女に入る） -->
 					{#if multi}
-						<!-- 複数室: 部屋ごとのカード（部屋・プラン・人数）に、その部屋の男女の内訳と部屋ごとの質問。回答はその部屋の滞在の備考（PMS）へ -->
-						{#each rooms as r, i (r.index)}
-							<section class="space-y-3 rounded-xl border border-stone-200 bg-stone-50/60 p-3">
-								<div>
-									<h3 class="text-sm font-medium text-brand-900">{m.hold_room_questions({ n: String(r.index) })}</h3>
-									<p class="text-xs text-stone-500">{r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}</p>
+						<!-- 複数室: 部屋ごとの枠（部屋・プラン・人数）に、その部屋の男女の内訳と部屋ごとの質問。回答はその部屋の滞在の備考（PMS）へ -->
+						<div class="mt-4 grid gap-3">
+							{#each rooms as r, i (r.index)}
+								<div class="rounded-lg border border-stone-200 p-3">
+									<p class="text-sm font-medium">{m.hold_room_questions({ n: String(r.index) })}</p>
+									<p class="mb-2 text-xs text-stone-500">{r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}</p>
+									<div class="grid gap-3 sm:grid-cols-2">
+										{#if r.askGender}
+											<label class="block">
+												<span class={label}>{m.hold_gender_label()} <em class="bk-req">{m.hold_required()}</em></span>
+												<select name="male_{i}" bind:value={males[i]} required class={input}>
+													<option value="">{m.hold_select_placeholder()}</option>
+													{#each Array.from({ length: r.adults + 1 }, (_, k) => k) as k (k)}<option value={String(k)}>{m.hold_gender_option({ male: String(k), female: String(r.adults - k) })}</option>{/each}
+												</select>
+												<input type="hidden" name="female_{i}" value={(males[i] ?? '') === '' ? '' : String(r.adults - Number(males[i]))} />
+											</label>
+										{/if}
+										{#each r.questions as q (q.id)}
+											{@render questionField(q, optionKey(q, i), r.questions, i)}
+										{/each}
+									</div>
 								</div>
-								{#if r.askGender}
-									<label class="block text-sm">
-										<span class="text-stone-600">{m.hold_gender_label()} <span class="text-red-500">*</span></span>
-										<select name="male_{i}" bind:value={males[i]} required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-											<option value="">{m.hold_select_placeholder()}</option>
-											{#each Array.from({ length: r.adults + 1 }, (_, k) => k) as k (k)}<option value={String(k)}>{m.hold_gender_option({ male: String(k), female: String(r.adults - k) })}</option>{/each}
-										</select>
-										<input type="hidden" name="female_{i}" value={(males[i] ?? '') === '' ? '' : String(r.adults - Number(males[i]))} />
-									</label>
-								{/if}
-								{#each r.questions as q (q.id)}
-									{@const key = optionKey(q, i)}
-									{#if !shownQ(q, r.questions, i)}
-										<!-- 条件に合わないので聞かない -->
-									{:else if q.type === 'check'}
-										<label class="flex items-center gap-2 text-sm">
-											<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
-											<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-										</label>
-									{:else if q.type === 'select'}
-										<label class="block text-sm">
-											<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-											<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-												<option value="">{m.hold_select_placeholder()}</option>
-												{#each q.choices as c}<option value={c}>{c}</option>{/each}
-											</select>
-										</label>
-									{:else}
-										<label class="block text-sm">
-											<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-											<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2" />
-										</label>
-									{/if}
-								{/each}
-							</section>
-						{/each}
+							{/each}
+						</div>
 					{:else if data.askGender}
 						{@const n = data.hold.adults}
-						<label class="block text-sm">
-							<span class="text-stone-600">男女の内訳 <span class="text-red-500">*</span></span>
-							<select name="male_0" bind:value={male0} required class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
-								<option value="">選択してください</option>
-								{#each Array.from({ length: n + 1 }, (_, m) => m) as m (m)}<option value={String(m)}>男性{m}名・女性{n - m}名</option>{/each}
+						<label class="mt-4 block sm:max-w-sm">
+							<span class={label}>{m.hold_gender_label()} <em class="bk-req">{m.hold_required()}</em></span>
+							<select name="male_0" bind:value={male0} required class={input}>
+								<option value="">{m.hold_select_placeholder()}</option>
+								{#each Array.from({ length: n + 1 }, (_, k) => k) as k (k)}<option value={String(k)}>{m.hold_gender_option({ male: String(k), female: String(n - k) })}</option>{/each}
 							</select>
 							<input type="hidden" name="female_0" value={male0 === '' ? '' : String(n - Number(male0))} />
 						</label>
 					{/if}
-					<!-- 毎回聞く項目と追加で聞く項目。並び順は管理画面「予約時に聞く項目」で施設ごとに決める（取引先ページと共通・2026-11-02） -->
-					{#each fieldOrder as k (k)}
-						{#if k === 'arrival'}
-							<div class="grid gap-4 sm:grid-cols-2">
-								<label class="block text-sm">
-									<span class="text-stone-600">{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</span>
-									<!-- 選択肢は施設ごとの毎回聞く項目（取引先ページと共通）。先頭は「未定」 -->
-									<select name="arrival" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-										<option value="">{m.hold_arrival_undecided()}</option>
-										{#each sf?.arrival.choices ?? [] as t (t)}<option value={t}>{t}</option>{/each}
-									</select>
-								</label>
-								{#if data.facility.access.shuttle.available}
-									<label class="flex items-end gap-2 pb-2 text-sm">
-										<input type="checkbox" name="shuttle" class="h-4 w-4" />
-										<span>{m.hold_field_shuttle()}<span class="block text-xs text-stone-400">{data.facility.access.shuttle.note}</span></span>
-									</label>
-								{/if}
-							</div>
-						{:else if k === 'allergies' && sf}
-								<!-- 毎回聞く項目: 食物アレルギー（顧客マスタと PMS の事前質問「アレルギー」へ） -->
-								<label class="block text-sm">
-									<span class="text-stone-600">{isJa ? sf.allergies.label : m.hold_field_allergies()}</span>
-									{#if isJa && sf.allergies.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.allergies.help}</span>{/if}
-									<textarea name="allergies" rows="2" maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa ? sf.allergies.placeholder : m.hold_field_allergies_ph()}></textarea>
-								</label>
-						{:else if k === 'transport' && sf}
-								<!-- 宿までの交通手段（「その他」は内容を書く欄・お迎え時間は決めた交通手段のときだけ）。追加で聞く項目の条件にも使う -->
-								<label class="block text-sm">
-									<span class="text-stone-600">{isJa ? sf.transport.label : m.hold_field_transport()}{#if sf.transport.required} <span class="text-red-500">*</span>{/if}</span>
-									{#if isJa && sf.transport.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.transport.help}</span>{/if}
-									<select name="transport" bind:value={transport} required={sf.transport.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-										<option value="">{m.hold_select_placeholder()}</option>
-										{#each sf.transport.choices as c (c)}<option value={c}>{choiceText(c)}</option>{/each}
-									</select>
-								</label>
-								{#if transport === TRANSPORT_OTHER}
-									<label class="block text-sm">
-										<span class="text-stone-600">{m.hold_field_transport_other()} <span class="text-red-500">*</span></span>
-										<input name="transport_other" required maxlength="60" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-									</label>
-								{/if}
-								{#if showPickup}
-									<label class="block text-sm">
-										<span class="text-stone-600">{isJa ? sf.pickup.label : m.hold_field_pickup()} <span class="text-red-500">*</span></span>
-										{#if isJa && sf.pickup.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.pickup.help}</span>{/if}
-										<select name="pickup_time" required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-											<option value="">{m.hold_select_placeholder()}</option>
-											{#each sf.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
-										</select>
-									</label>
-								{/if}
-						{:else if k === 'questions'}
-							<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る。1予約1室なので「部屋ごと」も1回 -->
-							{#each data.questions as q (q.id)}
-								{@const key = q.scope === 'room' ? `${q.id}@0` : q.id}
-								{#if !shownQ(q, data.questions)}
-									<!-- 条件に合わないので聞かない -->
-								{:else if q.type === 'check'}
-									<label class="flex items-center gap-2 text-sm">
-										<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
-										<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-									</label>
-								{:else if q.type === 'select'}
-									<label class="block text-sm">
-										<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-										<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
-											<option value="">選択してください</option>
-											{#each q.choices as c}<option value={c}>{c}</option>{/each}
-										</select>
-									</label>
-								{:else}
-									<label class="block text-sm">
-										<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-										<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-									</label>
-								{/if}
-							{/each}
-							{#if form?.errors?.questions}
-								<p class="text-xs text-red-600">{form.errors.questions}</p>
-							{/if}
-						{:else if k === 'notes'}
-							<label class="block text-sm">
-								<span class="text-stone-600">{isJa && sf ? sf.notes.label : m.hold_field_notes()}</span>
-								{#if isJa && sf?.notes.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.notes.help}</span>{/if}
-								<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa && sf?.notes.placeholder ? sf.notes.placeholder : m.hold_field_notes_ph()}></textarea>
-							</label>
-						{/if}
-					{/each}
+				</section>
 
-					{#if favRooms.length > 0}
-						<!-- お気に入りの部屋の指定（会員・その日程に空いているお気に入りの部屋があるときだけ）。料金はかからない。
-						     確定のときに DB がもう一度空きを確かめ、空いていれば部屋指定する（埋まっていたら指定せずに確定・完了画面で伝える） -->
-						<fieldset class="space-y-2 rounded-lg border border-red-100 bg-red-50/40 p-3 text-sm">
-							<legend class="px-1 font-medium text-brand-900">{m.hold_fav_heading()}</legend>
+				<!-- ご到着・お食事・ご要望（毎回聞く項目と追加で聞く項目。並び順は管理画面「予約時に聞く項目」で施設ごと・取引先ページと共通） -->
+				<section class="bk-card {step === 'confirm' ? 'hidden' : ''}">
+					<h2 class="bk-card-title">{m.hold_card_arrival()}</h2>
+					<div class="grid gap-4">
+						{#each fieldOrder as k (k)}
+							{#if k === 'arrival'}
+								<div class="grid gap-4 sm:grid-cols-2">
+									<label class="block">
+										<span class={label}>{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</span>
+										{#if isJa && sf?.arrival.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{sf.arrival.help}</span>{/if}
+										<!-- 選択肢は施設ごとの毎回聞く項目（取引先ページと共通）。先頭は「未定」 -->
+										<select name="arrival" class={input}>
+											<option value="">{m.hold_arrival_undecided()}</option>
+											{#each sf?.arrival.choices ?? [] as t (t)}<option value={t}>{t}</option>{/each}
+										</select>
+									</label>
+									{#if data.facility.access.shuttle.available}
+										<label class="flex items-end gap-2.5 pb-2 text-sm">
+											<input type="checkbox" name="shuttle" class="h-5 w-5 accent-[var(--bk-accent)]" />
+											<span>{m.hold_field_shuttle()}<span class="block text-xs text-stone-400">{data.facility.access.shuttle.note}</span></span>
+										</label>
+									{/if}
+								</div>
+							{:else if k === 'transport' && sf}
+								<!-- 宿までの交通手段（「その他」は内容を書く欄・お迎え時間は決めた交通手段のときだけ）。追加で聞く項目の条件にも使う -->
+								<fieldset>
+									<legend class={label}>{isJa ? sf.transport.label : m.hold_field_transport()}{#if sf.transport.required} <em class="bk-req">{m.hold_required()}</em>{/if}</legend>
+									{#if isJa && sf.transport.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{sf.transport.help}</span>{/if}
+									<div class="flex flex-wrap gap-2">
+										{#if !sf.transport.required}
+											<label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition {transport === '' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+												<input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--bk-accent)]" />{m.hold_arrival_undecided()}
+											</label>
+										{/if}
+										{#each sf.transport.choices as c (c)}
+											<label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition {transport === c ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+												<input type="radio" name="transport" value={c} bind:group={transport} required={sf.transport.required} class="accent-[var(--bk-accent)]" />{choiceText(c)}
+											</label>
+										{/each}
+									</div>
+									{#if showPickup}
+										<label class="mt-3 block sm:max-w-sm">
+											<span class={label}>{isJa ? sf.pickup.label : m.hold_field_pickup()} <em class="bk-req">{m.hold_required()}</em></span>
+											{#if isJa && sf.pickup.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{sf.pickup.help}</span>{/if}
+											<select name="pickup_time" required class={input}>
+												<option value="">{m.hold_select_placeholder()}</option>
+												{#each sf.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
+											</select>
+										</label>
+									{/if}
+									{#if transport === TRANSPORT_OTHER}
+										<input name="transport_other" required maxlength="60" aria-label={m.hold_field_transport_other()} placeholder={m.hold_field_transport_other()} class="{input} mt-2 sm:max-w-sm" />
+									{/if}
+								</fieldset>
+							{:else if k === 'allergies' && sf}
+								<!-- 食物アレルギー（顧客マスタと PMS の事前質問「アレルギー」へ） -->
+								<label class="block">
+									<span class={label}>{isJa ? sf.allergies.label : m.hold_field_allergies()}</span>
+									{#if isJa && sf.allergies.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{sf.allergies.help}</span>{/if}
+									<textarea name="allergies" rows="2" maxlength="500" class={input} placeholder={isJa ? sf.allergies.placeholder : m.hold_field_allergies_ph()}></textarea>
+								</label>
+							{:else if k === 'questions'}
+								<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭と PMS の事前質問に入る。
+								     1 室は「部屋ごと」の項目もここで 1 回だけ聞く -->
+								{#each data.questions as q (q.id)}
+									{@render questionField(q, optionKey(q, 0), data.questions, 0)}
+								{/each}
+								{#if form?.errors?.questions}
+									<p class="text-sm text-red-600">{form.errors.questions}</p>
+								{/if}
+							{:else if k === 'notes'}
+								<label class="block">
+									<span class={label}>{isJa && sf ? sf.notes.label : m.hold_field_notes()}</span>
+									{#if isJa && sf?.notes.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{sf.notes.help}</span>{/if}
+									<textarea name="notes" rows="3" maxlength="1000" class={input} placeholder={isJa && sf?.notes.placeholder ? sf.notes.placeholder : m.hold_field_notes_ph()}></textarea>
+								</label>
+							{/if}
+						{/each}
+					</div>
+				</section>
+
+				{#if favRooms.length > 0}
+					<!-- お気に入りの部屋の指定（会員・その日程に空いているお気に入りの部屋があるときだけ）。料金はかからない。
+					     確定のときに DB がもう一度空きを確かめ、空いていれば部屋指定する（埋まっていたら指定せずに確定・完了画面で伝える） -->
+					<section class="bk-card {step === 'confirm' ? 'hidden' : ''}">
+						<h2 class="bk-card-title">{m.hold_fav_heading()}</h2>
+						<div class="grid gap-3 text-sm">
 							{#each favRooms as fr (fr.index)}
 								<div>
 									{#if multi}<p class="mb-1 text-xs text-stone-500">{m.hold_fav_room_n({ n: String(fr.index), room: fr.roomName })}</p>{/if}
 									<div class="flex flex-wrap gap-2" role="radiogroup">
-										<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {(favPicked[fr.index] ?? '') === '' ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
-											<input type="radio" name="fav_{fr.index}" value="" checked={(favPicked[fr.index] ?? '') === ''} onchange={() => (favPicked[fr.index] = '')} class="h-3.5 w-3.5" />
+										<label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition {(favPicked[fr.index] ?? '') === '' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+											<input type="radio" name="fav_{fr.index}" value="" checked={(favPicked[fr.index] ?? '') === ''} onchange={() => (favPicked[fr.index] = '')} class="accent-[var(--bk-accent)]" />
 											{m.hold_fav_none()}
 										</label>
 										{#each fr.choices as c (c.roomId)}
 											{@const takenElsewhere = Object.entries(favPicked).some(([i, id]) => Number(i) !== fr.index && id === c.roomId)}
-											<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {favPicked[fr.index] === c.roomId ? 'border-red-300 bg-white font-medium text-red-700' : 'border-stone-300 bg-white/70'} {takenElsewhere ? 'opacity-40' : ''}">
-												<input type="radio" name="fav_{fr.index}" value={c.roomId} checked={favPicked[fr.index] === c.roomId} disabled={takenElsewhere} onchange={() => (favPicked[fr.index] = c.roomId)} class="h-3.5 w-3.5" />
-												{m.hold_fav_room({ name: c.name, number: c.roomNumber })}
+											<label class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition {favPicked[fr.index] === c.roomId ? 'border-red-300 bg-red-50 font-medium text-red-700' : 'border-stone-300'} {takenElsewhere ? 'opacity-40' : ''}">
+												<input type="radio" name="fav_{fr.index}" value={c.roomId} checked={favPicked[fr.index] === c.roomId} disabled={takenElsewhere} onchange={() => (favPicked[fr.index] = c.roomId)} class="accent-red-600" />
+												♥ {m.hold_fav_room({ name: c.name, number: c.roomNumber })}
 											</label>
 										{/each}
 									</div>
@@ -616,260 +655,292 @@
 							{#if form?.errors && 'favoriteRoom' in form.errors && form.errors.favoriteRoom}
 								<p role="alert" class="text-xs text-red-600">{form.errors.favoriteRoom}</p>
 							{/if}
-						</fieldset>
-					{/if}
-
-					{#if data.member}
-						<div class="rounded-lg bg-emerald-50 p-3 text-sm">
-							<p class="font-medium text-emerald-800">{m.hold_points_label({ balance: data.member.balance.toLocaleString() })}</p>
-							<div class="mt-2 flex items-center gap-2">
-								<input type="number" name="points" min="0" max={data.member.balance} bind:value={pointsInput} readonly={paying} class="w-32 rounded-md border border-stone-300 px-3 py-1.5" />
-								<span class="text-stone-500">{m.hold_points_use()}</span>
-							</div>
 						</div>
-					{/if}
+					</section>
+				{/if}
 
-					<!-- お支払い方法: オンライン決済 / 現地決済 の2グループ -->
-					<fieldset class="space-y-2 rounded-lg border border-stone-200 p-3 text-sm" disabled={paying}>
-						<legend class="px-1 font-medium text-brand-900">{m.pay_choose()}</legend>
-						<input type="hidden" name="payment" value={payValue} />
+				<!-- 確認の段: 入力した内容の一覧（取引先ページと同じ形） -->
+				{#if step === 'confirm'}
+					<section class="bk-card">
+						<h2 class="bk-card-title">{m.hold_card_confirm()}</h2>
+						<dl class="bk-confirm text-[15px]">
+							<dt>{m.hold_confirm_stay()}</dt><dd>{m.hold_confirm_stay_val({ date: formatDateLong(data.hold.checkin), nights: String(data.hold.nights) })}</dd>
+							{#if multi}
+								<dt>{m.hold_summary_room()}</dt>
+								<dd>{#each rooms as r, i (r.index)}{#if i > 0}<br />{/if}{m.hold_room_n({ n: String(r.index) })} {r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}{/each}</dd>
+							{:else}
+								<dt>{m.hold_summary_room()}</dt><dd>{data.room.name}</dd>
+								<dt>{m.hold_summary_plan()}</dt><dd>{data.plan.name}</dd>
+								<dt>{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd>
+							{/if}
+							<dt>{m.hold_confirm_guest()}</dt>
+							<dd>
+								{values.familyName} {values.middleName ?? ''} {values.givenName}{values.familyNameKana || values.givenNameKana ? `（${values.familyNameKana ?? ''} ${values.givenNameKana ?? ''}）` : ''}
+							</dd>
+							<dt>{m.hold_field_phone()}</dt><dd>{values.phone}</dd>
+							<dt>{m.hold_field_email()}</dt><dd class="break-all">{values.email}</dd>
+							{#if multi}
+								{#each rooms as r, i (r.index)}
+									{@const mv = values[`male_${i}`]}
+									{#if r.askGender && mv !== undefined && mv !== ''}<dt>{m.hold_room_n({ n: String(r.index) })} {m.hold_gender_label()}</dt><dd>{m.hold_gender_option({ male: mv, female: String(r.adults - Number(mv)) })}</dd>{/if}
+								{/each}
+							{:else if data.askGender && values.male_0}
+								<dt>{m.hold_gender_label()}</dt><dd>{m.hold_gender_option({ male: values.male_0, female: String(data.hold.adults - Number(values.male_0)) })}</dd>
+							{/if}
+							<dt>{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</dt><dd>{values.arrival || m.hold_arrival_undecided()}{values.shuttle ? ` ／ ${m.hold_field_shuttle()}` : ''}</dd>
+							{#if values.transport && sf}
+								<dt>{isJa ? sf.transport.label : m.hold_field_transport()}</dt>
+								<dd>{values.transport === TRANSPORT_OTHER ? `${choiceText(values.transport)}（${values.transport_other ?? ''}）` : choiceText(values.transport)}{values.pickup_time ? ` ／ ${isJa ? sf.pickup.label : m.hold_field_pickup()} ${values.pickup_time}` : ''}</dd>
+							{/if}
+							{#if values.allergies}<dt>{isJa && sf ? sf.allergies.label : m.hold_field_allergies()}</dt><dd class="whitespace-pre-wrap">{values.allergies}</dd>{/if}
+							{#each confirmAnswers as a (a.key)}<dt>{a.label}</dt><dd class="whitespace-pre-wrap">{a.value}</dd>{/each}
+							{#if values.notes}<dt>{isJa && sf ? sf.notes.label : m.hold_field_notes()}</dt><dd class="whitespace-pre-wrap">{values.notes}</dd>{/if}
+							{#each favRooms as fr (fr.index)}
+								{@const id = values[`fav_${fr.index}`]}
+								{#if id}<dt>{m.hold_fav_heading()}</dt><dd>{multi ? `${m.hold_room_n({ n: String(fr.index) })} ` : ''}{favNameOf(fr.index, id)}</dd>{/if}
+							{/each}
+							{#if pointsApplied > 0}<dt>{m.hold_confirm_points()}</dt><dd>{pointsApplied.toLocaleString()}{m.common_point_unit()}</dd>{/if}
+							<dt>{m.hold_confirm_pay()}</dt><dd>{payLabel}</dd>
+						</dl>
+					</section>
+				{/if}
 
-						{#if onlineOptions.length > 0}
-							<div class="rounded-md border transition {group === 'online' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
-								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
-									<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{payText('online_now', 'label', m.pay_group_online())}</span>
-									{#if prepayAmount > 0}
-										<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
-									{/if}
-									{#if bonusPoints > 0}
-										<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
-									{/if}
-								</label>
-								{#if prepay && (prepayAmount > 0 || prepay.showLadder)}
-									<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
-									     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
-									<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9 text-sm">
+				<!-- お支払い（入力・確認のどちらにも出す。カードの入力欄は確認の段で出す） -->
+				<section class="bk-card">
+					<h2 class="bk-card-title">{m.hold_card_payment()}</h2>
+					<div class="grid gap-4 text-sm">
+						{#if data.member}
+							<div class="rounded-lg bg-emerald-50 p-3">
+								<p class="font-medium text-emerald-800">{m.hold_points_label({ balance: data.member.balance.toLocaleString() })}</p>
+								<div class="mt-2 flex items-center gap-2">
+									<input type="number" name="points" min="0" max={data.member.balance} bind:value={pointsInput} readonly={paying || step === 'confirm'} class="{input} w-32" />
+									<span class="text-stone-500">{m.hold_points_use()}</span>
+								</div>
+							</div>
+						{/if}
+
+						<!-- お支払い方法: オンライン決済 / チェックアウト日のカード決済 / 現地決済。確認の段では選び直せない（入力に戻る） -->
+						<fieldset class="space-y-2 {step === 'confirm' ? 'opacity-80' : ''}" disabled={paying} inert={step === 'confirm'}>
+							<legend class={label}>{m.pay_choose()} <em class="bk-req">{m.hold_required()}</em></legend>
+							<input type="hidden" name="payment" value={payValue} />
+
+							{#if onlineOptions.length > 0}
+								<div class="rounded-xl border transition {group === 'online' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="accent-[var(--bk-accent)]" />
+										<span class="flex-1 font-medium">{payText('online_now', 'label', m.pay_group_online())}</span>
 										{#if prepayAmount > 0}
-											<p class="font-medium text-brand-900">
-												{#if hasOnsite}
-													{m.pay_prepay_compare({ onsite: formatPrice(data.groupQuote.total), online: formatPrice(data.groupQuote.total - prepayAmount), save: formatPrice(prepayAmount) })}
-												{:else}
-													{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.groupQuote.total - prepayAmount)}
-												{/if}
-											</p>
-											<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
+											<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
 										{/if}
 										{#if bonusPoints > 0}
-											<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->
-											<p class="font-medium text-emerald-800">{m.pay_points_compare({ points: bonusPoints.toLocaleString() })}</p>
-											{#if data.member}
-												<p class="text-xs text-stone-600">{m.pay_points_grant({ rate: bonusRate, points: bonusPoints.toLocaleString() })}</p>
-											{:else}
-												<p class="text-xs text-stone-700">
-													{m.pay_points_guest({ rate: bonusRate, points: bonusPoints.toLocaleString() })}
-													<a href={registerHref} target="_blank" rel="noopener" class="ml-1 font-medium text-accent-600 underline hover:text-accent-500">{m.pay_points_register()}</a>
-												</p>
-											{/if}
-											<p class="text-xs text-stone-500">{m.pay_points_cancel_note()}</p>
+											<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
 										{/if}
-										{#if prepay.showLadder}
-											<div class="rounded-md border border-stone-200 bg-white/80 p-2.5">
-												<p class="text-xs text-stone-600">{isPoints ? m.pay_points_heading() : m.pay_early_heading()}</p>
-												<p class="mt-1 font-medium text-brand-900">
-													{#if isPoints}
-														{currentTierPermille > 0
-															? m.pay_points_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
-															: m.pay_points_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+									</label>
+									{#if prepay && (prepayAmount > 0 || prepay.showLadder)}
+										<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
+										     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
+										<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9">
+											{#if prepayAmount > 0}
+												<p class="font-medium text-brand-900">
+													{#if hasOnsite}
+														{m.pay_prepay_compare({ onsite: formatPrice(data.groupQuote.total), online: formatPrice(data.groupQuote.total - prepayAmount), save: formatPrice(prepayAmount) })}
 													{:else}
-														{currentTierPermille > 0
-															? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
-															: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+														{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.groupQuote.total - prepayAmount)}
 													{/if}
 												</p>
-												<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={isPoints ? m.pay_points_name() : m.pay_early_name()}>
-													{#each prepay.tiers as t (t.days)}
-														{@const current = Math.round(t.percent * 10) === currentTierPermille}
-														<li
-															class="rounded-full border px-2.5 py-0.5 text-xs tabular-nums {current ? 'border-red-300 bg-red-50 font-bold text-red-700' : 'border-stone-200 text-stone-500'}"
-															aria-current={current ? 'true' : undefined}
-														>
-															{isPoints
-																? m.pay_points_tier({ days: String(t.days), rate: percentText(t.percent) })
-																: `${m.pay_early_tier({ days: String(t.days) })} ${percentText(t.percent)}%`}
-														</li>
-													{/each}
-												</ol>
-												{#if prepay.drop}
-													<p class="mt-1.5 text-xs text-stone-600">
-														{isPoints
-															? m.pay_points_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: prepay.drop.diff.toLocaleString() })
-															: m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
+												<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
+											{/if}
+											{#if bonusPoints > 0}
+												<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->
+												<p class="font-medium text-emerald-800">{m.pay_points_compare({ points: bonusPoints.toLocaleString() })}</p>
+												{#if data.member}
+													<p class="text-xs text-stone-600">{m.pay_points_grant({ rate: bonusRate, points: bonusPoints.toLocaleString() })}</p>
+												{:else}
+													<p class="text-xs text-stone-700">
+														{m.pay_points_guest({ rate: bonusRate, points: bonusPoints.toLocaleString() })}
+														<a href={registerHref} target="_blank" rel="noopener" class="ml-1 font-medium text-accent-600 underline hover:text-accent-500">{m.pay_points_register()}</a>
 													</p>
 												{/if}
-												{#if prepay.detail.blackoutNights > 0}
-													<p class="mt-1.5 text-xs text-stone-600">{isPoints ? m.pay_points_blackout() : m.pay_early_blackout()}</p>
-												{/if}
-												{#if !isPoints && currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
-													<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_flat_note({ rate: percentText(prepay.detail.flatPermille / 10) })}</p>
-												{/if}
-											</div>
-										{/if}
-									</div>
-								{/if}
-								{#if group === 'online'}
-									<div class="space-y-1.5 border-t border-amber-200/60 px-3 py-2.5 pl-9">
-										{#if onlineOptions.length > 1}
-											{#each onlineOptions as v (v)}
-												<label class="flex cursor-pointer items-center gap-2">
-													<input type="radio" name="payOnline" value={v} checked={payValue === v} onchange={() => (selectedOnline = v)} class="h-4 w-4" />
-													{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="" class="-my-1 h-6 w-auto" width="66" height="24" />{/if}
-													<span>{v === 'card' ? m.pay_card() : m.pay_paypay()}</span>
-												</label>
-											{/each}
-										{:else}
-											<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
-										{/if}
-										{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
-										{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
-										<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
-										{#if data.adminFeePercent}<p class="text-xs text-amber-900">{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}</p>{/if}
-									</div>
-								{/if}
-							</div>
-						{/if}
-
-						{#if hasCheckout}
-							<!-- オンライン決済（チェックアウト日）: いまカードを登録し、チェックアウト日に請求（割引なし） -->
-							<div class="rounded-md border transition {group === 'checkout' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
-								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
-									<input type="radio" name="payGroup" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
-								</label>
-								{#if group === 'checkout'}
-									<div class="whitespace-pre-line border-t border-amber-200/60 px-3 py-2.5 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</div>
-								{/if}
-							</div>
-						{/if}
-
-						{#if hasOnsite}
-							<div class="rounded-md border transition {group === 'onsite' ? 'border-accent-500 bg-amber-50/60' : 'border-stone-200'}">
-								<label class="flex cursor-pointer items-center gap-2 px-3 py-2.5">
-									<input type="radio" name="payGroup" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="h-4 w-4" />
-									<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
-								</label>
-								{#if group === 'onsite'}
-									<div class="border-t border-amber-200/60 px-3 py-2.5 pl-9">
-										{#if payText('onsite', 'note', '')}<p class="mb-2 whitespace-pre-line text-xs text-stone-600">{payText('onsite', 'note', '')}</p>{/if}
-										<p class="mb-1.5 text-xs text-stone-500">{m.pay_onsite_how()}</p>
-										<div class="flex flex-wrap gap-2" role="radiogroup" aria-label={m.pay_onsite_how()}>
-											{#each ONSITE_METHODS as v (v)}
-												<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-accent-500 bg-white font-medium' : 'border-stone-300 bg-white/70'}">
-													<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (pickedOnsite = v)} class="h-3.5 w-3.5" />
-													<!-- PayPay は公式ロゴ（static/site-assets/paypay-logo.png・余白込みの公式素材をそのまま）。文字と同じくらいの大きさで目立たせすぎない -->
-													{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 h-6 w-auto" width="66" height="24" />{:else}{onsiteMethodLabel(v)}{/if}
-												</label>
-											{/each}
+												<p class="text-xs text-stone-500">{m.pay_points_cancel_note()}</p>
+											{/if}
+											{#if prepay.showLadder}
+												<div class="rounded-md border border-stone-200 bg-white/80 p-2.5">
+													<p class="text-xs text-stone-600">{isPoints ? m.pay_points_heading() : m.pay_early_heading()}</p>
+													<p class="mt-1 font-medium text-brand-900">
+														{#if isPoints}
+															{currentTierPermille > 0
+																? m.pay_points_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
+																: m.pay_points_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+														{:else}
+															{currentTierPermille > 0
+																? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
+																: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
+														{/if}
+													</p>
+													<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={isPoints ? m.pay_points_name() : m.pay_early_name()}>
+														{#each prepay.tiers as t (t.days)}
+															{@const current = Math.round(t.percent * 10) === currentTierPermille}
+															<li
+																class="rounded-full border px-2.5 py-0.5 text-xs tabular-nums {current ? 'border-red-300 bg-red-50 font-bold text-red-700' : 'border-stone-200 text-stone-500'}"
+																aria-current={current ? 'true' : undefined}
+															>
+																{isPoints
+																	? m.pay_points_tier({ days: String(t.days), rate: percentText(t.percent) })
+																	: `${m.pay_early_tier({ days: String(t.days) })} ${percentText(t.percent)}%`}
+															</li>
+														{/each}
+													</ol>
+													{#if prepay.drop}
+														<p class="mt-1.5 text-xs text-stone-600">
+															{isPoints
+																? m.pay_points_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: prepay.drop.diff.toLocaleString() })
+																: m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
+														</p>
+													{/if}
+													{#if prepay.detail.blackoutNights > 0}
+														<p class="mt-1.5 text-xs text-stone-600">{isPoints ? m.pay_points_blackout() : m.pay_early_blackout()}</p>
+													{/if}
+													{#if !isPoints && currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
+														<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_flat_note({ rate: percentText(prepay.detail.flatPermille / 10) })}</p>
+													{/if}
+												</div>
+											{/if}
 										</div>
-										{#if onsiteMethod === 'paypay'}
-											<p class="mt-2 text-xs text-stone-500">{m.pay_onsite_paypay_note()}</p>
-										{/if}
-										<!-- その他の支払方法の併用（チェックアウト時に現地で使うもの） -->
-										<p class="mb-1.5 mt-3 text-xs text-stone-500">{m.pay_onsite_other()}</p>
-										<label class="inline-flex cursor-pointer items-center gap-2 text-sm">
-											<input type="checkbox" name="furusatoVoucher" bind:checked={furusatoVoucher} class="h-4 w-4 rounded" />
-											{m.pay_onsite_furusato()}
-										</label>
-									</div>
-								{/if}
+									{/if}
+									{#if group === 'online'}
+										<div class="space-y-1.5 border-t border-stone-200/80 px-3 py-2.5 pl-9">
+											{#if onlineOptions.length > 1}
+												{#each onlineOptions as v (v)}
+													<label class="flex cursor-pointer items-center gap-2">
+														<input type="radio" name="payOnline" value={v} checked={payValue === v} onchange={() => (selectedOnline = v)} class="accent-[var(--bk-accent)]" />
+														{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="" class="-my-1 h-6 w-auto" width="66" height="24" />{/if}
+														<span>{v === 'card' ? m.pay_card() : m.pay_paypay()}</span>
+													</label>
+												{/each}
+											{:else}
+												<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
+											{/if}
+											{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
+											{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
+											<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
+											{#if data.adminFeePercent}<p class="text-xs text-amber-900">{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}</p>{/if}
+										</div>
+									{/if}
+								</div>
+							{/if}
+
+							{#if hasCheckout}
+								<!-- オンライン決済（チェックアウト日）: いまカードを登録し、チェックアウト日に請求（割引なし） -->
+								<div class="rounded-xl border transition {group === 'checkout' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="payGroup" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="accent-[var(--bk-accent)]" />
+										<span class="flex-1 font-medium">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
+									</label>
+									{#if group === 'checkout'}
+										<div class="whitespace-pre-line border-t border-stone-200/80 px-3 py-2.5 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</div>
+									{/if}
+								</div>
+							{/if}
+
+							{#if hasOnsite}
+								<div class="rounded-xl border transition {group === 'onsite' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
+									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="payGroup" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="accent-[var(--bk-accent)]" />
+										<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
+									</label>
+									{#if group === 'onsite'}
+										<div class="border-t border-stone-200/80 px-3 py-2.5 pl-9">
+											{#if payText('onsite', 'note', '')}<p class="mb-2 whitespace-pre-line text-xs text-stone-600">{payText('onsite', 'note', '')}</p>{/if}
+											<p class="mb-1.5 text-xs text-stone-500">{m.pay_onsite_how()}</p>
+											<div class="flex flex-wrap gap-2" role="radiogroup" aria-label={m.pay_onsite_how()}>
+												{#each ONSITE_METHODS as v (v)}
+													<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-[var(--bk-accent)] bg-white font-medium' : 'border-stone-300 bg-white/70'}">
+														<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (pickedOnsite = v)} class="h-3.5 w-3.5 accent-[var(--bk-accent)]" />
+														<!-- PayPay は公式ロゴ（static/site-assets/paypay-logo.png・余白込みの公式素材をそのまま）。文字と同じくらいの大きさで目立たせすぎない -->
+														{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 h-6 w-auto" width="66" height="24" />{:else}{onsiteMethodLabel(v)}{/if}
+													</label>
+												{/each}
+											</div>
+											{#if onsiteMethod === 'paypay'}
+												<p class="mt-2 text-xs text-stone-500">{m.pay_onsite_paypay_note()}</p>
+											{/if}
+											<!-- その他の支払方法の併用（チェックアウト時に現地で使うもの） -->
+											<p class="mb-1.5 mt-3 text-xs text-stone-500">{m.pay_onsite_other()}</p>
+											<label class="inline-flex cursor-pointer items-center gap-2 text-sm">
+												<input type="checkbox" name="furusatoVoucher" bind:checked={furusatoVoucher} class="h-4 w-4 rounded accent-[var(--bk-accent)]" />
+												{m.pay_onsite_furusato()}
+											</label>
+										</div>
+									{/if}
+								</div>
+							{/if}
+
+							{#if data.payFallback}
+								<p class="text-xs text-stone-500">{m.pay_fallback_note()}</p>
+							{:else if data.memberOnsiteHint}
+								<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
+								<p class="text-xs text-stone-500">
+									{m.pay_member_onsite_hint()}
+									<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="ml-1 underline hover:text-brand-800">{m.pay_member_onsite_login()}</a>
+								</p>
+							{/if}
+							{#if form?.errors && 'payment' in form.errors && form.errors.payment}
+								<p role="alert" class="text-xs text-red-600">{form.errors.payment}</p>
+							{/if}
+						</fieldset>
+
+						{#if inlinePay && step === 'input'}
+							<p class="text-xs text-stone-500">{m.hold_pay_card_next()}</p>
+						{/if}
+						{#if inlinePay && step === 'confirm'}
+							<!-- カードは確認の段でこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない。
+							     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は支払の方式ごとに作り直す -->
+							<div class="space-y-3 rounded-lg border border-stone-200 p-3">
+								<div class="flex items-baseline justify-between gap-3">
+									<h3 class="text-sm font-medium text-brand-900">{checkoutCard ? m.pay_checkout_heading() : m.pay_card_heading()}</h3>
+									<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
+								</div>
+								{#key checkoutCard}
+								<StripePayment
+									bind:this={payRef}
+									publishableKey={data.publishableKey}
+									mode={checkoutCard ? 'setup' : 'payment'}
+									consentText={checkoutCard ? m.pay_checkout_consent({ date: chargeOnText, amount: formatPrice(charge.charge) }) : null}
+									amount={charge.charge}
+									locale={stripeLocale()}
+									texts={payTexts}
+									unavailableText={m.pay_unavailable()}
+									validate={validateGuest}
+									prepare={preparePayment}
+									onconfirmed={onPaid}
+									onbusychange={(b) => (paying = b)}
+									onerror={() => (payMessage = '')}
+									customerSession={loadMemberSession}
+								/>
+								{/key}
+								{#if !checkoutCard}<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>{/if}
 							</div>
 						{/if}
 
-						{#if data.payFallback}
-							<p class="text-xs text-stone-500">{m.pay_fallback_note()}</p>
-						{:else if data.memberOnsiteHint}
-							<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
-							<p class="text-xs text-stone-500">
-								{m.pay_member_onsite_hint()}
-								<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="ml-1 underline hover:text-brand-800">{m.pay_member_onsite_login()}</a>
-							</p>
+						{#if payMessage}
+							<p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{payMessage}</p>
 						{/if}
-						{#if form?.errors && 'payment' in form.errors && form.errors.payment}
-							<p role="alert" class="text-xs text-red-600">{form.errors.payment}</p>
-						{/if}
-					</fieldset>
-
-					{#if inlinePay}
-						<!-- カードを選んだらこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない。
-						     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は支払の方式ごとに作り直す -->
-						<section class="space-y-3 rounded-lg border border-stone-200 p-3">
-							<div class="flex items-baseline justify-between gap-3">
-								<h3 class="text-sm font-medium text-brand-900">{checkoutCard ? m.pay_checkout_heading() : m.pay_card_heading()}</h3>
-								<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
-							</div>
-							{#key checkoutCard}
-							<StripePayment
-								bind:this={payRef}
-								publishableKey={data.publishableKey}
-								mode={checkoutCard ? 'setup' : 'payment'}
-								consentText={checkoutCard ? m.pay_checkout_consent({ date: chargeOnText, amount: formatPrice(charge.charge) }) : null}
-								amount={charge.charge}
-								locale={stripeLocale()}
-								texts={payTexts}
-								unavailableText={m.pay_unavailable()}
-								validate={validateGuest}
-								prepare={preparePayment}
-								onconfirmed={onPaid}
-								onbusychange={(b) => (paying = b)}
-								onerror={() => (payMessage = '')}
-								customerSession={loadMemberSession}
-							/>
-							{/key}
-							{#if !checkoutCard}<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>{/if}
-						</section>
-					{/if}
-
-					{#if payMessage}
-						<p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{payMessage}</p>
-					{/if}
-
-					{#if data.needsTurnstile}
-						<Turnstile bind:this={turnstile} action="booking-confirm" />
-					{/if}
-
-					<button
-						type="submit"
-						disabled={paying || data.preview || (inlinePay && !data.publishableKey)}
-						class="w-full rounded-lg bg-accent-600 py-3 text-base font-medium text-white hover:bg-accent-500 disabled:opacity-50"
-					>
-						{#if checkoutCard}
-							{paying ? m.pay_checkout_processing() : m.pay_submit_inline()}
-						{:else if inlineCard}
-							{paying ? m.pay_processing_inline() : m.pay_submit_inline()}
-						{:else}
-							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
-						{/if}
-					</button>
-					{#if data.preview}
-						<p class="text-center text-xs text-amber-800">プレビュー中のため、予約は確定できません。</p>
-					{:else if checkoutCard}
-						<p class="text-center text-xs text-stone-400">{m.pay_checkout_submit_note({ date: chargeOnText, amount: formatPrice(charge.charge) })}</p>
-					{:else if inlineCard}
-						<p class="text-center text-xs text-stone-400">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
-					{:else if !isPrepay}
-						<p class="text-center text-xs text-stone-400">{m.hold_local_payment_note()}</p>
-					{/if}
-				</form>
+					</div>
+				</section>
 			</div>
 
-			<!-- 予約内容サマリ（明細は常に表示: 宿泊料金・ポイント・入湯税・お支払い合計） -->
-			<aside id="hold-summary" class="h-fit scroll-mt-20 rounded-2xl border border-stone-200 bg-white p-5 lg:sticky lg:top-20">
-				<h2 class="mb-3 font-medium text-brand-900">{m.hold_summary_heading()}</h2>
-				<img src={data.room.photos[0]?.url} alt="" class="mb-3 h-32 w-full rounded-lg object-cover" />
-				<dl class="space-y-1.5 text-sm">
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_facility()}</dt><dd>{data.facility.name}</dd></div>
+			<!-- 予約内容（右欄・取引先ページと同じ並び: 写真・施設 → 日程・人数・お部屋・プラン → 料金 → 取消の案内 → ボタン） -->
+			<aside id="hold-summary" class="bk-card h-fit scroll-mt-20 lg:sticky lg:top-20">
+				<div class="flex items-start gap-3">
+					{#if data.room.photos[0]?.url}<img src={data.room.photos[0].url} alt="" class="h-[72px] w-[72px] shrink-0 rounded-lg object-cover" />{/if}
+					<div class="min-w-0">
+						<p class="text-lg font-bold leading-snug">{data.facility.name}</p>
+						<p class="mt-0.5 text-sm text-stone-500">{m.hold_summary_heading()}</p>
+					</div>
+				</div>
+				<dl class="mt-4 space-y-1.5 text-sm">
 					{#if multi}
-						<!-- 複数室: 部屋ごとのカード（部屋名／プラン名／大人 N 名／宿泊料金） -->
+						<!-- 複数室: 部屋ごとの枠（部屋名／プラン名／大人 N 名／宿泊料金） -->
 						<div>
 							<dt class="text-stone-500">{m.hold_rooms_label({ n: String(rooms.length) })}</dt>
 							<dd class="mt-1 space-y-1.5">
@@ -885,14 +956,14 @@
 							</dd>
 						</div>
 					{:else}
-						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
-						<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[60%] text-right">{data.plan.name}</dd></div>
+						<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
+						<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[65%] text-right">{data.plan.name}</dd></div>
 						{#if perkTitles(rooms[0]?.memberPerks)}
-							<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.member_page_perks()}</dt><dd class="max-w-[60%] text-right text-amber-800">{perkTitles(rooms[0]?.memberPerks)}</dd></div>
+							<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.member_page_perks()}</dt><dd class="max-w-[65%] text-right text-amber-800">{perkTitles(rooms[0]?.memberPerks)}</dd></div>
 						{/if}
 					{/if}
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_checkin()}</dt><dd>{formatDateLong(data.hold.checkin)}</dd></div>
-					<div class="flex justify-between"><dt class="text-stone-500">{m.hold_summary_nights_adults()}</dt><dd>{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
+					<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_checkin()}</dt><dd class="text-right">{formatDateLong(data.hold.checkin)}</dd></div>
+					<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_nights_adults()}</dt><dd class="text-right">{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
 					<PriceBreakdown quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines, name: r.roomName }))} />
@@ -909,9 +980,9 @@
 						</div>
 					{/if}
 					{#if inlinePay && (data.bathTax > 0 || charge.discount > 0)}
-						<div class="mt-1.5 flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold text-brand-900">
-							<span>{m.pay_total_due()}</span>
-							<span class="tabular-nums">{formatPrice(charge.charge)}</span>
+						<div class="mt-3 flex items-end justify-between gap-3 border-t border-stone-200 pt-3">
+							<span class="font-bold">{m.pay_total_due()}</span>
+							<span class="text-2xl font-bold tabular-nums leading-none text-brand-900">{formatPrice(charge.charge)}</span>
 						</div>
 					{:else if data.bathTax > 0 && !inlinePay}
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
@@ -929,20 +1000,80 @@
 					<!-- 特別会員: キャンセル料の計算の方式（下の規定はプランの規定。方式が「お客さまに有利な方」なら安い方で計算） -->
 					<p class="mt-3 text-xs text-stone-600">{m.member_page_cancel_mode({ mode: memberCancelModeLabel(memberPage.cancelMode.mode) })}</p>
 				{/if}
+				<!-- 取消の案内（取引先ページと同じ帯） -->
 				{#if multi}
 					<!-- キャンセル規定は部屋ごと（部屋ごとにプランが違うため） -->
 					{#each rooms as r (r.index)}
-						<p class="mt-2 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
-							<span class="font-medium">{m.hold_cancel_policy_room({ n: String(r.index) })}:</span>
+						<p class="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
+							<span class="font-bold">{m.hold_cancel_policy_room({ n: String(r.index) })}:</span>
 							<CancelPolicyNote policy={r.cancellationPolicy} checkin={data.hold.checkin} />
 						</p>
 					{/each}
 				{:else}
-					<p class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
+					<p class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sm font-bold text-sky-700">
 						<CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.hold.checkin} />
 					</p>
 				{/if}
+
+				{#if data.needsTurnstile}
+					<!-- 非会員だけ、予約確定の前に Turnstile（フォームの中に置き、現地払いの送信にもカードの準備にも同じトークンが乗る）。
+					     入力の段から置いておき、確認の段へ進むまでに判定を済ませる -->
+					<div class="mt-4"><Turnstile bind:this={turnstile} action="booking-confirm" /></div>
+				{/if}
+				{#if clientError}<p class="mt-3 text-sm text-red-600" role="alert">{clientError}</p>{/if}
+				{#if step === 'input'}
+					<!-- submit にして Enter キーでも確認の段へ進めるようにする（use:enhance が送信を止めて toConfirm に回す） -->
+					<button type="submit" class="bk-primary mt-4 w-full text-base">{m.hold_to_confirm()}</button>
+				{:else}
+					<button
+						type="submit"
+						disabled={paying || data.preview || (inlinePay && !data.publishableKey)}
+						class="bk-primary mt-4 w-full text-base"
+					>
+						{#if checkoutCard}
+							{paying ? m.pay_checkout_processing() : m.pay_submit_inline()}
+						{:else if inlineCard}
+							{paying ? m.pay_processing_inline() : m.pay_submit_inline()}
+						{:else}
+							{isPrepay ? m.hold_submit_card() : m.hold_submit_local()}
+						{/if}
+					</button>
+					{#if data.preview}
+						<p class="mt-2 text-center text-xs text-amber-800">プレビュー中のため、予約は確定できません。</p>
+					{:else if checkoutCard}
+						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_checkout_submit_note({ date: chargeOnText, amount: formatPrice(charge.charge) })}</p>
+					{:else if inlineCard}
+						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
+					{:else if !isPrepay}
+						<p class="mt-2 text-center text-xs text-stone-500">{m.hold_local_payment_note()}</p>
+					{/if}
+					<button type="button" onclick={backToInput} disabled={paying} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50 disabled:opacity-50">{m.hold_back_to_input()}</button>
+				{/if}
 			</aside>
-		</div>
+		</form>
 	{/if}
 </div>
+
+{#snippet questionField(q: BookingQuestion, key: string, list: BookingQuestion[], roomIndex: number)}
+	{#if !shownQ(q, list, roomIndex)}
+		<!-- 条件に合わないので聞かない -->
+	{:else if q.type === 'check'}
+		<label class="flex items-center gap-2.5 text-sm">
+			<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-5 w-5 accent-[var(--bk-accent)]" />
+			<span>{q.label}{#if q.required} <em class="bk-req">{m.hold_required()}</em>{/if}</span>
+		</label>
+	{:else if q.type === 'select'}
+		<label class="block sm:max-w-sm">
+			<span class={label}>{q.label}{#if q.required} <em class="bk-req">{m.hold_required()}</em>{/if}</span>
+			<select name={`opt_${key}`} required={q.required} class={input}>
+				<option value="">{m.hold_select_placeholder()}</option>
+				{#each q.choices as c}<option value={c}>{c}</option>{/each}
+			</select>
+		</label>
+	{:else}
+		<label class="block">
+			<span class={label}>{q.label}{#if q.required} <em class="bk-req">{m.hold_required()}</em>{/if}</span>
+			<input name={`opt_${key}`} required={q.required} maxlength="500" class={input} />
+		</label>
+	{/if}
+{/snippet}
