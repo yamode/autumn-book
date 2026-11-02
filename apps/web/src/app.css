@@ -250,3 +250,14 @@ html {
 	gap: 0.6rem 1rem;
 }
 .bk-confirm dt { color: var(--color-stone-500, #78716c); }
+
+/* スマホでは入力欄の文字を 16px 以上にする（2026-11-02 スマホ最適化の点検）。
+   iPhone の Safari は 16px 未満の入力欄に触れると画面を拡大し、入力後も拡大されたままになる。
+   A面のログイン・掲示板の投稿、管理画面のほぼすべての欄が 13〜15.75px だった。
+   レイヤー外の規則なので Tailwind の text-sm 等より優先される（PC の見た目は変えない）。 */
+@media (max-width: 767px) {
+	/* :is は中で一番強い指定の強さになるので、管理画面の .text-xs の上書き（レイヤー外）にも勝つ */
+	:is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']), select, textarea) {
+		font-size: max(16px, 1em);
+	}
+}
