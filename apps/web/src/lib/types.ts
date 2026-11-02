@@ -367,6 +367,10 @@ export interface GuestInfo {
 	arrival?: string;
 	shuttle?: boolean;
 	notes?: string;
+	/** 食物アレルギー・苦手な食材（毎回聞く項目）。DB が顧客マスタ core.guests.allergies に足す */
+	allergies?: string;
+	/** 項目ごとの回答（アレルギー・交通手段・お迎え時間・追加で聞く項目・ご要望）。PMS の「事前質問・要望」に項目で出る */
+	requests?: { label: string; value: string }[];
 }
 
 export interface Hold {

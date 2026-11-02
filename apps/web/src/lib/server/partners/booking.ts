@@ -36,6 +36,7 @@ import {
   normalizeBooker,
   partnerPlanName,
   perksForPlan,
+  PARTNER_TRANSPORT_OPTIONS,
   resolveTransport,
   validateBooker,
   type PartnerBooker,
@@ -584,7 +585,9 @@ export async function createPartnerBooking(
   if (g.email.trim() && !EMAIL_RE.test(g.email.trim())) throw new PartnerStoreError('メールアドレスの形式が正しくありません。');
   // 予約時に聞く項目（プランの項目＋この取引先だけの項目）。予約画面と同じ規則で決め直して検証する
   const form = await partnerBookingForm(db, partner, input.planCode, input.planName);
-  const answers = resolveQuestionAnswers(form.questions, input.answers, input.rooms.length);
+  const answers = resolveQuestionAnswers(form.questions, input.answers, input.rooms.length, {
+    transport: PARTNER_TRANSPORT_OPTIONS.find((o) => o.id === input.transport?.id)?.label ?? ''
+  });
   // 部屋ごとの男女の内訳（必須・合計＝その部屋の大人の人数）。PMS へは電文の rooms[].male / female で渡る
   const genders = form.askGender ? resolveRoomGenders(input.rooms.map((r) => r.adults), (k) => input.genders?.[k]) : null;
   if (genders && !genders.ok) throw new PartnerStoreError(genders.message);

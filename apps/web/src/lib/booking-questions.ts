@@ -8,6 +8,12 @@ export type BookingQuestionType = 'check' | 'select' | 'text';
 // booking = 予約ごとに1回聞く / room = 部屋ごとに聞く（複数室なら「1室目 …」「2室目 …」）
 export type BookingQuestionScope = 'booking' | 'room';
 
+// 条件分岐（2026-11-02）: field の回答が values のどれかのときだけ聞く。
+//   field = 'transport'（毎回聞く項目の「宿までの交通手段」）か、同じフォームのほかの項目の id。
+//   チェックの項目は「あり」で比べる。条件に合わず隠れた項目は、必須でも聞かない。
+export const TRANSPORT_FIELD = 'transport';
+export type BookingQuestionCondition = { field: string; values: string[] };
+
 export type BookingQuestion = {
   id: string;
   label: string;
@@ -15,6 +21,7 @@ export type BookingQuestion = {
   choices: string[]; // type=select のときの選択肢
   required: boolean;
   scope: BookingQuestionScope;
+  showIf?: BookingQuestionCondition | null;
 };
 
 export type PlanQuestionMode = 'none' | 'template' | 'custom';
@@ -44,23 +51,62 @@ export function normalizeBookingQuestions(raw: unknown): BookingQuestion[] {
       let id = String(o.id ?? '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || `opt-${i + 1}`;
       while (used.has(id)) id = `${id}_`;
       used.add(id);
+      const showIf = normalizeCondition(o.showIf);
       return {
         id,
         label: String(o.label ?? '').trim().slice(0, 60),
         type,
         choices: type === 'select' ? choices : [],
         required: o.required === true,
-        scope: (o.scope === 'room' ? 'room' : 'booking') as BookingQuestionScope
+        scope: (o.scope === 'room' ? 'room' : 'booking') as BookingQuestionScope,
+        ...(showIf ? { showIf } : {})
       };
     })
     .filter((o) => o.label)
     .slice(0, MAX_BOOKING_QUESTIONS);
 }
 
+function normalizeCondition(raw: unknown): BookingQuestionCondition | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const field = String(r.field ?? '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+  const values = Array.isArray(r.values) ? [...new Set(r.values.map((v) => String(v ?? '').trim().slice(0, 40)).filter(Boolean))].slice(0, 20) : [];
+  return field && values.length ? { field, values } : null;
+}
+
+/** 条件の判定に使う回答（交通手段と、ほかの項目の回答 opt_<key>） */
+export type ConditionContext = { transport?: string; answers?: Record<string, string> };
+
+const answerValue = (q: BookingQuestion | undefined, raw: string) =>
+  q?.type === 'check' ? (raw === '1' || raw === 'true' || raw === 'on' || raw === 'あり' ? 'あり' : '') : raw.trim();
+
+/**
+ * その項目を聞くか（条件が無ければ聞く）。roomIndex は部屋ごとの項目の部屋（0始まり）。
+ * 条件の項目がさらに隠れているときは、その項目の回答は無いものとして扱う（連鎖して隠れる）。
+ */
+export function isQuestionShown(q: BookingQuestion, questions: BookingQuestion[], ctx: ConditionContext, roomIndex = 0, depth = 0): boolean {
+  if (!q.showIf || depth > 5) return true;
+  const { field, values } = q.showIf;
+  if (field === TRANSPORT_FIELD) return values.includes(String(ctx.transport ?? '').trim());
+  const src = questions.find((x) => x.id === field);
+  if (!src) return true; // 条件の項目が消された: いつも聞く
+  if (!isQuestionShown(src, questions, ctx, roomIndex, depth + 1)) return false;
+  const raw = String(ctx.answers?.[answerKey(src, roomIndex)] ?? '');
+  return values.includes(answerValue(src, raw));
+}
+
+/** 条件にできる値（選択肢の項目は選択肢、チェックは「あり」） */
+export const conditionValuesOf = (q: Pick<BookingQuestion, 'type' | 'choices'>) => (q.type === 'select' ? q.choices : q.type === 'check' ? ['あり'] : []);
+
 // 保存時の検証（normalize で吸収できない入力ミス）。
 export function validateBookingQuestions(qs: BookingQuestion[]): string | null {
   for (const [i, o] of qs.entries()) {
     if (o.type === 'select' && o.choices.length < 2) return `項目${i + 1}「${o.label}」: 選択肢を2つ以上入れてください。`;
+    if (o.showIf && o.showIf.field !== TRANSPORT_FIELD) {
+      const j = qs.findIndex((x) => x.id === o.showIf!.field);
+      if (j < 0) return `項目${i + 1}「${o.label}」: 条件にした項目が見つかりません。条件を選び直してください。`;
+      if (j >= i) return `項目${i + 1}「${o.label}」: 条件にする項目は、この項目より上に置いてください。`;
+    }
   }
   return null;
 }
@@ -77,7 +123,13 @@ export const newBookingQuestion = (): BookingQuestion => ({
 // 取引先予約で聞く項目: プランの項目 → 取引先ごとの項目。id に出どころの印を付けて重ならないようにする
 // （フォームの name は opt_<id>。p- = プラン、x- = 取引先）。
 export function mergePartnerQuestions(plan: BookingQuestion[], partner: BookingQuestion[]): BookingQuestion[] {
-  return [...plan.map((q) => ({ ...q, id: `p-${q.id}` })), ...partner.map((q) => ({ ...q, id: `x-${q.id}` }))];
+  // 条件の項目も同じ出どころの印を付ける（交通手段はそのまま）
+  const mark = (q: BookingQuestion, p: string): BookingQuestion => ({
+    ...q,
+    id: `${p}${q.id}`,
+    ...(q.showIf ? { showIf: { ...q.showIf, field: q.showIf.field === TRANSPORT_FIELD ? TRANSPORT_FIELD : `${p}${q.showIf.field}` } } : {})
+  });
+  return [...plan.map((q) => mark(q, 'p-')), ...partner.map((q) => mark(q, 'x-'))];
 }
 
 // 回答のキー（フォームの name は opt_<key>）。部屋ごとの項目は <id>@<部屋の番号0始まり>
@@ -107,10 +159,13 @@ export function answersFromForm(fd: FormData, questions: BookingQuestion[], room
 export function resolveQuestionAnswers(
   questions: BookingQuestion[],
   answers: Record<string, string>,
-  roomCount = 1
+  roomCount = 1,
+  ctx: { transport?: string } = {}
 ): { ok: true; values: { label: string; value: string }[] } | { ok: false; message: string } {
   const values: { label: string; value: string }[] = [];
   for (const q of expandQuestions(questions, roomCount)) {
+    // 条件に合わず隠れている項目は聞かない（必須でも止めない・回答も残さない）
+    if (!isQuestionShown(q, questions, { transport: ctx.transport, answers }, q.roomIndex ?? 0)) continue;
     const o = { ...q, label: q.fullLabel };
     const raw = String(answers[q.key] ?? '').trim();
     if (o.type === 'check') {

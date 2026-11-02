@@ -249,7 +249,7 @@
   "hold_field_arrival": "到着予定時刻",
   "hold_field_shuttle": "送迎を希望する",
   "hold_field_notes": "ご要望・連絡事項（任意）",
-  "hold_field_notes_ph": "記念日ケーキのメッセージ、アレルギー等",
+  "hold_field_notes_ph": "記念日ケーキのメッセージなど",
   "hold_points_label": "ポイント利用（ご利用可能 {balance}pt）",
   "hold_points_use": "pt を使う（1pt=1円）",
   "hold_points_earn": "このご予約で付与予定のポイント",
@@ -1323,5 +1323,12 @@
   "plan_cond_guests": "人数",
   "plan_cond_pick_date": "日付を選ぶ",
   "plan_cond_guests_val": "大人{adults}名・{rooms}室",
-  "plan_cond_change": "変更"
+  "plan_cond_change": "変更",
+  "hold_field_allergies": "食物アレルギー・苦手な食材",
+  "hold_field_allergies_ph": "例: えび・かに（2名）",
+  "hold_field_transport": "宿までの交通手段",
+  "hold_field_transport_other": "交通手段（その他）の内容",
+  "hold_field_pickup": "お迎えの時間",
+  "hold_transport_car": "車",
+  "hold_transport_other": "その他"
 }

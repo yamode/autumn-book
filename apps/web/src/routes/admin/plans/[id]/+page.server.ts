@@ -32,7 +32,7 @@ import {
 	uploadPhotoAction
 } from '$lib/server/admin-content-page';
 import { loadPlanTemplates } from '$lib/server/plan-templates';
-import { loadPlanQuestionSetting, loadQuestionTemplates, savePlanQuestionSetting } from '$lib/server/booking-questions';
+import { loadPlanQuestionSetting, loadQuestionTemplates, loadStandardFieldTexts, savePlanQuestionSetting } from '$lib/server/booking-questions';
 import { normalizeBookingQuestions, PLAN_QUESTION_MODES, validateBookingQuestions, type PlanQuestionMode } from '$lib/booking-questions';
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { demoShareToken } from '$lib/server/secret-plans';
@@ -72,7 +72,9 @@ export const load: PageServerLoad = async (event) => {
 			loadPlanTemplates(uuid, client),
 			// 予約時に聞く項目（テンプレート一覧と、このプランの選択）
 			loadQuestionTemplates(uuid, client),
-			loadPlanQuestionSetting(client, uuid, event.params.id).catch(() => null)
+			loadPlanQuestionSetting(client, uuid, event.params.id).catch(() => null),
+			// 交通手段の見出し・選択肢（追加で聞く項目の「聞く条件」用）
+			loadStandardFieldTexts(uuid, client)
 		]);
 		restLoad.catch(() => {});
 		let r;
@@ -82,7 +84,7 @@ export const load: PageServerLoad = async (event) => {
 			error(500, messageOf(e));
 		}
 		if (!r.plan) error(404, NOT_FOUND);
-		const [f, templates, questionTemplates, questionSetting] = await restLoad;
+		const [f, templates, questionTemplates, questionSetting, standardFields] = await restLoad;
 		// 専用 URL は初めて開いたときに作る（どのプランにも 1 本。作り直すまで変わらない）
 		// 絞り込みの部屋タイプ候補（同一施設の pms.room_types。読めなくても他は編集できる）
 		const limitRooms = await sbListRoomContentsAdmin(client, uuid)
@@ -105,6 +107,7 @@ export const load: PageServerLoad = async (event) => {
 			templates,
 			questionTemplates,
 			questionSetting,
+			transportField: { label: standardFields.transport.label, choices: standardFields.transport.choices },
 			content: r.plan,
 			namesError: r.namesError,
 			previewBase: f ? `/${f.brandSlug}/${f.slug}` : null,

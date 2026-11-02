@@ -249,7 +249,7 @@
   "hold_field_arrival": "預計抵達時間",
   "hold_field_shuttle": "需要接送服務",
   "hold_field_notes": "特殊需求・其他事項（選填）",
-  "hold_field_notes_ph": "紀念日蛋糕訊息、過敏資訊等",
+  "hold_field_notes_ph": "紀念日蛋糕訊息等",
   "hold_points_label": "使用點數（可使用 {balance}點）",
   "hold_points_use": "點 （1點=1日圓）",
   "hold_points_earn": "本次訂房預計獲得點數",
@@ -1323,5 +1323,12 @@
   "plan_cond_guests": "人數",
   "plan_cond_pick_date": "選擇日期",
   "plan_cond_guests_val": "成人{adults}位・{rooms}間",
-  "plan_cond_change": "變更"
+  "plan_cond_change": "變更",
+  "hold_field_allergies": "食物過敏・不吃的食材",
+  "hold_field_allergies_ph": "例：蝦、蟹（2位）",
+  "hold_field_transport": "前往本館的交通方式",
+  "hold_field_transport_other": "交通方式（其他）的內容",
+  "hold_field_pickup": "接送時間",
+  "hold_transport_car": "開車",
+  "hold_transport_other": "其他"
 }

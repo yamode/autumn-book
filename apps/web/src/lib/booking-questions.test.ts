@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerLines, expandQuestions, mergePartnerQuestions, normalizeBookingQuestions, resolveQuestionAnswers, resolveRoomGenders, validateBookingQuestions } from './booking-questions';
+import { answerLines, expandQuestions, isQuestionShown, mergePartnerQuestions, normalizeBookingQuestions, resolveQuestionAnswers, resolveRoomGenders, validateBookingQuestions } from './booking-questions';
 
 describe('normalizeBookingQuestions', () => {
   it('不正な値を補い、空の項目名を落とし、id を重ねない', () => {
@@ -75,5 +75,42 @@ describe('resolveRoomGenders', () => {
     expect(resolveRoomGenders([2], get({ male_0: '1', female_0: '2' }))).toMatchObject({ ok: false });
     expect(resolveRoomGenders([2], get({ male_0: '3' }))).toMatchObject({ ok: false });
     expect(resolveRoomGenders([2], get({ male_0: 'x' }))).toMatchObject({ ok: false });
+  });
+});
+
+describe('聞く条件（条件分岐）', () => {
+  const qs = normalizeBookingQuestions([
+    { id: 'train', label: '到着予定の列車', type: 'text', required: true, showIf: { field: 'transport', values: ['JR'] } },
+    { id: 'cake', label: 'ケーキ', type: 'select', choices: ['あり', 'なし'] },
+    { id: 'msg', label: 'メッセージ', type: 'text', required: true, showIf: { field: 'cake', values: ['あり'] } },
+    { id: 'deep', label: 'メッセージの色', type: 'text', showIf: { field: 'msg', values: ['x'] } },
+    { id: 'bad', label: '壊れた条件', type: 'text', showIf: { field: 'cake', values: [] } }
+  ]);
+  it('値の無い条件は捨て、ある条件は残す', () => {
+    expect(qs[0].showIf).toEqual({ field: 'transport', values: ['JR'] });
+    expect(qs[4].showIf).toBeUndefined();
+  });
+  it('交通手段・ほかの項目の回答で出し分ける（隠れた項目の先も隠れる）', () => {
+    expect(isQuestionShown(qs[0], qs, { transport: 'JR' })).toBe(true);
+    expect(isQuestionShown(qs[0], qs, { transport: '車' })).toBe(false);
+    expect(isQuestionShown(qs[2], qs, { answers: { cake: 'あり' } })).toBe(true);
+    expect(isQuestionShown(qs[3], qs, { answers: { cake: 'なし', msg: 'x' } })).toBe(false);
+  });
+  it('隠れた項目は必須でも止めず、回答も残さない', () => {
+    const r = resolveQuestionAnswers(qs, { train: '', cake: 'なし', msg: '残っても使わない' }, 1, { transport: '車' });
+    expect(r.ok && r.values).toEqual([{ label: 'ケーキ', value: 'なし' }]);
+    const r2 = resolveQuestionAnswers(qs, { train: '', cake: 'なし' }, 1, { transport: 'JR' });
+    expect(r2.ok).toBe(false);
+  });
+  it('条件の項目は上に置く・見つからなければ止める', () => {
+    const wrong = normalizeBookingQuestions([
+      { id: 'a', label: 'A', type: 'text', showIf: { field: 'b', values: ['x'] } },
+      { id: 'b', label: 'B', type: 'select', choices: ['x', 'y'] }
+    ]);
+    expect(validateBookingQuestions(wrong)).toMatch('上に');
+  });
+  it('取引先と合わせるとき、条件の項目にも印を付ける（交通手段はそのまま）', () => {
+    const merged = mergePartnerQuestions(qs.slice(1, 3), qs.slice(0, 1));
+    expect(merged.map((q) => q.showIf?.field ?? null)).toEqual([null, 'p-cake', 'transport']);
   });
 });

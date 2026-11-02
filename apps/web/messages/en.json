@@ -249,7 +249,7 @@
   "hold_field_arrival": "Estimated arrival time",
   "hold_field_shuttle": "Request shuttle",
   "hold_field_notes": "Special requests (optional)",
-  "hold_field_notes_ph": "Anniversary cake message, dietary restrictions, etc.",
+  "hold_field_notes_ph": "Anniversary cake message, etc.",
   "hold_points_label": "Use points (available: {balance} pts)",
   "hold_points_use": "pts to use (1 pt = ¥1)",
   "hold_points_earn": "Points to be earned on this booking",
@@ -1323,5 +1323,12 @@
   "plan_cond_guests": "Guests",
   "plan_cond_pick_date": "Select dates",
   "plan_cond_guests_val": "{adults} adults · {rooms} room(s)",
-  "plan_cond_change": "Change"
+  "plan_cond_change": "Change",
+  "hold_field_allergies": "Food allergies / dislikes",
+  "hold_field_allergies_ph": "e.g. shrimp, crab (2 guests)",
+  "hold_field_transport": "How will you get here?",
+  "hold_field_transport_other": "Please describe (other)",
+  "hold_field_pickup": "Pick-up time",
+  "hold_transport_car": "Car",
+  "hold_transport_other": "Other"
 }

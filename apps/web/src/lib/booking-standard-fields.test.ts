@@ -11,6 +11,10 @@ describe('毎回聞く項目の文言', () => {
   it('設定が無ければ既定の文言', () => {
     const t = resolveStandardFields({ allergies: { placeholder: '例: そば' } });
     expect(t.allergies).toEqual({ label: '食物アレルギー・苦手な食材', placeholder: '例: そば', help: '', choices: [] });
+    // 交通手段は選択肢の既定（JR・車・その他）、お迎え時間は JR のときに聞く
+    expect(t.transport.choices).toEqual(['JR', '車', 'その他']);
+    expect(t.transport.required).toBe(false);
+    expect(t.pickup.when).toBe('JR');
     expect(t.notes.label).toBe('その他ご要望・備考');
   });
 });

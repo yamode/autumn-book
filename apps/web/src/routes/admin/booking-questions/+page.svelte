@@ -4,10 +4,12 @@
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import type { BookingQuestion } from '$lib/booking-questions';
-	import { STANDARD_FIELDS } from '$lib/booking-standard-fields';
+	import { PICKUP_WHEN_DEFAULT, resolveStandardFields, STANDARD_FIELDS } from '$lib/booking-standard-fields';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
+	// 交通手段の選択肢（施設の設定 → 無ければ JR・車・その他）。お迎え時間・追加の項目の「聞く条件」に使う
+	let transportChoices = $derived(resolveStandardFields(data.standard).transport.choices);
 
 	type Draft = { id: string | null; name: string; questions: BookingQuestion[]; sortOrder: number };
 	const toDrafts = (): Draft[] =>
@@ -78,7 +80,7 @@
 				<input name="sort_order" type="number" bind:value={d.sortOrder} class={inputClass} />
 			</label>
 		</div>
-		<BookingQuestionsEditor bind:questions={d.questions} />
+		<BookingQuestionsEditor bind:questions={d.questions} {transportChoices} transportLabel={resolveStandardFields(data.standard).transport.label} />
 		{#if !isNew && d.id}
 			{@const used = data.usage[d.id] ?? []}
 			<p class="mt-3 text-xs text-stone-500">
@@ -110,11 +112,11 @@
 <form method="POST" action="?/saveStandard" use:enhance={() => async ({ update }) => update({ reset: false })} class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
 	<h2 class="text-sm font-bold text-stone-700">毎回聞く項目</h2>
 	<p class="mt-1 text-xs text-stone-500">
-		どのプランでも必ず聞く項目です。見出し・例文（入力欄の薄い字）・補足の説明だけ変えられます。空欄なら既定の文言を使います。いまは取引先ページの予約入力に出ます。
+		どのプランでも必ず聞く項目です。見出し・例文（入力欄の薄い字）・補足の説明・選択肢を変えられます。空欄なら既定の文言を使います。公式サイトと取引先ページの予約入力に出ます。
 	</p>
 	<div class="mt-3 grid gap-3">
 		{#each STANDARD_FIELDS as f (f.key)}
-			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string; choices?: string[] } | undefined>)[f.key]}
+			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string; choices?: string[]; when?: string; required?: boolean } | undefined>)[f.key]}
 			<div class="rounded-lg border border-stone-200 p-3">
 				<p class="text-sm font-medium text-stone-800">{f.name}</p>
 				<div class="mt-2 grid gap-2 sm:grid-cols-2">
@@ -125,8 +127,18 @@
 					{#if f.choices}
 						<label class="block">
 							<span class="mb-0.5 block text-xs text-stone-500">選択肢（「、」区切り）</span>
-							<input name="{f.key}_choices" value={(saved?.choices ?? []).join('、')} placeholder="例: 15:10、16:20、17:30" class={inputClass} />
+							<input name="{f.key}_choices" value={(saved?.choices ?? []).join('、')} placeholder={f.defaultChoices ? f.defaultChoices.join('、') : '例: 15:10、16:20、17:30'} class={inputClass} />
 						</label>
+						{#if f.key === 'transport'}
+							<label class="flex items-center gap-1.5 text-xs text-stone-600 sm:col-span-2"><input type="checkbox" name="transport_required" checked={saved?.required === true} />必須にする（公式サイトの予約入力）</label>
+						{:else if f.key === 'pickup'}
+							<label class="block">
+								<span class="mb-0.5 block text-xs text-stone-500">お迎え時間を聞く交通手段</span>
+								<select name="pickup_when" class={inputClass}>
+									{#each transportChoices as c (c)}<option value={c} selected={(saved?.when || PICKUP_WHEN_DEFAULT) === c}>{c}</option>{/each}
+								</select>
+							</label>
+						{/if}
 					{:else}
 						<label class="block">
 							<span class="mb-0.5 block text-xs text-stone-500">例文</span>

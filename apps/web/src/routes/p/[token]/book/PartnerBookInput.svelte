@@ -19,7 +19,8 @@
   import { groupNightLines, partnerNightLineText, partnerNightLines, quoteChargeOf } from '$lib/partner-booking';
   import { bookingNameHolderText } from '$lib/pms-partner-guest';
   import { CREDIT_OVER_NOTICE, CREDIT_UNIT_NOTE, creditMonthText, type CreditMonth } from '$lib/partner-credit';
-  import { expandQuestions, type BookingQuestion } from '$lib/booking-questions';
+  import { expandQuestions, isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
+  import { BOOKING_COLUMNS_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
   import PartnerAttachments, { type AttachmentItem } from '$lib/components/PartnerAttachments.svelte';
   import { countRoomTypes } from '$lib/partner-room-types';
   import type { PageData } from './$types';
@@ -358,6 +359,16 @@
   // 予約時に聞く項目: 予約ごと（食事・ご要望の欄）と部屋ごと（宿泊条件の部屋の欄）
   const bookingQuestions = $derived(data.settings.options.filter((o) => o.scope !== 'room'));
   const roomQuestions = $derived(data.settings.options.filter((o) => o.scope === 'room'));
+  // 条件分岐（「JR のときだけ聞く」など）: 入力中の回答（opt_*）と交通手段で、出す項目を決める。隠れた項目は送らない（サーバーも同じ規則で検証する）
+  let liveAnswers = $state<Record<string, string>>({});
+  function readAnswers() {
+    if (!formEl) return;
+    const next: Record<string, string> = {};
+    for (const [k, v] of new FormData(formEl).entries()) if (k.startsWith('opt_')) next[k.slice(4)] = String(v);
+    liveAnswers = next;
+  }
+  const shown = (o: BookingQuestion, roomIndex = 0) =>
+    isQuestionShown(o, data.settings.options, { transport: data.transportOptions.find((t) => t.id === transport)?.label ?? '', answers: liveAnswers }, roomIndex);
   // 部屋ごとの男女の内訳（男性の人数。女性は人数から引く）。部屋数・人数が変わったら選び直してもらう
   let males = $state<string[]>([]);
   $effect(() => {
@@ -384,8 +395,10 @@
   </div>
 {/snippet}
 
-{#snippet questionField(o: BookingQuestion, key: string)}
-  {#if o.type === 'check'}
+{#snippet questionField(o: BookingQuestion, key: string, roomIndex = 0)}
+  {#if !shown(o, roomIndex)}
+    <!-- 条件に合わないので聞かない -->
+  {:else if o.type === 'check'}
     <label class="flex items-center gap-2.5">
       <input type="checkbox" name={`opt_${key}`} required={o.required} class="h-5 w-5 accent-[var(--pt-accent)]" />
       <span>{o.label}{#if o.required} <em class="req">必須</em>{/if}</span>
@@ -412,7 +425,7 @@
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<main class="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:px-6">
+<main class="{BOOKING_PAGE_CLASS} pb-10 pt-6">
   <a href={data.back.href} class="text-sm text-stone-500 hover:text-brand-900">← {data.back.label}</a>
   <h2 class="mt-2 text-2xl font-bold">{step === 'input' ? 'ご予約内容の入力' : 'ご予約内容の確認'}</h2>
   <ol class="mt-3 flex gap-2 text-sm">
@@ -426,6 +439,8 @@
 
   <form
     bind:this={formEl}
+    oninput={readAnswers}
+    onchange={readAnswers}
     method="POST"
     use:enhance={({ cancel }) => {
       // 管理画面からの確認モードは送らない（入力欄で Enter を押したときも）
@@ -454,7 +469,7 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       };
     }}
-    class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start"
+    class="mt-5 {BOOKING_COLUMNS_CLASS}"
   >
     <!-- 予約する施設（画面を開いたときの施設。サーバはこの施設で見積・確定する・2026-10-09 複数施設化） -->
     <input type="hidden" name="facility_id" value={data.portal.facilityId} />
@@ -523,7 +538,7 @@
                     </label>
                   {/if}
                   {#each roomQuestions as o (o.id)}
-                    {@render questionField(o, `${o.id}@${i}`)}
+                    {@render questionField(o, `${o.id}@${i}`, i)}
                   {/each}
                 </div>
               </div>

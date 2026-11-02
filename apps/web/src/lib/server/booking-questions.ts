@@ -18,7 +18,7 @@ import {
   type BookingQuestionTemplate,
   type PlanQuestionMode
 } from '$lib/booking-questions';
-import { normalizeStandardFields, resolveStandardFields, type StandardFieldTexts } from '$lib/booking-standard-fields';
+import { normalizeStandardFields, resolveStandardFields, TRANSPORT_OTHER, type StandardFieldTexts } from '$lib/booking-standard-fields';
 
 type Row = Record<string, unknown>;
 const mapTemplate = (r: Row): BookingQuestionTemplate => ({
@@ -190,12 +190,13 @@ export async function partnerBookingForm(
  * （DB の電文が rooms[0].male / female として PMS へ渡す）。
  * 現地払いの確定（/booking/hold ?/submit）とオンライン決済（/booking/pay prepare）で同じものを通す。
  */
-export async function applyPlanAnswers<G extends { notes?: string }>(
+export async function applyPlanAnswers<G extends GuestAnswersTarget>(
   form: FormData,
   facilityUuid: string,
   ratePlanId: string,
   adults: number,
-  guest: G
+  guest: G,
+  transport = ''
 ): Promise<{ ok: true; guest: G & Partial<RoomGender> } | { ok: false; message: string }> {
   const { questions, askGender } = await planBookingForm(facilityUuid, { ratePlanId });
   let out: G & Partial<RoomGender> = guest;
@@ -205,10 +206,13 @@ export async function applyPlanAnswers<G extends { notes?: string }>(
     out = { ...out, ...g.rooms[0] };
   }
   if (!questions.length) return { ok: true, guest: out };
-  const r = resolveQuestionAnswers(questions, answersFromForm(form, questions, 1), 1);
+  const r = resolveQuestionAnswers(questions, answersFromForm(form, questions, 1), 1, { transport });
   if (!r.ok) return r;
   if (!r.values.length) return { ok: true, guest: out };
-  return { ok: true, guest: { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') } };
+  return {
+    ok: true,
+    guest: { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n'), requests: [...(out.requests ?? []), ...r.values] }
+  };
 }
 
 /** 部屋ごとの回答（confirm_booking_group の p_rooms_detail の要素と同じ形） */
@@ -221,14 +225,69 @@ export type RoomAnswers = { male?: number; female?: number; notes?: string; answ
  *   ・男女の内訳は部屋のプランが聞くときだけ male_<i> / female_<i>
  * 1 室のときは従来の applyPlanAnswers と同じ結果（rooms は null・男女は guest.male / female）にする。
  */
-export async function applyGroupAnswers<G extends { notes?: string }>(
+export async function applyGroupAnswers<G extends GuestAnswersTarget>(
   form: FormData,
   facilityUuid: string,
   rooms: { planId: string; adults: number }[],
   guest: G
 ): Promise<{ ok: true; guest: G & Partial<RoomGender>; rooms: RoomAnswers[] | null } | { ok: false; message: string }> {
+  // 毎回聞く項目（アレルギー・交通手段・お迎え時間）。交通手段は追加で聞く項目の条件にも使う
+  const std = resolveStandardAnswers(form, await loadStandardFieldTexts(facilityUuid));
+  if (!std.ok) return std;
+  const withStd = { ...guest, ...(std.allergies ? { allergies: std.allergies } : {}), requests: [...(guest.requests ?? []), ...std.values] };
+  const done = await applyGroupAnswersInner(form, facilityUuid, rooms, withStd, std.transport);
+  if (!done.ok) return done;
+  // 最後にお客様のご要望（自由入力）。備考の先頭には回答の行が入っているので、ここは入力した文だけ
+  const own = String(form.get('notes') ?? '').trim().slice(0, 1000);
+  const requests = [...(done.guest.requests ?? []), ...(own ? [{ label: 'ご要望', value: own }] : [])];
+  return { ...done, guest: { ...done.guest, notes: [answerLines(std.values), done.guest.notes].filter(Boolean).join('\n'), requests } };
+}
+
+/** 回答を入れる先（予約のゲスト情報） */
+type GuestAnswersTarget = { notes?: string; allergies?: string; requests?: { label: string; value: string }[] };
+
+/**
+ * 毎回聞く項目の回答（公式サイトの予約入力: allergies / transport / transport_other / pickup_time）を検証する。
+ * values は PMS の「事前質問・要望」と備考に入れる行。transport は追加で聞く項目の条件に使う選択肢の値。
+ */
+export function resolveStandardAnswers(
+  form: FormData,
+  texts: StandardFieldTexts
+): { ok: true; allergies: string; transport: string; values: { label: string; value: string }[] } | { ok: false; message: string } {
+  const values: { label: string; value: string }[] = [];
+  const allergies = String(form.get('allergies') ?? '').trim().slice(0, 500);
+  if (allergies) values.push({ label: 'アレルギー', value: allergies });
+  const t = texts.transport;
+  const transport = String(form.get('transport') ?? '').trim();
+  if (transport && !t.choices.includes(transport)) return { ok: false, message: `「${t.label}」の選択肢が正しくありません。` };
+  if (!transport && t.required) return { ok: false, message: `「${t.label}」を選んでください。` };
+  if (transport === TRANSPORT_OTHER) {
+    const other = String(form.get('transport_other') ?? '').trim().slice(0, 60);
+    if (!other) return { ok: false, message: `「${t.label}」（${TRANSPORT_OTHER}）の内容を入力してください。` };
+    values.push({ label: t.label, value: `${TRANSPORT_OTHER}（${other}）` });
+  } else if (transport) {
+    values.push({ label: t.label, value: transport });
+  }
+  // お迎え時間: 決めた交通手段（既定 JR）を選び、施設が時間の選択肢を設定しているときだけ必須
+  const p = texts.pickup;
+  if (transport && transport === p.when && p.choices.length) {
+    const time = String(form.get('pickup_time') ?? '').trim();
+    if (!time) return { ok: false, message: `「${p.label}」を選んでください。` };
+    if (!p.choices.includes(time)) return { ok: false, message: `「${p.label}」の選択肢が正しくありません。` };
+    values.push({ label: p.label, value: time });
+  }
+  return { ok: true, allergies, transport, values };
+}
+
+async function applyGroupAnswersInner<G extends GuestAnswersTarget>(
+  form: FormData,
+  facilityUuid: string,
+  rooms: { planId: string; adults: number }[],
+  guest: G,
+  transport: string
+): Promise<{ ok: true; guest: G & Partial<RoomGender>; rooms: RoomAnswers[] | null } | { ok: false; message: string }> {
   if (rooms.length <= 1) {
-    const one = await applyPlanAnswers(form, facilityUuid, rooms[0]?.planId ?? '', rooms[0]?.adults ?? 1, guest);
+    const one = await applyPlanAnswers(form, facilityUuid, rooms[0]?.planId ?? '', rooms[0]?.adults ?? 1, guest, transport);
     return one.ok ? { ok: true, guest: one.guest, rooms: null } : one;
   }
   const forms = await groupBookingForms(facilityUuid, rooms.map((r) => r.planId));
@@ -238,9 +297,10 @@ export async function applyGroupAnswers<G extends { notes?: string }>(
   const bookingQs = forms.bookingQuestions;
   let out: G & Partial<RoomGender> = guest;
   if (bookingQs.length) {
-    const r = resolveQuestionAnswers(bookingQs, answersFromForm(form, bookingQs, 1), 1);
+    const r = resolveQuestionAnswers(bookingQs, answersFromForm(form, bookingQs, 1), 1, { transport });
     if (!r.ok) return r;
-    if (r.values.length) out = { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n') };
+    if (r.values.length)
+      out = { ...out, notes: [answerLines(r.values), out.notes].filter(Boolean).join('\n'), requests: [...(out.requests ?? []), ...r.values] };
   }
 
   // 男女の内訳（聞かない部屋は人数どおりの値を渡して検証を通し、結果は使わない）
@@ -264,7 +324,7 @@ export async function applyGroupAnswers<G extends { notes?: string }>(
       // その部屋の項目だけを 1 室として検証する（ラベルに「N室目」を付けない＝その部屋の滞在の備考に入るため）
       const answers: Record<string, string> = {};
       for (const q of room.questions) answers[answerKey(q, 0)] = String(form.get(`opt_${answerKey(q, i)}`) ?? '').trim();
-      const r = resolveQuestionAnswers(room.questions, answers, 1);
+      const r = resolveQuestionAnswers(room.questions, answers, 1, { transport });
       if (!r.ok) return { ok: false, message: `${i + 1}室目: ${r.message}` };
       if (r.values.length) {
         d.notes = answerLines(r.values);

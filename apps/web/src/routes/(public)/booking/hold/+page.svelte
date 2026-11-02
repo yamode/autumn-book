@@ -17,6 +17,9 @@
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 	import { viaCrumb } from '$lib/booking-nav';
+	import { isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
+	import { TRANSPORT_OTHER } from '$lib/booking-standard-fields';
+	import { BOOKING_COLUMNS_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
 
 	let { data, form } = $props();
 	// プラン詳細の手前に通ってきたページ（パンくず用）
@@ -46,6 +49,23 @@
 	// 部屋ごとの男女の内訳（男性の人数。女性は部屋の大人の人数から引く）。0 始まりの部屋の番号ごと
 	let males = $state<string[]>([]);
 	const optionKey = (q: { id: string; scope: string }, i: number) => (q.scope === 'room' ? `${q.id}@${i}` : q.id);
+
+	// 毎回聞く項目（アレルギー・交通手段・お迎え時間・備考・2026-11-02）。見出し・説明は施設の設定（日本語）なので、
+	// 日本語の画面だけ施設の文言を使い、英語・繁体字は既定の訳を出す
+	const isJa = getLocale() === 'ja';
+	let sf = $derived(data.expired ? null : data.standardFields);
+	let transport = $state('');
+	const choiceText = (c: string) => (isJa ? c : c === '車' ? m.hold_transport_car() : c === TRANSPORT_OTHER ? m.hold_transport_other() : c);
+	let showPickup = $derived(!!sf && !!transport && transport === sf.pickup.when && sf.pickup.choices.length > 0);
+	// 条件分岐（「JR のときだけ聞く」など）: 入力中の回答（opt_*）と交通手段で出す項目を決める。隠れた項目は送らない（サーバーも同じ規則で検証）
+	let liveAnswers = $state<Record<string, string>>({});
+	function readAnswers() {
+		if (!formEl) return;
+		const next: Record<string, string> = {};
+		for (const [k, v] of new FormData(formEl).entries()) if (k.startsWith('opt_')) next[k.slice(4)] = String(v);
+		liveAnswers = next;
+	}
+	const shownQ = (q: BookingQuestion, list: BookingQuestion[], roomIndex = 0) => isQuestionShown(q, list, { transport, answers: liveAnswers }, roomIndex);
 
 	// GA4 予約ファネル: 仮押さえ→ゲスト情報入力の開始（設計書 §9）
 	$effect(() => {
@@ -252,7 +272,8 @@
 
 <svelte:head><title>{m.hold_title()}</title></svelte:head>
 
-<div class="mx-auto max-w-4xl px-4 py-8">
+<!-- 幅と列は取引先ページの予約入力と共通（lib/booking-layout.ts） -->
+<div class="{BOOKING_PAGE_CLASS} py-8">
 	{#if returnNotice}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{returnNotice}</p>
 	{/if}
@@ -320,7 +341,7 @@
 		{/if}
 
 		<!-- モバイル: 予約内容の要約（明細の aside は長いフォームの下になるため、合計を先に見せる） -->
-		<div class="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-sm md:hidden">
+		<div class="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-sm lg:hidden">
 			<p class="font-medium text-brand-900">{data.facility.name}</p>
 			{#if multi}
 				{#each rooms as r (r.index)}
@@ -339,7 +360,7 @@
 			<a href="#hold-summary" class="mt-1 block text-right text-xs text-accent-600 hover:underline">{m.hold_mobile_see_detail()} ↓</a>
 		</div>
 
-		<div class="mt-6 grid gap-6 md:grid-cols-[1fr_320px]">
+		<div class="mt-6 {BOOKING_COLUMNS_CLASS}">
 			<!-- 入力フォーム -->
 			<div>
 				{#if !data.member}
@@ -356,6 +377,8 @@
 					bind:this={formEl}
 					method="POST"
 					action="?/submit"
+					oninput={readAnswers}
+					onchange={readAnswers}
 					use:enhance={({ cancel }) => {
 						// カードは同じ画面の決済部品で払う・登録する（Enter キーでの送信もここで止めて決済部品へ回す）
 						if (inlinePay) {
@@ -456,7 +479,9 @@
 								{/if}
 								{#each r.questions as q (q.id)}
 									{@const key = optionKey(q, i)}
-									{#if q.type === 'check'}
+									{#if !shownQ(q, r.questions, i)}
+										<!-- 条件に合わないので聞かない -->
+									{:else if q.type === 'check'}
 										<label class="flex items-center gap-2 text-sm">
 											<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
 											<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
@@ -489,10 +514,45 @@
 							<input type="hidden" name="female_0" value={male0 === '' ? '' : String(n - Number(male0))} />
 						</label>
 					{/if}
+					{#if sf}
+						<!-- 毎回聞く項目: 食物アレルギー（顧客マスタと PMS の事前質問「アレルギー」へ） -->
+						<label class="block text-sm">
+							<span class="text-stone-600">{isJa ? sf.allergies.label : m.hold_field_allergies()}</span>
+							{#if isJa && sf.allergies.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.allergies.help}</span>{/if}
+							<textarea name="allergies" rows="2" maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa ? sf.allergies.placeholder : m.hold_field_allergies_ph()}></textarea>
+						</label>
+						<!-- 宿までの交通手段（「その他」は内容を書く欄・お迎え時間は決めた交通手段のときだけ）。追加で聞く項目の条件にも使う -->
+						<label class="block text-sm">
+							<span class="text-stone-600">{isJa ? sf.transport.label : m.hold_field_transport()}{#if sf.transport.required} <span class="text-red-500">*</span>{/if}</span>
+							{#if isJa && sf.transport.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.transport.help}</span>{/if}
+							<select name="transport" bind:value={transport} required={sf.transport.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+								<option value="">{m.hold_select_placeholder()}</option>
+								{#each sf.transport.choices as c (c)}<option value={c}>{choiceText(c)}</option>{/each}
+							</select>
+						</label>
+						{#if transport === TRANSPORT_OTHER}
+							<label class="block text-sm">
+								<span class="text-stone-600">{m.hold_field_transport_other()} <span class="text-red-500">*</span></span>
+								<input name="transport_other" required maxlength="60" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+							</label>
+						{/if}
+						{#if showPickup}
+							<label class="block text-sm">
+								<span class="text-stone-600">{isJa ? sf.pickup.label : m.hold_field_pickup()} <span class="text-red-500">*</span></span>
+								{#if isJa && sf.pickup.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.pickup.help}</span>{/if}
+								<select name="pickup_time" required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+									<option value="">{m.hold_select_placeholder()}</option>
+									{#each sf.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
+								</select>
+							</label>
+						{/if}
+					{/if}
 					<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る。1予約1室なので「部屋ごと」も1回 -->
 					{#each data.questions as q (q.id)}
 						{@const key = q.scope === 'room' ? `${q.id}@0` : q.id}
-						{#if q.type === 'check'}
+						{#if !shownQ(q, data.questions)}
+							<!-- 条件に合わないので聞かない -->
+						{:else if q.type === 'check'}
 							<label class="flex items-center gap-2 text-sm">
 								<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
 								<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
@@ -517,8 +577,9 @@
 					{/if}
 
 					<label class="block text-sm">
-						<span class="text-stone-600">{m.hold_field_notes()}</span>
-						<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.hold_field_notes_ph()}></textarea>
+						<span class="text-stone-600">{isJa && sf ? sf.notes.label : m.hold_field_notes()}</span>
+						{#if isJa && sf?.notes.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.notes.help}</span>{/if}
+						<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa && sf?.notes.placeholder ? sf.notes.placeholder : m.hold_field_notes_ph()}></textarea>
 					</label>
 
 					{#if favRooms.length > 0}
@@ -795,7 +856,7 @@
 			</div>
 
 			<!-- 予約内容サマリ（明細は常に表示: 宿泊料金・ポイント・入湯税・お支払い合計） -->
-			<aside id="hold-summary" class="h-fit scroll-mt-20 rounded-2xl border border-stone-200 bg-white p-5 md:sticky md:top-20">
+			<aside id="hold-summary" class="h-fit scroll-mt-20 rounded-2xl border border-stone-200 bg-white p-5 lg:sticky lg:top-20">
 				<h2 class="mb-3 font-medium text-brand-900">{m.hold_summary_heading()}</h2>
 				<img src={data.room.photos[0]?.url} alt="" class="mb-3 h-32 w-full rounded-lg object-cover" />
 				<dl class="space-y-1.5 text-sm">

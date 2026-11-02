@@ -29,7 +29,7 @@ import {
 import { getLocale } from '$lib/paraglide/runtime';
 import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { applyGroupAnswers, groupBookingForms, planBookingForm } from '$lib/server/booking-questions';
+import { applyGroupAnswers, groupBookingForms, loadStandardFieldTexts, planBookingForm } from '$lib/server/booking-questions';
 import { groupMemberOnsiteHint, groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import { combineQuotes } from '$lib/multi-room';
 import type { BookingQuestion } from '$lib/booking-questions';
@@ -126,7 +126,7 @@ export const load: PageServerLoad = async (event) => {
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
 		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady });
-		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices] = await Promise.all([
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
 			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
@@ -139,7 +139,9 @@ export const load: PageServerLoad = async (event) => {
 			// 支払方法の名前・説明文（施設ごとの上書き・管理画面の支払方法で編集）
 			loadPaymentTexts(hold.facilityId),
 			// 会員のお気に入りの部屋のうち、この日程に空いている部屋（予約確認画面で部屋指定を選べる・確定のときに空きを確かめ直す）
-			favoriteRoomChoicesFor(event, hold.id, sid)
+			favoriteRoomChoicesFor(event, hold.id, sid),
+			// 毎回聞く項目（アレルギー・交通手段・お迎え時間・備考）の見出し・説明・選択肢（施設ごと・管理画面「予約時に聞く項目」）
+			loadStandardFieldTexts(hold.facilityId)
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 
@@ -187,6 +189,7 @@ export const load: PageServerLoad = async (event) => {
 			adminFeePercent,
 			// 1 室: プランの項目（予約ごと・部屋ごとの両方）／複数室: 予約ごとの項目だけ（部屋ごとの項目は rooms[i].questions）
 			questions: bookingForm ? bookingForm.questions : (groupForms?.bookingQuestions ?? []),
+			standardFields,
 			askGender: bookingForm ? bookingForm.askGender : false,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && groupMemberOnsiteHint(roomViews, isMember),
@@ -252,6 +255,8 @@ export const load: PageServerLoad = async (event) => {
 		prepay,
 		adminFeePercent: await loadCancelAdminFeePercent(hold.facilityId),
 		questions: [],
+		// デモは施設の設定が無いので既定の文言（アレルギー・交通手段 JR／車／その他・備考）
+		standardFields: await loadStandardFieldTexts(hold.facilityId),
 		askGender: false,
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),

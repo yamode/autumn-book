@@ -40,19 +40,22 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
-  // 毎回聞く項目（アレルギー・備考）の見出し・例文
+  // 毎回聞く項目（アレルギー・交通手段・お迎え時間・備考）の見出し・例文・選択肢
   saveStandard: async (event) => {
     const denied = denyIfNotStaff(event);
     if (denied) return denied;
     if (!LIVE) return fail(400, { error: NOT_LIVE });
     const form = await event.request.formData();
-    const fields: Record<string, { label: string; placeholder: string; help: string; choices: string }> = {};
+    const fields: Record<string, { label: string; placeholder: string; help: string; choices: string; when: string; required: boolean }> = {};
     for (const f of STANDARD_FIELDS) {
       fields[f.key] = {
         label: String(form.get(`${f.key}_label`) ?? ''),
         placeholder: String(form.get(`${f.key}_placeholder`) ?? ''),
         help: String(form.get(`${f.key}_help`) ?? ''),
-        choices: String(form.get(`${f.key}_choices`) ?? '')
+        choices: String(form.get(`${f.key}_choices`) ?? ''),
+        // お迎え時間を聞く交通手段（pickup）・必須（transport）
+        when: String(form.get(`${f.key}_when`) ?? ''),
+        required: form.get(`${f.key}_required`) === 'on'
       };
     }
     try {

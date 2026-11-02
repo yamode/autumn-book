@@ -484,7 +484,7 @@
 			<input type="hidden" name="template_id" value={qTemplateId} />
 		{/if}
 		{#if qMode === 'custom'}
-			<div class="mt-3"><BookingQuestionsEditor bind:questions={qOwn} /></div>
+			<div class="mt-3"><BookingQuestionsEditor bind:questions={qOwn} transportChoices={data.transportField?.choices} transportLabel={data.transportField?.label} /></div>
 		{/if}
 		<label class="mt-4 flex items-start gap-2 rounded-lg border border-stone-200 p-3 text-sm">
 			<input type="checkbox" name="ask_gender" checked={qs0?.askGender ?? true} class="mt-0.5 h-4 w-4" />

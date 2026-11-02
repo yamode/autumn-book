@@ -441,7 +441,7 @@
 	<!-- レイアウト（2026-11-01）: 左＝見出し・写真・本文・客室、右＝料金と予約ボタン（ページの最後まで追従）。
 	     右カラムを全行にまたがらせ、本文以降も同じグリッドに入れることで追従が写真の高さで止まらないようにする。
 	     スマホは 1 列で「見出し → 写真 → 料金・予約 → 本文」の順（DOM の順のまま） -->
-	<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px] md:gap-x-8">
+	<div class="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-[minmax(0,1fr)_320px] md:gap-x-8">
 		<!-- プランの見出し（宿泊予約サイトと同じく写真の上に大きく） -->
 		<header class="space-y-2 md:col-start-1">
 			{#if data.preview}
