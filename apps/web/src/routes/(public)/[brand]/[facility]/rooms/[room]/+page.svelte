@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PlanCard from '$lib/components/PlanCard.svelte';
-	import PhotoGallery from '$lib/components/PhotoGallery.svelte';
-	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
+	// 客室詳細（施設 → 客室一覧 → 客室詳細）。紹介は取引先ページのお部屋の紹介と同じ部品（2026-11-02）
+	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -12,41 +12,21 @@
 	<title>{m.room_detail_title({ name: data.room.name, facility: data.facility.name })}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-5xl px-4 py-8">
-	<nav class="mb-4 text-xs text-stone-400">
-		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> / {m.room_detail_breadcrumb()} / {data.room.name}
+<div class="mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10" style="--pt-accent: var(--color-brand-800); --pt-accent-soft: var(--color-stone-100)">
+	<nav class="mb-4 text-xs text-stone-500" aria-label="breadcrumb">
+		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> /
+		<a href="{base}/plans" class="hover:underline">{m.plans_breadcrumb()}</a> /
+		<a href="{base}/rooms" class="hover:underline">{m.rooms_list_title()}</a> / {data.room.name}
 	</nav>
 
-	{#if data.room.photos[0]}
-		<img src={data.room.photos[0].url} alt={data.room.photos[0].caption || data.room.name} class="h-80 w-full rounded-2xl object-cover" />
-	{/if}
-
-	<div class="mt-6 flex flex-wrap items-start justify-between gap-4">
-		<div>
-			<h1 class="font-display text-2xl text-brand-900">{data.room.name}</h1>
-			<p class="mt-1 text-stone-600">{data.room.headline}</p>
-			<p class="mt-2 text-sm text-stone-500">{m.room_detail_capacity({ n: String(data.room.capacity), size: String(data.room.sizeM2) })}</p>
-		</div>
-		<div class="flex flex-wrap gap-1.5">
-			{#each data.room.amenities as a}
-				<span class="rounded-full bg-stone-100 px-2.5 py-1 text-xs text-stone-600">{a}</span>
-			{/each}
-		</div>
+	<header class="mb-4">
+		<p class="text-xs tracking-wider text-stone-500">{data.facility.name}</p>
+		<h1 class="font-display text-2xl leading-snug text-brand-900 sm:text-3xl">{data.room.name}</h1>
+		<p class="mt-1 text-sm text-stone-500">{#if data.room.headline && data.room.headline !== data.room.name}{data.room.headline}・{/if}{m.room_detail_capacity({ n: String(data.room.capacity), size: String(data.room.sizeM2) })}</p>
+	</header>
+	<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
+		<PartnerContentBody photos={data.room.photos} description={data.room.description} specs={data.room.specs} sections={data.room.sections} amenities={data.room.amenities} detailLabel={m.room_detail_more()} />
 	</div>
-
-	{#if data.room.description}
-		<p class="mt-4 whitespace-pre-line text-sm leading-relaxed text-stone-700">{data.room.description}</p>
-	{/if}
-
-	<ContentBlocks specs={data.room.specs} sections={data.room.sections} specsTitle={m.room_detail_specs()} />
-
-	<!-- 写真が2枚以上あれば全部見られるように（カテゴリで絞り込めるギャラリー） -->
-	{#if data.room.photos.length > 1}
-		<section class="mt-10">
-			<h2 class="font-display mb-3 text-xl text-brand-900">{m.room_detail_photos()}</h2>
-			<PhotoGallery photos={data.room.photos} />
-		</section>
-	{/if}
 
 	<section class="mt-10">
 		<h2 class="font-display mb-4 text-xl text-brand-900">{m.room_detail_plans()}</h2>

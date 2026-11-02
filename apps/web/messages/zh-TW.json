@@ -1349,5 +1349,12 @@
   "hold_confirm_pay": "付款方式",
   "hold_confirm_points": "使用點數",
   "hold_confirm_yes": "有",
-  "hold_pay_card_next": "信用卡資料將於下一步「確認・預訂」畫面填寫。"
+  "hold_pay_card_next": "信用卡資料將於下一步「確認・預訂」畫面填寫。",
+  "room_detail_more": "浴室・備品・設施",
+  "rooms_list_title": "客房一覽",
+  "rooms_list_empty": "目前尚無可介紹的客房。",
+  "rooms_view_plans": "查看此客房的方案",
+  "plans_view_switch": "瀏覽方式",
+  "plans_tab_plans": "依方案",
+  "plans_tab_rooms": "依客房"
 }

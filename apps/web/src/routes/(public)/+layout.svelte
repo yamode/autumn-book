@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
+	import { navigating } from '$app/state';
+	import PublicPageSkeleton from '$lib/components/PublicPageSkeleton.svelte';
 	import { formatDate } from '$lib/format';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
@@ -47,6 +49,35 @@
 	);
 
 	// 画面遷移したら開いているパネルを閉じる（検索実行・メニューのリンク押下後に残さない）
+	// ページの切り替え（2026-11-02 指示「まずページを切り替え、それから各要素をシマーから徐々に表示」）:
+	// 別のページへ移る間は、120ms 待ってから今のページを隠し、行き先の形の枠（シマー）を出す（B面の +layout と同じ考え方）。
+	// 同じページの読み直し（日付・人数を変えた検索など）とフォームの送信は、各ページの読み込み中の表示に任せる
+	const pendingKind = $derived.by((): 'plans' | 'plan' | 'rooms' | 'room' | 'page' | null => {
+		const to = navigating.to;
+		if (!to || navigating.type === 'form' || to.url.pathname === page.url.pathname) return null;
+		const id = to.route.id ?? '';
+		if (!id.startsWith('/(public)')) return null;
+		if (id.endsWith('/plans/[plan]')) return 'plan';
+		if (id.endsWith('/plans')) return 'plans';
+		if (id.endsWith('/rooms/[room]')) return 'room';
+		if (id.endsWith('/rooms') || id === '/(public)/search') return 'rooms';
+		return 'page';
+	});
+	let skeleton = $state<ReturnType<() => typeof pendingKind>>(null);
+	$effect(() => {
+		const k = pendingKind;
+		if (!k) {
+			skeleton = null;
+			return;
+		}
+		// 枠を出したら先頭へ（行き先のページは先頭から始まるので、枠も先頭から見せる）
+		const t = setTimeout(() => {
+			skeleton = k;
+			window.scrollTo({ top: 0 });
+		}, 120);
+		return () => clearTimeout(t);
+	});
+
 	afterNavigate(() => {
 		mobileSearchOpen = false;
 		mobileMenuOpen = false;
@@ -176,7 +207,8 @@
 	</header>
 
 	<main class="flex-1">
-		{@render children()}
+		{#if skeleton}<PublicPageSkeleton kind={skeleton} />{/if}
+		<div class={skeleton ? 'hidden' : 'contents'}>{@render children()}</div>
 	</main>
 
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 text-stone-300">

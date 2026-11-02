@@ -1,5 +1,6 @@
 <script lang="ts">
-  // 取引先専用ページの紹介の本文（写真・説明・仕様の表・説明ブロック）。「お部屋」「プラン」で共通。
+  // 紹介の本文（写真・説明・仕様の表・説明ブロック）。取引先専用ページの「お部屋」「プラン」と、
+  // A面（公式の予約システム）の客室一覧・客室詳細・お部屋の紹介モーダルで共通（2026-11-02）。
   // 配色は取引先ページのレイアウト（/p/[token]/+layout.svelte）の --pt-* を使う。
   import type { Snippet } from 'svelte';
   import PartnerPhotoGallery from './PartnerPhotoGallery.svelte';
@@ -17,14 +18,15 @@
     photos: ContentPhoto[];
     description: string;
     specs: ContentSpec[];
-    sections: ContentSection[];
+    /** 注意事項（note）・写真（photo）は無くてもよい（A面の紹介ブロック $lib/content-blocks の形も受ける） */
+    sections: (Omit<ContentSection, 'note' | 'photo'> & { note?: string; photo?: string | null })[];
     amenities?: string[];
     detailLabel?: string;
     /** 右欄のいちばん下に置くボタンなど（「お部屋」ページの空室・料金ボタン） */
     actions?: Snippet;
   } = $props();
 
-  const groups = $derived(groupSections(sections));
+  const groups = $derived(groupSections(sections.map((s) => ({ ...s, note: s.note ?? '', photo: s.photo ?? null }))));
 </script>
 
 <div class="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
@@ -130,6 +132,11 @@
 		</div>
 		<p class="text-xs text-stone-500">⌖ {data.facility.prefecture}{data.facility.addressPublic ? ` · ${data.facility.addressPublic}` : ''} · IN {data.facility.checkinTime} / OUT {data.facility.checkoutTime}</p>
 	</header>
+	<!-- プランから探す／お部屋から探す（施設 → 客室一覧 → 客室詳細の入口・取引先ページの「お部屋とプラン」「お部屋」と同じ役割） -->
+	<nav class="mt-4 flex gap-2 border-b border-stone-200 text-sm" aria-label={m.plans_view_switch()}>
+		<span class="-mb-px border-b-2 border-brand-800 px-3 py-2 font-medium text-brand-900" aria-current="page">{m.plans_tab_plans()}</span>
+		<a href="{base}/rooms" class="-mb-px border-b-2 border-transparent px-3 py-2 text-stone-500 hover:text-brand-900">{m.plans_tab_rooms()}</a>
+	</nav>
 
 	{#if data.params.checkin}
 		<div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
@@ -218,7 +225,8 @@
 						{#if item.plans.length}
 							<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
 								{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
-									<div class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+									<!-- 「プランをすべて見る」で出し入れする 3 件目以降は、すっと開閉する（2026-11-02 指示） -->
+									<div transition:slide={{ duration: 280, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
 										<div class="min-w-0">
 											<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
 												{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{option.plan.mealPlan}</span>{/if}

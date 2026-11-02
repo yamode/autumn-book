@@ -1349,5 +1349,12 @@
   "hold_confirm_pay": "Payment",
   "hold_confirm_points": "Points used",
   "hold_confirm_yes": "Yes",
-  "hold_pay_card_next": "You will enter your card details on the next step (Review & confirm)."
+  "hold_pay_card_next": "You will enter your card details on the next step (Review & confirm).",
+  "room_detail_more": "Bath, amenities & facilities",
+  "rooms_list_title": "Rooms",
+  "rooms_list_empty": "No room information is available yet.",
+  "rooms_view_plans": "See plans for this room",
+  "plans_view_switch": "Browse by",
+  "plans_tab_plans": "By plan",
+  "plans_tab_rooms": "By room"
 }

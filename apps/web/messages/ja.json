@@ -1349,5 +1349,12 @@
   "hold_confirm_pay": "お支払",
   "hold_confirm_points": "ポイント利用",
   "hold_confirm_yes": "あり",
-  "hold_pay_card_next": "カードの情報は、次の「確認・確定」の画面で入力します。"
+  "hold_pay_card_next": "カードの情報は、次の「確認・確定」の画面で入力します。",
+  "room_detail_more": "浴室・アメニティ・設備",
+  "rooms_list_title": "客室一覧",
+  "rooms_list_empty": "ご案内できる客室の紹介はまだありません。",
+  "rooms_view_plans": "この部屋のプランを見る",
+  "plans_view_switch": "探し方の切り替え",
+  "plans_tab_plans": "プランから探す",
+  "plans_tab_rooms": "お部屋から探す"
 }
