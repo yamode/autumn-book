@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStandardFields, resolveStandardFields } from './booking-standard-fields';
+import { normalizeFieldOrder, normalizeStandardFields, resolveStandardFields } from './booking-standard-fields';
 
 describe('毎回聞く項目の文言', () => {
   it('空・未知のキーは捨て、変えた文言だけ残す', () => {
@@ -31,5 +31,16 @@ describe('お迎え時間の選択肢', () => {
     expect(t.pickup.choices).toEqual(['15:10', '16:20']);
     expect(t.allergies.choices).toEqual([]);
     expect(t.pickup.label).toBe('お迎えの時間');
+  });
+});
+
+describe('並び順', () => {
+  it('既定は 到着予定 → 交通手段 → アレルギー → 追加の項目 → 備考', () => {
+    expect(resolveStandardFields({}).order).toEqual(['arrival', 'transport', 'allergies', 'questions', 'notes']);
+  });
+  it('知らないキー・重複は捨て、足りないキーは後ろに足す。既定と同じなら保存しない', () => {
+    expect(normalizeFieldOrder('notes, questions,notes,x')).toEqual(['notes', 'questions', 'arrival', 'transport', 'allergies']);
+    expect(normalizeStandardFields({ order: 'notes,arrival' }).order).toEqual(['notes', 'arrival', 'transport', 'allergies', 'questions']);
+    expect(normalizeStandardFields({ order: 'arrival,transport,allergies,questions,notes' }).order).toBeUndefined();
   });
 });

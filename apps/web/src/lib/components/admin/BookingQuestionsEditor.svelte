@@ -56,9 +56,9 @@
       </select>
       {#if o.type === 'select'}
         <input
-          value={o.choices.join('、')}
-          oninput={(e) => (o.choices = e.currentTarget.value.split(/[、,]/).map((c) => c.trim()).filter(Boolean))}
-          placeholder="選択肢を「、」区切りで（例: 18:00、18:30、19:00）"
+          value={o.choices.join(', ')}
+          onchange={(e) => (o.choices = e.currentTarget.value.split(/[、,，]/).map((c) => c.trim()).filter(Boolean))}
+          placeholder="選択肢をカンマ区切りで（例: 18:00, 18:30, 19:00）"
           class={inputClass}
           {disabled}
         />

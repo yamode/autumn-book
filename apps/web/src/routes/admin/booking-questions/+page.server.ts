@@ -59,7 +59,8 @@ export const actions: Actions = {
       };
     }
     try {
-      await saveStandardFieldSettings(createSupabaseServerClient(event), currentFacilityOf(event).uuid, fields);
+      // 並び順（hidden の order・カンマ区切り）も同じ設定に入れる
+      await saveStandardFieldSettings(createSupabaseServerClient(event), currentFacilityOf(event).uuid, { ...fields, order: String(form.get('order') ?? '') });
       return { standardSaved: true };
     } catch (e) {
       return fail(400, { error: messageOf(e) });

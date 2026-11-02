@@ -18,7 +18,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { viaCrumb } from '$lib/booking-nav';
 	import { isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
-	import { TRANSPORT_OTHER } from '$lib/booking-standard-fields';
+	import { DEFAULT_FIELD_ORDER, TRANSPORT_OTHER } from '$lib/booking-standard-fields';
 	import { BOOKING_COLUMNS_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
 
 	let { data, form } = $props();
@@ -54,6 +54,7 @@
 	// 日本語の画面だけ施設の文言を使い、英語・繁体字は既定の訳を出す
 	const isJa = getLocale() === 'ja';
 	let sf = $derived(data.expired ? null : data.standardFields);
+	let fieldOrder = $derived(sf?.order ?? DEFAULT_FIELD_ORDER);
 	let transport = $state('');
 	const choiceText = (c: string) => (isJa ? c : c === '車' ? m.hold_transport_car() : c === TRANSPORT_OTHER ? m.hold_transport_other() : c);
 	let showPickup = $derived(!!sf && !!transport && transport === sf.pickup.when && sf.pickup.choices.length > 0);
@@ -441,22 +442,6 @@
 						</label>
 					{/each}
 
-					<div class="grid gap-4 sm:grid-cols-2">
-						<label class="block text-sm">
-							<span class="text-stone-600">{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</span>
-							<!-- 選択肢は施設ごとの毎回聞く項目（取引先ページと共通）。先頭は「未定」 -->
-							<select name="arrival" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-								<option value="">{m.hold_arrival_undecided()}</option>
-								{#each sf?.arrival.choices ?? [] as t (t)}<option value={t}>{t}</option>{/each}
-							</select>
-						</label>
-						{#if data.facility.access.shuttle.available}
-							<label class="flex items-end gap-2 pb-2 text-sm">
-								<input type="checkbox" name="shuttle" class="h-4 w-4" />
-								<span>{m.hold_field_shuttle()}<span class="block text-xs text-stone-400">{data.facility.access.shuttle.note}</span></span>
-							</label>
-						{/if}
-					</div>
 
 					<!-- 部屋ごとの男女の内訳（プランの設定・既定で聞く。必須・合計＝大人の人数。PMS の部屋別の男女に入る） -->
 					{#if multi}
@@ -514,73 +499,95 @@
 							<input type="hidden" name="female_0" value={male0 === '' ? '' : String(n - Number(male0))} />
 						</label>
 					{/if}
-					{#if sf}
-						<!-- 毎回聞く項目: 食物アレルギー（顧客マスタと PMS の事前質問「アレルギー」へ） -->
-						<label class="block text-sm">
-							<span class="text-stone-600">{isJa ? sf.allergies.label : m.hold_field_allergies()}</span>
-							{#if isJa && sf.allergies.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.allergies.help}</span>{/if}
-							<textarea name="allergies" rows="2" maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa ? sf.allergies.placeholder : m.hold_field_allergies_ph()}></textarea>
-						</label>
-						<!-- 宿までの交通手段（「その他」は内容を書く欄・お迎え時間は決めた交通手段のときだけ）。追加で聞く項目の条件にも使う -->
-						<label class="block text-sm">
-							<span class="text-stone-600">{isJa ? sf.transport.label : m.hold_field_transport()}{#if sf.transport.required} <span class="text-red-500">*</span>{/if}</span>
-							{#if isJa && sf.transport.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.transport.help}</span>{/if}
-							<select name="transport" bind:value={transport} required={sf.transport.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-								<option value="">{m.hold_select_placeholder()}</option>
-								{#each sf.transport.choices as c (c)}<option value={c}>{choiceText(c)}</option>{/each}
-							</select>
-						</label>
-						{#if transport === TRANSPORT_OTHER}
+					<!-- 毎回聞く項目と追加で聞く項目。並び順は管理画面「予約時に聞く項目」で施設ごとに決める（取引先ページと共通・2026-11-02） -->
+					{#each fieldOrder as k (k)}
+						{#if k === 'arrival'}
+							<div class="grid gap-4 sm:grid-cols-2">
+								<label class="block text-sm">
+									<span class="text-stone-600">{isJa && sf ? sf.arrival.label : m.hold_field_arrival()}</span>
+									<!-- 選択肢は施設ごとの毎回聞く項目（取引先ページと共通）。先頭は「未定」 -->
+									<select name="arrival" class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+										<option value="">{m.hold_arrival_undecided()}</option>
+										{#each sf?.arrival.choices ?? [] as t (t)}<option value={t}>{t}</option>{/each}
+									</select>
+								</label>
+								{#if data.facility.access.shuttle.available}
+									<label class="flex items-end gap-2 pb-2 text-sm">
+										<input type="checkbox" name="shuttle" class="h-4 w-4" />
+										<span>{m.hold_field_shuttle()}<span class="block text-xs text-stone-400">{data.facility.access.shuttle.note}</span></span>
+									</label>
+								{/if}
+							</div>
+						{:else if k === 'allergies' && sf}
+								<!-- 毎回聞く項目: 食物アレルギー（顧客マスタと PMS の事前質問「アレルギー」へ） -->
+								<label class="block text-sm">
+									<span class="text-stone-600">{isJa ? sf.allergies.label : m.hold_field_allergies()}</span>
+									{#if isJa && sf.allergies.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.allergies.help}</span>{/if}
+									<textarea name="allergies" rows="2" maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa ? sf.allergies.placeholder : m.hold_field_allergies_ph()}></textarea>
+								</label>
+						{:else if k === 'transport' && sf}
+								<!-- 宿までの交通手段（「その他」は内容を書く欄・お迎え時間は決めた交通手段のときだけ）。追加で聞く項目の条件にも使う -->
+								<label class="block text-sm">
+									<span class="text-stone-600">{isJa ? sf.transport.label : m.hold_field_transport()}{#if sf.transport.required} <span class="text-red-500">*</span>{/if}</span>
+									{#if isJa && sf.transport.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.transport.help}</span>{/if}
+									<select name="transport" bind:value={transport} required={sf.transport.required} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+										<option value="">{m.hold_select_placeholder()}</option>
+										{#each sf.transport.choices as c (c)}<option value={c}>{choiceText(c)}</option>{/each}
+									</select>
+								</label>
+								{#if transport === TRANSPORT_OTHER}
+									<label class="block text-sm">
+										<span class="text-stone-600">{m.hold_field_transport_other()} <span class="text-red-500">*</span></span>
+										<input name="transport_other" required maxlength="60" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+									</label>
+								{/if}
+								{#if showPickup}
+									<label class="block text-sm">
+										<span class="text-stone-600">{isJa ? sf.pickup.label : m.hold_field_pickup()} <span class="text-red-500">*</span></span>
+										{#if isJa && sf.pickup.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.pickup.help}</span>{/if}
+										<select name="pickup_time" required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
+											<option value="">{m.hold_select_placeholder()}</option>
+											{#each sf.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
+										</select>
+									</label>
+								{/if}
+						{:else if k === 'questions'}
+							<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る。1予約1室なので「部屋ごと」も1回 -->
+							{#each data.questions as q (q.id)}
+								{@const key = q.scope === 'room' ? `${q.id}@0` : q.id}
+								{#if !shownQ(q, data.questions)}
+									<!-- 条件に合わないので聞かない -->
+								{:else if q.type === 'check'}
+									<label class="flex items-center gap-2 text-sm">
+										<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
+										<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+									</label>
+								{:else if q.type === 'select'}
+									<label class="block text-sm">
+										<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+										<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
+											<option value="">選択してください</option>
+											{#each q.choices as c}<option value={c}>{c}</option>{/each}
+										</select>
+									</label>
+								{:else}
+									<label class="block text-sm">
+										<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
+										<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+									</label>
+								{/if}
+							{/each}
+							{#if form?.errors?.questions}
+								<p class="text-xs text-red-600">{form.errors.questions}</p>
+							{/if}
+						{:else if k === 'notes'}
 							<label class="block text-sm">
-								<span class="text-stone-600">{m.hold_field_transport_other()} <span class="text-red-500">*</span></span>
-								<input name="transport_other" required maxlength="60" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-							</label>
-						{/if}
-						{#if showPickup}
-							<label class="block text-sm">
-								<span class="text-stone-600">{isJa ? sf.pickup.label : m.hold_field_pickup()} <span class="text-red-500">*</span></span>
-								{#if isJa && sf.pickup.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.pickup.help}</span>{/if}
-								<select name="pickup_time" required class="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2">
-									<option value="">{m.hold_select_placeholder()}</option>
-									{#each sf.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
-								</select>
-							</label>
-						{/if}
-					{/if}
-					<!-- 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は宿への申し送り（備考）の先頭に入る。1予約1室なので「部屋ごと」も1回 -->
-					{#each data.questions as q (q.id)}
-						{@const key = q.scope === 'room' ? `${q.id}@0` : q.id}
-						{#if !shownQ(q, data.questions)}
-							<!-- 条件に合わないので聞かない -->
-						{:else if q.type === 'check'}
-							<label class="flex items-center gap-2 text-sm">
-								<input type="checkbox" name={`opt_${key}`} required={q.required} class="h-4 w-4" />
-								<span>{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-							</label>
-						{:else if q.type === 'select'}
-							<label class="block text-sm">
-								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-								<select name={`opt_${key}`} required={q.required} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">
-									<option value="">選択してください</option>
-									{#each q.choices as c}<option value={c}>{c}</option>{/each}
-								</select>
-							</label>
-						{:else}
-							<label class="block text-sm">
-								<span class="text-stone-600">{q.label}{#if q.required} <span class="text-red-500">*</span>{/if}</span>
-								<input name={`opt_${key}`} required={q.required} maxlength="500" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+								<span class="text-stone-600">{isJa && sf ? sf.notes.label : m.hold_field_notes()}</span>
+								{#if isJa && sf?.notes.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.notes.help}</span>{/if}
+								<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa && sf?.notes.placeholder ? sf.notes.placeholder : m.hold_field_notes_ph()}></textarea>
 							</label>
 						{/if}
 					{/each}
-					{#if form?.errors?.questions}
-						<p class="text-xs text-red-600">{form.errors.questions}</p>
-					{/if}
-
-					<label class="block text-sm">
-						<span class="text-stone-600">{isJa && sf ? sf.notes.label : m.hold_field_notes()}</span>
-						{#if isJa && sf?.notes.help}<span class="mt-0.5 block whitespace-pre-line text-xs leading-5 text-stone-500">{sf.notes.help}</span>{/if}
-						<textarea name="notes" rows="3" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={isJa && sf?.notes.placeholder ? sf.notes.placeholder : m.hold_field_notes_ph()}></textarea>
-					</label>
 
 					{#if favRooms.length > 0}
 						<!-- お気に入りの部屋の指定（会員・その日程に空いているお気に入りの部屋があるときだけ）。料金はかからない。

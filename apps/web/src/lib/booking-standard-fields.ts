@@ -65,16 +65,41 @@ export const PICKUP_WHEN_DEFAULT = 'JR';
 // help = 見出しの下に小さい文字で出す補足の説明（改行可）
 // when = お迎え時間を聞く交通手段の選択肢（pickup だけ）。required = 必須（transport だけ）
 export type StandardFieldText = { label: string; placeholder: string; help: string; choices: string[]; when?: string; required?: boolean };
-export type StandardFieldTexts = Record<StandardFieldKey, StandardFieldText>;
+export type StandardFieldTexts = Record<StandardFieldKey, StandardFieldText> & { order: FieldOrderKey[] };
+
+// 予約入力での並び順（2026-11-02）。questions = 追加で聞く項目（プラン・取引先）のまとまり。
+// お迎え時間・交通手段の「その他」の内容欄は交通手段のすぐ後ろに付いて動く（単独では動かさない）
+export type FieldOrderKey = 'arrival' | 'transport' | 'allergies' | 'questions' | 'notes';
+export const DEFAULT_FIELD_ORDER: FieldOrderKey[] = ['arrival', 'transport', 'allergies', 'questions', 'notes'];
+export const FIELD_ORDER_NAMES: Record<FieldOrderKey, string> = {
+  arrival: '到着予定時刻',
+  transport: '宿までの交通手段（お迎え時間を含む）',
+  allergies: '食物アレルギー・苦手な食材',
+  questions: '追加で聞く項目（プラン・取引先ごとの項目）',
+  notes: 'その他ご要望・備考'
+};
+
+/** 保存してある並び順（知らないキー・重複は捨て、足りないキーは既定の位置で後ろに足す） */
+export function normalizeFieldOrder(raw: unknown): FieldOrderKey[] {
+  const list = Array.isArray(raw) ? raw : String(raw ?? '').split(/[,\s]+/);
+  const seen = new Set<FieldOrderKey>();
+  for (const k of list) if ((DEFAULT_FIELD_ORDER as string[]).includes(String(k))) seen.add(String(k) as FieldOrderKey);
+  return [...seen, ...DEFAULT_FIELD_ORDER.filter((k) => !seen.has(k))];
+}
 
 const MAX_LABEL = 60;
 const MAX_PLACEHOLDER = 200;
 const MAX_HELP = 500;
 
 // 保存する形（施設が変えた文言だけ。空は既定に戻す）
-export function normalizeStandardFields(raw: unknown): Partial<Record<StandardFieldKey, Partial<StandardFieldText>>> {
+export function normalizeStandardFields(raw: unknown): Partial<Record<StandardFieldKey, Partial<StandardFieldText>>> & { order?: FieldOrderKey[] } {
   const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const out: Partial<Record<StandardFieldKey, Partial<StandardFieldText>>> = {};
+  const out: Partial<Record<StandardFieldKey, Partial<StandardFieldText>>> & { order?: FieldOrderKey[] } = {};
+  // 並び順は既定と違うときだけ残す
+  if (src.order != null) {
+    const order = normalizeFieldOrder(src.order);
+    if (order.join() !== DEFAULT_FIELD_ORDER.join()) out.order = order;
+  }
   for (const f of STANDARD_FIELDS) {
     const v = src[f.key] && typeof src[f.key] === 'object' ? (src[f.key] as Record<string, unknown>) : {};
     const label = String(v.label ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_LABEL);
@@ -105,7 +130,7 @@ export function parseChoices(raw: unknown): string[] {
 // 画面に出す文言（施設の設定 → 無ければ既定）
 export function resolveStandardFields(raw: unknown): StandardFieldTexts {
   const saved = normalizeStandardFields(raw);
-  return Object.fromEntries(
+  const texts = Object.fromEntries(
     STANDARD_FIELDS.map((f) => {
       const s = saved[f.key];
       const t: StandardFieldText = {
@@ -118,5 +143,6 @@ export function resolveStandardFields(raw: unknown): StandardFieldTexts {
       if (f.key === 'transport') t.required = s?.required === true;
       return [f.key, t];
     })
-  ) as StandardFieldTexts;
+  ) as Record<StandardFieldKey, StandardFieldText>;
+  return { ...texts, order: saved.order ?? [...DEFAULT_FIELD_ORDER] };
 }

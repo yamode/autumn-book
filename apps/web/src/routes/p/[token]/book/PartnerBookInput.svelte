@@ -582,64 +582,73 @@
         <p id="guest-email-note" class="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-sm leading-6 text-stone-600">
           ご宿泊者様のメールアドレスへは、予約確認メールやお支払いに関するご連絡は一切お送りしません。予約確認は上のご予約者（ご担当者）様へお送りします。
         </p>
-        <!-- 交通手段（任意）。その他は自由入力 -->
-        <fieldset class="mt-4">
-          <legend class={label}>{data.standardFields.transport.label}{#if data.standardFields.transport.required} <em class="req">必須</em>{/if}</legend>
-          {#if data.standardFields.transport.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.transport.help}</span>{/if}
-          <div class="flex flex-wrap gap-2">
-            {#if !data.standardFields.transport.required}
-              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === '' ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
-                <input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--pt-accent)]" />未定
-              </label>
-            {/if}
-            {#each data.standardFields.transport.choices as t (t)}
-              <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === t ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
-                <input type="radio" name="transport" value={t} bind:group={transport} required={data.standardFields.transport.required} class="accent-[var(--pt-accent)]" />{t}
-              </label>
-            {/each}
-          </div>
-          {#if transport && transport === data.standardFields.pickup.when && data.standardFields.pickup.choices.length}
-            <!-- JR のときのお迎え（西和賀＝乗合タクシー・男鹿＝迎えの車。文言・時間は管理画面「予約時に聞く項目」の毎回聞く項目） -->
-            <label class="mt-3 block sm:max-w-sm">
-              <span class={label}>{data.standardFields.pickup.label} <em class="req">必須</em></span>
-              {#if data.standardFields.pickup.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.pickup.help}</span>{/if}
-              <select name="pickup_time" required class={input}>
-                <option value="">選択してください</option>
-                {#each data.standardFields.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
-              </select>
-            </label>
-          {/if}
-          {#if transport === 'その他'}
-            <input name="transport_other" required maxlength="60" placeholder="例: 高速バス・タクシー" aria-label="交通手段（その他）" class={`${input} mt-2 sm:max-w-sm`} />
-          {/if}
-        </fieldset>
       </section>
 
       <!-- 食事・ご要望 -->
       <section class={`card ${step === 'confirm' ? 'hidden' : ''}`}>
-        <h3 class="card-title">お食事・ご要望</h3>
+        <h3 class="card-title">ご到着・お食事・ご要望</h3>
+        <!-- 並び順は管理画面「予約時に聞く項目」の毎回聞く項目で施設ごとに決める（公式サイトと共通・2026-11-02） -->
         <div class="grid gap-4">
-          <label class="block">
-            <span class={label}>{data.standardFields.allergies.label}</span>
-            {#if data.standardFields.allergies.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.allergies.help}</span>{/if}
-            <textarea name="allergies" rows="2" maxlength="500" placeholder={data.standardFields.allergies.placeholder} class={input}></textarea>
-          </label>
-          <label class="block sm:max-w-xs">
-            <span class={label}>{data.standardFields.arrival.label}</span>
-            {#if data.standardFields.arrival.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.arrival.help}</span>{/if}
-            <select name="arrival" class={input}>
-              <option value="">未定</option>
-              {#each data.standardFields.arrival.choices as t (t)}<option value={t}>{t}</option>{/each}
-            </select>
-          </label>
-          {#each bookingQuestions as o (o.id)}
-            {@render questionField(o, o.id)}
+          {#each data.standardFields.order as k (k)}
+            {#if k === 'arrival'}
+              <label class="block sm:max-w-xs">
+                <span class={label}>{data.standardFields.arrival.label}</span>
+                {#if data.standardFields.arrival.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.arrival.help}</span>{/if}
+                <select name="arrival" class={input}>
+                  <option value="">未定</option>
+                  {#each data.standardFields.arrival.choices as t (t)}<option value={t}>{t}</option>{/each}
+                </select>
+              </label>
+            {:else if k === 'transport'}
+              <!-- 交通手段（その他は自由入力・お迎え時間は決めた交通手段のときだけ） -->
+            <fieldset>
+              <legend class={label}>{data.standardFields.transport.label}{#if data.standardFields.transport.required} <em class="req">必須</em>{/if}</legend>
+              {#if data.standardFields.transport.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.transport.help}</span>{/if}
+              <div class="flex flex-wrap gap-2">
+                {#if !data.standardFields.transport.required}
+                  <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === '' ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                    <input type="radio" name="transport" value="" bind:group={transport} class="accent-[var(--pt-accent)]" />未定
+                  </label>
+                {/if}
+                {#each data.standardFields.transport.choices as t (t)}
+                  <label class={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${transport === t ? 'border-[var(--pt-accent)] bg-[var(--pt-accent-soft)]' : 'border-stone-300'}`}>
+                    <input type="radio" name="transport" value={t} bind:group={transport} required={data.standardFields.transport.required} class="accent-[var(--pt-accent)]" />{t}
+                  </label>
+                {/each}
+              </div>
+              {#if transport && transport === data.standardFields.pickup.when && data.standardFields.pickup.choices.length}
+                <!-- JR のときのお迎え（西和賀＝乗合タクシー・男鹿＝迎えの車。文言・時間は管理画面「予約時に聞く項目」の毎回聞く項目） -->
+                <label class="mt-3 block sm:max-w-sm">
+                  <span class={label}>{data.standardFields.pickup.label} <em class="req">必須</em></span>
+                  {#if data.standardFields.pickup.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.pickup.help}</span>{/if}
+                  <select name="pickup_time" required class={input}>
+                    <option value="">選択してください</option>
+                    {#each data.standardFields.pickup.choices as c (c)}<option value={c}>{c}</option>{/each}
+                  </select>
+                </label>
+              {/if}
+              {#if transport === 'その他'}
+                <input name="transport_other" required maxlength="60" placeholder="例: 高速バス・タクシー" aria-label="交通手段（その他）" class={`${input} mt-2 sm:max-w-sm`} />
+              {/if}
+            </fieldset>
+            {:else if k === 'allergies'}
+              <label class="block">
+                <span class={label}>{data.standardFields.allergies.label}</span>
+                {#if data.standardFields.allergies.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.allergies.help}</span>{/if}
+                <textarea name="allergies" rows="2" maxlength="500" placeholder={data.standardFields.allergies.placeholder} class={input}></textarea>
+              </label>
+            {:else if k === 'questions'}
+              {#each bookingQuestions as o (o.id)}
+                {@render questionField(o, o.id)}
+              {/each}
+            {:else if k === 'notes'}
+              <label class="block">
+                <span class={label}>{data.standardFields.notes.label}</span>
+                {#if data.standardFields.notes.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.notes.help}</span>{/if}
+                <textarea name="notes" rows="3" maxlength="1000" placeholder={data.standardFields.notes.placeholder} class={input}></textarea>
+              </label>
+            {/if}
           {/each}
-          <label class="block">
-            <span class={label}>{data.standardFields.notes.label}</span>
-            {#if data.standardFields.notes.help}<span class="mb-1.5 block whitespace-pre-line text-sm leading-6 text-stone-500">{data.standardFields.notes.help}</span>{/if}
-            <textarea name="notes" rows="3" maxlength="1000" placeholder={data.standardFields.notes.placeholder} class={input}></textarea>
-          </label>
         </div>
       </section>
 

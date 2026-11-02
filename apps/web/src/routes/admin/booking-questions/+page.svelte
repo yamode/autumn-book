@@ -4,12 +4,24 @@
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
 	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import type { BookingQuestion } from '$lib/booking-questions';
-	import { PICKUP_WHEN_DEFAULT, resolveStandardFields, STANDARD_FIELDS } from '$lib/booking-standard-fields';
+	import { FIELD_ORDER_NAMES, PICKUP_WHEN_DEFAULT, resolveStandardFields, STANDARD_FIELDS, type FieldOrderKey } from '$lib/booking-standard-fields';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
 	// 交通手段の選択肢（施設の設定 → 無ければ JR・車・その他）。お迎え時間・追加の項目の「聞く条件」に使う
 	let transportChoices = $derived(resolveStandardFields(data.standard).transport.choices);
+	// 毎回聞く項目の並び順（保存したあとは DB の値にそろえる）
+	let order = $state<FieldOrderKey[]>([]);
+	$effect.pre(() => {
+		order = [...resolveStandardFields(data.standard).order];
+	});
+	function moveField(i: number, d: -1 | 1) {
+		const j = i + d;
+		if (j < 0 || j >= order.length) return;
+		const next = [...order];
+		[next[i], next[j]] = [next[j], next[i]];
+		order = next;
+	}
 
 	type Draft = { id: string | null; name: string; questions: BookingQuestion[]; sortOrder: number };
 	const toDrafts = (): Draft[] =>
@@ -108,49 +120,72 @@
 	</form>
 {/snippet}
 
-<!-- 毎回聞く項目（アレルギー・備考）: 項目そのものは固定で、見出しと例文だけ施設ごとに変えられる -->
+{#snippet fieldCard(f: (typeof STANDARD_FIELDS)[number])}
+		{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string; choices?: string[]; when?: string; required?: boolean } | undefined>)[f.key]}
+		<div class="rounded-lg border border-stone-200 p-3">
+			<p class="text-sm font-medium text-stone-800">{f.name}</p>
+			<div class="mt-2 grid gap-2 sm:grid-cols-2">
+				<label class="block">
+					<span class="mb-0.5 block text-xs text-stone-500">見出し</span>
+					<input name="{f.key}_label" value={saved?.label ?? ''} maxlength="60" placeholder={f.label} class={inputClass} />
+				</label>
+				{#if f.choices}
+					<label class="block">
+						<span class="mb-0.5 block text-xs text-stone-500">選択肢（カンマ区切り）</span>
+						<input name="{f.key}_choices" value={(saved?.choices ?? []).join(', ')} placeholder={f.defaultChoices ? f.defaultChoices.join(', ') : '例: 15:10, 16:20, 17:30'} class={inputClass} />
+					</label>
+					{#if f.key === 'transport'}
+						<label class="flex items-center gap-1.5 text-xs text-stone-600 sm:col-span-2"><input type="checkbox" name="transport_required" checked={saved?.required === true} />必須にする</label>
+					{:else if f.key === 'pickup'}
+						<label class="block">
+							<span class="mb-0.5 block text-xs text-stone-500">お迎え時間を聞く交通手段</span>
+							<select name="pickup_when" class={inputClass}>
+								{#each transportChoices as c (c)}<option value={c} selected={(saved?.when || PICKUP_WHEN_DEFAULT) === c}>{c}</option>{/each}
+							</select>
+						</label>
+					{/if}
+				{:else}
+					<label class="block">
+						<span class="mb-0.5 block text-xs text-stone-500">例文</span>
+						<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
+					</label>
+				{/if}
+				<label class="block sm:col-span-2">
+					<span class="mb-0.5 block text-xs text-stone-500">補足の説明（見出しの下に小さい文字で出ます。改行できます）</span>
+					<textarea name="{f.key}_help" rows="2" maxlength="500" placeholder="（なし）" class={inputClass}>{saved?.help ?? ''}</textarea>
+				</label>
+			</div>
+			<p class="mt-1 text-[11px] text-stone-500">{f.note}</p>
+		</div>
+{/snippet}
+
+<!-- 毎回聞く項目: 項目そのものは固定で、見出し・例文・選択肢・並び順を施設ごとに変えられる -->
 <form method="POST" action="?/saveStandard" use:enhance={() => async ({ update }) => update({ reset: false })} class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
 	<h2 class="text-sm font-bold text-stone-700">毎回聞く項目</h2>
 	<p class="mt-1 text-xs text-stone-500">
-		どのプランでも必ず聞く項目です。見出し・例文（入力欄の薄い字）・補足の説明・選択肢を変えられます。空欄なら既定の文言を使います。公式サイトと取引先ページの予約入力に出ます。
+		どのプランでも必ず聞く項目です。見出し・例文（入力欄の薄い字）・補足の説明・選択肢と、予約入力に出る順番（↑↓）を変えられます。空欄なら既定の文言を使います。公式サイトと取引先ページの予約入力に出ます。
 	</p>
+	<!-- 並び順（予約入力に出る順・公式サイトと取引先ページで共通）。お迎え時間は交通手段と一緒に動く -->
+	<input type="hidden" name="order" value={order.join(',')} />
 	<div class="mt-3 grid gap-3">
-		{#each STANDARD_FIELDS as f (f.key)}
-			{@const saved = (data.standard as Record<string, { label?: string; placeholder?: string; help?: string; choices?: string[]; when?: string; required?: boolean } | undefined>)[f.key]}
-			<div class="rounded-lg border border-stone-200 p-3">
-				<p class="text-sm font-medium text-stone-800">{f.name}</p>
-				<div class="mt-2 grid gap-2 sm:grid-cols-2">
-					<label class="block">
-						<span class="mb-0.5 block text-xs text-stone-500">見出し</span>
-						<input name="{f.key}_label" value={saved?.label ?? ''} maxlength="60" placeholder={f.label} class={inputClass} />
-					</label>
-					{#if f.choices}
-						<label class="block">
-							<span class="mb-0.5 block text-xs text-stone-500">選択肢（「、」区切り）</span>
-							<input name="{f.key}_choices" value={(saved?.choices ?? []).join('、')} placeholder={f.defaultChoices ? f.defaultChoices.join('、') : '例: 15:10、16:20、17:30'} class={inputClass} />
-						</label>
-						{#if f.key === 'transport'}
-							<label class="flex items-center gap-1.5 text-xs text-stone-600 sm:col-span-2"><input type="checkbox" name="transport_required" checked={saved?.required === true} />必須にする（公式サイトの予約入力）</label>
-						{:else if f.key === 'pickup'}
-							<label class="block">
-								<span class="mb-0.5 block text-xs text-stone-500">お迎え時間を聞く交通手段</span>
-								<select name="pickup_when" class={inputClass}>
-									{#each transportChoices as c (c)}<option value={c} selected={(saved?.when || PICKUP_WHEN_DEFAULT) === c}>{c}</option>{/each}
-								</select>
-							</label>
-						{/if}
-					{:else}
-						<label class="block">
-							<span class="mb-0.5 block text-xs text-stone-500">例文</span>
-							<input name="{f.key}_placeholder" value={saved?.placeholder ?? ''} maxlength="200" placeholder={f.placeholder || '（なし）'} class={inputClass} />
-						</label>
-					{/if}
-					<label class="block sm:col-span-2">
-						<span class="mb-0.5 block text-xs text-stone-500">補足の説明（見出しの下に小さい文字で出ます。改行できます）</span>
-						<textarea name="{f.key}_help" rows="2" maxlength="500" placeholder="（なし）" class={inputClass}>{saved?.help ?? ''}</textarea>
-					</label>
+		{#each order as k, i (k)}
+			<div class="rounded-xl border border-stone-300 bg-stone-50/60 p-2">
+				<div class="mb-2 flex items-center justify-between gap-2 px-1">
+					<p class="text-xs font-medium text-stone-600">{i + 1}. {FIELD_ORDER_NAMES[k]}</p>
+					<div class="flex gap-1">
+						<button type="button" class="rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-40" onclick={() => moveField(i, -1)} disabled={i === 0} aria-label="上へ">↑</button>
+						<button type="button" class="rounded-md border border-stone-300 bg-white px-3 py-1 text-xs hover:bg-stone-50 disabled:opacity-40" onclick={() => moveField(i, 1)} disabled={i === order.length - 1} aria-label="下へ">↓</button>
+					</div>
 				</div>
-				<p class="mt-1 text-[11px] text-stone-500">{f.note}</p>
+				{#if k === 'questions'}
+					<p class="rounded-lg border border-dashed border-stone-300 bg-white px-3 py-2 text-xs text-stone-500">プランの「予約時に聞く項目」（下のテンプレート・プラン独自）と、取引先ごとの項目がこの位置に出ます。</p>
+				{:else}
+					<div class="grid gap-2">
+						{#each STANDARD_FIELDS.filter((x) => x.key === k || (k === 'transport' && x.key === 'pickup')) as sfDef (sfDef.key)}
+							{@render fieldCard(sfDef)}
+						{/each}
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
