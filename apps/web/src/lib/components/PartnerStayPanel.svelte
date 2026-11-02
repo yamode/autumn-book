@@ -53,30 +53,31 @@
 
   // svelte-ignore state_referenced_locally
   let leftYm = $state((date || today).slice(0, 7));
-  let months = $state<PortalMonthJson[]>([]);
-  let loading = $state(false);
+  // 読み込んだ月（人数ごと）。スマホは月を縦にスクロールするので、読んだ月は捨てずに残し、まだ読んでいない月だけシマーにする
+  let loaded = $state<Record<string, PortalMonthJson>>({});
+  let loadingYms = $state<string[]>([]);
   let failed = $state(false);
+  const keyOf = (ym: string, g: number) => `${g}|${ym}`;
 
-  // 表示する2か月＋連泊の判定用に次の月
+  // 表示中の月（PC は左の月・スマホはいちばん上に見えている月）から3か月（表示する2か月＋連泊の判定用に次の月）
   $effect(() => {
-    const yms = [leftYm, shiftYm(leftYm, 1), shiftYm(leftYm, 2)];
     const g = guests;
-    let cancelled = false;
-    loading = true;
+    const yms = [leftYm, shiftYm(leftYm, 1), shiftYm(leftYm, 2)].filter((ym) => !loaded[keyOf(ym, g)] && !loadingYms.includes(ym));
+    if (!yms.length) return;
+    loadingYms = [...new Set([...loadingYms, ...yms])];
     failed = false;
-    Promise.all(yms.map((ym) => fetchPortalMonth(token, ym, g).catch(() => null)))
-      .then((ms) => {
-        if (cancelled) return;
-        months = ms.filter((m): m is PortalMonthJson => !!m);
-        failed = !ms[0];
-      })
-      .finally(() => {
-        if (!cancelled) loading = false;
+    Promise.all(yms.map((ym) => fetchPortalMonth(token, ym, g).catch(() => null))).then((ms) => {
+      const next = { ...loaded };
+      ms.forEach((m, i) => {
+        if (m) next[keyOf(yms[i], g)] = m;
       });
-    return () => {
-      cancelled = true;
-    };
+      loaded = next;
+      if (yms[0] === leftYm && !ms[0]) failed = true;
+      loadingYms = loadingYms.filter((ym) => !yms.includes(ym));
+    });
   });
+  const months = $derived(Object.entries(loaded).filter(([k]) => k.startsWith(`${guests}|`)).map(([, m]) => m));
+  const loading = $derived(loadingYms.length > 0);
   const bounds = $derived(months[0]?.bounds ?? null);
   const index = $derived(new Map(months.flatMap((m) => m.days.map((d) => [d.date, d] as const))));
   const latestYm = $derived(bounds ? bounds.latest.slice(0, 7) : shiftYm(today.slice(0, 7), 12));
@@ -106,6 +107,7 @@
   {latestYm}
   {loading}
   {failed}
+  pending={(iso) => iso >= today && loadingYms.includes(iso.slice(0, 7))}
   {day}
   {pickApplies}
   onPick={(iso) => {

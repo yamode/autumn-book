@@ -3,6 +3,8 @@
   export type StayDayView = {
     /** 1名1泊の最安（無ければ null） */
     price: number | null;
+    /** 空室数（その日に予約できる部屋の数）。無ければ出さない */
+    rooms?: number | null;
     /** 押せない日（満室・料金なし・範囲外・過去） */
     disabled: boolean;
     /** 料金の代わりに出す印: closed=休館日、dash=満室・料金なし（—） */
@@ -11,11 +13,13 @@
 </script>
 
 <script lang="ts">
-  // 検索バーの日付パネル（共通部品・見た目と操作だけ）。2か月横並び・スマホは1か月。
+  // 検索バーの日付パネル（共通部品・見た目と操作だけ）。PC（md〜）は2か月横並び、スマホは月を縦に並べて上下にスクロール
+  // （2026-11-02 指示: 日付ピッカーを PC は横 2 か月・スマホは縦スクロールで統一。公式のプラン詳細の日付ピッカーも PC はこれ）。
   // 取引先ページ（PartnerStayPanel 経由）と HP 配布の <yamado-search-bar>（embed）で同じものを使う。
   // データの取得はしない: 日ごとの表示は day(iso)、取得中・失敗は loading / failed で外から渡す。
   // 表示中の月（leftYm）は bind で外へ出す（取引先ページは月ごとに読み込むため）。
   // $app/*・paraglide に依存しない（embed は SvelteKit の外で動く）。
+  import type { Snippet } from 'svelte';
   import { isHoliday } from '$lib/holidays';
   import { STAY_SEARCH_LABELS, type StaySearchLabels } from '$lib/stay-search/labels';
   import { addDays, formatMonth, formatShortDate, monthGrid, shiftYm, WEEKDAYS, type StaySearchLang } from '$lib/stay-search/params';
@@ -31,6 +35,8 @@
     latestYm,
     loading = false,
     failed = false,
+    pending,
+    toolbar,
     day,
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
@@ -53,6 +59,10 @@
     latestYm: string;
     loading?: boolean;
     failed?: boolean;
+    /** 料金欄をシマーにする日（月ごとに読み込む取引先ページ用）。省略時は loading 中の今日以降すべて */
+    pending?: (iso: string) => boolean;
+    /** 上段の下に足す欄（公式のプラン詳細の人数・室数など） */
+    toolbar?: Snippet;
     day: (iso: string) => StayDayView;
     lang?: StaySearchLang;
     labels?: StaySearchLabels;
@@ -71,6 +81,34 @@
   if (!leftYm) leftYm = (date || today).slice(0, 7);
 
   const shown = $derived([leftYm, shiftYm(leftYm, 1)]);
+  // スマホ: 今月から最後の月まで縦に並べる。いちばん上に見えている月を leftYm にする（月ごとに読み込む取引先ページが続きを読む）
+  const mobileMonths = $derived.by(() => {
+    const list: string[] = [];
+    for (let ym = today.slice(0, 7); ym <= latestYm && list.length < 24; ym = shiftYm(ym, 1)) list.push(ym);
+    return list;
+  });
+  let scrollEl = $state<HTMLDivElement | null>(null);
+  // 開いたとき: 選んでいる日（無ければ表示中の月）の月までスクロールしておく
+  $effect(() => {
+    if (!scrollEl) return;
+    const target = scrollEl.querySelector<HTMLElement>(`[data-ym="${(date || leftYm).slice(0, 7)}"]`);
+    if (target && scrollEl.offsetParent !== null) scrollEl.scrollTop = target.offsetTop - scrollEl.offsetTop;
+  });
+  $effect(() => {
+    const root = scrollEl;
+    if (!root || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const ym = (top?.target as HTMLElement | undefined)?.dataset.ym;
+        if (ym && ym !== leftYm) leftYm = ym;
+      },
+      { root, rootMargin: '0px 0px -60% 0px' }
+    );
+    for (const el of root.querySelectorAll('[data-ym]')) io.observe(el);
+    return () => io.disconnect();
+  });
+  const isPending = (iso: string) => (pending ? pending(iso) : loading && iso >= today);
   const checkout = $derived(date ? addDays(date, nights) : '');
   const week = $derived(WEEKDAYS[lang]);
   const status = $derived(loading ? 'loading' : failed ? 'failed' : 'hint');
@@ -84,6 +122,51 @@
 
 {#snippet statusText(small: boolean)}
   {#if status === 'loading'}<span class={`${small ? 'text-xs' : 'text-sm'} text-stone-500`} role="status">{labels.loading}</span>{:else if status === 'failed'}<span class={`${small ? 'text-xs' : 'text-sm'} text-rose-700`} role="status">{labels.failed}</span>{:else}<span class="text-sm text-stone-400">{labels.hint}</span>{/if}
+{/snippet}
+
+{#snippet monthView(ym: string)}
+  {@const grid = monthGrid(ym)}
+  <h3 class="mb-2 text-center text-lg font-bold leading-8">{formatMonth(ym, lang)}</h3>
+  <div class="grid grid-cols-7 text-center text-sm" aria-hidden="true">
+    {#each week as w, i}<div class={`py-1.5 font-medium ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-sky-600' : 'text-stone-500'}`}>{w}</div>{/each}
+  </div>
+  <div class="grid grid-cols-7 border-t border-stone-200 text-center">
+    {#each Array(grid.offset) as _, i (`b-${i}`)}
+      <div class="min-h-16 border-b border-stone-100"></div>
+    {/each}
+    {#each grid.dates as iso (iso)}
+      {@const c = day(iso)}
+      {@const dow = (grid.offset + Number(iso.slice(8)) - 1) % 7}
+      {@const selected = iso === date}
+      {@const inStay = !!date && iso > date && iso < checkout}
+      <!-- 取得中は今日以降の料金欄をシマーにする（前の月・人数の料金を押させない） -->
+      {@const pending = isPending(iso)}
+      <button
+        type="button"
+        disabled={pending || c.disabled}
+        aria-pressed={selected}
+        onclick={() => {
+          date = iso;
+          if (pickApplies) onPick?.(iso);
+        }}
+        class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : !c.disabled ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
+      >
+        <span class={`block text-base ${selected ? '' : !pending && c.disabled ? '' : dow === 0 || isHoliday(iso) ? 'text-rose-600' : dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(iso.slice(8))}</span>
+        {#if pending}
+          <span class="shimmer mx-auto mt-1 block h-3.5 w-4/5 max-w-14" aria-hidden="true"></span>
+        {:else if c.price != null}
+          <!-- 金額と「円」を1行に（2026-10-10 指示: 円だけ改行されていた）。狭いマスでも収まるよう少し小さく・字間を詰める。
+               スマホ幅（〜640px）はマスが約43pxしかなく「26,300円」が隣のマスにはみ出すので、円（en は ¥）を省く（2026-10-29） -->
+          <span class={`block whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter sm:text-[13px] ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{#if lang === 'en'}<span class="hidden text-[10px] sm:inline">¥</span>{c.price.toLocaleString('ja-JP')}{:else}{c.price.toLocaleString('ja-JP')}<span class="hidden text-[10px] sm:inline">円</span>{/if}</span>
+          {#if c.rooms != null}<span class={`block whitespace-nowrap text-[10px] leading-tight sm:text-[11px] ${selected ? 'text-white/90' : c.rooms <= 2 ? 'text-rose-600' : 'text-stone-500'}`}>{labels.roomsLeft(c.rooms)}</span>{/if}
+        {:else if c.mark === 'closed'}
+          <span class="block text-xs">{labels.closed}</span>
+        {:else if c.mark === 'dash'}
+          <span class="block text-xs">—</span>
+        {/if}
+      </button>
+    {/each}
+  </div>
 {/snippet}
 
 <div role="dialog" aria-label={labels.dateDialog} class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
@@ -120,53 +203,19 @@
       {#if status === 'hint'}{#each chunks(labels.priceNote(guests, rooms)) as part, i (i)}<span class="inline-block">{part}</span>{/each}{:else}{@render statusText(true)}{/if}
     </span>
   </div>
-  <div class="relative mt-3 grid gap-6 md:grid-cols-2">
+  {#if toolbar}<div class="border-b border-stone-100 py-2.5">{@render toolbar()}</div>{/if}
+  <!-- PC（md〜）: 2か月横並び・矢印で月送り -->
+  <div class="relative mt-3 hidden gap-6 md:grid md:grid-cols-2">
     <button type="button" disabled={leftYm <= today.slice(0, 7)} onclick={() => (leftYm = shiftYm(leftYm, -1))} class="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.prev}>‹</button>
     <button type="button" disabled={shiftYm(leftYm, 1) >= latestYm} onclick={() => (leftYm = shiftYm(leftYm, 1))} class="absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.next}>›</button>
-    {#each shown as ym, mi (ym)}
-      {@const grid = monthGrid(ym)}
-      <section class={mi === 1 ? 'hidden md:block' : ''} aria-label={formatMonth(ym, lang)}>
-        <h3 class="mb-2 text-center text-lg font-bold leading-8">{formatMonth(ym, lang)}</h3>
-        <div class="grid grid-cols-7 text-center text-sm" aria-hidden="true">
-          {#each week as w, i}<div class={`py-1.5 font-medium ${i === 0 ? 'text-rose-600' : i === 6 ? 'text-sky-600' : 'text-stone-500'}`}>{w}</div>{/each}
-        </div>
-        <div class="grid grid-cols-7 border-t border-stone-200 text-center">
-          {#each Array(grid.offset) as _, i (`b-${i}`)}
-            <div class="min-h-16 border-b border-stone-100"></div>
-          {/each}
-          {#each grid.dates as iso (iso)}
-            {@const c = day(iso)}
-            {@const dow = (grid.offset + Number(iso.slice(8)) - 1) % 7}
-            {@const selected = iso === date}
-            {@const inStay = !!date && iso > date && iso < checkout}
-            <!-- 取得中は今日以降の料金欄をシマーにする（前の月・人数の料金を押させない） -->
-            {@const pending = loading && iso >= today}
-            <button
-              type="button"
-              disabled={pending || c.disabled}
-              aria-pressed={selected}
-              onclick={() => {
-                date = iso;
-                if (pickApplies) onPick?.(iso);
-              }}
-              class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : !c.disabled ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
-            >
-              <span class={`block text-base ${selected ? '' : !pending && c.disabled ? '' : dow === 0 || isHoliday(iso) ? 'text-rose-600' : dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(iso.slice(8))}</span>
-              {#if pending}
-                <span class="shimmer mx-auto mt-1 block h-3.5 w-4/5 max-w-14" aria-hidden="true"></span>
-              {:else if c.price != null}
-                <!-- 金額と「円」を1行に（2026-10-10 指示: 円だけ改行されていた）。狭いマスでも収まるよう少し小さく・字間を詰める。
-                     スマホ幅（〜640px）はマスが約43pxしかなく「26,300円」が隣のマスにはみ出すので、円（en は ¥）を省く（2026-10-29） -->
-                <span class={`block whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter sm:text-[13px] ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{#if lang === 'en'}<span class="hidden text-[10px] sm:inline">¥</span>{c.price.toLocaleString('ja-JP')}{:else}{c.price.toLocaleString('ja-JP')}<span class="hidden text-[10px] sm:inline">円</span>{/if}</span>
-              {:else if c.mark === 'closed'}
-                <span class="block text-xs">{labels.closed}</span>
-              {:else if c.mark === 'dash'}
-                <span class="block text-xs">—</span>
-              {/if}
-            </button>
-          {/each}
-        </div>
-      </section>
+    {#each shown as ym (ym)}
+      <section aria-label={formatMonth(ym, lang)}>{@render monthView(ym)}</section>
+    {/each}
+  </div>
+  <!-- スマホ: 月を縦に並べて上下にスクロール -->
+  <div bind:this={scrollEl} class="mt-1 max-h-[60vh] space-y-5 overflow-y-auto overscroll-contain md:hidden">
+    {#each mobileMonths as ym (ym)}
+      <section data-ym={ym} aria-label={formatMonth(ym, lang)} class="pt-2">{@render monthView(ym)}</section>
     {/each}
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">

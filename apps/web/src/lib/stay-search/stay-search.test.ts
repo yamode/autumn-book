@@ -168,14 +168,14 @@ describe('空き日', () => {
 		});
 		expect(data).not.toBeNull();
 		const today = '2026-12-19';
-		expect(dayState('2026-12-20', today, data)).toEqual({ price: 15000, disabled: false, unavailable: false, closed: false });
-		expect(dayState('2026-12-21', today, data)).toEqual({ price: null, disabled: true, unavailable: true, closed: false });
-		expect(dayState('2026-12-22', today, data)).toEqual({ price: null, disabled: true, unavailable: true, closed: true });
+		expect(dayState('2026-12-20', today, data)).toEqual({ price: 15000, rooms: 2, disabled: false, unavailable: false, closed: false });
+		expect(dayState('2026-12-21', today, data)).toEqual({ price: null, rooms: null, disabled: true, unavailable: true, closed: false });
+		expect(dayState('2026-12-22', today, data)).toEqual({ price: null, rooms: null, disabled: true, unavailable: true, closed: true });
 		expect(dayState('2027-01-05', today, data)).toMatchObject({ price: null, disabled: false });
 		expect(dayState('2026-12-18', today, data)).toMatchObject({ disabled: true, unavailable: false });
 	});
 	it('取得失敗（data なし）でも今日以降は選べる', () => {
-		expect(dayState('2026-12-21', '2026-12-19', null)).toEqual({ price: null, disabled: false, unavailable: false, closed: false });
+		expect(dayState('2026-12-21', '2026-12-19', null)).toEqual({ price: null, rooms: null, disabled: false, unavailable: false, closed: false });
 		expect(parseCalendar({ error: 'unavailable' })).toBeNull();
 	});
 });

@@ -1,7 +1,8 @@
 // 日付ピッカー用: 泊数・人数を変えたとき、その条件で予約できる日（と最安「1名1泊」）を /api/stay-calendar から取り直す。
 // スマホの下からのシート（ScrollDatePicker）と空室カレンダーのモーダルで共用する。
 
-export type StayDay = { date: string; price: number | null };
+// rooms = その日に予約できる部屋の数（空室数・古い応答には無い）
+export type StayDay = { date: string; price: number | null; rooms?: number };
 /** closed: 休館日（「満室」と分けて「休館日」と出す） */
 export type StayDays = { days: StayDay[]; through: string; closed?: string[] };
 /** preview: スタッフの販売ページプレビュー（販売中でないプランも本物の空室で取る） */

@@ -5,7 +5,11 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { FACILITY_UUID, sbFacilityClosedDates, sbFacilityStayCalendar } from '$lib/server/supabase-data';
 import { quoteFor, ratePlans, remainingRooms, roomTypes } from '$lib/server/store';
 
-export type StayCalendarDay = { date: string; price: number; remaining: number };
+// remaining = 1 つの部屋タイプで取れる最大の室数、rooms = その日に予約できる部屋の数（部屋タイプの残りの合計＝空室数）
+export type StayCalendarDay = { date: string; price: number; remaining: number; rooms: number };
+
+/** 公開している施設（全施設まとめのカレンダーで使う） */
+export const STAY_FACILITIES = ['nishiwaga', 'oga'] as const;
 
 /** 今日（JST） */
 export function todayJst(): string {
@@ -37,14 +41,16 @@ function demoStayCalendar(facilityId: string, nights: number, adults: number, pl
 	for (let date = todayJst(); date <= through; date = addDays(date, 1)) {
 		let price: number | null = null;
 		let remaining = 0;
+		const perRoom = new Map<string, number>();
 		for (const pair of pairs) {
 			const left = Math.min(...eachNight(date, nights).map((night) => remainingRooms(pair.roomTypeId, night)));
 			if (left <= 0) continue;
 			remaining = Math.max(remaining, left);
+			perRoom.set(pair.roomTypeId, left);
 			const perPerson = Math.round(quoteFor(pair.planId, pair.roomTypeId, date, nights, adults, 0).total / (adults * nights));
 			if (price === null || perPerson < price) price = perPerson;
 		}
-		if (price !== null) days.push({ date, price, remaining });
+		if (price !== null) days.push({ date, price, remaining, rooms: [...perRoom.values()].reduce((s, n) => s + n, 0) });
 	}
 	return days;
 }
@@ -57,6 +63,28 @@ export function resolveStayFacility(raw: string, source: 'demo' | 'supabase' = D
 	const demoId = `f-${raw}`;
 	if (!/^[a-z]+$/.test(raw) || !Object.prototype.hasOwnProperty.call(FACILITY_UUID, demoId)) return raw;
 	return source === 'supabase' ? FACILITY_UUID[demoId] : demoId;
+}
+
+/**
+ * 全施設まとめ（トップなど施設を決めていない検索バー・2026-11-02）: 日ごとに最安は施設の中の最安、空室数は施設の合計。
+ * 休館日はすべての施設が休館の日だけ。取れなかった施設は飛ばす（全部取れなければエラー）
+ */
+export async function allFacilitiesStayCalendar(nights: number, adults: number, months: number) {
+	const results = await Promise.allSettled(STAY_FACILITIES.map((f) => stayCalendar(f, nights, adults, { months })));
+	const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+	if (ok.length === 0) throw new Error('all_facilities_unavailable');
+	const byDate = new Map<string, StayCalendarDay>();
+	for (const cal of ok) {
+		for (const d of cal.days) {
+			const cur = byDate.get(d.date);
+			byDate.set(
+				d.date,
+				cur ? { date: d.date, price: Math.min(cur.price, d.price), remaining: Math.max(cur.remaining, d.remaining), rooms: cur.rooms + d.rooms } : { ...d }
+			);
+		}
+	}
+	const closed = ok.length === STAY_FACILITIES.length ? ok[0].closed.filter((date) => ok.every((cal) => cal.closed.includes(date))) : [];
+	return { days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)), through: ok[0].through, closed };
 }
 
 export async function stayCalendar(

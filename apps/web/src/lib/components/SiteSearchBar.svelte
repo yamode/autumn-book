@@ -1,7 +1,7 @@
 <script lang="ts">
 	// 公開サイト（トップ・施設ページ上部・ヘッダー）の検索バー。見た目と操作は共通部品 StaySearchBar / StaySearchPanel
 	// （取引先ページ・HP 配布の <yamado-search-bar> と同じもの）。
-	// facility（slug）を渡すと日付パネルにその施設の空き日と最安料金を出す。無ければ日付だけ選べる（トップ）。
+	// facility（slug）を渡すと日付パネルにその施設の空き日・最安料金・空室数を出す。無ければ全施設まとめ（最安は施設の中の最安・空室数は合計）。
 	// 「検索」で action（既定 /search）へ checkin / nights / adults / rooms を付けて移動する。
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -47,14 +47,15 @@
 		r = v.rooms;
 	});
 
-	// 空き日（施設が分かるときだけ。泊数×人数ごとにキャッシュ。取れなくても日付は選べる）
+	// 空き日（施設が無ければ全施設まとめ＝facility=all。泊数×人数ごとにキャッシュ。取れなくても日付は選べる）
+	const calendarFacility = $derived(facility || 'all');
 	const cache = new Map<string, StayCalendarData>();
 	let data = $state<StayCalendarData | null>(null);
 	let loading = $state(false);
 	let failed = $state(false);
 	$effect(() => {
-		if (open !== 'date' || !facility) return;
-		const key = `${facility}|${n}|${guests}`;
+		if (open !== 'date') return;
+		const key = `${calendarFacility}|${n}|${guests}`;
 		const hit = cache.get(key);
 		if (hit) {
 			data = hit;
@@ -66,7 +67,7 @@
 		data = null;
 		loading = true;
 		failed = false;
-		fetch(calendarUrl(page.url.origin, facility, n, guests), { signal: ctrl.signal })
+		fetch(calendarUrl(page.url.origin, calendarFacility, n, guests), { signal: ctrl.signal })
 			.then((res) => (res.ok ? res.json() : Promise.reject(new Error(`http_${res.status}`))))
 			.then((json) => {
 				const parsed = parseCalendar(json);
@@ -84,10 +85,8 @@
 	});
 
 	function day(iso: string): StayDayView {
-		// 施設が無い（トップ）ときは過去日だけ押せなくする
-		if (!facility) return { price: null, disabled: iso < today, mark: '' };
 		const st = dayState(iso, today, data);
-		return { price: st.price, disabled: st.disabled, mark: st.closed ? 'closed' : st.unavailable ? 'dash' : '' };
+		return { price: st.price, rooms: st.rooms, disabled: st.disabled, mark: st.closed ? 'closed' : st.unavailable ? 'dash' : '' };
 	}
 
 	function search() {

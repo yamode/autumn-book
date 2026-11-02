@@ -32,6 +32,8 @@ export type StaySearchLabels = {
 	failed: string;
 	hint: string;
 	priceNote: (adults: number, rooms: number) => string;
+	/** 日のセルの空室数 */
+	roomsLeft: (n: number) => string;
 	unavailable: string;
 	soldOut: string;
 	closed: string;
@@ -80,6 +82,7 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		failed: '料金を読み込めませんでした',
 		hint: '泊数を変えると空き日がすぐ変わります',
 		priceNote: (a, r) => `大人${a}名${r > 1 ? `×${r}室` : '・1室'}・1名あたりの最安`,
+		roomsLeft: (n) => `残${n}室`,
 		unavailable: '— は満室・料金なし',
 		soldOut: '満室・料金なし',
 		closed: '休館日',
@@ -123,6 +126,7 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		failed: 'Could not load prices',
 		hint: 'Availability updates as you change nights',
 		priceNote: (a, r) => `${enAdults(a)}${r > 1 ? ` × ${r} rooms` : ' · 1 room'} · lowest price per person`,
+		roomsLeft: (n) => `${n} left`,
 		unavailable: '— Sold out / no price',
 		soldOut: 'Sold out / no price',
 		closed: 'Closed',
@@ -164,6 +168,7 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		failed: '無法載入價格',
 		hint: '變更晚數後空房會立即更新',
 		priceNote: (a, r) => `${a}位大人${r > 1 ? `×${r}間` : '・1間'}・每人最低價`,
+		roomsLeft: (n) => `剩${n}間`,
 		unavailable: '— 為客滿或無價格',
 		soldOut: '客滿或無價格',
 		closed: '休館日',

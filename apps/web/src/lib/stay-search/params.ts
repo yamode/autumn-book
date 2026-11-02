@@ -193,19 +193,25 @@ export function formatPrice(price: number, lang: StaySearchLang): string {
 	return lang === 'en' ? `¥${s}` : `${s}円`;
 }
 
-export type StayCalendarData = { prices: Record<string, number>; closed: Record<string, boolean>; through: string };
+// rooms = その日に予約できる部屋の数（空室数）。古い応答には無い
+export type StayCalendarData = { prices: Record<string, number>; rooms?: Record<string, number>; closed: Record<string, boolean>; through: string };
 
 /** /api/stay-calendar の応答 → { prices: {日付: 1名1泊の最安}, closed: {日付: true}, through }。形が違えば null */
 export function parseCalendar(json: unknown): StayCalendarData | null {
 	const j = json as { days?: unknown; closed?: unknown; through?: unknown } | null;
 	if (!j || !Array.isArray(j.days)) return null;
 	const prices: Record<string, number> = {};
+	const rooms: Record<string, number> = {};
 	const closed: Record<string, boolean> = {};
-	for (const d of j.days as { date?: unknown; price?: unknown }[]) {
-		if (d && isIsoDate(d.date) && typeof d.price === 'number' && d.price > 0) prices[d.date] = d.price;
+	for (const d of j.days as { date?: unknown; price?: unknown; rooms?: unknown; remaining?: unknown }[]) {
+		if (d && isIsoDate(d.date) && typeof d.price === 'number' && d.price > 0) {
+			prices[d.date] = d.price;
+			const n = typeof d.rooms === 'number' ? d.rooms : typeof d.remaining === 'number' ? d.remaining : null;
+			if (n != null && n > 0) rooms[d.date] = n;
+		}
 	}
 	for (const d of Array.isArray(j.closed) ? j.closed : []) if (isIsoDate(d)) closed[d] = true;
-	return { prices, closed, through: isIsoDate(j.through) ? j.through : '' };
+	return { prices, rooms, closed, through: isIsoDate(j.through) ? j.through : '' };
 }
 
 /**
@@ -218,6 +224,7 @@ export function dayState(date: string, today: string, data: StayCalendarData | n
 	const known = !!(data && data.through && date <= data.through && price == null);
 	return {
 		price,
+		rooms: price != null ? (data?.rooms?.[date] ?? null) : null,
 		disabled: date < today || known,
 		unavailable: known && date >= today,
 		closed: !!(known && data?.closed[date])

@@ -2814,7 +2814,7 @@ export async function sbFacilityStayCalendar(
 	nights: number,
 	adults: number,
 	options: { planId?: string; roomTypeId?: string; months?: number; previewPlanId?: string } = {}
-): Promise<{ date: string; price: number; remaining: number }[]> {
+): Promise<{ date: string; price: number; remaining: number; rooms: number }[]> {
 	const { data, error } = await readClient(options.previewPlanId).rpc('facility_stay_calendar', {
 		p_facility: facilityUuid,
 		p_nights: nights,
@@ -2824,10 +2824,12 @@ export async function sbFacilityStayCalendar(
 		p_room_type_id: options.roomTypeId ?? null
 	});
 	if (error) throw error;
-	return ((data ?? []) as { stay_date: string; min_per_person_night: number; remaining: number }[]).map((row) => ({
+	// rooms = その日に予約できる部屋の数（部屋タイプの残りの合計・autumn-shared 20261102045234）。列が無い DB では remaining
+	return ((data ?? []) as { stay_date: string; min_per_person_night: number; remaining: number; rooms_total?: number | null }[]).map((row) => ({
 		date: row.stay_date,
 		price: row.min_per_person_night,
-		remaining: row.remaining
+		remaining: row.remaining,
+		rooms: row.rooms_total ?? row.remaining
 	}));
 }
 

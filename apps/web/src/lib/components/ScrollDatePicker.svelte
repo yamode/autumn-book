@@ -4,6 +4,10 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 	import { StayDaysLoader, type StayDays } from '$lib/stay-days.svelte';
+	// PC（md〜）は検索バー・取引先ページと同じ共通の日付パネル（横に 2 か月）で出す。スマホはこの下からのシート（縦スクロール）
+	import StaySearchPanel, { type StayDayView } from '$lib/components/stay-search/StaySearchPanel.svelte';
+	import { STAY_SEARCH_LABELS } from '$lib/stay-search/labels';
+	import { normalizeLang } from '$lib/stay-search/params';
 
 	let {
 		open = $bindable(false),
@@ -127,6 +131,38 @@
 	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
 
+	// ---- PC: 共通の日付パネル ----
+	let isDesktop = $state(false);
+	$effect(() => {
+		if (typeof matchMedia === 'undefined') return;
+		const mq = matchMedia('(min-width: 768px)');
+		const update = () => (isDesktop = mq.matches);
+		update();
+		mq.addEventListener('change', update);
+		return () => mq.removeEventListener('change', update);
+	});
+	const panelLang = normalizeLang(getLocale()) || 'ja';
+	const panelLabels = STAY_SEARCH_LABELS[panelLang];
+	// パネルの中で選んでいる日（押したら onSelect するので、開くたびに今の日付から）
+	// svelte-ignore state_referenced_locally
+	let panelDate = $state(checkin);
+	$effect(() => {
+		if (open) panelDate = checkin;
+	});
+	const roomsByDate = $derived(new Map((current?.days ?? []).map((d) => [d.date, d.rooms ?? null])));
+	function panelDay(iso: string): StayDayView {
+		const price = priceByDate.get(iso);
+		const knownUnavailable = Boolean(current?.through && iso <= current.through && (price == null || price <= 0));
+		const disabled = iso < minDate || iso > maxDate || knownUnavailable;
+		const has = price != null && price > 0;
+		return {
+			price: has ? price : null,
+			rooms: has ? (roomsByDate.get(iso) ?? null) : null,
+			disabled,
+			mark: has ? '' : knownUnavailable && closedDates.has(iso) ? 'closed' : knownUnavailable ? 'dash' : ''
+		};
+	}
+
 	function choose(date: string) {
 		if (guests) onSelect(date, selectedNights, selectedAdults, guests.maxRooms ? selectedRooms : undefined);
 		else onSelect(date, selectedNights);
@@ -136,7 +172,59 @@
 
 <svelte:window onkeydown={(event) => { if (open && event.key === 'Escape') open = false; }} />
 
-{#if open}
+{#snippet guestControls()}
+	<!-- 人数・室数（人数で 1 泊の料金が変わるので、日付と同じ画面で選ぶ）。日付が決まっていれば、そのままの日付で条件だけ変えられる -->
+	<div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+		{#if guests}
+			<div class="flex items-center gap-3">
+				<span class="text-sm text-stone-600">{m.searchbar_adults()}</span>
+				<button type="button" disabled={selectedAdults <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedAdults--}>−</button>
+				<span class="min-w-14 text-center text-sm font-medium tabular-nums">{m.searchbar_adults_option({ n: String(selectedAdults) })}</span>
+				<button type="button" disabled={selectedAdults >= guests.maxAdults} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedAdults++}>+</button>
+			</div>
+			{#if guests.maxRooms && guests.maxRooms > 1}
+				<div class="flex items-center gap-3">
+					<span class="text-sm text-stone-600">{m.searchbar_rooms()}</span>
+					<button type="button" disabled={selectedRooms <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedRooms--}>−</button>
+					<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_rooms_option({ n: String(selectedRooms) })}</span>
+					<button type="button" disabled={selectedRooms >= guests.maxRooms} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedRooms++}>+</button>
+				</div>
+				{#if selectedRooms > 1}<p class="w-full text-xs text-stone-500">{m.datepicker_per_room_note()}</p>{/if}
+			{/if}
+		{/if}
+		{#if checkin && conditionChanged}
+			<button type="button" onclick={() => choose(checkin)} class="ml-auto rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">{m.datepicker_apply_same_date({ date: formatDate(checkin) })}</button>
+		{/if}
+	</div>
+{/snippet}
+
+{#if open && isDesktop}
+	<!-- PC: 共通の日付パネル（横に 2 か月）を画面の中央に -->
+	<div class="fixed inset-0 z-[100] flex items-center justify-center p-6" role="presentation" style="--pt-accent: var(--color-brand-800); --pt-accent-soft: color-mix(in srgb, var(--color-accent-500) 18%, transparent)">
+		<button type="button" class="absolute inset-0 bg-stone-950/55" aria-label={m.common_close()} onclick={() => (open = false)}></button>
+		<div class="relative max-h-[calc(100vh-3rem)] w-full max-w-5xl overflow-y-auto rounded-3xl">
+			<StaySearchPanel
+				bind:date={panelDate}
+				bind:nights={selectedNights}
+				guests={adultsForDays || 2}
+				rooms={selectedRooms}
+				maxNights={7}
+				today={minDate}
+				latestYm={maxDate.slice(0, 7)}
+				loading={loader.loading && !current}
+				failed={loader.failed}
+				day={panelDay}
+				lang={panelLang}
+				labels={panelLabels}
+				pickApplies
+				onPick={(iso) => choose(iso)}
+				onApply={() => (checkin ? choose(checkin) : (open = false))}
+				onClose={() => (open = false)}
+				toolbar={guests || (checkin && conditionChanged) ? guestControls : undefined}
+			/>
+		</div>
+	</div>
+{:else if open}
 	<div class="fixed inset-0 z-[100] flex items-end justify-center sm:items-center" role="presentation">
 		<button type="button" class="absolute inset-0 bg-stone-950/55" aria-label={m.common_close()} onclick={() => (open = false)}></button>
 		<div role="dialog" aria-modal="true" aria-label={m.searchbar_checkin()} class="relative flex h-[min(86dvh,850px)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[min(92vw,680px)] sm:rounded-2xl">
