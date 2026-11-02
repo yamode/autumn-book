@@ -5,12 +5,12 @@
   // 予約できるプランと料金に切り替える。日程ありの料金・空室は月の JSON（fetchPortalMonth）から画面側で組み立て、
   // 予約の金額・在庫は予約入力・確定時にサーバで改めて確かめる。
   import type { Snippet } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, pushState, replaceState } from '$app/navigation';
   import { navigating } from '$app/state';
   import { page } from '$app/stores';
   import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import PartnerRoomModal from '$lib/components/PartnerRoomModal.svelte';
-  import PartnerPlanDetailModal, { type PlanDetail } from '$lib/components/PartnerPlanDetailModal.svelte';
+  import PartnerPlanDetailView, { type PlanDetail } from '$lib/components/PartnerPlanDetailView.svelte';
   import PartnerSearchBar from '$lib/components/PartnerSearchBar.svelte';
   import { canBookFor, partnerPlanName } from '$lib/partner-booking';
   import { roomParts, type PartnerPlanContent, type PartnerRoomContent } from '$lib/partner-contents';
@@ -62,7 +62,12 @@
     openPanel = '';
     const q = new URLSearchParams({ nights: String(nights), guests: String(guests), rooms: String(rooms) });
     if (date) q.set('date', date);
-    void goto(`${$page.url.pathname}?${q}`, { noScroll: true, keepFocus: true });
+    // プラン詳細を開いたまま検索し直すとき（詳細で日付を選んだ・日付未定に戻した）は、詳細の印も残す（URL と履歴の状態の両方）
+    const openKey = detailKey;
+    if (openKey) q.set(DETAIL_PARAM, openKey);
+    // 詳細を開いたままの検索し直しも履歴を 1 つ積むので、「一覧に戻る」で戻す数（depth）を 1 足す（URL から開いた 0 はそのまま）
+    const depth = detailDepth > 0 ? detailDepth + 1 : 0;
+    void goto(`${$page.url.pathname}?${q}`, { noScroll: true, keepFocus: true, ...(openKey ? { state: { planDetail: openKey, depth } } : {}) });
   }
 
   // ---- 料金の読み込み（日程あり: チェックインから泊数ぶんの月の JSON／日程なし: サーバが組み立てた今後3か月の最安） ----
@@ -220,7 +225,9 @@
     if (data.portal.facilityChoices.length >= 2 && data.portal.facilitySlug) q.set('f', data.portal.facilitySlug);
     return `/p/${token}/book?${q}`;
   };
-  // 「詳細・予約」: プラン詳細のモーダル（一休型）。予約へは中の「予約へ進む」から。
+  // 「詳細・予約」: プラン詳細（2026-11-02〜 一覧と入れ替えて 1 ページとして出す・公式のプラン詳細と同じ作り）。予約へは中の「予約へ進む」から。
+  // URL に ?detail=<部屋>|<プラン>|<料金の planName> を足す（浅い遷移＝ページの読み直し・料金の読み直しはしない）。
+  // ブラウザの「戻る」で一覧へ、再読み込み・URL の共有でも同じ詳細を開く。
   // 日程を選ぶ前は日付未定のまま開き、中の「日付を選択して予約」で日付を選んだら、その日の料金で詳細を表示し直す
   // （pickDateForDetail。料金と内容を確かめてから「予約へ進む」）
   let detail = $state<PlanDetail | null>(null);
@@ -229,7 +236,31 @@
   let detailRow: Row | null = null;
   // 日付未定に戻したとき、一覧（今後3か月の最安）を読み直したら、その行で詳細を表示し直す
   let undatedTarget = $state<{ roomCode: string; planCode: string; planName: string } | null>(null);
-  function openDetail(r: Row, content: PartnerRoomContent | null, p: Params = data.params) {
+  const DETAIL_PARAM = 'detail';
+  const detailKeyOf = (r: { roomCode: string; planCode: string; planName: string }) => `${r.roomCode}|${r.planCode}|${r.planName}`;
+  // 一覧のどこまでスクロールしていたか（詳細から戻ったときに戻す）
+  let listScrollY = 0;
+  // 詳細を開いてから積んだ履歴の数（開いた 1 ＋ 詳細の中で日付を選び直した回数）は履歴の状態（page.state.depth）に持つ
+  // （ブラウザの「戻る」「進む」でもずれない）。「一覧に戻る」はその数だけ戻る。URL から直接開いたとき（0）は書き換えで一覧へ
+  const detailDepth = $derived(Number(($page.state as { depth?: number }).depth ?? 0));
+  // 開いている詳細の印は履歴の状態（page.state.planDetail）で持つ。浅い遷移（pushState）では page.url が変わらないため。
+  // URL の ?detail= は再読み込み・共有のときに開き直すためのもの（最初の 1 回だけ読む）
+  const detailKey = $derived((($page.state as { planDetail?: string }).planDetail ?? null) as string | null);
+  const urlKey = $derived($page.url.searchParams.get(DETAIL_PARAM));
+  let restoredFromUrl = false;
+  const urlWith = (key: string | null) => {
+    const u = new URL(location.href);
+    if (key) u.searchParams.set(DETAIL_PARAM, key);
+    else u.searchParams.delete(DETAIL_PARAM);
+    return u;
+  };
+  function openDetail(r: Row, content: PartnerRoomContent | null, p: Params = data.params, push = true) {
+    const key = detailKeyOf(r);
+    if (push && !detail) listScrollY = window.scrollY;
+    if (push && detailKey !== key) {
+      pushState(urlWith(key), { planDetail: key, depth: 1 });
+      window.scrollTo({ top: 0 });
+    }
     detailParams = p;
     detailRow = r;
     detail = {
@@ -250,9 +281,55 @@
       bookHref: bookHref(r, p)
     };
   }
+  // 一覧に戻る（積んだ履歴があれば「戻る」、無ければ URL から詳細の印を外す。詳細を閉じるのは下の URL の監視）
+  function closeDetail() {
+    if (detailDepth > 0) {
+      history.go(-detailDepth);
+      return;
+    }
+    replaceState(urlWith(null), {});
+  }
+  // 詳細の印が無くなったら（戻る・閉じる）一覧へ戻し、元のスクロール位置へ
+  $effect(() => {
+    if (detailKey || !detail) return;
+    detail = null;
+    detailRow = null;
+    const y = listScrollY;
+    requestAnimationFrame(() => window.scrollTo({ top: y }));
+  });
+  // 詳細の印があるのに開いていない（「進む」・再読み込み・URL の共有）: 一覧が揃ったら、その行で開く
+  $effect(() => {
+    const fromUrl = !detailKey && !restoredFromUrl ? urlKey : null;
+    const key = detailKey ?? fromUrl;
+    if (!key || detail || pending || !extras || undatedTarget || loadError) return;
+    restoredFromUrl = true;
+    const r = rows.find((x) => detailKeyOf(x) === key);
+    if (r) {
+      openDetail(r, roomOf(r.roomCode), data.params, false);
+      // URL から開いたときは、履歴の状態にも印を付ける（以後の「戻る」・閉じるの判定に使う）
+      if (fromUrl) replaceState(urlWith(key), { planDetail: key, depth: 0 });
+      else requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+      return;
+    }
+    // その日程では無いプラン（満室など）: 印を外して一覧のまま
+    replaceState(urlWith(null), {});
+  });
+  // 詳細を開いたまま一覧の条件が変わった（戻る・進むで日程の違う画面へ）: 読み込みが終わったら、その条件で詳細を表示し直す。
+  // その条件に無いプランなら閉じる。同じ一覧（shown）では 1 回だけ（openDetail が detail を書き換えるので、普通の変数で覚える）
+  let syncedShown: Shown | null = null;
+  $effect(() => {
+    const s = shown;
+    if (!s || !detail || !detailKey || pending || undatedTarget || loadError || s === syncedShown) return;
+    syncedShown = s;
+    const same = s.params.date === detailParams.date && s.params.nights === detailParams.nights && s.params.guests === detailParams.guests && s.params.rooms === detailParams.rooms;
+    if (same) return;
+    const r = rows.find((x) => detailKeyOf(x) === detailKey);
+    if (r) openDetail(r, roomOf(r.roomCode), s.params, false);
+    else replaceState(urlWith(null), {});
+  });
   function pickDateForDetail(iso: string, n: number, offer: PartnerStayOffer) {
     const p = { ...detailParams, date: iso, nights: n };
-    openDetail({ ...offer, total: offer.totalPerPerson * p.guests * p.rooms }, roomOf(offer.roomCode), p);
+    openDetail({ ...offer, total: offer.totalPerPerson * p.guests * p.rooms }, roomOf(offer.roomCode), p, false);
     // 後ろの一覧・検索バーもその日程にそろえる（詳細を閉じたとき、その日の一覧になっているように）
     date = iso;
     nights = n;
@@ -263,7 +340,7 @@
     if (!detailRow) return;
     const r = detailRow;
     // 先に日付未定の形で開き直し（料金は読み直すまで今の行の値で「〜」）、一覧を日付なしで検索し直す
-    openDetail({ ...r, total: null }, roomOf(r.roomCode), { ...detailParams, date: '', nights: n });
+    openDetail({ ...r, total: null }, roomOf(r.roomCode), { ...detailParams, date: '', nights: n }, false);
     undatedTarget = { roomCode: r.roomCode, planCode: r.planCode, planName: r.planName };
     date = '';
     nights = n;
@@ -275,12 +352,12 @@
     undatedTarget = null;
     const r = rows.find((x) => x.roomCode === t.roomCode && x.planCode === t.planCode && x.planName === t.planName);
     // 詳細が開いたままなら、今後3か月の最安で表示し直す（スクロール位置も先頭に戻る）
-    if (r && detail) openDetail(r, roomOf(r.roomCode), detailParams);
+    if (r && detail) openDetail(r, roomOf(r.roomCode), detailParams, false);
   });
-  // モーダルの人数を押したら、閉じて検索バーのパネルを開く
+  // 詳細の人数を押したら、一覧に戻って検索バーのパネルを開く
   function reopenSearch(panel: 'date' | 'guests') {
-    detail = null;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    closeDetail();
+    listScrollY = 0;
     openPanel = panel;
   }
 
@@ -465,6 +542,37 @@
   </div>
 {/snippet}
 
+{#if detail}
+  <!-- プラン詳細（一覧と入れ替え・URL の ?detail=）。公式のプラン詳細と同じ作り -->
+  <PartnerPlanDetailView
+    {detail}
+    params={detailParams}
+    times={ex.times}
+    deadlineText={data.deadlineText}
+    cancelText={data.cancelText}
+    paymentLabels={data.paymentLabels}
+    showInventory={data.showInventory}
+    canBook={canBookOn(detailParams.date)}
+    {token}
+    today={data.today}
+    maxNights={data.booking.maxNights}
+    isBookable={canBookOn}
+    onBack={closeDetail}
+    onPickDate={pickDateForDetail}
+    onUndated={undateDetail}
+    onChangeGuests={() => reopenSearch('guests')}
+    memberBenefits={memberMode ? data.memberBenefits : null}
+    memberRankLabel={data.portal.member?.rankLabel ?? ''}
+    onAddToCart={memberMode
+      ? () => {
+          // かごに入れたら一覧へ戻ってかごを見せる
+          const ok = detailRow ? addToCart(detailRow, detailParams) : false;
+          if (ok) closeDetail();
+          return ok;
+        }
+      : null}
+  />
+{:else}
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
   <div class="relative z-30">
     <PartnerSearchBar
@@ -718,6 +826,7 @@
     </div>
   {/if}
 </main>
+{/if}
 
 <PartnerRoomCalendarModal
   bind:room={calendarRoom}
@@ -729,25 +838,5 @@
   today={data.today}
   selected={data.params.date}
   onPick={pickFromCalendar}
-/>
-<PartnerPlanDetailModal
-  bind:detail
-  params={detailParams}
-  times={ex.times}
-  deadlineText={data.deadlineText}
-  cancelText={data.cancelText}
-  paymentLabels={data.paymentLabels}
-  showInventory={data.showInventory}
-  canBook={canBookOn(detailParams.date)}
-  {token}
-  today={data.today}
-  maxNights={data.booking.maxNights}
-  isBookable={canBookOn}
-  onPickDate={pickDateForDetail}
-  onUndated={undateDetail}
-  onChangeGuests={() => reopenSearch('guests')}
-  memberBenefits={memberMode ? data.memberBenefits : null}
-  memberRankLabel={data.portal.member?.rankLabel ?? ''}
-  onAddToCart={memberMode ? () => (detailRow ? addToCart(detailRow, detailParams) : false) : null}
 />
 <PartnerRoomModal bind:room={infoRoom} {token} />
