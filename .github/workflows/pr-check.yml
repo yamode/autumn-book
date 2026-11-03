@@ -1,0 +1,48 @@
+name: PR Check
+
+# PR（主にループ＝AI が自走で作るもの）の合否判定。デプロイはしない。DB には繋がない。
+# deploy.yml と同じ取り込み・ビルドに、型チェック（svelte-check）とテスト（vitest）を足したもの。
+# ここが全部緑でないと、ループは PR を merge しない（docs/loop/GROWTH.md「実装役」参照）。
+# 人の main 直 push はこのワークフローの対象外（従来どおり deploy.yml だけが走る）。
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pr-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 先にビルドする（paraglide の翻訳ファイル src/lib/paraglide がビルドで作られ、無いと型チェックが落ちる）
+      - name: ビルド
+        run: pnpm build
+
+      - name: 型チェック（svelte-check）
+        working-directory: apps/web
+        run: pnpm check
+
+      - name: テスト（vitest）
+        working-directory: apps/web
+        run: pnpm test
