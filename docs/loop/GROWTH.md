@@ -18,7 +18,7 @@ PHASE = 1
 |---|---|
 | 0 | 何もしない（停止中） |
 | 1 | データ取得 → 分析 → 週次レポートと「打ち手」の Issue 起票まで。コード・HP・GTM は触らない |
-| 2 | `loop:go` の付いた打ち手のうち、book の画面・文言・計測イベントの追加を PR にする（merge は人） |
+| 2 | `loop:go` の付いた打ち手のうち、book の画面・文言・計測イベントの追加を PR にする（merge は人。下記「実装役」） |
 | 3 | 低リスクの打ち手（文言・メタ情報・内部リンク）は自分で merge。HP 側は PR まで |
 
 段階を上げ下げするのは人（Hikaru）。ループは自分で PHASE を書き換えない。
@@ -86,6 +86,27 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
 | high | GTM の公開・タグ追加削除、GA4 の設定変更、広告出稿・予算、料金・プラン内容、同意バナー（Consent Mode）、HP の FTPS 本番反映 | **提案まで。実行しない** |
 | mid | book の画面構成・導線の変更、HP のページ追加・構成変更、新しい計測イベントの追加 | PR まで。merge は人 |
 | low | 文言・見出し・meta description・title・alt・内部リンクの追加、構造化データの修正 | PHASE 3 なら book は自分で merge 可（HP は PR まで） |
+
+## 実装役（growth-build・PHASE 2 以上）
+
+毎日 JST 4:30 のルーティン「[集客] autumn-book 実装役 growth-build」が、承認済みの打ち手を PR にする（2026-11-03 Hikaru の指示で追加）。
+PHASE が 2 未満、または `loop:pause` の open Issue があれば何もしない。
+
+- **対象は autumn-book の Issue だけ**：`growth` ＋ `loop:go` が付いた open Issue で、`risk:low` / `risk:mid`、`loop:needs-human` が付いておらず、まだ PR が無いもの。
+  hp-yamado・hp-oga の打ち手は実装しない（HP には PR ゲートが無く、本番反映が FTPS の手作業で high に当たるため。人が進める）。
+- **1サイクル1件。** autumn-book のループ open PR（`loop/` ブランチ）が3本以上なら新規に着手しない。main と衝突しているだけの PR は、版を振り直して全部まとめて直す（本数に数えない）。
+- 触らないもの：上の表の high（GTM・GA4 の設定・料金・プラン・同意バナー）、決済・認証・予約確定の処理（`apps/web/src/lib/server/**` の決済・認証まわり）、migration、`.github/workflows/**`、`.env*`。当たると分かったら実装せず `loop:needs-human`。
+  計測イベントを足すときはコードの送信部分だけを直し、GA4 側の設定（コンバージョン・カスタム定義）は変えない。
+- 差分は300行まで（package.json・テストを除く）。ブランチは `loop/<番号>-<短い英語slug>`。main へ直接 push しない。
+- 版上げ：ルートの `package.json` と `apps/web/package.json` の version を同じ値に上げる（文言・修正は PATCH、画面の機能追加は MINOR）。コミットは日本語で末尾に `(vX.Y.Z)`。
+- 多言語：画面の文言を足したら `apps/web/messages/` の各言語にも足す（欠けたら PR にそう書く）。
+- PR ゲート：`.github/workflows/pr-check.yml`（型検査・テスト・ビルド）が全部緑でなければ merge しない。
+- レビューは実装したのと**別のエージェント**が diff と Issue だけを見て行う。観点：打ち手の目的と「測り方」が満たせるか／予約・決済の導線を壊していないか／個人情報／多言語の欠け。直しの往復は2回まで。
+- PR 本文には、元の打ち手の Issue（`Refs #<番号>`）と「測り方（どの指標を何週間見るか）」を書く。**`Closes` は使わない**（打ち手の Issue は、週次分析が効いた／効かなかったを判定して閉じる）。
+- merge：PHASE 2 は人（承認ボードの「マージ」か GitHub）。PHASE 3 では、`risk:low` で差分がすべて low、人が付けた `loop:go`、pr-check 緑、レビューで重大な指摘なし、このファイルに `AUTO_MERGE_LOW = off` と書かれていない、をすべて満たすものだけ実装役が squash merge してよい（1回1本まで）。
+  merge 後は main の `Deploy to Cloudflare Pages`（ヘルスチェック込み）が success になるのを確かめ、失敗なら revert の PR を出して `loop:needs-human` を付ける。
+- merge されたら、打ち手の Issue に「vX.Y.Z で反映しました（測定の起点：反映日）」とコメントする。週次分析はその日を起点に効果を測る。
+- 記録：日誌（#1）にコメントで1件残す。
 
 ## 守ること
 
