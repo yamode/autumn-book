@@ -83,7 +83,7 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
 
 | リスク | 例 | 扱い |
 |---|---|---|
-| high | GTM の公開・タグ追加削除、GA4 の設定変更、広告出稿・予算、料金・プラン内容、同意バナー（Consent Mode）、HP の FTPS 本番反映 | **提案まで。実行しない** |
+| high | `docs/loop/**`（この規則と指示の正本）・GTM の公開・タグ追加削除、GA4 の設定変更、広告出稿・予算、料金・プラン内容、同意バナー（Consent Mode）、HP の FTPS 本番反映 | **提案まで。実行しない** |
 | mid | book の画面構成・導線の変更、HP のページ追加・構成変更、新しい計測イベントの追加 | PR まで。merge は人 |
 | low | 文言・見出し・meta description・title・alt・内部リンクの追加、構造化データの修正 | PHASE 3 なら book は自分で merge 可（HP は PR まで） |
 
@@ -107,6 +107,12 @@ PHASE が 2 未満、または `loop:pause` の open Issue があれば何もし
   merge 後は main の `Deploy to Cloudflare Pages`（ヘルスチェック込み）が success になるのを確かめ、失敗なら revert の PR を出して `loop:needs-human` を付ける。
 - merge されたら、打ち手の Issue に「vX.Y.Z で反映しました（測定の起点：反映日）」とコメントする。週次分析はその日を起点に効果を測る。
 - 記録：日誌（#1）にコメントで1件残す。
+
+## 指示の正本（ルーティンのプロンプト）
+
+- 各ルーティンの指示は `docs/loop/prompts/` の `growth-daily.md`（健康診断）・`growth-weekly.md`（週次分析）・`growth-build.md`（実装役）が正本。ルーティン本文は「このファイルを読んで `---` より後ろに従う」だけにしてあり、実行のたびに main を読む。
+- 指示を変えるのは人。クラウドルーティン台帳の「相談」から開いたセッションで正本を直す PR を作り、人が merge する（merge した次の実行から効く）。
+- ループ（発見役・実装役）は `docs/loop/**` を変えない・変える PR を作らない・merge しない。変えたほうがよいと思ったら、日誌に提案として書くだけにする。
 
 ## 守ること
 
