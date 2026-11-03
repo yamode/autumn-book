@@ -11,7 +11,7 @@ AI が人の指示なしで、autumn-book と連携サイト（hp-yamado・hp-og
 ## 現在の段階
 
 ```
-PHASE = 1
+PHASE = 2
 ```
 
 | PHASE | ループがやってよいこと |
