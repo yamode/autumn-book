@@ -3,14 +3,14 @@
 //   start   … Cookie の stay token で呼を作る → { callId, callSecret, ringTimeoutSec }。受電端末へ push（intercom-invite）
 //   send    … シグナル（offer / ice / bye）送信
 //   fetch   … 相手のシグナルと呼の状態を after 以降だけ取得（store-and-forward の正）
-//   hangup  … 取消（呼出中）／終話（通話中）
-//   timeout … 呼出の時間切れ（missed）
+//   hangup  … 取消（呼出中）／終話（通話中）。取消なら受電端末へ取消の push（intercom-invite cancel）
+//   timeout … 呼出の時間切れ（missed）。同じく取消の push
 //   ice     … ICE サーバ（Cloudflare Realtime TURN の短命クレデンシャル。CF_TURN_KEY_ID / CF_TURN_API_TOKEN 未設定なら STUN のみ）
 // stay token はブラウザに出さない。call_secret は呼ごとの使い捨てで、この呼の操作にしか使えない。
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { guestRpc, inviteIntercomDevices, warmIntercomInvite } from '$lib/server/intercom';
+import { cancelIntercomDevices, guestRpc, inviteIntercomDevices, warmIntercomInvite } from '$lib/server/intercom';
 import type { RequestHandler } from './$types';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -109,5 +109,12 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 			return json({ error: 'invalid_params' }, { status: 400 });
 	}
 	if (res.error) return json({ error: res.error }, { status: 400 });
+	// 呼出のまま終わった（取消・時間切れ）なら、鳴っている受電端末を push で止める。ゲストは待たせない
+	const st = (res.data as { status?: string } | null)?.status;
+	if ((action === 'hangup' || action === 'timeout') && (st === 'canceled' || st === 'missed')) {
+		const cancel = cancelIntercomDevices(callId, secret);
+		if (platform?.context?.waitUntil) platform.context.waitUntil(cancel);
+		else await cancel;
+	}
 	return json(res.data ?? {});
 };

@@ -31,6 +31,27 @@ export async function inviteIntercomDevices(callId: string, callSecret: string):
 }
 
 /**
+ * 呼出の取消（ゲストが呼出をやめた・時間切れ）を受電端末へ push で知らせる（intercom-invite の cancel）。
+ * ロック中・背面の iPhone は裏取りのポーリングが回らず、着信が鳴り続けるため（2026-11-05）。
+ * 1 呼 1 回・取消済みの呼だけ・ビルド 9 以上の端末だけに送るのは Function 側で守る。失敗しても取消は済んでいる。
+ */
+export async function cancelIntercomDevices(callId: string, callSecret: string): Promise<void> {
+	const url = publicEnv.PUBLIC_SUPABASE_URL;
+	const key = publicEnv.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+	if (!url || !key) return;
+	try {
+		await fetch(`${url}/functions/v1/intercom-invite`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', apikey: key },
+			body: JSON.stringify({ cancel: true, call_id: callId, call_secret: callSecret }),
+			signal: AbortSignal.timeout(8000)
+		});
+	} catch {
+		/* push は補助。受電アプリは裏取りでも閉じる */
+	}
+}
+
+/**
  * 着信 push の送信関数（intercom-invite）を先に起こし、APNs の署名と接続を済ませておく。
  * ゲストが「フロントを呼ぶ」を押した時点で呼ぶ。Edge Function の起き直し（約 1.5 秒）と
  * APNs への初回接続を発信前に済ませることで、受電側が鳴るまでの時間を縮める。何も送らない。
