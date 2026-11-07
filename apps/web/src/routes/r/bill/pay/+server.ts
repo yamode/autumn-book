@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
+import { waitUntilOf } from '$lib/server/access-log-core';
 import { paymentIdOfIntent } from "$lib/server/inroom-receipt";
 import { canTestInroomPayment, confirmInroomIntent, prepareInroomPayment, prepareInroomTestPayment } from '$lib/server/inroom-bill';
 import { billPayErrorKind } from '$lib/inroom-bill';
@@ -8,7 +9,7 @@ import type { RequestHandler } from './$types';
 
 // 客室案内の精算のオンライン決済（2026-10-17）。action=prepare（PaymentIntent を作る）／confirm（決済後の確定）。
 // 滞在は httpOnly Cookie（ab_stay）の滞在トークンで決まる。金額は DB が数え直し、画面の額と違えば断る
-export const POST: RequestHandler = async ({ cookies, request, url, locals }) => {
+export const POST: RequestHandler = async ({ cookies, request, url, locals, platform }) => {
 	const headers = { 'cache-control': 'no-store' };
 	const token = cookies.get('ab_stay');
 	if (!token || DATA_SOURCE !== 'supabase') return json({ ok: false, kind: 'unavailable' }, { status: 400, headers });
@@ -28,11 +29,11 @@ export const POST: RequestHandler = async ({ cookies, request, url, locals }) =>
 			// 選んだ請求書（請求書が複数ある滞在だけ）。形が違えば指定なし扱いにせず断る
 			const billRaw = String(fd.get('billId') ?? '').trim();
 			if (billRaw && !/^[0-9a-f-]{36}$/i.test(billRaw)) throw new Error('amount_changed');
-			const r = await prepareInroomPayment(token, amount, billRaw || null, String(fd.get('email') ?? ''));
+			const r = await prepareInroomPayment(token, amount, billRaw || null, String(fd.get('email') ?? ''), String(fd.get('name') ?? ''));
 			return json({ ok: true, ...r, returnUrl: `${url.origin}/r/bill/pay/return` }, { headers });
 		}
 		if (fd.get('action') === 'confirm') {
-			const result = await confirmInroomIntent(String(fd.get('intentId') ?? ''), stay.tokenId);
+			const result = await confirmInroomIntent(String(fd.get('intentId') ?? ''), stay.tokenId, waitUntilOf(platform));
 			const paid = result === 'paid' || result === 'already';
 			const paymentId = paid ? await paymentIdOfIntent(stay.tokenId, String(fd.get('intentId') ?? '')).catch(() => null) : null;
 			return json({ ok: paid || result === 'test', result, paymentId }, { status: result === 'pending' ? 202 : 200, headers });

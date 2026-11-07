@@ -283,8 +283,12 @@ export const createPaymentIntent = (args: {
 
 export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
 /** 未決済の PaymentIntent のレシート送り先を後から変える（同じ台帳行で決済をやり直すとき） */
-export const updatePaymentIntentReceiptEmail = (id: string, receiptEmail: string, idempotencyKey: string) =>
-  stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}`, { receipt_email: receiptEmail }, idempotencyKey);
+export const updatePaymentIntentReceipt = (id: string, args: { email?: string | null; name?: string | null }) =>
+  stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}`, {
+    ...(args.email ? { receipt_email: args.email } : {}),
+    // 領収書の宛名（Book の領収書 PDF 用）。空文字を渡すと Stripe 側で消える
+    metadata: { receipt_name: args.name ?? '' }
+  });
 export const cancelPaymentIntent = (id: string, idempotencyKey: string) => stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey);
 
 // チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。

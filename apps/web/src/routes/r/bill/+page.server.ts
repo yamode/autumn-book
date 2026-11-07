@@ -3,6 +3,7 @@ import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { inroomPaymentReady, inroomTestPaymentBlocker, loadStayBill } from '$lib/server/inroom-bill';
+import { defaultAddresseeForToken } from '$lib/server/inroom-receipt';
 import { stripePublishableKey } from '$lib/server/stripe';
 import { anyBillFlag } from '$lib/inroom-bill';
 import { loadDemoPreview } from '$lib/server/inroom-settings';
@@ -27,8 +28,11 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
 	// プレビュー（見本の滞在）で管理者だけ: 本番の Stripe で ¥100 のテスト決済（2026-10-17）。お客様・本物の滞在には出ない
 	const testBlocker = bill.flags.online && bill.isDemo ? inroomTestPaymentBlocker(locals) : null;
 	const testPayment = bill.flags.online && bill.isDemo && stay.isDemo === true && inroomPaymentReady() && testBlocker === null;
+	// 決済画面の「領収書の宛名」の既定（顧客マスタの領収書名義 → フルネーム → 滞在コードのお名前）
+	const receiptDefaultName = canPay ? await defaultAddresseeForToken(stay.tokenId, stay.guestName) : '';
 	return {
 		bill,
+		receiptDefaultName,
 		stripeKey: canPay || testPayment ? stripePublishableKey() : null,
 		testPayment,
 		// 見本の滞在でテスト決済を出せないとき、その理由（見本の滞在は社内のデモ用なので、ログインしていない端末にも出す・2026-10-17）。

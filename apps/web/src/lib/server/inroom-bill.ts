@@ -16,7 +16,7 @@ import { partnerServiceClient } from './partners/admin-client';
 import { listStayTokens } from './store';
 import {
 	createPaymentIntent,
-	updatePaymentIntentReceiptEmail,
+	updatePaymentIntentReceipt,
 	createRefund,
 	inlinePaymentReady,
 	listRefunds,
@@ -39,6 +39,8 @@ import {
 } from '$lib/inroom-bill';
 import type { StayInfo } from '$lib/types';
 import { decideAdminMfaGate } from '$lib/admin-mfa';
+import { normalizeAddressee } from '$lib/inroom-receipt';
+import { autoSendInroomReceipt } from './inroom-receipt';
 import { adminMfaRequired } from './auth';
 import { notifyInroomPayment, type InroomPaidRow } from './inroom-payment-notify';
 import { describePublishableKeyIssue } from './payments/keys';
@@ -260,11 +262,14 @@ export async function prepareInroomPayment(
 	token: string,
 	expected: number,
 	billId: string | null = null,
-	receiptEmailRaw: string | null = null
+	receiptEmailRaw: string | null = null,
+	receiptNameRaw: string | null = null
 ): Promise<{ clientSecret: string; amount: number }> {
 	// Stripe の決済完了レシートの送り先（任意・2026-11-07）。形が違えば付けない（決済は止めない）
 	const emailTrimmed = (receiptEmailRaw ?? '').trim();
 	const receiptEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed) && emailTrimmed.length <= 200 ? emailTrimmed : null;
+	// 領収書の宛名（任意）。決済後の自動送信・ダウンロードの領収書に使う（PaymentIntent の metadata に持つ）
+	const receiptName = normalizeAddressee(receiptNameRaw);
 	if (!inroomPaymentReady()) throw new Error('unavailable');
 	const db = service();
 	// 請求書が複数ある滞在は、お客様が選んだ請求書の残額だけ（DB が公開済みか・残額を確かめる・2026-10-18）
@@ -276,13 +281,13 @@ export async function prepareInroomPayment(
 		: await createPaymentIntent({
 				amount: row.amount,
 				description: `客室案内のご精算${row.room_code ? `（${row.room_code}）` : ''}`,
-				metadata: { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_INROOM_BILL, inroom_payment_id: row.id },
+				metadata: { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_INROOM_BILL, inroom_payment_id: row.id, ...(receiptName ? { receipt_name: receiptName } : {}) },
 				idempotencyKey: `inroom-bill-${row.id}`,
 				receiptEmail
 			});
 	// 同じ台帳行で決済をやり直すとき（既存の Intent を使い回す）は、入力されたメールで更新する
-	if (receiptEmail && row.payment_intent_id && intent.status !== 'succeeded' && intent.receipt_email !== receiptEmail) {
-		await updatePaymentIntentReceiptEmail(intent.id, receiptEmail, `inroom-bill-rcpt-${row.id}-${receiptEmail}`).catch(() => {});
+	if (row.payment_intent_id && intent.status !== 'succeeded' && ((receiptEmail && intent.receipt_email !== receiptEmail) || (intent.metadata.receipt_name ?? '') !== receiptName)) {
+		await updatePaymentIntentReceipt(intent.id, { email: receiptEmail, name: receiptName }).catch(() => {});
 	}
 	if (
 		!intent.client_secret ||
@@ -382,7 +387,12 @@ export type InroomConfirmResult = 'paid' | 'already' | 'pending' | 'refunded' | 
  * 確定: Stripe から Intent を取り直して検証し、DB で入金行を立てる。
  * expectedTokenId を渡すと、その滞在の決済でなければ断る（画面からの確定はお客様の Cookie の滞在で確かめる）
  */
-export async function confirmInroomIntent(intentId: string, expectedTokenId?: string): Promise<InroomConfirmResult> {
+export async function confirmInroomIntent(
+	intentId: string,
+	expectedTokenId?: string,
+	// 領収書の自動送信（PDF 生成で数秒かかる）を応答の後ろへ回す関数（Cloudflare の waitUntil）。無ければ待ってから返す
+	defer?: ((p: Promise<unknown>) => void) | null
+): Promise<InroomConfirmResult> {
 	if (!/^pi_[A-Za-z0-9]+$/.test(intentId)) throw new Error('not_found');
 	const intent = await retrievePaymentIntent(intentId);
 	if (intent.metadata.app !== STRIPE_APP_BOOK || intent.metadata.purpose !== STRIPE_PURPOSE_INROOM_BILL || !intent.metadata.inroom_payment_id) {
@@ -403,6 +413,12 @@ export async function confirmInroomIntent(intentId: string, expectedTokenId?: st
 	// テスト決済は確定済みでも 'test_paid' が返るので、確定前の状態が pending のときだけ送る
 	if (result === 'paid') {
 		await notifyInroomPayment({ ...row, paid_at: new Date().toISOString() }, 'paid');
+		// お客様がメールアドレスを入れていれば、宛名入りの領収書 PDF を自動で送る（2026-11-07 指示）。確定したこの1回だけ
+		if (intent.receipt_email) {
+			const task = autoSendInroomReceipt(row.id, intent.receipt_email, intent.metadata.receipt_name ?? '');
+			if (defer) defer(task);
+			else await task;
+		}
 		return 'paid';
 	}
 	if (result === 'already') return 'already';

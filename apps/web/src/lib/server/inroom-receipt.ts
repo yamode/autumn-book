@@ -6,6 +6,7 @@ import { renderHtmlPdf } from './partners/invoice-pdf';
 import { sendHtmlEmail } from './mailer';
 import { FACILITY_UUID, reverseFacilityUuid } from './supabase-data';
 import { facilities } from './store';
+import { retrievePaymentIntent } from './stripe';
 import {
 	RECEIPT_PROVISO,
 	inroomReceiptNo,
@@ -31,6 +32,7 @@ type PaymentRow = {
 	room_code: string | null;
 	guest_name: string | null;
 	stay_id: string | null;
+	payment_intent_id: string | null;
 	amount: number;
 	status: string;
 	paid_at: string | null;
@@ -53,7 +55,7 @@ export async function findReceiptPayment(tokenId: string, paymentId: string | nu
 	let q = db()
 		.schema('book')
 		.from('inroom_payments')
-		.select('id, facility_id, token_id, stay_id, room_code, guest_name, amount, status, paid_at')
+		.select('id, facility_id, token_id, stay_id, payment_intent_id, room_code, guest_name, amount, status, paid_at')
 		.eq('token_id', tokenId)
 		.in('status', ['paid', 'partially_refunded'])
 		.not('paid_at', 'is', null);
@@ -61,6 +63,17 @@ export async function findReceiptPayment(tokenId: string, paymentId: string | nu
 	const { data, error } = await q.order('paid_at', { ascending: false }).limit(1);
 	if (error || !data?.length) return null;
 	return data[0] as PaymentRow;
+}
+
+/** 台帳 ID から決済を引く（決済確定時の自動送信用。滞在の確認は呼び出し側で済んでいる） */
+async function findPaymentById(id: string): Promise<PaymentRow | null> {
+	const { data, error } = await db()
+		.schema('book')
+		.from('inroom_payments')
+		.select('id, facility_id, token_id, stay_id, payment_intent_id, room_code, guest_name, amount, status, paid_at')
+		.eq('id', id)
+		.maybeSingle();
+	return error || !data ? null : (data as PaymentRow);
 }
 
 /** 決済確定直後に、Stripe の決済番号から台帳 ID を引く（領収書ボタンに渡す） */
@@ -108,7 +121,26 @@ export async function guestReceiptAddressee(stayId: string | null): Promise<stri
 	}
 }
 
+/** 決済画面で入れた宛名の既定（顧客マスタの領収書名義 → フルネーム → 滞在コードのお名前）。滞在トークンの滞在から引く */
+export async function defaultAddresseeForToken(tokenId: string, tokenGuestName?: string | null): Promise<string> {
+	try {
+		const { data } = await db().schema('book').from('stay_access_tokens').select('stay_id').eq('id', tokenId).maybeSingle();
+		const fromMaster = await guestReceiptAddressee((data as { stay_id?: string | null } | null)?.stay_id ?? null);
+		return normalizeAddressee(fromMaster) || normalizeAddressee(tokenGuestName);
+	} catch {
+		return normalizeAddressee(tokenGuestName);
+	}
+}
+
+/**
+ * 宛名の決め方: 画面の指定（addresseeInput）→ 決済画面で入れた宛名（PaymentIntent の metadata receipt_name）→
+ * 顧客マスタの領収書名義／フルネーム → 滞在コードのお名前。
+ */
 export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | null): Promise<InroomReceiptDoc> {
+	let entered = normalizeAddressee(addresseeInput);
+	if (!entered && p.payment_intent_id) {
+		entered = normalizeAddressee((await retrievePaymentIntent(p.payment_intent_id).catch(() => null))?.metadata?.receipt_name);
+	}
 	const issuer = await loadInvoiceIssuer(db(), TENANT_ID).catch(() => null);
 	const bookFacility = reverseFacilityUuid(p.facility_id) ?? p.facility_id;
 	const contact = FACILITY_CONTACT[bookFacility];
@@ -116,7 +148,7 @@ export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | nu
 	const paidAt = p.paid_at ?? new Date().toISOString();
 	return {
 		receiptNo: inroomReceiptNo(p.id, paidAt),
-		addressee: normalizeAddressee(addresseeInput) || normalizeAddressee(await guestReceiptAddressee(p.stay_id)) || normalizeAddressee(p.guest_name),
+		addressee: entered || normalizeAddressee(await guestReceiptAddressee(p.stay_id)) || normalizeAddressee(p.guest_name),
 		amount: p.amount,
 		paidAt,
 		proviso: RECEIPT_PROVISO,
@@ -181,4 +213,20 @@ export async function sendReceiptEmail(doc: InroomReceiptDoc, emailRaw: string):
 		attachments: [{ filename: receiptFileName(doc), type: 'application/pdf', content: pdf }]
 	});
 	return r.sent ? 'sent' : 'send_failed';
+}
+
+/**
+ * 決済が確定したとき、お客様がメールアドレスを入れていれば宛名入りの領収書 PDF を自動で送る（2026-11-07 指示）。
+ * 失敗しても決済は止めない（ログに残すだけ。お客様は完了画面のダウンロードボタンからも取れる）。
+ */
+export async function autoSendInroomReceipt(paymentId: string, email: string, name: string): Promise<void> {
+	try {
+		const p = await findPaymentById(paymentId);
+		if (!p || !['paid', 'partially_refunded'].includes(p.status)) return;
+		const doc = await buildReceiptDoc(p, name);
+		const r = await sendReceiptEmail(doc, email);
+		if (r !== 'sent') console.warn('[inroom-receipt] 領収書メールを送れませんでした', r, paymentId);
+	} catch (e) {
+		console.error('[inroom-receipt] 自動送信に失敗', e instanceof Error ? e.message : e);
+	}
 }
