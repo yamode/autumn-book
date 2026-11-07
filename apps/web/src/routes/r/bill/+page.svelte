@@ -157,10 +157,13 @@
 		return (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; kind?: string; result?: string; paymentId?: string | null; clientSecret?: string; returnUrl?: string };
 	}
 
+	// Stripe の決済完了レシートの送り先（任意）。領収書（宛名入り）のメールとは別
+	let payEmail = $state('');
 	async function preparePayment() {
 		payMessage = '';
 		const r = await payRequest('prepare', {
 			amount: String(payAmount),
+			...(payEmail.trim() && !data.testPayment ? { email: payEmail.trim() } : {}),
 			...(multiBill && chosenBill && !data.testPayment ? { billId: chosenBill.id } : {})
 		});
 		if (!r.ok || !r.clientSecret || !r.returnUrl) throw new Error(errorText(r.kind));
@@ -172,6 +175,8 @@
 		paidAmount = payAmount;
 		paidModalDismissed = false;
 		receiptPaymentId = r.paymentId ?? null;
+		// 決済前に入れたメールは、領収書のメール欄にも入れておく（打ち直さなくてよい）
+		if (!receiptEmail.trim()) receiptEmail = payEmail.trim();
 		result = r.result === 'test' ? 'test' : r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
 		await invalidateAll();
 	}
@@ -381,6 +386,14 @@
 						</label>
 					{/each}
 				</fieldset>
+			{/if}
+			{#if data.stripeKey && !data.testPayment}
+				<!-- Stripe の決済完了レシートの送り先（任意）。宛名入りの領収書は支払い後の画面（別物）なので、その旨を添える -->
+				<label class="block text-xs text-stone-500">
+					{m.inroom_bill_pay_email_label()}
+					<input type="email" bind:value={payEmail} autocomplete="email" inputmode="email" disabled={paying} placeholder={m.inroom_bill_pay_email_ph()} class="mt-1 block w-full rounded-lg border border-stone-300 px-3 py-2 text-base text-stone-900" />
+				</label>
+				<p class="text-[11px] leading-relaxed text-stone-400">{m.inroom_bill_pay_email_note()}</p>
 			{/if}
 			{#if data.stripeKey}
 				<StripePayment

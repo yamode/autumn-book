@@ -232,6 +232,7 @@ export type PaymentIntent = {
   currency: string;
   client_secret?: string | null;
   latest_charge?: string | null;
+  receipt_email?: string | null;
   customer?: string | { id: string } | null;
   metadata: Record<string, string>;
 };
@@ -262,6 +263,8 @@ export const createPaymentIntent = (args: {
   metadata: Record<string, string>;
   idempotencyKey: string;
   customer?: string | null;
+  /** Stripe の決済完了レシートの送り先（本番のみ送られる。Stripe の管理画面で領収書メールがオンのとき） */
+  receiptEmail?: string | null;
 }) =>
   stripeFetch<PaymentIntent>(
     'POST',
@@ -270,6 +273,7 @@ export const createPaymentIntent = (args: {
       amount: Math.round(args.amount),
       currency: 'jpy',
       customer: args.customer || undefined,
+      receipt_email: args.receiptEmail || undefined,
       payment_method_types: ['card'],
       description: args.description.slice(0, 1000),
       metadata: args.metadata
@@ -278,6 +282,9 @@ export const createPaymentIntent = (args: {
   );
 
 export const retrievePaymentIntent = (id: string) => stripeFetch<PaymentIntent>('GET', `/payment_intents/${encodeURIComponent(id)}`);
+/** 未決済の PaymentIntent のレシート送り先を後から変える（同じ台帳行で決済をやり直すとき） */
+export const updatePaymentIntentReceiptEmail = (id: string, receiptEmail: string, idempotencyKey: string) =>
+  stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}`, { receipt_email: receiptEmail }, idempotencyKey);
 export const cancelPaymentIntent = (id: string, idempotencyKey: string) => stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey);
 
 // チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。

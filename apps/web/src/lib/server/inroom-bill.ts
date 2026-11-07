@@ -16,6 +16,7 @@ import { partnerServiceClient } from './partners/admin-client';
 import { listStayTokens } from './store';
 import {
 	createPaymentIntent,
+	updatePaymentIntentReceiptEmail,
 	createRefund,
 	inlinePaymentReady,
 	listRefunds,
@@ -255,7 +256,15 @@ function service() {
 type PreparedRow = { id: string; amount: number; payment_intent_id: string | null; room_code: string | null };
 
 /** 準備: DB が残額を数え直し、画面の額と一致したら PaymentIntent を作る（同じ台帳行なら作り直さない） */
-export async function prepareInroomPayment(token: string, expected: number, billId: string | null = null): Promise<{ clientSecret: string; amount: number }> {
+export async function prepareInroomPayment(
+	token: string,
+	expected: number,
+	billId: string | null = null,
+	receiptEmailRaw: string | null = null
+): Promise<{ clientSecret: string; amount: number }> {
+	// Stripe の決済完了レシートの送り先（任意・2026-11-07）。形が違えば付けない（決済は止めない）
+	const emailTrimmed = (receiptEmailRaw ?? '').trim();
+	const receiptEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrimmed) && emailTrimmed.length <= 200 ? emailTrimmed : null;
 	if (!inroomPaymentReady()) throw new Error('unavailable');
 	const db = service();
 	// 請求書が複数ある滞在は、お客様が選んだ請求書の残額だけ（DB が公開済みか・残額を確かめる・2026-10-18）
@@ -268,8 +277,13 @@ export async function prepareInroomPayment(token: string, expected: number, bill
 				amount: row.amount,
 				description: `客室案内のご精算${row.room_code ? `（${row.room_code}）` : ''}`,
 				metadata: { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_INROOM_BILL, inroom_payment_id: row.id },
-				idempotencyKey: `inroom-bill-${row.id}`
+				idempotencyKey: `inroom-bill-${row.id}`,
+				receiptEmail
 			});
+	// 同じ台帳行で決済をやり直すとき（既存の Intent を使い回す）は、入力されたメールで更新する
+	if (receiptEmail && row.payment_intent_id && intent.status !== 'succeeded' && intent.receipt_email !== receiptEmail) {
+		await updatePaymentIntentReceiptEmail(intent.id, receiptEmail, `inroom-bill-rcpt-${row.id}-${receiptEmail}`).catch(() => {});
+	}
 	if (
 		!intent.client_secret ||
 		intent.amount !== row.amount ||
