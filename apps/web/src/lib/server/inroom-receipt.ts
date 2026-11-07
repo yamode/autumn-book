@@ -10,10 +10,13 @@ import { retrievePaymentIntent } from './stripe';
 import {
 	RECEIPT_PROVISO,
 	inroomReceiptNo,
+	foldBathTax,
 	normalizeAddressee,
 	receiptFileName,
 	renderInroomReceiptHtml,
-	type InroomReceiptDoc
+	type InroomReceiptDoc,
+	type ReceiptStatement,
+	type ReceiptStatementBill
 } from '$lib/inroom-receipt';
 
 const TENANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -33,6 +36,7 @@ type PaymentRow = {
 	guest_name: string | null;
 	stay_id: string | null;
 	payment_intent_id: string | null;
+	allocations: Array<{ bill_id?: string }> | null;
 	amount: number;
 	status: string;
 	paid_at: string | null;
@@ -55,7 +59,7 @@ export async function findReceiptPayment(tokenId: string, paymentId: string | nu
 	let q = db()
 		.schema('book')
 		.from('inroom_payments')
-		.select('id, facility_id, token_id, stay_id, payment_intent_id, room_code, guest_name, amount, status, paid_at')
+		.select('id, facility_id, token_id, stay_id, payment_intent_id, allocations, room_code, guest_name, amount, status, paid_at')
 		.eq('token_id', tokenId)
 		.in('status', ['paid', 'partially_refunded'])
 		.not('paid_at', 'is', null);
@@ -70,7 +74,7 @@ async function findPaymentById(id: string): Promise<PaymentRow | null> {
 	const { data, error } = await db()
 		.schema('book')
 		.from('inroom_payments')
-		.select('id, facility_id, token_id, stay_id, payment_intent_id, room_code, guest_name, amount, status, paid_at')
+		.select('id, facility_id, token_id, stay_id, payment_intent_id, allocations, room_code, guest_name, amount, status, paid_at')
 		.eq('id', id)
 		.maybeSingle();
 	return error || !data ? null : (data as PaymentRow);
@@ -136,6 +140,59 @@ export async function defaultAddresseeForToken(tokenId: string, tokenGuestName?:
  * 宛名の決め方: 画面の指定（addresseeInput）→ 決済画面で入れた宛名（PaymentIntent の metadata receipt_name）→
  * 顧客マスタの領収書名義／フルネーム → 滞在コードのお名前。
  */
+/**
+ * 2ページ目のご利用明細。今回の決済の充当先の請求書（allocations）の明細と、お支払い済みの内訳を PMS（pms.bill_items / bill_payments）から引く。
+ * 入湯税は PMS の請求書と同じく1行に畳む。引けなければ null（1ページ目だけ出す）。
+ */
+export async function loadReceiptStatement(p: PaymentRow): Promise<ReceiptStatement | null> {
+	try {
+		const billIds = [...new Set((p.allocations ?? []).map((a) => a.bill_id).filter((v): v is string => !!v && RECEIPT_ID_RE.test(v)))];
+		if (!billIds.length) return null;
+		const pms = db().schema('pms');
+		const [billsRes, itemsRes, paysRes, methodsRes] = await Promise.all([
+			pms.from('bills').select('id, bill_no').in('id', billIds),
+			pms.from('bill_items').select('bill_id, effective_date, item_name, quantity, unit_price, sort_order, created_at').in('bill_id', billIds).order('effective_date', { ascending: true, nullsFirst: false }).order('sort_order', { ascending: true }).order('created_at', { ascending: true }).limit(2000),
+			pms.from('bill_payments').select('bill_id, payment_method_id, amount, payment_date, note, source, created_at').in('bill_id', billIds).order('payment_date', { ascending: true }).order('created_at', { ascending: true }).limit(500),
+			pms.from('payment_methods').select('id, name').eq('facility_id', p.facility_id).limit(200)
+		]);
+		if (billsRes.error || itemsRes.error) return null;
+		const billNo = new Map(((billsRes.data ?? []) as Array<{ id: string; bill_no: number | null }>).map((b) => [b.id, b.bill_no]));
+		const methodName = new Map(((methodsRes.data ?? []) as Array<{ id: string; name: string }>).map((m) => [m.id, m.name]));
+		const out: ReceiptStatementBill[] = [];
+		let from: string | null = null;
+		let to: string | null = null;
+		for (const id of billIds) {
+			const raw = ((itemsRes.data ?? []) as Array<{ bill_id: string; effective_date: string | null; item_name: string; quantity: number; unit_price: number }>)
+				.filter((i) => i.bill_id === id)
+				.map((i) => ({
+					date: i.effective_date,
+					name: i.item_name,
+					unitPrice: Number(i.unit_price ?? 0),
+					quantity: Number(i.quantity ?? 0),
+					amount: Math.round(Number(i.unit_price ?? 0) * Number(i.quantity ?? 0))
+				}));
+			for (const i of raw) {
+				if (i.date && (!from || i.date < from)) from = i.date;
+				if (i.date && (!to || i.date > to)) to = i.date;
+			}
+			const { items, bathTax } = foldBathTax(raw);
+			const total = items.reduce((a, i) => a + i.amount, 0) + (bathTax?.amount ?? 0);
+			const payments = ((paysRes.data ?? []) as Array<{ bill_id: string; payment_method_id: string | null; amount: number; payment_date: string | null; note: string | null; source: string | null }>)
+				// 機械の穴埋めの現地入金（[自動]）はお客様の支払ではないので出さない（客室案内の明細と同じ）
+				.filter((x) => x.bill_id === id && !((x.note ?? '').startsWith('[自動]') && x.source !== 'book_inroom'))
+				.map((x) => ({
+					date: x.payment_date,
+					method: x.source === 'book_inroom' ? '客室内オンライン決済' : (x.payment_method_id ? (methodName.get(x.payment_method_id) ?? '') : ''),
+					amount: Number(x.amount ?? 0)
+				}));
+			out.push({ billNo: billNo.get(id) ?? null, items, bathTax, total, payments });
+		}
+		return { stayFrom: from, stayTo: to, bills: out };
+	} catch {
+		return null;
+	}
+}
+
 export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | null): Promise<InroomReceiptDoc> {
 	let entered = normalizeAddressee(addresseeInput);
 	if (!entered && p.payment_intent_id) {
@@ -146,7 +203,9 @@ export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | nu
 	const contact = FACILITY_CONTACT[bookFacility];
 	const facilityName = facilities.find((f) => (FACILITY_UUID[f.id] ?? f.id) === p.facility_id)?.name ?? '';
 	const paidAt = p.paid_at ?? new Date().toISOString();
+	const statement = await loadReceiptStatement(p);
 	return {
+		statement,
 		receiptNo: inroomReceiptNo(p.id, paidAt),
 		addressee: entered || normalizeAddressee(await guestReceiptAddressee(p.stay_id)) || normalizeAddressee(p.guest_name),
 		amount: p.amount,
