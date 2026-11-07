@@ -388,12 +388,11 @@
 				</fieldset>
 			{/if}
 			{#if data.stripeKey && !data.testPayment}
-				<!-- Stripe の決済完了レシートの送り先（任意）。宛名入りの領収書は支払い後の画面（別物）なので、その旨を添える -->
+				<!-- Stripe の決済完了レシートの送り先（任意）。宛名入りの領収書は支払い後の画面で別に発行する -->
 				<label class="block text-xs text-stone-500">
 					{m.inroom_bill_pay_email_label()}
 					<input type="email" bind:value={payEmail} autocomplete="email" inputmode="email" disabled={paying} placeholder={m.inroom_bill_pay_email_ph()} class="mt-1 block w-full rounded-lg border border-stone-300 px-3 py-2 text-base text-stone-900" />
 				</label>
-				<p class="text-[11px] leading-relaxed text-stone-400">{m.inroom_bill_pay_email_note()}</p>
 			{/if}
 			{#if data.stripeKey}
 				<StripePayment

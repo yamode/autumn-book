@@ -1181,7 +1181,6 @@
   "inroom_bill_go_top": "トップページに戻る",
   "inroom_bill_pay_email_label": "決済完了のレシートをメールで受け取る（任意）",
   "inroom_bill_pay_email_ph": "メールアドレス",
-  "inroom_bill_pay_email_note": "決済完了のレシート（カードのご利用明細用）がカード決済会社から届きます。宛名入りの領収書は、お支払い後の画面で発行できます。",
   "inroom_receipt_title": "領収書",
   "inroom_receipt_name_label": "宛名（任意）",
   "inroom_receipt_name_ph": "例：山田 太郎",
