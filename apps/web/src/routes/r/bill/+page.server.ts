@@ -35,7 +35,7 @@ export const load: PageServerLoad = async ({ cookies, url, locals }) => {
 		// プレビューの QR をスマホで読んだ端末は管理画面にログインしていないことが多く、黙って隠すと原因が分からない
 		testBlocker: !testPayment && stay.isDemo === true ? testBlocker : null,
 		paymentResult: url.searchParams.get('payment'),
-		headerTitle: m.inroom_bill_title(),
+		paymentId: /^[0-9a-f-]{36}$/i.test(url.searchParams.get('pid') ?? '') ? url.searchParams.get('pid') : null,		headerTitle: m.inroom_bill_title(),
 		headerBack: '/r'
 	};
 };

@@ -83,6 +83,44 @@
 	let paidModalDismissed = $state(false);
 	let paidAmount = $state<number | null>(null);
 	const paidModalOpen = $derived((shownResult === 'paid' || shownResult === 'test') && !paidModalDismissed);
+	// 領収書（2026-11-07）: 払った決済の PDF をダウンロード／メールで受け取る。宛名は任意（空なら滞在コードのお名前）
+	let receiptPaymentId = $state<string | null>(null);
+	const receiptId = $derived(receiptPaymentId ?? data.paymentId);
+	let receiptName = $state("");
+	// 宛名の既定: PMS の顧客マスタの領収書名義 → 無ければ顧客のフルネーム。モーダルが開いたときに1回だけ入れる（入力済みなら触らない）
+	let receiptDefaultLoaded = $state(false);
+	$effect(() => {
+		if (!paidModalOpen || shownResult !== "paid" || receiptDefaultLoaded) return;
+		receiptDefaultLoaded = true;
+		fetch(`/r/bill/receipt?${new URLSearchParams({ ...(receiptId ? { id: receiptId } : {}), info: "1" })}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((j: { addressee?: string } | null) => {
+				if (j?.addressee && !receiptName.trim()) receiptName = j.addressee;
+			})
+			.catch(() => {});
+	});
+	let receiptEmail = $state("");
+	let receiptBusy = $state(false);
+	let receiptMessage = $state<{ ok: boolean; text: string } | null>(null);
+	const receiptQuery = () => new URLSearchParams({ ...(receiptId ? { id: receiptId } : {}), name: receiptName.trim() }).toString();
+	async function sendReceipt() {
+		if (receiptBusy) return;
+		receiptBusy = true;
+		receiptMessage = null;
+		try {
+			const fd = new FormData();
+			if (receiptId) fd.set("id", receiptId);
+			fd.set("name", receiptName.trim());
+			fd.set("email", receiptEmail.trim());
+			const res = await fetch("/r/bill/receipt", { method: "POST", body: fd });
+			const j = (await res.json().catch(() => ({ ok: false, kind: "send_failed" }))) as { ok: boolean; kind?: string };
+			receiptMessage = j.ok ? { ok: true, text: m.inroom_receipt_sent() } : { ok: false, text: j.kind === "invalid_email" ? m.inroom_receipt_err_email() : m.inroom_receipt_err_failed() };
+		} catch {
+			receiptMessage = { ok: false, text: m.inroom_receipt_err_failed() };
+		} finally {
+			receiptBusy = false;
+		}
+	}
 	function closePaidModal() {
 		paidModalDismissed = true;
 		if (page.url.searchParams.has('payment')) {
@@ -116,7 +154,7 @@
 		fd.set('action', action);
 		for (const [k, v] of Object.entries(extra)) fd.set(k, v);
 		const res = await fetch('/r/bill/pay', { method: 'POST', body: fd });
-		return (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; kind?: string; result?: string; clientSecret?: string; returnUrl?: string };
+		return (await res.json().catch(() => ({ ok: false }))) as { ok: boolean; kind?: string; result?: string; paymentId?: string | null; clientSecret?: string; returnUrl?: string };
 	}
 
 	async function preparePayment() {
@@ -133,6 +171,7 @@
 		const r = await payRequest('confirm', { intentId: p.intentId });
 		paidAmount = payAmount;
 		paidModalDismissed = false;
+		receiptPaymentId = r.paymentId ?? null;
 		result = r.result === 'test' ? 'test' : r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
 		await invalidateAll();
 	}
@@ -172,6 +211,25 @@
 					</p>
 				{:else}
 					<p class="mt-3 text-sm leading-relaxed text-stone-600">{m.inroom_bill_paid_body()}</p>
+				{/if}
+				{#if shownResult === "paid"}
+					<!-- 領収書: 宛名（任意）→ PDF ダウンロード／メールで受け取る -->
+					<div class="mt-5 space-y-3 border-t border-stone-200 pt-4 text-left">
+						<p class="text-sm font-semibold text-stone-800">{m.inroom_receipt_title()}</p>
+						<label class="block text-xs text-stone-500">
+							{m.inroom_receipt_name_label()}
+							<input type="text" bind:value={receiptName} maxlength="60" placeholder={m.inroom_receipt_name_ph()} class="mt-1 block w-full rounded-lg border border-stone-300 px-3 py-2 text-base text-stone-900" />
+						</label>
+						<a href={`/r/bill/receipt?${receiptQuery()}`} download class="block w-full rounded-lg border border-stone-300 bg-white py-3 text-center text-sm font-medium text-stone-700 active:bg-stone-50">{m.inroom_receipt_download()}</a>
+						<label class="block text-xs text-stone-500">
+							{m.inroom_receipt_email_label()}
+							<span class="mt-1 flex gap-2">
+								<input type="email" bind:value={receiptEmail} autocomplete="email" inputmode="email" placeholder={m.inroom_receipt_email_ph()} class="block min-w-0 flex-1 rounded-lg border border-stone-300 px-3 py-2 text-base text-stone-900" />
+								<button type="button" onclick={sendReceipt} disabled={receiptBusy || !receiptEmail.trim()} class="shrink-0 rounded-lg bg-stone-900 px-4 text-sm font-medium text-white disabled:opacity-40">{m.inroom_receipt_send()}</button>
+							</span>
+						</label>
+						{#if receiptMessage}<p class={["text-xs", receiptMessage.ok ? "text-emerald-700" : "text-red-600"]} role="status">{receiptMessage.text}</p>{/if}
+					</div>
 				{/if}
 				<div class="mt-6 space-y-2">
 					<a href="/r" class="block w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white active:bg-stone-700">{m.inroom_bill_go_top()}</a>

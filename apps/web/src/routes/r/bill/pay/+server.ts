@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
+import { paymentIdOfIntent } from "$lib/server/inroom-receipt";
 import { canTestInroomPayment, confirmInroomIntent, prepareInroomPayment, prepareInroomTestPayment } from '$lib/server/inroom-bill';
 import { billPayErrorKind } from '$lib/inroom-bill';
 import type { RequestHandler } from './$types';
@@ -32,7 +33,9 @@ export const POST: RequestHandler = async ({ cookies, request, url, locals }) =>
 		}
 		if (fd.get('action') === 'confirm') {
 			const result = await confirmInroomIntent(String(fd.get('intentId') ?? ''), stay.tokenId);
-			return json({ ok: result === 'paid' || result === 'already' || result === 'test', result }, { status: result === 'pending' ? 202 : 200, headers });
+			const paid = result === 'paid' || result === 'already';
+			const paymentId = paid ? await paymentIdOfIntent(stay.tokenId, String(fd.get('intentId') ?? '')).catch(() => null) : null;
+			return json({ ok: paid || result === 'test', result, paymentId }, { status: result === 'pending' ? 202 : 200, headers });
 		}
 		throw new Error('invalid_params');
 	} catch (e) {
