@@ -242,8 +242,16 @@
   }
   const savedTooSoon = $derived(payMode === 'setup' && quote.ok && selectedCardExpiresBefore(savedSel, savedCards, quote.checkOut));
 
+  // 個人情報の同意（確認の段の最後で取る・2026-11-09）。チェック欄は required にしない
+  // （validatePay の checkValidity が落ちて入力の段へ戻ってしまうため。ここと確定ボタンで止める）
+  let privacyAgreed = $state(false);
+  // 取引先の設定で同意チェックを出さないとき（お客様へ連絡しない取引先など）は、同意なしで確定できる
+  const consentOk = $derived(!data.privacyConsent || privacyAgreed);
+  const CONSENT_REQUIRED = 'プライバシーポリシーへの同意が必要です。';
+
   function validatePay(): string | null {
     if (!formEl) return '画面の準備ができていません。';
+    if (step === 'confirm' && !consentOk) return CONSENT_REQUIRED;
     if (savedTooSoon) return SAVED_CARD_EXPIRY_WARNING;
     snapshot();
     if (!formEl.checkValidity()) {
@@ -450,6 +458,12 @@
       if (isStripe) {
         cancel();
         if (step === 'confirm') void payNow();
+        return;
+      }
+      // 入力欄で Enter を押したときも、同意が無ければ確定しない
+      if (step === 'confirm' && !consentOk) {
+        cancel();
+        clientError = CONSENT_REQUIRED;
         return;
       }
       submitting = true;
@@ -996,6 +1010,17 @@
         </p>
       </div>
 
+      {#if step === 'confirm' && data.privacyConsent}
+        <!-- 個人情報の同意（取引先ごとに出す／出さないを選べる）。入力するのは取引先のご担当者なので、ご宿泊者様の了承を得て入力いただく旨も添える -->
+        <div class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm">
+          <p class="leading-6 text-stone-600">ご入力の個人情報（ご宿泊者様の情報や、食物アレルギーなどの情報を含む）は、ご予約の手配・ご連絡のために、プライバシーポリシーに沿って取り扱います。ご宿泊者様の情報は、ご本人の了承を得たうえでご入力ください。</p>
+          <a href={data.portal.kind === 'member' ? '/legal/privacy' : `/p/${$page.params.token}/legal/privacy`} target="_blank" rel="noopener" class="mt-1 inline-block text-sky-700 underline">プライバシーポリシーを見る</a>
+          <label class="mt-3 flex min-h-11 cursor-pointer items-center gap-2 font-medium">
+            <input type="checkbox" name="privacy_consent" value="1" bind:checked={privacyAgreed} onchange={() => { if (privacyAgreed && clientError === CONSENT_REQUIRED) clientError = ''; }} disabled={paying || submitting} class="h-5 w-5 accent-[var(--pt-accent)]" />
+            プライバシーポリシーに同意する <em class="bk-req">必須</em>
+          </label>
+        </div>
+      {/if}
       {#if clientError}<p class="mt-3 text-sm text-rose-700">{clientError}</p>{/if}
       {#if step === 'input'}
         <button type="button" onclick={() => { snapshot(); toConfirm(); }} disabled={!ready} class="bk-primary mt-4 w-full">内容を確認する</button>
@@ -1007,7 +1032,7 @@
       {:else if isStripe}
         <!-- エラーは決済部品（入力欄の下）にも出る。PC では明細カードが離れているのでボタンの上にも出す -->
         {#if payError}<p class="mt-3 hidden text-sm text-rose-700 lg:block">{payError}</p>{/if}
-        <button type="button" onclick={payNow} disabled={paying || releasing || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="bk-primary mt-4 w-full">
+        <button type="button" onclick={payNow} disabled={paying || releasing || !consentOk || !data.stripeKey || (!ready && !pending) || savedTooSoon} class="bk-primary mt-4 w-full">
           {paying ? (paymentOption === 'online' || paymentOption === 'deposit_online' ? 'お支払いを確認しています…' : 'カードを確認しています…') : submitLabel}
         </button>
         {#if submitNote}<p class="mt-2 text-center text-xs text-stone-500">{submitNote}</p>{/if}
@@ -1017,7 +1042,7 @@
           <button type="button" onclick={() => (step = 'input')} disabled={paying} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
         {/if}
       {:else}
-        <button type="submit" disabled={submitting || !ready} class="bk-primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
+        <button type="submit" disabled={submitting || !ready || !consentOk} class="bk-primary mt-4 w-full">{submitting ? '予約しています…' : submitLabel}</button>
         <button type="button" onclick={() => (step = 'input')} disabled={submitting} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50">入力に戻る</button>
       {/if}
     </aside>

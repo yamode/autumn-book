@@ -16,7 +16,7 @@ const COMPANY = `## 販売事業者
 
 ## 代表者
 
-代表取締役 高鷹 政明
+代表取締役 髙鷹 政明
 
 ## 運営責任者
 
@@ -26,13 +26,13 @@ const COMPANY = `## 販売事業者
 
 〒029-5514 岩手県和賀郡西和賀町湯川52-71-10`;
 
-const COMPANY_CONTACT = `- 電話：0197-82-2222
-- メール：info@yamado.co.jp`;
+// 迷惑メール対策のためメールアドレスは載せない（電話のみ・2026-11-09）
+const COMPANY_CONTACT = `- 電話：0197-82-2222`;
 
 /** 宿泊施設の連絡先（core.facilities の slug → 表記）。公式サイトの表記と同じ内容（変えるときは両方を直す） */
-const FACILITY_CONTACTS: { slug: string; name: string; address: string; tel: string; email: string }[] = [
-  { slug: 'yamado', name: '山人-yamado-', address: '岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222', email: 'info@yamado.co.jp' },
-  { slug: 'oga', name: '山人-oga-', address: '秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776', email: 'info@oga.yamado.co.jp' }
+const FACILITY_CONTACTS: { slug: string; name: string; address: string; tel: string }[] = [
+  { slug: 'yamado', name: '山人-yamado-', address: '岩手県和賀郡西和賀町湯川52-71-10', tel: '0197-82-2222' },
+  { slug: 'oga', name: '山人-oga-', address: '秋田県男鹿市船川港台島字鵜ノ崎62-29', tel: '0185-47-7776' }
 ];
 
 /**
@@ -43,9 +43,9 @@ export function tokushohoCompanySection(facilitySlug?: string | null): string {
   const selected = FACILITY_CONTACTS.find((f) => f.slug === facilitySlug) ?? null;
   const ordered = selected ? [selected, ...FACILITY_CONTACTS.filter((f) => f !== selected)] : FACILITY_CONTACTS;
   const facility = selected
-    ? `\n\n## 宿泊施設\n\n${selected.name}\n\n- 所在地：${selected.address}\n- 電話：${selected.tel}\n- メール：${selected.email}`
+    ? `\n\n## 宿泊施設\n\n${selected.name}\n\n- 所在地：${selected.address}\n- 電話：${selected.tel}`
     : '';
-  const list = ordered.map((f) => `- ${f.name}（${f.address}）：${f.tel} ／ ${f.email}`).join('\n');
+  const list = ordered.map((f) => `- ${f.name}（${f.address}）：${f.tel}`).join('\n');
   return `${COMPANY}${facility}\n\n## 連絡先\n\n${COMPANY_CONTACT}\n\n各施設へのお問い合わせは、次の連絡先でも承ります。\n\n${list}`;
 }
 

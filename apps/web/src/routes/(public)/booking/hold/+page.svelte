@@ -198,8 +198,12 @@
 		if (!v('familyName') || !v('givenName')) return m.error_name_required();
 		if (!PHONE_RE.test(v('phone'))) return m.error_phone_invalid();
 		if (!EMAIL_RE.test(v('email'))) return m.error_email_invalid();
+		// 確認の段では個人情報の同意が要る（Apple Pay / Google Pay のシートを開く前にもここで止める）
+		if (step === 'confirm' && !privacyAgreed) return m.hold_consent_required();
 		return null;
 	}
+	// 個人情報（SMS・メールでの案内を含む）の同意。確認の段の最後で取る（2026-11-09）
+	let privacyAgreed = $state(false);
 
 	// 保存カード（2026-10-07・docs/saved-cards.md §6.4）: 会員ならマイページで保存したカードを「保存済み」に出す。
 	// 部品のマウントのたびに取り直す（30 分で失効）。非会員・失敗は null（従来どおり新しいカードの入力だけ）
@@ -1098,9 +1102,18 @@
 					<!-- submit にして Enter キーでも確認の段へ進めるようにする（use:enhance が送信を止めて toConfirm に回す） -->
 					<button type="submit" class="bk-primary mt-4 w-full text-base">{m.hold_to_confirm()}</button>
 				{:else}
+					<!-- 個人情報の同意（予約確認・事前チェックインなどの SMS / メールの案内を含む）。確定の直前に必須で取る -->
+					<div class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm">
+						<p class="leading-6 text-stone-600">{m.hold_consent_notice()}</p>
+						<a href="/legal/privacy" target="_blank" rel="noopener" class="mt-1 inline-block text-accent-600 underline">{m.hold_consent_link()}</a>
+						<label class="mt-3 flex min-h-11 cursor-pointer items-center gap-2 font-medium text-brand-900">
+							<input type="checkbox" name="privacyConsent" value="1" required bind:checked={privacyAgreed} disabled={paying} class="h-5 w-5" />
+							{m.hold_consent_label()} <em class="bk-req">{m.hold_required()}</em>
+						</label>
+					</div>
 					<button
 						type="submit"
-						disabled={paying || data.preview || (inlinePay && !data.publishableKey)}
+						disabled={paying || data.preview || !privacyAgreed || (inlinePay && !data.publishableKey)}
 						class="bk-primary mt-4 w-full text-base"
 					>
 						{#if checkoutCard}

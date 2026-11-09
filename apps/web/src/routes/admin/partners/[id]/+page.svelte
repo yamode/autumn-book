@@ -1554,6 +1554,10 @@
           <input type="checkbox" bind:checked={booking.notifyPartner} class="mt-0.5" />
           <span>取引先にも予約確認メールを送る<span class="block text-[11px] text-stone-500">予約したログインIDのメールと、上の「連絡先メール」へ（宿への通知先は施設タブ）</span></span>
         </label>
+        <label class="flex items-start gap-2 text-sm">
+          <input type="checkbox" bind:checked={booking.privacyConsent} class="mt-0.5" />
+          <span>予約の確認画面で、個人情報の同意チェックを出す<span class="block text-[11px] text-stone-500">確定の前に「プライバシーポリシーに同意する」（必須）を出します。宿からお客様へ直接連絡しない取引先などは外せます</span></span>
+        </label>
         {#if settings.kind === 'agent'}
           <!-- 団体予約（旅行会社だけ・既定オフ・docs/partner-group-booking.md §8.3）。種別を旅行会社以外にすると節が消える（設定は残る・害なし） -->
           <PartnerGroupSettings bind:booking {inputClass} />

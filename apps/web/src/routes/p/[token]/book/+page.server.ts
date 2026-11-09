@@ -255,6 +255,8 @@ export const load = async (event) => {
     deadlineText: describeDeadline(s.leadDays, s.cutoffHour),
     cancelText: s.cancelDays == null ? null : describeDeadline(s.cancelDays, s.cutoffHour),
     adminFeePercent,
+    // 確認の段の最後に個人情報の同意チェックを出すか（取引先ごとの設定・既定は出す）
+    privacyConsent: s.privacyConsent,
     // 1室の人数の選択肢: 複数部屋タイプのときは全部屋タイプで収まる範囲（下限の最大・上限の最小）
     capacity: {
       min: Math.max(1, ...(rt.data ?? []).map((r) => Number(r.capacity_min ?? 1) || 1)),

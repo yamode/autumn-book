@@ -328,6 +328,9 @@ export type PartnerBookingSettings = {
   notifyEmails: string[];
   // 取引先（予約した人のメール・取引先の連絡先メール）へも予約確認メールを送るか。
   notifyPartner: boolean;
+  // 予約の確認の段の最後に、個人情報（ご宿泊者様の情報を含む）の同意チェックを出すか。既定は出す。
+  // お客様へ連絡しない取引先などは外せる（2026-11-09）
+  privacyConsent: boolean;
   // 公式HP限定特典（紹介文テンプレートの「特典」）を取引先ページにも出すか。既定は出さない（公式HPからの予約の特典のため）。
   showOfficialPerks: boolean;
   // 受付枠（与信）を超えた予約のデポジット（Phase 3b）。額の決め方（既定は定率 30%・N2）
@@ -373,6 +376,7 @@ export const DEFAULT_PARTNER_BOOKING_SETTINGS: PartnerBookingSettings = {
   options: [],
   notifyEmails: [],
   notifyPartner: true,
+  privacyConsent: true,
   showOfficialPerks: false,
   creditDeposit: { type: 'percent', value: 30 },
   creditDepositRemainder: null,
@@ -629,6 +633,7 @@ export function normalizePartnerBookingSettings(raw: unknown, facility?: unknown
     options,
     notifyEmails: emails,
     notifyPartner: src.notifyPartner === undefined ? d.notifyPartner : src.notifyPartner === true,
+    privacyConsent: src.privacyConsent === undefined ? d.privacyConsent : src.privacyConsent === true,
     showOfficialPerks: src.showOfficialPerks === true,
     creditDeposit: normalizeCreditDeposit(src.creditDeposit),
     creditDepositRemainder: normalizeCreditDepositRemainder(src.creditDepositRemainder),
