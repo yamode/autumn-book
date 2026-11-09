@@ -1348,7 +1348,7 @@
   "hold_card_payment": "Payment",
   "hold_card_confirm": "Your booking",
   "hold_to_confirm": "Review booking",
-  "hold_consent_notice": "We will send booking confirmations and stay information (such as online pre-check-in) by SMS and email to the phone number and email address you entered. Your information, including details such as food allergies, is handled in accordance with our Privacy Policy.",
+  "hold_consent_notice": "We will send booking confirmations and information about your stay by SMS and email to the phone number and email address you entered. The personal information you provide (including details such as food allergies) is handled in accordance with our Privacy Policy.",
   "hold_consent_label": "I agree to the Privacy Policy",
   "hold_consent_link": "View the Privacy Policy",
   "hold_consent_required": "Please agree to the Privacy Policy.",

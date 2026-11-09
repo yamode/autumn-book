@@ -1107,8 +1107,9 @@
 						<p class="leading-6 text-stone-600">{m.hold_consent_notice()}</p>
 						<a href="/legal/privacy" target="_blank" rel="noopener" class="mt-1 inline-block text-accent-600 underline">{m.hold_consent_link()}</a>
 						<label class="mt-3 flex min-h-11 cursor-pointer items-center gap-2 font-medium text-brand-900">
-							<input type="checkbox" name="privacyConsent" value="1" required bind:checked={privacyAgreed} disabled={paying} class="h-5 w-5" />
-							{m.hold_consent_label()} <em class="bk-req">{m.hold_required()}</em>
+							<input type="checkbox" name="privacyConsent" value="1" required bind:checked={privacyAgreed} disabled={paying} class="h-5 w-5 shrink-0" />
+							<!-- 狭い右欄でも「必須」が縦に割れないよう、文と一緒に流す -->
+							<span class="min-w-0">{m.hold_consent_label()}<em class="bk-req ml-1 whitespace-nowrap">{m.hold_required()}</em></span>
 						</label>
 					</div>
 					<button

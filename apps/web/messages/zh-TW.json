@@ -1348,7 +1348,7 @@
   "hold_card_payment": "付款",
   "hold_card_confirm": "以此內容預訂",
   "hold_to_confirm": "確認內容",
-  "hold_consent_notice": "我們將透過簡訊及電子郵件，向您填寫的電話號碼與電子郵件地址寄送訂房確認及住宿相關通知（如線上預先辦理入住）。包含食物過敏等資訊在內，您的資料將依隱私政策處理。",
+  "hold_consent_notice": "我們將透過簡訊及電子郵件，向您填寫的電話號碼與電子郵件地址寄送訂房確認及住宿相關通知。您提供的個人資料（包含食物過敏等資訊）將依本公司隱私政策處理。",
   "hold_consent_label": "我同意隱私政策",
   "hold_consent_link": "查看隱私政策",
   "hold_consent_required": "請同意隱私政策。",

@@ -1016,8 +1016,8 @@
           <p class="leading-6 text-stone-600">ご入力の個人情報（ご宿泊者様の情報や、食物アレルギーなどの情報を含む）は、ご予約の手配・ご連絡のために、プライバシーポリシーに沿って取り扱います。ご宿泊者様の情報は、ご本人の了承を得たうえでご入力ください。</p>
           <a href={data.portal.kind === 'member' ? '/legal/privacy' : `/p/${$page.params.token}/legal/privacy`} target="_blank" rel="noopener" class="mt-1 inline-block text-sky-700 underline">プライバシーポリシーを見る</a>
           <label class="mt-3 flex min-h-11 cursor-pointer items-center gap-2 font-medium">
-            <input type="checkbox" name="privacy_consent" value="1" bind:checked={privacyAgreed} onchange={() => { if (privacyAgreed && clientError === CONSENT_REQUIRED) clientError = ''; }} disabled={paying || submitting} class="h-5 w-5 accent-[var(--pt-accent)]" />
-            プライバシーポリシーに同意する <em class="bk-req">必須</em>
+            <input type="checkbox" name="privacy_consent" value="1" bind:checked={privacyAgreed} onchange={() => { if (privacyAgreed && clientError === CONSENT_REQUIRED) clientError = ''; }} disabled={paying || submitting} class="h-5 w-5 shrink-0 accent-[var(--pt-accent)]" />
+            <span class="min-w-0">プライバシーポリシーに同意する<em class="bk-req ml-1 whitespace-nowrap">必須</em></span>
           </label>
         </div>
       {/if}
