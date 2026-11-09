@@ -97,7 +97,8 @@ PHASE が 2 未満、または `loop:pause` の open Issue があれば何もし
   - hp-yamado・hp-oga：`risk:low` だけ（文言・見出し・title・meta description・alt・内部リンク・構造化データ）。2026-11-10 Hikaru の指示で追加。
     HP には PR ゲートが無いので、実装役が手元チェック（hp-yamado は `npm run check`・`npm run build:xserver`、hp-oga は `npm run check`）と別エージェントのレビューで代える。
     **PR まで。** merge と本番反映（FTPS・`npm run deploy:xserver`）は PHASE に関係なく人（本番反映は high のまま）。HP の `risk:mid` 以上は従来どおり人が進める。
-- **1サイクル1件。** 3リポ合わせてループの open PR（`loop/` ブランチ）が3本以上なら新規に着手しない。main と衝突しているだけの PR は、版を振り直して全部まとめて直す（本数に数えない）。
+- **1サイクル1件。** 3リポ合わせてループの open PR（`loop/` ブランチ）が3本以上なら新規に着手しない。
+  ただし **`risk:low` は束ねてよい**（2026-11-10 Hikaru の指示）：候補の low は1サイクルで全部やり、同じリポの分は1本の PR にまとめる（リポごとに1本。差分300行は束ね全体で数える）。open PR の上限は mid の新規着手にだけ効かせる。main と衝突しているだけの PR は、版を振り直して全部まとめて直す（本数に数えない）。
 - 触らないもの：上の表の high（GTM・GA4 の設定・料金・プラン・同意バナー）、決済・認証・予約確定の処理（`apps/web/src/lib/server/**` の決済・認証まわり）、migration、`.github/workflows/**`、`.env*`。当たると分かったら実装せず `loop:needs-human`。
   計測イベントを足すときはコードの送信部分だけを直し、GA4 側の設定（コンバージョン・カスタム定義）は変えない。
 - 差分は300行まで（package.json・テストを除く）。ブランチは `loop/<番号>-<短い英語slug>`。main へ直接 push しない。
