@@ -20,8 +20,6 @@
 	let enHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'en' }));
 	let zhTwHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'zh-TW' }));
 
-	// 施設予約セクション（/[brand]/[facility]/**）を外部施設HPから深い誘導で開いた場合の戻り導線（ADR-0001）
-	let facilityBackLink = $derived(page.data.facilityBackLink as { name: string; href: string } | null | undefined);
 
 	// ヘッダーの検索バーは「宿を探すページ」だけに出す（2026-11-02 指示「検索バーがヘッダーに常にあるのは不自然」）。
 	// 空室検索の結果と、施設のトップ・客室・お知らせ等の施設ページ。トップは本文ヒーローに、プラン一覧はページ内に検索があり、
@@ -33,6 +31,30 @@
 			(routeId.startsWith('/(public)/search') ||
 				(routeId.startsWith('/(public)/[brand]/[facility]') && !routeId.startsWith('/(public)/[brand]/[facility]/plans/[plan]')))
 	);
+	// ---- 施設ブランドの表示（2026-11-09）----
+	// 施設HPから来た予約の流れ（施設ページ → 予約入力・確認 → 完了）では、同じ施設のサイトの続きだと分かるようにする:
+	// ヘッダー左上を施設ロゴ（HP と同じ素材）にし、YAMADO は小さく薄く添える。「← ◯◯の施設サイトへ戻る」も予約入力・完了まで出す。
+	// ロゴの無い施設・施設の分からないページ（検索・会員・マイページ等）は従来どおり YAMADO のヘッダー
+	const FACILITY_LOGOS: Record<string, { src: string; w: number; h: number }> = {
+		nishiwaga: { src: '/site-assets/facility/yamado-logo.png', w: 640, h: 329 },
+		oga: { src: '/site-assets/facility/oga-logo.svg', w: 138, h: 71 }
+	};
+	type FacilityBrand = { name: string; slug: string; brandSlug: string; site: string | null };
+	let facilityBrand = $derived.by((): FacilityBrand | null => {
+		const d = page.data as Record<string, any>;
+		if (routeId.startsWith('/(public)/[brand]/[facility]') && d.shellFacility) {
+			const f = d.shellFacility;
+			return { name: f.name, slug: f.slug, brandSlug: f.brandSlug, site: d.facilityBackLink?.href ?? null };
+		}
+		const inBooking = ['/(public)/booking/hold', '/(public)/booking/complete', '/(public)/booking/pay'].some((r) => routeId.startsWith(r));
+		if (inBooking && d.facility?.slug) {
+			const f = d.facility;
+			return { name: f.name, slug: f.slug, brandSlug: f.brandSlug, site: f.websiteUrl ?? null };
+		}
+		return null;
+	});
+	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
+
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
 	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));
@@ -110,19 +132,28 @@
 </svelte:head>
 
 <div class="site-public flex min-h-screen flex-col">
-	<!-- 施設HPへの戻り導線はスティッキーに含めない（スクロールで流れてよい・ヘッダーを低く保つ） -->
-	{#if facilityBackLink}
+	{#if facilityBrand?.site}
+		<!-- 施設HPへの戻り導線はスティッキーに含めない（スクロールで流れてよい・ヘッダーを低く保つ）。予約入力・完了の画面にも出す -->
 		<div class="border-b border-stone-100 bg-stone-50 px-4 py-1.5 text-xs">
-			<a href={facilityBackLink.href} class="mx-auto flex max-w-6xl items-center gap-1 text-stone-500 hover:text-brand-800">
-				{m.nav_back_to_facility_site({ name: facilityBackLink.name })}
+			<a href={facilityBrand.site} class="mx-auto flex max-w-6xl items-center gap-1 text-stone-500 hover:text-brand-800">
+				{m.nav_back_to_facility_site({ name: facilityBrand.name })}
 			</a>
 		</div>
 	{/if}
 	<header class="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
 		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 md:gap-x-6 md:py-2.5">
-			<a href="/" class="shrink-0" aria-label="YAMADO">
-				<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-5 w-auto md:h-6" />
-			</a>
+			{#if facilityBrand && facilityLogo}
+				<!-- 施設ロゴ＋区切り線＋小さな YAMADO（ロゴを押すと Book 内の施設トップへ） -->
+				<a href="/{facilityBrand.brandSlug}/{facilityBrand.slug}" class="flex shrink-0 items-center gap-3" aria-label="{facilityBrand.name} ／ YAMADO">
+					<img src={facilityLogo.src} alt="" width={facilityLogo.w} height={facilityLogo.h} class="h-9 w-auto md:h-11" />
+					<!-- YAMADO は施設ロゴの添え書き程度に（小さく・薄く） -->
+					<span class="border-l border-stone-300 py-1.5 pl-3"><img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-2 w-auto opacity-40 md:h-2.5" /></span>
+				</a>
+			{:else}
+				<a href="/" class="shrink-0" aria-label="YAMADO">
+					<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-5 w-auto md:h-6" />
+				</a>
+			{/if}
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
 			<nav class="hidden items-center gap-4 text-sm text-stone-600 md:flex">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
