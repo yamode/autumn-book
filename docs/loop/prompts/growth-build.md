@@ -12,17 +12,20 @@
 1. 取り込まれている yamode/autumn-book で `git pull origin main` のあと `docs/loop/GROWTH.md` を読む。**そこに書かれた規則がこのプロンプトより優先**。特に「実装役」「リスク区分」「守ること」。
 2. `PHASE` を確認する。**2 未満なら何もせず終わる**（日誌も通知も不要）。
 3. autumn-book に `loop:pause` の open Issue があれば、何もせず終わる。
-4. **対象は autumn-book だけ**。hp-yamado・hp-oga の Issue には着手しない。
+4. **対象は autumn-book の `risk:low` / `risk:mid` と、hp-yamado・hp-oga の `risk:low` だけ**。HP の `risk:mid` 以上には着手しない。
 5. main へ直接 push しない。タグを作らない。Supabase・GA4・GTM・Search Console には触らない（このルーティンでは読みもしない）。migration・`.github/workflows/**`・`.env*` を変えない。
+6. HP では本番に反映しない：`npm run deploy:xserver`・FTP・XServer API を使わない。`.xserver-*.env` に触らない。merge と本番反映は PHASE に関係なく人。
 
 ## 1. GitHub の操作方法
 - GraphQL は使えない。`gh issue` / `gh pr` は使わず **REST の `gh api`** を使う：
   - Issue 一覧: `gh api "repos/yamode/autumn-book/issues?labels=growth,loop:go&state=open&per_page=100"`（PR も混ざるので `.pull_request` が無いものだけを Issue として扱う）
   - PR 一覧: `gh api "repos/yamode/autumn-book/pulls?state=open&per_page=100"` → `head.ref` が `loop/` で始まるもの
+  - HP も同じ形で見る：`repos/yamode/hp-yamado/…`・`repos/yamode/hp-oga/…`（Issue は `labels=growth,loop:go,risk:low`）
   - PR 作成: `gh api repos/yamode/autumn-book/pulls -F title=@title.txt -F body=@body.md -f head=loop/<n>-<slug> -f base=main`
     → 続けて `gh api repos/yamode/autumn-book/issues/<PR番号>/labels -f "labels[]=loop" -f "labels[]=growth" -f "labels[]=kind:…" -f "labels[]=risk:…"`
   - コメント: `gh api repos/yamode/autumn-book/issues/<番号>/comments -F body=@file.md`
   - ゲートの状態: `gh api "repos/yamode/autumn-book/commits/<sha>/check-runs"`（`check` の conclusion）
+- HP のリポに着手するときは、`add_repo` ツールで `yamode/hp-yamado` か `yamode/hp-oga` を取り込み、`git clone --depth 1 https://github.com/yamode/<リポ> /home/user/<リポ>` する（既にあれば `git -C /home/user/<リポ> fetch origin main`）。取り込めなかったら、その回は HP を飛ばし、日誌に理由を書いて PushNotification で知らせる。
 - タイトル・本文はファイル経由で渡し、タイトルのファイルは末尾の改行を付けない（`printf '%s' "…" > title.txt`）。
 - コメント・PR 本文の末尾には必ず次を付ける：
   ```
@@ -31,11 +34,13 @@
   ```
 
 ## 2. やる仕事を1つ選ぶ
+見る範囲は autumn-book・hp-yamado・hp-oga の3リポ。
 先に：**main と衝突しているだけ**の `loop/` ブランチの open PR は、全部まとめて main を取り込み、版を main の最新版の次に振り直して push し、PR に「main を取り込み、版を振り直しました」とコメントする（本数・往復に数えない）。
 優先順：
 1. **自分の既存 PR の続き**：pr-check が赤、または人の未対応の指摘があるループ PR を1本だけ直す。往復が既に2回なら `loop:needs-human` を付けて止める。
-2. **新規着手**：`growth` ＋ `loop:go` が付いた open Issue で、`risk:low` / `risk:mid`、`loop:needs-human` なし、まだ `loop/<番号>-` のブランチや PR が無いもの。`kind:bug` を先に、あとは番号の小さい順。
-   ループの open PR が3本以上なら新規着手しない。
+2. **新規着手**：`growth` ＋ `loop:go` が付いた open Issue で、`loop:needs-human` なし、まだそのリポに `loop/<番号>-` のブランチや PR が無いもの。リスクは autumn-book なら `risk:low` / `risk:mid`、HP なら `risk:low` だけ。
+   順番は `kind:bug` を先に、次に autumn-book → hp-yamado → hp-oga、同じリポの中は番号の小さい順。
+   ループの open PR が3リポ合わせて3本以上なら新規着手しない。
 どちらも無ければ、日誌に「着手できる打ち手なし」と書いて終わる。**1サイクル1件。**
 
 ## 3. 実装
@@ -58,13 +63,29 @@
 9. 日本語の conventional コミット（件名の末尾に `(vX.Y.Z)`、本文に `Refs #<番号>`）。ステージはパス指定（`git add -A` 禁止）。
 10. `git push -u origin loop/<番号>-<slug>` → PR を作る：タイトル「<件名> (vX.Y.Z)」、本文は「何をしたか／打ち手の Issue（`Refs #<番号>`）／測り方（どの指標を何週間見るか）／テスト／やらなかったこと／リスク区分」。**`Closes` は使わない**（打ち手の Issue は週次分析が判定して閉じる）。
 
+## 3-2. HP（hp-yamado・hp-oga）の打ち手のとき
+上の 3 の手順に従い、次だけ読み替える。
+- 作業は `/home/user/<リポ>` で。ブランチは `git checkout -b loop/<番号>-<slug> origin/main`。Issue へのコメント・PR もそのリポに作る。
+- 直してよいのは low の範囲だけ：文言・見出し・title・meta description・alt・内部リンク・構造化データ。次に当たったら実装せず、Issue に理由を書いて `loop:needs-human` を付けて止める：
+  - ページの追加・削除・構成の変更、画像の差し替え
+  - PHP の処理（問い合わせフォームなど）・`.htaccess`・`server/`・`scripts/` / `tools/` のデプロイ・取得スクリプト・`wrangler.jsonc` に触る必要がある
+  - 差分が300行を超える（package.json を除く）
+- 言語版がある文言（英・中・韓など）は、Issue の範囲で全言語そろえる。訳に自信がなければ止めて人に聞く。
+- 版上げ：ルートの `package.json` の version を main の最新版の次の PATCH にする（`package-lock.json` の version も同じ値に）。
+- 手元チェック（全部通るまで直す）：
+  - hp-yamado：`npm ci && npm run check && npm run build:xserver`（`check` は 0 errors。`xserver/` は書き出し先で git 管理外）。書き出した `xserver/` の該当ページに、直した title・description・文言が出ていることを `grep` で確かめる。
+  - hp-oga：`npm run check`（`欠落: 0` のまま）。直した `site/` の HTML に変更が入っていることを `grep` で確かめ、PHP を直したら `php -l`（ただし PHP の処理は触らない）。
+- コミットは日本語の conventional（件名の末尾に `(vX.Y.Z)`、本文に `Refs #<番号>`）。`git push -u origin loop/<番号>-<slug>` の前に `git fetch origin main` する（浅い clone から送ると重くなる）。
+- PR 本文に「本番反映：merge 後に人が `npm run deploy:xserver` で反映する（ループはしない）」と書く。ラベルは `loop`・`growth`・`kind:…`・`risk:low`。
+
 ## 4. 検証とレビュー
-1. PR Check（`.github/workflows/pr-check.yml`）の結果を待つ（最大20分。数分おきに `check-runs` を見る）。赤なら失敗ログを読んで直して push（往復2回まで）。
+1. （autumn-book のみ。HP には PR ゲートが無いので 3-2 の手元チェックで代える）PR Check（`.github/workflows/pr-check.yml`）の結果を待つ（最大20分。数分おきに `check-runs` を見る）。赤なら失敗ログを読んで直して push（往復2回まで）。
 2. **Agent ツールで別のエージェント**を起こし、`git diff origin/main...HEAD` と Issue 本文だけを渡してレビューさせる（あなたの見立ては渡さない）。観点：打ち手の目的と測り方が満たせるか／予約・決済の導線を壊していないか／個人情報／多言語の欠け。
 3. 指摘は PR にコメントで残し、妥当なものは直して push（往復2回まで）。2回直しても赤／重大な指摘が残るなら `loop:needs-human` を PR と Issue に付けて止める。
 4. 緑＋レビュー合格なら、PHASE 2 では PR に「merge してよい状態です（PR Check 緑・レビュー済み。merge は人）」とコメントして終える。
+   HP の PR は PHASE に関係なく「merge してよい状態です（手元チェック済み・レビュー済み。merge と本番反映は人）」とコメントして終える。
 
-## 4-2. 自動 merge（PHASE 3 のときだけ・1回1本まで）
+## 4-2. 自動 merge（PHASE 3 のときだけ・1回1本まで・autumn-book のみ。HP は自動 merge しない）
 GROWTH.md「実装役」の条件（`risk:low` で差分がすべて low・人が付けた `loop:go`・pr-check 緑・重大な指摘なし・`AUTO_MERGE_LOW = off` なし）をすべて満たすときだけ：
 1. main を取り込み、版が main の最新版以下なら振り直して push、pr-check が緑になるのを待つ。
 2. `gh api -X PUT repos/yamode/autumn-book/pulls/<n>/merge -f merge_method=squash -f commit_title="<PR タイトル>"` → `gh api -X DELETE repos/yamode/autumn-book/git/refs/heads/loop/<n>-<slug>`
@@ -79,7 +100,7 @@ GROWTH.md「実装役」の条件（`risk:low` で差分がすべて low・人�
 ## 6. 最後に必ず
 autumn-book の「集客ループ日誌」Issue（#1）にコメントを1件残す（見出し「集客ループ日誌 YYYY-MM-DD HH:MM JST（growth-build）」。時刻は `TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M'` で取った実際の時刻）：
 - PHASE・止まる条件に当たったか
-- 選んだ Issue / PR（なければ「着手できる打ち手なし」）
+- 選んだ Issue / PR（リポ名つき。なければ「着手できる打ち手なし」）
 - やったこと（ブランチ・PR 番号・版・テスト結果・PR Check の結果・レビューの要点）
 - 自動 merge したもの（PHASE 3 のみ。PR 番号・版・デプロイの結果）
 - 止めたもの（`loop:needs-human` を付けたもの・理由）／うまく動かなかったこと
