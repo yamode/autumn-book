@@ -116,7 +116,7 @@ taskul-one `call.ts` の `Signal` 型を踏襲：
 | `ice` | `{ candidate: RTCIceCandidateInit }` | 双方向（trickle） |
 | `bye` | `{}` | 双方向 |
 
-- broadcast イベント名は `signal`、payload は `{ id, kind, payload, sender }`（`sender: 'guest' | 'staff'`）。
+- broadcast イベント名は `signal`。~~payload は `{ id, kind, payload, sender }`~~ → **2026-11-10 改訂：payload は常に `{}`**（合図だけ。中身は `intercom_signal_fetch` で読む・§12.6）。
 - **offer は必ずゲスト側（caller）が作る**。~~スタッフが `intercom_answer` で active にした後に送る~~ → **2026-11-01 改訂：呼出中（ringing）に先置きしてよい**（§12.5）。store-and-forward なので受端の購読前でも消えない。
   - ゲストは呼出中に PeerConnection を作り、ICE 候補を集め終えてから（最長 2.5 秒・応答を検知したら打ち切り）候補を SDP に含んだ offer を `intercom_signal_send` で置く。それより後に出た候補だけ `ice` で trickle する。
   - **受電側は `intercom_answer` で先勝ちに勝ってから** backlog（`intercom_signal_fetch`）を取り、offer に answer を返す。勝つ前に answer を返さない（複数端末が同時に応答したとき、負けた端末の answer をゲストが採ってしまうため）。
@@ -141,7 +141,7 @@ taskul-one `call.ts` の `Signal` 型を踏襲：
 | `call:{call_id}` | シグナル配送（nudge） | 当該呼のゲスト・スタッフ |
 | `intercom:facility:{facility_id}` | 着信 ring・呼状態の施設内周知 | 当該施設の受電端末 |
 
-- MVP は **public topic**（推測困難な UUID をトピック名に含める。taskul-one と同等の割り切り）。payload に電話番号等の秘匿情報は載らない（SDP/ICE と room_code のみ）。
+- MVP は **public topic**（推測困難な UUID をトピック名に含める。taskul-one と同等の割り切り）。**2026-11-10 改訂：payload は常に `{}`**（以前は SDP/ICE と room_code が載っていた・§12.6）。
 - 強化パス（契約改訂で対応）：Realtime private channel ＋ `realtime.messages` RLS。
 
 ## 5. TURN / ICE
@@ -333,3 +333,24 @@ facility_intercom(
 - **ポーリング**：応答から音声接続までは両側とも **250ms**（最長 15 秒。以後 1 秒）。呼出中は 1 秒、通話中は 2 秒のまま。
 - **互換**：旧版の受電アプリ（autumn-call v0.9.0 / build 6 以前）は `intercom_answer` の前に backlog を取るため、先置き offer に応答前に answer を返す。単一端末では問題なく繋がる（ゲストは status=active より先に connected になりうるので、connected で呼出タイマーも止める）。複数端末がほぼ同時に応答した場合だけ、負けた旧版端末の answer を採って繋がらない（20 秒で failed）ことがありうる。新版（v0.10.0 / build 7）では起きない。
 - 計測：ゲストはブラウザのコンソール `[call:diag]`（発信からの ms・応答の検知からの ms）、受電側は `[call:diag]`（応答操作からの ms：`pc ready` / `answer won` / `offer recv` / `answered offer` / `connected`）。
+
+### 12.6 追補（2026-11-10・信頼性の見直し＝再送・停止 push・通話中の一覧・broadcast の中身を空に）
+
+両アプリと DB の通話ロジックを見直した結果。**§4 の RPC・シグナルの形・状態機械は変えない**（追加だけ）。
+
+- **シグナル送信の再送**（両側）：`intercom_signal_send` の一時的な失敗（通信断・5xx）は送り直す。
+  - ゲスト：offer は閉じるまで（300ms → 600 → 1200 → 2000ms・最大 8 回）。ICE restart で新しい offer を出したら、古い offer の再送はやめる。ice は 2 回まで。
+  - 受電側：answer は計 3 回、ice は計 2 回。拒否（`intercom_decline`）も計 3 回。
+  - `call_closed` / `forbidden` / `not_found` / `invalid_params` / `too_many_signals`（受電側は 401・408・429 以外の 400 番台）は送り直さない。
+- **offer が重なったとき**：受電側は、1 回の `intercom_signal_fetch` に offer が複数あれば**最後の 1 件だけ**に answer を返す（古い offer への answer をゲストが新しい offer に当てると、ICE の資格情報が食い違う）。
+- **ポーリング**：再接続中（一時断〜connected に戻るまで）は両側とも **500ms**。それ以外は §12.5 のまま。
+- **ページ離脱**：ゲストの終話（hangup）は `keepalive` 付きで送る（pagehide で中断されない）。
+- **受電側のアクセストークン**：ネイティブは更新しない方針のまま、使えるトークンが無い・残り 5 分未満のときに JS へ `tokenNeeded` を出し、JS（supabase-js）が更新して渡す（WebView が hidden の間は自動更新が止まるため）。
+- **他の端末が応答・拒否したときの停止 push**（§12.4 の「アプリが裏取りして閉じる」の補強）：
+  - `intercom_answer` / `intercom_decline` が成功したら、DB が pg_net で `intercom-invite` の `{ cancel: true, call_id, call_secret }` を呼ぶ（`book._intercom_push_stop`。URL は Vault の `book_send_booking_mail_url` から作る。無ければ何もしない）。
+  - `intercom-invite` の cancel は、対象を canceled / missed に加えて **active（started_at が 60 秒以内）・declined（ended_at が 60 秒以内）** に広げる。1 呼 1 回（`cancel_pushed_at`）は同じ。
+  - 送り先：canceled / missed は従来どおり `app_build >= 9`。**active / declined は `app_build >= 12` で、応答・拒否した端末（`answered_device_id`）を除く**。
+  - VoIP payload は同じ `kind: "intercom_cancel"`。`status` で理由がわかる（受電アプリは active → 他の端末が応答、declined → 他の端末が拒否、として CallKit を閉じる）。
+  - 受電アプリ（ビルド 12〜）は、裏取りで「もう鳴っていない」と知っても、**どの終了理由でも最大 3 秒 push を待ってから閉じる**（先に閉じると、あとから届いた push の報告で着信画面が一瞬出る・v0.11.2 と同じ理由）。この端末の画面で拒否したときだけ、すぐ閉じる。
+- **通話中の呼の一覧**：`book.intercom_active_calls(p_facility_id)`（スタッフ・`intercom_pending` と同じ認可）→ `[{ call_id, room_code, started_at, device_id, device_label }]`。受電アプリは前面のとき、自分以外の端末の通話を「他の端末で通話中」と表示する。合図は従来の施設 topic の `status`（＋15 秒ポーリング・前面復帰）。
+- **broadcast の中身を空にする**（§4.2・§4.3・§4.4 の改訂）：topic は public で誰でも購読できるのに、`call:{call_id}` の `signal` に SDP（IP アドレス）、施設 topic の `ring` に部屋番号と call_id が載っていた。`book._intercom_broadcast` が**常に `{}` を送る**ようにした。event 名（`ring` / `status` / `signal`）と topic は変えない。受信側はもともと payload を使わず、合図として `intercom_pending` / `intercom_signal_fetch` を読み直すだけ（§12.1）なので、どの版のアプリも動作は変わらない。

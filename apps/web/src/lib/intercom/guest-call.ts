@@ -53,6 +53,13 @@ const POLL_RINGING_MS = 1_000;
 const POLL_CONNECTING_MS = 250; // 応答から音声が繋がるまでは短く（answer / ice を早く拾う）
 const POLL_CONNECTING_FOR_MS = 15_000; // 短い間隔はこの時間まで（以後は 1 秒）
 const POLL_ACTIVE_MS = 2_000;
+const POLL_RECONNECTING_MS = 500; // 再接続中（ICE restart の re-offer への answer を早く拾う）
+// シグナル送信の再送間隔（offer は閉じるまで・最後の値を繰り返す／ice は短く 2 回まで）
+const OFFER_RETRY_MS = [300, 600, 1_200, 2_000];
+const OFFER_MAX_RETRIES = 8;
+const ICE_RETRY_MS = [200, 500];
+// 再送しても通らない（恒久的な）失敗。これ以外（ネットワーク断・error）だけ再送する
+const PERMANENT_ERRORS = new Set(['call_closed', 'forbidden', 'not_found', 'invalid_params', 'too_many_signals']);
 
 // 区間ごとの時刻（発信からの ms）をコンソールに出す。リリース時は false
 const DEBUG = true;
@@ -92,11 +99,13 @@ export type GuestCallEvents = {
 	onReconnecting?: (reconnecting: boolean) => void;
 };
 
-async function api(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+/** keepalive: ページ破棄（pagehide）後も送信を続けさせる（終話を確実に届ける） */
+async function api(body: Record<string, unknown>, opts: { keepalive?: boolean } = {}): Promise<Record<string, unknown>> {
 	const res = await fetch('/r/api/intercom', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body)
+		body: JSON.stringify(body),
+		keepalive: opts.keepalive ?? false
 	});
 	const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
 	if (!res.ok) throw new Error(String(data.error ?? 'error'));
@@ -128,6 +137,10 @@ export class GuestCall {
 	private gatherCut: (() => void) | null = null;
 	private t0 = 0;
 	private closed = false;
+	/** 回線の一時断から再接続を試みている（onReconnecting(true)〜connected）。この間はポーリングを速める */
+	private reconnecting = false;
+	/** offer の世代。新しい offer（ICE restart）を出したら古い offer の再送をやめる */
+	private offerGen = 0;
 	/** 呼出音・応答音・終話音（発信側が状況を音で分かるように） */
 	private tones: CallTones | null = null;
 	private toneLevel = 1;
@@ -192,7 +205,8 @@ export class GuestCall {
 	/** 自分で切る（呼出中＝取消・通話中＝終話） */
 	async hangup(): Promise<void> {
 		if (this.closed) return;
-		if (this.callId) void api({ action: 'hangup', callId: this.callId, callSecret: this.secret }).catch(() => {});
+		// pagehide から呼ばれてもページ破棄で中断されないよう keepalive で送る
+		if (this.callId) void api({ action: 'hangup', callId: this.callId, callSecret: this.secret }, { keepalive: true }).catch(() => {});
 		this.finish('hangup');
 	}
 
@@ -250,7 +264,9 @@ export class GuestCall {
 		if (this.closed) return;
 		const delay =
 			this.state === 'active'
-				? POLL_ACTIVE_MS
+				? this.reconnecting
+					? POLL_RECONNECTING_MS
+					: POLL_ACTIVE_MS
 				: this.picked && performance.now() - this.pickedAt < POLL_CONNECTING_FOR_MS
 					? POLL_CONNECTING_MS
 					: POLL_RINGING_MS;
@@ -314,7 +330,7 @@ export class GuestCall {
 				if (this.ringTimer) clearTimeout(this.ringTimer);
 				this.clearGrace();
 				this.iceRestarts = 0;
-				this.ev.onReconnecting?.(false);
+				this.setReconnecting(false);
 				if (this.state !== 'active') {
 					this.diag('音声接続（connected）');
 					this.set('active');
@@ -369,7 +385,8 @@ export class GuestCall {
 			const offer = await pc.createOffer(iceRestart ? { iceRestart: true } : { offerToReceiveAudio: true });
 			offer.sdp = tuneOpus(offer.sdp);
 			await pc.setLocalDescription(offer);
-			await this.send('offer', { sdp: { type: offer.type, sdp: offer.sdp } });
+			// 再送は裏で続ける（待つと ICE restart の次のタイマーが遅れる）。より新しい offer を出せば世代で止まる
+			void this.send('offer', { sdp: { type: offer.type, sdp: offer.sdp } });
 		} catch {
 			if (!iceRestart) void this.fail();
 		}
@@ -378,7 +395,7 @@ export class GuestCall {
 	// 一時的な経路断は即切らない。グレース後も戻らなければ ICE restart（発信側＝ゲストが主導・glare 回避）
 	private startGrace() {
 		if (this.graceTimer || this.state !== 'active') return;
-		this.ev.onReconnecting?.(true);
+		this.setReconnecting(true);
 		this.graceTimer = setTimeout(() => {
 			this.graceTimer = null;
 			const st = this.pc?.connectionState;
@@ -396,7 +413,7 @@ export class GuestCall {
 		if (!this.pc || this.closed) return;
 		if (this.iceRestarts >= MAX_ICE_RESTARTS) return this.fail();
 		this.iceRestarts++;
-		this.ev.onReconnecting?.(true);
+		this.setReconnecting(true);
 		await this.makeOffer(true);
 		// 次のグレースで戻らなければもう一度
 		this.graceTimer = setTimeout(() => {
@@ -424,17 +441,42 @@ export class GuestCall {
 		}
 	}
 
+	private setReconnecting(v: boolean) {
+		this.reconnecting = v;
+		this.ev.onReconnecting?.(v);
+	}
+
+	/**
+	 * シグナルを DB に置く。一時的な失敗は再送する（offer が 1 回落ちると、応答されても繋がらないため）。
+	 *   offer: 閉じるか、より新しい offer を出すまで（最大 OFFER_MAX_RETRIES 回）
+	 *   ice  : 最大 ICE_RETRY_MS.length 回
+	 * 恒久的な失敗（PERMANENT_ERRORS）は再送しない。尽きても投げない（状態は fetch で拾う）
+	 */
 	private async send(kind: 'offer' | 'ice' | 'bye', payload: Record<string, unknown>) {
-		try {
-			await api({ action: 'send', callId: this.callId, callSecret: this.secret, kind, payload });
-		} catch {
-			/* 呼が閉じた等。状態は fetch で拾う */
+		const gen = kind === 'offer' ? ++this.offerGen : 0;
+		const stale = () => this.closed || (kind === 'offer' && gen !== this.offerGen);
+		const maxRetries = kind === 'offer' ? OFFER_MAX_RETRIES : kind === 'ice' ? ICE_RETRY_MS.length : 0;
+		for (let attempt = 0; ; attempt++) {
+			try {
+				await api({ action: 'send', callId: this.callId, callSecret: this.secret, kind, payload });
+				if (attempt > 0) this.diag(`${kind} 再送で送信（${attempt} 回目）`);
+				return;
+			} catch (e) {
+				const code = e instanceof Error ? e.message : 'error';
+				if (PERMANENT_ERRORS.has(code) || attempt >= maxRetries) {
+					this.diag(`${kind} 送信失敗（${code}・再送 ${attempt} 回）`);
+					return;
+				}
+			}
+			const table = kind === 'offer' ? OFFER_RETRY_MS : ICE_RETRY_MS;
+			await new Promise((r) => setTimeout(r, table[Math.min(attempt, table.length - 1)]));
+			if (stale()) return;
 		}
 	}
 
 	private async fail() {
 		if (this.closed) return;
-		void api({ action: 'hangup', callId: this.callId, callSecret: this.secret }).catch(() => {});
+		void api({ action: 'hangup', callId: this.callId, callSecret: this.secret }, { keepalive: true }).catch(() => {});
 		this.finish('failed');
 	}
 
@@ -450,6 +492,7 @@ export class GuestCall {
 	private finish(end: GuestCallEnd) {
 		if (this.closed) return;
 		this.closed = true;
+		this.reconnecting = false;
 		for (const t of [this.pollTimer, this.ringTimer, this.connectTimer, this.graceTimer]) if (t) clearTimeout(t);
 		this.pc?.close();
 		this.pc = null;
