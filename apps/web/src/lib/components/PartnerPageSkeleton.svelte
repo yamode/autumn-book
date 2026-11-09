@@ -17,7 +17,7 @@
     <div class="mt-4 space-y-6">
       {#each [0, 1] as i (i)}
         <div class="overflow-hidden rounded-lg border border-stone-200 bg-white md:grid md:grid-cols-[280px_minmax(0,1fr)]">
-          <div class="shimmer aspect-[16/10] w-full rounded-none"></div>
+          <div class="shimmer-block aspect-[16/10] w-full rounded-none" aria-hidden="true"></div>
           <div class="space-y-3 p-5"><div class="shimmer h-4 w-11/12"></div><div class="shimmer h-4 w-2/3"></div><div class="shimmer ml-auto mt-6 h-9 w-32"></div></div>
         </div>
       {/each}

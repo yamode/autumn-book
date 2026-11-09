@@ -664,13 +664,13 @@
         <div class={`overflow-hidden rounded-lg border border-stone-200 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)] ${view === 'room' ? 'md:grid md:grid-cols-[280px_minmax(0,1fr)]' : ''}`}>
           {#if view === 'room'}
             <div class="border-b border-stone-200 md:border-b-0 md:border-r">
-              <div class="shimmer aspect-[16/10] w-full rounded-none"></div>
+              <div class="shimmer-block aspect-[16/10] w-full rounded-none" aria-hidden="true"></div>
               <div class="space-y-3 px-5 py-4"><div class="shimmer h-4 w-2/3"></div><div class="shimmer h-3.5 w-1/2 opacity-70"></div></div>
             </div>
             <div class="min-w-0">{@render rowShimmer(2, false)}</div>
           {:else}
             <div class="gap-6 px-5 py-5 sm:px-6 md:grid md:grid-cols-[280px_minmax(0,1fr)]">
-              <div class="shimmer mb-4 aspect-[16/10] w-full md:mb-0"></div>
+              <div class="shimmer-block mb-4 aspect-[16/10] w-full md:mb-0" aria-hidden="true"></div>
               <div class="space-y-3"><div class="shimmer h-5 w-3/4"></div><div class="shimmer h-4 w-full opacity-70"></div><div class="shimmer h-4 w-5/6 opacity-70"></div></div>
             </div>
           {/if}

@@ -544,7 +544,7 @@
 			<div class="mt-3 space-y-3" aria-busy="true" aria-label={m.common_loading()}>
 				{#each Array.from({ length: skeletonCount }, (_, i) => i) as i (i)}
 					<div class="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white p-4 sm:flex-row sm:items-center">
-						<div class="shimmer h-24 w-full shrink-0 sm:w-40"></div>
+						<div class="shimmer-block h-24 w-full shrink-0 sm:w-40" aria-hidden="true"></div>
 						<div class="flex-1 space-y-2">
 							<div class="shimmer h-5 w-3/4"></div>
 							<div class="shimmer h-3 w-1/3 opacity-70"></div>

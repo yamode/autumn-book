@@ -46,7 +46,7 @@
           <div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
             <div class="shimmer h-6 w-1/2"></div>
             <div class="shimmer mt-2 h-4 w-1/3 opacity-70"></div>
-            <div class="shimmer mt-4 aspect-[16/9] w-full"></div>
+            <div class="shimmer-block mt-4 aspect-[16/9] w-full" aria-hidden="true"></div>
           </div>
         {/each}
       </div>

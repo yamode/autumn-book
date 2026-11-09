@@ -17,12 +17,12 @@
 			<div class="space-y-4">
 				<div class="shimmer h-5 w-24 rounded-full"></div>
 				<div class="shimmer h-8 w-4/5"></div>
-				<div class="shimmer aspect-[16/10] w-full rounded-xl"></div>
+				<div class="shimmer-block aspect-[16/10] w-full rounded-xl" aria-hidden="true"></div>
 				<div class="space-y-2.5 pt-2">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-4 {i === 3 ? 'w-2/3' : 'w-full'} opacity-70"></div>{/each}</div>
 			</div>
 			<div class="hidden rounded-xl border border-stone-200 bg-white p-4 md:block">
 				<div class="space-y-2.5">{#each [0, 1] as i (i)}<div class="shimmer h-4 w-3/4 opacity-70"></div>{/each}</div>
-				<div class="shimmer mt-4 h-20 w-full"></div>
+				<div class="shimmer-block mt-4 h-20 w-full" aria-hidden="true"></div>
 				<div class="shimmer mt-4 h-8 w-1/2"></div>
 				<div class="shimmer mt-4 h-11 w-full"></div>
 			</div>
@@ -34,7 +34,7 @@
 		<div class="mt-6 space-y-5">
 			{#each [0, 1, 2] as i (i)}
 				<div class="grid gap-4 rounded-xl border border-stone-200 bg-white p-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] sm:p-6">
-					<div class="shimmer aspect-[3/2] w-full rounded-lg"></div>
+					<div class="shimmer-block aspect-[3/2] w-full rounded-lg" aria-hidden="true"></div>
 					<div class="space-y-3">
 						<div class="shimmer h-6 w-3/4"></div>
 						<div class="shimmer h-4 w-1/2 opacity-70"></div>
@@ -48,7 +48,7 @@
 		<!-- 客室詳細: 見出し → 写真と説明 -->
 		<div class="shimmer mt-4 h-8 w-1/2"></div>
 		<div class="mt-5 grid gap-5 rounded-xl border border-stone-200 bg-white p-4 sm:p-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-			<div class="shimmer aspect-[3/2] w-full rounded-lg"></div>
+			<div class="shimmer-block aspect-[3/2] w-full rounded-lg" aria-hidden="true"></div>
 			<div class="space-y-3">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-4 {i === 3 ? 'w-1/2' : 'w-full'} opacity-70"></div>{/each}</div>
 		</div>
 	{:else}
