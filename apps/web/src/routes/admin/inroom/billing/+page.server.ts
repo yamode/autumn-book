@@ -1,3 +1,4 @@
+import { receiptTrackingForAuthorizedPayments } from '$lib/server/inroom-receipt-tracking';
 import { fail } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
@@ -46,6 +47,7 @@ export const load: PageServerLoad = async (event) => {
 		settings,
 		stays: list.stays,
 		payments: list.payments,
+		receiptTracking: useSupabaseAdmin ? await receiptTrackingForAuthorizedPayments(list.payments.map((p) => p.id)) : {},
 		loadError,
 		live: useSupabaseAdmin,
 		paymentReady: inroomPaymentReady(),

@@ -1,3 +1,4 @@
+import { receiptTrackingForAuthorizedPayments } from '$lib/server/inroom-receipt-tracking';
 import { fail } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
@@ -44,6 +45,7 @@ export const load: PageServerLoad = async (event) => {
 		to,
 		today: jstDay(0),
 		payments,
+		receiptTracking: useSupabaseAdmin ? await receiptTrackingForAuthorizedPayments(payments.map((p) => p.id)) : {},
 		loadError,
 		live: useSupabaseAdmin,
 		canRefund: user?.role === 'admin' || user?.role === 'staff'

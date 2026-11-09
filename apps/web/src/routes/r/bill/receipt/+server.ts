@@ -1,3 +1,4 @@
+import { recordReceiptDelivery } from '$lib/server/inroom-receipt-tracking';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { buildReceiptDoc, findReceiptPayment, receiptPdfResponse, renderReceiptPdf } from '$lib/server/inroom-receipt';
@@ -20,5 +21,6 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const doc = await buildReceiptDoc(p, null);
 	const pdf = await renderReceiptPdf(doc);
 	if (!pdf) return new Response('pdf failed', { status: 503, headers: NO_STORE });
+	await recordReceiptDelivery(p.id, 'download');
 	return receiptPdfResponse(doc, pdf);
 };

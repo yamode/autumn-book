@@ -1,3 +1,4 @@
+import { recordReceiptDelivery } from './inroom-receipt-tracking';
 // 客室案内のオンライン決済の領収書（2026-11-07）。台帳（book.inroom_payments）から1枚分を組み立て、PDF にして
 // ダウンロード・メール送信する。お客様の滞在（Cookie の滞在トークン）に紐づく決済だけ出せる。
 import { partnerServiceClient } from './partners/admin-client';
@@ -284,6 +285,7 @@ export async function autoSendInroomReceipt(paymentId: string, email: string, na
 		if (!p || !['paid', 'partially_refunded'].includes(p.status)) return;
 		const doc = await buildReceiptDoc(p, name);
 		const r = await sendReceiptEmail(doc, email);
+		if (r === 'sent') await recordReceiptDelivery(paymentId, 'email');
 		if (r !== 'sent') console.warn('[inroom-receipt] 領収書メールを送れませんでした', r, paymentId);
 	} catch (e) {
 		console.error('[inroom-receipt] 自動送信に失敗', e instanceof Error ? e.message : e);

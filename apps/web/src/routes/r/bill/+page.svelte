@@ -74,6 +74,7 @@
 
 	let payRef: StripePayment | undefined = $state();
 	let paying = $state(false);
+	let paymentGeneration = $state(0);
 	let payMessage = $state('');
 	// 決済の結果（このページで払った直後・リダイレクトの戻り ?payment=）
 	let result = $state<string | null>(null);
@@ -146,6 +147,8 @@
 		receiptPaymentId = r.paymentId ?? null;
 		result = r.result === 'test' ? 'test' : r.ok ? 'paid' : r.result === 'refunded' ? 'refunded' : r.result === 'pending' ? 'pending' : 'pending';
 		await invalidateAll();
+		// 成功した Elements は再利用せず、残額の決済用に作り直す。
+		if (r.ok) paymentGeneration += 1;
 	}
 </script>
 
@@ -183,6 +186,7 @@
 					</p>
 				{:else}
 					<p class="mt-3 text-sm leading-relaxed text-stone-600">{m.inroom_bill_paid_body()}</p>
+					<p class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-left text-sm leading-relaxed text-amber-900">{m.inroom_bill_additional_note()}</p>
 				{/if}
 				{#if shownResult === "paid"}
 					<!-- 領収書（宛名は決済画面で入れたもの）。メールを入れた人には自動で送っている -->
@@ -194,7 +198,7 @@
 				<div class="mt-6 space-y-2">
 					<a href="/r" class="block w-full rounded-lg bg-stone-900 py-3 text-sm font-medium text-white active:bg-stone-700">{m.inroom_bill_go_top()}</a>
 					<button type="button" onclick={closePaidModal} class="block w-full rounded-lg border border-stone-300 bg-white py-3 text-sm font-medium text-stone-700 active:bg-stone-50">
-						{m.inroom_bill_close()}
+						{bill.dueTotal > 0 ? m.inroom_bill_check_remaining() : m.inroom_bill_close()}
 					</button>
 				</div>
 			</div>
@@ -210,6 +214,9 @@
 	{#if (flags.items || flags.online) && bill.publishedCount > 0}
 		<!-- ============ 現在のご精算額（公開済みの請求書の残額だけ。公開済みが無ければ出さない・2026-10-17） ============ -->
 		<section class="rounded-lg bg-white px-4 py-4 shadow-card">
+			{#if bill.paidOnline > 0 && bill.dueTotal > 0}
+				<p class="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-900" role="status">{m.inroom_bill_remaining_note()}</p>
+			{/if}
 			<p class="text-xs text-stone-400">{m.inroom_bill_due()}</p>
 			{#if bill.dueTotal > 0}
 				<p class="mt-1 text-2xl font-semibold tabular-nums text-stone-900">{yen(bill.dueTotal)}</p>
@@ -310,7 +317,7 @@
 		</section>
 	{/if}
 
-	{#if flags.online && ((multiBill ? payable.length > 0 : bill.dueTotal > 0) || data.testPayment) && shownResult !== 'paid'}
+	{#if flags.online && ((multiBill ? payable.length > 0 : bill.dueTotal > 0) || data.testPayment) && !paidModalOpen && shownResult !== 'pending'}
 		<!-- ============ オンラインでお支払い（Stripe） ============ -->
 		<section class="space-y-3 rounded-lg bg-white px-4 py-4 shadow-card" aria-labelledby="bill-online-title">
 			<h2 id="bill-online-title" class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_online_title()}</h2>
@@ -354,6 +361,7 @@
 				</label>
 			{/if}
 			{#if data.stripeKey}
+				{#key paymentGeneration}
 				<StripePayment
 					bind:this={payRef}
 					publishableKey={data.stripeKey}
@@ -368,6 +376,7 @@
 					onbusychange={(b) => (paying = b)}
 					onerror={(msg) => (payMessage = msg)}
 				/>
+				{/key}
 				{#if payMessage}
 					<p class="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{payMessage}</p>
 				{/if}

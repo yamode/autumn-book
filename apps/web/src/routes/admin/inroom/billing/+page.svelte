@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ReceiptStatus from '$lib/components/ReceiptStatus.svelte';
 	// 客室案内の精算案内（2026-10-17 指示）。施設の既定・滞在ごとの上書き・最近のオンライン決済。
 	import { untrack } from 'svelte';
 	import { enhance } from '$lib/enhance';
@@ -225,6 +226,7 @@
 								<span class="{BADGE} {paymentTone(p.status)}">{INROOM_PAYMENT_STATUS[p.status] ?? p.status}</span>
 								{#if p.isTest}<span class="{BADGE} {TONE.danger}">テスト</span>{/if}
 							</span>
+							<ReceiptStatus tracking={data.receiptTracking[p.id]} isTest={p.isTest} />
 							{#if p.message}<span class="mt-1 block text-[11px] text-stone-400">{p.message}</span>{/if}
 							{#if data.isAdmin && (p.status === 'refund_failed' || p.status === 'mismatch')}
 								<form method="POST" action="?/retryRefund" use:enhance class="mt-2">

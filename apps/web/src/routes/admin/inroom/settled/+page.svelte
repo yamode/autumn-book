@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ReceiptStatus from '$lib/components/ReceiptStatus.svelte';
 	// 客室案内の「精算済み・返金」（2026-10-18 指示）。オンライン決済で精算したお客様の一覧と、そこからの返金。
 	// 返金のダイアログは PMS の Square 返金と同じ作り: 既定は全額（あと返せる額いっぱい）・減らすと一部返金・理由（任意）・
 	// 実行前に必ず確認（取り消せない）。返す額はサーバ（DB）が数え直す。
@@ -159,6 +160,8 @@
 						{/if}
 					</div>
 				</div>
+
+				<ReceiptStatus tracking={data.receiptTracking[p.id]} isTest={p.isTest} />
 
 				{#if p.bills.length}
 					<ul class="mt-3 space-y-0.5 border-t border-stone-100 pt-2 text-xs text-stone-600">
