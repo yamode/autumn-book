@@ -149,7 +149,7 @@ html {
 	0% { background-position: 150% 0; }
 	100% { background-position: -50% 0; }
 }
-/* 写真・大きな面は川のマーク。文字・入力欄・ボタンの細い枠は .shimmer を使う。 */
+/* 写真・大きな面は湯のゆらぎ。文字・入力欄・ボタンの細い枠は .shimmer を使う。 */
 .shimmer-block {
 	position: relative;
 	border-radius: 0.375rem;
@@ -158,15 +158,12 @@ html {
 .shimmer-block::after {
 	content: '';
 	position: absolute;
-	inset: 0;
-	margin: auto;
-	width: 80px;
-	height: 56px;
-	max-width: 70%;
-	max-height: 70%;
-	background-image: linear-gradient(100deg, #c6d0cf 0%, #c6d0cf 35%, #718a89 50%, #c6d0cf 65%, #c6d0cf 100%);
+	inset: 0 auto 0 0;
+	width: 82%;
+	border-radius: inherit;
+	background-image: linear-gradient(100deg, rgb(255 255 255 / 0.5) 35%, #fff 50%, rgb(255 255 255 / 0.5) 65%);
 	background-size: 300% 100%;
-	mask: url('../static/brand/river-flow.svg') center / contain no-repeat;
+	mask: url('../static/brand/river-flow.svg') left center / 100% 100% no-repeat;
 	animation: river-shimmer-sweep 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 	pointer-events: none;
 }
@@ -176,7 +173,7 @@ html {
 }
 @media (prefers-reduced-motion: reduce) {
 	.shimmer { animation: none; background-image: none; }
-	.shimmer-block::after { animation: none; background: #91a5a3; }
+	.shimmer-block::after { animation: none; background: rgb(255 255 255 / 0.75); }
 }
 
 /* 押したときの手応え（2026-11-01 指示「リンクやボタンを押したときのエフェクトがなく、押せているのか不安」）。全画面共通。
