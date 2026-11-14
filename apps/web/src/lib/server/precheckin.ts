@@ -38,6 +38,7 @@ import {
 	type StayTokenResult
 } from '$lib/precheckin-p3';
 import type { BathContext } from '$lib/server/private-bath';
+import { normalizeAutosendSettings, type AutosendSettings } from '$lib/precheckin-sms';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 
 // 開発中はログを出す（リリース前に false）
@@ -392,6 +393,24 @@ export async function adminPrecheckinQuestions(c: BookClient, facility: string):
 /** 宿からの質問を丸ごと置き換える（並び順＝表示順・空欄は捨てる・一覧から消した質問は削除） */
 export const adminPrecheckinSaveQuestions = (c: BookClient, facility: string, questions: { id: string | null; question: string }[]) =>
 	rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
+
+/** 自動送信の対象の設定（経路・有効か・選べる経路） */
+export const adminPrecheckinAutosend = async (c: BookClient, facility: string): Promise<AutosendSettings> =>
+	normalizeAutosendSettings(await rpc<unknown>(c, 'admin_precheckin_autosend', { p_facility: facility }));
+
+export const adminPrecheckinSaveAutosend = (c: BookClient, facility: string, enabled: boolean, routes: string[]) =>
+	rpc<null>(c, 'admin_precheckin_save_autosend', { p_facility: facility, p_enabled: enabled, p_routes: routes });
+
+/** 予約ごとの上書き。include = true 送る／false 送らない／null 経路の設定どおり */
+export const adminPrecheckinSetAutosend = (c: BookClient, facility: string, stayId: string, include: boolean | null) =>
+	rpc<null>(c, 'admin_precheckin_set_autosend', { p_facility: facility, p_stay_id: stayId, p_include: include });
+
+/** 一覧の予約の上書き（stay_id → include） */
+export async function adminPrecheckinAutosendOverrides(c: BookClient, facility: string, stayIds: string[]): Promise<Record<string, boolean>> {
+	if (!stayIds.length) return {};
+	const rows = await rpc<{ stay_id: string; include: boolean }[]>(c, 'admin_precheckin_autosend_overrides', { p_facility: facility, p_stay_ids: stayIds });
+	return Object.fromEntries((rows ?? []).map((r) => [r.stay_id, r.include === true]));
+}
 
 export const adminPrecheckinSaveMinutes = (c: BookClient, facility: string, m: MealMinutes) =>
 	rpc<null>(c, 'admin_precheckin_save_minutes', { p_facility: facility, p_dinner: m.dinner, p_breakfast: m.breakfast });

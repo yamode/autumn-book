@@ -41,7 +41,7 @@ describe('cron 自動送信', () => {
 		const { svc, calls } = fakeSvc({ precheckin_autosend_targets: () => targets });
 		const r = await runPrecheckinAutosend(svc, { enabled: false, origin: 'https://book.example' });
 		expect(r.dryRun).toBe(true);
-		expect(r.counts).toEqual({ total: 4, sms: 1, email: 1, no_contact: 1, answered: 1, already_sent: 0 });
+		expect(r.counts).toEqual({ total: 4, sms: 1, email: 1, no_contact: 1, answered: 1, already_sent: 0, not_selected: 0, excluded: 0 });
 		expect(calls.map((c) => c.fn)).toEqual(['precheckin_autosend_targets']);
 		expect(sendHtmlEmail).not.toHaveBeenCalled();
 	});

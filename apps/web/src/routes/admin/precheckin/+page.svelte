@@ -17,7 +17,7 @@
 		precheckinState,
 		shortJst
 	} from '$lib/precheckin';
-	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, smsTarget, type SmsStatusRow } from '$lib/precheckin-sms';
+	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, precheckinRoute, smsTarget, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
 
@@ -60,6 +60,23 @@
 	});
 	const capsOf = (type: 'dinner' | 'breakfast', time: string) =>
 		data.caps?.caps.find((c) => c.type === type && c.time === time)?.max_rooms ?? '';
+	// 自動送信（当日 9:00）の対象。経路の選択は保存するまで画面の中だけで持つ
+	let autoEnabled = $state(false);
+	let autoRoutes = $state<string[]>([]);
+	$effect(() => {
+		autoEnabled = data.autosend?.enabled ?? false;
+		autoRoutes = [...(data.autosend?.routes ?? [])];
+	});
+	const toggleRoute = (code: string) => {
+		autoRoutes = autoRoutes.includes(code) ? autoRoutes.filter((c) => c !== code) : [...autoRoutes, code];
+	};
+	const DIRECT_CODES = ['autumn_booking'];
+	const autoOf = (r: { stay_id: string; source: string | null; channel_code: string | null }) => {
+		const ov = r.stay_id in (data.overrides ?? {}) ? data.overrides[r.stay_id] : null;
+		return { ov, ...autosendDecision(precheckinRoute(r.source, r.channel_code), data.autosend, ov) };
+	};
+	const autoLabel = (a: ReturnType<typeof autoOf>) =>
+		a.by === 'override' ? (a.send ? '自動送信する（個別）' : '自動送信しない（個別）') : a.send ? '自動送信する' : '自動送信しない';
 	const confirmResend = (e: MouseEvent, resend: boolean) => {
 		if (resend && !confirm('新しいリンクでもう一度送ります。前に送ったメールのリンクは使えなくなります。よろしいですか？')) e.preventDefault();
 	};
@@ -74,6 +91,52 @@
 	<a href="/ci/{DEMO_PRECHECKIN_TOKEN}" target="_blank" rel="noopener" class="text-stone-700 underline underline-offset-2">お客様フォームの見本を開く ↗</a>
 	<span class="text-xs text-stone-500">（SMS・メールのリンク先と同じ画面。見本の予約で、入力しても実際の予約・PMS には反映されません）</span>
 </p>
+
+{#if data.live && data.autosend}
+	<section class="mb-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+		<h2 class="font-semibold">自動送信（チェックイン当日 9:00）</h2>
+		<p class="mt-1 text-xs text-stone-500">
+			送る予約経路を選んでおくと、その経路のご予約だけに当日 9:00 に自動で送ります（携帯番号なら SMS、無ければメール）。下の一覧で、ご予約ごとに「送る／送らない」を個別に変えることもできます。回答済み・送信済みには送りません。
+		</p>
+		{#if !data.autosendSystemOn}
+			<p class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
+				システム全体の自動送信が止まっています（PRECHECKIN_AUTOSEND）。ここで選んでも、止まっている間は送られません（対象の数え上げだけ）。
+			</p>
+		{/if}
+		{#if form && 'autosendError' in form && form.autosendError}
+			<p class="mt-2 text-sm text-red-700" role="alert">{form.autosendError}</p>
+		{:else if form && 'autosendSaved' in form && form.autosendSaved}
+			<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
+		{/if}
+		<form method="POST" action="?/autosend" use:enhance class="mt-3 space-y-3">
+			<label class="flex items-center gap-2 font-medium">
+				<input type="checkbox" name="enabled" value="1" bind:checked={autoEnabled} />
+				自動送信する
+			</label>
+			<fieldset class:opacity-50={!autoEnabled}>
+				<legend class="text-xs text-stone-500">送る予約経路</legend>
+				<div class="mt-1 flex flex-wrap gap-1.5">
+					{#each data.autosend.options as o (o.code)}
+						<label
+							class="flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-xs ring-1 {autoRoutes.includes(o.code)
+								? 'bg-stone-900 text-white ring-stone-900'
+								: 'bg-white text-stone-700 ring-stone-300'}"
+						>
+							<input type="checkbox" name="route" value={o.code} checked={autoRoutes.includes(o.code)} onchange={() => toggleRoute(o.code)} class="sr-only" />
+							{o.code === 'autumn_booking' ? 'Book 公式予約' : o.name}
+						</label>
+					{/each}
+				</div>
+				<div class="mt-2 flex flex-wrap gap-2 text-xs">
+					<button type="button" onclick={() => (autoRoutes = [...DIRECT_CODES])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">Book 公式予約だけ</button>
+					<button type="button" onclick={() => (autoRoutes = data.autosend?.options.map((o) => o.code) ?? [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">すべて</button>
+					<button type="button" onclick={() => (autoRoutes = [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">選択を外す</button>
+				</div>
+			</fieldset>
+			<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">自動送信の設定を保存</button>
+		</form>
+	</section>
+{/if}
 
 {#if !data.live}
 	<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -174,6 +237,24 @@
 						</div>
 					</div>
 				</div>
+				{#if data.autosend}
+					{@const au = autoOf(r)}
+					<form method="POST" action="?/autosendRow" use:enhance class="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-2 text-xs">
+						<input type="hidden" name="stay_id" value={r.stay_id} />
+						<span class="rounded-full px-2 py-0.5 ring-1 {au.send ? 'bg-sky-50 text-sky-800 ring-sky-200' : 'bg-stone-50 text-stone-500 ring-stone-200'}">{autoLabel(au)}</span>
+						<select
+							name="mode"
+							value={au.ov === true ? 'on' : au.ov === false ? 'off' : 'auto'}
+							onchange={(e) => e.currentTarget.form?.requestSubmit()}
+							class="rounded border border-stone-300 px-1.5 py-0.5"
+							aria-label="このご予約の自動送信"
+						>
+							<option value="auto">経路の設定どおり</option>
+							<option value="on">このご予約は送る</option>
+							<option value="off">このご予約は送らない</option>
+						</select>
+					</form>
+				{/if}
 				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error || r.sms?.sms_error}
 					<div class="mt-2 flex flex-wrap gap-x-3 border-t border-stone-100 pt-2 text-xs text-stone-500">
 						{#if r.sent_at}<span>送信 {shortJst(r.sent_at)}（{r.send_count}回）</span>{/if}

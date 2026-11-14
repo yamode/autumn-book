@@ -14,7 +14,10 @@ import {
 	nttConfigFrom,
 	nttTime,
 	parseNttSendResponse,
+	autosendDecision,
+	normalizeAutosendSettings,
 	planAutosend,
+	precheckinRoute,
 	sendSmsWith,
 	smsSegments,
 	smsTarget,
@@ -302,8 +305,44 @@ describe('自動送信（cron）', () => {
 			channel,
 			skip_reason: skip
 		});
-		const plan = planAutosend([t('a', 'sms'), t('b', 'email'), t('c', 'none'), t('d', 'sms', 'answered'), t('e', 'sms', 'already_sent'), t('f', 'sms')]);
+		const plan = planAutosend([
+			t('a', 'sms'),
+			t('b', 'email'),
+			t('c', 'none'),
+			t('d', 'sms', 'answered'),
+			t('e', 'sms', 'already_sent'),
+			t('f', 'sms'),
+			t('g', 'sms', 'not_selected'),
+			t('h', 'email', 'excluded'),
+			t('i', 'sms', 'unknown_reason')
+		]);
 		expect(plan.send.map((x) => x.stay_id)).toEqual(['a', 'b', 'f']);
-		expect(plan.counts).toEqual({ total: 6, sms: 2, email: 1, no_contact: 1, answered: 1, already_sent: 1 });
+		expect(plan.counts).toEqual({ total: 9, sms: 2, email: 1, no_contact: 1, answered: 1, already_sent: 1, not_selected: 2, excluded: 1 });
+	});
+});
+
+describe('自動送信の対象（経路で選ぶ・予約ごとに上書き）', () => {
+	it('経路のキー', () => {
+		expect(precheckinRoute('autumn_booking', 'direct')).toBe('autumn_booking');
+		expect(precheckinRoute('ota', 'ikkyu')).toBe('ikkyu');
+		expect(precheckinRoute('filemaker', '')).toBe('other');
+		expect(precheckinRoute('rms_partner', 'x')).toBe('rms_partner');
+	});
+	it('公式サイトだけ選んだとき・予約ごとの上書きが優先・無効なら上書き以外は送らない', () => {
+		const st = { enabled: true, routes: ['autumn_booking'] };
+		expect(autosendDecision('autumn_booking', st, null)).toEqual({ send: true, by: 'route' });
+		expect(autosendDecision('ikkyu', st, null)).toEqual({ send: false, by: 'route' });
+		expect(autosendDecision('ikkyu', st, true)).toEqual({ send: true, by: 'override' });
+		expect(autosendDecision('autumn_booking', st, false)).toEqual({ send: false, by: 'override' });
+		expect(autosendDecision('autumn_booking', { enabled: false, routes: ['autumn_booking'] }, null)).toEqual({ send: false, by: 'off' });
+		expect(autosendDecision('ikkyu', { enabled: false, routes: [] }, true)).toEqual({ send: true, by: 'override' });
+	});
+	it('設定の整形', () => {
+		expect(normalizeAutosendSettings({ enabled: true, routes: ['ikkyu'], options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }, { name: 'x' }] })).toEqual({
+			enabled: true,
+			routes: ['ikkyu'],
+			options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }]
+		});
+		expect(normalizeAutosendSettings(null)).toEqual({ enabled: false, routes: [], options: [] });
 	});
 });

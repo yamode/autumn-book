@@ -6,20 +6,25 @@ import { ADMIN_SUPABASE } from '$lib/server/auth';
 import { bookAdmin, mapRpcError } from '$lib/server/admin-app-data';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import {
+	adminPrecheckinAutosend,
+	adminPrecheckinAutosendOverrides,
 	adminPrecheckinCaps,
 	adminPrecheckinList,
 	adminPrecheckinMinutes,
 	adminPrecheckinQuestions,
+	adminPrecheckinSaveAutosend,
 	adminPrecheckinSaveCaps,
 	adminPrecheckinSaveMinutes,
 	adminPrecheckinSaveQuestions,
+	adminPrecheckinSetAutosend,
 	sendPrecheckin,
 	type PrecheckinCaps,
 	type PrecheckinListRow
 } from '$lib/server/precheckin';
 import { adminSmsStatus, sendPrecheckinSms, smsReady } from '$lib/server/precheckin-sms';
 import { customerLinkOrigin } from '$lib/server/public-origin';
-import type { SmsStatusRow } from '$lib/precheckin-sms';
+import { autosendEnabled, type AutosendSettings, type SmsStatusRow } from '$lib/precheckin-sms';
+import { env as privateEnv } from '$env/dynamic/private';
 import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
 import type { PcQuestion } from '$lib/precheckin';
@@ -53,6 +58,9 @@ export const load: PageServerLoad = async (event) => {
 			caps: null as PrecheckinCaps | null,
 			minutes: null as MealMinutes | null,
 			questions: null as PcQuestion[] | null,
+			autosend: null as AutosendSettings | null,
+			overrides: {} as Record<string, boolean>,
+			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
 			smsReady: smsReady(),
 			error: null as string | null
@@ -60,7 +68,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const client = bookAdmin(event);
 	const facility = toFacilityUuidStrict(currentFacility.id);
-	const [list, caps, sms, minutes, questions] = await Promise.all([
+	const [list, caps, sms, minutes, questions, autosend] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
 			(e) => ({ rows: [] as PrecheckinListRow[], error: precheckinError(e) })
@@ -71,9 +79,27 @@ export const load: PageServerLoad = async (event) => {
 		// 食事の所要時間の目安（DB 未適用なら欄を出さない）
 		adminPrecheckinMinutes(client, facility).catch(() => null as MealMinutes | null),
 		// 宿からの質問（DB 未適用なら欄を出さない）
-		adminPrecheckinQuestions(client, facility).catch(() => null as PcQuestion[] | null)
+		adminPrecheckinQuestions(client, facility).catch(() => null as PcQuestion[] | null),
+		// 自動送信の対象（DB 未適用なら欄を出さない）
+		adminPrecheckinAutosend(client, facility).catch(() => null as AutosendSettings | null)
 	]);
-	return { live: true as const, filters, list: list.rows, caps, minutes, questions, sms, smsReady: smsReady(), error: list.error };
+	const overrides = autosend
+		? await adminPrecheckinAutosendOverrides(client, facility, list.rows.map((r) => r.stay_id)).catch(() => ({}) as Record<string, boolean>)
+		: ({} as Record<string, boolean>);
+	return {
+		live: true as const,
+		filters,
+		list: list.rows,
+		caps,
+		minutes,
+		questions,
+		autosend,
+		overrides,
+		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
+		sms,
+		smsReady: smsReady(),
+		error: list.error
+	};
 };
 
 export const actions: Actions = {
@@ -153,6 +179,34 @@ export const actions: Actions = {
 			return { questionsSaved: true, questionsError: null as string | null };
 		} catch (e) {
 			return fail(400, { questionsError: precheckinError(e) });
+		}
+	},
+	// 自動送信（当日 9:00）の対象: 自動送信するか・送る予約経路
+	autosend: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { autosendError: 'この環境では保存できません。' });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const routes = form.getAll('route').map(String).filter((r) => /^[a-z0-9_-]{1,40}$/.test(r));
+		try {
+			await adminPrecheckinSaveAutosend(bookAdmin(event), facility, form.get('enabled') === '1', routes);
+			return { autosendSaved: true, autosendError: null as string | null };
+		} catch (e) {
+			return fail(400, { autosendError: precheckinError(e) });
+		}
+	},
+	// 予約ごとの上書き（mode = auto 経路どおり／on 送る／off 送らない）
+	autosendRow: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { sendError: 'この環境では保存できません。', sentStay: null as string | null });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const stayId = String(form.get('stay_id') ?? '');
+		const mode = String(form.get('mode') ?? 'auto');
+		if (!/^[0-9a-f-]{36}$/.test(stayId)) return fail(400, { sendError: '対象のご予約が分かりません。', sentStay: null });
+		try {
+			await adminPrecheckinSetAutosend(bookAdmin(event), facility, stayId, mode === 'on' ? true : mode === 'off' ? false : null);
+			return { autosendRowSaved: stayId };
+		} catch (e) {
+			return fail(400, { sendError: precheckinError(e), sentStay: stayId });
 		}
 	},
 	// 食事の所要時間の目安（分）。貸切風呂の時間を選ぶときの目安として、お客様の画面に出す

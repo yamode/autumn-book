@@ -1,3 +1,17 @@
+## 事前チェックインの自動送信の対象を管理画面で選ぶ（2026-11-14・v0.251.0）
+
+- 管理画面 → 事前チェックインの上に「自動送信（チェックイン当日 9:00）」: 「自動送信する」と、送る予約経路（PMS の販売先マスタ＝Book 公式予約・一休・じゃらん・Tripla・電話…）を選んで保存。「Book 公式予約だけ」「すべて」のボタンあり
+- 一覧の各予約に「自動送信する／しない」の印と、「経路の設定どおり／このご予約は送る／送らない」の切り替え（予約ごとの上書きが優先）
+- DB: autumn-shared v13.10.0 `20261114134915_book_precheckin_autosend_targets`（本番適用済み）。`book.precheckin_autosend_settings`（既定 enabled=false＝送らない）・`precheckin_autosend_overrides`。`precheckin_autosend_targets` は選ばれていない予約を `not_selected`、個別に外した予約を `excluded` で返し、Book の cron はスキップ理由の付いた行を送らない
+- 経路のキーは `book._pc_route`（= TS の `precheckinRoute`）: source=autumn_booking → autumn_booking、それ以外は channel_code（無ければ other）
+- 全体スイッチ `PRECHECKIN_AUTOSEND` を "1" に（wrangler.jsonc）。施設ごとの設定が既定で「送らない」なので、管理画面で選ぶまで誰にも送られない
+
+### テストチェックリスト
+- [ ] 管理画面で「自動送信する」＋「Book 公式予約だけ」を保存 → 一覧で公式予約だけ「自動送信する」、OTA は「自動送信しない」になる
+- [ ] OTA の予約で「このご予約は送る」にすると「自動送信する（個別）」になる。公式予約で「送らない」にすると外れる
+- [ ] 翌朝 9:00 に、選んだ予約だけに SMS／メールが届く（Cloudflare のログ `[precheckin-send]` の counts で not_selected・excluded の件数が出る）
+- [ ] cron を `?date=YYYY-MM-DD&wait=1` で叩くと、選んだ件数だけ sms/email に数えられる（dry-run）
+
 ## 事前チェックインの見直し：締め切りなし・貸切風呂をフォーム内で予約・予約内容は確認＋変更ボタン・満席はPMSで手動（2026-11-14・v0.250.0）
 
 ユーザー指示（2026-11-14）。DB は autumn-shared v13.7.0（`20261114104537_book_precheckin_no_deadline_full_slots`・本番適用済み）、PMS は autumn-pms v4.847.0。

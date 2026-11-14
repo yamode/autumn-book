@@ -350,21 +350,25 @@ export type AutosendTarget = {
 	stay_id: string;
 	check_in_date: string;
 	channel: ContactRoute;
-	skip_reason: 'answered' | 'already_sent' | null;
+	/** excluded = 予約ごとに「送らない」／not_selected = 自動送信が無効か経路が選ばれていない（20261114134915）。知らない値も送らない */
+	skip_reason: 'answered' | 'already_sent' | 'excluded' | 'not_selected' | (string & {}) | null;
 };
 
 export type AutosendPlan = {
 	send: AutosendTarget[];
-	counts: { total: number; sms: number; email: number; no_contact: number; answered: number; already_sent: number };
+	counts: { total: number; sms: number; email: number; no_contact: number; answered: number; already_sent: number; not_selected: number; excluded: number };
 };
 
-/** 対象を「送る（SMS / メール）」「連絡先なし」「回答済み」「送信済み」に分ける */
+/** 対象を「送る（SMS / メール）」「連絡先なし」「回答済み」「送信済み」「対象外（選ばれていない・個別に外した）」に分ける。
+ *  skip_reason が付いた行は（知らない値でも）送らない */
 export function planAutosend(rows: AutosendTarget[]): AutosendPlan {
-	const counts = { total: rows.length, sms: 0, email: 0, no_contact: 0, answered: 0, already_sent: 0 };
+	const counts = { total: rows.length, sms: 0, email: 0, no_contact: 0, answered: 0, already_sent: 0, not_selected: 0, excluded: 0 };
 	const send: AutosendTarget[] = [];
 	for (const r of rows) {
 		if (r.skip_reason === 'answered') counts.answered++;
 		else if (r.skip_reason === 'already_sent') counts.already_sent++;
+		else if (r.skip_reason === 'excluded') counts.excluded++;
+		else if (r.skip_reason) counts.not_selected++;
 		else if (r.channel === 'none') counts.no_contact++;
 		else {
 			counts[r.channel]++;
@@ -429,3 +433,45 @@ export const SMS_STATUS_CLASS: Record<DispatchStatus, string> = {
 	failed: 'bg-red-50 text-red-700 ring-red-200',
 	undeliverable: 'bg-red-50 text-red-700 ring-red-200'
 };
+
+// ---------------------------------------------------------------- 自動送信の対象（管理画面で選ぶ・20261114134915）
+
+/**
+ * 予約経路のキー（DB の book._pc_route と同じ）。Book 公式予約は autumn_booking、取引先は rms_partner、
+ * それ以外は PMS の販売先マスタの channel_code（無ければ other）。
+ */
+export function precheckinRoute(source: string | null | undefined, channelCode: string | null | undefined): string {
+	if ((source ?? '') === 'autumn_booking') return 'autumn_booking';
+	if ((source ?? '') === 'rms_partner') return 'rms_partner';
+	return (channelCode ?? '').trim() || 'other';
+}
+
+export type AutosendOption = { code: string; name: string; category: string | null };
+/** 施設の自動送信の設定。enabled = 自動送信する、routes = 送る経路 */
+export type AutosendSettings = { enabled: boolean; routes: string[]; options: AutosendOption[] };
+
+/** book.admin_precheckin_autosend の戻りを整える */
+export function normalizeAutosendSettings(raw: unknown): AutosendSettings {
+	const r = (raw ?? {}) as Record<string, unknown>;
+	const routes = Array.isArray(r.routes) ? r.routes.map(String) : [];
+	const options = (Array.isArray(r.options) ? r.options : [])
+		.map((o) => (o ?? {}) as Record<string, unknown>)
+		.filter((o) => typeof o.code === 'string' && o.code)
+		.map((o) => ({ code: String(o.code), name: String(o.name ?? o.code), category: o.category ? String(o.category) : null }));
+	return { enabled: r.enabled === true, routes, options };
+}
+
+/**
+ * その予約を当日 9:00 に自動で送るか（DB の precheckin_autosend_targets と同じ規則。回答済み・送信済みは別に見る）。
+ *   override = true 送る／false 送らない（予約ごとの上書き）／null 経路の設定どおり
+ */
+export function autosendDecision(
+	route: string,
+	settings: Pick<AutosendSettings, 'enabled' | 'routes'> | null,
+	override: boolean | null
+): { send: boolean; by: 'override' | 'route' | 'off' } {
+	if (override === true) return { send: true, by: 'override' };
+	if (override === false) return { send: false, by: 'override' };
+	if (!settings?.enabled) return { send: false, by: 'off' };
+	return { send: route !== 'rms_partner' && settings.routes.includes(route), by: 'route' };
+}
