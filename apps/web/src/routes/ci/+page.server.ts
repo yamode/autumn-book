@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGuestField, missingQuestion, type PcGuestInfo } from '$lib/precheckin';
+import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGuestField, missingQuestion, type PcProfile } from '$lib/precheckin';
 import { pcGuestProfile, pcQuestions, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -9,7 +9,7 @@ import type { Actions, PageServerLoad } from './$types';
 // 顧客マスタの 郵便番号・住所・生年月日・領収書宛名（欄に最初から入れる）
 export const load: PageServerLoad = async (event) => {
 	const r = await resolvePrecheckin(event);
-	const empty: PcGuestInfo = {};
+	const empty: PcProfile = {};
 	return { profile: 'ctx' in r ? await pcGuestProfile(r.token).catch(() => empty) : empty };
 };
 
@@ -22,7 +22,7 @@ export const actions: Actions = {
 		const answers = answersFromForm(form, getLocale());
 		// 住所・生年月日は必須（最終判定は RPC）
 		// 変更していない欄（送られてこない）は顧客マスタのとおり
-		const profile = await pcGuestProfile(r.token).catch((): PcGuestInfo => ({}));
+		const profile = await pcGuestProfile(r.token).catch((): PcProfile => ({}));
 		const missingGuest = missingGuestField({
 			address: answers.guest.address || profile.address,
 			birthdate: answers.guest.birthdate || profile.birthdate

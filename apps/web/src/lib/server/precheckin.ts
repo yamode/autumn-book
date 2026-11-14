@@ -25,7 +25,7 @@ import {
 	precheckinCookieMaxAge,
 	type PcAnswers,
 	type PcContext,
-	type PcGuestInfo,
+	type PcProfile,
 	type PcQuestion,
 	type PcError,
 	type PcMealChoice
@@ -143,8 +143,9 @@ export async function ensureStayCookie(cookies: Cookies, pcToken: string): Promi
  * PMS の顧客マスタ（core.guests）の 郵便番号・住所（address1+address2）・生年月日・領収書宛名。① の欄に最初から入れる。
  * 見本は見本の値。読めない（DB 適用前など）ときは空＝入力欄にする。
  */
-export async function pcGuestProfile(token: string): Promise<PcGuestInfo> {
-	if (token === DEMO_PRECHECKIN_TOKEN) return { zip: '029-5514', address: '岩手県和賀郡西和賀町湯川52-71-10', birthdate: '1980-05-10', receipt_name: null };
+export async function pcGuestProfile(token: string): Promise<PcProfile> {
+	if (token === DEMO_PRECHECKIN_TOKEN)
+		return { zip: '029-5514', address: '岩手県和賀郡西和賀町湯川52-71-10', birthdate: '1980-05-10', receipt_name: null, arrival_time: '15:00' };
 	if (DATA_SOURCE !== 'supabase') return {};
 	const { data, error } = await supa().rpc('precheckin_guest_profile', { p_token: token });
 	if (error) {
@@ -154,7 +155,13 @@ export async function pcGuestProfile(token: string): Promise<PcGuestInfo> {
 	const r = (data ?? {}) as Record<string, unknown>;
 	if (r.ok !== true) return {};
 	const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
-	return { zip: str(r.zip), address: str(r.address), birthdate: str(r.birthdate)?.slice(0, 10) ?? null, receipt_name: str(r.receipt_name) };
+	return {
+		zip: str(r.zip),
+		address: str(r.address),
+		birthdate: str(r.birthdate)?.slice(0, 10) ?? null,
+		receipt_name: str(r.receipt_name),
+		arrival_time: str(r.arrival_time)
+	};
 }
 
 // ---------------------------------------------------------------- 宿からの質問（book.precheckin_questions）

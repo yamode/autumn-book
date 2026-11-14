@@ -22,6 +22,8 @@ export type PcQuestion = { id: string; question: string };
 export type PcQuestionAnswer = { id: string; question?: string; answer: string };
 /** 伺い書の項目（① で聞く・住所と生年月日は必須） */
 export type PcGuestInfo = { zip?: string | null; address?: string | null; birthdate?: string | null; receipt_name?: string | null };
+/** 顧客マスタ・予約から ① に最初から入れる値（伺い書の項目＋予約の到着予定時刻 core.stays.estimated_arrival_time） */
+export type PcProfile = PcGuestInfo & { arrival_time?: string | null };
 export type PcAnswers = {
 	contact?: PcContact;
 	guest?: PcGuestInfo;

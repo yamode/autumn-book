@@ -9,14 +9,14 @@
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import { slashDate, type PcGuestInfo } from '$lib/precheckin';
+	import { slashDate, type PcProfile } from '$lib/precheckin';
 	import type { FullAutoFill } from 'svelte/elements';
 
 	let { data, form } = $props();
 	const ctx = $derived(data.ctx!);
 	const a = $derived(ctx.answers ?? {});
 	// PMS の顧客マスタ（core.guests）の 郵便番号・住所・生年月日・領収書宛名（book.precheckin_guest_profile）
-	const p = $derived<PcGuestInfo>(data.profile ?? {});
+	const p = $derived<PcProfile>(data.profile ?? {});
 	type Key = 'name' | 'name_kana' | 'phone' | 'email' | 'zip' | 'address' | 'birthdate' | 'receipt_name';
 	type Field = {
 		key: Key;
@@ -175,7 +175,8 @@
 		<h2 class="font-semibold">{m.ci_section_arrival()}</h2>
 		<label class="mt-3 block">
 			<span class="text-stone-600">{m.ci_arrival()}</span>
-			<input name="arrival_time" type="time" step="900" value={a.arrival_time ?? ''} disabled={ro} class={inputCls} />
+			<!-- 前に答えた時刻 → PMS の予約の到着予定時刻（14:35 のような 15 分刻みでない時刻もあるので step は付けない） -->
+			<input name="arrival_time" type="time" value={a.arrival_time ?? p.arrival_time ?? ''} disabled={ro} class={inputCls} />
 		</label>
 	</section>
 
