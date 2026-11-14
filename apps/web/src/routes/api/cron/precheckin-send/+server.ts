@@ -10,10 +10,21 @@
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { env as privateEnv } from '$env/dynamic/private';
 import { timingSafeEqualText } from '$lib/partner-mfa';
-import { autosendEnabled } from '$lib/precheckin-sms';
+import { autosendEnabled, buildNttSmsRequest } from '$lib/precheckin-sms';
 import { partnerAdminClient } from '$lib/server/partners/store';
-import { runPrecheckinAutosend } from '$lib/server/precheckin-sms';
+import { nttConfig, runPrecheckinAutosend } from '$lib/server/precheckin-sms';
 import { customerLinkOrigin } from '$lib/server/public-origin';
+
+async function nttCheck() {
+	const cfg = nttConfig();
+	const rawKey = String(privateEnv.NTT_CPAAS_API_KEY ?? '');
+	const info = { configured: !!cfg, host: cfg?.baseUrl ?? null, keyLen: rawKey.length, keyTail: rawKey.trim().slice(-4), keyTrimmed: rawKey !== rawKey.trim() };
+	if (!cfg) return { ...info, status: null };
+	const { url, init } = buildNttSmsRequest(cfg, { to: '819000000000', text: 'x', callbackData: 'check' });
+	const r = await fetch(url, { ...init, body: '{"messages":[]}' });
+	// 400（中身が空）なら認証は通っている。401 は認証の失敗
+	return { ...info, status: r.status, body: (await r.text()).slice(0, 200) };
+}
 
 function isAuthorized(request: Request, secret: string): boolean {
 	const header = request.headers.get('authorization') ?? '';
@@ -25,6 +36,8 @@ export const POST: RequestHandler = async ({ request, url, platform }) => {
 	const cronSecret = privateEnv.CRON_SECRET;
 	if (!cronSecret) throw error(503, 'CRON_SECRET が未設定です。');
 	if (!isAuthorized(request, cronSecret)) throw error(401, 'Unauthorized');
+	// ?check=ntt … NTT CPaaS の認証だけ確かめる（空の依頼を送る。SMS は送られない）。キーは末尾 4 桁と長さだけ返す
+	if (url.searchParams.get('check') === 'ntt') return json(await nttCheck());
 	const db = partnerAdminClient();
 	if (!db) throw error(503, 'SUPABASE_SERVICE_ROLE_KEY / URL が未設定です。');
 
