@@ -4,7 +4,7 @@
 - 一覧の各予約に「自動送信する／しない」の印と、「経路の設定どおり／このご予約は送る／送らない」の切り替え（予約ごとの上書きが優先）
 - DB: autumn-shared v13.10.0 `20261114134915_book_precheckin_autosend_targets`（本番適用済み）。`book.precheckin_autosend_settings`（既定 enabled=false＝送らない）・`precheckin_autosend_overrides`。`precheckin_autosend_targets` は選ばれていない予約を `not_selected`、個別に外した予約を `excluded` で返し、Book の cron はスキップ理由の付いた行を送らない
 - 経路のキーは `book._pc_route`（= TS の `precheckinRoute`）: source=autumn_booking → autumn_booking、それ以外は channel_code（無ければ other）
-- 全体スイッチ `PRECHECKIN_AUTOSEND` を "1" に（wrangler.jsonc）。施設ごとの設定が既定で「送らない」なので、管理画面で選ぶまで誰にも送られない
+- 全体スイッチ `PRECHECKIN_AUTOSEND` は "0" のまま（SMS の API 構築が終わるまで・2026-11-15 ユーザー指示・v0.251.1）。入れるときは wrangler.jsonc を "1" にしてデプロイ。施設ごとの設定は既定で「送らない」
 
 ### テストチェックリスト
 - [ ] 管理画面で「自動送信する」＋「Book 公式予約だけ」を保存 → 一覧で公式予約だけ「自動送信する」、OTA は「自動送信しない」になる
