@@ -217,6 +217,8 @@ describe('NTT CPaaS 送信リクエスト', () => {
 		expect(e401.sent).toBe(false);
 		expect(e401.reason).toBe('ntt 401: UNAUTHORIZED Invalid login details');
 		expect(parseNttSendResponse(500, null).reason).toBe('ntt 500');
+		// v3 形式のエラーも理由に出す
+		expect(parseNttSendResponse(401, { errorCode: 'E401', description: 'Invalid login details' }).reason).toBe('ntt 401: E401 Invalid login details');
 	});
 });
 

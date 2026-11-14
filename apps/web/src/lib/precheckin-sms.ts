@@ -180,8 +180,9 @@ const s = (v: unknown) => (v === null || v === undefined ? '' : String(v));
 export function parseNttSendResponse(httpStatus: number, body: unknown): SmsSendResult {
 	const b = obj(body);
 	if (httpStatus < 200 || httpStatus >= 300) {
+		// v2 形式 {requestError:{serviceException:{messageId,text}}} と v3 形式 {errorCode, description} の両方を読む
 		const ex = obj(obj(b.requestError).serviceException);
-		const detail = [s(ex.messageId), s(ex.text)].filter(Boolean).join(' ');
+		const detail = [s(ex.messageId), s(ex.text), s(b.errorCode), s(b.description)].filter(Boolean).join(' ');
 		return { sent: false, reason: `ntt ${httpStatus}${detail ? `: ${detail.slice(0, 200)}` : ''}` };
 	}
 	const m = obj(Array.isArray(b.messages) ? b.messages[0] : null);
