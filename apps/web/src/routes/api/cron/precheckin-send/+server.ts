@@ -21,9 +21,56 @@ async function nttCheck() {
 	const info = { configured: !!cfg, host: cfg?.baseUrl ?? null, keyLen: rawKey.length, keyTail: rawKey.trim().slice(-4), keyTrimmed: rawKey !== rawKey.trim() };
 	if (!cfg) return { ...info, status: null };
 	const { url, init } = buildNttSmsRequest(cfg, { to: '819000000000', text: 'x', callbackData: 'check' });
-	const r = await fetch(url, { ...init, body: '{"messages":[]}' });
-	// 400（中身が空）なら認証は通っている。401 は認証の失敗
-	return { ...info, status: r.status, body: (await r.text()).slice(0, 200) };
+	const out: Record<string, unknown> = { ...info };
+	const hdrs = (r: Response) => Object.fromEntries([...r.headers].filter(([k]) => !/cookie/i.test(k)));
+	const safe = async (name: string, fn: () => Promise<unknown>) => {
+		try {
+			out[name] = await fn();
+		} catch (e) {
+			out[name] = { error: e instanceof Error ? e.message : String(e) };
+		}
+	};
+	// 1) 空の依頼（400 なら認証は通っている）。転送は追わない
+	await safe('post', async () => {
+		const r = await fetch(url, { ...init, body: '{"messages":[]}', redirect: 'manual' });
+		return { status: r.status, headers: hdrs(r), body: (await r.text()).slice(0, 160) };
+	});
+	// 2) 残高の照会（GET）
+	await safe('balance', async () => {
+		const r = await fetch(`${cfg.baseUrl}/account/1/balance`, { headers: { Authorization: `App ${cfg.apiKey}`, Accept: 'application/json' }, redirect: 'manual' });
+		return { status: r.status, body: (await r.text()).slice(0, 120) };
+	});
+	// 3) 見出しがそのまま届くか（にせのキーで、見出しを返すだけのサービスへ）
+	await safe('echo', async () => {
+		const r = await fetch('https://postman-echo.com/post', { method: 'POST', headers: { Authorization: 'App DUMMY-0000-not-a-key', 'Content-Type': 'application/json', Accept: 'application/json' }, body: '{"messages":[]}' });
+		const j = (await r.json()) as { headers?: Record<string, string> };
+		return { status: r.status, headers: j.headers };
+	});
+	// 4) fetch を使わず、TLS の生の接続で同じ依頼を送る（Workers が見出しを足さない経路）
+	await safe('socket', async () => {
+		const spec = 'cloudflare:' + 'sockets';
+		const { connect } = (await import(/* @vite-ignore */ spec)) as { connect: (a: { hostname: string; port: number }, o: { secureTransport: string }) => { writable: WritableStream<Uint8Array>; readable: ReadableStream<Uint8Array>; close: () => Promise<void> } };
+		const host = new URL(cfg.baseUrl).hostname;
+		const sock = connect({ hostname: host, port: 443 }, { secureTransport: 'on' });
+		const body = '{"messages":[]}';
+		const req = ['POST /sms/3/messages HTTP/1.1', `Host: ${host}`, `Authorization: App ${cfg.apiKey}`, 'Content-Type: application/json', 'Accept: application/json', `Content-Length: ${body.length}`, 'Connection: close', '', body].join('\r\n');
+		const w = sock.writable.getWriter();
+		await w.write(new TextEncoder().encode(req));
+		const rd = sock.readable.getReader();
+		let text = '';
+		const dec = new TextDecoder();
+		for (let i = 0; i < 20 && text.length < 600; i++) {
+			const { value, done } = await rd.read();
+			if (done) break;
+			text += dec.decode(value);
+		}
+		await sock.close().catch(() => {});
+		return { head: text.split('\r\n')[0], tail: text.slice(-140) };
+	});
+	// 5) 出口の IP と場所
+	await safe('egress', async () => (await fetch('https://www.cloudflare.com/cdn-cgi/trace')).text().then((t) => t.split('\n').filter((l) => /^(ip|colo|loc)=/.test(l)).join(' ')));
+	await safe('egress2', async () => (await fetch('https://api.ipify.org')).text());
+	return out;
 }
 
 function isAuthorized(request: Request, secret: string): boolean {
