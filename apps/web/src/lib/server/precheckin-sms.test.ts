@@ -101,7 +101,8 @@ describe('cron 自動送信', () => {
 		env.NTT_CPAAS_BASE_URL = 'example1';
 		env.NTT_CPAAS_API_KEY = 'test-key';
 		env.NTT_CPAAS_SENDER = 'ServiceSMS';
-		const fetchMock = vi.fn(async () => Response.json({ messages: [{ messageId: 'm-77', status: { groupName: 'PENDING', name: 'PENDING_ACCEPTED' } }] }));
+		let n = 0;
+		const fetchMock = vi.fn(async () => Response.json({ messages: [{ messageId: ++n === 1 ? 'm-76' : 'm-77', status: { groupName: 'PENDING', name: 'PENDING_ACCEPTED' } }] }));
 		vi.stubGlobal('fetch', fetchMock);
 		try {
 			const { svc, calls } = fakeSvc({
@@ -113,6 +114,7 @@ describe('cron 自動送信', () => {
 					token: 'T'.repeat(43),
 					to: '819012345678',
 					to_masked: '*******5678',
+					check_in: '2026-10-29',
 					facility_id: '10000000-0000-0000-0000-000000000001',
 					facility_name: '山人-yamado-',
 					facility_phone: null
@@ -121,11 +123,18 @@ describe('cron 自動送信', () => {
 			});
 			const r = await runPrecheckinAutosend(svc, { enabled: true, origin: 'https://book.example' });
 			expect(r.sent).toBe(1);
-			const [u, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-			expect(u).toBe('https://example1.ibapi.nttcpaas.com/sms/3/messages');
-			const text = JSON.parse(String(init.body)).messages[0].content.text as string;
-			expect(text).toContain(`https://book.example/ci/${'T'.repeat(43)}`);
-			expect(text).toContain('0197-82-2222'); // DB に電話が無いときはサイトの施設情報の電話
+			// 2 通に分けて送る: 1 通目＝案内文（URL なし）、2 通目＝URL と電話
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			const textOf = (i: number) => {
+				const [u, init] = fetchMock.mock.calls[i] as unknown as [string, RequestInit];
+				expect(u).toBe('https://example1.ibapi.nttcpaas.com/sms/3/messages');
+				return JSON.parse(String(init.body)).messages[0].content.text as string;
+			};
+			expect(textOf(0)).toContain('事前チェックインのご案内です。');
+			expect(textOf(0)).not.toContain('http');
+			expect(textOf(1)).toContain(`https://book.example/ci/${'T'.repeat(43)}`);
+			expect(textOf(1)).toContain('TEL 0197-82-2222'); // DB に電話が無いときはサイトの施設情報の電話
+			// 到達管理は 2 通目（URL）の messageId
 			expect(calls.find((c) => c.fn === 'precheckin_dispatch_finish')?.args).toMatchObject({ p_dispatch: 'd2', p_ok: true, p_message_id: 'm-77' });
 		} finally {
 			vi.unstubAllGlobals();

@@ -1,10 +1,10 @@
 // 事前チェックイン P4（SMS）の純関数のテスト。NTT CPaaS の実 API は呼ばない（fetch はモック）。
 import { describe, expect, it, vi } from 'vitest';
 import {
-	SMS_MAX_CHARS,
+	SMS_SINGLE_CHARS,
 	autosendEnabled,
 	buildNttSmsRequest,
-	buildPrecheckinSms,
+	buildPrecheckinSmsPair,
 	checkWebhookAuth,
 	contactRoute,
 	dlrStatusOf,
@@ -66,24 +66,24 @@ describe('smsTarget（携帯番号 → 国際形式）', () => {
 });
 
 describe('SMS 本文', () => {
+	// 当日 9:00 JST に送る想定（2026-11-14 は土曜）
+	const NOW = new Date('2026-11-14T00:00:00Z');
 	it.each([
 		['山人-yamado-', '0197-82-2222'],
 		['山人-oga-', '0185-47-7776']
-	])('%s: 施設名・案内・リンク・問い合わせ先が入り、2 通（134 字）以内', (name, tel) => {
-		const t = buildPrecheckinSms({ facilityName: name, url: URL_, phone: tel });
-		expect(t).toContain(`【${name}】`);
-		expect(t).toContain('事前チェックインはこちら');
-		expect(t).toContain('夕食・朝食の時間');
-		expect(t).toContain(URL_);
-		expect(t).toContain(tel);
-		expect([...t].length).toBeLessThanOrEqual(SMS_MAX_CHARS);
-		expect(smsSegments(t)).toBeLessThanOrEqual(2);
+	])('%s: 1 通目は案内だけで完結し 1 通（70 字）以内、2 通目は URL と電話で英数字だけ（1 通）', (name, tel) => {
+		const p = buildPrecheckinSmsPair({ facilityName: name, checkIn: '2026-11-14', url: URL_, phone: tel, now: NOW });
+		expect(p.message).toBe(`【${name}】\n事前チェックインのご案内です。本日はどうぞお気をつけてお越しくださいませ。`);
+		expect(smsSegments(p.message)).toBe(1);
+		expect(p.message).not.toContain('http');
+		expect(p.link).toBe(`${URL_}\nTEL ${tel}`);
+		expect(smsSegments(p.link)).toBe(1);
 	});
-	it('施設名が長いときは案内を短くして 2 通に収める（リンクと電話は残す）', () => {
-		const t = buildPrecheckinSms({ facilityName: 'とても長い施設名の旅館さま本館東館', url: URL_, phone: '0197-82-2222' });
-		expect([...t].length).toBeLessThanOrEqual(SMS_MAX_CHARS);
-		expect(t).toContain(URL_);
-		expect(t).toContain('0197-82-2222');
+	it('前日以前に送るときは「当日は」。電話が無ければ 2 通目は URL だけ', () => {
+		const p = buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-15', url: URL_, phone: null, now: NOW });
+		expect(p.message).toContain('当日はどうぞお気をつけて');
+		expect([...p.message].length).toBeLessThanOrEqual(SMS_SINGLE_CHARS);
+		expect(p.link).toBe(URL_);
 	});
 	it('通数の目安', () => {
 		expect(smsSegments('a'.repeat(160))).toBe(1);

@@ -8,7 +8,11 @@ import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import {
 	adminPrecheckinCaps,
 	adminPrecheckinList,
+	adminPrecheckinMinutes,
+	adminPrecheckinQuestions,
 	adminPrecheckinSaveCaps,
+	adminPrecheckinSaveMinutes,
+	adminPrecheckinSaveQuestions,
 	sendPrecheckin,
 	type PrecheckinCaps,
 	type PrecheckinListRow
@@ -17,6 +21,8 @@ import { adminSmsStatus, sendPrecheckinSms, smsReady } from '$lib/server/prechec
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import type { SmsStatusRow } from '$lib/precheckin-sms';
 import { addDays, todayStr } from '$lib/format';
+import type { MealMinutes } from '$lib/precheckin-p3';
+import type { PcQuestion } from '$lib/precheckin';
 import { currentFacilityOf } from '$lib/server/admin-content-page';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -45,6 +51,8 @@ export const load: PageServerLoad = async (event) => {
 			filters,
 			list: [] as PrecheckinListRow[],
 			caps: null as PrecheckinCaps | null,
+			minutes: null as MealMinutes | null,
+			questions: null as PcQuestion[] | null,
 			sms: [] as SmsStatusRow[],
 			smsReady: smsReady(),
 			error: null as string | null
@@ -52,16 +60,20 @@ export const load: PageServerLoad = async (event) => {
 	}
 	const client = bookAdmin(event);
 	const facility = toFacilityUuidStrict(currentFacility.id);
-	const [list, caps, sms] = await Promise.all([
+	const [list, caps, sms, minutes, questions] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
 			(e) => ({ rows: [] as PrecheckinListRow[], error: precheckinError(e) })
 		),
 		adminPrecheckinCaps(client, facility).catch(() => null as PrecheckinCaps | null),
 		// SMS の状態（P4 の DB が未適用なら空のまま一覧は出す）
-		adminSmsStatus(client, facility, from, to).catch(() => [] as SmsStatusRow[])
+		adminSmsStatus(client, facility, from, to).catch(() => [] as SmsStatusRow[]),
+		// 食事の所要時間の目安（DB 未適用なら欄を出さない）
+		adminPrecheckinMinutes(client, facility).catch(() => null as MealMinutes | null),
+		// 宿からの質問（DB 未適用なら欄を出さない）
+		adminPrecheckinQuestions(client, facility).catch(() => null as PcQuestion[] | null)
 	]);
-	return { live: true as const, filters, list: list.rows, caps, sms, smsReady: smsReady(), error: list.error };
+	return { live: true as const, filters, list: list.rows, caps, minutes, questions, sms, smsReady: smsReady(), error: list.error };
 };
 
 export const actions: Actions = {
@@ -118,6 +130,47 @@ export const actions: Actions = {
 			return { capsSaved: true, capsError: null as string | null };
 		} catch (e) {
 			return fail(400, { capsError: precheckinError(e) });
+		}
+	},
+	// 宿からの質問（お客様の回答は必須）。q|<n> の並び順が表示順、qid|<n> は既存の質問の id
+	questions: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { questionsError: 'この環境では保存できません。' });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const rows: { n: number; id: string | null; question: string }[] = [];
+		for (const [k, v] of form.entries()) {
+			const m = /^q\|(\d{1,2})$/.exec(k);
+			if (!m) continue;
+			const question = String(v ?? '').trim();
+			if (!question) continue;
+			if (question.length > 300) return fail(400, { questionsError: '質問は 1 問 300 字までにしてください。' });
+			const id = String(form.get(`qid|${m[1]}`) ?? '').trim();
+			rows.push({ n: Number(m[1]), id: /^[0-9a-f-]{36}$/.test(id) ? id : null, question });
+		}
+		if (rows.length > 20) return fail(400, { questionsError: '質問は 20 問までにしてください。' });
+		try {
+			await adminPrecheckinSaveQuestions(bookAdmin(event), facility, rows.sort((a, b) => a.n - b.n).map(({ id, question }) => ({ id, question })));
+			return { questionsSaved: true, questionsError: null as string | null };
+		} catch (e) {
+			return fail(400, { questionsError: precheckinError(e) });
+		}
+	},
+	// 食事の所要時間の目安（分）。貸切風呂の時間を選ぶときの目安として、お客様の画面に出す
+	minutes: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { minutesError: 'この環境では保存できません。' });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const n = (k: string) => String(form.get(k) ?? '').trim();
+		const d = n('dinner');
+		const b = n('breakfast');
+		if (!/^\d{1,3}$/.test(d) || !/^\d{1,3}$/.test(b) || Number(d) > 600 || Number(b) > 600) {
+			return fail(400, { minutesError: '所要時間は 0〜600 分の数で入れてください。' });
+		}
+		try {
+			await adminPrecheckinSaveMinutes(bookAdmin(event), facility, { dinner: Number(d), breakfast: Number(b) });
+			return { minutesSaved: true, minutesError: null as string | null };
+		} catch (e) {
+			return fail(400, { minutesError: precheckinError(e) });
 		}
 	}
 };

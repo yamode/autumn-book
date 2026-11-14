@@ -46,8 +46,8 @@ export function contactRoute(phone: string | null | undefined, email: string | n
 
 // ---------------------------------------------------------------- 本文
 
-/** 2 通（連結 SMS・UCS-2 は 1 通 67 字）に収まる上限 */
-export const SMS_MAX_CHARS = 134;
+/** 日本語を含む SMS が 1 通（連結なし・UCS-2）に収まる字数 */
+export const SMS_SINGLE_CHARS = 70;
 
 /** SMS の通数の目安（日本語を含む = UCS-2: 70 字 / 連結は 67 字ごと。英数字だけ = GSM: 160 / 153） */
 export function smsSegments(text: string): number {
@@ -61,26 +61,34 @@ export function smsSegments(text: string): number {
 
 export type PrecheckinSmsInput = {
 	facilityName: string;
+	/** チェックイン日 'YYYY-MM-DD' */
+	checkIn: string;
 	/** フォームのリンク（https://<公開ホスト>/ci/<token>） */
 	url: string;
 	/** 施設の電話（送信元番号には折り返しできないため、本文に入れる） */
 	phone: string | null;
+	/** 送る時刻（「本日」か「当日」かの判定。既定は今） */
+	now?: Date;
 };
 
 /**
- * 事前チェックインの SMS 本文（日本語のみ）。2 通（134 字）に収まらなければ案内文を短くする。
- *   【山人-yamado-】事前チェックインはこちら（夕食・朝食の時間などをご入力ください）
- *   https://book.yamado.app/ci/<token>
- *   お問合せ 0197-82-2222
+ * 事前チェックインの SMS を 2 通に分けて作る（2026-11-14 ユーザー指示）。
+ *   1 通目（message）: 案内だけで完結する日本語の文。1 通（70 字）に収める
+ *     【山人-yamado-】
+ *     事前チェックインのご案内です。本日はどうぞお気をつけてお越しくださいませ。
+ *   2 通目（link）: URL と問い合わせの電話。英数字だけにして 1 通（160 字）に収める（日本語を混ぜると 70 字になり 2 通に割れる）
+ *     https://book.yamado.app/ci/<token>
+ *     TEL 0197-82-2222
+ * 当日の送信（当日 9:00 の自動送信）は「本日は」。前日以前に手で送るときは「当日は」。
  */
-export function buildPrecheckinSms(i: PrecheckinSmsInput): string {
-	const head = `【${i.facilityName.trim()}】`;
-	const tel = i.phone ? `\nお問合せ ${i.phone.trim()}` : '';
-	const full = `${head}事前チェックインはこちら（夕食・朝食の時間などをご入力ください）\n${i.url}${tel}`;
-	if ([...full].length <= SMS_MAX_CHARS) return full;
-	const short = `${head}事前チェックイン（食事の時間のご入力）\n${i.url}${tel}`;
-	if ([...short].length <= SMS_MAX_CHARS) return short;
-	return `事前チェックイン\n${i.url}${tel}`;
+export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string; link: string } {
+	const ci = String(i.checkIn ?? '').slice(0, 10);
+	const today = new Date((i.now ?? new Date()).getTime() + 9 * 3600_000).toISOString().slice(0, 10);
+	const day = !/^\d{4}-\d{2}-\d{2}$/.test(ci) || ci <= today ? '本日' : '当日';
+	const message = `【${i.facilityName.trim()}】\n事前チェックインのご案内です。${day}はどうぞお気をつけてお越しくださいませ。`;
+	const tel = (i.phone ?? '').trim();
+	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\nTEL ${tel}` : ''}`;
+	return { message, link };
 }
 
 // ---------------------------------------------------------------- 送信（NTT CPaaS）

@@ -88,7 +88,7 @@ export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/r/bath' : '/r');
 /**
  * /ci/bath の状態。
  *   not_answered … ② お食事の時間をまだ送っていない（滞在トークンを出さない）
- *   closed       … 回答の期限（チェックイン日 12:00）を過ぎた。客室案内（スリップの QR・6 桁コード）へ
+ *   closed       … 回答を受け付けていない（2026-11-14 に締め切りを廃止したので、今の DB では起きない）
  *   not_yet      … 滞在トークンの有効開始（チェックイン日 9:00）より前（前日以前に手動で送ったとき）
  *   unavailable  … この施設は貸切風呂の受付をしていない／一時的に読めない
  *   ready        … 予約画面へ案内できる（予約済みの枠も出す）
@@ -125,4 +125,70 @@ export function ciBathRows(
 	return [...(mine ?? [])]
 		.sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from))
 		.map((r) => ({ key: r.id, date: r.date, from: r.from, to: r.to, bathName: names.get(r.bath_id ?? '') ?? '' }));
+}
+
+// ---------------------------------------------------------------- 食事の所要時間の目安（貸切風呂の時間選び）
+
+/** 食事の所要時間の目安（分）。施設設定 book.precheckin_settings。無ければこの既定 */
+export type MealMinutes = { dinner: number; breakfast: number };
+// 夕食 2 時間半（客室案内の貸切風呂の案内「ご夕食で約2時間〜2時間30分」に合わせる）・朝食 1 時間
+export const DEFAULT_MEAL_MINUTES: MealMinutes = { dinner: 150, breakfast: 60 };
+
+/** DB の行（dinner_minutes / breakfast_minutes）を整える。壊れた値は既定 */
+export function normalizeMealMinutes(raw: unknown): MealMinutes {
+	const r = (raw ?? {}) as Record<string, unknown>;
+	const ok = (v: unknown, d: number) => (Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 600 && v !== null && v !== '' ? Number(v) : d);
+	return { dinner: ok(r.dinner_minutes, DEFAULT_MEAL_MINUTES.dinner), breakfast: ok(r.breakfast_minutes, DEFAULT_MEAL_MINUTES.breakfast) };
+}
+
+/** 'HH:MM' に分を足す（24:00 を超えても日はまたがない表記: 23:30 + 60 → 24:30） */
+export function addMinutes(hhmm: string, min: number): string {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+	if (!m) return hhmm;
+	const t = Number(m[1]) * 60 + Number(m[2]) + min;
+	return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
+const toMin = (hhmm: string) => {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+	return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+};
+
+/** 食事の時間帯（開始〜目安の終わり）。room は複数室のときの何室目 */
+export type MealWindow = { key: string; date: string; type: 'dinner' | 'breakfast'; from: string; to: string; minutes: number; room: number };
+
+/**
+ * 選んだ食事の時間を、所要時間の目安つきの時間帯にする（日付・開始の順）。
+ * 時間が未定の食事は出さない。同じ日・同じ食事・同じ時間（複数室で同じ時間）は 1 つにまとめる。
+ */
+export function mealWindows(
+	rooms: { index: number; nights: { stayId: string; dinner: { date: string; offered: boolean; time: string | null }; breakfast: { date: string; offered: boolean; time: string | null } }[] }[],
+	minutes: MealMinutes
+): MealWindow[] {
+	const out = new Map<string, MealWindow>();
+	for (const r of rooms)
+		for (const n of r.nights)
+			for (const type of ['dinner', 'breakfast'] as const) {
+				const c = n[type];
+				if (!c.offered || !c.time) continue;
+				const key = `${c.date}|${type}|${c.time}`;
+				if (out.has(key)) continue;
+				out.set(key, { key, date: c.date, type, from: c.time, to: addMinutes(c.time, minutes[type]), minutes: minutes[type], room: r.index });
+			}
+	return [...out.values()].sort((a, b) => (a.date + a.from).localeCompare(b.date + b.from));
+}
+
+/** 貸切風呂の枠（date・from〜to）が食事の時間帯と重なるか（端が接するだけは重ならない） */
+export function overlapsMeal(date: string, from: string, to: string | null, windows: MealWindow[]): boolean {
+	const s = toMin(from);
+	const e = to ? toMin(to) : s + 30;
+	if (!Number.isFinite(s) || !Number.isFinite(e)) return false;
+	return windows.some((w) => w.date === date && w.minutes > 0 && s < toMin(w.to) && toMin(w.from) < e);
+}
+
+/** 所要時間の表示（120 → '2時間'、90 → '1時間30分'、45 → '45分'）。日本語以外は呼び出し側で */
+export function minutesJa(min: number): string {
+	const h = Math.floor(min / 60);
+	const m = min % 60;
+	return h && m ? `${h}時間${m}分` : h ? `${h}時間` : `${m}分`;
 }

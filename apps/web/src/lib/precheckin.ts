@@ -9,15 +9,25 @@ export type PcMealType = 'dinner' | 'breakfast';
 export const PC_MEAL_TYPES: readonly PcMealType[] = ['dinner', 'breakfast'];
 
 /** 時間枠。remaining = このお客様の部屋を除いた残り室数（null = 上限なし） */
-export type PcSlot = { time: string; max: number | null; remaining: number | null };
+/** full = 宿が満席にした時間（PMS の食事時間割「本日の時間設定」で手動チェック・remaining は 0） */
+export type PcSlot = { time: string; max: number | null; remaining: number | null; full?: boolean };
 export type PcMealCell = { date: string; offered: boolean; time: string | null };
 export type PcNight = { nightDate: string; stayId: string; dinner: PcMealCell; breakfast: PcMealCell };
 export type PcRoom = { index: number; stayId: string; label: string; nights: PcNight[] };
 export type PcContact = { name?: string; name_kana?: string; phone?: string; email?: string };
 export type PcMealChoice = { stay_id: string; type: PcMealType; date: string; time: string };
+/** 宿からの質問（book.precheckin_questions・施設ごと・回答は必須） */
+export type PcQuestion = { id: string; question: string };
+/** 質問への回答（質問文はその時点の写し） */
+export type PcQuestionAnswer = { id: string; question?: string; answer: string };
+/** 伺い書の項目（① で聞く・住所と生年月日は必須） */
+export type PcGuestInfo = { zip?: string | null; address?: string | null; birthdate?: string | null; receipt_name?: string | null };
 export type PcAnswers = {
 	contact?: PcContact;
+	guest?: PcGuestInfo;
+	questions?: PcQuestionAnswer[];
 	arrival_time?: string | null;
+	/** 旧フォームの同伴人数（2026-11-14 に入力欄を廃止。過去の回答の表示用に型だけ残す） */
 	companions?: number | null;
 	allergies?: string | null;
 	requests?: string | null;
@@ -96,7 +106,7 @@ export function jstAt(date: string, hour: number): string {
 	return new Date(`${date}T${String(hour).padStart(2, '0')}:00:00+09:00`).toISOString();
 }
 
-/** 回答を直せる期限 = チェックイン日 12:00 */
+/** 旧: 回答を直せる期限 = チェックイン日 12:00（2026-11-14 に締め切りを廃止。DB は infinity を返す。見本の表示用に残す） */
 export const editableUntilOf = (checkIn: string) => jstAt(checkIn, 12);
 /** リンクの有効期限 = チェックアウト日 11:00 */
 export const expiresAtOf = (checkOut: string) => jstAt(checkOut, 11);
@@ -261,7 +271,8 @@ function slotsOf(raw: unknown): Record<string, PcSlot[]> {
 			.map((s) => ({
 				time: normTime(str(s.time)) ?? '',
 				max: s.max === null || s.max === undefined ? null : num(s.max),
-				remaining: s.remaining === null || s.remaining === undefined ? null : num(s.remaining)
+				remaining: s.full === true ? 0 : s.remaining === null || s.remaining === undefined ? null : num(s.remaining),
+				full: s.full === true
 			}))
 			.filter((s) => s.time);
 	}
@@ -323,23 +334,47 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 	};
 }
 
-/** フォームの「基本情報」の送信値を RPC の形にする（空欄は落とす） */
-export function answersFromForm(form: FormData, locale: string): PcAnswers & { contact: PcContact } {
+/** フォームの「基本情報」の送信値を RPC の形にする（空欄は落とす）。宿からの質問は name = q|<id> */
+export function answersFromForm(form: FormData, locale: string): PcAnswers & { contact: PcContact; questions: PcQuestionAnswer[]; guest: PcGuestInfo } {
 	const t = (k: string) => String(form.get(k) ?? '').trim();
 	const contact: PcContact = {};
 	for (const { key } of CONTACT_FIELDS) {
 		const v = t(`contact_${key}`);
 		if (v) contact[key] = v;
 	}
-	const comp = t('companions');
+	const questions: PcQuestionAnswer[] = [];
+	for (const [k, v] of form.entries()) {
+		const m = /^q\|([0-9a-z-]{1,64})$/i.exec(k);
+		if (m) questions.push({ id: m[1], answer: String(v ?? '').trim() });
+	}
 	return {
 		contact,
+		guest: {
+			zip: t('guest_zip') || null,
+			address: t('guest_address') || null,
+			birthdate: t('guest_birthdate') || null,
+			receipt_name: t('guest_receipt_name') || null
+		},
+		questions,
 		arrival_time: t('arrival_time') || null,
-		companions: comp === '' ? null : Number(comp),
-		allergies: t('allergies') || null,
-		requests: t('requests') || null,
 		locale
 	};
+}
+
+/** 伺い書の必須（住所・生年月日）で足りない最初の欄。足りていれば null */
+export function missingGuestField(g: PcGuestInfo): 'address' | 'birthdate' | null {
+	if (!g.address?.trim()) return 'address';
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(g.birthdate?.trim() ?? '')) return 'birthdate';
+	return null;
+}
+
+/** 宿からの質問に全部答えているか。答えていない最初の質問の id を返す（全部答えていれば null） */
+export function missingQuestion(questions: PcQuestion[], answers: PcQuestionAnswer[]): string | null {
+	for (const q of questions) {
+		const a = answers.find((x) => x.id === q.id)?.answer?.trim() ?? '';
+		if (!a) return q.id;
+	}
+	return null;
 }
 
 /** フォームの食事の送信値（name = meal|<stay_id>|<type>|<date>）を選択の配列にする */
@@ -402,11 +437,6 @@ export const slashDate = (d: string) => {
 	const x = ymd(d);
 	return Number.isFinite(x.y) ? `${x.y}/${x.m}/${x.day}` : d;
 };
-function deadlineEn(iso: string): string {
-	const t = new Date(Date.parse(iso) + 9 * 3600_000);
-	if (!Number.isFinite(t.getTime())) return '';
-	return `${MON_EN[t.getUTCMonth()]} ${t.getUTCDate()}, ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')} (JST)`;
-}
 
 /** 事前チェックインのご案内メール（日本語のあとに英語）。差出人名は「<施設名> 事前チェックイン」（呼び出し側） */
 export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; text: string; html: string } {
@@ -419,15 +449,14 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		'ご到着前に、下のリンクから「事前チェックイン」をお願いいたします。',
 		'ご連絡先の確認と、夕食・朝食のお時間をお選びいただけます（3分ほどで終わります）。',
 		'',
-		`ご予約番号: ${i.bookingCode}`,
+		...(i.bookingCode ? [`ご予約番号: ${i.bookingCode}`] : []),
 		`ご宿泊: ${dateJa(i.checkIn)} から ${i.nights}泊（チェックアウト ${dateJa(i.checkOut)}）`,
-		`入力の締め切り: ${deadlineJa(i.editableUntil)}`,
 		'',
 		i.url,
 		'',
 		'※ このリンクはお客様専用です。他の方へ転送しないでください。',
 		'※ 新しいご案内を送った場合、前のメールのリンクは使えなくなります。',
-		'※ 貸切風呂のご予約は、ご到着当日から客室案内でお受けしています。'
+		'※ 貸切風呂のご予約も、このリンクから承ります（ご到着当日 9:00 から）。'
 	];
 	const enLines = [
 		`Dear ${i.guestName.trim() || 'Guest'},`,
@@ -436,9 +465,8 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		'Before you arrive, please complete the online pre-check-in from the link below.',
 		'You can confirm your contact details and choose your dinner and breakfast times (about 3 minutes).',
 		'',
-		`Booking number: ${i.bookingCode}`,
+		...(i.bookingCode ? [`Booking number: ${i.bookingCode}`] : []),
 		`Stay: ${dateEn(i.checkIn)}, ${i.nights} night${i.nights === 1 ? '' : 's'} (check-out ${dateEn(i.checkOut)})`,
-		`Please complete by: ${deadlineEn(i.editableUntil)}`,
 		'',
 		i.url,
 		'',
@@ -470,7 +498,6 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 	const until = editableUntilOf(today);
 	return {
 		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
-		// 見本は OTA 経由の予約にしておく（誘導バナーを確かめられるように）
 		isOfficial: false,
 		isPartner: false,
 		bookingCode: DEMO_PRECHECKIN_CODE,
@@ -506,7 +533,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 			dinner: {
 				[today]: [
 					{ time: '17:30', max: 4, remaining: 2 },
-					{ time: '18:00', max: 4, remaining: 0 },
+					{ time: '18:00', max: null, remaining: 0, full: true },
 					{ time: '18:30', max: null, remaining: null },
 					{ time: '19:00', max: null, remaining: null }
 				]

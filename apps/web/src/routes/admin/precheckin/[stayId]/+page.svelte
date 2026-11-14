@@ -71,14 +71,39 @@
 		</section>
 
 		<section class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
-			<h2 class="font-semibold">到着・ご要望</h2>
+			<h2 class="font-semibold">お客様情報・到着・宿からの質問</h2>
 			<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1.5">
 				<dt class="text-stone-500">到着予定</dt><dd>{a.arrival_time ?? '—'}</dd>
-				<dt class="text-stone-500">同伴人数</dt><dd>{a.companions ?? '—'}</dd>
-				<dt class="text-stone-500">アレルギー</dt><dd class="whitespace-pre-wrap">{a.allergies ?? '—'}</dd>
-				<dt class="text-stone-500">ご要望</dt><dd class="whitespace-pre-wrap">{a.requests ?? '—'}</dd>
 				<dt class="text-stone-500">言語</dt><dd>{a.locale ?? d.summary.locale}</dd>
 			</dl>
+			<!-- 伺い書の項目。お客様が変更・新しく入れた欄だけ（空 = 顧客マスタのとおり）。PMS には自動で入らないので伺い書へ写す -->
+			<h3 class="mt-3 border-t border-stone-100 pt-3 text-xs font-semibold text-stone-500">伺い書の項目（変更・入力された欄だけ）</h3>
+			<dl class="mt-1 grid grid-cols-[7rem_1fr] gap-y-1.5">
+				<dt class="text-stone-500">郵便番号</dt><dd class={a.guest?.zip ? 'font-medium text-amber-800' : 'text-stone-400'}>{a.guest?.zip || 'マスタのとおり'}</dd>
+				<dt class="text-stone-500">住所</dt><dd class="whitespace-pre-wrap {a.guest?.address ? 'font-medium text-amber-800' : 'text-stone-400'}">{a.guest?.address || 'マスタのとおり'}</dd>
+				<dt class="text-stone-500">生年月日</dt><dd class={a.guest?.birthdate ? 'font-medium text-amber-800' : 'text-stone-400'}>{a.guest?.birthdate || 'マスタのとおり'}</dd>
+				<dt class="text-stone-500">領収書宛名</dt><dd class={a.guest?.receipt_name ? 'font-medium text-amber-800' : 'text-stone-400'}>{a.guest?.receipt_name || 'マスタのとおり'}</dd>
+			</dl>
+			{#if a.questions?.length}
+				<dl class="mt-3 space-y-2 border-t border-stone-100 pt-3">
+					{#each a.questions as q (q.id)}
+						<div>
+							<dt class="whitespace-pre-wrap text-xs text-stone-500">{q.question || '（質問）'}</dt>
+							<dd class="whitespace-pre-wrap font-medium">{q.answer}</dd>
+						</div>
+					{/each}
+				</dl>
+			{:else}
+				<p class="mt-3 border-t border-stone-100 pt-3 text-stone-500">宿からの質問への回答はありません。</p>
+			{/if}
+			{#if a.companions != null || a.allergies || a.requests}
+				<!-- 2026-11-14 より前のフォームの回答（同伴人数・アレルギー・ご要望） -->
+				<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1.5 border-t border-stone-100 pt-3 text-stone-600">
+					{#if a.companions != null}<dt class="text-stone-500">同伴人数</dt><dd>{a.companions}</dd>{/if}
+					{#if a.allergies}<dt class="text-stone-500">アレルギー</dt><dd class="whitespace-pre-wrap">{a.allergies}</dd>{/if}
+					{#if a.requests}<dt class="text-stone-500">ご要望</dt><dd class="whitespace-pre-wrap">{a.requests}</dd>{/if}
+				</dl>
+			{/if}
 		</section>
 
 		<section class="rounded-xl border border-stone-200 bg-white p-4 text-sm">

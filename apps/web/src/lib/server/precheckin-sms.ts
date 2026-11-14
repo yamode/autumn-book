@@ -21,7 +21,7 @@ import { facilities } from '$lib/server/store';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { buildPrecheckinMail } from '$lib/precheckin';
 import {
-	buildPrecheckinSms,
+	buildPrecheckinSmsPair,
 	checkWebhookAuth,
 	dispatchErrorText,
 	normalizeDlr,
@@ -85,9 +85,24 @@ type FinishArgs = { ok: boolean; messageId?: string; providerStatus?: string; er
 async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb: SupabaseClient | null): Promise<FinishArgs> {
 	const url = `${origin}/ci/${b.token}`;
 	if (b.channel === 'sms') {
-		const text = buildPrecheckinSms({ facilityName: b.facility_name, url, phone: facilityPhone(b.facility_id, b.facility_phone) });
-		const r = await sendSmsWith(cfg, { to: b.to, text, callbackData: b.dispatch_id });
-		return { ok: r.sent, messageId: r.messageId, providerStatus: r.providerStatus, error: r.reason, permanent: r.permanent };
+		// 2 通に分けて送る（1 通目＝案内文、2 通目＝URL と電話）。届く順を守るため 1 通目を受け付けてから 2 通目を送る。
+		// 送信記録（到達管理）は 2 通目（URL）の messageId で持つ。1 通目の到達通知は照合されず読み飛ばされる。
+		const pair = buildPrecheckinSmsPair({
+			facilityName: b.facility_name,
+			checkIn: String(b.check_in).slice(0, 10),
+			url,
+			phone: facilityPhone(b.facility_id, b.facility_phone)
+		});
+		const first = await sendSmsWith(cfg, { to: b.to, text: pair.message, callbackData: b.dispatch_id });
+		if (!first.sent) return { ok: false, messageId: first.messageId, providerStatus: first.providerStatus, error: first.reason, permanent: first.permanent };
+		const r = await sendSmsWith(cfg, { to: b.to, text: pair.link, callbackData: b.dispatch_id });
+		return {
+			ok: r.sent,
+			messageId: r.messageId,
+			providerStatus: r.providerStatus,
+			error: r.sent ? undefined : `1 通目（案内文）は送信済み・2 通目（URL）が失敗: ${r.reason ?? ''}`.slice(0, 300),
+			permanent: r.permanent
+		};
 	}
 	const mail = buildPrecheckinMail({
 		facilityName: b.facility_name,

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	DEFAULT_MEAL_MINUTES,
+	addMinutes,
+	mealWindows,
+	minutesJa,
+	normalizeMealMinutes,
+	overlapsMeal,
 	ciBathRows,
 	ciBathState,
 	ciGoPath,
@@ -113,5 +119,39 @@ describe('貸切風呂のステップの状態', () => {
 			['2', '岩']
 		]);
 		expect(ciBathRows(undefined, undefined)).toEqual([]);
+	});
+});
+
+describe('食事の所要時間の目安', () => {
+	it('設定の整形（壊れた値は既定）', () => {
+		expect(normalizeMealMinutes({ dinner_minutes: 90, breakfast_minutes: 45 })).toEqual({ dinner: 90, breakfast: 45 });
+		expect(normalizeMealMinutes(null)).toEqual(DEFAULT_MEAL_MINUTES);
+		expect(normalizeMealMinutes({ dinner_minutes: -1, breakfast_minutes: 'x' })).toEqual(DEFAULT_MEAL_MINUTES);
+	});
+	it('分を足す・表示', () => {
+		expect(addMinutes('18:30', 120)).toBe('20:30');
+		expect(addMinutes('07:45', 60)).toBe('08:45');
+		expect(minutesJa(120)).toBe('2時間');
+		expect(minutesJa(90)).toBe('1時間30分');
+		expect(minutesJa(45)).toBe('45分');
+	});
+	it('選んだ食事の時間帯（未定は出さない・同じ時間はまとめる）と、風呂の枠との重なり', () => {
+		const night = (stayId: string, d: string | null, b: string | null) => ({
+			stayId,
+			dinner: { date: '2026-11-14', offered: true, time: d },
+			breakfast: { date: '2026-11-15', offered: true, time: b }
+		});
+		const w = mealWindows(
+			[
+				{ index: 1, nights: [night('s1', '18:30', null)] },
+				{ index: 2, nights: [night('s2', '18:30', '08:00')] }
+			],
+			{ dinner: 120, breakfast: 60 }
+		);
+		expect(w.map((x) => `${x.date} ${x.type} ${x.from}-${x.to}`)).toEqual(['2026-11-14 dinner 18:30-20:30', '2026-11-15 breakfast 08:00-09:00']);
+		expect(overlapsMeal('2026-11-14', '20:00', '20:40', w)).toBe(true);
+		expect(overlapsMeal('2026-11-14', '20:30', '21:10', w)).toBe(false); // 終わりと接するだけ
+		expect(overlapsMeal('2026-11-14', '17:40', '18:20', w)).toBe(false);
+		expect(overlapsMeal('2026-11-15', '08:30', null, w)).toBe(true);
 	});
 });

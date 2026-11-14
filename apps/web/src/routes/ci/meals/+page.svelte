@@ -1,5 +1,6 @@
 <script lang="ts">
-	// ② 夕食・朝食の時間。連泊は泊ごと、複数室は部屋ごとに選ぶ。満席の時間は選べない（今の時間は残す）。
+	// ② 夕食・朝食の時間。連泊は泊ごと、複数室は部屋ごとに選ぶ。混み合っている時間（PMS で満席にした・受付上限）は「（選択不可）」で選べない（今の時間は残す）。
+	// 部屋名は出さない（部屋タイプは ① に出す）。複数室のときだけ「1室目」の見出し。次は ③ 貸切風呂なので、ボタンは「保存して次へ」（2026-11-14）。
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -22,7 +23,7 @@
 						? m.ci_err_closed()
 						: m.ci_err_save()
 	);
-	const selectCls = 'mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[16px] disabled:bg-stone-100';
+	const selectCls = 'w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[16px] disabled:bg-stone-100';
 </script>
 
 <form method="POST" action="?/save" use:enhance class="space-y-4">
@@ -30,26 +31,24 @@
 
 	{#each ctx.rooms as room (room.stayId)}
 		<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
-			{#if ctx.rooms.length > 1 || room.label}
-				<h2 class="font-semibold">
-					{#if ctx.rooms.length > 1}{m.ci_room_n({ n: String(room.index) })}{/if}
-					{#if room.label}<span class="ml-1 font-normal text-stone-500">{room.label}</span>{/if}
-				</h2>
+			{#if ctx.rooms.length > 1}
+				<h2 class="font-semibold">{m.ci_room_n({ n: String(room.index) })}</h2>
 			{/if}
 			{#each room.nights as night (night.nightDate + night.stayId)}
 				<div class="mt-3 border-t border-stone-100 pt-3 first:mt-1 first:border-0 first:pt-0">
 					<p class="text-xs text-stone-500">{m.ci_night_of({ date: slashDate(night.nightDate) })}</p>
-					<div class="mt-2 grid grid-cols-2 gap-3">
+					<!-- 夕食・朝食は 1 行ずつ（左に見出し、右に時間）。2 列だと狭い画面で日付と時間が窮屈になる -->
+					<div class="mt-2 space-y-2">
 						{#each types as t (t)}
 							{@const cell = night[t]}
-							<label class="block">
-								<span class="text-stone-600">{typeLabel(t)}<span class="ml-1 text-xs text-stone-400">{slashDate(cell.date)}</span></span>
+							<label class="grid grid-cols-[5.5rem_1fr] items-center gap-3">
+								<span class="leading-tight text-stone-700">{typeLabel(t)}<span class="block text-xs text-stone-400">{slashDate(cell.date)}</span></span>
 								{#if cell.offered}
 									<select name="meal|{night.stayId}|{t}|{cell.date}" disabled={ro} class={selectCls}>
 										<option value="" selected={!cell.time}>{m.ci_meal_unset()}</option>
 										{#each ctx.slots[t]?.[cell.date] ?? [] as slot (slot.time)}
 											<option value={slot.time} selected={cell.time === slot.time} disabled={!slotSelectable(slot, cell.time)}>
-												{slot.time}{slotSelectable(slot, cell.time) ? '' : `（${m.ci_meal_full()}）`}
+												{slot.time}{slotSelectable(slot, cell.time) ? '' : `（${m.ci_meal_unselectable()}）`}
 											</option>
 										{/each}
 										{#if cell.time && !(ctx.slots[t]?.[cell.date] ?? []).some((s) => s.time === cell.time)}
@@ -58,7 +57,7 @@
 										{/if}
 									</select>
 								{:else}
-									<p class="mt-1 rounded-lg bg-stone-50 px-3 py-2 text-stone-500">{m.ci_meal_none()}</p>
+									<p class="rounded-lg bg-stone-50 px-3 py-2 text-stone-500">{m.ci_meal_none()}</p>
 								{/if}
 							</label>
 						{/each}
@@ -77,7 +76,7 @@
 		{#if ro}
 			<a href={localizeHref('/ci/bath')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_next()}</a>
 		{:else}
-			<button type="submit" class="flex-[2] rounded-xl bg-stone-900 py-3 text-sm font-medium text-white">{m.ci_submit()}</button>
+			<button type="submit" class="flex-[2] rounded-xl bg-stone-900 py-3 text-sm font-medium text-white">{m.ci_save_next()}</button>
 		{/if}
 	</div>
 </form>

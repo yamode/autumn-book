@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
 	answersFromForm,
+	missingGuestField,
+	missingQuestion,
 	buildPrecheckinMail,
 	canSend,
 	checkMealChoices,
@@ -191,16 +193,27 @@ describe('フォームの値', () => {
 		f.set('contact_name', ' ');
 		f.set('contact_phone', '090-0000-1111');
 		f.set('arrival_time', '15:30');
-		f.set('companions', '');
-		f.set('requests', ' 誕生日です ');
+		f.set('companions', '3'); // 旧フォームの欄。送られてきても拾わない
+		f.set('requests', ' 誕生日です '); // 旧フォームの欄。拾わない
+		f.set('q|1b2c3d4e-0000-4000-8000-000000000001', ' お車です ');
 		expect(answersFromForm(f, 'ja')).toEqual({
 			contact: { phone: '090-0000-1111' },
+			guest: { zip: null, address: null, birthdate: null, receipt_name: null },
+			questions: [{ id: '1b2c3d4e-0000-4000-8000-000000000001', answer: 'お車です' }],
 			arrival_time: '15:30',
-			companions: null,
-			allergies: null,
-			requests: '誕生日です',
 			locale: 'ja'
 		});
+	});
+	it('伺い書の項目: 住所と生年月日は必須', () => {
+		expect(missingGuestField({ address: ' ', birthdate: '1980-01-02' })).toBe('address');
+		expect(missingGuestField({ address: '岩手県', birthdate: '' })).toBe('birthdate');
+		expect(missingGuestField({ address: '岩手県', birthdate: '1980-01-02', zip: null, receipt_name: null })).toBeNull();
+	});
+	it('宿からの質問: 答えていない質問を返す（全部答えていれば null）', () => {
+		const qs = [{ id: 'a', question: 'Q1' }, { id: 'b', question: 'Q2' }];
+		expect(missingQuestion(qs, [{ id: 'a', answer: 'x' }, { id: 'b', answer: ' ' }])).toBe('b');
+		expect(missingQuestion(qs, [{ id: 'a', answer: 'x' }, { id: 'b', answer: 'y' }])).toBeNull();
+		expect(missingQuestion([], [])).toBeNull();
 	});
 	it('食事: name から部屋・種別・日付を読む', () => {
 		const f = new FormData();
@@ -235,11 +248,15 @@ describe('RPC の戻り', () => {
 			answers: {},
 			answered_at: null,
 			rooms: [{ index: 1, stay_id: 's1', label: '和室', nights: [{ night_date: '2026-11-01', stay_id: 's1', dinner: { date: '2026-11-01', offered: true, time: '7:30' }, breakfast: { date: '2026-11-02', offered: false, time: null } }] }],
-			slots: { dinner: { '2026-11-01': [{ time: '18:00', max: 3, remaining: 1 }, { time: 'x' }] }, breakfast: {} }
+			slots: { dinner: { '2026-11-01': [{ time: '18:00', max: 3, remaining: 1 }, { time: '19:00', max: null, remaining: null, full: true }, { time: 'x' }] }, breakfast: {} }
 		}) as PcContext;
 		expect(c.rooms[0].nights[0].dinner).toEqual({ date: '2026-11-01', offered: true, time: '07:30' });
 		expect(c.rooms[0].nights[0].breakfast.offered).toBe(false);
-		expect(c.slots.dinner['2026-11-01']).toEqual([{ time: '18:00', max: 3, remaining: 1 }]);
+		expect(c.slots.dinner['2026-11-01']).toEqual([
+			{ time: '18:00', max: 3, remaining: 1, full: false },
+			// PMS で満席にした時間は残り 0（選べない）
+			{ time: '19:00', max: null, remaining: 0, full: true }
+		]);
 		expect(c.guest.phoneMasked).toBe('****5678');
 	});
 	it('見本は今日チェックイン・個人情報はマスク済み', () => {
@@ -261,15 +278,15 @@ describe('ご案内メール', () => {
 		url: 'https://book.example/ci/TOKEN',
 		editableUntil: '2026-11-01T03:00:00Z'
 	});
-	it('件名・本文に施設名・予約番号・日程・締め切り・リンク（日本語と英語）', () => {
+	it('件名・本文に施設名・予約番号・日程・リンク（日本語と英語）。締め切りは書かない', () => {
 		expect(mail.subject).toBe('【山人-yamado-】事前チェックインのご案内 / Online pre-check-in');
 		expect(mail.text).toContain('山人 <太郎> 様');
 		expect(mail.text).toContain('ご予約番号: AB12');
 		expect(mail.text).toContain('2026年11月1日（日） から 2泊（チェックアウト 2026年11月3日（火））');
-		expect(mail.text).toContain('入力の締め切り: 11月1日 12:00');
+		expect(mail.text).not.toContain('締め切り');
 		expect(mail.text).toContain('https://book.example/ci/TOKEN');
 		expect(mail.text).toContain('Stay: Sun, Nov 1, 2026, 2 nights');
-		expect(mail.text).toContain('Please complete by: Nov 1, 12:00 (JST)');
+		expect(mail.text).not.toContain('Please complete by');
 	});
 	it('HTML は名前をエスケープし、リンクのボタンを出す', () => {
 		expect(mail.html).toContain('山人 &lt;太郎&gt; 様');

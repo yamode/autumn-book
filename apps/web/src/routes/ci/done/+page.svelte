@@ -1,12 +1,10 @@
 <script lang="ts">
-	// ④ 完了。選んだ食事の時間をまとめて出し、客室案内（/r）・貸切風呂（/r/bath）へ案内する。
-	// 案内のリンクは /ci/go を通す: 回答済み・チェックイン日 12:00 より前なら滞在トークンを Cookie（ab_stay）に入れてから移るので、
-	// 6 桁コードを入れずに開ける（P3）。OTA 経由の予約には公式サイトへの誘導カードを出す。
-	import PrecheckinOtaBanner from '$lib/components/PrecheckinOtaBanner.svelte';
+	// ④ 完了。選んだ食事の時間と、③ で取った貸切風呂の予約をまとめて出し、利用案内（客室案内 /r）へ案内する。
+	// 利用案内のリンクは /ci/go を通す: 回答済みなら滞在トークンを Cookie（ab_stay）に入れてから移るので、6 桁コードを入れずに開ける。
+	// 貸切風呂を取ってあれば「予約する」は出さない（③ と重複するため）。取っていなければ ③ へ戻る小さなリンクだけ（2026-11-14）。
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { slashDate, type PcMealType } from '$lib/precheckin';
-	import { otaBannerHref } from '$lib/precheckin-p3';
 
 	let { data } = $props();
 	const ctx = $derived(data.ctx!);
@@ -20,13 +18,11 @@
 			)
 		)
 	);
-	const go = (to: 'inroom' | 'bath') => `${localizeHref('/ci/go')}?to=${to}`;
-	const bannerHref = $derived(data.otaBanner ? otaBannerHref(ctx.facility, localizeHref) : null);
+	const bathRows = $derived(data.bathRows ?? []);
 </script>
 
 <section class="rounded-2xl bg-white p-5 text-sm shadow-sm">
 	<h2 class="text-base font-semibold">{m.ci_done_title()}</h2>
-	<p class="mt-2 leading-relaxed">{m.ci_done_lead()}</p>
 
 	{#if rows.length}
 		<h3 class="mt-4 text-xs font-semibold text-stone-500">{m.ci_done_meals()}</h3>
@@ -43,19 +39,28 @@
 		</ul>
 	{/if}
 
+	<h3 class="mt-4 text-xs font-semibold text-stone-500">{m.ci_step_bath()}</h3>
+	{#if bathRows.length}
+		<ul class="mt-1 divide-y divide-stone-100">
+			{#each bathRows as r (r.key)}
+				<li class="flex items-center justify-between py-1.5">
+					<span>{slashDate(r.date)}{#if r.bathName}<span class="ml-1 text-stone-500">{r.bathName}</span>{/if}</span>
+					<span class="font-medium">{r.from}{r.to ? `–${r.to}` : ''}</span>
+				</li>
+			{/each}
+		</ul>
+	{:else}
+		<p class="mt-1 text-stone-500">
+			{m.ci_bath_none()}
+			<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
+		</p>
+	{/if}
+
 	{#if ctx.editable}
 		<a href={localizeHref('/ci')} class="mt-4 inline-block text-sm text-stone-600 underline">{m.ci_done_edit()}</a>
 	{/if}
 </section>
 
-<section class="mt-4 rounded-2xl bg-white p-5 text-sm shadow-sm">
-	<p class="leading-relaxed">{m.ci_done_inroom_help()}</p>
-	<a href={go('inroom')} class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
-	<a href={go('bath')} class="mt-3 block w-full rounded-xl bg-white py-3 text-center text-sm text-stone-700 ring-1 ring-stone-300">{m.ci_bath_reserve()}</a>
-</section>
-
-{#if bannerHref}
-	<PrecheckinOtaBanner href={bannerHref} variant="card" welcomeBonus={data.welcomeBonus} />
-{/if}
+<a href={`${localizeHref('/ci/go')}?to=inroom`} class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
 
 <p class="mt-4 text-center text-xs text-stone-500">{slashDate(ctx.checkIn)} · {ctx.facility.name}</p>

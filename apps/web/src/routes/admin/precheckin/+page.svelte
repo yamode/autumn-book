@@ -52,6 +52,12 @@
 	const counts = $derived(
 		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: rows.filter((r) => r.state === s).length }))
 	);
+	// 宿からの質問の編集欄（保存し直すと読み込み直した内容に戻す）
+	type QRow = { key: string; id: string | null; question: string };
+	let qRows = $state<QRow[]>([]);
+	$effect(() => {
+		qRows = (data.questions ?? []).map((q) => ({ key: q.id, id: q.id, question: q.question }));
+	});
 	const capsOf = (type: 'dinner' | 'breakfast', time: string) =>
 		data.caps?.caps.find((c) => c.type === type && c.time === time)?.max_rooms ?? '';
 	const confirmResend = (e: MouseEvent, resend: boolean) => {
@@ -215,6 +221,62 @@
 					</div>
 				{/each}
 				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">上限を保存</button>
+			</form>
+		</section>
+	{/if}
+
+	{#if data.questions}
+		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">宿からの質問</h2>
+			<p class="mt-1 text-xs text-stone-500">
+				事前チェックインの「ご予約内容」で、お客様に必ず答えてもらう質問です（空欄では先へ進めません）。回答はこの一覧の各予約の詳細に出ます。上から順に表示します。空欄にして保存するとその質問は消えます。
+			</p>
+			{#if form && 'questionsError' in form && form.questionsError}
+				<p class="mt-2 text-sm text-red-700" role="alert">{form.questionsError}</p>
+			{:else if form && 'questionsSaved' in form && form.questionsSaved}
+				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
+			{/if}
+			<form method="POST" action="?/questions" use:enhance class="mt-3 space-y-2">
+				{#each qRows as row, i (row.key)}
+					<div class="flex items-start gap-2">
+						<span class="mt-2 w-5 shrink-0 text-right text-xs text-stone-400">{i + 1}</span>
+						<input type="hidden" name="qid|{i}" value={row.id ?? ''} />
+						<textarea name="q|{i}" rows="2" maxlength="300" bind:value={row.question} class="w-full rounded border border-stone-300 px-2 py-1" placeholder="例: ご到着の交通手段（お車・電車など）を教えてください。"></textarea>
+						<button type="button" onclick={() => (qRows = qRows.filter((r) => r.key !== row.key))} class="mt-1 shrink-0 rounded border border-stone-300 px-2 py-1 text-xs text-stone-600">削除</button>
+					</div>
+				{/each}
+				<div class="flex items-center gap-2 pt-1">
+					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '' }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
+					<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">質問を保存</button>
+				</div>
+			</form>
+		</section>
+	{/if}
+
+	{#if data.minutes}
+		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">食事の所要時間の目安</h2>
+			<p class="mt-1 text-xs text-stone-500">
+				事前チェックインの「貸切風呂」で、お客様が選んだ食事の時間に足して「18:30〜20:30ごろ」のように出し、重なる枠に印を付けます（予約は止めません）。
+				満席の時間は PMS の食事時間割「本日の時間設定」でチェックします。
+			</p>
+			{#if form && 'minutesError' in form && form.minutesError}
+				<p class="mt-2 text-sm text-red-700" role="alert">{form.minutesError}</p>
+			{:else if form && 'minutesSaved' in form && form.minutesSaved}
+				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
+			{/if}
+			<form method="POST" action="?/minutes" use:enhance class="mt-3 flex flex-wrap items-center gap-4">
+				<label class="flex items-center gap-1">
+					<span class="w-10 font-medium">夕食</span>
+					<input name="dinner" type="number" min="0" max="600" step="5" inputmode="numeric" value={data.minutes.dinner} class="w-20 rounded border border-stone-300 px-2 py-1" />
+					<span class="text-stone-600">分</span>
+				</label>
+				<label class="flex items-center gap-1">
+					<span class="w-10 font-medium">朝食</span>
+					<input name="breakfast" type="number" min="0" max="600" step="5" inputmode="numeric" value={data.minutes.breakfast} class="w-20 rounded border border-stone-300 px-2 py-1" />
+					<span class="text-stone-600">分</span>
+				</label>
+				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">所要時間を保存</button>
 			</form>
 		</section>
 	{/if}

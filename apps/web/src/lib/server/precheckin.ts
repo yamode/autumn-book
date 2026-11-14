@@ -25,10 +25,19 @@ import {
 	precheckinCookieMaxAge,
 	type PcAnswers,
 	type PcContext,
+	type PcGuestInfo,
+	type PcQuestion,
 	type PcError,
 	type PcMealChoice
 } from '$lib/precheckin';
-import { normalizeStayTokenResult, type StayTokenResult } from '$lib/precheckin-p3';
+import {
+	DEFAULT_MEAL_MINUTES,
+	normalizeMealMinutes,
+	normalizeStayTokenResult,
+	type MealMinutes,
+	type StayTokenResult
+} from '$lib/precheckin-p3';
+import type { BathContext } from '$lib/server/private-bath';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 
 // 開発中はログを出す（リリース前に false）
@@ -76,7 +85,8 @@ function rpcResult(data: unknown, error: { message: string } | null): PcSaveResu
 
 export async function pcSaveAnswers(token: string, answers: PcAnswers): Promise<PcSaveResult> {
 	if (token === DEMO_PRECHECKIN_TOKEN) {
-		demoAnswers = { ...demoAnswers, ...answers, basic_saved_at: new Date().toISOString() };
+		const questions = (answers.questions ?? []).map((a) => ({ ...a, question: DEMO_QUESTIONS.find((q) => q.id === a.id)?.question ?? '' }));
+		demoAnswers = { ...demoAnswers, ...answers, questions, basic_saved_at: new Date().toISOString() };
 		return { ok: true };
 	}
 	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'invalid_token' };
@@ -125,6 +135,118 @@ export async function ensureStayCookie(cookies: Cookies, pcToken: string): Promi
 	}
 	dbg('stay cookie', r.ok ? 'set' : r.error);
 	return r;
+}
+
+// ---------------------------------------------------------------- 顧客マスタの伺い書の項目（book.precheckin_guest_profile）
+
+/**
+ * PMS の顧客マスタ（core.guests）の 郵便番号・住所（address1+address2）・生年月日・領収書宛名。① の欄に最初から入れる。
+ * 見本は見本の値。読めない（DB 適用前など）ときは空＝入力欄にする。
+ */
+export async function pcGuestProfile(token: string): Promise<PcGuestInfo> {
+	if (token === DEMO_PRECHECKIN_TOKEN) return { zip: '029-5514', address: '岩手県和賀郡西和賀町湯川52-71-10', birthdate: '1980-05-10', receipt_name: null };
+	if (DATA_SOURCE !== 'supabase') return {};
+	const { data, error } = await supa().rpc('precheckin_guest_profile', { p_token: token });
+	if (error) {
+		dbg('guest_profile error', error.message);
+		return {};
+	}
+	const r = (data ?? {}) as Record<string, unknown>;
+	if (r.ok !== true) return {};
+	const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+	return { zip: str(r.zip), address: str(r.address), birthdate: str(r.birthdate)?.slice(0, 10) ?? null, receipt_name: str(r.receipt_name) };
+}
+
+// ---------------------------------------------------------------- 宿からの質問（book.precheckin_questions）
+
+/** 見本の質問（見本の画面で回答欄を確かめられるように） */
+export const DEMO_QUESTIONS: PcQuestion[] = [{ id: 'demo-q1', question: 'ご到着の交通手段（お車・電車など）を教えてください。' }];
+
+/** 施設の宿からの質問（有効なもの・表示順）。見本は DEMO_QUESTIONS。読めないときは空（質問なし） */
+export async function pcQuestions(facilityId: string, demo = false): Promise<PcQuestion[]> {
+	if (demo) return DEMO_QUESTIONS;
+	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return [];
+	const { data, error } = await supa()
+		.from('precheckin_questions')
+		.select('id, question')
+		.eq('facility_id', facilityId)
+		.eq('is_active', true)
+		.order('sort_order');
+	if (error) dbg('questions error', error.message);
+	return ((data ?? []) as { id: string; question: string }[]).map((q) => ({ id: q.id, question: q.question }));
+}
+
+// ---------------------------------------------------------------- 食事の所要時間の目安（book.precheckin_settings）
+
+/** 施設の食事の所要時間の目安（分）。見本・未設定・読めないときは既定（夕食 120・朝食 60） */
+export async function pcMealMinutes(facilityId: string): Promise<MealMinutes> {
+	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return DEFAULT_MEAL_MINUTES;
+	const { data, error } = await supa()
+		.from('precheckin_settings')
+		.select('dinner_minutes, breakfast_minutes')
+		.eq('facility_id', facilityId)
+		.maybeSingle();
+	if (error) dbg('meal minutes error', error.message);
+	return normalizeMealMinutes(data);
+}
+
+// ---------------------------------------------------------------- 見本の貸切風呂（DB に触れない）
+
+// 見本（DEMO_PRECHECKIN_TOKEN）の ③ 貸切風呂で、予約・取消まで試せるようにする。プロセス内だけに持つ（再起動で消える）。
+let demoBathMine: { id: string; date: string; from: string; to: string }[] = [];
+
+const hm = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
+const isMorning = (from: string) => Number(from.slice(0, 2)) < 12;
+
+/** 見本の枠: チェックイン日は 15:00〜22:20、翌朝は 6:00〜9:20（40 分枠・10 分入れ替え）。午前・午後で 1 部屋 1 枠ずつ */
+function demoBathSlots(morning: boolean): { from: string; to: string }[] {
+	const out: { from: string; to: string }[] = [];
+	const [start, end] = morning ? [6 * 60, 10 * 60] : [15 * 60, 23 * 60];
+	for (let t = start; t + 40 <= end; t += 50) out.push({ from: hm(t), to: hm(t + 40) });
+	return out;
+}
+
+/** 見本の貸切風呂（private_bath_context と同じ形） */
+export function demoBathContext(checkIn: string): BathContext {
+	const next = new Date(Date.parse(`${checkIn}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10);
+	const taken = new Set([`${checkIn} 16:40`, `${checkIn} 19:10`, `${next} 07:40`]); // 他のお客様が取った見本の枠
+	const day = (date: string, morning: boolean) => ({
+		date,
+		slots: demoBathSlots(morning).map((s) => {
+			const mine = demoBathMine.find((r) => r.date === date && r.from === s.from);
+			const limit = demoBathMine.some((r) => r.date === date && isMorning(r.from) === morning);
+			return { ...s, taken: taken.has(`${date} ${s.from}`) || !!mine, mine: !!mine, slot_id: mine?.id ?? null, closed: false, limit_reached: limit };
+		})
+	});
+	return {
+		ok: true,
+		enabled: true,
+		price_yen: 0,
+		per_room_per_range: 1,
+		cutoff_min: 30,
+		cancel_min: 60,
+		check_in_date: checkIn,
+		check_out_date: next,
+		baths: [{ bath_id: 'demo-bath', bath_name: '貸切風呂（見本）', days: [day(checkIn, false), day(next, true)] }],
+		mine: demoBathMine.map((r) => ({ id: r.id, date: r.date, from: r.from, to: r.to, bath_id: 'demo-bath', price_yen: 0, booked_via: 'guest', cancelable: true })),
+		group: { shared: false }
+	};
+}
+
+export function demoBathReserve(date: string, from: string): 'ok' | 'slot_taken' | 'per_room_limit' {
+	// どの日の枠かは日付で引く（見本はチェックイン日と翌朝の 2 日）
+	const ctx = demoBathContext(isMorning(from) ? new Date(Date.parse(`${date}T00:00:00Z`) - 86400_000).toISOString().slice(0, 10) : date);
+	const slot = ctx.baths?.[0].days.find((d) => d.date === date)?.slots.find((s) => s.from === from);
+	if (!slot || slot.taken) return 'slot_taken';
+	if (slot.limit_reached) return 'per_room_limit';
+	demoBathMine = [...demoBathMine, { id: `demo-${date}-${from}`, date, from, to: slot.to }];
+	return 'ok';
+}
+
+export function demoBathCancel(slotId: string): boolean {
+	const before = demoBathMine.length;
+	demoBathMine = demoBathMine.filter((r) => r.id !== slotId);
+	return demoBathMine.length < before;
 }
 
 // ---------------------------------------------------------------- Cookie とレート制限
@@ -245,6 +367,27 @@ export const adminPrecheckinCaps = (c: BookClient, facility: string) =>
 
 export const adminPrecheckinSaveCaps = (c: BookClient, facility: string, caps: { type: string; time: string; max_rooms: string | null }[]) =>
 	rpc<null>(c, 'admin_precheckin_save_caps', { p_facility: facility, p_caps: caps });
+
+/** 食事の所要時間の目安（分）。未設定・読めないときは既定 */
+export async function adminPrecheckinMinutes(c: BookClient, facility: string): Promise<MealMinutes> {
+	const { data, error } = await c.from('precheckin_settings').select('dinner_minutes, breakfast_minutes').eq('facility_id', facility).maybeSingle();
+	if (error) throw error;
+	return normalizeMealMinutes(data);
+}
+
+/** 宿からの質問（管理画面・表示順） */
+export async function adminPrecheckinQuestions(c: BookClient, facility: string): Promise<PcQuestion[]> {
+	const { data, error } = await c.from('precheckin_questions').select('id, question').eq('facility_id', facility).order('sort_order');
+	if (error) throw error;
+	return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question }));
+}
+
+/** 宿からの質問を丸ごと置き換える（並び順＝表示順・空欄は捨てる・一覧から消した質問は削除） */
+export const adminPrecheckinSaveQuestions = (c: BookClient, facility: string, questions: { id: string | null; question: string }[]) =>
+	rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
+
+export const adminPrecheckinSaveMinutes = (c: BookClient, facility: string, m: MealMinutes) =>
+	rpc<null>(c, 'admin_precheckin_save_minutes', { p_facility: facility, p_dinner: m.dinner, p_breakfast: m.breakfast });
 
 type IssueResult = {
 	id: string;
