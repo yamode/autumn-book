@@ -30,8 +30,8 @@
 	//    どれか欠けると SMS は送らず「SMS未設定」になる（メールは送れる）。
 	"vars": {
 		// 事前チェックインの当日 9:00 の自動送信（/api/cron/precheckin-send）の全体スイッチ。'1' のときだけ送る。'0' は対象件数だけ数える dry-run。
-		// 2026-11-14 から '1'。実際に誰へ送るかは管理画面 → 事前チェックインの「自動送信」（施設ごと・既定は送らない）と予約ごとの上書きで決める
-		"PRECHECKIN_AUTOSEND": "1",
+		// SMS（NTT CPaaS）の API 構築が終わるまで '0'（2026-11-15 ユーザー指示）。誰へ送るかは管理画面 → 事前チェックインの「自動送信」（施設ごと・既定は送らない）と予約ごとの上書きで決める
+		"PRECHECKIN_AUTOSEND": "0",
 		"CF_ACCOUNT_ID": "6aa45d1081c1e08d7f1ce6d5aba5c3b7",
 		"REPORT_EMAIL_FROM": "rms@yamado.app",
 		"AUTH_MODE": "supabase",
