@@ -482,6 +482,14 @@
 
 - **未確認・判断待ち**: ①実 API・Webhook とも未疎通（fetch のモックでの単体テストのみ）②DB 未適用・SQL は未実行（構文は目視確認のみ）③DLR を送信ごとの URL ではなくサブスクリプションで受ける判断 ④Webhook 認証は BASIC（HMAC はヘッダー仕様が公開ドキュメントで確認できず）⑤自動送信はメールの対象にもメールを送る（携帯番号が無い予約）⑥返信の 90 日 purge は未実装 ⑦自動送信が送るたびトークンを発行するため、当日 9:00 より前にメールで送ったリンクは、9:00 の自動送信で無効になる（今日すでに送った予約は対象外なので、当日送信分は守られる）。
 - **2026-11-15 決定**: 送信元は単方向（SD…・返信なし）で申請済み・承認待ち。Vault `book_precheckin_send_url` 登録済み（毎朝 9:00 に dry-run）。前のリンクの無効化・携帯なし予約へのメール・再送 6 時間はいずれも今のまま。月の上限は設けない。詳細は `docs/pre-checkin.md` §18「決定」。残り: トライアル番号での実送信の確認、NTT ポータルで DLR のサブスクリプション登録の確認、承認後の `NTT_CPAAS_SENDER` 差し替え、`DEBUG=false`。
+- **2026-11-15 実送信の疎通（v0.251.2〜v0.251.5）**:
+  - **Workers の `fetch` では NTT CPaaS に届かない**。`*.ibapi.nttcpaas.com` への fetch は Cloudflare の内部で別経路に回り（応答が `server: cloudflare`・cf-ray つき）、正しい API キーでも 401（E401）。同じ Worker から TLS の生の接続（`cloudflare:sockets`）で送ると本来の API（`server: SMS API`）に届き、認証が通る。送信は `src/lib/server/ntt-fetch.ts` の `nttFetch`（生の接続。Workers 以外では fetch に戻る）を使う。**NTT への呼び出しを `fetch` に戻さないこと**。
+  - 疎通の確認: `POST /api/cron/precheckin-send?check=ntt`（Bearer CRON_SECRET・SMS は送らない）。`send.status` が 400 なら認証 OK（中身が空なだけ）、401 は認証の失敗。`workersFetch` は参考（2026-11-15 時点で 401）。
+  - 本番の secret `NTT_CPAAS_API_KEY`・`NTT_CPAAS_BASE_URL` を `apps/web/.env` の値で入れ直した（`wrangler pages secret bulk`）。プロジェクト内の wrangler は壊れているので、別フォルダから `npx wrangler@4` で実行する。
+  - 失敗理由に NTT の v3 形式のエラー（errorCode・description）も残す。
+  - NTT ポータル（デベロッパーツール → 配信登録管理）: 認証設定 `Autumn-Book`（BASIC）、通知プロファイル `book-precheckin-dlr`（`https://book.yamado.app/api/webhooks/ntt-cpaas/dlr`）、配信登録 `book-precheckin-sms-dlr`（SMS・DELIVERY・形式 `delivery.sms.v3.json`）を登録済み。デベロッパーツールへは、マイページ右上の「無料トライアル」から入る。
+  - 申請中の送信元は SD 番号ではなく施設の代表電話（0197-82-2222・0185-47-7776。2026-11-09 から審査中）。NTT の 11/12 のお知らせで、送信元番号の登録作業は停止中・再開時期未定。**送信元は今、全施設で 1 つ（`NTT_CPAAS_SENDER`）なので、承認までに施設ごとに分ける必要がある（未着手）**。
+  - 管理画面の「SMSで送る」は `confirm()` を出すので、Chrome の自動操作ではダイアログで止まる（手で押すか、confirm を差し替えて押す）。
 
 ### テストチェックリスト（事前チェックイン P4）
 - [ ] SMS 未設定の環境では「SMSで送る」が無効で、「SMS未設定」の説明が出る（メールは送れる）
