@@ -17,6 +17,7 @@ import { env as privateEnv } from '$env/dynamic/private';
 import type { BookClient } from '$lib/server/admin-app-data';
 import { sendHtmlEmail } from '$lib/server/mailer';
 import { partnerMailSender } from '$lib/server/partners/mail';
+import { nttFetch } from '$lib/server/ntt-fetch';
 import { facilities } from '$lib/server/store';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { buildPrecheckinMail } from '$lib/precheckin';
@@ -85,6 +86,7 @@ type FinishArgs = { ok: boolean; messageId?: string; providerStatus?: string; er
 async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb: SupabaseClient | null): Promise<FinishArgs> {
 	const url = `${origin}/ci/${b.token}`;
 	if (b.channel === 'sms') {
+		// 送信は nttFetch（Workers の fetch だと NTT に届かず 401 になるため、生の接続で送る。理由は ntt-fetch.ts）。
 		// 2 通に分けて送る（1 通目＝案内文、2 通目＝URL と電話）。届く順を守るため 1 通目を受け付けてから 2 通目を送る。
 		// 送信記録（到達管理）は 2 通目（URL）の messageId で持つ。1 通目の到達通知は照合されず読み飛ばされる。
 		const pair = buildPrecheckinSmsPair({
@@ -93,9 +95,9 @@ async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb
 			url,
 			phone: facilityPhone(b.facility_id, b.facility_phone)
 		});
-		const first = await sendSmsWith(cfg, { to: b.to, text: pair.message, callbackData: b.dispatch_id });
+		const first = await sendSmsWith(cfg, { to: b.to, text: pair.message, callbackData: b.dispatch_id }, nttFetch);
 		if (!first.sent) return { ok: false, messageId: first.messageId, providerStatus: first.providerStatus, error: first.reason, permanent: first.permanent };
-		const r = await sendSmsWith(cfg, { to: b.to, text: pair.link, callbackData: b.dispatch_id });
+		const r = await sendSmsWith(cfg, { to: b.to, text: pair.link, callbackData: b.dispatch_id }, nttFetch);
 		return {
 			ok: r.sent,
 			messageId: r.messageId,
