@@ -15,7 +15,6 @@ export const SCOPE = 'booking:read';
 export const CLIENT_ID = 'autumn-book-claude';
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const ACCESS_SECONDS = 3600;
-const GRANT_SECONDS = 30 * 86400;
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 export const privateHeaders = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex' };
@@ -85,7 +84,7 @@ export async function issueAuthorizationCode(userId: string, challenge: string):
 	const { error } = await client().from('booking_mcp_grants').upsert({
 		user_id: userId, client_id: CLIENT_ID,
 		authorization_code_hash: await hash(code), code_challenge: challenge, code_expires_at: after(300),
-		access_token_hash: null, access_expires_at: null, refresh_token_hash: null, grant_expires_at: after(GRANT_SECONDS)
+		access_token_hash: null, access_expires_at: null, refresh_token_hash: null, grant_expires_at: 'infinity'
 	});
 	if (error) throw error;
 	return code;
