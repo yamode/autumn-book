@@ -31,9 +31,9 @@ describe('読み込み中の画面', () => {
 	});
 	it('?f= の施設のロゴを中央に出す。知らない値・無いときは輪', () => {
 		const y = precheckinSplashHtml('/ci/XJX7E9A1M2R9H7YW', 'ja', 'yamado');
-		expect(y).toContain('src="/site-assets/facility/yamado-logo.png"');
+		expect(y).toContain('src="/site-assets/facility/splash-yamado.png"');
 		expect(y).not.toContain('class="mark fade"');
-		expect(precheckinSplashHtml('/ci/A', 'ja', 'oga')).toContain('oga-logo.svg');
+		expect(precheckinSplashHtml('/ci/A', 'ja', 'oga')).toContain('splash-oga.png');
 		for (const f of [null, undefined, '', 'constructor', '"><img src=x>']) {
 			const h = precheckinSplashHtml('/ci/A', 'ja', f);
 			expect(h).toContain('class="mark fade"');

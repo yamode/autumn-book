@@ -19,10 +19,15 @@ export function splashNextUrl(pathname: string): string {
 const esc = (s: string) =>
 	s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 
-/** 施設のロゴ（公式サイトのヘッダーと同じ素材・static/site-assets/facility/）。key は core.facilities.slug */
+/**
+ * 施設のロゴ。key は core.facilities.slug。
+ * 素材は配付用の事業ロゴ（Dropbox「00_YAMADO ALL/05_グラフィックデザイン/20240709_ロゴ/20240317_山人ロゴ_2024/配付用」の
+ * 事業ロゴ_yamado.png / 事業ロゴ_oga.png・2026-11-15 指示）。白地を透明にし、余白を切って横 640px にしたものを
+ * static/site-assets/facility/splash-<slug>.png に置いてある。
+ */
 const SPLASH_LOGOS: Record<string, { src: string; w: number; h: number; alt: string }> = {
-	yamado: { src: '/site-assets/facility/yamado-logo.png', w: 640, h: 329, alt: '山人-yamado-' },
-	oga: { src: '/site-assets/facility/oga-logo.svg', w: 138, h: 71, alt: '山人-oga-' }
+	yamado: { src: '/site-assets/facility/splash-yamado.png', w: 640, h: 336, alt: '山人-yamado-' },
+	oga: { src: '/site-assets/facility/splash-oga.png', w: 640, h: 335, alt: '山人-oga-' }
 };
 /** ?f= の値からロゴを選ぶ。知らない値は null（輪を出す） */
 export function splashLogo(f: string | null | undefined) {
