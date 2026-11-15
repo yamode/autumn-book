@@ -12,6 +12,7 @@
 //   NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER … どれか欠けると SMS は送らず「SMS未設定」を返す
 //   NTT_CPAAS_WEBHOOK_SECRET … Webhook の Basic 認証（「ユーザー名:パスワード」）。未設定なら Webhook は 503
 //   PRECHECKIN_AUTOSEND … '1' のときだけ自動送信が実際に送る（未設定・'0' は dry-run）
+import { splashHint } from '$lib/precheckin-splash';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { BookClient } from '$lib/server/admin-app-data';
@@ -84,7 +85,8 @@ type FinishArgs = { ok: boolean; messageId?: string; providerStatus?: string; er
 
 /** 受付済みの 1 件を実際に送る（SMS / メール）。結果は呼び出し側が finish で残す */
 async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb: SupabaseClient | null): Promise<FinishArgs> {
-	const url = `${origin}/ci/${b.token}`;
+	// ?f=<施設の slug> は、リンクを開いた瞬間の読み込み中の画面に出すロゴの目印（$lib/precheckin-splash）
+	const url = `${origin}/ci/${b.token}${splashHint(b.facility_slug)}`;
 	if (b.channel === 'sms') {
 		// 送信は nttFetch（Workers の fetch だと NTT に届かず 401 になるため、生の接続で送る。理由は ntt-fetch.ts）。
 		// 2 通に分けて送る（1 通目＝案内文、2 通目＝URL と電話）。届く順を守るため 1 通目を受け付けてから 2 通目を送る。

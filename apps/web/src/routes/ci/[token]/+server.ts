@@ -13,7 +13,12 @@ import type { RequestHandler } from './$types';
 export const GET: RequestHandler = async (event) => {
 	if (event.url.searchParams.get('go') !== '1' && looksLikePrecheckinToken(event.params.token)) {
 		const locale = getLocale();
-		return new Response(precheckinSplashHtml(event.url.pathname, (['ja', 'en', 'zh-TW'] as const).includes(locale as SplashLocale) ? (locale as SplashLocale) : 'ja'), {
+		return new Response(precheckinSplashHtml(
+				event.url.pathname,
+				(['ja', 'en', 'zh-TW'] as const).includes(locale as SplashLocale) ? (locale as SplashLocale) : 'ja',
+				// ?f=<施設の slug> … 中央に出すロゴを選ぶだけの目印（リンクを作るときに付けている）
+				event.url.searchParams.get('f')
+			), {
 			headers: {
 				'content-type': 'text/html; charset=utf-8',
 				// トークン入りの URL の画面を、端末にも途中の機器にも残さない

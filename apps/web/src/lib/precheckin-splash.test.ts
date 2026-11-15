@@ -1,6 +1,6 @@
 // 事前チェックインのリンクを開いた瞬間の、読み込み中の画面（precheckin-splash.ts）
 import { describe, expect, it } from 'vitest';
-import { looksLikePrecheckinToken, precheckinSplashHtml, splashNextUrl } from './precheckin-splash';
+import { looksLikePrecheckinToken, precheckinSplashHtml, splashHint, splashLogo, splashNextUrl } from './precheckin-splash';
 
 describe('読み込み中の画面', () => {
 	it('同じパスに ?go=1 を付けて開き直す', () => {
@@ -28,5 +28,23 @@ describe('読み込み中の画面', () => {
 		expect(looksLikePrecheckinToken('demo-precheckin-000000000000000000000000000')).toBe(true);
 		expect(looksLikePrecheckinToken('short')).toBe(false);
 		expect(looksLikePrecheckinToken('abc"><script>alert(1)</script>xx')).toBe(false);
+	});
+	it('?f= の施設のロゴを中央に出す。知らない値・無いときは輪', () => {
+		const y = precheckinSplashHtml('/ci/XJX7E9A1M2R9H7YW', 'ja', 'yamado');
+		expect(y).toContain('src="/site-assets/facility/yamado-logo.png"');
+		expect(y).not.toContain('class="mark fade"');
+		expect(precheckinSplashHtml('/ci/A', 'ja', 'oga')).toContain('oga-logo.svg');
+		for (const f of [null, undefined, '', 'constructor', '"><img src=x>']) {
+			const h = precheckinSplashHtml('/ci/A', 'ja', f);
+			expect(h).toContain('class="mark fade"');
+			expect(h).not.toContain('<img');
+		}
+		expect(splashLogo('__proto__')).toBeNull();
+	});
+	it('リンクに付ける目印は、ロゴのある施設だけ', () => {
+		expect(splashHint('yamado')).toBe('?f=yamado');
+		expect(splashHint('oga')).toBe('?f=oga');
+		expect(splashHint('other')).toBe('');
+		expect(splashHint(null)).toBe('');
 	});
 });

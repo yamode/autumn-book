@@ -10,6 +10,7 @@
 //
 // トークンはリンク（/ci/<token>）で受け取ったら httpOnly Cookie（ab_ci）に移し、URL から消す（/r/c/[token] と同じ）。
 // トークン違いの連続は claim-rate-limit と同じ方式（KV）で数え、5 回でしばらく閉じる。
+import { splashHint } from '$lib/precheckin-splash';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { DATA_SOURCE, supa } from '$lib/server/supabase';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
@@ -515,7 +516,8 @@ export async function sendPrecheckin(
 	stayId: string
 ): Promise<{ sent: boolean; to: string; reason?: string }> {
 	const issued = await rpc<IssueResult>(c, 'admin_precheckin_issue', { p_facility: facility, p_stay_id: stayId });
-	const url = `${event.url.origin}/ci/${issued.token}`;
+	// ?f=<施設の slug> は、リンクを開いた瞬間の読み込み中の画面に出すロゴの目印（$lib/precheckin-splash）
+	const url = `${event.url.origin}/ci/${issued.token}${splashHint(issued.facility_slug)}`;
 	const mail = buildPrecheckinMail({
 		facilityName: issued.facility_name,
 		guestName: issued.guest_name,
