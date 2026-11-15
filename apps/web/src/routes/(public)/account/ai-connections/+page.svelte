@@ -17,4 +17,11 @@
 	{:else}
 		<p class="mt-2">連携していません。新規連携はClaudeのコネクター設定から行います。</p>
 	{/if}
+	{#if data.pilotConnected}
+		<h2 class="mt-6 font-medium">YAMADO · Claude 現地払い予約（試験連携）</h2>
+		<p class="mt-2">空室検索と、確認カードからの現地払い予約を許可しています。</p>
+		<form method="POST" action="?/disconnectPilot" class="mt-4">
+			<button type="submit" class="rounded-lg border px-4 py-2">試験連携を解除する</button>
+		</form>
+	{/if}
 </section>

@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { activeBookMember, authorizationRequest, bookingMcpEnabled, CONNECTOR_ICON_PATH, issueAuthorizationCode, privatePageHeaders } from '$lib/server/booking-mcp/oauth';
+import { activeBookMember, authorizationRequest, bookingMcpEnabled, CONNECTOR_ICON_PATH, issueAuthorizationCode, PILOT_CLIENT_ID, pilotMemberAllowed, privatePageHeaders } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 async function consent(event: RequestEvent) {
@@ -14,23 +14,25 @@ async function consent(event: RequestEvent) {
 	if (!await activeBookMember(locals.user.id)) {
 		error(403, '山人Bookの会員アカウントでログインしてください。');
 	}
-	return { userId: locals.user.id, ...authorization };
+	const pilot = authorization.clientId === PILOT_CLIENT_ID;
+	if (pilot && !await pilotMemberAllowed(locals.user.id)) error(403, 'この会員アカウントは試験連携の対象外です。');
+	return { userId: locals.user.id, pilot, ...authorization };
 }
 
 export const load: PageServerLoad = async (event) => {
-	await consent(event);
-	return { icon: CONNECTOR_ICON_PATH };
+	const { pilot } = await consent(event);
+	return { icon: CONNECTOR_ICON_PATH, pilot };
 };
 
 export const actions: Actions = {
 	default: async (event) => {
 		// This page is a browser-only state change. The token endpoint is the only CSRF exception.
 		if (event.request.headers.get('origin') !== event.url.origin) error(403);
-		const { userId, challenge, state, callback } = await consent(event);
+		const { userId, challenge, state, callback, clientId } = await consent(event);
 		const decision = (await event.request.formData()).get('decision');
 		if (decision !== 'allow' && decision !== 'deny') error(400);
 		if (state !== null) callback.searchParams.set('state', state);
-		if (decision === 'allow') callback.searchParams.set('code', await issueAuthorizationCode(userId, challenge));
+		if (decision === 'allow') callback.searchParams.set('code', await issueAuthorizationCode(userId, challenge, clientId));
 		else callback.searchParams.set('error', 'access_denied');
 		redirect(303, callback.href);
 	}

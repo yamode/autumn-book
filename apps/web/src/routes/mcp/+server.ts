@@ -3,7 +3,8 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { z } from 'zod';
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
-import { bookingAccess, bookingMcpEnabled, CONNECTOR_ICON_PATH, privateHeaders, RESOURCE_METADATA_PATH, SCOPE } from '$lib/server/booking-mcp/oauth';
+import { bookingAccess, bookingMcpEnabled, bookingPilotEnabled, CONNECTOR_ICON_PATH, PILOT_CLIENT_ID, PILOT_MCP_PATH, PILOT_SCOPE, pilotMemberAllowed, privateHeaders, RESOURCE_METADATA_PATH, SCOPE } from '$lib/server/booking-mcp/oauth';
+import { registerOnsiteBooking } from '$lib/server/booking-mcp/onsite';
 import { searchBookingOffers, validCheckin } from '$lib/server/booking-mcp/search';
 import { STAY_FACILITIES } from '$lib/server/stay-calendar';
 import { APP_VERSION } from '$lib/version';
@@ -13,13 +14,15 @@ const DEBUG = dev;
 const MAX_BODY_BYTES = 16 * 1024;
 
 export const POST: RequestHandler = async ({ request, url }) => {
-	if (!bookingMcpEnabled(url)) return new Response(null, { status: 404, headers: privateHeaders });
+	const pilot = url.pathname === PILOT_MCP_PATH;
+	if (!(pilot ? bookingPilotEnabled(url) : bookingMcpEnabled(url))) return new Response(null, { status: 404, headers: privateHeaders });
 	const origin = request.headers.get('origin');
 	if (origin !== null && origin !== url.origin) return new Response(null, { status: 403, headers: privateHeaders });
 
 	try {
-		const access = await bookingAccess(request);
+		const access = await bookingAccess(request, pilot ? PILOT_CLIENT_ID : undefined);
 		if (!access) return authorizationRequired(url, request.headers.has('authorization'));
+		if (pilot && !await pilotMemberAllowed(access.userId)) return new Response(null, { status: 403, headers: privateHeaders });
 		if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
 			return new Response(null, { status: 415, headers: privateHeaders });
 		}
@@ -44,7 +47,10 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			version: APP_VERSION,
 			icons: [{ src: url.origin + CONNECTOR_ICON_PATH, mimeType: 'image/png', sizes: ['512x512'] }]
 		}, {
-			instructions: '西和賀・男鹿のYAMADO公式予約。空室数は availableRoomCount を「室」で表示し、プラン候補の数とは区別してください。bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。'
+			instructions: '西和賀・男鹿のYAMADO公式予約。空室数は availableRoomCount を「室」で表示し、プラン候補の数とは区別してください。'
+				+ (pilot
+					? ' 現地払い候補を本人が選んだ場合は確認カードを開き、本人に確定ボタンを押してもらってください。会話での承諾を予約確定と扱わないでください。事前決済が必要なプランは bookingUrl を案内してください。'
+					: 'bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。')
 		});
 		server.registerTool('search_stays', {
 			title: '山人の空室・料金を検索',
@@ -58,13 +64,14 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			annotations: { title: '山人の空室・料金を検索', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 		}, async (query) => {
 			try {
-				const result = await searchBookingOffers(url.origin, query, access.viewer);
+				const result = await searchBookingOffers(url.origin, query, access.viewer, pilot);
 				return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
 			} catch {
 				if (DEBUG) console.warn('[DBG booking-mcp] availability lookup failed');
 				return { isError: true, content: [{ type: 'text', text: '空室と見積もりを取得できませんでした。時間をおいてもう一度お試しください。' }] };
 			}
 		});
+		if (pilot) registerOnsiteBooking(server, url.origin, access);
 		const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true });
 		await server.connect(transport);
 		try {
@@ -81,8 +88,9 @@ export const POST: RequestHandler = async ({ request, url }) => {
 };
 
 function authorizationRequired(url: URL, invalidToken = false): Response {
-	const metadata = url.origin + RESOURCE_METADATA_PATH;
-	const challenge = `Bearer resource_metadata="${metadata}", scope="${SCOPE}"`;
+	const pilot = url.pathname === PILOT_MCP_PATH;
+	const metadata = url.origin + RESOURCE_METADATA_PATH + (pilot ? '/pilot' : '');
+	const challenge = `Bearer resource_metadata="${metadata}", scope="${pilot ? PILOT_SCOPE : SCOPE}"`;
 	return new Response(null, {
 		status: 401,
 		headers: { ...privateHeaders, 'WWW-Authenticate': invalidToken ? `${challenge}, error="invalid_token"` : challenge }
@@ -91,7 +99,9 @@ function authorizationRequired(url: URL, invalidToken = false): Response {
 
 // Allow unauthenticated discovery via GET. Authenticated clients use POST, with no standalone SSE stream.
 export const GET: RequestHandler = ({ request, url }) => {
-	if (!bookingMcpEnabled(url)) return new Response(null, { status: 404, headers: privateHeaders });
+	if (!(url.pathname === PILOT_MCP_PATH ? bookingPilotEnabled(url) : bookingMcpEnabled(url))) {
+		return new Response(null, { status: 404, headers: privateHeaders });
+	}
 	if (!request.headers.has('authorization')) return authorizationRequired(url);
 	return new Response(null, { status: 405, headers: { ...privateHeaders, allow: 'POST' } });
 };

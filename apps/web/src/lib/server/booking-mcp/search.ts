@@ -21,7 +21,7 @@ export function validCheckin(value: string): boolean {
 	return daysFromToday >= 0 && daysFromToday <= 366 && date.toISOString().slice(0, 10) === value;
 }
 
-async function facilityOffers(origin: string, slug: FacilitySlug, query: BookingSearch, viewer: PlanViewer) {
+async function facilityOffers(origin: string, slug: FacilitySlug, query: BookingSearch, viewer: PlanViewer, pilot: boolean) {
 	const facility = await sbFacilityBySlug(slug);
 	if (!facility || facility.brandSlug !== 'yamado') throw new Error('YAMADO facility is unavailable');
 	const { checkin, nights, adults } = query;
@@ -51,22 +51,27 @@ async function facilityOffers(origin: string, slug: FacilitySlug, query: Booking
 			room: room.name,
 			roomAmenities: room.amenities,
 			accommodationEstimateJpy: offer.total,
-			bookingUrl: login.href
+			bookingUrl: login.href,
+			...(pilot ? {
+				onsiteReviewAvailable: plan.payment.onsite,
+				...(plan.payment.onsite ? { planId: plan.id, roomId: room.id } : {})
+			} : {})
 		}];
 	});
 	available.sort((a, b) => a.accommodationEstimateJpy - b.accommodationEstimateJpy);
 	const availableRoomCount = [...remainingByRoomType.values()].reduce((sum, remaining) => sum + remaining, 0);
-	return { facility: slug, name: facility.name, availableRoomCount, offers: available.slice(0, 8) };
+	return { facility: slug, name: facility.name, availableRoomCount, offers: available.slice(0, 8), ...(pilot ? { id: facility.id } : {}) };
 }
 
-export async function searchBookingOffers(origin: string, query: BookingSearch, viewer: PlanViewer) {
+export async function searchBookingOffers(origin: string, query: BookingSearch, viewer: PlanViewer, pilot = false) {
 	const facilities = query.facility === 'both' ? STAY_FACILITIES : [query.facility];
 	return {
 		checkin: query.checkin,
 		nights: query.nights,
 		adults: query.adults,
 		rooms: 1,
-		facilities: await Promise.all(facilities.map((slug) => facilityOffers(origin, slug, query, viewer))),
+		facilities: await Promise.all(facilities.map((slug) => facilityOffers(origin, slug, query, viewer, pilot))),
 		note: 'availableRoomCount は指定条件で予約可能な残室数です。offers は料金順のプラン候補（最大8件）で、同じ客室タイプが複数含まれます。料金は指定人数・全泊分の宿泊料金の見積もりです。空室・金額は変動します。入湯税、追加料金、割引、取消条件、最終金額は山人Bookでご確認ください。予約や仮押さえは行っていません。'
+			+ (pilot ? ' 利用者が現地払いの候補を選んだら、同じ検索条件で prepare_onsite_booking を呼んでください。事前決済やBookでの手続きが必要な場合は bookingUrl を案内してください。' : '')
 	};
 }

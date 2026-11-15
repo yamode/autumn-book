@@ -1,5 +1,7 @@
 /// <reference types="vitest/config" />
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { build as bundle } from 'esbuild';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -13,6 +15,23 @@ export default defineConfig({
 		__APP_VERSION__: JSON.stringify(rootPkg.version)
 	},
 	plugins: [
+		{
+			name: 'yamado-booking-ui',
+			resolveId(id) {
+				if (id === 'virtual:yamado-booking-ui') return '\0' + id;
+			},
+			async load(id) {
+				if (id !== '\0virtual:yamado-booking-ui') return;
+				const entry = fileURLToPath(new URL('./src/lib/server/booking-mcp/onsite-card.ts', import.meta.url));
+				this.addWatchFile(entry);
+				const result = await bundle({
+					entryPoints: [entry],
+					alias: { '$lib': fileURLToPath(new URL('./src/lib', import.meta.url)) },
+					bundle: true, write: false, platform: 'browser', target: 'es2020', format: 'iife', minify: true
+				});
+				return `export default ${JSON.stringify(result.outputFiles[0].text)};`;
+			}
+		},
 		tailwindcss(),
 		paraglideVitePlugin({
 			project: './project.inlang',

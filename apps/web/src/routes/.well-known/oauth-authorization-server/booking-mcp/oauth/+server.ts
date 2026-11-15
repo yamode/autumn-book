@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { bookingMcpEnabled, OAUTH_PATH, SCOPE, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
+import { bookingMcpEnabled, bookingPilotEnabled, OAUTH_PATH, PILOT_SCOPE, SCOPE, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ url }) => {
@@ -12,6 +12,6 @@ export const GET: RequestHandler = ({ url }) => {
 		grant_types_supported: ['authorization_code', 'refresh_token'],
 		code_challenge_methods_supported: ['S256'],
 		token_endpoint_auth_methods_supported: ['none'],
-		scopes_supported: [SCOPE]
+		scopes_supported: bookingPilotEnabled(url) ? [SCOPE, PILOT_SCOPE] : [SCOPE]
 	});
 };
