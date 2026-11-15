@@ -161,7 +161,11 @@ export async function pcGuestProfile(token: string): Promise<PcProfile> {
 		address: str(r.address),
 		birthdate: str(r.birthdate)?.slice(0, 10) ?? null,
 		receipt_name: str(r.receipt_name),
-		arrival_time: str(r.arrival_time)
+		arrival_time: str(r.arrival_time),
+		family_name: str(r.family_name),
+		given_name: str(r.given_name),
+		family_name_kana: str(r.family_name_kana),
+		given_name_kana: str(r.given_name_kana)
 	};
 }
 

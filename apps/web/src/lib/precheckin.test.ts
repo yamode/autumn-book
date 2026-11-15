@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	splitName,
 	arrivalOptions,
 	snapArrival,
 	birthParts,
@@ -339,5 +340,26 @@ describe('① の入力欄（到着予定時刻・生年月日）', () => {
 		expect(eraYear(2019)).toBe('令和元');
 		expect(eraYear(1988)).toBe('昭和63');
 		expect(eraYear(1926)).toBe('昭和元');
+	});
+});
+
+describe('氏名を 姓 と 名 に分ける', () => {
+	it('最初の空白（全角も）で切る。空白が無ければ全部を姓に', () => {
+		expect(splitName('山田 太郎')).toEqual({ family: '山田', given: '太郎' });
+		expect(splitName('山田　太郎')).toEqual({ family: '山田', given: '太郎' });
+		expect(splitName('John Ronald Smith')).toEqual({ family: 'John', given: 'Ronald Smith' });
+		expect(splitName('山田太郎')).toEqual({ family: '山田太郎', given: '' });
+		expect(splitName(null)).toEqual({ family: '', given: '' });
+	});
+	it('フォームの 姓・名 から、つなげた氏名も作る', () => {
+		const f = new FormData();
+		f.set('contact_family_name', ' 山田 ');
+		f.set('contact_given_name', '花子');
+		f.set('contact_family_name_kana', 'ヤマダ');
+		expect(answersFromForm(f, 'ja').contact).toEqual({ family_name: '山田', given_name: '花子', name: '山田 花子', family_name_kana: 'ヤマダ', name_kana: 'ヤマダ' });
+	});
+	it('空白の違いだけなら修正に出さない', () => {
+		expect(contactDiff({ name: '山田　太郎' }, { name: '山田 太郎' })).toEqual([]);
+		expect(contactDiff({ name: '山田 太郎' }, { name: '山田 花子' })).toHaveLength(1);
 	});
 });

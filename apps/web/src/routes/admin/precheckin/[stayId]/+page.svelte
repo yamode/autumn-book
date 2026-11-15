@@ -64,6 +64,13 @@
 			{:else}
 				<p class="mt-3 text-stone-500">修正はありません。</p>
 			{/if}
+			{#if a.contact?.family_name || a.contact?.given_name || a.contact?.family_name_kana || a.contact?.given_name_kana}
+				<!-- お客様が 姓・名 に分けて入れた内容（顧客マスタの 姓・名 の欄へ写すとき用） -->
+				<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1 border-t border-stone-100 pt-3">
+					{#if a.contact.family_name || a.contact.given_name}<dt class="text-stone-500">姓 ／ 名</dt><dd>{a.contact.family_name || "—"} ／ {a.contact.given_name || "—"}</dd>{/if}
+					{#if a.contact.family_name_kana || a.contact.given_name_kana}<dt class="text-stone-500">セイ ／ メイ</dt><dd>{a.contact.family_name_kana || "—"} ／ {a.contact.given_name_kana || "—"}</dd>{/if}
+				</dl>
+			{/if}
 			<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1 border-t border-stone-100 pt-3 text-stone-500">
 				<dt>予約の電話</dt><dd class="text-stone-700">{d.summary.guest.phone || '—'}</dd>
 				<dt>予約のメール</dt><dd class="text-stone-700">{d.summary.guest.email || '—'}</dd>

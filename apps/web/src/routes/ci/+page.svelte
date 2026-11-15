@@ -10,7 +10,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { getLocale } from '$lib/paraglide/runtime';
-	import { arrivalOptions, birthParts, daysInMonth, eraYear, joinBirth, slashDate, snapArrival, type PcProfile } from '$lib/precheckin';
+	import { arrivalOptions, birthParts, daysInMonth, eraYear, joinBirth, slashDate, snapArrival, splitName, type PcProfile } from '$lib/precheckin';
 	import type { FullAutoFill } from 'svelte/elements';
 
 	let { data, form } = $props();
@@ -61,7 +61,34 @@
 			}
 		}
 		birth = birthParts(draft.birthdate);
+		for (const k of PAIR_KEYS) {
+			// 前に直して保存してあれば入力欄で開く。登録の内容が無い欄は最初から入力欄なので、そのまま
+			if (a.contact?.[k] || a.contact?.[PAIR[k].fam]) editing[k] = true;
+			pair[k] = pairInitial(k);
+		}
 	});
+	// 氏名・フリガナは 姓 と 名 の 2 欄（2026-11-15）。顧客マスタが 姓名を分けて持つので、切れ目が分かる形で受け取る。
+	// 最初に入れる値: 前に保存した修正 → 顧客マスタの分けた欄 → つなげた氏名を最初の空白で分けたもの
+	type PairKey = 'name' | 'name_kana';
+	const PAIR_KEYS: PairKey[] = ['name', 'name_kana'];
+	const PAIR = {
+		name: { fam: 'family_name', giv: 'given_name' },
+		name_kana: { fam: 'family_name_kana', giv: 'given_name_kana' }
+	} as const;
+	const isPair = (k: Key): k is PairKey => k === 'name' || k === 'name_kana';
+	let pair = $state<Record<PairKey, { a: string; b: string }>>({ name: { a: '', b: '' }, name_kana: { a: '', b: '' } });
+	function pairInitial(k: PairKey): { a: string; b: string } {
+		const { fam, giv } = PAIR[k];
+		const c = a.contact ?? {};
+		if (c[fam] || c[giv]) return { a: c[fam] ?? '', b: c[giv] ?? '' };
+		if (c[k]) {
+			const s = splitName(c[k]);
+			return { a: s.family, b: s.given };
+		}
+		if (p[fam] || p[giv]) return { a: p[fam] ?? '', b: p[giv] ?? '' };
+		const s = splitName(k === 'name' ? ctx.guest.name : ctx.guest.nameKana);
+		return { a: s.family, b: s.given };
+	}
 	// 生年月日は 年・月・日 の選択欄（2026-11-15）。日付の入力欄（type=date）は iPhone で枠からはみ出し、
 	// 年をさかのぼるのに手間がかかるため。送るのは隠し欄の 'YYYY-MM-DD'（3 つそろったときだけ）
 	let birth = $state({ y: '', m: '', d: '' });
@@ -84,6 +111,7 @@
 	function startEdit(f: Field) {
 		editing[f.key] = true;
 		draft[f.key] = draft[f.key] ?? f.raw;
+		if (isPair(f.key)) pair[f.key] = pairInitial(f.key);
 		if (f.key === 'birthdate') {
 			draft.birthdate = draft.birthdate || f.raw;
 			birth = birthParts(draft.birthdate);
@@ -94,6 +122,7 @@
 		editing[key] = false;
 		draft[key] = undefined;
 		if (key === 'birthdate') birth = { y: '', m: '', d: '' };
+		if (isPair(key)) pair[key] = pairInitial(key);
 	}
 	const questions = $derived(data.questions ?? []);
 	const answerOf = (id: string) => a.questions?.find((x) => x.id === id)?.answer ?? '';
@@ -192,6 +221,32 @@
 									<option value={String(d)}>{d}</option>
 								{/each}
 							</select>
+						</div>
+					{:else if open && isPair(f.key)}
+						{@const kana = f.key === 'name_kana'}
+						<div class="mt-1 grid grid-cols-2 gap-2">
+							<input
+								id="ci-{f.key}"
+								name="contact_{PAIR[f.key].fam}"
+								type="text"
+								autocomplete={kana ? 'off' : 'family-name'}
+								maxlength="50"
+								required={!alwaysInput(f)}
+								placeholder={kana ? m.ci_family_kana() : m.ci_family_name()}
+								aria-label={kana ? m.ci_family_kana() : m.ci_family_name()}
+								bind:value={pair[f.key].a}
+								class="{inputCls} min-w-0"
+							/>
+							<input
+								name="contact_{PAIR[f.key].giv}"
+								type="text"
+								autocomplete={kana ? 'off' : 'given-name'}
+								maxlength="50"
+								placeholder={kana ? m.ci_given_kana() : m.ci_given_name()}
+								aria-label={kana ? m.ci_given_kana() : m.ci_given_name()}
+								bind:value={pair[f.key].b}
+								class="{inputCls} min-w-0"
+							/>
 						</div>
 					{:else if open}
 						<input

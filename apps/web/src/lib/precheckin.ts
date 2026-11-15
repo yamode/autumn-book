@@ -14,7 +14,25 @@ export type PcSlot = { time: string; max: number | null; remaining: number | nul
 export type PcMealCell = { date: string; offered: boolean; time: string | null };
 export type PcNight = { nightDate: string; stayId: string; dinner: PcMealCell; breakfast: PcMealCell };
 export type PcRoom = { index: number; stayId: string; label: string; nights: PcNight[] };
-export type PcContact = { name?: string; name_kana?: string; phone?: string; email?: string };
+/** 姓・名に分けた欄（2026-11-15）。name / name_kana は 姓 と 名 を半角空白でつなげたもの（今までどおり持つ） */
+export type PcContact = {
+	name?: string;
+	name_kana?: string;
+	phone?: string;
+	email?: string;
+	family_name?: string;
+	given_name?: string;
+	family_name_kana?: string;
+	given_name_kana?: string;
+};
+export type PcNameParts = { family_name?: string | null; given_name?: string | null; family_name_kana?: string | null; given_name_kana?: string | null };
+
+/** つなげた氏名を 姓 と 名 に分ける（最初の空白〈全角も〉で切る）。空白が無ければ全部を姓に入れる */
+export function splitName(full: string | null | undefined): { family: string; given: string } {
+	const s = (full ?? '').trim();
+	const m = /^(\S+)[\s\u3000]+(.+)$/.exec(s);
+	return m ? { family: m[1], given: m[2].trim() } : { family: s, given: '' };
+}
 export type PcMealChoice = { stay_id: string; type: PcMealType; date: string; time: string };
 /** 宿からの質問（book.precheckin_questions・施設ごと・回答は必須） */
 export type PcQuestion = { id: string; question: string };
@@ -23,7 +41,7 @@ export type PcQuestionAnswer = { id: string; question?: string; answer: string }
 /** 伺い書の項目（① で聞く・住所と生年月日は必須） */
 export type PcGuestInfo = { zip?: string | null; address?: string | null; birthdate?: string | null; receipt_name?: string | null };
 /** 顧客マスタ・予約から ① に最初から入れる値（伺い書の項目＋予約の到着予定時刻 core.stays.estimated_arrival_time） */
-export type PcProfile = PcGuestInfo & { arrival_time?: string | null };
+export type PcProfile = PcGuestInfo & PcNameParts & { arrival_time?: string | null };
 export type PcAnswers = {
 	contact?: PcContact;
 	guest?: PcGuestInfo;
@@ -176,7 +194,7 @@ export function canSend(r: { email: string | null; check_out_date: string }, now
 
 // ---------------------------------------------------------------- 修正の差分
 
-export const CONTACT_FIELDS: { key: keyof PcContact; label: string }[] = [
+export const CONTACT_FIELDS: { key: 'name' | 'name_kana' | 'phone' | 'email'; label: string }[] = [
 	{ key: 'name', label: '氏名' },
 	{ key: 'name_kana', label: 'フリガナ' },
 	{ key: 'phone', label: '電話番号' },
@@ -189,7 +207,10 @@ export function contactDiff(
 	contact: PcContact | null | undefined
 ): { key: keyof PcContact; label: string; from: string; to: string }[] {
 	const same = (k: keyof PcContact, a: string, b: string) =>
-		k === 'phone' ? a.replace(/\D/g, '') === b.replace(/\D/g, '') : a.trim().toLowerCase() === b.trim().toLowerCase();
+		k === 'phone'
+			? a.replace(/\D/g, '') === b.replace(/\D/g, '')
+			: // 氏名・フリガナは空白の違い（全角・半角・有無）を修正と見なさない
+				a.replace(/[\s\u3000]/g, '').toLowerCase() === b.replace(/[\s\u3000]/g, '').toLowerCase();
 	return CONTACT_FIELDS.flatMap(({ key, label }) => {
 		const to = String(contact?.[key] ?? '').trim();
 		const from = String(original[key] ?? '').trim();
@@ -345,6 +366,18 @@ export function answersFromForm(form: FormData, locale: string): PcAnswers & { c
 	for (const { key } of CONTACT_FIELDS) {
 		const v = t(`contact_${key}`);
 		if (v) contact[key] = v;
+	}
+	// 氏名・フリガナは 姓 と 名 の 2 欄で受け取り、つなげたもの（name / name_kana）も作る
+	for (const [full, fam, giv] of [
+		['name', 'family_name', 'given_name'],
+		['name_kana', 'family_name_kana', 'given_name_kana']
+	] as const) {
+		const f = t(`contact_${fam}`);
+		const g = t(`contact_${giv}`);
+		if (!f && !g) continue;
+		if (f) contact[fam] = f;
+		if (g) contact[giv] = g;
+		contact[full] = [f, g].filter(Boolean).join(' ');
 	}
 	const questions: PcQuestionAnswer[] = [];
 	for (const [k, v] of form.entries()) {
