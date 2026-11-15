@@ -361,4 +361,41 @@
 			</form>
 		</section>
 	{/if}
+
+	{#if data.notify}
+		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">回答が届いたときの通知メール</h2>
+			<p class="mt-1 text-xs text-stone-500">
+				お客様が事前チェックインの回答を終えたとき（お食事の時間まで送信）と、あとから内容を直したときに、宿へメールで知らせます（続けての保存は 10 分に 1 通まで）。
+				メールを止めても、PMS のトップ画面の「確認待ち」には出ます。
+			</p>
+			{#if form && 'notifyError' in form && form.notifyError}
+				<p class="mt-2 text-sm text-red-700" role="alert">{form.notifyError}</p>
+			{:else if form && 'notifySaved' in form && form.notifySaved}
+				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
+			{/if}
+			<form method="POST" action="?/notify" use:enhance class="mt-3 space-y-3">
+				<label class="flex items-center gap-2 font-medium">
+					<input type="checkbox" name="enabled" value="1" checked={data.notify.enabled} />
+					通知メールを送る
+				</label>
+				<label class="block">
+					<span class="text-xs text-stone-500">宛先（空欄なら施設の代表アドレス {data.notify.defaultEmail ?? '（未設定）'}）</span>
+					<input
+						name="email"
+						type="email"
+						maxlength="254"
+						autocomplete="off"
+						value={data.notify.email ?? ''}
+						placeholder={data.notify.defaultEmail ?? ''}
+						class="mt-1 w-full max-w-sm rounded border border-stone-300 px-2 py-1"
+					/>
+				</label>
+				{#if !data.notify.email && !data.notify.defaultEmail}
+					<p class="text-xs text-amber-700">施設の代表アドレスが未設定のため、宛先を入れないとメールは送られません。</p>
+				{/if}
+				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">通知メールの設定を保存</button>
+			</form>
+		</section>
+	{/if}
 {/if}

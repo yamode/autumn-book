@@ -40,6 +40,15 @@ import {
 import type { BathContext } from '$lib/server/private-bath';
 import { normalizeAutosendSettings, type AutosendSettings } from '$lib/precheckin-sms';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
+import { customerLinkOrigin } from '$lib/server/public-origin';
+import { waitUntilOf } from '$lib/server/access-log-core';
+import {
+	buildPrecheckinNotifyMail,
+	normalizeNotifyBegin,
+	normalizeNotifySettings,
+	precheckinAdminUrl,
+	type PrecheckinNotifySettings
+} from '$lib/precheckin-notify';
 
 // 開発中はログを出す（リリース前に false）
 const DEBUG = true;
@@ -105,6 +114,57 @@ export async function pcSaveMeals(token: string, meals: PcMealChoice[]): Promise
 	const { data, error } = await supa().rpc('precheckin_save_meals', { p_token: token, p_meals: meals });
 	if (error) dbg('save_meals error', error.message);
 	return rpcResult(data, error);
+}
+
+// ---------------------------------------------------------------- 宿への通知（回答の完了・修正）
+
+/**
+ * 回答の完了（② お食事の時間の送信）・あとからの修正を宿に知らせる（book.precheckin_notify_begin・20261115012421）。
+ * DB が「確認待ち」にして（PMS のトップ画面に出る）、メールを送るとき（mail: true・10 分に 1 通まで）だけ宛先へ 1 通送る。
+ * 未回答のうち（① だけ保存）は DB が notified:false を返すので何もしない。見本・DATA_SOURCE が supabase でないときも何もしない。
+ * 失敗してもお客様の保存は失敗させない（ログだけ）。Cloudflare の waitUntil があれば応答の後ろへ回し、画面遷移を待たせない。
+ */
+export function pcNotifyFacility(event: Pick<RequestEvent, 'platform' | 'url'>, token: string): Promise<void> {
+	if (token === DEMO_PRECHECKIN_TOKEN || DATA_SOURCE !== 'supabase') return Promise.resolve();
+	const task = notifyFacilityTask(token, customerLinkOrigin(event.url)).catch((e) =>
+		dbg('notify error', e instanceof Error ? e.message : String(e))
+	);
+	const wait = waitUntilOf(event.platform);
+	if (wait) {
+		wait(task);
+		return Promise.resolve();
+	}
+	return task;
+}
+
+async function notifyFacilityTask(token: string, origin: string): Promise<void> {
+	const { data, error } = await supa().rpc('precheckin_notify_begin', { p_token: token });
+	if (error) {
+		dbg('notify_begin error', error.message);
+		return;
+	}
+	const r = normalizeNotifyBegin(data);
+	dbg('notify_begin', { ok: r.ok, notified: r.notified, kind: r.kind, mail: r.mail });
+	if (!r.ok || !r.notified || !r.mail || !r.to || !r.stayId) return;
+	const mail = buildPrecheckinNotifyMail({
+		kind: r.kind,
+		facilityName: r.facilityName,
+		guestName: r.guestName,
+		bookingCode: r.bookingCode,
+		checkIn: r.checkIn,
+		nights: r.nights,
+		answers: r.answers,
+		adminUrl: precheckinAdminUrl(origin, r.stayId, r.facilityId)
+	});
+	// 差出人名はお客様向けの案内メール（sendPrecheckin）と揃える。宿のスタッフ宛てなので返信先は付けない
+	const res = await sendHtmlEmail({
+		to: [r.to],
+		subject: mail.subject,
+		html: mail.html,
+		text: mail.text,
+		fromName: `${r.facilityName || '山人'} 事前チェックイン`
+	});
+	dbg('notify mail', { stay: r.stayId, sent: res.sent, reason: res.reason });
 }
 
 // ---------------------------------------------------------------- 滞在トークン（P3: 客室案内・貸切風呂へ）
@@ -418,6 +478,14 @@ export async function adminPrecheckinAutosendOverrides(c: BookClient, facility: 
 
 export const adminPrecheckinSaveMinutes = (c: BookClient, facility: string, m: MealMinutes) =>
 	rpc<null>(c, 'admin_precheckin_save_minutes', { p_facility: facility, p_dinner: m.dinner, p_breakfast: m.breakfast });
+
+/** 回答が届いたときの通知メールの設定（宛先・送るか・施設の代表アドレス） */
+export const adminPrecheckinNotify = async (c: BookClient, facility: string): Promise<PrecheckinNotifySettings> =>
+	normalizeNotifySettings(await rpc<unknown>(c, 'admin_precheckin_notify', { p_facility: facility }));
+
+/** 通知メールの設定を保存（宛先は空欄なら代表アドレスへ。形が違えば例外 invalid_email） */
+export const adminPrecheckinSaveNotify = (c: BookClient, facility: string, email: string, enabled: boolean) =>
+	rpc<null>(c, 'admin_precheckin_save_notify', { p_facility: facility, p_email: email, p_enabled: enabled });
 
 type IssueResult = {
 	id: string;

@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGuestField, missingQuestion, type PcProfile } from '$lib/precheckin';
-import { pcGuestProfile, pcQuestions, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
+import { pcGuestProfile, pcNotifyFacility, pcQuestions, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions, PageServerLoad } from './$types';
 
 // ① ご予約内容の確認・修正（連絡先・到着予定時刻・宿からの質問への回答）。
@@ -34,6 +34,8 @@ export const actions: Actions = {
 		if (missing) return fail(400, { error: 'question_required', field: missing as string | null });
 		const res = await pcSaveAnswers(r.token, answers);
 		if (!res.ok) return fail(400, { error: res.error, field: res.field ?? null });
+		// 回答済み（② まで送信済み）のあとの修正なら宿へ知らせる（未回答のうちは DB が何もしない・失敗しても保存は成功のまま）
+		await pcNotifyFacility(event, r.token);
 		redirect(303, localizeHref('/ci/meals'));
 	}
 };

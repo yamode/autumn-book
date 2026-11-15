@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { localizeHref } from '$lib/paraglide/runtime';
 import { checkMealChoices, mealChoicesFromForm } from '$lib/precheckin';
-import { pcSaveMeals, resolvePrecheckin } from '$lib/server/precheckin';
+import { pcNotifyFacility, pcSaveMeals, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions } from './$types';
 
 // ② 夕食・朝食の時間（送信後は ③ 貸切風呂へ）。承認なしで PMS の食事（pms.stay_meals.meal_time）に確定する（docs/pre-checkin.md §5.2）。
@@ -16,6 +16,8 @@ export const actions: Actions = {
 		if (!check.ok) return fail(400, { error: check.error, time: check.time ?? null });
 		const res = await pcSaveMeals(r.token, choices.filter((c) => c.time));
 		if (!res.ok) return fail(400, { error: res.error, time: res.time ?? null });
+		// 回答の完了（初回）・修正を宿へ知らせる（通知メール・PMS の「確認待ち」。失敗しても保存は成功のまま）
+		await pcNotifyFacility(event, r.token);
 		redirect(303, localizeHref('/ci/bath'));
 	}
 };
