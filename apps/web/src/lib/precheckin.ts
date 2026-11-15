@@ -550,3 +550,65 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		}
 	};
 }
+
+// ---------------------------------------------------------------- ① の入力欄（到着予定時刻・生年月日）
+
+/** 到着予定時刻の選択肢の範囲（分）。チェックインは 15:00 から。30 分単位で 22:00 まで */
+export const ARRIVAL_FIRST_MIN = 15 * 60;
+export const ARRIVAL_LAST_MIN = 22 * 60;
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/** 到着予定時刻の選択肢（'15:00' '15:30' … '22:00'） */
+export function arrivalOptions(): string[] {
+	const out: string[] = [];
+	for (let t = ARRIVAL_FIRST_MIN; t <= ARRIVAL_LAST_MIN; t += 30) out.push(hhmm(t));
+	return out;
+}
+
+/**
+ * 登録の時刻（'14:35'・'16:10:00' など）を、選択肢のどれかに寄せる。30 分単位に切り上げ、範囲の外は端に収める。
+ * 時刻でなければ ''（未選択）。
+ */
+export function snapArrival(v: string | null | undefined): string {
+	const m = /^(\d{1,2}):(\d{2})/.exec(v?.trim() ?? '');
+	if (!m) return '';
+	const min = Number(m[1]) * 60 + Number(m[2]);
+	if (Number(m[1]) > 23 || Number(m[2]) > 59) return '';
+	const up = Math.ceil(min / 30) * 30;
+	return hhmm(Math.min(ARRIVAL_LAST_MIN, Math.max(ARRIVAL_FIRST_MIN, up)));
+}
+
+/** 'YYYY-MM-DD' を 年・月・日 の選択欄の値に分ける（月・日は 0 を付けない）。読めなければ全部 '' */
+export function birthParts(v: string | null | undefined): { y: string; m: string; d: string } {
+	const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v?.trim() ?? '');
+	return m ? { y: m[1], m: String(Number(m[2])), d: String(Number(m[3])) } : { y: '', m: '', d: '' };
+}
+
+/** その年・月の日数。年が未選択なら 2 月は 29、月が未選択なら 31 */
+export function daysInMonth(y: string, m: string): number {
+	const mo = Number(m);
+	if (!mo) return 31;
+	return new Date(Date.UTC(Number(y) || 2000, mo, 0)).getUTCDate();
+}
+
+/** 年・月・日 の選択欄の値を 'YYYY-MM-DD' に。そろっていない・無い日付は '' */
+export function joinBirth(y: string, m: string, d: string): string {
+	const [yy, mm, dd] = [Number(y), Number(m), Number(d)];
+	if (!yy || !mm || !dd || mm > 12 || dd > daysInMonth(y, m)) return '';
+	return `${String(yy).padStart(4, '0')}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+}
+
+/** 西暦の年の和暦（年の選択欄に添える。年の途中の改元は新しい元号で出す）。例: 1990 → '平成2'・2019 → '令和元' */
+export function eraYear(year: number): string {
+	const eras: [number, string][] = [
+		[2019, '令和'],
+		[1989, '平成'],
+		[1926, '昭和'],
+		[1912, '大正'],
+		[1868, '明治']
+	];
+	const e = eras.find(([start]) => year >= start);
+	if (!e) return '';
+	const n = year - e[0] + 1;
+	return `${e[1]}${n === 1 ? '元' : n}`;
+}

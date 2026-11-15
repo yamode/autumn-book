@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	arrivalOptions,
+	snapArrival,
+	birthParts,
+	joinBirth,
+	daysInMonth,
+	eraYear,
 	answersFromForm,
 	missingGuestField,
 	missingQuestion,
@@ -292,5 +298,44 @@ describe('ご案内メール', () => {
 		expect(mail.html).toContain('山人 &lt;太郎&gt; 様');
 		expect(mail.html).not.toContain('<太郎>');
 		expect(mail.html).toContain('href="https://book.example/ci/TOKEN"');
+	});
+});
+
+describe('① の入力欄（到着予定時刻・生年月日）', () => {
+	it('到着予定時刻は 15:00 から 22:00 まで 30 分単位', () => {
+		const o = arrivalOptions();
+		expect(o[0]).toBe('15:00');
+		expect(o[1]).toBe('15:30');
+		expect(o.at(-1)).toBe('22:00');
+		expect(o).toHaveLength(15);
+	});
+	it('登録の時刻は選択肢に寄せる（切り上げ・範囲の外は端）', () => {
+		expect(snapArrival('15:30')).toBe('15:30');
+		expect(snapArrival('16:10:00')).toBe('16:30');
+		expect(snapArrival('14:35')).toBe('15:00');
+		expect(snapArrival('23:10')).toBe('22:00');
+		expect(snapArrival('')).toBe('');
+		expect(snapArrival(null)).toBe('');
+		expect(snapArrival('25:00')).toBe('');
+	});
+	it('生年月日を 年・月・日 に分けて、戻す', () => {
+		expect(birthParts('1990-03-09')).toEqual({ y: '1990', m: '3', d: '9' });
+		expect(birthParts('')).toEqual({ y: '', m: '', d: '' });
+		expect(joinBirth('1990', '3', '9')).toBe('1990-03-09');
+		expect(joinBirth('1990', '', '9')).toBe('');
+		expect(joinBirth('1990', '2', '30')).toBe('');
+	});
+	it('月の日数（うるう年・未選択）', () => {
+		expect(daysInMonth('2024', '2')).toBe(29);
+		expect(daysInMonth('2023', '2')).toBe(28);
+		expect(daysInMonth('', '2')).toBe(29);
+		expect(daysInMonth('1990', '4')).toBe(30);
+		expect(daysInMonth('1990', '')).toBe(31);
+	});
+	it('和暦', () => {
+		expect(eraYear(1990)).toBe('平成2');
+		expect(eraYear(2019)).toBe('令和元');
+		expect(eraYear(1988)).toBe('昭和63');
+		expect(eraYear(1926)).toBe('昭和元');
 	});
 });

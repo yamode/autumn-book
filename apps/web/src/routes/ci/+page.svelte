@@ -9,7 +9,8 @@
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import { slashDate, type PcProfile } from '$lib/precheckin';
+	import { getLocale } from '$lib/paraglide/runtime';
+	import { arrivalOptions, birthParts, daysInMonth, eraYear, joinBirth, slashDate, snapArrival, type PcProfile } from '$lib/precheckin';
 	import type { FullAutoFill } from 'svelte/elements';
 
 	let { data, form } = $props();
@@ -59,23 +60,45 @@
 				draft[f.key] = saved;
 			}
 		}
+		birth = birthParts(draft.birthdate);
 	});
+	// 生年月日は 年・月・日 の選択欄（2026-11-15）。日付の入力欄（type=date）は iPhone で枠からはみ出し、
+	// 年をさかのぼるのに手間がかかるため。送るのは隠し欄の 'YYYY-MM-DD'（3 つそろったときだけ）
+	let birth = $state({ y: '', m: '', d: '' });
+	const thisYear = Number(new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 4));
+	const birthYears = Array.from({ length: thisYear - 1900 + 1 }, (_, i) => thisYear - i);
+	const birthDays = $derived(daysInMonth(birth.y, birth.m));
+	const withEra = getLocale() === 'ja';
+	$effect(() => {
+		// 月・年を変えて無い日になったら、日を選び直してもらう
+		if (Number(birth.d) > birthDays) birth.d = '';
+	});
+	$effect(() => {
+		draft.birthdate = joinBirth(birth.y, birth.m, birth.d);
+	});
+	// 到着予定時刻は 15:00 以降・30 分単位の選択欄。前に答えた時刻 → PMS の予約の到着予定時刻（選択肢に寄せる）
+	const arrivals = arrivalOptions();
+	const arrival0 = $derived(snapArrival(a.arrival_time ?? p.arrival_time));
 	/** 登録の内容が無い欄は「変更」を出さず、いつも入力欄 */
 	const alwaysInput = (f: Field) => !f.shown;
 	function startEdit(f: Field) {
 		editing[f.key] = true;
 		draft[f.key] = draft[f.key] ?? f.raw;
+		if (f.key === 'birthdate') {
+			draft.birthdate = draft.birthdate || f.raw;
+			birth = birthParts(draft.birthdate);
+		}
 		queueMicrotask(() => document.getElementById(`ci-${f.key}`)?.focus());
 	}
 	function cancelEdit(key: Key) {
 		editing[key] = false;
 		draft[key] = undefined;
+		if (key === 'birthdate') birth = { y: '', m: '', d: '' };
 	}
 	const questions = $derived(data.questions ?? []);
 	const answerOf = (id: string) => a.questions?.find((x) => x.id === id)?.answer ?? '';
 	const missingId = $derived(form?.error === 'question_required' ? (form.field ?? null) : null);
 	const missingGuest = $derived(form?.error === 'guest_required' || form?.error === 'invalid_params' ? (form.field ?? null) : null);
-	const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
 	// 部屋タイプ（複数室は「和室・洋室」、同じタイプが続けば「和室 ×2」）
 	const roomTypes = $derived.by(() => {
 		const counts = new Map<string, number>();
@@ -97,6 +120,8 @@
 	);
 	const ro = $derived(!ctx.editable);
 	const inputCls = 'mt-1 w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-[16px] disabled:bg-stone-100';
+	// 選択欄。min-w-0 で、狭い画面でも枠の中に収める
+	const selectCls = 'mt-1 w-full min-w-0 rounded-lg border border-stone-300 bg-white px-2 py-2 text-[16px] disabled:bg-stone-100';
 	const fixedCls = 'w-full rounded-lg border border-stone-200 bg-stone-100 px-3 py-2 text-[16px] text-stone-600';
 </script>
 
@@ -145,15 +170,36 @@
 							{/if}
 						{/if}
 					</div>
-					{#if open}
+					{#if open && f.key === 'birthdate'}
+						{@const bad = missingGuest === 'birthdate' ? 'border-red-400 ring-1 ring-red-300' : ''}
+						<input type="hidden" name={f.name} value={draft.birthdate ?? ''} />
+						<div class="mt-1 grid grid-cols-[2fr_1fr_1fr] gap-2">
+							<select id="ci-birthdate" bind:value={birth.y} required autocomplete="bday-year" aria-label={m.ci_bd_year()} class="{selectCls} {bad}">
+								<option value="">{m.ci_bd_year()}</option>
+								{#each birthYears as y (y)}
+									<option value={String(y)}>{y}{withEra ? `（${eraYear(y)}）` : ''}</option>
+								{/each}
+							</select>
+							<select bind:value={birth.m} required autocomplete="bday-month" aria-label={m.ci_bd_month()} class="{selectCls} {bad}">
+								<option value="">{m.ci_bd_month()}</option>
+								{#each Array.from({ length: 12 }, (_, i) => i + 1) as mo (mo)}
+									<option value={String(mo)}>{mo}</option>
+								{/each}
+							</select>
+							<select bind:value={birth.d} required autocomplete="bday-day" aria-label={m.ci_bd_day()} class="{selectCls} {bad}">
+								<option value="">{m.ci_bd_day()}</option>
+								{#each Array.from({ length: birthDays }, (_, i) => i + 1) as d (d)}
+									<option value={String(d)}>{d}</option>
+								{/each}
+							</select>
+						</div>
+					{:else if open}
 						<input
 							id="ci-{f.key}"
 							name={f.name}
 							type={f.type}
 							autocomplete={f.auto}
 							maxlength={f.max}
-							min={f.type === 'date' ? '1900-01-01' : undefined}
-							max={f.type === 'date' ? today : undefined}
 							required={f.required && alwaysInput(f)}
 							placeholder={f.placeholder ?? (f.raw === '' && f.shown ? m.ci_new_value_placeholder() : '')}
 							bind:value={draft[f.key]}
@@ -175,9 +221,14 @@
 		<h2 class="font-semibold">{m.ci_section_arrival()}</h2>
 		<label class="mt-3 block">
 			<span class="text-stone-600">{m.ci_arrival()}</span>
-			<!-- 前に答えた時刻 → PMS の予約の到着予定時刻（14:35 のような 15 分刻みでない時刻もあるので step は付けない） -->
-			<input name="arrival_time" type="time" value={a.arrival_time ?? p.arrival_time ?? ''} disabled={ro} class={inputCls} />
+			<select name="arrival_time" value={arrival0} disabled={ro} class={selectCls}>
+				<option value="">{m.ci_arrival_unset()}</option>
+				{#each arrivals as t (t)}
+					<option value={t}>{t}</option>
+				{/each}
+			</select>
 		</label>
+		<p class="mt-1 text-xs text-stone-500">{m.ci_arrival_note()}</p>
 	</section>
 
 	{#if questions.length}
