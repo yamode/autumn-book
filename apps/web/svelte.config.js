@@ -10,6 +10,9 @@ const config = {
 	kit: {
 		// SSR and client builds must share a stable payload key, including separate Vite phases.
 		version: { name: appVersion },
+		// OAuth token exchanges are x-www-form-urlencoded server-to-server POSTs without an Origin header.
+		// hooks.server.ts applies the SvelteKit form-origin check with an exception for that exact route.
+		csrf: { trustedOrigins: ['*'] },
 		// Cloudflare Pages デプロイ（設計書 §0）
 		adapter: adapter(),
 		// ★2026-10-21 監査: CSP を Report-Only で入れる（遮断はしない。違反は /api/csp-report に届きログに出る）。

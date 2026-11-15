@@ -12,6 +12,9 @@
 	// 同意バナーも出さない（トークンを外部へ送らない）。社外向けの画面なのでデバッグパネルも出さない。
 	// 共通ログイン画面（/partner）も取引先向けなので同じ扱い
 	const isPartnerPortal = $derived(page.url.pathname.startsWith('/p/') || page.url.pathname === '/partner' || page.url.pathname.startsWith('/partner/'));
+	const isBookingMcpConsent = $derived(
+		page.url.pathname.startsWith('/booking-mcp/oauth/') || Boolean(page.url.searchParams.get('next')?.startsWith('/booking-mcp/oauth/'))
+	);
 
 	// 画面を移っている間は、押したボタン・リンクに data-pending を付ける（見た目は app.css: ボタンは中で回転、文字のリンクは色が変わる）。
 	// 2026-11-01 指示「ローディングは画面上部ではなく、ボタンならボタンの中でぐるぐる」（上端の帯は廃止）。
@@ -46,7 +49,7 @@
 </script>
 
 {@render children()}
-{#if !isPartnerPortal}
+{#if !isPartnerPortal && !isBookingMcpConsent}
 	<AnalyticsConsent />
 	<DebugPanel />
 {/if}

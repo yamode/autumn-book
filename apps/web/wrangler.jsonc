@@ -36,6 +36,7 @@
 		"REPORT_EMAIL_FROM": "rms@yamado.app",
 		"AUTH_MODE": "supabase",
 		"DATA_SOURCE": "supabase",
+		"BOOKING_MCP_ORIGIN": "https://book.yamado.app",
 		// 西和賀問い合わせの受付。AI/IMAP接続と社内での一巡確認後に true にする。
 		"INQUIRY_NISHIWAGA_ENABLED": "true",
 		"PRIVATE_BATH_PMS_ENABLED": "true",

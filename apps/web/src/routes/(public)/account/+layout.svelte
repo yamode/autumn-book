@@ -15,7 +15,8 @@
 		{ href: '/account/community', label: m.account_nav_community() },
 		// 保存カード（2026-10-07・docs/saved-cards.md §6.2）
 		{ href: '/account/cards', label: m.account_nav_cards() },
-		{ href: '/account/profile', label: m.account_nav_profile() }
+		{ href: '/account/profile', label: m.account_nav_profile() },
+		...(data.bookingMcpEnabled ? [{ href: '/account/ai-connections', label: 'AI連携' }] : [])
 	]);
 
 	function isActive(href: string) {

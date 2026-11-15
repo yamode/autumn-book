@@ -1,0 +1,34 @@
+import { error, redirect } from '@sveltejs/kit';
+import { activeBookMember, authorizationRequest, bookingMcpEnabled, issueAuthorizationCode, privateHeaders } from '$lib/server/booking-mcp/oauth';
+import type { Actions, PageServerLoad, RequestEvent } from './$types';
+
+async function consent(event: RequestEvent) {
+	const { url, locals } = event;
+	event.setHeaders({ ...privateHeaders, 'content-security-policy': "frame-ancestors 'none'" });
+	if (!bookingMcpEnabled(url)) error(404);
+	const authorization = authorizationRequest(url);
+	if (!authorization) error(400, 'Claudeの接続要求を確認できません。Claudeからやり直してください。');
+	if (!locals.user) redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
+	if (locals.user.role !== 'member' || !await activeBookMember(locals.user.id)) {
+		error(403, '山人Bookの会員アカウントでログインしてください。');
+	}
+	return { userId: locals.user.id, ...authorization };
+}
+
+export const load: PageServerLoad = async (event) => {
+	await consent(event);
+};
+
+export const actions: Actions = {
+	default: async (event) => {
+		// This page is a browser-only state change. The token endpoint is the only CSRF exception.
+		if (event.request.headers.get('origin') !== event.url.origin) error(403);
+		const { userId, challenge, state, callback } = await consent(event);
+		const decision = (await event.request.formData()).get('decision');
+		if (decision !== 'allow' && decision !== 'deny') error(400);
+		if (state !== null) callback.searchParams.set('state', state);
+		if (decision === 'allow') callback.searchParams.set('code', await issueAuthorizationCode(userId, challenge));
+		else callback.searchParams.set('error', 'access_denied');
+		redirect(303, callback.href);
+	}
+};

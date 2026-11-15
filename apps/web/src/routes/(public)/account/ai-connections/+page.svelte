@@ -1,0 +1,20 @@
+<script lang="ts">
+	let { data } = $props();
+</script>
+
+<svelte:head>
+	<title>AI連携 | 山人Book</title>
+</svelte:head>
+
+<section class="rounded-xl border bg-white p-5">
+	<h1 class="text-xl font-semibold">AI連携</h1>
+	<h2 class="mt-4 font-medium">YAMADO · Claude</h2>
+	{#if data.connected}
+		<p class="mt-2">空室・料金の検索を許可しています。</p>
+		<form method="POST" action="?/disconnect" class="mt-4">
+			<button type="submit" class="rounded-lg border px-4 py-2">連携を解除する</button>
+		</form>
+	{:else}
+		<p class="mt-2">連携していません。新規連携はClaudeのコネクター設定から行います。</p>
+	{/if}
+</section>

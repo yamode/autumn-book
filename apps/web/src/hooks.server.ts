@@ -11,11 +11,20 @@ import { logAdminAccess } from '$lib/server/access-log';
 import { trySharedCookieSso } from '$lib/server/admin-shared-sso';
 import { isAdminPath } from '$lib/admin-mfa';
 import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
+import { isBookingMcpMachineUrl, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
 export const handle: Handle = async (input) => {
+	const { request, url } = input.event;
+	if (isCrossSiteForm(request, url)) {
+		const message = `Cross-site ${request.method} form submissions are forbidden`;
+		const response = request.headers.get('accept') === 'application/json'
+			? Response.json({ message }, { status: 403 })
+			: new Response(message, { status: 403 });
+		return applySecurityHeaders(response, url);
+	}
 	const started = performance.now();
 	let res: Response;
 	try {
@@ -40,6 +49,14 @@ export const handle: Handle = async (input) => {
 	return res;
 };
 
+function isCrossSiteForm(request: Request, url: URL): boolean {
+	if (request.method === 'POST' && url.pathname === TOKEN_PATH) return false;
+	const type = request.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() ?? '';
+	return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)
+		&& ['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain', 'application/x-sveltekit-formdata'].includes(type)
+		&& request.headers.get('origin') !== url.origin;
+}
+
 const handleRequest: Handle = async ({ event, resolve }) => {
 	// 本番ドメインは book.yamado.app（2026-09-26）。旧ドメイン（autumn-book.pages.dev 本体）で開かれたら同じパスへ転送する。
 	// プレビューデプロイ（<hash>.autumn-book.pages.dev）はそのまま使えるよう、本体のホスト名だけを対象にする。
@@ -51,7 +68,8 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		});
 	}
 
-	if (isPartnerPath(event.url.pathname)) {
+	const machineBookingMcp = isBookingMcpMachineUrl(event.url);
+	if (machineBookingMcp || isPartnerPath(event.url.pathname)) {
 		// 取引先専用ページ・取引先 API・Stripe Webhook・請求 cron は Supabase Auth を使わない
 		// （独自セッション rms_partner_session / API キー / 署名 / CRON_SECRET で本人確認する）。
 		// 会員・運営のセッションは解決しない（取引先ページに会員状態を持ち込まない）。
@@ -90,7 +108,7 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）
-	if ((await isMaintenanceOn(event.platform)) && !isMaintenanceBypassed(event)) {
+	if (!machineBookingMcp && (await isMaintenanceOn(event.platform)) && !isMaintenanceBypassed(event)) {
 		return paraglideMiddleware(
 			event.request,
 			({ locale }) =>
