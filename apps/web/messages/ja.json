@@ -1390,6 +1390,7 @@
   "ci_bath_pick_time": "時間",
   "ci_bath_overlap": "お食事と重なります",
   "ci_bath_submit": "この時間で予約する",
+  "ci_bath_multi_note": "時間帯ごとに 1 枠ずつ選んで、まとめてご予約いただけます。",
   "ci_bath_reserved": "{date} {from} からで予約しました。",
   "ci_bath_no_slots": "空いている時間がありません。",
   "ci_bath_cancel_failed": "取り消せませんでした。取消の期限を過ぎている場合は、フロントへお申し付けください。",

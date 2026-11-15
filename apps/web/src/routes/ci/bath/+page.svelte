@@ -2,6 +2,7 @@
 	// ③ 貸切風呂（任意）。この画面の中で予約・取消まで行う（2026-11-14。以前は /r/bath へ案内するだけ）。
 	// 時間を選ぶ目安として、選んだ夕食・朝食の時間に所要時間の目安（book.precheckin_settings・既定 夕食 120 分／朝食 60 分）を
 	// 足した時間帯を上に出し、重なる枠には「お食事と重なります」を付ける（選べなくはしない）。
+	// 時間帯（日付×午前/午後）ごとに 1 枠ずつ選んで、1 回の「予約する」でまとめて取れる（2026-11-15。以前は 1 枠ずつ確定が要った）。
 	// 空き・上限・締切・料金・取消期限の正は RPC（/r/bath と同じ）。ここで外すのは画面の見た目だけ。
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
@@ -23,8 +24,10 @@
 	const bathName = (id: string | null) => baths.find((b) => (b.bath_id ?? '') === (id ?? ''))?.bath_name ?? '';
 
 	let pickedBath = $state<string | null>(null);
-	// 選んだ枠（'YYYY-MM-DD|HH:MM'）
-	let picked = $state('');
+	// 選んだ枠（時間帯のキー → 'YYYY-MM-DD|HH:MM'）。時間帯（日付×午前/午後）ごとに 1 枠ずつ選び、まとめて予約する（2026-11-15）
+	let picks = $state<Record<string, string>>({});
+	const pickedList = $derived(Object.values(picks).filter(Boolean));
+	const toggle = (key: string, v: string) => (picks[key] = picks[key] === v ? '' : v);
 	const unit = $derived((pickedBath === null ? null : baths.find((b) => (b.bath_id ?? '') === pickedBath)) ?? baths[0]);
 	const bookable = (s: { taken: boolean; closed: boolean; limit_reached?: boolean }) => !s.taken && !s.closed && s.limit_reached !== true;
 	const isMorning = (from: string) => Number(from.slice(0, 2)) < 12;
@@ -43,10 +46,11 @@
 				.sort((x, y) => (x.morning === y.morning ? 0 : x.morning ? -1 : 1))
 		)
 	);
-	const pickedDate = $derived(picked.split('|')[0] ?? '');
-	const pickedFrom = $derived(picked.split('|')[1] ?? '');
 	$effect(() => {
-		if (picked && !groups.some((g) => g.slots.some((s) => `${g.date}|${s.from}` === picked))) picked = '';
+		// 取れなくなった枠・予約し終えた時間帯の選択は外す
+		for (const [key, v] of Object.entries(picks)) {
+			if (v && !groups.some((g) => g.key === key && g.slots.some((s) => `${g.date}|${s.from}` === v))) picks[key] = '';
+		}
 	});
 
 	const errorText = $derived.by(() => {
@@ -89,9 +93,11 @@
 	{/if}
 
 	{#if form && 'reserved' in form && form.reserved}
-		<p class="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 ring-1 ring-emerald-200" role="status">
-			{m.ci_bath_reserved({ date: slashDate(form.reserved.date), from: form.reserved.from })}
-		</p>
+		<div class="mt-4 space-y-0.5 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 ring-1 ring-emerald-200" role="status">
+			{#each form.reserved as r (r.date + r.from)}
+				<p>{m.ci_bath_reserved({ date: slashDate(r.date), from: r.from })}</p>
+			{/each}
+		</div>
 	{:else if form && 'canceled' in form && form.canceled}
 		<p class="mt-4 rounded-lg bg-stone-50 px-3 py-2 text-stone-700 ring-1 ring-stone-200" role="status">{m.bath_canceled()}</p>
 	{/if}
@@ -143,13 +149,17 @@
 					</select>
 				</label>
 			{/if}
-			<input type="hidden" name="date" value={pickedDate} />
-			<input type="hidden" name="from" value={pickedFrom} />
+			{#each pickedList as v (v)}
+				<input type="hidden" name="slot" value={v} />
+			{/each}
 			{#if groups.length === 0}
 				{#if mine.length === 0}
 					<p class="rounded-lg bg-stone-50 px-3 py-2 text-stone-600 ring-1 ring-stone-200">{m.ci_bath_no_slots()}</p>
 				{/if}
 			{:else}
+				{#if groups.filter((g) => g.slots.length).length > 1}
+					<p class="text-xs text-stone-500">{m.ci_bath_multi_note()}</p>
+				{/if}
 				{#each groups as g (g.key)}
 					<fieldset>
 						<legend class="font-medium text-stone-700">{dayLabel(g.date, g.morning)}</legend>
@@ -160,17 +170,19 @@
 								{#each g.slots as s (s.from)}
 									{@const v = `${g.date}|${s.from}`}
 									{@const overlap = overlapsMeal(g.date, s.from, s.to, windows)}
-									<label
-										class="flex cursor-pointer flex-col rounded-lg px-3 py-2 ring-1 {picked === v
-											? 'bg-stone-900 text-white ring-stone-900'
-											: 'bg-white ring-stone-300'}"
+									{@const on = picks[g.key] === v}
+									<!-- 同じ時間帯の中は 1 枠だけ（押し直すと外れる）。別の時間帯の枠は一緒に選べる -->
+									<button
+										type="button"
+										aria-pressed={on}
+										onclick={() => toggle(g.key, v)}
+										class="flex flex-col rounded-lg px-3 py-2 text-left ring-1 {on ? 'bg-stone-900 text-white ring-stone-900' : 'bg-white ring-stone-300'}"
 									>
-										<input type="radio" name="slot" value={v} bind:group={picked} class="sr-only" />
 										<span class="font-medium">{s.from}–{s.to}</span>
 										{#if overlap}
-											<span class="text-[11px] {picked === v ? 'text-amber-200' : 'text-amber-700'}">{m.ci_bath_overlap()}</span>
+											<span class="text-[11px] {on ? 'text-amber-200' : 'text-amber-700'}">{m.ci_bath_overlap()}</span>
 										{/if}
-									</label>
+									</button>
 								{/each}
 							</div>
 						{/if}
@@ -180,7 +192,7 @@
 					<p class="text-xs text-stone-500">{m.ci_bath_price({ price: m.bath_price_per_booking({ price: (bc.price_yen ?? 0).toLocaleString('ja-JP') }) })}</p>
 				{/if}
 				{#if groups.some((g) => !g.done && g.slots.length)}
-					<button type="submit" disabled={!picked} class="w-full rounded-xl bg-stone-900 py-3 text-sm font-medium text-white disabled:opacity-40">
+					<button type="submit" disabled={pickedList.length === 0} class="w-full rounded-xl bg-stone-900 py-3 text-sm font-medium text-white disabled:opacity-40">
 						{m.ci_bath_submit()}
 					</button>
 				{/if}

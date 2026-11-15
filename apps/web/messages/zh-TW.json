@@ -1390,6 +1390,7 @@
   "ci_bath_pick_time": "時段",
   "ci_bath_overlap": "與用餐時間重疊",
   "ci_bath_submit": "預約此時段",
+  "ci_bath_multi_note": "每個時段可各選一個時間，並一次預約。",
   "ci_bath_reserved": "已預約 {date} {from} 起。",
   "ci_bath_no_slots": "目前沒有空檔時段。",
   "ci_bath_cancel_failed": "無法取消。若已超過取消期限，請洽櫃檯。",

@@ -1390,6 +1390,7 @@
   "ci_bath_pick_time": "Time",
   "ci_bath_overlap": "Overlaps a meal",
   "ci_bath_submit": "Reserve this time",
+  "ci_bath_multi_note": "You can pick one slot per time period and book them together.",
   "ci_bath_reserved": "Reserved: {date} from {from}.",
   "ci_bath_no_slots": "There are no open times.",
   "ci_bath_cancel_failed": "Could not cancel. If the cancellation deadline has passed, please contact the front desk.",

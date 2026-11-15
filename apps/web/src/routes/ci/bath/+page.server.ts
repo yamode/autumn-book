@@ -58,18 +58,25 @@ export const actions: Actions = {
 		if (!token) return fail(400, { error: 'not_open' as const });
 		const fd = await event.request.formData();
 		const bathId = String(fd.get('bathId') ?? '').trim() || null;
-		const date = String(fd.get('date') ?? '').trim();
-		const from = String(fd.get('from') ?? '').trim();
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(from)) return fail(400, { error: 'choose' as const });
+		// 選んだ枠（'YYYY-MM-DD|HH:MM'）。時間帯（日付×午前/午後）ごとに 1 枠ずつ、まとめて送られてくる（2026-11-15）
+		const slots = [...new Set(fd.getAll('slot').map((v) => String(v).trim()))]
+			.map((v) => /^(\d{4}-\d{2}-\d{2})\|(\d{1,2}:\d{2})$/.exec(v))
+			.map((m) => (m ? { date: m[1], from: m[2] } : null));
+		if (slots.length === 0 || slots.length > 8 || slots.some((x) => x === null)) return fail(400, { error: 'choose' as const });
+		const picked = slots as { date: string; from: string }[];
 
 		if (token === 'demo') {
-			const r = demoBathReserve(date, from);
-			return r === 'ok' ? { reserved: { date, from } } : fail(409, { error: r });
+			for (const p of picked) {
+				const r = demoBathReserve(p.date, p.from);
+				if (r !== 'ok') return fail(409, { error: r });
+			}
+			return { reserved: picked };
 		}
 		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
-		const r = await sbBathReserve(token, bathId, [{ date, from }]);
+		// まとめて 1 回で予約する（RPC は全部取れるか、全部取れないか）
+		const r = await sbBathReserve(token, bathId, picked);
 		if (!r.ok) return fail(r.code === 'other' ? 400 : 409, { error: r.code });
-		return { reserved: { date, from } };
+		return { reserved: picked };
 	},
 
 	cancel: async (event) => {
