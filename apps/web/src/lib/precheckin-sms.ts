@@ -88,7 +88,7 @@ export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string
 	const day = !/^\d{4}-\d{2}-\d{2}$/.test(ci) || ci <= today ? '本日' : '当日';
 	const message = `【${i.facilityName.trim()}】\n事前チェックインのご案内です。${day}はどうぞお気をつけてお越しくださいませ。`;
 	const tel = (i.phone ?? '').trim();
-	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\nTEL ${tel}` : ''}`;
+	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel}` : ''}`;
 	return { message, link };
 }
 

@@ -79,7 +79,8 @@ describe('SMS 本文', () => {
 		expect(p.message).toBe(`【${name}】\n事前チェックインのご案内です。本日はどうぞお気をつけてお越しくださいませ。`);
 		expect(smsSegments(p.message)).toBe(1);
 		expect(p.message).not.toContain('http');
-		expect(p.link).toBe(`${URL_}\nTEL ${tel}`);
+		// URL と電話番号の間は空白の行（くっついて見えないように）
+		expect(p.link).toBe(`${URL_}\n\nTEL ${tel}`);
 		expect(smsSegments(p.link)).toBe(1);
 	});
 	it('前日以前に送るときは「当日は」。電話が無ければ 2 通目は URL だけ', () => {
