@@ -8,6 +8,7 @@ import { clientIp, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyR
 import { checkTurnstile } from '$lib/server/turnstile';
 import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
 import { safeNext } from '$lib/safe-next';
+import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -15,10 +16,13 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const OTP_COOLDOWN = 'ab_otp_cooldown';
 // 最初の画面で Turnstile を通ったメールアドレス（署名付き）。コード入力画面の再送で Turnstile を出さないために使う
 const OTP_HUMAN = 'ab_otp_human';
+const USE_BOOK_MEMBER = 'このメールアドレスは運営用アカウントです。YAMADOに連携する山人Book会員のメールアドレスを入力してください。';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	if (locals.user?.role === 'member') redirect(303, safeNext(url.searchParams.get('next'), '/account'));
-	return { authMode: AUTH_MODE };
+	const role = locals.user?.role;
+	const showMemberNotice = (role === 'admin' || role === 'staff') && Boolean(bookingConsentNext(url));
+	return { authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null };
 };
 
 export const actions: Actions = {
@@ -90,16 +94,24 @@ export const actions: Actions = {
 		await memberOtpVerifyResult(event.platform, email, !error && Boolean(data.user));
 		if (error || !data.user) return fail(401, { step: 'code', email, message: m.auth_otp_error_code_invalid() });
 
+		const consentNext = bookingConsentNext(url);
+		const role = data.user.app_metadata.role;
+		if (consentNext && (role === 'admin' || role === 'staff')) {
+			return fail(403, { step: 'email', email: '', message: USE_BOOK_MEMBER });
+		}
 		// 会員判定: my_profile が通れば book.members あり＝会員。
 		let isMember = false;
 		try {
 			await sbMyProfile(client);
 			isMember = true;
-		} catch {
+		} catch (cause) {
+			if (consentNext && (cause as { message?: unknown } | null)?.message !== 'not_member') {
+				return fail(503, { step: 'email', email, message: '会員情報を確認できませんでした。時間をおいてやり直してください。' });
+			}
 			isMember = false;
 		}
 		// 未登録は会員登録（プロフィール入力）へ。OTP セッションは維持される。
-		if (!isMember) redirect(303, '/auth/register');
+		if (!isMember) redirect(303, consentNext ? `/auth/register?next=${encodeURIComponent(consentNext)}` : '/auth/register');
 
 		// hooks が会員と解決できるよう user_metadata.member を同期（yamado-one 経由の会員含む）
 		const meta = data.user.user_metadata as { member?: boolean } | null;

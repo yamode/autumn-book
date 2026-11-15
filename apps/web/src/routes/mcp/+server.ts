@@ -3,7 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { z } from 'zod';
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
-import { bookingAccess, bookingMcpEnabled, privateHeaders, RESOURCE_METADATA_PATH, SCOPE } from '$lib/server/booking-mcp/oauth';
+import { bookingAccess, bookingMcpEnabled, CONNECTOR_ICON_PATH, privateHeaders, RESOURCE_METADATA_PATH, SCOPE } from '$lib/server/booking-mcp/oauth';
 import { searchBookingOffers, validCheckin } from '$lib/server/booking-mcp/search';
 import { STAY_FACILITIES } from '$lib/server/stay-calendar';
 import { APP_VERSION } from '$lib/version';
@@ -38,7 +38,12 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			}
 			body += decoder.decode(value, { stream: true });
 		}
-		const server = new McpServer({ name: 'yamado', title: 'YAMADO', version: APP_VERSION }, {
+		const server = new McpServer({
+			name: 'yamado',
+			title: 'YAMADO',
+			version: APP_VERSION,
+			icons: [{ src: url.origin + CONNECTOR_ICON_PATH, mimeType: 'image/png', sizes: ['512x512'] }]
+		}, {
 			instructions: '西和賀・男鹿のYAMADO公式予約。空室と見積もりを検索し、bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。'
 		});
 		server.registerTool('search_stays', {

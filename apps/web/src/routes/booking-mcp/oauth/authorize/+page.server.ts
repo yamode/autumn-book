@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { activeBookMember, authorizationRequest, bookingMcpEnabled, issueAuthorizationCode, privateHeaders } from '$lib/server/booking-mcp/oauth';
+import { activeBookMember, authorizationRequest, bookingMcpEnabled, CONNECTOR_ICON_PATH, issueAuthorizationCode, privateHeaders } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 async function consent(event: RequestEvent) {
@@ -8,8 +8,10 @@ async function consent(event: RequestEvent) {
 	if (!bookingMcpEnabled(url)) error(404);
 	const authorization = authorizationRequest(url);
 	if (!authorization) error(400, 'Claudeの接続要求を確認できません。Claudeからやり直してください。');
-	if (!locals.user) redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
-	if (locals.user.role !== 'member' || !await activeBookMember(locals.user.id)) {
+	const next = encodeURIComponent(url.pathname + url.search);
+	if (locals.pendingAuthUser) redirect(303, `/auth/register?next=${next}`);
+	if (locals.user?.role !== 'member') redirect(303, `/auth/login?next=${next}`);
+	if (!await activeBookMember(locals.user.id)) {
 		error(403, '山人Bookの会員アカウントでログインしてください。');
 	}
 	return { userId: locals.user.id, ...authorization };
@@ -17,6 +19,7 @@ async function consent(event: RequestEvent) {
 
 export const load: PageServerLoad = async (event) => {
 	await consent(event);
+	return { icon: CONNECTOR_ICON_PATH };
 };
 
 export const actions: Actions = {

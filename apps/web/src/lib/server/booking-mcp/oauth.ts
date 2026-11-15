@@ -3,10 +3,13 @@ import { MEMBER_SUPABASE } from '$lib/server/auth';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { isRankCode, type PlanViewer } from '$lib/plan-access';
 import { json } from '@sveltejs/kit';
+import { safeNext } from '$lib/safe-next';
 
 export const MCP_PATH = '/mcp';
 export const OAUTH_PATH = '/booking-mcp/oauth';
+export const AUTHORIZE_PATH = `${OAUTH_PATH}/authorize`;
 export const TOKEN_PATH = `${OAUTH_PATH}/token`;
+export const CONNECTOR_ICON_PATH = '/brand/yamado-connector.png';
 export const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp';
 export const SCOPE = 'booking:read';
 export const CLIENT_ID = 'autumn-book-claude';
@@ -19,6 +22,13 @@ export const privateHeaders = { 'cache-control': 'no-store', 'referrer-policy': 
 
 export function bookingMcpEnabled(url: URL): boolean {
 	return MEMBER_SUPABASE && env.BOOKING_MCP_ORIGIN === url.origin;
+}
+
+/** Only a valid YAMADO OAuth request can resume consent after member registration. */
+export function bookingConsentNext(url: URL): string | null {
+	const next = safeNext(url.searchParams.get('next'), '/');
+	const target = new URL(next, url.origin);
+	return target.pathname === AUTHORIZE_PATH && bookingMcpEnabled(url) && authorizationRequest(target) ? next : null;
 }
 
 /** Machine clients cannot carry the browser's Book preview or login cookies. */

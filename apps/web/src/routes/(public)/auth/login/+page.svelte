@@ -19,12 +19,14 @@
 
 	{#if form?.message}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
+	{:else if step === 'email' && data.accountNotice}
+		<p class="mb-4 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-700">{data.accountNotice}</p>
 	{/if}
 
 	{#if data.authMode === 'supabase'}
 		{#if step === 'code'}
 			<!-- step2: 8桁コード入力 -->
-			<form method="POST" action="?/verify{nextQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+			<form method="POST" action="?/verify{nextQuery}" class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 				<p class="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">{m.auth_otp_code_hint({ email })}</p>
 				<input type="hidden" name="email" value={email} />
 				<label class="block text-sm">
@@ -87,6 +89,6 @@
 	{/if}
 
 	<p class="mt-6 text-center text-sm text-stone-600">
-		{m.login_register_link()} <a href="/auth/register" class="text-accent-600 underline">{m.login_register_anchor()}</a>
+		{m.login_register_link()} <a href="/auth/register{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-accent-600 underline">{m.login_register_anchor()}</a>
 	</p>
 </div>

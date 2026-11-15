@@ -7,6 +7,7 @@
 	// 表示ステップ: form が返す step を優先、無ければ load の step
 	let step = $derived(form?.step ?? data.step);
 	let email = $derived(form?.email ?? data.email ?? data.prefill.email);
+	let consentQuery = $derived(data.consentNext ? `&next=${encodeURIComponent(data.consentNext)}` : '');
 </script>
 
 <svelte:head><title>{m.register_title()}</title></svelte:head>
@@ -21,7 +22,7 @@
 
 	{#if data.authMode === 'supabase' && step === 'code'}
 		<!-- step2: 8桁コード入力 -->
-		<form method="POST" action="?/verify" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+		<form method="POST" action="?/verify{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 			<p class="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">{m.auth_otp_code_hint({ email })}</p>
 			<input type="hidden" name="email" value={email} />
 			<label class="block text-sm">
@@ -31,7 +32,7 @@
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.auth_otp_verify_register()}</button>
 		</form>
 		<div class="mt-3 flex items-center justify-between text-sm">
-			<form method="POST" action="?/sendCode" use:enhance>
+			<form method="POST" action="?/sendCode{consentQuery}" use:enhance>
 				<input type="hidden" name="email" value={email} />
 				<Turnstile action="member-otp" />
 				<button type="submit" class="text-accent-600 underline">{m.auth_otp_resend()}</button>
@@ -40,7 +41,7 @@
 		</div>
 	{:else if data.authMode === 'supabase' && step === 'profile'}
 		<!-- step3: プロフィール入力（メールは認証済み） -->
-		<form method="POST" action="?/register" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+		<form method="POST" action="?/register{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 			<p class="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{email}（認証済み）</p>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
@@ -79,7 +80,7 @@
 		</form>
 	{:else if data.authMode === 'supabase'}
 		<!-- step1: メールアドレス入力 -->
-		<form method="POST" action="?/sendCode" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+		<form method="POST" action="?/sendCode{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 			<p class="text-sm text-stone-500">{m.auth_otp_email_hint()}</p>
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.register_email()} <span class="text-red-500">*</span></span>

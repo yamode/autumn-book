@@ -1,8 +1,13 @@
+<script lang="ts">
+	let { data } = $props();
+</script>
+
 <svelte:head>
 	<title>YAMADO | Claudeとの連携</title>
 </svelte:head>
 
 <main class="mx-auto max-w-md px-6 py-12">
+	<img src={data.icon} alt="山人" width="64" height="64" class="mb-5 rounded-lg" />
 	<h1 class="text-2xl font-semibold">YAMADOをClaudeに連携</h1>
 	<p class="mt-4">Claudeに、西和賀・男鹿の空室と、あなたがBookで予約できるプランの料金を検索する権限を許可します。予約の確定・お支払いは山人Bookで行います。</p>
 	<p class="mt-3 text-sm">連携は30日間有効です。マイページの「AI連携」からいつでも解除できます。</p>
