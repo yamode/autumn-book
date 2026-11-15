@@ -202,11 +202,13 @@ describe('フォームの値', () => {
 		f.set('companions', '3'); // 旧フォームの欄。送られてきても拾わない
 		f.set('requests', ' 誕生日です '); // 旧フォームの欄。拾わない
 		f.set('q|1b2c3d4e-0000-4000-8000-000000000001', ' お車です ');
+		f.set('note', ' 記念日です ');
 		expect(answersFromForm(f, 'ja')).toEqual({
 			contact: { phone: '090-0000-1111' },
 			guest: { zip: null, address: null, birthdate: null, receipt_name: null },
 			questions: [{ id: '1b2c3d4e-0000-4000-8000-000000000001', answer: 'お車です' }],
 			arrival_time: '15:30',
+			note: '記念日です',
 			locale: 'ja'
 		});
 	});

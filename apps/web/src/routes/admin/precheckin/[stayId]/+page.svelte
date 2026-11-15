@@ -96,6 +96,10 @@
 			{:else}
 				<p class="mt-3 border-t border-stone-100 pt-3 text-stone-500">宿からの質問への回答はありません。</p>
 			{/if}
+			<dl class="mt-3 border-t border-stone-100 pt-3">
+				<dt class="text-xs text-stone-500">備考（お客様の自由入力）</dt>
+				<dd class="whitespace-pre-wrap {a.note ? 'font-medium' : 'text-stone-400'}">{a.note || 'なし'}</dd>
+			</dl>
 			{#if a.companions != null || a.allergies || a.requests}
 				<!-- 2026-11-14 より前のフォームの回答（同伴人数・アレルギー・ご要望） -->
 				<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1.5 border-t border-stone-100 pt-3 text-stone-600">

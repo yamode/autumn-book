@@ -254,6 +254,15 @@
 		</section>
 	{/if}
 
+	<!-- 備考（任意・自由入力）。宿からの質問のあと（2026-11-15） -->
+	<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
+		<label class="block">
+			<span class="font-semibold">{m.ci_section_note()}</span>
+			<span class="ml-1 text-xs text-stone-500">{m.ci_optional()}</span>
+			<textarea name="note" rows="3" maxlength="1000" disabled={ro} placeholder={m.ci_note_placeholder()} class={inputCls}>{a.note ?? ''}</textarea>
+		</label>
+	</section>
+
 	{#if errorText}
 		<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 ring-1 ring-red-200" role="alert">{errorText}</p>
 	{/if}

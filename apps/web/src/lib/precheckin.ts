@@ -29,6 +29,8 @@ export type PcAnswers = {
 	guest?: PcGuestInfo;
 	questions?: PcQuestionAnswer[];
 	arrival_time?: string | null;
+	/** お客様の備考（自由入力・任意・1000 字まで。2026-11-15） */
+	note?: string | null;
 	/** 旧フォームの同伴人数（2026-11-14 に入力欄を廃止。過去の回答の表示用に型だけ残す） */
 	companions?: number | null;
 	allergies?: string | null;
@@ -359,6 +361,7 @@ export function answersFromForm(form: FormData, locale: string): PcAnswers & { c
 		},
 		questions,
 		arrival_time: t('arrival_time') || null,
+		note: t('note').slice(0, 1000) || null,
 		locale
 	};
 }
