@@ -67,26 +67,27 @@ export type PrecheckinSmsInput = {
 	url: string;
 	/** 施設の電話（送信元番号には折り返しできないため、本文に入れる） */
 	phone: string | null;
-	/** 送る時刻（「本日」か「当日」かの判定。既定は今） */
+	/** 送る時刻（今の文面では使わない。前は「本日」か「当日」かの判定に使っていた） */
 	now?: Date;
 };
 
 /**
  * 事前チェックインの SMS を 2 通に分けて作る（2026-11-14 ユーザー指示）。
- *   1 通目（message）: 案内だけで完結する日本語の文。1 通（70 字）に収める
+ *   1 通目（message）: 案内だけで完結する日本語の文。1 通（70 字）に収める（2026-11-15 に文面を変更・ユーザー指示）
  *     【山人-yamado-】
- *     事前チェックインのご案内です。本日はどうぞお気をつけてお越しくださいませ。
+ *     ＜事前チェックインのご案内＞
+ *     ご本人確認、食事時間、貸切風呂のお申込みが可能です。
+ *     お手続きは下記URLから。
+ *     ※ 山人-yamado- で 68 字（改行も 1 字と数える）。上限の 70 字まで残り 2 字なので、文面を変えるときは数え直す。
+ *       施設名が長い施設（70 字を超える）は、分かれて届く。
  *   2 通目（link）: URL と問い合わせの電話。英数字だけにして 1 通（160 字）に収める（日本語を混ぜると 70 字になり 2 通に割れる）
  *     https://book.yamado.app/ci/<token>
  *     （空白の行。URL と電話番号がくっついて見えないように・2026-11-15）
  *     TEL 0197-82-2222
- * 当日の送信（当日 9:00 の自動送信）は「本日は」。前日以前に手で送るときは「当日は」。
+ * 文面に日付の言葉（本日・当日）は入れないので、いつ送っても同じ文面（checkIn・now は使わない。呼び出し側のために受け取るだけ）。
  */
 export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string; link: string } {
-	const ci = String(i.checkIn ?? '').slice(0, 10);
-	const today = new Date((i.now ?? new Date()).getTime() + 9 * 3600_000).toISOString().slice(0, 10);
-	const day = !/^\d{4}-\d{2}-\d{2}$/.test(ci) || ci <= today ? '本日' : '当日';
-	const message = `【${i.facilityName.trim()}】\n事前チェックインのご案内です。${day}はどうぞお気をつけてお越しくださいませ。`;
+	const message = `【${i.facilityName.trim()}】\n＜事前チェックインのご案内＞\nご本人確認、食事時間、貸切風呂のお申込みが可能です。\nお手続きは下記URLから。`;
 	const tel = (i.phone ?? '').trim();
 	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel}` : ''}`;
 	return { message, link };

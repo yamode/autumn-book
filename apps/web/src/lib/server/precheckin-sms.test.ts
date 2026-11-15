@@ -130,7 +130,7 @@ describe('cron 自動送信', () => {
 				expect(u).toBe('https://example1.ibapi.nttcpaas.com/sms/3/messages');
 				return JSON.parse(String(init.body)).messages[0].content.text as string;
 			};
-			expect(textOf(0)).toContain('事前チェックインのご案内です。');
+			expect(textOf(0)).toContain('＜事前チェックインのご案内＞');
 			expect(textOf(0)).not.toContain('http');
 			expect(textOf(1)).toContain(`https://book.example/ci/${'T'.repeat(43)}`);
 			expect(textOf(1)).toContain('TEL 0197-82-2222'); // DB に電話が無いときはサイトの施設情報の電話
