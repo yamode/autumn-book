@@ -19,6 +19,9 @@ const GRANT_SECONDS = 30 * 86400;
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 export const privateHeaders = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-robots-tag': 'noindex' };
+// Browser form navigations under no-referrer also send Origin: null.
+// Keep same-origin POSTs verifiable and omit the Referer on the external OAuth redirect.
+export const privatePageHeaders = { ...privateHeaders, 'referrer-policy': 'same-origin' };
 
 export function bookingMcpEnabled(url: URL): boolean {
 	return MEMBER_SUPABASE && env.BOOKING_MCP_ORIGIN === url.origin;

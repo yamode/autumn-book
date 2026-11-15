@@ -1,10 +1,10 @@
 import { error, redirect } from '@sveltejs/kit';
-import { activeBookMember, authorizationRequest, bookingMcpEnabled, CONNECTOR_ICON_PATH, issueAuthorizationCode, privateHeaders } from '$lib/server/booking-mcp/oauth';
+import { activeBookMember, authorizationRequest, bookingMcpEnabled, CONNECTOR_ICON_PATH, issueAuthorizationCode, privatePageHeaders } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 async function consent(event: RequestEvent) {
 	const { url, locals } = event;
-	event.setHeaders({ ...privateHeaders, 'content-security-policy': "frame-ancestors 'none'" });
+	event.setHeaders({ ...privatePageHeaders, 'content-security-policy': "frame-ancestors 'none'" });
 	if (!bookingMcpEnabled(url)) error(404);
 	const authorization = authorizationRequest(url);
 	if (!authorization) error(400, 'Claudeの接続要求を確認できません。Claudeからやり直してください。');
