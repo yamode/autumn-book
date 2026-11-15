@@ -18,6 +18,10 @@ describe('読み込み中の画面', () => {
 		expect(html).toContain('name="referrer" content="no-referrer"');
 		expect(html).not.toMatch(/(src|href)="https?:/);
 	});
+	it('地の色は /ci とそろえる', () => {
+		const html = precheckinSplashHtml('/ci/A');
+		expect(html).toContain('body{background:#ebedf2;');
+	});
 	it('言語ごとの文言', () => {
 		expect(precheckinSplashHtml('/ci/A', 'ja')).toContain('ご案内を準備しています');
 		expect(precheckinSplashHtml('/en/ci/A', 'en')).toContain('Preparing your page');

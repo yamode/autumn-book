@@ -1,6 +1,7 @@
 import { pcMealMinutes, pcQuestions, resolvePrecheckin } from '$lib/server/precheckin';
 import { DEFAULT_MEAL_MINUTES } from '$lib/precheckin-p3';
 import { DEMO_PRECHECKIN_CODE, type PcError, type PcQuestion } from '$lib/precheckin';
+import { PRECHECKIN_ENTRANCE_COOKIE } from '$lib/precheckin-splash';
 import type { LayoutServerLoad } from './$types';
 
 // 事前チェックイン（/ci）の共通: Cookie（ab_ci）のトークンでフォームの中身を引く。
@@ -11,16 +12,19 @@ const ERRORS: PcError[] = ['invalid_token', 'expired', 'cancelled', 'locked', 'n
 
 export const load: LayoutServerLoad = async (event) => {
 	const r = await resolvePrecheckin(event);
+	// リンクから入った直後の 1 回だけ、ゆっくり現れる演出を出す（印は読んだら消す。手順の行き来・再読み込みでは出さない）
+	const entrance = event.cookies.get(PRECHECKIN_ENTRANCE_COOKIE) === '1';
+	if (entrance) event.cookies.delete(PRECHECKIN_ENTRANCE_COOKIE, { path: '/' });
 	if ('ctx' in r) {
 		const [mealMinutes, questions] = await Promise.all([
 			pcMealMinutes(r.ctx.facility.id).catch(() => DEFAULT_MEAL_MINUTES),
 			// 宿からの質問（施設ごと・回答は必須）。① に出す
 			pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => [] as PcQuestion[])
 		]);
-		return { ctx: r.ctx, ciError: null as PcError | null, mealMinutes, questions };
+		return { ctx: r.ctx, ciError: null as PcError | null, mealMinutes, questions, entrance };
 	}
 	// /ci/<token> から戻ったときは理由が ?e= に載っている（Cookie は無い）
 	const e = event.url.searchParams.get('e') as PcError | null;
 	const ciError: PcError = r.error === 'none' && e && ERRORS.includes(e) ? e : r.error;
-	return { ctx: null, ciError, mealMinutes: DEFAULT_MEAL_MINUTES, questions: [] as PcQuestion[] };
+	return { ctx: null, ciError, mealMinutes: DEFAULT_MEAL_MINUTES, questions: [] as PcQuestion[], entrance: false };
 };

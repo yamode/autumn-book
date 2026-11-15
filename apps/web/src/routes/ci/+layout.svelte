@@ -33,10 +33,10 @@
 	<title>{m.ci_title()}{data.ctx ? ` | ${data.ctx.facility.name}` : ''}</title>
 </svelte:head>
 
-<div class="min-h-screen bg-ci text-stone-900">
+<div class="min-h-screen bg-ci text-stone-900" class:ci-enter={data.entrance}>
 	<div class="mx-auto flex min-h-screen max-w-md flex-col bg-ci shadow-sm">
 		<header class="sticky top-0 z-30 flex h-10 items-center bg-black pl-5 pr-3 text-white">
-			<span class="flex-1 truncate text-[15px]">{data.ctx?.facility.name ?? m.ci_title()}</span>
+			<span class="ci-in-name flex-1 truncate text-[15px]">{data.ctx?.facility.name ?? m.ci_title()}</span>
 			<LocaleSwitcher dark />
 		</header>
 
@@ -61,9 +61,12 @@
 						</li>
 					{/each}
 				</ol>
-				<div class="mt-4">
-					{@render children()}
-				</div>
+				<!-- 手順を移ったとき（①→②→③）は、短くふわっと出す。入力の手を止めない長さ（0.35 秒） -->
+				{#key path}
+					<div class="ci-stage mt-4">
+						{@render children()}
+					</div>
+				{/key}
 			{:else}
 				<div class="mt-6 rounded-2xl bg-white p-5 text-sm shadow-sm">
 					<h1 class="text-base font-semibold">{m.ci_title()}</h1>
@@ -76,6 +79,80 @@
 </div>
 
 <style>
+	/*
+	 * 演出（2026-11-15・ユーザー指示「旅の気分が上がる、ゆったりした感じに」）。
+	 * 1) リンクから入った直後の 1 回（.ci-enter）: 施設名 → 題 → 手順 → 中身 の順に、下から少し浮かび上がりながら
+	 *    1 つずつ現れる（1 つ 1.5 秒・0.25 秒ずつずらす・全部が出そろうまで約 3 秒。先に出るものは 1 秒ほどで読める）。
+	 * 2) 手順を移ったとき（.ci-stage）: 短いフェードだけ（0.35 秒）。
+	 * 端末で「動きを減らす」にしている方には、どちらも出さない。
+	 */
+	@keyframes ci-rise {
+		from {
+			opacity: 0;
+			transform: translateY(14px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+	@keyframes ci-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	.ci-stage {
+		animation: ci-fade 0.35s ease both;
+	}
+	.ci-enter .ci-stage {
+		animation: none;
+	}
+	.ci-enter .ci-in-name {
+		animation: ci-fade 1.4s ease 0.15s both;
+	}
+	.ci-enter :global(main > h1),
+	.ci-enter :global(main > ol),
+	.ci-enter :global(main > p),
+	.ci-enter .ci-stage > :global(section),
+	.ci-enter .ci-stage > :global(form > *) {
+		animation: ci-rise 1.5s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+	}
+	.ci-enter :global(main > p) {
+		animation-delay: 0.2s;
+	}
+	.ci-enter :global(main > h1) {
+		animation-delay: 0.25s;
+	}
+	.ci-enter :global(main > ol) {
+		animation-delay: 0.5s;
+	}
+	.ci-enter .ci-stage > :global(section) {
+		animation-delay: 0.75s;
+	}
+	.ci-enter .ci-stage > :global(form > *) {
+		animation-delay: 1.4s;
+	}
+	.ci-enter .ci-stage > :global(form > *:nth-child(1)) {
+		animation-delay: 1s;
+	}
+	.ci-enter .ci-stage > :global(form > *:nth-child(2)) {
+		animation-delay: 1.25s;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.ci-stage,
+		.ci-enter .ci-in-name,
+		.ci-enter :global(main > h1),
+		.ci-enter :global(main > ol),
+		.ci-enter :global(main > p),
+		.ci-enter .ci-stage > :global(section),
+		.ci-enter .ci-stage > :global(form > *) {
+			animation: none;
+		}
+	}
+
 	/* 客室案内（/r）と同じ地色 */
 	:global(.bg-ci) {
 		background-color: #ebedf2;

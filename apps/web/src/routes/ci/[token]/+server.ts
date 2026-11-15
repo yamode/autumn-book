@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-import { looksLikePrecheckinToken, precheckinSplashHtml, type SplashLocale } from '$lib/precheckin-splash';
+import { looksLikePrecheckinToken, precheckinSplashHtml, PRECHECKIN_ENTRANCE_COOKIE, type SplashLocale } from '$lib/precheckin-splash';
 import { resolvePrecheckin, setPrecheckinCookie } from '$lib/server/precheckin';
 import type { RequestHandler } from './$types';
 
@@ -31,6 +31,8 @@ export const GET: RequestHandler = async (event) => {
 	const r = await resolvePrecheckin(event, event.params.token);
 	if ('ctx' in r) {
 		setPrecheckinCookie(event.cookies, r.token, r.ctx.expiresAt);
+		// 「いまリンクから入った」印（20 秒だけ）。/ci の最初の表示で、ゆっくり現れる演出を出すのに使う（+layout.server.ts が読んで消す）
+		event.cookies.set(PRECHECKIN_ENTRANCE_COOKIE, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 20 });
 		redirect(302, localizeHref('/ci'));
 	}
 	redirect(302, localizeHref(`/ci?e=${r.error}`));

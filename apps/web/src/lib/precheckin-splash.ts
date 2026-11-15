@@ -14,6 +14,9 @@
 
 import { SPLASH_LOGO_DATA } from './precheckin-splash-logos';
 
+/** 「いまリンクから入った」印の Cookie。/ci の最初の表示だけ、ゆっくり現れる演出を出す（2026-11-15） */
+export const PRECHECKIN_ENTRANCE_COOKIE = 'ab_ci_in';
+
 /** 開き直す先（同じパスに ?go=1）。パスは呼び出し側が検証済みのものを渡す */
 export function splashNextUrl(pathname: string): string {
 	return `${pathname}?go=1`;
@@ -80,7 +83,7 @@ export function precheckinSplashHtml(pathname: string, locale: SplashLocale = 'j
 <style>
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:#f1f1f3;color:#1c1917;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;-webkit-font-smoothing:antialiased}
+body{background:#ebedf2;color:#1c1917;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;-webkit-font-smoothing:antialiased}
 .bar{height:40px;background:#000}
 .wrap{min-height:calc(100% - 40px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:24px 24px 96px}
 .mark{position:relative;width:76px;height:76px}
