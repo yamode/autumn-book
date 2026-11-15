@@ -55,7 +55,7 @@ export const POST: RequestHandler = async ({ request, url }) => {
 				nights: z.number().int().min(1).max(7),
 				adults: z.number().int().min(1).max(6)
 			},
-			annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+			annotations: { title: '山人の空室・料金を検索', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 		}, async (query) => {
 			try {
 				const result = await searchBookingOffers(url.origin, query, access.viewer);
