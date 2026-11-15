@@ -117,9 +117,9 @@ app.ontoolresult = (result) => {
 };
 
 form.onchange = updateFields;
-form.onsubmit = async (event) => {
-	event.preventDefault();
-	if (!event.isTrusted || !review || sending || !field('agreed').checked) return;
+form.onsubmit = (event) => event.preventDefault();
+confirm.onclick = async (event) => {
+	if (!event.isTrusted || !review || sending || !form.reportValidity()) return;
 	sending = true;
 	confirm.disabled = true;
 	node('book').hidden = true;
