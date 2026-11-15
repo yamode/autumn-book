@@ -9,7 +9,10 @@
 //   （yamado / oga）で選ぶ。これはロゴを選ぶだけの目印で、予約の確認には使わない（違う値でも害が無い）。
 //   ?f が無い・知らない値のリンク（前に送ったもの）は、ロゴの代わりに細い輪を回す。
 // ・JavaScript が無い環境は <noscript> の自動更新とリンクで進める。
+// ・次の画面へ移るのは、この画面を 1 回描いてから（描く前に移り始めると、真っ白のまま待つ端末がある）。
 // ・見た目は /ci の画面（黒いヘッダー 40px・淡いグレーの地）にそろえ、切り替わりが目立たないようにする。
+
+import { SPLASH_LOGO_DATA } from './precheckin-splash-logos';
 
 /** 開き直す先（同じパスに ?go=1）。パスは呼び出し側が検証済みのものを渡す */
 export function splashNextUrl(pathname: string): string {
@@ -22,12 +25,16 @@ const esc = (s: string) =>
 /**
  * 施設のロゴ。key は core.facilities.slug。
  * 素材は配付用の事業ロゴ（Dropbox「00_YAMADO ALL/05_グラフィックデザイン/20240709_ロゴ/20240317_山人ロゴ_2024/配付用」の
- * 事業ロゴ_yamado.png / 事業ロゴ_oga.png・2026-11-15 指示）。白地を透明にし、余白を切って横 640px にしたものを
- * static/site-assets/facility/splash-<slug>.png に置いてある。
+ * 事業ロゴ_yamado.png / 事業ロゴ_oga.png・2026-11-15 指示）。白地を透明にし、余白を切ったもの。
+ *
+ * 画像は HTML の中に直接埋め込む（data URI・1 施設 約 9KB。$lib/precheckin-splash-logos）。
+ * 【なぜ】別のファイルとして読みに行かせると、iPhone（Safari）ではロゴが出ない（2026-11-15 実機で確認）。
+ *   この画面は出た直後に次の画面へ移り始める。Safari は移動が始まった時点で読み込み途中の画像を止めるので、
+ *   画像が届く前に打ち切られる。HTML に入っていれば、届いた時点でそのまま描ける。
  */
 const SPLASH_LOGOS: Record<string, { src: string; w: number; h: number; alt: string }> = {
-	yamado: { src: '/site-assets/facility/splash-yamado.png', w: 640, h: 336, alt: '山人-yamado-' },
-	oga: { src: '/site-assets/facility/splash-oga.png', w: 640, h: 335, alt: '山人-oga-' }
+	yamado: { src: SPLASH_LOGO_DATA.yamado.uri, w: SPLASH_LOGO_DATA.yamado.w, h: SPLASH_LOGO_DATA.yamado.h, alt: '山人-yamado-' },
+	oga: { src: SPLASH_LOGO_DATA.oga.uri, w: SPLASH_LOGO_DATA.oga.w, h: SPLASH_LOGO_DATA.oga.h, alt: '山人-oga-' }
 };
 /** ?f= の値からロゴを選ぶ。知らない値は null（輪を出す） */
 export function splashLogo(f: string | null | undefined) {
@@ -110,7 +117,7 @@ ${mark}
 <p class="lead fade">${esc(t.lead)}<i aria-hidden="true"></i></p>
 <p class="late"><a href="${next}" rel="nofollow">${esc(t.link)}</a></p>
 </main>
-<script>location.replace(${JSON.stringify(splashNextUrl(pathname)).replace(/</g, '\\u003c')});</script>
+<script>(function(){var u=${JSON.stringify(splashNextUrl(pathname)).replace(/</g, '\\u003c')},d=0,go=function(){if(!d){d=1;location.replace(u)}},r=window.requestAnimationFrame||function(f){setTimeout(f,16)};r(function(){r(go)});setTimeout(go,300)})();</script>
 </body>
 </html>`;
 }

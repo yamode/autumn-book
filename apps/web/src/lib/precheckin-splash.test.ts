@@ -6,7 +6,8 @@ describe('読み込み中の画面', () => {
 	it('同じパスに ?go=1 を付けて開き直す', () => {
 		expect(splashNextUrl('/ci/XJX7E9A1M2R9H7YW')).toBe('/ci/XJX7E9A1M2R9H7YW?go=1');
 		const html = precheckinSplashHtml('/ci/XJX7E9A1M2R9H7YW');
-		expect(html).toContain('location.replace("/ci/XJX7E9A1M2R9H7YW?go=1")');
+		expect(html).toContain('u="/ci/XJX7E9A1M2R9H7YW?go=1"');
+		expect(html).toContain('location.replace(u)');
 		// JavaScript が無くても進める
 		expect(html).toContain('<noscript><meta http-equiv="refresh" content="0;url=/ci/XJX7E9A1M2R9H7YW?go=1" /></noscript>');
 		expect(html).toContain('href="/ci/XJX7E9A1M2R9H7YW?go=1"');
@@ -31,9 +32,11 @@ describe('読み込み中の画面', () => {
 	});
 	it('?f= の施設のロゴを中央に出す。知らない値・無いときは輪', () => {
 		const y = precheckinSplashHtml('/ci/XJX7E9A1M2R9H7YW', 'ja', 'yamado');
-		expect(y).toContain('src="/site-assets/facility/splash-yamado.png"');
+		// 画像は HTML に直接埋め込む（別に読みに行かせると Safari で出ない）
+		expect(y).toContain('class="logo fade" src="data:image/png;base64,');
 		expect(y).not.toContain('class="mark fade"');
-		expect(precheckinSplashHtml('/ci/A', 'ja', 'oga')).toContain('splash-oga.png');
+		expect(precheckinSplashHtml('/ci/A', 'ja', 'oga')).toContain('alt="山人-oga-"');
+		expect(y).not.toMatch(/src="\//);
 		for (const f of [null, undefined, '', 'constructor', '"><img src=x>']) {
 			const h = precheckinSplashHtml('/ci/A', 'ja', f);
 			expect(h).toContain('class="mark fade"');
