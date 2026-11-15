@@ -34,10 +34,13 @@ async function facilityOffers(origin: string, slug: FacilitySlug, query: Booking
 	const memberOffers = await Promise.all(memberPlans.map((plan) => sbPlanOffers(facility.id, checkin, nights, adults, plan.id)));
 	const plans = new Map([...openPlans, ...memberPlans].filter((plan) => listPlanFor(plan.access, viewer)).map((plan) => [plan.id, plan]));
 	const roomTypes = new Map(rooms.map((room) => [room.id, room]));
+	const remainingByRoomType = new Map<string, number>();
 	const available = [...offers, ...memberOffers.flat()].flatMap((offer) => {
 		const plan = plans.get(offer.ratePlanId);
 		const room = roomTypes.get(offer.roomTypeId);
 		if (!plan || !room || offer.remaining < 1) return [];
+		// Different plans for the same room type draw from the same inventory.
+		remainingByRoomType.set(room.id, Math.max(remainingByRoomType.get(room.id) ?? 0, offer.remaining));
 
 		const detail = new URL(`/yamado/${slug}/plans/${encodeURIComponent(plan.slug || plan.id)}`, origin);
 		detail.search = new URLSearchParams({ checkin, nights: String(nights), adults: String(adults), room: room.slug, utm_source: 'claude', utm_medium: 'ai' }).toString();
@@ -52,7 +55,8 @@ async function facilityOffers(origin: string, slug: FacilitySlug, query: Booking
 		}];
 	});
 	available.sort((a, b) => a.accommodationEstimateJpy - b.accommodationEstimateJpy);
-	return { facility: slug, name: facility.name, availableCount: available.length, offers: available.slice(0, 8) };
+	const availableRoomCount = [...remainingByRoomType.values()].reduce((sum, remaining) => sum + remaining, 0);
+	return { facility: slug, name: facility.name, availableRoomCount, offers: available.slice(0, 8) };
 }
 
 export async function searchBookingOffers(origin: string, query: BookingSearch, viewer: PlanViewer) {
@@ -63,6 +67,6 @@ export async function searchBookingOffers(origin: string, query: BookingSearch, 
 		adults: query.adults,
 		rooms: 1,
 		facilities: await Promise.all(facilities.map((slug) => facilityOffers(origin, slug, query, viewer))),
-		note: '表示は指定人数・全泊分の宿泊料金の見積もりです。空室・金額は変動します。入湯税、追加料金、割引、取消条件、最終金額は山人Bookでご確認ください。予約や仮押さえは行っていません。'
+		note: 'availableRoomCount は指定条件で予約可能な残室数です。offers は料金順のプラン候補（最大8件）で、同じ客室タイプが複数含まれます。料金は指定人数・全泊分の宿泊料金の見積もりです。空室・金額は変動します。入湯税、追加料金、割引、取消条件、最終金額は山人Bookでご確認ください。予約や仮押さえは行っていません。'
 	};
 }

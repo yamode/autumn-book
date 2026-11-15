@@ -44,11 +44,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
 			version: APP_VERSION,
 			icons: [{ src: url.origin + CONNECTOR_ICON_PATH, mimeType: 'image/png', sizes: ['512x512'] }]
 		}, {
-			instructions: '西和賀・男鹿のYAMADO公式予約。空室と見積もりを検索し、bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。'
+			instructions: '西和賀・男鹿のYAMADO公式予約。空室数は availableRoomCount を「室」で表示し、プラン候補の数とは区別してください。bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。'
 		});
 		server.registerTool('search_stays', {
 			title: '山人の空室・料金を検索',
-			description: '指定するチェックイン日・泊数・大人人数で、山人の1室の空室と全泊分の宿泊料金の見積もりを取得します。条件を引き継いだ公式予約のリンクを返します。対象は大人のみです。',
+			description: 'チェックイン日・泊数・大人人数を指定して各施設の残室数（availableRoomCount）、1室の全泊分の宿泊料金と公式予約リンクを取得します。プラン候補数と残室数は異なります。対象は大人のみです。',
 			inputSchema: {
 				facility: z.enum([...STAY_FACILITIES, 'both']).describe('nishiwaga は岩手県西和賀、oga は秋田県男鹿、both は両施設'),
 				checkin: z.string().length(10).refine(validCheckin, '日本時間の今日から366日以内の実在する日付（YYYY-MM-DD）を指定してください'),
