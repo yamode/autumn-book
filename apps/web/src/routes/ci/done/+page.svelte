@@ -1,6 +1,7 @@
 <script lang="ts">
 	// ④ 完了。選んだ食事の時間と、③ で取った貸切風呂の予約をまとめて出し、利用案内（客室案内 /r）へ案内する。
 	// 利用案内のリンクは /ci/go を通す: 回答済みなら滞在トークンを Cookie（ab_stay）に入れてから移るので、6 桁コードを入れずに開ける。
+	// /ci/go は +server.ts だけの入口（ページが無い）なので、data-sveltekit-reload でふつうの遷移にする。付けないと画面内の遷移になって 404 になる（2026-11-15）。
 	// 貸切風呂を取ってあれば「予約する」は出さない（③ と重複するため）。取っていなければ ③ へ戻る小さなリンクだけ（2026-11-14）。
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -61,6 +62,6 @@
 	{/if}
 </section>
 
-<a href={`${localizeHref('/ci/go')}?to=inroom`} class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
+<a href={`${localizeHref('/ci/go')}?to=inroom`} data-sveltekit-reload class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
 
 <p class="mt-4 text-center text-xs text-stone-500">{slashDate(ctx.checkIn)} · {ctx.facility.name}</p>
