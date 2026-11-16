@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { bookingMcpEnabled, hasBookingAccess, PILOT_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
+import { bookingMcpEnabled, hasBookingAccess, PILOT_CLIENT_ID, RESERVATION_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 function memberId({ locals, url, setHeaders }: RequestEvent) {
@@ -11,8 +11,10 @@ function memberId({ locals, url, setHeaders }: RequestEvent) {
 
 export const load: PageServerLoad = async (event) => {
 	const userId = memberId(event);
-	const [connected, pilotConnected] = await Promise.all([hasBookingAccess(userId), hasBookingAccess(userId, PILOT_CLIENT_ID)]);
-	return { connected, pilotConnected };
+	const [connected, reservationConnected, pilotConnected] = await Promise.all([
+		hasBookingAccess(userId), hasBookingAccess(userId, RESERVATION_CLIENT_ID), hasBookingAccess(userId, PILOT_CLIENT_ID)
+	]);
+	return { connected, reservationConnected, pilotConnected };
 };
 
 export const actions: Actions = {
@@ -23,6 +25,10 @@ export const actions: Actions = {
 	},
 	disconnectPilot: async (event) => {
 		await revokeBookingAccess(memberId(event), PILOT_CLIENT_ID);
+		redirect(303, '/account/ai-connections');
+	},
+	disconnectReservations: async (event) => {
+		await revokeBookingAccess(memberId(event), RESERVATION_CLIENT_ID);
 		redirect(303, '/account/ai-connections');
 	}
 };

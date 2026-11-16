@@ -20,8 +20,8 @@ async function consent(event: RequestEvent) {
 }
 
 export const load: PageServerLoad = async (event) => {
-	const { pilot } = await consent(event);
-	return { icon: CONNECTOR_ICON_PATH, pilot };
+	const { pilot, onsite } = await consent(event);
+	return { icon: CONNECTOR_ICON_PATH, pilot, onsite };
 };
 
 export const actions: Actions = {

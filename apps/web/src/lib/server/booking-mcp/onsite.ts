@@ -104,7 +104,8 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 	}, async (input) => {
 		try {
 			const { data: row, error: lookupError } = await db.from('booking_mcp_reviews')
-				.select('snapshot, adults, booking_code').eq('id', input.reviewId).eq('user_id', access.userId).maybeSingle();
+				.select('snapshot, adults, booking_code').eq('id', input.reviewId).eq('user_id', access.userId)
+				.eq('client_id', access.clientId).maybeSingle();
 			if (lookupError) throw lookupError;
 			if (!row) return result('closed', '確認カードを開き直してください。');
 

@@ -7,6 +7,7 @@ import { safeNext } from '$lib/safe-next';
 
 export const MCP_PATH = '/mcp';
 export const PILOT_MCP_PATH = '/mcp/pilot';
+export const RESERVATION_MCP_PATH = '/mcp/reservations';
 export const OAUTH_PATH = '/booking-mcp/oauth';
 export const AUTHORIZE_PATH = `${OAUTH_PATH}/authorize`;
 export const TOKEN_PATH = `${OAUTH_PATH}/token`;
@@ -15,7 +16,8 @@ export const RESOURCE_METADATA_PATH = '/.well-known/oauth-protected-resource/mcp
 export const SCOPE = 'booking:read';
 export const CLIENT_ID = 'autumn-book-claude';
 export const PILOT_CLIENT_ID = 'autumn-book-claude-pilot';
-export const PILOT_SCOPE = 'booking:onsite';
+export const RESERVATION_CLIENT_ID = 'autumn-book-claude-reservations';
+export const ONSITE_SCOPE = 'booking:onsite';
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const ACCESS_SECONDS = 3600;
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
@@ -33,6 +35,19 @@ export function bookingPilotEnabled(url: URL): boolean {
 	return bookingMcpEnabled(url) && env.BOOKING_MCP_ONSITE_PILOT === 'true';
 }
 
+export function bookingReservationsEnabled(url: URL): boolean {
+	return bookingMcpEnabled(url) && env.BOOKING_MCP_ONSITE_RESERVATIONS === 'true';
+}
+
+export function bookingResource(url: URL) {
+	if (url.pathname === MCP_PATH && bookingMcpEnabled(url)) return { path: MCP_PATH, id: CLIENT_ID, scope: SCOPE };
+	if (url.pathname === PILOT_MCP_PATH && bookingPilotEnabled(url)) return { path: PILOT_MCP_PATH, id: PILOT_CLIENT_ID, scope: ONSITE_SCOPE };
+	if (url.pathname === RESERVATION_MCP_PATH && bookingReservationsEnabled(url)) {
+		return { path: RESERVATION_MCP_PATH, id: RESERVATION_CLIENT_ID, scope: ONSITE_SCOPE };
+	}
+	return null;
+}
+
 /** Only a valid YAMADO OAuth request can resume consent after member registration. */
 export function bookingConsentNext(url: URL): string | null {
 	const next = safeNext(url.searchParams.get('next'), '/');
@@ -44,7 +59,8 @@ export function bookingConsentNext(url: URL): string | null {
 export function isBookingMcpMachineUrl(url: URL): boolean {
 	return bookingMcpEnabled(url) && (
 		[MCP_PATH, TOKEN_PATH, RESOURCE_METADATA_PATH, `/.well-known/oauth-authorization-server${OAUTH_PATH}`].includes(url.pathname) ||
-		(bookingPilotEnabled(url) && [PILOT_MCP_PATH, RESOURCE_METADATA_PATH + '/pilot'].includes(url.pathname))
+		(bookingPilotEnabled(url) && [PILOT_MCP_PATH, RESOURCE_METADATA_PATH + '/pilot'].includes(url.pathname)) ||
+		(bookingReservationsEnabled(url) && [RESERVATION_MCP_PATH, RESOURCE_METADATA_PATH + '/reservations'].includes(url.pathname))
 	);
 }
 
@@ -83,13 +99,14 @@ export function authorizationRequest(url: URL) {
 		p.get('response_type') !== 'code' || p.get('code_challenge_method') !== 'S256' ||
 		!challenge || !TOKEN.test(challenge) || (state?.length ?? 0) > 1024 ||
 		!validResource(p, url, connection.path) || (p.has('scope') && p.get('scope') !== connection.scope)) return null;
-	return { challenge, state, callback: new URL(CALLBACK), clientId: connection.id };
+	return { challenge, state, callback: new URL(CALLBACK), clientId: connection.id, onsite: connection.scope === ONSITE_SCOPE };
 }
 
 function oauthConnection(params: URLSearchParams, url: URL) {
 	const id = params.get('client_id');
-	if (id === CLIENT_ID) return { id, path: MCP_PATH, scope: SCOPE };
-	if (id === PILOT_CLIENT_ID && bookingPilotEnabled(url)) return { id, path: PILOT_MCP_PATH, scope: PILOT_SCOPE };
+	if (id === CLIENT_ID) return bookingResource(new URL(MCP_PATH, url.origin));
+	if (id === PILOT_CLIENT_ID) return bookingResource(new URL(PILOT_MCP_PATH, url.origin));
+	if (id === RESERVATION_CLIENT_ID) return bookingResource(new URL(RESERVATION_MCP_PATH, url.origin));
 	return null;
 }
 
@@ -101,7 +118,7 @@ export async function issueAuthorizationCode(userId: string, challenge: string, 
 	const code = newToken();
 	const { error } = await client().from('booking_mcp_grants').upsert({
 		user_id: userId, client_id: clientId,
-		...(clientId === PILOT_CLIENT_ID ? { booking_generation: crypto.randomUUID() } : {}),
+		...(clientId === PILOT_CLIENT_ID || clientId === RESERVATION_CLIENT_ID ? { booking_generation: crypto.randomUUID() } : {}),
 		authorization_code_hash: await hash(code), code_challenge: challenge, code_expires_at: after(300),
 		access_token_hash: null, access_expires_at: null, refresh_token_hash: null, grant_expires_at: 'infinity'
 	});
@@ -176,7 +193,7 @@ export async function bookingAccess(request: Request, clientId = CLIENT_ID) {
 	if (error) throw error;
 	if (!data) return null;
 	const viewer = await activeBookMember(data.user_id);
-	return viewer ? { userId: data.user_id as string, viewer, accessHash } : null;
+	return viewer ? { userId: data.user_id as string, viewer, accessHash, clientId } : null;
 }
 
 export async function revokeBookingAccess(userId: string, clientId = CLIENT_ID): Promise<void> {
