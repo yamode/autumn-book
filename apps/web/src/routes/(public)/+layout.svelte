@@ -8,7 +8,7 @@
 	import { isPlansListPath } from '$lib/booking-nav';
 	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
-	import { localizeHref } from '$lib/paraglide/runtime';
+	import { deLocalizeUrl, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, children } = $props();
@@ -96,7 +96,8 @@
 	});
 
 	onNavigate(({ from, to, type }) => {
-		if (!from || !to?.route.id?.startsWith('/(public)') || type === 'form' || from.url.pathname === to.url.pathname) return;
+		if (!from || !to?.route.id?.startsWith('/(public)') || type === 'form') return;
+		if (deLocalizeUrl(from.url).pathname === deLocalizeUrl(to.url).pathname) return;
 		contentFade?.cancel();
 		return () => {
 			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;

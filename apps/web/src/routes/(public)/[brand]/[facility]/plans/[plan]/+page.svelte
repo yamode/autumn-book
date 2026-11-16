@@ -3,6 +3,7 @@
 	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
 	import { navigating, page } from '$app/state';
+	import { deLocalizeUrl } from '$lib/paraglide/runtime';
 	import PlanPhotoGallery from '$lib/components/PlanPhotoGallery.svelte';
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
@@ -243,7 +244,9 @@
 	}
 	// 料金更新中は既存の表示を保ち、古い条件の送信を止める。
 	let loadingRooms = $derived(
-		!!navigating.to && navigating.to.url.pathname === page.url.pathname && navigating.to.url.search !== page.url.search
+		!!navigating.to
+			&& deLocalizeUrl(navigating.to.url).pathname === deLocalizeUrl(page.url).pathname
+			&& navigating.to.url.search !== page.url.search
 	);
 	$effect(() => {
 		const el = document.getElementById('rooms');
