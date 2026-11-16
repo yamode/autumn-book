@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { bookingMcpEnabled, hasBookingAccess, PILOT_CLIENT_ID, RESERVATION_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
+import { bookingMcpEnabled, hasBookingAccess, MUSE_CLIENT_ID, MUSE_PORTAL_CLIENT_ID, PILOT_CLIENT_ID, RESERVATION_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 function memberId({ locals, url, setHeaders }: RequestEvent) {
@@ -11,10 +11,11 @@ function memberId({ locals, url, setHeaders }: RequestEvent) {
 
 export const load: PageServerLoad = async (event) => {
 	const userId = memberId(event);
-	const [connected, reservationConnected, pilotConnected] = await Promise.all([
-		hasBookingAccess(userId), hasBookingAccess(userId, RESERVATION_CLIENT_ID), hasBookingAccess(userId, PILOT_CLIENT_ID)
+	const [connected, reservationConnected, pilotConnected, muse, musePortal] = await Promise.all([
+		hasBookingAccess(userId), hasBookingAccess(userId, RESERVATION_CLIENT_ID), hasBookingAccess(userId, PILOT_CLIENT_ID),
+		hasBookingAccess(userId, MUSE_CLIENT_ID), hasBookingAccess(userId, MUSE_PORTAL_CLIENT_ID)
 	]);
-	return { connected, reservationConnected, pilotConnected };
+	return { connected, reservationConnected, pilotConnected, museConnected: muse || musePortal };
 };
 
 export const actions: Actions = {
@@ -29,6 +30,11 @@ export const actions: Actions = {
 	},
 	disconnectReservations: async (event) => {
 		await revokeBookingAccess(memberId(event), RESERVATION_CLIENT_ID);
+		redirect(303, '/account/ai-connections');
+	},
+	disconnectMuse: async (event) => {
+		const userId = memberId(event);
+		await Promise.all([revokeBookingAccess(userId, MUSE_CLIENT_ID), revokeBookingAccess(userId, MUSE_PORTAL_CLIENT_ID)]);
 		redirect(303, '/account/ai-connections');
 	}
 };

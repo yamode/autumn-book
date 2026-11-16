@@ -34,6 +34,12 @@
 	</section>
 
 	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">Museのカスタムコネクター</h2>
+		<p>表示名は <strong>YAMADO</strong>、URLは <code>https://book.yamado.app/mcp/muse</code> です。OAuthクライアントIDは <code>autumn-book-muse</code>、シークレットは空欄です。Bookで検索のみ、または検索と現地払い予約の権限を選べます。</p>
+		<p>現地払いでは、Museが取得した見積もりから期限付きの確認画面を開き、Bookにログインしたご本人が確定します。Museに戻ると確定状態と予約番号を確認できます。事前カード決済は、日程・人数・客室を引き継いだ山人Bookの予約画面で行います。</p>
+	</section>
+
+	<section class="space-y-3">
 		<h2 class="text-lg font-semibold">連携の解除と問い合わせ</h2>
 		<p>連携は山人Bookの<a href="/account/ai-connections" class="underline">マイページ「AI連携」</a>から解除できます。</p>
 		<p>株式会社山人へのお問い合わせは <a href="mailto:info@yamado.co.jp" class="underline">info@yamado.co.jp</a> へご連絡ください。個人情報の取り扱いは<a href="/legal/privacy" class="underline">プライバシーポリシー</a>をご確認ください。</p>

@@ -9,7 +9,7 @@ import { resolveStandardAnswers } from '$lib/server/booking-questions';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { STAY_FACILITIES } from '$lib/server/stay-calendar';
 import { normalizeCancellationPolicy } from '$lib/server/supabase-data';
-import type { bookingAccess } from './oauth';
+import { isMuseClient, type bookingAccess } from './oauth';
 import { searchBookingOffers, validCheckin } from './search';
 import html from './onsite-card.html?raw';
 import script from 'virtual:yamado-booking-ui';
@@ -28,6 +28,40 @@ const review = z.object({
 });
 
 type Access = NonNullable<Awaited<ReturnType<typeof bookingAccess>>>;
+export const onsiteFields = {
+	onsiteMethod: z.enum(ONSITE_METHODS), arrival: z.string().max(40),
+	transport: z.string().max(40), transportOther: z.string().max(60), pickup: z.string().max(40),
+	male: z.string().max(1)
+};
+const onsiteInput = z.object(onsiteFields);
+
+export function cancellationTextFor(policy: unknown, checkin: string) {
+	const cancellation = normalizeCancellationPolicy(policy);
+	const rules = [...cancellation.rules].filter(({ rate }) => rate > 0).sort((a, b) => b.days_before - a.days_before)
+		.map(({ days_before, rate }) => `${days_before === 0 ? '当日' : `${days_before}日前から`}：宿泊料金の${Math.round(rate * 100)}％`);
+	return [cancelPolicyLabel(cancellation, checkin), ...rules, cancellation.note].filter(Boolean).join('\n');
+}
+
+export function onsiteAnswers(
+	snapshot: { fields: unknown; onsiteMethods: string[]; form: { ask_gender: boolean } },
+	adults: number, input: z.infer<typeof onsiteInput>
+) {
+	const fields = resolveStandardFields(snapshot.fields);
+	if (!snapshot.onsiteMethods.includes(input.onsiteMethod)) return { message: '現地でのお支払い方法を選び直してください。' };
+	if (input.arrival && !fields.arrival.choices.includes(input.arrival)) return { message: '到着予定時刻を選び直してください。' };
+	const form = new FormData();
+	form.set('transport', input.transport);
+	form.set('transport_other', input.transportOther);
+	form.set('pickup_time', input.pickup);
+	const standard = resolveStandardAnswers(form, fields);
+	if (!standard.ok) return { message: standard.message };
+	const genders = snapshot.form.ask_gender ? resolveRoomGenders([adults], (key) => key === 'male_0' ? input.male : null) : null;
+	if (genders && !genders.ok) return { message: '宿泊人数の内訳を選んでください。' };
+	return { answers: {
+		...genders?.rooms[0], onsitePayment: input.onsiteMethod, arrival: input.arrival, requests: standard.values,
+		notes: [ONSITE_METHOD_NOTE[input.onsiteMethod], answerLines(standard.values)].filter(Boolean).join(' ')
+	} };
+}
 
 function result(status: string, message: string, data: Record<string, unknown> = {}, meta?: Record<string, unknown>) {
 	return {
@@ -40,7 +74,8 @@ function result(status: string, message: string, data: Record<string, unknown> =
 export function registerOnsiteBooking(server: McpServer, origin: string, access: Access) {
 	const db = partnerServiceClient()?.schema('book');
 	if (!db) throw new Error('Booking MCP storage is unavailable');
-	server.registerResource('yamado-onsite-review', CARD_URI, { mimeType: CARD_MIME }, () => ({
+	const muse = isMuseClient(access.clientId);
+	if (!muse) server.registerResource('yamado-onsite-review', CARD_URI, { mimeType: CARD_MIME }, () => ({
 		contents: [{
 			uri: CARD_URI, mimeType: CARD_MIME,
 			text: html.replace('<!-- client -->', () => '<script>' + script.replace(/<\/script/gi, '<\\/script') + '</script>'),
@@ -56,7 +91,7 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 			nights: z.number().int().min(1).max(7), adults: z.number().int().min(1).max(6)
 		},
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-		_meta: { ui: { resourceUri: CARD_URI } }
+		...(muse ? {} : { _meta: { ui: { resourceUri: CARD_URI } } })
 	}, async ({ planId, roomId, ...query }) => {
 		try {
 			const search = await searchBookingOffers(origin, query, access.viewer, true);
@@ -73,14 +108,18 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 			const checked = review.safeParse(data);
 			if (!checked.success) return result('book_required', 'この条件での予約は山人Bookでお手続きください。', { bookingUrl });
 			const { id, expiresAt, contactName, email, policy, fields, form, ...details } = checked.data;
-			const cancellation = normalizeCancellationPolicy(policy);
-			const rules = [...cancellation.rules].filter(({ rate }) => rate > 0).sort((a, b) => b.days_before - a.days_before)
-				.map(({ days_before, rate }) => `${days_before === 0 ? '当日' : `${days_before}日前から`}：宿泊料金の${Math.round(rate * 100)}％`);
+			const cancellationText = cancellationTextFor(policy, query.checkin);
+			if (muse) return result('review', '現地払いの予約内容を確認するリンクです。ご本人が確認画面で確定すると予約番号が発行されます。', {
+				reviewId: id, reviewUrl: `${origin}/booking-mcp/muse/${id}`, expiresAt, ...query,
+				facilityName: details.facilityName, plan: details.planName, room: details.roomName,
+				lodgingJpy: details.lodging, bathTaxJpy: details.bathTax, totalJpy: details.lodging + details.bathTax,
+				cancellation: cancellationText, paymentTiming: '現地払い'
+			});
 			return result('review', 'お客様が確認カードで予約内容をご確認のうえ、確定してください。カードが表示されない場合は山人Bookでお手続きください。', { bookingUrl }, {
 				review: {
 					...details, ...query, id, secret, expiresAt, contactName, email, bookingUrl,
 					termsUrl: origin + '/legal/yakkan',
-					cancellation: [cancelPolicyLabel(cancellation, query.checkin), ...rules, cancellation.note].filter(Boolean).join('\n'),
+					cancellation: cancellationText,
 					fields: resolveStandardFields(fields), askGender: form.ask_gender
 				}
 			});
@@ -90,14 +129,12 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 		}
 	});
 
-	server.registerTool('confirm_onsite_booking', {
+	if (!muse) server.registerTool('confirm_onsite_booking', {
 		title: '現地払いの宿泊予約を確定',
 		description: '確認カードの同意と確定ボタンから、現地払いの予約を1件作成します。',
 		inputSchema: {
 			reviewId: uuid, secret: z.string().regex(/^[a-f0-9]{64}$/), agreed: z.literal(true),
-			onsiteMethod: z.enum(ONSITE_METHODS), arrival: z.string().max(40),
-			transport: z.string().max(40), transportOther: z.string().max(60), pickup: z.string().max(40),
-			male: z.string().max(1)
+			...onsiteFields
 		},
 		annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
 		_meta: { ui: { visibility: ['app'] } }
@@ -110,27 +147,11 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 			if (!row) return result('closed', '確認カードを開き直してください。');
 
 			const { contactSignature: _signature, ...snapshot } = row.snapshot;
-			const fields = resolveStandardFields(snapshot.fields);
-			const answers = { onsitePayment: input.onsiteMethod, notes: '' };
-			if (!row.booking_code) {
-				if (!snapshot.onsiteMethods.includes(input.onsiteMethod)) return result('invalid', '現地でのお支払い方法を選び直してください。');
-				if (input.arrival && !fields.arrival.choices.includes(input.arrival)) return result('invalid', '到着予定時刻を選び直してください。');
-				const form = new FormData();
-				form.set('transport', input.transport);
-				form.set('transport_other', input.transportOther);
-				form.set('pickup_time', input.pickup);
-				const standard = resolveStandardAnswers(form, fields);
-				if (!standard.ok) return result('invalid', standard.message);
-				const genders = snapshot.form.ask_gender ? resolveRoomGenders([row.adults], (key) => key === 'male_0' ? input.male : null) : null;
-				if (genders && !genders.ok) return result('invalid', '宿泊人数の内訳を選んでください。');
-				Object.assign(answers, genders?.rooms[0], {
-					arrival: input.arrival, requests: standard.values,
-					notes: [ONSITE_METHOD_NOTE[input.onsiteMethod], answerLines(standard.values)].filter(Boolean).join(' ')
-				});
-			}
+			const validated = row.booking_code ? null : onsiteAnswers(snapshot, row.adults, input);
+			if (validated && !validated.answers) return result('invalid', validated.message);
 			const { data, error } = await db.rpc('confirm_mcp_onsite_booking', {
 				p_user: access.userId, p_access_hash: access.accessHash, p_review: input.reviewId,
-				p_secret: input.secret, p_validated_snapshot: snapshot, p_answers: answers, p_onsite_method: input.onsiteMethod
+				p_secret: input.secret, p_validated_snapshot: snapshot, p_answers: validated?.answers ?? {}, p_onsite_method: input.onsiteMethod
 			});
 			if (error) {
 				if (['forbidden', 'review_expired', 'review_changed', 'onsite_not_allowed', 'not_sellable', 'min_stay_violation', 'plan_not_found', 'room_not_found'].includes(error.message) ||
@@ -145,5 +166,23 @@ export function registerOnsiteBooking(server: McpServer, origin: string, access:
 			if (DEBUG) console.warn('[DBG booking-mcp] confirm review failed');
 			return result('retry', '確定結果を取得できませんでした。同じ確認カードから再試行してください。');
 		}
+	});
+	if (muse) server.registerTool('onsite_booking_status', {
+		title: '現地払い予約の確定状況を確認',
+		description: '確認カードのreviewIdから、本人の予約の確定状況と発行済みの予約番号を取得します。予約や支払いは変更しません。',
+		inputSchema: { reviewId: uuid },
+		annotations: { title: '現地払い予約の確定状況を確認', readOnlyHint: true, idempotentHint: true, openWorldHint: false }
+	}, async ({ reviewId }) => {
+		const { data, error } = await db.rpc('mcp_muse_booking_status', {
+			p_user: access.userId, p_access_hash: access.accessHash, p_review: reviewId
+		});
+		if (error) return result('error', '予約の確定状況を取得できませんでした。同じ確認カードの状況を再取得してください。');
+		if (!data) return result('unavailable', 'この確認カードは参照できません。予約済みの場合は山人Bookのマイページをご確認ください。');
+		return result(data.status, ({
+			confirmed: '山人Bookで予約が確定しています。', cancelled: '山人Bookで予約が取り消されています。',
+			expired: '確認期限が切れました。', awaiting_confirmation: '確認カードでの確定を待っています。',
+			unknown: '予約の状態を照合できません。山人Bookのマイページをご確認ください。'
+		} as Record<string, string>)[data.status] ?? '山人Bookで予約の状態をご確認ください。',
+		data.bookingCode ? { bookingCode: data.bookingCode } : {});
 	});
 }

@@ -3,7 +3,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { z } from 'zod';
 import { json } from '@sveltejs/kit';
 import { dev } from '$app/environment';
-import { bookingAccess, bookingResource, CLIENT_ID, CONNECTOR_ICON_PATH, ONSITE_SCOPE, PILOT_CLIENT_ID, pilotMemberAllowed, privateHeaders, RESERVATION_CLIENT_ID } from '$lib/server/booking-mcp/oauth';
+import { bookingAccess, bookingResource, CLIENT_ID, CONNECTOR_ICON_PATH, isMuseClient, MUSE_PORTAL_CLIENT_ID, ONSITE_SCOPE, PILOT_CLIENT_ID, pilotMemberAllowed, privateHeaders, RESERVATION_CLIENT_ID } from '$lib/server/booking-mcp/oauth';
 import { registerOnsiteBooking } from '$lib/server/booking-mcp/onsite';
 import { searchBookingOffers, validCheckin } from '$lib/server/booking-mcp/search';
 import { STAY_FACILITIES } from '$lib/server/stay-calendar';
@@ -21,11 +21,13 @@ export const POST: RequestHandler = async ({ request, url }) => {
 
 	try {
 		// The directory can send existing read-only users to this endpoint after a listing edit.
-		const access = await bookingAccess(request, resource.id)
-			?? (resource.id === RESERVATION_CLIENT_ID ? await bookingAccess(request, CLIENT_ID) : null);
+		const clientIds = [resource.id];
+		if (isMuseClient(resource.id)) clientIds.push(MUSE_PORTAL_CLIENT_ID);
+		if (resource.id === RESERVATION_CLIENT_ID) clientIds.push(CLIENT_ID);
+		const access = await bookingAccess(request, ...clientIds);
 		if (!access) return authorizationRequired(url, resource.scope, request.headers.has('authorization'));
 		if (access.clientId === PILOT_CLIENT_ID && !await pilotMemberAllowed(access.userId)) return new Response(null, { status: 403, headers: privateHeaders });
-		const onsite = resource.scope === ONSITE_SCOPE && access.clientId === resource.id;
+		const onsite = resource.scope === ONSITE_SCOPE && access.onsite && access.clientId !== CLIENT_ID;
 		if (request.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
 			return new Response(null, { status: 415, headers: privateHeaders });
 		}
@@ -52,9 +54,11 @@ export const POST: RequestHandler = async ({ request, url }) => {
 		}, {
 			instructions: '西和賀・男鹿のYAMADO公式予約。空室数は availableRoomCount を「室」で表示し、プラン候補の数とは区別してください。'
 				+ (onsite
-					? ' 現地払い候補を本人が選んだ場合は確認カードを開き、本人に確定ボタンを押してもらってください。会話での承諾を予約確定と扱わないでください。事前決済が必要なプランは bookingUrl を案内してください。'
+					? (isMuseClient(access.clientId)
+						? ' 現地払いの候補を選んだら確認画面のリンク reviewUrl を案内してください。本人の確定後に onsite_booking_status で予約番号を確認します。事前決済は bookingUrl を案内してください。'
+						: ' 現地払い候補を本人が選んだ場合は確認カードを開き、本人に確定ボタンを押してもらってください。会話での承諾を予約確定と扱わないでください。事前決済が必要なプランは bookingUrl を案内してください。')
 					: 'bookingUrl を利用者に案内してください。予約完了や在庫確保を保証しないでください。')
-				+ (resource.id === RESERVATION_CLIENT_ID && !onsite ? ' 現在は検索のみの連携です。Claudeでの確定には、Bookで予約権限を許可する新しい連携が必要です。' : '')
+				+ (resource.scope === ONSITE_SCOPE && !onsite ? ' 現在は検索のみの連携です。確定には、Bookで予約権限を許可する新しい連携が必要です。' : '')
 		});
 		server.registerTool('search_stays', {
 			title: '山人の空室・料金を検索',

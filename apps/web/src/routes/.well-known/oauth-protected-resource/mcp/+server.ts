@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { bookingResource, OAUTH_PATH } from '$lib/server/booking-mcp/oauth';
+import { bookingResource, isMuseClient, OAUTH_PATH, SCOPE } from '$lib/server/booking-mcp/oauth';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ url }) => {
@@ -10,6 +10,6 @@ export const GET: RequestHandler = ({ url }) => {
 		resource_name: 'YAMADO',
 		authorization_servers: [url.origin + OAUTH_PATH],
 		bearer_methods_supported: ['header'],
-		scopes_supported: [resource.scope]
+		scopes_supported: isMuseClient(resource.id) ? [SCOPE, resource.scope] : [resource.scope]
 	});
 };

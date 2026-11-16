@@ -39,6 +39,7 @@
 		"BOOKING_MCP_ORIGIN": "https://book.yamado.app",
 		"BOOKING_MCP_ONSITE_PILOT": "true",
 		"BOOKING_MCP_ONSITE_RESERVATIONS": "true",
+		"BOOKING_MCP_MUSE": "true",
 		// 西和賀問い合わせの受付。AI/IMAP接続と社内での一巡確認後に true にする。
 		"INQUIRY_NISHIWAGA_ENABLED": "true",
 		"PRIVATE_BATH_PMS_ENABLED": "true",

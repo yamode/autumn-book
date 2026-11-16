@@ -24,6 +24,13 @@
 			<button type="submit" class="rounded-lg border px-4 py-2">予約連携を解除する</button>
 		</form>
 	{/if}
+	{#if data.museConnected}
+		<h2 class="mt-6 font-medium">YAMADO · Muse</h2>
+		<p class="mt-2">許可した権限で連携しています。</p>
+		<form method="POST" action="?/disconnectMuse" class="mt-4">
+			<button type="submit" class="rounded-lg border px-4 py-2">Museとの連携を解除する</button>
+		</form>
+	{/if}
 	{#if data.pilotConnected}
 		<h2 class="mt-6 font-medium">YAMADO · Claude 現地払い予約（試験連携）</h2>
 		<p class="mt-2">空室検索と、確認カードからの現地払い予約を許可しています。</p>
