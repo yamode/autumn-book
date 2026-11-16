@@ -2,7 +2,6 @@
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import * as m from '$lib/paraglide/messages';
 
-	import type { RankCancelPolicy } from '$lib/types';
 
 	let { data } = $props();
 
@@ -14,10 +13,12 @@
 		{ code: 'platinum' as const, cond: m.membership_cond_platinum(), rate: 5 }
 	];
 
-	// グレード別キャンセル規定（rank_cancel_policies）。rankCode → 規定でカードに表示する。
-	let cancelByRank = $derived(
-		new Map((data.cancelPolicies ?? []).map((p: RankCancelPolicy) => [p.rankCode, p]))
-	);
+	const comparisonBenefits = [
+		m.membership_benefit_advance_t(),
+		m.membership_benefit_plans_t(),
+		m.membership_benefit_personalize_t(),
+		m.membership_benefit_datechange_t()
+	];
 
 	const benefits = [
 		{ icon: '◆', title: m.membership_benefit_points_t(), body: m.membership_benefit_points_b() },
@@ -62,36 +63,42 @@
 		<p class="mt-3 text-stone-600">{m.membership_how_body()}</p>
 	</section>
 
-	<!-- グレードと還元率 -->
-	<section class="mt-10">
-		<h2 class="text-xl">{m.membership_ranks_heading()}</h2>
-		<p class="mt-1 text-sm text-stone-500">{m.membership_rank_note()}</p>
-		<div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+	<!-- グレードと還元率：共通特典を同じ順序で並べて比較する -->
+	<section class="mt-12" aria-labelledby="membership-ranks">
+		<div class="text-center">
+			<h2 id="membership-ranks" class="text-2xl">{m.membership_ranks_heading()}</h2>
+			<p class="mt-3 text-sm leading-6 text-stone-500">{m.membership_rank_note()}</p>
+		</div>
+		<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 			{#each ranks as r}
-				{@const cp = cancelByRank.get(r.code)}
-				<div class="rounded-2xl border border-stone-200 bg-white p-6 text-center">
-					<div class="flex justify-center"><RankBadge rank={r.code} /></div>
-					<p class="mt-4 text-4xl font-bold text-brand-900">{r.rate}<span class="text-lg font-semibold">%</span></p>
-					<p class="text-sm text-stone-500">{m.membership_rate_label()}</p>
-					<p class="mt-3 border-t border-stone-100 pt-3 text-sm text-stone-600">{r.cond}</p>
-
-					<!-- キャンセル規定（グレード別・P3） -->
-					<div class="mt-3 border-t border-stone-100 pt-3 text-left">
-						<p class="text-center text-xs font-medium text-stone-500">{m.cancelrank_heading()}</p>
-						{#if cp?.note}
-							<p class="mt-1 text-center text-xs text-stone-600">{cp.note}</p>
-						{:else if !cp || cp.rules.length === 0}
-							<p class="mt-1 text-center text-xs text-emerald-700">{m.cancelrank_none()}</p>
-						{:else}
-							<ul class="mt-1 space-y-0.5 text-center text-xs text-stone-600">
-								{#each cp.rules as rule}
-									<li>{m.cancelrank_rule_line({ days: String(rule.days_before), rate: String(Math.round(rule.rate * 100)) })}</li>
-								{/each}
-							</ul>
-						{/if}
+				{@const premium = r.code === 'platinum'}
+				<article class="rank-plan relative flex flex-col overflow-hidden rounded-2xl border {premium ? 'border-brand-900 bg-brand-900 text-white shadow-lg' : 'border-stone-200 bg-white text-brand-900'}">
+					<div class="h-1 {premium ? 'bg-accent-500' : r.code === 'gold' ? 'bg-amber-400' : r.code === 'silver' ? 'bg-slate-400' : 'bg-stone-300'}"></div>
+					<div class="flex flex-1 flex-col px-5 pb-6 pt-7">
+						<div class="flex justify-center"><RankBadge rank={r.code} /></div>
+						<div class="py-7 text-center">
+							<p class="text-sm {premium ? 'text-stone-300' : 'text-stone-500'}">{m.membership_rate_label()}</p>
+							<p class="mt-2 font-sans text-6xl font-semibold tracking-tight">{r.rate}<span class="ml-1 text-2xl">%</span></p>
+						</div>
+						<p class="flex min-h-16 items-center justify-center rounded-lg px-2 py-3 text-center text-sm font-medium leading-6 {premium ? 'bg-white/10 text-white' : 'bg-stone-50 text-stone-700'}">{r.cond}</p>
+						<ul class="mt-6 flex-1 space-y-4 border-t pt-6 {premium ? 'border-white/15' : 'border-stone-100'}">
+							{#each comparisonBenefits as benefit}
+								<li class="flex items-start gap-2 text-sm leading-6">
+									<span aria-hidden="true" class="shrink-0 {premium ? 'text-accent-300' : 'text-accent-600'}">✓</span>
+									<span class={premium ? 'text-stone-100' : 'text-stone-600'}>{benefit}</span>
+								</li>
+							{/each}
+						</ul>
 					</div>
-				</div>
+				</article>
 			{/each}
+		</div>
+		<div class="mt-6 text-center">
+			{#if !data.isMember}
+				<a href="/auth/register" class="inline-block rounded-lg bg-accent-600 px-8 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
+			{:else}
+				<a href="/account/points" class="inline-block rounded-lg border border-brand-800 px-6 py-3 font-semibold text-brand-800 hover:bg-brand-50">{m.membership_my_points()}</a>
+			{/if}
 		</div>
 	</section>
 

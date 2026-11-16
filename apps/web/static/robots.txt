@@ -1,2 +1,3 @@
+# Allow crawlers to read the noindex directive in app.html.
 User-agent: *
-Disallow: /
+Allow: /
