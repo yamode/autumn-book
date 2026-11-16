@@ -28,6 +28,7 @@
 		</div>
 	{:else}
 	<form method="POST" action="?/create" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5">
+		<p class="text-xs leading-5 text-stone-600">{m.forum_public_notice()}</p>
 		<label class="block text-sm">
 			<span class="text-stone-600">{m.forum_thread_title_label()}</span>
 			<input name="title" value={form?.title ?? ''} required maxlength="80" placeholder={m.forum_thread_title_ph()} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />

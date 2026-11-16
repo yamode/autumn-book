@@ -230,7 +230,8 @@ export async function shareTokenPlanRow(
 export async function canBookPlans(planIds: string[], locals: Locals, cookies: Cookies): Promise<boolean> {
 	const ids = [...new Set(planIds)];
 	if (ids.length === 0) return true;
-	const plans = await Promise.all(ids.map((id) => planIncludingSecret(id).catch(() => undefined)));
+	const plans = await Promise.all(ids.map((id) => planIncludingSecret(id))).catch(() => null);
+	if (!plans) return false;
 	const secret = plans.filter((p): p is RatePlan => !!p && !isOpenPlan(p.access));
 	if (secret.length === 0) return true;
 	const [viewer, unlocked] = await Promise.all([viewerOf(locals), unlockedPlanIds(cookies)]);

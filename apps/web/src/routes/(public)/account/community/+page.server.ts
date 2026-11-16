@@ -42,7 +42,8 @@ export const actions: Actions = {
 				const res = await sbSetForumNickname(createSupabaseServerClient(event), nickname);
 				savedNickname = res.nickname;
 			} catch (e) {
-				const msg = e instanceof Error ? e.message : '';
+				const msg = String((e as { message?: unknown } | null)?.message ?? '');
+				if (msg.includes('rate_limited')) return fail(429, { message: m.forum_error_nickname_wait(), nickname });
 				const message = msg.includes('nickname_taken')
 					? m.forum_error_nickname_taken()
 					: m.forum_error_nickname_invalid();

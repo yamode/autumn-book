@@ -5,6 +5,8 @@ import { MEMBER_PAGE_BOOKING_MESSAGE } from '$lib/server/member-reservation-deta
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
+import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
+import { viewerOf } from '$lib/server/secret-plans';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { OptionItem, Locale } from '$lib/types';
@@ -12,6 +14,8 @@ import type { Actions, PageServerLoad } from './$types';
 
 // RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）
 function optionErrorMessage(msg: string): string {
+	if (msg.includes('grade_stay_personalization')) return m.membership_platinum_options_notice();
+	if (msg.includes('option_already_ordered')) return m.membership_option_already_ordered();
 	if (msg.includes('past_deadline')) return m.options_err_past_deadline();
 	if (msg.includes('option_sold_out')) return m.options_err_sold_out();
 	if (msg.includes('invalid_service_date')) return m.options_err_service_date();
@@ -24,6 +28,7 @@ export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
 
 	const locale = getLocale() as Locale;
+	const canPersonalize = canPersonalizeStay(await viewerOf(locals));
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
@@ -46,7 +51,7 @@ export const load: PageServerLoad = async (event) => {
 						}))
 					)
 				: [];
-		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items, rooms };
+		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items: items.filter((o) => canPersonalize || !isStayPersonalization(o.category)), canPersonalize, rooms };
 	}
 
 	const booking = bookings.get(params.code);
@@ -57,7 +62,8 @@ export const load: PageServerLoad = async (event) => {
 		code: booking.code,
 		checkin: booking.checkin,
 		checkout: addDays(booking.checkin, booking.nights),
-		items,
+		items: items.filter((o) => canPersonalize || !isStayPersonalization(o.category)),
+		canPersonalize,
 		// デモ（store）は 1 室だけ
 		rooms: [] as { index: number; roomName: string; adults: number }[]
 	};
@@ -83,6 +89,11 @@ export const actions: Actions = {
 			const booking = bookings.get(params.code);
 			if (!booking || booking.memberId !== locals.user!.id) return fail(404, { message: m.error_booking_not_found() });
 			catalog = listOptionItems(booking.facilityId);
+		}
+
+		if (catalog.some(o => isStayPersonalization(o.category) && Number(form.get(`qty_${o.id}`)) > 0)
+			&& !canPersonalizeStay(await viewerOf(locals))) {
+			return fail(403, { message: m.membership_platinum_options_notice() });
 		}
 
 		// 数量 >= 1 の商品だけをカートに集約
@@ -117,7 +128,7 @@ export const actions: Actions = {
 				addBookingOptions(params.code, items, locals.user!.id);
 			}
 		} catch (e) {
-			return fail(400, { message: optionErrorMessage(e instanceof Error ? e.message : String(e)) });
+			return fail(400, { message: optionErrorMessage(e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)) });
 		}
 
 		redirect(303, `/account/reservations/${params.code}`);

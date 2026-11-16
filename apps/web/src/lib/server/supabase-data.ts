@@ -829,8 +829,8 @@ export async function getForumThread(threadId: string): Promise<ForumThreadRow |
 	return (data ?? null) as ForumThreadRow | null;
 }
 
-export async function listForumPosts(threadId: string): Promise<ForumPostViewRow[]> {
-	const { data, error } = await supa().rpc('forum_list_posts', { p_thread_id: threadId });
+export async function listForumPosts(threadId: string, client?: SupabaseClient): Promise<ForumPostViewRow[]> {
+	const { data, error } = await (client?.schema('book') ?? supa()).rpc('forum_list_posts', { p_thread_id: threadId });
 	if (error) throw error;
 	return (data ?? []) as ForumPostViewRow[];
 }
@@ -922,9 +922,9 @@ export async function getForumThreadData(
 }
 
 /** store.listForumPosts 相当。post_no 昇順・削除済みもプレースホルダ行（RPC が整形済み）。
- *  is_own は auth.uid() 依存だが anon セッションでは常に false（Web からは本人判定不可・P5 で有効化）。 */
-export async function listForumPostsData(threadId: string): Promise<ForumPostView[]> {
-	const rows = await listForumPosts(threadId);
+ *  is_own は会員の認証済みクライアントを渡した場合に限り返る。 */
+export async function listForumPostsData(threadId: string, client?: SupabaseClient): Promise<ForumPostView[]> {
+	const rows = await listForumPosts(threadId, client);
 	return rows.map((p) => ({
 		id: p.id,
 		postNo: p.post_no,

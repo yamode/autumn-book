@@ -1,165 +1,247 @@
 <script lang="ts">
-	import RankBadge from '$lib/components/RankBadge.svelte';
+	import { tick } from 'svelte';
+	import { RANK_CODES, type RankCode } from '$lib/plan-access';
 	import { rankName } from '$lib/rank-name';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 
-	// 会員グレード（ビジネスルール・表示用の静的定義）
-	const ranks = [
-		{ code: 'standard' as const, cond: m.membership_cond_standard(), rate: 1 },
-		{ code: 'silver' as const, cond: m.membership_cond_silver(), rate: 2 },
-		{ code: 'gold' as const, cond: m.membership_cond_gold(), rate: 3 },
-		{ code: 'platinum' as const, cond: m.membership_cond_platinum(), rate: 5 }
+	const rates = [1, 2, 3, 5];
+	const conditions = [
+		m.membership_cond_standard(),
+		m.membership_cond_silver(),
+		m.membership_cond_gold(),
+		m.membership_cond_platinum()
 	];
 
-	const comparisonBenefits = [
-		m.membership_benefit_advance_t(),
-		m.membership_benefit_plans_t(),
-		m.membership_benefit_personalize_t(),
-		m.membership_benefit_datechange_t()
+	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
+	type Perk = Detail & { key: string; minRank: RankCode };
+
+	const points: Detail = { title: m.membership_rate_label(), body: m.membership_how_body() };
+	const qualification: Detail = { title: m.membership_condition_label(), body: m.membership_rank_note() };
+	const perks: Perk[] = [
+		{ key: 'advance', minRank: 'silver', title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
+		{ key: 'room', minRank: 'gold', title: m.membership_room_designation(), body: m.membership_room_designation_body() },
+		{ key: 'personalize', minRank: 'platinum', title: m.membership_benefit_personalize_t(), body: m.membership_personalize_platinum_body() },
+		{ key: 'plans', minRank: 'standard', title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
+		{
+			key: 'changes', minRank: 'standard', title: m.membership_basic_changes(), body: m.membership_basic_changes_body(),
+			sections: [
+				{ title: m.membership_change_date_t(), body: m.membership_change_date_b() },
+				{ title: m.membership_change_guests_t(), body: m.membership_change_guests_b() },
+				{ title: m.membership_change_room_t(), body: m.membership_change_room_b() },
+				{ title: m.membership_change_options_t(), body: m.membership_change_options_b() }
+			]
+		},
+		{ key: 'favorites', minRank: 'standard', title: m.membership_benefit_favorites_t(), body: m.membership_favorite_save_body() },
+		{ key: 'community', minRank: 'standard', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },
+		{ key: 'otayori', minRank: 'standard', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() }
 	];
 
-	const benefits = [
-		{ icon: '◆', title: m.membership_benefit_points_t(), body: m.membership_benefit_points_b() },
-		{ icon: '⏱', title: m.membership_benefit_advance_t(), body: m.membership_benefit_advance_b() },
-		{ icon: '✦', title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
-		{ icon: '❄', title: m.membership_benefit_personalize_t(), body: m.membership_benefit_personalize_b() },
-		{ icon: '⇄', title: m.membership_benefit_datechange_t(), body: m.membership_benefit_datechange_b() },
-		{ icon: '✓', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
-		{ icon: '♥', title: m.membership_benefit_favorites_t(), body: m.membership_benefit_favorites_b() },
-		{ icon: '✉', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() },
-		{ icon: '💬', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() }
-	];
-
-	// ご予約後の変更・滞在アレンジ（会員特典の詳細）
-	const changes = [
-		{ n: '01', title: m.membership_change_date_t(), body: m.membership_change_date_b() },
-		{ n: '02', title: m.membership_change_guests_t(), body: m.membership_change_guests_b() },
-		{ n: '03', title: m.membership_change_room_t(), body: m.membership_change_room_b() },
-		{ n: '04', title: m.membership_change_options_t(), body: m.membership_change_options_b() }
-	];
+	let detail = $state<Detail | null>(null);
+	let dialog: HTMLDialogElement | undefined = $state();
+	async function openDetail(item: Detail) {
+		detail = item;
+		await tick();
+		if (dialog && !dialog.open) dialog.showModal();
+	}
 </script>
 
 <svelte:head><title>{m.membership_title()}</title></svelte:head>
 
-<div class="forum-shell mx-auto max-w-4xl px-4 py-12 sm:py-16">
-	<!-- ヒーロー -->
+<div class="forum-shell mx-auto max-w-5xl px-4 py-12 sm:py-16">
 	<header class="text-center">
 		<p class="text-sm font-semibold tracking-[0.2em] text-accent-600">YAMADO MEMBERS</p>
 		<h1 class="mt-2 text-3xl sm:text-4xl">{m.membership_heading()}</h1>
 		<p class="mx-auto mt-4 max-w-2xl text-stone-600">{m.membership_lead()}</p>
-		{#if !data.isMember}
-			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-				<a href="/auth/register" class="rounded-lg bg-accent-600 px-6 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
-				<span class="text-sm text-stone-500">{m.membership_free()}</span>
-			</div>
-		{/if}
 	</header>
 
-	<!-- ポイントの仕組み -->
-	<section class="mt-14 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-		<h2 class="text-xl">{m.membership_how_heading()}</h2>
-		<p class="mt-3 text-stone-600">{m.membership_how_body()}</p>
-	</section>
+	<section class="mt-10" aria-labelledby="membership-ranks">
+		<h2 id="membership-ranks" class="text-center text-2xl">{m.membership_ranks_heading()}</h2>
+		<p class="mt-2 text-center text-sm leading-6 text-stone-600">{m.membership_table_hint()}</p>
+		<p class="mt-3 text-right text-xs text-stone-600 md:hidden">{m.membership_scroll_hint()} <span aria-hidden="true">→</span></p>
+		<div class="comparison-frame mt-2 overflow-x-auto rounded-2xl border border-stone-200 bg-white md:mt-6">
+			<table class="grade-table w-full table-fixed text-sm">
+				<colgroup>
+					<col class="feature-col" />
+					{#each RANK_CODES as rank (rank)}<col class="tier-col tier-{rank}" />{/each}
+				</colgroup>
+				<thead>
+					<tr>
+						<th scope="col" class="row-head text-left font-medium">{m.membership_benefits_heading()}</th>
+						{#each RANK_CODES as rank (rank)}
+							<th scope="col" class="tier-head tier-{rank}">
+								<span class="rank-mark" aria-hidden="true"></span>
+								<span>{rankName(rank)}</span>
+							</th>
+						{/each}
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<th scope="row" class="row-head">
+							<button type="button" class="detail-link" onclick={() => openDetail(points)} aria-haspopup="dialog">
+								<span>{points.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+							</button>
+						</th>
+						{#each rates as rate (rate)}
+							<td><span class="rate">{rate}<span class="rate-unit">%</span></span></td>
+						{/each}
+					</tr>
+					<tr>
+						<th scope="row" class="row-head">
+							<button type="button" class="detail-link" onclick={() => openDetail(qualification)} aria-haspopup="dialog">
+								<span>{qualification.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+							</button>
+						</th>
+						{#each conditions as condition (condition)}<td class="condition">{condition}</td>{/each}
+					</tr>
+					{#each perks as perk (perk.key)}
+						<tr>
+							<th scope="row" class="row-head">
+								<button type="button" class="detail-link" onclick={() => openDetail(perk)} aria-haspopup="dialog">
+									<span>{perk.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+								</button>
+							</th>
+							{#each RANK_CODES as rank, index (rank)}
+								<td>
+									{#if index >= RANK_CODES.indexOf(perk.minRank)}
+										<span class="benefit-check" aria-hidden="true">✓</span><span class="sr-only">{m.membership_included()}</span>
+									{:else}
+										<span class="benefit-dash" aria-hidden="true">—</span><span class="sr-only">{m.membership_not_included()}</span>
+									{/if}
+								</td>
+							{/each}
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
 
-	<!-- グレードと還元率：上位グレードは引き継ぐ特典と変わる点を示す -->
-	<section class="mt-12" aria-labelledby="membership-ranks">
-		<div class="text-center">
-			<h2 id="membership-ranks" class="text-2xl">{m.membership_ranks_heading()}</h2>
-			<p class="mt-3 text-sm leading-6 text-stone-500">{m.membership_rank_note()}</p>
-		</div>
-		<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-			{#each ranks as r, index (r.code)}
-				{@const previous = ranks[index - 1]}
-				{@const premium = r.code === 'platinum'}
-				<article class="rank-plan relative flex flex-col overflow-hidden rounded-2xl border {premium ? 'border-brand-900 bg-brand-900 text-white shadow-lg' : 'border-stone-200 bg-white text-brand-900'}">
-					<div class="h-1 {premium ? 'bg-accent-500' : r.code === 'gold' ? 'bg-amber-400' : r.code === 'silver' ? 'bg-slate-400' : 'bg-stone-300'}"></div>
-					<div class="flex flex-1 flex-col px-5 pb-6 pt-7">
-						<div class="flex justify-center"><RankBadge rank={r.code} /></div>
-						<div class="py-7 text-center">
-							<p class="text-sm {premium ? 'text-stone-300' : 'text-stone-500'}">{m.membership_rate_label()}</p>
-							<p class="mt-2 font-sans text-6xl font-semibold tracking-tight">{r.rate}<span class="ml-1 text-2xl">%</span></p>
-						</div>
-						<p class="flex min-h-16 items-center justify-center rounded-lg px-2 py-3 text-center text-sm font-medium leading-6 {premium ? 'bg-white/10 text-white' : 'bg-stone-50 text-stone-700'}">{r.cond}</p>
-						<div class="mt-6 flex-1 border-t pt-5 {premium ? 'border-white/15' : 'border-stone-100'}">
-							{#if previous}
-								<p class="text-sm font-semibold leading-6">
-									{m.membership_includes_previous({ rank: rankName(previous.code) })}
-								</p>
-								<p class="mt-3 flex items-start gap-2 text-sm leading-6 {premium ? 'text-stone-100' : 'text-stone-700'}">
-									<span aria-hidden="true" class="shrink-0 font-semibold {premium ? 'text-accent-300' : 'text-accent-600'}">↑</span>
-									<span>{m.membership_rate_upgrade({ previous: String(previous.rate), current: String(r.rate) })}</span>
-								</p>
-							{:else}
-								<ul class="space-y-3">
-									{#each comparisonBenefits as benefit}
-										<li class="flex items-start gap-2 text-sm leading-6 text-stone-600">
-											<span aria-hidden="true" class="shrink-0 text-accent-600">✓</span>
-											<span>{benefit}</span>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-						</div>
-					</div>
-				</article>
-			{/each}
-		</div>
-		<div class="mt-6 text-center">
+		<div class="mt-7 text-center">
 			{#if !data.isMember}
-				<a href="/auth/register" class="inline-block rounded-lg bg-accent-600 px-8 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
+				<a href="/auth/register" class="inline-block whitespace-nowrap rounded-lg bg-accent-600 px-8 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
 			{:else}
 				<a href="/account/points" class="inline-block rounded-lg border border-brand-800 px-6 py-3 font-semibold text-brand-800 hover:bg-brand-50">{m.membership_my_points()}</a>
 			{/if}
 		</div>
 	</section>
-
-	<!-- 会員特典 -->
-	<section class="mt-12">
-		<h2 class="text-xl">{m.membership_benefits_heading()}</h2>
-		<div class="mt-5 grid gap-4 sm:grid-cols-2">
-			{#each benefits as b}
-				<div class="flex gap-4 rounded-2xl border border-stone-200 bg-white p-5">
-					<span class="text-2xl text-accent-600">{b.icon}</span>
-					<div>
-						<h3 class="text-base">{b.title}</h3>
-						<p class="mt-1 text-sm text-stone-600">{b.body}</p>
-					</div>
-				</div>
-			{/each}
-		</div>
-	</section>
-
-	<!-- ご予約後の変更・滞在アレンジ（日程変更特典の詳細） -->
-	<section class="mt-12 rounded-2xl border border-stone-200 bg-white p-6 sm:p-8">
-		<h2 class="text-xl">{m.membership_change_heading()}</h2>
-		<p class="mt-2 text-stone-600">{m.membership_change_lead()}</p>
-		<div class="mt-6 grid gap-6 sm:grid-cols-2">
-			{#each changes as c}
-				<div class="flex gap-4">
-					<span class="font-display text-2xl leading-none text-accent-500">{c.n}</span>
-					<div>
-						<h3 class="text-base">{c.title}</h3>
-						<p class="mt-1 text-sm text-stone-600">{c.body}</p>
-					</div>
-				</div>
-			{/each}
-		</div>
-		<p class="mt-6 rounded-lg bg-brand-50 px-4 py-3 text-sm text-brand-800">{m.membership_change_note()}</p>
-	</section>
-
-	<!-- 末尾CTA -->
-	{#if !data.isMember}
-		<div class="mt-14 rounded-2xl bg-brand-900 p-8 text-center text-stone-100">
-			<!-- .forum-shell の見出し色（app.css・レイヤー外）が text-white に勝つため important で白に固定 -->
-			<h2 class="text-2xl text-white!">{m.membership_cta2_heading()}</h2>
-			<p class="mx-auto mt-2 max-w-xl text-sm text-stone-300">{m.membership_cta2_body()}</p>
-			<a href="/auth/register" class="mt-5 inline-block rounded-lg bg-accent-600 px-8 py-3 font-semibold text-white hover:bg-accent-500">{m.membership_cta_join()}</a>
-		</div>
-	{:else}
-		<div class="mt-14 text-center">
-			<a href="/account/points" class="inline-block rounded-lg border border-brand-800 px-6 py-3 font-semibold text-brand-800 hover:bg-brand-50">{m.membership_my_points()}</a>
-		</div>
-	{/if}
 </div>
+
+<dialog bind:this={dialog} aria-labelledby="membership-detail-title" class="perk-dialog">
+	{#if detail}
+		<div class="flex items-start justify-between gap-3">
+			<h2 id="membership-detail-title" class="text-xl font-semibold text-brand-900">{detail.title}</h2>
+			<form method="dialog">
+				<button type="submit" class="grid h-10 w-10 place-items-center rounded-full border border-stone-200 text-xl text-stone-700 hover:bg-stone-100" aria-label={m.membership_detail_close()}>×</button>
+			</form>
+		</div>
+		<p class="mt-4 text-sm leading-7 text-stone-700">{detail.body}</p>
+		{#each detail.sections ?? [] as section (section.title)}
+			<section class="mt-4 rounded-xl bg-stone-50 p-4">
+				<h3 class="text-sm font-semibold text-brand-900">{section.title}</h3>
+				<p class="mt-1 text-sm leading-7 text-stone-700">{section.body}</p>
+			</section>
+		{/each}
+	{/if}
+</dialog>
+
+<style>
+	.comparison-frame {
+		contain: inline-size paint;
+		box-shadow: 0 16px 38px -28px #514a38a6;
+	}
+	.grade-table {
+		min-width: 36rem;
+		border-collapse: separate;
+		border-spacing: 0;
+		color: #302d27;
+	}
+	.feature-col { width: 29%; }
+	.tier-col { width: 17.75%; }
+	.tier-standard { --metal: #ab9b86; --light: #faf8f4; }
+	.tier-silver { --metal: #8294a6; --light: #f1f5f8; }
+	.tier-gold { --metal: #ae8742; --light: #fcf6e7; }
+	.tier-platinum { --metal: #8d92a8; --light: #f4f4f9; }
+	.tier-head {
+		border-top: 3px solid var(--metal);
+		padding: 1rem .25rem .75rem;
+		background: linear-gradient(145deg, #fff 0%, var(--light) 53%, #fff 100%);
+		font-weight: 650;
+		overflow-wrap: anywhere;
+	}
+	.rank-mark {
+		display: block;
+		width: 1.05rem;
+		height: 1.05rem;
+		margin: 0 auto .65rem;
+		clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+		background: conic-gradient(from 45deg, var(--metal), #fff, var(--metal), var(--light), var(--metal));
+	}
+	th, td { border-bottom: 1px solid #eae7e1; }
+	tbody tr:last-child > * { border-bottom: 0; }
+	td { padding: .54rem .36rem; text-align: center; }
+	td:nth-child(5) { background: #f8f8fc; }
+	.row-head {
+		position: sticky;
+		left: 0;
+		z-index: 1;
+		background: #fffdf9;
+		box-shadow: 1px 0 #eae7e1;
+		padding: .32rem .65rem;
+		text-align: left;
+	}
+	.detail-link {
+		display: flex;
+		width: 100%;
+		min-height: 2.3rem;
+		align-items: center;
+		justify-content: space-between;
+		gap: .3rem;
+		border-radius: .35rem;
+		cursor: pointer;
+		text-align: left;
+		font-weight: 550;
+	}
+	.detail-link:hover { color: #775b2f; text-decoration: underline; }
+	.detail-link:focus-visible { outline: 2px solid #78603b; outline-offset: 2px; }
+	.detail-icon {
+		display: grid;
+		width: .94rem;
+		height: .94rem;
+		flex: none;
+		place-items: center;
+		border: 1px solid #978664;
+		border-radius: 100%;
+		color: #775f37;
+		font: 600 .65rem/1 serif;
+	}
+	.rate { font-size: 1.9rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+	.rate-unit { margin-inline-start: .07em; font-size: .55em; }
+	.condition { color: #5b554c; font-size: .75rem; }
+	.benefit-check {
+		display: inline-grid;
+		width: 1.3rem;
+		height: 1.3rem;
+		place-items: center;
+		border-radius: 100%;
+		background: #f2eee6;
+		color: #6c542d;
+		font-weight: 700;
+	}
+	td:last-child .benefit-check { background: #e9e9f2; color: #4d5670; }
+	.benefit-dash { color: #817c74; }
+	.perk-dialog {
+		position: fixed;
+		width: min(32rem, calc(100% - 2rem));
+		max-height: calc(100dvh - 2rem);
+		margin: auto;
+		padding: clamp(1rem, 4vw, 1.6rem);
+		overflow-y: auto;
+		border: 1px solid #e7dfcf;
+		border-radius: 1rem;
+		background: #fffefa;
+		box-shadow: 0 20px 70px #211a1240;
+	}
+	.perk-dialog::backdrop { background: #211a1266; }
+</style>

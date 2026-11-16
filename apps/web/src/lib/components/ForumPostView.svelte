@@ -6,7 +6,7 @@
 	import type { ForumPostView } from '$lib/types';
 
 	// 1投稿の表示。本文は renderForumBody の出力のみ {@html} で描画（エスケープ済み・XSS 不可）。
-	let { post, canDelete = false }: { post: ForumPostView; canDelete?: boolean } = $props();
+	let { post, canDelete = false, onReply }: { post: ForumPostView; canDelete?: boolean; onReply?: (postNo: number) => void } = $props();
 
 	let html = $derived(post.isDeleted ? '' : renderForumBody(post.body));
 	let initial = $derived(post.nickname ? [...post.nickname][0] : '?');
@@ -21,14 +21,14 @@
 			{:else}
 				<span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-800">{initial}</span>
 			{/if}
-			<span class="font-medium text-stone-600">{post.nickname}</span>
+			<span class="min-w-0 break-all font-medium text-stone-600">{post.nickname}</span>
 			{#if post.isStaff}<span class="rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
 		{/if}
 		<time class="tabular-nums">{formatDate(post.createdAt.slice(0, 10))}</time>
 		{#if canDelete && post.isOwn && !post.isDeleted}
 			<form method="POST" action="?/deletePost" use:enhance class="ml-auto" onsubmit={(e) => { if (!confirm(m.forum_delete_confirm())) e.preventDefault(); }}>
 				<input type="hidden" name="postId" value={post.id} />
-				<button type="submit" class="text-xs text-stone-400 hover:text-red-600">{m.forum_delete_post()}</button>
+				<button type="submit" class="min-h-9 px-2 text-xs text-stone-600 hover:text-red-600">{m.forum_delete_post()}</button>
 			</form>
 		{/if}
 	</header>
@@ -37,5 +37,10 @@
 		<p class="text-base italic text-stone-400">{m.forum_deleted_post()}</p>
 	{:else}
 		<div class="break-words text-base leading-relaxed text-stone-700">{@html html}</div>
+		{#if onReply}
+			<button type="button" class="mt-2 min-h-10 rounded-md px-2 text-sm font-medium text-brand-800 hover:bg-stone-50" onclick={() => onReply?.(post.postNo)}>
+				{m.forum_reply()}
+			</button>
+		{/if}
 	{/if}
 </article>

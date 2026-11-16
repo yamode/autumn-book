@@ -6,6 +6,7 @@
 	import { formatDate } from '$lib/format';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
+	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -157,13 +158,13 @@
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
 			<nav class="hidden items-center gap-4 text-sm text-stone-600 md:flex">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
-				<a href="/booking/lookup" class="hover:text-brand-800">{m.footer_lookup()}</a>
+
 				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
 				{#if data.user?.role === 'member'}
-					<a href="/account" class="font-medium text-brand-800 hover:underline">{data.user.name} 様</a>
+					<AccountMenu name={data.user.name} />
 				{:else}
 					<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-white hover:bg-accent-500">{m.common_register()}</a>
@@ -191,6 +192,9 @@
 					</button>
 				{:else if data.user?.role !== 'member'}
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-xs text-white hover:bg-accent-500">{m.common_register()}</a>
+				{/if}
+				{#if data.user?.role === 'member'}
+					<AccountMenu name={data.user.name} compact={showHeaderSearch} />
 				{/if}
 				<button
 					type="button"
@@ -223,13 +227,11 @@
 		<div id="header-mobile-menu" class="border-t border-stone-100 bg-white md:hidden {mobileMenuOpen ? '' : 'hidden'}">
 			<nav class="mx-auto flex max-w-6xl flex-col px-4 py-2 text-sm text-stone-700">
 				<a href="/search" class="py-2.5 hover:text-brand-800">{m.nav_find_accommodation()}</a>
-				<a href="/booking/lookup" class="py-2.5 hover:text-brand-800">{m.footer_lookup()}</a>
+
 				<a href="/membership" class="py-2.5 hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
-					{#if data.user?.role === 'member'}
-						<a href="/account" class="font-medium text-brand-800 hover:underline">{data.user.name} 様</a>
-					{:else}
+					{#if data.user?.role !== 'member'}
 						<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>
 						<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-white hover:bg-accent-500">{m.common_register()}</a>
 					{/if}

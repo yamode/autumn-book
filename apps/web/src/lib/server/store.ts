@@ -31,6 +31,7 @@ import type {
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
+import { isStayPersonalization } from '$lib/member-benefits';
 
 // ---------------------------------------------------------------- マスタ（デモ）
 
@@ -1068,6 +1069,12 @@ export function addBookingOptions(
 	for (const item of items) {
 		const opt = optionItems.find((o) => o.id === item.optionId && o.facilityId === booking.facilityId && o.isActive);
 		if (!opt) throw new Error('option_not_found');
+		if (isStayPersonalization(opt.category)) {
+			if (memberById(memberId)?.rank !== 'platinum') throw new Error('grade_stay_personalization');
+			if (opt.priceType === 'per_stay' && [...existing, ...created].some(o => o.optionId === opt.id && o.status !== 'cancelled')) {
+				throw new Error('option_already_ordered');
+			}
+		}
 
 		// per_stay は「滞在あたり1式」のため数量を 1 に強制。per_person / per_unit のみ 1..20 を検証。
 		let quantity: number;

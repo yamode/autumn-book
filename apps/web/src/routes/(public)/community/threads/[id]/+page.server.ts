@@ -4,6 +4,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import {
 	getForumThreadData,
 	listForumPostsData,
+	getForumNickname,
 	createForumPost as sbCreateForumPost,
 	deleteOwnForumPost as sbDeleteOwnForumPost
 } from '$lib/server/supabase-data';
@@ -13,14 +14,19 @@ import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async (event) => {
+	const { params, locals } = event;
 	const supabase = DATA_SOURCE === 'supabase';
 	const thread = supabase ? await getForumThreadData(params.id) : getForumThread(params.id);
 	if (!thread) error(404, 'Thread not found');
 
-	const posts = supabase ? await listForumPostsData(thread.id) : listForumPosts(thread.id, locals.user?.id);
+	const member = locals.user?.role === 'member' ? locals.user : null;
+	const client = member && MEMBER_SUPABASE ? createSupabaseServerClient(event) : undefined;
+	const [posts, hasNickname] = await Promise.all([
+		supabase ? listForumPostsData(thread.id, client) : listForumPosts(thread.id, member?.id),
+		client ? getForumNickname(client).then(Boolean).catch(() => false) : Boolean(member && getForumProfile(member.id))
+	]);
 	const facilities = getPublishedFacilities(getLocale()).map((f) => ({ name: f.name, brandSlug: f.brandSlug, slug: f.slug }));
-	const hasNickname = supabase ? false : locals.user ? !!getForumProfile(locals.user.id) : false;
 
 	return {
 		thread: {
@@ -33,7 +39,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		},
 		posts,
 		facilities,
-		isLoggedIn: !!locals.user,
+		isLoggedIn: Boolean(member),
 		hasNickname,
 		writeEnabled: FORUM_WRITE_ENABLED
 	};
@@ -44,8 +50,8 @@ export const actions: Actions = {
 		const { request, params, locals, url } = event;
 		// 書き込み不可モード（supabase+demo）では投稿を受け付けずアプリへ誘導
 		if (!FORUM_WRITE_ENABLED) return fail(403, { message: m.forum_write_app_only(), body: '' });
-		if (!locals.user) redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname)}`);
-		// ニックネーム未設定なら設定へ（supabase 本接続では RPC 側で no_nickname を捕捉して誘導）
+		if (locals.user?.role !== 'member') redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname)}`);
+		// デモの未設定会員は設定へ。本接続はフォーム入力前に判定し、RPC の競合時は入力を保持する。
 		if (!MEMBER_SUPABASE && !getForumProfile(locals.user.id)) {
 			redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 		}
@@ -59,8 +65,9 @@ export const actions: Actions = {
 				const res = await sbCreateForumPost(createSupabaseServerClient(event), params.id, body);
 				postNo = res.post_no;
 			} catch (e) {
-				const msg = e instanceof Error ? e.message : '';
-				if (msg.includes('no_nickname')) redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
+				const msg = String((e as { message?: unknown } | null)?.message ?? '');
+				if (msg.includes('no_nickname')) return fail(400, { message: m.forum_nickname_required_notice(), body });
+				if (msg.includes('rate_limited')) return fail(429, { message: m.forum_error_rate_limit(), body });
 				const message =
 					msg.includes('banned') ? m.forum_error_banned()
 					: msg.includes('thread_locked') ? m.forum_error_locked()
@@ -88,7 +95,7 @@ export const actions: Actions = {
 	deletePost: async (event) => {
 		const { request, params, locals } = event;
 		if (!FORUM_WRITE_ENABLED) return fail(403, { message: m.forum_write_app_only() });
-		if (!locals.user) return fail(401, { message: m.forum_cta_login_to_post() });
+		if (locals.user?.role !== 'member') return fail(401, { message: m.forum_cta_login_to_post() });
 		const form = await request.formData();
 		const postId = String(form.get('postId') ?? '');
 

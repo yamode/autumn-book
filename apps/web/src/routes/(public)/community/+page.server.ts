@@ -27,5 +27,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.slice(0, RECENT_THREADS_LIMIT);
 
 	const facilities = getPublishedFacilities(getLocale()).map((f) => ({ name: f.name, brandSlug: f.brandSlug, slug: f.slug }));
-	return { boards, recentThreads, facilities, isLoggedIn: !!locals.user, writeEnabled: FORUM_WRITE_ENABLED };
+	return { boards, recentThreads, facilities, isLoggedIn: locals.user?.role === 'member', writeEnabled: FORUM_WRITE_ENABLED };
 };

@@ -24,13 +24,13 @@
 					<li>
 						<a href="/community/{board.slug}" class="block rounded-xl border border-stone-200 bg-white p-3 transition hover:shadow-md">
 							<div class="flex items-baseline justify-between gap-2">
-								<h3 class="truncate text-sm font-medium text-brand-900">
+								<h3 class="min-w-0 break-words text-sm font-medium text-brand-900">
 									{board.title}
 									{#if board.isArchived}<span class="ml-1 rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-normal text-stone-500">archived</span>{/if}
 								</h3>
 								<span class="shrink-0 text-xs text-stone-400">{m.forum_threads_count({ n: board.threadCount })}</span>
 							</div>
-							<p class="mt-1 truncate text-xs text-stone-500">{board.description}</p>
+							<p class="mt-1 break-words text-xs text-stone-500">{board.description}</p>
 						</a>
 					</li>
 				{/each}
@@ -47,13 +47,13 @@
 						<li>
 							<a href="/community/threads/{t.id}" class="flex flex-col gap-1.5 px-4 py-3 hover:bg-stone-50 sm:flex-row sm:items-center sm:gap-4">
 								<span class="flex min-w-0 flex-1 items-center gap-2">
-									<span class="shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{t.boardTitle}</span>
-									{#if t.isPinned}<span title="pinned">📌</span>{/if}
-									{#if t.isLocked}<span title="locked">🔒</span>{/if}
-									<span class="truncate text-sm font-medium text-brand-900">{t.title}</span>
+									<span class="max-w-[40%] shrink-0 break-words rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-700">{t.boardTitle}</span>
+									{#if t.isPinned}<span class="shrink-0 text-xs text-stone-600" aria-label={m.forum_label_pinned()}>📌</span>{/if}
+									{#if t.isLocked}<span class="shrink-0 text-xs text-stone-600" aria-label={m.forum_label_locked()}>🔒</span>{/if}
+									<span class="min-w-0 break-words text-sm font-medium text-brand-900">{t.title}</span>
 								</span>
-								<span class="flex shrink-0 items-center gap-3 text-xs text-stone-400">
-									<span class="inline-flex items-center gap-1">
+								<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-600">
+									<span class="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 break-all">
 										{t.authorNickname}
 										{#if t.authorIsStaff}<span class="rounded bg-brand-800 px-1 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
 									</span>

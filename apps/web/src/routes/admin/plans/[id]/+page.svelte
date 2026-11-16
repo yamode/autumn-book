@@ -206,7 +206,12 @@
 	{#if (form as { accessError?: string } | null)?.accessError}
 		<p class="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{(form as { accessError?: string }).accessError}</p>
 	{/if}
-	<p class="mt-1 text-xs text-stone-500">予約できる人</p>
+	<details class="mt-3 rounded-lg bg-stone-50 px-3 py-2 text-xs leading-relaxed text-stone-600">
+		<summary class="cursor-pointer font-medium">シルバー以上の先行予約を設定する</summary>
+		<p class="mt-2">先行販売用プランでは「指定グレード以上」を選び、「シルバー」に設定します。「販売」で先行受付の開始日・終了日を入れてください。専用URL限定を外すと、対象会員の施設別プラン一覧に出ます。</p>
+		<p class="mt-1">通常販売用のプランは「誰でも」にし、先行受付の翌日以降を販売開始日に設定します。両プランの宿泊可能期間・客室・料金を確認してから公開してください。</p>
+	</details>
+	<p class="mt-3 text-xs text-stone-500">予約できる人</p>
 	<div class="mt-1 grid gap-2 sm:grid-cols-3">
 		{#each WHO_OPTIONS as o (o.value)}
 			<label class="flex cursor-pointer gap-2 rounded-lg border border-stone-200 p-3 text-sm has-[:checked]:border-brand-700 has-[:checked]:bg-brand-50">

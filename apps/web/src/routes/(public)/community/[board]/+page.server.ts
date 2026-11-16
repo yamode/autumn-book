@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		page,
 		totalPages,
 		facilities,
-		isLoggedIn: !!locals.user,
+		isLoggedIn: locals.user?.role === 'member',
 		hasNickname,
 		writeEnabled: FORUM_WRITE_ENABLED
 	};

@@ -2,15 +2,18 @@
 //   favoriteRoomTypeIds … お気に入りの部屋がある部屋タイプ id。プラン一覧・客室選択の部屋タイプのブロックに「お気に入り」と出す。
 // 会員でない・デモ（MEMBER_SUPABASE でない）・読めないときは空（表示しないだけで画面は止めない）。
 import type { RequestEvent } from '@sveltejs/kit';
+import { canDesignateFavoriteRoom } from '$lib/member-benefits';
+import * as m from '$lib/paraglide/messages';
+import { viewerOf } from './secret-plans';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from './auth';
 import { sbFavoriteRoomChoices, sbListFavoriteRoomTypes, sbSetHoldFavoriteRooms, type FavoriteRoomChoice } from './supabase-data';
 
 type AuthEvent = Pick<RequestEvent, 'locals' | 'cookies' | 'url' | 'request'>;
 const isMemberSession = (event: AuthEvent) => MEMBER_SUPABASE && event.locals.user?.role === 'member';
 
-/** 予約確認画面: 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（部屋の番号ごと）。会員でなければ空 */
+/** 予約確認画面: 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（部屋の番号ごと）。ゴールド以上が対象 */
 export async function favoriteRoomChoicesFor(event: AuthEvent, holdId: string, sessionId: string): Promise<Record<number, FavoriteRoomChoice[]>> {
-	if (!isMemberSession(event)) return {};
+	if (!isMemberSession(event) || !canDesignateFavoriteRoom(await viewerOf(event.locals))) return {};
 	const list = await sbFavoriteRoomChoices(createSupabaseServerClient(event as RequestEvent), holdId, sessionId).catch(() => []);
 	const out: Record<number, FavoriteRoomChoice[]> = {};
 	for (const c of list) (out[c.roomIndex] ??= []).push(c);
@@ -22,13 +25,16 @@ export async function favoriteRoomChoicesFor(event: AuthEvent, holdId: string, s
  * 会員でない・何も選んでいないときは何もしない（前に選んだものは取り消す）。指定できない値ならエラー文を返す。
  */
 export async function saveFavoriteRoomChoices(event: AuthEvent, holdId: string, sessionId: string, form: FormData): Promise<string | null> {
-	if (!isMemberSession(event)) return null;
 	const choices: { roomIndex: number; roomId: string }[] = [];
 	for (const [key, value] of form.entries()) {
 		const m = /^fav_(\d+)$/.exec(key);
 		const roomId = String(value ?? '').trim();
 		if (m && roomId) choices.push({ roomIndex: Number(m[1]), roomId });
 	}
+	if (choices.length > 0 && (!isMemberSession(event) || !canDesignateFavoriteRoom(await viewerOf(event.locals)))) {
+		return m.membership_err_room_grade();
+	}
+	if (!isMemberSession(event)) return null;
 	try {
 		await sbSetHoldFavoriteRooms(createSupabaseServerClient(event as RequestEvent), holdId, sessionId, choices);
 		return null;

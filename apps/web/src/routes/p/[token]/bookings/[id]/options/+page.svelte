@@ -19,5 +19,8 @@
   {#if form?.message}
     <p class="mt-4 rounded-lg border border-rose-700/30 bg-rose-700/5 px-3 py-2 text-base text-rose-700" role="alert">{form.message}</p>
   {/if}
+  {#if !data.canPersonalize}
+    <p class="mt-4 rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600">客室の個別アレンジはプラチナ会員の特典です。</p>
+  {/if}
   <OptionOrderForm {data} />
 </main>

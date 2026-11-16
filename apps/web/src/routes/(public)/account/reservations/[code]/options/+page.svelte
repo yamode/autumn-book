@@ -21,4 +21,7 @@
 	<p class="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
 {/if}
 
+{#if !data.canPersonalize}
+	<p class="mt-4 rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600">{m.membership_platinum_options_notice()}</p>
+{/if}
 <OptionOrderForm {data} />
