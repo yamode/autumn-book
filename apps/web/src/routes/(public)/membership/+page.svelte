@@ -92,7 +92,7 @@
 					<tr>
 						<th scope="row" class="row-head">
 							<button type="button" class="detail-link" onclick={() => openDetail(points)} aria-haspopup="dialog">
-								<span>{points.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+								{points.title}
 							</button>
 						</th>
 						{#each rates as rate (rate)}
@@ -102,7 +102,7 @@
 					<tr>
 						<th scope="row" class="row-head">
 							<button type="button" class="detail-link" onclick={() => openDetail(qualification)} aria-haspopup="dialog">
-								<span>{qualification.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+								{qualification.title}
 							</button>
 						</th>
 						{#each RANK_CODES as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
@@ -111,7 +111,7 @@
 						<tr>
 							<th scope="row" class="row-head">
 								<button type="button" class="detail-link" onclick={() => openDetail(perk)} aria-haspopup="dialog">
-									<span>{perk.title}</span><span class="detail-icon" aria-hidden="true">i</span>
+									{perk.title}
 								</button>
 							</th>
 							{#each RANK_CODES as rank, index (rank)}
@@ -207,8 +207,6 @@
 		width: 100%;
 		min-height: 2.3rem;
 		align-items: center;
-		justify-content: space-between;
-		gap: .3rem;
 		border-radius: .35rem;
 		cursor: pointer;
 		text-align: left;
@@ -216,17 +214,6 @@
 	}
 	.detail-link:hover { color: #775b2f; text-decoration: underline; }
 	.detail-link:focus-visible { outline: 2px solid #78603b; outline-offset: 2px; }
-	.detail-icon {
-		display: grid;
-		width: .94rem;
-		height: .94rem;
-		flex: none;
-		place-items: center;
-		border: 1px solid #978664;
-		border-radius: 100%;
-		color: #775f37;
-		font: 600 .65rem/1 serif;
-	}
 	.rate { font-size: 1.9rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 	.rate-unit { margin-inline-start: .07em; font-size: .55em; }
 	.condition { color: #5b554c; font-size: .75rem; }
