@@ -12,6 +12,7 @@
 	<div>
 		<h2 class="text-xl">{m.forum_nickname_settings_heading()}</h2>
 		<p class="mt-1 text-sm text-stone-500">{m.forum_nickname_settings_sub()}</p>
+		<a href="/account/community/notifications" class="mt-2 inline-flex min-h-11 items-center text-sm text-brand-800 underline">{m.forum_notifications()}</a>
 	</div>
 
 	{#if !data.writeEnabled}

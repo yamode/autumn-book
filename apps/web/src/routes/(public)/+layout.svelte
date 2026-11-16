@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, invalidate } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { navigating } from '$app/state';
 	import PublicPageSkeleton from '$lib/components/PublicPageSkeleton.svelte';
 	import { formatDate } from '$lib/format';
@@ -12,6 +13,18 @@
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, children } = $props();
+
+	onMount(() => {
+		const refreshNotifications = () => {
+			if (data.user?.role === 'member' && document.visibilityState === 'visible') void invalidate('book:forum-notifications');
+		};
+		const timer = window.setInterval(refreshNotifications, 60_000);
+		document.addEventListener('visibilitychange', refreshNotifications);
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', refreshNotifications);
+		};
+	});
 
 	// 予約フロー中はスティッキー検索バーを出さない（離脱防止・設計書 §7）
 	let showSearch = $derived(!page.url.pathname.startsWith('/booking') && !page.url.pathname.startsWith('/auth'));
@@ -164,7 +177,7 @@
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
 				{#if data.user?.role === 'member'}
-					<AccountMenu name={data.user.name} />
+					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} />
 				{:else}
 					<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-white hover:bg-accent-500">{m.common_register()}</a>
@@ -194,7 +207,7 @@
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-xs text-white hover:bg-accent-500">{m.common_register()}</a>
 				{/if}
 				{#if data.user?.role === 'member'}
-					<AccountMenu name={data.user.name} compact={showHeaderSearch} />
+					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} compact={showHeaderSearch} />
 				{/if}
 				<button
 					type="button"

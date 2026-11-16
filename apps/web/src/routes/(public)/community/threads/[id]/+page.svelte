@@ -35,11 +35,20 @@
 	{#if canReply}<a href="#forum-reply" class="mb-4 inline-flex min-h-10 items-center rounded-lg border border-stone-200 px-3 text-sm text-brand-800">{m.forum_reply_heading()}</a>{/if}
 	<div class="rounded-2xl border border-stone-200 bg-white">
 		{#each data.posts as post (post.id)}
-			<ForumPostView {post} canDelete={data.isLoggedIn && data.writeEnabled} onReply={canReply ? quote : undefined} />
+			<ForumPostView
+				{post}
+				canDelete={data.isLoggedIn && data.writeEnabled}
+				canReport={data.isLoggedIn && data.writeEnabled}
+				report={form?.reportPostId === post.id ? { success: form.reportSuccess, error: form.reportError, reason: form.reportReason, note: form.reportNote } : undefined}
+				onReply={canReply ? quote : undefined}
+			/>
 		{/each}
 	</div>
 
 	<!-- 返信フォーム / ロック通知 / 未ログイン CTA（設計書 §6） -->
+	{#if form?.reportError && !data.posts.some((post) => post.id === form.reportPostId && !post.isDeleted)}
+		<p role="alert" class="mt-4 text-sm text-red-800">{form.reportError}</p>
+	{/if}
 	<div id="forum-reply" class="mt-6 scroll-mt-24">
 		{#if !data.writeEnabled}
 			<div class="rounded-2xl border border-brand-200 bg-brand-50 p-4 sm:p-5">

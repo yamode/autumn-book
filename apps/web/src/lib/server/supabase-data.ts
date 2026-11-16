@@ -823,6 +823,16 @@ export async function listForumThreads(
 	return data as { total: number; threads: ForumThreadListItemRow[] };
 }
 
+export async function listRecentForumThreads() {
+	const { data, error } = await supa().rpc('forum_recent_threads');
+	if (error) throw error;
+	return ((data ?? []) as (ForumThreadListItemRow & { board_slug: string; board_title: string })[]).map(t => ({
+		id: t.id, title: t.title, isPinned: t.is_pinned, isLocked: t.is_locked, replyCount: t.reply_count,
+		lastPostedAt: t.last_posted_at, createdAt: t.created_at, authorNickname: t.author_nickname,
+		authorIsStaff: t.author_is_staff, boardSlug: t.board_slug, boardTitle: t.board_title
+	}));
+}
+
 export async function getForumThread(threadId: string): Promise<ForumThreadRow | null> {
 	const { data, error } = await supa().rpc('forum_get_thread', { p_thread_id: threadId });
 	if (error) throw error;

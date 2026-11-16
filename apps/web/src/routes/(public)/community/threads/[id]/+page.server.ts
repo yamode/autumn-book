@@ -8,6 +8,7 @@ import {
 	createForumPost as sbCreateForumPost,
 	deleteOwnForumPost as sbDeleteOwnForumPost
 } from '$lib/server/supabase-data';
+import { notifyDemoForumReply, reportForumPost, REPORT_REASONS, type ForumReportReason } from '$lib/server/forum-activity';
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -88,10 +89,30 @@ export const actions: Actions = {
 				: m.forum_error_invalid_input();
 			return fail(400, { message, body });
 		}
+		notifyDemoForumReply(res.post.id);
 		// 自分の投稿アンカーへ
 		redirect(303, `/community/threads/${params.id}#post-${res.post.postNo}`);
 	},
 
+	report: async (event) => {
+		if (!FORUM_WRITE_ENABLED || event.locals.user?.role !== 'member') return fail(403, { reportError: m.forum_cta_login_to_post() });
+		const form = await event.request.formData();
+		const postId = String(form.get('postId') ?? '');
+		const reason = String(form.get('reason') ?? '') as ForumReportReason;
+		const note = String(form.get('note') ?? '').trim();
+		if (!REPORT_REASONS.includes(reason) || note.length > 500) {
+			return fail(400, { reportPostId: postId, reportError: m.forum_report_invalid(), reportReason: reason, reportNote: note });
+		}
+		try {
+			await reportForumPost(event, event.params.id, postId, reason, note);
+		} catch (cause) {
+			const msg = cause instanceof Error ? cause.message : '';
+			const reportError = msg.includes('rate_limited') ? m.forum_report_rate_limited()
+				: msg.includes('not_found') ? m.forum_notification_unavailable() : m.forum_report_failed();
+			return fail(msg.includes('rate_limited') ? 429 : 400, { reportPostId: postId, reportError, reportReason: reason, reportNote: note });
+		}
+		return { reportPostId: postId, reportSuccess: true, reportReason: undefined, reportNote: undefined };
+	},
 	deletePost: async (event) => {
 		const { request, params, locals } = event;
 		if (!FORUM_WRITE_ENABLED) return fail(403, { message: m.forum_write_app_only() });

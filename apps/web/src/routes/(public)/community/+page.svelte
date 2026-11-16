@@ -10,7 +10,11 @@
 
 <div class="forum-shell mx-auto max-w-5xl px-4 py-10">
 	<h1 class="mb-1 text-2xl text-brand-900">{m.forum_title()}</h1>
-	<p class="mb-6 text-sm text-stone-500">{m.forum_subtitle()}</p>
+	<p class="mb-3 text-sm text-stone-500">{m.forum_subtitle()}</p>
+	<nav class="mb-6 flex flex-wrap gap-2" aria-label={m.forum_title()}>
+		<a href="#recent-threads" class="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm text-brand-800">{m.forum_recent_threads_heading()}</a>
+		{#if data.isLoggedIn}<a href="/account/community/notifications" class="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm text-brand-800">{m.forum_notifications()}{#if data.forumUnread}<span class="ml-2 rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-900">{data.forumUnread}</span>{/if}</a>{/if}
+	</nav>
 
 	{#if !data.isLoggedIn}
 		<ForumCta showBanner={true} facilities={[]} />
@@ -38,7 +42,8 @@
 		</div>
 
 		<div>
-			<h2 class="mb-3 font-medium text-brand-900">{m.forum_recent_threads_heading()}</h2>
+			<h2 id="recent-threads" class="mb-1 scroll-mt-24 font-medium text-brand-900">{m.forum_recent_threads_heading()}</h2>
+			<p class="mb-3 text-xs text-stone-600">{m.forum_recent_threads_hint()}</p>
 			{#if data.recentThreads.length === 0}
 				<p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">{m.forum_recent_threads_empty()}</p>
 			{:else}

@@ -40,6 +40,18 @@
 
 	let detail = $state<Detail | null>(null);
 	let dialog: HTMLDialogElement | undefined = $state();
+
+	$effect(() => {
+		const element = dialog;
+		if (!element) return;
+		function closeOutside(event: MouseEvent) {
+			if (event.target !== element) return;
+			const bounds = element!.getBoundingClientRect();
+			if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) element!.close();
+		}
+		element.addEventListener('click', closeOutside);
+		return () => element.removeEventListener('click', closeOutside);
+	});
 	async function openDetail(item: Detail) {
 		detail = item;
 		await tick();
@@ -96,7 +108,7 @@
 						</th>
 						{#each conditions as condition (condition)}<td class="condition">{condition}</td>{/each}
 					</tr>
-					{#each perks as perk (perk.key)}
+					{#each [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank)) as perk (perk.key)}
 						<tr>
 							<th scope="row" class="row-head">
 								<button type="button" class="detail-link" onclick={() => openDetail(perk)} aria-haspopup="dialog">

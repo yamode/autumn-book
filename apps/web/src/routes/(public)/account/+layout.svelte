@@ -13,6 +13,7 @@
 		{ href: '/account/availability-alerts', label: '空室通知' },
 		{ href: '/account/upgrades', label: 'アップグレード' },
 		{ href: '/account/community', label: m.account_nav_community() },
+		{ href: '/account/community/notifications', label: m.forum_notifications() },
 		// 保存カード（2026-10-07・docs/saved-cards.md §6.2）
 		{ href: '/account/cards', label: m.account_nav_cards() },
 		{ href: '/account/profile', label: m.account_nav_profile() },
@@ -20,7 +21,7 @@
 	]);
 
 	function isActive(href: string) {
-		return href === '/account' ? page.url.pathname === '/account' : page.url.pathname.startsWith(href);
+		return href === '/account' ? page.url.pathname === '/account' : href === '/account/community' ? page.url.pathname === href : page.url.pathname.startsWith(href);
 	}
 
 	// 氏名のイニシャル（アバター代替）
