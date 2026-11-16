@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import { afterNavigate, invalidate, onNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
-	import { navigating } from '$app/state';
+	import { pendingPage } from '$lib/page-transition';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { formatDate } from '$lib/format';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
@@ -26,7 +27,9 @@
 	});
 
 	// 予約フロー中はスティッキー検索バーを出さない（離脱防止・設計書 §7）
-	let showSearch = $derived(!page.url.pathname.startsWith('/booking') && !page.url.pathname.startsWith('/auth'));
+	const pending = $derived(pendingPage('public'));
+	const visibleUrl = $derived(pending?.url ?? page.url);
+	const visibleParams = $derived(pending?.params ?? page.params);
 
 	// hreflang 用の各ロケールURL（hreflang は絶対URL必須のため origin を付与）
 	let jaHref = $derived(page.url.origin + localizeHref(page.url.pathname + page.url.search, { locale: 'ja' }));
@@ -37,10 +40,9 @@
 	// ヘッダーの検索バーは「宿を探すページ」だけに出す（2026-11-02 指示「検索バーがヘッダーに常にあるのは不自然」）。
 	// 空室検索の結果と、施設のトップ・客室・お知らせ等の施設ページ。トップは本文ヒーローに、プラン一覧はページ内に検索があり、
 	// プラン詳細はページ内の「ご宿泊の条件」で日程・人数を選ぶので出さない。会員特典・コミュニティ・マイページ等も出さない
-	let routeId = $derived(page.route.id ?? '');
+	let routeId = $derived(pending?.route.id ?? page.route.id ?? '');
 	let showHeaderSearch = $derived(
-		showSearch &&
-			!isPlansListPath(page.url.pathname) &&
+		!isPlansListPath(deLocalizeUrl(visibleUrl).pathname) &&
 			(routeId.startsWith('/(public)/search') ||
 				(routeId.startsWith('/(public)/[brand]/[facility]') && !routeId.startsWith('/(public)/[brand]/[facility]/plans/[plan]')))
 	);
@@ -55,6 +57,8 @@
 	type FacilityBrand = { name: string; slug: string; site: string | null };
 	let facilityBrand = $derived.by((): FacilityBrand | null => {
 		const d = page.data as Record<string, any>;
+		const facility = pending?.params?.facility;
+		if (pending && (facility !== page.params.facility || (!facility && pending.route.id !== page.route.id))) return null;
 		if (routeId.startsWith('/(public)/[brand]/[facility]') && d.shellFacility) {
 			const f = d.shellFacility;
 			return { name: f.name, slug: f.slug, site: d.facilityBackLink?.href ?? null };
@@ -69,10 +73,10 @@
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
 	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
 
-	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
-	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
-	let searchAdults = $derived(Number(page.url.searchParams.get('adults') ?? 2));
-	let searchRooms = $derived(Number(page.url.searchParams.get('rooms') ?? 1));
+	let searchCheckin = $derived(visibleUrl.searchParams.get('checkin') ?? '');
+	let searchNights = $derived(Number(visibleUrl.searchParams.get('nights') ?? 1));
+	let searchAdults = $derived(Number(visibleUrl.searchParams.get('adults') ?? 2));
+	let searchRooms = $derived(Number(visibleUrl.searchParams.get('rooms') ?? 1));
 
 	// モバイル（<md）はスティッキーを1行に抑える: 検索は1行サマリのボタンに畳み、ナビ類はメニューへ。
 	// 844px 程度の画面でヘッダーが 200px 超を占めていたため（本文の視認領域を確保）
@@ -85,15 +89,12 @@
 	);
 
 	let main = $state<HTMLElement>();
-	let showProgress = $state(false);
 	let contentFade: Animation | undefined;
-	const destination = $derived(navigating.to);
 	$effect(() => {
-		showProgress = false;
-		if (!destination?.route.id?.startsWith('/(public)') || navigating.type === 'form') return;
-		if (destination.url.pathname === page.url.pathname && destination.url.search === page.url.search) return;
-		const timer = window.setTimeout(() => (showProgress = true), 180);
-		return () => window.clearTimeout(timer);
+		if (pending) {
+			mobileSearchOpen = false;
+			mobileMenuOpen = false;
+		}
 	});
 
 	onNavigate(({ from, to, type }) => {
@@ -224,7 +225,7 @@
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
 				<div id="header-search-panel" class="w-full {mobileSearchOpen ? '' : 'hidden md:block'}">
-					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={page.params.facility ?? ''} action={page.params.facility ? '/' + page.params.brand + '/' + page.params.facility + '/plans' : '/search'} />
+					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={visibleParams.facility ?? ''} action={visibleParams.facility ? '/' + visibleParams.brand + '/' + visibleParams.facility + '/plans' : '/search'} />
 				</div>
 			{/if}
 		</div>
@@ -248,14 +249,8 @@
 		</div>
 	</header>
 
-	{#if showProgress}
-		<div class="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-stone-200" aria-hidden="true">
-			<div class="route-progress h-full w-1/3 bg-accent-600"></div>
-		</div>
-		<div class="sr-only" role="status">{m.common_loading()}</div>
-	{/if}
 	<main bind:this={main} class="flex-1">
-		{@render children()}
+		<PageLoadingBoundary shell="public" padding="px-4 pt-7 pb-10 sm:px-6 sm:pt-10">{@render children()}</PageLoadingBoundary>
 	</main>
 
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 text-stone-300">
@@ -293,16 +288,4 @@
 		scrollbar-gutter: stable;
 	}
 
-	.route-progress {
-		animation: route-progress 1.1s ease-in-out infinite;
-	}
-
-	@keyframes route-progress {
-		from { transform: translateX(-100%); }
-		to { transform: translateX(300%); }
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.route-progress { animation: none; width: 100%; }
-	}
 </style>

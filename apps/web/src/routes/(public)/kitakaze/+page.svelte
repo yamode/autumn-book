@@ -2,6 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import Turnstile from '$lib/components/Turnstile.svelte';
+	import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
@@ -26,7 +27,7 @@
 				<a href={playlistUrl} class="text-sm font-medium text-brand-800 underline underline-offset-4">{m.radio_youtube()}</a>
 			</div>
 			{#await data.episodes}
-				<p role="status" class="text-sm text-stone-600">{m.radio_loading()}</p>
+				<PageLoadingSkeleton kind="videos" title={m.radio_episodes()} />
 			{:then videos}
 				{#if videos.length}
 					<ul class="grid gap-3 sm:grid-cols-2">

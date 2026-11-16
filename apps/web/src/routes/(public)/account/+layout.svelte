@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { pendingPage } from '$lib/page-transition';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { rankName } from '$lib/rank-name';
 	import { deLocalizeUrl } from '$lib/paraglide/runtime';
@@ -17,7 +19,7 @@
 		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() },
 		{ href: '/account/upgrades', label: m.account_nav_upgrades() }
 	]);
-	const pathname = $derived(deLocalizeUrl(page.url).pathname);
+	const pathname = $derived(deLocalizeUrl(pendingPage('account')?.url ?? page.url).pathname);
 	const settingsActive = $derived(['/account/settings', '/account/profile', '/account/cards', '/account/ai-connections'].some(isActive));
 	const bookingSection = $derived(isActive('/account') || bookingNav.some((item) => isActive(item.href)));
 
@@ -83,7 +85,9 @@
 			</ul>
 		</nav>
 		<div class="min-w-0 space-y-5">
-			<div data-account-content>{@render children()}</div>
+			<div data-account-content>
+				<PageLoadingBoundary shell="account" padding="py-2">{@render children()}</PageLoadingBoundary>
+			</div>
 			{#if bookingSection}
 				<nav aria-label={m.account_booking_links()} class="rounded-xl border border-stone-200 bg-white p-3 lg:hidden">
 					<h2 class="px-2 text-sm font-semibold">{m.account_booking_links()}</h2>

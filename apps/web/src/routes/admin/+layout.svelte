@@ -13,6 +13,8 @@
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { ADMIN_NAV, activeNav, visibleNav } from '$lib/admin-nav';
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
+	import { pendingPage } from '$lib/page-transition';
 
 	let { data, children } = $props();
 	// デスクトップアプリの中か（ログアウトのボタンを「ユーザーを切り替え」に差し替える）
@@ -24,7 +26,9 @@
 	// メニューは $lib/admin-nav.ts（2026-10-17 モダン化・メニュー整理）。関係する画面は1項目の下にまとめ、開閉できる
 	const navGroups = $derived(visibleNav(data.user?.role));
 	// いま開いている画面（項目と、その下の子）。客室案内は ?tab で分ける
-	const current = $derived(activeNav(page.url.pathname, page.url.searchParams));
+	const pending = $derived(pendingPage('admin'));
+	const activeUrl = $derived(pending?.url ?? page.url);
+	const current = $derived(activeNav(activeUrl.pathname, activeUrl.searchParams));
 	// 開いている項目（いまの画面の項目は自動で開く。ほかはクリックで開閉）
 	let openItems = $state<Record<string, boolean>>({});
 	const isOpen = (href: string) => openItems[href] ?? current?.item.href === href;
@@ -61,6 +65,7 @@
 
 	// モバイルのメニュー（ドロワー）
 	let menuOpen = $state(false);
+	$effect(() => { if (pending) menuOpen = false; });
 
 	// ---- 未保存の変更の離脱ガード（管理画面の全フォーム共通）----
 	// main 内の POST フォームに入力があったら「未保存」とし、送信で解除する。GET の絞り込みフォームは対象外。
@@ -278,7 +283,7 @@
 <!-- 画面遷移中の表示は全画面共通（押したボタンの中で回転・ルートの +layout.svelte と app.css・2026-11-01） -->
 
 {#if isLogin}
-	{@render children()}
+	<PageLoadingBoundary shell="admin">{@render children()}</PageLoadingBoundary>
 	<p class="fixed right-3 bottom-2 font-mono text-[11px] text-stone-400">v{APP_VERSION}</p>
 {:else}
 	<div class="admin-shell flex min-h-screen flex-col bg-[#f0eeeb]">
@@ -417,7 +422,9 @@
 						{/each}
 					</nav>
 				{/if}
-				{@render children()}
+				<PageLoadingBoundary shell="admin" title={current?.leaf.label} padding="py-2">
+					{@render children()}
+				</PageLoadingBoundary>
 			</main>
 		</div>
 		</div>

@@ -1,7 +1,7 @@
 <script lang="ts">
   // 取引先ページ: メインメニューで移る間に、本文の位置へ出す「読み込み中」の骨組み（2026-10-10）。
   // 行き先のページの形（幅・見出し・カード／一覧／入力欄）だけをまねた軽いもの。中身は行き先のページが届いてから。
-  // 出し入れは routes/p/[token]/+layout.svelte（120ms 待ってから出す）。
+  // 出し入れは PageLoadingBoundary に任せる。
   let { path, label }: { path: string; label: string } = $props();
   const width = $derived(
     path === 'calendar' || path === 'plans' || path === 'rooms' ? 'max-w-6xl' : path === 'rate-sheet' ? 'max-w-3xl' : 'max-w-4xl'

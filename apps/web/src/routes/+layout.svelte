@@ -1,10 +1,9 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
-	import { onMount } from 'svelte';
 	import DebugPanel from '$lib/components/DebugPanel.svelte';
 	import AnalyticsConsent from '$lib/components/AnalyticsConsent.svelte';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { rankName } from '$lib/rank-name';
 	import type { RankCode } from '$lib/plan-access';
 
@@ -19,36 +18,6 @@
 		page.url.pathname.startsWith('/booking-mcp/oauth/') || Boolean(page.url.searchParams.get('next')?.startsWith('/booking-mcp/oauth/'))
 	);
 
-	// 画面を移っている間は、押したボタン・リンクに data-pending を付ける（見た目は app.css: ボタンは中で回転、文字のリンクは色が変わる）。
-	// 2026-11-01 指示「ローディングは画面上部ではなく、ボタンならボタンの中でぐるぐる」（上端の帯は廃止）。
-	// 押したものは 1.5 秒だけ覚える（あとから JS で goto した遷移に、昔押したボタンを光らせない）
-	let pressed: { el: HTMLElement; at: number } | null = null;
-	let marked: HTMLElement | null = null;
-	const clearMark = () => {
-		marked?.removeAttribute('data-pending');
-		marked = null;
-	};
-	onMount(() => {
-		const onClick = (e: MouseEvent) => {
-			const el = (e.target as Element | null)?.closest<HTMLElement>('a[href], button');
-			pressed = el ? { el, at: Date.now() } : null;
-		};
-		document.addEventListener('click', onClick, true);
-		return () => document.removeEventListener('click', onClick, true);
-	});
-	beforeNavigate(({ willUnload, type }) => {
-		if (willUnload || type === 'popstate' || !pressed || Date.now() - pressed.at > 1500 || !pressed.el.isConnected) return;
-		clearMark();
-		marked = pressed.el;
-		marked.setAttribute('data-pending', '');
-		// 遷移が取り消された・失敗したときにも残らないよう、念のため 15 秒で外す
-		const el = marked;
-		setTimeout(() => el.removeAttribute('data-pending'), 15000);
-	});
-	afterNavigate(() => {
-		clearMark();
-		pressed = null;
-	});
 </script>
 
 {#if page.data.memberPreview}
@@ -65,7 +34,7 @@
 		</form>
 	</div>
 {/if}
-{@render children()}
+<PageLoadingBoundary shell="root">{@render children()}</PageLoadingBoundary>
 {#if !page.data.memberPreview && !isPartnerPortal && !isBookingMcpConsent}
 	<AnalyticsConsent />
 	<DebugPanel />

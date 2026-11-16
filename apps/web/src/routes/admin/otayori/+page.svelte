@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import { goto } from '$app/navigation';
 	import { renderForumBody } from '$lib/forum-format';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
@@ -12,7 +13,7 @@
 	] as const;
 
 	function go(status: string) {
-		location.href = `/admin/otayori?status=${status}`;
+		void goto(`/admin/otayori?status=${encodeURIComponent(status)}`);
 	}
 
 	// 却下フォームを開いている投稿ID（インライン理由入力）

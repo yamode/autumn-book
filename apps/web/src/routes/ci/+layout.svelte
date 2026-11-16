@@ -5,15 +5,17 @@
 	// 検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
+	import { pendingPage } from '$lib/page-transition';
 	import * as m from '$lib/paraglide/messages';
 	import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
 
 	let { data, children } = $props();
 
 	const path = $derived(page.url.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, ''));
-	const step = $derived(
-		path.startsWith('/ci/done') ? 4 : path.startsWith('/ci/bath') ? 3 : path.startsWith('/ci/meals') ? 2 : 1
-	);
+	const pending = $derived(pendingPage('checkin'));
+	const route = $derived(pending?.route.id ?? path);
+	const step = $derived(route === '/ci/done' ? 4 : route === '/ci/bath' ? 3 : route === '/ci/meals' ? 2 : 1);
 	const steps = $derived([m.ci_step_basic(), m.ci_step_meals(), m.ci_step_bath(), m.ci_step_done()]);
 	const errorText = $derived(
 		data.ciError === 'expired'
@@ -64,15 +66,19 @@
 				<!-- 手順を移ったとき（①→②→③）は、短くふわっと出す。入力の手を止めない長さ（0.35 秒） -->
 				{#key path}
 					<div class="ci-stage mt-4">
-						{@render children()}
+						<PageLoadingBoundary shell="checkin" padding="py-2" title={steps[step - 1]}>
+							{@render children()}
+						</PageLoadingBoundary>
 					</div>
 				{/key}
 			{:else}
-				<div class="mt-6 rounded-2xl bg-white p-5 text-sm shadow-sm">
-					<h1 class="text-base font-semibold">{m.ci_title()}</h1>
-					<p class="mt-3 leading-relaxed">{errorText}</p>
-					<p class="mt-3 text-xs text-stone-500">{m.ci_err_help()}</p>
-				</div>
+				<PageLoadingBoundary shell="checkin" padding="py-2" title={steps[step - 1]}>
+					<div class="mt-6 rounded-2xl bg-white p-5 text-sm shadow-sm">
+						<h1 class="text-base font-semibold">{m.ci_title()}</h1>
+						<p class="mt-3 leading-relaxed">{errorText}</p>
+						<p class="mt-3 text-xs text-stone-500">{m.ci_err_help()}</p>
+					</div>
+				</PageLoadingBoundary>
 			{/if}
 		</main>
 	</div>
@@ -116,8 +122,8 @@
 	.ci-enter :global(main > h1),
 	.ci-enter :global(main > ol),
 	.ci-enter :global(main > p),
-	.ci-enter .ci-stage > :global(section),
-	.ci-enter .ci-stage > :global(form > *) {
+	.ci-enter .ci-stage :global([data-transition-content] > section),
+	.ci-enter .ci-stage :global([data-transition-content] > form > *) {
 		animation: ci-rise 1.5s cubic-bezier(0.2, 0.6, 0.2, 1) both;
 	}
 	.ci-enter :global(main > p) {
@@ -129,16 +135,16 @@
 	.ci-enter :global(main > ol) {
 		animation-delay: 0.5s;
 	}
-	.ci-enter .ci-stage > :global(section) {
+	.ci-enter .ci-stage :global([data-transition-content] > section) {
 		animation-delay: 0.75s;
 	}
-	.ci-enter .ci-stage > :global(form > *) {
+	.ci-enter .ci-stage :global([data-transition-content] > form > *) {
 		animation-delay: 1.4s;
 	}
-	.ci-enter .ci-stage > :global(form > *:nth-child(1)) {
+	.ci-enter .ci-stage :global([data-transition-content] > form > *:nth-child(1)) {
 		animation-delay: 1s;
 	}
-	.ci-enter .ci-stage > :global(form > *:nth-child(2)) {
+	.ci-enter .ci-stage :global([data-transition-content] > form > *:nth-child(2)) {
 		animation-delay: 1.25s;
 	}
 	@media (prefers-reduced-motion: reduce) {
@@ -147,8 +153,8 @@
 		.ci-enter :global(main > h1),
 		.ci-enter :global(main > ol),
 		.ci-enter :global(main > p),
-		.ci-enter .ci-stage > :global(section),
-		.ci-enter .ci-stage > :global(form > *) {
+		.ci-enter .ci-stage :global([data-transition-content] > section),
+		.ci-enter .ci-stage :global([data-transition-content] > form > *) {
 			animation: none;
 		}
 	}

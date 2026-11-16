@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import { goto } from '$app/navigation';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
 	let { data, form } = $props();
@@ -8,10 +9,10 @@
 	let showNewBoard = $state(false);
 
 	function selectBoard(id: string) {
-		location.href = `/admin/community?board=${id}`;
+		void goto(`/admin/community?board=${encodeURIComponent(id)}`);
 	}
 	function selectThread(boardId: string, threadId: string) {
-		location.href = `/admin/community?board=${boardId}&thread=${threadId}`;
+		void goto(`/admin/community?board=${encodeURIComponent(boardId)}&thread=${encodeURIComponent(threadId)}`);
 	}
 </script>
 

@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { navigating, page } from '$app/stores';
+  import { page } from '$app/stores';
   import { partnerAccent } from '$lib/partner-theme';
   import PartnerPageSkeleton from '$lib/components/PartnerPageSkeleton.svelte';
+  import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
+  import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
+  import { pendingPage } from '$lib/page-transition';
   import PartnerBookingCart from '$lib/components/partner/PartnerBookingCart.svelte';
   import { memberCart } from '$lib/member-cart.svelte';
 
@@ -83,38 +86,15 @@
   const pointText = (n: number) => `${n.toLocaleString('ja-JP')}pt`;
 
   // ---- メニューの切替を先に見せる（2026-10-10）----
-  // SvelteKit は行き先の load が終わるまで前の画面のままなので、同じ取引先のメインメニューのページ（/p/<token>/<menu> ちょうど）へ
-  // 移る間は、メニューの選択をすぐ行き先にし、本文を行き先の「読み込み中」の骨組みに差し替える（ちらつかないよう 120ms 待ってから）。
-  // 対象外: 同じページ内の検索（?date= 等の goto・同じ pathname）、予約入力・支払い・アカウントのタブなどメニュー以外の行き先、フォームの送信。
-  // 前の画面は消さずに隠すだけ（移れなかったときはそのまま戻る）。
-  const menuPathOf = (url: URL) => {
-    const base = `/p/${$page.params.token}/`;
-    if (url.origin !== $page.url.origin || !url.pathname.startsWith(base)) return null;
-    const rest = url.pathname.slice(base.length).replace(/\/+$/, '');
-    return MENU.some(([path]) => path === rest) ? rest : null;
-  };
-  const pendingMenu = $derived.by(() => {
-    const nav = $navigating;
-    const to = nav?.to?.url;
-    if (!nav || !to || nav.type === 'form' || to.pathname === $page.url.pathname) return null;
-    return menuPathOf(to);
-  });
-  let skeleton = $state<string | null>(null);
-  $effect(() => {
-    const m = pendingMenu;
-    if (!m) {
-      skeleton = null;
-      return;
-    }
-    const t = setTimeout(() => (skeleton = m), 120);
-    return () => clearTimeout(t);
-  });
+  const pending = $derived(pendingPage('partner'));
+  const activePath = $derived(pending?.url.pathname ?? $page.url.pathname);
+  const pendingMenu = $derived(pending?.route.id?.split('/')[3] ?? '');
+  const pendingLabel = $derived((menu.find(([path]) => path === pendingMenu) ?? MENU.find(([path]) => path === pendingMenu))?.[1] ?? '');
 
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）。メニューで移る間は行き先
   const isActive = (path: string) => {
-    if (pendingMenu) return path === pendingMenu;
     const base = `/p/${$page.params.token}/`;
-    const rest = $page.url.pathname.startsWith(base) ? $page.url.pathname.slice(base.length) : '';
+    const rest = activePath.startsWith(base) ? activePath.slice(base.length) : '';
     const head = rest.split('/')[0];
     return path === 'calendar' ? head === 'calendar' || head === 'book' : head === path;
   };
@@ -160,7 +140,7 @@
   </style>
 </svelte:head>
 
-<div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft}`}>
+<div class="partner-portal min-h-screen overflow-x-clip bg-stone-50 text-brand-900" style={`--pt-accent:${theme.accent};--pt-accent-soft:${theme.accentSoft};--page-loading-top:var(--portal-header-h, 4.25rem)`}>
   <!-- z-[45]: 本文の公開期間の料金カード（z-40）より上に置き、スクロール時にカードがヘッダーへ重ならないようにする -->
   <header bind:this={headerEl} class="sticky top-0 z-[45] border-b border-stone-200 bg-white/95 backdrop-blur">
     {#if portal?.preview}
@@ -232,13 +212,16 @@
     <!-- オンの施設が1つも無い取引先（N9・2026-10-09 複数施設化）: ログインはできるが料金・予約は出さない -->
     <p class="mx-auto mt-4 max-w-6xl rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6" role="status">{portal.noFacilityMessage}</p>
   {/if}
-  {#if skeleton}
-    <PartnerPageSkeleton path={skeleton} label={(menu.find(([path]) => path === skeleton) ?? MENU.find(([path]) => path === skeleton))?.[1] ?? ''} />
-  {/if}
-  <!-- 骨組みを出している間は前の画面を隠すだけ（消さない） -->
-  <div class={skeleton ? 'hidden' : 'contents'}>
+  <PageLoadingBoundary shell="partner" padding="">
+    {#snippet placeholder()}
+      {#if pendingLabel}
+        <PartnerPageSkeleton path={pendingMenu} label={pendingLabel} />
+      {:else}
+        <div class="mx-auto max-w-4xl px-4 pb-10 pt-6 sm:px-6"><PageLoadingSkeleton /></div>
+      {/if}
+    {/snippet}
     {@render children()}
-  </div>
+  </PageLoadingBoundary>
   <!-- 規約3点は取引先ページの中で見せる（公式サイトはまだ非公開のため。中身は公式サイトと同じ・legal/[page]） -->
   <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-sm leading-6 text-stone-500 sm:px-6">
     {#if isMember}

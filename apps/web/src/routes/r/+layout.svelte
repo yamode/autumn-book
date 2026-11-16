@@ -12,20 +12,23 @@
 	import { afterNavigate, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
+	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
+	import { pendingPage, transitionTitle } from '$lib/page-transition';
 	import * as m from '$lib/paraglide/messages';
 	import { SNS_KINDS, SNS_LABEL } from '$lib/sns-links';
 
 	let { children } = $props();
 
+	const pending = $derived(pendingPage('room'));
 	const title = $derived(
-		(page.data.headerTitle as string | undefined) ??
+		(pending ? transitionTitle(pending.route.id ?? '') : page.data.headerTitle as string | undefined) ??
 			(page.data.stay as { facility: { name: string } } | null | undefined)?.facility.name ??
 			m.inroom_header()
 	);
 	const snsLinks = $derived(page.data.snsLinks as import('$lib/sns-links').SnsLinks | undefined);
 	const snsEntries = $derived(SNS_KINDS.flatMap((k) => (snsLinks?.[k] ? [[k, snsLinks[k] as string] as const] : [])));
 	const back = $derived(page.data.headerBack as string | undefined);
-	const path = $derived(page.url.pathname);
+	const path = $derived((pending?.url ?? page.url).pathname);
 	// 滞在が確定している画面（/r で claim 済み・/r/bath・案内の詳細）だけタブを2本出す。
 	const bathEnabled = $derived(Boolean(page.data.stay ?? page.data.ctx));
 
@@ -111,7 +114,7 @@
 		</header>
 
 		<main class="flex-1 {snsEntries.length ? 'pb-4' : 'pb-16'}">
-			{@render children()}
+			<PageLoadingBoundary shell="room">{@render children()}</PageLoadingBoundary>
 		</main>
 
 		<!-- ===== フッター（施設の SNS ボタン。設定は /admin/inroom） ===== -->
