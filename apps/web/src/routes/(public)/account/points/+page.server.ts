@@ -1,28 +1,27 @@
 import { pointLedger, memberRanks, expiringPoints, myReservations, listMyOtayori } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbPointLedger, sbMyReservations, sumExpiringPoints, getOtayoriMySummary } from '$lib/server/supabase-data';
-import { todayStr } from '$lib/format';
+import { sbPointLedger, sumExpiringPoints, getOtayoriMySummary } from '$lib/server/supabase-data';
+import { addDays, todayStr } from '$lib/format';
+import type { RankCode } from '$lib/plan-access';
 import type { PageServerLoad } from './$types';
+
+type RankProgress = { rank_code?: RankCode; nights: number; review_on: string | null };
 
 export const load: PageServerLoad = async (event) => {
 	const { locals } = event;
-	const yearStart = todayStr().slice(0, 4) + '-01-01';
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [ledger, reservations, otayori] = await Promise.all([
+		const [ledger, rankResult, otayori] = await Promise.all([
 			sbPointLedger(client),
-			sbMyReservations(client),
+			client.rpc('my_rank_progress'),
 			getOtayoriMySummary(client)
 		]);
-		const staysThisYear = reservations
-			.filter((b) => b.status !== 'cancelled' && b.checkin >= yearStart)
-			.reduce((s, b) => s + b.nights, 0);
 		return {
 			ledger,
 			ranks: memberRanks,
 			expiring: sumExpiringPoints(ledger),
-			staysThisYear,
+			rankProgress: rankResult.error ? null : rankResult.data as RankProgress | null,
 			otayori: {
 				balance: otayori.balance,
 				ledger: otayori.ledger.map((e) => ({
@@ -44,16 +43,24 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const memberId = locals.user!.id;
-	// 年間宿泊数（ランク進捗用・デモは予約データから算出）
-	const staysThisYear = myReservations(memberId)
-		.filter((b) => b.status !== 'cancelled' && b.checkin >= yearStart)
-		.reduce((s, b) => s + b.nights, 0);
+	const today = todayStr();
+	let windowStart = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
+	if (windowStart.endsWith('-02-29')) windowStart = windowStart.slice(0, -2) + '28';
+	const eligibleNights = new Set<string>();
+	for (const booking of myReservations(memberId)) {
+		if (booking.status !== 'stayed' || addDays(booking.checkin, booking.nights) > today) continue;
+		for (let index = 0; index < booking.nights; index++) {
+			const night = addDays(booking.checkin, index);
+			if (night >= windowStart) eligibleNights.add(night);
+		}
+	}
+	const rankProgress: RankProgress = { nights: eligibleNights.size, review_on: null };
 	const otayori = listMyOtayori(memberId);
 	return {
 		ledger: pointLedger.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 		ranks: memberRanks,
 		expiring: expiringPoints(memberId),
-		staysThisYear,
+		rankProgress,
 		otayori
 	};
 };

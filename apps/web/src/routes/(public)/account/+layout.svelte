@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import { rankName } from '$lib/rank-name';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, children } = $props();
@@ -43,7 +44,10 @@
 			<p class="mt-1 text-sm text-stone-500">{data.member.name} 様</p>
 		</div>
 		<div class="flex items-center gap-2.5">
-			<RankBadge rank={data.member.rank} />
+			<a href="/account/points#member-rank" class="inline-flex min-h-11 items-center rounded-md"
+				aria-label={`${rankName(data.member.rank)} · ${m.points_rank_progress()}`}>
+				<RankBadge rank={data.member.rank} />
+			</a>
 			<span class="rounded-full bg-emerald-50 px-3.5 py-1.5 text-sm font-semibold text-emerald-700">
 				{data.balance.toLocaleString()} {m.common_point_unit()}
 			</span>

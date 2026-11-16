@@ -1,15 +1,16 @@
 <script lang="ts">
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import { RANK_CODES } from '$lib/plan-access';
+	import { rankCondition, rankNights } from '$lib/member-rank';
+	import { formatDateLong } from '$lib/format';
 	import { renderForumBody } from '$lib/forum-format';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
-	let member = $derived(data.member);
-	let currentRank = $derived(data.ranks.find((r) => r.code === member.rank)!);
-	// 次ランクまでの進捗（platinum が最上位）
-	let nextTarget = $derived(
-		member.rank === 'standard' ? 2 : member.rank === 'silver' ? 5 : member.rank === 'gold' ? 10 : null
-	);
+	let rank = $derived(data.rankProgress?.rank_code ?? data.member.rank);
+	let currentRank = $derived(data.ranks.find((r) => r.code === rank)!);
+	let nextRank = $derived(RANK_CODES[RANK_CODES.indexOf(rank) + 1]);
+	let nextTarget = $derived(nextRank ? rankNights[nextRank] : null);
 
 	// おたより投稿ステータスのラベル・配色
 	const statusLabel = $derived({
@@ -37,21 +38,28 @@
 		<p class="mt-3 text-sm text-stone-400">{m.points_rate_note()}</p>
 	</div>
 
-	<div class="rounded-2xl border border-stone-200 bg-white p-6">
+	<div id="member-rank" class="scroll-mt-24 rounded-2xl border border-stone-200 bg-white p-6">
 		<div class="flex items-center justify-between">
 			<p class="text-sm text-stone-500">{m.points_grade_label()}</p>
-			<RankBadge rank={member.rank} />
+			<RankBadge {rank} />
 		</div>
 		<p class="mt-2 text-base">{m.points_reward_rate()} <strong class="text-lg text-accent-600">{Math.round(currentRank.rewardRate * 100)}%</strong></p>
-		{#if nextTarget}
-			<div class="mt-4">
-				<p class="text-sm text-stone-500">{m.points_to_next({ n: String(Math.max(0, nextTarget - data.staysThisYear)) })}</p>
-				<div class="mt-2 h-2.5 rounded-full bg-stone-100">
-					<div class="h-2.5 rounded-full bg-accent-500" style="width: {Math.min(100, (data.staysThisYear / nextTarget) * 100)}%"></div>
-				</div>
-			</div>
+		{#if data.rankProgress}
+			{@const nights = data.rankProgress.nights}
+			<p class="mt-4 text-sm text-stone-600">{m.points_qualified_nights({ n: String(nights) })}</p>
+			{#if data.rankProgress.review_on}
+				<p class="mt-2 rounded-lg bg-amber-50 p-2.5 text-sm text-amber-900">{m.points_rank_review({ date: formatDateLong(data.rankProgress.review_on) })}</p>
+			{/if}
+			{#if nextTarget}
+				<p class="mt-2 text-sm text-stone-600">
+					{nights >= nextTarget ? m.points_rank_pending() : m.points_to_next({ n: String(nextTarget - nights) })}
+				</p>
+				<progress class="mt-2 block h-2.5 w-full accent-accent-600" max={nextTarget} value={Math.min(nights, nextTarget)} aria-label={m.points_rank_progress()}></progress>
+			{:else}
+				<p class="mt-2 text-sm text-stone-600">{m.points_top_rank()}</p>
+			{/if}
 		{:else}
-			<p class="mt-4 text-sm text-stone-500">{m.points_top_rank()}</p>
+			<p class="mt-4 text-sm text-stone-600">{m.points_rank_unavailable()}</p>
 		{/if}
 	</div>
 </div>
@@ -63,9 +71,9 @@
 		<thead><tr class="border-b border-stone-200 text-left text-sm text-stone-500"><th class="py-2">{m.points_grade_rank()}</th><th>{m.points_grade_condition()}</th><th class="text-right">{m.points_grade_rate()}</th></tr></thead>
 		<tbody>
 			{#each data.ranks as r}
-				<tr class="border-b border-stone-100 {r.code === member.rank ? 'bg-amber-50/50' : ''}">
+				<tr class="border-b border-stone-100 {r.code === rank ? 'bg-amber-50/50' : ''}">
 					<td class="py-2.5"><RankBadge rank={r.code} /></td>
-					<td class="text-stone-600">{r.condition}</td>
+					<td class="text-stone-600">{rankCondition(r.code)}</td>
 					<td class="text-right font-semibold">{Math.round(r.rewardRate * 100)}%</td>
 				</tr>
 			{/each}

@@ -2,23 +2,22 @@
 	import { tick } from 'svelte';
 	import { RANK_CODES, type RankCode } from '$lib/plan-access';
 	import { rankName } from '$lib/rank-name';
+	import { rankCondition } from '$lib/member-rank';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 
 	const rates = [1, 2, 3, 5];
-	const conditions = [
-		m.membership_cond_standard(),
-		m.membership_cond_silver(),
-		m.membership_cond_gold(),
-		m.membership_cond_platinum()
-	];
 
 	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
 	type Perk = Detail & { key: string; minRank: RankCode };
 
 	const points: Detail = { title: m.membership_rate_label(), body: m.membership_how_body() };
-	const qualification: Detail = { title: m.membership_condition_label(), body: m.membership_rank_note() };
+	const qualification: Detail = {
+		title: m.membership_condition_label(),
+		body: m.membership_rank_note(),
+		sections: [{ title: m.membership_rank_grace_title(), body: m.membership_rank_grace() }]
+	};
 	const perks: Perk[] = [
 		{ key: 'advance', minRank: 'silver', title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
 		{ key: 'room', minRank: 'gold', title: m.membership_room_designation(), body: m.membership_room_designation_body() },
@@ -106,7 +105,7 @@
 								<span>{qualification.title}</span><span class="detail-icon" aria-hidden="true">i</span>
 							</button>
 						</th>
-						{#each conditions as condition (condition)}<td class="condition">{condition}</td>{/each}
+						{#each RANK_CODES as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
 					</tr>
 					{#each [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank)) as perk (perk.key)}
 						<tr>

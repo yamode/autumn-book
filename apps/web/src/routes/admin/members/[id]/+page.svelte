@@ -238,10 +238,9 @@
 				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-2 text-white hover:bg-brand-700">調整を実行</button>
 			</form>
 
-			<!-- ランク手動変更（V0・2026-10-11）: 実データは book.admin_set_member_rank（管理者のみ・理由必須・監査ログ）。
-			     自動昇格は無いので、特別会員の専用ページの方などのグレードはここで上げる -->
 			<form method="POST" action="?/rank" use:enhance class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 				<h2 class="font-medium text-stone-700">ランク手動変更</h2>
+				<p class="mt-1 text-xs text-stone-600">手動変更後も自動判定が続きます。宿泊実績が設定ランクを上回る場合は自動昇格し、下回る場合は6か月間維持します。</p>
 				<p class="mt-1 text-xs text-stone-400">還元率・グレード別キャンセル料が変わります（次の予約から・キャンセル料は取消の時点のグレード）。理由は監査ログに記録されます。</p>
 				<select name="rank" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5">
 					{#each ['standard', 'silver', 'gold', 'platinum'] as r}
