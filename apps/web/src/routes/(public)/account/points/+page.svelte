@@ -58,10 +58,16 @@
 				{/each}
 			</dl>
 			{#if nextTarget}
+				{@const remainingVisits = nextTarget.visits - visits}
+				{@const remainingNights = nextTarget.nights === null ? null : nextTarget.nights - nights}
 				<p class="mt-2 text-sm text-stone-600">
-					{visits >= nextTarget.visits || nights >= nextTarget.nights
-						? m.points_rank_pending()
-						: m.points_to_next({ visits: String(nextTarget.visits - visits), nights: String(nextTarget.nights - nights) })}
+					{#if remainingVisits <= 0 || (remainingNights !== null && remainingNights <= 0)}
+						{m.points_rank_pending()}
+					{:else if remainingNights === null}
+						{m.points_visits_to_next({ visits: String(remainingVisits) })}
+					{:else}
+						{m.points_to_next({ visits: String(remainingVisits), nights: String(remainingNights) })}
+					{/if}
 				</p>
 			{:else}
 				<p class="mt-2 text-sm text-stone-600">{m.points_top_rank()}</p>
