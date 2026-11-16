@@ -47,7 +47,8 @@ async function fromDataApi(playlist: string, key: string): Promise<Episode[]> {
 			const id = item.contentDetails?.videoId ?? '';
 			const publishedAt = item.contentDetails?.videoPublishedAt ?? '';
 			const title = item.snippet?.title;
-			if (title && videoId.test(id) && Number.isFinite(Date.parse(publishedAt)) && item.status?.privacyStatus === 'public') {
+			const privacy = item.status?.privacyStatus;
+			if (title && videoId.test(id) && Number.isFinite(Date.parse(publishedAt)) && (privacy === 'public' || privacy === 'unlisted')) {
 				episodes.set(id, { id, title, publishedAt, description: item.snippet?.description?.trim() ?? '' });
 			}
 		}

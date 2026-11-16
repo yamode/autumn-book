@@ -33,7 +33,7 @@
 			<p class="mt-1 text-stone-600">接続を確認しています。</p>
 		{:then youtube}
 			<p class="mt-1 text-stone-600" role="status">
-				{#if youtube.status === 'connected'}接続済み。再生リストから公開動画を {youtube.count} 件取得しました。
+				{#if youtube.status === 'connected'}接続済み。再生リストから視聴可能な動画を {youtube.count} 件取得しました。
 				{:else if youtube.status === 'failed'}接続できませんでした。Google CloudのAPI設定と再生リストを確認してください。
 				{:else if youtube.status === 'missing'}APIキー未設定。公開フィードから動画を表示しています。
 				{:else}APIキー設定済み。
