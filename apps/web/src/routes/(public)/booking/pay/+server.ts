@@ -19,6 +19,7 @@ import {
 	setBookingDraft
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
+import { bookingCouponFrom, couponErrors, couponErrorText } from '$lib/server/booking-coupon';
 import { applyGroupAnswers } from '$lib/server/booking-questions';
 import { groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import {
@@ -59,6 +60,8 @@ export const POST: RequestHandler = async (event) => {
 		if (action === 'prepare') {
 			if (!(await directPaymentsReady())) return bad('オンライン決済は現在ご利用いただけません。現地払いをお選びください。', 503);
 			const parsed = parseGuestForm(form);
+			const coupon = bookingCouponFrom(form);
+			if (coupon && !memberUserId) return bad(m.booking_coupon_invalid(), 403);
 			if (Object.keys(parsed.errors).length > 0) {
 				return bad(Object.values(parsed.errors)[0], 400, { errors: parsed.errors });
 			}
@@ -93,6 +96,7 @@ export const POST: RequestHandler = async (event) => {
 				memberUserId,
 				guest: answered.rooms ? { ...answered.guest, rooms: answered.rooms } : answered.guest,
 				pointsUsed: memberUserId ? parsed.pointsRequested : 0,
+				coupon,
 				locale: getLocale(),
 				facilityName: facility.name,
 				checkin: hold.checkin,
@@ -163,6 +167,7 @@ export const POST: RequestHandler = async (event) => {
 		return bad('不明な操作です。', 400);
 	} catch (e) {
 		if (e instanceof DirectPaymentError) {
+			if (couponErrors.some((code) => code === e.code)) return bad(couponErrorText(e.code), 409);
 			if (e.code === 'hold_expired') return bad(m.error_hold_expired(), 410, { expired: true });
 			if (e.code === 'invalid_guest') return bad('お名前・メールアドレスをご確認ください。', 400);
 			if (e.code === 'amount_too_small') return bad('お支払い額が少ないため、オンライン決済をご利用いただけません。現地払いをお選びください。', 400);

@@ -33,6 +33,7 @@ export const load: PageServerLoad = async (event) => {
 			authMode: AUTH_MODE,
 			dataSource: DATA_SOURCE,
 			coupon: null as CouponRow | null,
+			couponCode: null as string | null,
 			issuedList: [] as MemberCouponRow[]
 		};
 	}
@@ -46,13 +47,18 @@ export const load: PageServerLoad = async (event) => {
 		const coupon = coupons.find((c) => c.id === event.params.id) ?? null;
 		if (!coupon) error(404, 'クーポンが見つかりません');
 
-		const issuedList = await issuedLoad;
-		return { unavailable: false as const, coupon, issuedList };
+		const [issuedList, codeResult] = await Promise.all([
+			issuedLoad,
+			client.rpc('admin_coupon_code', { p_coupon_id: event.params.id })
+		]);
+		if (codeResult.error) throw codeResult.error;
+		return { unavailable: false as const, coupon, issuedList, couponCode: codeResult.data as string | null };
 	} catch (e) {
 		if (e && typeof e === 'object' && 'status' in e) throw e;
 		return {
 			unavailable: false as const,
 			coupon: null as CouponRow | null,
+			couponCode: null as string | null,
 			issuedList: [] as MemberCouponRow[],
 			error: mapRpcError(e)
 		};
@@ -60,6 +66,19 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	setCode: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
+		const denied = requireAdmin(event.locals.user?.role, 'クーポンコードの設定');
+		if (denied) return fail(403, { message: denied });
+		const form = await event.request.formData();
+		const code = String(form.get('code') ?? '').trim().toUpperCase();
+		if (code && !/^[A-Z0-9][A-Z0-9_-]{3,31}$/.test(code)) {
+			return fail(400, { message: '半角英数字・ハイフン・アンダースコアで4〜32文字にしてください。先頭は英数字です。' });
+		}
+		const { error: problem } = await bookAdmin(event).rpc('admin_coupon_code', { p_coupon_id: event.params.id, p_code: code });
+		if (problem) return fail(400, { message: problem.message.includes('coupon_code_taken') ? '同じクーポンコードが既にあります。' : mapRpcError(problem) });
+		return { saved: true };
+	},
 	save: async (event) => {
 		if (!ADMIN_SUPABASE) return fail(400, { message: UNAVAILABLE });
 		const denied = requireAdmin(event.locals.user?.role, 'クーポンの編集');

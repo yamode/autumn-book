@@ -79,6 +79,7 @@ export const load: PageServerLoad = async (event) => {
 			room,
 			rooms,
 			paid,
+			couponDiscount: raw.couponDiscount ?? 0,
 			prepayBonus,
 			onsiteMethod: raw.onsiteMethod ?? null,
 			// オンライン決済（チェックアウト日）: 請求日（paid は請求予定額）
@@ -99,6 +100,7 @@ export const load: PageServerLoad = async (event) => {
 		room: roomTypeById(booking.roomTypeId)!,
 		rooms: [] as { index: number; roomName: string; planName: string; adults: number; total: number }[],
 		paid: null,
+		couponDiscount: 0,
 		// デモ（store）は早期決済割（discount）だけ
 		prepayBonus: null,
 		onsiteMethod: null,

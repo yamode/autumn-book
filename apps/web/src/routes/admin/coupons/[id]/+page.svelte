@@ -101,6 +101,20 @@
 	{/if}
 
 	<!-- 割引条件 -->
+	<section class="mb-4 max-w-3xl rounded-xl border border-stone-200 bg-white p-4" aria-labelledby="coupon-code-title">
+		<h2 id="coupon-code-title" class="font-semibold">会員限定のクーポンコード</h2>
+		<p class="mt-1 text-sm text-stone-600">公式予約で会員がこのコードを入力すると、下の割引条件を適用します。会員1人につき1回利用できます。</p>
+		{#if isAdmin}
+			<form method="POST" action="?/setCode" use:enhance class="mt-3 flex flex-wrap gap-2">
+				<input name="code" aria-labelledby="coupon-code-title" value={data.couponCode ?? ''} maxlength="32"
+					autocapitalize="characters" spellcheck={false} placeholder="例 YAMADO2026" class="min-h-10 min-w-0 flex-1 rounded-lg border border-stone-300 px-3" />
+				<button class="min-h-10 rounded-lg bg-brand-800 px-4 text-sm font-medium text-white">コードを保存</button>
+			</form>
+			<p class="mt-2 text-xs text-stone-500">空欄で保存するとコードによる利用を終了します。</p>
+		{:else}
+			<p class="mt-3 text-sm font-medium">{data.couponCode ?? '未設定'}</p>
+		{/if}
+	</section>
 	<form
 		method="POST"
 		action="?/save"

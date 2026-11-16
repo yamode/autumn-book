@@ -574,7 +574,7 @@ export async function confirmBookingGroup(
 	groupId: string,
 	sessionId: string,
 	guest: GuestInfo,
-	opts: { memberUserId?: string | null; pointsUsed?: number; locale?: string; memberCouponId?: string | null; rooms?: RoomDetailInput[] | null } = {}
+	opts: { memberUserId?: string | null; pointsUsed?: number; locale?: string; memberCouponId?: string | null; rooms?: RoomDetailInput[] | null; coupon?: import('./booking-coupon').BookingCoupon | null } = {}
 ): Promise<
 	| {
 			booking_code: string;
@@ -597,12 +597,14 @@ export async function confirmBookingGroup(
 		p_guest: guest,
 		p_points_used: opts.pointsUsed ?? 0,
 		p_locale: opts.locale ?? 'ja',
-		p_member_coupon_id: opts.memberCouponId ?? null,
 		p_rooms_detail: opts.rooms ?? null
 	};
-	const { data, error } = await sb.schema('book').rpc('confirm_booking_server', params);
+	const db = sb.schema('book');
+	const { data, error } = opts.coupon
+		? await db.rpc('confirm_booking_with_code', { ...params, p_code: opts.coupon.code, p_coupon_amount: opts.coupon.amount })
+		: await db.rpc('confirm_booking_server', { ...params, p_member_coupon_id: opts.memberCouponId ?? null });
 	if (error) {
-		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'onsite_not_allowed'] as const) {
+		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'coupon_amount_changed', 'onsite_not_allowed'] as const) {
 			if (error.message.includes(code)) return { error: code };
 		}
 		throw error;
@@ -3047,6 +3049,7 @@ export interface LastBooking {
 	/** オンライン決済（チェックアウト日）: 登録カードへ請求する日。paidAmount は請求予定額 */
 	chargeOn?: string;
 	discountAmount: number;
+	couponDiscount?: number;
 	prepayDiscountRate?: number;
 	/** 割引が早期決済割（段階表）によるものか */
 	prepayDiscountEarly?: boolean;

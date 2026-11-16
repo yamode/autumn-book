@@ -30,8 +30,8 @@ import {
 	releaseHoldGroup as sbReleaseHold
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
-import { earnedPoints } from '@autumn-book/core';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
+import { bookingCouponFrom, couponErrors, couponErrorText } from '$lib/server/booking-coupon';
 import { applyGroupAnswers, groupBookingForms, loadStandardFieldTexts, planBookingForm } from '$lib/server/booking-questions';
 import { groupMemberOnsiteHint, groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import { combineQuotes } from '$lib/multi-room';
@@ -106,7 +106,7 @@ export const load: PageServerLoad = async (event) => {
 		let member: {
 			name: string; kana: string;
 			familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string;
-			phone: string; email: string; balance: number; earn: number;
+			phone: string; email: string; balance: number; rewardRate: number;
 		} | null = null;
 		if (MEMBER_SUPABASE && locals.user?.role === 'member') {
 			try {
@@ -126,7 +126,7 @@ export const load: PageServerLoad = async (event) => {
 					email: profile.email,
 					balance,
 					// 付与見込みは予約全体（全室の宿泊料金の和）で 1 つ
-					earn: earnedPoints(hold.total, rate)
+					rewardRate: rate
 				};
 			} catch {
 				member = null;
@@ -161,6 +161,7 @@ export const load: PageServerLoad = async (event) => {
 
 		return {
 			expired: false as const,
+			couponsEnabled: MEMBER_SUPABASE,
 			hold,
 			plan,
 			room,
@@ -242,6 +243,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 	return {
 		expired: false as const,
+		couponsEnabled: false,
 		hold,
 		plan,
 		preview: false,
@@ -297,7 +299,7 @@ export const load: PageServerLoad = async (event) => {
 					phone: member.phone,
 					email: member.email,
 					balance: pointBalance(member.id),
-					earn: earnedPoints(hold.quote.total, rank.rewardRate)
+					rewardRate: rank.rewardRate
 				}
 			: null
 	};
@@ -324,6 +326,10 @@ export const actions: Actions = {
 		const { request, locals, cookies } = event;
 		const form = await request.formData();
 		const { holdId, guest, pointsRequested, payment, onsiteMethod, furusatoVoucher, errors } = parseGuestForm(form);
+		const coupon = bookingCouponFrom(form);
+		if (coupon && (!MEMBER_SUPABASE || locals.user?.role !== 'member')) {
+			return fail(403, { message: m.booking_coupon_invalid(), values: guest });
+		}
 		// 非会員の予約確定だけ Turnstile で確かめる（会員はログインで確かめ済み）。未設定の環境は素通り
 		if (!viewerIsMember(locals) && !(await checkTurnstile(form, clientIpOf(event))).ok) {
 			return fail(400, { message: m.auth_turnstile_failed(), values: guest });
@@ -394,8 +400,11 @@ export const actions: Actions = {
 				errors.platinumTiming = timingError;
 				return fail(400, { errors, values: guest });
 			}
-			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, locale: getLocale(), rooms: answered.rooms });
+			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, coupon, locale: getLocale(), rooms: answered.rooms });
 			if ('error' in result) {
+				if (couponErrors.some((code) => code === result.error)) {
+					return fail(409, { message: couponErrorText(result.error), values: guest });
+				}
 				// 画面の判定をすり抜けても DB が支払方法を検査する（onsite_not_allowed）
 				if (result.error === 'onsite_not_allowed') {
 					errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
@@ -416,7 +425,8 @@ export const actions: Actions = {
 				pointsEarned: result.points_earned,
 				payment,
 				onsiteMethod,
-				discountAmount: result.discount ?? 0,
+				discountAmount: 0,
+				couponDiscount: result.discount ?? 0,
 				guest: { name: guest.name, kana: guest.kana, phone: guest.phone, email: guest.email },
 				rooms: lastBookingRoomsOf(hold),
 				memberPage: lastBookingMemberPageOf(hold)

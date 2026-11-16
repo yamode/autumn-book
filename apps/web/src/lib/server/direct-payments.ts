@@ -11,6 +11,7 @@
 //
 // DB は service_role の RPC（book.direct_payment_*・autumn-shared 20260926113646）だけで触る。
 // その migration が未適用・鍵が無い環境では directPaymentsReady() が false になり、画面は現地払いだけにする。
+import { couponErrors, type BookingCoupon } from './booking-coupon';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { refundCancelledUpgrades } from './upgrade-payments';
@@ -81,7 +82,7 @@ async function rpc<T>(name: string, args: Record<string, unknown>): Promise<T> {
 
 // DB の例外文字列 → 画面で出し分けるコード
 function codeOf(message: string): string {
-  for (const c of ['hold_expired', 'forbidden', 'invalid_guest', 'prepay_not_allowed', 'already_paid', 'amount_too_small', 'amount_mismatch', 'amount_changed', 'invalid_locale']) {
+  for (const c of ['hold_expired', 'forbidden', 'invalid_guest', 'prepay_not_allowed', 'already_paid', 'amount_too_small', ...couponErrors, 'amount_mismatch', 'amount_changed', 'invalid_locale']) {
     if (message.includes(c)) return c;
   }
   return 'error';
@@ -223,6 +224,7 @@ export async function prepareDirectPayment(args: {
   // 複数室は rooms（部屋ごとの男女・回答）を足す（DB の direct_payment_confirm が p_rooms_detail に渡す・M1）
   guest: GuestInfo & { rooms?: { male?: number; female?: number; notes?: string; answers?: Record<string, string> }[] };
   pointsUsed: number;
+  coupon?: BookingCoupon | null;
   locale: string;
   facilityName: string;
   checkin: string;
@@ -236,7 +238,7 @@ export async function prepareDirectPayment(args: {
     p_hold_id: args.holdId,
     p_session_id: args.sessionId,
     p_member_user_id: args.memberUserId,
-    p_guest: args.guest,
+    p_guest: args.coupon ? { ...args.guest, coupon_code: args.coupon.code, coupon_amount: args.coupon.amount } : args.guest,
     p_points_used: args.pointsUsed,
     p_locale: args.locale
   });
@@ -319,6 +321,7 @@ export async function prepareDirectCheckout(args: {
   memberUserId: string | null;
   guest: GuestInfo & { rooms?: { male?: number; female?: number; notes?: string; answers?: Record<string, string> }[] };
   pointsUsed: number;
+  coupon?: BookingCoupon | null;
   locale: string;
   facilityName: string;
   checkin: string;
@@ -329,7 +332,7 @@ export async function prepareDirectCheckout(args: {
     p_hold_id: args.holdId,
     p_session_id: args.sessionId,
     p_member_user_id: args.memberUserId,
-    p_guest: args.guest,
+    p_guest: args.coupon ? { ...args.guest, coupon_code: args.coupon.code, coupon_amount: args.coupon.amount } : args.guest,
     p_points_used: args.pointsUsed,
     p_locale: args.locale
   });

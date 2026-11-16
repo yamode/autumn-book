@@ -125,6 +125,9 @@
 				<div class="flex justify-between text-red-600"><dt>{discountLabel}</dt><dd>-{formatPrice(b.discountAmount)}</dd>
 			</div>
 			{/if}
+			{#if data.couponDiscount > 0}
+				<div class="flex justify-between text-emerald-700"><dt>{m.booking_coupon_discount()}</dt><dd>−{formatPrice(data.couponDiscount)}</dd></div>
+			{/if}
 			{#if b.pointsEarned > 0}
 				<div class="flex justify-between text-emerald-700"><dt>{m.complete_points_earned()}</dt><dd>+{b.pointsEarned.toLocaleString()}{m.common_point_unit()}</dd></div>
 			{/if}

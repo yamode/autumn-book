@@ -25,6 +25,7 @@ export async function finishDirectBooking(cookies: Cookies, hold: SbHold, draft:
 		payment: 'card',
 		// 完了画面の割引行は予約時決済の割引（予約金額からは引かず、支払額からだけ引いた額）
 		discountAmount: r.prepayDiscount,
+		couponDiscount: r.discount ?? 0,
 		// 割引の名前と率（支払の準備で DB が返した内訳。旧 DB・下書きが無いときは完了画面がプランの定率で表示する）。
 		// 除外期間の泊があって泊ごとに率が違うときは率を出さない（0 = 率なし）
 		...(detail && r.prepayDiscount > 0

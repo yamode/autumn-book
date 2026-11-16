@@ -11,6 +11,7 @@
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
 	import { directChargeOf, payTextFor, type PayOption, type PayTextGroup } from '$lib/direct-payment';
+	import { earnedPoints } from '@autumn-book/core';
 	import { percentText } from '$lib/early-prepay';
 	import { addDays, formatDateLong, formatPrice } from '$lib/format';
 	import { gaEvent } from '$lib/analytics';
@@ -133,7 +134,30 @@
 	// 同じ画面の決済部品を出すか（予約時のカード決済・チェックアウト日のカード登録）
 	let inlinePay = $derived(inlineCard || checkoutCard);
 	let discountNow = $derived(isPrepay ? prepayAmount : 0);
-	let discountedTotal = $derived(data.expired ? 0 : data.groupQuote.total - discountNow);
+	let couponInput = $state('');
+	let coupon = $state<{ code: string; name: string; amount: number } | null>(null);
+	let couponBusy = $state(false);
+	let couponError = $state('');
+	const couponAmount = $derived(coupon?.amount ?? 0);
+	const pointsToEarn = $derived(data.expired || !data.member ? 0 : earnedPoints(data.groupQuote.total - couponAmount, data.member.rewardRate));
+	let discountedTotal = $derived(data.expired ? 0 : data.groupQuote.total - discountNow - couponAmount);
+
+	async function applyCoupon() {
+		if (data.expired || couponBusy || !couponInput.trim()) return;
+		couponError = '';
+		couponBusy = true;
+		try {
+			const response = await fetch('/booking/coupon', {
+				method: 'POST', body: new URLSearchParams({ holdId: data.hold.id, code: couponInput })
+			});
+			if (!response.ok) throw new Error('coupon_invalid');
+			coupon = await response.json();
+		} catch {
+			couponError = m.booking_coupon_invalid();
+		} finally {
+			couponBusy = false;
+		}
+	}
 
 	// ポイント（会員のみ）。請求額の計算は DB（direct_payment_prepare）と同じ式（lib/direct-payment.ts）
 	// svelte-ignore state_referenced_locally
@@ -147,16 +171,16 @@
 					Math.max(0, Math.floor(Number(pointsInput) || 0)),
 					data.member.balance,
 					// 予約時決済の割引があるときは割引後の宿泊料金まで（DB と同じ）
-					data.groupQuote.total - discountNow
+					Math.max(0, discountedTotal)
 				)
 	);
 	let charge = $derived(
-		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.groupQuote.total, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
+		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.groupQuote.total - couponAmount, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
 	);
 
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
 	let summaryTotal = $derived(
-		data.expired ? 0 : inlinePay ? charge.charge : isPrepay ? discountedTotal - pointsApplied : data.groupQuote.total - pointsApplied
+		data.expired ? 0 : inlinePay ? charge.charge : Math.max(0, discountedTotal - pointsApplied)
 	);
 
 	// 仮押さえの期限（支払の準備で DB が延ばしたら更新する）
@@ -285,6 +309,15 @@
 	}
 	function toConfirm() {
 		clientError = '';
+		if (couponBusy) return;
+		if (couponInput.trim() && !coupon) {
+			clientError = m.booking_coupon_apply_first();
+			return;
+		}
+		if (discountedTotal < 0) {
+			clientError = m.booking_coupon_not_compatible();
+			return;
+		}
 		if (!formEl?.reportValidity()) return;
 		const err = validateGuest();
 		if (err) {
@@ -326,6 +359,7 @@
 		if (pon === 'cash' || pon === 'card' || pon === 'paypay') pickedOnsite = pon;
 		furusatoVoucher = !!get('furusatoVoucher');
 		if (get('points') != null) pointsInput = Number(get('points')) || 0;
+		couponInput = get('couponCode') ?? '';
 		favPicked = Object.fromEntries(entries.filter(([k]) => k.startsWith('fav_')).map(([k, v]) => [Number(k.slice(4)), v]));
 		platinumTiming = entries.find(([key]) => key === 'platinumTiming')?.[1] ?? '';
 		await tick();
@@ -346,7 +380,7 @@
 		fill();
 		await tick();
 		fill();
-		step = 'confirm';
+		step = couponInput ? 'input' : 'confirm';
 		await tick();
 		fill();
 		snapshot();
@@ -523,6 +557,10 @@
 			<input type="hidden" name="holdId" value={data.hold.id} />
 
 			<div class="grid min-w-0 gap-5">
+				{#if coupon}
+					<input type="hidden" name="couponCode" value={coupon.code} />
+					<input type="hidden" name="couponAmount" value={coupon.amount} />
+				{/if}
 				{#if !data.member}
 					<div class="rounded-xl border border-accent-500/40 bg-amber-50/60 p-4 text-sm {step === 'confirm' ? 'hidden' : ''}">
 						<p class="font-medium text-brand-900">{m.hold_login_prompt()}</p>
@@ -811,6 +849,29 @@
 								</div>
 							</div>
 						{/if}
+						{#if data.member && data.couponsEnabled}
+							<div class="rounded-lg border border-stone-200 p-3">
+								{#if coupon}
+									<div class="flex flex-wrap items-center justify-between gap-2">
+										<span>{coupon.name} · −{formatPrice(coupon.amount)}</span>
+										{#if step === 'input'}
+											<button class="min-h-10 px-2 text-brand-800 underline" type="button" disabled={paying}
+												onclick={() => { coupon = null; couponInput = ''; }}>{m.booking_coupon_remove()}</button>
+										{/if}
+									</div>
+								{:else if step === 'input'}
+									<label for="booking-coupon-code" class={label}>{m.booking_coupon_code()}</label>
+									<div class="flex gap-2">
+										<input id="booking-coupon-code" bind:value={couponInput} maxlength="32" autocapitalize="characters" spellcheck={false}
+											disabled={couponBusy || paying} class="{input} min-w-0 flex-1"
+											onkeydown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void applyCoupon(); } }} />
+										<button class="min-h-11 shrink-0 rounded-lg border border-stone-300 px-3 font-medium"
+											type="button" disabled={couponBusy || paying || !couponInput.trim()} onclick={applyCoupon}>{m.booking_coupon_apply()}</button>
+									</div>
+									{#if couponError}<p role="alert" class="mt-2 text-sm text-red-800">{couponError}</p>{/if}
+								{/if}
+							</div>
+						{/if}
 
 						<!-- お支払い方法: オンライン決済 / チェックアウト日のカード決済 / 現地決済。確認の段では選び直せない（入力に戻る） -->
 						<fieldset class="space-y-2 {step === 'confirm' ? 'opacity-80' : ''}" disabled={paying} inert={step === 'confirm'}>
@@ -1064,7 +1125,7 @@
 					<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_nights_adults()}</dt><dd class="text-right">{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
-					<PriceBreakdown quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines, name: r.roomName }))} />
+					<PriceBreakdown couponDiscount={couponAmount} quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - couponAmount - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines, name: r.roomName }))} />
 					{#if inlineCard && charge.discount > 0}
 						<div class="mt-1.5 flex justify-between text-sm text-red-600">
 							<span>{discountLabel}</span>
@@ -1085,11 +1146,11 @@
 					{:else if data.bathTax > 0 && !inlinePay}
 						<p class="mt-2 text-xs text-stone-500">{m.pay_bath_tax_onsite({ amount: formatPrice(data.bathTax) })}</p>
 					{/if}
-					{#if data.member && data.member.earn > 0}
+					{#if pointsToEarn > 0}
 						<!-- 付与予定のポイント（会員ランクの通常ポイント）。ポイント利用欄には今使える残高だけを出し、付与予定はここに分ける -->
 						<div class="mt-2 flex justify-between text-sm text-emerald-700">
 							<span>{m.hold_points_earn()}</span>
-							<span class="tabular-nums">+{data.member.earn.toLocaleString()}{m.common_point_unit()}</span>
+							<span class="tabular-nums">+{pointsToEarn.toLocaleString()}{m.common_point_unit()}</span>
 						</div>
 						<p class="text-right text-xs text-stone-500">{m.hold_points_earn_note()}</p>
 					{/if}

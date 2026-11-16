@@ -5,7 +5,7 @@
 	import * as m from '$lib/paraglide/messages';
 
 	// quote: 合計（複数室は全室の和）。rooms: 部屋ごとの泊の明細（省略時は quote.lines を 1 室として出す）
-	let { quote, rooms, showLines = true }: { quote: Quote; rooms?: { lines: QuoteLine[]; name?: string }[]; showLines?: boolean } = $props();
+	let { quote, rooms, showLines = true, couponDiscount = 0 }: { quote: Quote; rooms?: { lines: QuoteLine[]; name?: string }[]; showLines?: boolean; couponDiscount?: number } = $props();
 
 	// 料金の明細は「泊ごとの見出し → その下に部屋ごとの行」（2026-10-10 指示）。1 室は行の「1室目」を省く・1 泊でも見出しを出す
 	let groups = $derived(nightGroups(rooms && rooms.length > 0 ? rooms : [{ lines: quote.lines }]));
@@ -41,11 +41,18 @@
 		<span>{m.price_breakdown_tax()}</span>
 		<span>{formatPrice(quote.taxIncluded)}</span>
 	</div>
+	{#if couponDiscount > 0}
+		<div class="flex justify-between text-emerald-700">
+			<span>{m.booking_coupon_discount()}</span><span>−{formatPrice(couponDiscount)}</span>
+		</div>
+	{/if}
 	{#if quote.pointsUsed > 0}
 		<div class="flex justify-between text-emerald-700">
 			<span>{m.price_breakdown_points()}</span>
 			<span>-{formatPrice(quote.pointsUsed).slice(1)}{m.common_point_unit()}</span>
 		</div>
+	{/if}
+	{#if quote.pointsUsed > 0 || couponDiscount > 0}
 		<div class="flex justify-between border-t border-stone-200 pt-1.5 text-base font-bold">
 			<span>{m.price_breakdown_payable()}</span>
 			<span>{formatPrice(quote.payable)}</span>
