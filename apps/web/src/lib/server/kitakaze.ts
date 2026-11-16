@@ -3,7 +3,7 @@ import { TtlCache } from './ttl-cache';
 
 const kitakazePlaylistId = 'PLa-R1qQvvrylCId4oDEKv31RcqqQ_6q7h';
 const videoId = /^[A-Za-z0-9_-]{11}$/;
-type Episode = { id: string; title: string; description: string; publishedAt: string };
+type Episode = { id: string; title: string; publishedAt: string };
 const episodesCache = new TtlCache<Episode[]>(15 * 60_000, 4);
 
 function xmlText(value: string) {
@@ -24,7 +24,7 @@ function newestFirst(episodes: Episode[]) {
 async function fromDataApi(playlist: string, key: string): Promise<Episode[]> {
 	const query = new URLSearchParams({
 		part: 'snippet,contentDetails,status', maxResults: '50', playlistId: playlist,
-		fields: 'nextPageToken,items(snippet(title,description),contentDetails(videoId,videoPublishedAt),status/privacyStatus)'
+		fields: 'nextPageToken,items(snippet/title,contentDetails(videoId,videoPublishedAt),status/privacyStatus)'
 	});
 	const episodes = new Map<string, Episode>();
 	const signal = AbortSignal.timeout(6500);
@@ -38,7 +38,7 @@ async function fromDataApi(playlist: string, key: string): Promise<Episode[]> {
 		const payload = await response.json() as {
 			nextPageToken?: string;
 			items?: {
-				snippet?: { title?: string; description?: string };
+				snippet?: { title?: string };
 				contentDetails?: { videoId?: string; videoPublishedAt?: string };
 				status?: { privacyStatus?: string };
 			}[];
@@ -49,7 +49,7 @@ async function fromDataApi(playlist: string, key: string): Promise<Episode[]> {
 			const title = item.snippet?.title;
 			const privacy = item.status?.privacyStatus;
 			if (title && videoId.test(id) && Number.isFinite(Date.parse(publishedAt)) && (privacy === 'public' || privacy === 'unlisted')) {
-				episodes.set(id, { id, title, publishedAt, description: item.snippet?.description?.trim() ?? '' });
+				episodes.set(id, { id, title, publishedAt });
 			}
 		}
 		nextPage = payload.nextPageToken;
@@ -67,9 +67,8 @@ async function fromFeed(playlist: string): Promise<Episode[]> {
 		const id = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1] ?? '';
 		const title = entry.match(/<title>([^<]+)<\/title>/)?.[1];
 		const publishedAt = entry.match(/<published>([^<]+)<\/published>/)?.[1] ?? '';
-		const description = entry.match(/<media:description>([\s\S]*?)<\/media:description>/)?.[1] ?? '';
 		return title && videoId.test(id) && Number.isFinite(Date.parse(publishedAt))
-			? [{ id, title: xmlText(title), publishedAt, description: xmlText(description).trim() }] : [];
+			? [{ id, title: xmlText(title), publishedAt }] : [];
 	});
 	return newestFirst(episodes);
 }

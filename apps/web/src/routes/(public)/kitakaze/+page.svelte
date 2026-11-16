@@ -1,20 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
-	import { SvelteSet } from 'svelte/reactivity';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
 	let sending = $state(false);
-	const expandedDescriptions = new SvelteSet<string>();
 	const playlistUrl = $derived(`https://www.youtube.com/playlist?list=${data.playlist}`);
 	const body = $derived(form && 'body' in form ? String(form.body ?? '') : '');
-
-	function descriptionPreview(description: string) {
-		const singleLine = description.replace(/\s+/g, ' ');
-		const characters = [...singleLine];
-		return characters.length > 140 ? characters.slice(0, 140).join('').trimEnd() + '…' : description;
-	}
+	const publishDateFormat = new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long', timeZone: 'Asia/Tokyo' });
 </script>
 
 <svelte:head><title>{m.radio_title()} ｜ 山人</title></svelte:head>
@@ -37,26 +31,18 @@
 				{#if videos.length}
 					<ul class="grid gap-3 sm:grid-cols-2">
 						{#each videos as video (video.id)}
-							{@const preview = descriptionPreview(video.description)}
-							{@const expanded = expandedDescriptions.has(video.id)}
 							<li class="min-w-0 overflow-hidden rounded-xl border border-stone-200 bg-white">
 								<a href={`https://www.youtube.com/watch?v=${video.id}&list=${data.playlist}`}
 									class="group block focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-800">
 									<img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`} width="320" height="180" alt="" loading="lazy" class="aspect-video w-full bg-stone-100 object-cover" />
-									<p class="wrap-anywhere p-3 text-sm font-medium text-brand-900 group-hover:underline">{video.title}</p>
-								</a>
-								{#if video.description}
-									<div class="px-3 pb-3 text-sm text-stone-600">
-										<p id="radio-description-{video.id}" class="wrap-anywhere whitespace-pre-line leading-relaxed">{expanded ? video.description : preview}</p>
-										{#if preview !== video.description}
-											<button type="button" aria-expanded={expanded} aria-controls="radio-description-{video.id}"
-												class="mt-1 min-h-11 text-left font-medium text-brand-800 underline underline-offset-4"
-												onclick={() => expanded ? expandedDescriptions.delete(video.id) : expandedDescriptions.add(video.id)}>
-												{expanded ? m.radio_description_less() : m.radio_description_more()}
-											</button>
-										{/if}
+									<div class="space-y-1 p-3">
+										<p class="flex flex-wrap items-baseline gap-x-2 text-xs text-stone-600">
+											<span>{m.radio_published_on()}</span>
+											<time datetime={video.publishedAt}>{publishDateFormat.format(new Date(video.publishedAt))}</time>
+										</p>
+										<p class="wrap-anywhere text-sm font-medium text-brand-900 group-hover:underline">{video.title}</p>
 									</div>
-								{/if}
+								</a>
 							</li>
 						{/each}
 					</ul>
