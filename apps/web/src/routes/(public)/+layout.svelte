@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { afterNavigate, invalidate } from '$app/navigation';
+	import { afterNavigate, invalidate, onNavigate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { navigating } from '$app/state';
-	import PublicPageSkeleton from '$lib/components/PublicPageSkeleton.svelte';
 	import { formatDate } from '$lib/format';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
@@ -84,34 +83,26 @@
 			: m.header_search_prompt()
 	);
 
-	// 画面遷移したら開いているパネルを閉じる（検索実行・メニューのリンク押下後に残さない）
-	// ページの切り替え（2026-11-02 指示「まずページを切り替え、それから各要素をシマーから徐々に表示」）:
-	// 別のページへ移る間は、120ms 待ってから今のページを隠し、行き先の形の枠（シマー）を出す（B面の +layout と同じ考え方）。
-	// 同じページの読み直し（日付・人数を変えた検索など）とフォームの送信は、各ページの読み込み中の表示に任せる
-	const pendingKind = $derived.by((): 'plans' | 'plan' | 'rooms' | 'room' | 'page' | null => {
-		const to = navigating.to;
-		if (!to || navigating.type === 'form' || to.url.pathname === page.url.pathname) return null;
-		const id = to.route.id ?? '';
-		if (!id.startsWith('/(public)')) return null;
-		if (id.endsWith('/plans/[plan]')) return 'plan';
-		if (id.endsWith('/plans')) return 'plans';
-		if (id.endsWith('/rooms/[room]')) return 'room';
-		if (id.endsWith('/rooms') || id === '/(public)/search') return 'rooms';
-		return 'page';
-	});
-	let skeleton = $state<ReturnType<() => typeof pendingKind>>(null);
+	let main = $state<HTMLElement>();
+	let showProgress = $state(false);
+	let contentFade: Animation | undefined;
+	const destination = $derived(navigating.to);
 	$effect(() => {
-		const k = pendingKind;
-		if (!k) {
-			skeleton = null;
-			return;
-		}
-		// 枠を出したら先頭へ（行き先のページは先頭から始まるので、枠も先頭から見せる）
-		const t = setTimeout(() => {
-			skeleton = k;
-			window.scrollTo({ top: 0 });
-		}, 120);
-		return () => clearTimeout(t);
+		showProgress = false;
+		if (!destination?.route.id?.startsWith('/(public)') || navigating.type === 'form') return;
+		if (destination.url.pathname === page.url.pathname && destination.url.search === page.url.search) return;
+		const timer = window.setTimeout(() => (showProgress = true), 180);
+		return () => window.clearTimeout(timer);
+	});
+
+	onNavigate(({ from, to, type }) => {
+		if (!from || !to?.route.id?.startsWith('/(public)') || type === 'form' || from.url.pathname === to.url.pathname) return;
+		contentFade?.cancel();
+		return () => {
+			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+			const content = main?.querySelector<HTMLElement>('[data-account-content]') ?? main;
+			contentFade = content?.animate?.([{ opacity: 0.85 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
+		};
 	});
 
 	afterNavigate(() => {
@@ -254,9 +245,14 @@
 		</div>
 	</header>
 
-	<main class="flex-1">
-		{#if skeleton}<PublicPageSkeleton kind={skeleton} />{/if}
-		<div class={skeleton ? 'hidden' : 'contents'}>{@render children()}</div>
+	{#if showProgress}
+		<div class="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-stone-200" aria-hidden="true">
+			<div class="route-progress h-full w-1/3 bg-accent-600"></div>
+		</div>
+		<div class="sr-only" role="status">{m.common_loading()}</div>
+	{/if}
+	<main bind:this={main} class="flex-1">
+		{@render children()}
 	</main>
 
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 text-stone-300">
@@ -288,3 +284,22 @@
 		</p>
 	</footer>
 </div>
+
+<style>
+	:global(html:has(.site-public)) {
+		scrollbar-gutter: stable;
+	}
+
+	.route-progress {
+		animation: route-progress 1.1s ease-in-out infinite;
+	}
+
+	@keyframes route-progress {
+		from { transform: translateX(-100%); }
+		to { transform: translateX(300%); }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.route-progress { animation: none; width: 100%; }
+	}
+</style>

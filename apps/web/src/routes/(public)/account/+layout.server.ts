@@ -6,13 +6,14 @@ import { bookingMcpEnabled } from '$lib/server/booking-mcp/oauth';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
-	const { locals, url } = event;
+	const { locals, url, untrack } = event;
 	if (locals.user?.role !== 'member') {
 		redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
 	}
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
+		const loadBalance = sbPointBalance(client).catch(() => 0);
 		let p: Awaited<ReturnType<typeof sbMyProfile>>;
 		try {
 			p = await sbMyProfile(client);
@@ -22,9 +23,9 @@ export const load: LayoutServerLoad = async (event) => {
 			await client.auth.updateUser({ data: { member: false } }).catch(() => {});
 			redirect(303, '/auth/register');
 		}
-		const balance = await sbPointBalance(client).catch(() => 0);
+		const balance = await loadBalance;
 		return {
-			bookingMcpEnabled: bookingMcpEnabled(url),
+			bookingMcpEnabled: untrack(() => bookingMcpEnabled(url)),
 			member: {
 				id: p.userId,
 				memberCode: p.memberCode,

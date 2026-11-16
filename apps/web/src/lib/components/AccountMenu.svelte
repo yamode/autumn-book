@@ -10,7 +10,7 @@
 		{ href: '/account/points', label: m.account_nav_points() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
 		{ href: '/account/community', label: m.account_nav_community() },
-		{ href: '/account/profile', label: m.account_nav_profile() }
+		{ href: '/account/settings', label: m.account_nav_settings() }
 	]);
 
 	function close() {

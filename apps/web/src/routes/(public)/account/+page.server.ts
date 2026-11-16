@@ -12,12 +12,11 @@ const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [reservations, ledger, memberPages] = await Promise.all([
-			sbMyReservations(client),
-			sbPointLedger(client),
-			// 「あなた専用のページ」（本人・家族が対象の特別会員の専用ページ・docs/vip-member-page.md §13.4.4）。0 件なら欄を出さない
+		const extras = Promise.all([
+			sbPointLedger(client).then(sumExpiringPoints).catch(() => 0),
 			locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([])
-		]);
+		]).then(([expiring, memberPages]) => ({ expiring, memberPages }));
+		const reservations = await sbMyReservations(client);
 		const list = reservations.map((r) => {
 			// 施設マスタ（名称・写真・スラッグ）は store 側が正。実 UUID から逆引きする。
 			const storeId = reverseFacilityUuid(r.facilityUuid);
@@ -46,8 +45,7 @@ const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 		return {
 			upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 			past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-			expiring: sumExpiringPoints(ledger),
-			memberPages
+			extras
 		};
 	}
 
@@ -63,8 +61,10 @@ const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 	return {
 		upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 		past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-		expiring: expiringPoints(locals.user!.id),
-		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
+		extras: {
+			expiring: expiringPoints(locals.user!.id),
+			memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
+		}
 	};
 };
 
