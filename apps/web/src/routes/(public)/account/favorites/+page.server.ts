@@ -1,6 +1,10 @@
+import { fail } from '@sveltejs/kit';
 import { facilities, rooms as demoRooms, favoriteRoomsByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbFacilityRooms, sbListFavoriteRooms, sbToggleFavoriteRoom } from '$lib/server/supabase-data';
+import { canUseFavoriteRooms } from '$lib/member-benefits';
+import { viewerOf } from '$lib/server/secret-plans';
+import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 export interface FavRoom {
@@ -28,6 +32,7 @@ export interface FavFacility {
 
 export const load: PageServerLoad = async (event) => {
 	const { locals } = event;
+	if (!canUseFavoriteRooms(await viewerOf(locals))) return { canUseFavorites: false, facilities: [] };
 	const pubFacilities = facilities.filter((f) => f.isPublished);
 
 	if (MEMBER_SUPABASE) {
@@ -45,7 +50,7 @@ export const load: PageServerLoad = async (event) => {
 			}));
 			result.push(toFacility(f, rooms));
 		}
-		return { facilities: result };
+		return { canUseFavorites: true, facilities: result };
 	}
 
 	const favSet = favoriteRoomsByMember.get(locals.user!.id) ?? new Set<string>();
@@ -61,7 +66,7 @@ export const load: PageServerLoad = async (event) => {
 			}));
 		return toFacility(f, rooms);
 	});
-	return { facilities: result };
+	return { canUseFavorites: true, facilities: result };
 };
 
 // 施設メタ + 部屋配列 → 画面用オブジェクト（客室タイプごとにグルーピング）
@@ -99,14 +104,30 @@ function toFacility(
 export const actions: Actions = {
 	toggle: async (event) => {
 		const { request, locals } = event;
+		if (!canUseFavoriteRooms(await viewerOf(locals))) {
+			return fail(403, { message: m.membership_err_room_grade() });
+		}
 		const form = await request.formData();
-		const roomId = String(form.get('roomId'));
+		const roomId = String(form.get('roomId') ?? '');
 
 		if (MEMBER_SUPABASE) {
-			await sbToggleFavoriteRoom(createSupabaseServerClient(event), roomId);
+			if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(roomId)) {
+				return fail(400, { message: m.favorites_save_error() });
+			}
+			try {
+				await sbToggleFavoriteRoom(createSupabaseServerClient(event), roomId);
+			} catch (error) {
+				if (error && typeof error === 'object' && 'message' in error && error.message === 'favorite_room_rank_required') {
+					return fail(403, { message: m.membership_err_room_grade() });
+				}
+				return fail(400, { message: m.favorites_save_error() });
+			}
 			return { ok: true };
 		}
 
+		if (!demoRooms.some((room) => room.id === roomId && facilities.some((f) => f.isPublished && f.id === room.facilityId))) {
+			return fail(400, { message: m.favorites_save_error() });
+		}
 		let favs = favoriteRoomsByMember.get(locals.user!.id);
 		if (!favs) {
 			favs = new Set();

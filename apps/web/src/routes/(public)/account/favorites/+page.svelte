@@ -2,7 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 
-	let { data } = $props();
+	let { data, form } = $props();
 
 	// 折りたたみの開閉をローカルに保持する。お気に入り操作（enhance 再描画）で
 	// open を favCount に反応させると、最後の1件を解除した瞬間にパネルが閉じてしまうため、
@@ -22,8 +22,12 @@
 <div class="space-y-8">
 	<div>
 		<h2 class="text-lg">{m.favorites_rooms_heading()}</h2>
-		<p class="mt-1 text-sm text-stone-500">{m.favorites_rooms_sub()}</p>
+		<p class="mt-1 text-sm text-stone-500">{data.canUseFavorites ? m.favorites_rooms_sub() : m.membership_err_room_grade()}</p>
+		{#if !data.canUseFavorites}
+			<a href="/membership" class="mt-2 inline-flex min-h-11 items-center text-sm font-semibold text-brand-800 underline">{m.membership_benefits_heading()}</a>
+		{/if}
 	</div>
+	{#if form?.message}<p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{form.message}</p>{/if}
 
 	{#each data.facilities as f}
 		<section class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
@@ -105,6 +109,8 @@
 			{/if}
 		</section>
 	{:else}
-		<p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">{m.favorites_empty()}</p>
+		{#if data.canUseFavorites}
+			<p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">{m.favorites_empty()}</p>
+		{/if}
 	{/each}
 </div>

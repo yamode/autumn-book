@@ -33,7 +33,6 @@
 				{ title: m.membership_change_options_t(), body: m.membership_change_options_b() }
 			]
 		},
-		{ key: 'favorites', minRank: 'standard', title: m.membership_benefit_favorites_t(), body: m.membership_favorite_save_body() },
 		{ key: 'community', minRank: 'standard', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },
 		{ key: 'otayori', minRank: 'standard', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() }
 	];

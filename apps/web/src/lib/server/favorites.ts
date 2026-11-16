@@ -2,7 +2,7 @@
 //   favoriteRoomTypeIds … お気に入りの部屋がある部屋タイプ id。プラン一覧・客室選択の部屋タイプのブロックに「お気に入り」と出す。
 // 会員でない・デモ（MEMBER_SUPABASE でない）・読めないときは空（表示しないだけで画面は止めない）。
 import type { RequestEvent } from '@sveltejs/kit';
-import { canDesignateFavoriteRoom } from '$lib/member-benefits';
+import { canUseFavoriteRooms } from '$lib/member-benefits';
 import * as m from '$lib/paraglide/messages';
 import { viewerOf } from './secret-plans';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from './auth';
@@ -13,7 +13,7 @@ const isMemberSession = (event: AuthEvent) => MEMBER_SUPABASE && event.locals.us
 
 /** 予約確認画面: 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（部屋の番号ごと）。 */
 export async function favoriteRoomChoicesFor(event: AuthEvent, holdId: string, sessionId: string): Promise<Record<number, FavoriteRoomChoice[]>> {
-	if (!isMemberSession(event) || !canDesignateFavoriteRoom(await viewerOf(event.locals))) return {};
+	if (!isMemberSession(event) || !canUseFavoriteRooms(await viewerOf(event.locals))) return {};
 	const list = await sbFavoriteRoomChoices(createSupabaseServerClient(event as RequestEvent), holdId, sessionId).catch(() => []);
 	const out: Record<number, FavoriteRoomChoice[]> = {};
 	for (const c of list) (out[c.roomIndex] ??= []).push(c);
@@ -31,7 +31,7 @@ export async function saveFavoriteRoomChoices(event: AuthEvent, holdId: string, 
 		const roomId = String(value ?? '').trim();
 		if (m && roomId) choices.push({ roomIndex: Number(m[1]), roomId });
 	}
-	if (choices.length > 0 && (!isMemberSession(event) || !canDesignateFavoriteRoom(await viewerOf(event.locals)))) {
+	if (choices.length > 0 && (!isMemberSession(event) || !canUseFavoriteRooms(await viewerOf(event.locals)))) {
 		return m.membership_err_room_grade();
 	}
 	if (!isMemberSession(event)) return null;
