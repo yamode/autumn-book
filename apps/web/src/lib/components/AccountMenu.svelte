@@ -9,7 +9,7 @@
 		{ href: '/account#reservations', label: m.account_nav_reservations() },
 		{ href: '/account/points', label: m.account_nav_points() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
-		{ href: '/account/community/notifications', label: m.forum_notifications() },
+		{ href: '/account/community', label: m.account_nav_community() },
 		{ href: '/account/profile', label: m.account_nav_profile() }
 	]);
 
@@ -45,7 +45,16 @@
 		<p class="break-words border-b border-stone-100 px-3 py-2 font-medium text-brand-900">{name}</p>
 		<ul>
 			{#each links as link (link.href)}
-				<li><a href={link.href} onclick={close} class="block px-3 py-2 hover:bg-stone-50 focus-visible:bg-stone-50">{link.label}</a></li>
+				<li>
+					<a href={link.href} onclick={close} class="flex min-h-11 items-center justify-between gap-2 px-3 py-2 hover:bg-stone-50 focus-visible:bg-stone-50">
+						{link.label}
+						{#if link.href === '/account/community' && forumUnread > 0}
+							<span class="shrink-0 rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-900">
+								<span class="sr-only">{m.forum_unread()} </span>{forumUnread > 99 ? '99+' : forumUnread}
+							</span>
+						{/if}
+					</a>
+				</li>
 			{/each}
 		</ul>
 		<form method="POST" action="/auth/logout" class="border-t border-stone-100">

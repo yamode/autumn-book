@@ -13,7 +13,7 @@
 	<p class="mb-3 text-sm text-stone-500">{m.forum_subtitle()}</p>
 	<nav class="mb-6 flex flex-wrap gap-2" aria-label={m.forum_title()}>
 		<a href="#recent-threads" class="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm text-brand-800">{m.forum_recent_threads_heading()}</a>
-		{#if data.isLoggedIn}<a href="/account/community/notifications" class="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm text-brand-800">{m.forum_notifications()}{#if data.forumUnread}<span class="ml-2 rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-900">{data.forumUnread}</span>{/if}</a>{/if}
+		{#if data.isLoggedIn}<a href="/account/community#reply-notifications" class="inline-flex min-h-11 items-center rounded-lg border border-stone-200 bg-white px-3 text-sm text-brand-800">{m.forum_notifications()}{#if data.forumUnread}<span class="ml-2 rounded-full bg-amber-100 px-2 text-xs font-semibold text-amber-900">{data.forumUnread}</span>{/if}</a>{/if}
 	</nav>
 
 	{#if !data.isLoggedIn}
