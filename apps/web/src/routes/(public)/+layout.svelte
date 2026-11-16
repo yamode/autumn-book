@@ -257,7 +257,7 @@
 		<div class="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:grid-cols-3">
 			<div>
 				<p class="font-display text-lg tracking-widest text-white">YAMADO</p>
-				<p class="mt-2 text-xs leading-relaxed">{m.footer_brand_tagline()}</p>
+				<p class="mt-2 text-xs leading-relaxed">{m.home_hero_headline()}</p>
 			</div>
 			<div class="text-sm">
 				<p class="mb-2 font-medium text-white">{m.footer_facilities()}</p>
