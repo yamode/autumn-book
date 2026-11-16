@@ -52,21 +52,22 @@
 		nishiwaga: { src: '/site-assets/facility/yamado-logo.png', w: 640, h: 329 },
 		oga: { src: '/site-assets/facility/oga-logo.svg', w: 138, h: 71 }
 	};
-	type FacilityBrand = { name: string; slug: string; brandSlug: string; site: string | null };
+	type FacilityBrand = { name: string; slug: string; site: string | null };
 	let facilityBrand = $derived.by((): FacilityBrand | null => {
 		const d = page.data as Record<string, any>;
 		if (routeId.startsWith('/(public)/[brand]/[facility]') && d.shellFacility) {
 			const f = d.shellFacility;
-			return { name: f.name, slug: f.slug, brandSlug: f.brandSlug, site: d.facilityBackLink?.href ?? null };
+			return { name: f.name, slug: f.slug, site: d.facilityBackLink?.href ?? null };
 		}
 		const inBooking = ['/(public)/booking/hold', '/(public)/booking/complete', '/(public)/booking/pay'].some((r) => routeId.startsWith(r));
 		if (inBooking && d.facility?.slug) {
 			const f = d.facility;
-			return { name: f.name, slug: f.slug, brandSlug: f.brandSlug, site: f.websiteUrl ?? null };
+			return { name: f.name, slug: f.slug, site: f.websiteUrl ?? null };
 		}
 		return null;
 	});
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
+	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
 
 	let searchCheckin = $derived(page.url.searchParams.get('checkin') ?? '');
 	let searchNights = $derived(Number(page.url.searchParams.get('nights') ?? 1));
@@ -148,18 +149,17 @@
 	{/if}
 	<header class="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
 		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 md:gap-x-6 md:py-2.5">
-			{#if facilityBrand && facilityLogo}
-				<!-- 施設ロゴ＋区切り線＋小さな YAMADO（ロゴを押すと Book 内の施設トップへ） -->
-				<a href="/{facilityBrand.brandSlug}/{facilityBrand.slug}" class="flex shrink-0 items-center gap-3" aria-label="{facilityBrand.name} ／ YAMADO">
-					<img src={facilityLogo.src} alt="" width={facilityLogo.w} height={facilityLogo.h} class="h-9 w-auto md:h-11" />
-					<!-- YAMADO は施設ロゴの添え書き程度に（小さく・薄く） -->
-					<span class="border-l border-stone-300 py-1.5 pl-3"><img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-2 w-auto opacity-40 md:h-2.5" /></span>
+			<div class="flex shrink-0 items-center">
+				{#if facilityBrand?.site && facilityLogo}
+					<a href={facilityBrand.site} class="flex min-h-11 items-center pr-2" aria-label={m.nav_back_to_facility_site({ name: facilityBrand.name })}>
+						<img src={facilityLogo.src} alt="" width={facilityLogo.w} height={facilityLogo.h} class="h-9 w-auto md:h-11" />
+					</a>
+					<span aria-hidden="true" class="h-5 w-px bg-stone-300"></span>
+				{/if}
+				<a href={localizeHref('/')} class="flex min-h-11 items-center {showFacilityLogo ? 'px-2' : ''}" aria-label="YAMADO Book">
+					<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="w-auto {showFacilityLogo ? 'h-2.5' : 'h-5 md:h-6'}" />
 				</a>
-			{:else}
-				<a href="/" class="shrink-0" aria-label="YAMADO">
-					<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="h-5 w-auto md:h-6" />
-				</a>
-			{/if}
+			</div>
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
 			<nav class="hidden items-center gap-4 text-sm text-stone-600 md:flex">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
