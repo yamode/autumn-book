@@ -24,7 +24,7 @@
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、紹介を記録した時点で1ptが付きます。" />
+<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、紹介を記録した時点で1pt（1,000円分）が付きます。" />
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 {#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">番組で紹介したことを記録しました。</p>{/if}
