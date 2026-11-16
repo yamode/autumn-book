@@ -21,6 +21,7 @@ declare global {
 			adminAal: AdminAal | null;
 			// ログインの確認にかかった時間（ミリ秒・管理画面の Server-Timing に出す）
 			authMs?: number;
+			memberPreview?: import('$lib/plan-access').RankCode;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

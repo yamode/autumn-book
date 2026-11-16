@@ -1,0 +1,11 @@
+{
+	"name": "autumn-book-member-preview",
+	"pages_build_output_dir": "../.svelte-kit/cloudflare",
+	"compatibility_date": "2025-05-05",
+	"compatibility_flags": ["nodejs_compat"],
+	"vars": {
+		"MEMBER_PREVIEW_HOST": "true",
+		"DATA_SOURCE": "demo",
+		"AUTH_MODE": "demo"
+	}
+}

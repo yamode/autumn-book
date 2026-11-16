@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { myUpgradeOffers } from '$lib/server/room-upgrades';
+import { decidePreviewUpgrade, myUpgradeOffers } from '$lib/server/room-upgrades';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { upgradeError } from '$lib/room-upgrades';
 import { dbg } from '$lib/debug';
@@ -17,16 +17,22 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
 	accept: async (event) => {
 		if (event.locals.user?.role !== 'member') redirect(303, `/auth/login?next=${encodeURIComponent(event.url.pathname)}`);
-		if (!MEMBER_SUPABASE || !uuid.test(event.params.id)) return fail(400, { message: 'この環境では操作できません。' });
+		if ((!MEMBER_SUPABASE && !event.locals.memberPreview) || !uuid.test(event.params.id)) return fail(400, { message: 'この環境では操作できません。' });
 		const fd = await event.request.formData();
 		const total = Number(fd.get('total'));
 		if (fd.get('consent') !== 'yes' || !Number.isInteger(total) || total < 0) return fail(400, { message: upgradeError('consent_required') });
+		if (event.locals.memberPreview) return decidePreviewUpgrade(event, event.params.id, 'accepted', total)
+			? { success: true, message: '検証用のお部屋のアップグレードが確定しました。' }
+			: fail(400, { message: upgradeError('offer_unavailable') });
 		const { error: rpcError } = await createSupabaseServerClient(event).schema('book').rpc('accept_upgrade_offer', { p_id: event.params.id, p_consent: true, p_expected_total: total });
 		if (rpcError) { dbg('upgrade acceptance failed', rpcError.code); return fail(400, { message: upgradeError(rpcError) }); }
 		return { success: true, message: 'お部屋のアップグレードが確定しました。' };
 	},
 	decline: async (event) => {
 		if (event.locals.user?.role !== 'member') redirect(303, `/auth/login?next=${encodeURIComponent(event.url.pathname)}`);
+		if (event.locals.memberPreview) return decidePreviewUpgrade(event, event.params.id, 'declined')
+			? { success: true, message: '検証用の提案を見送りました。' }
+			: fail(400, { message: upgradeError('offer_unavailable') });
 		if (!MEMBER_SUPABASE || !uuid.test(event.params.id)) return fail(400, { message: 'この環境では操作できません。' });
 		const { error: rpcError } = await createSupabaseServerClient(event).schema('book').rpc('decline_upgrade_offer', { p_id: event.params.id });
 		if (rpcError) return fail(400, { message: upgradeError(rpcError) });

@@ -6,7 +6,6 @@
 	let { data, form } = $props();
 	let sending = $state(false);
 	const playlistUrl = $derived(`https://www.youtube.com/playlist?list=${data.playlist}`);
-	const radioName = $derived(form && 'radioName' in form ? String(form.radioName ?? '') : '');
 	const body = $derived(form && 'body' in form ? String(form.body ?? '') : '');
 </script>
 
@@ -65,10 +64,14 @@
 							sending = true;
 							return async ({ update }) => { try { await update(); } finally { sending = false; } };
 						}}>
-						<label class="block text-sm">
-							<span>{m.otayori_radio_label()}</span>
-							<input name="radioName" value={radioName} maxlength="40" class="mt-1 min-h-11 w-full rounded-lg border border-stone-300 px-3 py-2" />
-						</label>
+						<dl class="rounded-lg bg-stone-50 px-3 py-2.5 text-sm">
+							<dt class="text-stone-600">{m.otayori_radio_label()}</dt>
+							<dd class="mt-1 break-words font-medium text-brand-900">
+								{#if !data.member}{m.radio_anonymous()}{:else if data.nickname}{data.nickname}{:else if data.nickname === null}{m.radio_submit_failed()}{:else}
+									<a href="/account/community?next=%2Fkitakaze%23letter" class="underline underline-offset-4">{m.radio_nickname_required()}</a>
+								{/if}
+							</dd>
+						</dl>
 						<label class="block text-sm">
 							<span>{m.otayori_body_label()}</span>
 							<textarea name="body" rows="6" required maxlength="2000" placeholder={m.otayori_body_ph()} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2">{body}</textarea>
@@ -79,7 +82,7 @@
 						</label>
 						<p id="radio-file-note" class="text-xs leading-5 text-stone-600">{m.radio_file_note()}</p>
 						{#if !data.member}<Turnstile action="radio-letter" />{/if}
-						<button type="submit" disabled={sending} class="min-h-11 w-full rounded-lg bg-brand-800 px-4 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60">
+						<button type="submit" disabled={sending || (data.member && !data.nickname)} class="min-h-11 w-full rounded-lg bg-brand-800 px-4 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-60">
 							{sending ? m.radio_sending() : m.otayori_submit()}
 						</button>
 					</form>

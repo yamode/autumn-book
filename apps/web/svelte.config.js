@@ -49,7 +49,7 @@ const config = {
 				'media-src': ['self', 'blob:', 'https:'],
 				'object-src': ['none'],
 				'base-uri': ['self'],
-				'form-action': ['self', 'https://hooks.stripe.com'],
+				'form-action': ['self', 'https://hooks.stripe.com', 'https://autumn-book-member-preview.pages.dev'],
 				'report-uri': ['/api/csp-report']
 			}
 		}

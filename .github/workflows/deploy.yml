@@ -40,6 +40,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: pnpm dlx wrangler pages deploy --branch main
 
+      - name: Deploy member rank preview
+        working-directory: apps/web/member-preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: pnpm dlx wrangler pages deploy --branch main
+
       - name: Health check（本番反映の確認）
         run: |
           sleep 10
@@ -52,3 +59,8 @@ jobs:
               exit 1
             fi
           done
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://autumn-book-member-preview.pages.dev/account)
+          if [ "$code" != "303" ]; then
+            echo "::error::Member preview must redirect visitors without a preview session (returned $code)"
+            exit 1
+          fi

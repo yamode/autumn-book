@@ -55,6 +55,18 @@ export function kitakazePlaylist() {
 	return /^[A-Za-z0-9_-]{12,80}$/.test(custom) ? custom : uploadsId;
 }
 
+export async function kitakazeApiStatus(check: boolean) {
+	const key = env.YOUTUBE_DATA_API_KEY?.trim();
+	if (!key) return { status: 'missing' as const };
+	if (!check) return { status: 'configured' as const };
+	try {
+		const episodes = await fromDataApi(kitakazePlaylist(), key);
+		return { status: 'connected' as const, count: episodes.length };
+	} catch {
+		return { status: 'failed' as const };
+	}
+}
+
 export async function kitakazeEpisodes(): Promise<Episode[]> {
 	const playlist = kitakazePlaylist();
 	const saved = episodesCache.get(playlist);

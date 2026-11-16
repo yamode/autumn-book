@@ -26,6 +26,24 @@
 
 <PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、紹介を記録した時点で1pt（1,000円分）が付きます。" />
 
+<section aria-label="YouTube Data API" class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm">
+	<div>
+		<p class="font-medium text-stone-900">YouTube Data API</p>
+		{#await data.youtube}
+			<p class="mt-1 text-stone-600">接続を確認しています。</p>
+		{:then youtube}
+			<p class="mt-1 text-stone-600" role="status">
+				{#if youtube.status === 'connected'}接続済み。再生リストから公開動画を {youtube.count} 件取得しました。
+				{:else if youtube.status === 'failed'}接続できませんでした。Google CloudのAPI設定と再生リストを確認してください。
+				{:else if youtube.status === 'missing'}APIキー未設定。公開フィードから動画を表示しています。
+				{:else}APIキー設定済み。
+				{/if}
+			</p>
+		{/await}
+	</div>
+	<a href="?status={data.status}&page={data.page}&youtube=check" data-sveltekit-preload-data="off" class="inline-flex min-h-10 items-center rounded-md border border-stone-300 px-3 font-medium">接続を確認</a>
+</section>
+
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 {#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">番組で紹介したことを記録しました。</p>{/if}
 {#if form?.ok === 'reject'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりを却下しました（監査ログに記録）。</p>{/if}
@@ -55,7 +73,7 @@
 					<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
 						<span class="tabular-nums">{dateTime(it.createdAt)}</span>
 						{#if it.guest}<span>非会員</span>{:else}<span><span class="font-mono">{it.memberCode}</span> ／ {it.memberName}</span>{/if}
-						{#if it.radioName}<span class="rounded bg-stone-100 px-1.5 py-0.5">ラジオネーム: {it.radioName}</span>{/if}
+						{#if it.radioName || it.guest}<span class="rounded bg-stone-100 px-1.5 py-0.5">ラジオネーム {it.radioName || '匿名'}</span>{/if}
 					</div>
 					<p class="text-sm break-words whitespace-pre-wrap text-stone-700">{@html renderForumBody(it.body)}</p>
 					{#if it.files.length}

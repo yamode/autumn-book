@@ -742,7 +742,7 @@ export function createHold(planId: string, roomTypeId: string, checkin: string, 
 	adjustInventory(roomTypeId, checkin, nights, -1);
 	const plan = ratePlans.find((p) => p.id === planId)!;
 	const hold: Hold = {
-		id: nextId('h'),
+		id: memberId?.startsWith('preview-') ? crypto.randomUUID() : nextId('h'),
 		facilityId: plan.facilityId,
 		roomTypeId,
 		planId,
@@ -808,7 +808,7 @@ export function confirmBooking(
 	const discountAmount = !isPrepay ? 0 : prepay ? Math.max(0, Math.min(prepay.amount, hold.quote.total)) : Math.round(hold.quote.total * discountRate);
 	const finalTotal = hold.quote.total - discountAmount;
 
-	const member = memberId ? members.find((m) => m.id === memberId) : undefined;
+	const member = memberId ? memberById(memberId) : undefined;
 	const usable = member ? Math.min(pointsUsed, pointBalance(member.id), finalTotal) : 0;
 	const rank = memberRanks.find((r) => r.code === (member?.rank ?? 'standard'))!;
 	const code = `YB-2026-${String(++seq).padStart(6, '0')}`;
@@ -1519,7 +1519,44 @@ export const facilityBySlug = (brand: string, slug: string) => facilities.find((
 export const facilityById = (id: string) => facilities.find((f) => f.id === id);
 export const roomTypeById = (id: string) => roomTypes.find((r) => r.id === id);
 export const planById = (id: string) => ratePlans.find((p) => p.id === id);
-export const memberById = (id: string) => members.find((m) => m.id === id);
+const previewMembers = new Map<string, { member: Member; expires: number }>();
+
+export function seedPreviewMember(sessionId: string, rank: Member['rank'], expires: number): Member {
+	const id = `preview-${sessionId}-${rank}`;
+	const existing = previewMembers.get(id);
+	if (existing) return existing.member;
+	const expired = new Set<string>();
+	for (const [key, value] of previewMembers) {
+		if (value.expires * 1000 > Date.now()) continue;
+		expired.add(key);
+		previewMembers.delete(key);
+		favoriteRoomsByMember.delete(key);
+	}
+	if (expired.size) {
+		for (const [code, booking] of bookings) if (booking.memberId && expired.has(booking.memberId)) bookings.delete(code);
+		for (const [holdId, hold] of holds) {
+			if (!hold.memberId || !expired.has(hold.memberId)) continue;
+			if (hold.status === 'converted') adjustInventory(hold.roomTypeId, hold.checkin, hold.nights, +1);
+			else releaseHold(holdId);
+			holds.delete(holdId);
+		}
+		for (let i = pointLedger.length - 1; i >= 0; i--) if (expired.has(pointLedger[i].memberId)) pointLedger.splice(i, 1);
+	}
+	const member = { ...members[0], id, rank, email: 'preview@example.invalid' };
+	previewMembers.set(id, { member, expires });
+	favoriteRoomsByMember.set(id, new Set(['og-101']));
+	const code = `PREVIEW-${sessionId}-${rank}`;
+	const sample = bookings.get('YB-2026-000131')!;
+	bookings.set(code, {
+		...structuredClone(sample), code, memberId: id,
+		guest: { ...sample.guest, email: member.email },
+		cancellationPolicy: demoCancellationFallback(rank)
+	});
+	pointLedger.push({ id: `${id}-points`, memberId: id, delta: 1500, reason: '検証用ポイント', createdAt: today(), expiresAt: addDays(today(), 20) });
+	return member;
+}
+
+export const memberById = (id: string) => previewMembers.get(id)?.member ?? members.find((m) => m.id === id);
 
 // ---------------------------------------------------------------- コンテンツ翻訳（§2.2〜§2.4）
 

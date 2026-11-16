@@ -10,13 +10,13 @@ import { prepayDiscountViewFor } from '$lib/server/direct-payments';
 import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
 	if (DATA_SOURCE === 'supabase') {
 		redirect(303, `/booking/hold?id=${encodeURIComponent(url.searchParams.get('id') ?? '')}`);
 	}
 
 	const hold = getHold(url.searchParams.get('id') ?? '');
-	if (!hold || hold.status !== 'active' || !hold.guestDraft) {
+	if (!hold || hold.status !== 'active' || !hold.guestDraft || (locals.memberPreview && hold.memberId !== locals.user?.id)) {
 		return { expired: true as const };
 	}
 	const plan = planById(hold.planId)!;
@@ -48,7 +48,7 @@ export const actions: Actions = {
 		const holdId = String(form.get('holdId'));
 
 		const hold = getHold(holdId);
-		if (!hold || hold.status !== 'active' || !hold.guestDraft) {
+		if (!hold || hold.status !== 'active' || !hold.guestDraft || (locals.memberPreview && hold.memberId !== locals.user?.id)) {
 			return fail(410, { message: m.error_hold_expired() });
 		}
 		const memberId = locals.user?.role === 'member' ? locals.user.id : undefined;

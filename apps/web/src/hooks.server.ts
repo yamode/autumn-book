@@ -12,18 +12,29 @@ import { trySharedCookieSso } from '$lib/server/admin-shared-sso';
 import { isAdminPath } from '$lib/admin-mfa';
 import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
 import { isBookingMcpMachineUrl, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
+import { DATA_SOURCE } from '$lib/server/supabase';
+import { seedPreviewMember } from '$lib/server/store';
+import { acceptPreview, isPreviewExchange, isPreviewHost, memberPreviewSession, previewAdminOrigin, previewOrigin, updatePreview } from '$lib/server/member-preview';
+import { dev } from '$app/environment';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
 export const handle: Handle = async (input) => {
 	const { request, url } = input.event;
-	if (isCrossSiteForm(request, url)) {
+	if (!isPreviewExchange(input.event) && isCrossSiteForm(request, url)) {
 		const message = `Cross-site ${request.method} form submissions are forbidden`;
 		const response = request.headers.get('accept') === 'application/json'
 			? Response.json({ message }, { status: 403 })
 			: new Response(message, { status: 403 });
 		return applySecurityHeaders(response, url);
+	}
+	if (isPreviewHost()) {
+		const response = await handleMemberPreview(input);
+		const headers = new Headers(response.headers);
+		headers.set('cache-control', 'private, no-store');
+		headers.set('x-robots-tag', 'noindex, nofollow');
+		return applySecurityHeaders(new Response(response.body, { status: response.status, headers }), url);
 	}
 	const started = performance.now();
 	let res: Response;
@@ -47,6 +58,48 @@ export const handle: Handle = async (input) => {
 		}
 	}
 	return res;
+};
+
+const previewPostPaths = [
+	/^\/[^/]+\/[^/]+\/plans\/[^/]+$/,
+	/^\/booking\/(hold|payment)$/,
+	/^\/account\/favorites$/,
+	/^\/account\/upgrades\/[^/]+$/,
+	/^\/account\/reservations\/[^/]+(?:\/options)?$/
+];
+
+const handleMemberPreview: Handle = async ({ event, resolve }) => {
+	const { url, request, locals } = event;
+	if ((!dev && url.origin !== previewOrigin()) || DATA_SOURCE !== 'demo' || AUTH_MODE !== 'demo') {
+		return new Response(null, { status: 404 });
+	}
+	if (isPreviewExchange(event)) return acceptPreview(event);
+	const preview = await memberPreviewSession(event);
+	if (!preview) {
+		if (request.method === 'GET' && !event.isDataRequest) {
+			return Response.redirect(`${previewAdminOrigin()}/admin/member-preview`, 303);
+		}
+		return new Response('プレビューの期限が切れました。管理画面から開き直してください。', { status: 403 });
+	}
+	const path = url.pathname.replace(/\/$/, '') || '/';
+	if (isAdminPath(path) || isPartnerPath(path) || /^\/(api|booking-mcp|auth|p)(\/|$)/.test(path)) {
+		return new Response('会員ランクのプレビュー対象外です。', { status: 404 });
+	}
+	if (request.method === 'POST' && path === '/member-preview/session' && request.headers.get('origin') === url.origin) {
+		return updatePreview(event, preview);
+	}
+	if (!['GET', 'HEAD'].includes(request.method) && (request.method !== 'POST' || !previewPostPaths.some((route) => route.test(path)))) {
+		return new Response('検証用の画面です。この操作はプレビューでは保存できません。', { status: 403 });
+	}
+	const member = seedPreviewMember(preview.id, preview.rank, preview.expires);
+	locals.user = { id: member.id, name: member.name, role: 'member' };
+	locals.memberPreview = preview.rank;
+	locals.pendingAuthUser = null;
+	locals.adminAal = null;
+	locals.abExperiments = [];
+	return paraglideMiddleware(request, ({ locale }) =>
+		resolve(event, { transformPageChunk: ({ html }) => html.replace('%lang%', locale) })
+	);
 };
 
 function isCrossSiteForm(request: Request, url: URL): boolean {

@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { radioAttachmentLinks, type RadioAttachment } from '$lib/server/radio-letters';
+import { kitakazeApiStatus } from '$lib/server/kitakaze';
 import { listOtayoriAdmin, approveOtayori, rejectOtayori } from '$lib/server/store';
 import type { OtayoriAdminItem } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
@@ -16,6 +17,7 @@ type DisplayLetter = OtayoriAdminItem & { guest: boolean; awardedAt: string | nu
 
 export const load: PageServerLoad = async (event) => {
 	await event.parent();
+	const youtube = kitakazeApiStatus(event.url.searchParams.get('youtube') === 'check');
 	const statusParam = event.url.searchParams.get('status');
 	const status: Tab = TABS.includes(statusParam as Tab) ? (statusParam as Tab) : 'pending';
 	const page = Math.max(1, Math.min(10000, Math.trunc(Number(event.url.searchParams.get('page')) || 1)));
@@ -33,13 +35,13 @@ export const load: PageServerLoad = async (event) => {
 			status: row.status, createdAt: row.created_at, guest: !row.member_user_id,
 			awardedAt: row.awarded_at, files: await radioAttachmentLinks(row.attachments ?? [])
 		})));
-		return { status, items, page, perPage,
+		return { status, items, page, perPage, youtube,
 			counts: { pending: pages.pending.total, approved: pages.approved.total, rejected: pages.rejected.total } };
 	}
 
 	const items: DisplayLetter[] = listOtayoriAdmin(status).slice((page - 1) * perPage, page * perPage)
 		.map((row) => ({ ...row, guest: false, awardedAt: null, files: [] }));
-	return { status, items, page, perPage, counts: {
+	return { status, items, page, perPage, youtube, counts: {
 		pending: listOtayoriAdmin('pending').length, approved: listOtayoriAdmin('approved').length,
 		rejected: listOtayoriAdmin('rejected').length
 	} };

@@ -8,5 +8,5 @@ export const load: LayoutServerLoad = (event) => {
 	void url.pathname;
 	void url.searchParams.get('ab_preview');
 	// アクセス解析の同意を先に聞く地域か（EEA・英国・スイス・不明）。それ以外は確認を出さずに計測する（2026-10-21）
-	return { abExperiments: locals.abExperiments, consentRequired: consentRequiredFor(requestCountry(event)) };
+	return { abExperiments: locals.abExperiments, consentRequired: consentRequiredFor(requestCountry(event)), memberPreview: locals.memberPreview ?? null };
 };

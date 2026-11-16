@@ -91,7 +91,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const booking = bookings.get(params.code);
-	if (!booking) error(404, '予約が見つかりません');
+	if (!booking || (locals.memberPreview && booking.memberId !== locals.user?.id)) error(404, '予約が見つかりません');
 	return {
 		booking,
 		facility: facilityById(booking.facilityId)!,

@@ -11,7 +11,9 @@ import {
 	quoteFor,
 	demoCancellationFallback,
 	memberRanks,
-	releaseHold
+	releaseHold,
+	favoriteRoomsByMember,
+	rooms as demoRooms
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
@@ -44,6 +46,13 @@ import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
 import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
+import { canUseFavoriteRooms } from '$lib/member-benefits';
+import { viewerOf } from '$lib/server/secret-plans';
+
+function demoHoldFor(locals: App.Locals, id: string) {
+	const hold = getHold(id);
+	return !locals.memberPreview || hold?.memberId === locals.user?.id ? hold : undefined;
+}
 
 // 選び直し・パンくず用: この仮押さえのプラン詳細（日程・人数つき）
 function planHrefOf(
@@ -211,7 +220,7 @@ export const load: PageServerLoad = async (event) => {
 		};
 	}
 
-	const hold = getHold(url.searchParams.get('id') ?? '');
+	const hold = demoHoldFor(locals, url.searchParams.get('id') ?? '');
 	if (!hold || hold.status !== 'active') {
 		return { expired: true as const };
 	}
@@ -224,6 +233,13 @@ export const load: PageServerLoad = async (event) => {
 	const facility = facilityById(hold.facilityId)!;
 	const prepay = { ...(await prepayDiscountViewFor(hold.facilityId, plan, hold)), mixedRates: false };
 	const demoRoom = roomTypeById(hold.roomTypeId)!;
+	const favoriteChoices: Record<number, import('$lib/server/supabase-data').FavoriteRoomChoice[]> = {};
+	if (locals.memberPreview && member && canUseFavoriteRooms(await viewerOf(locals)) && hold.roomTypeId === 'r-oga-twin') {
+		const favorites = favoriteRoomsByMember.get(member.id);
+		favoriteChoices[1] = demoRooms
+			.filter((room) => room.facilityId === 'f-oga' && room.roomType === '山祇 ジュニアスイート' && favorites?.has(room.id))
+			.map((room) => ({ roomIndex: 1, roomId: room.id, roomNumber: room.roomNumber, name: room.name }));
+	}
 	return {
 		expired: false as const,
 		hold,
@@ -253,7 +269,7 @@ export const load: PageServerLoad = async (event) => {
 		checkoutOption: false,
 		onsiteMethods: plan.payment.onsiteMethods ?? null,
 		paymentTexts: {} as import('$lib/direct-payment').PaymentTexts,
-		favoriteChoices: {} as Record<number, import('$lib/server/supabase-data').FavoriteRoomChoice[]>,
+		favoriteChoices,
 		canChoosePlatinumTiming: member?.rank === 'platinum',
 		inline: false as const,
 		publishableKey: null,
@@ -289,13 +305,13 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
 	// 「プラン・お部屋を選び直す」: 仮押さえを解放してプラン詳細へ戻る（押さえたまま戻ると期限まで部屋が減ったままになる）
-	release: async ({ request, cookies }) => {
+	release: async ({ request, cookies, locals }) => {
 		const form = await request.formData();
 		const holdId = String(form.get('holdId') ?? '');
 		const back = String(form.get('back') ?? '');
 		try {
 			if (DATA_SOURCE === 'supabase') await sbReleaseHold(holdId, bookingSessionId(cookies));
-			else releaseHold(holdId);
+			else if (demoHoldFor(locals, holdId)) releaseHold(holdId);
 		} catch (e) {
 			// 解放に失敗しても戻る（期限で自動解放される）
 			console.error('[booking/hold] release', e);
@@ -408,7 +424,7 @@ export const actions: Actions = {
 			redirect(303, `/booking/complete/${result.booking_code}`);
 		}
 
-		const hold = getHold(holdId);
+		const hold = demoHoldFor(locals, holdId);
 		if (!hold || hold.status !== 'active') {
 			return fail(410, { message: m.error_hold_expired() });
 		}
@@ -430,15 +446,22 @@ export const actions: Actions = {
 			return fail(400, { errors, values: guest });
 		}
 
+		const guestForDemo = locals.memberPreview && memberId
+			? (() => {
+					const member = memberById(memberId)!;
+					return { name: member.name, kana: member.kana, phone: member.phone, email: member.email };
+				})()
+			: guest;
+
 		if (payment !== 'onsite') {
 			// ③ デモ決済ステップへ（事前決済=即時決済。入力内容を hold に保持）
-			hold.guestDraft = guest;
+			hold.guestDraft = guestForDemo;
 			hold.pointsDraft = pointsUsed;
 			hold.paymentDraft = payment;
 			redirect(303, `/booking/payment?id=${hold.id}`);
 		}
 
-		const result = confirmBooking(hold.id, guest, pointsUsed, memberId, 'onsite');
+		const result = confirmBooking(hold.id, guestForDemo, pointsUsed, memberId, 'onsite');
 		if ('error' in result) {
 			return fail(410, { message: m.error_hold_expired() });
 		}
@@ -452,7 +475,7 @@ export const actions: Actions = {
 
 		const { request, locals } = event;
 		const form = await request.formData();
-		const hold = getHold(String(form.get('holdId')));
+		const hold = demoHoldFor(event.locals, String(form.get('holdId')));
 		if (!hold || locals.user?.role !== 'member') return fail(400, {});
 		const points = Math.min(Math.max(0, Number(form.get('points') ?? 0)), pointBalance(locals.user.id), hold.quote.total);
 		hold.quote = quoteFor(hold.planId, hold.roomTypeId, hold.checkin, hold.nights, hold.adults, hold.children, points);
