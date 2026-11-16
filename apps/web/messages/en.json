@@ -841,6 +841,8 @@
   "otayori_body_label": "Your message",
   "otayori_body_ph": "Thoughts on the show, memories of your stay, questions — anything is welcome.",
   "otayori_radio_label": "On-air name",
+  "radio_description_more": "Show full description",
+  "radio_description_less": "Show less",
   "radio_anonymous": "Anonymous",
   "radio_nickname_required": "Set your nickname in Community",
   "otayori_radio_ph": "The name we'll read on the show (you can leave this blank)",

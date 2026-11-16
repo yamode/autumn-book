@@ -841,6 +841,8 @@
   "otayori_body_label": "おたより本文",
   "otayori_body_ph": "番組のご感想、宿の思い出、ご質問など、どうぞお気軽に。",
   "otayori_radio_label": "ラジオネーム",
+  "radio_description_more": "概要をもっと見る",
+  "radio_description_less": "概要を閉じる",
   "radio_anonymous": "匿名",
   "radio_nickname_required": "コミュニティでニックネームを設定してください",
   "otayori_radio_ph": "番組で読む際のお名前（未入力でも投稿できます）",
