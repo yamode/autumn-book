@@ -24,5 +24,5 @@
 </script>
 
 <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium {cls[rank]}">
-	◆ {label}{m.rank_member()}
+	◆ {m.rank_member({ rank: label })}
 </span>

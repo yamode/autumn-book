@@ -1,7 +1,7 @@
 <script lang="ts">
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import { rankName } from '$lib/rank-name';
 	import * as m from '$lib/paraglide/messages';
-
 
 	let { data } = $props();
 
@@ -63,14 +63,15 @@
 		<p class="mt-3 text-stone-600">{m.membership_how_body()}</p>
 	</section>
 
-	<!-- グレードと還元率：共通特典を同じ順序で並べて比較する -->
+	<!-- グレードと還元率：上位グレードは引き継ぐ特典と変わる点を示す -->
 	<section class="mt-12" aria-labelledby="membership-ranks">
 		<div class="text-center">
 			<h2 id="membership-ranks" class="text-2xl">{m.membership_ranks_heading()}</h2>
 			<p class="mt-3 text-sm leading-6 text-stone-500">{m.membership_rank_note()}</p>
 		</div>
 		<div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-			{#each ranks as r}
+			{#each ranks as r, index (r.code)}
+				{@const previous = ranks[index - 1]}
 				{@const premium = r.code === 'platinum'}
 				<article class="rank-plan relative flex flex-col overflow-hidden rounded-2xl border {premium ? 'border-brand-900 bg-brand-900 text-white shadow-lg' : 'border-stone-200 bg-white text-brand-900'}">
 					<div class="h-1 {premium ? 'bg-accent-500' : r.code === 'gold' ? 'bg-amber-400' : r.code === 'silver' ? 'bg-slate-400' : 'bg-stone-300'}"></div>
@@ -81,14 +82,26 @@
 							<p class="mt-2 font-sans text-6xl font-semibold tracking-tight">{r.rate}<span class="ml-1 text-2xl">%</span></p>
 						</div>
 						<p class="flex min-h-16 items-center justify-center rounded-lg px-2 py-3 text-center text-sm font-medium leading-6 {premium ? 'bg-white/10 text-white' : 'bg-stone-50 text-stone-700'}">{r.cond}</p>
-						<ul class="mt-6 flex-1 space-y-4 border-t pt-6 {premium ? 'border-white/15' : 'border-stone-100'}">
-							{#each comparisonBenefits as benefit}
-								<li class="flex items-start gap-2 text-sm leading-6">
-									<span aria-hidden="true" class="shrink-0 {premium ? 'text-accent-300' : 'text-accent-600'}">✓</span>
-									<span class={premium ? 'text-stone-100' : 'text-stone-600'}>{benefit}</span>
-								</li>
-							{/each}
-						</ul>
+						<div class="mt-6 flex-1 border-t pt-5 {premium ? 'border-white/15' : 'border-stone-100'}">
+							{#if previous}
+								<p class="text-sm font-semibold leading-6">
+									{m.membership_includes_previous({ rank: rankName(previous.code) })}
+								</p>
+								<p class="mt-3 flex items-start gap-2 text-sm leading-6 {premium ? 'text-stone-100' : 'text-stone-700'}">
+									<span aria-hidden="true" class="shrink-0 font-semibold {premium ? 'text-accent-300' : 'text-accent-600'}">↑</span>
+									<span>{m.membership_rate_upgrade({ previous: String(previous.rate), current: String(r.rate) })}</span>
+								</p>
+							{:else}
+								<ul class="space-y-3">
+									{#each comparisonBenefits as benefit}
+										<li class="flex items-start gap-2 text-sm leading-6 text-stone-600">
+											<span aria-hidden="true" class="shrink-0 text-accent-600">✓</span>
+											<span>{benefit}</span>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
 					</div>
 				</article>
 			{/each}
