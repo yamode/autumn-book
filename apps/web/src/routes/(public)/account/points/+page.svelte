@@ -1,8 +1,7 @@
 <script lang="ts">
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { RANK_CODES } from '$lib/plan-access';
-	import { rankCondition, rankVisits } from '$lib/member-rank';
-	import { formatDateLong } from '$lib/format';
+	import { rankCondition, rankTargets } from '$lib/member-rank';
 	import { renderForumBody } from '$lib/forum-format';
 	import * as m from '$lib/paraglide/messages';
 
@@ -10,7 +9,7 @@
 	let rank = $derived(data.rankProgress?.rank_code ?? data.member.rank);
 	let currentRank = $derived(data.ranks.find((r) => r.code === rank)!);
 	let nextRank = $derived(RANK_CODES[RANK_CODES.indexOf(rank) + 1]);
-	let nextTarget = $derived(nextRank ? rankVisits[nextRank] : null);
+	let nextTarget = $derived(nextRank ? rankTargets[nextRank] : null);
 
 	// おたより投稿ステータスのラベル・配色
 	const statusLabel = $derived({
@@ -45,27 +44,25 @@
 		</div>
 		<p class="mt-2 text-base">{m.points_reward_rate()} <strong class="text-lg text-accent-600">{Math.round(currentRank.rewardRate * 100)}%</strong></p>
 		{#if data.rankProgress}
-			{@const visits = data.rankProgress.visits}
+			{@const { visits, nights } = data.rankProgress}
 			<p class="mt-4 flex justify-between gap-3 text-sm font-medium text-stone-700">
 				<span>{m.points_qualified_visits()}</span>
-				<span class="shrink-0 tabular-nums">{m.points_visit_count({ n: String(visits) })}</span>
+				<span class="shrink-0 tabular-nums">{m.points_stay_counts({ visits: String(visits), nights: String(nights) })}</span>
 			</p>
 			<dl class="mt-2 space-y-1 text-sm text-stone-600">
 				{#each data.rankProgress.by_facility as facility (facility.facility_id)}
 					<div class="flex justify-between gap-3">
 						<dt class="min-w-0 break-words">{facility.name}</dt>
-						<dd class="shrink-0 tabular-nums">{m.points_visit_count({ n: String(facility.visits) })}</dd>
+						<dd class="shrink-0 tabular-nums">{m.points_stay_counts({ visits: String(facility.visits), nights: String(facility.nights) })}</dd>
 					</div>
 				{/each}
 			</dl>
-			{#if data.rankProgress.review_on}
-				<p class="mt-2 rounded-lg bg-amber-50 p-2.5 text-sm text-amber-900">{m.points_rank_review({ date: formatDateLong(data.rankProgress.review_on) })}</p>
-			{/if}
 			{#if nextTarget}
 				<p class="mt-2 text-sm text-stone-600">
-					{visits >= nextTarget ? m.points_rank_pending() : m.points_to_next({ n: String(nextTarget - visits) })}
+					{visits >= nextTarget.visits || nights >= nextTarget.nights
+						? m.points_rank_pending()
+						: m.points_to_next({ visits: String(nextTarget.visits - visits), nights: String(nextTarget.nights - nights) })}
 				</p>
-				<progress class="mt-2 block h-2.5 w-full accent-accent-600" max={nextTarget} value={Math.min(visits, nextTarget)} aria-label={m.points_rank_progress()}></progress>
 			{:else}
 				<p class="mt-2 text-sm text-stone-600">{m.points_top_rank()}</p>
 			{/if}
