@@ -2,6 +2,8 @@
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
+	const reservationsHref = '/account#reservations';
+	const loginHref = `/auth/login?next=${encodeURIComponent(reservationsHref)}`;
 
 	const facilityName = (slug: string) => (slug === 'nishiwaga' ? m.footer_facility_nishiwaga() : m.footer_facility_oga());
 </script>
@@ -16,7 +18,7 @@
 		<h2 class="text-lg text-brand-900">{m.lookup_official_h()}</h2>
 		<p class="mt-2 text-sm text-stone-600">{m.lookup_official_member()}</p>
 		<p class="mt-3">
-			<a href="/account" class="inline-block rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{m.lookup_official_member_btn()}</a>
+			<a href={data.isMember ? reservationsHref : loginHref} class="inline-block rounded-lg bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">{data.isMember ? m.lookup_official_member_btn() : m.common_login()}</a>
 		</p>
 		<p class="mt-4 text-sm text-stone-600">{m.lookup_official_guest()}</p>
 	</section>
@@ -29,7 +31,7 @@
 				{#each data.legacy.links as link (link.facility)}
 					<li>
 						<a href={link.url} target="_blank" rel="noopener noreferrer" class="inline-block rounded-lg border border-brand-800 px-5 py-2 text-sm text-brand-900 hover:bg-stone-50"
-							>{m.lookup_legacy_btn({ facility: facilityName(link.facility) })} <span aria-hidden="true">↗</span><span class="sr-only">{m.lookup_legacy_external()}</span></a
+							>{m.lookup_legacy_btn({ facility: link.facility === 'nishiwaga' ? '山人-yamado-' : '山人-oga-' })} <span aria-hidden="true">↗</span><span class="sr-only">{m.lookup_legacy_external()}</span></a
 						>
 					</li>
 				{/each}

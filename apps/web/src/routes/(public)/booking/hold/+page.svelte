@@ -527,8 +527,8 @@
 				{#if !data.member}
 					<div class="rounded-xl border border-accent-500/40 bg-amber-50/60 p-4 text-sm {step === 'confirm' ? 'hidden' : ''}">
 						<p class="font-medium text-brand-900">{m.hold_login_prompt()}</p>
-						<div class="mt-2 flex gap-2">
-							<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="rounded-md bg-brand-800 px-4 py-1.5 text-white hover:bg-brand-700">{m.hold_login_btn()}</a>
+						<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+							<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="rounded-md bg-brand-800 px-4 py-1.5 whitespace-nowrap text-white hover:bg-brand-700">{m.common_login()}</a>
 							<span class="self-center text-stone-500">{m.hold_guest_continue()}</span>
 						</div>
 					</div>

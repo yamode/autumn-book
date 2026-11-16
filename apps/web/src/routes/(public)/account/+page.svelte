@@ -57,7 +57,7 @@
 	</section>
 {/if}
 
-<section>
+<section id="reservations" class="scroll-mt-24">
 	<h2 class="mb-4 text-lg text-brand-900">{m.account_upcoming()}</h2>
 	{#each data.upcoming as b}
 		<a href="/account/reservations/{b.code}" class="mb-3 flex flex-col gap-4 rounded-2xl border border-stone-200 bg-white p-4 transition hover:shadow-md sm:flex-row">

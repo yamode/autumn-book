@@ -157,6 +157,7 @@
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
 			<nav class="hidden items-center gap-4 text-sm text-stone-600 md:flex">
 				<a href="/search" class="hover:text-brand-800">{m.nav_find_accommodation()}</a>
+				<a href="/booking/lookup" class="hover:text-brand-800">{m.footer_lookup()}</a>
 				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 			</nav>
@@ -222,6 +223,7 @@
 		<div id="header-mobile-menu" class="border-t border-stone-100 bg-white md:hidden {mobileMenuOpen ? '' : 'hidden'}">
 			<nav class="mx-auto flex max-w-6xl flex-col px-4 py-2 text-sm text-stone-700">
 				<a href="/search" class="py-2.5 hover:text-brand-800">{m.nav_find_accommodation()}</a>
+				<a href="/booking/lookup" class="py-2.5 hover:text-brand-800">{m.footer_lookup()}</a>
 				<a href="/membership" class="py-2.5 hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
@@ -267,7 +269,7 @@
 			</div>
 		</div>
 		<p class="border-t border-white/10 py-3 text-center text-[11px] text-stone-500">
-			{m.footer_copyright()}
+			{m.footer_copyright()}{#if data.demoData} ｜ {m.footer_demo_notice()}{/if}
 		</p>
 	</footer>
 </div>
