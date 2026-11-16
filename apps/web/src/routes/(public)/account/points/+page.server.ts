@@ -36,7 +36,8 @@ export const load: PageServerLoad = async (event) => {
 					id: e.id,
 					delta: e.delta,
 					reason: e.reason,
-					createdAt: (e.created_at ?? '').slice(0, 10)
+					createdAt: e.created_at,
+					sourcePostId: e.source_post_id ?? undefined
 				})),
 				posts: otayori.posts.map((p) => ({
 					id: p.id,
@@ -44,6 +45,7 @@ export const load: PageServerLoad = async (event) => {
 					radioName: p.radio_name ?? undefined,
 					status: p.status,
 					reviewNote: p.review_note ?? undefined,
+					awardedAt: p.awarded_at ?? undefined,
 					createdAt: (p.created_at ?? '').slice(0, 10)
 				}))
 			}

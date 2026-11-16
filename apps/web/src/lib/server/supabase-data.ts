@@ -1078,6 +1078,7 @@ export interface OtayoriLedgerRow {
 	delta: number;
 	reason: string;
 	created_at: string;
+	source_post_id?: string | null;
 }
 
 export interface OtayoriPostRow {
@@ -1088,6 +1089,7 @@ export interface OtayoriPostRow {
 	review_note: string | null;
 	created_at: string;
 	reviewed_at: string | null;
+	awarded_at?: string | null;
 }
 
 export interface OtayoriMySummaryRow {

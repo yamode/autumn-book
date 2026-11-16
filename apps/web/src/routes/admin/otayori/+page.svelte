@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
-	import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
 	import { renderForumBody } from '$lib/forum-format';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 
@@ -8,7 +7,7 @@
 
 	const tabs = [
 		{ key: 'pending', label: '申請中' },
-		{ key: 'approved', label: '承認済' },
+		{ key: 'approved', label: '紹介済み' },
 		{ key: 'rejected', label: '却下' }
 	] as const;
 
@@ -19,56 +18,17 @@
 	// 却下フォームを開いている投稿ID（インライン理由入力）
 	let rejectingId = $state<string | null>(null);
 
-	// 承認は会員へポイントを付与するので確認する（use:enhance の submit で待つ）
-	const confirmApprove = async ({ cancel }: { cancel: () => void }) => {
-		if (!(await askConfirm({ message: 'このおたよりを承認し、1pt（1,000円相当）を付与します。', confirmLabel: '承認して付与する', danger: false }))) cancel();
-	};
+	const dateFormat = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' });
+	const dateTime = (date: string) => dateFormat.format(new Date(date));
 </script>
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="おたより" description="YouTube 視聴者からのおたよりをレビューします。承認すると会員に1pt（＝1,000円相当）が付与されます（承認は管理者のみ）。却下・一覧閲覧はスタッフも可能です。操作は監査ログに記録されます。" />
+<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、紹介を記録した時点で1ptが付きます。" />
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
-{#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりを承認し、1pt を付与しました（監査ログに記録）。</p>{/if}
+{#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">番組で紹介したことを記録しました。</p>{/if}
 {#if form?.ok === 'reject'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりを却下しました（監査ログに記録）。</p>{/if}
-{#if form?.ok === 'grant'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりポイントを手動付与しました（監査ログに記録）。</p>{/if}
-
-<!-- 会員検索 → 手動付与（admin・設計書 §9） -->
-<section class="mb-8 rounded-xl border border-stone-200 bg-white p-4">
-	<h2 class="mb-1 font-medium text-stone-700">会員を検索して手動付与</h2>
-	<p class="mb-3 text-xs text-stone-400">番組開始前からのおたよりポイント保持者などへ、会員ごとに付与します（管理者のみ）。1pt＝1,000円相当。正負どちらも入力できます（誤りの訂正用）。</p>
-
-	{#if !data.isAdmin}
-		<p class="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-500">手動付与は管理者のみ可能です（スタッフは閲覧のみ）。</p>
-	{:else}
-		<form method="GET" class="mb-3 flex flex-wrap gap-2 text-sm">
-			<input type="hidden" name="status" value={data.status} />
-			<input name="q" value={data.q} placeholder="氏名・カナ・会員番号・メールで検索" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2" />
-			<button type="submit" class="shrink-0 rounded-md bg-brand-800 px-4 py-2 text-white hover:bg-brand-700">検索</button>
-		</form>
-
-		{#if data.q && data.found.length === 0}
-			<p class="text-xs text-stone-400">該当する会員が見つかりませんでした。</p>
-		{:else}
-			<div class="space-y-2">
-				{#each data.found as mem}
-					<form method="POST" action="?/grant" use:enhance class="grid items-center gap-2 rounded-lg border border-stone-200 p-3 text-sm sm:grid-cols-[1fr_auto_auto_auto]">
-						<input type="hidden" name="memberId" value={mem.id} />
-						<div>
-							<span class="font-medium">{mem.name}</span>
-							<span class="text-xs text-stone-400">（{mem.memberCode}）</span>
-							<span class="ml-2 text-xs text-stone-500">残高 {mem.balance.toLocaleString()}pt</span>
-						</div>
-						<input type="number" name="delta" placeholder="+1 / -1" class="w-full rounded-md sm:w-24 border border-stone-300 px-2 py-1.5" />
-						<input name="reason" placeholder="理由（必須）" class="w-full rounded-md sm:w-48 border border-stone-300 px-2 py-1.5" />
-						<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-4 py-2 text-white hover:bg-brand-700">付与</button>
-					</form>
-				{/each}
-			</div>
-		{/if}
-	{/if}
-</section>
 
 <!-- 投稿レビュー：タブ -->
 <section class="rounded-xl border border-stone-200 bg-white p-4">
@@ -90,26 +50,34 @@
 		<p class="py-6 text-center text-sm text-stone-400">該当するおたよりはありません。</p>
 	{:else}
 		<div class="space-y-3">
-			{#each data.items as it}
+			{#each data.items as it (it.id)}
 				<div class="rounded-xl border border-stone-200 p-4">
 					<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
-						<span class="tabular-nums">{it.createdAt}</span>
-						<span><span class="font-mono">{it.memberCode}</span> ／ {it.memberName}</span>
+						<span class="tabular-nums">{dateTime(it.createdAt)}</span>
+						{#if it.guest}<span>非会員</span>{:else}<span><span class="font-mono">{it.memberCode}</span> ／ {it.memberName}</span>{/if}
 						{#if it.radioName}<span class="rounded bg-stone-100 px-1.5 py-0.5">ラジオネーム: {it.radioName}</span>{/if}
 					</div>
 					<p class="text-sm break-words whitespace-pre-wrap text-stone-700">{@html renderForumBody(it.body)}</p>
+					{#if it.files.length}
+						<ul class="mt-3 flex flex-wrap gap-2">
+							{#each it.files as file, index (file.url)}
+								<li><a href={file.url} class="inline-flex min-h-9 items-center rounded-md border border-stone-300 px-3 text-sm text-brand-800 underline">
+									{file.kind === 'video' ? '動画' : '画像'} {index + 1} をダウンロード
+								</a></li>
+							{/each}
+						</ul>
+					{/if}
+					{#if it.awardedAt}
+						<p class="mt-3 text-sm font-medium text-emerald-800">1pt付与 · {dateTime(it.awardedAt)}</p>
+					{/if}
 
 					<div class="mt-3 flex flex-wrap items-center gap-2">
 						{#if data.status === 'pending'}
-							<!-- 承認（admin のみ・確認ダイアログ） -->
-							{#if data.isAdmin}
-								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
-									<input type="hidden" name="postId" value={it.id} />
-									<button class="rounded-md bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-500">承認して1pt付与</button>
-								</form>
-							{:else}
-								<span class="text-xs text-stone-400">承認（付与）は管理者のみ</span>
-							{/if}
+							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
+								<input type="hidden" name="postId" value={it.id} />
+								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
+								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1pt付与'}</button>
+							</form>
 
 							<!-- 却下（staff 可・理由入力） -->
 							{#if rejectingId === it.id}
@@ -123,20 +91,25 @@
 								<button type="button" onclick={() => (rejectingId = it.id)} class="rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-600 hover:bg-stone-50">却下</button>
 							{/if}
 						{:else if data.status === 'approved'}
-							<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">承認済み（1pt付与済み）</span>
+							<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">紹介済み</span>
 						{:else}
 							<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">却下済み</span>
-							<!-- 却下→再承認も可（admin・冪等付与） -->
-							{#if data.isAdmin}
-								<form method="POST" action="?/approve" use:enhance={confirmApprove}>
-									<input type="hidden" name="postId" value={it.id} />
-									<button class="rounded-md border border-emerald-300 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">やはり承認する</button>
-								</form>
-							{/if}
+							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
+								<input type="hidden" name="postId" value={it.id} />
+								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
+								<button class="rounded-md border border-emerald-300 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">紹介を記録する</button>
+							</form>
 						{/if}
 					</div>
 				</div>
 			{/each}
 		</div>
+	{/if}
+	{#if data.counts[data.status] > data.perPage}
+		<nav aria-label="投稿のページ送り" class="mt-5 flex items-center justify-between gap-4 text-sm">
+			{#if data.page > 1}<a class="underline" href={`?status=${data.status}&page=${data.page - 1}`}>前へ</a>{/if}
+			<span>{data.page} / {Math.ceil(data.counts[data.status] / data.perPage)}</span>
+			{#if data.page * data.perPage < data.counts[data.status]}<a class="underline" href={`?status=${data.status}&page=${data.page + 1}`}>次へ</a>{/if}
+		</nav>
 	{/if}
 </section>

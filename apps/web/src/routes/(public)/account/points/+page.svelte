@@ -4,12 +4,14 @@
 	import { rankCondition, rankTargets } from '$lib/member-rank';
 	import { renderForumBody } from '$lib/forum-format';
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
 
 	let { data } = $props();
 	let rank = $derived(data.rankProgress?.rank_code ?? data.member.rank);
 	let currentRank = $derived(data.ranks.find((r) => r.code === rank)!);
 	let nextRank = $derived(RANK_CODES[RANK_CODES.indexOf(rank) + 1]);
 	let nextTarget = $derived(nextRank ? rankTargets[nextRank] : null);
+	const letterDate = new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' });
 
 	// おたより投稿ステータスのラベル・配色
 	const statusLabel = $derived({
@@ -120,6 +122,7 @@
 	<div class="mb-4 flex items-center gap-2">
 		<h2 class="text-xl">{m.otayori_nav()}</h2>
 		<span class="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">{m.points_otayori_badge()}</span>
+		<a href="/kitakaze#letter" class="ml-auto text-sm text-brand-800 underline">{m.radio_letter_title()}</a>
 	</div>
 
 	<div class="rounded-2xl border border-stone-200 bg-white p-6">
@@ -135,7 +138,10 @@
 				<div class="flex items-center justify-between py-3">
 					<div>
 						<p>{entry.reason}</p>
-						<p class="text-sm text-stone-400">{entry.createdAt}</p>
+						<p class="text-sm text-stone-500">{letterDate.format(new Date(entry.createdAt))}</p>
+						{#if entry.sourcePostId}
+							<a href={`#letter-${entry.sourcePostId}`} class="mt-1 inline-block text-sm text-brand-800 underline">{m.radio_view_letter()}</a>
+						{/if}
 					</div>
 					<span class="font-semibold {entry.delta > 0 ? 'text-emerald-700' : 'text-red-600'}">
 						{entry.delta > 0 ? '+' : ''}{entry.delta.toLocaleString()}{m.common_point_unit()}
@@ -151,13 +157,16 @@
 		<h3 class="mb-3 text-base">{m.otayori_my_posts()}</h3>
 		<div class="space-y-3">
 			{#each data.otayori.posts as post}
-				<div class="rounded-xl border border-stone-200 p-4">
+				<div id={`letter-${post.id}`} class="scroll-mt-24 rounded-xl border border-stone-200 p-4">
 					<div class="mb-2 flex flex-wrap items-center gap-2">
 						<span class="rounded-full px-2 py-0.5 text-xs {statusCls[post.status]}">{statusLabel[post.status]}</span>
 						{#if post.radioName}<span class="text-sm text-stone-400">{m.otayori_radio_name_label()}: {post.radioName}</span>{/if}
 						<span class="ml-auto text-sm text-stone-400">{post.createdAt}</span>
 					</div>
 					<p class="break-words whitespace-pre-wrap text-stone-700">{@html renderForumBody(post.body)}</p>
+					{#if post.awardedAt}
+						<p class="mt-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800">{m.radio_awarded({ date: letterDate.format(new Date(post.awardedAt)) })}</p>
+					{/if}
 					{#if post.status === 'rejected' && post.reviewNote}
 						<p class="mt-2 rounded-lg bg-stone-50 px-3 py-1.5 text-sm text-stone-500">{m.otayori_review_note_label()}: {post.reviewNote}</p>
 					{/if}

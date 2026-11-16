@@ -618,6 +618,7 @@ export interface OtayoriPost {
 	reviewNote?: string; // 却下理由など
 	createdAt: string;
 	reviewedAt?: string;
+	awardedAt?: string;
 }
 
 /** 管理画面の投稿一覧行（会員の内部識別を含む。公開画面には出さない） */
