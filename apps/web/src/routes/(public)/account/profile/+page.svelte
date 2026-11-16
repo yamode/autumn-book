@@ -1,8 +1,23 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
+	import type { SubmitFunction } from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
+	let avatarBusy = $state(false);
+
+	function selectAvatar(event: Event & { currentTarget: HTMLInputElement }) {
+		if (event.currentTarget.files?.length) event.currentTarget.form?.requestSubmit();
+	}
+
+	const submitAvatar: SubmitFunction = ({ cancel }) => {
+		if (avatarBusy) return cancel();
+		avatarBusy = true;
+		return async ({ update, formElement }) => {
+			try { await update(); }
+			finally { formElement.reset(); avatarBusy = false; }
+		};
+	};
 
 	// 退会セクションの開閉
 	let withdrawOpen = $state(false);
@@ -10,48 +25,53 @@
 
 <svelte:head><title>{m.profile_title()}</title></svelte:head>
 
-<div class="max-w-lg space-y-6">
+<div class="grid items-start gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] lg:gap-6">
 	{#if form?.saved}
-		<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_saved()}</p>
+		<p role="status" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800 lg:col-span-2">{m.profile_saved()}</p>
 	{/if}
 	{#if form?.message}
-		<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
+		<p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">{form.message}</p>
 	{/if}
 
 	<!-- プロフィール画像 -->
-	<div class="space-y-3 rounded-2xl border border-stone-200 bg-white p-6">
-		<h2 class="text-lg">{m.profile_avatar_heading()}</h2>
+	<section class="min-w-0 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6"
+		aria-labelledby="profile-avatar-heading" aria-busy={avatarBusy}>
+		<h2 id="profile-avatar-heading" class="text-lg">{m.profile_avatar_heading()}</h2>
 		<p class="text-sm text-stone-500">{m.profile_avatar_note()}</p>
 		{#if form?.avatarSaved}
-			<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_avatar_saved()}</p>
+			<p role="status" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_avatar_saved()}</p>
 		{/if}
 		{#if form?.avatarError}
-			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.avatarError}</p>
+			<p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.avatarError}</p>
 		{/if}
 		<div class="flex items-center gap-4">
 			{#if data.member.avatarUrl}
-				<img src={data.member.avatarUrl} alt="" class="h-20 w-20 rounded-full object-cover" />
+				<img src={data.member.avatarUrl} alt="" class="size-16 shrink-0 rounded-full object-cover sm:size-20" />
 			{:else}
-				<div class="flex h-20 w-20 items-center justify-center rounded-full bg-brand-800 text-3xl font-semibold text-white">
+				<div aria-hidden="true" class="flex size-16 shrink-0 items-center justify-center rounded-full bg-brand-800 text-3xl font-semibold text-white sm:size-20">
 					{(data.member.name ?? '').trim().charAt(0) || '·'}
 				</div>
 			{/if}
-			<div class="flex-1 space-y-2">
-				<form method="POST" action="?/uploadAvatar" enctype="multipart/form-data" use:enhance class="flex flex-wrap items-center gap-2">
-					<input type="file" name="avatar" accept="image/*" required class="block w-full text-sm text-stone-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-800 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-700" />
-					<button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.profile_avatar_upload()}</button>
+			<div class="min-w-0 space-y-1.5">
+				<form method="POST" action="?/uploadAvatar" enctype="multipart/form-data" use:enhance={submitAvatar}>
+					<input id="profile-avatar" type="file" name="avatar" accept="image/*" required
+						disabled={avatarBusy} onchange={selectAvatar} class="peer sr-only" />
+					<label for="profile-avatar" class="inline-flex min-h-11 cursor-pointer items-center rounded-lg bg-brand-800 px-3 py-2 text-center text-sm font-medium text-white hover:bg-brand-700 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-brand-800 peer-disabled:cursor-wait peer-disabled:opacity-60 sm:px-4">
+						{avatarBusy ? m.profile_avatar_saving() : data.member.avatarUrl ? m.profile_avatar_change() : m.profile_avatar_select()}
+					</label>
+					<noscript><button type="submit" class="mt-2 block text-sm underline">{m.profile_avatar_upload()}</button></noscript>
 				</form>
 				{#if data.member.avatarUrl}
-					<form method="POST" action="?/removeAvatar" use:enhance>
-						<button type="submit" class="text-sm text-stone-500 underline hover:text-red-600">{m.profile_avatar_remove()}</button>
+					<form method="POST" action="?/removeAvatar" use:enhance={submitAvatar}>
+						<button type="submit" disabled={avatarBusy} class="inline-flex min-h-8 items-center text-sm text-stone-500 underline hover:text-red-600 disabled:opacity-60">{m.profile_avatar_remove()}</button>
 					</form>
 				{/if}
 			</div>
 		</div>
-	</div>
+	</section>
 
 	<!-- 基本情報（グローバル正規化: 姓 / 名 / ミドルネーム + カナ） -->
-	<form method="POST" action="?/update" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+	<form method="POST" action="?/update" use:enhance class="min-w-0 space-y-4 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6 lg:col-start-2 lg:row-span-2">
 		<h2 class="text-lg">{m.profile_heading()}</h2>
 		<div class="grid grid-cols-2 gap-3">
 			<label class="block">
@@ -89,7 +109,7 @@
 	</form>
 
 	<!-- メールアドレス変更 -->
-	<div class="space-y-3 rounded-2xl border border-stone-200 bg-white p-6">
+	<div class="min-w-0 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6">
 		<h2 class="text-lg">{m.profile_email()}</h2>
 		{#if form?.emailSaved}
 			<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_email_saved()}</p>
@@ -100,7 +120,7 @@
 		{#if form?.emailError}
 			<p class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.emailError}</p>
 		{/if}
-		<p class="rounded-lg bg-stone-50 px-3 py-2.5 text-[15px] text-stone-700">{data.member.email}</p>
+		<p class="wrap-anywhere rounded-lg bg-stone-50 px-3 py-2.5 text-[15px] text-stone-700">{data.member.email}</p>
 		<form method="POST" action="?/changeEmail" use:enhance class="space-y-3">
 			<label class="block">
 				<span class="text-sm text-stone-600">{m.profile_email_new_label()}</span>
@@ -112,12 +132,12 @@
 	</div>
 
 	<!-- 会員情報 -->
-	<div class="rounded-2xl border border-stone-200 bg-white p-6">
+	<div class="rounded-2xl border border-stone-200 bg-white p-4 sm:p-6 lg:col-span-2">
 		<p class="text-[15px] text-stone-500">{m.profile_member_info({ code: data.member.memberCode, date: data.member.joinedAt })}</p>
 	</div>
 
 	<!-- 退会 -->
-	<div class="rounded-2xl border border-red-200 bg-white p-6">
+	<div class="rounded-2xl border border-red-200 bg-white p-4 sm:p-6 lg:col-span-2">
 		<h2 class="text-base text-red-700">{m.profile_withdrawal()}</h2>
 		<p class="mt-1 text-sm text-stone-500">{m.profile_withdrawal_note()}</p>
 		{#if !withdrawOpen}
