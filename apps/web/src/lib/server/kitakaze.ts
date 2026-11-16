@@ -1,9 +1,9 @@
 import { env } from '$env/dynamic/private';
 import { TtlCache } from './ttl-cache';
+import type { RadioEpisode as Episode, RadioEpisodePage } from '$lib/radio-episodes';
 
 const kitakazePlaylistId = 'PLa-R1qQvvrylCId4oDEKv31RcqqQ_6q7h';
 const videoId = /^[A-Za-z0-9_-]{11}$/;
-type Episode = { id: string; title: string; publishedAt: string };
 const episodesCache = new TtlCache<Episode[]>(15 * 60_000, 4);
 
 function xmlText(value: string) {
@@ -18,7 +18,21 @@ function xmlText(value: string) {
 }
 
 function newestFirst(episodes: Episode[]) {
-	return episodes.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+	return episodes.sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt) || (a.id < b.id ? -1 : a.id === b.id ? 0 : 1));
+}
+
+const pageSize = 12;
+const cursorFor = (video: Episode) => `${Date.parse(video.publishedAt)}.${video.id}`;
+
+export async function kitakazeEpisodePage(cursor?: string): Promise<RadioEpisodePage | null> {
+	const match = cursor?.match(/^(\d{1,13})\.([A-Za-z0-9_-]{11})$/);
+	if (cursor && !match) return null;
+	const all = await kitakazeEpisodes();
+	const offset = match ? all.findIndex((video) => Date.parse(video.publishedAt) < Number(match[1]) ||
+		(Date.parse(video.publishedAt) === Number(match[1]) && video.id > match[2])) : 0;
+	if (offset < 0) return { items: [], next: null };
+	const items = all.slice(offset, offset + pageSize);
+	return { items, next: offset + items.length < all.length ? cursorFor(items[items.length - 1]) : null };
 }
 
 async function fromDataApi(playlist: string, key: string): Promise<Episode[]> {

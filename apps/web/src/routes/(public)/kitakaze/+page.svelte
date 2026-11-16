@@ -1,15 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
-	import { getLocale } from '$lib/paraglide/runtime';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
+	import RadioEpisodes from '$lib/components/RadioEpisodes.svelte';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data, form } = $props();
 	let sending = $state(false);
 	const playlistUrl = $derived(`https://www.youtube.com/playlist?list=${data.playlist}`);
 	const body = $derived(form && 'body' in form ? String(form.body ?? '') : '');
-	const publishDateFormat = new Intl.DateTimeFormat(getLocale(), { dateStyle: 'long', timeZone: 'Asia/Tokyo' });
 </script>
 
 <svelte:head><title>{m.radio_title()} ｜ 山人</title></svelte:head>
@@ -28,26 +27,9 @@
 			</div>
 			{#await data.episodes}
 				<PageLoadingSkeleton kind="videos" title={m.radio_episodes()} />
-			{:then videos}
-				{#if videos.length}
-					<ul class="grid gap-3 sm:grid-cols-2">
-						{#each videos as video (video.id)}
-							<li class="min-w-0 overflow-hidden rounded-xl border border-stone-200 bg-white">
-								<a href={`https://www.youtube.com/watch?v=${video.id}&list=${data.playlist}`}
-									target="_blank" rel="noopener"
-									class="group block focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-800">
-									<img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`} width="320" height="180" alt="" loading="lazy" class="aspect-video w-full bg-stone-100 object-cover" />
-									<div class="space-y-1 p-3">
-										<p class="flex flex-wrap items-baseline gap-x-2 text-xs text-stone-600">
-											<span>{m.radio_published_on()}</span>
-											<time datetime={video.publishedAt}>{publishDateFormat.format(new Date(video.publishedAt))}</time>
-										</p>
-										<p class="wrap-anywhere text-sm font-medium text-brand-900 group-hover:underline">{video.title}</p>
-									</div>
-								</a>
-							</li>
-						{/each}
-					</ul>
+			{:then first}
+				{#if first?.items.length}
+					{#key first}<RadioEpisodes initial={first} playlist={data.playlist} />{/key}
 				{:else}
 					<p class="text-sm text-stone-600">{m.radio_unavailable()}</p>
 				{/if}

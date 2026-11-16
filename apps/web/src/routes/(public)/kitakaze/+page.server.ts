@@ -1,6 +1,6 @@
 import { fail } from '@sveltejs/kit';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { kitakazeEpisodes, kitakazePlaylist } from '$lib/server/kitakaze';
+import { kitakazeEpisodePage, kitakazePlaylist } from '$lib/server/kitakaze';
 import { RADIO_ACCEPT, RADIO_LIMIT, radioFileError, submitRadioLetter } from '$lib/server/radio-letters';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import { getForumProfile, otayoriSubmit } from '$lib/server/store';
@@ -19,7 +19,7 @@ async function radioNickname(event: Parameters<PageServerLoad>[0] | Parameters<A
 export const load: PageServerLoad = async (event) => {
 	const { locals } = event;
 	if (locals.user?.role === 'member') event.setHeaders({ 'cache-control': 'private, no-store' });
-	const episodes = kitakazeEpisodes();
+	const episodes = kitakazeEpisodePage();
 	return {
 		episodes, playlist: kitakazePlaylist(), accept: RADIO_ACCEPT,
 		nickname: await radioNickname(event).catch(() => null),
