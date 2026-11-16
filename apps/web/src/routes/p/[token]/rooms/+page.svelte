@@ -6,6 +6,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
+  import CommonRoomEquipment from '$lib/components/CommonRoomEquipment.svelte';
   import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import { roomAnchor, roomParts } from '$lib/partner-contents';
 
@@ -50,12 +51,13 @@
           </div>
         {/each}
       </div>
-    {:then { rooms, error }}
+    {:then { rooms, commonRoomEquipment, error }}
       {#if error}
         <p class="mt-8 rounded-xl border border-rose-700/30 bg-rose-700/5 p-6 text-center text-rose-700">{error}</p>
       {:else if rooms.length === 0}
         <p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">ご案内できるお部屋の紹介はまだありません。</p>
       {:else}
+        <CommonRoomEquipment equipment={commonRoomEquipment} label="全室共通の浴室・アメニティ・設備" />
         <nav class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="お部屋の一覧">
           {#each rooms as r (r.code)}
             <a href={`#${roomAnchor(r.code)}`} class="rounded-full border border-stone-300 bg-white px-3 py-1 hover:border-brand-900">{r.shortName || roomParts(r.name).room}</a>

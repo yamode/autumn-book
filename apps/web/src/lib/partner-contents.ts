@@ -8,6 +8,7 @@ import { ADVANCE_PLAN_CODE, type PartnerPricing } from '$lib/partner-pricing';
 export type ContentPhoto = { url: string; caption: string; category: string };
 export type ContentSpec = { label: string; value: string };
 export type ContentSection = { group: string; title: string; text: string; note: string; photo: string | null };
+type RoomSection = Omit<ContentSection, 'note' | 'photo'> & Partial<Pick<ContentSection, 'note' | 'photo'>>;
 
 type ContentBody = {
   headline: string;
@@ -16,6 +17,7 @@ type ContentBody = {
   specs: ContentSpec[];
   sections: ContentSection[];
 };
+type RoomEquipmentSource = Omit<ContentBody, 'sections'> & { sections: RoomSection[]; amenities: string[] };
 
 export type PartnerRoomContent = ContentBody & {
   code: string;
@@ -85,7 +87,29 @@ const body = (r: Record<string, unknown>): ContentBody => ({
 });
 
 // 紹介として見せる中身があるか（名前だけの行は出さない）。
-export const hasContent = (c: ContentBody) => Boolean(c.description || c.photos.length || c.specs.length || c.sections.length);
+export const hasContent = (c: Pick<RoomEquipmentSource, 'description' | 'photos' | 'specs' | 'sections'>) =>
+  Boolean(c.description || c.photos.length || c.specs.length || c.sections.length);
+
+// おまかせ部屋など、紹介が未登録の行を除いて共通設備を取り出す。
+export function roomEquipmentForList<T extends RoomEquipmentSource>(rooms: T[], showCommon: boolean) {
+  const empty: { amenities: string[]; sections: ContentSection[] } = { amenities: [], sections: [] };
+  if (!showCommon) return { common: empty, rooms };
+  const described = rooms.filter(hasContent);
+  const first = described[0];
+  const amenities = first?.amenities.filter((item) => described.every((room) => room.amenities.includes(item))) ?? [];
+  const sectionKeys = described.map((room) => new Set(room.sections.map((section) => JSON.stringify(section))));
+  const sections = first?.sections.filter((section) => sectionKeys.every((keys) => keys.has(JSON.stringify(section)))) ?? [];
+  const commonKeys = new Set(sections.map((section) => JSON.stringify(section)));
+
+  return {
+    common: { amenities, sections: sections.map((section) => ({ ...section, note: section.note ?? '', photo: section.photo ?? null })) },
+    rooms: rooms.map((room) => ({
+      ...room,
+      amenities: room.amenities.filter((item) => !amenities.includes(item)),
+      sections: room.sections.filter((section) => !commonKeys.has(JSON.stringify(section)))
+    }))
+  };
+}
 
 // ページ内リンクの ID（料金カレンダー・予約入力からプランの紹介へ飛ぶ）。表示名は日本語なので短いハッシュにする。
 export function planAnchor(planCode: string, planLabel: string): string {
@@ -111,8 +135,9 @@ export function partnerContentScope(pricing: Pick<PartnerPricing, 'rules'>): { r
 
 export function buildPartnerContents(
   raw: unknown,
-  pricing: Pick<PartnerPricing, 'rules'>
-): { rooms: PartnerRoomContent[]; plans: PartnerPlanContent[] } {
+  pricing: Pick<PartnerPricing, 'rules'>,
+  showCommonRoomEquipment = false
+) {
   const scope = partnerContentScope(pricing);
   const data = obj(raw);
   const rooms = arr(data.rooms)
@@ -126,7 +151,9 @@ export function buildPartnerContents(
       capacityMax: Number(r.capacity_max) || 1,
       amenities: arr(r.amenities).map(str).filter(Boolean)
     }))
-    .filter((r) => r.code && (!scope.rooms || scope.rooms.has(r.code)));
+    .filter((r) => r.code);
+  // 共通設備は取引先ごとの客室絞り込みより先に、施設全体から判定する。
+  const roomList = roomEquipmentForList(rooms, showCommonRoomEquipment);
   const plans = arr(data.plans)
     .map(obj)
     .map((p) => {
@@ -143,7 +170,11 @@ export function buildPartnerContents(
       };
     })
     .filter((p) => p.planCode && (!scope.plans || scope.plans.has(p.planCode)) && hasContent(p));
-  return { rooms, plans };
+  return {
+    rooms: roomList.rooms.filter((room) => !scope.rooms || scope.rooms.has(room.code)),
+    plans,
+    commonRoomEquipment: roomList.common
+  };
 }
 
 // 社内向けの調整表記（例: 「(+20350円)」「(-10%)」）と区分の前置きを落として、取引先に見せる名前にする（料金カレンダーと同じ）。

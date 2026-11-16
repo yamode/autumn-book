@@ -19,9 +19,10 @@ export const load = async (event) => {
     })
   );
   // オンの施設が無い取引先（N9）は紹介を出さない（ヘッダーの下に案内）
-  const contents = (partner.facility_available ? loadPartnerContents(db, partner) : Promise.resolve({ rooms: [], plans: [] })).then(
-    (c) => ({ rooms: c.rooms, error: null as string | null }),
-    () => ({ rooms: [] as Awaited<ReturnType<typeof loadPartnerContents>>['rooms'], error: '紹介を読み込めませんでした。時間をおいてお試しください。' })
+  const empty = { rooms: [], commonRoomEquipment: { amenities: [], sections: [] } };
+  const contents = (partner.facility_available ? loadPartnerContents(db, partner, partner.facility_slug === 'nishiwaga') : Promise.resolve(empty)).then(
+    ({ rooms, commonRoomEquipment }) => ({ rooms, commonRoomEquipment, error: null }),
+    () => ({ ...empty, error: '紹介を読み込めませんでした。時間をおいてお試しください。' })
   );
   return {
     portal: portalHeader(partner, session),

@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
+	import CommonRoomEquipment from '$lib/components/CommonRoomEquipment.svelte';
+	import { roomEquipmentForList } from '$lib/partner-contents';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let f = $derived(data.facility);
 	let base = $derived(`/${f.brandSlug}/${f.slug}`);
+	let roomList = $derived(roomEquipmentForList(data.rooms, f.slug === 'nishiwaga'));
 
 	function roomLabel(name: string) {
 		// 西和賀の販売名は「タイプ◆棟名-英字-◆部屋名」または「タイプ■棟名◇部屋名-英字-■」。
@@ -43,8 +46,9 @@
 	{#if data.rooms.length === 0}
 		<p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">{m.rooms_list_empty()}</p>
 	{:else}
+		<CommonRoomEquipment equipment={roomList.common} label={m.rooms_common_equipment()} />
 		<div class="mt-5 space-y-8 sm:space-y-10">
-			{#each data.rooms as r (r.slug)}
+			{#each roomList.rooms as r (r.slug)}
 				{@const label = roomLabel(r.name)}
 				<article id="room-{r.slug}" class="scroll-mt-32 border-t border-stone-200 pt-4 sm:pt-6">
 					<header class="mb-3 sm:mb-4">

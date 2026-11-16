@@ -25,9 +25,9 @@ function loadFacilityContents(db: SupabaseClient, facilityId: string): Promise<u
 
 // 紹介文はテンプレートの差し込み印（{{tpl:key}}）を展開し、「特典」のテンプレート（公式HP限定特典）は本文から外す。
 // 公式HP限定特典は、取引先の設定（showOfficialPerks）で出すときだけ officialPerks に入れる。
-export async function loadPartnerContents(db: SupabaseClient, partner: Pick<PartnerContext, 'facility_id' | 'pricing'> & { booking_settings?: { showOfficialPerks?: boolean } }) {
+export async function loadPartnerContents(db: SupabaseClient, partner: Pick<PartnerContext, 'facility_id' | 'pricing'> & { booking_settings?: { showOfficialPerks?: boolean } }, showCommonRoomEquipment = false) {
   const [raw, templates] = await Promise.all([loadFacilityContents(db, partner.facility_id), loadPlanTemplates(partner.facility_id)]);
-  const contents = buildPartnerContents(raw, partner.pricing);
+  const contents = buildPartnerContents(raw, partner.pricing, showCommonRoomEquipment);
   const showOfficial = partner.booking_settings?.showOfficialPerks === true;
   return {
     ...contents,
