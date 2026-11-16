@@ -14,6 +14,9 @@
 </div>
 
 <style>
+	.prose-ab {
+		overflow-wrap: anywhere;
+	}
 	.prose-ab :global(h2) {
 		font-size: 1.15rem;
 		font-weight: 600;
