@@ -1,52 +1,69 @@
 <script lang="ts">
 	import { roomCapacityText } from '$lib/room-capacity';
-	// 客室一覧（施設 → 客室一覧 → 客室詳細の動線・2026-11-02 指示「取引先ページの客室ページの UI と共通化」）。
-	// 取引先ページの「お部屋のご紹介」（/p/[token]/rooms）と同じ作り: 部屋の名前のチップ → 部屋ごとの枠
-	// （写真のギャラリー＋説明・仕様・設備＋「浴室・アメニティ・設備」を開いて詳しい紹介）。枠の右下からその部屋のページ（プラン）へ。
-	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 	let f = $derived(data.facility);
 	let base = $derived(`/${f.brandSlug}/${f.slug}`);
-	const anchor = (slug: string) => `room-${slug}`;
+
+	function roomLabel(name: string) {
+		// 西和賀の販売名は「タイプ◆棟名-英字-◆部屋名」または「タイプ■棟名◇部屋名-英字-■」。
+		const namedRoom = name.match(/^(.+?)[◆■](?:[^◆■◇]+◇)?(.+?)-[A-Za-z]+-[◆■](.*)$/u);
+		if (namedRoom) {
+			const [, type, title, suffix] = namedRoom;
+			const bath = suffix.match(/^[（(](.+)[）)]$/u)?.[1];
+			return { title, type: type.replace(/^［離れ］/u, '離れ・'), note: bath };
+		}
+
+		// 男鹿の販売名は客室棟とタイプが「│」で区切られる。
+		const suite = name.match(/^([A-Za-z]+)-(.+?)-│(.+?)\s*(\d+(?:\.\d+)?)平米\s*(?:【(.+)】)?$/u);
+		if (suite) {
+			const [, , wing, type, area, floor] = suite;
+			return { title: type, type: wing, note: floor, area: Number(area) };
+		}
+
+		return { title: name };
+	}
 </script>
 
 <svelte:head><title>{m.facility_rooms()} ｜ {f.name}</title></svelte:head>
 
-<div class="mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10" style="--pt-accent: var(--color-brand-800); --pt-accent-soft: var(--color-stone-100)">
-	<nav class="mb-4 text-xs text-stone-500" aria-label="breadcrumb">
-		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> /
-		<a href="{base}/plans" class="hover:underline">{m.plans_breadcrumb()}</a> / {m.rooms_list_title()}
-	</nav>
-	<h1 class="font-display text-2xl text-brand-900 sm:text-3xl">{f.name}</h1>
-	<!-- プラン一覧と同じ切り替え（プランから探す／お部屋から探す） -->
-	<nav class="mt-4 flex gap-2 border-b border-stone-200 text-sm" aria-label={m.plans_view_switch()}>
-		<a href="{base}/plans" class="-mb-px border-b-2 border-transparent px-3 py-2 text-stone-500 hover:text-brand-900">{m.plans_tab_plans()}</a>
-		<span class="-mb-px border-b-2 border-brand-800 px-3 py-2 font-medium text-brand-900" aria-current="page">{m.plans_tab_rooms()}</span>
+<div class="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+	<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-0.5 border-b border-stone-200 pb-3 sm:pb-4">
+		<h1 class="font-display text-2xl leading-tight text-brand-900 sm:text-3xl">{m.rooms_list_title()}</h1>
+		<p class="text-sm text-stone-600">{f.name}</p>
+	</div>
+	<nav class="mt-1 flex gap-5 text-sm" aria-label={m.plans_view_switch()}>
+		<a href={localizeHref(`${base}/plans`)} class="flex min-h-11 items-center border-b-2 border-transparent text-stone-600 hover:text-brand-900">{m.plans_tab_plans()}</a>
+		<span class="flex min-h-11 items-center border-b-2 border-brand-800 font-medium text-brand-900" aria-current="page">{m.plans_tab_rooms()}</span>
 	</nav>
 
 	{#if data.rooms.length === 0}
 		<p class="mt-8 rounded-xl border border-stone-200 bg-white p-6 text-center text-stone-500">{m.rooms_list_empty()}</p>
 	{:else}
-		<nav class="mt-5 flex flex-wrap gap-1.5 text-sm" aria-label={m.rooms_list_title()}>
-			{#each data.rooms as r (r.slug)}
-				<a href="#{anchor(r.slug)}" class="rounded-full border border-stone-300 bg-white px-3 py-1 hover:border-brand-900">{r.name}</a>
-			{/each}
-		</nav>
-
-		<div class="mt-6 space-y-8">
-			{#each data.rooms as r (r.slug)}
-				<article id={anchor(r.slug)} class="scroll-mt-28 rounded-xl border border-stone-200 bg-white p-4 sm:p-6">
-					<header class="mb-4">
-						<h2 class="text-xl font-bold leading-snug text-brand-900"><a href="{base}/rooms/{r.slug}" class="hover:underline">{r.name}</a></h2>
-						<p class="mt-1 text-sm text-stone-500">{#if r.headline && r.headline !== r.name}{r.headline}・{/if}{roomCapacityText(r)}</p>
-					</header>
-					<PartnerContentBody photos={r.photos} description={r.description} specs={r.specs} sections={r.sections} amenities={r.amenities} detailLabel={m.room_detail_more()}>
-						{#snippet actions()}
-							<a href="{base}/rooms/{r.slug}" class="flex w-full items-center justify-center gap-2 rounded-lg bg-accent-600 px-5 py-3 text-base font-bold text-white hover:bg-accent-500">{m.rooms_view_plans()}</a>
-						{/snippet}
-					</PartnerContentBody>
+		<div class="mt-4 grid gap-x-5 gap-y-6 sm:grid-cols-2 lg:grid-cols-3">
+			{#each data.rooms as r, index (r.slug)}
+				{@const label = roomLabel(r.name)}
+				{@const photo = r.photos[0]}
+				<article id="room-{r.slug}" class="scroll-mt-32 {photo ? '' : 'sm:col-span-full'}">
+					<a href={localizeHref(`${base}/rooms/${r.slug}`)}
+						class="group flex h-full flex-col overflow-hidden rounded-lg border border-stone-200 bg-white transition-colors hover:border-stone-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-800">
+						{#if photo}
+							<div class="aspect-[16/10] overflow-hidden bg-stone-100">
+								<img src={photo.url} alt="" loading={index === 0 ? 'eager' : 'lazy'} decoding="async"
+									class="h-full w-full object-cover motion-safe:transition-transform motion-safe:duration-500 motion-safe:group-hover:scale-[1.035]" />
+							</div>
+						{/if}
+						<div class="flex flex-1 items-end justify-between gap-2.5 px-4 py-3.5">
+							<div class="min-w-0">
+								{#if label.type}<p class="mb-0.5 text-xs text-stone-600">{label.type}</p>{/if}
+								<h2 class="font-display text-xl leading-snug break-words text-brand-900">{label.title}{#if label.note && label.area}<span class="ml-2 inline-block align-middle font-sans text-xs text-stone-600">{label.note}</span>{/if}</h2>
+								<p class="mt-1 text-xs text-stone-600">{roomCapacityText({ capacity: r.capacity, sizeM2: r.sizeM2 || label.area || 0 })}{#if label.note && !label.area} ・ {label.note}{/if}</p>
+							</div>
+							<span aria-hidden="true" class="grid size-9 shrink-0 place-items-center rounded-full bg-stone-100 text-base leading-none text-brand-800 transition-colors group-hover:bg-brand-800 group-hover:text-white">→</span>
+						</div>
+					</a>
 				</article>
 			{/each}
 		</div>
