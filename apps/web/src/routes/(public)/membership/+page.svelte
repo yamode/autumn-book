@@ -20,6 +20,7 @@
 		sections: [{ title: m.membership_rank_grace_title(), body: m.membership_rank_grace() }]
 	};
 	const perks: Perk[] = [
+		{ key: 'early-payment', minRank: 'standard', title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
 		{ key: 'bath', minRank: 'standard', title: m.membership_bath_title(), body: m.membership_bath_body() },
 		{ key: 'upgrade', minRank: 'silver', title: m.membership_upgrade_title(), body: m.membership_upgrade_body() },
 		{ key: 'timing', minRank: 'platinum', title: m.membership_timing_title(), body: m.membership_timing_body() },

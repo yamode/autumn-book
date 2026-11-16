@@ -115,6 +115,8 @@
   "membership_includes_previous": "包含{rank}的所有禮遇，另享",
   "membership_rate_upgrade": "點數回饋率從 {previous}% 提升至 {current}%",
   "membership_cond_standard": "入會時的初始等級",
+  "membership_early_payment_title": "提早付款優惠",
+  "membership_early_payment_body": "透過官方網站預訂適用方案，並在訂房時完成線上付款，即可依距入住日的天數享有折扣。適用旅宿、方案、日期及折扣可在訂房畫面確認。",
   "membership_bath_title": "提前預訂私人浴池",
   "membership_bath_body": "透過官方網站訂房的會員，可在入住前從會員中心預訂尚有空位的私人浴池。",
   "membership_upgrade_title": "客房升等通知",

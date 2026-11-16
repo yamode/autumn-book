@@ -115,6 +115,8 @@
   "membership_includes_previous": "All {rank} benefits, plus",
   "membership_rate_upgrade": "Point rewards rise from {previous}% to {current}%",
   "membership_cond_standard": "Starting grade on joining",
+  "membership_early_payment_title": "Early payment discount",
+  "membership_early_payment_body": "Book an eligible plan on our official site and complete online payment when booking to receive a discount based on how far ahead you book. Check the property, plan, dates and applicable discount during booking.",
   "membership_bath_title": "Advance private bath booking",
   "membership_bath_body": "Members who book through our official website can reserve available private bath slots from My Account before check-in.",
   "membership_upgrade_title": "Room upgrade offers",

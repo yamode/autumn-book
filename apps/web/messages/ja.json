@@ -115,6 +115,8 @@
   "membership_includes_previous": "{rank}会員の全特典に加えて",
   "membership_rate_upgrade": "ポイント還元率が {previous}% から {current}% にアップ",
   "membership_cond_standard": "入会時のランク",
+  "membership_early_payment_title": "早期決済割引",
+  "membership_early_payment_body": "対象プランを公式サイトで予約し、その場でオンライン決済を完了すると、ご宿泊日までの日数に応じた割引が適用されます。対象施設・プラン・日程と、適用される割引は予約画面でご確認いただけます。",
   "membership_bath_title": "貸切風呂の事前予約",
   "membership_bath_body": "公式サイトでご予約の会員は、チェックイン前にマイページから貸切風呂の空き枠をご予約いただけます。",
   "membership_upgrade_title": "お部屋のアップグレード通知",
