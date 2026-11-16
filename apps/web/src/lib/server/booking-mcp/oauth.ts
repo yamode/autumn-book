@@ -111,7 +111,10 @@ function oauthConnection(params: URLSearchParams, url: URL) {
 }
 
 function validResource(params: URLSearchParams, url: URL, path: string): boolean {
-	return !params.has('resource') || params.get('resource') === `${url.origin}${path}`;
+	const resource = params.get('resource');
+	if (resource === null || resource === url.origin + path) return true;
+	// Claude can retain the previous client ID when a directory entry changes its endpoint.
+	return path === MCP_PATH && bookingReservationsEnabled(url) && resource === url.origin + RESERVATION_MCP_PATH;
 }
 
 export async function issueAuthorizationCode(userId: string, challenge: string, clientId: string): Promise<string> {
