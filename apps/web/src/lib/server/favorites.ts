@@ -11,7 +11,7 @@ import { sbFavoriteRoomChoices, sbListFavoriteRoomTypes, sbSetHoldFavoriteRooms,
 type AuthEvent = Pick<RequestEvent, 'locals' | 'cookies' | 'url' | 'request'>;
 const isMemberSession = (event: AuthEvent) => MEMBER_SUPABASE && event.locals.user?.role === 'member';
 
-/** 予約確認画面: 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（部屋の番号ごと）。ゴールド以上が対象 */
+/** 予約確認画面: 仮押さえの部屋タイプの中で、お気に入りかつその日程に空いている部屋（部屋の番号ごと）。 */
 export async function favoriteRoomChoicesFor(event: AuthEvent, holdId: string, sessionId: string): Promise<Record<number, FavoriteRoomChoice[]>> {
 	if (!isMemberSession(event) || !canDesignateFavoriteRoom(await viewerOf(event.locals))) return {};
 	const list = await sbFavoriteRoomChoices(createSupabaseServerClient(event as RequestEvent), holdId, sessionId).catch(() => []);

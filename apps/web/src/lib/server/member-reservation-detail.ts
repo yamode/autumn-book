@@ -4,6 +4,7 @@
 // 読み取りはどちらも会員の authenticated クライアント（book.my_reservations / compute_cancel_fee / list_my_*）。
 import type { RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { cancellationPolicyRank } from '$lib/member-benefits';
 import {
 	amendLimitOf,
 	canAmendRoomOf,
@@ -155,12 +156,15 @@ export async function reservationDetailOf(
 	let cancelPreview = null;
 	if (r.status === 'reserved') {
 		const base = await sbComputeCancelFee(client, r.code, today);
-		const rules =
-			base.rulesSource === 'rank'
-				? ((await sbListRankCancelPolicies()).find((p) => p.rankCode === base.rankCode)?.rules ?? [])
-				: base.rulesSource === 'member_page' && r.memberPage?.cancelRules.length
-					? r.memberPage.cancelRules
-					: r.cancellationPolicy.rules;
+		let rules = r.cancellationPolicy.rules;
+		if (base.rulesSource === 'rank') {
+			const policies = await sbListRankCancelPolicies();
+			const ruleRank = cancellationPolicyRank(base.rankCode);
+			rules = policies.find((p) => p.rankCode === ruleRank)?.rules
+				?? policies.find((p) => p.rankCode === 'standard')?.rules ?? [];
+		} else if (base.rulesSource === 'member_page' && r.memberPage?.cancelRules.length) {
+			rules = r.memberPage.cancelRules;
+		}
 		cancelPreview = { ...base, rules };
 	}
 	// オンライン決済の台帳（取消の返金見込み・早期決済ポイントの表示用）。現地払いの予約は引かない

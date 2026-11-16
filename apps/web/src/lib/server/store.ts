@@ -2,6 +2,7 @@
 // 関数シグネチャは設計書 §5.2 の RPC に対応させてある。
 // 永続化なし（dev サーバープロセス内メモリ）。リロードで予約・hold は消える。
 
+import { cancellationPolicyRank } from '$lib/member-benefits';
 import {
 	addDays,
 	calcQuote,
@@ -869,7 +870,7 @@ function bookingRank(b: Booking): string {
 
 /** rank のルール表（未登録は standard→[]）。 */
 function rankRules(rankCode: string): CancellationRule[] {
-	return rankCancelPolicies.get(rankCode)?.rules ?? rankCancelPolicies.get('standard')?.rules ?? [];
+	return rankCancelPolicies.get(cancellationPolicyRank(rankCode))?.rules ?? rankCancelPolicies.get('standard')?.rules ?? [];
 }
 
 /** RPC: book.compute_cancel_fee 相当。プラン規定優先→rank ルール→standard で rate/fee を算出。
@@ -895,7 +896,7 @@ export function computeCancelFee(code: string, asOf: string, memberId?: string):
 
 /** 管理: グレード別キャンセル規定の一覧（rank 昇順・label 付き・/admin/cancel-policies）。 */
 export function listRankCancelPolicies(): (RankCancelPolicy & { label: string; rewardRate: number })[] {
-	return memberRanks.map((r) => {
+	return memberRanks.filter((rank) => cancellationPolicyRank(rank.code) === rank.code).map((r) => {
 		const p = rankCancelPolicies.get(r.code);
 		return {
 			rankCode: r.code,
@@ -913,7 +914,7 @@ export function updateRankCancelPolicy(
 	rankCode: string,
 	input: { rules: CancellationRule[]; allowAmendInPenalty: boolean; note?: string }
 ): boolean {
-	if (!rankCancelPolicies.has(rankCode)) return false;
+	if (cancellationPolicyRank(rankCode) !== rankCode || !rankCancelPolicies.has(rankCode)) return false;
 	const rules = [...input.rules]
 		.filter((r) => Number.isFinite(r.days_before) && r.rate > 0)
 		.sort((a, b) => b.days_before - a.days_before);
