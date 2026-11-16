@@ -65,7 +65,7 @@
 				{/if}
 				{#if form?.submitted}
 					<p role="status" class="mt-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">{m.radio_sent()}</p>
-					{#if data.member}<a href="/account/points" class="mt-3 inline-block text-sm text-brand-800 underline">{m.otayori_thanks_mypage()}</a>{/if}
+					{#if data.member}<a href="/account/coupons#otayori" class="mt-3 inline-block text-sm text-brand-800 underline">{m.otayori_thanks_mypage()}</a>{/if}
 				{:else}
 					{#if form?.message}<p role="alert" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{form.message}</p>{/if}
 					<form method="POST" action="?/submit#letter" enctype="multipart/form-data" class="mt-4 space-y-4"

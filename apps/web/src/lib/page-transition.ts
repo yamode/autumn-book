@@ -40,6 +40,7 @@ export function transitionTitle(route: string): string {
 	if (under(path, '/booking/lookup')) return m.footer_lookup();
 	if (under(path, '/booking/hold')) return m.hold_form_heading();
 	if (under(path, '/account/points')) return m.account_nav_points();
+	if (under(path, '/account/coupons')) return m.account_nav_coupons();
 	if (under(path, '/account/community')) return m.account_nav_community();
 	if (under(path, '/account/favorites')) return m.account_nav_favorites();
 	if (under(path, '/account/availability-alerts')) return m.account_nav_availability_alerts();

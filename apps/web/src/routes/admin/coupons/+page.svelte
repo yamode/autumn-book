@@ -35,7 +35,7 @@
 
 <svelte:head><title>クーポン ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="クーポン" description="アプリの予約確認画面で会員が選べる割引券です。配布はクーポン詳細から行います。">
+<PageHeader title="クーポン" description="会員へのクーポン配布と、北風放送のおたよりクーポンを管理します。">
 	{#snippet actions()}
 		{#if !data.unavailable && data.user?.role === 'admin'}
 			<a
@@ -46,6 +46,15 @@
 	{/snippet}
 </PageHeader>
 
+<section class="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white p-4" aria-labelledby="radio-coupon-title">
+	<div>
+		<h2 id="radio-coupon-title" class="text-sm font-semibold text-stone-800">おたよりクーポン</h2>
+		<p class="mt-1 text-sm text-stone-600">番組で紹介された会員のおたよりに、1通につき1枚付与します。</p>
+	</div>
+	<a href="/admin/otayori?status=approved" class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 px-3 text-sm text-brand-800 hover:bg-stone-50">紹介・付与履歴を見る</a>
+</section>
+
+<h2 class="mb-3 text-base font-semibold text-stone-800">会員配布クーポン</h2>
 {#if data.unavailable}
 	<Unavailable authMode={data.authMode} dataSource={data.dataSource} />
 {:else}

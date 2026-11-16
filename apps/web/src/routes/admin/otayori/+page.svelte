@@ -25,7 +25,7 @@
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、紹介を記録した時点で1pt（1,000円分）が付きます。" />
+<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、おたよりクーポン1枚（1,000円分）を付与します。" />
 
 <section aria-label="YouTube Data API" class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm">
 	<div>
@@ -87,7 +87,7 @@
 						</ul>
 					{/if}
 					{#if it.awardedAt}
-						<p class="mt-3 text-sm font-medium text-emerald-800">1pt付与 · {dateTime(it.awardedAt)}</p>
+						<p class="mt-3 text-sm font-medium text-emerald-800">クーポン1枚付与 · {dateTime(it.awardedAt)}</p>
 					{/if}
 
 					<div class="mt-3 flex flex-wrap items-center gap-2">
@@ -95,7 +95,7 @@
 							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
 								<input type="hidden" name="postId" value={it.id} />
 								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
-								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1pt付与'}</button>
+								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1枚付与'}</button>
 							</form>
 
 							<!-- 却下（staff 可・理由入力） -->

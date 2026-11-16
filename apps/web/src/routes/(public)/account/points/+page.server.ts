@@ -1,6 +1,6 @@
-import { pointLedger, memberRanks, expiringPoints, facilities, myReservations, listMyOtayori } from '$lib/server/store';
+import { pointLedger, memberRanks, expiringPoints, facilities, myReservations } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbPointLedger, sumExpiringPoints, getOtayoriMySummary } from '$lib/server/supabase-data';
+import { sbPointLedger, sumExpiringPoints } from '$lib/server/supabase-data';
 import { addDays, todayStr } from '$lib/format';
 import { nightsBetween } from '@autumn-book/core';
 import type { RankCode } from '$lib/plan-access';
@@ -18,10 +18,9 @@ export const load: PageServerLoad = async (event) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [ledger, rankResult, otayori] = await Promise.all([
+		const [ledger, rankResult] = await Promise.all([
 			sbPointLedger(client),
-			client.rpc('my_rank_progress'),
-			getOtayoriMySummary(client)
+			client.rpc('my_rank_progress')
 		]);
 		return {
 			ledger,
@@ -29,26 +28,7 @@ export const load: PageServerLoad = async (event) => {
 			expiring: sumExpiringPoints(ledger),
 			rankProgress: rankResult.error || !Array.isArray(rankResult.data?.by_facility) ||
 				typeof rankResult.data?.nights !== 'number' || !rankResult.data.by_facility.every((facility: { nights?: number }) => typeof facility.nights === 'number')
-				? null : rankResult.data as RankProgress,
-			otayori: {
-				balance: otayori.balance,
-				ledger: otayori.ledger.map((e) => ({
-					id: e.id,
-					delta: e.delta,
-					reason: e.reason,
-					createdAt: e.created_at,
-					sourcePostId: e.source_post_id ?? undefined
-				})),
-				posts: otayori.posts.map((p) => ({
-					id: p.id,
-					body: p.body,
-					radioName: p.radio_name ?? undefined,
-					status: p.status,
-					reviewNote: p.review_note ?? undefined,
-					awardedAt: p.awarded_at ?? undefined,
-					createdAt: (p.created_at ?? '').slice(0, 10)
-				}))
-			}
+				? null : rankResult.data as RankProgress
 		};
 	}
 
@@ -78,12 +58,10 @@ export const load: PageServerLoad = async (event) => {
 		nights: by_facility.reduce((sum, facility) => sum + facility.nights, 0),
 		by_facility
 	};
-	const otayori = listMyOtayori(memberId);
 	return {
 		ledger: pointLedger.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 		ranks: memberRanks,
 		expiring: expiringPoints(memberId),
-		rankProgress,
-		otayori
+		rankProgress
 	};
 };

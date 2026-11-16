@@ -15,6 +15,7 @@
 		{ href: '/account/community', label: m.account_nav_community() }
 	]);
 	const bookingNav = $derived([
+		{ href: '/account/coupons', label: m.account_nav_coupons() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
 		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() },
 		{ href: '/account/upgrades', label: m.account_nav_upgrades() }
