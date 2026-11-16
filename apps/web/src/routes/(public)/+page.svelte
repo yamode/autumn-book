@@ -92,7 +92,7 @@
 				<div class="mt-5 flex flex-wrap items-center gap-x-7 gap-y-3 border-t border-stone-200 pt-4 text-sm">
 					<a href="/{r.facility.brandSlug}/{r.facility.slug}/plans" class="font-semibold text-brand-900 underline decoration-stone-300 underline-offset-8 hover:decoration-brand-900">{m.home_list_view_plans()} <span aria-hidden="true">↗</span></a>
 					{#if r.facility.websiteUrl}
-						<a href={r.facility.websiteUrl} target="_blank" rel="noopener noreferrer" class="text-stone-600 hover:text-brand-900 hover:underline">{m.home_list_official_site()} ↗</a>
+						<a href={r.facility.websiteUrl} target="_blank" rel="noopener noreferrer" class="text-stone-600 hover:text-brand-900 hover:underline">{m.home_list_facility_site()} ↗</a>
 					{/if}
 				</div>
 			</article>
