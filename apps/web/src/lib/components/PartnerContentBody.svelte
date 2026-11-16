@@ -29,10 +29,12 @@
   const groups = $derived(groupSections(sections.map((s) => ({ ...s, note: s.note ?? '', photo: s.photo ?? null }))));
 </script>
 
-<div class="grid gap-5 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-  <div class="min-w-0">
-    <PartnerPhotoGallery {photos} />
-  </div>
+<div class="grid gap-5 {photos.length ? 'md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : ''}">
+  {#if photos.length}
+    <div class="min-w-0">
+      <PartnerPhotoGallery {photos} />
+    </div>
+  {/if}
 
   <div class="min-w-0 space-y-4">
     {#if description}<p class="whitespace-pre-line leading-7">{description}</p>{/if}

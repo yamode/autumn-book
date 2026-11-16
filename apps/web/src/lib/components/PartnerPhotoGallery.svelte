@@ -36,7 +36,10 @@
   }
   $effect(() => {
     const el = strip?.children[index] as HTMLElement | undefined;
-    el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    if (!strip || !el) return;
+    const left = el.getBoundingClientRect().left - strip.getBoundingClientRect().left;
+    const offset = left < 0 ? left : Math.max(0, left + el.offsetWidth - strip.clientWidth);
+    if (offset) strip.scrollBy({ left: offset, behavior: 'smooth' });
   });
   $effect(() => {
     if (!strip) return;
