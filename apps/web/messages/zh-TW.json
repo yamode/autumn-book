@@ -1104,7 +1104,7 @@
   "pay_nonmember_onsite_denied": "此方案的現場付款僅限會員使用。請選擇線上付款或登入。",
   "cancel_refund_preview_admin_fee": "將從已付款的 {paid}（含入湯稅）中，扣除取消費 {fee} 與手續費 {adminFee}（付款金額的 {percent}）兩者中較高者（{deducted}），並將 {refund} 退還至您的信用卡。",
   "cancel_refund_kept_admin_fee": "手續費 {amount}（付款金額的 {percent}，用於信用卡手續費及退款作業費用）不予退還，已從退款中扣除。",
-  "prepay_admin_fee_notice": "預訂時以線上付款的訂單如取消，即使在免費取消期間內，付款金額的 {percent} 將作為手續費（信用卡手續費及退款作業費用）不予退還。若取消費高於此金額，則收取取消費（不會同時收取兩者）。",
+  "prepay_admin_fee_notice": "如因旅客自身原因取消，我們會比較取消費、已享有的預訂時付款折扣金額及手續費（實付金額的 {percent}），只扣除其中最高的一項。即使免收取消費，仍可能扣除折扣金額或手續費。",
   "cart_add_room": "＋ 再加一間客房",
   "cart_add_to_list": "加入預約清單",
   "cart_progress": "已選 {n} / {total} 間",

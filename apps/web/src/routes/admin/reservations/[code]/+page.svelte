@@ -1134,13 +1134,16 @@
 						</div>
 						<label class="flex items-start gap-2 text-sm">
 							<input type="checkbox" name="waive" bind:checked={waive} class="mt-1" />
-							<span>施設都合（キャンセル料を免除する）</span>
+							<span>キャンセル料と予約時決済の割引額を免除する</span>
 						</label>
 						{#if cancelRefund && adminPercent != null}
 							<label class="flex items-start gap-2 text-sm">
 								<input type="checkbox" name="adminFeeWaive" bind:checked={adminWaive} class="mt-1" />
 								<span>事務手数料（予約時決済の取消で返金しない {adminPercent}%）も免除する</span>
 							</label>
+							{#if waive && !adminWaive}
+								<p class="text-sm text-amber-900">施設都合で宿泊を提供できない場合は、事務手数料も免除し、差し引き額が0円であることを確認してください。</p>
+							{/if}
 						{/if}
 						<p class="text-sm text-stone-700">
 							適用キャンセル料：{waive ? formatYen(0) : formatYen(cancelScope === 'room' && cancelRoomIndex != null ? roomFeeOf(cancelRoomIndex) : (data.feePreview ?? 0))}
