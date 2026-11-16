@@ -9,6 +9,7 @@
 	import ContentBlocks from '$lib/components/ContentBlocks.svelte';
 	import ScrollDatePicker from '$lib/components/ScrollDatePicker.svelte';
 	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
+	import BookingCancelTerms from '$lib/components/BookingCancelTerms.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
 	import PerkBanners from '$lib/components/PerkBanners.svelte';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
@@ -586,7 +587,8 @@
 	<!-- キャンセルポリシー -->
 	<section class="mt-10 max-w-3xl rounded-xl bg-stone-100 p-5 text-sm">
 		<h2 class="mb-2 font-medium">{m.plan_detail_cancel_policy()}</h2>
-		<p class="text-stone-600">{data.plan.cancellationPolicy.note}</p>
+		<BookingCancelTerms policy={data.plan.cancellationPolicy} checkin={data.params.checkin} />
+		{#if data.plan.cancellationPolicy.note}<p class="mt-2 text-stone-600">{data.plan.cancellationPolicy.note}</p>{/if}
 	</section>
 	</div>
 	</div>

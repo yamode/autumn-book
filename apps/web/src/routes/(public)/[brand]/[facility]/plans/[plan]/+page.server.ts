@@ -5,7 +5,8 @@ import {
 	roomTypes,
 	remainingRooms,
 	quoteFor,
-	createHold
+	createHold,
+	demoCancellationFallback
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { createSupabaseServerClient } from '$lib/server/auth';
@@ -35,7 +36,8 @@ import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
-import { canBookPlans, planGate, secretPlanBySlug } from '$lib/server/secret-plans';
+import { canBookPlans, planGate, secretPlanBySlug, viewerOf } from '$lib/server/secret-plans';
+import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
 import { isStaffViewer, planOrPreview, previewPlanForHold } from '$lib/server/plan-preview';
 import type { RoomType } from '$lib/types';
 import { favoriteRoomTypeIds } from '$lib/server/favorites';
@@ -82,6 +84,9 @@ export const load: PageServerLoad = async (event) => {
 		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
 		const expanded = expandPlanText(plan.description, await loadPlanTemplates(facility.id));
 		plan = { ...plan, description: expanded.text, perks: expanded.perks };
+		if (!plan.cancellationPolicy.rules.length) {
+			plan = { ...plan, cancellationPolicy: await loadCancellationFallback(locals) };
+		}
 		// 会員限定で予約できない閲覧者（gate=login/rank）には、料金・空室・客室は出さず案内だけ出す
 		const bookable = gate === 'ok';
 		if (!checkin && bookable) {
@@ -140,6 +145,7 @@ export const load: PageServerLoad = async (event) => {
 	const gate = await planGate(found, locals, cookies);
 	if (gate === 'hidden') error(404, 'プランが見つかりません');
 	const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
+	plan.cancellationPolicy = appliedCancellationPolicy(plan.cancellationPolicy, demoCancellationFallback((await viewerOf(locals)).rank ?? undefined));
 
 	const rooms = (gate === 'ok' ? plan.roomTypeIds : [])
 		.map((id) => roomTypes.find((r) => r.id === id)!)

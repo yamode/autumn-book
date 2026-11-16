@@ -54,14 +54,7 @@ export const brands: Brand[] = [
 	}
 ];
 
-const stdPolicy: CancellationPolicy = {
-	rules: [
-		{ days_before: 7, rate: 0.2 },
-		{ days_before: 3, rate: 0.5 },
-		{ days_before: 0, rate: 1.0 }
-	],
-	note: '7日前より20%、3日前より50%、当日・無連絡は100%のキャンセル料を申し受けます。'
-};
+const stdPolicy: CancellationPolicy = { rules: [], note: '' };
 
 export const facilities: Facility[] = [
 	{
@@ -839,7 +832,7 @@ export function confirmBooking(
 		discountAmount: discountAmount > 0 ? discountAmount : undefined,
 		status: 'reserved',
 		channel: 'autumn_booking',
-		cancellationPolicy: plan.cancellationPolicy,
+		cancellationPolicy: plan.cancellationPolicy.rules.length ? plan.cancellationPolicy : demoCancellationFallback(member?.rank),
 		memberId: member?.id,
 		createdAt: today()
 	};
@@ -853,13 +846,23 @@ export function confirmBooking(
 }
 
 // ---------------------------------------------------------------- グレード別キャンセル料規定（P3・book.rank_cancel_policies）
-// migration の seed と同じく全 rank rules=[]（料率ゼロ＝現行同挙動・実規定は /admin/cancel-policies で投入）。
-// キャンセル料 = プラン規定（booking.cancellationPolicy が非空）優先 → 予約作成会員 rank のルール → standard。
-// demo のプラン規定（stdPolicy）は非空のため、既定では常にプラン規定が適用される（SQL と同挙動）。
-
-/** rank_code → グレード規定（rules・allow_amend_in_penalty・note）。seed は全 rank rules=[]。 */
+const lateCancellation: CancellationRule[] = [
+	{ days_before: -1, rate: 1 },
+	{ days_before: 0, rate: 1 },
+	{ days_before: 1, rate: 0.8 }
+];
+const commonCancellation: CancellationRule[] = [
+	...lateCancellation,
+	{ days_before: 3, rate: 0.5 },
+	{ days_before: 10, rate: 0.3 },
+	{ days_before: 14, rate: 0.1 }
+];
+const demoRankRules: Record<string, CancellationRule[]> = {
+	gold: [...lateCancellation, { days_before: 3, rate: 0.4 }, { days_before: 10, rate: 0.2 }],
+	platinum: [...lateCancellation, { days_before: 3, rate: 0.3 }, { days_before: 7, rate: 0.1 }]
+};
 export const rankCancelPolicies = new Map<string, { rules: CancellationRule[]; allowAmendInPenalty: boolean; note?: string }>(
-	memberRanks.map((r) => [r.code, { rules: [], allowAmendInPenalty: false, note: undefined }])
+	memberRanks.map((r) => [r.code, { rules: demoRankRules[r.code] ?? commonCancellation, allowAmendInPenalty: false }])
 );
 
 /** 予約作成会員の現在 rank（非会員・不明は 'standard'）。 */
@@ -869,8 +872,12 @@ function bookingRank(b: Booking): string {
 }
 
 /** rank のルール表（未登録は standard→[]）。 */
-function rankRules(rankCode: string): CancellationRule[] {
+function rankRules(rankCode: string | undefined): CancellationRule[] {
 	return rankCancelPolicies.get(cancellationPolicyRank(rankCode))?.rules ?? rankCancelPolicies.get('standard')?.rules ?? [];
+}
+
+export function demoCancellationFallback(rankCode?: string): CancellationPolicy {
+	return { rules: rankRules(rankCode), note: '' };
 }
 
 /** RPC: book.compute_cancel_fee 相当。プラン規定優先→rank ルール→standard で rate/fee を算出。

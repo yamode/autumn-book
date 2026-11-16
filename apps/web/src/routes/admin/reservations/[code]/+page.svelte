@@ -828,7 +828,7 @@
 		{#if !data.isPartner}
 		<div class="rounded-xl border border-stone-200 bg-white p-4 sm:p-5 text-sm">
 			<h2 class="text-[15px] font-semibold text-stone-900">
-				キャンセル規定{policy.rules_source === 'rank' ? '（当館の基本規定）' : '（プラン規定）'}
+				キャンセル規定{policy.rules_source === 'rank' ? '（会員ランクに応じた規定）' : '（予約時の規定）'}
 			</h2>
 			{#if policy.rules?.length}
 				<p class="mt-1 text-stone-600">

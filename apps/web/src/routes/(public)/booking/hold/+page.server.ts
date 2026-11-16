@@ -9,6 +9,7 @@ import {
 	memberById,
 	pointBalance,
 	quoteFor,
+	demoCancellationFallback,
 	memberRanks,
 	releaseHold
 } from '$lib/server/store';
@@ -41,7 +42,7 @@ import { favoriteRoomChoicesFor, saveFavoriteRoomChoices } from '$lib/server/fav
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
-import { CANCEL_POLICY_LABELS } from '$lib/partner-member-page';
+import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
 
 // 選び直し・パンくず用: この仮押さえのプラン詳細（日程・人数つき）
 function planHrefOf(
@@ -126,7 +127,7 @@ export const load: PageServerLoad = async (event) => {
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
 		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady });
-		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields] = await Promise.all([
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
 			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
@@ -141,7 +142,8 @@ export const load: PageServerLoad = async (event) => {
 			// 会員のお気に入りの部屋のうち、この日程に空いている部屋（予約確認画面で部屋指定を選べる・確定のときに空きを確かめ直す）
 			favoriteRoomChoicesFor(event, hold.id, sid),
 			// 毎回聞く項目（アレルギー・交通手段・お迎え時間・備考）の見出し・説明・選択肢（施設ごと・管理画面「予約時に聞く項目」）
-			loadStandardFieldTexts(hold.facilityId)
+			loadStandardFieldTexts(hold.facilityId),
+			loadCancellationFallback(locals)
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 
@@ -160,7 +162,7 @@ export const load: PageServerLoad = async (event) => {
 				planName: r.plan.name,
 				adults: r.adults,
 				quote: r.quote,
-				cancellationPolicy: r.plan.cancellationPolicy,
+				cancellationPolicy: appliedCancellationPolicy(r.plan.cancellationPolicy, cancellationFallback, hold.memberPage),
 				prepayDiscount: prepayViews[i]?.detail.discount ?? 0,
 				askGender: groupForms ? groupForms.rooms[i].askGender : (bookingForm?.askGender ?? true),
 				questions: groupForms ? groupForms.rooms[i].questions : [],
@@ -199,7 +201,6 @@ export const load: PageServerLoad = async (event) => {
 				? {
 						pageName: hold.memberPage.pageName,
 						via: hold.memberPage.via,
-						cancelMode: { mode: hold.memberPage.cancelPolicyMode, label: CANCEL_POLICY_LABELS[hold.memberPage.cancelPolicyMode] },
 						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref
 					}
 				: null
@@ -234,7 +235,7 @@ export const load: PageServerLoad = async (event) => {
 				planName: plan.name,
 				adults: hold.adults,
 				quote: hold.quote,
-				cancellationPolicy: plan.cancellationPolicy,
+				cancellationPolicy: appliedCancellationPolicy(plan.cancellationPolicy, demoCancellationFallback(member?.rank)),
 				prepayDiscount: prepay.detail.discount,
 				askGender: false,
 				questions: [] as BookingQuestion[],
@@ -261,7 +262,7 @@ export const load: PageServerLoad = async (event) => {
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
-		memberPage: null as { pageName: string; via: 'self' | 'family'; cancelMode: { mode: string; label: string }; backHref: string } | null,
+		memberPage: null as { pageName: string; via: 'self' | 'family'; backHref: string } | null,
 		needsTurnstile: !viewerIsMember(locals),
 		member: member
 			? {

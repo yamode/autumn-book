@@ -6,7 +6,7 @@
 	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
 	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
-	import CancelPolicyNote from '$lib/components/CancelPolicyNote.svelte';
+	import BookingCancelTerms from '$lib/components/BookingCancelTerms.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
@@ -42,9 +42,6 @@
 	let multi = $derived(rooms.length > 1);
 	// 特別会員の専用ページ経由の束（docs/vip-member-page.md §13.4.3-4）。公式の束は null
 	let memberPage = $derived(data.expired ? null : data.memberPage);
-	function memberCancelModeLabel(mode: string): string {
-		return mode === 'page' ? m.member_cancel_mode_page() : mode === 'rank' ? m.member_cancel_mode_rank() : m.member_cancel_mode_favorable();
-	}
 	const perkTitles = (list: { title: string }[] | null | undefined) => (list ?? []).map((p) => p.title).filter(Boolean).join('／');
 	let totalAdults = $derived(rooms.reduce((s, r) => s + r.adults, 0) || (data.expired ? 0 : data.hold.adults));
 	// 部屋ごとの男女の内訳（男性の人数。女性は部屋の大人の人数から引く）。0 始まりの部屋の番号ごと
@@ -1073,24 +1070,16 @@
 						<p class="text-right text-xs text-stone-500">{m.hold_points_earn_note()}</p>
 					{/if}
 				</div>
-				{#if memberPage}
-					<!-- 特別会員: キャンセル料の計算の方式（下の規定はプランの規定。方式が「お客さまに有利な方」なら安い方で計算） -->
-					<p class="mt-3 text-xs text-stone-600">{m.member_page_cancel_mode({ mode: memberCancelModeLabel(memberPage.cancelMode.mode) })}</p>
-				{/if}
-				<!-- 取消の案内（取引先ページと同じ帯） -->
-				{#if multi}
-					<!-- キャンセル規定は部屋ごと（部屋ごとにプランが違うため） -->
-					{#each rooms as r (r.index)}
-						<p class="mt-3 rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-700">
-							<span class="font-bold">{m.hold_cancel_policy_room({ n: String(r.index) })}:</span>
-							<CancelPolicyNote policy={r.cancellationPolicy} checkin={data.hold.checkin} />
-						</p>
+				<section aria-labelledby="hold-cancel-terms" class="mt-4 rounded-lg border border-stone-200 bg-stone-50 px-3 py-3 text-sm text-stone-700">
+					<h2 id="hold-cancel-terms" class="mb-2 font-bold">{m.plan_detail_cancel_policy()}</h2>
+					{#each rooms as room (room.index)}
+						<div class:mt-3={room.index > 1}>
+							{#if multi}<h3 class="mb-1 font-medium">{m.hold_cancel_policy_room({ n: String(room.index) })}</h3>{/if}
+							<BookingCancelTerms policy={room.cancellationPolicy} checkin={data.hold.checkin} />
+							{#if room.cancellationPolicy.note}<p class="mt-2">{room.cancellationPolicy.note}</p>{/if}
+						</div>
 					{/each}
-				{:else}
-					<p class="mt-4 rounded-lg bg-sky-50 px-3 py-3 text-center text-sm font-bold text-sky-700">
-						<CancelPolicyNote policy={data.plan.cancellationPolicy} checkin={data.hold.checkin} />
-					</p>
-				{/if}
+				</section>
 
 				{#if data.needsTurnstile}
 					<!-- 非会員だけ、予約確定の前に Turnstile（フォームの中に置き、現地払いの送信にもカードの準備にも同じトークンが乗る）。
