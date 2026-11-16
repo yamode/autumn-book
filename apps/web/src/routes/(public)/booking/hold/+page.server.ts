@@ -39,6 +39,7 @@ import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { payOptionsFor, ONSITE_METHOD_NOTE, FURUSATO_VOUCHER_NOTE } from '$lib/direct-payment';
 import { loadCancelAdminFeePercent, loadPaymentTexts } from '$lib/server/payment-settings';
 import { favoriteRoomChoicesFor, saveFavoriteRoomChoices } from '$lib/server/favorites';
+import { savePlatinumTiming } from '$lib/server/platinum-timing';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
@@ -92,6 +93,7 @@ export const load: PageServerLoad = async (event) => {
 		const multi = roomViews.length > 1;
 
 		// 会員のみポイント残高・獲得見込みを表示（未ログインのゲストは null）。
+		let canChoosePlatinumTiming = false;
 		let member: {
 			name: string; kana: string;
 			familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string;
@@ -101,6 +103,7 @@ export const load: PageServerLoad = async (event) => {
 			try {
 				const client = createSupabaseServerClient(event);
 				const [profile, balance] = await Promise.all([sbMyProfile(client), sbPointBalance(client)]);
+				canChoosePlatinumTiming = profile.rankCode === 'platinum' && ['nishiwaga', 'yamado', 'oga'].includes(facility.slug);
 				const rate = REWARD_RATE[profile.rankCode] ?? 0.01;
 				member = {
 					name: profile.name,
@@ -183,6 +186,7 @@ export const load: PageServerLoad = async (event) => {
 			onsiteMethods: groupPayment(roomViews).onsiteMethods ?? null,
 			paymentTexts,
 			favoriteChoices,
+			canChoosePlatinumTiming,
 			// true = カードはこの画面で払う（実データ）。false = デモ決済画面へ（DATA_SOURCE=demo）
 			inline: true as const,
 			publishableKey: pay.options.includes('card') || pay.checkout ? directPublishableKey() : null,
@@ -250,6 +254,7 @@ export const load: PageServerLoad = async (event) => {
 		onsiteMethods: plan.payment.onsiteMethods ?? null,
 		paymentTexts: {} as import('$lib/direct-payment').PaymentTexts,
 		favoriteChoices: {} as Record<number, import('$lib/server/supabase-data').FavoriteRoomChoice[]>,
+		canChoosePlatinumTiming: member?.rank === 'platinum',
 		inline: false as const,
 		publishableKey: null,
 		bathTax: 0,
@@ -366,6 +371,11 @@ export const actions: Actions = {
 			const favError = await saveFavoriteRoomChoices(event, holdId, sid, form);
 			if (favError) {
 				errors.favoriteRoom = favError;
+				return fail(400, { errors, values: guest });
+			}
+			const timingError = await savePlatinumTiming(event, holdId, sid, form);
+			if (timingError) {
+				errors.platinumTiming = timingError;
 				return fail(400, { errors, values: guest });
 			}
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, locale: getLocale(), rooms: answered.rooms });

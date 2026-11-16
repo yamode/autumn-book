@@ -109,7 +109,7 @@
    if(attempted)date=days.some(d=>d.date===attempted.date)?attempted.date:'';
    void tick().then(()=>document.getElementById('bath-reservation-error')?.focus());
   }
-		if (form?.done === 'canceled' || form?.done === 'change_started') reset();
+		if (form?.done === 'canceled' || form?.done === 'change_started' || form?.done === 'reserved') reset();
 	});
 
 	function onBathChange(v: string) {
@@ -201,7 +201,9 @@
 	{#if mine.length}
 		<section class="rounded-lg bg-white px-5 py-5 shadow-card">
 			<h2 class="text-base font-semibold text-stone-900">{m.bath_mine_title()}</h2>
-			{#if form?.done === 'canceled'}
+			{#if form?.done === 'reserved'}
+				<p role="status" class="mt-2 text-sm text-emerald-700">{m.bath_reserved_success()}</p>
+			{:else if form?.done === 'canceled'}
 				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
 			{:else if form?.done === 'change_started'}
 				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_change_started()}</p>
@@ -215,7 +217,7 @@
 							<p class="mt-1 text-xs text-stone-500">{yen(r.price_yen)}</p>
 						{/if}
 						{#if r.cancelable && data.pmsEnabled}
-							<form method="POST" action="?/cancel" use:enhance class="mt-3 flex gap-2">
+							<form method="POST" action={data.booking ? `?/cancel&booking=${encodeURIComponent(data.booking)}` : '?/cancel'} use:enhance class="mt-3 flex gap-2">
 								<input type="hidden" name="slotId" value={r.id} />
 								<button
 									type="submit"
@@ -439,7 +441,7 @@
 					<p class="mt-3 text-xs text-stone-500">{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}</p>
 				{/if}
 
-				<form method="POST" action="?/reserve" use:enhance={reserveSubmit} class="mt-6 text-center">
+				<form method="POST" action={data.booking ? `?/reserve&booking=${encodeURIComponent(data.booking)}` : '?/reserve'} use:enhance={reserveSubmit} class="mt-6 text-center">
 					<input type="hidden" name="bathId" value={bath?.bath_id ?? ''} />
 					<input type="hidden" name="date" value={date} />
 					<input type="hidden" name="from" value={from} />

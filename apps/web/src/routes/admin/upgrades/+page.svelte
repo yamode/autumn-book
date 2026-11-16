@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
-	import { UPGRADE_CHANNEL, UPGRADE_STATUS } from '$lib/room-upgrades';
+	import { UPGRADE_STATUS } from '$lib/room-upgrades';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	let { data, form } = $props();
 	let busy = $state(false);
@@ -14,7 +14,7 @@
 </script>
 <svelte:head><title>客室アップグレード提案 | 管理画面</title></svelte:head>
 <!-- 2026-10-17 モダン化：見出しは共通の PageHeader。スマホ（375px）では提案一覧を高さ制限つきにし、余白・ボタン幅を詰める -->
-<PageHeader title="客室アップグレード提案" facility={data.currentFacility.name} description="宿泊日・現在のお部屋・提案するお部屋・追加料金を設定し、その日の対象会員予約へご案内します。お客様の同意時に空室を再確認して確定します。" />
+<PageHeader title="客室アップグレード提案" facility={data.currentFacility.name} description="提案する客室と料金を設定し、選択したお客様1名にメールでご案内します。お客様の申込時に空室を再確認します。" />
 {#if form?.message}<p role="status" class="mb-4 rounded-xl p-3 text-sm sm:p-4 {form.success ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-700'}">{form.message}</p>{/if}
 {#if !data.enabled}<p class="rounded-xl bg-stone-100 p-4 text-sm sm:p-5">本番データ・管理ログインでご利用いただけます。</p>{:else}
 	<div class="grid gap-4 sm:gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
@@ -32,19 +32,29 @@
 					<p class="text-sm leading-6 text-stone-600 sm:self-end">料金の単位：1室・1泊あたり。お客様には泊数を掛けた追加料金合計を表示します。0円（無料）または50円以上を設定してください。</p>
 					<label class="text-sm sm:col-span-2">提案のタイトル<input name="title" maxlength="120" required value={values?.title ?? selected?.title ?? 'お部屋のアップグレードのご提案'} class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5" /></label>
 					<label class="text-sm sm:col-span-2">ご案内文<textarea name="description" maxlength="4000" rows="4" value={values?.description ?? selected?.description ?? ''} class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5"></textarea></label>
-					<label class="text-sm sm:col-span-2">通知方法<select name="channel" value={values?.channel ?? selected?.channel ?? 'email'} class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5">{#each Object.entries(UPGRADE_CHANNEL) as [key, label]}<option value={key}>{label}</option>{/each}</select></label>
-					<p class="text-xs leading-6 text-stone-500 sm:col-span-2">公式サイト・yamado-oneの会員予約が対象です。定員・全泊の空室を満たす部屋のみご案内します。宿泊料金とプランはそのまま、追加料金は予約時のお支払い方法を引き継ぎます。アプリ通知はお客様の受信設定に従います。受付期限はチェックイン日の15:00までです。</p>
+					<p class="text-xs leading-6 text-stone-500 sm:col-span-2">シルバー以上の会員予約が対象です。定員と全泊の空室を確認し、選んだお客様へHTMLメールで送ります。追加料金には予約時のお支払い方法を引き継ぎます。受付期限はチェックイン日の15:00までです。</p>
 					{#if !immutable}<button class="w-full rounded-lg bg-brand-800 px-5 py-3 text-white sm:col-span-2 sm:w-auto sm:justify-self-start">保存して対象者を確認</button>{/if}
 				</fieldset>
 			</form>
 			{#if selected?.status === 'draft'}
 				<div class="mt-5 rounded-2xl border border-stone-200 bg-white p-4 sm:p-5">
-					<h2 class="font-semibold">送信前の確認：{data.preview.length}室分</h2><p class="mt-2 text-sm break-words text-stone-500">{roomName(selected.source_room_type_id)} → {roomName(selected.target_room_type_id)} ／ {UPGRADE_CHANNEL[selected.channel]}</p>
-					<div class="mt-4 space-y-2">{#each data.preview as r}<div class="rounded-lg bg-stone-50 p-3 text-sm break-words"><p>{r.guest_name ?? '会員'} 様 · {r.booking_code} · {r.room_index}室目</p><p class="mt-1 text-stone-500">{r.nights}泊 · 大人{r.adults}名 · 追加料金合計 {r.total.toLocaleString()}円</p></div>{/each}</div>
+					<h2 class="font-semibold">提案を送る予約を選択</h2>
+					<p class="mt-2 text-sm break-words text-stone-500">{roomName(selected.source_room_type_id)} → {roomName(selected.target_room_type_id)}</p>
 					{#if data.preview.length > 0}<form method="POST" action="?/publish" class="mt-5" use:enhance={() => { busy = true; return async ({ update }) => { try { await update(); } finally { busy = false; } }; }}>
-						<input type="hidden" name="id" value={selected.id} /><input type="hidden" name="count" value={data.preview.length} />{#each data.preview as r}<input type="hidden" name="stay" value={r.stay_id} />{/each}
+						<input type="hidden" name="id" value={selected.id} />
+						<fieldset class="mb-4 space-y-2"><legend class="pb-2 text-sm font-medium">対象の予約（1件）</legend>
+							{#each data.preview as r (r.stay_id)}
+								<label class="flex items-start gap-3 rounded-lg bg-stone-50 p-3 text-sm">
+									<input class="mt-1" type="radio" name="stay" value={r.stay_id} required />
+									<span class="min-w-0 break-words">
+										<span class="block">{r.guest_name ?? '会員'} 様 · {r.booking_code} · {r.room_index}室目</span>
+										<span class="mt-1 block text-stone-500">{r.nights}泊 · 大人{r.adults}名 · {r.total > 0 ? `追加料金合計 ${r.total.toLocaleString()}円` : '無料'}</span>
+									</span>
+								</label>
+							{/each}
+						</fieldset>
 						<label class="block text-sm">通知日時（日本時間・空欄ならすぐに送信）<input name="dispatch" type="datetime-local" class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5" /></label>
-						<label class="mt-4 flex items-start gap-2 text-sm"><input name="confirm" value="yes" type="checkbox" required class="mt-1" /><span>対象者・お部屋・追加料金・通知方法を確認しました。提案を送信します。</span></label>
+						<label class="mt-4 flex items-start gap-2 text-sm"><input name="confirm" value="yes" type="checkbox" required class="mt-1" /><span>送信先・お部屋・追加料金を確認しました。</span></label>
 						<button disabled={busy} class="mt-4 w-full rounded-lg bg-brand-800 px-4 py-3 text-white disabled:opacity-50">{busy ? '送信を登録中…' : '提案通知を送信・予約する'}</button>
 					</form>{:else}<p class="mt-4 text-sm text-stone-500">対象の会員予約がありません。日程・部屋・全泊分の空室・定員をご確認ください。</p>{/if}
 				</div>

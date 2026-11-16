@@ -8,6 +8,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const load: PageServerLoad = async (event) => {
+	if (event.locals.user?.role !== 'member') redirect(303, `/auth/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
 	if (!uuid.test(event.params.id)) error(404, '提案が見つかりません。');
 	const offer = (await myUpgradeOffers(event, event.params.id))[0];
 	if (!offer) error(404, '提案が見つかりません。');

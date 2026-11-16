@@ -3,8 +3,9 @@
 // 入口は館内図に刷った QR（/r/c/<token>）。トークンは httpOnly Cookie（ab_stay）へ
 // 交換済みなので、この画面は Cookie だけを見る。URL にトークンは出ない。
 // 同じ QR をもう一度スキャンしても、ここに戻ってきて **予約済みの時間を確認できる**。
-import { fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
+import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbBathCancel, sbBathContent, sbBathContext, sbBathReserve } from '$lib/server/private-bath';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
@@ -14,14 +15,25 @@ import type { Actions, PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
 
-export const load: PageServerLoad = async ({ cookies }) => {
-	const token = cookies.get(STAY_COOKIE);
+function bathAccess(event: RequestEvent) {
+	const booking = event.url.searchParams.get('booking');
+	if (booking === null) return { booking, token: event.cookies.get(STAY_COOKIE), client: undefined };
+	if (!MEMBER_SUPABASE || !/^[a-z0-9-]{1,80}$/i.test(booking)) error(404, m.error_booking_not_found());
+	if (event.locals.user?.role !== 'member') {
+		redirect(303, `/auth/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
+	}
+	return { booking, token: `member-booking:${booking}`, client: createSupabaseServerClient(event) };
+}
+
+export const load: PageServerLoad = async (event) => {
+	const { booking, token, client } = bathAccess(event);
 	// デモ運用は /r へ。トークンが無い（館内案内からコードなしで来た）ときは、先に6桁コードを入れてもらう（2026-10-10）。
 	// 館内図の QR（/r/c/<token>?next=bath）はトークン入りなので、ここを通らずそのまま予約フォームへ来る
 	if (DATA_SOURCE !== 'supabase') redirect(303, '/r');
 	if (!token) redirect(303, '/r/bath/code');
 
-	const ctx = await sbBathContext(token);
+	const ctx = await sbBathContext(token, client);
+	if (!ctx && booking) error(404, m.error_booking_not_found());
 	// 失効・チェックアウト後は /r 側の「ご滞在は終了しました」に任せる（案内を1か所に寄せる）。
 	if (!ctx) redirect(303, '/r');
 
@@ -34,16 +46,17 @@ export const load: PageServerLoad = async ({ cookies }) => {
 	// シェル（黒ヘッダー）に出す見出しと戻り先。文章を入れていれば、その見出しをそのまま使う。
 	const headerTitle = content.fields.title || m.bath_title();
 
-	return { ctx, content, pmsEnabled: bathPmsEnabled(), headerTitle, headerBack: '/r' };
+	return { ctx, content, pmsEnabled: bathPmsEnabled(), headerTitle, booking,
+		headerBack: booking ? `/account/reservations/${encodeURIComponent(booking)}` : '/r' };
 };
 
 export const actions: Actions = {
-	reserve: async ({ request, cookies }) => {
-		const token = cookies.get(STAY_COOKIE);
+	reserve: async (event) => {
+		const { booking, token, client } = bathAccess(event);
 		if (!token) redirect(303, '/r');
 		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
 
-		const fd = await request.formData();
+		const fd = await event.request.formData();
 		const bathId = String(fd.get('bathId') ?? '').trim() || null;
 		const date = String(fd.get('date') ?? '').trim();
 		const from = String(fd.get('from') ?? '').trim();
@@ -51,31 +64,32 @@ export const actions: Actions = {
 			return fail(400, { error: 'choose' as const });
 		}
 
-		const r = await sbBathReserve(token, bathId, [{ date, from }]);
+		const r = await sbBathReserve(token, bathId, [{ date, from }], client);
 		if (!r.ok) {
    // The reservation RPC is authoritative. Refresh only AFTER its transaction
    // has rejected the booking; a preflight availability check cannot prevent races.
    if (r.code === 'slot_taken' || r.code === 'per_room_limit' || r.code === 'past_cutoff' || r.code === 'slot_unavailable') {
-    const refreshedCtx = await sbBathContext(token);
+    const refreshedCtx = await sbBathContext(token, client);
     return fail(409, { error:r.code, refreshedCtx, availabilityRefreshFailed:!refreshedCtx?.ok,
      attempted:{date,from,bathId},retryAt:Date.now() });
    }
    return fail(400, {error:r.code});
   }
+		if (booking) return { done: 'reserved' as const };
 		const query = new URLSearchParams({ date, from, bath: bathId ?? '' });
 		redirect(303, `/r/bath/complete?${query}`);
 	},
 
-	cancel: async ({ request, cookies }) => {
-		const token = cookies.get(STAY_COOKIE);
+	cancel: async (event) => {
+		const { token, client } = bathAccess(event);
 		if (!token) redirect(303, '/r');
 		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
 
-		const fd = await request.formData();
+		const fd = await event.request.formData();
 		const slotId = String(fd.get('slotId') ?? '').trim();
 		const intent = fd.get('intent') === 'change' ? 'change' : 'cancel';
 		if (!slotId) return fail(400, { error: 'other' as const });
-		if (!(await sbBathCancel(token, slotId))) return fail(400, { error: 'other' as const });
+		if (!(await sbBathCancel(token, slotId, client))) return fail(400, { error: 'other' as const });
 		return { done: intent === 'change' ? 'change_started' as const : 'canceled' as const };
 	}
 };

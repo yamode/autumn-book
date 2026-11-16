@@ -37,6 +37,7 @@ import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import { saveFavoriteRoomChoices } from '$lib/server/favorites';
+import { savePlatinumTiming } from '$lib/server/platinum-timing';
 
 const noStore = { 'cache-control': 'private, no-store' };
 const bad = (message: string, status = 400, extra: Record<string, unknown> = {}) => json({ ok: false, message, ...extra }, { status, headers: noStore });
@@ -84,6 +85,8 @@ export const POST: RequestHandler = async (event) => {
 			// お気に入りの部屋の指定（会員が選んだとき）を仮押さえに残す。確定（支払の完了・カードの登録）のときに DB が空きを確かめて部屋指定する
 			const favError = await saveFavoriteRoomChoices(event, hold.id, sid, form);
 			if (favError) return bad(favError, 400, { errors: { favoriteRoom: favError } });
+			const timingError = await savePlatinumTiming(event, hold.id, sid, form);
+			if (timingError) return bad(timingError, 400);
 			const common = {
 				holdId: hold.id,
 				sessionId: sid,

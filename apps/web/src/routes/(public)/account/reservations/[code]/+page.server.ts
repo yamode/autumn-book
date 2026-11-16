@@ -30,6 +30,7 @@ import {
 	reservationDetailOf
 } from '$lib/server/member-reservation-detail';
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
+import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -58,6 +59,7 @@ export const load: PageServerLoad = async (event) => {
 			...detail,
 			facility,
 			memberPage: detail.memberPage ? { ...detail.memberPage, href: memberPageHref } : null,
+			canPrebookBath: bathPmsEnabled() && r.status === 'reserved' && !detail.memberPage,
 			readOnly: !!detail.memberPage
 		};
 	}
@@ -83,6 +85,7 @@ export const load: PageServerLoad = async (event) => {
 		memberPerks: null,
 		memberPage: null as (Awaited<ReturnType<typeof reservationDetailOf>>['memberPage'] & { href: string | null }) | null,
 		readOnly: false,
+		canPrebookBath: false,
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
 		cancelPreview:

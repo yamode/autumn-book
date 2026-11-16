@@ -91,8 +91,8 @@ export type BathContext = {
 };
 
 /** 公開画面が1回で必要な情報を全部取る。無効なトークンは null。 */
-export async function sbBathContext(token: string): Promise<BathContext | null> {
-	const { data, error } = await supa().rpc('private_bath_context', { p_token: token });
+export async function sbBathContext(token: string, client?: SupabaseClient): Promise<BathContext | null> {
+	const { data, error } = await (client ? client.schema('book') : supa()).rpc('private_bath_context', { p_token: token });
 	if (error) return null; // invalid_token など
 	return data as BathContext;
 }
@@ -108,9 +108,10 @@ export type BathReserveResult =
 export async function sbBathReserve(
 	token: string,
 	bathId: string | null,
-	slots: Array<{ date: string; from: string }>
+	slots: Array<{ date: string; from: string }>,
+	client?: SupabaseClient
 ): Promise<BathReserveResult> {
-	const { data, error } = await supa().rpc('reserve_private_bath', {
+	const { data, error } = await (client ? client.schema('book') : supa()).rpc('reserve_private_bath', {
 		p_token: token,
 		p_bath: bathId,
 		p_slots: slots
@@ -128,8 +129,8 @@ export async function sbBathReserve(
 }
 
 /** 自分が取った枠を取り消す。失敗しても理由は分けない（画面では1つの案内に寄せる）。 */
-export async function sbBathCancel(token: string, slotId: string): Promise<boolean> {
-	const { error } = await supa().rpc('cancel_private_bath', {
+export async function sbBathCancel(token: string, slotId: string, client?: SupabaseClient): Promise<boolean> {
+	const { error } = await (client ? client.schema('book') : supa()).rpc('cancel_private_bath', {
 		p_token: token,
 		p_slot_id: slotId
 	});

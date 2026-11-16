@@ -53,7 +53,7 @@ export const actions: Actions = {
 		if (!expiry || !/^\d+$/.test(values.amount ?? '') || !Number.isInteger(amount) || !uuid.test(values.facility ?? '') || !uuid.test(values.source ?? '') || !uuid.test(values.target ?? '') || (values.id && !uuid.test(values.id))) return fail(400, { message: upgradeError('invalid_params'), values });
 		const result = await createSupabaseServerClient(event).schema('book').rpc('admin_save_upgrade_campaign', {
 			p_id: values.id || null, p_facility: values.facility, p_checkin: values.checkin, p_source: values.source, p_target: values.target,
-			p_title: values.title, p_description: values.description ?? '', p_basis: 'night', p_amount: amount, p_channel: values.channel, p_expires: expiry
+			p_title: values.title, p_description: values.description ?? '', p_basis: 'night', p_amount: amount, p_channel: 'email', p_expires: expiry
 		});
 		if (result.error) return fail(400, { message: upgradeError(result.error), values });
 		redirect(303, `/admin/upgrades?id=${result.data}`);
@@ -63,12 +63,11 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境では送信できません。' });
 		const fd = await event.request.formData();
 		const id = String(fd.get('id') ?? '');
-		const count = Number(fd.get('count'));
 		const stays = fd.getAll('stay').map(String);
 		const schedule = String(fd.get('dispatch') ?? '');
 		const dispatch = schedule ? jstDateTime(schedule) : new Date().toISOString();
-		if (!uuid.test(id) || !Number.isInteger(count) || count <= 0 || fd.get('confirm') !== 'yes' || !dispatch || stays.length !== count || stays.some((x) => !uuid.test(x))) return fail(400, { message: '対象者と送信方法を確認し、送信に同意してください。' });
-		const result = await createSupabaseServerClient(event).schema('book').rpc('admin_publish_upgrade_campaign', { p_id: id, p_expected_count: count, p_expected_stays: stays, p_dispatch: dispatch });
+		if (!uuid.test(id) || fd.get('confirm') !== 'yes' || !dispatch || stays.length !== 1 || !uuid.test(stays[0])) return fail(400, { message: '送信先の予約を1件選び、内容を確認してください。' });
+		const result = await createSupabaseServerClient(event).schema('book').rpc('admin_publish_upgrade_campaign', { p_id: id, p_expected_count: 1, p_expected_stays: stays, p_dispatch: dispatch });
 		if (result.error) return fail(400, { message: upgradeError(result.error) });
 		return { success: true, message: `${result.data}室分の提案通知を${schedule ? '予約しました' : '送信キューへ登録しました'}。` };
 	},

@@ -39,6 +39,7 @@
 					.filter((r) => r.choices.length > 0)
 	);
 	let favPicked = $state<Record<number, string>>({});
+	let platinumTiming = $state('');
 	let multi = $derived(rooms.length > 1);
 	// 特別会員の専用ページ経由の束（docs/vip-member-page.md §13.4.3-4）。公式の束は null
 	let memberPage = $derived(data.expired ? null : data.memberPage);
@@ -326,6 +327,7 @@
 		furusatoVoucher = !!get('furusatoVoucher');
 		if (get('points') != null) pointsInput = Number(get('points')) || 0;
 		favPicked = Object.fromEntries(entries.filter(([k]) => k.startsWith('fav_')).map(([k, v]) => [Number(k.slice(4)), v]));
+		platinumTiming = entries.find(([key]) => key === 'platinumTiming')?.[1] ?? '';
 		await tick();
 		// 残りの欄（氏名・連絡先・アレルギー・追加で聞く項目・備考など）。条件で出る欄は上の選択で出てから入れる。
 		// 確認の段に切り替えた直後に画面の描き直しで欄が初期値に戻ることがあるので、切り替えた後にもう一度入れる
@@ -701,6 +703,23 @@
 					</div>
 				</section>
 
+				{#if data.canChoosePlatinumTiming}
+					<fieldset class="bk-card mt-5 p-4 sm:p-6">
+						<legend class="px-1 text-sm font-semibold text-stone-800">{m.hold_platinum_timing_title()}</legend>
+						<p class="mb-3 text-sm text-stone-600">{m.hold_platinum_timing_note()}</p>
+						<div class="grid gap-2">
+							{#each [['', m.hold_platinum_timing_none()], ['early', m.hold_platinum_early()], ['late', m.hold_platinum_late()]] as [value, label] (value)}
+								<label class="flex min-h-11 items-center gap-2 rounded-lg border border-stone-300 px-3 py-2 text-sm">
+									<input type="radio" name="platinumTiming" {value} bind:group={platinumTiming} class="accent-[var(--bk-accent)]" />
+									<span>{label}</span>
+								</label>
+							{/each}
+						</div>
+						{#if form?.errors && 'platinumTiming' in form.errors}
+							<p role="alert" class="mt-2 text-xs text-red-600">{form.errors.platinumTiming}</p>
+						{/if}
+					</fieldset>
+				{/if}
 				{#if favRooms.length > 0}
 					<!-- お気に入りの部屋の指定（会員・その日程に空いているお気に入りの部屋があるときだけ）。料金はかからない。
 					     確定のときに DB がもう一度空きを確かめ、空いていれば部屋指定する（埋まっていたら指定せずに確定・完了画面で伝える） -->
