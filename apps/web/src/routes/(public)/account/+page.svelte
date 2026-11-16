@@ -64,11 +64,14 @@
 		<h2 class="mb-4 text-lg text-brand-900">{m.account_past()}</h2>
 		<div class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
 			{#each data.past as b (b.code)}
-				<a href="/account/reservations/{b.code}" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-stone-50">
-					<span class="rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
-					<span class="min-w-0 flex-1">{b.facilityName} ／ {formatDateLong(b.checkin)}〜</span>
-					{#if b.memberPage}<span class="hidden rounded bg-amber-100 px-1.5 text-xs text-amber-800 sm:inline">{m.member_page_badge()}</span>{/if}
-					<span class="text-stone-400">{b.code}</span>
+				<a href="/account/reservations/{b.code}" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-stone-50">
+					<span class="font-medium text-brand-900">{b.facilityName}</span>
+					<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
+					<span class="min-w-0 text-xs text-stone-600">
+						{formatDateLong(b.checkin)}
+						{#if b.memberPage}<span class="ml-1 rounded bg-amber-100 px-1.5 text-amber-800">{m.member_page_badge()}</span>{/if}
+					</span>
+					<span class="text-right text-xs text-stone-600">{b.code}</span>
 				</a>
 			{/each}
 		</div>
