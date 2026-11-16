@@ -19,7 +19,10 @@
 
 <PageHeader title="コミュニティ" description="板の管理（管理者のみ）・スレッドの pin / lock / 削除・投稿削除・会員の ban を行います。操作は監査ログに記録されます。" />
 
-<a href="/admin/community/reports" class="mb-4 inline-flex min-h-11 items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-medium text-brand-800">通報の確認</a>
+<div class="mb-4 flex flex-wrap gap-2">
+	<a href="/admin/community/reports" class="inline-flex min-h-11 items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-medium text-brand-800">通報の確認</a>
+	<a href="/admin/community/deletions" class="inline-flex min-h-11 items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-medium text-brand-800">削除済み投稿</a>
+</div>
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 {#if form?.ok}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">操作を反映しました。</p>{/if}

@@ -2321,6 +2321,7 @@ export function deleteForumPost(postId: string, actorUserId: string, byStaff: bo
 	if (!byStaff && post.authorUserId !== actorUserId) return { error: 'forbidden' };
 	const wasVisible = !post.isDeleted;
 	post.isDeleted = true;
+	post.deletion = { at: new Date().toISOString(), by: actorUserId, name: getForumProfile(actorUserId)?.nickname ?? null };
 	if (wasVisible) {
 		const thread = forumThreads.find((t) => t.id === post.threadId);
 		if (thread && thread.replyCount > 0) thread.replyCount -= 1;

@@ -562,6 +562,7 @@ export interface ForumPost {
 	body: string;
 	replyToNo: number | null; // 本文中の最初の >>n
 	isDeleted: boolean;
+	deletion?: { at: string; by: string; name: string | null };
 	createdAt: string;
 }
 

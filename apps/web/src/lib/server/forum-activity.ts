@@ -6,6 +6,7 @@ import { deleteForumPost, forumBoards, forumPosts, forumThreads, getForumProfile
 export const REPORT_REASONS = ['spam', 'abuse', 'privacy', 'other'] as const;
 export type ForumReportReason = (typeof REPORT_REASONS)[number];
 export const REPORT_PAGE_SIZE = 25;
+export const DELETED_POSTS_PAGE_SIZE = 25;
 
 export interface ForumReplyNotice {
 	id: string;
@@ -31,6 +32,36 @@ export interface ForumReport {
 	thread_id: string;
 	title: string;
 	excerpt: string;
+}
+
+export interface DeletedForumPost {
+	id: string;
+	board_title: string;
+	thread_title: string;
+	post_no: number;
+	body: string;
+	created_at: string;
+	deleted_at: string | null;
+	deleted_by: string | null;
+	deleted_by_name: string | null;
+}
+
+export async function readDeletedForumPosts(event: RequestEvent, page: number): Promise<{ total: number; posts: DeletedForumPost[] }> {
+	if (DATA_SOURCE === 'supabase') return forumRpc(event, 'forum_staff_deleted_posts', { p_page: page });
+	demoUser(event, 'staff');
+	const deleted = forumPosts.filter(post => post.isDeleted).sort((a, b) =>
+		(b.deletion?.at ?? '').localeCompare(a.deletion?.at ?? '') || b.createdAt.localeCompare(a.createdAt)
+	);
+	const posts = deleted.slice((page - 1) * DELETED_POSTS_PAGE_SIZE, page * DELETED_POSTS_PAGE_SIZE).map(post => {
+		const thread = forumThreads.find(t => t.id === post.threadId);
+		const board = forumBoards.find(b => b.id === thread?.boardId);
+		return {
+			id: post.id, board_title: board?.title ?? '', thread_title: thread?.title ?? '', post_no: post.postNo,
+			body: post.body, created_at: post.createdAt, deleted_at: post.deletion?.at ?? null,
+			deleted_by: post.deletion?.by ?? null, deleted_by_name: post.deletion?.name ?? null
+		};
+	});
+	return { total: deleted.length, posts };
 }
 
 type DemoNotice = Pick<ForumReplyNotice, 'id' | 'created_at' | 'read_at'> & { recipient: string; postId: string };
