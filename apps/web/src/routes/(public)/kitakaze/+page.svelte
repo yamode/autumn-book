@@ -33,6 +33,7 @@
 						{#each videos as video (video.id)}
 							<li class="min-w-0 overflow-hidden rounded-xl border border-stone-200 bg-white">
 								<a href={`https://www.youtube.com/watch?v=${video.id}&list=${data.playlist}`}
+									target="_blank" rel="noopener"
 									class="group block focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-800">
 									<img src={`https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`} width="320" height="180" alt="" loading="lazy" class="aspect-video w-full bg-stone-100 object-cover" />
 									<div class="space-y-1 p-3">
