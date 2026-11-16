@@ -3,7 +3,9 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbListOptionItems, sbMyReservations, sbRoomTypeByUuid } from '$lib/server/supabase-data';
-import { isStayPersonalization } from '$lib/member-benefits';
+import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
+import { isRankCode } from '$lib/plan-access';
+import * as m from '$lib/paraglide/messages';
 import { memberPageHrefOf } from '$lib/partner-member-page';
 import { memberPageAddOptions, memberPageReservations } from '$lib/server/partners/member-bookings';
 import { deferTask, portalHeader, portalLogActor, PORTAL_HEADERS, requestMeta, requireMemberPortal, requirePortalSession } from '$lib/server/partners/portal';
@@ -12,7 +14,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 
 // RPC の例外 → 文言（公式マイページの options と同じ考え方）
 function optionErrorMessage(msg: string): string {
-  if (msg.includes('grade_stay_personalization')) return '客室の個別アレンジはプラチナ会員の特典です。';
+  if (msg.includes('grade_stay_personalization')) return m.membership_gold_options_notice();
   if (msg.includes('option_already_ordered')) return 'このアレンジはすでにお申し込み済みです。';
   if (msg.includes('past_deadline')) return 'お申し込みの締切を過ぎています。';
   if (msg.includes('option_sold_out')) return '在庫がありません。';
@@ -21,6 +23,11 @@ function optionErrorMessage(msg: string): string {
   if (msg.includes('not_amendable')) return 'このご予約には現在アレンジを追加できません。';
   if (msg.includes('forbidden') || msg.includes('not_member_page_booking')) return 'このご予約はお手続きいただけません。';
   return 'アレンジを追加できませんでした。';
+}
+
+function canPersonalizeInPortal(session: PartnerSessionAccount) {
+  const rank = session.member?.rankCode;
+  return canPersonalizeStay({ isMember: Boolean(session.member), rank: isRankCode(rank) ? rank : null });
 }
 
 async function ownReservation(event: RequestEvent, partner: PartnerContext, session: PartnerSessionAccount, code: string) {
@@ -39,7 +46,7 @@ export const load = async (event) => {
   requireMemberPortal(partner);
   const r = await ownReservation(event, partner, session, event.params.id);
   if (r.status !== 'reserved') throw redirect(303, memberPageHrefOf(event.params.token, r.code));
-  const canPersonalize = session.member?.rankCode === 'platinum';
+  const canPersonalize = canPersonalizeInPortal(session);
   const items = (await sbListOptionItems(r.facilityUuid, 'ja')).filter(o => canPersonalize || !isStayPersonalization(o.category));
   // 複数室の予約: どのお部屋のアレンジかを選ぶ（生きている部屋だけ）
   const live = (r.rooms ?? []).filter((x) => !x.cancelled);
@@ -69,7 +76,7 @@ export const actions = {
     const form = await event.request.formData();
     // カタログを読み直して optionId / requiresServiceDate を確定（フォーム値を信用しない）
     const catalog = await sbListOptionItems(r.facilityUuid);
-    if (session.member?.rankCode !== 'platinum'
+    if (!canPersonalizeInPortal(session)
       && catalog.some(o => isStayPersonalization(o.category) && Number(form.get(`qty_${o.id}`)) > 0)) {
       return fail(403, { message: optionErrorMessage('grade_stay_personalization') });
     }

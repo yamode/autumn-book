@@ -14,7 +14,7 @@ import type { Actions, PageServerLoad } from './$types';
 
 // RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）
 function optionErrorMessage(msg: string): string {
-	if (msg.includes('grade_stay_personalization')) return m.membership_platinum_options_notice();
+	if (msg.includes('grade_stay_personalization')) return m.membership_gold_options_notice();
 	if (msg.includes('option_already_ordered')) return m.membership_option_already_ordered();
 	if (msg.includes('past_deadline')) return m.options_err_past_deadline();
 	if (msg.includes('option_sold_out')) return m.options_err_sold_out();
@@ -93,7 +93,7 @@ export const actions: Actions = {
 
 		if (catalog.some(o => isStayPersonalization(o.category) && Number(form.get(`qty_${o.id}`)) > 0)
 			&& !canPersonalizeStay(await viewerOf(locals))) {
-			return fail(403, { message: m.membership_platinum_options_notice() });
+			return fail(403, { message: m.membership_gold_options_notice() });
 		}
 
 		// 数量 >= 1 の商品だけをカートに集約

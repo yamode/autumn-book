@@ -33,7 +33,7 @@ import type {
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
-import { isStayPersonalization } from '$lib/member-benefits';
+import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
 
 // ---------------------------------------------------------------- マスタ（デモ）
 
@@ -1079,7 +1079,7 @@ export function addBookingOptions(
 		const opt = optionItems.find((o) => o.id === item.optionId && o.facilityId === booking.facilityId && o.isActive);
 		if (!opt) throw new Error('option_not_found');
 		if (isStayPersonalization(opt.category)) {
-			if (memberById(memberId)?.rank !== 'platinum') throw new Error('grade_stay_personalization');
+			if (!canPersonalizeStay({ isMember: true, rank: memberById(memberId)?.rank ?? null })) throw new Error('grade_stay_personalization');
 			if (opt.priceType === 'per_stay' && [...existing, ...created].some(o => o.optionId === opt.id && o.status !== 'cancelled')) {
 				throw new Error('option_already_ordered');
 			}

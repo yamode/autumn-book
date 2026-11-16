@@ -6,8 +6,9 @@ export function isStayPersonalization(category: OptionCategory): boolean {
 	return category === 'amenity' || category === 'personalize';
 }
 
-export const canPersonalizeStay = (viewer: PlanViewer) => rankMeets(viewer, 'platinum');
-export const favoriteRoomMinRank = 'gold';
+export const stayPersonalizationMinRank = 'gold';
+export const canPersonalizeStay = (viewer: PlanViewer) => rankMeets(viewer, stayPersonalizationMinRank);
+export const favoriteRoomMinRank = 'silver';
 export const canUseFavoriteRooms = (viewer: PlanViewer) => rankMeets(viewer, favoriteRoomMinRank);
 
 export function cancellationPolicyRank(rank: string | null | undefined): 'standard' | 'gold' | 'platinum' {

@@ -3,7 +3,7 @@
 	import { RANK_CODES, type RankCode } from '$lib/plan-access';
 	import { rankName } from '$lib/rank-name';
 	import { rankCondition } from '$lib/member-rank';
-	import { favoriteRoomMinRank } from '$lib/member-benefits';
+	import { favoriteRoomMinRank, stayPersonalizationMinRank } from '$lib/member-benefits';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -26,7 +26,7 @@
 		{ key: 'advance', minRank: 'silver', title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
 		{ key: 'room', minRank: favoriteRoomMinRank, title: m.membership_room_designation(), body: m.membership_room_designation_body() },
 		{ key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
-		{ key: 'personalize', minRank: 'platinum', title: m.membership_benefit_personalize_t(), body: m.membership_personalize_platinum_body() },
+		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: m.membership_benefit_personalize_t(), body: m.membership_personalize_gold_body() },
 		{ key: 'plans', minRank: 'standard', title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
 		{
 			key: 'changes', minRank: 'standard', title: m.membership_basic_changes(), body: m.membership_basic_changes_body(),
