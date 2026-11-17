@@ -1176,7 +1176,7 @@
 				{#if data.needsTurnstile}
 					<!-- 非会員だけ、予約確定の前に Turnstile（フォームの中に置き、現地払いの送信にもカードの準備にも同じトークンが乗る）。
 					     入力の段から置いておき、確認の段へ進むまでに判定を済ませる -->
-					<div class="mt-4"><Turnstile bind:this={turnstile} action="booking-confirm" /></div>
+					<div class="mt-4"><Turnstile bind:this={turnstile} action="booking-confirm" waitOnSubmit={false} /></div>
 				{/if}
 				{#if clientError}<p class="mt-3 text-sm text-red-600" role="alert">{clientError}</p>{/if}
 				{#if step === 'input'}
