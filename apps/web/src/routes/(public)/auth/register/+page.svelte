@@ -70,9 +70,9 @@
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
-			<label class="flex items-start gap-2 text-sm">
-				<input type="checkbox" name="mailOptIn" checked class="mt-0.5 h-4 w-4" />
-				<span class="text-stone-600">{m.register_mail_opt_in()}<span class="block text-xs text-stone-400">{m.register_mail_opt_in_sub()}</span></span>
+			<label class="flex cursor-pointer items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm">
+				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />
+				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}<span class="block text-xs font-normal text-amber-900">{m.register_mail_opt_in_sub()}</span></span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
 			<p class="text-center text-xs text-stone-400">{m.register_privacy_note()} <a href="/legal/privacy" class="underline">{m.register_privacy_link()}</a>{m.register_privacy_agree()}</p>
@@ -129,16 +129,18 @@
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
-			<label class="flex items-start gap-2 text-sm">
-				<input type="checkbox" name="mailOptIn" checked class="mt-0.5 h-4 w-4" />
-				<span class="text-stone-600">{m.register_mail_opt_in()}<span class="block text-xs text-stone-400">{m.register_mail_opt_in_sub()}</span></span>
+			<label class="flex cursor-pointer items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm">
+				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />
+				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}<span class="block text-xs font-normal text-amber-900">{m.register_mail_opt_in_sub()}</span></span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
 			<p class="text-center text-xs text-stone-400">{m.register_privacy_note()} <a href="/legal/privacy" class="underline">{m.register_privacy_link()}</a>{m.register_privacy_agree()}</p>
 		</form>
 	{/if}
 
-	<p class="mt-6 text-center text-sm text-stone-600">
-		{m.register_login_link()} <a href="/auth/login" class="text-accent-600 underline">{m.register_login_anchor()}</a>
-	</p>
+	{#if step !== 'profile'}
+		<p class="mt-6 text-center text-sm text-stone-600">
+			{m.register_login_link()} <a href="/auth/login" class="text-accent-600 underline">{m.register_login_anchor()}</a>
+		</p>
+	{/if}
 </div>

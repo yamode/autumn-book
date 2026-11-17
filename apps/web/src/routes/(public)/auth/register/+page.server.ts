@@ -167,7 +167,7 @@ export const actions: Actions = {
 			const name = combineName(familyName, givenName);
 			const kana = combineKana(familyNameKana, givenNameKana);
 			// email も持たせて demo フォームと values 型を揃える（プロフィール入力では email は編集不可）
-			const values = { familyName, givenName, middleName, familyNameKana, givenNameKana, phone, email: got.user.email ?? '' };
+			const values = { familyName, givenName, middleName, familyNameKana, givenNameKana, phone, mailOptIn, email: got.user.email ?? '' };
 			const errors: Record<string, string> = {};
 			if (!familyName) errors.familyName = m.error_name_required();
 			if (!givenName) errors.givenName = m.error_name_required();
