@@ -369,7 +369,7 @@
   "register_kana": "フリガナ",
   "register_phone": "電話番号",
   "register_mail_opt_in": "お得なプランやキャンペーンのご案内を受け取る",
-  "register_mail_opt_in_sub": "ご案内メールが不要な場合はチェックを外してください。登録後も配信停止できます。",
+  "register_mail_opt_in_sub": "マイページからいつでも配信停止できます。",
   "register_submit": "登録する",
   "register_privacy_note": "登録により",
   "register_privacy_link": "プライバシーポリシー",

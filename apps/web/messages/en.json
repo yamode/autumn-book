@@ -369,7 +369,7 @@
   "register_kana": "Name (reading)",
   "register_phone": "Phone number",
   "register_mail_opt_in": "Receive offers and promotions",
-  "register_mail_opt_in_sub": "Uncheck this box if you don’t want these emails. You can unsubscribe after signing up.",
+  "register_mail_opt_in_sub": "You can unsubscribe anytime from My Account.",
   "register_submit": "Sign up",
   "register_privacy_note": "By registering, you agree to our",
   "register_privacy_link": "Privacy Policy",

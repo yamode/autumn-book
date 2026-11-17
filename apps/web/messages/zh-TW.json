@@ -369,7 +369,7 @@
   "register_kana": "姓名讀音",
   "register_phone": "電話號碼",
   "register_mail_opt_in": "接收優惠方案與促銷活動資訊",
-  "register_mail_opt_in_sub": "若不想收到此類電子郵件，請取消勾選。註冊後也可取消訂閱。",
+  "register_mail_opt_in_sub": "您可以隨時在會員中心取消訂閱。",
   "register_submit": "完成註冊",
   "register_privacy_note": "完成註冊即表示您同意",
   "register_privacy_link": "隱私政策",

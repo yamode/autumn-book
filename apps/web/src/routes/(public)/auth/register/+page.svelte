@@ -52,10 +52,6 @@
 					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
 				</label>
 			</div>
-			<label class="block text-sm">
-				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
-				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-			</label>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family_kana()}</span>
@@ -66,6 +62,10 @@
 					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
 				</label>
 			</div>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			</label>
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
@@ -111,10 +111,6 @@
 					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
 				</label>
 			</div>
-			<label class="block text-sm">
-				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
-				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
-			</label>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family_kana()}</span>
@@ -125,6 +121,10 @@
 					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
 				</label>
 			</div>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.name_middle()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="middleName" value={form?.values?.middleName ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			</label>
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
