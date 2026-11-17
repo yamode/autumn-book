@@ -18,6 +18,10 @@ import type { Actions, PageServerLoad, RequestEvent } from './$types';
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const OTP_COOLDOWN = 'ab_otp_cooldown';
 
+function registrationPhone(form: FormData): string {
+	return String(form.get('phone') ?? '').trim().replace(/[-‐‑‒–—−－]/g, '');
+}
+
 export const load: PageServerLoad = async ({ locals, url }) => {
 	// 既に会員ならマイページへ
 	const consentNext = bookingConsentNext(url);
@@ -162,7 +166,7 @@ export const actions: Actions = {
 			const middleName = String(form.get('middleName') ?? '').trim();
 			const familyNameKana = String(form.get('familyNameKana') ?? '').trim();
 			const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
-			const phone = String(form.get('phone') ?? '').trim();
+			const phone = registrationPhone(form);
 			const mailOptIn = form.get('mailOptIn') === 'on';
 			const name = combineName(familyName, givenName);
 			const kana = combineKana(familyNameKana, givenNameKana);
@@ -206,7 +210,7 @@ export const actions: Actions = {
 			middleName: String(form.get('middleName') ?? '').trim(),
 			familyNameKana: String(form.get('familyNameKana') ?? '').trim(),
 			givenNameKana: String(form.get('givenNameKana') ?? '').trim(),
-			phone: String(form.get('phone') ?? '').trim(),
+			phone: registrationPhone(form),
 			mailOptIn: form.get('mailOptIn') === 'on'
 		};
 		const errors: Record<string, string> = {};
