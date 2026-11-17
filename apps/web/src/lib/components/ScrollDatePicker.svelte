@@ -7,7 +7,7 @@
 	// PC（md〜）は検索バー・取引先ページと同じ共通の日付パネル（横に 2 か月）で出す。スマホはこの下からのシート（縦スクロール）
 	import StaySearchPanel, { type StayDayView } from '$lib/components/stay-search/StaySearchPanel.svelte';
 	import { STAY_SEARCH_LABELS } from '$lib/stay-search/labels';
-	import { normalizeLang } from '$lib/stay-search/params';
+	import { formatShortDate, normalizeLang } from '$lib/stay-search/params';
 
 	let {
 		open = $bindable(false),
@@ -56,6 +56,8 @@
 	// svelte-ignore state_referenced_locally
 	let selectedNights = $state(nights);
 	let rangeStart = $state('');
+	/** スマホのシート: チェックイン〜チェックアウトを選び終えた範囲。「この日程で検索」を押すまで反映しない（2026-11-18 指示） */
+	let picked = $state<{ start: string; nights: number } | null>(null);
 	let scrollRegion = $state<HTMLDivElement | null>(null);
 	// svelte-ignore state_referenced_locally
 	let selectedAdults = $state(guests?.adults ?? source?.adults ?? 2);
@@ -65,6 +67,7 @@
 		if (open) {
 			selectedNights = nights;
 			rangeStart = '';
+			picked = null;
 			selectedAdults = guests?.adults ?? source?.adults ?? 2;
 			selectedRooms = guests?.rooms ?? 1;
 		}
@@ -132,6 +135,9 @@
 		if (open && source && !isPageDays) loader.load(source, 1, adultsForDays);
 	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
+	// スマホのシートで印を付ける範囲（選び終えた範囲があればそれ、無ければ今の日程）
+	const shownStart = $derived(picked?.start ?? checkin);
+	const shownCheckout = $derived(picked ? addDays(picked.start, picked.nights) : checkout);
 
 	// ---- PC: 共通の日付パネル ----
 	let isDesktop = $state(false);
@@ -277,16 +283,22 @@
 								{@const price = priceByDate.get(date)}
 								{@const knownUnavailable = Boolean(current?.through && date <= current.through && (price == null || price <= 0))}
 								{@const disabled = date < minDate || date > maxDate || (!!rangeStart && date > addDays(rangeStart, 7))}
-								{@const selected = date === (rangeStart || checkin)}
-								{@const inStay = !rangeStart && checkin && date > checkin && date <= checkout}
+								<!-- チェックイン・チェックアウトの両端に印、間の日は薄い色 -->
+								{@const selected = date === (rangeStart || shownStart) || (!rangeStart && !!shownStart && date === shownCheckout)}
+								{@const inStay = !rangeStart && shownStart && date > shownStart && date < shownCheckout}
 								<button
 									type="button"
 									{disabled}
 									aria-label={`${formatDate(date)}${price != null && price > 0 ? ` ${formatPrice(price)}` : ''}`}
 									aria-pressed={selected}
 									onclick={() => {
-										if (rangeStart && date > rangeStart) choose(rangeStart, Math.round((Date.parse(date) - Date.parse(rangeStart)) / 86_400_000));
-										else rangeStart = date;
+										if (rangeStart && date > rangeStart) {
+											picked = { start: rangeStart, nights: Math.round((Date.parse(date) - Date.parse(rangeStart)) / 86_400_000) };
+											rangeStart = '';
+										} else {
+											rangeStart = date;
+											picked = null;
+										}
 									}}
 									class="flex min-h-16 min-w-0 flex-col items-center justify-start border-t border-stone-200 px-0.5 py-2 text-sm tabular-nums transition {selected ? 'rounded bg-sky-600 text-white' : inStay ? 'bg-sky-100 text-sky-900' : disabled ? 'text-stone-300' : 'text-stone-900 hover:bg-sky-50'}"
 								>
@@ -298,10 +310,17 @@
 					</section>
 				{/each}
 			</div>
-			{#if checkin && conditionChanged}
+			{#if checkin && conditionChanged && !picked && !rangeStart}
 				<!-- 日付はそのまま、泊数・人数・室数だけ変えるとき -->
 				<div class="shrink-0 border-t border-stone-200 bg-white px-4 py-3 sm:px-6">
 					<button type="button" onclick={() => choose(checkin)} class="block w-full rounded-lg bg-accent-600 py-2.5 text-sm font-medium text-white hover:bg-accent-500">{m.datepicker_apply_same_date({ date: formatDate(checkin) })}</button>
+				</div>
+			{:else}
+				<!-- 選んだ範囲と「この日程で検索」（右下）。チェックアウトまで選ぶと押せる -->
+				<div class="flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-white px-4 py-3 sm:px-6">
+					<!-- 狭い幅では「日付」と「泊数」の 2 行に分ける（日付の途中で折り返さない） -->
+					<p class="min-w-0 text-sm leading-snug text-stone-700">{#if picked}{#each panelLabels.range(formatShortDate(picked.start, panelLang), formatShortDate(shownCheckout, panelLang), picked.nights).split(/\s*[・·]\s*/) as part, i (i)}<span class="block {i === 0 ? 'font-medium text-brand-900' : 'text-xs text-stone-500'}">{part}</span>{/each}{/if}</p>
+					<button type="button" disabled={!picked} onclick={() => picked && choose(picked.start, picked.nights)} class="shrink-0 rounded-full bg-brand-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{panelLabels.applyDates}</button>
 				</div>
 			{/if}
 		</div>
