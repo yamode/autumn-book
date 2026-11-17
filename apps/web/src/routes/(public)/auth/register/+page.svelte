@@ -85,7 +85,7 @@
 				<span class="text-stone-600">{m.register_email()} <span class="text-red-500">*</span></span>
 				<input type="email" name="email" value={email} required class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="mail@example.com" />
 			</label>
-			<Turnstile action="member-otp" />
+			<Turnstile action="member-otp" showSuccess />
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.auth_otp_send()}</button>
 		</form>
 	{:else}

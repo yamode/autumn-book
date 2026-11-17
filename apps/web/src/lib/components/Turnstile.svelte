@@ -30,13 +30,13 @@
   // cf-turnstile-response に入って一緒に送られる（サーバは lib/server/turnstile.ts の checkTurnstile で確かめる）。
   //
   // - PUBLIC_TURNSTILE_SITE_KEY が未設定なら何も描かない（サーバも検証をスキップする）
-  // - appearance は interaction-only: 普段は見えず、Cloudflare が操作を求めたときだけ枠が出る（画面の見た目を変えない）
+  // - 既定では操作が必要なときだけ表示する。showSuccess を指定すると認証結果を表示し続ける。
   // - トークンは 1 回限り。use:enhance の送信後（page.form が変わったとき）に作り直す（失敗して入れ直すときに古いトークンを送らない）
   import { onMount } from 'svelte';
   import { env } from '$env/dynamic/public';
   import { page } from '$app/state';
 
-  let { action = undefined }: { action?: string } = $props();
+  let { action, showSuccess = false }: { action?: string; showSuccess?: boolean } = $props();
 
   const siteKey = env.PUBLIC_TURNSTILE_SITE_KEY ?? '';
   let el: HTMLDivElement | undefined = $state();
@@ -51,10 +51,11 @@
       api = t;
       widgetId = t.render(el, {
         sitekey: siteKey,
-        appearance: 'interaction-only',
+        appearance: showSuccess ? 'always' : 'interaction-only',
+        size: showSuccess && el.clientWidth < 300 ? 'compact' : 'normal',
         language: 'ja',
-        // 判定を通ったら枠を畳み、操作が要るとき・失敗・期限切れのときだけ出す（「成功しました」を出しっぱなしにしない）
-        callback: () => { if (el) el.style.display = 'none'; },
+        // 成功表示を使わないフォームでは、判定を通ったら枠を畳む。
+        callback: () => { if (el && !showSuccess) el.style.display = 'none'; },
         'before-interactive-callback': () => { if (el) el.style.display = ''; },
         'expired-callback': () => { if (el) el.style.display = ''; },
         'error-callback': () => { if (el) el.style.display = ''; },
