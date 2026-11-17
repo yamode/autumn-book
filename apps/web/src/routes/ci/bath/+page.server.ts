@@ -22,6 +22,8 @@ import type { Actions, PageServerLoad, RequestEvent } from './$types';
 // 見本（DEMO-0001）は DB に触れず、プロセス内の見本の空き枠で予約・取消まで試せる。
 type BathView = { state: CiBathState; ctx: BathContext | null };
 
+const bathAccessForPrecheckin = (token: string) => 'precheckin-bath:' + token;
+
 export const load: PageServerLoad = async (event) => {
 	const { ctx } = await event.parent();
 	if (!ctx) return { bath: { state: 'unavailable', ctx: null } as BathView };
@@ -36,25 +38,24 @@ export const load: PageServerLoad = async (event) => {
 	const pre = ciBathState({ answered, editable: ctx.editable, token, bathOpen: true });
 	if (pre !== 'ready' || !token?.ok || DATA_SOURCE !== 'supabase') return { bath: { state: pre, ctx: null } as BathView };
 
-	const b = await sbBathContext(token.token).catch(() => null);
+	const b = await sbBathContext(bathAccessForPrecheckin(pcToken)).catch(() => null);
 	const open = Boolean(b?.ok && b.enabled && bathPmsEnabled());
 	return { bath: { state: open ? 'ready' : 'unavailable', ctx: open ? b : null } as BathView };
 };
 
-/** 予約・取消の前に、事前チェックインのトークンを確かめて滞在トークンを決める（見本は 'demo'） */
-async function stayTokenFor(event: RequestEvent): Promise<string | 'demo' | null> {
+/** 予約・取消の前に、事前チェックインのトークンを確かめる（見本は 'demo'） */
+async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	const r = await resolvePrecheckin(event);
 	if (!('ctx' in r) || !r.ctx.answeredAt) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
-	// 手元の ab_stay は使わない（同じ端末で前に泊まったときの別の滞在のことがある）。毎回この予約の滞在トークンを引く（発行済みなら同じものが返る）
-	const t = await ensureStayCookie(event.cookies, r.token);
-	return t.ok ? t.token : null;
+	// RPC で事前チェックインの回答・有効期限と、当日9時を過ぎたかを検証する。
+	return bathAccessForPrecheckin(r.token);
 }
 
 export const actions: Actions = {
 	reserve: async (event) => {
-		const token = await stayTokenFor(event);
+		const token = await bathAccessFor(event);
 		if (!token) return fail(400, { error: 'not_open' as const });
 		const fd = await event.request.formData();
 		const bathId = String(fd.get('bathId') ?? '').trim() || null;
@@ -80,7 +81,7 @@ export const actions: Actions = {
 	},
 
 	cancel: async (event) => {
-		const token = await stayTokenFor(event);
+		const token = await bathAccessFor(event);
 		if (!token) return fail(400, { error: 'not_open' as const });
 		const slotId = String((await event.request.formData()).get('slotId') ?? '').trim();
 		if (!slotId) return fail(400, { error: 'other' as const });

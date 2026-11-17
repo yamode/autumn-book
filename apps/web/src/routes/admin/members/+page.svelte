@@ -16,6 +16,8 @@
 	description={data.live ? 'アプリ・Web 共通の会員（book.members）です。' : 'デモデータを表示しています（本番接続時は実会員が表示されます）。'}
 />
 
+<a href="/admin/member-benefits" class="mb-5 inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 text-sm font-medium text-brand-900 hover:border-stone-500">会員特典の比較表・印刷</a>
+
 <!-- 入会ボーナス（検討中のため、先に設定できるようにしておく） -->
 <section class="mb-5 max-w-3xl rounded-xl border border-stone-200 bg-white p-4 text-sm">
 	<div class="mb-1 flex items-center justify-between">

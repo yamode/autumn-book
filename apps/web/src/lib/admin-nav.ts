@@ -103,6 +103,7 @@ export const ADMIN_NAV: NavGroup[] = [
 				icon: 'member',
 				children: [
 					{ href: '/admin/members', label: '会員', tenantWide: true },
+					{ href: '/admin/member-benefits', label: '会員特典', tenantWide: true },
 					{ href: '/admin/member-preview', label: '会員ランクのプレビュー' },
 					{ href: '/admin/app', label: 'アプリ運用', tenantWide: true },
 					{ href: '/admin/push', label: 'アプリ通知', tenantWide: true },
