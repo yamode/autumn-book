@@ -79,9 +79,9 @@
 {/if}
 
 {#await data.extras then extras}
-	{#if extras.expiring > 0}
+	{#if extras.nextExpiry}
 		<p class="my-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
-			{m.account_expiring_points({ points: extras.expiring.toLocaleString() })} <a href="/search" class="underline">{m.account_expiring_search()}</a>
+			{m.points_expiring({ date: formatDateLong(extras.nextExpiry.date), points: extras.nextExpiry.points.toLocaleString() })} <a href="/search" class="underline">{m.account_expiring_search()}</a>
 		</p>
 	{/if}
 

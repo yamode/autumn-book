@@ -41,13 +41,7 @@
 						<span class="text-stone-500">pt</span>
 					</span>
 				</label>
-				<label class="block">
-					<span class="text-xs text-stone-500">有効期限（付与日から）</span>
-					<span class="mt-1 flex items-center gap-1">
-						<input type="number" name="days" min="1" max="3650" value={data.program.welcomeBonusValidDays} class="w-24 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
-						<span class="text-stone-500">日</span>
-					</span>
-				</label>
+				<p class="pb-2 text-sm text-stone-500">有効期限は付与日から2年間です。</p>
 				<button class="min-h-9 rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
 			</fieldset>
 		</form>

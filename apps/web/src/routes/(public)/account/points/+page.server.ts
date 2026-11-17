@@ -1,6 +1,6 @@
-import { pointLedger, memberRanks, expiringPoints, facilities, myReservations } from '$lib/server/store';
+import { pointLedger, memberRanks, nextPointExpiry, facilities, myReservations } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbPointLedger, sumExpiringPoints } from '$lib/server/supabase-data';
+import { sbPointLedger, sbNextPointExpiry } from '$lib/server/supabase-data';
 import { addDays, todayStr } from '$lib/format';
 import { nightsBetween } from '@autumn-book/core';
 import type { RankCode } from '$lib/plan-access';
@@ -18,14 +18,15 @@ export const load: PageServerLoad = async (event) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [ledger, rankResult] = await Promise.all([
+		const [ledger, rankResult, nextExpiry] = await Promise.all([
 			sbPointLedger(client),
-			client.rpc('my_rank_progress')
+			client.rpc('my_rank_progress'),
+			sbNextPointExpiry(client).catch(() => null)
 		]);
 		return {
 			ledger,
 			ranks: memberRanks,
-			expiring: sumExpiringPoints(ledger),
+			nextExpiry,
 			rankProgress: rankResult.error || !Array.isArray(rankResult.data?.by_facility) ||
 				typeof rankResult.data?.nights !== 'number' || !rankResult.data.by_facility.every((facility: { nights?: number }) => typeof facility.nights === 'number')
 				? null : rankResult.data as RankProgress
@@ -61,7 +62,7 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		ledger: pointLedger.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 		ranks: memberRanks,
-		expiring: expiringPoints(memberId),
+		nextExpiry: nextPointExpiry(memberId),
 		rankProgress
 	};
 };

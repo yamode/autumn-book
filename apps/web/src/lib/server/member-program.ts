@@ -21,7 +21,6 @@ export async function welcomeBonusPoints(): Promise<number> {
 
 export type MemberProgram = {
   welcomeBonusPoints: number;
-  welcomeBonusValidDays: number;
   updatedAt: string | null;
   grantedTotal: number;
   granted30d: number;
@@ -36,21 +35,20 @@ export async function sbAdminMemberProgram(client: SupabaseClient): Promise<Memb
   const d = (data ?? {}) as Record<string, unknown>;
   return {
     welcomeBonusPoints: Number(d.welcome_bonus_points ?? DEFAULT_WELCOME_BONUS),
-    welcomeBonusValidDays: Number(d.welcome_bonus_valid_days ?? 365),
     updatedAt: (d.updated_at as string | null) ?? null,
     grantedTotal: Number(d.granted_total ?? 0),
     granted30d: Number(d.granted_30d ?? 0)
   };
 }
 
-export async function sbSaveMemberProgram(client: SupabaseClient, points: number, validDays: number): Promise<void> {
+export async function sbSaveMemberProgram(client: SupabaseClient, points: number): Promise<void> {
   const { error } = await client.schema('book').rpc('admin_save_member_program', {
     p_welcome_bonus_points: points,
-    p_welcome_bonus_valid_days: validDays
+    p_welcome_bonus_valid_days: 730
   });
   if (error) {
     if (error.message.includes('forbidden')) throw new Error('入会ボーナスの設定は管理者だけが変更できます。');
-    if (error.message.includes('invalid_params')) throw new Error('ポイントは 0〜100,000、有効期限は 1〜3,650 日で入れてください。');
+    if (error.message.includes('invalid_params')) throw new Error('ポイントは 0〜100,000 で入れてください。');
     throw new Error(`入会ボーナスの設定を保存できませんでした（${error.message}）`);
   }
 }

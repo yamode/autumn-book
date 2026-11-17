@@ -92,7 +92,7 @@ import {
 } from '$lib/multi-room';
 import { paymentMethodsOf } from '$lib/member-payment';
 import { ONSITE_METHODS, PLAN_PAY_OPTIONS, normalizeOptions, paymentMethodsOfOptions } from '$lib/direct-payment';
-import { addDays, todayStr } from '$lib/format';
+import { todayStr } from '$lib/format';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -1620,17 +1620,15 @@ export async function sbPointLedger(client: SupabaseClient): Promise<MemberPoint
 		reason: r.reason,
 		bookingId: r.booking_id ?? undefined,
 		expiresAt: r.expires_at ?? undefined,
-		createdAt: (r.created_at ?? '').slice(0, 10)
+		createdAt: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date(r.created_at))
 	}));
 }
 
-/** 有効期限が withinDays 日以内に迫っている加算ポイントの合計（デモ store.expiringPoints 相当）。 */
-export function sumExpiringPoints(ledger: MemberPointEntry[], withinDays = 30): number {
-	const today = todayStr();
-	const limit = addDays(today, withinDays);
-	return ledger
-		.filter((e) => e.delta > 0 && e.expiresAt && e.expiresAt >= today && e.expiresAt <= limit)
-		.reduce((s, e) => s + e.delta, 0);
+export async function sbNextPointExpiry(client: SupabaseClient) {
+	const { data, error } = await client.schema('book').rpc('my_point_expiry').single();
+	if (error) throw error;
+	const row = data as { next_expiry: string | null; next_points: number };
+	return row.next_expiry && row.next_points > 0 ? { date: row.next_expiry, points: row.next_points } : null;
 }
 
 // ---- 予約（book.my_reservations / book.cancel_booking）----

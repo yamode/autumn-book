@@ -516,8 +516,8 @@ export const members: Member[] = [
 ];
 
 export const pointLedger: PointEntry[] = [
-	{ id: 'pt1', memberId: 'm-demo', delta: 600, reason: '宿泊ポイント（YB-2026-000098）', bookingCode: 'YB-2026-000098', expiresAt: addDays(today(), 20), createdAt: '2026-02-12' },
-	{ id: 'pt2', memberId: 'm-demo', delta: 840, reason: '宿泊ポイント（YB-2026-000104）', bookingCode: 'YB-2026-000104', expiresAt: addDays(today(), 300), createdAt: '2026-04-03' },
+	{ id: 'pt1', memberId: 'm-demo', delta: 600, reason: '宿泊ポイント（YB-2026-000098）', bookingCode: 'YB-2026-000098', expiresAt: pointExpiry('2026-02-12'), createdAt: '2026-02-12' },
+	{ id: 'pt2', memberId: 'm-demo', delta: 840, reason: '宿泊ポイント（YB-2026-000104）', bookingCode: 'YB-2026-000104', expiresAt: pointExpiry('2026-04-03'), createdAt: '2026-04-03' },
 	{ id: 'pt3', memberId: 'm-demo', delta: -200, reason: 'ご予約での利用', createdAt: '2026-04-20' }
 ];
 
@@ -841,7 +841,7 @@ export function confirmBooking(
 	bookings.set(code, booking);
 	if (member) {
 		if (usable > 0) pointLedger.push({ id: nextId('pt'), memberId: member.id, delta: -usable, reason: `ご予約での利用（${code}）`, bookingCode: code, createdAt: today() });
-		if (booking.pointsEarned > 0) pointLedger.push({ id: nextId('pt'), memberId: member.id, delta: booking.pointsEarned, reason: `宿泊ポイント（${code}）`, bookingCode: code, expiresAt: addDays(booking.checkin, 365), createdAt: today() });
+		if (booking.pointsEarned > 0) pointLedger.push({ id: nextId('pt'), memberId: member.id, delta: booking.pointsEarned, reason: `宿泊ポイント（${code}）`, bookingCode: code, expiresAt: pointExpiry(today()), createdAt: today() });
 	}
 	return booking;
 }
@@ -1468,15 +1468,71 @@ export function listBookingOptionsAdmin(
 
 // ---------------------------------------------------------------- 会員・ポイント
 
-export function pointBalance(memberId: string): number {
-	return pointLedger.filter((p) => p.memberId === memberId).reduce((s, p) => s + p.delta, 0);
+function pointExpiry(date: string): string {
+	const [year, month, day] = date.split('-').map(Number);
+	const targetYear = year + 2;
+	const lastDay = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+	return new Date(Date.UTC(targetYear, month - 1, Math.min(day, lastDay))).toISOString().slice(0, 10);
 }
 
-export function expiringPoints(memberId: string, withinDays = 30): number {
-	const limit = addDays(today(), withinDays);
-	return pointLedger
-		.filter((p) => p.memberId === memberId && p.delta > 0 && p.expiresAt && p.expiresAt <= limit)
-		.reduce((s, p) => s + p.delta, 0);
+function demoPointWallet(memberId: string) {
+	const lots: { entry: PointEntry; date: string; points: number; reversible: number }[] = [];
+	const spends: { bookingCode: string; lot: (typeof lots)[number]; points: number }[] = [];
+	let debt = 0;
+	for (const entry of pointLedger.filter((e) => e.memberId === memberId)) {
+		let amount = Math.abs(entry.delta);
+		if (entry.delta > 0 && entry.bookingCode && entry.reason.includes('に伴う返還')) {
+			for (const spend of spends.toReversed()) {
+				if (spend.bookingCode !== entry.bookingCode || !amount) continue;
+				const restored = Math.min(spend.points, amount);
+				spend.lot.points += restored;
+				spend.points -= restored;
+				amount -= restored;
+			}
+		} else if (entry.delta > 0) {
+			lots.push({ entry, date: entry.expiresAt ?? pointExpiry(entry.createdAt), points: amount, reversible: amount });
+			lots.sort((a, b) => a.date.localeCompare(b.date));
+		} else if (entry.bookingCode && entry.reason.includes('付与取消')) {
+			for (const lot of lots) {
+				if (lot.entry.bookingCode !== entry.bookingCode || !lot.entry.reason.startsWith('宿泊ポイント')) continue;
+				const reversed = Math.min(lot.reversible, amount);
+				lot.points -= reversed;
+				lot.reversible -= reversed;
+				amount -= reversed;
+			}
+			debt += amount;
+		} else {
+			for (const lot of lots) {
+				if (lot.points <= 0 || lot.date < entry.createdAt || !amount) continue;
+				const used = Math.min(lot.points, amount);
+				lot.points -= used;
+				amount -= used;
+				if (entry.bookingCode) spends.push({ bookingCode: entry.bookingCode, lot, points: used });
+			}
+			debt += amount;
+		}
+	}
+	debt -= lots.reduce((sum, lot) => sum + Math.min(0, lot.points), 0);
+	const day = today();
+	const valid = lots.filter((lot) => lot.date >= day && lot.points > 0);
+	let balance = Math.max(0, valid.reduce((sum, lot) => sum + lot.points, 0) - debt);
+	const remaining = new Map<string, number>();
+	for (const lot of valid) {
+		if (balance === 0) break;
+		const available = Math.min(balance, lot.points);
+		balance -= available;
+		remaining.set(lot.date, (remaining.get(lot.date) ?? 0) + available);
+	}
+	return remaining;
+}
+
+export function pointBalance(memberId: string): number {
+	return [...demoPointWallet(memberId).values()].reduce((sum, points) => sum + points, 0);
+}
+
+export function nextPointExpiry(memberId: string) {
+	const next = demoPointWallet(memberId).entries().next().value;
+	return next ? { date: next[0], points: next[1] } : null;
 }
 
 export function myReservations(memberId: string): Booking[] {
@@ -1497,12 +1553,12 @@ export function registerMember(input: { email: string; password: string; familyN
 		...input
 	};
 	members.push(m);
-	pointLedger.push({ id: nextId('pt'), memberId: m.id, delta: 500, reason: '入会ボーナス', expiresAt: addDays(today(), 365), createdAt: today() });
+	pointLedger.push({ id: nextId('pt'), memberId: m.id, delta: 500, reason: '入会ボーナス', expiresAt: pointExpiry(today()), createdAt: today() });
 	return m;
 }
 
 export function adjustPoints(memberId: string, delta: number, reason: string, actor: string) {
-	pointLedger.push({ id: nextId('pt'), memberId, delta, reason: `【手動調整】${reason}`, createdAt: today() });
+	pointLedger.push({ id: nextId('pt'), memberId, delta, reason: `【手動調整】${reason}`, createdAt: today(), expiresAt: delta > 0 ? pointExpiry(today()) : undefined });
 	auditLogs.unshift({ id: nextId('al'), at: new Date().toISOString(), actor, action: 'adjust_points', detail: `${memberId} ${delta > 0 ? '+' : ''}${delta} ${reason}` });
 }
 
@@ -1552,7 +1608,7 @@ export function seedPreviewMember(sessionId: string, rank: Member['rank'], expir
 		guest: { ...sample.guest, email: member.email },
 		cancellationPolicy: demoCancellationFallback(rank)
 	});
-	pointLedger.push({ id: `${id}-points`, memberId: id, delta: 1500, reason: '検証用ポイント', createdAt: today(), expiresAt: addDays(today(), 20) });
+	pointLedger.push({ id: `${id}-points`, memberId: id, delta: 1500, reason: '検証用ポイント', createdAt: today(), expiresAt: pointExpiry(today()) });
 	return member;
 }
 

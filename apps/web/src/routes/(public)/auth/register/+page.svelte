@@ -14,7 +14,7 @@
 
 <div class="mx-auto max-w-md px-4 py-12">
 	<h1 class="font-display mb-2 text-center text-2xl text-brand-900">{m.register_heading()}</h1>
-	<p class="mb-6 text-center text-sm text-stone-500">{data.welcomeBonus > 0 ? m.register_sub({ points: data.welcomeBonus.toLocaleString() }) : m.register_sub_nobonus()}</p>
+	<p class="mb-6 text-center text-sm text-stone-500">{m.register_sub_nobonus()}{#if data.welcomeBonus > 0}<br />{m.register_sub({ points: data.welcomeBonus.toLocaleString() })}{/if}</p>
 
 	{#if form?.message}
 		<p class="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>

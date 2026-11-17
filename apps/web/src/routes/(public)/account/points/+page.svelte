@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatDateLong } from '$lib/format';
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { RANK_CODES } from '$lib/plan-access';
 	import { rankCondition, rankTargets } from '$lib/member-rank';
@@ -18,10 +19,11 @@
 	<div class="rounded-2xl border border-stone-200 bg-white p-6">
 		<p class="text-sm text-stone-500">{m.points_balance_label()}</p>
 		<p class="mt-1 text-4xl font-bold text-brand-900">{data.balance.toLocaleString()} <span class="text-lg font-normal">{m.common_point_unit()}</span></p>
-		{#if data.expiring > 0}
-			<p class="mt-3 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-800">{m.points_expiring({ points: String(data.expiring) })}</p>
+		{#if data.nextExpiry}
+			<p class="mt-3 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-800">{m.points_expiring({ date: formatDateLong(data.nextExpiry.date), points: data.nextExpiry.points.toLocaleString() })}</p>
 		{/if}
 		<p class="mt-3 text-sm text-stone-400">{m.points_rate_note()}</p>
+		<p class="mt-1 text-sm text-stone-500">{m.points_validity()}</p>
 	</div>
 
 	<div id="member-rank" class="scroll-mt-24 rounded-2xl border border-stone-200 bg-white p-6">

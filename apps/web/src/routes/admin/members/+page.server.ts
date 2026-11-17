@@ -93,7 +93,7 @@ export const load: PageServerLoad = async (event) => {
 	const canEditProgram = event.locals.user?.role === 'admin';
 	if (!ADMIN_SUPABASE) {
 		const list = await loadList(event);
-		const demo: MemberProgram = { welcomeBonusPoints: DEFAULT_WELCOME_BONUS, welcomeBonusValidDays: 365, updatedAt: null, grantedTotal: 0, granted30d: 0 };
+		const demo: MemberProgram = { welcomeBonusPoints: DEFAULT_WELCOME_BONUS, updatedAt: null, grantedTotal: 0, granted30d: 0 };
 		return { ...list, program: demo, programError: null as string | null, canEditProgram };
 	}
 	// 会員一覧と入会ボーナスの設定は互いに依存しないので同時に投げる（2026-10-18 高速化）
@@ -113,11 +113,9 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { programError: 'この環境では保存できません（管理画面が実データに繋がっていません）。' });
 		const fd = await event.request.formData();
 		const points = Math.round(Number(fd.get('points')));
-		const days = Math.round(Number(fd.get('days')));
 		if (!Number.isFinite(points) || points < 0 || points > 100000) return fail(400, { programError: 'ポイントは 0〜100,000 で入れてください（0 で入会ボーナスなし）。' });
-		if (!Number.isFinite(days) || days < 1 || days > 3650) return fail(400, { programError: '有効期限は 1〜3,650 日で入れてください。' });
 		try {
-			await sbSaveMemberProgram(createSupabaseServerClient(event), points, days);
+			await sbSaveMemberProgram(createSupabaseServerClient(event), points);
 			return { programSaved: true };
 		} catch (e) {
 			return fail(400, { programError: e instanceof Error ? e.message : String(e) });

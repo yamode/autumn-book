@@ -1,6 +1,6 @@
-import { myReservations, facilityById, roomTypeById, expiringPoints } from '$lib/server/store';
+import { myReservations, facilityById, roomTypeById, nextPointExpiry } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbMyReservations, sbPointLedger, sumExpiringPoints, reverseFacilityUuid } from '$lib/server/supabase-data';
+import { sbMyReservations, sbNextPointExpiry, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
 import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
 import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
@@ -13,9 +13,9 @@ const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
 		const extras = Promise.all([
-			sbPointLedger(client).then(sumExpiringPoints).catch(() => 0),
+			sbNextPointExpiry(client).catch(() => null),
 			locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([])
-		]).then(([expiring, memberPages]) => ({ expiring, memberPages }));
+		]).then(([nextExpiry, memberPages]) => ({ nextExpiry, memberPages }));
 		const reservations = await sbMyReservations(client);
 		const list = reservations.map((r) => {
 			// 施設マスタ（名称・写真・スラッグ）は store 側が正。実 UUID から逆引きする。
@@ -62,7 +62,7 @@ const loadReservations = async (event: Parameters<PageServerLoad>[0]) => {
 		upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 		past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
 		extras: {
-			expiring: expiringPoints(locals.user!.id),
+			nextExpiry: nextPointExpiry(locals.user!.id),
 			memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
 		}
 	};
