@@ -54,13 +54,16 @@ export function transitionTitle(route: string): string {
 	return '';
 }
 
-export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'auth' |
-	'membership' | 'admin-dashboard' | 'admin-list' | 'admin-detail';
+export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
+	'account-list' | 'auth' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail';
 
 export function loadingShape(route: string): LoadingShape {
 	if (route === '/admin') return 'admin-dashboard';
 	if (/^\/admin\/(login|mfa)(\/|$)/.test(route)) return 'auth';
+	if (route === '/admin/plans') return 'admin-cards';
 	if (/^\/admin\/(reservations|members|payments|precheckin|partners|upgrades|inquiries|group-inquiries|coupons|news|users|rooms|plans|otayori|community)(?:\/(reports|deletions|charges|invoices))?$/.test(route)) return 'admin-list';
+	// 右に要約欄がある 2 列の詳細。それ以外の設定・編集はほぼ 1 列
+	if (/^\/admin\/(reservations\/\[code\]|members\/\[id\]|group-inquiries\/\[id\])$/.test(route)) return 'admin-split';
 	if (under(route, '/admin')) return 'admin-detail';
 	const path = route.replace('/(public)', '');
 	if (path === '/search') return 'search';
@@ -70,6 +73,8 @@ export function loadingShape(route: string): LoadingShape {
 	if (under(path, '/booking/hold')) return 'hold';
 	if (under(path, '/booking')) return 'booking';
 	if (under(path, '/membership')) return 'membership';
-	if (under(path, '/account')) return 'account';
+	if (path === '/account' || path === '/account/reservations') return 'account';
+	if (path === '/account/profile') return 'account-profile';
+	if (under(path, '/account')) return 'account-list';
 	return 'plain';
 }
