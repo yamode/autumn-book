@@ -40,7 +40,7 @@
 		</div>
 	{:else if data.authMode === 'supabase' && step === 'profile'}
 		<!-- step3: プロフィール入力（メールは認証済み） -->
-		<form method="POST" action="?/register{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+		<form method="POST" action="?/register{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6 max-[359px]:px-4">
 			<p class="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{email}（認証済み）</p>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
@@ -70,9 +70,10 @@
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
-			<label class="flex cursor-pointer items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm">
+			<label class="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded-lg bg-amber-50 px-2 py-2.5 text-sm max-[359px]:-mx-3 max-[359px]:px-1 sm:px-3">
 				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />
-				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}<span class="block text-xs font-normal text-amber-900">{m.register_mail_opt_in_sub()}</span></span>
+				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}</span>
+				<span class="col-span-2 text-xs text-amber-900 max-[359px]:text-[12px]">{m.register_mail_opt_in_sub()}</span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
 			<p class="text-center text-xs text-stone-400">{m.register_privacy_note()} <a href="/legal/privacy" class="underline">{m.register_privacy_link()}</a>{m.register_privacy_agree()}</p>
@@ -90,7 +91,7 @@
 		</form>
 	{:else}
 		<!-- demo: email + パスワード + プロフィールを一括登録 -->
-		<form method="POST" action="?/register" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+		<form method="POST" action="?/register" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6 max-[359px]:px-4">
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.register_email()} <span class="text-red-500">*</span></span>
 				<input type="email" name="email" value={form?.values?.email ?? data.prefill.email} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.email ? 'border-red-400' : 'border-stone-300'}" />
@@ -129,9 +130,10 @@
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input name="phone" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="090-0000-0000" />
 			</label>
-			<label class="flex cursor-pointer items-start gap-2 rounded-lg bg-amber-50 px-3 py-2.5 text-sm">
+			<label class="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded-lg bg-amber-50 px-2 py-2.5 text-sm max-[359px]:-mx-3 max-[359px]:px-1 sm:px-3">
 				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />
-				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}<span class="block text-xs font-normal text-amber-900">{m.register_mail_opt_in_sub()}</span></span>
+				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}</span>
+				<span class="col-span-2 text-xs text-amber-900 max-[359px]:text-[12px]">{m.register_mail_opt_in_sub()}</span>
 			</label>
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.register_submit()}</button>
 			<p class="text-center text-xs text-stone-400">{m.register_privacy_note()} <a href="/legal/privacy" class="underline">{m.register_privacy_link()}</a>{m.register_privacy_agree()}</p>
