@@ -38,7 +38,7 @@ export function transitionTitle(route: string): string {
 	if (under(path, '/auth/login')) return m.common_login();
 	if (under(path, '/auth/register')) return m.common_register();
 	if (under(path, '/booking/lookup')) return m.footer_lookup();
-	if (under(path, '/booking/hold')) return m.hold_form_heading();
+	if (under(path, '/booking/hold')) return m.hold_heading_input();
 	if (under(path, '/account/points')) return m.account_nav_points();
 	if (under(path, '/account/coupons')) return m.account_nav_coupons();
 	if (under(path, '/account/community')) return m.account_nav_community();
@@ -54,7 +54,7 @@ export function transitionTitle(route: string): string {
 	return '';
 }
 
-export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'booking' | 'account' | 'auth' |
+export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'auth' |
 	'membership' | 'admin-dashboard' | 'admin-list' | 'admin-detail';
 
 export function loadingShape(route: string): LoadingShape {
@@ -67,6 +67,7 @@ export function loadingShape(route: string): LoadingShape {
 	if (/^\/\[brand\]\/\[facility\]\/plans$/.test(path)) return 'plans';
 	if (/^\/\[brand\]\/\[facility\]\/rooms$/.test(path)) return 'rooms';
 	if (under(path, '/auth') || path === '/booking/lookup') return 'auth';
+	if (under(path, '/booking/hold')) return 'hold';
 	if (under(path, '/booking')) return 'booking';
 	if (under(path, '/membership')) return 'membership';
 	if (under(path, '/account')) return 'account';

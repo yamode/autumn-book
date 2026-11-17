@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { afterNavigate, invalidate, onNavigate } from '$app/navigation';
+	import { afterNavigate, invalidate } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { pendingPage } from '$lib/page-transition';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
@@ -88,24 +88,11 @@
 			: m.header_search_prompt()
 	);
 
-	let main = $state<HTMLElement>();
-	let contentFade: Animation | undefined;
 	$effect(() => {
 		if (pending) {
 			mobileSearchOpen = false;
 			mobileMenuOpen = false;
 		}
-	});
-
-	onNavigate(({ from, to, type }) => {
-		if (!from || !to?.route.id?.startsWith('/(public)') || type === 'form') return;
-		if (deLocalizeUrl(from.url).pathname === deLocalizeUrl(to.url).pathname) return;
-		contentFade?.cancel();
-		return () => {
-			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-			const content = main?.querySelector<HTMLElement>('[data-account-content]') ?? main;
-			contentFade = content?.animate?.([{ opacity: 0.85 }, { opacity: 1 }], { duration: 160, easing: 'ease-out' });
-		};
 	});
 
 	afterNavigate(() => {
@@ -249,7 +236,7 @@
 		</div>
 	</header>
 
-	<main bind:this={main} class="flex-1">
+	<main class="flex-1">
 		<PageLoadingBoundary shell="public" padding="px-4 pt-7 pb-10 sm:px-6 sm:pt-10">{@render children()}</PageLoadingBoundary>
 	</main>
 
