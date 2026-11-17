@@ -15,6 +15,15 @@ import type { Actions, PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
 
+const slotIdPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+
+function returnToBath(booking: string | null, changed = false) {
+	const query = new URLSearchParams();
+	if (booking) query.set('booking', booking);
+	if (changed) query.set('changed', '1');
+	return query.size ? `/r/bath?${query}` : '/r/bath';
+}
+
 function bathAccess(event: RequestEvent) {
 	const booking = event.url.searchParams.get('booking');
 	if (booking === null) return { booking, token: event.cookies.get(STAY_COOKIE), client: undefined };
@@ -32,7 +41,11 @@ export const load: PageServerLoad = async (event) => {
 	if (DATA_SOURCE !== 'supabase') redirect(303, '/r');
 	if (!token) redirect(303, '/r/bath/code');
 
-	const ctx = await sbBathContext(token, client);
+	const requestedChange = event.url.searchParams.get('change');
+	const changeCtx = requestedChange && slotIdPattern.test(requestedChange)
+		? await sbBathContext(token, client, requestedChange)
+		: null;
+	const ctx = changeCtx ?? await sbBathContext(token, client);
 	if (!ctx && booking) error(404, m.error_booking_not_found());
 	// 失効・チェックアウト後は /r 側の「ご滞在は終了しました」に任せる（案内を1か所に寄せる）。
 	if (!ctx) redirect(303, '/r');
@@ -47,6 +60,10 @@ export const load: PageServerLoad = async (event) => {
 	const headerTitle = content.fields.title || m.bath_title();
 
 	return { ctx, content, pmsEnabled: bathPmsEnabled(), headerTitle, booking,
+		changeId: changeCtx ? requestedChange : null,
+		changeUnavailable: requestedChange !== null && !changeCtx,
+		changeDone: event.url.searchParams.get('changed') === '1',
+		bathHref: returnToBath(booking),
 		headerBack: booking ? `/account/reservations/${encodeURIComponent(booking)}` : '/r' };
 };
 
@@ -64,17 +81,19 @@ export const actions: Actions = {
 			return fail(400, { error: 'choose' as const });
 		}
 
-		const r = await sbBathReserve(token, bathId, [{ date, from }], client);
-		if (!r.ok) {
-   // The reservation RPC is authoritative. Refresh only AFTER its transaction
-   // has rejected the booking; a preflight availability check cannot prevent races.
-   if (r.code === 'slot_taken' || r.code === 'per_room_limit' || r.code === 'past_cutoff' || r.code === 'slot_unavailable') {
-    const refreshedCtx = await sbBathContext(token, client);
-    return fail(409, { error:r.code, refreshedCtx, availabilityRefreshFailed:!refreshedCtx?.ok,
-     attempted:{date,from,bathId},retryAt:Date.now() });
-   }
-   return fail(400, {error:r.code});
-  }
+		const changeId = event.url.searchParams.get('change');
+		if (changeId && !slotIdPattern.test(changeId)) return fail(400, { error: 'change_unavailable' as const });
+		const result = await sbBathReserve(token, bathId, [{ date, from }], client, changeId);
+		if (!result.ok) {
+			// The transaction is authoritative. Refresh the slots after it rejects the request.
+			if (result.code !== 'other') {
+				const refreshedCtx = await sbBathContext(token, client, changeId);
+				return fail(409, { error: result.code, refreshedCtx, availabilityRefreshFailed: !refreshedCtx?.ok,
+					attempted: { date, from, bathId } });
+			}
+			return fail(400, { error: result.code });
+		}
+		if (changeId) redirect(303, returnToBath(booking, true));
 		if (booking) return { done: 'reserved' as const };
 		const query = new URLSearchParams({ date, from, bath: bathId ?? '' });
 		redirect(303, `/r/bath/complete?${query}`);
@@ -87,9 +106,10 @@ export const actions: Actions = {
 
 		const fd = await event.request.formData();
 		const slotId = String(fd.get('slotId') ?? '').trim();
-		const intent = fd.get('intent') === 'change' ? 'change' : 'cancel';
+		// An old page may still send the previous cancel-first change action.
+		if (fd.get('intent') === 'change') return fail(409, { error: 'change_unavailable' as const });
 		if (!slotId) return fail(400, { error: 'other' as const });
 		if (!(await sbBathCancel(token, slotId, client))) return fail(400, { error: 'other' as const });
-		return { done: intent === 'change' ? 'change_started' as const : 'canceled' as const };
+		return { done: 'canceled' as const };
 	}
 };

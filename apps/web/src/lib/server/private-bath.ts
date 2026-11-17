@@ -91,8 +91,11 @@ export type BathContext = {
 };
 
 /** 公開画面が1回で必要な情報を全部取る。無効なトークンは null。 */
-export async function sbBathContext(token: string, client?: SupabaseClient): Promise<BathContext | null> {
-	const { data, error } = await (client ? client.schema('book') : supa()).rpc('private_bath_context', { p_token: token });
+export async function sbBathContext(token: string, client?: SupabaseClient, changeId?: string | null): Promise<BathContext | null> {
+	const db = client ? client.schema('book') : supa();
+	const { data, error } = changeId
+		? await db.rpc('private_bath_change_context', { p_token: token, p_slot_id: changeId })
+		: await db.rpc('private_bath_context', { p_token: token });
 	if (error) return null; // invalid_token など
 	return data as BathContext;
 }
@@ -103,21 +106,24 @@ export async function sbBathContext(token: string, client?: SupabaseClient): Pro
  */
 export type BathReserveResult =
 	| { ok: true; made: number; price_yen: number }
-	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'slot_unavailable' | 'other' };
+	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'slot_unavailable' | 'change_unavailable' | 'other' };
 
 export async function sbBathReserve(
 	token: string,
 	bathId: string | null,
 	slots: Array<{ date: string; from: string }>,
-	client?: SupabaseClient
+	client?: SupabaseClient,
+	changeId?: string | null
 ): Promise<BathReserveResult> {
-	const { data, error } = await (client ? client.schema('book') : supa()).rpc('reserve_private_bath', {
-		p_token: token,
-		p_bath: bathId,
-		p_slots: slots
-	});
+	const db = client ? client.schema('book') : supa();
+	const { data, error } = changeId
+		? await db.rpc('change_private_bath', {
+			p_token: token, p_slot_id: changeId, p_bath: bathId, p_date: slots[0].date, p_from: slots[0].from
+		})
+		: await db.rpc('reserve_private_bath', { p_token: token, p_bath: bathId, p_slots: slots });
 	if (error) {
 		const head = String(error.message ?? '').split(':')[0].trim();
+		if (changeId && ['not_found', 'not_cancelable', 'past_cancel_deadline'].includes(head)) return { ok: false, code: 'change_unavailable' };
 		if (head === 'slot_not_available') return { ok: false, code: 'slot_unavailable' };
 		if (head === 'slot_taken') return { ok: false, code: 'slot_taken' };
 		if (head === 'per_room_limit') return { ok: false, code: 'per_room_limit' };

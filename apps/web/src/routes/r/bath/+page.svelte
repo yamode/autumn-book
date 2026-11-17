@@ -9,7 +9,7 @@
 	// ただし入力欄が無いと「部屋も名前も入れずに大丈夫？」と不安になるので、STEP1 の先頭に
 	// お名前・お部屋を表示専用で出しておく。
 	import { enhance } from '$lib/enhance';
- import {tick} from 'svelte';
+ import {tick, untrack} from 'svelte';
  import type {SubmitFunction} from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -18,6 +18,19 @@
 	let { data, form } = $props();
 	const ctx = $derived(form?.refreshedCtx ?? data.ctx);
 	const bookingOpen = $derived(data.pmsEnabled && ctx.ok && ctx.enabled);
+
+	function changeHref(slotId: string) {
+		const query = new URLSearchParams({ change: slotId });
+		if (data.booking) query.set('booking', data.booking);
+		return `/r/bath?${query}#new-reservation`;
+	}
+
+	const reserveAction = $derived.by(() => {
+		const query = new URLSearchParams();
+		if (data.booking) query.set('booking', data.booking);
+		if (data.changeId) query.set('change', data.changeId);
+		return query.size ? `?/reserve&${query}` : '?/reserve';
+	});
 	// お名前（館内図で選んだ表示。ツアー名は敬称なし）とお部屋（部屋名（部屋番号））。旧トークンは従来の表示（2026-10-28）
 	const guestShown = $derived(bathGuestDisplay(ctx));
 	const guestText = $derived(guestShown ? (guestShown.honorific ? m.bath_guest_honorific({ name: guestShown.name }) : guestShown.name) : '');
@@ -47,6 +60,7 @@
 	const reservationPrice = $derived(m.bath_price_per_booking({ price: (ctx.price_yen ?? 0).toLocaleString('ja-JP') }));
 
 	const errorText = (code: string | undefined): string => {
+		if (code === 'change_unavailable') return m.bath_change_unavailable();
 		if (code === 'not_open') return m.bath_closed();
 		if (code === 'slot_taken') return m.bath_err_taken();
 		if (code === 'per_room_limit') return groupShared ? m.bath_err_limit_group() : m.bath_err_limit();
@@ -65,6 +79,7 @@
 
 	const baths = $derived(ctx.baths ?? []);
 	const mine = $derived(ctx.mine ?? []);
+	const changing = $derived(mine.find((reservation) => reservation.id === data.changeId));
 	// 予約グループで枠を分け合っているとき（PMS で予約グループごとに設定・既定オフ）。
 	// 古い DB では group が来ないので、共有なしとして今までどおり動く。
 	const group = $derived(ctx.group?.shared ? ctx.group : null);
@@ -109,7 +124,12 @@
    if(attempted)date=days.some(d=>d.date===attempted.date)?attempted.date:'';
    void tick().then(()=>document.getElementById('bath-reservation-error')?.focus());
   }
-		if (form?.done === 'canceled' || form?.done === 'change_started' || form?.done === 'reserved') reset();
+		if (form?.done === 'canceled' || form?.done === 'reserved') reset();
+	});
+
+	$effect(() => {
+		if (data.changeId) pickedBath = untrack(() => changing?.bath_id ?? '');
+		reset();
 	});
 
 	function onBathChange(v: string) {
@@ -156,6 +176,7 @@
 				</summary>
 				<div class="px-5 pb-5 text-[13px] leading-6 text-stone-600">
 					<p class="whitespace-pre-line">{c.lead || m.bath_lead()}</p>
+				<p class="mt-2">{m.bath_booking_deadline({ reserve: String(ctx.cutoff_min ?? 10), cancel: String(ctx.cancel_min ?? 10) })}</p>
 					<p class="mt-2">
 						{#if (ctx.price_yen ?? 0) > 0}
 							{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}
@@ -201,12 +222,12 @@
 	{#if mine.length}
 		<section class="rounded-lg bg-white px-5 py-5 shadow-card">
 			<h2 class="text-base font-semibold text-stone-900">{m.bath_mine_title()}</h2>
-			{#if form?.done === 'reserved'}
+			{#if data.changeDone}
+				<p role="status" class="mt-2 text-sm text-emerald-700">{m.bath_change_success()}</p>
+			{:else if form?.done === 'reserved'}
 				<p role="status" class="mt-2 text-sm text-emerald-700">{m.bath_reserved_success()}</p>
 			{:else if form?.done === 'canceled'}
 				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_canceled()}</p>
-			{:else if form?.done === 'change_started'}
-				<p class="mt-2 rounded bg-stone-100 px-3 py-2 text-sm text-stone-700">{m.bath_change_started()}</p>
 			{/if}
 			<ul class="mt-3 space-y-3">
 				{#each mine as r (r.id)}
@@ -219,14 +240,7 @@
 						{#if r.cancelable && data.pmsEnabled}
 							<form method="POST" action={data.booking ? `?/cancel&booking=${encodeURIComponent(data.booking)}` : '?/cancel'} use:enhance class="mt-3 flex gap-2">
 								<input type="hidden" name="slotId" value={r.id} />
-								<button
-									type="submit"
-									name="intent"
-									value="change"
-									class="min-h-10 flex-1 rounded border border-[#48575f] px-3 py-2 text-sm font-medium text-[#48575f]"
-									onclick={(e) => {
-										if (!confirm(m.bath_change_confirm())) e.preventDefault();
-									}}>{m.bath_change()}</button>
+								<a href={changeHref(r.id)} class="flex min-h-10 flex-1 items-center justify-center rounded border border-[#48575f] px-3 py-2 text-sm font-medium text-[#48575f]">{m.bath_change()}</a>
 								<button
 									type="submit"
 									name="intent"
@@ -270,21 +284,33 @@
 		</section>
 	{/if}
 
-	{#if !mine.length && (form?.done === 'canceled' || form?.done === 'change_started')}
+	{#if !mine.length && form?.done === 'canceled'}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">
-			{form.done === 'canceled' ? m.bath_canceled() : m.bath_change_started()}
+			{m.bath_canceled()}
 		</p>
 	{/if}
 
  {#if form?.error || transportError}
   <section id="bath-reservation-error" role="alert" tabindex="-1" class="rounded-lg border border-rose-200 bg-rose-50 px-4 py-4 text-sm leading-6 text-rose-800 focus:outline-none">
    <p>{transportError?m.bath_err_generic():errorText(form?.error)}</p>
-   {#if form?.availabilityRefreshFailed}<p class="mt-2">{m.bath_err_refresh()}</p><a href="/r/bath" data-sveltekit-reload class="mt-3 inline-flex min-h-11 items-center rounded border border-rose-300 bg-white px-4 font-medium">{m.bath_refresh()}</a>
+   {#if form?.availabilityRefreshFailed}<p class="mt-2">{m.bath_err_refresh()}</p><a href={changing ? changeHref(changing.id) : data.bathHref} data-sveltekit-reload class="mt-3 inline-flex min-h-11 items-center rounded border border-rose-300 bg-white px-4 font-medium">{m.bath_refresh()}</a>
    {:else if form?.refreshedCtx}<p class="mt-2">{m.bath_availability_refreshed()}</p>{/if}
   </section>
  {/if}
+	<div id="new-reservation" class="scroll-mt-24">
+		{#if changing}
+			<div class="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-stone-200 bg-white p-4 text-sm">
+				<div>
+					<p class="font-medium">{m.bath_change_current({ date: fmtDate(changing.date), time: changing.from })}</p>
+					<p class="mt-1 text-stone-600">{m.bath_change_started()}</p>
+				</div>
+				<a href={data.bathHref} class="shrink-0 underline">{m.bath_change_back()}</a>
+			</div>
+		{:else if data.changeUnavailable}
+			<p role="alert" class="rounded-lg bg-stone-100 p-4 text-sm">{m.bath_change_unavailable()}</p>
+		{/if}
+	</div>
 	{#if bookingOpen && hasBookableSlot}
-		<div id="new-reservation"></div>
 		<!-- ============ ステップ表示 ============ -->
 		<ol class="flex overflow-hidden rounded-lg text-[11px] shadow-card">
 			{#each STEPS as label, i}
@@ -441,12 +467,12 @@
 					<p class="mt-3 text-xs text-stone-500">{m.bath_price_paid({ price: yen(ctx.price_yen ?? 0) })}</p>
 				{/if}
 
-				<form method="POST" action={data.booking ? `?/reserve&booking=${encodeURIComponent(data.booking)}` : '?/reserve'} use:enhance={reserveSubmit} class="mt-6 text-center">
+				<form method="POST" action={reserveAction} use:enhance={reserveSubmit} class="mt-6 text-center">
 					<input type="hidden" name="bathId" value={bath?.bath_id ?? ''} />
 					<input type="hidden" name="date" value={date} />
 					<input type="hidden" name="from" value={from} />
 					<button type="submit" disabled={submitting} aria-busy={submitting} class="w-full max-w-[220px] rounded bg-[#48575f] py-3 text-[15px] text-white disabled:opacity-50">
-						{m.bath_send()}
+						{changing ? m.bath_change_submit() : m.bath_send()}
 					</button>
 				</form>
 				<div class="mt-3 text-center">
@@ -456,6 +482,8 @@
 				</div>
 			</section>
 		{/if}
+	{:else if changing && !form?.availabilityRefreshFailed}
+		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_no_availability()}</p>
 	{:else if bookingOpen && !form?.availabilityRefreshFailed && groupShared && (mine.length || groupReservations.length)}
 		<p class="rounded-lg bg-stone-100 px-4 py-3 text-sm leading-6 text-stone-600">{m.bath_limit_reached_group()}</p>
 	{:else if bookingOpen && !form?.availabilityRefreshFailed && mine.length}

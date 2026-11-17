@@ -106,6 +106,7 @@
 	{/if}
 
 	{#if bath.state === 'ready' && bc}
+		<p class="mt-2 text-xs text-stone-600">{m.bath_booking_deadline({ reserve: String(bc.cutoff_min ?? 10), cancel: String(bc.cancel_min ?? 10) })}</p>
 		<h3 class="mt-4 text-xs font-semibold text-stone-500">{m.ci_bath_mine()}</h3>
 		{#if mine.length}
 			<ul class="mt-1 divide-y divide-stone-100">
