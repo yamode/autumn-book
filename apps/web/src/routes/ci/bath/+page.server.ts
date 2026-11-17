@@ -5,7 +5,7 @@ import {
 	demoBathCancel,
 	demoBathContext,
 	demoBathReserve,
-	ensureStayCookie,
+	precheckinBathAccess,
 	resolvePrecheckin
 } from '$lib/server/precheckin';
 import { sbBathCancel, sbBathContext, sbBathReserve, type BathContext } from '$lib/server/private-bath';
@@ -14,43 +14,34 @@ import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
 import { ciBathState, type CiBathState } from '$lib/precheckin-p3';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
-// ③ 貸切風呂（任意）。2026-11-14: この画面の中で予約・取消までできるようにした（以前は /r/bath へ案内するだけ）。
-// 予約そのものは客室案内と同じ RPC（private_bath_context / reserve_private_bath / cancel_private_bath）を滞在トークンで呼ぶので、
-// 料金・無料経路・上限・締切・取消期限・グループ共有は /r/bath と同じ結果になる（重複実装しない・docs/pre-checkin.md §6）。
-// 滞在トークンは、回答済みなら book.precheckin_stay_token で受け取り Cookie（ab_stay）に入れる（以後 /r もそのまま開ける）。
-// 滞在トークンの有効開始はチェックイン日 9:00 なので、それより前は「当日 9:00 から」を出す。
-// 見本（DEMO-0001）は DB に触れず、プロセス内の見本の空き枠で予約・取消まで試せる。
+// 回答済みの事前チェックインリンクで貸切風呂のRPCを呼ぶ。客室案内の開始時刻とは独立している。
 type BathView = { state: CiBathState; ctx: BathContext | null };
-
-const bathAccessForPrecheckin = (token: string) => 'precheckin-bath:' + token;
 
 export const load: PageServerLoad = async (event) => {
 	const { ctx } = await event.parent();
 	if (!ctx) return { bath: { state: 'unavailable', ctx: null } as BathView };
 	const answered = Boolean(ctx.answeredAt);
-
-	if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
-		return { bath: { state: answered ? 'ready' : 'not_answered', ctx: answered ? demoBathContext(ctx.checkIn) : null } as BathView };
+	const pcToken = event.cookies.get(PRECHECKIN_COOKIE);
+	let bath: BathContext | null = null;
+	if (answered && ctx.editable) {
+		if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
+			bath = demoBathContext(ctx.checkIn);
+		} else if (DATA_SOURCE === 'supabase' && pcToken && bathPmsEnabled()) {
+			bath = await sbBathContext(precheckinBathAccess(pcToken)).catch(() => null);
+		}
 	}
-
-	const pcToken = event.cookies.get(PRECHECKIN_COOKIE) ?? '';
-	const token = ctx.editable && answered && pcToken ? await ensureStayCookie(event.cookies, pcToken) : null;
-	const pre = ciBathState({ answered, editable: ctx.editable, token, bathOpen: true });
-	if (pre !== 'ready' || !token?.ok || DATA_SOURCE !== 'supabase') return { bath: { state: pre, ctx: null } as BathView };
-
-	const b = await sbBathContext(bathAccessForPrecheckin(pcToken)).catch(() => null);
-	const open = Boolean(b?.ok && b.enabled && bathPmsEnabled());
-	return { bath: { state: open ? 'ready' : 'unavailable', ctx: open ? b : null } as BathView };
+	const state = ciBathState({ answered, editable: ctx.editable, bathOpen: Boolean(bath?.ok && bath.enabled) });
+	return { bath: { state, ctx: state === 'ready' ? bath : null } as BathView };
 };
 
 /** 予約・取消の前に、事前チェックインのトークンを確かめる（見本は 'demo'） */
 async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	const r = await resolvePrecheckin(event);
-	if (!('ctx' in r) || !r.ctx.answeredAt) return null;
+	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
-	// RPC で事前チェックインの回答・有効期限と、当日9時を過ぎたかを検証する。
-	return bathAccessForPrecheckin(r.token);
+	// RPC で事前チェックインの回答・有効期限を検証する。
+	return precheckinBathAccess(r.token);
 }
 
 export const actions: Actions = {

@@ -58,6 +58,7 @@ function dbg(...args: unknown[]) {
 }
 
 export const PRECHECKIN_COOKIE = 'ab_ci';
+export const precheckinBathAccess = (token: string) => 'precheckin-bath:' + token;
 const RATE_PREFIX = 'ci:';
 
 // ---------------------------------------------------------------- 見本（DATA_SOURCE=demo）

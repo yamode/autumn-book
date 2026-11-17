@@ -80,7 +80,7 @@ describe('滞在トークン（precheckin_stay_token）', () => {
 		expect(normalizeStayTokenResult(null)).toEqual({ ok: false, error: 'server' });
 	});
 	it('/ci/go の行き先は貸切風呂か客室案内だけ', () => {
-		expect(ciGoPath(ciGoTarget('bath'))).toBe('/r/bath');
+		expect(ciGoPath(ciGoTarget('bath'))).toBe('/ci/bath');
 		expect(ciGoPath(ciGoTarget('inroom'))).toBe('/r');
 		expect(ciGoPath(ciGoTarget('https://evil.example'))).toBe('/r');
 		expect(ciGoPath(ciGoTarget(null))).toBe('/r');
@@ -88,20 +88,13 @@ describe('滞在トークン（precheckin_stay_token）', () => {
 });
 
 describe('貸切風呂のステップの状態', () => {
-	const ok = { ok: true as const, token: 'a'.repeat(64), validFrom: '2026-11-01T00:00:00Z', validTo: '2026-11-02T02:00:00Z' };
-	const now = new Date('2026-11-01T01:00:00Z'); // 当日 10:00 JST
 	it('期限後は closed、未回答は not_answered', () => {
-		expect(ciBathState({ answered: true, editable: false, token: null, bathOpen: null, now })).toBe('closed');
-		expect(ciBathState({ answered: false, editable: true, token: null, bathOpen: null, now })).toBe('not_answered');
+		expect(ciBathState({ answered: true, editable: false, bathOpen: false })).toBe('closed');
+		expect(ciBathState({ answered: false, editable: true, bathOpen: false })).toBe('not_answered');
 	});
-	it('9:00 より前は not_yet、受付していなければ unavailable、あとは ready', () => {
-		expect(ciBathState({ answered: true, editable: true, token: ok, bathOpen: true, now: new Date('2026-10-31T23:00:00Z') })).toBe('not_yet');
-		expect(ciBathState({ answered: true, editable: true, token: ok, bathOpen: false, now })).toBe('unavailable');
-		expect(ciBathState({ answered: true, editable: true, token: ok, bathOpen: true, now })).toBe('ready');
-	});
-	it('トークンを受け取れない理由をそのまま状態にする', () => {
-		expect(ciBathState({ answered: true, editable: true, token: { ok: false, error: 'closed' }, bathOpen: null, now })).toBe('closed');
-		expect(ciBathState({ answered: true, editable: true, token: { ok: false, error: 'server' }, bathOpen: null, now })).toBe('unavailable');
+	it('回答済みなら施設の受付状態で判定する', () => {
+		expect(ciBathState({ answered: true, editable: true, bathOpen: false })).toBe('unavailable');
+		expect(ciBathState({ answered: true, editable: true, bathOpen: true })).toBe('ready');
 	});
 	it('予約済みの枠は日付・時刻の順で、浴室名を付ける', () => {
 		const rows = ciBathRows(

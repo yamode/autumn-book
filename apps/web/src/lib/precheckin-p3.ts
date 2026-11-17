@@ -81,37 +81,16 @@ export function normalizeStayTokenResult(raw: unknown): StayTokenResult {
 /** /ci/go?to= の行き先。知らない値は客室案内 */
 export type CiGoTarget = 'bath' | 'inroom';
 export const ciGoTarget = (v: string | null | undefined): CiGoTarget => (v === 'bath' ? 'bath' : 'inroom');
-export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/r/bath' : '/r');
+export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/ci/bath' : '/r');
 
 // ---------------------------------------------------------------- 貸切風呂のステップ
 
-/**
- * /ci/bath の状態。
- *   not_answered … ② お食事の時間をまだ送っていない（滞在トークンを出さない）
- *   closed       … 回答を受け付けていない（2026-11-14 に締め切りを廃止したので、今の DB では起きない）
- *   not_yet      … 滞在トークンの有効開始（チェックイン日 9:00）より前（前日以前に手動で送ったとき）
- *   unavailable  … この施設は貸切風呂の受付をしていない／一時的に読めない
- *   ready        … 予約画面へ案内できる（予約済みの枠も出す）
- */
-export type CiBathState = 'not_answered' | 'closed' | 'not_yet' | 'unavailable' | 'ready';
+export type CiBathState = 'not_answered' | 'closed' | 'unavailable' | 'ready';
 
-export function ciBathState(i: {
-	answered: boolean;
-	editable: boolean;
-	token: StayTokenResult | null;
-	now?: Date;
-	bathOpen: boolean | null;
-}): CiBathState {
-	if (!i.editable) return 'closed';
-	if (!i.answered) return 'not_answered';
-	if (!i.token || !i.token.ok) {
-		if (i.token && !i.token.ok && i.token.error === 'closed') return 'closed';
-		if (i.token && !i.token.ok && i.token.error === 'not_answered') return 'not_answered';
-		return 'unavailable';
-	}
-	const from = Date.parse(i.token.validFrom);
-	if (Number.isFinite(from) && (i.now ?? new Date()).getTime() < from) return 'not_yet';
-	return i.bathOpen ? 'ready' : 'unavailable';
+export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean }): CiBathState {
+	if (!input.editable) return 'closed';
+	if (!input.answered) return 'not_answered';
+	return input.bathOpen ? 'ready' : 'unavailable';
 }
 
 export type CiBathRow = { key: string; date: string; from: string; to: string | null; bathName: string };
