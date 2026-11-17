@@ -9,7 +9,8 @@
 </script>
 
 {#snippet heading()}
-	{#if title}<p class="text-xl font-semibold leading-snug text-stone-900 sm:text-2xl">{title}</p>
+	<!-- 見出し要素にして、画面ごとの見出しの書体（公式サイトは明朝）をそのまま受ける。aria-hidden の中なので読み上げには出ない -->
+	{#if title}<h1 class="text-xl font-semibold leading-snug text-stone-900 sm:text-2xl">{title}</h1>
 	{:else}<div class="shimmer h-7 w-44 max-w-full"></div>{/if}
 {/snippet}
 
@@ -71,13 +72,17 @@
 		{:else if shape === 'admin-dashboard'}
 			<div class="space-y-4">
 				{@render heading()}
+				<div class="shimmer h-3.5 w-72 max-w-full"></div>
+				<div class="shimmer h-9 w-36"></div>
 				<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
 					{#each [0, 1, 2, 3] as card (card)}
 						<div class="space-y-3 rounded-xl border border-stone-200 bg-white p-4"><div class="shimmer h-5 w-24 max-w-full"></div><div class="shimmer h-7 w-16"></div></div>
 					{/each}
 				</div>
 				<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px]">
-					{@render table(5, 4)}
+					<div class="hidden sm:block">{@render table(5, 4)}</div>
+					<!-- スマホ: 「対応が必要なこと」の行の一覧 -->
+					<div class="space-y-3 sm:hidden"><div class="shimmer h-4 w-32"></div><div class="rounded-xl border border-stone-200 bg-white p-4">{@render rows(3)}</div></div>
 					{@render table(2, 3)}
 				</div>
 			</div>
@@ -126,25 +131,65 @@
 				{/each}
 			</div>
 		{:else if shape === 'search'}
+			<!-- 空室検索: 見出し（スマホは右に「地図で見る」）→ 条件 → 宿のカード（PC は写真 48% が左・スマホは上）＋右に地図 -->
 			<div class="space-y-3">
-				{@render heading()}
-				<div class="shimmer h-4 w-56 max-w-full"></div>
+				<div class="flex items-center justify-between gap-3">{@render heading()}<div class="shimmer h-9 w-28 lg:hidden" style:border-radius="9999px"></div></div>
+				<div class="space-y-1.5"><div class="shimmer h-4 w-full max-w-xl"></div><div class="shimmer h-4 w-2/3 max-w-sm sm:hidden"></div></div>
 				<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-					<div class="space-y-3"><div class="shimmer h-3 w-20"></div>{@render pictureCards(2)}</div>
+					<div class="space-y-3">
+						<div class="shimmer h-3 w-16"></div>
+						<div class="space-y-5">
+							{#each [0, 1] as i (i)}
+								<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:flex">
+									<div class="shimmer-block aspect-video w-full rounded-none md:w-[48%] md:shrink-0"></div>
+									<div class="flex flex-1 flex-col gap-2 p-4 md:p-5">
+										<div class="shimmer h-3 w-24"></div><div class="shimmer h-6 w-40"></div><div class="shimmer h-3.5 w-full"></div><div class="shimmer h-3.5 w-2/3"></div>
+										<div class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-3 md:mt-auto">
+											<div class="space-y-1.5"><div class="shimmer h-6 w-32"></div><div class="shimmer h-3 w-28"></div></div>
+											<div class="shimmer h-10 w-36" style:border-radius="0.5rem"></div>
+										</div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
 					<div class="shimmer-block hidden h-[420px] rounded-xl lg:block"></div>
 				</div>
 			</div>
 		{:else if shape === 'plans' || shape === 'rooms'}
 			<div class="space-y-4">
-				{#if shape === 'plans'}<div class="shimmer h-3 w-28"></div>{/if}
-				{@render heading()}
-				<div class="flex gap-3 border-b border-stone-200 pb-2"><div class="shimmer h-5 w-24"></div><div class="shimmer h-5 w-24"></div></div>
 				{#if shape === 'plans'}
-					<div class="shimmer h-28 rounded-2xl sm:h-16"></div>
-					<div class="shimmer h-5 w-32"></div>
-					{@render pictureCards(2, true)}
+					<!-- 客室・プラン一覧: パンくず → 施設名 → 紹介・所在地 → タブ → 検索の枠 → 「客室から探す」と絞り込み → 部屋ごとの枠 -->
+					<div class="shimmer h-3 w-28"></div>
+					<div class="shimmer h-8 w-48"></div>
+					<div class="flex flex-wrap justify-between gap-2"><div class="shimmer h-4 w-80 max-w-full"></div><div class="shimmer h-3 w-72 max-w-full"></div></div>
+					<div class="flex gap-6 border-b border-stone-200 pb-2"><div class="shimmer h-5 w-20"></div><div class="shimmer h-5 w-20"></div></div>
+					<div class="shimmer h-56 rounded-2xl sm:h-20"></div>
+					<div class="shimmer h-6 w-36"></div>
+					<div class="flex flex-wrap gap-2">{#each ['w-24', 'w-16', 'w-16', 'w-20', 'w-24'] as w, i (i)}<div class="shimmer h-8 {w}" style:border-radius="9999px"></div>{/each}</div>
+					<div class="shimmer h-3.5 w-64 max-w-full"></div>
+					<div class="space-y-5">
+						{#each [0, 1] as i (i)}
+							<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
+								<div class="border-b border-stone-200 md:border-b-0 md:border-r">
+									<div class="shimmer-block aspect-[16/9] w-full rounded-none md:aspect-[16/11]"></div>
+									<div class="space-y-2 p-4 sm:p-5"><div class="shimmer h-5 w-3/5"></div><div class="shimmer h-3 w-2/5"></div></div>
+								</div>
+								<div class="divide-y divide-stone-200">
+									{#each [0, 1] as j (j)}
+										<div class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+											<div class="space-y-2"><div class="flex gap-1.5"><div class="shimmer h-5 w-14"></div><div class="shimmer h-5 w-14"></div></div><div class="shimmer h-4 w-3/4"></div><div class="shimmer h-3 w-1/2"></div></div>
+											<div class="flex items-end justify-between gap-3 sm:block sm:space-y-2 sm:text-right"><div class="shimmer h-6 w-28 sm:ml-auto"></div><div class="shimmer h-9 w-24 sm:ml-auto"></div></div>
+										</div>
+									{/each}
+								</div>
+							</div>
+						{/each}
+					</div>
 				{:else}
-					<!-- 客室一覧: 部屋ごとに縦に並ぶ（見出し → 写真 3 : 説明 2） -->
+					<!-- 客室一覧: 見出し（右に施設名）→ タブ → 部屋ごとに縦に並ぶ（見出し → 写真 3 : 説明 2） -->
+					<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-stone-200 pb-3 sm:pb-4">{@render heading()}<div class="shimmer h-4 w-28"></div></div>
+					<div class="flex gap-5"><div class="shimmer h-5 w-20"></div><div class="shimmer h-5 w-20"></div></div>
 					<div class="space-y-8">
 						{#each [0, 1] as i (i)}
 							<div class="space-y-3 border-t border-stone-200 pt-5">
@@ -166,12 +211,14 @@
 				<!-- 公開サイトの見出しと同じ明朝（app.css の .site-public h1） -->
 				<p class="mt-2 text-2xl leading-snug text-stone-900" style="font-family: var(--font-serif-jp); font-weight: 500; letter-spacing: 0.05em">{title}</p>
 				<div class="mt-3 flex gap-2"><div class="shimmer h-7 w-20" style:border-radius="9999px"></div><div class="shimmer h-7 w-28" style:border-radius="9999px"></div></div>
-				<div class="mt-3 shimmer h-4 w-64 max-w-full"></div>
+				<!-- 「選び直す」と注記（スマホでは注記が下の行に回る） -->
+				<div class="mt-3 flex flex-wrap gap-x-2 gap-y-1.5"><div class="shimmer h-4 w-44"></div><div class="shimmer h-3 w-72 max-w-full"></div></div>
 				<div class="mt-4 shimmer h-10 w-full" style:border-radius="0.5rem"></div>
 				<!-- スマホ: 合計の要約 -->
 				<div class="mt-4 space-y-2 rounded-xl border border-stone-200 bg-white p-3 lg:hidden">
-					<div class="shimmer h-4 w-32"></div><div class="shimmer h-3 w-3/4"></div>
-					<div class="flex justify-between border-t border-stone-100 pt-2"><div class="shimmer h-4 w-12"></div><div class="shimmer h-5 w-24"></div></div>
+					<div class="shimmer h-4 w-32"></div><div class="shimmer h-3 w-3/4"></div><div class="shimmer h-3 w-2/3"></div>
+					<div class="flex justify-between border-t border-stone-100 pt-2"><div class="shimmer h-4 w-20"></div><div class="shimmer h-6 w-28"></div></div>
+					<div class="ml-auto shimmer h-3 w-20"></div>
 				</div>
 				<div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
 					<div class="grid min-w-0 gap-5">
@@ -244,10 +291,27 @@
 				</div>
 			</div>
 		{:else if shape === 'membership'}
-			<div class="space-y-6 pt-3 text-center">
+			<!-- 会員特典: 英字の小見出し → 見出し → 導入文 → 「グレードと還元率」 → 説明 → 比べる表 -->
+			<div class="pt-3 text-center">
+				<div class="mx-auto shimmer h-3.5 w-36"></div>
+				<div class="mx-auto mt-3">{@render heading()}</div>
+				<div class="mx-auto mt-4 max-w-2xl space-y-2"><div class="mx-auto shimmer h-4 w-11/12"></div><div class="mx-auto shimmer h-4 w-2/3"></div></div>
+				<div class="mx-auto mt-10 shimmer h-7 w-56"></div>
+				<div class="mx-auto mt-3 shimmer h-3.5 w-4/5 max-w-lg"></div>
+				<div class="mt-5 text-left">{@render table(5, 8)}</div>
+			</div>
+		{:else if shape === 'lookup'}
+			<!-- 予約の確認: 見出し → 説明 → 予約の方法ごとの案内の枠（縦に並ぶ） -->
+			<div class="mx-auto max-w-2xl space-y-4">
 				{@render heading()}
-				<div class="mx-auto shimmer h-4 w-3/4 max-w-lg"></div>
-				{@render table(5, 8)}
+				<div class="shimmer h-4 w-4/5"></div>
+				{#each [3, 2, 2] as lines, i (i)}
+					<div class="space-y-3 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+						<div class="shimmer h-6 w-3/5"></div>
+						{#each Array(lines) as _, j (j)}<div class="shimmer h-3.5 {j === lines - 1 ? 'w-3/4' : 'w-full'}"></div>{/each}
+						{#if i === 0}<div class="shimmer h-10 w-28"></div>{/if}
+					</div>
+				{/each}
 			</div>
 		{:else if shape === 'account'}
 			<!-- マイページのトップ・予約一覧: 見出し → 予約のカード（写真＋文字） -->

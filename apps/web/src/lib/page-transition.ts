@@ -33,7 +33,7 @@ export function transitionTitle(route: string): string {
 	const path = route.replace('/(public)', '');
 	if (under(path, '/search')) return m.hold_expired_search();
 	if (under(path, '/kitakaze')) return m.radio_title();
-	if (under(path, '/membership')) return m.nav_membership();
+	if (under(path, '/membership')) return m.membership_heading();
 	if (under(path, '/community')) return m.forum_nav();
 	if (under(path, '/auth/login')) return m.common_login();
 	if (under(path, '/auth/register')) return m.common_register();
@@ -46,8 +46,9 @@ export function transitionTitle(route: string): string {
 	if (under(path, '/account/availability-alerts')) return m.account_nav_availability_alerts();
 	if (under(path, '/account/upgrades')) return m.account_nav_upgrades();
 	if (under(path, '/account')) return m.account_layout_heading();
-	if (under(path, '/[brand]/[facility]/rooms')) return m.room_detail_breadcrumb();
-	if (under(path, '/[brand]/[facility]/plans')) return m.plan_detail_breadcrumb_plans();
+	// 客室一覧の見出しは「客室一覧」。プラン一覧（施設名）・プラン詳細（プラン名）・客室詳細（部屋名）は行き先の名前なので、帯で見せる
+	if (path === '/[brand]/[facility]/rooms') return m.rooms_list_title();
+	if (under(path, '/[brand]/[facility]/rooms') || under(path, '/[brand]/[facility]/plans')) return '';
 	if (under(path, '/r/bath')) return m.bath_title();
 	if (under(path, '/r')) return m.inroom_header();
 	if (under(path, '/ci')) return m.ci_title();
@@ -55,7 +56,7 @@ export function transitionTitle(route: string): string {
 }
 
 export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
-	'account-list' | 'auth' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail';
+	'account-list' | 'auth' | 'lookup' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail';
 
 export function loadingShape(route: string): LoadingShape {
 	if (route === '/admin') return 'admin-dashboard';
@@ -69,7 +70,8 @@ export function loadingShape(route: string): LoadingShape {
 	if (path === '/search') return 'search';
 	if (/^\/\[brand\]\/\[facility\]\/plans$/.test(path)) return 'plans';
 	if (/^\/\[brand\]\/\[facility\]\/rooms$/.test(path)) return 'rooms';
-	if (under(path, '/auth') || path === '/booking/lookup') return 'auth';
+	if (path === '/booking/lookup') return 'lookup';
+	if (under(path, '/auth')) return 'auth';
 	if (under(path, '/booking/hold')) return 'hold';
 	if (under(path, '/booking')) return 'booking';
 	if (under(path, '/membership')) return 'membership';
