@@ -11,8 +11,11 @@ export function guestsLabel(adults: number, _children?: number): string {
 }
 
 /** 検索条件のクエリ文字列（`children` は付けない＝大人のみ） */
-export function searchQuery(p: { checkin: string; nights: number; adults: number }): string {
-	return `checkin=${p.checkin}&nights=${p.nights}&adults=${p.adults}`;
+export function searchQuery(p: { checkin: string; nights: number; adults: number; rooms?: number; tag?: string }): string {
+	const query = new URLSearchParams({ checkin: p.checkin, nights: String(p.nights), adults: String(p.adults) });
+	if (p.rooms && p.rooms > 1) query.set('rooms', String(p.rooms));
+	if (p.tag) query.set('tag', p.tag);
+	return query.toString();
 }
 
 /** 施設のエリア表示（例: 「岩手県 西和賀町」）。住所から市区町村まで取れなければ都道府県のみ */
