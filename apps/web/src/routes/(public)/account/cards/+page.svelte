@@ -106,6 +106,7 @@
 </svelte:head>
 
 <section class="max-w-3xl">
+	<h2 class="mb-3 text-xl text-brand-900">{m.account_nav_cards()}</h2>
 	<p class="text-sm leading-6 text-stone-600">{m.account_cards_intro()}</p>
 
 	{#if data.state !== 'ready'}

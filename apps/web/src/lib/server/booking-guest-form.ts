@@ -7,7 +7,7 @@ import { ONSITE_METHODS, type OnsiteMethod } from '$lib/direct-payment';
 
 export type ParsedGuestForm = {
 	holdId: string;
-	guest: GuestInfo & { familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string };
+	guest: GuestInfo & { familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string; zip: string; address: string; address2: string };
 	pointsRequested: number;
 	payment: 'onsite' | 'card' | 'paypay';
 	// 現地払いの内訳（現地PayPay・現地カード・現地現金）。payment は 'onsite' のまま。宿への申し送りに使う
@@ -34,6 +34,9 @@ export function parseGuestForm(form: FormData): ParsedGuestForm {
 		middleName,
 		familyNameKana,
 		givenNameKana,
+		zip: String(form.get('zip') ?? '').trim(),
+		address: String(form.get('address') ?? '').trim(),
+		address2: String(form.get('address2') ?? '').trim(),
 		phone: String(form.get('phone') ?? '').trim(),
 		email: String(form.get('email') ?? '').trim(),
 		arrival: String(form.get('arrival') ?? ''),
@@ -45,6 +48,7 @@ export function parseGuestForm(form: FormData): ParsedGuestForm {
 	if (!familyName) errors.familyName = m.error_name_required();
 	if (!givenName) errors.givenName = m.error_name_required();
 	if (!PHONE_RE.test(guest.phone)) errors.phone = m.error_phone_invalid();
+	if (!guest.address || guest.address.length > 250 || guest.address2.length > 250 || guest.zip.length > 24) errors.address = m.contact_address_required();
 	if (!EMAIL_RE.test(guest.email)) errors.email = m.error_email_invalid();
 	const raw = String(form.get('payment') ?? 'onsite');
 	const payment = raw === 'card' || raw === 'paypay' ? raw : 'onsite';

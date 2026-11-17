@@ -164,6 +164,7 @@
 									<div>
 										<p class="text-sm font-medium text-stone-500">{m.search_sold_out_msg()}</p>
 										<p class="mt-0.5 text-xs text-stone-500">{m.search_sold_out_phone({ phone: r.facility.phone })}</p>
+										{#if data.params.checkin}<a href={plansHref(r)} class="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand-800 underline underline-offset-4">{m.search_alert_rooms()}</a>{/if}
 									</div>
 								{/if}
 							</div>

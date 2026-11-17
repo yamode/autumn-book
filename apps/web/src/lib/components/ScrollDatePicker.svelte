@@ -55,6 +55,7 @@
 
 	// svelte-ignore state_referenced_locally
 	let selectedNights = $state(nights);
+	let rangeStart = $state('');
 	let scrollRegion = $state<HTMLDivElement | null>(null);
 	// svelte-ignore state_referenced_locally
 	let selectedAdults = $state(guests?.adults ?? source?.adults ?? 2);
@@ -63,6 +64,7 @@
 	$effect(() => {
 		if (open) {
 			selectedNights = nights;
+			rangeStart = '';
 			selectedAdults = guests?.adults ?? source?.adults ?? 2;
 			selectedRooms = guests?.rooms ?? 1;
 		}
@@ -120,14 +122,14 @@
 		return result;
 	});
 	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
-	const isPageDays = $derived(selectedNights === daysNights && (!source || adultsForDays === (daysAdults ?? source.adults)));
+	const isPageDays = $derived(1 === daysNights && (!source || adultsForDays === (daysAdults ?? source.adults)));
 	const current = $derived<StayDays | null>(
-		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(selectedNights, adultsForDays) : null
+		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(1, adultsForDays) : null
 	);
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
 	const closedDates = $derived(new Set(current?.closed ?? []));
 	$effect(() => {
-		if (open && source && !isPageDays) loader.load(source, selectedNights, adultsForDays);
+		if (open && source && !isPageDays) loader.load(source, 1, adultsForDays);
 	});
 	const checkout = $derived(checkin ? addDays(checkin, selectedNights) : '');
 
@@ -163,9 +165,9 @@
 		};
 	}
 
-	function choose(date: string) {
-		if (guests) onSelect(date, selectedNights, selectedAdults, guests.maxRooms ? selectedRooms : undefined);
-		else onSelect(date, selectedNights);
+	function choose(date: string, length = selectedNights) {
+		if (guests) onSelect(date, length, selectedAdults, guests.maxRooms ? selectedRooms : undefined);
+		else onSelect(date, length);
 		open = false;
 	}
 </script>
@@ -216,8 +218,9 @@
 				day={panelDay}
 				lang={panelLang}
 				labels={panelLabels}
-				pickApplies
-				onPick={(iso) => choose(iso)}
+				rangeApplies
+				{maxDate}
+				onRange={choose}
 				onApply={() => (checkin ? choose(checkin) : (open = false))}
 				onClose={() => (open = false)}
 				toolbar={guests || (checkin && conditionChanged) ? guestControls : undefined}
@@ -227,24 +230,14 @@
 {:else if open}
 	<div class="fixed inset-0 z-[100] flex items-end justify-center sm:items-center" role="presentation">
 		<button type="button" class="absolute inset-0 bg-stone-950/55" aria-label={m.common_close()} onclick={() => (open = false)}></button>
-		<div role="dialog" aria-modal="true" aria-label={m.searchbar_checkin()} class="relative flex h-[min(86dvh,850px)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[min(92vw,680px)] sm:rounded-2xl">
+		<div role="dialog" aria-modal="true" aria-label={panelLabels.dateDialog} class="relative flex h-[min(86dvh,850px)] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:w-[min(92vw,680px)] sm:rounded-2xl">
 			<div class="shrink-0 border-b border-stone-200 bg-white px-4 pb-3 pt-3 sm:px-6">
 				<div class="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-200 sm:hidden"></div>
 				<div class="flex items-center justify-between gap-3">
-					<h2 class="font-display text-lg font-semibold text-stone-900">{m.searchbar_checkin()}</h2>
+					<h2 class="font-display text-lg font-semibold text-stone-900">{panelLabels.dateDialog}</h2>
 					<button type="button" class="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-600 hover:bg-stone-100" aria-label={m.common_close()} onclick={() => (open = false)}>×</button>
 				</div>
-				<div class="mt-2 flex items-center gap-4">
-					<span class="text-sm text-stone-600">{m.searchbar_nights()}</span>
-					<button type="button" disabled={selectedNights <= 1} class="flex h-9 w-9 items-center justify-center rounded bg-stone-100 text-xl text-brand-800 disabled:text-stone-300" aria-label="−" onclick={() => selectedNights--}>−</button>
-					<span class="min-w-10 text-center text-sm font-medium tabular-nums">{m.searchbar_nights_option({ n: String(selectedNights) })}</span>
-					<button type="button" disabled={selectedNights >= 7} class="flex h-9 w-9 items-center justify-center rounded bg-brand-800 text-xl text-white disabled:bg-stone-200" aria-label="+" onclick={() => selectedNights++}>+</button>
-					{#if !guests && loader.loading}
-						<span class="text-xs text-stone-500" role="status">{m.datepicker_loading()}</span>
-					{:else if !guests && loader.failed}
-						<span class="text-xs text-red-600" role="status">{m.datepicker_load_failed()}</span>
-					{/if}
-				</div>
+				<p class="mt-2 text-sm font-medium" aria-live="polite">{rangeStart ? panelLabels.selectCheckout(formatDate(rangeStart)) : panelLabels.selectCheckin}</p>
 				{#if guests}
 					<!-- 人数・室数。人数で 1 泊の料金が変わるので、日付と同じ画面で選ぶ -->
 					<div class="mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -283,15 +276,18 @@
 							{#each month.dates as date (date)}
 								{@const price = priceByDate.get(date)}
 								{@const knownUnavailable = Boolean(current?.through && date <= current.through && (price == null || price <= 0))}
-								{@const disabled = date < minDate || date > maxDate || knownUnavailable}
-								{@const selected = date === checkin}
-								{@const inStay = checkin && date > checkin && date <= checkout}
+								{@const disabled = date < minDate || date > maxDate || (!!rangeStart && date > addDays(rangeStart, 7))}
+								{@const selected = date === (rangeStart || checkin)}
+								{@const inStay = !rangeStart && checkin && date > checkin && date <= checkout}
 								<button
 									type="button"
 									{disabled}
 									aria-label={`${formatDate(date)}${price != null && price > 0 ? ` ${formatPrice(price)}` : ''}`}
 									aria-pressed={selected}
-									onclick={() => choose(date)}
+									onclick={() => {
+										if (rangeStart && date > rangeStart) choose(rangeStart, Math.round((Date.parse(date) - Date.parse(rangeStart)) / 86_400_000));
+										else rangeStart = date;
+									}}
 									class="flex min-h-16 min-w-0 flex-col items-center justify-start border-t border-stone-200 px-0.5 py-2 text-sm tabular-nums transition {selected ? 'rounded bg-sky-600 text-white' : inStay ? 'bg-sky-100 text-sky-900' : disabled ? 'text-stone-300' : 'text-stone-900 hover:bg-sky-50'}"
 								>
 									<span class="font-medium">{Number(date.slice(-2))}</span>

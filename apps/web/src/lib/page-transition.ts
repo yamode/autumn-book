@@ -53,3 +53,22 @@ export function transitionTitle(route: string): string {
 	if (under(path, '/ci')) return m.ci_title();
 	return '';
 }
+
+export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'booking' | 'account' | 'auth' |
+	'membership' | 'admin-dashboard' | 'admin-list' | 'admin-detail';
+
+export function loadingShape(route: string): LoadingShape {
+	if (route === '/admin') return 'admin-dashboard';
+	if (/^\/admin\/(login|mfa)(\/|$)/.test(route)) return 'auth';
+	if (/^\/admin\/(reservations|members|payments|precheckin|partners|upgrades|inquiries|group-inquiries|coupons|news|users|rooms|plans|otayori|community)(?:\/(reports|deletions|charges|invoices))?$/.test(route)) return 'admin-list';
+	if (under(route, '/admin')) return 'admin-detail';
+	const path = route.replace('/(public)', '');
+	if (path === '/search') return 'search';
+	if (/^\/\[brand\]\/\[facility\]\/plans$/.test(path)) return 'plans';
+	if (/^\/\[brand\]\/\[facility\]\/rooms$/.test(path)) return 'rooms';
+	if (under(path, '/auth') || path === '/booking/lookup') return 'auth';
+	if (under(path, '/booking')) return 'booking';
+	if (under(path, '/membership')) return 'membership';
+	if (under(path, '/account')) return 'account';
+	return 'plain';
+}

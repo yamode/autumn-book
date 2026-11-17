@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { enhance } from '$lib/enhance';
+	import { todayStr } from '$lib/format';
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
@@ -18,10 +20,11 @@
 	import type { RoomType } from '$lib/types';
 
 	// 予約に絞った構成（一休型）: 検索バー → 絞り込み・並び順 → 部屋タイプごとの全幅カード → 施設について
-	let { data } = $props();
+	let { data, form } = $props();
+	const alertError = $derived(form && 'alertError' in form ? form.alertError : undefined);
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
-	let alertHref = $derived(`/account/availability-alerts?${new URLSearchParams({ facility: data.facility.id, checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}`);
+	const today = todayStr();
 	let expandedRooms = $state<Record<string, boolean>>({});
 	let introExpanded = $state(false);
 	let calendarOpen = $state(false);
@@ -139,12 +142,6 @@
 		<a href="{base}/rooms" class="-mb-px border-b-2 border-transparent px-3 py-2 text-stone-500 hover:text-brand-900">{m.plans_tab_rooms()}</a>
 	</nav>
 
-	{#if data.params.checkin}
-		<div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
-			<p class="text-sm text-stone-600">ご希望のお部屋が見つからないときは、空室が出たらメールでお知らせします。</p>
-			<a href={alertHref} class="rounded-lg border border-brand-800 px-4 py-2 text-sm font-medium text-brand-900">空室通知を登録（会員限定）</a>
-		</div>
-	{/if}
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
 		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} tag={data.params.tag} keepScroll />
@@ -272,7 +269,32 @@
 								</div>
 							{/if}
 						{:else}
-							<p class="p-6 text-sm leading-6 text-stone-500">{m.plans_room_no_availability()}</p>
+							<div class="space-y-3 p-5 text-sm sm:p-6">
+								<p class="leading-6 text-stone-500">{m.plans_room_no_availability()}</p>
+								{#if data.params.checkin > today}
+									{#if form?.alertRoom === item.room.id && form?.alertSaved}
+										<p role="status" class="text-emerald-800">空室通知を登録しました。</p>
+										<a href="/account/availability-alerts" class="inline-flex min-h-11 items-center underline">登録した空室通知を見る</a>
+									{:else if page.data.user?.role === 'member'}
+										<details open={form?.alertRoom === item.room.id && Boolean(alertError)}>
+											<summary class="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">空室通知を登録</summary>
+											<form method="POST" action="?/registerAlert&{searchQuery(data.params)}" use:enhance class="mt-3 space-y-2">
+												<input type="hidden" name="facility" value={data.facility.id} />
+												<input type="hidden" name="room" value={item.room.id} />
+												<input type="hidden" name="checkin" value={data.params.checkin} />
+												<input type="hidden" name="nights" value={data.params.nights} />
+												<input type="hidden" name="adults" value={data.params.adults} />
+												<input type="hidden" name="rooms" value={data.params.rooms} />
+												{#if form?.alertRoom === item.room.id && alertError}<p role="alert" class="text-red-700">{alertError}</p>{/if}
+												<label class="flex items-start gap-2"><input name="consent" type="checkbox" value="yes" required class="mt-1" />このお部屋の空室通知をメールで受け取る</label>
+												<button class="min-h-11 rounded-lg bg-brand-800 px-4 font-medium text-white">登録する</button>
+											</form>
+										</details>
+									{:else}
+										<a href={'/auth/login?next=' + encodeURIComponent(page.url.pathname + page.url.search)} class="inline-flex min-h-11 items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">ログインして空室通知を登録</a>
+									{/if}
+								{/if}
+							</div>
 						{/if}
 					</div>
 				</article>

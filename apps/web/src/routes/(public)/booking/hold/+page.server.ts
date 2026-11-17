@@ -22,6 +22,7 @@ import {
 	sbFacilityByUuid,
 	sbMyProfile,
 	sbPointBalance,
+	sbMyProfileContact,
 	confirmBookingGroup as sbConfirmBooking,
 	bookingSessionId,
 	setLastBooking,
@@ -106,12 +107,12 @@ export const load: PageServerLoad = async (event) => {
 		let member: {
 			name: string; kana: string;
 			familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string;
-			phone: string; email: string; balance: number; rewardRate: number;
+			phone: string; email: string; zip: string; address: string; address2: string; balance: number; rewardRate: number;
 		} | null = null;
 		if (MEMBER_SUPABASE && locals.user?.role === 'member') {
 			try {
 				const client = createSupabaseServerClient(event);
-				const [profile, balance] = await Promise.all([sbMyProfile(client), sbPointBalance(client)]);
+				const [profile, balance, contact] = await Promise.all([sbMyProfile(client), sbPointBalance(client), sbMyProfileContact(client).catch(() => null)]);
 				canChoosePlatinumTiming = profile.rankCode === 'platinum' && ['nishiwaga', 'yamado', 'oga'].includes(facility.slug);
 				const rate = REWARD_RATE[profile.rankCode] ?? 0.01;
 				member = {
@@ -123,6 +124,9 @@ export const load: PageServerLoad = async (event) => {
 					familyNameKana: profile.familyNameKana,
 					givenNameKana: profile.givenNameKana,
 					phone: profile.phone,
+					zip: contact?.zip ?? '',
+					address: contact?.address ?? '',
+					address2: contact?.address2 ?? '',
 					email: profile.email,
 					balance,
 					// 付与見込みは予約全体（全室の宿泊料金の和）で 1 つ
@@ -297,6 +301,9 @@ export const load: PageServerLoad = async (event) => {
 					familyNameKana: member.familyNameKana ?? '',
 					givenNameKana: member.givenNameKana ?? '',
 					phone: member.phone,
+					zip: member.zip ?? '',
+					address: member.address ?? '',
+					address2: member.address2 ?? '',
 					email: member.email,
 					balance: pointBalance(member.id),
 					rewardRate: rank.rewardRate
@@ -459,7 +466,7 @@ export const actions: Actions = {
 		const guestForDemo = locals.memberPreview && memberId
 			? (() => {
 					const member = memberById(memberId)!;
-					return { name: member.name, kana: member.kana, phone: member.phone, email: member.email };
+					return { ...guest, name: member.name, kana: member.kana, phone: member.phone, email: member.email };
 				})()
 			: guest;
 

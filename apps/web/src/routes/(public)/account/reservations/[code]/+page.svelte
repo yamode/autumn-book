@@ -12,7 +12,7 @@
 
 <svelte:head><title>{m.reservation_title({ code: b.code })}</title></svelte:head>
 
-<nav class="mb-4 text-xs text-stone-400"><a href="/account" class="hover:underline">{m.reservation_breadcrumb_list()}</a> / {b.code}</nav>
+<nav class="mb-4 text-xs text-stone-400"><a href="/account/reservations" class="hover:underline">{m.reservation_breadcrumb_list()}</a> / {b.code}</nav>
 
 {#if page.url.searchParams.get('amend') === 'prepaid'}
 	<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">{m.amend_prepaid_blocked()}</p>
@@ -26,6 +26,13 @@
 	readOnly={data.readOnly}
 	memberPage={data.memberPage ? { pageName: data.memberPage.pageName, cancelMode: data.memberPage.cancelMode, href: data.memberPage.href } : null}
 />
+
+{#if b.guest.address}
+	<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4">
+		<h2 class="font-medium text-brand-900">{m.contact_address()}</h2>
+		<p class="mt-1 break-words text-sm text-stone-700">{[b.guest.zip, b.guest.address, b.guest.address2].filter(Boolean).join(' ')}</p>
+	</section>
+{/if}
 
 {#if data.canPrebookBath}
 	<a href={`/r/bath?booking=${encodeURIComponent(b.code)}`} class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">

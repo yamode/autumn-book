@@ -1,37 +1,147 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
+	import type { LoadingShape } from '$lib/page-transition';
 
-	let { title = '', kind = 'page' }: { title?: string; kind?: 'page' | 'videos' } = $props();
+	let { title = '', kind = 'page', shape = 'plain' }: {
+		title?: string; kind?: 'page' | 'videos'; shape?: LoadingShape;
+	} = $props();
 </script>
 
-<div data-page-skeleton aria-busy="true" class="min-w-0">
+{#snippet heading()}
+	{#if title}<p class="text-xl font-semibold leading-snug text-stone-900 sm:text-2xl">{title}</p>
+	{:else}<div class="shimmer h-7 w-44 max-w-full"></div>{/if}
+{/snippet}
+
+{#snippet fields(count: number)}
+	<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+		{#each Array(count) as _, i (i)}
+			<div class="min-w-0 space-y-2"><div class="shimmer h-3 w-2/3"></div><div class="shimmer h-9 rounded-md"></div></div>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet table(cols: number, rows: number)}
+	<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
+		{#each Array(rows + 1) as _, row (row)}
+			<div class="grid gap-4 border-b border-stone-100 px-4 {row === 0 ? 'bg-stone-50 py-3' : 'py-3.5'}" style:grid-template-columns={'1.15fr ' + 'minmax(0,1fr) '.repeat(cols - 1)}>
+				{#each Array(cols) as _, col (col)}
+					<div class="shimmer min-w-0 {row === 0 ? 'h-2.5 w-3/4' : 'h-3 w-full'}"></div>
+				{/each}
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet pictureCards(count: number, plan = false)}
+	<div class="space-y-5">
+		{#each Array(count) as _, i (i)}
+			<div class={'overflow-hidden rounded-xl border border-stone-200 bg-white ' + (plan ? 'md:grid md:grid-cols-[280px_minmax(0,1fr)]' : '')}>
+				<div class="shimmer-block w-full rounded-none {plan ? 'aspect-[16/9] md:aspect-[16/11]' : 'aspect-[16/7]'}"></div>
+				<div class="space-y-3 px-4 py-5 sm:px-5">
+					<div class="shimmer h-5 w-2/5"></div>
+					<div class="shimmer h-3 w-3/4"></div>
+					<div class="ml-auto shimmer h-8 w-24"></div>
+				</div>
+			</div>
+		{/each}
+	</div>
+{/snippet}
+
+<div data-page-skeleton data-skeleton-shape={shape} aria-busy="true" class="min-w-0">
 	<p role="status" class="sr-only">{kind === 'videos' ? m.radio_loading() : title ? `${title} · ${m.common_loading()}` : m.common_loading()}</p>
-	{#if title && kind !== 'videos'}
-		<p class="mb-5 text-xl font-semibold leading-snug text-stone-900 sm:text-2xl">{title}</p>
-	{/if}
-	{#if kind === 'videos'}
-		<div class="grid gap-3 sm:grid-cols-2" aria-hidden="true">
-			{#each [0, 1, 2, 3] as card (card)}
-				<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
-					<div class="shimmer-block aspect-video w-full rounded-none"></div>
-					<div class="space-y-2 p-3">
-						<div class="shimmer h-3 w-24 max-w-full"></div>
-						<div class="shimmer h-4 w-4/5"></div>
+	<div aria-hidden="true">
+		{#if kind === 'videos'}
+			<div class="grid gap-3 sm:grid-cols-2">
+				{#each [0, 1, 2, 3] as card (card)}
+					<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
+						<div class="shimmer-block aspect-video w-full rounded-none"></div>
+						<div class="space-y-2 p-3"><div class="shimmer h-3 w-24 max-w-full"></div><div class="shimmer h-4 w-4/5"></div></div>
 					</div>
+				{/each}
+			</div>
+		{:else if shape === 'admin-dashboard'}
+			<div class="space-y-4">
+				{@render heading()}
+				<div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+					{#each [0, 1, 2, 3] as card (card)}
+						<div class="space-y-3 rounded-xl border border-stone-200 bg-white p-4"><div class="shimmer h-5 w-24 max-w-full"></div><div class="shimmer h-7 w-16"></div></div>
+					{/each}
 				</div>
-			{/each}
-		</div>
-	{:else}
-		<div class="space-y-4" aria-hidden="true">
-			{#if !title}<div class="shimmer mb-5 h-7 w-56 max-w-full"></div>{/if}
-			<div class="shimmer h-3.5 w-64 max-w-full"></div>
-			{#each [0, 1, 2] as row (row)}
-				<div class="space-y-3 rounded-xl border border-stone-200 bg-white px-4 py-4 sm:px-5">
-					<div class="shimmer h-4 w-1/2"></div>
-					<div class="shimmer h-3 w-4/5"></div>
-					<div class="shimmer h-3 w-2/3"></div>
+				<div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_340px]">
+					{@render table(5, 4)}
+					{@render table(2, 3)}
 				</div>
-			{/each}
-		</div>
-	{/if}
+			</div>
+		{:else if shape === 'admin-list' || shape === 'admin-detail'}
+			<div class="space-y-4">
+				{@render heading()}
+				<div class="shimmer h-3 w-72 max-w-full"></div>
+				{#if shape === 'admin-list'}
+					<div class="rounded-xl border border-stone-200 bg-white p-4">{@render fields(4)}</div>
+					<div class="hidden sm:block">{@render table(6, 6)}</div>
+					<div class="sm:hidden">{@render table(2, 5)}</div>
+				{:else}
+					<div class="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+						<div class="rounded-xl border border-stone-200 bg-white p-4">{@render fields(8)}</div>
+						{@render table(2, 3)}
+					</div>
+				{/if}
+			</div>
+		{:else if shape === 'search'}
+			<div class="space-y-3">
+				{@render heading()}
+				<div class="shimmer h-4 w-56 max-w-full"></div>
+				<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+					<div class="space-y-3"><div class="shimmer h-3 w-20"></div>{@render pictureCards(2)}</div>
+					<div class="shimmer-block hidden h-[420px] rounded-xl lg:block"></div>
+				</div>
+			</div>
+		{:else if shape === 'plans' || shape === 'rooms'}
+			<div class="space-y-4">
+				<div class="shimmer h-3 w-28"></div>
+				{@render heading()}
+				<div class="flex gap-3 border-b border-stone-200 pb-2"><div class="shimmer h-5 w-24"></div><div class="shimmer h-5 w-24"></div></div>
+				{#if shape === 'plans'}
+					<div class="shimmer h-28 rounded-2xl sm:h-16"></div>
+					<div class="shimmer h-5 w-32"></div>
+					{@render pictureCards(2, true)}
+				{:else}
+					<div class="grid gap-4 md:grid-cols-2">{@render pictureCards(1)}{@render pictureCards(1)}</div>
+				{/if}
+			</div>
+		{:else if shape === 'booking'}
+			<div class="space-y-4">
+				{@render heading()}
+				<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+					<div class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5">{@render fields(8)}<div class="shimmer h-11 w-full"></div></div>
+					<div class="space-y-3 rounded-2xl border border-stone-200 bg-white p-5"><div class="shimmer h-24 w-full"></div><div class="shimmer h-4 w-36"></div><div class="shimmer h-4 w-24"></div></div>
+				</div>
+			</div>
+		{:else if shape === 'auth'}
+			<div class="mx-auto max-w-md space-y-4 pt-4 text-center">
+				{@render heading()}
+				<div class="mx-auto shimmer h-4 w-4/5"></div>
+				<div class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
+					<div class="shimmer h-12"></div><div class="shimmer h-10"></div><div class="shimmer h-11"></div>
+				</div>
+			</div>
+		{:else if shape === 'membership'}
+			<div class="space-y-6 pt-3 text-center">
+				{@render heading()}
+				<div class="mx-auto shimmer h-4 w-3/4 max-w-lg"></div>
+				{@render table(5, 8)}
+			</div>
+		{:else if shape === 'account'}
+			<div class="space-y-4">
+				{@render heading()}
+				<div class="rounded-2xl border border-stone-200 bg-white p-5">
+					<div class="mb-4 shimmer h-5 max-w-40"></div>
+					{@render fields(4)}
+				</div>
+			</div>
+		{:else}
+			{@render heading()}
+			<div class="mt-4 shimmer h-3.5 w-64 max-w-full"></div>
+		{/if}
+	</div>
 </div>

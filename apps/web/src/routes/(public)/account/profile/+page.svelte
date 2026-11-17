@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ContactAddressFields from '$lib/components/ContactAddressFields.svelte';
 	import { enhance } from '$lib/enhance';
 	import type { SubmitFunction } from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
@@ -101,11 +102,20 @@
 			<span class="text-sm text-stone-600">{m.profile_phone()}</span>
 			<input name="phone" value={data.member.phone} class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
 		</label>
+		{#if data.contact}
+			<ContactAddressFields values={data.contact} inputClass="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
+			<label class="block text-sm text-stone-600">
+				{m.profile_birthdate()}
+				<input name="birthdate" type="date" autocomplete="bday" min="1900-01-01" max={data.today} value={data.contact.birthdate} class="mt-1 block w-full min-w-0 rounded-lg border border-stone-300 px-3 py-2.5" />
+			</label>
+		{:else}
+			<p role="alert" class="text-sm text-red-700">{m.profile_contact_error()}</p>
+		{/if}
 		<label class="flex items-start gap-2.5">
 			<input type="checkbox" name="mailOptIn" checked={data.member.mailOptIn} class="mt-1 h-4 w-4" />
 			<span class="text-[15px]">{m.profile_mail_opt_in()}</span>
 		</label>
-		<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2.5 font-medium text-white hover:bg-brand-700">{m.common_save()}</button>
+		<button type="submit" disabled={!data.contact} class="rounded-lg bg-brand-800 px-6 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{m.common_save()}</button>
 	</form>
 
 	<!-- メールアドレス変更 -->

@@ -6,11 +6,13 @@
 	let root: HTMLDetailsElement | undefined = $state();
 
 	const links = $derived([
-		{ href: '/account#reservations', label: m.account_nav_reservations() },
+		{ href: '/account', label: m.account_dashboard() },
+		{ href: '/account/reservations', label: m.account_nav_reservations() },
 		{ href: '/account/points', label: m.account_nav_points() },
 		{ href: '/account/coupons', label: m.account_nav_coupons() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
 		{ href: '/account/community', label: m.account_nav_community() },
+		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() },
 		{ href: '/account/settings', label: m.account_nav_settings() }
 	]);
 

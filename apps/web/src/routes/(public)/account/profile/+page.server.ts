@@ -2,16 +2,29 @@ import { fail, redirect } from '@sveltejs/kit';
 import { memberById, members, withdrawnMembers, avatarByMember } from '$lib/server/store';
 import { clearSession } from '$lib/server/session';
 import { MEMBER_SUPABASE, createSupabaseServerClient, getSupabaseUser } from '$lib/server/auth';
-import { sbUpdateMyProfile, sbWithdrawMember, sbUploadAvatar, sbSetMyAvatar } from '$lib/server/supabase-data';
+import { sbMyProfileContact, sbUpdateMyProfile, sbWithdrawMember, sbUploadAvatar, sbSetMyAvatar } from '$lib/server/supabase-data';
 import { combineName, combineKana } from '$lib/name';
 import * as m from '$lib/paraglide/messages';
-import type { Actions } from './$types';
+import { todayStr } from '$lib/format';
+import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export const load: PageServerLoad = async (event) => {
+	if (event.locals.user?.role !== 'member') redirect(303, '/auth/login?next=/account/profile');
+	const today = todayStr();
+	if (MEMBER_SUPABASE) {
+		const contact = await sbMyProfileContact(createSupabaseServerClient(event)).catch(() => null);
+		return { contact, today };
+	}
+	const member = memberById(event.locals.user.id);
+	return { contact: { zip: member?.zip ?? '', address: member?.address ?? '', address2: member?.address2 ?? '', birthdate: member?.birthdate ?? '' }, today };
+};
 
 export const actions: Actions = {
 	update: async (event) => {
 		const { request, locals } = event;
+		if (locals.user?.role !== 'member') redirect(303, '/auth/login?next=/account/profile');
 		const form = await request.formData();
 		const familyName = String(form.get('familyName') ?? '').trim();
 		const givenName = String(form.get('givenName') ?? '').trim();
@@ -20,6 +33,18 @@ export const actions: Actions = {
 		const givenNameKana = String(form.get('givenNameKana') ?? '').trim();
 		const phone = String(form.get('phone') ?? '').trim();
 		const mailOptIn = form.get('mailOptIn') === 'on';
+		if (!['zip', 'address', 'address2', 'birthdate'].every((key) => form.has(key)))
+			return fail(400, { saved: false, message: m.profile_contact_error() });
+		const zip = String(form.get('zip') ?? '').trim();
+		const address = String(form.get('address') ?? '').trim();
+		const address2 = String(form.get('address2') ?? '').trim();
+		const birthdate = String(form.get('birthdate') ?? '').trim();
+		if (zip.length > 24 || address.length > 250 || address2.length > 250)
+			return fail(400, { saved: false, message: m.profile_contact_error() });
+		const birth = new Date(birthdate + 'T00:00:00Z');
+		if (birthdate && (!/^\d{4}-\d{2}-\d{2}$/.test(birthdate) || !Number.isFinite(+birth) ||
+			birth.toISOString().slice(0, 10) !== birthdate || birthdate < '1900-01-01' || birthdate > todayStr()))
+			return fail(400, { saved: false, message: m.profile_birthdate_invalid() });
 		// 姓・名は必須（カナは任意＝海外ゲスト対応）
 		if (!familyName || !givenName) return fail(400, { saved: false, message: m.error_name_required() });
 		const name = combineName(familyName, givenName);
@@ -29,11 +54,11 @@ export const actions: Actions = {
 			try {
 				// 構造化フィールド（core.guests）＋合成 name/kana を RPC 経由で更新。locale は変更しない。
 				await sbUpdateMyProfile(createSupabaseServerClient(event), {
-					name, kana, phone, mailOptIn,
+					name, kana, phone, mailOptIn, zip, address, address2, birthdate,
 					familyName, givenName, middleName, familyNameKana, givenNameKana
 				});
 			} catch {
-				return fail(400, { saved: false, message: m.error_name_required() });
+				return fail(400, { saved: false, message: m.profile_contact_error() });
 			}
 			return { saved: true, message: '' };
 		}
@@ -49,6 +74,7 @@ export const actions: Actions = {
 		member.kana = kana;
 		member.phone = phone;
 		member.mailOptIn = mailOptIn;
+		Object.assign(member, { zip, address, address2, birthdate });
 		return { saved: true, message: '' };
 	},
 

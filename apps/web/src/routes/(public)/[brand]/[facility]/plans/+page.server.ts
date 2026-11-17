@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor } from '$lib/server/store';
 import { stayCalendar, todayJst } from '$lib/server/stay-calendar';
 import { DATA_SOURCE } from '$lib/server/supabase';
@@ -14,7 +14,10 @@ import { crossTypeCombos } from '$lib/partner-room-combos';
 import { MAX_ROOMS_PER_BOOKING } from '$lib/multi-room';
 import type { RatePlan, RoomType } from '$lib/types';
 import { favoriteRoomTypeIds } from '$lib/server/favorites';
-import type { PageServerLoad } from './$types';
+import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { alertConditions, validateAlertConditions } from '$lib/availability-alerts';
+import { alertErrorMessage } from '$lib/server/availability-alert-errors';
+import type { Actions, PageServerLoad } from './$types';
 
 type RoomPlanPrice = {
 	ratePlanId: string;
@@ -194,4 +197,23 @@ export const load: PageServerLoad = async (event) => {
 		favoriteRoomTypeIds: await favoritesP,
 		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
 	};
+};
+
+export const actions: Actions = {
+	registerAlert: async (event) => {
+		if (event.locals.user?.role !== 'member') redirect(303, '/auth/login?next=' + encodeURIComponent(event.url.pathname));
+		if (!MEMBER_SUPABASE) return fail(400, { alertError: '空室通知をご利用いただけない環境です。' });
+		const form = await event.request.formData();
+		const value = alertConditions(form);
+		const invalid = validateAlertConditions(value);
+		if (invalid || !value.room || form.get('consent') !== 'yes') {
+			return fail(400, { alertError: invalid ?? 'お部屋と通知メールの受信同意をご確認ください。', alertRoom: value.room });
+		}
+		const { error } = await createSupabaseServerClient(event).schema('book').rpc('register_room_availability_alert', {
+			p_facility_id: value.facility, p_checkin: value.checkin, p_nights: value.nights,
+			p_adults: value.adults, p_room_count: value.rooms, p_room_type_id: value.room, p_consent: true
+		});
+		if (error) return fail(400, { alertError: alertErrorMessage(error.message), alertRoom: value.room });
+		return { alertSaved: true, alertRoom: value.room };
+	}
 };

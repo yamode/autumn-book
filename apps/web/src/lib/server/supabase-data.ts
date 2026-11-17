@@ -1489,13 +1489,23 @@ export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile
 }
 
 /** 会員本人の氏名/カナ/電話/locale/メルマガ同意を更新（RPC 経由・列レベル GRANT を尊重）。 */
+export async function sbMyProfileContact(client: SupabaseClient) {
+	const { data, error } = await client.schema('book').rpc('my_profile_contact');
+	if (error) throw error;
+	const contact = data as { zip?: string; address?: string; address2?: string; birthdate?: string } | null;
+	return { zip: contact?.zip ?? '', address: contact?.address ?? '', address2: contact?.address2 ?? '', birthdate: contact?.birthdate ?? '' };
+}
+
 export async function sbUpdateMyProfile(
 	client: SupabaseClient,
 	input: {
 		name: string;
 		kana?: string;
 		phone?: string;
-		locale?: string;
+		zip: string;
+		address: string;
+		address2: string;
+		birthdate: string;
 		mailOptIn?: boolean;
 		familyName?: string;
 		givenName?: string;
@@ -1504,17 +1514,20 @@ export async function sbUpdateMyProfile(
 		givenNameKana?: string;
 	}
 ): Promise<void> {
-	const { error } = await client.schema('book').rpc('update_my_profile', {
+	const { error } = await client.schema('book').rpc('update_my_profile_contact', {
 		p_name: input.name,
 		p_kana: input.kana ?? null,
 		p_phone: input.phone ?? null,
-		p_locale: input.locale ?? null,
 		p_mail_opt_in: input.mailOptIn ?? null,
 		p_family_name: input.familyName ?? null,
 		p_given_name: input.givenName ?? null,
 		p_middle_name: input.middleName ?? null,
 		p_family_name_kana: input.familyNameKana ?? null,
-		p_given_name_kana: input.givenNameKana ?? null
+		p_given_name_kana: input.givenNameKana ?? null,
+		p_zip: input.zip,
+		p_address: input.address,
+		p_address2: input.address2,
+		p_birthdate: input.birthdate || null
 	});
 	if (error) throw error;
 }

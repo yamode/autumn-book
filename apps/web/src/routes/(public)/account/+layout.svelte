@@ -10,9 +10,13 @@
 	let { data, children } = $props();
 
 	const primaryNav = $derived([
-		{ href: '/account', label: m.account_nav_reservations() },
+		{ href: '/account/reservations', label: m.account_nav_reservations() },
 		{ href: '/account/points', label: m.account_nav_points() },
 		{ href: '/account/community', label: m.account_nav_community() }
+	]);
+	const utilityNav = $derived([
+		{ href: '/account', label: m.account_dashboard() },
+		{ href: '/account/settings', label: m.account_nav_settings() }
 	]);
 	const bookingNav = $derived([
 		{ href: '/account/coupons', label: m.account_nav_coupons() },
@@ -21,11 +25,13 @@
 		{ href: '/account/upgrades', label: m.account_nav_upgrades() }
 	]);
 	const pathname = $derived(deLocalizeUrl(pendingPage('account')?.url ?? page.url).pathname);
-	const settingsActive = $derived(['/account/settings', '/account/profile', '/account/cards', '/account/ai-connections'].some(isActive));
-	const bookingSection = $derived(isActive('/account') || bookingNav.some((item) => isActive(item.href)));
+	const settingsDetail = $derived(['/account/profile', '/account/cards', '/account/ai-connections'].includes(pathname));
+	const settingsActive = $derived(pathname === '/account/settings' || settingsDetail);
+	const bookingSection = $derived(isActive('/account/reservations') || bookingNav.some((item) => isActive(item.href)));
 
 	function isActive(href: string) {
-		if (href === '/account') return pathname === href || pathname.startsWith('/account/reservations/');
+		if (href === '/account') return pathname === href;
+		if (href === '/account/settings') return settingsActive;
 		return pathname === href || pathname.startsWith(href + '/');
 	}
 
@@ -46,10 +52,6 @@
 			<h1 class="text-xl leading-tight sm:text-2xl">{m.account_layout_heading()}</h1>
 			<p class="mt-1 break-words text-sm text-stone-600">{m.account_member_greeting({ name: data.member.name })}</p>
 		</div>
-		<a href="/account/settings" aria-current={settingsActive ? 'location' : undefined}
-			class="order-0 inline-flex min-h-11 max-w-[45%] items-center rounded-lg px-1.5 text-center text-xs font-medium leading-tight text-brand-800 underline underline-offset-4 sm:order-1 sm:text-sm">
-			{m.account_nav_settings()}
-		</a>
 		<div class="flex w-full flex-wrap items-center gap-x-2 sm:w-auto">
 			<a href="/account/points#member-rank" class="inline-flex min-h-11 items-center rounded-md"
 				aria-label={`${rankName(data.member.rank)} · ${m.points_rank_progress()}`}>
@@ -62,12 +64,12 @@
 	</header>
 
 	<div class="grid items-start gap-3 sm:gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
-		<nav aria-label={m.account_layout_heading()} class="rounded-xl border border-stone-200 bg-white p-2">
+		<nav aria-label={m.account_layout_heading()} class="flex flex-col rounded-xl border border-stone-200 bg-white p-2">
 			<ul class="grid grid-cols-[1fr_1fr_1.55fr] gap-1 lg:grid-cols-1">
 				{#each primaryNav as item (item.href)}
 					<li class="min-w-0">
 						<a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}
-							class="relative flex min-h-11 items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-center text-sm font-medium leading-snug focus-visible:outline-2 focus-visible:outline-brand-800 lg:justify-start lg:px-2.5 {isActive(item.href) ? 'bg-brand-800 text-white' : item.href === '/account' && bookingSection ? 'bg-stone-100 text-brand-900' : 'text-stone-700 hover:bg-stone-100'}">
+							class="relative flex min-h-11 items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-center text-sm font-medium leading-snug focus-visible:outline-2 focus-visible:outline-brand-800 lg:justify-start lg:px-2.5 {isActive(item.href) ? 'bg-brand-800 text-white' : item.href === '/account/reservations' && bookingSection ? 'bg-stone-100 text-brand-900' : 'text-stone-700 hover:bg-stone-100'}">
 							<span class="min-w-0 wrap-break-word">{item.label}</span>
 							{#if item.href === '/account/community' && data.forumUnread > 0}
 								<span class="absolute right-0 top-0 rounded-full bg-amber-100 px-1 text-[10px] font-semibold leading-tight text-amber-900 lg:static lg:ml-auto lg:px-1.5 lg:text-xs">
@@ -76,6 +78,12 @@
 							{/if}
 						</a>
 					</li>
+				{/each}
+			</ul>
+			<ul class="mt-1 grid grid-cols-2 gap-1 border-t border-stone-100 pt-1 lg:mt-2 lg:block lg:space-y-1 lg:pt-2">
+				{#each utilityNav as item (item.href)}
+					<li><a href={item.href} aria-current={isActive(item.href) ? 'location' : undefined}
+						class="flex min-h-11 items-center justify-center rounded-lg px-2.5 text-center text-sm font-medium lg:justify-start lg:text-left {isActive(item.href) ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{item.label}</a></li>
 				{/each}
 			</ul>
 			<ul class="mt-2 hidden space-y-1 border-t border-stone-200 pt-2 lg:block">
@@ -87,9 +95,12 @@
 		</nav>
 		<div class="min-w-0 space-y-5">
 			<div data-account-content>
+				{#if settingsDetail}
+					<a href="/account/settings" class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand-800 underline underline-offset-4"><span aria-hidden="true">←</span>{m.account_back_settings()}</a>
+				{/if}
 				<PageLoadingBoundary shell="account" padding="py-2">{@render children()}</PageLoadingBoundary>
 			</div>
-			{#if bookingSection}
+			{#if bookingSection || isActive('/account')}
 				<nav aria-label={m.account_booking_links()} class="rounded-xl border border-stone-200 bg-white p-3 lg:hidden">
 					<h2 class="px-2 text-sm font-semibold">{m.account_booking_links()}</h2>
 					<ul class="divide-y divide-stone-100">

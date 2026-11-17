@@ -42,7 +42,7 @@
 <svelte:head><title>{m.amend_room_title({ n: String(data.room.index) })}</title></svelte:head>
 
 <nav class="mb-4 text-xs text-stone-400">
-	<a href="/account" class="hover:underline">{m.reservation_breadcrumb_list()}</a> /
+	<a href="/account/reservations" class="hover:underline">{m.reservation_breadcrumb_list()}</a> /
 	<a href={data.hrefs.back} class="hover:underline">{data.code}</a> /
 	{m.amend_room_title({ n: String(data.room.index) })}
 </nav>

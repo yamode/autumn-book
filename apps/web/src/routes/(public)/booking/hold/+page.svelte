@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ContactAddressFields from '$lib/components/ContactAddressFields.svelte';
 	import { enhance } from '$lib/enhance';
 	import { onMount, tick } from 'svelte';
 	import { page } from '$app/state';
@@ -218,6 +219,7 @@
 		const fd = new FormData(formEl);
 		const v = (k: string) => String(fd.get(k) ?? '').trim();
 		if (!v('familyName') || !v('givenName')) return m.error_name_required();
+		if (!v('address')) return m.contact_address_required();
 		if (!PHONE_RE.test(v('phone'))) return m.error_phone_invalid();
 		if (!EMAIL_RE.test(v('email'))) return m.error_email_invalid();
 		// 確認の段では個人情報の同意が要る（Apple Pay / Google Pay のシートを開く前にもここで止める）
@@ -621,6 +623,10 @@
 						{/each}
 					</div>
 
+					<div class="mt-4">
+						<ContactAddressFields values={form?.values ?? data.member} required error={form?.errors?.address} inputClass={input} />
+					</div>
+
 					<!-- 部屋ごとの男女の内訳（プランの設定・既定で聞く。必須・合計＝大人の人数。PMS の部屋別の男女に入る） -->
 					{#if multi}
 						<!-- 複数室: 部屋ごとの枠（部屋・プラン・人数）に、その部屋の男女の内訳と部屋ごとの質問。回答はその部屋の滞在の備考（PMS）へ -->
@@ -810,6 +816,7 @@
 							</dd>
 							<dt>{m.hold_field_phone()}</dt><dd>{values.phone}</dd>
 							<dt>{m.hold_field_email()}</dt><dd class="break-all">{values.email}</dd>
+							<dt>{m.contact_address()}</dt><dd>{[values.zip, values.address, values.address2].filter(Boolean).join(' ')}</dd>
 							{#if multi}
 								{#each rooms as r, i (r.index)}
 									{@const mv = values[`male_${i}`]}

@@ -363,6 +363,9 @@ export interface GuestInfo {
 	familyNameKana?: string;
 	givenNameKana?: string;
 	phone: string;
+	zip?: string;
+	address?: string;
+	address2?: string;
 	email: string;
 	arrival?: string;
 	shuttle?: boolean;
@@ -438,6 +441,10 @@ export interface Member {
 	familyNameKana?: string;
 	givenNameKana?: string;
 	phone: string;
+	zip?: string;
+	address?: string;
+	address2?: string;
+	birthdate?: string;
 	rank: 'standard' | 'silver' | 'gold' | 'platinum';
 	mailOptIn: boolean;
 	joinedAt: string;

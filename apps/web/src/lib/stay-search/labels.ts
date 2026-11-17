@@ -5,6 +5,8 @@ import type { StaySearchLang } from './params';
 
 export type StaySearchLabels = {
 	checkin: string;
+	checkout: string;
+	checkinCheckout: string;
 	addDate: string;
 	nights: string;
 	nightsN: (n: number) => string;
@@ -43,6 +45,8 @@ export type StaySearchLabels = {
 	range: (checkin: string, checkout: string, nights: number) => string;
 	undated: (nights: number) => string;
 	pickHint: string;
+	selectCheckin: string;
+	selectCheckout: (checkin: string) => string;
 	dateDialog: string;
 	region: string;
 };
@@ -53,6 +57,10 @@ const enAdults = (n: number) => `${n} ${n === 1 ? 'adult' : 'adults'}`;
 export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 	ja: {
 		checkin: 'チェックイン',
+		checkout: 'チェックアウト',
+		checkinCheckout: 'チェックイン・チェックアウト',
+		selectCheckin: 'チェックイン日を選ぶ',
+		selectCheckout: (d) => d + ' チェックイン · チェックアウト日を選ぶ',
 		addDate: '日付を追加',
 		nights: '泊数',
 		nightsN: (n) => `${n}泊`,
@@ -97,6 +105,10 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 	},
 	en: {
 		checkin: 'Check-in',
+		checkout: 'Check-out',
+		checkinCheckout: 'Check-in · Check-out',
+		selectCheckin: 'Choose your check-in date',
+		selectCheckout: (d) => 'Check-in ' + d + ' · Choose your check-out date',
 		addDate: 'Add dates',
 		nights: 'Nights',
 		nightsN: enNights,
@@ -141,6 +153,10 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 	},
 	'zh-TW': {
 		checkin: '入住日期',
+		checkout: '退房日期',
+		checkinCheckout: '入住 · 退房日期',
+		selectCheckin: '選擇入住日期',
+		selectCheckout: (d) => d + ' 入住 · 選擇退房日期',
 		addDate: '新增日期',
 		nights: '晚數',
 		nightsN: (n) => `${n}晚`,

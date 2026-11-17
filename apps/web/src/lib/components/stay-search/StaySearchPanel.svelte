@@ -41,6 +41,9 @@
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
     pickApplies = false,
+    rangeApplies = false,
+    maxDate,
+    onRange,
     onPick,
     onUndated,
     onApply,
@@ -68,6 +71,9 @@
     labels?: StaySearchLabels;
     /** 日付を押したらすぐ onPick する（「この日程で検索」ボタンを出さない） */
     pickApplies?: boolean;
+    rangeApplies?: boolean;
+    maxDate?: string;
+    onRange?: (checkin: string, nights: number) => void;
     onPick?: (iso: string) => void;
     /** pickApplies のとき:「日付指定なし」に戻した */
     onUndated?: () => void;
@@ -109,6 +115,20 @@
     return () => io.disconnect();
   });
   const isPending = (iso: string) => (pending ? pending(iso) : loading && iso >= today);
+  let rangeStart = $state('');
+  function pick(iso: string) {
+    if (rangeApplies) {
+      if (rangeStart && iso > rangeStart) {
+        const length = Math.round((Date.parse(iso) - Date.parse(rangeStart)) / 86_400_000);
+        if (length <= maxNights) onRange?.(rangeStart, length);
+      } else {
+        rangeStart = iso;
+      }
+      return;
+    }
+    date = iso;
+    if (pickApplies) onPick?.(iso);
+  }
   const checkout = $derived(date ? addDays(date, nights) : '');
   const week = $derived(WEEKDAYS[lang]);
   const status = $derived(loading ? 'loading' : failed ? 'failed' : 'hint');
@@ -137,19 +157,19 @@
     {#each grid.dates as iso (iso)}
       {@const c = day(iso)}
       {@const dow = (grid.offset + Number(iso.slice(8)) - 1) % 7}
-      {@const selected = iso === date}
-      {@const inStay = !!date && iso > date && iso < checkout}
+      {@const selected = iso === (rangeStart || date)}
+      {@const selectingCheckout = rangeApplies && rangeStart && iso > rangeStart}
+      {@const disabled = Boolean((maxDate && iso > maxDate) || (rangeApplies ? (iso < today || (selectingCheckout && iso > addDays(rangeStart, maxNights))) : isPending(iso) || c.disabled))}
+      {@const inStay = !rangeStart && !!date && iso > date && iso < checkout}
       <!-- 取得中は今日以降の料金欄をシマーにする（前の月・人数の料金を押させない） -->
       {@const pending = isPending(iso)}
       <button
         type="button"
-        disabled={pending || c.disabled}
+        {disabled}
+        aria-label={formatShortDate(iso, lang)}
         aria-pressed={selected}
-        onclick={() => {
-          date = iso;
-          if (pickApplies) onPick?.(iso);
-        }}
-        class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : !c.disabled ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
+        onclick={() => pick(iso)}
+        class={`min-h-16 border-b border-stone-100 px-0.5 py-1.5 transition ${selected ? 'rounded bg-[var(--pt-accent)] text-white' : inStay ? 'bg-[var(--pt-accent-soft)]' : pending ? '' : !disabled ? 'hover:bg-[var(--pt-accent-soft)]' : 'text-stone-300'}`}
       >
         <span class={`block text-base ${selected ? '' : !pending && c.disabled ? '' : dow === 0 || isHoliday(iso) ? 'text-rose-600' : dow === 6 ? 'text-sky-600' : 'text-stone-800'}`}>{Number(iso.slice(8))}</span>
         {#if pending}
@@ -175,24 +195,29 @@
     スマホは 2 行に詰める（2026-10-29: 折り返して縦に長くなっていた）: 1 行目 泊数 −n+ と ×、2 行目 日付指定なしと注記（取得中・失敗のときはその表示）。
   -->
   <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-stone-100 pb-3 md:gap-3">
+    {#if rangeApplies}
+      <p class="min-w-0 font-medium text-brand-900" aria-live="polite">{rangeStart ? labels.selectCheckout(formatShortDate(rangeStart, lang)) : labels.selectCheckin}</p>
+    {:else}
     <span class="text-base text-stone-600">{labels.nights}</span>
     <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label={labels.dec(labels.nights)}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg></button>
     <span class="min-w-10 text-center text-base font-medium tabular-nums">{labels.nightsN(nights)}</span>
     <button type="button" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label={labels.inc(labels.nights)}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14" /></svg></button>
+    {/if}
     <!-- 日付指定なし（泊数の右）: 日付を選んでいるときだけ押せる（押すと日付を外す）。日付が無いときはチェック済みで押せない -->
-    <label class={`order-3 flex items-center gap-2 rounded-lg border px-2.5 py-1 text-sm md:order-none md:px-3 md:py-1.5 md:text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
+    {#if !rangeApplies || date || rangeStart}<label class={`order-3 flex items-center gap-2 rounded-lg border px-2.5 py-1 text-sm md:order-none md:px-3 md:py-1.5 md:text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
       <input
         type="checkbox"
         class="h-4 w-4"
-        checked={!date}
-        disabled={!date}
+        checked={!date && !rangeStart}
+        disabled={!date && !rangeStart}
         onchange={() => {
           date = '';
-          if (pickApplies) onUndated?.();
+          rangeStart = '';
+          if (pickApplies || rangeApplies) onUndated?.();
         }}
       />
       {labels.noDate}
-    </label>
+    </label>{/if}
     <span class="hidden md:inline">{@render statusText(false)}</span>
     <span class="ml-auto hidden text-sm text-stone-500 md:inline">{labels.priceNote(guests, rooms)}</span>
     <button type="button" onclick={onClose} class="order-1 ml-auto flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100 md:order-none md:ml-0" aria-label={labels.close}>×</button>
@@ -220,10 +245,10 @@
   </div>
   <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
     <p class="text-base text-stone-700">
-      {#if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
+      {#if rangeApplies}{labels.priceNote(guests, rooms)}{:else if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
       <span class="ml-2 text-sm text-stone-400">{labels.unavailable}</span>
     </p>
-    {#if !pickApplies}
+    {#if !pickApplies && !rangeApplies}
       <button type="button" onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? labels.applyDates : labels.applyNoDate}</button>
     {/if}
   </div>

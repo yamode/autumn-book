@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { pendingPage, transitionTitle } from '$lib/page-transition';
+	import { pendingPage, transitionTitle, loadingShape } from '$lib/page-transition';
 	import PageLoadingSkeleton from './PageLoadingSkeleton.svelte';
 
 	let {
@@ -13,6 +13,7 @@
 		padding?: string;
 	} = $props();
 	const pending = $derived(pendingPage(shell));
+	const shape = $derived(loadingShape(pending?.route.id ?? ''));
 </script>
 
 <div class={pending ? 'transition-frame' : 'contents'}>
@@ -30,7 +31,7 @@
 						<div class="mx-auto mb-6 max-w-6xl border-b border-stone-200 pb-4 font-display text-lg text-stone-900">YAMADO Book</div>
 					{/if}
 					<div class={shell === 'root' || shell === 'public' ? 'mx-auto max-w-6xl' : ''}>
-						<PageLoadingSkeleton title={title ?? transitionTitle(pending.route.id ?? '')} />
+						<PageLoadingSkeleton {shape} title={title ?? transitionTitle(pending.route.id ?? '')} />
 					</div>
 				{/if}
 			</div>
