@@ -384,6 +384,7 @@
   "auth_otp_verify": "登入",
   "auth_otp_verify_register": "驗證並繼續",
   "auth_otp_resend": "重新寄送驗證碼",
+  "register_resend_session_expired": "重寄時限已過。請重新輸入電子郵件地址。",
   "auth_otp_resend_wait": "驗證碼可於60秒後重新寄送。",
   "auth_otp_rate_limited": "驗證碼寄送次數已達上限，請稍後再試。",
   "auth_turnstile_failed": "驗證失敗，請重新整理頁面後再試一次。",

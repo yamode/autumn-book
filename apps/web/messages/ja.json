@@ -384,6 +384,7 @@
   "auth_otp_verify": "ログイン",
   "auth_otp_verify_register": "確認して次へ",
   "auth_otp_resend": "確認コードを再送する",
+  "register_resend_session_expired": "再送できる時間を過ぎました。メールアドレスの入力からやり直してください。",
   "auth_otp_resend_wait": "確認コードの再送は60秒後に可能です。",
   "auth_otp_rate_limited": "確認コードの送信回数が上限に達しました。しばらく時間をおいてからお試しください。",
   "auth_turnstile_failed": "確認に失敗しました。ページを読み直してから、もう一度お試しください。",

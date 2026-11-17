@@ -32,12 +32,11 @@
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.auth_otp_verify_register()}</button>
 		</form>
 		<div class="mt-3 flex items-center justify-between text-sm">
-			<form method="POST" action="?/sendCode{consentQuery}" use:enhance>
+			<form method="POST" action="?/resendCode{consentQuery}" use:enhance>
 				<input type="hidden" name="email" value={email} />
-				<Turnstile action="member-otp" />
 				<button type="submit" class="text-accent-600 underline">{m.auth_otp_resend()}</button>
 			</form>
-			<a href="/auth/register" class="text-stone-500 underline">{m.auth_otp_change_email()}</a>
+			<a href={data.consentNext ? `/auth/register?next=${encodeURIComponent(data.consentNext)}` : '/auth/register'} class="text-stone-500 underline">{m.auth_otp_change_email()}</a>
 		</div>
 	{:else if data.authMode === 'supabase' && step === 'profile'}
 		<!-- step3: プロフィール入力（メールは認証済み） -->

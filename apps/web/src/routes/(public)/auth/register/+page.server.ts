@@ -1,5 +1,7 @@
 import { welcomeBonusPoints } from '$lib/server/member-program';
 import { fail, redirect } from '@sveltejs/kit';
+import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import { registerMember } from '$lib/server/store';
 import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient, getSupabaseUser } from '$lib/server/auth';
@@ -7,10 +9,11 @@ import { sbMyProfile, sbRegisterMember } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { combineName, combineKana } from '$lib/name';
 import * as m from '$lib/paraglide/messages';
-import { clientIp, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
+import { clientIp, hashKeyPart, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
 import { checkTurnstile } from '$lib/server/turnstile';
 import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
-import type { Actions, PageServerLoad } from './$types';
+import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
+import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const OTP_COOLDOWN = 'ab_otp_cooldown';
@@ -39,29 +42,64 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	return { authMode: AUTH_MODE, step: 'demo', email: '', prefill, welcomeBonus, consentNext };
 };
 
+// 再送は、初回に認証を通過し、実際に送信できた同じアドレスだけに許可する。
+const RESEND_COOKIE = 'ab_register_resend';
+const RESEND_TTL = 30 * 60;
+const RESEND_COOKIE_PATH = '/';
+const resendSigningAvailable = () => dev || Boolean(env.COOKIE_SIGNING_SECRET?.trim() || env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+
+async function allowResend(event: RequestEvent, email: string) {
+	if (!resendSigningAvailable()) return false;
+	const value = await verifyCookieValue(RESEND_COOKIE, event.cookies.get(RESEND_COOKIE));
+	if (!value) return false;
+	const [key, expiresAt] = value.split(':');
+	return Number(expiresAt) > Date.now() && key === await hashKeyPart(email);
+}
+
+async function sendRegistrationCode(event: RequestEvent, email: string, resend: boolean) {
+	const step = resend ? 'code' as const : 'email' as const;
+	if (event.cookies.get(OTP_COOLDOWN)) return fail(429, { step, email, message: m.auth_otp_resend_wait() });
+	const ip = clientIp(event.request);
+	if (!(await memberOtpSendAllowed(event.platform, email, ip))) {
+		return fail(429, { step, email, message: m.auth_otp_rate_limited() });
+	}
+	let client;
+	try {
+		client = createSupabaseServerClient(event);
+	} catch {
+		return fail(503, { step, email, message: m.auth_otp_error_config() });
+	}
+	const { error } = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+	if (error) return fail(502, { step, email, message: m.auth_otp_error_send() });
+	event.cookies.set(OTP_COOLDOWN, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 });
+	if (!resend && resendSigningAvailable()) {
+		const grant = await signCookieValue(RESEND_COOKIE, (await hashKeyPart(email)) + ':' + (Date.now() + RESEND_TTL * 1000));
+		event.cookies.set(RESEND_COOKIE, grant, { path: RESEND_COOKIE_PATH, httpOnly: true, sameSite: 'lax', maxAge: RESEND_TTL });
+	}
+	return { step: 'code' as const, email };
+}
+
 export const actions: Actions = {
-	// supabase: step1 メールアドレス → 8桁 OTP を送信（コード長は Supabase の Email OTP 設定に従う）
 	sendCode: async (event) => {
-		const { request, cookies } = event;
 		if (AUTH_MODE !== 'supabase') return fail(400, { message: m.auth_otp_error_config() });
-		const form = await request.formData();
+		const form = await event.request.formData();
 		const email = String(form.get('email') ?? '').trim();
 		if (!EMAIL_RE.test(email)) return fail(400, { step: 'email', email, message: m.auth_otp_error_email_invalid() });
-		if (cookies.get(OTP_COOLDOWN)) return fail(429, { step: 'code', email, message: m.auth_otp_resend_wait() });
-		// Turnstile（未設定なら素通り）と、サーバ側の送信数の制限（Cookie を捨てても効く・未登録メールでも同じ応答）
-		const ip = clientIp(request);
-		if (!(await checkTurnstile(form, ip)).ok) return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
-		if (!(await memberOtpSendAllowed(event.platform, email, ip))) return fail(429, { step: 'email', email, message: m.auth_otp_rate_limited() });
-		let client;
-		try {
-			client = createSupabaseServerClient(event);
-		} catch {
-			return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
+		if (event.cookies.get(OTP_COOLDOWN)) return fail(429, { step: 'email', email, message: m.auth_otp_resend_wait() });
+		if (!(await checkTurnstile(form, clientIp(event.request))).ok) {
+			return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
 		}
-		const { error } = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-		if (error) return fail(502, { step: 'email', email, message: m.auth_otp_error_send() });
-		cookies.set(OTP_COOLDOWN, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 });
-		return { step: 'code', email };
+		return sendRegistrationCode(event, email, false);
+	},
+
+	resendCode: async (event) => {
+		if (AUTH_MODE !== 'supabase') return fail(400, { message: m.auth_otp_error_config() });
+		const form = await event.request.formData();
+		const email = String(form.get('email') ?? '').trim();
+		if (!EMAIL_RE.test(email) || !(await allowResend(event, email))) {
+			return fail(403, { step: 'email', email, message: m.register_resend_session_expired() });
+		}
+		return sendRegistrationCode(event, email, true);
 	},
 
 	// supabase: step2 コード検証 → 既存会員はマイページ、未登録はプロフィール入力へ
@@ -79,6 +117,7 @@ export const actions: Actions = {
 		const { data, error } = await client.auth.verifyOtp({ email, token, type: 'email' });
 		await memberOtpVerifyResult(event.platform, email, !error && Boolean(data.user));
 		if (error || !data.user) return fail(401, { step: 'code', email, message: m.auth_otp_error_code_invalid() });
+		event.cookies.delete(RESEND_COOKIE, { path: RESEND_COOKIE_PATH });
 
 		const consentNext = bookingConsentNext(event.url);
 		const role = data.user.app_metadata.role;
