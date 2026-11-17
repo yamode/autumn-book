@@ -41,9 +41,7 @@
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
     pickApplies = false,
-    rangeApplies = false,
     maxDate,
-    onRange,
     onPick,
     onUndated,
     onApply,
@@ -71,10 +69,7 @@
     labels?: StaySearchLabels;
     /** 日付を押したらすぐ onPick する（「この日程で検索」ボタンを出さない） */
     pickApplies?: boolean;
-    /** チェックイン → チェックアウトの順に押して選ぶ。両方そろったら右下の「この日程で検索」で onRange（押すまで検索しない・2026-11-18 指示） */
-    rangeApplies?: boolean;
     maxDate?: string;
-    onRange?: (checkin: string, nights: number) => void;
     onPick?: (iso: string) => void;
     /** pickApplies のとき:「日付指定なし」に戻した */
     onUndated?: () => void;
@@ -116,30 +111,11 @@
     return () => io.disconnect();
   });
   const isPending = (iso: string) => (pending ? pending(iso) : loading && iso >= today);
-  let rangeStart = $state('');
-  /** rangeApplies: チェックインとチェックアウトを選び終えた範囲（「この日程で検索」を押すまで検索しない） */
-  let picked = $state<{ start: string; nights: number } | null>(null);
   function pick(iso: string) {
-    if (rangeApplies) {
-      if (rangeStart && iso > rangeStart) {
-        const length = Math.round((Date.parse(iso) - Date.parse(rangeStart)) / 86_400_000);
-        if (length <= maxNights) {
-          picked = { start: rangeStart, nights: length };
-          rangeStart = '';
-        }
-      } else {
-        rangeStart = iso;
-        picked = null;
-      }
-      return;
-    }
     date = iso;
     if (pickApplies) onPick?.(iso);
   }
-  // 表示に使う範囲: 選び終えた範囲があればそれ、無ければ今の条件
-  const shownStart = $derived(picked?.start ?? date);
-  const shownNights = $derived(picked?.nights ?? nights);
-  const checkout = $derived(shownStart ? addDays(shownStart, shownNights) : '');
+  const checkout = $derived(date ? addDays(date, nights) : '');
   const week = $derived(WEEKDAYS[lang]);
   const status = $derived(loading ? 'loading' : failed ? 'failed' : 'hint');
   /** 「大人2名・1室・1名あたりの最安」→ ['大人2名・', '1室・', '1名あたりの最安']（区切りは前に付ける） */
@@ -167,11 +143,9 @@
     {#each grid.dates as iso (iso)}
       {@const c = day(iso)}
       {@const dow = (grid.offset + Number(iso.slice(8)) - 1) % 7}
-      <!-- 範囲選択ではチェックアウト日にも印を付ける（チェックイン〜チェックアウトの両端） -->
-      {@const selected = iso === (rangeStart || shownStart) || (rangeApplies && !rangeStart && !!shownStart && iso === checkout)}
-      {@const selectingCheckout = rangeApplies && rangeStart && iso > rangeStart}
-      {@const disabled = Boolean((maxDate && iso > maxDate) || (rangeApplies ? (iso < today || (selectingCheckout && iso > addDays(rangeStart, maxNights))) : isPending(iso) || c.disabled))}
-      {@const inStay = !rangeStart && !!shownStart && iso > shownStart && iso < checkout}
+      {@const selected = iso === date}
+      {@const disabled = Boolean((maxDate && iso > maxDate) || isPending(iso) || c.disabled)}
+      {@const inStay = !!date && iso > date && iso < checkout}
       <!-- 取得中は今日以降の料金欄をシマーにする（前の月・人数の料金を押させない） -->
       {@const pending = isPending(iso)}
       <button
@@ -206,38 +180,34 @@
     スマホは 2 行に詰める（2026-10-29: 折り返して縦に長くなっていた）: 1 行目 泊数 −n+ と ×、2 行目 日付指定なしと注記（取得中・失敗のときはその表示）。
   -->
   <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 border-b border-stone-100 pb-3 md:gap-3">
-    {#if rangeApplies}
-      <p class="min-w-0 font-medium text-brand-900" aria-live="polite">{rangeStart ? labels.selectCheckout(formatShortDate(rangeStart, lang)) : labels.selectCheckin}</p>
-    {:else}
     <span class="text-base text-stone-600">{labels.nights}</span>
     <button type="button" disabled={nights <= 1} onclick={() => (nights -= 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label={labels.dec(labels.nights)}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14" /></svg></button>
     <span class="min-w-10 text-center text-base font-medium tabular-nums">{labels.nightsN(nights)}</span>
     <button type="button" disabled={nights >= maxNights} onclick={() => (nights += 1)} class="flex h-9 w-9 items-center justify-center rounded bg-[var(--pt-accent)] text-xl text-white disabled:opacity-30" aria-label={labels.inc(labels.nights)}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14M12 5v14" /></svg></button>
-    {/if}
     <!-- 日付指定なし（泊数の右）: 日付を選んでいるときだけ押せる（押すと日付を外す）。日付が無いときはチェック済みで押せない -->
-    {#if !rangeApplies || date || rangeStart}<label class={`order-3 flex items-center gap-2 rounded-lg border px-2.5 py-1 text-sm md:order-none md:px-3 md:py-1.5 md:text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
+    <label class={`order-3 flex items-center gap-2 rounded-lg border px-2.5 py-1 text-sm md:order-none md:px-3 md:py-1.5 md:text-base ${date ? 'cursor-pointer border-stone-300 hover:border-brand-900' : 'border-stone-200 text-stone-500'}`}>
       <input
         type="checkbox"
         class="h-4 w-4"
-        checked={!date && !rangeStart && !picked}
-        disabled={!date && !rangeStart && !picked}
+        checked={!date}
+        disabled={!date}
         onchange={() => {
           date = '';
-          rangeStart = '';
-          picked = null;
-          if (pickApplies || rangeApplies) onUndated?.();
+          if (pickApplies) onUndated?.();
         }}
       />
       {labels.noDate}
-    </label>{/if}
+    </label>
     <span class="hidden md:inline">{@render statusText(false)}</span>
-    <span class="ml-auto hidden text-sm text-stone-500 md:inline">{labels.priceNote(guests, rooms)}</span>
+    <!-- 料金の注記と「— は満室・料金なし」の凡例は、カレンダーの読み方の説明なので上段にまとめる
+         （下段の選んだ日程の隣にあると、その期間が満室のように見えた・2026-11-18 指示） -->
+    <span class="ml-auto hidden text-sm text-stone-500 md:inline">{labels.priceNote(guests, rooms)}<span class="ml-3 text-stone-400">{labels.unavailable}</span></span>
     <button type="button" onclick={onClose} class="order-1 ml-auto flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100 md:order-none md:ml-0" aria-label={labels.close}>×</button>
     <!-- スマホ: ここで改行して 2 行目へ -->
     <span class="order-2 h-0 basis-full md:hidden" aria-hidden="true"></span>
     <span class="order-3 min-w-0 flex-1 text-right text-xs leading-snug text-stone-500 md:hidden">
       <!-- 「・」の切れ目でだけ折り返す（語の途中で切れないように） -->
-      {#if status === 'hint'}{#each chunks(labels.priceNote(guests, rooms)) as part, i (i)}<span class="inline-block">{part}</span>{/each}{:else}{@render statusText(true)}{/if}
+      {#if status === 'hint'}{#each chunks(labels.priceNote(guests, rooms)) as part, i (i)}<span class="inline-block">{part}</span>{/each}<span class="ml-2 inline-block text-stone-400">{labels.unavailable}</span>{:else}{@render statusText(true)}{/if}
     </span>
   </div>
   {#if toolbar}<div class="border-b border-stone-100 py-2.5">{@render toolbar()}</div>{/if}
@@ -255,16 +225,13 @@
       <section data-ym={ym} aria-label={formatMonth(ym, lang)} class="pt-2">{@render monthView(ym)}</section>
     {/each}
   </div>
-  <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-3">
+  <!-- 下段（選んだ日程と「この日程で検索」）は、スマホで縦に長くなっても画面の下に残す -->
+  <div class="sticky bottom-0 z-10 mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 bg-white pt-3 pb-1">
     <p class="text-base text-stone-700">
-      {#if rangeApplies}{#if picked}{labels.range(formatShortDate(picked.start, lang), formatShortDate(checkout, lang), picked.nights)}{:else}{labels.priceNote(guests, rooms)}{/if}{:else if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
-      <span class="ml-2 text-sm text-stone-400">{labels.unavailable}</span>
+      {#if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
     </p>
-    {#if rangeApplies}
-      <!-- チェックアウトまで選んだら押せる。押すまで検索しない -->
-      <button type="button" disabled={!picked} onclick={() => picked && onRange?.(picked.start, picked.nights)} class="ml-auto rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{labels.applyDates}</button>
-    {:else if !pickApplies}
-      <button type="button" onclick={onApply} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? labels.applyDates : labels.applyNoDate}</button>
+    {#if !pickApplies}
+      <button type="button" onclick={onApply} class="ml-auto rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? labels.applyDates : labels.applyNoDate}</button>
     {/if}
   </div>
 </div>

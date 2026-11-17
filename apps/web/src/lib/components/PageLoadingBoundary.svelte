@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { pendingPage, transitionTitle, loadingShape } from '$lib/page-transition';
+	import { pendingPage, refreshingSamePage, transitionTitle, loadingShape } from '$lib/page-transition';
 	import PageLoadingSkeleton from './PageLoadingSkeleton.svelte';
 
 	let {
@@ -14,6 +14,8 @@
 	} = $props();
 	const pending = $derived(pendingPage(shell));
 	const shape = $derived(loadingShape(pending?.route.id ?? ''));
+	// 同じページのまま条件だけ変えているとき（全体の骨組みは出さない）。結果の欄を持たないページは中身を少し薄くして読み込み中を知らせる
+	const refreshing = $derived(!pending && refreshingSamePage());
 
 	// 画面の切り替えはフェードでつなぐ（2026-11-18 指示「パッパッと切り替わって疲れる」）。
 	// 出ていく画面は CSS（.page-leaving）で薄くし、読み込みが少しかかるときだけシマーが浮かぶ（.transition-layer の遅延）。
@@ -31,7 +33,7 @@
 	});
 </script>
 
-<div class={pending ? 'transition-frame' : 'contents'}>
+<div class={pending ? 'transition-frame' : 'contents'} data-refreshing={refreshing || undefined}>
 	<!-- Keep the outgoing page mounted and preserve its size until the router records scroll and commits. -->
 	<div bind:this={content} data-transition-content class={pending ? 'page-leaving' : 'contents'} inert={Boolean(pending)} aria-hidden={pending ? 'true' : undefined}>
 		{@render children()}
@@ -72,6 +74,11 @@
 	@keyframes page-fade {
 		from { opacity: 0; }
 		to { opacity: 1; }
+	}
+	/* 同じページで条件だけ変えて読み込み中: いちばん内側の枠だけ、結果の欄（RefreshingResults）が無いページの中身を少し薄くする */
+	:global([data-refreshing]:not(:has([data-refreshing], [data-results])) > [data-transition-content] > *) {
+		opacity: 0.55;
+		transition: opacity 200ms ease-out 140ms;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.transition-layer { animation: none; }

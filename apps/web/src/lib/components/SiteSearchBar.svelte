@@ -55,7 +55,7 @@
 	let failed = $state(false);
 	$effect(() => {
 		if (open !== 'date') return;
-		const key = `${calendarFacility}|${guests}`;
+		const key = `${calendarFacility}|${n}|${guests}`;
 		const hit = cache.get(key);
 		if (hit) {
 			data = hit;
@@ -67,7 +67,7 @@
 		data = null;
 		loading = true;
 		failed = false;
-		fetch(calendarUrl(page.url.origin, calendarFacility, 1, guests), { signal: ctrl.signal })
+		fetch(calendarUrl(page.url.origin, calendarFacility, n, guests), { signal: ctrl.signal })
 			.then((res) => (res.ok ? res.json() : Promise.reject(new Error(`http_${res.status}`))))
 			.then((json) => {
 				const parsed = parseCalendar(json);
@@ -100,9 +100,9 @@
 </script>
 
 <div role="search" aria-label={labels.region} style={`--pt-accent:${accent.accent};--pt-accent-soft:${accent.accentSoft}`}>
-	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} rangeMode onSearch={search}>
+	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} onSearch={search}>
 		{#snippet datePanel({ close })}
-			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} rangeApplies onRange={(start, nights) => { date = start; n = nights; search(); }} onUndated={search} onApply={search} onClose={close} />
+			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} onApply={search} onClose={close} />
 		{/snippet}
 	</StaySearchBar>
 </div>

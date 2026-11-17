@@ -8,6 +8,7 @@
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { areaLabel, searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
+	import RefreshingResults from '$lib/components/RefreshingResults.svelte';
 
 	let { data } = $props();
 
@@ -97,6 +98,8 @@
 		<!-- 主: 写真つき施設カード -->
 		<section aria-label={m.search_result_count({ n: String(data.results.length) })}>
 			<p class="mb-3 text-xs text-stone-500">{m.search_result_count({ n: String(data.results.length) })}</p>
+			<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
+			<RefreshingResults shape="search-results">
 			<div class="space-y-5">
 				{#each data.results as r, i (r.facility.id)}
 					{@const soldOut = r.minTotal === null}
@@ -178,6 +181,7 @@
 					</article>
 				{/each}
 			</div>
+			</RefreshingResults>
 		</section>
 
 		<!-- 従: 地図（開閉式）。デスクトップは右に追従、モバイルは一覧の下 -->

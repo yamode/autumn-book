@@ -6,7 +6,6 @@
 	import { page } from '$app/state';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
-	import FacilityGallery from '$lib/components/FacilityGallery.svelte';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
 	import AvailabilityCalendarModal from '$lib/components/AvailabilityCalendarModal.svelte';
@@ -17,6 +16,7 @@
 	import { writeCart, type CartItem } from '$lib/multi-room';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
+	import RefreshingResults from '$lib/components/RefreshingResults.svelte';
 	import type { RoomType } from '$lib/types';
 
 	// 予約に絞った構成（一休型）: 検索バー → 絞り込み・並び順 → 部屋タイプごとの全幅カード → 施設について
@@ -26,7 +26,6 @@
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');
 	const today = todayStr();
 	let expandedRooms = $state<Record<string, boolean>>({});
-	let introExpanded = $state(false);
 	let calendarOpen = $state(false);
 	let calendarRoomId = $state('');
 	let infoRoom = $state<RoomType | null>(null);
@@ -194,6 +193,8 @@
 			</p>
 		{/if}
 
+		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
+		<RefreshingResults shape="plans-results">
 		<div class="mt-4 space-y-5 sm:space-y-6">
 			{#each rooms as item (item.room.id)}
 				<article class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
@@ -302,25 +303,7 @@
 				<p class="text-sm text-stone-500">{m.plans_no_results()}</p>
 			{/each}
 		</div>
-	</section>
-
-	<!-- 施設について（予約の邪魔にならないよう部屋カードの下へ） -->
-	<section id="information" class="mt-14 scroll-mt-28 border-t border-stone-200 pt-8">
-		<h2 class="font-display text-xl text-brand-900 sm:text-2xl">{m.plans_facility_about()}</h2>
-		{#if data.facility.description}
-			<p class="mt-3 max-w-3xl text-sm leading-7 text-stone-600" class:line-clamp-4={!introExpanded}>{data.facility.description}</p>
-			{#if data.facility.description.length > 120}
-				<button type="button" onclick={() => (introExpanded = !introExpanded)} class="mt-1 text-xs font-semibold text-brand-700 underline underline-offset-4">{introExpanded ? m.plans_mobile_intro_less() : m.plans_mobile_intro_more()}</button>
-			{/if}
-		{/if}
-		<div class="mt-5 flex flex-wrap gap-x-5 gap-y-2 border-y border-stone-200 py-3 text-xs text-stone-600">
-			<span>IN {data.facility.checkinTime}</span><span>OUT {data.facility.checkoutTime}</span>
-			{#each data.facility.amenities.slice(0, 6) as amenity}<span>{amenity}</span>{/each}
-		</div>
-		<div id="gallery" class="-mx-4 mt-6 scroll-mt-28 sm:mx-0">
-			<h3 class="font-display mb-3 hidden text-lg text-brand-900 sm:block">{m.facility_gallery()}</h3>
-			<FacilityGallery photos={data.facility.photos} cover={facilityThumbnailUrl(data.facility.slug, data.facility.photos[0]?.url ?? '')} name={data.facility.name} />
-		</div>
+		</RefreshingResults>
 	</section>
 </div>
 

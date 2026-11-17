@@ -19,13 +19,21 @@ export function transitionShell(from: string, to: string, samePortal: boolean): 
 }
 
 export function pendingPage(shell: Shell): Target | null {
-	const { from, to, type, willUnload } = navigating;
+	const { from, to, willUnload } = navigating;
 	if (willUnload || !from?.route.id || !to?.route.id) return null;
 	const samePath = normalize(from.url.pathname) === normalize(to.url.pathname);
-	// 同じページ内の検索フォームとアンカー移動は、そのページの表示を維持する。
-	if (samePath && (type === 'form' || from.url.search === to.url.search)) return null;
+	// 同じページの中の移動（検索条件・絞り込みの変更、フォーム、アンカー）は、ページの表示を維持する。
+	// 検索バーや見出しまで骨組みに置き換えず、結果の欄だけを読み込み表示にする（RefreshingResults・2026-11-18 指示）。
+	if (samePath) return null;
 	if (normalize(page.url.pathname) === normalize(to.url.pathname) && page.url.search === to.url.search) return null;
 	return transitionShell(from.route.id, to.route.id, from.params?.token === to.params?.token) === shell ? to : null;
+}
+
+/** 同じページのまま条件（URL の ? 以降）だけ変えて読み込み中か。結果の欄の読み込み表示に使う */
+export function refreshingSamePage(): boolean {
+	const { to, type, willUnload } = navigating;
+	if (willUnload || !to || type === 'form') return false;
+	return normalize(to.url.pathname) === normalize(page.url.pathname) && to.url.search !== page.url.search;
 }
 
 export function transitionTitle(route: string): string {
@@ -55,7 +63,7 @@ export function transitionTitle(route: string): string {
 	return '';
 }
 
-export type LoadingShape = 'plain' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
+export type LoadingShape = 'plain' | 'search-results' | 'plans-results' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
 	'account-list' | 'auth' | 'lookup' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail';
 
 export function loadingShape(route: string): LoadingShape {

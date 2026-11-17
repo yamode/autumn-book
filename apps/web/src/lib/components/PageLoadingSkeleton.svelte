@@ -42,6 +42,44 @@
 	</div>
 {/snippet}
 
+{#snippet searchCards()}
+<div class="space-y-5">
+	{#each [0, 1] as i (i)}
+		<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:flex">
+			<div class="shimmer-block aspect-video w-full rounded-none md:w-[48%] md:shrink-0"></div>
+			<div class="flex flex-1 flex-col gap-2 p-4 md:p-5">
+				<div class="shimmer h-3 w-24"></div><div class="shimmer h-6 w-40"></div><div class="shimmer h-3.5 w-full"></div><div class="shimmer h-3.5 w-2/3"></div>
+				<div class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-3 md:mt-auto">
+					<div class="space-y-1.5"><div class="shimmer h-6 w-32"></div><div class="shimmer h-3 w-28"></div></div>
+					<div class="shimmer h-10 w-36" style:border-radius="0.5rem"></div>
+				</div>
+			</div>
+		</div>
+	{/each}
+</div>
+{/snippet}
+
+{#snippet planRooms()}
+<div class="space-y-5">
+	{#each [0, 1] as i (i)}
+		<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
+			<div class="border-b border-stone-200 md:border-b-0 md:border-r">
+				<div class="shimmer-block aspect-[16/9] w-full rounded-none md:aspect-[16/11]"></div>
+				<div class="space-y-2 p-4 sm:p-5"><div class="shimmer h-5 w-3/5"></div><div class="shimmer h-3 w-2/5"></div></div>
+			</div>
+			<div class="divide-y divide-stone-200">
+				{#each [0, 1] as j (j)}
+					<div class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+						<div class="space-y-2"><div class="flex gap-1.5"><div class="shimmer h-5 w-14"></div><div class="shimmer h-5 w-14"></div></div><div class="shimmer h-4 w-3/4"></div><div class="shimmer h-3 w-1/2"></div></div>
+						<div class="flex items-end justify-between gap-3 sm:block sm:space-y-2 sm:text-right"><div class="shimmer h-6 w-28 sm:ml-auto"></div><div class="shimmer h-9 w-24 sm:ml-auto"></div></div>
+					</div>
+				{/each}
+			</div>
+		</div>
+	{/each}
+</div>
+{/snippet}
+
 {#snippet pictureCards(count: number, plan = false)}
 	<div class="space-y-5">
 		{#each Array(count) as _, i (i)}
@@ -60,7 +98,11 @@
 <div data-page-skeleton data-skeleton-shape={shape} aria-busy="true" class="min-w-0">
 	<p role="status" class="sr-only">{kind === 'videos' ? m.radio_loading() : title ? `${title} · ${m.common_loading()}` : m.common_loading()}</p>
 	<div aria-hidden="true">
-		{#if kind === 'videos'}
+		{#if shape === 'search-results'}
+			{@render searchCards()}
+		{:else if shape === 'plans-results'}
+			{@render planRooms()}
+		{:else if kind === 'videos'}
 			<div class="grid gap-3 sm:grid-cols-2">
 				{#each [0, 1, 2, 3] as card (card)}
 					<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
@@ -138,20 +180,7 @@
 				<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
 					<div class="space-y-3">
 						<div class="shimmer h-3 w-16"></div>
-						<div class="space-y-5">
-							{#each [0, 1] as i (i)}
-								<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:flex">
-									<div class="shimmer-block aspect-video w-full rounded-none md:w-[48%] md:shrink-0"></div>
-									<div class="flex flex-1 flex-col gap-2 p-4 md:p-5">
-										<div class="shimmer h-3 w-24"></div><div class="shimmer h-6 w-40"></div><div class="shimmer h-3.5 w-full"></div><div class="shimmer h-3.5 w-2/3"></div>
-										<div class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-3 md:mt-auto">
-											<div class="space-y-1.5"><div class="shimmer h-6 w-32"></div><div class="shimmer h-3 w-28"></div></div>
-											<div class="shimmer h-10 w-36" style:border-radius="0.5rem"></div>
-										</div>
-									</div>
-								</div>
-							{/each}
-						</div>
+						{@render searchCards()}
 					</div>
 					<div class="shimmer-block hidden h-[420px] rounded-xl lg:block"></div>
 				</div>
@@ -168,24 +197,7 @@
 					<div class="shimmer h-6 w-36"></div>
 					<div class="flex flex-wrap gap-2">{#each ['w-24', 'w-16', 'w-16', 'w-20', 'w-24'] as w, i (i)}<div class="shimmer h-8 {w}" style:border-radius="9999px"></div>{/each}</div>
 					<div class="shimmer h-3.5 w-64 max-w-full"></div>
-					<div class="space-y-5">
-						{#each [0, 1] as i (i)}
-							<div class="overflow-hidden rounded-xl border border-stone-200 bg-white md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
-								<div class="border-b border-stone-200 md:border-b-0 md:border-r">
-									<div class="shimmer-block aspect-[16/9] w-full rounded-none md:aspect-[16/11]"></div>
-									<div class="space-y-2 p-4 sm:p-5"><div class="shimmer h-5 w-3/5"></div><div class="shimmer h-3 w-2/5"></div></div>
-								</div>
-								<div class="divide-y divide-stone-200">
-									{#each [0, 1] as j (j)}
-										<div class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
-											<div class="space-y-2"><div class="flex gap-1.5"><div class="shimmer h-5 w-14"></div><div class="shimmer h-5 w-14"></div></div><div class="shimmer h-4 w-3/4"></div><div class="shimmer h-3 w-1/2"></div></div>
-											<div class="flex items-end justify-between gap-3 sm:block sm:space-y-2 sm:text-right"><div class="shimmer h-6 w-28 sm:ml-auto"></div><div class="shimmer h-9 w-24 sm:ml-auto"></div></div>
-										</div>
-									{/each}
-								</div>
-							</div>
-						{/each}
-					</div>
+					{@render planRooms()}
 				{:else}
 					<!-- 客室一覧: 見出し（右に施設名）→ タブ → 部屋ごとに縦に並ぶ（見出し → 写真 3 : 説明 2） -->
 					<div class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-stone-200 pb-3 sm:pb-4">{@render heading()}<div class="shimmer h-4 w-28"></div></div>
