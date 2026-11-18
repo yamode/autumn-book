@@ -12,7 +12,8 @@
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
+	import { MEAL_KINDS, isMealKind, mealKindOf, type MealKind } from '$lib/plan-meal';
 	import { writeCart, type CartItem } from '$lib/multi-room';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
@@ -29,7 +30,10 @@
 	let calendarOpen = $state(false);
 	let calendarRoomId = $state('');
 	let infoRoom = $state<RoomType | null>(null);
-	let sort = $state<'asc' | 'desc'>('asc');
+	// 並び順の既定は「おすすめ順」＝管理画面のプランの「表示順」（小さいほど上）→ 同じなら 2食付き → 夕食付き → 朝食付き → 素泊まり → 安い順（2026-11-18 指示）
+	let sort = $state<'recommended' | 'asc' | 'desc'>('recommended');
+	// お食事の絞り込み（施設のプランに 2 種類以上の区分があるときだけ出す。西和賀のように 2食付きだけなら出さない）
+	let meal = $state<MealKind | 'all'>(isMealKind(page.url.searchParams.get('meal')) ? (page.url.searchParams.get('meal') as MealKind) : 'all');
 	let headingVariant = $derived(experimentVariant(page.data.abExperiments, 'facility-plans-heading'));
 
 	type RoomItem = (typeof data.rooms)[number];
@@ -43,17 +47,56 @@
 	function byPrice(a: number | null, b: number | null) {
 		if (a === null) return b === null ? 0 : 1;
 		if (b === null) return -1;
-		return sort === 'asc' ? a - b : b - a;
+		return sort === 'desc' ? b - a : a - b;
 	}
+	function byPlan(a: PlanOption, b: PlanOption) {
+		if (sort === 'recommended') {
+			const order = a.plan.sortOrder - b.plan.sortOrder;
+			if (order) return order;
+			const kind = MEAL_KINDS.indexOf(mealKindOf(a.plan)) - MEAL_KINDS.indexOf(mealKindOf(b.plan));
+			if (kind) return kind;
+		}
+		return byPrice(perPersonNight(a), perPersonNight(b));
+	}
+	// 施設のプランにある食事の区分（絞り込みの選択肢）
+	let mealKinds = $derived.by(() => {
+		const found = new Set(data.rooms.flatMap((item) => item.plans.map((option) => mealKindOf(option.plan))));
+		return MEAL_KINDS.filter((kind) => found.has(kind));
+	});
+	let mealFilter = $derived(mealKinds.length > 1 && meal !== 'all' && mealKinds.includes(meal) ? meal : 'all');
 	let rooms = $derived.by(() =>
 		data.rooms
-			.map((item) => ({ ...item, plans: [...item.plans].sort((a, b) => byPrice(perPersonNight(a), perPersonNight(b))) }))
+			.map((item) => ({
+				...item,
+				plans: item.plans.filter((option) => mealFilter === 'all' || mealKindOf(option.plan) === mealFilter).sort(byPlan)
+			}))
+			// お食事で絞り込んだときは、その区分のプランが無い部屋タイプは出さない
+			.filter((item) => mealFilter === 'all' || item.plans.length > 0)
 			.sort((a, b) => {
+				const hasA = Number(a.plans.length > 0);
+				const hasB = Number(b.plans.length > 0);
+				if (hasA !== hasB) return hasB - hasA;
+				// 部屋タイプは、それぞれの先頭のプランの料金順（おすすめ順は安い順）
 				const priceA = a.plans.length ? perPersonNight(a.plans[0]) : null;
 				const priceB = b.plans.length ? perPersonNight(b.plans[0]) : null;
-				return Number(b.plans.length > 0) - Number(a.plans.length > 0) || byPrice(priceA, priceB);
+				return byPrice(priceA, priceB);
 			})
 	);
+	const mealLabel: Record<MealKind | 'all', () => string> = {
+		all: m.plans_meal_all,
+		both: m.plans_meal_both,
+		dinner: m.plans_meal_dinner,
+		breakfast: m.plans_meal_breakfast,
+		none: m.plans_meal_none
+	};
+	function chooseMeal(kind: MealKind | 'all') {
+		meal = kind;
+		// 共有・再読込でも同じ絞り込みになるよう URL に残す（ページは読み直さない）
+		const url = new URL(page.url);
+		if (kind === 'all') url.searchParams.delete('meal');
+		else url.searchParams.set('meal', kind);
+		replaceState(url, page.state);
+	}
 
 	function tagHref(tag: string) {
 		const query = new URLSearchParams(page.url.searchParams);
@@ -179,11 +222,20 @@
 				<span></span>
 			{/if}
 			<div class="flex shrink-0 gap-4 text-sm" role="group" aria-label="sort">
-				{#each [['asc', m.plans_sort_asc()], ['desc', m.plans_sort_desc()]] as [value, label]}
-					<button type="button" aria-pressed={sort === value} onclick={() => (sort = value as 'asc' | 'desc')} class="border-b-2 pb-1 {sort === value ? 'border-brand-900 font-semibold text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}">{label}</button>
+				{#each [['recommended', m.plans_sort_recommended()], ['asc', m.plans_sort_asc()], ['desc', m.plans_sort_desc()]] as [value, label]}
+					<button type="button" aria-pressed={sort === value} onclick={() => (sort = value as 'recommended' | 'asc' | 'desc')} class="border-b-2 pb-1 {sort === value ? 'border-brand-900 font-semibold text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}">{label}</button>
 				{/each}
 			</div>
 		</div>
+
+		{#if mealKinds.length > 1}
+			<div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label={m.plans_meal_label()}>
+				<span class="mr-1 text-sm text-stone-600">{m.plans_meal_label()}</span>
+				{#each ['all', ...mealKinds] as kind (kind)}
+					<button type="button" aria-pressed={mealFilter === kind} onclick={() => chooseMeal(kind as MealKind | 'all')} class="rounded-full border px-3 py-1.5 text-sm transition {mealFilter === kind ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 text-stone-700 hover:border-brand-800 hover:text-brand-800'}">{mealLabel[kind as MealKind | 'all']()}</button>
+				{/each}
+			</div>
+		{/if}
 
 		{#if data.params.checkin}
 			<p class="mt-3 text-sm text-stone-600">{m.plans_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}</p>
@@ -195,6 +247,9 @@
 
 		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
 		<RefreshingResults shape="plans-results">
+		{#if mealFilter !== 'all' && rooms.length === 0}
+			<p class="mt-4 rounded-lg bg-stone-50 px-4 py-3 text-sm text-stone-600">{m.plans_meal_empty()}</p>
+		{/if}
 		<div class="mt-4 space-y-5 sm:space-y-6">
 			{#each rooms as item (item.room.id)}
 				<article class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">

@@ -258,6 +258,10 @@
 					<span class="text-stone-600">表示順</span>
 					<input type="number" bind:value={sortOrder} oninput={touch} min="0" class="w-24 rounded-md border border-stone-300 px-2.5 py-1.5" />
 				</label>
+				{#if kind !== 'room'}
+					<!-- 公式サイトのプラン一覧の「おすすめ順」（既定の並び）に使う（2026-11-18） -->
+					<p class="basis-full text-xs text-stone-500">公式サイトのプラン一覧（おすすめ順）で、数字の小さいプランほど上に出ます。同じ数字なら 2食付き → 夕食付き → 朝食付き → 素泊まり → 安い順です。</p>
+				{/if}
 			{/if}
 			{#if kind === 'room'}
 				<!-- プランはページ上部の「販売」で切り替える（紹介文の保存では販売中／停止中を書き換えない・v0.229.0） -->
