@@ -119,7 +119,7 @@
 	</form>
 
 	<!-- メールアドレス変更 -->
-	<div class="min-w-0 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6">
+	<div id="change-email" class="min-w-0 scroll-mt-24 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6">
 		<h2 class="text-lg">{m.profile_email()}</h2>
 		{#if form?.emailSaved}
 			<p class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.profile_email_saved()}</p>

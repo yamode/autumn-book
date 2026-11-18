@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/browser';
-	import { flushSync, tick } from 'svelte';
+	import { tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$lib/enhance';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -15,6 +15,9 @@
 	let renameInput = $state<HTMLInputElement>();
 	let authenticatorApp = $state('');
 	let showPassword = $state(false);
+	let newPassword = $state('');
+	let confirmedPassword = $state('');
+	let passwordBusy = $state(false);
 	let confirmationInput = $state<HTMLInputElement>();
 	let passwordForm = $state<HTMLFormElement>();
 	let keyBusy = $state(false);
@@ -35,9 +38,44 @@
 	function submitPassword(event: SubmitEvent) {
 		if (!confirmationInput?.reportValidity()) {
 			event.preventDefault();
-			return;
 		}
-		flushSync(() => { showPassword = false; });
+	}
+
+	function enhancePassword(passwordForm: HTMLFormElement) {
+		const PasswordCredential = (window as Window & {
+			PasswordCredential?: new (data: { id: string; password: string }) => Credential;
+		}).PasswordCredential;
+		if (!PasswordCredential || typeof navigator.credentials?.store !== 'function' || !data.member.email) return;
+
+		return enhance(passwordForm, ({ formData, cancel }) => {
+			if (passwordBusy || !confirmationInput?.reportValidity()) return cancel();
+			const email = data.member.email;
+			const password = formData.get('password');
+			passwordBusy = true;
+			return async ({ result, update }) => {
+				try {
+					if (result.type !== 'success' || result.data?.saved !== 'password' || typeof password !== 'string') {
+						await update();
+						return;
+					}
+					// Publish the successful result before handing off credentials. Keep the
+					// password fields intact until that handoff so Chrome has one save signal.
+					await update({ reset: false, invalidateAll: false });
+					await tick();
+					try {
+						void navigator.credentials.store(new PasswordCredential({ id: email, password })).catch(() => {});
+					} catch {
+						// Browser storage is optional once the new password has been saved.
+					} finally {
+						showPassword = false;
+						newPassword = '';
+						confirmedPassword = '';
+					}
+				} finally {
+					passwordBusy = false;
+				}
+			};
+		});
 	}
 
 	function submitPasswordOnEnter(event: KeyboardEvent) {
@@ -119,38 +157,50 @@
 	<div class="mt-4 space-y-4">
 		<section class={panel}>
 			<h3 class="text-lg font-semibold">{t.passwordSetup}</h3>
+			{#if data.member.email}
+				<div class="max-w-md space-y-1.5">
+					<dl class="space-y-1.5">
+						<dt class="text-sm font-medium text-stone-700">{t.passwordLoginEmail}</dt>
+						<dd class="wrap-anywhere rounded-lg bg-stone-100 px-3 py-2.5 text-sm text-stone-600">{data.member.email}</dd>
+					</dl>
+					<a href="/account/profile#change-email" class="inline-block text-sm font-medium text-brand-800 underline underline-offset-4 hover:text-brand-600">{t.changeLoginEmail}</a>
+				</div>
+			{/if}
 			{#if data.recent && (data.passwordNeedsTotp || form?.issue === 'passwordTotp')}
 				{#if form?.issue !== 'passwordTotp'}<p class="text-sm text-stone-700">{t.passwordTotp}</p>{/if}
 				{@render restartLogin()}
 			{:else if data.recent && form?.issue !== 'recent'}
 				<form id="confirm-password-form" method="POST" autocomplete="off" onsubmit={(event) => event.preventDefault()}></form>
-				<form id="member-password-change" method="POST" action="?/password" bind:this={passwordForm}
+				<form id="member-password-change" method="POST" action="?/password" bind:this={passwordForm} use:enhancePassword
 					onsubmit={submitPassword} onformdata={({ formData }) => formData.set('confirm', confirmationInput?.value ?? '')}
 					class="max-w-md space-y-3">
 					{#if data.member.email}
-						<label class="block text-sm" for="login-email">{t.passwordLoginEmail}
-							<input id="login-email" class={`${input} bg-stone-50`} type="email" name="email"
-								value={data.member.email} autocomplete="username" readonly />
-						</label>
+						<input class="hidden" type="email" name="email" value={data.member.email} autocomplete="username" readonly />
 					{/if}
 					<p id="password-hint" class="text-sm text-stone-600">{t.passwordLength}</p>
 					<div>
 						<label for="new-password" class="block text-sm">{t.newPassword}</label>
 						<div class="mt-1 flex items-center gap-2">
 							<input id="new-password" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2"
-								name="password" type={showPassword ? 'text' : 'password'} autocomplete="new-password"
+								name="password" type="password" bind:value={newPassword} autocomplete="new-password"
 								aria-describedby="password-hint" minlength="12" autocapitalize="off" spellcheck={false} required />
-							<button type="button" class={`${button} shrink-0`} aria-controls="new-password confirm-entry"
+							<button type="button" class={`${button} shrink-0`} aria-expanded={showPassword}
 								onclick={() => showPassword = !showPassword}>{showPassword ? t.hidePassword : t.showPassword}</button>
 						</div>
+						{#if showPassword && newPassword}
+							<p class="mt-1 wrap-anywhere whitespace-pre-wrap rounded-md bg-stone-100 px-3 py-2 font-mono text-sm">{newPassword}</p>
+						{/if}
 					</div>
 					<label for="confirm-entry" class="block text-sm">{t.confirmPassword}
 						<!-- 別フォームに所属させ、ブラウザが生成したパスワードを確認欄に複製するのを防ぐ。 -->
 						<input form="confirm-password-form" id="confirm-entry" bind:this={confirmationInput}
-							class={input} type={showPassword ? 'text' : 'password'} autocomplete="off"
+							class={input} type="password" bind:value={confirmedPassword} autocomplete="off"
 							autocapitalize="off" spellcheck={false} onkeydown={submitPasswordOnEnter} required />
 					</label>
-					<button type="submit" class={submitButton}>{t.save}</button>
+					{#if showPassword && confirmedPassword}
+						<p class="wrap-anywhere whitespace-pre-wrap rounded-md bg-stone-100 px-3 py-2 font-mono text-sm">{confirmedPassword}</p>
+					{/if}
+					<button type="submit" class={`${submitButton} disabled:opacity-60`} disabled={passwordBusy}>{t.save}</button>
 				</form>
 			{/if}
 		</section>
