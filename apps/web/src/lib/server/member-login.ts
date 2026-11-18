@@ -4,6 +4,7 @@ import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { adminRoleOf, jwtSessionId } from '$lib/admin-passkey';
 import { passkeyRelyingParty } from '$lib/partner-passkey';
 import { safeNext } from '$lib/safe-next';
+import { RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { User, SupabaseClient } from '@supabase/supabase-js';
 
@@ -53,6 +54,28 @@ export async function memberSecurityContext(event: RequestEvent) {
 	const security = await memberSessionSecurity(client, event.locals.user.id);
 	if (!security.active || security.requiresMfa) return null;
 	return { client, userId: event.locals.user.id, ...security };
+}
+
+export async function verifyMemberTotp(
+	event: RequestEvent, client: SupabaseClient, userId: string, form: FormData
+): Promise<'verified' | 'invalid' | 'locked' | 'unavailable'> {
+	const code = String(form.get('code') ?? '').normalize('NFKC').trim();
+	if (!/^\d{6}$/.test(code)) return 'invalid';
+	const rule = RATE_RULES.memberTotp;
+	if ((await rateCheck(event.platform, rule, userId)).locked) return 'locked';
+
+	const factorId = form.get('factorId');
+	const { data, error: listError } = await client.auth.mfa.listFactors();
+	if (listError || !data?.totp.length) return 'unavailable';
+	if (!data.totp.some((factor) => factor.id === factorId)) return 'invalid';
+
+	const { error } = await client.auth.mfa.challengeAndVerify({ factorId: String(factorId), code });
+	if (error) {
+		await rateHit(event.platform, rule, userId);
+		return 'invalid';
+	}
+	await rateReset(event.platform, rule, userId);
+	return 'verified';
 }
 
 /** Validate the existing Book member and determine whether a second step is needed. */

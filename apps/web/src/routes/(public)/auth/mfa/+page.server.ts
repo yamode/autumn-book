@@ -1,7 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/server/auth';
-import { MEMBER_LOGIN_METHODS, memberPasskeysAvailable } from '$lib/server/member-login';
-import { RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
+import { MEMBER_LOGIN_METHODS, memberPasskeysAvailable, verifyMemberTotp } from '$lib/server/member-login';
 import { safeNext } from '$lib/safe-next';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -25,21 +24,8 @@ export const actions: Actions = {
 		const pending = event.locals.memberMfaPending;
 		if (!MEMBER_LOGIN_METHODS || !pending || pending.unavailable) return fail(403, { verified: false });
 		const form = await event.request.formData();
-		const factorId = String(form.get('factorId') ?? '');
-		const code = String(form.get('code') ?? '').normalize('NFKC').trim();
-		const { memberTotp } = RATE_RULES;
-		if (!/^\d{6}$/.test(code) || (await rateCheck(event.platform, memberTotp, pending.id)).locked) {
-			return fail(400, { verified: false });
-		}
 		const client = createSupabaseServerClient(event);
-		const { data } = await client.auth.mfa.listFactors();
-		if (!data?.totp.some((factor) => factor.id === factorId)) return fail(400, { verified: false });
-		const { error } = await client.auth.mfa.challengeAndVerify({ factorId, code });
-		if (error) {
-			await rateHit(event.platform, memberTotp, pending.id);
-			return fail(400, { verified: false });
-		}
-		await rateReset(event.platform, memberTotp, pending.id);
+		if (await verifyMemberTotp(event, client, pending.id, form) !== 'verified') return fail(400, { verified: false });
 		redirect(303, safeNext(event.url.searchParams.get('next'), '/account'));
 	}
 };

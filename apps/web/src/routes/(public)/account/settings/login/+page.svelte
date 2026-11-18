@@ -24,10 +24,11 @@
 	let keyStatus = $state<'' | 'error' | 'saved'>('');
 	let enrolling = $state<{ id: string; qrCode: string; secret: string } | null>(null);
 	const currentEnroll = $derived(form?.enroll ?? enrolling);
+	const showPasswordTotp = $derived(data.passwordCanVerifyTotp && (data.passwordNeedsTotp || form?.issue === 'passwordTotp'));
 	const errors = $derived({
 		recent: t.recent, passwordLength: t.passwordLength, passwordMismatch: t.passwordMismatch,
 		passwordSame: t.passwordSame, passwordWeak: t.passwordWeak,
-		passwordTotp: t.passwordTotp, passwordSave: t.passwordSaveError, code: t.wrongCode, retainKey: t.retainKey,
+		passwordTotp: showPasswordTotp ? t.passwordTotp : t.recent, passwordSave: t.passwordSaveError, code: t.wrongCode, retainKey: t.retainKey,
 		unavailable: t.unavailable, keyName: t.keyNameRequired, renameKey: t.renameKeyError
 	});
 	const panel = 'space-y-3 rounded-xl border border-stone-200 bg-white p-4 sm:p-5';
@@ -161,9 +162,12 @@
 {#if data.unavailable}
 	<p role="alert" class="text-sm text-red-700">{t.unavailable}</p>
 {:else}
-	{#if form?.issue}<p role="alert" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{errors[form.issue]}</p>{/if}
+	{#if form?.issue && !(form.issue === 'passwordTotp' && showPasswordTotp)}
+		<p role="alert" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{errors[form.issue]}</p>
+	{/if}
 	{#if form?.saved || keyStatus === 'saved'}<p role="status" class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t.saved}</p>{/if}
-	{#if !data.recent || form?.issue === 'recent'}
+	{#if form?.passwordVerified}<p role="status" class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t.passwordVerified}</p>{/if}
+	{#if (!data.recent && !showPasswordTotp) || form?.issue === 'recent'}
 		<div class={panel}>
 			{#if form?.issue !== 'recent'}<p>{t.recent}</p>{/if}
 			{@render restartLogin()}
@@ -181,8 +185,27 @@
 					<a href="/account/profile#change-email" class="inline-block text-sm font-medium text-brand-800 underline underline-offset-4 hover:text-brand-600">{t.changeLoginEmail}</a>
 				</div>
 			{/if}
-			{#if data.recent && (data.passwordNeedsTotp || form?.issue === 'passwordTotp')}
-				{#if form?.issue !== 'passwordTotp'}<p class="text-sm text-stone-700">{t.passwordTotp}</p>{/if}
+			{#if showPasswordTotp}
+				<p id="password-totp-hint" class="text-sm text-stone-700">{t.passwordTotp}</p>
+				<form method="POST" action="?/verifyPasswordTotp" use:enhance class="max-w-xs space-y-3">
+					{#if data.factors.length > 1}
+						<label class="block text-sm">{t.totp}
+							<select name="factorId" class={input} required>
+								{#each data.factors as factor, index (factor.id)}
+									<option value={factor.id}>{factor.name || `${t.totp} ${index + 1}`}</option>
+								{/each}
+							</select>
+						</label>
+					{:else}
+						<input type="hidden" name="factorId" value={data.factors[0]?.id ?? ''} />
+					{/if}
+					<label class="block text-sm">{t.code}
+						<input name="code" class={input} type="text" inputmode="numeric" autocomplete="one-time-code"
+							maxlength="6" aria-describedby="password-totp-hint" required />
+					</label>
+					<button type="submit" class={submitButton}>{t.verify}</button>
+				</form>
+			{:else if data.recent && (data.passwordNeedsTotp || form?.issue === 'passwordTotp')}
 				{@render restartLogin()}
 			{:else if data.recent && form?.issue !== 'recent'}
 				<form id="confirm-password-form" method="POST" autocomplete="off" onsubmit={(event) => event.preventDefault()}></form>

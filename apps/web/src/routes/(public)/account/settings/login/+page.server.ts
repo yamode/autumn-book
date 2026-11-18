@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { cleanPasskeyName } from '$lib/partner-passkey';
-import { MEMBER_LOGIN_METHODS, MEMBER_SECURITY_PATH, memberMfaPath, memberPasskeysAvailable, memberSecurityContext } from '$lib/server/member-login';
+import { MEMBER_LOGIN_METHODS, MEMBER_SECURITY_PATH, memberMfaPath, memberPasskeysAvailable, memberSecurityContext, verifyMemberTotp } from '$lib/server/member-login';
 import { listMemberPasskeys, removeMemberPasskey, renameMemberPasskey } from '$lib/server/member-passkeys';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
@@ -32,7 +32,8 @@ export const load: PageServerLoad = async (event) => {
 		if (error) throw error;
 		return {
 			unavailable: false, recent: security.recent, passkeysAvailable: memberPasskeysAvailable(event.url), keys,
-			passwordNeedsTotp: security.hasTotp && !security.aal2,
+			passwordCanVerifyTotp: security.passkey && security.hasTotp,
+			passwordNeedsTotp: security.hasTotp && (!security.aal2 || (security.passkey && !security.recent)),
 			factors: (data?.totp ?? []).map((factor) => ({ id: factor.id, name: authenticatorAppName(factor.friendly_name) }))
 		};
 	} catch {
@@ -41,6 +42,15 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	verifyPasswordTotp: async (event) => {
+		const security = await memberSecurityContext(event).catch(() => null);
+		if (!security?.passkey || !security.hasTotp) return rejected('recent', 403);
+		const form = await event.request.formData();
+		const result = await verifyMemberTotp(event, security.client, security.userId, form);
+		if (result === 'unavailable') return rejected('unavailable', 503);
+		if (result !== 'verified') return rejected('code', result === 'locked' ? 429 : 400);
+		return { passwordVerified: true as const };
+	},
 	password: async (event) => {
 		const security = await memberSecurityContext(event).catch(() => null);
 		if (!security?.recent) return rejected('recent', 403);
