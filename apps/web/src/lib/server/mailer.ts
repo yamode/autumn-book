@@ -1,5 +1,5 @@
 // HTMLメール送信（Cloudflare Email Sending REST API）。取引先専用ページ（autumn-rms から移設）の通知で使う。
-// 差出人名・返信先は呼び出し側（partners/mail.ts）で施設ごとに決める（Book の直販予約メールと揃える）。
+// 差出人名は YAMADO。施設宛ての返信先は呼び出し側で渡す。
 //
 // アプリは Cloudflare Pages 上で動くため、Worker ランタイムから素の fetch で REST API を叩く
 // （send_email バインディングは Pages では使えないことがあるため REST を採用）。
@@ -9,16 +9,15 @@
 // 【必要な環境変数（Cloudflare Pages）】
 //   - CF_ACCOUNT_ID      … Cloudflare アカウントID
 //   - CF_EMAIL_API_TOKEN … Email Sending 権限を持つ API トークン（秘匿）
-//   - REPORT_EMAIL_FROM  … 送信元（任意・既定 'rms@yamado.app'）。yamado.app配下である必要がある。
+//   - REPORT_EMAIL_FROM  … 送信元（任意・既定 'noreply@yamado.app'）。yamado.app配下である必要がある。
 // いずれか未設定なら送信せず {sent:false, reason} を返す（graceful＝本番未設定でもクラッシュしない）。
 import { env as privateEnv } from '$env/dynamic/private';
 import { buildRestAttachments, type MailAttachment } from './mail-attachments';
 
 export type { MailAttachment };
 
-const DEFAULT_FROM = 'rms@yamado.app';
-// 差出人名の既定（呼び出し側が施設名を渡せなかったときだけ）
-const DEFAULT_FROM_NAME = '山人';
+const DEFAULT_FROM = 'noreply@yamado.app';
+const FROM_NAME = 'YAMADO';
 
 export type SendEmailResult = { sent: boolean; reason?: string; delivered?: number };
 
@@ -27,7 +26,6 @@ export async function sendHtmlEmail(args: {
   subject: string;
   html: string;
   text: string;
-  fromName?: string;
   /** 返信先（Reply-To）。取引先宛てでは施設の予約用アドレス（pms.mail_settings.from_address） */
   replyTo?: string;
   /** 添付ファイル（合計 5MiB まで。超えると送らずに reason を返す） */
@@ -49,7 +47,7 @@ export async function sendHtmlEmail(args: {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({
         to: to.length === 1 ? to[0] : to,
-        from: { address: from, name: args.fromName || DEFAULT_FROM_NAME },
+        from: { address: from, name: FROM_NAME },
         // REST API は snake_case（reply_to）
         ...(args.replyTo ? { reply_to: args.replyTo } : {}),
         subject: args.subject,

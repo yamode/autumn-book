@@ -164,7 +164,6 @@ async function notifyFacilityTask(token: string, origin: string): Promise<void> 
 		subject: mail.subject,
 		html: mail.html,
 		text: mail.text,
-		fromName: `${r.facilityName || '山人'} 事前チェックイン`
 	});
 	dbg('notify mail', { stay: r.stayId, sent: res.sent, reason: res.reason });
 }
@@ -536,7 +535,6 @@ export async function sendPrecheckin(
 		subject: mail.subject,
 		html: mail.html,
 		text: mail.text,
-		fromName: `${issued.facility_name} 事前チェックイン`,
 		replyTo: sender?.replyTo ?? undefined
 	});
 	dbg('send', { id: issued.id, sent: res.sent, reason: res.reason });

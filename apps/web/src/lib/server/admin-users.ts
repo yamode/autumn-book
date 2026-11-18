@@ -316,7 +316,6 @@ export async function sendPasswordResetMail(args: { actorId: string; targetId: s
 		subject: '【山人 管理画面】パスワードの再設定',
 		text: lines.join('\n'),
 		html: `<p>${escapeHtml(lines[0])}<br>${escapeHtml(lines[1])}</p><p><a href="${escapeHtml(url)}">パスワードを再設定する</a></p><p style="color:#666;font-size:12px">${escapeHtml(lines[4])}<br>${escapeHtml(lines[5])}</p>`,
-		fromName: '山人 管理画面'
 	});
 	if (!r.sent) throw new AdminUserError(`メールを送れませんでした（${r.reason ?? '不明'}）`, 502);
 	return target.email;

@@ -989,9 +989,7 @@ export async function sendPartnerInvoiceMail(
       subject: invoiceMailSubject(doc),
       html: body.html,
       text: body.text,
-      attachments: attachedPdf ? attachments : undefined,
-      // 全施設分1枚（version 2）の差出人名は発行者名（§7.11）。version 1 は施設名のまま
-      ...(isLegacyFacilityInvoice(row) ? {} : { fromName: doc.issuer.name })
+      attachments: attachedPdf ? attachments : undefined
     });
     sent = result.sent;
     reason = result.sent ? null : (result.reason ?? '送信できませんでした');
@@ -1134,7 +1132,6 @@ async function notifyIssuerMissing(
     subject: `【${issuer.issuerName}】${why === 'no_issuer' ? '発行元が未設定' : '振込先が未設定'}のためご請求書を自動発行できませんでした（${periodLabel(period)}分）`,
     text,
     html: `<div style="font-family:sans-serif;line-height:1.7">${escapeHtml(text).replace(/\n/g, '<br>')}</div>`,
-    fromName: issuer.issuerName
   }).catch((e) => console.error('[partner-invoice] 通知を送れませんでした:', e instanceof Error ? e.message : e));
 }
 

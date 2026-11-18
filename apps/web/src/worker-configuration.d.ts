@@ -5,7 +5,7 @@ interface __BaseEnv_Env {
 	AB_RATE: KVNamespace;
 	AI: Ai;
 	CF_ACCOUNT_ID: "6aa45d1081c1e08d7f1ce6d5aba5c3b7";
-	REPORT_EMAIL_FROM: "rms@yamado.app";
+	REPORT_EMAIL_FROM: "noreply@yamado.app";
 	INQUIRY_NISHIWAGA_ENABLED: "true";
 	PRIVATE_BATH_PMS_ENABLED: "true";
 	PUBLIC_GA4_MEASUREMENT_ID: "G-JFW5QS8QKH";

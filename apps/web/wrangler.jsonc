@@ -33,7 +33,7 @@
 		// SMS（NTT CPaaS）の API 構築が終わるまで '0'（2026-11-15 ユーザー指示）。誰へ送るかは管理画面 → 事前チェックインの「自動送信」（施設ごと・既定は送らない）と予約ごとの上書きで決める
 		"PRECHECKIN_AUTOSEND": "0",
 		"CF_ACCOUNT_ID": "6aa45d1081c1e08d7f1ce6d5aba5c3b7",
-		"REPORT_EMAIL_FROM": "rms@yamado.app",
+		"REPORT_EMAIL_FROM": "noreply@yamado.app",
 		"AUTH_MODE": "supabase",
 		"DATA_SOURCE": "supabase",
 		"BOOKING_MCP_ORIGIN": "https://book.yamado.app",

@@ -104,7 +104,7 @@ export async function notifyInroomPayment(row: InroomPaidRow, kind: 'paid' | 'te
 		}
 		const facility = facilityName(row.facility_id);
 		const mail = buildInroomPaidMail(row, kind, facility);
-		const r = await sendHtmlEmail({ to, ...mail, fromName: facility ? `${facility} 客室案内` : '客室案内' });
+		const r = await sendHtmlEmail({ to, ...mail });
 		if (!r.sent) console.warn('[inroom-payment-notify] 送れませんでした', r.reason);
 	} catch (e) {
 		console.error('[inroom-payment-notify]', e instanceof Error ? e.message : e);

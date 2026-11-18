@@ -100,7 +100,7 @@ export async function runIntercomDeviceNotify(db: SupabaseClient, opts: { recipi
 		...stale.map((d) => staleLine(d, deviceName(d, facilityNames)))
 	];
 	const mail = buildMail(lines);
-	const r = await sendHtmlEmail({ to: opts.recipients, subject: mail.subject, text: mail.text, html: mail.html, fromName: '山人 受電アプリ' });
+	const r = await sendHtmlEmail({ to: opts.recipients, subject: mail.subject, text: mail.text, html: mail.html });
 	if (!r.sent) return { events: events.length, stale: stale.length, sent: false, reason: r.reason ?? 'send-failed' };
 
 	// 送れたものだけ「通知済み」にする（失敗したら次の 10 分で再送）

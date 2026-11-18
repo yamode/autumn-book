@@ -88,7 +88,7 @@ export async function sendGroupSubmittedMail(db: SupabaseClient, ctx: PartnerCon
   const blocks = rows.map((r, i) => [`■ ${i + 1}件目`, ...groupInquirySummaryLines(r, 'facility'), `回答: ${adminGroupUrl(origin, r.id)}`]);
   const text = [head, '', ...blocks.flatMap((b) => [...b, '']), `一覧: ${adminGroupUrl(origin)}`].join('\n');
   const html = `<p>${escapeHtml(head)}</p>${blocks.map(pre).join('')}<p>一覧: <a href="${escapeHtml(adminGroupUrl(origin))}">${escapeHtml(adminGroupUrl(origin))}</a></p>`;
-  const r = await sendFacilityNotice(db, ctx.facility_id, { to, subject, html, text }).catch(() => ({ sent: false }));
+  const r = await sendFacilityNotice({ to, subject, html, text }).catch(() => ({ sent: false }));
   return r.sent;
 }
 
@@ -137,7 +137,7 @@ export async function sendGroupAcceptFailedMail(db: SupabaseClient, ctx: Partner
   if (!to.length) return false;
   const head = `取引先「${ctx.name}」が団体照会（${row.inquiry_code}）を承諾しましたが、予約を確定できませんでした（${reason}）。照会は「回答済み」のままです。回答を「受けられない」に変えるか、取引先へご連絡ください。`;
   const lines = [...groupInquirySummaryLines(row, 'facility'), `回答: ${adminGroupUrl(origin, row.id)}`];
-  const r = await sendFacilityNotice(db, ctx.facility_id, {
+  const r = await sendFacilityNotice({
     to,
     subject: `【団体照会】承諾できませんでした ${row.group_name} ${row.check_in_date}（${row.inquiry_code}）`,
     html: `<p>${escapeHtml(head)}</p>${pre(lines)}`,
@@ -158,7 +158,7 @@ export async function sendGroupClosedMail(
   const what = kind === 'rejected' ? '辞退' : '取り下げ';
   const head = `取引先「${ctx.name}」が団体照会（${row.inquiry_code}）を${kind === 'rejected' ? '辞退しました' : '取り下げました'}。`;
   const lines = [...groupInquirySummaryLines(row, 'facility'), `詳細: ${adminGroupUrl(origin, row.id)}`];
-  const r = await sendFacilityNotice(db, ctx.facility_id, {
+  const r = await sendFacilityNotice({
     to,
     subject: `【団体照会・${what}】${row.group_name} ${row.check_in_date}（${row.inquiry_code}）${ctx.name}`,
     html: `<p>${escapeHtml(head)}</p>${pre(lines)}`,

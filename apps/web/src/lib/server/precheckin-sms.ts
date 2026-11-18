@@ -124,7 +124,6 @@ async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb
 		subject: mail.subject,
 		html: mail.html,
 		text: mail.text,
-		fromName: `${b.facility_name} 事前チェックイン`,
 		replyTo: sender?.replyTo ?? undefined
 	});
 	return { ok: r.sent, error: r.reason };

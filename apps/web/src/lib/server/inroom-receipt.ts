@@ -269,7 +269,6 @@ export async function sendReceiptEmail(doc: InroomReceiptDoc, emailRaw: string):
 		subject,
 		text,
 		html,
-		fromName: from,
 		attachments: [{ filename: receiptFileName(doc), type: 'application/pdf', content: pdf }]
 	});
 	return r.sent ? 'sent' : 'send_failed';

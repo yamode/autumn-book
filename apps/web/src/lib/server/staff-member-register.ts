@@ -83,7 +83,6 @@ export async function registerMemberForBooking(args: {
   const mail = await sendHtmlEmail({
     to: [email],
     subject: `【${args.facilityName}】会員登録のお知らせ`,
-    fromName: args.facilityName,
     text: welcomeText(args, r.member_code, bonus),
     html: welcomeHtml(args, r.member_code, bonus)
   }).catch(() => ({ sent: false }));
