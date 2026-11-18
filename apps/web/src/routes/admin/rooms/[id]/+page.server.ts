@@ -2,6 +2,13 @@
 // 保存は ADMIN_SUPABASE のときだけ。それ以外は黙って成功させず NOT_LIVE を返す（/admin/bath と同じ）。
 import { error, fail } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/server/auth';
+import {
+	isTranslationLocale,
+	sbLoadTranslationSource,
+	sbLoadTranslations,
+	sbSaveTranslation,
+	translationFieldsFromForm
+} from '$lib/server/content-translations-admin';
 import { sbFacilityByUuid } from '$lib/server/supabase-data';
 import { sbGetRoomContentAdmin, sbSaveRoomContent, sbSaveRoomPartnerShortName } from '$lib/server/content-admin';
 import {
@@ -24,7 +31,7 @@ export const load: PageServerLoad = async (event) => {
 		const room = demoRoomContents(currentFacility.id).find((r) => r.id === event.params.id);
 		if (!room) error(404, '部屋タイプが見つかりません（施設を切り替えた場合は一覧から選び直してください）');
 		const f = facilityById(currentFacility.id);
-		return { room, live: false, previewBase: f ? `/${f.brandSlug}/${f.slug}` : null };
+		return { room, live: false, previewBase: f ? `/${f.brandSlug}/${f.slug}` : null, translation: null };
 	}
 	const uuid = facilityUuidOf(currentFacility.id);
 	const client = createSupabaseServerClient(event);
@@ -38,8 +45,18 @@ export const load: PageServerLoad = async (event) => {
 		error(500, messageOf(e));
 	}
 	if (!room) error(404, '部屋タイプが見つかりません（施設を切り替えた場合は一覧から選び直してください）');
+	// 翻訳（英語・繁体字）。紹介の行がまだ無い部屋は出さない。読めなくても他は編集できる
+	const [translationSource, translations] = await Promise.all([
+		sbLoadTranslationSource(client, 'room_type', event.params.id, uuid, room.name).catch(() => null),
+		sbLoadTranslations(client, 'room_type', event.params.id).catch(() => null)
+	]);
 	const f = await facilityLoad;
-	return { room, live: true, previewBase: f ? `/${f.brandSlug}/${f.slug}` : null };
+	return {
+		room,
+		live: true,
+		previewBase: f ? `/${f.brandSlug}/${f.slug}` : null,
+		translation: translationSource && translations ? { source: translationSource.source, translations } : null
+	};
 };
 
 export const actions: Actions = {
@@ -61,6 +78,34 @@ export const actions: Actions = {
 		}
 	},
 	upload: (event) => uploadPhotoAction(event, 'rooms'),
+
+	// 翻訳（book.content_translations・2026-11-18）
+	saveTranslation: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!LIVE) return fail(503, { translationError: NOT_LIVE });
+		const form = await event.request.formData();
+		const locale = form.get('locale');
+		if (!isTranslationLocale(locale)) return fail(400, { translationError: '言語を選び直してください。' });
+		const client = createSupabaseServerClient(event);
+		const facilityUuid = currentFacilityOf(event).uuid;
+		try {
+			const loaded = await sbLoadTranslationSource(client, 'room_type', event.params.id, facilityUuid, '');
+			if (!loaded) return fail(404, { translationError: '紹介がまだ作られていません。先に紹介を保存してください。' });
+			await sbSaveTranslation(client, {
+				entity: 'room_type',
+				entityId: event.params.id,
+				facilityUuid,
+				tenantId: loaded.tenantId,
+				locale,
+				fields: translationFieldsFromForm(form, loaded.source, 'room_type'),
+				isPublished: form.get('isPublished') === 'on'
+			});
+			return { translationSavedLocale: locale };
+		} catch (e) {
+			return fail(400, { translationError: messageOf(e) });
+		}
+	},
 
 	// 取引先向けの短縮名（ご請求書・ご利用明細書の部屋名。2026-10-02 指示）
 	savePartnerShortName: async (event) => {

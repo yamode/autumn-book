@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import ContentEditor from '$lib/components/admin/ContentEditor.svelte';
+	import ContentTranslationEditor from '$lib/components/admin/ContentTranslationEditor.svelte';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 
@@ -64,3 +65,13 @@
 		photoFallback="room"
 	/>
 {/key}
+
+{#if data.translation}
+	<ContentTranslationEditor
+		entity="room_type"
+		source={data.translation.source}
+		translations={data.translation.translations}
+		savedLocale={(form as { translationSavedLocale?: string } | null)?.translationSavedLocale ?? null}
+		error={(form as { translationError?: string } | null)?.translationError ?? null}
+	/>
+{/if}

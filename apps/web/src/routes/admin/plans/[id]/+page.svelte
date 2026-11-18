@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import ContentEditor from '$lib/components/admin/ContentEditor.svelte';
+	import ContentTranslationEditor from '$lib/components/admin/ContentTranslationEditor.svelte';
 	import MarkdownEditor from '$lib/components/MarkdownEditor.svelte';
 	import { formatYen } from '$lib/format';
 	import BookingQuestionsEditor from '$lib/components/admin/BookingQuestionsEditor.svelte';
@@ -101,8 +102,8 @@
 		{ value: 'custom', label: 'プラン独自に決める', hint: 'このプランだけの項目' }
 	] as const;
 
-	// ---- ここから下はデモ環境だけで使う（決済設定・翻訳はまだデモストアにしか繋がっていない）
-	// 翻訳タブ
+	// ---- ここから下はデモ環境だけで使う（デモストアの決済設定・翻訳。実データの翻訳は ContentTranslationEditor）
+	// 翻訳タブ（デモ）
 	let translationLocale = $state<'en' | 'zh-TW'>('en');
 	let trDescription = $state('');
 	$effect(() => {
@@ -647,8 +648,12 @@
 			</div>
 		</form>
 	</section>
-{:else}
-	<p class="mt-6 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-500">
-		決済設定・翻訳はまだ実データに繋がっていないため、この環境では表示していません（決済方法は rms 側で設定します）。
-	</p>
+{:else if data.translation}
+	<ContentTranslationEditor
+		entity="plan"
+		source={data.translation.source}
+		translations={data.translation.translations}
+		savedLocale={(form as { translationSavedLocale?: string } | null)?.translationSavedLocale ?? null}
+		error={(form as { translationError?: string } | null)?.translationError ?? null}
+	/>
 {/if}
