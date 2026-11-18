@@ -10,12 +10,7 @@ function memberId({ locals, url, setHeaders }: RequestEvent) {
 }
 
 export const load: PageServerLoad = async (event) => {
-	const userId = memberId(event);
-	const [connected, reservationConnected, pilotConnected, muse, musePortal] = await Promise.all([
-		hasBookingAccess(userId), hasBookingAccess(userId, RESERVATION_CLIENT_ID), hasBookingAccess(userId, PILOT_CLIENT_ID),
-		hasBookingAccess(userId, MUSE_CLIENT_ID), hasBookingAccess(userId, MUSE_PORTAL_CLIENT_ID)
-	]);
-	return { connected, reservationConnected, pilotConnected, museConnected: muse || musePortal };
+	return { connected: await hasBookingAccess(memberId(event)) };
 };
 
 export const actions: Actions = {

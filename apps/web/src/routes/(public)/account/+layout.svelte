@@ -15,7 +15,6 @@
 		{ href: '/account/community', label: m.account_nav_community() }
 	]);
 	const utilityNav = $derived([
-		{ href: '/account', label: m.account_dashboard() },
 		{ href: '/account/settings', label: m.account_nav_settings() }
 	]);
 	const bookingNav = $derived([
@@ -65,6 +64,8 @@
 
 	<div class="grid items-start gap-3 sm:gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
 		<nav aria-label={m.account_layout_heading()} class="flex flex-col rounded-xl border border-stone-200 bg-white p-2">
+			<a href="/account" aria-current={isActive('/account') ? 'page' : undefined}
+				class="mb-1 flex min-h-11 items-center justify-center rounded-lg px-2.5 text-sm font-medium lg:justify-start {isActive('/account') ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{m.account_dashboard()}</a>
 			<ul class="grid grid-cols-[1fr_1fr_1.55fr] gap-1 lg:grid-cols-1">
 				{#each primaryNav as item (item.href)}
 					<li class="min-w-0">
@@ -80,7 +81,7 @@
 					</li>
 				{/each}
 			</ul>
-			<ul class="mt-1 grid grid-cols-2 gap-1 border-t border-stone-100 pt-1 lg:mt-2 lg:block lg:space-y-1 lg:pt-2">
+			<ul class="mt-1 border-t border-stone-100 pt-1 lg:mt-2 lg:pt-2">
 				{#each utilityNav as item (item.href)}
 					<li><a href={item.href} aria-current={isActive(item.href) ? 'location' : undefined}
 						class="flex min-h-11 items-center justify-center rounded-lg px-2.5 text-center text-sm font-medium lg:justify-start lg:text-left {isActive(item.href) ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{item.label}</a></li>
