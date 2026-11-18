@@ -14,7 +14,7 @@ export const memberPasskeyRp = (url: URL) => MEMBER_LOGIN_METHODS ? passkeyRelyi
 export const memberPasskeysAvailable = (url: URL) => Boolean(memberPasskeyRp(url) && partnerServiceClient());
 
 type LoginState = { active: boolean; totp: boolean; passkey_at: string | null };
-type Claims = { sub?: string; aal?: string; session_id?: string; amr?: { method: string; timestamp: number }[] };
+type Claims = { sub?: string; email?: string; aal?: string; session_id?: string; amr?: { method: string; timestamp: number }[] };
 const FRESH_SECONDS = 10 * 60;
 
 export async function memberLoginState(user: string, sessionId: string | null): Promise<LoginState> {
@@ -38,6 +38,7 @@ export async function memberSessionSecurity(client: SupabaseClient, userId: stri
 	);
 	return {
 		active: state.active,
+		email: claims.email ?? null,
 		sessionId: claims.session_id,
 		hasTotp: state.totp,
 		passkey: Boolean(state.passkey_at),

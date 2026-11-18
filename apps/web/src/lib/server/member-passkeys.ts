@@ -8,6 +8,7 @@ import { adminRoleOf, isBanned, jwtSessionId } from '$lib/admin-passkey';
 import { isCredentialId, passkeyDeviceName, type PasskeyRp } from '$lib/partner-passkey';
 import { safeNext } from '$lib/safe-next';
 import { createSupabaseServerClient } from '$lib/server/auth';
+import { defaultMemberPasskeyName } from '$lib/server/member-passkey-name';
 import { memberLoginState } from '$lib/server/member-login';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 
@@ -68,7 +69,7 @@ export async function memberPasskeyRegistration(rp: PasskeyRp, owner: Owner, ema
 	return { options, challengeId: await saveChallenge(rp, options.challenge, owner) };
 }
 
-export async function verifyMemberPasskeyRegistration(rp: PasskeyRp, owner: Owner, body: Record<string, unknown>) {
+export async function verifyMemberPasskeyRegistration(rp: PasskeyRp, owner: Owner, body: Record<string, unknown>, userAgent: string) {
 	const challenge = await takeChallenge(body.challengeId, rp, owner);
 	const response = body.response as RegistrationResponseJSON | undefined;
 	if (!challenge || !response || !isCredentialId(response.id)) throw new Error('bad_passkey_registration');
@@ -77,11 +78,15 @@ export async function verifyMemberPasskeyRegistration(rp: PasskeyRp, owner: Owne
 		requireUserVerification: true, supportedAlgorithmIDs: ALGORITHMS
 	});
 	if (!result.verified) throw new Error('bad_passkey_registration');
-	const { credential } = result.registrationInfo;
+	const { credential, aaguid, credentialDeviceType } = result.registrationInfo;
+	const defaultName = defaultMemberPasskeyName({
+		aaguid, deviceBound: credentialDeviceType === 'singleDevice',
+		attachment: response.authenticatorAttachment, transports: credential.transports, userAgent
+	});
 	const { error } = await db().rpc('add_member_passkey', {
 		p_user: owner.userId, p_credential: credential.id, p_public_key: isoBase64URL.fromBuffer(credential.publicKey),
 		p_counter: credential.counter, p_transports: credential.transports ?? null,
-		p_name: passkeyDeviceName(typeof body.name === 'string' ? body.name : '', 'Passkey')
+		p_name: passkeyDeviceName(typeof body.name === 'string' ? body.name : '', defaultName)
 	});
 	if (error) throw error;
 }
@@ -89,6 +94,14 @@ export async function verifyMemberPasskeyRegistration(rp: PasskeyRp, owner: Owne
 export async function removeMemberPasskey(userId: string, id: string) {
 	if (!UUID.test(id)) return false;
 	const { data, error } = await db().from('member_passkeys').delete().eq('id', id).eq('user_id', userId).select('id').maybeSingle();
+	if (error) throw error;
+	return Boolean(data);
+}
+
+export async function renameMemberPasskey(userId: string, id: string, name: string) {
+	if (!UUID.test(id)) return false;
+	const { data, error } = await db().from('member_passkeys').update({ device_name: name })
+		.eq('id', id).eq('user_id', userId).select('id').maybeSingle();
 	if (error) throw error;
 	return Boolean(data);
 }

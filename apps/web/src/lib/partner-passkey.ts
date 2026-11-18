@@ -21,13 +21,16 @@ export function passkeyRelyingParty(url: Pick<URL, 'hostname' | 'origin' | 'prot
   return { rpID: rp, origin: `https://${rp}` };
 }
 
-/** パスキーの名前（一覧に出す）。入力が空ならブラウザの要約（例「Chrome / Windows」）。60 文字まで */
-export function passkeyDeviceName(input: unknown, fallback: string): string {
-  const s = String(input ?? '')
+export function cleanPasskeyName(input: unknown): string {
+  return String(input ?? '')
     .replace(/[\u0000-\u001f\u007f]/g, '')
     .trim()
     .slice(0, 60);
-  return s || fallback.slice(0, 60) || 'パスキー';
+}
+
+/** パスキーの名前（一覧に出す）。入力が空なら既定の名前を使う。60 文字まで */
+export function passkeyDeviceName(input: unknown, fallback: string): string {
+  return cleanPasskeyName(input) || fallback.slice(0, 60) || 'パスキー';
 }
 
 /**

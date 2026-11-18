@@ -18,7 +18,7 @@ export const POST: RequestHandler = async (event) => {
 			return json({ ok: true, ...await memberPasskeyRegistration(rp, security, data.user.email, body.securityKey === true) }, { headers });
 		}
 		if (body.action === 'verify') {
-			await verifyMemberPasskeyRegistration(rp, security, body);
+			await verifyMemberPasskeyRegistration(rp, security, body, event.request.headers.get('user-agent') ?? '');
 			return json({ ok: true }, { headers });
 		}
 	} catch {
