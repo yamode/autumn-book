@@ -66,11 +66,15 @@
 		{#each data.results as r, i (r.facility.id)}
 			<article class="group min-w-0">
 				<a href="/{r.facility.brandSlug}/{r.facility.slug}/plans" class="block focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-800">
+					<div class="mb-4 space-y-1.5">
+						<p class="text-xs font-semibold tracking-[0.16em] text-stone-500">{areaLabel(r.facility)}</p>
+						<h3 class="font-display text-2xl leading-snug text-brand-900 sm:text-[28px]">{r.facility.name}</h3>
+					</div>
 					<div class="relative overflow-hidden">
 						<!-- 16:9 固定（width/height＋aspect-video で CLS 防止） -->
 						<img
-							src={facilityThumbnailUrl(r.facility.slug, r.facility.photos[0]?.url ?? '')}
-							alt={r.facility.name}
+							src={r.facility.slug === 'oga' ? '/site-assets/oga/room_b.webp' : facilityThumbnailUrl(r.facility.slug, r.facility.photos[0]?.url ?? '')}
+							alt=""
 							width="800"
 							height="450"
 							loading={i < 2 ? 'eager' : 'lazy'}
@@ -78,10 +82,8 @@
 							class="aspect-video h-auto w-full bg-stone-100 object-cover transition duration-700 group-hover:scale-[1.035]"
 						/>
 					</div>
-					<div class="pt-5">
-						<p class="text-xs font-semibold tracking-[0.16em] text-stone-500">{areaLabel(r.facility)}</p>
-						<h3 class="font-display mt-2 text-2xl leading-snug text-brand-900 sm:text-[28px]">{r.facility.name}</h3>
-						<p class="mt-2 min-h-12 text-sm leading-6 text-stone-600">{r.facility.catchCopy}</p>
+					<div class="pt-4">
+						<p class="min-h-12 text-sm leading-6 text-stone-600">{r.facility.catchCopy}</p>
 						<p class="mt-4 text-base font-semibold text-brand-900">
 							{#if r.minPerPerson}
 								{formatPrice(r.minPerPerson)}<span class="ml-1 text-xs font-normal text-stone-500">{m.home_price_from()}</span>

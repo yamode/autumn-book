@@ -3,7 +3,7 @@
 	import { RANK_CODES, type RankCode } from '$lib/plan-access';
 	import { rankName } from '$lib/rank-name';
 	import { rankCondition } from '$lib/member-rank';
-	import { favoriteRoomMinRank, stayPersonalizationMinRank } from '$lib/member-benefits';
+	import { favoriteRoomMinRank, limitedSaleMinRank, stayPersonalizationMinRank } from '$lib/member-benefits';
 	import * as m from '$lib/paraglide/messages';
 
 	let { printable = false }: { printable?: boolean } = $props();
@@ -11,7 +11,7 @@
 	const rates = [1, 2, 3, 5];
 
 	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
-	type Perk = Detail & { key: string; minRank: RankCode };
+	type Perk = Detail & { key: string; minRank: RankCode; availableToGuests?: boolean; guestNote?: string };
 
 	const points: Detail = { title: m.membership_rate_label(), body: m.membership_how_body() };
 	const qualification: Detail = {
@@ -20,7 +20,9 @@
 		sections: [{ title: m.membership_rank_grace_title(), body: m.membership_rank_grace() }]
 	};
 	const perks: Perk[] = [
-		{ key: 'early-payment', minRank: 'standard', title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
+		{ key: 'booking-cancel', minRank: 'standard', availableToGuests: true, title: m.membership_booking_cancel_t(), body: m.membership_booking_cancel_b() },
+		{ key: 'onsite-payment', minRank: 'standard', guestNote: m.membership_card_only(), title: m.membership_onsite_payment_t(), body: m.membership_onsite_payment_b() },
+		{ key: 'early-payment', minRank: 'standard', availableToGuests: true, title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
 		{ key: 'bath', minRank: 'standard', title: m.membership_bath_title(), body: m.membership_bath_body() },
 		{ key: 'upgrade', minRank: 'silver', title: m.membership_upgrade_title(), body: m.membership_upgrade_body() },
 		{ key: 'timing', minRank: 'platinum', title: m.membership_timing_title(), body: m.membership_timing_body() },
@@ -28,7 +30,7 @@
 		{ key: 'room', minRank: favoriteRoomMinRank, title: m.membership_room_designation(), body: m.membership_room_designation_body() },
 		{ key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
 		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: m.membership_benefit_personalize_t(), body: m.membership_personalize_gold_body() },
-		{ key: 'plans', minRank: 'standard', title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
+		{ key: 'plans', minRank: limitedSaleMinRank, title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
 		{
 			key: 'changes', minRank: 'standard', title: m.membership_basic_changes(), body: m.membership_basic_changes_body(),
 			sections: [
@@ -63,15 +65,25 @@
 	}
 </script>
 
+{#snippet perkStatus(included: boolean)}
+	{#if included}
+		<span class="benefit-check" aria-hidden="true">✓</span><span class="sr-only">{m.membership_included()}</span>
+	{:else}
+		<span class="benefit-dash" aria-hidden="true">—</span><span class="sr-only">{m.membership_not_included()}</span>
+	{/if}
+{/snippet}
+
 <div class:printable class="comparison-frame mt-2 overflow-x-auto rounded-2xl border border-stone-200 bg-white md:mt-6">
 	<table class="grade-table w-full table-fixed text-sm">
 		<colgroup>
 			<col class="feature-col" />
+			<col class="tier-col" />
 			{#each RANK_CODES as rank (rank)}<col class="tier-col tier-{rank}" />{/each}
 		</colgroup>
 		<thead>
 			<tr>
 				<th scope="col" class="row-head text-left font-medium">{m.membership_benefits_heading()}</th>
+				<th scope="col" class="tier-head tier-guest">{m.membership_guest_booking()}</th>
 				{#each RANK_CODES as rank (rank)}
 					<th scope="col" class="tier-head tier-{rank}">
 						<span class="rank-mark" aria-hidden="true"></span>
@@ -87,6 +99,7 @@
 						{points.title}
 					</button>
 				</th>
+				<td class="guest-value"><span class="rate">0<span class="rate-unit">%</span></span></td>
 				{#each rates as rate (rate)}
 					<td><span class="rate">{rate}<span class="rate-unit">%</span></span></td>
 				{/each}
@@ -97,6 +110,7 @@
 						{qualification.title}
 					</button>
 				</th>
+				<td class="guest-value">{@render perkStatus(false)}</td>
 				{#each RANK_CODES as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
 			</tr>
 			{#each [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank)) as perk (perk.key)}
@@ -106,13 +120,16 @@
 							{perk.title}
 						</button>
 					</th>
+					<td class="guest-value">
+						{#if perk.guestNote}
+							<span class="text-xs font-medium">{perk.guestNote}</span>
+						{:else}
+							{@render perkStatus(perk.availableToGuests === true)}
+						{/if}
+					</td>
 					{#each RANK_CODES as rank, index (rank)}
 						<td>
-							{#if index >= RANK_CODES.indexOf(perk.minRank)}
-								<span class="benefit-check" aria-hidden="true">✓</span><span class="sr-only">{m.membership_included()}</span>
-							{:else}
-								<span class="benefit-dash" aria-hidden="true">—</span><span class="sr-only">{m.membership_not_included()}</span>
-							{/if}
+							{@render perkStatus(index >= RANK_CODES.indexOf(perk.minRank))}
 						</td>
 					{/each}
 				</tr>
@@ -145,13 +162,14 @@
 		box-shadow: 0 16px 38px -28px #514a38a6;
 	}
 	.grade-table {
-		min-width: 36rem;
+		min-width: 39rem;
 		border-collapse: separate;
 		border-spacing: 0;
 		color: #302d27;
 	}
-	.feature-col { width: 29%; }
-	.tier-col { width: 17.75%; }
+	.feature-col { width: 27%; }
+	.tier-col { width: 14.6%; }
+	.tier-guest { --metal: #d3d0ca; --light: #f4f3f0; }
 	.tier-standard { --metal: #ab9b86; --light: #faf8f4; }
 	.tier-silver { --metal: #8294a6; --light: #f1f5f8; }
 	.tier-gold { --metal: #ae8742; --light: #fcf6e7; }
@@ -161,6 +179,7 @@
 		padding: 1rem .25rem .75rem;
 		background: linear-gradient(145deg, #fff 0%, var(--light) 53%, #fff 100%);
 		font-weight: 650;
+		vertical-align: bottom;
 		overflow-wrap: anywhere;
 	}
 	.rank-mark {
@@ -174,7 +193,8 @@
 	th, td { border-bottom: 1px solid #eae7e1; }
 	tbody tr:last-child > * { border-bottom: 0; }
 	td { padding: .54rem .36rem; text-align: center; }
-	td:nth-child(5) { background: #f8f8fc; }
+	td:last-child { background: #f8f8fc; }
+	.guest-value { background: #faf9f7; }
 	.row-head {
 		position: sticky;
 		left: 0;

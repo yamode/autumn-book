@@ -10,6 +10,7 @@
 	import { qrSvg } from '$lib/qr';
 	import { planSaleState, type PlanSaleState } from '$lib/plan-sale';
 	import { DOW_LABELS } from '$lib/plan-limits';
+	import { limitedSaleMinRank } from '$lib/member-benefits';
 
 	// 販売の状態の表示（販売スイッチ＋販売表示期間。実際の出し分けは DB の book.plan_on_sale）
 	const SALE_BADGE: Record<PlanSaleState, { label: string; cls: string }> = {
@@ -37,7 +38,7 @@
 	// svelte-ignore state_referenced_locally
 	const a0 = data.content.access;
 	let whoInput = $state<'anyone' | 'members' | 'rank'>(a0.audience === 'public' ? 'anyone' : a0.minRank && a0.minRank !== 'standard' ? 'rank' : 'members');
-	let rankInput = $state<string>(a0.minRank && a0.minRank !== 'standard' ? a0.minRank : 'gold');
+	let rankInput = $state<string>(a0.minRank && a0.minRank !== 'standard' ? a0.minRank : limitedSaleMinRank);
 	let linkOnlyInput = $state(a0.linkOnly);
 	// 宿泊不可期間の入力行（何件でも足し引きできる。空の行は保存時に捨てる）
 	// svelte-ignore state_referenced_locally

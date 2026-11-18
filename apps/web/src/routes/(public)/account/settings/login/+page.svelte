@@ -35,6 +35,21 @@
 	const button = 'min-h-11 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium hover:bg-stone-50 disabled:opacity-60';
 	const submitButton = 'min-h-11 rounded-lg bg-brand-800 px-4 text-sm font-medium text-white hover:bg-brand-700';
 	const keyAction = 'min-h-11 rounded-lg px-3 text-sm font-medium transition-colors';
+	const passwordAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+
+	function generatePassword() {
+		// A 64-character alphabet makes each random byte map evenly to a character.
+		let candidate: string;
+		do {
+			const bytes = crypto.getRandomValues(new Uint8Array(24));
+			candidate = Array.from(bytes, (byte) => passwordAlphabet[byte % passwordAlphabet.length]).join('');
+		} while (!(/[A-Z]/.test(candidate) && /[a-z]/.test(candidate) && /[2-9]/.test(candidate) && /[!@#$%&*]/.test(candidate)));
+
+		newPassword = candidate;
+		confirmedPassword = '';
+		showPassword = true;
+	}
+
 	function submitPassword(event: SubmitEvent) {
 		if (!confirmationInput?.reportValidity()) {
 			event.preventDefault();
@@ -179,10 +194,14 @@
 					{/if}
 					<p id="password-hint" class="text-sm text-stone-600">{t.passwordLength}</p>
 					<div>
-						<label for="new-password" class="block text-sm">{t.newPassword}</label>
+						<div class="flex flex-wrap items-center justify-between gap-x-2">
+							<label for="new-password" class="block text-sm">{t.newPassword}</label>
+							<button type="button" class="min-h-11 rounded-lg bg-stone-100 px-3 text-sm font-medium text-brand-800 hover:bg-stone-200 disabled:opacity-60"
+								disabled={passwordBusy} onclick={generatePassword}>{t.generatePassword}</button>
+						</div>
 						<div class="mt-1 flex items-center gap-2">
 							<input id="new-password" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2"
-								name="password" type="password" bind:value={newPassword} autocomplete="new-password"
+								name="password" type="password" bind:value={newPassword} autocomplete="off"
 								aria-describedby="password-hint" minlength="12" autocapitalize="off" spellcheck={false} required />
 							<button type="button" class={`${button} shrink-0`} aria-expanded={showPassword}
 								onclick={() => showPassword = !showPassword}>{showPassword ? t.hidePassword : t.showPassword}</button>
