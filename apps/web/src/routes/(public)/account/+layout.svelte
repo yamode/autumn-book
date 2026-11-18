@@ -3,6 +3,7 @@
 	import { pendingPage } from '$lib/page-transition';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { rankName } from '$lib/rank-name';
 	import { deLocalizeUrl } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
@@ -97,7 +98,11 @@
 		<div class="min-w-0 space-y-5">
 			<div data-account-content>
 				{#if settingsDetail}
-					<a href="/account/settings" class="mb-3 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-brand-800 underline underline-offset-4"><span aria-hidden="true">←</span>{m.account_back_settings()}</a>
+					<a href="/account/settings"
+						class="mb-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-stone-100 pl-3 pr-4 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-200 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-800">
+						<AdminIcon name="chevron" class="size-4 shrink-0 rotate-180" />
+						{m.account_back_settings()}
+					</a>
 				{/if}
 				<PageLoadingBoundary shell="account" padding="py-2">{@render children()}</PageLoadingBoundary>
 			</div>

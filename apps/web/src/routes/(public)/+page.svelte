@@ -40,8 +40,10 @@
 	<section class="mx-auto max-w-6xl px-4 pb-14 pt-10 sm:pb-20 sm:pt-16">
 		<div class="border-b border-stone-200 pb-10 sm:pb-14">
 			<p class="mb-5 text-[11px] font-semibold tracking-[0.3em] text-stone-500">YAMADO STAYS</p>
-			<div class="max-w-4xl">
-				<h1 class="font-display text-4xl leading-[1.35] tracking-[0.06em] text-brand-900 sm:text-5xl">{m.home_hero_headline()}</h1>
+			<div class="@container max-w-4xl">
+				<h1 class="home-headline font-display text-4xl leading-[1.35] tracking-[0.06em] text-brand-900 [--headline-limit:2.25rem] sm:text-5xl sm:[--headline-limit:3rem]">
+					{m.home_hero_headline()}
+				</h1>
 				<p class="mt-5 max-w-2xl text-sm leading-8 text-stone-600 sm:text-base">{m.home_hero_sub()}</p>
 			</div>
 		</div>
@@ -141,3 +143,13 @@
 	</div>
 </section>
 </div>
+
+<style>
+	.home-headline:lang(ja),
+	.home-headline:lang(zh) {
+		/* 12文字の見出しと字間を、左右の余白を除いた幅に収める。 */
+		font-size: min(var(--headline-limit), calc((100vw - 2rem) / 13));
+		font-size: min(var(--headline-limit), 7.65cqi);
+		white-space: nowrap;
+	}
+</style>
