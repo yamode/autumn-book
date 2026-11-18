@@ -43,6 +43,14 @@
 		{ key: 'community', minRank: 'standard', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },
 		{ key: 'otayori', minRank: 'standard', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() }
 	];
+	const orderedPerks = [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank));
+
+	function perkAudience(perk: Perk) {
+		if (perk.availableToGuests) return m.membership_all_bookings();
+		if (perk.minRank === 'standard') return m.membership_all_members();
+		const rank = rankName(perk.minRank);
+		return perk.minRank === RANK_CODES.at(-1) ? rank : m.membership_rank_and_above({ rank });
+	}
 
 	let detail = $state<Detail | null>(null);
 	let dialog: HTMLDialogElement | undefined = $state();
@@ -72,6 +80,54 @@
 		<span class="benefit-dash" aria-hidden="true">—</span><span class="sr-only">{m.membership_not_included()}</span>
 	{/if}
 {/snippet}
+
+{#snippet mobileDetail(item: Detail)}
+	<button type="button" class="mobile-detail" onclick={() => openDetail(item)} aria-haspopup="dialog">
+		<span>{item.title}</span><span class="detail-chevron" aria-hidden="true"></span>
+	</button>
+{/snippet}
+
+{#if !printable}
+	<div class="mobile-comparison mt-5 space-y-5">
+		<section class="mobile-panel" aria-labelledby="mobile-membership-rates">
+			<h3 id="mobile-membership-rates" class="mobile-heading">{@render mobileDetail(points)}</h3>
+			<ul class="rate-grid">
+				<li class="rate-card guest-card tier-guest">
+					<span class="mobile-rank-name">{m.membership_guest_booking()}</span>
+					<span class="rate">0<span class="rate-unit">%</span></span>
+				</li>
+				{#each RANK_CODES as rank, index (rank)}
+					<li class="rate-card tier-{rank}">
+						<span class="mobile-rank-name">{rankName(rank)}</span>
+						<span class="rate">{rates[index]}<span class="rate-unit">%</span></span>
+						<span class="condition">{rankCondition(rank)}</span>
+					</li>
+				{/each}
+			</ul>
+			<div class="condition-detail">{@render mobileDetail(qualification)}</div>
+		</section>
+
+		<section class="mobile-panel" aria-labelledby="mobile-membership-perks">
+			<h3 id="mobile-membership-perks" class="mobile-heading px-4 py-3.5">{m.membership_benefits_heading()}</h3>
+			<ul class="perk-list">
+				{#each orderedPerks as perk (perk.key)}
+					<li>
+						<button type="button" class="mobile-detail perk-detail" onclick={() => openDetail(perk)} aria-haspopup="dialog">
+							<span class="min-w-0">
+								<span class="block">{perk.title}</span>
+								{#if perk.guestNote}
+									<span class="mt-1 block text-xs font-normal text-stone-600">{m.membership_guest_booking()} · {perk.guestNote}</span>
+								{/if}
+							</span>
+							<span class="perk-audience tier-{perk.availableToGuests ? 'guest' : perk.minRank}">{perkAudience(perk)}</span>
+							<span class="detail-chevron" aria-hidden="true"></span>
+						</button>
+					</li>
+				{/each}
+			</ul>
+		</section>
+	</div>
+{/if}
 
 <div class:printable class="comparison-frame mt-2 overflow-x-auto rounded-2xl border border-stone-200 bg-white md:mt-6">
 	<table class="grade-table w-full table-fixed text-sm">
@@ -113,7 +169,7 @@
 				<td class="guest-value">{@render perkStatus(false)}</td>
 				{#each RANK_CODES as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
 			</tr>
-			{#each [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank)) as perk (perk.key)}
+			{#each orderedPerks as perk (perk.key)}
 				<tr>
 					<th scope="row" class="row-head">
 						<button type="button" class="detail-link" onclick={() => openDetail(perk)} aria-haspopup="dialog">
@@ -244,6 +300,86 @@
 		box-shadow: 0 20px 70px #211a1240;
 	}
 	.perk-dialog::backdrop { background: #211a1266; }
+
+	.mobile-comparison { display: none; }
+	.mobile-panel {
+		border: 1px solid #eae7e1;
+		border-radius: 1rem;
+		background: white;
+		color: #302d27;
+	}
+	.mobile-heading { font-size: 1rem; font-weight: 650; }
+	.mobile-detail {
+		display: flex;
+		width: 100%;
+		min-height: 2.75rem;
+		align-items: center;
+		justify-content: space-between;
+		gap: .75rem;
+		padding: .75rem 1rem;
+		border-radius: .5rem;
+		text-align: left;
+		cursor: pointer;
+		overflow-wrap: anywhere;
+	}
+	.mobile-detail:hover { background: #faf8f4; }
+	.mobile-detail:focus-visible { outline: 2px solid #78603b; outline-offset: -3px; }
+	.detail-chevron {
+		width: .42rem;
+		height: .42rem;
+		flex-shrink: 0;
+		border-block-start: 1px solid currentColor;
+		border-inline-end: 1px solid currentColor;
+		color: #78603b;
+		transform: rotate(45deg);
+	}
+	.rate-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: .5rem;
+		padding-inline: .75rem;
+	}
+	.rate-card {
+		display: grid;
+		align-content: start;
+		gap: .18rem;
+		padding: .65rem .7rem;
+		border: 1px solid #eae7e1;
+		border-radius: .65rem;
+		background: var(--light);
+		overflow-wrap: anywhere;
+	}
+	.guest-card {
+		grid-column: 1 / -1;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: center;
+	}
+	.rate-card .rate { line-height: 1.1; }
+	.rate-card .condition { font-size: .8125rem; }
+	.guest-card .rate { font-size: 1.35rem; }
+	.mobile-rank-name { font-size: .875rem; font-weight: 650; }
+	.condition-detail { font-size: .875rem; color: #5b554c; }
+	.perk-list > li { border-top: 1px solid #eae7e1; }
+	.perk-detail {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) fit-content(37%) auto;
+		gap: .55rem;
+		font-size: .875rem;
+		font-weight: 550;
+	}
+	.perk-audience {
+		justify-self: end;
+		padding: .2rem .5rem;
+		border-radius: .5rem;
+		background: var(--light);
+		font-size: .75rem;
+		text-align: center;
+	}
+
+	@media screen and (width < 48rem) {
+		.mobile-comparison { display: block; }
+		.comparison-frame:not(.printable) { display: none; }
+	}
 
 	@media print {
 		.comparison-frame.printable { margin: 0; contain: none; overflow: visible; box-shadow: none; border-radius: 0; }
