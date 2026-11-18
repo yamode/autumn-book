@@ -5,6 +5,7 @@
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { rankName } from '$lib/rank-name';
+	import { memberDisplayRank } from '$lib/member-rank';
 	import { deLocalizeUrl } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -37,6 +38,7 @@
 
 	// 氏名のイニシャル（アバター代替）
 	const initial = $derived((data.member.name ?? '').trim().charAt(0) || '·');
+	const rank = $derived(memberDisplayRank(data.member.rank));
 </script>
 
 <div class="account-shell mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
@@ -54,8 +56,8 @@
 		</div>
 		<div class="flex w-full flex-wrap items-center gap-x-2 sm:w-auto">
 			<a href="/account/points#member-rank" class="inline-flex min-h-11 items-center rounded-md"
-				aria-label={`${rankName(data.member.rank)} · ${m.points_rank_progress()}`}>
-				<RankBadge rank={data.member.rank} />
+				aria-label={`${rankName(rank)} · ${m.points_rank_progress()}`}>
+				<RankBadge {rank} />
 			</a>
 			<a href="/account/points" class="inline-flex min-h-11 items-center rounded-md">
 				<span class="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800">{data.balance.toLocaleString()} {m.common_point_unit()}</span>

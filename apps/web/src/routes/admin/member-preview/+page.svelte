@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { rankName } from '$lib/rank-name';
+	import { previewRankName } from '$lib/rank-name';
 	let { data } = $props();
 </script>
 
@@ -11,7 +11,7 @@
 {#if data.options.length}
 	<div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
 		{#each data.options as { rank, token } (rank)}
-			{@const label = rankName(rank)}
+			{@const label = previewRankName(rank)}
 			<form method="POST" action={data.destination} target="_blank" rel="noopener" class="rounded-xl border border-stone-200 bg-white p-4">
 				<input type="hidden" name="token" value={token} />
 				<h2 class="text-base font-semibold text-stone-900">{label}</h2>

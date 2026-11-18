@@ -94,7 +94,8 @@ export const MEMBER_RANK_LABELS: Record<string, string> = {
   platinum: 'PLATINUM'
 };
 export const rankLabelOf = (code: string | null | undefined, label?: string | null): string =>
-  (label && label.trim()) || MEMBER_RANK_LABELS[String(code ?? '')] || String(code ?? '').toUpperCase() || 'STANDARD';
+  code === 'platinum' ? MEMBER_RANK_LABELS.gold
+    : (label && label.trim()) || MEMBER_RANK_LABELS[String(code ?? '')] || String(code ?? '').toUpperCase() || 'STANDARD';
 
 /** 還元率（0.03 → 「3%」。0.015 → 「1.5%」） */
 export const rewardPercentText = (rate: number): string => `${Math.round((Number(rate) || 0) * 1000) / 10}%`;

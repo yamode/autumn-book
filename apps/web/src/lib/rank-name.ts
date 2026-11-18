@@ -14,3 +14,7 @@ export function rankName(code: RankCode): string {
 			return m.rank_standard();
 	}
 }
+
+export function previewRankName(code: RankCode): string {
+	return code === 'platinum' ? '特別会員（ゴールド表示）' : rankName(code);
+}

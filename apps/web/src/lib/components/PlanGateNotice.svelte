@@ -6,17 +6,21 @@
 
 	let { gate, access, next }: { gate: PlanGate; access?: PlanAccess; next: string } = $props();
 
-	const rank = $derived(access?.minRank && access.minRank !== 'standard' ? rankName(access.minRank) : null);
+	const eligibleOnly = $derived(access?.minRank === 'platinum');
+	const rank = $derived(access?.minRank && access.minRank !== 'standard' && !eligibleOnly ? rankName(access.minRank) : null);
 </script>
 
 <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
-	{#if gate === 'rank'}
+	{#if eligibleOnly && gate === 'rank'}
+		<p class="font-medium text-amber-900">{m.plan_badge_eligible()}</p>
+		<p class="mt-1 text-amber-800">{m.plan_gate_eligible_body()}</p>
+	{:else if gate === 'rank'}
 		<p class="font-medium text-amber-900">{m.plan_gate_rank_title({ rank: rank ?? '' })}</p>
 		<p class="mt-1 text-amber-800">{m.plan_gate_rank_body()}</p>
 		<a href="/membership" class="mt-3 block rounded-lg border border-brand-800 py-2.5 text-center text-sm font-medium text-brand-900 hover:bg-white">{m.plan_gate_rank_cta()}</a>
 	{:else}
-		<p class="font-medium text-amber-900">{m.plan_gate_login_title()}</p>
-		<p class="mt-1 text-amber-800">{rank ? m.plan_gate_login_rank_body({ rank }) : m.plan_gate_login_body()}</p>
+		<p class="font-medium text-amber-900">{eligibleOnly ? m.plan_badge_eligible() : m.plan_gate_login_title()}</p>
+		<p class="mt-1 text-amber-800">{eligibleOnly ? m.plan_gate_login_eligible_body() : rank ? m.plan_gate_login_rank_body({ rank }) : m.plan_gate_login_body()}</p>
 		<a href="/auth/login?next={encodeURIComponent(next)}" class="mt-3 block rounded-lg bg-accent-600 py-2.5 text-center text-sm font-medium text-white hover:bg-accent-500">{m.plan_gate_login_cta()}</a>
 	{/if}
 </div>

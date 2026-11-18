@@ -1,5 +1,12 @@
-import type { RankCode } from '$lib/plan-access';
+import { RANK_CODES, type RankCode } from '$lib/plan-access';
 import * as m from '$lib/paraglide/messages';
+
+export const memberDisplayRanks = RANK_CODES.filter((rank) => rank !== 'platinum');
+export type MemberDisplayRank = (typeof memberDisplayRanks)[number];
+
+export function memberDisplayRank(rank: RankCode): MemberDisplayRank {
+	return rank === 'platinum' ? 'gold' : rank;
+}
 
 export const rankTargets = {
 	standard: { visits: 0, nights: null },

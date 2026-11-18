@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { formatDateLong } from '$lib/format';
 	import RankBadge from '$lib/components/RankBadge.svelte';
-	import { RANK_CODES } from '$lib/plan-access';
-	import { rankCondition, rankTargets } from '$lib/member-rank';
+	import { memberDisplayRank, memberDisplayRanks, rankCondition, rankTargets } from '$lib/member-rank';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
-	let rank = $derived(data.rankProgress?.rank_code ?? data.member.rank);
-	let currentRank = $derived(data.ranks.find((r) => r.code === rank)!);
-	let nextRank = $derived(RANK_CODES[RANK_CODES.indexOf(rank) + 1]);
+	let actualRank = $derived(data.rankProgress?.rank_code ?? data.member.rank);
+	let rank = $derived(memberDisplayRank(actualRank));
+	let currentRank = $derived(data.ranks.find((r) => r.code === actualRank)!);
+	let grades = $derived(memberDisplayRanks.map((code) => data.ranks.find((r) => r.code === code)!));
+	let nextRank = $derived(memberDisplayRanks[memberDisplayRanks.indexOf(rank) + 1]);
 	let nextTarget = $derived(nextRank ? rankTargets[nextRank] : null);
 </script>
 
@@ -73,7 +74,7 @@
 	<table class="w-full text-[15px]">
 		<thead><tr class="border-b border-stone-200 text-left text-sm text-stone-500"><th class="py-2">{m.points_grade_rank()}</th><th>{m.points_grade_condition()}</th><th class="text-right">{m.points_grade_rate()}</th></tr></thead>
 		<tbody>
-			{#each data.ranks as r}
+			{#each grades as r (r.code)}
 				<tr class="border-b border-stone-100 {r.code === rank ? 'bg-amber-50/50' : ''}">
 					<td class="py-2.5"><RankBadge rank={r.code} /></td>
 					<td class="text-stone-600">{rankCondition(r.code)}</td>

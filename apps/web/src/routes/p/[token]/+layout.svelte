@@ -175,7 +175,7 @@
               <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
               {portal.member.name} 様 専用ページ
             </p>
-            <span class={`rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${portal.member.rankCode === 'platinum' ? 'border-slate-700 bg-slate-800 text-slate-100' : portal.member.rankCode === 'gold' ? 'border-amber-400 bg-amber-50 text-amber-700' : portal.member.rankCode === 'silver' ? 'border-slate-400 bg-slate-100 text-slate-600' : 'border-stone-300 bg-stone-100 text-stone-600'}`}>◆ {portal.member.rankLabel}</span>
+            <span class={`rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${portal.member.rankCode === 'gold' || portal.member.rankCode === 'platinum' ? 'border-amber-400 bg-amber-50 text-amber-700' : portal.member.rankCode === 'silver' ? 'border-slate-400 bg-slate-100 text-slate-600' : 'border-stone-300 bg-stone-100 text-stone-600'}`}>◆ {portal.member.rankLabel}</span>
             <span class="text-xs text-stone-600">保有 <span class="font-bold tabular-nums">{pointText(portal.member.balance)}</span></span>
           </div>
         {:else if portal?.partnerName}

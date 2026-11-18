@@ -9,6 +9,7 @@
 	const label = $derived.by(() => {
 		if (!access || isOpenPlan(access)) return null;
 		if (access.audience === 'members') {
+			if (access.minRank === 'platinum') return m.plan_badge_eligible();
 			return access.minRank && access.minRank !== 'standard' ? m.plan_badge_rank({ rank: rankName(access.minRank) }) : m.plan_badge_members();
 		}
 		return m.plan_badge_link();

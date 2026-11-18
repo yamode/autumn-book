@@ -34,7 +34,7 @@
 <PageHeader
 	title="オプション"
 	facility={data.currentFacility.name}
-	description="会員が予約詳細から事前予約できるオプション商品です。会計は宿泊料金と分離し、現地精算で扱います。公開すると会員のオプション追加画面に表示されます。アメニティとパーソナライズはプラチナ会員のみ申し込めます。"
+	description="会員が予約詳細から事前予約できるオプション商品です。会計は宿泊料金と分離し、現地精算で扱います。公開すると会員のオプション追加画面に表示されます。アメニティとパーソナライズはゴールド以上の会員が申し込めます。"
 />
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました。</p>{/if}
