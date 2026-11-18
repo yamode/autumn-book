@@ -388,7 +388,7 @@
   "auth_otp_code_label": "Verification code (8 digits)",
   "auth_otp_code_hint": "A verification code was sent to {email}. Please enter the 8-digit number from the email.",
   "auth_otp_code_placeholder": "8-digit code",
-  "auth_otp_autofill_hint": "Tap the code if it appears above the keyboard. You can also copy and paste it from your email.",
+  "auth_otp_autofill_hint": "Enter the code from your email, or copy and paste it. On some phones (e.g. iPhone with the Mail app), the code may appear just above the keyboard — tap it to fill it in.",
   "auth_otp_verify": "Log in",
   "auth_otp_verify_register": "Verify and continue",
   "auth_otp_resend": "Resend verification code",

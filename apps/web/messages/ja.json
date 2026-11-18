@@ -388,7 +388,7 @@
   "auth_otp_code_label": "確認コード（8桁）",
   "auth_otp_code_hint": "{email} 宛に確認コードを送信しました。メールに記載の8桁の数字をご入力ください。",
   "auth_otp_code_placeholder": "8桁の数字",
-  "auth_otp_autofill_hint": "キーボードの上にコードが表示されたらタップしてください。メールからコピーして貼り付けることもできます。",
+  "auth_otp_autofill_hint": "メールに届いたコードを入力するか、コピーして貼り付けてください。iPhone の「メール」アプリなどでは、キーボードのすぐ上にコードの候補が出ることがあり、タップするだけで入力できます。",
   "auth_otp_verify": "ログイン",
   "auth_otp_verify_register": "確認して次へ",
   "auth_otp_resend": "確認コードを再送する",

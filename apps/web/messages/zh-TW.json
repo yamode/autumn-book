@@ -388,7 +388,7 @@
   "auth_otp_code_label": "驗證碼（8位數）",
   "auth_otp_code_hint": "驗證碼已寄送至 {email}，請輸入郵件中的8位數字。",
   "auth_otp_code_placeholder": "8位數驗證碼",
-  "auth_otp_autofill_hint": "如果鍵盤上方顯示驗證碼，請點選它。您也可以從郵件複製並貼上。",
+  "auth_otp_autofill_hint": "請輸入郵件中的驗證碼，或複製後貼上。部分手機（如使用「郵件」App 的 iPhone）會在鍵盤正上方顯示驗證碼，點一下即可填入。",
   "auth_otp_verify": "登入",
   "auth_otp_verify_register": "驗證並繼續",
   "auth_otp_resend": "重新寄送驗證碼",
