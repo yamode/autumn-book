@@ -180,7 +180,7 @@
   </div>
 {/snippet}
 
-<div role={modal ? undefined : 'dialog'} aria-label={modal ? undefined : labels.dateDialog} class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
+<div role={modal ? undefined : 'dialog'} aria-label={modal ? undefined : labels.dateDialog} class={modal ? 'bg-white px-3.5 pb-3 pt-2' : 'rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4'}>
   <!--
     上段。PC（md〜）は 1 行: 泊数 −n+ ／ 日付指定なし ／ 案内 ／ 人数と最安の注記 ／ ×。
     スマホは 2 行に詰める（2026-10-29: 折り返して縦に長くなっていた）: 1 行目 泊数 −n+ と ×、2 行目 日付指定なしと注記（取得中・失敗のときはその表示）。
@@ -226,18 +226,18 @@
     {/each}
   </div>
   <!-- スマホ: 月を縦に並べて上下にスクロール -->
-  <div bind:this={scrollEl} class="mt-1 space-y-5 overflow-y-auto overscroll-contain md:hidden {modal ? 'max-h-[min(60dvh,max(9rem,100dvh-13rem))]' : 'max-h-[60vh]'}">
+  <div bind:this={scrollEl} class="mt-1 space-y-5 overflow-y-auto overscroll-contain md:hidden {modal ? 'max-h-[min(48dvh,max(9rem,100dvh-20rem))]' : 'max-h-[60vh]'}">
     {#each mobileMonths as ym (ym)}
       <section data-ym={ym} aria-label={formatMonth(ym, lang)} class="pt-2">{@render monthView(ym)}</section>
     {/each}
   </div>
   <!-- 下段（選んだ日程と「この日程で検索」）は、スマホで縦に長くなっても画面の下に残す -->
-  <div class="sticky bottom-0 z-10 mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 bg-white pt-3 pb-1">
-    <p class="text-base text-stone-700">
+  <div class={`sticky bottom-0 z-10 flex flex-wrap items-center justify-between border-t border-stone-100 bg-white pb-1 ${modal ? 'mt-2 gap-2 pt-2.5' : 'mt-3 gap-3 pt-3'}`}>
+    <p class={modal ? 'text-sm text-stone-700' : 'text-base text-stone-700'}>
       {#if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
     </p>
     {#if !pickApplies}
-      <button type="button" onclick={onApply} class="ml-auto rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? labels.applyDates : labels.applyNoDate}</button>
+      <button type="button" onclick={onApply} class={`rounded-full bg-brand-900 font-semibold text-white hover:bg-brand-800 disabled:opacity-40 ${modal ? 'w-full py-2.5 text-base' : 'ml-auto px-6 py-2.5 text-base'}`}>{date ? labels.applyDates : labels.applyNoDate}</button>
     {/if}
   </div>
 </div>

@@ -124,7 +124,9 @@
 
   {#if open === 'date'}
     {#if modal}
-      <dialog bind:this={dialog} aria-label={labels.dateDialog} class="m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-lg overflow-auto overscroll-contain rounded-3xl bg-white backdrop:bg-stone-900/40" oncancel={closeDate}>
+      <!-- スマホは画面いっぱいだと窮屈なので、四辺に余白を取った小さめのカードにする（2026-11-18 指示）。
+           下端は Safari のツールバーに掛からないよう上下の余白を多めに取る -->
+      <dialog bind:this={dialog} aria-label={labels.dateDialog} class="m-auto max-h-[calc(100dvh-6rem)] w-[calc(100%-3rem)] max-w-md overflow-auto overscroll-contain rounded-2xl bg-white shadow-[0_12px_40px_rgba(0,0,0,0.22)] backdrop:bg-stone-900/40" oncancel={closeDate}>
         {@render datePanel({ close: closeDate, modal: true })}
       </dialog>
     {:else}
