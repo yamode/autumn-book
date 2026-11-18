@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 検索バー（共通部品・見た目と操作だけ）。Airbnb 風: 白い角丸の1本に「チェックイン／泊数／ご利用人数・室数」の区画。
+  // 検索バー（共通部品・見た目と操作だけ）。白い角丸の1本に「チェックイン・泊数／ご利用人数・室数」の区画。
   // 区画を押すとその下に浮いたパネルが開く。日付は datePanel（呼び出し側が StaySearchPanel を描く）、人数・室数は ± のパネル。
   // 下書きを変えただけでは検索しない（「検索」「この条件で検索」で確定）。
   // 取引先ページ（PartnerSearchBar）と HP 配布の <yamado-search-bar>（embed・Shadow DOM の中）で同じものを使う。
@@ -53,31 +53,30 @@
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
   });
-  // 押した区画だけを白く浮かせる（チェックインと泊数は同じ日付パネルを開く）
-  let seg = $state<'checkin' | 'nights' | 'guests'>('checkin');
-  const toggle = (k: 'date' | 'guests', s: 'checkin' | 'nights' | 'guests' = k === 'guests' ? 'guests' : 'checkin') => {
-    open = open === k && seg === s ? '' : k;
-    seg = s;
+  const toggle = (panel: 'date' | 'guests') => {
+    open = open === panel ? '' : panel;
   };
-  const segment = (s: 'checkin' | 'nights' | 'guests') =>
-    `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open && seg === s ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
-  const checkoutLabel = $derived(date ? formatDate(addDays(date, nights), lang) : labels.addDate);
-  const dateLabel = $derived(date ? formatDate(date, lang) : '');
+  const segment = (panel: 'date' | 'guests') =>
+    `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open === panel ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
+  const dateSummary = $derived.by(() => {
+    if (!date) return labels.addDate;
+    const checkin = formatDate(date, lang);
+    return rangeMode ? labels.range(checkin, formatDate(addDays(date, nights), lang), nights) : labels.dateNights(checkin, nights);
+  });
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape' && open === 'guests') open = ''; }} />
 
+{#snippet dateText()}
+  <span class="text-xs font-bold tracking-wide text-brand-900">{rangeMode ? labels.checkinCheckout : labels.checkinNights}</span>
+  <span class={`truncate text-base ${date ? 'text-brand-900' : 'text-stone-400'}`}>{dateSummary}</span>
+{/snippet}
+
 <div bind:this={root} class="@container relative">
   <!-- PC: 1本の角丸バー -->
   <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
-    <button type="button" class={`${segment('checkin')} flex-[1.3]`} onclick={() => toggle('date', 'checkin')} aria-expanded={open === 'date'}>
-      <span class="text-xs font-bold tracking-wide text-brand-900">{labels.checkin}</span>
-      <span class={`truncate text-base ${date ? 'text-brand-900' : 'text-stone-400'}`}>{date ? dateLabel : labels.addDate}</span>
-    </button>
-    <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
-    <button type="button" class={`${segment('nights')} flex-[0.7]`} onclick={() => toggle('date', 'nights')} aria-label={rangeMode ? labels.checkout : labels.changeNights}>
-      <span class="text-xs font-bold tracking-wide text-brand-900">{rangeMode ? labels.checkout : labels.nights}</span>
-      <span class="truncate text-base text-brand-900">{rangeMode ? checkoutLabel : labels.nightsN(nights)}</span>
+    <button type="button" class={`${segment('date')} flex-[2]`} onclick={() => toggle('date')} aria-expanded={open === 'date'}>
+      {@render dateText()}
     </button>
     <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
     <div class={`${segment('guests')} flex-1 flex-row items-center justify-between gap-3 py-1.5 pr-1.5`}>
@@ -92,9 +91,8 @@
   <!-- スマホ: 縦に積んだカード -->
   <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:hidden">
     <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onclick={() => toggle('date')} aria-expanded={open === 'date'}>
-      <span class="flex flex-col">
-        <span class="text-xs font-bold text-brand-900">{rangeMode ? labels.checkinCheckout : labels.checkinNights}</span>
-        <span class={`text-base ${date ? 'text-brand-900' : 'text-stone-400'}`}>{date ? (rangeMode ? labels.range(dateLabel, checkoutLabel, nights) : labels.dateNights(dateLabel, nights)) : labels.addDate}</span>
+      <span class="flex min-w-0 flex-col">
+        {@render dateText()}
       </span>
     </button>
     <button type="button" class="flex w-full items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-left" onclick={() => toggle('guests')} aria-expanded={open === 'guests'}>
