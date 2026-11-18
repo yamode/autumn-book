@@ -24,7 +24,7 @@
 		{ href: '/account/upgrades', label: m.account_nav_upgrades() }
 	]);
 	const pathname = $derived(deLocalizeUrl(pendingPage('account')?.url ?? page.url).pathname);
-	const settingsDetail = $derived(['/account/profile', '/account/cards', '/account/ai-connections'].includes(pathname));
+	const settingsDetail = $derived(['/account/profile', '/account/cards', '/account/ai-connections', '/account/settings/login'].includes(pathname));
 	const settingsActive = $derived(pathname === '/account/settings' || settingsDetail);
 	const bookingSection = $derived(isActive('/account/reservations') || bookingNav.some((item) => isActive(item.href)));
 

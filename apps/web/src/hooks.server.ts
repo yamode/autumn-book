@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session';
-import { AUTH_MODE, adminMfaRequired, resolveSupabaseSessionUser } from '$lib/server/auth';
+import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, resolveSupabaseSessionUser } from '$lib/server/auth';
+import { MEMBER_LOGIN_METHODS, memberSessionSecurity } from '$lib/server/member-login';
 import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
@@ -139,6 +140,21 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		event.locals.user = user;
 		event.locals.pendingAuthUser = pending;
 		event.locals.adminAal = adminAal;
+		const memberId = user?.role === 'member' ? user.id : pending?.id;
+		if (MEMBER_LOGIN_METHODS && memberId) {
+			try {
+				const security = await memberSessionSecurity(createSupabaseServerClient(event), memberId);
+				if (!security.active || security.requiresMfa) event.locals.user = null;
+				if (security.active) {
+					event.locals.pendingAuthUser = null;
+					if (security.requiresMfa) event.locals.memberMfaPending = { id: memberId, unavailable: false };
+					else if (!user) event.locals.user = { id: memberId, name: pending?.email || 'ゲスト', role: 'member' };
+				}
+			} catch {
+				event.locals.user = null;
+				if (user?.role === 'member') event.locals.memberMfaPending = { id: memberId, unavailable: true };
+			}
+		}
 	} else {
 		event.locals.user = await getSession(event.cookies);
 		event.locals.pendingAuthUser = null;
@@ -157,6 +173,10 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 	// routes/admin/+layout.server.ts の redirect に任せる（ここで 303 を返すと HTML が JSON として読まれて壊れる）。
 	const mfaResponse = adminMfaGateResponse(event);
 	if (mfaResponse) return mfaResponse;
+	if (event.locals.memberMfaPending && !event.isDataRequest && event.request.method !== 'GET' && event.request.method !== 'HEAD'
+		&& !['/(public)/auth/mfa', '/(public)/auth/logout', '/(public)/auth/passkey'].includes(event.route.id ?? '')) {
+		return new Response(null, { status: 403, headers: { 'cache-control': 'no-store' } });
+	}
 	event.locals.abExperiments = experimentsForRequest(event);
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。

@@ -3,10 +3,12 @@ import { memberById, pointBalance, avatarByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile, sbPointBalance } from '$lib/server/supabase-data';
 import { bookingMcpEnabled } from '$lib/server/booking-mcp/oauth';
+import { MEMBER_LOGIN_METHODS, memberMfaPath } from '$lib/server/member-login';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async (event) => {
 	const { locals, url, untrack } = event;
+	if (locals.memberMfaPending) redirect(303, memberMfaPath(url.pathname + url.search));
 	if (locals.user?.role !== 'member') {
 		redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
 	}
@@ -25,6 +27,7 @@ export const load: LayoutServerLoad = async (event) => {
 		}
 		const balance = await loadBalance;
 		return {
+			memberLoginMethods: MEMBER_LOGIN_METHODS,
 			bookingMcpEnabled: untrack(() => bookingMcpEnabled(url)),
 			member: {
 				id: p.userId,
@@ -50,6 +53,7 @@ export const load: LayoutServerLoad = async (event) => {
 	const member = memberById(locals.user.id);
 	if (!member) redirect(303, '/auth/login');
 	return {
+		memberLoginMethods: false,
 		bookingMcpEnabled: false,
 		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, familyName: member.familyName, givenName: member.givenName, middleName: member.middleName ?? '', familyNameKana: member.familyNameKana ?? '', givenNameKana: member.givenNameKana ?? '', phone: member.phone, joinedAt: member.joinedAt, avatarUrl: avatarByMember.get(member.id) ?? null },
 		balance: pointBalance(member.id)

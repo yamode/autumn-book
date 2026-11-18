@@ -10,6 +10,7 @@ import { env as publicEnv } from '$env/dynamic/public';
 
 export const TURNSTILE_RESPONSE_FIELD = 'cf-turnstile-response';
 const SITEVERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+type VerificationContext = { action: string; hostname: string };
 
 /** 検証するか（純関数）: サイトキーとシークレットの両方があるときだけ */
 export const turnstileConfigured = (siteKey: string | null | undefined, secret: string | null | undefined) =>
@@ -20,7 +21,8 @@ export async function verifyTurnstile(
   token: string | null | undefined,
   ip: string | null | undefined,
   secret: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  expected?: VerificationContext
 ): Promise<boolean> {
   const response = String(token ?? '').trim();
   // トークンは最大 2048 文字（Cloudflare の仕様）
@@ -30,8 +32,8 @@ export async function verifyTurnstile(
   try {
     const res = await fetchImpl(SITEVERIFY_URL, { method: 'POST', body, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return false;
-    const data = (await res.json()) as { success?: boolean };
-    return data.success === true;
+    const data = (await res.json()) as { success?: boolean; action?: string; hostname?: string };
+    return data.success === true && (!expected || (data.action === expected.action && data.hostname === expected.hostname));
   } catch {
     return false;
   }
@@ -41,10 +43,10 @@ export async function verifyTurnstile(
  * フォームの Turnstile を確かめる（action の冒頭で呼ぶ）。未設定なら skipped で通す。
  * fd: 送られたフォーム（cf-turnstile-response を読む）、ip: requestMeta(event).ip
  */
-export async function checkTurnstile(fd: FormData, ip: string | null | undefined): Promise<{ ok: boolean; skipped: boolean }> {
+export async function checkTurnstile(fd: FormData, ip: string | null | undefined, expected?: VerificationContext): Promise<{ ok: boolean; skipped: boolean }> {
   const secret = env.TURNSTILE_SECRET_KEY ?? '';
   if (!turnstileConfigured(publicEnv.PUBLIC_TURNSTILE_SITE_KEY, secret)) return { ok: true, skipped: true };
-  const ok = await verifyTurnstile(String(fd.get(TURNSTILE_RESPONSE_FIELD) ?? ''), ip, secret.trim());
+  const ok = await verifyTurnstile(String(fd.get(TURNSTILE_RESPONSE_FIELD) ?? ''), ip, secret.trim(), fetch, expected);
   return { ok, skipped: false };
 }
 

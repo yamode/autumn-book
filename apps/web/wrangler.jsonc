@@ -35,6 +35,7 @@
 		"CF_ACCOUNT_ID": "6aa45d1081c1e08d7f1ce6d5aba5c3b7",
 		"REPORT_EMAIL_FROM": "noreply@yamado.app",
 		"AUTH_MODE": "supabase",
+		"MEMBER_LOGIN_METHODS": "true",
 		"DATA_SOURCE": "supabase",
 		"BOOKING_MCP_ORIGIN": "https://book.yamado.app",
 		"BOOKING_MCP_ONSITE_PILOT": "true",

@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import { clearSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { pauseSharedSso } from '$lib/server/admin-shared-sso';
+import { safeNext } from '$lib/safe-next';
 import type { Actions } from './$types';
 
 export const actions: Actions = {
@@ -17,6 +18,7 @@ export const actions: Actions = {
 				/* 未ログイン等は無視 */
 			}
 		}
-		redirect(303, '/');
+		const next = safeNext(event.url.searchParams.get('next'), '');
+		redirect(303, next ? `/auth/login?next=${encodeURIComponent(next)}` : '/');
 	}
 };

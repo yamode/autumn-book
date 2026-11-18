@@ -1,10 +1,13 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
+	import { memberLoginCopy } from '$lib/member-login-copy';
 
 	let { data } = $props();
 	const links = $derived([
 		{ href: '/account/profile', label: m.account_nav_profile() },
 		{ href: '/account/cards', label: m.account_nav_cards() },
+		...(data.memberLoginMethods ? [{ href: '/account/settings/login', label: memberLoginCopy(getLocale()).title }] : []),
 		...(data.bookingMcpEnabled ? [{ href: '/account/ai-connections', label: m.account_nav_ai_connections() }] : [])
 	]);
 </script>

@@ -4,11 +4,12 @@ import { setSession } from '$lib/server/session';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
-import { clientIp, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
+import { clientIp, hashKeyPart, ipKey, RATE_RULES, rateCheck, rateHit, rateReset, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
 import { checkTurnstile } from '$lib/server/turnstile';
 import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
 import { safeNext } from '$lib/safe-next';
 import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
+import { MEMBER_LOGIN_METHODS, memberLoginDestination, memberMfaPath, memberPasskeysAvailable } from '$lib/server/member-login';
 import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -19,13 +20,43 @@ const OTP_HUMAN = 'ab_otp_human';
 const USE_BOOK_MEMBER = 'このメールアドレスは運営用アカウントです。YAMADOに連携する山人Book会員のメールアドレスを入力してください。';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
+	if (locals.memberMfaPending) redirect(303, memberMfaPath(url.searchParams.get('next') ?? ''));
 	if (locals.user?.role === 'member') redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	const role = locals.user?.role;
 	const showMemberNotice = (role === 'admin' || role === 'staff') && Boolean(bookingConsentNext(url));
-	return { authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null };
+	return { authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS, passkeys: memberPasskeysAvailable(url) };
 };
 
 export const actions: Actions = {
+	password: async (event) => {
+		if (!MEMBER_LOGIN_METHODS) return fail(404, { step: 'password', message: m.auth_otp_error_config() });
+		const form = await event.request.formData();
+		const email = String(form.get('email') ?? '').trim();
+		const password = String(form.get('password') ?? '');
+		const rejected = { step: 'password', email, message: m.error_login_failed() };
+		if (!EMAIL_RE.test(email) || email.length > 254 || !password || password.length > 1024) return fail(400, rejected);
+		const ip = clientIp(event.request);
+		if (!(await checkTurnstile(form, ip, { action: 'member-password', hostname: event.url.hostname })).ok) {
+			return fail(400, { ...rejected, message: m.auth_turnstile_failed() });
+		}
+		const ipId = ipKey(ip);
+		const emailId = await hashKeyPart(email);
+		const limits = [[RATE_RULES.memberPasswordIp, ipId], [RATE_RULES.memberPasswordEmail, emailId]] as const;
+		if ((await Promise.all(limits.map(([rule, key]) => rateCheck(event.platform, rule, key)))).some((r) => r.locked)) return fail(429, rejected);
+		const client = createSupabaseServerClient(event);
+		const { data, error } = await client.auth.signInWithPassword({ email, password });
+		let next: string | null = null;
+		if (!error && data.session && data.user) {
+			next = await memberLoginDestination(data.user, data.session.access_token, event.url.searchParams.get('next') ?? '').catch(() => null);
+		}
+		if (!next) {
+			if (data.session) await client.auth.signOut({ scope: 'local' });
+			await Promise.all(limits.map(([rule, key]) => rateHit(event.platform, rule, key)));
+			return fail(401, rejected);
+		}
+		await Promise.all(limits.map(([rule, key]) => rateReset(event.platform, rule, key)));
+		redirect(303, next);
+	},
 	// デモ: email + パスワード（AUTH_MODE=demo のときのみ）
 	login: async ({ request, cookies, url }) => {
 		if (AUTH_MODE !== 'demo') return fail(400, { message: m.auth_otp_error_config() });
@@ -46,13 +77,15 @@ export const actions: Actions = {
 		const form = await request.formData();
 		const email = String(form.get('email') ?? '').trim();
 		if (!EMAIL_RE.test(email)) return fail(400, { step: 'email', email, message: m.auth_otp_error_email_invalid() });
-		// 60秒クールダウン（再送含む）
-		if (cookies.get(OTP_COOLDOWN)) return fail(429, { step: 'code', email, message: m.auth_otp_resend_wait() });
 		// Turnstile（未設定なら素通り）と、サーバ側の送信数の制限（Cookie を捨てても効く・未登録メールでも同じ応答）。
 		// コード入力画面からの再送は、最初の画面で Turnstile を通ったこと（同じメールアドレスの署名付き Cookie）で代える
 		// （同じ画面で2回目の確認を出さない・2026-11-02）。送信数の制限とクールダウンは再送にも効く
 		const ip = clientIp(request);
 		const passedFor = await verifyCookieValue(OTP_HUMAN, cookies.get(OTP_HUMAN));
+		// コードを実際に要求済みの宛先だけをコード入力へ戻す（別の宛先の送信済み表示を防ぐ）。
+		if (cookies.get(OTP_COOLDOWN) && passedFor === email.toLowerCase()) {
+			return fail(429, { step: 'code', email, message: m.auth_otp_resend_wait() });
+		}
 		const resend = form.get('resend') === '1' && passedFor === email.toLowerCase();
 		if (!resend && !(await checkTurnstile(form, ip)).ok) return fail(400, { step: 'email', email, message: m.auth_turnstile_failed() });
 		if (!(await memberOtpSendAllowed(event.platform, email, ip))) return fail(429, { step: 'email', email, message: m.auth_otp_rate_limited() });
@@ -63,7 +96,10 @@ export const actions: Actions = {
 			return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
 		}
 		const { error } = await client.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-		if (error) return fail(502, { step: 'email', email, message: m.auth_otp_error_send() });
+		if (error) {
+			console.warn('[member-otp] Supabase rejected send', { status: error.status, code: error.code });
+			return fail(502, { step: 'email', email, message: m.auth_otp_error_send() });
+		}
 		cookies.set(OTP_COOLDOWN, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 });
 		// 再送で Turnstile を省くための印（このメールアドレスで確認済み・15分）。最初の送信のときだけ付け、再送では延ばさない
 		if (!resend) {
@@ -121,6 +157,14 @@ export const actions: Actions = {
 			} catch {
 				/* 失敗しても次回ログイン/登録で再同期される */
 			}
+		}
+		if (MEMBER_LOGIN_METHODS && data.session && role !== 'admin' && role !== 'staff') {
+			const destination = await memberLoginDestination(data.user, data.session.access_token, url.searchParams.get('next') ?? '').catch(() => null);
+			if (!destination) {
+				await client.auth.signOut({ scope: 'local' });
+				return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
+			}
+			redirect(303, destination);
 		}
 		redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	}

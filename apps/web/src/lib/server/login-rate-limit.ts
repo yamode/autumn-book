@@ -59,7 +59,11 @@ export const RATE_RULES = {
   /** 会員の認証コード送信: 全体で 10 分 300 通（送信基盤の保護） */
   memberOtpGlobal: { prefix: 'login_rate:member_otp_global:', max: 300, windowSec: 600 },
   /** 会員の認証コードの検証失敗: 1 メールあたり 10 分 10 回 */
-  memberOtpVerify: { prefix: 'login_rate:member_otp_verify:', max: 10, windowSec: 600, lockSec: 600 }
+  memberOtpVerify: { prefix: 'login_rate:member_otp_verify:', max: 10, windowSec: 600, lockSec: 600 },
+  memberPasswordIp: { prefix: 'login_rate:member_password_ip:', max: 20, windowSec: 600, lockSec: 900 },
+  memberPasswordEmail: { prefix: 'login_rate:member_password_email:', max: 10, windowSec: 600, lockSec: 900 },
+  memberPasskey: { prefix: 'login_rate:member_passkey:', max: 35, windowSec: 600 },
+  memberTotp: { prefix: 'login_rate:member_totp:', max: 5, windowSec: 600, lockSec: 900 }
 } as const satisfies Record<string, RateRule>;
 
 export type RateRecord = { count: number; windowStart: number; lockedUntil: number };
