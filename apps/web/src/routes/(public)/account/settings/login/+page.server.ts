@@ -32,7 +32,6 @@ export const load: PageServerLoad = async (event) => {
 		if (error) throw error;
 		return {
 			unavailable: false, recent: security.recent, passkeysAvailable: memberPasskeysAvailable(event.url), keys,
-			loginEmail: security.recent ? security.email : null,
 			passwordNeedsTotp: security.hasTotp && !security.aal2,
 			factors: (data?.totp ?? []).map((factor) => ({ id: factor.id, name: authenticatorAppName(factor.friendly_name) }))
 		};

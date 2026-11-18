@@ -1,14 +1,19 @@
 <script lang="ts">
 	import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/browser';
+	import { flushSync, tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$lib/enhance';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { memberLoginCopy } from '$lib/member-login-copy';
+	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let { data, form } = $props();
 	const t = $derived(memberLoginCopy(getLocale()));
 	let keyName = $state('');
+	let editingKeyId = $state<string | null>(null);
+	let renameInput = $state<HTMLInputElement>();
+	let authenticatorApp = $state('');
 	let showPassword = $state(false);
 	let confirmationInput = $state<HTMLInputElement>();
 	let passwordForm = $state<HTMLFormElement>();
@@ -26,21 +31,37 @@
 	const input = 'mt-1 w-full rounded-md border border-stone-300 px-3 py-2';
 	const button = 'min-h-11 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium hover:bg-stone-50 disabled:opacity-60';
 	const submitButton = 'min-h-11 rounded-lg bg-brand-800 px-4 text-sm font-medium text-white hover:bg-brand-700';
-	const submitPassword: SubmitFunction = ({ formData, cancel }) => {
-		const confirmation = confirmationInput;
-		if (!confirmation?.reportValidity()) return cancel();
-		formData.set('confirm', confirmation.value);
-		return async ({ result, update }) => {
-			if (result.type === 'success') {
-				confirmation.value = '';
-				showPassword = false;
-			}
-			await update();
-		};
-	};
-	const finishRename: SubmitFunction = ({ formElement }) => async ({ result, update }) => {
+	const keyAction = 'min-h-11 rounded-lg px-3 text-sm font-medium transition-colors';
+	function submitPassword(event: SubmitEvent) {
+		if (!confirmationInput?.reportValidity()) {
+			event.preventDefault();
+			return;
+		}
+		flushSync(() => { showPassword = false; });
+	}
+
+	function submitPasswordOnEnter(event: KeyboardEvent) {
+		if (event.key !== 'Enter' || event.isComposing) return;
+		event.preventDefault();
+		passwordForm?.requestSubmit();
+	}
+	async function startRename(id: string) {
+		editingKeyId = id;
+		await tick();
+		renameInput?.focus();
+		renameInput?.select();
+	}
+
+	async function closeRename(id: string) {
+		if (editingKeyId !== id) return;
+		editingKeyId = null;
+		await tick();
+		document.getElementById(`rename-key-${id}`)?.focus();
+	}
+
+	const finishRename: SubmitFunction = ({ formData }) => async ({ result, update }) => {
 		await update();
-		if (result.type === 'success') formElement.closest('details')?.removeAttribute('open');
+		if (result.type === 'success') await closeRename(String(formData.get('id')));
 	};
 
 	$effect(() => {
@@ -102,13 +123,15 @@
 				{#if form?.issue !== 'passwordTotp'}<p class="text-sm text-stone-700">{t.passwordTotp}</p>{/if}
 				{@render restartLogin()}
 			{:else if data.recent && form?.issue !== 'recent'}
-				<form id="confirm-password-form" method="POST" onsubmit={(event) => {
-					event.preventDefault();
-					passwordForm?.requestSubmit();
-				}}></form>
-				<form method="POST" action="?/password" bind:this={passwordForm} data-reset use:enhance={submitPassword} class="max-w-md space-y-3">
-					{#if data.loginEmail}
-						<input class="hidden" type="email" name="email" value={data.loginEmail} autocomplete="username" readonly />
+				<form id="confirm-password-form" method="POST" autocomplete="off" onsubmit={(event) => event.preventDefault()}></form>
+				<form id="member-password-change" method="POST" action="?/password" bind:this={passwordForm}
+					onsubmit={submitPassword} onformdata={({ formData }) => formData.set('confirm', confirmationInput?.value ?? '')}
+					class="max-w-md space-y-3">
+					{#if data.member.email}
+						<label class="block text-sm" for="login-email">{t.passwordLoginEmail}
+							<input id="login-email" class={`${input} bg-stone-50`} type="email" name="email"
+								value={data.member.email} autocomplete="username" readonly />
+						</label>
 					{/if}
 					<p id="password-hint" class="text-sm text-stone-600">{t.passwordLength}</p>
 					<div>
@@ -125,7 +148,7 @@
 						<!-- 別フォームに所属させ、ブラウザが生成したパスワードを確認欄に複製するのを防ぐ。 -->
 						<input form="confirm-password-form" id="confirm-entry" bind:this={confirmationInput}
 							class={input} type={showPassword ? 'text' : 'password'} autocomplete="off"
-							autocapitalize="off" spellcheck={false} required />
+							autocapitalize="off" spellcheck={false} onkeydown={submitPasswordOnEnter} required />
 					</label>
 					<button type="submit" class={submitButton}>{t.save}</button>
 				</form>
@@ -135,25 +158,42 @@
 		<section class={panel}>
 			<h3 class="text-lg font-semibold">{t.keys}</h3>
 			{#if data.keys.length}
-				<ul class="divide-y divide-stone-100">
+				<ul class="space-y-2">
 					{#each data.keys as key (key.id)}
-						<li class="flex flex-wrap items-start justify-between gap-2 py-2">
-							<span class="min-w-0 break-words">{key.device_name}</span>
-							{#if data.recent}
-								<form method="POST" action="?/removePasskey" use:enhance class="ml-auto">
+						<li class="overflow-hidden rounded-xl border border-stone-200 bg-white">
+							<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2.5 sm:px-4">
+								<div class="flex min-w-0 flex-1 basis-48 items-center gap-3">
+									<span class="grid size-9 shrink-0 place-items-center rounded-lg bg-stone-100 text-brand-800">
+										<AdminIcon name="shield" class="size-5" />
+									</span>
+									<span class="min-w-0 break-words text-sm font-medium sm:text-base">{key.device_name}</span>
+								</div>
+								{#if data.recent}
+									<div class="ml-auto flex shrink-0 items-center gap-1">
+										<button type="button" id={`rename-key-${key.id}`} aria-expanded={editingKeyId === key.id}
+											aria-label={`${t.renameKey} ${key.device_name}`}
+											class={`${keyAction} ${editingKeyId === key.id ? 'bg-stone-200' : 'bg-stone-100 hover:bg-stone-200'} text-brand-800`}
+											onclick={() => editingKeyId === key.id ? closeRename(key.id) : startRename(key.id)}>{t.renameKey}</button>
+										<form method="POST" action="?/removePasskey" use:enhance>
+											<input type="hidden" name="id" value={key.id} />
+											<button type="submit" class={`${keyAction} text-stone-600 hover:bg-red-50 hover:text-red-800`}
+												aria-label={`${t.remove} ${key.device_name}`}>{t.remove}</button>
+										</form>
+									</div>
+								{/if}
+							</div>
+							{#if data.recent && editingKeyId === key.id}
+								<form method="POST" action="?/renamePasskey" use:enhance={finishRename}
+									class="flex flex-wrap items-end gap-3 border-t border-stone-200 bg-stone-50 px-3 py-3 sm:px-4">
 									<input type="hidden" name="id" value={key.id} />
-									<button type="submit" class={button} aria-label={`${t.remove} ${key.device_name}`}>{t.remove}</button>
+									<label class="min-w-0 flex-1 basis-56 text-sm font-medium">{t.editKeyName}
+										<input class={`${input} min-h-11 bg-white`} bind:this={renameInput} name="name" value={key.device_name} maxlength="60" required />
+									</label>
+									<div class="ml-auto flex gap-2">
+										<button type="button" class={button} onclick={() => closeRename(key.id)}>{t.cancel}</button>
+										<button type="submit" class={submitButton}>{t.save}</button>
+									</div>
 								</form>
-								<details class="w-full">
-									<summary class="w-fit cursor-pointer text-sm underline" aria-label={`${t.renameKey} ${key.device_name}`}>{t.renameKey}</summary>
-									<form method="POST" action="?/renamePasskey" use:enhance={finishRename} class="mt-2 flex max-w-md items-end gap-2">
-										<input type="hidden" name="id" value={key.id} />
-										<label class="min-w-0 flex-1 text-sm">{t.editKeyName}
-											<input class={input} name="name" value={key.device_name} maxlength="60" required />
-										</label>
-										<button type="submit" class={`${submitButton} shrink-0`}>{t.save}</button>
-									</form>
-								</details>
 							{/if}
 						</li>
 					{/each}
@@ -206,9 +246,22 @@
 					</form>
 				{:else}
 					<form method="POST" action="?/enroll" use:enhance class="max-w-md space-y-3">
-						<label class="block text-sm">{t.authenticatorAppName}
-							<input class={input} name="appName" maxlength="60" placeholder="Google Authenticator" />
+						<label class="block text-sm">{t.authenticatorAppChoice}
+							<select class={input} name={authenticatorApp === 'other' ? undefined : 'appName'} bind:value={authenticatorApp}>
+								<option value="">{t.authenticatorAppUnspecified}</option>
+								<option>Google Authenticator</option>
+								<option>Microsoft Authenticator</option>
+								<option value="Apple Passwords">{t.applePasswords}</option>
+								<option>1Password</option>
+								<option>Bitwarden Authenticator</option>
+								<option value="other">{t.authenticatorAppOther}</option>
+							</select>
 						</label>
+						{#if authenticatorApp === 'other'}
+							<label class="block text-sm">{t.authenticatorAppName}
+								<input class={input} name="appName" maxlength="60" required />
+							</label>
+						{/if}
 						<button type="submit" class={button}>{t.totpSetup}</button>
 					</form>
 				{/if}
