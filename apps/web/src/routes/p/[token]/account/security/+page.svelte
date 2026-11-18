@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reveal } from '$lib/reveal';
   // 取引先専用ページ: アカウント → セキュリティ（ログイン中の端末・ログイン履歴・他端末ログアウト。docs/auth-hardening.md §4.4）
   import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$lib/enhance';
@@ -131,9 +132,9 @@
     <p class="rounded-xl border border-stone-200 bg-white p-4 text-sm text-stone-600">確認モードでは、ログイン中の端末とログイン履歴は表示しません。</p>
   {:else}
     {#if form?.message}
-      <p class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+      <p use:reveal class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
     {:else if form?.loggedOut != null}
-      <p class="mb-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      <p use:reveal class="mb-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
         {form.loggedOut > 0 ? `${form.loggedOut}台の端末をログアウトしました。` : 'ログアウトする端末はありませんでした。'}
       </p>
     {/if}

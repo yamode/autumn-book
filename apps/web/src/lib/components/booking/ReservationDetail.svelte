@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import { reveal } from '$lib/reveal';
 	import type { BookingOptionOrder, BookingAmendment } from '$lib/types';
 
 	// 予約詳細の本体（公式マイページ /account/reservations/[code] と、特別会員の専用ページ /p/<token>/bookings/<予約番号> で共用・
@@ -181,7 +182,7 @@
 	</div>
 {/if}
 {#if f.cancelled || f.roomCancelled}
-	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+	<p use:reveal class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
 		{f.roomCancelled && !f.roomCancelled.bookingCancelled ? m.reservation_room_cancelled_ok({ n: String(f.roomCancelled.index) }) : m.reservation_cancelled_ok()}
 	</p>
 	{#if f.refund?.kind === 'refunded'}
@@ -200,10 +201,10 @@
 	{/if}
 {/if}
 {#if f.optionCancelled}
-	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.options_cancel_ok()}</p>
+	<p use:reveal class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.options_cancel_ok()}</p>
 {/if}
 {#if f.message}
-	<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{f.message}</p>
+	<p use:reveal class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{f.message}</p>
 {/if}
 {#if hasNeedsReschedule && !readOnly}
 	<div class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">

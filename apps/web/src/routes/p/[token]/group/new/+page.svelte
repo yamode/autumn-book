@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reveal } from '$lib/reveal';
   // 取引先ページ: 団体予約の照会の入力（束に積んで一括送信・docs/partner-group-booking.md §8.1・§14.3）。
   // 左にフォーム、右に「送る照会の束」。手早く入れる工夫:
   //   - 「束に追加」（Enter / Ctrl+Enter）: 条件をそのまま残し、チェックイン日の欄へフォーカス（日付だけ変えて次）
@@ -540,7 +541,7 @@
           class="space-y-5 rounded-xl border border-stone-200 bg-white p-4 sm:p-6"
           aria-label="照会の条件"
         >
-          {#if notice}<p class="rounded-lg bg-[var(--pt-accent-soft)] px-3 py-2 text-sm text-[var(--pt-accent)]" role="status">{notice}</p>{/if}
+          {#if notice}<p use:reveal class="rounded-lg bg-[var(--pt-accent-soft)] px-3 py-2 text-sm text-[var(--pt-accent)]" role="status">{notice}</p>{/if}
           <label class="block">
             <span class={label}>団体名 <em class="req">必須</em></span>
             <input bind:this={groupNameEl} bind:value={f.groupName} maxlength={data.limits.groupName} placeholder="例: 270413精華旅行社" class={input} />

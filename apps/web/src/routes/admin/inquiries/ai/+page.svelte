@@ -1,4 +1,5 @@
 <script lang="ts">
+import { reveal } from '$lib/reveal';
  import {enhance} from '$app/forms';
  let {data,form}=$props();let saving=$state(false);
  const models=[{id:'claude-opus-5',label:'Claude Opus 5'},{id:'claude-sonnet-5',label:'Claude Sonnet 5'},{id:'claude-fable-5',label:'Claude Fable 5'},{id:'claude-haiku-4-5-20251001',label:'Claude Haiku 4.5'}];
@@ -9,7 +10,7 @@
  <section class="settings-card" aria-label="共通AIモデル設定"><div class="card-heading"><h2>AIモデル</h2><span>現在：{label(data.settings.effective_model)}</span></div>
  <p>PMSの「事前応対メールのAI下書き」と同じ設定です。どちらで変更しても、両方に反映されます。</p>
  <div class="scope"><strong>この設定を使う処理</strong><ul><li>Bookのお問い合わせ：自動下書き・AI再作成・受信メールの日本語訳・返信の日本語訳</li><li>PMS：事前応対メールのAI下書き・メール翻訳</li></ul></div>
- {#if form?.message}<p class="error" role="alert">{form.message}</p>{/if}{#if form?.done}<p class="success" role="status">{form.done}</p>{/if}
+ {#if form?.message}<p use:reveal class="error" role="alert">{form.message}</p>{/if}{#if form?.done}<p use:reveal class="success" role="status">{form.done}</p>{/if}
  <form method="POST" action="?/save" use:enhance={()=>{saving=true;return async({update})=>{try{await update({reset:false});}finally{saving=false;}};}}>
  <input type="hidden" name="facilityId" value={data.facilityId}/><input type="hidden" name="expected" value={data.settings.configured_model??''}/>
  <label for="inquiry-ai-model">使用するモデル</label><select id="inquiry-ai-model" name="model" value={data.settings.configured_model??''} disabled={!data.settings.can_edit||saving}><option value="">既定のまま（Claude Haiku 4.5）</option>{#if data.settings.configured_model&&!models.some(m=>m.id===data.settings.configured_model)}<option value={data.settings.configured_model} disabled>現在の設定：{data.settings.configured_model}</option>{/if}{#each models as model}<option value={model.id}>{model.label}</option>{/each}</select>

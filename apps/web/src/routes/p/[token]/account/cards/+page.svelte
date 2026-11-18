@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reveal } from '$lib/reveal';
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: アカウント → お支払いカード（保存カード・2026-10-07・docs/saved-cards.md §6.1）。
   // 登録したカードは御社の全ユーザーが予約時に選べる。登録はモーダル（StripePayment・mode='setup'・Apple Pay 等は出さない・N4）、
@@ -109,11 +110,11 @@
     <p class="mt-5 rounded-xl border border-amber-700/30 bg-amber-50 px-5 py-6 text-center text-amber-800">現在ご利用いただけません。</p>
   {:else}
     {#if form?.message}
-      <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700" role="alert">{form.message}</p>
+      <p use:reveal class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700" role="alert">{form.message}</p>
     {:else if form?.removed}
-      <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">{form.removed} を削除しました。</p>
+      <p use:reveal class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">{form.removed} を削除しました。</p>
     {:else if form?.defaulted}
-      <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">{form.defaulted} を既定のカードにしました。</p>
+      <p use:reveal class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">{form.defaulted} を既定のカードにしました。</p>
     {/if}
     {#if notice ?? data.returned}
       {@const n = notice ?? { ok: data.returned?.status === 'saved', text: data.returned?.message ?? '' }}

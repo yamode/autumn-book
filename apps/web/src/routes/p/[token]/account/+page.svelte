@@ -24,12 +24,6 @@
 </svelte:head>
 
 <section>
-  {#if form?.message}
-    <p class="mb-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
-  {:else if form?.saved}
-    <p class="mb-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">予約担当者の情報を保存しました。</p>
-  {/if}
-
   <form
     method="POST"
     use:enhance={() => {
@@ -63,6 +57,12 @@
       {/key}
     {/if}
     <button type="submit" disabled={saving || !values} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">{saving ? '保存しています…' : '保存する'}</button>
+    <!-- 保存の結果は「保存する」のすぐ下に出す（上に出すとスマホでは見えなかった・2026-11-18 指示） -->
+    {#if form?.message}
+      <p role="alert" class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+    {:else if form?.saved}
+      <p role="status" class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">✓ 予約担当者の情報を保存しました。</p>
+    {/if}
   </form>
 </section>
 

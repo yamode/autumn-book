@@ -58,6 +58,13 @@
     pending: 'bg-amber-50 text-amber-700'
   };
   const issued = $derived(form?.created ?? form?.resent ?? form?.mfaReset?.issued ?? null);
+  // 結果の表示は、押したボタンの近くに出す（作成はフォームの下、各ユーザーの操作はその行・2026-11-18 指示「スマホで保存結果が見えない」）
+  const resultLoginId = $derived(
+    form?.resent?.loginId ?? form?.mfaReset?.loginId ?? form?.updated?.loginId ?? form?.loggedOut?.loginId ?? null
+  );
+  const resultPlace = $derived<'top' | 'row' | 'create'>(
+    form?.created || form?.values ? 'create' : resultLoginId && data.users.some((u) => u.loginId === resultLoginId) ? 'row' : 'top'
+  );
   const input = 'w-full rounded-md border border-stone-300 bg-white px-3 py-2 outline-none transition focus:border-[var(--pt-accent)] focus:ring-2 focus:ring-[var(--pt-accent-soft)]';
   const label = 'mb-1 block text-sm font-medium';
 </script>
@@ -76,42 +83,7 @@
       <a href={data.mfaHref} class="rounded-md bg-accent-600 px-3 py-1.5 font-medium text-white hover:bg-accent-500">本人確認する</a>
     </p>
   {/if}
-  {#if form?.message}
-    <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
-  {/if}
-  {#if issued}
-    <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm leading-6 text-brand-900">
-      <p class="font-medium">
-        {#if form?.mfaReset}
-          「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。パスワード設定リンクも発行し直しました。
-        {:else}
-          {form?.created ? `ユーザー「${issued.loginId}」を作成しました。` : `「${issued.loginId}」のパスワード設定リンクを発行し直しました。`}
-        {/if}
-      </p>
-      {#if issued.emailSent}
-        <p>{issued.email} 宛てにパスワード設定のご案内をお送りしました（リンクの有効期限は7日です）。</p>
-      {:else}
-        <p class="text-rose-700">メールを送れませんでした{issued.emailReason ? `（${issued.emailReason}）` : ''}。下のリンクをご本人へお伝えください（有効期限7日・ご本人専用）。</p>
-        {#if issued.setupUrl}
-          <input readonly value={issued.setupUrl} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-2 py-1 font-mono text-xs" onfocus={(e) => e.currentTarget.select()} />
-        {/if}
-      {/if}
-    </div>
-  {:else if form?.updated}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
-      「{form.updated.loginId}」を{form.updated.active ? '再開' : '停止'}しました。
-    </p>
-  {:else if form?.loggedOut}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
-      「{form.loggedOut.loginId}」を{form.loggedOut.count > 0 ? form.loggedOut.count + '台の端末から' : ''}ログアウトさせました{form.loggedOut.count > 0 ? '' : '（ログイン中の端末はありませんでした）'}。
-    </p>
-  {:else if form?.mfaReset}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
-      「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。メールアドレスが無い・停止中のため、パスワード設定リンクは送っていません。
-    </p>
-  {:else if form?.deleted}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">「{form.deleted.loginId}」を削除しました。</p>
-  {/if}
+  {#if resultPlace === 'top'}{@render results()}{/if}
 
   <!-- ユーザー一覧 -->
   <h3 class="mt-6 text-lg font-bold">ユーザー一覧</h3>
@@ -172,6 +144,7 @@
             </div>
           {/if}
         </div>
+        {#if resultPlace === 'row' && resultLoginId === u.loginId}{@render results()}{/if}
       </li>
     {/each}
   </ul>
@@ -193,7 +166,47 @@
       {busy ? '処理しています…' : 'ユーザーを作成してメールを送る'}
     </button>
   </form>
+  {#if resultPlace === 'create'}{@render results()}{/if}
 </section>
+
+{#snippet results()}
+  {#if form?.message}
+    <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+  {/if}
+  {#if issued}
+    <div class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm leading-6 text-brand-900">
+      <p class="font-medium">
+        {#if form?.mfaReset}
+          「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。パスワード設定リンクも発行し直しました。
+        {:else}
+          {form?.created ? `ユーザー「${issued.loginId}」を作成しました。` : `「${issued.loginId}」のパスワード設定リンクを発行し直しました。`}
+        {/if}
+      </p>
+      {#if issued.emailSent}
+        <p>{issued.email} 宛てにパスワード設定のご案内をお送りしました（リンクの有効期限は7日です）。</p>
+      {:else}
+        <p class="text-rose-700">メールを送れませんでした{issued.emailReason ? `（${issued.emailReason}）` : ''}。下のリンクをご本人へお伝えください（有効期限7日・ご本人専用）。</p>
+        {#if issued.setupUrl}
+          <input readonly value={issued.setupUrl} class="mt-1 w-full rounded-md border border-stone-300 bg-white px-2 py-1 font-mono text-xs" onfocus={(e) => e.currentTarget.select()} />
+        {/if}
+      {/if}
+    </div>
+  {:else if form?.updated}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      「{form.updated.loginId}」を{form.updated.active ? '再開' : '停止'}しました。
+    </p>
+  {:else if form?.loggedOut}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      「{form.loggedOut.loginId}」を{form.loggedOut.count > 0 ? form.loggedOut.count + '台の端末から' : ''}ログアウトさせました{form.loggedOut.count > 0 ? '' : '（ログイン中の端末はありませんでした）'}。
+    </p>
+  {:else if form?.mfaReset}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">
+      「{form.mfaReset.loginId}」の第2要素をリセットしました（パスキー {form.mfaReset.passkeys}件を削除・{form.mfaReset.sessions}台の端末をログアウト）。メールアドレスが無い・停止中のため、パスワード設定リンクは送っていません。
+    </p>
+  {:else if form?.deleted}
+    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-sm text-brand-900">「{form.deleted.loginId}」を削除しました。</p>
+  {/if}
+{/snippet}
 
 <style>
   .req {

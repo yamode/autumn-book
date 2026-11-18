@@ -1,4 +1,5 @@
 <script lang="ts">
+import { reveal } from '$lib/reveal';
  import {cleanInquiryText,isJapaneseText} from '$lib/inquiry-text';
  import '$lib/styles/inquiry-interactions.css';
  import { enhance } from '$app/forms';
@@ -200,7 +201,7 @@
 <div class="inquiry-desk" data-own-unsaved-guard oninput={trackForm} style="--desk-top:{deskTop}px">
  <div class="desk-topline"><a href="/admin/inquiries" class="back"><span>←</span> 受信トレイ</a><button class="quiet-button" onclick={refresh} disabled={busy||saving}>履歴を更新</button></div>
  <header class="desk-heading"><div class="guest-avatar">{data.item.name.slice(0,1)}</div><div class="heading-copy"><div class="eyebrow">{data.item.profile.history_account?'過去メール':data.item.profile.history_origin_account?'過去メールから継続':'山人-yamado- · お客様からのお問い合わせ'}</div>{#if INQUIRY_TYPES[data.item.profile.inquiry_type]}<span class="inquiry-type-badge">{INQUIRY_TYPES[data.item.profile.inquiry_type]}</span>{/if}<h1>{data.item.subject||'お問い合わせ'}</h1><p>{inquiryGuestLabel(data.item.name)} <span>·</span> {data.item.email}</p></div><span class="status-pill status-{data.item.status}"><i></i>{STATES[data.item.status]}</span></header>
- {#if form?.message}<p class="feedback" role="status">{form.message}</p>{/if}
+ {#if form?.message}<p use:reveal class="feedback" role="status">{form.message}</p>{/if}
  <form class="assignment-bar" method="post" use:enhance={submitAction}>
   <input type="hidden" name="revision" value={revision}/><input type="hidden" name="action" value="status"/>
   <label>対応状況 <select name="status" value={data.item.status}>{#each Object.entries(STATES) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>

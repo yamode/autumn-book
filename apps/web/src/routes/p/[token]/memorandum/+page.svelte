@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { reveal } from '$lib/reveal';
   import { partnerTitle } from '$lib/partner-title';
   // 取引先専用ページ: 覚書。宿が書いた取引条件のまとめ（本文）と、宿・貴社の双方が保存するファイル。
   // 本文はプレーンテキスト（改行はそのまま表示。リンクの自動変換はしない）。
@@ -30,11 +31,11 @@
   <p class="mt-1 text-sm text-stone-500">貴社との取引条件のまとめと、やりとりする書類です。</p>
 
   {#if form?.message}
-    <p class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
+    <p use:reveal class="mt-4 rounded-xl border border-rose-700/30 bg-rose-700/5 px-4 py-3 text-rose-700">{form.message}</p>
   {:else if form?.uploaded}
-    <p class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">「{form.uploaded}」を保存しました。</p>
+    <p use:reveal class="mt-4 rounded-xl border border-[var(--pt-accent)]/30 bg-[var(--pt-accent-soft)] px-4 py-3 text-[var(--pt-accent)]">「{form.uploaded}」を保存しました。</p>
   {:else if form?.deleted}
-    <p class="mt-4 rounded-xl border border-stone-300 bg-white px-4 py-3">ファイルを削除しました。</p>
+    <p use:reveal class="mt-4 rounded-xl border border-stone-300 bg-white px-4 py-3">ファイルを削除しました。</p>
   {/if}
 
   <!-- 本文（宿が書く） -->

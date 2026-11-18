@@ -25,6 +25,14 @@
 	let passwordForm = $state<HTMLFormElement>();
 	let keyBusy = $state(false);
 	let keyStatus = $state<'' | 'error' | 'saved'>('');
+	// 保存・エラーの表示は、そのボタンがある欄の中に出す（ページ上部だと、スマホでは下の欄の保存結果が見えなかった・2026-11-18 指示）
+	type NoticeSection = 'sms' | 'password' | 'key' | 'totp';
+	const ISSUE_SECTION: Partial<Record<string, NoticeSection>> = {
+		smsRecent: 'sms', smsSend: 'sms', smsCode: 'sms',
+		passwordLength: 'password', passwordMismatch: 'password', passwordSame: 'password', passwordWeak: 'password', passwordSave: 'password',
+		retainKey: 'key', keyName: 'key', renameKey: 'key'
+	};
+	const SAVED_SECTION: Record<string, NoticeSection> = { sms: 'sms', password: 'password', key: 'key', totp: 'totp' };
 	let enrolling = $state<{ id: string; qrCode: string; secret: string } | null>(null);
 	const currentEnroll = $derived(form?.enroll ?? enrolling);
 	const showPasswordTotp = $derived(data.passwordCanVerifyTotp && (data.passwordNeedsTotp || form?.issue === 'passwordTotp'));
@@ -164,6 +172,18 @@
 
 <svelte:head><title>{t.title} ｜ YAMADO</title></svelte:head>
 
+{#snippet notice(section: NoticeSection)}
+	{#if form?.issue && ISSUE_SECTION[form.issue] === section}
+		<p role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-800">{errors[form.issue]}</p>
+	{/if}
+	{#if (form?.saved && SAVED_SECTION[form.saved] === section) || (section === 'key' && keyStatus === 'saved')}
+		<p role="status" class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">✓ {t.saved}</p>
+	{/if}
+	{#if section === 'password' && form?.passwordVerified}
+		<p role="status" class="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t.passwordVerified}</p>
+	{/if}
+{/snippet}
+
 {#snippet restartLogin()}
 	<form method="POST" action="/auth/logout?next=%2Faccount%2Fsettings%2Flogin">
 		<button type="submit" class={button}>{t.restart}</button>
@@ -174,11 +194,9 @@
 {#if data.unavailable}
 	<p role="alert" class="text-sm text-red-700">{t.unavailable}</p>
 {:else}
-	{#if form?.issue && !(form.issue === 'passwordTotp' && showPasswordTotp)}
+	{#if form?.issue && !ISSUE_SECTION[form.issue] && !(form.issue === 'passwordTotp' && showPasswordTotp)}
 		<p role="alert" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{errors[form.issue]}</p>
 	{/if}
-	{#if form?.saved || keyStatus === 'saved'}<p role="status" class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t.saved}</p>{/if}
-	{#if form?.passwordVerified}<p role="status" class="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t.passwordVerified}</p>{/if}
 	{#if (!data.recent && !showPasswordTotp) || form?.issue === 'recent'}
 		<div class={panel}>
 			{#if form?.issue !== 'recent'}<p>{t.recent}</p>{/if}
@@ -221,6 +239,7 @@
 						<button type="submit" class={button}>{data.sms.pending || form?.smsPending ? t.smsTryAgain : m.auth_otp_send()}</button>
 					</form>
 				{/if}
+				{@render notice('sms')}
 			</section>
 		{/if}
 		<section class={panel}>
@@ -292,6 +311,7 @@
 					<button type="submit" class={`${submitButton} disabled:opacity-60`} disabled={passwordBusy}>{t.save}</button>
 				</form>
 			{/if}
+			{@render notice('password')}
 		</section>
 
 		<section class={panel}>
@@ -349,6 +369,7 @@
 				</div>
 				{#if keyStatus === 'error'}<p role="alert" class="text-sm text-red-700">{t.keyError}</p>{/if}
 			{/if}
+			{@render notice('key')}
 		</section>
 
 		<section class={panel}>
@@ -405,6 +426,7 @@
 					</form>
 				{/if}
 			{/if}
+			{@render notice('totp')}
 		</section>
 	</div>
 {/if}

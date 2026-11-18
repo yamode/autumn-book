@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { reveal } from '$lib/reveal';
 	// マイページ → お支払いカード（保存カード・2026-10-07・docs/saved-cards.md §6.2）。
 	// 一覧・追加（モーダル・StripePayment の mode='setup'・Apple Pay 等は出さない）・削除・既定。
 	// ここでの同意はカードの「保存」の同意。お支払いはご予約ごとの画面で確認していただく。
@@ -113,11 +114,11 @@
 		<p class="mt-5 rounded-lg border border-amber-700/30 bg-amber-50 px-4 py-6 text-center text-sm text-amber-800">{m.account_cards_unavailable()}</p>
 	{:else}
 		{#if form?.message}
-			<p class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{form.message}</p>
+			<p use:reveal class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{form.message}</p>
 		{:else if form?.removed}
-			<p class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.account_cards_removed({ card: form.removed })}</p>
+			<p use:reveal class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.account_cards_removed({ card: form.removed })}</p>
 		{:else if form?.defaulted}
-			<p class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.account_cards_defaulted({ card: form.defaulted })}</p>
+			<p use:reveal class="mt-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{m.account_cards_defaulted({ card: form.defaulted })}</p>
 		{/if}
 		{#if notice ?? data.returned}
 			{@const n = notice ?? { ok: data.returned === 'saved', text: resultText(data.returned) }}

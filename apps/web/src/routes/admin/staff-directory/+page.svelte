@@ -1,4 +1,5 @@
 <script lang="ts">
+import { reveal } from '$lib/reveal';
  import {enhance} from '$app/forms';
  let {data,form}=$props();
  let search=$state(''),showInactive=$state(false),creating=$state(false),busy=$state(false);
@@ -9,7 +10,7 @@
 <section class="staff-page">
  <header><div><p>{data.facility.name}</p><h1>スタッフマスタ</h1></div>{#if data.canEdit}<button class="primary" onclick={()=>creating=!creating}>{creating?'閉じる':'＋ スタッフを追加'}</button>{/if}</header>
  <p class="description">PMSと共通の施設別名簿です。担当者の署名には氏名を使用します。Bookで編集した氏名・表示名などは、人事名簿の再取込後も保持されます。</p>
- {#if form?.message}<p class="feedback error" role="alert">{form.message}</p>{/if}{#if form?.done}<p class="feedback" role="status">{form.done}</p>{/if}
+ {#if form?.message}<p use:reveal class="feedback error" role="alert">{form.message}</p>{/if}{#if form?.done}<p use:reveal class="feedback" role="status">{form.done}</p>{/if}
  {#if creating&&data.canEdit}<section class="create-panel"><h2>スタッフを追加</h2><form method="POST" action="?/save" use:enhance={submit}>
  <input type="hidden" name="facilityId" value={data.facilityId}/>
  <div class="fields"><label>氏名<input name="name" required maxlength="100"/></label><label>ふりがな<input name="kana" maxlength="100"/></label><label>表示名<input name="nickname" maxlength="100"/></label><label>部署<input name="department" maxlength="100"/></label></div>
