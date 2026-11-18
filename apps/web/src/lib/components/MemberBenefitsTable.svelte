@@ -8,7 +8,8 @@
 
 	let { printable = false }: { printable?: boolean } = $props();
 
-	const rates = [1, 2, 3, 5];
+	const rates: Record<RankCode, number> = { standard: 1, silver: 2, gold: 3, platinum: 5 };
+	const visibleRanks = $derived(RANK_CODES.filter((rank) => printable || rank !== 'platinum'));
 
 	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
 	type Perk = Detail & { key: string; minRank: RankCode; availableToGuests?: boolean; guestNote?: string };
@@ -19,7 +20,7 @@
 		body: m.membership_rank_note(),
 		sections: [{ title: m.membership_rank_grace_title(), body: m.membership_rank_grace() }]
 	};
-	const perks: Perk[] = [
+	const perks = $derived<Perk[]>([
 		{ key: 'booking-cancel', minRank: 'standard', availableToGuests: true, title: m.membership_booking_cancel_t(), body: m.membership_booking_cancel_b() },
 		{ key: 'onsite-payment', minRank: 'standard', guestNote: m.membership_card_only(), title: m.membership_onsite_payment_t(), body: m.membership_onsite_payment_b() },
 		{ key: 'early-payment', minRank: 'standard', availableToGuests: true, title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
@@ -28,7 +29,10 @@
 		{ key: 'timing', minRank: 'platinum', title: m.membership_timing_title(), body: m.membership_timing_body() },
 		{ key: 'advance', minRank: 'silver', title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
 		{ key: 'room', minRank: favoriteRoomMinRank, title: m.membership_room_designation(), body: m.membership_room_designation_body() },
-		{ key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
+		{
+			key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(),
+			body: printable ? m.membership_benefit_cancel_b() : m.membership_benefit_cancel_public_b()
+		},
 		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: m.membership_benefit_personalize_t(), body: m.membership_personalize_gold_body() },
 		{ key: 'plans', minRank: limitedSaleMinRank, title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
 		{
@@ -42,14 +46,18 @@
 		},
 		{ key: 'community', minRank: 'standard', title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },
 		{ key: 'otayori', minRank: 'standard', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() }
-	];
-	const orderedPerks = [...perks].sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank));
+	]);
+	const orderedPerks = $derived(
+		perks
+			.filter((perk) => visibleRanks.includes(perk.minRank))
+			.sort((a, b) => RANK_CODES.indexOf(a.minRank) - RANK_CODES.indexOf(b.minRank))
+	);
 
 	function perkAudience(perk: Perk) {
 		if (perk.availableToGuests) return m.membership_all_bookings();
 		if (perk.minRank === 'standard') return m.membership_all_members();
 		const rank = rankName(perk.minRank);
-		return perk.minRank === RANK_CODES.at(-1) ? rank : m.membership_rank_and_above({ rank });
+		return perk.minRank === visibleRanks.at(-1) ? rank : m.membership_rank_and_above({ rank });
 	}
 
 	let detail = $state<Detail | null>(null);
@@ -96,10 +104,10 @@
 					<span class="mobile-rank-name">{m.membership_guest_booking()}</span>
 					<span class="rate">0<span class="rate-unit">%</span></span>
 				</li>
-				{#each RANK_CODES as rank, index (rank)}
+				{#each visibleRanks as rank (rank)}
 					<li class="rate-card tier-{rank}">
 						<span class="mobile-rank-name">{rankName(rank)}</span>
-						<span class="rate">{rates[index]}<span class="rate-unit">%</span></span>
+						<span class="rate">{rates[rank]}<span class="rate-unit">%</span></span>
 						<span class="condition">{rankCondition(rank)}</span>
 					</li>
 				{/each}
@@ -133,14 +141,13 @@
 	<table class="grade-table w-full table-fixed text-sm">
 		<colgroup>
 			<col class="feature-col" />
-			<col class="tier-col" />
-			{#each RANK_CODES as rank (rank)}<col class="tier-col tier-{rank}" />{/each}
+			<col span={visibleRanks.length + 1} />
 		</colgroup>
 		<thead>
 			<tr>
 				<th scope="col" class="row-head text-left font-medium">{m.membership_benefits_heading()}</th>
 				<th scope="col" class="tier-head tier-guest">{m.membership_guest_booking()}</th>
-				{#each RANK_CODES as rank (rank)}
+				{#each visibleRanks as rank (rank)}
 					<th scope="col" class="tier-head tier-{rank}">
 						<span class="rank-mark" aria-hidden="true"></span>
 						<span>{rankName(rank)}</span>
@@ -156,8 +163,8 @@
 					</button>
 				</th>
 				<td class="guest-value"><span class="rate">0<span class="rate-unit">%</span></span></td>
-				{#each rates as rate (rate)}
-					<td><span class="rate">{rate}<span class="rate-unit">%</span></span></td>
+				{#each visibleRanks as rank (rank)}
+					<td><span class="rate">{rates[rank]}<span class="rate-unit">%</span></span></td>
 				{/each}
 			</tr>
 			<tr>
@@ -167,7 +174,7 @@
 					</button>
 				</th>
 				<td class="guest-value">{@render perkStatus(false)}</td>
-				{#each RANK_CODES as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
+				{#each visibleRanks as rank (rank)}<td class="condition">{rankCondition(rank)}</td>{/each}
 			</tr>
 			{#each orderedPerks as perk (perk.key)}
 				<tr>
@@ -183,9 +190,9 @@
 							{@render perkStatus(perk.availableToGuests === true)}
 						{/if}
 					</td>
-					{#each RANK_CODES as rank, index (rank)}
+					{#each visibleRanks as rank (rank)}
 						<td>
-							{@render perkStatus(index >= RANK_CODES.indexOf(perk.minRank))}
+							{@render perkStatus(RANK_CODES.indexOf(rank) >= RANK_CODES.indexOf(perk.minRank))}
 						</td>
 					{/each}
 				</tr>
@@ -224,7 +231,6 @@
 		color: #302d27;
 	}
 	.feature-col { width: 27%; }
-	.tier-col { width: 14.6%; }
 	.tier-guest { --metal: #d3d0ca; --light: #f4f3f0; }
 	.tier-standard { --metal: #ab9b86; --light: #faf8f4; }
 	.tier-silver { --metal: #8294a6; --light: #f1f5f8; }
@@ -249,7 +255,8 @@
 	th, td { border-bottom: 1px solid #eae7e1; }
 	tbody tr:last-child > * { border-bottom: 0; }
 	td { padding: .54rem .36rem; text-align: center; }
-	td:last-child { background: #f8f8fc; }
+	td:last-child { background: #fcf9ef; }
+	.printable td:last-child { background: #f8f8fc; }
 	.guest-value { background: #faf9f7; }
 	.row-head {
 		position: sticky;
@@ -285,7 +292,7 @@
 		color: #6c542d;
 		font-weight: 700;
 	}
-	td:last-child .benefit-check { background: #e9e9f2; color: #4d5670; }
+	.printable td:last-child .benefit-check { background: #e9e9f2; color: #4d5670; }
 	.benefit-dash { color: #817c74; }
 	.perk-dialog {
 		position: fixed;
@@ -354,6 +361,7 @@
 		grid-template-columns: minmax(0, 1fr) auto;
 		align-items: center;
 	}
+	.rate-card:last-child { grid-column: 1 / -1; }
 	.rate-card .rate { line-height: 1.1; }
 	.rate-card .condition { font-size: .8125rem; }
 	.guest-card .rate { font-size: 1.35rem; }
