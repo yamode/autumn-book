@@ -2,3 +2,6 @@
   X-Robots-Tag: noindex, nofollow
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
+
+/.well-known/muse-challenge/4a2fcd29918f1e85e99984300fa9349cce71b1cc2c11eb043fd166bef8d48e95
+  Content-Type: text/plain; charset=utf-8
