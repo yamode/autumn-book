@@ -65,10 +65,13 @@ describe('支払方法の選択肢', () => {
 		expect(payOptionsFor(prepayment, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
 		expect(payOptionsFor(deposit, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: false });
 	});
-	it('実データでは PayPay を出さない・デモは従来どおり', () => {
+	it('オンラインはカードのみ。非会員はカード決済が使えない場合に現地払いへ切り替えない', () => {
 		const both = { onsite: true, prepay: true, prepayMethods: ['card' as const, 'paypay' as const] };
 		expect(payOptionsFor(both, { live: true, onlineReady: true }).options).toEqual(['card', 'onsite']);
-		expect(payOptionsFor(both, { live: false, onlineReady: false }).options).toEqual(['card', 'paypay', 'onsite']);
+		expect(payOptionsFor(both, { live: false, onlineReady: false }).options).toEqual(['card', 'onsite']);
+		expect(payOptionsFor(both, { live: false, onlineReady: false, guestCardOnly: true }).options).toEqual(['card']);
+		expect(payOptionsFor(both, { live: true, onlineReady: true, guestCardOnly: true }).options).toEqual(['card']);
+		expect(payOptionsFor(both, { live: true, onlineReady: false, guestCardOnly: true })).toEqual({ options: [], checkout: false, fallback: false });
 	});
 });
 
@@ -81,6 +84,7 @@ describe('支払方法の組み合わせ（施設全体のオン/オフ＋プラ
 		const p = paymentMethodsOfOptions(['online_checkout']);
 		expect(payOptionsFor(p, { live: true, onlineReady: true })).toEqual({ options: [], checkout: true, fallback: false });
 		expect(payOptionsFor(p, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
+		expect(payOptionsFor(p, { live: true, onlineReady: true, guestCardOnly: true })).toEqual({ options: [], checkout: true, fallback: false });
 	});
 	it('施設で使えるか（現地払いは内訳のどれか1つでもオンなら）', () => {
 		expect(facilityAllows('onsite', ['onsite_paypay'])).toBe(true);

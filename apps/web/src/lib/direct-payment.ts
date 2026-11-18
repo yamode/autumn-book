@@ -8,9 +8,7 @@ import { deductionOf } from '$lib/cancel-admin-fee';
 
 export type PayOption = 'onsite' | 'card' | 'paypay';
 
-// 現地払いの内訳。画面では「現地PayPay決済」「現地カード決済」「現地現金決済」を選んでもらう
-// （宿は店頭 PayPay へ誘導したいので PayPay を先頭に置く）。予約は現地払いのまま、内訳は備考で宿へ申し送る
-// 並びは画面の順（現金・クレジットカード・PayPay・2026-11-01）
+// 現地で使える方法。内訳を受け取った予約経路では、備考で宿へ申し送る。
 export const ONSITE_METHODS = ['cash', 'card', 'paypay'] as const;
 export type OnsiteMethod = (typeof ONSITE_METHODS)[number];
 export const ONSITE_METHOD_NOTE: Record<OnsiteMethod, string> = {
@@ -82,26 +80,21 @@ export function directRefundDueOf(p: {
 
 // プランの支払設定から、画面に出す支払方法を決める。
 //   - onlineReady: オンライン決済（Stripe の鍵・DB の migration・service_role）がそろっているか
-//   - live: 実データ（DATA_SOURCE=supabase）。デモは従来どおり（カード・PayPay はデモ決済画面へ）
+//   - live: 実データ（DATA_SOURCE=supabase）。デモのカードはデモ決済画面へ
 // 実データでオンライン決済が使えないときは事前決済を出さない。事前決済しか無いプラン（prepayment）は
 // 予約を止めないよう現地払いで受ける（fallback=true。画面で注記する）。
 // deposit（内金）は既存どおり「カード（全額の事前決済）か現地払いを選べる」扱い。
 //   checkout: オンライン決済（チェックアウト日）を出すか。実データでオンライン決済が使えないときは出さない。
-//   予約時決済・チェックアウト日決済・現地払いのどれも出せないときは現地払いで受ける（fallback）。
+//   どの方法も使えない場合、現地払いで受ける fallback は現地払いが許される利用者に限る。
 export function payOptionsFor(
   payment: Pick<PaymentConfig, 'onsite' | 'prepay' | 'prepayMethods' | 'checkout'>,
-  opts: { live: boolean; onlineReady: boolean }
+  opts: { live: boolean; onlineReady: boolean; guestCardOnly?: boolean }
 ): { options: PayOption[]; checkout: boolean; fallback: boolean } {
   const out: PayOption[] = [];
-  if (payment.prepay) {
-    for (const m of payment.prepayMethods) {
-      if (!opts.live) out.push(m);
-      else if (m === 'card' && opts.onlineReady) out.push('card');
-    }
-  }
-  if (payment.onsite) out.push('onsite');
+  if (payment.prepay && payment.prepayMethods.includes('card') && (!opts.live || opts.onlineReady)) out.push('card');
+  if (payment.onsite && !opts.guestCardOnly) out.push('onsite');
   const checkout = allowsCheckout(payment) && (!opts.live || opts.onlineReady);
-  if (out.length === 0 && !checkout) return { options: ['onsite'], checkout: false, fallback: true };
+  if (out.length === 0 && !checkout && !opts.guestCardOnly) return { options: ['onsite'], checkout: false, fallback: true };
   return { options: out, checkout, fallback: false };
 }
 

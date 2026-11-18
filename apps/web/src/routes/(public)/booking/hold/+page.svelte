@@ -11,7 +11,7 @@
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import type { PaymentConfirmed, PaymentLocale, PaymentPrepareResult, PaymentTexts } from '$lib/components/payment/types';
-	import { directChargeOf, payTextFor, type PayOption, type PayTextGroup } from '$lib/direct-payment';
+	import { directChargeOf, ONSITE_METHODS, payTextFor, type OnsiteMethod, type PayOption, type PayTextGroup } from '$lib/direct-payment';
 	import { earnedPoints } from '@autumn-book/core';
 	import { percentText } from '$lib/early-prepay';
 	import { addDays, formatDateLong, formatPrice } from '$lib/format';
@@ -76,21 +76,16 @@
 	});
 
 	// 支払い方法（サーバがプランの決済設定とオンライン決済の可否から決めたもの）。
-	// 「オンライン決済（ご予約時）」と「現地決済（チェックアウト時）」の2グループに分けて見せる。
-	// 現地決済を選んだら、その中で「チェックアウト時のお支払い予定方法」を 現金 / クレジットカード / PayPay の順で選ぶ（2026-11-01・既定は現金。
-	// PayPay は目立たせすぎない）。ふるさと納税 宿泊補助券を併用する人はチェックボックスで知らせる（furusatoVoucher=on）。
-	// サーバへは payment=card / paypay / onsite_paypay / onsite_card / onsite_cash で送る。現地払いは予約のまま備考で宿へ申し送る
-	type OnsiteMethod = 'paypay' | 'card' | 'cash';
-	type PayChoice = PayOption | `onsite_${OnsiteMethod}`;
-	// 施設でオンの内訳だけ（管理画面の支払方法でオン/オフ）。並びは 現金・カード・PayPay
-	let ONSITE_METHODS = $derived<OnsiteMethod[]>(
-		(data.expired ? null : data.onsiteMethods)?.filter((v): v is OnsiteMethod => v === 'cash' || v === 'card' || v === 'paypay') ?? ['cash', 'card', 'paypay']
-	);
+	// 現地払いでは施設で使える方法を案内する。予約時の送信値は 'onsite'。
+	let onsiteMethods = $derived(data.expired ? [] : (data.onsiteMethods ?? ONSITE_METHODS));
+	let onsiteCardBrands = $derived(data.expired ? '' : data.facility.slug === 'oga'
+		? 'Visa, Mastercard, JCB, American Express, Diners Club, UnionPay'
+		: ['nishiwaga', 'yamado'].includes(data.facility.slug) ? 'Visa, Mastercard, JCB' : '');
 	// 支払方法の名前・説明文（施設が管理画面で書き換えていればそれ、無ければ既定の文言）
 	const payText = (group: PayTextGroup, field: 'label' | 'note', fallback: string) =>
 		(data.expired ? null : payTextFor(data.paymentTexts, group, field, getLocale())) ?? fallback;
 	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
-	let onlineOptions = $derived(data.expired ? [] : data.payOptions.filter((v): v is 'card' | 'paypay' => v !== 'onsite'));
+	let hasPrepay = $derived(!data.expired && data.payOptions.includes('card'));
 	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
 	// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと。オンライン決済を選んだときだけ効く）。
 	// サーバが lib/early-prepay.ts（DB と同じ式）で計算した額。金額の正は DB（direct_payment_prepare）
@@ -116,19 +111,21 @@
 	// オンライン決済（チェックアウト日・2026-11-01）: カード決済が使えるプランで、実データ（同じ画面で払う方式）のときだけ。
 	// 予約時にカードを登録し、チェックアウト日に請求する（予約時決済の割引・早期決済ポイント・事務手数料は付かない）
 	let hasCheckout = $derived(!data.expired && data.inline && data.checkoutOption);
+	let hasOnline = $derived(hasPrepay || hasCheckout);
+	let canChooseTiming = $derived(hasPrepay && hasCheckout);
+	let canPay = $derived(hasOnline || hasOnsite);
 	let selectedGroup = $state<'online' | 'checkout' | 'onsite' | null>(null);
-	let group = $derived(selectedGroup ?? (onlineOptions.length > 0 ? 'online' : hasOnsite ? 'onsite' : hasCheckout ? 'checkout' : 'onsite'));
+	let group = $derived(
+		(selectedGroup === 'online' && hasPrepay) ||
+		(selectedGroup === 'checkout' && hasCheckout) ||
+		(selectedGroup === 'onsite' && hasOnsite)
+			? selectedGroup
+			: hasPrepay ? 'online' : hasOnsite ? 'onsite' : hasCheckout ? 'checkout' : 'onsite'
+	);
 	let checkoutCard = $derived(group === 'checkout' && hasCheckout);
 	// 請求日＝チェックアウト日（仮押さえの泊数から）
 	let chargeOnText = $derived(data.expired ? '' : formatDateLong(addDays(data.hold.checkin, data.hold.nights)));
-	let selectedOnline = $state<'card' | 'paypay' | null>(null);
-	let pickedOnsite = $state<OnsiteMethod | null>(null);
-	// 選んだ内訳が施設でオフなら、オンの先頭（既定は現金）
-	let onsiteMethod = $derived<OnsiteMethod>(pickedOnsite && ONSITE_METHODS.includes(pickedOnsite) ? pickedOnsite : (ONSITE_METHODS[0] ?? 'cash'));
-	let furusatoVoucher = $state(false);
-	let payValue = $derived<PayChoice>(
-		group === 'online' ? (selectedOnline ?? onlineOptions[0] ?? 'card') : group === 'checkout' ? 'card' : `onsite_${onsiteMethod}`
-	);
+	let payValue = $derived<PayOption>(group === 'onsite' ? 'onsite' : 'card');
 	let isPrepay = $derived(group === 'online');
 	// 実データのカード決済はこの画面で払う（同じ画面の決済部品）。デモは従来どおり決済画面へ
 	let inlineCard = $derived(!data.expired && data.inline && payValue === 'card' && group === 'online');
@@ -311,6 +308,10 @@
 	}
 	function toConfirm() {
 		clientError = '';
+		if (!canPay) {
+			clientError = m.pay_unavailable();
+			return;
+		}
 		if (couponBusy) return;
 		if (couponInput.trim() && !coupon) {
 			clientError = m.booking_coupon_apply_first();
@@ -355,11 +356,6 @@
 		males = rooms.map((_, i) => get(`male_${i}`) ?? '');
 		const g = get('payGroup');
 		if (g === 'online' || g === 'checkout' || g === 'onsite') selectedGroup = g;
-		const po = get('payOnline');
-		if (po === 'card' || po === 'paypay') selectedOnline = po;
-		const pon = get('payOnsite');
-		if (pon === 'cash' || pon === 'card' || pon === 'paypay') pickedOnsite = pon;
-		furusatoVoucher = !!get('furusatoVoucher');
 		if (get('points') != null) pointsInput = Number(get('points')) || 0;
 		couponInput = get('couponCode') ?? '';
 		favPicked = Object.fromEntries(entries.filter(([k]) => k.startsWith('fav_')).map(([k, v]) => [Number(k.slice(4)), v]));
@@ -382,7 +378,7 @@
 		fill();
 		await tick();
 		fill();
-		step = couponInput ? 'input' : 'confirm';
+		step = couponInput || !inlinePay || g !== group ? 'input' : 'confirm';
 		await tick();
 		fill();
 		snapshot();
@@ -412,10 +408,10 @@
 	// 確認の段に出す支払方法の名前
 	let payLabel = $derived(
 		group === 'online'
-			? `${payText('online_now', 'label', m.pay_group_online())} ／ ${payValue === 'paypay' ? m.pay_paypay() : m.pay_card()}`
+			? payText('online_now', 'label', m.pay_card())
 			: group === 'checkout'
 				? payText('online_checkout', 'label', m.pay_group_checkout())
-				: `${payText('onsite', 'label', m.pay_group_onsite())} ／ ${onsiteMethodLabel(onsiteMethod)}${furusatoVoucher ? ` ／ ${m.pay_onsite_furusato()}` : ''}`
+				: payText('onsite', 'label', m.pay_group_onsite())
 	);
 	// 確認の段に出す追加で聞く項目（1 室は予約ごと・部屋ごとの両方、複数室は予約ごとの項目と部屋ごとの項目）
 	let confirmAnswers = $derived.by(() => {
@@ -880,24 +876,36 @@
 							</div>
 						{/if}
 
-						<!-- お支払い方法: オンライン決済 / チェックアウト日のカード決済 / 現地決済。確認の段では選び直せない（入力に戻る） -->
+						<!-- 確認の段では「入力に戻る」から支払方法を選び直す。 -->
 						<fieldset class="space-y-2 {step === 'confirm' ? 'opacity-80' : ''}" disabled={paying} inert={step === 'confirm'}>
 							<legend class={label}>{m.pay_choose()} <em class="bk-req">{m.hold_required()}</em></legend>
-							<input type="hidden" name="payment" value={payValue} />
+							<input type="hidden" name="payment" value={canPay ? payValue : ''} />
+							<input type="hidden" name="payGroup" value={group} />
 
-							{#if onlineOptions.length > 0}
-								<div class="rounded-xl border transition {group === 'online' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
-									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
-										<input type="radio" name="payGroup" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="accent-[var(--bk-accent)]" />
-										<span class="flex-1 font-medium">{payText('online_now', 'label', m.pay_group_online())}</span>
-										{#if prepayAmount > 0}
+							{#if hasOnline}
+								<div class="rounded-xl border bg-white {group !== 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
+									<label class="flex min-h-12 cursor-pointer flex-wrap items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="paymentChannel" value="online" checked={group !== 'onsite'}
+											onchange={() => (selectedGroup = hasPrepay ? 'online' : 'checkout')} class="size-4 shrink-0 accent-slate-800" />
+										<span class="font-medium">{m.pay_method_card()}</span>
+										{#if hasPrepay && prepayAmount > 0}
 											<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
 										{/if}
-										{#if bonusPoints > 0}
+										{#if hasPrepay && bonusPoints > 0}
 											<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
 										{/if}
 									</label>
-									{#if prepay && (prepayAmount > 0 || prepay.showLadder)}
+									{#if hasPrepay}
+										{#if canChooseTiming && group !== 'onsite'}
+											<label class="flex min-h-11 cursor-pointer items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
+												<input type="radio" name="cardTiming" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="size-4 shrink-0 accent-slate-800" />
+												<span>{payText('online_now', 'label', m.pay_group_online())}</span>
+											</label>
+										{:else}
+											<p class="px-3 pb-2 pl-9 text-sm text-stone-600">{payText('online_now', 'label', m.pay_group_online())}</p>
+										{/if}
+									{/if}
+									{#if hasPrepay && prepay && (prepayAmount > 0 || bonusPoints > 0 || prepay.showLadder)}
 										<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
 										     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
 										<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9">
@@ -968,80 +976,56 @@
 											{/if}
 										</div>
 									{/if}
-									{#if group === 'online'}
+									{#if group === 'online' && (!data.inline || data.adminFeePercent || payText('online_now', 'note', ''))}
 										<div class="space-y-1.5 border-t border-stone-200/80 px-3 py-2.5 pl-9">
-											{#if onlineOptions.length > 1}
-												{#each onlineOptions as v (v)}
-													<label class="flex cursor-pointer items-center gap-2">
-														<input type="radio" name="payOnline" value={v} checked={payValue === v} onchange={() => (selectedOnline = v)} class="accent-[var(--bk-accent)]" />
-														{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="" class="-my-1 h-6 w-auto" width="66" height="24" />{/if}
-														<span>{v === 'card' ? m.pay_card() : m.pay_paypay()}</span>
-													</label>
-												{/each}
-											{:else}
-												<p class="text-stone-600">{onlineOptions[0] === 'card' ? m.pay_card() : m.pay_paypay()}</p>
-											{/if}
 											{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
 											{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
 											<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
-										{#if data.adminFeePercent}
-											<p class="text-xs text-amber-900">
-												{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}
-												<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
-											</p>
-										{/if}
+											{#if data.adminFeePercent}
+												<p class="text-xs text-stone-700">
+													{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}
+													<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
+												</p>
+											{/if}
 										</div>
 									{/if}
-								</div>
-							{/if}
-
-							{#if hasCheckout}
-								<!-- オンライン決済（チェックアウト日）: いまカードを登録し、チェックアウト日に請求（割引なし） -->
-								<div class="rounded-xl border transition {group === 'checkout' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
-									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
-										<input type="radio" name="payGroup" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="accent-[var(--bk-accent)]" />
-										<span class="flex-1 font-medium">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
-									</label>
-									{#if group === 'checkout'}
-										<div class="whitespace-pre-line border-t border-stone-200/80 px-3 py-2.5 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</div>
+									{#if hasCheckout && (group !== 'onsite' || !canChooseTiming)}
+										{#if canChooseTiming}
+											<label class="flex min-h-11 cursor-pointer items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
+												<input type="radio" name="cardTiming" value="checkout" checked={group === 'checkout'} onchange={() => (selectedGroup = 'checkout')} class="size-4 shrink-0 accent-slate-800" />
+												<span>{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
+											</label>
+										{:else}
+											<p class="px-3 pb-2 pl-9 text-sm text-stone-600">{payText('online_checkout', 'label', m.pay_group_checkout())}</p>
+										{/if}
+										{#if group === 'checkout'}
+											<p class="whitespace-pre-line px-3 pb-3 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</p>
+										{/if}
 									{/if}
 								</div>
 							{/if}
 
 							{#if hasOnsite}
-								<div class="rounded-xl border transition {group === 'onsite' ? 'border-[var(--bk-accent)] bg-[var(--bk-accent-soft)]' : 'border-stone-300'}">
-									<label class="flex cursor-pointer items-center gap-2.5 px-3 py-3">
-										<input type="radio" name="payGroup" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="accent-[var(--bk-accent)]" />
+								<div class="rounded-xl border bg-white {group === 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
+									<label class="flex min-h-12 cursor-pointer items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="paymentChannel" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="size-4 shrink-0 accent-slate-800" aria-describedby="accepted-onsite-payments" />
 										<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
 									</label>
-									{#if group === 'onsite'}
-										<div class="border-t border-stone-200/80 px-3 py-2.5 pl-9">
-											{#if payText('onsite', 'note', '')}<p class="mb-2 whitespace-pre-line text-xs text-stone-600">{payText('onsite', 'note', '')}</p>{/if}
-											<p class="mb-1.5 text-xs text-stone-500">{m.pay_onsite_how()}</p>
-											<div class="flex flex-wrap gap-2" role="radiogroup" aria-label={m.pay_onsite_how()}>
-												{#each ONSITE_METHODS as v (v)}
-													<label class="flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 {onsiteMethod === v ? 'border-[var(--bk-accent)] bg-white font-medium' : 'border-stone-300 bg-white/70'}">
-														<input type="radio" name="payOnsite" value={v} checked={onsiteMethod === v} onchange={() => (pickedOnsite = v)} class="h-3.5 w-3.5 accent-[var(--bk-accent)]" />
-														<!-- PayPay は公式ロゴ（static/site-assets/paypay-logo.png・余白込みの公式素材をそのまま）。文字と同じくらいの大きさで目立たせすぎない -->
-														{#if v === 'paypay'}<img src="/site-assets/paypay-logo.png" alt="PayPay" class="-my-1 h-6 w-auto" width="66" height="24" />{:else}{onsiteMethodLabel(v)}{/if}
-													</label>
-												{/each}
-											</div>
-											{#if onsiteMethod === 'paypay'}
-												<p class="mt-2 text-xs text-stone-500">{m.pay_onsite_paypay_note()}</p>
-											{/if}
-											<!-- その他の支払方法の併用（チェックアウト時に現地で使うもの） -->
-											<p class="mb-1.5 mt-3 text-xs text-stone-500">{m.pay_onsite_other()}</p>
-											<label class="inline-flex cursor-pointer items-center gap-2 text-sm">
-												<input type="checkbox" name="furusatoVoucher" bind:checked={furusatoVoucher} class="h-4 w-4 rounded accent-[var(--bk-accent)]" />
-												{m.pay_onsite_furusato()}
-											</label>
-										</div>
-									{/if}
+									<div id="accepted-onsite-payments" class="space-y-1 px-3 pb-3 pl-9 text-sm text-stone-600">
+										{#if onsiteMethods.length}
+											<p>{m.pay_onsite_accepted({ methods: new Intl.ListFormat(getLocale()).format(onsiteMethods.map(onsiteMethodLabel)) })}</p>
+										{/if}
+										{#if onsiteMethods.includes('card') && onsiteCardBrands}
+											<p class="text-xs">{m.pay_onsite_card_brands({ brands: onsiteCardBrands })}</p>
+										{/if}
+										{#if payText('onsite', 'note', '')}<p class="whitespace-pre-line text-xs">{payText('onsite', 'note', '')}</p>{/if}
+									</div>
 								</div>
 							{/if}
 
-							{#if data.payFallback}
+							{#if !canPay}
+								<p role="status" class="text-sm text-stone-700">{m.pay_unavailable()}</p>
+							{:else if data.payFallback}
 								<p class="text-xs text-stone-500">{m.pay_fallback_note()}</p>
 							{:else if data.memberOnsiteHint}
 								<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
@@ -1181,7 +1165,7 @@
 				{#if clientError}<p class="mt-3 text-sm text-red-600" role="alert">{clientError}</p>{/if}
 				{#if step === 'input'}
 					<!-- submit にして Enter キーでも確認の段へ進めるようにする（use:enhance が送信を止めて toConfirm に回す） -->
-					<button type="submit" class="bk-primary mt-4 w-full text-base">{m.hold_to_confirm()}</button>
+					<button type="submit" disabled={!canPay} class="bk-primary mt-4 w-full text-base">{m.hold_to_confirm()}</button>
 				{:else}
 					<!-- 個人情報の同意（予約確認・事前チェックインなどの SMS / メールの案内を含む）。確定の直前に必須で取る -->
 					<div class="mt-4 rounded-lg border border-stone-200 bg-stone-50 p-3 text-sm">
@@ -1195,7 +1179,7 @@
 					</div>
 					<button
 						type="submit"
-						disabled={paying || data.preview || !privacyAgreed || (inlinePay && !data.publishableKey)}
+						disabled={!canPay || paying || data.preview || !privacyAgreed || (inlinePay && !data.publishableKey)}
 						class="bk-primary mt-4 w-full text-base"
 					>
 						{#if checkoutCard}

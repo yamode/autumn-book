@@ -37,10 +37,8 @@ describe('閲覧者に合わせた支払設定', () => {
 		expect(p.prepay).toBe(true);
 		expect(p.prepayDiscountRate).toBe(0.1);
 		expect(p.earlyPrepayMaxRate).toBe(0.15);
-		// 現地払いは出さない（オンライン決済が使えるとき）
-		expect(payOptionsFor(p, { live: true, onlineReady: true })).toEqual({ options: ['card'], checkout: true, fallback: false });
-		// オンライン決済が使えない環境では既存どおり現地払いで受ける
-		expect(payOptionsFor(p, { live: true, onlineReady: false })).toEqual({ options: ['onsite'], checkout: false, fallback: true });
+		expect(payOptionsFor(p, { live: true, onlineReady: true, guestCardOnly: true })).toEqual({ options: ['card'], checkout: true, fallback: false });
+		expect(payOptionsFor(p, { live: true, onlineReady: false, guestCardOnly: true })).toEqual({ options: [], checkout: false, fallback: false });
 	});
 	it('非会員の設定が無ければ会員と同じ', () => {
 		const { nonMember: _, ...same } = depositWithGuestPrepay;

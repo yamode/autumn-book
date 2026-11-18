@@ -138,11 +138,11 @@ export const load: PageServerLoad = async (event) => {
 		}
 
 		// オンライン決済（同じ画面で払う・v0.43.0）。Stripe の鍵・service_role・DB の migration がそろっていなければ
-		// カードを出さず現地払いだけ（事前決済しか無いプランも現地払いで受ける＝予約を止めない）
+		// カードを使えないときの現地払いへの切り替えも、会員に限る。
 		const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
-		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady });
+		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady, guestCardOnly: !isMember });
 		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
@@ -234,7 +234,7 @@ export const load: PageServerLoad = async (event) => {
 	const isMember = viewerIsMember(locals);
 	const basePlan = planById(hold.planId)!;
 	const plan = planForViewer(basePlan, isMember);
-	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false });
+	const pay = payOptionsFor(plan.payment, { live: false, onlineReady: false, guestCardOnly: !isMember });
 	const facility = facilityById(hold.facilityId)!;
 	const prepay = { ...(await prepayDiscountViewFor(hold.facilityId, plan, hold)), mixedRates: false };
 	const demoRoom = roomTypeById(hold.roomTypeId)!;
@@ -359,9 +359,11 @@ export const actions: Actions = {
 			if (!roomViews) return fail(410, { message: m.error_hold_expired() });
 			// 販売中でないプラン（スタッフのプレビュー）は確定しない。お客様は上で読めず「期限切れ」になる
 			if (roomViews.some((r) => r.preview)) return fail(403, { message: PREVIEW_CONFIRM_DENIED, values: guest });
-			const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: await directPaymentsReady().catch(() => false) });
+			const pay = payOptionsFor(groupPayment(roomViews), {
+				live: true, onlineReady: await directPaymentsReady().catch(() => false), guestCardOnly: !isMember
+			});
 			if (payment === 'onsite' && !pay.options.includes('onsite')) {
-				errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+				errors.payment = !isMember ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
 				return fail(400, { errors, values: guest });
 			}
 			// 現地払いの内訳は施設でオンのものだけ（管理画面の支払方法でオフにした内訳は受けない）
@@ -385,7 +387,7 @@ export const actions: Actions = {
 
 			// 確定はサーバの service_role 経由（book.confirm_booking_server）。会員は検証済みセッションの id を渡す
 			const memberUserId = useMember ? (locals.user?.id ?? null) : null;
-			// 現地払いの内訳（現地PayPay・現地カード・現地現金）は宿への申し送り（core.stays.notes → PMS の備考）に載せる。
+			// 更新前の入力画面から現地払いの内訳が届いた場合は、従来どおり宿への申し送りに載せる。
 			// 予約の metadata.guest にも onsitePayment として残す
 			// ふるさと納税 宿泊補助券の併用予定も同じく申し送りの先頭に足し、metadata.guest に furusatoVoucher として残す
 			const guestForBooking = onsiteMethod
@@ -451,13 +453,13 @@ export const actions: Actions = {
 		const pointsUsed = memberId ? pointsRequested : 0;
 
 		// 支払い方法（プランの決済設定でバリデーション）
-		// 非会員は非会員の支払方法で判定する（デモのプランは非会員の設定を持たない＝会員と同じ）
 		const basePlan = planById(hold.planId)!;
-		const plan = planForViewer(basePlan, viewerIsMember(locals));
-		const allowed = payOptionsFor(plan.payment, { live: false, onlineReady: false }).options.includes(payment);
+		const isMember = viewerIsMember(locals);
+		const plan = planForViewer(basePlan, isMember);
+		const allowed = payOptionsFor(plan.payment, { live: false, onlineReady: false, guestCardOnly: !isMember }).options.includes(payment);
 		if (!allowed) {
 			errors.payment =
-				payment === 'onsite' && memberOnsiteHint(basePlan.payment, viewerIsMember(locals))
+				payment === 'onsite' && !isMember
 					? m.pay_nonmember_onsite_denied()
 					: 'お支払い方法を選択してください';
 			return fail(400, { errors, values: guest });
