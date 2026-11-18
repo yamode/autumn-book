@@ -1,5 +1,7 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
+	import { page } from '$app/state';
+	import * as m from '$lib/paraglide/messages';
 	import { pendingPage, refreshingSamePage, transitionTitle, loadingShape } from '$lib/page-transition';
 	import PageLoadingSkeleton from './PageLoadingSkeleton.svelte';
 
@@ -14,6 +16,10 @@
 	} = $props();
 	const pending = $derived(pendingPage(shell));
 	const shape = $derived(loadingShape(pending?.route.id ?? ''));
+	const homePending = $derived(pending?.route.id === '/(public)');
+	// This flag applies only to the first HTML render. CSS also reveals the page if hydration is delayed.
+	// svelte-ignore state_referenced_locally
+	let initialHome = $state(shell === 'root' && page.route.id === '/(public)');
 	// 同じページのまま条件だけ変えているとき（全体の骨組みは出さない）。結果の欄を持たないページは中身を少し薄くして読み込み中を知らせる
 	const refreshing = $derived(!pending && refreshingSamePage());
 
@@ -22,23 +28,41 @@
 	// 新しい画面が入ったら、その中身をふわっと出す（中身の枠は display: contents なので子要素ごとに）。
 	let content = $state<HTMLElement>();
 	let wasPending = false;
+	function fadeContent() {
+		if (!content || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		for (const el of content.children) {
+			(el as HTMLElement).animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' });
+		}
+	}
+	onMount(() => {
+		if (!initialHome) return;
+		initialHome = false;
+		fadeContent();
+	});
 	$effect(() => {
 		const now = Boolean(pending);
-		if (wasPending && !now && content && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-			for (const el of content.children) {
-				(el as HTMLElement).animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: 240, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)' });
-			}
-		}
+		if (wasPending && !now) fadeContent();
 		wasPending = now;
 	});
 </script>
 
+{#snippet homeLoader(initial: boolean)}
+	<div class="home-loading" class:initial role="status">
+		<img src="/brand/yamado-brush-mark.png" width="256" height="122" alt="" fetchpriority="high" />
+		<span class="home-spinner" aria-hidden="true"></span>
+		<span class="sr-only">{m.common_loading()}</span>
+	</div>
+{/snippet}
+
+{#if initialHome}{@render homeLoader(true)}{/if}
 <div class={pending ? 'transition-frame' : 'contents'} data-refreshing={refreshing || undefined}>
 	<!-- Keep the outgoing page mounted and preserve its size until the router records scroll and commits. -->
 	<div bind:this={content} data-transition-content class={pending ? 'page-leaving' : 'contents'} inert={Boolean(pending)} aria-hidden={pending ? 'true' : undefined}>
 		{@render children()}
 	</div>
-	{#if pending}
+	{#if homePending}
+		{@render homeLoader(false)}
+	{:else if pending}
 		<div class="transition-layer" data-transition-shell={shell} data-transition-route={pending.route.id}>
 			<div class="transition-viewport {padding}">
 				{#if placeholder}
@@ -57,6 +81,29 @@
 </div>
 
 <style>
+	.home-loading {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		display: grid;
+		place-items: center;
+		background: white;
+		animation: page-fade 140ms ease-out 140ms both;
+	}
+	.home-loading.initial { animation: home-loader-exit 180ms ease-out 1.5s both; }
+	.home-loading img { width: 7rem; height: auto; }
+	.home-spinner {
+		position: absolute;
+		top: calc(50% + 2.4rem);
+		width: 1.2rem;
+		height: 1.2rem;
+		border: 2px solid #e7e5e4;
+		border-top-color: #476550;
+		border-radius: 50%;
+		animation: home-spin 800ms linear infinite;
+	}
+	@keyframes home-spin { to { transform: rotate(1turn); } }
+	@keyframes home-loader-exit { to { opacity: 0; visibility: hidden; } }
 	.transition-frame {
 		position: relative;
 		display: flow-root;
@@ -81,6 +128,8 @@
 		transition: opacity 200ms ease-out 140ms;
 	}
 	@media (prefers-reduced-motion: reduce) {
+		.home-loading:not(.initial), .home-spinner { animation: none; }
+		.home-loading.initial { animation-duration: 0s; }
 		.transition-layer { animation: none; }
 		.page-leaving { animation: none; opacity: 0; }
 	}

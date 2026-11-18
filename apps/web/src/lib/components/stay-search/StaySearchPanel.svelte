@@ -40,6 +40,7 @@
     day,
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
+    modal = false,
     pickApplies = false,
     maxDate,
     onPick,
@@ -67,6 +68,7 @@
     day: (iso: string) => StayDayView;
     lang?: StaySearchLang;
     labels?: StaySearchLabels;
+    modal?: boolean;
     /** 日付を押したらすぐ onPick する（「この日程で検索」ボタンを出さない） */
     pickApplies?: boolean;
     maxDate?: string;
@@ -94,7 +96,11 @@
   $effect(() => {
     if (!scrollEl) return;
     const target = scrollEl.querySelector<HTMLElement>(`[data-ym="${(date || leftYm).slice(0, 7)}"]`);
-    if (target && scrollEl.offsetParent !== null) scrollEl.scrollTop = target.offsetTop - scrollEl.offsetTop;
+    const container = scrollEl;
+    const frame = requestAnimationFrame(() => {
+      if (target && container.offsetParent !== null) container.scrollTop += target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    });
+    return () => cancelAnimationFrame(frame);
   });
   $effect(() => {
     const root = scrollEl;
@@ -124,7 +130,7 @@
     s.split(/(・| · )/).reduce<string[]>((out, p, i) => (i % 2 ? (out[out.length - 1] += p) : p && out.push(p), out), []);
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape') (onEscape ?? onClose)(); }} />
+<svelte:window onkeydown={(e) => { if (!modal && e.key === 'Escape') (onEscape ?? onClose)(); }} />
 
 {#snippet statusText(small: boolean)}
   {#if status === 'loading'}<span class={`${small ? 'text-xs' : 'text-sm'} text-stone-500`} role="status">{labels.loading}</span>{:else if status === 'failed'}<span class={`${small ? 'text-xs' : 'text-sm'} text-rose-700`} role="status">{labels.failed}</span>{:else}<span class="text-sm text-stone-400">{labels.hint}</span>{/if}
@@ -174,7 +180,7 @@
   </div>
 {/snippet}
 
-<div role="dialog" aria-label={labels.dateDialog} class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
+<div role={modal ? undefined : 'dialog'} aria-label={modal ? undefined : labels.dateDialog} class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
   <!--
     上段。PC（md〜）は 1 行: 泊数 −n+ ／ 日付指定なし ／ 案内 ／ 人数と最安の注記 ／ ×。
     スマホは 2 行に詰める（2026-10-29: 折り返して縦に長くなっていた）: 1 行目 泊数 −n+ と ×、2 行目 日付指定なしと注記（取得中・失敗のときはその表示）。
@@ -220,7 +226,7 @@
     {/each}
   </div>
   <!-- スマホ: 月を縦に並べて上下にスクロール -->
-  <div bind:this={scrollEl} class="mt-1 max-h-[60vh] space-y-5 overflow-y-auto overscroll-contain md:hidden">
+  <div bind:this={scrollEl} class="mt-1 space-y-5 overflow-y-auto overscroll-contain md:hidden {modal ? 'max-h-[min(60dvh,max(9rem,100dvh-13rem))]' : 'max-h-[60vh]'}">
     {#each mobileMonths as ym (ym)}
       <section data-ym={ym} aria-label={formatMonth(ym, lang)} class="pt-2">{@render monthView(ym)}</section>
     {/each}

@@ -100,9 +100,9 @@
 </script>
 
 <div role="search" aria-label={labels.region} style={`--pt-accent:${accent.accent};--pt-accent-soft:${accent.accentSoft}`}>
-	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} onSearch={search}>
-		{#snippet datePanel({ close })}
-			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} onApply={search} onClose={close} />
+	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} mobileDateDialog onSearch={search}>
+		{#snippet datePanel({ close, modal })}
+			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} {modal} onApply={search} onClose={close} />
 		{/snippet}
 	</StaySearchBar>
 </div>

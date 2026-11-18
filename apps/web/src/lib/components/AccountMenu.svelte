@@ -2,7 +2,7 @@
 	import { afterNavigate } from '$app/navigation';
 	import * as m from '$lib/paraglide/messages';
 
-	let { name, compact = false, forumUnread = 0 }: { name: string; compact?: boolean; forumUnread?: number } = $props();
+	let { name, compact = false, facilityHeader = false, forumUnread = 0 }: { name: string; compact?: boolean; facilityHeader?: boolean; forumUnread?: number } = $props();
 	let root: HTMLDetailsElement | undefined = $state();
 
 	const links = $derived([
@@ -40,7 +40,7 @@
 		<svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
 			<circle cx="12" cy="8" r="3" /><path d="M5 20v-1a7 7 0 0 1 14 0v1" />
 		</svg>
-		<span class={compact ? 'hidden whitespace-nowrap sm:inline' : 'whitespace-nowrap'}>{m.account_layout_heading()}</span>
+		<span class={compact ? 'hidden whitespace-nowrap sm:inline' : facilityHeader ? 'hidden whitespace-nowrap min-[375px]:inline' : 'whitespace-nowrap'}>{m.account_layout_heading()}</span>
 		{#if forumUnread}<span aria-hidden="true" class="min-w-4 rounded-full bg-amber-100 px-1 text-center text-[11px] font-semibold text-amber-900">{forumUnread > 99 ? '99+' : forumUnread}</span>{/if}
 		<span class="text-xs text-stone-500" aria-hidden="true">▾</span>
 	</summary>

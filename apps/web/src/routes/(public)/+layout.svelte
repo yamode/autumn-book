@@ -136,16 +136,16 @@
 		</div>
 	{/if}
 	<header class="sticky top-0 z-50 border-b border-stone-200 bg-white/95 backdrop-blur">
-		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 md:gap-x-6 md:py-2.5">
-			<div class="flex shrink-0 items-center">
+		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-2 gap-y-2 px-4 py-2 md:gap-x-6 md:py-2.5">
+			<div class="flex min-w-0 flex-1 items-center md:flex-none">
 				{#if facilityBrand?.site && facilityLogo}
-					<a href={facilityBrand.site} class="flex min-h-11 items-center pr-2" aria-label={m.nav_back_to_facility_site({ name: facilityBrand.name })}>
-						<img src={facilityLogo.src} alt="" width={facilityLogo.w} height={facilityLogo.h} class="h-9 w-auto md:h-11" />
+					<a href={facilityBrand.site} class="flex min-h-11 min-w-0 items-center pr-1.5 md:pr-2" aria-label={m.nav_back_to_facility_site({ name: facilityBrand.name })}>
+						<img src={facilityLogo.src} alt="" width={facilityLogo.w} height={facilityLogo.h} class="h-8 w-auto object-contain md:h-11" />
 					</a>
-					<span aria-hidden="true" class="h-5 w-px bg-stone-300"></span>
+					<span aria-hidden="true" class="h-5 w-px shrink-0 bg-stone-300"></span>
 				{/if}
-				<a href={localizeHref('/')} class="flex min-h-11 items-center {showFacilityLogo ? 'px-2' : ''}" aria-label="YAMADO Book">
-					<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="w-auto {showFacilityLogo ? 'h-2.5' : 'h-5 md:h-6'}" />
+				<a href={localizeHref('/')} class="flex min-h-11 min-w-0 items-center {showFacilityLogo ? 'pl-1.5 md:px-2' : ''}" aria-label="YAMADO Book">
+					<img src="/portal/brandtype-black.png" alt="" width="1015" height="179" class="w-auto object-contain {showFacilityLogo ? 'h-2 md:h-2.5' : 'h-5 md:h-6'}" />
 				</a>
 			</div>
 			<!-- デスクトップ: ナビ・ログイン・言語を常時表示（従来どおり） -->
@@ -167,7 +167,7 @@
 			</div>
 
 			<!-- モバイル: 検索サマリ（1行）＋メニューボタン。ロゴと同じ1行に収める -->
-			<div class="ml-auto flex min-w-0 items-center gap-2 md:hidden">
+			<div class="ml-auto flex min-w-0 max-w-[70%] items-center gap-1 md:hidden">
 				{#if showHeaderSearch}
 					<button
 						type="button"
@@ -188,7 +188,7 @@
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-xs text-white hover:bg-accent-500">{m.common_register()}</a>
 				{/if}
 				{#if data.user?.role === 'member'}
-					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} compact={showHeaderSearch} />
+					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} compact={showHeaderSearch} facilityHeader={showFacilityLogo} />
 				{/if}
 				<button
 					type="button"

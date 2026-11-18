@@ -8,6 +8,7 @@ const under = (route: string, base: string) => route === base || route.startsWit
 const normalize = (path: string) => path.replace(/\/$/, '') || '/';
 
 export function transitionShell(from: string, to: string, samePortal: boolean): Shell {
+	if (to === '/(public)') return 'root';
 	if (under(from, '/(public)') && under(to, '/(public)')) {
 		return under(from, '/(public)/account') && under(to, '/(public)/account') ? 'account' : 'public';
 	}
@@ -37,7 +38,6 @@ export function refreshingSamePage(): boolean {
 }
 
 export function transitionTitle(route: string): string {
-	if (route === '/(public)') return m.home_title();
 	const path = route.replace('/(public)', '');
 	if (under(path, '/search')) return m.hold_expired_search();
 	if (under(path, '/kitakaze')) return m.radio_title();

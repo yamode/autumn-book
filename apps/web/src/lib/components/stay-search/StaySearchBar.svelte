@@ -5,6 +5,7 @@
   // 取引先ページ（PartnerSearchBar）と HP 配布の <yamado-search-bar>（embed・Shadow DOM の中）で同じものを使う。
   // 色は CSS 変数 --pt-accent / --pt-accent-soft。$app/*・paraglide に依存しない。
   import type { Snippet } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { STAY_SEARCH_LABELS, type StaySearchLabels } from '$lib/stay-search/labels';
   import { addDays, formatDate, type StaySearchLang } from '$lib/stay-search/params';
 
@@ -21,6 +22,7 @@
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
     keepOpen,
+    mobileDateDialog = false,
     datePanel,
     onSearch
   }: {
@@ -39,11 +41,25 @@
     /** パネルの外を押しても閉じないとき true（取引先ページ: お部屋の紹介のモーダルを開いているとき） */
     keepOpen?: () => boolean;
     /** 日付パネルの中身（close で閉じる） */
-    datePanel: Snippet<[{ close: () => void }]>;
+    mobileDateDialog?: boolean;
+    datePanel: Snippet<[{ close: () => void; modal?: boolean }]>;
     onSearch: () => void;
   } = $props();
 
   let root = $state<HTMLDivElement | null>(null);
+  let dialog = $state<HTMLDialogElement>();
+  const desktop = new MediaQuery('(min-width: 768px)', true);
+  const modal = $derived(mobileDateDialog && !desktop.current);
+  function closeDate() {
+    dialog?.close();
+    open = '';
+  }
+  $effect(() => {
+    if (!dialog) return;
+    const activeDialog = dialog;
+    activeDialog.showModal();
+    return () => activeDialog.close();
+  });
   // パネルの外を押したら閉じる。Shadow DOM の中でも判定できるよう composedPath で見る（target はホスト要素に差し替わるため）
   $effect(() => {
     if (!open) return;
@@ -107,9 +123,15 @@
   </div>
 
   {#if open === 'date'}
-    <div class="absolute inset-x-0 top-full z-40 mt-3">
-      {@render datePanel({ close: () => (open = '') })}
-    </div>
+    {#if modal}
+      <dialog bind:this={dialog} aria-label={labels.dateDialog} class="m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-lg overflow-auto overscroll-contain rounded-3xl bg-white backdrop:bg-stone-900/40" oncancel={closeDate}>
+        {@render datePanel({ close: closeDate, modal: true })}
+      </dialog>
+    {:else}
+      <div class="absolute inset-x-0 top-full z-40 mt-3">
+        {@render datePanel({ close: closeDate })}
+      </div>
+    {/if}
   {:else if open === 'guests'}
     <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-96" role="dialog" aria-label={labels.guests}>
       {#each [{ key: 'guests', title: labels.perRoom, sub: labels.adult, value: guests, min: 1, max: maxGuests, unit: labels.personUnit }, { key: 'rooms', title: labels.roomsTitle(crossType), sub: labels.roomsSub(crossType), value: rooms, min: 1, max: maxRooms, unit: labels.roomUnit }] as row, i (row.key)}

@@ -20,7 +20,7 @@ export const load: PageServerLoad = async (event) => {
 		const client = createSupabaseServerClient(event);
 		const [ledger, rankResult, nextExpiry] = await Promise.all([
 			sbPointLedger(client),
-			client.rpc('my_rank_progress'),
+			client.schema('book').rpc('my_rank_progress'),
 			sbNextPointExpiry(client).catch(() => null)
 		]);
 		return {
