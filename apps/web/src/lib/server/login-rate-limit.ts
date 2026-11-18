@@ -63,6 +63,8 @@ export const RATE_RULES = {
   memberPasswordIp: { prefix: 'login_rate:member_password_ip:', max: 20, windowSec: 600, lockSec: 900 },
   memberPasswordEmail: { prefix: 'login_rate:member_password_email:', max: 10, windowSec: 600, lockSec: 900 },
   memberPasskey: { prefix: 'login_rate:member_passkey:', max: 35, windowSec: 600 },
+  memberSmsIp: { prefix: 'login_rate:member_sms_ip:', max: 5, windowSec: 600 },
+  memberSmsGlobal: { prefix: 'login_rate:member_sms_global:', max: 100, windowSec: 600 },
   memberTotp: { prefix: 'login_rate:member_totp:', max: 5, windowSec: 600, lockSec: 900 }
 } as const satisfies Record<string, RateRule>;
 

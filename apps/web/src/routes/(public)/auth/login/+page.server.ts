@@ -10,6 +10,10 @@ import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
 import { safeNext } from '$lib/safe-next';
 import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
 import { MEMBER_LOGIN_METHODS, memberLoginDestination, memberMfaPath, memberPasskeysAvailable } from '$lib/server/member-login';
+import { smsTarget } from '$lib/precheckin-sms';
+import { loginMemberBySms, memberSmsAvailable, memberSmsDefault, memberSmsSendAllowed, rememberMemberSmsDefault, startMemberSms } from '$lib/server/member-sms';
+import { memberLoginCopy } from '$lib/member-login-copy';
+import { getLocale } from '$lib/paraglide/runtime';
 import type { Actions, PageServerLoad } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -19,15 +23,47 @@ const OTP_COOLDOWN = 'ab_otp_cooldown';
 const OTP_HUMAN = 'ab_otp_human';
 const USE_BOOK_MEMBER = 'このメールアドレスは運営用アカウントです。YAMADOに連携する山人Book会員のメールアドレスを入力してください。';
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async (event) => {
+	const { locals, url } = event;
 	if (locals.memberMfaPending) redirect(303, memberMfaPath(url.searchParams.get('next') ?? ''));
 	if (locals.user?.role === 'member') redirect(303, safeNext(url.searchParams.get('next'), '/account'));
 	const role = locals.user?.role;
 	const showMemberNotice = (role === 'admin' || role === 'staff') && Boolean(bookingConsentNext(url));
-	return { authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS, passkeys: memberPasskeysAvailable(url) };
+	const smsAvailable = memberSmsAvailable(url);
+	if (smsAvailable) event.setHeaders({ 'cache-control': 'private, no-store' });
+	return {
+		authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS,
+		passkeys: memberPasskeysAvailable(url), smsAvailable, smsDefault: await memberSmsDefault(event)
+	};
 };
 
 export const actions: Actions = {
+	sendSms: async (event) => {
+		const step = 'sms' as const;
+		const t = memberLoginCopy(getLocale());
+		if (!memberSmsAvailable(event.url) || event.locals.user || event.locals.memberMfaPending) {
+			return fail(404, { step, message: m.auth_otp_error_config() });
+		}
+		const form = await event.request.formData();
+		const raw = String(form.get('phone') ?? '').trim();
+		const phone = raw.length <= 30 ? smsTarget(raw) : null;
+		if (!phone) return fail(400, { step, message: t.smsPhoneInvalid });
+		if (!(await checkTurnstile(form, clientIp(event.request), { action: 'member-sms', hostname: event.url.hostname })).ok) {
+			return fail(400, { step, message: m.auth_turnstile_failed() });
+		}
+		if (!(await memberSmsSendAllowed(event))) return fail(429, { step, message: m.auth_otp_rate_limited() });
+		if (!(await startMemberSms(event, phone).catch(() => false))) return fail(503, { step, message: m.auth_otp_error_send() });
+		return { step: 'smsCode' as const };
+	},
+	verifySms: async (event) => {
+		if (!memberSmsAvailable(event.url) || event.locals.user || event.locals.memberMfaPending) {
+			return fail(404, { step: 'sms' as const, message: m.auth_otp_error_config() });
+		}
+		const form = await event.request.formData();
+		const destination = await loginMemberBySms(event, form.get('token')).catch(() => null);
+		if (!destination) return fail(401, { step: 'smsCode' as const, message: m.auth_otp_error_code_invalid() });
+		redirect(303, destination);
+	},
 	password: async (event) => {
 		if (!MEMBER_LOGIN_METHODS) return fail(404, { step: 'password', message: m.auth_otp_error_config() });
 		const form = await event.request.formData();
@@ -55,6 +91,7 @@ export const actions: Actions = {
 			return fail(401, rejected);
 		}
 		await Promise.all(limits.map(([rule, key]) => rateReset(event.platform, rule, key)));
+		if (data.user) await rememberMemberSmsDefault(event, data.user.id);
 		redirect(303, next);
 	},
 	// デモ: email + パスワード（AUTH_MODE=demo のときのみ）
@@ -144,6 +181,7 @@ export const actions: Actions = {
 				return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
 			}
 			memberDestination = destination;
+			if (destination) await rememberMemberSmsDefault(event, data.user.id);
 			// 二段階認証が済むまで会員RPCを呼べないため、プロフィール参照より先に誘導する。
 			if (destination === memberMfaPath(next)) redirect(303, destination);
 		}

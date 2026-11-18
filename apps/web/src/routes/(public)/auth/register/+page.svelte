@@ -2,7 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import Turnstile from '$lib/components/Turnstile.svelte';
-	import EmailCodeField from '$lib/components/EmailCodeField.svelte';
+	import VerificationCodeField from '$lib/components/VerificationCodeField.svelte';
 
 	let { data, form } = $props();
 	// 表示ステップ: form が返す step を優先、無ければ load の step
@@ -26,7 +26,7 @@
 		<form method="POST" action="?/verify{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 			<p class="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">{m.auth_otp_code_hint({ email })}</p>
 			<input type="hidden" name="email" value={email} />
-			<EmailCodeField />
+			<VerificationCodeField />
 			<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.auth_otp_verify_register()}</button>
 		</form>
 		<div class="mt-3 flex items-center justify-between text-sm">

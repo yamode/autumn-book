@@ -82,20 +82,14 @@
 	</section>
 {/if}
 
-{#await data.extras then extras}
-	{#if !reservationsOnly && extras.nextExpiry}
-		<p class="my-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
-			{m.points_expiring({ date: formatDateLong(extras.nextExpiry.date), points: extras.nextExpiry.points.toLocaleString() })} <a href="/search" class="underline">{m.account_expiring_search()}</a>
-		</p>
-	{/if}
-
-	{#if !reservationsOnly && extras.memberPages.length > 0}
+{#await data.memberPages then memberPages}
+	{#if !reservationsOnly && memberPages.length > 0}
 		<!-- あなた専用のページ（本人・家族が対象の特別会員の専用ページ・docs/vip-member-page.md §5.5 D2）。押すとログインのまま専用ページへ -->
 		<section class="my-6">
 			<h2 class="mb-1 text-lg text-brand-900">{m.account_member_pages_heading()}</h2>
 			<p class="mb-3 text-sm text-stone-500">{m.account_member_pages_note()}</p>
 			<div class="grid gap-3 sm:grid-cols-2">
-				{#each extras.memberPages as p (p.href)}
+				{#each memberPages as p (p.href)}
 					<a href={p.href} class="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 transition hover:shadow-md">
 						<div class="min-w-0 flex-1">
 							<p class="break-words font-semibold text-brand-900">{p.name}</p>

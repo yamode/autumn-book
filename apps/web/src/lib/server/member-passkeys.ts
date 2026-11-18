@@ -4,12 +4,10 @@ import {
 } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import type { RequestEvent } from '@sveltejs/kit';
-import { adminRoleOf, isBanned, jwtSessionId } from '$lib/admin-passkey';
 import { isCredentialId, passkeyDeviceName, type PasskeyRp } from '$lib/partner-passkey';
 import { safeNext } from '$lib/safe-next';
-import { createSupabaseServerClient } from '$lib/server/auth';
 import { defaultMemberPasskeyName } from '$lib/server/member-passkey-name';
-import { memberLoginState } from '$lib/server/member-login';
+import { memberLoginState, openVerifiedMemberSession } from '$lib/server/member-login';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -128,19 +126,12 @@ export async function verifyMemberPasskeyLogin(event: RequestEvent, rp: PasskeyR
 		counter: verified.authenticationInfo.newCounter, last_used_at: new Date().toISOString()
 	}).eq('id', row.id).eq('counter', row.counter).select('id').maybeSingle();
 	if (update.error || !update.data) return null;
-	const svc = partnerServiceClient()!;
-	const { data: authUser, error: userError } = await svc.auth.admin.getUserById(row.user_id);
-	const user = authUser?.user;
-	if (userError || !user?.email || adminRoleOf(user.app_metadata) || isBanned((user as { banned_until?: string | null }).banned_until)) return null;
-	const { data: link, error: linkError } = await svc.auth.admin.generateLink({ type: 'magiclink', email: user.email });
-	if (linkError || !link?.properties?.hashed_token || link.user.id !== user.id) return null;
-	const client = createSupabaseServerClient(event);
-	const { data: signedIn, error: signInError } = await client.auth.verifyOtp({ type: 'magiclink', token_hash: link.properties.hashed_token });
-	const sessionId = jwtSessionId(signedIn.session?.access_token);
-	if (!signInError && sessionId && signedIn.user?.id === row.user_id) {
-		const { error: markError } = await db().from('member_passkey_sessions').insert({ session_id: sessionId, user_id: row.user_id, passkey_id: row.id });
-		if (!markError) return safeNext(typeof body.next === 'string' ? body.next : null, '/account');
-	}
-	if (signedIn.session) await client.auth.signOut({ scope: 'local' });
+	const signedIn = await openVerifiedMemberSession(event, row.user_id);
+	if (!signedIn) return null;
+	const { error: markError } = await db().from('member_passkey_sessions').insert({
+		session_id: signedIn.sessionId, user_id: row.user_id, passkey_id: row.id
+	});
+	if (!markError) return safeNext(typeof body.next === 'string' ? body.next : null, '/account');
+	await signedIn.client.auth.signOut({ scope: 'local' });
 	return null;
 }

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as m from '$lib/paraglide/messages';
 
-	let { rank }: { rank: 'standard' | 'silver' | 'gold' | 'platinum' } = $props();
+	let { rank, compact = false }: { rank: 'standard' | 'silver' | 'gold' | 'platinum'; compact?: boolean } = $props();
 
 	// スタイルはロケールに依存しないため固定
 	const cls = {
@@ -23,6 +23,6 @@
 	);
 </script>
 
-<span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium {cls[rank]}">
-	◆ {m.rank_member({ rank: label })}
+<span class="inline-flex items-center gap-1 rounded-full border py-0.5 text-xs font-medium {compact ? 'px-2 whitespace-nowrap' : 'px-2.5'} {cls[rank]}">
+	◆ {compact ? label : m.rank_member({ rank: label })}
 </span>

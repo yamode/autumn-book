@@ -1,6 +1,6 @@
-import { myReservations, facilityById, roomTypeById, nextPointExpiry } from '$lib/server/store';
+import { myReservations, facilityById, roomTypeById } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbMyReservations, sbNextPointExpiry, reverseFacilityUuid } from '$lib/server/supabase-data';
+import { sbMyReservations, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
 import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
 import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
@@ -12,10 +12,7 @@ const loadReservations = async (event: RequestEvent) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const extras = Promise.all([
-			sbNextPointExpiry(client).catch(() => null),
-			locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([])
-		]).then(([nextExpiry, memberPages]) => ({ nextExpiry, memberPages }));
+		const memberPages = locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([]);
 		const reservations = await sbMyReservations(client);
 		const list = reservations.map((r) => {
 			// 施設マスタ（名称・写真・スラッグ）は store 側が正。実 UUID から逆引きする。
@@ -45,7 +42,7 @@ const loadReservations = async (event: RequestEvent) => {
 		return {
 			upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 			past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-			extras
+			memberPages
 		};
 	}
 
@@ -61,10 +58,7 @@ const loadReservations = async (event: RequestEvent) => {
 	return {
 		upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 		past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-		extras: {
-			nextExpiry: nextPointExpiry(locals.user!.id),
-			memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
-		}
+		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
 	};
 };
 

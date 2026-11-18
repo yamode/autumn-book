@@ -4,8 +4,10 @@
 	import { invalidateAll } from '$app/navigation';
 	import { enhance } from '$lib/enhance';
 	import { getLocale } from '$lib/paraglide/runtime';
+	import * as m from '$lib/paraglide/messages';
 	import { memberLoginCopy } from '$lib/member-login-copy';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import VerificationCodeField from '$lib/components/VerificationCodeField.svelte';
 	import type { SubmitFunction } from '@sveltejs/kit';
 
 	let { data, form } = $props();
@@ -15,6 +17,7 @@
 	let renameInput = $state<HTMLInputElement>();
 	let authenticatorApp = $state('');
 	let showPassword = $state(false);
+	let showConfirmation = $state(false);
 	let newPassword = $state('');
 	let confirmedPassword = $state('');
 	let passwordBusy = $state(false);
@@ -29,7 +32,8 @@
 		recent: t.recent, passwordLength: t.passwordLength, passwordMismatch: t.passwordMismatch,
 		passwordSame: t.passwordSame, passwordWeak: t.passwordWeak,
 		passwordTotp: showPasswordTotp ? t.passwordTotp : t.recent, passwordSave: t.passwordSaveError, code: t.wrongCode, retainKey: t.retainKey,
-		unavailable: t.unavailable, keyName: t.keyNameRequired, renameKey: t.renameKeyError
+		unavailable: t.unavailable, keyName: t.keyNameRequired, renameKey: t.renameKeyError,
+		smsRecent: t.smsRecent, smsSend: t.smsSend, smsCode: t.smsCode
 	});
 	const panel = 'space-y-3 rounded-xl border border-stone-200 bg-white p-4 sm:p-5';
 	const input = 'mt-1 w-full rounded-md border border-stone-300 px-3 py-2';
@@ -47,8 +51,7 @@
 		} while (!(/[A-Z]/.test(candidate) && /[a-z]/.test(candidate) && /[2-9]/.test(candidate) && /[!@#$%&*]/.test(candidate)));
 
 		newPassword = candidate;
-		confirmedPassword = '';
-		showPassword = true;
+		confirmedPassword = candidate;
 	}
 
 	function submitPassword(event: SubmitEvent) {
@@ -84,6 +87,7 @@
 						// Browser storage is optional once the new password has been saved.
 					} finally {
 						showPassword = false;
+						showConfirmation = false;
 						newPassword = '';
 						confirmedPassword = '';
 					}
@@ -150,6 +154,14 @@
 	}
 </script>
 
+{#snippet visibilityButton(id: string, visible: boolean, toggle: () => void)}
+	<button type="button" class="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-md text-stone-600 hover:bg-stone-50 focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-brand-800"
+		aria-controls={id} aria-label={visible ? t.hidePassword : t.showPassword}
+		title={visible ? t.hidePassword : t.showPassword} onclick={toggle}>
+		<AdminIcon name={visible ? 'eye-off' : 'eye'} class="size-5" />
+	</button>
+{/snippet}
+
 <svelte:head><title>{t.title} ｜ YAMADO</title></svelte:head>
 
 {#snippet restartLogin()}
@@ -174,6 +186,43 @@
 		</div>
 	{/if}
 	<div class="mt-4 space-y-4">
+		{#if data.sms}
+			<section class={panel}>
+				<h3 class="text-lg font-semibold">{t.smsSettings}</h3>
+				{#if !data.sms.lastDigits}
+					<p class="text-sm text-stone-600">{t.smsNoPhone}</p>
+					<a href="/account/profile" class="inline-flex min-h-11 items-center underline">{t.smsProfile}</a>
+				{:else if data.sms.verified}
+					<p class="text-sm text-stone-600">{t.smsVerified.replace('{digits}', data.sms.lastDigits)}</p>
+					<form method="POST" action="?/setOtpPreference" use:enhance class="max-w-md space-y-3">
+						<label class="block text-sm">
+							<span>{t.smsDefault}</span>
+							<select name="preference" class={input} value={data.sms.preference}>
+								<option value="email">{t.email}</option>
+								<option value="sms">{t.sms}</option>
+							</select>
+						</label>
+						<p class="text-sm text-stone-600">{t.smsDefaultHint}</p>
+						<button type="submit" class={submitButton}>{t.save}</button>
+					</form>
+				{:else if !data.sms.canVerify}
+					<p class="text-sm text-stone-600">{t.smsRecent}</p>
+				{:else}
+					{#if data.sms.pending || form?.smsPending}
+						<p class="text-sm text-stone-600">{t.smsSentToMember.replace('{digits}', data.sms.lastDigits)}</p>
+						<form method="POST" action="?/verifyEnrollmentSms" use:enhance class="max-w-xs space-y-3">
+							<VerificationCodeField sms />
+							<button type="submit" class={submitButton}>{t.verify}</button>
+						</form>
+					{:else}
+						<p class="text-sm text-stone-600">{t.smsUnverified.replace('{digits}', data.sms.lastDigits)}</p>
+					{/if}
+					<form method="POST" action="?/sendEnrollmentSms" use:enhance>
+						<button type="submit" class={button}>{data.sms.pending || form?.smsPending ? t.smsTryAgain : m.auth_otp_send()}</button>
+					</form>
+				{/if}
+			</section>
+		{/if}
 		<section class={panel}>
 			<h3 class="text-lg font-semibold">{t.passwordSetup}</h3>
 			{#if data.member.email}
@@ -222,26 +271,24 @@
 							<button type="button" class="min-h-11 rounded-lg bg-stone-100 px-3 text-sm font-medium text-brand-800 hover:bg-stone-200 disabled:opacity-60"
 								disabled={passwordBusy} onclick={generatePassword}>{t.generatePassword}</button>
 						</div>
-						<div class="mt-1 flex items-center gap-2">
-							<input id="new-password" class="min-w-0 flex-1 rounded-md border border-stone-300 px-3 py-2"
-								name="password" type="password" bind:value={newPassword} autocomplete="off"
+						<div class="relative mt-1">
+							<input id="new-password" class="min-h-11 w-full rounded-md border border-stone-300 py-2 pr-12 pl-3"
+								name="password" type={showPassword ? 'text' : 'password'} bind:value={newPassword} autocomplete="off"
 								aria-describedby="password-hint" minlength="12" autocapitalize="off" spellcheck={false} required />
-							<button type="button" class={`${button} shrink-0`} aria-expanded={showPassword}
-								onclick={() => showPassword = !showPassword}>{showPassword ? t.hidePassword : t.showPassword}</button>
+							{@render visibilityButton('new-password', showPassword, () => (showPassword = !showPassword))}
 						</div>
-						{#if showPassword && newPassword}
-							<p class="mt-1 wrap-anywhere whitespace-pre-wrap rounded-md bg-stone-100 px-3 py-2 font-mono text-sm">{newPassword}</p>
-						{/if}
 					</div>
-					<label for="confirm-entry" class="block text-sm">{t.confirmPassword}
-						<!-- 別フォームに所属させ、ブラウザが生成したパスワードを確認欄に複製するのを防ぐ。 -->
-						<input form="confirm-password-form" id="confirm-entry" bind:this={confirmationInput}
-							class={input} type="password" bind:value={confirmedPassword} autocomplete="off"
-							autocapitalize="off" spellcheck={false} onkeydown={submitPasswordOnEnter} required />
-					</label>
-					{#if showPassword && confirmedPassword}
-						<p class="wrap-anywhere whitespace-pre-wrap rounded-md bg-stone-100 px-3 py-2 font-mono text-sm">{confirmedPassword}</p>
-					{/if}
+					<div>
+						<label for="confirm-entry" class="block text-sm">{t.confirmPassword}</label>
+						<div class="relative mt-1">
+							<!-- 確認欄は別フォームに所属させ、サイト内で生成した場合にだけ明示的に両方へ入れる。 -->
+							<input form="confirm-password-form" id="confirm-entry" bind:this={confirmationInput}
+								class="min-h-11 w-full rounded-md border border-stone-300 py-2 pr-12 pl-3"
+								type={showConfirmation ? 'text' : 'password'} bind:value={confirmedPassword} autocomplete="off"
+								autocapitalize="off" spellcheck={false} onkeydown={submitPasswordOnEnter} required />
+							{@render visibilityButton('confirm-entry', showConfirmation, () => (showConfirmation = !showConfirmation))}
+						</div>
+					</div>
 					<button type="submit" class={`${submitButton} disabled:opacity-60`} disabled={passwordBusy}>{t.save}</button>
 				</form>
 			{/if}

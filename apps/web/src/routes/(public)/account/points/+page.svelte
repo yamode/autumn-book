@@ -69,16 +69,31 @@
 </div>
 
 <!-- 会員グレード一覧 -->
-<section class="mt-6 rounded-2xl border border-stone-200 bg-white p-6">
-	<h2 class="mb-4 text-lg">{m.points_grade_list()}</h2>
-	<table class="w-full text-[15px]">
-		<thead><tr class="border-b border-stone-200 text-left text-sm text-stone-500"><th class="py-2">{m.points_grade_rank()}</th><th>{m.points_grade_condition()}</th><th class="text-right">{m.points_grade_rate()}</th></tr></thead>
+<section class="mt-6 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6" aria-labelledby="points-grade-list">
+	<h2 id="points-grade-list" class="mb-3 text-lg sm:mb-4">{m.points_grade_list()}</h2>
+	<ul class="space-y-2 sm:hidden">
+		{#each grades as r (r.code)}
+			<li aria-current={r.code === rank ? 'true' : undefined}
+				class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border px-3 py-3 {r.code === rank ? 'border-stone-300 bg-stone-50' : 'border-stone-200'}">
+				<div><RankBadge rank={r.code} compact /></div>
+				<p class="whitespace-nowrap text-right">
+					<span class="mr-1 text-xs text-stone-600">{m.points_grade_rate()}</span>
+					<strong class="text-lg tabular-nums text-brand-900">{Math.round(r.rewardRate * 100)}%</strong>
+				</p>
+				<p class="col-span-full text-sm leading-relaxed text-stone-600">
+					<span class="sr-only">{m.points_grade_condition()} </span>{rankCondition(r.code)}
+				</p>
+			</li>
+		{/each}
+	</ul>
+	<table class="hidden w-full text-[15px] sm:table">
+		<thead><tr class="border-b border-stone-200 text-left text-sm text-stone-500"><th scope="col" class="py-2">{m.points_grade_rank()}</th><th scope="col" class="px-3">{m.points_grade_condition()}</th><th scope="col" class="whitespace-nowrap text-right">{m.points_grade_rate()}</th></tr></thead>
 		<tbody>
 			{#each grades as r (r.code)}
 				<tr class="border-b border-stone-100 {r.code === rank ? 'bg-amber-50/50' : ''}">
-					<td class="py-2.5"><RankBadge rank={r.code} /></td>
-					<td class="text-stone-600">{rankCondition(r.code)}</td>
-					<td class="text-right font-semibold">{Math.round(r.rewardRate * 100)}%</td>
+					<td class="py-2.5 whitespace-nowrap"><RankBadge rank={r.code} /></td>
+					<td class="px-3 text-stone-600">{rankCondition(r.code)}</td>
+					<td class="whitespace-nowrap text-right font-semibold">{Math.round(r.rewardRate * 100)}%</td>
 				</tr>
 			{/each}
 		</tbody>

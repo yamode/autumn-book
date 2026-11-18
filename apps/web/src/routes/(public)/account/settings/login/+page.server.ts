@@ -4,6 +4,7 @@ import { MEMBER_LOGIN_METHODS, MEMBER_SECURITY_PATH, memberMfaPath, memberPasske
 import { listMemberPasskeys, removeMemberPasskey, renameMemberPasskey } from '$lib/server/member-passkeys';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { RATE_RULES, rateCheck, rateHit, rateReset } from '$lib/server/login-rate-limit';
+import { hasMemberSmsEnrollment, memberSmsAvailable, memberSmsSendAllowed, memberSmsSettings, setMemberOtpPreference, startMemberSms, verifyMemberSmsEnrollment } from '$lib/server/member-sms';
 import type { Actions, PageServerLoad } from './$types';
 
 const TOTP_ISSUER = 'YAMADO';
@@ -17,8 +18,14 @@ const authenticatorAppName = (name?: string) => {
 	return name?.startsWith(TOTP_NAME_PREFIX) ? name.slice(TOTP_NAME_PREFIX.length) : name ?? '';
 };
 type Issue = 'recent' | 'passwordLength' | 'passwordMismatch' | 'passwordSame' | 'passwordWeak' | 'passwordTotp' | 'passwordSave'
-	| 'unavailable' | 'code' | 'retainKey' | 'keyName' | 'renameKey';
+	| 'unavailable' | 'code' | 'retainKey' | 'keyName' | 'renameKey' | 'smsRecent' | 'smsSend' | 'smsCode';
 const rejected = (issue: Issue, status = 400) => fail(status, { issue });
+
+async function smsManagementContext(event: Parameters<typeof memberSecurityContext>[0]) {
+	if (!memberSmsAvailable(event.url)) return null;
+	const security = await memberSecurityContext(event).catch(() => null);
+	return security?.recent && (!security.hasTotp || security.aal2) ? security : null;
+}
 
 export const load: PageServerLoad = async (event) => {
 	event.setHeaders({ 'cache-control': 'no-store' });
@@ -30,10 +37,16 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		const [keys, { data, error }] = await Promise.all([listMemberPasskeys(security.userId), security.client.auth.mfa.listFactors()]);
 		if (error) throw error;
+		const smsSettings = memberSmsAvailable(event.url) ? await memberSmsSettings(security.userId).catch(() => null) : null;
 		return {
 			unavailable: false, recent: security.recent, passkeysAvailable: memberPasskeysAvailable(event.url), keys,
 			passwordCanVerifyTotp: security.passkey && security.hasTotp,
 			passwordNeedsTotp: security.hasTotp && (!security.aal2 || (security.passkey && !security.recent)),
+			sms: smsSettings && {
+				lastDigits: smsSettings.phone?.slice(-4) ?? null, verified: smsSettings.verified,
+				preference: smsSettings.preference, pending: hasMemberSmsEnrollment(event),
+				canVerify: security.recent && (!security.hasTotp || security.aal2)
+			},
 			factors: (data?.totp ?? []).map((factor) => ({ id: factor.id, name: authenticatorAppName(factor.friendly_name) }))
 		};
 	} catch {
@@ -42,6 +55,30 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	sendEnrollmentSms: async (event) => {
+		const security = await smsManagementContext(event);
+		if (!security) return rejected('smsRecent', 403);
+		const settings = await memberSmsSettings(security.userId).catch(() => null);
+		if (!settings?.phone || settings.verified) return rejected('smsSend');
+		if (!(await memberSmsSendAllowed(event))) return rejected('smsSend', 429);
+		if (!(await startMemberSms(event, settings.phone, security).catch(() => false))) return rejected('smsSend');
+		return { smsPending: true as const };
+	},
+	verifyEnrollmentSms: async (event) => {
+		const security = await smsManagementContext(event);
+		if (!security) return rejected('smsRecent', 403);
+		const token = (await event.request.formData()).get('token');
+		if (!(await verifyMemberSmsEnrollment(event, token, security).catch(() => false))) return rejected('smsCode');
+		return { saved: 'sms' as const };
+	},
+	setOtpPreference: async (event) => {
+		const security = memberSmsAvailable(event.url) && await memberSecurityContext(event).catch(() => null);
+		if (!security) return rejected('unavailable', 403);
+		const choice = (await event.request.formData()).get('preference');
+		if (choice !== 'email' && choice !== 'sms') return rejected('unavailable');
+		if (!(await setMemberOtpPreference(event, security.userId, choice).catch(() => false))) return rejected('unavailable');
+		return { saved: 'sms' as const };
+	},
 	verifyPasswordTotp: async (event) => {
 		const security = await memberSecurityContext(event).catch(() => null);
 		if (!security?.passkey || !security.hasTotp) return rejected('recent', 403);
