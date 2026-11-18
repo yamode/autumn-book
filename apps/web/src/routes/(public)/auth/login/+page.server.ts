@@ -135,6 +135,18 @@ export const actions: Actions = {
 		if (consentNext && (role === 'admin' || role === 'staff')) {
 			return fail(403, { step: 'email', email: '', message: USE_BOOK_MEMBER });
 		}
+		const next = url.searchParams.get('next') ?? '';
+		let memberDestination: string | null = null;
+		if (MEMBER_LOGIN_METHODS && data.session && role !== 'admin' && role !== 'staff') {
+			const destination = await memberLoginDestination(data.user, data.session.access_token, next).catch(() => undefined);
+			if (destination === undefined) {
+				await client.auth.signOut({ scope: 'local' });
+				return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
+			}
+			memberDestination = destination;
+			// 二段階認証が済むまで会員RPCを呼べないため、プロフィール参照より先に誘導する。
+			if (destination === memberMfaPath(next)) redirect(303, destination);
+		}
 		// 会員判定: my_profile が通れば book.members あり＝会員。
 		let isMember = false;
 		try {
@@ -158,14 +170,6 @@ export const actions: Actions = {
 				/* 失敗しても次回ログイン/登録で再同期される */
 			}
 		}
-		if (MEMBER_LOGIN_METHODS && data.session && role !== 'admin' && role !== 'staff') {
-			const destination = await memberLoginDestination(data.user, data.session.access_token, url.searchParams.get('next') ?? '').catch(() => null);
-			if (!destination) {
-				await client.auth.signOut({ scope: 'local' });
-				return fail(503, { step: 'email', email, message: m.auth_otp_error_config() });
-			}
-			redirect(303, destination);
-		}
-		redirect(303, safeNext(url.searchParams.get('next'), '/account'));
+		redirect(303, memberDestination ?? safeNext(next, '/account'));
 	}
 };
