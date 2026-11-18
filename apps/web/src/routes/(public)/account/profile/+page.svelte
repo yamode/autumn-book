@@ -27,13 +27,6 @@
 <svelte:head><title>{m.profile_title()}</title></svelte:head>
 
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.3fr)] lg:gap-6">
-	{#if form?.saved}
-		<p role="status" class="rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800 lg:col-span-2">{m.profile_saved()}</p>
-	{/if}
-	{#if form?.message}
-		<p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">{form.message}</p>
-	{/if}
-
 	<!-- プロフィール画像 -->
 	<section class="min-w-0 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 sm:p-6"
 		aria-labelledby="profile-avatar-heading" aria-busy={avatarBusy}>
@@ -106,7 +99,7 @@
 			<ContactAddressFields values={data.contact} inputClass="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2.5" />
 			<label class="block text-sm text-stone-600">
 				{m.profile_birthdate()}
-				<input name="birthdate" type="date" autocomplete="bday" min="1900-01-01" max={data.today} value={data.contact.birthdate} class="mt-1 block w-full min-w-0 rounded-lg border border-stone-300 px-3 py-2.5" />
+				<input name="birthdate" type="date" autocomplete="bday" min="1900-01-01" max={data.today} value={data.contact.birthdate} class="mt-1 block min-h-11 w-full min-w-0 appearance-none rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-left" />
 			</label>
 		{:else}
 			<p role="alert" class="text-sm text-red-700">{m.profile_contact_error()}</p>
@@ -115,7 +108,19 @@
 			<input type="checkbox" name="mailOptIn" checked={data.member.mailOptIn} class="mt-1 h-4 w-4" />
 			<span class="text-[15px]">{m.profile_mail_opt_in()}</span>
 		</label>
-		<button type="submit" disabled={!data.contact} class="rounded-lg bg-brand-800 px-6 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{m.common_save()}</button>
+		<!-- 保存の結果は「保存する」のすぐ横に出す。ページ上部に出すと、スマホでは押した位置から見えなかった（2026-11-18 指示） -->
+		<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
+			<button type="submit" disabled={!data.contact} class="rounded-lg bg-brand-800 px-6 py-2.5 font-medium text-white hover:bg-brand-700 disabled:opacity-50">{m.common_save()}</button>
+			{#if form?.saved}
+				<p role="status" class="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+					<svg viewBox="0 0 20 20" class="h-4 w-4" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd" /></svg>
+					{m.profile_saved()}
+				</p>
+			{/if}
+		</div>
+		{#if form?.message}
+			<p role="alert" class="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
+		{/if}
 	</form>
 
 	<!-- メールアドレス変更 -->
