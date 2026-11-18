@@ -62,7 +62,7 @@
 					<span class="text-stone-600">{m.login_email()}</span>
 					<input type="email" name="email" value={email} required class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="mail@example.com" />
 				</label>
-				<Turnstile action="member-otp" />
+				<Turnstile action="member-otp" showSuccess />
 				<button type="submit" class="w-full rounded-lg bg-brand-800 py-2.5 font-medium text-white hover:bg-brand-700">{m.auth_otp_send()}</button>
 			</form>
 		{/if}
