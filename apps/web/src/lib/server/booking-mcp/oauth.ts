@@ -8,6 +8,8 @@ import { safeNext } from '$lib/safe-next';
 export const MCP_PATH = '/mcp';
 export const PILOT_MCP_PATH = '/mcp/pilot';
 export const RESERVATION_MCP_PATH = '/mcp/reservations';
+export const CHATGPT_MCP_PATH = '/mcp/chatgpt';
+export const CHATGPT_ISSUER_PATH = '/booking-mcp/chatgpt';
 export const MUSE_MCP_PATH = '/mcp/muse';
 export const OAUTH_PATH = '/booking-mcp/oauth';
 export const AUTHORIZE_PATH = `${OAUTH_PATH}/authorize`;
@@ -20,6 +22,8 @@ export const PILOT_CLIENT_ID = 'autumn-book-claude-pilot';
 export const RESERVATION_CLIENT_ID = 'autumn-book-claude-reservations';
 export const MUSE_CLIENT_ID = 'autumn-book-muse';
 export const MUSE_PORTAL_CLIENT_ID = 'https://platform.muse.ai/oauth/client-metadata.json';
+export const CHATGPT_CLIENT_ID = 'https://chatgpt.com/oauth/client.json';
+const CHATGPT_CALLBACK = 'https://chatgpt.com/connector_platform_oauth_redirect';
 export const ONSITE_SCOPE = 'booking:onsite';
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const MUSE_PORTAL_CALLBACK = 'https://platform.muse.ai/oauth/credential-test/callback';
@@ -53,11 +57,35 @@ export function isMuseClient(id: string | null): boolean {
 }
 
 function allowedCallback(id: string, callback: string): boolean {
+	if (id === CHATGPT_CLIENT_ID) return callback === CHATGPT_CALLBACK;
 	if (id === MUSE_PORTAL_CLIENT_ID) return callback === MUSE_PORTAL_CALLBACK;
 	return id === MUSE_CLIENT_ID ? MUSE_CALLBACKS.has(callback) : callback === CALLBACK;
 }
 
+export function bookingChatGPTEnabled(url: URL): boolean {
+	return bookingMcpEnabled(url) && env.BOOKING_MCP_CHATGPT === 'true';
+}
+
+let chatGPTMetadataValidUntil = 0;
+export async function verifyChatGPTClient(): Promise<boolean> {
+	if (Date.now() < chatGPTMetadataValidUntil) return true;
+	try {
+		const response = await fetch(CHATGPT_CLIENT_ID, { redirect: 'error', signal: AbortSignal.timeout(4000) });
+		if (!response.ok) return false;
+		const metadata = await response.json() as Record<string, unknown>;
+		const methods = metadata.token_endpoint_auth_methods_supported;
+		const redirects = metadata.redirect_uris;
+		if (metadata.client_id !== CHATGPT_CLIENT_ID || !Array.isArray(redirects) ||
+			!redirects.includes(CHATGPT_CALLBACK) || !Array.isArray(methods) || !methods.includes('none')) return false;
+		chatGPTMetadataValidUntil = Date.now() + 5 * 60 * 1000;
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function bookingResource(url: URL) {
+	if (url.pathname === CHATGPT_MCP_PATH && bookingChatGPTEnabled(url)) return { path: CHATGPT_MCP_PATH, id: CHATGPT_CLIENT_ID, scope: SCOPE };
 	if (url.pathname === MCP_PATH && bookingMcpEnabled(url)) return { path: MCP_PATH, id: CLIENT_ID, scope: SCOPE };
 	if (url.pathname === PILOT_MCP_PATH && bookingPilotEnabled(url)) return { path: PILOT_MCP_PATH, id: PILOT_CLIENT_ID, scope: ONSITE_SCOPE };
 	if (url.pathname === RESERVATION_MCP_PATH && bookingReservationsEnabled(url)) {
@@ -80,7 +108,8 @@ export function isBookingMcpMachineUrl(url: URL): boolean {
 		[MCP_PATH, TOKEN_PATH, RESOURCE_METADATA_PATH, `/.well-known/oauth-authorization-server${OAUTH_PATH}`].includes(url.pathname) ||
 		(bookingPilotEnabled(url) && [PILOT_MCP_PATH, RESOURCE_METADATA_PATH + '/pilot'].includes(url.pathname)) ||
 		(bookingReservationsEnabled(url) && [RESERVATION_MCP_PATH, RESOURCE_METADATA_PATH + '/reservations'].includes(url.pathname)) ||
-		(bookingMuseEnabled(url) && [MUSE_MCP_PATH, RESOURCE_METADATA_PATH + '/muse'].includes(url.pathname))
+		(bookingMuseEnabled(url) && [MUSE_MCP_PATH, RESOURCE_METADATA_PATH + '/muse'].includes(url.pathname)) ||
+		(bookingChatGPTEnabled(url) && [CHATGPT_MCP_PATH, RESOURCE_METADATA_PATH + '/chatgpt', `/.well-known/oauth-authorization-server${CHATGPT_ISSUER_PATH}`].includes(url.pathname))
 	);
 }
 
@@ -125,6 +154,7 @@ export function authorizationRequest(url: URL) {
 
 function oauthConnection(params: URLSearchParams, url: URL) {
 	const id = params.get('client_id');
+	if (id === CHATGPT_CLIENT_ID) return bookingResource(new URL(CHATGPT_MCP_PATH, url.origin));
 	if (id === CLIENT_ID) return bookingResource(new URL(MCP_PATH, url.origin));
 	if (id === PILOT_CLIENT_ID) return bookingResource(new URL(PILOT_MCP_PATH, url.origin));
 	if (id === RESERVATION_CLIENT_ID) return bookingResource(new URL(RESERVATION_MCP_PATH, url.origin));
@@ -139,6 +169,7 @@ function allowedScope(params: URLSearchParams, connection: { id: string; scope: 
 
 function validResource(params: URLSearchParams, url: URL, path: string): boolean {
 	const resource = params.get('resource');
+	if (path === CHATGPT_MCP_PATH) return resource === url.origin + path;
 	if (resource === null || resource === url.origin + path) return true;
 	// Claude can retain the previous client ID when a directory entry changes its endpoint.
 	return path === MCP_PATH && bookingReservationsEnabled(url) && resource === url.origin + RESERVATION_MCP_PATH;

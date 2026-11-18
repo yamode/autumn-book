@@ -1,5 +1,5 @@
 import { error, redirect } from '@sveltejs/kit';
-import { bookingMcpEnabled, hasBookingAccess, MUSE_CLIENT_ID, MUSE_PORTAL_CLIENT_ID, PILOT_CLIENT_ID, RESERVATION_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
+import { bookingChatGPTEnabled, bookingMcpEnabled, CHATGPT_CLIENT_ID, hasBookingAccess, MUSE_CLIENT_ID, MUSE_PORTAL_CLIENT_ID, PILOT_CLIENT_ID, RESERVATION_CLIENT_ID, privatePageHeaders, revokeBookingAccess } from '$lib/server/booking-mcp/oauth';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 function memberId({ locals, url, setHeaders }: RequestEvent) {
@@ -10,13 +10,22 @@ function memberId({ locals, url, setHeaders }: RequestEvent) {
 }
 
 export const load: PageServerLoad = async (event) => {
-	return { connected: await hasBookingAccess(memberId(event)) };
+	const userId = memberId(event);
+	const [connected, chatGPTConnected] = await Promise.all([
+		hasBookingAccess(userId),
+		bookingChatGPTEnabled(event.url) ? hasBookingAccess(userId, CHATGPT_CLIENT_ID) : false
+	]);
+	return { connected, chatGPTConnected };
 };
 
 export const actions: Actions = {
 	disconnect: async (event) => {
 		const userId = memberId(event);
 		await revokeBookingAccess(userId);
+		redirect(303, '/account/ai-connections');
+	},
+	disconnectChatGPT: async (event) => {
+		await revokeBookingAccess(memberId(event), CHATGPT_CLIENT_ID);
 		redirect(303, '/account/ai-connections');
 	},
 	disconnectPilot: async (event) => {
