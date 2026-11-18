@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
 	import Turnstile from '$lib/components/Turnstile.svelte';
+	import EmailCodeField from '$lib/components/EmailCodeField.svelte';
 	import MemberPasskeyLogin from '$lib/components/MemberPasskeyLogin.svelte';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { memberLoginCopy } from '$lib/member-login-copy';
@@ -36,18 +37,7 @@
 			<form method="POST" action="?/verify{nextQuery}" class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6">
 				<p class="rounded-lg bg-stone-50 px-3 py-2 text-sm text-stone-600">{m.auth_otp_code_hint({ email })}</p>
 				<input type="hidden" name="email" value={email} />
-				<label class="block text-sm">
-					<span class="text-stone-600">{m.auth_otp_code_label()}</span>
-					<input
-						name="token"
-						inputmode="numeric"
-						autocomplete="one-time-code"
-						maxlength="8"
-						required
-						placeholder={m.auth_otp_code_placeholder()}
-						class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-center text-lg tracking-[0.4em]"
-					/>
-				</label>
+				<EmailCodeField />
 				<button type="submit" class="w-full rounded-lg bg-brand-800 py-2.5 font-medium text-white hover:bg-brand-700">{m.auth_otp_verify()}</button>
 			</form>
 			<!-- 再送は Turnstile を出さない（最初の画面で確認済み。サーバは署名付き Cookie で同じメールアドレスか確かめる） -->

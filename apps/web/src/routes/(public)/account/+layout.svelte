@@ -3,7 +3,7 @@
 	import { pendingPage } from '$lib/page-transition';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import RankBadge from '$lib/components/RankBadge.svelte';
-	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+	import AdminIcon, { type AdminIconName } from '$lib/components/admin/AdminIcon.svelte';
 	import { rankName } from '$lib/rank-name';
 	import { memberDisplayRank } from '$lib/member-rank';
 	import { deLocalizeUrl } from '$lib/paraglide/runtime';
@@ -12,9 +12,13 @@
 	let { data, children } = $props();
 
 	const primaryNav = $derived([
-		{ href: '/account/reservations', label: m.account_nav_reservations() },
-		{ href: '/account/points', label: m.account_nav_points() },
-		{ href: '/account/community', label: m.account_nav_community() }
+		{ href: '/account/reservations', label: m.account_nav_reservations(), icon: 'calendar' },
+		{ href: '/account/points', label: m.account_nav_points(), icon: 'wallet' },
+		{ href: '/account/community', label: m.account_nav_community(), icon: 'users' }
+	] satisfies { href: string; label: string; icon: AdminIconName }[]);
+	const mobileNav = $derived([
+		{ href: '/account', label: m.account_nav_home(), icon: 'home' as const },
+		...primaryNav
 	]);
 	const utilityNav = $derived([
 		{ href: '/account/settings', label: m.account_nav_settings() }
@@ -54,6 +58,12 @@
 			<h1 class="text-xl leading-tight sm:text-2xl">{m.account_layout_heading()}</h1>
 			<p class="mt-1 break-words text-sm text-stone-600">{m.account_member_greeting({ name: data.member.name })}</p>
 		</div>
+		<a href="/account/settings" aria-label={m.account_nav_settings()}
+			aria-current={settingsActive ? 'location' : undefined}
+			class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-brand-800 focus-visible:outline-2 focus-visible:outline-brand-800 lg:hidden {settingsActive ? 'bg-brand-50' : 'hover:bg-stone-50'}">
+			<AdminIcon name="settings" class="size-[1.05rem]" />
+			{m.account_nav_settings_short()}
+		</a>
 		<div class="flex w-full flex-wrap items-center gap-x-2 sm:w-auto">
 			<a href="/account/points#member-rank" class="inline-flex min-h-11 items-center rounded-md"
 				aria-label={`${rankName(rank)} · ${m.points_rank_progress()}`}>
@@ -66,7 +76,7 @@
 	</header>
 
 	<div class="grid items-start gap-3 sm:gap-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-8">
-		<nav aria-label={m.account_layout_heading()} class="flex flex-col rounded-xl border border-stone-200 bg-white p-2">
+		<nav aria-label={m.account_layout_heading()} class="hidden flex-col rounded-xl border border-stone-200 bg-white p-2 lg:flex">
 			<a href="/account" aria-current={isActive('/account') ? 'page' : undefined}
 				class="mb-1 flex min-h-11 items-center justify-center rounded-lg px-2.5 text-sm font-medium lg:justify-start {isActive('/account') ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{m.account_dashboard()}</a>
 			<ul class="grid grid-cols-[1fr_1fr_1.55fr] gap-1 lg:grid-cols-1">
@@ -121,4 +131,42 @@
 			{/if}
 		</div>
 	</div>
+
+	<nav aria-label={m.account_layout_heading()} class="account-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white shadow-[0_-4px_18px_rgba(28,25,23,0.05)] lg:hidden">
+		<ul class="mx-auto grid max-w-xl grid-cols-[1fr_1fr_1fr_minmax(4.625rem,1fr)] gap-1">
+			{#each mobileNav as item (item.href)}
+				{@const active = isActive(item.href) || (item.href === '/account/reservations' && bookingSection)}
+				<li class="min-w-0">
+					<a href={item.href} aria-current={active ? (pathname === item.href ? 'page' : 'location') : undefined}
+						class="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-center text-[11px] leading-tight focus-visible:outline-2 focus-visible:outline-brand-800 {active ? 'font-bold text-brand-900' : 'font-medium text-stone-600 hover:bg-stone-50'}">
+						<span class="relative flex h-7 w-12 items-center justify-center rounded-full {active ? 'bg-brand-100' : ''}">
+							<AdminIcon name={item.icon} class="size-[1.125rem]" />
+							{#if item.href === '/account/community' && data.forumUnread > 0}
+								<span class="absolute -top-1 -right-1 min-w-4 rounded-full bg-amber-100 px-1 text-center text-[10px] font-semibold leading-4 text-amber-900">
+									<span class="sr-only">{m.forum_unread()} </span>{data.forumUnread > 99 ? '99+' : data.forumUnread}
+								</span>
+							{/if}
+						</span>
+						<span class="max-w-full wrap-break-word">{item.label}</span>
+					</a>
+				</li>
+			{/each}
+		</ul>
+	</nav>
 </div>
+
+<style>
+	.account-bottom-nav {
+		padding: .3rem max(.5rem, env(safe-area-inset-right)) calc(.35rem + env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left));
+	}
+
+	@media (width < 64rem) {
+		:global(html:has(.account-bottom-nav)) {
+			--account-bottom-inset: calc(4.5rem + env(safe-area-inset-bottom));
+			scroll-padding-bottom: var(--account-bottom-inset);
+		}
+		:global(.site-public:has(.account-bottom-nav)) > :global(footer) {
+			padding-bottom: var(--account-bottom-inset);
+		}
+	}
+</style>

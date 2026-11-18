@@ -162,7 +162,7 @@
 
 {#if gaId && consent === 'unset' && !isExcluded(page.url.pathname)}
 	<div
-		class="fixed inset-x-0 bottom-0 z-[60] border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur"
+		class="fixed inset-x-0 bottom-[var(--account-bottom-inset,0px)] z-[60] border-t border-stone-200 bg-white/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur"
 		role="dialog"
 		aria-live="polite"
 	>
