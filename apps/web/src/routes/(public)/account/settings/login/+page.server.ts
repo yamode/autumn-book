@@ -16,7 +16,8 @@ const authenticatorAppName = (name?: string) => {
 	if (name === LEGACY_TOTP_NAME || name === TOTP_DEFAULT_NAME) return '';
 	return name?.startsWith(TOTP_NAME_PREFIX) ? name.slice(TOTP_NAME_PREFIX.length) : name ?? '';
 };
-type Issue = 'recent' | 'password' | 'unavailable' | 'code' | 'retainKey' | 'keyName' | 'renameKey';
+type Issue = 'recent' | 'passwordLength' | 'passwordMismatch' | 'passwordSame' | 'passwordWeak' | 'passwordTotp' | 'passwordSave'
+	| 'unavailable' | 'code' | 'retainKey' | 'keyName' | 'renameKey';
 const rejected = (issue: Issue, status = 400) => fail(status, { issue });
 
 export const load: PageServerLoad = async (event) => {
@@ -32,6 +33,7 @@ export const load: PageServerLoad = async (event) => {
 		return {
 			unavailable: false, recent: security.recent, passkeysAvailable: memberPasskeysAvailable(event.url), keys,
 			loginEmail: security.recent ? security.email : null,
+			passwordNeedsTotp: security.hasTotp && !security.aal2,
 			factors: (data?.totp ?? []).map((factor) => ({ id: factor.id, name: authenticatorAppName(factor.friendly_name) }))
 		};
 	} catch {
@@ -43,13 +45,28 @@ export const actions: Actions = {
 	password: async (event) => {
 		const security = await memberSecurityContext(event).catch(() => null);
 		if (!security?.recent) return rejected('recent', 403);
+		if (security.hasTotp && !security.aal2) return rejected('passwordTotp', 403);
 		const form = await event.request.formData();
-		const password = String(form.get('password') ?? '');
+		const password = form.get('password');
 		// Supabase passwords are hashed with bcrypt. Do not accept input that would be truncated.
-		const bytes = new TextEncoder().encode(password).length;
-		if (password.length < 12 || bytes > 72 || password !== form.get('confirm')) return rejected('password');
+		if (typeof password !== 'string' || [...password].length < 12 || new TextEncoder().encode(password).length > 72) {
+			return rejected('passwordLength');
+		}
+		if (password !== form.get('confirm')) return rejected('passwordMismatch');
 		const { error } = await security.client.auth.updateUser({ password });
-		if (error) return rejected('password');
+		if (error) {
+			switch (error.code) {
+				case 'same_password': return rejected('passwordSame');
+				case 'weak_password': return rejected('passwordWeak');
+				case 'insufficient_aal': return rejected('passwordTotp', 403);
+				case 'reauthentication_needed':
+				case 'session_expired':
+				case 'session_not_found': return rejected('recent', 403);
+				default:
+					console.warn('[member-password] Update failed', { code: error.code, status: error.status });
+					return rejected('passwordSave', 503);
+			}
+		}
 		return { saved: 'password' as const };
 	},
 	renamePasskey: async (event) => {
