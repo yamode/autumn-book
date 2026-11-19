@@ -64,6 +64,30 @@
 		else query.delete('meal');
 		return `${base}/plans?${query}`;
 	}
+	// チップ列の左右に続きがあるか（ある側だけ端をぼかす）
+	let mealStrip = $state<HTMLDivElement | null>(null);
+	let mealEdges = $state({ left: false, right: false });
+	function updateMealEdges() {
+		if (!mealStrip) return;
+		const { scrollLeft, scrollWidth, clientWidth } = mealStrip;
+		mealEdges = { left: scrollLeft > 1, right: scrollLeft + clientWidth < scrollWidth - 1 };
+	}
+	let mealMask = $derived.by(() => {
+		if (!mealEdges.left && !mealEdges.right) return '';
+		const gradient = `linear-gradient(to right, ${mealEdges.left ? 'transparent, #000 24px' : '#000'}, ${mealEdges.right ? '#000 calc(100% - 32px), transparent' : '#000'})`;
+		return `mask-image: ${gradient}; -webkit-mask-image: ${gradient};`;
+	});
+	// 選んだチップが画面の外なら見える位置へ（ページは縦に動かさず、列だけ横に動かす）
+	$effect(() => {
+		void data.params.meal;
+		const strip = mealStrip;
+		if (!strip) return;
+		const active = strip.querySelector<HTMLElement>('[aria-current="true"]');
+		if (active && (active.offsetLeft < strip.scrollLeft || active.offsetLeft + active.offsetWidth > strip.scrollLeft + strip.clientWidth)) {
+			strip.scrollLeft = active.offsetLeft - 16;
+		}
+		updateMealEdges();
+	});
 	function mealLabel(option: MealOption) {
 		const kind = {
 			half: m.meal_filter_half(),
@@ -132,6 +156,8 @@
 	}
 </script>
 
+<svelte:window onresize={updateMealEdges} />
+
 <svelte:head>
 	<title>{m.plans_title({ name: data.facility.name })}</title>
 </svelte:head>
@@ -162,7 +188,8 @@
 			<!-- お食事で絞り込む: 検索条件の続きとして検索欄の下に置く（「客室から探す」の下だと客室の絞り込みに見えるため・2026-11-19 指示） -->
 			<div class="mt-3 flex items-center gap-3">
 				<span class="shrink-0 text-xs font-medium text-stone-500">{m.meal_filter_label()}</span>
-				<div class="-mr-4 flex min-w-0 flex-1 gap-2 overflow-x-auto pr-4 pb-1 sm:mr-0 sm:flex-wrap sm:pr-0" role="group" aria-label={m.meal_filter_label()}>
+				<!-- スマホは横スクロール。スクロールバーは出さず、続きがある側の端を薄くぼかす（2026-11-19 指示） -->
+				<div bind:this={mealStrip} onscroll={updateMealEdges} style={mealMask} class="relative -mr-4 flex min-w-0 flex-1 gap-2 overflow-x-auto pr-4 [scrollbar-width:none] sm:mr-0 sm:flex-wrap sm:pr-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={m.meal_filter_label()}>
 					{#each [{ key: '', label: m.meal_filter_all() }, ...data.meals.map((option) => ({ key: option.key, label: mealLabel(option) }))] as item (item.key)}
 						<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={data.params.meal === item.key ? 'true' : undefined} class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {data.params.meal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
 					{/each}
