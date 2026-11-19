@@ -35,11 +35,14 @@ export function routeStripeEvent(event: StripeEventLike, opts: WebhookRouteOptio
     case 'charge.refunded':
       return { kind: 'charge_refunded', object: obj };
     case 'payment_intent.succeeded':
+    // 与信だけ取った（capture_method=manual）予約時決済の「与信が取れた」。公式サイト予約はここで予約を確定し、
+    // 成立したら請求を確定する（ブラウザが閉じられたときの保険・2026-11-19）
+    case 'payment_intent.amount_capturable_updated':
     case 'setup_intent.succeeded': {
       if (!id) return { kind: 'ignore', reason: 'no_id' };
       const ours = [{ app: opts.app, purposes: opts.purposes }, ...(opts.also ?? [])].some((t) => isElementsIntentFor(meta, t.app, t.purposes));
       if (!ours) return { kind: 'ignore', reason: 'not_ours' };
-      const kind = event.type === 'payment_intent.succeeded' ? 'payment_intent' : 'setup_intent';
+      const kind = event.type === 'setup_intent.succeeded' ? 'setup_intent' : 'payment_intent';
       return { kind, id, purpose: String(meta.purpose) };
     }
     case 'checkout.session.completed':

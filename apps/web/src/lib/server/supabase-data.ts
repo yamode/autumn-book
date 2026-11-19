@@ -604,7 +604,8 @@ export async function confirmBookingGroup(
 		? await db.rpc('confirm_booking_with_code', { ...params, p_code: opts.coupon.code, p_coupon_amount: opts.coupon.amount })
 		: await db.rpc('confirm_booking_server', { ...params, p_member_coupon_id: opts.memberCouponId ?? null });
 	if (error) {
-		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'coupon_amount_changed', 'onsite_not_allowed'] as const) {
+		// sold_out: 確定の時点でお部屋が埋まっていた（在庫は確定時に押さえる・autumn-shared 20261119074823）
+		for (const code of ['hold_expired', 'forbidden', 'invalid_guest', 'coupon_invalid', 'coupon_amount_changed', 'onsite_not_allowed', 'sold_out'] as const) {
 			if (error.message.includes(code)) return { error: code };
 		}
 		throw error;

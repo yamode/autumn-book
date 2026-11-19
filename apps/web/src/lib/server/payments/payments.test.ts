@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cleanKey, keyMode, publishableKeyIssue } from './keys';
 import { buildIntentMetadata, ELEMENTS_FLOW, isElementsIntentFor } from './metadata';
 import { routeStripeEvent } from './webhook-route';
-import { checkPaymentIntent, checkSetupIntent, isPaymentIntentId, isReusableIntent, isSetupIntentId, toStripeJpy } from './verify';
+import { checkPaymentIntent, checkSetupIntent, intentAmountOf, isPaymentIntentId, isReusableIntent, isSetupIntentId, toStripeJpy } from './verify';
 
 const APP = 'autumn-rms';
 const PURPOSE = 'rms_partner_booking';
@@ -140,5 +140,20 @@ describe('保存カード（2026-10-07）: Customer の一致', () => {
     expect(checkSetupIntent(si, { ...base }).ok).toBe(true);
     expect(checkSetupIntent(si, { ...base, customer: 'cus_a' }).ok).toBe(true);
     expect(checkSetupIntent(si, { ...base, customer: 'cus_b' })).toEqual({ ok: false, reason: 'not_ours' });
+  });
+});
+
+describe('与信だけ取る予約時決済（公式サイト・2026-11-19）', () => {
+  const exp = { app: APP, purpose: PURPOSE, refKey: 'partner_booking_id' };
+  const authorized = { id: 'pi_9', status: 'requires_capture', amount: 32000, amount_received: 0, amount_capturable: 32000, currency: 'jpy', metadata: meta() };
+  it('allowAuthorized のときだけ与信済みを通し、押さえた額で比べる', () => {
+    expect(checkPaymentIntent(authorized, { ...exp, expectedAmount: 32000 })).toMatchObject({ ok: false, reason: 'not_succeeded' });
+    expect(checkPaymentIntent(authorized, { ...exp, expectedAmount: 32000, allowAuthorized: true })).toEqual({ ok: true, refId: 'b1' });
+    expect(intentAmountOf(authorized)).toBe(32000);
+    expect(intentAmountOf({ ...authorized, status: 'succeeded', amount_received: 32000, amount_capturable: 0 })).toBe(32000);
+  });
+  it('「与信が取れた」の Webhook は支払完了と同じ振り分け', () => {
+    const ev = { type: 'payment_intent.amount_capturable_updated', data: { object: { id: 'pi_9', metadata: meta() } } };
+    expect(routeStripeEvent(ev, ROUTE_OPTS)).toEqual({ kind: 'payment_intent', id: 'pi_9', purpose: PURPOSE });
   });
 });

@@ -159,6 +159,8 @@ export const POST: RequestHandler = async (event) => {
 				clearBookingDraft(cookies);
 				return json({ ok: true, redirect: `/booking/complete/${r.bookingCode}` }, { headers: noStore });
 			}
+			// 確定の時点でお部屋が埋まっていた（与信は取り消した＝請求なし）
+			if (r.result === 'late' && r.soldOut && r.noCharge) return bad(m.booking_sold_out_at_confirm(), 409, { late: true, soldOut: true });
 			if (r.result === 'late') return bad(r.noCharge ? m.error_hold_expired() : lateMessage(r.refunded), 409, { late: true });
 			if (r.result === 'not_succeeded') return bad('お支払いがまだ完了していません。', 409);
 			return bad('お支払いを確認できませんでした。', 400);
@@ -169,6 +171,8 @@ export const POST: RequestHandler = async (event) => {
 		if (e instanceof DirectPaymentError) {
 			if (couponErrors.some((code) => code === e.code)) return bad(couponErrorText(e.code), 409);
 			if (e.code === 'hold_expired') return bad(m.error_hold_expired(), 410, { expired: true });
+			// カードの与信を取る前の確認で、お部屋が埋まっていた（請求も与信も無し）
+			if (e.code === 'sold_out') return bad(m.booking_sold_out_at_confirm(), 409, { soldOut: true });
 			if (e.code === 'invalid_guest') return bad('お名前・メールアドレスをご確認ください。', 400);
 			if (e.code === 'amount_too_small') return bad('お支払い額が少ないため、オンライン決済をご利用いただけません。現地払いをお選びください。', 400);
 			if (e.code === 'already_paid') return bad('このご予約はお支払い済みです。', 409);

@@ -229,6 +229,9 @@ export type PaymentIntent = {
   status: string;
   amount: number;
   amount_received?: number | null;
+  /** 与信（capture_method=manual）で押さえている額。請求を確定（capture）すると 0 */
+  amount_capturable?: number | null;
+  capture_method?: string | null;
   currency: string;
   client_secret?: string | null;
   latest_charge?: string | null;
@@ -265,6 +268,11 @@ export const createPaymentIntent = (args: {
   customer?: string | null;
   /** Stripe の決済完了レシートの送り先（本番のみ送られる。Stripe の管理画面で領収書メールがオンのとき） */
   receiptEmail?: string | null;
+  /**
+   * 'manual' = 与信だけ取る（カードの枠を押さえ、capturePaymentIntent で請求を確定するまでお金は動かない）。
+   * 公式サイトの予約時決済は、予約が成立してから請求を確定する（在庫は確定時に押さえるため・2026-11-19）
+   */
+  captureMethod?: 'manual';
 }) =>
   stripeFetch<PaymentIntent>(
     'POST',
@@ -274,6 +282,7 @@ export const createPaymentIntent = (args: {
       currency: 'jpy',
       customer: args.customer || undefined,
       receipt_email: args.receiptEmail || undefined,
+      capture_method: args.captureMethod || undefined,
       payment_method_types: ['card'],
       description: args.description.slice(0, 1000),
       metadata: args.metadata
@@ -290,6 +299,9 @@ export const updatePaymentIntentReceipt = (id: string, args: { email?: string | 
     metadata: { receipt_name: args.name ?? '' }
   });
 export const cancelPaymentIntent = (id: string, idempotencyKey: string) => stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}/cancel`, {}, idempotencyKey);
+/** 与信（capture_method=manual・requires_capture）の請求を確定する。押さえた全額を請求する */
+export const capturePaymentIntent = (id: string, idempotencyKey: string) =>
+  stripeFetch<PaymentIntent>('POST', `/payment_intents/${encodeURIComponent(id)}/capture`, {}, idempotencyKey);
 
 // チェックアウト日決済（カードを登録して後日 off-session で請求）。本人認証（3Dセキュア）は登録時に済ませる。
 // マイページの保存カードの登録にも使う（冪等キー無し＝毎回新しく作る・N8）。

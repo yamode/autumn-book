@@ -16,6 +16,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { refundCancelledUpgrades } from './upgrade-payments';
 import {
+  cancelPaymentIntent,
+  capturePaymentIntent,
   cardLabelOf,
   chargeSavedCard,
   createCustomer,
@@ -33,7 +35,7 @@ import {
 import { buildIntentMetadata } from '$lib/server/payments/metadata';
 import { preparePaymentIntent, prepareSetupIntent } from '$lib/server/payments/intents';
 import { createSavedCardSession, listSavedCards, resolveMemberCustomer } from '$lib/server/payments/saved-cards';
-import { checkPaymentIntent, checkSetupIntent, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
+import { checkPaymentIntent, checkSetupIntent, intentAmountOf, isPaymentIntentId, isSetupIntentId } from '$lib/server/payments/verify';
 import { cardExpiresBefore } from '$lib/partner-card';
 import type { GuestInfo, RatePlan } from '$lib/types';
 import { addDays } from '@autumn-book/core';
@@ -249,6 +251,11 @@ export async function prepareDirectPayment(args: {
       409
     );
   }
+  // 在庫は予約確定で初めて押さえる（autumn-shared 20261119074823）。カードの与信を取る前に、いま空いているかだけ確かめる
+  // （押さえはしない。確定の時点で埋まっていれば、与信を取り消して予約にしない）
+  if (!(await rpc<boolean>('hold_inventory_available', { p_hold_id: row.hold_id }).catch(() => true))) {
+    throw new DirectPaymentError('ご予約の手続き中にお部屋が埋まりました', 'sold_out', 409);
+  }
   const metadata = buildIntentMetadata({
     app: STRIPE_APP_BOOK,
     purpose: STRIPE_PURPOSE_DIRECT_BOOKING,
@@ -264,7 +271,9 @@ export async function prepareDirectPayment(args: {
     metadata,
     refKey: DIRECT_REF_KEY,
     // 同じ仮押さえで同時に2回押されても Intent が1本になるよう、仮押さえ・前回の Intent・金額から作る
-    idempotencyKey: `book-direct-pi-${row.hold_id}-${row.payment_intent_id ?? 'first'}-${row.amount}`
+    idempotencyKey: `book-direct-pi-${row.hold_id}-${row.payment_intent_id ?? 'first'}-${row.amount}`,
+    // 与信だけ取り、予約が成立してから請求を確定する（confirmDirectIntent）。満室で成立しなければ与信を取り消すだけ
+    captureMethod: 'manual'
   });
   if (prepared.intentId !== row.payment_intent_id) {
     await rpc('direct_payment_attach_intent', { p_hold_id: row.hold_id, p_payment_intent_id: prepared.intentId, p_amount: row.amount });
@@ -442,7 +451,8 @@ export async function confirmDirectSetup(
   }
   if (row.result === 'not_found' || row.result === 'mismatch') return { result: 'not_ours' };
   // 仮押さえの期限切れ等: カードを登録しただけでお金は動いていない（返金不要）
-  return { result: 'late', holdId, reason: row.reason ?? row.result, refunded: true, noCharge: true };
+  const lateReason = row.reason ?? row.result;
+  return { result: 'late', holdId, reason: lateReason, refunded: true, noCharge: true, soldOut: lateReason.includes('sold_out') };
 }
 
 // ---------------------------------------------------------------------------
@@ -558,7 +568,8 @@ export type DirectConfirmResult =
     }
   // 支払は通ったが予約にできなかった（期限切れ等）→ 全額返金した（refunded=false は返金に失敗＝要人手）。
   // noCharge: チェックアウト日決済のカード登録だけで、お金は動いていない
-  | { result: 'late'; holdId: string; reason: string; refunded: boolean; noCharge?: boolean }
+  // soldOut: 確定の時点でお部屋が埋まっていた（在庫は確定時に押さえる・20261119074823）
+  | { result: 'late'; holdId: string; reason: string; refunded: boolean; noCharge?: boolean; soldOut?: boolean }
   // まだ支払が済んでいない（3Dセキュア待ち・処理中・拒否）
   | { result: 'not_succeeded'; holdId: string; status: string }
   | { result: 'not_ours' };
@@ -583,17 +594,20 @@ export async function confirmDirectIntent(intentId: string, expectHoldId?: strin
   // チェックアウト日決済の請求（chargeDirectBooking が作る off-session の Intent）は予約の確定ではない。
   // Webhook が記録より先に届くと「台帳と違う Intent」で全額返金してしまうので、ここでは扱わない
   if (pi.metadata?.flow === 'checkout_charge') return { result: 'not_ours' };
-  const check = checkPaymentIntent(pi, { ...EXPECT, refId: expectHoldId, expectedAmount: null });
+  // 与信だけ取った Intent（requires_capture）も受け付ける。予約が成立したら請求を確定し、成立しなければ与信を取り消す
+  const check = checkPaymentIntent(pi, { ...EXPECT, refId: expectHoldId, expectedAmount: null, allowAuthorized: true });
   if (!check.ok) {
     if (check.reason === 'not_succeeded') return { result: 'not_succeeded', holdId: check.refId, status: check.status };
     if (check.reason === 'amount_mismatch') throw new DirectPaymentError('通貨が違う決済です', 'amount_mismatch', 400);
     return { result: 'not_ours' };
   }
   const holdId = check.refId;
-  const amount = pi.amount_received ?? pi.amount;
+  const amount = intentAmountOf(pi);
   const row = await rpc<ConfirmRow>('direct_payment_confirm', { p_hold_id: holdId, p_payment_intent_id: pi.id, p_amount: amount });
 
   if (row.result === 'paid' || row.result === 'already') {
+    // 予約は成立した。与信のままなら請求を確定する（同じ Intent への再実行は Stripe の冪等キーで1回だけ）
+    if (pi.status === 'requires_capture') await captureAfterConfirm(pi.id, row.booking_code ?? '');
     return {
       result: row.result,
       holdId,
@@ -609,10 +623,41 @@ export async function confirmDirectIntent(intentId: string, expectHoldId?: strin
   }
   if (row.result === 'not_found') return { result: 'not_ours' };
 
-  // late（期限切れ・金額の食い違い）/ mismatch（台帳と違う Intent・二重払い）→ この Intent を全額返金
+  // late（満室・期限切れ・金額の食い違い）/ mismatch（台帳と違う Intent・二重払い）→ 与信なら取り消す（お金は動かない）。
+  // 請求済み（与信にする前に作った Intent）なら全額返金
   const reason = row.reason ?? row.result;
+  const soldOut = reason.includes('sold_out');
+  if (pi.status === 'requires_capture') {
+    const released = await releaseAuthorization(pi.id, reason);
+    return { result: 'late', holdId, reason, refunded: released, noCharge: true, soldOut };
+  }
   const refunded = await refundWhole(pi.id, reason);
-  return { result: 'late', holdId, reason, refunded };
+  return { result: 'late', holdId, reason, refunded, soldOut };
+}
+
+/** 予約成立後に与信の請求を確定する。失敗しても予約は残る（与信は 7 日で切れるので、人が気づけるようにログに残す） */
+async function captureAfterConfirm(intentId: string, bookingCode: string): Promise<void> {
+  try {
+    await capturePaymentIntent(intentId, `book-direct-capture-${intentId}`);
+  } catch (e) {
+    // 既に確定済み（別の経路が先に確定した）は問題ない。それ以外は要確認
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/already been captured|status of succeeded/i.test(msg)) return;
+    console.error('[direct-payment] 予約は成立したが請求の確定に失敗（Stripe の管理画面で確定が必要）', bookingCode, intentId, msg);
+  }
+}
+
+/** 予約にできなかった与信を取り消す（お客様のカードには請求されない） */
+async function releaseAuthorization(intentId: string, reason: string): Promise<boolean> {
+  try {
+    await cancelPaymentIntent(intentId, `book-direct-release-${intentId}`);
+    return true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/status of canceled/i.test(msg)) return true;
+    console.error('[direct-payment] 与信の取消に失敗（7日で自動的に切れる）', intentId, reason, msg);
+    return false;
+  }
 }
 
 async function refundWhole(intentId: string, reason: string): Promise<boolean> {

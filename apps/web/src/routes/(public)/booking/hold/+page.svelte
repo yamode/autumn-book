@@ -286,6 +286,7 @@
 	// 3Dセキュア等のリダイレクトの戻りで確定できなかったときの案内（/booking/pay/return）
 	const returnNotice = $derived.by(() => {
 		const p = page.url.searchParams.get('pay');
+		if (p === 'sold_out') return m.booking_sold_out_at_confirm();
 		if (p === 'late') return m.pay_notice_late();
 		if (p === 'late_unrefunded') return m.pay_notice_late_unrefunded();
 		if (p === 'card_expiry') return m.pay_notice_card_expiry();
@@ -1198,6 +1199,10 @@
 						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
 					{:else if !isPrepay}
 						<p class="mt-2 text-center text-xs text-stone-500">{m.hold_local_payment_note()}</p>
+					{/if}
+					{#if !data.preview}
+						<!-- 在庫は予約確定の時点で押さえる（入力中は押さえていない・2026-11-19）。さりげなく添える -->
+						<p class="mt-1 text-center text-xs text-stone-400">{m.hold_room_not_reserved_note()}</p>
 					{/if}
 					<button type="button" onclick={backToInput} disabled={paying} class="mt-2 w-full rounded-lg border border-stone-300 px-4 py-2.5 text-sm hover:bg-stone-50 disabled:opacity-50">{m.hold_back_to_input()}</button>
 				{/if}

@@ -32,6 +32,7 @@ export const GET: RequestHandler = async ({ url, cookies }) => {
 		redirect(303, `/booking/complete/${r.bookingCode}`);
 	}
 	if (r.result === 'card_expiry') back('card_expiry');
+	if (r.result === 'late' && r.soldOut && r.noCharge) back('sold_out');
 	if (r.result === 'late') back(r.noCharge ? 'expired' : r.refunded ? 'late' : 'late_unrefunded');
 	back(r.result === 'not_succeeded' ? 'failed' : 'error');
 	return new Response(null);

@@ -419,6 +419,8 @@ export const actions: Actions = {
 					errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
 					return fail(400, { errors, values: guest });
 				}
+				// 確定の時点でお部屋が埋まっていた（入力中は在庫を押さえていない）
+				if (result.error === 'sold_out') return fail(409, { message: m.booking_sold_out_at_confirm(), values: guest });
 				return fail(410, { message: m.error_hold_expired() });
 			}
 			await setLastBooking(cookies, {

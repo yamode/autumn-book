@@ -15,6 +15,7 @@ export type PaymentIntentLike = {
   status: string;
   amount: number;
   amount_received?: number | null;
+  amount_capturable?: number | null;
   currency: string;
   metadata?: Record<string, string> | null;
 };
@@ -46,15 +47,23 @@ function refOf(meta: Record<string, string> | null | undefined, exp: IntentExpec
   return ref;
 }
 
+/** その Intent で動く（動いた）額。与信だけ（requires_capture）なら押さえた額、請求済みなら受け取った額 */
+export function intentAmountOf(pi: PaymentIntentLike): number {
+  if (pi.status === 'requires_capture') return pi.amount_capturable ?? pi.amount;
+  return pi.amount_received ?? pi.amount;
+}
+
 // 予約時決済: succeeded・通貨（既定 jpy）・金額（円）を確かめる。expectedAmount が null なら金額は見ない。
+// allowAuthorized: 与信だけ取った Intent（requires_capture）も通す（公式サイトの予約時決済・予約成立後に請求を確定する）
 export function checkPaymentIntent(
   pi: PaymentIntentLike,
-  exp: IntentExpectation & { expectedAmount: number | null; currency?: string }
+  exp: IntentExpectation & { expectedAmount: number | null; currency?: string; allowAuthorized?: boolean }
 ): IntentCheck {
   const ref = refOf(pi.metadata, exp);
   if (typeof ref !== 'string') return ref;
-  if (pi.status !== 'succeeded') return { ok: false, reason: 'not_succeeded', status: pi.status, refId: ref };
-  const actual = pi.amount_received ?? pi.amount;
+  const authorized = exp.allowAuthorized === true && pi.status === 'requires_capture';
+  if (pi.status !== 'succeeded' && !authorized) return { ok: false, reason: 'not_succeeded', status: pi.status, refId: ref };
+  const actual = intentAmountOf(pi);
   const currencyOk = (pi.currency ?? '').toLowerCase() === (exp.currency ?? 'jpy');
   if (!currencyOk || (exp.expectedAmount != null && actual !== exp.expectedAmount)) {
     return { ok: false, reason: 'amount_mismatch', refId: ref, expected: exp.expectedAmount ?? actual, actual };
