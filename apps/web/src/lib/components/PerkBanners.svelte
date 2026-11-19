@@ -8,12 +8,13 @@
 </script>
 
 {#if items.length}
-  <div class="flex flex-wrap gap-2.5">
+  <!-- 置き場所は予約ボタンの下（右の欄）。ボタンの幅は予約ボタンにそろえて全幅（短いと浮いて見えるため・2026-11-19 指示） -->
+  <div class="grid gap-2">
     {#each items as item (item.key)}
       <button
         type="button"
         onclick={() => onopen(item.key)}
-        class={`inline-flex items-center gap-2 rounded-md px-4 py-2.5 text-sm font-bold transition ${
+        class={`flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-bold transition ${
           item.kind === 'official'
             ? 'bg-gradient-to-r from-teal-700 to-teal-500 text-white shadow-sm hover:brightness-110'
             : 'border border-stone-300 bg-white text-brand-900 hover:border-stone-500'

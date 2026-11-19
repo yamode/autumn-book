@@ -380,8 +380,8 @@
 	{#if chosen?.quote}
 		<!-- 選んで入ってきた客室の料金（最安ではなく、その部屋の額） -->
 		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
+		<!-- 日程はすぐ上の「ご宿泊の条件」に出ているので、ここでは繰り返さない（2026-11-19 指示） -->
 		<p class="font-medium text-brand-900">{chosen.room.name}</p>
-		<p class="mt-1 text-xs text-stone-500">{formatDate(data.params.checkin)} · {m.searchbar_nights_option({ n: String(data.params.nights) })}</p>
 		<p class="mt-2 text-xs text-stone-500">{totalSub()}</p>
 		<p class="text-2xl font-bold text-brand-900">
 			{formatPrice(chosen.quote.total)}<span class="ml-1 text-xs font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
@@ -395,7 +395,6 @@
 		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
 		<p class="font-medium text-brand-900">{picked.room.name}</p>
 		{#if data.params.checkin}
-			<p class="mt-1 text-xs text-stone-500">{formatDate(data.params.checkin)} · {m.searchbar_nights_option({ n: String(data.params.nights) })}</p>
 			<p class="mt-1 text-sm font-medium text-stone-500">{m.plan_detail_sold_out()}</p>
 		{/if}
 	{:else if cheapest}
