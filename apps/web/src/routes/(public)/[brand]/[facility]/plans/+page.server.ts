@@ -1,6 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor } from '$lib/server/store';
-import { stayCalendar, todayJst } from '$lib/server/stay-calendar';
+import { todayJst } from '$lib/server/stay-calendar';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers, sbRoomPlanReferencePrices } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -116,13 +116,14 @@ export const load: PageServerLoad = async (event) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
-		const [allPlans, allRooms, settings, datedOffers, referencePrices, calendar] = await Promise.all([
+		// 空室カレンダーは開いたときに /api/stay-calendar で取る（ここでは取らない。使っていなかったうえ、
+		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
+		const [allPlans, allRooms, settings, datedOffers, referencePrices] = await Promise.all([
 			sbListPlansMapped(facility.id),
 			sbListRoomTypesMapped(facility.id),
 			loadEarlyPrepaySettings(facility.id),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults) : Promise.resolve([]),
-			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
-			stayCalendar(facility.id, nights, adults)
+			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults)
 		]);
 		// 対象の会員には会員限定プランも出す（列挙系 RPC は普通のプランだけを返すので、プランごとに料金を取る）
 		const memberPlans = await listedSecretPlans(facility.id, viewer);
@@ -153,9 +154,6 @@ export const load: PageServerLoad = async (event) => {
 			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
 			combos: combosFor(allRooms, plans, prices, adults, nights, roomCount),
 			meals,
-			calendarDays: calendar.days,
-			calendarThrough: calendar.through,
-			calendarClosed: calendar.closed,
 			today,
 			referenceMode: !checkin,
 			favoriteRoomTypeIds: await favoritesP,
@@ -185,15 +183,11 @@ export const load: PageServerLoad = async (event) => {
 			prices.push({ ratePlanId: plan.id, roomTypeId, total: quote.total, referencePrice: null, remaining });
 		}
 	}
-	const calendar = await stayCalendar(facility.id, nights, adults);
 	return {
 		facility,
 		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults, roomCount),
 		combos: combosFor(getRoomTypes(facility.id, locale), plans, prices, adults, nights, roomCount),
 		meals,
-		calendarDays: calendar.days,
-		calendarThrough: calendar.through,
-			calendarClosed: calendar.closed,
 		today,
 		referenceMode: false,
 		favoriteRoomTypeIds: await favoritesP,

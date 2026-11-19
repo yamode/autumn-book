@@ -98,7 +98,12 @@ export const load: PageServerLoad = async (event) => {
 		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		const [calendar, offers, rooms] = await Promise.all([
 			bookable
-				? stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS, previewPlanId })
+				? // 取れなくてもページは出す（日付パネルは開いたときに /api/stay-calendar で取り直す）。
+				  // 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた（2026-11-19）
+				  stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS, previewPlanId }).catch((e) => {
+						console.error('[plan] stay calendar', e instanceof Error ? e.message : String(e));
+						return { days: [], through: '', closed: [] as string[] };
+					})
 				: Promise.resolve({ days: [], through: '', closed: [] }),
 			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
 			sbListRoomTypesMapped(facility.id)
