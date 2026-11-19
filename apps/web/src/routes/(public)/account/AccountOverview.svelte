@@ -59,6 +59,19 @@
 	</p>
 {/if}
 
+{#if !reservationsOnly && page.url.searchParams.get('migrated')}
+	<!-- 会員移行の直後: 以前のご利用の反映（紐づけ済み／宿で確認中） -->
+	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+		{page.url.searchParams.get('migrated') === 'linked' ? m.migrate_claim_linked() : page.url.searchParams.get('migrated') === 'pending_review' ? m.migrate_claim_pending() : m.migrate_done_new()}
+	</p>
+{/if}
+
+{#if !reservationsOnly && 'legacyClaimable' in data && data.legacyClaimable}
+	<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+		{m.migrate_claim_banner()} <a href="/account/legacy" class="font-medium underline">{m.migrate_claim_title()}</a>
+	</p>
+{/if}
+
 {#if data.legacyActive}
 	<p class="mb-4 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">{@html m.account_legacy_note()}</p>
 {/if}

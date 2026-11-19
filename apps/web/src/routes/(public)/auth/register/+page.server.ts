@@ -39,12 +39,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	if (AUTH_MODE === 'supabase') {
 		// OTP 認証済み・未登録なら、いきなりプロフィール入力から
 		if (locals.pendingAuthUser) {
-			return { authMode: AUTH_MODE, step: 'profile', email: locals.pendingAuthUser.email, prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen() };
+			return { authMode: AUTH_MODE, step: 'profile', email: locals.pendingAuthUser.email, prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen(url) };
 		}
-		return { authMode: AUTH_MODE, step: 'email', email: '', prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen() };
+		return { authMode: AUTH_MODE, step: 'email', email: '', prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen(url) };
 	}
 
-	return { authMode: AUTH_MODE, step: 'demo', email: '', prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen() };
+	return { authMode: AUTH_MODE, step: 'demo', email: '', prefill, welcomeBonus, consentNext, migrationOpen: legacyMigrationOpen(url) };
 };
 
 // 再送は、初回に認証を通過し、実際に送信できた同じアドレスだけに許可する。

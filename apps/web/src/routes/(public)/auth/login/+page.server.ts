@@ -36,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
 		authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS,
 		passkeys: memberPasskeysAvailable(url), smsAvailable, smsDefault: await memberSmsDefault(event),
 		// 旧会員の会員移行の入口（閉じている間はリンクを出さない）
-		migrationOpen: legacyMigrationOpen()
+		migrationOpen: legacyMigrationOpen(url)
 	};
 };
 

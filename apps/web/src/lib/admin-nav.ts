@@ -103,6 +103,8 @@ export const ADMIN_NAV: NavGroup[] = [
 				icon: 'member',
 				children: [
 					{ href: '/admin/members', label: '会員', tenantWide: true },
+					// 旧会員（tripla）の会員移行で、自動で顧客に紐づかなかったものの確認（DB 関数が管理者だけに絞っている）
+					{ href: '/admin/members/legacy', label: '旧会員の確認', tenantWide: true, adminOnly: true },
 					{ href: '/admin/member-benefits', label: '会員特典', tenantWide: true },
 					{ href: '/admin/member-preview', label: '会員ランクのプレビュー' },
 					{ href: '/admin/app', label: 'アプリ運用', tenantWide: true },

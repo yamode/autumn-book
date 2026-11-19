@@ -1,3 +1,5 @@
+import { legacyMigrationOpen } from '$lib/server/legacy-migration-flag';
+import { legacyClaimable } from '$lib/server/legacy-members';
 import { myReservations, facilityById, roomTypeById } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyReservations, reverseFacilityUuid } from '$lib/server/supabase-data';
@@ -65,5 +67,10 @@ const loadReservations = async (event: RequestEvent) => {
 // 旧 tripla マイページへの案内（予約一覧の上に 1 行・期限まで）
 export const loadAccountOverview = async (event: RequestEvent) => ({
 	...(await loadReservations(event)),
-	legacyActive: legacyMypageFromEnv().kind === 'active'
+	legacyActive: legacyMypageFromEnv().kind === 'active',
+	// 以前の予約システムの会員の記録（同じメール）があれば「ご利用実績を引き継ぐ」を案内（移行の受付を開いているときだけ）
+	legacyClaimable:
+		legacyMigrationOpen(event.url) && event.locals.user
+			? (await legacyClaimable(event.locals.user.id).catch(() => ({ claimable: false }))).claimable
+			: false
 });

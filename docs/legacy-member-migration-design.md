@@ -148,6 +148,24 @@
 3. v3 を実装し、もう一度レビューしてから、ローンチの 1〜2 週後に移行を開ける
 4. CSV の取り込みは、tripla との契約（委託か第三者提供か）を確かめた後
 
+## 11. Fable の再レビュー（v3・2026-11-19）と直したこと
+
+**結論: 「このままでは開けない。High 3 件と Medium の 1〜3 を直せば開けてよい」。** すべて直した（autumn-shared `20261119134010_book_legacy_member_review_fixes.sql`・Book v0.290.0）。DB は本番でロールバックするテストで確かめた。
+
+| # | 指摘 | 直したこと |
+|---|---|---|
+| High-1 | 旧会員の一覧にあるメールで**通常の会員登録**をすると、`register_member` が電話を見ずに PMS の顧客へ名寄せし、電話の確認を迂回できる（11/30 の公開から、受付の開け閉めに関係なく） | `register_member` は未移行の旧会員の行があるメールでは名寄せしない（新しい顧客にする）。紐づけは `/account/legacy` の引き継ぎ（電話必須）か職員の確認だけ |
+| High-2 | 移行の完了で自動で紐づけたものは `previous_guest_id` が無く、解除できない。職員の一覧にも出ない | 完了で紐づけたときも、本人が入力した内容で戻し先の顧客を作り `previous_guest_id`・`previous_rank='standard'` に残す。一覧に linked を全件出す |
+| High-3 | 職員の一覧に、本人が手続きで入力した氏名・電話が出ない（食い違いに気づけない） | 一覧に `entered_name`・`entered_kana`・`entered_phone` を足し、管理画面で食い違いを赤字にする。食い違えば **PMS の電話番号へ宿から電話して確かめてから**紐づける、と画面と手順書に書いた |
+| Medium-1 | メール配信が、以前の同意があると既定オン | 常に既定オフ（改めて選んでもらう） |
+| Medium-2 | 完了の途中で失敗するとアカウントを消すが、会員ができていても消してしまう（応答の取りこぼし） | 会員の行があれば消さない。完了メールの失敗では巻き戻さない |
+| Medium-3 | 引き継ぎの案内が会員でない人にも出る。「login」の案内に会員登録の一言が無い | `legacy_member_claimable` は現役会員だけ。案内メール・画面に「会員登録がまだなら続けて会員登録」を足した |
+| Medium-5 | 「既に会員です」等の案内メールは DB 側の上限を数えず、一覧に無いメールにも送れる | 一覧にあるメールだけに送り、どの種類も 1 日 5 通の上限で数える。職員のアカウントには送らない |
+| Low | 入口の除外（`*.pages.dev`）が抜けやすい／職員が候補以外の顧客に紐づけられる／identity の大文字小文字 | 許可リスト（book.yamado.app と開発中の手元だけ）／候補（`candidate_guest_ids`・`matched_guest_id`）だけ／付け替えは大文字小文字を区別しない |
+| Medium-4 | 確認待ちの個人データ・移行済みの行をいつまで残すか | 開けてから 1〜2 週で決める（手順書 6.） |
+
+**以前からある別の課題（移行と独立）**: 予約の確定で、受信を確かめていないメールにも identity を足している／`register_member` は一般にメールで氏名を見ずに名寄せする。→ 別に検討する。
+
 ## 9. 出典（調査）
 
 - Shopify の招待方式・Auth0 / Cognito の移行: community.shopify.com/t/…/191987、auth0.com/docs/manage-users/user-migration、docs.aws.amazon.com/cognito/…/cognito-user-pools-import-using-lambda.html、wetransfer.com/engineering/migrating-millions-of-users-to-auth0-without-downtime
