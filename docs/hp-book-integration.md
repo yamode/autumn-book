@@ -188,6 +188,7 @@ https://book.yamado.app{/lang}/yamado/{facility}?utm_source=…&utm_medium=…&u
 | 多言語 | 西和賀 `/english/`→`/en/account`、`/chinese/`→`/zh-TW/account`、`/korean/`→`/en/account`。**英語・中国語ページにはヘッダーもフッターのナビも無い**（§1.1）ので、ページ末尾の「General Information」の近くに「Member login / Reservation」の小さな段を足す（`docs/hp-i18n-design.md` でヘッダーを揃える案が通ればそちらに吸収） | `english.body.html:395-423` |
 | 会員登録の誘導 | HP には「新規登録」ボタンを別に置かない。Book の `/membership`（会員制度の紹介）へは、必要なら「会員制度について」としてフッターに 1 本（`utm_campaign=member`・`utm_content=footer_membership`）。初期は置かず、効果を見て足す | `(public)/+layout.svelte:89, 189` |
 | 計測 | GTM の `reserve_click` とは別に `member_click`（同じトリガーで `link_url` に `/account` を含むもの） | §3.5 |
+| **旧会員の方（会員移行）**（2026-11-19 追加） | 「会員ログイン／マイページ」の**すぐ下に別の 1 本**として「旧会員の方（会員移行）」を置く（両 HP のフッター・スマホメニュー／ドロワー）。遷移先 **`https://book.yamado.app{/lang}/auth/migrate?utm_source=hp_<施設>&utm_medium=referral&utm_campaign=member&utm_content=<場所>_migrate`**。以前の予約システム（tripla）の会員が、登録内容と過去の公式・直販の利用回数を引き継いで Book の会員になる入口（`docs/legacy-member-migration.md`）。英語「Former members (account transfer)」・繁体字「舊會員（會員轉移）」。**ローンチ当日（B 09:00）の HP デプロイに含める**（Book が一般公開前は 503 のため、それより前に HP に出さない）。移行の受付を終えたら外す | `routes/(public)/auth/migrate` |
 
 ### 3.4 ほかの導線との区別
 

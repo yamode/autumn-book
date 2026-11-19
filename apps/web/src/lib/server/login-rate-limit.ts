@@ -65,7 +65,13 @@ export const RATE_RULES = {
   memberPasskey: { prefix: 'login_rate:member_passkey:', max: 35, windowSec: 600 },
   memberSmsIp: { prefix: 'login_rate:member_sms_ip:', max: 5, windowSec: 600 },
   memberSmsGlobal: { prefix: 'login_rate:member_sms_global:', max: 100, windowSec: 600 },
-  memberTotp: { prefix: 'login_rate:member_totp:', max: 5, windowSec: 600, lockSec: 900 }
+  memberTotp: { prefix: 'login_rate:member_totp:', max: 5, windowSec: 600, lockSec: 900 },
+  /** 旧会員の会員移行の案内メール: 1 IP あたり 10 分 10 回（一覧に載っているか探る総当たりを止める・2026-11-19） */
+  legacyInviteIp: { prefix: 'login_rate:legacy_invite_ip:', max: 10, windowSec: 600, lockSec: 900 },
+  /** 旧会員の会員移行の案内メール: 1 メールあたり 1 時間 3 回（DB 側でも 1 日 5 通まで） */
+  legacyInviteEmail: { prefix: 'login_rate:legacy_invite_email:', max: 3, windowSec: 3600 },
+  /** 旧会員の会員移行の完了（リンク先の送信）: 1 IP あたり 10 分 10 回 */
+  legacyCompleteIp: { prefix: 'login_rate:legacy_complete_ip:', max: 10, windowSec: 600, lockSec: 900 }
 } as const satisfies Record<string, RateRule>;
 
 export type RateRecord = { count: number; windowStart: number; lockedUntil: number };

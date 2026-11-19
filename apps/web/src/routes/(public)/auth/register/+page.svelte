@@ -142,5 +142,9 @@
 		<p class="mt-6 text-center text-sm text-stone-600">
 			{m.register_login_link()} <a href="/auth/login" class="text-accent-600 underline">{m.register_login_anchor()}</a>
 		</p>
+		<!-- 以前の予約システムの会員は、新規登録ではなく会員移行へ（以前のご登録内容とご利用実績を引き継ぐ） -->
+		<p class="mt-2 text-center text-sm text-stone-600">
+			{m.login_migrate_link()} <a href="/auth/migrate" class="text-accent-600 underline">{m.login_migrate_anchor()}</a>
+		</p>
 	{/if}
 </div>
