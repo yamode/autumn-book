@@ -112,6 +112,11 @@
 	.transition-layer {
 		position: absolute;
 		inset: 0;
+		/* 骨組みは出ていく画面の大きさの枠に重ねる。行き先の骨組みのほうが背が高いとフッターに重なるので、枠の外は切り取り、
+		   下端は薄くぼかして切れ目を見せない（2026-11-19 指示）。clip は hidden と違ってスクロールの枠を作らず、中の sticky が効いたまま */
+		overflow: clip;
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
 		/* すぐ切り替わるときはシマーを出さない（チラつき防止）。少しかかるときだけ浮かび上がる */
 		animation: page-fade 200ms ease-out 140ms both;
 	}
