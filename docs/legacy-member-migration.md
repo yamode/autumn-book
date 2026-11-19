@@ -1,5 +1,6 @@
 # 旧会員（tripla）の会員移行
 
+- 状態: **受付は閉じている**（設計の見直し中・`docs/legacy-member-migration-design.md`）。開くまで下の手順は使わない
 - 作成: 2026-11-19（Book v0.289.0・autumn-shared `20261119115140_book_legacy_member_migration.sql`）
 - 目的: 以前の予約システム（tripla）の会員が、**登録内容（氏名・カナ・電話・住所・生年月日）と、過去の公式・直販の利用回数**を引き継いで、Book の会員になれるようにする
 

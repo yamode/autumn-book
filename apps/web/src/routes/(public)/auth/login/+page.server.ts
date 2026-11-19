@@ -1,3 +1,4 @@
+import { legacyMigrationOpen } from '$lib/server/legacy-migration-flag';
 import { fail, redirect } from '@sveltejs/kit';
 import { members, withdrawnMembers } from '$lib/server/store';
 import { setSession } from '$lib/server/session';
@@ -33,7 +34,9 @@ export const load: PageServerLoad = async (event) => {
 	if (smsAvailable) event.setHeaders({ 'cache-control': 'private, no-store' });
 	return {
 		authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS,
-		passkeys: memberPasskeysAvailable(url), smsAvailable, smsDefault: await memberSmsDefault(event)
+		passkeys: memberPasskeysAvailable(url), smsAvailable, smsDefault: await memberSmsDefault(event),
+		// 旧会員の会員移行の入口（閉じている間はリンクを出さない）
+		migrationOpen: legacyMigrationOpen()
 	};
 };
 

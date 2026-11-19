@@ -9,12 +9,15 @@ import {
 	legacyProfileByToken,
 	migrationPasswordError
 } from '$lib/server/legacy-members';
+import { legacyMigrationOpen } from '$lib/server/legacy-migration-flag';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
 	// リンクのトークンを他所に漏らさない（参照元・キャッシュ）
 	setHeaders({ 'cache-control': 'private, no-store', 'referrer-policy': 'no-referrer' });
 	if (locals.user?.role === 'member') redirect(303, '/account');
+	// 移行の入口を閉じている間は、リンクがあっても進めない（設計の見直し中・lib/server/legacy-migration-flag.ts）
+	if (!legacyMigrationOpen()) return { state: 'invalid' as const };
 	const profile = await legacyProfileByToken(params.token).catch(() => null);
 	if (!profile) return { state: 'invalid' as const };
 	if (profile.alreadyMember) return { state: 'already' as const };
@@ -33,6 +36,7 @@ export const load: PageServerLoad = async ({ params, locals, setHeaders }) => {
 
 export const actions: Actions = {
 	complete: async (event) => {
+		if (!legacyMigrationOpen()) return fail(404, { errors: {}, values: undefined, mailOptIn: false, message: m.migrate_unavailable() });
 		const form = await event.request.formData();
 		const values = {
 			familyName: String(form.get('familyName') ?? '').trim(),

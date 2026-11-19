@@ -136,8 +136,10 @@
 	<p class="mt-6 text-center text-sm text-stone-600">
 		{m.login_register_link()} <a href="/auth/register{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-accent-600 underline">{m.login_register_anchor()}</a>
 	</p>
-	<!-- 以前の予約システム（tripla）の会員の移行入口。通常のログインとは別に置く（2026-11-19） -->
-	<p class="mt-2 text-center text-sm text-stone-600">
-		{m.login_migrate_link()} <a href="/auth/migrate" class="text-accent-600 underline">{m.login_migrate_anchor()}</a>
-	</p>
+	<!-- 以前の予約システム（tripla）の会員の移行入口。通常のログインとは別に置く（2026-11-19）。設計の見直しが終わるまで閉じている -->
+	{#if data.migrationOpen}
+		<p class="mt-2 text-center text-sm text-stone-600">
+			{m.login_migrate_link()} <a href="/auth/migrate" class="text-accent-600 underline">{m.login_migrate_anchor()}</a>
+		</p>
+	{/if}
 </div>
