@@ -1,4 +1,4 @@
-// GET /api/day-offers?facility=<施設ID>&checkin=YYYY-MM-DD&nights=1&adults=2[&room=<部屋タイプID>][&tag=<タグ>]
+// GET /api/day-offers?facility=<施設ID>&checkin=YYYY-MM-DD&nights=1&adults=2[&room=<部屋タイプID>][&meal=<お食事の絞り込み>]
 // 空室カレンダーで日を押したとき、その日に予約できる部屋×プランを安い順に返す（公開情報のみ）。
 import { json } from '@sveltejs/kit';
 import { dayOffers } from '$lib/server/day-offers';
@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ url, setHeaders }) => {
 	try {
 		const offers = await dayOffers(facility, checkin, clamp(url.searchParams.get('nights'), 1, 7, 1), clamp(url.searchParams.get('adults'), 1, 6, 2), {
 			roomTypeId: url.searchParams.get('room') || undefined,
-			tag: url.searchParams.get('tag') || undefined,
+			meal: url.searchParams.get('meal') || undefined,
 			locale: getLocale()
 		});
 		setHeaders({ 'cache-control': 'private, max-age=30' });

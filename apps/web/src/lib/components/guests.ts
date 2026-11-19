@@ -11,10 +11,10 @@ export function guestsLabel(adults: number, _children?: number): string {
 }
 
 /** 検索条件のクエリ文字列（`children` は付けない＝大人のみ） */
-export function searchQuery(p: { checkin: string; nights: number; adults: number; rooms?: number; tag?: string }): string {
+export function searchQuery(p: { checkin: string; nights: number; adults: number; rooms?: number; meal?: string }): string {
 	const query = new URLSearchParams({ checkin: p.checkin, nights: String(p.nights), adults: String(p.adults) });
 	if (p.rooms && p.rooms > 1) query.set('rooms', String(p.rooms));
-	if (p.tag) query.set('tag', p.tag);
+	if (p.meal) query.set('meal', p.meal);
 	return query.toString();
 }
 

@@ -13,6 +13,7 @@ import { listPlanFor } from '$lib/plan-access';
 import { crossTypeCombos } from '$lib/partner-room-combos';
 import { MAX_ROOMS_PER_BOOKING } from '$lib/multi-room';
 import type { RatePlan, RoomType } from '$lib/types';
+import { matchesMeal, mealOptions } from '$lib/meal-filter';
 import { favoriteRoomTypeIds } from '$lib/server/favorites';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { alertConditions, validateAlertConditions } from '$lib/availability-alerts';
@@ -108,7 +109,8 @@ export const load: PageServerLoad = async (event) => {
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
 	const roomCount = Math.min(MAX_ROOMS_PER_BOOKING, Math.max(1, Number(url.searchParams.get('rooms') ?? 1) || 1));
-	const tag = url.searchParams.get('tag') || undefined;
+	// お食事で絞り込む（?meal=half:スタンダードコース / breakfast / none 等・lib/meal-filter.ts）
+	const meal = url.searchParams.get('meal') || undefined;
 	const today = todayJst();
 
 	if (DATA_SOURCE === 'supabase') {
@@ -138,9 +140,9 @@ export const load: PageServerLoad = async (event) => {
 				referencePrices.push(...e.refs);
 			}
 		}
-		const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
+		const meals = mealOptions(allPlans);
 		const plans = withEarlyPrepayMax(
-			allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
+			allPlans.filter((plan) => matchesMeal(plan, meal)).map((plan) => planForViewer(plan, isMember)),
 			settings
 		);
 		const prices: RoomPlanPrice[] = checkin
@@ -150,14 +152,14 @@ export const load: PageServerLoad = async (event) => {
 			facility,
 			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
 			combos: combosFor(allRooms, plans, prices, adults, nights, roomCount),
-			allTags,
+			meals,
 			calendarDays: calendar.days,
 			calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
 			today,
 			referenceMode: !checkin,
 			favoriteRoomTypeIds: await favoritesP,
-			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
+			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 		};
 	}
 
@@ -165,9 +167,9 @@ export const load: PageServerLoad = async (event) => {
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, '施設が見つかりません');
 	const allPlans = getRatePlans(facility.id, locale).filter((plan) => listPlanFor(plan.access, viewer));
-	const allTags = [...new Set(allPlans.flatMap((plan) => plan.highlightTags))];
+	const meals = mealOptions(allPlans);
 	const plans = withEarlyPrepayMax(
-		allPlans.filter((plan) => !tag || plan.highlightTags.includes(tag)).map((plan) => planForViewer(plan, isMember)),
+		allPlans.filter((plan) => matchesMeal(plan, meal)).map((plan) => planForViewer(plan, isMember)),
 		await loadEarlyPrepaySettings(facility.id)
 	);
 	const prices: RoomPlanPrice[] = [];
@@ -188,14 +190,14 @@ export const load: PageServerLoad = async (event) => {
 		facility,
 		rooms: roomsWithPlans(getRoomTypes(facility.id, locale), plans, prices, adults, roomCount),
 		combos: combosFor(getRoomTypes(facility.id, locale), plans, prices, adults, nights, roomCount),
-		allTags,
+		meals,
 		calendarDays: calendar.days,
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
 		today,
 		referenceMode: false,
 		favoriteRoomTypeIds: await favoritesP,
-		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, tag: tag ?? '' }
+		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 	};
 };
 

@@ -18,6 +18,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import RefreshingResults from '$lib/components/RefreshingResults.svelte';
 	import type { RoomType } from '$lib/types';
+	import type { MealOption } from '$lib/meal-filter';
 
 	// 予約に絞った構成（一休型）: 検索バー → 絞り込み・並び順 → 部屋タイプごとの全幅カード → 施設について
 	let { data, form } = $props();
@@ -55,16 +56,29 @@
 			})
 	);
 
-	function tagHref(tag: string) {
+	// お食事で絞り込む（プラン設定の「お食事」から自動で作る・lib/meal-filter.ts）。'' はすべて
+	function mealHref(key: string) {
 		const query = new URLSearchParams(page.url.searchParams);
-		if (query.get('tag') === tag) query.delete('tag');
-		else query.set('tag', tag);
+		query.delete('tag'); // 以前のタグ絞り込みの URL は捨てる
+		if (key) query.set('meal', key);
+		else query.delete('meal');
 		return `${base}/plans?${query}`;
+	}
+	function mealLabel(option: MealOption) {
+		const kind = {
+			half: m.meal_filter_half(),
+			dinner: m.plan_meal_dinner(),
+			breakfast: m.plan_meal_breakfast(),
+			none: m.meal_filter_none(),
+			dayuse: m.meal_filter_dayuse()
+		}[option.kind];
+		return option.course ? `${kind}・${option.course}` : kind;
 	}
 
 	function planHref(slug: string, roomSlug: string) {
 		const query = new URLSearchParams(page.url.searchParams);
 		query.delete('tag');
+		query.delete('meal');
 		query.set('room', roomSlug);
 		// 一覧から開いたときはページの先頭（プランの説明）から見せる。選んだ部屋の位置へは移動しない（2026-10-29 指示）
 		return `${base}/plans/${slug}?${query}`;
@@ -143,7 +157,18 @@
 
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} tag={data.params.tag} keepScroll />
+		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} keepScroll />
+		{#if data.meals.length > 1}
+			<!-- お食事で絞り込む: 検索条件の続きとして検索欄の下に置く（「客室から探す」の下だと客室の絞り込みに見えるため・2026-11-19 指示） -->
+			<div class="mt-3 flex items-center gap-3">
+				<span class="shrink-0 text-xs font-medium text-stone-500">{m.meal_filter_label()}</span>
+				<div class="-mr-4 flex min-w-0 flex-1 gap-2 overflow-x-auto pr-4 pb-1 sm:mr-0 sm:flex-wrap sm:pr-0" role="group" aria-label={m.meal_filter_label()}>
+					{#each [{ key: '', label: m.meal_filter_all() }, ...data.meals.map((option) => ({ key: option.key, label: mealLabel(option) }))] as item (item.key)}
+						<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={data.params.meal === item.key ? 'true' : undefined} class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {data.params.meal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
+					{/each}
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	{#if data.combos.length}
@@ -168,16 +193,7 @@
 
 	<section id="rooms" class="mt-6 scroll-mt-28">
 		<h2 class="font-display mb-3 text-xl text-brand-900">{headingVariant === 'b' ? m.plans_heading_alternative() : m.plans_heading()}</h2>
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			{#if data.allTags.length}
-				<div class="-mx-4 flex min-w-0 flex-1 gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
-					{#each data.allTags as tag}
-						<a href={tagHref(tag)} data-sveltekit-noscroll class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {data.params.tag === tag ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{tag}</a>
-					{/each}
-				</div>
-			{:else}
-				<span></span>
-			{/if}
+		<div class="flex flex-wrap items-center justify-end gap-3">
 			<div class="flex shrink-0 gap-4 text-sm" role="group" aria-label="sort">
 				{#each [['asc', m.plans_sort_asc()], ['desc', m.plans_sort_desc()]] as [value, label]}
 					<button type="button" aria-pressed={sort === value} onclick={() => (sort = value as 'asc' | 'desc')} class="border-b-2 pb-1 {sort === value ? 'border-brand-900 font-semibold text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}">{label}</button>
@@ -316,7 +332,7 @@
 	today={data.today}
 	nights={data.params.nights}
 	adults={data.params.adults}
-	tag={data.params.tag}
+	meal={data.params.meal}
 	onRoomInfo={(roomId) => (infoRoom = data.rooms.find((item) => item.room.id === roomId)?.room ?? null)}
 />
 <RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />

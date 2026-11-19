@@ -4,7 +4,8 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers } from '$lib/server/supabase-data';
 import { getRatePlans, getRoomTypes, quoteFor, remainingRooms } from '$lib/server/store';
 import { demoPairs } from '$lib/server/stay-calendar';
-import type { Locale } from '$lib/types';
+import type { Locale, RatePlan } from '$lib/types';
+import { matchesMeal } from '$lib/meal-filter';
 
 export type DayOffer = {
 	room: { id: string; slug: string; name: string };
@@ -15,7 +16,7 @@ export type DayOffer = {
 };
 
 type OfferRow = { ratePlanId: string; roomTypeId: string; total: number; remaining: number };
-type PlanInfo = { id: string; slug: string; name: string; mealPlan: string; highlightTags: string[] };
+type PlanInfo = Pick<RatePlan, 'id' | 'slug' | 'name' | 'mealPlan' | 'dinnerCourse' | 'includesBreakfast' | 'hasDinner'>;
 type RoomInfo = { id: string; slug: string; name: string };
 
 export async function dayOffers(
@@ -23,7 +24,7 @@ export async function dayOffers(
 	checkin: string,
 	nights: number,
 	adults: number,
-	options: { roomTypeId?: string; tag?: string; locale: Locale }
+	options: { roomTypeId?: string; meal?: string; locale: Locale }
 ): Promise<DayOffer[]> {
 	let rows: OfferRow[];
 	let plans: PlanInfo[];
@@ -52,7 +53,7 @@ export async function dayOffers(
 		const room = roomById.get(row.roomTypeId);
 		if (!plan || !room || row.remaining <= 0) continue;
 		if (options.roomTypeId && room.id !== options.roomTypeId) continue;
-		if (options.tag && !plan.highlightTags.includes(options.tag)) continue;
+		if (!matchesMeal(plan, options.meal)) continue;
 		offers.push({
 			room: { id: room.id, slug: room.slug, name: room.name },
 			plan: { id: plan.id, slug: plan.slug, name: plan.name, mealPlan: plan.mealPlan },

@@ -18,10 +18,10 @@
 		adults = LIMITS.adults.def,
 		rooms = LIMITS.rooms.def,
 		action = '/search',
-		tag = '',
+		meal = '',
 		keepScroll = false,
 		facility = ''
-	}: { checkin?: string; nights?: number; adults?: number; rooms?: number; action?: string; facility?: string; tag?: string; keepScroll?: boolean } = $props();
+	}: { checkin?: string; nights?: number; adults?: number; rooms?: number; action?: string; facility?: string; meal?: string; keepScroll?: boolean } = $props();
 
 	const lang = normalizeLang(getLocale()) || 'ja';
 	const labels = STAY_SEARCH_LABELS[lang];
@@ -93,7 +93,7 @@
 		const q = new URLSearchParams({ nights: String(n), adults: String(guests) });
 		if (r > 1) q.set('rooms', String(r));
 		if (date) q.set('checkin', date);
-		if (tag) q.set('tag', tag);
+		if (meal) q.set('meal', meal); // お食事の絞り込みは検索し直しても残す
 		open = '';
 		void goto(localizeHref(`${action}?${q}`), keepScroll ? { noScroll: true, keepFocus: true } : {});
 	}

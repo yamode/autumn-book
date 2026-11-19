@@ -26,7 +26,7 @@
 		today,
 		nights: initialNights,
 		adults: initialAdults,
-		tag,
+		meal,
 		onRoomInfo
 	}: {
 		open?: boolean;
@@ -38,7 +38,8 @@
 		today: string;
 		nights: number;
 		adults: number;
-		tag: string;
+		/** お食事の絞り込み（lib/meal-filter.ts のキー・'' = すべて） */
+		meal: string;
 		onRoomInfo: (roomId: string) => void;
 	} = $props();
 
@@ -91,7 +92,7 @@
 		offersController = controller;
 		const query = new URLSearchParams({ facility: facilityId, checkin: selected, nights: String(nights), adults: String(adults) });
 		if (roomId) query.set('room', roomId);
-		if (tag) query.set('tag', tag);
+		if (meal) query.set('meal', meal);
 		offersLoading = true;
 		offersFailed = false;
 		fetch(`/api/day-offers?${query}`, { signal: controller.signal })
