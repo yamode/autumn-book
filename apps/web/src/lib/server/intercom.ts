@@ -88,8 +88,48 @@ export async function intercomStatusFor(token: string | undefined): Promise<Inte
 	}
 }
 
+// ---------------------------------------------------------------------------
+// 客室ごとの入口QR（部屋の鍵・2026-11-20）。/r/start?f=<slug>&k=<key> で読んだ端末は、
+// 滞在コードなしでも「フロントを呼ぶ」が使える（部屋番号だけが分かる・予約情報には紐づかない）。
+// 鍵は httpOnly Cookie（ab_room）にだけ置く。QR を読み直すたびに期限を延ばす。
+// ---------------------------------------------------------------------------
+
+export const ROOM_COOKIE = 'ab_room';
+export const ROOM_COOKIE_MAX_AGE_SEC = 24 * 60 * 60;
+export const roomKeyParam = (v: string | null | undefined): string | null =>
+	typeof v === 'string' && /^[0-9a-f]{40}$/.test(v) ? v : null;
+
+/** 部屋の鍵 → 施設の slug・部屋番号。使えない鍵なら null */
+export async function resolveRoomEntry(key: string | null): Promise<{ facilitySlug: string; roomCode: string } | null> {
+	if (!key || DATA_SOURCE !== 'supabase') return null;
+	try {
+		const { data, error } = await supa().rpc('room_entry_resolve', { p_key: key });
+		if (error || !data) return null;
+		const d = data as Record<string, unknown>;
+		return d.facility_slug ? { facilitySlug: String(d.facility_slug), roomCode: String(d.room_code ?? '') } : null;
+	} catch {
+		return null;
+	}
+}
+
+/** 部屋の鍵で「フロントを呼ぶ」を出すか（intercomStatusFor の部屋版） */
+export async function intercomStatusForRoom(key: string | undefined): Promise<IntercomStatus> {
+	const k = roomKeyParam(key);
+	if (!k || DATA_SOURCE !== 'supabase') return OFF;
+	try {
+		const { data, error } = await supa().rpc('intercom_status_for_room', { p_key: k });
+		if (error || !data) return OFF;
+		const d = data as Record<string, unknown>;
+		return { enabled: d.enabled === true, open: d.open === true, online: d.online === true, ringTimeoutSec: Number(d.ring_timeout_sec ?? 30) || 30 };
+	} catch {
+		return OFF;
+	}
+}
+
 /** RPC の例外コード（raise exception 'busy' 等）を取り出す */
 export function intercomErrorCode(message: string | undefined): string {
+	// 部屋の鍵が使えない（発行し直された等）は、滞在コードが使えないときと同じ扱いにする
+	if (message?.includes('invalid_room_key')) return 'invalid_token';
 	const known = ['disabled', 'out_of_hours', 'offline', 'busy', 'rate_limited', 'invalid_token', 'forbidden', 'not_found', 'call_closed', 'too_many_signals'];
 	return known.find((k) => message?.includes(k)) ?? 'error';
 }

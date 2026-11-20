@@ -4,7 +4,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
 import { demoStayMeals, sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
-import { intercomStatusFor } from '$lib/server/intercom';
+import { intercomStatusFor, intercomStatusForRoom, ROOM_COOKIE } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
 import {
 	endedFacilityBySlug,
@@ -99,7 +99,9 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 全館の湯量の残量目安（出す設定の施設だけ・2026-10-17）
 		springLevel: null as SpringLevel | null,
 		// 精算案内のカード（滞在コードがあるときだけ・2026-10-17）
-		billSummary: null as BillSummary | null
+		billSummary: null as BillSummary | null,
+		// 客室内線。コードなしの館内案内では、客室ごとの入口QRの部屋の鍵があるときだけ（2026-11-20）
+		intercom: undefined as Awaited<ReturnType<typeof intercomStatusForRoom>> | undefined
 	};
 
 	if (!token) {
@@ -109,15 +111,18 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// 入口QRから来た（URL の f か、入口QRで覚えた Cookie）ときは、館内案内を先に見せ、トップでコードを入れてもらう
 		const entryFacility = browseFacility(cookies, url.searchParams.get('f'), locale);
 		if (!entryFacility) return noStay;
-		const [guides, settings] = await Promise.all([
+		const [guides, settings, intercom] = await Promise.all([
 			(DATA_SOURCE === 'supabase'
 				? sbListHouseGuides(entryFacility.id, locale)
 				: Promise.resolve(listHouseGuidesFor(entryFacility.id, locale))
 			).catch(() => []),
-			loadInroomSettings(entryFacility.id)
+			loadInroomSettings(entryFacility.id),
+			// 客室ごとの入口QRで読んだ端末は、滞在コードなしでも「フロントを呼ぶ」（2026-11-20）
+			intercomStatusForRoom(cookies.get(ROOM_COOKIE))
 		]);
 		return {
 			...noStay,
+			intercom,
 			showFrontCall: settings.showFrontCall,
 			frontPhone: frontPhoneFor(settings, entryFacility.slug),
 			...withPreview(settings, await loadLiveNotices(entryFacility.id), cookiePreview),
@@ -133,15 +138,17 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// チェックイン前（開始前）: 館内案内（コードなしと同じ範囲）を見せ、トップで開始時刻を案内する。Cookie は残す
 		const upcoming = await stayUpcoming(token, locale);
 		if (upcoming) {
-			const [guides, settings] = await Promise.all([
+			const [guides, settings, intercom] = await Promise.all([
 				(DATA_SOURCE === 'supabase'
 					? sbListHouseGuides(upcoming.facility.id, locale)
 					: Promise.resolve(listHouseGuidesFor(upcoming.facility.id, locale))
 				).catch(() => []),
-				loadInroomSettings(upcoming.facility.id)
+				loadInroomSettings(upcoming.facility.id),
+				intercomStatusForRoom(cookies.get(ROOM_COOKIE))
 			]);
 			return {
 				...noStay,
+				intercom,
 				guides: guides.filter(browseVisibleGuide),
 				frontPhone: frontPhoneFor(settings, upcoming.facility.slug),
 				browse: { name: upcoming.facility.name, slug: upcoming.facility.slug, phone: upcoming.facility.phone },

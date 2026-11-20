@@ -536,6 +536,7 @@
 	<!-- 別の画面にある設定 -->
 	<div class="mb-6 grid gap-3 sm:grid-cols-2">
 		<StatusCard icon="qr" title="入口QR（客室に常設）" detail="客室に置く QR の印刷。読むと館内案内が開き、滞在コードを入れてもらいます。" href="/admin/inroom/entry" action="印刷画面を開く" />
+		<StatusCard icon="qr" title="客室ごとの入口QR（A6 POP）" detail="部屋ごとの QR の POP（内線電話・館内情報）。読むと滞在コードなしでもフロントを呼べます。" href="/admin/inroom/room-pop" action="印刷画面を開く" />
 		<StatusCard icon="book" title="サンクスページのバナー" detail="ご滞在が終わったあとに客室案内に出すバナー（次回のご予約の案内など）。" href="/admin/inroom/banners" action="バナーを編集" />
 	</div>
 

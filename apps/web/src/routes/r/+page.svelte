@@ -25,7 +25,8 @@
 	// 客室内線（Wi-Fi データ通話）。/admin/inroom で施設ごとに ON にしたときだけ出す
 	let sheetOpen = $state(false);
 	let sheet = $state<ReturnType<typeof IntercomSheet> | null>(null);
-	const intercom = $derived(data.stay ? data.intercom : undefined);
+	// 滞在コードがあるとき、または客室ごとの入口QR（部屋の鍵）で読んだとき（2026-11-20）
+	const intercom = $derived(data.stay || data.browse ? data.intercom : undefined);
 
 	const localeTag: Record<string, string> = { ja: 'ja-JP', en: 'en-US', 'zh-TW': 'zh-TW' };
 	function fmtDate(iso: string): string {

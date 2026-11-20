@@ -4,6 +4,7 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay } from '$lib/server/supabase-data';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { guideIdParam, rememberBrowseFacility } from '$lib/server/inroom-browse';
+import { resolveRoomEntry, ROOM_COOKIE, ROOM_COOKIE_MAX_AGE_SEC, roomKeyParam } from '$lib/server/intercom';
 import type { RequestHandler } from './$types';
 
 // 客室に常設する「客室案内の入口QR」（/r/start?f=<slug>）の着地点（2026-10-09）。
@@ -16,8 +17,20 @@ import type { RequestHandler } from './$types';
 // Wi-Fi などコードが要るページは、/r/g 側がコード入力へ回し、入れたあとでそのページへ戻す。
 const STAY_COOKIE = 'ab_stay';
 
+// 客室ごとの入口QR（?k=<部屋の鍵>・2026-11-20）: 鍵を ab_room Cookie に覚える。滞在コードなしでも「フロントを呼ぶ」が使える
+// （部屋番号だけが分かる）。予約情報・貸切風呂・Wi-Fi は従来どおり滞在コードが要る。使えない鍵なら Cookie を消して通常の入口QRと同じ動き。
 export const GET: RequestHandler = async ({ cookies, url }) => {
-	const slug = url.searchParams.get('f');
+	let slug = url.searchParams.get('f');
+	const roomKey = roomKeyParam(url.searchParams.get('k'));
+	if (roomKey) {
+		const room = await resolveRoomEntry(roomKey);
+		if (room) {
+			cookies.set(ROOM_COOKIE, roomKey, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: ROOM_COOKIE_MAX_AGE_SEC });
+			slug = room.facilitySlug;
+		} else {
+			cookies.delete(ROOM_COOKIE, { path: '/' });
+		}
+	}
 	const guideId = guideIdParam(url.searchParams.get('g'));
 	const guidePath = guideId ? `/r/g/${encodeURIComponent(guideId)}` : null;
 	const token = cookies.get(STAY_COOKIE);

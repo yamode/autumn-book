@@ -10,7 +10,7 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { cancelIntercomDevices, guestRpc, inviteIntercomDevices, warmIntercomInvite } from '$lib/server/intercom';
+import { cancelIntercomDevices, guestRpc, inviteIntercomDevices, ROOM_COOKIE, roomKeyParam, warmIntercomInvite } from '$lib/server/intercom';
 import type { RequestHandler } from './$types';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -47,7 +47,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 
 	if (action === 'warm') {
 		// 客室の Cookie がある人だけ（外から関数を起こし続けられないように）。待たずに返す
-		if (!cookies.get('ab_stay')) return json({ error: 'invalid_token' }, { status: 401 });
+		if (!cookies.get('ab_stay') && !roomKeyParam(cookies.get(ROOM_COOKIE))) return json({ error: 'invalid_token' }, { status: 401 });
 		const w = warmIntercomInvite();
 		if (platform?.context?.waitUntil) platform.context.waitUntil(w);
 		else await w;
@@ -55,9 +55,14 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 	}
 
 	if (action === 'start') {
+		// 滞在コードの Cookie（ab_stay）が先。無い・使えないときは客室ごとの入口QRの部屋の鍵（ab_room・2026-11-20）で呼ぶ
 		const token = cookies.get('ab_stay');
-		if (!token) return json({ error: 'invalid_token' }, { status: 401 });
-		const { data, error } = await guestRpc('intercom_start', { p_token: token });
+		const roomKey = roomKeyParam(cookies.get(ROOM_COOKIE));
+		if (!token && !roomKey) return json({ error: 'invalid_token' }, { status: 401 });
+		let { data, error } = token ? await guestRpc('intercom_start', { p_token: token }) : { data: null, error: 'invalid_token' };
+		if (error === 'invalid_token' && roomKey) {
+			({ data, error } = await guestRpc('intercom_start_room', { p_key: roomKey }));
+		}
 		if (error) return json({ error }, { status: 400 });
 		const d = data as Record<string, unknown>;
 		// 受電アプリが背面・ロック中でも鳴るよう push（Edge Function intercom-invite）。ゲストは待たせない
