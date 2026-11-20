@@ -22,8 +22,8 @@ const STAY_COOKIE = 'ab_stay';
 export const GET: RequestHandler = async ({ cookies, url }) => {
 	let slug = url.searchParams.get('f');
 	const roomKey = roomKeyParam(url.searchParams.get('k'));
+	const room = roomKey ? await resolveRoomEntry(roomKey) : null;
 	if (roomKey) {
-		const room = await resolveRoomEntry(roomKey);
 		if (room) {
 			cookies.set(ROOM_COOKIE, roomKey, { path: '/', httpOnly: true, secure: true, sameSite: 'lax', maxAge: ROOM_COOKIE_MAX_AGE_SEC });
 			slug = room.facilitySlug;
@@ -36,7 +36,10 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const token = cookies.get(STAY_COOKIE);
 	if (token) {
 		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		if (stay) redirect(302, localizeHref(guidePath ?? '/r'));
+		// 部屋の QR が、いまの滞在と別の部屋（別の施設）のものなら、前の滞在は外して読んだ部屋に合わせる（2026-11-20）。
+		// 予約の情報は、その部屋の滞在コードを入れ直すと出る
+		const otherRoom = !!(stay && room && (stay.roomCode !== room.roomCode || stay.facility.slug !== room.facilitySlug));
+		if (stay && !otherRoom) redirect(302, localizeHref(guidePath ?? '/r'));
 		cookies.delete(STAY_COOKIE, { path: '/' });
 	}
 	const known = slug && /^[a-z0-9-]+$/.test(slug) ? rememberBrowseFacility(cookies, slug, getLocale()) : false;
