@@ -87,12 +87,9 @@
 </div>
 
 <style>
-	/* A4（210×297mm）を A6（105×148.5mm）の 2×2 に分ける。切り取り線は薄い破線 */
+	/* A4（210×297mm）を A6（105×148.5mm）の 2×2 に分ける。各面の四辺に切り取り枠（薄い破線） */
 	.sheet { width: 210mm; height: 297mm; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: 148.5mm 148.5mm; position: relative; overflow: hidden; }
-	.sheet::before, .sheet::after { content: ''; position: absolute; pointer-events: none; }
-	.sheet::before { left: 105mm; top: 0; bottom: 0; border-left: 0.2mm dashed #bbb; }
-	.sheet::after { top: 148.5mm; left: 0; right: 0; border-top: 0.2mm dashed #bbb; }
-	.pop { width: 105mm; height: 148.5mm; padding: 13mm 8mm 9mm; }
+	.pop { width: 105mm; height: 148.5mm; padding: 13mm 8mm 9mm; outline: 0.25mm dashed #999; outline-offset: -0.125mm; }
 	.title { font-size: 25pt; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2; }
 	.sub { margin-top: 5mm; font-size: 12.5pt; }
 	.qr :global(svg) { width: 45mm; height: 45mm; }
@@ -108,6 +105,8 @@
 	/* 印刷：管理画面の枠・余白・帯に関係なく、紙面だけを用紙の左上から並べる（はみ出し防止） */
 	@media print {
 		:global(html), :global(body) { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+		/* 隠した管理画面の部品（横幅の広いナビ等）が幅を取ると、Chrome がページ全体を縮めて左寄せになる。用紙の幅で切る */
+		:global(html), :global(body) { width: 210mm !important; min-width: 0 !important; overflow: hidden !important; }
 		:global(body *) { visibility: hidden; }
 		.sheets, .sheets :global(*) { visibility: visible; }
 		.sheets { position: absolute; left: 0; top: 0; margin: 0 !important; }
