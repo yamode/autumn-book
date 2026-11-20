@@ -353,7 +353,7 @@
 				</header>
 
 				{#if data.maintenanceActive}
-					<a href="/admin/maintenance" class="block bg-amber-500 px-4 py-1.5 text-center text-xs font-medium text-white hover:bg-amber-600">
+					<a href="/admin/maintenance" class="block bg-amber-500 print:hidden px-4 py-1.5 text-center text-xs font-medium text-white hover:bg-amber-600">
 						🛠 メンテナンスモード有効 — 一般ユーザーへ非公開中（運営はプレビュー可）
 					</a>
 				{/if}

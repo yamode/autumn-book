@@ -105,12 +105,15 @@
 	@media screen and (max-width: 48rem) {
 		.sheet { zoom: 0.45; }
 	}
+	/* 印刷：管理画面の枠・余白・帯に関係なく、紙面だけを用紙の左上から並べる（はみ出し防止） */
 	@media print {
-		:global(body) { margin: 0; background: #fff !important; }
-		:global(header), :global(nav), :global(aside), .print-hide { display: none !important; }
-		.print-shell { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+		:global(html), :global(body) { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+		:global(body *) { visibility: hidden; }
+		.sheets, .sheets :global(*) { visibility: visible; }
+		.sheets { position: absolute; left: 0; top: 0; margin: 0 !important; }
 		.sheets > :global(* + *) { margin-top: 0 !important; }
-		.sheet { box-shadow: none; margin: 0; break-after: page; page-break-after: always; }
+		/* 端数で次のページへ溢れて白紙が出ないよう、わずかに低くする */
+		.sheet { height: 296.5mm; box-shadow: none; margin: 0 !important; zoom: 1; break-after: page; page-break-after: always; }
 		.sheet:last-child { break-after: auto; page-break-after: auto; }
 	}
 </style>
