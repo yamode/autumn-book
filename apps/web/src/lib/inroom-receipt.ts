@@ -38,7 +38,22 @@ export type InroomReceiptDoc = {
 	issuerAddress: string;
 	issuerTel: string;
 	registrationNumber: string;
+	/** お支払い方法の文言（既定は客室案内のオンライン決済）。会員マイページの予約の領収書で差し替える */
+	paymentMethod?: string;
+	/** 1ページ目の金額の内訳（税率ごと・入湯税など）。無ければ出さない */
+	breakdown?: ReceiptBreakdownLine[];
+	/** 1ページ目に足す補足（返金済みの旨など） */
+	notes?: string[];
+	/** 1ページ目の「ご宿泊」（予約の領収書用・例「2026年12月1日 〜 12月2日」） */
+	stayLabel?: string | null;
+	/** 1ページ目の「ご予約番号」（予約の領収書用） */
+	bookingCode?: string | null;
 };
+
+/** 金額の内訳の1行（例: 10%対象 ¥11,000（内消費税 ¥1,000）／入湯税（不課税） ¥300） */
+export type ReceiptBreakdownLine = { label: string; amount: number; tax?: number | null };
+
+export const INROOM_PAYMENT_METHOD = 'クレジットカード（客室案内でのオンライン決済）';
 
 export const RECEIPT_PROVISO = '宿泊料金として';
 export const MAX_ADDRESSEE_LENGTH = 60;
@@ -65,9 +80,9 @@ const jstParts = (iso: string) => {
 };
 
 /** 領収書番号。決済ごとに必ず同じ値（再発行しても番号が変わらない） */
-export function inroomReceiptNo(paymentId: string, paidAtIso: string): string {
+export function inroomReceiptNo(paymentId: string, paidAtIso: string, prefix = 'R'): string {
 	const { y, m, d } = jstParts(paidAtIso);
-	return `R${y}${m}${d}-${paymentId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+	return `${prefix}${y}${m}${d}-${paymentId.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
 }
 
 /** 「2026年11月7日」 */
@@ -164,6 +179,7 @@ table.st tr { break-inside: avoid; page-break-inside: avoid; }
 table.st tr.sum td { font-weight: 700; background: #fafaf9; }
 table.st.pay { margin-top: 5mm; }
 .sub { font-size: 8.5pt; color: #57534e; }
+.notes { margin: 5mm 0 0; font-size: 9.5pt; color: #44403c; }
 .note { margin-top: 14mm; font-size: 8.5pt; color: #57534e; border-top: 1px solid #d6d3d1; padding-top: 3mm; }
 </style></head><body>
 <div class="top"><h1>領収書</h1><div class="meta">領収書番号　${esc(doc.receiptNo)}<br>発行日　${esc(receiptDateJa(doc.paidAt))}</div></div>
@@ -172,9 +188,13 @@ table.st.pay { margin-top: 5mm; }
 <dl>
 <dt>但し書き</dt><dd>${esc(doc.proviso)}</dd>
 <dt>領収日</dt><dd>${esc(receiptDateJa(doc.paidAt))}</dd>
-<dt>お支払い方法</dt><dd>クレジットカード（客室案内でのオンライン決済）</dd>
+<dt>お支払い方法</dt><dd>${esc(doc.paymentMethod ?? INROOM_PAYMENT_METHOD)}</dd>
+${doc.bookingCode ? `<dt>ご予約番号</dt><dd>${esc(doc.bookingCode)}</dd>` : ''}
+${doc.stayLabel ? `<dt>ご宿泊</dt><dd>${esc(doc.stayLabel)}</dd>` : ''}
 ${doc.room ? `<dt>お部屋</dt><dd>${esc(doc.room)}</dd>` : ''}
+${doc.breakdown?.length ? `<dt>内訳</dt><dd>${doc.breakdown.map((l) => `${esc(l.label)}　${esc(yen(l.amount))}${l.tax != null ? `（内消費税 ${esc(yen(l.tax))}）` : ''}`).join('<br>')}</dd>` : ''}
 </dl>
+${doc.notes?.length ? `<p class="notes">${doc.notes.map(esc).join('<br>')}</p>` : ''}
 <div class="issuer">
 <b>${esc(doc.issuerName)}</b><br>
 ${doc.facilityName ? `${esc(doc.facilityName)}<br>` : ''}

@@ -21,7 +21,9 @@ import {
 import { addDays } from '@autumn-book/core';
 import { todayStr } from '$lib/format';
 import * as m from '$lib/paraglide/messages';
-import { refundAfterCancel } from '$lib/server/direct-payments';
+import { refundAfterCancel, directPaymentForBooking } from '$lib/server/direct-payments';
+import { bookingReceiptAvailable } from '$lib/booking-receipt';
+import { bookingReceiptDefaultAddressee } from '$lib/server/booking-receipt';
 import {
 	amendGate,
 	MEMBER_PAGE_BOOKING_MESSAGE,
@@ -55,7 +57,11 @@ export const load: PageServerLoad = async (event) => {
 		);
 		// 特別会員の専用ページ経由の予約は参照のみ（取消・日程変更・オプションは専用ページのご予約一覧から・docs/vip-member-page.md §13.4.4）
 		const memberPageHref = detail.memberPage ? await memberPageHrefFor(detail.memberPage.partnerId, r.code).catch(() => null) : null;
+		// 領収書（カードのオンライン決済が済み、全額返金していない予約だけ・2026-11-21）
+		const pay = r.payment !== 'onsite' ? await directPaymentForBooking(r.code).catch(() => null) : null;
+		const receipt = bookingReceiptAvailable(pay) ? { href: `/account/reservations/${r.code}/receipt`, addressee: bookingReceiptDefaultAddressee(r) } : null;
 		return {
+			receipt,
 			...detail,
 			facility,
 			memberPage: detail.memberPage ? { ...detail.memberPage, href: memberPageHref } : null,
@@ -94,7 +100,9 @@ export const load: PageServerLoad = async (event) => {
 				: null,
 		refundPreview: null,
 		// デモ（store）は早期決済割（discount）だけ
-		prepayBonus: null
+		prepayBonus: null,
+		// デモ（store）はオンライン決済が無いので領収書も出さない
+		receipt: null as { href: string; addressee: string } | null
 	};
 };
 

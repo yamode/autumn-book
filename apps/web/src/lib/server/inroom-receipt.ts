@@ -194,15 +194,28 @@ export async function loadReceiptStatement(p: PaymentRow): Promise<ReceiptStatem
 	}
 }
 
+/** 領収書の発行者欄（会社名・施設名・施設の住所と TEL・登録番号）。施設は DB の UUID。会員マイページの予約の領収書でも使う */
+export async function receiptIssuerFor(facilityUuid: string): Promise<
+	Pick<InroomReceiptDoc, 'facilityName' | 'issuerName' | 'issuerAddress' | 'issuerTel' | 'registrationNumber'>
+> {
+	const issuer = await loadInvoiceIssuer(db(), TENANT_ID).catch(() => null);
+	const bookFacility = reverseFacilityUuid(facilityUuid) ?? facilityUuid;
+	const contact = FACILITY_CONTACT[bookFacility];
+	return {
+		facilityName: facilities.find((f) => (FACILITY_UUID[f.id] ?? f.id) === facilityUuid)?.name ?? '',
+		issuerName: issuer?.issuerName ?? DEFAULT_ISSUER_NAME,
+		issuerAddress: contact?.address ?? issuer?.issuerAddress ?? '',
+		issuerTel: contact?.tel ?? issuer?.issuerTel ?? '',
+		registrationNumber: issuer?.registrationNumber ?? ''
+	};
+}
+
 export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | null): Promise<InroomReceiptDoc> {
 	let entered = normalizeAddressee(addresseeInput);
 	if (!entered && p.payment_intent_id) {
 		entered = normalizeAddressee((await retrievePaymentIntent(p.payment_intent_id).catch(() => null))?.metadata?.receipt_name);
 	}
-	const issuer = await loadInvoiceIssuer(db(), TENANT_ID).catch(() => null);
-	const bookFacility = reverseFacilityUuid(p.facility_id) ?? p.facility_id;
-	const contact = FACILITY_CONTACT[bookFacility];
-	const facilityName = facilities.find((f) => (FACILITY_UUID[f.id] ?? f.id) === p.facility_id)?.name ?? '';
+	const issuer = await receiptIssuerFor(p.facility_id);
 	const paidAt = p.paid_at ?? new Date().toISOString();
 	const statement = await loadReceiptStatement(p);
 	return {
@@ -212,12 +225,8 @@ export async function buildReceiptDoc(p: PaymentRow, addresseeInput: string | nu
 		amount: p.amount,
 		paidAt,
 		proviso: RECEIPT_PROVISO,
-		facilityName,
 		room: p.room_code,
-		issuerName: issuer?.issuerName ?? DEFAULT_ISSUER_NAME,
-		issuerAddress: contact?.address ?? issuer?.issuerAddress ?? '',
-		issuerTel: contact?.tel ?? issuer?.issuerTel ?? '',
-		registrationNumber: issuer?.registrationNumber ?? ''
+		...issuer
 	};
 }
 
