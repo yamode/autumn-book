@@ -147,7 +147,8 @@
 		[
 			data.plan.payment.onsite ? { key: 'onsite', label: m.pay_onsite() } : null,
 			// 予約時のカード決済は「事前カード決済」（チェックアウト日のカード決済と並べても区別できる名前）
-			data.plan.payment.prepay ? { key: 'prepay', label: data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card() } : null,
+			// 選んだ日付で割引が付かず、チェックアウト日決済が選べるなら出さない（予約入力画面と同じ）
+			data.plan.payment.prepay && !('prepayOnDate' in data && data.prepayOnDate === false && data.plan.payment.checkout) ? { key: 'prepay', label: data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card() } : null,
 			// オンライン決済（チェックアウト日）。未設定のプランは従来どおり予約時のカード決済に含めて見せない
 			data.plan.payment.checkout ? { key: 'checkout', label: m.plan_card_payment_checkout() } : null
 		].filter((line): line is { key: string; label: string } => line !== null)

@@ -34,7 +34,7 @@ import { loadPlanTemplates } from '$lib/server/plan-templates';
 import { expandPlanText } from '$lib/plan-templates';
 import { HOLD_NAV_COOKIE, safeLocalPath } from '$lib/booking-nav';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
-import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
+import { prepayDiscountViewOf, viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
 import { memberOnsiteHint, planForViewer } from '$lib/member-payment';
 import { canBookPlans, planGate, secretPlanBySlug, viewerOf } from '$lib/server/secret-plans';
 import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
@@ -80,7 +80,8 @@ export const load: PageServerLoad = async (event) => {
 		// 料金・空室・仮押さえの RPC に「このプランを販売中と同じに扱う」印を付ける（スタッフのプレビューだけ）
 		const previewPlanId = preview ? preview.id : undefined;
 		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
+		const earlySettings = await loadEarlyPrepaySettings(facility.id);
+		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], earlySettings);
 		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
 		const expanded = expandPlanText(plan.description, await loadPlanTemplates(facility.id));
 		plan = { ...plan, description: expanded.text, perks: expanded.perks };
@@ -132,6 +133,12 @@ export const load: PageServerLoad = async (event) => {
 			calendarClosed: calendar.closed,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
+			// 選んだ日付で予約時決済の割引（定率・早期決済割・早期決済ポイント）が付くか。付かず、チェックアウト日決済が選べるなら
+			// 「事前カード決済」は出さない（予約入力画面と同じ・2026-11-22 指示）。日付未指定は null（出す）。
+			// 金額は仮の 10 万円で率だけ見る（除外日は泊ごとの料金が要るので見ない。予約入力画面が正しい額で出し分ける）
+			prepayOnDate: checkin && plan.payment.prepay
+				? ((d) => d.discount > 0 || d.bonusPoints > 0)(prepayDiscountViewOf(earlySettings, plan, { checkin, quote: { total: 100000 } }).detail)
+				: null,
 			referenceMode: !checkin,
 			// 複数室（予約かご）は実データだけ（デモの store は 1 室）
 			multiRoom: true,
