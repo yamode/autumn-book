@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { roomCapacityText } from '$lib/room-capacity';
 	import { enhance } from '$lib/enhance';
 	import { afterNavigate, goto } from '$app/navigation';
@@ -123,19 +124,21 @@
 	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
 	const totalSub = () => m.plan_price_total_sub({ adults: String(data.params.adults), nights: String(data.params.nights) });
 
-	// お食事。コースは夕食に付くもの（夕食と別の項目ではない）ので「夕食付き（スタンダードコース）」の形にし、夕食 → 朝食の順に 1 行ずつ出す
-	// （2026-11-01 指示）。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り。
+	// お食事。「ご夕食　スタンダードコース」「ご朝食　朝食付き」のように、項目名と中身を 1 行ずつ並べる（2026-11-21 指示: 明示的に）。
+	// コースは夕食に付くもの。夕食か朝食のどちらかがあるプランは、無い方も「なし」と出す。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り。
 	// 朝食・夕食の有無はプラン設定の「お食事」（v_plans.includes_breakfast / has_dinner）。読めない取得元は meal_plan から
 	let breakfast = $derived(data.plan.includesBreakfast ?? (data.plan.mealPlan === '2食' || data.plan.mealPlan === '朝食'));
 	let dinner = $derived(data.plan.hasDinner ?? data.plan.mealPlan === '2食');
-	const withCourse = (label: string) => (data.plan.dinnerCourse ? `${label}（${data.plan.dinnerCourse}）` : label);
-	let meals = $derived.by(() => {
-		if (data.plan.mealPlan === '日帰り') return [withCourse(m.plan_meal_lunch())];
+	let meals = $derived.by((): { label?: string; value: string }[] => {
+		if (data.plan.mealPlan === '日帰り') return [{ label: m.plan_meal_row_lunch(), value: data.plan.dinnerCourse || m.plan_meal_lunch() }];
 		// 設定も無く、rms の食事区分（2食 / 朝食 / 素泊）でもない値（デモの「2食付」等）はそのまま出す
 		const known = ['2食', '朝食', '素泊'].includes(data.plan.mealPlan);
-		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan ? [data.plan.mealPlan] : [];
-		const list = [dinner ? withCourse(m.plan_meal_dinner()) : '', breakfast ? m.plan_meal_breakfast() : ''].filter(Boolean);
-		return list.length ? list : [m.plan_meal_none()];
+		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan ? [{ value: data.plan.mealPlan }] : [];
+		if (!dinner && !breakfast) return [{ value: m.plan_meal_none() }];
+		return [
+			{ label: m.plan_meal_row_dinner(), value: dinner ? data.plan.dinnerCourse || m.plan_meal_dinner() : m.plan_meal_row_absent() },
+			{ label: m.plan_meal_row_breakfast(), value: breakfast ? m.plan_meal_breakfast() : m.plan_meal_row_absent() }
+		];
 	});
 	let payText = $derived(
 		[
@@ -325,13 +328,18 @@
 {/snippet}
 
 {#snippet planInfo()}
-	<!-- お食事・お支払い（右カラムの料金枠の上段）。お食事は「夕食付き（○○コース）」「朝食付き」を 1 行ずつ -->
+	<!-- お食事・お支払い（右カラムの料金枠の上段）。お食事は「ご夕食　○○コース」「ご朝食　朝食付き」を 1 行ずつ -->
 	<dl class="space-y-2 text-sm">
 		{#if meals.length}
 			<div class="flex gap-3">
 				<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_meal()}</dt>
 				<dd class="min-w-0 space-y-0.5 text-stone-800">
-					{#each meals as meal}<p>{meal}</p>{/each}
+					{#each meals as meal}
+						<p class="flex gap-3">
+							{#if meal.label}<span class="w-12 shrink-0 text-stone-500">{meal.label}</span>{/if}
+							<span class="min-w-0">{meal.value}</span>
+						</p>
+					{/each}
 				</dd>
 			</div>
 		{/if}
@@ -422,14 +430,12 @@
 </svelte:head>
 
 <div class="mx-auto max-w-5xl px-4 pt-8 {cart.length > 0 ? 'pb-44' : 'pb-24 md:pb-8'}">
-	<nav class="mb-2 text-xs text-stone-400">
-		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> /
-		{#if crumb}
-			<a href={crumb.href} class="hover:underline">{crumb.kind === 'plans' ? m.plan_detail_breadcrumb_plans() : crumb.kind === 'room' ? m.room_detail_breadcrumb() : data.facility.name}</a> / {data.plan.name}
-		{:else}
-			<a href="{base}/plans{qs ? '?' + qs : ''}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a> / {data.plan.name}
-		{/if}
-	</nav>
+	<!-- 戻り先は実際に通ってきたページ（一覧・客室ページ・施設トップ）。分からないときは客室・プラン一覧 -->
+	{#if crumb}
+		<BackLink href={crumb.href} target={crumb.kind === 'plans' ? m.back_target_plans() : crumb.kind === 'room' ? m.room_detail_breadcrumb() : data.facility.name} />
+	{:else}
+		<BackLink href="{base}/plans{qs ? '?' + qs : ''}" target={m.back_target_plans()} />
+	{/if}
 
 	<!-- レイアウト（2026-11-01）: 左＝見出し・写真・本文・客室、右＝料金と予約ボタン（ページの最後まで追従）。
 	     右カラムを全行にまたがらせ、本文以降も同じグリッドに入れることで追従が写真の高さで止まらないようにする。

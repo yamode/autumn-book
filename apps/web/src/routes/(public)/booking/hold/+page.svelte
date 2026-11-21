@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import ContactAddressFields from '$lib/components/ContactAddressFields.svelte';
 	import { enhance } from '$lib/enhance';
 	import { onMount, tick } from 'svelte';
@@ -453,26 +454,10 @@
 		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
 		{#if memberPage}
 			<!-- 特別会員の専用ページから: 戻り先は専用ページ（料金カレンダー） -->
-			<nav aria-label="breadcrumb" class="mb-1 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
-				<a href={memberPage.backHref} class="max-w-[16rem] truncate hover:underline">{memberPage.pageName}</a>
-				<span aria-hidden="true">/</span>
-				<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
-			</nav>
+			<BackLink href={memberPage.backHref} target={memberPage.pageName} />
 		{:else}
-		<nav aria-label="breadcrumb" class="mb-1 flex flex-wrap items-center gap-x-1 text-xs text-stone-500">
-			<a href="/search?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.common_facility_list()}</a>
-			<span aria-hidden="true">/</span>
-			<!-- 実際に通ってきたページ（一覧・施設トップ・客室ページ）を出す。経路が分からないときだけ一覧 -->
-			{#if viaStep}
-				<a href={viaStep.href} class="hover:underline">{viaStep.kind === 'plans' ? m.plan_detail_breadcrumb_plans() : viaStep.kind === 'room' ? m.room_detail_breadcrumb() : data.facility.name}</a>
-			{:else}
-				<a href="/{data.facility.brandSlug}/{data.facility.slug}/plans?checkin={data.hold.checkin}&nights={data.hold.nights}&adults={data.hold.adults}" class="hover:underline">{m.plan_detail_breadcrumb_plans()}</a>
-			{/if}
-			<span aria-hidden="true">/</span>
-			<a href={data.planHref} class="max-w-[16rem] truncate hover:underline">{data.plan.name}</a>
-			<span aria-hidden="true">/</span>
-			<span class="text-stone-700" aria-current="page">{m.hold_breadcrumb_current()}</span>
-		</nav>
+			<!-- 戻り先はこの予約のプランの詳細 -->
+			<BackLink href={data.planHref} target={m.back_target_plan()} />
 		{/if}
 		<!-- 見出しと「1. 入力 → 2. 確認・確定」（取引先ページと共通） -->
 		<BookingSteps {step} heading={step === 'input' ? m.hold_heading_input() : m.hold_heading_confirm()} inputLabel={m.hold_step_input()} confirmLabel={m.hold_step_confirm()} />

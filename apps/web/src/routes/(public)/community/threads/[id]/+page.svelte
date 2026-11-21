@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import ForumPostView from '$lib/components/ForumPostView.svelte';
@@ -21,10 +22,7 @@
 <svelte:head><title>{data.thread.title} ｜ {m.forum_title()}</title></svelte:head>
 
 <div class="forum-shell mx-auto max-w-5xl px-4 py-10">
-	<nav class="mb-3 text-xs text-stone-400">
-		<a href="/community" class="hover:underline">{m.forum_board_breadcrumb()}</a> /
-		<a href="/community/{data.thread.boardSlug}" class="hover:underline">{data.thread.boardTitle}</a>
-	</nav>
+	<BackLink href="/community/{data.thread.boardSlug}" target={data.thread.boardTitle} />
 
 	<h1 class="mb-4 break-words text-2xl text-brand-900">
 		{#if data.thread.isPinned}<span aria-label={m.forum_label_pinned()}>📌</span>{/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 
@@ -8,10 +9,7 @@
 <svelte:head><title>{m.forum_new_thread_heading()} ｜ {data.board.title}</title></svelte:head>
 
 <div class="forum-shell mx-auto max-w-2xl px-4 py-10">
-	<nav class="mb-3 text-xs text-stone-400">
-		<a href="/community" class="hover:underline">{m.forum_board_breadcrumb()}</a> /
-		<a href="/community/{data.board.slug}" class="hover:underline">{data.board.title}</a>
-	</nav>
+	<BackLink href="/community/{data.board.slug}" target={data.board.title} />
 
 	<h1 class="mb-1 text-2xl text-brand-900">{m.forum_new_thread_heading()}</h1>
 	<p class="mb-5 text-sm text-stone-500">{m.forum_new_thread_in({ board: data.board.title })}</p>

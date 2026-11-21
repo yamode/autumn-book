@@ -2,6 +2,7 @@
 	// 公式マイページ: 2 室以上のご予約の「このお部屋を変更」（部屋タイプ・プラン・人数・公式の複数室 M3・docs/official-multi-room.md §17.3.1・§18.5）。
 	// ① 人数（GET ?adults=）→ ② 候補（プラン × 部屋タイプ。押すと ?offer=planId__roomTypeId で見積）→ ③ 見積 → 確定（POST ?/confirm → 予約詳細へ 303）。
 	// 日程は変えない（日程は amend/ の全室同時の変更）。規則（締切・回数・ペナルティ・在庫・定員・支払方法）は DB が確かめる。
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import { formatPrice } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
@@ -41,11 +42,7 @@
 
 <svelte:head><title>{m.amend_room_title({ n: String(data.room.index) })}</title></svelte:head>
 
-<nav class="mb-4 text-xs text-stone-400">
-	<a href="/account/reservations" class="hover:underline">{m.reservation_breadcrumb_list()}</a> /
-	<a href={data.hrefs.back} class="hover:underline">{data.code}</a> /
-	{m.amend_room_title({ n: String(data.room.index) })}
-</nav>
+<BackLink href={data.hrefs.back} target={m.back_target_reservation()} />
 
 <h1 class="text-xl font-semibold text-brand-900">{m.amend_room_title({ n: String(data.room.index) })}</h1>
 <p class="mt-1 text-sm text-stone-500">{m.amend_room_lead()}</p>

@@ -733,7 +733,7 @@
               {#if card.rows.length > 2}
                 <div class="border-t border-stone-200 px-5 py-4 text-right">
                   <button type="button" aria-expanded={!!expanded[card.code]} onclick={() => (expanded[card.code] = !expanded[card.code])} class="w-full rounded-md border border-stone-300 px-6 py-2.5 text-sm font-bold text-sky-700 hover:border-sky-700 sm:w-auto sm:min-w-72">
-                    {expanded[card.code] ? '閉じる' : `プランをすべてみる（${card.rows.length}件）`} <span aria-hidden="true" class={`ml-1 inline-block transition ${expanded[card.code] ? 'rotate-180' : ''}`}>⌄</span>
+                    {expanded[card.code] ? '閉じる' : `プランをすべてみる（${card.rows.length}件）`} <span aria-hidden="true" class={`ml-1 inline-block align-[-0.2em] transition ${expanded[card.code] ? 'rotate-180' : ''}`}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
                   </button>
                 </div>
               {/if}
@@ -811,7 +811,7 @@
               {#if card.rows.length > 3}
                 <div class="border-t border-stone-200 px-4 py-3 text-right">
                   <button type="button" aria-expanded={!!expanded[card.key]} onclick={() => (expanded[card.key] = !expanded[card.key])} class="w-full rounded-md border border-stone-300 px-6 py-2.5 text-sm font-bold text-sky-700 hover:border-sky-700 sm:w-auto sm:min-w-72">
-                    {expanded[card.key] ? '閉じる' : `部屋をすべてみる（${card.rows.length}件）`} <span aria-hidden="true" class={`ml-1 inline-block transition ${expanded[card.key] ? 'rotate-180' : ''}`}>⌄</span>
+                    {expanded[card.key] ? '閉じる' : `部屋をすべてみる（${card.rows.length}件）`} <span aria-hidden="true" class={`ml-1 inline-block align-[-0.2em] transition ${expanded[card.key] ? 'rotate-180' : ''}`}><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
                   </button>
                 </div>
               {/if}

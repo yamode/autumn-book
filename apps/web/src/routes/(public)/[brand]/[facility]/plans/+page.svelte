@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import { todayStr } from '$lib/format';
 	import { roomCapacityText } from '$lib/room-capacity';
@@ -170,9 +171,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-7 sm:py-10">
-	<nav class="mb-4 text-xs text-stone-500" aria-label="breadcrumb">
-		<a href={facilitiesHref} class="hover:underline">{m.common_facility_list()}</a> / {m.plans_breadcrumb()}
-	</nav>
+	<BackLink href={facilitiesHref} target={m.common_facility_list()} />
 
 	<!-- 施設名と一言だけ（紹介・写真はページ下部の「施設について」へ） -->
 	<header class="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
@@ -318,7 +317,7 @@
 								<div class="border-t border-stone-200 p-4 text-center sm:text-right">
 									<button type="button" aria-controls="plans-{item.room.id}" aria-expanded={!!expandedRooms[item.room.id]} onclick={() => (expandedRooms[item.room.id] = !expandedRooms[item.room.id])} class="w-full rounded-md border border-stone-300 px-5 py-2.5 text-sm font-semibold text-brand-800 hover:border-brand-800 hover:bg-brand-50 sm:w-auto sm:min-w-72">
 										{expandedRooms[item.room.id] ? m.plans_room_collapse() : m.plans_room_show_all({ count: String(item.plans.length) })}
-										<span aria-hidden="true" class="ml-2 inline-block transition {expandedRooms[item.room.id] ? 'rotate-180' : ''}">⌄</span>
+										<span aria-hidden="true" class="ml-2 inline-block align-[-0.2em] transition {expandedRooms[item.room.id] ? 'rotate-180' : ''}"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
 									</button>
 								</div>
 							{/if}

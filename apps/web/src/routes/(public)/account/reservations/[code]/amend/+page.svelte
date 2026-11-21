@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import { formatPrice, formatDate, formatDateLong, todayStr } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
@@ -26,11 +27,7 @@
 
 <svelte:head><title>{m.amend_title()}</title></svelte:head>
 
-<nav class="mb-4 text-xs text-stone-400">
-	<a href="/account/reservations" class="hover:underline">{m.reservation_breadcrumb_list()}</a> /
-	<a href="/account/reservations/{data.code}" class="hover:underline">{data.code}</a> /
-	{m.amend_title()}
-</nav>
+<BackLink href="/account/reservations/{data.code}" target={m.back_target_reservation()} />
 
 <h1 class="text-xl font-semibold text-brand-900">{m.amend_title()}</h1>
 <p class="mt-1 text-sm text-stone-500">{m.amend_lead()}</p>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { formatDate } from '$lib/format';
 	import ForumCta from '$lib/components/ForumCta.svelte';
@@ -9,9 +10,7 @@
 <svelte:head><title>{data.board.title} ｜ {m.forum_title()}</title></svelte:head>
 
 <div class="forum-shell mx-auto max-w-5xl px-4 py-10">
-	<nav class="mb-3 text-xs text-stone-400">
-		<a href="/community" class="hover:underline">{m.forum_board_breadcrumb()}</a> / {data.board.title}
-	</nav>
+	<BackLink href="/community" target={m.forum_board_breadcrumb()} />
 
 	<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
 		<div>

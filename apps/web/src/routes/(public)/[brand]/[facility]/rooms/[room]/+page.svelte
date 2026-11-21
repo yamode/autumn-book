@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BackLink from '$lib/components/BackLink.svelte';
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanCard from '$lib/components/PlanCard.svelte';
 	// 客室詳細（施設 → 客室一覧 → 客室詳細）。紹介は取引先ページのお部屋の紹介と同じ部品（2026-11-02）
@@ -14,11 +15,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-7 sm:px-6 sm:py-10" style="--pt-accent: var(--color-brand-800); --pt-accent-soft: var(--color-stone-100)">
-	<nav class="mb-4 text-xs text-stone-500" aria-label="breadcrumb">
-		<a href="/search" class="hover:underline">{m.common_facility_list()}</a> /
-		<a href="{base}/plans" class="hover:underline">{m.plans_breadcrumb()}</a> /
-		<a href="{base}/rooms" class="hover:underline">{m.rooms_list_title()}</a> / {data.room.name}
-	</nav>
+	<BackLink href="{base}/rooms" target={m.rooms_list_title()} />
 
 	<header class="mb-4">
 		<p class="text-xs tracking-wider text-stone-500">{data.facility.name}</p>
