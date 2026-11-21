@@ -5,10 +5,11 @@
 //   ローカルでは GOOGLE_SA_KEY_FILE=<鍵JSONのパス> でもよい（96_Claude/secrets/google-growth-sa.json）
 //
 // 取るもの（すべて日別。前週比・前年比は呼び出し側＝ループの AI が計算する）
-//   - GA4（book / 西和賀HP / 男鹿HP の3プロパティ）: セッション・ユーザー・チャネル/参照元・ランディングページ・端末・
+//   - GA4（book / 西和賀HP / 男鹿HP / 採用サイトの4プロパティ）: セッション・ユーザー・チャネル/参照元・ランディングページ・端末・
 //     book は予約ファネル（search → view_item → begin_checkout → purchase）と utm_source 別
-//   - Search Console（3サイト）: 検索クエリ・ページ別の表示回数・クリック・掲載順位
-//   - GTM（西和賀・男鹿のコンテナ）: 公開中のバージョンと、未公開のまま残っている変更
+//     採用サイトは求人ページの閲覧と、応募の入口（ハローワーク求人票・マイナビ）への外部クリック
+//   - Search Console（4サイト）: 検索クエリ・ページ別の表示回数・クリック・掲載順位
+//   - GTM（西和賀・男鹿・採用サイトのコンテナ）: 公開中のバージョンと、未公開のまま残っている変更
 // 書き込み系の API は一切呼ばない（スコープも readonly のみ）。
 
 import { createSign } from 'node:crypto';
@@ -23,7 +24,10 @@ const dbg = (...a) => DEBUG && console.error('[DBG]', ...a);
 const SITES = [
 	{ key: 'book', label: 'autumn-book（book.yamado.app）', measurementId: 'G-JFW5QS8QKH', funnel: true },
 	{ key: 'hp_yamado', label: '西和賀HP（www.yamado.co.jp）', measurementId: 'G-RN88NPRMNX', gsc: 'sc-domain:yamado.co.jp', gscPage: 'https://www.yamado.co.jp/', gtm: { account: '6272932827', container: '266787355' } },
-	{ key: 'hp_oga', label: '男鹿HP（oga.yamado.co.jp）', measurementId: 'G-30DJVL8YLG', gsc: 'sc-domain:oga.yamado.co.jp', gtm: { account: '6272932827', container: '208438396' } }
+	{ key: 'hp_oga', label: '男鹿HP（oga.yamado.co.jp）', measurementId: 'G-30DJVL8YLG', gsc: 'sc-domain:oga.yamado.co.jp', gtm: { account: '6272932827', container: '208438396' } },
+	// 採用サイト（2026-11-21 計測開始。プロパティ 565362361「YAMADO 採用＆コーポレート」・リポジトリ hp-corporate）。
+	// 予約ではなく応募が目的なので、求人ページ（/job/…）の閲覧と、ハローワーク求人票・マイナビへの外部クリックを別に取る
+	{ key: 'hp_corporate', label: '採用サイト（corporate.yamado.co.jp）', measurementId: 'G-1D2BXTJYB9', gsc: 'sc-domain:yamado.co.jp', gscPage: 'https://corporate.yamado.co.jp/', gtm: { account: '6272932827', container: '288051942' }, recruit: true }
 ];
 const FUNNEL_EVENTS = ['search', 'view_item', 'begin_checkout', 'purchase'];
 const SCOPES = [
@@ -141,6 +145,30 @@ async function ga4(call, property, site) {
 		// HP の検索バー・ボタンから来た分（utm_source=hp_* 等）
 		out.utmSource = await run({ dimensions: [{ name: 'sessionSource' }, { name: 'sessionManualAdContent' }], metrics: [{ name: 'sessions' }, { name: 'keyEvents' }], orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 });
 		out.purchaseRevenueDaily = await run({ dimensions: [{ name: 'date' }], metrics: [{ name: 'ecommercePurchases' }, { name: 'purchaseRevenue' }] }).catch((e) => ({ error: String(e) }));
+	}
+	if (site.recruit) {
+		// 職種ページ・求人ページ（/job/…）の閲覧
+		out.jobPages = await run({
+			dimensions: [{ name: 'pagePath' }],
+			metrics: [{ name: 'screenPageViews' }, { name: 'totalUsers' }],
+			dimensionFilter: { filter: { fieldName: 'pagePath', stringFilter: { matchType: 'BEGINS_WITH', value: '/job/' } } },
+			orderBys: [{ metric: { metricName: 'screenPageViews' }, desc: true }],
+			limit: 50
+		}).catch((e) => ({ error: String(e) }));
+		// 応募の入口（ハローワーク求人票・マイナビ）への外部クリックを、どのページから押したか
+		out.applyClicks = await run({
+			dimensions: [{ name: 'date' }, { name: 'pagePath' }, { name: 'linkDomain' }],
+			metrics: [{ name: 'eventCount' }],
+			dimensionFilter: {
+				andGroup: {
+					expressions: [
+						{ filter: { fieldName: 'eventName', stringFilter: { value: 'click' } } },
+						{ orGroup: { expressions: ['hellowork.mhlw.go.jp', 'mynavi.jp'].map((d) => ({ filter: { fieldName: 'linkDomain', stringFilter: { matchType: 'CONTAINS', value: d } } })) } }
+					]
+				}
+			},
+			limit: 1000
+		}).catch((e) => ({ error: String(e) }));
 	}
 	return out;
 }

@@ -1,6 +1,6 @@
 # 集客ループ運用ルール（GROWTH.md）
 
-AI が人の指示なしで、autumn-book と連携サイト（hp-yamado・hp-oga）のアクセスデータを巡回し、
+AI が人の指示なしで、autumn-book と連携サイト（hp-yamado・hp-oga）、採用サイト（hp-corporate）のアクセスデータを巡回し、
 「流入の増減を見つける → 原因を分析する → 次の打ち手を考える → 打ち手の効果を測る」を回すときの決まりごと。
 **集客ループのクラウドルーティンは、毎回最初にこのファイルを読む。** 規則を変えたいときはここだけ直す。
 
@@ -31,13 +31,20 @@ PHASE = 2
 | book | book.yamado.app（予約エンジン） | G-JFW5QS8QKH（556111214「Autumn Book」） | **未登録**（取得しない） | 直接 gtag |
 | hp_yamado | www.yamado.co.jp（西和賀） | G-RN88NPRMNX（558375809） | sc-domain:yamado.co.jp を `https://www.yamado.co.jp/` のページで絞る | GTM-MKFGGV6J（266787355） |
 | hp_oga | oga.yamado.co.jp（男鹿） | G-30DJVL8YLG（416414119） | sc-domain:oga.yamado.co.jp | GTM-PZL2T4L8（208438396） |
+| hp_corporate | corporate.yamado.co.jp（採用・会社案内。リポ hp-corporate） | G-1D2BXTJYB9（565362361「YAMADO 採用＆コーポレート」） | sc-domain:yamado.co.jp を `https://corporate.yamado.co.jp/` のページで絞る | GTM-WR52G85P（288051942） |
 
-- GA4 の3プロパティはすべてアカウント「株式会社 山人」（78624539）にある。GTM はアカウント YAMADO（6272932827）。
+- GA4 の4プロパティはすべてアカウント「株式会社 山人」（78624539）にある。GTM はアカウント YAMADO（6272932827）。
 - Search Console の持ち主：`sc-domain:yamado.co.jp` は yamode＠gmail.com、`sc-domain:oga.yamado.co.jp` は yamado2222＠gmail.com。
   `sc-domain:yamado.co.jp` は oga・corporate など他のサブドメインも含むので、西和賀の数字は必ずページで絞ったものを使う。
 - book（yamado.app）は Search Console にまだ登録していない。book の検索流入は GA4 のチャネル（Organic Search）で見る。
 - 読み取り用のサービスアカウント：`growth-loop@taskul-498901.iam.gserviceaccount.com`（Google Cloud プロジェクト TASKUL `taskul-498901`）。
   権限は GA4「閲覧者」・GTM「読み取り」（アカウントは「ユーザー」）・Search Console「制限付き」だけ。鍵は `96_Claude/secrets/google-growth-sa.json`。
+
+採用サイト（hp_corporate）は **予約ではなく応募** が目的（2026-11-21 計測開始・同日 Hikaru の指示で追加）。
+- 見る数字：求人ページ（`/job/<職種>/<施設>-<番号>/`）と職種ページ（`/job/kitchen/` 等）の閲覧、応募の入口への外部クリック（ハローワーク求人票 `hellowork.mhlw.go.jp`・マイナビ `mynavi.jp`）＝`applyClicks`、Search Console の求人系の検索語（「西和賀 求人」「男鹿 旅館 求人」「調理 求人 岩手」など）。
+- サイトには会社案内・お知らせ（おせち等）も載っている。採用の分析では求人系のページ・検索語と、それ以外を分けて書く。
+- 求人ページは hp-corporate が TASKUL Join とハローワーク公開一覧から作る（作り直しは人の `npm run jobs:pull && npm run build && npm run deploy`）。求人の中身（賃金・文面）の改善は TASKUL Join の「求人ループ」の領分なので、集客ループは **サイトへの流入と、求人ページから応募の入口までの導線** に絞る。
+- 実際の応募数は TASKUL Join にある（このループは読まない）。応募クリックは「応募の意思」の近似として扱う。
 
 HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_source=hp_*`／`utm_content` で追える（book 側の `utm_source` 別レポート）。
 
@@ -48,7 +55,7 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
   2026-11-02 にローカルで全サイト・全 API が `error` なしで通ることを確認済み。
 - 予約の実数は本番 Supabase（`opkocyapzmsjzhbwlguh`）の `book` スキーマを **SELECT のみ** で見る（GA4 の purchase と突き合わせて計測漏れを検出するため）。
   宿泊者の氏名・連絡先は取らない（件数・金額・チャネル・施設・日付だけ）。
-- 変更履歴は autumn-book の `git log`・release notes、hp-yamado / hp-oga の `git log` を見る（流入の変化と、こちらの変更の時期を結びつけるため）。
+- 変更履歴は autumn-book の `git log`・release notes、hp-yamado / hp-oga / hp-corporate の `git log` を見る（流入の変化と、こちらの変更の時期を結びつけるため）。
 
 ## 毎日の健康診断（短く）
 
@@ -63,7 +70,8 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
 
 1. **何が増えた／減ったか**：サイトごとに、直近7日 vs 前週・前年同週（364日前）、直近28日 vs その前28日。
    見る軸：チャネル・参照元・ランディングページ・端末・国・検索クエリ（表示回数・CTR・順位）・book のファネル各段の通過率。
-   **件数が小さいもの（週50セッション未満）の増減率は話題にしない**（ノイズ）。
+   採用サイトは、求人ページの閲覧 → 応募クリックの割合（ページ別）と、求人系の検索語の表示回数・順位も見る。
+   **件数が小さいもの（週50セッション未満）の増減率は話題にしない**（ノイズ）。採用サイトは件数が小さいので、増減率でなく実数と、Search Console の表示回数・順位で語る。
 2. **なぜか**：季節（紅葉・雪・GW・年末年始）、こちらの変更（デプロイ・HP 更新・GTM 公開）、検索順位の変化、OTA 側の動きのどれで説明できるか。
    説明がつかないものは「不明」と書く。こじつけない。
 3. **次の打ち手**：最大3つ。各打ち手に
@@ -76,7 +84,8 @@ HP → book は、HP に埋め込んだ検索バー・予約ボタンの `utm_so
 
 出力：
 - autumn-book に週次レポート Issue（タイトル「集客レポート YYYY-MM-DD 週」・ラベル `loop` `growth`）
-- 打ち手ごとに Issue（ラベル `loop` `growth` `risk:*`。HP の打ち手は hp-yamado / hp-oga 側に起票し、レポートからリンク）
+- 打ち手ごとに Issue（ラベル `loop` `growth` `risk:*`。HP の打ち手は hp-yamado / hp-oga 側、採用サイトの打ち手は hp-corporate 側に起票し、レポートからリンク）
+- 採用サイトの打ち手は、レポートの中で施設の集客とは別の節にする（最大3つの枠とは別に、採用は最大2つ）。実装（PR）は実装役の対象外で、人が進める
 - 各打ち手の判定は、その打ち手の Issue にコメントし、効いた／効かなかったで閉じる
 
 ## リスク区分（集客ループ用）
@@ -123,6 +132,6 @@ PHASE が 2 未満、または `loop:pause` の open Issue があれば何もし
 - Google 側（GA4・GTM・Search Console）は **読むだけ**。サービスアカウントにも閲覧権限しか付けない。
 - 数字を書くときは期間と比較対象を必ず併記する（「+20%」だけで書かない）。
 - 個人を特定できる情報（予約者名・メール・予約番号と人の組み合わせ）をレポート・Issue に書かない。
-- 打ち手は山人の2施設の集客に直結するものに絞る。「他社でも使える」汎用化の提案はしない（autumn 設計規律）。
+- 打ち手は山人の2施設の集客と、採用サイトからの応募に直結するものに絞る。「他社でも使える」汎用化の提案はしない（autumn 設計規律）。
 - 料金・在庫の判断（値付け・販売停止）は RMS と人の領分。提案は「RMS で検討を」と書くに留める。
 - 実装の PR を作るときは各リポの CLAUDE.md（版上げ・release notes・日本語コミット）に従い、main へ直接 push しない。
