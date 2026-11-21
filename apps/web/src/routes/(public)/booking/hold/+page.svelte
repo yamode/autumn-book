@@ -82,7 +82,8 @@
 	const payText = (group: PayTextGroup, field: 'label' | 'note', fallback: string) =>
 		(data.expired ? null : payTextFor(data.paymentTexts, group, field, getLocale())) ?? fallback;
 	const onsiteMethodLabel = (v: OnsiteMethod) => (v === 'paypay' ? m.pay_method_paypay() : v === 'card' ? m.pay_method_card() : m.pay_method_cash());
-	let hasPrepay = $derived(!data.expired && data.payOptions.includes('card'));
+	// プランが予約時のカード決済を受け付けるか（実際に出すかは下の hasPrepay）
+	let cardPrepay = $derived(!data.expired && data.payOptions.includes('card'));
 	let hasOnsite = $derived(!data.expired && data.payOptions.includes('onsite'));
 	// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと。オンライン決済を選んだときだけ効く）。
 	// サーバが lib/early-prepay.ts（DB と同じ式）で計算した額。金額の正は DB（direct_payment_prepare）
@@ -108,6 +109,9 @@
 	// オンライン決済（チェックアウト日・2026-11-01）: カード決済が使えるプランで、実データ（同じ画面で払う方式）のときだけ。
 	// 予約時にカードを登録し、チェックアウト日に請求する（予約時決済の割引・早期決済ポイント・事務手数料は付かない）
 	let hasCheckout = $derived(!data.expired && data.inline && data.checkoutOption);
+	// 予約時決済は、早期決済割引（または早期決済ポイント）が付くときだけ出す。付かないならチェックアウト日決済だけでよい（2026-11-22 指示）。
+	// チェックアウト日決済が選べないプラン（予約時決済しかない）では、割引が無くても予約時決済を出す
+	let hasPrepay = $derived(cardPrepay && (!hasCheckout || prepayAmount > 0 || bonusPoints > 0));
 	let hasOnline = $derived(hasPrepay || hasCheckout);
 	let canChooseTiming = $derived(hasPrepay && hasCheckout);
 	let canPay = $derived(hasOnline || hasOnsite);

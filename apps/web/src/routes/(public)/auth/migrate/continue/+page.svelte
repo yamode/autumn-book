@@ -7,8 +7,9 @@
 	const v = $derived(form?.values ?? (data.state === 'ready' ? data.values : undefined));
 	const err = $derived((form?.errors ?? {}) as Record<string, string>);
 	const message = $derived(form && 'message' in form ? (form.message as string) : '');
-	// メール配信は既定オフ（以前の同意は引き継がず、ここで改めて選んでもらう・特定電子メール法）
-	const optInDefault = false;
+	// メール配信は既定オン（会員登録画面と同じ・2026-11-22 指示）。以前の同意は引き継がず、この画面のチェックで改めて選んでもらう。
+	// チェックを外せば受け取らない。配信停止はマイページからいつでもできる旨を欄の下に出している
+	const optInDefault = true;
 </script>
 
 <svelte:head>
