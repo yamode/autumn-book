@@ -93,6 +93,7 @@ import {
 import { paymentMethodsOf } from '$lib/member-payment';
 import { ONSITE_METHODS, PLAN_PAY_OPTIONS, normalizeOptions, paymentMethodsOfOptions } from '$lib/direct-payment';
 import { todayStr } from '$lib/format';
+import type { LegacyStay } from '$lib/legacy-stays';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -1800,6 +1801,38 @@ export async function sbMyReservations(client: SupabaseClient): Promise<MemberRe
 	const { data, error } = await client.schema('book').rpc('my_reservations');
 	if (error) throw error;
 	return ((data ?? []) as MyReservationRow[]).map(mapReservationRow);
+}
+
+// ---- 以前の予約システム（tripla・予約番）の予約（book.my_legacy_stays・見るだけ）----
+
+type MyLegacyStayRow = {
+	reservation_code: string;
+	facility_id: string;
+	room_type_name: string | null;
+	check_in_date: string;
+	check_out_date: string;
+	room_count: number;
+	adult_count: number;
+	child_count: number;
+	stay_status: 'reserved' | 'stayed';
+	channel_code: string;
+};
+
+/** 会員本人の、以前の予約システムで受けた予約（予約中・宿泊済み。取消は含まない）。PMS の滞在から作る */
+export async function sbMyLegacyStays(client: SupabaseClient): Promise<LegacyStay[]> {
+	const { data, error } = await client.schema('book').rpc('my_legacy_stays');
+	if (error) throw error;
+	return ((data ?? []) as MyLegacyStayRow[]).map((r) => ({
+		code: r.reservation_code,
+		facilityUuid: r.facility_id,
+		roomTypeName: r.room_type_name ?? '',
+		checkin: r.check_in_date,
+		checkout: r.check_out_date,
+		roomCount: r.room_count,
+		adults: r.adult_count,
+		children: r.child_count,
+		status: r.stay_status
+	}));
 }
 
 /** 会員本人によるキャンセル（キャンセル料はグレード別規定どおり・免除不可）。cancel_booking RPC。

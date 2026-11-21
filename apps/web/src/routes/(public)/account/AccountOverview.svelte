@@ -18,6 +18,11 @@
 		cancelled: 'bg-stone-100 text-stone-500',
 		stayed: 'bg-blue-50 text-blue-600'
 	} as const;
+
+	// 以前の予約システムのこれからの予約（予約一覧ではすべて・ダッシュボードでは Book の予約が無いときだけ 1 件）
+	const legacyUpcomingShown = $derived(
+		reservationsOnly ? data.legacyStays.upcoming : data.upcoming.length === 0 ? data.legacyStays.upcoming.slice(0, 1) : []
+	);
 </script>
 
 <svelte:head><title>{reservationsOnly ? m.account_nav_reservations() : m.account_dashboard()} ｜ {m.account_title()}</title></svelte:head>
@@ -45,12 +50,33 @@
 				<span class="mt-2 inline-block text-sm font-semibold text-brand-800">{m.account_view_booking()} <span aria-hidden="true">›</span></span>
 			</div>
 		</a>
-	{:else}
+	{/each}
+	<!-- 以前の予約システム（tripla・予約番）のこれからの予約。見るだけ（変更・取消は以前の予約システムかお電話）。
+	     ダッシュボードでは Book の予約が無いときだけ 1 件出す -->
+	{#each legacyUpcomingShown as s (s.code)}
+		<div class="mb-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<span class="rounded-full px-2 py-0.5 text-xs {statusCls.reserved}">{statusLabel.reserved}</span>
+				<span class="text-xs text-stone-400">{s.code}</span>
+				{#if s.roomCount > 1}<span class="rounded bg-brand-100 px-1.5 text-xs text-brand-700">{m.account_rooms_badge({ n: String(s.roomCount) })}</span>{/if}
+				<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-600">{m.account_legacy_stays_badge()}</span>
+			</div>
+			<h3 class="mt-1 text-lg font-semibold text-brand-900">{s.facilityName}</h3>
+			<p class="text-[15px] font-medium text-brand-900">{formatDateLong(s.checkin)} · {m.searchbar_nights_option({ n: String(s.nights) })}</p>
+			<p class="text-sm text-stone-600">
+				{[s.roomTypeName, m.common_adults_unit({ n: String(s.adults) }), s.children > 0 ? m.account_legacy_stays_children({ n: String(s.children) }) : '']
+					.filter(Boolean)
+					.join(' · ')}
+			</p>
+			<p class="mt-2 text-xs text-stone-500">{@html data.legacyActive ? m.account_legacy_stays_change_link() : m.account_legacy_stays_change_phone()}</p>
+		</div>
+	{/each}
+	{#if data.upcoming.length === 0 && legacyUpcomingShown.length === 0}
 		<div class="rounded-2xl border border-dashed border-stone-300 p-4 text-sm text-stone-600">
 			<p>{m.account_no_reservations()}</p>
 			<a href="/search" class="mt-1 inline-flex min-h-11 items-center font-medium text-brand-800 underline">{m.account_find_accommodation()}</a>
 		</div>
-	{/each}
+	{/if}
 </section>
 
 {#if !reservationsOnly && page.url.searchParams.get('welcome')}
@@ -90,6 +116,26 @@
 					</span>
 					<span class="text-right text-xs text-stone-600">{b.code}</span>
 				</a>
+			{/each}
+		</div>
+	</section>
+{/if}
+
+{#if reservationsOnly && data.legacyStays.past.length > 0}
+	<!-- 以前の予約システムでのご利用（PMS の滞在から・見るだけ。金額・プラン名は無い） -->
+	<section class="mt-8">
+		<h2 class="mb-1 text-lg text-brand-900">{m.account_legacy_stays_past()}</h2>
+		<p class="mb-4 text-sm text-stone-500">{m.account_legacy_stays_past_note()}</p>
+		<div class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
+			{#each data.legacyStays.past as s (s.code)}
+				<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+					<span class="font-medium text-brand-900">{s.facilityName}</span>
+					{#if s.status === 'stayed'}<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls.stayed}">{statusLabel.stayed}</span>{:else}<span></span>{/if}
+					<span class="min-w-0 text-xs text-stone-600">
+						{formatDateLong(s.checkin)} · {m.searchbar_nights_option({ n: String(s.nights) })}{#if s.roomCount > 1} · {m.account_rooms_badge({ n: String(s.roomCount) })}{/if}{#if s.roomTypeName} · {s.roomTypeName}{/if}
+					</span>
+					<span class="text-right text-xs text-stone-600">{s.code}</span>
+				</div>
 			{/each}
 		</div>
 	</section>

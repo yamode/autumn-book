@@ -2,11 +2,29 @@ import { legacyMigrationOpen } from '$lib/server/legacy-migration-flag';
 import { legacyClaimable } from '$lib/server/legacy-members';
 import { myReservations, facilityById, roomTypeById } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbMyReservations, reverseFacilityUuid } from '$lib/server/supabase-data';
+import { sbMyReservations, sbMyLegacyStays, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
+import { legacyNights, splitLegacyStays, type LegacyStay } from '$lib/legacy-stays';
 import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
 import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
 import type { RequestEvent } from '@sveltejs/kit';
+
+// デモ表示用の見本（以前の予約システムの予約・これから 1 件と過去 2 件）
+const demoLegacyStays = (today: string) => {
+	const shift = (days: number) => {
+		const d = new Date(`${today}T00:00:00Z`);
+		d.setUTCDate(d.getUTCDate() + days);
+		return d.toISOString().slice(0, 10);
+	};
+	const nishiwaga = facilityById('f-nishiwaga')?.name ?? '—';
+	const oga = facilityById('f-oga')?.name ?? '—';
+	const rows: LegacyStay[] = [
+		{ code: 'TE0B0D000C0D1', facilityUuid: '', roomTypeName: '和洋室', checkin: shift(40), checkout: shift(42), roomCount: 2, adults: 4, children: 1, status: 'reserved' },
+		{ code: 'TE0B0D000C0D2', facilityUuid: '', roomTypeName: '', checkin: shift(-200), checkout: shift(-199), roomCount: 1, adults: 2, children: 0, status: 'stayed' },
+		{ code: 'YB-0000123', facilityUuid: '', roomTypeName: '', checkin: shift(-1500), checkout: shift(-1498), roomCount: 1, adults: 2, children: 0, status: 'stayed' }
+	];
+	return rows.map((s, i) => ({ ...s, nights: legacyNights(s), facilityName: i === 1 ? oga : nishiwaga }));
+};
 
 const loadReservations = async (event: RequestEvent) => {
 	const { locals } = event;
@@ -15,7 +33,17 @@ const loadReservations = async (event: RequestEvent) => {
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
 		const memberPages = locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([]);
+		// 以前の予約システム（tripla・予約番）の予約。読めなくても一覧は出す
+		const legacyRaw = sbMyLegacyStays(client).catch((e) => {
+			console.error('[account] my_legacy_stays', e);
+			return [];
+		});
 		const reservations = await sbMyReservations(client);
+		const legacyList = (await legacyRaw).map((s) => {
+			const storeId = reverseFacilityUuid(s.facilityUuid);
+			const f = storeId ? facilityById(storeId) : undefined;
+			return { ...s, nights: legacyNights(s), facilityName: f?.name ?? '—' };
+		});
 		const list = reservations.map((r) => {
 			// 施設マスタ（名称・写真・スラッグ）は store 側が正。実 UUID から逆引きする。
 			const storeId = reverseFacilityUuid(r.facilityUuid);
@@ -44,7 +72,8 @@ const loadReservations = async (event: RequestEvent) => {
 		return {
 			upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 			past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-			memberPages
+			memberPages,
+			legacyStays: splitLegacyStays(legacyList, today)
 		};
 	}
 
@@ -60,7 +89,9 @@ const loadReservations = async (event: RequestEvent) => {
 	return {
 		upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 		past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
-		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>
+		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>,
+		// デモ: 以前の予約システムの予約の見本（画面の確認用）
+		legacyStays: splitLegacyStays(demoLegacyStays(today), today)
 	};
 };
 
