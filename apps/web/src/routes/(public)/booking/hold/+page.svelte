@@ -891,7 +891,7 @@
 											<p class="px-3 pb-2 pl-9 text-sm text-stone-600">{payText('online_now', 'label', m.pay_group_online())}</p>
 										{/if}
 									{/if}
-									{#if hasPrepay && prepay && (prepayAmount > 0 || bonusPoints > 0 || prepay.showLadder)}
+									{#if hasPrepay && prepay && (prepayAmount > 0 || bonusPoints > 0)}
 										<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
 										     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
 										<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9">
@@ -903,7 +903,13 @@
 														{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.groupQuote.total - prepayAmount)}
 													{/if}
 												</p>
-												<p class="font-medium text-brand-900">{m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}</p>
+												<!-- 返金の決まりは 1 文で（キャンセル料が無料でも、事務手数料と割引分の大きい方は返金されない・2026-11-22 指示） -->
+												<p class="text-sm text-stone-700">
+													{data.adminFeePercent
+														? m.pay_prepay_nonrefund_simple({ percent: `${data.adminFeePercent}%`, amount: formatPrice(prepayAmount) })
+														: m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}
+													<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
+												</p>
 											{/if}
 											{#if bonusPoints > 0}
 												<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->
@@ -918,56 +924,14 @@
 												{/if}
 												<p class="text-xs text-stone-500">{m.pay_points_cancel_note()}</p>
 											{/if}
-											{#if prepay.showLadder}
-												<div class="rounded-md border border-stone-200 bg-white/80 p-2.5">
-													<p class="text-xs text-stone-600">{isPoints ? m.pay_points_heading() : m.pay_early_heading()}</p>
-													<p class="mt-1 font-medium text-brand-900">
-														{#if isPoints}
-															{currentTierPermille > 0
-																? m.pay_points_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
-																: m.pay_points_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
-														{:else}
-															{currentTierPermille > 0
-																? m.pay_early_lead({ days: String(prepay.detail.leadDays), rate: percentText(currentTierPermille / 10) })
-																: m.pay_early_lead_none({ days: String(Math.max(0, prepay.detail.leadDays)), min: String(prepay.tiers[0]?.days ?? 0) })}
-														{/if}
-													</p>
-													<ol class="mt-1.5 flex flex-wrap gap-1.5" aria-label={isPoints ? m.pay_points_name() : m.pay_early_name()}>
-														{#each prepay.tiers as t (t.days)}
-															{@const current = Math.round(t.percent * 10) === currentTierPermille}
-															<li
-																class="rounded-full border px-2.5 py-0.5 text-xs tabular-nums {current ? 'border-red-300 bg-red-50 font-bold text-red-700' : 'border-stone-200 text-stone-500'}"
-																aria-current={current ? 'true' : undefined}
-															>
-																{isPoints
-																	? m.pay_points_tier({ days: String(t.days), rate: percentText(t.percent) })
-																	: `${m.pay_early_tier({ days: String(t.days) })} ${percentText(t.percent)}%`}
-															</li>
-														{/each}
-													</ol>
-													{#if prepay.drop}
-														<p class="mt-1.5 text-xs text-stone-600">
-															{isPoints
-																? m.pay_points_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: prepay.drop.diff.toLocaleString() })
-																: m.pay_early_drop({ days: String(prepay.drop.inDays), from: percentText(prepay.drop.fromPercent), to: percentText(prepay.drop.toPercent), diff: formatPrice(prepay.drop.diff) })}
-														</p>
-													{/if}
-													{#if prepay.detail.blackoutNights > 0}
-														<p class="mt-1.5 text-xs text-stone-600">{isPoints ? m.pay_points_blackout() : m.pay_early_blackout()}</p>
-													{/if}
-													{#if !isPoints && currentTierPermille > 0 && prepay.detail.flatPermille >= currentTierPermille}
-														<p class="mt-1.5 text-xs text-stone-600">{m.pay_early_flat_note({ rate: percentText(prepay.detail.flatPermille / 10) })}</p>
-													{/if}
-												</div>
-											{/if}
 										</div>
 									{/if}
-									{#if group === 'online' && (!data.inline || data.adminFeePercent || payText('online_now', 'note', ''))}
+									{#if group === 'online' && (!data.inline || (data.adminFeePercent && !(prepayAmount > 0)) || payText('online_now', 'note', ''))}
 										<div class="space-y-1.5 border-t border-stone-200/80 px-3 py-2.5 pl-9">
 											{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
 											{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
 											<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
-											{#if data.adminFeePercent}
+											{#if data.adminFeePercent && !(prepayAmount > 0)}
 												<p class="text-xs text-stone-700">
 													{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}
 													<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>

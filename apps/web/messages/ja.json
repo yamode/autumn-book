@@ -1161,6 +1161,7 @@
   "pay_early_tier": "{days}日以上前",
   "pay_early_drop": "あと {days}日で {from}% → {to}% になります（{diff} の差）",
   "pay_early_nonrefund": "この割引分 {amount} は、お取消の際は返金されません（宿の都合による取消を除く）。",
+  "pay_prepay_nonrefund_simple": "お客様のご都合で取り消すときは、キャンセル料が無料の期間でも、事務手数料（お支払い額の{percent}）か割引分 {amount} の大きい方は返金されません。",
   "pay_early_blackout": "除外期間（年末年始など）の泊は早期決済割の対象外です。",
   "pay_early_flat_note": "このプランの予約時決済割引（{rate}%）の方が大きいため、そちらを適用します。",
   "plan_early_max": "予約時決済で最大{rate}%お得（早期決済割）",

@@ -1161,6 +1161,7 @@
   "pay_early_tier": "{days} 天以上前",
   "pay_early_drop": "再過 {days} 天將由 {from}% 變為 {to}%（相差 {diff}）",
   "pay_early_nonrefund": "取消預訂時，此折扣 {amount} 不予退還（因旅館因素取消者除外）。",
+  "pay_prepay_nonrefund_simple": "因個人因素取消時，即使在免收取消費期間，手續費（付款金額的{percent}）與折扣金額 {amount} 兩者中較高者恕不退還。",
   "pay_early_blackout": "排除期間（如年末年初）的住宿不適用提早付款優惠。",
   "pay_early_flat_note": "本方案的預訂時付款折扣（{rate}%）較高，因此適用該折扣。",
   "plan_early_max": "預訂時付款最多享 {rate}% 優惠（提早付款優惠）",

@@ -1161,6 +1161,7 @@
   "pay_early_tier": "{days}+ days ahead",
   "pay_early_drop": "In {days} days this changes from {from}% to {to}% (a difference of {diff})",
   "pay_early_nonrefund": "This discount of {amount} is not refunded if you cancel (except cancellations made by the property).",
+  "pay_prepay_nonrefund_simple": "If you cancel for your own reasons, even while cancellation is free, the larger of the handling fee ({percent} of the amount paid) or the discount of {amount} is not refunded.",
   "pay_early_blackout": "Nights in excluded periods (such as the New Year holidays) are not eligible for the early payment discount.",
   "pay_early_flat_note": "This plan's own pay-at-booking discount ({rate}%) is larger, so that applies instead.",
   "plan_early_max": "Up to {rate}% off when you pay at booking (early payment discount)",
