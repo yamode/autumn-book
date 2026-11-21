@@ -26,7 +26,7 @@
 	{#if data.legacy.kind === 'active'}
 		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
 			<h2 class="text-lg text-brand-900">{data.legacy.phase === 'current' ? m.lookup_legacy_h_current() : m.lookup_legacy_h_former()}</h2>
-			<p class="mt-2 text-sm text-stone-600">{m.lookup_legacy_body()}</p>
+			<p class="mt-2 text-sm text-stone-600">{data.legacy.phase === 'current' ? m.lookup_legacy_body_current() : m.lookup_legacy_body()}</p>
 			<ul class="mt-3 space-y-2">
 				{#each data.legacy.links as link (link.facility)}
 					<li>
@@ -36,7 +36,7 @@
 					</li>
 				{/each}
 			</ul>
-			<p class="mt-3 text-xs text-stone-500">{m.lookup_legacy_note()}</p>
+			<p class="mt-3 text-xs text-stone-500">{data.legacy.phase === 'current' ? m.lookup_legacy_note_current() : m.lookup_legacy_note()}</p>
 		</section>
 	{:else if data.legacy.kind === 'ended'}
 		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
