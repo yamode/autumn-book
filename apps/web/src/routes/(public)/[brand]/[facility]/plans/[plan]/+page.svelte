@@ -124,22 +124,24 @@
 	const perPersonNight = (total: number) => Math.round(total / Math.max(1, data.params.adults * data.params.nights));
 	const totalSub = () => m.plan_price_total_sub({ adults: String(data.params.adults), nights: String(data.params.nights) });
 
-	// お食事。「ご夕食　スタンダードコース」「ご朝食　朝食付き」のように、項目名と中身を 1 行ずつ並べる（2026-11-21 指示: 明示的に）。
-	// コースは夕食に付くもの。夕食か朝食のどちらかがあるプランは、無い方も「なし」と出す。meal_plan は rms の 2食 / 朝食 / 素泊 / 日帰り。
-	// 朝食・夕食の有無はプラン設定の「お食事」（v_plans.includes_breakfast / has_dinner）。読めない取得元は meal_plan から
+	// お食事は一休と同じ出し方（2026-11-21 指示「基本的には一休と同じように」）:
+	// 朝食（太陽）・夕食（月）のアイコンと「夕朝食付」等の短い表記を、IN / OUT と同じ行に。夕食のコース名はその下に小さく。
+	// 朝食・夕食の有無はプラン設定の「お食事」（v_plans.includes_breakfast / has_dinner）。読めない取得元は meal_plan（rms の 2食 / 朝食 / 素泊 / 日帰り）から
 	let breakfast = $derived(data.plan.includesBreakfast ?? (data.plan.mealPlan === '2食' || data.plan.mealPlan === '朝食'));
 	let dinner = $derived(data.plan.hasDinner ?? data.plan.mealPlan === '2食');
-	let meals = $derived.by((): { label?: string; value: string }[] => {
-		if (data.plan.mealPlan === '日帰り') return [{ label: m.plan_meal_row_lunch(), value: data.plan.dinnerCourse || m.plan_meal_lunch() }];
-		// 設定も無く、rms の食事区分（2食 / 朝食 / 素泊）でもない値（デモの「2食付」等）はそのまま出す
+	const dayUse = $derived(data.plan.mealPlan === '日帰り');
+	let mealShort = $derived.by(() => {
+		if (dayUse) return m.plan_meal_short_lunch();
+		// 設定も無く、rms の食事区分でもない値（デモの「2食付」等）はそのまま出す
 		const known = ['2食', '朝食', '素泊'].includes(data.plan.mealPlan);
-		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan ? [{ value: data.plan.mealPlan }] : [];
-		if (!dinner && !breakfast) return [{ value: m.plan_meal_none() }];
-		return [
-			{ label: m.plan_meal_row_dinner(), value: dinner ? data.plan.dinnerCourse || m.plan_meal_dinner() : m.plan_meal_row_absent() },
-			{ label: m.plan_meal_row_breakfast(), value: breakfast ? m.plan_meal_breakfast() : m.plan_meal_row_absent() }
-		];
+		if (data.plan.includesBreakfast === undefined && data.plan.hasDinner === undefined && !known) return data.plan.mealPlan;
+		if (dinner && breakfast) return m.plan_meal_short_both();
+		if (dinner) return m.plan_meal_short_dinner();
+		if (breakfast) return m.plan_meal_short_breakfast();
+		return m.plan_meal_none();
 	});
+	// 夕食（日帰りは昼食）のコース名
+	let mealCourse = $derived((dinner || dayUse) && data.plan.dinnerCourse ? data.plan.dinnerCourse : '');
 	// お支払い方法は「／」でつながず 1 行ずつ（2026-11-21 指示）。割引の印は事前カード決済の行に付ける
 	let payLines = $derived(
 		[
@@ -327,54 +329,61 @@
 {/snippet}
 
 {#snippet planInfo()}
-	<!-- お食事・お支払い（右カラムの料金枠の上段）。お食事は「ご夕食　○○コース」「ご朝食　朝食付き」を 1 行ずつ -->
-	<dl class="space-y-2 text-sm">
-		{#if meals.length}
-			<div class="flex gap-3">
-				<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_meal()}</dt>
-				<dd class="min-w-0 space-y-0.5 text-stone-800">
-					{#each meals as meal}
-						<!-- 項目名（ご夕食・ご朝食）は左の「お食事」と同じ小さめの文字にし、中身と下端をそろえる -->
-						<p class="flex items-baseline gap-3">
-							{#if meal.label}<span class="w-10 shrink-0 text-xs text-stone-500">{meal.label}</span>{/if}
-							<span class="min-w-0">{meal.value}</span>
-						</p>
-					{/each}
-				</dd>
-			</div>
+	<!-- お食事・お支払い（右カラムの料金枠の上段）。一休と同じ出し方:
+	     1 行目 朝食・夕食のアイコン＋「夕朝食付」＋ IN / OUT、2 行目 夕食のコース名、3 行目 支払い方法の札（✓ 事前カード決済 など） -->
+	<div class="space-y-2 text-sm">
+		<p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-stone-800">
+			{#if mealShort}
+				<span class="inline-flex items-center gap-1.5">
+					{#if breakfast && !dayUse}
+						<span class="flex h-5 w-5 items-center justify-center rounded bg-amber-500 text-white" title={m.plan_meal_breakfast()}>
+							<svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>
+						</span>
+					{/if}
+					{#if dinner && !dayUse}
+						<span class="flex h-5 w-5 items-center justify-center rounded bg-brand-900 text-white" title={m.plan_meal_dinner()}>
+							<svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="currentColor"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>
+						</span>
+					{/if}
+					<span>{mealShort}</span>
+				</span>
+			{/if}
+			<span class="text-xs text-stone-600"><span class="font-semibold">IN</span> {data.facility.checkinTime}　<span class="font-semibold">OUT</span> {data.facility.checkoutTime}</span>
+		</p>
+		{#if mealCourse}
+			<p class="text-xs text-stone-600">{dayUse ? m.plan_meal_course_lunch({ course: mealCourse }) : m.plan_meal_course({ course: mealCourse })}</p>
 		{/if}
-		<div class="flex gap-3">
-			<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_payment()}</dt>
-			<dd class="min-w-0">
-				{#if payLines.length > 1}
-					<!-- 並んでいるのはこのプランで選べる支払い方法（全部が必要という意味ではない） -->
-					<p class="mb-0.5 text-xs text-stone-500">{m.plan_pay_choose()}</p>
-				{/if}
+		{#if payLines.length}
+			<div class="flex flex-wrap gap-1.5">
 				{#each payLines as line (line.key)}
-					<p>
-						<!-- 折り返すなら括弧の手前で（「（チェックアウト日）」の途中で切れないように） -->
-						{#each line.label.split(/(?=（)/) as part, i (i)}<span class="inline-block">{part}</span>{/each}
+					<span class="inline-flex items-center gap-1 rounded border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700">
+						<svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+						{line.label}
 						{#if line.key === 'prepay'}
-						{#if earlyMax > 0 && !earlyPoints}
-							<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
-							<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
-						{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
-							<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+							{#if earlyMax > 0 && !earlyPoints}
+								<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
+								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
+							{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
+								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+							{/if}
+							{#if earlyPoints}
+								<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
+								<span class="ml-0.5 rounded bg-emerald-50 px-1 font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
+							{/if}
 						{/if}
-						{#if earlyPoints}
-							<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
-							<span class="ml-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
-						{/if}
-						{/if}
-					</p>
+					</span>
 				{/each}
-				{#if data.memberOnsiteHint}
-					<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
-					<p class="mt-0.5 text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
-				{/if}
-			</dd>
-		</div>
-	</dl>
+			</div>
+			{#if payLines.length > 1}
+				<!-- 一休の「当プランは決済方法が選択できるプランになります」と同じ意味（全部が必要という意味ではない） -->
+				<p class="text-xs text-stone-500">{m.plan_pay_choose()}</p>
+			{/if}
+		{/if}
+		{#if data.memberOnsiteHint}
+			<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
+			<p class="text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
+		{/if}
+	</div>
 {/snippet}
 
 {#snippet conditions(wide: boolean)}
