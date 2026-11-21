@@ -23,6 +23,14 @@
 	const legacyUpcomingShown = $derived(
 		reservationsOnly ? data.legacyStays.upcoming : data.upcoming.length === 0 ? data.legacyStays.upcoming.slice(0, 1) : []
 	);
+
+	// 過去のご利用・キャンセル: Book の予約と旧会員制度の予約を 1 つの一覧に（チェックインの新しい順）
+	const pastCombined = $derived(
+		[
+			...data.past.map((b) => ({ kind: 'book' as const, key: `b:${b.code}`, checkin: b.checkin, b })),
+			...data.legacyStays.past.map((s) => ({ kind: 'legacy' as const, key: `l:${s.code}`, checkin: s.checkin, s }))
+		].sort((x, y) => y.checkin.localeCompare(x.checkin))
+	);
 </script>
 
 <svelte:head><title>{reservationsOnly ? m.account_nav_reservations() : m.account_dashboard()} ｜ {m.account_title()}</title></svelte:head>
@@ -102,40 +110,35 @@
 	<p class="mb-4 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">{@html m.account_legacy_note()}</p>
 {/if}
 
-{#if reservationsOnly && data.past.length > 0}
+{#if reservationsOnly && pastCombined.length > 0}
+	<!-- 過去のご利用・キャンセル。旧会員制度（tripla・予約番）の予約も同じ一覧に入れ、ラベルで分ける（見るだけ・詳細は無い） -->
 	<section class="mt-8">
 		<h2 class="mb-4 text-lg text-brand-900">{m.account_past()}</h2>
 		<div class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
-			{#each data.past as b (b.code)}
-				<a href="/account/reservations/{b.code}" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-stone-50">
-					<span class="font-medium text-brand-900">{b.facilityName}</span>
-					<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
-					<span class="min-w-0 text-xs text-stone-600">
-						{formatDateLong(b.checkin)}
-						{#if b.memberPage}<span class="ml-1 rounded bg-amber-100 px-1.5 text-amber-800">{m.member_page_badge()}</span>{/if}
-					</span>
-					<span class="text-right text-xs text-stone-600">{b.code}</span>
-				</a>
-			{/each}
-		</div>
-	</section>
-{/if}
-
-{#if reservationsOnly && data.legacyStays.past.length > 0}
-	<!-- 以前の予約システムでのご利用（PMS の滞在から・見るだけ。金額・プラン名は無い） -->
-	<section class="mt-8">
-		<h2 class="mb-1 text-lg text-brand-900">{m.account_legacy_stays_past()}</h2>
-		<p class="mb-4 text-sm text-stone-500">{m.account_legacy_stays_past_note()}</p>
-		<div class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
-			{#each data.legacyStays.past as s (s.code)}
-				<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
-					<span class="font-medium text-brand-900">{s.facilityName}</span>
-					{#if s.status === 'stayed'}<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls.stayed}">{statusLabel.stayed}</span>{:else}<span></span>{/if}
-					<span class="min-w-0 text-xs text-stone-600">
-						{formatDateLong(s.checkin)} · {m.searchbar_nights_option({ n: String(s.nights) })}{#if s.roomCount > 1} · {m.account_rooms_badge({ n: String(s.roomCount) })}{/if}{#if s.roomTypeName} · {s.roomTypeName}{/if}
-					</span>
-					<span class="text-right text-xs text-stone-600">{s.code}</span>
-				</div>
+			{#each pastCombined as row (row.key)}
+				{#if row.kind === 'book'}
+					{@const b = row.b}
+					<a href="/account/reservations/{b.code}" class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm hover:bg-stone-50">
+						<span class="font-medium text-brand-900">{b.facilityName}</span>
+						<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
+						<span class="min-w-0 text-xs text-stone-600">
+							{formatDateLong(b.checkin)}
+							{#if b.memberPage}<span class="ml-1 rounded bg-amber-100 px-1.5 text-amber-800">{m.member_page_badge()}</span>{/if}
+						</span>
+						<span class="text-right text-xs text-stone-600">{b.code}</span>
+					</a>
+				{:else}
+					{@const s = row.s}
+					<div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm">
+						<span class="font-medium text-brand-900">{s.facilityName}</span>
+						{#if s.status === 'stayed'}<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls.stayed}">{statusLabel.stayed}</span>{:else}<span></span>{/if}
+						<span class="min-w-0 text-xs text-stone-600">
+							{formatDateLong(s.checkin)}
+							<span class="ml-1 rounded bg-stone-100 px-1.5 text-stone-600">{m.account_legacy_stays_badge()}</span>
+						</span>
+						<span class="text-right text-xs text-stone-600">{s.code}</span>
+					</div>
+				{/if}
 			{/each}
 		</div>
 	</section>
