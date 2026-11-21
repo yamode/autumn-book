@@ -497,7 +497,7 @@ type HoldGroupRoomRow = {
 };
 
 /**
- * 束を読む（book.get_hold_group）。本人以外・不在は RPC が null を返す → null。expiresAt はミリ秒（HoldTimer 用）。
+ * 束を読む（book.get_hold_group）。本人以外・不在は RPC が null を返す → null。expiresAt はミリ秒（期限切れの切り替え用）。
  * id は束 id（部屋の仮押さえ id でも DB が束に読み替える）。
  */
 export async function sbGetHoldGroupMapped(

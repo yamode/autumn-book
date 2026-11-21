@@ -753,7 +753,7 @@ export function createHold(planId: string, roomTypeId: string, checkin: string, 
 		quote: quoteFor(planId, roomTypeId, checkin, nights, adults, children),
 		memberId,
 		status: 'active',
-		expiresAt: Date.now() + 20 * 60 * 1000
+		expiresAt: Date.now() + 3 * 60 * 60 * 1000 // 本番（book.create_hold_group）と同じ 3 時間（2026-11-21・在庫は確定時に押さえるので急がせない）
 	};
 	holds.set(hold.id, hold);
 	return hold;

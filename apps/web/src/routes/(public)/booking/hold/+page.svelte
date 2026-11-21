@@ -5,7 +5,6 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
-	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import BookingCancelTerms from '$lib/components/BookingCancelTerms.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
@@ -182,6 +181,15 @@
 	// 仮押さえの期限（支払の準備で DB が延ばしたら更新する）
 	// svelte-ignore state_referenced_locally
 	let holdExpiresAt = $state(data.expired ? 0 : data.hold.expiresAt);
+	// 残り時間は画面に出さない（在庫は確定時に押さえるので急がせない・期限は 3 時間・2026-11-21 指示）。
+	// 期限を過ぎたときだけ「入力時間が過ぎました」に切り替える。支払の処理中は切り替えない（確定の結果はサーバが判断する）
+	$effect(() => {
+		if (data.expired || !holdExpiresAt) return;
+		const timer = setTimeout(() => {
+			if (!paying) expiredNow = true;
+		}, Math.max(0, holdExpiresAt - Date.now()));
+		return () => clearTimeout(timer);
+	});
 
 	// ---- 同じ画面で払う決済部品 ----
 	let formEl: HTMLFormElement | undefined = $state();
@@ -474,11 +482,6 @@
 				<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
 			</div>
 		{/if}
-
-		<div class="mt-4">
-			<!-- 支払の処理中は期限の表示で画面を切り替えない（確定の結果はサーバが判断する） -->
-			<HoldTimer expiresAt={holdExpiresAt} onexpire={() => { if (!paying) expiredNow = true; }} />
-		</div>
 
 		{#if form?.message}
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>

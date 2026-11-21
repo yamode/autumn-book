@@ -70,7 +70,7 @@ export interface HoldGroup {
 	facilityId: string;
 	checkin: string;
 	nights: number;
-	/** 期限（ミリ秒・HoldTimer 用） */
+	/** 期限（ミリ秒・過ぎたら「入力時間が過ぎました」に切り替える） */
 	expiresAt: number;
 	status: string;
 	/** 全室の宿泊料金の和（割引前） */

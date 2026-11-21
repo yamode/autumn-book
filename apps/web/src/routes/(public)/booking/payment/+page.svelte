@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import Stepper from '$lib/components/Stepper.svelte';
-	import HoldTimer from '$lib/components/HoldTimer.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import { formatPrice, formatDateLong } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
@@ -10,6 +9,12 @@
 	let { data, form } = $props();
 	let expiredNow = $state(false);
 	let paying = $state(false);
+	// 残り時間は出さない。期限を過ぎたときだけ「入力時間が過ぎました」に切り替える（2026-11-21）
+	$effect(() => {
+		if (data.expired) return;
+		const timer = setTimeout(() => (expiredNow = true), Math.max(0, data.hold.expiresAt - Date.now()));
+		return () => clearTimeout(timer);
+	});
 
 	let steps = [m.steps_plan(), m.steps_info(), m.steps_payment(), m.steps_complete()];
 </script>
@@ -26,7 +31,6 @@
 	{:else}
 		<Stepper {steps} current={2} />
 
-		<div class="mt-6"><HoldTimer expiresAt={data.hold.expiresAt} onexpire={() => (expiredNow = true)} /></div>
 
 		{#if form?.message}
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
