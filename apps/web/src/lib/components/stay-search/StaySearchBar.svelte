@@ -4,7 +4,9 @@
   // 下書きを変えただけでは検索しない（「検索」「この条件で検索」で確定）。
   // 取引先ページ（PartnerSearchBar）と HP 配布の <yamado-search-bar>（embed・Shadow DOM の中）で同じものを使う。
   // 色は CSS 変数 --pt-accent / --pt-accent-soft。$app/*・paraglide に依存しない。
-  import type { Snippet } from 'svelte';
+  // スマホ（mobileDateDialog かつ 768px 未満）は、どの区画を押しても 1 つのモーダルが開き、
+  // 「エリア・施設 → 日付 → 人数・室数」をページのように横にスライドして進む（2026-11-21 指示: パネルとモーダルが混ざっていて分かりづらい）。
+  import { untrack, type Snippet } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { STAY_SEARCH_LABELS, type StaySearchLabels } from '$lib/stay-search/labels';
   import { addDays, formatDate, type StaySearchLang } from '$lib/stay-search/params';
@@ -44,7 +46,8 @@
     keepOpen?: () => boolean;
     /** 日付パネルの中身（close で閉じる） */
     mobileDateDialog?: boolean;
-    datePanel: Snippet<[{ close: () => void; modal?: boolean }]>;
+    /** next はスマホのモーダルのときだけ渡す（日付の次のステップ＝人数・室数へ進む） */
+    datePanel: Snippet<[{ close: () => void; modal?: boolean; next?: () => void }]>;
     /** 施設の区画のパネル。渡したときだけ先頭に「施設」の区画を出す（公開サイトで施設が決まっていないとき） */
     facilityPanel?: Snippet<[{ close: () => void }]>;
     /** 選んだ施設の表示名（空なら「施設を選ぶ」） */
@@ -75,6 +78,27 @@
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
   });
+  // スマホのステップ式モーダル
+  type Step = 'facility' | 'date' | 'guests';
+  const steps = $derived<Step[]>(facilityPanel ? ['facility', 'date', 'guests'] : ['date', 'guests']);
+  const wizard = $derived(modal && open !== '');
+  const stepIndex = $derived(Math.max(0, steps.indexOf(open as Step)));
+  const stepTitle = $derived(open === 'facility' ? labels.facility : open === 'guests' ? labels.guests : rangeMode ? labels.checkinCheckout : labels.checkinNights);
+  // 日付のステップで日付を選んだら、少し間をおいて人数・室数へ進む（開いたときに選んであった日付では進まない）
+  let dateAtEnter = '';
+  $effect(() => {
+    if (wizard && open === 'date') dateAtEnter = untrack(() => date);
+  });
+  $effect(() => {
+    const picked = date;
+    if (!wizard || open !== 'date' || !picked || picked === dateAtEnter) return;
+    const timer = setTimeout(() => (open = 'guests'), 320);
+    return () => clearTimeout(timer);
+  });
+  function searchNow() {
+    closeDate();
+    onSearch();
+  }
   const toggle = (panel: 'date' | 'guests' | 'facility') => {
     open = open === panel ? '' : panel;
   };
@@ -92,6 +116,23 @@
 {#snippet facilityText()}
   <span class="text-xs font-bold tracking-wide text-brand-900">{labels.facility}</span>
   <span class={`truncate text-base ${facilityValue ? 'text-brand-900' : 'text-stone-400'}`}>{facilityValue || labels.chooseFacility}</span>
+{/snippet}
+
+{#snippet guestsRows()}
+  {#each [{ key: 'guests', title: labels.perRoom, sub: labels.adult, value: guests, min: 1, max: maxGuests, unit: labels.personUnit }, { key: 'rooms', title: labels.roomsTitle(crossType), sub: labels.roomsSub(crossType), value: rooms, min: 1, max: maxRooms, unit: labels.roomUnit }] as row, i (row.key)}
+    <div class={`flex items-center justify-between gap-4 py-3 ${i ? 'border-t border-stone-200' : ''}`}>
+      <div>
+        <p class="text-base font-semibold text-brand-900">{row.title}</p>
+        <p class="text-sm text-stone-500">{row.sub}</p>
+      </div>
+      <div class="flex shrink-0 items-center gap-3">
+        <button type="button" aria-label={labels.dec(row.title)} disabled={row.value <= row.min} onclick={() => (row.key === 'guests' ? (guests -= 1) : (rooms -= 1))} class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-lg text-stone-600 hover:border-brand-900 disabled:opacity-30">−</button>
+        <span class="min-w-8 text-center text-base tabular-nums">{row.unit(row.value)}</span>
+        <button type="button" aria-label={labels.inc(row.title)} disabled={row.value >= row.max} onclick={() => (row.key === 'guests' ? (guests += 1) : (rooms += 1))} class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-lg text-stone-600 hover:border-brand-900 disabled:opacity-30">＋</button>
+      </div>
+    </div>
+  {/each}
+  <p class="mt-1 text-xs leading-5 text-stone-500">{labels.comboNote(crossType)}</p>
 {/snippet}
 
 {#snippet dateText()}
@@ -146,36 +187,57 @@
     </div>
   </div>
 
-  {#if open === 'date'}
-    {#if modal}
-      <dialog bind:this={dialog} aria-label={labels.dateDialog} class="m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-lg overflow-auto overscroll-contain rounded-3xl bg-white backdrop:bg-stone-900/40" oncancel={closeDate}>
-        {@render datePanel({ close: closeDate, modal: true })}
-      </dialog>
-    {:else}
-      <div class="absolute inset-x-0 top-full z-40 mt-3">
-        {@render datePanel({ close: closeDate })}
+  {#if wizard}
+    <!-- スマホ: 1 つのモーダルの中でステップを横にスライドして進む -->
+    <dialog
+      bind:this={dialog}
+      aria-label={labels.region}
+      class="m-auto h-[min(92dvh,50rem)] max-h-none w-[calc(100%-1rem)] max-w-lg overflow-hidden rounded-3xl bg-white p-0 backdrop:bg-stone-900/40"
+      oncancel={closeDate}
+      onclick={(e) => { if (e.target === dialog) closeDate(); }}
+    >
+      <div class="flex h-full flex-col">
+        <div class="flex items-center gap-2 border-b border-stone-100 px-3 py-2.5">
+          <button type="button" onclick={() => (open = steps[stepIndex - 1])} class={`flex h-9 w-9 items-center justify-center rounded-full text-2xl leading-none text-stone-600 hover:bg-stone-100 ${stepIndex === 0 ? 'invisible' : ''}`} aria-label={labels.backStep}>‹</button>
+          <div class="min-w-0 flex-1 text-center">
+            <p class="truncate text-base font-bold text-brand-900">{stepTitle}</p>
+            <div class="mt-1 flex justify-center gap-1.5" aria-hidden="true">
+              {#each steps as s, i (s)}<span class={`h-1.5 rounded-full transition-all duration-300 ${i === stepIndex ? 'w-5 bg-[var(--pt-accent)]' : i < stepIndex ? 'w-1.5 bg-[var(--pt-accent)] opacity-40' : 'w-1.5 bg-stone-300'}`}></span>{/each}
+            </div>
+          </div>
+          <button type="button" onclick={closeDate} class="flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100" aria-label={labels.close}>×</button>
+        </div>
+        <div class="relative min-h-0 flex-1 overflow-hidden">
+          <div class="flex h-full transition-transform duration-300 ease-out motion-reduce:transition-none" style:transform={`translateX(-${stepIndex * 100}%)`}>
+            {#each steps as s (s)}
+              <section class="h-full w-full shrink-0 overflow-y-auto overscroll-contain" inert={s !== steps[stepIndex]} aria-hidden={s !== steps[stepIndex] || undefined}>
+                {#if s === 'facility' && facilityPanel}
+                  <div class="p-4">{@render facilityPanel({ close: closeDate })}</div>
+                {:else if s === 'date'}
+                  {@render datePanel({ close: closeDate, modal: true, next: () => (open = 'guests') })}
+                {:else if s === 'guests'}
+                  <div class="flex min-h-full flex-col p-5">
+                    {@render guestsRows()}
+                    <button type="button" onclick={searchNow} class="mt-auto w-full rounded-xl bg-[var(--pt-accent)] py-3.5 text-base font-bold text-white">{labels.search}</button>
+                  </div>
+                {/if}
+              </section>
+            {/each}
+          </div>
+        </div>
       </div>
-    {/if}
+    </dialog>
+  {:else if open === 'date'}
+    <div class="absolute inset-x-0 top-full z-40 mt-3">
+      {@render datePanel({ close: closeDate })}
+    </div>
   {:else if open === 'facility' && facilityPanel}
     <div class="absolute left-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-4 @min-[520px]:p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[640px]:w-[36rem]" role="dialog" aria-label={labels.facility}>
       {@render facilityPanel({ close: () => (open = '') })}
     </div>
   {:else if open === 'guests'}
     <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-96" role="dialog" aria-label={labels.guests}>
-      {#each [{ key: 'guests', title: labels.perRoom, sub: labels.adult, value: guests, min: 1, max: maxGuests, unit: labels.personUnit }, { key: 'rooms', title: labels.roomsTitle(crossType), sub: labels.roomsSub(crossType), value: rooms, min: 1, max: maxRooms, unit: labels.roomUnit }] as row, i (row.key)}
-        <div class={`flex items-center justify-between gap-4 py-3 ${i ? 'border-t border-stone-200' : ''}`}>
-          <div>
-            <p class="text-base font-semibold text-brand-900">{row.title}</p>
-            <p class="text-sm text-stone-500">{row.sub}</p>
-          </div>
-          <div class="flex shrink-0 items-center gap-3">
-            <button type="button" aria-label={labels.dec(row.title)} disabled={row.value <= row.min} onclick={() => (row.key === 'guests' ? (guests -= 1) : (rooms -= 1))} class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-lg text-stone-600 hover:border-brand-900 disabled:opacity-30">−</button>
-            <span class="min-w-8 text-center text-base tabular-nums">{row.unit(row.value)}</span>
-            <button type="button" aria-label={labels.inc(row.title)} disabled={row.value >= row.max} onclick={() => (row.key === 'guests' ? (guests += 1) : (rooms += 1))} class="flex h-9 w-9 items-center justify-center rounded-full border border-stone-300 text-lg text-stone-600 hover:border-brand-900 disabled:opacity-30">＋</button>
-          </div>
-        </div>
-      {/each}
-      <p class="mt-1 text-xs leading-5 text-stone-500">{labels.comboNote(crossType)}</p>
+      {@render guestsRows()}
       <div class="mt-3 flex justify-end">
         <button type="button" onclick={() => { open = ''; onSearch(); }} class="rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800">{labels.applyCond}</button>
       </div>

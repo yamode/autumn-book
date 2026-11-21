@@ -41,6 +41,8 @@
     lang = 'ja',
     labels = STAY_SEARCH_LABELS.ja,
     modal = false,
+    bare = false,
+    applyLabel,
     pickApplies = false,
     maxDate,
     onPick,
@@ -69,6 +71,10 @@
     lang?: StaySearchLang;
     labels?: StaySearchLabels;
     modal?: boolean;
+    /** スマホの検索モーダルのステップとして出すとき: 枠・影・× を出さない（閉じるはモーダルの上部） */
+    bare?: boolean;
+    /** 下段のボタンの文言（省略時は「この日程で検索」「日付指定なしで検索」） */
+    applyLabel?: string;
     /** 日付を押したらすぐ onPick する（「この日程で検索」ボタンを出さない） */
     pickApplies?: boolean;
     maxDate?: string;
@@ -180,7 +186,7 @@
   </div>
 {/snippet}
 
-<div role={modal ? undefined : 'dialog'} aria-label={modal ? undefined : labels.dateDialog} class="rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4">
+<div role={modal ? undefined : 'dialog'} aria-label={modal ? undefined : labels.dateDialog} class={bare ? 'bg-white px-4 pb-4 pt-3' : 'rounded-3xl border border-stone-200 bg-white px-4 pb-4 pt-3 shadow-[0_8px_28px_rgba(0,0,0,0.14)] sm:px-6 sm:pt-4'}>
   <!--
     上段。PC（md〜）は 1 行: 泊数 −n+ ／ 日付指定なし ／ 案内 ／ 人数と最安の注記 ／ ×。
     スマホは 2 行に詰める（2026-10-29: 折り返して縦に長くなっていた）: 1 行目 泊数 −n+ と ×、2 行目 日付指定なしと注記（取得中・失敗のときはその表示）。
@@ -208,7 +214,7 @@
     <!-- 料金の注記と「— は満室・料金なし」の凡例は、カレンダーの読み方の説明なので上段にまとめる
          （下段の選んだ日程の隣にあると、その期間が満室のように見えた・2026-11-18 指示） -->
     <span class="ml-auto hidden text-sm text-stone-500 md:inline">{labels.priceNote(guests, rooms)}<span class="ml-3 text-stone-400">{labels.unavailable}</span></span>
-    <button type="button" onclick={onClose} class="order-1 ml-auto flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100 md:order-none md:ml-0" aria-label={labels.close}>×</button>
+    {#if !bare}<button type="button" onclick={onClose} class="order-1 ml-auto flex h-9 w-9 items-center justify-center rounded-full text-xl text-stone-500 hover:bg-stone-100 md:order-none md:ml-0" aria-label={labels.close}>×</button>{/if}
     <!-- スマホ: ここで改行して 2 行目へ -->
     <span class="order-2 h-0 basis-full md:hidden" aria-hidden="true"></span>
     <span class="order-3 min-w-0 flex-1 text-right text-xs leading-snug text-stone-500 md:hidden">
@@ -237,7 +243,7 @@
       {#if pickApplies}{labels.pickHint}{:else if date}{labels.range(formatShortDate(date, lang), formatShortDate(checkout, lang), nights)}{:else}{labels.undated(nights)}{/if}
     </p>
     {#if !pickApplies}
-      <button type="button" onclick={onApply} class="ml-auto rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{date ? labels.applyDates : labels.applyNoDate}</button>
+      <button type="button" onclick={onApply} class="ml-auto rounded-full bg-brand-900 px-6 py-2.5 text-base font-semibold text-white hover:bg-brand-800 disabled:opacity-40">{applyLabel ?? (date ? labels.applyDates : labels.applyNoDate)}</button>
     {/if}
   </div>
 </div>

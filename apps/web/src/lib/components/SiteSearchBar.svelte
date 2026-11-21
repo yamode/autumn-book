@@ -123,8 +123,9 @@
 
 <div role="search" aria-label={labels.region} style={`--pt-accent:${accent.accent};--pt-accent-soft:${accent.accentSoft}`}>
 	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open facilityPanel={pickFacility ? facilityPanel : undefined} facilityValue={chosenFacility?.name ?? ''} maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} mobileDateDialog onSearch={search}>
-		{#snippet datePanel({ close, modal })}
-			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} {modal} onApply={search} onClose={close} />
+		{#snippet datePanel({ close, modal, next })}
+			<!-- スマホの検索モーダルでは、日付は 2 ステップ目（下段のボタンは「次へ」で人数・室数へ進む） -->
+			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} {modal} bare={!!next} applyLabel={next ? labels.nextStep : undefined} onApply={next ?? search} onClose={close} />
 		{/snippet}
 	</StaySearchBar>
 </div>

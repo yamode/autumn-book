@@ -58,6 +58,9 @@ export type StaySearchLabels = {
 	regions: Record<'iwate' | 'akita', string>;
 	allFacilities: string;
 	allFacilitiesSub: string;
+	/** スマホの検索モーダルのステップ送り */
+	nextStep: string;
+	backStep: string;
 };
 
 const enNights = (n: number) => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -117,7 +120,9 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		allAreas: 'すべてのエリア',
 		regions: { iwate: '岩手県', akita: '秋田県' },
 		allFacilities: 'すべての施設から探す',
-		allFacilitiesSub: '岩手・秋田の全施設の空室を見る'
+		allFacilitiesSub: '岩手・秋田の全施設の空室を見る',
+		nextStep: '次へ',
+		backStep: '戻る'
 	},
 	en: {
 		checkin: 'Check-in',
@@ -172,7 +177,9 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		allAreas: 'All areas',
 		regions: { iwate: 'Iwate', akita: 'Akita' },
 		allFacilities: 'Search all properties',
-		allFacilitiesSub: 'See availability across Iwate and Akita'
+		allFacilitiesSub: 'See availability across Iwate and Akita',
+		nextStep: 'Next',
+		backStep: 'Back'
 	},
 	'zh-TW': {
 		checkin: '入住日期',
@@ -225,6 +232,8 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		allAreas: '所有地區',
 		regions: { iwate: '岩手縣', akita: '秋田縣' },
 		allFacilities: '從所有設施搜尋',
-		allFacilitiesSub: '查看岩手・秋田所有設施的空房'
+		allFacilitiesSub: '查看岩手・秋田所有設施的空房',
+		nextStep: '下一步',
+		backStep: '返回'
 	}
 };
