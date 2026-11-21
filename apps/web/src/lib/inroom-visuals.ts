@@ -10,7 +10,8 @@
 export const INROOM_HERO: Record<string, string> = {
 	yamado: '/site-assets/yamado/facility_01.jpg',
 	nishiwaga: '/site-assets/yamado/facility_01.jpg',
-	oga: '/site-assets/oga/kv_left01.webp'
+	// A面トップの施設カード（routes/(public)/+page.svelte）と同じ写真にそろえる（2026-11-21 指示）
+	oga: '/site-assets/oga/room_b.webp'
 };
 
 /** カードの背景写真。施設スラッグ → 案内セクション → 画像。 */
