@@ -334,8 +334,9 @@
 				<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_meal()}</dt>
 				<dd class="min-w-0 space-y-0.5 text-stone-800">
 					{#each meals as meal}
-						<p class="flex gap-3">
-							{#if meal.label}<span class="w-12 shrink-0 text-stone-500">{meal.label}</span>{/if}
+						<!-- 項目名（ご夕食・ご朝食）は左の「お食事」と同じ小さめの文字にし、中身と下端をそろえる -->
+						<p class="flex items-baseline gap-3">
+							{#if meal.label}<span class="w-10 shrink-0 text-xs text-stone-500">{meal.label}</span>{/if}
 							<span class="min-w-0">{meal.value}</span>
 						</p>
 					{/each}
@@ -345,6 +346,10 @@
 		<div class="flex gap-3">
 			<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_payment()}</dt>
 			<dd class="min-w-0">
+				{#if payLines.length > 1}
+					<!-- 並んでいるのはこのプランで選べる支払い方法（全部が必要という意味ではない） -->
+					<p class="mb-0.5 text-xs text-stone-500">{m.plan_pay_choose()}</p>
+				{/if}
 				{#each payLines as line (line.key)}
 					<p>
 						<!-- 折り返すなら括弧の手前で（「（チェックアウト日）」の途中で切れないように） -->

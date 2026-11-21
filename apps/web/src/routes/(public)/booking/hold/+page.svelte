@@ -1,5 +1,4 @@
 <script lang="ts">
-	import BackLink from '$lib/components/BackLink.svelte';
 	import ContactAddressFields from '$lib/components/ContactAddressFields.svelte';
 	import { enhance } from '$lib/enhance';
 	import { onMount, tick } from 'svelte';
@@ -20,14 +19,12 @@
 	import { getLocale } from '$lib/paraglide/runtime';
 	import { guestsLabel } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
-	import { viaCrumb } from '$lib/booking-nav';
 	import { isQuestionShown, type BookingQuestion } from '$lib/booking-questions';
 	import { DEFAULT_FIELD_ORDER, TRANSPORT_OTHER } from '$lib/booking-standard-fields';
 	import { BOOKING_COLUMNS_CLASS, BOOKING_INPUT_CLASS, BOOKING_LABEL_CLASS, BOOKING_PAGE_CLASS } from '$lib/booking-layout';
 
 	let { data, form } = $props();
 	// プラン詳細の手前に通ってきたページ（パンくず用）
-	let viaStep = $derived(data.expired ? null : viaCrumb(data.via, data.facility));
 
 	let expiredNow = $state(false);
 
@@ -451,14 +448,17 @@
 			<a href="/search" class="mt-4 inline-block rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">{m.hold_expired_search()}</a>
 		</div>
 	{:else}
-		<!-- パンくず: どこから来たかと、戻り先を見せる（ブラウザの戻るに頼らない） -->
-		{#if memberPage}
-			<!-- 特別会員の専用ページから: 戻り先は専用ページ（料金カレンダー） -->
-			<BackLink href={memberPage.backHref} target={memberPage.pageName} />
-		{:else}
-			<!-- 戻り先はこの予約のプランの詳細 -->
-			<BackLink href={data.planHref} target={m.back_target_plan()} />
-		{/if}
+		<!-- 戻る: 仮押さえを解放してから選び直しへ戻る（ただのリンクで戻ると期限まで部屋が在庫から減ったままになる）。
+		     見た目は他の子ページの「‹ 〇〇に戻る」（BackLink）にそろえる（2026-11-21: 上に戻るリンクと選び直しが重なっていた） -->
+		<form method="POST" action="?/release" class="-ml-2 mb-3 flex flex-wrap items-center gap-x-2">
+			<input type="hidden" name="holdId" value={data.hold.id} />
+			<input type="hidden" name="back" value={data.backHref} />
+			<button type="submit" disabled={paying} class="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-brand-800 hover:bg-stone-100 disabled:opacity-50">
+				<svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
+				{m.hold_change_plan()}
+			</button>
+			<span class="text-xs text-stone-400">{m.hold_change_plan_note()}</span>
+		</form>
 		<!-- 見出しと「1. 入力 → 2. 確認・確定」（取引先ページと共通） -->
 		<BookingSteps {step} heading={step === 'input' ? m.hold_heading_input() : m.hold_heading_confirm()} inputLabel={m.hold_step_input()} confirmLabel={m.hold_step_confirm()} />
 		{#if data.preview}
@@ -474,13 +474,6 @@
 				<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
 			</div>
 		{/if}
-		<!-- 選び直し: 仮押さえを解放してからプラン詳細へ（押さえたまま戻ると期限まで部屋が減ったまま） -->
-		<form method="POST" action="?/release" class="mt-3 flex flex-wrap items-baseline gap-x-2">
-			<input type="hidden" name="holdId" value={data.hold.id} />
-			<input type="hidden" name="back" value={data.backHref} />
-			<button type="submit" disabled={paying} class="text-sm text-accent-600 hover:underline disabled:opacity-50">{m.hold_change_plan()}</button>
-			<span class="text-xs text-stone-400">{m.hold_change_plan_note()}</span>
-		</form>
 
 		<div class="mt-4">
 			<!-- 支払の処理中は期限の表示で画面を切り替えない（確定の結果はサーバが判断する） -->
