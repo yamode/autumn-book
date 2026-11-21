@@ -20,6 +20,8 @@
   // 表示中の月（leftYm）は bind で外へ出す（取引先ページは月ごとに読み込むため）。
   // $app/*・paraglide に依存しない（embed は SvelteKit の外で動く）。
   import type { Snippet } from 'svelte';
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { isHoliday } from '$lib/holidays';
   import { STAY_SEARCH_LABELS, type StaySearchLabels } from '$lib/stay-search/labels';
   import { addDays, formatMonth, formatShortDate, monthGrid, shiftYm, WEEKDAYS, type StaySearchLang } from '$lib/stay-search/params';
@@ -91,6 +93,14 @@
   if (!leftYm) leftYm = (date || today).slice(0, 7);
 
   const shown = $derived([leftYm, shiftYm(leftYm, 1)]);
+  // PC の月送り: 押した向きへ横にスライドして入れ替える（2026-11-22 指示）。動きを減らす設定の端末では動かさない
+  let slideDir = $state(1);
+  const reduceMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const slideMs = reduceMotion ? 0 : 280;
+  function moveMonth(step: 1 | -1) {
+    slideDir = step;
+    leftYm = shiftYm(leftYm, step);
+  }
   // スマホ: 今月から最後の月まで縦に並べる。いちばん上に見えている月を leftYm にする（月ごとに読み込む取引先ページが続きを読む）
   const mobileMonths = $derived.by(() => {
     const list: string[] = [];
@@ -224,12 +234,21 @@
   </div>
   {#if toolbar}<div class="border-b border-stone-100 py-2.5">{@render toolbar()}</div>{/if}
   <!-- PC（md〜）: 2か月横並び・矢印で月送り -->
-  <div class="relative mt-3 hidden gap-6 md:grid md:grid-cols-2">
-    <button type="button" disabled={leftYm <= today.slice(0, 7)} onclick={() => (leftYm = shiftYm(leftYm, -1))} class="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.prev}>‹</button>
-    <button type="button" disabled={shiftYm(leftYm, 1) >= latestYm} onclick={() => (leftYm = shiftYm(leftYm, 1))} class="absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.next}>›</button>
-    {#each shown as ym (ym)}
-      <section aria-label={formatMonth(ym, lang)}>{@render monthView(ym)}</section>
-    {/each}
+  <!-- 入れ替わる 2 か月は同じマス（grid-area 1/1）に重ねて、出ていく方と入ってくる方を同時に動かす（高さが跳ねない） -->
+  <div class="relative mt-3 hidden overflow-hidden md:grid">
+    <button type="button" disabled={leftYm <= today.slice(0, 7)} onclick={() => moveMonth(-1)} class="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.prev}>‹</button>
+    <button type="button" disabled={shiftYm(leftYm, 1) >= latestYm} onclick={() => moveMonth(1)} class="absolute right-0 top-0 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-600 disabled:opacity-30" aria-label={labels.next}>›</button>
+    {#key leftYm}
+      <div
+        class="grid grid-cols-2 gap-6 [grid-area:1/1]"
+        in:fly={{ x: `${slideDir * 50}%`, duration: slideMs, easing: cubicOut, opacity: 0 }}
+        out:fly={{ x: `${slideDir * -50}%`, duration: slideMs, easing: cubicOut, opacity: 0 }}
+      >
+        {#each shown as ym (ym)}
+          <section aria-label={formatMonth(ym, lang)}>{@render monthView(ym)}</section>
+        {/each}
+      </div>
+    {/key}
   </div>
   <!-- スマホ: 月を縦に並べて上下にスクロール -->
   <div bind:this={scrollEl} class="mt-1 space-y-5 overflow-y-auto overscroll-contain md:hidden {modal ? 'max-h-[min(60dvh,max(9rem,100dvh-13rem))]' : 'max-h-[60vh]'}">

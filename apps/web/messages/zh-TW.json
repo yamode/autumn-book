@@ -1233,6 +1233,7 @@
   "booking_cancel_free": "不收取取消費",
   "booking_cancel_free_date": "可免費取消至 {date}",
   "booking_cancel_free_days": "入住前 {days} 天為免費取消期限",
+  "booking_cancel_fee_period": "已進入收取取消費的期間（今日取消收取{rate}%）",
   "booking_cancel_days": "入住前 {days} 天起",
   "booking_cancel_previous_day": "入住前一天",
   "booking_cancel_same_day": "入住當日",

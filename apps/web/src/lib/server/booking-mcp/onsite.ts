@@ -1,5 +1,6 @@
 import { dev } from '$app/environment';
-import { cancelPolicyLabel } from '@autumn-book/core';
+import { cancelPolicyLabel, cancellationRate } from '@autumn-book/core';
+import { todayJstIso } from '$lib/early-prepay';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { answerLines, resolveRoomGenders } from '$lib/booking-questions';
@@ -39,7 +40,10 @@ export function cancellationTextFor(policy: unknown, checkin: string) {
 	const cancellation = normalizeCancellationPolicy(policy);
 	const rules = [...cancellation.rules].filter(({ rate }) => rate > 0).sort((a, b) => b.days_before - a.days_before)
 		.map(({ days_before, rate }) => `${days_before === 0 ? '当日' : `${days_before}日前から`}：宿泊料金の${Math.round(rate * 100)}％`);
-	return [cancelPolicyLabel(cancellation, checkin), ...rules, cancellation.note].filter(Boolean).join('\n');
+	// すでにキャンセル料がかかる期間なら「○日まで無料」ではなく、今日キャンセルしたときの率を出す（2026-11-22）
+	const rateNow = cancellationRate(cancellation, checkin, todayJstIso());
+	const head = rateNow > 0 ? `キャンセル料がかかる期間です（本日のキャンセルは${Math.round(rateNow * 100)}%）` : cancelPolicyLabel(cancellation, checkin);
+	return [head, ...rules, cancellation.note].filter(Boolean).join('\n');
 }
 
 export function onsiteAnswers(

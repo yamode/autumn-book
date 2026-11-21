@@ -1233,6 +1233,7 @@
   "booking_cancel_free": "取消料はかかりません",
   "booking_cancel_free_date": "{date}までキャンセル無料",
   "booking_cancel_free_days": "{days}日前までキャンセル無料",
+  "booking_cancel_fee_period": "キャンセル料がかかる期間です（本日のキャンセルは{rate}%）",
   "booking_cancel_days": "{days}日前から",
   "booking_cancel_previous_day": "前日",
   "booking_cancel_same_day": "当日",

@@ -1233,6 +1233,7 @@
   "booking_cancel_free": "No cancellation fee",
   "booking_cancel_free_date": "Free cancellation through {date}",
   "booking_cancel_free_days": "Free cancellation until {days} days before check-in",
+  "booking_cancel_fee_period": "Cancellation fees now apply ({rate}% if cancelled today)",
   "booking_cancel_days": "From {days} days before check-in",
   "booking_cancel_previous_day": "Day before check-in",
   "booking_cancel_same_day": "Check-in day",
