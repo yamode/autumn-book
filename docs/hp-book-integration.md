@@ -338,7 +338,7 @@ https://book.yamado.app{/lang}/yamado/{facility}/plans?checkin=YYYY-MM-DD&nights
 | Q10 | 契約書のホスト・館内図 QR のホスト | 契約書は P1-Book で追記 | 館内図の紙 QR をどちらのホストで刷ったかは ★ |
 | Q11 | hp-oga の CSP を enforce にするか | 任意（既定そのまま） | **何の話か**: 男鹿 HP は「このページで読み込んでよいスクリプト・接続先」のルール（CSP）を **Report-Only**（違反しても止めずに報告だけ）で出している（`site/.htaccess:59`）。これを **enforce**（違反したら実際にブロック）に切り替えるかどうか。**決めないと何が起きるか**: 何も起きない。今のまま報告だけで動く。**本書との関係**: P1 のリンク遷移は CSP の対象外。検索バーの代替フォーム（GET）も `form-action` を書いていないので影響なし。検索バーの Book スクリプト（`script-src`）と空き日の取得（`connect-src`）は **`book.yamado.app` が既に許可されている**ので enforce にしても動く。**既定の扱い**: そのまま。enforce にするときは Book の埋め込み部品が全部動くかをコンソールで確認してから（P3 以降） |
 | Q12 | hp-yamado の `.htaccess` の生成元 | **解消** | `scripts/build-xserver.mjs:136-146` が `server/security.htaccess` ＋ `www.yamado.co.jp` 限定の Rewrite を書き出している。`/reservation/` の 301 はここに `RewriteRule ^reservation/?$ https://book.yamado.app/yamado/nishiwaga?utm_… [R=301,L]` を 1 行足す。sitemap も同スクリプト（`:125-133`）が `manifest.json` から作るので、`manifest.json` から外せば sitemap からも消える |
-| Q13 | 西和賀 HP トップで `?tripla_booking_widget_open=signIn` が開くか | ★（本番で確認） | SDK はトップの head にある（`top.head.html:1`）。開かなければ `/booking/lookup` の西和賀リンクを `/english/?…`（body 末尾に SDK あり）にする手もあるが、英語ページに日本人を送るのは避けたい |
+| Q13 | 西和賀 HP トップで `?tripla_booking_widget_open=signIn` が開くか | **確認済み（2026-11-21・切替前の本番 HP。`yamado.co.jp` は `www` へ転送されるので `www` 付きを使う。男鹿も開く）。Book の wrangler vars に設定済み（v0.296.1）。11/30 の HP デプロイ後にもう一度確認** | SDK はトップの head にある（`top.head.html:1`）。開かなければ `/booking/lookup` の西和賀リンクを `/english/?…`（body 末尾に SDK あり）にする手もあるが、英語ページに日本人を送るのは避けたい |
 | Q14 | 特商法ページの「販売価格」を Book のプラン一覧参照にしてよいか | **決定（よい）** | §3.9.1 のとおり文言とリンクを変える |
 | Q15 | 検索バーを素のフォームだけで先に出すか | **決定（出さない）** | 最初からスクリプト版。素のフォームは代替の中身だけ（§3.8.4）。Book 側の作業は P1-Book に前倒し |
 
