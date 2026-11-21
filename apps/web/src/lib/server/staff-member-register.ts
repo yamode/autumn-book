@@ -7,6 +7,7 @@
 //   3. アカウントに会員の印（user_metadata.member）を付け、お客様へ「会員登録のお知らせ」を送る（失敗しても登録は成立）
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendHtmlEmail } from '$lib/server/mailer';
+import { memberSupportContactLine } from '$lib/server/support-mail-flag';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 
 export type StaffRegisterResult = {
@@ -103,7 +104,9 @@ function welcomeText(args: { name: string | null; facilityName: string; origin: 
     'ログインはこのメールアドレスで行います。パスワードはありません。',
     `ログイン画面（${args.origin}/auth/login）でメールアドレスを入れると、確認コードが届きます。`,
     '',
-    'お心当たりがない場合は、お手数ですがこのメールにご返信ください。'
+    'お心当たりがない場合は、お手数ですがこのメールにご返信ください。',
+    // 会員サポートの窓口（docs/member-support.md）
+    memberSupportContactLine()
   ].join('\n');
 }
 

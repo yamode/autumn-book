@@ -28,6 +28,11 @@
 	//  - 事前チェックインの SMS（NTT CPaaS・P4）は secret で登録する（ここに値を書かない）:
 	//    NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER / NTT_CPAAS_WEBHOOK_SECRET（Webhook の Basic 認証「ユーザー名:パスワード」）。
 	//    どれか欠けると SMS は送らず「SMS未設定」になる（メールは送れる）。
+	//  - 会員サポート（support@yamado.app・docs/member-support.md・workers/support-inbound/README.md）は secret で登録する（ここに値を書かない）:
+	//    SUPPORT_INBOUND_SECRET … 受信用 Worker との署名の共有鍵（Worker 側にも同じ値）。無いと /api/support/inbound は 503
+	//    SUPPORT_NOTIFY_TO      … 新しい問い合わせの宿への通知先（任意・カンマ区切り可）。無ければ info@yamado.co.jp
+	//    SUPPORT_MAIL_ENABLED   … 'true' のときだけ会員向けメール・ヘルプページに support@yamado.app を載せ、控え・返信を support@ から送る。
+	//                             support@ の受信（Email Routing と受信用 Worker）が動くのを確かめてから入れる。それまでは返信できないメールとして送る
 	"vars": {
 		// 事前チェックインの当日 9:00 の自動送信（/api/cron/precheckin-send）の全体スイッチ。'1' のときだけ送る。'0' は対象件数だけ数える dry-run。
 		// SMS（NTT CPaaS）の API 構築が終わるまで '0'（2026-11-15 ユーザー指示）。誰へ送るかは管理画面 → 事前チェックインの「自動送信」（施設ごと・既定は送らない）と予約ごとの上書きで決める

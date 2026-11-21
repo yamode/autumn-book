@@ -152,6 +152,9 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// 西和賀HPの署名付き問い合わせ受付は、予約ポータルの公開状態から独立する。
 	// この例外でも受付ルート内のHMAC・時刻・公開フラグ検証は必須。
 	if (url.pathname === '/api/inquiries/nishiwaga') return true;
+	// 会員サポートの受信（受信用 Worker → 署名つき POST・docs/member-support.md）も、メールを落とさないよう公開状態から独立させる。
+	// ルートの中で署名と時刻を必ず確かめる
+	if (url.pathname === '/api/support/inbound') return true;
 	// 公開アプリ yamado-one の仮押さえ API も、ポータル本体の公開状況と関係なく稼働させる
 	// （2026-10-17 ユーザー指示・auth-hardening.md S8）。アプリはストアに出る別プロダクトで、
 	// ポータルの公開前・メンテナンス中でも予約できなければならない。ここを通さないと

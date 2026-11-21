@@ -71,7 +71,11 @@ export const RATE_RULES = {
   /** 旧会員の会員移行の案内メール: 1 メールあたり 1 時間 3 回（DB 側でも 1 日 5 通まで） */
   legacyInviteEmail: { prefix: 'login_rate:legacy_invite_email:', max: 3, windowSec: 3600 },
   /** 旧会員の会員移行の完了（リンク先の送信）: 1 IP あたり 10 分 10 回 */
-  legacyCompleteIp: { prefix: 'login_rate:legacy_complete_ip:', max: 10, windowSec: 600, lockSec: 900 }
+  legacyCompleteIp: { prefix: 'login_rate:legacy_complete_ip:', max: 10, windowSec: 600, lockSec: 900 },
+  /** 会員サポートの問い合わせフォーム（/help）: 1 IP あたり 1 時間 5 件（控えのメールを送るので、送信の踏み台にさせない・docs/member-support.md） */
+  supportSubmitIp: { prefix: 'login_rate:support_submit_ip:', max: 5, windowSec: 3600 },
+  /** 会員サポートの問い合わせフォーム: 1 メールあたり 1 時間 3 件（同じ人へ控えを送り続けない） */
+  supportSubmitEmail: { prefix: 'login_rate:support_submit_email:', max: 3, windowSec: 3600 }
 } as const satisfies Record<string, RateRule>;
 
 export type RateRecord = { count: number; windowStart: number; lockedUntil: number };

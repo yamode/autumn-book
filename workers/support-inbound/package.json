@@ -1,0 +1,20 @@
+{
+  "name": "@autumn-book/support-inbound",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "会員サポート（support@yamado.app）の受信用 Worker。Email Routing で受けて Book の /api/support/inbound に署名つきで渡す",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "postal-mime": "^2.3.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261019.1",
+    "typescript": "^5.9.0",
+    "wrangler": "4.99.0"
+  }
+}

@@ -15,7 +15,7 @@ export type NavLeaf = {
 	tenantWide?: boolean;
 	demoOnly?: boolean;
 	adminOnly?: boolean;
-	badge?: 'groupInquiries';
+	badge?: 'groupInquiries' | 'support';
 	tab?: string | null;
 	also?: string[];
 };
@@ -115,6 +115,8 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/otayori', label: 'おたより', tenantWide: true }
 				]
 			},
+			// 会員サポート（support@yamado.app・ヘルプページの問い合わせ・docs/member-support.md）。スタッフも使う。バッジは未返信の件数
+			{ href: '/admin/support', label: '会員サポート', icon: 'megaphone', tenantWide: true, badge: 'support' },
 			{
 				href: '/admin/news',
 				label: 'サイト管理',

@@ -273,6 +273,10 @@
 							<!-- 団体照会の回答待ち（submitted）の件数。layout の load が Promise のまま流す（0・null は出さない・docs/partner-group-booking.md §7.8） -->
 							{#await data.groupInquiryBadge then n}{#if n}<span class="shrink-0 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white tabular-nums" title="回答待ちの団体照会">{n}</span>{/if}{/await}
 						{/if}
+						{#if item.badge === 'support'}
+							<!-- 会員サポートの未返信の件数（完了を除く・docs/member-support.md）。団体照会と同じく Promise のまま流す -->
+							{#await data.supportBadge then n}{#if n}<span class="shrink-0 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white tabular-nums" title="未返信の会員サポート">{n}</span>{/if}{/await}
+						{/if}
 					</a>
 				{/if}
 			{/each}

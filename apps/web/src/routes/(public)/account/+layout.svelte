@@ -21,7 +21,9 @@
 		...primaryNav
 	]);
 	const utilityNav = $derived([
-		{ href: '/account/settings', label: m.account_nav_settings() }
+		{ href: '/account/settings', label: m.account_nav_settings() },
+		// 会員サポート（docs/member-support.md）。スマホではアカウント設定の一覧から開く
+		{ href: '/help', label: m.help_nav_label() }
 	]);
 	const bookingNav = $derived([
 		{ href: '/account/coupons', label: m.account_nav_coupons() },

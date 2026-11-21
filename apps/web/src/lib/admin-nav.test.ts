@@ -33,6 +33,14 @@ describe('管理画面のメニューの現在地', () => {
 		expect(at('/admin/inroom/billing')).toBe('客室案内 > 精算案内');
 		expect(at('/admin/inroom/preview')).toBe('客室案内 > プレビュー・QR');
 	});
+	it('会員サポートは一覧・詳細・よくある質問の編集が同じ項目（会員・サイト・スタッフにも出す）', () => {
+		expect(at('/admin/support')).toBe('会員サポート > 会員サポート');
+		expect(at('/admin/support/00000000-0000-4000-8000-000000000001')).toBe('会員サポート > 会員サポート');
+		expect(at('/admin/support/faqs')).toBe('会員サポート > 会員サポート');
+		const group = ADMIN_NAV.find((g) => g.items.some((i) => i.href === '/admin/support'));
+		expect(group?.label).toBe('会員・サイト');
+		expect(visibleNav('staff').flatMap((g) => g.items.map((i) => i.href))).toContain('/admin/support');
+	});
 	it('どこにも無い画面は null', () => {
 		expect(at('/admin/mfa')).toBeNull();
 	});

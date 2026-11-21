@@ -7,9 +7,22 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { countSubmittedGroupInquiries } from '$lib/server/partners/group-inquiries';
 import { staffGroupScope } from '$lib/server/partners/group-staff';
 import { TtlCache } from '$lib/server/ttl-cache';
+import { bookAdmin } from '$lib/server/admin-app-data';
+import { supportBadgeCache } from '$lib/server/admin-badges';
 import type { LayoutServerLoad } from './$types';
 
 const badgeCache = new TtlCache<number | null>(60_000);
+
+/** 会員サポートの未返信の件数（admin_support_counts の needs_reply・完了を除く）。読めなければ null */
+async function supportBadge(event: Parameters<LayoutServerLoad>[0], userId: string): Promise<number | null> {
+	const hit = supportBadgeCache.get(userId);
+	if (hit !== undefined) return hit;
+	const n = await Promise.resolve(bookAdmin(event).rpc('admin_support_counts'))
+		.then(({ data, error }) => (error ? null : Math.max(0, Number((data as { needs_reply?: number } | null)?.needs_reply ?? 0) || 0)))
+		.catch(() => null as number | null);
+	if (n !== null) supportBadgeCache.set(userId, n);
+	return n;
+}
 
 async function groupBadge(event: Parameters<LayoutServerLoad>[0], userId: string): Promise<number | null> {
 	const hit = badgeCache.get(userId);
@@ -53,6 +66,8 @@ export const load: LayoutServerLoad = async (event) => {
 		// サイドバー「団体照会」のバッジ（回答待ちの件数・スタッフがアクセスできる施設の範囲・docs/partner-group-booking.md §7.8）。
 		// 画面の表示を待たせないよう Promise のまま流す（読めない・この環境では使えないときは null＝バッジを出さない）
 		// 画面遷移のたびに数え直さないよう、ユーザーごとに 60 秒覚える（2026-10-18 高速化）
-		groupInquiryBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : groupBadge(event, locals.user.id)
+		groupInquiryBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : groupBadge(event, locals.user.id),
+		// サイドバー「会員サポート」のバッジ（未返信の件数・docs/member-support.md）。団体照会と同じく Promise のまま・60 秒覚える
+		supportBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : supportBadge(event, locals.user.id)
 	};
 };

@@ -1,0 +1,14 @@
+// 会員サポートの受信用 Worker（README.md に Cloudflare 側の設定手順）。
+// 秘密（SUPPORT_INBOUND_SECRET）はここに書かない: `wrangler secret put SUPPORT_INBOUND_SECRET`
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "autumn-book-support-inbound",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-11-01",
+	"workers_dev": false,
+	"observability": { "enabled": true },
+	"vars": {
+		// Book の受信 API（本番）。プレビューで試すときだけ変える
+		"BOOK_INBOUND_URL": "https://book.yamado.app/api/support/inbound"
+	}
+}

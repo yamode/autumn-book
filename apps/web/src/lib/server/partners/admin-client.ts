@@ -74,6 +74,10 @@ export function partnerServiceClient(): SupabaseClient | null {
 	return client;
 }
 
+// 例外その15（2026-11-22・docs/member-support.md）: 会員サポート（lib/server/member-support.ts）。
+//   ヘルプページの問い合わせフォーム（book.support_submit）と、受信用 Worker からの署名つき受信（book.support_inbound）。
+//   どちらも service_role だけに grant している。フォームは Turnstile・回数制限・入力の検証の後、受信は署名と時刻の検証の後に呼ぶ。
+//   会員の id はサーバが auth.getUser() で確かめた値だけを渡す。
 // 例外その14（2026-11-01・v0.230.0）: スタッフの販売ページプレビュー（lib/server/plan-preview.ts）。
 //   販売中でないプランを本物の在庫・料金で確かめるため、x-book-preview-plan ヘッダー付きで呼ぶ（autumn-shared 20261101073819）。
 //   DB は service_role の呼び出しのときだけヘッダーを見る。呼ぶ側はログイン中の役割が admin / staff であることを確かめてから使う。

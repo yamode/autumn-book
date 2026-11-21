@@ -30,10 +30,16 @@ export async function sendHtmlEmail(args: {
   replyTo?: string;
   /** 添付ファイル（合計 5MiB まで。超えると送らずに reason を返す） */
   attachments?: MailAttachment[];
+  /**
+   * 差出人（任意）。無ければ REPORT_EMAIL_FROM（既定 noreply@yamado.app）・名前 YAMADO。
+   * 会員サポート（lib/server/member-support.ts）は support@yamado.app・「YAMADO サポート」で送る。yamado.app 配下であること
+   */
+  from?: { address: string; name?: string };
 }): Promise<SendEmailResult> {
   const accountId = privateEnv.CF_ACCOUNT_ID;
   const token = privateEnv.CF_EMAIL_API_TOKEN;
-  const from = privateEnv.REPORT_EMAIL_FROM || DEFAULT_FROM;
+  const from = args.from?.address || privateEnv.REPORT_EMAIL_FROM || DEFAULT_FROM;
+  const fromName = args.from?.address ? (args.from.name ?? FROM_NAME) : FROM_NAME;
   const to = (args.to ?? []).filter(Boolean);
 
   if (!to.length) return { sent: false, reason: 'no-recipients' };
@@ -47,7 +53,7 @@ export async function sendHtmlEmail(args: {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
       body: JSON.stringify({
         to: to.length === 1 ? to[0] : to,
-        from: { address: from, name: FROM_NAME },
+        from: { address: from, name: fromName },
         // REST API は snake_case（reply_to）
         ...(args.replyTo ? { reply_to: args.replyTo } : {}),
         subject: args.subject,

@@ -258,6 +258,7 @@
 				<ul class="space-y-1 text-xs">
 					<li><a href="/membership" class="hover:underline">{m.nav_membership()}</a></li>
 					<li><a href="/booking/lookup" class="hover:underline">{m.footer_lookup()}</a></li>
+					<li><a href="/help" class="hover:underline">{m.help_nav_label()}</a></li>
 					<li><a href="/legal/tokushoho" class="hover:underline">{m.footer_tokushoho()}</a></li>
 					<li><a href="/legal/privacy" class="hover:underline">{m.footer_privacy()}</a></li>
 					<li><a href="/legal/yakkan" class="hover:underline">{m.footer_yakkan()}</a></li>

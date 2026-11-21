@@ -8,7 +8,9 @@
 		{ href: '/account/profile', label: m.account_nav_profile() },
 		{ href: '/account/cards', label: m.account_nav_cards() },
 		...(data.memberLoginMethods ? [{ href: '/account/settings/login', label: memberLoginCopy(getLocale()).title }] : []),
-		...(data.bookingMcpEnabled ? [{ href: '/account/ai-connections', label: m.account_nav_ai_connections() }] : [])
+		...(data.bookingMcpEnabled ? [{ href: '/account/ai-connections', label: m.account_nav_ai_connections() }] : []),
+		// 会員サポート（docs/member-support.md）
+		{ href: '/help', label: m.help_nav_label() }
 	]);
 </script>
 

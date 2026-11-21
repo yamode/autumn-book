@@ -65,6 +65,7 @@ export function transitionTitle(route: string): string {
 	if (under(path, '/auth/login')) return m.common_login();
 	if (under(path, '/auth/register')) return m.common_register();
 	if (under(path, '/booking/lookup')) return m.footer_lookup();
+	if (under(path, '/help')) return m.help_heading();
 	if (under(path, '/booking/hold')) return m.hold_heading_input();
 	if (under(path, '/account/points')) return m.account_nav_points();
 	if (under(path, '/account/coupons')) return m.account_nav_coupons();
@@ -91,7 +92,7 @@ export function loadingShape(route: string): LoadingShape {
 	if (route === '/admin') return 'admin-dashboard';
 	if (/^\/admin\/(login|mfa)(\/|$)/.test(route)) return 'auth';
 	if (route === '/admin/plans') return 'admin-cards';
-	if (/^\/admin\/(reservations|members|payments|precheckin|partners|upgrades|inquiries|group-inquiries|coupons|news|users|rooms|plans|otayori|community)(?:\/(reports|deletions|charges|invoices))?$/.test(route)) return 'admin-list';
+	if (/^\/admin\/(reservations|members|payments|precheckin|partners|upgrades|inquiries|support|group-inquiries|coupons|news|users|rooms|plans|otayori|community)(?:\/(reports|deletions|charges|invoices))?$/.test(route)) return 'admin-list';
 	// 右に要約欄がある 2 列の詳細。それ以外の設定・編集はほぼ 1 列
 	if (/^\/admin\/(reservations\/\[code\]|members\/\[id\]|group-inquiries\/\[id\])$/.test(route)) return 'admin-split';
 	if (under(route, '/admin')) return 'admin-detail';

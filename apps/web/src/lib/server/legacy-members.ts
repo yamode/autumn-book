@@ -20,6 +20,7 @@ import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { sendHtmlEmail } from '$lib/server/mailer';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { combineName } from '$lib/name';
+import { memberSupportContactLine } from '$lib/server/support-mail-flag';
 
 /** 同意を取ったプライバシーポリシーの版（/legal/privacy を改定したら変える） */
 export const LEGACY_PRIVACY_VERSION = 'privacy-2026-11';
@@ -92,10 +93,13 @@ function mailHtml(lines: string[], button?: { href: string; label: string }): st
 		.join('');
 }
 
-const FOOTER = [
+// 環境変数（SUPPORT_MAIL_ENABLED）はリクエストのときに読むので、モジュールの読み込み時に固めない
+const footer = () => [
 	'',
 	'山人（YAMADO）は、メールでパスワードや確認コードをお尋ねすることはありません。',
-	'このメールにお心当たりがない場合は、何もせずに破棄してください。'
+	'このメールにお心当たりがない場合は、何もせずに破棄してください。',
+	// 会員サポートの窓口（docs/member-support.md）
+	memberSupportContactLine()
 ];
 
 async function send(to: string, subject: string, lines: string[], button?: { href: string; label: string }) {
@@ -126,7 +130,7 @@ export async function sendLegacyInvite(email: string, origin: string): Promise<v
 			'下のボタンから進み、内容をご確認のうえパスワードを決めてください（24時間有効・1回限り）。',
 			link, '',
 			'これまでの公式サイト・お電話でのご宿泊は、確認のうえ新しい会員ランクに反映されます。',
-			...FOOTER
+			...footer()
 		], { href: link, label: '会員移行の手続きへ進む' });
 	} else if (r.kind === 'member') {
 		const link = `${origin}/auth/login`;
@@ -134,7 +138,7 @@ export async function sendLegacyInvite(email: string, origin: string): Promise<v
 			'お客様', '',
 			'このメールアドレスは、すでに新しい予約サイトの会員にご登録いただいています。',
 			'会員移行のお手続きは不要です。ログイン画面からログインしてご利用ください。',
-			link, ...FOOTER
+			link, ...footer()
 		], { href: link, label: 'ログイン画面を開く' });
 	} else if (r.kind === 'login') {
 		const link = `${origin}/auth/login?next=${encodeURIComponent('/account/legacy')}`;
@@ -144,7 +148,7 @@ export async function sendLegacyInvite(email: string, origin: string): Promise<v
 			'ログイン画面でこのメールアドレスを入力し、届く確認コードでログインしてください。',
 			'会員登録がまだの方は、続けて会員登録をお済ませください。',
 			'そのあと、マイページの「以前の会員のご利用実績を引き継ぐ」からお手続きください。',
-			link, ...FOOTER
+			link, ...footer()
 		], { href: link, label: 'ログインして引き継ぐ' });
 	}
 }
@@ -255,6 +259,7 @@ async function sendCompletion(email: string, name: string, origin: string, claim
 				: '',
 		link, '',
 		'このお手続きにお心当たりがない場合は、お手数ですが宿までご連絡ください。',
+		memberSupportContactLine(),
 		'山人（YAMADO）は、メールでパスワードや確認コードをお尋ねすることはありません。'
 	], { href: link, label: 'マイページを開く' });
 }
