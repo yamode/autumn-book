@@ -13,6 +13,7 @@
 	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import { EMBED_FACILITIES, SEARCH_FACILITIES, LIMITS, MONTHS_AHEAD, calendarUrl, clampSearch, dayState, isIsoDate, normalizeLang, parseCalendar, shiftYm, todayJst, type StayCalendarData } from '$lib/stay-search/params';
 	import { PARTNER_ACCENTS } from '$lib/partner-theme';
+	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 
 	let {
 		checkin = '',
@@ -34,8 +35,10 @@
 	const pickFacility = !facility;
 	let chosen = $state('');
 	const chosenFacility = $derived(SEARCH_FACILITIES.find((f) => f.slug === chosen));
+	// 左の地域（一休のエリア選択）。'' はすべてのエリア
 	let region = $state<'' | 'iwate' | 'akita'>('');
-	const regionFacilities = $derived(SEARCH_FACILITIES.filter((f) => f.region === region));
+	const regionFacilities = $derived(region ? SEARCH_FACILITIES.filter((f) => f.region === region) : SEARCH_FACILITIES);
+	const regionCount = (key: 'iwate' | 'akita') => SEARCH_FACILITIES.filter((f) => f.region === key).length;
 	const effectiveFacility = $derived(facility || chosen);
 	const accent = $derived(EMBED_FACILITIES[effectiveFacility] ?? PARTNER_ACCENTS.yamado);
 	function choose(slug: string) {
@@ -126,48 +129,69 @@
 	</StaySearchBar>
 </div>
 
-{#snippet facilityPanel({ close }: { close: () => void })}
-	<p class="text-base font-semibold text-brand-900">{labels.chooseRegion}</p>
-	<div class="mt-3 grid grid-cols-2 gap-2">
-		{#each ['iwate', 'akita'] as const as key (key)}
-			<button
-				type="button"
-				aria-pressed={region === key}
-				onclick={() => (region = key)}
-				class={`rounded-full border px-4 py-2 text-base transition ${region === key ? 'border-brand-900 bg-brand-900 text-white' : 'border-stone-300 text-brand-900 hover:border-brand-900'}`}>{labels.regions[key]}</button
-			>
-		{/each}
-	</div>
-	<div class="mt-4 border-t border-stone-200 pt-3">
-		{#if region}
-			<ul class="space-y-1">
+{#snippet facilityPanel(_panel: { close: () => void })}
+	<!-- 一休.com のエリア選択（左に地域・右にその地域の宿）と Airbnb の行（写真＋名前＋地域）を合わせた形。スマホは地域を横並びのボタンにする -->
+	<div class="@container">
+		<div class="flex flex-col gap-4 @min-[480px]:flex-row @min-[480px]:gap-0">
+			<nav aria-label={labels.facility} class="shrink-0 @min-[480px]:w-40 @min-[480px]:border-r @min-[480px]:border-stone-200 @min-[480px]:pr-3">
+				<div class="flex gap-1.5 overflow-x-auto [scrollbar-width:none] @min-[480px]:flex-col @min-[480px]:gap-0.5">
+					{#each [{ key: '' as const, label: labels.allAreas, count: SEARCH_FACILITIES.length }, ...(['iwate', 'akita'] as const).map((k) => ({ key: k, label: labels.regions[k], count: regionCount(k) }))] as item (item.key)}
+						{#if item.key === 'iwate'}
+							<p class="mt-3 mb-1 hidden px-3 text-xs font-bold tracking-wide text-stone-500 @min-[480px]:block">{labels.areaGroup}</p>
+						{/if}
+						<button
+							type="button"
+							aria-pressed={region === item.key}
+							onclick={() => (region = item.key)}
+							class={`flex shrink-0 items-center justify-between gap-2 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm transition @min-[480px]:rounded-lg @min-[480px]:border-transparent @min-[480px]:px-3 @min-[480px]:py-2.5 ${region === item.key ? 'border-brand-900 bg-brand-900 text-white @min-[480px]:bg-stone-100 @min-[480px]:font-semibold @min-[480px]:text-brand-900' : 'border-stone-300 text-brand-900 hover:bg-stone-100'}`}
+						>
+							<span>{item.label}</span>
+							<span class={`hidden text-xs @min-[480px]:inline ${region === item.key ? 'text-brand-900' : 'text-stone-400'}`}>{item.count}</span>
+						</button>
+					{/each}
+				</div>
+			</nav>
+			<ul class="min-w-0 flex-1 space-y-1 @min-[480px]:pl-3">
+				{#if !region}
+					<li>
+						<button
+							type="button"
+							onclick={() => {
+								chosen = '';
+								open = 'date';
+							}}
+							class={`flex w-full items-center gap-4 rounded-2xl p-2 text-left transition hover:bg-stone-100 ${!chosen ? 'bg-stone-50' : ''}`}
+						>
+							<span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-brand-900" aria-hidden="true">
+								<svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" stroke-linecap="round" /></svg>
+							</span>
+							<span class="flex min-w-0 flex-col">
+								<span class="text-base font-semibold text-brand-900">{labels.allFacilities}</span>
+								<span class="text-sm text-stone-500">{labels.allFacilitiesSub}</span>
+							</span>
+						</button>
+					</li>
+				{/if}
 				{#each regionFacilities as f (f.slug)}
 					<li>
 						<button
 							type="button"
 							onclick={() => choose(f.slug)}
-							class={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-stone-100 ${chosen === f.slug ? 'bg-stone-100' : ''}`}
+							aria-pressed={chosen === f.slug}
+							class={`flex w-full items-center gap-4 rounded-2xl p-2 text-left transition hover:bg-stone-100 ${chosen === f.slug ? 'bg-stone-100' : ''}`}
 						>
-							<span class="flex flex-col">
-								<span class="text-base font-semibold text-brand-900">{f.name}</span>
+							<img src={facilityThumbnailUrl(f.slug, '')} alt="" loading="lazy" class="h-14 w-14 shrink-0 rounded-xl bg-stone-200 object-cover" />
+							<span class="flex min-w-0 flex-1 flex-col">
+								<span class="truncate text-base font-semibold text-brand-900">{f.name}</span>
 								<span class="text-sm text-stone-500">{labels.regions[f.region]} {f.area[lang]}</span>
 							</span>
-							{#if chosen === f.slug}<span aria-hidden="true" class="text-brand-900">✓</span>{/if}
+							{#if chosen === f.slug}
+								<svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5 shrink-0 text-brand-900" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.5l4.5 4.5L19 7.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+							{/if}
 						</button>
 					</li>
 				{/each}
 			</ul>
-		{:else}
-			<p class="py-2 text-sm text-stone-500">{labels.pickRegionFirst}</p>
-		{/if}
+		</div>
 	</div>
-	<button
-		type="button"
-		onclick={() => {
-			chosen = '';
-			region = '';
-			close();
-		}}
-		class="mt-2 text-sm text-stone-600 underline underline-offset-2 hover:text-brand-900">{labels.allFacilities}</button
-	>
 {/snippet}

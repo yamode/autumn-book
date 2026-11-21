@@ -52,10 +52,12 @@ export type StaySearchLabels = {
 	/** 施設の区画（公開サイトで施設が決まっていないときだけ出す） */
 	facility: string;
 	chooseFacility: string;
-	chooseRegion: string;
-	pickRegionFirst: string;
+	/** 地域の大きなまとまり（一休の「東北」） */
+	areaGroup: string;
+	allAreas: string;
 	regions: Record<'iwate' | 'akita', string>;
 	allFacilities: string;
+	allFacilitiesSub: string;
 };
 
 const enNights = (n: number) => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -109,12 +111,13 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		pickHint: 'チェックイン日を選ぶと、その日の料金でプランの詳細を表示します',
 		dateDialog: 'ご宿泊日',
 		region: '空室検索',
-		facility: '施設',
-		chooseFacility: '施設を選ぶ',
-		chooseRegion: '地域を選んでください',
-		pickRegionFirst: '地域を選ぶと、施設が表示されます。',
+		facility: 'エリア・施設',
+		chooseFacility: 'どちらに泊まりますか',
+		areaGroup: '東北',
+		allAreas: 'すべてのエリア',
 		regions: { iwate: '岩手県', akita: '秋田県' },
-		allFacilities: 'すべての施設から探す'
+		allFacilities: 'すべての施設から探す',
+		allFacilitiesSub: '岩手・秋田の全施設の空室を見る'
 	},
 	en: {
 		checkin: 'Check-in',
@@ -163,12 +166,13 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		pickHint: 'Choose a check-in date to see the plan details for that day',
 		dateDialog: 'Dates of stay',
 		region: 'Search availability',
-		facility: 'Property',
-		chooseFacility: 'Choose a property',
-		chooseRegion: 'Choose an area',
-		pickRegionFirst: 'Choose an area to see its properties.',
+		facility: 'Where',
+		chooseFacility: 'Choose an area or property',
+		areaGroup: 'Tohoku',
+		allAreas: 'All areas',
 		regions: { iwate: 'Iwate', akita: 'Akita' },
-		allFacilities: 'Search all properties'
+		allFacilities: 'Search all properties',
+		allFacilitiesSub: 'See availability across Iwate and Akita'
 	},
 	'zh-TW': {
 		checkin: '入住日期',
@@ -215,11 +219,12 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		pickHint: '選擇入住日期後，將以當日價格顯示方案詳情',
 		dateDialog: '住宿日期',
 		region: '搜尋空房',
-		facility: '設施',
-		chooseFacility: '選擇設施',
-		chooseRegion: '請選擇地區',
-		pickRegionFirst: '選擇地區後，會顯示該地區的設施。',
+		facility: '地區・設施',
+		chooseFacility: '想住在哪裡？',
+		areaGroup: '東北',
+		allAreas: '所有地區',
 		regions: { iwate: '岩手縣', akita: '秋田縣' },
-		allFacilities: '從所有設施搜尋'
+		allFacilities: '從所有設施搜尋',
+		allFacilitiesSub: '查看岩手・秋田所有設施的空房'
 	}
 };

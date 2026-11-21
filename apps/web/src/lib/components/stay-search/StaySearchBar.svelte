@@ -157,7 +157,7 @@
       </div>
     {/if}
   {:else if open === 'facility' && facilityPanel}
-    <div class="absolute left-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-[26rem]" role="dialog" aria-label={labels.facility}>
+    <div class="absolute left-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-4 @min-[520px]:p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[640px]:w-[36rem]" role="dialog" aria-label={labels.facility}>
       {@render facilityPanel({ close: () => (open = '') })}
     </div>
   {:else if open === 'guests'}
