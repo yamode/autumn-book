@@ -437,6 +437,11 @@ export type PrecheckinMailInput = {
 	bookingCode: string;
 	url: string;
 	editableUntil: string;
+	/**
+	 * 貸切風呂の事前予約を案内するか。公式サイト（Book）の予約だけ true（2026-11-21: 事前予約は公式サイト限定）。
+	 * false のときは「到着後に客室案内から」と書く。省略時は true（従来どおり）
+	 */
+	bath?: boolean;
 };
 
 const esc = (s: string) =>
@@ -494,7 +499,9 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		'',
 		'※ このリンクはお客様専用です。他の方へ転送しないでください。',
 		'※ 新しいご案内を送った場合、前のメールのリンクは使えなくなります。',
-		'※ 貸切風呂のご予約も、このリンクから承ります（ご到着当日 9:00 から）。'
+		i.bath === false
+			? '※ 貸切風呂のご予約は、ご到着後に客室案内から承ります（事前のご予約は、公式サイトからご予約のお客様限定です）。'
+			: '※ 貸切風呂のご予約も、このリンクから承ります（ご到着当日 9:00 から）。'
 	];
 	const enLines = [
 		`Dear ${i.guestName.trim() || 'Guest'},`,

@@ -2,7 +2,7 @@
 // チェックイン日で絞った予約（代表 1 行）に、送信・開封・回答の状態と「送る／再送」ボタンを出す。
 // 送信は、メールの手動ボタン（P2）と、携帯番号のときの「SMSで送る／再送」（P4・NTT CPaaS）。当日 9:00 の自動送信は /api/cron/precheckin-send。
 import { fail } from '@sveltejs/kit';
-import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { bookAdmin, mapRpcError } from '$lib/server/admin-app-data';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import {
@@ -23,7 +23,8 @@ import {
 	type PrecheckinCaps,
 	type PrecheckinListRow
 } from '$lib/server/precheckin';
-import { adminSmsStatus, sendPrecheckinSms, smsReady } from '$lib/server/precheckin-sms';
+import { adminSmsStatus, sendPrecheckinSms, smsReady, stayIsOfficial } from '$lib/server/precheckin-sms';
+
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { autosendEnabled, type AutosendSettings, type SmsStatusRow } from '$lib/precheckin-sms';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -134,7 +135,9 @@ export const actions: Actions = {
 		const force = form.get('force') === '1';
 		if (!/^[0-9a-f-]{36}$/.test(stayId)) return fail(400, { sendError: '対象のご予約が分かりません。', sentStay: null });
 		try {
-			const r = await sendPrecheckinSms(bookAdmin(event), facility, stayId, force, customerLinkOrigin(event.url));
+			// 貸切風呂の事前予約は公式サイトの予約だけ文面に入れる（2026-11-21）
+			const official = await stayIsOfficial(createSupabaseServerClient(event), stayId);
+			const r = await sendPrecheckinSms(bookAdmin(event), facility, stayId, force, customerLinkOrigin(event.url), official);
 			if (!r.sent) {
 				// 直近に送っている: 画面で確認を出して force で送り直す
 				if (r.code === 'recent') return fail(409, { sendError: null as string | null, smsConfirmStay: stayId, smsLastAt: r.lastAt ?? null, sentStay: stayId });

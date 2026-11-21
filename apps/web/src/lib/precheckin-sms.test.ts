@@ -71,6 +71,11 @@ describe('smsTarget（携帯番号 → 国際形式）', () => {
 describe('SMS 本文', () => {
 	// 当日 9:00 JST に送る想定（2026-11-14 は土曜）
 	const NOW = new Date('2026-11-14T00:00:00Z');
+	it('公式サイト以外の予約（bath: false）には貸切風呂を入れない（事前予約は公式サイト限定・2026-11-21）', () => {
+		const p = buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-14', url: URL_, phone: '0197-82-2222', now: NOW, bath: false });
+		expect(p.message).toBe('【山人-yamado-】\n＜事前チェックインのご案内＞\nご本人確認、食事時間のお申込みが可能です。\nお手続きは下記URLから。');
+		expect(smsSegments(p.message)).toBe(1);
+	});
 	it.each([
 		['山人-yamado-', '0197-82-2222'],
 		['山人-oga-', '0185-47-7776']

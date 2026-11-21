@@ -83,8 +83,23 @@ type BeginResult = BeginOk | BeginNg;
 
 type FinishArgs = { ok: boolean; messageId?: string; providerStatus?: string; error?: string; permanent?: boolean };
 
-/** 受付済みの 1 件を実際に送る（SMS / メール）。結果は呼び出し側が finish で残す */
-async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb: SupabaseClient | null): Promise<FinishArgs> {
+/**
+ * 公式サイト（Book）の予約か（core.stays.source = 'autumn_booking'・precheckin_context の is_official と同じ判定）。
+ * 事前チェックインの文面で、貸切風呂の事前予約を案内するかに使う（2026-11-21: 事前予約は公式サイト限定）。
+ * 読めないときは false（できないことを案内しない側に倒す）
+ */
+export async function stayIsOfficial(sb: SupabaseClient, stayId: string): Promise<boolean> {
+	try {
+		const { data, error } = await sb.schema('core').from('stays').select('source').eq('id', stayId).maybeSingle();
+		if (error || !data) return false;
+		return (data as { source: string | null }).source === 'autumn_booking';
+	} catch {
+		return false;
+	}
+}
+
+/** 受付済みの 1 件を実際に送る（SMS / メール）。結果は呼び出し側が finish で残す。official は貸切風呂の事前予約を案内するか */
+async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb: SupabaseClient | null, official: boolean): Promise<FinishArgs> {
 	// ?f=<施設の slug> は、リンクを開いた瞬間の読み込み中の画面に出すロゴの目印（$lib/precheckin-splash）
 	const url = `${origin}/ci/${b.token}${splashHint(b.facility_slug)}`;
 	if (b.channel === 'sms') {
@@ -95,7 +110,8 @@ async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb
 			facilityName: b.facility_name,
 			checkIn: String(b.check_in).slice(0, 10),
 			url,
-			phone: facilityPhone(b.facility_id, b.facility_phone)
+			phone: facilityPhone(b.facility_id, b.facility_phone),
+			bath: official
 		});
 		const first = await sendSmsWith(cfg, { to: b.to, text: pair.message, callbackData: b.dispatch_id }, nttFetch);
 		if (!first.sent) return { ok: false, messageId: first.messageId, providerStatus: first.providerStatus, error: first.reason, permanent: first.permanent };
@@ -116,7 +132,8 @@ async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb
 		nights: Number(b.nights) || 1,
 		bookingCode: b.booking_code,
 		url,
-		editableUntil: b.editable_until
+		editableUntil: b.editable_until,
+		bath: official
 	});
 	const sender = mailDb ? await partnerMailSender(mailDb, b.facility_id).catch(() => null) : null;
 	const r = await sendHtmlEmail({
@@ -144,7 +161,9 @@ export async function sendPrecheckinSms(
 	facility: string,
 	stayId: string,
 	force: boolean,
-	origin: string
+	origin: string,
+	/** 公式サイトの予約か（呼び出し側が stayIsOfficial で読む）。貸切風呂の事前予約を文面に入れるか */
+	official: boolean
 ): Promise<ManualSmsResult> {
 	const cfg = nttConfig();
 	if (!cfg) return { sent: false, code: 'sms_not_configured', message: 'SMS未設定（NTT CPaaS の接続情報が登録されていません）。' };
@@ -157,7 +176,7 @@ export async function sendPrecheckinSms(
 	if (error) throw error;
 	const b = data as BeginResult;
 	if (!b.ok) return { sent: false, code: b.error, message: dispatchErrorText(b.error), lastAt: b.last_at };
-	const r = await deliver(b, origin, cfg, null);
+	const r = await deliver(b, origin, cfg, null, official);
 	dbg('manual', { dispatch: b.dispatch_id, ok: r.ok, status: r.providerStatus, error: r.error });
 	const fin = await c.rpc('admin_precheckin_dispatch_finish', {
 		p_facility: facility,
@@ -249,7 +268,7 @@ export async function runPrecheckinAutosend(
 				skip(b.error);
 				continue;
 			}
-			const r = await deliver(b, opts.origin, cfg, svc);
+			const r = await deliver(b, opts.origin, cfg, svc, await stayIsOfficial(svc, b.stay_id));
 			const fin = await db.rpc('precheckin_dispatch_finish', {
 				p_dispatch: b.dispatch_id,
 				p_ok: r.ok,

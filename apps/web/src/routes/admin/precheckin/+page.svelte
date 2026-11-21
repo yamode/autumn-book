@@ -37,10 +37,20 @@
 				...r,
 				mobile,
 				sms: r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null,
-				state: base === 'no_contact' && mobile ? ('unsent' as const) : base
+				state: base === 'no_contact' && mobile ? ('unsent' as const) : base,
+				// 公式サイト（Book）の予約か。貸切風呂の事前予約ができるのはこの予約だけ（送る文面も変わる・2026-11-21）
+				official: r.source === 'autumn_booking'
 			};
 		})
 	);
+	// 予約経路の絞り込み（公式サイト直販／OTA・旅行会社など）
+	let routeFilter = $state<'all' | 'official' | 'other'>('all');
+	const ROUTE_FILTERS = [
+		{ key: 'all', label: 'すべての経路' },
+		{ key: 'official', label: '公式サイト' },
+		{ key: 'other', label: 'OTA・旅行会社など' }
+	] as const;
+	const shownRows = $derived(routeFilter === 'all' ? rows : rows.filter((r) => (routeFilter === 'official') === r.official));
 	const canSms = (r: { mobile: boolean; check_out_date: string }) => r.mobile && isBefore(expiresAtOf(r.check_out_date));
 	const confirmSmsSend = (e: MouseEvent, lastHour: number) => {
 		const msg =
@@ -50,7 +60,7 @@
 		if (!confirm(msg)) e.preventDefault();
 	};
 	const counts = $derived(
-		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: rows.filter((r) => r.state === s).length }))
+		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: shownRows.filter((r) => r.state === s).length }))
 	);
 	// 宿からの質問の編集欄（保存し直すと読み込み直した内容に戻す）
 	type QRow = { key: string; id: string | null; question: string };
@@ -181,6 +191,19 @@
 		</p>
 	{/if}
 
+	<!-- 予約経路の絞り込み。公式サイトの予約に送る案内には貸切風呂の事前予約が入り、それ以外には入らない -->
+	<div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
+		<span class="text-stone-500">予約経路</span>
+		{#each ROUTE_FILTERS as f (f.key)}
+			<button
+				type="button"
+				aria-pressed={routeFilter === f.key}
+				onclick={() => (routeFilter = f.key)}
+				class="rounded-full px-3 py-1 ring-1 {routeFilter === f.key ? 'bg-stone-900 text-white ring-stone-900' : 'bg-white text-stone-700 ring-stone-300'}"
+			>{f.label} {f.key === 'all' ? rows.length : rows.filter((r) => (f.key === 'official') === r.official).length}</button>
+		{/each}
+		<span class="text-stone-400">公式サイトの予約だけ、案内に貸切風呂の事前予約が入ります</span>
+	</div>
 	<div class="mb-3 flex flex-wrap gap-2 text-xs">
 		{#each counts as c (c.s)}
 			<span class="rounded-full px-2.5 py-1 ring-1 {PRECHECKIN_STATE_CLASS[c.s]}">{PRECHECKIN_STATE_LABEL[c.s]} {c.n}</span>
@@ -188,7 +211,7 @@
 	</div>
 
 	<ul class="space-y-2">
-		{#each rows as r (r.stay_id)}
+		{#each shownRows as r (r.stay_id)}
 			<li class="rounded-xl border border-stone-200 bg-white p-3.5 text-sm shadow-sm">
 				<div class="flex flex-wrap items-start justify-between gap-2">
 					<div class="min-w-0">
@@ -198,6 +221,11 @@
 							<span>{formatDateJa(r.check_in_date)}〜{formatDateJa(r.check_out_date)}（{r.nights}泊）</span>
 							<span>{r.room_count}室・大人{r.adults}名</span>
 							<span class="rounded px-1.5 py-0.5 {channelBadgeClass(r)}">{channelLabel(r)}</span>
+							{#if r.official}
+								<span class="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">貸切風呂の事前予約あり</span>
+							{:else}
+								<span class="rounded bg-stone-100 px-1.5 py-0.5 text-stone-500">貸切風呂は到着後</span>
+							{/if}
 							<span class="text-stone-400">{r.booking_code ?? ''}</span>
 						</div>
 						<div class="mt-1 flex flex-wrap gap-x-3 text-xs text-stone-500">

@@ -69,6 +69,8 @@ export type PrecheckinSmsInput = {
 	phone: string | null;
 	/** 送る時刻（今の文面では使わない。前は「本日」か「当日」かの判定に使っていた） */
 	now?: Date;
+	/** 貸切風呂の事前予約を案内するか（公式サイトの予約だけ true・2026-11-21）。省略時は true */
+	bath?: boolean;
 };
 
 /**
@@ -87,7 +89,9 @@ export type PrecheckinSmsInput = {
  * 文面に日付の言葉（本日・当日）は入れないので、いつ送っても同じ文面（checkIn・now は使わない。呼び出し側のために受け取るだけ）。
  */
 export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string; link: string } {
-	const message = `【${i.facilityName.trim()}】\n＜事前チェックインのご案内＞\nご本人確認、食事時間、貸切風呂のお申込みが可能です。\nお手続きは下記URLから。`;
+	// 公式サイト以外（OTA・旅行会社など）の予約には、貸切風呂を入れない（事前予約は公式サイト限定・2026-11-21）
+	const what = i.bath === false ? 'ご本人確認、食事時間' : 'ご本人確認、食事時間、貸切風呂';
+	const message = `【${i.facilityName.trim()}】\n＜事前チェックインのご案内＞\n${what}のお申込みが可能です。\nお手続きは下記URLから。`;
 	const tel = (i.phone ?? '').trim();
 	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel}` : ''}`;
 	return { message, link };
