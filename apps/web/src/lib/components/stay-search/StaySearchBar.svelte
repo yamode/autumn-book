@@ -14,7 +14,7 @@
     nights = $bindable(1),
     guests = $bindable(2),
     rooms = $bindable(1),
-    open = $bindable<'' | 'date' | 'guests'>(''),
+    open = $bindable<'' | 'date' | 'guests' | 'facility'>(''),
     maxGuests = 6,
     maxRooms,
     crossType = true,
@@ -24,13 +24,15 @@
     keepOpen,
     mobileDateDialog = false,
     datePanel,
+    facilityPanel,
+    facilityValue = '',
     onSearch
   }: {
     date: string;
     nights: number;
     guests: number;
     rooms: number;
-    open?: '' | 'date' | 'guests';
+    open?: '' | 'date' | 'guests' | 'facility';
     maxGuests?: number;
     maxRooms: number;
     /** 室数を部屋タイプ横断で数える（足りなければ組み合わせを出す） */
@@ -43,6 +45,10 @@
     /** 日付パネルの中身（close で閉じる） */
     mobileDateDialog?: boolean;
     datePanel: Snippet<[{ close: () => void; modal?: boolean }]>;
+    /** 施設の区画のパネル。渡したときだけ先頭に「施設」の区画を出す（公開サイトで施設が決まっていないとき） */
+    facilityPanel?: Snippet<[{ close: () => void }]>;
+    /** 選んだ施設の表示名（空なら「施設を選ぶ」） */
+    facilityValue?: string;
     onSearch: () => void;
   } = $props();
 
@@ -69,10 +75,10 @@
     document.addEventListener('pointerdown', onPointer);
     return () => document.removeEventListener('pointerdown', onPointer);
   });
-  const toggle = (panel: 'date' | 'guests') => {
+  const toggle = (panel: 'date' | 'guests' | 'facility') => {
     open = open === panel ? '' : panel;
   };
-  const segment = (panel: 'date' | 'guests') =>
+  const segment = (panel: 'date' | 'guests' | 'facility') =>
     `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open === panel ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
   const dateSummary = $derived.by(() => {
     if (!date) return labels.addDate;
@@ -81,7 +87,12 @@
   });
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && open === 'guests') open = ''; }} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && (open === 'guests' || open === 'facility')) open = ''; }} />
+
+{#snippet facilityText()}
+  <span class="text-xs font-bold tracking-wide text-brand-900">{labels.facility}</span>
+  <span class={`truncate text-base ${facilityValue ? 'text-brand-900' : 'text-stone-400'}`}>{facilityValue || labels.chooseFacility}</span>
+{/snippet}
 
 {#snippet dateText()}
   <span class="text-xs font-bold tracking-wide text-brand-900">{rangeMode ? labels.checkinCheckout : labels.checkinNights}</span>
@@ -91,11 +102,17 @@
 <div bind:this={root} class="@container relative">
   <!-- PC: 1本の角丸バー -->
   <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
-    <button type="button" class={`${segment('date')} flex-[2]`} onclick={() => toggle('date')} aria-expanded={open === 'date'}>
+    {#if facilityPanel}
+      <button type="button" class={`${segment('facility')} flex-[1.2]`} onclick={() => toggle('facility')} aria-expanded={open === 'facility'}>
+        {@render facilityText()}
+      </button>
+      <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
+    {/if}
+    <button type="button" class={`${segment('date')} ${facilityPanel ? 'flex-[1.5]' : 'flex-[2]'}`} onclick={() => toggle('date')} aria-expanded={open === 'date'}>
       {@render dateText()}
     </button>
     <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
-    <div class={`${segment('guests')} flex-1 flex-row items-center justify-between gap-3 py-1.5 pr-1.5`}>
+    <div class={`${segment('guests')} ${facilityPanel ? 'flex-[1.5]' : 'flex-1'} flex-row items-center justify-between gap-3 py-1.5 pr-1.5`}>
       <button type="button" class="flex min-w-0 flex-1 flex-col text-left" onclick={() => toggle('guests')} aria-expanded={open === 'guests'}>
         <span class="text-xs font-bold tracking-wide text-brand-900">{labels.guests}</span>
         <span class="truncate text-base text-brand-900">{labels.guestsVal(guests, rooms)}</span>
@@ -106,6 +123,13 @@
 
   <!-- スマホ: 縦に積んだカード -->
   <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:hidden">
+    {#if facilityPanel}
+      <button type="button" class="flex w-full items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 text-left" onclick={() => toggle('facility')} aria-expanded={open === 'facility'}>
+        <span class="flex min-w-0 flex-col">
+          {@render facilityText()}
+        </span>
+      </button>
+    {/if}
     <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onclick={() => toggle('date')} aria-expanded={open === 'date'}>
       <span class="flex min-w-0 flex-col">
         {@render dateText()}
@@ -132,6 +156,10 @@
         {@render datePanel({ close: closeDate })}
       </div>
     {/if}
+  {:else if open === 'facility' && facilityPanel}
+    <div class="absolute left-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-[26rem]" role="dialog" aria-label={labels.facility}>
+      {@render facilityPanel({ close: () => (open = '') })}
+    </div>
   {:else if open === 'guests'}
     <div class="absolute right-0 top-full z-40 mt-3 w-full rounded-3xl border border-stone-200 bg-white p-5 shadow-[0_8px_28px_rgba(0,0,0,0.14)] @min-[520px]:w-96" role="dialog" aria-label={labels.guests}>
       {#each [{ key: 'guests', title: labels.perRoom, sub: labels.adult, value: guests, min: 1, max: maxGuests, unit: labels.personUnit }, { key: 'rooms', title: labels.roomsTitle(crossType), sub: labels.roomsSub(crossType), value: rooms, min: 1, max: maxRooms, unit: labels.roomUnit }] as row, i (row.key)}

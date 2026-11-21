@@ -14,6 +14,12 @@ export const EMBED_FACILITIES: Record<string, PartnerAccent> = {
 	oga: PARTNER_ACCENTS.oga
 };
 
+/** 公開サイトの検索バーで選べる施設（地域 → 施設の順に選ぶ）。並びは地域の中の表示順 */
+export const SEARCH_FACILITIES: { slug: string; brand: string; region: 'iwate' | 'akita'; name: string; area: Record<StaySearchLang, string> }[] = [
+	{ slug: 'nishiwaga', brand: 'yamado', region: 'iwate', name: '山人 -yamado-', area: { ja: '西和賀町', en: 'Nishiwaga', 'zh-TW': '西和賀町' } },
+	{ slug: 'oga', brand: 'yamado', region: 'akita', name: '山人 -oga-', area: { ja: '男鹿市', en: 'Oga', 'zh-TW': '男鹿市' } }
+];
+
 /** Book 側（plans/+page.server.ts・/api/stay-calendar）の範囲と既定値 */
 export const LIMITS = {
 	nights: { min: 1, max: 7, def: 1 },

@@ -49,6 +49,13 @@ export type StaySearchLabels = {
 	selectCheckout: (checkin: string) => string;
 	dateDialog: string;
 	region: string;
+	/** 施設の区画（公開サイトで施設が決まっていないときだけ出す） */
+	facility: string;
+	chooseFacility: string;
+	chooseRegion: string;
+	pickRegionFirst: string;
+	regions: Record<'iwate' | 'akita', string>;
+	allFacilities: string;
 };
 
 const enNights = (n: number) => `${n} ${n === 1 ? 'night' : 'nights'}`;
@@ -101,7 +108,13 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		undated: (n) => `日付指定なし・${n}泊（今後3か月の最安で表示）`,
 		pickHint: 'チェックイン日を選ぶと、その日の料金でプランの詳細を表示します',
 		dateDialog: 'ご宿泊日',
-		region: '空室検索'
+		region: '空室検索',
+		facility: '施設',
+		chooseFacility: '施設を選ぶ',
+		chooseRegion: '地域を選んでください',
+		pickRegionFirst: '地域を選ぶと、施設が表示されます。',
+		regions: { iwate: '岩手県', akita: '秋田県' },
+		allFacilities: 'すべての施設から探す'
 	},
 	en: {
 		checkin: 'Check-in',
@@ -149,7 +162,13 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		undated: (n) => `No dates · ${enNights(n)} (lowest price over the next 3 months)`,
 		pickHint: 'Choose a check-in date to see the plan details for that day',
 		dateDialog: 'Dates of stay',
-		region: 'Search availability'
+		region: 'Search availability',
+		facility: 'Property',
+		chooseFacility: 'Choose a property',
+		chooseRegion: 'Choose an area',
+		pickRegionFirst: 'Choose an area to see its properties.',
+		regions: { iwate: 'Iwate', akita: 'Akita' },
+		allFacilities: 'Search all properties'
 	},
 	'zh-TW': {
 		checkin: '入住日期',
@@ -195,6 +214,12 @@ export const STAY_SEARCH_LABELS: Record<StaySearchLang, StaySearchLabels> = {
 		undated: (n) => `不指定日期・${n}晚（顯示今後3個月的最低價）`,
 		pickHint: '選擇入住日期後，將以當日價格顯示方案詳情',
 		dateDialog: '住宿日期',
-		region: '搜尋空房'
+		region: '搜尋空房',
+		facility: '設施',
+		chooseFacility: '選擇設施',
+		chooseRegion: '請選擇地區',
+		pickRegionFirst: '選擇地區後，會顯示該地區的設施。',
+		regions: { iwate: '岩手縣', akita: '秋田縣' },
+		allFacilities: '從所有設施搜尋'
 	}
 };
