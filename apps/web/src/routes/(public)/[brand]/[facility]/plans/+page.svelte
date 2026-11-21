@@ -4,7 +4,9 @@
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
+	import { flip } from 'svelte/animate';
+	import { pendingParamOnly } from '$lib/page-transition';
 	import { cubicOut } from 'svelte/easing';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
@@ -55,6 +57,11 @@
 				return Number(b.plans.length > 0) - Number(a.plans.length > 0) || byPrice(priceA, priceB);
 			})
 	);
+
+	// お食事の絞り込みだけを変えている間の行き先（それ以外の移動中・止まっているときは null）。
+	// このときは結果の欄ごと読み込み表示にせず、ボタンをすぐ切り替え、各部屋のプランの欄だけを薄くして、届いたらフェードインで入れ替える（2026-11-21 指示）
+	const pendingMeal = $derived(pendingParamOnly('meal'));
+	const activeMeal = $derived(pendingMeal ?? data.params.meal);
 
 	// お食事で絞り込む（プラン設定の「お食事」から自動で作る・lib/meal-filter.ts）。'' はすべて
 	function mealHref(key: string) {
@@ -191,7 +198,7 @@
 				<!-- スマホは横スクロール。スクロールバーは出さず、続きがある側の端を薄くぼかす（2026-11-19 指示） -->
 				<div bind:this={mealStrip} onscroll={updateMealEdges} style={mealMask} class="relative -mr-4 flex min-w-0 flex-1 gap-2 overflow-x-auto pr-4 [scrollbar-width:none] sm:mr-0 sm:flex-wrap sm:pr-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={m.meal_filter_label()}>
 					{#each [{ key: '', label: m.meal_filter_all() }, ...data.meals.map((option) => ({ key: option.key, label: mealLabel(option) }))] as item (item.key)}
-						<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={data.params.meal === item.key ? 'true' : undefined} class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {data.params.meal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
+						<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={activeMeal === item.key ? 'true' : undefined} class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {activeMeal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
 					{/each}
 				</div>
 			</div>
@@ -237,10 +244,10 @@
 		{/if}
 
 		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
-		<RefreshingResults shape="plans-results">
+		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null}>
 		<div class="mt-4 space-y-5 sm:space-y-6">
 			{#each rooms as item (item.room.id)}
-				<article class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
+				<article animate:flip={{ duration: 300, easing: cubicOut }} class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
 					<div class="border-b border-stone-200 md:border-b-0 md:border-r">
 						<button type="button" onclick={() => (infoRoom = item.room)} class="block w-full" aria-label={`${item.room.name} ${m.room_card_info()}`}>
 							<img src={roomPhoto(item.room)} alt={item.room.name} class="aspect-[16/9] w-full object-cover md:aspect-[16/11]" loading="lazy" />
@@ -263,7 +270,10 @@
 							</div>
 						</div>
 					</div>
-					<div class="min-w-0">
+					<!-- プランの欄（お食事の絞り込みのときはここだけが薄くなり、届いたらフェードインで入れ替わる） -->
+					<div class="min-w-0 transition-opacity duration-200 ease-out {pendingMeal !== null ? 'opacity-30' : 'opacity-100'}" aria-busy={pendingMeal !== null || undefined}>
+					{#key data.params.meal}
+					<div in:fade={{ duration: 220 }}>
 						{#if item.plans.length}
 							<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
 								{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
@@ -340,6 +350,8 @@
 								{/if}
 							</div>
 						{/if}
+					</div>
+					{/key}
 					</div>
 				</article>
 			{:else}

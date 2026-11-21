@@ -37,6 +37,25 @@ export function refreshingSamePage(): boolean {
 	return normalize(to.url.pathname) === normalize(page.url.pathname) && to.url.search !== page.url.search;
 }
 
+/**
+ * 同じページのまま、URL のうち name の値だけが変わる移動中なら、移動先の値（無ければ ''）。それ以外は null。
+ * プラン一覧のお食事の絞り込み（?meal=）で、結果の欄ごと読み込み表示にせず、プランの欄だけを入れ替えるのに使う。
+ */
+export function pendingParamOnly(name: string): string | null {
+	const { to, type, willUnload } = navigating;
+	if (willUnload || !to || type === 'form') return null;
+	if (normalize(to.url.pathname) !== normalize(page.url.pathname)) return null;
+	const strip = (u: URL) => {
+		const q = new URLSearchParams(u.search);
+		q.delete(name);
+		q.sort();
+		return q.toString();
+	};
+	if (strip(to.url) !== strip(page.url)) return null;
+	const next = to.url.searchParams.get(name) ?? '';
+	return next === (page.url.searchParams.get(name) ?? '') ? null : next;
+}
+
 export function transitionTitle(route: string): string {
 	const path = route.replace('/(public)', '');
 	if (under(path, '/search')) return m.hold_expired_search();

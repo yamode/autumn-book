@@ -7,8 +7,9 @@
 	import { refreshingSamePage, type LoadingShape } from '$lib/page-transition';
 	import PageLoadingSkeleton from './PageLoadingSkeleton.svelte';
 
-	let { shape, children }: { shape: Extract<LoadingShape, 'search-results' | 'plans-results'>; children: Snippet } = $props();
-	const refreshing = $derived(refreshingSamePage());
+	// quiet: true の間は欄ごとの読み込み表示をしない（プラン一覧のお食事の絞り込みは、呼び出し側でプランの欄だけを入れ替える）
+	let { shape, quiet = false, children }: { shape: Extract<LoadingShape, 'search-results' | 'plans-results'>; quiet?: boolean; children: Snippet } = $props();
+	const refreshing = $derived(!quiet && refreshingSamePage());
 </script>
 
 <div data-results class="relative" aria-busy={refreshing || undefined} style:min-height={refreshing ? '24rem' : undefined}>
