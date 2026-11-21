@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { channelBadgeClass, channelLabel, isOtaChannel } from './booking-channel';
+import { channelBadgeClass, channelLabel, isDirectRoute, isOtaChannel } from './booking-channel';
 
 describe('isOtaChannel', () => {
 	it('販売先マスタの区分が OTA 系なら OTA', () => {
@@ -9,6 +9,14 @@ describe('isOtaChannel', () => {
 	});
 	it('直販・取引先・電話・直接・区分なしは OTA ではない', () => {
 		expect(isOtaChannel({ source: 'autumn_booking', channel_category: 'net' })).toBe(false);
+		// 公式扱い（公式サイト・tripla・直接・電話）。貸切風呂の事前予約の対象（2026-11-22）
+		expect(isDirectRoute('autumn_booking', 'autumn_booking')).toBe(true);
+		expect(isDirectRoute('ota', 'tripla')).toBe(true);
+		expect(isDirectRoute('filemaker', 'direct')).toBe(true);
+		expect(isDirectRoute('direct', 'phone')).toBe(true);
+		expect(isDirectRoute('ota', 'ikkyu')).toBe(false);
+		expect(isDirectRoute('rms_partner', 'rms_partner')).toBe(false);
+		expect(isDirectRoute(null, null)).toBe(false);
 		expect(isOtaChannel({ source: 'rms_partner', channel_category: 'net' })).toBe(false);
 		expect(isOtaChannel({ source: 'x', channel_category: 'direct' })).toBe(false);
 		expect(isOtaChannel({ source: 'x', channel_category: 'other' })).toBe(false);

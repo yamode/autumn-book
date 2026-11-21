@@ -78,6 +78,11 @@ export type PcContext = {
 	slots: Record<PcMealType, Record<string, PcSlot[]>>;
 	/** 公式サイト予約か（source=autumn_booking）。P3 の DB（20261028223603）より前は null = 不明 */
 	isOfficial: boolean | null;
+	/**
+	 * 公式扱いか（公式サイト・tripla・直接予約・電話・book._pc_is_direct）。貸切風呂の事前予約ができるか（2026-11-22）。
+	 * DB（20261121205842）より前は null = 不明 → isOfficial で代用
+	 */
+	isDirect: boolean | null;
 	/** 取引先経由か（rms_partner） */
 	isPartner: boolean;
 };
@@ -355,6 +360,7 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 		rooms,
 		slots: { dinner: slotsOf(slots.dinner), breakfast: slotsOf(slots.breakfast) },
 		isOfficial: typeof r.is_official === 'boolean' ? r.is_official : null,
+		isDirect: typeof r.is_direct === 'boolean' ? r.is_direct : null,
 		isPartner: r.is_partner === true
 	};
 }
@@ -500,7 +506,7 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		'※ このリンクはお客様専用です。他の方へ転送しないでください。',
 		'※ 新しいご案内を送った場合、前のメールのリンクは使えなくなります。',
 		i.bath === false
-			? '※ 貸切風呂のご予約は、ご到着後に客室案内から承ります（事前のご予約は、公式サイトからご予約のお客様限定です）。'
+			? '※ 貸切風呂のご予約は、ご到着後に客室案内から承ります（事前のご予約は、公式サイト・お電話など当館へ直接ご予約のお客様限定です）。'
 			: '※ 貸切風呂のご予約も、このリンクから承ります（ご到着当日 9:00 から）。'
 	];
 	const enLines = [
@@ -544,6 +550,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 	return {
 		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
 		isOfficial: false,
+		isDirect: false,
 		isPartner: false,
 		bookingCode: DEMO_PRECHECKIN_CODE,
 		checkIn: today,

@@ -23,7 +23,7 @@ import {
 	type PrecheckinCaps,
 	type PrecheckinListRow
 } from '$lib/server/precheckin';
-import { adminSmsStatus, sendPrecheckinSms, smsReady, stayIsOfficial } from '$lib/server/precheckin-sms';
+import { adminSmsStatus, sendPrecheckinSms, smsReady, stayIsDirect } from '$lib/server/precheckin-sms';
 
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { autosendEnabled, type AutosendSettings, type SmsStatusRow } from '$lib/precheckin-sms';
@@ -136,7 +136,7 @@ export const actions: Actions = {
 		if (!/^[0-9a-f-]{36}$/.test(stayId)) return fail(400, { sendError: '対象のご予約が分かりません。', sentStay: null });
 		try {
 			// 貸切風呂の事前予約は公式サイトの予約だけ文面に入れる（2026-11-21）
-			const official = await stayIsOfficial(createSupabaseServerClient(event), stayId);
+			const official = await stayIsDirect(createSupabaseServerClient(event), stayId);
 			const r = await sendPrecheckinSms(bookAdmin(event), facility, stayId, force, customerLinkOrigin(event.url), official);
 			if (!r.sent) {
 				// 直近に送っている: 画面で確認を出して force で送り直す

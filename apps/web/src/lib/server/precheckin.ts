@@ -41,7 +41,7 @@ import {
 import type { BathContext } from '$lib/server/private-bath';
 import { normalizeAutosendSettings, type AutosendSettings } from '$lib/precheckin-sms';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
-import { stayIsOfficial } from '$lib/server/precheckin-sms';
+import { stayIsDirect } from '$lib/server/precheckin-sms';
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { waitUntilOf } from '$lib/server/access-log-core';
 import {
@@ -520,7 +520,7 @@ export async function sendPrecheckin(
 	// ?f=<施設の slug> は、リンクを開いた瞬間の読み込み中の画面に出すロゴの目印（$lib/precheckin-splash）
 	const url = `${event.url.origin}/ci/${issued.token}${splashHint(issued.facility_slug)}`;
 	// 貸切風呂の事前予約は公式サイトの予約だけ案内する（2026-11-21）
-	const official = await stayIsOfficial(createSupabaseServerClient(event), stayId);
+	const official = await stayIsDirect(createSupabaseServerClient(event), stayId);
 	const mail = buildPrecheckinMail({
 		facilityName: issued.facility_name,
 		guestName: issued.guest_name,

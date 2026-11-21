@@ -24,7 +24,8 @@ export const load: PageServerLoad = async (event) => {
 	const pcToken = event.cookies.get(PRECHECKIN_COOKIE);
 	let bath: BathContext | null = null;
 	// 公式サイト以外（OTA・取引先）の予約は、事前チェックインから貸切風呂を予約できない（DB の _pb_bath_token も断る・2026-11-21）
-	const official = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? true : ctx.isOfficial;
+	// 公式扱い（公式サイト・tripla・直接予約・電話）だけ（2026-11-22）
+	const official = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? true : (ctx.isDirect ?? ctx.isOfficial);
 	if (answered && ctx.editable && official !== false) {
 		if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
 			bath = demoBathContext(ctx.checkIn);
@@ -42,7 +43,7 @@ async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
-	if (r.ctx.isOfficial === false) return null; // 公式サイトの予約だけ（2026-11-21）
+	if ((r.ctx.isDirect ?? r.ctx.isOfficial) === false) return null; // 公式扱いの予約だけ（公式サイト・tripla・直接・電話）
 	// RPC で事前チェックインの回答・有効期限を検証する。
 	return precheckinBathAccess(r.token);
 }

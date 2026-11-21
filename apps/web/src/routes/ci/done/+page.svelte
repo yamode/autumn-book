@@ -52,7 +52,7 @@
 		</ul>
 	{:else}
 		<p class="mt-1 text-stone-500">
-			{#if ctx.isOfficial === false && ctx.bookingCode !== DEMO_PRECHECKIN_CODE}
+			{#if (ctx.isDirect ?? ctx.isOfficial) === false && ctx.bookingCode !== DEMO_PRECHECKIN_CODE}
 				<!-- 公式サイト以外の予約は、事前チェックインから貸切風呂を予約できない（到着後の客室案内から・2026-11-21） -->
 				{m.ci_bath_official_only()}
 			{:else}

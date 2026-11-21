@@ -17,6 +17,7 @@
 		precheckinState,
 		shortJst
 	} from '$lib/precheckin';
+	import { isDirectRoute } from '$lib/booking-channel';
 	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, precheckinRoute, smsTarget, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
@@ -38,8 +39,8 @@
 				mobile,
 				sms: r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null,
 				state: base === 'no_contact' && mobile ? ('unsent' as const) : base,
-				// 公式サイト（Book）の予約か。貸切風呂の事前予約ができるのはこの予約だけ（送る文面も変わる・2026-11-21）
-				official: r.source === 'autumn_booking'
+				// 公式扱い（公式サイト・tripla・直接予約・電話）か。貸切風呂の事前予約ができるのはこの予約だけ（送る文面も変わる・2026-11-22）
+				official: isDirectRoute(r.source, r.channel_code)
 			};
 		})
 	);
@@ -47,7 +48,7 @@
 	let routeFilter = $state<'all' | 'official' | 'other'>('all');
 	const ROUTE_FILTERS = [
 		{ key: 'all', label: 'すべての経路' },
-		{ key: 'official', label: '公式サイト' },
+		{ key: 'official', label: '公式サイト・tripla・直接' },
 		{ key: 'other', label: 'OTA・旅行会社など' }
 	] as const;
 	const shownRows = $derived(routeFilter === 'all' ? rows : rows.filter((r) => (routeFilter === 'official') === r.official));
@@ -202,7 +203,7 @@
 				class="rounded-full px-3 py-1 ring-1 {routeFilter === f.key ? 'bg-stone-900 text-white ring-stone-900' : 'bg-white text-stone-700 ring-stone-300'}"
 			>{f.label} {f.key === 'all' ? rows.length : rows.filter((r) => (f.key === 'official') === r.official).length}</button>
 		{/each}
-		<span class="text-stone-400">公式サイトの予約だけ、案内に貸切風呂の事前予約が入ります</span>
+		<span class="text-stone-400">公式サイト・tripla・直接（電話含む）の予約だけ、案内に貸切風呂の事前予約が入ります</span>
 	</div>
 	<div class="mb-3 flex flex-wrap gap-2 text-xs">
 		{#each counts as c (c.s)}

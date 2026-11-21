@@ -16,6 +16,18 @@ export type ChannelRow = {
 	partner_name?: string | null;
 };
 
+/**
+ * 公式扱いの予約経路（2026-11-22）: 公式サイト（Book）・tripla・直接予約・電話予約。
+ * 貸切風呂の事前予約ができるのはこの経路だけ。DB の book._pc_is_direct と同じ条件。
+ * tripla と直接予約は source がばらばら（ota / filemaker / direct）なので channel_code で見る
+ */
+export const DIRECT_CHANNEL_CODES = ['autumn_booking', 'tripla', 'direct', 'phone'] as const;
+
+export function isDirectRoute(source: string | null | undefined, channelCode: string | null | undefined): boolean {
+	if ((source ?? '') === 'autumn_booking') return true;
+	return (DIRECT_CHANNEL_CODES as readonly string[]).includes((channelCode ?? '').trim());
+}
+
 /** OTA・旅行会社・予約エンジン経由か（直販・取引先・電話・直接は含めない） */
 export function isOtaChannel(b: Pick<ChannelRow, 'source' | 'channel_category'>): boolean {
 	if (b.source === 'autumn_booking' || b.source === 'rms_partner') return false;
