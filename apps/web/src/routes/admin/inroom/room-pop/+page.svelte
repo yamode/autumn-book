@@ -1,6 +1,7 @@
 <script lang="ts">
 	// 客室ごとの入口QR（A6 POP「内線電話・館内情報」）の印刷（2026-11-20）。
 	// A6＝A4 縦に 2×2 の 4 面、A7＝A4 横に 4×2 の 8 面で割り付け、各面に切り取り枠を付ける（2026-11-20 指示）。
+	// 枠は面の内側に一回り小さく引き、隣と共有しない（ハサミで 1 枚ずつ切れるように・2026-11-21 指示）。
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import QrCode from '$lib/components/QrCode.svelte';
@@ -98,9 +99,12 @@
 </div>
 
 <style>
-	/* A4（210×297mm）を A6（105×148.5mm）の 2×2 に分ける。各面の四辺に切り取り枠（薄い破線） */
+	/* A4（210×297mm）を A6（105×148.5mm）の 2×2 に分ける。
+	   切り取り枠（薄い破線）は各面の内側に一回り小さく引き、隣の面と線を共有しない（2026-11-21 指示）。
+	   面と面の間に余白ができるので、ハサミで 1 枚ずつ枠どおりに切り離せる */
 	.sheet { width: 210mm; height: 297mm; display: grid; grid-template-columns: 105mm 105mm; grid-template-rows: 148.5mm 148.5mm; position: relative; overflow: hidden; }
-	.pop { width: 105mm; height: 148.5mm; padding: 13mm 8mm 9mm; outline: 0.25mm dashed #999; outline-offset: -0.125mm; }
+	.pop { position: relative; width: 105mm; height: 148.5mm; padding: 13mm 8mm 9mm; }
+	.pop::before { content: ''; position: absolute; inset: 4mm; border: 0.25mm dashed #999; pointer-events: none; }
 	.title { font-size: 25pt; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2; }
 	.sub { margin-top: 5mm; font-size: 12.5pt; }
 	.qr :global(svg) { width: 45mm; height: 45mm; }
@@ -108,7 +112,8 @@
 	.logo { width: 23mm; height: auto; }
 	/* A7：A4 横（297×210mm）を A7（74.25×105mm）の 4×2 に分ける。中身は A6 を約 7 割に縮めた大きさ */
 	.sheet.a7 { width: 297mm; height: 210mm; grid-template-columns: repeat(4, 74.25mm); grid-template-rows: 105mm 105mm; }
-	.a7 .pop { width: 74.25mm; height: 105mm; padding: 9mm 5mm 6mm; }
+	.a7 .pop { width: 74.25mm; height: 105mm; padding: 9mm 6mm 6mm; }
+	.a7 .pop::before { inset: 3mm; }
 	.a7 .title { font-size: 17pt; }
 	.a7 .sub { margin-top: 3mm; font-size: 9pt; }
 	.a7 .qr :global(svg) { width: 32mm; height: 32mm; }
