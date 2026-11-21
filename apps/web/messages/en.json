@@ -1461,6 +1461,7 @@
   "lookup_phone_body": "Please call the property.",
   "account_legacy_note": "If you booked with our previous reservation system on or before 29 November 2026, please check <a href=\"/booking/lookup\" class=\"underline\">here</a>.",
   "account_legacy_stays_badge": "Booked under our previous membership",
+  "account_direct_stays_badge": "Booked by phone or directly",
   "account_legacy_stays_children": "{n} child(ren)",
   "account_legacy_stays_change_link": "To change or cancel this booking, please use <a href=\"/booking/lookup\" class=\"underline\">the My Page of our previous booking system</a> or call us.",
   "account_legacy_stays_change_phone": "To change or cancel this booking, please call the property.",

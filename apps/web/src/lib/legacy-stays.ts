@@ -15,7 +15,14 @@ export type LegacyStay = {
 	children: number;
 	/** 予約中／宿泊済み（取消は来ない） */
 	status: 'reserved' | 'stayed';
+	/** 旧会員制度（tripla・予約番）か、電話・直接の予約か（ラベルと変更・取消の案内を分ける） */
+	kind: 'legacy' | 'direct';
 };
+
+/** book.my_legacy_stays の channel_code（tripla / yoyakuban / direct / phone）→ 表示の区別 */
+export function legacyKind(channelCode: string): LegacyStay['kind'] {
+	return channelCode === 'tripla' || channelCode === 'yoyakuban' ? 'legacy' : 'direct';
+}
 
 /** 泊数（日付の差）。日付が壊れていれば 0 */
 export function legacyNights(s: Pick<LegacyStay, 'checkin' | 'checkout'>): number {

@@ -64,9 +64,11 @@ export function transitionTitle(route: string): string {
 }
 
 export type LoadingShape = 'plain' | 'search-results' | 'plans-results' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
-	'account-list' | 'auth' | 'lookup' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail';
+	'account-list' | 'auth' | 'lookup' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail' | 'inroom';
 
 export function loadingShape(route: string): LoadingShape {
+	// 客室案内のトップ（上の写真 → 滞在カード → 案内カード 2 列）
+	if (route === '/r') return 'inroom';
 	if (route === '/admin') return 'admin-dashboard';
 	if (/^\/admin\/(login|mfa)(\/|$)/.test(route)) return 'auth';
 	if (route === '/admin/plans') return 'admin-cards';

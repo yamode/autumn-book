@@ -59,7 +59,7 @@
 			</div>
 		</a>
 	{/each}
-	<!-- 以前の予約システム（tripla・予約番）のこれからの予約。見るだけ（変更・取消は以前の予約システムかお電話）。
+	<!-- Book 以外の公式・直販のこれからの予約（旧会員制度＝tripla・予約番／電話・直接）。見るだけ（変更・取消は以前の予約システムかお電話）。
 	     ダッシュボードでは Book の予約が無いときだけ 1 件出す -->
 	{#each legacyUpcomingShown as s (s.code)}
 		<div class="mb-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
@@ -67,7 +67,7 @@
 				<span class="rounded-full px-2 py-0.5 text-xs {statusCls.reserved}">{statusLabel.reserved}</span>
 				<span class="text-xs text-stone-400">{s.code}</span>
 				{#if s.roomCount > 1}<span class="rounded bg-brand-100 px-1.5 text-xs text-brand-700">{m.account_rooms_badge({ n: String(s.roomCount) })}</span>{/if}
-				<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-600">{m.account_legacy_stays_badge()}</span>
+				<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-600">{s.kind === 'legacy' ? m.account_legacy_stays_badge() : m.account_direct_stays_badge()}</span>
 			</div>
 			<h3 class="mt-1 text-lg font-semibold text-brand-900">{s.facilityName}</h3>
 			<p class="text-[15px] font-medium text-brand-900">{formatDateLong(s.checkin)} · {m.searchbar_nights_option({ n: String(s.nights) })}</p>
@@ -76,7 +76,7 @@
 					.filter(Boolean)
 					.join(' · ')}
 			</p>
-			<p class="mt-2 text-xs text-stone-500">{@html data.legacyActive ? m.account_legacy_stays_change_link() : m.account_legacy_stays_change_phone()}</p>
+			<p class="mt-2 text-xs text-stone-500">{@html s.kind === 'legacy' && data.legacyActive ? m.account_legacy_stays_change_link() : m.account_legacy_stays_change_phone()}</p>
 		</div>
 	{/each}
 	{#if data.upcoming.length === 0 && legacyUpcomingShown.length === 0}
@@ -111,7 +111,7 @@
 {/if}
 
 {#if reservationsOnly && pastCombined.length > 0}
-	<!-- 過去のご利用・キャンセル。旧会員制度（tripla・予約番）の予約も同じ一覧に入れ、ラベルで分ける（見るだけ・詳細は無い） -->
+	<!-- 過去のご利用・キャンセル。旧会員制度（tripla・予約番）と電話・直接の予約も同じ一覧に入れ、ラベルで分ける（見るだけ・詳細は無い） -->
 	<section class="mt-8">
 		<h2 class="mb-4 text-lg text-brand-900">{m.account_past()}</h2>
 		<div class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
@@ -134,7 +134,7 @@
 						{#if s.status === 'stayed'}<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls.stayed}">{statusLabel.stayed}</span>{:else}<span></span>{/if}
 						<span class="min-w-0 text-xs text-stone-600">
 							{formatDateLong(s.checkin)}
-							<span class="ml-1 rounded bg-stone-100 px-1.5 text-stone-600">{m.account_legacy_stays_badge()}</span>
+							<span class="ml-1 rounded bg-stone-100 px-1.5 text-stone-600">{s.kind === 'legacy' ? m.account_legacy_stays_badge() : m.account_direct_stays_badge()}</span>
 						</span>
 						<span class="text-right text-xs text-stone-600">{s.code}</span>
 					</div>

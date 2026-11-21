@@ -1461,6 +1461,7 @@
   "lookup_phone_body": "請來電各設施洽詢。",
   "account_legacy_note": "於2026年11月29日以前使用舊預約系統預約的客人，請至<a href=\"/booking/lookup\" class=\"underline\">此處</a>確認。",
   "account_legacy_stays_badge": "舊會員制度的預約",
+  "account_direct_stays_badge": "電話・直接預約",
   "account_legacy_stays_children": "兒童{n}位",
   "account_legacy_stays_change_link": "如需變更或取消此預約，請透過<a href=\"/booking/lookup\" class=\"underline\">舊預約系統的會員頁面</a>或致電辦理。",
   "account_legacy_stays_change_phone": "如需變更或取消此預約，請致電設施。",

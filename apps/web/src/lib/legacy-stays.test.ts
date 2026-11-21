@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { legacyNights, splitLegacyStays, type LegacyStay } from './legacy-stays';
+import { legacyKind, legacyNights, splitLegacyStays, type LegacyStay } from './legacy-stays';
 
 const s = (code: string, checkin: string, checkout: string, status: LegacyStay['status']): LegacyStay => ({
-	code, facilityUuid: 'f', roomTypeName: '', checkin, checkout, roomCount: 1, adults: 2, children: 0, status
+	code, facilityUuid: 'f', roomTypeName: '', checkin, checkout, roomCount: 1, adults: 2, children: 0, status, kind: 'legacy'
 });
 
 describe('legacyNights', () => {
@@ -30,5 +30,11 @@ describe('splitLegacyStays', () => {
 	});
 	it('過去の利用は新しい順（チェックアウト済みの予約中も過去へ）', () => {
 		expect(past.map((x) => x.code)).toEqual(['E', 'F', 'C']);
+	});
+});
+
+describe('legacyKind', () => {
+	it('tripla・予約番は旧会員制度、それ以外は電話・直接', () => {
+		expect(['tripla', 'yoyakuban', 'direct', 'phone'].map(legacyKind)).toEqual(['legacy', 'legacy', 'direct', 'direct']);
 	});
 });

@@ -64,7 +64,8 @@
 		{@render homeLoader(false)}
 	{:else if pending}
 		<div class="transition-layer" data-transition-shell={shell} data-transition-route={pending.route.id}>
-			<div class="transition-viewport {padding}">
+			<!-- 客室案内のトップは写真を端まで出すので余白なし -->
+			<div class="transition-viewport {shape === 'inroom' ? '' : padding}">
 				{#if placeholder}
 					{@render placeholder()}
 				{:else}

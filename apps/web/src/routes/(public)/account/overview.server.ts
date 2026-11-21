@@ -9,7 +9,7 @@ import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
 import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
 import type { RequestEvent } from '@sveltejs/kit';
 
-// デモ表示用の見本（以前の予約システムの予約・これから 1 件と過去 2 件）
+// デモ表示用の見本（旧会員制度の予約・これから 1 件と過去 2 件、電話・直接の予約・過去 1 件）
 const demoLegacyStays = (today: string) => {
 	const shift = (days: number) => {
 		const d = new Date(`${today}T00:00:00Z`);
@@ -19,11 +19,12 @@ const demoLegacyStays = (today: string) => {
 	const nishiwaga = facilityById('f-nishiwaga')?.name ?? '—';
 	const oga = facilityById('f-oga')?.name ?? '—';
 	const rows: LegacyStay[] = [
-		{ code: 'TE0B0D000C0D1', facilityUuid: '', roomTypeName: '和洋室', checkin: shift(40), checkout: shift(42), roomCount: 2, adults: 4, children: 1, status: 'reserved' },
-		{ code: 'TE0B0D000C0D2', facilityUuid: '', roomTypeName: '', checkin: shift(-200), checkout: shift(-199), roomCount: 1, adults: 2, children: 0, status: 'stayed' },
-		{ code: 'YB-0000123', facilityUuid: '', roomTypeName: '', checkin: shift(-1500), checkout: shift(-1498), roomCount: 1, adults: 2, children: 0, status: 'stayed' }
+		{ code: 'TE0B0D000C0D1', facilityUuid: '', roomTypeName: '和洋室', checkin: shift(40), checkout: shift(42), roomCount: 2, adults: 4, children: 1, status: 'reserved', kind: 'legacy' },
+		{ code: 'TE0B0D000C0D2', facilityUuid: '', roomTypeName: '', checkin: shift(-200), checkout: shift(-199), roomCount: 1, adults: 2, children: 0, status: 'stayed', kind: 'legacy' },
+		{ code: 'YB-0000123', facilityUuid: '', roomTypeName: '', checkin: shift(-1500), checkout: shift(-1498), roomCount: 1, adults: 2, children: 0, status: 'stayed', kind: 'legacy' },
+		{ code: 'D-20250801', facilityUuid: '', roomTypeName: '', checkin: shift(-400), checkout: shift(-399), roomCount: 1, adults: 3, children: 0, status: 'stayed', kind: 'direct' }
 	];
-	return rows.map((s, i) => ({ ...s, nights: legacyNights(s), facilityName: i === 1 ? oga : nishiwaga }));
+	return rows.map((s, i) => ({ ...s, nights: legacyNights(s), facilityName: i === 1 || i === 3 ? oga : nishiwaga }));
 };
 
 const loadReservations = async (event: RequestEvent) => {
@@ -33,7 +34,7 @@ const loadReservations = async (event: RequestEvent) => {
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
 		const memberPages = locals.user?.id ? listMemberPagesFor(locals.user.id).catch(() => []) : Promise.resolve([]);
-		// 以前の予約システム（tripla・予約番）の予約。読めなくても一覧は出す
+		// Book 以外の公式・直販の予約（旧会員制度＝tripla・予約番／電話・直接）。読めなくても一覧は出す
 		const legacyRaw = sbMyLegacyStays(client).catch((e) => {
 			console.error('[account] my_legacy_stays', e);
 			return [];

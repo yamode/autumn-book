@@ -93,7 +93,7 @@ import {
 import { paymentMethodsOf } from '$lib/member-payment';
 import { ONSITE_METHODS, PLAN_PAY_OPTIONS, normalizeOptions, paymentMethodsOfOptions } from '$lib/direct-payment';
 import { todayStr } from '$lib/format';
-import type { LegacyStay } from '$lib/legacy-stays';
+import { legacyKind, type LegacyStay } from '$lib/legacy-stays';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -1803,7 +1803,7 @@ export async function sbMyReservations(client: SupabaseClient): Promise<MemberRe
 	return ((data ?? []) as MyReservationRow[]).map(mapReservationRow);
 }
 
-// ---- 以前の予約システム（tripla・予約番）の予約（book.my_legacy_stays・見るだけ）----
+// ---- Book 以外の公式・直販の予約（tripla・予約番／電話・直接。book.my_legacy_stays・見るだけ）----
 
 type MyLegacyStayRow = {
 	reservation_code: string;
@@ -1831,7 +1831,8 @@ export async function sbMyLegacyStays(client: SupabaseClient): Promise<LegacySta
 		roomCount: r.room_count,
 		adults: r.adult_count,
 		children: r.child_count,
-		status: r.stay_status
+		status: r.stay_status,
+		kind: legacyKind(r.channel_code)
 	}));
 }
 

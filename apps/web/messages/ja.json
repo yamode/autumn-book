@@ -1461,6 +1461,7 @@
   "lookup_phone_body": "各施設までお電話ください。",
   "account_legacy_note": "2026年11月29日以前に以前の予約システムでご予約の方は、<a href=\"/booking/lookup\" class=\"underline\">こちら</a>からご確認ください。",
   "account_legacy_stays_badge": "旧会員制度での予約",
+  "account_direct_stays_badge": "お電話・直接のご予約",
   "account_legacy_stays_children": "子供{n}名",
   "account_legacy_stays_change_link": "このご予約の変更・取消は、<a href=\"/booking/lookup\" class=\"underline\">以前の予約システムのマイページ</a>またはお電話で承ります。",
   "account_legacy_stays_change_phone": "このご予約の変更・取消は、お手数ですが施設へお電話ください。",

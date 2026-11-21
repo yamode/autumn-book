@@ -98,7 +98,29 @@
 <div data-page-skeleton data-skeleton-shape={shape} aria-busy="true" class="min-w-0">
 	<p role="status" class="sr-only">{kind === 'videos' ? m.radio_loading() : title ? `${title} · ${m.common_loading()}` : m.common_loading()}</p>
 	<div aria-hidden="true">
-		{#if shape === 'search-results'}
+		{#if shape === 'inroom'}
+			<!-- 客室案内のトップ: 端まで広がる写真 → 滞在カード（ようこそ＋お部屋・チェックアウト）→ 案内のカード 2 列。
+			     写真を端まで出すため、PageLoadingBoundary はこの形のとき余白を付けない -->
+			<div class="shimmer-block h-48 w-full rounded-none"></div>
+			<div class="space-y-3 px-4 py-3">
+				<div class="space-y-3 rounded-lg bg-white px-4 py-4 shadow-card">
+					<div class="shimmer h-4 w-48 max-w-full"></div>
+					<div class="flex justify-between gap-3"><div class="shimmer h-3.5 w-14"></div><div class="shimmer h-3.5 w-16"></div></div>
+					<div class="flex justify-between gap-3"><div class="shimmer h-3.5 w-20"></div><div class="shimmer h-3.5 w-24"></div></div>
+				</div>
+				<!-- 貸切風呂のご予約／フロントへお電話（アイコン＋文字が左右に 2 つ） -->
+				<div class="grid grid-cols-2 divide-x divide-stone-100 rounded-lg bg-white py-4 shadow-card">
+					{#each [0, 1] as i (i)}
+						<div class="flex flex-col items-center gap-2"><div class="shimmer h-6 w-6" style:border-radius="9999px"></div><div class="shimmer h-3.5 w-24"></div></div>
+					{/each}
+				</div>
+				<div class="grid grid-cols-2 gap-3">
+					{#each [0, 1, 2, 3, 4, 5] as i (i)}
+						<div class="flex h-24 items-center justify-center rounded-lg bg-white shadow-card"><div class="shimmer h-4 w-20"></div></div>
+					{/each}
+				</div>
+			</div>
+		{:else if shape === 'search-results'}
 			{@render searchCards()}
 		{:else if shape === 'plans-results'}
 			{@render planRooms()}
