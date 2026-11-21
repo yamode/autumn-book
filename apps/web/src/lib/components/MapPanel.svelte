@@ -49,6 +49,15 @@
 				attributionControl: { compact: true }
 			});
 			map.addControl(new maplibregl.NavigationControl({ showCompass: false }));
+			// 出典（OpenStreetMap 等）は利用条件で消せないので、最初から「ⓘ」だけの畳んだ形にする（押すと開く）。
+			// MapLibre は読み込み後に開いた形（maplibregl-compact-show）にするため、読み込みが落ち着いたら一度だけ畳む
+			map.once('idle', () => {
+				const attrib = container.querySelector('.maplibregl-ctrl-attrib');
+				if (attrib?.classList.contains('maplibregl-compact-show')) {
+					attrib.classList.remove('maplibregl-compact-show');
+					attrib.setAttribute('open', ''); // MapLibre の畳むときの処理に合わせる
+				}
+			});
 			for (const item of items) {
 				const el = document.createElement('button');
 				el.type = 'button';
