@@ -1451,7 +1451,7 @@
   "lookup_legacy_h": "Booked on or before 29 November 2026",
   "lookup_legacy_body": "You can view, change or cancel your reservation from My Page of the reservation system you booked with.",
   "lookup_legacy_btn": "{facility} bookings",
-  "lookup_legacy_note": "These bookings do not appear in your account on this site.",
+  "lookup_legacy_note": "If you have moved to our new membership, these bookings also appear in your reservations on My Page (view only; use the buttons above to change or cancel).",
   "lookup_legacy_ended": "Checking reservations made with the previous reservation system has ended. Please call the property if you have any questions.",
   "lookup_legacy_external": "Opens another website",
   "lookup_phone_h": "Booked by phone, or other inquiries",
