@@ -1,6 +1,6 @@
 # 旧会員（tripla）の会員移行（手順書・v3）
 
-- 状態: **受付は閉じている**（本番の環境変数 `LEGACY_MEMBER_MIGRATION` を入れていない）。開く前に「6. 開く前に決めること」を済ませる
+- 状態: **受付を開けた**（2026-11-22・v0.303.0・`apps/web/wrangler.jsonc` の `LEGACY_MEMBER_MIGRATION=true`）。閉じるときは false にしてデプロイ
 - 設計: `docs/legacy-member-migration-design.md`（v2・Fable のレビュー 2 回・v3）
 - 実装: Book v0.290.0 ／ autumn-shared `20261119132049_book_legacy_member_migration_v3.sql`・`20261119132737_book_legacy_member_rematch.sql`・`20261119134010_book_legacy_member_review_fixes.sql`
 - 目的: tripla の会員が Book の会員になり、**過去の公式・直販の利用回数を会員ランクに引き継ぐ**。住所・生年月日などは tripla から持ってこない（PMS の顧客マスタが正）
