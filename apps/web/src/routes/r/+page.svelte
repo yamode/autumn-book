@@ -114,6 +114,19 @@
 	{/if}
 {/snippet}
 
+{#snippet roomRow()}
+	{@const roomCode = 'roomCode' in data ? data.roomCode : null}
+	{#if roomCode}
+		<!-- 客室ごとの入口QRから来た端末は、コードなしでもお部屋名を出す（2026-11-21） -->
+		<dl class="mb-3 text-sm">
+			<div class="flex items-baseline justify-between">
+				<dt class="text-stone-400">{m.inroom_room()}</dt>
+				<dd class="font-medium text-stone-800">{roomCode}</dd>
+			</div>
+		</dl>
+	{/if}
+{/snippet}
+
 {#if data.stay || data.browse}
 	<!-- ============ ヒーロー ============ -->
 	{#if hero}
@@ -150,6 +163,7 @@
 		{#if !data.stay && data.upcomingFrom}
 			<!-- ============ チェックイン前に館内図の QR を読んだ（2026-10-15）。コードは入れなくてよい（QR に入っている）============ -->
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
+				{@render roomRow()}
 				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_upcoming_title()}</h1>
 				<p class="mt-1 text-sm text-stone-500">{m.inroom_upcoming_body({ date: fmtDate(data.upcomingFrom) })}</p>
 			</section>
@@ -157,6 +171,7 @@
 			<!-- ============ コードの入力（館内案内を見ている方が、滞在に紐づけるとき）============ -->
 			{@render codeErrors()}
 			<section class="rounded-lg bg-white px-4 py-5 shadow-card">
+				{@render roomRow()}
 				<h1 class="text-[15px] font-medium text-stone-900">{m.inroom_browse_code_title()}</h1>
 				<p class="mt-1 text-sm text-stone-500">{m.inroom_browse_code_help()}</p>
 				<!-- 食事時間は PMS の伺い書から入るため、チェックイン直後はまだ出ないことがある（2026-10-15 指示） -->
