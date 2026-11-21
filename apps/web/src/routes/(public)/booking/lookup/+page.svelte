@@ -25,8 +25,9 @@
 
 	{#if data.legacy.kind === 'active'}
 		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
-			<h2 class="text-lg text-brand-900">{data.legacy.phase === 'current' ? m.lookup_legacy_h_current() : m.lookup_legacy_h_former()}</h2>
-			<p class="mt-2 text-sm text-stone-600">{data.legacy.phase === 'current' ? m.lookup_legacy_body_current() : m.lookup_legacy_body()}</p>
+			<!-- 予約した日で分ける（11/30 から Book。「現在の／以前の」は切替日の前後で意味が変わって分かりづらかった・2026-11-21 指示） -->
+			<h2 class="text-lg text-brand-900">{m.lookup_legacy_h()}</h2>
+			<p class="mt-2 text-sm text-stone-600">{m.lookup_legacy_body()}</p>
 			<ul class="mt-3 space-y-2">
 				{#each data.legacy.links as link (link.facility)}
 					<li>
@@ -36,18 +37,13 @@
 					</li>
 				{/each}
 			</ul>
-			<p class="mt-3 text-xs text-stone-500">{data.legacy.phase === 'current' ? m.lookup_legacy_note_current() : m.lookup_legacy_note()}</p>
+			<p class="mt-3 text-xs text-stone-500">{m.lookup_legacy_note()}</p>
 		</section>
 	{:else if data.legacy.kind === 'ended'}
 		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
 			<p class="text-sm text-stone-600">{m.lookup_legacy_ended()}</p>
 		</section>
 	{/if}
-
-	<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
-		<h2 class="text-lg text-brand-900">{m.lookup_ota_h()}</h2>
-		<p class="mt-2 text-sm text-stone-600">{m.lookup_ota_body()}</p>
-	</section>
 
 	<section class="mt-4 rounded-xl border border-stone-200 bg-white p-6">
 		<h2 class="text-lg text-brand-900">{m.lookup_phone_h()}</h2>
