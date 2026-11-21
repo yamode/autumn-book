@@ -23,14 +23,16 @@ export const load: PageServerLoad = async (event) => {
 	const answered = Boolean(ctx.answeredAt);
 	const pcToken = event.cookies.get(PRECHECKIN_COOKIE);
 	let bath: BathContext | null = null;
-	if (answered && ctx.editable) {
+	// 公式サイト以外（OTA・取引先）の予約は、事前チェックインから貸切風呂を予約できない（DB の _pb_bath_token も断る・2026-11-21）
+	const official = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? true : ctx.isOfficial;
+	if (answered && ctx.editable && official !== false) {
 		if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
 			bath = demoBathContext(ctx.checkIn);
 		} else if (DATA_SOURCE === 'supabase' && pcToken && bathPmsEnabled()) {
 			bath = await sbBathContext(precheckinBathAccess(pcToken)).catch(() => null);
 		}
 	}
-	const state = ciBathState({ answered, editable: ctx.editable, bathOpen: Boolean(bath?.ok && bath.enabled) });
+	const state = ciBathState({ answered, editable: ctx.editable, bathOpen: Boolean(bath?.ok && bath.enabled), official });
 	return { bath: { state, ctx: state === 'ready' ? bath : null } as BathView };
 };
 
@@ -40,6 +42,7 @@ async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
+	if (r.ctx.isOfficial === false) return null; // 公式サイトの予約だけ（2026-11-21）
 	// RPC で事前チェックインの回答・有効期限を検証する。
 	return precheckinBathAccess(r.token);
 }

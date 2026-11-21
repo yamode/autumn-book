@@ -1444,6 +1444,7 @@
   "ci_bath_not_answered": "Please submit your meal times first. You can then continue to the private bath reservation.",
   "ci_bath_closed": "Online pre-check-in has closed. To reserve a private bath, open the in-room guide with the QR code or 6-digit code in your room.",
   "ci_bath_unavailable": "Private baths cannot be reserved from here at the moment. Please ask at the front desk when you arrive.",
+  "ci_bath_official_only": "Booking the private bath in advance is available only for reservations made on our official website. After you arrive, please open the in-room guide from the QR code in your room to book.",
   "ci_ota_title": "Book direct on our official site next time for the best deal",
   "ci_ota_points": "Join our free membership and book on our official site to earn points on every stay. 1 point = 1 yen off your next booking.",
   "ci_ota_welcome": "Get {points} points when you join.",

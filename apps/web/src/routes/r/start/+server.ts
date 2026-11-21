@@ -5,6 +5,7 @@ import { sbResolveStay } from '$lib/server/supabase-data';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { guideIdParam, rememberBrowseFacility } from '$lib/server/inroom-browse';
 import { resolveRoomEntry, ROOM_COOKIE, ROOM_COOKIE_MAX_AGE_SEC, roomKeyParam } from '$lib/server/intercom';
+import { stayUpcoming } from '$lib/server/inroom-banners';
 import type { RequestHandler } from './$types';
 
 // 客室に常設する「客室案内の入口QR」（/r/start?f=<slug>）の着地点（2026-10-09）。
@@ -36,10 +37,16 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const token = cookies.get(STAY_COOKIE);
 	if (token) {
 		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		// 部屋の QR が、いまの滞在と別の部屋（別の施設）のものなら、前の滞在は外して読んだ部屋に合わせる（2026-11-20）。
-		// 予約の情報は、その部屋の滞在コードを入れ直すと出る
-		const otherRoom = !!(stay && room && (stay.roomCode !== room.roomCode || stay.facility.slug !== room.facilitySlug));
-		if (stay && !otherRoom) redirect(302, localizeHref(guidePath ?? '/r'));
+		// 館内図の QR（トークン付き）や 6 桁コードで有効な滞在がある端末は、お部屋のポップの QR（部屋番号だけ）を読み直しても
+		// 滞在を保つ（2026-11-21 指示）。部屋番号が違っても外さない（複数室の予約で別の部屋のポップを読んだとき・
+		// 部屋の割り当てが後から変わったときに、本人の滞在が消えていた）。外すのは別の施設の QR を読んだときだけ
+		const otherFacility = !!(stay && room && stay.facility.slug !== room.facilitySlug);
+		if (stay && !otherFacility) redirect(302, localizeHref(guidePath ?? '/r'));
+		// 客室案内の開始前（チェックイン日 9:00 より前）の滞在も外さない（/r が「○日 9:00 から」を出し、時刻が来ればそのまま使える）
+		if (!stay) {
+			const upcoming = await stayUpcoming(token, getLocale());
+			if (upcoming && (!room || upcoming.facility.slug === room.facilitySlug)) redirect(302, localizeHref('/r'));
+		}
 		cookies.delete(STAY_COOKIE, { path: '/' });
 	}
 	const known = slug && /^[a-z0-9-]+$/.test(slug) ? rememberBrowseFacility(cookies, slug, getLocale()) : false;

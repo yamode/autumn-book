@@ -85,11 +85,17 @@ export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/ci/bath' : '/r');
 
 // ---------------------------------------------------------------- 貸切風呂のステップ
 
-export type CiBathState = 'not_answered' | 'closed' | 'unavailable' | 'ready';
+export type CiBathState = 'not_answered' | 'closed' | 'official_only' | 'unavailable' | 'ready';
 
-export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean }): CiBathState {
+/**
+ * official: 公式サイト（Book）の予約か（precheckin_context の is_official）。false のときは 'official_only'
+ * （事前チェックインからの貸切風呂の予約は公式サイトの予約だけ・2026-11-21。到着後の客室案内からは予約できる）。
+ * 分からない（null・DB 適用前）ときは止めない。
+ */
+export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean; official?: boolean | null }): CiBathState {
 	if (!input.editable) return 'closed';
 	if (!input.answered) return 'not_answered';
+	if (input.official === false) return 'official_only';
 	return input.bathOpen ? 'ready' : 'unavailable';
 }
 

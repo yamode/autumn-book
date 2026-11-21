@@ -91,6 +91,10 @@ describe('貸切風呂のステップの状態', () => {
 	it('期限後は closed、未回答は not_answered', () => {
 		expect(ciBathState({ answered: true, editable: false, bathOpen: false })).toBe('closed');
 		expect(ciBathState({ answered: false, editable: true, bathOpen: false })).toBe('not_answered');
+		// 公式サイト以外（OTA・取引先）の予約は、事前チェックインから貸切風呂を予約できない（2026-11-21）
+		expect(ciBathState({ answered: true, editable: true, bathOpen: true, official: false })).toBe('official_only');
+		expect(ciBathState({ answered: true, editable: true, bathOpen: true, official: true })).toBe('ready');
+		expect(ciBathState({ answered: true, editable: true, bathOpen: true, official: null })).toBe('ready');
 	});
 	it('回答済みなら施設の受付状態で判定する', () => {
 		expect(ciBathState({ answered: true, editable: true, bathOpen: false })).toBe('unavailable');

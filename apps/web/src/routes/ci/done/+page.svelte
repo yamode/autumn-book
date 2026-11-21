@@ -5,7 +5,7 @@
 	// 貸切風呂を取ってあれば「予約する」は出さない（③ と重複するため）。取っていなければ ③ へ戻る小さなリンクだけ（2026-11-14）。
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
-	import { slashDate, type PcMealType } from '$lib/precheckin';
+	import { DEMO_PRECHECKIN_CODE, slashDate, type PcMealType } from '$lib/precheckin';
 
 	let { data } = $props();
 	const ctx = $derived(data.ctx!);
@@ -52,8 +52,13 @@
 		</ul>
 	{:else}
 		<p class="mt-1 text-stone-500">
-			{m.ci_bath_none()}
-			<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
+			{#if ctx.isOfficial === false && ctx.bookingCode !== DEMO_PRECHECKIN_CODE}
+				<!-- 公式サイト以外の予約は、事前チェックインから貸切風呂を予約できない（到着後の客室案内から・2026-11-21） -->
+				{m.ci_bath_official_only()}
+			{:else}
+				{m.ci_bath_none()}
+				<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
+			{/if}
 		</p>
 	{/if}
 

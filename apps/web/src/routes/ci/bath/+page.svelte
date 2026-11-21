@@ -203,6 +203,8 @@
 		<p class="mt-4 rounded-lg bg-stone-50 px-3 py-2 leading-relaxed text-stone-700 ring-1 ring-stone-200">
 			{bath.state === 'not_answered'
 				? m.ci_bath_not_answered()
+				: bath.state === 'official_only'
+					? m.ci_bath_official_only()
 					: m.ci_bath_unavailable()}
 		</p>
 	{/if}
