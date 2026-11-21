@@ -110,7 +110,7 @@
 
 			{#if item.member_guest_stays > 0}
 				<p class="mt-3 rounded-lg bg-stone-100 px-3 py-2 text-xs text-stone-600">
-					この会員の今の顧客に宿泊・予約が {item.member_guest_stays} 件あるため、別の顧客には紐づけ直せません。PMS の重複チェックで顧客を統合してください。
+					確認待ちの間の宿泊・予約が {item.member_guest_stays} 件あります。紐づけると、この予約ごと選んだ顧客に統合します（統合したあとは「解除して元に戻す」はできません）。
 				</p>
 			{/if}
 
@@ -143,9 +143,6 @@
 									<td class="px-2 py-2">
 										{#if c.has_member}
 											<span class="text-stone-400">紐づけられません（別の会員が紐づいています）</span>
-										{:else if item.member_guest_stays > 0}
-											<button type="button" disabled class="rounded-md bg-stone-800 px-3 py-1.5 text-white opacity-40">この顧客に紐づける</button>
-											<p class="mt-1 text-[11px] text-stone-400">会員の今の顧客に宿泊・予約があるため使えません</p>
 										{:else}
 											<form method="POST" action="?/link" use:enhance={confirmLink(c.name)} class="flex flex-col gap-1.5">
 												<input type="hidden" name="legacyId" value={item.id} />
@@ -188,7 +185,7 @@
 				<p class="mt-1 text-xs text-stone-500">紐づけ先：{c.name ?? '—'}・{c.phone ?? '—'}・公式・直販 {c.direct_visits.toLocaleString()} 回</p>
 			{/each}
 			{#if !item.previous_guest_id}
-				<p class="mt-2 text-xs text-stone-400">元の顧客の記録が無いため、ここでは解除できません。</p>
+				<p class="mt-2 text-xs text-stone-400">予約ごと顧客を統合して紐づけたため（または元の顧客の記録が無いため）、ここでは解除できません。</p>
 			{:else}
 			<form method="POST" action="?/unlink" use:enhance class="mt-3 flex flex-wrap items-end gap-2 border-t border-stone-100 pt-3">
 				<input type="hidden" name="legacyId" value={item.id} />
