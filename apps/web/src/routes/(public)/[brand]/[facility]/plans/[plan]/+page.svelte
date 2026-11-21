@@ -140,16 +140,15 @@
 			{ label: m.plan_meal_row_breakfast(), value: breakfast ? m.plan_meal_breakfast() : m.plan_meal_row_absent() }
 		];
 	});
-	let payText = $derived(
+	// お支払い方法は「／」でつながず 1 行ずつ（2026-11-21 指示）。割引の印は事前カード決済の行に付ける
+	let payLines = $derived(
 		[
-			data.plan.payment.onsite ? m.pay_onsite() : '',
+			data.plan.payment.onsite ? { key: 'onsite', label: m.pay_onsite() } : null,
 			// 予約時のカード決済は「事前カード決済」（チェックアウト日のカード決済と並べても区別できる名前）
-			data.plan.payment.prepay ? (data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card()) : '',
+			data.plan.payment.prepay ? { key: 'prepay', label: data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card() } : null,
 			// オンライン決済（チェックアウト日）。未設定のプランは従来どおり予約時のカード決済に含めて見せない
-			data.plan.payment.checkout ? m.plan_card_payment_checkout() : ''
-		]
-			.filter(Boolean)
-			.join(' ／ ')
+			data.plan.payment.checkout ? { key: 'checkout', label: m.plan_card_payment_checkout() } : null
+		].filter((line): line is { key: string; label: string } => line !== null)
 	);
 
 	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）
@@ -346,17 +345,24 @@
 		<div class="flex gap-3">
 			<dt class="w-16 shrink-0 pt-0.5 text-xs text-stone-500">{m.plan_detail_payment()}</dt>
 			<dd class="min-w-0">
-				{payText}
-				{#if earlyMax > 0 && !earlyPoints}
-					<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
-					<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
-				{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
-					<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
-				{/if}
-				{#if earlyPoints}
-					<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
-					<span class="ml-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
-				{/if}
+				{#each payLines as line (line.key)}
+					<p>
+						<!-- 折り返すなら括弧の手前で（「（チェックアウト日）」の途中で切れないように） -->
+						{#each line.label.split(/(?=（)/) as part, i (i)}<span class="inline-block">{part}</span>{/each}
+						{#if line.key === 'prepay'}
+						{#if earlyMax > 0 && !earlyPoints}
+							<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
+							<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
+						{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
+							<span class="ml-1 inline-block rounded bg-red-50 px-1.5 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+						{/if}
+						{#if earlyPoints}
+							<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
+							<span class="ml-1 inline-block rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
+						{/if}
+						{/if}
+					</p>
+				{/each}
 				{#if data.memberOnsiteHint}
 					<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
 					<p class="mt-0.5 text-xs text-stone-500">{m.pay_member_onsite_hint()}</p>
