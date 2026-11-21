@@ -2964,13 +2964,18 @@ export async function sbPlanOffers(
 	ratePlanId?: string,
 	previewPlanId?: string
 ): Promise<PlanOffer[]> {
-	const { data, error } = await readClient(previewPlanId).rpc('plan_offers', {
-		p_facility: facilityUuid,
-		p_checkin: checkin ?? null,
-		p_nights: nights,
-		p_adults: adults,
-		p_rate_plan_id: ratePlanId ?? null
-	});
+	const call = () =>
+		readClient(previewPlanId).rpc('plan_offers', {
+			p_facility: facilityUuid,
+			p_checkin: checkin ?? null,
+			p_nights: nights,
+			p_adults: adults,
+			p_rate_plan_id: ratePlanId ?? null
+		});
+	let { data, error } = await call();
+	// 時間切れ（57014）は 1 回だけ取り直す。DB のキャッシュが冷えていると最初の 1 回だけ anon の 3 秒を超え、
+	// プラン一覧ページ全体が 500 になっていた（2026-11-21 20:24・PMS の集計の直後。2 回目は 1 秒前後で返る）
+	if (error?.code === '57014') ({ data, error } = await call());
 	if (error) throw error;
 	return ((data ?? []) as { rate_plan_id: string; room_type_id: string; total: number; per_person: number; remaining: number }[]).map(
 		(r) => ({ ratePlanId: r.rate_plan_id, roomTypeId: r.room_type_id, total: r.total, perPerson: r.per_person, remaining: r.remaining })
