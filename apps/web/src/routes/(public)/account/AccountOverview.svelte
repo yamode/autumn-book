@@ -79,7 +79,7 @@
 			<p class="mt-2 text-xs text-stone-500">{@html s.kind === 'legacy' && data.legacyActive ? m.account_legacy_stays_change_link() : m.account_legacy_stays_change_phone()}</p>
 			{#if 'legacyBath' in data && data.legacyBath}
 				<!-- 貸切風呂の事前予約（Book の予約の詳細ページと同じ画面・2026-11-22） -->
-				<a href={`/r/bath?booking=${encodeURIComponent(`stay:${s.code}`)}`} class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">
+				<a href={`/account/bath/${encodeURIComponent(`stay:${s.code}`)}`} class="mt-3 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">
 					{m.membership_bath_title()}
 				</a>
 			{/if}

@@ -1959,5 +1959,10 @@
   "alert_invalid_room_plan": "請重新選擇客房與方案。",
   "alert_invalid_budget": "預算請輸入1至10,000,000日圓的整數。",
   "pay_group_card": "各大信用卡",
-  "favorites_room_no": "{no} 號房"
+  "favorites_room_no": "{no} 號房",
+  "account_bath_back_detail": "預訂詳情",
+  "account_bath_stay": "入住期間：{from}～{to}",
+  "account_bath_slot_mine": "已預約",
+  "account_bath_slot_limit": "已達上限",
+  "account_bath_new_heading": "從空檔時段預約"
 }

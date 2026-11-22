@@ -1959,5 +1959,10 @@
   "alert_invalid_room_plan": "お部屋・プランを選び直してください。",
   "alert_invalid_budget": "予算は1〜10,000,000円の整数で指定してください。",
   "pay_group_card": "各種クレジットカード",
-  "favorites_room_no": "{no}号室"
+  "favorites_room_no": "{no}号室",
+  "account_bath_back_detail": "予約の詳細",
+  "account_bath_stay": "{from}〜{to} のご滞在",
+  "account_bath_slot_mine": "予約済み",
+  "account_bath_slot_limit": "上限",
+  "account_bath_new_heading": "空いている時間から予約する"
 }

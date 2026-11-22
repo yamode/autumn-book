@@ -1959,5 +1959,10 @@
   "alert_invalid_room_plan": "Please select the room and plan again.",
   "alert_invalid_budget": "Please enter a budget between ¥1 and ¥10,000,000.",
   "pay_group_card": "Credit card",
-  "favorites_room_no": "Room {no}"
+  "favorites_room_no": "Room {no}",
+  "account_bath_back_detail": "reservation details",
+  "account_bath_stay": "Stay: {from} – {to}",
+  "account_bath_slot_mine": "Booked",
+  "account_bath_slot_limit": "Limit",
+  "account_bath_new_heading": "Book an available time"
 }

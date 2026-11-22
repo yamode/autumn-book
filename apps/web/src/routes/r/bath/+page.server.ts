@@ -37,6 +37,12 @@ function bathAccess(event: RequestEvent) {
 }
 
 export const load: PageServerLoad = async (event) => {
+	// マイページからの予約は、マイページの見た目の専用画面へ（2026-11-22）。古いリンクもそちらへ送る
+	const memberBooking = event.url.searchParams.get('booking');
+	if (memberBooking !== null && /^(stay:)?[a-z0-9-]{1,80}$/i.test(memberBooking)) {
+		const change = event.url.searchParams.get('change');
+		redirect(303, `/account/bath/${encodeURIComponent(memberBooking)}${change ? `?change=${encodeURIComponent(change)}` : ''}`);
+	}
 	const { booking, token, client } = bathAccess(event);
 	// デモ運用は /r へ。トークンが無い（館内案内からコードなしで来た）ときは、先に6桁コードを入れてもらう（2026-10-10）。
 	// 館内図の QR（/r/c/<token>?next=bath）はトークン入りなので、ここを通らずそのまま予約フォームへ来る

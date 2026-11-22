@@ -53,7 +53,7 @@
 {/if}
 
 {#if data.canPrebookBath}
-	<a href={`/r/bath?booking=${encodeURIComponent(b.code)}`} class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">
+	<a href={`/account/bath/${encodeURIComponent(b.code)}`} class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">
 		{m.membership_bath_title()}
 	</a>
 {/if}
