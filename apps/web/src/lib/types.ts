@@ -95,6 +95,8 @@ export interface NewsPost {
  coverImageAlt?:string;
 	id: string;
 	facilityId: string;
+	/** 掲載する施設（2026-11-22〜。複数可。無ければ facilityId だけ） */
+	facilityIds?: string[];
 	title: string;
 	/** Markdown 原文 */
 	body: string;

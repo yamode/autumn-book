@@ -1,4 +1,5 @@
 import {error} from '@sveltejs/kit';
+import {FACILITY_UUID} from '$lib/server/supabase-data';
 export async function newsForm(request:Request,maxBytes=512*1024){
  const reader=request.body?.getReader();if(!reader)error(400,'入力がありません。');
  const chunks:Uint8Array[]=[];let size=0;
@@ -14,5 +15,10 @@ export function newsInput(form:FormData){
  const coverImageUrl=String(form.get('coverImageUrl')??'').trim(),coverImageAlt=String(form.get('coverImageAlt')??'').trim();
  if(coverImageAlt.length>200||coverImageUrl.length>2000)throw Error('アイキャッチの入力が長すぎます。');
  if(coverImageUrl){try{const u=new URL(coverImageUrl);if(u.protocol!=='https:'||u.username||u.password)throw Error();}catch{throw Error('アイキャッチ画像のURLを確認してください。');}}
- return {title,body,publishedAt,coverImageUrl:coverImageUrl||null,coverImageAlt};
+ // 掲載施設（複数可・2026-11-22）。送られてこない（古い画面・デモ）ときは undefined＝今の施設だけ
+ const sent=form.getAll('facilityIds').map(String).filter(Boolean),allowed=new Set(Object.values(FACILITY_UUID));
+ if(form.has('facilityIdsSent')&&!sent.length)throw Error('掲載施設を1つ以上選んでください。');
+ const facilityIds=sent.length?[...new Set(sent)].filter(id=>allowed.has(id)):undefined;
+ if(facilityIds&&!facilityIds.length)throw Error('掲載施設を確認してください。');
+ return {title,body,publishedAt,coverImageUrl:coverImageUrl||null,coverImageAlt,facilityIds};
 }

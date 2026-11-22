@@ -165,7 +165,8 @@ export async function listNews(facilityId: string, limit?: number) {
 	let q = supa()
 		.from('news_posts')
 		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
-		.eq('facility_id', facilityId)
+		// 掲載施設（facility_ids）に含まれるお知らせ（2026-11-22・複数の施設に掲載できる）
+		.contains('facility_ids', [facilityId])
 		.order('published_at', { ascending: false });
 	if (limit) q = q.limit(limit);
 	const { data, error } = await q;
@@ -179,7 +180,7 @@ export async function getNewsPost(facilityId: string, id: string) {
 	const { data, error } = await supa()
 		.from('news_posts')
 		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
-		.eq('facility_id', facilityId)
+		.contains('facility_ids', [facilityId])
 		.eq('id', id)
 		.maybeSingle();
 	if (error) throw error;
@@ -198,8 +199,9 @@ export async function listNewsAdmin(client: SupabaseClient, facilityId: string):
 	const { data, error } = await client
 		.schema('book')
 		.from('news_posts')
-		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
-		.eq('facility_id', facilityId)
+		.select('id, facility_id, facility_ids, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
+		// この施設が掲載先に入っているもの（ほかの施設が作って、この施設にも載せたものを含む）
+		.contains('facility_ids', [facilityId])
 		.order('published_at', { ascending: false });
 	if (error) throw error;
 	return (data ?? []).map(mapNewsRow);
@@ -208,7 +210,7 @@ export async function listNewsAdmin(client: SupabaseClient, facilityId: string):
 export async function addNewsAdmin(
 	client: SupabaseClient,
 	facilityId: string,
-	input: { title: string; body: string; publishedAt: string; coverImageUrl?:string|null; coverImageAlt?:string }
+	input: { title: string; body: string; publishedAt: string; coverImageUrl?:string|null; coverImageAlt?:string; facilityIds?: string[] }
 ): Promise<NewsPost> {
 	const { data, error } = await client
 		.schema('book')
@@ -216,13 +218,14 @@ export async function addNewsAdmin(
 		.insert({
 			tenant_id: TENANT_ID,
 			facility_id: facilityId,
+			facility_ids: input.facilityIds?.length ? input.facilityIds : [facilityId],
 			title: input.title,
 			body: input.body,
 			published_at: input.publishedAt,
  cover_image_url: input.coverImageUrl||null,cover_image_alt:input.coverImageAlt??'',
 			is_published: false
 		})
-		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
+		.select('id, facility_id, facility_ids, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
 		.single();
 	if (error) throw error;
 	return mapNewsRow(data);
@@ -231,7 +234,7 @@ export async function addNewsAdmin(
 export async function updateNewsAdmin(
 	client: SupabaseClient,
 	postId: string,
-	input: { title: string; body: string; publishedAt: string; isPublished: boolean; coverImageUrl?:string|null; coverImageAlt?:string }
+	input: { title: string; body: string; publishedAt: string; isPublished: boolean; coverImageUrl?:string|null; coverImageAlt?:string; facilityIds?: string[] }
 ): Promise<NewsPost> {
 	const { data, error } = await client
 		.schema('book')
@@ -241,10 +244,11 @@ export async function updateNewsAdmin(
 			body: input.body,
 			published_at: input.publishedAt,
  cover_image_url: input.coverImageUrl||null,cover_image_alt:input.coverImageAlt??'',
-			is_published: input.isPublished
+			is_published: input.isPublished,
+			...(input.facilityIds?.length ? { facility_ids: input.facilityIds } : {})
 		})
 		.eq('id', postId)
-		.select('id, facility_id, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
+		.select('id, facility_id, facility_ids, title, body, published_at, is_published, created_at, cover_image_url, cover_image_alt')
 		.single();
 	if (error) throw error;
 	return mapNewsRow(data);
@@ -253,6 +257,7 @@ export async function updateNewsAdmin(
 function mapNewsRow(row: {
 	id: string;
 	facility_id: string;
+	facility_ids?: string[] | null;
 	title: string;
 	body: string | null;
 	published_at: string;
@@ -262,6 +267,7 @@ function mapNewsRow(row: {
 	return {
 		id: row.id,
 		facilityId: row.facility_id,
+		facilityIds: row.facility_ids?.length ? row.facility_ids : [row.facility_id],
 		title: row.title,
 		body: row.body ?? '',coverImageUrl:row.cover_image_url??null,coverImageAlt:row.cover_image_alt??'',
 		publishedAt: row.published_at,
