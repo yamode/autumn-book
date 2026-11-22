@@ -917,7 +917,8 @@
 										<!-- 非会員（2026-11-22）: チェックアウト日決済を上に、選んだ状態で固定して出す。予約時決済はその下に選べない状態で出し、
 										     会員登録（またはログイン）すると選べることが分かるようにする -->
 										<div class="flex min-h-11 items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
-											<input type="radio" checked disabled class="size-4 shrink-0 accent-slate-800" aria-label={payText('online_checkout', 'label', m.pay_group_checkout())} />
+											<!-- 選んだ状態で固定（disabled の radio は灰色で選択が分かりにくいので、選択済みの丸を描く） -->
+											<span class="grid size-4 shrink-0 place-items-center rounded-full border-2 border-slate-800" aria-hidden="true"><span class="size-2 rounded-full bg-slate-800"></span></span>
 											<span class="font-medium text-stone-900">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
 										</div>
 										<p class="whitespace-pre-line px-3 pb-3 pl-[3.75rem] text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</p>
