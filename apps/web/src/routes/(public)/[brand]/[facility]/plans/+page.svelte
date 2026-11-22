@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { mealChipLabel } from '$lib/meal-label';
 	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
 	import { todayStr } from '$lib/format';
@@ -280,7 +281,7 @@
 									<div transition:slide={{ duration: 280, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
 										<div class="min-w-0">
 											<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
-												{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{option.plan.mealPlan}</span>{/if}
+												{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{mealChipLabel(option.plan)}</span>{/if}
 												{#if option.plan.payment.onsite}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.pay_onsite()}</span>{/if}
 												{#if option.plan.payment.prepay}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_card()}</span>{/if}
 												{#if option.plan.payment.checkout}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_checkout()}</span>{/if}

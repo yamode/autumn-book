@@ -10,7 +10,7 @@
 // ⚠ プレビューの仮押さえは本物の在庫を期限まで（または「選び直す」まで）押さえる（ユーザー確認済み・2026-11-01）。
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { previewServiceClient } from '$lib/server/partners/admin-client';
-import { mapPlanRow, sbPlanByUuid } from '$lib/server/supabase-data';
+import { mapPlanRow, sbPlanByUuid, withTranslations } from '$lib/server/supabase-data';
 import type { RatePlan } from '$lib/types';
 
 type Locals = { user?: { role?: string } | null };
@@ -28,7 +28,9 @@ export async function previewPlanByUuid(ratePlanId: string): Promise<RatePlan | 
 	if (!sb) return undefined;
 	const { data, error } = await sb.schema('book').from('v_plans').select('*').eq('rate_plan_id', ratePlanId).maybeSingle();
 	if (error) throw error;
-	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+	if (!data) return undefined;
+	const [plan] = await withTranslations([mapPlanRow(data as Record<string, unknown>)], 'plan');
+	return plan;
 }
 
 /**

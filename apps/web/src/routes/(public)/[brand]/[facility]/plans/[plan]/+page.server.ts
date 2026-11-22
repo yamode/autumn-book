@@ -24,6 +24,7 @@ import {
 	createHoldGroup,
 	sbRoomTypeByUuid,
 	mapPlanRow,
+	withTranslations,
 	bookingSessionId
 } from '$lib/server/supabase-data';
 import { MAX_ROOMS_PER_BOOKING, parseHoldRooms, payCompatible } from '$lib/multi-room';
@@ -48,7 +49,9 @@ async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUu
 	if (event.url.searchParams.get('preview') !== '1') return undefined;
 	if (!isStaffViewer(event.locals)) return undefined;
 	const row = await sbPlanPreviewRow(createSupabaseServerClient(event), facilityUuid, slug).catch(() => undefined);
-	return row ? mapPlanRow(row) : undefined;
+	if (!row) return undefined;
+	const [plan] = await withTranslations([mapPlanRow(row)], 'plan');
+	return plan;
 }
 
 export const load: PageServerLoad = async (event) => {

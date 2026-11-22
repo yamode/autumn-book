@@ -93,6 +93,8 @@ import {
 import { paymentMethodsOf } from '$lib/member-payment';
 import { ONSITE_METHODS, PLAN_PAY_OPTIONS, normalizeOptions, paymentMethodsOfOptions } from '$lib/direct-payment';
 import { todayStr } from '$lib/format';
+import { getLocale } from '$lib/paraglide/runtime';
+import { localizeTerms, mergeTranslation } from '$lib/content-translation';
 import { legacyKind, type LegacyStay } from '$lib/legacy-stays';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Cookies } from '@sveltejs/kit';
@@ -2777,32 +2779,75 @@ function mapFaqRow(row: Record<string, unknown>, facilityId: string): Faq {
 
 // ---- 施設・客室・プラン・FAQ・お知らせ（マッパー適用済み）----
 
+/**
+ * 表示中の言語の訳文（book.content_translations）を重ねる（2026-11-22）。
+ * 言語は getLocale()（paraglide がリクエストごとに決める）。管理画面・取引先ページ・API は URL だけで言語を決めるので常に ja になり、
+ * 編集画面に訳文が混ざることはない。
+ * - fields のキーはアプリ側の名前（name / headline / description / catchCopy / prefecture / addressPublic / specs / sections …）
+ * - 空文字・null は欠落扱いで日本語のまま（§2.2）。photoCaptions は写真の説明を順番に差し替える
+ * - 訳文の取得に失敗しても画面は日本語で出す（落とさない）
+ */
+export async function withTranslations<T extends { id: string }>(
+	items: T[],
+	entityType: 'facility' | 'room_type' | 'plan',
+	locale: Locale = currentLocale()
+): Promise<T[]> {
+	if (locale === 'ja' || items.length === 0) return items;
+	const { data, error } = await supa()
+		.from('content_translations')
+		.select('entity_id, fields')
+		.eq('entity_type', entityType)
+		.eq('locale', locale)
+		.eq('is_published', true)
+		.in('entity_id', items.map((i) => i.id));
+	if (error || !data || data.length === 0) return items.map((i) => localizeTerms(i, locale));
+	const byId = new Map((data as { entity_id: string; fields: Record<string, unknown> }[]).map((t) => [t.entity_id, t.fields]));
+	return items.map((item) => {
+		const fields = byId.get(item.id);
+		return localizeTerms(fields ? mergeTranslation(item, fields) : item, locale);
+	});
+}
+
+function currentLocale(): Locale {
+	try {
+		return getLocale() as Locale;
+	} catch {
+		return 'ja';
+	}
+}
+
+async function translateOne<T extends { id: string }>(item: T | undefined, entityType: 'facility' | 'room_type' | 'plan'): Promise<T | undefined> {
+	if (!item) return item;
+	const [t] = await withTranslations([item], entityType);
+	return t;
+}
+
 export async function sbListFacilities(): Promise<Facility[]> {
 	const rows = await listFacilities();
-	return rows.map(mapFacilityRow);
+	return withTranslations(rows.map(mapFacilityRow), 'facility');
 }
 
 export async function sbFacilityBySlug(slug: string): Promise<Facility | undefined> {
 	const { data, error } = await supa().from('v_facilities').select('*').eq('slug', slug).maybeSingle();
 	if (error) throw error;
-	return data ? mapFacilityRow(data as FacilityRow) : undefined;
+	return translateOne(data ? mapFacilityRow(data as FacilityRow) : undefined, 'facility');
 }
 
 export async function sbFacilityByUuid(uuid: string): Promise<Facility | undefined> {
 	const { data, error } = await supa().from('v_facilities').select('*').eq('facility_id', uuid).maybeSingle();
 	if (error) throw error;
-	return data ? mapFacilityRow(data as FacilityRow) : undefined;
+	return translateOne(data ? mapFacilityRow(data as FacilityRow) : undefined, 'facility');
 }
 
 export async function sbListRoomTypesMapped(facilityUuid: string): Promise<RoomType[]> {
 	const rows = await listRoomTypes(facilityUuid);
-	return (rows ?? []).map((r) => mapRoomTypeRow(r as Record<string, unknown>));
+	return withTranslations((rows ?? []).map((r) => mapRoomTypeRow(r as Record<string, unknown>)), 'room_type');
 }
 
 export async function sbRoomTypeByUuid(uuid: string): Promise<RoomType | undefined> {
 	const { data, error } = await supa().from('v_room_types').select('*').eq('room_type_id', uuid).maybeSingle();
 	if (error) throw error;
-	return data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined;
+	return translateOne(data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined, 'room_type');
 }
 
 export async function sbRoomTypeBySlug(facilityUuid: string, slug: string): Promise<RoomType | undefined> {
@@ -2813,12 +2858,12 @@ export async function sbRoomTypeBySlug(facilityUuid: string, slug: string): Prom
 		.eq('slug', slug)
 		.maybeSingle();
 	if (error) throw error;
-	return data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined;
+	return translateOne(data ? mapRoomTypeRow(data as Record<string, unknown>) : undefined, 'room_type');
 }
 
 export async function sbListPlansMapped(facilityUuid: string): Promise<RatePlan[]> {
 	const rows = await listPlans(facilityUuid);
-	return (rows ?? []).map((r) => mapPlanRow(r as Record<string, unknown>));
+	return withTranslations((rows ?? []).map((r) => mapPlanRow(r as Record<string, unknown>)), 'plan');
 }
 
 /**
@@ -2908,12 +2953,12 @@ export async function sbFacilityClosedDates(facilityUuid: string, months: number
 export async function sbPlanByUuid(uuid: string): Promise<RatePlan | undefined> {
 	const { data, error } = await supa().from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (error) throw error;
-	if (data) return mapPlanRow(data as Record<string, unknown>);
+	if (data) return translateOne(mapPlanRow(data as Record<string, unknown>), 'plan');
 	const sb = partnerServiceClient();
 	if (!sb) return undefined;
 	const secret = await sb.schema('book').from('v_plans').select('*').eq('rate_plan_id', uuid).maybeSingle();
 	if (secret.error) throw secret.error;
-	return secret.data ? mapPlanRow(secret.data as Record<string, unknown>) : undefined;
+	return translateOne(secret.data ? mapPlanRow(secret.data as Record<string, unknown>) : undefined, 'plan');
 }
 
 export async function sbPlanBySlug(facilityUuid: string, slug: string): Promise<RatePlan | undefined> {
@@ -2924,7 +2969,7 @@ export async function sbPlanBySlug(facilityUuid: string, slug: string): Promise<
 		.eq('slug', slug)
 		.maybeSingle();
 	if (error) throw error;
-	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+	return translateOne(data ? mapPlanRow(data as Record<string, unknown>) : undefined, 'plan');
 }
 
 export async function sbListFaqsMapped(facilityUuid: string): Promise<Faq[]> {

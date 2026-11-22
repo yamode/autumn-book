@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { mealChipLabel } from '$lib/meal-label';
 	// 客室・プラン一覧の「空室カレンダー」（部屋カードから開く）。
 	// 月カレンダー（部屋で絞る・人数・泊数）で日を押すと、その日に予約できる部屋×プランを右（スマホは下）に出し、そのまま予約できる。
 	import { page } from '$app/state';
@@ -283,7 +284,7 @@
 											<div class="min-w-0">
 												<p class="text-sm leading-snug text-stone-900">{offer.plan.name}</p>
 												<a href={planHref(offer)} class="text-xs text-brand-700 underline underline-offset-2 hover:text-brand-900">{m.cal_plan_info()}</a>
-												{#if offer.plan.mealPlan}<span class="mt-1 block w-fit rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600">{offer.plan.mealPlan}</span>{/if}
+												{#if offer.plan.mealPlan}<span class="mt-1 block w-fit rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-600">{mealChipLabel(offer.plan)}</span>{/if}
 											</div>
 											<div class="shrink-0 text-right">
 												<p class="text-lg font-bold leading-tight text-brand-900">{formatPrice(offer.perPersonNight)}<span class="text-xs font-normal text-stone-500">{m.cal_per_person()}</span></p>

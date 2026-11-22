@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatPrice } from '$lib/format';
+	import { mealChipLabel } from '$lib/meal-label';
 	import CancelPolicyNote from './CancelPolicyNote.svelte';
 	import type { RatePlan } from '$lib/types';
 	import * as m from '$lib/paraglide/messages';
@@ -42,7 +43,7 @@
 			{#each plan.highlightTags as tag}
 				<span class="rounded-full bg-brand-100 px-2 py-0.5 text-xs text-brand-700">{tag}</span>
 			{/each}
-			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{plan.mealPlan}</span>
+			<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{mealChipLabel(plan)}</span>
 			{#if plan.payment.onsite}
 				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.pay_onsite()}</span>
 			{/if}

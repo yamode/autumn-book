@@ -9,7 +9,7 @@ import type { Cookies } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE } from '$lib/server/auth';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
-import { mapPlanRow } from '$lib/server/supabase-data';
+import { mapPlanRow, withTranslations } from '$lib/server/supabase-data';
 import { memberById, ratePlans } from '$lib/server/store';
 import {
 	SHARE_TOKEN_RE,
@@ -128,7 +128,9 @@ export async function planIncludingSecret(planId: string): Promise<RatePlan | un
 	if (!sb) return undefined;
 	const { data, error } = await sb.schema('book').from('v_plans').select('*').eq('rate_plan_id', planId).maybeSingle();
 	if (error) throw error;
-	return data ? mapPlanRow(data as Record<string, unknown>) : undefined;
+	if (!data) return undefined;
+	const [plan] = await withTranslations([mapPlanRow(data as Record<string, unknown>)], 'plan');
+	return plan;
 }
 
 /** 施設の秘密のプラン（普通のプラン以外）。読めないときは空 */
