@@ -3203,3 +3203,22 @@ export async function getLastBooking(cookies: Cookies): Promise<LastBooking | nu
 		return null;
 	}
 }
+
+/**
+ * マイページのお気に入り客室（2026-11-22）。部屋一覧の RPC は客室タイプ名（日本語）だけ返すので、
+ * 公開側の客室タイプを訳して「日本語名 → 訳名」の表にする。都道府県も施設の訳から取る。ja では空の表
+ */
+export async function sbFavoritesLocalized(facilityId: string): Promise<{ typeNames: Map<string, string>; prefecture?: string }> {
+	const locale = currentLocale();
+	if (locale === 'ja') return { typeNames: new Map() };
+	const uuid = toFacilityUuidStrict(facilityId);
+	try {
+		const raw = ((await listRoomTypes(uuid)) ?? []).map((r) => mapRoomTypeRow(r as Record<string, unknown>));
+		const translated = await withTranslations(raw, 'room_type', locale);
+		const typeNames = new Map(raw.map((r, i) => [r.name, translated[i]?.name ?? r.name]));
+		const facility = await sbFacilityByUuid(uuid).catch(() => undefined);
+		return { typeNames, prefecture: facility?.prefecture };
+	} catch {
+		return { typeNames: new Map() };
+	}
+}

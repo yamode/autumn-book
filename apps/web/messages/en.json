@@ -1958,5 +1958,6 @@
   "alert_invalid_rooms": "Please choose 1 to 4 rooms.",
   "alert_invalid_room_plan": "Please select the room and plan again.",
   "alert_invalid_budget": "Please enter a budget between ¥1 and ¥10,000,000.",
-  "pay_group_card": "Credit card"
+  "pay_group_card": "Credit card",
+  "favorites_room_no": "Room {no}"
 }

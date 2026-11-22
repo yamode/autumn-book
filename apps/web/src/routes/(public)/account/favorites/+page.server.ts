@@ -1,7 +1,8 @@
 import { fail } from '@sveltejs/kit';
 import { facilities, rooms as demoRooms, favoriteRoomsByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbFacilityRooms, sbListFavoriteRooms, sbToggleFavoriteRoom } from '$lib/server/supabase-data';
+import { sbFacilityRooms, sbFavoritesLocalized, sbListFavoriteRooms, sbToggleFavoriteRoom } from '$lib/server/supabase-data';
+import { getLocale } from '$lib/paraglide/runtime';
 import { canUseFavoriteRooms } from '$lib/member-benefits';
 import { viewerOf } from '$lib/server/secret-plans';
 import * as m from '$lib/paraglide/messages';
@@ -40,15 +41,18 @@ export const load: PageServerLoad = async (event) => {
 		const favSet = new Set(await sbListFavoriteRooms(client));
 		const result: FavFacility[] = [];
 		for (const f of pubFacilities) {
-			const list = await sbFacilityRooms(client, f.id).catch(() => []);
+			const [list, loc] = await Promise.all([sbFacilityRooms(client, f.id).catch(() => []), sbFavoritesLocalized(f.id)]);
+			// ja 以外：客室タイプ名は訳名、部屋は「Room 101」を主にして固有の部屋名（紅葉など）は添える。
+			// 「その他1」のような日本語の仮の名前は添えない
+			const ja = getLocale() === 'ja';
 			const rooms = list.map((r) => ({
 				roomId: r.roomId,
-				name: r.name,
-				roomNumber: r.roomNumber,
-				roomTypeName: r.roomTypeName,
+				name: ja ? r.name : m.favorites_room_no({ no: r.roomNumber }),
+				roomNumber: ja ? r.roomNumber : /^その他\d*$/.test(r.name) || r.name === r.roomNumber ? '' : r.name,
+				roomTypeName: loc.typeNames.get(r.roomTypeName) ?? r.roomTypeName,
 				favorited: favSet.has(r.roomId)
 			}));
-			result.push(toFacility(f, rooms));
+			result.push(toFacility(loc.prefecture ? { ...f, prefecture: loc.prefecture } : f, rooms));
 		}
 		return { canUseFavorites: true, facilities: result };
 	}
