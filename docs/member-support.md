@@ -84,3 +84,10 @@
 ## 未定・あとで
 - Cloudflare の設定（Email Routing を yamado.app で有効にして MX を足す・support@ → Worker のルール・Worker のデプロイ・secret）はユーザーの確認を取ってから
 - 添付ファイルは受けない（本文だけ。添付があったことだけ記録）
+
+## 本番の設定（2026-11-22）
+- yamado.app の Email Routing はもともと有効（MX: route*.mx.cloudflare.net）。ルール「会員サポート（support@ → Book）」で support@yamado.app を Worker `autumn-book-support-inbound` へ
+- Worker の vars: `BOOK_INBOUND_URL`・`FALLBACK_FORWARD`（info@yamado.co.jp）。secret `SUPPORT_INBOUND_SECRET` は Worker と Pages（autumn-book）の両方に同じ値
+- 受信テスト: support-test@yamado.app → support@ で取り込みを確認（YS-D2HVRK）
+- `SUPPORT_MAIL_ENABLED=true`（apps/web/wrangler.jsonc の vars）
+- 未確認: Book が 5xx のとき Email Routing が送り直すか（README の手順）
