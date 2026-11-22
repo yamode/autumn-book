@@ -184,7 +184,7 @@
 | 段階 | 内容 | 見込み |
 |---|---|---|
 | 1 | migration：`facility_facts`・`facility_stories`・`facility_photo_rights`・`press_responses`・`knowledge_approvers` を新設（autumn-shared `20261122064509_book_facility_knowledge.sql`・**作成済み・未適用**） | 小 |
-| 2 | 管理画面「施設ナレッジ」：一覧・編集・承認。初期データとして 2026-11 じゃらん依頼書の回答（西和賀）を登録 | 中 |
+| 2 | 管理画面「施設ナレッジ」：一覧・編集・承認。初期データとして 2026-11 じゃらん依頼書の回答（西和賀）を登録（`/admin/knowledge`・v0.311.0 で**作成済み**。取り込みは本番で管理者がボタンを押す） | 中 |
 | 3 | お問い合わせ AI 下書きに施設ナレッジを足す | 小 |
 | 4 | 取材回答の下書き機能＋回答の控え（`press_responses`）。今回のじゃらんニュースの回答を最初の控えとして登録 | 中 |
 | 5 | 公開 API → taskul-social の `pr-ai-assist` を置き換え | 小（両リポ） |
