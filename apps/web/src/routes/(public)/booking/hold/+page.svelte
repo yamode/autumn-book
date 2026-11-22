@@ -76,9 +76,6 @@
 	// 支払い方法（サーバがプランの決済設定とオンライン決済の可否から決めたもの）。
 	// 現地払いでは施設で使える方法を案内する。予約時の送信値は 'onsite'。
 	let onsiteMethods = $derived(data.expired ? [] : (data.onsiteMethods ?? ONSITE_METHODS));
-	let onsiteCardBrands = $derived(data.expired ? '' : data.facility.slug === 'oga'
-		? 'Visa, Mastercard, JCB, American Express, Diners Club, UnionPay'
-		: ['nishiwaga', 'yamado'].includes(data.facility.slug) ? 'Visa, Mastercard, JCB' : '');
 	// 支払方法の名前・説明文（施設が管理画面で書き換えていればそれ、無ければ既定の文言）
 	const payText = (group: PayTextGroup, field: 'label' | 'note', fallback: string) =>
 		(data.expired ? null : payTextFor(data.paymentTexts, group, field, getLocale())) ?? fallback;
@@ -922,12 +919,24 @@
 							<input type="hidden" name="payment" value={canPay ? payValue : ''} />
 							<input type="hidden" name="payGroup" value={group} />
 
+							<!-- 現地決済を先、クレジットカードを後に並べ、カード情報がクレジットカードの枠のすぐ下に来るようにする（2026-11-22 指示） -->
+							{#if hasOnsite}
+								<div class="rounded-xl border bg-white {group === 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
+									<label class="flex min-h-12 cursor-pointer items-center gap-2.5 px-3 py-3">
+										<input type="radio" name="paymentChannel" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="size-4 shrink-0 accent-slate-800" aria-describedby="accepted-onsite-payments" />
+										<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
+									</label>
+									<div id="accepted-onsite-payments" class="space-y-1 px-3 pb-3 pl-9 text-sm text-stone-600">
+										{#if onsiteMethods.length}
+											<p>{m.pay_onsite_accepted({ methods: new Intl.ListFormat(getLocale()).format(onsiteMethods.map(onsiteMethodLabel)) })}</p>
+										{/if}
+
 							{#if hasOnline}
 								<div class="rounded-xl border bg-white {group !== 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
 									<label class="flex min-h-12 cursor-pointer flex-wrap items-center gap-2.5 px-3 py-3">
 										<input type="radio" name="paymentChannel" value="online" checked={group !== 'onsite'}
 											onchange={() => (selectedGroup = hasPrepay ? 'online' : 'checkout')} class="size-4 shrink-0 accent-slate-800" />
-										<span class="font-medium">{m.pay_method_card()}</span>
+										<span class="font-medium">{m.pay_group_card()}</span>
 									</label>
 									{#if isGuest && !hasPrepay && hasCheckout}
 										<!-- 非会員（2026-11-22）: チェックアウト日決済を上に、選んだ状態で固定して出す。予約時決済はその下に選べない状態で出し、
@@ -1011,19 +1020,6 @@
 								</div>
 							{/if}
 
-							{#if hasOnsite}
-								<div class="rounded-xl border bg-white {group === 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
-									<label class="flex min-h-12 cursor-pointer items-center gap-2.5 px-3 py-3">
-										<input type="radio" name="paymentChannel" value="onsite" checked={group === 'onsite'} onchange={() => (selectedGroup = 'onsite')} class="size-4 shrink-0 accent-slate-800" aria-describedby="accepted-onsite-payments" />
-										<span class="flex-1 font-medium">{payText('onsite', 'label', m.pay_group_onsite())}</span>
-									</label>
-									<div id="accepted-onsite-payments" class="space-y-1 px-3 pb-3 pl-9 text-sm text-stone-600">
-										{#if onsiteMethods.length}
-											<p>{m.pay_onsite_accepted({ methods: new Intl.ListFormat(getLocale()).format(onsiteMethods.map(onsiteMethodLabel)) })}</p>
-										{/if}
-										{#if onsiteMethods.includes('card') && onsiteCardBrands}
-											<p class="text-xs">{m.pay_onsite_card_brands({ brands: onsiteCardBrands })}</p>
-										{/if}
 										{#if payText('onsite', 'note', '')}<p class="whitespace-pre-line text-xs">{payText('onsite', 'note', '')}</p>{/if}
 									</div>
 								</div>

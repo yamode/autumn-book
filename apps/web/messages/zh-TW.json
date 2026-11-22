@@ -1957,5 +1957,6 @@
   "alert_invalid_adults": "每間客房請指定1至6位大人。",
   "alert_invalid_rooms": "請指定1至4間客房。",
   "alert_invalid_room_plan": "請重新選擇客房與方案。",
-  "alert_invalid_budget": "預算請輸入1至10,000,000日圓的整數。"
+  "alert_invalid_budget": "預算請輸入1至10,000,000日圓的整數。",
+  "pay_group_card": "各大信用卡"
 }

@@ -170,7 +170,8 @@ export async function listNews(facilityId: string, limit?: number) {
 	if (limit) q = q.limit(limit);
 	const { data, error } = await q;
 	if (error) throw error;
-	return data;
+	// 英語・繁体字は訳（content_translations の news: title / body）を重ねる（2026-11-22）
+	return withTranslations(data ?? [], 'news');
 }
 
 // 公開済み記事の単体取得（施設HP側の記事詳細ページ用）。RLSにより is_published=true のみ取得可。
@@ -182,7 +183,9 @@ export async function getNewsPost(facilityId: string, id: string) {
 		.eq('id', id)
 		.maybeSingle();
 	if (error) throw error;
-	return data;
+	if (!data) return data;
+	const [post] = await withTranslations([data], 'news');
+	return post;
 }
 
 // --------------------------------------------------------- お知らせ管理（authenticated・要facility_access）
@@ -2789,7 +2792,7 @@ function mapFaqRow(row: Record<string, unknown>, facilityId: string): Faq {
  */
 export async function withTranslations<T extends { id: string }>(
 	items: T[],
-	entityType: 'facility' | 'room_type' | 'plan',
+	entityType: 'facility' | 'room_type' | 'plan' | 'faq' | 'news',
 	locale: Locale = currentLocale()
 ): Promise<T[]> {
 	if (locale === 'ja' || items.length === 0) return items;
@@ -2974,7 +2977,7 @@ export async function sbPlanBySlug(facilityUuid: string, slug: string): Promise<
 
 export async function sbListFaqsMapped(facilityUuid: string): Promise<Faq[]> {
 	const rows = await listFaqs(facilityUuid);
-	return (rows ?? []).map((r) => mapFaqRow(r as Record<string, unknown>, facilityUuid));
+	return withTranslations((rows ?? []).map((r) => mapFaqRow(r as Record<string, unknown>, facilityUuid)), 'faq');
 }
 
 export async function sbListNewsMapped(facilityUuid: string, limit?: number): Promise<NewsPost[]> {

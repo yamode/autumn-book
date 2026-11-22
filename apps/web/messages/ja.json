@@ -1957,5 +1957,6 @@
   "alert_invalid_adults": "大人の人数は1室あたり1〜6名で指定してください。",
   "alert_invalid_rooms": "室数は1〜4室で指定してください。",
   "alert_invalid_room_plan": "お部屋・プランを選び直してください。",
-  "alert_invalid_budget": "予算は1〜10,000,000円の整数で指定してください。"
+  "alert_invalid_budget": "予算は1〜10,000,000円の整数で指定してください。",
+  "pay_group_card": "各種クレジットカード"
 }
