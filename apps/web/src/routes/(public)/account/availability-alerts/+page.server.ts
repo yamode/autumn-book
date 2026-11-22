@@ -5,6 +5,7 @@ import type { AvailabilityAlert } from '$lib/availability-alerts';
 import { todayStr } from '$lib/format';
 import { alertErrorMessage } from '$lib/server/availability-alert-errors';
 import { dbg } from '$lib/debug';
+import * as m from '$lib/paraglide/messages';
 import type { Actions, PageServerLoad } from './$types';
 
 function requireMember(event: { locals: App.Locals; url: URL }) {
@@ -37,11 +38,11 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
 	remove: async (event) => {
 		requireMember(event);
-		if (!MEMBER_SUPABASE) return fail(400, { message: 'この環境では操作できません。' });
+		if (!MEMBER_SUPABASE) return fail(400, { message: m.account_env_unavailable() });
 		const id = String((await event.request.formData()).get('id') ?? '');
-		if (!/^[0-9a-f-]{36}$/i.test(id)) return fail(400, { message: '通知が見つかりません。' });
+		if (!/^[0-9a-f-]{36}$/i.test(id)) return fail(400, { message: m.account_alerts_not_found() });
 		const { error } = await createSupabaseServerClient(event).schema('book').rpc('delete_availability_alert', { p_id: id });
 		if (error) return fail(400, { message: alertErrorMessage(error.message) });
-		return { message: '空室通知を削除しました。', success: true };
+		return { message: m.account_alerts_deleted(), success: true };
 	}
 };

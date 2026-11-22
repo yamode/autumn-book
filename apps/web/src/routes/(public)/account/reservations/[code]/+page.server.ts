@@ -26,7 +26,7 @@ import { bookingReceiptAvailable } from '$lib/booking-receipt';
 import { bookingReceiptDefaultAddressee } from '$lib/server/booking-receipt';
 import {
 	amendGate,
-	MEMBER_PAGE_BOOKING_MESSAGE,
+	memberPageBookingMessage,
 	memberPageBookingOf,
 	multiRoomCards,
 	reservationDetailOf
@@ -112,7 +112,7 @@ export const load: PageServerLoad = async (event) => {
  */
 async function denyMemberPageBooking(client: SupabaseClient, code: string) {
 	const mp = await memberPageBookingOf(client, code);
-	return mp ? fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href: mp.href }) : null;
+	return mp ? fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href: mp.href }) : null;
 }
 
 export const actions: Actions = {

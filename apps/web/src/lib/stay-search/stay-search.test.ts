@@ -154,8 +154,8 @@ describe('空き日', () => {
 		expect(apiOrigin('https://book.yamado.app/embed/search-bar.js')).toBe('https://book.yamado.app');
 		expect(apiOrigin('http://localhost:5173/embed/search-bar.js?v=1')).toBe('http://localhost:5173');
 		expect(apiOrigin(undefined)).toBe('https://book.yamado.app');
-		expect(calendarUrl(O, 'oga', 3, 2)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=3&adults=2&months=2');
-		expect(calendarUrl(O, 'oga', 10, 0)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=7&adults=1&months=2');
+		expect(calendarUrl(O, 'oga', 3, 2)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=3&adults=2&months=6');
+		expect(calendarUrl(O, 'oga', 10, 0)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=7&adults=1&months=6');
 	});
 	it('応答の読み取りと日ごとの判定（取得範囲内で料金なし＝満室、休館日、範囲外は選べる、過去は選べない）', () => {
 		const data = parseCalendar({

@@ -55,9 +55,9 @@
 	});
 
 	function ruleLabel(daysBefore: number): string {
-		if (daysBefore < 0) return 'ご連絡なく不泊';
-		if (daysBefore === 0) return '当日';
-		return `${daysBefore}日前から`;
+		if (daysBefore < 0) return m.gcancel_rule_no_show();
+		if (daysBefore === 0) return m.booking_cancel_same_day();
+		return m.booking_cancel_days({ days: String(daysBefore) });
 	}
 
 	/** チェックインまでの残日数（JST 基準の日付文字列同士の差） */
@@ -132,9 +132,9 @@
 		</div>
 	{:else if v.state === 'rate_limited'}
 		<div class="mt-6 rounded-xl border border-stone-200 bg-white p-6">
-			<h2 class="text-lg text-brand-900">しばらく時間をおいてお試しください</h2>
+			<h2 class="text-lg text-brand-900">{m.gcancel_rate_limited_h()}</h2>
 			<p class="mt-2 text-stone-600">
-				アクセスが集中しています。{Math.ceil((v.retryInSec ?? 60) / 60)}分ほどおいてから、もう一度リンクをお開きください。
+				{m.gcancel_rate_limited({ minutes: String(Math.ceil((v.retryInSec ?? 60) / 60)) })}
 			</p>
 		</div>
 	{:else if v.state === 'error'}
@@ -193,20 +193,20 @@
 		<!-- ご予約内容 -->
 		<dl class="mt-6 space-y-2 rounded-xl border border-stone-200 bg-white p-5 text-sm">
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">予約番号</dt>
+				<dt class="text-stone-500">{m.common_reservation_number()}</dt>
 				<dd class="font-bold tracking-wider text-brand-900">{v.booking.code}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">ご宿泊施設</dt>
+				<dt class="text-stone-500">{m.gcancel_label_facility()}</dt>
 				<dd>{v.booking.facility_name}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">チェックイン</dt>
+				<dt class="text-stone-500">{m.common_checkin()}</dt>
 				<dd>{formatDateLong(v.booking.check_in_date)}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">チェックアウト</dt>
-				<dd>{formatDateLong(v.booking.check_out_date)}・{v.booking.nights}泊</dd>
+				<dt class="text-stone-500">{m.common_checkout()}</dt>
+				<dd>{formatDateLong(v.booking.check_out_date)}・{m.common_nights_unit({ n: String(v.booking.nights) })}</dd>
 			</div>
 			{#if v.multi}
 				<!-- 複数室: 部屋ごとのカード（M1）・この部屋を取り消す（M2） -->
@@ -259,27 +259,27 @@
 			{:else}
 				{#if v.booking.room_name}
 					<div class="flex justify-between gap-4">
-						<dt class="shrink-0 text-stone-500">お部屋</dt>
+						<dt class="shrink-0 text-stone-500">{m.gcancel_label_room()}</dt>
 						<dd class="text-right">{v.booking.room_name}</dd>
 					</div>
 				{/if}
 				{#if v.booking.plan_name}
 					<div class="flex justify-between gap-4">
-						<dt class="shrink-0 text-stone-500">プラン</dt>
+						<dt class="shrink-0 text-stone-500">{m.common_plan()}</dt>
 						<dd class="text-right">{v.booking.plan_name}</dd>
 					</div>
 				{/if}
 				<div class="flex justify-between gap-4">
-					<dt class="text-stone-500">ご人数</dt>
-					<dd>大人{v.booking.adult_count}名</dd>
+					<dt class="text-stone-500">{m.gcancel_label_guests()}</dt>
+					<dd>{m.common_adults_unit({ n: String(v.booking.adult_count) })}</dd>
 				</div>
 			{/if}
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">ご宿泊料金</dt>
-				<dd>{formatPrice(v.booking.total_amount)}（税込・現地払い）</dd>
+				<dt class="text-stone-500">{m.gcancel_label_total()}</dt>
+				<dd>{m.gcancel_total_onsite({ amount: formatPrice(v.booking.total_amount) })}</dd>
 			</div>
 			<div class="flex justify-between gap-4">
-				<dt class="text-stone-500">ご連絡先</dt>
+				<dt class="text-stone-500">{m.gcancel_label_contact()}</dt>
 				<dd>{v.booking.phone_masked} ／ {v.booking.email_masked}</dd>
 			</div>
 		</dl>
@@ -315,7 +315,7 @@
 							{#each [...v.fee.rules].sort((a, b) => b.days_before - a.days_before) as r (r.days_before)}
 								<tr>
 									<td class="py-0.5 pr-6 text-stone-600">{ruleLabel(r.days_before)}</td>
-									<td class="py-0.5">ご宿泊料金の{Math.round(r.rate * 100)}%</td>
+									<td class="py-0.5">{m.gcancel_rule_rate({ rate: String(Math.round(r.rate * 100)) })}</td>
 								</tr>
 							{/each}
 						</tbody>

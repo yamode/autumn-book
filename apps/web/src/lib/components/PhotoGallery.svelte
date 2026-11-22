@@ -1,14 +1,16 @@
 <script lang="ts">
 	import type { Photo } from '$lib/types';
+	import * as m from '$lib/paraglide/messages';
 
 	let { photos }: { photos: Photo[] } = $props();
 
-	const categoryLabels: Record<string, string> = {
-		exterior: '外観',
-		room: '客室',
-		bath: '温泉',
-		meal: 'お食事',
-		view: '景色'
+	// 表示中の言語で引くため関数にしておく（未知のカテゴリはそのまま出す）
+	const categoryLabels: Record<string, () => string> = {
+		exterior: m.photo_gallery_category_exterior,
+		room: m.photo_gallery_category_room,
+		bath: m.photo_gallery_category_bath,
+		meal: m.photo_gallery_category_meal,
+		view: m.photo_gallery_category_view
 	};
 	const categories = $derived(['all', ...new Set(photos.map((p) => p.category))]);
 	let active = $state('all');
@@ -25,7 +27,7 @@
 					? 'bg-brand-800 text-white'
 					: 'bg-stone-100 text-stone-600 hover:bg-stone-200'}"
 			>
-				{c === 'all' ? 'すべて' : categoryLabels[c] ?? c}
+				{c === 'all' ? m.photo_gallery_all() : categoryLabels[c]?.() ?? c}
 			</button>
 		{/each}
 	</div>

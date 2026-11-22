@@ -26,29 +26,9 @@
 		return () => clearInterval(t);
 	});
 
-	// 原サイト front-page.php の実コピー（全文）
-	const intro1 = [
-		'山人（やまど）―、文字通り「山の人」。',
-		'ここ西和賀の地では、山仕事の達人や山を熟知している人のことを',
-		'（いささか敬意を込めて）山人と呼びます。',
-		'山の優しさ、山の厳しさ、いつごろになるとどこの山になんという木が芽吹き、',
-		'何月にはあの山一面まばゆいほどの紅葉に埋め尽くされる、',
-		'あの山の陰が、実は山菜の宝庫なのだ・・・などなど。',
-		'私たちの宿「山人」も、そんな山の達人たちと同じように、',
-		'この地の自然とともに息づき、その季節でなければ決して味わえない味覚を探し出し、',
-		'お客様と一緒に楽しんでいきたい。',
-		'自然の息づかいにそっと耳を傾ける―、',
-		'ここは＜極上のヒーリングリゾート＞です。'
-	];
-	const intro2 = [
-		'世界中から美味しい食材は取り寄せることは、それほど難しいことではありません。',
-		'その一方で、その季節にその土地でなければ食べられない味覚というものもあります。',
-		'私たちの宿「山人」は、そんな、この土地の食の豊かさに光を当てたい・・・。',
-		'それがお客様を当館にお招きしたい一番の理由です。',
-		'「山人」ではお泊りのたびに違ったお料理をお出しします。',
-		'その季節でなければ食べられない食材、',
-		'その季節に一番美味しくなる食材がここには山ほどあるからです。'
-	];
+	// 原サイト front-page.php の実コピー（全文）。訳文は1行ずつ改行で区切り、行ごとに <br /> で折り返す
+	const intro1 = $derived(m.tpl_yamado_intro1().split('\n'));
+	const intro2 = $derived(m.tpl_yamado_intro2().split('\n'));
 </script>
 
 <div class="yamado-v1 bg-white" style="--fac-heading: #333; --fac-accent: #4a6b52;">
@@ -80,7 +60,7 @@
 		<section use:reveal class="mt-[60px] sm:mt-[125px]">
 			<div class="grid items-center gap-8 md:grid-cols-[1fr_55%]">
 				<div class="md:order-1">
-					<h2 class="text-[26px] font-normal tracking-[0.1em] sm:text-[34px]" style="color: var(--fac-heading)">山人と名乗る宿</h2>
+					<h2 class="text-[26px] font-normal tracking-[0.1em] sm:text-[34px]" style="color: var(--fac-heading)">{m.tpl_yamado_intro1_heading()}</h2>
 					<p class="mt-[5px] text-[14px] leading-[2] sm:text-[15px]">
 						{#each intro1 as line}{line}<br />{/each}
 					</p>
@@ -94,7 +74,7 @@
 			<div class="grid items-center gap-8 md:grid-cols-[55%_1fr]">
 				<img src="{A}/top_fig_02.jpg" alt="" class="w-full" loading="lazy" />
 				<div>
-					<h2 class="text-[26px] font-normal tracking-[0.1em] sm:text-[34px]" style="color: var(--fac-heading)">ここに来る理由</h2>
+					<h2 class="text-[26px] font-normal tracking-[0.1em] sm:text-[34px]" style="color: var(--fac-heading)">{m.tpl_yamado_intro2_heading()}</h2>
 					<p class="mt-[5px] text-[14px] leading-[2] sm:text-[15px]">
 						{#each intro2 as line}{line}<br />{/each}
 					</p>
@@ -107,20 +87,20 @@
 			<div class="flex flex-col gap-[1%] gap-y-3 sm:flex-row">
 				<div class="w-full sm:w-[49.5%]">
 					<a href="{base}/facility" class="group relative block h-full">
-						<img src="{A}/label_01.png" alt="施設" class="absolute left-4 top-4 z-10 w-[64px]" />
-						<img src="{A}/link_01.jpg" alt="施設" class="h-full w-full object-cover transition group-hover:hidden" />
+						<img src="{A}/label_01.png" alt={m.site_nav_facilities()} class="absolute left-4 top-4 z-10 w-[64px]" />
+						<img src="{A}/link_01.jpg" alt={m.site_nav_facilities()} class="h-full w-full object-cover transition group-hover:hidden" />
 						<img src="{A}/link_01_h.jpg" alt="" class="hidden h-full w-full object-cover group-hover:block" />
 					</a>
 				</div>
 				<div class="flex w-full flex-col justify-between gap-y-3 sm:w-[49.5%]">
 					<a href="{base}/rooms" class="group relative block">
-						<img src="{A}/label_02.png" alt="客室" class="absolute left-4 top-4 z-10 w-[64px]" />
-						<img src="{A}/link_02.jpg" alt="客室" class="w-full transition group-hover:hidden" />
+						<img src="{A}/label_02.png" alt={m.facility_rooms()} class="absolute left-4 top-4 z-10 w-[64px]" />
+						<img src="{A}/link_02.jpg" alt={m.facility_rooms()} class="w-full transition group-hover:hidden" />
 						<img src="{A}/link_02_h.jpg" alt="" class="hidden w-full group-hover:block" />
 					</a>
 					<a href="{base}/cuisine" class="group relative block">
-						<img src="{A}/label_03.png" alt="お料理" class="absolute left-4 top-4 z-10 w-[64px]" />
-						<img src="{A}/link_03.jpg" alt="お料理" class="w-full transition group-hover:hidden" />
+						<img src="{A}/label_03.png" alt={m.site_nav_cuisine()} class="absolute left-4 top-4 z-10 w-[64px]" />
+						<img src="{A}/link_03.jpg" alt={m.site_nav_cuisine()} class="w-full transition group-hover:hidden" />
 						<img src="{A}/link_03_h.jpg" alt="" class="hidden w-full group-hover:block" />
 					</a>
 				</div>
@@ -130,13 +110,13 @@
 		<!-- 周辺観光バナー（原サイト sec_sight-bnr） -->
 		<section use:reveal class="mt-[60px] text-center sm:mt-[100px]">
 			<a href="{base}/shiki" class="inline-block transition hover:opacity-80">
-				<img src="{A}/tourist-info.png" alt="周辺観光案内" class="mx-auto w-full max-w-[720px]" loading="lazy" />
+				<img src="{A}/tourist-info.png" alt={m.tpl_yamado_tourist_alt()} class="mx-auto w-full max-w-[720px]" loading="lazy" />
 			</a>
 		</section>
 
 		<!-- 予約機能（プラン・客室・カレンダー） -->
 		<section use:reveal id="plans" class="mt-[60px] sm:mt-[125px]">
-			<h2 class="mb-8 text-center text-[26px] font-normal tracking-[0.15em] sm:text-[30px]" style="color: var(--fac-heading)">おすすめプラン</h2>
+			<h2 class="mb-8 text-center text-[26px] font-normal tracking-[0.15em] sm:text-[30px]" style="color: var(--fac-heading)">{m.facility_recommend_plans()}</h2>
 			<div class="space-y-4">
 				{#each data.plans.slice(0, 3) as plan}
 					<PlanCard {plan} href="{base}/plans/{plan.slug}" />
@@ -173,7 +153,7 @@
 			height="400"
 			style="border:0;"
 			loading="lazy"
-			title="地図"
+			title={m.facility_map_title()}
 			allowfullscreen
 		></iframe>
 	</section>
@@ -182,8 +162,8 @@
 	<section class="bg-[#4d4d4d] py-12 text-white">
 		<div class="mx-auto flex max-w-[980px] flex-col items-center justify-between gap-6 px-4 sm:flex-row">
 			<div class="text-center sm:text-left">
-				<p class="text-[15px] tracking-wider">岩手 湯川温泉「山人-yamado-」</p>
-				<p class="mt-2 text-[14px] leading-relaxed text-white/80">〒029-5514 岩手県和賀郡西和賀町湯川52地割71-10<br />TEL {f.phone}</p>
+				<p class="text-[15px] tracking-wider">{m.tpl_yamado_address_name()}</p>
+				<p class="mt-2 text-[14px] leading-relaxed text-white/80">{m.tpl_yamado_address()}<br />TEL {f.phone}</p>
 				<p class="mt-3 text-[14px] tracking-widest text-white/70">
 					Follow us
 					<a href="https://www.instagram.com/explore/locations/299907439/yamado" target="_blank" rel="noopener" class="ml-3 hover:text-white">Instagram</a>

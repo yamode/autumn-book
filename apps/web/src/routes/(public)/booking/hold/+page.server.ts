@@ -363,18 +363,18 @@ export const actions: Actions = {
 				live: true, onlineReady: await directPaymentsReady().catch(() => false), guestCardOnly: !isMember
 			});
 			if (payment === 'onsite' && !pay.options.includes('onsite')) {
-				errors.payment = !isMember ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+				errors.payment = !isMember ? m.pay_nonmember_onsite_denied() : m.hold_error_payment_select();
 				return fail(400, { errors, values: guest });
 			}
 			// 現地払いの内訳は施設でオンのものだけ（管理画面の支払方法でオフにした内訳は受けない）
 			const allowedOnsite = groupPayment(roomViews).onsiteMethods;
 			if (payment === 'onsite' && onsiteMethod && allowedOnsite && !allowedOnsite.includes(onsiteMethod)) {
-				errors.payment = 'お支払い方法を選択してください';
+				errors.payment = m.hold_error_payment_select();
 				return fail(400, { errors, values: guest });
 			}
 			if (payment !== 'onsite') {
 				// カードはこの画面の入力欄で払う（JavaScript が動かない等でここに来たときは選び直してもらう）
-				errors.payment = 'お支払い方法を選択してください';
+				errors.payment = m.hold_error_payment_select();
 				return fail(400, { errors, values: guest });
 			}
 
@@ -416,7 +416,7 @@ export const actions: Actions = {
 				}
 				// 画面の判定をすり抜けても DB が支払方法を検査する（onsite_not_allowed）
 				if (result.error === 'onsite_not_allowed') {
-					errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : 'お支払い方法を選択してください';
+					errors.payment = groupMemberOnsiteHint(roomViews, isMember) ? m.pay_nonmember_onsite_denied() : m.hold_error_payment_select();
 					return fail(400, { errors, values: guest });
 				}
 				// 確定の時点でお部屋が埋まっていた（入力中は在庫を押さえていない）
@@ -463,7 +463,7 @@ export const actions: Actions = {
 			errors.payment =
 				payment === 'onsite' && !isMember
 					? m.pay_nonmember_onsite_denied()
-					: 'お支払い方法を選択してください';
+					: m.hold_error_payment_select();
 			return fail(400, { errors, values: guest });
 		}
 

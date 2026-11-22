@@ -6,7 +6,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { facilityById } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { MEMBER_PAGE_BOOKING_MESSAGE, amendGate, memberPageBookingOf } from '$lib/server/member-reservation-detail';
+import { memberPageBookingMessage, amendGate, memberPageBookingOf } from '$lib/server/member-reservation-detail';
 import {
 	reverseFacilityUuid,
 	sbAmendBookingRooms,
@@ -53,7 +53,7 @@ function amendRoomMessage(code: AmendRoomErrorCode): string {
 		case 'not_amendable':
 			return m.amend_err_room_not_found();
 		case 'member_page_booking':
-			return MEMBER_PAGE_BOOKING_MESSAGE;
+			return memberPageBookingMessage();
 		case 'plan_not_found':
 		case 'not_sellable':
 		case 'invalid':
@@ -226,7 +226,7 @@ export const actions: Actions = {
 		}
 		const client = createSupabaseServerClient(event);
 		const mp = await memberPageBookingOf(client, params.code);
-		if (mp) return fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href: mp.href });
+		if (mp) return fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href: mp.href });
 		if (await isPrepaidOnline(params.code)) return fail(400, { code: 'prepaid_online' as const, message: m.amend_prepaid_blocked() });
 		try {
 			await sbAmendBookingRooms(client, params.code, [{ index, ratePlanId, roomTypeId, adults }]);

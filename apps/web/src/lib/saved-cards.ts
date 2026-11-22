@@ -6,6 +6,7 @@
 // - 同じカード（fingerprint が同じ）は二重に保存しない（N5）
 // - 有効期限の判定は lib/partner-card.ts（予約は請求日の月から2か月の余裕・マイページの登録は今日基準で切れていないか）
 import { cardExpiresBefore } from './partner-card';
+import * as m from '$lib/paraglide/messages';
 
 export type SavedCard = {
   id: string;
@@ -46,7 +47,7 @@ const BRAND_LABELS: Record<string, string> = {
 
 /** カードのブランドの表示名（例: visa → Visa） */
 export const cardBrandLabel = (brand: string | null | undefined): string =>
-  BRAND_LABELS[(brand ?? '').toLowerCase()] ?? ((brand ?? '').replace(/^./, (c) => c.toUpperCase()) || 'カード');
+  BRAND_LABELS[(brand ?? '').toLowerCase()] ?? ((brand ?? '').replace(/^./, (c) => c.toUpperCase()) || m.reservation_payment_card());
 
 /** 有効期限の表示（MM/YY）。読めなければ '—' */
 export function cardExpLabel(expMonth: number | null | undefined, expYear: number | null | undefined): string {

@@ -232,7 +232,7 @@
 
 		<dl class="mt-5 space-y-2 text-sm">
 			<div class="flex justify-between gap-3 border-b border-stone-100 pb-2"><dt class="shrink-0 text-stone-500">{m.reservation_checkin()}</dt><dd class="text-right">{formatDateLong(b.checkin)} {facility.checkinTime ?? ''}{facility.checkinTime ? '〜' : ''}</dd></div>
-			<div class="flex justify-between gap-3 border-b border-stone-100 pb-2"><dt class="shrink-0 text-stone-500">{m.reservation_nights_adults()}</dt><dd>{b.nights}泊・大人{b.adults}名</dd></div>
+			<div class="flex justify-between gap-3 border-b border-stone-100 pb-2"><dt class="shrink-0 text-stone-500">{m.reservation_nights_adults()}</dt><dd>{m.common_nights_adults({ nights: String(b.nights), adults: String(b.adults) })}</dd></div>
 			{#if data.multiRoom}
 				<!-- 複数室（M1）: 部屋ごとのカード（部屋名／プラン名／人数／金額／状態） -->
 				<div class="border-b border-stone-100 pb-2">
@@ -429,7 +429,7 @@
 									</div>
 									<span class="shrink-0 text-xs font-medium {o.amount === 0 ? 'text-emerald-700' : 'text-stone-700'}">
 										{o.amount === 0 ? m.options_free() : formatPrice(o.amount)}
-										{#if o.paymentMode === 'online'}<span class="ml-1 text-emerald-700">オンライン決済済み</span>{/if}
+										{#if o.paymentMode === 'online'}<span class="ml-1 text-emerald-700">{m.reservation_option_paid_online()}</span>{/if}
 									</span>
 								</div>
 								{#if canCancelOption(o)}
@@ -448,7 +448,7 @@
 						<span class="font-medium text-stone-700">{optionsTotal === 0 ? m.options_free() : formatPrice(optionsTotal)}</span>
 					</div>
 				{/if}
-				{#if options.some((o) => o.isUpgrade)}<p class="mt-3 text-xs leading-6 text-stone-500">アップグレード済みのご予約の変更は施設へお問い合わせください。お部屋をキャンセルした場合、オンライン決済済みのアップグレード追加料金は宿泊料金の返金とは別に全額返金します。</p>{/if}
+				{#if options.some((o) => o.isUpgrade)}<p class="mt-3 text-xs leading-6 text-stone-500">{m.reservation_upgrade_note()}</p>{/if}
 			</div>
 		{/if}
 

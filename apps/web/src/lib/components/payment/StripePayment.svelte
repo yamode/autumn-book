@@ -316,7 +316,8 @@
           </div>
         </div>
       {/if}
-      <div bind:this={payHost}></div>
+      <!-- 読み込み中は薄く隠しておき、入力欄が出たらふわっと出す（シマーの後はフェードイン・2026-11-22） -->
+      <div bind:this={payHost} class="transition-opacity duration-[260ms] ease-out motion-reduce:transition-none {phase === 'loading' ? 'opacity-0' : 'opacity-100'}"></div>
     </div>
 
     {#if phase === 'error'}

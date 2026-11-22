@@ -6,6 +6,7 @@
   import { untrack } from 'svelte';
   import { shiftYm } from '$lib/partner-rate-sheet';
   import { streamed } from '$lib/streamed.svelte';
+  import { fadeIn } from '$lib/fade-in';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -104,17 +105,20 @@
       {#if format === 'pdf'}
         <fieldset class="min-w-0">
           <legend class="mb-1 text-sm font-medium">料金表の人数（1室あたり・複数選べます）</legend>
-          <div class="flex flex-wrap gap-2">
-            {#if guestOpts.current}
+          <!-- 人数の枠（シマー）のあとは、選択肢をまとめてふわっと出す（{#each} の中の要素には in: が効かないので並びの枠に付ける） -->
+          {#if guestOpts.current}
+            <div in:fadeIn class="flex flex-wrap gap-2">
               {#each guestOpts.current as g (g)}
                 <label class={chip(guests.includes(g))}>
                   <input type="checkbox" class="sr-only" checked={guests.includes(g)} onchange={() => toggleGuest(g)} />{g}名
                 </label>
               {/each}
-            {:else}
+            </div>
+          {:else}
+            <div class="flex flex-wrap gap-2">
               {#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-[3.25rem] rounded-full" aria-hidden="true"></div>{/each}
-            {/if}
-          </div>
+            </div>
+          {/if}
           <input type="hidden" name="guests" value={guests.join(',')} />
           {#if guestOpts.current && !guests.length}<p class="mt-1.5 text-xs text-rose-700">人数を1つ以上選んでください。</p>{/if}
         </fieldset>

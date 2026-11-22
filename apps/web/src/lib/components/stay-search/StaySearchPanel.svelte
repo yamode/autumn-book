@@ -22,6 +22,7 @@
   import type { Snippet } from 'svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { fadeIn } from '$lib/fade-in';
   import { isHoliday } from '$lib/holidays';
   import { STAY_SEARCH_LABELS, type StaySearchLabels } from '$lib/stay-search/labels';
   import { addDays, formatMonth, formatShortDate, monthGrid, shiftYm, WEEKDAYS, type StaySearchLang } from '$lib/stay-search/params';
@@ -184,12 +185,14 @@
         {:else if c.price != null}
           <!-- 金額と「円」を1行に（2026-10-10 指示: 円だけ改行されていた）。狭いマスでも収まるよう少し小さく・字間を詰める。
                スマホ幅（〜640px）はマスが約43pxしかなく「26,300円」が隣のマスにはみ出すので、円（en は ¥）を省く（2026-10-29） -->
-          <span class={`block whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter sm:text-[13px] ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{#if lang === 'en'}<span class="hidden text-[10px] sm:inline">¥</span>{c.price.toLocaleString('ja-JP')}{:else}{c.price.toLocaleString('ja-JP')}<span class="hidden text-[10px] sm:inline">円</span>{/if}</span>
-          {#if c.rooms != null}<span class={`block whitespace-nowrap text-[10px] leading-tight sm:text-[11px] ${selected ? 'text-white/90' : c.rooms <= 2 ? 'text-rose-600' : 'text-stone-500'}`}>{labels.roomsLeft(c.rooms)}</span>{/if}
+          <!-- シマーのあとは料金・残室の文字だけふわっと出す（in: はローカルなので月送りでマスごと作り直されたときは再生しない。
+               残室は内側の {#if} だと再生されないので、料金と残室を1つの枠でまとめてフェードする） -->
+          <span in:fadeIn class="block"><span class={`block whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter sm:text-[13px] ${selected ? 'text-white' : 'text-[var(--pt-accent)]'}`}>{#if lang === 'en'}<span class="hidden text-[10px] sm:inline">¥</span>{c.price.toLocaleString('ja-JP')}{:else}{c.price.toLocaleString('ja-JP')}<span class="hidden text-[10px] sm:inline">円</span>{/if}</span>
+          {#if c.rooms != null}<span class={`block whitespace-nowrap text-[10px] leading-tight sm:text-[11px] ${selected ? 'text-white/90' : c.rooms <= 2 ? 'text-rose-600' : 'text-stone-500'}`}>{labels.roomsLeft(c.rooms)}</span>{/if}</span>
         {:else if c.mark === 'closed'}
-          <span class="block text-xs">{labels.closed}</span>
+          <span in:fadeIn class="block text-xs">{labels.closed}</span>
         {:else if c.mark === 'dash'}
-          <span class="block text-xs">—</span>
+          <span in:fadeIn class="block text-xs">—</span>
         {/if}
       </button>
     {/each}

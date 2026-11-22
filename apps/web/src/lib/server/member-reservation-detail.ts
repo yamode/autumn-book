@@ -29,6 +29,7 @@ import {
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { directPaymentForBooking, directRefundPreviewOf, prepayBonusPointsOf, type DirectPaymentInfo } from '$lib/server/direct-payments';
 import { CANCEL_POLICY_LABELS, type MemberPerkSnapshot } from '$lib/partner-member-page';
+import * as m from '$lib/paraglide/messages';
 
 // 変更可否ゲート（会員 & reserved & 締切前 & 残回数あり）。
 // 締切 = チェックイン日 9:00 施設TZ（≒ JST）。9:00 JST = 当日 00:00 UTC。
@@ -270,3 +271,5 @@ export async function memberPageBookingOf(client: SupabaseClient, code: string):
 
 /** 公式マイページで専用ページ経由の予約を操作しようとしたときの fail の中身 */
 export const MEMBER_PAGE_BOOKING_MESSAGE = 'このご予約の変更・取消は、特別会員ページのご予約一覧から行えます。';
+/** 上の文言をリクエストの言語で返す（呼び出し元は順次こちらへ切り替える。定数は日本語のまま残す） */
+export const memberPageBookingMessage = (): string => m.member_page_booking_message();

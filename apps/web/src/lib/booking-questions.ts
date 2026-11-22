@@ -3,6 +3,9 @@
 //     プランの question_mode で選ぶ（autumn-shared 20261006073112）。
 //   ・取引先予約では、プランの項目の後ろに取引先ごとの項目（rms_partners.booking_settings.options）を足して聞く。
 //   ・回答は「項目名: 回答」の行にして PMS の予約備考に入れる。
+//   ・お客様に返す検証エラーはリクエストの言語（m.*）。PMS へ渡す項目名・回答（fullLabel・genderText・「あり」）は日本語のまま。
+import * as m from '$lib/paraglide/messages';
+
 export type BookingQuestionType = 'check' | 'select' | 'text';
 
 // booking = 予約ごとに1回聞く / room = 部屋ごとに聞く（複数室なら「1室目 …」「2室目 …」）
@@ -167,17 +170,19 @@ export function resolveQuestionAnswers(
     // 条件に合わず隠れている項目は聞かない（必須でも止めない・回答も残さない）
     if (!isQuestionShown(q, questions, { transport: ctx.transport, answers }, q.roomIndex ?? 0)) continue;
     const o = { ...q, label: q.fullLabel };
+    // エラー文の項目名（複数室の部屋ごとの項目は「N室目 …」。日本語は fullLabel と同じ）
+    const shown = q.roomIndex != null && roomCount > 1 ? `${m.hold_room_n({ n: String(q.roomIndex + 1) })} ${q.label}` : q.label;
     const raw = String(answers[q.key] ?? '').trim();
     if (o.type === 'check') {
       if (raw === '1' || raw === 'true' || raw === 'on') values.push({ label: o.label, value: 'あり' });
-      else if (o.required) return { ok: false, message: `「${o.label}」を確認してください。` };
+      else if (o.required) return { ok: false, message: m.booking_q_error_check({ label: shown }) };
       continue;
     }
     if (!raw) {
-      if (o.required) return { ok: false, message: `「${o.label}」を入力してください。` };
+      if (o.required) return { ok: false, message: m.booking_q_error_input({ label: shown }) };
       continue;
     }
-    if (o.type === 'select' && !o.choices.includes(raw)) return { ok: false, message: `「${o.label}」の選択肢が正しくありません。` };
+    if (o.type === 'select' && !o.choices.includes(raw)) return { ok: false, message: m.booking_q_error_invalid_choice({ label: shown }) };
     values.push({ label: o.label, value: raw.slice(0, 500) });
   }
   return { ok: true, values };
@@ -196,14 +201,14 @@ export function resolveRoomGenders(
 ): { ok: true; rooms: RoomGender[] } | { ok: false; message: string } {
   const rooms: RoomGender[] = [];
   for (const [i, a] of adults.entries()) {
-    const where = adults.length > 1 ? `${i + 1}室目の` : '';
+    const multi = adults.length > 1;
     const rawM = String(get(`male_${i}`) ?? '').trim();
-    if (rawM === '') return { ok: false, message: `${where}男女の内訳（男性の人数）を選んでください。` };
+    if (rawM === '') return { ok: false, message: multi ? m.booking_gender_error_missing_room({ n: String(i + 1) }) : m.booking_gender_error_missing() };
     const male = Number(rawM);
     const rawF = String(get(`female_${i}`) ?? '').trim();
     const female = rawF === '' ? a - male : Number(rawF);
     if (!Number.isInteger(male) || !Number.isInteger(female) || male < 0 || female < 0 || male + female !== a) {
-      return { ok: false, message: `${where}男女の内訳が人数（大人${a}名）と合いません。` };
+      return { ok: false, message: multi ? m.booking_gender_error_mismatch_room({ n: String(i + 1), adults: String(a) }) : m.booking_gender_error_mismatch({ adults: String(a) }) };
     }
     rooms.push({ male, female });
   }

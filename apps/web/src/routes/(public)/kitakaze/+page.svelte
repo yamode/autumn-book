@@ -4,6 +4,7 @@
 	import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
 	import RadioEpisodes from '$lib/components/RadioEpisodes.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { fadeIn } from '$lib/fade-in';
 
 	let { data, form } = $props();
 	let sending = $state(false);
@@ -28,11 +29,14 @@
 			{#await data.episodes}
 				<PageLoadingSkeleton kind="videos" title={m.radio_episodes()} />
 			{:then first}
-				{#if first?.items.length}
-					{#key first}<RadioEpisodes initial={first} playlist={data.playlist} />{/key}
-				{:else}
-					<p class="text-sm text-stone-600">{m.radio_unavailable()}</p>
-				{/if}
+				<!-- 回の一覧の枠（シマー）のあとは、一覧をふわっと出す（一覧の中の回ごとのフェードは「もっと見る」のときだけ） -->
+				<div in:fadeIn>
+					{#if first?.items.length}
+						{#key first}<RadioEpisodes initial={first} playlist={data.playlist} />{/key}
+					{:else}
+						<p class="text-sm text-stone-600">{m.radio_unavailable()}</p>
+					{/if}
+				</div>
 			{/await}
 		</section>
 

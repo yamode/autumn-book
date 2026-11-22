@@ -39,25 +39,25 @@
 	{:else if data.authMode === 'supabase' && step === 'profile'}
 		<!-- step3: プロフィール入力（メールは認証済み） -->
 		<form method="POST" action="?/register{consentQuery}" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-6 max-[359px]:px-4">
-			<p class="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{email}（認証済み）</p>
+			<p class="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">{m.register_email_verified({ email })}</p>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
-					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder="山田" />
+					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder={m.register_placeholder_family_name()} />
 				</label>
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
-					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
+					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder={m.register_placeholder_given_name()} />
 				</label>
 			</div>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family_kana()}</span>
-					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="ヤマダ" />
+					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.register_placeholder_family_kana()} />
 				</label>
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_given_kana()}</span>
-					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
+					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.register_placeholder_given_kana()} />
 				</label>
 			</div>
 			<label class="block text-sm">
@@ -103,21 +103,21 @@
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family()} <span class="text-red-500">*</span></span>
-					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder="山田" />
+					<input name="familyName" value={form?.values?.familyName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.familyName ? 'border-red-400' : 'border-stone-300'}" placeholder={m.register_placeholder_family_name()} />
 				</label>
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_given()} <span class="text-red-500">*</span></span>
-					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder="太郎" />
+					<input name="givenName" value={form?.values?.givenName ?? ''} required class="mt-1 w-full rounded-md border px-3 py-2 {form?.errors?.givenName ? 'border-red-400' : 'border-stone-300'}" placeholder={m.register_placeholder_given_name()} />
 				</label>
 			</div>
 			<div class="grid grid-cols-2 gap-3">
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_family_kana()}</span>
-					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="ヤマダ" />
+					<input name="familyNameKana" value={form?.values?.familyNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.register_placeholder_family_kana()} />
 				</label>
 				<label class="block text-sm">
 					<span class="text-stone-600">{m.name_given_kana()}</span>
-					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="タロウ" />
+					<input name="givenNameKana" value={form?.values?.givenNameKana ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder={m.register_placeholder_given_kana()} />
 				</label>
 			</div>
 			<label class="block text-sm">

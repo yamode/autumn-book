@@ -22,9 +22,9 @@
 	<!-- 予約導線（各下層ページ末尾） -->
 	<div class="pb-16 text-center" use:reveal>
 		{#if variant === 'oga'}
-			<a href="{base}/plans" class="inline-block bg-[#111] px-14 py-4 text-[14px] tracking-[0.3em] text-white transition hover:bg-[#333]">宿泊予約</a>
+			<a href="{base}/plans" class="inline-block bg-[#111] px-14 py-4 text-[14px] tracking-[0.3em] text-white transition hover:bg-[#333]">{m.site_book_stay()}</a>
 		{:else}
-			<a href="{base}/plans" class="inline-block bg-[#e5e5e5] px-14 py-4 text-[16px] tracking-[0.2em] text-black transition hover:bg-[#4d4d4d] hover:text-white">ご予約</a>
+			<a href="{base}/plans" class="inline-block bg-[#e5e5e5] px-14 py-4 text-[16px] tracking-[0.2em] text-black transition hover:bg-[#4d4d4d] hover:text-white">{m.site_reserve()}</a>
 		{/if}
 	</div>
 {:else if data.kind === 'faq'}
@@ -32,7 +32,7 @@
 		<h1 class="mb-2 text-center text-2xl tracking-[0.3em]" style="color: var(--fac-heading, #1f1d15)">{m.facility_faq()}</h1>
 		<p class="mb-10 text-center text-xs tracking-[0.5em] text-stone-400">FAQ</p>
 		<div use:reveal><FaqSection faqs={data.faqs} heading=" " /></div>
-		<p class="mt-10 text-center text-[15px] text-stone-500">解決しない場合はお電話（{f.phone}）でお気軽にお問い合わせください。</p>
+		<p class="mt-10 text-center text-[15px] text-stone-500">{m.site_faq_contact_phone({ phone: f.phone })}</p>
 	</div>
 {:else}
 	<div class="mx-auto {variant === 'yamado' ? 'max-w-[980px]' : 'max-w-5xl'} px-4 py-12 sm:py-16">

@@ -1,3 +1,4 @@
+import * as m from '$lib/paraglide/messages';
 export interface UpgradeOffer {
 	id: string; booking_id: string; stay_id: string; room_index: number;
 	checkin: string; checkout: string; adults: number; total: number;
@@ -43,4 +44,34 @@ export function upgradeError(e: unknown): string {
 		['inventory_missing', '空室情報を確認できませんでした。施設へお問い合わせください。']
 	];
 	return messages.find(([code]) => msg.includes(code))?.[1] ?? '処理できませんでした。時間をおいてもう一度お試しください。';
+}
+
+// ---- お客様向け（マイページ）の文言。画面の言語で出す。管理画面は上の UPGRADE_STATUS / upgradeError（日本語）を使う ----
+/** 提案の状態の表示名（お客様向け） */
+export function upgradeStatusLabel(status: UpgradeOffer['status']): string {
+	switch (status) {
+		case 'offered': return m.upgrade_status_offered();
+		case 'accepted': return m.upgrade_status_accepted();
+		case 'declined': return m.upgrade_status_declined();
+		case 'withdrawn': return m.upgrade_status_withdrawn();
+		case 'expired': return m.upgrade_status_expired();
+		case 'cancelled': return m.upgrade_status_cancelled();
+	}
+}
+/** RPC・決済のエラーをお客様向けの文言にする（管理画面専用のコードは出ないので含めない） */
+export function memberUpgradeError(e: unknown): string {
+	const msg = e && typeof e === 'object' && 'message' in e ? String(e.message) : String(e ?? '');
+	const messages: [string, () => string][] = [
+		['sold_out', m.upgrade_error_sold_out],
+		['offer_unavailable', m.upgrade_error_offer_unavailable],
+		['consent_required', m.upgrade_error_consent_required],
+		['upgrade_payment_required', m.upgrade_error_payment_required],
+		['payment_processing', m.upgrade_error_payment_processing],
+		['upgrade_not_cancellable_separately', m.upgrade_error_not_cancellable_separately],
+		['upgrade_requires_staff', m.upgrade_error_requires_staff],
+		['not_found', m.upgrade_error_not_found], ['forbidden', m.upgrade_error_forbidden],
+		['invalid_params', m.upgrade_error_invalid_params],
+		['inventory_missing', m.upgrade_error_inventory_missing]
+	];
+	return (messages.find(([code]) => msg.includes(code))?.[1] ?? m.upgrade_error_generic)();
 }

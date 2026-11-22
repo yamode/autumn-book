@@ -45,7 +45,7 @@ const bad = (message: string, status = 400, extra: Record<string, unknown> = {})
 
 export const POST: RequestHandler = async (event) => {
 	const { request, cookies, locals, url } = event;
-	if (DATA_SOURCE !== 'supabase') return bad('この環境ではオンライン決済を使えません。', 503);
+	if (DATA_SOURCE !== 'supabase') return bad(m.pay_error_env_unavailable(), 503);
 	const form = await request.formData();
 	const action = String(form.get('action') ?? '');
 	const sid = bookingSessionId(cookies);
@@ -58,7 +58,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 
 		if (action === 'prepare') {
-			if (!(await directPaymentsReady())) return bad('オンライン決済は現在ご利用いただけません。現地払いをお選びください。', 503);
+			if (!(await directPaymentsReady())) return bad(m.pay_error_unavailable_choose_onsite(), 503);
 			const parsed = parseGuestForm(form);
 			const coupon = bookingCouponFrom(form);
 			if (coupon && !memberUserId) return bad(m.booking_coupon_invalid(), 403);
@@ -79,7 +79,7 @@ export const POST: RequestHandler = async (event) => {
 			// 予約時決済はカード、チェックアウト日決済はそのプランで許されているときだけ（DB の direct_payment_prepare も同じ判定をする）
 			const allowed = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady: true });
 			if (form.get('timing') === 'checkout' ? !allowed.checkout : !allowed.options.includes('card')) {
-				return bad('このプランはオンライン決済をご利用いただけません。', 400);
+				return bad(m.pay_error_plan_not_online(), 400);
 			}
 			// 予約時に聞く項目の回答（「項目名: 回答」を備考の先頭へ）。複数室は部屋ごとの男女・回答を guest.rooms に入れ、
 			// DB の direct_payment_confirm が確定のときに部屋ごとの回答（p_rooms_detail）として渡す（autumn-shared 20261010125453）
@@ -153,7 +153,7 @@ export const POST: RequestHandler = async (event) => {
 			if (!hold) return bad(m.error_hold_expired(), 410, { expired: true });
 			// seti_ はオンライン決済（チェックアウト日）のカード登録
 			const r = intentId.startsWith('seti_') ? await confirmDirectSetup(intentId, hold.id) : await confirmDirectIntent(intentId, hold.id);
-			if (r.result === 'card_expiry') return bad('カードの有効期限がチェックアウト日より前に切れるため登録できません。別のカードをご登録ください。', 400);
+			if (r.result === 'card_expiry') return bad(m.pay_notice_card_expiry(), 400);
 			if (r.result === 'paid' || r.result === 'already') {
 				await finishDirectBooking(cookies, hold, draft, r);
 				clearBookingDraft(cookies);
@@ -162,29 +162,29 @@ export const POST: RequestHandler = async (event) => {
 			// 確定の時点でお部屋が埋まっていた（与信は取り消した＝請求なし）
 			if (r.result === 'late' && r.soldOut && r.noCharge) return bad(m.booking_sold_out_at_confirm(), 409, { late: true, soldOut: true });
 			if (r.result === 'late') return bad(r.noCharge ? m.error_hold_expired() : lateMessage(r.refunded), 409, { late: true });
-			if (r.result === 'not_succeeded') return bad('お支払いがまだ完了していません。', 409);
-			return bad('お支払いを確認できませんでした。', 400);
+			if (r.result === 'not_succeeded') return bad(m.pay_error_not_succeeded(), 409);
+			return bad(m.pay_error_not_confirmed(), 400);
 		}
 
-		return bad('不明な操作です。', 400);
+		return bad(m.pay_error_unknown_action(), 400);
 	} catch (e) {
 		if (e instanceof DirectPaymentError) {
 			if (couponErrors.some((code) => code === e.code)) return bad(couponErrorText(e.code), 409);
 			if (e.code === 'hold_expired') return bad(m.error_hold_expired(), 410, { expired: true });
 			// カードの与信を取る前の確認で、お部屋が埋まっていた（請求も与信も無し）
 			if (e.code === 'sold_out') return bad(m.booking_sold_out_at_confirm(), 409, { soldOut: true });
-			if (e.code === 'invalid_guest') return bad('お名前・メールアドレスをご確認ください。', 400);
-			if (e.code === 'amount_too_small') return bad('お支払い額が少ないため、オンライン決済をご利用いただけません。現地払いをお選びください。', 400);
-			if (e.code === 'already_paid') return bad('このご予約はお支払い済みです。', 409);
+			if (e.code === 'invalid_guest') return bad(m.pay_error_invalid_guest(), 400);
+			if (e.code === 'amount_too_small') return bad(m.pay_error_amount_too_small(), 400);
+			if (e.code === 'already_paid') return bad(m.pay_error_already_paid(), 409);
 			// 画面の請求額と DB の額が違う（日付が変わって早期決済割の段が下がった等）。Intent は作っていない
 			if (e.code === 'amount_changed') {
 				console.warn('[booking/pay]', e.message);
 				return bad(m.pay_notice_amount_changed(), 409, { amountChanged: true });
 			}
 			console.error('[booking/pay]', e.code, e.message);
-			return bad('お支払いの準備ができませんでした。時間をおいてもう一度お試しください。', e.status);
+			return bad(m.pay_error_prepare_failed(), e.status);
 		}
 		console.error('[booking/pay]', e);
-		return bad('お支払いの処理中に問題が発生しました。時間をおいてもう一度お試しください。', 502);
+		return bad(m.pay_error_processing_failed(), 502);
 	}
 };

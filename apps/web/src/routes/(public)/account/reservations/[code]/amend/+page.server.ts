@@ -9,7 +9,7 @@ import {
 	amendBooking
 } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { MEMBER_PAGE_BOOKING_MESSAGE, memberPageBookingOf } from '$lib/server/member-reservation-detail';
+import { memberPageBookingMessage, memberPageBookingOf } from '$lib/server/member-reservation-detail';
 import {
 	sbMyReservations,
 	sbPlanOffers,
@@ -287,7 +287,7 @@ export const actions: Actions = {
 		const form = await request.formData();
 		if (MEMBER_SUPABASE) {
 			const mp = await memberPageBookingOf(createSupabaseServerClient(event), params.code);
-			if (mp) return fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href: mp.href });
+			if (mp) return fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href: mp.href });
 		}
 		// 2 室以上（M2）: 全室同時の日程変更（日付・泊数だけ）
 		if (form.get('datesOnly') === '1') {

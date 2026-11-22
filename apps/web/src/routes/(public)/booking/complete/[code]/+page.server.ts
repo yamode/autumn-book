@@ -5,6 +5,7 @@ import { getLastBooking, sbFacilityByUuid, sbMyBookingFavoriteRooms, sbRoomTypeB
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import type { Booking } from '$lib/types';
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
+import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -12,14 +13,14 @@ export const load: PageServerLoad = async (event) => {
 	if (DATA_SOURCE === 'supabase') {
 		// 確定直後に確定アクションが書いた直近予約 cookie から復元する（anon で booking を再取得する RPC が無いため）。
 		const raw = await getLastBooking(cookies);
-		if (!raw || raw.code !== params.code) error(404, '予約が見つかりません');
+		if (!raw || raw.code !== params.code) error(404, m.error_booking_not_found());
 
 		const [facility, room, plan] = await Promise.all([
 			sbFacilityByUuid(raw.facilityUuid),
 			sbRoomTypeByUuid(raw.roomUuid),
 			sbPlanByUuid(raw.planUuid)
 		]);
-		if (!facility || !room) error(404, '予約が見つかりません');
+		if (!facility || !room) error(404, m.error_booking_not_found());
 
 		const booking: Booking = {
 			code: raw.code,
@@ -92,7 +93,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const booking = bookings.get(params.code);
-	if (!booking || (locals.memberPreview && booking.memberId !== locals.user?.id)) error(404, '予約が見つかりません');
+	if (!booking || (locals.memberPreview && booking.memberId !== locals.user?.id)) error(404, m.error_booking_not_found());
 	return {
 		booking,
 		facility: facilityById(booking.facilityId)!,

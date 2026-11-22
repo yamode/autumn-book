@@ -10,6 +10,7 @@ import {
 	getPlanCalendar as sbGetPlanCalendar
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import { clampCalendarMonth } from '$lib/calendar-range';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
@@ -21,7 +22,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	const isMember = viewerIsMember(locals);
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
-		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 
 		const [rooms, rawPlans, facilityFaqs, news, early] = await Promise.all([
 			sbListRoomTypesMapped(facility.id),
@@ -54,7 +55,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 
 	const rooms = getRoomTypes(facility.id, locale);
 	const plans = withEarlyPrepayMax(

@@ -19,6 +19,8 @@ import {
   type PlanQuestionMode
 } from '$lib/booking-questions';
 import { normalizeStandardFields, resolveStandardFields, TRANSPORT_OTHER, type StandardFieldTexts } from '$lib/booking-standard-fields';
+import * as m from '$lib/paraglide/messages';
+import { getLocale } from '$lib/paraglide/runtime';
 
 type Row = Record<string, unknown>;
 const mapTemplate = (r: Row): BookingQuestionTemplate => ({
@@ -255,15 +257,20 @@ export function resolveStandardAnswers(
   texts: StandardFieldTexts
 ): { ok: true; allergies: string; transport: string; values: { label: string; value: string }[] } | { ok: false; message: string } {
   const values: { label: string; value: string }[] = [];
+  // エラー文の項目名: 日本語は施設が変えた見出し、ほかの言語は既定の訳（予約画面の見出しと同じ出し分け）。
+  // PMS へ渡す values の項目名・回答は日本語のまま
+  const isJa = getLocale() === 'ja';
+  const transportLabel = isJa ? texts.transport.label : m.hold_field_transport();
+  const pickupLabel = isJa ? texts.pickup.label : m.hold_field_pickup();
   const allergies = String(form.get('allergies') ?? '').trim().slice(0, 500);
   if (allergies) values.push({ label: 'アレルギー', value: allergies });
   const t = texts.transport;
   const transport = String(form.get('transport') ?? '').trim();
-  if (transport && !t.choices.includes(transport)) return { ok: false, message: `「${t.label}」の選択肢が正しくありません。` };
-  if (!transport && t.required) return { ok: false, message: `「${t.label}」を選んでください。` };
+  if (transport && !t.choices.includes(transport)) return { ok: false, message: m.booking_q_error_invalid_choice({ label: transportLabel }) };
+  if (!transport && t.required) return { ok: false, message: m.booking_q_error_select({ label: transportLabel }) };
   if (transport === TRANSPORT_OTHER) {
     const other = String(form.get('transport_other') ?? '').trim().slice(0, 60);
-    if (!other) return { ok: false, message: `「${t.label}」（${TRANSPORT_OTHER}）の内容を入力してください。` };
+    if (!other) return { ok: false, message: m.booking_q_error_other_detail({ label: transportLabel, other: isJa ? TRANSPORT_OTHER : m.hold_transport_other() }) };
     values.push({ label: t.label, value: `${TRANSPORT_OTHER}（${other}）` });
   } else if (transport) {
     values.push({ label: t.label, value: transport });
@@ -272,8 +279,8 @@ export function resolveStandardAnswers(
   const p = texts.pickup;
   if (transport && transport === p.when && p.choices.length) {
     const time = String(form.get('pickup_time') ?? '').trim();
-    if (!time) return { ok: false, message: `「${p.label}」を選んでください。` };
-    if (!p.choices.includes(time)) return { ok: false, message: `「${p.label}」の選択肢が正しくありません。` };
+    if (!time) return { ok: false, message: m.booking_q_error_select({ label: pickupLabel }) };
+    if (!p.choices.includes(time)) return { ok: false, message: m.booking_q_error_invalid_choice({ label: pickupLabel }) };
     values.push({ label: p.label, value: time });
   }
   return { ok: true, allergies, transport, values };
@@ -325,7 +332,7 @@ async function applyGroupAnswersInner<G extends GuestAnswersTarget>(
       const answers: Record<string, string> = {};
       for (const q of room.questions) answers[answerKey(q, 0)] = String(form.get(`opt_${answerKey(q, i)}`) ?? '').trim();
       const r = resolveQuestionAnswers(room.questions, answers, 1, { transport });
-      if (!r.ok) return { ok: false, message: `${i + 1}室目: ${r.message}` };
+      if (!r.ok) return { ok: false, message: `${m.hold_room_n({ n: String(i + 1) })}: ${r.message}` };
       if (r.values.length) {
         d.notes = answerLines(r.values);
         d.answers = Object.fromEntries(r.values.map((v) => [v.label, v.value]));

@@ -127,7 +127,7 @@ export function buildSearchUrl(origin: string, o: SearchUrlOptions): string {
 /** 空き日の取得先（/api/stay-calendar は施設 slug を受ける） */
 export function calendarUrl(origin: string, facility: string, nights: unknown, adults: unknown): string {
 	const v = clampSearch({ nights, adults });
-	return `${String(origin || DEFAULT_ORIGIN).replace(/\/+$/, '')}/api/stay-calendar?facility=${encodeURIComponent(facility)}&nights=${v.nights}&adults=${v.adults}&months=2`;
+	return `${String(origin || DEFAULT_ORIGIN).replace(/\/+$/, '')}/api/stay-calendar?facility=${encodeURIComponent(facility)}&nights=${v.nights}&adults=${v.adults}&months=6`;
 }
 
 /** 検索の直前に dataLayer へ積む中身（Shadow DOM の中の操作は GTM の自動計測に乗らないため・設計書 §3.5） */

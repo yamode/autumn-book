@@ -3,16 +3,17 @@ import { getFacilityBySlug, getNewsPost as getNewsPostDemo } from '$lib/server/s
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { getNewsPost, FACILITY_UUID } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 
 	if (DATA_SOURCE === 'supabase' && FACILITY_UUID[facility.id]) {
 		const row = await getNewsPost(FACILITY_UUID[facility.id], params.id);
-		if (!row) error(404, 'お知らせが見つかりません');
+		if (!row) error(404, m.error_news_not_found());
 		return {
 			facility,
 			post: {
@@ -28,6 +29,6 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	const post = getNewsPostDemo(params.id, locale);
-	if (!post || post.facilityId !== facility.id) error(404, 'お知らせが見つかりません');
+	if (!post || post.facilityId !== facility.id) error(404, m.error_news_not_found());
 	return { facility, post };
 };

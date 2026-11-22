@@ -1,6 +1,7 @@
 import { error, redirect } from '@sveltejs/kit';
 import { brands } from '$lib/server/store';
 import { localizeHref } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
 // ブランドトップページは持たない（portal_sitemap §6-1・2026-06-21 決定）。
@@ -8,6 +9,6 @@ import type { PageServerLoad } from './$types';
 // URL の [brand] セグメントは将来の多ブランドのネームスペースとして維持する。
 export const load: PageServerLoad = async ({ params }) => {
 	const brand = brands.find((b) => b.slug === params.brand);
-	if (!brand) error(404, 'ブランドが見つかりません');
+	if (!brand) error(404, m.error_brand_not_found());
 	redirect(301, localizeHref('/'));
 };

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { invalidGuide } from '$lib/form-invalid';
 	import ContactAddressFields from '$lib/components/ContactAddressFields.svelte';
 	import { enhance } from '$lib/enhance';
 	import { onMount, tick } from 'svelte';
@@ -243,6 +244,14 @@
 		if (step === 'confirm' && !privacyAgreed) return m.hold_consent_required();
 		return null;
 	}
+	// カード部品からの確定前チェック。入力の段（確認前）に Apple Pay / Google Pay を押されたら、先に確認の段へ進んでもらう
+	// カード欄の状態（入力の段から確認の段へ進む前に確かめる）。まだ何も届いていなければ unknown。
+	// 会員は保存済みのカードが最初から選ばれていて通知が来ないことがあるので、はっきり「途中」のときだけ止める
+	let cardState = $state<'unknown' | 'complete' | 'incomplete'>('unknown');
+	function validatePayment(): string | null {
+		if (step === 'input') return m.hold_pay_confirm_first();
+		return validateGuest();
+	}
 	// 個人情報（SMS・メールでの案内を含む）の同意。確認の段の最後で取る（2026-11-09）
 	let privacyAgreed = $state(false);
 
@@ -346,6 +355,12 @@
 		const err = validateGuest();
 		if (err) {
 			clientError = err;
+			return;
+		}
+		// カードは入力の段で入れてもらう（確認の段では入れ直さない）
+		if (inlinePay && data.publishableKey && (cardState === 'incomplete' || (cardState === 'unknown' && !data.member))) {
+			clientError = m.hold_pay_card_required();
+			document.getElementById('hold-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 			return;
 		}
 		snapshot();
@@ -552,6 +567,7 @@
 			action="?/submit"
 			oninput={readAnswers}
 			onchange={readAnswers}
+			use:invalidGuide
 			use:enhance={({ cancel }) => {
 				// 入力の段で Enter キーを押したときは確定せず、確認の段へ進める
 				if (step === 'input') {
@@ -596,11 +612,11 @@
 					<div class="grid gap-4 sm:grid-cols-2">
 						<label class="block">
 							<span class={label}>{m.name_family()} <em class="bk-req">{m.hold_required()}</em></span>
-							<input name="familyName" autocomplete="family-name" required aria-required="true" aria-invalid={form?.errors?.familyName ? 'true' : undefined} value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder="山田" class="{input} {form?.errors?.familyName ? 'border-red-400' : ''}" />
+							<input name="familyName" autocomplete="family-name" required aria-required="true" aria-invalid={form?.errors?.familyName ? 'true' : undefined} value={form?.values?.familyName ?? data.member?.familyName ?? ''} placeholder={m.hold_placeholder_family_name()} class="{input} {form?.errors?.familyName ? 'border-red-400' : ''}" />
 						</label>
 						<label class="block">
 							<span class={label}>{m.name_given()} <em class="bk-req">{m.hold_required()}</em></span>
-							<input name="givenName" autocomplete="given-name" required aria-required="true" aria-invalid={form?.errors?.givenName ? 'true' : undefined} value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder="太郎" class="{input} {form?.errors?.givenName ? 'border-red-400' : ''}" />
+							<input name="givenName" autocomplete="given-name" required aria-required="true" aria-invalid={form?.errors?.givenName ? 'true' : undefined} value={form?.values?.givenName ?? data.member?.givenName ?? ''} placeholder={m.hold_placeholder_given_name()} class="{input} {form?.errors?.givenName ? 'border-red-400' : ''}" />
 						</label>
 						<label class="block">
 							<span class={label}>{m.name_family_kana()}</span>
@@ -1029,13 +1045,12 @@
 							{/if}
 						</fieldset>
 
-						{#if inlinePay && step === 'input'}
-							<p class="text-xs text-stone-500">{m.hold_pay_card_next()}</p>
-						{/if}
-						{#if inlinePay && step === 'confirm'}
-							<!-- カードは確認の段でこの場で入力（Apple Pay / Google Pay は入力欄の上）。Link の保存欄は出さない。
+						{#if inlinePay}
+							<!-- カードは入力の段で入れてもらい、確認の段までそのまま持ち越す（取引先ページと同じ・2026-11-22 指示）。
+							     部品は段を切り替えても作り直さないので、入れた番号は確認の段でも残る。確定（請求・登録）は確認の段のボタンで行う。
+							     Apple Pay / Google Pay は入力欄の上。入力の段で押されたときは確認の段へ進むよう案内する（validate）。Link の保存欄は出さない。
 							     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は支払の方式ごとに作り直す -->
-							<div class="space-y-3 rounded-lg border border-stone-200 p-3">
+							<div id="hold-card" class="scroll-mt-24 space-y-3 rounded-lg border border-stone-200 p-3">
 								<div class="flex items-baseline justify-between gap-3">
 									<h3 class="text-sm font-medium text-brand-900">{checkoutCard ? m.pay_checkout_heading() : m.pay_card_heading()}</h3>
 									<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
@@ -1050,7 +1065,8 @@
 									locale={stripeLocale()}
 									texts={payTexts}
 									unavailableText={m.pay_unavailable()}
-									validate={validateGuest}
+									validate={validatePayment}
+									oncompletechange={(c) => (cardState = c ? 'complete' : 'incomplete')}
 									prepare={preparePayment}
 									onconfirmed={onPaid}
 									onbusychange={(b) => (paying = b)}
@@ -1184,7 +1200,7 @@
 					{#if data.preview}
 						<p class="mt-2 text-center text-xs text-amber-800">プレビュー中のため、予約は確定できません。</p>
 					{:else if checkoutCard}
-						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_checkout_submit_note({ date: chargeOnText, amount: formatPrice(charge.charge) })}</p>
+						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_checkout_submit_note({ date: chargeOnText })}</p>
 					{:else if inlineCard}
 						<p class="mt-2 text-center text-xs text-stone-500">{m.pay_submit_inline_note({ amount: formatPrice(charge.charge) })}</p>
 					{:else if !isPrepay}

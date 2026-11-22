@@ -5,6 +5,7 @@
   import { enhance } from '$lib/enhance';
   import { page } from '$app/stores';
   import { streamed } from '$lib/streamed.svelte';
+  import { fadeIn } from '$lib/fade-in';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; uploaded?: string; deleted?: boolean } } = $props();
@@ -45,6 +46,8 @@
       <div class="mt-3 space-y-2.5" aria-busy="true"><div class="shimmer h-4 w-11/12"></div><div class="shimmer h-4 w-4/5"></div><div class="shimmer h-4 w-2/3"></div></div>
     {:else}
       {@const c = content.current}
+      <!-- 本文の枠（シマー）のあとは、本文をふわっと出す -->
+      <div in:fadeIn>
       <div class="flex flex-wrap items-baseline justify-between gap-2">
         <h3 class="text-lg font-bold">取引条件</h3>
         {#if c.memorandum?.updatedAt}<p class="text-xs text-stone-500">最終更新 {dt(c.memorandum.updatedAt)}</p>{/if}
@@ -56,6 +59,7 @@
       {:else}
         <p class="mt-3 text-stone-500">まだ登録されていません。</p>
       {/if}
+      </div>
     {/if}
   </section>
 
@@ -66,6 +70,8 @@
       <div class="mt-3 space-y-3" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-10 w-full"></div>{/each}</div>
     {:else}
       {@const c = content.current}
+      <!-- ファイル一覧の枠（シマー）のあとは、一覧をふわっと出す -->
+      <div in:fadeIn>
       {#if c.error}
         <p class="mt-3 text-stone-500">ファイルの一覧を読み込めませんでした。</p>
       {:else if c.documents.length === 0}
@@ -108,6 +114,7 @@
           {/each}
         </ul>
       {/if}
+      </div>
     {/if}
 
     <!-- アップロード（保存者は貴社のログインID） -->

@@ -9,6 +9,7 @@
   import CommonRoomEquipment from '$lib/components/CommonRoomEquipment.svelte';
   import PartnerRoomCalendarModal from '$lib/components/PartnerRoomCalendarModal.svelte';
   import { roomAnchor, roomParts } from '$lib/partner-contents';
+  import { fadeIn } from '$lib/fade-in';
 
   let { data } = $props();
   const token = $derived($page.params.token);
@@ -52,6 +53,8 @@
         {/each}
       </div>
     {:then { rooms, commonRoomEquipment, error }}
+      <!-- 紹介の枠（シマー）のあとは、紹介をまとめてふわっと出す -->
+      <div in:fadeIn>
       {#if error}
         <p class="mt-8 rounded-xl border border-rose-700/30 bg-rose-700/5 p-6 text-center text-rose-700">{error}</p>
       {:else if rooms.length === 0}
@@ -87,6 +90,7 @@
           {/each}
         </div>
       {/if}
+      </div>
     {/await}
   {/if}
 </main>

@@ -10,6 +10,7 @@
   import { untrack } from 'svelte';
   import { LOGIN_LOG_LABELS } from '$lib/partner-login-security';
   import { deserialize } from '$app/forms';
+  import { fadeIn } from '$lib/fade-in';
   import { enhance } from '$lib/enhance';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { navigating } from '$app/state';
@@ -1213,9 +1214,9 @@
                     <!-- 月別の判定はタブの施設で後から届く -->
                     <div class="mt-3 space-y-1.5" aria-busy="true">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-5 w-full opacity-70"></div>{/each}</div>
                   {:else if credit.state.enabled && creditMonthsInfo?.error}
-                    <p class="mt-3 text-xs text-rose-700">受付枠の判定を読み込めませんでした: {creditMonthsInfo.error}</p>
+                    <p in:fadeIn class="mt-3 text-xs text-rose-700">受付枠の判定を読み込めませんでした: {creditMonthsInfo.error}</p>
                   {:else if credit.state.enabled && creditMonthRows.length}
-                    <div class="mt-3 overflow-x-auto">
+                    <div in:fadeIn class="mt-3 overflow-x-auto">
                       <table class="w-full text-xs tabular-nums">
                         <thead class="text-left text-stone-500">
                           <tr><th class="py-1 pr-3 font-medium">月</th><th class="pr-3 text-right font-medium">基準（実績平均）</th><th class="pr-3 text-right font-medium">上限</th><th class="pr-3 text-right font-medium">予約済み</th><th class="pr-3 text-right font-medium">残り</th><th class="font-medium"></th></tr>
@@ -1634,6 +1635,8 @@
             <div class="mt-3 space-y-2">{#each [0, 1, 2] as i (i)}<div class="shimmer h-9 w-full opacity-70"></div>{/each}</div>
           </div>
         {:else}
+        <!-- 施設タブの切替（枠だけのシマー）が終わったら、設定欄をまとめてふわっと出す。このページの「後から届く」欄（シマー）も、届いたら in:fadeIn で出す -->
+        <div in:fadeIn>
         {#if lastSubmit === 'enable' && form?.message}
           <p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
         {/if}
@@ -1732,7 +1735,7 @@
             <!-- 料金の元・計算の状態は後から届く -->
             <div class="mb-3 space-y-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5" aria-busy="true"><div class="shimmer h-4 w-48"></div><div class="shimmer h-3.5 w-72 max-w-full opacity-70"></div></div>
           {:else}
-          <div class="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
+          <div in:fadeIn class="mb-3 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
               <span class="text-xs text-stone-500">料金の元</span>
               {#if pvInfo.priceSource.source === 'partner_rank'}
@@ -2014,6 +2017,7 @@
             {/if}
           </form>
         {/if}
+        </div>
         {/if}
       </div>
     </div>
@@ -2026,7 +2030,7 @@
       <div class="mt-3 space-y-2">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
     </div>
     {:else if data.facility}
-    <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
+    <div in:fadeIn class="mb-6 rounded-xl border border-stone-200 bg-white p-4 sm:p-5">
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 class="text-base font-semibold tracking-tight text-stone-900">プレビュー（取引先に見える価格・{data.tab.name}）</h2>
@@ -2063,11 +2067,11 @@
       {#if !pvInfo}
         <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
       {:else if pvInfo.preview.error}
-        <p class="mt-3 text-sm text-rose-700">プレビューを作れませんでした: {pvInfo.preview.error}</p>
+        <p in:fadeIn class="mt-3 text-sm text-rose-700">プレビューを作れませんでした: {pvInfo.preview.error}</p>
       {:else if previewRows.length === 0}
-        <p class="mt-3 text-sm text-stone-500">この期間・人数で出る料金がありません。</p>
+        <p in:fadeIn class="mt-3 text-sm text-stone-500">この期間・人数で出る料金がありません。</p>
       {:else}
-        <div class="mt-3 overflow-x-auto">
+        <div in:fadeIn class="mt-3 overflow-x-auto">
           <table class="w-full border-collapse text-xs">
             <thead>
               <tr>
@@ -2137,11 +2141,11 @@
       {#if !bookingList.current}
         <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-12 w-full opacity-70"></div>{/each}</div>
       {:else if bookingList.current.error}
-        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{bookingList.current.error}</p>
+        <p in:fadeIn class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{bookingList.current.error}</p>
       {:else if shownBookings.length === 0}
-        <p class="mt-3 text-sm text-stone-500">{bookingFilter === 'upcoming' ? 'これからの予約はありません。' : 'まだ予約はありません。'}</p>
+        <p in:fadeIn class="mt-3 text-sm text-stone-500">{bookingFilter === 'upcoming' ? 'これからの予約はありません。' : 'まだ予約はありません。'}</p>
       {:else}
-        <div class="mt-3 overflow-x-auto">
+        <div in:fadeIn class="mt-3 overflow-x-auto">
           <table class="w-full min-w-[52rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
               <tr><th class="sticky left-0 z-10 bg-white py-1.5 pr-3 font-medium">予約番号</th>{#if showBookingFacility}<th class="pr-3 font-medium">施設</th>{/if}<th class="pr-3 font-medium">宿泊日</th><th class="pr-3 font-medium">宿泊者</th><th class="pr-3 font-medium">部屋・プラン</th><th class="pr-3 text-right font-medium">合計</th><th class="pr-3 font-medium">状態</th><th></th></tr>
@@ -2241,9 +2245,9 @@
         {#if !groupInquiriesData.current}
           <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-10 w-full opacity-70"></div>{/each}</div>
         {:else if groupInquiriesData.current.length === 0}
-          <p class="mt-3 text-sm text-stone-500">まだ照会はありません。</p>
+          <p in:fadeIn class="mt-3 text-sm text-stone-500">まだ照会はありません。</p>
         {:else}
-          <ul class="mt-3 divide-y divide-stone-100 text-sm">
+          <ul in:fadeIn class="mt-3 divide-y divide-stone-100 text-sm">
             {#each groupInquiriesData.current as g (g.id)}
               <li>
                 <a href={`/admin/group-inquiries/${g.id}`} class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 hover:bg-stone-50">
@@ -2282,11 +2286,11 @@
       {#if !invoiceReady}
         <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-9 w-full opacity-70"></div>{/each}</div>
       {:else if invoices.error}
-        <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.error}</p>
+        <p in:fadeIn class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.error}</p>
       {:else if invoices.rows.length === 0}
-        <p class="mt-3 text-sm text-stone-500">まだご請求書はありません。</p>
+        <p in:fadeIn class="mt-3 text-sm text-stone-500">まだご請求書はありません。</p>
       {:else}
-        <div class="mt-3 overflow-x-auto">
+        <div in:fadeIn class="mt-3 overflow-x-auto">
           <table class="w-full min-w-[44rem] text-sm">
             <thead class="text-left text-xs text-stone-500">
               <tr>
@@ -2385,9 +2389,10 @@
         {#if !invoiceReady}
           <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-7 w-full opacity-70"></div>{/each}</div>
         {:else if invoices.previewError}
-          <p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.previewError}</p>
+          <p in:fadeIn class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{invoices.previewError}</p>
         {:else if invoices.preview}
           {@const pv = invoices.preview}
+          <div in:fadeIn>
           {#if pv.lines.length === 0}
             <p class="mt-3 text-sm text-stone-500">この月（今日まで）にチェックアウトの確定予約はありません（発行されません）。</p>
           {:else}
@@ -2457,6 +2462,7 @@
               {#if issuingMidMonth}<span class="text-[11px] text-amber-800">月の途中です。今日より後にチェックアウトする予約は載りません（発行せずに待てば月末に自動発行されます）。</span>{/if}
             </form>
           {/if}
+          </div>
         {/if}
       </div>
     </div>
@@ -2768,11 +2774,11 @@ curl -H "Authorization: Bearer $KEY" "{data.apiEndpoint}?from={data.today}&guest
       {#if !accessLogs.current}
         <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1, 2] as i (i)}<div class="shimmer h-6 w-full opacity-70"></div>{/each}</div>
       {:else if accessLogs.current.error}
-        <p class="mt-2 text-sm text-red-700">{accessLogs.current.error}</p>
+        <p in:fadeIn class="mt-2 text-sm text-red-700">{accessLogs.current.error}</p>
       {:else if logs.length === 0}
-        <p class="mt-2 text-sm text-stone-500">まだアクセスはありません。</p>
+        <p in:fadeIn class="mt-2 text-sm text-stone-500">まだアクセスはありません。</p>
       {:else}
-        <div class="mt-3 overflow-x-auto">
+        <div in:fadeIn class="mt-3 overflow-x-auto">
         <table class="w-full min-w-[36rem] text-xs">
           <tbody>
             {#each logs as l (l.id)}

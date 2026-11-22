@@ -22,7 +22,8 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const OTP_COOLDOWN = 'ab_otp_cooldown';
 // 最初の画面で Turnstile を通ったメールアドレス（署名付き）。コード入力画面の再送で Turnstile を出さないために使う
 const OTP_HUMAN = 'ab_otp_human';
-const USE_BOOK_MEMBER = 'このメールアドレスは運営用アカウントです。YAMADOに連携する山人Book会員のメールアドレスを入力してください。';
+// 運営用アカウントで会員ログインしようとしたときの案内（リクエストの言語で出すため関数にする）
+const USE_BOOK_MEMBER = () => m.login_staff_account_email();
 
 export const load: PageServerLoad = async (event) => {
 	const { locals, url } = event;
@@ -33,7 +34,7 @@ export const load: PageServerLoad = async (event) => {
 	const smsAvailable = memberSmsAvailable(url);
 	if (smsAvailable) event.setHeaders({ 'cache-control': 'private, no-store' });
 	return {
-		authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER : null, memberLoginMethods: MEMBER_LOGIN_METHODS,
+		authMode: AUTH_MODE, accountNotice: showMemberNotice ? USE_BOOK_MEMBER() : null, memberLoginMethods: MEMBER_LOGIN_METHODS,
 		passkeys: memberPasskeysAvailable(url), smsAvailable, smsDefault: await memberSmsDefault(event),
 		// 旧会員の会員移行の入口（閉じている間はリンクを出さない）
 		migrationOpen: legacyMigrationOpen(url)
@@ -173,7 +174,7 @@ export const actions: Actions = {
 		const consentNext = bookingConsentNext(url);
 		const role = data.user.app_metadata.role;
 		if (consentNext && (role === 'admin' || role === 'staff')) {
-			return fail(403, { step: 'email', email: '', message: USE_BOOK_MEMBER });
+			return fail(403, { step: 'email', email: '', message: USE_BOOK_MEMBER() });
 		}
 		const next = url.searchParams.get('next') ?? '';
 		let memberDestination: string | null = null;
@@ -195,7 +196,7 @@ export const actions: Actions = {
 			isMember = true;
 		} catch (cause) {
 			if (consentNext && (cause as { message?: unknown } | null)?.message !== 'not_member') {
-				return fail(503, { step: 'email', email, message: '会員情報を確認できませんでした。時間をおいてやり直してください。' });
+				return fail(503, { step: 'email', email, message: m.login_member_check_failed() });
 			}
 			isMember = false;
 		}

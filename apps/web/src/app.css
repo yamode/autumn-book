@@ -171,9 +171,20 @@ html {
 	0% { background-position: 100% 0; }
 	75%, 100% { background-position: 0% 0; }
 }
+/* シマーが消えて中身が出るときは、パッと出さずにふわっと出す（2026-11-22 指示）。
+   長さ・曲線はページ遷移のフェード（PageLoadingBoundary の 240ms）にそろえる。
+   要素が描かれた瞬間に1回だけ再生されるので、シマーの {:else} 側やデータが入ってから描く要素に付ける。 */
+.fade-in {
+	animation: fade-in 260ms cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+@keyframes fade-in {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
 @media (prefers-reduced-motion: reduce) {
 	.shimmer { animation: none; background-image: none; }
 	.shimmer-block::after { animation: none; background: rgb(255 255 255 / 0.75); }
+	.fade-in { animation: none; }
 }
 
 /* 押したときの手応え（2026-11-01 指示「リンクやボタンを押したときのエフェクトがなく、押せているのか不安」）。全画面共通。
@@ -283,4 +294,33 @@ html {
 	:is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']), select, textarea) {
 		font-size: max(16px, 1em);
 	}
+}
+
+/* 入力漏れの案内（lib/form-invalid.ts）。漏れている欄を赤枠にし、その下に項目名つきの案内を出す */
+[data-invalid] :is(input:not([type='radio']):not([type='checkbox']), select, textarea)[aria-invalid='true'] {
+	border-color: rgb(225 29 72);
+	box-shadow: 0 0 0 3px rgb(225 29 72 / 0.15);
+}
+fieldset[data-invalid] {
+	border-radius: 0.5rem;
+	outline: 2px solid rgb(225 29 72 / 0.55);
+	outline-offset: 6px;
+}
+label[data-invalid] input[type='checkbox'][aria-invalid='true'] {
+	outline: 2px solid rgb(225 29 72);
+	outline-offset: 2px;
+}
+.form-invalid-msg {
+	margin-top: 0.375rem;
+	font-size: 0.8125rem;
+	line-height: 1.4;
+	color: rgb(190 18 60);
+	animation: form-invalid-in 0.2s ease-out;
+}
+@keyframes form-invalid-in {
+	from { opacity: 0; transform: translateY(-2px); }
+	to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+	.form-invalid-msg { animation: none; }
 }

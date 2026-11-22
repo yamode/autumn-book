@@ -7,6 +7,8 @@
 	import { page } from '$app/state';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
+	import { getLocale } from '$lib/paraglide/runtime';
+	import * as m from '$lib/paraglide/messages';
 	import type { ShellFacility, ShellUser } from './types';
 
 	let { facility, user, children }: { facility: ShellFacility; user: ShellUser; children: any } = $props();
@@ -17,6 +19,7 @@
 	// トップ（施設HP）はヒーロー全画面のためスクロール後にヘッダー出現（原サイト挙動）。下層は常時表示
 	let isTop = $derived(page.url.pathname.replace(/\/$/, '') === base || page.url.pathname.replace(/\/$/, '').endsWith(facility.slug));
 	let headerVisible = $derived(!isTop || scrolled);
+	const isEn = getLocale() === 'en';
 	// 客室・プラン一覧はページ内に検索バーがあるので出さない
 	let showSearch = $derived(/\/(plans|rooms)/.test(page.url.pathname) && !isPlansListPath(page.url.pathname));
 
@@ -29,14 +32,14 @@
 
 	// 原サイトと同じページ構成（自然/料理/レストラン/客室/温泉/館内案内/アクセス/お知らせ）
 	const nav = $derived([
-		{ href: `${base}/nature`, label: '自然', en: 'Nature' },
-		{ href: `${base}/cuisine`, label: '料理', en: 'Cuisine' },
-		{ href: `${base}/restaurant`, label: 'レストラン', en: 'Restaurant' },
-		{ href: `${base}/rooms`, label: '客室', en: 'Stay' },
-		{ href: `${base}/onsen`, label: '温泉', en: 'Onsen' },
-		{ href: `${base}/guide`, label: '館内案内', en: 'Facility' },
-		{ href: `${base}/access`, label: 'アクセス', en: 'Access' },
-		{ href: `${base}/news`, label: 'お知らせ', en: 'News' }
+		{ href: `${base}/nature`, label: m.site_oga_nav_nature(), en: 'Nature' },
+		{ href: `${base}/cuisine`, label: m.site_oga_nav_cuisine(), en: 'Cuisine' },
+		{ href: `${base}/restaurant`, label: m.site_oga_nav_restaurant(), en: 'Restaurant' },
+		{ href: `${base}/rooms`, label: m.facility_rooms(), en: 'Stay' },
+		{ href: `${base}/onsen`, label: m.site_oga_nav_onsen(), en: 'Onsen' },
+		{ href: `${base}/guide`, label: m.site_oga_nav_guide(), en: 'Facility' },
+		{ href: `${base}/access`, label: m.common_access(), en: 'Access' },
+		{ href: `${base}/news`, label: m.news_title(), en: 'News' }
 	]);
 </script>
 
@@ -59,7 +62,7 @@
 			<a href={base} class="block">
 				<img src="/site-assets/oga/logo.svg" alt={facility.name} width="100" height="51" />
 			</a>
-			<button type="button" class="flex h-10 w-10 flex-col items-end justify-center gap-2" onclick={() => (drawerOpen = true)} aria-label="メニュー">
+			<button type="button" class="flex h-10 w-10 flex-col items-end justify-center gap-2" onclick={() => (drawerOpen = true)} aria-label={m.header_menu()}>
 				<span class="h-px w-8 bg-[#111]"></span>
 				<span class="h-px w-6 bg-[#111]"></span>
 			</button>
@@ -72,7 +75,7 @@
 		class="fixed right-[18px] top-1/2 z-[55] -translate-y-1/2 bg-[#111] px-3 py-6 text-[13px] tracking-[0.3em] text-white transition-transform duration-700 [writing-mode:vertical-rl] hover:bg-[#333] sm:right-[30px]"
 		style="transform: translateY(-50%) translateX({headerVisible ? '0' : '200%'});"
 	>
-		宿泊予約
+		{m.site_book_stay()}
 	</a>
 
 	<!-- ドロワー（原サイト: Contents リスト + 矢印） -->
@@ -80,7 +83,7 @@
 		<div class="fixed inset-0 z-[70] overflow-y-auto bg-white">
 			<div class="flex items-center justify-between px-[20px] py-[18px] sm:px-[30px] sm:py-[26px]">
 				<img src="/site-assets/oga/logo.svg" alt={facility.name} width="100" height="51" />
-				<button type="button" class="text-3xl font-light text-[#111]" onclick={() => (drawerOpen = false)} aria-label="閉じる">×</button>
+				<button type="button" class="text-3xl font-light text-[#111]" onclick={() => (drawerOpen = false)} aria-label={m.common_close()}>×</button>
 			</div>
 			<div class="mx-auto max-w-[600px] px-8 pb-16 pt-8">
 				<h3 class="font-inter text-xs tracking-[0.3em] text-stone-400">CONTENTS</h3>
@@ -89,18 +92,19 @@
 						<li>
 							<a href={item.href} onclick={() => (drawerOpen = false)} class="group flex items-baseline justify-between py-4">
 								<span class="text-[17px]">{item.label}</span>
-								<span class="font-cormorant text-sm tracking-widest text-stone-400 transition group-hover:translate-x-1">{item.en} →</span>
+								<!-- en 併記はデザイン。英語表示では見出しと同じ語になるので矢印だけにする -->
+								<span class="font-cormorant text-sm tracking-widest text-stone-400 transition group-hover:translate-x-1">{isEn ? '' : `${item.en} `}→</span>
 							</a>
 						</li>
 					{/each}
 				</ul>
 				<h3 class="font-inter mt-10 text-xs tracking-[0.3em] text-stone-400">RESERVATION / MEMBER</h3>
 				<div class="mt-4 space-y-3">
-					<a href="{base}/plans" onclick={() => (drawerOpen = false)} class="block bg-[#111] py-4 text-center text-white tracking-[0.3em] hover:bg-[#333]">宿泊予約</a>
+					<a href="{base}/plans" onclick={() => (drawerOpen = false)} class="block bg-[#111] py-4 text-center text-white tracking-[0.3em] hover:bg-[#333]">{m.site_book_stay()}</a>
 					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="block border border-stone-300 py-3 text-center text-[14px] tracking-widest hover:bg-stone-50">
-						{user?.role === 'member' ? `マイページ（${user.name} 様）` : '会員ログイン'}
+						{user?.role === 'member' ? m.site_mypage_with_name({ name: user.name }) : m.site_member_login()}
 					</a>
-					<a href="/search" class="block py-2 text-center text-[12px] tracking-widest text-stone-400 hover:underline">全施設から空室検索</a>
+					<a href="/search" class="block py-2 text-center text-[12px] tracking-widest text-stone-400 hover:underline">{m.site_search_all_vacancy()}</a>
 				</div>
 
 				<!-- 山人グループ（施設間移動・ブランドポータル） -->
@@ -116,7 +120,7 @@
 					{/each}
 					<li>
 						<a href="/" onclick={() => (drawerOpen = false)} class="flex items-baseline justify-between py-4">
-							<span class="text-[17px]">{facility.brandName}ポータル</span>
+							<span class="text-[17px]">{m.site_portal({ brand: facility.brandName })}</span>
 							<span class="font-cormorant text-sm tracking-widest text-stone-400">Portal →</span>
 						</a>
 					</li>
@@ -164,9 +168,9 @@
 				{/each}
 			</nav>
 			<nav class="mt-6 flex flex-wrap justify-center gap-x-6">
-				<a href="/legal/tokushoho" class="text-[11px] text-white/40 hover:underline">特定商取引法に基づく表記</a>
-				<a href="/legal/privacy" class="text-[11px] text-white/40 hover:underline">プライバシーポリシー</a>
-				<a href="/legal/yakkan" class="text-[11px] text-white/40 hover:underline">宿泊約款</a>
+				<a href="/legal/tokushoho" class="text-[11px] text-white/40 hover:underline">{m.footer_tokushoho()}</a>
+				<a href="/legal/privacy" class="text-[11px] text-white/40 hover:underline">{m.footer_privacy()}</a>
+				<a href="/legal/yakkan" class="text-[11px] text-white/40 hover:underline">{m.footer_yakkan()}</a>
 			</nav>
 			<p class="font-cormorant mt-8 text-[12px] tracking-[0.3em] text-white/40">© YAMADO -OGA-</p>
 		</div>

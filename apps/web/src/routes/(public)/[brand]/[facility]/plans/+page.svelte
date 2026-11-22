@@ -20,6 +20,7 @@
 	import { writeCart, type CartItem } from '$lib/multi-room';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import RefreshingResults from '$lib/components/RefreshingResults.svelte';
 	import type { RoomType } from '$lib/types';
 	import type { MealOption } from '$lib/meal-filter';
@@ -105,7 +106,7 @@
 			none: m.meal_filter_none(),
 			dayuse: m.meal_filter_dayuse()
 		}[option.kind];
-		return option.course ? `${kind}・${option.course}` : kind;
+		return option.course ? `${kind}${getLocale() === 'ja' ? '・' : ' · '}${option.course}` : kind;
 	}
 
 	function planHref(slug: string, roomSlug: string) {
@@ -327,11 +328,11 @@
 								<p class="leading-6 text-stone-500">{m.plans_room_no_availability()}</p>
 								{#if data.params.checkin > today}
 									{#if form?.alertRoom === item.room.id && form?.alertSaved}
-										<p role="status" class="text-emerald-800">空室通知を登録しました。</p>
-										<a href="/account/availability-alerts" class="inline-flex min-h-11 items-center underline">登録した空室通知を見る</a>
+										<p role="status" class="text-emerald-800">{m.plans_alert_registered()}</p>
+										<a href="/account/availability-alerts" class="inline-flex min-h-11 items-center underline">{m.plans_alert_view_registered()}</a>
 									{:else if page.data.user?.role === 'member'}
 										<details open={form?.alertRoom === item.room.id && Boolean(alertError)}>
-											<summary class="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">空室通知を登録</summary>
+											<summary class="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_register()}</summary>
 											<form method="POST" action="?/registerAlert&{searchQuery(data.params)}" use:enhance class="mt-3 space-y-2">
 												<input type="hidden" name="facility" value={data.facility.id} />
 												<input type="hidden" name="room" value={item.room.id} />
@@ -340,12 +341,12 @@
 												<input type="hidden" name="adults" value={data.params.adults} />
 												<input type="hidden" name="rooms" value={data.params.rooms} />
 												{#if form?.alertRoom === item.room.id && alertError}<p role="alert" class="text-red-700">{alertError}</p>{/if}
-												<label class="flex items-start gap-2"><input name="consent" type="checkbox" value="yes" required class="mt-1" />このお部屋の空室通知をメールで受け取る</label>
-												<button class="min-h-11 rounded-lg bg-brand-800 px-4 font-medium text-white">登録する</button>
+												<label class="flex items-start gap-2"><input name="consent" type="checkbox" value="yes" required class="mt-1" />{m.plans_alert_consent_label()}</label>
+												<button class="min-h-11 rounded-lg bg-brand-800 px-4 font-medium text-white">{m.plans_alert_submit()}</button>
 											</form>
 										</details>
 									{:else}
-										<a href={'/auth/login?next=' + encodeURIComponent(page.url.pathname + page.url.search)} class="inline-flex min-h-11 items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">ログインして空室通知を登録</a>
+										<a href={'/auth/login?next=' + encodeURIComponent(page.url.pathname + page.url.search)} class="inline-flex min-h-11 items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_login()}</a>
 									{/if}
 								{/if}
 							</div>

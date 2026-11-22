@@ -20,6 +20,7 @@
   // 計算できないときも照会は送れる（「料金は宿からの回答でご案内します」）。定員超えだけは送れない。
   import PartnerPriceTable from '$lib/components/PartnerPriceTable.svelte';
   import { partnerNightLines } from '$lib/partner-booking';
+  import { fadeIn } from '$lib/fade-in';
   import { CREDIT_UNIT_NOTE, creditMonthText } from '$lib/partner-credit';
   import { GROUP_QUOTE_STATUS_TEXT, groupQuoteStatusOf } from '$lib/partner-group';
 
@@ -62,13 +63,15 @@
   {:else if !quote}
     <div class="mt-3 space-y-2" aria-hidden="true"><div class="shimmer h-4 w-2/3"></div><div class="shimmer h-4 w-1/2 opacity-70"></div></div>
   {:else if !quote.ok}
-    <p class={`mt-2 rounded-lg px-3 py-2 text-sm ${failStatus === 'capacity' ? 'bg-rose-700/5 text-rose-700' : 'bg-stone-50 text-stone-700'}`}>
+    <p in:fadeIn class={`mt-2 rounded-lg px-3 py-2 text-sm ${failStatus === 'capacity' ? 'bg-rose-700/5 text-rose-700' : 'bg-stone-50 text-stone-700'}`}>
       {failStatus && GROUP_QUOTE_STATUS_TEXT[failStatus] ? GROUP_QUOTE_STATUS_TEXT[failStatus] : quote.message}
       {#if failStatus === 'capacity'}<span class="block text-xs">部屋ごとの人数を直してください（このままでは送れません）。</span>
       {:else}<span class="block text-xs text-stone-500">このまま照会を送れます（{quote.message}）。</span>{/if}
     </p>
   {:else}
     {@const adults = adultsOf(quote)}
+    <!-- シマーのあとは見積の中身をまとめてふわっと出す -->
+    <div in:fadeIn>
     <p class="mt-1 text-2xl font-bold tabular-nums text-accent-600">{yen(quote.total + quote.bathTax)}</p>
     <p class="text-xs text-stone-500">宿泊料金 {yen(quote.total)}{quote.bathTax > 0 ? `・入湯税 ${yen(quote.bathTax)}` : ''}（税込・大人{adults}名・{roomCount}室・{quote.nights}泊）</p>
     <div class="mt-3">
@@ -94,5 +97,6 @@
       </div>
     {/if}
     <p class="mt-3 text-xs text-stone-500">料金は照会の時点の御社向け料金です。確定の料金は宿からの回答でご案内します。</p>
+    </div>
   {/if}
 </section>

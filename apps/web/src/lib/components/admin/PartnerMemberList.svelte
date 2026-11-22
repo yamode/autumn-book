@@ -5,6 +5,7 @@
   import { enhance } from '$lib/enhance';
   import { askConfirm } from '$lib/components/admin/confirm-dialog.svelte';
   import { streamed } from '$lib/streamed.svelte';
+  import { fadeIn } from '$lib/fade-in';
   import { MEMBER_RANK_LABELS } from '$lib/partner-member-page';
 
   type Row = {
@@ -60,7 +61,8 @@
   {#if !rows}
     <div class="mt-3 space-y-2" aria-busy="true">{#each [0, 1] as i (i)}<div class="shimmer h-8 w-full opacity-70"></div>{/each}</div>
   {:else}
-    <ul class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200">
+    <!-- 会員一覧の枠（シマー）のあとは、一覧をふわっと出す -->
+    <ul in:fadeIn class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200">
       {#each selfRows as r (r.member_user_id)}
         <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
           <a href={`/admin/members/${r.member_user_id}`} class="min-w-0 font-medium text-brand-800 hover:underline">{r.name || '（名前なし）'}</a>

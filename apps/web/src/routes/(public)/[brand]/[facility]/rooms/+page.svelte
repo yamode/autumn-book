@@ -3,7 +3,7 @@
 	import PartnerContentBody from '$lib/components/PartnerContentBody.svelte';
 	import CommonRoomEquipment from '$lib/components/CommonRoomEquipment.svelte';
 	import { roomEquipmentForList } from '$lib/partner-contents';
-	import { localizeHref } from '$lib/paraglide/runtime';
+	import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
@@ -17,7 +17,8 @@
 		if (namedRoom) {
 			const [, type, title, suffix] = namedRoom;
 			const bath = suffix.match(/^[（(](.+)[）)]$/u)?.[1];
-			return { title, type: type.replace(/^［離れ］/u, '離れ・'), note: bath };
+			// 「［離れ］」→「離れ・」の言い換えは日本語の販売名のときだけ（英語・中国語は DB の訳をそのまま出す）
+			return { title, type: getLocale() === 'ja' ? type.replace(/^［離れ］/u, '離れ・') : type, note: bath };
 		}
 
 		// 男鹿の販売名は客室棟とタイプが「│」で区切られる。

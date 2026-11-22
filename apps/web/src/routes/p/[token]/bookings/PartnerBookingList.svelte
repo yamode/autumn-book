@@ -13,6 +13,7 @@
   import { SAVED_CARD_EXPIRY_WARNING, selectedCardExpiresBefore, type SavedCardExp } from '$lib/saved-cards';
   import PartnerAttachments from '$lib/components/PartnerAttachments.svelte';
   import { streamed } from '$lib/streamed.svelte';
+  import { fadeIn } from '$lib/fade-in';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; cancelled?: string } } = $props();
@@ -294,11 +295,12 @@
       {/each}
     </ul>
   {:else if listed.current.error}
-    <p class="mt-6 rounded-xl border border-rose-700/30 bg-rose-700/5 px-6 py-10 text-center text-rose-700">{listed.current.error}</p>
+    <!-- 一覧の枠（シマー）のあとは、中身をふわっと出す -->
+    <p in:fadeIn class="mt-6 rounded-xl border border-rose-700/30 bg-rose-700/5 px-6 py-10 text-center text-rose-700">{listed.current.error}</p>
   {:else if shown.length === 0}
-    <p class="mt-6 rounded-xl border border-dashed border-stone-300 px-6 py-10 text-center text-stone-500">該当するご予約はありません。</p>
+    <p in:fadeIn class="mt-6 rounded-xl border border-dashed border-stone-300 px-6 py-10 text-center text-stone-500">該当するご予約はありません。</p>
   {:else}
-    <ul class="mt-4 grid gap-3">
+    <ul in:fadeIn class="mt-4 grid gap-3">
       {#each shown as b (b.id)}
         <li class="rounded-xl border border-stone-200 bg-white">
           <button type="button" class="flex w-full flex-wrap items-start justify-between gap-3 p-4 text-left sm:p-5" onclick={() => (open = open === b.id ? null : b.id)}>

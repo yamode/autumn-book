@@ -62,7 +62,7 @@
 					<div class="mx-auto mt-3 flex h-36 w-36 items-center justify-center rounded-xl border-4 border-[#ff0033] bg-white">
 						<span class="text-2xl font-black tracking-tight text-[#ff0033]">PayPay</span>
 					</div>
-					<p class="mt-3 text-sm text-stone-500">本番では PayPay アプリ／QRコードでのお支払いに遷移します</p>
+					<p class="mt-3 text-sm text-stone-500">{m.payment_paypay_demo_note()}</p>
 				</div>
 			{:else}
 				<!-- Stripe Payment Element 設置位置（P4 で本実装・カード情報は Stripe 直収） -->
@@ -103,7 +103,7 @@
 					disabled={paying}
 					class="w-full rounded-lg py-3 text-base font-medium text-white disabled:opacity-50 {data.method === 'paypay' ? 'bg-[#ff0033] hover:bg-[#d90030]' : 'bg-accent-600 hover:bg-accent-500'}"
 				>
-					{paying ? m.payment_processing() : data.method === 'paypay' ? `PayPayで ${formatPrice(data.payableTotal)} を支払う` : m.payment_submit({ amount: formatPrice(data.payableTotal) })}
+					{paying ? m.payment_processing() : data.method === 'paypay' ? m.payment_submit_paypay({ amount: formatPrice(data.payableTotal) }) : m.payment_submit({ amount: formatPrice(data.payableTotal) })}
 				</button>
 			</form>
 			<p class="mt-3 text-center text-xs text-stone-400">{m.payment_secure()}</p>

@@ -3,6 +3,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
 	import type { RadioEpisode, RadioEpisodePage } from '$lib/radio-episodes';
+	import { fadeIn } from '$lib/fade-in';
 
 	let { initial, playlist }: { initial: RadioEpisodePage; playlist: string } = $props();
 	let added = $state<RadioEpisode[]>([]);
@@ -44,7 +45,8 @@
 
 <ul bind:this={list} class="grid gap-3 sm:grid-cols-2">
 	{#each videos as video (video.id)}
-		<li class="min-w-0 overflow-hidden rounded-xl border border-stone-200 bg-white">
+		<!-- 「もっと見る」で足した回はシマーのあとにふわっと出す（最初から出ている回は in: が再生されない） -->
+		<li in:fadeIn class="min-w-0 overflow-hidden rounded-xl border border-stone-200 bg-white">
 			<a href={`https://www.youtube.com/watch?v=${video.id}&list=${playlist}`}
 				data-episode={video.id} target="_blank" rel="noopener"
 				class="group block focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-800">

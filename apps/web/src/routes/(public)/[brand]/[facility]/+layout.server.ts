@@ -3,12 +3,13 @@ import { getFacilityBySlug, facilities, brands } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListFacilities } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ params, locals }) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
-		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 
 		const all = await sbListFacilities();
 		const siblings = all
@@ -33,7 +34,7 @@ export const load: LayoutServerLoad = async ({ params, locals }) => {
 	}
 
 	const facility = getFacilityBySlug(params.brand, params.facility, getLocale());
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 
 	// 同一ブランドの他施設（公開のみ・自施設を除く）＝施設間移動リンク用
 	const siblings = facilities

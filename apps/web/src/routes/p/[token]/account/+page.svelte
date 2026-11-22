@@ -5,6 +5,7 @@
   import { enhance } from '$lib/enhance';
   import type { PartnerBooker } from '$lib/partner-booking';
   import { streamed } from '$lib/streamed.svelte';
+  import { fadeIn } from '$lib/fade-in';
   import type { PageData } from './$types';
 
   let { data, form }: { data: PageData; form?: { message?: string; saved?: boolean; booker?: PartnerBooker } } = $props();
@@ -52,6 +53,8 @@
         </div>
       {/if}
     {:else}
+      <!-- 入力欄の枠（シマー）のあとは、入力欄をふわっと出す。{#key} の外に置くので、保存して値が替わったときは再生しない -->
+      <div in:fadeIn>
       {#key values}
         <div class="mt-4 grid gap-4 sm:grid-cols-2">
           <label class="block"><span class={label}>お名前 <em class="req">必須</em></span><input name="name" value={values.name} required maxlength="60" autocomplete="name" class={input} /></label>
@@ -61,6 +64,7 @@
           <label class="block sm:col-span-2"><span class={label}>メールアドレス <em class="req">必須</em></span><input name="email" type="email" value={values.email} required maxlength="254" autocomplete="email" class={input} /></label>
         </div>
       {/key}
+      </div>
     {/if}
     <button type="submit" disabled={saving || !values} class="mt-5 rounded-lg bg-accent-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-accent-500 disabled:opacity-50">{saving ? '保存しています…' : '保存する'}</button>
   </form>

@@ -4,6 +4,7 @@ import { todayJst } from '$lib/server/stay-calendar';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListPlansMapped, sbListRoomTypesMapped, sbPlanOffers, sbRoomPlanReferencePrices } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import { eachNight } from '@autumn-book/core';
 import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
 import { viewerIsMember, withEarlyPrepayMax } from '$lib/server/direct-payments';
@@ -115,7 +116,7 @@ export const load: PageServerLoad = async (event) => {
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
-		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 		// 空室カレンダーは開いたときに /api/stay-calendar で取る（ここでは取らない。使っていなかったうえ、
 		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
 		const [allPlans, allRooms, settings, datedOffers, referencePrices] = await Promise.all([
@@ -163,7 +164,7 @@ export const load: PageServerLoad = async (event) => {
 
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 	const allPlans = getRatePlans(facility.id, locale).filter((plan) => listPlanFor(plan.access, viewer));
 	const meals = mealOptions(allPlans);
 	const plans = withEarlyPrepayMax(
@@ -198,12 +199,12 @@ export const load: PageServerLoad = async (event) => {
 export const actions: Actions = {
 	registerAlert: async (event) => {
 		if (event.locals.user?.role !== 'member') redirect(303, '/auth/login?next=' + encodeURIComponent(event.url.pathname));
-		if (!MEMBER_SUPABASE) return fail(400, { alertError: '空室通知をご利用いただけない環境です。' });
+		if (!MEMBER_SUPABASE) return fail(400, { alertError: m.plans_alert_unavailable_env() });
 		const form = await event.request.formData();
 		const value = alertConditions(form);
 		const invalid = validateAlertConditions(value);
 		if (invalid || !value.room || form.get('consent') !== 'yes') {
-			return fail(400, { alertError: invalid ?? 'お部屋と通知メールの受信同意をご確認ください。', alertRoom: value.room });
+			return fail(400, { alertError: invalid ?? m.plans_alert_check_consent(), alertRoom: value.room });
 		}
 		const { error } = await createSupabaseServerClient(event).schema('book').rpc('register_room_availability_alert', {
 			p_facility_id: value.facility, p_checkin: value.checkin, p_nights: value.nights,

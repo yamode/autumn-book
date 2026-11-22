@@ -155,10 +155,10 @@
 			!(data.plan.payment.checkout &&
 				(('prepayOnDate' in data && data.prepayOnDate === false) ||
 					!(data.plan.payment.prepayDiscountRate > 0 || (data.plan.payment.earlyPrepayMaxRate ?? 0) > 0)))
-				? { key: 'prepay', label: data.plan.payment.prepayMethods.includes('paypay') ? 'カード / PayPay' : m.plan_card_payment_card() } : null,
+				? { key: 'prepay', label: data.plan.payment.prepayMethods.includes('paypay') ? m.plan_card_payment_card_paypay() : m.plan_card_payment_card() } : null,
 			// オンライン決済（チェックアウト日）。未設定のプランは従来どおり予約時のカード決済に含めて見せない
 			data.plan.payment.checkout ? { key: 'checkout', label: m.plan_card_payment_checkout() } : null
-		].filter((line): line is { key: string; label: string } => line !== null)
+		].filter((line) => line !== null)
 	);
 
 	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）

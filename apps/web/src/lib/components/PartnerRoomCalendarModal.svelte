@@ -2,6 +2,7 @@
   // 取引先専用ページ・料金カレンダー: 部屋カードの「空室カレンダー」から開く、その部屋だけの月カレンダー。
   // マスはその部屋で泊数ぶん泊まれるプランの最安（1名1泊）。日を押すと、その日程で一覧を検索し直す。
   import { isHoliday } from '$lib/holidays';
+  import { fadeIn } from '$lib/fade-in';
   import { roomParts } from '$lib/partner-contents';
   import { partnerStayOffers, type PartnerStayOffer } from '$lib/partner-stay';
   import { fetchPortalMonth, type PortalMonthJson } from '$lib/partner-month-client';
@@ -149,13 +150,14 @@
                   {#if pending}
                     <span class="shimmer mt-auto block h-3.5 w-4/5 max-w-16" aria-hidden="true"></span>
                   {:else if c.min != null}
-                    {#if c.min === monthMin}<span class="rounded bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white">最安</span>{/if}
-                    <span class="mt-auto whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter text-brand-900 sm:text-sm">{c.min.toLocaleString('ja-JP')}<span class="text-[10px] font-normal">円〜</span></span>
-                    {#if showInventory && c.rest != null && c.rest <= 2}<span class="text-[10px] font-medium text-amber-700 sm:text-xs">残り{c.rest}室</span>{/if}
+                    <!-- シマーのあとは料金欄をふわっと出す。in: は内側の {#if} では再生されないので、最安・残室は hidden で出し分ける -->
+                    <span in:fadeIn class={`rounded bg-accent-500 px-1 text-[10px] font-bold leading-4 text-white ${c.min === monthMin ? '' : 'hidden'}`}>最安</span>
+                    <span in:fadeIn class="mt-auto whitespace-nowrap text-[11px] font-semibold tabular-nums tracking-tighter text-brand-900 sm:text-sm">{c.min.toLocaleString('ja-JP')}<span class="text-[10px] font-normal">円〜</span></span>
+                    <span in:fadeIn class={`text-[10px] font-medium text-amber-700 sm:text-xs ${showInventory && c.rest != null && c.rest <= 2 ? '' : 'hidden'}`}>残り{c.rest}室</span>
                   {:else if c.inRange && c.closed}
-                    <span class="mt-auto text-xs">休館日</span>
+                    <span in:fadeIn class="mt-auto text-xs">休館日</span>
                   {:else if c.inRange && c.iso >= today}
-                    <span class="mt-auto text-xs">{c.full ? '満室' : '—'}</span>
+                    <span in:fadeIn class="mt-auto text-xs">{c.full ? '満室' : '—'}</span>
                   {/if}
                 </button>
               {/if}

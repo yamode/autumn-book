@@ -6,6 +6,7 @@
   // 金額にマウスを乗せる・タップするとツールチップで出す。プラン名は取引先向けの名前（booking_settings.planNames）に引き直す。
   import { onMount } from 'svelte';
   import { partnerPlanName } from '$lib/partner-booking';
+  import { fadeIn } from '$lib/fade-in';
 
   let { token, planNames }: { token: string; planNames?: Record<string, string> } = $props();
 
@@ -80,7 +81,8 @@
       {#if priceRangeState === 'loading' || !priceRange}
         <div class="mt-1.5 h-7 w-56 max-w-full animate-pulse rounded bg-stone-100" aria-label="読み込み中"></div>
       {:else}
-        <p class="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5" aria-live="polite">
+        <!-- 読み込み中の帯のあとは金額をふわっと出す -->
+        <p in:fadeIn class="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5" aria-live="polite">
           <span class="text-xl font-bold tabular-nums text-brand-900">
             {#each rangeKinds as kind, i (kind)}
               {#if i > 0}<span class="px-1 font-normal text-stone-400">〜</span>{/if}

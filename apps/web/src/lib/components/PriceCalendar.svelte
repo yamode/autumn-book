@@ -2,6 +2,7 @@
 	import type { CalendarDay } from '$lib/types';
 	import { formatPrice } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
+	import { getLocale } from '$lib/paraglide/runtime';
 
 	let {
 		days,
@@ -21,7 +22,19 @@
 	const y = $derived(ym[0]);
 	const mo = $derived(ym[1]);
 	const firstDow = $derived(new Date(y, mo - 1, 1).getDay());
-	const dows = ['日', '月', '火', '水', '木', '金', '土'];
+	// 曜日・年月の表記は format.ts と同じく言語ごとに手組み（ja は従来の表記のまま）
+	const locale = getLocale();
+	const dows =
+		locale === 'en'
+			? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+			: locale === 'zh-TW'
+				? ['日', '一', '二', '三', '四', '五', '六']
+				: ['日', '月', '火', '水', '木', '金', '土'];
+	const monthLabel = $derived(
+		locale === 'en'
+			? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'long' }).format(new Date(y, mo - 1, 1))
+			: `${y}年${mo}月`
+	);
 </script>
 
 <div class="rounded-xl border border-stone-200 bg-white p-4">
@@ -31,7 +44,7 @@
 		{:else}
 			<span class="px-2 py-1 text-sm text-stone-300" aria-hidden="true">{m.calendar_prev()}</span>
 		{/if}
-		<p class="font-medium">{y}年{mo}月</p>
+		<p class="font-medium">{monthLabel}</p>
 		{#if nextHref}
 			<a href={nextHref} rel="nofollow" class="rounded px-2 py-1 text-sm text-stone-500 hover:bg-stone-100">{m.calendar_next()}</a>
 		{:else}

@@ -78,7 +78,7 @@ function toFacility(
 	const order: string[] = [];
 	const byType = new Map<string, FavRoom[]>();
 	for (const r of rooms) {
-		const key = r.roomTypeName || 'その他';
+		const key = r.roomTypeName || m.favorites_room_type_other();
 		if (!byType.has(key)) {
 			byType.set(key, []);
 			order.push(key);

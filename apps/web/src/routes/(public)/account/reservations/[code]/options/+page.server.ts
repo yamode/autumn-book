@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { bookings, facilityById, listOptionItems, addBookingOptions } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { MEMBER_PAGE_BOOKING_MESSAGE } from '$lib/server/member-reservation-detail';
+import { memberPageBookingMessage } from '$lib/server/member-reservation-detail';
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
@@ -82,7 +82,7 @@ export const actions: Actions = {
 			if (!r) return fail(404, { message: m.error_booking_not_found() });
 			if (r.memberPage) {
 				const href = await memberPageHrefFor(r.memberPage.partnerId, r.code).catch(() => null);
-				return fail(403, { code: 'member_page_booking' as const, message: MEMBER_PAGE_BOOKING_MESSAGE, href });
+				return fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href });
 			}
 			catalog = await sbListOptionItems(r.facilityUuid);
 		} else {

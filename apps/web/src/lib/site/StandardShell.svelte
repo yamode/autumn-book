@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import { isPlansListPath } from '$lib/booking-nav';
+	import * as m from '$lib/paraglide/messages';
 	import type { ShellFacility, ShellUser } from './types';
 
 	let { facility, user, children }: { facility: ShellFacility; user: ShellUser; children: any } = $props();
@@ -16,14 +17,14 @@
 		<div class="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
 			<a href={base} class="font-display text-lg font-bold text-brand-900">{facility.name}</a>
 			<nav class="ml-auto flex items-center gap-4 text-sm text-stone-600">
-				<a href="{base}/plans" class="hover:text-brand-800">プラン</a>
-				<a href="{base}/news" class="hover:text-brand-800">お知らせ</a>
+				<a href="{base}/plans" class="hover:text-brand-800">{m.site_nav_plans()}</a>
+				<a href="{base}/news" class="hover:text-brand-800">{m.news_title()}</a>
 				{#each facility.siblings as sib}
 					<a href="/{sib.brandSlug}/{sib.slug}" class="hidden text-stone-500 hover:text-brand-800 sm:inline">{sib.name}</a>
 				{/each}
-				<a href="/" class="hidden text-stone-500 hover:text-brand-800 sm:inline">{facility.brandName}ポータル</a>
-				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="hover:text-brand-800">{user?.role === 'member' ? `${user.name} 様` : 'ログイン'}</a>
-				<a href="{base}/plans" class="rounded-md bg-accent-600 px-4 py-1.5 text-white hover:bg-accent-500">ご予約</a>
+				<a href="/" class="hidden text-stone-500 hover:text-brand-800 sm:inline">{m.site_portal({ brand: facility.brandName })}</a>
+				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="hover:text-brand-800">{user?.role === 'member' ? m.account_member_greeting({ name: user.name }) : m.common_login()}</a>
+				<a href="{base}/plans" class="rounded-md bg-accent-600 px-4 py-1.5 text-white hover:bg-accent-500">{m.site_reserve()}</a>
 			</nav>
 		</div>
 	</header>
@@ -47,15 +48,15 @@
 	<footer class="mt-16 border-t border-stone-200 bg-brand-900 py-8 text-center text-xs text-stone-400">
 		<p>{facility.name} ｜ {facility.addressPublic} ｜ TEL {facility.phone}</p>
 		<p class="mt-3">
-			<a href="/" class="text-stone-300 hover:underline">{facility.brandName}ポータル（全施設）</a>
+			<a href="/" class="text-stone-300 hover:underline">{m.site_portal_all({ brand: facility.brandName })}</a>
 			{#each facility.siblings as sib}
 				<span class="text-stone-600"> ・ </span><a href="/{sib.brandSlug}/{sib.slug}" class="text-stone-300 hover:underline">{sib.name}</a>
 			{/each}
 		</p>
 		<p class="mt-2">
-			<a href="/legal/tokushoho" class="hover:underline">特商法表記</a> ・
-			<a href="/legal/privacy" class="hover:underline">プライバシーポリシー</a> ・
-			<a href="/legal/yakkan" class="hover:underline">宿泊約款</a>
+			<a href="/legal/tokushoho" class="hover:underline">{m.site_tokushoho_short()}</a> ・
+			<a href="/legal/privacy" class="hover:underline">{m.footer_privacy()}</a> ・
+			<a href="/legal/yakkan" class="hover:underline">{m.footer_yakkan()}</a>
 		</p>
 	</footer>
 </div>

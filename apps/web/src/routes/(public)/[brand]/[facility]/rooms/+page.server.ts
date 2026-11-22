@@ -3,17 +3,18 @@ import { getFacilityBySlug, getRoomTypes } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbFacilityBySlug, sbListRoomTypesMapped } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
-		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 		return { facility, rooms: await sbListRoomTypesMapped(facility.id) };
 	}
 
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 	return { facility, rooms: getRoomTypes(facility.id, locale) };
 };

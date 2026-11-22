@@ -2,6 +2,7 @@
 	// 館内のご案内 1件。ヘッダー（黒・戻る＋中央タイトル）はシェル側が出す。
 	import MarkdownView from '$lib/components/MarkdownView.svelte';
 	import { inroomCardImage, inroomIcon } from '$lib/inroom-visuals';
+	import * as m from '$lib/paraglide/messages';
 
 	let { data } = $props();
 
@@ -36,7 +37,7 @@
 
 <div class="px-4 py-4">
 	<a href="/r" class="block rounded-lg bg-white py-3 text-center text-sm text-stone-600 shadow-card">
-		客室のご案内へ戻る
+		{m.bath_back()}
 	</a>
 </div>
 

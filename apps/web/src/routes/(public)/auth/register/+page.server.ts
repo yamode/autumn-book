@@ -146,7 +146,7 @@ export const actions: Actions = {
 		const consentNext = bookingConsentNext(event.url);
 		const role = data.user.app_metadata.role;
 		if (consentNext && (role === 'admin' || role === 'staff')) {
-			return fail(403, { step: 'email', email: '', message: 'このメールアドレスは運営用アカウントです。会員登録には別のメールアドレスを入力してください。' });
+			return fail(403, { step: 'email', email: '', message: m.register_staff_account_email() });
 		}
 		// 既に会員か判定（my_profile が通れば book.members あり）
 		let isMember = false;
@@ -179,7 +179,7 @@ export const actions: Actions = {
 			const consentNext = bookingConsentNext(event.url);
 			const role = got.user.app_metadata.role;
 			if (consentNext && (role === 'admin' || role === 'staff')) {
-				return fail(403, { step: 'email', email: '', message: 'このメールアドレスは運営用アカウントです。会員登録には別のメールアドレスを入力してください。' });
+				return fail(403, { step: 'email', email: '', message: m.register_staff_account_email() });
 			}
 			const familyName = String(form.get('familyName') ?? '').trim();
 			const givenName = String(form.get('givenName') ?? '').trim();

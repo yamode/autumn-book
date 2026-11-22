@@ -20,12 +20,12 @@
 
 	// 原サイトと同じページ構成（客室/お料理/施設/オプション/山人の四季/よくある質問 + アクセス）
 	const nav = $derived([
-		{ href: `${base}/rooms`, label: '客室' },
-		{ href: `${base}/cuisine`, label: 'お料理' },
-		{ href: `${base}/facility`, label: '施設' },
-		{ href: `${base}/option`, label: 'オプション' },
-		{ href: `${base}/shiki`, label: '山人の四季' },
-		{ href: `${base}/faq`, label: 'よくある質問' }
+		{ href: `${base}/rooms`, label: m.facility_rooms() },
+		{ href: `${base}/cuisine`, label: m.site_nav_cuisine() },
+		{ href: `${base}/facility`, label: m.site_nav_facilities() },
+		{ href: `${base}/option`, label: m.site_nav_option() },
+		{ href: `${base}/shiki`, label: m.site_nav_shiki() },
+		{ href: `${base}/faq`, label: m.site_nav_faq() }
 	]);
 </script>
 
@@ -41,23 +41,23 @@
 					{#each nav as item}
 						<a href={item.href} class="ml-[24px] whitespace-nowrap text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">{item.label}</a>
 					{/each}
-					<a href="{base}/access" class="ml-[24px] text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">アクセス</a>
+					<a href="{base}/access" class="ml-[24px] text-[16px] text-black transition-colors hover:text-[#b2b2b2] xl:ml-[36px]">{m.common_access()}</a>
 					<!-- 施設間移動・ブランドポータル -->
 					<span class="ml-[24px] h-3 w-px bg-stone-300 xl:ml-[32px]"></span>
 					{#each facility.siblings as sib}
 						<a href="/{sib.brandSlug}/{sib.slug}" class="ml-[16px] whitespace-nowrap text-[13px] text-stone-500 hover:text-black">{sib.name}</a>
 					{/each}
-					<a href="/" class="ml-[16px] whitespace-nowrap text-[13px] text-stone-500 hover:text-black">{facility.brandName}ポータル</a>
+					<a href="/" class="ml-[16px] whitespace-nowrap text-[13px] text-stone-500 hover:text-black">{m.site_portal({ brand: facility.brandName })}</a>
 					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="ml-[18px] text-[14px] text-stone-500 hover:text-black xl:ml-[24px]">
-						{user?.role === 'member' ? `${user.name} 様` : '会員ログイン'}
+						{user?.role === 'member' ? m.account_member_greeting({ name: user.name }) : m.site_member_login()}
 					</a>
 				</div>
 				<a href="{base}/plans" class="ml-[24px] flex items-center bg-[#e5e5e5] px-[40px] text-[16px] text-black transition-colors hover:bg-[#4d4d4d] hover:text-white xl:px-[55px]">
-					<span>ご予約</span>
+					<span>{m.site_reserve()}</span>
 				</a>
 			</nav>
 			<!-- モバイル: ハンバーガー -->
-			<button type="button" class="ml-auto flex w-[60px] flex-col items-center justify-center gap-1.5 lg:hidden" onclick={() => (menuOpen = true)} aria-label="メニュー">
+			<button type="button" class="ml-auto flex w-[60px] flex-col items-center justify-center gap-1.5 lg:hidden" onclick={() => (menuOpen = true)} aria-label={m.header_menu()}>
 				<span class="h-px w-6 bg-black"></span>
 				<span class="h-px w-6 bg-black"></span>
 				<span class="h-px w-6 bg-black"></span>
@@ -68,23 +68,23 @@
 	<!-- モバイルメニュー（原サイト: 全面 #4d4d4d） -->
 	{#if menuOpen}
 		<div class="fixed inset-0 z-[60] overflow-y-auto bg-[#4d4d4d]">
-			<button type="button" class="absolute right-5 top-5 text-3xl text-white" onclick={() => (menuOpen = false)} aria-label="閉じる">×</button>
+			<button type="button" class="absolute right-5 top-5 text-3xl text-white" onclick={() => (menuOpen = false)} aria-label={m.common_close()}>×</button>
 			<div class="px-[10.5%] pb-10 pt-[70px]">
 				<nav class="flex flex-col gap-6 text-[18px] text-white">
 					{#each nav as item}
 						<a href={item.href} onclick={() => (menuOpen = false)}>{item.label}</a>
 					{/each}
-					<a href="{base}/news" onclick={() => (menuOpen = false)}>お知らせ</a>
-					<a href="{base}/access" onclick={() => (menuOpen = false)}>アクセス</a>
-					<a href="{base}/plans" onclick={() => (menuOpen = false)} class="mt-2 inline-block bg-white/90 px-8 py-3 text-center text-black">ご予約</a>
-					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[14px] text-white/70">{user?.role === 'member' ? 'マイページ' : '会員ログイン'}</a>
+					<a href="{base}/news" onclick={() => (menuOpen = false)}>{m.news_title()}</a>
+					<a href="{base}/access" onclick={() => (menuOpen = false)}>{m.common_access()}</a>
+					<a href="{base}/plans" onclick={() => (menuOpen = false)} class="mt-2 inline-block bg-white/90 px-8 py-3 text-center text-black">{m.site_reserve()}</a>
+					<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[14px] text-white/70">{user?.role === 'member' ? m.common_mypage() : m.site_member_login()}</a>
 					<!-- 山人グループ（施設間移動・ポータル） -->
 					<div class="mt-4 border-t border-white/20 pt-4 text-[13px] tracking-[0.2em] text-white/50">{facility.brandName} GROUP</div>
 					{#each facility.siblings as sib}
 						<a href="/{sib.brandSlug}/{sib.slug}" onclick={() => (menuOpen = false)} class="text-[15px] text-white/90">{sib.name}</a>
 					{/each}
-					<a href="/" onclick={() => (menuOpen = false)} class="text-[15px] text-white/90">{facility.brandName}ポータル（全施設トップ）</a>
-					<a href="/search" onclick={() => (menuOpen = false)} class="text-[14px] text-white/70">{m.searchbar_submit()}（全施設）</a>
+					<a href="/" onclick={() => (menuOpen = false)} class="text-[15px] text-white/90">{m.site_portal_all_top({ brand: facility.brandName })}</a>
+					<a href="/search" onclick={() => (menuOpen = false)} class="text-[14px] text-white/70">{m.site_search_all_facilities()}</a>
 				</nav>
 			</div>
 		</div>
@@ -118,22 +118,22 @@
 				{#each nav as item}
 					<a href={item.href} class="text-[15px] text-black transition-colors hover:text-[#b2b2b2]">{item.label}</a>
 				{/each}
-				<a href="{base}/news" class="text-[15px] text-black hover:text-[#b2b2b2]">お知らせ</a>
-				<a href="{base}/access" class="text-[15px] text-black hover:text-[#b2b2b2]">アクセス</a>
-				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[15px] text-black hover:text-[#b2b2b2]">マイページ</a>
+				<a href="{base}/news" class="text-[15px] text-black hover:text-[#b2b2b2]">{m.news_title()}</a>
+				<a href="{base}/access" class="text-[15px] text-black hover:text-[#b2b2b2]">{m.common_access()}</a>
+				<a href={user?.role === 'member' ? '/account' : '/auth/login'} class="text-[15px] text-black hover:text-[#b2b2b2]">{m.common_mypage()}</a>
 			</nav>
 			<!-- 山人グループ（施設間移動・ブランドポータル） -->
 			<nav class="mt-6 flex flex-wrap justify-center gap-x-7 gap-y-2 border-t border-[#eee] pt-6">
-				<a href="/" class="text-[14px] font-medium text-[#4a6b52] hover:underline">{facility.brandName}ポータル（全施設）</a>
-				<span class="text-[14px] text-stone-400">{facility.name}（このサイト）</span>
+				<a href="/" class="text-[14px] font-medium text-[#4a6b52] hover:underline">{m.site_portal_all({ brand: facility.brandName })}</a>
+				<span class="text-[14px] text-stone-400">{m.site_this_site({ name: facility.name })}</span>
 				{#each facility.siblings as sib}
 					<a href="/{sib.brandSlug}/{sib.slug}" class="text-[14px] text-black hover:text-[#b2b2b2]">{sib.name}</a>
 				{/each}
 			</nav>
 			<nav class="mt-4 flex flex-wrap justify-center gap-x-6">
-				<a href="/legal/tokushoho" class="text-[13px] text-stone-400 hover:underline">特定商取引法に基づく表記</a>
-				<a href="/legal/privacy" class="text-[13px] text-stone-400 hover:underline">プライバシーポリシー</a>
-				<a href="/legal/yakkan" class="text-[13px] text-stone-400 hover:underline">宿泊約款</a>
+				<a href="/legal/tokushoho" class="text-[13px] text-stone-400 hover:underline">{m.footer_tokushoho()}</a>
+				<a href="/legal/privacy" class="text-[13px] text-stone-400 hover:underline">{m.footer_privacy()}</a>
+				<a href="/legal/yakkan" class="text-[13px] text-stone-400 hover:underline">{m.footer_yakkan()}</a>
 			</nav>
 			<p class="mt-6 text-[12px] text-stone-400">© Yamado Co., Ltd.</p>
 		</div>

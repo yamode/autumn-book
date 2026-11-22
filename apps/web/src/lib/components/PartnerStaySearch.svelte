@@ -24,6 +24,7 @@
   import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
   import { memberCart } from '$lib/member-cart.svelte';
   import { crossTypeCombos, type RoomCombo } from '$lib/partner-room-combos';
+  import { fadeIn } from '$lib/fade-in';
 
   // below: 検索バーの下・一覧の上に差し込む中身（プランのご紹介の「専用特典」）
   let { data, view, below }: { data: StayPageData; view: 'room' | 'plan'; below?: Snippet } = $props();
@@ -678,7 +679,8 @@
       {/each}
     </div>
   {:else if view === 'room'}
-    <div class="mt-4 space-y-6" aria-busy={pending}>
+    <!-- 写真・紹介が届いてカードの枠（シマー）から中身に替わるときは、一覧ごとふわっと出す -->
+    <div in:fadeIn class="mt-4 space-y-6" aria-busy={pending}>
       {#each cards as card (card.code)}
         {@const parts = roomParts(card.name)}
         {@const photo = card.content?.photos[0]?.url}
@@ -711,7 +713,8 @@
             {#if pending}
               {@render rowShimmer(2, false)}
             {:else if card.rows.length}
-              <div class="divide-y divide-stone-200">
+              <!-- 料金・空室の取得（シマー）が終わったら、プラン行をふわっと出す -->
+              <div in:fadeIn class="divide-y divide-stone-200">
                 {#each card.rows.slice(0, expanded[card.code] ? card.rows.length : 2) as r (r.planCode + r.planName)}
                   {@const anchor = planAnchorOf(r)}
                   <div class="grid gap-3 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-8">
@@ -738,7 +741,7 @@
                 </div>
               {/if}
             {:else}
-              <p class="px-5 py-6 text-base text-stone-500">{dated ? 'この日程・人数・室数でご案内できるプランはありません。' : 'ご案内できるプランはありません。'}</p>
+              <p in:fadeIn class="px-5 py-6 text-base text-stone-500">{dated ? 'この日程・人数・室数でご案内できるプランはありません。' : 'ご案内できるプランはありません。'}</p>
             {/if}
           </div>
         </article>
@@ -747,7 +750,7 @@
       {/each}
     </div>
   {:else}
-    <div class="mt-4 space-y-6" aria-busy={pending}>
+    <div in:fadeIn class="mt-4 space-y-6" aria-busy={pending}>
       {#each planCards as card (card.key)}
         {@const photo = card.content?.photos[0]?.url}
         {@const name = partnerPlanName(data.planNames, card.planCode, card.planName)}
@@ -776,7 +779,7 @@
             {#if pending}
               {@render rowShimmer(2, true)}
             {:else if card.rows.length}
-              <div class="divide-y divide-stone-200">
+              <div in:fadeIn class="divide-y divide-stone-200">
                 {#each card.rows.slice(0, expanded[card.key] ? card.rows.length : 3) as r (r.roomCode)}
                   {@const room = roomOf(r.roomCode)}
                   {@const parts = roomParts(r.roomName)}
@@ -816,7 +819,7 @@
                 </div>
               {/if}
             {:else}
-              <p class="px-4 py-5 text-base text-stone-500">{dated ? 'この日程・人数・室数でご案内できるお部屋はありません。' : 'ご案内できるお部屋はありません。'}</p>
+              <p in:fadeIn class="px-4 py-5 text-base text-stone-500">{dated ? 'この日程・人数・室数でご案内できるお部屋はありません。' : 'ご案内できるお部屋はありません。'}</p>
             {/if}
           </div>
         </article>

@@ -3,6 +3,7 @@
 import type { Cookies } from '@sveltejs/kit';
 import { lastBookingMemberPageOf, lastBookingRoomsOf, setLastBooking, type BookingDraft, type SbHold } from '$lib/server/supabase-data';
 import type { DirectConfirmResult } from '$lib/server/direct-payments';
+import * as m from '$lib/paraglide/messages';
 
 type Paid = Extract<DirectConfirmResult, { result: 'paid' | 'already' }>;
 
@@ -53,5 +54,5 @@ export async function finishDirectBooking(cookies: Cookies, hold: SbHold, draft:
 // 支払は通ったが予約にできなかった（仮押さえの期限切れ等）ときの案内
 export const lateMessage = (refunded: boolean) =>
 	refunded
-		? 'お支払いは完了しましたが、お部屋の確保の期限が過ぎたためご予約を確定できませんでした。お支払いは全額返金しました（カード明細への反映まで数日かかる場合があります）。お手数ですが、もう一度ご予約ください。'
-		: 'お支払いは完了しましたが、ご予約を確定できませんでした。返金の手続きに問題が発生したため、お手数ですが宿へお電話でご連絡ください。';
+		? m.pay_late_refunded()
+		: m.pay_late_refund_failed();

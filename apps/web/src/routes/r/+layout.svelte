@@ -100,7 +100,7 @@
 		<!-- ===== ヘッダー（黒・固定） ===== -->
 		<header class="sticky top-0 z-30 flex h-10 items-center bg-black pl-5 pr-3 text-white">
 			{#if back}
-				<a href={back} aria-label="戻る" class="-ml-2 flex h-10 w-10 items-center justify-center">
+				<a href={back} aria-label={m.common_back()} class="-ml-2 flex h-10 w-10 items-center justify-center">
 					<svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round" />
 					</svg>

@@ -10,6 +10,7 @@
 	import OverviewSection from '$lib/components/facility/OverviewSection.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { formatDate } from '$lib/format';
+	import { getLocale } from '$lib/paraglide/runtime';
 	import type { FacilityPageData } from './types';
 	import { reveal } from '$lib/actions/reveal';
 
@@ -26,41 +27,31 @@
 	});
 
 	// 原サイト index.ejs の実コピー
-	const introLines = [
-		'七千万年にわたる歴史を刻む地層、',
-		'潮の満ち引きで表情を変える海岸線',
-		'古の伝説が息づく男鹿半島は',
-		'人智を超えた自然の力に包まれている',
-		'深呼吸して、そっと身をゆだねる。',
-		'人は大自然の一部であること',
-		'時間は、生命は、ただ流れゆくこと。',
-		'心と身体に、穏やかに語りかけてくれる。',
-		'ときほどかれ、新しい気持ちが生まれてくる。',
-		'感じるすべてが、男鹿からの贈り物。',
-		'日常と離れて、自分をととのえる。',
-		'極上のリトリートがここに。'
-	];
+	// 訳文は1行ずつ改行で区切る
+	const introLines = $derived(m.tpl_oga_intro().split('\n'));
+	// 縦書きは日本語・繁体字のまま。英語は横書きに切り替える
+	const vertical = getLocale() !== 'en';
 
-	const pillars = [
+	const pillars = $derived([
 		{
 			titleSvg: `${A}/t_nature.svg`, alt: '01 NATURE', bg: `${A}/bg_nature.webp`,
-			heading: '男鹿半島が生み出す<br>荘厳な自然',
-			text: '男鹿半島が織り成す荘厳な自然は、訪れる者を圧倒する力強さと静けさを持ち合わせています。切り立った崖や荒々しい海岸線、四季折々に移り変わる風景は、まるで大地そのものが息づいているかのよう。男鹿半島の大いなる息吹を、五感で感じてください。',
-			link: { href: '/nature', text: '男鹿の自然について' }
+			heading: m.tpl_oga_nature_heading(),
+			text: m.tpl_oga_nature_text(),
+			link: { href: '/nature', text: m.tpl_oga_nature_link() }
 		},
 		{
 			titleSvg: `${A}/t_cuisine.svg`, alt: '02 CUISINE', bg: `${A}/bg_cuisine.webp`,
-			heading: '五感を満たす<br>ローカルガストロノミー',
-			text: '男鹿半島の豊かな自然が育む、季節ごとの恵みを贅沢に味わう。大地の滋味が凝縮された食材は、一つ一つが地元の誇り。目で楽しみ、香りを感じ、舌で堪能するその瞬間、自然と食が織り成す調和が心を満たします。土地の恵みを五感で感じる至福のひとときを、ご体験ください。',
-			link: { href: '/cuisine', text: '山人-oga-でのお食事' }
+			heading: m.tpl_oga_cuisine_heading(),
+			text: m.tpl_oga_cuisine_text(),
+			link: { href: '/cuisine', text: m.tpl_oga_cuisine_link() }
 		},
 		{
 			titleSvg: `${A}/t_purity.svg`, alt: '03 PURITY', bg: `${A}/bg_purity.webp`,
-			heading: '心と体を癒す<br>至高の空間',
-			text: '大地の息吹を感じる男鹿半島の神聖な地に佇み、自然のエネルギーが静かに満ちる特別な場所。霊的な静寂と雄大な風景に包まれることで、日常の喧騒から解放され、魂が浄化される感覚を味わえます。この神秘的な場所で、真の安らぎと再生の時をお過ごしください。',
-			link: { href: '/rooms', text: '客室について' }
+			heading: m.tpl_oga_purity_heading(),
+			text: m.tpl_oga_purity_text(),
+			link: { href: '/rooms', text: m.tpl_oga_purity_link() }
 		}
-	];
+	]);
 </script>
 
 <div class="oga-v1 bg-white" style="--fac-heading: #1c1c1c; --fac-accent: #555;">
@@ -81,15 +72,15 @@
 		<!-- サイドバー: ロゴ + 縦書きコピー（原サイト p-index_kv__sidebar） -->
 		<div class="absolute right-0 top-0 flex h-full w-[60px] flex-col items-center justify-between py-6 sm:w-[80px]">
 			<img src="{A}/logo.svg" alt={f.name} class="w-[44px] sm:w-[56px]" />
-			<img src="{A}/kv_copy.svg" alt="あるがままに、還る" class="h-[160px] w-auto sm:h-[200px]" />
+			<img src="{A}/kv_copy.svg" alt={m.tpl_oga_copy_alt()} class="h-[160px] w-auto sm:h-[200px]" />
 			<span></span>
 		</div>
 	</section>
 
 	<!-- 詩的イントロ（縦書き・原文コピー全文） -->
 	<section use:reveal class="flex justify-center px-4 py-20 sm:py-28">
-		<div class="flex max-h-[560px] flex-row-reverse items-start gap-6 overflow-hidden [writing-mode:vertical-rl] sm:gap-8">
-			<img src="{A}/intro_copy.webp" alt="あるがままに、還る" class="h-[280px] w-auto sm:h-[324px]" style="writing-mode: horizontal-tb;" />
+		<div class={vertical ? 'flex max-h-[560px] flex-row-reverse items-start gap-6 overflow-hidden [writing-mode:vertical-rl] sm:gap-8' : 'flex max-w-[600px] flex-col items-center gap-8 text-center'}>
+			<img src="{A}/intro_copy.webp" alt={m.tpl_oga_copy_alt()} class="h-[280px] w-auto sm:h-[324px]" style="writing-mode: horizontal-tb;" />
 			<p class="text-[15px] leading-[2.6] tracking-[0.15em] sm:text-[16px]">
 				{#each introLines as line}
 					<span class="mb-1 block">{line}</span>
@@ -101,14 +92,14 @@
 	<!-- ギャラリーコラージュ（原サイト p-index_gallery） -->
 	<section use:reveal class="relative mx-auto max-w-[1400px] px-4 pb-24">
 		<figure class="mx-auto max-w-[900px]">
-			<img src="{A}/g_main.webp" alt="海" class="w-full object-cover" />
+			<img src="{A}/g_main.webp" alt={m.tpl_oga_alt_sea()} class="w-full object-cover" />
 		</figure>
-		<figure class="absolute left-[2%] top-[-8%] hidden w-[20%] md:block"><img src="{A}/g_top.webp" alt="地層" /></figure>
-		<figure class="absolute right-[1%] top-[18%] hidden w-[21%] md:block"><img src="{A}/g_right.webp" alt="お香" /></figure>
-		<figure class="absolute bottom-[4%] left-[1%] hidden w-[24%] md:block"><img src="{A}/g_left.webp" alt="風景" /></figure>
-		<figure class="absolute bottom-[-10%] right-[14%] hidden w-[23%] md:block"><img src="{A}/g_b1.webp" alt="温泉" /></figure>
+		<figure class="absolute left-[2%] top-[-8%] hidden w-[20%] md:block"><img src="{A}/g_top.webp" alt={m.tpl_oga_alt_strata()} /></figure>
+		<figure class="absolute right-[1%] top-[18%] hidden w-[21%] md:block"><img src="{A}/g_right.webp" alt={m.tpl_oga_alt_incense()} /></figure>
+		<figure class="absolute bottom-[4%] left-[1%] hidden w-[24%] md:block"><img src="{A}/g_left.webp" alt={m.tpl_oga_alt_scenery()} /></figure>
+		<figure class="absolute bottom-[-10%] right-[14%] hidden w-[23%] md:block"><img src="{A}/g_b1.webp" alt={m.site_oga_nav_onsen()} /></figure>
 		<div class="mt-2 grid grid-cols-3 gap-2 md:hidden">
-			<img src="{A}/g_top.webp" alt="地層" /><img src="{A}/g_b1.webp" alt="温泉" /><img src="{A}/g_left.webp" alt="風景" />
+			<img src="{A}/g_top.webp" alt={m.tpl_oga_alt_strata()} /><img src="{A}/g_b1.webp" alt={m.site_oga_nav_onsen()} /><img src="{A}/g_left.webp" alt={m.tpl_oga_alt_scenery()} />
 		</div>
 	</section>
 
@@ -134,12 +125,12 @@
 			<div>
 				<h2>
 					<img src="{A}/t_about.svg" alt="ABOUT" class="w-[200px]" />
-					<span class="mt-3 block text-[15px] tracking-[0.2em]">山人-oga-について</span>
+					<span class="mt-3 block text-[15px] tracking-[0.2em]">{m.tpl_oga_about()}</span>
 				</h2>
 				<p class="mt-8 text-[15px] leading-[2.1]">{f.description}</p>
 			</div>
 			<ul class="grid gap-4 sm:grid-cols-2">
-				{#each [{ img: `${A}/about_onsen.webp`, num: '01', en: 'onsen', jp: '温泉', href: `${base}/onsen` }, { img: `${A}/about_event.webp`, num: '02', en: 'news', jp: 'お知らせ・イベント', href: `${base}/news` }] as card}
+				{#each [{ img: `${A}/about_onsen.webp`, num: '01', en: 'onsen', jp: m.site_oga_nav_onsen(), href: `${base}/onsen` }, { img: `${A}/about_event.webp`, num: '02', en: 'news', jp: m.tpl_oga_card_news(), href: `${base}/news` }] as card}
 					<li>
 						<a href={card.href} class="group relative block overflow-hidden">
 							<img src={card.img} alt={card.jp} class="aspect-square w-full object-cover transition duration-700 group-hover:scale-105" />
@@ -153,7 +144,7 @@
 			</ul>
 		</div>
 		<ul class="mt-6 grid gap-4 sm:grid-cols-3">
-			{#each [{ img: `${A}/p_facility.webp`, num: '03', en: 'facility', jp: '館内設備', href: `${base}/guide` }, { img: `${A}/p_activities.webp`, num: '04', en: 'activities', jp: '観光・アクティビティ', href: `${base}/nature` }, { img: `${A}/p_access.webp`, num: '05', en: 'access', jp: 'アクセス', href: `${base}/access` }] as card}
+			{#each [{ img: `${A}/p_facility.webp`, num: '03', en: 'facility', jp: m.tpl_oga_card_facility(), href: `${base}/guide` }, { img: `${A}/p_activities.webp`, num: '04', en: 'activities', jp: m.tpl_oga_card_activities(), href: `${base}/nature` }, { img: `${A}/p_access.webp`, num: '05', en: 'access', jp: m.common_access(), href: `${base}/access` }] as card}
 				<li>
 					<a href={card.href} class="group flex items-center gap-4 border-b border-stone-200 pb-4">
 						<img src={card.img} alt={card.jp} class="h-[72px] w-[115px] object-cover" />
@@ -173,7 +164,7 @@
 			<div class="grid gap-8 md:grid-cols-[280px_1fr]">
 				<h2>
 					<img src="{A}/t_news.svg" alt="NEWS" class="w-[160px]" />
-					<span class="mt-3 block text-[15px] tracking-[0.2em]">お知らせ</span>
+					<span class="mt-3 block text-[15px] tracking-[0.2em]">{m.news_title()}</span>
 				</h2>
 				<div>
 					<ul class="divide-y divide-stone-200">
@@ -187,7 +178,7 @@
 						{/each}
 					</ul>
 					<a href="{base}/news" class="group mt-5 inline-flex items-center gap-3 border-b border-[#111] pb-1 text-[14px] tracking-[0.15em]">
-						一覧へ <span class="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
+						{m.tpl_oga_news_more()} <span class="transition-transform duration-300 group-hover:translate-x-1.5">→</span>
 					</a>
 				</div>
 			</div>

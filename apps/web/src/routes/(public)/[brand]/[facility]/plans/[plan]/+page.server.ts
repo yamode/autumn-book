@@ -70,7 +70,7 @@ export const load: PageServerLoad = async (event) => {
 
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
-		if (!facility || facility.brandSlug !== params.brand) error(404, '施設が見つかりません');
+		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
 		// それでも無ければ（販売停止中・販売表示期間の外・料金なし）、スタッフの ?preview=1 だけ販売ページの見た目で確かめる。
 		// プレビューは本物の在庫・料金で仮押さえして予約入力画面まで進めるが、確定はできない（v0.230.0・$lib/server/plan-preview）
@@ -78,7 +78,7 @@ export const load: PageServerLoad = async (event) => {
 		const secret = open ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
 		const preview = open || secret ? undefined : await staffPreviewPlan(event, facility.id, params.plan);
 		const found = open ?? secret?.plan ?? preview;
-		if (!found) error(404, 'プランが見つかりません');
+		if (!found) error(404, m.error_plan_not_found());
 		const gate = secret?.gate ?? 'ok';
 		// 料金・空室・仮押さえの RPC に「このプランを販売中と同じに扱う」印を付ける（スタッフのプレビューだけ）
 		const previewPlanId = preview ? preview.id : undefined;
@@ -156,11 +156,11 @@ export const load: PageServerLoad = async (event) => {
 
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 	const found = getRatePlans(facility.id, locale).find((p) => p.slug === params.plan);
-	if (!found) error(404, 'プランが見つかりません');
+	if (!found) error(404, m.error_plan_not_found());
 	const gate = await planGate(found, locals, cookies);
-	if (gate === 'hidden') error(404, 'プランが見つかりません');
+	if (gate === 'hidden') error(404, m.error_plan_not_found());
 	const [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], await loadEarlyPrepaySettings(facility.id));
 	plan.cancellationPolicy = appliedCancellationPolicy(plan.cancellationPolicy, demoCancellationFallback((await viewerOf(locals)).rank ?? undefined));
 
@@ -200,7 +200,8 @@ export const load: PageServerLoad = async (event) => {
 	};
 };
 
-const HOLD_RATE_LIMITED_MESSAGE = 'お申し込みが集中しています。しばらく時間をおいてからお試しください。';
+// 文言はリクエストの言語で出すため、モジュール読み込み時ではなく呼び出し時に作る
+const holdRateLimitedMessage = () => m.plan_hold_rate_limited();
 // 4 室目をかごに入れたときの注意と同じ文言（docs/official-multi-room.md §8.1）。言語は閲覧者に合わせる
 const tooManyRoomsMessage = () => m.cart_full_notice({ max: String(MAX_ROOMS_PER_BOOKING), next: String(MAX_ROOMS_PER_BOOKING + 1) });
 
@@ -226,11 +227,11 @@ export const actions: Actions = {
 		const checkin = String(form.get('checkin') ?? '');
 		const nights = Number(form.get('nights'));
 		const parsed = parseHoldRooms((k) => form.get(k));
-		if (!checkin || (!parsed.ok && parsed.code === 'missing')) return fail(400, { message: '日付を選択してください' });
+		if (!checkin || (!parsed.ok && parsed.code === 'missing')) return fail(400, { message: m.plan_hold_select_date() });
 		if (!parsed.ok) {
 			return parsed.code === 'too_many_rooms'
 				? fail(400, { message: tooManyRoomsMessage(), code: 'too_many_rooms' as const })
-				: fail(400, { message: 'お部屋の選び方を確認してください。', code: 'invalid' as const });
+				: fail(400, { message: m.plan_hold_check_room_selection(), code: 'invalid' as const });
 		}
 		const rooms = parsed.rooms;
 		// 遷移経路（予約ボタンを押したページと、その手前のページ）を予約入力画面へ渡す
@@ -248,7 +249,7 @@ export const actions: Actions = {
 
 		// 接続元ごとの回数制限（KV `hold:<ip>` 10 分 20 回・auth-hardening.md §9 S8）。DB 側にも同じ上限がある
 		if (!(await holdRateCheck(event.platform, ip))) {
-			return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
+			return fail(429, { message: holdRateLimitedMessage() });
 		}
 
 		// シークレットプラン（会員限定・グレード以上・URL 限定）は、閲覧者が予約できるものだけ通す。
@@ -260,12 +261,12 @@ export const actions: Actions = {
 		if (DATA_SOURCE === 'supabase') {
 			// スタッフのプレビュー（販売中でないプラン）は、そのプランを販売中と同じに扱わせて仮押さえする（確定は予約入力画面で止める）
 			const previewHold = await previewPlanForHold(rooms.map((r) => r.planId), locals);
-			if (previewHold.error) return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
+			if (previewHold.error) return fail(400, { message: m.plan_hold_unavailable(), code: 'invalid' as const });
 			const sid = bookingSessionId(cookies);
 			// create_hold は service_role 専用（S8）。会員の紐付けは検証済みセッションの会員 id を渡す（会員でなければ null）
 			const memberUserId = MEMBER_SUPABASE && locals.user?.role === 'member' ? locals.user.id : null;
 			const facility = await sbFacilityBySlug(params.facility);
-			if (!facility || facility.brandSlug !== params.brand) return fail(400, { message: '施設が見つかりません', code: 'invalid' as const });
+			if (!facility || facility.brandSlug !== params.brand) return fail(400, { message: m.error_facility_not_found(), code: 'invalid' as const });
 			// 支払方法が両立しないプランは同じ予約にできない（Q3。かごでも止めるが、ここでも止める）
 			if (rooms.length > 1) {
 				const isMember = viewerIsMember(locals);
@@ -273,7 +274,7 @@ export const actions: Actions = {
 					[...new Set(rooms.map((r) => r.planId))].map((id) => planOrPreview(id, locals).then((x) => x?.plan).catch(() => undefined))
 				);
 				if (plans.some((p) => !p || p.facilityId !== facility.id)) {
-					return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
+					return fail(400, { message: m.plan_hold_unavailable(), code: 'invalid' as const });
 				}
 				if (!payCompatible(plans.map((p) => planForViewer(p!, isMember).payment))) {
 					return fail(400, { message: m.cart_mixed_payment(), code: 'mixed_payment' as const });
@@ -287,15 +288,15 @@ export const actions: Actions = {
 			});
 			if ('error' in result) {
 				if (result.error === 'rate_limited' || result.error === 'too_many_holds') {
-					return fail(429, { message: HOLD_RATE_LIMITED_MESSAGE });
+					return fail(429, { message: holdRateLimitedMessage() });
 				}
 				if (result.error === 'too_many_rooms') return fail(400, { message: tooManyRoomsMessage(), code: 'too_many_rooms' as const });
-				if (result.error === 'invalid') return fail(400, { message: 'このプラン・お部屋は現在ご予約いただけません。日程や人数を選び直してください。', code: 'invalid' as const });
+				if (result.error === 'invalid') return fail(400, { message: m.plan_hold_unavailable(), code: 'invalid' as const });
 				// どの部屋が取れなかったか（M1 のかごはそのまま残して、この部屋タイプを出す）
 				const soldOut = result.soldOutRoomTypeId
 					? [{ roomTypeId: result.soldOutRoomTypeId, roomName: (await sbRoomTypeByUuid(result.soldOutRoomTypeId).catch(() => null))?.name ?? '' }]
 					: [];
-				return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。', soldOut });
+				return fail(409, { message: m.plan_hold_sold_out(), soldOut });
 			}
 			rememberNav(result.groupId);
 			redirect(303, `/booking/hold?id=${result.groupId}`);
@@ -305,7 +306,7 @@ export const actions: Actions = {
 		const { planId, roomTypeId, adults } = rooms[0];
 		const result = createHold(planId, roomTypeId, checkin, nights, adults, 0, locals.user?.role === 'member' ? locals.user.id : undefined);
 		if ('error' in result) {
-			return fail(409, { message: 'ただいま満室になりました。お手数ですが別の日程をお試しください。' });
+			return fail(409, { message: m.plan_hold_sold_out() });
 		}
 		rememberNav(result.id);
 		redirect(303, `/booking/hold?id=${result.id}`);

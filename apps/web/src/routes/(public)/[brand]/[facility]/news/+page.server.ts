@@ -3,12 +3,13 @@ import { getFacilityBySlug, getNews } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { listNews, FACILITY_UUID } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
+import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
-	if (!facility) error(404, '施設が見つかりません');
+	if (!facility) error(404, m.error_facility_not_found());
 
 	if (DATA_SOURCE === 'supabase' && FACILITY_UUID[facility.id]) {
 		const rows = await listNews(FACILITY_UUID[facility.id]);

@@ -10,13 +10,13 @@
 	<div class="grid gap-6 md:grid-cols-2">
 		<div class="space-y-3 text-sm">
 			{#each f.access.car as c}
-				<p>🚗 <strong>{m.facility_car()}</strong>{c.from} から {c.route} 約{c.minutes}分</p>
+				<p>🚗 <strong>{m.facility_car()}</strong>{m.access_from_via({ from: c.from, route: c.route, minutes: String(c.minutes) })}</p>
 			{/each}
 			{#each f.access.train as t}
-				<p>🚃 <strong>{m.facility_train()}</strong>{t.from} から {t.via} 約{t.minutes}分</p>
+				<p>🚃 <strong>{m.facility_train()}</strong>{m.access_from_via({ from: t.from, route: t.via, minutes: String(t.minutes) })}</p>
 			{/each}
 			{#each f.access.air as a}
-				<p>✈ <strong>{m.facility_air()}</strong>{a.from} から 約{a.minutes}分</p>
+				<p>✈ <strong>{m.facility_air()}</strong>{m.access_from({ from: a.from, minutes: String(a.minutes) })}</p>
 			{/each}
 			{#if f.access.shuttle.available}
 				<p class="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800">🚌 {m.facility_shuttle_available({ note: f.access.shuttle.note })}</p>
