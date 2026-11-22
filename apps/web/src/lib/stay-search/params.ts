@@ -224,6 +224,7 @@ export function parseCalendar(json: unknown): StayCalendarData | null {
  * 1 日分の表示（StayDatePanel と同じ判定）。
  * data が無い（取得中・失敗）ときは今日以降をすべて選べる＝フォールバック。
  * 取得範囲（through）を過ぎた日は料金なしで選べる。
+ * 満室の日も選べる（選んだ先のプラン一覧で空室通知を登録できるように・2026-11-23 指示）。選べないのは過去と休館日だけ。
  */
 export function dayState(date: string, today: string, data: StayCalendarData | null) {
 	const price = data && Object.prototype.hasOwnProperty.call(data.prices, date) ? data.prices[date] : null;
@@ -231,7 +232,7 @@ export function dayState(date: string, today: string, data: StayCalendarData | n
 	return {
 		price,
 		rooms: price != null ? (data?.rooms?.[date] ?? null) : null,
-		disabled: date < today || known,
+		disabled: date < today || !!(known && data?.closed[date]),
 		unavailable: known && date >= today,
 		closed: !!(known && data?.closed[date])
 	};

@@ -219,6 +219,8 @@
   "plans_room_collapse": "Show fewer plans",
   "plans_room_details": "Details and booking",
   "plans_room_no_availability": "No plans are available for these conditions. Try other dates or a different guest count.",
+  "plans_unavailable_heading": "Rooms sold out for these dates",
+  "plans_unavailable_desc": "Register for an availability alert and we will email you when a room opens up.",
   "plans_room_price_unavailable": "Select dates to see the rate",
   "facility_calendar_range": "Today through the next two months",
   "facility_calendar_update": "Update search",

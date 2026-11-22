@@ -219,6 +219,8 @@
   "plans_room_collapse": "プランを閉じる",
   "plans_room_details": "詳細・予約",
   "plans_room_no_availability": "この条件で予約できるプランはありません。日付や人数を変更してください。",
+  "plans_unavailable_heading": "この日程で満室のお部屋",
+  "plans_unavailable_desc": "空室通知を登録すると、空きが出たときにメールでお知らせします。",
   "plans_room_price_unavailable": "料金は日付を選んでご確認ください",
   "facility_calendar_range": "今日から2か月先まで",
   "facility_calendar_update": "条件を更新",

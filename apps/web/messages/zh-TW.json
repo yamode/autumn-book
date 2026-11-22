@@ -219,6 +219,8 @@
   "plans_room_collapse": "收合方案",
   "plans_room_details": "詳情與預訂",
   "plans_room_no_availability": "目前沒有符合條件的方案，請更改日期或入住人數。",
+  "plans_unavailable_heading": "此日程已客滿的客房",
+  "plans_unavailable_desc": "登記空房通知後，有空房時將以電子郵件通知您。",
   "plans_room_price_unavailable": "選擇日期以查看價格",
   "facility_calendar_range": "從今天起至兩個月後",
   "facility_calendar_update": "更新條件",

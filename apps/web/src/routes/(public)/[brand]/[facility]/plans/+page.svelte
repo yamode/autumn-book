@@ -61,6 +61,11 @@
 			})
 	);
 
+	// 日付を選んでいるときは、満室（この条件で予約できるプランが無い）の部屋タイプを見出しを分けて下に出す（2026-11-23 指示）
+	let openRooms = $derived(data.params.checkin ? rooms.filter((item) => item.plans.length > 0) : rooms);
+	let fullRooms = $derived(data.params.checkin ? rooms.filter((item) => item.plans.length === 0) : []);
+	const ROOM_CARD = 'overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl';
+
 	// お食事の絞り込みだけを変えている間の行き先（それ以外の移動中・止まっているときは null）。
 	// このときは結果の欄ごと読み込み表示にせず、ボタンをすぐ切り替え、各部屋のプランの欄だけを薄くして、届いたらフェードインで入れ替える（2026-11-21 指示）
 	const pendingMeal = $derived(pendingParamOnly('meal'));
@@ -168,6 +173,115 @@
 
 <svelte:window onresize={updateMealEdges} />
 
+{#snippet roomCard(item: RoomItem)}
+			<div class="border-b border-stone-200 md:border-b-0 md:border-r">
+				<button type="button" onclick={() => (infoRoom = item.room)} class="block w-full" aria-label={`${item.room.name} ${m.room_card_info()}`}>
+					<img src={roomPhoto(item.room)} alt={item.room.name} class="aspect-[16/9] w-full object-cover md:aspect-[16/11]" loading="lazy" />
+				</button>
+				<div class="p-4 sm:p-5">
+					{#if data.favoriteRoomTypeIds.includes(item.room.id)}
+						<!-- 会員のお気に入りの部屋がある部屋タイプ（マイページのお気に入りで登録） -->
+						<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
+					{/if}
+					<h3 class="font-display text-lg leading-snug text-brand-900">{item.room.name}</h3>
+					<p class="mt-2 text-xs text-stone-500">{roomCapacityText(item.room)}</p>
+					{#if item.room.amenities.length}
+						<div class="mt-2 flex flex-wrap gap-1.5">
+							{#each item.room.amenities.slice(0, 3) as amenity}<span class="rounded bg-stone-100 px-2 py-1 text-[11px] text-stone-600">{amenity}</span>{/each}
+						</div>
+					{/if}
+					<div class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-1">
+						<button type="button" onclick={() => (infoRoom = item.room)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">ⓘ {m.room_card_info()}</button>
+						<button type="button" onclick={() => openCalendar(item.room.id)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">📅 {m.room_card_calendar()}</button>
+					</div>
+				</div>
+			</div>
+			<!-- プランの欄（お食事の絞り込みのときはここだけが薄くなり、届いたらフェードインで入れ替わる） -->
+			<div class="min-w-0 transition-opacity duration-200 ease-out {pendingMeal !== null ? 'opacity-30' : 'opacity-100'}" aria-busy={pendingMeal !== null || undefined}>
+			{#key data.params.meal}
+			<div in:fade={{ duration: 220 }}>
+				{#if item.plans.length}
+					<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
+						{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
+							<!-- 「プランをすべて見る」で出し入れする 3 件目以降は、すっと開閉する（2026-11-02 指示） -->
+							<div transition:slide={{ duration: 280, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+								<div class="min-w-0">
+									<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
+										{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{mealChipLabel(option.plan)}</span>{/if}
+										{#if option.plan.payment.onsite}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.pay_onsite()}</span>{/if}
+										{#if option.plan.payment.prepay}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_card()}</span>{/if}
+										{#if option.plan.payment.checkout}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_checkout()}</span>{/if}
+									</div>
+									{#if option.plan.access}<PlanAccessBadge access={option.plan.access} size="sm" />{/if}
+									<h4 class="font-medium leading-6 text-stone-900">{option.plan.name}</h4>
+									{#if option.plan.headline && option.plan.headline !== option.plan.name}<p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{option.plan.headline}</p>{/if}
+									<p class="mt-2 text-xs text-stone-600">
+										<span class="font-semibold">IN</span> {data.facility.checkinTime}　<span class="font-semibold">OUT</span> {data.facility.checkoutTime}
+										{#if option.remaining !== null && option.remaining > 0 && option.remaining <= 3}
+											<span class="ml-2 font-semibold text-red-600">{m.plans_remaining_rooms({ n: String(option.remaining) })}</span>
+										{/if}
+									</p>
+								</div>
+								<div class="flex items-end justify-between gap-3 border-t border-stone-100 pt-3 sm:flex-col sm:items-end sm:border-0 sm:pt-0">
+									<div class="sm:text-right">
+										{#if option.total !== null}
+											<p class="text-xl font-bold text-brand-900">{formatPrice(Math.round(option.total / (data.params.adults * data.params.nights)))}〜</p>
+											<p class="text-[11px] text-stone-500">{m.price_unit_pp_night()}</p>
+											<p class="text-[11px] text-stone-500">{m.plan_card_per_room({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(option.total) })}</p>
+										{:else if option.referencePrice !== null && option.referencePrice > 0}
+											<p class="text-xl font-bold text-brand-900">{formatPrice(option.referencePrice)}〜</p>
+											<p class="text-[11px] text-stone-500">{m.price_unit_pp_night()}</p>
+										{:else}
+											<p class="text-xs text-stone-500">{m.plans_room_price_unavailable()}</p>
+										{/if}
+									</div>
+									<a href={planHref(option.plan.slug, item.room.slug)} class="shrink-0 rounded-md bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800">{m.plans_room_details()}</a>
+								</div>
+							</div>
+						{/each}
+					</div>
+					{#if item.plans.length > 2}
+						<div class="border-t border-stone-200 p-4 text-center sm:text-right">
+							<button type="button" aria-controls="plans-{item.room.id}" aria-expanded={!!expandedRooms[item.room.id]} onclick={() => (expandedRooms[item.room.id] = !expandedRooms[item.room.id])} class="w-full rounded-md border border-stone-300 px-5 py-2.5 text-sm font-semibold text-brand-800 hover:border-brand-800 hover:bg-brand-50 sm:w-auto sm:min-w-72">
+								{expandedRooms[item.room.id] ? m.plans_room_collapse() : m.plans_room_show_all({ count: String(item.plans.length) })}
+								<span aria-hidden="true" class="ml-2 inline-block align-[-0.2em] transition {expandedRooms[item.room.id] ? 'rotate-180' : ''}"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
+							</button>
+						</div>
+					{/if}
+				{:else}
+					<div class="space-y-3 p-5 text-sm sm:p-6">
+						<p class="leading-6 text-stone-500">{m.plans_room_no_availability()}</p>
+						{#if data.params.checkin > today}
+							{#if form?.alertRoom === item.room.id && form?.alertSaved}
+								<p role="status" class="text-emerald-800">{m.plans_alert_registered()}</p>
+								<a href="/account/availability-alerts" class="inline-flex min-h-11 items-center underline">{m.plans_alert_view_registered()}</a>
+							{:else if page.data.user?.role === 'member'}
+								<details open={form?.alertRoom === item.room.id && Boolean(alertError)}>
+									<summary class="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_register()}</summary>
+									<form method="POST" action="?/registerAlert&{searchQuery(data.params)}" use:enhance class="mt-3 space-y-2">
+										<input type="hidden" name="facility" value={data.facility.id} />
+										<input type="hidden" name="room" value={item.room.id} />
+										<input type="hidden" name="checkin" value={data.params.checkin} />
+										<input type="hidden" name="nights" value={data.params.nights} />
+										<input type="hidden" name="adults" value={data.params.adults} />
+										<input type="hidden" name="rooms" value={data.params.rooms} />
+										{#if form?.alertRoom === item.room.id && alertError}<p role="alert" class="text-red-700">{alertError}</p>{/if}
+										<label class="flex items-start gap-2"><input name="consent" type="checkbox" value="yes" required class="mt-1" />{m.plans_alert_consent_label()}</label>
+										<button class="min-h-11 rounded-lg bg-brand-800 px-4 font-medium text-white">{m.plans_alert_submit()}</button>
+									</form>
+								</details>
+							{:else}
+								<a href={'/auth/login?next=' + encodeURIComponent(page.url.pathname + page.url.search)} class="inline-flex min-h-11 items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_login()}</a>
+							{/if}
+						{/if}
+					</div>
+				{/if}
+			</div>
+			{/key}
+			</div>
+{/snippet}
+
+
 <svelte:head>
 	<title>{m.plans_title({ name: data.facility.name })}</title>
 </svelte:head>
@@ -247,118 +361,24 @@
 		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
 		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null}>
 		<div class="mt-4 space-y-5 sm:space-y-6">
-			{#each rooms as item (item.room.id)}
-				<article animate:flip={{ duration: 300, easing: cubicOut }} class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm md:grid md:grid-cols-[280px_minmax(0,1fr)] md:rounded-2xl">
-					<div class="border-b border-stone-200 md:border-b-0 md:border-r">
-						<button type="button" onclick={() => (infoRoom = item.room)} class="block w-full" aria-label={`${item.room.name} ${m.room_card_info()}`}>
-							<img src={roomPhoto(item.room)} alt={item.room.name} class="aspect-[16/9] w-full object-cover md:aspect-[16/11]" loading="lazy" />
-						</button>
-						<div class="p-4 sm:p-5">
-							{#if data.favoriteRoomTypeIds.includes(item.room.id)}
-								<!-- 会員のお気に入りの部屋がある部屋タイプ（マイページのお気に入りで登録） -->
-								<span class="mb-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600" title={m.favorites_room_type_badge_title()}>♥ {m.favorites_room_type_badge()}</span>
-							{/if}
-							<h3 class="font-display text-lg leading-snug text-brand-900">{item.room.name}</h3>
-							<p class="mt-2 text-xs text-stone-500">{roomCapacityText(item.room)}</p>
-							{#if item.room.amenities.length}
-								<div class="mt-2 flex flex-wrap gap-1.5">
-									{#each item.room.amenities.slice(0, 3) as amenity}<span class="rounded bg-stone-100 px-2 py-1 text-[11px] text-stone-600">{amenity}</span>{/each}
-								</div>
-							{/if}
-							<div class="mt-3 grid grid-cols-2 gap-2 md:grid-cols-1">
-								<button type="button" onclick={() => (infoRoom = item.room)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">ⓘ {m.room_card_info()}</button>
-								<button type="button" onclick={() => openCalendar(item.room.id)} class="rounded-md border border-stone-300 px-3 py-2 text-left text-xs font-medium text-stone-700 hover:border-brand-800 hover:text-brand-800">📅 {m.room_card_calendar()}</button>
-							</div>
-						</div>
-					</div>
-					<!-- プランの欄（お食事の絞り込みのときはここだけが薄くなり、届いたらフェードインで入れ替わる） -->
-					<div class="min-w-0 transition-opacity duration-200 ease-out {pendingMeal !== null ? 'opacity-30' : 'opacity-100'}" aria-busy={pendingMeal !== null || undefined}>
-					{#key data.params.meal}
-					<div in:fade={{ duration: 220 }}>
-						{#if item.plans.length}
-							<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
-								{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
-									<!-- 「プランをすべて見る」で出し入れする 3 件目以降は、すっと開閉する（2026-11-02 指示） -->
-									<div transition:slide={{ duration: 280, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
-										<div class="min-w-0">
-											<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
-												{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{mealChipLabel(option.plan)}</span>{/if}
-												{#if option.plan.payment.onsite}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.pay_onsite()}</span>{/if}
-												{#if option.plan.payment.prepay}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_card()}</span>{/if}
-												{#if option.plan.payment.checkout}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{m.plan_card_payment_checkout()}</span>{/if}
-											</div>
-											{#if option.plan.access}<PlanAccessBadge access={option.plan.access} size="sm" />{/if}
-											<h4 class="font-medium leading-6 text-stone-900">{option.plan.name}</h4>
-											{#if option.plan.headline && option.plan.headline !== option.plan.name}<p class="mt-1 line-clamp-2 text-xs leading-5 text-stone-500">{option.plan.headline}</p>{/if}
-											<p class="mt-2 text-xs text-stone-600">
-												<span class="font-semibold">IN</span> {data.facility.checkinTime}　<span class="font-semibold">OUT</span> {data.facility.checkoutTime}
-												{#if option.remaining !== null && option.remaining > 0 && option.remaining <= 3}
-													<span class="ml-2 font-semibold text-red-600">{m.plans_remaining_rooms({ n: String(option.remaining) })}</span>
-												{/if}
-											</p>
-										</div>
-										<div class="flex items-end justify-between gap-3 border-t border-stone-100 pt-3 sm:flex-col sm:items-end sm:border-0 sm:pt-0">
-											<div class="sm:text-right">
-												{#if option.total !== null}
-													<p class="text-xl font-bold text-brand-900">{formatPrice(Math.round(option.total / (data.params.adults * data.params.nights)))}〜</p>
-													<p class="text-[11px] text-stone-500">{m.price_unit_pp_night()}</p>
-													<p class="text-[11px] text-stone-500">{m.plan_card_per_room({ adults: String(data.params.adults), nights: String(data.params.nights), total: formatPrice(option.total) })}</p>
-												{:else if option.referencePrice !== null && option.referencePrice > 0}
-													<p class="text-xl font-bold text-brand-900">{formatPrice(option.referencePrice)}〜</p>
-													<p class="text-[11px] text-stone-500">{m.price_unit_pp_night()}</p>
-												{:else}
-													<p class="text-xs text-stone-500">{m.plans_room_price_unavailable()}</p>
-												{/if}
-											</div>
-											<a href={planHref(option.plan.slug, item.room.slug)} class="shrink-0 rounded-md bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800">{m.plans_room_details()}</a>
-										</div>
-									</div>
-								{/each}
-							</div>
-							{#if item.plans.length > 2}
-								<div class="border-t border-stone-200 p-4 text-center sm:text-right">
-									<button type="button" aria-controls="plans-{item.room.id}" aria-expanded={!!expandedRooms[item.room.id]} onclick={() => (expandedRooms[item.room.id] = !expandedRooms[item.room.id])} class="w-full rounded-md border border-stone-300 px-5 py-2.5 text-sm font-semibold text-brand-800 hover:border-brand-800 hover:bg-brand-50 sm:w-auto sm:min-w-72">
-										{expandedRooms[item.room.id] ? m.plans_room_collapse() : m.plans_room_show_all({ count: String(item.plans.length) })}
-										<span aria-hidden="true" class="ml-2 inline-block align-[-0.2em] transition {expandedRooms[item.room.id] ? 'rotate-180' : ''}"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6" /></svg></span>
-									</button>
-								</div>
-							{/if}
-						{:else}
-							<div class="space-y-3 p-5 text-sm sm:p-6">
-								<p class="leading-6 text-stone-500">{m.plans_room_no_availability()}</p>
-								{#if data.params.checkin > today}
-									{#if form?.alertRoom === item.room.id && form?.alertSaved}
-										<p role="status" class="text-emerald-800">{m.plans_alert_registered()}</p>
-										<a href="/account/availability-alerts" class="inline-flex min-h-11 items-center underline">{m.plans_alert_view_registered()}</a>
-									{:else if page.data.user?.role === 'member'}
-										<details open={form?.alertRoom === item.room.id && Boolean(alertError)}>
-											<summary class="flex min-h-11 w-fit cursor-pointer items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_register()}</summary>
-											<form method="POST" action="?/registerAlert&{searchQuery(data.params)}" use:enhance class="mt-3 space-y-2">
-												<input type="hidden" name="facility" value={data.facility.id} />
-												<input type="hidden" name="room" value={item.room.id} />
-												<input type="hidden" name="checkin" value={data.params.checkin} />
-												<input type="hidden" name="nights" value={data.params.nights} />
-												<input type="hidden" name="adults" value={data.params.adults} />
-												<input type="hidden" name="rooms" value={data.params.rooms} />
-												{#if form?.alertRoom === item.room.id && alertError}<p role="alert" class="text-red-700">{alertError}</p>{/if}
-												<label class="flex items-start gap-2"><input name="consent" type="checkbox" value="yes" required class="mt-1" />{m.plans_alert_consent_label()}</label>
-												<button class="min-h-11 rounded-lg bg-brand-800 px-4 font-medium text-white">{m.plans_alert_submit()}</button>
-											</form>
-										</details>
-									{:else}
-										<a href={'/auth/login?next=' + encodeURIComponent(page.url.pathname + page.url.search)} class="inline-flex min-h-11 items-center rounded-lg border border-brand-800 px-4 font-medium text-brand-900">{m.plans_alert_login()}</a>
-									{/if}
-								{/if}
-							</div>
-						{/if}
-					</div>
-					{/key}
-					</div>
-				</article>
+			{#each openRooms as item (item.room.id)}
+				<article animate:flip={{ duration: 300, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
 			{:else}
-				<p class="text-sm text-stone-500">{m.plans_no_results()}</p>
+				{#if !fullRooms.length}<p class="text-sm text-stone-500">{m.plans_no_results()}</p>{/if}
 			{/each}
 		</div>
+		{#if fullRooms.length}
+			<!-- 満室の部屋タイプは見出しを分けて下にまとめる（空いている部屋の並びに混ぜない・2026-11-23 指示） -->
+			<div class="mt-10 border-t border-stone-200 pt-6">
+				<h3 class="font-display text-lg text-brand-900">{m.plans_unavailable_heading()}</h3>
+				<p class="mt-1 text-sm text-stone-600">{m.plans_unavailable_desc()}</p>
+				<div class="mt-4 space-y-5 sm:space-y-6">
+					{#each fullRooms as item (item.room.id)}
+						<article animate:flip={{ duration: 300, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
+					{/each}
+				</div>
+			</div>
+		{/if}
 		</RefreshingResults>
 	</section>
 </div>

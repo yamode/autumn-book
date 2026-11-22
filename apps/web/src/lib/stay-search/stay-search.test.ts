@@ -157,7 +157,7 @@ describe('空き日', () => {
 		expect(calendarUrl(O, 'oga', 3, 2)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=3&adults=2&months=6');
 		expect(calendarUrl(O, 'oga', 10, 0)).toBe('https://book.yamado.app/api/stay-calendar?facility=oga&nights=7&adults=1&months=6');
 	});
-	it('応答の読み取りと日ごとの判定（取得範囲内で料金なし＝満室、休館日、範囲外は選べる、過去は選べない）', () => {
+	it('応答の読み取りと日ごとの判定（取得範囲内で料金なし＝満室も選べる、休館日と過去は選べない、範囲外は選べる）', () => {
 		const data = parseCalendar({
 			days: [
 				{ date: '2026-12-20', price: 15000, remaining: 2 },
@@ -169,7 +169,7 @@ describe('空き日', () => {
 		expect(data).not.toBeNull();
 		const today = '2026-12-19';
 		expect(dayState('2026-12-20', today, data)).toEqual({ price: 15000, rooms: 2, disabled: false, unavailable: false, closed: false });
-		expect(dayState('2026-12-21', today, data)).toEqual({ price: null, rooms: null, disabled: true, unavailable: true, closed: false });
+		expect(dayState('2026-12-21', today, data)).toEqual({ price: null, rooms: null, disabled: false, unavailable: true, closed: false });
 		expect(dayState('2026-12-22', today, data)).toEqual({ price: null, rooms: null, disabled: true, unavailable: true, closed: true });
 		expect(dayState('2027-01-05', today, data)).toMatchObject({ price: null, disabled: false });
 		expect(dayState('2026-12-18', today, data)).toMatchObject({ disabled: true, unavailable: false });
