@@ -1,0 +1,73 @@
+{
+  "label": "2026-11 じゃらんニュース掲載依頼（東北温泉冬）の回答",
+  "source": "2026-11 じゃらんニュース掲載依頼（東北温泉冬）の回答",
+  "facts": [
+    { "key": "basic.official_name", "value": "山人-yamado-", "visibility": "public" },
+    { "key": "basic.address", "value": "〒029-5514 岩手県和賀郡西和賀町湯川52地割71-10", "visibility": "public", "note": "「湯川52-71-10」と書く資料もある。正式な表記を確かめてから承認する" },
+    { "key": "basic.url", "value": "https://www.yamado.co.jp/", "visibility": "public" },
+    { "key": "basic.closed_days", "value": "不定休", "visibility": "public" },
+    { "key": "stay.checkin", "value": "15:00（最終 18:00）", "visibility": "public" },
+    { "key": "stay.checkout", "value": "11:00", "visibility": "public" },
+    { "key": "access.train", "value": "JR北上線 ほっとゆだ駅からタクシーで約6分（北上駅から北上線で約45分）", "visibility": "public" },
+    { "key": "access.car", "value": "秋田自動車道 湯田ICから約15分", "visibility": "public" },
+    { "key": "parking", "value": "あり（無料・12台）", "valueJson": { "spaces": 12, "fee": 0 }, "visibility": "public" },
+    { "key": "spring.name", "value": "湯川温泉", "visibility": "public" },
+    { "key": "spring.quality", "value": "単純泉", "visibility": "public" },
+    { "key": "spring.flow", "value": "源泉掛け流し", "visibility": "public" },
+    { "key": "spring.character", "value": "無味無臭で、入りやすい湯", "visibility": "public" },
+    { "key": "meal.dinner_style", "value": "和洋創作のコース料理", "visibility": "public" },
+    { "key": "meal.dinner_place", "value": "お食事処「福膳坊」", "visibility": "public" },
+    { "key": "meal.chef", "value": "料理長 及川一久", "visibility": "press" }
+  ],
+  "stories": [
+    {
+      "topic": "bath",
+      "title": "全室の半露天風呂",
+      "body": "全12室に、天然温泉を掛け流しにした半露天風呂が付いている。",
+      "seasons": [],
+      "visibility": "public"
+    },
+    {
+      "topic": "bath",
+      "title": "貸切野天風呂「一寸（いっすん）」",
+      "body": "渓流沿いにある貸切の野天風呂。部屋ごとに、1日あたり25分ずつ無料で使える。",
+      "seasons": [],
+      "visibility": "public"
+    },
+    {
+      "topic": "view",
+      "title": "湯船から見える冬の景色",
+      "body": "客室の半露天やテラスの前を小鬼ヶ瀬川の清流が流れ、山の木々に囲まれている。冬は毎年2メートルを超える雪が積もり、木の枝先や屋根に雪が乗った景色の中、音もなく降る雪を眺めながら湯に浸かれる。",
+      "seasons": ["winter"],
+      "visibility": "public"
+    },
+    {
+      "topic": "meal",
+      "title": "地のものを使った夕食",
+      "body": "自社農場で育てた地鶏「南部かしわ」や、西和賀の野菜・山菜・きのこなど地場の食材を使い、調味料から手作りしている。自家野菜のバーニャカウダが看板メニュー。",
+      "seasons": [],
+      "visibility": "public"
+    },
+    {
+      "topic": "experience",
+      "title": "雪あかり",
+      "body": "1〜3月は、スタッフがほぼ毎晩、雪の灯籠「雪あかり」を作って灯す。",
+      "seasons": ["winter"],
+      "visibility": "public"
+    },
+    {
+      "topic": "experience",
+      "title": "かまくら",
+      "body": "冬は、お食事処の中庭にスタッフ手作りのかまくらが登場する。",
+      "seasons": ["winter"],
+      "visibility": "public"
+    },
+    {
+      "topic": "location",
+      "title": "豪雪地帯・西和賀の雪見宿",
+      "body": "岩手と秋田の県境、県内随一の豪雪地帯・西和賀町の湯川温泉にある。山の麓、小鬼ヶ瀬川の渓流沿いに建つ全12室の宿で、冬は一面の雪景色に包まれる。",
+      "seasons": [],
+      "visibility": "public"
+    }
+  ]
+}

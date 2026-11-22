@@ -124,6 +124,7 @@ export const ADMIN_NAV: NavGroup[] = [
 				children: [
 					{ href: '/admin/news', label: 'お知らせ' },
 					{ href: '/admin/faqs', label: 'FAQ' },
+					{ href: '/admin/knowledge', label: '施設ナレッジ' },
 					{ href: '/admin/facility', label: '施設ページ編集', demoOnly: true }
 				]
 			}
