@@ -86,11 +86,13 @@
 | `photo_ids` | uuid[] | 合う写真（`facility_photos`） |
 | `sort_order` | integer | |
 
-### 3.4 写真の権利 `book.facility_photos` への列追加
+### 3.4 写真の権利 `book.facility_photo_rights`（新設・`facility_photos` と 1対1）
 
 取材の依頼書は、毎回 **肖像権・著作権の確認** を求めてくる。写真ごとに持たせる。
 
-| 追加する列 | 説明 |
+> **2026-11-22 修正**：当初は `facility_photos` に列を足す案だったが、`facility_photos` は公開サイトから anon で全列読める。撮影者・同意・Dropbox の場所が外から見えてしまうため、**スタッフだけが読める別テーブル**に分けた。施設（`tenant_id`／`facility_id`）は写真から自動で入る。
+
+| 列 | 説明 |
 |---|---|
 | `season` | `spring` / `summer` / `autumn` / `winter` / null |
 | `photographer` | 撮影者（社内・外部カメラマン名） |
@@ -99,7 +101,8 @@
 | `has_people` / `people_consent` | 人が写っているか、その人の許可があるか |
 | `original_path` | 高解像度の原本の **Dropbox 上の場所**（例：`/10_広報/写真/2026冬/半露天_雪.jpg`）。Book には原本を置かない（2026-11-22 決定）。公開用の縮小版は今の `url`（Supabase Storage） |
 
-- `category` に `experience`（体験）を足す。
+- `facility_photos.category` に `experience`（体験）を足す。
+- 取材に出せるかの判定は `book.photo_press_ok(...)`（権利が分かっている・`press` が許されている・人の写り込みを確認済みで、写っていれば同意あり）。
 - 原本は Dropbox にあるため、クラウドの処理（Edge Functions 等）からは読めない。取材回答では「出す写真の一覧と Dropbox の場所」までを作り、原本は担当者が Dropbox から送る（共有リンクを作って回答メールに貼る）。
 - `rights = 'unknown'` や、人が写っていて許可が無い写真は、取材・広報向けの候補に出さない。
 
@@ -180,7 +183,7 @@
 
 | 段階 | 内容 | 見込み |
 |---|---|---|
-| 1 | migration：`facility_facts`・`facility_stories` 新設、`facility_photos` に列追加 | 小 |
+| 1 | migration：`facility_facts`・`facility_stories`・`facility_photo_rights`・`press_responses`・`knowledge_approvers` を新設（autumn-shared `20261122064509_book_facility_knowledge.sql`・**作成済み・未適用**） | 小 |
 | 2 | 管理画面「施設ナレッジ」：一覧・編集・承認。初期データとして 2026-11 じゃらん依頼書の回答（西和賀）を登録 | 中 |
 | 3 | お問い合わせ AI 下書きに施設ナレッジを足す | 小 |
 | 4 | 取材回答の下書き機能＋回答の控え（`press_responses`）。今回のじゃらんニュースの回答を最初の控えとして登録 | 中 |
