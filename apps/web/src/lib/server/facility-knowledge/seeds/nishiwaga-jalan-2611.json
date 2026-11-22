@@ -7,7 +7,7 @@
     { "key": "basic.url", "value": "https://www.yamado.co.jp/", "visibility": "public" },
     { "key": "basic.closed_days", "value": "不定休", "visibility": "public" },
     { "key": "stay.checkin", "value": "15:00（最終 18:00）", "visibility": "public" },
-    { "key": "stay.checkout", "value": "11:00", "visibility": "public" },
+    { "key": "stay.checkout", "value": "11:00", "visibility": "public", "note": "Book の施設情報・プランでは 10:00 と表示している。どちらが正しいか確かめてから承認する" },
     { "key": "access.train", "value": "JR北上線 ほっとゆだ駅からタクシーで約6分（北上駅から北上線で約45分）", "visibility": "public" },
     { "key": "access.car", "value": "秋田自動車道 湯田ICから約15分", "visibility": "public" },
     { "key": "parking", "value": "あり（無料・12台）", "valueJson": { "spaces": 12, "fee": 0 }, "visibility": "public" },
