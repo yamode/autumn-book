@@ -177,6 +177,14 @@
 		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.groupQuote.total - couponAmount, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
 	);
 
+	// 支払方法の欄に出す額は、右の明細の「お支払い合計」と同じ計算にする（入湯税・クーポン・ポイントを含む・2026-11-22 指示）
+	let prepayCharge = $derived(
+		data.expired ? 0 : directChargeOf({ total: data.groupQuote.total - couponAmount, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: prepayAmount }).charge
+	);
+	let onsiteCharge = $derived(
+		data.expired ? 0 : directChargeOf({ total: data.groupQuote.total - couponAmount, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: 0 }).charge
+	);
+
 	// モバイル上部の要約に出す合計（右の明細と同じ額: 入湯税込みで払う場合はその額、それ以外はポイント利用後の宿泊料金）
 	let summaryTotal = $derived(
 		data.expired ? 0 : inlinePay ? charge.charge : Math.max(0, discountedTotal - pointsApplied)
@@ -898,9 +906,9 @@
 											{#if prepayAmount > 0}
 												<p class="font-medium text-brand-900">
 													{#if hasOnsite}
-														{m.pay_prepay_compare({ onsite: formatPrice(data.groupQuote.total), online: formatPrice(data.groupQuote.total - prepayAmount), save: formatPrice(prepayAmount) })}
+														{m.pay_prepay_compare({ onsite: formatPrice(onsiteCharge), online: formatPrice(prepayCharge), save: formatPrice(prepayAmount) })}
 													{:else}
-														{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(data.groupQuote.total - prepayAmount)}
+														{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(prepayCharge)}
 													{/if}
 												</p>
 												<!-- 返金の決まりは 1 文で（キャンセル料が無料でも、事務手数料と割引分の大きい方は返金されない・2026-11-22 指示） -->
