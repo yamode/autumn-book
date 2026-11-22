@@ -362,19 +362,19 @@
 		{#if payLines.length}
 			<div class="flex flex-wrap gap-1.5">
 				{#each payLines as line (line.key)}
-					<span class="inline-flex items-center gap-1 rounded border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700">
+					<span class="inline-flex items-center gap-1 whitespace-nowrap rounded border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700">
 						<svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 						{line.label}
 						{#if line.key === 'prepay'}
 							{#if earlyMax > 0 && !earlyPoints}
-								<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
-								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.plan_early_max({ rate: earlyMaxText })}</span>
+								<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない。印は短く「最大〇%お得」だけ（2026-11-22） -->
+								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.plan_early_max_short({ rate: earlyMaxText })}</span>
 							{:else if data.plan.payment.prepay && data.plan.payment.prepayDiscountRate > 0}
-								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.pay_prepay_off({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
+								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.plan_prepay_off_short({ rate: String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}</span>
 							{/if}
 							{#if earlyPoints}
 								<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
-								<span class="ml-0.5 rounded bg-emerald-50 px-1 font-bold text-emerald-700">{m.plan_points_max({ rate: earlyMaxText })}</span>
+								<span class="ml-0.5 rounded bg-emerald-50 px-1 font-bold text-emerald-700">{m.plan_points_max_short({ rate: earlyMaxText })}</span>
 							{/if}
 						{/if}
 					</span>
