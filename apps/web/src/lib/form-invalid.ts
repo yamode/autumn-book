@@ -12,15 +12,31 @@ type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
 const MSG_CLASS = 'form-invalid-msg';
 
 /** 欄の見出し（label の最初の文字・fieldset の legend・aria-label）。「必須」などの印は除く */
+const MARK_RE = /^(必須|任意|Required|Optional|必填|選填)$/i;
+
+/** 印（必須・任意）・入力欄・案内文を除いた文字 */
+function cleanText(node: Element): string {
+	const c = node.cloneNode(true) as HTMLElement;
+	c.querySelectorAll(`input, select, textarea, option, em, .bk-req, .${MSG_CLASS}`).forEach((n) => n.remove());
+	c.querySelectorAll('span, small, b, strong').forEach((n) => {
+		if (MARK_RE.test((n.textContent ?? '').trim())) n.remove();
+	});
+	return (c.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
 function fieldLabel(el: Field, box: Element): string {
-	const head =
-		(box.tagName === 'FIELDSET' ? box.querySelector('legend') : null) ??
-		box.querySelector('span, legend') ??
-		null;
-	let text = head ? head.cloneNode(true) as HTMLElement : null;
-	if (text) text.querySelectorAll('em, .bk-req').forEach((n) => n.remove());
-	const label = (text?.textContent ?? '').trim() || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
-	return label.replace(/\s+/g, ' ');
+	// fieldset は legend、label は見出しの span（「必須」の印だけの span は飛ばす）→ 無ければ label の地の文
+	const legend = box.tagName === 'FIELDSET' ? box.querySelector('legend') : null;
+	if (legend) {
+		const t = cleanText(legend);
+		if (t) return t;
+	}
+	for (const span of box.querySelectorAll(':scope > span')) {
+		const t = cleanText(span);
+		if (t) return t;
+	}
+	const t = box.tagName === 'LABEL' ? cleanText(box) : '';
+	return t || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
 }
 
 /** 案内を出す囲み（ラジオは fieldset、他は label か親要素） */
