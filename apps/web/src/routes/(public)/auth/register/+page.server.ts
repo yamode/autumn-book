@@ -13,6 +13,25 @@ import * as m from '$lib/paraglide/messages';
 import { clientIp, hashKeyPart, memberOtpSendAllowed, memberOtpVerifyLocked, memberOtpVerifyResult } from '$lib/server/login-rate-limit';
 import { checkTurnstile } from '$lib/server/turnstile';
 import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
+import { safeNext } from '$lib/safe-next';
+
+/**
+ * 登録が済んだあとの戻り先。AI 予約の同意画面（bookingConsentNext）に加えて、予約入力画面（/booking/hold?id=…）から来たときは
+ * そこへ戻す（予約の途中で会員登録して、同じかごのまま続けるため・2026-11-22）。それ以外は null（マイページへ）
+ */
+function returnNext(url: URL): string | null {
+	const consent = bookingConsentNext(url);
+	if (consent) return consent;
+	const next = safeNext(url.searchParams.get('next'), '');
+	if (!next) return null;
+	const target = new URL(next, url.origin);
+	return target.pathname === '/booking/hold' ? `${target.pathname}${target.search}` : null;
+}
+
+/** 予約入力画面へ戻すとき、登録が済んだことを伝える印を付ける */
+function withRegistered(next: string): string {
+	return next.startsWith('/booking/hold') ? `${next}${next.includes('?') ? '&' : '?'}registered=1` : next;
+}
 import { signCookieValue, verifyCookieValue } from '$lib/server/signed-cookie';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
@@ -25,7 +44,7 @@ function registrationPhone(form: FormData): string {
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	// 既に会員ならマイページへ
-	const consentNext = bookingConsentNext(url);
+	const consentNext = returnNext(url);
 	if (locals.user?.role === 'member') redirect(303, consentNext ?? '/account');
 	// 入会ボーナス（管理画面 → 会員 で設定。0 なら案内しない）
 	const welcomeBonus = await welcomeBonusPoints();
@@ -143,7 +162,7 @@ export const actions: Actions = {
 			if (meta?.member !== true) {
 				await client.auth.updateUser({ data: { member: true } }).catch(() => {});
 			}
-			redirect(303, consentNext ?? '/account');
+			redirect(303, returnNext(event.url) ?? '/account');
 		}
 		// 未登録 → プロフィール入力ステップへ
 		return { step: 'profile', email };
@@ -197,7 +216,8 @@ export const actions: Actions = {
 			}
 			// hooks が会員と解決できるよう user_metadata を同期
 			await got.client.auth.updateUser({ data: { name, member: true } }).catch(() => {});
-			redirect(303, consentNext ?? (welcome ? `/account?welcome=1&bonus=${bonus}` : '/account'));
+			const back = returnNext(event.url);
+			redirect(303, back ? withRegistered(back) : welcome ? `/account?welcome=1&bonus=${bonus}` : '/account');
 		}
 
 		// demo: email + パスワード + プロフィールを一括登録
@@ -229,6 +249,9 @@ export const actions: Actions = {
 		}
 		// 本実装：core.guest_identities 照合による既存ゲスト名寄せがここで走る（設計書 §3.2）
 		await setSession(cookies, { id: result.id, role: 'member', name: result.name });
-		redirect(303, '/account?welcome=1');
+		{
+			const back = returnNext(event.url);
+			redirect(303, back ? withRegistered(back) : '/account?welcome=1');
+		}
 	}
 };

@@ -88,7 +88,8 @@
 	// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと。オンライン決済を選んだときだけ効く）。
 	// サーバが lib/early-prepay.ts（DB と同じ式）で計算した額。金額の正は DB（direct_payment_prepare）
 	let prepay = $derived(data.expired ? null : data.prepay);
-	let prepayAmount = $derived(prepay?.detail.discount ?? 0);
+	// 非会員は割引なし（会員になったときの率は memberRate で別に出す）
+	let prepayAmount = $derived(!data.expired && !data.member ? 0 : (prepay?.detail.discount ?? 0));
 	// 割引行の名前: 早期決済割が当たっていれば「早期決済割（5%）」、定率なら従来の「予約時決済割引（10%OFF）」
 	let discountLabel = $derived(
 		prepay?.mixedRates
@@ -102,16 +103,25 @@
 	// 早期決済ポイント（施設の還元方法が points）: 段階表の率は割引にせず、宿泊後にポイントを上乗せする。
 	// 請求額から引くのはプランの定率割引だけ（prepayAmount）。会員ランクの通常ポイントとは別に付く
 	let isPoints = $derived(prepay?.mode === 'points');
-	let bonusPoints = $derived(isPoints ? (prepay?.detail.bonusPoints ?? 0) : 0);
+	let rawBonusPoints = $derived(isPoints ? (prepay?.detail.bonusPoints ?? 0) : 0);
+	// 非会員は早期決済ポイントなし（会員になったときのポイントは memberPoints で別に出す）
+	let bonusPoints = $derived(!data.expired && !data.member ? 0 : rawBonusPoints);
 	let bonusRate = $derived(percentText((prepay?.detail.pointsPermille ?? 0) / 10));
-	// 非会員の会員登録導線（予約中の入力を消さないよう別タブで開く）
-	const registerHref = '/auth/register';
 	// オンライン決済（チェックアウト日・2026-11-01）: カード決済が使えるプランで、実データ（同じ画面で払う方式）のときだけ。
 	// 予約時にカードを登録し、チェックアウト日に請求する（予約時決済の割引・早期決済ポイント・事務手数料は付かない）
 	let hasCheckout = $derived(!data.expired && data.inline && data.checkoutOption);
 	// 予約時決済は、早期決済割引（または早期決済ポイント）が付くときだけ出す。付かないならチェックアウト日決済だけでよい（2026-11-22 指示）。
 	// チェックアウト日決済が選べないプラン（予約時決済しかない）では、割引が無くても予約時決済を出す
-	let hasPrepay = $derived(cardPrepay && (!hasCheckout || prepayAmount > 0 || bonusPoints > 0));
+	// 非会員は予約時決済の割引・早期決済ポイントを使えない（2026-11-22・DB の _direct_payment_prepare も 0 にする）。
+	// カードはチェックアウト日決済だけにし、「会員登録で最大〇%お得」で会員登録へ誘う。予約時決済しか無いプランは割引なしで出す
+	let isGuest = $derived(!data.expired && !data.member);
+	let hasPrepay = $derived(cardPrepay && (!hasCheckout || (!isGuest && (prepayAmount > 0 || bonusPoints > 0))));
+	// 会員になったら付く予約時決済の割引の率（この日程・この部屋で）。0 なら会員登録の案内は出さない
+	let memberRate = $derived(isGuest && prepay ? Math.round(prepay.detail.maxPermille) / 10 : 0);
+	let memberPoints = $derived(isGuest ? rawBonusPoints : 0);
+	// 会員登録・ログインのあとは、この予約入力画面に戻る（同じかごのまま続ける）
+	let backHere = $derived(data.expired ? '' : `/booking/hold?id=${encodeURIComponent(data.hold.id)}`);
+	let justRegistered = $derived(page.url.searchParams.get('registered') === '1');
 	let hasOnline = $derived(hasPrepay || hasCheckout);
 	let canChooseTiming = $derived(hasPrepay && hasCheckout);
 	let canPay = $derived(hasOnline || hasOnsite);
@@ -441,6 +451,31 @@
 		return c ? m.hold_fav_room({ name: c.name, number: c.roomNumber }) : '';
 	};
 </script>
+
+{#snippet guestHint(withLabel: boolean)}
+	<!-- 非会員: 予約時決済の割引・早期決済ポイントは会員だけ。登録・ログインのあと同じかごのままこの画面に戻る -->
+	<div class="border-t border-stone-200 px-3 py-2.5 pl-9 text-sm">
+		<p class="flex flex-wrap items-center gap-2 text-stone-500">
+			{#if withLabel}<span>{payText('online_now', 'label', m.pay_group_online())}</span>{/if}
+			<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{memberRate > 0 ? m.pay_member_save_rate({ rate: percentText(memberRate) }) : m.pay_member_save_points({ points: memberPoints.toLocaleString() })}</span>
+		</p>
+		<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+			<a href={`/auth/register?next=${encodeURIComponent(backHere)}`} class="font-medium text-accent-600 underline hover:text-accent-500">{m.pay_member_register()}</a>
+			<a href={`/auth/login?next=${encodeURIComponent(backHere)}`} class="text-stone-600 underline hover:text-brand-800">{m.pay_member_login()}</a>
+			<span class="text-stone-400">{m.pay_member_back_note()}</span>
+		</p>
+	</div>
+{/snippet}
+
+{#snippet prepayBadges()}
+	{#if prepayAmount > 0}
+		<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
+	{/if}
+	{#if bonusPoints > 0}
+		<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
+	{/if}
+{/snippet}
+
 
 <svelte:head><title>{m.hold_title()}</title></svelte:head>
 
@@ -865,6 +900,9 @@
 						<!-- 確認の段では「入力に戻る」から支払方法を選び直す。 -->
 						<fieldset class="space-y-2 {step === 'confirm' ? 'opacity-80' : ''}" disabled={paying} inert={step === 'confirm'}>
 							<legend class={label}>{m.pay_choose()} <em class="bk-req">{m.hold_required()}</em></legend>
+							{#if justRegistered && !isGuest}
+								<p class="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">{m.pay_member_registered()}</p>
+							{/if}
 							<input type="hidden" name="payment" value={canPay ? payValue : ''} />
 							<input type="hidden" name="payGroup" value={group} />
 
@@ -874,65 +912,49 @@
 										<input type="radio" name="paymentChannel" value="online" checked={group !== 'onsite'}
 											onchange={() => (selectedGroup = hasPrepay ? 'online' : 'checkout')} class="size-4 shrink-0 accent-slate-800" />
 										<span class="font-medium">{m.pay_method_card()}</span>
-										{#if hasPrepay && prepayAmount > 0}
-											<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{m.pay_prepay_save({ amount: formatPrice(prepayAmount) })}</span>
-										{/if}
-										{#if hasPrepay && bonusPoints > 0}
-											<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">{m.pay_points_badge({ points: bonusPoints.toLocaleString() })}</span>
-										{/if}
 									</label>
 									{#if hasPrepay}
+										<!-- お得になるのは予約時決済なので、割引・ポイントの印はこの段に付ける（2026-11-22 指示） -->
 										{#if canChooseTiming && group !== 'onsite'}
-											<label class="flex min-h-11 cursor-pointer items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
+											<label class="flex min-h-11 cursor-pointer flex-wrap items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
 												<input type="radio" name="cardTiming" value="online" checked={group === 'online'} onchange={() => (selectedGroup = 'online')} class="size-4 shrink-0 accent-slate-800" />
 												<span>{payText('online_now', 'label', m.pay_group_online())}</span>
+												{@render prepayBadges()}
 											</label>
 										{:else}
-											<p class="px-3 pb-2 pl-9 text-sm text-stone-600">{payText('online_now', 'label', m.pay_group_online())}</p>
+											<p class="flex flex-wrap items-center gap-2 px-3 pb-2 pl-9 text-sm text-stone-600">
+												<span>{payText('online_now', 'label', m.pay_group_online())}</span>
+												{@render prepayBadges()}
+											</p>
 										{/if}
+										{#if isGuest && (memberRate > 0 || memberPoints > 0)}{@render guestHint(false)}{/if}
+									{:else if isGuest && hasCheckout && (memberRate > 0 || memberPoints > 0)}
+										<!-- 非会員: 予約時決済は会員だけ（割引・早期決済ポイントは会員の特典）。この段で「会員登録で最大〇%お得」と、
+										     登録・ログインのあと同じかごのままこの画面に戻る導線を出す -->
+										{@render guestHint(true)}
 									{/if}
-									{#if hasPrepay && prepay && (prepayAmount > 0 || bonusPoints > 0)}
-										<!-- 予約時決済の割引の案内（選択に関係なく常に表示）。割引は金額で見せ、現地払いの額は消し線にしない。
-										     返金しない旨は割引額と同じ大きさで出す。カウントダウン・在庫の煽りはしない -->
-										<div class="space-y-2 border-t border-stone-200/80 px-3 py-2.5 pl-9">
+									{#if group === 'online' && hasPrepay}
+										<!-- 予約時決済の説明は、予約時決済を選んだときだけ開く（2026-11-22 指示） -->
+										<div class="space-y-1.5 border-t border-stone-200/80 px-3 py-2.5 pl-9">
 											{#if prepayAmount > 0}
-												<!-- 割引額と割引後の額は右の明細に出るので、ここは「早期決済割（15%）適用」だけ（2026-11-22 指示） -->
+												<!-- 割引額と割引後の額は右の明細に出るので、ここは「早期決済割（15%）適用」だけ -->
 												<p class="font-medium text-brand-900">{m.pay_discount_applied({ label: discountLabel })}</p>
-												<!-- 返金の決まりは 1 文で（キャンセル料のかからない期間は事務手数料、かかる期間はキャンセル料・2026-11-22）。
-												     事務手数料の率が無い予約はキャンセル料だけなので、ここでは何も書かない（キャンセルポリシー欄で足りる） -->
-												{#if data.adminFeePercent}
-													<p class="text-sm text-stone-700">
-														{m.pay_prepay_nonrefund_simple({ percent: `${data.adminFeePercent}%` })}
-														<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
-													</p>
-												{/if}
 											{/if}
 											{#if bonusPoints > 0}
 												<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->
 												<p class="font-medium text-emerald-800">{m.pay_points_compare({ points: bonusPoints.toLocaleString() })}</p>
-												{#if data.member}
-													<p class="text-xs text-stone-600">{m.pay_points_grant({ rate: bonusRate, points: bonusPoints.toLocaleString() })}</p>
-												{:else}
-													<p class="text-xs text-stone-700">
-														{m.pay_points_guest({ rate: bonusRate, points: bonusPoints.toLocaleString() })}
-														<a href={registerHref} target="_blank" rel="noopener" class="ml-1 font-medium text-accent-600 underline hover:text-accent-500">{m.pay_points_register()}</a>
-													</p>
-												{/if}
+												<p class="text-xs text-stone-600">{m.pay_points_grant({ rate: bonusRate, points: bonusPoints.toLocaleString() })}</p>
 												<p class="text-xs text-stone-500">{m.pay_points_cancel_note()}</p>
 											{/if}
-										</div>
-									{/if}
-									{#if group === 'online' && (!data.inline || (data.adminFeePercent && !(prepayAmount > 0)) || payText('online_now', 'note', ''))}
-										<div class="space-y-1.5 border-t border-stone-200/80 px-3 py-2.5 pl-9">
-											{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
-											{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
-											<!-- 予約時決済の事務手数料（取消時に返金しない率・2026-10-07）。消費者契約法の「平均的な損害」に配慮し、率と理由を予約前に明示 -->
-											{#if data.adminFeePercent && !(prepayAmount > 0)}
-												<p class="text-xs text-stone-700">
-													{m.prepay_admin_fee_notice({ percent: `${data.adminFeePercent}%` })}
+											<!-- 返金の決まり（キャンセル料のかからない期間は事務手数料、かかる期間はキャンセル料・2026-11-22）。率の無い予約はキャンセル料だけなので書かない -->
+											{#if data.adminFeePercent}
+												<p class="text-sm text-stone-700">
+													{m.pay_prepay_nonrefund_simple({ percent: `${data.adminFeePercent}%` })}
 													<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
 												</p>
 											{/if}
+											{#if !data.inline}<p class="text-xs text-stone-500">{m.pay_prepay_note()}</p>{/if}
+											{#if payText('online_now', 'note', '')}<p class="whitespace-pre-line text-xs text-stone-600">{payText('online_now', 'note', '')}</p>{/if}
 										</div>
 									{/if}
 									{#if hasCheckout && (group !== 'onsite' || !canChooseTiming)}
@@ -942,7 +964,7 @@
 												<span>{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
 											</label>
 										{:else}
-											<p class="px-3 pb-2 pl-9 text-sm text-stone-600">{payText('online_checkout', 'label', m.pay_group_checkout())}</p>
+											<p class="border-t border-stone-200 px-3 py-2.5 pl-9 text-sm text-stone-600">{payText('online_checkout', 'label', m.pay_group_checkout())}</p>
 										{/if}
 										{#if group === 'checkout'}
 											<p class="whitespace-pre-line px-3 pb-3 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</p>

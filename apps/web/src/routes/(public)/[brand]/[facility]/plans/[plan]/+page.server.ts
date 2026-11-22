@@ -133,6 +133,8 @@ export const load: PageServerLoad = async (event) => {
 			calendarClosed: calendar.closed,
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
+			// 予約時決済の割引は会員だけ（非会員には「会員登録で最大〇%お得」を出す・2026-11-22）
+			isMember,
 			// 選んだ日付で予約時決済の割引（定率・早期決済割・早期決済ポイント）が付くか。付かず、チェックアウト日決済が選べるなら
 			// 「事前カード決済」は出さない（予約入力画面と同じ・2026-11-22 指示）。日付未指定は null（出す）。
 			// 金額は仮の 10 万円で率だけ見る（除外日は泊ごとの料金が要るので見ない。予約入力画面が正しい額で出し分ける）
@@ -186,6 +188,7 @@ export const load: PageServerLoad = async (event) => {
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
+		isMember,
 		referenceMode: false,
 		multiRoom: false,
 		gate,

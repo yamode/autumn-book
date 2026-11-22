@@ -150,6 +150,8 @@
 			// 選んだ日付で割引が付かず、チェックアウト日決済が選べるなら出さない（予約入力画面と同じ）
 			// 日付未指定でも、プランに予約時決済の割引（定率・早期決済割）がそもそも無ければ出さない
 			data.plan.payment.prepay &&
+			// 非会員は予約時決済の割引を使えないので、チェックアウト日決済があれば事前カード決済は出さない（2026-11-22）
+			!('isMember' in data && data.isMember === false && data.plan.payment.checkout) &&
 			!(data.plan.payment.checkout &&
 				(('prepayOnDate' in data && data.prepayOnDate === false) ||
 					!(data.plan.payment.prepayDiscountRate > 0 || (data.plan.payment.earlyPrepayMaxRate ?? 0) > 0)))
@@ -365,7 +367,7 @@
 					<span class="inline-flex items-center gap-1 whitespace-nowrap rounded border border-stone-200 bg-white px-2 py-1 text-xs text-stone-700">
 						<svg aria-hidden="true" viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
 						{line.label}
-						{#if line.key === 'prepay'}
+						{#if line.key === 'prepay' && !('isMember' in data && data.isMember === false)}
 							{#if earlyMax > 0 && !earlyPoints}
 								<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない。印は短く「最大〇%お得」だけ（2026-11-22） -->
 								<span class="ml-0.5 rounded bg-red-50 px-1 font-bold text-red-600">{m.plan_early_max_short({ rate: earlyMaxText })}</span>
@@ -384,6 +386,15 @@
 				<!-- 一休の「当プランは決済方法が選択できるプランになります」と同じ意味（全部が必要という意味ではない） -->
 				<p class="text-xs text-stone-500">{m.plan_pay_choose()}</p>
 			{/if}
+		{/if}
+		{#if 'isMember' in data && data.isMember === false && data.plan.payment.prepay && (earlyMax > 0 || data.plan.payment.prepayDiscountRate > 0)}
+			<!-- 非会員: 会員登録で予約時決済が最大〇%お得（予約入力画面でも同じ案内と、登録後に戻る導線がある） -->
+			<p class="text-xs font-medium text-red-600">
+				{earlyPoints
+					? m.pay_member_save_points_plan({ rate: earlyMaxText })
+					: m.pay_member_save_rate({ rate: earlyMax > 0 ? earlyMaxText : String(Math.round(data.plan.payment.prepayDiscountRate * 100)) })}
+				<a href="/auth/register" class="ml-1 text-accent-600 underline hover:text-accent-500">{m.common_register()}</a>
+			</p>
 		{/if}
 		{#if data.memberOnsiteHint}
 			<!-- 非会員は予約時決済のみのプラン。会員なら現地払いも選べる（控えめに案内） -->
