@@ -57,7 +57,7 @@
 
 	<section id="contact" class="mt-10 scroll-mt-20" aria-labelledby="contact-heading">
 		<h2 id="contact-heading" class="text-lg text-brand-900">{m.support_form_heading()}</h2>
-		<p class="mt-2 text-sm leading-6 text-stone-600">{m.support_form_lead()}{#if data.supportEmail} {m.support_form_reply_from({ email: data.supportEmail })}{/if}</p>
+		<p class="mt-2 text-sm leading-6 text-stone-600">{m.support_form_lead()}</p>
 
 		{#if sent}
 			<div class="mt-4 space-y-3 rounded-2xl border border-stone-200 bg-white p-6 text-sm leading-6 text-stone-700" role="status">
@@ -107,7 +107,7 @@
 				<Turnstile action="support-submit" />
 				<button type="submit" class="w-full rounded-lg bg-accent-600 py-2.5 font-medium text-white hover:bg-accent-500">{m.support_submit()}</button>
 			</form>
-			{#if data.supportEmail}<p class="mt-3 text-center text-xs text-stone-500">{m.support_mail_direct({ email: data.supportEmail })}</p>{/if}
+			<!-- 迷惑メールを避けるため、ページにはメールアドレスを出さない（2026-11-22 指示） -->
 		{/if}
 	</section>
 </div>

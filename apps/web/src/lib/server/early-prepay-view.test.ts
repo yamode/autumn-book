@@ -162,9 +162,9 @@ describe('withEarlyPrepayMax', () => {
 describe('directRefundPreviewOf', () => {
   const paid = { amount: 57300, prepay_discount_amount: 3000, refunded_amount: 0 };
 
-  it('キャンセル料が割引より小さいときは割引額を差し引く（返金しない割引額）', () => {
-    expect(directRefundPreviewOf(paid, 0)).toMatchObject({ paid: 57300, fee: 0, discount: 3000, deducted: 3000, kept: 3000, refund: 54300 });
-    expect(directRefundPreviewOf(paid, 1000)).toMatchObject({ paid: 57300, fee: 1000, discount: 3000, deducted: 3000, kept: 2000, refund: 54300 });
+  it('割引額は比べない: キャンセル料があればそれだけ、なければ差し引かない（率の無い予約・2026-11-22）', () => {
+    expect(directRefundPreviewOf(paid, 0)).toMatchObject({ paid: 57300, fee: 0, discount: 3000, deducted: 0, kept: 0, refund: 57300 });
+    expect(directRefundPreviewOf(paid, 1000)).toMatchObject({ paid: 57300, fee: 1000, discount: 3000, deducted: 1000, kept: 0, refund: 56300 });
   });
 
   it('キャンセル料の方が大きければキャンセル料だけ', () => {
@@ -177,9 +177,9 @@ describe('directRefundPreviewOf', () => {
       paid: 1300,
       fee: 0,
       discount: 3000,
-      deducted: 1000,
-      kept: 1000,
-      refund: 300
+      deducted: 0,
+      kept: 0,
+      refund: 1300
     });
   });
 

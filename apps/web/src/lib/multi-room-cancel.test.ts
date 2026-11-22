@@ -17,11 +17,11 @@ describe('roomRefundPreview（1 室の返金見込み・_room_cancel_kept と同
 		expect(p.reason).toBe('admin_fee');
 	});
 
-	it('予約時決済割がいちばん大きい: 3,000 を差し引いて 54,300', () => {
+	it('キャンセル料なし: 割引額は比べず事務手数料 2,865（57,300 × 5%）を差し引いて 54,435', () => {
 		const p = roomRefundPreview(room1, 0, terms);
-		expect(p.deducted).toBe(3000);
-		expect(p.refund).toBe(54300);
-		expect(p.reason).toBe('prepay_discount');
+		expect(p.deducted).toBe(2865);
+		expect(p.refund).toBe(54435);
+		expect(p.reason).toBe('admin_fee');
 	});
 
 	it('キャンセル料がいちばん大きい（支払分まで）', () => {
@@ -39,8 +39,8 @@ describe('roomRefundPreview（1 室の返金見込み・_room_cancel_kept と同
 
 	it('事務手数料・割引は入湯税を除いた支払分まで（入湯税は必ず返す）', () => {
 		const p = roomRefundPreview({ paidShare: 1150, bathTax: 150, prepayDiscount: 5000 }, 0, terms);
-		expect(p.deducted).toBe(1000);
-		expect(p.refund).toBe(150);
+		expect(p.deducted).toBe(57);
+		expect(p.refund).toBe(1093);
 	});
 });
 
@@ -55,13 +55,13 @@ describe('remainingRefundPreview（残りの部屋をすべて取り消したと
 
 	it('2 室目を取り消して返金済み → 残りの 1 室目は部屋の見込みそのもの', () => {
 		const p = remainingRefundPreview({ ...pay, refunded: 19143 }, [{ ...room1, fee: 0 }], [{ cancelKept: 1007 }], terms);
-		expect(p.refund).toBe(54300);
-		expect(p.deducted).toBe(3000);
+		expect(p.refund).toBe(54435);
+		expect(p.deducted).toBe(2865);
 	});
 
 	it('前の部屋の返金がまだ（失敗など）なら、その分も足して返す', () => {
 		const p = remainingRefundPreview(pay, [{ ...room1, fee: 0 }], [{ cancelKept: 1007 }], terms);
-		expect(p.refund).toBe(54300 + 19143);
+		expect(p.refund).toBe(54435 + 19143);
 	});
 
 	it('1 室の予約は 1 室の見込みと同じ額', () => {

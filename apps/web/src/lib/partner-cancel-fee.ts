@@ -14,7 +14,7 @@
 //     デポジット（支払済み・Phase 3b） … デポジットをキャンセル料に充当し、差額を返金。キャンセル料がデポジットを超えた
 //       不足分は、残額の精算先にかかわらず月末の請求書へ（不課税）。免除は全額返金
 //       （2026-10-07 変更: 旧 N3「現地なら不足分は請求しない」を廃止。現地精算の取引先でも不足分は請求書で請求する）
-//       事務手数料（2026-10-07）もデポジットから差し引く: 充当＝min(max(キャンセル料, デポジット × 率), デポジット)。
+//       事務手数料（2026-10-07）もデポジットから差し引く: 充当＝キャンセル料があればそれ（デポジットまで）、無ければ事務手数料（2026-11-22）。
 //       デポジットもカードで受けたお金（決済手数料がかかる）なので、全額の予約時決済と同じ「大きい方」の規則にそろえた。
 //       不足分（請求書へ回す額）はキャンセル料だけから出す（事務手数料はデポジット以下なので不足は生まない）
 //     銀行振込の前受金（deposit_bank / advance_bank・2026-10-28 フェーズ4・docs/partner-prepayment.md §4.6）:
@@ -173,7 +173,7 @@ export type PartnerRefund = {
  * 予約時決済（支払済み）の返金額。直販（lib/direct-payment.ts の directRefundDueOf）と同じ:
  * 差し引く額 = max(キャンセル料, 割引額, 事務手数料)〔割引額・事務手数料は入湯税を除いた支払額まで＝入湯税は必ず返す〕。
  * キャンセル料を免除したとき（waived）は割引額も差し引かない。事務手数料は adminFeeWaived（省略時は予約の cancel_policy.admin_fee_waived）。
- * デポジット（deposit_online）は割引が無いので、充当＝min(max(キャンセル料, 事務手数料), デポジット)・返金＝デポジット−充当。
+ * デポジット（deposit_online）は割引が無いので、充当＝キャンセル料（デポジットまで）があればそれ、無ければ事務手数料・返金＝デポジット−充当。
  * 銀行振込の前受金（入金済み）も同じ式（入金額を「デポジット」として扱う。事務手数料の率は残していないので 0）。
  */
 export function partnerRefundOf(b: SettlementSource, fee: number, waived = false, adminFeeWaived?: boolean): PartnerRefund {
@@ -186,9 +186,10 @@ export function partnerRefundOf(b: SettlementSource, fee: number, waived = false
     const adminCap = Math.min(deposit, Math.max(0, b.total_amount));
     const adminFee = adminWaived ? 0 : Math.min(adminFeeOf(deposit, terms.percent), adminCap);
     const feeKept = Math.min(f, deposit);
-    const kept = Math.max(feeKept, adminFee);
+    // キャンセル料がかかる期間はキャンセル料だけ、かからない期間は事務手数料だけ（2026-11-22・全額の予約時決済と同じ）
+    const kept = feeKept > 0 ? feeKept : adminFee;
     const shortage = f - feeKept;
-    const reason: KeptReason = kept <= 0 ? 'none' : adminFee > feeKept ? 'admin_fee' : 'cancel_fee';
+    const reason: KeptReason = kept <= 0 ? 'none' : feeKept > 0 ? 'cancel_fee' : 'admin_fee';
     return {
       paid: deposit,
       kept,

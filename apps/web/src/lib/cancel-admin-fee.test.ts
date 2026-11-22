@@ -48,8 +48,11 @@ describe('差し引く額 = max(キャンセル料, 割引額, 事務手数料)'
     expect(deductionOf({ ...base, fee: 0, discount: 3_000 })).toMatchObject({ kept: 5_000, reason: 'admin_fee' });
     expect(directRefundDueOf({ amount: 100_000, fee: 0, prepayDiscount: 3_000, adminFeePercent: 5 })).toBe(95_000);
   });
-  it('割引の方が大きければ割引額', () => {
-    expect(deductionOf({ ...base, fee: 0, discount: 8_000 })).toMatchObject({ kept: 8_000, reason: 'prepay_discount' });
+  it('割引額は比べない（キャンセル料なし → 事務手数料だけ・2026-11-22）', () => {
+    expect(deductionOf({ ...base, fee: 0, discount: 8_000 })).toMatchObject({ kept: 5_000, reason: 'admin_fee' });
+  });
+  it('キャンセル料がかかる期間はキャンセル料だけ（事務手数料より小さくても・2026-11-22）', () => {
+    expect(deductionOf({ ...base, fee: 3_000, discount: 8_000 })).toMatchObject({ kept: 3_000, reason: 'cancel_fee' });
   });
   it('率の無い導入前の予約は従来どおり（事務手数料なし）', () => {
     expect(directRefundDueOf({ amount: 100_000, fee: 0 })).toBe(100_000);
@@ -84,8 +87,8 @@ describe('取引先予約の返金（partnerRefundOf）', () => {
     expect(partnerRefundOf(online, 0, true, true).refund).toBe(100_000);
     expect(partnerRefundOf({ ...online, cancel_policy: { admin_fee_percent: 5, admin_fee_waived: true } }, 0, true).refund).toBe(100_000);
   });
-  it('率の無い予約（導入前）は従来どおり max(キャンセル料, 割引額)', () => {
-    expect(partnerRefundOf({ ...online, cancel_policy: null }, 0)).toMatchObject({ kept: 3_000, reason: 'prepay_discount' });
+  it('率の無い予約（導入前）: キャンセル料がなければ差し引かない（割引額は比べない・2026-11-22）', () => {
+    expect(partnerRefundOf({ ...online, cancel_policy: null }, 0)).toMatchObject({ kept: 0, reason: 'none' });
   });
   it('デポジット: 充当 = max(キャンセル料, デポジット × 率)。不足分はキャンセル料だけから', () => {
     const dep: SettlementSource = {

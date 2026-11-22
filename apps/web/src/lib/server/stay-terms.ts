@@ -2,23 +2,23 @@ import type { Locale } from '$lib/types';
 
 // Book の予約時表示と direct_payment_refund_due の控除順序に合わせる。
 export const publicBookingRefundTerms: Record<Locale, string> = {
-	ja: `予約時にオンラインでお支払い済みの予約をお客様のご都合で取り消す場合、規定のキャンセル料、適用済みの予約時決済割引額、事務手数料のうち、最も大きい一つの金額を差し引きます。キャンセル料がかからない期間でも、割引額や事務手数料が差し引かれる場合があります。
+	ja: `予約時にオンラインでお支払い済みの予約をお客様のご都合で取り消す場合、キャンセル料がかかる期間は規定のキャンセル料を、キャンセル料がかからない期間は事務手数料を差し引いて返金します（両方は差し引きません。予約時決済の割引額は差し引きません）。
 
-事務手数料は、お支払額に予約時にご案内した率（既定5％）を乗じ、1円未満を切り捨てた額です。カード決済や返金事務にかかる費用に充てます。割引額と事務手数料は、それぞれ入湯税を除いたお支払額を上限とします。客室の一部を取り消す場合は、対象客室のお支払い分と適用条件に基づいて精算します。
+事務手数料は、お支払額に予約時にご案内した率（既定5％）を乗じ、1円未満を切り捨てた額です。カード決済や返金事務にかかる費用に充てます。事務手数料は入湯税を除いたお支払額を上限とします。客室の一部を取り消す場合は、対象客室のお支払い分と適用条件に基づいて精算します。
 
 返金がある場合は、原則としてお支払いに使用したカードに返金します。反映時期は発行会社により異なります。チェックアウト日のオンライン決済で取消時に未請求の場合は、事前決済の割引額や事務手数料は適用せず、キャンセル料がかかる場合にその額を登録カードに請求します。
 
 当社の都合で宿泊サービスを提供できない場合、そのサービスについてはキャンセル料、割引額および事務手数料を差し引かず、お支払い済みの対象額を全額返金します。`,
-	en: `If you cancel a reservation paid online at booking, we deduct the largest of the applicable cancellation fee, the advance-payment discount applied to your reservation, and the administrative fee. A discount amount or an administrative fee may be deducted during the period when no cancellation fee applies.
+	en: `If you cancel a reservation paid online at booking for your own reasons, we deduct the applicable cancellation fee during the cancellation-fee period, or the administrative fee when no cancellation fee applies, and refund the rest. We never deduct both, and we do not deduct the advance-payment discount.
 
-The administrative fee is the amount paid multiplied by the rate shown when you booked (5% by default), rounded down to the nearest yen. It covers card processing and refund handling. The discount deduction and the administrative fee are each capped at the amount paid excluding bathing tax. For a partial cancellation, settlement is based on the payment share and conditions for the affected rooms.
+The administrative fee is the amount paid multiplied by the rate shown when you booked (5% by default), rounded down to the nearest yen. It covers card processing and refund handling. The administrative fee is capped at the amount paid excluding bathing tax. For a partial cancellation, settlement is based on the payment share and conditions for the affected rooms.
 
 Any refund is normally returned to the card used. Posting times depend on the card issuer. If you selected online payment on the check-out date and your card has not yet been charged, the advance-payment discount and administrative fee do not apply. Any applicable cancellation fee is charged to the registered card.
 
 If we are unable to provide the stay for reasons attributable to us, we refund the full amount paid for the affected services, without deducting a cancellation fee, discount or administrative fee.`,
-	'zh-TW': `如因旅客自身原因取消預訂時已線上付款的訂單，我們會比較適用的取消費、已享有的預訂時付款折扣金額及手續費，只扣除其中最高的一項。即使在免收取消費期間，仍可能扣除折扣金額或手續費。
+	'zh-TW': `如因旅客自身原因取消預訂時已線上付款的訂單，在收取取消費的期間扣除規定的取消費，在免收取消費的期間扣除手續費，其餘退還（兩者不會同時扣除，亦不扣除預訂時付款折扣金額）。
 
-手續費以已付款金額乘以預訂時顯示的費率（預設為5%）計算，不足1日圓的部分捨去，用於信用卡付款及退款作業。折扣扣款及手續費分別以扣除入湯稅後的已付款金額為上限。若僅取消部分客房，則依受影響客房分攤的實付金額及適用條件結算。
+手續費以已付款金額乘以預訂時顯示的費率（預設為5%）計算，不足1日圓的部分捨去，用於信用卡付款及退款作業。手續費以扣除入湯稅後的已付款金額為上限。若僅取消部分客房，則依受影響客房分攤的實付金額及適用條件結算。
 
 如有退款，原則上退回原付款信用卡，入帳時間依發卡機構而異。若選擇退房日線上扣款，且取消時尚未請款，則不適用預訂時付款折扣及手續費。如須支付取消費，將向已登記的信用卡收取該金額。
 

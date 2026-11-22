@@ -81,10 +81,10 @@ describe('精算', () => {
     expect(settlementOf({ ...base, payment_status: 'scheduled', payment_option: 'online_checkin', stripe_payment_method_id: 'pm_1' }, 100)).toBe('card');
     expect(settlementOf({ ...base, status: 'pending_payment' }, 100)).toBe('none');
   });
-  it('予約時決済の返金は直販と同じく max(キャンセル料, 割引額) を差し引く・入湯税は必ず返す', () => {
+  it('予約時決済の返金は直販と同じ（キャンセル料があればそれ・割引額は比べない）・入湯税は必ず返す', () => {
     const paid = { ...base, payment_status: 'paid', payment_option: 'online', prepay_discount_amount: 5_200, paid_amount: 47_100 };
     expect(partnerRefundOf(paid, 15_600)).toMatchObject({ paid: 47_100, kept: 15_600, refund: 31_500, shortage: 0, shortageBilled: 0 });
-    expect(partnerRefundOf(paid, 0)).toMatchObject({ paid: 47_100, kept: 5_200, refund: 41_900, shortage: 0, shortageBilled: 0 });
+    expect(partnerRefundOf(paid, 0)).toMatchObject({ paid: 47_100, kept: 0, refund: 47_100, shortage: 0, shortageBilled: 0 });
     expect(partnerRefundOf(paid, 0, true)).toMatchObject({ paid: 47_100, kept: 0, refund: 47_100, shortage: 0, shortageBilled: 0 });
     expect(partnerRefundOf(paid, 99_999)).toMatchObject({ paid: 47_100, kept: 47_100, refund: 0, shortage: 0, shortageBilled: 0 });
   });

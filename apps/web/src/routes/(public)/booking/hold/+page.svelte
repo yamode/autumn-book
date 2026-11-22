@@ -911,13 +911,14 @@
 														{discountLabel} −{formatPrice(prepayAmount)} ／ {m.pay_discount_total()} {formatPrice(prepayCharge)}
 													{/if}
 												</p>
-												<!-- 返金の決まりは 1 文で（キャンセル料が無料でも、事務手数料と割引分の大きい方は返金されない・2026-11-22 指示） -->
-												<p class="text-sm text-stone-700">
-													{data.adminFeePercent
-														? m.pay_prepay_nonrefund_simple({ percent: `${data.adminFeePercent}%`, amount: formatPrice(prepayAmount) })
-														: m.pay_early_nonrefund({ amount: formatPrice(prepayAmount) })}
-													<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
-												</p>
+												<!-- 返金の決まりは 1 文で（キャンセル料のかからない期間は事務手数料、かかる期間はキャンセル料・2026-11-22）。
+												     事務手数料の率が無い予約はキャンセル料だけなので、ここでは何も書かない（キャンセルポリシー欄で足りる） -->
+												{#if data.adminFeePercent}
+													<p class="text-sm text-stone-700">
+														{m.pay_prepay_nonrefund_simple({ percent: `${data.adminFeePercent}%` })}
+														<a href="/legal/yakkan" target="_blank" rel="noopener noreferrer" class="underline">{m.footer_yakkan()}</a>
+													</p>
+												{/if}
 											{/if}
 											{#if bonusPoints > 0}
 												<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->

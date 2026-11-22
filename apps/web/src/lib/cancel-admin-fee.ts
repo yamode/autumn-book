@@ -2,7 +2,8 @@
 // 画面・サーバ（公式サイト・取引先予約）共通の純関数。
 //
 // - 予約時にオンライン決済で払った予約を取り消したとき、施設で決めた率（%）は、キャンセル料の期間に関係なく
-//   「事務手数料」として返金しない。返金しない額は キャンセル料・予約時決済の割引額・事務手数料 の **いちばん大きい方**（足し合わせない）。
+//   「事務手数料」として返金しない。返金しない額は、キャンセル料がかかる期間はキャンセル料だけ、かからない期間は事務手数料だけ
+//   （2026-11-22 変更。前は キャンセル料・予約時決済の割引額・事務手数料 のいちばん大きい方。割引額は比べない）。
 // - 率は施設ごとに 1 つ（book.payment_settings.cancel_admin_fee_percent）。既定 5%。
 //   Stripe の決済手数料 3.6% 以下は保存できない。0%（事務手数料なし）も保存できない（下限の趣旨と同じ。DB の check も同じ）。
 //   取らない取消は、スタッフが取消フォームで個別に免除する。
@@ -70,7 +71,7 @@ export type Deduction = {
 };
 
 /**
- * 予約時決済（全額）の取消で差し引く額 = max(キャンセル料〔支払額まで〕, 割引額, 事務手数料)。
+ * 予約時決済（全額）の取消で差し引く額 = キャンセル料〔支払額まで〕があればそれ、無ければ事務手数料（2026-11-22）。
  * 割引額・事務手数料は「入湯税を除いた支払額」まで。
  *   waived: キャンセル料の免除（割引額も差し引かない＝従来どおり）
  *   adminFeeWaived: 事務手数料も免除（スタッフの取消フォームで選ぶ。既定は差し引く）
@@ -90,17 +91,10 @@ export function deductionOf(p: {
   const cancelFee = Math.min(Math.max(0, p.waived ? 0 : p.fee), paid);
   const discount = p.waived ? 0 : Math.min(Math.max(0, p.discount ?? 0), cap);
   const adminFee = p.adminFeeWaived ? 0 : Math.min(adminFeeOf(paid, p.adminFeePercent), cap);
-  let kept = cancelFee;
-  let reason: KeptReason = 'cancel_fee';
-  if (discount > kept) {
-    kept = discount;
-    reason = 'prepay_discount';
-  }
-  if (adminFee > kept) {
-    kept = adminFee;
-    reason = 'admin_fee';
-  }
-  if (kept <= 0) reason = 'none';
+  // キャンセル料がかかる期間はキャンセル料だけ、かからない期間は事務手数料だけ（2026-11-22・DB の 20261122005605 と同じ）。
+  // discount は比べない（内訳の表示のために値だけ返す）
+  const kept = cancelFee > 0 ? cancelFee : adminFee;
+  const reason: KeptReason = kept <= 0 ? 'none' : cancelFee > 0 ? 'cancel_fee' : 'admin_fee';
   return { kept, reason, cancelFee, discount, adminFee };
 }
 
@@ -126,7 +120,7 @@ export function keptReasonLabel(reason: KeptReason, adminFeePercent?: number | n
 export function adminFeeNotice(percent: number, audience: 'partner' | 'consumer' = 'partner'): string {
   const p = adminFeePercentLabel(percent);
   if (audience === 'consumer') {
-    return `予約時にオンライン決済でお支払いのご予約を取り消した場合、キャンセル料のかからない期間でも、お支払額の ${p} は事務手数料（カード決済手数料・返金の事務にかかる費用）としてご返金いたしません（キャンセル料がこれを上回る場合はキャンセル料をいただきます。両方はいただきません）。`;
+    return `予約時にオンライン決済でお支払いのご予約をお客様のご都合で取り消した場合、キャンセル料のかからない期間は、お支払額の ${p} を事務手数料（カード決済手数料・返金の事務にかかる費用）としてご返金いたしません。キャンセル料のかかる期間は、キャンセル料だけをいただきます（両方はいただきません）。`;
   }
-  return `予約時決済のご予約を取り消した場合、ご請求額の ${p} は事務手数料としてご返金いたしません（キャンセル料がこれを上回る場合はキャンセル料）。`;
+  return `予約時決済のご予約を取り消した場合、キャンセル料のかからない期間は、ご請求額の ${p} を事務手数料としてご返金いたしません（キャンセル料のかかる期間はキャンセル料だけ）。`;
 }

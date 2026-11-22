@@ -11,8 +11,7 @@ import { checkTurnstile } from '$lib/server/turnstile';
 import { clientIp, hashKeyPart, ipKey, rateCheck, rateHit, RATE_RULES } from '$lib/server/login-rate-limit';
 import { waitUntilOf } from '$lib/server/access-log-core';
 import { SUPPORT_BODY_MAX, sendSubmitMails, submitSupportTicket, supportServiceAvailable } from '$lib/server/member-support';
-import { DEMO_SUPPORT_FAQS, isSupportCategory, oneLine, SUPPORT_EMAIL, type SupportFaq } from '$lib/support';
-import { supportMailEnabled } from '$lib/server/support-mail-flag';
+import { DEMO_SUPPORT_FAQS, isSupportCategory, oneLine, type SupportFaq } from '$lib/support';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -51,9 +50,8 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		faqs,
 		prefill: { name: member.name, email: member.email },
-		isMember: event.locals.user?.role === 'member',
-		// support@ の受信が動いているときだけアドレスを出す（SUPPORT_MAIL_ENABLED）
-		supportEmail: supportMailEnabled() ? SUPPORT_EMAIL : null
+		// 迷惑メールを避けるため、ページ（とページのデータ）にはメールアドレスを出さない（2026-11-22 指示）
+		isMember: event.locals.user?.role === 'member'
 	};
 };
 

@@ -116,9 +116,9 @@ describe('設定の検証', () => {
   });
 });
 
-describe('取消後の返金（割引額は返金しない）', () => {
-  it('規定のキャンセル料が割引額より小さいときは割引額を差し引く', () => {
-    expect(directRefundDueOf({ amount: 57300, fee: 0, prepayDiscount: 3000 })).toBe(54300);
+describe('取消後の返金（2026-11-22〜 割引額は比べない。率の無い予約はキャンセル料だけ）', () => {
+  it('キャンセル料がなければ割引額は差し引かない（率の無い予約）', () => {
+    expect(directRefundDueOf({ amount: 57300, fee: 0, prepayDiscount: 3000 })).toBe(57300);
     expect(directRefundDueOf({ amount: 57300, fee: 30000, prepayDiscount: 3000 })).toBe(27300);
   });
   it('キャンセル料を免除した取消（施設都合）は全額返金', () => {
@@ -126,11 +126,11 @@ describe('取消後の返金（割引額は返金しない）', () => {
   });
   it('ポイントで支払額が小さくても入湯税は返す', () => {
     // total 10,000・割引 800・ポイント 9,300・入湯税 150 → 支払 850。差し引けるのは 700 まで
-    expect(directRefundDueOf({ amount: 850, fee: 0, prepayDiscount: 800, bathTax: 150 })).toBe(150);
-    expect(directRefundDueOf({ amount: 1150, fee: 0, prepayDiscount: 800, bathTax: 150 })).toBe(350);
+    expect(directRefundDueOf({ amount: 850, fee: 0, prepayDiscount: 800, bathTax: 150 })).toBe(850);
+    expect(directRefundDueOf({ amount: 1150, fee: 0, prepayDiscount: 800, bathTax: 150 })).toBe(1150);
   });
   it('一部返金済みは差し引く', () => {
-    expect(directRefundDueOf({ amount: 57300, fee: 0, prepayDiscount: 3000, refunded: 10000 })).toBe(44300);
+    expect(directRefundDueOf({ amount: 57300, fee: 0, prepayDiscount: 3000, refunded: 10000 })).toBe(47300);
   });
 });
 

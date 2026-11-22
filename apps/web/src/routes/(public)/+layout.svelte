@@ -155,8 +155,6 @@
 				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="hover:text-brand-800">{m.radio_nav()}</a>
-				<!-- ヘルプ（よくある質問・問い合わせ）。会員でなくても入れるようにヘッダーに常に出す（2026-11-22） -->
-				<a href="/help" class="hover:text-brand-800">{m.nav_help()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
 				{#if data.user?.role === 'member'}
@@ -165,6 +163,10 @@
 					<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>
 					<a href="/auth/register" class="rounded-md bg-accent-600 px-3 py-1.5 text-white hover:bg-accent-500">{m.common_register()}</a>
 				{/if}
+				<!-- ヘルプ（よくある質問・問い合わせ）はアイコンでさりげなく。会員でなくても入れる（2026-11-22）。スマホはメニューの中 -->
+				<a href="/help" class="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-brand-800" aria-label={m.help_nav_label()} title={m.help_nav_label()}>
+					<svg aria-hidden="true" viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M9.6 9.2a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6" /><path d="M12 16.8h.01" /></svg>
+				</a>
 				<LocaleSwitcher />
 			</div>
 
