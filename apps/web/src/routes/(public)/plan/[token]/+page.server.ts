@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ params, cookies, setHeaders, locals
 	const row = plan ? undefined : await shareTokenPlanRow(params.token).catch(() => undefined);
 	const facility = row ? await facilityOf(row.facilityId) : undefined;
 	if (!row || !facility) return { state: 'invalid' as const };
-	const role = locals.user?.role;
+	const role = locals.staff?.user.role ?? locals.user?.role;
 	if (role === 'admin' || role === 'staff') {
 		rememberLinkToken(cookies, params.token);
 		redirect(303, `/${facility.brandSlug}/${facility.slug}/plans/${row.slug}?preview=1`);

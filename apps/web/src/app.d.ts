@@ -20,6 +20,10 @@ declare global {
 			// AUTH_MODE=supabase で admin / staff のときのみ設定。demo・会員・未ログインは null。
 			adminAal: AdminAal | null;
 			memberMfaPending?: { id: string; unavailable: boolean };
+			// 管理画面にログインしている運営（admin / staff）。公開サイトでも、管理画面の cookie から読む（2026-11-22）。
+			// 同じブラウザでマイページに会員でログインしていると user は会員になるので、プランのプレビュー・メンテナンスの通り抜け・
+			// 客室案内のテスト決済など「運営かどうか」はこちらで見る（staffOf）。
+			staff?: { user: SessionUser; adminAal: AdminAal | null } | null;
 			// ログインの確認にかかった時間（ミリ秒・管理画面の Server-Timing に出す）
 			authMs?: number;
 			memberPreview?: import('$lib/plan-access').RankCode;

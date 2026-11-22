@@ -128,6 +128,7 @@
 			スマートフォン・パスキーを失くしたときは、別の管理者に「二段階認証・パスキー」画面から登録の削除を頼んでください。
 		</p>
 		<form method="POST" action="/auth/logout" class="mt-3 text-center" data-no-guard>
+			<input type="hidden" name="area" value="admin" />
 			<button type="submit" class="text-xs text-stone-400 underline hover:text-stone-600">ログアウト</button>
 		</form>
 	</div>

@@ -121,7 +121,7 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	// 運営（admin / staff）でログイン中なら、プレビュー cookie も一緒に発行しておく。
 	// 運営のまま会員ログインの試験をすると、セッションが会員に入れ替わって運営のバイパスを失い、
 	// ログイン直後に 503 になるため（2026-10-29）。cookie があれば会員になっても公開サイトを通せる。
-	const staffRole = locals.user?.role;
+	const staffRole = locals.staff?.user.role ?? locals.user?.role;
 	if (staffRole === 'admin' || staffRole === 'staff') {
 		const t = bypassToken();
 		if (t && !timingSafeEqualText(cookies.get(PREVIEW_COOKIE) ?? '', t)) {

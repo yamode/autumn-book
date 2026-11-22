@@ -318,9 +318,10 @@ export async function prepareInroomPayment(
 // ---------------------------------------------------------------------------
 /** テスト決済を使える人か（管理者・/admin と同じ二段階認証の関所を通っている） */
 export function canTestInroomPayment(locals: App.Locals): boolean {
-	const user = locals.user;
+	// 管理画面のログイン（会員でログイン中でも locals.staff に入る・2026-11-22）
+	const user = locals.staff?.user ?? locals.user;
 	if (user?.role !== 'admin') return false;
-	return decideAdminMfaGate({ pathname: '/admin', role: user.role, aal: locals.adminAal, required: adminMfaRequired() }) === 'ok';
+	return decideAdminMfaGate({ pathname: '/admin', role: user.role, aal: locals.staff ? locals.staff.adminAal : locals.adminAal, required: adminMfaRequired() }) === 'ok';
 }
 
 /**
@@ -336,7 +337,7 @@ export function inroomTestPaymentBlocker(locals: App.Locals): string | null {
 	const pk = publishableKeyProblem();
 	if (pk) return describePublishableKeyIssue(pk);
 	if (!partnerServiceClient()) return 'SUPABASE_SERVICE_ROLE_KEY が Book に登録されていません';
-	const user = locals.user;
+	const user = locals.staff?.user ?? locals.user;
 	if (user?.role !== 'admin') return user?.role === 'staff' ? 'テスト決済は管理者だけが試せます（スタッフでログイン中）' : 'この端末は管理画面に管理者としてログインしていません';
 	if (!canTestInroomPayment(locals)) return '二段階認証（パスキーか認証アプリ）の確認が済んでいません。管理画面で確認してから開き直してください';
 	return null;

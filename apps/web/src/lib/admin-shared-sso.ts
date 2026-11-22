@@ -14,6 +14,8 @@ import { safeNext } from './safe-next';
 
 /** Book 専用 Cookie（lib/server/auth.ts の BOOK_AUTH_COOKIE）。共有 Cookie と取り違えない */
 const BOOK_COOKIE_PREFIX = 'sb-autumn-book-auth-token';
+/** Book の管理画面専用 Cookie（lib/server/auth.ts の BOOK_ADMIN_AUTH_COOKIE・2026-11-22）。これも読まない */
+const BOOK_ADMIN_COOKIE_PREFIX = 'sb-autumn-book-admin-auth-token';
 const AUTH_COOKIE_RE = /^sb-(.+)-auth-token(?:\.(\d+))?$/;
 const JWT_SHAPE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 /** Cookie ヘッダ・トークンの長さの上限（異常に大きい入力で処理を重くしない） */
@@ -120,7 +122,7 @@ export function readSharedAccessToken(cookieHeader: string | null | undefined, p
 	const chunks = new Map<number, string>();
 	let dupChunk = false;
 	for (const c of parseCookieHeader(cookieHeader)) {
-		if (c.name.startsWith(BOOK_COOKIE_PREFIX)) continue;
+		if (c.name.startsWith(BOOK_COOKIE_PREFIX) || c.name.startsWith(BOOK_ADMIN_COOKIE_PREFIX)) continue;
 		const m = AUTH_COOKIE_RE.exec(c.name);
 		if (!m || m[1] !== projectRef) continue;
 		if (m[2] === undefined) {

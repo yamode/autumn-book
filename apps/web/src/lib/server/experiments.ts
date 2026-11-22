@@ -7,7 +7,7 @@ export function experimentsForRequest(event: RequestEvent): ExperimentAssignment
 	const path = canonicalPublicPath(event.url.pathname);
 	if (/^\/(admin|r|p|api)(\/|$)/.test(path)) return [];
 	const matching = experiments.filter((experiment) => matchesExperimentPath(experiment.path, path));
-	const previewAllowed = import.meta.env.DEV || event.locals.user?.role === 'admin';
+	const previewAllowed = import.meta.env.DEV || (event.locals.staff?.user.role ?? event.locals.user?.role) === 'admin';
 	const preview = previewAllowed ? event.url.searchParams.get('ab_preview') : null;
 	const [previewId, previewVariant] = preview?.split(':') ?? [];
 	const eligible = matching.filter((experiment) => experiment.enabled || experiment.id === previewId);

@@ -41,11 +41,59 @@ export function adminMfaRequired(): boolean {
 	return parseAdminMfaRequired(env.ADMIN_MFA_REQUIRED);
 }
 
-/** Book の Supabase Auth セッション cookie 名（RMS の共有 cookie と衝突させない）。 */
-const BOOK_AUTH_COOKIE = 'sb-autumn-book-auth-token';
+/** Book の Supabase Auth セッション cookie 名（RMS の共有 cookie と衝突させない）。会員（公開サイト・マイページ）用。 */
+export const BOOK_AUTH_COOKIE = 'sb-autumn-book-auth-token';
+/**
+ * 管理画面（/admin）用のセッション cookie 名（2026-11-22）。
+ * 以前は会員と同じ cookie に入れていたため、同じブラウザでマイページに会員でログインすると管理画面のセッションが上書きされ、
+ * 管理画面にログインし直すと今度はマイページが切れていた（本番の記録で、会員ログインの直後に毎回管理画面がログイン画面へ戻っていた）。
+ * 名前を分けて、管理画面と会員のログインを同じブラウザで同時に保てるようにする。
+ */
+export const BOOK_ADMIN_AUTH_COOKIE = 'sb-autumn-book-admin-auth-token';
 
-/** リクエストの cookie に束縛した Supabase Auth クライアント（SSR）。 */
-export function createSupabaseServerClient(event: RequestEvent): SupabaseClient {
+/** どちらのセッション cookie を使うか。管理画面（/admin 配下）は admin、それ以外は member */
+export type AuthCookieKind = 'member' | 'admin';
+export function authCookieKindFor(pathname: string): AuthCookieKind {
+	return pathname === '/admin' || pathname.startsWith('/admin/') ? 'admin' : 'member';
+}
+function cookieNameOf(kind: AuthCookieKind): string {
+	return kind === 'admin' ? BOOK_ADMIN_AUTH_COOKIE : BOOK_AUTH_COOKIE;
+}
+/** その名前のセッション cookie（分割された .0 .1 … を含む）がリクエストにあるか */
+export function hasAuthCookie(event: Pick<RequestEvent, 'cookies'>, kind: AuthCookieKind): boolean {
+	const name = cookieNameOf(kind);
+	return event.cookies.getAll().some((c) => c.value && (c.name === name || (c.name.startsWith(name + '.') && /^\d+$/.test(c.name.slice(name.length + 1)))));
+}
+
+/** @supabase/ssr の既定と同じ cookie の属性（会員の cookie から管理画面の cookie へ移すときに使う） */
+const AUTH_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
+
+/**
+ * 管理画面の cookie がまだ無く、会員の cookie に運営（admin / staff）のセッションが入っているとき（cookie を分ける前にログインした人）、
+ * そのセッションを管理画面の cookie へ移す（コピーして元を消す。同じ refresh token を2か所に残さない）。
+ * 移したら true。呼び出し側は、会員の cookie のセッションが運営のものだと確かめてから呼ぶこと。
+ */
+export function moveLegacyAdminCookie(event: Pick<RequestEvent, 'cookies' | 'url'>): boolean {
+	if (hasAuthCookie(event, 'admin')) return false;
+	const from = BOOK_AUTH_COOKIE;
+	const parts = event.cookies
+		.getAll()
+		.filter((c) => c.value && (c.name === from || (c.name.startsWith(from + '.') && /^\d+$/.test(c.name.slice(from.length + 1)))));
+	if (!parts.length) return false;
+	const secure = event.url.protocol === 'https:';
+	for (const c of parts) {
+		const suffix = c.name.slice(from.length);
+		event.cookies.set(BOOK_ADMIN_AUTH_COOKIE + suffix, c.value, { path: '/', sameSite: 'lax', httpOnly: false, secure, maxAge: AUTH_COOKIE_MAX_AGE });
+		event.cookies.delete(c.name, { path: '/' });
+	}
+	return true;
+}
+
+/**
+ * リクエストの cookie に束縛した Supabase Auth クライアント（SSR）。
+ * kind を省くと、管理画面（/admin 配下）は管理画面の cookie、それ以外は会員の cookie を使う。
+ */
+export function createSupabaseServerClient(event: RequestEvent, kind: AuthCookieKind = authCookieKindFor(event.url.pathname)): SupabaseClient {
 	const url = publicEnv.PUBLIC_SUPABASE_URL;
 	const key = publicEnv.PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 	if (!url || !key) throw new Error('PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY が未設定です');
@@ -54,7 +102,8 @@ export function createSupabaseServerClient(event: RequestEvent): SupabaseClient 
 		// （アプリ切替の再ログイン不要化）。既定名のままだと book.yamado.app に RMS の cookie と Book の cookie が
 		// 同名で2つ届き、先に作られた RMS 側（運営スタッフ）のセッションが読まれて、会員がログインしても
 		// ログイン画面へ戻される（2026-09-26 本番で発生）。会員と運営のセッションを混ぜないため分ける。
-		cookieOptions: { name: BOOK_AUTH_COOKIE },
+		// さらに管理画面と会員でも名前を分ける（2026-11-22・BOOK_ADMIN_AUTH_COOKIE の説明）。
+		cookieOptions: { name: cookieNameOf(kind) },
 		cookies: {
 			getAll: () => event.cookies.getAll(),
 			setAll: (cookiesToSet) => {
@@ -167,11 +216,11 @@ async function readAdminAal(claims: Claims, user: User): Promise<AdminAal> {
  *   3. フラグがなくても book.my_profile が通る → member（別アプリで登録した会員）
  *   4. それ以外（OTP 済み・未登録）          → pending（会員登録のプロフィール入力へ）
  */
-export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<SupabaseAuthResolution> {
+export async function resolveSupabaseSessionUser(event: RequestEvent, kind: AuthCookieKind = authCookieKindFor(event.url.pathname)): Promise<SupabaseAuthResolution> {
 	let client: SupabaseClient;
 	let claims: Claims;
 	try {
-		client = createSupabaseServerClient(event);
+		client = createSupabaseServerClient(event, kind);
 		const { data, error } = await client.auth.getClaims();
 		if (error || !data?.claims?.sub) return { user: null, pending: null, adminAal: null };
 		claims = data.claims as unknown as Claims;
@@ -209,6 +258,34 @@ export async function resolveSupabaseSessionUser(event: RequestEvent): Promise<S
 
 	// OTP 認証は済んだが register_member 前（＝会員行なし）。プロフィール入力へ誘導する。
 	return { user: null, pending: { id: claims.sub, email: claims.email ?? '' }, adminAal: null };
+}
+
+const NO_SESSION: SupabaseAuthResolution = { user: null, pending: null, adminAal: null };
+const isStaffResolution = (r: SupabaseAuthResolution) => r.user?.role === 'admin' || r.user?.role === 'staff';
+
+/**
+ * リクエストのログインを決める（hooks から呼ぶ・2026-11-22 に管理画面と会員の cookie を分けた）。
+ * - 管理画面（/admin 配下）: 管理画面の cookie だけを見る。まだ無く、会員の cookie に運営のセッションがあれば（分ける前にログインした人）
+ *   管理画面の cookie へ移す。会員のセッションは管理画面では使わない。
+ * - それ以外: 会員の cookie を見る。会員でログインしていなければ、管理画面の cookie の運営を user にする（今までどおりプレビュー等が動く）。
+ *   運営は会員でログイン中でも staff に入れる。
+ */
+export async function resolveRequestSessions(event: RequestEvent): Promise<SupabaseAuthResolution & { staff: { user: SessionUser; adminAal: AdminAal | null } | null }> {
+	if (authCookieKindFor(event.url.pathname) === 'admin') {
+		let r = hasAuthCookie(event, 'admin') ? await resolveSupabaseSessionUser(event, 'admin') : NO_SESSION;
+		if (!r.user && !hasAuthCookie(event, 'admin') && hasAuthCookie(event, 'member')) {
+			const legacy = await resolveSupabaseSessionUser(event, 'member');
+			if (isStaffResolution(legacy) && moveLegacyAdminCookie(event)) r = legacy;
+		}
+		if (!isStaffResolution(r)) r = NO_SESSION;
+		return { ...r, pending: null, staff: r.user ? { user: r.user, adminAal: r.adminAal } : null };
+	}
+	const member = hasAuthCookie(event, 'member') ? await resolveSupabaseSessionUser(event, 'member') : NO_SESSION;
+	const admin = hasAuthCookie(event, 'admin') ? await resolveSupabaseSessionUser(event, 'admin') : NO_SESSION;
+	const staffRes = isStaffResolution(admin) ? admin : isStaffResolution(member) ? member : null;
+	const staff = staffRes?.user ? { user: staffRes.user, adminAal: staffRes.adminAal } : null;
+	if (member.user || member.pending) return { ...member, staff };
+	return { ...(isStaffResolution(admin) ? admin : NO_SESSION), pending: null, staff };
 }
 
 /**

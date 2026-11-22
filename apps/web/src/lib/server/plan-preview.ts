@@ -13,11 +13,12 @@ import { previewServiceClient } from '$lib/server/partners/admin-client';
 import { mapPlanRow, sbPlanByUuid, withTranslations } from '$lib/server/supabase-data';
 import type { RatePlan } from '$lib/types';
 
-type Locals = { user?: { role?: string } | null };
+type Locals = { user?: { role?: string } | null; staff?: { user: { role?: string } } | null };
 
 /** プレビューできる役割か（管理画面に入れる人） */
 export function isStaffViewer(locals: Locals): boolean {
-	const role = locals.user?.role;
+	// 会員でログイン中でも、管理画面にログインしていればプレビューできる（locals.staff・2026-11-22）
+	const role = locals.staff?.user.role ?? locals.user?.role;
 	return role === 'admin' || role === 'staff';
 }
 

@@ -347,6 +347,7 @@
 								if (!(await switchUserInDesktop())) form.submit();
 							}}
 						>
+							<input type="hidden" name="area" value="admin" />
 							<button type="submit" class="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-700" title={desktop ? 'ユーザーを切り替え' : 'ログアウト'}>
 								<AdminIcon name="logout" class="h-4 w-4" /><span class="hidden sm:inline">{desktop ? 'ユーザーを切り替え' : 'ログアウト'}</span>
 							</button>

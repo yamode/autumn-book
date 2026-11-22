@@ -1,6 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
 import { getSession } from '$lib/server/session';
-import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, resolveSupabaseSessionUser } from '$lib/server/auth';
+import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, resolveRequestSessions } from '$lib/server/auth';
 import { MEMBER_LOGIN_METHODS, memberSessionSecurity } from '$lib/server/member-login';
 import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
 import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
@@ -130,16 +130,19 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		event.locals.user = null;
 		event.locals.pendingAuthUser = null;
 		event.locals.adminAal = null;
+		event.locals.staff = null;
 	} else if (AUTH_MODE === 'supabase') {
 		// admin/staff/member をすべて Supabase Auth の検証済みセッションからのみ解決する。
 		// demo cookie は一切信用しない（偽造 cookie で誰にもなれない）。
 		// OTP 認証済みだが未登録のユーザーは pendingAuthUser に載せ、/auth/register へ誘導する。
+		// 管理画面と会員は別の cookie（2026-11-22・同じブラウザで両方にログインしても互いに上書きしない）。
 		const authStarted = performance.now();
-		const { user, pending, adminAal } = await resolveSupabaseSessionUser(event);
+		const { user, pending, adminAal, staff } = await resolveRequestSessions(event);
 		event.locals.authMs = performance.now() - authStarted;
 		event.locals.user = user;
 		event.locals.pendingAuthUser = pending;
 		event.locals.adminAal = adminAal;
+		event.locals.staff = staff;
 		const memberId = user?.role === 'member' ? user.id : pending?.id;
 		if (MEMBER_LOGIN_METHODS && memberId) {
 			try {
@@ -159,6 +162,7 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		event.locals.user = await getSession(event.cookies);
 		event.locals.pendingAuthUser = null;
 		event.locals.adminAal = null;
+		event.locals.staff = null;
 	}
 
 	// 共有セッション Cookie による管理画面の自動ログイン（docs/auth-hardening.md §7.6）。
