@@ -26,6 +26,17 @@ export async function makeDraft(db: SupabaseClient, item: Inquiry,instructions='
  if(error||!result?.text)throw new Error(result?.error||'AI下書きを作成できませんでした。時間をおいて再度お試しください。');
  return result as {text:string;sources:Source[];model:string;language:string;japanese:string};
 }
+/** 作り直しをリアルタイムで受け取る（draft-inquiry-reply の stream: true・2026-11-22）。始められなければ画面に出すエラー */
+export async function openDraftStream(db:SupabaseClient,item:Inquiry,instructions=''):Promise<{body:ReadableStream<Uint8Array>}|{error:string;status:number}>{
+ const {data,error,response}=await db.functions.invoke('draft-inquiry-reply',{body:{id:item.id,revision:item.revision,draftVersion:item.draft_version,instructions,stream:true}});
+ if(!error&&data instanceof Response&&data.body)return {body:data.body};
+ // 関数が返したエラー（JSON）を、これまでの画面の文言に合わせて返す
+ let message='';const status=response?.status??502;
+ try{const j=await response?.clone().json();message=typeof j?.error==='string'?j.error:'';}catch{/* JSON でない */}
+ if(message==='conflict')message='新しい返信または他の担当者の変更があります。入力内容を控えて再読み込みしてください。';
+ if(!message||/^[a-z_]+$/.test(message))message='AI下書きを作成できませんでした。時間をおいて再度お試しください。';
+ return {error:message,status:status>=400&&status<600?status:502};
+}
 export type DraftJob={state:string;error:string|null;updated_at:string};
 export async function draftJob(db:SupabaseClient,id:string){
  const {data,error}=await db.schema('book').from('inquiry_draft_jobs').select('state,error,updated_at').eq('inquiry_id',id).maybeSingle();

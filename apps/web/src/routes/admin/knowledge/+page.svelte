@@ -72,7 +72,9 @@
 	title="施設ナレッジ"
 	facility={data.currentFacility.name}
 	description="取材の回答・プレスリリース・お問い合わせの AI 下書きが使う「確かめ済みの施設情報」です。承認済みで期間内のものだけを AI が使います。内容を直すと承認は外れます。料金・空室・客室数はプランと PMS から引くので、ここには登録しません。"
-/>
+>
+	{#snippet actions()}<a href="/admin/knowledge/photos" class="rounded-lg border border-stone-300 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50">写真の権利 →</a>{/snippet}
+</PageHeader>
 
 {#if data.unavailable}
 	<p class="rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">{data.unavailable}</p>
