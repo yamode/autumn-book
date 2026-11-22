@@ -930,6 +930,10 @@
 										{#if onsiteMethods.length}
 											<p>{m.pay_onsite_accepted({ methods: new Intl.ListFormat(getLocale()).format(onsiteMethods.map(onsiteMethodLabel)) })}</p>
 										{/if}
+										{#if payText('onsite', 'note', '')}<p class="whitespace-pre-line text-xs">{payText('onsite', 'note', '')}</p>{/if}
+									</div>
+								</div>
+							{/if}
 
 							{#if hasOnline}
 								<div class="rounded-xl border bg-white {group !== 'onsite' ? 'border-slate-700' : 'border-stone-300'}">
@@ -1017,11 +1021,6 @@
 										{/if}
 									{/if}
 									{/if}
-								</div>
-							{/if}
-
-										{#if payText('onsite', 'note', '')}<p class="whitespace-pre-line text-xs">{payText('onsite', 'note', '')}</p>{/if}
-									</div>
 								</div>
 							{/if}
 
