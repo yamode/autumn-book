@@ -36,7 +36,9 @@ const config = {
 					'https://www.googletagmanager.com',
 					'https://challenges.cloudflare.com',
 					'https://rtc.live.cloudflare.com',
-					'wss://rtc.live.cloudflare.com'
+					'wss://rtc.live.cloudflare.com',
+					// エラー監視（Sentry・2026-11-23）
+					'https://*.ingest.us.sentry.io'
 				],
 				'frame-src': [
 					'self',

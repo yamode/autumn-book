@@ -1,4 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
+import { sequence } from '@sveltejs/kit/hooks';
+import { handleErrorWithSentry, initCloudflareSentryHandle, sentryHandle } from '@sentry/sveltekit';
+import { SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, scrubSentryEvent } from '$lib/sentry';
 import { getSession } from '$lib/server/session';
 import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, resolveRequestSessions } from '$lib/server/auth';
 import { MEMBER_LOGIN_METHODS, memberSessionSecurity } from '$lib/server/member-login';
@@ -21,7 +24,7 @@ import { dev } from '$app/environment';
 const LEGACY_HOST = 'autumn-book.pages.dev';
 
 // すべての応答にセキュリティヘッダを付ける（security-headers.ts）
-export const handle: Handle = async (input) => {
+const appHandle: Handle = async (input) => {
 	const { request, url } = input.event;
 	if (!isPreviewExchange(input.event) && isCrossSiteForm(request, url)) {
 		const message = `Cross-site ${request.method} form submissions are forbidden`;
@@ -229,3 +232,19 @@ function adminMfaGateResponse(event: Parameters<Handle>[0]['event']): Response |
 		{ status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }
 	);
 }
+
+// エラー監視（Sentry・2026-11-23）。設定と個人情報の消し方は $lib/sentry.ts。ローカル（dev）では送らない
+export const handle = sequence(
+	initCloudflareSentryHandle({
+		dsn: SENTRY_DSN,
+		enabled: !dev,
+		environment: 'production',
+		release: `autumn-book@${__APP_VERSION__}`,
+		tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,
+		beforeSend: scrubSentryEvent
+	}),
+	sentryHandle(),
+	appHandle
+);
+
+export const handleError = handleErrorWithSentry();
