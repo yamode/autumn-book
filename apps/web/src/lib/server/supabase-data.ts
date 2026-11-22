@@ -2687,7 +2687,7 @@ export function mapFacilityRow(row: FacilityRow): Facility {
 		addressPublic: row.address_public ?? '',
 		phone: row.phone ?? '',
 		checkinTime: row.checkin_time ?? '15:00',
-		checkoutTime: row.checkout_time ?? '10:00',
+		checkoutTime: row.checkout_time ?? '11:00',
 		amenities: Array.isArray(row.amenities) ? (row.amenities as string[]) : [],
 		access: safeAccess(row.access),
 		photos: placeholderPhotos(row.slug || row.facility_id, row.name),

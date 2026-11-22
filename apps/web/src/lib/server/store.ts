@@ -107,7 +107,7 @@ export const facilities: Facility[] = [
 		addressPublic: '秋田県男鹿市船川港台島字鵜ノ崎62-29',
 		phone: '0185-47-7776',
 		checkinTime: '15:00',
-		checkoutTime: '10:00',
+		checkoutTime: '11:00',
 		amenities: ['展望温泉', '全室オーシャンビュー', '無料Wi-Fi', '駐車場無料', '全室禁煙'],
 		access: {
 			car: [{ from: '秋田道 昭和男鹿半島IC', route: '国道101号 経由', minutes: 40 }],
@@ -2788,7 +2788,7 @@ If you have trouble connecting, please contact the front desk.`
 		body: `## チェックイン / チェックアウト
 
 - チェックイン：**15:00** から
-- チェックアウト：**10:00** まで
+- チェックアウト：**11:00** まで
 
 ご不明な点はフロント（**0185-47-7776**）までお問い合わせください。`
 	},
