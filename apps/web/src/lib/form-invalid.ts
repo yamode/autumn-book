@@ -33,7 +33,7 @@ function fieldLabel(el: Field, box: Element): string {
 	}
 	for (const span of box.querySelectorAll(':scope > span')) {
 		const t = cleanText(span);
-		if (t) return t;
+		if (t && !MARK_RE.test(t)) return t;
 	}
 	const t = box.tagName === 'LABEL' ? cleanText(box) : '';
 	return t || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '';
