@@ -14,9 +14,11 @@ export function newsJson(request: Request, slug: string, body: unknown, init: { 
 	});
 }
 
-/** 本文 Markdown → HTML。本文中のリンクは新しいタブで開く（生 HTML はエスケープ済みなので、残る <a> は marked が生成したものだけ） */
+/** 本文 Markdown → HTML（施設HP向け）。リンクの開き方は編集画面の「新しいタブで開く」に従う（renderNewsMarkdown が target を付ける）。
+ * 指定の無いリンク（2026-11-22 より前に書いたもの）は、これまでどおり新しいタブで開く。
+ * 生 HTML はエスケープ済みなので、残る <a> は marked が生成したものだけ */
 export function newsBodyHtml(md: string): string {
-	return renderNewsMarkdown(md).replace(/<a\s/g, '<a target="_blank" rel="noopener noreferrer" ');
+	return renderNewsMarkdown(md).replace(/<a\s(?![^>]*\btarget=)/g, '<a target="_blank" rel="noopener noreferrer" ');
 }
 
 export interface NewsRow {
@@ -31,7 +33,7 @@ export async function listPublicNews(facilityUuid: string, page: number, per: nu
 	const { data, error, count } = await supa()
 		.from('news_posts')
 		.select('id, title, body, published_at, cover_image_url, cover_image_alt', { count: 'exact' })
-		.eq('facility_id', facilityUuid)
+		.contains('facility_ids', [facilityUuid])
 		.eq('is_published', true)
 		.order('published_at', { ascending: false })
 		.order('created_at', { ascending: false })
@@ -45,13 +47,13 @@ export async function getPublicNews(facilityUuid: string, id: string) {
 	const { data: post, error } = await supa()
 		.from('news_posts')
 		.select('id, title, body, published_at, cover_image_url, cover_image_alt')
-		.eq('facility_id', facilityUuid)
+		.contains('facility_ids', [facilityUuid])
 		.eq('is_published', true)
 		.eq('id', id)
 		.maybeSingle();
 	if (error) throw error;
 	if (!post) return null;
-	const base = () => supa().from('news_posts').select('id, title').eq('facility_id', facilityUuid).eq('is_published', true);
+	const base = () => supa().from('news_posts').select('id, title').contains('facility_ids', [facilityUuid]).eq('is_published', true);
 	const [{ data: prev }, { data: next }] = await Promise.all([
 		base().lt('published_at', post.published_at).order('published_at', { ascending: false }).limit(1).maybeSingle(),
 		base().gt('published_at', post.published_at).order('published_at', { ascending: true }).limit(1).maybeSingle()
