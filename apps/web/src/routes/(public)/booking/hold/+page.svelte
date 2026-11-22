@@ -1034,7 +1034,7 @@
 						<p class="mt-0.5 text-sm text-stone-500">{m.hold_summary_heading()}</p>
 					</div>
 				</div>
-				<dl class="mt-4 space-y-1.5 text-sm">
+				<dl class="mt-4 space-y-2.5 text-sm">
 					{#if multi}
 						<!-- 複数室: 部屋ごとの枠（部屋名／プラン名／大人 N 名／宿泊料金） -->
 						<div>
@@ -1052,14 +1052,15 @@
 							</dd>
 						</div>
 					{:else}
-						<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_room()}</dt><dd class="text-right">{data.room.name}</dd></div>
-						<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_plan()}</dt><dd class="max-w-[65%] text-right">{data.plan.name}</dd></div>
+						<!-- 項目名の下に内容を出す（長いプラン名が右寄せで3段にならないように・2026-11-22 指示） -->
+						<div><dt class="text-xs text-stone-500">{m.hold_summary_room()}</dt><dd class="mt-0.5">{data.room.name}</dd></div>
+						<div><dt class="text-xs text-stone-500">{m.hold_summary_plan()}</dt><dd class="mt-0.5">{data.plan.name}</dd></div>
 						{#if perkTitles(rooms[0]?.memberPerks)}
-							<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.member_page_perks()}</dt><dd class="max-w-[65%] text-right text-amber-800">{perkTitles(rooms[0]?.memberPerks)}</dd></div>
+							<div><dt class="text-xs text-stone-500">{m.member_page_perks()}</dt><dd class="mt-0.5 text-amber-800">{perkTitles(rooms[0]?.memberPerks)}</dd></div>
 						{/if}
 					{/if}
-					<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_checkin()}</dt><dd class="text-right">{formatDateLong(data.hold.checkin)}</dd></div>
-					<div class="flex justify-between gap-2"><dt class="shrink-0 text-stone-500">{m.hold_summary_nights_adults()}</dt><dd class="text-right">{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
+					<div><dt class="text-xs text-stone-500">{m.hold_summary_checkin()}</dt><dd class="mt-0.5">{formatDateLong(data.hold.checkin)}</dd></div>
+					<div><dt class="text-xs text-stone-500">{m.hold_summary_nights_adults()}</dt><dd class="mt-0.5">{m.hold_nights_adults_val({ nights: String(data.hold.nights), guests: guestsLabel(totalAdults) })}</dd></div>
 				</dl>
 				<div class="mt-4 border-t border-stone-200 pt-3">
 					<PriceBreakdown couponDiscount={couponAmount} quote={{ ...data.groupQuote, pointsUsed: pointsApplied, payable: data.groupQuote.total - couponAmount - pointsApplied }} rooms={rooms.map((r) => ({ lines: r.quote.lines, name: r.roomName }))} />
