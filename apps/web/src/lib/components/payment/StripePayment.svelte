@@ -144,6 +144,7 @@
             : // 後日の請求（off-session）に使う。サーバの SetupIntent（usage=off_session）とそろえる
               s.elements({ ...common, mode: 'setup', setupFutureUsage: 'off_session' });
         elements = el;
+        shownMode = mode;
 
         const pe = el.create('payment', {
           layout: 'tabs',
@@ -213,6 +214,17 @@
     expressElement?.destroy();
   });
 
+  // 方式（すぐ請求 payment ／ カード登録 setup）が変わったら、部品を作り直さずに Elements の設定だけ差し替える。
+  // 入力したカード番号はそのまま残る（予約入力で支払方法を切り替えるたびにカード欄が出し直されていた・2026-11-22 指示）
+  let shownMode: PaymentMode | null = null;
+  $effect(() => {
+    const md = mode;
+    if (phase !== 'ready' || !elements) return;
+    if (shownMode === null || md === shownMode) return;
+    shownMode = md;
+    if (md === 'payment') elements.update({ mode: 'payment', amount: Math.max(50, Math.round(amount)), setupFutureUsage: null });
+    else elements.update({ mode: 'setup', setupFutureUsage: 'off_session' });
+  });
   // 金額が変わったら（人数・泊数・割引）Elements にも伝える（Apple Pay の支払シートに出る額）
   $effect(() => {
     const a = Math.round(amount);

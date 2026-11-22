@@ -146,7 +146,6 @@
 	let couponBusy = $state(false);
 	let couponError = $state('');
 	const couponAmount = $derived(coupon?.amount ?? 0);
-	const pointsToEarn = $derived(data.expired || !data.member ? 0 : earnedPoints(data.groupQuote.total - couponAmount, data.member.rewardRate));
 	let discountedTotal = $derived(data.expired ? 0 : data.groupQuote.total - discountNow - couponAmount);
 
 	async function applyCoupon() {
@@ -181,6 +180,8 @@
 					Math.max(0, discountedTotal)
 				)
 	);
+	// 付与の基準は割引（クーポン・早期決済割）とポイント利用分を引いた支払額（入湯税を除く・税抜）。DB の _confirm_booking_group と同じ（2026-11-22）
+	const pointsToEarn = $derived(data.expired || !data.member ? 0 : earnedPoints(Math.max(0, discountedTotal - pointsApplied), data.member.rewardRate));
 	let charge = $derived(
 		data.expired ? { lodging: 0, bathTax: 0, discount: 0, charge: 0 } : directChargeOf({ total: data.groupQuote.total - couponAmount, pointsUsed: pointsApplied, bathTax: data.bathTax, prepayDiscount: discountNow })
 	);
@@ -1044,13 +1045,12 @@
 							<!-- カードは入力の段で入れてもらい、確認の段までそのまま持ち越す（取引先ページと同じ・2026-11-22 指示）。
 							     部品は段を切り替えても作り直さないので、入れた番号は確認の段でも残る。確定（請求・登録）は確認の段のボタンで行う。
 							     Apple Pay / Google Pay は入力欄の上。入力の段で押されたときは確認の段へ進むよう案内する（validate）。Link の保存欄は出さない。
-							     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は支払の方式ごとに作り直す -->
+							     チェックアウト日決済はカード登録（同意文つき・請求はチェックアウト日）。部品は作り直さず、方式（請求・登録）だけ差し替える（入れたカードは残る） -->
 							<div id="hold-card" class="scroll-mt-24 space-y-3 rounded-lg border border-stone-200 p-3">
 								<div class="flex items-baseline justify-between gap-3">
 									<h3 class="text-sm font-medium text-brand-900">{checkoutCard ? m.pay_checkout_heading() : m.pay_card_heading()}</h3>
 									<p class="text-sm font-medium tabular-nums text-brand-900">{m.pay_total_due()} {formatPrice(charge.charge)}</p>
 								</div>
-								{#key checkoutCard}
 								<StripePayment
 									bind:this={payRef}
 									publishableKey={data.publishableKey}
@@ -1068,7 +1068,6 @@
 									onerror={() => (payMessage = '')}
 									customerSession={loadMemberSession}
 								/>
-								{/key}
 								{#if !checkoutCard}<p class="text-xs text-stone-500">{m.pay_inline_note()}</p>{/if}
 							</div>
 						{/if}
