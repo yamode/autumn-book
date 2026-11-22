@@ -86,11 +86,13 @@
 | `photo_ids` | uuid[] | 合う写真（`facility_photos`） |
 | `sort_order` | integer | |
 
-### 3.4 写真の権利 `book.facility_photo_rights`（新設・`facility_photos` と 1対1）
+### 3.4 写真の権利 `book.photo_rights`（新設・施設 × 写真の URL）
 
 取材の依頼書は、毎回 **肖像権・著作権の確認** を求めてくる。写真ごとに持たせる。
 
 > **2026-11-22 修正**：当初は `facility_photos` に列を足す案だったが、`facility_photos` は公開サイトから anon で全列読める。撮影者・同意・Dropbox の場所が外から見えてしまうため、**スタッフだけが読める別テーブル**に分けた。施設（`tenant_id`／`facility_id`）は写真から自動で入る。
+>
+> **2026-11-22 再修正（段階6）**：実際の写真は `facility_photos` に1件も無く、プラン・部屋タイプの `photos`（jsonb）に URL で入っていた（西和賀・男鹿で 335 枚）。写真の権利は画像ファイルに付くものなので、`facility_photo_rights`（`facility_photos` と 1対1）を消し、**施設 × 写真の URL** で持つ `book.photo_rights` に作り直した（autumn-shared `20261122112901_book_photo_rights.sql`）。入力は管理画面 `/admin/knowledge/photos`（プラン・部屋・お知らせの表紙で使っている写真を集めて並べ、まとめて・1枚ずつ入れる）。
 
 | 列 | 説明 |
 |---|---|
@@ -189,7 +191,7 @@
 | 4 | **（2026-11-22 変更）お問い合わせの AI 下書きで空室・料金を照会する**。AI が本文から日付・泊数・人数を読み取り、コードで日付に展開して `book.inquiry_availability`（公式サイトと同じ `plan_offers` の計算）で照会し、結果を下書きに渡す（autumn-shared v13.33.0・本番適用・デプロイ済み） | 中 |
 | 4b | 取材回答の下書き機能＋回答の控え（`press_responses`）。今回のじゃらんニュースの回答を最初の控えとして登録（もとの段階4。後回し） | 中 |
 | 5 | 公開 API → taskul-social の `pr-ai-assist` を置き換え | 小（両リポ） |
-| 6 | 写真の権利と Dropbox の原本の場所の入力（今ある写真を一括で `unknown` から確認） | 中（入力作業が主） |
+| 6 | 写真の権利と Dropbox の原本の場所の入力（今ある写真を一括で `unknown` から確認）。`book.photo_rights` と管理画面 `/admin/knowledge/photos`（Book v0.318.0・autumn-shared v13.36.0）で**作成済み**。入力は現場の作業 | 中（入力作業が主） |
 
 男鹿（山人-oga-）は段階2の後に、同じ画面で入力する。
 

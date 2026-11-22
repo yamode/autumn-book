@@ -83,3 +83,27 @@ export function knowledgeStatus(
 export function tokyoToday(now = new Date()): string {
 	return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(now);
 }
+
+// ---- 写真の権利（段階6・book.photo_rights） ----
+export const PHOTO_RIGHTS = ['own', 'licensed', 'unknown'] as const;
+export type PhotoRights = (typeof PHOTO_RIGHTS)[number];
+export const PHOTO_RIGHTS_LABEL: Record<PhotoRights, string> = { own: '自社で撮影', licensed: '使用の許諾あり', unknown: '不明' };
+export const PHOTO_USAGES = ['web', 'press', 'print', 'ad'] as const;
+export type PhotoUsage = (typeof PHOTO_USAGES)[number];
+export const PHOTO_USAGE_LABEL: Record<PhotoUsage, string> = { web: '自社サイト・SNS', press: '取材・広報', print: '印刷物', ad: '広告' };
+/** 人の写り込み（has_people と people_consent の組み合わせ） */
+export type PhotoPeople = 'unchecked' | 'none' | 'consented' | 'no_consent';
+export const PHOTO_PEOPLE_LABEL: Record<PhotoPeople, string> = {
+	unchecked: '未確認',
+	none: '人は写っていない',
+	consented: '写っている（許可あり）',
+	no_consent: '写っている（許可なし）'
+};
+/** 一覧の状態。press_ok は DB の book.photo_press_ok と同じ条件 */
+export type PhotoStatus = 'press_ok' | 'checked' | 'unchecked';
+export const PHOTO_STATUS_LABEL: Record<PhotoStatus, string> = { press_ok: '取材に出せる', checked: '確認済み（取材は不可）', unchecked: '未確認' };
+export function photoStatus(r: { rights: PhotoRights; usageScope: readonly string[]; hasPeople: boolean | null; peopleConsent: boolean | null }): PhotoStatus {
+	if (r.rights === 'unknown' || r.hasPeople === null) return 'unchecked';
+	if (r.usageScope.includes('press') && (r.hasPeople === false || r.peopleConsent === true)) return 'press_ok';
+	return 'checked';
+}

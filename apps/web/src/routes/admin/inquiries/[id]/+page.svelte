@@ -13,6 +13,7 @@
  import InquiryKnowledge from '$lib/components/admin/InquiryKnowledge.svelte';
  import InquiryMailBody from '$lib/components/admin/InquiryMailBody.svelte';
  import {splitInquiryMail,inquiryMailPreview} from '$lib/inquiry-mail-display';
+ import {readSseJson} from '$lib/sse';
  import {renderInquirySignature,replyWithoutSignature,replyWithSignature,inquiryAttachmentMime,attachmentSize,INQUIRY_ATTACHMENT_LIMIT,INQUIRY_ATTACHMENT_COUNT,type InquiryAttachment} from '$lib/inquiry-compose';
  let {data,form}:{data:PageData;form:ActionData}=$props();
  let body=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature))),savedBody=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature)));
@@ -136,6 +137,7 @@
   if(formData.has('body'))formData.set('body',fullReply);
   const action=String(formData.get('action'));
   if(action==='ai'&&body.trim()&&!confirm('現在の下書きをAIで作り直しますか？')){busy=false;cancel();return;}
+  if(action==='ai'){cancel();void streamAi(String(formData.get('aiInstructions')??''));return;}
   return async({result,update})=>{
    try{await update({reset:false});await tick();if(result.type==='success'){otherDirtyForms.delete(formElement);allowOtherFormLeave=false;
     syncDraft();saveError='';conflict=false;
@@ -143,6 +145,28 @@
    }}finally{busy=false;if(dirty&&body.trim())scheduleSave();}
   };
  };
+ // AI で作り直す：書いているそばから本文欄に出す（2026-11-22）。保存はサーバーが書き終わってから行い、終わったら読み直す
+ let aiStage=$state(''),aiNotice=$state(''),aiError=$state('');
+ const AI_STAGE:Record<string,string>={sources:'FAQ・過去の回答・施設ナレッジを集めています',availability:'空室・料金を照会しています',writing:'下書きを書いています',saving:'下書きを保存しています'};
+ async function streamAi(instructions:string){
+  const id=data.item.id,before=body;let writing=false,finished='';
+  aiStage='sources';aiNotice=aiError='';
+  try{
+   const res=await fetch('/admin/inquiries/'+id+'/ai',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({revision,draftVersion:version,instructions})});
+   if(!res.ok||!res.body||!(res.headers.get('content-type')??'').includes('text/event-stream')){const r=await res.json().catch(()=>({}));throw new Error(r.error||'AI下書きを作成できませんでした。時間をおいて再度お試しください。');}
+   await readSseJson(res.body,ev=>{
+    if(id!==data.item.id)return;
+    if(ev.type==='stage')aiStage=String(ev.stage);
+    else if(ev.type==='delta'){if(!writing){writing=true;body='';}body=typeof ev.replace==='string'?ev.replace:body+(typeof ev.append==='string'?ev.append:'');}
+    else if(ev.type==='done')finished=String(ev.message??'AI下書きを保存しました。');
+    else if(ev.type==='error')throw new Error(String(ev.error||'AI下書きを作成できませんでした。'));
+   });
+   if(!finished)throw new Error('接続が切れました。画面を更新して、下書きが保存されたかご確認ください。');
+   if(id!==data.item.id)return;
+   await invalidateAll();await tick();syncDraft();conflict=false;saveError='';aiNotice=finished;
+  }catch(e){if(id===data.item.id){body=before;aiError=e instanceof Error?e.message:'AI下書きを作成できませんでした。';}}
+  finally{aiStage='';busy=false;}
+ }
  async function reviewReply(){busy=true;const ok=await persist();busy=false;if(ok){reviewChecked=false;reviewOpen=true;reviewDialog.showModal();}}
  async function copyReply(){try{await navigator.clipboard.writeText(fullReply);saveError='本文をコピーしました。入力内容を控えてから再読み込みできます。';}catch{saveError='本文を選択してコピーしてください。';}}
  async function addFiles(files:File[]){
@@ -201,6 +225,7 @@
  <div class="desk-topline"><a href="/admin/inquiries" class="back"><span>←</span> 受信トレイ</a><button class="quiet-button" onclick={refresh} disabled={busy||saving}>履歴を更新</button></div>
  <header class="desk-heading"><div class="guest-avatar">{data.item.name.slice(0,1)}</div><div class="heading-copy"><div class="eyebrow">{data.item.profile.history_account?'過去メール':data.item.profile.history_origin_account?'過去メールから継続':'山人-yamado- · お客様からのお問い合わせ'}</div>{#if INQUIRY_TYPES[data.item.profile.inquiry_type]}<span class="inquiry-type-badge">{INQUIRY_TYPES[data.item.profile.inquiry_type]}</span>{/if}<h1>{data.item.subject||'お問い合わせ'}</h1><p>{inquiryGuestLabel(data.item.name)} <span>·</span> {data.item.email}</p></div><span class="status-pill status-{data.item.status}"><i></i>{STATES[data.item.status]}</span></header>
  {#if form?.message}<p class="feedback" role="status">{form.message}</p>{/if}
+ {#if aiNotice}<p class="feedback" role="status">{aiNotice}</p>{/if}{#if aiError}<p class="feedback" role="alert">{aiError}</p>{/if}
  <form class="assignment-bar" method="post" use:enhance={submitAction}>
   <input type="hidden" name="revision" value={revision}/><input type="hidden" name="action" value="status"/>
   <label>対応状況 <select name="status" value={data.item.status}>{#each Object.entries(STATES) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>
@@ -211,14 +236,14 @@
  <div class="workspace">
   <section class="composer-panel" class:mobile-hidden={mobilePane!=='reply'} class:pinned={pins.composer} aria-label="返信を作成">
    <div class="panel-title"><h2><AdminIcon name="plan"/>返信を作成</h2><div class="panel-title-tools"><span class="auto-label" aria-live="polite">自動保存 · {saveError?'要確認':saving?'保存中…':dirty?'未保存':'保存済み'}</span><button type="button" class="pin-button" aria-pressed={pins.composer} title="オンにすると、ページをスクロールしてもこの列が画面に留まります（この案件だけ・このブラウザに保存）" onclick={()=>togglePin('composer')}>{pins.composer?'追従中':'追従'}</button></div></div>
-   {#if autoPending&&!dirty&&data.item.draft_origin!=='manual'}<div class="ai-banner"><span class="working-dot"></span><div><strong>AIが下書きを準備しています</strong><p>FAQと過去の回答を参照しています。先に入力することもできます。</p></div></div>{:else if aiEligible&&data.job?.state==='failed'&&data.item.draft_origin!=='manual'}<div class="ai-banner failed"><div><strong>自動下書きを作成できませんでした</strong><p>下の「AIで作り直す」から再試行できます。手動でも返信できます。</p></div></div>{:else if aiEligible&&data.item.draft_origin==='auto'&&!dirty}<div class="ai-ready"><AdminIcon name="shield"/><span>AI下書きを用意しました。内容をご確認ください。</span></div>{/if}
+   {#if aiStage}<div class="ai-banner" aria-live="polite"><span class="working-dot"></span><div><strong>{AI_STAGE[aiStage]??'AIが下書きを作っています'}…</strong><p>書いたそばから本文欄に表示します。保存は書き終わってから行います。</p></div></div>{:else if autoPending&&!dirty&&data.item.draft_origin!=='manual'}<div class="ai-banner"><span class="working-dot"></span><div><strong>AIが下書きを準備しています</strong><p>FAQと過去の回答を参照しています。先に入力することもできます。</p></div></div>{:else if aiEligible&&data.job?.state==='failed'&&data.item.draft_origin!=='manual'}<div class="ai-banner failed"><div><strong>自動下書きを作成できませんでした</strong><p>下の「AIで作り直す」から再試行できます。手動でも返信できます。</p></div></div>{:else if aiEligible&&data.item.draft_origin==='auto'&&!dirty}<div class="ai-ready"><AdminIcon name="shield"/><span>AI下書きを用意しました。内容をご確認ください。</span></div>{/if}
    {#if data.item.draft&&data.item.draft_revision!==data.item.revision}<p class="composer-warning">下書き作成後に新しいやり取りがあります。履歴を確認してから編集してください。</p>{/if}
    <div class="recipient-line"><span>宛先</span><strong>{data.item.email}</strong></div>
    <form id="inquiry-reply-form" method="post" use:enhance={submitAction} data-no-guard>
     <input type="hidden" name="revision" value={revision}/><input type="hidden" name="draftVersion" value={version}/>
     <div class="reply-translation-tools"><label for="reply-language">本文を翻訳</label><select id="reply-language" bind:value={replyLanguage} disabled={busy||conflict}>{#each Object.entries(INQUIRY_REPLY_LANGUAGES) as [code,label]}<option value={code}>{label}</option>{/each}</select><button type="button" class="quiet-button" disabled={busy||saving||conflict||!body.trim()||!data.aiConfigured} onclick={()=>void translateReply()}>{replyTranslating?'翻訳中…':'本文全体を翻訳'}</button>{#if lastTranslation&&body===lastTranslation.text}<button type="button" class="quiet-button" disabled={busy||saving||conflict} onclick={()=>{body=lastTranslation!.source;lastTranslation=null;scheduleSave();}}>翻訳前に戻す</button>{/if}<p>翻訳結果を確認してから本文に反映できます。署名はそのまま残ります。</p></div>
     {#if replyTranslationError}<p class="composer-warning" role="alert">{replyTranslationError}</p>{/if}
-    <label class="sr-only" for="reply-body">返信本文</label><textarea id="reply-body" name="body" bind:value={body} oninput={scheduleSave} onblur={()=>{if(dirty&&!conflict)void persist();}} disabled={busy} rows="24" maxlength={Math.max(0,20000-signature.length-(signature?2:0))} placeholder={autoPending?'AI下書きを準備しています。ここから先に書き始めることもできます。':'お客様への返信を入力してください。入力した内容は自動保存されます。'}></textarea>
+    <label class="sr-only" for="reply-body">返信本文</label><textarea id="reply-body" name="body" bind:value={body} oninput={scheduleSave} onblur={()=>{if(dirty&&!conflict&&!aiStage)void persist();}} disabled={busy&&!aiStage} readonly={!!aiStage} rows="24" maxlength={Math.max(0,20000-signature.length-(signature?2:0))} placeholder={autoPending?'AI下書きを準備しています。ここから先に書き始めることもできます。':'お客様への返信を入力してください。入力した内容は自動保存されます。'}></textarea>
     <div class="reply-assignee"><label for="reply-assignee">担当者名</label><div class="assignee-combo"><input id="reply-assignee" role="combobox" aria-expanded={assigneeOpen} aria-controls="reply-assignee-list" aria-autocomplete="list" aria-activedescendant={assigneeOpen&&assigneeOptions[assigneeActive]?'assignee-opt-'+assigneeActive:undefined} autocomplete="off" placeholder={assignee||'名前・ふりがなで検索'} value={assigneeOpen?assigneeQuery:assignee} oninput={e=>{assigneeQuery=e.currentTarget.value;assigneeOpen=true;assigneeActive=0;}} onfocus={()=>{assigneeQuery='';assigneeOpen=true;assigneeActive=0;}} onkeydown={assigneeKey} onblur={()=>{assigneeOpen=false;assigneeQuery='';if(dirty&&!conflict)void persist();}} disabled={busy}>{#if assigneeOpen}<ul id="reply-assignee-list" role="listbox">{#each assigneeOptions as option,i(option.name)}<li id={'assignee-opt-'+i} role="option" aria-selected={i===assigneeActive} class:active={i===assigneeActive} class:current={option.name===assignee} onmousedown={e=>{e.preventDefault();pickAssignee(option.name);}}>{option.label}</li>{:else}<li class="empty">該当する担当者がいません</li>{/each}</ul>{/if}</div><a href="/admin/staff-directory">マスタ管理</a></div>
     {#if signature}<details class="reply-signature"><summary>署名：{assignee}</summary><div>{signature}</div></details>{/if}
     <div class="attachment-zone" class:drag-over={dragOver} role="region" aria-label="添付ファイル" ondragover={event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();dragOver=true;}}} ondragleave={event=>{if(!(event.relatedTarget instanceof Node)||!event.currentTarget.contains(event.relatedTarget))dragOver=false;}} ondrop={event=>{event.preventDefault();void addFiles(Array.from(event.dataTransfer?.files??[]));}}>
