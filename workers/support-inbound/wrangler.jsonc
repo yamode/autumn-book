@@ -9,6 +9,8 @@
 	"observability": { "enabled": true },
 	"vars": {
 		// Book の受信 API（本番）。プレビューで試すときだけ変える
-		"BOOK_INBOUND_URL": "https://book.yamado.app/api/support/inbound"
+		"BOOK_INBOUND_URL": "https://book.yamado.app/api/support/inbound",
+		// Book が受け取らなかったメール（400/413）を捨てる前に逃がす先（Email Routing で検証済みのアドレス）
+		"FALLBACK_FORWARD": "info@yamado.co.jp"
 	}
 }
