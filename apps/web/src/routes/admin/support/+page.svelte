@@ -22,7 +22,7 @@
 
 <svelte:head><title>会員サポート ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="会員サポート" description="会員システム（会員登録・ログイン・マイページ・公式サイトの予約）についてのお問い合わせです。ヘルプページのフォームと、support@yamado.app へのメール（受信を有効にした後）がここに入ります。返信はメールでお客様へ送られます。">
+<PageHeader title="会員サポート" description="会員システム（会員登録・ログイン・マイページ・公式サイトの予約）についてのお問い合わせです。ヘルプページのフォームと、support@yamado.app へのメールがここに入ります。返信はメールでお客様へ送られます。">
 	{#snippet actions()}
 		<a href="/admin/support/faqs" class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:border-stone-500">よくある質問の編集</a>
 		<a href="/help" target="_blank" rel="noopener" class="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-700 hover:border-stone-500">ヘルプページを開く ↗</a>

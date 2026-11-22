@@ -83,7 +83,7 @@
 				手続きで入力：
 				<span class={differs(item.entered_name, item.name, compact) ? 'font-medium text-red-700' : ''}>{item.entered_name ?? '—'}</span>
 				{#if item.entered_kana}<span class="text-stone-400">（{item.entered_kana}）</span>{/if}
-				・<span class={differs(item.entered_phone, item.phone, digits) ? 'font-medium text-red-700' : ''}>{item.entered_phone ?? '電話なし'}</span>
+				・<span class={item.claim === 'pending_review' && differs(item.entered_phone, item.phone, digits) ? 'font-medium text-red-700' : ''}>{item.entered_phone ?? '電話なし'}</span>
 			</p>
 			<p class="mt-0.5 text-xs text-stone-400">
 				会員番号
@@ -179,7 +179,7 @@
 		<article class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			{@render person(item)}
 			<p class="mt-3 text-xs text-emerald-700">
-				{item.reviewed_at ? `紐づけ済み（スタッフが紐づけました・${fmtDate(item.reviewed_at)}）` : '紐づけ済み（メール・氏名・電話番号が一致したため自動で紐づけました）'}
+				{item.reviewed_at ? `紐づけ済み（スタッフが紐づけました・${fmtDate(item.reviewed_at)}）` : '紐づけ済み（メール・氏名が一致したため自動で紐づけました。手続きで入れた電話は連絡先に追加）'}
 			</p>
 			{#each item.candidates as c (c.guest_id)}
 				<p class="mt-1 text-xs text-stone-500">紐づけ先：{c.name ?? '—'}・{c.phone ?? '—'}・公式・直販 {c.direct_visits.toLocaleString()} 回</p>
