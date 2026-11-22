@@ -4,6 +4,7 @@ import { myReservations, facilityById, roomTypeById } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyReservations, sbMyLegacyStays, reverseFacilityUuid } from '$lib/server/supabase-data';
 import { todayStr } from '$lib/format';
+import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
 import { legacyNights, splitLegacyStays, type LegacyStay } from '$lib/legacy-stays';
 import { listMemberPagesFor } from '$lib/server/partners/member-bookings';
 import { legacyMypageFromEnv } from '$lib/server/legacy-mypage-env';
@@ -74,7 +75,9 @@ const loadReservations = async (event: RequestEvent) => {
 			upcoming: list.filter((b) => b.status === 'reserved' && b.checkin >= today).sort((a, b) => a.checkin.localeCompare(b.checkin)),
 			past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
 			memberPages,
-			legacyStays: splitLegacyStays(legacyList, today)
+			legacyStays: splitLegacyStays(legacyList, today),
+			// 電話・直接・tripla などの予約にも、マイページから貸切風呂の事前予約の入口を出す（2026-11-22）
+			legacyBath: bathPmsEnabled()
 		};
 	}
 
@@ -92,7 +95,8 @@ const loadReservations = async (event: RequestEvent) => {
 		past: list.filter((b) => b.status !== 'reserved' || b.checkin < today),
 		memberPages: [] as Awaited<ReturnType<typeof listMemberPagesFor>>,
 		// デモ: 以前の予約システムの予約の見本（画面の確認用）
-		legacyStays: splitLegacyStays(demoLegacyStays(today), today)
+		legacyStays: splitLegacyStays(demoLegacyStays(today), today),
+		legacyBath: false
 	};
 };
 

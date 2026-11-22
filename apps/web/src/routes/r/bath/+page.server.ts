@@ -27,11 +27,13 @@ function returnToBath(booking: string | null, changed = false) {
 function bathAccess(event: RequestEvent) {
 	const booking = event.url.searchParams.get('booking');
 	if (booking === null) return { booking, token: event.cookies.get(STAY_COOKIE), client: undefined };
-	if (!MEMBER_SUPABASE || !/^[a-z0-9-]{1,80}$/i.test(booking)) error(404, m.error_booking_not_found());
+	// booking=<Book の予約番号> か、booking=stay:<PMS の予約番号>（電話・直接・tripla などマイページで見るだけの予約・2026-11-22）
+	if (!MEMBER_SUPABASE || !/^(stay:)?[a-z0-9-]{1,80}$/i.test(booking)) error(404, m.error_booking_not_found());
 	if (event.locals.user?.role !== 'member') {
 		redirect(303, `/auth/login?next=${encodeURIComponent(event.url.pathname + event.url.search)}`);
 	}
-	return { booking, token: `member-booking:${booking}`, client: createSupabaseServerClient(event) };
+	const token = booking.startsWith('stay:') ? `member-stay:${booking.slice(5)}` : `member-booking:${booking}`;
+	return { booking, token, client: createSupabaseServerClient(event) };
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -64,7 +66,7 @@ export const load: PageServerLoad = async (event) => {
 		changeUnavailable: requestedChange !== null && !changeCtx,
 		changeDone: event.url.searchParams.get('changed') === '1',
 		bathHref: returnToBath(booking),
-		headerBack: booking ? `/account/reservations/${encodeURIComponent(booking)}` : '/r' };
+		headerBack: booking ? (booking.startsWith('stay:') ? '/account' : `/account/reservations/${encodeURIComponent(booking)}`) : '/r' };
 };
 
 export const actions: Actions = {
