@@ -1,9 +1,9 @@
-## 施設ナレッジの外部向け API（2026-11-22・v0.315.0・**鍵は未設定**）
+## 施設ナレッジの外部向け API（2026-11-22・v0.315.0・鍵を設定して稼働中）
 
 - `GET /api/knowledge/{nishiwaga|yamado|oga}?scope=press|public`（`routes/api/knowledge/[facility]/+server.ts`・中身は `lib/server/facility-knowledge/public.ts`）。taskul-social のプレスリリース AI などがサーバー側から読む。設計は `docs/facility-knowledge.md`（段階5）。
 - 返すのは承認済み・日本時間で期間内・公開範囲が scope の内側だけ（`book.facility_knowledge_usable` を service_role で呼ぶ）。`internal`（社内のみ）は受け付けない。料金・空室は含まない。`yamado` はプレスリリースの掲載先タグに合わせた `nishiwaga` の別名。
 - 認証は `Authorization: Bearer <KNOWLEDGE_API_KEY>`（Cloudflare の secret・32文字以上）。未設定なら 503。CORS は付けない（ブラウザからは呼ばせない）。メンテナンス中でも動くよう `maintenance.ts` の例外に `/api/knowledge/` を足した。
-- 確認済み：`public.test.ts` 6件（scope の絞り込み・料理長名が public で出ない・メンテナンスの例外）、svelte-check 0件。**鍵が未設定なので、本番ではまだ 503 を返す。**
+- 確認済み：`public.test.ts` 6件（scope の絞り込み・料理長名が public で出ない・メンテナンスの例外）、svelte-check 0件。2026-11-22 に鍵を設定（Book の Cloudflare Pages `KNOWLEDGE_API_KEY`・taskul-social の Supabase Functions `BOOK_KNOWLEDGE_API_KEY`。値は同じ・どこにも書き残していない）し、Book を再デプロイ。本番で、鍵なし・違う鍵は 401、`scope=internal` は 400、存在しない施設は 404、正しい鍵で両施設とも応答することを確認した。鍵を作り直すときは、両方の secret を同じ値で入れ替え、Book を再デプロイする。
 - 有効にする手順：①32文字以上のランダムな鍵を作る ②Book（Cloudflare Pages）の secret `KNOWLEDGE_API_KEY` に入れる ③taskul-social の Supabase Functions の secret `BOOK_KNOWLEDGE_API_KEY` に同じ値を入れる ④taskul-social の `pr-ai-assist` をデプロイ。
 
 ### テストチェックリスト（施設ナレッジ API）
