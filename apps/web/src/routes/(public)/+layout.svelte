@@ -155,6 +155,8 @@
 				<a href="/membership" class="hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="hover:text-brand-800">{m.radio_nav()}</a>
+				<!-- ヘルプ（よくある質問・問い合わせ）。会員でなくても入れるようにヘッダーに常に出す（2026-11-22） -->
+				<a href="/help" class="hover:text-brand-800">{m.nav_help()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
 				{#if data.user?.role === 'member'}
@@ -225,6 +227,7 @@
 				<a href="/membership" class="py-2.5 hover:text-brand-800">{m.nav_membership()}</a>
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="py-2.5 hover:text-brand-800">{m.radio_nav()}</a>
+				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
 					{#if data.user?.role !== 'member'}
 						<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>
