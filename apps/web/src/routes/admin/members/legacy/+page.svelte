@@ -184,7 +184,7 @@
 			{#each item.candidates as c (c.guest_id)}
 				<p class="mt-1 text-xs text-stone-500">紐づけ先：{c.name ?? '—'}・{c.phone ?? '—'}・公式・直販 {c.direct_visits.toLocaleString()} 回</p>
 			{/each}
-			{#if !item.previous_guest_id}
+			{#if !(item.can_unlink ?? !!item.previous_guest_id)}
 				<p class="mt-2 text-xs text-stone-400">予約ごと顧客を統合して紐づけたため（または元の顧客の記録が無いため）、ここでは解除できません。</p>
 			{:else}
 			<form method="POST" action="?/unlink" use:enhance class="mt-3 flex flex-wrap items-end gap-2 border-t border-stone-100 pt-3">

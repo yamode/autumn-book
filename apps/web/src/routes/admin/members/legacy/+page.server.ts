@@ -35,6 +35,8 @@ type LegacyReviewItem = {
 	member_guest_id: string | null;
 	member_guest_stays: number;
 	previous_guest_id: string | null;
+	// 解除できるか（控えの顧客がある、または手続きで入れた内容が残っている・20261122001456）。無い DB では previous_guest_id で判定
+	can_unlink?: boolean;
 	reviewed_at: string | null;
 	// 本人が手続きで入力した氏名・電話（以前の登録と食い違えば電話で本人に確かめる）
 	entered_name: string | null;
