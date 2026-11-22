@@ -149,6 +149,9 @@ export function isMaintenanceBypassed(event: RequestEvent): boolean {
 	if (url.pathname.startsWith('/api/faq/') || url.pathname.startsWith('/faq/')) return true;
 	// お知らせの公開 API も同様に、施設HP（Xserver の PHP）が一覧・詳細の描画に使う（2026-10-03 ユーザー指示: 両HPのお知らせを Book で管理）
 	if (url.pathname.startsWith('/api/news/')) return true;
+	// 施設ナレッジの API（docs/facility-knowledge.md 段階5）は、taskul-social などほかのアプリがサーバー側から読む。
+	// ポータル本体の公開状況と関係なく稼働させる。ルートの中で鍵（KNOWLEDGE_API_KEY）を必ず確かめる
+	if (url.pathname.startsWith('/api/knowledge/')) return true;
 	// 西和賀HPの署名付き問い合わせ受付は、予約ポータルの公開状態から独立する。
 	// この例外でも受付ルート内のHMAC・時刻・公開フラグ検証は必須。
 	if (url.pathname === '/api/inquiries/nishiwaga') return true;
