@@ -1158,6 +1158,7 @@
   "pay_member_register": "免費註冊並繼續",
   "pay_member_login": "會員請登入",
   "pay_member_back_note": "註冊或登入後將回到此預訂頁面，已選客房與填寫內容會保留。",
+  "pay_member_only_note": "預訂時付款（提早付款優惠）僅限會員選擇。",
   "pay_member_registered": "已完成會員註冊，可使用預訂時付款優惠。",
   "hold_breadcrumb_current": "旅客資料",
   "hold_change_plan": "重新選擇方案或客房",

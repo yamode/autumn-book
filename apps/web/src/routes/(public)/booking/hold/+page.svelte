@@ -913,6 +913,30 @@
 											onchange={() => (selectedGroup = hasPrepay ? 'online' : 'checkout')} class="size-4 shrink-0 accent-slate-800" />
 										<span class="font-medium">{m.pay_method_card()}</span>
 									</label>
+									{#if isGuest && !hasPrepay && hasCheckout}
+										<!-- 非会員（2026-11-22）: チェックアウト日決済を上に、選んだ状態で固定して出す。予約時決済はその下に選べない状態で出し、
+										     会員登録（またはログイン）すると選べることが分かるようにする -->
+										<div class="flex min-h-11 items-center gap-2 border-t border-stone-200 px-3 pl-9 text-sm">
+											<input type="radio" checked disabled class="size-4 shrink-0 accent-slate-800" aria-label={payText('online_checkout', 'label', m.pay_group_checkout())} />
+											<span class="font-medium text-stone-900">{payText('online_checkout', 'label', m.pay_group_checkout())}</span>
+										</div>
+										<p class="whitespace-pre-line px-3 pb-3 pl-[3.75rem] text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</p>
+										{#if memberRate > 0 || memberPoints > 0}
+											<div class="border-t border-stone-200 bg-stone-50/60 px-3 py-2.5 pl-9 text-sm">
+												<div class="flex flex-wrap items-center gap-2">
+													<input type="radio" disabled class="size-4 shrink-0" aria-label={payText('online_now', 'label', m.pay_group_online())} />
+													<span class="text-stone-400">{payText('online_now', 'label', m.pay_group_online())}</span>
+													<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">{memberRate > 0 ? m.pay_member_save_rate({ rate: percentText(memberRate) }) : m.pay_member_save_points({ points: memberPoints.toLocaleString() })}</span>
+												</div>
+												<p class="mt-1 pl-6 text-xs text-stone-600">{m.pay_member_only_note()}</p>
+												<p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 pl-6 text-xs">
+													<a href={`/auth/register?next=${encodeURIComponent(backHere)}`} class="font-medium text-accent-600 underline hover:text-accent-500">{m.pay_member_register()}</a>
+													<a href={`/auth/login?next=${encodeURIComponent(backHere)}`} class="text-stone-600 underline hover:text-brand-800">{m.pay_member_login()}</a>
+												</p>
+												<p class="mt-0.5 pl-6 text-xs text-stone-400">{m.pay_member_back_note()}</p>
+											</div>
+										{/if}
+									{:else}
 									{#if hasPrepay}
 										<!-- お得になるのは予約時決済なので、割引・ポイントの印はこの段に付ける（2026-11-22 指示） -->
 										{#if canChooseTiming && group !== 'onsite'}
@@ -928,10 +952,6 @@
 											</p>
 										{/if}
 										{#if isGuest && (memberRate > 0 || memberPoints > 0)}{@render guestHint(false)}{/if}
-									{:else if isGuest && hasCheckout && (memberRate > 0 || memberPoints > 0)}
-										<!-- 非会員: 予約時決済は会員だけ（割引・早期決済ポイントは会員の特典）。この段で「会員登録で最大〇%お得」と、
-										     登録・ログインのあと同じかごのままこの画面に戻る導線を出す -->
-										{@render guestHint(true)}
 									{/if}
 									{#if group === 'online' && hasPrepay}
 										<!-- 予約時決済の説明は、予約時決済を選んだときだけ開く（2026-11-22 指示） -->
@@ -969,6 +989,7 @@
 										{#if group === 'checkout'}
 											<p class="whitespace-pre-line px-3 pb-3 pl-9 text-xs text-stone-600">{payText('online_checkout', 'note', m.pay_checkout_note())}</p>
 										{/if}
+									{/if}
 									{/if}
 								</div>
 							{/if}

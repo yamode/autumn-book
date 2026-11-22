@@ -1158,6 +1158,7 @@
   "pay_member_register": "会員登録（無料）して続ける",
   "pay_member_login": "会員の方はログイン",
   "pay_member_back_note": "登録・ログインのあと、この予約入力画面に戻ります（入力中の内容とお部屋はそのまま）。",
+  "pay_member_only_note": "ご予約時のお支払い（早期決済割）は会員の方だけ選べます。",
   "pay_member_registered": "会員登録が完了しました。予約時決済の割引をご利用いただけます。",
   "hold_breadcrumb_current": "お客様情報",
   "hold_change_plan": "プラン・お部屋を選び直す",

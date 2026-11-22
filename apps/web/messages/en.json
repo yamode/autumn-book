@@ -1158,6 +1158,7 @@
   "pay_member_register": "Sign up free and continue",
   "pay_member_login": "Members: log in",
   "pay_member_back_note": "You will come back to this booking form afterwards, with your room and entries kept.",
+  "pay_member_only_note": "Paying at booking (early payment discount) is available to members only.",
   "pay_member_registered": "You are now a member. The pay-at-booking discount is available.",
   "hold_breadcrumb_current": "Guest details",
   "hold_change_plan": "Change plan or room",
