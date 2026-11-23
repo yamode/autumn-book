@@ -11,7 +11,7 @@ import {
 import { sbBathCancel, sbBathContext, sbBathReserve, type BathContext } from '$lib/server/private-bath';
 import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
 import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
-import { ciBathState, type CiBathState } from '$lib/precheckin-p3';
+import { ciBathBeforeDay, ciBathState, type CiBathState } from '$lib/precheckin-p3';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 // 回答済みの事前チェックインリンクで貸切風呂のRPCを呼ぶ。客室案内の開始時刻とは独立している。
@@ -23,17 +23,17 @@ export const load: PageServerLoad = async (event) => {
 	const answered = Boolean(ctx.answeredAt);
 	const pcToken = event.cookies.get(PRECHECKIN_COOKIE);
 	let bath: BathContext | null = null;
-	// 公式サイト以外（OTA・取引先）の予約は、事前チェックインから貸切風呂を予約できない（DB の _pb_bath_token も断る・2026-11-21）
-	// 公式扱い（公式サイト・tripla・直接予約・電話）だけ（2026-11-22）
-	const official = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? true : (ctx.isDirect ?? ctx.isOfficial);
-	if (answered && ctx.editable && official !== false) {
+	// 事前チェックインからの貸切風呂の予約は、チェックイン当日から。予約の経路は問わない（OTA も可）。
+	// 前もっての予約は会員のマイページから（DB の _pb_bath_token も同じ条件で断る・2026-11-23）
+	const beforeDay = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? false : ciBathBeforeDay(ctx.checkIn);
+	if (answered && ctx.editable && !beforeDay) {
 		if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
 			bath = demoBathContext(ctx.checkIn);
 		} else if (DATA_SOURCE === 'supabase' && pcToken && bathPmsEnabled()) {
 			bath = await sbBathContext(precheckinBathAccess(pcToken)).catch(() => null);
 		}
 	}
-	const state = ciBathState({ answered, editable: ctx.editable, bathOpen: Boolean(bath?.ok && bath.enabled), official });
+	const state = ciBathState({ answered, editable: ctx.editable, bathOpen: Boolean(bath?.ok && bath.enabled), beforeDay });
 	return { bath: { state, ctx: state === 'ready' ? bath : null } as BathView };
 };
 
@@ -43,7 +43,7 @@ async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
-	if ((r.ctx.isDirect ?? r.ctx.isOfficial) === false) return null; // 公式扱いの予約だけ（公式サイト・tripla・直接・電話）
+	if (ciBathBeforeDay(r.ctx.checkIn)) return null; // チェックイン当日から（経路は問わない・2026-11-23）
 	// RPC で事前チェックインの回答・有効期限を検証する。
 	return precheckinBathAccess(r.token);
 }

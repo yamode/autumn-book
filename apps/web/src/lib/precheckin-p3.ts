@@ -85,18 +85,23 @@ export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/ci/bath' : '/r');
 
 // ---------------------------------------------------------------- 貸切風呂のステップ
 
-export type CiBathState = 'not_answered' | 'closed' | 'official_only' | 'unavailable' | 'ready';
+export type CiBathState = 'not_answered' | 'closed' | 'before_day' | 'unavailable' | 'ready';
 
 /**
- * official: 公式サイト（Book）の予約か（precheckin_context の is_official）。false のときは 'official_only'
- * （事前チェックインからの貸切風呂の予約は公式サイトの予約だけ・2026-11-21。到着後の客室案内からは予約できる）。
- * 分からない（null・DB 適用前）ときは止めない。
+ * 事前チェックインからの貸切風呂の予約は、チェックイン当日から（予約の経路を問わない・OTA も可）。
+ * 前もっての予約は会員がマイページから行う（2026-11-23）。DB（book._pb_bath_token）も同じ条件で断る。
  */
-export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean; official?: boolean | null }): CiBathState {
+export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean; beforeDay?: boolean }): CiBathState {
 	if (!input.editable) return 'closed';
 	if (!input.answered) return 'not_answered';
-	if (input.official === false) return 'official_only';
+	if (input.beforeDay) return 'before_day';
 	return input.bathOpen ? 'ready' : 'unavailable';
+}
+
+/** チェックイン日（YYYY-MM-DD）より前か（日本時間の今日で判定） */
+export function ciBathBeforeDay(checkIn: string, now: Date = new Date()): boolean {
+	const today = now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+	return today < checkIn.slice(0, 10);
 }
 
 export type CiBathRow = { key: string; date: string; from: string; to: string | null; bathName: string };
