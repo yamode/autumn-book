@@ -43,6 +43,10 @@
 		"LEGACY_MEMBER_MIGRATION": "true",
 		"CF_ACCOUNT_ID": "6aa45d1081c1e08d7f1ce6d5aba5c3b7",
 		"REPORT_EMAIL_FROM": "noreply@yamado.app",
+		// 出張シェフ（/admin/chef）: 取消・確定メールに載せる hp-pchef の公開 URL と、シェフ候補・休みを読む taskul-shift。
+		// TASKUL_SUPABASE_SERVICE_ROLE_KEY は secret（2026-11-23 登録）。TASKUL_TENANT_ID は既定 1
+		"PCHEF_PUBLIC_ORIGIN": "https://hp-pchef.pages.dev",
+		"TASKUL_SUPABASE_URL": "https://ynzpjdarpfaurzomrddu.supabase.co",
 		"AUTH_MODE": "supabase",
 		"MEMBER_LOGIN_METHODS": "true",
 		"DATA_SOURCE": "supabase",
