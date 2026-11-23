@@ -2000,6 +2000,7 @@ interface OptionItemRow {
 	member_only: boolean;
 	photos: unknown;
 	sort_order: number;
+	allowed_ranks?: string[] | null;
 }
 
 function mapOptionItemRow(r: OptionItemRow): OptionItem {
@@ -2017,7 +2018,8 @@ function mapOptionItemRow(r: OptionItemRow): OptionItem {
 		requiresServiceDate: r.requires_service_date,
 		memberOnly: r.member_only,
 		photos: mapPhotos(r.photos, r.name),
-		sortOrder: r.sort_order
+		sortOrder: r.sort_order,
+		allowedRanks: Array.isArray(r.allowed_ranks) ? r.allowed_ranks : undefined
 	};
 }
 

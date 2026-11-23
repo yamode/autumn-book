@@ -13,6 +13,12 @@
 		{ value: 'personalize', label: '特別会員（自動）' },
 		{ value: 'other', label: 'その他' }
 	];
+	// 使える会員ランク（特別会員はゴールド扱い）
+	const RANKS: { value: string; label: string }[] = [
+		{ value: 'standard', label: 'ブロンズ' },
+		{ value: 'silver', label: 'シルバー' },
+		{ value: 'gold', label: 'ゴールド' }
+	];
 	const PRICE_TYPES: { value: string; label: string }[] = [
 		{ value: 'per_person', label: '1名あたり' },
 		{ value: 'per_unit', label: '1個あたり' },
@@ -40,6 +46,7 @@
 
 {#if form?.added}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">追加しました。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
+{#if data.loadError}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.loadError}</p>{/if}
 
 <!-- 当日提供リスト -->
 <div class="mb-6 rounded-xl border border-stone-200 bg-white p-4">
@@ -125,11 +132,19 @@
 					<label class="flex items-center gap-1.5"><input type="checkbox" name="requiresServiceDate" checked={o.requiresServiceDate} class="h-4 w-4" /> 提供日を指定する</label>
 					<label class="flex items-center gap-1.5"><input type="checkbox" name="memberOnly" checked={o.memberOnly} class="h-4 w-4" /> 会員限定</label>
 				</div>
+				<!-- 使える会員ランク（全部外すと、公開していても会員の画面に出ない） -->
+				<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+					<span class="text-stone-500">使える会員ランク</span>
+					{#each RANKS as r (r.value)}
+						<label class="flex items-center gap-1.5"><input type="checkbox" name="allowedRanks" value={r.value} checked={(o.allowedRanks ?? RANKS.map((x) => x.value)).includes(r.value)} class="h-4 w-4" /> {r.label}</label>
+					{/each}
+					{#if (o.allowedRanks ?? ['x']).length === 0}<span class="rounded bg-stone-100 px-1.5 py-0.5 text-stone-500">どのランクも使えません</span>{/if}
+				</div>
 				<div class="mt-3 flex items-center gap-2">
 					<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
-					<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">
+					{#if !data.live}<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">
 						{expandedTr === o.id ? '翻訳を閉じる ▲' : '翻訳 ▼'}
-					</button>
+					</button>{/if}
 				</div>
 			</form>
 
@@ -205,6 +220,12 @@
 		<label class="flex items-center gap-1.5"><input type="checkbox" name="requiresServiceDate" class="h-4 w-4" /> 提供日を指定する</label>
 		<label class="flex items-center gap-1.5"><input type="checkbox" name="memberOnly" checked class="h-4 w-4" /> 会員限定</label>
 		<label class="flex items-center gap-1.5"><input type="checkbox" name="isActive" class="h-4 w-4" /> すぐに公開</label>
+	</div>
+	<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+		<span class="text-stone-500">使える会員ランク</span>
+		{#each RANKS as r (r.value)}
+			<label class="flex items-center gap-1.5"><input type="checkbox" name="allowedRanks" value={r.value} checked class="h-4 w-4" /> {r.label}</label>
+		{/each}
 	</div>
 	<button type="submit" class="mt-3 min-h-9 rounded-md bg-accent-600 px-5 py-2 text-sm text-white hover:bg-accent-500">追加</button>
 </form>

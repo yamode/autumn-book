@@ -5,14 +5,16 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from './auth';
 import { sbListOptionItems } from './supabase-data';
 import type { OptionItem } from '$lib/types';
+import { optionAllowedFor } from '$lib/member-benefits';
+import type { RankCode } from '$lib/plan-access';
 import type { Locale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
 
-/** その施設の冷蔵庫のカスタマイズ（公開中のもの） */
-export async function fridgeOptionsFor(facilityUuid: string, locale: Locale): Promise<OptionItem[]> {
+/** その施設の冷蔵庫のカスタマイズ（公開中で、この会員のランクで使えるもの） */
+export async function fridgeOptionsFor(facilityUuid: string, locale: Locale, rank: RankCode | null): Promise<OptionItem[]> {
 	if (!MEMBER_SUPABASE) return [];
 	try {
-		return (await sbListOptionItems(facilityUuid, locale)).filter((o) => o.category === 'fridge');
+		return (await sbListOptionItems(facilityUuid, locale)).filter((o) => o.category === 'fridge' && optionAllowedFor(o, { isMember: true, rank }));
 	} catch {
 		return [];
 	}

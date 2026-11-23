@@ -77,7 +77,7 @@ export const ADMIN_NAV: NavGroup[] = [
 				children: [
 					{ href: '/admin/plans', label: 'プラン' },
 					{ href: '/admin/rooms', label: '部屋編集' },
-					{ href: '/admin/options', label: 'オプション', demoOnly: true },
+					{ href: '/admin/options', label: 'オプション' },
 					{ href: '/admin/payments', label: '支払方法' }
 				]
 			},

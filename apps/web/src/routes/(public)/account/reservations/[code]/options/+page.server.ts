@@ -5,7 +5,7 @@ import { memberPageBookingMessage } from '$lib/server/member-reservation-detail'
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
-import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
+import { canPersonalizeStay, isStayPersonalization, optionAllowedFor } from '$lib/member-benefits';
 import { viewerOf } from '$lib/server/secret-plans';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
@@ -28,7 +28,10 @@ export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
 
 	const locale = getLocale() as Locale;
-	const canPersonalize = canPersonalizeStay(await viewerOf(locals));
+	const viewer = await viewerOf(locals);
+	const canPersonalize = canPersonalizeStay(viewer);
+	// 会員ランクで使えるオプションだけ（管理画面の「使える会員ランク」）
+	const usable = (o: OptionItem) => optionAllowedFor(o, viewer) && (canPersonalize || !isStayPersonalization(o.category));
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
@@ -51,7 +54,7 @@ export const load: PageServerLoad = async (event) => {
 						}))
 					)
 				: [];
-		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items: items.filter((o) => canPersonalize || !isStayPersonalization(o.category)), canPersonalize, rooms };
+		return { code: r.code, checkin: r.checkin, checkout: r.checkout, items: items.filter(usable), canPersonalize, rooms };
 	}
 
 	const booking = bookings.get(params.code);
@@ -62,7 +65,7 @@ export const load: PageServerLoad = async (event) => {
 		code: booking.code,
 		checkin: booking.checkin,
 		checkout: addDays(booking.checkin, booking.nights),
-		items: items.filter((o) => canPersonalize || !isStayPersonalization(o.category)),
+		items: items.filter(usable),
 		canPersonalize,
 		// デモ（store）は 1 室だけ
 		rooms: [] as { index: number; roomName: string; adults: number }[]
@@ -91,8 +94,8 @@ export const actions: Actions = {
 			catalog = listOptionItems(booking.facilityId);
 		}
 
-		if (catalog.some(o => isStayPersonalization(o.category) && Number(form.get(`qty_${o.id}`)) > 0)
-			&& !canPersonalizeStay(await viewerOf(locals))) {
+		const viewer = await viewerOf(locals);
+		if (catalog.some(o => Number(form.get(`qty_${o.id}`)) > 0 && (!optionAllowedFor(o, viewer) || (isStayPersonalization(o.category) && !canPersonalizeStay(viewer))))) {
 			return fail(403, { message: m.membership_personalize_options_notice() });
 		}
 

@@ -232,6 +232,8 @@ export interface OptionItem {
 	memberOnly: boolean;
 	photos: Photo[];
 	sortOrder: number;
+	/** 使える会員ランク（standard=ブロンズ/silver/gold・特別会員はゴールド扱い）。無い＝全ランク。空配列＝誰も使えない（2026-11-23） */
+	allowedRanks?: string[];
 }
 
 /** オプション予約明細（book.booking_option_orders 対称・list_my_booking_options の行に対応） */

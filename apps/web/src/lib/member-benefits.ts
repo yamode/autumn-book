@@ -8,6 +8,16 @@ export function isStayPersonalization(category: OptionCategory): boolean {
 
 /** 冷蔵庫のカスタマイズ・アメニティ: ブロンズ（standard）以上＝会員なら誰でも（2026-11-23） */
 export const stayPersonalizationMinRank = 'standard';
+
+/** オプションのランク設定で選べるランク（特別会員＝platinum はゴールドとして扱う） */
+export const OPTION_RANKS = ['standard', 'silver', 'gold'] as const;
+
+/** その会員がこのオプションを使えるか（管理画面の「使える会員ランク」・DB の book._option_rank_allowed と同じ） */
+export function optionAllowedFor(item: { allowedRanks?: readonly string[] }, viewer: PlanViewer): boolean {
+	if (!viewer.isMember) return false;
+	const rank = viewer.rank === 'platinum' ? 'gold' : (viewer.rank ?? 'standard');
+	return (item.allowedRanks ?? OPTION_RANKS).includes(rank);
+}
 export const canPersonalizeStay = (viewer: PlanViewer) => rankMeets(viewer, stayPersonalizationMinRank);
 export const favoriteRoomMinRank = 'silver';
 export const canUseFavoriteRooms = (viewer: PlanViewer) => rankMeets(viewer, favoriteRoomMinRank);

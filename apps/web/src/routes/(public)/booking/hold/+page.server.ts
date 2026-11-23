@@ -44,6 +44,7 @@ import { loadCancelAdminFeePercent, loadPaymentTexts } from '$lib/server/payment
 import { favoriteRoomChoicesFor, saveFavoriteRoomChoices } from '$lib/server/favorites';
 import { savePlatinumTiming } from '$lib/server/platinum-timing';
 import { fridgeOptionsFor, saveFridgeOptions } from '$lib/server/fridge-options';
+import { isRankCode, type RankCode } from '$lib/plan-access';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
@@ -106,6 +107,7 @@ export const load: PageServerLoad = async (event) => {
 
 		// 会員のみポイント残高・獲得見込みを表示（未ログインのゲストは null）。
 		let canChoosePlatinumTiming = false;
+		let memberRank: RankCode | null = null;
 		let member: {
 			name: string; kana: string;
 			familyName: string; givenName: string; middleName: string; familyNameKana: string; givenNameKana: string;
@@ -115,6 +117,7 @@ export const load: PageServerLoad = async (event) => {
 			try {
 				const client = createSupabaseServerClient(event);
 				const [profile, balance, contact] = await Promise.all([sbMyProfile(client), sbPointBalance(client), sbMyProfileContact(client).catch(() => null)]);
+				memberRank = isRankCode(profile.rankCode) ? profile.rankCode : 'standard';
 				canChoosePlatinumTiming = profile.rankCode === 'platinum' && ['nishiwaga', 'yamado', 'oga'].includes(facility.slug);
 				const rate = REWARD_RATE[profile.rankCode] ?? 0.01;
 				member = {
@@ -163,7 +166,7 @@ export const load: PageServerLoad = async (event) => {
 			loadStandardFieldTexts(hold.facilityId),
 			loadCancellationFallback(locals),
 			// 冷蔵庫のカスタマイズ（会員だけ・予約フォームでチェックできる）
-			member ? fridgeOptionsFor(hold.facilityId, getLocale()) : Promise.resolve([])
+			member ? fridgeOptionsFor(hold.facilityId, getLocale(), memberRank) : Promise.resolve([])
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 

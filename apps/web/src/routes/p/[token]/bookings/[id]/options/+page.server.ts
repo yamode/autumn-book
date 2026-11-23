@@ -3,7 +3,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import { sbListOptionItems, sbMyReservations, sbRoomTypeByUuid } from '$lib/server/supabase-data';
-import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
+import { canPersonalizeStay, isStayPersonalization, optionAllowedFor } from '$lib/member-benefits';
 import { isRankCode } from '$lib/plan-access';
 import * as m from '$lib/paraglide/messages';
 import { memberPageHrefOf } from '$lib/partner-member-page';
@@ -23,6 +23,11 @@ function optionErrorMessage(msg: string): string {
   if (msg.includes('not_amendable')) return 'このご予約には現在アレンジを追加できません。';
   if (msg.includes('forbidden') || msg.includes('not_member_page_booking')) return 'このご予約はお手続きいただけません。';
   return 'アレンジを追加できませんでした。';
+}
+
+function portalViewer(session: PartnerSessionAccount) {
+  const rank = session.member?.rankCode;
+  return { isMember: Boolean(session.member), rank: isRankCode(rank) ? rank : null };
 }
 
 function canPersonalizeInPortal(session: PartnerSessionAccount) {
@@ -47,7 +52,8 @@ export const load = async (event) => {
   const r = await ownReservation(event, partner, session, event.params.id);
   if (r.status !== 'reserved') throw redirect(303, memberPageHrefOf(event.params.token, r.code));
   const canPersonalize = canPersonalizeInPortal(session);
-  const items = (await sbListOptionItems(r.facilityUuid, 'ja')).filter(o => canPersonalize || !isStayPersonalization(o.category));
+  const viewer = portalViewer(session);
+  const items = (await sbListOptionItems(r.facilityUuid, 'ja')).filter(o => optionAllowedFor(o, viewer) && (canPersonalize || !isStayPersonalization(o.category)));
   // 複数室の予約: どのお部屋のアレンジかを選ぶ（生きている部屋だけ）
   const live = (r.rooms ?? []).filter((x) => !x.cancelled);
   const rooms =
@@ -76,8 +82,9 @@ export const actions = {
     const form = await event.request.formData();
     // カタログを読み直して optionId / requiresServiceDate を確定（フォーム値を信用しない）
     const catalog = await sbListOptionItems(r.facilityUuid);
-    if (!canPersonalizeInPortal(session)
-      && catalog.some(o => isStayPersonalization(o.category) && Number(form.get(`qty_${o.id}`)) > 0)) {
+    const viewer = portalViewer(session);
+    if (catalog.some(o => Number(form.get(`qty_${o.id}`)) > 0
+      && (!optionAllowedFor(o, viewer) || (isStayPersonalization(o.category) && !canPersonalizeInPortal(session))))) {
       return fail(403, { message: optionErrorMessage('grade_stay_personalization') });
     }
     const items = catalog

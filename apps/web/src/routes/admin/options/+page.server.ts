@@ -12,6 +12,33 @@ import { todayStr } from '$lib/format';
 import type { OptionItem } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 import { denyDemoStoreWrite } from '$lib/server/admin-demo-guard';
+import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { FACILITY_UUID, sbListBookingOptionsAdmin } from '$lib/server/supabase-data';
+import { OPTION_RANKS } from '$lib/member-benefits';
+
+// 本番（ADMIN_SUPABASE）はスタッフのログインで book.option_items を直接読み書きする（RLS: has_facility_access・2026-11-23）。
+// それ以外（デモ）は従来どおりメモリのストア。翻訳の編集は本番ではまだ使えない（デモだけ）。
+type AdminOptionItem = OptionItem & { isActive: boolean };
+const OPTION_COLUMNS = 'id, code, name, description, category, price_type, unit_price, lead_time_hours, stock_type, daily_capacity, requires_service_date, member_only, sort_order, is_active, allowed_ranks';
+type OptionDbRow = {
+	id: string; code: string; name: string; description: string | null; category: string; price_type: string;
+	unit_price: number; lead_time_hours: number; stock_type: string; daily_capacity: number | null;
+	requires_service_date: boolean; member_only: boolean; sort_order: number; is_active: boolean; allowed_ranks: string[] | null;
+};
+const fromRow = (r: OptionDbRow): AdminOptionItem => ({
+	id: r.id, code: r.code, name: r.name, description: r.description ?? '', category: r.category as OptionItem['category'],
+	priceType: r.price_type as OptionItem['priceType'], unitPrice: r.unit_price, leadTimeHours: r.lead_time_hours,
+	stockType: r.stock_type === 'per_day' ? 'per_day' : 'none', dailyCapacity: r.daily_capacity ?? undefined,
+	requiresServiceDate: r.requires_service_date, memberOnly: r.member_only, photos: [], sortOrder: r.sort_order,
+	isActive: r.is_active, allowedRanks: r.allowed_ranks ?? []
+});
+const toRow = (i: OptionItemInput) => ({
+	code: i.code, name: i.name, description: i.description, category: i.category, price_type: i.priceType,
+	unit_price: i.unitPrice, lead_time_hours: i.leadTimeHours, stock_type: i.stockType,
+	daily_capacity: i.stockType === 'per_day' ? (i.dailyCapacity ?? null) : null,
+	requires_service_date: i.requiresServiceDate, member_only: i.memberOnly, sort_order: i.sortOrder,
+	is_active: i.isActive, allowed_ranks: i.allowedRanks ?? []
+});
 
 // フォーム → OptionItemInput（数値/真偽の正規化）
 function parseInput(form: FormData): OptionItemInput {
@@ -30,12 +57,32 @@ function parseInput(form: FormData): OptionItemInput {
 		requiresServiceDate: form.get('requiresServiceDate') === 'on',
 		memberOnly: form.get('memberOnly') === 'on',
 		sortOrder: Math.floor(Number(form.get('sortOrder') ?? 0)) || 0,
-		isActive: form.get('isActive') === 'on'
+		isActive: form.get('isActive') === 'on',
+		// 使える会員ランク（チェックした分だけ。全部外す＝誰も使えない）
+		allowedRanks: form.getAll('allowedRanks').map(String).filter((r) => (OPTION_RANKS as readonly string[]).includes(r))
 	};
 }
 
-export const load: PageServerLoad = async ({ parent }) => {
-	const { currentFacility } = await parent();
+export const load: PageServerLoad = async (event) => {
+	const { currentFacility } = await event.parent();
+	if (ADMIN_SUPABASE) {
+		const facilityUuid = FACILITY_UUID[currentFacility.id];
+		const client = createSupabaseServerClient(event);
+		const today = todayStr();
+		if (!facilityUuid) return { items: [] as AdminOptionItem[], optionTranslations: {}, today, todayOrders: [], live: true, loadError: 'この施設では使えません。' };
+		const [itemsRes, todayOrders] = await Promise.all([
+			client.schema('book').from('option_items').select(OPTION_COLUMNS).eq('facility_id', facilityUuid).order('sort_order').order('name'),
+			sbListBookingOptionsAdmin(client, facilityUuid, today).catch(() => [])
+		]);
+		return {
+			items: ((itemsRes.data ?? []) as OptionDbRow[]).map(fromRow),
+			optionTranslations: {} as Record<string, { en: null; 'zh-TW': null }>,
+			today,
+			todayOrders,
+			live: true,
+			loadError: itemsRes.error ? 'オプションを読み込めませんでした。時間をおいて再読み込みしてください。' : null
+		};
+	}
 	const items = listOptionItemsAdmin(currentFacility.id);
 
 	// 各商品の翻訳（en / zh-TW）
@@ -50,11 +97,23 @@ export const load: PageServerLoad = async ({ parent }) => {
 	const today = todayStr();
 	const todayOrders = listBookingOptionsAdmin(currentFacility.id, today);
 
-	return { items, optionTranslations, today, todayOrders };
+	return { items, optionTranslations, today, todayOrders, live: false, loadError: null as string | null };
 };
 
 export const actions: Actions = {
-	save: async ({ request, locals }) => {
+	save: async (event) => {
+		const { request, locals } = event;
+		if (ADMIN_SUPABASE) {
+			if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+			const form = await request.formData();
+			const input = parseInput(form);
+			if (!input.name) return fail(400, { message: '商品名を入力してください' });
+			const id = String(form.get('optionId') ?? '');
+			const { data, error } = await createSupabaseServerClient(event).schema('book').from('option_items')
+				.update({ ...toRow(input), code: input.code || undefined, updated_at: new Date().toISOString() }).eq('id', id).select('id').maybeSingle();
+			if (error || !data) return fail(400, { message: '保存できませんでした。' + (error?.message?.includes('duplicate') ? 'コードが他の商品と重なっています。' : '') });
+			return { saved: id };
+		}
 		const blocked = denyDemoStoreWrite();
 		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
@@ -66,7 +125,24 @@ export const actions: Actions = {
 		if (!updated) return fail(404, { message: '商品が見つかりません' });
 		return { saved: id };
 	},
-	add: async ({ request, locals }) => {
+	add: async (event) => {
+		const { request, locals } = event;
+		if (ADMIN_SUPABASE) {
+			if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+			const form = await request.formData();
+			const input = parseInput(form);
+			if (!input.name) return fail(400, { message: '商品名を入力してください' });
+			const facilityUuid = FACILITY_UUID[String(form.get('facilityId') ?? '')];
+			if (!facilityUuid) return fail(400, { message: '施設が正しくありません' });
+			const client = createSupabaseServerClient(event);
+			const { data: fac } = await client.schema('core').from('facilities').select('tenant_id').eq('id', facilityUuid).maybeSingle();
+			if (!fac) return fail(400, { message: '施設を読み込めませんでした' });
+			const { error } = await client.schema('book').from('option_items').insert({
+				...toRow(input), code: input.code || `opt-${Date.now().toString(36)}`, tenant_id: fac.tenant_id, facility_id: facilityUuid
+			});
+			if (error) return fail(400, { message: '追加できませんでした。' + (error.message.includes('duplicate') ? 'コードが他の商品と重なっています。' : '') });
+			return { added: true };
+		}
 		const blocked = denyDemoStoreWrite();
 		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });

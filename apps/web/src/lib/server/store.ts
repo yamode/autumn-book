@@ -1389,6 +1389,8 @@ export interface OptionItemInput {
 	memberOnly: boolean;
 	sortOrder: number;
 	isActive: boolean;
+	/** 使える会員ランク（standard/silver/gold） */
+	allowedRanks?: string[];
 }
 
 /** 新しいオプション商品を追加（下書き＝is_active は入力どおり） */
@@ -1407,6 +1409,7 @@ export function addOptionItem(facilityId: string, input: OptionItemInput): DemoO
 		dailyCapacity: input.stockType === 'per_day' ? input.dailyCapacity : undefined,
 		requiresServiceDate: input.requiresServiceDate,
 		memberOnly: input.memberOnly,
+		allowedRanks: input.allowedRanks,
 		photos: [],
 		sortOrder: input.sortOrder,
 		isActive: input.isActive
@@ -1430,6 +1433,7 @@ export function updateOptionItem(id: string, input: OptionItemInput): DemoOption
 	item.dailyCapacity = input.stockType === 'per_day' ? input.dailyCapacity : undefined;
 	item.requiresServiceDate = input.requiresServiceDate;
 	item.memberOnly = input.memberOnly;
+	if (input.allowedRanks) item.allowedRanks = input.allowedRanks;
 	item.sortOrder = input.sortOrder;
 	item.isActive = input.isActive;
 	return item;
