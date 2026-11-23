@@ -1253,6 +1253,7 @@
   "booking_coupon_remove": "取り消す",
   "booking_coupon_discount": "クーポン割引",
   "booking_coupon_invalid": "このクーポンコードはご利用いただけません。",
+  "booking_coupon_locked": "クーポンコードの確認が続けて失敗したため、しばらく受け付けを止めています。15 分ほどたってからお試しください。",
   "booking_coupon_changed": "割引額が変わりました。クーポンを適用し直してください。",
   "booking_coupon_not_compatible": "このクーポンは現在のお支払い方法では併用できません。",
   "booking_coupon_apply_first": "クーポンを適用するか、コードを空欄にしてください。",

@@ -32,7 +32,7 @@ import {
 } from '$lib/server/supabase-data';
 import { getLocale } from '$lib/paraglide/runtime';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { bookingCouponFrom, couponErrors, couponErrorText } from '$lib/server/booking-coupon';
+import { bookingCouponFrom, couponErrors, couponErrorText, couponFailed, couponLocked } from '$lib/server/booking-coupon';
 import { applyGroupAnswers, groupBookingForms, loadStandardFieldTexts, planBookingForm } from '$lib/server/booking-questions';
 import { groupMemberOnsiteHint, groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import { combineQuotes } from '$lib/multi-room';
@@ -346,6 +346,9 @@ export const actions: Actions = {
 		if (coupon && (!MEMBER_SUPABASE || locals.user?.role !== 'member')) {
 			return fail(403, { message: m.booking_coupon_invalid(), values: guest });
 		}
+		if (coupon && (await couponLocked(event, locals.user?.id))) {
+			return fail(429, { message: couponErrorText('coupon_locked'), values: guest });
+		}
 		// 非会員の予約確定だけ Turnstile で確かめる（会員はログインで確かめ済み）。未設定の環境は素通り
 		if (!viewerIsMember(locals) && !(await checkTurnstile(form, clientIpOf(event))).ok) {
 			return fail(400, { message: m.auth_turnstile_failed(), values: guest });
@@ -426,6 +429,7 @@ export const actions: Actions = {
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, coupon, locale: getLocale(), rooms: answered.rooms });
 			if ('error' in result) {
 				if (couponErrors.some((code) => code === result.error)) {
+					if (result.error === 'coupon_invalid') await couponFailed(event, locals.user?.id);
 					return fail(409, { message: couponErrorText(result.error), values: guest });
 				}
 				// 画面の判定をすり抜けても DB が支払方法を検査する（onsite_not_allowed）

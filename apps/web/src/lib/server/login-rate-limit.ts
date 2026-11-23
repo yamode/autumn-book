@@ -73,6 +73,10 @@ export const RATE_RULES = {
   legacyInviteEmail: { prefix: 'login_rate:legacy_invite_email:', max: 3, windowSec: 3600 },
   /** 旧会員の会員移行の完了（リンク先の送信）: 1 IP あたり 10 分 10 回 */
   legacyCompleteIp: { prefix: 'login_rate:legacy_complete_ip:', max: 10, windowSec: 600, lockSec: 900 },
+  /** クーポンコードの照会・利用の失敗: 1 会員あたり 10 分 10 回で 15 分止める（コードの総当たり・2026-11-23 レビュー M-8） */
+  couponMember: { prefix: 'login_rate:coupon_member:', max: 10, windowSec: 600, lockSec: 900 },
+  /** クーポンコードの失敗: 1 IP あたり 10 分 30 回（会員を作り替えながらの総当たり） */
+  couponIp: { prefix: 'login_rate:coupon_ip:', max: 30, windowSec: 600, lockSec: 900 },
   /** 会員サポートの問い合わせフォーム（/help）: 1 IP あたり 1 時間 5 件（控えのメールを送るので、送信の踏み台にさせない・docs/member-support.md） */
   supportSubmitIp: { prefix: 'login_rate:support_submit_ip:', max: 5, windowSec: 3600 },
   /** 会員サポートの問い合わせフォーム: 1 メールあたり 1 時間 3 件（同じ人へ控えを送り続けない） */

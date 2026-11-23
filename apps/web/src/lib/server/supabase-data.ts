@@ -42,6 +42,7 @@ import { partnerServiceClient, previewServiceClient } from './partners/admin-cli
 import { planAccessOf } from '$lib/plan-access';
 import { signCookieValue, verifyCookieValue } from './signed-cookie';
 import { holdClientKey, holdErrorKind } from './hold-rate-limit';
+import { ownAvatarUrl } from './avatar-url';
 import type {
 	CalendarDay,
 	GuestInfo,
@@ -958,7 +959,7 @@ export async function listForumPostsData(threadId: string, client?: SupabaseClie
 		createdAt: p.created_at,
 		isDeleted: p.is_deleted,
 		nickname: p.is_deleted ? null : p.nickname,
-		avatarUrl: p.is_deleted ? null : (p.avatar_url ?? null),
+		avatarUrl: p.is_deleted ? null : ownAvatarUrl(p.avatar_url),
 		isStaff: p.is_staff,
 		isOwn: p.is_own
 	}));
@@ -1497,7 +1498,7 @@ export async function sbMyProfile(client: SupabaseClient): Promise<MemberProfile
 		givenNameKana: r.given_name_kana ?? '',
 		phone: r.phone ?? '',
 		email: r.email ?? '',
-		avatarUrl: r.avatar_url ?? null
+		avatarUrl: ownAvatarUrl(r.avatar_url)
 	};
 }
 

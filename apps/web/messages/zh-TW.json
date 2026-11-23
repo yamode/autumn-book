@@ -1253,6 +1253,7 @@
   "booking_coupon_remove": "取消套用",
   "booking_coupon_discount": "優惠券折扣",
   "booking_coupon_invalid": "此優惠券代碼無法使用。",
+  "booking_coupon_locked": "優惠券代碼連續驗證失敗，暫時停止受理。請約 15 分鐘後再試。",
   "booking_coupon_changed": "折扣金額已變更，請重新套用優惠券。",
   "booking_coupon_not_compatible": "此優惠券無法與所選付款方式合併使用。",
   "booking_coupon_apply_first": "請套用優惠券或清除代碼後再繼續。",

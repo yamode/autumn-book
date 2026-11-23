@@ -1253,6 +1253,7 @@
   "booking_coupon_remove": "Remove",
   "booking_coupon_discount": "Coupon discount",
   "booking_coupon_invalid": "This coupon code cannot be used.",
+  "booking_coupon_locked": "Too many coupon codes were not accepted. Please wait about 15 minutes and try again.",
   "booking_coupon_changed": "The discount has changed. Please apply the coupon again.",
   "booking_coupon_not_compatible": "This coupon cannot be combined with the selected payment option.",
   "booking_coupon_apply_first": "Apply the coupon or clear the code to continue.",

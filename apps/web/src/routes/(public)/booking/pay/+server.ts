@@ -19,7 +19,7 @@ import {
 	setBookingDraft
 } from '$lib/server/supabase-data';
 import { parseGuestForm } from '$lib/server/booking-guest-form';
-import { bookingCouponFrom, couponErrors, couponErrorText } from '$lib/server/booking-coupon';
+import { bookingCouponFrom, couponErrors, couponErrorText, couponFailed, couponLocked } from '$lib/server/booking-coupon';
 import { applyGroupAnswers } from '$lib/server/booking-questions';
 import { groupPayment, loadHoldGroupRooms } from '$lib/server/hold-group';
 import {
@@ -63,6 +63,7 @@ export const POST: RequestHandler = async (event) => {
 			const parsed = parseGuestForm(form);
 			const coupon = bookingCouponFrom(form);
 			if (coupon && !memberUserId) return bad(m.booking_coupon_invalid(), 403);
+			if (coupon && (await couponLocked(event, memberUserId))) return bad(couponErrorText('coupon_locked'), 429);
 			if (Object.keys(parsed.errors).length > 0) {
 				return bad(Object.values(parsed.errors)[0], 400, { errors: parsed.errors });
 			}
@@ -172,7 +173,10 @@ export const POST: RequestHandler = async (event) => {
 		return bad(m.pay_error_unknown_action(), 400);
 	} catch (e) {
 		if (e instanceof DirectPaymentError) {
-			if (couponErrors.some((code) => code === e.code)) return bad(couponErrorText(e.code), 409);
+			if (couponErrors.some((code) => code === e.code)) {
+				if (e.code === 'coupon_invalid') await couponFailed(event, memberUserId);
+				return bad(couponErrorText(e.code), 409);
+			}
 			if (e.code === 'hold_expired') return bad(m.error_hold_expired(), 410, { expired: true });
 			// カードの与信を取る前の確認で、お部屋が埋まっていた（請求も与信も無し）
 			if (e.code === 'sold_out') return bad(m.booking_sold_out_at_confirm(), 409, { soldOut: true });

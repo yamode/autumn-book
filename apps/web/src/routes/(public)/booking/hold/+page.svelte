@@ -156,7 +156,12 @@
 			const response = await fetch('/booking/coupon', {
 				method: 'POST', body: new URLSearchParams({ holdId: data.hold.id, code: couponInput })
 			});
-			if (!response.ok) throw new Error('coupon_invalid');
+			if (!response.ok) {
+				// サーバの文言を出す（失敗が続いて止めているとき〈429〉は「しばらくお待ちください」・M-8）
+				const body = (await response.json().catch(() => null)) as { message?: unknown } | null;
+				couponError = typeof body?.message === 'string' && body.message ? body.message : m.booking_coupon_invalid();
+				return;
+			}
 			coupon = await response.json();
 		} catch {
 			couponError = m.booking_coupon_invalid();
