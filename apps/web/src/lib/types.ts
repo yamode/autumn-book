@@ -208,7 +208,8 @@ export interface RatePlan {
 // ---------------------------------------------------------------- オプション（滞在アレンジ・book.option_items / booking_option_orders 対称）
 
 /** オプション商品のカテゴリ（membership コピーの区分に対応） */
-export type OptionCategory = 'meal' | 'spa' | 'activity' | 'amenity' | 'personalize' | 'other';
+/** fridge: 冷蔵庫のカスタマイズ（会員・予約フォームでも選べる・2026-11-23）。personalize: 特別会員のアーリー/レイト（自動） */
+export type OptionCategory = 'meal' | 'spa' | 'activity' | 'amenity' | 'personalize' | 'fridge' | 'other';
 
 /** オプション商品マスタ（book.option_items 対称・現地精算・宿泊料金とは別建て） */
 export interface OptionItem {

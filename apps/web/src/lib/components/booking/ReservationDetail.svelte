@@ -154,6 +154,7 @@
 			case 'activity': return m.options_category_activity();
 			case 'amenity': return m.options_category_amenity();
 			case 'personalize': return m.options_category_personalize();
+			case 'fridge': return m.options_category_fridge();
 			default: return m.options_category_other();
 		}
 	}

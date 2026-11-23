@@ -3,10 +3,11 @@ import type { OptionCategory } from '$lib/types';
 
 /** 客室の個別アレンジと、会員共通の通常オプションを分ける。 */
 export function isStayPersonalization(category: OptionCategory): boolean {
-	return category === 'amenity' || category === 'personalize';
+	return category === 'amenity' || category === 'personalize' || category === 'fridge';
 }
 
-export const stayPersonalizationMinRank = 'silver';
+/** 冷蔵庫のカスタマイズ・アメニティ: ブロンズ（standard）以上＝会員なら誰でも（2026-11-23） */
+export const stayPersonalizationMinRank = 'standard';
 export const canPersonalizeStay = (viewer: PlanViewer) => rankMeets(viewer, stayPersonalizationMinRank);
 export const favoriteRoomMinRank = 'silver';
 export const canUseFavoriteRooms = (viewer: PlanViewer) => rankMeets(viewer, favoriteRoomMinRank);

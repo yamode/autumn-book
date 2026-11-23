@@ -778,6 +778,34 @@
 					</div>
 				</section>
 
+				{#if data.fridgeOptions.length > 0}
+					<!-- 冷蔵庫のカスタマイズ（会員＝ブロンズ以上・2026-11-23）。内容は管理画面のオプション（区分「冷蔵庫のカスタマイズ」）。
+					     チェックしなければ冷蔵庫にはアルコールも入る（すべて無料・追加分は有料）＝その説明はツールチップ -->
+					<fieldset class="bk-card mt-5 p-4 sm:p-6">
+						<legend class="flex items-center gap-1.5 px-1 text-sm font-semibold text-stone-800">
+							{m.hold_fridge_title()}
+							<span class="fridge-tip">
+								<button type="button" class="fridge-tip-btn" aria-label={m.hold_fridge_tip_label()} aria-describedby="fridge-tip" onclick={(e) => e.currentTarget.focus()}>?</button>
+								<span id="fridge-tip" role="tooltip" class="fridge-tip-body">{m.hold_fridge_tooltip()}</span>
+							</span>
+						</legend>
+						<input type="hidden" name="fridgeShown" value="1" />
+						<div class="grid gap-2">
+							{#each data.fridgeOptions as o (o.id)}
+								<label class="flex min-h-11 items-start gap-2.5 rounded-lg border border-stone-300 px-3 py-2.5 text-sm">
+									<input type="checkbox" name="fridgeOption" value={o.id} class="mt-0.5 h-4 w-4 accent-[var(--bk-accent)]" />
+									<span>
+										<span class="font-medium text-stone-800">{o.name}</span>
+										{#if o.description}<span class="mt-0.5 block text-xs text-stone-500">{o.description}</span>{/if}
+									</span>
+								</label>
+							{/each}
+						</div>
+						{#if form?.errors && 'fridge' in form.errors}
+							<p role="alert" class="mt-2 text-xs text-red-600">{form.errors.fridge}</p>
+						{/if}
+					</fieldset>
+				{/if}
 				{#if data.canChoosePlatinumTiming}
 					<fieldset class="bk-card mt-5 p-4 sm:p-6">
 						<legend class="px-1 text-sm font-semibold text-stone-800">{m.hold_platinum_timing_title()}</legend>
@@ -1234,3 +1262,24 @@
 		</label>
 	{/if}
 {/snippet}
+
+<style>
+	/* 冷蔵庫のカスタマイズの説明（ツールチップ）。ホバー・フォーカス（スマホはタップ）で出す */
+	.fridge-tip { position: relative; display: inline-flex; }
+	.fridge-tip-btn {
+		display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem;
+		border: 1px solid #a8a29e; border-radius: 9999px; color: #57534e;
+		font-size: 0.7rem; font-weight: 700; line-height: 1; cursor: help;
+	}
+	.fridge-tip-btn:focus-visible { outline: 2px solid #78603b; outline-offset: 2px; }
+	.fridge-tip-body {
+		position: absolute; left: -7rem; bottom: calc(100% + 0.5rem); z-index: 20;
+		width: max-content; max-width: min(18rem, calc(100vw - 3rem));
+		padding: 0.6rem 0.75rem; border-radius: 0.5rem; background: #292524; color: #fafaf9;
+		font-size: 0.75rem; font-weight: 400; line-height: 1.6;
+		opacity: 0; visibility: hidden; transition: opacity 0.15s;
+		pointer-events: none;
+	}
+	.fridge-tip:hover .fridge-tip-body,
+	.fridge-tip-btn:focus + .fridge-tip-body { opacity: 1; visibility: visible; }
+</style>

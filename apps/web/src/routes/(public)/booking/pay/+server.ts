@@ -39,6 +39,7 @@ import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import { saveFavoriteRoomChoices } from '$lib/server/favorites';
 import { savePlatinumTiming } from '$lib/server/platinum-timing';
+import { saveFridgeOptions } from '$lib/server/fridge-options';
 
 const noStore = { 'cache-control': 'private, no-store' };
 const bad = (message: string, status = 400, extra: Record<string, unknown> = {}) => json({ ok: false, message, ...extra }, { status, headers: noStore });
@@ -90,6 +91,8 @@ export const POST: RequestHandler = async (event) => {
 			if (favError) return bad(favError, 400, { errors: { favoriteRoom: favError } });
 			const timingError = await savePlatinumTiming(event, hold.id, sid, form);
 			if (timingError) return bad(timingError, 400);
+			const fridgeError = await saveFridgeOptions(event, hold.id, sid, form);
+			if (fridgeError) return bad(fridgeError, 400, { errors: { fridge: fridgeError } });
 			const common = {
 				holdId: hold.id,
 				sessionId: sid,

@@ -1980,7 +1980,7 @@ export async function sbListRankCancelPolicies(): Promise<RankCancelPolicy[]> {
 //  ・会員操作（add/cancel/list_my）は authenticated client（本人・auth.uid()）を渡す。
 //  ・当日提供リスト（list_booking_options_admin）は staff（facility_access）。
 
-const OPTION_CATEGORIES: OptionCategory[] = ['meal', 'spa', 'activity', 'amenity', 'personalize', 'other'];
+const OPTION_CATEGORIES: OptionCategory[] = ['meal', 'spa', 'activity', 'amenity', 'personalize', 'fridge', 'other'];
 function safeCategory(raw: unknown): OptionCategory {
 	return OPTION_CATEGORIES.includes(raw as OptionCategory) ? (raw as OptionCategory) : 'other';
 }

@@ -9,7 +9,7 @@
 	// 送り先は同じページの ?/add（qty_<id>・date_<id>・note_<id>・roomIndex）。
 	let { data }: { data: { checkin: string; checkout: string; items: OptionItem[]; rooms: { index: number; roomName: string; adults: number }[] } } = $props();
 
-	const CATEGORY_ORDER: OptionCategory[] = ['meal', 'spa', 'activity', 'amenity', 'personalize', 'other'];
+	const CATEGORY_ORDER: OptionCategory[] = ['fridge', 'meal', 'spa', 'activity', 'amenity', 'personalize', 'other'];
 
 	function categoryLabel(cat: OptionCategory): string {
 		switch (cat) {
@@ -18,6 +18,7 @@
 			case 'activity': return m.options_category_activity();
 			case 'amenity': return m.options_category_amenity();
 			case 'personalize': return m.options_category_personalize();
+			case 'fridge': return m.options_category_fridge();
 			default: return m.options_category_other();
 		}
 	}

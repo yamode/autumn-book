@@ -43,6 +43,7 @@ import { payOptionsFor, ONSITE_METHOD_NOTE, FURUSATO_VOUCHER_NOTE } from '$lib/d
 import { loadCancelAdminFeePercent, loadPaymentTexts } from '$lib/server/payment-settings';
 import { favoriteRoomChoicesFor, saveFavoriteRoomChoices } from '$lib/server/favorites';
 import { savePlatinumTiming } from '$lib/server/platinum-timing';
+import { fridgeOptionsFor, saveFridgeOptions } from '$lib/server/fridge-options';
 import * as m from '$lib/paraglide/messages';
 import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import type { Actions, PageServerLoad } from './$types';
@@ -144,7 +145,7 @@ export const load: PageServerLoad = async (event) => {
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
 		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady, guestCardOnly: !isMember });
-		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback] = await Promise.all([
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback, fridgeOptions] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
 			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
@@ -160,7 +161,9 @@ export const load: PageServerLoad = async (event) => {
 			favoriteRoomChoicesFor(event, hold.id, sid),
 			// 毎回聞く項目（アレルギー・交通手段・お迎え時間・備考）の見出し・説明・選択肢（施設ごと・管理画面「予約時に聞く項目」）
 			loadStandardFieldTexts(hold.facilityId),
-			loadCancellationFallback(locals)
+			loadCancellationFallback(locals),
+			// 冷蔵庫のカスタマイズ（会員だけ・予約フォームでチェックできる）
+			member ? fridgeOptionsFor(hold.facilityId, getLocale()) : Promise.resolve([])
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 
@@ -191,6 +194,7 @@ export const load: PageServerLoad = async (event) => {
 			groupQuote: combineQuotes(roomViews.map((r) => r.quote)),
 			facility,
 			member,
+			fridgeOptions: fridgeOptions.map((o) => ({ id: o.id, name: o.name, description: o.description ?? '' })),
 			// 会員ログイン中は Turnstile を出さない（ログインで本人確認済み）。非会員の予約確定だけ確かめる
 			needsTurnstile: !viewerIsMember(locals),
 			payOptions: pay.options,
@@ -278,6 +282,7 @@ export const load: PageServerLoad = async (event) => {
 		paymentTexts: {} as import('$lib/direct-payment').PaymentTexts,
 		favoriteChoices,
 		canChoosePlatinumTiming: member?.rank === 'platinum',
+		fridgeOptions: [] as { id: string; name: string; description: string }[],
 		inline: false as const,
 		publishableKey: null,
 		bathTax: 0,
@@ -408,6 +413,11 @@ export const actions: Actions = {
 			const timingError = await savePlatinumTiming(event, holdId, sid, form);
 			if (timingError) {
 				errors.platinumTiming = timingError;
+				return fail(400, { errors, values: guest });
+			}
+			const fridgeError = await saveFridgeOptions(event, holdId, sid, form);
+			if (fridgeError) {
+				errors.fridge = fridgeError;
 				return fail(400, { errors, values: guest });
 			}
 			const result = await sbConfirmBooking(holdId, sid, guestForBooking, { memberUserId, pointsUsed, coupon, locale: getLocale(), rooms: answered.rooms });
