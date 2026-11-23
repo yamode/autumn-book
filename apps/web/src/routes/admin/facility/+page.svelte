@@ -34,6 +34,7 @@
 
 {#if form?.saved}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">保存しました。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
+{#if data.loadError}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{data.loadError}</p>{/if}
 
 <form method="POST" action="?/save" use:enhance class="space-y-4 rounded-xl border border-stone-200 bg-white p-5">
 	<input type="hidden" name="facilityId" value={f.id} />
@@ -66,15 +67,23 @@
 		<input name="amenities" value={f.amenities.join('、')} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 	</label>
 
-	<label class="flex items-center gap-2 text-sm">
-		<input type="checkbox" name="isPublished" checked={f.isPublished} class="h-4 w-4" />
-		<span>公開する</span>
-	</label>
+	{#if !data.live}
+		<label class="flex items-center gap-2 text-sm">
+			<input type="checkbox" name="isPublished" checked={f.isPublished} class="h-4 w-4" />
+			<span>公開する</span>
+		</label>
+	{/if}
 
 	<button type="submit" class="rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">保存する</button>
 </form>
 
-<!-- 写真管理（Supabase Storage 接続予定） -->
+<!-- 写真管理（Supabase Storage 接続予定）。本番は写真がまだ DB に無いので出さない -->
+{#if data.live}
+<section class="mt-6 rounded-xl border border-stone-200 bg-white p-5 text-sm text-stone-500">
+	<h2 class="font-medium text-stone-700">写真管理</h2>
+	<p class="mt-1 text-xs">施設ページの写真は、まだこの画面から変えられません（公開ページの写真は施設サイトの写真を使っています）。</p>
+</section>
+{:else}
 <section class="mt-6 rounded-xl border border-stone-200 bg-white p-5">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h2 class="text-sm font-medium text-stone-700">写真管理</h2>
@@ -96,6 +105,7 @@
 	</div>
 	<p class="mt-2 text-xs text-stone-400">並べ替え（ドラッグ）と Supabase Storage へのアップロードは P1 実装時に接続します。</p>
 </section>
+{/if}
 
 <!-- アクセス情報（構造化フォームは P1 で拡充。現在は表示のみ） -->
 <section class="mt-6 rounded-xl border border-stone-200 bg-white p-5 text-sm">
