@@ -17,7 +17,9 @@ import { FACILITY_UUID, sbListBookingOptionsAdmin } from '$lib/server/supabase-d
 import { OPTION_RANKS } from '$lib/member-benefits';
 
 // 本番（ADMIN_SUPABASE）はスタッフのログインで book.option_items を直接読み書きする（RLS: has_facility_access・2026-11-23）。
-// それ以外（デモ）は従来どおりメモリのストア。翻訳の編集は本番ではまだ使えない（デモだけ）。
+// それ以外（デモ）は従来どおりメモリのストア。翻訳は本番では book.content_translations（entity_type='option'）に保存する。
+const TENANT_ID = '00000000-0000-0000-0000-000000000001';
+type OptionTr = { fields: { name?: string; description?: string }; isPublished: boolean } | null;
 type AdminOptionItem = OptionItem & { isActive: boolean };
 const OPTION_COLUMNS = 'id, code, name, description, category, price_type, unit_price, lead_time_hours, stock_type, daily_capacity, requires_service_date, member_only, sort_order, is_active, allowed_ranks';
 type OptionDbRow = {
@@ -74,9 +76,22 @@ export const load: PageServerLoad = async (event) => {
 			client.schema('book').from('option_items').select(OPTION_COLUMNS).eq('facility_id', facilityUuid).order('sort_order').order('name'),
 			sbListBookingOptionsAdmin(client, facilityUuid, today).catch(() => [])
 		]);
+		const items = ((itemsRes.data ?? []) as OptionDbRow[]).map(fromRow);
+		// 各商品の翻訳（en / zh-TW）。公開ページ（sbListOptionItems）は公開中の訳だけを重ねる
+		const optionTranslations: Record<string, { en: OptionTr; 'zh-TW': OptionTr }> = Object.fromEntries(items.map((i) => [i.id, { en: null, 'zh-TW': null }]));
+		if (items.length) {
+			const { data: trs } = await client.schema('book').from('content_translations').select('entity_id, locale, fields, is_published')
+				.eq('entity_type', 'option').in('entity_id', items.map((i) => i.id));
+			for (const r of trs ?? []) {
+				const loc = r.locale as 'en' | 'zh-TW';
+				if (optionTranslations[r.entity_id] && (loc === 'en' || loc === 'zh-TW')) {
+					optionTranslations[r.entity_id][loc] = { fields: (r.fields ?? {}) as { name?: string; description?: string }, isPublished: !!r.is_published };
+				}
+			}
+		}
 		return {
-			items: ((itemsRes.data ?? []) as OptionDbRow[]).map(fromRow),
-			optionTranslations: {} as Record<string, { en: null; 'zh-TW': null }>,
+			items,
+			optionTranslations,
 			today,
 			todayOrders,
 			live: true,
@@ -153,7 +168,30 @@ export const actions: Actions = {
 		addOptionItem(facilityId, input);
 		return { added: true };
 	},
-	saveTranslation: async ({ request, locals }) => {
+	saveTranslation: async (event) => {
+		const { request, locals } = event;
+		if (ADMIN_SUPABASE) {
+			if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });
+			const form = await request.formData();
+			const optionId = String(form.get('optionId') ?? '');
+			const locale = String(form.get('locale'));
+			if (locale !== 'en' && locale !== 'zh-TW') return fail(400, { message: '無効なロケールです' });
+			const client = createSupabaseServerClient(event);
+			const { data: item } = await client.schema('book').from('option_items').select('facility_id').eq('id', optionId).maybeSingle();
+			if (!item) return fail(404, { message: '商品が見つかりません' });
+			const { error } = await client.schema('book').from('content_translations').upsert({
+				tenant_id: TENANT_ID,
+				facility_id: item.facility_id,
+				entity_type: 'option',
+				entity_id: optionId,
+				locale,
+				fields: { name: String(form.get('name') ?? '').trim(), description: String(form.get('description') ?? '').trim() },
+				is_published: form.get('isPublished') === 'on',
+				updated_at: new Date().toISOString()
+			}, { onConflict: 'entity_type,entity_id,locale' });
+			if (error) return fail(400, { message: '翻訳を保存できませんでした。' });
+			return { translationSaved: optionId };
+		}
 		const blocked = denyDemoStoreWrite();
 		if (blocked) return blocked;
 		if (locals.user?.role !== 'admin') return fail(403, { message: '編集権限がありません' });

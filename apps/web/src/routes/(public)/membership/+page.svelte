@@ -1,8 +1,10 @@
 <script lang="ts">
 	import MemberBenefitsTable from '$lib/components/MemberBenefitsTable.svelte';
 	import * as m from '$lib/paraglide/messages';
+	import { siteText } from '$lib/member-benefit-texts';
 
 	let { data } = $props();
+	const tx = (key: string, fallback: () => string) => siteText(data.texts, key, fallback);
 </script>
 
 <svelte:head><title>{m.membership_title()}</title></svelte:head>
@@ -10,14 +12,14 @@
 <div class="forum-shell mx-auto max-w-5xl px-4 py-8 md:py-16">
 	<header class="text-center">
 		<p class="text-sm font-semibold tracking-[0.2em] text-accent-600">YAMADO MEMBERS</p>
-		<h1 class="mt-2 text-3xl sm:text-4xl">{m.membership_heading()}</h1>
-		<p class="mx-auto mt-4 max-w-2xl text-stone-600">{m.membership_lead()}</p>
+		<h1 class="mt-2 text-3xl sm:text-4xl">{tx('membership_heading', m.membership_heading)}</h1>
+		<p class="mx-auto mt-4 max-w-2xl text-stone-600">{tx('membership_lead', m.membership_lead)}</p>
 	</header>
 
 	<section class="mt-8 md:mt-10" aria-labelledby="membership-ranks">
-		<h2 id="membership-ranks" class="text-center text-2xl">{m.membership_ranks_heading()}</h2>
-		<p class="mt-2 hidden text-center text-sm leading-6 text-stone-600 md:block">{m.membership_table_hint()}</p>
-		<MemberBenefitsTable />
+		<h2 id="membership-ranks" class="text-center text-2xl">{tx('membership_ranks_heading', m.membership_ranks_heading)}</h2>
+		<p class="mt-2 hidden text-center text-sm leading-6 text-stone-600 md:block">{tx('membership_table_hint', m.membership_table_hint)}</p>
+		<MemberBenefitsTable texts={data.texts} />
 
 		<div class="mt-7 text-center">
 			{#if !data.isMember}

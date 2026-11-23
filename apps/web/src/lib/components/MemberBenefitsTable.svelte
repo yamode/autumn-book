@@ -5,42 +5,45 @@
 	import { favoriteRoomMinRank, forumWriteMinRank, limitedSaleMinRank, stayPersonalizationMinRank } from '$lib/member-benefits';
 	// 会員先行予約と限定販売プランは実装が同じ（会員限定プラン＋グレード＋販売期間）なので 1 行にまとめた（2026-11-23）
 	import * as m from '$lib/paraglide/messages';
+	import { siteText, type SiteTexts } from '$lib/member-benefit-texts';
 
-	let { printable = false }: { printable?: boolean } = $props();
+	// texts: 管理画面で上書きした文言（book.site_texts・無ければ元の文言）
+	let { printable = false, texts = {} }: { printable?: boolean; texts?: SiteTexts } = $props();
+	const tx = (key: string, fallback: () => string) => siteText(texts, key, fallback);
 
 	const rates: Record<MemberDisplayRank, number> = { standard: 1, silver: 2, gold: 3 };
 
 	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
 	type Perk = Detail & { key: string; minRank: MemberDisplayRank; availableToGuests?: boolean; guestNote?: string };
 
-	const points: Detail = { title: m.membership_rate_label(), body: m.membership_how_body() };
-	const qualification: Detail = {
-		title: m.membership_condition_label(),
-		body: m.membership_rank_note(),
-		sections: [{ title: m.membership_rank_grace_title(), body: m.membership_rank_grace() }]
-	};
-	const perks: Perk[] = [
-		{ key: 'booking-cancel', minRank: 'standard', availableToGuests: true, title: m.membership_booking_cancel_t(), body: m.membership_booking_cancel_b() },
-		{ key: 'onsite-payment', minRank: 'standard', guestNote: m.membership_card_only(), title: m.membership_onsite_payment_t(), body: m.membership_onsite_payment_b() },
-		{ key: 'early-payment', minRank: 'standard', title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
-		{ key: 'bath', minRank: 'standard', title: m.membership_bath_title(), body: m.membership_bath_body() },
-		{ key: 'upgrade', minRank: 'silver', title: m.membership_upgrade_title(), body: m.membership_upgrade_body() },
-		{ key: 'advance', minRank: limitedSaleMinRank, title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
-		{ key: 'room', minRank: favoriteRoomMinRank, title: m.membership_room_designation(), body: m.membership_room_designation_body() },
-		{ key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
-		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: m.membership_benefit_personalize_t(), body: m.membership_personalize_body() },
+	const points: Detail = $derived({ title: tx('membership_rate_label', m.membership_rate_label), body: tx('membership_how_body', m.membership_how_body) });
+	const qualification: Detail = $derived({
+		title: tx('membership_condition_label', m.membership_condition_label),
+		body: tx('membership_rank_note', m.membership_rank_note),
+		sections: [{ title: tx('membership_rank_grace_title', m.membership_rank_grace_title), body: tx('membership_rank_grace', m.membership_rank_grace) }]
+	});
+	const perks: Perk[] = $derived([
+		{ key: 'booking-cancel', minRank: 'standard', availableToGuests: true, title: tx('membership_booking_cancel_t', m.membership_booking_cancel_t), body: tx('membership_booking_cancel_b', m.membership_booking_cancel_b) },
+		{ key: 'onsite-payment', minRank: 'standard', guestNote: tx('membership_card_only', m.membership_card_only), title: tx('membership_onsite_payment_t', m.membership_onsite_payment_t), body: tx('membership_onsite_payment_b', m.membership_onsite_payment_b) },
+		{ key: 'early-payment', minRank: 'standard', title: tx('membership_early_payment_title', m.membership_early_payment_title), body: tx('membership_early_payment_body', m.membership_early_payment_body) },
+		{ key: 'bath', minRank: 'standard', title: tx('membership_bath_title', m.membership_bath_title), body: tx('membership_bath_body', m.membership_bath_body) },
+		{ key: 'upgrade', minRank: 'silver', title: tx('membership_upgrade_title', m.membership_upgrade_title), body: tx('membership_upgrade_body', m.membership_upgrade_body) },
+		{ key: 'advance', minRank: limitedSaleMinRank, title: tx('membership_benefit_advance_t', m.membership_benefit_advance_t), body: tx('membership_advance_silver_body', m.membership_advance_silver_body) },
+		{ key: 'room', minRank: favoriteRoomMinRank, title: tx('membership_room_designation', m.membership_room_designation), body: tx('membership_room_designation_body', m.membership_room_designation_body) },
+		{ key: 'cancellation', minRank: 'gold', title: tx('membership_benefit_cancel_t', m.membership_benefit_cancel_t), body: tx('membership_benefit_cancel_b', m.membership_benefit_cancel_b) },
+		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: tx('membership_benefit_personalize_t', m.membership_benefit_personalize_t), body: tx('membership_personalize_body', m.membership_personalize_body) },
 		{
-			key: 'changes', minRank: 'standard', title: m.membership_basic_changes(), body: m.membership_basic_changes_body(),
+			key: 'changes', minRank: 'standard', title: tx('membership_basic_changes', m.membership_basic_changes), body: tx('membership_basic_changes_body', m.membership_basic_changes_body),
 			sections: [
-				{ title: m.membership_change_date_t(), body: m.membership_change_date_b() },
-				{ title: m.membership_change_guests_t(), body: m.membership_change_guests_b() },
-				{ title: m.membership_change_room_t(), body: m.membership_change_room_b() }
+				{ title: tx('membership_change_date_t', m.membership_change_date_t), body: tx('membership_change_date_b', m.membership_change_date_b) },
+				{ title: tx('membership_change_guests_t', m.membership_change_guests_t), body: tx('membership_change_guests_b', m.membership_change_guests_b) },
+				{ title: tx('membership_change_room_t', m.membership_change_room_t), body: tx('membership_change_room_b', m.membership_change_room_b) }
 			]
 		},
-		{ key: 'community', minRank: forumWriteMinRank, title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },
-		{ key: 'otayori', minRank: 'standard', title: m.membership_benefit_otayori_t(), body: m.membership_benefit_otayori_b() }
-	];
-	const orderedPerks = perks.sort((a, b) => memberDisplayRanks.indexOf(a.minRank) - memberDisplayRanks.indexOf(b.minRank));
+		{ key: 'community', minRank: forumWriteMinRank, title: tx('membership_benefit_community_t', m.membership_benefit_community_t), body: tx('membership_benefit_community_b', m.membership_benefit_community_b) },
+		{ key: 'otayori', minRank: 'standard', title: tx('membership_benefit_otayori_t', m.membership_benefit_otayori_t), body: tx('membership_benefit_otayori_b', m.membership_benefit_otayori_b) }
+	]);
+	const orderedPerks = $derived([...perks].sort((a, b) => memberDisplayRanks.indexOf(a.minRank) - memberDisplayRanks.indexOf(b.minRank)));
 
 	function perkAudience(perk: Perk) {
 		if (perk.availableToGuests) return m.membership_all_bookings();
@@ -105,7 +108,7 @@
 		</section>
 
 		<section class="mobile-panel" aria-labelledby="mobile-membership-perks">
-			<h3 id="mobile-membership-perks" class="mobile-heading px-4 py-3.5">{m.membership_benefits_heading()}</h3>
+			<h3 id="mobile-membership-perks" class="mobile-heading px-4 py-3.5">{tx('membership_benefits_heading', m.membership_benefits_heading)}</h3>
 			<ul class="perk-list">
 				{#each orderedPerks as perk (perk.key)}
 					<li>
@@ -134,7 +137,7 @@
 		</colgroup>
 		<thead>
 			<tr>
-				<th scope="col" class="row-head text-left font-medium">{m.membership_benefits_heading()}</th>
+				<th scope="col" class="row-head text-left font-medium">{tx('membership_benefits_heading', m.membership_benefits_heading)}</th>
 				<th scope="col" class="tier-head tier-guest">{m.membership_guest_booking()}</th>
 				{#each memberDisplayRanks as rank (rank)}
 					<th scope="col" class="tier-head tier-{rank}">

@@ -142,9 +142,9 @@
 				</div>
 				<div class="mt-3 flex items-center gap-2">
 					<button type="submit" class="min-h-9 rounded-md bg-brand-800 px-5 py-2 text-sm text-white hover:bg-brand-700">保存</button>
-					{#if !data.live}<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">
+					<button type="button" onclick={() => { expandedTr = expandedTr === o.id ? null : o.id; }} class="min-h-9 rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-500 hover:bg-stone-50">
 						{expandedTr === o.id ? '翻訳を閉じる ▲' : '翻訳 ▼'}
-					</button>{/if}
+					</button>
 				</div>
 			</form>
 
