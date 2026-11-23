@@ -5,8 +5,9 @@
 ## 主なページ
 
 - [トップ](https://book.yamado.app/): 両施設の空室と宿泊プランの検索
-- [山人-yamado-（西和賀）](https://book.yamado.app/yamado/nishiwaga): 施設の紹介と宿泊プラン
-- [山人-oga-（男鹿）](https://book.yamado.app/yamado/oga): 施設の紹介と宿泊プラン
+- [山人-yamado-（西和賀）の客室・プラン](https://book.yamado.app/yamado/nishiwaga/plans): 空室と宿泊プランの一覧・予約
+- [山人-oga-（男鹿）の客室・プラン](https://book.yamado.app/yamado/oga/plans): 空室と宿泊プランの一覧・予約
+- 施設の紹介（温泉・食事・アクセスなど）は各施設の公式サイト: [山人-yamado-](https://www.yamado.co.jp/)・[山人-oga-](https://oga.yamado.co.jp/)
 - [会員特典](https://book.yamado.app/membership): ポイント還元・ランクと特典
 - [コミュニティ](https://book.yamado.app/community): 宿の最新情報や、泊まった方の体験談・質問と回答の掲示板
 
@@ -14,7 +15,7 @@
 
 - 投稿はどなたでも読めます。投稿できるのはシルバー以上の会員と宿のスタッフです。
 - 「山人スタッフ」の表示がある投稿は、宿のスタッフが書いた公式の回答です。
-- 会員の投稿は個人の体験・感想です。料金・空室・営業内容は変わることがあるため、最新の情報は各施設のページと予約画面で確かめてください。
+- 会員の投稿は個人の体験・感想です。料金・空室・営業内容は変わることがあるため、最新の情報は各施設の公式サイトと予約画面で確かめてください。
 - 全スレッドの一覧: https://book.yamado.app/sitemap.xml
 
 ## お問い合わせ

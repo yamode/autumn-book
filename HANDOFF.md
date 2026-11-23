@@ -1,3 +1,11 @@
+## 施設のページを一旦非公開・会員特典を表からその場で編集（2026-11-23・v0.329.0）
+
+- 施設のページ（/brand/facility と下の紹介ページ）は一旦非公開。開かれたらプラン一覧へ 302（?checkin= 等と言語はそのまま）。切り替えは `$lib/facility-page.ts` の `FACILITY_PAGE_PUBLIC`。サイトマップは施設トップを外しプラン一覧・客室紹介を載せる。llms.txt は公式サイトへ案内
+- お知らせ（/brand/facility/news）は施設のページからしかたどれない状態のまま残している（要判断）
+- 管理画面の会員特典: 表の特典を押すと開く窓で3言語をその場で編集（`MemberBenefitsTable` の `edit`・action `saveTexts`）。入力欄には今の文言が入る。空欄で保存すると元の文言
+- [ ] 管理画面の会員特典で特典を押して文言を直し保存すると、公開の会員特典のページに1分以内に出る
+- [ ] /yamado/nishiwaga?checkin=… を開くとプラン一覧へ条件付きで移る
+
 ## 施設ページ編集を本番に（2026-11-23・v0.328.0）
 
 - 管理画面の施設ページ編集は本番で `book.facility_contents`（キャッチコピー・紹介文・チェックイン/アウト・設備）をスタッフのログインのまま保存（RLS: has_facility_access）。訳は `content_translations`（entity_type='facility'）

@@ -6,42 +6,63 @@
 	// 会員先行予約と限定販売プランは実装が同じ（会員限定プラン＋グレード＋販売期間）なので 1 行にまとめた（2026-11-23）
 	import * as m from '$lib/paraglide/messages';
 	import { siteText, type SiteTexts } from '$lib/member-benefit-texts';
+	import { enhance } from '$lib/enhance';
+	import { page } from '$app/state';
 
 	// texts: 管理画面で上書きした文言（book.site_texts・無ければ元の文言）
-	let { printable = false, texts = {} }: { printable?: boolean; texts?: SiteTexts } = $props();
+	// edit: 管理画面だけ。特典を押すと開く窓で、その場で文言（3言語）を編集できる（2026-11-23）
+	type EditItem = { label: string; multiline?: boolean; defaults: Record<string, string>; values: Record<string, string> };
+	let {
+		printable = false,
+		texts = {},
+		edit = null
+	}: {
+		printable?: boolean;
+		texts?: SiteTexts;
+		edit?: { items: Record<string, EditItem>; canEdit: boolean; extra?: { id: string; title: string; keys: string[] }[] } | null;
+	} = $props();
+	const EDIT_LOCALES = [
+		{ code: 'ja', label: '日本語' },
+		{ code: 'en', label: 'English' },
+		{ code: 'zh-TW', label: '繁體中文' }
+	] as const;
+	let editLocale = $state<'ja' | 'en' | 'zh-TW'>('ja');
 	const tx = (key: string, fallback: () => string) => siteText(texts, key, fallback);
 
 	const rates: Record<MemberDisplayRank, number> = { standard: 1, silver: 2, gold: 3 };
 
-	type Detail = { title: string; body: string; sections?: { title: string; body: string }[] };
+	// id: 窓を開き直しても最新の文言を出すための目印。keys: 管理画面で編集する文言のキー（並び順どおりに出す）
+	type Detail = { id: string; title: string; body: string; sections?: { title: string; body: string }[]; keys: string[] };
 	type Perk = Detail & { key: string; minRank: MemberDisplayRank; availableToGuests?: boolean; guestNote?: string };
 
-	const points: Detail = $derived({ title: tx('membership_rate_label', m.membership_rate_label), body: tx('membership_how_body', m.membership_how_body) });
+	const points: Detail = $derived({ id: 'points', keys: ['membership_rate_label', 'membership_how_body'], title: tx('membership_rate_label', m.membership_rate_label), body: tx('membership_how_body', m.membership_how_body) });
 	const qualification: Detail = $derived({
+		id: 'qualification',
+		keys: ['membership_condition_label', 'membership_rank_note', 'membership_rank_grace_title', 'membership_rank_grace'],
 		title: tx('membership_condition_label', m.membership_condition_label),
 		body: tx('membership_rank_note', m.membership_rank_note),
 		sections: [{ title: tx('membership_rank_grace_title', m.membership_rank_grace_title), body: tx('membership_rank_grace', m.membership_rank_grace) }]
 	});
 	const perks: Perk[] = $derived([
-		{ key: 'booking-cancel', minRank: 'standard', availableToGuests: true, title: tx('membership_booking_cancel_t', m.membership_booking_cancel_t), body: tx('membership_booking_cancel_b', m.membership_booking_cancel_b) },
-		{ key: 'onsite-payment', minRank: 'standard', guestNote: tx('membership_card_only', m.membership_card_only), title: tx('membership_onsite_payment_t', m.membership_onsite_payment_t), body: tx('membership_onsite_payment_b', m.membership_onsite_payment_b) },
-		{ key: 'early-payment', minRank: 'standard', title: tx('membership_early_payment_title', m.membership_early_payment_title), body: tx('membership_early_payment_body', m.membership_early_payment_body) },
-		{ key: 'bath', minRank: 'standard', title: tx('membership_bath_title', m.membership_bath_title), body: tx('membership_bath_body', m.membership_bath_body) },
-		{ key: 'upgrade', minRank: 'silver', title: tx('membership_upgrade_title', m.membership_upgrade_title), body: tx('membership_upgrade_body', m.membership_upgrade_body) },
-		{ key: 'advance', minRank: limitedSaleMinRank, title: tx('membership_benefit_advance_t', m.membership_benefit_advance_t), body: tx('membership_advance_silver_body', m.membership_advance_silver_body) },
-		{ key: 'room', minRank: favoriteRoomMinRank, title: tx('membership_room_designation', m.membership_room_designation), body: tx('membership_room_designation_body', m.membership_room_designation_body) },
-		{ key: 'cancellation', minRank: 'gold', title: tx('membership_benefit_cancel_t', m.membership_benefit_cancel_t), body: tx('membership_benefit_cancel_b', m.membership_benefit_cancel_b) },
-		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: tx('membership_benefit_personalize_t', m.membership_benefit_personalize_t), body: tx('membership_personalize_body', m.membership_personalize_body) },
+		{ key: 'booking-cancel', id: 'booking-cancel', keys: ['membership_booking_cancel_t', 'membership_booking_cancel_b'], minRank: 'standard', availableToGuests: true, title: tx('membership_booking_cancel_t', m.membership_booking_cancel_t), body: tx('membership_booking_cancel_b', m.membership_booking_cancel_b) },
+		{ key: 'onsite-payment', id: 'onsite-payment', keys: ['membership_onsite_payment_t', 'membership_onsite_payment_b', 'membership_card_only'], minRank: 'standard', guestNote: tx('membership_card_only', m.membership_card_only), title: tx('membership_onsite_payment_t', m.membership_onsite_payment_t), body: tx('membership_onsite_payment_b', m.membership_onsite_payment_b) },
+		{ key: 'early-payment', id: 'early-payment', keys: ['membership_early_payment_title', 'membership_early_payment_body'], minRank: 'standard', title: tx('membership_early_payment_title', m.membership_early_payment_title), body: tx('membership_early_payment_body', m.membership_early_payment_body) },
+		{ key: 'bath', id: 'bath', keys: ['membership_bath_title', 'membership_bath_body'], minRank: 'standard', title: tx('membership_bath_title', m.membership_bath_title), body: tx('membership_bath_body', m.membership_bath_body) },
+		{ key: 'upgrade', id: 'upgrade', keys: ['membership_upgrade_title', 'membership_upgrade_body'], minRank: 'silver', title: tx('membership_upgrade_title', m.membership_upgrade_title), body: tx('membership_upgrade_body', m.membership_upgrade_body) },
+		{ key: 'advance', id: 'advance', keys: ['membership_benefit_advance_t', 'membership_advance_silver_body'], minRank: limitedSaleMinRank, title: tx('membership_benefit_advance_t', m.membership_benefit_advance_t), body: tx('membership_advance_silver_body', m.membership_advance_silver_body) },
+		{ key: 'room', id: 'room', keys: ['membership_room_designation', 'membership_room_designation_body'], minRank: favoriteRoomMinRank, title: tx('membership_room_designation', m.membership_room_designation), body: tx('membership_room_designation_body', m.membership_room_designation_body) },
+		{ key: 'cancellation', id: 'cancellation', keys: ['membership_benefit_cancel_t', 'membership_benefit_cancel_b'], minRank: 'gold', title: tx('membership_benefit_cancel_t', m.membership_benefit_cancel_t), body: tx('membership_benefit_cancel_b', m.membership_benefit_cancel_b) },
+		{ key: 'personalize', id: 'personalize', keys: ['membership_benefit_personalize_t', 'membership_personalize_body'], minRank: stayPersonalizationMinRank, title: tx('membership_benefit_personalize_t', m.membership_benefit_personalize_t), body: tx('membership_personalize_body', m.membership_personalize_body) },
 		{
-			key: 'changes', minRank: 'standard', title: tx('membership_basic_changes', m.membership_basic_changes), body: tx('membership_basic_changes_body', m.membership_basic_changes_body),
+			key: 'changes', id: 'changes', keys: ['membership_basic_changes', 'membership_basic_changes_body', 'membership_change_date_t', 'membership_change_date_b', 'membership_change_guests_t', 'membership_change_guests_b', 'membership_change_room_t', 'membership_change_room_b'], minRank: 'standard', title: tx('membership_basic_changes', m.membership_basic_changes), body: tx('membership_basic_changes_body', m.membership_basic_changes_body),
 			sections: [
 				{ title: tx('membership_change_date_t', m.membership_change_date_t), body: tx('membership_change_date_b', m.membership_change_date_b) },
 				{ title: tx('membership_change_guests_t', m.membership_change_guests_t), body: tx('membership_change_guests_b', m.membership_change_guests_b) },
 				{ title: tx('membership_change_room_t', m.membership_change_room_t), body: tx('membership_change_room_b', m.membership_change_room_b) }
 			]
 		},
-		{ key: 'community', minRank: forumWriteMinRank, title: tx('membership_benefit_community_t', m.membership_benefit_community_t), body: tx('membership_benefit_community_b', m.membership_benefit_community_b) },
-		{ key: 'otayori', minRank: 'standard', title: tx('membership_benefit_otayori_t', m.membership_benefit_otayori_t), body: tx('membership_benefit_otayori_b', m.membership_benefit_otayori_b) }
+		{ key: 'community', id: 'community', keys: ['membership_benefit_community_t', 'membership_benefit_community_b'], minRank: forumWriteMinRank, title: tx('membership_benefit_community_t', m.membership_benefit_community_t), body: tx('membership_benefit_community_b', m.membership_benefit_community_b) },
+		{ key: 'otayori', id: 'otayori', keys: ['membership_benefit_otayori_t', 'membership_benefit_otayori_b'], minRank: 'standard', title: tx('membership_benefit_otayori_t', m.membership_benefit_otayori_t), body: tx('membership_benefit_otayori_b', m.membership_benefit_otayori_b) }
 	]);
 	const orderedPerks = $derived([...perks].sort((a, b) => memberDisplayRanks.indexOf(a.minRank) - memberDisplayRanks.indexOf(b.minRank)));
 
@@ -52,7 +73,14 @@
 		return perk.minRank === memberDisplayRanks.at(-1) ? rank : m.membership_rank_and_above({ rank });
 	}
 
-	let detail = $state<Detail | null>(null);
+	let detailId = $state<string | null>(null);
+	const extraDetails = $derived<Detail[]>((edit?.extra ?? []).map((x) => ({ id: x.id, title: x.title, body: '', keys: x.keys })));
+	const detail = $derived<Detail | null>(
+		detailId === null ? null : ([points, qualification, ...perks, ...extraDetails].find((d) => d.id === detailId) ?? null)
+	);
+	// 保存できたキー（窓の中に「保存しました」を出す）
+	const savedKeys = $derived(((page.form as { savedKeys?: string[] } | null)?.savedKeys ?? []) as string[]);
+	const saveError = $derived(((page.form as { textError?: string } | null)?.textError ?? '') as string);
 	let dialog: HTMLDialogElement | undefined = $state();
 
 	$effect(() => {
@@ -67,7 +95,7 @@
 		return () => element.removeEventListener('click', closeOutside);
 	});
 	async function openDetail(item: Detail) {
-		detail = item;
+		detailId = item.id;
 		await tick();
 		if (dialog && !dialog.open) dialog.showModal();
 	}
@@ -151,7 +179,7 @@
 			<tr>
 				<th scope="row" class="row-head">
 					<button type="button" class="detail-link" onclick={() => openDetail(points)} aria-haspopup="dialog">
-						{points.title}
+						{points.title}{#if edit}<span class="ml-1.5 text-xs font-normal text-stone-400" aria-hidden="true">✎</span>{/if}
 					</button>
 				</th>
 				<td class="guest-value"><span class="rate">0<span class="rate-unit">%</span></span></td>
@@ -162,7 +190,7 @@
 			<tr>
 				<th scope="row" class="row-head">
 					<button type="button" class="detail-link" onclick={() => openDetail(qualification)} aria-haspopup="dialog">
-						{qualification.title}
+						{qualification.title}{#if edit}<span class="ml-1.5 text-xs font-normal text-stone-400" aria-hidden="true">✎</span>{/if}
 					</button>
 				</th>
 				<td class="guest-value">{@render perkStatus(false)}</td>
@@ -172,7 +200,7 @@
 				<tr>
 					<th scope="row" class="row-head">
 						<button type="button" class="detail-link" onclick={() => openDetail(perk)} aria-haspopup="dialog">
-							{perk.title}
+							{perk.title}{#if edit}<span class="ml-1.5 text-xs font-normal text-stone-400" aria-hidden="true">✎</span>{/if}
 						</button>
 					</th>
 					<td class="guest-value">
@@ -193,6 +221,15 @@
 	</table>
 </div>
 
+{#if edit && extraDetails.length}
+	<!-- 管理画面: 表の外の文言（ページの見出し・導入文など）も同じ窓で編集する -->
+	<div class="mt-4 flex flex-wrap gap-2 print:hidden">
+		{#each extraDetails as d (d.id)}
+			<button type="button" onclick={() => openDetail(d)} class="inline-flex min-h-10 items-center rounded-full border border-stone-300 bg-white px-4 text-sm text-brand-800 hover:bg-stone-50">{d.title}を編集</button>
+		{/each}
+	</div>
+{/if}
+
 <dialog bind:this={dialog} aria-labelledby="membership-detail-title" class="perk-dialog">
 	{#if detail}
 		<div class="flex items-start justify-between gap-3">
@@ -201,13 +238,53 @@
 				<button type="submit" class="grid h-10 w-10 place-items-center rounded-full border border-stone-200 text-xl text-stone-700 hover:bg-stone-100" aria-label={m.membership_detail_close()}>×</button>
 			</form>
 		</div>
-		<p class="mt-4 text-sm leading-7 text-stone-700">{detail.body}</p>
-		{#each detail.sections ?? [] as section (section.title)}
-			<section class="mt-4 rounded-xl bg-stone-50 p-4">
-				<h3 class="text-sm font-semibold text-brand-900">{section.title}</h3>
-				<p class="mt-1 text-sm leading-7 text-stone-700">{section.body}</p>
-			</section>
-		{/each}
+		{#if edit}
+			<!-- 管理画面: その場で編集（空欄にすると元の文言に戻る・保存先は book.site_texts） -->
+			<div class="mt-4 flex gap-1 rounded-lg bg-stone-100 p-1 text-sm" role="tablist" aria-label="言語">
+				{#each EDIT_LOCALES as l (l.code)}
+					<button type="button" role="tab" aria-selected={editLocale === l.code} onclick={() => (editLocale = l.code)}
+						class="min-h-9 flex-1 rounded-md px-3 {editLocale === l.code ? 'bg-white font-semibold text-brand-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'}">{l.label}</button>
+				{/each}
+			</div>
+			<form method="POST" action="?/saveTexts" use:enhance class="mt-4 space-y-4">
+				{#each detail.keys as k (k)}
+					{@const item = edit.items[k]}
+					{#if item}
+						<input type="hidden" name="keys" value={k} />
+						{#each EDIT_LOCALES as l (l.code)}
+							<label class="block text-sm" class:hidden={editLocale !== l.code}>
+								<span class="flex items-center gap-2 font-medium text-stone-700">
+									{item.label}
+									{#if item.values[l.code]?.trim()}<span class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800">変更あり</span>{/if}
+								</span>
+								{#if item.multiline}
+									<textarea name={`value_${k}_${l.code}`} rows="4" maxlength="4000" disabled={!edit.canEdit}
+										class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm leading-7 focus:border-brand-600 focus:outline-none">{item.values[l.code] || item.defaults[l.code]}</textarea>
+								{:else}
+									<input name={`value_${k}_${l.code}`} value={item.values[l.code] || item.defaults[l.code]} maxlength="4000" disabled={!edit.canEdit}
+										class="mt-1 w-full rounded-lg border border-stone-300 px-3 py-2 text-sm focus:border-brand-600 focus:outline-none" />
+								{/if}
+							</label>
+						{/each}
+					{/if}
+				{/each}
+				<p class="text-xs leading-5 text-stone-500">今の文言が入っています。そのまま直して保存してください。空欄にして保存すると、元の文言に戻ります。お客様の画面に出るまで最大1分ほどかかります。</p>
+				{#if saveError}<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{saveError}</p>{/if}
+				<!-- 長い特典でも保存ボタンが見えるよう、窓の下に貼りつける -->
+				<div class="sticky -bottom-6 -mx-1 flex items-center gap-3 border-t border-stone-200 bg-[#fffefa] px-1 py-3">
+					{#if edit.canEdit}<button type="submit" class="min-h-11 rounded-full bg-brand-800 px-6 text-sm font-medium text-white hover:bg-brand-700">保存</button>{/if}
+					{#if detail.keys.some((k) => savedKeys.includes(k))}<span class="text-sm text-emerald-700" role="status">保存しました</span>{/if}
+				</div>
+			</form>
+		{:else}
+			<p class="mt-4 text-sm leading-7 text-stone-700">{detail.body}</p>
+			{#each detail.sections ?? [] as section (section.title)}
+				<section class="mt-4 rounded-xl bg-stone-50 p-4">
+					<h3 class="text-sm font-semibold text-brand-900">{section.title}</h3>
+					<p class="mt-1 text-sm leading-7 text-stone-700">{section.body}</p>
+				</section>
+			{/each}
+		{/if}
 	{/if}
 </dialog>
 

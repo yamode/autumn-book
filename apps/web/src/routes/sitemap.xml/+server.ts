@@ -28,7 +28,8 @@ const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').
 export const GET: RequestHandler = async ({ url }) => {
 	const entries: Entry[] = [{ path: '/' }, { path: '/membership' }, { path: '/kitakaze' }, { path: '/community' }];
 	for (const f of getPublishedFacilities('ja')) {
-		entries.push({ path: `/${f.brandSlug}/${f.slug}` }, { path: `/${f.brandSlug}/${f.slug}/plans` });
+		// 施設のページ（/brand/facility）は一旦非公開＝プラン一覧へ転送するので載せない（2026-11-23）
+		entries.push({ path: `/${f.brandSlug}/${f.slug}/plans` }, { path: `/${f.brandSlug}/${f.slug}/rooms` });
 	}
 	const boards = DATA_SOURCE === 'supabase' ? await listForumBoardsData() : listForumBoards();
 	for (const board of boards) {

@@ -112,7 +112,8 @@ export function loadingShape(route: string): LoadingShape {
 	// A面（公開サイト）: トップ・施設・お知らせ・詳細・規約など（2026-11-23 総点検）
 	if (path === '' || path === '/') return 'home';
 	if (path === '/kitakaze') return 'videos';
-	if (/^\/\[brand\]\/\[facility\](\/\[page\])?$/.test(path)) return 'facility';
+	// 施設のページは一旦非公開でプラン一覧へ転送している（2026-11-23）ので、移る間はプラン一覧の形
+	if (/^\/\[brand\]\/\[facility\](\/\[page\])?$/.test(path)) return 'plans';
 	if (/^\/\[brand\]\/\[facility\]\/news$/.test(path)) return 'news-list';
 	if (/^\/\[brand\]\/\[facility\]\/news\/\[id\]$/.test(path) || path === '/help' || under(path, '/legal')) return 'article';
 	if (/^\/\[brand\]\/\[facility\]\/(plans\/\[plan\]|rooms\/\[room\])$/.test(path) || path === '/plan/[token]') return 'plan-detail';

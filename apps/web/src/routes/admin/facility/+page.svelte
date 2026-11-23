@@ -28,7 +28,7 @@
 
 <PageHeader title="施設ページ編集" facility={f.name}>
 	{#snippet actions()}
-		<a href="/{f.brandSlug}/{f.slug}" target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを確認 <AdminIcon name="external" class="h-4 w-4" /></a>
+		<a href="/{f.brandSlug}/{f.slug}/plans" target="_blank" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 hover:bg-stone-50">公開ページを確認 <AdminIcon name="external" class="h-4 w-4" /></a>
 	{/snippet}
 </PageHeader>
 

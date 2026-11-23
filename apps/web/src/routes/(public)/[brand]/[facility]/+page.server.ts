@@ -1,4 +1,5 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
+import { FACILITY_PAGE_PUBLIC } from '$lib/facility-page';
 import { getFacilityBySlug, getRoomTypes, getRatePlans, getFaqs, getPlanCalendar, getNews } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import {
@@ -18,6 +19,10 @@ import { planForViewer } from '$lib/member-payment';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, url, locals }) => {
+	// 施設のページは一旦非公開（2026-11-23・ユーザー決定）。施設の紹介は外部の公式サイトが受け持つ。
+	// 公式サイトの「ご予約」などから日程付き（?checkin=&nights=&adults=）で来るリンクがあるので、404 にせずプラン一覧へ一時転送する。
+	// 再公開するときは $lib/facility-page の FACILITY_PAGE_PUBLIC を true にする（下の読み込みはそのまま残してある）。
+	if (!FACILITY_PAGE_PUBLIC) redirect(302, `${url.pathname.replace(/\/$/, '')}/plans${url.search}`);
 	// 支払方法の表示は閲覧者（会員かどうか）に合わせる（非会員の支払方法）
 	const isMember = viewerIsMember(locals);
 	if (DATA_SOURCE === 'supabase') {

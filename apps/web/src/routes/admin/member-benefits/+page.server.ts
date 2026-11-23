@@ -1,5 +1,5 @@
 // 管理画面の会員特典: 比較表の確認・印刷と、説明文の編集（book.site_texts・2026-11-23）。
-// 文言ごとに日本語・英語・繁体字を編集する。空にする（または元の文言と同じにする）と元の文言に戻る。
+// 表の特典を押すと開く窓で、その場で日本語・英語・繁体字を編集する。空にする（または元の文言と同じにする）と元の文言に戻る。
 import { fail } from '@sveltejs/kit';
 import * as m from '$lib/paraglide/messages';
 import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
@@ -18,6 +18,9 @@ function defaultsOf(key: string): Record<SiteTextLocale, string> {
 	return out;
 }
 
+// 表の外にある文言（会員特典のページの見出しなど）は、表の下のボタンから同じ窓で編集する
+const PAGE_GROUP = MEMBER_BENEFIT_TEXT_GROUPS.find((g) => g.title === '会員特典のページ');
+
 export const load: PageServerLoad = async (event) => {
 	const editable = ADMIN_SUPABASE;
 	let overrides: Record<SiteTextLocale, Record<string, string>> = { ja: {}, en: {}, 'zh-TW': {} };
@@ -29,39 +32,50 @@ export const load: PageServerLoad = async (event) => {
 			loadError = '上書きした文言を読み込めませんでした。表は元の文言で表示しています。';
 		}
 	}
-	const groups = MEMBER_BENEFIT_TEXT_GROUPS.map((g) => ({
-		title: g.title,
-		items: g.items.map((i) => ({
-			...i,
-			defaults: defaultsOf(i.key),
-			values: { ja: overrides.ja[i.key] ?? '', en: overrides.en[i.key] ?? '', 'zh-TW': overrides['zh-TW'][i.key] ?? '' }
-		}))
-	}));
+	const items = Object.fromEntries(
+		MEMBER_BENEFIT_TEXT_GROUPS.flatMap((g) => g.items).map((i) => [
+			i.key,
+			{
+				label: i.label,
+				multiline: i.multiline,
+				defaults: defaultsOf(i.key),
+				values: { ja: overrides.ja[i.key] ?? '', en: overrides.en[i.key] ?? '', 'zh-TW': overrides['zh-TW'][i.key] ?? '' }
+			}
+		])
+	);
 	return {
 		// 比較表のプレビュー（日本語）
 		texts: overrides.ja,
-		groups,
+		edit: editable
+			? {
+					items,
+					canEdit: event.locals.user?.role === 'admin',
+					extra: PAGE_GROUP ? [{ id: 'page', title: 'ページの見出し・導入文', keys: PAGE_GROUP.items.map((i) => i.key) }] : []
+				}
+			: null,
 		editable,
-		canEdit: event.locals.user?.role === 'admin',
 		loadError
 	};
 };
 
 export const actions: Actions = {
-	saveText: async (event) => {
-		if (!ADMIN_SUPABASE) return fail(400, { message: '本番データ環境でだけ編集できます。' });
+	saveTexts: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { textError: '本番データ環境でだけ編集できます。' });
 		const user = event.locals.user;
-		if (user?.role !== 'admin') return fail(403, { message: '編集権限がありません。' });
+		if (user?.role !== 'admin') return fail(403, { textError: '編集権限がありません。' });
 		const form = await event.request.formData();
-		const key = String(form.get('key') ?? '');
-		if (!MEMBER_BENEFIT_TEXT_KEYS.includes(key)) return fail(400, { message: '項目が正しくありません。' });
-		const values = Object.fromEntries(SITE_TEXT_LOCALES.map((l) => [l, String(form.get(`value_${l}`) ?? '')])) as Record<SiteTextLocale, string>;
-		if (Object.values(values).some((v) => v.length > 4000)) return fail(400, { message: '4,000字以内で入力してください。', key });
+		const keys = [...new Set(form.getAll('keys').map(String))].filter((k) => MEMBER_BENEFIT_TEXT_KEYS.includes(k));
+		if (keys.length === 0) return fail(400, { textError: '項目が正しくありません。' });
+		const client = createSupabaseServerClient(event);
 		try {
-			await saveMemberBenefitText(createSupabaseServerClient(event), key, values, defaultsOf(key), user.id);
+			for (const key of keys) {
+				const values = Object.fromEntries(SITE_TEXT_LOCALES.map((l) => [l, String(form.get(`value_${key}_${l}`) ?? '')])) as Record<SiteTextLocale, string>;
+				if (Object.values(values).some((v) => v.length > 4000)) return fail(400, { textError: '4,000字以内で入力してください。' });
+				await saveMemberBenefitText(client, key, values, defaultsOf(key), user.id);
+			}
 		} catch {
-			return fail(500, { message: '保存できませんでした。時間をおいてもう一度お試しください。', key });
+			return fail(500, { textError: '保存できませんでした。時間をおいてもう一度お試しください。' });
 		}
-		return { savedKey: key };
+		return { savedKeys: keys };
 	}
 };
