@@ -176,7 +176,7 @@ const STAY_COOKIE = 'ab_stay';
 
 /**
  * 事前チェックインのトークンから、その予約（代表の部屋）の滞在トークンを受け取る（book.precheckin_stay_cookie・P3）。
- * 回答済み・チェックイン日 12:00 より前だけ（DB が判定。以後は部屋の QR・6 桁コードで客室案内に入る・2026-11-23 レビュー M-4）。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
+ * 回答済み・チェックイン日 20:00 より前だけ（DB が判定・2026-11-23 ユーザー指示で 12:00 → 20:00。以後は部屋の QR・6 桁コードで客室案内に入る・2026-11-23 レビュー M-4）。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
  */
 export async function pcStayToken(token: string): Promise<StayTokenResult> {
 	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
