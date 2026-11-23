@@ -89,7 +89,7 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/booking-notes', label: '予約時の注意事項' },
 					{ href: '/admin/booking-questions', label: '予約時に聞く項目' },
 					{ href: '/admin/children', label: 'お子様の受け入れ' },
-					{ href: '/admin/cancel-policies', label: 'キャンセル規定', tenantWide: true, demoOnly: true }
+					{ href: '/admin/cancel-policies', label: 'キャンセル規定', tenantWide: true }
 				]
 			}
 		]

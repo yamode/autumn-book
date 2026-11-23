@@ -105,7 +105,7 @@
 			<form method="POST" action="?/reply" data-reset use:enhance class="rounded-xl border border-stone-300 bg-white p-4 sm:p-5">
 				<h2 class="mb-2 text-sm font-medium text-stone-700">{m.forum_reply_heading()}</h2>
 				<p class="mb-2 text-xs leading-5 text-stone-600">{m.forum_public_notice()}</p>
-				<textarea bind:this={replyInput} aria-label={m.forum_reply_heading()} name="body" rows="4" required maxlength="4000" placeholder={m.forum_body_ph()} class="w-full rounded-xl border border-stone-300 bg-stone-50/50 px-3.5 py-2.5 text-[0.95rem] leading-7 transition focus:border-brand-600 focus:bg-white focus:outline-none">{form?.body ?? ''}</textarea>
+				<textarea bind:this={replyInput} aria-label={m.forum_reply_heading()} name="body" rows="4" required maxlength="4000" class="w-full rounded-xl border border-stone-300 bg-stone-50/50 px-3.5 py-2.5 text-[0.95rem] leading-7 transition focus:border-brand-600 focus:bg-white focus:outline-none">{form?.body ?? ''}</textarea>
 				<div class="mt-3 flex justify-end"><button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-800 px-6 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700">{m.forum_submit_reply()}</button></div>
 			</form>
 			{/if}

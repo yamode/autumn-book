@@ -1,3 +1,11 @@
+## キャンセル規定の管理画面を本番に・読み込み表示の総点検（2026-11-23・v0.327.0）
+
+- 管理画面のキャンセル規定は本番で `book.rank_cancel_policies` を読み、`book.admin_save_rank_cancel_policy` で保存（ブロンズ・ゴールドの2つ。シルバー・プラチナは DB が揃える）。日数 -1 は不泊・0 は当日（以前の画面は -1 を捨てていた）
+- 読み込み中の表示: A面・B面の全ページに形を付けた（`loadingShape`: home / facility / news-list / article / plan-detail / form / reservation-detail / videos ほか）。B面はメニューの最上位だけ PartnerPageSkeleton。**ページを足したら `page-transition.test.ts` が形の決め忘れを落とす**
+- コミュニティの入力欄のプレースホルダーを外した
+- [ ] 管理画面のキャンセル規定で保存すると、予約画面のキャンセル料の表示に出る（不泊の行が残る）
+- [ ] A面・B面でページを移るとき、移り先の形の読み込み表示が出る（トップ・施設・プラン詳細・予約詳細・入力の画面）
+
 ## オプションの翻訳を本番で・会員特典の説明文を管理画面で編集（2026-11-23・v0.326.0）
 
 - 管理画面のオプションの翻訳は本番で `book.content_translations`（entity_type='option'）に保存する

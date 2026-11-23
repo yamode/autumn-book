@@ -4,7 +4,7 @@
   import PartnerPageSkeleton from '$lib/components/PartnerPageSkeleton.svelte';
   import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
   import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
-  import { pendingPage } from '$lib/page-transition';
+  import { loadingShape, pendingPage } from '$lib/page-transition';
   import PartnerBookingCart from '$lib/components/partner/PartnerBookingCart.svelte';
   import { memberCart } from '$lib/member-cart.svelte';
 
@@ -89,7 +89,10 @@
   const pending = $derived(pendingPage('partner'));
   const activePath = $derived(pending?.url.pathname ?? $page.url.pathname);
   const pendingMenu = $derived(pending?.route.id?.split('/')[3] ?? '');
-  const pendingLabel = $derived((menu.find(([path]) => path === pendingMenu) ?? MENU.find(([path]) => path === pendingMenu))?.[1] ?? '');
+  // メニューの最上位（/p/[token]/calendar 等）へ移るときだけメニュー名の骨組み。その下（予約の詳細など）は形に合わせる（loadingShape）
+  const pendingTop = $derived((pending?.route.id ?? '').split('/').length === 4);
+  const pendingLabel = $derived(pendingTop ? ((menu.find(([path]) => path === pendingMenu) ?? MENU.find(([path]) => path === pendingMenu))?.[1] ?? '') : '');
+  const pendingShape = $derived(loadingShape(pending?.route.id ?? ''));
 
   // メニューの現在地（予約入力 /book は「料金カレンダー」側に含める。/bookings とは区別する）。メニューで移る間は行き先
   const isActive = (path: string) => {
@@ -217,7 +220,7 @@
       {#if pendingLabel}
         <PartnerPageSkeleton path={pendingMenu} label={pendingLabel} />
       {:else}
-        <div class="mx-auto max-w-4xl px-4 pb-10 pt-6 sm:px-6"><PageLoadingSkeleton /></div>
+        <div class="mx-auto max-w-4xl px-4 pb-10 pt-6 sm:px-6"><PageLoadingSkeleton shape={pendingShape} /></div>
       {/if}
     {/snippet}
     {@render children()}

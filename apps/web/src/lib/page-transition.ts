@@ -84,11 +84,23 @@ export function transitionTitle(route: string): string {
 }
 
 export type LoadingShape = 'plain' | 'search-results' | 'plans-results' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
-	'account-list' | 'auth' | 'lookup' | 'membership' | 'community' | 'community-board' | 'community-thread' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail' | 'inroom';
+	'account-list' | 'auth' | 'lookup' | 'membership' | 'community' | 'community-board' | 'community-thread' |
+	'home' | 'facility' | 'news-list' | 'article' | 'plan-detail' | 'form' | 'reservation-detail' | 'videos' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail' | 'inroom';
 
 export function loadingShape(route: string): LoadingShape {
 	// 客室案内のトップ（上の写真 → 滞在カード → 案内カード 2 列）
 	if (route === '/r') return 'inroom';
+	// B面（取引先ページ /p/[token]）: メニューの最上位は PartnerPageSkeleton。その下のページの形をここで決める（2026-11-23 総点検）
+	if (route === '/p/[token]' || route.startsWith('/p/[token]/')) {
+		const rest = route.slice('/p/[token]'.length);
+		if (rest === '' || rest === '/mfa' || rest === '/setup') return 'auth';
+		if (rest === '/bookings/[id]' || rest === '/group/[id]') return 'reservation-detail';
+		if (rest === '/book') return 'hold';
+		if (/\/(amend|options)(\/|$)/.test(rest) || rest === '/group/new') return 'form';
+		if (rest.startsWith('/legal/') || rest === '/memorandum') return 'article';
+		if (rest.startsWith('/account/')) return 'account-list';
+		return 'plain';
+	}
 	if (route === '/admin') return 'admin-dashboard';
 	if (/^\/admin\/(login|mfa)(\/|$)/.test(route)) return 'auth';
 	if (route === '/admin/plans') return 'admin-cards';
@@ -97,6 +109,16 @@ export function loadingShape(route: string): LoadingShape {
 	if (/^\/admin\/(reservations\/\[code\]|members\/\[id\]|group-inquiries\/\[id\])$/.test(route)) return 'admin-split';
 	if (under(route, '/admin')) return 'admin-detail';
 	const path = route.replace('/(public)', '');
+	// A面（公開サイト）: トップ・施設・お知らせ・詳細・規約など（2026-11-23 総点検）
+	if (path === '' || path === '/') return 'home';
+	if (path === '/kitakaze') return 'videos';
+	if (/^\/\[brand\]\/\[facility\](\/\[page\])?$/.test(path)) return 'facility';
+	if (/^\/\[brand\]\/\[facility\]\/news$/.test(path)) return 'news-list';
+	if (/^\/\[brand\]\/\[facility\]\/news\/\[id\]$/.test(path) || path === '/help' || under(path, '/legal')) return 'article';
+	if (/^\/\[brand\]\/\[facility\]\/(plans\/\[plan\]|rooms\/\[room\])$/.test(path) || path === '/plan/[token]') return 'plan-detail';
+	if (path === '/community/[board]/new' || path === '/community/settings') return 'form';
+	if (path === '/account/reservations/[code]') return 'reservation-detail';
+	if (/^\/account\/reservations\/\[code\]\/(amend|options)/.test(path) || path === '/account/upgrades/[id]' || path === '/account/bath/[booking]') return 'form';
 	if (path === '/search') return 'search';
 	if (/^\/\[brand\]\/\[facility\]\/plans$/.test(path)) return 'plans';
 	if (/^\/\[brand\]\/\[facility\]\/rooms$/.test(path)) return 'rooms';

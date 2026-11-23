@@ -150,7 +150,7 @@
 			{@render searchCards()}
 		{:else if shape === 'plans-results'}
 			{@render planRooms()}
-		{:else if kind === 'videos'}
+		{:else if kind === 'videos' || shape === 'videos'}
 			<div class="grid gap-3 sm:grid-cols-2">
 				{#each [0, 1, 2, 3] as card (card)}
 					<div class="overflow-hidden rounded-xl border border-stone-200 bg-white">
@@ -392,6 +392,108 @@
 							</div>
 						</div>
 					{/each}
+				</div>
+			</div>
+		{:else if shape === 'home'}
+			<!-- 公式サイトのトップ: 大きな見出し（2 行）→ 検索の枠 → 宿のカード 2 列（写真が上） -->
+			<div class="mx-auto max-w-6xl space-y-12 pt-4 sm:pt-10">
+				<div class="space-y-4">
+					<div class="shimmer h-9 w-4/5 max-w-xl sm:h-12"></div>
+					<div class="shimmer h-9 w-3/5 max-w-md sm:h-12"></div>
+					<div class="shimmer h-4 w-full max-w-lg"></div>
+					<div class="shimmer mt-6 h-14 w-full rounded-xl"></div>
+				</div>
+				<div class="space-y-5">
+					<div class="shimmer h-7 w-48"></div>
+					<div class="grid gap-x-8 gap-y-10 sm:grid-cols-2">
+						{#each [0, 1] as i (i)}
+							<div class="space-y-3"><div class="shimmer-block aspect-[4/3] w-full rounded-xl"></div><div class="shimmer h-6 w-1/2"></div><div class="shimmer h-4 w-full"></div><div class="shimmer h-4 w-4/5"></div></div>
+						{/each}
+					</div>
+				</div>
+			</div>
+		{:else if shape === 'facility'}
+			<!-- 施設のページ: 大きな写真 → 施設名 → 紹介文 → 写真と文の組 2 つ -->
+			<div class="space-y-8">
+				<div class="shimmer-block aspect-[16/9] max-h-[28rem] w-full rounded-xl"></div>
+				<div class="mx-auto max-w-3xl space-y-3 text-center">
+					<div class="mx-auto shimmer h-8 w-56"></div>
+					<div class="mx-auto shimmer h-4 w-full"></div>
+					<div class="mx-auto shimmer h-4 w-4/5"></div>
+				</div>
+				{#each [0, 1] as i (i)}
+					<div class="grid items-center gap-6 md:grid-cols-2">
+						<div class="shimmer-block aspect-[4/3] w-full rounded-xl {i === 1 ? 'md:order-2' : ''}"></div>
+						<div class="space-y-3"><div class="shimmer h-6 w-2/5"></div><div class="shimmer h-4 w-full"></div><div class="shimmer h-4 w-11/12"></div><div class="shimmer h-4 w-3/4"></div></div>
+					</div>
+				{/each}
+			</div>
+		{:else if shape === 'news-list'}
+			<!-- お知らせの一覧: 見出し → 日付と題名の行 -->
+			<div class="mx-auto max-w-3xl space-y-5">
+				{@render heading()}
+				<div class="divide-y divide-stone-200 border-y border-stone-200">
+					{#each [0, 1, 2, 3, 4] as i (i)}
+						<div class="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:gap-6"><div class="shimmer h-3.5 w-24 shrink-0"></div><div class="shimmer h-4 {['w-3/4', 'w-1/2', 'w-2/3', 'w-3/5', 'w-1/2'][i]}"></div></div>
+					{/each}
+				</div>
+			</div>
+		{:else if shape === 'article'}
+			<!-- 記事・規約・ヘルプ: 見出し → 日付 → 段落 -->
+			<div class="mx-auto max-w-3xl space-y-6">
+				<div class="space-y-3">{@render heading()}<div class="shimmer h-3.5 w-32"></div></div>
+				{#each [0, 1, 2] as p (p)}
+					<div class="space-y-2.5">
+						{#each ['w-full', 'w-11/12', 'w-full', p === 2 ? 'w-1/2' : 'w-3/4'] as w, i (i)}<div class="shimmer h-4 {w}"></div>{/each}
+					</div>
+				{/each}
+			</div>
+		{:else if shape === 'plan-detail'}
+			<!-- プラン・客室の詳細: パンくず → 名前 → 写真と説明（左）＋料金の枠（右・PC） -->
+			<div class="space-y-4">
+				<div class="shimmer h-3 w-40"></div>
+				{@render heading()}
+				<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px] md:gap-x-8">
+					<div class="space-y-4">
+						<div class="shimmer-block aspect-[16/10] w-full rounded-xl"></div>
+						<div class="flex gap-2">{#each [0, 1, 2, 3] as i (i)}<div class="shimmer-block h-14 w-20 rounded-lg"></div>{/each}</div>
+						<div class="space-y-2.5 pt-2"><div class="shimmer h-4 w-full"></div><div class="shimmer h-4 w-11/12"></div><div class="shimmer h-4 w-3/4"></div></div>
+						<div class="space-y-2 rounded-xl border border-stone-200 bg-white p-4">{@render rows(4)}</div>
+					</div>
+					<div class="h-fit space-y-3 rounded-xl border border-stone-200 bg-white p-5">
+						<div class="shimmer h-4 w-24"></div>
+						<div class="shimmer h-8 w-40"></div>
+						<div class="shimmer h-3.5 w-32"></div>
+						<div class="shimmer h-10 w-full" style:border-radius="0.5rem"></div>
+						<div class="shimmer h-12 w-full" style:border-radius="0.5rem"></div>
+					</div>
+				</div>
+			</div>
+		{:else if shape === 'form'}
+			<!-- 入力の画面（予約の変更・オプション・新しい話題など）: 見出し → 説明 → 入力欄の枠 → ボタン -->
+			<div class="mx-auto max-w-2xl space-y-4">
+				{@render heading()}
+				<div class="shimmer h-4 w-4/5"></div>
+				<div class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5 sm:p-6">
+					{#each [0, 1, 2, 3] as i (i)}<div class="space-y-1.5"><div class="shimmer h-3.5 w-28"></div><div class="shimmer {i === 3 ? 'h-24' : 'h-10'} w-full" style:border-radius="0.375rem"></div></div>{/each}
+					<div class="shimmer mt-2 h-11 w-40" style:border-radius="0.5rem"></div>
+				</div>
+			</div>
+		{:else if shape === 'reservation-detail'}
+			<!-- 予約の詳細: 施設名・状態 → 予約内容の枠（左）＋金額・操作の枠（右・PC） -->
+			<div class="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
+				<div class="space-y-4">
+					<div class="flex flex-wrap items-center gap-2">{@render heading()}<div class="shimmer h-6 w-20" style:border-radius="9999px"></div></div>
+					<div class="shimmer h-3.5 w-48"></div>
+					<div class="shimmer-block aspect-[16/7] w-full rounded-xl"></div>
+					<div class="space-y-3 rounded-xl border border-stone-200 bg-white p-4">{@render rows(5)}</div>
+					<div class="space-y-2.5 rounded-xl border border-stone-200 bg-white p-4"><div class="shimmer h-5 w-32"></div><div class="shimmer h-4 w-full"></div><div class="shimmer h-4 w-2/3"></div></div>
+				</div>
+				<div class="h-fit space-y-3 rounded-xl border border-stone-200 bg-white p-4">
+					{@render rows(3)}
+					<div class="flex justify-between border-t border-stone-100 pt-3"><div class="shimmer h-5 w-16"></div><div class="shimmer h-6 w-28"></div></div>
+					<div class="shimmer h-11 w-full" style:border-radius="0.5rem"></div>
+					<div class="shimmer h-11 w-full" style:border-radius="0.5rem"></div>
 				</div>
 			</div>
 		{:else if shape === 'membership'}

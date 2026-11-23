@@ -35,11 +35,11 @@
 		<p class="text-xs leading-5 text-stone-600">{m.forum_public_notice()}</p>
 		<label class="block text-sm">
 			<span class="text-stone-600">{m.forum_thread_title_label()}</span>
-			<input name="title" value={form?.title ?? ''} required maxlength="80" placeholder={m.forum_thread_title_ph()} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
+			<input name="title" value={form?.title ?? ''} required maxlength="80" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" />
 		</label>
 		<label class="block text-sm">
 			<span class="text-stone-600">{m.forum_body_label()}</span>
-			<textarea name="body" rows="8" required maxlength="4000" placeholder={m.forum_body_ph()} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">{form?.body ?? ''}</textarea>
+			<textarea name="body" rows="8" required maxlength="4000" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2">{form?.body ?? ''}</textarea>
 		</label>
 		<div class="flex items-center gap-3">
 			<button type="submit" class="rounded-lg bg-brand-800 px-5 py-2 font-medium text-white hover:bg-brand-700">{m.forum_submit_thread()}</button>

@@ -30,7 +30,7 @@
 
 <PageHeader
 	title="キャンセル規定"
-	description="ゴールドと特別会員（プラチナ）にはゴールドの料率を適用します。非会員・ブロンズ・シルバー・退会者にはブロンズの共通料率を適用します。プラン独自のキャンセル規定がある場合は、プランの条件が優先されます。"
+	description="ゴールドと特別会員（プラチナ）にはゴールドの料率を適用します。非会員・ブロンズ・シルバー・退会者にはブロンズの共通料率を適用します。プラン独自のキャンセル規定がある場合は、プランの条件が優先されます。日数の -1 は不泊、0 は当日です。日数を変えたら、会員特典の説明文（予約の変更：宿泊日）の日数も合わせて直してください。"
 />
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
@@ -43,7 +43,7 @@
 				<div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
 					<h2 class="font-medium text-stone-800">
 						{ed.label}
-						<span class="ml-1 text-xs font-normal text-stone-400">（{ed.rankCode}・還元 {Math.round(ed.rewardRate * 100)}%）</span>
+						<span class="ml-1 text-xs font-normal text-stone-400">（還元 {Math.round(ed.rewardRate * 100)}%）</span>
 					</h2>
 					{#if form?.saved === ed.rankCode}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 				</div>
@@ -60,10 +60,10 @@
 								type="number"
 								name="days"
 								bind:value={row.days}
-								min="0"
+								min="-1"
 								class="w-20 rounded-md border border-stone-300 px-2 py-1.5 text-right"
 							/>
-							<span class="text-stone-500">日前から</span>
+							<span class="text-stone-500">日前から{#if row.days === -1}<span class="ml-1 text-xs text-stone-400">（-1 = 不泊）</span>{:else if row.days === 0}<span class="ml-1 text-xs text-stone-400">（当日）</span>{/if}</span>
 							<input
 								type="number"
 								name="rate"
