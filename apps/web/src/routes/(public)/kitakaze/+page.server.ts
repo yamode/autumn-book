@@ -2,7 +2,6 @@ import { fail } from '@sveltejs/kit';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { kitakazeEpisodePage, kitakazePlaylist } from '$lib/server/kitakaze';
 import { RADIO_ACCEPT, RADIO_LIMIT, radioFileError, submitRadioLetter } from '$lib/server/radio-letters';
-import { checkTurnstile, clientIpOf } from '$lib/server/turnstile';
 import { getForumProfile, otayoriSubmit } from '$lib/server/store';
 import { getForumNickname } from '$lib/server/supabase-data';
 import * as m from '$lib/paraglide/messages';
@@ -31,6 +30,8 @@ export const actions: Actions = {
 	submit: async (event) => {
 		const { request, locals } = event;
 		if (locals.user && locals.user.role !== 'member') return fail(403, { message: m.otayori_staff_no_post() });
+		// おたよりの投稿は会員だけ（紹介されたときのポイントは会員にしか付けられないため・2026-11-23）
+		if (!locals.user) return fail(401, { message: m.otayori_error_not_member() });
 		if (Number(request.headers.get('content-length')) > RADIO_LIMIT + 64 * 1024) {
 			return fail(413, { message: m.radio_file_size() });
 		}
@@ -40,17 +41,14 @@ export const actions: Actions = {
 		if (!body || [...body].length > 2000) {
 			return fail(400, { ...details, message: m.otayori_error_invalid() });
 		}
-		if (!locals.user && !(await checkTurnstile(form, clientIpOf(event))).ok) {
-			return fail(400, { ...details, message: m.auth_turnstile_failed() });
-		}
 		const files = form.getAll('media').filter((value): value is File => value instanceof File && value.size > 0);
 		const problem = radioFileError(files);
 		if (problem) return fail(400, { ...details, message: problem === 'size' ? m.radio_file_size() : m.radio_file_type() });
 		try {
 			const radioName = await radioNickname(event);
-			if (locals.user && !radioName) return fail(400, { ...details, message: m.radio_nickname_required() });
-			if (MEMBER_SUPABASE) await submitRadioLetter(locals.user?.id ?? null, body, radioName, files);
-			else if (locals.user) {
+			if (!radioName) return fail(400, { ...details, message: m.radio_nickname_required() });
+			if (MEMBER_SUPABASE) await submitRadioLetter(locals.user.id, body, radioName, files);
+			else {
 				const result = otayoriSubmit(locals.user.id, body, radioName);
 				if ('error' in result) throw new Error(result.error);
 			}

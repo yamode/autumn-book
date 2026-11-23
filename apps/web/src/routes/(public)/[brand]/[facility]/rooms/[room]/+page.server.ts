@@ -23,7 +23,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			(await sbListPlansMapped(facility.id)).map((p) => planForViewer(p, isMember)),
 			await loadEarlyPrepaySettings(facility.id)
 		);
-		return { facility, room, plans };
+		return { facility, room, plans, isMember };
 	}
 
 	const locale = getLocale();
@@ -37,5 +37,5 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 			.map((p) => planForViewer(p, isMember)),
 		await loadEarlyPrepaySettings(facility.id)
 	);
-	return { facility, room, plans };
+	return { facility, room, plans, isMember };
 };

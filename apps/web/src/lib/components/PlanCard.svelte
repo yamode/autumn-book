@@ -14,7 +14,8 @@
 		adults = 2,
 		nights = 1,
 		remaining = null,
-		checkin = ''
+		checkin = '',
+		isMember = true
 	}: {
 		plan: Pick<RatePlan, 'name' | 'headline' | 'mealPlan' | 'payment' | 'highlightTags' | 'photos' | 'basePrice' | 'cancellationPolicy'>;
 		href: string;
@@ -24,6 +25,8 @@
 		nights?: number;
 		remaining?: number | null;
 		checkin?: string;
+		/** 非会員には予約時決済の割引・ポイントを「会員登録で〜」と出す（予約時決済の割引は会員だけ・2026-11-22） */
+		isMember?: boolean;
 	} = $props();
 
 	// 料金表示の単位は全画面で「1名1泊・税込」を主、1室の合計を従に統一する。
@@ -50,11 +53,11 @@
 			{#if earlyMax > 0 && !earlyPoints}
 				<!-- 早期決済割（段階表の最大率が定率より大きいとき）。定率の表示とは重ねない -->
 				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-					{m.plan_early_max({ rate: earlyMaxText })}
+					{isMember ? m.plan_early_max({ rate: earlyMaxText }) : m.pay_member_save_rate({ rate: earlyMaxText })}
 				</span>
 			{:else if plan.payment.prepay && plan.payment.prepayDiscountRate > 0}
 				<span class="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
-					{m.pay_prepay_off({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) })}
+					{isMember ? m.pay_prepay_off({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) }) : m.pay_member_save_rate({ rate: String(Math.round(plan.payment.prepayDiscountRate * 100)) })}
 				</span>
 			{:else if plan.payment.prepay && !earlyPoints}
 				<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600">{m.plan_card_payment_card()}</span>
@@ -62,7 +65,7 @@
 			{#if earlyPoints}
 				<!-- 早期決済ポイント（宿泊後に上乗せ付与）。定率割引とは別に付く -->
 				<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-					{m.plan_points_max({ rate: earlyMaxText })}
+					{isMember ? m.plan_points_max({ rate: earlyMaxText }) : m.pay_member_save_points_plan({ rate: earlyMaxText })}
 				</span>
 			{/if}
 			{#if plan.payment.prepay && plan.payment.prepayMethods.includes('paypay')}

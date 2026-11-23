@@ -876,7 +876,7 @@
   "radio_visible_count": "Showing {count} episodes.",
   "radio_unavailable": "We couldn’t load the episodes. You can still open the playlist on YouTube.",
   "radio_letter_title": "Send a letter",
-  "radio_letter_note": "Anyone can send a letter. Members receive 1,000 points (worth ¥1,000) for each letter staff confirm was read on the show.",
+  "radio_letter_note": "Members can send a letter. You receive 1,000 points (worth ¥1,000) for each letter staff confirm was read on the show.",
   "radio_file_label": "Photos or videos (optional)",
   "radio_file_note": "Up to 3 files and 30 MB total. JPEG, PNG, WebP, GIF, MP4, MOV and WebM are supported.",
   "radio_file_size": "Attach up to 3 files, with a total size of 30 MB or less.",
