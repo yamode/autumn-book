@@ -15,6 +15,7 @@ export const limitedSaleMinRank = 'silver';
 export const forumWriteMinRank = 'silver';
 export const canWriteForum = (viewer: PlanViewer) => rankMeets(viewer, forumWriteMinRank);
 
-export function cancellationPolicyRank(rank: string | null | undefined): 'standard' | 'gold' | 'platinum' {
-	return rank === 'gold' || rank === 'platinum' ? rank : 'standard';
+/** キャンセル規定のグレード。特別会員（platinum）はゴールドの規定を使う（DB の book._cancellation_policy_rank と同じ・2026-11-23） */
+export function cancellationPolicyRank(rank: string | null | undefined): 'standard' | 'gold' {
+	return rank === 'gold' || rank === 'platinum' ? 'gold' : 'standard';
 }

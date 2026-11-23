@@ -43,7 +43,7 @@ export const memberRanks = [
 	{ code: 'standard', label: 'ブロンズ', rewardRate: 0.01 },
 	{ code: 'silver', label: 'シルバー', rewardRate: 0.02 },
 	{ code: 'gold', label: 'ゴールド', rewardRate: 0.03 },
-	{ code: 'platinum', label: 'プラチナ', rewardRate: 0.05 }
+	{ code: 'platinum', label: 'プラチナ', rewardRate: 0.03 }
 ] as const;
 
 export const brands: Brand[] = [
@@ -2646,6 +2646,8 @@ export function approveOtayori(postId: string, actor: string): OtayoriPost | { e
 			sourcePostId: postId,
 			createdAt: today()
 		});
+		// おたより1通につき通常のポイントを 1,000pt（DB の otayori_approve と同じ・2026-11-23）
+		pointLedger.push({ id: nextId('pt'), memberId: post.memberId, delta: 1000, reason: '北風放送で紹介されたおたより', expiresAt: pointExpiry(today()), createdAt: today() });
 	}
 	addAuditLog(actor, 'otayori_approve', `post=${postId} member=${post.memberId}${wasApproved || alreadyAwarded ? ' (no-op)' : ' +1pt'}`);
 	dbg('otayori_approve', actor, postId, alreadyAwarded ? '(already awarded)' : '+1pt');

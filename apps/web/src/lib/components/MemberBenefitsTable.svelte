@@ -3,6 +3,7 @@
 	import { rankName } from '$lib/rank-name';
 	import { memberDisplayRanks, rankCondition, type MemberDisplayRank } from '$lib/member-rank';
 	import { favoriteRoomMinRank, forumWriteMinRank, limitedSaleMinRank, stayPersonalizationMinRank } from '$lib/member-benefits';
+	// 会員先行予約と限定販売プランは実装が同じ（会員限定プラン＋グレード＋販売期間）なので 1 行にまとめた（2026-11-23）
 	import * as m from '$lib/paraglide/messages';
 
 	let { printable = false }: { printable?: boolean } = $props();
@@ -24,18 +25,16 @@
 		{ key: 'early-payment', minRank: 'standard', title: m.membership_early_payment_title(), body: m.membership_early_payment_body() },
 		{ key: 'bath', minRank: 'standard', title: m.membership_bath_title(), body: m.membership_bath_body() },
 		{ key: 'upgrade', minRank: 'silver', title: m.membership_upgrade_title(), body: m.membership_upgrade_body() },
-		{ key: 'advance', minRank: 'silver', title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
+		{ key: 'advance', minRank: limitedSaleMinRank, title: m.membership_benefit_advance_t(), body: m.membership_advance_silver_body() },
 		{ key: 'room', minRank: favoriteRoomMinRank, title: m.membership_room_designation(), body: m.membership_room_designation_body() },
 		{ key: 'cancellation', minRank: 'gold', title: m.membership_benefit_cancel_t(), body: m.membership_benefit_cancel_b() },
 		{ key: 'personalize', minRank: stayPersonalizationMinRank, title: m.membership_benefit_personalize_t(), body: m.membership_personalize_body() },
-		{ key: 'plans', minRank: limitedSaleMinRank, title: m.membership_benefit_plans_t(), body: m.membership_benefit_plans_b() },
 		{
 			key: 'changes', minRank: 'standard', title: m.membership_basic_changes(), body: m.membership_basic_changes_body(),
 			sections: [
 				{ title: m.membership_change_date_t(), body: m.membership_change_date_b() },
 				{ title: m.membership_change_guests_t(), body: m.membership_change_guests_b() },
-				{ title: m.membership_change_room_t(), body: m.membership_change_room_b() },
-				{ title: m.membership_change_options_t(), body: m.membership_change_options_b() }
+				{ title: m.membership_change_room_t(), body: m.membership_change_room_b() }
 			]
 		},
 		{ key: 'community', minRank: forumWriteMinRank, title: m.membership_benefit_community_t(), body: m.membership_benefit_community_b() },

@@ -30,9 +30,10 @@
 
 	<div class="rounded-2xl border border-stone-200 bg-white p-6">
 		<p class="text-sm text-stone-500">{m.otayori_balance_label()}</p>
-		<p class="mt-1 text-3xl font-bold text-brand-900">{m.coupon_count({ count: data.otayori.balance.toLocaleString() })}</p>
+		<p class="mt-1 text-3xl font-bold text-brand-900">{m.otayori_letter_count({ count: data.otayori.balance.toLocaleString() })}</p>
+		<!-- おたより1通につき通常のポイントを 1,000pt 付ける（2026-11-23）。使うのはポイントの画面から -->
 		<p class="mt-2 text-sm text-stone-500">
-			{m.coupon_balance_value({ amount: (data.otayori.balance * 1000).toLocaleString(getLocale()) })} · {m.otayori_value_note()}
+			{m.otayori_value_note()} <a href="/account/points" class="text-brand-800 underline">{m.otayori_points_link()}</a>
 		</p>
 	</div>
 
@@ -49,7 +50,7 @@
 						{/if}
 					</div>
 					<span class="font-semibold {entry.delta > 0 ? 'text-emerald-700' : 'text-red-600'}">
-						{m.coupon_count({ count: (entry.delta > 0 ? '+' : '') + entry.delta.toLocaleString() })}
+						{m.otayori_letter_count({ count: (entry.delta > 0 ? '+' : '') + entry.delta.toLocaleString() })}
 					</span>
 				</div>
 			{:else}

@@ -83,7 +83,8 @@ function holdNav(cookies: Cookies, holdId: string, fallback: string): { planHref
 const PREVIEW_CONFIRM_DENIED = 'プレビュー中のため、予約は確定できません（このプランは販売中ではありません）。';
 
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
-const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.05 };
+// 特別会員（platinum）はゴールドと同じ還元率（2026-11-23）
+const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.03 };
 
 export const load: PageServerLoad = async (event) => {
 	const { url, locals, cookies } = event;

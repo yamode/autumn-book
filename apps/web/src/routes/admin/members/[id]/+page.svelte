@@ -17,7 +17,7 @@
 
 {#if form?.adjusted}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ポイントを調整しました（監査ログに記録）。</p>{/if}
 {#if form?.rankChanged}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ランクを変更しました（監査ログに記録）。</p>{/if}
-{#if form?.otayoriGranted}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりポイントを付与しました（監査ログに記録）。</p>{/if}
+{#if form?.otayoriGranted}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりの記録を直しました（足した分は1通につき1,000ポイントを付与・監査ログに記録）。</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 
 <div class="grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -31,7 +31,7 @@
 				<div class="flex gap-2"><dt class="shrink-0 text-stone-400">電話</dt><dd>{data.m.phone}</dd></div>
 				<div class="flex gap-2"><dt class="shrink-0 text-stone-400">メルマガ</dt><dd>{data.m.mailOptIn ? '受信する' : '受信しない'}</dd></div>
 				<div class="flex gap-2"><dt class="shrink-0 text-stone-400">ポイント残高</dt><dd class="font-medium">{data.balance.toLocaleString()} pt</dd></div>
-				<div class="flex gap-2"><dt class="shrink-0 text-stone-400">おたよりpt残高</dt><dd class="font-medium">{data.otayoriBalance.toLocaleString()} pt <span class="text-xs font-normal text-stone-400">（1pt=1,000円分）</span></dd></div>
+				<div class="flex gap-2"><dt class="shrink-0 text-stone-400">紹介されたおたより</dt><dd class="font-medium">{data.otayoriBalance.toLocaleString()} 通 <span class="text-xs font-normal text-stone-400">（1通ごとに1,000ポイントを付与）</span></dd></div>
 				{#if data.live}
 					<div class="flex gap-2">
 						<dt class="text-stone-400">push</dt>
@@ -252,8 +252,8 @@
 			</form>
 
 			<form method="POST" action="?/grantOtayori" use:enhance class="rounded-xl border border-amber-200 bg-amber-50/40 p-4 text-sm">
-				<h2 class="font-medium text-stone-700">おたよりポイント手動付与</h2>
-				<p class="mt-1 text-xs text-stone-400">1pt＝1,000円相当。番組開始前からの保持者などへ付与します。付与は正、取消は負の数。理由は監査ログに記録されます。現在の残高: <span class="font-medium text-stone-600">{data.otayoriBalance.toLocaleString()}pt</span></p>
+				<h2 class="font-medium text-stone-700">おたよりの手動付与</h2>
+				<p class="mt-1 text-xs text-stone-400">紹介されたおたよりの通数を足します（番組開始前に紹介した方など）。足した1通ごとに通常のポイントを1,000ポイント付与します。負の数は通数の記録だけを取り消し、ポイントは減らしません。理由は監査ログに記録されます。現在: <span class="font-medium text-stone-600">{data.otayoriBalance.toLocaleString()}通</span></p>
 				<input type="number" name="otayoriDelta" placeholder="+1 / -1" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
 				<input name="otayoriReason" placeholder="理由（必須）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
 				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-2 text-white hover:bg-brand-700">おたよりptを付与</button>

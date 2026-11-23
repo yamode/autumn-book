@@ -25,7 +25,7 @@
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、おたよりクーポン1枚（1,000円分）を付与します。" />
+<PageHeader title="北風放送のおたより" description="投稿と添付を確認し、番組で紹介したおたよりを記録します。会員の投稿には、1,000ポイント（1,000円分）を付与します。" />
 
 <section aria-label="YouTube Data API" class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm">
 	<div>
@@ -87,7 +87,7 @@
 						</ul>
 					{/if}
 					{#if it.awardedAt}
-						<p class="mt-3 text-sm font-medium text-emerald-800">クーポン1枚付与 · {dateTime(it.awardedAt)}</p>
+						<p class="mt-3 text-sm font-medium text-emerald-800">1,000ポイント付与 · {dateTime(it.awardedAt)}</p>
 					{/if}
 
 					<div class="mt-3 flex flex-wrap items-center gap-2">
