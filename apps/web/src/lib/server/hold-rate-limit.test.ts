@@ -52,3 +52,10 @@ describe('仮押さえの回数制限（S8）', () => {
 		expect(store.get(holdRateKey('5.6.7.8', t))).toBe(String(HOLD_LIMIT));
 	});
 });
+
+describe('接続元キーの IPv6 丸め（M-3）', () => {
+	it('同じ /64 の IPv6 は同じキーになる', () => {
+		expect(holdClientKey('2001:db8:1:2::a')).toBe(holdClientKey('2001:db8:1:2:ffff::b'));
+		expect(holdClientKey('2001:db8:1:2::a')).toBe('2001:0db8:0001:0002::/64');
+	});
+});

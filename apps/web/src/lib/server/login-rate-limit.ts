@@ -9,6 +9,7 @@
 // 数え方は固定窓: 窓の最初の記録から windowSec の間に max 回に届いたらロックする。
 //   - lockSec あり: 届いた時点から lockSec 秒ロック（ログインの失敗）
 //   - lockSec なし: 窓の終わりまでロック（認証コードの送信数。「1 時間に 5 通」を素直に表す）
+import { rateLimitClientKey } from './client-key';
 type Platform = App.Platform | undefined;
 
 // 使うのは get / put だけ（claim-rate-limit.ts と同じ理由で自前の最小型で受ける）
@@ -172,7 +173,11 @@ export function clearRateMemory() {
 }
 
 /** IP が取れないときのキー（1 つのキーとして扱う・§4.1） */
-export const ipKey = (ip: string | null | undefined) => (ip && ip.trim() ? ip.trim().slice(0, 64) : 'unknown');
+// IPv6 は /64 に丸める（アドレスを替え続けて IP 別の上限をすり抜けさせない・2026-11-23 レビュー M-3）
+export const ipKey = (ip: string | null | undefined) => {
+  const v = rateLimitClientKey(ip);
+  return v ? v.slice(0, 64) : 'unknown';
+};
 
 /** メールアドレスなどをキーにするときのハッシュ（KV に生の値を残さない）。小文字・前後空白なしで揃える */
 export async function hashKeyPart(value: string): Promise<string> {

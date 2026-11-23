@@ -9,6 +9,8 @@
 //   DB 側の上限が残る）。
 // Turnstile は別途（S2 の lib/server/turnstile.ts）で足す。
 
+import { rateLimitClientKey } from './client-key';
+
 type Platform = App.Platform | undefined;
 
 type KvLike = {
@@ -26,9 +28,9 @@ export function holdRateKey(ip: string, nowMs: number, windowSec = HOLD_WINDOW_S
 	return `hold:${holdClientKey(ip)}:${Math.floor(nowMs / 1000 / windowSec)}`;
 }
 
-/** DB に渡す接続元（空なら 'unknown'・100 文字まで） */
+/** DB に渡す接続元（空なら 'unknown'・100 文字まで）。IPv6 は /64 に丸める（2026-11-23 レビュー M-3） */
 export function holdClientKey(ip: string | null | undefined): string {
-	const v = (ip ?? '').trim();
+	const v = rateLimitClientKey(ip);
 	return (v === '' ? 'unknown' : v).slice(0, 100);
 }
 
