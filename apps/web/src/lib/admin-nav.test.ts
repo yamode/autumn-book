@@ -41,6 +41,12 @@ describe('管理画面のメニューの現在地', () => {
 		expect(group?.label).toBe('会員・サイト');
 		expect(visibleNav('staff').flatMap((g) => g.items.map((i) => i.href))).toContain('/admin/support');
 	});
+	it('出張シェフは受付枠・予約一覧・予約詳細が同じ項目（スタッフにも出す）', () => {
+		expect(at('/admin/chef')).toBe('出張シェフ > 受付枠');
+		expect(at('/admin/chef/reservations')).toBe('出張シェフ > 予約一覧');
+		expect(at('/admin/chef/reservations/00000000-0000-4000-8000-000000000001')).toBe('出張シェフ > 予約一覧');
+		expect(visibleNav('staff').flatMap((g) => g.items.map((i) => i.href))).toContain('/admin/chef');
+	});
 	it('どこにも無い画面は null', () => {
 		expect(at('/admin/mfa')).toBeNull();
 	});

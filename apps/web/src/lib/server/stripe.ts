@@ -147,6 +147,11 @@ export const retrieveCheckoutSession = (id: string, expandSetup = false) =>
     expandSetup ? { expand: ['setup_intent', 'setup_intent.payment_method'] } : undefined
   );
 
+// 決済画面（Checkout Session）を閉じる。出張シェフ（hp-pchef）の予約を取消・現地払いへ切り替えたときに使う。
+// open 以外（expired / complete）の Session はエラーになる。
+export const expireCheckoutSession = (id: string) =>
+  stripeFetch<CheckoutSession>('POST', `/checkout/sessions/${encodeURIComponent(id)}/expire`);
+
 // ---- カードを登録して後日請求（チェックアウト日決済）----
 
 export type StripePaymentMethod = {
