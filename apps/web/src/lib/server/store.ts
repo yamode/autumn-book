@@ -33,7 +33,7 @@ import type {
 } from '$lib/types';
 import { extractReplyTo } from '$lib/forum-format';
 import { dbg } from '$lib/debug';
-import { canPersonalizeStay, isStayPersonalization } from '$lib/member-benefits';
+import { canPersonalizeStay, canWriteForum, isStayPersonalization } from '$lib/member-benefits';
 
 // ---------------------------------------------------------------- マスタ（デモ）
 
@@ -2189,7 +2189,7 @@ function seedThread(
 
 // 1. announce: 開設のお知らせ（pinned）
 seedThread('fb-announce', 'staff-demo', 'コミュニティ掲示板を開設しました', { pinned: true }, [
-	['staff-demo', 'みなさまこんにちは。山人のコミュニティ掲示板を開設しました。\nこちらはニックネームでご参加いただける場です。どなたでも閲覧でき、書き込みは会員（登録無料）のみとなります。\n宿のことでも旅のことでも、どうぞ気軽にお声がけください。', 14],
+	['staff-demo', 'みなさまこんにちは。山人のコミュニティ掲示板を開設しました。\nこちらはニックネームでご参加いただける場です。どなたでも閲覧でき、書き込みはシルバー以上の会員の特典です。\n宿のことでも旅のことでも、どうぞ気軽にお声がけください。', 14],
 	['m-demo', 'こういう場所が欲しかったです。よろしくお願いします！', 13],
 	['staff-demo', '>>2 ありがとうございます。のんびり育てていきます。', 13]
 ]);
@@ -2328,11 +2328,19 @@ export function setForumNickname(userId: string, nickname: string, role: ForumPr
 	return profile;
 }
 
+/** 書き込みはシルバー以上の会員だけ（スタッフは除く）。DB の forum_create_* と同じ */
+function forumRankOk(profile: ForumProfile): boolean {
+	if (profile.role !== 'member') return true;
+	const member = memberById(profile.userId);
+	return canWriteForum({ isMember: Boolean(member), rank: member?.rank ?? null });
+}
+
 /** RPC: book.forum_create_thread 相当。thread + post_no=1 を同時作成 */
-export function createForumThread(userId: string, boardId: string, title: string, body: string): { thread: ForumThread } | { error: 'banned' | 'no_nickname' | 'invalid' | 'archived' } {
+export function createForumThread(userId: string, boardId: string, title: string, body: string): { thread: ForumThread } | { error: 'banned' | 'no_nickname' | 'invalid' | 'archived' | 'rank_required' } {
 	const profile = profileOf(userId);
 	if (!profile) return { error: 'no_nickname' };
 	if (profile.isBanned) return { error: 'banned' };
+	if (!forumRankOk(profile)) return { error: 'rank_required' };
 	const board = forumBoards.find((b) => b.id === boardId);
 	if (!board) return { error: 'invalid' };
 	if (board.isArchived) return { error: 'archived' };
@@ -2369,10 +2377,11 @@ export function createForumThread(userId: string, boardId: string, title: string
 }
 
 /** RPC: book.forum_create_post 相当。post_no = max+1・replyCount++・lastPostedAt 更新 */
-export function createForumPost(userId: string, threadId: string, body: string): { post: ForumPost } | { error: 'banned' | 'no_nickname' | 'locked' | 'invalid' | 'not_found' } {
+export function createForumPost(userId: string, threadId: string, body: string): { post: ForumPost } | { error: 'banned' | 'no_nickname' | 'locked' | 'invalid' | 'not_found' | 'rank_required' } {
 	const profile = profileOf(userId);
 	if (!profile) return { error: 'no_nickname' };
 	if (profile.isBanned) return { error: 'banned' };
+	if (!forumRankOk(profile)) return { error: 'rank_required' };
 	const thread = forumThreads.find((t) => t.id === threadId && !t.isDeleted);
 	if (!thread) return { error: 'not_found' };
 	if (thread.isLocked) return { error: 'locked' };

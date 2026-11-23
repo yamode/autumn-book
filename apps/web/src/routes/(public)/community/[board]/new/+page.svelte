@@ -24,6 +24,12 @@
 			<p class="mt-1 text-sm text-stone-700">{m.forum_write_app_only()}</p>
 			<a href="/community/{data.board.slug}" class="mt-3 inline-block text-sm text-stone-500 hover:underline">{m.forum_back_to_board()}</a>
 		</div>
+	{:else if !data.rankOk}
+		<div class="rounded-2xl border border-stone-200 bg-stone-50 p-4 sm:p-5">
+			<p class="text-sm text-stone-700">{m.forum_rank_required_notice()}</p>
+			<a href="/membership" class="mt-2 inline-block text-sm text-brand-800 underline">{m.nav_membership()}</a>
+			<a href="/community/{data.board.slug}" class="mt-3 block text-sm text-stone-500 hover:underline">{m.forum_back_to_board()}</a>
+		</div>
 	{:else}
 	<form method="POST" action="?/create" use:enhance class="space-y-4 rounded-2xl border border-stone-200 bg-white p-5">
 		<p class="text-xs leading-5 text-stone-600">{m.forum_public_notice()}</p>

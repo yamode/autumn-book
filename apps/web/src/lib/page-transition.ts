@@ -84,7 +84,7 @@ export function transitionTitle(route: string): string {
 }
 
 export type LoadingShape = 'plain' | 'search-results' | 'plans-results' | 'search' | 'plans' | 'rooms' | 'hold' | 'booking' | 'account' | 'account-profile' |
-	'account-list' | 'auth' | 'lookup' | 'membership' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail' | 'inroom';
+	'account-list' | 'auth' | 'lookup' | 'membership' | 'community' | 'community-board' | 'community-thread' | 'admin-dashboard' | 'admin-list' | 'admin-cards' | 'admin-split' | 'admin-detail' | 'inroom';
 
 export function loadingShape(route: string): LoadingShape {
 	// 客室案内のトップ（上の写真 → 滞在カード → 案内カード 2 列）
@@ -105,6 +105,10 @@ export function loadingShape(route: string): LoadingShape {
 	if (under(path, '/booking/hold')) return 'hold';
 	if (under(path, '/booking')) return 'booking';
 	if (under(path, '/membership')) return 'membership';
+	// コミュニティ: トップ（掲示板のカード＋最近の投稿）・板（スレッドのカード）・スレッド（投稿）
+	if (path === '/community') return 'community';
+	if (path === '/community/[board]') return 'community-board';
+	if (path === '/community/threads/[id]') return 'community-thread';
 	if (path === '/account' || path === '/account/reservations') return 'account';
 	if (path === '/account/profile') return 'account-profile';
 	if (under(path, '/account')) return 'account-list';

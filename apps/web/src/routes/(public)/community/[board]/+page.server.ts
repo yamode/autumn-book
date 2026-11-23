@@ -4,6 +4,8 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { getForumBoardData, listForumThreadsData } from '$lib/server/supabase-data';
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { getLocale } from '$lib/paraglide/runtime';
+import { viewerOf } from '$lib/server/secret-plans';
+import { canWriteForum } from '$lib/member-benefits';
 import type { PageServerLoad } from './$types';
 
 const PER_PAGE = 20;
@@ -32,6 +34,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		facilities,
 		isLoggedIn: locals.user?.role === 'member',
 		hasNickname,
-		writeEnabled: FORUM_WRITE_ENABLED
+		writeEnabled: FORUM_WRITE_ENABLED,
+		rankOk: locals.user?.role === 'member' ? canWriteForum(await viewerOf(locals)) : false
 	};
 };

@@ -13,6 +13,8 @@ import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { getLocale } from '$lib/paraglide/runtime';
 import * as m from '$lib/paraglide/messages';
+import { viewerOf } from '$lib/server/secret-plans';
+import { canWriteForum } from '$lib/member-benefits';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -23,9 +25,10 @@ export const load: PageServerLoad = async (event) => {
 
 	const member = locals.user?.role === 'member' ? locals.user : null;
 	const client = member && MEMBER_SUPABASE ? createSupabaseServerClient(event) : undefined;
-	const [posts, hasNickname] = await Promise.all([
+	const [posts, hasNickname, rankOk] = await Promise.all([
 		supabase ? listForumPostsData(thread.id, client) : listForumPosts(thread.id, member?.id),
-		client ? getForumNickname(client).then(Boolean).catch(() => false) : Boolean(member && getForumProfile(member.id))
+		client ? getForumNickname(client).then(Boolean).catch(() => false) : Boolean(member && getForumProfile(member.id)),
+		member ? viewerOf(locals).then(canWriteForum) : Promise.resolve(false)
 	]);
 	const facilities = getPublishedFacilities(getLocale()).map((f) => ({ name: f.name, brandSlug: f.brandSlug, slug: f.slug }));
 
@@ -36,13 +39,16 @@ export const load: PageServerLoad = async (event) => {
 			isLocked: thread.isLocked,
 			isPinned: thread.isPinned,
 			boardSlug: thread.boardSlug,
-			boardTitle: thread.boardTitle
+			boardTitle: thread.boardTitle,
+			createdAt: thread.createdAt,
+			lastPostedAt: thread.lastPostedAt
 		},
 		posts,
 		facilities,
 		isLoggedIn: Boolean(member),
 		hasNickname,
-		writeEnabled: FORUM_WRITE_ENABLED
+		writeEnabled: FORUM_WRITE_ENABLED,
+		rankOk
 	};
 };
 
@@ -57,6 +63,7 @@ export const actions: Actions = {
 			redirect(303, `/account/community?next=${encodeURIComponent(url.pathname)}`);
 		}
 
+		if (!canWriteForum(await viewerOf(locals))) return fail(403, { message: m.forum_rank_required_notice(), body: '' });
 		const form = await request.formData();
 		const body = String(form.get('body') ?? '');
 
@@ -69,6 +76,7 @@ export const actions: Actions = {
 				const msg = String((e as { message?: unknown } | null)?.message ?? '');
 				if (msg.includes('no_nickname')) return fail(400, { message: m.forum_nickname_required_notice(), body });
 				if (msg.includes('rate_limited')) return fail(429, { message: m.forum_error_rate_limit(), body });
+				if (msg.includes('rank_required')) return fail(403, { message: m.forum_rank_required_notice(), body });
 				const message =
 					msg.includes('banned') ? m.forum_error_banned()
 					: msg.includes('thread_locked') ? m.forum_error_locked()
@@ -84,6 +92,7 @@ export const actions: Actions = {
 			const message =
 				res.error === 'banned' ? m.forum_error_banned()
 				: res.error === 'locked' ? m.forum_error_locked()
+				: res.error === 'rank_required' ? m.forum_rank_required_notice()
 				: res.error === 'no_nickname' ? m.forum_nickname_required_notice()
 				: res.error === 'not_found' ? m.forum_error_not_found()
 				: m.forum_error_invalid_input();

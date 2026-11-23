@@ -25,19 +25,27 @@
 	let initial = $derived(post.nickname ? [...post.nickname][0] : '?');
 </script>
 
-<article id="post-{post.postNo}" class="scroll-mt-20 border-t border-stone-100 px-4 py-4 first:border-t-0">
-	<header class="mb-2 flex flex-wrap items-center gap-2 text-sm text-stone-400">
-		<span class="font-mono text-stone-500">{m.forum_post_anchor({ n: post.postNo })}</span>
+<!-- 左に頭文字（画像）、右に名前・本文。1番目の投稿（話題）と運営の投稿は枠で目立たせる -->
+<article id="post-{post.postNo}" class="post scroll-mt-24" class:post-op={post.postNo === 1 && !post.isDeleted} class:post-staff={post.isStaff && !post.isDeleted && post.postNo !== 1}>
+	<div class="hidden shrink-0 sm:block">
+		{#if !post.isDeleted && post.avatarUrl}
+			<img src={post.avatarUrl} alt="" class="h-10 w-10 rounded-full object-cover" />
+		{:else}
+			<span class="post-avatar" class:post-avatar-staff={post.isStaff && !post.isDeleted} aria-hidden="true">{post.isDeleted ? '–' : initial}</span>
+		{/if}
+	</div>
+	<div class="min-w-0 flex-1">
+	<header class="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
 		{#if !post.isDeleted}
 			{#if post.avatarUrl}
-				<img src={post.avatarUrl} alt="" class="h-6 w-6 rounded-full object-cover" />
+				<img src={post.avatarUrl} alt="" class="h-7 w-7 rounded-full object-cover sm:hidden" />
 			{:else}
-				<span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-800">{initial}</span>
+				<span class="post-avatar post-avatar-sm sm:hidden" class:post-avatar-staff={post.isStaff} aria-hidden="true">{initial}</span>
 			{/if}
-			<span class="min-w-0 break-all font-medium text-stone-600">{post.nickname}</span>
-			{#if post.isStaff}<span class="rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
+			<span class="min-w-0 break-all font-semibold text-brand-900">{post.nickname}</span>
+			{#if post.isStaff}<span class="rounded bg-brand-800 px-1.5 py-0.5 text-[10px] font-medium leading-none text-white">{m.forum_staff_badge()}</span>{/if}
 		{/if}
-		<time class="tabular-nums">{formatDate(post.createdAt.slice(0, 10))}</time>
+		<span class="text-stone-500"><a href="#post-{post.postNo}" class="font-mono hover:underline">{m.forum_post_anchor({ n: post.postNo })}</a> · <time class="tabular-nums" datetime={post.createdAt}>{formatDate(post.createdAt.slice(0, 10))}</time></span>
 		{#if canDelete && post.isOwn && !post.isDeleted}
 			<form method="POST" action="?/deletePost" use:enhance class="ml-auto" onsubmit={(e) => { if (!confirm(m.forum_delete_confirm())) e.preventDefault(); }}>
 				<input type="hidden" name="postId" value={post.id} />
@@ -49,7 +57,7 @@
 	{#if post.isDeleted}
 		<p class="text-base italic text-stone-400">{m.forum_deleted_post()}</p>
 	{:else}
-		<div class="break-words text-base leading-relaxed text-stone-700">{@html html}</div>
+		<div class="post-body break-words text-stone-800">{@html html}</div>
 		{#if onReply || (canReport && !post.isOwn)}
 			<div class="mt-2 flex items-start gap-2 has-[details[open]]:block">
 				{#if onReply}
@@ -88,4 +96,42 @@
 			</div>
 		{/if}
 	{/if}
+	</div>
 </article>
+
+<style>
+	.post {
+		display: flex;
+		gap: 0.875rem;
+		padding: 1.125rem 1.25rem;
+		border-top: 1px solid #f0ede7;
+	}
+	.post:first-child { border-top: 0; }
+	.post-op {
+		margin: 0.5rem;
+		border: 1px solid #ebe3d2;
+		border-radius: 0.875rem;
+		background: linear-gradient(160deg, #fff 50%, #faf6ec 100%);
+	}
+	.post-op + :global(.post) { border-top: 0; }
+	.post-staff { background: #f8f7f3; box-shadow: inset 3px 0 0 var(--color-brand-800); }
+	.post-avatar {
+		display: grid;
+		place-items: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		border-radius: 9999px;
+		background: var(--color-brand-100);
+		color: var(--color-brand-800);
+		font-size: 0.95rem;
+		font-weight: 600;
+	}
+	.post-avatar-staff { background: var(--color-brand-800); color: #fff; }
+	.post-avatar-sm { width: 1.75rem; height: 1.75rem; font-size: 0.75rem; }
+	@media (width < 40rem) {
+		.post { padding: 1rem; }
+		.post-op { margin: 0.375rem; padding: 1rem 0.875rem; }
+	}
+	.post-body { line-height: 1.85; }
+	.post-op .post-body { font-size: 1.0625rem; }
+</style>

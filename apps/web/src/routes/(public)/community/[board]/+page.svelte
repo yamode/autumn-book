@@ -1,30 +1,43 @@
 <script lang="ts">
 	import BackLink from '$lib/components/BackLink.svelte';
 	import * as m from '$lib/paraglide/messages';
-	import { formatDate } from '$lib/format';
+	import ForumThreadCard from '$lib/components/ForumThreadCard.svelte';
 	import ForumCta from '$lib/components/ForumCta.svelte';
+	import { page } from '$app/state';
+	import { canonicalPublicPath } from '$lib/experiments';
+	import { jsonLdScript, threadListJsonLd } from '$lib/forum-seo';
 
 	let { data } = $props();
+	// 2ページ目以降も、それぞれのページを正規 URL にする
+	const canonical = $derived(`${page.url.origin}${canonicalPublicPath(page.url.pathname)}${data.page > 1 ? `?page=${data.page}` : ''}`);
+	const description = $derived(data.board.description || `${data.board.title}の話題の一覧`);
+	const jsonLd = $derived(jsonLdScript(threadListJsonLd({ url: canonical, name: data.board.title, description }, data.threads, page.url.origin)));
 </script>
 
-<svelte:head><title>{data.board.title} ｜ {m.forum_title()}</title></svelte:head>
+<svelte:head>
+	<title>{data.board.title} ｜ {m.forum_title()}</title>
+	<meta name="description" content={description} />
+	<link rel="canonical" href={canonical} />
+	<meta property="og:title" content={data.board.title} />
+	<meta property="og:description" content={description} />
+	{@html jsonLd}
+</svelte:head>
 
-<div class="forum-shell mx-auto max-w-5xl px-4 py-10">
+<div class="forum-shell mx-auto max-w-5xl px-4 pb-14 pt-8 sm:pt-10">
 	<BackLink href="/community" target={m.forum_board_breadcrumb()} />
 
-	<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
-		<div>
-			<h1 class="text-2xl text-brand-900">{data.board.title}</h1>
-			<p class="mt-1 text-sm text-stone-500">{data.board.description}</p>
+	<header class="forum-hero mt-4 flex flex-wrap items-end justify-between gap-4">
+		<div class="min-w-0">
+			<p class="eyebrow">COMMUNITY</p>
+			<h1 class="hero-title">{data.board.title}</h1>
+			{#if data.board.description}<p class="mt-2 max-w-xl text-[0.95rem] leading-7 text-stone-600">{data.board.description}</p>{/if}
 		</div>
 		{#if !data.board.isArchived && data.writeEnabled}
-			{#if data.isLoggedIn}
-				<a href="/community/{data.board.slug}/new" class="shrink-0 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500">{m.forum_new_thread()}</a>
-			{:else}
-				<a href="/auth/login?next={encodeURIComponent(`/community/${data.board.slug}/new`)}" class="shrink-0 rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">{m.forum_cta_login()}</a>
+			{#if data.isLoggedIn && data.rankOk}
+				<a href="/community/{data.board.slug}/new" class="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full bg-brand-800 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700"><span aria-hidden="true" class="text-base leading-none">＋</span>{m.forum_new_thread()}</a>
 			{/if}
 		{/if}
-	</div>
+	</header>
 
 	{#if data.board.isArchived}
 		<p class="mb-4 rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-600">{m.forum_archived_notice()}</p>
@@ -37,43 +50,31 @@
 		</div>
 	{/if}
 
+	{#if data.isLoggedIn && !data.rankOk && data.writeEnabled}
+		<p class="mb-6 rounded-lg bg-stone-100 px-3 py-2.5 text-sm text-stone-600">{m.forum_rank_required_notice()} <a href="/membership" class="underline">{m.nav_membership()}</a></p>
+	{/if}
+
 	{#if !data.isLoggedIn}
 		<ForumCta showBanner={true} facilities={[]} />
 	{/if}
 
 	{#if data.threads.length === 0}
-		<p class="rounded-2xl border border-dashed border-stone-300 p-8 text-center text-sm text-stone-500">{m.forum_no_threads()}</p>
+		<p class="rounded-2xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{m.forum_no_threads()}</p>
 	{:else}
-		<ul class="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white">
-			{#each data.threads as t}
-				<li>
-					<a href="/community/threads/{t.id}" class="flex flex-col gap-1 px-4 py-3 hover:bg-stone-50 sm:flex-row sm:items-center sm:gap-4">
-						<span class="flex min-w-0 flex-1 items-center gap-1.5">
-							{#if t.isPinned}<span class="shrink-0 text-xs text-stone-600" aria-label={m.forum_label_pinned()}>📌</span>{/if}
-							{#if t.isLocked}<span class="shrink-0 text-xs text-stone-600" aria-label={m.forum_label_locked()}>🔒</span>{/if}
-							<span class="min-w-0 break-words text-sm font-medium text-brand-900">{t.title}</span>
-						</span>
-						<span class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-600">
-							<span class="inline-flex min-w-0 max-w-full flex-wrap items-center gap-1 break-all">
-								{t.authorNickname}
-								{#if t.authorIsStaff}<span class="rounded bg-brand-800 px-1 py-0.5 text-[10px] font-medium text-white">{m.forum_staff_badge()}</span>{/if}
-							</span>
-							<span class="tabular-nums">{m.forum_replies_count({ n: t.replyCount })}</span>
-							<span class="tabular-nums">{formatDate(t.lastPostedAt.slice(0, 10))}</span>
-						</span>
-					</a>
-				</li>
+		<ul class="space-y-2.5">
+			{#each data.threads as t (t.id)}
+				<li><ForumThreadCard thread={t} /></li>
 			{/each}
 		</ul>
 
 		{#if data.totalPages > 1}
 			<div class="mt-4 flex items-center justify-center gap-3 text-sm">
 				{#if data.page > 1}
-					<a href="?page={data.page - 1}" class="rounded-md border border-stone-300 px-3 py-1.5 hover:bg-stone-50">{m.forum_page_prev()}</a>
+					<a href="?page={data.page - 1}" class="pill">{m.forum_page_prev()}</a>
 				{/if}
 				<span class="tabular-nums text-stone-500">{m.forum_page_indicator({ page: data.page, total: data.totalPages })}</span>
 				{#if data.page < data.totalPages}
-					<a href="?page={data.page + 1}" class="rounded-md border border-stone-300 px-3 py-1.5 hover:bg-stone-50">{m.forum_page_next()}</a>
+					<a href="?page={data.page + 1}" class="pill">{m.forum_page_next()}</a>
 				{/if}
 			</div>
 		{/if}

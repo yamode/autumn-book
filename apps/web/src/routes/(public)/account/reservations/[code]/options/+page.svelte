@@ -19,6 +19,6 @@
 {/if}
 
 {#if !data.canPersonalize}
-	<p class="mt-4 rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600">{m.membership_gold_options_notice()}</p>
+	<p class="mt-4 rounded-lg border border-stone-200 bg-white p-3 text-sm text-stone-600">{m.membership_personalize_options_notice()}</p>
 {/if}
 <OptionOrderForm {data} />

@@ -14,7 +14,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 
 // RPC の例外 → 文言（公式マイページの options と同じ考え方）
 function optionErrorMessage(msg: string): string {
-  if (msg.includes('grade_stay_personalization')) return m.membership_gold_options_notice();
+  if (msg.includes('grade_stay_personalization')) return m.membership_personalize_options_notice();
   if (msg.includes('option_already_ordered')) return 'このアレンジはすでにお申し込み済みです。';
   if (msg.includes('past_deadline')) return 'お申し込みの締切を過ぎています。';
   if (msg.includes('option_sold_out')) return '在庫がありません。';
