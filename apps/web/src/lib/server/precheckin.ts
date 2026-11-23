@@ -13,6 +13,7 @@
 import { splashHint } from '$lib/precheckin-splash';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { DATA_SOURCE, supa } from '$lib/server/supabase';
+import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
 import { sendHtmlEmail } from '$lib/server/mailer';
 import { partnerMailSender } from '$lib/server/partners/mail';
@@ -344,7 +345,7 @@ export async function resolvePrecheckin(
 ): Promise<{ token: string; ctx: PcContext } | { error: PcError }> {
 	const token = fromLink ?? event.cookies.get(PRECHECKIN_COOKIE) ?? '';
 	if (!token) return { error: 'none' };
-	const key = RATE_PREFIX + event.getClientAddress();
+	const key = RATE_PREFIX + rateLimitClientKey(event.getClientAddress());
 	const rl = await claimRateCheck(event.platform, key);
 	if (rl.locked) return { error: 'locked' };
 	const ctx = await pcContext(token);

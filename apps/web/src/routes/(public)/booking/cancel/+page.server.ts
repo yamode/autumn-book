@@ -6,6 +6,7 @@
 // （Outlook Safe Links・Gmail のプレビュー）で予約が消えないようにするため。
 import { fail } from '@sveltejs/kit';
 
+import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure } from '$lib/server/claim-rate-limit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import {
@@ -108,7 +109,7 @@ export const load: PageServerLoad = async ({ url, setHeaders, getClientAddress, 
 		return { unavailable: false as const, state: 'reload' as const };
 	}
 
-	const ip = getClientAddress();
+	const ip = rateLimitClientKey(getClientAddress());
 	const gate = await claimRateCheck(platform, rateKey(ip));
 	if (gate.locked) {
 		return { unavailable: false as const, state: 'rate_limited' as const, retryInSec: gate.retryInSec };

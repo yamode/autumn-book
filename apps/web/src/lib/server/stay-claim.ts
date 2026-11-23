@@ -3,6 +3,7 @@
 // 簡易レート制限（5回失敗で10分ロック・KV に数える）付き。成功なら null、失敗なら fail() を返す（呼び出し側が行き先へ redirect）。
 import { fail, type RequestEvent } from '@sveltejs/kit';
 import { resolveStay, claimStayByCode } from '$lib/server/store';
+import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbClaimStayByCode } from '$lib/server/supabase-data';
@@ -12,7 +13,8 @@ import { getLocale } from '$lib/paraglide/runtime';
 const STAY_COOKIE = 'ab_stay';
 
 export async function claimStayFromForm(event: RequestEvent) {
-	const key = event.getClientAddress();
+	// IPv6 は /64 に丸めて数える（アドレスを替え続けて制限をすり抜けさせない・2026-11-23 H-2）
+	const key = rateLimitClientKey(event.getClientAddress());
 	const rl = await claimRateCheck(event.platform, key);
 	if (rl.locked) return fail(429, { claimError: 'locked' as const, retryInSec: rl.retryInSec });
 
