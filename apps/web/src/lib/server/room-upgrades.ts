@@ -12,7 +12,7 @@ const sampleDecisions = new TtlCache<'accepted' | 'declined'>(3600_000, 512);
 
 function sampleOffer(event: RequestEvent): UpgradeOffer | null {
 	const { user, memberPreview: rank } = event.locals;
-	if (!rank || !user || !rankMeets({ isMember: true, rank }, 'silver')) return null;
+	if (!rank || !user || !rankMeets({ isMember: true, rank }, 'gold')) return null;
 	const booking = myReservations(user.id).find((row) => row.code.startsWith('PREVIEW-') && row.status === 'reserved');
 	const target = roomTypeById('r-oga-suite');
 	if (!booking || !target) return null;

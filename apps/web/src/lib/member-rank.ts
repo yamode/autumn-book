@@ -10,7 +10,8 @@ export function memberDisplayRank(rank: RankCode): MemberDisplayRank {
 
 export const rankTargets = {
 	standard: { visits: 0, nights: null },
-	silver: { visits: 3, nights: null },
+	// シルバーは通算5回以上（2026-11-23 に3回から変更・DB の book._member_lifetime_qualified_rank と同じ）
+	silver: { visits: 5, nights: null },
 	gold: { visits: 30, nights: 20 },
 	platinum: { visits: 40, nights: 30 }
 } as const;

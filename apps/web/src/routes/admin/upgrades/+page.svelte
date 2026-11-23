@@ -32,7 +32,7 @@
 					<p class="text-sm leading-6 text-stone-600 sm:self-end">料金の単位：1室・1泊あたり。お客様には泊数を掛けた追加料金合計を表示します。0円（無料）または50円以上を設定してください。</p>
 					<label class="text-sm sm:col-span-2">提案のタイトル<input name="title" maxlength="120" required value={values?.title ?? selected?.title ?? 'お部屋のアップグレードのご提案'} class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5" /></label>
 					<label class="text-sm sm:col-span-2">ご案内文<textarea name="description" maxlength="4000" rows="4" value={values?.description ?? selected?.description ?? ''} class="mt-1 block w-full rounded-lg border border-stone-300 p-2.5"></textarea></label>
-					<p class="text-xs leading-6 text-stone-500 sm:col-span-2">シルバー以上の会員予約が対象です。定員と全泊の空室を確認し、選んだお客様へHTMLメールで送ります。追加料金には予約時のお支払い方法を引き継ぎます。受付期限はチェックイン日の15:00までです。</p>
+					<p class="text-xs leading-6 text-stone-500 sm:col-span-2">ゴールド以上（特別会員を含む）の会員予約が対象です。定員と全泊の空室を確認し、選んだお客様へHTMLメールで送ります。追加料金には予約時のお支払い方法を引き継ぎます。受付期限はチェックイン日の15:00までです。</p>
 					{#if !immutable}<button class="w-full rounded-lg bg-brand-800 px-5 py-3 text-white sm:col-span-2 sm:w-auto sm:justify-self-start">保存して対象者を確認</button>{/if}
 				</fieldset>
 			</form>

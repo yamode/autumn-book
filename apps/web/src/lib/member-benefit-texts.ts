@@ -1,6 +1,6 @@
 // 会員特典の説明文のうち、管理画面（/admin/member-benefits）で上書きできるもの（2026-11-23）。
 // key は画面の文言（messages/*.json）のキー。上書きは DB の book.site_texts（行が無ければ元の文言）。
-// 引数を取る文言（ランクアップ条件の「通算3回以上」など）は、ランクの条件から作るのでここには入れない。
+// 引数を取る文言（ランクアップ条件の「通算5回以上」など）は、ランクの条件から作るのでここには入れない。
 
 export type BenefitTextItem = { key: string; label: string; multiline?: boolean };
 export type BenefitTextGroup = { title: string; items: BenefitTextItem[] };
