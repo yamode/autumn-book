@@ -43,17 +43,17 @@
 
 	<section aria-labelledby="forum-boards" class="mt-2">
 		<h2 id="forum-boards" class="section-title">{m.forum_boards_heading()}</h2>
-		<!-- スマホは横にすべらせて選ぶ（縦に長くならないように） -->
-		<ul class="board-rail -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-3">
+		<ul class="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
 			{#each data.boards as board, i (board.slug)}
-				<li class="w-[80%] shrink-0 snap-start sm:w-auto">
-					<a href="/community/{board.slug}" class="board-card tone-{i % 3}">
-						<span class="flex items-start justify-between gap-2">
-							<span class="min-w-0 break-words font-semibold text-brand-900">{board.title}</span>
-							{#if board.isArchived}<span class="shrink-0 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] text-stone-500">archived</span>{/if}
+				<li>
+					<a href="/community/{board.slug}" class="board-item">
+						<span class="board-num tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+						<span class="board-name break-words">
+							{board.title}
+							{#if board.isArchived}<span class="ml-1.5 align-middle text-[10px] font-normal text-stone-500">archived</span>{/if}
 						</span>
-						<span class="mt-1.5 line-clamp-2 break-words text-sm leading-6 text-stone-600">{board.description}</span>
-						<span class="mt-auto flex items-center justify-between gap-2 pt-4 text-xs text-stone-500">
+						<span class="mt-1 line-clamp-2 break-words text-sm leading-6 text-stone-600">{board.description}</span>
+						<span class="mt-auto flex flex-wrap gap-x-3 pt-3 text-xs text-stone-500">
 							<span class="tabular-nums">{m.forum_threads_count({ n: board.threadCount })}</span>
 							{#if board.lastPostedAt}<time datetime={board.lastPostedAt} class="tabular-nums">{m.forum_last_posted()} {formatDate(board.lastPostedAt.slice(0, 10))}</time>{/if}
 						</span>
@@ -71,7 +71,7 @@
 		{#if data.recentThreads.length === 0}
 			<p class="rounded-2xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{m.forum_recent_threads_empty()}</p>
 		{:else}
-			<ul class="space-y-2.5">
+			<ul class="thread-list">
 				{#each data.recentThreads as t (t.id)}
 					<li><ForumThreadCard thread={t} boardTitle={t.boardTitle} /></li>
 				{/each}

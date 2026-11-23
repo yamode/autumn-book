@@ -40,7 +40,7 @@ import { canPersonalizeStay, canWriteForum, isStayPersonalization } from '$lib/m
 const img = (seed: string) => `https://picsum.photos/seed/${seed}/960/640`;
 
 export const memberRanks = [
-	{ code: 'standard', label: 'スタンダード', rewardRate: 0.01 },
+	{ code: 'standard', label: 'ブロンズ', rewardRate: 0.01 },
 	{ code: 'silver', label: 'シルバー', rewardRate: 0.02 },
 	{ code: 'gold', label: 'ゴールド', rewardRate: 0.03 },
 	{ code: 'platinum', label: 'プラチナ', rewardRate: 0.05 }

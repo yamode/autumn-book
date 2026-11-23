@@ -44,16 +44,16 @@
 
 {#snippet forumThreads(count: number, chip: boolean)}
 	<!-- ForumThreadCard と同じ形（左に丸い頭文字・タイトル 2 行ぶん・右に投稿数） -->
-	<div class="space-y-2.5">
+	<div class="border-t border-stone-800">
 		{#each Array(count) as _, i (i)}
-			<div class="flex items-start gap-3.5 rounded-2xl border border-stone-200 bg-white px-[1.125rem] py-4">
+			<div class="flex items-start gap-3.5 border-b border-stone-200 px-1 py-[1.125rem]">
 				<div class="shimmer h-10 w-10 shrink-0" style:border-radius="9999px"></div>
 				<div class="min-w-0 flex-1 space-y-2">
 					{#if chip}<div class="shimmer h-4 w-20" style:border-radius="9999px"></div>{/if}
 					<div class="shimmer h-4 {['w-3/4', 'w-1/2', 'w-2/3', 'w-3/5'][i % 4]}"></div>
 					<div class="shimmer h-3 w-36"></div>
 				</div>
-				<div class="shimmer h-7 w-12 self-center" style:border-radius="9999px"></div>
+				<div class="shimmer h-4 w-8 self-center"></div>
 			</div>
 		{/each}
 	</div>
@@ -356,11 +356,11 @@
 				<div>{@render forumHero(false)}<div class="mt-5 shimmer h-10 w-28" style:border-radius="9999px"></div></div>
 				<div class="space-y-3.5">
 					<div class="shimmer h-5 w-28"></div>
-					<div class="flex gap-3 overflow-hidden sm:grid sm:grid-cols-2 lg:grid-cols-3">
+					<div class="grid gap-x-8 sm:grid-cols-2 lg:grid-cols-3">
 						{#each [0, 1, 2] as i (i)}
-							<div class="w-[80%] shrink-0 space-y-2.5 rounded-2xl border border-stone-200 bg-white p-5 sm:w-auto {i === 2 ? 'sm:hidden lg:block' : ''}">
-								<div class="shimmer h-5 w-2/5"></div><div class="shimmer h-3.5 w-4/5"></div>
-								<div class="flex justify-between pt-3"><div class="shimmer h-3 w-10"></div><div class="shimmer h-3 w-24"></div></div>
+							<div class="space-y-2 border-t border-stone-800 pb-5 pt-4 {i === 2 ? 'sm:hidden lg:block' : ''}">
+								<div class="shimmer h-3 w-6"></div><div class="shimmer h-5 w-2/5"></div><div class="shimmer h-3.5 w-4/5"></div>
+								<div class="flex gap-3 pt-2"><div class="shimmer h-3 w-10"></div><div class="shimmer h-3 w-24"></div></div>
 							</div>
 						{/each}
 					</div>
@@ -382,9 +382,9 @@
 					{#if title}<h1 class="text-2xl font-bold leading-snug text-stone-900">{title}</h1>{:else}<div class="shimmer h-8 w-3/4"></div>{/if}
 					<div class="shimmer h-3.5 w-48"></div>
 				</div>
-				<div class="overflow-hidden rounded-2xl border border-stone-200 bg-white">
+				<div class="border-y border-t-stone-800 border-b-stone-200">
 					{#each [0, 1, 2] as i (i)}
-						<div class="flex gap-3.5 p-4 sm:p-5 {i === 0 ? 'm-1.5 rounded-xl border border-stone-200 bg-[#fdfbf6]' : 'border-t border-stone-100'}">
+						<div class="flex gap-3.5 px-1 py-5 {i === 0 ? 'border-b border-stone-800' : i === 2 ? 'border-t border-stone-200' : ''}">
 							<div class="shimmer hidden h-10 w-10 shrink-0 sm:block" style:border-radius="9999px"></div>
 							<div class="min-w-0 flex-1 space-y-2.5">
 								<div class="flex items-center gap-2"><div class="shimmer h-7 w-7 sm:hidden" style:border-radius="9999px"></div><div class="shimmer h-4 w-28"></div><div class="shimmer h-3 w-20"></div></div>

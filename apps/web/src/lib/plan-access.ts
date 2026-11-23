@@ -89,7 +89,7 @@ export const planShareLinkPath = (token: string) => `/plan/${token}`;
 
 /** 管理画面の表示用（日本語のみ） */
 export const RANK_LABELS_JA: Record<RankCode, string> = {
-	standard: 'スタンダード',
+	standard: 'ブロンズ',
 	silver: 'シルバー',
 	gold: 'ゴールド',
 	platinum: 'プラチナ'

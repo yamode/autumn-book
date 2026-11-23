@@ -103,20 +103,16 @@ html {
 	transition: background-color .2s, border-color .2s;
 }
 .forum-shell .pill:hover { background: #faf8f4; border-color: #d9d2c2; }
-.forum-shell .board-card {
-	position: relative; display: flex; height: 100%; flex-direction: column; overflow: hidden;
-	padding: 1.25rem 1.25rem 1rem; border: 1px solid #ebe8e1; border-radius: 1rem;
-	background: linear-gradient(160deg, #fff 55%, var(--tone) 100%);
-	transition: border-color .2s, box-shadow .2s, transform .2s;
-}
-.forum-shell .board-card::before { content: ''; position: absolute; inset: 0 0 auto; height: 3px; background: var(--tone-strong); }
-.forum-shell .board-card:hover { border-color: #d9d2c2; box-shadow: 0 14px 34px -22px #514a38a6; transform: translateY(-2px); }
-.forum-shell .board-card.tone-0 { --tone: #f4f0e6; --tone-strong: #ab9b86; }
-.forum-shell .board-card.tone-1 { --tone: #eef2f5; --tone-strong: #8294a6; }
-.forum-shell .board-card.tone-2 { --tone: #fbf4e3; --tone-strong: #ae8742; }
-@media (prefers-reduced-motion: reduce) {
-	.forum-shell .board-card:hover { transform: none; }
-}
+/* スレッドの一覧: 上下の罫線で区切る（カードにしない） */
+.forum-shell .thread-list { border-top: 1px solid var(--color-brand-900); }
+.forum-shell .thread-list > li + li { border-top: 1px solid #e7e3da; }
+.forum-shell .thread-list > li:last-child { border-bottom: 1px solid #e7e3da; }
+/* 掲示板の目次: 上の細い罫線・番号・見出し・説明（色の帯や影は使わない） */
+.forum-shell .board-item { display: flex; height: 100%; flex-direction: column; padding: 1rem 0 1.25rem; border-top: 1px solid var(--color-brand-900); }
+.forum-shell .board-num { font-family: var(--font-serif-jp); font-size: 0.8125rem; letter-spacing: 0.08em; color: var(--color-accent-600); }
+.forum-shell .board-item .board-name { margin-top: 0.35rem; font-size: 1.125rem; font-weight: 600; color: var(--color-brand-900); text-underline-offset: 0.3em; text-decoration-thickness: 1px; }
+.forum-shell .board-item:hover .board-name { text-decoration-line: underline; }
+.forum-shell .board-item:focus-visible { outline: 2px solid #78603b; outline-offset: 4px; }
 
 /* スクロールリビール（lib/actions/reveal.ts） */
 .reveal {
@@ -350,5 +346,3 @@ label[data-invalid] input[type='checkbox'][aria-invalid='true'] {
 @media (prefers-reduced-motion: reduce) {
 	.form-invalid-msg { animation: none; }
 }
-.forum-shell .board-rail { scrollbar-width: none; }
-.forum-shell .board-rail::-webkit-scrollbar { display: none; }

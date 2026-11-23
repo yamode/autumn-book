@@ -66,7 +66,7 @@
 		</p>
 	</header>
 
-	<div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_16px_38px_-30px_#514a38a6]">
+	<div class="border-y border-t-brand-900 border-b-[#e7e3da]">
 		{#each data.posts as post (post.id)}
 			<ForumPostView
 				{post}
@@ -102,7 +102,7 @@
 					<a href="/account/community?next={encodeURIComponent(`/community/threads/${data.thread.id}`)}" class="underline">{m.forum_nickname_settings_heading()}</a>
 				</p>
 			{:else}
-			<form method="POST" action="?/reply" data-reset use:enhance class="rounded-2xl border border-stone-200 bg-white p-4 shadow-[0_16px_38px_-30px_#514a38a6] sm:p-5">
+			<form method="POST" action="?/reply" data-reset use:enhance class="rounded-xl border border-stone-300 bg-white p-4 sm:p-5">
 				<h2 class="mb-2 text-sm font-medium text-stone-700">{m.forum_reply_heading()}</h2>
 				<p class="mb-2 text-xs leading-5 text-stone-600">{m.forum_public_notice()}</p>
 				<textarea bind:this={replyInput} aria-label={m.forum_reply_heading()} name="body" rows="4" required maxlength="4000" placeholder={m.forum_body_ph()} class="w-full rounded-xl border border-stone-300 bg-stone-50/50 px-3.5 py-2.5 text-[0.95rem] leading-7 transition focus:border-brand-600 focus:bg-white focus:outline-none">{form?.body ?? ''}</textarea>

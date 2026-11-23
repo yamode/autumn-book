@@ -37,16 +37,7 @@
 		display: flex;
 		align-items: flex-start;
 		gap: 0.875rem;
-		padding: 1rem 1.125rem;
-		border-radius: 1rem;
-		background: #fff;
-		border: 1px solid #ebe8e1;
-		transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-	}
-	.thread-card:hover {
-		border-color: #d9d2c2;
-		box-shadow: 0 10px 30px -18px #514a38a6;
-		transform: translateY(-1px);
+		padding: 1.125rem 0.25rem;
 	}
 	.thread-card:focus-visible { outline: 2px solid #78603b; outline-offset: 2px; }
 	.avatar {
@@ -70,7 +61,7 @@
 		line-height: 1.5;
 		overflow-wrap: anywhere;
 	}
-	.thread-card:hover .title { color: #775b2f; }
+	.thread-card:hover .title { text-decoration-line: underline; text-decoration-thickness: 1px; text-underline-offset: 0.3em; }
 	.meta {
 		display: flex;
 		flex-wrap: wrap;
@@ -108,11 +99,7 @@
 		gap: 0.3rem;
 		align-self: center;
 		flex-shrink: 0;
-		padding: 0.25rem 0.6rem;
-		border-radius: 9999px;
-		background: #faf8f4;
-		color: #6b6459;
+		color: #8a8377;
 		font-size: 0.8125rem;
-		font-weight: 600;
 	}
 </style>

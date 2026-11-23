@@ -1,3 +1,9 @@
+## コミュニティの見た目を罫線と番号の形に・ランク名をブロンズに（2026-11-23・v0.322.0）
+
+- コミュニティは色の帯・グラデーション・浮き上がる影・片側だけ太い角丸の枠を使わない（2026-11-23 ユーザー指摘「AIっぽい」）。掲示板は番号つきの目次（上の細い罫線）、スレッドの一覧と投稿は罫線で区切るだけ。スタイルは `app.css` の `.forum-shell .board-item` / `.thread-list`
+- 会員ランク standard の表示名を「ブロンズ」（英 Bronze・繁 銅卡）に。コードは standard のまま。DB の `book.member_ranks.label` も変えた（autumn-shared v13.39.0）
+- PMS の会員グレードは Book の会員ランクを読むだけにした（autumn-pms 側。VIP だけ PMS で付け外し）
+
 ## 会員特典の見直し・コミュニティの投稿制限・AI 検索向けの整備（2026-11-23・v0.321.0）
 
 - **滞在のパーソナライズはシルバー以上**（ゴールド以上から変更）。**コミュニティへの投稿はシルバー以上の会員とスタッフだけ**（閲覧はログイン不要で誰でも）。DB の `add_booking_options`・`forum_create_thread`・`forum_create_post` にも同じ条件（autumn-shared `20261123004235_book_silver_personalize_forum_write`・本番適用済み）。止まると `rank_required`。アプリ（YAMADO ONE）側はこのエラーの文言対応が要る

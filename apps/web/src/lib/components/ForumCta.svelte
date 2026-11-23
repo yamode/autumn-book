@@ -15,10 +15,7 @@
 
 {#if showBanner}
 	<div class="cta-banner mb-8">
-		<span class="cta-icon" aria-hidden="true">
-			<svg viewBox="0 0 24 24" class="h-5 w-5"><path fill="currentColor" d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.4 3.3A1 1 0 0 1 5 18.5V16a2.5 2.5 0 0 1-1-2v-7.5Z" /></svg>
-		</span>
-		<p class="min-w-0 flex-1 text-sm leading-6 text-stone-700">{m.forum_cta_banner()}</p>
+		<p class="min-w-0 grow basis-64 text-sm leading-6 text-stone-700">{m.forum_cta_banner()}</p>
 		<div class="flex shrink-0 flex-wrap gap-2">
 			<a href="/auth/register" class="inline-flex min-h-10 items-center rounded-full bg-accent-600 px-4 text-sm font-medium text-white transition hover:bg-accent-500">{m.forum_cta_register()}</a>
 			<a href="/auth/login?next={encodeURIComponent(page.url.pathname + page.url.search)}" class="inline-flex min-h-10 items-center rounded-full border border-stone-300 bg-white px-4 text-sm text-stone-700 transition hover:bg-stone-50">{m.forum_cta_login()}</a>
@@ -46,21 +43,9 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 0.875rem 1rem;
-		padding: 1rem 1.125rem;
-		border: 1px solid #ecdcb5;
-		border-radius: 1rem;
-		background: linear-gradient(120deg, #fffdf8 0%, #fcf6e7 100%);
-	}
-	.cta-icon {
-		display: grid;
-		place-items: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		flex-shrink: 0;
-		border-radius: 9999px;
-		background: #fff;
-		color: var(--color-accent-600);
-		box-shadow: 0 0 0 1px #ecdcb5;
+		gap: 0.875rem 1.25rem;
+		padding: 1.125rem 1.25rem;
+		border-radius: 0.75rem;
+		background: #f6f3ec;
 	}
 </style>

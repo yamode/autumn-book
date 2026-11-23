@@ -61,7 +61,7 @@
 	{#if data.threads.length === 0}
 		<p class="rounded-2xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{m.forum_no_threads()}</p>
 	{:else}
-		<ul class="space-y-2.5">
+		<ul class="thread-list">
 			{#each data.threads as t (t.id)}
 				<li><ForumThreadCard thread={t} /></li>
 			{/each}

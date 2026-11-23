@@ -103,18 +103,14 @@
 	.post {
 		display: flex;
 		gap: 0.875rem;
-		padding: 1.125rem 1.25rem;
-		border-top: 1px solid #f0ede7;
+		padding: 1.25rem 0.25rem;
+		border-top: 1px solid #e7e3da;
 	}
 	.post:first-child { border-top: 0; }
-	.post-op {
-		margin: 0.5rem;
-		border: 1px solid #ebe3d2;
-		border-radius: 0.875rem;
-		background: linear-gradient(160deg, #fff 50%, #faf6ec 100%);
-	}
+	/* 1 番目（話題）は本文を少し大きく、下を濃い罫線で区切る */
+	.post-op { padding-bottom: 1.5rem; border-bottom: 1px solid var(--color-brand-900); }
 	.post-op + :global(.post) { border-top: 0; }
-	.post-staff { background: #f8f7f3; box-shadow: inset 3px 0 0 var(--color-brand-800); }
+	.post-staff { background: #faf9f6; }
 	.post-avatar {
 		display: grid;
 		place-items: center;
@@ -128,9 +124,10 @@
 	}
 	.post-avatar-staff { background: var(--color-brand-800); color: #fff; }
 	.post-avatar-sm { width: 1.75rem; height: 1.75rem; font-size: 0.75rem; }
+	/* 名前の横の小さい頭文字はスマホだけ（.post-avatar の display が sm:hidden より強いのでここで消す） */
+	@media (width >= 40rem) { .post-avatar-sm { display: none; } }
 	@media (width < 40rem) {
-		.post { padding: 1rem; }
-		.post-op { margin: 0.375rem; padding: 1rem 0.875rem; }
+		.post { padding: 1.125rem 0; }
 	}
 	.post-body { line-height: 1.85; }
 	.post-op .post-body { font-size: 1.0625rem; }
