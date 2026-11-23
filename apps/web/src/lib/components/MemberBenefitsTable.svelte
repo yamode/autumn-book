@@ -27,6 +27,32 @@
 		{ code: 'zh-TW', label: '繁體中文' }
 	] as const;
 	let editLocale = $state<'ja' | 'en' | 'zh-TW'>('ja');
+	// 日本語から AI で翻訳（下書きを入力欄に入れるだけ。保存は「保存」ボタン）
+	let editForm: HTMLFormElement | undefined = $state();
+	let translating = $state(false);
+	let translateNote = $state<{ ok: boolean; text: string } | null>(null);
+	async function translateFromJa(keys: string[]) {
+		if (!editForm || editLocale === 'ja' || translating) return;
+		const lang = editLocale;
+		const field = (k: string, l: string) => editForm!.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="value_${k}_${l}"]`);
+		const fields = Object.fromEntries(keys.map((k) => [k, field(k, 'ja')?.value ?? '']).filter(([, v]) => v.trim()));
+		translating = true;
+		translateNote = null;
+		try {
+			const res = await fetch('/admin/member-benefits/translate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lang, fields }) });
+			const data = await res.json().catch(() => ({}));
+			if (!res.ok || !data?.fields) throw new Error(typeof data?.error === 'string' ? data.error : '翻訳できませんでした。');
+			for (const [k, v] of Object.entries(data.fields as Record<string, string>)) {
+				const el = field(k, lang);
+				if (el) el.value = v;
+			}
+			translateNote = { ok: true, text: '翻訳を入れました。内容を確かめてから「保存」してください。' };
+		} catch (e) {
+			translateNote = { ok: false, text: e instanceof Error ? e.message : '翻訳できませんでした。' };
+		} finally {
+			translating = false;
+		}
+	}
 	const tx = (key: string, fallback: () => string) => siteText(texts, key, fallback);
 
 	const rates: Record<MemberDisplayRank, number> = { standard: 1, silver: 2, gold: 3 };
@@ -96,6 +122,7 @@
 	});
 	async function openDetail(item: Detail) {
 		detailId = item.id;
+		translateNote = null;
 		await tick();
 		if (dialog && !dialog.open) dialog.showModal();
 	}
@@ -242,11 +269,20 @@
 			<!-- 管理画面: その場で編集（空欄にすると元の文言に戻る・保存先は book.site_texts） -->
 			<div class="mt-4 flex gap-1 rounded-lg bg-stone-100 p-1 text-sm" role="tablist" aria-label="言語">
 				{#each EDIT_LOCALES as l (l.code)}
-					<button type="button" role="tab" aria-selected={editLocale === l.code} onclick={() => (editLocale = l.code)}
+					<button type="button" role="tab" aria-selected={editLocale === l.code} onclick={() => { editLocale = l.code; translateNote = null; }}
 						class="min-h-9 flex-1 rounded-md px-3 {editLocale === l.code ? 'bg-white font-semibold text-brand-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'}">{l.label}</button>
 				{/each}
 			</div>
-			<form method="POST" action="?/saveTexts" use:enhance class="mt-4 space-y-4">
+			{#if editLocale !== 'ja' && edit.canEdit}
+				<div class="mt-3 flex flex-wrap items-center gap-3">
+					<button type="button" onclick={() => translateFromJa(detail!.keys)} disabled={translating}
+						class="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-stone-300 bg-white px-4 text-sm text-brand-800 hover:bg-stone-50 disabled:opacity-60">
+						{translating ? '翻訳しています…' : '日本語から AI で翻訳'}
+					</button>
+					{#if translateNote}<span class="text-xs {translateNote.ok ? 'text-emerald-700' : 'text-red-700'}" role="status">{translateNote.text}</span>{/if}
+				</div>
+			{/if}
+			<form bind:this={editForm} method="POST" action="?/saveTexts" use:enhance class="mt-4 space-y-4">
 				{#each detail.keys as k (k)}
 					{@const item = edit.items[k]}
 					{#if item}
