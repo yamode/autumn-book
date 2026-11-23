@@ -175,12 +175,12 @@ async function notifyFacilityTask(token: string, origin: string): Promise<void> 
 const STAY_COOKIE = 'ab_stay';
 
 /**
- * 事前チェックインのトークンから、その予約（代表の部屋）の滞在トークンを受け取る（book.precheckin_stay_token・P3）。
- * 回答済み・チェックイン日 12:00 より前だけ。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
+ * 事前チェックインのトークンから、その予約（代表の部屋）の滞在トークンを受け取る（book.precheckin_stay_cookie・P3）。
+ * 回答済み・チェックイン日 12:00 より前だけ（DB が判定。以後は部屋の QR・6 桁コードで客室案内に入る・2026-11-23 レビュー M-4）。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
  */
 export async function pcStayToken(token: string): Promise<StayTokenResult> {
 	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
-	const { data, error } = await supa().rpc('precheckin_stay_token', { p_token: token });
+	const { data, error } = await supa().rpc('precheckin_stay_cookie', { p_token: token });
 	if (error) {
 		dbg('stay_token error', error.message);
 		return { ok: false, error: 'server' };
@@ -209,7 +209,7 @@ export async function ensureStayCookie(cookies: Cookies, pcToken: string): Promi
  */
 export async function pcGuestProfile(token: string): Promise<PcProfile> {
 	if (token === DEMO_PRECHECKIN_TOKEN)
-		return { zip: '029-5514', address: '岩手県和賀郡西和賀町湯川52-71-10', birthdate: '1980-05-10', receipt_name: null, arrival_time: '15:00' };
+		return { zip_masked: '029-****', address_masked: '岩手県和賀郡 ***', birthdate_masked: '1980-**-**', has_address: true, has_birthdate: true, receipt_name: null, arrival_time: '15:00' };
 	if (DATA_SOURCE !== 'supabase') return {};
 	const { data, error } = await supa().rpc('precheckin_guest_profile', { p_token: token });
 	if (error) {
@@ -223,6 +223,12 @@ export async function pcGuestProfile(token: string): Promise<PcProfile> {
 		zip: str(r.zip),
 		address: str(r.address),
 		birthdate: str(r.birthdate)?.slice(0, 10) ?? null,
+		// 顧客マスタの値は伏せて受け取る（電話・メールと同じ・2026-11-23 レビュー M-5）
+		zip_masked: str(r.zip_masked),
+		address_masked: str(r.address_masked),
+		birthdate_masked: str(r.birthdate_masked),
+		has_address: r.has_address === true || Boolean(str(r.address)),
+		has_birthdate: r.has_birthdate === true || Boolean(str(r.birthdate)),
 		receipt_name: str(r.receipt_name),
 		arrival_time: str(r.arrival_time),
 		family_name: str(r.family_name),

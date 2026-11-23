@@ -41,7 +41,17 @@ export type PcQuestionAnswer = { id: string; question?: string; answer: string }
 /** 伺い書の項目（① で聞く・住所と生年月日は必須） */
 export type PcGuestInfo = { zip?: string | null; address?: string | null; birthdate?: string | null; receipt_name?: string | null };
 /** 顧客マスタ・予約から ① に最初から入れる値（伺い書の項目＋予約の到着予定時刻 core.stays.estimated_arrival_time） */
-export type PcProfile = PcGuestInfo & PcNameParts & { arrival_time?: string | null };
+export type PcProfile = PcGuestInfo &
+	PcNameParts & {
+		arrival_time?: string | null;
+		/** 伏せた登録の内容（「登録: 〜」に出す。2026-11-23 レビュー M-5） */
+		zip_masked?: string | null;
+		address_masked?: string | null;
+		birthdate_masked?: string | null;
+		/** 顧客マスタに住所・生年月日があるか（必須の判定用） */
+		has_address?: boolean;
+		has_birthdate?: boolean;
+	};
 export type PcAnswers = {
 	contact?: PcContact;
 	guest?: PcGuestInfo;
@@ -406,9 +416,13 @@ export function answersFromForm(form: FormData, locale: string): PcAnswers & { c
 }
 
 /** 伺い書の必須（住所・生年月日）で足りない最初の欄。足りていれば null */
-export function missingGuestField(g: PcGuestInfo): 'address' | 'birthdate' | null {
-	if (!g.address?.trim()) return 'address';
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(g.birthdate?.trim() ?? '')) return 'birthdate';
+export function missingGuestField(
+	g: PcGuestInfo,
+	/** 顧客マスタに登録があるか（値は伏せて受け取るので、有無だけで判定する・2026-11-23） */
+	registered: { address?: boolean; birthdate?: boolean } = {}
+): 'address' | 'birthdate' | null {
+	if (!g.address?.trim() && !registered.address) return 'address';
+	if (g.birthdate?.trim() ? !/^\d{4}-\d{2}-\d{2}$/.test(g.birthdate.trim()) : !registered.birthdate) return 'birthdate';
 	return null;
 }
 

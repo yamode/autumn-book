@@ -1419,7 +1419,7 @@
   "ci_deadline": "Please complete by {deadline} (JST)",
   "ci_closed": "Online entry closed at {deadline} (JST). Please tell the front desk about any changes.",
   "ci_basic_lead": "Please check your booking details. If anything is wrong, tap \"Change\" and enter the correct details.",
-  "ci_masked_note": "For your privacy, part of your phone number and email address is hidden.",
+  "ci_masked_note": "For your privacy, parts of your phone number, email address, postal code, address and date of birth are hidden.",
   "ci_field_name": "Name",
   "ci_field_name_kana": "Name (phonetic)",
   "ci_field_phone": "Phone number",

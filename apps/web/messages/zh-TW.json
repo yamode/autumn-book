@@ -1419,7 +1419,7 @@
   "ci_deadline": "填寫截止: {deadline}",
   "ci_closed": "線上填寫已於 {deadline} 截止。如需變更，請告知櫃檯。",
   "ci_basic_lead": "請確認預約內容。若有錯誤，請按「變更」並填入正確內容。",
-  "ci_masked_note": "為保護個人資料，電話號碼與電子郵件僅顯示部分內容。",
+  "ci_masked_note": "為保護個人資料，電話號碼、電子郵件、郵遞區號、地址與出生日期僅顯示部分內容。",
   "ci_field_name": "姓名",
   "ci_field_name_kana": "姓名（片假名）",
   "ci_field_phone": "電話號碼",

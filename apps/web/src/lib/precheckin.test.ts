@@ -217,6 +217,10 @@ describe('フォームの値', () => {
 		expect(missingGuestField({ address: ' ', birthdate: '1980-01-02' })).toBe('address');
 		expect(missingGuestField({ address: '岩手県', birthdate: '' })).toBe('birthdate');
 		expect(missingGuestField({ address: '岩手県', birthdate: '1980-01-02', zip: null, receipt_name: null })).toBeNull();
+		// 顧客マスタに登録があれば（値は伏せて受け取る）空欄でもよい。入力したときは形を確かめる（M-5）
+		expect(missingGuestField({}, { address: true, birthdate: true })).toBeNull();
+		expect(missingGuestField({}, { address: true })).toBe('birthdate');
+		expect(missingGuestField({ birthdate: '1980/01/02' }, { address: true, birthdate: true })).toBe('birthdate');
 	});
 	it('宿からの質問: 答えていない質問を返す（全部答えていれば null）', () => {
 		const qs = [{ id: 'a', question: 'Q1' }, { id: 'b', question: 'Q2' }];

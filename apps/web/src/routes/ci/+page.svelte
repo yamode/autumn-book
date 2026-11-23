@@ -39,9 +39,9 @@
 		{ key: 'name_kana', name: 'contact_name_kana', label: m.ci_field_name_kana(), shown: ctx.guest.nameKana, raw: ctx.guest.nameKana, type: 'text', auto: 'off', max: 100 },
 		{ key: 'phone', name: 'contact_phone', label: m.ci_field_phone(), shown: ctx.guest.phoneMasked, raw: '', type: 'tel', auto: 'tel', max: 100 },
 		{ key: 'email', name: 'contact_email', label: m.ci_field_email(), shown: ctx.guest.emailMasked, raw: '', type: 'email', auto: 'email', max: 254 },
-		{ key: 'zip', name: 'guest_zip', label: m.ci_guest_zip(), shown: p.zip ?? '', raw: p.zip ?? '', type: 'text', auto: 'postal-code', max: 20 },
-		{ key: 'address', name: 'guest_address', label: m.ci_guest_address(), shown: p.address ?? '', raw: p.address ?? '', type: 'text', auto: 'street-address', max: 300, required: true },
-		{ key: 'birthdate', name: 'guest_birthdate', label: m.ci_guest_birthdate(), shown: p.birthdate ? slashDate(p.birthdate) : '', raw: p.birthdate ?? '', type: 'date', auto: 'bday', max: 10, required: true },
+		{ key: 'zip', name: 'guest_zip', label: m.ci_guest_zip(), shown: p.zip ?? p.zip_masked ?? '', raw: p.zip ?? '', type: 'text', auto: 'postal-code', max: 20 },
+		{ key: 'address', name: 'guest_address', label: m.ci_guest_address(), shown: p.address ?? p.address_masked ?? '', raw: p.address ?? '', type: 'text', auto: 'street-address', max: 300, required: true },
+		{ key: 'birthdate', name: 'guest_birthdate', label: m.ci_guest_birthdate(), shown: p.birthdate ? slashDate(p.birthdate) : (p.birthdate_masked ?? '').replaceAll('-', '/'), raw: p.birthdate ?? '', type: 'date', auto: 'bday', max: 10, required: true },
 		{ key: 'receipt_name', name: 'guest_receipt_name', label: m.ci_guest_receipt(), shown: p.receipt_name ?? '', raw: p.receipt_name ?? '', type: 'text', auto: 'off', max: 100, placeholder: m.ci_guest_receipt_placeholder() }
 	]);
 	const savedOf = (k: Key): string =>

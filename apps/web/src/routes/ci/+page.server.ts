@@ -23,10 +23,10 @@ export const actions: Actions = {
 		// 住所・生年月日は必須（最終判定は RPC）
 		// 変更していない欄（送られてこない）は顧客マスタのとおり
 		const profile = await pcGuestProfile(r.token).catch((): PcProfile => ({}));
-		const missingGuest = missingGuestField({
-			address: answers.guest.address || profile.address,
-			birthdate: answers.guest.birthdate || profile.birthdate
-		});
+		const missingGuest = missingGuestField(
+			{ address: answers.guest.address || profile.address, birthdate: answers.guest.birthdate || profile.birthdate },
+			{ address: profile.has_address, birthdate: profile.has_birthdate }
+		);
 		if (missingGuest) return fail(400, { error: 'guest_required', field: missingGuest as string | null });
 		// 宿からの質問は必須（最終判定は RPC。ここは分かりやすい文言のため・見本も同じ）
 		const questions = await pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => []);
