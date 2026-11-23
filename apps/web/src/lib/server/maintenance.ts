@@ -13,9 +13,12 @@
 //   - プレビュートークン一致（MAINTENANCE_BYPASS_TOKEN・関係者への共有用）
 import { env } from '$env/dynamic/private';
 import { timingSafeEqualText } from '$lib/partner-mfa';
+import { signCookieValue, verifyCookieValue } from './signed-cookie';
+import { base64url } from './partners/crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 
 const PREVIEW_COOKIE = 'ab_preview';
+const PREVIEW_TTL_SEC = 60 * 60 * 24; // 1日
 const KV_KEY = 'maintenance';
 
 type Platform = App.Platform | undefined | null;
@@ -110,91 +113,141 @@ export function isPartnerPath(pathname: string): boolean {
 	);
 }
 
+// ★2026-11-23 レビュー L-2: プレビュー cookie には合言葉そのものを入れず、署名つきの印（期限＋合言葉の指紋）を入れる。
+//   ・cookie が漏れても合言葉は分からず、1 日で切れる。
+//   ・MAINTENANCE_BYPASS_TOKEN を替えれば、指紋が合わなくなって発行済みの cookie もまとめて無効になる。
+//   形式: signCookieValue('ab_preview', 'v1:<期限の epoch 秒>:<指紋>')
+
+/** 合言葉の指紋（SHA-256 の先頭 16 文字・base64url）。合言葉の入れ替えで発行済みの印を無効にするため */
+async function tokenFingerprint(token: string): Promise<string> {
+	const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`ab_preview/v1\n${token}`));
+	return base64url(new Uint8Array(h)).slice(0, 16);
+}
+
+/** プレビュー cookie の値（署名つき・1 日）を作る */
+export async function previewCookieValue(token: string, now = Date.now()): Promise<string> {
+	const exp = Math.floor(now / 1000) + PREVIEW_TTL_SEC;
+	return signCookieValue(PREVIEW_COOKIE, `v1:${exp}:${await tokenFingerprint(token)}`);
+}
+
+/** プレビュー cookie が今の合言葉で発行され、期限内か */
+export async function isValidPreviewCookie(value: string | undefined | null, token: string, now = Date.now()): Promise<boolean> {
+	if (!value || !token) return false;
+	const inner = await verifyCookieValue(PREVIEW_COOKIE, value);
+	const m = inner?.match(/^v1:(\d{1,12}):([A-Za-z0-9_-]{16})$/);
+	if (!m) return false;
+	if (Number(m[1]) * 1000 <= now) return false;
+	return timingSafeEqualText(m[2], await tokenFingerprint(token));
+}
+
+async function issuePreviewCookie(event: RequestEvent, token: string): Promise<void> {
+	event.cookies.set(PREVIEW_COOKIE, await previewCookieValue(token), {
+		path: '/',
+		httpOnly: true,
+		secure: event.url.protocol === 'https:',
+		sameSite: 'lax',
+		maxAge: PREVIEW_TTL_SEC
+	});
+}
+
+/** メンテナンスのバイパスの判定結果。redirect は ?preview= を外した同じ画面（合言葉を URL・履歴に残さない） */
+export type MaintenanceBypass = { ok: boolean; redirect?: string };
+
 /**
  * メンテナンス中でもこのリクエストを通す（バイパスする）か。
- * preview トークンが一致したら cookie を発行し、以後の遷移でも通るようにする。
+ * preview トークンが一致したら署名つきの cookie を発行し、以後の遷移でも通るようにする。
+ * GET/HEAD でトークンを受け取ったときは、?preview= を外した URL への 303 を redirect で返す。
  */
-export function isMaintenanceBypassed(event: RequestEvent): boolean {
- if(event.url.pathname==='/mail/unsubscribe')return true;
+export async function checkMaintenanceBypass(event: RequestEvent): Promise<MaintenanceBypass> {
+	if (event.url.pathname === '/mail/unsubscribe') return { ok: true };
 	const { url, locals, cookies } = event;
+	const token = bypassToken();
 
 	// 運営（admin / staff）でログイン中なら、プレビュー cookie も一緒に発行しておく。
 	// 運営のまま会員ログインの試験をすると、セッションが会員に入れ替わって運営のバイパスを失い、
 	// ログイン直後に 503 になるため（2026-10-29）。cookie があれば会員になっても公開サイトを通せる。
 	const staffRole = locals.staff?.user.role ?? locals.user?.role;
-	if (staffRole === 'admin' || staffRole === 'staff') {
-		const t = bypassToken();
-		if (t && !timingSafeEqualText(cookies.get(PREVIEW_COOKIE) ?? '', t)) {
-			cookies.set(PREVIEW_COOKIE, t, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 });
-		}
+	if ((staffRole === 'admin' || staffRole === 'staff') && token && !(await isValidPreviewCookie(cookies.get(PREVIEW_COOKIE), token))) {
+		await issuePreviewCookie(event, token);
 	}
 
+	if (isAlwaysOpenPath(url.pathname)) return { ok: true };
+
+	// 運営（admin / staff）はメンテ中も公開サイトをプレビューできる
+	const role = locals.user?.role;
+	if (role === 'admin' || role === 'staff') return { ok: true };
+
+	// プレビュートークン（関係者への共有用）
+	if (token) {
+		const q = url.searchParams.get('preview');
+		if (q && timingSafeEqualText(q, token)) {
+			await issuePreviewCookie(event, token);
+			const method = event.request?.method ?? 'GET';
+			if (method === 'GET' || method === 'HEAD') {
+				const clean = new URL(url);
+				clean.searchParams.delete('preview');
+				return { ok: true, redirect: clean.pathname + clean.search + clean.hash };
+			}
+			return { ok: true };
+		}
+		if (await isValidPreviewCookie(cookies.get(PREVIEW_COOKIE), token)) return { ok: true };
+	}
+
+	return { ok: false };
+}
+
+/** checkMaintenanceBypass の可否だけ */
+export async function isMaintenanceBypassed(event: RequestEvent): Promise<boolean> {
+	return (await checkMaintenanceBypass(event)).ok;
+}
+
+/** メンテナンス中でも誰でも開ける面か */
+function isAlwaysOpenPath(pathname: string): boolean {
 	// 管理エリアは常に到達可能（/admin/login でログイン → バイパス取得するため）
-	if (url.pathname === '/admin' || url.pathname.startsWith('/admin/')) return true;
+	if (pathname === '/admin' || pathname.startsWith('/admin/')) return true;
 
 	// 滞在中のお客様向けの面（客室電子インフォメーション・貸切風呂のご予約）は
 	// ポータル本体より先に公開する。館内図に刷った QR の着地点なので、
 	// メンテナンス中でも必ず開けなければならない（紙は刷り直せない）。
 	// 言語プレフィックス付き（/en/r・/zh-TW/r）も同じ扱いにする。
-	if (/^\/(?:en\/|zh-TW\/)?r(?:\/|$)/.test(url.pathname)) return true;
+	if (/^\/(?:en\/|zh-TW\/)?r(?:\/|$)/.test(pathname)) return true;
 	// 事前チェックインのフォーム（/ci/<token>）も、SMS・メールで送ったリンクの着地点なので同じ扱い（P4）
-	if (/^\/(?:en\/|zh-TW\/)?ci(?:\/|$)/.test(url.pathname)) return true;
+	if (/^\/(?:en\/|zh-TW\/)?ci(?:\/|$)/.test(pathname)) return true;
 
 	// 取引先専用ページ（限定URL /p/<token>・取引先 API・Stripe Webhook・請求 cron）は
 	// ポータル本体の公開状況と関係なく稼働させる（2026-09-26 ユーザー指示。autumn-rms から移設）。
-	if (isPartnerPath(url.pathname)) return true;
+	if (isPartnerPath(pathname)) return true;
 
 	// FAQ ボットの公開 API とウィジェットは、各施設HP（oga.yamado.co.jp・www.yamado.co.jp）に埋め込んで使う
 	// 独立した機能なので、ポータル本体の公開状況と関係なく稼働させる（2026-10-03 ユーザー指示・設計書 autumn_book_faq_bot_design.md）。
-	if (url.pathname.startsWith('/api/faq/') || url.pathname.startsWith('/faq/')) return true;
+	if (pathname.startsWith('/api/faq/') || pathname.startsWith('/faq/')) return true;
 	// お知らせの公開 API も同様に、施設HP（Xserver の PHP）が一覧・詳細の描画に使う（2026-10-03 ユーザー指示: 両HPのお知らせを Book で管理）
-	if (url.pathname.startsWith('/api/news/')) return true;
+	if (pathname.startsWith('/api/news/')) return true;
 	// 施設ナレッジの API（docs/facility-knowledge.md 段階5）は、taskul-social などほかのアプリがサーバー側から読む。
 	// ポータル本体の公開状況と関係なく稼働させる。ルートの中で鍵（KNOWLEDGE_API_KEY）を必ず確かめる
-	if (url.pathname.startsWith('/api/knowledge/')) return true;
+	if (pathname.startsWith('/api/knowledge/')) return true;
 	// 西和賀HPの署名付き問い合わせ受付は、予約ポータルの公開状態から独立する。
 	// この例外でも受付ルート内のHMAC・時刻・公開フラグ検証は必須。
-	if (url.pathname === '/api/inquiries/nishiwaga') return true;
+	if (pathname === '/api/inquiries/nishiwaga') return true;
 	// 会員サポートの受信（受信用 Worker → 署名つき POST・docs/member-support.md）も、メールを落とさないよう公開状態から独立させる。
 	// ルートの中で署名と時刻を必ず確かめる
-	if (url.pathname === '/api/support/inbound') return true;
+	if (pathname === '/api/support/inbound') return true;
 	// 公開アプリ yamado-one の仮押さえ API も、ポータル本体の公開状況と関係なく稼働させる
 	// （2026-10-17 ユーザー指示・auth-hardening.md S8）。アプリはストアに出る別プロダクトで、
 	// ポータルの公開前・メンテナンス中でも予約できなければならない。ここを通さないと
 	// アプリの「予約へ進む」が 503 のメンテナンス HTML を受け取って必ず失敗する。
-	if (url.pathname === '/api/hold') return true;
+	if (pathname === '/api/hold') return true;
 	// 予約の確定も同じ理由でアプリ用の入口を通す（2026-10-21 監査で確定 RPC を service_role 専用にした）
-	if (url.pathname === '/api/confirm') return true;
+	if (pathname === '/api/confirm') return true;
 	// CSP の違反報告（Report-Only）はメンテナンス中のプレビューからも届く。HTML を返さず受ける
-	if (url.pathname === '/api/csp-report') return true;
+	if (pathname === '/api/csp-report') return true;
 	// アクセス元の国の判定（同意バナーの出し分け）も、施設HP（Xserver・国が分からない）がブラウザから呼ぶ
 	// 独立した機能なので、ポータル本体の公開状況と関係なく稼働させる（2026-10-21）。
-	if (url.pathname === '/api/geo') return true;
+	if (pathname === '/api/geo') return true;
 
 	// 法定表記（特商法・プライバシーポリシー・宿泊約款）は、取引先ページからのリンク先であり、
 	// 決済サービスの審査でも開ける必要があるため、ポータル本体の公開前から見られるようにする。
-	if (/^\/(?:en\/|zh-TW\/)?legal\//.test(url.pathname)) return true;
-
-	// 運営（admin / staff）はメンテ中も公開サイトをプレビューできる
-	const role = locals.user?.role;
-	if (role === 'admin' || role === 'staff') return true;
-
-	// プレビュートークン（関係者への共有用）
-	const token = bypassToken();
-	if (token) {
-		const q = url.searchParams.get('preview');
-		if (q && timingSafeEqualText(q, token)) {
-			cookies.set(PREVIEW_COOKIE, token, {
-				path: '/',
-				httpOnly: true,
-				sameSite: 'lax',
-				maxAge: 60 * 60 * 24 // 1日
-			});
-			return true;
-		}
-		// ★2026-10-21 監査: 合言葉は時間一定で比べる
-		if (timingSafeEqualText(cookies.get(PREVIEW_COOKIE) ?? '', token)) return true;
-	}
+	if (/^\/(?:en\/|zh-TW\/)?legal\//.test(pathname)) return true;
 
 	return false;
 }

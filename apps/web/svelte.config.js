@@ -15,14 +15,24 @@ const config = {
 		csrf: { trustedOrigins: ['*'] },
 		// Cloudflare Pages デプロイ（設計書 §0）
 		adapter: adapter(),
-		// ★2026-10-21 監査: CSP を Report-Only で入れる（遮断はしない。違反は /api/csp-report に届きログに出る）。
-		//   しばらく違反ログを見て、正当な読み込み元を足し切ってから reportOnly → directives（強制）へ移す。
-		//   SvelteKit が自分のインラインスクリプトに nonce を付ける（mode: auto）。
+		// ★2026-10-21 監査: CSP を Report-Only で入れた（違反は /api/csp-report に届きログに出る）。
+		// ★2026-11-23 レビュー L-1: 強制（directives）へ移した。XSS が 1 つ出ても外部のスクリプトを読ませない。
+		//   SvelteKit が自分のインラインスクリプトに nonce を付ける（mode: auto）。違反は引き続き /api/csp-report に届く。
+		//   読み込み元を足すときはここへ。メルマガの編集画面（srcdoc の iframe でスクリプトを動かす）だけは
+		//   security-headers.ts で Report-Only に戻している（srcdoc は親の CSP を引き継ぐため）。
 		csp: {
 			mode: 'auto',
-			reportOnly: {
+			directives: {
 				'default-src': ['self'],
-				'script-src': ['self', 'https://js.stripe.com', 'https://challenges.cloudflare.com', 'https://www.googletagmanager.com'],
+				'script-src': [
+					'self',
+					'https://js.stripe.com',
+					'https://*.js.stripe.com',
+					'https://maps.googleapis.com',
+					'https://challenges.cloudflare.com',
+					'https://www.googletagmanager.com',
+					'https://*.googletagmanager.com'
+				],
 				'style-src': ['self', 'unsafe-inline', 'https://fonts.googleapis.com'],
 				'font-src': ['self', 'data:', 'https://fonts.gstatic.com'],
 				'img-src': ['self', 'data:', 'blob:', 'https:'],
@@ -34,6 +44,10 @@ const config = {
 					'https://*.google-analytics.com',
 					'https://*.analytics.google.com',
 					'https://www.googletagmanager.com',
+					'https://*.googletagmanager.com',
+					'https://*.g.doubleclick.net',
+					'https://www.google.com',
+					'https://maps.googleapis.com',
 					'https://challenges.cloudflare.com',
 					'https://rtc.live.cloudflare.com',
 					'wss://rtc.live.cloudflare.com',
@@ -43,14 +57,19 @@ const config = {
 				'frame-src': [
 					'self',
 					'https://js.stripe.com',
+					'https://*.js.stripe.com',
 					'https://hooks.stripe.com',
 					'https://challenges.cloudflare.com',
 					'https://www.google.com',
-					'https://maps.google.com'
+					'https://maps.google.com',
+					// 施設ページのアクセス（AccessSection.svelte）の地図
+					'https://www.openstreetmap.org'
 				],
 				'media-src': ['self', 'blob:', 'https:'],
 				'object-src': ['none'],
 				'base-uri': ['self'],
+				// 他サイトへの埋め込み禁止（security-headers.ts と同じ。強制の CSP を付けるとそちらは付かなくなるため、ここにも書く）
+				'frame-ancestors': ['self'],
 				'form-action': ['self', 'https://hooks.stripe.com', 'https://autumn-book-member-preview.pages.dev'],
 				'report-uri': ['/api/csp-report']
 			}

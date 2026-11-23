@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import { redirect, type Handle } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 import { handleErrorWithSentry, initCloudflareSentryHandle, sentryHandle } from '@sentry/sveltekit';
 import { SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE, scrubSentryEvent } from '$lib/sentry';
@@ -6,7 +6,7 @@ import { getSession } from '$lib/server/session';
 import { AUTH_MODE, adminMfaRequired, createSupabaseServerClient, resolveRequestSessions } from '$lib/server/auth';
 import { MEMBER_LOGIN_METHODS, memberSessionSecurity } from '$lib/server/member-login';
 import { adminMfaRedirectTarget, decideAdminMfaGate } from '$lib/admin-mfa';
-import { isMaintenanceOn, isMaintenanceBypassed, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
+import { isMaintenanceOn, checkMaintenanceBypass, isPartnerPath, maintenancePageHtml } from '$lib/server/maintenance';
 import { paraglideMiddleware } from '$lib/paraglide/server';
 import '$lib/locale-strategy'; // 言語の持ち越し戦略（paraglideMiddleware より前に登録）
 import { experimentsForRequest } from '$lib/server/experiments';
@@ -188,7 +188,11 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）
-	if (!machineBookingMcp && (await isMaintenanceOn(event.platform)) && !isMaintenanceBypassed(event)) {
+	const bypass = !machineBookingMcp && (await isMaintenanceOn(event.platform)) ? await checkMaintenanceBypass(event) : { ok: true };
+	// 合言葉（?preview=）を受け取ったら、cookie を発行して ?preview= を外した URL へ移す（履歴・共有・ログに残さない・レビュー L-2）
+	// redirect を throw すると SvelteKit が event.cookies で発行した cookie を 303 に付けてくれる（Response を返すと付かない）
+	if (bypass.redirect) redirect(303, bypass.redirect);
+	if (!bypass.ok) {
 		return paraglideMiddleware(
 			event.request,
 			({ locale }) =>

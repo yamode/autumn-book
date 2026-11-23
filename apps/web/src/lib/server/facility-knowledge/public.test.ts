@@ -62,8 +62,8 @@ describe('shapeKnowledge', () => {
 });
 
 describe('メンテナンス中も API は動く', () => {
-	it('/api/knowledge/ はポータルの公開状況と関係なく通す（ルートの中で鍵を確かめる）', () => {
+	it('/api/knowledge/ はポータルの公開状況と関係なく通す（ルートの中で鍵を確かめる）', async () => {
 		const event = { url: new URL('https://book.yamado.app/api/knowledge/nishiwaga'), locals: { user: null }, cookies: { get: () => undefined, set: () => {} } };
-		expect(isMaintenanceBypassed(event as never)).toBe(true);
+		expect(await isMaintenanceBypassed(event as never)).toBe(true);
 	});
 });
