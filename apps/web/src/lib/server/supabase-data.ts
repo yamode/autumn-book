@@ -1232,17 +1232,21 @@ interface StayInfoRow {
 
 /** store.resolveStay 相当。無効トークンは RPC 例外 → null に正規化 */
 /**
- * その滞在が「いま」割り当てられている部屋番号（book.stay_room_now）。
- * stay_info の room_code は book.stay_access_tokens の非正規化カラムで部屋の割り当て変更に追従しないため、
- * お部屋のポップの QR と比べるときはこちらを使う（$lib/inroom-room-match）。分からなければ null。
+ * その滞在コードと入れ替えても同じ案内（食事時間・貸切風呂の枠）が見える部屋（book.stay_shared_rooms）。
+ * PMS でグループの風呂も食事も「共有」にしていればグループの部屋、そうでなければ自分の部屋だけ。
+ * 部屋番号は「いまの割り当て」（stay_info の room_code は割り当て変更に追従しないので使わない）。
+ * お部屋のポップの QR と比べるときに使う（$lib/inroom-room-match）。分からなければ null。
  */
-export async function sbStayRoomNow(token: string): Promise<{ facilitySlug: string | null; roomCode: string | null } | null> {
-	const { data, error } = await supa().rpc('stay_room_now', { p_token: token });
+export async function sbStaySharedRooms(
+	token: string
+): Promise<{ facilitySlug: string | null; roomCode: string | null; sharedRooms: string[] } | null> {
+	const { data, error } = await supa().rpc('stay_shared_rooms', { p_token: token });
 	if (error || !data) return null;
 	const d = data as Record<string, unknown>;
 	return {
 		facilitySlug: d.facility_slug ? String(d.facility_slug) : null,
-		roomCode: d.room_code ? String(d.room_code) : null
+		roomCode: d.room_code ? String(d.room_code) : null,
+		sharedRooms: Array.isArray(d.shared_rooms) ? (d.shared_rooms as unknown[]).map(String).filter(Boolean) : []
 	};
 }
 

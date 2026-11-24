@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbResolveStay, sbStayRoomNow } from '$lib/server/supabase-data';
+import { sbResolveStay, sbStaySharedRooms } from '$lib/server/supabase-data';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { guideIdParam, rememberBrowseFacility } from '$lib/server/inroom-browse';
 import { resolveRoomEntry, ROOM_COOKIE, ROOM_COOKIE_MAX_AGE_SEC, roomKeyParam } from '$lib/server/intercom';
@@ -38,21 +38,22 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const token = cookies.get(STAY_COOKIE);
 	if (token) {
 		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		// お部屋のポップの QR（部屋番号だけ・トークンなし）を読んだとき、端末が持っている滞在の部屋と違えば
-		// 滞在を外して、読んだ部屋のトークンなし表示にする（2026-11-24 指示）。食事時間・貸切風呂は
-		// book._stay_chain を通して読んでいて部屋ごとに分かれているので、別の部屋の滞在を持ったまま見せると
-		// 読んだ部屋の食事時間・風呂の枠として誤った値が出る。
-		//   2026-11-21 は逆に「部屋番号が違っても外さない」にしていた。本人の滞在が消えていた原因は部屋番号で
-		//   比べたこと自体ではなく、比べていた値が stay_info の room_code（book.stay_access_tokens の
-		//   非正規化カラム・部屋の割り当て変更に追従しない）だったこと。ここでは book.stay_room_now が返す
-		//   「いまの割り当て」で比べるので、移動した本人が新しい部屋の QR を読んでも滞在は保たれる。
-		//   判断が付かないとき（割り当て前・鍵に部屋名が無い）は外さない（$lib/inroom-room-match）。
+		// お部屋のポップの QR（部屋番号だけ・トークンなし）を読んだとき、端末が持っている滞在と食事時間・
+		// 貸切風呂を共有していない部屋なら、滞在を外して読んだ部屋のトークンなし表示にする（2026-11-24 指示）。
+		// 食事・風呂は既定では部屋ごとなので、別の部屋の滞在を持ったまま見せると誤った時間・枠が出る。
+		// PMS でグループの風呂（private_bath_shared）も食事（meal_split=まとめる）も共有にしていれば、
+		// book.stay_shared_rooms がグループの部屋を返すので外さない。
+		//   2026-11-21 は逆に「部屋番号が違っても外さない」にしていた。本人の滞在が消えていた原因は、
+		//   比べていた値が stay_info の room_code（非正規化・部屋の割り当て変更に追従しない）だったこと。
+		//   stay_shared_rooms は「いまの割り当て」なので、移動した本人が新しい部屋の QR を読んでも保たれる。
+		//   判断が付かないとき（割り当て前・鍵に部屋名が無い・RPC が失敗）は外さない（$lib/inroom-room-match）。
 		let decision: StayRoomDecision = 'keep';
 		if (stay && room) {
-			const now = DATA_SOURCE === 'supabase' ? await sbStayRoomNow(token) : null;
+			const scope = DATA_SOURCE === 'supabase' ? await sbStaySharedRooms(token) : null;
 			decision = decideStayForScannedRoom({
 				stayFacilitySlug: stay.facility.slug,
-				stayRoomCode: now?.roomCode ?? stay.roomCode ?? null,
+				// RPC が失敗したら部屋では外さない（施設の比較だけ効く）。古い room_code では比べない
+				sharedRooms: scope?.sharedRooms ?? [],
 				scannedFacilitySlug: room.facilitySlug,
 				scannedRoomCode: room.roomCode
 			});
