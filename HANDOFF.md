@@ -1,3 +1,14 @@
+## Sentry の雑音を減らす・デプロイ直後の読み込み失敗は再読み込み（2026-11-25・v0.346.1）
+
+- ブラウザの通信切断（Load failed / Failed to fetch / NetworkError）とデプロイ直後の読み込み失敗（Importing a module script failed など）は Sentry に送らない（`$lib/sentry.ts` の `SENTRY_CLIENT_IGNORE_ERRORS`）。サーバー側の失敗は従来どおり届く
+- 読み込み失敗（`vite:preloadError`）では1回だけ画面を読み込み直す（60 秒以内の繰り返しは止める）。新しい版は5分ごとに確かめ、出ていれば次の画面遷移を通常の読み込みにする（`svelte.config.js` の `version.pollInterval`）
+- 次の段階（未着手）: Claude Code に Sentry の MCP をつなぐ → 社内 Mac mini で Sentry の API を見て、新しい問題を Claude Code が判断・修正 PR まで作る
+
+### テストチェックリスト（Sentry）
+
+- [ ] 本番で画面を開いたままデプロイし、古い画面から別のページへ移ると、エラーにならず新しい版で開く（本番のみ）
+- [ ] デプロイ後に Sentry へ「Load failed」「Importing a module script failed」の新しい通知が来ない
+
 ## おたよりの紹介は押すだけ・3週間超の未処理を強調（2026-11-25・v0.346.0）
 
 - 「番組で紹介した」はボタン1回で紹介を記録し、会員の投稿なら 1,000pt を付ける（付与の処理は従来どおり DB の `otayori_approve`・二重付与なし）。チェックを入れる手順はやめた

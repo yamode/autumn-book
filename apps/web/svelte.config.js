@@ -9,7 +9,8 @@ const config = {
 	preprocess: vitePreprocess(),
 	kit: {
 		// SSR and client builds must share a stable payload key, including separate Vite phases.
-		version: { name: appVersion },
+		// pollInterval: 新しい版が出たら次の画面遷移を通常の読み込みにして、古い画面のまま操作し続けないようにする（2026-11-25）
+		version: { name: appVersion, pollInterval: 300_000 },
 		// OAuth token exchanges are x-www-form-urlencoded server-to-server POSTs without an Origin header.
 		// hooks.server.ts applies the SvelteKit form-origin check with an exception for that exact route.
 		csrf: { trustedOrigins: ['*'] },

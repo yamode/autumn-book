@@ -1,7 +1,7 @@
 // エラー監視に送る前の個人情報の消し方（$lib/sentry.ts）
 import { describe, expect, it } from 'vitest';
 import type { ErrorEvent } from '@sentry/sveltekit';
-import { scrubSentryEvent, scrubUrl } from './sentry';
+import { CHUNK_RELOAD_WINDOW_MS, isIgnoredClientError, scrubSentryEvent, scrubUrl, shouldReloadForChunkError } from './sentry';
 
 describe('scrubUrl', () => {
 	it('クエリ・ハッシュと、URL の途中の長いトークンを消す', () => {
@@ -26,5 +26,37 @@ describe('scrubSentryEvent', () => {
 		expect(e.message).toBe('failed for [email]');
 		expect(e.exception?.values?.[0].value).toBe('mail to [email] failed');
 		expect(e.breadcrumbs?.[0].data).toEqual({ url: 'https://x.test/a', to: '/plan/[token]' });
+	});
+});
+
+describe('isIgnoredClientError（ブラウザの雑音・2026-11-25）', () => {
+	it('通信の切断・デプロイ直後の読み込み失敗は送らない', () => {
+		for (const m of [
+			'Load failed',
+			'TypeError: Load failed',
+			'Failed to fetch',
+			'TypeError: Failed to fetch (book.yamado.app)',
+			'NetworkError when attempting to fetch resource.',
+			'Importing a module script failed.',
+			'TypeError: Failed to fetch dynamically imported module: https://book.yamado.app/_app/immutable/nodes/13.js',
+			'error loading dynamically imported module: https://book.yamado.app/_app/x.js'
+		]) expect(isIgnoredClientError(m), m).toBe(true);
+	});
+	it('本物の不具合らしいものは送る', () => {
+		for (const m of [
+			"TypeError: Cannot read properties of undefined (reading 'id')",
+			'Failed to fetch plans: 500',
+			'Error: 予約を確定できませんでした'
+		]) expect(isIgnoredClientError(m), m).toBe(false);
+	});
+});
+
+describe('shouldReloadForChunkError', () => {
+	it('初回は読み込み直し、直後の2回目は繰り返さない', () => {
+		const now = 1_800_000_000_000;
+		expect(shouldReloadForChunkError(null, now)).toBe(true);
+		expect(shouldReloadForChunkError('abc', now)).toBe(true);
+		expect(shouldReloadForChunkError(String(now - 1000), now)).toBe(false);
+		expect(shouldReloadForChunkError(String(now - CHUNK_RELOAD_WINDOW_MS - 1), now)).toBe(true);
 	});
 });

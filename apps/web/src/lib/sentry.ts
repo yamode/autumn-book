@@ -46,3 +46,36 @@ export function scrubSentryEvent<T extends ErrorEvent>(event: T): T {
 	}
 	return event;
 }
+
+/**
+ * ブラウザから Sentry に送らないエラー（こちらでは直せない雑音・2026-11-25）。
+ * - 通信の切断（お客様の電波・機内モード・画面を閉じた途中の通信）: Safari は "Load failed"、Chrome は "Failed to fetch"、Firefox は "NetworkError …"
+ * - デプロイ直後に古い画面のまま操作して、もう無いファイルを読もうとしたもの（hooks.client.ts で1回だけ再読み込みして直す）
+ * - 拡張機能・古いブラウザ由来のもの
+ * サーバー側の失敗は hooks.server.ts から別に届くので、ここで消しても本物の不具合は見落とさない。
+ */
+export const SENTRY_CLIENT_IGNORE_ERRORS: (string | RegExp)[] = [
+	/^(TypeError: )?(Failed to fetch|Load failed|NetworkError when attempting to fetch resource\.?)( \(.*\))?$/,
+	'Importing a module script failed',
+	'Failed to fetch dynamically imported module',
+	'error loading dynamically imported module',
+	'Unable to preload CSS',
+	'ResizeObserver loop',
+	'Non-Error promise rejection captured'
+];
+
+/** Sentry の ignoreErrors と同じ当て方（文字列は部分一致・正規表現はそのまま）。テスト用 */
+export function isIgnoredClientError(message: string): boolean {
+	return SENTRY_CLIENT_IGNORE_ERRORS.some((p) => (typeof p === 'string' ? message.includes(p) : p.test(message)));
+}
+
+/** デプロイ直後の読み込み失敗で再読み込みしたかの印（同じ画面で何度も再読み込みを繰り返さないため） */
+export const CHUNK_RELOAD_KEY = 'ab_chunk_reload_at';
+/** この時間内に2回目の失敗が来たら、再読み込みせずにそのまま（Sentry にも送らない） */
+export const CHUNK_RELOAD_WINDOW_MS = 60_000;
+
+/** いま再読み込みしてよいか（前回の再読み込みから CHUNK_RELOAD_WINDOW_MS 以上たっているか） */
+export function shouldReloadForChunkError(lastReloadAt: string | null, now: number): boolean {
+	const last = Number(lastReloadAt);
+	return !Number.isFinite(last) || last <= 0 || now - last > CHUNK_RELOAD_WINDOW_MS;
+}
