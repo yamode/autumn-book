@@ -47,6 +47,7 @@ import {
 import { sbAdminIntercom, sbListIntercomCalls, sbSaveIntercom, type AdminIntercom, type BusinessHours, type IntercomCall } from '$lib/server/intercom';
 import { normalizeSpringBands } from '$lib/spring-level';
 import type { Actions, PageServerLoad } from './$types';
+import { issueQrErrorMessage } from '$lib/server/inroom-qr-error';
 
 // 本番系（実データ + 実認証）でのみ Supabase アダプタを使う。
 // 現状 .env は DATA_SOURCE=supabase / AUTH_MODE=demo のため admin は demo（store.ts）で完結する。
@@ -487,7 +488,7 @@ export const actions: Actions = {
 				}
 			};
 		} catch (e) {
-			return fail(400, { message: e instanceof Error ? e.message : 'URLの取得に失敗しました' });
+			return fail(400, { message: issueQrErrorMessage(e) });
 		}
 	}
 };

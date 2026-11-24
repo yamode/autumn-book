@@ -124,6 +124,10 @@
 		return `${page.url.origin}/r/start?${q.toString()}`;
 	};
 
+	// 客室案内はチェックアウト日の 11:00（日本時間）で終わる（book.get_or_issue_stay_token が stay_expired で断る線と同じ）。
+	// 過ぎたお客様には「URL・QRを出す」を押させず「11:00で終了」と出す（押すと失敗に見えていた・2026-11-24）。
+	const guideEnded = (checkOut: string) => Date.now() >= new Date(`${checkOut}T11:00:00+09:00`).getTime();
+
 	// ご予約の行から公開URLを直接新しいタブで開く。発行済みならそのまま、未発行なら issueQr で発行（取り出し）してから開く。
 	// ポップアップブロックを避けるため、クリックの瞬間に空のタブを開いておき、URL が決まってから移動させる。
 	let openingStay = $state<string | null>(null);
@@ -817,7 +821,7 @@
 					<h3 class="text-xs font-semibold text-stone-700">
 						昨日宿泊のお客様<span class="ml-2 font-normal text-stone-400">{fmtYmd(data.yesterday)} の夜・{data.yesterdayStays.length}件</span>
 					</h3>
-					<p class="mt-0.5 text-[11px] text-stone-400">今日チェックアウトの方と連泊中の方です。</p>
+					<p class="mt-0.5 text-[11px] text-stone-400">今日チェックアウトの方と連泊中の方です。チェックアウトの方の客室案内は 11:00 で終わります。</p>
 					{#if data.yesterdayStays.length === 0}
 						<p class="mt-2 text-xs text-stone-400">昨日ご宿泊のお客様はいません。</p>
 					{:else}
@@ -850,6 +854,20 @@
 							{#if s.token}
 								<span class="inline-flex items-center rounded-full bg-stone-50 px-2 py-0.5 text-[11px] font-medium text-stone-500 ring-1 ring-stone-200 ring-inset">発行済み</span>
 							{/if}
+							{#if guideEnded(s.check_out_date)}
+								<!-- チェックアウト日の 11:00 を過ぎた。発行済みなら「開く」で終了後の画面（ご利用ありがとうございました）は確かめられる -->
+								{#if s.token}
+									<button
+										type="button"
+										onclick={() => openStayUrl(s)}
+										class="ml-auto min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50"
+									>開く ↗</button>
+								{/if}
+								<span
+									class="{s.token ? '' : 'ml-auto '}inline-flex min-h-9 items-center rounded-lg bg-stone-100 px-3 py-1.5 text-xs text-stone-500"
+									title="客室案内はチェックアウト日の 11:00 で終わります。URL・QR は出せません"
+								>11:00で終了</span>
+							{:else}
 							<!-- 公開URLを直接開く（発行済みはそのまま、未発行はその場で発行してから開く） -->
 							<button
 								type="button"
@@ -869,6 +887,7 @@
 									class="min-h-9 rounded-lg border border-stone-300 px-3 py-1.5 text-xs hover:bg-stone-50 disabled:opacity-40"
 								>URL・QRを出す</button>
 							</form>
+							{/if}
 						</li>
 					{/each}
 				</ul>
