@@ -1231,6 +1231,21 @@ interface StayInfoRow {
 }
 
 /** store.resolveStay 相当。無効トークンは RPC 例外 → null に正規化 */
+/**
+ * その滞在が「いま」割り当てられている部屋番号（book.stay_room_now）。
+ * stay_info の room_code は book.stay_access_tokens の非正規化カラムで部屋の割り当て変更に追従しないため、
+ * お部屋のポップの QR と比べるときはこちらを使う（$lib/inroom-room-match）。分からなければ null。
+ */
+export async function sbStayRoomNow(token: string): Promise<{ facilitySlug: string | null; roomCode: string | null } | null> {
+	const { data, error } = await supa().rpc('stay_room_now', { p_token: token });
+	if (error || !data) return null;
+	const d = data as Record<string, unknown>;
+	return {
+		facilitySlug: d.facility_slug ? String(d.facility_slug) : null,
+		roomCode: d.room_code ? String(d.room_code) : null
+	};
+}
+
 export async function sbResolveStay(token: string): Promise<StayInfo | null> {
 	const { data, error } = await supa().rpc('stay_info', { p_token: token });
 	if (error) return null; // invalid_token など

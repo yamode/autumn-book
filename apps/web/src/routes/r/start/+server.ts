@@ -1,11 +1,12 @@
 import { redirect } from '@sveltejs/kit';
 import { resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { sbResolveStay } from '$lib/server/supabase-data';
+import { sbResolveStay, sbStayRoomNow } from '$lib/server/supabase-data';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { guideIdParam, rememberBrowseFacility } from '$lib/server/inroom-browse';
 import { resolveRoomEntry, ROOM_COOKIE, ROOM_COOKIE_MAX_AGE_SEC, roomKeyParam } from '$lib/server/intercom';
 import { stayUpcoming } from '$lib/server/inroom-banners';
+import { decideStayForScannedRoom, type StayRoomDecision } from '$lib/inroom-room-match';
 import type { RequestHandler } from './$types';
 
 // 客室に常設する「客室案内の入口QR」（/r/start?f=<slug>）の着地点（2026-10-09）。
@@ -37,11 +38,28 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const token = cookies.get(STAY_COOKIE);
 	if (token) {
 		const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
-		// 館内図の QR（トークン付き）や 6 桁コードで有効な滞在がある端末は、お部屋のポップの QR（部屋番号だけ）を読み直しても
-		// 滞在を保つ（2026-11-21 指示）。部屋番号が違っても外さない（複数室の予約で別の部屋のポップを読んだとき・
-		// 部屋の割り当てが後から変わったときに、本人の滞在が消えていた）。外すのは別の施設の QR を読んだときだけ
-		const otherFacility = !!(stay && room && stay.facility.slug !== room.facilitySlug);
-		if (stay && !otherFacility) redirect(302, localizeHref(guidePath ?? '/r'));
+		// お部屋のポップの QR（部屋番号だけ・トークンなし）を読んだとき、端末が持っている滞在の部屋と違えば
+		// 滞在を外して、読んだ部屋のトークンなし表示にする（2026-11-24 指示）。食事時間・貸切風呂は
+		// book._stay_chain を通して読んでいて部屋ごとに分かれているので、別の部屋の滞在を持ったまま見せると
+		// 読んだ部屋の食事時間・風呂の枠として誤った値が出る。
+		//   2026-11-21 は逆に「部屋番号が違っても外さない」にしていた。本人の滞在が消えていた原因は部屋番号で
+		//   比べたこと自体ではなく、比べていた値が stay_info の room_code（book.stay_access_tokens の
+		//   非正規化カラム・部屋の割り当て変更に追従しない）だったこと。ここでは book.stay_room_now が返す
+		//   「いまの割り当て」で比べるので、移動した本人が新しい部屋の QR を読んでも滞在は保たれる。
+		//   判断が付かないとき（割り当て前・鍵に部屋名が無い）は外さない（$lib/inroom-room-match）。
+		let decision: StayRoomDecision = 'keep';
+		if (stay && room) {
+			const now = DATA_SOURCE === 'supabase' ? await sbStayRoomNow(token) : null;
+			decision = decideStayForScannedRoom({
+				stayFacilitySlug: stay.facility.slug,
+				stayRoomCode: now?.roomCode ?? stay.roomCode ?? null,
+				scannedFacilitySlug: room.facilitySlug,
+				scannedRoomCode: room.roomCode
+			});
+		}
+		if (stay && decision === 'keep') redirect(302, localizeHref(guidePath ?? '/r'));
+		// 'other-room' で外したあとは、下の redirect が読んだ部屋の施設（slug = room.facilitySlug）の
+		// トークンなし表示へ送る。ab_room は上で新しい部屋の鍵に入れ替えてあるので、部屋名は新しい部屋が出る
 		// 客室案内の開始前（チェックイン日 9:00 より前）の滞在も外さない（/r が「○日 9:00 から」を出し、時刻が来ればそのまま使える）
 		if (!stay) {
 			const upcoming = await stayUpcoming(token, getLocale());
