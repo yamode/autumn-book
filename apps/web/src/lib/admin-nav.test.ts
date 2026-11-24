@@ -23,15 +23,15 @@ describe('管理画面のメニューの現在地', () => {
 		expect(group?.label).toBe('滞在中のお客様');
 	});
 	it('客室案内は ?tab で分ける（古い ?all は客室スリップ・バナーと入口QRは表示の設定）', () => {
-		expect(at('/admin/inroom')).toBe('客室案内 > きょうの運用');
-		expect(at('/admin/inroom?tab=guides')).toBe('客室案内 > 館内案内の内容');
-		expect(at('/admin/inroom?tab=slips')).toBe('客室案内 > 客室スリップ');
-		expect(at('/admin/inroom?all=1')).toBe('客室案内 > 客室スリップ');
-		expect(at('/admin/inroom?tab=settings')).toBe('客室案内 > 表示の設定');
-		expect(at('/admin/inroom/banners')).toBe('客室案内 > 表示の設定');
-		expect(at('/admin/inroom/entry')).toBe('客室案内 > 表示の設定');
-		expect(at('/admin/inroom/billing')).toBe('客室案内 > 精算案内');
-		expect(at('/admin/inroom/preview')).toBe('客室案内 > プレビュー・QR');
+		expect(at('/admin/inroom')).toBe('インフォメーション > きょうの運用');
+		expect(at('/admin/inroom?tab=guides')).toBe('インフォメーション > 館内案内の内容');
+		expect(at('/admin/inroom?tab=slips')).toBe('インフォメーション > 客室スリップ');
+		expect(at('/admin/inroom?all=1')).toBe('インフォメーション > 客室スリップ');
+		expect(at('/admin/inroom?tab=settings')).toBe('インフォメーション > 表示の設定');
+		expect(at('/admin/inroom/banners')).toBe('インフォメーション > 表示の設定');
+		expect(at('/admin/inroom/entry')).toBe('インフォメーション > 表示の設定');
+		expect(at('/admin/inroom/billing')).toBe('インフォメーション > 精算案内');
+		expect(at('/admin/inroom/preview')).toBe('インフォメーション > プレビュー・QR');
 	});
 	it('会員サポートは一覧・詳細・よくある質問の編集が同じ項目（会員・サイト・スタッフにも出す）', () => {
 		expect(at('/admin/support')).toBe('会員サポート > 会員サポート');

@@ -62,7 +62,7 @@ export const ADMIN_NAV: NavGroup[] = [
 			{ href: '/admin/precheckin', label: '事前チェックイン', icon: 'receipt' },
 			{
 				href: '/admin/inroom',
-				label: '客室案内',
+				label: 'インフォメーション',
 				icon: 'phone',
 				children: [
 					{ href: '/admin/inroom', label: 'きょうの運用', tab: null },

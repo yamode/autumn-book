@@ -307,14 +307,15 @@ export const actions: Actions = {
 		redirect(303, `/admin/partners/${partnerId}`);
 	},
 
-	// おたよりポイント手動付与（admin 限定・設計書 §9）。1pt=1,000円相当。正負可。
+	// おたよりの通数の手動記録（admin 限定・設計書 §9）。足した1通ごとに通常のポイントを1,000ポイント付与する。
+	// 負の数は通数の記録だけを取り消し、ポイントは減らさない（クーポンや「1pt=1,000円」の別ポイントだった頃の名残の表記は 2026-11-24 に直した）
 	grantOtayori: async (event) => {
 		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
 		const form = await event.request.formData();
 		const delta = Number(form.get('otayoriDelta'));
 		const reason = String(form.get('otayoriReason') ?? '').trim();
 		if (!delta || !reason) {
-			return fail(400, { message: 'おたよりポイント数（0以外）と理由（必須）を入力してください' });
+			return fail(400, { message: 'おたよりの通数（0以外）と理由（必須）を入力してください' });
 		}
 		if (ADMIN_SUPABASE) {
 			try {

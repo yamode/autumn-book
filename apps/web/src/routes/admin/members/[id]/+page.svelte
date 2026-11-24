@@ -88,18 +88,18 @@
 				{#each data.ledger as e}
 					<div class="flex items-center justify-between gap-3 py-2">
 						<div><p>{e.reason}</p><p class="text-xs text-stone-400">{e.createdAt}</p></div>
-						<span class="font-medium {e.delta > 0 ? 'text-emerald-700' : 'text-red-600'}">{e.delta > 0 ? '+' : ''}{e.delta.toLocaleString()}pt</span>
+						<span class="font-medium {e.delta > 0 ? 'text-emerald-700' : 'text-red-600'}">{e.delta > 0 ? '+' : ''}{e.delta.toLocaleString()}通</span>
 					</div>
 				{/each}
 			</div>
 		</section>
 
 		<section class="rounded-xl border border-stone-200 bg-white p-5">
-			<h2 class="mb-2 text-sm font-medium text-stone-700">おたよりポイント台帳 <span class="text-xs font-normal text-stone-400">（1pt=1,000円分）</span></h2>
+			<h2 class="mb-2 text-sm font-medium text-stone-700">紹介されたおたよりの記録 <span class="text-xs font-normal text-stone-400">（1通ごとに1,000ポイントを付与）</span></h2>
 			<div class="divide-y divide-stone-100 text-sm">
 				{#if data.live}
 					<p class="py-3 text-xs text-stone-400">
-						履歴の表示は未対応です（book.otayori_ledger にスタッフ用の参照権限が無いため）。残高は上部に表示しています。
+						履歴の表示は未対応です（book.otayori_ledger にスタッフ用の参照権限が無いため）。通数は上部に表示しています。
 					</p>
 				{/if}
 				{#each data.otayoriLedger as e}
@@ -108,7 +108,7 @@
 						<span class="font-medium {e.delta > 0 ? 'text-emerald-700' : 'text-red-600'}">{e.delta > 0 ? '+' : ''}{e.delta.toLocaleString()}pt</span>
 					</div>
 				{:else}
-					<p class="py-3 text-stone-400">おたよりポイントの履歴はありません</p>
+					<p class="py-3 text-stone-400">おたよりの記録はありません</p>
 				{/each}
 			</div>
 		</section>
@@ -252,11 +252,11 @@
 			</form>
 
 			<form method="POST" action="?/grantOtayori" use:enhance class="rounded-xl border border-amber-200 bg-amber-50/40 p-4 text-sm">
-				<h2 class="font-medium text-stone-700">おたよりの手動付与</h2>
+				<h2 class="font-medium text-stone-700">おたよりの通数を足す（手動）</h2>
 				<p class="mt-1 text-xs text-stone-400">紹介されたおたよりの通数を足します（番組開始前に紹介した方など）。足した1通ごとに通常のポイントを1,000ポイント付与します。負の数は通数の記録だけを取り消し、ポイントは減らしません。理由は監査ログに記録されます。現在: <span class="font-medium text-stone-600">{data.otayoriBalance.toLocaleString()}通</span></p>
 				<input type="number" name="otayoriDelta" placeholder="+1 / -1" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
 				<input name="otayoriReason" placeholder="理由（必須）" class="mt-2 w-full rounded-md border border-stone-300 px-3 py-1.5" />
-				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-2 text-white hover:bg-brand-700">おたよりptを付与</button>
+				<button type="submit" class="mt-2 w-full rounded-md bg-brand-800 py-2 text-white hover:bg-brand-700">通数を記録してポイントを付与</button>
 			</form>
 		{:else}
 			<p class="rounded-xl border border-stone-200 bg-white p-4 text-xs text-stone-400">スタッフ権限では閲覧のみ可能です（連絡先はマスク表示）。</p>

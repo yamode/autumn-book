@@ -33,7 +33,7 @@
 	const SHORTCUTS: { href: string; label: string; icon: AdminIconName }[] = [
 		{ href: '/admin/reservations', label: '予約管理', icon: 'calendar' },
 		{ href: '/admin/group-inquiries', label: '団体照会', icon: 'users' },
-		{ href: '/admin/inroom', label: '客室案内', icon: 'phone' },
+		{ href: '/admin/inroom', label: 'インフォメーション', icon: 'phone' },
 		{ href: '/admin/bath', label: '貸切風呂', icon: 'bath' },
 		{ href: '/admin/plans', label: 'プラン・部屋', icon: 'plan' },
 		{ href: '/admin/upgrades', label: 'アップグレード提案', icon: 'upgrade' }

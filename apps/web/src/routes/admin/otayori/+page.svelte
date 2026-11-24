@@ -95,7 +95,7 @@
 							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
 								<input type="hidden" name="postId" value={it.id} />
 								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
-								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1枚付与'}</button>
+								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1,000ポイント付与'}</button>
 							</form>
 
 							<!-- 却下（staff 可・理由入力） -->

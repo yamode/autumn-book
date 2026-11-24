@@ -231,9 +231,9 @@
 	}
 </script>
 
-<svelte:head><title>客室案内 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>インフォメーション ｜ 山人管理</title></svelte:head>
 
-<PageHeader title="客室案内" facility={data.currentFacility.name} description={TAB_DESCRIPTION[tab]} />
+<PageHeader title="インフォメーション" facility={data.currentFacility.name} description={TAB_DESCRIPTION[tab]} />
 
 {#if data.loadError}
 	<div class="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
