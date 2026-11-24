@@ -30,6 +30,7 @@
 		missed: m.intercom_end_missed,
 		failed: m.intercom_end_failed,
 		mic: m.intercom_end_mic,
+		mic_timeout: m.intercom_end_mic_timeout,
 		out_of_hours: m.intercom_end_out_of_hours,
 		busy: m.intercom_end_busy,
 		rate_limited: m.intercom_end_rate_limited,

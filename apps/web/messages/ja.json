@@ -989,6 +989,7 @@
   "intercom_end_missed": "応答がありませんでした。",
   "intercom_end_failed": "接続できませんでした。館内のWi-Fiに接続してお試しください。",
   "intercom_end_mic": "マイクを使えません。ブラウザの設定でマイクを許可してください。",
+  "intercom_end_mic_timeout": "マイクの準備ができませんでした。マイクの使用を「許可」してから、もう一度お試しください。ほかのアプリで通話中のときは、終えてからお試しください。",
   "intercom_end_out_of_hours": "受付時間外です。",
   "intercom_end_busy": "通話中です。",
   "intercom_end_rate_limited": "発信回数の上限に達しました。しばらくしてからお試しください。",

@@ -146,3 +146,84 @@ describe('GuestCall の先置き offer と合図', () => {
 		await call.hangup();
 	});
 });
+
+// 「準備しています」で止まり続けないこと（2026-11-24 本番初日）
+describe('GuestCall の準備の上限', () => {
+	let sent: Sent[];
+	let stopped: number;
+	const stream = () => ({ getTracks: () => [{ stop: () => stopped++ }], getAudioTracks: () => [] });
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		sent = [];
+		stopped = 0;
+		vi.stubGlobal('RTCPeerConnection', FakePc);
+		vi.stubGlobal('MediaStream', class {});
+		vi.stubGlobal('fetch', async (_u: string, init: { body: string }) => {
+			sent.push(JSON.parse(init.body) as Sent);
+			return { ok: true, json: async () => ({ callId: '00000000-0000-0000-0000-000000000000', callSecret: 'a'.repeat(64), ringTimeoutSec: 30 }) } as Response;
+		});
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
+	});
+
+	it('マイクが返ってこなければ 15 秒で mic_timeout にし、呼は作らない', async () => {
+		vi.stubGlobal('navigator', { userAgent: 'test', mediaDevices: { getUserMedia: () => new Promise(() => {}) } });
+		const ends: (string | undefined)[] = [];
+		const call = new GuestCall({ onState: (s, e) => s === 'ended' && ends.push(e), onRemoteStream: () => {} });
+		void call.start();
+		await vi.advanceTimersByTimeAsync(14_000);
+		expect(call.state).toBe('starting');
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(call.state).toBe('ended');
+		expect(ends).toEqual(['mic_timeout']);
+		expect(sent.some((s) => s.action === 'start')).toBe(false);
+	});
+
+	it('上限のあとでマイクが許可されても、掴んだままにしない', async () => {
+		let grant: (s: unknown) => void = () => {};
+		vi.stubGlobal('navigator', { userAgent: 'test', mediaDevices: { getUserMedia: () => new Promise((r) => (grant = r)) } });
+		const call = new GuestCall({ onState: () => {}, onRemoteStream: () => {} });
+		void call.start();
+		await vi.advanceTimersByTimeAsync(15_500);
+		expect(call.state).toBe('ended');
+		grant(stream());
+		await vi.advanceTimersByTimeAsync(10);
+		expect(stopped).toBe(1);
+		expect(sent.some((s) => s.action === 'start')).toBe(false);
+	});
+
+	it('マイクを待つ間に閉じられたら、許可されても呼を作らない', async () => {
+		let grant: (s: unknown) => void = () => {};
+		vi.stubGlobal('navigator', { userAgent: 'test', mediaDevices: { getUserMedia: () => new Promise((r) => (grant = r)) } });
+		const call = new GuestCall({ onState: () => {}, onRemoteStream: () => {} });
+		const started = call.start();
+		await vi.advanceTimersByTimeAsync(2_000);
+		await call.hangup();
+		grant(stream());
+		await started;
+		expect(stopped).toBe(1);
+		expect(sent.some((s) => s.action === 'start')).toBe(false);
+	});
+
+	it('呼の作成が返ってこなければ 15 秒で offline（お電話の案内）にする', async () => {
+		vi.stubGlobal('navigator', { userAgent: 'test', mediaDevices: { getUserMedia: async () => stream() } });
+		vi.stubGlobal('fetch', (_u: string, init: { body: string; signal?: AbortSignal }) => {
+			const b = JSON.parse(init.body) as Sent;
+			sent.push(b);
+			if (b.action !== 'start') return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+			return new Promise((_r, reject) => init.signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+		});
+		const ends: (string | undefined)[] = [];
+		const call = new GuestCall({ onState: (s, e) => s === 'ended' && ends.push(e), onRemoteStream: () => {} });
+		void call.start();
+		await vi.advanceTimersByTimeAsync(14_000);
+		expect(call.state).toBe('starting');
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(ends).toEqual(['offline']);
+		expect(stopped).toBe(1); // マイクも解放する
+	});
+});

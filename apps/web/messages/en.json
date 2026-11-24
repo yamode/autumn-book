@@ -989,6 +989,7 @@
   "intercom_end_missed": "No answer.",
   "intercom_end_failed": "Could not connect. Please connect to the hotel Wi-Fi and try again.",
   "intercom_end_mic": "Microphone unavailable. Please allow microphone access in your browser settings.",
+  "intercom_end_mic_timeout": "The microphone could not be started. Please allow microphone access and try again. If another app is using the microphone (for example, a phone call), end it first.",
   "intercom_end_out_of_hours": "Outside service hours.",
   "intercom_end_busy": "A call is already in progress.",
   "intercom_end_rate_limited": "Too many calls. Please try again later.",

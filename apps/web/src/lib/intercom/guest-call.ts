@@ -37,6 +37,7 @@ export type GuestCallEnd =
 	| 'missed'
 	| 'failed' // 接続できなかった・切れた
 	| 'mic' // マイクを使えない
+	| 'mic_timeout' // マイクの準備が上限までに終わらなかった（許可の確認に答えていない・他のアプリが使用中など）
 	| 'out_of_hours'
 	| 'busy'
 	| 'rate_limited'
@@ -45,6 +46,38 @@ export type GuestCallEnd =
 	| 'error';
 
 const STUN_FALLBACK: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }];
+// 「準備しています」で止まり続けないための上限（2026-11-24 本番初日に発生）。
+//   マイク許可（getUserMedia）は、許可の確認に答えない・ほかのアプリがマイクを使っている等だと iOS では
+//   返ってこないまま待ち続け、画面は「準備しています」のままだった（その間 start はサーバーに1度も届いていない）。
+//   上限を過ぎたら止めて、マイクの許可を案内する（mic_timeout）。呼の作成（start）にも上限を付ける。
+const MIC_TIMEOUT_MS = 15_000;
+const START_TIMEOUT_MS = 15_000;
+const TIMEOUT = Symbol('timeout');
+/** p が ms 以内に終わらなければ TIMEOUT で reject する。遅れて届いた値は onLate に渡す（マイクを解放するため） */
+function withTimeout<T>(p: Promise<T>, ms: number, onLate?: (v: T) => void): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
+		let settled = false;
+		const timer = setTimeout(() => {
+			settled = true;
+			reject(TIMEOUT);
+		}, ms);
+		p.then(
+			(v) => {
+				if (settled) return onLate?.(v);
+				settled = true;
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timer);
+				reject(e);
+			}
+		);
+	});
+}
+const stopStream = (st: MediaStream) => st.getTracks().forEach((t) => t.stop());
 const CONNECT_TIMEOUT_MS = 20_000; // 応答後、この時間で音声が繋がらなければ終了
 const DISCONNECT_GRACE_MS = 6_000; // disconnected をこの時間許容してから ICE restart
 const MAX_ICE_RESTARTS = 3;
@@ -100,16 +133,30 @@ export type GuestCallEvents = {
 };
 
 /** keepalive: ページ破棄（pagehide）後も送信を続けさせる（終話を確実に届ける） */
-async function api(body: Record<string, unknown>, opts: { keepalive?: boolean } = {}): Promise<Record<string, unknown>> {
-	const res = await fetch('/r/api/intercom', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify(body),
-		keepalive: opts.keepalive ?? false
-	});
-	const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-	if (!res.ok) throw new Error(String(data.error ?? 'error'));
-	return data;
+async function api(
+	body: Record<string, unknown>,
+	opts: { keepalive?: boolean; timeoutMs?: number } = {}
+): Promise<Record<string, unknown>> {
+	// timeoutMs: 応答が無ければ打ち切って 'timeout' で投げる（start で使う）
+	const ctl = opts.timeoutMs ? new AbortController() : null;
+	const timer = ctl ? setTimeout(() => ctl.abort(), opts.timeoutMs) : null;
+	try {
+		const res = await fetch('/r/api/intercom', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body),
+			keepalive: opts.keepalive ?? false,
+			...(ctl ? { signal: ctl.signal } : {})
+		});
+		const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+		if (!res.ok) throw new Error(String(data.error ?? 'error'));
+		return data;
+	} catch (e) {
+		if (ctl?.signal.aborted) throw new Error('timeout');
+		throw e;
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }
 
 export class GuestCall {
@@ -175,21 +222,38 @@ export class GuestCall {
 		// 相手の声はスピーカーから出す（2026-11-01 変更・以前は通話モード＝受話口だったが、呼出音も声も小さく聞き取りにくかった）。
 		// iOS Safari は audioSession を 'play-and-record' にしなければスピーカーになるので、ここでは切り替えない
 		try {
-			this.local = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-		} catch {
-			return this.finish('mic');
+			this.local = await withTimeout(
+				navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }),
+				MIC_TIMEOUT_MS,
+				stopStream // 上限のあとで許可された場合も、マイクを掴んだままにしない
+			);
+		} catch (e) {
+			return this.finish(e === TIMEOUT ? 'mic_timeout' : 'mic');
+		}
+		// マイクを待つ間に閉じられていたら、呼を作らない（誰もいない部屋からフロントを鳴らさない）
+		if (this.closed) {
+			stopStream(this.local);
+			this.local = null;
+			return;
 		}
 		void this.lockScreen();
 		let r: Record<string, unknown>;
 		try {
-			r = await api({ action: 'start' });
+			r = await api({ action: 'start' }, { timeoutMs: START_TIMEOUT_MS });
 		} catch (e) {
 			const code = e instanceof Error ? e.message : 'error';
+			// 応答が無いまま上限を過ぎた（回線が不安定など）。フロントにつながらないとして、お電話を案内する
+			if (code === 'timeout') return this.finish('offline');
 			const known: GuestCallEnd[] = ['out_of_hours', 'busy', 'rate_limited', 'disabled', 'offline'];
 			return this.finish(known.includes(code as GuestCallEnd) ? (code as GuestCallEnd) : 'error');
 		}
 		this.callId = String(r.callId);
 		this.secret = String(r.callSecret);
+		// 呼を作っている間に閉じられていたら、作った呼をすぐ取り消す（フロントを鳴らしっぱなしにしない）
+		if (this.closed) {
+			void api({ action: 'hangup', callId: this.callId, callSecret: this.secret }, { keepalive: true }).catch(() => {});
+			return;
+		}
 		this.set('ringing');
 		this.diag('呼出開始');
 		// 応答を待つ間に TURN を取り、PeerConnection・offer・ICE 収集まで済ませて offer を DB に置いておく

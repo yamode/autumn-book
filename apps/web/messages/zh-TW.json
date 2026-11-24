@@ -989,6 +989,7 @@
   "intercom_end_missed": "無人接聽。",
   "intercom_end_failed": "無法連線，請連接館內Wi-Fi後再試。",
   "intercom_end_mic": "無法使用麥克風，請在瀏覽器設定中允許麥克風。",
+  "intercom_end_mic_timeout": "無法啟動麥克風。請允許使用麥克風後再試一次。若其他應用程式正在使用麥克風（例如通話中），請先結束後再試。",
   "intercom_end_out_of_hours": "非服務時間。",
   "intercom_end_busy": "正在通話中。",
   "intercom_end_rate_limited": "撥打次數已達上限，請稍後再試。",
