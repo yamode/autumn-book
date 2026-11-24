@@ -963,7 +963,7 @@
   "spring_level_info_label": "關於水量參考",
   "spring_level_default_note": "表示館內大浴場與包租浴池可使用的溫泉水目前大約剩餘多少。由工作人員確認後手動更新，可能與實際情況略有不同。",
   "spring_level_updated": "{time} 更新",
-  "intercom_call": "呼叫櫃檯",
+  "intercom_call": "櫃檯內線",
   "intercom_call_sub": "Wi-Fi通話",
   "intercom_closed": "非服務時間",
   "intercom_starting": "準備中…",

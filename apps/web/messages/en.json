@@ -963,7 +963,7 @@
   "spring_level_info_label": "About the water level",
   "spring_level_default_note": "An estimate of how much hot spring water remains for the large baths and private baths. Our staff check and update it by hand, so it may differ slightly from the actual level.",
   "spring_level_updated": "Updated {time}",
-  "intercom_call": "Call the front desk",
+  "intercom_call": "Front desk intercom",
   "intercom_call_sub": "Wi-Fi call",
   "intercom_closed": "Outside service hours",
   "intercom_starting": "Preparing…",

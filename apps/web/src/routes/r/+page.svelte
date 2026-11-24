@@ -205,29 +205,6 @@
 		</section>
 		{/if}
 
-		{#if data.stay && data.billSummary}
-			<!-- ============ ご精算（明細・フロント案内・オンライン決済。出し分けは管理画面・2026-10-17）============ -->
-			{@const bs = data.billSummary}
-			<a href="/r/bill" class="flex items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card">
-				<svg viewBox="0 0 24 24" class="h-6 w-6 shrink-0 text-stone-700" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-					<rect x="5" y="3" width="14" height="18" rx="1.5" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
-				</svg>
-				<div class="min-w-0 flex-1">
-					<p class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_title()}</p>
-					<p class="mt-0.5 text-xs text-stone-500">
-						{bs.flags.online ? (bs.flags.items ? m.inroom_bill_card_sub() : m.inroom_bill_online_title()) : bs.flags.items ? m.inroom_bill_card_items() : m.inroom_bill_card_front()}
-					</p>
-				</div>
-				{#if (bs.flags.items || bs.flags.online) && bs.dueTotal > 0}
-					<span class="shrink-0 text-right">
-						<span class="block text-[10px] text-stone-400">{m.inroom_bill_due()}</span>
-						<span class="text-base font-semibold tabular-nums text-stone-900">¥{Math.round(bs.dueTotal).toLocaleString('ja-JP')}</span>
-					</span>
-				{/if}
-				<span class="shrink-0 text-stone-300">›</span>
-			</a>
-		{/if}
-
 		{#if mealDays.length}
 			<!-- ============ お食事の時間（PMS の伺い書で決まった時間）。過ぎた分は隠し、日ごとにまとめる ============ -->
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="meal-times-title">
@@ -285,9 +262,10 @@
 		{/if}
 
 		<!-- ============ 機能ナビ（横並び） ============ -->
+		<!-- 中身は上から並べる（justify-start）。内線だけ2行目があるので、中央寄せだと貸切風呂などの文字の高さがずれる（2026-11-24） -->
 		<!-- 貸切風呂: コードなし（館内案内）で押すと、先にコード入力（/r/bath/code）→ 予約フォーム -->
 		<nav class="flex items-stretch rounded-lg bg-white shadow-card">
-			<a href="/r/bath" class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
+			<a href="/r/bath" class="flex flex-1 flex-col items-center justify-start gap-1.5 py-4">
 				<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
 					<path d={inroomIcon('onsen')} />
 				</svg>
@@ -299,7 +277,7 @@
 					type="button"
 					onclick={() => sheet?.dial()}
 					disabled={!intercom.open || !intercom.online}
-					class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4 disabled:opacity-40"
+					class="flex flex-1 flex-col items-center justify-start gap-1.5 py-4 disabled:opacity-40"
 				>
 					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 						<path d="M5 12.5a10 10 0 0 1 14 0M8 15.5a5.5 5.5 0 0 1 8 0" /><circle cx="12" cy="18.5" r="1" fill="currentColor" />
@@ -312,7 +290,7 @@
 			<!-- 管理画面で施設ごとに出さない設定にできる（2026-10-15）。内線シートの「電話でご連絡ください」は残す -->
 			{#if facilityPhone && data.showFrontCall !== false}
 				<div class="my-3 w-px bg-stone-200"></div>
-				<a href={telHref(facilityPhone)} class="flex flex-1 flex-col items-center justify-center gap-1.5 py-4">
+				<a href={telHref(facilityPhone)} class="flex flex-1 flex-col items-center justify-start gap-1.5 py-4">
 					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M6.5 3h3l1.5 4-2 1.5a12 12 0 0 0 5.5 5.5L16 12l4 1.5v3a2 2 0 0 1-2.2 2A16.5 16.5 0 0 1 4 6.2 2 2 0 0 1 6.5 3z" />
 					</svg>
@@ -322,6 +300,30 @@
 		</nav>
 		{#if intercom?.enabled}
 			<IntercomSheet bind:this={sheet} bind:open={sheetOpen} phone={facilityPhone} />
+		{/if}
+
+		{#if data.stay && data.billSummary}
+			<!-- ============ ご精算（明細・フロント案内・オンライン決済。出し分けは管理画面・2026-10-17）============ -->
+			<!-- 置き場所は貸切風呂・内線のボタンの下（2026-11-24 指示。以前はお部屋のカードのすぐ下） -->
+			{@const bs = data.billSummary}
+			<a href="/r/bill" class="flex items-center gap-3 rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card">
+				<svg viewBox="0 0 24 24" class="h-6 w-6 shrink-0 text-stone-700" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+					<rect x="5" y="3" width="14" height="18" rx="1.5" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" />
+				</svg>
+				<div class="min-w-0 flex-1">
+					<p class="text-[15px] font-semibold text-stone-900">{m.inroom_bill_title()}</p>
+					<p class="mt-0.5 text-xs text-stone-500">
+						{bs.flags.online ? (bs.flags.items ? m.inroom_bill_card_sub() : m.inroom_bill_online_title()) : bs.flags.items ? m.inroom_bill_card_items() : m.inroom_bill_card_front()}
+					</p>
+				</div>
+				{#if (bs.flags.items || bs.flags.online) && bs.dueTotal > 0}
+					<span class="shrink-0 text-right">
+						<span class="block text-[10px] text-stone-400">{m.inroom_bill_due()}</span>
+						<span class="text-base font-semibold tabular-nums text-stone-900">¥{Math.round(bs.dueTotal).toLocaleString('ja-JP')}</span>
+					</span>
+				{/if}
+				<span class="shrink-0 text-stone-300">›</span>
+			</a>
 		{/if}
 
 		<!-- ============ 館内のご案内（カード） ============ -->
