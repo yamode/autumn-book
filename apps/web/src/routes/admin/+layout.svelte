@@ -12,6 +12,7 @@
 	import Toast from '$lib/components/admin/Toast.svelte';
 	import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
 	import { ADMIN_NAV, activeNav, visibleNav } from '$lib/admin-nav';
+	import { isFacilityScopedAdminPath } from '$lib/admin-facility-scope';
 	import ConfirmDialog from '$lib/components/admin/ConfirmDialog.svelte';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { pendingPage } from '$lib/page-transition';
@@ -45,6 +46,9 @@
 	);
 
 	let tenantWide = $derived(current?.leaf.tenantWide ?? current?.item.tenantWide ?? false);
+	// 担当外の施設を開いていて、いまの画面が施設に紐づく（＝保存が止まる）かどうか。
+	// 判定はサーバ（hooks.server.ts）と同じ admin-facility-scope に合わせる
+	let readOnlyFacility = $derived(data.canEditFacility === false && isFacilityScopedAdminPath(page.url.pathname));
 	// 本番（実データ）なのに、デモストアしか読み書きしない画面を開いている
 	let live = $derived(data.dataSource === 'supabase');
 	let demoOnlyHere = $derived(live && (current?.leaf.demoOnly ?? false));
@@ -322,7 +326,8 @@
 								onchange={(e) => (location.href = `/admin/switch?f=${e.currentTarget.value}&back=${encodeURIComponent(page.url.pathname)}`)}
 							>
 								{#each data.facilities as f}
-									<option value={f.id} selected={f.id === data.currentFacility.id} class="bg-white text-stone-800">{f.name}</option>
+									<!-- 担当外の施設も選べる（開ける）が、閲覧だけになることを名前の横に出す -->
+									<option value={f.id} selected={f.id === data.currentFacility.id} class="bg-white text-stone-800">{f.assigned ? f.name : `${f.name}（閲覧のみ）`}</option>
 								{/each}
 							</select>
 						</label>
@@ -361,6 +366,12 @@
 					<a href="/admin/maintenance" class="block bg-amber-500 print:hidden px-4 py-1.5 text-center text-xs font-medium text-white hover:bg-amber-600">
 						🛠 メンテナンスモード有効 — 一般ユーザーへ非公開中（運営はプレビュー可）
 					</a>
+				{/if}
+				<!-- 担当外の施設を開いているとき（2026-11-24 指示）。施設に紐づく画面は閲覧だけ・共通の画面はそのまま使える -->
+				{#if readOnlyFacility}
+					<p class="bg-stone-700 print:hidden px-4 py-1.5 text-center text-xs font-medium text-white">
+						👁 「{data.currentFacility.name}」は担当外のため閲覧のみです — 操作するには施設を切り替えてください
+					</p>
 				{/if}
 		</div>
 

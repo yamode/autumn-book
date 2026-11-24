@@ -9,6 +9,8 @@ import { staffGroupScope } from '$lib/server/partners/group-staff';
 import { TtlCache } from '$lib/server/ttl-cache';
 import { bookAdmin } from '$lib/server/admin-app-data';
 import { supportBadgeCache } from '$lib/server/admin-badges';
+import { assignedFacilities } from '$lib/server/admin-facility-access';
+import { canOperateFacility, pickFacilityId } from '$lib/admin-facility-scope';
 import type { LayoutServerLoad } from './$types';
 
 const badgeCache = new TtlCache<number | null>(60_000);
@@ -46,12 +48,22 @@ export const load: LayoutServerLoad = async (event) => {
 	const gate = decideAdminMfaGate({ pathname: url.pathname, role: locals.user?.role, aal: locals.adminAal, required });
 	const target = adminMfaRedirectTarget(gate, url.pathname, url.search);
 	if (target) redirect(303, target);
-	const facId = cookies.get('ab_fac') ?? facilities[0].id;
-	const current = facilities.find((f) => f.id === facId) ?? facilities[0];
+	// いま開いている施設。クッキーが無い（ログインし直した・別のブラウザ）ときは、
+	// 先頭の施設ではなく**自分に割り当てられた施設**から始める（2026-11-24 指示）。
+	// クッキーがあるときはそのまま従う（割り当て外の施設も開ける・ただし下の canEditFacility が false になり閲覧だけ）。
+	const assigned = await assignedFacilities(event);
+	const picked = pickFacilityId(facilities.map((f) => f.id), cookies.get('ab_fac'), assigned);
+	const current = facilities.find((f) => f.id === picked.id) ?? facilities[0];
+	// 次からは決め直さなくて済むように覚える（/admin/switch と同じ入れ方）
+	if (!picked.fromCookie && !isLogin) {
+		cookies.set('ab_fac', current.id, { path: '/admin', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 });
+	}
 	return {
 		user: locals.user,
-		facilities: facilities.map((f) => ({ id: f.id, name: f.name })),
+		facilities: facilities.map((f) => ({ id: f.id, name: f.name, assigned: canOperateFacility(assigned, f.id) })),
 		currentFacility: { id: current.id, name: current.name },
+		// 割り当て外の施設を開いているあいだ、施設に紐づく画面は閲覧だけ（保存は hooks.server.ts が止める）
+		canEditFacility: canOperateFacility(assigned, current.id),
 		maintenanceActive: await isMaintenanceOn(platform),
 		// アプリ運用画面が「この環境では使えません」の理由を出せるようにする
 		adminSupabase: ADMIN_SUPABASE,

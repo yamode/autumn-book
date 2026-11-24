@@ -14,6 +14,9 @@ import { applySecurityHeaders } from '$lib/server/security-headers';
 import { logAdminAccess } from '$lib/server/access-log';
 import { trySharedCookieSso } from '$lib/server/admin-shared-sso';
 import { isAdminPath } from '$lib/admin-mfa';
+import { isFacilityScopedAdminPath } from '$lib/admin-facility-scope';
+import { assignedFacilities, canOperateFacility } from '$lib/server/admin-facility-access';
+import { currentBookFacility } from '$lib/server/partners/staff';
 import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
 import { isBookingMcpMachineUrl, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
 import { DATA_SOURCE } from '$lib/server/supabase';
@@ -180,6 +183,10 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 	// routes/admin/+layout.server.ts の redirect に任せる（ここで 303 を返すと HTML が JSON として読まれて壊れる）。
 	const mfaResponse = adminMfaGateResponse(event);
 	if (mfaResponse) return mfaResponse;
+	// 施設の割り当ての関所（2026-11-24 指示）。割り当て外の施設を開いているあいだは、
+	// 施設に紐づく画面を閲覧だけにする（テナント共通の画面はそのまま編集できる）。
+	const facilityResponse = await adminFacilityGateResponse(event);
+	if (facilityResponse) return facilityResponse;
 	if (event.locals.memberMfaPending && !event.isDataRequest && event.request.method !== 'GET' && event.request.method !== 'HEAD'
 		&& !['/(public)/auth/mfa', '/(public)/auth/logout', '/(public)/auth/passkey'].includes(event.route.id ?? '')) {
 		return new Response(null, { status: 403, headers: { 'cache-control': 'no-store' } });
@@ -233,6 +240,29 @@ function adminMfaGateResponse(event: Parameters<Handle>[0]['event']): Response |
 	// フォーム送信・API は画面遷移させず拒否する（確認が済んでから操作し直してもらう）
 	return new Response(
 		gate === 'challenge' ? '二段階認証のコードで本人確認をしてから操作してください。' : '二段階認証を登録してから操作してください。',
+		{ status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }
+	);
+}
+
+/**
+ * 割り当て外の施設を開いているあいだ、施設に紐づく画面への書き込みを止める（2026-11-24 指示）。止めないなら null。
+ *
+ * 読む（GET / HEAD）のは止めない ＝ ほかの施設も「見るだけ」はできる。
+ * テナント共通の画面（会員・クーポン・キャンセル規定など）は施設と関係がないので止めない。
+ * 二段階認証の関所と同じく、レイアウトの load では届かないフォームの action・+server.ts を押さえるためここに置く。
+ */
+async function adminFacilityGateResponse(event: Parameters<Handle>[0]['event']): Promise<Response | null> {
+	const method = event.request.method;
+	if (method === 'GET' || method === 'HEAD') return null;
+	const role = event.locals.user?.role;
+	if (role !== 'admin' && role !== 'staff') return null;
+	if (!isFacilityScopedAdminPath(event.url.pathname)) return null;
+	const assigned = await assignedFacilities(event);
+	if (assigned === 'all') return null;
+	const current = currentBookFacility(event);
+	if (canOperateFacility(assigned, current.id)) return null;
+	return new Response(
+		`いまは「${current.name}」を開いています。この施設はあなたの担当ではないため、閲覧だけになります。操作するには担当の施設に切り替えてください。`,
 		{ status: 403, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }
 	);
 }
