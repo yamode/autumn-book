@@ -1,6 +1,6 @@
-import { pointLedger, memberRanks, nextPointExpiry, facilities, myReservations } from '$lib/server/store';
+import { pointLedger, memberRanks, nextPointExpiry, facilities, myReservations, listMyOtayori } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { sbPointLedger, sbNextPointExpiry } from '$lib/server/supabase-data';
+import { sbPointLedger, sbNextPointExpiry, getOtayoriMySummary } from '$lib/server/supabase-data';
 import { addDays, todayStr } from '$lib/format';
 import { nightsBetween } from '@autumn-book/core';
 import type { RankCode } from '$lib/plan-access';
@@ -18,13 +18,16 @@ export const load: PageServerLoad = async (event) => {
 
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
-		const [ledger, rankResult, nextExpiry] = await Promise.all([
+		const [ledger, rankResult, nextExpiry, otayoriCount] = await Promise.all([
 			sbPointLedger(client),
 			client.schema('book').rpc('my_rank_progress'),
-			sbNextPointExpiry(client).catch(() => null)
+			sbNextPointExpiry(client).catch(() => null),
+			// おたよりの記録はポイントの側に紐づく（紹介1通ごとに1,000ポイント・2026-11-24）。取れなくても画面は出す
+			getOtayoriMySummary(client).then((s) => s.balance).catch(() => null)
 		]);
 		return {
 			ledger,
+			otayoriCount,
 			ranks: memberRanks,
 			nextExpiry,
 			rankProgress: rankResult.error || !Array.isArray(rankResult.data?.by_facility) ||
@@ -61,6 +64,7 @@ export const load: PageServerLoad = async (event) => {
 	};
 	return {
 		ledger: pointLedger.filter((p) => p.memberId === memberId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+		otayoriCount: listMyOtayori(memberId).balance as number | null,
 		ranks: memberRanks,
 		nextExpiry: nextPointExpiry(memberId),
 		rankProgress

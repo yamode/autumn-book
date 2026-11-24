@@ -120,4 +120,16 @@
 	</div>
 </section>
 
-<a href="/account/coupons#otayori" class="mt-5 inline-flex min-h-11 items-center text-sm font-medium text-brand-800 underline underline-offset-4">{m.otayori_thanks_mypage()}</a>
+<!-- おたより（北風放送）: 紹介1通ごとに通常のポイントを1,000ポイント付ける。記録はポイントの配下（2026-11-24。以前はクーポンの画面） -->
+<section class="mt-6 rounded-2xl border border-stone-200 bg-white p-6" aria-labelledby="points-otayori">
+	<div class="flex items-center justify-between gap-3">
+		<h2 id="points-otayori" class="text-lg">{m.otayori_nav()}</h2>
+		<a href="/kitakaze#letter" class="shrink-0 text-sm text-brand-800 underline">{m.radio_letter_title()}</a>
+	</div>
+	{#if data.otayoriCount !== null && data.otayoriCount !== undefined}
+		<p class="mt-3 text-sm text-stone-500">{m.otayori_balance_label()}</p>
+		<p class="mt-1 text-2xl font-bold text-brand-900">{m.otayori_letter_count({ count: data.otayoriCount.toLocaleString() })}</p>
+	{/if}
+	<p class="mt-2 text-sm text-stone-500">{m.otayori_value_note()}</p>
+	<a href="/account/points/otayori" class="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-brand-800 underline underline-offset-4">{m.otayori_thanks_mypage()}</a>
+</section>

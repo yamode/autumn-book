@@ -26,6 +26,7 @@
 		{ href: '/help', label: m.help_nav_label() }
 	]);
 	const bookingNav = $derived([
+		// クーポン（配られたクーポンの一覧）。おたよりの記録はポイントの配下（/account/points/otayori・2026-11-24）
 		{ href: '/account/coupons', label: m.account_nav_coupons() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
 		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() },
