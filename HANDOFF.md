@@ -1,3 +1,14 @@
+## トップページの時間切れ（Sentry AUTUMN-BOOK-1/9）を直す（2026-11-25・v0.346.2）
+
+- 原因: トップページの参考最低料金 `book.reference_min_price` が、DB のデータが温まっていないと 1.5〜3 秒かかり、未ログイン（anon）の `statement_timeout=3s` に当たって 500 になっていた（温まっていれば 0.1 秒・PostgREST 経由で平均 0.44 秒・最大 2.9 秒）
+- 対応（`supabase-data.ts` の `referenceMinPrice`）: 5 分覚える・失敗したら1回だけやり直す・それでも駄目なら直前に取れた値を使う。管理画面で料金を変えてからトップの「〜円（参考）」に出るまで最大 5 分
+- Sentry: 開発機の Node.js（vite preview・Miniflare）からは送らない（AUTUMN-BOOK-4 は MacBook での Miniflare の SQLITE_BUSY で本番の不具合ではなかった）
+
+### テストチェックリスト（トップページ）
+
+- [ ] トップページに施設ごとの「〜円 / 1名あたり（参考）」が出る
+- [ ] Sentry に `canceling statement due to statement timeout`（`GET /(public)`）が新しく来ない（本番）
+
 ## Sentry の雑音を減らす・デプロイ直後の読み込み失敗は再読み込み（2026-11-25・v0.346.1）
 
 - ブラウザの通信切断（Load failed / Failed to fetch / NetworkError）とデプロイ直後の読み込み失敗（Importing a module script failed など）は Sentry に送らない（`$lib/sentry.ts` の `SENTRY_CLIENT_IGNORE_ERRORS`）。サーバー側の失敗は従来どおり届く

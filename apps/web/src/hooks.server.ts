@@ -271,7 +271,8 @@ async function adminFacilityGateResponse(event: Parameters<Handle>[0]['event']):
 export const handle = sequence(
 	initCloudflareSentryHandle({
 		dsn: SENTRY_DSN,
-		enabled: !dev,
+		// 開発機の Node.js（vite preview・ビルド中の Miniflare など）からは送らない（2026-11-25 AUTUMN-BOOK-4）。本番の Cloudflare では送る
+		enabled: !dev && !globalThis.navigator?.userAgent?.startsWith('Node.js'),
 		environment: 'production',
 		release: `autumn-book@${__APP_VERSION__}`,
 		tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,

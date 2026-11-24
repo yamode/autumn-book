@@ -300,10 +300,35 @@ export async function searchAvailability(checkin: string, nights: number, adults
 	return data as { facility_id: string; min_total: number; min_per_person: number; remaining: number }[];
 }
 
-export async function referenceMinPrice(adults = 2) {
+type ReferencePriceRow = { facility_id: string; min_per_person: number };
+/** 参考最低料金は日付を指定しない目安なので長めに覚える（管理画面で料金を変えてから最大 5 分で反映） */
+export const REFERENCE_PRICE_TTL_MS = 5 * 60_000;
+/** 直前に取れた参考最低料金（人数ごと）。DB が時間切れのときの代わりに使う */
+const lastReferencePrice = new Map<number, ReferencePriceRow[]>();
+
+async function fetchReferenceMinPrice(adults: number): Promise<ReferencePriceRow[]> {
 	const { data, error } = await supa().rpc('reference_min_price', { p_adults: adults });
 	if (error) throw error;
-	return data as { facility_id: string; min_per_person: number }[];
+	return data as ReferencePriceRow[];
+}
+
+/**
+ * 施設ごとの参考最低料金（トップページ・日付未指定の検索）。
+ * 2026-11-25 Sentry AUTUMN-BOOK-1/9: DB のデータが温まっていないと 1.5〜3 秒かかり、未ログイン（anon）の
+ * statement_timeout=3s に当たってトップページが 500 になっていた（温まっていれば 0.1 秒）。そのため
+ * ① 5 分覚える ② 失敗したら 1 回だけやり直す（1 回目でデータが温まるので 2 回目は速い）③ それでも駄目なら直前の値を使う。
+ */
+export async function referenceMinPrice(adults = 2): Promise<ReferencePriceRow[]> {
+	try {
+		const rows = await cachedPublic(`reference-min-price:${adults}`, () =>
+			fetchReferenceMinPrice(adults).catch(() => fetchReferenceMinPrice(adults)), REFERENCE_PRICE_TTL_MS);
+		lastReferencePrice.set(adults, rows);
+		return rows;
+	} catch (e) {
+		const last = lastReferencePrice.get(adults);
+		if (last) return last;
+		throw e;
+	}
 }
 
 export async function getPlanCalendar(ratePlanId: string, month: string, adults = 2): Promise<CalendarDay[]> {
