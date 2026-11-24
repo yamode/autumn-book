@@ -931,6 +931,25 @@
 										{/if}
 									</div>
 								{:else if step === 'input'}
+									{#if data.myCoupons?.length}
+										<!-- お持ちのクーポン（2026-11-24）。押すとコード欄に入れて、そのまま確かめる -->
+										<p class={label}>{m.booking_my_coupons()}</p>
+										<ul class="mb-3 space-y-2">
+											{#each data.myCoupons as mc (mc.code)}
+												<li class="flex items-center gap-2 rounded-lg bg-stone-50 px-3 py-2">
+													<span class="min-w-0 flex-1">
+														<span class="block truncate font-medium text-stone-800">{mc.name}</span>
+														<span class="block text-sm text-stone-500">
+															{mc.discountType === 'percent' ? m.coupon_discount_percent({ value: String(mc.discountValue) }) : m.coupon_discount_fixed({ value: mc.discountValue.toLocaleString(getLocale()) })}{#if mc.minTotal > 0} · {m.coupon_min_total({ amount: mc.minTotal.toLocaleString(getLocale()) })}{/if}
+														</span>
+													</span>
+													<button class="min-h-10 shrink-0 rounded-lg border border-stone-300 bg-white px-3 text-sm font-medium" type="button"
+														disabled={couponBusy || paying}
+														onclick={() => { couponInput = mc.code; void applyCoupon(); }}>{m.booking_coupon_use()}</button>
+												</li>
+											{/each}
+										</ul>
+									{/if}
 									<label for="booking-coupon-code" class={label}>{m.booking_coupon_code()}</label>
 									<div class="flex gap-2">
 										<input id="booking-coupon-code" bind:value={couponInput} maxlength="32" autocapitalize="characters" spellcheck={false}

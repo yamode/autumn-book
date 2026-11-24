@@ -17,6 +17,8 @@ import {
 } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { sbMyCoupons } from '$lib/server/my-coupons';
+import { couponsForBooking } from '$lib/my-coupons';
 import {
 	sbGetHoldGroupMapped,
 	sbFacilityByUuid,
@@ -148,7 +150,7 @@ export const load: PageServerLoad = async (event) => {
 		const onlineReady = await directPaymentsReady().catch(() => false);
 		// 支払方法は全室のプランで許されているものだけ（Q3。1 室はそのプランの設定そのもの）
 		const pay = payOptionsFor(groupPayment(roomViews), { live: true, onlineReady, guestCardOnly: !isMember });
-		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback, fridgeOptions] = await Promise.all([
+		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback, fridgeOptions, myCoupons] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
 			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
@@ -166,13 +168,22 @@ export const load: PageServerLoad = async (event) => {
 			loadStandardFieldTexts(hold.facilityId),
 			loadCancellationFallback(locals),
 			// 冷蔵庫のカスタマイズ（会員だけ・予約フォームでチェックできる）
-			member ? fridgeOptionsFor(hold.facilityId, getLocale(), memberRank) : Promise.resolve([])
+			member ? fridgeOptionsFor(hold.facilityId, getLocale(), memberRank) : Promise.resolve([]),
+			// お持ちのクーポン（会員だけ・この施設・この日程で使えそうなもの）。選ぶとコード欄に入れて確かめる（2026-11-24）。
+			// 最低金額などの細かい条件は、選んだあとに member_coupon_code_quote が確かめる
+			member
+				? sbMyCoupons(createSupabaseServerClient(event))
+						.then((list) => couponsForBooking(list, hold.facilityId, hold.checkin))
+						.catch(() => [])
+				: Promise.resolve([])
 		]);
 		const prepay = combinePrepayViews(prepayViews);
 
 		return {
 			expired: false as const,
 			couponsEnabled: MEMBER_SUPABASE,
+			// 画面に渡すのは選ぶのに要るものだけ（コード・名前・割引・最低金額）
+			myCoupons: myCoupons.map((c) => ({ code: c.code as string, name: c.name, discountType: c.discountType, discountValue: c.discountValue, minTotal: c.minTotal })),
 			hold,
 			plan,
 			room,
