@@ -3,9 +3,14 @@ import { cancellationPolicyRank } from '$lib/member-benefits';
 import type { MemberPageSnapshot } from '$lib/partner-member-page';
 import { viewerOf } from './secret-plans';
 import { sbListRankCancelPolicies } from './supabase-data';
+import { cachedPublic } from './public-cache';
 
 export async function loadCancellationFallback(locals: App.Locals): Promise<CancellationPolicy> {
-	const [viewer, policies] = await Promise.all([viewerOf(locals), sbListRankCancelPolicies()]);
+	const [viewer, policies] = await Promise.all([
+		viewerOf(locals),
+		// グレード別の規定は全員同じ公開データ。管理画面の編集画面は直に読むので、ここの公開用だけ短命キャッシュに乗せる
+		cachedPublic('rank-cancel-policies', () => sbListRankCancelPolicies())
+	]);
 	const rank = cancellationPolicyRank(viewer.rank);
 	const policy = policies.find((row) => row.rankCode === rank) ?? policies.find((row) => row.rankCode === 'standard');
 	if (!policy) throw new Error('Missing default cancellation policy');

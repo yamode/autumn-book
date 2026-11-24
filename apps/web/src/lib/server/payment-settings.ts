@@ -23,6 +23,7 @@ import {
   type PlanPayOption
 } from '$lib/direct-payment';
 import { DATA_SOURCE, supa } from './supabase';
+import { PAYMENT_CACHE_TTL_MS, cachedPublic } from './public-cache';
 import { FACILITY_UUID } from './supabase-data';
 
 /** デモ環境の設定（段階表の初期値で ON） */
@@ -36,14 +37,23 @@ export async function loadEarlyPrepaySettings(bookFacilityId: string): Promise<E
   if (DATA_SOURCE !== 'supabase') return DEMO_EARLY_PREPAY;
   const uuid = FACILITY_UUID[bookFacilityId] ?? bookFacilityId;
   try {
-    const { data, error } = await supa()
-      .from('payment_settings')
-      // 列単位の grant なので列を明示する（* は anon で permission denied になる）
-      .select('early_prepay_enabled, early_prepay_mode, early_prepay_tiers, early_prepay_blackouts')
-      .eq('facility_id', uuid)
-      .maybeSingle();
-    if (error || !data) return NO_EARLY_PREPAY;
-    return normalizeEarlyPrepaySettings(data);
+    // 施設ごとの公開設定なので短命キャッシュに乗せる（金額の表示に関わるので 30 秒）。
+    // 読めなかったときは覚えない（throw して次の人がやり直す）。行が無いのは正常なので覚えてよい。
+    return await cachedPublic(
+      `early-prepay:${uuid}`,
+      async () => {
+        const { data, error } = await supa()
+          .from('payment_settings')
+          // 列単位の grant なので列を明示する（* は anon で permission denied になる）
+          .select('early_prepay_enabled, early_prepay_mode, early_prepay_tiers, early_prepay_blackouts')
+          .eq('facility_id', uuid)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) return NO_EARLY_PREPAY;
+        return normalizeEarlyPrepaySettings(data);
+      },
+      PAYMENT_CACHE_TTL_MS
+    );
   } catch {
     return NO_EARLY_PREPAY;
   }

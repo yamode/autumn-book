@@ -38,6 +38,7 @@
 //       });
 import { parseMemberPageSnapshot, parseMemberPerks, type MemberPageSnapshot } from '$lib/partner-member-page';
 import { supa } from './supabase';
+import { cachedPublic } from './public-cache';
 import { partnerServiceClient, previewServiceClient } from './partners/admin-client';
 import { planAccessOf } from '$lib/plan-access';
 import { signCookieValue, verifyCookieValue } from './signed-cookie';
@@ -2840,8 +2841,12 @@ export async function sbListFacilities(): Promise<Facility[]> {
 }
 
 export async function sbFacilityBySlug(slug: string): Promise<Facility | undefined> {
-	const { data, error } = await supa().from('v_facilities').select('*').eq('slug', slug).maybeSingle();
-	if (error) throw error;
+	// 施設の行は滅多に変わらないので短命キャッシュに乗せる。訳文は言語ごとに変わるのでキャッシュの外で当てる
+	const data = await cachedPublic(`facility:slug:${slug}`, async () => {
+		const { data, error } = await supa().from('v_facilities').select('*').eq('slug', slug).maybeSingle();
+		if (error) throw error;
+		return data;
+	});
 	return translateOne(data ? mapFacilityRow(data as FacilityRow) : undefined, 'facility');
 }
 
@@ -2852,7 +2857,9 @@ export async function sbFacilityByUuid(uuid: string): Promise<Facility | undefin
 }
 
 export async function sbListRoomTypesMapped(facilityUuid: string): Promise<RoomType[]> {
-	const rows = await listRoomTypes(facilityUuid);
+	// 公開ページ向けの読み出しだけ短命キャッシュに乗せる（listRoomTypes そのものは管理画面も使うので触らない）。
+	// 訳文は言語ごとに変わるのでキャッシュの外で当てる
+	const rows = await cachedPublic(`room-types:${facilityUuid}`, () => listRoomTypes(facilityUuid));
 	return withTranslations((rows ?? []).map((r) => mapRoomTypeRow(r as Record<string, unknown>)), 'room_type');
 }
 

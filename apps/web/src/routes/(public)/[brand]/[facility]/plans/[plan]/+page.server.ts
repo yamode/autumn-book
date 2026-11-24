@@ -71,10 +71,23 @@ export const load: PageServerLoad = async (event) => {
 	if (DATA_SOURCE === 'supabase') {
 		const facility = await sbFacilityBySlug(params.facility);
 		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
+		// ★2026-11-24 高速化: ここから下は直列につながず、投げられるものはまとめて投げる。
+		//   supabase-js は PostgREST なので 1 クエリ＝1 本の HTTPS 往復で、Cloudflare のエッジ → ap-northeast-1 は
+		//   現実に 1 往復 20〜60ms かかる。以前は 6〜7 段の直列だったので、その分そのままページが遅く、
+		//   同時アクセスが増えたときに 1 リクエストが DB を掴んでいる時間も伸びていた。
+		//   第1段（施設 ID さえあれば投げられるもの）: プラン・支払設定・紹介文テンプレート・客室一覧。
+		const [open, earlySettings, templates, rooms] = await Promise.all([
+			sbPlanBySlug(facility.id, params.plan),
+			// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
+			loadEarlyPrepaySettings(facility.id),
+			loadPlanTemplates(facility.id),
+			// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
+			// 客室の一覧そのものはプランに依らないのでここで取る
+			sbListRoomTypesMapped(facility.id)
+		]);
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
 		// それでも無ければ（販売停止中・販売表示期間の外・料金なし）、スタッフの ?preview=1 だけ販売ページの見た目で確かめる。
 		// プレビューは本物の在庫・料金で仮押さえして予約入力画面まで進めるが、確定はできない（v0.230.0・$lib/server/plan-preview）
-		const open = await sbPlanBySlug(facility.id, params.plan);
 		const secret = open ? undefined : await secretPlanBySlug(facility.id, params.plan, locals, cookies);
 		const preview = open || secret ? undefined : await staffPreviewPlan(event, facility.id, params.plan);
 		const found = open ?? secret?.plan ?? preview;
@@ -82,25 +95,17 @@ export const load: PageServerLoad = async (event) => {
 		const gate = secret?.gate ?? 'ok';
 		// 料金・空室・仮押さえの RPC に「このプランを販売中と同じに扱う」印を付ける（スタッフのプレビューだけ）
 		const previewPlanId = preview ? preview.id : undefined;
-		// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
-		const earlySettings = await loadEarlyPrepaySettings(facility.id);
 		let [plan] = withEarlyPrepayMax([planForViewer(found, isMember)], earlySettings);
 		// 紹介文のテンプレート（{{tpl:key}}）を展開し、「特典」は本文から外して予約ボタン横のバナーへ
-		const expanded = expandPlanText(plan.description, await loadPlanTemplates(facility.id));
+		const expanded = expandPlanText(plan.description, templates);
 		plan = { ...plan, description: expanded.text, perks: expanded.perks };
-		if (!plan.cancellationPolicy.rules.length) {
-			plan = { ...plan, cancellationPolicy: await loadCancellationFallback(locals) };
-		}
 		// 会員限定で予約できない閲覧者（gate=login/rank）には、料金・空室・客室は出さず案内だけ出す
 		const bookable = gate === 'ok';
-		if (!checkin && bookable) {
-			const referencePrices = await sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId);
-			plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
-		}
-
-		// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
-		// 日付未指定は 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
-		const [calendar, offers, rooms] = await Promise.all([
+		// 第2段（プランが決まってから投げるもの）。規定が無いプランのキャンセル規定の既定値もここに混ぜる。
+		// 日付未指定は plan_offers が 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
+		const [cancellationFallback, referencePrices, calendar, offers] = await Promise.all([
+			plan.cancellationPolicy.rules.length ? Promise.resolve(null) : loadCancellationFallback(locals),
+			!checkin && bookable ? sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId) : Promise.resolve(null),
 			bookable
 				? // 取れなくてもページは出す（日付パネルは開いたときに /api/stay-calendar で取り直す）。
 				  // 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた（2026-11-19）
@@ -109,9 +114,10 @@ export const load: PageServerLoad = async (event) => {
 						return { days: [], through: '', closed: [] as string[] };
 					})
 				: Promise.resolve({ days: [], through: '', closed: [] }),
-			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
-			sbListRoomTypesMapped(facility.id)
+			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([])
 		]);
+		if (cancellationFallback) plan = { ...plan, cancellationPolicy: cancellationFallback };
+		if (referencePrices) plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
 		const roomById = new Map(rooms.map((r) => [r.id, r]));
 		const roomRows = offers
 			.map((o) => {

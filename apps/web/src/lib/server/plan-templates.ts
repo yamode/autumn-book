@@ -4,6 +4,7 @@
 // 一括置き換え: 同じ見出し・同じ本文のブロックを {{tpl:key}} に置き換えて book.plan_contents を更新する。
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { DATA_SOURCE, supa } from './supabase';
+import { cachedPublic } from './public-cache';
 import { expandPlanText, replaceBlockWithToken, usedTemplateKeys, type PlanPerkBlock, type PlanTextTemplate } from '$lib/plan-templates';
 
 type Row = Record<string, unknown>;
@@ -20,11 +21,15 @@ const mapRow = (r: Row): PlanTextTemplate => ({
 /** 施設のテンプレート（並び順）。読めなければ空（紹介文はそのまま出す） */
 export async function loadPlanTemplates(facilityUuid: string, client?: SupabaseClient): Promise<PlanTextTemplate[]> {
   if (DATA_SOURCE !== 'supabase' && !client) return [];
-  try {
-    const db = client ? client.schema('book') : supa();
+  const read = async (db: ReturnType<typeof supa> | ReturnType<SupabaseClient['schema']>) => {
     const { data, error } = await db.from('plan_text_templates').select('*').eq('facility_id', facilityUuid).order('sort_order').order('key');
     if (error) throw error;
     return ((data ?? []) as Row[]).map(mapRow);
+  };
+  try {
+    // 公開側（client なし）は施設ごとの公開データなので短命キャッシュに乗せる。
+    // 管理画面（client あり）はログイン中スタッフの権限で読むので、キャッシュに入れない。
+    return client ? await read(client.schema('book')) : await cachedPublic(`plan-templates:${facilityUuid}`, () => read(supa()));
   } catch (e) {
     console.error('[plan-templates] load', e instanceof Error ? e.message : String(e));
     return [];
