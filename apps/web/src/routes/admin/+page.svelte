@@ -171,6 +171,17 @@
 	<p class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{data.error}</p>
 {/if}
 
+<!-- おたよりの受付から3週間たっても「紹介した」も「却下」もしていないものがあるときだけ、上に目立たせて出す（2026-11-25） -->
+{#await data.otayoriOverdueBadge then n}
+	{#if n}
+		<a href="/admin/otayori?status=pending" class="mb-4 flex items-center gap-2.5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 hover:bg-red-100">
+			<span class="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500"></span>
+			<span class="min-w-0 flex-1">北風放送のおたより <strong class="tabular-nums">{n} 件</strong>が、受付から3週間たっても「紹介した」も「却下」もされていません。</span>
+			<span class="flex shrink-0 items-center gap-0.5 font-medium">開く<AdminIcon name="chevron" class="h-3.5 w-3.5" /></span>
+		</a>
+	{/if}
+{/await}
+
 <!-- きょうの運用：スマホ2列・PC4列 -->
 <section aria-label="きょうの運用" class="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
 	{@render kpi('calendar', '本日の到着', data.arrivalsToday.length, `大人 ${adults(data.arrivalsToday)} 名`, '#arrivals-today')}
@@ -191,6 +202,11 @@
 					{@render todoRow('off', '団体照会の回答待ち', '—', '/admin/group-inquiries')}
 				{:else}
 					{@render todoRow(n > 0 ? 'warn' : 'ok', '団体照会の回答待ち', `${n} 件`, '/admin/group-inquiries?status=submitted')}
+				{/if}
+			{/await}
+			{#await data.otayoriOverdueBadge then n}
+				{#if n !== null}
+					{@render todoRow(n > 0 ? 'error' : 'ok', 'おたより（受付から3週間超の未処理）', `${n} 件`, '/admin/otayori?status=pending')}
 				{/if}
 			{/await}
 			{#if data.mailQueue}

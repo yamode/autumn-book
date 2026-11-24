@@ -8,7 +8,7 @@ import { countSubmittedGroupInquiries } from '$lib/server/partners/group-inquiri
 import { staffGroupScope } from '$lib/server/partners/group-staff';
 import { TtlCache } from '$lib/server/ttl-cache';
 import { bookAdmin } from '$lib/server/admin-app-data';
-import { supportBadgeCache } from '$lib/server/admin-badges';
+import { OTAYORI_OVERDUE_DAYS, otayoriBadgeCache, supportBadgeCache } from '$lib/server/admin-badges';
 import { assignedFacilities } from '$lib/server/admin-facility-access';
 import { canOperateFacility, pickFacilityId } from '$lib/admin-facility-scope';
 import type { LayoutServerLoad } from './$types';
@@ -23,6 +23,17 @@ async function supportBadge(event: Parameters<LayoutServerLoad>[0], userId: stri
 		.then(({ data, error }) => (error ? null : Math.max(0, Number((data as { needs_reply?: number } | null)?.needs_reply ?? 0) || 0)))
 		.catch(() => null as number | null);
 	if (n !== null) supportBadgeCache.set(userId, n);
+	return n;
+}
+
+/** おたよりの受付から3週間たっても未処理（紹介も却下もしていない）の件数。読めなければ null */
+async function otayoriBadge(event: Parameters<LayoutServerLoad>[0], userId: string): Promise<number | null> {
+	const hit = otayoriBadgeCache.get(userId);
+	if (hit !== undefined) return hit;
+	const n = await Promise.resolve(bookAdmin(event).rpc('otayori_overdue_count', { p_days: OTAYORI_OVERDUE_DAYS }))
+		.then(({ data, error }) => (error ? null : Math.max(0, Number(data) || 0)))
+		.catch(() => null as number | null);
+	if (n !== null) otayoriBadgeCache.set(userId, n);
 	return n;
 }
 
@@ -80,6 +91,8 @@ export const load: LayoutServerLoad = async (event) => {
 		// 画面遷移のたびに数え直さないよう、ユーザーごとに 60 秒覚える（2026-10-18 高速化）
 		groupInquiryBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : groupBadge(event, locals.user.id),
 		// サイドバー「会員サポート」のバッジ（未返信の件数・docs/member-support.md）。団体照会と同じく Promise のまま・60 秒覚える
-		supportBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : supportBadge(event, locals.user.id)
+		supportBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : supportBadge(event, locals.user.id),
+		// サイドバー「おたより」（親の「会員・アプリ」にも印）とダッシュボードの強調表示（受付から3週間たっても未処理の件数）。同じく Promise のまま・60 秒覚える
+		otayoriOverdueBadge: isLogin || !ADMIN_SUPABASE || !locals.user ? Promise.resolve(null as number | null) : otayoriBadge(event, locals.user.id)
 	};
 };

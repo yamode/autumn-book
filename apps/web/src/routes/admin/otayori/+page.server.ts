@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { radioAttachmentLinks, type RadioAttachment } from '$lib/server/radio-letters';
 import { kitakazeApiStatus } from '$lib/server/kitakaze';
+import { clearOtayoriBadge } from '$lib/server/admin-badges';
 import { listOtayoriAdmin, approveOtayori, rejectOtayori } from '$lib/server/store';
 import type { OtayoriAdminItem } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
@@ -55,12 +56,14 @@ export const actions: Actions = {
 		const postId = String(form.get('postId') ?? '');
 		if (form.get('readOnAir') !== 'yes') return fail(400, { message: '番組で紹介されたことを確認してください。' });
 		if (ADMIN_SUPABASE) {
-			const { error } = await createSupabaseServerClient(event).schema('book').rpc('otayori_approve', { p_post_id: postId });
-			return error ? fail(400, { message: 'おたよりの紹介を記録できませんでした。' }) : { ok: 'approve' };
+			const { data, error } = await createSupabaseServerClient(event).schema('book').rpc('otayori_approve', { p_post_id: postId });
+			if (error) return fail(400, { message: 'おたよりの紹介を記録できませんでした。' });
+			clearOtayoriBadge(locals.user.id);
+			return { ok: 'approve', points: Number((data as { points?: number } | null)?.points ?? 0) };
 		}
 		const res = approveOtayori(postId, locals.user.name);
 		if ('error' in res) return fail(404, { message: '対象のおたよりが見つかりません' });
-		return { ok: 'approve' };
+		return { ok: 'approve', points: null };
 	},
 	reject: async (event) => {
 		const { request, locals } = event;
@@ -70,7 +73,9 @@ export const actions: Actions = {
 		const note = String(form.get('note') ?? '');
 		if (ADMIN_SUPABASE) {
 			const { error } = await createSupabaseServerClient(event).schema('book').rpc('otayori_reject', { p_post_id: postId, p_note: note });
-			return error ? fail(400, { message: 'おたよりを却下できませんでした。' }) : { ok: 'reject' };
+			if (error) return fail(400, { message: 'おたよりを却下できませんでした。' });
+			clearOtayoriBadge(locals.user.id);
+			return { ok: 'reject' };
 		}
 		const res = rejectOtayori(postId, note, locals.user.name);
 		if ('error' in res) return fail(404, { message: '対象のおたよりが見つかりません' });

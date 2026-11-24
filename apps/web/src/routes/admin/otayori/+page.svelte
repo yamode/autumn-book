@@ -21,6 +21,13 @@
 
 	const dateFormat = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Tokyo' });
 	const dateTime = (date: string) => dateFormat.format(new Date(date));
+
+	// 受付から3週間（21日）たっても「紹介した」も「却下」もしていない申請中のおたよりは赤く目立たせる
+	// （サイドバーとダッシュボードの件数と同じ基準・book.otayori_overdue_count）
+	const OVERDUE_DAYS = 21;
+	const now = Date.now();
+	const daysSince = (date: string) => Math.floor((now - new Date(date).getTime()) / 86_400_000);
+	const overdue = (it: { status: string; createdAt: string }) => it.status === 'pending' && daysSince(it.createdAt) >= OVERDUE_DAYS;
 </script>
 
 <svelte:head><title>おたより ｜ 山人管理</title></svelte:head>
@@ -46,8 +53,16 @@
 </section>
 
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
-{#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">番組で紹介したことを記録しました。</p>{/if}
+{#if form?.ok === 'approve'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">番組で紹介したことを記録しました。{#if 'points' in form && form.points}{form.points.toLocaleString('ja-JP')}ポイントを付与しました。{/if}</p>{/if}
 {#if form?.ok === 'reject'}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりを却下しました（監査ログに記録）。</p>{/if}
+
+{#await data.otayoriOverdueBadge then n}
+	{#if n}
+		<p class="mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+			受付から3週間たっても「紹介した」も「却下」もしていないおたよりが <strong class="tabular-nums">{n} 件</strong>あります（赤枠のもの）。
+		</p>
+	{/if}
+{/await}
 
 <!-- 投稿レビュー：タブ -->
 <section class="rounded-xl border border-stone-200 bg-white p-4">
@@ -70,9 +85,10 @@
 	{:else}
 		<div class="space-y-3">
 			{#each data.items as it (it.id)}
-				<div class="rounded-xl border border-stone-200 p-4">
+				<div class="rounded-xl border p-4 {overdue(it) ? 'border-red-400 bg-red-50/60 ring-1 ring-red-300' : 'border-stone-200'}">
 					<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
 						<span class="tabular-nums">{dateTime(it.createdAt)}</span>
+						{#if overdue(it)}<span class="rounded bg-red-600 px-1.5 py-0.5 font-medium text-white">受付から{daysSince(it.createdAt)}日・未処理</span>{/if}
 						{#if it.guest}<span>非会員</span>{:else}<span><span class="font-mono">{it.memberCode}</span> ／ {it.memberName}</span>{/if}
 						{#if it.radioName || it.guest}<span class="rounded bg-stone-100 px-1.5 py-0.5">ラジオネーム {it.radioName || '匿名'}</span>{/if}
 					</div>
@@ -92,10 +108,11 @@
 
 					<div class="mt-3 flex flex-wrap items-center gap-2">
 						{#if data.status === 'pending'}
+							<!-- 押すだけで紹介を記録し、会員なら 1,000 ポイントを付ける（チェックの2手は 2026-11-25 にやめた） -->
 							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
 								<input type="hidden" name="postId" value={it.id} />
-								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
-								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">{it.guest ? '紹介を記録する' : '紹介を記録して1,000ポイント付与'}</button>
+								<input type="hidden" name="readOnAir" value="yes" />
+								<button class="rounded-md bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-600">番組で紹介した{it.guest ? '' : '（1,000ポイント付与）'}</button>
 							</form>
 
 							<!-- 却下（staff 可・理由入力） -->
@@ -115,8 +132,8 @@
 							<span class="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-500">却下済み</span>
 							<form method="POST" action="?/approve" use:enhance class="flex flex-wrap items-center gap-2 text-sm">
 								<input type="hidden" name="postId" value={it.id} />
-								<label class="flex items-center gap-2"><input name="readOnAir" value="yes" type="checkbox" required /> 番組で紹介した</label>
-								<button class="rounded-md border border-emerald-300 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">紹介を記録する</button>
+								<input type="hidden" name="readOnAir" value="yes" />
+								<button class="rounded-md border border-emerald-300 px-3 py-2 text-xs text-emerald-700 hover:bg-emerald-50">番組で紹介した{it.guest ? '' : '（1,000ポイント付与）'}</button>
 							</form>
 						{/if}
 					</div>

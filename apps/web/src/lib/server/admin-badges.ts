@@ -10,3 +10,12 @@ export const supportBadgeCache = new TtlCache<number | null>(60_000);
 export function clearSupportBadge(userId: string | null | undefined): void {
 	if (userId) supportBadgeCache.delete(userId);
 }
+
+/** おたよりで、受付から3週間（21日）たっても「紹介した」も「却下」もしていない件数（book.otayori_overdue_count） */
+export const OTAYORI_OVERDUE_DAYS = 21;
+export const otayoriBadgeCache = new TtlCache<number | null>(60_000);
+
+/** おたよりのバッジの覚えを、このユーザーの分だけ消す（紹介・却下の後） */
+export function clearOtayoriBadge(userId: string | null | undefined): void {
+	if (userId) otayoriBadgeCache.delete(userId);
+}

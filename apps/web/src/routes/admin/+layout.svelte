@@ -246,6 +246,10 @@
 					>
 						<AdminIcon name={item.icon} class="h-[18px] w-[18px] shrink-0 {here ? 'text-white' : 'text-stone-400'}" />
 						<span class="min-w-0 flex-1 truncate {here ? 'font-medium' : ''}">{item.label}</span>
+						{#if item.children.some((c) => c.badge === 'otayoriOverdue')}
+							<!-- 子の「おたより」に3週間超の未処理があるとき、畳んでいても気づけるよう親にも赤い点を出す -->
+							{#await data.otayoriOverdueBadge then n}{#if n}<span class="h-2 w-2 shrink-0 rounded-full bg-red-500" title="受付から3週間たっても未処理のおたより {n} 件"></span>{/if}{/await}
+						{/if}
 						<AdminIcon name="chevron" class="h-3.5 w-3.5 shrink-0 text-stone-500 transition-transform {isOpen(item.href) ? 'rotate-90' : ''}" />
 					</button>
 					{#if isOpen(item.href)}
@@ -258,6 +262,10 @@
 									class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition {on ? 'bg-white/10 font-medium text-white' : 'text-stone-400 hover:bg-white/5 hover:text-white'}"
 								>
 									<span class="min-w-0 truncate">{leaf.label}</span>
+									{#if leaf.badge === 'otayoriOverdue'}
+										<!-- 受付から3週間たっても「紹介した」も「却下」もしていないおたよりの件数（0・null は出さない） -->
+										{#await data.otayoriOverdueBadge then n}{#if n}<span class="shrink-0 rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white tabular-nums" title="受付から3週間たっても未処理のおたより">{n}</span>{/if}{/await}
+									{/if}
 									{#if leaf.tenantWide && !item.tenantWide}<span class="shrink-0 rounded bg-white/5 px-1 text-[10px] text-stone-500">全施設</span>{/if}
 									{#if live && leaf.demoOnly}<span class="shrink-0 rounded bg-white/10 px-1 text-[10px] text-stone-400">未接続</span>{/if}
 								</a>

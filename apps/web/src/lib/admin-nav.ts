@@ -15,7 +15,7 @@ export type NavLeaf = {
 	tenantWide?: boolean;
 	demoOnly?: boolean;
 	adminOnly?: boolean;
-	badge?: 'groupInquiries' | 'support';
+	badge?: 'groupInquiries' | 'support' | 'otayoriOverdue';
 	tab?: string | null;
 	also?: string[];
 };
@@ -123,7 +123,8 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/coupons', label: 'クーポン', tenantWide: true },
 					{ href: '/admin/preferences', label: '好み登録項目', tenantWide: true },
 					{ href: '/admin/community', label: 'コミュニティ', tenantWide: true },
-					{ href: '/admin/otayori', label: 'おたより', tenantWide: true }
+					// バッジは受付から3週間たっても「紹介した」も「却下」もしていない件数（親の「会員・アプリ」にも印を出す）
+					{ href: '/admin/otayori', label: 'おたより', tenantWide: true, badge: 'otayoriOverdue' }
 				]
 			},
 			// 会員サポート（support@yamado.app・ヘルプページの問い合わせ・docs/member-support.md）。スタッフも使う。バッジは未返信の件数
