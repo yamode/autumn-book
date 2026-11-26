@@ -4,7 +4,11 @@
  import { STATES,INQUIRY_TYPES,inquiryGuestLabel } from '$lib/inquiries';
  import { invalidateAll } from '$app/navigation';
  import AdminIcon from '$lib/components/admin/AdminIcon.svelte';
+ import { page } from '$app/state';
+ import { rememberInquiryList } from '$lib/inquiry-list-return';
  let {data}:{data:PageData}=$props();
+ // 詳細画面の「← 受信トレイ」で、この絞り込みに戻れるよう覚えておく（2026-11-27）
+ $effect(()=>{rememberInquiryList(page.url.search);});
  const activeCount=$derived(data.counts.new+data.counts.working+data.counts.waiting);
  const href=(status:string,origin=data.origin,page=1)=>'?'+new URLSearchParams({status,origin,q:data.q,page:String(page)}).toString();
  const date=(s:string)=>new Date(s).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});

@@ -16,7 +16,11 @@
  import {readSseJson} from '$lib/sse';
  import {renderInquirySignature,replyWithoutSignature,replyWithSignature,inquiryAttachmentMime,attachmentSize,INQUIRY_ATTACHMENT_LIMIT,INQUIRY_ATTACHMENT_COUNT,type InquiryAttachment} from '$lib/inquiry-compose';
  import {expandSnippet,filterSnippets,slashQuery,insertSnippet,snippetDate,type InquirySnippet} from '$lib/inquiry-snippets';
+ import {inquiryListHref} from '$lib/inquiry-list-return';
  let {data,form}:{data:PageData;form:ActionData}=$props();
+ // 「← 受信トレイ」は一覧で最後に開いていた絞り込みへ戻す（2026-11-27 指摘「フィルター状態が詳細から一覧に戻るとリセットされる」）
+ let listHref=$state('/admin/inquiries');
+ onMount(()=>{listHref=inquiryListHref();});
  let body=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature))),savedBody=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature)));
  let assignee=$state(untrack(()=>data.item.assignee)),savedAssignee=$state(untrack(()=>data.item.assignee));
  let template=$state(untrack(()=>data.signature.template)),templateVersion=$state(untrack(()=>data.signature.version)),templateEdit=$state(untrack(()=>data.signature.template));
@@ -323,7 +327,7 @@
 </script>
 <svelte:head><title>{data.item.subject} | お問い合わせ</title></svelte:head>
 <div class="inquiry-desk" data-own-unsaved-guard oninput={trackForm} style="--desk-top:{deskTop}px">
- <div class="desk-topline"><a href="/admin/inquiries" class="back"><span>←</span> 受信トレイ</a><button class="quiet-button" onclick={refresh} disabled={busy||saving}>履歴を更新</button></div>
+ <div class="desk-topline"><a href={listHref} class="back"><span>←</span> 受信トレイ</a><button class="quiet-button" onclick={refresh} disabled={busy||saving}>履歴を更新</button></div>
  <header class="desk-heading"><div class="guest-avatar">{data.item.name.slice(0,1)}</div><div class="heading-copy"><div class="eyebrow">{data.item.profile.history_account?'過去メール':data.item.profile.history_origin_account?'過去メールから継続':'山人-yamado- · お客様からのお問い合わせ'}</div>{#if INQUIRY_TYPES[data.item.profile.inquiry_type]}<span class="inquiry-type-badge">{INQUIRY_TYPES[data.item.profile.inquiry_type]}</span>{/if}<h1>{data.item.subject||'お問い合わせ'}</h1><p>{inquiryGuestLabel(data.item.name)} <span>·</span> {data.item.email}</p></div><span class="status-pill status-{data.item.status}"><i></i>{STATES[data.item.status]}</span></header>
  {#if form?.message}<p class="feedback" role="status">{form.message}</p>{/if}
  {#if aiNotice}<p class="feedback" role="status">{aiNotice}</p>{/if}{#if aiError}<p class="feedback" role="alert">{aiError}</p>{/if}
