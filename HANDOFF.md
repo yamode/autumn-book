@@ -1,3 +1,18 @@
+## Autumn Live の入場の口（Book 側の土台・2026-11-27・v0.350.0）
+
+- 設計: `docs/autumn-live.md`（配り方・権限）。見た目の試作: `docs/prototypes/autumn-live/`（v13・方向づけは proposal.html）
+- Live はデスクトップアプリ（autumn-pms/desktop）の別ウィンドウからだけ開く閲覧専用の画面。ブラウザからは入れない
+- `POST /live/session`: 端末の Ed25519 の署名（＋業務 PC はスタッフの access_token）を確かめて、入場券 `ab_live`（1 時間・`/live` の GET だけに効く）を発行。要求の形は設計書 §4.7
+- `/live` 配下は hooks の `handleLive` が入場券だけを見る（管理画面のログインでは入れない・GET 以外は 405）。画面はまだ空
+- DB: autumn-shared `20261126232212_book_live_devices.sql`（本番適用済み）。端末の表・登録コード・90 日で自動停止（pg_cron 毎日 JST 4:10）
+- Cloudflare のシークレット `LIVE_SESSION_SECRET`（32 文字以上）が必要。未設定なら入場の口は 503
+- 次: デスクトップ側（Live ウィンドウ・端末鍵・入場券の更新・Live だけで起動）、管理画面「Live の端末」、データの取り方
+
+### テストチェックリスト（Autumn Live）
+
+- [ ] ブラウザで https://book.yamado.app/live を開くと 403（「Autumn デスクトップアプリから開いてください」）
+- [ ] ブラウザから `POST /live/session` を送ると 403（Origin 付き）
+- [ ] デスクトップ側ができたら: 業務 PC で初回に端末が登録され、Live が開く。メイン画面でログアウトすると 1 時間以内に入れなくなる
 ## 問い合わせの返信作成画面の改善（2026-11-27・v0.348.0／autumn-shared v13.56.0）
 
 - 他社（Help Scout・Front・Zendesk・Intercom・Missive・メールディーラー・re:lation など）の返信作成画面を調べ、事故防止（第1段）と返信の速さ（第2段）を入れた。見やすさ（第3段：やり取りと返信欄の並び・返信欄まわりの整理・予約欄の常時表示）は未着手

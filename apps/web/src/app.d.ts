@@ -27,6 +27,8 @@ declare global {
 			// ログインの確認にかかった時間（ミリ秒・管理画面の Server-Timing に出す）
 			authMs?: number;
 			memberPreview?: import('$lib/plan-access').RankCode;
+			// Autumn Live の入場券（/live 配下だけ・hooks.server.ts handleLive）。docs/autumn-live.md §4.4
+			live?: import('$lib/live-pass').LivePass | null;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

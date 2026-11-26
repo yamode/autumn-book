@@ -13,6 +13,8 @@
 	// 同意バナーも出さない（トークンを外部へ送らない）。社外向けの画面なのでデバッグパネルも出さない。
 	// 共通ログイン画面（/partner）も取引先向けなので同じ扱い
 	const isPartnerPortal = $derived(page.url.pathname.startsWith('/p/') || page.url.pathname === '/partner' || page.url.pathname.startsWith('/partner/'));
+	// Autumn Live（デスクトップアプリの閲覧専用ウィンドウ）も同じく、計測も同意バナーもデバッグパネルも出さない
+	const isLive = $derived(page.url.pathname === '/live' || page.url.pathname.startsWith('/live/'));
 	const isBookingMcpConsent = $derived(
 		page.url.pathname.startsWith('/booking-mcp/oauth/') || Boolean(page.url.searchParams.get('next')?.startsWith('/booking-mcp/oauth/'))
 	);
@@ -34,7 +36,7 @@
 	</div>
 {/if}
 <PageLoadingBoundary shell="root">{@render children()}</PageLoadingBoundary>
-{#if !page.data.memberPreview && !isPartnerPortal && !isBookingMcpConsent}
+{#if !page.data.memberPreview && !isPartnerPortal && !isBookingMcpConsent && !isLive}
 	<AnalyticsConsent />
 	<DebugPanel />
 {/if}

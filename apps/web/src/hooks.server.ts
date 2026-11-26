@@ -23,6 +23,8 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { seedPreviewMember } from '$lib/server/store';
 import { acceptPreview, isPreviewExchange, isPreviewHost, memberPreviewSession, previewAdminOrigin, previewOrigin, updatePreview } from '$lib/server/member-preview';
 import { dev } from '$app/environment';
+import { isLivePath, LIVE_SESSION_PATH } from '$lib/live-pass';
+import { readLivePass } from '$lib/server/live-session';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 
@@ -128,6 +130,10 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		});
 	}
 
+	// Autumn Live（閲覧専用のライブ画面・docs/autumn-live.md §4.4）。デスクトップアプリからだけ入る。
+	// 会員・運営のセッションは解決しない（管理画面のログインでは入れない・入場券 ab_live だけを見る）。
+	if (isLivePath(event.url.pathname)) return handleLive(event, resolve);
+
 	const machineBookingMcp = isBookingMcpMachineUrl(event.url);
 	if (machineBookingMcp || isPartnerPath(event.url.pathname)) {
 		// 取引先専用ページ・取引先 API・Stripe Webhook・請求 cron は Supabase Auth を使わない
@@ -221,6 +227,41 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		})
 	);
 };
+
+const NO_STORE_TEXT = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
+
+/**
+ * /live 配下（docs/autumn-live.md §4.4）。
+ *   POST /live/session … 入場の口（デスクトップアプリのメインプロセスから・中で署名を確かめる）。ほかのメソッドは 405
+ *   それ以外           … 入場券（Cookie ab_live）があるときの GET / HEAD だけ。書き込みのメソッドは 405
+ * 入場券が無ければ 403（ブラウザから開く道は残さない・ログイン画面へは送らない）。
+ */
+async function handleLive(event: Parameters<Handle>[0]['event'], resolve: Parameters<Handle>[0]['resolve']): Promise<Response> {
+	event.locals.user = null;
+	event.locals.pendingAuthUser = null;
+	event.locals.adminAal = null;
+	event.locals.staff = null;
+	event.locals.abExperiments = [];
+	const method = event.request.method;
+	const path = event.url.pathname.replace(/\/$/, '') || '/';
+	if (path === LIVE_SESSION_PATH) {
+		if (method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST', 'cache-control': 'no-store' } });
+		event.locals.live = null;
+		return resolve(event);
+	}
+	if (method !== 'GET' && method !== 'HEAD') {
+		return new Response('Autumn Live は閲覧専用です。', { status: 405, headers: { ...NO_STORE_TEXT, allow: 'GET, HEAD' } });
+	}
+	event.locals.live = await readLivePass(event);
+	if (!event.locals.live) {
+		return new Response('Autumn Live は Autumn デスクトップアプリから開いてください。', { status: 403, headers: NO_STORE_TEXT });
+	}
+	const res = await resolve(event, { transformPageChunk: ({ html }) => html.replace('%lang%', 'ja') });
+	const headers = new Headers(res.headers);
+	headers.set('cache-control', 'private, no-store');
+	headers.set('x-robots-tag', 'noindex, nofollow');
+	return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
 
 /** 二段階認証が済んでいない管理者/スタッフの /admin へのリクエストを止める。止めないなら null。 */
 function adminMfaGateResponse(event: Parameters<Handle>[0]['event']): Response | null {

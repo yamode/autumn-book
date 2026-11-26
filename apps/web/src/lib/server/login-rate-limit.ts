@@ -46,6 +46,8 @@ export const RATE_RULES = {
   setupIp: { prefix: 'login_rate:setup_ip:', max: 10, windowSec: 600, lockSec: 900 },
   /** 管理ログイン: 1 IP */
   adminIp: { prefix: 'login_rate:admin_ip:', max: 10, windowSec: 600, lockSec: 900 },
+  /** Autumn Live の入場（POST /live/session・docs/autumn-live.md §4.1）: 1 IP。署名の失敗・登録コードの間違いを数える */
+  liveIp: { prefix: 'login_rate:live_ip:', max: 10, windowSec: 600, lockSec: 900 },
   /**
    * 管理ログイン: 1 アカウント（メールのハッシュ）。IP を変えながら同じ管理者を狙う総当たりを止める（2026-10-31）。
    * 本人を締め出せてしまうので IP より緩くする（1 時間 20 回で 30 分）。止まってもパスキーのログインは使える

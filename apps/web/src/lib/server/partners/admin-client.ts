@@ -81,6 +81,9 @@ export function partnerServiceClient(): SupabaseClient | null {
 // 例外その14（2026-11-01・v0.230.0）: スタッフの販売ページプレビュー（lib/server/plan-preview.ts）。
 //   販売中でないプランを本物の在庫・料金で確かめるため、x-book-preview-plan ヘッダー付きで呼ぶ（autumn-shared 20261101073819）。
 //   DB は service_role の呼び出しのときだけヘッダーを見る。呼ぶ側はログイン中の役割が admin / staff であることを確かめてから使う。
+// 例外その16（2026-11-27・docs/autumn-live.md §4）: Autumn Live の入場の口（lib/server/live-session.ts・POST /live/session）。
+//   端末の表 book.live_devices / live_device_codes と book.live_device_* は service_role だけに grant している。
+//   端末の Ed25519 の署名・時刻を確かめた後に触る。業務 PC は Bearer の access_token を auth.getUser(jwt) で確かめ、admin / staff・停止なしのときだけ通す。
 const previewCache = new Map<string, SupabaseClient>();
 
 /** プレビュー中のプラン 1 つを販売中と同じに扱わせる service_role クライアント（鍵が無ければ null） */

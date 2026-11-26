@@ -1,0 +1,549 @@
+<title>Autumn Live 再設計案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: 1 column reading page. The live stage at the top is the recommendation, then the evidence, then the three directions to compare. */
+:root{
+  --bg:#f2f3f6; --panel:#ffffff; --ink:#1b2233; --muted:#5d6475; --line:rgba(27,34,51,.12);
+  --accent:#94742c; --warn:#b26b12; --cool:#2f6f9a; --warm:#b75a2e;
+  --display:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d1120; --panel:#151a2b; --ink:#ece6d6; --muted:#a39e8c; --line:rgba(236,230,214,.12);
+  --accent:#d1ad5a; --warn:#e8a64a; --cool:#a9d2e6; --warm:#f0b48a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d1120; --panel:#151a2b; --ink:#ece6d6; --muted:#a39e8c; --line:rgba(236,230,214,.12);
+  --accent:#d1ad5a; --warn:#e8a64a; --cool:#a9d2e6; --warm:#f0b48a; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.75;font-size:15px}
+.wrap{max-width:1200px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 80px;display:flex;flex-direction:column;gap:56px}
+h1,h2,h3{font-family:var(--display);font-weight:700;text-wrap:balance;margin:0;line-height:1.35}
+h1{font-size:clamp(26px,3.6vw,40px)}
+h2{font-size:clamp(21px,2.4vw,27px)}
+h3{font-size:18px}
+p{margin:0}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted)}
+.lead{max-width:62ch;color:var(--muted)}
+header.top{display:flex;flex-direction:column;gap:12px}
+section{display:flex;flex-direction:column;gap:20px}
+.num{font-variant-numeric:tabular-nums}
+
+/* stage */
+.stage-scroll{overflow-x:auto;border-radius:14px}
+.stage{position:relative;min-width:760px;aspect-ratio:16/9.6;border-radius:14px;overflow:hidden;color:#f0ece0;--sink:#f0ece0;--ssub:rgba(240,236,224,.66)}
+.stage.day{--sink:#15203a;--ssub:rgba(21,32,58,.68)}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hud{position:absolute;left:22px;right:22px;top:16px;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;color:var(--sink);pointer-events:none}
+.hud .live{display:flex;align-items:baseline;gap:10px}
+.hud .live b{font-size:40px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.hud .live span{font-size:13px;color:var(--ssub)}
+.hud .meta{text-align:right;font-size:12px;color:var(--ssub);line-height:1.5}
+.hud .meta .clock{font-size:20px;color:var(--sink);font-variant-numeric:tabular-nums}
+.toast{position:absolute;left:50%;top:18px;transform:translate(-50%,-8px);opacity:0;transition:opacity .6s,transform .6s;padding:8px 16px;border-radius:999px;background:rgba(12,16,30,.55);backdrop-filter:blur(6px);color:#f6eed6;font-size:13px;white-space:nowrap;border:1px solid rgba(209,173,90,.5)}
+.stage.day .toast{background:rgba(255,255,255,.72);color:#15203a}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast b{color:#d9b65e}
+.stage.day .toast b{color:#8a6a1e}
+.kpis{position:absolute;left:22px;right:22px;bottom:16px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{padding:10px 14px 12px;border-radius:10px;background:rgba(10,14,28,.42);backdrop-filter:blur(8px);color:var(--sink);display:flex;flex-direction:column;gap:6px;min-width:0}
+.stage.day .kpi{background:rgba(255,255,255,.55)}
+.kpi .lab{font-size:11.5px;color:var(--ssub);letter-spacing:.04em;display:flex;justify-content:space-between;gap:8px}
+.kpi .val{font-size:22px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi .val small{font-size:12px;font-weight:500;margin-left:3px;color:var(--ssub)}
+.kpi .note{font-size:11.5px;color:var(--ssub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi.warn .note{color:#f1b45a}
+.stage.day .kpi.warn .note{color:#9a5a06}
+.kpi.warn .flag{display:inline-block}
+.flag{display:none;width:8px;height:8px;border-radius:2px;background:#f1b45a;align-self:center}
+.bullet{position:relative;height:10px;border-radius:2px;background:linear-gradient(90deg,rgba(255,255,255,.10) 0 60%,rgba(255,255,255,.18) 60% 88%,rgba(255,255,255,.26) 88%)}
+.stage.day .bullet{background:linear-gradient(90deg,rgba(21,32,58,.08) 0 60%,rgba(21,32,58,.14) 60% 88%,rgba(21,32,58,.2) 88%)}
+.bullet .bar{position:absolute;left:0;top:3px;height:4px;background:var(--sink);border-radius:1px;transition:width .8s}
+.bullet .tgt{position:absolute;top:-2px;width:2px;height:14px;background:#d9b65e}
+.stage.day .bullet .tgt{background:#8a6a1e}
+.bullet .proj{position:absolute;top:0;width:0;height:10px;border-left:2px dotted var(--sink);opacity:.8;transition:left .8s}
+
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button,.btn{font:inherit;font-size:13px;padding:6px 14px;background:transparent;color:var(--ink);border:0;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.btn{border:1px solid var(--line);border-radius:999px}
+.btn:hover,.seg button:hover{background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.seg button[aria-pressed="true"]:hover{background:var(--ink)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.caption{font-size:13px;color:var(--muted);max-width:80ch}
+.legend{display:flex;flex-wrap:wrap;gap:18px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;vertical-align:middle;margin-right:6px}
+.sw-band{width:22px;height:8px;border-radius:2px;background:color-mix(in srgb,var(--ink) 30%,transparent)}
+.sw-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.sw-rise{width:7px;height:7px;border-radius:50%;border:1px solid var(--muted)}
+.sw-tgt{width:2px;height:12px;background:var(--accent)}
+.sw-proj{width:0;height:12px;border-left:2px dotted var(--ink)}
+
+/* diagnosis */
+.cols2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card .k{font-size:12px;color:var(--muted);letter-spacing:.06em}
+.diag li{margin-bottom:6px}
+ul{margin:0;padding-left:1.2em}
+
+/* principles */
+.rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.rule{border-top:2px solid var(--ink);padding-top:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.rule .src{font-size:12px;color:var(--muted)}
+.rule .use{font-size:13.5px}
+.rule .use b{color:var(--accent);font-weight:700}
+
+/* directions */
+.dirs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.dir{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.dir.rec{border-color:var(--accent)}
+.dir .cv{position:relative;aspect-ratio:16/10;background:#0b1024}
+.dir .cv canvas{position:absolute;inset:0;width:100%;height:100%}
+.dir .body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:10px}
+.dir .tag{font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.dir .tag em{font-style:normal;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0 8px}
+.pc{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:13.5px}
+.pc dt{color:var(--muted)}
+.pc dd{margin:0}
+
+.plan{counter-reset:s;display:flex;flex-direction:column;gap:10px}
+.plan li{list-style:none;display:grid;grid-template-columns:28px 1fr;gap:10px}
+.plan li::before{counter-increment:s;content:counter(s);font-family:var(--display);font-weight:700;color:var(--accent);font-size:18px}
+.sources{font-size:13px;color:var(--muted);columns:2;column-gap:32px}
+.sources li{break-inside:avoid;margin-bottom:4px}
+.sources a{color:var(--ink)}
+table.cmp{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
+table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+table.cmp th{font-weight:500;color:var(--muted);font-size:12.5px}
+.tblwrap{overflow-x:auto}
+
+@media (max-width:900px){.rules,.dirs{grid-template-columns:minmax(0,1fr)}.cols2{grid-template-columns:minmax(0,1fr)}.sources{columns:1}}
+@media (prefers-reduced-motion:reduce){.toast,.bullet .bar,.bullet .proj{transition:none}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">AUTUMN LIVE · 再設計の提案 · 2026年11月26日</div>
+    <h1>ふだんは静かで、動いたところだけが光る</h1>
+    <p class="lead">山と川の風景をやめて、空だけを背景にしました。流れは「今日の累計を帯の太さ」「いまいる人を光の点」で描きます。どこで人が減っているかは一目でわかり、点の一つひとつが実際の一人です。数字は目標と、このペースでの着地点を並べて出します。目標から外れたときだけ色がつきます。下は推奨案をダミーデータで動かしたものです。</p>
+  </header>
+
+  <section aria-label="推奨案のライブ試作">
+    <div class="stage-scroll">
+      <div class="stage" id="stage">
+        <canvas id="heroCv"></canvas>
+        <div class="hud">
+          <div class="live"><b id="liveN" class="num">0</b><span>人が いま Book を見ています</span></div>
+          <div class="meta"><div class="clock" id="clock">--:--</div><div id="fresh">ダミーデータ · 2秒ごとに更新</div></div>
+        </div>
+        <div class="toast" id="toast"></div>
+        <div class="kpis" id="kpis"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="空の時間帯">
+        <button type="button" id="sky-now" data-h="now" aria-pressed="true">いまの空</button>
+        <button type="button" id="sky-dawn" data-h="6.4" aria-pressed="false">朝</button>
+        <button type="button" id="sky-noon" data-h="12" aria-pressed="false">昼</button>
+        <button type="button" id="sky-dusk" data-h="17.1" aria-pressed="false">夕</button>
+        <button type="button" id="sky-night" data-h="22" aria-pressed="false">夜</button>
+      </div>
+      <button type="button" class="btn" id="btnBook">予約を1件流す</button>
+    </div>
+    <div class="legend">
+      <span><i class="sw-band"></i>帯の太さ＝今日ここまで来た人数（全段で同じ縮尺）</span>
+      <span><i class="sw-dot"></i>光の点＝いまその段にいる一人</span>
+      <span><i class="sw-rise"></i>空へ上る点＝ここで離れた人</span>
+      <span><i class="sw-tgt"></i>目標</span>
+      <span><i class="sw-proj"></i>このペースでの着地</span>
+    </div>
+    <p class="caption">段の間の％は次の段へ進んだ割合です。いつもの同じ曜日より大きく外れた段だけ、矢印と色がつきます。帯の下の細い線は今日の30分ごとの訪問で、薄い線がいつもの同じ曜日です。</p>
+  </section>
+
+  <section>
+    <h2>いまの試作（v12）で見えにくいところ</h2>
+    <div class="cols2">
+      <div class="card">
+        <div class="k">読み取り</div>
+        <ul class="diag">
+          <li>川の太さが人数に比例していないので、どこで減ったかを読めない。「見方」パネルが必要になったのはこのため。</li>
+          <li>流れ（中央）と数字（下のカード）が離れていて、目が行き来する。</li>
+          <li>目標との差と「今日どこまで行きそうか」が流れの中にない。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="k">見た目</div>
+        <ul class="diag">
+          <li>山・川・灯籠など比喩が多く、データより風景が目立つ。</li>
+          <li>演出が常に動いていて、いつもどおりなのか何か起きたのかの区別がつかない。</li>
+          <li>点が何を表すか（人なのか、件数なのか）が決まっていない。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>集めた手本と、Autumn Live での使い方</h2>
+    <p class="lead">業務ダッシュボードの古典、航空機のコックピット、工場の監視画面、話題になったライブ可視化から、ずっと見ていられて、しかも読める画面に効くものを選びました。</p>
+    <div class="rules">
+      <div class="rule"><h3>1画面で、比較つき</h3><div class="src">Stephen Few『Information Dashboard Design』・bullet graph</div><p class="use">スクロールなしの1画面。数字は単独で出さず、<b>目標と並べる</b>。メーター型ではなく bullet graph を使う。</p></div>
+      <div class="rule"><h3>ふだんは暗く、異常だけ点く</h3><div class="src">Airbus「lights out」・ISA-101 高性能HMI</div><p class="use">正常なら灯りが消えている、が航空機の原則。工場の画面も色は異常のためだけに取っておく。<b>色は目標から外れたときだけ</b>。</p></div>
+      <div class="rule"><h3>視野の端で感じる</h3><div class="src">Weiser ＆ Brown / Amber Case「Calm Technology」</div><p class="use">壁に掛けて横目で見る画面。<b>点の流れる速さ＝客足</b>として周辺視野で伝え、注意を奪うのは予約などの出来事だけ。</p></div>
+      <div class="rule"><h3>いま・意味・この先</h3><div class="src">Endsley の状況認識3段階（知覚・理解・予測）</div><p class="use">「いま何人」「いつもと比べて」「このペースだと今日は」の3つを1枚に。<b>着地予測を目標の横に</b>点線で出す。</p></div>
+      <div class="rule"><h3>点の一つひとつが本物</h3><div class="src">Shopify BFCM Live Globe・GitHub Globe</div><p class="use">両社とも弧の1本が実際の注文や PR。作り物の飾りを流さない。<b>光の点は実在の一人</b>で、予約の点は最後まで追える。</p></div>
+      <div class="rule"><h3>減り方は帯で、推移は線で</h3><div class="src">Sankey（Minard 以来）・時系列との併用</div><p class="use">Sankey は離脱点がすぐ見えるが、時間の推移は見えない。<b>帯の下に24時間の線</b>を添え、いつもの曜日を薄く重ねる。</p></div>
+      <div class="rule"><h3>縮尺は動かさない</h3><div class="src">Heer ＆ Robertson（アニメーションと知覚）</div><p class="use">動きは単純に、軸の伸び縮みは知覚を乱す。<b>帯の縮尺は1日固定</b>で、数字は跳ばずに数え上がる。</p></div>
+      <div class="rule"><h3>遠くから読める</h3><div class="src">ArcGIS・Klipfolio の壁掛けダッシュボード指針</div><p class="use">細部は遠目で読めない。主役の数字は大きく、補足は小さく、凡例なしでも読める言葉で書く。</p></div>
+      <div class="rule"><h3>鮮度を正直に</h3><div class="src">ThoughtSpot ほか「リアルタイム」の誤信</div><p class="use">「ライブ」でも実際は数秒遅れる。<b>右上に「何秒前の値か」</b>を常に出し、途切れたら灰色にする。</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3つの方向（どれも空だけを背景に）</h2>
+    <p class="lead">推奨は A を主役に、B の24時間を細い線、C の bullet graph を下段にまとめたものです（上のライブ試作）。単独で選ぶこともできます。</p>
+    <div class="dirs">
+      <article class="dir rec">
+        <div class="cv"><canvas id="cvA"></canvas></div>
+        <div class="body">
+          <div class="tag">A <em>推奨の主役</em></div>
+          <h3>流れの帯</h3>
+          <p>訪問から予約までを1本の帯で、施設を選んだところで2本に分ける。帯は今日の累計、点はいまの人。</p>
+          <dl class="pc"><dt>強い</dt><dd>どの段で何人減ったか、いま誰がどこにいるか</dd><dt>弱い</dt><dd>時間の推移は見えない（線で補う）</dd></dl>
+        </div>
+      </article>
+      <article class="dir">
+        <div class="cv"><canvas id="cvB"></canvas></div>
+        <div class="body">
+          <div class="tag">B</div>
+          <h3>一日の文字盤</h3>
+          <p>24時間の輪に30分ごとの訪問を刻み、いつもの曜日を薄く重ねる。予約は輪の内側に金の点。</p>
+          <dl class="pc"><dt>強い</dt><dd>一日のリズムと、いつもとの差。壁掛けで美しい</dd><dt>弱い</dt><dd>どこで離れたかは見えない</dd></dl>
+        </div>
+      </article>
+      <article class="dir">
+        <div class="cv"><canvas id="cvC"></canvas></div>
+        <div class="body">
+          <div class="tag">C</div>
+          <h3>計器盤</h3>
+          <p>旅客機の主計器のように縦の目盛りを並べ、目標を目印で示す。正常なら無彩色、外れた計器だけ色がつく。</p>
+          <dl class="pc"><dt>強い</dt><dd>目標との差と異常に最速で気づける</dd><dt>弱い</dt><dd>動きが少なく、ずっと見ていたい感じは弱い</dd></dl>
+        </div>
+      </article>
+    </div>
+    <div class="tblwrap">
+      <table class="cmp">
+        <thead><tr><th>答えたい問い</th><th>A 流れの帯</th><th>B 文字盤</th><th>C 計器盤</th><th>推奨（A＋B＋C）</th></tr></thead>
+        <tbody>
+          <tr><td>いま何人が見ているか</td><td>点の数</td><td>中央の数字</td><td>中央の計器</td><td>左上の数字と点</td></tr>
+          <tr><td>どこで離れているか</td><td>◎ 帯の細り</td><td>—</td><td>△</td><td>◎</td></tr>
+          <tr><td>いつもと比べてどうか</td><td>段の％の矢印</td><td>◎ 薄い輪</td><td>○</td><td>◎ 24時間の線</td></tr>
+          <tr><td>今日の目標に届くか</td><td>—</td><td>△</td><td>◎</td><td>◎ 下段の着地点</td></tr>
+          <tr><td>予約が入った瞬間</td><td>◎ 点が届く</td><td>○ 金の点</td><td>△</td><td>◎ 点と知らせ</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>引き継ぐもの・やめるもの</h2>
+    <div class="cols2">
+      <div class="card"><div class="k">引き継ぐ</div><ul><li>時間帯で変わる空（朝・昼・夕・夜）と、季節の降るもの（雪・花びら・紅葉・蛍）</li><li>数字の数え上がり、目標の設定画面、予約の知らせと音、全画面・スリープ防止</li><li>流入元として西和賀HP・男鹿HP・検索・SNS・直接の区別</li><li>会員の総数・アクティブ率（下段の bullet graph に）</li></ul></div>
+      <div class="card"><div class="k">やめる</div><ul><li>山並み、川、湖、灯籠</li><li>比例しない太さの流れと「見方」パネル</li><li>常に動く演出（節目の波は、目標達成のときだけに）</li><li>海外からの弧（数が少ないため、流入元の内訳に入れる）</li></ul></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>この方向で進める場合</h2>
+    <ol class="plan">
+      <li><div>試作 v13 を推奨案で作り直す（docs/prototypes/autumn-live/）。空と季節の処理は v12 から移す。</div></li>
+      <li><div>段の定義を実データに合わせて確定する。「空室検索」「施設を選ぶ」が Book のどの画面・操作に当たるかを決める。</div></li>
+      <li><div>そのうえで実データにつなぐ（Supabase Realtime と HP からの計測）。</div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>参考にした資料</h2>
+    <ul class="sources">
+      <li><a href="https://blogs.ischool.berkeley.edu/i247s13/files/2013/02/WhyMostDashboardsFail.pdf" target="_blank" rel="noopener">Stephen Few, Why Most Dashboards Fail</a></li>
+      <li><a href="https://www.wikipedia.org/wiki/Bullet_graph" target="_blank" rel="noopener">Bullet graph（Wikipedia）</a></li>
+      <li><a href="https://www2023.icao.int/ESAF/Documents/meetings/2017/AFI%20FOSAS%202017/Day%201%20Docs/Day_1_2_Airbuspihlo.pdf" target="_blank" rel="noopener">Airbus cockpit philosophy（ICAO 資料）</a></li>
+      <li><a href="https://www.lean.org/the-lean-post/articles/the-dark-cockpit-what-aviation-can-teach-lean-leaders/" target="_blank" rel="noopener">The Dark Cockpit（Lean Enterprise Institute）</a></li>
+      <li><a href="https://blog.isa.org/the-high-performance-hmi" target="_blank" rel="noopener">The High Performance HMI（ISA）</a></li>
+      <li><a href="https://control.com/technical-articles/going-gray/" target="_blank" rel="noopener">Going Gray: A New HMI Standard</a></li>
+      <li><a href="https://en.wikipedia.org/wiki/Calm_technology" target="_blank" rel="noopener">Calm technology（Wikipedia）</a></li>
+      <li><a href="https://oreilly.com/content/principles-calm-technology-we-are-not-bad-at-technology-technology-is-bad-at-us" target="_blank" rel="noopener">Amber Case, Principles of Calm Technology</a></li>
+      <li><a href="https://en.wikipedia.org/wiki/Situation_awareness" target="_blank" rel="noopener">Situation awareness（Endsley モデル）</a></li>
+      <li><a href="https://shopify.engineering/how-we-built-shopifys-bfcm-2023-globe" target="_blank" rel="noopener">How we built Shopify's BFCM 2023 Globe</a></li>
+      <li><a href="https://shopify.engineering/2025-bfcm-live-globe" target="_blank" rel="noopener">Shopify 2025 BFCM Live Globe</a></li>
+      <li><a href="https://github.blog/engineering/how-we-built-the-github-globe" target="_blank" rel="noopener">How we built the GitHub globe</a></li>
+      <li><a href="https://www.clicdata.com/guides/what-is-a-sankey-diagram/" target="_blank" rel="noopener">What is a Sankey diagram（ClicData）</a></li>
+      <li><a href="https://homes.cs.washington.edu/~jheer/files/2007-AnimatedTrans-InfoVis.pdf" target="_blank" rel="noopener">Heer ＆ Robertson, Animated Transitions in Statistical Data Graphics</a></li>
+      <li><a href="https://doc.arcgis.com/en/dashboards/latest/reference/author-effective-dashboards.htm" target="_blank" rel="noopener">ArcGIS, Effective dashboards</a></li>
+      <li><a href="https://www.klipfolio.com/articles/best-practices-large-screen-wallboard-tv-dashboard" target="_blank" rel="noopener">Klipfolio, Large-screen wallboard best practices</a></li>
+      <li><a href="https://smashingmagazine.com/2025/09/ux-strategies-real-time-dashboards/" target="_blank" rel="noopener">Smashing Magazine, UX Strategies For Real-Time Dashboards</a></li>
+      <li><a href="https://www.thoughtspot.com/data-trends/dashboard/operational-dashboard" target="_blank" rel="noopener">ThoughtSpot, Operational dashboards</a></li>
+    </ul>
+  </section>
+</div>
+
+<script>
+(()=>{
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU = Math.PI*2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const fmt=n=>Math.round(n).toLocaleString('ja-JP');
+function hex(c){c=c.replace('#','');return [0,2,4].map(i=>parseInt(c.slice(i,i+2),16))}
+function mix(a,b,t){const A=hex(a),B=hex(b);return `rgb(${A.map((v,i)=>Math.round(lerp(v,B[i],t))).join(',')})`}
+function rgba(c,a){const A=hex(c);return `rgba(${A[0]},${A[1]},${A[2]},${a})`}
+
+/* ---------- time & sky ---------- */
+let skyPick='now';
+function jstHour(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tokyo',hour:'numeric',minute:'numeric',hour12:false}).formatToParts(new Date());const h=+p.find(x=>x.type==='hour').value%24, m=+p.find(x=>x.type==='minute').value;return h+m/60}
+function skyHour(){return skyPick==='now'?jstHour():+skyPick}
+function dayLight(h){return smooth(5.6,7.6,h)*(1-smooth(16.6,18.4,h))}
+const SKY=[ // hour, top, horizon
+ [0,'#060a19','#141c38'],[4.6,'#0a0f24','#232a4a'],[5.8,'#1e2852','#7a5a72'],[6.6,'#3d5a92','#f0b089'],
+ [8,'#4f86c4','#bfd8ee'],[12,'#3c7cc6','#b4d4f0'],[15.5,'#4c80be','#d9d4c0'],[16.9,'#33467e','#f09a62'],
+ [17.8,'#1d2652','#a3607a'],[19,'#0d1430','#2c2f55'],[24,'#060a19','#141c38']];
+function skyCols(h){for(let i=0;i<SKY.length-1;i++){const a=SKY[i],b=SKY[i+1];if(h>=a[0]&&h<=b[0]){const t=(h-a[0])/(b[0]-a[0]);return [mix(a[1],b[1],t),mix(a[2],b[2],t)]}}return [SKY[0][1],SKY[0][2]]}
+function makeStars(n){const s=[];for(let i=0;i<n;i++)s.push({x:Math.random(),y:Math.pow(Math.random(),1.6)*.85,r:Math.random()*1.1+.25,p:Math.random()*TAU});return s}
+function makeClouds(n){const c=[];for(let i=0;i<n;i++)c.push({x:Math.random(),y:.08+Math.random()*.42,s:.08+Math.random()*.14,v:.004+Math.random()*.006});return c}
+function drawSky(ctx,w,h,hr,t,stars,clouds){
+  const [top,hor]=skyCols(hr), d=dayLight(hr);
+  const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,top);g.addColorStop(1,hor);
+  ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+  // stars
+  const na=1-smooth(5.2,6.6,hr)*(1-smooth(17.6,19,hr));
+  if(na>.02){for(const s of stars){const a=na*(.45+.4*Math.sin(t*1.3+s.p));ctx.fillStyle=`rgba(255,250,235,${a})`;ctx.beginPath();ctx.arc(s.x*w,s.y*h,s.r,0,TAU);ctx.fill()}}
+  // sun
+  if(hr>5.3&&hr<18.7){const u=(hr-5.6)/(18.4-5.6), sx=lerp(.08,.92,u)*w, sy=h*(.95-Math.sin(clamp(u,0,1)*Math.PI)*.78);
+    const warm=1-Math.sin(clamp(u,0,1)*Math.PI);const r=Math.min(w,h)*.22;
+    const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,r);sg.addColorStop(0,`rgba(255,${Math.round(240-60*warm)},${Math.round(200-90*warm)},.55)`);sg.addColorStop(1,'rgba(255,220,170,0)');
+    ctx.fillStyle=sg;ctx.fillRect(sx-r,sy-r,r*2,r*2);ctx.fillStyle=`rgba(255,${Math.round(246-50*warm)},${Math.round(225-90*warm)},.9)`;ctx.beginPath();ctx.arc(sx,sy,Math.max(5,r*.07),0,TAU);ctx.fill()}
+  else{const mx=w*.84,my=h*.16,r=Math.min(w,h)*.14;const mg=ctx.createRadialGradient(mx,my,0,mx,my,r);mg.addColorStop(0,'rgba(230,232,255,.22)');mg.addColorStop(1,'rgba(230,232,255,0)');ctx.fillStyle=mg;ctx.fillRect(mx-r,my-r,r*2,r*2);ctx.fillStyle='rgba(244,242,230,.9)';ctx.beginPath();ctx.arc(mx,my,Math.max(4,r*.09),0,TAU);ctx.fill()}
+  // clouds
+  if(d>.05){for(const c of clouds){const cx=((c.x+t*c.v)%1.3-.15)*w, cy=c.y*h, r=c.s*w;for(let k=0;k<3;k++){const ox=cx+(k-1)*r*.6, oy=cy+(k%2)*r*.08, rr=r*(k===1?.75:.55);const cg=ctx.createRadialGradient(ox,oy,0,ox,oy,rr);cg.addColorStop(0,`rgba(255,255,255,${.22*d})`);cg.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=cg;ctx.save();ctx.translate(ox,oy);ctx.scale(1,.42);ctx.translate(-ox,-oy);ctx.fillRect(ox-rr,oy-rr,rr*2,rr*2);ctx.restore()}}}
+  return d;
+}
+function inkOf(d){return d>.55?{c:'#15203a',dark:true}:{c:'#f0ece0',dark:false}}
+
+/* ---------- canvas helper ---------- */
+const views=[];
+function setupCanvas(cv){const v={cv,ctx:cv.getContext('2d'),w:0,h:0,vis:true};
+  const ro=new ResizeObserver(()=>{const r=cv.getBoundingClientRect();if(!r.width||!r.height)return;const dpr=Math.min(devicePixelRatio||1,2);cv.width=Math.round(r.width*dpr);cv.height=Math.round(r.height*dpr);v.w=r.width;v.h=r.height;v.ctx.setTransform(dpr,0,0,dpr,0,0)});ro.observe(cv);
+  new IntersectionObserver(es=>{v.vis=es[0].isIntersecting}).observe(cv);return v}
+
+/* ---------- typical day curve (visits per 30 min) ---------- */
+function usual(h){return 6+44*Math.exp(-(((h-12.6)/2.8)**2))+62*Math.exp(-(((h-21.2)/2.1)**2))+16*Math.exp(-(((h-8.2)/1.4)**2))}
+const USUAL=[...Array(48)].map((_,i)=>usual(i/2+.25));
+const USUAL_SUM=USUAL.reduce((a,b)=>a+b,0);
+const TODAY=USUAL.map((u,i)=>u*(1.12+.18*Math.sin(i*1.7)+.1*Math.cos(i*.6)));
+function usualFracUntil(h){let s=0;for(let i=0;i<48;i++){const a=i/2;if(a+.5<=h)s+=USUAL[i];else if(a<h)s+=USUAL[i]*(h-a)/.5}return s/USUAL_SUM}
+
+/* ---------- funnel scene ---------- */
+const STAGES=['流入元','Book 訪問','空室検索','施設を選ぶ','プランを見る','予約入力','予約'];
+const SOURCES=['西和賀HP','男鹿HP','検索・広告','SNS','直接・その他'];
+const TYP=[1,.70,.90,.62,.14,.22]; // usual rate into stage i from i-1
+const LANES={N:{name:'西和賀',night:'#a9d2e6',day:'#2c6c98'},O:{name:'男鹿',night:'#f0b48a',day:'#b8582a'}};
+const TRUNK={night:'#ece2c4',day:'#ffffff'};
+const GOLD={night:'#e2bd62',day:'#8a6a1e'};
+function createFunnel(view,opt){
+  const M={src:[612,488,402,186,124],visit:1812,search:1268,N:[631,392,58,13],O:[512,318,44,10]};
+  const D=JSON.parse(JSON.stringify(M)); // displayed (tweened)
+  const P=[];const bursts=[];let spawnT=0, stars=makeStars(opt.compact?70:160), clouds=makeClouds(opt.compact?3:5);
+  const S={M,P,onBook:opt.onBook||null};
+  function geo(){
+    const {w,h}=view;const c=opt.compact;
+    const top=c?18:122, bot=c?h-10:h-214;
+    const L=c?16:118, R=c?18:96;
+    const xs=[...Array(7)].map((_,i)=>L+i*(w-L-R)/6);
+    const rh=bot-top, cy=top+rh*.5, k=rh*.56/M.visit, off=rh*.25, gap=c?2:6;
+    const node={};
+    let y=cy-(M.visit*k+gap*4)/2; node.src=M.src.map(n=>{const a=y;y+=n*k+gap;return [a,a+n*k]});
+    node.visit=[cy-M.visit*k/2,cy+M.visit*k/2];
+    node.search=[cy-M.search*k/2,cy+M.search*k/2];
+    const lane=(arr,ly)=>arr.map(n=>[ly-n*k/2,ly+n*k/2]);
+    node.N=lane(M.N,cy-off);node.O=lane(M.O,cy+off);
+    // visit slices for sources
+    let vy=node.visit[0];node.vslice=M.src.map(n=>{const a=vy;vy+=n*k;return [a,a+n*k]});
+    // search out slices
+    const outT=(M.N[0]+M.O[0])*k, s0=cy-outT/2;node.sN=[s0,s0+M.N[0]*k];node.sO=[s0+M.N[0]*k,s0+outT];
+    return {xs,node,k,top,bot,cy,c};
+  }
+  // link endpoints for moving from column c (c->c+1)
+  function link(G,c,lane,src){const n=G.node;
+    if(c===0)return [n.src[src],n.vslice[src]];
+    if(c===1){const s=M.search*G.k, a=G.cy-s/2;return [[a,a+s],n.search]}
+    if(c===2)return [lane==='N'?n.sN:n.sO, n[lane][0]];
+    const A=n[lane][c-3], B=n[lane][c-2], hb=B[1]-B[0], ma=(A[0]+A[1])/2;return [[ma-hb/2,ma+hb/2],B]}
+  function nodeAt(G,c,lane,src){const n=G.node;if(c===0)return n.src[src];if(c===1)return n.visit;if(c===2)return n.search;return n[lane][c-3]}
+  function band(ctx,G,c,A,B,col,alpha){const x0=G.xs[c]+2,x1=G.xs[c+1]-2,xm=(x0+x1)/2;
+    const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,rgba(col,alpha));g.addColorStop(1,rgba(col,alpha*.82));
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x0,A[0]);ctx.bezierCurveTo(xm,A[0],xm,B[0],x1,B[0]);ctx.lineTo(x1,B[1]);ctx.bezierCurveTo(xm,B[1],xm,A[1],x0,A[1]);ctx.closePath();ctx.fill()}
+  function bez(a,b,t){const u=1-t;return u*u*u*a+3*u*u*t*((a+b)/2)+3*u*t*t*((a+b)/2)+t*t*t*b}
+  function bezY(a,b,t){const u=1-t;return u*u*u*a+3*u*u*t*a+3*u*t*t*b+t*t*t*b}
+  function spawn(){const wts=M.src, tot=wts.reduce((a,b)=>a+b,0);let r=Math.random()*tot,src=0;for(;src<4;src++){r-=wts[src];if(r<0)break}
+    M.src[src]++;P.push({c:0,src,lane:null,f:.1+Math.random()*.8,st:'dwell',t:0,dw:.3+Math.random()*.6,jx:Math.random(),ph:Math.random()*TAU,a:0});}
+  function advance(p){const c=p.c;const prob=[1,.74,.92,.66,.34,.5][c];
+    if(Math.random()<prob){p.st='move';p.t=0;p.mv=opt.compact?1.1:1.6;if(c===2)p.lane=Math.random()<.55?'N':'O';}
+    else{p.st='leave';p.t=0}}
+  function arrive(p){p.c++;p.st='dwell';p.t=0;p.dw=2.5+Math.random()*5;
+    if(p.c===1)M.visit++;else if(p.c===2)M.search++;else{M[p.lane][p.c-3]++}
+    if(p.c===6){p.st='done';p.t=0;bursts.push({c:6,lane:p.lane,f:p.f,t:0});S.onBook&&S.onBook(p.lane)}}
+  S.forceBook=()=>{const lane=Math.random()<.5?'N':'O';P.push({c:5,src:0,lane,f:.5,st:'dwell',t:0,dw:.2,jx:.5,ph:0,a:1,force:true})};
+  S.live=()=>P.filter(p=>p.st!=='leave'&&p.st!=='done').length;
+  // seed
+  for(let i=0;i<42;i++){spawn();const p=P[P.length-1];M.src[p.src]--;const c=[1,1,1,1,1,2,2,2,2,3,3,3,4,4,4,5][Math.floor(Math.random()*16)];p.c=c;if(c>=3)p.lane=Math.random()<.55?'N':'O';p.dw=Math.random()*6;p.a=1}
+  S.update=(dt)=>{
+    spawnT-=dt;if(spawnT<=0){if(P.length<(opt.compact?40:70))spawn();spawnT=.45+Math.random()*.9}
+    for(const p of P){p.t+=dt;p.a=Math.min(1,p.a+dt*2);
+      if(p.st==='dwell'&&p.t>p.dw){if(p.force){p.st='move';p.t=0;p.mv=1.6;p.force=false}else advance(p)}
+      else if(p.st==='move'&&p.t>=p.mv)arrive(p)}
+    for(let i=P.length-1;i>=0;i--){const p=P[i];if((p.st==='leave'&&p.t>3)||(p.st==='done'&&p.t>4))P.splice(i,1)}
+    for(let i=bursts.length-1;i>=0;i--){bursts[i].t+=dt;if(bursts[i].t>2.4)bursts.splice(i,1)}
+    const tw=(a,b)=>a+(b-a)*Math.min(1,dt*3);
+    D.visit=tw(D.visit,M.visit);D.search=tw(D.search,M.search);for(const L of['N','O'])for(let i=0;i<4;i++)D[L][i]=tw(D[L][i],M[L][i]);for(let i=0;i<5;i++)D.src[i]=tw(D.src[i],M.src[i]);
+  };
+  S.draw=(t,hr)=>{
+    const {ctx,w,h}=view;if(!w)return;const d=drawSky(ctx,w,h,hr,t,stars,clouds);const ink=inkOf(d);const md=ink.dark?'day':'night';
+    const G=geo();const a=ink.dark?.42:.24;const c=G.c;
+    const txt=(s,x,y,size,al,align,wt)=>{ctx.font=`${wt||500} ${size}px "Noto Sans JP",sans-serif`;ctx.textAlign=align||'left';ctx.fillStyle=rgba(ink.c,al);ctx.fillText(s,x,y)};
+    // bands
+    for(let i=0;i<5;i++)band(ctx,G,0,G.node.src[i],G.node.vslice[i],TRUNK[md],a*(i<2?1:.75));
+    band(ctx,G,1,link(G,1)[0],G.node.search,TRUNK[md],a);
+    for(const L of['N','O']){const col=LANES[L][md];band(ctx,G,2,link(G,2,L)[0],G.node[L][0],col,a*1.15);for(let c2=3;c2<6;c2++){const [A,B]=link(G,c2,L);band(ctx,G,c2,A,B,col,a*1.3)}}
+    // nodes
+    const nodeBar=(x,r,col)=>{ctx.fillStyle=rgba(col,ink.dark?.75:.85);ctx.fillRect(x-1.5,r[0],3,Math.max(1.5,r[1]-r[0]))};
+    G.node.src.forEach(r=>nodeBar(G.xs[0],r,TRUNK[md]));nodeBar(G.xs[1],G.node.visit,TRUNK[md]);nodeBar(G.xs[2],G.node.search,TRUNK[md]);
+    for(const L of['N','O'])G.node[L].forEach((r,i)=>nodeBar(G.xs[3+i],r,i===3?GOLD[md]:LANES[L][md]));
+    // 24h strip
+    if(!c){const sy=G.bot+18, sh=34, x0=G.xs[0], x1=G.xs[6], sw=x1-x0, mx=Math.max(...USUAL,...TODAY);
+      const px=i=>x0+sw*(i/48), py=v=>sy+sh-v/mx*sh;
+      ctx.strokeStyle=rgba(ink.c,.32);ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();USUAL.forEach((v,i)=>{const X=px(i+.5),Y=py(v);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});ctx.stroke();ctx.setLineDash([]);
+      const nowI=clamp(hr*2,0,48);ctx.beginPath();ctx.moveTo(px(.5),sy+sh);for(let i=0;i<Math.floor(nowI);i++)ctx.lineTo(px(i+.5),py(TODAY[i]));ctx.lineTo(px(Math.max(.5,Math.floor(nowI)-.5)),sy+sh);ctx.closePath();ctx.fillStyle=rgba(ink.c,ink.dark?.14:.12);ctx.fill();
+      ctx.strokeStyle=rgba(ink.c,.85);ctx.lineWidth=1.6;ctx.beginPath();for(let i=0;i<Math.floor(nowI);i++){const X=px(i+.5),Y=py(TODAY[i]);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)}ctx.stroke();
+      const nx=px(nowI);ctx.fillStyle=rgba(GOLD[md],1);ctx.fillRect(nx-.75,sy-4,1.5,sh+6);
+      [0,6,12,18,24].forEach(H=>txt(`${H}時`,px(H*2),sy+sh+14,10.5,.55,H===0?'left':H===24?'right':'center'));
+      txt('今日の訪問（30分ごと）　点線＝いつもの木曜',x0,sy-6,11,.7,'left');
+      txt('いつもの木曜より +12%',x1,sy-6,12,.85,'right',700);}
+    // headers
+    if(!c){STAGES.forEach((s,i)=>{const x=G.xs[i];txt(s,x,G.top-30,11.5,.66,'center');
+        if(i===1)txt(fmt(D.visit),x,G.top-10,20,.95,'center',700);else if(i===2)txt(fmt(D.search),x,G.top-10,20,.95,'center',700)});
+      SOURCES.forEach((s,i)=>{const r=G.node.src[i],y=(r[0]+r[1])/2;txt(s,G.xs[0]-9,y-1,11.5,.8,'right');txt(fmt(D.src[i]),G.xs[0]-9,y+13,11,.55,'right')});
+      for(const L of['N','O']){G.node[L].forEach((r,i)=>{const x=G.xs[3+i];const above=L==='N';const y=above?r[0]-8:r[1]+18;
+          txt((i===0?LANES[L].name+' ':'')+fmt(D[L][i]),x+(i===3?8:0),i===3?(r[0]+r[1])/2+6:y,i===3?17:13,.95,i===3?'left':'center',700)})}
+      // rates
+      const rate=(x,y,v,typ)=>{const dev=typ?v/typ:1;let s=Math.round(v*100)+'%';let col=ink.c,al=.62;if(dev<.85){s='↓ '+s;col=ink.dark?'#9a5a06':'#f1b45a';al=1}else if(dev>1.18){s='↑ '+s;al=.95}
+        ctx.font=`500 11px "Noto Sans JP",sans-serif`;ctx.textAlign='center';ctx.fillStyle=rgba(col,al);ctx.fillText(s,x,y)};
+      rate((G.xs[1]+G.xs[2])/2,G.cy+4,M.search/M.visit,TYP[1]);
+      for(const L of['N','O']){const ly=(G.node[L][0][0]+G.node[L][0][1])/2;const sl=L==='N'?G.node.sN:G.node.sO;
+        rate((G.xs[2]+G.xs[3])/2,((sl[0]+sl[1])/2+ly)/2+4,M[L][0]/M.search,null);
+        for(let i=1;i<4;i++){const r=G.node[L][i];rate((G.xs[2+i]+G.xs[3+i])/2,(r[0]+r[1])/2+(L==='N'?-14:22),M[L][i]/M[L][i-1],TYP[2+i]*(L==='O'&&i===1?1:1))}}
+    }
+    // particles
+    ctx.save();if(!ink.dark)ctx.globalCompositeOperation='lighter';
+    for(const p of P){let x,y,al=p.a;
+      if(p.st==='move'){const [A,B]=link(G,p.c,p.lane,p.src);const tt=clamp(p.t/p.mv,0,1),e=tt<.5?2*tt*tt:1-Math.pow(-2*tt+2,2)/2;
+        const x0=G.xs[p.c]+2,x1=G.xs[p.c+1]-2;x=bez(x0,x1,e);y=bezY(lerp(A[0],A[1],p.f),lerp(B[0],B[1],p.f),e)}
+      else{const r=nodeAt(G,p.c,p.lane,p.src);x=G.xs[p.c]+3+((p.jx*14+Math.sin(t*.6+p.ph)*3)*(c?.5:1));y=lerp(r[0],r[1],p.f)+Math.sin(t*.9+p.ph)*1.2;
+        if(p.st==='leave'){y-=p.t*p.t*14+p.t*10;x+=Math.sin(p.ph+p.t)*6;al*=1-p.t/3}
+        if(p.st==='done'){al*=1-p.t/4;x+=p.t*6}}
+      const gold=p.c>=5||p.st==='done';const col=gold?GOLD[md]:(p.lane?LANES[p.lane][md]:TRUNK[md]);const rr=c?1.6:(gold?2.6:2.1);
+      if(p.st==='leave'){ctx.strokeStyle=rgba(ink.dark?'#15203a':'#f0ece0',al*.6);ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,rr,0,TAU);ctx.stroke();continue}
+      if(!ink.dark){const gg=ctx.createRadialGradient(x,y,0,x,y,rr*4);gg.addColorStop(0,rgba(col,.5*al));gg.addColorStop(1,rgba(col,0));ctx.fillStyle=gg;ctx.fillRect(x-rr*4,y-rr*4,rr*8,rr*8)}
+      ctx.fillStyle=ink.dark?rgba(gold?'#8a6a1e':(p.lane?LANES[p.lane].day:'#15203a'),al):rgba('#fffaf0',al);ctx.beginPath();ctx.arc(x,y,rr,0,TAU);ctx.fill()}
+    ctx.restore();
+    for(const b of bursts){const r=G.node[b.lane][3];const x=G.xs[6],y=(r[0]+r[1])/2;const k=b.t/2.4;ctx.strokeStyle=rgba(GOLD[md],(1-k)*.9);ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,6+k*(c?20:46),0,TAU);ctx.stroke()}
+  };
+  return S;
+}
+
+/* ---------- hero ---------- */
+const stageEl=document.getElementById('stage');
+const hero=setupCanvas(document.getElementById('heroCv'));views.push(hero);
+const toastEl=document.getElementById('toast');let toastTimer=0;
+const KP={visits:{goal:3400},cvr:{goal:1.5},onhand:{v:184200000,goal:200000000},members:{total:3412,active:49,goal:55}};
+const heroScene=createFunnel(hero,{compact:false,onBook:(lane)=>{
+  const yen=[28600,38400,45200,52800,31900][Math.floor(Math.random()*5)], g=['大人2名 1泊','大人2名 2泊','大人3名 1泊','大人1名 1泊'][Math.floor(Math.random()*4)];
+  KP.onhand.v+=yen;toastEl.innerHTML=`<b>予約が入りました</b>　${LANES[lane].name} · ${g} · ¥${yen.toLocaleString('ja-JP')}`;toastEl.classList.add('on');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('on'),6000);chime()}});
+const kpisEl=document.getElementById('kpis');
+kpisEl.innerHTML=['visits','cvr','onhand','members'].map(k=>`<div class="kpi" id="k-${k}"><div class="lab"><span class="l"></span><i class="flag"></i></div><div class="val"></div><div class="bullet"><div class="bar"></div><div class="proj"></div><div class="tgt"></div></div><div class="note"></div></div>`).join('');
+function setK(k,{lab,val,actual,goal,proj,note,warn}){const el=document.getElementById('k-'+k);const max=goal*1.25;
+  el.querySelector('.l').textContent=lab;el.querySelector('.val').innerHTML=val;el.querySelector('.bar').style.width=clamp(actual/max*100,0,100)+'%';
+  el.querySelector('.tgt').style.left=`calc(${goal/max*100}% - 1px)`;const pj=el.querySelector('.proj');if(proj==null)pj.hidden=true;else{pj.hidden=false;pj.style.left=clamp(proj/max*100,0,100)+'%'}
+  el.querySelector('.note').textContent=note;el.classList.toggle('warn',!!warn)}
+let dispVisits=heroScene.M.visit;
+function updateKPIs(){const M=heroScene.M;const hr=jstHour();
+  dispVisits=M.visit;const frac=Math.max(.08,usualFracUntil(hr));const proj=M.visit/frac;
+  setK('visits',{lab:'今日の Book 訪問',val:`${fmt(M.visit)}<small>人</small>`,actual:M.visit,goal:KP.visits.goal,proj,note:`このペースなら ${fmt(Math.round(proj/10)*10)}人 · 目標 ${fmt(KP.visits.goal)}`,warn:proj<KP.visits.goal*.9});
+  const books=M.N[3]+M.O[3], cvr=books/M.visit*100;
+  setK('cvr',{lab:'予約率（訪問→予約）',val:`${cvr.toFixed(2)}<small>%</small>`,actual:cvr,goal:KP.cvr.goal,proj:null,note:`今日 ${books}件 · 目標 ${KP.cvr.goal}%`,warn:cvr<KP.cvr.goal*.8});
+  const oh=KP.onhand.v;setK('onhand',{lab:'オンハンド（先12か月）',val:`${(oh/1e8).toFixed(2)}<small>億円</small>`,actual:oh,goal:KP.onhand.goal,proj:null,note:`目標 ${(KP.onhand.goal/1e8).toFixed(1)}億円まで あと${fmt((KP.onhand.goal-oh)/1e4)}万円`,warn:false});
+  const m=KP.members;setK('members',{lab:'会員 · アクティブ率',val:`${m.active}<small>%</small>　${fmt(m.total)}<small>人</small>`,actual:m.active,goal:m.goal,proj:null,note:`目標 ${m.goal}% に届いていません（180日以内に利用）`,warn:m.active<m.goal})}
+updateKPIs();setInterval(updateKPIs,2000);
+document.getElementById('btnBook').addEventListener('click',()=>{heroScene.forceBook();audioOn=true});
+
+/* ---------- direction A (compact) ---------- */
+const vA=setupCanvas(document.getElementById('cvA'));views.push(vA);const sceneA=createFunnel(vA,{compact:true});
+
+/* ---------- direction B: day dial ---------- */
+const vB=setupCanvas(document.getElementById('cvB'));views.push(vB);const starsB=makeStars(70),cloudsB=makeClouds(3);
+const BOOK_TIMES=[7.4,9.1,10.2,11.6,12.1,12.8,13.5,14.9,15.6,16.2];
+function drawB(t,hr){const {ctx,w,h}=vB;if(!w)return;const d=drawSky(ctx,w,h,hr,t,starsB,cloudsB);const ink=inkOf(d),md=ink.dark?'day':'night';
+  const cx=w/2,cy=h/2+2,R=Math.min(w,h)*.27,mx=Math.max(...TODAY),sc=Math.min(w,h)*.17/mx;const now=hr;
+  ctx.strokeStyle=rgba(ink.c,.22);ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,R,0,TAU);ctx.stroke();
+  for(let i=0;i<48;i++){const ang=-Math.PI/2+(i+.5)/48*TAU,co=Math.cos(ang),si=Math.sin(ang);
+    ctx.strokeStyle=rgba(ink.c,.28);ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx+co*(R+2),cy+si*(R+2));ctx.lineTo(cx+co*(R+2+USUAL[i]*sc),cy+si*(R+2+USUAL[i]*sc));ctx.stroke();
+    if(i/2<now){const pulse=(Math.floor(now*2)===i)?(1+.15*Math.sin(t*3)):1;ctx.strokeStyle=rgba(ink.dark?'#15203a':TRUNK.night,.85);ctx.lineWidth=Math.max(2,R*.05);ctx.lineCap='round';ctx.beginPath();ctx.moveTo(cx+co*(R+3),cy+si*(R+3));ctx.lineTo(cx+co*(R+3+TODAY[i]*sc*pulse),cy+si*(R+3+TODAY[i]*sc*pulse));ctx.stroke();ctx.lineCap='butt'}}
+  for(const bt of BOOK_TIMES){if(bt>now)continue;const ang=-Math.PI/2+bt/24*TAU;const x=cx+Math.cos(ang)*(R-9),y=cy+Math.sin(ang)*(R-9);ctx.fillStyle=GOLD[md];ctx.beginPath();ctx.arc(x,y,2.4,0,TAU);ctx.fill()}
+  const na=-Math.PI/2+now/24*TAU;ctx.strokeStyle=rgba(GOLD[md],.9);ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(cx+Math.cos(na)*(R*.55),cy+Math.sin(na)*(R*.55));ctx.lineTo(cx+Math.cos(na)*(R+Math.min(w,h)*.2),cy+Math.sin(na)*(R+Math.min(w,h)*.2));ctx.stroke();
+  ctx.textAlign='center';ctx.fillStyle=rgba(ink.c,.6);ctx.font='500 10px "Noto Sans JP",sans-serif';
+  [[0,'0'],[6,'6'],[12,'12'],[18,'18']].forEach(([H,s])=>{const a=-Math.PI/2+H/24*TAU;ctx.fillText(s,cx+Math.cos(a)*(R-20),cy+Math.sin(a)*(R-20)+3.5)});
+  ctx.fillStyle=rgba(ink.c,.95);ctx.font=`700 ${Math.round(R*.42)}px "Noto Sans JP",sans-serif`;ctx.fillText(String(heroScene.live()),cx,cy+R*.12);
+  ctx.fillStyle=rgba(ink.c,.6);ctx.font='500 10px "Noto Sans JP",sans-serif';ctx.fillText('いま見ている人',cx,cy+R*.34)}
+
+/* ---------- direction C: instruments ---------- */
+const vC=setupCanvas(document.getElementById('cvC'));views.push(vC);const starsC=makeStars(70),cloudsC=makeClouds(3);
+function tape(ctx,ink,md,x,y,tw,th,v,step,px,target,label,unit,warn,t){
+  ctx.save();ctx.fillStyle=ink.dark?'rgba(255,255,255,.38)':'rgba(6,10,24,.38)';ctx.fillRect(x,y,tw,th);ctx.beginPath();ctx.rect(x,y,tw,th);ctx.clip();
+  const cy=y+th/2;ctx.strokeStyle=rgba(ink.c,.55);ctx.fillStyle=rgba(ink.c,.7);ctx.font='500 9.5px "Noto Sans JP",sans-serif';ctx.textAlign='left';
+  const base=Math.floor(v/step)*step;for(let k=-6;k<=6;k++){const val=base+k*step, yy=cy-(val-v)*px/step;ctx.beginPath();ctx.moveTo(x,yy);ctx.lineTo(x+7,yy);ctx.stroke();if(val>=0)ctx.fillText(step<1?val.toFixed(1):String(Math.round(val)),x+10,yy+3.5)}
+  const ty=cy-(target-v)*px/step;ctx.fillStyle=GOLD[md];ctx.beginPath();ctx.moveTo(x+tw,ty-6);ctx.lineTo(x+tw-7,ty-6);ctx.lineTo(x+tw-3,ty);ctx.lineTo(x+tw-7,ty+6);ctx.lineTo(x+tw,ty+6);ctx.closePath();ctx.fill();
+  ctx.restore();
+  const bw=tw+10,bh=22;ctx.fillStyle=ink.dark?'rgba(255,255,255,.85)':'rgba(6,10,24,.85)';ctx.fillRect(x-5,cy-bh/2,bw,bh);ctx.strokeStyle=warn?(ink.dark?'#9a5a06':'#f1b45a'):rgba(ink.c,.8);ctx.lineWidth=warn?2:1;ctx.strokeRect(x-5,cy-bh/2,bw,bh);
+  ctx.fillStyle=warn?(ink.dark?'#9a5a06':'#f1b45a'):ink.c;ctx.font='700 13px "Noto Sans JP",sans-serif';ctx.textAlign='center';ctx.fillText((step<1?v.toFixed(2):Math.round(v))+'',x+tw/2,cy+4.5);
+  ctx.fillStyle=rgba(ink.c,.72);ctx.font='500 10px "Noto Sans JP",sans-serif';ctx.fillText(label+'（'+unit+'）',x+tw/2,y-6)}
+function drawC(t,hr){const {ctx,w,h}=vC;if(!w)return;const d=drawSky(ctx,w,h,hr,t,starsC,cloudsC);const ink=inkOf(d),md=ink.dark?'day':'night';
+  const th=h*.5,y=h*.15,tw=Math.min(54,w*.15);const M=heroScene.M;
+  const pace=142+Math.sin(t*.4)*6, live=heroScene.live(), cvr=(M.N[3]+M.O[3])/M.visit*100;
+  tape(ctx,ink,md,w*.14,y,tw,th,pace,10,16,170,'訪問ペース','人/時',pace<170*.9,t);
+  tape(ctx,ink,md,w*.5-tw/2,y,tw,th,live,5,14,40,'いま見ている人','人',false,t);
+  tape(ctx,ink,md,w*.86-tw,y,tw,th,cvr,.2,16,1.5,'予約率','%',false,t);
+  const by=h*.86,bx=w*.08,bw=w*.84;const bar=(yy,lab,a,g,warn)=>{ctx.fillStyle=rgba(ink.c,.14);ctx.fillRect(bx,yy,bw,6);ctx.fillStyle=warn?(ink.dark?'#9a5a06':'#f1b45a'):rgba(ink.c,.9);ctx.fillRect(bx,yy+1.5,bw*a,3);ctx.fillStyle=GOLD[md];ctx.fillRect(bx+bw*g-1,yy-3,2,12);ctx.fillStyle=rgba(ink.c,.7);ctx.font='500 9.5px "Noto Sans JP",sans-serif';ctx.textAlign='left';ctx.fillText(lab,bx,yy-5)};
+  bar(by-14,'オンハンド 1.84億 / 2億',.74,.8,false);bar(by+10,'アクティブ率 49% / 55%',.49/.69,.55/.69,true)}
+
+/* ---------- sky picker ---------- */
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>{skyPick=b.dataset.h;document.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));
+
+/* ---------- sound ---------- */
+let audioOn=false,AC=null;
+function chime(){if(!audioOn)return;try{AC=AC||new AudioContext();const t0=AC.currentTime;[784,1175].forEach((f,i)=>{const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t0+i*.12);g.gain.linearRampToValueAtTime(.06,t0+i*.12+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+i*.12+1.6);o.connect(g).connect(AC.destination);o.start(t0+i*.12);o.stop(t0+i*.12+1.7)})}catch(e){}}
+
+/* ---------- loop ---------- */
+const liveEl=document.getElementById('liveN'),clockEl=document.getElementById('clock');let last=performance.now(),T=0,liveDisp=0,acc=0;
+function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(reduced){acc+=dt;if(acc<1){requestAnimationFrame(frame);return}dt=acc;acc=0}
+  T+=dt;const hr=skyHour();
+  heroScene.update(dt);sceneA.update(dt);
+  if(hero.vis)heroScene.draw(T,hr);if(vA.vis)sceneA.draw(T,hr);if(vB.vis)drawB(T,hr);if(vC.vis)drawC(T,hr);
+  stageEl.classList.toggle('day',dayLight(hr)>.55);
+  const L=heroScene.live();liveDisp+= (L-liveDisp)*Math.min(1,dt*3);liveEl.textContent=Math.round(liveDisp);
+  requestAnimationFrame(frame)}
+function tick(){const p=new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit'}).format(new Date());clockEl.textContent=p}
+tick();setInterval(tick,10000);
+requestAnimationFrame(frame);
+})();
+</script>

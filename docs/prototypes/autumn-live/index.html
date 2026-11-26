@@ -1,0 +1,526 @@
+<title>Autumn Live</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-bleed sky (canvas). Header on top, the flow bands in the middle, a 24-hour line under them, and four comparison cards along the bottom. */
+:root{
+  --ink:#ece8dc; --ink-dim:rgba(236,232,220,.62); --ink-faint:rgba(236,232,220,.18);
+  --gold:#e6c172; --silver:#d4def2; --warn:#f1b45a; --up:#9fd8b4;
+  --card:rgba(9,12,26,.42); --panel:rgba(12,15,28,.95);
+  --f-display:'Shippori Mincho B1','Yu Mincho','Hiragino Mincho ProN',serif;
+  --f-body:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Yu Gothic','Meiryo',sans-serif;
+  color-scheme:dark;
+}
+body.day{--ink:#17213a;--ink-dim:rgba(23,33,58,.66);--ink-faint:rgba(23,33,58,.16);--gold:#8a6417;--silver:#44587e;--warn:#a65a08;--up:#2b7a4b;--card:rgba(255,255,255,.55);--panel:rgba(250,251,253,.97);color-scheme:light}
+html,body{height:100%}
+body{margin:0;background:#0a0e20;color:var(--ink);font-family:var(--f-body);overflow:hidden;-webkit-font-smoothing:antialiased}
+#scene{position:fixed;inset:0;display:block;width:100%;height:100%}
+.hud{position:fixed;inset:0;pointer-events:none;display:grid;grid-template-rows:auto 1fr auto;gap:12px;
+  padding-left:max(20px, env(safe-area-inset-left, 0px));padding-right:max(20px, env(safe-area-inset-right, 0px));
+  padding-block:calc(env(safe-area-inset-top, 0px) + 16px) calc(env(safe-area-inset-bottom, 0px) + 16px)}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.id{display:flex;align-items:flex-end;gap:clamp(16px,2.6vw,40px);flex-wrap:wrap}
+.mark{font-family:var(--f-display);font-weight:700;font-size:clamp(20px,1.9vw,28px);letter-spacing:.04em;line-height:1}
+.mark small{display:block;font-family:var(--f-body);font-weight:400;font-size:11px;letter-spacing:.12em;color:var(--ink-dim);margin-top:7px}
+.clock{font-family:var(--f-display);font-weight:500;font-size:clamp(20px,1.8vw,28px);line-height:1;font-variant-numeric:tabular-nums}
+.clock small{display:block;font-family:var(--f-body);font-size:11px;letter-spacing:.1em;color:var(--ink-dim);margin-top:7px}
+.now{display:flex;align-items:baseline;gap:10px}
+.now b{font-size:clamp(34px,3.4vw,52px);font-weight:700;line-height:.9;font-variant-numeric:tabular-nums}
+.now span{font-size:13px;color:var(--ink-dim);line-height:1.4}
+.now span em{font-style:normal;display:block;font-size:11.5px}
+.ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;pointer-events:auto;max-width:68vw}
+.chip{font-size:11px;letter-spacing:.06em;color:var(--ink-dim);border:1px solid var(--ink-faint);border-radius:999px;padding:4px 10px;display:inline-flex;align-items:center;gap:6px}
+.chip i{width:7px;height:7px;border-radius:50%;background:#7fd19b;box-shadow:0 0 0 0 rgba(127,209,155,.6);animation:pulse 2s infinite}
+@keyframes pulse{70%{box-shadow:0 0 0 8px rgba(127,209,155,0)}100%{box-shadow:0 0 0 0 rgba(127,209,155,0)}}
+button,select{font:inherit;font-size:12px;color:var(--ink-dim);background:var(--card);border:1px solid var(--ink-faint);border-radius:999px;padding:5px 12px;cursor:pointer}
+button:hover,select:hover{color:var(--ink);border-color:var(--ink-dim)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button[aria-pressed="true"]{color:var(--gold);border-color:var(--gold)}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* bottom cards */
+.kpis{display:grid;grid-template-columns:1fr 1fr 1.45fr 1.75fr;gap:12px;pointer-events:auto}
+.card{background:var(--card);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-radius:12px;padding:12px 16px 13px;display:flex;flex-direction:column;gap:7px;min-width:0;transition:box-shadow .6s}
+.card.bump{box-shadow:0 0 0 1px var(--gold),0 0 28px rgba(230,193,114,.35)}
+.card[data-k="members"].bump{box-shadow:0 0 0 1px var(--silver),0 0 28px rgba(212,222,242,.4)}
+.lab{font-size:11.5px;letter-spacing:.08em;color:var(--ink-dim);display:flex;justify-content:space-between;gap:8px;white-space:nowrap}
+.lab .flag{display:none;font-size:11px;letter-spacing:0;color:var(--warn)}
+.card.warn .lab .flag{display:inline}
+.card.good .lab .flag{display:inline;color:var(--gold)}
+.valrow{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.val{font-size:clamp(22px,2vw,30px);font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums;white-space:nowrap}
+.val small{font-size:12px;font-weight:500;color:var(--ink-dim);margin-left:3px}
+.vs{font-size:12px;color:var(--ink-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.vs b{font-weight:700;color:var(--ink)}
+.vs b.up{color:var(--up)} .vs b.dn{color:var(--warn)}
+.bullet{position:relative;height:12px;border-radius:2px;background:var(--ink-faint)}
+.bullet .band{position:absolute;top:0;height:12px;background:var(--ink-faint);outline:1px solid var(--ink-faint)}
+.bullet .bar{position:absolute;left:0;top:4px;height:4px;border-radius:1px;background:var(--ink);transition:width .8s}
+.card.warn .bullet .bar{background:var(--warn)}
+.bullet .tgt{position:absolute;top:-3px;width:2px;height:18px;background:var(--gold)}
+.bullet .proj{position:absolute;top:-1px;height:14px;border-left:2px dotted var(--ink);transition:left .8s}
+.line{font-size:11.5px;color:var(--ink-dim);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line b{font-weight:500;color:var(--ink)}
+.card.warn .line.st{color:var(--warn)}
+.months{display:block;width:100%;height:58px}
+.mem{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:14px;align-items:start}
+.flow{display:grid;grid-template-columns:auto 1fr auto;gap:1px 10px;font-size:12px;font-variant-numeric:tabular-nums;align-items:center;margin:0}
+.flow dt{color:var(--ink-dim)} .flow dd{margin:0;text-align:right}
+.flow .bx{height:6px;border-radius:1px;background:var(--ink);opacity:.75}
+.flow .bx.neg{background:var(--warn);opacity:.85}
+.flow .net{border-top:1px solid var(--ink-faint);padding-top:3px;font-weight:700}
+.spark{display:block;width:100%;height:62px}
+
+/* banner */
+#banner{position:fixed;left:50%;top:calc(env(safe-area-inset-top, 0px) + 84px);transform:translate(-50%,-6px);opacity:0;transition:opacity .8s,transform .8s;pointer-events:none;
+  padding:9px 20px;border-radius:999px;background:var(--card);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--gold);font-size:14px;white-space:nowrap;z-index:5}
+#banner.on{opacity:1;transform:translate(-50%,0)}
+#banner b{color:var(--gold);margin-right:10px}
+#banner.member{border-color:var(--silver)} #banner.member b{color:var(--silver)}
+
+/* panels */
+.panel{position:fixed;z-index:20;top:calc(env(safe-area-inset-top, 0px) + 64px);right:max(16px, env(safe-area-inset-right, 0px));width:min(400px, calc(100vw - 32px));max-height:calc(100% - 96px);overflow:auto;
+  background:var(--panel);border:1px solid var(--ink-faint);border-radius:14px;padding:20px 20px 16px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.panel h2{margin:0;font-family:var(--f-display);font-weight:700;font-size:20px}
+.panel .hint{margin:8px 0 0;font-size:12px;line-height:1.65;color:var(--ink-dim)}
+.panel fieldset{border:0;border-top:1px solid var(--ink-faint);margin:16px 0 0;padding:12px 0 0;display:grid;gap:8px}
+.panel legend{font-size:11px;letter-spacing:.14em;color:var(--ink-dim);padding:0 0 4px}
+.row{display:grid;grid-template-columns:1fr auto 2.2em;align-items:center;gap:8px;font-size:13px}
+.row input{width:8.5em;font:inherit;font-variant-numeric:tabular-nums;text-align:right;color:var(--ink);background:var(--ink-faint);border:1px solid var(--ink-faint);border-radius:8px;padding:6px 8px}
+.row input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.row .u{color:var(--ink-dim);font-size:12px}
+.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap}
+.actions .primary{color:#1a160c;background:var(--gold);border-color:var(--gold)}
+body.day .actions .primary{color:#fff}
+.help dl{margin:14px 0 0;display:grid;gap:10px}
+.help dt{font-size:12px;font-weight:700;color:var(--gold)}
+.help dd{margin:2px 0 0;font-size:12.5px;line-height:1.7}
+.saved{margin:10px 0 0;text-align:right;font-size:12px;color:var(--gold)}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ctrl{max-width:none}}
+@media (max-width:560px){.kpis{grid-template-columns:minmax(0,1fr)}.mem{grid-template-columns:minmax(0,1fr)}.chip{display:none}}
+@media (prefers-reduced-motion:reduce){.chip i{animation:none}#banner,.bullet .bar,.bullet .proj{transition:none}}
+</style>
+
+<canvas id="scene" aria-hidden="true"></canvas>
+
+<div class="hud">
+  <header class="top">
+    <div class="id">
+      <div class="mark">Autumn Live<small>Autumn Book のいま · 西和賀・男鹿</small></div>
+      <div class="clock"><span id="hm">--:--</span><small id="date">&nbsp;</small></div>
+      <div class="now"><b id="liveN">0</b><span>人が いま<br>Book を見ています<em id="liveVs"></em></span></div>
+    </div>
+    <div class="ctrl">
+      <span class="chip"><i></i><span id="fresh">試作 · ダミーデータ</span></span>
+      <label><span class="vh">空の時刻</span><select id="skySel"><option value="">いまの空</option><option value="6.4">朝</option><option value="12">昼</option><option value="17.1">夕</option><option value="22">夜</option></select></label>
+      <label><span class="vh">季節</span><select id="seasonSel"><option value="">いまの季節</option><option value="spring">春</option><option value="summer">夏</option><option value="autumn">秋</option><option value="winter">冬</option></select></label>
+      <button id="btnHelp" type="button" aria-expanded="false" aria-controls="helpPanel">見方</button>
+      <button id="btnGoal" type="button" aria-expanded="false" aria-controls="goalPanel">目標</button>
+      <button id="btnBook" type="button">予約を流す</button>
+      <button id="btnMember" type="button">会員登録を流す</button>
+      <button id="btnSound" type="button" aria-pressed="false">音 オフ</button>
+      <button id="btnFs" type="button">全画面</button>
+    </div>
+  </header>
+  <div></div>
+  <section class="kpis" id="kpis" aria-label="指標と比較">
+    <div class="card" data-k="visits">
+      <div class="lab"><span>今日の Book 訪問</span><span class="flag"></span></div>
+      <div class="valrow"><div class="val" id="v-visits">0<small>人</small></div><div class="vs" id="vs-visits"></div></div>
+      <div class="bullet"><div class="band"></div><div class="bar"></div><div class="proj"></div><div class="tgt"></div></div>
+      <div class="line" id="l1-visits"></div>
+      <div class="line st" id="l2-visits"></div>
+    </div>
+    <div class="card" data-k="cvr">
+      <div class="lab"><span>予約率（直近7日）</span><span class="flag"></span></div>
+      <div class="valrow"><div class="val" id="v-cvr">0<small>%</small></div><div class="vs" id="vs-cvr"></div></div>
+      <div class="bullet"><div class="band"></div><div class="bar"></div><div class="tgt"></div></div>
+      <div class="line" id="l1-cvr"></div>
+      <div class="line st" id="l2-cvr"></div>
+    </div>
+    <div class="card" data-k="onhand">
+      <div class="lab"><span>オンハンド（先12か月の予約額）</span><span class="flag"></span></div>
+      <div class="valrow"><div class="val" id="v-onhand">0<small>億円</small></div><div class="vs" id="vs-onhand"></div></div>
+      <canvas class="months" id="months"></canvas>
+      <div class="line" id="l1-onhand"></div>
+    </div>
+    <div class="card" data-k="members">
+      <div class="lab"><span>会員</span><span class="flag"></span></div>
+      <div class="valrow"><div class="val" id="v-members">0<small>人</small></div><div class="vs" id="vs-members"></div></div>
+      <div class="mem">
+        <dl class="flow" id="memFlow"></dl>
+        <canvas class="spark" id="activeSpark"></canvas>
+      </div>
+      <div class="line" id="l1-members"></div>
+    </div>
+  </section>
+</div>
+
+<div id="banner" aria-live="polite"><b id="bannerHead"></b><span id="bannerText"></span></div>
+
+<div id="goalPanel" class="panel" role="dialog" aria-labelledby="gpTitle" hidden>
+  <form id="goalForm" novalidate>
+    <h2 id="gpTitle">目標を設定</h2>
+    <p class="hint">各指標の金色の目印になります。灰色の帯（いつもの幅）とは別のものです。試作なので、このブラウザにだけ保存されます。</p>
+    <fieldset><legend>1日</legend>
+      <label class="row" for="g_visits">Book 訪問<input id="g_visits" name="visits" type="number" inputmode="numeric" min="0" step="10"><span class="u">人</span></label>
+    </fieldset>
+    <fieldset><legend>率</legend>
+      <label class="row" for="g_cvr">予約率（直近7日）<input id="g_cvr" name="cvr" type="number" inputmode="decimal" min="0" step="0.1"><span class="u">%</span></label>
+    </fieldset>
+    <fieldset><legend>オンハンド</legend>
+      <label class="row" for="g_onhand">先12か月の予約額<input id="g_onhand" name="onhand" type="number" inputmode="numeric" min="0" step="1000000"><span class="u">円</span></label>
+    </fieldset>
+    <fieldset><legend>会員</legend>
+      <label class="row" for="g_active">アクティブ率（180日以内）<input id="g_active" name="active" type="number" inputmode="numeric" min="0" max="100" step="1"><span class="u">%</span></label>
+    </fieldset>
+    <div class="actions">
+      <button type="button" id="gpReset">初期値に戻す</button>
+      <button type="button" id="gpClose">閉じる</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+    <p id="gpSaved" class="saved" hidden>保存しました</p>
+  </form>
+</div>
+
+<div id="helpPanel" class="panel help" role="dialog" aria-labelledby="hpTitle" hidden>
+  <h2 id="hpTitle">この画面の見方</h2>
+  <p class="hint">ダミーデータで動かしている試作です。比較に使う「いつも」と「前年」の値も作り物です。</p>
+  <dl>
+    <dt>帯の太さ</dt><dd>今日その段まで来た人数です。どの段も同じ縮尺なので、細くなったところで人が離れています。施設を選んだところで西和賀と男鹿の2本に分かれます。</dd>
+    <dt>光の粒</dt><dd>いまその段にいる一人です。予約入力から先は金色になります。空へ上って消える粒は、そこで離れた人です。</dd>
+    <dt>段の間の％</dt><dd>次の段へ進んだ割合。下の小さな数字は直近28日の値です。大きく外れたときだけ矢印と色がつきます。</dd>
+    <dt>24時間の線</dt><dd>今日の30分ごとの訪問です。灰色の帯は直近8週の同じ曜日の、真ん中半分の幅です。</dd>
+    <dt>下の4枚</dt><dd>灰色の帯＝いつもの幅、金の目印＝目標、点線＝このペースでの着地です。いつもの幅から外れたとき、または目標に届かないペースのときだけ色がつきます。</dd>
+    <dt>オンハンド</dt><dd>宿泊月ごとの予約額です。各月の細い横線は前年の同じ日の値です。前年を下回る月は色が変わります。</dd>
+    <dt>会員</dt><dd>直近7日の増減の内訳（新規・復帰・退会・ご無沙汰入り）と、アクティブ率の13週の推移です。点線は前年です。</dd>
+    <dt>空</dt><dd>日本時間と季節に合わせて変わります。</dd>
+  </dl>
+  <div class="actions"><button type="button" id="hpClose">閉じる</button></div>
+</div>
+
+<script>
+(()=>{
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TAU = Math.PI*2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)), lerp=(a,b,t)=>a+(b-a)*t, rnd=(a,b)=>a+Math.random()*(b-a);
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+const fmt=n=>Math.round(n).toLocaleString('ja-JP');
+const hex=c=>{c=c.replace('#','');return [0,2,4].map(i=>parseInt(c.slice(i,i+2),16))};
+const mix=(a,b,t)=>{const A=hex(a),B=hex(b);return '#'+A.map((v,i)=>Math.round(lerp(v,B[i],t)).toString(16).padStart(2,'0')).join('')};
+const rgba=(c,a)=>{const A=hex(c);return `rgba(${A[0]},${A[1]},${A[2]},${a})`};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+/* ---------- time ---------- */
+function jst(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Tokyo',year:'numeric',month:'numeric',day:'numeric',weekday:'short',hour:'numeric',minute:'numeric',second:'numeric',hour12:false}).formatToParts(new Date());const g=t=>p.find(x=>x.type===t).value;
+  return {y:+g('year'),mo:+g('month'),d:+g('day'),wd:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(g('weekday')),h:+g('hour')%24,mi:+g('minute'),s:+g('second')}}
+const WD='日月火水木金土';
+const realHour=()=>{const t=jst();return t.h+t.mi/60+t.s/3600};
+let skyOverride=null, seasonOverride=null;
+const skyHour=()=>skyOverride??realHour();
+
+/* ---------- sky & season ---------- */
+const SKY=[[0,'#060a19','#141c38'],[4.6,'#0a0f24','#232a4a'],[5.8,'#1e2852','#7a5a72'],[6.6,'#3d5a92','#f0b089'],[8,'#4f86c4','#bfd8ee'],[12,'#3c7cc6','#b4d4f0'],[15.5,'#4c80be','#d9d4c0'],[16.9,'#33467e','#f09a62'],[17.8,'#1d2652','#a3607a'],[19,'#0d1430','#2c2f55'],[24,'#060a19','#141c38']];
+const SEASONS={winter:{sky:['#7fa9d2','#e8eff5'],fall:'snow'},spring:{sky:['#78acdc','#f4e3ea'],fall:'petal'},summer:{sky:['#3283cf','#d4ecf9'],fall:'firefly'},autumn:{sky:['#5596cf','#f2dfc4'],fall:'leaf'}};
+const seasonOf=m=>(m===12||m<=3)?'winter':m<=5?'spring':m<=8?'summer':'autumn';
+const curSeason=()=>seasonOverride||seasonOf(jst().mo);
+const dayLight=h=>smooth(5.6,7.6,h)*(1-smooth(16.6,18.4,h));
+function skyCols(h){const se=SEASONS[curSeason()].sky,d=dayLight(h);for(let i=0;i<SKY.length-1;i++){const a=SKY[i],b=SKY[i+1];if(h>=a[0]&&h<=b[0]){const t=(h-a[0])/(b[0]-a[0]);return [mix(mix(a[1],b[1],t),se[0],d*.6),mix(mix(a[2],b[2],t),se[1],d*.6)]}}return [SKY[0][1],SKY[0][2]]}
+
+/* ---------- canvas ---------- */
+const cv=document.getElementById('scene'),ctx=cv.getContext('2d');let W=0,H=0,DPR=1;
+const stars=[...Array(220)].map(()=>({x:Math.random(),y:Math.pow(Math.random(),1.5)*.8,r:Math.random()*1.1+.25,p:Math.random()*TAU}));
+const clouds=[...Array(6)].map(()=>({x:Math.random(),y:.06+Math.random()*.4,s:.07+Math.random()*.12,v:.003+Math.random()*.004}));
+let fall=[];
+function newFall(any){const k=SEASONS[curSeason()].fall,z=Math.random();
+  if(k==='firefly')return {k,x:Math.random()*W,y:H*rnd(.3,.95),r:1.2,ph:Math.random()*7,a:rnd(.4,1)};
+  return {k,x:Math.random()*W,y:any?Math.random()*H:-6,r:k==='snow'?.6+z*1.8:1.8+z*2,vy:k==='snow'?10+z*24:12+z*16,ph:Math.random()*7,a:k==='snow'?.2+z*.45:.5+z*.4,rot:Math.random()*6,vr:rnd(-2,2),col:k==='leaf'?pick(['#d9572b','#e8892e','#c43c2a','#e0b03a']):'#f4c6d4'}}
+function rebuildFall(){const k=SEASONS[curSeason()].fall;const n=reduce?24:(k==='snow'?Math.round(clamp(W*H/12000,50,160)):40);fall=[...Array(n)].map(()=>newFall(true))}
+
+function drawSky(t,hr){
+  const [top,hor]=skyCols(hr),d=dayLight(hr);const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,top);g.addColorStop(1,hor);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const na=1-smooth(5.2,6.6,hr)*(1-smooth(17.6,19,hr));
+  if(na>.02)for(const s of stars){ctx.fillStyle=`rgba(255,250,235,${na*(.4+.4*Math.sin(t*1.2+s.p))})`;ctx.beginPath();ctx.arc(s.x*W,s.y*H,s.r,0,TAU);ctx.fill()}
+  if(hr>5.3&&hr<18.7){const u=clamp((hr-5.6)/12.8,0,1),sx=lerp(.06,.94,u)*W,sy=H*(.9-Math.sin(u*Math.PI)*.8),warm=1-Math.sin(u*Math.PI),r=Math.min(W,H)*.3;
+    const sg=ctx.createRadialGradient(sx,sy,0,sx,sy,r);sg.addColorStop(0,`rgba(255,${Math.round(240-60*warm)},${Math.round(200-90*warm)},.5)`);sg.addColorStop(1,'rgba(255,220,170,0)');ctx.fillStyle=sg;ctx.fillRect(sx-r,sy-r,r*2,r*2);
+    ctx.fillStyle=`rgba(255,${Math.round(248-50*warm)},${Math.round(228-90*warm)},.92)`;ctx.beginPath();ctx.arc(sx,sy,Math.max(7,r*.05),0,TAU);ctx.fill()}
+  else{const mx=W*.82,my=H*.13,r=Math.min(W,H)*.16;const mg=ctx.createRadialGradient(mx,my,0,mx,my,r);mg.addColorStop(0,'rgba(230,232,255,.2)');mg.addColorStop(1,'rgba(230,232,255,0)');ctx.fillStyle=mg;ctx.fillRect(mx-r,my-r,r*2,r*2);ctx.fillStyle='rgba(244,242,230,.92)';ctx.beginPath();ctx.arc(mx,my,Math.max(6,r*.08),0,TAU);ctx.fill()}
+  if(d>.05)for(const c of clouds){const cx=((c.x+t*c.v)%1.3-.15)*W,cy=c.y*H,r=c.s*W;for(let k=0;k<3;k++){const ox=cx+(k-1)*r*.6,oy=cy+(k%2)*r*.08,rr=r*(k===1?.75:.55);const cg=ctx.createRadialGradient(ox,oy,0,ox,oy,rr);cg.addColorStop(0,`rgba(255,255,255,${.24*d})`);cg.addColorStop(1,'rgba(255,255,255,0)');ctx.fillStyle=cg;ctx.save();ctx.translate(ox,oy);ctx.scale(1,.42);ctx.translate(-ox,-oy);ctx.fillRect(ox-rr,oy-rr,rr*2,rr*2);ctx.restore()}}
+  return d;
+}
+function drawFall(dt,t,day){for(const f of fall){
+  if(f.k==='firefly'){f.x+=Math.sin(t*.5+f.ph)*.3;f.y+=Math.cos(t*.4+f.ph)*.25;const a=f.a*(.5+.5*Math.sin(t*2+f.ph))*(1-day*.85);if(a<.02)continue;const g=ctx.createRadialGradient(f.x,f.y,0,f.x,f.y,8);g.addColorStop(0,`rgba(230,255,150,${a})`);g.addColorStop(1,'rgba(230,255,150,0)');ctx.fillStyle=g;ctx.fillRect(f.x-8,f.y-8,16,16);continue}
+  f.y+=f.vy*dt;f.x+=Math.sin(t*.7+f.ph)*.35;f.rot+=(f.vr||0)*dt;if(f.y>H+8)Object.assign(f,newFall(false));
+  if(f.k==='snow'){ctx.fillStyle=day>.55?`rgba(255,255,255,${f.a+.2})`:`rgba(240,244,255,${f.a})`;ctx.beginPath();ctx.arc(f.x,f.y,f.r,0,TAU);ctx.fill()}
+  else{ctx.save();ctx.translate(f.x,f.y);ctx.rotate(f.rot);ctx.fillStyle=rgba(f.col,f.a*.85);ctx.beginPath();ctx.ellipse(0,0,f.r*1.4,f.r*.7,0,0,TAU);ctx.fill();ctx.restore()}}}
+
+/* ---------- typical day & history (dummy) ---------- */
+const usual=h=>6+44*Math.exp(-(((h-12.6)/2.8)**2))+62*Math.exp(-(((h-21.2)/2.1)**2))+16*Math.exp(-(((h-8.2)/1.4)**2));
+const USUAL=[...Array(48)].map((_,i)=>usual(i/2+.25));
+const LO=USUAL.map(v=>v*.86),HI=USUAL.map(v=>v*1.17);
+const USUAL_SUM=USUAL.reduce((a,b)=>a+b,0);
+const TODAY=USUAL.map((u,i)=>Math.round(u*(1.12+.16*Math.sin(i*1.7)+.08*Math.cos(i*.6))));
+function cumUntil(arr,h){let s=0;for(let i=0;i<48;i++){const a=i/2;if(a+.5<=h)s+=arr[i];else if(a<h)s+=arr[i]*(h-a)/.5}return s}
+const usualFrac=h=>cumUntil(USUAL,h)/USUAL_SUM;
+
+/* ---------- funnel model ---------- */
+const STAGES=['流入元','Book 訪問','空室検索','施設を選ぶ','プランを見る','予約入力','予約'];
+const SOURCES=['西和賀HP','男鹿HP','検索・広告','SNS','直接・その他'];
+const SRC_W=[.34,.27,.22,.10,.07];
+const TYP28={search:.70,plan:.62,form:.14,book:.22}; // rolling 28-day rates
+const LANES={N:{name:'西和賀',night:'#a9d2e6',day:'#2c6c98'},O:{name:'男鹿',night:'#f0b48a',day:'#b8582a'}};
+const H0=realHour();
+const v0=Math.max(60,Math.round(cumUntil(TODAY,H0)));
+{const ci=Math.floor(H0*2);const part=Math.round(TODAY[ci]*((H0*2)-ci));for(let i=ci;i<48;i++)TODAY[i]=0;TODAY[ci]=part}
+const M={src:SRC_W.map(w=>Math.round(v0*w)),visit:0,search:0,N:[0,0,0,0],O:[0,0,0,0]};
+M.visit=M.src.reduce((a,b)=>a+b,0);M.search=Math.round(M.visit*.70);
+M.N[0]=Math.round(M.search*.5);M.O[0]=Math.round(M.search*.4);
+for(const L of['N','O']){M[L][1]=Math.round(M[L][0]*(L==='N'?.62:.6));M[L][2]=Math.round(M[L][1]*(L==='N'?.15:.11));M[L][3]=Math.round(M[L][2]*(L==='N'?.23:.21))}
+const D=JSON.parse(JSON.stringify(M));
+const P=[],bursts=[],comets=[];
+
+/* ---------- goals ---------- */
+const GOAL_DEFAULT={visits:3400,cvr:1.5,onhand:200000000,active:55};
+const GOAL_STORE='autumn-live-goals-v13';
+function loadGoals(){try{const v=JSON.parse(localStorage.getItem(GOAL_STORE)||'null');return {...GOAL_DEFAULT,...(v||{})}}catch(e){return {...GOAL_DEFAULT}}}
+let goals=loadGoals();
+
+/* ---------- other metrics (dummy) ---------- */
+const now0=jst();
+const MONTHS=[...Array(12)].map((_,i)=>((now0.mo-1+i)%12)+1);
+const OH=[2650,2380,2610,1720,1180,1350,1240,1690,1520,1030,640,330].map(v=>v*10000);
+const OH_LY=[2380,2290,2140,1830,1050,1180,1260,1420,1310,890,560,240].map(v=>v*10000);
+let pickup7=12400000; const pickup7LY=9800000;
+const CVR={d7:1.31,lo28:1.18,hi28:1.46,ly:1.21};
+const MEM={total:3412,active:1672,week:{new:42,back:6,out:-2,lapse:-8},prev4avg:31,today:3,todayUsual:2,net28:156,net28prev:131,
+  act:[47.2,47.4,47.3,47.8,47.9,48.1,48.0,48.4,48.6,48.5,48.8,49.0,49.0],actLY:[44.1,44.3,44.2,44.6,44.5,44.8,45.0,44.9,45.2,45.3,45.2,45.5,45.6]};
+let flashMonth=-1,flashT=0;
+
+/* ---------- geometry ---------- */
+let G=null;
+function geo(){
+  const kp=document.getElementById('kpis').getBoundingClientRect(), hd=document.querySelector('.top').getBoundingClientRect();
+  const top=hd.bottom+64, stripH=40, bot=kp.top-stripH-50;
+  const L=Math.max(120,W*.09),R=Math.max(90,W*.07);
+  const xs=[...Array(7)].map((_,i)=>L+i*(W-L-R)/6);
+  const rh=Math.max(120,bot-top),cy=top+rh*.5,k=rh*.6/M.visit,off=rh*.25,gap=Math.max(4,rh*.012);
+  const n={};let y=cy-(M.visit*k+gap*4)/2;n.src=M.src.map(v=>{const a=y;y+=v*k+gap;return [a,a+v*k]});
+  n.visit=[cy-M.visit*k/2,cy+M.visit*k/2];n.search=[cy-M.search*k/2,cy+M.search*k/2];
+  const lane=(arr,ly)=>arr.map(v=>[ly-v*k/2,ly+v*k/2]);n.N=lane(M.N,cy-off);n.O=lane(M.O,cy+off);
+  let vy=n.visit[0];n.vslice=M.src.map(v=>{const a=vy;vy+=v*k;return [a,a+v*k]});
+  const outT=(M.N[0]+M.O[0])*k,s0=cy-outT/2;n.sN=[s0,s0+M.N[0]*k];n.sO=[s0+M.N[0]*k,s0+outT];
+  return {xs,n,k,top,bot,cy,stripY:bot+38,stripH};
+}
+function link(c,lane,src){const n=G.n;
+  if(c===0)return [n.src[src],n.vslice[src]];
+  if(c===1){const s=M.search*G.k,a=G.cy-s/2;return [[a,a+s],n.search]}
+  if(c===2)return [lane==='N'?n.sN:n.sO,n[lane][0]];
+  const A=n[lane][c-3],B=n[lane][c-2],hb=B[1]-B[0],ma=(A[0]+A[1])/2;return [[ma-hb/2,ma+hb/2],B]}
+function nodeAt(c,lane,src){const n=G.n;if(c===0)return n.src[src];if(c===1)return n.visit;if(c===2)return n.search;return n[lane][c-3]}
+const bez=(a,b,t)=>{const u=1-t,m=(a+b)/2;return u*u*u*a+3*u*u*t*m+3*u*t*t*m+t*t*t*b};
+const bezY=(a,b,t)=>{const u=1-t;return u*u*u*a+3*u*u*t*a+3*u*t*t*b+t*t*t*b};
+function band(c,A,B,col,alpha){const x0=G.xs[c]+2,x1=G.xs[c+1]-2,xm=(x0+x1)/2;const g=ctx.createLinearGradient(x0,0,x1,0);g.addColorStop(0,rgba(col,alpha));g.addColorStop(1,rgba(col,alpha*.8));
+  ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(x0,A[0]);ctx.bezierCurveTo(xm,A[0],xm,B[0],x1,B[0]);ctx.lineTo(x1,B[1]);ctx.bezierCurveTo(xm,B[1],xm,A[1],x0,A[1]);ctx.closePath();ctx.fill()}
+
+/* ---------- simulation ---------- */
+let spawnT=0;
+function spawn(){let r=Math.random(),src=0;for(;src<4;src++){r-=SRC_W[src];if(r<0)break}
+  P.push({c:0,src,lane:null,f:.1+Math.random()*.8,st:'dwell',t:0,dw:.2+Math.random()*.5,jx:Math.random(),ph:Math.random()*TAU,a:0});
+  M.src[src]++}
+function advance(p){const prob=[1,.74,.92,.66,.32,.5][p.c];
+  if(Math.random()<prob){p.st='move';p.t=0;p.mv=1.7;if(p.c===2)p.lane=Math.random()<.55?'N':'O'}else{p.st='leave';p.t=0}}
+function arrive(p){p.c++;p.st='dwell';p.t=0;p.dw=2.5+Math.random()*5;
+  if(p.c===1){M.visit++;TODAY[Math.min(47,Math.floor(realHour()*2))]++}else if(p.c===2)M.search++;else M[p.lane][p.c-3]++;
+  if(p.c===6){p.st='done';p.t=0;bursts.push({lane:p.lane,t:0});onBooking(p.lane)}}
+function seed(){for(let i=0;i<46;i++){spawn();const p=P[P.length-1];M.src[p.src]--;const c=pick([1,1,1,1,1,2,2,2,2,3,3,3,4,4,4,5]);p.c=c;if(c>=3)p.lane=Math.random()<.55?'N':'O';p.dw=Math.random()*6;p.a=1}}
+seed();
+const live=()=>P.filter(p=>p.st==='dwell'||p.st==='move').length;
+function update(dt){
+  spawnT-=dt;if(spawnT<=0){if(P.length<80)spawn();spawnT=.4+Math.random()*.9}
+  for(const p of P){p.t+=dt;p.a=Math.min(1,p.a+dt*2);
+    if(p.st==='dwell'&&p.t>p.dw){if(p.force){p.st='move';p.t=0;p.mv=1.7;p.force=false}else advance(p)}
+    else if(p.st==='move'&&p.t>=p.mv)arrive(p)}
+  for(let i=P.length-1;i>=0;i--){const p=P[i];if((p.st==='leave'&&p.t>3.2)||(p.st==='done'&&p.t>4))P.splice(i,1)}
+  for(let i=bursts.length-1;i>=0;i--){bursts[i].t+=dt;if(bursts[i].t>2.6)bursts.splice(i,1)}
+  const tw=(a,b)=>a+(b-a)*Math.min(1,dt*3);
+  D.visit=tw(D.visit,M.visit);D.search=tw(D.search,M.search);for(const L of['N','O'])for(let i=0;i<4;i++)D[L][i]=tw(D[L][i],M[L][i]);for(let i=0;i<5;i++)D.src[i]=tw(D.src[i],M.src[i]);
+  if(flashT>0)flashT-=dt;
+  for(let i=comets.length-1;i>=0;i--){const c=comets[i];c.t+=dt/c.dur;if(c.t>=1){comets.splice(i,1);onSignupLanded()}}
+}
+
+/* ---------- drawing ---------- */
+function draw(t,dt){
+  if(!W)return;const hr=skyHour();const d=drawSky(t,hr);const day=d>.55;document.body.classList.toggle('day',day);
+  drawFall(dt,t,d);
+  G=geo();const md=day?'day':'night';const ink=day?'#17213a':'#f0ece0';
+  const txt=(s,x,y,size,al,align,wt,col)=>{ctx.font=`${wt||500} ${size}px "Noto Sans JP",sans-serif`;ctx.textAlign=align||'left';ctx.fillStyle=rgba(col||ink,al);ctx.fillText(s,x,y)};
+  const halo=(s,x,y,size,al,align,wt,col)=>{ctx.save();ctx.shadowColor=day?'rgba(255,255,255,.85)':'rgba(5,8,20,.8)';ctx.shadowBlur=8;txt(s,x,y,size,al,align,wt,col);ctx.restore()};
+  // bands: tinted by day so the light grains stand out against them
+  const trunk=day?'#1d3a66':'#ece2c4',ta=day?.15:.22;
+  for(let i=0;i<5;i++)band(0,G.n.src[i],G.n.vslice[i],trunk,ta*(i<2?1:.75));
+  band(1,link(1)[0],G.n.search,trunk,ta);
+  for(const L of['N','O']){const col=LANES[L][md],la=.26;band(2,link(2,L)[0],G.n[L][0],col,la);for(let c=3;c<6;c++){const [A,B]=link(c,L);band(c,A,B,col,la*1.2)}}
+  const bar=(x,r,col,a)=>{ctx.fillStyle=rgba(col,a);ctx.fillRect(x-1.5,r[0],3,Math.max(1.5,r[1]-r[0]))};
+  G.n.src.forEach(r=>bar(G.xs[0],r,trunk,day?.5:.8));bar(G.xs[1],G.n.visit,trunk,day?.5:.8);bar(G.xs[2],G.n.search,trunk,day?.5:.8);
+  const gold=day?'#a87a1c':'#e6c172';
+  for(const L of['N','O'])G.n[L].forEach((r,i)=>bar(G.xs[3+i],r,i===3?gold:LANES[L][md],.9));
+  // stage headers
+  STAGES.forEach((s,i)=>{halo(s,G.xs[i],G.top-34,12,.7,'center')});
+  halo(fmt(D.visit),G.xs[1],G.top-12,22,.95,'center',700);halo(fmt(D.search),G.xs[2],G.top-12,22,.95,'center',700);
+  SOURCES.forEach((s,i)=>{const r=G.n.src[i],y=(r[0]+r[1])/2;halo(s,G.xs[0]-10,y-1,12,.85,'right');halo(fmt(D.src[i]),G.xs[0]-10,y+13,11,.6,'right')});
+  for(const L of['N','O'])G.n[L].forEach((r,i)=>{const x=G.xs[3+i];if(i===3){halo(fmt(D[L][3])+'件',x+10,(r[0]+r[1])/2+7,19,.95,'left',700,day?'#7a5810':'#f1d48c');return}
+    const y=L==='N'?r[0]-9:r[1]+19;halo((i===0?LANES[L].name+'　':'')+fmt(D[L][i]),x,y,14,.95,'center',700)});
+  // rates vs rolling 28 days
+  const rate=(x,y,v,typ,n)=>{const few=n!=null&&n<50;const dev=typ&&!few?v/typ:1; // too few people: no arrow, no colour
+    let s=(v*100).toFixed(v<.2?1:0)+'%',col=ink,al=.8;
+    if(typ&&dev<.85){s='↓ '+s;col=day?'#a65a08':'#f1b45a';al=1}else if(typ&&dev>1.18){s='↑ '+s;col=day?'#2b7a4b':'#9fd8b4';al=1}
+    halo(s,x,y,12.5,al,'center',700,col);if(typ)halo('28日 '+(typ*100).toFixed(typ<.2?1:0)+'%',x,y+14,10.5,.55,'center')};
+  rate((G.xs[1]+G.xs[2])/2,G.cy-2,M.search/M.visit,TYP28.search,M.visit);
+  for(const L of['N','O']){const ly=(G.n[L][0][0]+G.n[L][0][1])/2,sl=L==='N'?G.n.sN:G.n.sO;
+    rate((G.xs[2]+G.xs[3])/2,((sl[0]+sl[1])/2+ly)/2+4,M[L][0]/M.search,null);
+    const typs=[TYP28.plan,TYP28.form,TYP28.book];
+    for(let i=1;i<4;i++){const r=G.n[L][i];rate((G.xs[2+i]+G.xs[3+i])/2,(r[0]+r[1])/2+(L==='N'?-22:24),M[L][i]/Math.max(1,M[L][i-1]),typs[i-1],M[L][i-1])}}
+  // 24-hour strip
+  {const sy=G.stripY,sh=G.stripH,x0=G.xs[0],x1=G.xs[6],sw=x1-x0,mx=Math.max(...HI,...TODAY)*1.05;const px=i=>x0+sw*(i/48),py=v=>sy+sh-v/mx*sh;
+    ctx.beginPath();HI.forEach((v,i)=>{const X=px(i+.5),Y=py(v);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)});for(let i=47;i>=0;i--)ctx.lineTo(px(i+.5),py(LO[i]));ctx.closePath();ctx.fillStyle=rgba(ink,day?.12:.14);ctx.fill();
+    const nh=realHour(),ni=Math.floor(nh*2);ctx.strokeStyle=rgba(ink,.9);ctx.lineWidth=1.7;ctx.beginPath();
+    for(let i=0;i<=Math.min(47,ni);i++){const v=i===ni?TODAY[i]/Math.max(.25,(nh*2-ni)):TODAY[i];const X=px(i+.5),Y=py(v);i?ctx.lineTo(X,Y):ctx.moveTo(X,Y)}ctx.stroke();
+    const nx=px(nh*2);ctx.fillStyle=gold;ctx.fillRect(nx-.75,sy-4,1.5,sh+6);
+    [0,6,12,18,24].forEach(h=>halo(`${h}時`,px(h*2),sy+sh+14,10.5,.6,h===0?'left':h===24?'right':'center'));
+    const wd=WD[jst().wd];halo(`今日の訪問（30分ごと）　灰色の帯＝直近8週の${wd}曜の幅`,x0,sy-8,11.5,.75,'left');
+    const pct=Math.round((M.visit/cumUntil(USUAL,nh)-1)*100);
+    halo(`いつもの${wd}曜のこの時刻より ${pct>=0?'+':''}${pct}%`,x1,sy-8,12.5,.95,'right',700,pct>17?(day?'#2b7a4b':'#9fd8b4'):pct<-14?(day?'#a65a08':'#f1b45a'):ink)}
+  // light grains: glow by day as well as by night
+  ctx.save();ctx.globalCompositeOperation=day?'source-over':'lighter';
+  for(const p of P){let x,y,al=p.a;
+    if(p.st==='move'){const [A,B]=link(p.c,p.lane,p.src);const tt=clamp(p.t/p.mv,0,1),e=tt<.5?2*tt*tt:1-Math.pow(-2*tt+2,2)/2;x=bez(G.xs[p.c]+2,G.xs[p.c+1]-2,e);y=bezY(lerp(A[0],A[1],p.f),lerp(B[0],B[1],p.f),e)}
+    else{const r=nodeAt(p.c,p.lane,p.src);x=G.xs[p.c]+4+p.jx*16+Math.sin(t*.6+p.ph)*3;y=lerp(r[0],r[1],p.f)+Math.sin(t*.9+p.ph)*1.2;
+      if(p.st==='leave'){y-=p.t*p.t*16+p.t*10;x+=Math.sin(p.ph+p.t)*6;al*=1-p.t/3.2}
+      if(p.st==='done'){al*=1-p.t/4;x+=p.t*8}}
+    if(al<=0)continue;
+    const isGold=p.c>=5||p.st==='done';const tint=isGold?(day?'#ffc94a':'#f3cf7a'):(p.lane?(day?(p.lane==='N'?'#b8e4ff':'#ffd0ac'):LANES[p.lane].night):(day?'#fff3cc':'#f6efd8'));
+    const rr=isGold?3:2.3,R=rr*(day?5.5:4.2);if(p.st==='leave')al*=.6;
+    const gg=ctx.createRadialGradient(x,y,0,x,y,R);gg.addColorStop(0,rgba(tint,(day?.8:.6)*al));gg.addColorStop(.35,rgba(tint,(day?.36:.22)*al));gg.addColorStop(1,rgba(tint,0));ctx.fillStyle=gg;ctx.fillRect(x-R,y-R,R*2,R*2);
+    ctx.fillStyle=`rgba(255,253,244,${al})`;ctx.beginPath();ctx.arc(x,y,p.st==='leave'?rr*.7:rr*.85,0,TAU);ctx.fill()}
+  ctx.restore();
+  for(const b of bursts){const r=G.n[b.lane][3],x=G.xs[6],y=(r[0]+r[1])/2,k=b.t/2.6;ctx.strokeStyle=rgba(day?'#c8951f':'#f3cf7a',(1-k)*.9);ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,6+k*60,0,TAU);ctx.stroke()}
+  // signup comets toward the member card
+  for(const c of comets){const pos=e=>[lerp(c.sx,c.tx,e),lerp(c.sy,c.ty,e)-Math.sin(e*Math.PI)*60];const e=1-Math.pow(1-c.t,2);
+    for(let k=0;k<10;k++){const [x2,y2]=pos(Math.max(0,e-k*.012));ctx.fillStyle=rgba(day?'#ffffff':'#d4def2',(1-k/10)*.75);ctx.beginPath();ctx.arc(x2,y2,Math.max(.5,3.2-k*.25),0,TAU);ctx.fill()}
+    const [x,y]=pos(e);const g=ctx.createRadialGradient(x,y,0,x,y,16);g.addColorStop(0,'rgba(255,255,255,.9)');g.addColorStop(1,'rgba(212,222,242,0)');ctx.fillStyle=g;ctx.fillRect(x-16,y-16,32,32)}
+}
+
+/* ---------- events ---------- */
+const banner=document.getElementById('banner');let bannerT=0;
+function showBanner(head,text,member){document.getElementById('bannerHead').textContent=head;document.getElementById('bannerText').textContent=text;banner.classList.toggle('member',!!member);banner.classList.add('on');clearTimeout(bannerT);bannerT=setTimeout(()=>banner.classList.remove('on'),6500)}
+function bump(k){const el=document.querySelector(`.card[data-k="${k}"]`);el.classList.remove('bump');void el.offsetWidth;el.classList.add('bump');setTimeout(()=>el.classList.remove('bump'),2200)}
+function onBooking(lane){const nights=pick([1,1,1,2,2,3]),guests=pick([2,2,2,1,3,4]),yen=Math.round(nights*guests*rnd(17000,31000)/100)*100;const mi=pick([0,0,1,1,2,3,4,5,8]);
+  OH[mi]+=yen;pickup7+=yen;flashMonth=mi;flashT=2.4;drawMonths();bump('onhand');updateCards();
+  showBanner('予約が入りました',`${LANES[lane].name} · ${MONTHS[mi]}月 · 大人${guests}名 ${nights}泊 · ¥${yen.toLocaleString('ja-JP')}`);chime([784,1175])}
+function forceBooking(){P.push({c:5,src:0,lane:Math.random()<.5?'N':'O',f:.5,st:'dwell',t:0,dw:.1,jx:.4,ph:0,a:1,force:true})}
+function signup(){const el=document.querySelector('.card[data-k="members"] .val').getBoundingClientRect();comets.push({sx:rnd(.2,.8)*W,sy:-10,tx:el.left+el.width/2,ty:el.top+el.height/2,t:0,dur:2.2})}
+function onSignupLanded(){MEM.total++;MEM.week.new++;MEM.today++;MEM.net28++;bump('members');showBanner('会員登録がありました',`いまの総数 ${fmt(MEM.total)}人`,true);chime([1047,1319]);updateCards()}
+
+/* ---------- small canvases ---------- */
+const mcv=document.getElementById('months'),scv=document.getElementById('activeSpark');
+function sizeSmall(){for(const c of [mcv,scv]){const r=c.getBoundingClientRect();if(!r.width)continue;c.width=Math.round(r.width*DPR);c.height=Math.round(r.height*DPR);c.getContext('2d').setTransform(DPR,0,0,DPR,0,0)}}
+const cssv=n=>getComputedStyle(document.body).getPropertyValue(n).trim();
+function drawMonths(){const c=mcv.getContext('2d'),w=mcv.clientWidth,h=mcv.clientHeight;if(!w)return;c.clearRect(0,0,w,h);
+  const mx=Math.max(...OH,...OH_LY)*1.08,bw=w/12,ink=cssv('--ink'),warn=cssv('--warn'),gold=cssv('--gold');const ch=h-14;
+  OH.forEach((v,i)=>{const x=i*bw+bw*.18,ww=bw*.64,bh=v/mx*ch,ly=OH_LY[i]/mx*ch,behind=v<OH_LY[i],fl=flashMonth===i&&flashT>0;
+    c.globalAlpha=fl?1:.75;c.fillStyle=fl?gold:(behind?warn:ink);c.fillRect(x,ch-bh,ww,bh);c.globalAlpha=1;
+    c.strokeStyle=ink;c.lineWidth=1.5;c.beginPath();c.moveTo(x-3,ch-ly+.5);c.lineTo(x+ww+3,ch-ly+.5);c.stroke();
+    c.fillStyle=ink;c.globalAlpha=.6;c.font='500 10px "Noto Sans JP",sans-serif';c.textAlign='center';c.fillText(MONTHS[i]+'月',x+ww/2,h-2);c.globalAlpha=1})}
+function drawSpark(){const c=scv.getContext('2d'),w=scv.clientWidth,h=scv.clientHeight;if(!w)return;c.clearRect(0,0,w,h);
+  const ink=cssv('--ink'),gold=cssv('--gold');const lo=42,hi=Math.max(goals.active,50)+2;const py=v=>4+(1-(v-lo)/(hi-lo))*(h-18),px=i=>4+i*(w-8)/12;
+  c.strokeStyle=gold;c.lineWidth=1;c.setLineDash([2,3]);c.beginPath();c.moveTo(0,py(goals.active));c.lineTo(w,py(goals.active));c.stroke();
+  c.strokeStyle=ink;c.globalAlpha=.5;c.setLineDash([3,3]);c.beginPath();MEM.actLY.forEach((v,i)=>i?c.lineTo(px(i),py(v)):c.moveTo(px(i),py(v)));c.stroke();c.setLineDash([]);c.globalAlpha=1;
+  c.lineWidth=1.8;c.beginPath();MEM.act.forEach((v,i)=>i?c.lineTo(px(i),py(v)):c.moveTo(px(i),py(v)));c.stroke();
+  c.fillStyle=ink;c.beginPath();c.arc(px(12),py(MEM.act[12]),2.6,0,TAU);c.fill();
+  c.font='500 10px "Noto Sans JP",sans-serif';c.globalAlpha=.65;c.textAlign='left';c.fillText('アクティブ率 13週（点線＝前年）',2,h-2);c.globalAlpha=1;c.textAlign='right';c.fillStyle=gold;c.fillText('目標 '+goals.active+'%',w-2,Math.max(10,py(goals.active)-3))}
+
+/* ---------- cards ---------- */
+function bullet(k,{actual,lo,hi,goal,proj,max}){const el=document.querySelector(`.card[data-k="${k}"] .bullet`);const pc=v=>clamp(v/max*100,0,100)+'%';
+  el.querySelector('.bar').style.width=pc(actual);const b=el.querySelector('.band');b.style.left=pc(lo);b.style.width=`calc(${pc(hi)} - ${pc(lo)})`;el.querySelector('.tgt').style.left=`calc(${pc(goal)} - 1px)`;
+  const pj=el.querySelector('.proj');if(pj){if(proj==null)pj.hidden=true;else{pj.hidden=false;pj.style.left=pc(proj)}}}
+function state(k,s,flag){const el=document.querySelector(`.card[data-k="${k}"]`);el.classList.toggle('warn',s==='warn');el.classList.toggle('good',s==='good');el.querySelector('.flag').textContent=flag||''}
+const pctTxt=(a,b)=>{const p=(a/b-1)*100;return `<b class="${p>=0?'up':'dn'}">${p>=0?'+':''}${p.toFixed(1)}%</b>`};
+const setH=(id,h)=>{const e=document.getElementById(id);if(e.innerHTML!==h)e.innerHTML=h};
+function updateCards(){const hr=realHour(),wd=WD[jst().wd];
+  // visits: cumulative so far vs the usual cumulative at this time
+  const uc=cumUntil(USUAL,hr),lo=uc*.88,hi=uc*1.14,early=usualFrac(hr)<.15,proj=early?null:M.visit/usualFrac(hr),gv=goals.visits,max=Math.max(gv,proj||0,hi)*1.12;
+  setH('v-visits',`${fmt(M.visit)}<small>人</small>`);setH('vs-visits',`いつもの${wd}曜より ${pctTxt(M.visit,uc)}`);
+  bullet('visits',{actual:M.visit,lo,hi,goal:gv,proj,max});
+  setH('l1-visits',`いつもの幅（この時刻） <b>${fmt(lo)}〜${fmt(hi)}</b>人`);
+  setH('l2-visits',early?`着地の予測は、いつもの1日の15%を過ぎてから出します · 目標 ${fmt(gv)}人`:`このペースなら <b>${fmt(Math.round(proj/10)*10)}</b>人 · 目標 ${fmt(gv)}人`);
+  const behindGoal=!early&&proj<gv*.9;
+  state('visits',behindGoal||M.visit<lo?'warn':M.visit>hi?'good':'',behindGoal?'目標に届かないペース':M.visit<lo?'いつもより少ない':M.visit>hi?'いつもより多い':'');
+  // booking rate: last 7 days vs rolling 28 days and last year
+  const books=M.N[3]+M.O[3],gc=goals.cvr,mc=Math.max(gc,CVR.hi28,CVR.d7)*1.2;
+  setH('v-cvr',`${CVR.d7.toFixed(2)}<small>%</small>`);setH('vs-cvr',`前年同期より ${pctTxt(CVR.d7,CVR.ly)}`);
+  bullet('cvr',{actual:CVR.d7,lo:CVR.lo28,hi:CVR.hi28,goal:gc,max:mc});
+  setH('l1-cvr',`直近28日の幅 <b>${CVR.lo28.toFixed(2)}〜${CVR.hi28.toFixed(2)}%</b> · 前年 ${CVR.ly.toFixed(2)}%`);
+  setH('l2-cvr',`今日 ${books}件 / ${fmt(M.visit)}人 · 目標 ${gc}%`);
+  state('cvr',CVR.d7<CVR.lo28?'warn':'',CVR.d7<CVR.lo28?'いつもより低い':'');
+  // on-hand: vs same date last year, per stay month
+  const oh=OH.reduce((a,b)=>a+b,0),ly=OH_LY.reduce((a,b)=>a+b,0),behind=OH.map((v,i)=>v<OH_LY[i]?MONTHS[i]+'月':null).filter(Boolean);
+  setH('v-onhand',`${(oh/1e8).toFixed(2)}<small>億円</small>`);setH('vs-onhand',`前年の同じ日より ${pctTxt(oh,ly)}`);
+  setH('l1-onhand',`直近7日の増加 <b>${fmt(pickup7/1e4)}万円</b>（前年 ${fmt(pickup7LY/1e4)}万円）· 目標 ${(goals.onhand/1e8).toFixed(1)}億円まで ${fmt(Math.max(0,goals.onhand-oh)/1e4)}万円`);
+  state('onhand',behind.length?'warn':'',behind.length?`前年より遅れ：${behind.join('・')}`:'');
+  // members: weekly net change with its breakdown, active rate trend
+  const w=MEM.week,net=w.new+w.back+w.out+w.lapse,rate=MEM.active/MEM.total*100;
+  setH('v-members',`${fmt(MEM.total)}<small>人</small>`);setH('vs-members',`アクティブ <b>${fmt(MEM.active)}</b>人（${rate.toFixed(0)}%）`);
+  const mxw=Math.max(w.new,8);const row=(l,v,cls)=>`<dt${cls?` class="${cls}"`:''}>${l}</dt><dd${cls?` class="${cls}"`:''}>${cls?'':`<div class="bx${v<0?' neg':''}" style="width:${Math.abs(v)/mxw*100}%"></div>`}</dd><dd${cls?` class="${cls}"`:''}>${v>0?'+':''}${v}</dd>`;
+  setH('memFlow',row('新規登録',w.new)+row('復帰',w.back)+row('退会',w.out)+row('ご無沙汰入り',w.lapse)+row('7日の純増',net,'net'));
+  setH('l1-members',`7日の純増 <b>${net>0?'+':''}${net}</b>（直近4週の平均 +${MEM.prev4avg}）· 28日 +${MEM.net28}（その前の28日 +${MEM.net28prev}）· 今日の登録 ${MEM.today}人（いつも ${MEM.todayUsual}人）`);
+  state('members',rate<goals.active?'warn':net>MEM.prev4avg*1.2?'good':'',rate<goals.active?`アクティブ率が目標 ${goals.active}% 未満`:net>MEM.prev4avg*1.2?'いつもより伸びている':'');
+  document.getElementById('liveVs').textContent='いつものこの時刻は 35〜50人';
+}
+
+/* ---------- sound ---------- */
+let soundOn=false,AC=null;
+function chime(fr){if(!soundOn)return;try{AC=AC||new AudioContext();const t0=AC.currentTime;fr.forEach((f,i)=>{const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t0+i*.13);g.gain.linearRampToValueAtTime(.06,t0+i*.13+.02);g.gain.exponentialRampToValueAtTime(.0001,t0+i*.13+1.8);o.connect(g).connect(AC.destination);o.start(t0+i*.13);o.stop(t0+i*.13+1.9)})}catch(e){}}
+
+/* ---------- panels & controls ---------- */
+const gp=document.getElementById('goalPanel'),gf=document.getElementById('goalForm'),gb=document.getElementById('btnGoal'),hp=document.getElementById('helpPanel'),hb=document.getElementById('btnHelp');
+const fillGoals=src=>{for(const k in GOAL_DEFAULT){const el=gf.elements[k];if(el)el.value=src[k]}};
+function openGoals(o){if(o)openHelp(false);gp.hidden=!o;gb.setAttribute('aria-expanded',String(o));if(o){fillGoals(goals);document.getElementById('gpSaved').hidden=true;gf.elements.visits.focus()}}
+function openHelp(o){if(o)openGoals(false);hp.hidden=!o;hb.setAttribute('aria-expanded',String(o));if(o)document.getElementById('hpClose').focus()}
+gb.addEventListener('click',()=>openGoals(gp.hidden));hb.addEventListener('click',()=>openHelp(hp.hidden));
+document.getElementById('gpClose').addEventListener('click',()=>openGoals(false));document.getElementById('hpClose').addEventListener('click',()=>openHelp(false));
+document.getElementById('gpReset').addEventListener('click',()=>fillGoals(GOAL_DEFAULT));
+gf.addEventListener('submit',e=>{e.preventDefault();const next={...goals};for(const k in GOAL_DEFAULT){const el=gf.elements[k];if(!el)continue;const n=parseFloat(el.value);if(Number.isFinite(n)&&n>=0)next[k]=n;else el.value=goals[k]}
+  goals=next;try{localStorage.setItem(GOAL_STORE,JSON.stringify(goals))}catch(err){}document.getElementById('gpSaved').hidden=false;updateCards();drawSpark()});
+[gp,hp].forEach(p=>p.addEventListener('keydown',e=>{if(e.key==='Escape'){openGoals(false);openHelp(false)}}));
+document.getElementById('skySel').addEventListener('change',e=>{skyOverride=e.target.value===''?null:+e.target.value});
+document.getElementById('seasonSel').addEventListener('change',e=>{seasonOverride=e.target.value||null;rebuildFall()});
+document.getElementById('btnBook').addEventListener('click',forceBooking);
+document.getElementById('btnMember').addEventListener('click',signup);
+const sb=document.getElementById('btnSound');sb.addEventListener('click',()=>{soundOn=!soundOn;sb.setAttribute('aria-pressed',String(soundOn));sb.textContent=soundOn?'音 オン':'音 オフ';if(soundOn)chime([784])});
+const fs=()=>{try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{})}catch(e){}};
+document.getElementById('btnFs').addEventListener('click',fs);
+addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('input,select'))return;const k=e.key.toLowerCase();
+  if(k==='f')fs();else if(k==='b')forceBooking();else if(k==='m')signup();else if(k==='g')openGoals(gp.hidden);else if(k==='h'||k==='?')openHelp(hp.hidden);else if(k==='escape'){openGoals(false);openHelp(false)}});
+try{navigator.wakeLock?.request('screen').catch(()=>{})}catch(e){}
+
+/* ---------- clock, resize & loop ---------- */
+let wasDay=null;
+function resize(){const w=innerWidth,h=innerHeight;if(!w||!h)return;DPR=Math.min(devicePixelRatio||1,2);W=w;H=h;cv.width=Math.round(w*DPR);cv.height=Math.round(h*DPR);ctx.setTransform(DPR,0,0,DPR,0,0);rebuildFall();sizeSmall();drawMonths();drawSpark()}
+function tick(){const t=jst();document.getElementById('hm').textContent=`${String(t.h).padStart(2,'0')}:${String(t.mi).padStart(2,'0')}`;document.getElementById('date').textContent=`${t.mo}月${t.d}日（${WD[t.wd]}）`;
+  document.getElementById('fresh').textContent=`試作 · ダミーデータ · ${1+Math.floor(Math.random()*2)}秒前に更新`}
+addEventListener('resize',resize);resize();tick();setInterval(tick,2000);updateCards();setInterval(updateCards,1500);
+if(!reduce)setInterval(()=>{if(Math.random()<.35)signup()},38000);
+let last=performance.now(),T=0,liveDisp=live(),acc=0;const liveEl=document.getElementById('liveN');
+function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;
+  if(reduce){acc+=dt;if(acc<.5){requestAnimationFrame(frame);return}dt=Math.min(acc,.5);acc=0}
+  if(W){T+=dt;update(dt);draw(T,dt);
+    const isDay=document.body.classList.contains('day');if(isDay!==wasDay){wasDay=isDay;drawMonths();drawSpark()}
+    if(flashMonth>=0){drawMonths();if(flashT<=0)flashMonth=-1}
+    liveDisp+=(live()-liveDisp)*Math.min(1,dt*3);liveEl.textContent=Math.round(liveDisp)}
+  else resize();
+  requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+})();
+</script>

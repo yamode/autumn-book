@@ -47,7 +47,7 @@ export function consent(): ConsentState {
 function canMeasure(): boolean {
 	if (!browser || !env.PUBLIC_GA4_MEASUREMENT_ID) return false;
 	const path = location.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, '');
-	return !/^\/(admin|r|p)(\/|$)/.test(path);
+	return !/^\/(admin|r|p|live)(\/|$)/.test(path);
 }
 
 function send(event: PendingEvent): boolean {
