@@ -28,17 +28,21 @@ describe('cachedPublic', () => {
 		expect(calls).toBe(2);
 	});
 
-	it('同時に来ても DB に行くのは 1 本だけ（相乗りする）', async () => {
+	it('読み込み途中の Promise は分け合わない（Workers では別リクエストの Promise を待てない）。読み終わった値は使い回す', async () => {
 		let calls = 0;
-		let release: (v: number) => void = () => {};
+		const releases: ((v: number) => void)[] = [];
 		const load = () => {
 			calls++;
-			return new Promise<number>((r) => (release = r));
+			return new Promise<number>((r) => releases.push(r));
 		};
-		const all = Promise.all([cachedPublic('k', load, 10_000), cachedPublic('k', load, 10_000), cachedPublic('k', load, 10_000)]);
-		release(7);
-		expect(await all).toEqual([7, 7, 7]);
-		expect(calls).toBe(1);
+		const all = Promise.all([cachedPublic('k', load, 10_000), cachedPublic('k', load, 10_000)]);
+		await Promise.resolve();
+		for (const r of releases) r(7);
+		expect(await all).toEqual([7, 7]);
+		expect(calls).toBe(2);
+		// 読み終わったあとは使い回す
+		expect(await cachedPublic('k', load, 10_000)).toBe(7);
+		expect(calls).toBe(2);
 	});
 
 	it('失敗は覚えない（次の人がやり直せる）', async () => {
