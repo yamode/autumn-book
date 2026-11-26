@@ -157,6 +157,10 @@
 				<a href="/kitakaze" class="hover:text-brand-800">{m.radio_nav()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
+				{#if data.privateBookHref}
+					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・2026-11-27）。押すと特別料金の専用の予約へ切り替わる -->
+					<a href={data.privateBookHref} class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-[0.14em] text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">PRIVATE BOOK</a>
+				{/if}
 				{#if data.user?.role === 'member'}
 					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} />
 				{:else}
@@ -230,6 +234,9 @@
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="py-2.5 hover:text-brand-800">{m.radio_nav()}</a>
 				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
+				{#if data.privateBookHref}
+					<a href={data.privateBookHref} class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
+				{/if}
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
 					{#if data.user?.role !== 'member'}
 						<a href="/auth/login" class="text-stone-600 hover:text-brand-800">{m.common_login()}</a>

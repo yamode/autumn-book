@@ -178,7 +178,7 @@
           <div class="flex max-w-full flex-wrap items-center gap-1.5">
             <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
               <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
-              {portal.member.name} 様 専用ページ
+              {portal.member.name} 様のプライベートブック
             </p>
             <span class={`rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${portal.member.rankCode === 'gold' || portal.member.rankCode === 'platinum' ? 'border-amber-400 bg-amber-50 text-amber-700' : portal.member.rankCode === 'silver' ? 'border-slate-400 bg-slate-100 text-slate-600' : 'border-stone-300 bg-stone-100 text-stone-600'}`}>◆ {portal.member.rankLabel}</span>
             <span class="text-xs text-stone-600">保有 <span class="font-bold tabular-nums">{pointText(portal.member.balance)}</span></span>
@@ -202,7 +202,11 @@
       {/if}
       {#if isMember && portal?.member}
         <!-- 会員のログアウト・マイページは公式サイトのもの（専用ページにはログアウトのルートが無い） -->
-        <a href={portal.mypageHref ?? '/account'} class="shrink-0 rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">マイページへ</a>
+        <div class="flex shrink-0 items-center gap-2">
+          <!-- いまプライベートブックにいる印（公式サイトのメニューの PRIVATE BOOK と同じ形を塗りつぶし） -->
+          <span class="hidden rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white sm:inline">PRIVATE BOOK</span>
+          <a href={portal.mypageHref ?? '/account'} class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">マイページへ</a>
+        </div>
       {:else if portal?.loginId && !isMember}
         <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-sm">
           <span class="hidden text-stone-500 sm:inline">{portal.loginId}</span>
@@ -212,6 +216,15 @@
         </form>
       {/if}
     </div>
+    {#if isMember && portal?.member}
+      <!-- プライベートブック（2026-11-27）: いまは特別料金の専用の予約だと分かる細い帯と、ふつうの予約（公式サイト）へ戻る道 -->
+      <div class="border-t border-stone-100">
+        <div class="mx-auto flex max-w-6xl items-center gap-3 px-4 py-1.5 text-xs text-stone-500 sm:px-6">
+          <span>特別料金でご案内しています</span>
+          <a href="/" class="ml-auto underline decoration-stone-300 underline-offset-4 hover:text-brand-800">ふつうのご予約に戻る</a>
+        </div>
+      </div>
+    {/if}
   </header>
   {#if isMember && portal?.plansComingSoon}
     <!-- 特別会員の専用ページでまだプランを販売していないとき（2026-11-26）: 予約できるものが無い理由と、これからのことを伝える -->
