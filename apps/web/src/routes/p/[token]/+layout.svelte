@@ -31,6 +31,8 @@
           kind?: 'partner' | 'member';
           member?: { name: string; rankCode: string; rankLabel: string; rewardRate: number; balance: number; via: 'self' | 'family' } | null;
           mypageHref?: string | null;
+          /** 特別会員の専用ページで販売中のプランが無い（近日販売開始予定の案内を出す） */
+          plansComingSoon?: boolean;
         }
       | undefined
   );
@@ -211,6 +213,18 @@
       {/if}
     </div>
   </header>
+  {#if isMember && portal?.plansComingSoon}
+    <!-- 特別会員の専用ページでまだプランを販売していないとき（2026-11-26）: 予約できるものが無い理由と、これからのことを伝える -->
+    <section class="mx-auto mt-4 max-w-6xl px-4 sm:px-6" role="status">
+      <div class="rounded-xl border border-stone-200 bg-white px-5 py-4 sm:px-6">
+        <p class="text-xs font-medium tracking-wide text-[var(--pt-accent)]">COMING SOON</p>
+        <p class="mt-1 text-base font-semibold text-stone-800">特別会員さま向けのプランは、近日販売を開始いたします</p>
+        <p class="mt-1.5 text-sm leading-relaxed text-stone-600">
+          特別会員さまだけの、よりお得で便利にご利用いただけるプランを準備しております。販売を開始しましたら、ご登録のメールアドレスにお知らせいたします。それまでのご予約は、公式サイトから承ります。
+        </p>
+      </div>
+    </section>
+  {/if}
   {#if portal?.loginId && portal?.noFacilityMessage}
     <!-- オンの施設が1つも無い取引先（N9・2026-10-09 複数施設化）: ログインはできるが料金・予約は出さない -->
     <p class="mx-auto mt-4 max-w-6xl rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:px-6" role="status">{portal.noFacilityMessage}</p>

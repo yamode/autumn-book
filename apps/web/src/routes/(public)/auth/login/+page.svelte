@@ -2,6 +2,7 @@
 	import { enhance } from '$lib/enhance';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
+	import LegacyMigrationCard from '$lib/components/LegacyMigrationCard.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import VerificationCodeField from '$lib/components/VerificationCodeField.svelte';
 	import MemberPasskeyLogin from '$lib/components/MemberPasskeyLogin.svelte';
@@ -133,13 +134,16 @@
 		</div>
 	{/if}
 
-	<p class="mt-6 text-center text-sm text-stone-600">
-		{m.login_register_link()} <a href="/auth/register{next ? `?next=${encodeURIComponent(next)}` : ''}" class="text-accent-600 underline">{m.login_register_anchor()}</a>
-	</p>
-	<!-- 以前の予約システム（tripla）の会員の移行入口。通常のログインとは別に置く（2026-11-19）。設計の見直しが終わるまで閉じている -->
-	{#if data.migrationOpen}
-		<p class="mt-2 text-center text-sm text-stone-600">
-			{m.login_migrate_link()} <a href="/auth/migrate" class="text-accent-600 underline">{m.login_migrate_anchor()}</a>
-		</p>
-	{/if}
+	<div class="mt-8 space-y-4">
+		<a
+			href="/auth/register{next ? `?next=${encodeURIComponent(next)}` : ''}"
+			class="block w-full rounded-lg border border-stone-300 bg-white py-2.5 text-center text-sm text-stone-700 hover:bg-stone-50"
+		>
+			{m.login_register_link()} <span class="font-medium text-accent-600">{m.login_register_anchor()}</span>
+		</a>
+		<!-- 以前の予約システム（tripla）の会員の移行入口。通常のログインとは別に置く（2026-11-19）。受付を閉じている間は出さない -->
+		{#if data.migrationOpen}
+			<LegacyMigrationCard />
+		{/if}
+	</div>
 </div>

@@ -42,6 +42,23 @@
         "AUTH_MODE": "supabase"
       },
       "port": 5175
+    },
+    {
+      "name": "autumn-book-migrate-ui",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "-C",
+        "apps/web",
+        "dev",
+        "--port",
+        "5176"
+      ],
+      "env": {
+        "DATA_SOURCE": "demo",
+        "AUTH_MODE": "supabase",
+        "LEGACY_MEMBER_MIGRATION": "true"
+      },
+      "port": 5176
     }
   ]
 }

@@ -22,7 +22,9 @@ import { partnerServiceClient } from './admin-client';
 import { quotePartnerBooking } from './booking';
 import { loadMemberPagePlans, memberPlanKey, quoteMemberRooms } from './member-hold';
 import { loadPartnerRates } from './rates';
-import { addDaysIso, loadPartnerContext, memberPagesFor, type PartnerContext } from './store';
+import { addDaysIso, addPartnerMember, createPartner, deletePartner, loadPartnerContext, memberPagesFor, type PartnerContext } from './store';
+import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
+import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
 
 /** このページから本人が予約した分（家族・公式・別ページの予約は出さない・Q10） */
 export const memberPageReservations = (all: readonly MemberReservation[], partnerId: string, memberUserId: string): MemberReservation[] =>
@@ -172,10 +174,51 @@ export async function memberPageHrefFor(partnerId: string, code: string): Promis
   return token ? memberPageHrefOf(token, code) : null;
 }
 
+/**
+ * PMS の顧客マスタで「特別会員として案内する」が付いた会員に、専用ページが無ければ作る（2026-11-26）。
+ * 管理画面の「専用ページを作る」と同じ形で、公開・予約受付オン・料金ルールなし（＝専用ページの上部に「近日販売開始予定」）。
+ * ランク（特別会員）は DB のトリガーが付ける
+ */
+export async function ensureDesignatedMemberPage(sb: SupabaseClient, memberUserId: string): Promise<void> {
+  const { data, error } = await sb.schema('book').rpc('special_member_page_needed', { p_member_user_id: memberUserId });
+  if (error || !data) return;
+  const need = data as { tenant_id?: string; facility_id?: string; name?: string };
+  if (!need.tenant_id || !need.facility_id) return;
+  const partner = await createPartner(
+    sb,
+    { tenantId: need.tenant_id, facilityId: need.facility_id, userId: null },
+    {
+      name: `${need.name || '会員'}様 専用ページ`.slice(0, 120),
+      kind: 'member',
+      contact_name: null,
+      contact_email: null,
+      is_active: true,
+      valid_from: null,
+      valid_until: null,
+      max_days_ahead: 365,
+      show_inventory: true,
+      include_advance: true,
+      pricing: DEFAULT_PARTNER_PRICING,
+      note: 'PMS の顧客マスタの「特別会員として案内する」から自動で作成',
+      booking_enabled: true,
+      booking_settings: { ...DEFAULT_PARTNER_BOOKING_SETTINGS, paymentOptions: [], maxRooms: 4 }
+    }
+  );
+  try {
+    await addPartnerMember(sb, partner, memberUserId, null);
+  } catch (e) {
+    // 対象の会員を入れられなければ作ったページも残さない（管理画面の「専用ページを作る」と同じ）
+    await deletePartner(sb, partner).catch(() => undefined);
+    throw e;
+  }
+}
+
 /** マイページのトップの「あなた専用のページ」（本人・家族の公開中の専用ページ）。使えない環境・読めなければ空 */
 export async function listMemberPagesFor(memberUserId: string): Promise<{ name: string; href: string; facilityNames: string[]; via: 'self' | 'family' }[]> {
   const sb = partnerServiceClient();
   if (!sb) return [];
+  // 印のある会員はここで専用ページを用意してから一覧を出す（失敗してもマイページは出す）
+  await ensureDesignatedMemberPage(sb, memberUserId).catch((e) => console.error('[member-page] 自動作成に失敗', e instanceof Error ? e.message : e));
   const pages = await memberPagesFor(sb, memberUserId).catch(() => []);
   return pages.map((p) => ({ name: p.name, href: memberPageCalendarHrefOf(p.urlToken), facilityNames: p.facilityNames, via: p.via }));
 }

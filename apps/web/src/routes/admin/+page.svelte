@@ -195,6 +195,19 @@
 	<section aria-label="対応が必要なこと" class="min-w-0 lg:col-start-2 lg:row-start-1">
 		<h2 class="mb-2 text-sm font-semibold text-stone-800">対応が必要なこと</h2>
 		<div class="divide-y divide-stone-100 overflow-hidden rounded-xl border border-stone-200 bg-white">
+			<!-- 問い合わせの未対応（2026-11-26）: HP・メール／会員サポート／団体照会／出張シェフ。読めないもの・この施設で使わないものは出さない -->
+			{#await data.inquiryCounts}
+				{@render todoRow('off', 'お問い合わせ（HP・メール）の未対応', '…', '/admin/inquiries?status=new')}
+			{:then c}
+				{#if c.hpNew !== null}
+					{@render todoRow(c.hpNew > 0 ? 'warn' : 'ok', 'お問い合わせ（HP・メール）の未対応', `${c.hpNew} 件`, '/admin/inquiries?status=new')}
+				{/if}
+			{/await}
+			{#await data.supportBadge then n}
+				{#if n !== null}
+					{@render todoRow(n > 0 ? 'warn' : 'ok', '会員サポートの未返信', `${n} 件`, '/admin/support')}
+				{/if}
+			{/await}
 			{#await data.groupInquiryBadge}
 				{@render todoRow('off', '団体照会の回答待ち', '…', '/admin/group-inquiries?status=submitted')}
 			{:then n}
@@ -202,6 +215,11 @@
 					{@render todoRow('off', '団体照会の回答待ち', '—', '/admin/group-inquiries')}
 				{:else}
 					{@render todoRow(n > 0 ? 'warn' : 'ok', '団体照会の回答待ち', `${n} 件`, '/admin/group-inquiries?status=submitted')}
+				{/if}
+			{/await}
+			{#await data.inquiryCounts then c}
+				{#if c.chefRequested !== null}
+					{@render todoRow(c.chefRequested > 0 ? 'warn' : 'ok', '出張シェフの依頼（未回答）', `${c.chefRequested} 件`, '/admin/chef/reservations?status=requested')}
 				{/if}
 			{/await}
 			{#await data.otayoriOverdueBadge then n}

@@ -18,12 +18,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
 import type { BookClient } from '$lib/server/admin-app-data';
 import { sendHtmlEmail } from '$lib/server/mailer';
-import { partnerMailSender } from '$lib/server/partners/mail';
 import { nttFetch } from '$lib/server/ntt-fetch';
 import { facilities } from '$lib/server/store';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
-import { buildPrecheckinMail } from '$lib/precheckin';
+import { buildPrecheckinMail, precheckinMailFrom } from '$lib/precheckin';
 import {
+	autosendChannel,
 	buildPrecheckinSmsPair,
 	checkWebhookAuth,
 	dispatchErrorText,
@@ -32,6 +32,7 @@ import {
 	nttConfigFrom,
 	planAutosend,
 	sendSmsWith,
+	smsAutosendEnabled,
 	type AutosendTarget,
 	type NttConfig,
 	type SmsStatusRow
@@ -135,15 +136,17 @@ async function deliver(b: BeginOk, origin: string, cfg: NttConfig | null, mailDb
 		bookingCode: b.booking_code,
 		url,
 		editableUntil: b.editable_until,
-		bath: official
+		bath: official,
+		facilitySlug: b.facility_slug,
+		assetOrigin: origin
 	});
-	const sender = mailDb ? await partnerMailSender(mailDb, b.facility_id).catch(() => null) : null;
+	// 送信専用（noreply@yamado.app・返信先なし・2026-11-26）
 	const r = await sendHtmlEmail({
 		to: [b.to],
 		subject: mail.subject,
 		html: mail.html,
 		text: mail.text,
-		replyTo: sender?.replyTo ?? undefined
+		from: precheckinMailFrom(b.facility_name)
 	});
 	return { ok: r.sent, error: r.reason };
 }
@@ -257,13 +260,11 @@ export async function runPrecheckinAutosend(
 	const skipped: Record<string, number> = {};
 	const skip = (k: string) => (skipped[k] = (skipped[k] ?? 0) + 1);
 	for (const t of plan.send) {
-		// SMS 未設定なら SMS の対象は受付もしない（トークンを回さない・メールにも切り替えない）
-		if (t.channel === 'sms' && !cfg) {
-			skip('sms_not_configured');
-			continue;
-		}
+		// SMS を使わない間（NTT CPaaS の承認待ち・PRECHECKIN_SMS が '1' でない・設定なし）は、SMS の対象もメールで送る（2026-11-26）。
+		// メールアドレスが無い予約は受付で no_email になり、送らずに数える
+		const channel = autosendChannel(t.channel, cfg !== null && smsAutosendEnabled(privateEnv.PRECHECKIN_SMS));
 		try {
-			const begin = await db.rpc('precheckin_autosend_begin', { p_stay_id: t.stay_id, p_channel: t.channel });
+			const begin = await db.rpc('precheckin_autosend_begin', { p_stay_id: t.stay_id, p_channel: channel });
 			if (begin.error) throw begin.error;
 			const b = begin.data as BeginResult;
 			if (!b.ok) {

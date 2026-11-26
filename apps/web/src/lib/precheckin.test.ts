@@ -11,6 +11,7 @@ import {
 	missingGuestField,
 	missingQuestion,
 	buildPrecheckinMail,
+	precheckinMailFrom,
 	canSend,
 	checkMealChoices,
 	contactDiff,
@@ -281,7 +282,7 @@ describe('RPC の戻り', () => {
 });
 
 describe('ご案内メール', () => {
-	const mail = buildPrecheckinMail({
+	const base = {
 		facilityName: '山人-yamado-',
 		guestName: '山人 <太郎>',
 		checkIn: '2026-11-01',
@@ -289,22 +290,49 @@ describe('ご案内メール', () => {
 		nights: 2,
 		bookingCode: 'AB12',
 		url: 'https://book.example/ci/TOKEN',
-		editableUntil: '2026-11-01T03:00:00Z'
-	});
-	it('件名・本文に施設名・予約番号・日程・リンク（日本語と英語）。締め切りは書かない', () => {
-		expect(mail.subject).toBe('【山人-yamado-】事前チェックインのご案内 / Online pre-check-in');
+		editableUntil: '2026-11-01T03:00:00Z',
+		facilitySlug: 'yamado',
+		assetOrigin: 'https://book.example'
+	};
+	const mail = buildPrecheckinMail(base);
+	it('件名は「【施設名】事前チェックインのご案内」だけ。本文に予約番号・日程・リンク（日本語と英語）。締め切りは書かない', () => {
+		expect(mail.subject).toBe('【山人-yamado-】事前チェックインのご案内');
 		expect(mail.text).toContain('山人 <太郎> 様');
 		expect(mail.text).toContain('ご予約番号: AB12');
-		expect(mail.text).toContain('2026年11月1日（日） から 2泊（チェックアウト 2026年11月3日（火））');
+		expect(mail.text).toContain('2026年11月1日（日）から2泊（チェックアウト 2026年11月3日（火））');
+		expect(mail.text).toContain('ご夕食・ご朝食・貸切風呂のお時間をお選びいただけます');
 		expect(mail.text).not.toContain('締め切り');
+		expect(mail.text).not.toContain('スタッフ一同');
+		expect(mail.text).not.toContain('公式サイトからのご予約がおすすめ');
+		expect(mail.text).toContain('事前チェックインの内容');
+		expect(mail.text).toContain('③ 貸切風呂のお時間のご予約');
+		expect(mail.text).not.toContain('ここでできること');
 		expect(mail.text).toContain('https://book.example/ci/TOKEN');
 		expect(mail.text).toContain('Stay: Sun, Nov 1, 2026, 2 nights');
 		expect(mail.text).not.toContain('Please complete by');
 	});
-	it('HTML は名前をエスケープし、リンクのボタンを出す', () => {
+	it('本物と確かめやすくする: リンク先の公式サイト・送信専用・カード番号を聞かない・住所と電話', () => {
+		expect(mail.text).toContain('公式予約サイト book.example');
+		expect(mail.text).toContain('送信専用');
+		expect(mail.text).toContain('クレジットカード番号やパスワードをお尋ねすることはありません');
+		expect(mail.text).toContain('岩手県和賀郡西和賀町湯川52-71-10');
+		expect(mail.text).toContain('TEL 0197-82-2222');
+	});
+	it('HTML は名前をエスケープし、ロゴ（https の画像）とリンクのボタンを出す', () => {
 		expect(mail.html).toContain('山人 &lt;太郎&gt; 様');
 		expect(mail.html).not.toContain('<太郎>');
 		expect(mail.html).toContain('href="https://book.example/ci/TOKEN"');
+		expect(mail.html).toContain('src="https://book.example/mail/logo-yamado.png"');
+	});
+	it('予約サイト経由（bath=false）は貸切風呂を書かない。https でない起点・知らない施設はロゴを出さない', () => {
+		const ota = buildPrecheckinMail({ ...base, bath: false });
+		expect(ota.text).toContain('ご夕食・ご朝食のお時間をお選びいただけます');
+		expect(ota.text).not.toContain('貸切風呂');
+		expect(buildPrecheckinMail({ ...base, assetOrigin: 'http://localhost:5173' }).html).not.toContain('<img');
+		expect(buildPrecheckinMail({ ...base, facilitySlug: 'x' }).html).not.toContain('<img');
+	});
+	it('差出人は送信専用（noreply@yamado.app・名前は施設名＋事前チェックイン）', () => {
+		expect(precheckinMailFrom('山人-oga-')).toEqual({ address: 'noreply@yamado.app', name: '山人-oga- 事前チェックイン' });
 	});
 });
 

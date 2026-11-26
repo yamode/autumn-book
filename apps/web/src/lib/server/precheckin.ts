@@ -16,12 +16,12 @@ import { DATA_SOURCE, supa } from '$lib/server/supabase';
 import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
 import { sendHtmlEmail } from '$lib/server/mailer';
-import { partnerMailSender } from '$lib/server/partners/mail';
 import { createSupabaseServerClient } from '$lib/server/auth';
 import type { BookClient } from '$lib/server/admin-app-data';
 import {
 	DEMO_PRECHECKIN_TOKEN,
 	buildPrecheckinMail,
+	precheckinMailFrom,
 	demoPrecheckinContext,
 	normalizePrecheckinContext,
 	precheckinCookieMaxAge,
@@ -537,16 +537,17 @@ export async function sendPrecheckin(
 		bookingCode: issued.booking_code,
 		url,
 		editableUntil: issued.editable_until,
-		bath: official
+		bath: official,
+		facilitySlug: issued.facility_slug,
+		assetOrigin: event.url.origin
 	});
-	// 返信先は施設の予約用アドレス（取引先メールと同じ。読めなければ付けない）
-	const sender = await partnerMailSender(createSupabaseServerClient(event), facility).catch(() => null);
+	// 送信専用（noreply@yamado.app・返信先なし・2026-11-26）。差出人名は「<施設名> 事前チェックイン」
 	const res = await sendHtmlEmail({
 		to: [issued.to_email],
 		subject: mail.subject,
 		html: mail.html,
 		text: mail.text,
-		replyTo: sender?.replyTo ?? undefined
+		from: precheckinMailFrom(issued.facility_name)
 	});
 	dbg('send', { id: issued.id, sent: res.sent, reason: res.reason });
 	await rpc<null>(c, 'admin_precheckin_mark_sent', {

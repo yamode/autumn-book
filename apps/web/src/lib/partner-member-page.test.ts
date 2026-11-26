@@ -277,3 +277,29 @@ describe('専用ページの操作の例外 → 画面（具体的な語から�
     expect(memberPageOpError(new Error('something else')).status).toBe(500);
   });
 });
+
+// 「近日販売開始予定」の案内（2026-11-26）
+import { memberPagePlansComingSoon } from './partner-member-page';
+describe('memberPagePlansComingSoon', () => {
+  const page = (o: Partial<{ kind: string; booking_enabled: boolean; facility_available: boolean; rules: { action: string; dateTo: string | null }[] }> = {}) => ({
+    kind: o.kind ?? 'member',
+    booking_enabled: o.booking_enabled ?? true,
+    facility_available: o.facility_available ?? true,
+    pricing: { rules: o.rules ?? [] }
+  });
+  const T = '2026-11-26';
+  it('受付オンでも料金ルールが無ければ出す（予約できるものが無い）', () => {
+    expect(memberPagePlansComingSoon(page(), T)).toBe(true);
+    expect(memberPagePlansComingSoon(page({ rules: [{ action: 'hide', dateTo: null }] }), T)).toBe(true);
+    expect(memberPagePlansComingSoon(page({ rules: [{ action: 'adjust', dateTo: '2026-11-25' }] }), T)).toBe(true);
+  });
+  it('出すルールがあれば出さない', () => {
+    expect(memberPagePlansComingSoon(page({ rules: [{ action: 'adjust', dateTo: null }] }), T)).toBe(false);
+    expect(memberPagePlansComingSoon(page({ rules: [{ action: 'adjust', dateTo: T }] }), T)).toBe(false);
+  });
+  it('受付オフ・施設オフなら出す。取引先ページには出さない', () => {
+    expect(memberPagePlansComingSoon(page({ booking_enabled: false, rules: [{ action: 'adjust', dateTo: null }] }), T)).toBe(true);
+    expect(memberPagePlansComingSoon(page({ facility_available: false, rules: [{ action: 'adjust', dateTo: null }] }), T)).toBe(true);
+    expect(memberPagePlansComingSoon(page({ kind: 'agent' }), T)).toBe(false);
+  });
+});

@@ -10,7 +10,9 @@ import {
 	type BookingListRow,
 	type MailQueueStatus
 } from '$lib/server/admin-app-data';
-import { ADMIN_SUPABASE } from '$lib/server/auth';
+import { ADMIN_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
+import { CHEF_FACILITY_ID, chefDb } from '$lib/server/chef';
+import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { toFacilityUuidStrict } from '$lib/server/supabase-data';
 import { todayStr, addDays } from '$lib/format';
 import type { PageServerLoad } from './$types';
@@ -57,6 +59,30 @@ function demoRows(facilityId: string): DashboardRow[] {
 		}));
 }
 
+/**
+ * 問い合わせの未対応件数（ダッシュボードの「対応が必要なこと」・2026-11-26）。
+ * - HP・メールの問い合わせ（book.inquiries）: 未対応（new）。過去メールの取り込み分は除く。西和賀だけ先行運用（他の施設は null）
+ * - 出張シェフの依頼（chef.reservations）: 返事をしていない依頼（requested）
+ * 会員サポート・団体照会はサイドバーの件数（layout の supportBadge・groupInquiryBadge）をそのまま使う。読めなければ null
+ */
+async function inquiryCounts(event: Parameters<PageServerLoad>[0], facilityId: string) {
+	const db = createSupabaseServerClient(event);
+	const facility = FACILITY_UUID[facilityId as keyof typeof FACILITY_UUID];
+	const hp =
+		facilityId === 'f-nishiwaga' && facility
+			? Promise.resolve(
+					db.schema('book').from('inquiries').select('id', { head: true, count: 'exact' }).eq('facility_id', facility).eq('status', 'new').is('profile->>history_account', null)
+				)
+					.then(({ count, error }) => (error ? null : (count ?? 0)))
+					.catch(() => null as number | null)
+			: Promise.resolve(null as number | null);
+	const chef = Promise.resolve(chefDb(db).from('reservations').select('id', { head: true, count: 'exact' }).eq('facility_id', CHEF_FACILITY_ID).eq('status', 'requested'))
+		.then(({ count, error }) => (error ? null : (count ?? 0)))
+		.catch(() => null as number | null);
+	const [hpNew, chefRequested] = await Promise.all([hp, chef]);
+	return { hpNew, chefRequested };
+}
+
 export const load: PageServerLoad = async (event) => {
 	const { currentFacility } = await event.parent();
 	const today = todayStr();
@@ -100,6 +126,8 @@ export const load: PageServerLoad = async (event) => {
 		tomorrow,
 		error,
 		mailQueue,
+		// 画面を待たせないよう、件数は後から届く（{#await}）
+		inquiryCounts: ADMIN_SUPABASE ? inquiryCounts(event, currentFacility.id) : Promise.resolve({ hpNew: null as number | null, chefRequested: null as number | null }),
 		arrivalsToday: active.filter((r) => r.check_in_date === today).sort(byArrival),
 		departuresToday: active.filter((r) => r.check_out_date === today),
 		arrivalsTomorrow: active.filter((r) => r.check_in_date === tomorrow),

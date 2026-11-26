@@ -1,7 +1,8 @@
 // 限定URL（/p/<token>）の共通処理: 取引先の解決・セッションクッキー・リクエスト情報。
 import { error, redirect, type Cookies, type RequestEvent } from '@sveltejs/kit';
 import { getSupabaseUser, MEMBER_SUPABASE } from '$lib/server/auth';
-import { isMemberPage, memberPageBookingOpen, rankLabelOf } from '$lib/partner-member-page';
+import { isMemberPage, memberPageBookingOpen, memberPagePlansComingSoon, rankLabelOf } from '$lib/partner-member-page';
+import { todayJstIso } from '$lib/early-prepay';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   composePartnerContext,
@@ -551,6 +552,8 @@ export function portalHeader(partner: PartnerContext, session: { login_id: strin
       : null,
     // 公式サイトのマイページ（専用ページの右端のリンク）
     mypageHref: member ? '/account' : null,
+    // 特別会員の専用ページで販売中のプランが無い（受付オフ・料金ルールなし）→ 上部に「近日販売開始予定」（2026-11-26）
+    plansComingSoon: member ? memberPagePlansComingSoon(partner, todayJstIso()) : false,
     partnerName: partner.name,
     facilityName: partner.facility_name,
     facilitySlug: partner.facility_slug,

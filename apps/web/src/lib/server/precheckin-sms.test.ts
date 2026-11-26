@@ -46,7 +46,7 @@ describe('cron 自動送信', () => {
 		expect(sendHtmlEmail).not.toHaveBeenCalled();
 	});
 
-	it('有効でも SMS 未設定なら SMS は受付しない（メールへは切り替えない）。メールの対象は送る', async () => {
+	it('有効でも SMS 未設定なら、SMS の対象もメールで送る（NTT CPaaS の承認待ちの間・2026-11-26）', async () => {
 		const { svc, calls } = fakeSvc({
 			precheckin_autosend_targets: () => targets,
 			precheckin_autosend_begin: (a) => ({
@@ -76,12 +76,15 @@ describe('cron 自動送信', () => {
 		const r = await runPrecheckinAutosend(svc, { enabled: true, origin: 'https://book.example' });
 		expect(r.dryRun).toBe(false);
 		expect(r.smsConfigured).toBe(false);
-		expect(r.sent).toBe(1);
+		expect(r.sent).toBe(2);
 		expect(r.failed).toBe(0);
-		expect(r.skipped).toEqual({ sms_not_configured: 1 });
+		expect(r.skipped).toEqual({});
 		const begins = calls.filter((c) => c.fn === 'precheckin_autosend_begin');
-		expect(begins).toEqual([{ fn: 'precheckin_autosend_begin', args: { p_stay_id: 's-mail', p_channel: 'email' } }]);
-		expect(sendHtmlEmail).toHaveBeenCalledTimes(1);
+		expect(begins).toEqual([
+			{ fn: 'precheckin_autosend_begin', args: { p_stay_id: 's-sms', p_channel: 'email' } },
+			{ fn: 'precheckin_autosend_begin', args: { p_stay_id: 's-mail', p_channel: 'email' } }
+		]);
+		expect(sendHtmlEmail).toHaveBeenCalledTimes(2);
 		const finish = calls.find((c) => c.fn === 'precheckin_dispatch_finish');
 		expect(finish?.args).toMatchObject({ p_dispatch: 'd1', p_ok: true });
 	});

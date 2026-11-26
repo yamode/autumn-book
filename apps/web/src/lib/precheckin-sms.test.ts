@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	SMS_SINGLE_CHARS,
 	autosendEnabled,
+	autosendChannel,
+	smsAutosendEnabled,
 	buildNttSmsRequest,
 	buildPrecheckinSmsPair,
 	checkWebhookAuth,
@@ -354,5 +356,19 @@ describe('自動送信の対象（経路で選ぶ・予約ごとに上書き）'
 			options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }]
 		});
 		expect(normalizeAutosendSettings(null)).toEqual({ enabled: false, routes: [], options: [] });
+	});
+});
+
+describe('SMS を使えない間はメールで送る（2026-11-26）', () => {
+	it('PRECHECKIN_SMS が 1 のときだけ SMS を使う', () => {
+		expect(smsAutosendEnabled('1')).toBe(true);
+		expect(smsAutosendEnabled(undefined)).toBe(false);
+		expect(smsAutosendEnabled('0')).toBe(false);
+	});
+	it('SMS を使えなければ SMS の対象もメール。メールはそのまま', () => {
+		expect(autosendChannel('sms', false)).toBe('email');
+		expect(autosendChannel('sms', true)).toBe('sms');
+		expect(autosendChannel('email', false)).toBe('email');
+		expect(autosendChannel('email', true)).toBe('email');
 	});
 });

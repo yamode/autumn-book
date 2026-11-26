@@ -352,6 +352,14 @@ export function checkWebhookAuth(authorization: string | null | undefined, secre
 /** PRECHECKIN_AUTOSEND が '1' のときだけ実際に送る（未設定・'0' は dry-run） */
 export const autosendEnabled = (v: string | null | undefined) => String(v ?? '').trim() === '1';
 
+/** 自動送信で SMS を使うか（PRECHECKIN_SMS が '1' のときだけ。NTT CPaaS の承認までは未設定＝メールだけ・2026-11-26） */
+export const smsAutosendEnabled = (v: string | null | undefined) => String(v ?? '').trim() === '1';
+
+/** 自動送信の経路。SMS を使えない間は SMS の対象もメールで送る（メールが無ければ受付で no_email になる） */
+export function autosendChannel(channel: ContactRoute, smsUsable: boolean): ContactRoute {
+	return channel === 'sms' && !smsUsable ? 'email' : channel;
+}
+
 export type AutosendTarget = {
 	facility_id: string;
 	stay_id: string;

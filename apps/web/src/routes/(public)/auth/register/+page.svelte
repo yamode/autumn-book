@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
+	import LegacyMigrationCard from '$lib/components/LegacyMigrationCard.svelte';
 	import Turnstile from '$lib/components/Turnstile.svelte';
 	import VerificationCodeField from '$lib/components/VerificationCodeField.svelte';
 
@@ -144,9 +145,7 @@
 		</p>
 		<!-- 以前の予約システムの会員は、新規登録ではなく会員移行へ（以前のご登録内容とご利用実績を引き継ぐ） -->
 		{#if data.migrationOpen}
-			<p class="mt-2 text-center text-sm text-stone-600">
-				{m.login_migrate_link()} <a href="/auth/migrate" class="text-accent-600 underline">{m.login_migrate_anchor()}</a>
-			</p>
+			<div class="mt-6"><LegacyMigrationCard /></div>
 		{/if}
 	{/if}
 </div>

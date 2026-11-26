@@ -21,6 +21,19 @@ export function memberPageBookingOpen(partner: { kind: string; booking_enabled: 
   return isMemberPage(partner.kind) && partner.booking_enabled && partner.facility_available;
 }
 
+/**
+ * 専用ページの「近日販売開始予定」の案内を出すか（2026-11-26）。予約受付がオフ、または販売中のプランが無い
+ * （料金ルールに「出す」ルールが無い・期限切れだけ）とき。料金ルールは当てはまらない料金を出さないので、ルールが無ければ予約できるものが無い
+ */
+export function memberPagePlansComingSoon(
+  partner: { kind: string; booking_enabled: boolean; facility_available: boolean; pricing: { rules: { action: string; dateTo: string | null }[] } },
+  today: string
+): boolean {
+  if (!isMemberPage(partner.kind)) return false;
+  if (!memberPageBookingOpen(partner)) return true;
+  return !partner.pricing.rules.some((r) => r.action === 'adjust' && (!r.dateTo || r.dateTo >= today));
+}
+
 /** 専用ページの 1 回の予約の室数の上限（公式と同じ 4 室まで。取引先の最大室数が 5 以上でも 4・Q2） */
 export const memberMaxRooms = (s: { maxRooms: number }): number =>
   Math.max(1, Math.min(MAX_ROOMS_PER_BOOKING, Math.round(Number(s.maxRooms)) || 1));
