@@ -1,5 +1,5 @@
 # main への push で Cloudflare Pages へ自動デプロイ（Direct Upload + wrangler）
-# 必要な Secrets: CLOUDFLARE_API_TOKEN（Pages 編集権限）/ CLOUDFLARE_ACCOUNT_ID
+# 必要な Secrets: CLOUDFLARE_API_TOKEN（Pages 編集権限）/ CLOUDFLARE_ACCOUNT_ID / LIVE_SESSION_SECRET（Autumn Live・無ければ飛ばす）
 name: Deploy to Cloudflare Pages
 
 on:
@@ -33,6 +33,20 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Autumn Live の入場券の署名鍵（docs/autumn-live.md §4.4）。GitHub の secret を Pages のシークレットへ写す。
+      # Pages のシークレットは次のデプロイから効くので、デプロイの前に置く。値はログに出さない（標準入力で渡す）
+      - name: Sync LIVE_SESSION_SECRET to Cloudflare Pages
+        # 失敗しても本体のデプロイは止めない（Live の入場の口が 503 のままになるだけ）
+        continue-on-error: true
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LIVE_SESSION_SECRET: ${{ secrets.LIVE_SESSION_SECRET }}
+        run: |
+          if [ -z "$LIVE_SESSION_SECRET" ]; then echo "LIVE_SESSION_SECRET is not set; skipping"; exit 0; fi
+          printf '%s' "$LIVE_SESSION_SECRET" | pnpm dlx wrangler pages secret put LIVE_SESSION_SECRET --project-name autumn-book
+
       - name: Deploy to Cloudflare Pages
         working-directory: apps/web
         env:
@@ -59,6 +73,12 @@ jobs:
               exit 1
             fi
           done
+          # Autumn Live はブラウザからは入れない（入場券が無ければ 403）
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://book.yamado.app/live)
+          if [ "$code" != "403" ]; then
+            echo "::error::/live must be 403 without a Live pass (returned $code)"
+            exit 1
+          fi
           code=$(curl -s -o /dev/null -w "%{http_code}" https://autumn-book-member-preview.pages.dev/account)
           if [ "$code" != "303" ]; then
             echo "::error::Member preview must redirect visitors without a preview session (returned $code)"
