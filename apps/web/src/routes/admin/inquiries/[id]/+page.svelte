@@ -15,6 +15,7 @@
  import {splitInquiryMail,inquiryMailPreview} from '$lib/inquiry-mail-display';
  import {readSseJson} from '$lib/sse';
  import {renderInquirySignature,replyWithoutSignature,replyWithSignature,inquiryAttachmentMime,attachmentSize,INQUIRY_ATTACHMENT_LIMIT,INQUIRY_ATTACHMENT_COUNT,type InquiryAttachment} from '$lib/inquiry-compose';
+ import {expandSnippet,filterSnippets,slashQuery,insertSnippet,snippetDate,type InquirySnippet} from '$lib/inquiry-snippets';
  let {data,form}:{data:PageData;form:ActionData}=$props();
  let body=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature))),savedBody=$state(untrack(()=>replyWithoutSignature(data.item.draft,data.item.draft_signature)));
  let assignee=$state(untrack(()=>data.item.assignee)),savedAssignee=$state(untrack(()=>data.item.assignee));
@@ -130,8 +131,10 @@
   })();
   const ok=await activeSave;if(ok&&dirty&&!busy)scheduleSave();return ok;
  }
- const submitAction:SubmitFunction=async({formData,formElement,cancel})=>{
+ const submitAction:SubmitFunction=async({formData,formElement,cancel,submitter})=>{
   if(busy){cancel();return;}busy=true;
+  // 「送信して完了にする」は押したボタンの data-next で伝える（2026-11-27）
+  if(submitter instanceof HTMLElement&&submitter.dataset.next)formData.set('nextStatus',submitter.dataset.next);
   if(!await persist()){busy=false;cancel();return;}
   formData.set('revision',String(revision));formData.set('draftVersion',String(version));
   if(formData.has('body'))formData.set('body',fullReply);
@@ -141,7 +144,8 @@
   return async({result,update})=>{
    try{await update({reset:false});await tick();if(result.type==='success'){otherDirtyForms.delete(formElement);allowOtherFormLeave=false;
     syncDraft();saveError='';conflict=false;
-    if(action==='send'){reviewDialog.close();reviewOpen=false;mobilePane='conversation';}
+    if(action==='send'){reviewDialog.close();reviewOpen=false;mobilePane='conversation';rewriteUndo=null;}
+    if(action==='unsend'){mobilePane='reply';}
    }}finally{busy=false;if(dirty&&body.trim())scheduleSave();}
   };
  };
@@ -202,12 +206,98 @@
  }
  async function refresh(){if(await persist())await invalidateAll();}
  beforeNavigate(nav=>{if(uploading||templateSaving||replyTranslating){nav.cancel();return;}if(templateDirty&&!allowOtherFormLeave&&nav.type!=='form'){if(nav.type==='leave'||!confirm('署名テンプレートに未保存の変更があります。移動しますか？')){nav.cancel();return;}allowOtherFormLeave=true;}for(const f of otherDirtyForms)if(!f.isConnected)otherDirtyForms.delete(f);if(otherDirtyForms.size&&!allowOtherFormLeave&&nav.type!=='form'){if(nav.type==='leave'||!confirm('担当者や回答例に保存していない変更があります。移動しますか？')){nav.cancel();return;}allowOtherFormLeave=true;}if(!dirty&&!saving)return;if(nav.type==='leave'){nav.cancel();return;}if(nav.to?.url){nav.cancel();void persist().then(ok=>{if(ok)void goto(nav.to!.url);else allowOtherFormLeave=false;});}});
+ // ── 送信の取り消し（2026-11-27）：回答は 30 秒たってから送信キューに出る。送信待ちの間は「取り消す」で下書きに戻せる
+ let now=$state(Date.now());
+ const queuedReplies=$derived(data.messages.filter(m=>m.direction==='out'&&m.state==='queued'));
+ const secondsLeft=(m:{send_after?:string})=>Math.max(0,Math.ceil(((m.send_after?Date.parse(m.send_after):0)-now)/1000));
+ // ── 「〜さんが返信中」（2026-11-27）：開いている間は 15 秒ごと、入力中は 8 秒に 1 回まで知らせる
+ let others=$state<{name:string;typing:boolean}[]>([]);
+ const othersTyping=$derived(others.filter(o=>o.typing));
+ let lastTypingPing=0;
+ async function ping(typing=false,leave=false){
+  try{const res=await fetch('/admin/inquiries/'+data.item.id+'/presence',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({typing,leave}),keepalive:leave});
+   if(!leave&&res.ok){const r=await res.json();others=Array.isArray(r.others)?r.others:[];}}catch{/* 表示の補助なので黙って次を待つ */}
+ }
+ function typingPing(){const t=Date.now();if(t-lastTypingPing>8000){lastTypingPing=t;void ping(true);}}
+ // ── 定型文（2026-11-27）：返信欄で「/」を打つと候補を出す。差し込み項目（お名前・宿泊日など）を埋めて入れる
+ let snippets=$state<InquirySnippet[]>(untrack(()=>data.snippets));
+ $effect(()=>{const incoming=data.snippets;untrack(()=>{snippets=incoming;});});
+ let replyBox=$state<HTMLTextAreaElement>();
+ let snippetOpen=$state(false),snippetQuery=$state(''),snippetStart=$state(0),snippetActive=$state(0),snippetNotice=$state('');
+ const snippetMatches=$derived(filterSnippets(snippets,snippetQuery));
+ const firstStay=$derived(data.pmsLinks[0] as {check_in?:string|null;check_out?:string|null}|undefined);
+ const snippetContext=$derived({guestLabel:inquiryGuestLabel(data.item.name),assignee,checkIn:firstStay?.check_in??null,checkOut:firstStay?.check_out??null});
+ function watchSlash(){
+  const el=replyBox;if(!el)return;
+  const found=slashQuery(body.slice(0,el.selectionStart??body.length));
+  if(found&&snippets.length){snippetOpen=true;snippetQuery=found.query;snippetStart=found.start;snippetActive=0;}else if(snippetOpen&&snippetStart>=0)snippetOpen=false;
+ }
+ function openSnippetPicker(){const el=replyBox;const at=el?.selectionStart??body.length;snippetStart=-1-at;snippetQuery='';snippetActive=0;snippetOpen=true;el?.focus();}
+ async function pickSnippet(s:InquirySnippet){
+  const el=replyBox;const caret=el?.selectionStart??body.length;
+  // 「/」から開いたときは「/検索語」を置き換える。ボタンから開いたときは入力位置に入れる（snippetStart は -1-位置）
+  const start=snippetStart>=0?snippetStart:-1-snippetStart,end=snippetStart>=0?caret:start;
+  const r=insertSnippet(body,end,start,expandSnippet(s.body,snippetContext));
+  body=r.body;snippetOpen=false;scheduleSave();typingPing();
+  await tick();if(el){el.focus();el.setSelectionRange(r.caret,r.caret);}
+ }
+ function snippetKey(e:KeyboardEvent){
+  if(!snippetOpen||e.isComposing)return;
+  const n=snippetMatches.length;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){if(!n)return;e.preventDefault();snippetActive=(snippetActive+(e.key==='ArrowDown'?1:n-1))%n;}
+  else if((e.key==='Enter'||e.key==='Tab')&&n){e.preventDefault();void pickSnippet(snippetMatches[snippetActive]);}
+  else if(e.key==='Escape'){e.preventDefault();snippetOpen=false;}
+ }
+ async function saveAsSnippet(){
+  const text=body.trim();if(!text)return;
+  const title=prompt('定型文の名前を入れてください（例：駐車場のご案内）');if(!title?.trim())return;
+  snippetNotice='';
+  try{const res=await fetch('/admin/inquiries/snippets/save',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:title.trim(),body:text})});const r=await res.json();
+   if(!res.ok)throw new Error(r.error||'定型文を保存できませんでした。');
+   snippets=[...snippets,r];snippetNotice=`「${r.title}」を定型文に保存しました。お名前などは {お名前} のように書き換えておくと、差し込めます。`;
+  }catch(e){snippetNotice=e instanceof Error?e.message:'定型文を保存できませんでした。';}
+ }
+ // ── ワンクリックの手直し（2026-11-27）：今の下書きを AI に直させる。終わったら「手直し前に戻す」で戻せる
+ const QUICK_REWRITES:{label:string;instructions:string}[]=[
+  {label:'丁寧に',instructions:'今の下書きを、もっと丁寧でかしこまった表現に整えてください。内容・日付・金額などの事実は変えないでください。'},
+  {label:'短く',instructions:'今の下書きを、内容・日付・金額などの事実は変えずに、要点を残して短く簡潔にしてください。'},
+  {label:'やわらかく',instructions:'今の下書きを、内容・日付・金額などの事実は変えずに、温かみのあるやわらかい表現にしてください。'}
+ ];
+ let rewriteUndo=$state<string|null>(null);
+ async function quickRewrite(instructions:string){
+  if(busy||saving||conflict||!body.trim()||!aiEligible||!data.aiConfigured)return;
+  busy=true;if(!await persist()){busy=false;return;}
+  const before=body;await streamAi(instructions);
+  if(!aiError&&body!==before)rewriteUndo=before;
+ }
+ function undoRewrite(){if(rewriteUndo===null)return;body=rewriteUndo;rewriteUndo=null;scheduleSave();}
+ function toEnglish(){replyLanguage='en';void translateReply();}
+ // ── 社内メモ（2026-11-27）：お客様には送らない。返信の下書きとは別の欄・別のボタンにして取り違えを防ぐ
+ let composeMode=$state<'reply'|'note'>('reply'),noteBody=$state(''),noteBusy=$state(false),noteError=$state('');
+ async function addNote(){
+  if(noteBusy||!noteBody.trim())return;noteBusy=true;noteError='';
+  try{const res=await fetch('/admin/inquiries/'+data.item.id+'/notes',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({body:noteBody})});const r=await res.json();
+   if(!res.ok)throw new Error(r.error||'メモを保存できませんでした。');noteBody='';await invalidateAll();}
+  catch(e){noteError=e instanceof Error?e.message:'メモを保存できませんでした。';}finally{noteBusy=false;}
+ }
+ async function deleteNote(id:string){
+  if(!confirm('このメモを消しますか？'))return;
+  try{const res=await fetch('/admin/inquiries/'+data.item.id+'/notes',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({id})});const r=await res.json();if(!res.ok)throw new Error(r.error);await invalidateAll();}
+  catch(e){noteError=e instanceof Error&&e.message?e.message:'メモを消せませんでした。';}
+ }
+ type TimelineItem={kind:'mail';at:string;mail:(typeof visibleMessages)[number]}|{kind:'note';at:string;note:(typeof data.notes)[number]};
+ const timeline=$derived<TimelineItem[]>([...visibleMessages.map(m=>({kind:'mail' as const,at:m.created_at,mail:m})),...data.notes.map(n=>({kind:'note' as const,at:n.created_at,note:n}))].sort((a,b)=>a.at.localeCompare(b.at)));
  onMount(()=>{
   if(dirty)scheduleSave();
   void tick().then(()=>{if(threadPane)threadPane.scrollTop=threadPane.scrollHeight;});
-  const poll=setInterval(()=>{if(!dirty&&!templateDirty&&!saving&&!busy&&!reviewOpen&&!translationOpen&&document.visibilityState==='visible')void invalidateAll();},autoPending?4000:10000);
+  // 読み直しは 10 秒ごと。AI 下書きの準備中・送信待ちの間は 4 秒ごと（送信待ちの残り秒数と、送信済みへの切り替わりを早く見せる）
+  let lastPoll=Date.now();
+  const poll=setInterval(()=>{now=Date.now();const wait=autoPending||queuedReplies.length?4000:10000;if(now-lastPoll<wait)return;if(!dirty&&!templateDirty&&!saving&&!busy&&!reviewOpen&&!translationOpen&&document.visibilityState==='visible'){lastPoll=now;void invalidateAll();}},1000);
+  void ping();
+  const presence=setInterval(()=>{if(document.visibilityState==='visible')void ping(false);},15000);
   const online=()=>{if(dirty&&!conflict)void persist();};window.addEventListener('online',online);
-  return()=>{clearInterval(poll);if(timer)clearTimeout(timer);window.removeEventListener('online',online);};
+  const leave=()=>void ping(false,true);window.addEventListener('pagehide',leave);
+  return()=>{clearInterval(poll);clearInterval(presence);if(timer)clearTimeout(timer);window.removeEventListener('online',online);window.removeEventListener('pagehide',leave);leave();};
  });
  // 左右の列の追従（2026-11-02 指示「右カラム、もしくは左カラムを必要に応じてスクロール追従に。問い合わせ案件ごとに」）。
  // オンにした列はページをスクロールしても画面に留まり、列の中でスクロールする。案件ごとにこのブラウザへ覚える（PC だけ）
@@ -231,11 +321,49 @@
   <label>対応状況 <select name="status" value={data.item.status}>{#each Object.entries(STATES) as [key,label]}<option value={key}>{label}</option>{/each}</select></label>
   <button class="quiet-button" disabled={busy||saving}>変更を保存</button>
  </form>
+ {#if ['new','working'].includes(data.item.status)}
+  <!-- お礼だけの返信など、返事のいらないものをワンクリックで片付ける（2026-11-27） -->
+  <form class="quick-status" method="post" use:enhance={submitAction}>
+   <input type="hidden" name="revision" value={revision}/><input type="hidden" name="action" value="status"/>
+   <span>返信のいらないもの：</span>
+   <button name="status" value="done" class="quiet-button" disabled={busy||saving}>返信せずに完了</button>
+   <button name="status" value="no_action" class="quiet-button" disabled={busy||saving}>対応不要</button>
+  </form>
+ {/if}
+ {#if others.length}
+  <p class="presence" class:typing={othersTyping.length>0} role="status">
+   {#if othersTyping.length}<strong>{othersTyping.map(o=>o.name).join('さん・')}さんが返信を書いています。</strong>二重に返信しないよう、声をかけてから進めてください。
+   {:else}{others.map(o=>o.name).join('さん・')}さんもこの問い合わせを開いています。{/if}
+  </p>
+ {/if}
  {#key data.item.id}<InquiryPmsLink inquiryId={data.item.id} links={data.pmsLinks} error={data.pmsLinkError}/>{/key}
  <nav class="mobile-tabs" aria-label="表示切替"><button class:active={mobilePane==='conversation'} onclick={()=>mobilePane='conversation'}>やり取り <span>{visibleMessages.length}</span></button><button class:active={mobilePane==='reply'} onclick={()=>mobilePane='reply'}>返信を作成 {#if data.item.draft}<i></i>{/if}</button></nav>
  <div class="workspace">
   <section class="composer-panel" class:mobile-hidden={mobilePane!=='reply'} class:pinned={pins.composer} aria-label="返信を作成">
    <div class="panel-title"><h2><AdminIcon name="plan"/>返信を作成</h2><div class="panel-title-tools"><span class="auto-label" aria-live="polite">自動保存 · {saveError?'要確認':saving?'保存中…':dirty?'未保存':'保存済み'}</span><button type="button" class="pin-button" aria-pressed={pins.composer} title="オンにすると、ページをスクロールしてもこの列が画面に留まります（この案件だけ・このブラウザに保存）" onclick={()=>togglePin('composer')}>{pins.composer?'追従中':'追従'}</button></div></div>
+   {#each queuedReplies as q (q.id)}
+    <!-- 送信の取り消し（2026-11-27）：送信キューに出る前なら下書きに戻せる -->
+    <form class="unsend-banner" method="post" use:enhance={submitAction} data-no-guard>
+     <input type="hidden" name="revision" value={revision}/><input type="hidden" name="messageId" value={q.id}/>
+     <span class="working-dot"></span>
+     <p><strong>{secondsLeft(q)>0?`送信まであと ${secondsLeft(q)} 秒`:'まもなく送信します'}</strong>送信が始まるまでは取り消して、下書きに戻せます。</p>
+     <button name="action" value="unsend" class="secondary-button" disabled={busy||saving}>送信を取り消す</button>
+    </form>
+   {/each}
+   <div class="compose-mode" role="tablist" aria-label="書くもの">
+    <button type="button" role="tab" aria-selected={composeMode==='reply'} class:active={composeMode==='reply'} onclick={()=>composeMode='reply'}>お客様への返信</button>
+    <button type="button" role="tab" aria-selected={composeMode==='note'} class:active={composeMode==='note'} class="note-tab" onclick={()=>composeMode='note'}>社内メモ{#if data.notes.length}<span>{data.notes.length}</span>{/if}</button>
+   </div>
+   {#if composeMode==='note'}
+    <div class="note-composer">
+     <p>スタッフだけが見られるメモです。お客様には送られず、AIの下書きにも使いません。</p>
+     <label class="sr-only" for="note-body">社内メモ</label>
+     <textarea id="note-body" bind:value={noteBody} rows="6" maxlength="5000" placeholder="例：お電話で駐車場の件は回答済み（11/27 佐藤）" disabled={noteBusy}></textarea>
+     {#if noteError}<p class="composer-warning" role="alert">{noteError}</p>{/if}
+     <div class="note-actions"><span>{noteBody.length.toLocaleString()} / 5,000</span><button type="button" class="note-button" disabled={noteBusy||!noteBody.trim()} onclick={()=>void addNote()}>{noteBusy?'保存中…':'メモを保存'}</button></div>
+    </div>
+   {/if}
+   <div class="reply-pane" hidden={composeMode!=='reply'}>
    {#if aiStage}<div class="ai-banner" aria-live="polite"><span class="working-dot"></span><div><strong>{AI_STAGE[aiStage]??'AIが下書きを作っています'}…</strong><p>書いたそばから本文欄に表示します。保存は書き終わってから行います。</p></div></div>{:else if autoPending&&!dirty&&data.item.draft_origin!=='manual'}<div class="ai-banner"><span class="working-dot"></span><div><strong>AIが下書きを準備しています</strong><p>FAQと過去の回答を参照しています。先に入力することもできます。</p></div></div>{:else if aiEligible&&data.job?.state==='failed'&&data.item.draft_origin!=='manual'}<div class="ai-banner failed"><div><strong>自動下書きを作成できませんでした</strong><p>下の「AIで作り直す」から再試行できます。手動でも返信できます。</p></div></div>{:else if aiEligible&&data.item.draft_origin==='auto'&&!dirty}<div class="ai-ready"><AdminIcon name="shield"/><span>AI下書きを用意しました。内容をご確認ください。</span></div>{/if}
    {#if data.item.draft&&data.item.draft_revision!==data.item.revision}<p class="composer-warning">下書き作成後に新しいやり取りがあります。履歴を確認してから編集してください。</p>{/if}
    <div class="recipient-line"><span>宛先</span><strong>{data.item.email}</strong></div>
@@ -243,7 +371,30 @@
     <input type="hidden" name="revision" value={revision}/><input type="hidden" name="draftVersion" value={version}/>
     <div class="reply-translation-tools"><label for="reply-language">本文を翻訳</label><select id="reply-language" bind:value={replyLanguage} disabled={busy||conflict}>{#each Object.entries(INQUIRY_REPLY_LANGUAGES) as [code,label]}<option value={code}>{label}</option>{/each}</select><button type="button" class="quiet-button" disabled={busy||saving||conflict||!body.trim()||!data.aiConfigured} onclick={()=>void translateReply()}>{replyTranslating?'翻訳中…':'本文全体を翻訳'}</button>{#if lastTranslation&&body===lastTranslation.text}<button type="button" class="quiet-button" disabled={busy||saving||conflict} onclick={()=>{body=lastTranslation!.source;lastTranslation=null;scheduleSave();}}>翻訳前に戻す</button>{/if}<p>翻訳結果を確認してから本文に反映できます。署名はそのまま残ります。</p></div>
     {#if replyTranslationError}<p class="composer-warning" role="alert">{replyTranslationError}</p>{/if}
-    <label class="sr-only" for="reply-body">返信本文</label><textarea id="reply-body" name="body" bind:value={body} oninput={scheduleSave} onblur={()=>{if(dirty&&!conflict&&!aiStage)void persist();}} disabled={busy&&!aiStage} readonly={!!aiStage} rows="24" maxlength={Math.max(0,20000-signature.length-(signature?2:0))} placeholder={autoPending?'AI下書きを準備しています。ここから先に書き始めることもできます。':'お客様への返信を入力してください。入力した内容は自動保存されます。'}></textarea>
+    <div class="compose-tools">
+     <button type="button" class="tool-button" disabled={busy||conflict||!!aiStage} onclick={openSnippetPicker} title="返信欄で「/」を打っても開けます">定型文 <kbd>/</kbd></button>
+     <span class="tool-sep"></span>
+     <span class="tool-label">手直し</span>
+     {#each QUICK_REWRITES as r}<button type="button" class="tool-button" disabled={busy||saving||conflict||!body.trim()||!aiEligible||!data.aiConfigured} onclick={()=>void quickRewrite(r.instructions)}>{r.label}</button>{/each}
+     <button type="button" class="tool-button" disabled={busy||saving||conflict||!body.trim()||!data.aiConfigured} onclick={toEnglish}>英語に</button>
+     {#if rewriteUndo!==null&&!aiStage}<button type="button" class="tool-button undo" disabled={busy} onclick={undoRewrite}>手直し前に戻す</button>{/if}
+    </div>
+    {#if snippetNotice}<p class="snippet-notice" role="status">{snippetNotice}</p>{/if}
+    <div class="reply-box">
+    {#if snippetOpen}
+     <div class="snippet-picker" role="listbox" aria-label="定型文">
+      <div class="snippet-picker-head"><strong>定型文{#if snippetQuery}：「{snippetQuery}」{/if}</strong><span>↑↓で選んで Enter · Esc で閉じる</span></div>
+      {#each snippetMatches as s,i (s.id)}
+       <button type="button" role="option" aria-selected={i===snippetActive} class:active={i===snippetActive} onmousedown={e=>e.preventDefault()} onclick={()=>void pickSnippet(s)}><strong>{s.title}</strong><span>{expandSnippet(s.body,snippetContext).replace(/\s+/g,' ').slice(0,90)}</span></button>
+      {:else}
+       <p class="snippet-empty">{snippets.length?'当てはまる定型文がありません。':'定型文はまだありません。'}</p>
+      {/each}
+      <div class="snippet-picker-foot"><a href="/admin/inquiries/snippets" target="_blank" rel="noopener">定型文を管理 ↗</a>{#if firstStay?.check_in}<span>宿泊日：{snippetDate(firstStay.check_in)}</span>{/if}</div>
+     </div>
+    {/if}
+    <label class="sr-only" for="reply-body">返信本文</label><textarea id="reply-body" name="body" bind:this={replyBox} bind:value={body} oninput={()=>{scheduleSave();watchSlash();typingPing();}} onkeydown={snippetKey} onclick={watchSlash} onblur={()=>{snippetOpen=false;if(dirty&&!conflict&&!aiStage)void persist();}} disabled={busy&&!aiStage} readonly={!!aiStage} rows="24" maxlength={Math.max(0,20000-signature.length-(signature?2:0))} placeholder={autoPending?'AI下書きを準備しています。ここから先に書き始めることもできます。':'お客様への返信を入力してください。「/」で定型文を差し込めます。入力した内容は自動保存されます。'}></textarea>
+    </div>
+    {#if body.trim()}<button type="button" class="save-snippet-link" onclick={()=>void saveAsSnippet()}>この本文を定型文に保存</button>{/if}
     <div class="reply-assignee"><label for="reply-assignee">担当者名</label><div class="assignee-combo"><input id="reply-assignee" role="combobox" aria-expanded={assigneeOpen} aria-controls="reply-assignee-list" aria-autocomplete="list" aria-activedescendant={assigneeOpen&&assigneeOptions[assigneeActive]?'assignee-opt-'+assigneeActive:undefined} autocomplete="off" placeholder={assignee||'名前・ふりがなで検索'} value={assigneeOpen?assigneeQuery:assignee} oninput={e=>{assigneeQuery=e.currentTarget.value;assigneeOpen=true;assigneeActive=0;}} onfocus={()=>{assigneeQuery='';assigneeOpen=true;assigneeActive=0;}} onkeydown={assigneeKey} onblur={()=>{assigneeOpen=false;assigneeQuery='';if(dirty&&!conflict)void persist();}} disabled={busy}>{#if assigneeOpen}<ul id="reply-assignee-list" role="listbox">{#each assigneeOptions as option,i(option.name)}<li id={'assignee-opt-'+i} role="option" aria-selected={i===assigneeActive} class:active={i===assigneeActive} class:current={option.name===assignee} onmousedown={e=>{e.preventDefault();pickAssignee(option.name);}}>{option.label}</li>{:else}<li class="empty">該当する担当者がいません</li>{/each}</ul>{/if}</div><a href="/admin/staff-directory">マスタ管理</a></div>
     {#if signature}<details class="reply-signature"><summary>署名：{assignee}</summary><div>{signature}</div></details>{/if}
     <div class="attachment-zone" class:drag-over={dragOver} role="region" aria-label="添付ファイル" ondragover={event=>{if(event.dataTransfer?.types.includes('Files')){event.preventDefault();dragOver=true;}}} ondragleave={event=>{if(!(event.relatedTarget instanceof Node)||!event.currentTarget.contains(event.relatedTarget))dragOver=false;}} ondrop={event=>{event.preventDefault();void addFiles(Array.from(event.dataTransfer?.files??[]));}}>
@@ -266,11 +417,19 @@
    <p class="send-note">{activeSend?'送信処理中の回答があります。結果を確認してから次の返信を作成してください。':'AIから自動送信されることはありません。送信前に宛先と本文を確認します。'}</p>
    <details class="signature-settings"><summary>署名テンプレートを編集</summary><label for="signature-template">山人-yamado-共通の署名</label><textarea id="signature-template" bind:value={templateEdit} oninput={()=>allowOtherFormLeave=false} maxlength="3000" rows="7" disabled={busy}></textarea><p>{'{担当者名}'}に入力した名前が入ります。</p><div><button type="button" class="quiet-button" disabled={busy||saving||!templateDirty} onclick={()=>{templateEdit=template;templateError='';}}>変更を戻す</button><button type="button" class="quiet-button" disabled={busy||saving||!templateDirty} onclick={()=>void saveTemplate()}>{templateSaving?'保存中…':'テンプレートを保存'}</button></div>{#if templateError}<p class="attachment-error" role="alert">{templateError}</p>{/if}</details>
    <details class="sources" open={data.item.ai_sources.length>0}><summary><AdminIcon name="book"/>下書きの参考資料 <span>{data.item.ai_sources.length}件</span></summary><div class="source-list">{#each data.item.ai_sources as source}<details class="source-card"><summary><span class="source-kind">{source.kind}</span><strong>{source.question}</strong></summary>{#if source.answered_at}<p class="source-date">回答日：{time(source.answered_at)} · 当時の参考例です</p>{/if}<p>{source.answer}</p>{#if source.inquiry_id}<a href="/admin/inquiries/{source.inquiry_id}">元のやり取りを見る ↗</a>{/if}</details>{:else}<p class="no-sources">参照資料が不足する内容は、AIが【要確認】として残します。</p>{/each}</div></details>
+   </div>
   </section>
   <section class="thread-panel" class:mobile-hidden={mobilePane!=='conversation'} class:pinned={pins.thread} aria-label="やり取りの履歴">
    <div class="panel-title"><h2>やり取り <span class="message-count">{visibleMessages.length}件</span></h2><div class="thread-actions"><button type="button" class="pin-button" aria-pressed={pins.thread} title="オンにすると、ページをスクロールしてもこの列が画面に留まります（この案件だけ・このブラウザに保存）" onclick={()=>togglePin('thread')}>{pins.thread?'追従中':'追従'}</button><button type="button" onclick={()=>setPanels(true)}>すべて開く</button><button type="button" onclick={()=>setPanels(false)}>閉じる</button></div></div>
    <div class="thread-scroll" bind:this={threadPane}>
-   {#each visibleMessages as message (message.id)}
+   {#each timeline as entry (entry.kind+':'+(entry.kind==='mail'?entry.mail.id:entry.note.id))}
+    {#if entry.kind==='note'}
+     <article class="note-card" aria-label="社内メモ">
+      <header><span class="note-badge">社内メモ</span><strong>{entry.note.actor_name||'スタッフ'}</strong><time>{time(entry.note.created_at)}</time>{#if entry.note.actor_id&&entry.note.actor_id===data.me.id}<button type="button" onclick={()=>void deleteNote(entry.note.id)}>消す</button>{/if}</header>
+      <p>{entry.note.body}</p>
+     </article>
+    {:else}
+    {@const message=entry.mail}
     <details class="message-card" class:staff-message={message.direction==='out'} open={panelOpen[message.id]??(message.id===latestMessage||['queued','sending','failed','uncertain'].includes(message.state))} ontoggle={event=>{panelOpen[message.id]=event.currentTarget.open;}}>
      <summary class="message-summary"><div class="message-heading"><span class="mini-avatar" class:staff-avatar={message.direction==='out'}>{message.direction==='in'?data.item.name.slice(0,1):'宿'}</span><div><strong>{message.direction==='in'?inquiryGuestLabel(data.item.name):message.actor_name||'山人-yamado-'}</strong><span>{message.direction==='in'?'受信':stateLabel[message.state]}{#if message.id===latestMessage} · 最新{/if}</span></div><time>{time(message.created_at)}</time><span class="message-chevron">›</span></div><p class="message-preview">{message.preview}</p></summary>
      <div class="message-content"><InquiryMailBody parts={message.parts}/>
@@ -287,6 +446,7 @@
      {#if message.direction==='out'&&message.state==='sent'}<InquiryKnowledge {message} {revision} submit={submitAction}/>{/if}
      </div>
     </details>
+    {/if}
    {/each}
    </div>
   </section>
@@ -298,7 +458,8 @@
  {#if draftFiles.length}<div class="review-files"><strong>添付 {draftFiles.length}件</strong><ul class="attachment-list">{#each draftFiles as file}<li><span>{file.filename} · {attachmentSize(file.size_bytes)}</span></li>{/each}</ul></div>{/if}
  {#if fullReply.includes('【要確認')}<p class="composer-warning">本文に【要確認】が残っています。確認・編集してから送信してください。</p>{/if}
  <label class="review-check"><input type="checkbox" bind:checked={reviewChecked}/>宛先と本文を確認しました</label>
- <footer><button class="secondary-button" onclick={()=>reviewDialog.close()}>編集に戻る</button><button form="inquiry-reply-form" name="action" value="send" class="primary-button" disabled={!reviewChecked||busy||fullReply.includes('【要確認')||templateDirty}>確認した内容で送信</button></footer>
+ <footer><button class="secondary-button" onclick={()=>reviewDialog.close()}>編集に戻る</button><span class="send-choices"><button form="inquiry-reply-form" name="action" value="send" data-next="done" class="secondary-button" disabled={!reviewChecked||busy||fullReply.includes('【要確認')||templateDirty} title="お客様からの返事がいらないとき（お礼・ご案内だけなど）">送信して完了にする</button><button form="inquiry-reply-form" name="action" value="send" class="primary-button" disabled={!reviewChecked||busy||fullReply.includes('【要確認')||templateDirty}>送信して返信を待つ</button></span></footer>
+ <p class="review-undo-note">送信は30秒後に始まります。それまでは「送信を取り消す」で下書きに戻せます。</p>
 </dialog>
 <dialog bind:this={translationDialog} class="review-dialog reply-translation-dialog" aria-labelledby="translation-review-title" onclose={()=>translationOpen=false} oncancel={()=>translationOpen=false}>
  <header><div><p>本文全体の翻訳</p><h2 id="translation-review-title">{INQUIRY_REPLY_LANGUAGES[translationPreview?.language??replyLanguage]}への翻訳結果</h2></div><button type="button" aria-label="翻訳結果を閉じる" onclick={()=>translationDialog.close()}><AdminIcon name="close"/></button></header>
@@ -316,4 +477,48 @@
  .reply-assignee{display:flex;align-items:center;gap:.8rem;padding:.7rem 1.3rem;border-top:1px solid #eef1e9;font-size:.72rem;color:#788570}.assignee-combo{position:relative;min-width:0;width:min(260px,70%)}.assignee-combo input{width:100%;padding:.4rem .6rem;border:1px solid #e0e5dc;border-radius:.5rem;font-size:.8rem;color:#384f40;background:white}.assignee-combo input::placeholder{color:#384f40}.assignee-combo input:focus::placeholder{color:#a3ad9d}.assignee-combo ul{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);max-height:260px;overflow:auto;margin:0;padding:.25rem;list-style:none;background:white;border:1px solid #d5ddce;border-radius:.5rem;box-shadow:0 8px 24px rgba(34,59,50,.12)}.assignee-combo li{padding:.45rem .6rem;border-radius:.35rem;font-size:.8rem;color:#384f40;cursor:pointer}.assignee-combo li.current{font-weight:600}.assignee-combo li.active,.assignee-combo li:hover{background:#eef3e8}.assignee-combo li.empty{color:#8a9484;cursor:default;background:none}.reply-assignee a{margin-left:auto;white-space:nowrap;color:#637c52;text-decoration:underline;font-size:.68rem}.reply-signature{padding:.7rem 1.3rem 1rem;white-space:pre-wrap;border-top:1px dashed #e4e9df;color:#72806c;font-size:.75rem;line-height:1.8}.reply-signature>summary{cursor:pointer;font-size:.7rem;color:#788570}.reply-signature>div{margin-top:.5rem}.attachment-zone{margin:.5rem 1.2rem .8rem;padding:.85rem;border:1px dashed #d5ddce;border-radius:.7rem;background:#fafcf7;transition:background .15s,border-color .15s}.attachment-zone.drag-over{background:#ecf3e5;border-color:#6d8e5f;box-shadow:0 0 0 2px #6d8e5f25}.attachment-heading{display:flex;align-items:center;justify-content:space-between;gap:.6rem;font-size:.72rem;color:#708366}.attachment-heading .quiet-button{font-size:.68rem;padding:.35rem .55rem}.attachment-limit{font-size:.63rem;color:#8a967e;margin-top:.35rem;line-height:1.7}.attachment-list{list-style:none;padding:0;margin:.6rem 0 0;display:grid;gap:.4rem;font-size:.72rem}.attachment-list li{display:flex;align-items:center;gap:.5rem;padding:.45rem .6rem;border:1px solid #e3e9dc;border-radius:.5rem;background:#fff;min-width:0}.attachment-list a{display:flex;flex:1;min-width:0;overflow-wrap:anywhere;align-items:center;justify-content:space-between;gap:.6rem;color:#557348;text-decoration:underline}.attachment-list a span{color:#88957b;font-size:.63rem;white-space:nowrap;flex-shrink:0;text-decoration:none}.attachment-list button{font-size:1.1rem;color:#8b9682;padding:0 .2rem;flex-shrink:0}.attachment-error{font-size:.72rem;line-height:1.7;color:#aa664a;margin-top:.5rem}.sent-files{margin-top:.8rem}.signature-settings{margin:.2rem 1.2rem 1rem;border-top:1px solid #e8eddf;padding-top:.7rem;font-size:.72rem;color:#788570}.signature-settings>summary{cursor:pointer}.signature-settings>label{display:block;font-size:.7rem;margin-top:.8rem}.signature-settings textarea{height:180px;min-height:140px;max-height:400px;border:1px solid #dfe6d7;border-radius:.6rem;padding:.7rem;margin-top:.4rem;font-size:.75rem;line-height:1.8;white-space:pre-wrap}.signature-settings>p{font-size:.65rem;margin-top:.4rem}.signature-settings>div{display:flex;justify-content:flex-end;gap:.5rem;margin-top:.6rem}.review-files{margin-top:1rem;font-size:.75rem}.review-files>strong{font-weight:500}.review-files li>span{overflow-wrap:anywhere}@media(max-width:767px){.reply-assignee{padding:.7rem 1rem}.reply-signature{padding:.7rem 1rem}.attachment-zone{margin:.5rem .9rem .8rem;padding:.7rem}.attachment-heading{flex-wrap:wrap}.attachment-list a{flex-wrap:wrap}.signature-settings{margin:.2rem 1rem 1rem}}
 .inquiry-type-badge{display:inline-block;background:#f0f3e9;color:#627457;border:1px solid #dce4d5;padding:.2rem .5rem;border-radius:.4rem;font-size:.72rem;margin:.3rem 0}
 .translation-panel{border:1px solid #dce5d5;border-radius:.7rem;padding:.85rem;margin-top:1rem;background:#f7faf3}.draft-translation{margin:.3rem 1.2rem 1rem}.translation-heading{display:flex;align-items:center;justify-content:space-between;gap:.7rem}.translation-heading strong{font-size:.75rem;font-weight:550;color:#536c48}.translation-heading strong span{display:block;font-size:.64rem;font-weight:400;color:#798972;margin-top:.25rem}.translation-heading .quiet-button{font-size:.68rem;padding:.4rem .6rem;white-space:nowrap}.translation-text{font-size:.8rem;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.95;color:#465b43;margin-top:.7rem;max-height:420px;overflow:auto}.translation-panel details>summary{font-size:.7rem;color:#73856a;cursor:pointer;margin-top:.7rem}.translation-stale,.translation-status{font-size:.72rem;color:#7b8971;margin-top:.6rem}.translation-error{font-size:.72rem;line-height:1.8;margin-top:.6rem;color:#a16d47}.translation-error{color:#ab5949}
+ /* 返信作成画面の改善（2026-11-27）：状態のワンクリック・返信中の表示・送信の取り消し・返信とメモの切り替え・定型文・手直し */
+ .quick-status{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:-.9rem 0 1.2rem;font-size:.72rem;color:#7e877c}
+ .presence{font-size:.75rem;line-height:1.7;padding:.65rem 1rem;border-radius:.7rem;background:#f2f5fb;color:#566c8f;margin-bottom:1rem}
+ .presence.typing{background:#fff3e0;color:#8a5a14;border:1px solid #f1d9ae}.presence strong{font-weight:650;margin-right:.3rem}
+ .unsend-banner{display:flex;align-items:center;gap:.7rem;padding:.85rem 1.2rem;background:#fff6e7;border-bottom:1px solid #f2e2c2;color:#8a6420}
+ .unsend-banner p{flex:1;font-size:.72rem;line-height:1.7}.unsend-banner strong{display:block;font-size:.8rem;font-weight:650;font-variant-numeric:tabular-nums}
+ .unsend-banner .working-dot{background:#d4a24c;margin-top:0}
+ .compose-mode{display:flex;gap:.3rem;padding:.7rem 1.2rem 0;border-bottom:1px solid #edf0e9}
+ .compose-mode button{font-size:.78rem;padding:.55rem .9rem;border-radius:.55rem .55rem 0 0;color:#7a857a;border:1px solid transparent;border-bottom:0;margin-bottom:-1px;background:none}
+ .compose-mode button.active{color:#2f4a3d;font-weight:650;background:#fff;border-color:#edf0e9}
+ .compose-mode .note-tab.active{color:#7a5d12;background:#fffbea;border-color:#efe3b5}
+ .compose-mode span{margin-left:.35rem;font-size:.66rem;color:#a08a4c}
+ .reply-pane[hidden]{display:none}
+ .note-composer{background:#fffbea;padding:1rem 1.2rem 1.2rem}
+ .note-composer>p{font-size:.72rem;line-height:1.7;color:#80661f;margin-bottom:.7rem}
+ .composer-panel .note-composer textarea{height:auto;min-height:160px;border:1px solid #efe3b5;border-radius:.6rem;background:#fff;padding:.9rem 1rem;line-height:1.9}
+ .note-actions{display:flex;justify-content:space-between;align-items:center;margin-top:.7rem;font-size:.68rem;color:#9b8a5c}
+ .note-button{background:#c89b2c;color:#fff;font-size:.82rem;font-weight:650;padding:.7rem 1.3rem;border-radius:.6rem}
+ .compose-tools{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;padding:.6rem 1.2rem;border-bottom:1px solid #f0f1ec;background:#fbfcf9}
+ .tool-button{font-size:.72rem;color:#4f6656;padding:.35rem .65rem;border:1px solid #dfe5dc;border-radius:100px;background:#fff;white-space:nowrap}
+ .tool-button:hover:not(:disabled){background:#f1f5ee}.tool-button.undo{color:#8a6420;border-color:#f0dcb5;background:#fff8ea}
+ .tool-button kbd{font-family:inherit;font-size:.64rem;border:1px solid #d6ddd2;border-radius:3px;padding:0 .25rem;margin-left:.15rem;color:#7c8a7f}
+ .tool-sep{width:1px;height:1rem;background:#e1e6dd;margin:0 .2rem}.tool-label{font-size:.68rem;color:#8a9488}
+ .snippet-notice{font-size:.72rem;line-height:1.7;color:#55704a;background:#f2f7ef;padding:.6rem 1.2rem}
+ .reply-box{position:relative}
+ .snippet-picker{position:absolute;left:1rem;right:1rem;top:.6rem;z-index:6;background:#fff;border:1px solid #d9e1d4;border-radius:.8rem;box-shadow:0 14px 40px #1c302e26;max-height:320px;overflow:auto}
+ .snippet-picker-head,.snippet-picker-foot{display:flex;justify-content:space-between;gap:.6rem;padding:.55rem .85rem;font-size:.66rem;color:#7d887b;background:#f8faf6}
+ .snippet-picker-head strong{font-weight:600;color:#3f5747}
+ .snippet-picker-foot{border-top:1px solid #eef1ea}.snippet-picker-foot a{color:#56704b;text-decoration:underline}
+ .snippet-picker button{display:grid;gap:.15rem;width:100%;text-align:left;padding:.6rem .85rem;border-top:1px solid #f1f3ee;background:#fff}
+ .snippet-picker button.active,.snippet-picker button:hover{background:#eef4ea}
+ .snippet-picker button strong{font-size:.78rem;font-weight:600;color:#2f4a3d}
+ .snippet-picker button span{font-size:.68rem;color:#7d887b;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+ .snippet-empty{font-size:.72rem;color:#7d887b;padding:.9rem .85rem}
+ .save-snippet-link{display:block;margin:0 1.3rem .2rem auto;font-size:.68rem;color:#6c8258;text-decoration:underline;background:none}
+ .send-choices{display:flex;gap:.6rem;flex-wrap:wrap;justify-content:flex-end}
+ .review-undo-note{font-size:.68rem;color:#7d887b;text-align:right;margin-top:.6rem}
+ .note-card{border:1px solid #efe3b5;background:#fffbea;border-radius:.9rem;padding:.85rem 1rem;margin-bottom:1rem}
+ .note-card header{display:flex;align-items:center;gap:.55rem;font-size:.7rem;color:#80661f}
+ .note-card header strong{font-weight:600}.note-card time{margin-left:auto;color:#9b8a5c;font-size:.66rem}
+ .note-card header button{font-size:.66rem;color:#9b6b3c;text-decoration:underline;background:none}
+ .note-badge{font-size:.6rem;font-weight:700;letter-spacing:.04em;background:#c89b2c;color:#fff;padding:.15rem .45rem;border-radius:.3rem}
+ .note-card p{font-size:.8rem;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere;color:#4d4220;margin-top:.5rem}
+ @media(max-width:767px){.compose-tools{padding:.5rem .8rem}.snippet-picker{left:.4rem;right:.4rem}.send-choices{width:100%}.send-choices button{flex:1}}
 </style>

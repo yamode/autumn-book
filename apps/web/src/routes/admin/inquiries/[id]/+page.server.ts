@@ -5,6 +5,9 @@ import { aiConfigured, history, inquiry, makeDraft,draftJob } from '$lib/server/
 import { replyWithoutSignature } from '$lib/inquiry-compose';
 import { facilityStaff } from '$lib/server/staff-directory';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
+import type { InquirySnippet } from '$lib/inquiry-snippets';
+export type InquiryNote={id:string;body:string;actor_id:string|null;actor_name:string;created_at:string};
+const STATUS_LABEL:Record<string,string>={new:'未対応',working:'対応中',waiting:'お客様の返信待ち',done:'完了',no_action:'対応不要'};
 
 export const load: PageServerLoad = async event => {
  if(!ADMIN_SUPABASE) error(503,'本番データ環境で利用できます。');
@@ -22,14 +25,17 @@ export const load: PageServerLoad = async event => {
  }
  const [messages,job,files,signature]=await Promise.all([history(db,item.id),draftJob(db,item.id),db.schema('book').from('inquiry_attachments').select('id,inquiry_id,message_id,filename,mime_type,size_bytes,created_at').eq('inquiry_id',item.id).order('created_at'),db.schema('book').from('inquiry_signatures').select('template,version').eq('facility_id',item.facility_id).single()]);
  if(files.error||signature.error)error(503,'添付・署名の設定を取得できません。');
- const [draftTranslation,messageTranslations,staff,receptionJobs,pmsLinks]=await Promise.all([
+ const [draftTranslation,messageTranslations,staff,receptionJobs,pmsLinks,notes,snippets]=await Promise.all([
   db.schema('book').rpc('admin_inquiry_translation_get',{p_id:item.id,p_target:'draft',p_source:replyWithoutSignature(item.draft,item.draft_signature).trimEnd()}),
   db.schema('book').from('inquiry_translations').select('target,text_ja,language,created_at').eq('inquiry_id',item.id).neq('target','draft').neq('text_ja','').order('created_at',{ascending:false}).limit(250),
   facilityStaff(db,item.facility_id),
   db.schema('book').from('inquiry_reception_jobs').select('message_id,state,error').eq('inquiry_id',item.id),
-  db.schema('book').rpc('admin_inquiry_pms_links',{p_id:item.id})
+  db.schema('book').rpc('admin_inquiry_pms_links',{p_id:item.id}),
+  // 社内メモと定型文（2026-11-27）。読めなくても返信は書けるので、失敗は空として扱う
+  db.schema('book').from('inquiry_notes').select('id,body,actor_id,actor_name,created_at').eq('inquiry_id',item.id).order('created_at'),
+  db.schema('book').from('inquiry_snippets').select('id,title,body,sort_order').eq('facility_id',item.facility_id).order('sort_order').order('title')
  ]);
- return {pmsLinks:pmsLinks.data??[],pmsLinkError:pmsLinks.error?'予約との連携情報を取得できません。履歴を更新して再度お試しください。':'',item,messages,job,staff,receptionJobs:receptionJobs.data??[],draftTranslation:draftTranslation.data as {source_text:string;text_ja:string;language:string}|null,messageTranslations:messageTranslations.data??[],attachments:files.data??[],signature:signature.data!,aiConfigured:aiConfigured()};
+ return {me:{id:event.locals.user?.id??'',name:event.locals.user?.name??''},notes:(notes.data??[]) as InquiryNote[],snippets:(snippets.data??[]) as InquirySnippet[],pmsLinks:pmsLinks.data??[],pmsLinkError:pmsLinks.error?'予約との連携情報を取得できません。履歴を更新して再度お試しください。':'',item,messages,job,staff,receptionJobs:receptionJobs.data??[],draftTranslation:draftTranslation.data as {source_text:string;text_ja:string;language:string}|null,messageTranslations:messageTranslations.data??[],attachments:files.data??[],signature:signature.data!,aiConfigured:aiConfigured()};
 };
 export const actions: Actions = {
  default: async event => {
@@ -63,12 +69,16 @@ export const actions: Actions = {
     Object.assign(args,{p_body:draft.text,p_sources:draft.sources,p_model:draft.model});
    }
    if(action==='status') Object.assign(args,{p_status:String(form.get('status')),p_assignee:item.assignee});
-   if(['approve','revoke','retry','resolve_sent','resolve_unsent'].includes(action)) args.p_message=String(form.get('messageId'));
+   // 送信と同時に状態を決める（2026-11-27）：「返信して完了」は done。それ以外はお客様の返信待ち
+   if(action==='send'&&form.get('nextStatus')==='done') args.p_status='done';
+   if(['approve','revoke','retry','resolve_sent','resolve_unsent','unsend'].includes(action)) args.p_message=String(form.get('messageId'));
    if(action==='approve') Object.assign(args,{p_question:String(form.get('question')??''),p_answer:String(form.get('answer')??''),p_until:String(form.get('until')??'')||null});
    const {error:e}=await db.schema('book').rpc('admin_inquiry_edit',args);
    if(e) throw new Error(e.message);
    if(generated?.japanese)await db.schema('book').rpc('admin_inquiry_translation_save',{p_id:item.id,p_target:'draft',p_source:generated.text,p_text:generated.japanese,p_language:generated.language,p_model:generated.model});
-   return {message:action==='send'?'送信を受け付けました。送信キューの結果は画面を更新して確認できます。':action==='ai'?'AI下書きを保存しました。根拠と要確認箇所をご確認ください。':'保存しました。',...(action==='send'?{body:''}:{})};
+   if(action==='unsend')return {message:'送信を取り消しました。下書きに戻しています。'};
+   if(action==='status')return {message:'対応状況を「'+(STATUS_LABEL[String(form.get('status'))]??'')+'」にしました。'};
+   return {message:action==='send'?(form.get('nextStatus')==='done'?'送信を受け付け、完了にしました。30秒のあいだは取り消せます。':'送信を受け付けました。30秒のあいだは取り消せます。'):action==='ai'?'AI下書きを保存しました。根拠と要確認箇所をご確認ください。':'保存しました。',...(action==='send'?{body:''}:{})};
   } catch(e) {return fail(400,{message:e instanceof Error?e.message:'処理に失敗しました。',...(form.has('body')?{body}:{})});}
  }
 };

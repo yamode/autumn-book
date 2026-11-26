@@ -11,7 +11,7 @@
 </script>
 <svelte:head><title>お問い合わせ | Book</title></svelte:head>
 <div class="inbox">
- <header class="inbox-heading"><div><h1>お問い合わせ</h1></div><div class="inbox-actions"><a href="/admin/inquiries/ai" class="ai-settings-link">AI設定</a><span class="connection" class:warning={!!data.health?.last_error||!data.health?.last_sync_at}><i></i>{data.health?.last_error?'返信取り込みを確認':data.health?.last_sync_at?'メール連携中':'接続確認待ち'}</span><button onclick={()=>invalidateAll()}>更新</button></div></header>
+ <header class="inbox-heading"><div><h1>お問い合わせ</h1></div><div class="inbox-actions"><a href="/admin/inquiries/snippets" class="ai-settings-link">返信の定型文</a><a href="/admin/inquiries/ai" class="ai-settings-link">AI設定</a><span class="connection" class:warning={!!data.health?.last_error||!data.health?.last_sync_at}><i></i>{data.health?.last_error?'返信取り込みを確認':data.health?.last_sync_at?'メール連携中':'接続確認待ち'}</span><button onclick={()=>invalidateAll()}>更新</button></div></header>
  <div class="inbox-origins"><a class:active={data.origin==='current'} href={href('open','current')}><AdminIcon name="plan"/>受信トレイ</a><a class:active={data.origin==='history'} href={href('all','history')}><AdminIcon name="book"/>過去のやり取り</a></div>
  <div class="overview">{#each ['new','working','waiting','done','no_action'] as state}<a class="overview-stat" href={href(state)}><span><i class="dot-{state}"></i>{state==='waiting'?'返信待ち':STATES[state]}</span><strong>{data.counts[state as keyof typeof data.counts].toLocaleString()}</strong></a>{/each}</div>
  <section class="inbox-table" aria-label="問い合わせ一覧">
