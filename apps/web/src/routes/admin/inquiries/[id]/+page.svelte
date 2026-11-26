@@ -227,12 +227,23 @@
  const snippetMatches=$derived(filterSnippets(snippets,snippetQuery));
  const firstStay=$derived(data.pmsLinks[0] as {check_in?:string|null;check_out?:string|null}|undefined);
  const snippetContext=$derived({guestLabel:inquiryGuestLabel(data.item.name),assignee,checkIn:firstStay?.check_in??null,checkOut:firstStay?.check_out??null});
+ // 候補の枠は入力位置の行のすぐ下に出す（打っている文字を隠さない）。下に入りきらないときは行の上に出す
+ let pickerStyle=$state('');
+ function placePicker(el:HTMLTextAreaElement,pos:number){
+  const cs=getComputedStyle(el),mirror=document.createElement('div');
+  for(const p of ['boxSizing','width','paddingTop','paddingRight','paddingBottom','paddingLeft','borderTopWidth','borderLeftWidth','fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','wordBreak','overflowWrap'] as const)mirror.style[p]=cs[p];
+  Object.assign(mirror.style,{position:'absolute',visibility:'hidden',whiteSpace:'pre-wrap',top:'0',left:'-9999px'});
+  mirror.textContent=el.value.slice(0,pos);const mark=document.createElement('span');mark.textContent='​';mirror.appendChild(mark);document.body.appendChild(mirror);
+  const line=parseFloat(cs.lineHeight)||28,caretY=mark.offsetTop-el.scrollTop;mirror.remove();
+  const below=caretY+line+6,room=el.clientHeight-below;
+  pickerStyle=room>=200||caretY<200?`top:${Math.max(8,below)}px`:`bottom:${Math.max(8,el.clientHeight-caretY+6)}px`;
+ }
  function watchSlash(){
   const el=replyBox;if(!el)return;
   const found=slashQuery(body.slice(0,el.selectionStart??body.length));
-  if(found&&snippets.length){snippetOpen=true;snippetQuery=found.query;snippetStart=found.start;snippetActive=0;}else if(snippetOpen&&snippetStart>=0)snippetOpen=false;
+  if(found&&snippets.length){if(!snippetOpen)placePicker(el,found.start);snippetOpen=true;snippetQuery=found.query;snippetStart=found.start;snippetActive=0;}else if(snippetOpen&&snippetStart>=0)snippetOpen=false;
  }
- function openSnippetPicker(){const el=replyBox;const at=el?.selectionStart??body.length;snippetStart=-1-at;snippetQuery='';snippetActive=0;snippetOpen=true;el?.focus();}
+ function openSnippetPicker(){const el=replyBox;const at=el?.selectionStart??body.length;if(el)placePicker(el,at);snippetStart=-1-at;snippetQuery='';snippetActive=0;snippetOpen=true;el?.focus();}
  async function pickSnippet(s:InquirySnippet){
   const el=replyBox;const caret=el?.selectionStart??body.length;
   // 「/」から開いたときは「/検索語」を置き換える。ボタンから開いたときは入力位置に入れる（snippetStart は -1-位置）
@@ -382,7 +393,7 @@
     {#if snippetNotice}<p class="snippet-notice" role="status">{snippetNotice}</p>{/if}
     <div class="reply-box">
     {#if snippetOpen}
-     <div class="snippet-picker" role="listbox" aria-label="定型文">
+     <div class="snippet-picker" role="listbox" aria-label="定型文" style={pickerStyle}>
       <div class="snippet-picker-head"><strong>定型文{#if snippetQuery}：「{snippetQuery}」{/if}</strong><span>↑↓で選んで Enter · Esc で閉じる</span></div>
       {#each snippetMatches as s,i (s.id)}
        <button type="button" role="option" aria-selected={i===snippetActive} class:active={i===snippetActive} onmousedown={e=>e.preventDefault()} onclick={()=>void pickSnippet(s)}><strong>{s.title}</strong><span>{expandSnippet(s.body,snippetContext).replace(/\s+/g,' ').slice(0,90)}</span></button>
@@ -481,7 +492,7 @@
  .quick-status{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin:-.9rem 0 1.2rem;font-size:.72rem;color:#7e877c}
  .presence{font-size:.75rem;line-height:1.7;padding:.65rem 1rem;border-radius:.7rem;background:#f2f5fb;color:#566c8f;margin-bottom:1rem}
  .presence.typing{background:#fff3e0;color:#8a5a14;border:1px solid #f1d9ae}.presence strong{font-weight:650;margin-right:.3rem}
- .unsend-banner{display:flex;align-items:center;gap:.7rem;padding:.85rem 1.2rem;background:#fff6e7;border-bottom:1px solid #f2e2c2;color:#8a6420}
+ .unsend-banner{position:sticky;top:var(--desk-top,1rem);z-index:7;box-shadow:0 6px 16px #8a642014;display:flex;align-items:center;gap:.7rem;padding:.85rem 1.2rem;background:#fff6e7;border-bottom:1px solid #f2e2c2;color:#8a6420}
  .unsend-banner p{flex:1;font-size:.72rem;line-height:1.7}.unsend-banner strong{display:block;font-size:.8rem;font-weight:650;font-variant-numeric:tabular-nums}
  .unsend-banner .working-dot{background:#d4a24c;margin-top:0}
  .compose-mode{display:flex;gap:.3rem;padding:.7rem 1.2rem 0;border-bottom:1px solid #edf0e9}
@@ -502,7 +513,7 @@
  .tool-sep{width:1px;height:1rem;background:#e1e6dd;margin:0 .2rem}.tool-label{font-size:.68rem;color:#8a9488}
  .snippet-notice{font-size:.72rem;line-height:1.7;color:#55704a;background:#f2f7ef;padding:.6rem 1.2rem}
  .reply-box{position:relative}
- .snippet-picker{position:absolute;left:1rem;right:1rem;top:.6rem;z-index:6;background:#fff;border:1px solid #d9e1d4;border-radius:.8rem;box-shadow:0 14px 40px #1c302e26;max-height:320px;overflow:auto}
+ .snippet-picker{position:absolute;left:1rem;right:1rem;z-index:6;background:#fff;border:1px solid #d9e1d4;border-radius:.8rem;box-shadow:0 14px 40px #1c302e26;max-height:320px;overflow:auto}
  .snippet-picker-head,.snippet-picker-foot{display:flex;justify-content:space-between;gap:.6rem;padding:.55rem .85rem;font-size:.66rem;color:#7d887b;background:#f8faf6}
  .snippet-picker-head strong{font-weight:600;color:#3f5747}
  .snippet-picker-foot{border-top:1px solid #eef1ea}.snippet-picker-foot a{color:#56704b;text-decoration:underline}
