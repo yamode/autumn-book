@@ -30,16 +30,16 @@
 	const KIND_FILTERS: ['all' | 'partner' | 'member', string][] = [
 		['all', 'すべての種別'],
 		['partner', '取引先'],
-		['member', '特別会員']
+		['member', 'VIP（特別会員）']
 	];
 </script>
 
-<svelte:head><title>取引先 ｜ 山人管理</title></svelte:head>
+<svelte:head><title>取引先・VIP ｜ 山人管理</title></svelte:head>
 
 <PageHeader
-	title="取引先"
+	title="取引先・VIP"
 	facility={data.facilityName}
-	description="旅行会社・法人などの取引先ごとに特別レートを決めて、限定URL（ログインIDとパスワードで見る料金カレンダー・予約）と REST API（API キー）で公開します。基準は料金マスタの理論値（1名・税込・入湯税別）です。"
+	description="旅行会社・法人などの取引先ごとに特別レートを決めて、限定URL（ログインIDとパスワードで見る料金カレンダー・予約）と REST API（API キー）で公開します。PMS で VIP（特別会員）にしたお客様の専用ページもここに並びます（会員登録の前から料金を決められます）。基準は料金マスタの理論値（1名・税込・入湯税別）です。"
 >
 	{#snippet actions()}
 		{#if data.live && !data.error}
@@ -117,6 +117,10 @@
 						{p.name}
 						{#if p.kind === 'member'}
 							<span class="ml-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-600/20">{data.kindLabels[p.kind]}</span>
+							{#if p.awaitingSignup}
+								<!-- ご本人がまだ Book の会員ではない。会員登録すると、このページにご本人が入る -->
+								<span class="ml-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-600 ring-1 ring-inset ring-stone-500/20" title="ご本人が Book の会員登録をすると、このページを使えるようになります。料金は先に決めておけます">会員登録待ち</span>
+							{/if}
 						{:else}
 							<span class="ml-1 text-xs font-normal text-stone-400">{data.kindLabels[p.kind]}</span>
 						{/if}

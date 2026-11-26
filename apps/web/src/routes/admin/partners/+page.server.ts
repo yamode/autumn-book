@@ -15,6 +15,7 @@ import {
 import { actionFailure, canEditPartners, staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
 import { parsePartnerKind } from '$lib/server/partners/staff-form';
 import { loadInvoiceIssuer, parseBillingSettingsForm, saveInvoiceIssuer } from '$lib/server/partners/invoices';
+import { ensureVipPages } from '$lib/server/partners/member-bookings';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -35,6 +36,9 @@ export const load: PageServerLoad = async (event) => {
 	};
 	try {
 		const scope = await staffPartnerScope(event, 'view');
+		// PMS で VIP（＝特別会員）を付けた顧客に、まだ専用ページが無ければここで作る（ふだんは VIP を付けたときに DB の知らせで作られる。
+		// 知らせが届かなかったときの取りこぼし拾い・2026-11-27）。作れなくても一覧は出す
+		await ensureVipPages(scope.db).catch((e) => console.error('[partners] VIP の専用ページを作れませんでした', e instanceof Error ? e.message : e));
 		// 請求書の発行元設定（会社で1つ・ab_fac に依らない・2026-10-09 N3。読めなくても一覧は出す）
 		// 取引先一覧を待たずに同時に投げる（2026-10-18 高速化）
 		const billingLoad = loadInvoiceIssuer(scope.db, scope.tenantId)
@@ -47,9 +51,20 @@ export const load: PageServerLoad = async (event) => {
 			.map((l) => l.partner)
 			.filter((p) => (kindFilter === 'all' ? true : kindFilter === 'member' ? p.kind === 'member' : p.kind !== 'member'));
 		const onCurrent = new Map(listed.map((l) => [l.partner.id, l.onCurrent]));
-		const [counts, billing] = await Promise.all([
+		// VIP の専用ページに入っている会員の数（0 = 会員登録待ち）
+		const memberPageIds = partners.filter((p) => p.kind === 'member').map((p) => p.id);
+		const memberCountLoad = memberPageIds.length
+			? scope.db.from('rms_partner_members').select('partner_id').in('partner_id', memberPageIds).then(({ data, error }) => {
+					if (error) return null;
+					const m = new Map<string, number>();
+					for (const r of (data ?? []) as { partner_id: string }[]) m.set(r.partner_id, (m.get(r.partner_id) ?? 0) + 1);
+					return m;
+				})
+			: Promise.resolve(new Map<string, number>());
+		const [counts, billing, memberCounts] = await Promise.all([
 			countPartnerCredentials(scope.db, partners.map((p) => p.id)),
-			billingLoad
+			billingLoad,
+			memberCountLoad
 		]);
 		return {
 			...base,
@@ -70,6 +85,8 @@ export const load: PageServerLoad = async (event) => {
 				validUntil: p.valid_until,
 				pricing: p.pricing,
 				updatedAt: p.updated_at,
+				// VIP の専用ページで、まだ会員が入っていない（＝ご本人の Book の会員登録待ち）。読めなかったときは出さない
+				awaitingSignup: p.kind === 'member' && memberCounts !== null && (memberCounts.get(p.id) ?? 0) === 0,
 				...(counts.get(p.id) ?? { accounts: 0, activeAccounts: 0, apiKeys: 0 })
 			}))
 		};

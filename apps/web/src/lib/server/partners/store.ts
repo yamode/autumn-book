@@ -69,7 +69,7 @@ export const PARTNER_KIND_LABELS: Record<PartnerKind, string> = {
   agent: '旅行会社・エージェント',
   corporate: '法人',
   other: 'その他',
-  member: '特別会員'
+  member: 'VIP（特別会員）'
 };
 /** 管理画面の「取引先を作る」で選べる種別（特別会員は会員詳細の「専用ページを作る」から作る・§13.4.5） */
 export const PARTNER_CREATE_KIND_LABELS: Record<Exclude<PartnerKind, 'member'>, string> = {

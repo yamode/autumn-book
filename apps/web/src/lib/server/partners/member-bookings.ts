@@ -175,20 +175,20 @@ export async function memberPageHrefFor(partnerId: string, code: string): Promis
 }
 
 /**
- * PMS の顧客マスタで「特別会員として案内する」が付いた会員に、専用ページが無ければ作る（2026-11-26）。
+ * VIP（＝特別会員）の専用ページを1つ作り、PMS の顧客（member_guest_id）に結ぶ（2026-11-27）。
  * 管理画面の「専用ページを作る」と同じ形で、公開・予約受付オン・料金ルールなし（＝専用ページの上部に「近日販売開始予定」）。
- * ランク（特別会員）は DB のトリガーが付ける
+ * 会員登録の前でも作る（RMS の取引先料金で先に料金を決められるように）。会員がいれば対象の会員にも入れる。
+ * 顧客1人につき1ページ（DB の一意索引）。同時に作られて結べなかったときは、作ったほうを消す
  */
-export async function ensureDesignatedMemberPage(sb: SupabaseClient, memberUserId: string): Promise<void> {
-  const { data, error } = await sb.schema('book').rpc('special_member_page_needed', { p_member_user_id: memberUserId });
-  if (error || !data) return;
-  const need = data as { tenant_id?: string; facility_id?: string; name?: string };
-  if (!need.tenant_id || !need.facility_id) return;
+export async function createVipPage(
+  sb: SupabaseClient,
+  v: { tenantId: string; facilityId: string; guestId: string; name: string; memberUserId: string | null }
+): Promise<void> {
   const partner = await createPartner(
     sb,
-    { tenantId: need.tenant_id, facilityId: need.facility_id, userId: null },
+    { tenantId: v.tenantId, facilityId: v.facilityId, userId: null },
     {
-      name: `${need.name || '会員'}様 専用ページ`.slice(0, 120),
+      name: `${v.name || '会員'}様 専用ページ`.slice(0, 120),
       kind: 'member',
       contact_name: null,
       contact_email: null,
@@ -199,18 +199,70 @@ export async function ensureDesignatedMemberPage(sb: SupabaseClient, memberUserI
       show_inventory: true,
       include_advance: true,
       pricing: DEFAULT_PARTNER_PRICING,
-      note: 'PMS の顧客マスタの「特別会員として案内する」から自動で作成',
+      note: 'PMS の顧客マスタの VIP（特別会員）から自動で作成',
       booking_enabled: true,
       booking_settings: { ...DEFAULT_PARTNER_BOOKING_SETTINGS, paymentOptions: [], maxRooms: 4 }
     }
   );
   try {
-    await addPartnerMember(sb, partner, memberUserId, null);
+    const { error } = await sb.from('rms_partners').update({ member_guest_id: v.guestId }).eq('id', partner.id);
+    if (error) throw new Error(error.message);
+    if (v.memberUserId) await addPartnerMember(sb, partner, v.memberUserId, null);
   } catch (e) {
-    // 対象の会員を入れられなければ作ったページも残さない（管理画面の「専用ページを作る」と同じ）
+    // 結べなければ作ったページも残さない（同じ顧客のページが2つにならないように）
     await deletePartner(sb, partner).catch(() => undefined);
     throw e;
   }
+}
+
+/** 専用ページがまだ無い VIP の顧客すべてにページを作る（/api/cron/vip-pages・取引先・VIP の一覧を開いたとき）。作った数を返す */
+export async function ensureVipPages(sb: SupabaseClient): Promise<{ created: number; failed: number }> {
+  const { data, error } = await sb.schema('book').rpc('vip_pages_needed');
+  if (error) throw new Error(error.message);
+  const rows = (Array.isArray(data) ? data : []) as {
+    guest_id: string;
+    tenant_id: string;
+    facility_id: string | null;
+    name: string;
+    member_user_id: string | null;
+  }[];
+  let created = 0;
+  let failed = 0;
+  for (const r of rows) {
+    if (!r.facility_id) continue;
+    try {
+      await createVipPage(sb, { tenantId: r.tenant_id, facilityId: r.facility_id, guestId: r.guest_id, name: r.name, memberUserId: r.member_user_id });
+      created++;
+    } catch (e) {
+      failed++;
+      console.error('[vip-pages] 作成に失敗', r.guest_id, e instanceof Error ? e.message : e);
+    }
+  }
+  return { created, failed };
+}
+
+/**
+ * VIP（＝特別会員）の会員に専用ページが無ければ用意する（マイページを開いたとき）。
+ * 会員登録の前に作ってあるページ（その顧客に結ばれたもの）があれば、そこへ会員を入れる。無ければ作る。
+ * ランク（特別会員）は DB のトリガーが付ける
+ */
+export async function ensureDesignatedMemberPage(sb: SupabaseClient, memberUserId: string): Promise<void> {
+  const { data, error } = await sb.schema('book').rpc('special_member_page_needed', { p_member_user_id: memberUserId });
+  if (error || !data) return;
+  const need = data as { tenant_id?: string; facility_id?: string; name?: string; guest_id?: string; attach_partner_id?: string };
+  if (!need.tenant_id) return;
+  if (need.attach_partner_id) {
+    await addPartnerMember(sb, { id: need.attach_partner_id, tenant_id: need.tenant_id, kind: 'member' }, memberUserId, null);
+    return;
+  }
+  if (!need.facility_id || !need.guest_id) return;
+  await createVipPage(sb, {
+    tenantId: need.tenant_id,
+    facilityId: need.facility_id,
+    guestId: need.guest_id,
+    name: need.name ?? '',
+    memberUserId
+  });
 }
 
 /** マイページのトップの「あなた専用のページ」（本人・家族の公開中の専用ページ）。使えない環境・読めなければ空 */

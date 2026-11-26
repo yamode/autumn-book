@@ -45,10 +45,10 @@ export const ADMIN_NAV: NavGroup[] = [
 			},
 			{
 				href: '/admin/partners',
-				label: '取引先',
+				label: '取引先・VIP',
 				icon: 'partner',
 				children: [
-					{ href: '/admin/partners', label: '取引先の一覧' },
+					{ href: '/admin/partners', label: '取引先・VIPの一覧' },
 					{ href: '/admin/partners/invoices', label: '予定請求書' },
 					{ href: '/admin/partners/charges', label: '今後の請求予定' }
 				]
