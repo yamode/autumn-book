@@ -25,7 +25,7 @@
 			<div class="ctrl">
 				<span class="chip" data-id="chip"><i></i><span data-id="fresh">つないでいます</span></span>
 				<label><span class="vh">空の時刻</span><select data-id="skySel"><option value="">いまの空</option><option value="6.4">朝</option><option value="12">昼</option><option value="17.1">夕</option><option value="22">夜</option></select></label>
-				<label><span class="vh">季節</span><select data-id="seasonSel"><option value="">いまの季節</option><option value="spring">春</option><option value="summer">夏</option><option value="autumn">秋（カラマツ）</option><option value="nov">11月（初雪）</option><option value="xmas">12月（クリスマス）</option><option value="winter">冬（1〜3月）</option></select></label>
+				<label><span class="vh">背景（季節）</span><select data-id="seasonSel"><option value="">いまの季節</option></select></label>
 				<button data-id="btnHelp" type="button" aria-expanded="false">見方</button>
 				<button data-id="btnGoal" type="button" aria-expanded="false">目標</button>
 				<button data-id="btnSound" type="button" aria-pressed="false">音 オフ</button>

@@ -173,6 +173,7 @@ export const ADMIN_NAV: NavGroup[] = [
 					{ href: '/admin/users', label: 'ユーザー管理', tenantWide: true, adminOnly: true },
 					{ href: '/admin/security', label: '二段階認証・パスキー', tenantWide: true },
 					{ href: '/admin/security/live', label: 'Autumn Live の端末', tenantWide: true, adminOnly: true },
+					{ href: '/admin/security/live/scenes', label: 'Autumn Live の背景', tenantWide: true, adminOnly: true },
 					{ href: '/admin/maintenance', label: 'メンテナンス', tenantWide: true }
 				]
 			}

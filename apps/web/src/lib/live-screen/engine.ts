@@ -4,6 +4,7 @@
 //   - 帯の太さ＝今日その段まで来た人数、光の粒＝いまいる人（前回と比べて動かす・来た・離れた）
 //   - 予約が入ったら金の輪と知らせ。会員が増えたら銀の光が会員のカードへ
 import { cumulativeUntil, diffGrains, pctChange, rate28, usualFraction, yenShort } from './model';
+import { liveSceneConfig, pickScene } from '$lib/live-scene';
 
 export function startLiveScreen(root: HTMLElement): () => void {
 	const $ = (id) => root.querySelector(`[data-id="${id}"]`);
@@ -28,99 +29,105 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	}
 	const WD = '日月火水木金土';
 	const realHour = () => { const t = jst(); return t.h + t.mi / 60 + t.s / 3600; };
-	let skyOverride = null, seasonOverride = null;
+	let skyOverride = null, seasonOverride = null; // seasonOverride はシーンの id（選んで見比べる）
 	const skyHour = () => skyOverride ?? realHour();
 
 	// ── 空と季節 ──
 	const SKY = [[0, '#060a19', '#141c38'], [4.6, '#0a0f24', '#232a4a'], [5.8, '#1e2852', '#7a5a72'], [6.6, '#3d5a92', '#f0b089'], [8, '#4f86c4', '#bfd8ee'], [12, '#3c7cc6', '#b4d4f0'], [15.5, '#4c80be', '#d9d4c0'], [16.9, '#33467e', '#f09a62'], [17.8, '#1d2652', '#a3607a'], [19, '#0d1430', '#2c2f55'], [24, '#060a19', '#141c38']];
-	// 季節ごとの空の色と、降るもの・下に置くもの（2026-11-27 指示）
-	//   秋（9〜10 月）… 何も降らない。画面の下にカラマツの黄色い紅葉が並ぶ
-	//   11 月          … カラマツの並木に、雪がちらちら舞う
-	//   12 月          … クリスマスツリーを置き、雪が深々と降る
-	//   冬（1〜3 月）  … 雪
-	const SEASONS = {
-		winter: { sky: ['#7fa9d2', '#e8eff5'], fall: 'snow' },
-		spring: { sky: ['#78acdc', '#f4e3ea'], fall: 'petal' },
-		summer: { sky: ['#3283cf', '#d4ecf9'], fall: 'firefly' },
-		autumn: { sky: ['#5596cf', '#f2dfc4'], fall: 'none', larch: true },
-		nov: { sky: ['#7d9fc4', '#e9e4da'], fall: 'flurry', larch: true },
-		xmas: { sky: ['#7fa9d2', '#e8eff5'], fall: 'deep', xmas: true }
-	};
-	const seasonOf = (m) => m === 12 ? 'xmas' : m === 11 ? 'nov' : m <= 3 ? 'winter' : m <= 5 ? 'spring' : m <= 8 ? 'summer' : 'autumn';
-	const curSeason = () => seasonOverride || seasonOf(jst().mo);
+	// 背景（シーン）は DB の book.live_scenes からデータで読む（docs/autumn-live.md §10）。版の更新なしで差し替えられる。
+	// /live/api/scene を 1 分ごとに読み直し、変わっていたらその場で描き直す。読めないときは空だけ。
+	let scenes = [];
+	let sceneKey = '';
+	const todayMD = () => { const t = jst(); return `${String(t.mo).padStart(2, '0')}-${String(t.d).padStart(2, '0')}`; };
+	const activeScene = () => (seasonOverride && scenes.find((x) => x.id === seasonOverride)) || pickScene(scenes, todayMD());
+	const DEFAULT_TINT = ['#7fa9d2', '#e8eff5'];
 	const dayLight = (h) => smooth(5.6, 7.6, h) * (1 - smooth(16.6, 18.4, h));
-	function skyCols(h) { const se = SEASONS[curSeason()].sky, d = dayLight(h); for (let i = 0; i < SKY.length - 1; i++) { const a = SKY[i], b = SKY[i + 1]; if (h >= a[0] && h <= b[0]) { const t = (h - a[0]) / (b[0] - a[0]); return [mix(mix(a[1], b[1], t), se[0], d * 0.6), mix(mix(a[2], b[2], t), se[1], d * 0.6)]; } } return [SKY[0][1], SKY[0][2]]; }
+	function skyCols(h) { const se = activeScene()?.config?.skyTint || DEFAULT_TINT, d = dayLight(h); for (let i = 0; i < SKY.length - 1; i++) { const a = SKY[i], b = SKY[i + 1]; if (h >= a[0] && h <= b[0]) { const t = (h - a[0]) / (b[0] - a[0]); return [mix(mix(a[1], b[1], t), se[0], d * 0.6), mix(mix(a[2], b[2], t), se[1], d * 0.6)]; } } return [SKY[0][1], SKY[0][2]]; }
 
 	const cv = root.querySelector('canvas.scene'), ctx = cv.getContext('2d');
 	let W = 0, H = 0, DPR = 1;
 	const stars = [...Array(220)].map(() => ({ x: Math.random(), y: Math.pow(Math.random(), 1.5) * 0.8, r: Math.random() * 1.1 + 0.25, p: Math.random() * TAU }));
 	const clouds = [...Array(6)].map(() => ({ x: Math.random(), y: 0.06 + Math.random() * 0.4, s: 0.07 + Math.random() * 0.12, v: 0.003 + Math.random() * 0.004 }));
-	let fall = [];
-	function newFall(any) {
-		const k = SEASONS[curSeason()].fall, z = Math.random();
-		if (k === 'firefly') return { k, x: Math.random() * W, y: H * rnd(0.3, 0.95), r: 1.2, ph: Math.random() * 7, a: rnd(0.4, 1) };
-		const y = any ? Math.random() * H : -6;
-		// ちらちら: 少なく・小さく・ゆっくり、横に揺れながら
-		if (k === 'flurry') return { k: 'snow', x: Math.random() * W, y, r: 0.6 + z * 1.3, vy: 6 + z * 9, sway: 0.6 + z * 0.8, ph: Math.random() * 7, a: 0.35 + z * 0.4 };
-		// 深々と: 多く・手前ほど大きく、まっすぐ静かに
-		if (k === 'deep') return { k: 'snow', x: Math.random() * W, y, r: 0.7 + z * z * 3, vy: 14 + z * 26, sway: 0.25, ph: Math.random() * 7, a: 0.3 + z * 0.55 };
-		if (k === 'snow') return { k, x: Math.random() * W, y, r: 0.6 + z * 1.8, vy: 10 + z * 24, sway: 0.35, ph: Math.random() * 7, a: 0.2 + z * 0.45 };
-		return { k, x: Math.random() * W, y, r: 1.8 + z * 2, vy: 12 + z * 16, ph: Math.random() * 7, a: 0.5 + z * 0.4, rot: Math.random() * 6, vr: rnd(-2, 2), col: '#f4c6d4' };
+	// ── 層（降るもの・木の並び・クリスマスツリー・画像）──
+	// layerState[i] は i 番目の層の作り置き（粒・木・灯り）。シーンが変わる・大きさが変わると作り直す
+	let layerState = [];
+	let builtFor = ''; // いまの作り置きがどのシーンのものか（日付が変わってシーンが替わったら作り直す）
+	const images = new Map(); // url → HTMLImageElement
+	function imageOf(url) {
+		if (!url) return null;
+		let img = images.get(url);
+		if (!img) { img = new Image(); img.decoding = 'async'; img.src = url; images.set(url, img); }
+		return img.complete && img.naturalWidth ? img : null;
 	}
-	function rebuildFall() {
-		const k = SEASONS[curSeason()].fall;
-		const n = k === 'none' ? 0 : k === 'flurry' ? (reduce ? 12 : 28) : k === 'deep' ? (reduce ? 60 : Math.round(clamp(W * H / 4500, 120, 380))) : k === 'snow' ? (reduce ? 24 : Math.round(clamp(W * H / 12000, 50, 160))) : (reduce ? 24 : 40);
-		fall = [...Array(n)].map(() => newFall(true));
-		buildLarches();
-		buildXmas();
+	function newParticle(L, any) {
+		const z = Math.random();
+		const size = lerp(L.size[0], L.size[1], L.preset === 'snow' ? z * z : z);
+		const p = { x: Math.random() * W, y: any ? Math.random() * H : -8, r: size, vy: lerp(L.speed[0], L.speed[1], z), sway: L.sway, ph: Math.random() * 7, a: lerp(L.opacity[0], L.opacity[1], z), col: pick(L.colors), rot: Math.random() * 6, vr: rnd(-2, 2) };
+		if (L.preset === 'firefly') { p.y = H * rnd(0.3, 0.95); }
+		return p;
 	}
-
-	// ── カラマツの並木（秋・11 月）。画面の下、カードの後ろから梢がのぞく ──
-	let larches = [];
-	function buildLarches() {
-		larches = [];
-		if (!SEASONS[curSeason()].larch || !W) return;
-		for (const row of [{ gap: [13, 21], h: [0.55, 0.85], back: true }, { gap: [20, 34], h: [0.75, 1.15], back: false }]) {
-			for (let x = -10; x < W + 20; x += rnd(row.gap[0], row.gap[1])) {
-				larches.push({ x: x + rnd(-4, 4), h: rnd(row.h[0], row.h[1]), back: row.back, tone: Math.random(), tiers: 7 + Math.floor(Math.random() * 4), lean: rnd(-0.04, 0.04), ph: Math.random() * TAU });
-			}
+	function rebuildLayers() {
+		const sc = activeScene();
+		layerState = [];
+		builtFor = sc ? `${sc.id}:${sc.updatedAt}:${W}x${H}` : '';
+		if (!sc || !W) return;
+		for (const L of sc.config.layers || []) {
+			if (L.type === 'particles') {
+				const n = Math.round(clamp(L.density * (W * H) / 1e6 * (reduce ? 0.3 : 1), 0, 600));
+				layerState.push({ parts: [...Array(n)].map(() => newParticle(L, true)) });
+			} else if (L.type === 'treeRow') {
+				const trees = [];
+				for (const row of [{ gap: [13, 21], h: [0.55, 0.85], back: true }, { gap: [20, 34], h: [0.75, 1.15], back: false }]) {
+					for (let x = -10; x < W + 20; x += rnd(row.gap[0], row.gap[1]) * L.spacing) trees.push({ x: x + rnd(-4, 4), h: rnd(row.h[0], row.h[1]), back: row.back, col: pick(L.colors), tiers: 7 + Math.floor(Math.random() * 4), lean: rnd(-0.04, 0.04), ph: Math.random() * TAU });
+				}
+				trees.sort((a, b) => (a.back === b.back ? 0 : a.back ? -1 : 1));
+				layerState.push({ trees });
+			} else if (L.type === 'xmasTree') {
+				layerState.push({ lights: [...Array(46)].map(() => ({ u: Math.random(), v: Math.pow(Math.random(), 0.7), col: pick(L.lights), ph: Math.random() * TAU, sp: rnd(0.6, 1.6) })) });
+			} else layerState.push({});
 		}
-		larches.sort((a, b) => (a.back === b.back ? 0 : a.back ? -1 : 1));
 	}
-	function drawLarches(t, d, reach) {
-		if (!larches.length) return;
+	function drawParticles(L, st, dt, t, d) {
+		const dayMul = lerp(1, L.dayOpacity, d);
+		if (dayMul <= 0.01) return;
+		const img = L.preset === 'image' ? imageOf(L.image) : null;
+		for (const f of st.parts) {
+			if (L.preset === 'firefly') {
+				f.x += Math.sin(t * 0.5 + f.ph) * 0.3 * (L.sway || 1); f.y += Math.cos(t * 0.4 + f.ph) * 0.25;
+				const a = f.a * (0.5 + 0.5 * Math.sin(t * 2 + f.ph)) * dayMul; if (a < 0.02) continue;
+				const R = 7 * f.r; const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, R); g.addColorStop(0, rgba(f.col, a)); g.addColorStop(1, rgba(f.col, 0)); ctx.fillStyle = g; ctx.fillRect(f.x - R, f.y - R, R * 2, R * 2); continue;
+			}
+			f.y += f.vy * dt; f.x += Math.sin(t * 0.7 + f.ph) * f.sway; f.rot += f.vr * dt;
+			if (f.y > H + 10) Object.assign(f, newParticle(L, false));
+			const a = f.a * dayMul;
+			if (L.preset === 'snow') { ctx.fillStyle = rgba(d > 0.55 ? '#ffffff' : mix(f.col, '#f0f4ff', 0.3), Math.min(1, a + (d > 0.55 ? 0.2 : 0))); ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill(); }
+			else if (L.preset === 'image') { if (!img) continue; const w = f.r * 6, h = w * img.naturalHeight / img.naturalWidth; ctx.save(); ctx.globalAlpha = a; ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.drawImage(img, -w / 2, -h / 2, w, h); ctx.restore(); }
+			else { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.fillStyle = rgba(f.col, a * 0.85); ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.4, f.r * (L.preset === 'leaf' ? 0.55 : 0.7), 0, 0, TAU); ctx.fill(); ctx.restore(); }
+		}
+	}
+	// カラマツ型の木の並び（画面の下、カードの後ろから梢がのぞく）
+	function drawTreeRow(L, st, t, d, reach) {
 		const night = 1 - d;
-		for (const L of larches) {
-			const h = reach * L.h * (L.back ? 0.8 : 1), w = h * 0.3, x0 = L.x, base = H + 4, topY = base - h;
-			// 黄葉: 日なたの金色〜少し橙。手前ほど濃く、奥は空に溶かす。夜は群青に沈める
-			let col = mix(L.tone < 0.5 ? '#e7b93a' : '#d99a2b', '#f3d36a', L.back ? 0.25 : 0);
-			if (L.back) col = mix(col, skyCols(skyHour())[1], 0.35);
+		for (const T of st.trees) {
+			const h = reach * L.height * T.h * (T.back ? 0.8 : 1), w = h * 0.3, x0 = T.x, base = H + 4, topY = base - h;
+			let col = mix(T.col, '#f3d36a', T.back ? 0.25 : 0);
+			if (T.back) col = mix(col, skyCols(skyHour())[1], 0.35);
 			col = mix(col, '#1c2238', night * 0.78);
-			const sway = Math.sin(t * 0.5 + L.ph) * 0.6;
-			ctx.fillStyle = col;
-			ctx.beginPath();
-			ctx.moveTo(x0 + sway + L.lean * h, topY);
-			const n = L.tiers;
-			for (let i = 1; i <= n; i++) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 + hw + sway * (1 - i / n), yy); ctx.lineTo(x0 + hw * 0.55, yy - (h * 0.88) / n * 0.25); }
+			const sway = Math.sin(t * 0.5 + T.ph) * 0.6;
+			ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x0 + sway + T.lean * h, topY);
+			const n = T.tiers, pts = [];
+			for (let i = 1; i <= n; i++) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 + hw + sway * (1 - i / n), yy); ctx.lineTo(x0 + hw * 0.55, yy - (h * 0.88) / n * 0.25); pts.push([yy, hw]); }
 			for (let i = n; i >= 1; i--) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 - hw * 0.55, yy - (h * 0.88) / n * 0.25); ctx.lineTo(x0 - hw + sway * (1 - i / n), yy); }
 			ctx.closePath(); ctx.fill();
-			// 幹
+			if (L.snowCap) { ctx.fillStyle = `rgba(255,255,255,${0.75 - night * 0.3})`; for (const [yy, hw] of pts) { ctx.fillRect(x0 - hw * 0.7, yy - 2, hw * 1.4, 2); } }
 			ctx.fillStyle = rgba(mix('#5d4a36', '#151a2a', night * 0.7), 0.55); ctx.fillRect(x0 - Math.max(1, w * 0.03), base - h * 0.08, Math.max(1.5, w * 0.06), h * 0.08);
 		}
 	}
-
-	// ── クリスマスツリー（12 月）。右下、カードの後ろから立つ ──
-	let xmasLights = [];
-	function buildXmas() {
-		xmasLights = [];
-		if (!SEASONS[curSeason()].xmas) return;
-		for (let i = 0; i < 46; i++) xmasLights.push({ u: Math.random(), v: Math.pow(Math.random(), 0.7), col: pick(['#ffe7a3', '#ffd27a', '#ff8a7a', '#fff6e0', '#9fd0ff']), ph: Math.random() * TAU, sp: rnd(0.6, 1.6) });
-	}
-	function drawXmas(t, d, reach) {
-		if (!SEASONS[curSeason()].xmas) return;
+	// クリスマスツリー
+	function drawXmasTree(L, st, t, d, reach) {
 		const night = 1 - d;
-		const h = clamp(reach + 100, 200, H * 0.42), w = h * 0.56, cx = W - Math.max(70, w * 0.42), base = H + 6, top = base - h;
-		// 枝（4 段）。下ほど広く、段の下の縁に雪
+		const h = clamp((reach + 100) * L.scale, 160, H * 0.5), w = h * 0.56;
+		const cx = L.side === 'left' ? Math.max(70, w * 0.42) : W - Math.max(70, w * 0.42), base = H + 6, top = base - h;
 		const tiers = 4;
 		for (let i = 0; i < tiers; i++) {
 			const y0 = top + h * 0.06 + (h * 0.78) * (i / tiers) - h * 0.04, y1 = top + h * 0.06 + (h * 0.78) * ((i + 1) / tiers) + h * 0.02, hw = (w / 2) * (0.38 + 0.62 * ((i + 1) / tiers));
@@ -135,22 +142,61 @@ export function startLiveScreen(root: HTMLElement): () => void {
 			ctx.stroke();
 		}
 		ctx.fillStyle = mix('#5a4030', '#151a2a', night * 0.6); ctx.fillRect(cx - w * 0.05, top + h * 0.86, w * 0.1, h * 0.16);
-		// 灯り（夜ほど強く、ゆっくり瞬く）
 		ctx.save(); ctx.globalCompositeOperation = night > 0.45 ? 'lighter' : 'source-over';
-		for (const L of xmasLights) {
-			const y = top + h * (0.14 + 0.7 * L.v), hw = (w / 2) * (0.38 + 0.62 * L.v) * 0.86, x = cx + (L.u * 2 - 1) * hw;
-			const a = (0.55 + 0.45 * Math.sin(t * L.sp + L.ph)) * (0.55 + night * 0.45), r = 2 + night * 1.5;
-			const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4); g.addColorStop(0, rgba(L.col, a)); g.addColorStop(1, rgba(L.col, 0)); ctx.fillStyle = g; ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+		for (const Lt of st.lights) {
+			const y = top + h * (0.14 + 0.7 * Lt.v), hw = (w / 2) * (0.38 + 0.62 * Lt.v) * 0.86, x = cx + (Lt.u * 2 - 1) * hw;
+			const a = (0.55 + 0.45 * Math.sin(t * Lt.sp + Lt.ph)) * (0.55 + night * 0.45), r = 2 + night * 1.5;
+			const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4); g.addColorStop(0, rgba(Lt.col, a)); g.addColorStop(1, rgba(Lt.col, 0)); ctx.fillStyle = g; ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
 			ctx.fillStyle = rgba('#fffaf0', a); ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, TAU); ctx.fill();
 		}
-		// てっぺんの星
 		const sy = top + h * 0.03, sr = Math.max(9, w * 0.07), glow = 0.7 + 0.3 * Math.sin(t * 1.2);
 		const sg = ctx.createRadialGradient(cx, sy, 0, cx, sy, sr * 4); sg.addColorStop(0, `rgba(255,226,140,${0.55 * glow})`); sg.addColorStop(1, 'rgba(255,226,140,0)'); ctx.fillStyle = sg; ctx.fillRect(cx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
 		ctx.fillStyle = '#f6d36b'; ctx.beginPath();
 		for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? sr * 0.45 : sr; ctx.lineTo(cx + Math.cos(ang) * rr, sy + Math.sin(ang) * rr); }
 		ctx.closePath(); ctx.fill(); ctx.restore();
 	}
-
+	// 画像
+	function drawImageLayer(L, t, d) {
+		const img = imageOf(L.url); if (!img) return;
+		const w = W * L.width, h = w * img.naturalHeight / img.naturalWidth;
+		const [ax, ay] = { 'bottom-left': [0, 1], bottom: [0.5, 1], 'bottom-right': [1, 1], 'top-left': [0, 0], top: [0.5, 0], 'top-right': [1, 0], center: [0.5, 0.5] }[L.anchor] || [0.5, 1];
+		const x = ax * W - ax * w + L.offset[0] * W, y = ay * H - ay * h + L.offset[1] * H + Math.sin(t * 0.6) * L.bob;
+		ctx.save(); ctx.globalAlpha = L.opacity * lerp(L.nightOpacity, 1, d); ctx.drawImage(img, x, y, w, h); ctx.restore();
+	}
+	function drawLayers(t, dt, d, reach) {
+		const sc = activeScene(); if (!sc) return;
+		const layers = sc.config.layers || [];
+		if (builtFor !== `${sc.id}:${sc.updatedAt}:${W}x${H}` || layerState.length !== layers.length) rebuildLayers();
+		layers.forEach((L, i) => {
+			const st = layerState[i] || {};
+			try {
+				if (L.type === 'particles' && st.parts) drawParticles(L, st, dt, t, d);
+				else if (L.type === 'treeRow' && st.trees) drawTreeRow(L, st, t, d, reach);
+				else if (L.type === 'xmasTree' && st.lights) drawXmasTree(L, st, t, d, reach);
+				else if (L.type === 'image') drawImageLayer(L, t, d);
+				// 知らない種類の層は飛ばす（新しい種類はコードを足すまで出ない）
+			} catch { /* 1 つの層の不具合で画面全体を止めない */ }
+		});
+	}
+	/** シーンを読み直す（1 分ごと）。中身が変わっていたら作り直す */
+	async function loadScenes() {
+		try {
+			const res = await fetch('/live/api/scene', { cache: 'no-store', credentials: 'same-origin' });
+			if (!res.ok) return;
+			const j = await res.json();
+			const list = (j.scenes || []).map((x) => ({ ...x, config: liveSceneConfig.safeParse(x.config).success ? liveSceneConfig.parse(x.config) : { layers: [] } }));
+			const key = list.map((x) => `${x.id}:${x.updatedAt}`).join('|');
+			if (key === sceneKey) return;
+			sceneKey = key; scenes = list; rebuildLayers(); fillSceneSelect();
+		} catch { /* 読めなければいまのまま */ }
+	}
+	function fillSceneSelect() {
+		const sel = $('seasonSel'); if (!sel) return;
+		const cur = seasonOverride || '';
+		sel.innerHTML = '<option value="">いまの季節</option>' + scenes.map((x) => `<option value="${x.id}">${x.name.replace(/[<>&"]/g, '')}（${Number(x.starts.slice(0, 2))}/${Number(x.starts.slice(3))}〜${Number(x.ends.slice(0, 2))}/${Number(x.ends.slice(3))}）</option>`).join('');
+		sel.value = scenes.some((x) => x.id === cur) ? cur : '';
+		if (!sel.value) seasonOverride = null;
+	}
 	function drawSky(t, hr) {
 		const [top, hor] = skyCols(hr), d = dayLight(hr); const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, hor); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 		const na = 1 - smooth(5.2, 6.6, hr) * (1 - smooth(17.6, 19, hr));
@@ -160,15 +206,6 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		if (d > 0.05) for (const c of clouds) { const cx = ((c.x + t * c.v) % 1.3 - 0.15) * W, cy = c.y * H, r = c.s * W; for (let k = 0; k < 3; k++) { const ox = cx + (k - 1) * r * 0.6, oy = cy + (k % 2) * r * 0.08, rr = r * (k === 1 ? 0.75 : 0.55); const cg = ctx.createRadialGradient(ox, oy, 0, ox, oy, rr); cg.addColorStop(0, `rgba(255,255,255,${0.24 * d})`); cg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = cg; ctx.save(); ctx.translate(ox, oy); ctx.scale(1, 0.42); ctx.translate(-ox, -oy); ctx.fillRect(ox - rr, oy - rr, rr * 2, rr * 2); ctx.restore(); } }
 		return d;
 	}
-	function drawFall(dt, t, day) {
-		for (const f of fall) {
-			if (f.k === 'firefly') { f.x += Math.sin(t * 0.5 + f.ph) * 0.3; f.y += Math.cos(t * 0.4 + f.ph) * 0.25; const a = f.a * (0.5 + 0.5 * Math.sin(t * 2 + f.ph)) * (1 - day * 0.85); if (a < 0.02) continue; const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 8); g.addColorStop(0, `rgba(230,255,150,${a})`); g.addColorStop(1, 'rgba(230,255,150,0)'); ctx.fillStyle = g; ctx.fillRect(f.x - 8, f.y - 8, 16, 16); continue; }
-			f.y += f.vy * dt; f.x += Math.sin(t * 0.7 + f.ph) * (f.sway ?? 0.35); f.rot += (f.vr || 0) * dt; if (f.y > H + 8) Object.assign(f, newFall(false));
-			if (f.k === 'snow') { ctx.fillStyle = day > 0.55 ? `rgba(255,255,255,${f.a + 0.2})` : `rgba(240,244,255,${f.a})`; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill(); }
-			else { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.fillStyle = rgba(f.col, f.a * 0.85); ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.4, f.r * 0.7, 0, 0, TAU); ctx.fill(); ctx.restore(); }
-		}
-	}
-
 	// ── 段・流入元 ──
 	const STAGES = ['流入元', 'Book 訪問', '空室検索', '施設を選ぶ', 'プランを見る', '予約入力', '予約'];
 	const SOURCES = ['西和賀HP', '男鹿HP', '検索・広告', 'SNS', '直接・その他'];
@@ -258,9 +295,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		G = geo();
 		// 木の高さ: カードの上端から少し上まで（カードの後ろから梢がのぞく）
 		const reach = Math.max(80, H - ($('kpis').getBoundingClientRect().top - root.getBoundingClientRect().top) + 46);
-		drawLarches(t, d, reach);
-		drawXmas(t, d, reach);
-		drawFall(dt, t, d);
+		drawLayers(t, dt, d, reach);
 		const md = day ? 'day' : 'night'; const ink = day ? '#17213a' : '#f0ece0';
 		const txt = (s, x, y, size, al, align, wt, col) => { ctx.font = `${wt || 500} ${size}px "Noto Sans JP Variable","Noto Sans JP",sans-serif`; ctx.textAlign = align || 'left'; ctx.fillStyle = rgba(col || ink, al); ctx.fillText(s, x, y); };
 		const halo = (s, x, y, size, al, align, wt, col) => { ctx.save(); ctx.shadowColor = day ? 'rgba(255,255,255,.85)' : 'rgba(5,8,20,.8)'; ctx.shadowBlur = 8; txt(s, x, y, size, al, align, wt, col); ctx.restore(); };
@@ -434,7 +469,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	gf.addEventListener('submit', (e) => { e.preventDefault(); const next = { ...goals }; for (const k in GOAL_DEFAULT) { const el = gf.elements[k]; if (!el) continue; const n = parseFloat(el.value); if (Number.isFinite(n) && n >= 0) next[k] = n; else el.value = goals[k]; } goals = next; try { localStorage.setItem(GOAL_STORE, JSON.stringify(goals)); } catch { /* noop */ } $('gpSaved').hidden = false; updateCards(); });
 	[gp, hp].forEach((p) => p.addEventListener('keydown', (e) => { if (e.key === 'Escape') { openGoals(false); openHelp(false); } }));
 	$('skySel').addEventListener('change', (e) => { skyOverride = e.target.value === '' ? null : +e.target.value; });
-	$('seasonSel').addEventListener('change', (e) => { seasonOverride = e.target.value || null; rebuildFall(); });
+	$('seasonSel').addEventListener('change', (e) => { seasonOverride = e.target.value || null; rebuildLayers(); });
 	const sb = $('btnSound'); sb.addEventListener('click', () => { soundOn = !soundOn; sb.setAttribute('aria-pressed', String(soundOn)); sb.textContent = soundOn ? '音 オン' : '音 オフ'; if (soundOn) chime([784]); });
 	const fs = () => { const bridge = window.autumnLive; if (bridge?.toggleFullscreen) { void bridge.toggleFullscreen(); return; } try { document.fullscreenElement ? document.exitFullscreen() : root.requestFullscreen().catch(() => {}); } catch { /* noop */ } };
 	$('btnFs').addEventListener('click', fs);
@@ -443,10 +478,10 @@ export function startLiveScreen(root: HTMLElement): () => void {
 
 	// ── 大きさ・時計・ループ ──
 	let wasDay = null;
-	function resize() { const r = root.getBoundingClientRect(); if (!r.width || !r.height) return; DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); rebuildFall(); drawMonths(); }
+	function resize() { const r = root.getBoundingClientRect(); if (!r.width || !r.height) return; DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); rebuildLayers(); drawMonths(); }
 	function tick() { const t = jst(); $('hm').textContent = `${String(t.h).padStart(2, '0')}:${String(t.mi).padStart(2, '0')}`; $('date').textContent = `${t.mo}月${t.d}日（${WD[t.wd]}）`; $('liveN').textContent = String(liveCount); setFresh(); }
 	const ro = new ResizeObserver(resize); ro.observe(root);
-	resize(); tick(); every(tick, 2000); void poll(); every(() => void poll(), 2500); every(updateCards, 15000);
+	resize(); tick(); every(tick, 2000); void loadScenes(); every(() => void loadScenes(), 60_000); void poll(); every(() => void poll(), 2500); every(updateCards, 15000);
 	let last = performance.now(), T = 0, acc = 0, raf = 0;
 	function frame(now) {
 		if (stopped) return;

@@ -215,3 +215,12 @@ DB: autumn-shared `20261126232212_book_live_devices.sql`。秘密鍵: Cloudflare
 ## 9. まだ決めていないこと
 
 - なし（2026-11-27 時点）。
+
+## 10. 背景（シーン）を版の更新なしで差し替える（2026-11-27 指示・実装）
+
+- 背景（空の色と、降るもの・木の並び・クリスマスツリー・画像）は、DB の `book.live_scenes` に**期間ごとのシーン**としてデータで持つ（autumn-shared `20261127014949_book_live_scenes.sql`）。
+- 画面は `/live/api/scene` を 1 分ごとに読み直し、変わっていればその場で描き直す。**Book のデプロイも、デスクトップアプリの更新も要らない**。
+- 管理画面「Autumn Live の背景」（`/admin/security/live/scenes`・管理者だけ）で、シーンの追加・期間・優先・使う／使わない・設定（JSON）を変え、画像を上げる（`book-photos` の `live-scenes/`）。操作は監査ログ（`live_scene_*`）。
+- 期間は毎年くり返す `MM-DD`（年をまたげる）。重なったら優先の大きいほう、同じなら期間の短いほう。
+- 設定の形は `apps/web/src/lib/live-scene.ts`（zod）。層は 4 種類: `particles`（snow / petal / leaf / firefly / image）・`treeRow`（カラマツ型）・`xmasTree`・`image`。**値・画像・期間の変更はデータだけで済む。新しい種類の動き（花火・流れ星など）を足すときだけ、`live-screen/engine.ts` の `drawLayers` にコードを足す**。知らない種類の層は画面が黙って飛ばす。
+- 初期のシーン: 春（花びら）・夏（ほたる）・秋（カラマツ）・11 月（初雪とカラマツ）・12 月（クリスマス）・冬（雪）。Live の右上「背景（季節）」で見比べられる。

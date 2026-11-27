@@ -23,7 +23,7 @@
 
 <svelte:head><title>Autumn Live の端末 ｜ 山人管理</title></svelte:head>
 
-<p class="mb-2 text-sm"><a href="/admin/security" class="text-stone-500 hover:text-stone-700">← ユーザー・セキュリティ</a></p>
+<p class="mb-2 flex flex-wrap justify-between gap-2 text-sm"><a href="/admin/security" class="text-stone-500 hover:text-stone-700">← ユーザー・セキュリティ</a><a href="/admin/security/live/scenes" class="text-stone-600 underline underline-offset-4 hover:text-stone-800">背景（季節の絵・アニメーション）を変える →</a></p>
 <PageHeader title="Autumn Live の端末" />
 <p class="-mt-3 mb-5 max-w-3xl text-sm leading-relaxed text-stone-500">
 	Autumn Live（Book の様子を見る閲覧専用の画面）は、Autumn デスクトップアプリからだけ開けます。業務 PC はスタッフがログインして初めて開いたときに自動で登録され、テレビなど
