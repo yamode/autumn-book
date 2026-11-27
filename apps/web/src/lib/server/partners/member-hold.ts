@@ -132,20 +132,53 @@ export async function memberPageHold(args: {
   clientKey: string;
   locale?: string;
 }): Promise<MemberHoldResult> {
-  const { db, partner, session, fd } = args;
+  const { partner, session, fd } = args;
   const member = session.member;
   if (!member || session.preview) return fail(403, 'forbidden', 'ご招待の会員さまでログインしてください。');
   if (!memberPageBookingOpen(partner)) return fail(400, 'closed', '現在ご予約を受け付けていません。');
-  const s = partner.booking_settings;
-  const maxRooms = memberMaxRooms(s);
+  const maxRooms = memberMaxRooms(partner.booking_settings);
   const parsed = parseMemberHoldRooms((k) => fd.get(k), maxRooms);
   if (!parsed.ok) {
     if (parsed.code === 'too_many_rooms') return fail(400, 'too_many_rooms', TOO_MANY_ROOMS(maxRooms));
     return fail(400, 'invalid', parsed.code === 'missing' ? 'お部屋・プランを選んでください。' : 'お部屋の選び方を確認してください。');
   }
-  const rooms = parsed.rooms;
-  const checkIn = String(fd.get('checkin') ?? fd.get('date') ?? '');
-  const nights = Math.round(Number(fd.get('nights') ?? 1));
+  return createMemberPageHoldCore({
+    db: args.db,
+    partner,
+    memberUserId: member.userId,
+    rooms: parsed.rooms,
+    checkIn: String(fd.get('checkin') ?? fd.get('date') ?? ''),
+    nights: Math.round(Number(fd.get('nights') ?? 1)),
+    sessionId: args.sessionId,
+    clientKey: args.clientKey,
+    locale: args.locale
+  });
+}
+
+/**
+ * 特別会員の束（book.create_member_page_hold_group）を作る中身。B面の memberPageHold と、
+ * A面のプライベートブック（プラン詳細の ?/hold・docs/private-book.md）の両方から呼ぶ。
+ * 呼び出し側が「この会員がこのページを今使える」ことを確かめてから呼ぶ（B面は resolvePortal、A面は resolvePrivateBook）。
+ * DB（RPC）も対象者を確かめ直す。料金は画面から受け取らず、ここで quoteMemberRooms で計算し直す
+ */
+export async function createMemberPageHoldCore(args: {
+  db: SupabaseClient;
+  /** 予約する施設で合成した専用ページ */
+  partner: PartnerContext;
+  memberUserId: string;
+  rooms: MemberHoldRoom[];
+  checkIn: string;
+  nights: number;
+  sessionId: string;
+  clientKey: string;
+  locale?: string;
+}): Promise<MemberHoldResult> {
+  const { db, partner, rooms, checkIn, nights } = args;
+  if (!memberPageBookingOpen(partner)) return fail(400, 'closed', '現在ご予約を受け付けていません。');
+  const s = partner.booking_settings;
+  const maxRooms = memberMaxRooms(s);
+  if (!rooms.length) return fail(400, 'invalid', 'お部屋・プランを選んでください。');
+  if (rooms.length > maxRooms) return fail(400, 'too_many_rooms', TOO_MANY_ROOMS(maxRooms));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || checkIn < todayJst()) return fail(400, 'invalid', '宿泊日を選び直してください。');
   if (!Number.isInteger(nights) || nights < 1 || nights > s.maxNights) return fail(400, 'invalid', `泊数は1〜${s.maxNights}泊で選んでください。`);
   if (!canBookFor(checkIn, s)) return fail(400, 'closed', 'この日程のご予約の受付は締め切りました。');
@@ -163,7 +196,7 @@ export async function memberPageHold(args: {
 
   const { data, error } = await db.schema('book').rpc('create_member_page_hold_group', {
     p_session_id: args.sessionId,
-    p_member_user_id: member.userId,
+    p_member_user_id: args.memberUserId,
     p_partner_id: partner.id,
     p_facility_id: partner.facility_id,
     p_checkin: checkIn,

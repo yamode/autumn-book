@@ -338,9 +338,12 @@ function isCartItem(v: unknown): v is CartItem {
 	);
 }
 
-/** かごを読む。読めない・壊れている・別の日程が混ざっているときは空（プライベートモード等で例外になっても空） */
-export function readCart(storage: StorageLike | null | undefined): CartItem[] {
-	return readCartWith(storage, CART_STORAGE_KEY, isCartItem, (c) => ({
+/**
+ * かごを読む。読めない・壊れている・別の日程が混ざっているときは空（プライベートモード等で例外になっても空）。
+ * key: 保存キー（既定は公式のかご。プライベートブックの状態では ab_booking_cart_v1:pb:<partnerId>・$lib/private-book の pbCartStorageKey）
+ */
+export function readCart(storage: StorageLike | null | undefined, key: string = CART_STORAGE_KEY): CartItem[] {
+	return readCartWith(storage, key, isCartItem, (c) => ({
 		...c,
 		planName: String(c.planName ?? ''),
 		roomName: String(c.roomName ?? ''),
@@ -350,8 +353,8 @@ export function readCart(storage: StorageLike | null | undefined): CartItem[] {
 }
 
 /** かごを書く（空なら消す）。書けなくても画面は動かす */
-export function writeCart(storage: StorageLike | null | undefined, cart: readonly CartItem[]): void {
-	writeCartWith(storage, CART_STORAGE_KEY, cart);
+export function writeCart(storage: StorageLike | null | undefined, cart: readonly CartItem[], key: string = CART_STORAGE_KEY): void {
+	writeCartWith(storage, key, cart);
 }
 
 // =============================================================================

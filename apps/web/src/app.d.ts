@@ -29,6 +29,10 @@ declare global {
 			memberPreview?: import('$lib/plan-access').RankCode;
 			// Autumn Live の入場券（/live 配下だけ・hooks.server.ts handleLive）。docs/autumn-live.md §4.4
 			live?: import('$lib/live-pass').LivePass | null;
+			// プライベートブック（特別会員を公式サイトの中で扱う・docs/private-book.md）の状態。hooks で 1 回だけ入れる。
+			// クッキー ab_private_book は信じず、resolvePrivateBook が会員ログイン・ページを使えるか・公開期間を確かめた結果。
+			// 料金を差し替える・束を作るときは、これに加えて施設ごとの判定（privateBookFacility）と、hold では確かめ直しをする
+			privateBook?: import('$lib/private-book').PrivateBookState | null;
 		}
 		// adapter-cloudflare が渡す実行環境。dev（vite）では undefined。
 		interface Platform {

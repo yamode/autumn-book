@@ -1337,8 +1337,8 @@
   "private_book_band_back": "Back to regular booking",
   "hold_member_page_perks_heading": "Exclusive benefits for {name}",
   "hold_member_page_perks_note": "Included when you book through this page. We will prepare them on the day of your stay.",
-  "complete_member_page": "You can view, change or cancel this booking from the bookings list on your special member page.",
-  "complete_member_page_link": "Go to bookings on the special member page",
+  "complete_member_page": "You can view, change or cancel this booking from your bookings on My Page.",
+  "complete_member_page_link": "View this booking on My Page",
   "gcancel_member_page_h": "Please use your special member page",
   "gcancel_member_page": "This booking was made from a special member page. Please sign in and change or cancel it from the bookings list on that page.",
   "gcancel_member_page_link": "Open the special member page",
@@ -2011,5 +2011,9 @@
   "account_bath_stay": "Stay: {from} – {to}",
   "account_bath_slot_mine": "Booked",
   "account_bath_slot_limit": "Limit",
-  "account_bath_new_heading": "Book an available time"
+  "account_bath_new_heading": "Book an available time",
+  "private_book_band_switch": "Switch to {name}",
+  "private_book_special_price": "Special rate",
+  "private_book_special_note": "Showing special rates. Plans and dates without the “Special rate” mark are at regular prices.",
+  "private_book_normal_price": "This property is at regular prices (not covered by your Private Book special rates)."
 }

@@ -13,6 +13,7 @@
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
 	import RoomInfoModal from '$lib/components/RoomInfoModal.svelte';
 	import AvailabilityCalendarModal from '$lib/components/AvailabilityCalendarModal.svelte';
+	import PrivateBookPriceNote from '$lib/components/booking/PrivateBookPriceNote.svelte';
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
@@ -224,6 +225,10 @@
 								</div>
 								<div class="flex items-end justify-between gap-3 border-t border-stone-100 pt-3 sm:flex-col sm:items-end sm:border-0 sm:pt-0">
 									<div class="sm:text-right">
+										{#if option.special}
+											<!-- プライベートブックの特別料金（専用ページの料金ルール）で出している組 -->
+											<span class="mb-0.5 inline-block rounded-full bg-brand-900 px-2 py-0.5 text-[10px] tracking-wider text-white">{m.private_book_special_price()}</span>
+										{/if}
 										{#if option.total !== null}
 											<p class="text-xl font-bold text-brand-900">{formatPrice(Math.round(option.total / (data.params.adults * data.params.nights)))}〜</p>
 											<p class="text-[11px] text-stone-500">{m.price_unit_pp_night()}</p>
@@ -297,6 +302,7 @@
 		</div>
 		<p class="text-xs text-stone-500">⌖ {data.facility.prefecture}{data.facility.addressPublic ? ` · ${data.facility.addressPublic}` : ''} · IN {data.facility.checkinTime} / OUT {data.facility.checkoutTime}</p>
 	</header>
+	<PrivateBookPriceNote view={data.privateBook} />
 	<!-- プランから探す／お部屋から探す（施設 → 客室一覧 → 客室詳細の入口・取引先ページの「お部屋とプラン」「お部屋」と同じ役割） -->
 	<nav class="mt-4 flex gap-2 border-b border-stone-200 text-sm" aria-label={m.plans_view_switch()}>
 		<span class="-mb-px border-b-2 border-brand-800 px-3 py-2 font-medium text-brand-900" aria-current="page">{m.plans_tab_plans()}</span>
@@ -393,6 +399,7 @@
 	nights={data.params.nights}
 	adults={data.params.adults}
 	meal={data.params.meal}
+	privateBook={data.privateBook?.special === true}
 	onRoomInfo={(roomId) => (infoRoom = data.rooms.find((item) => item.room.id === roomId)?.room ?? null)}
 />
 <RoomInfoModal bind:room={infoRoom} pageHref={(room) => `${base}/rooms/${room.slug}`} />

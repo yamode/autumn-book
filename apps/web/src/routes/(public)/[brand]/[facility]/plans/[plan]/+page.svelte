@@ -24,6 +24,8 @@
 	import { searchQuery } from '$lib/components/guests';
 	import { safeLocalPath, viaCrumb, viaStorageKey } from '$lib/booking-nav';
 	import BookingCart from '$lib/components/BookingCart.svelte';
+	import PrivateBookPriceNote from '$lib/components/booking/PrivateBookPriceNote.svelte';
+	import { pbCartStorageKey } from '$lib/private-book';
 	import { canAddToCart, cartIsFull, MAX_ROOMS_PER_BOOKING, readCart, writeCart, type CartItem } from '$lib/multi-room';
 
 	let { data, form } = $props();
@@ -31,11 +33,13 @@
 	// 予約かご（複数室・docs/official-multi-room.md §8.1・M1）: sessionStorage に置き、在庫は押さえない。
 	// 「＋ もう 1 室追加」で入れ、画面下のバーの「予約へ進む」で全室を一括で仮押さえする
 	let cart = $state<CartItem[]>([]);
+	// プライベートブックの状態では専用ページごとの保存キー（通常のかごと混ぜない・docs/private-book.md）
+	const cartKey = $derived(pbCartStorageKey(data.privateBookPartnerId));
 	let cartLoaded = $state(false);
 	let cartMessage = $state('');
 	$effect(() => {
 		try {
-			cart = readCart(sessionStorage);
+			cart = readCart(sessionStorage, cartKey);
 		} catch {
 			cart = [];
 		}
@@ -45,7 +49,7 @@
 		// 読み込む前に空で上書きしない
 		if (!cartLoaded) return;
 		try {
-			writeCart(sessionStorage, cart);
+			writeCart(sessionStorage, cart, cartKey);
 		} catch {
 			/* 保存できない環境は画面の中だけで持つ */
 		}
@@ -178,7 +182,7 @@
 	let picked = $derived(
 		chosen ??
 			(selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom) : undefined) ??
-			(data.pickedRoom ? { room: data.pickedRoom, quote: null, remaining: null, fits: true } : undefined)
+			(data.pickedRoom ? { room: data.pickedRoom, quote: null, remaining: null, fits: true, special: false } : undefined)
 	);
 	let otherRooms = $derived(picked ? data.rooms.filter((r) => r !== picked) : data.rooms);
 	let showOthers = $state(false);
@@ -320,6 +324,10 @@
 		</div>
 		<div class="text-right">
 			{#if r.quote}
+				{#if r.special}
+					<!-- プライベートブックの特別料金（専用ページの料金ルール）で出している部屋 -->
+					<span class="inline-block rounded-full bg-brand-900 px-2 py-0.5 text-[10px] tracking-wider text-white">{m.private_book_special_price()}</span>
+				{/if}
 				<p class="text-[11px] text-stone-500">{totalSub()}</p>
 				<p class="text-lg font-bold text-brand-900">
 					{formatPrice(r.quote.total)}<span class="ml-0.5 text-xs font-normal text-stone-500">{m.plan_price_tax_incl()}</span>
@@ -495,6 +503,7 @@
 			{#if data.plan.headline && data.plan.headline !== data.plan.name}
 				<p class="text-sm text-stone-600 md:text-base">{data.plan.headline}</p>
 			{/if}
+			<PrivateBookPriceNote view={data.privateBook} compact />
 		</header>
 
 		<div class="md:col-start-1">
@@ -563,7 +572,7 @@
 		<p class="mb-3 text-sm text-stone-500">{m.plan_detail_calendar_sub()}</p>
 		{@render conditions(true)}
 	</section>
-	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6, preview: data.preview }} guests={{ adults: data.params.adults, maxAdults: 6, rooms: data.params.rooms ?? 1, maxRooms: data.multiRoom ? MAX_ROOMS_PER_BOOKING : undefined }} onSelect={chooseDate} />
+	<ScrollDatePicker bind:open={datePickerOpen} checkin={data.params.checkin} nights={data.params.nights} minDate={todayStr()} days={data.calendar} availableThrough={data.calendarThrough} closed={data.calendarClosed} source={{ facilityId: data.facility.id, planId: data.plan.id, adults: data.params.adults, months: 6, preview: data.preview, privateBook: data.privateBook?.special === true }} guests={{ adults: data.params.adults, maxAdults: 6, rooms: data.params.rooms ?? 1, maxRooms: data.multiRoom ? MAX_ROOMS_PER_BOOKING : undefined }} onSelect={chooseDate} />
 
 	<!-- 客室選択 -->
 	<section class="mt-10 scroll-mt-16 md:scroll-mt-32 lg:scroll-mt-24" id="rooms" aria-busy={loadingRooms}>
@@ -660,5 +669,5 @@
 
 <!-- 予約かご（複数室・M1）。かごに部屋があるときだけ画面下に出す（モバイルの料金バーの代わり） -->
 <div inert={loadingRooms}>
-	<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} target={data.params.rooms} />
+	<BookingCart bind:items={cart} bind:message={cartMessage} currentFacilityId={data.facility.id} back={page.url.pathname + page.url.search} {via} target={data.params.rooms} note={data.privateBook?.special ? m.cart_estimate_note() : ''} />
 </div>

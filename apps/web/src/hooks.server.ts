@@ -25,6 +25,7 @@ import { acceptPreview, isPreviewExchange, isPreviewHost, memberPreviewSession, 
 import { dev } from '$app/environment';
 import { isLivePath, LIVE_SESSION_PATH } from '$lib/live-pass';
 import { readLivePass } from '$lib/server/live-session';
+import { resolvePrivateBook } from '$lib/server/private-book';
 
 const LEGACY_HOST = 'autumn-book.pages.dev';
 
@@ -198,6 +199,11 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		return new Response(null, { status: 403, headers: { 'cache-control': 'no-store' } });
 	}
 	event.locals.abExperiments = experimentsForRequest(event);
+	// プライベートブックの状態（クッキーがあるときだけ DB で確かめる・通らなければクッキーを消す）。
+	// 取引先ページ・機械向けの口では会員のセッションを解決しないので見ない（ここで消すと B面を開いただけで状態が外れる）
+	// 管理画面も見ない（運営のセッションで開くので、会員のクッキーを消さない）
+	event.locals.privateBook =
+		machineBookingMcp || isPartnerPath(event.url.pathname) || isAdminPath(event.url.pathname) ? null : await resolvePrivateBook(event);
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）
