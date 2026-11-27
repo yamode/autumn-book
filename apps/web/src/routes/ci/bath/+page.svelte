@@ -213,6 +213,6 @@
 <div class="mt-4 flex gap-3">
 	<a href={localizeHref('/ci/meals')} class="flex-1 rounded-xl bg-white py-3 text-center text-sm text-stone-700 ring-1 ring-stone-300">{m.ci_back()}</a>
 	{#if bath.state !== 'not_answered'}
-		<a href={localizeHref('/ci/done')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_next()}</a>
+		<a href={localizeHref('/ci/done')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{bath.state === 'ready' && mine.length === 0 ? m.ci_bath_defer() : m.ci_next()}</a>
 	{/if}
 </div>

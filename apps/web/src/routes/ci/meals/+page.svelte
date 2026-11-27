@@ -46,7 +46,7 @@
 								<span class="leading-tight text-stone-700">{typeLabel(t)}<span class="block text-xs text-stone-400">{slashDate(cell.date)}</span></span>
 								{#if cell.offered}
 									<select name="meal|{night.stayId}|{t}|{cell.date}" disabled={ro} class={selectCls}>
-										<option value="" selected={!cell.time}>{m.ci_meal_unset()}</option>
+										{#if !cell.time}<option value="" selected>{m.ci_meal_unset()}</option>{/if}
 										{#each ctx.slots[t]?.[cell.date] ?? [] as slot (slot.time)}
 											<option value={slot.time} selected={cell.time === slot.time} disabled={!slotSelectable(slot, cell.time)}>
 												{slot.time}{slotSelectable(slot, cell.time) ? '' : `（${m.ci_meal_unselectable()}）`}

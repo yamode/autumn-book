@@ -35,7 +35,7 @@
 						{#if ctx.rooms.length > 1}<span class="mr-1 text-stone-500">{m.ci_room_n({ n: String(row.room) })}</span>{/if}
 						{slashDate(row.date)} {row.type === 'dinner' ? m.ci_dinner() : m.ci_breakfast()}
 					</span>
-					<span class="font-medium">{row.time ?? '—'}</span>
+					<span class="font-medium">{row.time ?? m.ci_meal_unset()}</span>
 				</li>
 			{/each}
 		</ul>
@@ -59,7 +59,7 @@
 				<!-- 事前チェックインからの貸切風呂の予約は、チェックイン当日から（2026-11-23） -->
 				{m.ci_bath_before_day()}
 			{:else}
-				{m.ci_bath_none()}
+				{m.ci_meal_unset()}
 				<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
 			{/if}
 		</p>
