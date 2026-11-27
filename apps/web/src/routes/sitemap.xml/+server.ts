@@ -1,5 +1,5 @@
 // サイトマップ（2026-11-23・AIO）。検索エンジンと AI 検索のクローラーに、公開ページとコミュニティの全スレッドを知らせる。
-// 予約手続き・マイページ・取引先ページ（/p/）など、個人の情報があるページは載せない。
+// 客室紹介・滞在中の客室案内・予約手続き・マイページ・取引先ページ（/p/）は載せない。
 import { getPublishedFacilities, listForumBoards, listForumThreads } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { listForumBoardsData, listForumThreadsData } from '$lib/server/supabase-data';
@@ -29,7 +29,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const entries: Entry[] = [{ path: '/' }, { path: '/membership' }, { path: '/kitakaze' }, { path: '/community' }];
 	for (const f of getPublishedFacilities('ja')) {
 		// 施設のページ（/brand/facility）は一旦非公開＝プラン一覧へ転送するので載せない（2026-11-23）
-		entries.push({ path: `/${f.brandSlug}/${f.slug}/plans` }, { path: `/${f.brandSlug}/${f.slug}/rooms` });
+		entries.push({ path: `/${f.brandSlug}/${f.slug}/plans` });
 	}
 	const boards = DATA_SOURCE === 'supabase' ? await listForumBoardsData() : listForumBoards();
 	for (const board of boards) {
