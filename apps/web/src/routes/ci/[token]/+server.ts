@@ -1,4 +1,4 @@
-import { redirect } from '@sveltejs/kit';
+import { json, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { looksLikePrecheckinToken, precheckinSplashHtml, PRECHECKIN_ENTRANCE_COOKIE, type SplashLocale } from '$lib/precheckin-splash';
 import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
 //
 // 1) ?go=1 が無いとき: DB に触らず、読み込み中の画面（$lib/precheckin-splash）をすぐ返す（2026-11-15）。
 //    その画面が同じ URL に ?go=1 を付けて開き直す。次の画面が届くまでのあいだ、真っ白にならない。
-// 2) ?go=1 のとき: トークンを検証し、有効なら httpOnly Cookie（ab_ci）に移して /ci へ 302。以降 URL にトークンは出ない
+// 2) ?go=1 のとき: トークンを検証して httpOnly Cookie（ab_ci）に移し、非同期なら遷移先を返す。以降 URL にトークンは出ない
 //    （履歴・共有からの漏洩を防ぐ。/r/c/[token] と同じ）。無効なら /ci?e=<理由>。
 export const GET: RequestHandler = async (event) => {
 	if (event.url.searchParams.get('go') !== '1' && looksLikePrecheckinToken(event.params.token)) {
@@ -39,7 +39,10 @@ export const GET: RequestHandler = async (event) => {
 		setPrecheckinCookie(event.cookies, r.token, r.ctx.expiresAt);
 		// 「いまリンクから入った」印（20 秒だけ）。/ci の最初の表示で、ゆっくり現れる演出を出すのに使う（+layout.server.ts が読んで消す）
 		event.cookies.set(PRECHECKIN_ENTRANCE_COOKIE, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 20 });
-		redirect(302, localizeHref('/ci'));
 	}
-	redirect(302, localizeHref(`/ci?e=${r.error}`));
+	const location = localizeHref('ctx' in r ? '/ci' : `/ci?e=${r.error}`);
+	if (event.url.searchParams.get('go') === '1' && event.request.headers.get('accept') === 'application/json') {
+		return json({ location }, { headers: { 'cache-control': 'no-store', vary: 'Accept' } });
+	}
+	redirect(302, location);
 };

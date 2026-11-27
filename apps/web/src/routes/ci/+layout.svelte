@@ -4,6 +4,7 @@
 	// 締め切りは設けない（リンクの有効期限＝チェックアウト日 11:00 まで直せる）。公式サイトへの誘導バナーは出さない（2026-11-14）。
 	// 検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
+	import CheckinLoadingSkeleton from './CheckinLoadingSkeleton.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { pendingPage } from '$lib/page-transition';
@@ -31,6 +32,10 @@
 						: m.ci_err_invalid_token()
 	);
 </script>
+
+{#snippet loading()}
+	<CheckinLoadingSkeleton {route} title={steps[step - 1]} />
+{/snippet}
 
 <svelte:head>
 	<meta name="robots" content="noindex" />
@@ -68,13 +73,13 @@
 				<!-- 手順を移ったとき（①→②→③）は、短くふわっと出す。入力の手を止めない長さ（0.35 秒） -->
 				{#key path}
 					<div class="ci-stage mt-4">
-						<PageLoadingBoundary shell="checkin" padding="py-2" title={steps[step - 1]}>
+						<PageLoadingBoundary shell="checkin" padding="" placeholder={loading}>
 							{@render children()}
 						</PageLoadingBoundary>
 					</div>
 				{/key}
 			{:else}
-				<PageLoadingBoundary shell="checkin" padding="py-2" title={steps[step - 1]}>
+				<PageLoadingBoundary shell="checkin" padding="" placeholder={loading}>
 					<div class="mt-6 rounded-2xl bg-white p-5 text-sm shadow-sm">
 						<h1 class="text-base font-semibold">{m.ci_title()}</h1>
 						<p class="mt-3 leading-relaxed">{errorText}</p>
@@ -164,5 +169,6 @@
 	/* 客室案内（/r）と同じ地色 */
 	:global(.bg-ci) {
 		background-color: #ebedf2;
+		--page-loading-top: 3rem;
 	}
 </style>

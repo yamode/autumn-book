@@ -2,8 +2,8 @@
 //
 // 【なぜ】リンクを開くと、サーバーでトークンの確認 → Cookie → /ci の読み込み、と DB への往復が続き、
 //   最初の画面が出るまで数秒かかることがある。そのあいだ真っ白だと「開けていない」ように見える。
-// 【しくみ】/ci/<token> は、DB に触らずにこの軽い HTML をすぐ返す。この HTML が同じ URL に ?go=1 を付けて
-//   開き直し、そこで今までどおりの確認と移動をする。ブラウザは次の画面の中身が届くまでこの画面を出し続ける。
+// 【しくみ】/ci/<token> は、DB に触らずにこの軽い HTML をすぐ返す。同じ URL に ?go=1 を付けて
+//   非同期で確認し、遷移先を受け取ってから移動する。確認中は円やロゴのアニメーションが動き続ける。
 // ・この HTML には予約の情報を一切入れない（トークンの確認より前に返すため）。
 // ・中央に施設のロゴを出す（2026-11-15 指示）。どの施設かは DB を引かないと分からないので、リンクに付けた ?f=<施設の slug>
 //   （yamado / oga）で選ぶ。これはロゴを選ぶだけの目印で、予約の確認には使わない（違う値でも害が無い）。
@@ -87,9 +87,9 @@ body{background:#ebedf2;color:#1c1917;font-family:-apple-system,BlinkMacSystemFo
 .bar{height:40px;background:#000}
 .wrap{min-height:calc(100% - 40px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:24px 24px 96px}
 .mark{position:relative;width:76px;height:76px}
-.mark svg{position:absolute;inset:0;width:100%;height:100%}
+.mark svg{position:absolute;inset:0;width:100%;height:100%;animation:spin 1.25s linear infinite;will-change:transform}
 .track{fill:none;stroke:#d6d3d1;stroke-width:1.5}
-.arc{fill:none;stroke:#1c1917;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:60 190;transform-origin:50% 50%;animation:spin 1.6s cubic-bezier(.5,.1,.3,.9) infinite}
+.arc{fill:none;stroke:#1c1917;stroke-width:1.5;stroke-linecap:round;stroke-dasharray:60 190}
 .dot{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#1c1917;animation:breathe 1.6s ease-in-out infinite}
 .logo{display:block;width:176px;max-width:56vw;height:auto;animation:rise .6s ease both,glow 2.4s ease-in-out .6s infinite}
 .title{margin:0;font-size:13px;letter-spacing:.42em;text-indent:.42em;color:#44403c;text-align:center}
@@ -108,7 +108,7 @@ body{background:#ebedf2;color:#1c1917;font-family:-apple-system,BlinkMacSystemFo
 @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes show{to{opacity:1}}
 @keyframes glow{0%,100%{opacity:1}50%{opacity:.62}}
-@media (prefers-reduced-motion:reduce){.arc,.dot,.rule::after,.fade,.logo{animation:none}.arc{stroke-dasharray:none;stroke:#a8a29e}}
+@media (prefers-reduced-motion:reduce){.mark svg,.dot,.rule::after,.fade,.logo,.lead i::after{animation:none}.mark svg{will-change:auto}}
 </style>
 </head>
 <body>
@@ -120,7 +120,24 @@ ${mark}
 <p class="lead fade">${esc(t.lead)}<i aria-hidden="true"></i></p>
 <p class="late"><a href="${next}" rel="nofollow">${esc(t.link)}</a></p>
 </main>
-<script>(function(){var u=${JSON.stringify(splashNextUrl(pathname)).replace(/</g, '\\u003c')},d=0,go=function(){if(!d){d=1;location.replace(u)}},r=window.requestAnimationFrame||function(f){setTimeout(f,16)};r(function(){r(go)});setTimeout(go,300)})();</script>
+<script>
+(function(){
+  var u=${JSON.stringify(splashNextUrl(pathname)).replace(/</g, '\\u003c')};
+  var started=false;
+  function go(){
+    if(started)return;
+    started=true;
+    if(!window.fetch){location.replace(u);return}
+    fetch(u,{headers:{Accept:"application/json"},cache:"no-store",redirect:"error"})
+      .then(function(response){if(!response.ok)throw new Error();return response.json()})
+      .then(function(result){location.replace(result.location)})
+      .catch(function(){location.replace(u)});
+  }
+  var frame=window.requestAnimationFrame||function(f){setTimeout(f,16)};
+  frame(function(){frame(go)});
+  setTimeout(go,300);
+})();
+</script>
 </body>
 </html>`;
 }
