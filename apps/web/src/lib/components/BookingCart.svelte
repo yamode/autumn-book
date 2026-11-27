@@ -1,13 +1,15 @@
-<script lang="ts">
+<script lang="ts" generics="T extends CartBarItem = CartItem">
 	// 予約かごのバー（公式の複数室予約・docs/official-multi-room.md §8.1・M1）。
 	//   画面下に固定。「N室・大人M名・合計 ¥」「内訳」「予約へ進む」。内訳は下から出るシート（部屋を外す・かごを空にする）。
 	//   「予約へ進む」はかごの施設のプラン詳細の ?/hold に rooms JSON を送り、全室を一括で仮押さえする（成功は予約入力へ）。
 	//   失敗（満室・回数制限・支払方法）は理由をバーの上に出し、かごはそのまま残す。
 	//   4 室入っているときはバーの上に「1 回のご予約は 4 室まで…」を出す。
+	//   特別料金のかご（特別会員・PartnerBookingCart）も同じ部品で出す。そのときは送り先（action・payload・fields）・
+	//   上限（limit）・注記（note）・外す/空にするの保存（onremove/onclear）を props で渡す。どれも省けば公式のかごのまま。
 	import { enhance } from '$lib/enhance';
 	import { goto } from '$app/navigation';
 	import type { SubmitFunction } from '@sveltejs/kit';
-	import { cartGroups, cartIsFull, cartRoomsPayload, cartSummary, MAX_ROOMS_PER_BOOKING, type CartItem } from '$lib/multi-room';
+	import { cartGroups, cartRoomsPayload, cartSummary, MAX_ROOMS_PER_BOOKING, type CartBarItem, type CartItem } from '$lib/multi-room';
 	import { formatDateLong, formatPrice } from '$lib/format';
 	import * as m from '$lib/paraglide/messages';
 
@@ -17,42 +19,91 @@
 		currentFacilityId,
 		back,
 		via,
-		target = 1
+		target = 1,
+		limit = MAX_ROOMS_PER_BOOKING,
+		action: actionOverride,
+		payload,
+		fields = {},
+		groupKey,
+		planLabel = (c: T) => c.planName,
+		note = '',
+		otherFacilityNotice = '',
+		blocked = '',
+		onremove,
+		onclear,
+		containerClass = 'max-w-5xl px-4'
 	}: {
-		items: CartItem[];
+		items: T[];
 		/** バーの上に出す案内（追加したとき・止めたときの理由）。空なら出さない */
 		message?: string;
 		currentFacilityId: string;
-		/** 予約入力の「選び直す」で戻る先（このページ） */
-		back: string;
-		via: string;
+		/** 予約入力の「選び直す」で戻る先（このページ）。省けば送らない */
+		back?: string;
+		/** 省けば送らない */
+		via?: string;
 		/** 検索した部屋数。2 以上なら「N部屋中 M部屋 選択済み」をバーに出す */
 		target?: number;
+		/** 1 回の予約の室数の上限（公式は 4。特別料金のかごは min(4, 最大室数)） */
+		limit?: number;
+		/** 送り先（省けば先頭の部屋のプラン詳細の ?/hold） */
+		action?: string;
+		/** rooms に送る中身（省けば cartRoomsPayload(items)） */
+		payload?: unknown;
+		/** 送るときに足す hidden の値（例: facility_id） */
+		fields?: Record<string, string | number>;
+		/** 内訳で同じプランとみなす鍵（省けば planId） */
+		groupKey?: (c: T) => string;
+		/** 内訳に出すプラン名（省けば planName） */
+		planLabel?: (c: T) => string;
+		/** 内訳の下に出す注記（例: 金額は目安） */
+		note?: string;
+		/** かごが別の施設で施設名が分からないときの案内（施設名があれば cart_other_page を出す） */
+		otherFacilityNotice?: string;
+		/** 空でなければ送信を止めてこの文言を出す（管理画面の確認モード） */
+		blocked?: string;
+		/** 外す・空にするを呼び出し側で行う（保存キーへの書き込みなど）。省けば items を書き換える */
+		onremove?: (key: string) => void;
+		onclear?: () => void;
+		/** バーの中身の幅・余白 */
+		containerClass?: string;
 	} = $props();
 	let want = $derived(Math.max(target, items.length));
 
 	let open = $state(false);
 	let busy = $state(false);
 	let summary = $derived(cartSummary(items));
-	let groups = $derived(cartGroups(items));
-	let full = $derived(cartIsFull(items));
+	let groups = $derived(cartGroups(items, groupKey));
+	let full = $derived(items.length >= limit);
 	let first = $derived(items[0]);
-	let action = $derived(first ? `/${first.brandSlug}/${first.facilitySlug}/plans/${first.planSlug}?/hold` : '');
-	let fullNotice = $derived(m.cart_full_notice({ max: String(MAX_ROOMS_PER_BOOKING), next: String(MAX_ROOMS_PER_BOOKING + 1) }));
+	let action = $derived(actionOverride ?? (first ? defaultAction(first as unknown as CartItem) : ''));
+	let rooms = $derived(payload ?? cartRoomsPayload(items as unknown as CartItem[]));
+	let fullNotice = $derived(m.cart_full_notice({ max: String(limit), next: String(limit + 1) }));
+
+	function defaultAction(c: CartItem): string {
+		return `/${c.brandSlug}/${c.facilitySlug}/plans/${c.planSlug}?/hold`;
+	}
 
 	function remove(key: string) {
-		items = items.filter((c) => c.key !== key);
+		const rest = items.filter((c) => c.key !== key).length;
+		if (onremove) onremove(key);
+		else items = items.filter((c) => c.key !== key);
 		message = '';
-		if (items.length === 0) open = false;
+		if (rest === 0) open = false;
 	}
 	function clear() {
-		items = [];
+		if (onclear) onclear();
+		else items = [];
 		message = '';
 		open = false;
 	}
 
 	// 送信: 別ページ（かごの施設のプラン詳細）の action なので、失敗の結果は自分でバーに出す（form には入らない）
-	const submit: SubmitFunction = () => {
+	const submit: SubmitFunction = ({ cancel }) => {
+		if (blocked) {
+			cancel();
+			message = blocked;
+			return;
+		}
 		busy = true;
 		message = '';
 		return async ({ result }) => {
@@ -74,7 +125,7 @@
 
 {#if items.length > 0 && first}
 	<div class="fixed inset-x-0 bottom-0 z-50 border-t border-stone-200 bg-white/95 shadow-[0_-4px_16px_rgba(0,0,0,0.10)] backdrop-blur">
-		<div class="mx-auto max-w-5xl px-4 py-2.5">
+		<div class="mx-auto {containerClass} py-2.5">
 			{#if full}
 				<p class="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status">{fullNotice}</p>
 			{/if}
@@ -83,6 +134,8 @@
 			{/if}
 			{#if first.facilityId !== currentFacilityId && first.facilityName}
 				<p class="mb-1 text-xs text-stone-500">{m.cart_other_page({ facility: first.facilityName })}</p>
+			{:else if first.facilityId !== currentFacilityId && otherFacilityNotice}
+				<p class="mb-1 text-xs text-stone-500">{otherFacilityNotice}</p>
 			{/if}
 
 			{#if open}
@@ -98,7 +151,7 @@
 							<li class="flex items-start justify-between gap-2 py-2">
 								<div class="min-w-0">
 									<p class="text-stone-800">
-										{m.cart_room_line({ room: g.item.roomName, plan: g.item.planName, adults: String(g.item.adults) })}
+										{m.cart_room_line({ room: g.item.roomName, plan: planLabel(g.item), adults: String(g.item.adults) })}
 										{#if g.count > 1}<span class="ml-1 font-medium">×{g.count}</span>{/if}
 									</p>
 									<p class="text-xs tabular-nums text-stone-500">{formatPrice(g.item.total * g.count)}</p>
@@ -108,6 +161,7 @@
 							</li>
 						{/each}
 					</ul>
+					{#if note}<p class="mt-1 text-xs text-stone-500">{note}</p>{/if}
 					<button type="button" onclick={clear} class="mt-1 text-xs text-red-600 hover:underline">{m.cart_clear()}</button>
 				</div>
 			{/if}
@@ -126,12 +180,13 @@
 					<p class="text-[11px] text-accent-600 underline underline-offset-2">{m.cart_bar_detail()}</p>
 				</button>
 				<form method="POST" {action} use:enhance={submit} class="shrink-0">
-					<input type="hidden" name="rooms" value={JSON.stringify(cartRoomsPayload(items))} />
+					<input type="hidden" name="rooms" value={JSON.stringify(rooms)} />
 					<input type="hidden" name="checkin" value={first.checkin} />
 					<input type="hidden" name="nights" value={first.nights} />
-					<input type="hidden" name="back" value={back} />
-					<input type="hidden" name="via" value={via} />
-					<button type="submit" disabled={busy} class="rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50">
+					{#if back !== undefined}<input type="hidden" name="back" value={back} />{/if}
+					{#if via !== undefined}<input type="hidden" name="via" value={via} />{/if}
+					{#each Object.entries(fields) as [k, v] (k)}<input type="hidden" name={k} value={v} />{/each}
+					<button type="submit" disabled={busy || !!blocked} class="rounded-lg bg-accent-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50">
 						{m.cart_bar_proceed()}
 					</button>
 				</form>
