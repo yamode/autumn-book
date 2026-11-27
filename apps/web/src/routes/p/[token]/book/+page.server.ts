@@ -17,63 +17,13 @@ import { loadCancelAdminFeePercent } from '$lib/server/payment-settings';
 import { listStagedAttachments, partnerBookingAttachmentsEnabled } from '$lib/server/partners/booking-attachments';
 import { portalAttachmentView } from '$lib/server/partners/portal-attachments';
 import { PARTNER_ATTACHMENT_ACCEPT, PARTNER_ATTACHMENT_HINT } from '$lib/partner-attachments';
-import type { RequestEvent } from '@sveltejs/kit';
 import { isMemberPage, memberBookRedirect } from '$lib/partner-member-page';
-import { memberHoldBack, memberPageHold } from '$lib/server/partners/member-hold';
-import { HOLD_NAV_COOKIE } from '$lib/booking-nav';
-import { holdRateCheck } from '$lib/server/hold-rate-limit';
-import { bookingSessionId } from '$lib/server/supabase-data';
-import { logPartnerAccess, type PartnerContext, type PartnerSessionAccount } from '$lib/server/partners/store';
-import { deferTask, portalLogActor } from '$lib/server/partners/portal';
 import { waitUntilOf } from '$lib/server/access-log-core';
-import type { SupabaseClient } from '@supabase/supabase-js';
 
-// ---- 特別会員の専用ページ（kind='member'・docs/vip-member-page.md §13.4.3・§14） ----
-// 2026-11-27〜 確認画面（GET）は使わない。公式のプラン詳細の「予約する」と同じく、プラン詳細・かごの「予約へ進む」（POST・下の default）から
-// 直接仮押さえして公式の予約入力（/booking/hold）へ進む。確認画面で見せていた専用特典・会員特典・獲得予定ポイントは予約入力の画面に出す。
-// 古いリンク・ブックマークで GET が来たら、同じ条件（日程・人数・室数・施設）でプラン詳細を開いた料金カレンダーへ戻す
-// （GET で仮押さえはしない: 先読み・共有されたリンクで在庫を押さえないため。料金と内容を見てから「予約へ進む」を押してもらう）。
-// 戻し先の URL は memberBookRedirect（$lib/partner-member-page）。
-
-// 専用ページの「予約へ進む」（POST・default）: 仮押さえ → 公式の予約確認へ
-async function memberBookHold(
-  event: RequestEvent<{ token: string }>,
-  ctx: { db: SupabaseClient; partner: PartnerContext; session: PartnerSessionAccount }
-) {
-  const fd = await event.request.formData();
-  const ip = event.request.headers.get('cf-connecting-ip') ?? requestMeta(event).ip ?? 'unknown';
-  // 接続元ごとの回数制限（公式と同じ KV hold:<ip>）。DB 側にも同じ上限がある（束で数える・公式と共用）
-  if (!(await holdRateCheck(event.platform, ip))) {
-    return fail(429, { message: 'お申し込みが集中しています。しばらく時間をおいてからお試しください。', code: 'rate_limited' as const });
-  }
-  let partner: PartnerContext;
-  try {
-    partner = await portalFacilityContext(ctx.db, ctx.partner, String(fd.get('facility_id') ?? ''));
-  } catch (e) {
-    if (e instanceof PartnerStoreError) return fail(409, { message: e.message, code: 'invalid' as const });
-    throw e;
-  }
-  const res = await memberPageHold({ db: ctx.db, partner, session: ctx.session, fd, sessionId: bookingSessionId(event.cookies), clientKey: ip });
-  if (!res.ok) return fail(res.status, { message: res.message, code: res.code, ...(res.soldOut ? { soldOut: res.soldOut } : {}) });
-  const back = memberHoldBack(event.params.token, partner, res.checkIn, res.nights, res.rooms);
-  event.cookies.set(HOLD_NAV_COOKIE, JSON.stringify({ id: res.groupId, back, via: '' }), {
-    path: '/',
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 2
-  });
-  deferTask(
-    event,
-    logPartnerAccess(ctx.db, {
-      partnerId: partner.id,
-      ...portalLogActor(ctx.session, { group_id: res.groupId, date: res.checkIn, nights: res.nights, rooms: res.rooms.length }),
-      channel: 'web',
-      action: 'member_hold',
-      ip
-    })
-  );
-  throw redirect(303, `/booking/hold?id=${res.groupId}`);
-}
+// ---- 特別会員の専用ページ（kind='member'） ----
+// 会員さまの予約は公式サイトのプライベートブック（プラン詳細の ?/hold）で作る（v0.355.0）。B面の会員はここへ来ない
+// （resolvePortal が GET を /private-book へ転送し、POST は 410）。来るのは管理者の確認モードだけで、
+// GET は料金カレンダーのプラン詳細へ戻し（memberBookRedirect）、POST は確認モードの関所（requirePortalSession）が断る。
 
 export const load = async (event) => {
   event.setHeaders(PORTAL_HEADERS);
@@ -221,8 +171,8 @@ export const load = async (event) => {
 export const actions = {
   default: async (event) => {
     const { db, partner: selected, session } = await requirePortalSession(event);
-    // 特別会員の専用ページ: 仮押さえ → 公式の予約確認（/booking/hold）へ（取引先予約の確定はしない）
-    if (isMemberPage(selected.kind)) return memberBookHold(event, { db, partner: selected, session });
+    // 特別会員の専用ページ（確認モードだけここへ来る・送信は上の関所で断る）: 取引先予約の確定はしない
+    if (isMemberPage(selected.kind)) return fail(404, { message: 'ページが見つかりません。' });
     const fd = await event.request.formData();
     const input = parseBookingForm(fd);
     try {

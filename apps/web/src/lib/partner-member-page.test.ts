@@ -14,7 +14,6 @@ import {
   memberMaxRooms,
   memberPageBookingOpen,
   memberPageBookingsOf,
-  memberPageHrefOf,
   memberPageInput,
   memberPageOpError,
   normalizeCancelPolicyMode,
@@ -188,9 +187,6 @@ describe('ご予約一覧・リンク', () => {
   ];
   it('このページから本人が予約した分だけ（家族・別ページ・公式は出さない）', () => {
     expect(memberPageBookingsOf(rs, 'p1', 'u1').map((r) => r.code)).toEqual(['A']);
-  });
-  it('予約詳細の URL', () => {
-    expect(memberPageHrefOf('tok', 'YB-2026-000001')).toBe('/p/tok/bookings/YB-2026-000001');
   });
 });
 

@@ -279,11 +279,7 @@ export function memberPageBookingsOf<T extends { memberPage?: Pick<MemberPageSna
   return reservations.filter((r) => r.memberPage?.partnerId === partnerId && (!r.memberPage.memberUserId || r.memberPage.memberUserId === memberUserId));
 }
 
-/** 専用ページの予約詳細の URL（確認メール・マイページ・非会員リンクの案内と同じ形） */
-export const memberPageHrefOf = (token: string, code: string): string => `/p/${encodeURIComponent(token)}/bookings/${encodeURIComponent(code)}`;
-
-/** 専用ページの料金カレンダーの URL（マイページのリンク） */
-export const memberPageCalendarHrefOf = (token: string): string => `/p/${encodeURIComponent(token)}/calendar`;
+// 専用ページ（B面）の予約詳細・料金カレンダーの URL を作る関数は v0.355.0 で消した（会員さまは公式サイトのマイページ・プライベートブックへ）
 
 // ---- かご（専用ページ・sessionStorage・公式のかごとは別のキー） ----
 

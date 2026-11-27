@@ -5,8 +5,6 @@
   import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
   import PageLoadingSkeleton from '$lib/components/PageLoadingSkeleton.svelte';
   import { loadingShape, pendingPage } from '$lib/page-transition';
-  import PartnerBookingCart from '$lib/components/partner/PartnerBookingCart.svelte';
-  import { memberCart } from '$lib/member-cart.svelte';
 
   // 取引先向けページの枠（autumn-rms から移設・2026-09-26）。Book の公開サイト共通ヘッダー/フッターは出さない
   // （/p は (public) グループの外に置いているので、上位は root layout だけ。解析・デバッグは root 側で /p を除外）。
@@ -74,18 +72,6 @@
       : MENU.filter(([path]) => (path !== 'bookings' || portal?.bookingEnabled) && (path !== 'group' || portal?.groupInquiry))
   );
 
-  // ---- 特別会員のかご（画面下のバー・§13.4.3）----
-  // 会員でログインしているときだけ。予約の確認（/book）とご予約一覧（/bookings）では出さない（送り先の画面・別の流れのため）
-  $effect(() => {
-    if (isMember && portal?.member) memberCart.load($page.params.token ?? '');
-  });
-  const showCart = $derived.by(() => {
-    if (!isMember || !portal?.member) return false;
-    const rest = $page.url.pathname.slice(`/p/${$page.params.token}`.length);
-    return !/^\/(book|bookings)(\/|$)/.test(rest);
-  });
-  const cartOpen = $derived(showCart && memberCart.items.length > 0);
-  const pointText = (n: number) => `${n.toLocaleString('ja-JP')}pt`;
 
   // ---- メニューの切替を先に見せる（2026-10-10）----
   const pending = $derived(pendingPage('partner'));
@@ -173,17 +159,7 @@
         {:else}
           <h1 class="truncate font-display text-lg tracking-wide text-brand-900 sm:text-xl">{portal?.facilityName ?? ''}</h1>
         {/if}
-        {#if isMember && portal?.member}
-          <!-- 特別会員: 「○○ 様 専用ページ」・グレード・保有ポイント（§5.2） -->
-          <div class="flex max-w-full flex-wrap items-center gap-1.5">
-            <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
-              <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
-              {portal.member.name} 様のプライベートブック
-            </p>
-            <span class={`rounded-full border px-2 py-0.5 text-[11px] font-bold tracking-wide ${portal.member.rankCode === 'gold' || portal.member.rankCode === 'platinum' ? 'border-amber-400 bg-amber-50 text-amber-700' : portal.member.rankCode === 'silver' ? 'border-slate-400 bg-slate-100 text-slate-600' : 'border-stone-300 bg-stone-100 text-stone-600'}`}>◆ {portal.member.rankLabel}</span>
-            <span class="text-xs text-stone-600">保有 <span class="font-bold tabular-nums">{pointText(portal.member.balance)}</span></span>
-          </div>
-        {:else if portal?.partnerName}
+        {#if portal?.partnerName}
           <p class="inline-flex max-w-full shrink-0 items-center gap-1.5 truncate rounded-full bg-[var(--pt-accent-soft)] px-2.5 py-0.5 text-xs font-medium text-[var(--pt-accent)]">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--pt-accent)]"></span>
             {isMember ? portal.partnerName : `${portal.partnerName} 様 専用料金`}
@@ -200,14 +176,7 @@
           {/each}
         </nav>
       {/if}
-      {#if isMember && portal?.member}
-        <!-- 会員のログアウト・マイページは公式サイトのもの（専用ページにはログアウトのルートが無い） -->
-        <div class="flex shrink-0 items-center gap-2">
-          <!-- いまプライベートブックにいる印（公式サイトのメニューの PRIVATE BOOK と同じ形を塗りつぶし） -->
-          <span class="hidden rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white sm:inline">PRIVATE BOOK</span>
-          <a href={portal.mypageHref ?? '/account'} class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">マイページへ</a>
-        </div>
-      {:else if portal?.loginId && !isMember}
+      {#if portal?.loginId && !isMember}
         <form method="POST" action={`/p/${$page.params.token}/logout`} class="flex items-center gap-3 text-sm">
           <span class="hidden text-stone-500 sm:inline">{portal.loginId}</span>
           <button type="submit" class="rounded-lg border border-stone-300 px-3 py-1 text-sm text-stone-600 transition hover:bg-stone-50">
@@ -216,15 +185,6 @@
         </form>
       {/if}
     </div>
-    {#if isMember && portal?.member}
-      <!-- プライベートブック（2026-11-27）: いまは特別料金の専用の予約だと分かる細い帯と、ふつうの予約（公式サイト）へ戻る道 -->
-      <div class="border-t border-stone-100">
-        <div class="mx-auto flex max-w-6xl items-center gap-3 px-4 py-1.5 text-xs text-stone-500 sm:px-6">
-          <span>特別料金でご案内しています</span>
-          <a href="/" class="ml-auto underline decoration-stone-300 underline-offset-4 hover:text-brand-800">ふつうのご予約に戻る</a>
-        </div>
-      </div>
-    {/if}
   </header>
   {#if isMember && portal?.plansComingSoon}
     <!-- 特別会員の専用ページでまだプランを販売していないとき（2026-11-26）: 予約できるものが無い理由と、これからのことを伝える -->
@@ -266,11 +226,4 @@
       <!-- 宿泊約款は正式な文面ができるまで出さない（2026-10-06 指示） -->
     </nav>
   </footer>
-  {#if cartOpen}
-    <!-- かごバーの高さぶんの余白（バーに本文が隠れないように） -->
-    <div class="h-28" aria-hidden="true"></div>
-  {/if}
-  {#if showCart}
-    <PartnerBookingCart token={$page.params.token ?? ''} limit={memberCart.limit} currentFacilityId={portal?.facilityId ?? ''} preview={portal?.preview === true} />
-  {/if}
 </div>

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
 	choosePrivateBookPage,
+	memberPageUrlToAccount,
+	memberPortalForward,
+	privateBookEntryHref,
 	mergePbOffers,
 	parsePbCookie,
 	pbCartStorageKey,
@@ -202,5 +205,57 @@ describe('pbStayCalendarDays', () => {
 			fallback: new Map([['2026-12-01', { remaining: 2, rooms: 4 }]])
 		});
 		expect(out).toEqual([{ date: '2026-12-01', price: 20000, remaining: 2, rooms: 4 }]);
+	});
+});
+
+describe('memberPortalForward（B面の特別会員の URL → 公式サイト・v0.355.0）', () => {
+	const ID = 'AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE';
+	const entry = '/private-book?page=aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+	it('予約・料金の画面はプライベートブックの入口（?page= はページの partnerId）', () => {
+		for (const sub of ['/', '', '/calendar', '/calendar/', '/plans', '/rooms', '/rate-sheet', '/rate-sheet/csv', '/book', '/calendar/month']) {
+			expect(memberPortalForward(sub, 'GET', ID)).toEqual({ kind: 'redirect', location: entry });
+		}
+		expect(memberPortalForward('/calendar', 'HEAD', ID)).toEqual({ kind: 'redirect', location: entry });
+	});
+	it('ご予約一覧はマイページの予約一覧', () => {
+		expect(memberPortalForward('/bookings', 'GET', ID)).toEqual({ kind: 'redirect', location: '/account/reservations' });
+		expect(memberPortalForward('/bookings/', 'GET', ID)).toEqual({ kind: 'redirect', location: '/account/reservations' });
+	});
+	it('ご予約の詳細とその下は同じ形（日程変更・お部屋の変更・アレンジ）', () => {
+		const at = (sub: string) => memberPortalForward(sub, 'GET', ID);
+		expect(at('/bookings/YB-2026-000001')).toEqual({ kind: 'redirect', location: '/account/reservations/YB-2026-000001' });
+		expect(at('/bookings/YB-2026-000001/amend')).toEqual({ kind: 'redirect', location: '/account/reservations/YB-2026-000001/amend' });
+		expect(at('/bookings/YB-2026-000001/amend/room/2')).toEqual({ kind: 'redirect', location: '/account/reservations/YB-2026-000001/amend/room/2' });
+		expect(at('/bookings/YB-2026-000001/options')).toEqual({ kind: 'redirect', location: '/account/reservations/YB-2026-000001/options' });
+		// 知らない下の階層は詳細へ
+		expect(at('/bookings/YB-2026-000001/receipt')).toEqual({ kind: 'redirect', location: '/account/reservations/YB-2026-000001' });
+	});
+	it('形の違う予約番号は一覧へ（外のパス・別のホストへは出さない）', () => {
+		for (const sub of ['/bookings/..%2F..%2Fadmin', '/bookings/%E0%A4%A', '/bookings/a%20b', '/bookings/%2F%2Fevil.example']) {
+			expect(memberPortalForward(sub, 'GET', ID)).toEqual({ kind: 'redirect', location: '/account/reservations' });
+		}
+	});
+	it('GET / HEAD 以外は 410（gone）', () => {
+		for (const m of ['POST', 'PUT', 'PATCH', 'DELETE', 'post']) {
+			expect(memberPortalForward('/book', m, ID)).toEqual({ kind: 'gone' });
+			expect(memberPortalForward('/bookings/YB-2026-000001', m, ID)).toEqual({ kind: 'gone' });
+		}
+	});
+	it('partnerId が UUID でなければ ?page なしの入口', () => {
+		expect(memberPortalForward('/calendar', 'GET', 'x')).toEqual({ kind: 'redirect', location: '/private-book' });
+		expect(privateBookEntryHref(null)).toBe('/private-book');
+		expect(privateBookEntryHref(ID)).toBe(entry);
+	});
+});
+
+describe('memberPageUrlToAccount（DB の member_page_url → マイページの予約詳細）', () => {
+	it('/p/<token>/bookings/<予約番号> だけ置き換える', () => {
+		expect(memberPageUrlToAccount('/p/tokP_abc-1/bookings/YB-2026-007001')).toBe('/account/reservations/YB-2026-007001');
+		expect(memberPageUrlToAccount(null)).toBeNull();
+		expect(memberPageUrlToAccount('')).toBeNull();
+		expect(memberPageUrlToAccount('https://evil.example/p/t/bookings/YB-1')).toBeNull();
+		expect(memberPageUrlToAccount('/p/t/calendar')).toBeNull();
+		expect(memberPageUrlToAccount('/p/t/bookings/YB-1/amend')).toBeNull();
+		expect(memberPageUrlToAccount('/p/t/bookings/a%20b')).toBeNull();
 	});
 });
