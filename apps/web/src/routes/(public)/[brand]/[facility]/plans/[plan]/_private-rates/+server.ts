@@ -1,5 +1,5 @@
 import { previewPrivateBookRates } from '$lib/server/private-book';
-import { _loadPlanRates } from './+page.server';
+import { _loadPlanRates } from '../+page.server';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = (event) => previewPrivateBookRates(event, async (state) => {

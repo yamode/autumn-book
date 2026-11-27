@@ -1,4 +1,4 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 import {
 	getFacilityBySlug,
 	getRatePlans,
@@ -50,11 +50,13 @@ import {
 	privateBookPlanReferenceMin
 } from '$lib/server/private-book';
 import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
-import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { PrivateBookState } from '$lib/private-book';
 
+type PlanRateEvent = RequestEvent<{ brand: string; facility: string; plan: string }>;
+
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
-async function staffPreviewPlan(event: RequestEvent, facilityUuid: string, slug: string) {
+async function staffPreviewPlan(event: PlanRateEvent, facilityUuid: string, slug: string) {
 	if (event.url.searchParams.get('preview') !== '1') return undefined;
 	if (!isStaffViewer(event.locals)) return undefined;
 	const row = await sbPlanPreviewRow(createSupabaseServerClient(event), facilityUuid, slug).catch(() => undefined);
@@ -69,7 +71,7 @@ export const load: PageServerLoad = (event) => {
 	return _loadPlanRates(event, event.locals.privateBook ?? null);
 };
 
-export async function _loadPlanRates(event: RequestEvent, pbState: PrivateBookState | null) {
+export async function _loadPlanRates(event: PlanRateEvent, pbState: PrivateBookState | null) {
 	const { params, url, locals, cookies } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（客室の行に「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);

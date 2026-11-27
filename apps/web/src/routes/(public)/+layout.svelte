@@ -90,6 +90,7 @@
 	const ratePreviewUrl = $derived.by(() => {
 		if (!canSwitchPrivateBook) return null;
 		const url = new URL(page.url);
+		url.pathname = url.pathname.replace(/\/$/, '') + '/_private-rates';
 		url.searchParams.delete('specialOnly');
 		url.searchParams.set(PB_PREVIEW_PARAM, serverPrivateBook ? 'off' : 'on');
 		return url.pathname + url.search;

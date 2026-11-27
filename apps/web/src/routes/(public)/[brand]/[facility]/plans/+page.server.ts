@@ -1,4 +1,4 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect, type RequestEvent } from '@sveltejs/kit';
 import { getFacilityBySlug, getRatePlans, getRoomTypes, remainingRooms, quoteFor } from '$lib/server/store';
 import { todayJst } from '$lib/server/stay-calendar';
 import { DATA_SOURCE } from '$lib/server/supabase';
@@ -21,8 +21,10 @@ import { alertConditions, validateAlertConditions } from '$lib/availability-aler
 import { alertErrorMessage } from '$lib/server/availability-alert-errors';
 import { privateBookFacility, privateBookOffers, privateBookReferencePrices, pbFacilityView } from '$lib/server/private-book';
 import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
-import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 import type { PrivateBookState } from '$lib/private-book';
+
+type PlanRateEvent = RequestEvent<{ brand: string; facility: string }>;
 
 type RoomPlanPrice = {
 	ratePlanId: string;
@@ -110,7 +112,7 @@ export const load: PageServerLoad = (event) => {
 	return _loadPlanRates(event, event.locals.privateBook ?? null);
 };
 
-export async function _loadPlanRates(event: RequestEvent, pbState: PrivateBookState | null) {
+export async function _loadPlanRates(event: PlanRateEvent, pbState: PrivateBookState | null) {
 	const { params, url, locals } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（ブロックに「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);
