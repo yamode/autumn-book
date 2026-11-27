@@ -49,7 +49,7 @@
 					<span class="text-xs text-stone-400">{b.code}</span>
 					{#if b.roomCount > 1}<span class="rounded bg-brand-100 px-1.5 text-xs text-brand-700">{m.account_rooms_badge({ n: String(b.roomCount) })}</span>{/if}
 					{#if b.channel === 'ota'}<span class="rounded bg-stone-100 px-1.5 text-xs text-stone-500">{m.account_ota_badge()}</span>{/if}
-					{#if b.memberPage}<span class="rounded bg-amber-100 px-1.5 text-xs text-amber-800">{m.member_page_badge()}</span>{/if}
+					{#if b.memberPage}<span class="rounded bg-amber-100 px-1.5 text-xs text-amber-800">{m.private_book_badge()}</span>{/if}
 				</div>
 				<h3 class="mt-1 text-lg font-semibold text-brand-900">{b.facilityName}</h3>
 				<p class="text-[15px] font-medium text-brand-900">{formatDateLong(b.checkin)} · {m.searchbar_nights_option({ n: String(b.nights) })}</p>
@@ -129,7 +129,7 @@
 						<span class="justify-self-end rounded-full px-2 py-0.5 text-xs {statusCls[b.status]}">{statusLabel[b.status]}</span>
 						<span class="min-w-0 text-xs text-stone-600">
 							{formatDateLong(b.checkin)}
-							{#if b.memberPage}<span class="ml-1 rounded bg-amber-100 px-1.5 text-amber-800">{m.member_page_badge()}</span>{/if}
+							{#if b.memberPage}<span class="ml-1 rounded bg-amber-100 px-1.5 text-amber-800">{m.private_book_badge()}</span>{/if}
 						</span>
 						<span class="text-right text-xs text-stone-600">{b.code}</span>
 					</a>

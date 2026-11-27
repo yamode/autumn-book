@@ -9,7 +9,17 @@ import {
 	amendBooking
 } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { memberPageBookingMessage, memberPageBookingOf } from '$lib/server/member-reservation-detail';
+import {
+	memberAmendLines,
+	memberPageAmendDates,
+	memberPageBookingRooms,
+	memberPageOpError,
+	memberPageQuoteAmendDates
+} from '$lib/server/partners/member-bookings';
+import { privateBookChangeGate, privateBookReservationOf } from '$lib/server/private-book-bookings';
+import { todayJst } from '$lib/server/partners/store';
+import { PRIVATE_BOOK_FORBIDDEN_MESSAGE, privateBookRouteOf, type PrivateBookWho } from '$lib/private-book-booking';
+import type { AmendDatesQuote, MemberReservation } from '$lib/server/supabase-data';
 import {
 	sbMyReservations,
 	sbPlanOffers,
@@ -102,11 +112,13 @@ export const load: PageServerLoad = async (event) => {
 		const reservations = await sbMyReservations(client);
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
-		// 特別会員の専用ページ経由の予約は公式マイページでは変更しない（専用ページのご予約一覧から・§13.4.4）
-		if (r.memberPage) redirect(303, `/account/reservations/${params.code}`);
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
 		// オンライン決済済みの予約は変更させない（金額が変わると支払額と食い違うため。宿へ電話で）
 		if (await isPrepaidOnline(params.code)) redirect(303, `/account/reservations/${params.code}?amend=prepaid`);
+		// プライベートブック（専用ページ経由）の予約: 専用料金で日付・泊数だけを変える（B面の /p/<token>/bookings/<code>/amend と同じ）
+		const route = privateBookRouteOf(r, locals.user?.id);
+		if (route.kind === 'deny') redirect(303, `/account/reservations/${params.code}`);
+		if (route.kind === 'private_book') return privateBookAmendLoad(route.who, r, url);
 		// 2 室以上の予約（M2）: 日付・泊数だけを全室同時に変える（部屋・プラン・人数は変えない・§6.3）
 		if ((r.rooms?.length ?? 0) > 1) {
 			const f2 = reverseFacilityUuid(r.facilityUuid);
@@ -153,6 +165,7 @@ export const load: PageServerLoad = async (event) => {
 				quote: quote as AmendQuote | null,
 				quoteError,
 				datesOnly: true as boolean,
+				privateBook: false as boolean,
 				available: quote?.available ?? true,
 				roomsView: live.map((x) => ({
 					index: x.index,
@@ -276,18 +289,117 @@ export const load: PageServerLoad = async (event) => {
 		quote,
 		quoteError,
 		datesOnly: false as boolean,
+		privateBook: false as boolean,
 		available: true,
 		roomsView: [] as { index: number; roomName: string; planName: string; adults: number; total: number; newTotal: number | null }[]
 	};
 };
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * プライベートブックの予約の日程変更（日付・泊数だけ・全室同時）。人数・お部屋・プランは「このお部屋を変更」から
+ * （DB の member_page_*_dates は人数を変えない）。料金は生きている部屋ごとに専用料金で計算し直し（memberAmendLines）、
+ * 見積は book.member_page_quote_amendment_dates。画面は 2 室以上の日程変更と同じ形（datesOnly）
+ */
+async function privateBookAmendLoad(who: PrivateBookWho, r: MemberReservation, url: URL) {
+	const back = `/account/reservations/${r.code}`;
+	const gate = await privateBookChangeGate(who, r.facilityUuid);
+	if (!gate.ok) redirect(303, back);
+	const storeId = reverseFacilityUuid(r.facilityUuid);
+	const fac = storeId ? facilityById(storeId) : undefined;
+	if (!fac) error(404, m.error_booking_not_found());
+	let booking: Awaited<ReturnType<typeof memberPageBookingRooms>>;
+	try {
+		booking = await memberPageBookingRooms(who);
+	} catch (e) {
+		const err = memberPageOpError(e);
+		error(err.status === 500 ? 503 : err.status, err.message);
+	}
+	if (booking.status !== 'confirmed') redirect(303, back);
+	const maxNights = Math.min(5, Math.max(1, gate.partner.booking_settings.maxNights));
+	const checkin = url.searchParams.get('checkin') || booking.checkIn;
+	const nights = clampInt(url.searchParams.get('nights'), booking.nights, 1, maxNights);
+	let quote: AmendDatesQuote | null = null;
+	let quoteError: string | null = null;
+	if (!ISO.test(checkin)) quoteError = '日付を選んでください。';
+	else if (checkin < todayJst()) quoteError = '過去の日付には変更できません。';
+	else {
+		const lines = await memberAmendLines(gate.db, gate.partner, booking, checkin, nights);
+		if (!lines.ok) quoteError = lines.message;
+		else {
+			try {
+				quote = await memberPageQuoteAmendDates(who, checkin, nights, lines.rooms);
+			} catch (e) {
+				quoteError = memberPageOpError(e).message;
+			}
+		}
+	}
+	const live = booking.rooms.filter((x) => !x.cancelled);
+	const adults = live.reduce((s, x) => s + x.adults, 0);
+	return {
+		code: r.code,
+		facility: { name: fac.name, phone: fac.phone },
+		facilityKey: r.facilityUuid,
+		current: {
+			ratePlanId: r.ratePlanUuid,
+			roomTypeId: r.roomTypeUuid,
+			planName: live.length === 1 ? live[0].planLabel : '',
+			roomName: live.length === 1 ? live[0].roomName : '',
+			checkin: booking.checkIn,
+			nights: booking.nights,
+			adults,
+			total: r.total
+		} satisfies AmendCurrent,
+		checkin,
+		nights,
+		adults,
+		offers: [] as AmendOfferView[],
+		selected: null,
+		quote: quote as AmendQuote | null,
+		quoteError,
+		datesOnly: true as boolean,
+		// 日程変更の注記を「日付・泊数だけ（お部屋・人数は「このお部屋を変更」から）」にする
+		privateBook: true as boolean,
+		available: quote?.available ?? true,
+		roomsView: live.map((x) => ({
+			index: x.index,
+			roomName: x.roomName,
+			planName: x.planLabel,
+			adults: x.adults,
+			total: x.roomTotal,
+			newTotal: quote?.rooms.find((q) => q.index === x.index)?.charge ?? null
+		}))
+	};
+}
 
 export const actions: Actions = {
 	confirm: async (event) => {
 		const { request, params, locals } = event;
 		const form = await request.formData();
 		if (MEMBER_SUPABASE) {
-			const mp = await memberPageBookingOf(createSupabaseServerClient(event), params.code);
-			if (mp) return fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href: mp.href });
+			// プライベートブック（専用ページ経由）の予約: 専用料金で日付・泊数だけ（泊明細はサーバが計算し直す・画面の金額は受け取らない）
+			const found = await privateBookReservationOf(event, params.code).catch(() => null);
+			if (found?.route.kind === 'deny') return fail(403, { code: 'forbidden', message: PRIVATE_BOOK_FORBIDDEN_MESSAGE });
+			if (found?.route.kind === 'private_book') {
+				const who = found.route.who;
+				const checkin = String(form.get('checkin') ?? '');
+				if (!ISO.test(checkin)) return fail(400, { code: 'invalid', message: '日付を選んでください。' });
+				const gate = await privateBookChangeGate(who, found.r.facilityUuid);
+				if (!gate.ok) return fail(403, { code: 'forbidden', message: gate.message });
+				const nights = clampInt(String(form.get('nights') ?? ''), 1, 1, Math.min(5, Math.max(1, gate.partner.booking_settings.maxNights)));
+				if (await isPrepaidOnline(params.code)) return fail(400, { code: 'prepaid_online', message: m.amend_prepaid_blocked() });
+				try {
+					const booking = await memberPageBookingRooms(who);
+					const lines = await memberAmendLines(gate.db, gate.partner, booking, checkin, nights);
+					if (!lines.ok) return fail(400, { code: 'unavailable', message: lines.message });
+					await memberPageAmendDates(who, checkin, nights, lines.rooms);
+				} catch (e) {
+					const err = memberPageOpError(e);
+					return fail(err.status, { code: err.code, message: err.message });
+				}
+				redirect(303, `/account/reservations/${params.code}`);
+			}
 		}
 		// 2 室以上（M2）: 全室同時の日程変更（日付・泊数だけ）
 		if (form.get('datesOnly') === '1') {

@@ -68,8 +68,11 @@
 		lat?: number | string;
 		lng?: number | string;
 	};
-	/** 特別会員の専用ページ経由の予約（見出しの 1 行・キャンセル方式・参照のみのときの専用ページへのリンク） */
-	export type ReservationMemberPage = { pageName: string; cancelMode: string; href?: string | null } | null;
+	/**
+	 * 特別会員の専用ページ経由の予約（見出しの 1 行・キャンセル方式）。badge は印の文言（公式マイページは「プライベートブック」・省略時は従来の文言）。
+	 * href は使わない（2026-11-27〜 公式マイページからも操作できるので専用ページへのリンクは出さない・型は互換のため残す）
+	 */
+	export type ReservationMemberPage = { pageName: string; cancelMode: string; badge?: string; href?: string | null } | null;
 </script>
 
 <script lang="ts">
@@ -85,19 +88,26 @@
 		hrefs,
 		readOnly = false,
 		memberPage = null,
-		canAmend
+		canAmend,
+		changeNotice = null
 	}: {
 		data: ReservationDetailData;
 		form?: Record<string, unknown> | null;
 		facility: ReservationDetailFacility;
 		/** 日程変更・オプション追加の行き先（公式は /account/reservations/<code>/…・専用ページは /p/<token>/bookings/<code>/…） */
 		hrefs: { amend: string; options: string };
-		/** 参照のみ（公式マイページで専用ページ経由の予約を見るとき）: 取消・日程変更・オプションの操作を出さない */
+		/** 参照のみ: 取消・日程変更・オプションの操作を出さない（2026-11-27〜 公式マイページの専用ページ経由の予約も操作できるので、今は使っていない） */
 		readOnly?: boolean;
 		memberPage?: ReservationMemberPage;
 		/** 日程変更のボタンを出すか（省略時は data.amend.canAmend） */
 		canAmend?: boolean;
+		/**
+		 * 変更・アレンジの追加を止めるときの案内（プライベートブックの対象から外れた方など）。文言があれば、
+		 * アレンジの追加の入口を出さずにこの文言を出す（取消は出す。日程・お部屋の変更は canAmend・roomAmend で止める）
+		 */
+		changeNotice?: string | null;
 	} = $props();
+	let optionsLocked = $derived(readOnly || !!changeNotice);
 
 	let b = $derived(data.booking);
 	let showCancelConfirm = $state(false);
@@ -172,14 +182,9 @@
 	let hasNeedsReschedule = $derived(options.some((o) => o.status === 'needs_reschedule'));
 </script>
 
-{#if readOnly && memberPage}
-	<!-- 特別会員の専用ページ経由の予約は参照のみ（変更・取消・アレンジは専用ページのご予約一覧から・§13.4.4） -->
-	<div class="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
-		<p>{m.member_page_readonly()}</p>
-		{#if memberPage.href}
-			<a href={memberPage.href} class="mt-2 inline-block rounded-lg bg-brand-800 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700">{m.member_page_readonly_link()}</a>
-		{/if}
-	</div>
+{#if changeNotice && b.status === 'reserved'}
+	<!-- プライベートブックの対象から外れた方など: 変更・アレンジはお電話で（取消はこの画面から） -->
+	<p class="mb-4 rounded-lg border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">{changeNotice}</p>
 {/if}
 {#if f.cancelled || f.roomCancelled}
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -206,7 +211,7 @@
 {#if f.message}
 	<p class="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{f.message}</p>
 {/if}
-{#if hasNeedsReschedule && !readOnly}
+{#if hasNeedsReschedule && !optionsLocked}
 	<div class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
 		{m.amend_needs_reschedule()}
 		<a href={hrefs.options} class="ml-1 font-medium underline">{m.amend_needs_reschedule_link()}</a>
@@ -225,7 +230,7 @@
 		{#if memberPage}
 			<!-- 特別会員の専用ページ経由（ページ名・キャンセル方式） -->
 			<p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-				<span class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">{m.member_page_badge()}</span>
+				<span class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">{memberPage.badge ?? m.member_page_badge()}</span>
 				<span class="text-stone-600">{m.member_page_via({ page: memberPage.pageName })}</span>
 			</p>
 			<p class="mt-1 text-xs text-stone-500">{m.member_page_cancel_mode({ mode: cancelModeLabel(memberPage.cancelMode) })}</p>
@@ -405,7 +410,7 @@
 			<div class="rounded-2xl border border-stone-200 bg-white p-5 text-sm">
 				<div class="flex items-center justify-between">
 					<h2 class="font-medium text-brand-900">{m.options_heading()}</h2>
-					{#if !readOnly}<a href={hrefs.options} class="text-xs font-medium text-accent-600 hover:underline">{m.options_add()}</a>{/if}
+					{#if !optionsLocked}<a href={hrefs.options} class="text-xs font-medium text-accent-600 hover:underline">{m.options_add()}</a>{/if}
 				</div>
 
 				{#if options.length === 0}

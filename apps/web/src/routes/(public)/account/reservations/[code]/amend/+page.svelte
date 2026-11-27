@@ -69,7 +69,7 @@
 		</div>
 		{#if data.datesOnly}
 			<!-- 2 室以上（M2）: 日付・泊数だけを全室同時に変える。お部屋・プラン・人数はそのまま -->
-			<p class="mt-3 text-xs text-stone-500">{m.amend_dates_only_note()}</p>
+			<p class="mt-3 text-xs text-stone-500">{data.privateBook ? m.amend_private_book_dates_note() : m.amend_dates_only_note()}</p>
 		{/if}
 	</section>
 

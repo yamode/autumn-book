@@ -24,16 +24,11 @@ import * as m from '$lib/paraglide/messages';
 import { refundAfterCancel, directPaymentForBooking } from '$lib/server/direct-payments';
 import { bookingReceiptAvailable } from '$lib/booking-receipt';
 import { bookingReceiptDefaultAddressee } from '$lib/server/booking-receipt';
-import {
-	amendGate,
-	memberPageBookingMessage,
-	memberPageBookingOf,
-	multiRoomCards,
-	reservationDetailOf
-} from '$lib/server/member-reservation-detail';
-import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
+import { amendGate, multiRoomCards, reservationDetailOf } from '$lib/server/member-reservation-detail';
+import { memberPageCancelBooking, memberPageCancelBookingRoom, memberPageOpError } from '$lib/server/partners/member-bookings';
+import { privateBookCanChange, privateBookReservationOf } from '$lib/server/private-book-bookings';
+import { PRIVATE_BOOK_FORBIDDEN_MESSAGE, privateBookRouteOf } from '$lib/private-book-booking';
 import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
-import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -48,15 +43,20 @@ export const load: PageServerLoad = async (event) => {
 		const storeId = reverseFacilityUuid(r.facilityUuid);
 		const facility = storeId ? facilityById(storeId) : undefined;
 		if (!facility) error(404, m.error_booking_not_found());
-		// 2 室以上の予約は部屋カードに「このお部屋を変更」（M3・1 室は従来の変更ウィザード）。専用ページ経由の予約は参照のみなので出さない
+		// プライベートブック（専用ページ経由）の予約も公式マイページから取消・変更・アレンジができる（docs/private-book.md「マイページ（予約後）」）。
+		// 日程・お部屋の変更とアレンジは今ページを使える方だけ（対象から外れた方は取消だけ）
+		const route = privateBookRouteOf(r, locals.user?.id);
+		const privateBook = route.kind !== 'general';
+		const canChange = route.kind === 'general' ? true : route.kind === 'private_book' ? await privateBookCanChange(route.who, r.facilityUuid) : false;
+		// 部屋カードの「このお部屋を変更」（M3）: 一般の予約は 2 室以上（1 室は従来の変更ウィザード）・プライベートブックは室数を問わず（B面と同じ）
 		const detail = await reservationDetailOf(
 			event,
 			client,
 			r,
-			r.memberPage ? {} : { roomAmend: { scope: 'multi', hrefOf: (i) => `/account/reservations/${r.code}/amend/room/${i}` } }
+			canChange
+				? { roomAmend: { scope: privateBook ? 'all' : 'multi', hrefOf: (i) => `/account/reservations/${r.code}/amend/room/${i}` } }
+				: {}
 		);
-		// 特別会員の専用ページ経由の予約は参照のみ（取消・日程変更・オプションは専用ページのご予約一覧から・docs/vip-member-page.md §13.4.4）
-		const memberPageHref = detail.memberPage ? await memberPageHrefFor(detail.memberPage.partnerId, r.code).catch(() => null) : null;
 		// 領収書（カードのオンライン決済が済み、全額返金していない予約だけ・2026-11-21）
 		const pay = r.payment !== 'onsite' ? await directPaymentForBooking(r.code).catch(() => null) : null;
 		const receipt = bookingReceiptAvailable(pay) ? { href: `/account/reservations/${r.code}/receipt`, addressee: bookingReceiptDefaultAddressee(r) } : null;
@@ -64,9 +64,14 @@ export const load: PageServerLoad = async (event) => {
 			receipt,
 			...detail,
 			facility,
-			memberPage: detail.memberPage ? { ...detail.memberPage, href: memberPageHref } : null,
+			// 専用ページへのリンクは出さない（操作はこの画面から）
+			memberPage: detail.memberPage ? { ...detail.memberPage, href: null as string | null } : null,
 			canPrebookBath: bathPmsEnabled() && r.status === 'reserved' && !detail.memberPage,
-			readOnly: !!detail.memberPage
+			readOnly: false,
+			// プライベートブックの予約: 日程・お部屋の変更とアレンジを出すか（取消は対象から外れた方も出す）。
+			// 日程変更はカードで払った予約では出さない（B面と同じ・変更の画面でも断る）
+			privateBookChange: privateBook ? canChange : null,
+			canAmend: privateBook ? canChange && detail.amend.canAmend && r.payment === 'onsite' : undefined
 		};
 	}
 
@@ -91,6 +96,8 @@ export const load: PageServerLoad = async (event) => {
 		memberPerks: null,
 		memberPage: null as (Awaited<ReturnType<typeof reservationDetailOf>>['memberPage'] & { href: string | null }) | null,
 		readOnly: false,
+		privateBookChange: null as boolean | null,
+		canAmend: undefined as boolean | undefined,
 		canPrebookBath: false,
 		plan: planById(booking.planId)!,
 		room: roomTypeById(booking.roomTypeId)!,
@@ -106,22 +113,24 @@ export const load: PageServerLoad = async (event) => {
 	};
 };
 
-/**
- * 特別会員の専用ページ経由の予約は、公式マイページからは取消・日程変更・オプションをさせない（参照のみ・§13.4.4）。
- * DB のガード（book._member_page_guard）でも止まるが、案内の文言を返すためにここで先に断る。該当すれば fail、無ければ null
- */
-async function denyMemberPageBooking(client: SupabaseClient, code: string) {
-	const mp = await memberPageBookingOf(client, code);
-	return mp ? fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href: mp.href }) : null;
-}
-
 export const actions: Actions = {
 	cancel: async (event) => {
 		const { params, locals } = event;
 
 		if (MEMBER_SUPABASE) {
-			const denied = await denyMemberPageBooking(createSupabaseServerClient(event), params.code);
-			if (denied) return denied;
+			const found = await privateBookReservationOf(event, params.code).catch(() => null);
+			if (found && found.route.kind === 'deny') return fail(403, { code: 'forbidden', message: PRIVATE_BOOK_FORBIDDEN_MESSAGE });
+			if (found?.route.kind === 'private_book') {
+				// プライベートブック: 専用ページの入口（予約した本人を DB が確かめる・対象から外れた方も取り消せる）。文言は B面と同じ
+				try {
+					await memberPageCancelBooking(found.route.who);
+				} catch (e) {
+					const err = memberPageOpError(e);
+					return fail(err.status, { code: err.code, message: err.message });
+				}
+				const refund = await refundAfterCancel(params.code, 'member').catch(() => ({ kind: 'none' as const }));
+				return { cancelled: true, refund };
+			}
 			// 2 室以上の予約の「すべてのお部屋を取り消す」（生きている部屋をまとめて。1 室ずつは ?/cancelRoom）
 			try {
 				// 所有者チェック・キャンセル料・ポイント巻き戻しは cancel_booking RPC が実施
@@ -148,12 +157,19 @@ export const actions: Actions = {
 		const roomIndex = Number(form.get('roomIndex'));
 		if (!Number.isInteger(roomIndex) || roomIndex < 1) return fail(400, { message: m.error_cannot_cancel() });
 		if (!MEMBER_SUPABASE) return fail(400, { message: m.error_cannot_cancel() });
-		const denied = await denyMemberPageBooking(createSupabaseServerClient(event), params.code);
-		if (denied) return denied;
+		const found = await privateBookReservationOf(event, params.code).catch(() => null);
+		if (found && found.route.kind === 'deny') return fail(403, { code: 'forbidden', message: PRIVATE_BOOK_FORBIDDEN_MESSAGE });
 		let res;
 		try {
-			res = await sbCancelBookingRoomAsMember(createSupabaseServerClient(event), params.code, roomIndex);
-		} catch {
+			res =
+				found?.route.kind === 'private_book'
+					? await memberPageCancelBookingRoom(found.route.who, roomIndex)
+					: await sbCancelBookingRoomAsMember(createSupabaseServerClient(event), params.code, roomIndex);
+		} catch (e) {
+			if (found?.route.kind === 'private_book') {
+				const err = memberPageOpError(e);
+				return fail(err.status, { code: err.code, message: err.message });
+			}
 			return fail(400, { message: m.error_cannot_cancel() });
 		}
 		// オンライン決済済みなら、この部屋の分（支払分 − 返金しない額）をカードへ返金
@@ -165,7 +181,8 @@ export const actions: Actions = {
 		};
 	},
 
-	// オプション（滞在アレンジ）明細の取消（本人・提供日前日まで）
+	// オプション（滞在アレンジ）明細の取消（本人・提供日前日まで）。
+	// プライベートブックの予約も同じ RPC（cancel_booking_option は専用ページのガードの対象外・B面と同じ）
 	cancelOption: async (event) => {
 		const { request, params, locals } = event;
 		const form = await request.formData();
@@ -173,8 +190,6 @@ export const actions: Actions = {
 		if (!orderId) return fail(400, { message: m.options_cancel_failed() });
 
 		if (MEMBER_SUPABASE) {
-			const denied = await denyMemberPageBooking(createSupabaseServerClient(event), params.code);
-			if (denied) return denied;
 			try {
 				await sbCancelBookingOption(createSupabaseServerClient(event), orderId);
 			} catch {
