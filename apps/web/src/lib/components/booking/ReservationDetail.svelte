@@ -228,10 +228,11 @@
 		</div>
 		<p class="mt-1 text-xs text-stone-400">{m.reservation_booking_number({ code: b.code })}{b.channel === 'ota' ? m.reservation_ota_note() : ''}</p>
 		{#if memberPage}
-			<!-- 特別会員の専用ページ経由（ページ名・キャンセル方式） -->
+			<!-- 予約に記録された専用ページ名から名義を取る（ご家族の招待では予約者と異なる） -->
+			{@const rateOwner = /^(.*?)\s*様(?:\s*専用ページ)?$/u.exec(memberPage.pageName.trim())?.[1]?.trim()}
 			<p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
 				<span class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">{memberPage.badge ?? m.member_page_badge()}</span>
-				<span class="text-stone-600">{m.member_page_via({ page: memberPage.pageName })}</span>
+				<span class="text-stone-600">{rateOwner ? m.member_page_named_rate({ name: rateOwner }) : m.hold_member_page_heading()}</span>
 			</p>
 			<p class="mt-1 text-xs text-stone-500">{m.member_page_cancel_mode({ mode: cancelModeLabel(memberPage.cancelMode) })}</p>
 		{/if}

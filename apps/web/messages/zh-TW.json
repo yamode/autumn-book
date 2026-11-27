@@ -1323,7 +1323,7 @@
   "gcancel_err_room": "此房間已取消或無法取消。請重新開啟連結確認。",
   "member_page_badge": "特別會員頁面",
   "private_book_badge": "專屬預訂",
-  "member_page_via": "經由 {page} 預訂（專屬價格）",
+  "member_page_named_rate": "{name} 的專屬價格",
   "member_page_perks": "專屬禮遇",
   "member_page_cancel_mode": "取消費：{mode}",
   "member_cancel_mode_favorable": "對您較有利者（專屬頁面規定與會員等級規定中較低者）",

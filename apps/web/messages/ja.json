@@ -1323,7 +1323,7 @@
   "gcancel_err_room": "すでに取り消されているか、取り消せない状態のお部屋です。画面を開き直してご確認ください。",
   "member_page_badge": "特別会員ページ",
   "private_book_badge": "プライベートブック",
-  "member_page_via": "{page} 経由のご予約（専用料金）",
+  "member_page_named_rate": "{name}様専用料金",
   "member_page_perks": "専用特典",
   "member_page_cancel_mode": "キャンセル料: {mode}",
   "member_cancel_mode_favorable": "お客さまに有利な方（専用ページの規定と会員グレードの規定の安い方）",

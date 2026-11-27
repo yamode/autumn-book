@@ -1323,7 +1323,7 @@
   "gcancel_err_room": "This room has already been cancelled or cannot be cancelled. Please reopen the link to check.",
   "member_page_badge": "Special member page",
   "private_book_badge": "Private Book",
-  "member_page_via": "Booked via {page} (special rate)",
+  "member_page_named_rate": "Special rate for {name}",
   "member_page_perks": "Exclusive benefits",
   "member_page_cancel_mode": "Cancellation fee: {mode}",
   "member_cancel_mode_favorable": "Whichever is lower (special page policy or membership grade policy)",
