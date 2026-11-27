@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { afterNavigate, invalidate } from '$app/navigation';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { pendingPage } from '$lib/page-transition';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { formatDate } from '$lib/format';
@@ -9,7 +9,8 @@
 	import { isPlansListPath } from '$lib/booking-nav';
 	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
-	import { PB_ENTRY_PATH, PB_EXIT_PATH, PB_PRICE_DEPENDENCY, privateBookEntryHref } from '$lib/private-book';
+	import { PB_ENTRY_PATH, PB_EXIT_PATH, PB_PREVIEW_PARAM, PB_PRICE_DEPENDENCY, privateBookEntryHref } from '$lib/private-book';
+	import { setPrivateBookDisplay } from '$lib/private-book-display';
 	import { deLocalizeUrl, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -17,6 +18,7 @@
 
 	onMount(() => {
 		const refreshNotifications = () => {
+			if (document.visibilityState === 'visible') void warmRatePreview(ratePreviewKey);
 			if (data.user?.role === 'member' && document.visibilityState === 'visible') void invalidate('book:forum-notifications');
 		};
 		const timer = window.setInterval(refreshNotifications, 60_000);
@@ -84,6 +86,65 @@
 	const selectableRatePages = $derived(data.privateBook && data.privateBook.pages.length > 1 ? data.privateBook.pages : []);
 	const canSwitchPrivateBook = $derived(privateBookToggle && Boolean(data.privateBookHref));
 
+	const RATE_PREVIEW_TTL = 60_000;
+	const ratePreviewUrl = $derived.by(() => {
+		if (!canSwitchPrivateBook) return null;
+		const url = new URL(page.url);
+		url.searchParams.delete('specialOnly');
+		url.searchParams.set(PB_PREVIEW_PARAM, serverPrivateBook ? 'off' : 'on');
+		return url.pathname + url.search;
+	});
+	const ratePreviewUserId = $derived(data.user?.id);
+	const ratePreviewKey = $derived(ratePreviewUrl && ratePreviewUserId ? { userId: ratePreviewUserId, url: ratePreviewUrl } : null);
+	type RatePreviewKey = NonNullable<typeof ratePreviewKey>;
+	let ratePreview = $state.raw<{ key: RatePreviewKey; loadedAt: number; data: object } | null>(null);
+	let previewRequest: { key: RatePreviewKey; controller: AbortController } | null = null;
+	let showRatePreview = $state(false);
+
+	function sameRatePreview(a: RatePreviewKey | undefined, b: RatePreviewKey | null) {
+		return Boolean(a && b && a.url === b.url && a.userId === b.userId);
+	}
+
+	async function warmRatePreview(key: RatePreviewKey | null) {
+		if (!key || document.visibilityState !== 'visible' || sameRatePreview(previewRequest?.key, key)) return;
+		if (ratePreview && sameRatePreview(ratePreview.key, key) && Date.now() - ratePreview.loadedAt < RATE_PREVIEW_TTL) return;
+		previewRequest?.controller.abort();
+		const controller = new AbortController();
+		previewRequest = { key, controller };
+		try {
+			const response = await fetch(key.url, { signal: controller.signal, cache: 'no-store', headers: { accept: 'application/json' } });
+			if (!response.ok) return;
+			const rates: unknown = await response.json();
+			if (rates && typeof rates === 'object' && !controller.signal.aborted && sameRatePreview(key, ratePreviewKey)) {
+				ratePreview = { key, loadedAt: Date.now(), data: rates };
+			}
+		} catch {
+			// 先読みできなくても、切り替え時に通常どおり最新料金を読む。
+		} finally {
+			if (previewRequest?.controller === controller) previewRequest = null;
+		}
+	}
+
+	$effect(() => {
+		const key = ratePreviewKey;
+		untrack(() => {
+			if (!sameRatePreview(ratePreview?.key, key)) ratePreview = null;
+			void warmRatePreview(key);
+		});
+		return () => {
+			if (previewRequest && sameRatePreview(previewRequest.key, key)) {
+				previewRequest.controller.abort();
+				previewRequest = null;
+			}
+		};
+	});
+
+	setPrivateBookDisplay(() => {
+		if (!showRatePreview || requestedPrivateBook === serverPrivateBook || !ratePreview) return null;
+		if (!sameRatePreview(ratePreview.key, ratePreviewKey) || Date.now() - ratePreview.loadedAt >= RATE_PREVIEW_TTL) return null;
+		return ratePreview.data;
+	});
+
 	async function switchPrivateBook(event: SubmitEvent) {
 		event.preventDefault();
 		const enable = !serverPrivateBook;
@@ -99,6 +160,7 @@
 	async function updatePrivateBook(enable: boolean, body?: FormData, partnerId?: string) {
 		if (privateBookSwitching) return;
 		const entry = partnerId ? privateBookEntryHref(partnerId) : PB_ENTRY_PATH;
+		showRatePreview = !partnerId;
 		requestedPrivateBook = enable;
 		privateBookSwitchFailed = false;
 		try {
@@ -112,8 +174,10 @@
 			await invalidate(PB_PRICE_DEPENDENCY);
 			if (serverPrivateBook !== enable || (partnerId && data.privateBook?.partnerId !== partnerId)) privateBookSwitchFailed = true;
 		} catch {
+			if (showRatePreview) ratePreview = null;
 			privateBookSwitchFailed = true;
 		} finally {
+			showRatePreview = false;
 			requestedPrivateBook = null;
 		}
 	}
@@ -176,6 +240,8 @@
 			aria-checked={displayedPrivateBook}
 			aria-disabled={privateBookSwitching}
 			aria-busy={privateBookSwitching}
+			onpointerenter={() => void warmRatePreview(ratePreviewKey)}
+			onfocus={() => void warmRatePreview(ratePreviewKey)}
 			aria-label={m.hold_member_page_heading()}
 			class="inline-flex min-h-11 items-center gap-1.5 px-2.5 font-medium whitespace-nowrap text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-800 {desktop ? `rounded-full border text-xs ${displayedPrivateBook ? 'border-brand-900/20 bg-brand-900/5' : 'border-stone-200 bg-white hover:border-stone-400'}` : 'w-full rounded-lg text-sm'}"
 		>

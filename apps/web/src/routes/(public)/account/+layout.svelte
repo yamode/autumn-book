@@ -20,24 +20,24 @@
 		{ href: '/account', label: m.account_nav_home(), icon: 'home' as const },
 		...primaryNav
 	]);
-	const utilityNav = $derived([
-		{ href: '/account/settings', label: m.account_nav_settings() },
-		// 会員サポート（docs/member-support.md）。スマホではアカウント設定の一覧から開く
-		{ href: '/help', label: m.help_nav_label() }
-	]);
 	const bookingNav = $derived([
-		// アンバサダー（招待コード・紹介実績）。アンバサダーの会員だけ
-		...(data.isAmbassador ? [{ href: '/account/ambassador', label: m.account_nav_ambassador() }] : []),
-		// クーポン（配られたクーポンの一覧）。おたよりの記録はポイントの配下（/account/points/otayori・2026-11-24）
-		{ href: '/account/coupons', label: m.account_nav_coupons() },
+		{ href: '/account/upgrades', label: m.account_nav_upgrades() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
-		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() },
-		{ href: '/account/upgrades', label: m.account_nav_upgrades() }
+		{ href: '/account/availability-alerts', label: m.account_nav_availability_alerts() }
 	]);
+	const couponLink = $derived({ href: '/account/coupons', label: m.account_nav_coupons() });
+	const ambassadorLinks = $derived(data.isAmbassador ? [{ href: '/account/ambassador', label: m.account_nav_ambassador() }] : []);
+	const desktopGroups = $derived([
+		[primaryNav[0], ...bookingNav],
+		[primaryNav[1], couponLink, primaryNav[2], ...ambassadorLinks],
+		[{ href: '/account/settings', label: m.account_nav_settings() }]
+	]);
+	const mobileBookingNav = $derived([...bookingNav, couponLink, ...ambassadorLinks]);
 	const pathname = $derived(deLocalizeUrl(pendingPage('account')?.url ?? page.url).pathname);
 	const settingsDetail = $derived(['/account/profile', '/account/cards', '/account/ai-connections', '/account/settings/login'].includes(pathname));
 	const settingsActive = $derived(pathname === '/account/settings' || settingsDetail);
 	const bookingSection = $derived(isActive('/account/reservations') || bookingNav.some((item) => isActive(item.href)));
+	const mobileBookingSection = $derived(bookingSection || mobileBookingNav.some((item) => isActive(item.href)));
 
 	function isActive(href: string) {
 		if (href === '/account') return pathname === href;
@@ -89,33 +89,23 @@
 		<nav aria-label={m.account_layout_heading()} class="hidden flex-col rounded-xl border border-stone-200 bg-white p-2 lg:flex">
 			<a href="/account" aria-current={isActive('/account') ? 'page' : undefined}
 				class="mb-1 flex min-h-11 items-center justify-center rounded-lg px-2.5 text-sm font-medium lg:justify-start {isActive('/account') ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{m.account_dashboard()}</a>
-			<ul class="grid grid-cols-[1fr_1fr_1.55fr] gap-1 lg:grid-cols-1">
-				{#each primaryNav as item (item.href)}
-					<li class="min-w-0">
-						<a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}
-							class="relative flex min-h-11 items-center justify-center gap-1 rounded-lg px-1.5 py-1.5 text-center text-sm font-medium leading-snug focus-visible:outline-2 focus-visible:outline-brand-800 lg:justify-start lg:px-2.5 {isActive(item.href) ? 'bg-brand-800 text-white' : item.href === '/account/reservations' && bookingSection ? 'bg-stone-100 text-brand-900' : 'text-stone-700 hover:bg-stone-100'}">
-							<span class="min-w-0 wrap-break-word">{item.label}</span>
-							{#if item.href === '/account/community' && data.forumUnread > 0}
-								<span class="absolute right-0 top-0 rounded-full bg-amber-100 px-1 text-[10px] font-semibold leading-tight text-amber-900 lg:static lg:ml-auto lg:px-1.5 lg:text-xs">
-									<span class="sr-only">{m.forum_unread()} </span>{data.forumUnread > 99 ? '99+' : data.forumUnread}
-								</span>
-							{/if}
-						</a>
-					</li>
-				{/each}
-			</ul>
-			<ul class="mt-1 border-t border-stone-100 pt-1 lg:mt-2 lg:pt-2">
-				{#each utilityNav as item (item.href)}
-					<li><a href={item.href} aria-current={isActive(item.href) ? 'location' : undefined}
-						class="flex min-h-11 items-center justify-center rounded-lg px-2.5 text-center text-sm font-medium lg:justify-start lg:text-left {isActive(item.href) ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{item.label}</a></li>
-				{/each}
-			</ul>
-			<ul class="mt-2 hidden space-y-1 border-t border-stone-200 pt-2 lg:block">
-				{#each bookingNav as item (item.href)}
-					<li><a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}
-						class="flex min-h-11 items-center rounded-lg px-2.5 text-sm font-medium {isActive(item.href) ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">{item.label}</a></li>
-				{/each}
-			</ul>
+			{#each desktopGroups as group, index}
+				<ul class="space-y-1 {index ? 'mt-2 border-t border-stone-200 pt-2' : ''}">
+					{#each group as item (item.href)}
+						<li>
+							<a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}
+								class="flex min-h-11 items-center gap-2 rounded-lg px-2.5 text-sm font-medium {isActive(item.href) ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-100'}">
+								{item.label}
+								{#if item.href === '/account/community' && data.forumUnread > 0}
+									<span class="ml-auto rounded-full bg-amber-100 px-1.5 text-xs font-semibold text-amber-900">
+										<span class="sr-only">{m.forum_unread()} </span>{data.forumUnread > 99 ? '99+' : data.forumUnread}
+									</span>
+								{/if}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			{/each}
 		</nav>
 		<div class="min-w-0 space-y-5">
 			<div data-account-content>
@@ -128,11 +118,11 @@
 				{/if}
 				<PageLoadingBoundary shell="account" padding="py-2">{@render children()}</PageLoadingBoundary>
 			</div>
-			{#if bookingSection || isActive('/account')}
+			{#if mobileBookingSection || isActive('/account')}
 				<nav aria-label={m.account_booking_links()} class="rounded-xl border border-stone-200 bg-white p-3 lg:hidden">
 					<h2 class="px-2 text-sm font-semibold">{m.account_booking_links()}</h2>
 					<ul class="divide-y divide-stone-100">
-						{#each bookingNav as item (item.href)}
+						{#each mobileBookingNav as item (item.href)}
 							<li><a href={item.href} aria-current={isActive(item.href) ? 'page' : undefined}
 								class="flex min-h-11 items-center justify-between gap-2 rounded-lg px-2 text-sm {isActive(item.href) ? 'font-semibold text-brand-900' : 'text-stone-700 hover:bg-stone-50'}">{item.label}<span aria-hidden="true">›</span></a></li>
 						{/each}
@@ -145,7 +135,7 @@
 	<nav aria-label={m.account_layout_heading()} class="account-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white shadow-[0_-4px_18px_rgba(28,25,23,0.05)] lg:hidden">
 		<ul class="mx-auto grid max-w-xl grid-cols-[1fr_1fr_1fr_minmax(4.625rem,1fr)] gap-1">
 			{#each mobileNav as item (item.href)}
-				{@const active = isActive(item.href) || (item.href === '/account/reservations' && bookingSection)}
+				{@const active = isActive(item.href) || (item.href === '/account/reservations' && mobileBookingSection)}
 				<li class="min-w-0">
 					<a href={item.href} aria-current={active ? (pathname === item.href ? 'page' : 'location') : undefined}
 						class="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 text-center text-[11px] leading-tight focus-visible:outline-2 focus-visible:outline-brand-800 {active ? 'font-bold text-brand-900' : 'font-medium text-stone-600 hover:bg-stone-50'}">

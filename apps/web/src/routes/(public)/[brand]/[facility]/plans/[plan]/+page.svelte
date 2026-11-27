@@ -28,7 +28,11 @@
 	import { pbCartStorageKey } from '$lib/private-book';
 	import { canAddToCart, cartIsFull, MAX_ROOMS_PER_BOOKING, readCart, writeCart, type CartItem } from '$lib/multi-room';
 
-	let { data, form } = $props();
+	import { getPrivateBookDisplay } from '$lib/private-book-display';
+
+	let { data: serverData, form } = $props();
+	const previewRates = getPrivateBookDisplay<typeof serverData>();
+	const data = $derived(previewRates(serverData));
 
 	// 予約かご（複数室・docs/official-multi-room.md §8.1・M1）: sessionStorage に置き、在庫は押さえない。
 	// 「＋ もう 1 室追加」で入れ、画面下のバーの「予約へ進む」で全室を一括で仮押さえする

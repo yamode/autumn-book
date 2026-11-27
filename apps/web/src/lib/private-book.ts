@@ -13,6 +13,7 @@ export const PB_COOKIE = 'ab_private_book';
 export const PB_ENTRY_PATH = '/private-book';
 export const PB_EXIT_PATH = '/private-book/off';
 export const PB_PRICE_DEPENDENCY = 'book:private-book-prices';
+export const PB_PREVIEW_PARAM = '_privateBookRates';
 
 /** 入口の URL（どのページを選ぶか ?page=<partnerId>）。partnerId が UUID でなければ ?page なし（本人 → 家族の順で選ぶ） */
 export function privateBookEntryHref(partnerId: string | null | undefined): string {

@@ -7,9 +7,8 @@
 import { redirect } from '@sveltejs/kit';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
-import { memberPagesFor } from '$lib/server/partners/store';
-import { clearPrivateBookCookie, setPrivateBookCookie, verifyPrivateBook } from '$lib/server/private-book';
-import { choosePrivateBookPage, pbSafeBack } from '$lib/private-book';
+import { clearPrivateBookCookie, setPrivateBookCookie, selectPrivateBook } from '$lib/server/private-book';
+import { pbSafeBack } from '$lib/private-book';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders, request }) => {
@@ -28,9 +27,7 @@ export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders, re
 	}
 	let partnerId: string | null = null;
 	try {
-		const pages = await memberPagesFor(sb, user.id);
-		const page = choosePrivateBookPage(pages, url.searchParams.get('page'));
-		const state = page ? await verifyPrivateBook(user.id, page.partnerId, pages) : null;
+		const state = await selectPrivateBook(user.id, url.searchParams.get('page'));
 		partnerId = state?.partnerId ?? null;
 	} catch (e) {
 		console.error('[private-book] 入口でページを確かめられませんでした', e instanceof Error ? e.message : e);

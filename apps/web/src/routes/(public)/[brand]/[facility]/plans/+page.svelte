@@ -29,7 +29,11 @@
 	import type { MealOption } from '$lib/meal-filter';
 
 	// 予約に絞った構成（一休型）: 検索バー → 絞り込み・並び順 → 部屋タイプごとの全幅カード → 施設について
-	let { data, form } = $props();
+	import { getPrivateBookDisplay } from '$lib/private-book-display';
+
+	let { data: serverData, form } = $props();
+	const previewRates = getPrivateBookDisplay<typeof serverData>();
+	const data = $derived(previewRates(serverData));
 	const alertError = $derived(form && 'alertError' in form ? form.alertError : undefined);
 	let base = $derived(`/${data.facility.brandSlug}/${data.facility.slug}`);
 	let facilitiesHref = $derived(data.params.checkin ? `/search?${searchQuery(data.params)}` : '/search');

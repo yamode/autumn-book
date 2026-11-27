@@ -21,7 +21,8 @@ import { alertConditions, validateAlertConditions } from '$lib/availability-aler
 import { alertErrorMessage } from '$lib/server/availability-alert-errors';
 import { privateBookFacility, privateBookOffers, privateBookReferencePrices, pbFacilityView } from '$lib/server/private-book';
 import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
-import type { Actions, PageServerLoad } from './$types';
+import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import type { PrivateBookState } from '$lib/private-book';
 
 type RoomPlanPrice = {
 	ratePlanId: string;
@@ -103,8 +104,13 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 		.sort((a, b) => Number(b.plans.length > 0) - Number(a.plans.length > 0));
 }
 
-export const load: PageServerLoad = async (event) => {
+export const load: PageServerLoad = (event) => {
 	event.depends(PB_PRICE_DEPENDENCY);
+	if (event.locals.privateBook) event.setHeaders({ 'cache-control': 'private, no-store' });
+	return _loadPlanRates(event, event.locals.privateBook ?? null);
+};
+
+export async function _loadPlanRates(event: RequestEvent, pbState: PrivateBookState | null) {
 	const { params, url, locals } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（ブロックに「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);
@@ -125,8 +131,6 @@ export const load: PageServerLoad = async (event) => {
 		// 空室カレンダーは開いたときに /api/stay-calendar で取る（ここでは取らない。使っていなかったうえ、
 		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
 		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
-		const pbState = locals.privateBook ?? null;
-		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
 		const privateFacility = privateBookFacility(pbState, facility.id);
 		const privateOffers = checkin
 			? privateFacility.then((fac) => privateBookOffers(fac, facility.id, checkin, nights, adults))

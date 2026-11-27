@@ -50,10 +50,11 @@ import {
 	privateBookPlanReferenceMin
 } from '$lib/server/private-book';
 import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
-import type { Actions, PageServerLoad } from './$types';
+import type { Actions, PageServerLoad, RequestEvent } from './$types';
+import type { PrivateBookState } from '$lib/private-book';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
-async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUuid: string, slug: string) {
+async function staffPreviewPlan(event: RequestEvent, facilityUuid: string, slug: string) {
 	if (event.url.searchParams.get('preview') !== '1') return undefined;
 	if (!isStaffViewer(event.locals)) return undefined;
 	const row = await sbPlanPreviewRow(createSupabaseServerClient(event), facilityUuid, slug).catch(() => undefined);
@@ -62,8 +63,13 @@ async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUu
 	return plan;
 }
 
-export const load: PageServerLoad = async (event) => {
+export const load: PageServerLoad = (event) => {
 	event.depends(PB_PRICE_DEPENDENCY);
+	if (event.locals.privateBook) event.setHeaders({ 'cache-control': 'private, no-store' });
+	return _loadPlanRates(event, event.locals.privateBook ?? null);
+};
+
+export async function _loadPlanRates(event: RequestEvent, pbState: PrivateBookState | null) {
 	const { params, url, locals, cookies } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（客室の行に「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);
@@ -86,8 +92,6 @@ export const load: PageServerLoad = async (event) => {
 		//   同時アクセスが増えたときに 1 リクエストが DB を掴んでいる時間も伸びていた。
 		//   第1段（施設 ID さえあれば投げられるもの）: プラン・支払設定・紹介文テンプレート・客室一覧。
 		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
-		const pbState = locals.privateBook ?? null;
-		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
 		const privateFacility = privateBookFacility(pbState, facility.id);
 		const [open, earlySettings, templates, rooms] = await Promise.all([
 			sbPlanBySlug(facility.id, params.plan),

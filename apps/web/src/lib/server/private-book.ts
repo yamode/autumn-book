@@ -12,7 +12,7 @@
 //
 // service_role（partnerServiceClient）を使う。取引先モジュールと同じく、入口（resolvePrivateBook）で本人と
 // ページの結び付きを確かめてから読む（admin-client.ts の例外その6）。
-import type { Cookies, RequestEvent } from '@sveltejs/kit';
+import { json, type Cookies, type RequestEvent } from '@sveltejs/kit';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { dev } from '$app/environment';
 import { DATA_SOURCE } from '$lib/server/supabase';
@@ -25,6 +25,8 @@ import { canBookFor } from '$lib/partner-booking';
 import type { MemberHoldRoom } from '$lib/partner-member-page';
 import {
   PB_COOKIE,
+  PB_PREVIEW_PARAM,
+  choosePrivateBookPage,
   parsePbCookie,
   pbFacilitySpecial,
   pbPerPerson,
@@ -80,6 +82,35 @@ export async function verifyPrivateBook(userId: string, partnerId: string, known
   if (!id) return null;
   const [pages, access, partner] = await Promise.all([knownPages ?? memberPagesFor(sb, userId), memberPageAccess(sb, id, userId), partnerGate(sb, id)]);
   return privateBookVerdict({ cookie: id, isMember: true, pages, access, partner, today: todayJst() });
+}
+
+/** 入口と先読みは同じ案内先を選び、表示前に利用資格を検証する。 */
+export async function selectPrivateBook(userId: string, requested?: string | null): Promise<PrivateBookState | null> {
+  const sb = service();
+  if (!sb) return null;
+  const pages = await memberPagesFor(sb, userId);
+  const page = choosePrivateBookPage(pages, requested);
+  return page ? verifyPrivateBook(userId, page.partnerId, pages) : null;
+}
+
+/** 先読みは読み取り専用。会員や施設の判定は通常の料金表示と共通。 */
+export async function previewPrivateBookRates<T>(
+  event: Pick<RequestEvent, 'locals' | 'url'>,
+  load: (state: PrivateBookState | null) => Promise<T>
+): Promise<Response> {
+  const headers = { 'cache-control': 'private, no-store' };
+  const direction = event.url.searchParams.get(PB_PREVIEW_PARAM);
+  const { user, privateBook } = event.locals;
+  if (direction !== 'on' && direction !== 'off') return new Response(null, { status: 404, headers });
+  if (user?.role !== 'member') return new Response(null, { status: 403, headers });
+  try {
+    const state = direction === 'on' ? await selectPrivateBook(user.id) : null;
+    if (direction === 'on' ? !state : !privateBook) return new Response(null, { status: 403, headers });
+    return json(await load(state), { headers });
+  } catch (e) {
+    console.error('[private-book] 料金を先読みできませんでした', e instanceof Error ? e.message : e);
+    return new Response(null, { status: 503, headers });
+  }
 }
 
 /**
