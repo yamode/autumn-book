@@ -623,6 +623,7 @@ export const DEMO_PRECHECKIN_TOKEN = 'demo-precheckin-00000000000000000000000000
 
 /** 見本の中身（今日チェックイン・1 泊・1 室） */
 export const DEMO_PRECHECKIN_CODE = 'DEMO-0001';
+export const DEMO_PRECHECKIN_FACILITY_SLUG = 'yamado';
 
 export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date()): PcContext {
 	const today = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
@@ -632,7 +633,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		answers.meals?.find((m) => m.stay_id === stayId && m.type === type && m.date === date)?.time ?? null;
 	const until = editableUntilOf(today);
 	return {
-		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
+		facility: { id: 'f-nishiwaga', slug: DEMO_PRECHECKIN_FACILITY_SLUG, name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
 		isOfficial: false,
 		isDirect: false,
 		bathEligible: true,

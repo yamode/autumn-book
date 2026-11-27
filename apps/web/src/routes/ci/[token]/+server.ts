@@ -1,7 +1,7 @@
 import { json, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { looksLikePrecheckinToken, precheckinSplashHtml, PRECHECKIN_ENTRANCE_COOKIE, type SplashLocale } from '$lib/precheckin-splash';
-import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
+import { DEMO_PRECHECKIN_FACILITY_SLUG, DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
 import { clearDemoAnswers, resolvePrecheckin, setPrecheckinCookie } from '$lib/server/precheckin';
 import { clearDemoBath } from '$lib/server/precheckin-demo-bath';
 import type { RequestHandler } from './$types';
@@ -18,8 +18,10 @@ export const GET: RequestHandler = async (event) => {
 		return new Response(precheckinSplashHtml(
 				event.url.pathname,
 				(['ja', 'en', 'zh-TW'] as const).includes(locale as SplashLocale) ? (locale as SplashLocale) : 'ja',
-				// ?f=<施設の slug> … 中央に出すロゴを選ぶだけの目印（リンクを作るときに付けている）
-				event.url.searchParams.get('f')
+				// 見本の施設は固定。本予約リンクの ?f はロゴ表示だけに使う。
+				event.params.token === DEMO_PRECHECKIN_TOKEN
+					? DEMO_PRECHECKIN_FACILITY_SLUG
+					: event.url.searchParams.get('f')
 			), {
 			headers: {
 				'content-type': 'text/html; charset=utf-8',
