@@ -91,6 +91,7 @@ export type BathContext = {
 	check_in_date?: string;
 	check_out_date?: string;
 	enabled?: boolean;
+	booking_opens_at?: string | null;
 	price_yen?: number;
 	per_room_per_range?: number;
 	cutoff_min?: number;
@@ -117,7 +118,7 @@ export async function sbBathContext(token: string, client?: SupabaseClient, chan
  */
 export type BathReserveResult =
 	| { ok: true; made: number; price_yen: number }
-	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'slot_unavailable' | 'change_unavailable' | 'other' };
+	| { ok: false; code: 'slot_taken' | 'per_room_limit' | 'past_cutoff' | 'slot_unavailable' | 'change_unavailable' | 'before_room_booking_open' | 'other' };
 
 export async function sbBathReserve(
 	token: string,
@@ -138,6 +139,7 @@ export async function sbBathReserve(
 		if (head === 'slot_not_available') return { ok: false, code: 'slot_unavailable' };
 		if (head === 'slot_taken') return { ok: false, code: 'slot_taken' };
 		if (head === 'per_room_limit') return { ok: false, code: 'per_room_limit' };
+		if (head === 'before_room_booking_open') return { ok: false, code: 'before_room_booking_open' };
 		if (head === 'past_cutoff') return { ok: false, code: 'past_cutoff' };
 		return { ok: false, code: 'other' };
 	}

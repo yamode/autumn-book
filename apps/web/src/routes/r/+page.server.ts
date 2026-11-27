@@ -3,6 +3,7 @@ import { resolveStay, listHouseGuidesFor, getFacilityById } from '$lib/server/st
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
+import { PRECHECKIN_COOKIE } from '$lib/server/precheckin';
 import { demoStayMeals, sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
 import { intercomStatusFor, intercomStatusForRoom, resolveRoomEntry, roomKeyParam, ROOM_COOKIE } from '$lib/server/intercom';
 import { getLocale } from '$lib/paraglide/runtime';
@@ -147,17 +148,20 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		// チェックイン前（開始前）: 館内案内（コードなしと同じ範囲）を見せ、トップで開始時刻を案内する。Cookie は残す
 		const upcoming = await stayUpcoming(token, locale);
 		if (upcoming) {
-			const [guides, settings, intercom, roomCode] = await Promise.all([
+			const precheckinToken = cookies.get(PRECHECKIN_COOKIE);
+			const [guides, settings, intercom, roomCode, meals] = await Promise.all([
 				(DATA_SOURCE === 'supabase'
 					? sbListHouseGuides(upcoming.facility.id, locale)
 					: Promise.resolve(listHouseGuidesFor(upcoming.facility.id, locale))
 				).catch(() => []),
 				loadInroomSettings(upcoming.facility.id),
 				intercomStatusForRoom(cookies.get(ROOM_COOKIE)),
-				roomCodeFor(upcoming.facility.slug)
+				roomCodeFor(upcoming.facility.slug),
+				precheckinToken ? sbStayMealTimes(token, precheckinToken) : Promise.resolve([] as StayMeal[])
 			]);
 			return {
 				...noStay,
+				meals,
 				intercom,
 				roomCode,
 				guides: guides.filter(browseVisibleGuide),

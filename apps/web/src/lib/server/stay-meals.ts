@@ -51,8 +51,11 @@ export function demoStayMeals(now = new Date()): StayMeal[] {
   ];
 }
 
-export async function sbStayMealTimes(token: string): Promise<StayMeal[]> {
-  const { data, error } = await supa().rpc('stay_meal_times', { p_token: token });
+export async function sbStayMealTimes(token: string, precheckinToken?: string): Promise<StayMeal[]> {
+  const { data, error } = await supa().rpc('stay_meal_times', {
+    p_token: token,
+    ...(precheckinToken ? { p_precheckin_token: precheckinToken } : {})
+  });
   if (error) return [];
   return normalizeStayMeals(data);
 }

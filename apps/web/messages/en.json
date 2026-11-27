@@ -1024,6 +1024,7 @@
   "bath_title": "Private Bath Reservation",
   "bath_lead": "Please choose a time that suits you.",
   "bath_closed": "Private bath reservations are not available at the moment. Please contact the front desk.",
+  "bath_room_opens_on_arrival": "Private bath bookings open at 2:30 p.m. on your check-in day.",
   "bath_price_free": "Complimentary.",
   "bath_price_paid": "Fee: {price} (added to your room account)",
   "bath_limit": "The standard limit is {count} slot(s) per room per time period.",

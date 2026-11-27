@@ -62,6 +62,7 @@
 
 	const errorText = (code: string | undefined): string => {
 		if (code === 'change_unavailable') return m.bath_change_unavailable();
+		if (code === 'before_room_booking_open') return m.bath_room_opens_on_arrival();
 		if (code === 'not_open') return m.bath_closed();
 		if (code === 'slot_taken') return m.bath_err_taken();
 		if (code === 'per_room_limit') return groupShared ? m.bath_err_limit_group() : m.bath_err_limit();
@@ -196,7 +197,7 @@
 				</div>
 			</details>
 		{:else}
-			<p class="px-5 pb-5 pt-3 text-sm text-stone-600">{m.bath_closed()}</p>
+			<p class="px-5 pb-5 pt-3 text-sm text-stone-600">{data.pmsEnabled && ctx.booking_opens_at ? m.bath_room_opens_on_arrival() : m.bath_closed()}</p>
 		{/if}
 	</section>
 
