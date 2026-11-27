@@ -1,6 +1,8 @@
 <script lang="ts">
 	// 事前チェックインの状況一覧（P2）。送信はメールの手動ボタンと、携帯番号のときの「SMSで送る／再送」（P4）。
+	import { untrack, tick } from 'svelte';
 	import { enhance } from '$lib/enhance';
+	import { autosave, requestAutosave } from '$lib/autosave';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import PrecheckinSmsEstimate from '$lib/components/admin/PrecheckinSmsEstimate.svelte';
 	import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
@@ -64,12 +66,38 @@
 	const counts = $derived(
 		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: shownRows.filter((r) => r.state === s).length }))
 	);
-	// 宿からの質問の編集欄（保存し直すと読み込み直した内容に戻す）
+	// 宿からの質問の編集欄。欄を離れると自動で保存する（$lib/autosave）。
+	// 保存後の読み直しで入力中の欄を巻き戻さないよう、送った行には新しい id だけを付け、読み直した内容が前と同じなら触らない
 	type QRow = { key: string; id: string | null; question: string };
 	let qRows = $state<QRow[]>([]);
+	let qSent: string[] | null = null;
+	let qApplied = '';
 	$effect(() => {
-		qRows = (data.questions ?? []).map((q) => ({ key: q.id, id: q.id, question: q.question }));
+		const server = data.questions ?? [];
+		untrack(() => {
+			const sent = qSent;
+			qSent = null;
+			const json = JSON.stringify(server);
+			if (sent && sent.length === server.length) {
+				qRows = qRows.map((r) => {
+					const k = sent.indexOf(r.key);
+					return k >= 0 ? { ...r, id: server[k].id } : { ...r, id: null };
+				});
+			} else if (json !== qApplied) {
+				qRows = server.map((q) => ({ key: q.id, id: q.id, question: q.question }));
+			}
+			qApplied = json;
+		});
 	});
+	const questionsSubmit = () => {
+		qSent = qRows.filter((r) => r.question.trim() !== '').map((r) => r.key);
+	};
+	const removeQuestion = async (e: MouseEvent, key: string) => {
+		const f = (e.currentTarget as HTMLButtonElement).form;
+		qRows = qRows.filter((r) => r.key !== key);
+		await tick();
+		requestAutosave(f);
+	};
 	const capsOf = (type: 'dinner' | 'breakfast', time: string) =>
 		data.caps?.caps.find((c) => c.type === type && c.time === time)?.max_rooms ?? '';
 	// 自動送信（当日 9:00）の対象。経路の選択は保存するまで画面の中だけで持つ
@@ -79,6 +107,12 @@
 		autoEnabled = data.autosend?.enabled ?? false;
 		autoRoutes = [...(data.autosend?.routes ?? [])];
 	});
+	const setRoutes = async (e: MouseEvent, codes: string[]) => {
+		const f = (e.currentTarget as HTMLButtonElement).form;
+		autoRoutes = codes;
+		await tick();
+		requestAutosave(f);
+	};
 	const toggleRoute = (code: string) => {
 		autoRoutes = autoRoutes.includes(code) ? autoRoutes.filter((c) => c !== code) : [...autoRoutes, code];
 	};
@@ -121,10 +155,8 @@
 		{/if}
 		{#if form && 'autosendError' in form && form.autosendError}
 			<p class="mt-2 text-sm text-red-700" role="alert">{form.autosendError}</p>
-		{:else if form && 'autosendSaved' in form && form.autosendSaved}
-			<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
 		{/if}
-		<form method="POST" action="?/autosend" use:enhance class="mt-3 space-y-3">
+		<form method="POST" action="?/autosend" use:autosave class="mt-3 space-y-3">
 			<label class="flex items-center gap-2 font-medium">
 				<input type="checkbox" name="enabled" value="1" bind:checked={autoEnabled} />
 				自動送信する
@@ -144,12 +176,12 @@
 					{/each}
 				</div>
 				<div class="mt-2 flex flex-wrap gap-2 text-xs">
-					<button type="button" onclick={() => (autoRoutes = [...DIRECT_CODES])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">Book 公式予約だけ</button>
-					<button type="button" onclick={() => (autoRoutes = data.autosend?.options.map((o) => o.code) ?? [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">すべて</button>
-					<button type="button" onclick={() => (autoRoutes = [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">選択を外す</button>
+					<button type="button" onclick={(e) => setRoutes(e, [...DIRECT_CODES])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">Book 公式予約だけ</button>
+					<button type="button" onclick={(e) => setRoutes(e, data.autosend?.options.map((o) => o.code) ?? [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">すべて</button>
+					<button type="button" onclick={(e) => setRoutes(e, [])} class="rounded border border-stone-300 px-2 py-1 text-stone-700">選択を外す</button>
 				</div>
 			</fieldset>
-			<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">自動送信の設定を保存</button>
+			<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 		</form>
 	</section>
 {/if}
@@ -268,13 +300,12 @@
 				</div>
 				{#if data.autosend}
 					{@const au = autoOf(r)}
-					<form method="POST" action="?/autosendRow" use:enhance class="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-2 text-xs">
+					<form method="POST" action="?/autosendRow" use:autosave class="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-2 text-xs">
 						<input type="hidden" name="stay_id" value={r.stay_id} />
 						<span class="rounded-full px-2 py-0.5 ring-1 {au.send ? 'bg-sky-50 text-sky-800 ring-sky-200' : 'bg-stone-50 text-stone-500 ring-stone-200'}">{autoLabel(au)}</span>
 						<select
 							name="mode"
 							value={au.ov === true ? 'on' : au.ov === false ? 'off' : 'auto'}
-							onchange={(e) => e.currentTarget.form?.requestSubmit()}
 							class="rounded border border-stone-300 px-1.5 py-0.5"
 							aria-label="このご予約の自動送信"
 						>
@@ -308,7 +339,7 @@
 			{#if form && 'capsError' in form && form.capsError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.capsError}</p>
 			{/if}
-			<form method="POST" action="?/caps" use:enhance class="mt-3 space-y-3">
+			<form method="POST" action="?/caps" use:autosave class="mt-3 space-y-3">
 				{#each [['dinner', '夕食'], ['breakfast', '朝食']] as const as [type, label] (type)}
 					<div class="flex flex-wrap items-center gap-3">
 						<span class="w-10 font-medium">{label}</span>
@@ -330,7 +361,7 @@
 						{/each}
 					</div>
 				{/each}
-				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">上限を保存</button>
+				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 			</form>
 		</section>
 	{/if}
@@ -339,25 +370,23 @@
 		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			<h2 class="font-semibold">宿からの質問</h2>
 			<p class="mt-1 text-xs text-stone-500">
-				事前チェックインの「ご予約内容」で、お客様に必ず答えてもらう質問です（空欄では先へ進めません）。回答はこの一覧の各予約の詳細に出ます。上から順に表示します。空欄にして保存するとその質問は消えます。
+				事前チェックインの「ご予約内容」で、お客様に必ず答えてもらう質問です（空欄では先へ進めません）。回答はこの一覧の各予約の詳細に出ます。上から順に表示します。質問は欄を離れると自動で保存され、空欄にするとその質問は消えます。
 			</p>
 			{#if form && 'questionsError' in form && form.questionsError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.questionsError}</p>
-			{:else if form && 'questionsSaved' in form && form.questionsSaved}
-				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
 			{/if}
-			<form method="POST" action="?/questions" use:enhance class="mt-3 space-y-2">
+			<form method="POST" action="?/questions" use:autosave={questionsSubmit} class="mt-3 space-y-2">
 				{#each qRows as row, i (row.key)}
 					<div class="flex items-start gap-2">
 						<span class="mt-2 w-5 shrink-0 text-right text-xs text-stone-400">{i + 1}</span>
 						<input type="hidden" name="qid|{i}" value={row.id ?? ''} />
 						<textarea name="q|{i}" rows="2" maxlength="300" bind:value={row.question} class="w-full rounded border border-stone-300 px-2 py-1" placeholder="例: ご到着の交通手段（お車・電車など）を教えてください。"></textarea>
-						<button type="button" onclick={() => (qRows = qRows.filter((r) => r.key !== row.key))} class="mt-1 shrink-0 rounded border border-stone-300 px-2 py-1 text-xs text-stone-600">削除</button>
+						<button type="button" onclick={(e) => removeQuestion(e, row.key)} class="mt-1 shrink-0 rounded border border-stone-300 px-2 py-1 text-xs text-stone-600">削除</button>
 					</div>
 				{/each}
 				<div class="flex items-center gap-2 pt-1">
 					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '' }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
-					<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">質問を保存</button>
+					<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 				</div>
 			</form>
 		</section>
@@ -372,10 +401,8 @@
 			</p>
 			{#if form && 'minutesError' in form && form.minutesError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.minutesError}</p>
-			{:else if form && 'minutesSaved' in form && form.minutesSaved}
-				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
 			{/if}
-			<form method="POST" action="?/minutes" use:enhance class="mt-3 flex flex-wrap items-center gap-4">
+			<form method="POST" action="?/minutes" use:autosave class="mt-3 flex flex-wrap items-center gap-4">
 				<label class="flex items-center gap-1">
 					<span class="w-10 font-medium">夕食</span>
 					<input name="dinner" type="number" min="0" max="600" step="5" inputmode="numeric" value={data.minutes.dinner} class="w-20 rounded border border-stone-300 px-2 py-1" />
@@ -386,7 +413,7 @@
 					<input name="breakfast" type="number" min="0" max="600" step="5" inputmode="numeric" value={data.minutes.breakfast} class="w-20 rounded border border-stone-300 px-2 py-1" />
 					<span class="text-stone-600">分</span>
 				</label>
-				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">所要時間を保存</button>
+				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 			</form>
 		</section>
 	{/if}
@@ -400,10 +427,8 @@
 			</p>
 			{#if form && 'notifyError' in form && form.notifyError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.notifyError}</p>
-			{:else if form && 'notifySaved' in form && form.notifySaved}
-				<p class="mt-2 text-sm text-emerald-700" role="status">保存しました。</p>
 			{/if}
-			<form method="POST" action="?/notify" use:enhance class="mt-3 space-y-3">
+			<form method="POST" action="?/notify" use:autosave class="mt-3 space-y-3">
 				<label class="flex items-center gap-2 font-medium">
 					<input type="checkbox" name="enabled" value="1" checked={data.notify.enabled} />
 					通知メールを送る
@@ -423,7 +448,7 @@
 				{#if !data.notify.email && !data.notify.defaultEmail}
 					<p class="text-xs text-amber-700">施設の代表アドレスが未設定のため、宛先を入れないとメールは送られません。</p>
 				{/if}
-				<button class="rounded-lg bg-stone-800 px-3 py-1.5 text-white">通知メールの設定を保存</button>
+				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 			</form>
 		</section>
 	{/if}
