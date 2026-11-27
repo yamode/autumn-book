@@ -561,7 +561,7 @@
 			     確認画面で見せていた専用特典（1 段目）・会員特典（2 段目）をここで見せる（獲得予定ポイントは右の予約内容に） -->
 			<div class="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm" style="--pt-accent: var(--color-accent-600)">
 				<div>
-					<p class="font-medium text-brand-900">{m.hold_member_page_heading({ page: memberPage.pageName })}</p>
+					<p class="font-medium text-brand-900">{m.hold_member_page_heading()}</p>
 					<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
 				</div>
 				{#if memberPage.perks.length || memberPage.benefits}

@@ -26,7 +26,7 @@ B面 `/p/[token]` は取引先（旅行会社・法人）専用に戻す。前�
 - 入口 `(public)/private-book/+server.ts`: `?page=` が無ければ `memberPagesFor`（store.ts）から本人→家族の順で選ぶ。クッキーを書いて元の画面（無ければ `/search`）へ。
 - 出口 `/private-book/off`（POST）: クッキーを消して同じ画面へ。hold の中からなら仮押さえを解放。
 - 施設ごと: `loadPartnerContextAt(db, partnerId, facilityId)` で `memberPageBookingOpen` が真の施設だけ特別料金。偽ならその施設はふつうの料金。
-- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、全画面に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte` が既にある）。
+- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、全画面に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte`）。プラン一覧では対象会員に ON/OFF を同じ位置に出す。切り替え後も施設・日程・人数は保持する（v0.360.1）。
 
 ## 画面ごとの差し替え
 

@@ -75,6 +75,7 @@
 	let privateBookEntry = $derived(
 		data.privateBookHref ? `${data.privateBookHref}?back=${encodeURIComponent(page.url.pathname + page.url.search)}` : null
 	);
+	let plansList = $derived(page.route.id === '/(public)/[brand]/[facility]/plans');
 	let bookingFlowBand = $derived(['/(public)/booking/hold', '/(public)/booking/complete'].some((r) => routeId.startsWith(r)));
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
 	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
@@ -259,10 +260,15 @@
 		</div>
 	</header>
 
-	{#if data.privateBook && !bookingFlowBand}
-		<!-- プライベートブックの状態: 全画面に帯（予約入力・完了の画面は自分で出すので出さない）。「ふつうのご予約に戻る」は出口へ -->
+	{#if !bookingFlowBand && (data.privateBook || (plansList && data.privateBookHref))}
 		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6">
-			<PrivateBookBand name={data.privateBook.memberName} pages={data.privateBook.pages} currentPartnerId={data.privateBook.partnerId} />
+			<PrivateBookBand
+				name={data.privateBook?.memberName}
+				pages={data.privateBook?.pages}
+				currentPartnerId={data.privateBook?.partnerId}
+				showToggle={plansList}
+				active={Boolean(data.privateBook)}
+			/>
 		</div>
 	{/if}
 

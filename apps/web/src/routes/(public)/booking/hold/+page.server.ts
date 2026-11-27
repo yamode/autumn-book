@@ -250,10 +250,9 @@ export const load: PageServerLoad = async (event) => {
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && groupMemberOnsiteHint(roomViews, isMember),
 			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
-			// 特別会員の専用ページ経由の束（見出し「{pageName} 経由・専用料金」・キャンセル方式・「選び直す」は専用ページへ）。公式の束は null
+			// 特別会員の専用ページ経由の束（専用特典・会員特典・キャンセル方式）。公式の束は null
 			memberPage: hold.memberPage
 				? {
-						pageName: hold.memberPage.pageName,
 						via: hold.memberPage.via,
 						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref,
 						// 2026-11-27〜 専用ページの確認画面（/p/<token>/book）を通さずここへ来るので、確認画面で見せていた中身をここで見せる。
@@ -342,7 +341,6 @@ export const load: PageServerLoad = async (event) => {
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
 		memberPage: null as {
-			pageName: string;
 			via: 'self' | 'family';
 			backHref: string;
 			memberName: string | null;
