@@ -33,8 +33,20 @@ export function startLiveScreen(root: HTMLElement): () => void {
 
 	// ── 空と季節 ──
 	const SKY = [[0, '#060a19', '#141c38'], [4.6, '#0a0f24', '#232a4a'], [5.8, '#1e2852', '#7a5a72'], [6.6, '#3d5a92', '#f0b089'], [8, '#4f86c4', '#bfd8ee'], [12, '#3c7cc6', '#b4d4f0'], [15.5, '#4c80be', '#d9d4c0'], [16.9, '#33467e', '#f09a62'], [17.8, '#1d2652', '#a3607a'], [19, '#0d1430', '#2c2f55'], [24, '#060a19', '#141c38']];
-	const SEASONS = { winter: { sky: ['#7fa9d2', '#e8eff5'], fall: 'snow' }, spring: { sky: ['#78acdc', '#f4e3ea'], fall: 'petal' }, summer: { sky: ['#3283cf', '#d4ecf9'], fall: 'firefly' }, autumn: { sky: ['#5596cf', '#f2dfc4'], fall: 'leaf' } };
-	const seasonOf = (m) => (m === 12 || m <= 3) ? 'winter' : m <= 5 ? 'spring' : m <= 8 ? 'summer' : 'autumn';
+	// 季節ごとの空の色と、降るもの・下に置くもの（2026-11-27 指示）
+	//   秋（9〜10 月）… 何も降らない。画面の下にカラマツの黄色い紅葉が並ぶ
+	//   11 月          … カラマツの並木に、雪がちらちら舞う
+	//   12 月          … クリスマスツリーを置き、雪が深々と降る
+	//   冬（1〜3 月）  … 雪
+	const SEASONS = {
+		winter: { sky: ['#7fa9d2', '#e8eff5'], fall: 'snow' },
+		spring: { sky: ['#78acdc', '#f4e3ea'], fall: 'petal' },
+		summer: { sky: ['#3283cf', '#d4ecf9'], fall: 'firefly' },
+		autumn: { sky: ['#5596cf', '#f2dfc4'], fall: 'none', larch: true },
+		nov: { sky: ['#7d9fc4', '#e9e4da'], fall: 'flurry', larch: true },
+		xmas: { sky: ['#7fa9d2', '#e8eff5'], fall: 'deep', xmas: true }
+	};
+	const seasonOf = (m) => m === 12 ? 'xmas' : m === 11 ? 'nov' : m <= 3 ? 'winter' : m <= 5 ? 'spring' : m <= 8 ? 'summer' : 'autumn';
 	const curSeason = () => seasonOverride || seasonOf(jst().mo);
 	const dayLight = (h) => smooth(5.6, 7.6, h) * (1 - smooth(16.6, 18.4, h));
 	function skyCols(h) { const se = SEASONS[curSeason()].sky, d = dayLight(h); for (let i = 0; i < SKY.length - 1; i++) { const a = SKY[i], b = SKY[i + 1]; if (h >= a[0] && h <= b[0]) { const t = (h - a[0]) / (b[0] - a[0]); return [mix(mix(a[1], b[1], t), se[0], d * 0.6), mix(mix(a[2], b[2], t), se[1], d * 0.6)]; } } return [SKY[0][1], SKY[0][2]]; }
@@ -44,8 +56,100 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	const stars = [...Array(220)].map(() => ({ x: Math.random(), y: Math.pow(Math.random(), 1.5) * 0.8, r: Math.random() * 1.1 + 0.25, p: Math.random() * TAU }));
 	const clouds = [...Array(6)].map(() => ({ x: Math.random(), y: 0.06 + Math.random() * 0.4, s: 0.07 + Math.random() * 0.12, v: 0.003 + Math.random() * 0.004 }));
 	let fall = [];
-	function newFall(any) { const k = SEASONS[curSeason()].fall, z = Math.random(); if (k === 'firefly') return { k, x: Math.random() * W, y: H * rnd(0.3, 0.95), r: 1.2, ph: Math.random() * 7, a: rnd(0.4, 1) }; return { k, x: Math.random() * W, y: any ? Math.random() * H : -6, r: k === 'snow' ? 0.6 + z * 1.8 : 1.8 + z * 2, vy: k === 'snow' ? 10 + z * 24 : 12 + z * 16, ph: Math.random() * 7, a: k === 'snow' ? 0.2 + z * 0.45 : 0.5 + z * 0.4, rot: Math.random() * 6, vr: rnd(-2, 2), col: k === 'leaf' ? pick(['#d9572b', '#e8892e', '#c43c2a', '#e0b03a']) : '#f4c6d4' }; }
-	function rebuildFall() { const k = SEASONS[curSeason()].fall; const n = reduce ? 24 : (k === 'snow' ? Math.round(clamp(W * H / 12000, 50, 160)) : 40); fall = [...Array(n)].map(() => newFall(true)); }
+	function newFall(any) {
+		const k = SEASONS[curSeason()].fall, z = Math.random();
+		if (k === 'firefly') return { k, x: Math.random() * W, y: H * rnd(0.3, 0.95), r: 1.2, ph: Math.random() * 7, a: rnd(0.4, 1) };
+		const y = any ? Math.random() * H : -6;
+		// ちらちら: 少なく・小さく・ゆっくり、横に揺れながら
+		if (k === 'flurry') return { k: 'snow', x: Math.random() * W, y, r: 0.6 + z * 1.3, vy: 6 + z * 9, sway: 0.6 + z * 0.8, ph: Math.random() * 7, a: 0.35 + z * 0.4 };
+		// 深々と: 多く・手前ほど大きく、まっすぐ静かに
+		if (k === 'deep') return { k: 'snow', x: Math.random() * W, y, r: 0.7 + z * z * 3, vy: 14 + z * 26, sway: 0.25, ph: Math.random() * 7, a: 0.3 + z * 0.55 };
+		if (k === 'snow') return { k, x: Math.random() * W, y, r: 0.6 + z * 1.8, vy: 10 + z * 24, sway: 0.35, ph: Math.random() * 7, a: 0.2 + z * 0.45 };
+		return { k, x: Math.random() * W, y, r: 1.8 + z * 2, vy: 12 + z * 16, ph: Math.random() * 7, a: 0.5 + z * 0.4, rot: Math.random() * 6, vr: rnd(-2, 2), col: '#f4c6d4' };
+	}
+	function rebuildFall() {
+		const k = SEASONS[curSeason()].fall;
+		const n = k === 'none' ? 0 : k === 'flurry' ? (reduce ? 12 : 28) : k === 'deep' ? (reduce ? 60 : Math.round(clamp(W * H / 4500, 120, 380))) : k === 'snow' ? (reduce ? 24 : Math.round(clamp(W * H / 12000, 50, 160))) : (reduce ? 24 : 40);
+		fall = [...Array(n)].map(() => newFall(true));
+		buildLarches();
+		buildXmas();
+	}
+
+	// ── カラマツの並木（秋・11 月）。画面の下、カードの後ろから梢がのぞく ──
+	let larches = [];
+	function buildLarches() {
+		larches = [];
+		if (!SEASONS[curSeason()].larch || !W) return;
+		for (const row of [{ gap: [13, 21], h: [0.55, 0.85], back: true }, { gap: [20, 34], h: [0.75, 1.15], back: false }]) {
+			for (let x = -10; x < W + 20; x += rnd(row.gap[0], row.gap[1])) {
+				larches.push({ x: x + rnd(-4, 4), h: rnd(row.h[0], row.h[1]), back: row.back, tone: Math.random(), tiers: 7 + Math.floor(Math.random() * 4), lean: rnd(-0.04, 0.04), ph: Math.random() * TAU });
+			}
+		}
+		larches.sort((a, b) => (a.back === b.back ? 0 : a.back ? -1 : 1));
+	}
+	function drawLarches(t, d, reach) {
+		if (!larches.length) return;
+		const night = 1 - d;
+		for (const L of larches) {
+			const h = reach * L.h * (L.back ? 0.8 : 1), w = h * 0.3, x0 = L.x, base = H + 4, topY = base - h;
+			// 黄葉: 日なたの金色〜少し橙。手前ほど濃く、奥は空に溶かす。夜は群青に沈める
+			let col = mix(L.tone < 0.5 ? '#e7b93a' : '#d99a2b', '#f3d36a', L.back ? 0.25 : 0);
+			if (L.back) col = mix(col, skyCols(skyHour())[1], 0.35);
+			col = mix(col, '#1c2238', night * 0.78);
+			const sway = Math.sin(t * 0.5 + L.ph) * 0.6;
+			ctx.fillStyle = col;
+			ctx.beginPath();
+			ctx.moveTo(x0 + sway + L.lean * h, topY);
+			const n = L.tiers;
+			for (let i = 1; i <= n; i++) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 + hw + sway * (1 - i / n), yy); ctx.lineTo(x0 + hw * 0.55, yy - (h * 0.88) / n * 0.25); }
+			for (let i = n; i >= 1; i--) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 - hw * 0.55, yy - (h * 0.88) / n * 0.25); ctx.lineTo(x0 - hw + sway * (1 - i / n), yy); }
+			ctx.closePath(); ctx.fill();
+			// 幹
+			ctx.fillStyle = rgba(mix('#5d4a36', '#151a2a', night * 0.7), 0.55); ctx.fillRect(x0 - Math.max(1, w * 0.03), base - h * 0.08, Math.max(1.5, w * 0.06), h * 0.08);
+		}
+	}
+
+	// ── クリスマスツリー（12 月）。右下、カードの後ろから立つ ──
+	let xmasLights = [];
+	function buildXmas() {
+		xmasLights = [];
+		if (!SEASONS[curSeason()].xmas) return;
+		for (let i = 0; i < 46; i++) xmasLights.push({ u: Math.random(), v: Math.pow(Math.random(), 0.7), col: pick(['#ffe7a3', '#ffd27a', '#ff8a7a', '#fff6e0', '#9fd0ff']), ph: Math.random() * TAU, sp: rnd(0.6, 1.6) });
+	}
+	function drawXmas(t, d, reach) {
+		if (!SEASONS[curSeason()].xmas) return;
+		const night = 1 - d;
+		const h = clamp(reach + 100, 200, H * 0.42), w = h * 0.56, cx = W - Math.max(70, w * 0.42), base = H + 6, top = base - h;
+		// 枝（4 段）。下ほど広く、段の下の縁に雪
+		const tiers = 4;
+		for (let i = 0; i < tiers; i++) {
+			const y0 = top + h * 0.06 + (h * 0.78) * (i / tiers) - h * 0.04, y1 = top + h * 0.06 + (h * 0.78) * ((i + 1) / tiers) + h * 0.02, hw = (w / 2) * (0.38 + 0.62 * ((i + 1) / tiers));
+			const g = ctx.createLinearGradient(cx - hw, 0, cx + hw, 0);
+			g.addColorStop(0, mix('#1d4a33', '#0b1420', night * 0.6)); g.addColorStop(0.55, mix('#2c6a47', '#13241f', night * 0.55)); g.addColorStop(1, mix('#173d2a', '#0a121c', night * 0.6));
+			ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(cx, y0);
+			ctx.quadraticCurveTo(cx + hw * 0.5, y0 + (y1 - y0) * 0.55, cx + hw, y1);
+			for (let k = 6; k >= 0; k--) { const xx = cx - hw + (2 * hw) * (k / 6); ctx.quadraticCurveTo(xx + hw / 6, y1 + 7, xx, y1); }
+			ctx.quadraticCurveTo(cx - hw * 0.5, y0 + (y1 - y0) * 0.55, cx, y0); ctx.closePath(); ctx.fill();
+			ctx.strokeStyle = `rgba(255,255,255,${0.75 - night * 0.25})`; ctx.lineWidth = 2.2; ctx.beginPath();
+			for (let k = 0; k <= 6; k++) { const xx = cx - hw + (2 * hw) * (k / 6); k ? ctx.quadraticCurveTo(xx - hw / 6, y1 + 6, xx, y1) : ctx.moveTo(xx, y1); }
+			ctx.stroke();
+		}
+		ctx.fillStyle = mix('#5a4030', '#151a2a', night * 0.6); ctx.fillRect(cx - w * 0.05, top + h * 0.86, w * 0.1, h * 0.16);
+		// 灯り（夜ほど強く、ゆっくり瞬く）
+		ctx.save(); ctx.globalCompositeOperation = night > 0.45 ? 'lighter' : 'source-over';
+		for (const L of xmasLights) {
+			const y = top + h * (0.14 + 0.7 * L.v), hw = (w / 2) * (0.38 + 0.62 * L.v) * 0.86, x = cx + (L.u * 2 - 1) * hw;
+			const a = (0.55 + 0.45 * Math.sin(t * L.sp + L.ph)) * (0.55 + night * 0.45), r = 2 + night * 1.5;
+			const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4); g.addColorStop(0, rgba(L.col, a)); g.addColorStop(1, rgba(L.col, 0)); ctx.fillStyle = g; ctx.fillRect(x - r * 4, y - r * 4, r * 8, r * 8);
+			ctx.fillStyle = rgba('#fffaf0', a); ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, TAU); ctx.fill();
+		}
+		// てっぺんの星
+		const sy = top + h * 0.03, sr = Math.max(9, w * 0.07), glow = 0.7 + 0.3 * Math.sin(t * 1.2);
+		const sg = ctx.createRadialGradient(cx, sy, 0, cx, sy, sr * 4); sg.addColorStop(0, `rgba(255,226,140,${0.55 * glow})`); sg.addColorStop(1, 'rgba(255,226,140,0)'); ctx.fillStyle = sg; ctx.fillRect(cx - sr * 4, sy - sr * 4, sr * 8, sr * 8);
+		ctx.fillStyle = '#f6d36b'; ctx.beginPath();
+		for (let i = 0; i < 10; i++) { const ang = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? sr * 0.45 : sr; ctx.lineTo(cx + Math.cos(ang) * rr, sy + Math.sin(ang) * rr); }
+		ctx.closePath(); ctx.fill(); ctx.restore();
+	}
 
 	function drawSky(t, hr) {
 		const [top, hor] = skyCols(hr), d = dayLight(hr); const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, hor); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
@@ -59,7 +163,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	function drawFall(dt, t, day) {
 		for (const f of fall) {
 			if (f.k === 'firefly') { f.x += Math.sin(t * 0.5 + f.ph) * 0.3; f.y += Math.cos(t * 0.4 + f.ph) * 0.25; const a = f.a * (0.5 + 0.5 * Math.sin(t * 2 + f.ph)) * (1 - day * 0.85); if (a < 0.02) continue; const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, 8); g.addColorStop(0, `rgba(230,255,150,${a})`); g.addColorStop(1, 'rgba(230,255,150,0)'); ctx.fillStyle = g; ctx.fillRect(f.x - 8, f.y - 8, 16, 16); continue; }
-			f.y += f.vy * dt; f.x += Math.sin(t * 0.7 + f.ph) * 0.35; f.rot += (f.vr || 0) * dt; if (f.y > H + 8) Object.assign(f, newFall(false));
+			f.y += f.vy * dt; f.x += Math.sin(t * 0.7 + f.ph) * (f.sway ?? 0.35); f.rot += (f.vr || 0) * dt; if (f.y > H + 8) Object.assign(f, newFall(false));
 			if (f.k === 'snow') { ctx.fillStyle = day > 0.55 ? `rgba(255,255,255,${f.a + 0.2})` : `rgba(240,244,255,${f.a})`; ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill(); }
 			else { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.fillStyle = rgba(f.col, f.a * 0.85); ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.4, f.r * 0.7, 0, 0, TAU); ctx.fill(); ctx.restore(); }
 		}
@@ -151,8 +255,13 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	// ── 描画 ──
 	function draw(t, dt) {
 		if (!W) return; const hr = skyHour(); const d = drawSky(t, hr); const day = d > 0.55; root.classList.toggle('day', day);
+		G = geo();
+		// 木の高さ: カードの上端から少し上まで（カードの後ろから梢がのぞく）
+		const reach = Math.max(80, H - ($('kpis').getBoundingClientRect().top - root.getBoundingClientRect().top) + 46);
+		drawLarches(t, d, reach);
+		drawXmas(t, d, reach);
 		drawFall(dt, t, d);
-		G = geo(); const md = day ? 'day' : 'night'; const ink = day ? '#17213a' : '#f0ece0';
+		const md = day ? 'day' : 'night'; const ink = day ? '#17213a' : '#f0ece0';
 		const txt = (s, x, y, size, al, align, wt, col) => { ctx.font = `${wt || 500} ${size}px "Noto Sans JP Variable","Noto Sans JP",sans-serif`; ctx.textAlign = align || 'left'; ctx.fillStyle = rgba(col || ink, al); ctx.fillText(s, x, y); };
 		const halo = (s, x, y, size, al, align, wt, col) => { ctx.save(); ctx.shadowColor = day ? 'rgba(255,255,255,.85)' : 'rgba(5,8,20,.8)'; ctx.shadowBlur = 8; txt(s, x, y, size, al, align, wt, col); ctx.restore(); };
 		const trunk = day ? '#1d3a66' : '#ece2c4', ta = day ? 0.15 : 0.22;
