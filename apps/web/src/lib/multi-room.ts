@@ -199,6 +199,12 @@ export interface CartItem {
 	remaining: number | null;
 }
 
+/**
+ * かごバー（BookingCart.svelte）が表示に使う値。公式の CartItem・特別会員の MemberCartItem の共通部分
+ * （特別会員は facilityName を持たない）
+ */
+export type CartBarItem = Pick<CartItem, 'key' | 'facilityId' | 'facilityName' | 'checkin' | 'nights' | 'roomTypeId' | 'roomName' | 'planName' | 'adults' | 'total'>;
+
 /** かごに入れられない理由 */
 export type CartAddBlock = 'full' | 'other_stay' | 'mixed_payment' | 'no_remaining';
 
