@@ -94,7 +94,8 @@ export function loadingShape(route: string): LoadingShape {
 	if (route === '/p/[token]' || route.startsWith('/p/[token]/')) {
 		const rest = route.slice('/p/[token]'.length);
 		if (rest === '' || rest === '/mfa' || rest === '/setup') return 'auth';
-		if (rest === '/bookings/[id]' || rest === '/group/[id]') return 'reservation-detail';
+		// /bookings/[id]/[...rest] は旧・特別会員の変更・アレンジの受け口（転送するだけ・2026-11-27）
+		if (rest === '/bookings/[id]' || rest === '/bookings/[id]/[...rest]' || rest === '/group/[id]') return 'reservation-detail';
 		if (rest === '/book') return 'hold';
 		if (/\/(amend|options)(\/|$)/.test(rest) || rest === '/group/new') return 'form';
 		if (rest.startsWith('/legal/') || rest === '/memorandum') return 'article';
