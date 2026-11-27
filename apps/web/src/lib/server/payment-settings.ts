@@ -8,8 +8,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   DEFAULT_EARLY_PREPAY_TIERS,
   NO_EARLY_PREPAY,
+  effectiveEarlyPrepaySettings,
   normalizeEarlyPrepaySettings,
-  type EarlyPrepaySettings
+  normalizeMemberPageEarlyPrepay,
+  type EarlyPrepaySettings,
+  type MemberPageEarlyPrepay
 } from '$lib/early-prepay';
 import type { PlanPaymentMethod } from '$lib/server/content-admin';
 import { DEFAULT_ADMIN_FEE_PERCENT, normalizeAdminFeePercent, roundAdminFeePercent } from '$lib/cancel-admin-fee';
@@ -57,6 +60,40 @@ export async function loadEarlyPrepaySettings(bookFacilityId: string): Promise<E
   } catch {
     return NO_EARLY_PREPAY;
   }
+}
+
+/**
+ * 公開側: 特別会員（プライベートブック）の早期決済割の設定（autumn-shared の member_page_early_prepay 列）。
+ * null ＝ 未設定（通常の設定を使う）。読めなかったとき（列が無い＝migration 未適用など）も null にする
+ * （DB の _early_prepay_discount も列が無い／null なら通常の設定で計算するので、画面と金額はずれない）。
+ * 通常の設定とは別のクエリで読む（列が無いときに通常の設定まで読めなくならないように）。
+ */
+export async function loadMemberPageEarlyPrepay(bookFacilityId: string): Promise<MemberPageEarlyPrepay | null> {
+  if (DATA_SOURCE !== 'supabase') return null;
+  const uuid = FACILITY_UUID[bookFacilityId] ?? bookFacilityId;
+  try {
+    return await cachedPublic(
+      `early-prepay-member-page:${uuid}`,
+      async () => {
+        const { data, error } = await supa().from('payment_settings').select('member_page_early_prepay').eq('facility_id', uuid).maybeSingle();
+        if (error) throw error;
+        return normalizeMemberPageEarlyPrepay((data as { member_page_early_prepay?: unknown } | null)?.member_page_early_prepay);
+      },
+      PAYMENT_CACHE_TTL_MS
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 公開側: 予約に当てる早期決済割の設定。memberPage = 特別会員の束（hold_groups.metadata.member_page）の予約か。
+ * 一般の予約・取引先の予約は通常の設定そのもの（特別会員の列は読まない）。
+ */
+export async function loadEarlyPrepaySettingsFor(bookFacilityId: string, opts: { memberPage?: boolean } = {}): Promise<EarlyPrepaySettings> {
+  if (!opts.memberPage) return loadEarlyPrepaySettings(bookFacilityId);
+  const [base, member] = await Promise.all([loadEarlyPrepaySettings(bookFacilityId), loadMemberPageEarlyPrepay(bookFacilityId)]);
+  return effectiveEarlyPrepaySettings(base, member, true);
 }
 
 /**
@@ -125,6 +162,8 @@ export type AdminPaymentPlan = {
 
 export type AdminPaymentSettings = {
   earlyPrepay: EarlyPrepaySettings;
+  /** 特別会員（プライベートブック）の早期決済割。null ＝ 未設定（通常の設定を使う） */
+  memberPageEarlyPrepay: MemberPageEarlyPrepay | null;
   /** 予約時決済の事務手数料（取消時に返金しない率・%）。既定 5 */
   cancelAdminFeePercent: number;
   /** 施設全体でオンの支払方法 */
@@ -157,6 +196,8 @@ export async function sbAdminPaymentSettings(client: SupabaseClient, facilityUui
   const plans = (Array.isArray(d.plans) ? d.plans : []) as Record<string, unknown>[];
   return {
     earlyPrepay: normalizeEarlyPrepaySettings(d),
+    // 列が無い（migration 未適用）・null は未設定
+    memberPageEarlyPrepay: normalizeMemberPageEarlyPrepay(d.member_page_early_prepay),
     cancelAdminFeePercent: normalizeAdminFeePercent(d.cancel_admin_fee_percent),
     // 列が無い（migration 未適用）ときは全部オン＝従来どおり
     paymentMethods: Array.isArray(d.payment_methods) ? normalizeOptions(FACILITY_PAY_METHODS, d.payment_methods) : [...FACILITY_PAY_METHODS],
@@ -245,6 +286,22 @@ export async function sbSaveEarlyPrepaySettings(client: SupabaseClient, facility
     p_mode: s.mode
   });
   if (error) throw friendly(error, '早期決済割の設定を保存できませんでした');
+}
+
+/**
+ * 特別会員（プライベートブック）の早期決済割を保存する（管理者だけ・DB でも検査）。null で未設定に戻す（通常の設定を使う）。
+ * DB は autumn-shared の book.admin_save_member_page_early_prepay。
+ */
+export async function sbSaveMemberPageEarlyPrepay(client: SupabaseClient, facilityUuid: string, s: MemberPageEarlyPrepay | null): Promise<void> {
+  const { error } = await client.schema('book').rpc('admin_save_member_page_early_prepay', {
+    p_facility_id: facilityUuid,
+    p_settings: s ? { enabled: s.enabled, mode: s.mode, tiers: s.tiers } : null
+  });
+  if (error) {
+    if (error.message.includes('Could not find the function') || error.message.includes('does not exist'))
+      throw new Error('DB の更新（特別会員の早期決済割・member_page_early_prepay）がまだ適用されていません。');
+    throw friendly(error, '特別会員の早期決済割を保存できませんでした');
+  }
 }
 
 export async function sbSetPlanEarlyPrepay(client: SupabaseClient, ratePlanId: string, enabled: boolean): Promise<void> {

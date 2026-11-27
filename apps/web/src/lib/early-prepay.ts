@@ -231,3 +231,43 @@ export function nextTierDrop(
 
 /** 率（%）の表示。3 → "3"、2.5 → "2.5" */
 export const percentText = (p: number) => (Number.isInteger(p) ? String(p) : p.toFixed(1));
+
+// ---- 特別会員（プライベートブック）の早期決済割（docs/private-book.md・2026-11-27） ----
+//
+// 特別会員の予約（公式の予約の束で metadata.member_page があるもの）だけ、段階表（率と「何日前から」）と還元方法を
+// 施設の通常の設定とは別に決められる。全特別会員で一律・施設ごと（通常の早期決済割と同じ単位）。
+// 置き場所は book.payment_settings.member_page_early_prepay（jsonb）。null ＝ 未設定で、通常の設定をそのまま使う。
+// 除外期間（繁忙期）は通常の設定のものを使う（別に持たない）。プランの「早期決済割の対象」・定率割引もそのまま効く。
+// 早期決済割は特別料金（専用ページの料金）に重ねる（割引の土台は束の泊明細＝特別料金）。
+// SQL は book._early_prepay_discount の p_member_page（同じ式）。
+
+export type MemberPageEarlyPrepay = {
+  enabled: boolean;
+  mode: EarlyPrepayMode;
+  tiers: EarlyPrepayTier[];
+};
+
+/** DB の値・画面の入力を正規形にする。null・オブジェクトでないもの＝未設定（通常の設定を使う）。 */
+export function normalizeMemberPageEarlyPrepay(raw: unknown): MemberPageEarlyPrepay | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const s = normalizeEarlyPrepaySettings(raw);
+  return { enabled: s.enabled, mode: s.mode, tiers: s.tiers };
+}
+
+/** 保存前の検証（SQL の admin_save_member_page_early_prepay と同じ条件・通常の段階表と同じ）。 */
+export function validateMemberPageEarlyPrepay(s: MemberPageEarlyPrepay): string | null {
+  return validateEarlyPrepaySettings({ ...s, blackouts: [] });
+}
+
+/**
+ * 予約に当てる早期決済割の設定。特別会員の予約で、特別会員の設定があればそれ（除外期間は通常のもの）。
+ * それ以外（一般の予約・特別会員の設定が未設定）は通常の設定そのもの。
+ */
+export function effectiveEarlyPrepaySettings(
+  base: EarlyPrepaySettings,
+  memberPage: MemberPageEarlyPrepay | null,
+  isMemberPage: boolean
+): EarlyPrepaySettings {
+  if (!isMemberPage || !memberPage) return base;
+  return { enabled: memberPage.enabled, mode: memberPage.mode, tiers: memberPage.tiers, blackouts: base.blackouts };
+}

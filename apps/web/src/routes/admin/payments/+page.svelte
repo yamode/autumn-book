@@ -56,6 +56,30 @@
 	);
 	const unit = $derived(early.mode === 'points' ? 'ポイント' : '割引');
 
+	// ---- 特別会員（プライベートブック）の早期決済割の編集状態（未設定＝通常と同じ） ----
+	function initMemberEarly() {
+		const s = data.settings?.memberPageEarlyPrepay ?? null;
+		const base = data.settings?.earlyPrepay;
+		const mode: EarlyPrepayMode = s?.mode ?? base?.mode ?? 'discount';
+		const tiers = s && s.tiers.length ? s.tiers : base && base.tiers.length ? base.tiers : RECOMMENDED_EARLY_PREPAY_TIERS[mode];
+		return {
+			use: (s ? 'custom' : 'same') as 'same' | 'custom',
+			enabled: s?.enabled ?? true,
+			mode,
+			tiers: tiers.map((t) => ({ days: t.days, percent: t.percent })) as TierRow[]
+		};
+	}
+	let memberEarly = $state(initMemberEarly());
+	const addMemberTier = () => {
+		if (memberEarly.tiers.length >= EARLY_PREPAY_MAX_TIERS) return;
+		const last = memberEarly.tiers.at(-1);
+		memberEarly.tiers.push({ days: last ? Number(last.days) + 30 : 90, percent: last ? Number(last.percent) + 2 : 5 });
+	};
+	// 保存済みの特別会員の設定の要約（画面の上の「現在」）
+	const savedMemberEarly = $derived(data.settings?.memberPageEarlyPrepay ?? null);
+	const tiersSummary = (tiers: { days: number; percent: number }[], mode: EarlyPrepayMode) =>
+		[...tiers].sort((a, b) => a.days - b.days).map((t) => `${t.days}日前 ${mode === 'points' ? '+' : ''}${percentText(t.percent)}%`).join('・');
+
 	// 試算（1予約の宿泊料金を入れると、段ごとの割引額・お支払い額が出る）
 	let sample = $state(60000);
 	const STRIPE_FEE = 3.6;
@@ -404,6 +428,66 @@
 				</div>
 			</fieldset>
 		</form>
+
+		<!-- 特別会員（プライベートブック）の早期決済割（全特別会員で一律・この施設）。docs/private-book.md -->
+		<div class="mt-6 border-t border-stone-200 pt-4">
+			<div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+				<h3 class="font-medium text-stone-800">特別会員（プライベートブック）の早期決済割</h3>
+				{#if f?.scope === 'memberEarly' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
+			</div>
+			<p class="mb-3 max-w-3xl text-xs text-stone-500">
+				特別会員（VIP）のプライベートブックからの予約だけに当てる段階表です（全特別会員で一律・この施設）。特別料金に重ねて効きます。
+				「通常と同じ」なら上の設定をそのまま使います。除外期間・プラン別の「対象」・定率割引は上の設定と同じです。一般の予約と取引先の予約には効きません。
+				<br />現在:
+				{#if savedMemberEarly}
+					{savedMemberEarly.enabled
+						? `${savedMemberEarly.mode === 'points' ? 'ポイント' : '割引'} ${tiersSummary(savedMemberEarly.tiers, savedMemberEarly.mode)}`
+						: '特別会員は段階表なし（プランの定率割引だけ）'}
+				{:else}
+					通常と同じ
+				{/if}
+			</p>
+			{#if f?.scope === 'memberEarly' && f.error}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{f.error}</p>{/if}
+			<form method="POST" action="?/saveMemberPageEarlyPrepay" use:enhance={keep} class="text-sm">
+				<fieldset disabled={!data.canEditAdmin || !!data.settingsError} class="min-w-0 space-y-4">
+					<div class="flex flex-wrap items-center gap-4">
+						<label class="flex items-center gap-1.5"><input type="radio" name="use" value="same" bind:group={memberEarly.use} class="h-4 w-4" /> 通常と同じ</label>
+						<label class="flex items-center gap-1.5"><input type="radio" name="use" value="custom" bind:group={memberEarly.use} class="h-4 w-4" /> 特別会員だけ別に決める</label>
+					</div>
+					{#if memberEarly.use === 'custom'}
+						<label class="flex flex-wrap items-center gap-x-2 gap-y-1">
+							<input type="checkbox" name="enabled" bind:checked={memberEarly.enabled} class="h-4 w-4" />
+							<span class="font-medium text-stone-700">特別会員に早期決済割を使う</span>
+							<span class="text-xs text-stone-400">（オフにすると特別会員は段階表なし・プランの定率割引だけ）</span>
+						</label>
+						<div class="flex flex-wrap items-center gap-4">
+							<span class="text-xs font-medium text-stone-500">還元方法</span>
+							<label class="flex items-center gap-1.5"><input type="radio" name="mode" value="discount" bind:group={memberEarly.mode} class="h-4 w-4" /> 割引</label>
+							<label class="flex items-center gap-1.5"><input type="radio" name="mode" value="points" bind:group={memberEarly.mode} class="h-4 w-4" /> ポイント上乗せ</label>
+						</div>
+						<div>
+							<h4 class="mb-2 text-xs font-medium text-stone-500">段階表（最大 {EARLY_PREPAY_MAX_TIERS} 段・日数も率も上の段より大きく）</h4>
+							<div class="space-y-2">
+								{#each memberEarly.tiers as t, i (i)}
+									<div class="flex flex-wrap items-center gap-2">
+										<span class="text-stone-400">宿泊初日の</span>
+										<input type="number" name="tier_days" bind:value={t.days} min="1" max="365" class="w-20 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
+										<span class="text-stone-500">日前以上なら</span>
+										<input type="number" name="tier_percent" bind:value={t.percent} min="1" max="20" step="0.1" class="w-20 rounded-md border border-stone-300 px-2 py-1.5 text-right" />
+										<span class="text-stone-500">{memberEarly.mode === 'points' ? '% ポイント上乗せ' : '% 引き'}</span>
+										<button type="button" onclick={() => memberEarly.tiers.splice(i, 1)} class="ml-1 text-xs text-red-500 hover:underline">削除</button>
+									</div>
+								{/each}
+							</div>
+							{#if memberEarly.tiers.length < EARLY_PREPAY_MAX_TIERS}
+								<button type="button" onclick={addMemberTier} class="mt-2 text-xs text-sky-700 hover:underline">＋ 段を追加</button>
+							{/if}
+						</div>
+					{/if}
+					<button type="submit" class="rounded-md bg-stone-800 px-4 py-2 text-sm text-white hover:bg-stone-700 disabled:opacity-40">保存</button>
+				</fieldset>
+			</form>
+		</div>
 
 		<details class="mt-5 rounded-lg border border-stone-200 p-3 text-xs text-stone-600">
 			<summary class="cursor-pointer font-medium text-stone-700">段階表の考え方（推奨値の根拠と見直し方・2026-09-27 改訂）</summary>
