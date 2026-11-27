@@ -5,7 +5,12 @@
 // 権限: 閲覧は admin / staff。早期決済割と取引先は管理者だけが保存できる（金額・返金に関わるため。キャンセル規定・取引先と同じ）。
 //       プラン別はプラン画面（/admin/plans/[id]）と同じくスタッフも保存できる。
 import { fail, type RequestEvent } from '@sveltejs/kit';
-import { normalizeEarlyPrepaySettings, validateEarlyPrepaySettings } from '$lib/early-prepay';
+import {
+  normalizeEarlyPrepaySettings,
+  normalizeMemberPageEarlyPrepay,
+  validateEarlyPrepaySettings,
+  validateMemberPageEarlyPrepay
+} from '$lib/early-prepay';
 import {
   hasPrepayDiscount,
   normalizePartnerBookingSettings,
@@ -33,6 +38,7 @@ import {
   sbAdminPaymentSettings,
   sbSaveCancelAdminFee,
   sbSaveEarlyPrepaySettings,
+  sbSaveMemberPageEarlyPrepay,
   sbSavePaymentMethods,
   sbSavePaymentTexts,
   sbSetPlanEarlyPrepay,
@@ -77,6 +83,7 @@ export const load: PageServerLoad = async (event) => {
       notLive: NOT_LIVE,
       settings: {
         earlyPrepay: await loadEarlyPrepaySettings(currentFacility.id),
+        memberPageEarlyPrepay: null,
         cancelAdminFeePercent: DEFAULT_ADMIN_FEE_PERCENT,
         paymentMethods: [...FACILITY_PAY_METHODS],
         paymentTexts: {} as PaymentTexts,
@@ -164,6 +171,43 @@ export const actions: Actions = {
       return { scope: 'early', saved: true };
     } catch (e) {
       return fail(400, { scope: 'early', error: messageOf(e) });
+    }
+  },
+
+  // 特別会員（プライベートブック）の早期決済割（施設ごと・全特別会員で一律・docs/private-book.md）。
+  // 「通常と同じ」なら null（未設定＝通常の段階表・還元方法を使う）。除外期間は通常の設定のものを使う。管理者だけ（DB でも検査）
+  saveMemberPageEarlyPrepay: async (event) => {
+    if (!isAdmin(event)) return fail(403, { scope: 'memberEarly', error: '特別会員の早期決済割は管理者だけが変更できます。' });
+    if (!LIVE) return fail(503, { scope: 'memberEarly', error: NOT_LIVE });
+    const fd = await event.request.formData();
+    const facilityUuid = currentFacilityOf(event).uuid;
+    const client = createSupabaseServerClient(event);
+    if (fd.get('use') !== 'custom') {
+      try {
+        await sbSaveMemberPageEarlyPrepay(client, facilityUuid, null);
+        return { scope: 'memberEarly', saved: true };
+      } catch (e) {
+        return fail(400, { scope: 'memberEarly', error: messageOf(e) });
+      }
+    }
+    const days = fd.getAll('tier_days').map(String);
+    const pcts = fd.getAll('tier_percent').map(String);
+    const settings = normalizeMemberPageEarlyPrepay({
+      enabled: fd.get('enabled') === 'on',
+      mode: fd.get('mode') === 'points' ? 'points' : 'discount',
+      tiers: days
+        .map((d, i) => ({ days: d, percent: pcts[i] }))
+        .filter((t) => String(t.days).trim() !== '' || String(t.percent ?? '').trim() !== '')
+    })!;
+    const typedTiers = days.filter((d, i) => d.trim() !== '' || (pcts[i] ?? '').trim() !== '').length;
+    if (settings.tiers.length !== typedTiers) return fail(400, { scope: 'memberEarly', error: '段階表の日数・割引率を数字で入れてください。' });
+    const problem = validateMemberPageEarlyPrepay(settings);
+    if (problem) return fail(400, { scope: 'memberEarly', error: problem });
+    try {
+      await sbSaveMemberPageEarlyPrepay(client, facilityUuid, settings);
+      return { scope: 'memberEarly', saved: true };
+    } catch (e) {
+      return fail(400, { scope: 'memberEarly', error: messageOf(e) });
     }
   },
 

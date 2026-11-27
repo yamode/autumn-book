@@ -52,7 +52,7 @@ import {
   type EarlyPrepaySettings,
   type PrepayDiscountDetail
 } from '$lib/early-prepay';
-import { loadEarlyPrepaySettings } from '$lib/server/payment-settings';
+import { loadEarlyPrepaySettingsFor } from '$lib/server/payment-settings';
 
 export const DIRECT_REF_KEY = 'hold_id';
 const EXPECT = { app: STRIPE_APP_BOOK, purpose: STRIPE_PURPOSE_DIRECT_BOOKING, refKey: DIRECT_REF_KEY } as const;
@@ -965,6 +965,8 @@ export type PrepayDiscountView = {
    * diff は discount なら割引額の差（円）、points なら早期決済ポイントの差（pt）
    */
   drop: { inDays: number; fromPercent: number; toPercent: number; diff: number } | null;
+  /** 特別会員（プライベートブック）の束の予約か（特別会員の早期決済割の設定で計算した・未設定の施設は通常の設定） */
+  memberPage?: boolean;
 };
 
 type HoldLike = { checkin: string; quote: { total: number; lines?: { date: string; subtotal: number }[] } };
@@ -1011,9 +1013,20 @@ export function prepayDiscountViewOf(
   };
 }
 
-export async function prepayDiscountViewFor(facilityId: string, plan: Pick<RatePlan, 'payment'>, hold: HoldLike): Promise<PrepayDiscountView> {
-  const settings = await loadEarlyPrepaySettings(facilityId);
-  return prepayDiscountViewOf(settings, plan, hold);
+/**
+ * opts.memberPage = 特別会員の束（hold_groups.metadata.member_page）の予約か。サーバが束から決める（画面の値は使わない）。
+ * 特別会員の予約は特別会員の早期決済割（施設に設定があれば・DB の _early_prepay_discount の p_member_page と同じ）。
+ * 一般の予約・取引先の予約は通常の設定のまま。
+ */
+export async function prepayDiscountViewFor(
+  facilityId: string,
+  plan: Pick<RatePlan, 'payment'>,
+  hold: HoldLike,
+  opts: { memberPage?: boolean } = {}
+): Promise<PrepayDiscountView> {
+  const settings = await loadEarlyPrepaySettingsFor(facilityId, { memberPage: opts.memberPage === true });
+  const view = prepayDiscountViewOf(settings, plan, hold);
+  return opts.memberPage ? { ...view, memberPage: true } : view;
 }
 
 /**

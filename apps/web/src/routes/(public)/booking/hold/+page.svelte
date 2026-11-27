@@ -92,12 +92,29 @@
 	// 非会員は割引なし（会員になったときの率は memberRate で別に出す）
 	let prepayAmount = $derived(!data.expired && !data.member ? 0 : (prepay?.detail.discount ?? 0));
 	// 割引行の名前: 早期決済割が当たっていれば「早期決済割（5%）」、定率なら従来の「予約時決済割引（10%OFF）」
+	// 特別会員（プライベートブック）の束は「特別会員の早期決済割（5%）」（率・期間は特別会員の設定・サーバが束から決める）
 	let discountLabel = $derived(
 		prepay?.mixedRates
 			? m.pay_discount_rooms()
 			: prepay?.early
-			? m.pay_early_line({ rate: percentText(prepay.detail.maxPermille / 10) })
+			? prepay.memberPage
+				? m.pay_member_page_early_line({ rate: percentText(prepay.detail.maxPermille / 10) })
+				: m.pay_early_line({ rate: percentText(prepay.detail.maxPermille / 10) })
 			: m.pay_discount_line({ rate: percentText((prepay?.detail.flatPermille ?? 0) / 10) })
+	);
+	// 特別会員の束: 特別会員の早期決済割の段階表（率と「何日前まで」）を予約時決済の説明に出す。段階表を出さない（定率の方が大きい等）ときは出さない
+	let memberPageTiersText = $derived(
+		prepay?.memberPage && prepay.showLadder && prepay.tiers.length
+			? m.pay_member_page_early_tiers({
+					tiers: prepay.tiers
+						.map((t) =>
+							prepay?.mode === 'points'
+								? m.pay_member_page_tier_item_points({ days: String(t.days), percent: percentText(t.percent) })
+								: m.pay_member_page_tier_item({ days: String(t.days), percent: percentText(t.percent) })
+						)
+						.join(' / ')
+				})
+			: ''
 	);
 	// 今の段（段階表のハイライト用・千分率）
 	let currentTierPermille = $derived(prepay?.detail.tierPermille ?? 0);
@@ -1066,6 +1083,9 @@
 											{#if prepayAmount > 0}
 												<!-- 割引額と割引後の額は右の明細に出るので、ここは「早期決済割（15%）適用」だけ -->
 												<p class="font-medium text-brand-900">{m.pay_discount_applied({ label: discountLabel })}</p>
+											{/if}
+											{#if memberPageTiersText}
+												<p class="text-xs text-stone-600">{memberPageTiersText}</p>
 											{/if}
 											{#if bonusPoints > 0}
 												<!-- 早期決済ポイント: 金額は下がらないのでポイントで見せる。会員ランクの通常ポイントとは別に付く -->

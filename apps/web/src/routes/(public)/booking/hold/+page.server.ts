@@ -167,7 +167,10 @@ export const load: PageServerLoad = async (event) => {
 		const [bathTax, prepayViews, bookingForm, groupForms, adminFeePercent, paymentTexts, favoriteChoices, standardFields, cancellationFallback, fridgeOptions, myCoupons] = await Promise.all([
 			holdBathTax(hold.id, sid, memberUserId).catch(() => 0),
 			// 予約時決済の割引（プランの定率と早期決済割の大きい方・泊ごと・部屋ごと）。金額の正は DB の direct_payment_prepare
-			Promise.all(roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }))),
+			// 特別会員の束（metadata.member_page）は特別会員の早期決済割（率・期間）で。束から決める（DB の _direct_payment_prepare と同じ判定）
+			Promise.all(
+				roomViews.map((r) => prepayDiscountViewFor(hold.facilityId, r.plan, { checkin: hold.checkin, quote: r.quote }, { memberPage: !!hold.memberPage }))
+			),
 			// 予約時に聞く項目（プランの設定: テンプレート or プラン独自）。回答は備考の先頭に入る
 			multi ? Promise.resolve(null) : planBookingForm(hold.facilityId, { ratePlanId: hold.planId }),
 			// 複数室: 予約ごとの項目（全室のプランの和）と部屋ごとの項目・男女を聞くか
