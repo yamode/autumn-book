@@ -804,13 +804,15 @@ export const actions: Actions = {
 	},
 
 	deletePartner: async (event) => {
+		let back = '/admin/partners';
 		try {
 			const { db, partner } = await commonScope(event);
+			if (partner.kind === 'member') back = '/admin/vip';
 			await deletePartner(db, partner);
 		} catch (e) {
 			return actionFailure(e);
 		}
-		redirect(303, '/admin/partners');
+		redirect(303, back);
 	},
 
 	createAccount: async (event) => {

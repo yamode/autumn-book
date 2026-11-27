@@ -15,7 +15,6 @@ import {
 import { actionFailure, canEditPartners, staffPartnerScope, StaffScopeError } from '$lib/server/partners/staff';
 import { parsePartnerKind } from '$lib/server/partners/staff-form';
 import { loadInvoiceIssuer, parseBillingSettingsForm, saveInvoiceIssuer } from '$lib/server/partners/invoices';
-import { ensureVipPages } from '$lib/server/partners/member-bookings';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
@@ -23,8 +22,10 @@ export const load: PageServerLoad = async (event) => {
 	// 「すべて」（N8・2026-10-09 複数施設化 S3）: テナントの取引先すべてを施設バッジ付きで。既定は ab_fac の施設に行がある取引先だけ
 	const showAll = event.url.searchParams.get('all') === '1';
 	// 種別の絞り込み（?kind=partner〔旅行会社・法人・その他〕／member〔特別会員〕・既定は「すべて」・docs/vip-member-page.md §13.8 Q6）
-	const kindParam = event.url.searchParams.get('kind');
-	const kindFilter: 'all' | 'partner' | 'member' = kindParam === 'partner' || kindParam === 'member' ? kindParam : 'all';
+	// VIP（特別会員）の専用ページは /admin/vip に分けた（2026-11-27）。ここは取引先（旅行会社・法人・その他）だけ。
+	// 古いブックマークの ?kind=member は VIP の一覧へ送る
+	if (event.url.searchParams.get('kind') === 'member') redirect(303, '/admin/vip');
+	const kindFilter = 'partner' as const;
 	const base = {
 		kindLabels: PARTNER_KIND_LABELS,
 		// 「取引先を作る」の種別の選択肢（特別会員は会員詳細の「専用ページを作る」から作るので出さない）
@@ -36,9 +37,6 @@ export const load: PageServerLoad = async (event) => {
 	};
 	try {
 		const scope = await staffPartnerScope(event, 'view');
-		// PMS で VIP（＝特別会員）を付けた顧客に、まだ専用ページが無ければここで作る（ふだんは VIP を付けたときに DB の知らせで作られる。
-		// 知らせが届かなかったときの取りこぼし拾い・2026-11-27）。作れなくても一覧は出す
-		await ensureVipPages(scope.db).catch((e) => console.error('[partners] VIP の専用ページを作れませんでした', e instanceof Error ? e.message : e));
 		// 請求書の発行元設定（会社で1つ・ab_fac に依らない・2026-10-09 N3。読めなくても一覧は出す）
 		// 取引先一覧を待たずに同時に投げる（2026-10-18 高速化）
 		const billingLoad = loadInvoiceIssuer(scope.db, scope.tenantId)
@@ -49,7 +47,7 @@ export const load: PageServerLoad = async (event) => {
 			: (await listPartners(scope.db, scope.facilityId)).map((partner) => ({ partner, onCurrent: true }));
 		const partners = listed
 			.map((l) => l.partner)
-			.filter((p) => (kindFilter === 'all' ? true : kindFilter === 'member' ? p.kind === 'member' : p.kind !== 'member'));
+			.filter((p) => p.kind !== 'member');
 		const onCurrent = new Map(listed.map((l) => [l.partner.id, l.onCurrent]));
 		// VIP の専用ページに入っている会員の数（0 = 会員登録待ち）
 		const memberPageIds = partners.filter((p) => p.kind === 'member').map((p) => p.id);

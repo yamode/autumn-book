@@ -45,14 +45,17 @@ export const ADMIN_NAV: NavGroup[] = [
 			},
 			{
 				href: '/admin/partners',
-				label: '取引先・VIP',
+				label: '取引先',
 				icon: 'partner',
 				children: [
-					{ href: '/admin/partners', label: '取引先・VIPの一覧' },
+					{ href: '/admin/partners', label: '取引先の一覧' },
 					{ href: '/admin/partners/invoices', label: '予定請求書' },
 					{ href: '/admin/partners/charges', label: '今後の請求予定' }
 				]
-			}
+			},
+			// VIP（特別会員）の専用ページ（プライベートブックの料金・特典の入れ物・docs/private-book.md）。取引先とはメニューを分ける（2026-11-27 指示）。
+			// 1 ページの詳細の設定は取引先と同じ画面（/admin/partners/<id>）を使う
+			{ href: '/admin/vip', label: 'VIP（特別会員）', icon: 'vip' }
 		]
 	},
 	{

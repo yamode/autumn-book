@@ -819,7 +819,7 @@
       description={canEdit ? null : '閲覧のみ（編集は管理者だけができます）'}
     >
       {#snippet actions()}
-        <a href="/admin/partners" class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">取引先の一覧</a>
+        <a href={data.partner.kind === 'member' ? '/admin/vip' : '/admin/partners'} class="inline-flex min-h-10 items-center rounded-lg border border-stone-300 bg-white px-4 py-2 text-sm text-stone-700 hover:bg-stone-50">{data.partner.kind === 'member' ? 'VIP の一覧' : '取引先の一覧'}</a>
       {/snippet}
     </PageHeader>
     <div class="-mt-2 mb-5">

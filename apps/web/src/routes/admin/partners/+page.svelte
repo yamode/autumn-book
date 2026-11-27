@@ -19,27 +19,16 @@
 	}
 	const adjustRules = (p: (typeof data.partners)[number]) => p.pricing.rules.filter((r) => r.action === 'adjust').length;
 	const hideRules = (p: (typeof data.partners)[number]) => p.pricing.rules.filter((r) => r.action === 'hide').length;
-	// 一覧の URL（範囲 ?all=1 と種別 ?kind= を組み合わせる・種別の既定は「すべて」・docs/vip-member-page.md §13.8 Q6）
-	const listHref = (all: boolean, kind: 'all' | 'partner' | 'member') => {
-		const q = new URLSearchParams();
-		if (all) q.set('all', '1');
-		if (kind !== 'all') q.set('kind', kind);
-		const s = q.toString();
-		return s ? `/admin/partners?${s}` : '/admin/partners';
-	};
-	const KIND_FILTERS: ['all' | 'partner' | 'member', string][] = [
-		['all', 'すべての種別'],
-		['partner', '取引先'],
-		['member', 'VIP（特別会員）']
-	];
+	// 一覧の URL（範囲 ?all=1）。VIP（特別会員）は /admin/vip に分けたので、ここは取引先だけ（2026-11-27）
+	const listHref = (all: boolean, _kind?: string) => (all ? '/admin/partners?all=1' : '/admin/partners');
 </script>
 
-<svelte:head><title>取引先・VIP ｜ 山人管理</title></svelte:head>
+<svelte:head><title>取引先 ｜ 山人管理</title></svelte:head>
 
 <PageHeader
-	title="取引先・VIP"
+	title="取引先"
 	facility={data.facilityName}
-	description="旅行会社・法人などの取引先ごとに特別レートを決めて、限定URL（ログインIDとパスワードで見る料金カレンダー・予約）と REST API（API キー）で公開します。PMS で VIP（特別会員）にしたお客様の専用ページもここに並びます（会員登録の前から料金を決められます）。基準は料金マスタの理論値（1名・税込・入湯税別）です。"
+	description="旅行会社・法人などの取引先ごとに特別レートを決めて、限定URL（ログインIDとパスワードで見る料金カレンダー・予約）と REST API（API キー）で公開します。基準は料金マスタの理論値（1名・税込・入湯税別）です。"
 >
 	{#snippet actions()}
 		{#if data.live && !data.error}
@@ -98,12 +87,8 @@
 			<a href={listHref(false, data.kindFilter)} class={`px-3 py-2 sm:py-1.5 ${!data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{data.facilityName}の取引先</a>
 			<a href={listHref(true, data.kindFilter)} class={`px-3 py-2 sm:py-1.5 ${data.showAll ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>すべて</a>
 		</div>
-		<!-- 種別の絞り込み（取引先＝旅行会社・法人・その他／特別会員） -->
-		<div class="flex overflow-hidden rounded-md border border-stone-300 bg-white text-xs" role="group" aria-label="種別の絞り込み">
-			{#each KIND_FILTERS as [k, label] (k)}
-				<a href={listHref(data.showAll, k)} aria-current={data.kindFilter === k ? 'true' : undefined} class={`px-3 py-2 sm:py-1.5 ${data.kindFilter === k ? 'bg-brand-800 text-white' : 'text-stone-700 hover:bg-stone-50'}`}>{label}</a>
-			{/each}
-		</div>
+		<!-- VIP（特別会員）の専用ページはメニューの「VIP（特別会員）」に分けた（2026-11-27） -->
+		<a href="/admin/vip" class="text-xs text-stone-500 underline decoration-stone-300 underline-offset-4 hover:text-brand-800">VIP（特別会員）の専用ページはこちら</a>
 		<p class="w-full text-[11px] text-stone-400 sm:w-auto">
 			{data.showAll ? '全施設の取引先です。施設のバッジは販売中（濃）／停止中（薄）。' : `${data.facilityName}に設定のある取引先です（販売停止中を含む）。`}
 		</p>

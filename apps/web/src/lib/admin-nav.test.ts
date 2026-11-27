@@ -11,9 +11,10 @@ describe('管理画面のメニューの現在地', () => {
 	it('子の無い項目・長いパスが優先', () => {
 		expect(at('/admin')).toBe('ダッシュボード > ダッシュボード');
 		expect(at('/admin/reservations/ABC123')).toBe('予約管理 > 予約管理');
-		expect(at('/admin/partners')).toBe('取引先・VIP > 取引先・VIPの一覧');
-		expect(at('/admin/partners/123')).toBe('取引先・VIP > 取引先・VIPの一覧');
-		expect(at('/admin/partners/invoices')).toBe('取引先・VIP > 予定請求書');
+		expect(at('/admin/partners')).toBe('取引先 > 取引先の一覧');
+		expect(at('/admin/vip')).toBe('VIP（特別会員） > VIP（特別会員）');
+		expect(at('/admin/partners/123')).toBe('取引先 > 取引先の一覧');
+		expect(at('/admin/partners/invoices')).toBe('取引先 > 予定請求書');
 		expect(at('/admin/security/users')).toBe('ユーザー・セキュリティ > 二段階認証・パスキー');
 	});
 	it('事前チェックインは一覧も回答の詳細も同じ項目', () => {
