@@ -317,10 +317,10 @@
 					{@render ratePagePicker()}
 					{@render rateSwitch(true)}
 				{:else if data.privateBook}
-					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
+					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-wide text-white" aria-current="true">{m.private_book_badge()}</span>
 				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
 					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・docs/private-book.md）。押すと公式サイトのまま特別料金の状態に切り替わる -->
-					<a href={privateBookEntry} data-sveltekit-reload class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-[0.14em] text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">PRIVATE BOOK</a>
+					<a href={privateBookEntry} data-sveltekit-reload class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-wide text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">{m.private_book_badge()}</a>
 				{/if}
 				{#if data.user?.role === 'member'}
 					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} />
@@ -396,9 +396,9 @@
 				<a href="/kitakaze" class="py-2.5 hover:text-brand-800">{m.radio_nav()}</a>
 				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
 				{#if data.privateBook && !canSwitchPrivateBook}
-					<span class="mt-1 self-start rounded-full bg-brand-900 px-3 py-1.5 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
+					<span class="mt-1 self-start rounded-full bg-brand-900 px-3 py-1.5 text-xs tracking-wide text-white" aria-current="true">{m.private_book_badge()}</span>
 				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
-					<a href={privateBookEntry} data-sveltekit-reload class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
+					<a href={privateBookEntry} data-sveltekit-reload class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-wide text-brand-900">{m.private_book_badge()}</a>
 				{/if}
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
 					{#if data.user?.role !== 'member'}

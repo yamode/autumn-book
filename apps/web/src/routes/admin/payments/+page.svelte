@@ -432,11 +432,11 @@
 		<!-- 特別会員（プライベートブック）の早期決済割（全特別会員で一律・この施設）。docs/private-book.md -->
 		<div class="mt-6 border-t border-stone-200 pt-4">
 			<div class="mb-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-				<h3 class="font-medium text-stone-800">特別会員（プライベートブック）の早期決済割</h3>
+				<h3 class="font-medium text-stone-800">特別会員の早期決済割</h3>
 				{#if f?.scope === 'memberEarly' && f.saved}<span class="text-xs text-emerald-600">保存しました</span>{/if}
 			</div>
 			<p class="mb-3 max-w-3xl text-xs text-stone-500">
-				特別会員（VIP）のプライベートブックからの予約だけに当てる段階表です（全特別会員で一律・この施設）。特別料金に重ねて効きます。
+				この施設の特別会員向け専用料金の予約に適用します。割引率は全特別会員で共通です。
 				「通常と同じ」なら上の設定をそのまま使います。除外期間・プラン別の「対象」・定率割引は上の設定と同じです。一般の予約と取引先の予約には効きません。
 				<br />現在:
 				{#if savedMemberEarly}
