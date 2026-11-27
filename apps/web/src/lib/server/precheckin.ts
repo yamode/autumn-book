@@ -13,6 +13,8 @@
 import { splashHint } from '$lib/precheckin-splash';
 import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { DATA_SOURCE, supa } from '$lib/server/supabase';
+import { FACILITY_UUID } from '$lib/server/supabase-data';
+import { loadDemoMealSlots } from '$lib/server/precheckin-demo-meals';
 import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
 import { sendHtmlEmail } from '$lib/server/mailer';
@@ -65,15 +67,50 @@ const RATE_PREFIX = 'ci:';
 
 // ---------------------------------------------------------------- 見本（DATA_SOURCE=demo）
 
-// 見本（DEMO_PRECHECKIN_TOKEN）はどのデータ源でも開ける。DB には一切触れず、回答はプロセス内だけに持つ（再起動・別の isolate では消える）。
-// 本番でも、お客様に届く画面（/ci・食事の時間）をスタッフが確かめられるようにするため（管理画面の「お客様フォームの見本」から）。
-let demoAnswers: PcAnswers = {};
+// 見本の回答はこのブラウザの /ci だけで持ち、実予約には保存しない。
+export const DEMO_ANSWERS_COOKIE = 'ab_ci_demo';
+const DEMO_ANSWERS_PATH = '/ci';
+
+function readDemoAnswers(cookies: Cookies): PcAnswers {
+  try {
+    const value = JSON.parse(cookies.get(DEMO_ANSWERS_COOKIE) ?? '{}') as PcAnswers;
+    if (!value || typeof value !== 'object') return {};
+    return {
+      arrival_time: typeof value.arrival_time === 'string' ? value.arrival_time : null,
+      basic_saved_at: typeof value.basic_saved_at === 'string' ? value.basic_saved_at : undefined,
+      meals_saved_at: typeof value.meals_saved_at === 'string' ? value.meals_saved_at : undefined,
+      questions: Array.isArray(value.questions) ? value.questions.filter((q) => q && typeof q.id === 'string' && typeof q.answer === 'string') : [],
+      meals: Array.isArray(value.meals) ? value.meals.filter((meal) => meal && typeof meal.time === 'string') : []
+    };
+  } catch {
+    return {};
+  }
+}
+
+function writeDemoAnswers(cookies: Cookies, answers: PcAnswers): void {
+  const value = JSON.stringify(answers);
+  const compact = encodeURIComponent(value).length <= 3500 ? value : JSON.stringify({ ...answers, questions: [] });
+  cookies.set(DEMO_ANSWERS_COOKIE, compact, { path: DEMO_ANSWERS_PATH, httpOnly: true, sameSite: 'lax', maxAge: 4 * 3600 });
+}
+
+export function clearDemoAnswers(cookies: Cookies): void {
+  cookies.delete(DEMO_ANSWERS_COOKIE, { path: DEMO_ANSWERS_PATH });
+}
 
 // ---------------------------------------------------------------- フォーム（anon）
 
 /** トークンからフォームの中身を引く。開いた時刻も DB に残る */
-export async function pcContext(token: string): Promise<PcContext | { error: PcError }> {
-	if (token === DEMO_PRECHECKIN_TOKEN) return demoPrecheckinContext(demoAnswers);
+export async function pcContext(token: string, demoAnswers: PcAnswers = {}): Promise<PcContext | { error: PcError }> {
+	if (token === DEMO_PRECHECKIN_TOKEN) {
+		const ctx = demoPrecheckinContext(demoAnswers);
+		if (DATA_SOURCE !== 'supabase') return ctx;
+		const facilityId = FACILITY_UUID[ctx.facility.id];
+		const slots = await loadDemoMealSlots(facilityId, ctx.checkIn, ctx.checkOut).catch((error) => {
+			dbg('demo meal settings error', error instanceof Error ? error.message : 'unavailable');
+			return { dinner: {}, breakfast: {} };
+		});
+		return { ...ctx, facility: { ...ctx.facility, id: facilityId }, slots };
+	}
 	if (DATA_SOURCE !== 'supabase') return { error: 'invalid_token' };
 	const { data, error } = await supa().rpc('precheckin_context', { p_token: token });
 	if (error) {
@@ -97,10 +134,14 @@ function rpcResult(data: unknown, error: { message: string } | null): PcSaveResu
 	};
 }
 
-export async function pcSaveAnswers(token: string, answers: PcAnswers): Promise<PcSaveResult> {
+export async function pcSaveAnswers(token: string, answers: PcAnswers, cookies: Cookies): Promise<PcSaveResult> {
 	if (token === DEMO_PRECHECKIN_TOKEN) {
-		const questions = (answers.questions ?? []).map((a) => ({ ...a, question: DEMO_QUESTIONS.find((q) => q.id === a.id)?.question ?? '' }));
-		demoAnswers = { ...demoAnswers, ...answers, questions, basic_saved_at: new Date().toISOString() };
+		writeDemoAnswers(cookies, {
+			...readDemoAnswers(cookies),
+			arrival_time: answers.arrival_time,
+			questions: (answers.questions ?? []).map(({ id, answer }) => ({ id, answer })),
+			basic_saved_at: new Date().toISOString()
+		});
 		return { ok: true };
 	}
 	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'invalid_token' };
@@ -109,9 +150,9 @@ export async function pcSaveAnswers(token: string, answers: PcAnswers): Promise<
 	return rpcResult(data, error);
 }
 
-export async function pcSaveMeals(token: string, meals: PcMealChoice[]): Promise<PcSaveResult> {
+export async function pcSaveMeals(token: string, meals: PcMealChoice[], cookies: Cookies): Promise<PcSaveResult> {
 	if (token === DEMO_PRECHECKIN_TOKEN) {
-		demoAnswers = { ...demoAnswers, meals: meals.filter((m) => m.time), meals_saved_at: new Date().toISOString() };
+		writeDemoAnswers(cookies, { ...readDemoAnswers(cookies), meals: meals.filter((m) => m.time), meals_saved_at: new Date().toISOString() });
 		return { ok: true };
 	}
 	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'invalid_token' };
@@ -174,12 +215,16 @@ async function notifyFacilityTask(token: string, origin: string): Promise<void> 
 
 const STAY_COOKIE = 'ab_stay';
 
+export function clearStayCookie(cookies: Cookies): void {
+	cookies.delete(STAY_COOKIE, { path: '/' });
+}
+
 /**
  * 事前チェックインのトークンから、その予約（代表の部屋）の滞在トークンを受け取る（book.precheckin_stay_cookie・P3）。
  * 回答済み・チェックイン日 20:00 より前だけ（DB が判定・2026-11-23 ユーザー指示で 12:00 → 20:00。以後は部屋の QR・6 桁コードで客室案内に入る・2026-11-23 レビュー M-4）。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
  */
 export async function pcStayToken(token: string): Promise<StayTokenResult> {
-	if (DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
+	if (token === DEMO_PRECHECKIN_TOKEN || DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
 	const { data, error } = await supa().rpc('precheckin_stay_cookie', { p_token: token });
 	if (error) {
 		dbg('stay_token error', error.message);
@@ -245,7 +290,7 @@ export const DEMO_QUESTIONS: PcQuestion[] = [{ id: 'demo-q1', question: 'ご到�
 
 /** 施設の宿からの質問（有効なもの・表示順）。見本は DEMO_QUESTIONS。読めないときは空（質問なし） */
 export async function pcQuestions(facilityId: string, demo = false): Promise<PcQuestion[]> {
-	if (demo) return DEMO_QUESTIONS;
+	if (demo && DATA_SOURCE !== 'supabase') return DEMO_QUESTIONS;
 	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return [];
 	const { data, error } = await supa()
 		.from('precheckin_questions')
@@ -354,7 +399,7 @@ export async function resolvePrecheckin(
 	const key = RATE_PREFIX + rateLimitClientKey(event.getClientAddress());
 	const rl = await claimRateCheck(event.platform, key);
 	if (rl.locked) return { error: 'locked' };
-	const ctx = await pcContext(token);
+	const ctx = await pcContext(token, token === DEMO_PRECHECKIN_TOKEN && !fromLink ? readDemoAnswers(event.cookies) : {});
 	if ('error' in ctx) {
 		if (ctx.error === 'invalid_token') await claimRecordFailure(event.platform, key);
 		// 使えなくなった Cookie は消す（古いリンクを開いただけのときは、手元の有効な Cookie を残す）

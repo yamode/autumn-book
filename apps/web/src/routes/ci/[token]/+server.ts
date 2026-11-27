@@ -1,7 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import { looksLikePrecheckinToken, precheckinSplashHtml, PRECHECKIN_ENTRANCE_COOKIE, type SplashLocale } from '$lib/precheckin-splash';
-import { resolvePrecheckin, setPrecheckinCookie } from '$lib/server/precheckin';
+import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
+import { clearDemoAnswers, resolvePrecheckin, setPrecheckinCookie } from '$lib/server/precheckin';
 import type { RequestHandler } from './$types';
 
 // 事前チェックインのご案内メール・SMS のリンク（/ci/<token>）の着地点（docs/pre-checkin.md §4）。
@@ -30,6 +31,7 @@ export const GET: RequestHandler = async (event) => {
 	}
 	const r = await resolvePrecheckin(event, event.params.token);
 	if ('ctx' in r) {
+		if (r.token === DEMO_PRECHECKIN_TOKEN) clearDemoAnswers(event.cookies);
 		setPrecheckinCookie(event.cookies, r.token, r.ctx.expiresAt);
 		// 「いまリンクから入った」印（20 秒だけ）。/ci の最初の表示で、ゆっくり現れる演出を出すのに使う（+layout.server.ts が読んで消す）
 		event.cookies.set(PRECHECKIN_ENTRANCE_COOKIE, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 20 });

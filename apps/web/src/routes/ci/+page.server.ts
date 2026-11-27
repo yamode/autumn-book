@@ -32,7 +32,7 @@ export const actions: Actions = {
 		const questions = await pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => []);
 		const missing = missingQuestion(questions, answers.questions);
 		if (missing) return fail(400, { error: 'question_required', field: missing as string | null });
-		const res = await pcSaveAnswers(r.token, answers);
+		const res = await pcSaveAnswers(r.token, answers, event.cookies);
 		if (!res.ok) return fail(400, { error: res.error, field: res.field ?? null });
 		// 回答済み（② まで送信済み）のあとの修正なら宿へ知らせる（未回答のうちは DB が何もしない・失敗しても保存は成功のまま）
 		await pcNotifyFacility(event, r.token);

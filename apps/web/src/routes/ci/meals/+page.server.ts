@@ -15,7 +15,7 @@ export const actions: Actions = {
 		const choices = mealChoicesFromForm(await event.request.formData());
 		const check = checkMealChoices(r.ctx, choices);
 		if (!check.ok) return fail(400, { error: check.error, time: check.time ?? null });
-		const res = await pcSaveMeals(r.token, choices.filter((c) => c.time));
+		const res = await pcSaveMeals(r.token, choices.filter((c) => c.time), event.cookies);
 		if (!res.ok) return fail(400, { error: res.error, time: res.time ?? null });
 		// 回答の完了（初回）・修正を宿へ知らせる（通知メール・PMS の「確認待ち」。失敗しても保存は成功のまま）
 		await pcNotifyFacility(event, r.token);

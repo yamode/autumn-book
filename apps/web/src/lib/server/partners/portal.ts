@@ -265,7 +265,7 @@ export const MEMBER_PORTAL_DENIED =
 
 /** 特別会員の B面へ POST などが来たとき（410）の文言 */
 export const MEMBER_PORTAL_GONE_MESSAGE =
-  "特別会員さまのご予約は、公式サイトのプライベートブック（マイページのご予約）へ移りました。お手数ですが公式サイトから操作し直してください。";
+  "特別会員のご予約は、公式サイトのマイページの「予約」からお手続きください。";
 
 /** 専用ページで使わないルートか（純関数・テスト用）。sub は /p/<token> の後ろ（先頭 / つき） */
 export const isMemberPortalDenied = (sub: string) => MEMBER_PORTAL_DENIED.test(sub);
