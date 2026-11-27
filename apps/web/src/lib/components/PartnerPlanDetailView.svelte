@@ -8,6 +8,9 @@
   // 日付未定（日程を選ぶ前の一覧から開いたとき）は料金を「〜」で出し、「日付を選択して予約」で、この部屋・プランに絞った
   // 日付パネル（PC は横に 2 か月・スマホは縦スクロール）を開く。日付を押したら、その日の料金でこの詳細を表示し直す（onPickDate）。
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import type { SubmitFunction } from '@sveltejs/kit';
+  import { enhance } from '$lib/enhance';
   import PartnerContentBody from './PartnerContentBody.svelte';
   import PerkBanners, { type PerkBanner } from './PerkBanners.svelte';
   import PerkModal, { type PerkModalContent } from './PerkModal.svelte';
@@ -152,6 +155,42 @@
     const p = detail.officialPerks.find((x) => `official:${x.key}` === key);
     if (p) perkContent = { label: p.label, body: p.body };
   }
+  // ---- 特別会員の専用ページ: 「予約へ進む」で確認画面を通さず仮押さえ → 公式の予約入力（/booking/hold）へ（2026-11-27） ----
+  // 公式のプラン詳細の「予約する」（?/hold）・かごの「予約へ進む」と同じ流れ。POST /p/<token>/book（default action）が
+  // 対象会員か・公開プランか・専用料金の再計算・在庫・回数制限を確かめてから束を作る（memberPageHold）。取引先は従来どおり bookHref（予約入力）へ
+  const memberMode = $derived($page.data.portal?.kind === 'member' && !!$page.data.portal?.member);
+  const memberPreview = $derived(!!$page.data.portal?.preview);
+  const memberFacilityId = $derived(String($page.data.portal?.facilityId ?? ''));
+  let holdBusy = $state(false);
+  let holdError = $state('');
+  const submitHold: SubmitFunction = ({ cancel }) => {
+    if (memberPreview) {
+      cancel();
+      holdError = '確認モードではご予約に進めません。';
+      return;
+    }
+    holdBusy = true;
+    holdError = '';
+    return async ({ result }) => {
+      if (result.type === 'redirect') {
+        await goto(result.location);
+        holdBusy = false;
+        return;
+      }
+      holdBusy = false;
+      if (result.type === 'failure') {
+        const d = (result.data ?? {}) as { message?: string; soldOut?: { roomName: string }[] };
+        const names = [...new Set((d.soldOut ?? []).map((x) => x.roomName).filter(Boolean))];
+        holdError = (d.message ?? 'ご予約に進めませんでした。時間をおいてお試しください。') + (names.length ? `（${names.join('・')}）` : '');
+        return;
+      }
+      holdError = 'ご予約に進めませんでした。時間をおいてお試しください。';
+    };
+  };
+  // 失敗の理由は右欄（スマホは本文中）の「予約へ進む」の下に出す。画面の下の帯から押したときもそこが見えるように寄せる
+  $effect(() => {
+    if (holdError) ctaEl?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
   const parts = $derived(roomParts(detail.roomName));
   const capacity = $derived(
     detail.room ? (detail.room.capacityMin === detail.room.capacityMax ? `${detail.room.capacityMax}名` : `${detail.room.capacityMin}名〜${detail.room.capacityMax}名`) : ''
@@ -176,6 +215,27 @@
       <span class={`block font-bold ${size === 'lg' ? 'text-lg' : 'text-base'}`}>日付を選択して予約</span>
       {#if freeText && size === 'lg'}<span class="block text-xs font-medium">{freeText}</span>{/if}
     </button>
+  {:else if canBook && memberMode}
+    {#if memberPreview}
+      <p class="rounded-lg bg-stone-100 px-3 py-3 text-center text-sm text-stone-500">確認モードではご予約に進めません</p>
+    {:else}
+      <!-- 特別会員: この部屋・プランを params.rooms 室（各室 大人 params.guests 名）で仮押さえして公式の予約入力へ -->
+      <form method="POST" action={`/p/${token}/book`} use:enhance={submitHold}>
+        <input type="hidden" name="room" value={detail.roomCode} />
+        <input type="hidden" name="plan" value={detail.planCode} />
+        <input type="hidden" name="name" value={detail.planLabel} />
+        <input type="hidden" name="guests" value={params.guests} />
+        <input type="hidden" name="rooms" value={params.rooms} />
+        <input type="hidden" name="checkin" value={params.date} />
+        <input type="hidden" name="nights" value={params.nights} />
+        <input type="hidden" name="facility_id" value={memberFacilityId} />
+        <button type="submit" disabled={holdBusy} class={`block w-full rounded-lg bg-green-600 text-center text-white hover:bg-green-700 disabled:opacity-60 ${size === 'lg' ? 'py-3' : 'px-5 py-2.5'}`}>
+          <span class={`block font-bold ${size === 'lg' ? 'text-lg' : 'text-base'}`}>{holdBusy ? 'お部屋を確保しています…' : '予約へ進む'}</span>
+          {#if freeText && size === 'lg' && !holdBusy}<span class="block text-xs font-medium">{freeText}</span>{/if}
+        </button>
+      </form>
+      {#if holdError && size === 'lg'}<p class="mt-2 rounded-md bg-rose-700/5 px-3 py-2 text-sm text-rose-700" role="alert">{holdError}</p>{/if}
+    {/if}
   {:else if canBook}
     <a href={detail.bookHref} class={`block rounded-lg bg-green-600 text-center text-white hover:bg-green-700 ${size === 'lg' ? 'py-3' : 'px-5 py-2.5'}`}>
       <span class={`block font-bold ${size === 'lg' ? 'text-lg' : 'text-base'}`}>予約へ進む</span>

@@ -6,6 +6,9 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
+	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
+	import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
+	import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import BookingCancelTerms from '$lib/components/BookingCancelTerms.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
@@ -513,6 +516,10 @@
 			<a href="/search" class="mt-4 inline-block rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">{m.hold_expired_search()}</a>
 		</div>
 	{:else}
+		{#if memberPage}
+			<!-- プライベートブック（特別会員の専用ページ）経由: B面のヘッダー下の帯と同じ言葉・形。公式の一般の予約では出さない -->
+			<div class="mb-3"><PrivateBookBand name={memberPage.memberName} releaseHoldId={data.hold.id} /></div>
+		{/if}
 		<!-- 戻る: 仮押さえを解放してから選び直しへ戻る（ただのリンクで戻ると期限まで部屋が在庫から減ったままになる）。
 		     見た目は他の子ページの「‹ 〇〇に戻る」（BackLink）にそろえる（2026-11-21: 上に戻るリンクと選び直しが重なっていた） -->
 		<form method="POST" action="?/release" class="-ml-2 mb-3 flex flex-wrap items-center gap-x-2">
@@ -533,10 +540,27 @@
 			</p>
 		{/if}
 		{#if memberPage}
-			<!-- 特別会員の専用ページ経由・専用料金（専用特典は部屋ごと・右の予約内容に） -->
-			<div class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm">
-				<p class="font-medium text-brand-900">{m.hold_member_page_heading({ page: memberPage.pageName })}</p>
-				<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
+			<!-- 特別会員の専用ページ経由・専用料金。2026-11-27〜 専用ページの確認画面を通さずここへ来るので、
+			     確認画面で見せていた専用特典（1 段目）・会員特典（2 段目）をここで見せる（獲得予定ポイントは右の予約内容に） -->
+			<div class="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm" style="--pt-accent: var(--color-accent-600)">
+				<div>
+					<p class="font-medium text-brand-900">{m.hold_member_page_heading({ page: memberPage.pageName })}</p>
+					<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
+				</div>
+				{#if memberPage.perks.length || memberPage.benefits}
+					<div class="grid gap-3 md:grid-cols-2">
+						{#if memberPage.perks.length}
+							<section>
+								<p class="font-bold text-brand-900">{memberPage.memberName ? m.hold_member_page_perks_heading({ name: memberPage.memberName }) : m.member_page_perks()}</p>
+								<p class="text-xs text-stone-500">{m.hold_member_page_perks_note()}</p>
+								<div class="mt-2"><PartnerPerkList perks={memberPage.perks} variant="compact" showImages={false} /></div>
+							</section>
+						{/if}
+						{#if memberPage.benefits}
+							<MemberBenefitList rankLabel={memberPage.benefits.rankLabel} lines={memberPage.benefits.lines} cancelRules={memberPage.cancelRules} compact />
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/if}
 

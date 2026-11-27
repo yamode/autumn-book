@@ -1,16 +1,11 @@
 <script lang="ts">
-  // /p/<token>/book: 取引先の予約入力（PartnerBookInput）と、特別会員の専用ページの確認画面（MemberBookConfirm）の切替。
-  // 特別会員のときの data は { portal, member } だけ（取引先の項目は無い・docs/vip-member-page.md §14.4・§14.7）。
+  // /p/<token>/book: 取引先の予約入力（PartnerBookInput）。
+  // 特別会員の専用ページには確認画面が無い（2026-11-27〜）: GET は料金カレンダーのプラン詳細へ戻し（+page.server.ts）、
+  // プラン詳細・かごの「予約へ進む」（POST）は仮押さえして公式の予約入力（/booking/hold）へ進む。
   import PartnerBookInput from './PartnerBookInput.svelte';
-  import MemberBookConfirm from './MemberBookConfirm.svelte';
   import type { PageData } from './$types';
 
-  type MemberForm = { message?: string; code?: string; soldOut?: { roomTypeId: string; roomName: string }[] };
-  let { data, form }: { data: PageData; form?: { message?: string } & MemberForm } = $props();
+  let { data, form }: { data: PageData; form?: { message?: string } } = $props();
 </script>
 
-{#if data.portal.kind === 'member' && data.member}
-  <MemberBookConfirm data={data.member} {form} />
-{:else}
-  <PartnerBookInput {data} {form} />
-{/if}
+<PartnerBookInput {data} {form} />

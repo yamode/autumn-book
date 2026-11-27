@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Stepper from '$lib/components/Stepper.svelte';
+	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
 	import { formatPrice, formatDateLong, addDays } from '$lib/format';
 	import { gaPurchaseOnce } from '$lib/analytics';
 	import { guestsLabel } from '$lib/components/guests';
@@ -71,6 +72,10 @@
 <svelte:head><title>{m.complete_title({ facility: data.facility.name })}</title></svelte:head>
 
 <div class="mx-auto max-w-2xl px-4 py-10">
+	{#if data.memberPageName !== null}
+		<!-- プライベートブック（特別会員の専用ページ）経由の予約: B面のヘッダー下の帯と同じ言葉・形。公式の一般の予約では出さない -->
+		<div class="mb-6"><PrivateBookBand name={data.memberPageMemberName} /></div>
+	{/if}
 	<Stepper {steps} current={isCard ? 3 : 2} />
 
 	<div class="mt-8 rounded-2xl border border-stone-200 bg-white p-8 text-center">

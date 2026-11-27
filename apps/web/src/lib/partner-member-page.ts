@@ -383,3 +383,27 @@ export function memberPageOpError(e: unknown): MemberPageOpError {
   for (const [key, err] of MEMBER_PAGE_OP_ERRORS) if (words.has(key)) return { ...err };
   return { code: 'error', status: 500, message: 'お手続きできませんでした。時間をおいてお試しください。' };
 }
+
+/**
+ * 特別会員の専用ページで /p/<token>/book を GET で開かれたときの戻し先（2026-11-27〜 確認画面は無い）。
+ * 同じ条件（日程・泊数・人数・室数・施設 ?f=）で、その部屋・プランのプラン詳細（?detail=<部屋>|<プラン>|<料金の planName>）を開いた料金カレンダー。
+ * GET では仮押さえしない（先読み・共有されたリンクで在庫を押さえないため）。形の合わない値は捨てる
+ */
+export function memberBookRedirect(token: string, q: URLSearchParams): string {
+  const roomCode = q.get('room') ?? '';
+  const planCode = q.get('plan') ?? '';
+  const planName = q.get('name') ?? '';
+  const out = new URLSearchParams();
+  const date = q.get('date') ?? '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) out.set('date', date);
+  for (const k of ['nights', 'guests', 'rooms'] as const) {
+    const raw = q.get(k);
+    const n = raw == null ? NaN : Number(raw);
+    if (Number.isInteger(n) && n >= 1 && n <= 99) out.set(k, String(n));
+  }
+  const facility = q.get('f') ?? '';
+  if (/^[a-z0-9-]{1,64}$/i.test(facility)) out.set('f', facility);
+  if (CODE_RE.test(roomCode) && CODE_RE.test(planCode) && planName.length <= 120) out.set('detail', `${roomCode}|${planCode}|${planName}`);
+  const qs = out.toString();
+  return `/p/${token}/calendar${qs ? `?${qs}` : ''}`;
+}
