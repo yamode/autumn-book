@@ -8,6 +8,7 @@
 	import { page } from '$app/state';
 	import { slide, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
+	import { prefersReducedMotion } from 'svelte/motion';
 	import { pendingParamOnly } from '$lib/page-transition';
 	import { cubicOut } from 'svelte/easing';
 	import SiteSearchBar from '$lib/components/SiteSearchBar.svelte';
@@ -73,6 +74,9 @@
 	const pendingMeal = $derived(pendingParamOnly('meal'));
 	const activeMeal = $derived(pendingMeal ?? data.params.meal);
 	const pendingSpecialOnly = $derived(pendingParamOnly('specialOnly'));
+	const resultFade = $derived(prefersReducedMotion.current ? 0 : 180);
+	const planSlide = $derived(prefersReducedMotion.current ? 0 : 220);
+	const roomFlip = $derived(prefersReducedMotion.current ? 0 : 300);
 	const activeSpecialOnly = $derived(pendingSpecialOnly === null ? data.specialOnly : pendingSpecialOnly === '1');
 
 	function filterSpecialOnly(checked: boolean) {
@@ -208,14 +212,14 @@
 				</div>
 			</div>
 			<!-- プランの欄（お食事の絞り込みのときはここだけが薄くなり、届いたらフェードインで入れ替わる） -->
-			<div class="min-w-0 transition-opacity duration-200 ease-out {pendingMeal !== null ? 'opacity-30' : 'opacity-100'}" aria-busy={pendingMeal !== null || undefined}>
+			<div class="min-w-0 transition-opacity duration-200 ease-out motion-reduce:transition-none {pendingMeal !== null ? 'opacity-30' : 'opacity-100'}" aria-busy={pendingMeal !== null || undefined}>
 			{#key data.params.meal}
-			<div in:fade={{ duration: 220 }}>
+			<div in:fade={{ duration: planSlide }}>
 				{#if item.plans.length}
 					<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
 						{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
-							<!-- 「プランをすべて見る」で出し入れする 3 件目以降は、すっと開閉する（2026-11-02 指示） -->
-							<div transition:slide={{ duration: 280, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+							<!-- 絞り込みや「プランをすべて見る」で増減するプランだけを開閉する -->
+							<div transition:slide={{ duration: planSlide, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
 								<div class="min-w-0">
 									<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
 										{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{mealChipLabel(option.plan)}</span>{/if}
@@ -348,12 +352,12 @@
 
 	{#if data.combos.length}
 		<!-- 部屋タイプ横断の組み合わせ: 1 つの部屋タイプでは室数に足りないとき -->
-		<section class="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label={m.plans_combo_title({ n: String(data.params.rooms) })}>
+		<section transition:fade={{ duration: resultFade }} class="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label={m.plans_combo_title({ n: String(data.params.rooms) })}>
 			<p class="text-base font-bold text-brand-900">{m.plans_combo_title({ n: String(data.params.rooms) })}</p>
 			<p class="mt-0.5 text-sm text-stone-600">{m.plans_combo_desc({ n: String(data.params.rooms) })}</p>
 			<ul class="mt-3 space-y-3">
 				{#each data.combos as combo (combo.planId)}
-					<li class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+					<li transition:slide={{ duration: planSlide, easing: cubicOut }} class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
 						<div class="min-w-0">
 							<p class="text-sm font-semibold text-brand-900">{combo.planName}</p>
 							<p class="mt-0.5 text-base text-brand-900">{combo.parts.map((part) => `${part.roomName} ×${part.rooms}`).join(" ＋ ")}<span class="ml-2 text-sm text-stone-500">{m.plans_combo_each({ n: String(data.params.adults) })}</span></p>
@@ -388,22 +392,22 @@
 		{/if}
 
 		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
-		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null}>
+		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null || pendingSpecialOnly !== null}>
 		<div class="mt-4 space-y-5 sm:space-y-6">
 			{#each openRooms as item (item.room.id)}
-				<article animate:flip={{ duration: 300, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
+				<article transition:fade={{ duration: resultFade }} animate:flip={{ duration: roomFlip, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
 			{:else}
-				{#if !fullRooms.length && !data.combos.length}<p class="text-sm text-stone-500">{data.specialOnly ? m.private_book_filter_empty() : m.plans_no_results()}</p>{/if}
+				{#if !fullRooms.length && !data.combos.length}<p in:fade={{ duration: resultFade }} class="text-sm text-stone-500">{data.specialOnly ? m.private_book_filter_empty() : m.plans_no_results()}</p>{/if}
 			{/each}
 		</div>
 		{#if fullRooms.length}
 			<!-- 満室の部屋タイプは見出しを分けて下にまとめる（空いている部屋の並びに混ぜない・2026-11-23 指示） -->
-			<div class="mt-10 border-t border-stone-200 pt-6">
+			<div transition:fade={{ duration: resultFade }} class="mt-10 border-t border-stone-200 pt-6">
 				<h3 class="font-display text-lg text-brand-900">{m.plans_unavailable_heading()}</h3>
 				<p class="mt-1 text-sm text-stone-600">{m.plans_unavailable_desc()}</p>
 				<div class="mt-4 space-y-5 sm:space-y-6">
 					{#each fullRooms as item (item.room.id)}
-						<article animate:flip={{ duration: 300, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
+						<article animate:flip={{ duration: roomFlip, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
 					{/each}
 				</div>
 			</div>
