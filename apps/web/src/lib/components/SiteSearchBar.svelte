@@ -24,8 +24,9 @@
 		meal = '',
 		specialOnly = false,
 		keepScroll = false,
+		compact = false,
 		facility = ''
-	}: { checkin?: string; nights?: number; adults?: number; rooms?: number; action?: string; facility?: string; meal?: string; specialOnly?: boolean; keepScroll?: boolean } = $props();
+	}: { checkin?: string; nights?: number; adults?: number; rooms?: number; action?: string; facility?: string; meal?: string; specialOnly?: boolean; keepScroll?: boolean; compact?: boolean } = $props();
 
 	const lang = normalizeLang(getLocale()) || 'ja';
 	const labels = STAY_SEARCH_LABELS[lang];
@@ -124,7 +125,7 @@
 </script>
 
 <div role="search" aria-label={labels.region} style={`--pt-accent:${accent.accent};--pt-accent-soft:${accent.accentSoft}`}>
-	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open facilityPanel={pickFacility ? facilityPanel : undefined} facilityValue={chosenFacility?.name ?? ''} maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} mobileDateDialog onSearch={search}>
+	<StaySearchBar bind:date bind:nights={n} bind:guests bind:rooms={r} bind:open facilityPanel={pickFacility ? facilityPanel : undefined} facilityValue={chosenFacility?.name ?? ''} maxGuests={LIMITS.adults.max} maxRooms={LIMITS.rooms.max} {lang} {labels} {compact} mobileDateDialog onSearch={search}>
 		{#snippet datePanel({ close, modal, next })}
 			<!-- スマホの検索モーダルでは、日付は 2 ステップ目（下段のボタンは「次へ」で人数・室数へ進む） -->
 			<StaySearchPanel bind:date bind:nights={n} {guests} rooms={r} maxNights={LIMITS.nights.max} {today} {latestYm} loading={loading && !data} {failed} {day} {lang} {labels} {modal} bare={!!next} applyLabel={next ? labels.nextStep : undefined} onApply={next ?? search} onClose={close} />

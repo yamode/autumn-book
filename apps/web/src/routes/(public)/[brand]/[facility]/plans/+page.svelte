@@ -301,29 +301,28 @@
 	<title>{m.plans_title({ name: data.facility.name })}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
-	<BackLink href={facilitiesHref} target={m.common_facility_list()} />
-
-	<!-- 施設名と一言だけ（紹介・写真はページ下部の「施設について」へ） -->
-	<header class="flex flex-wrap items-end justify-between gap-x-6 gap-y-1">
-		<div class="min-w-0">
+<div class="mx-auto max-w-6xl px-4 pt-4 pb-6 sm:pt-5 sm:pb-8">
+	<header class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+		<div class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
 			<h1 class="font-display text-2xl leading-tight text-brand-900 sm:text-3xl">{data.facility.name}</h1>
-			{#if data.facility.catchCopy}<p class="mt-1 text-sm text-stone-600">{data.facility.catchCopy}</p>{/if}
+			{#if data.facility.catchCopy}<p class="text-sm text-stone-600">{data.facility.catchCopy}</p>{/if}
 		</div>
-		<p class="text-xs text-stone-500">⌖ {data.facility.prefecture}{data.facility.addressPublic ? ` · ${data.facility.addressPublic}` : ''} · IN {data.facility.checkinTime} / OUT {data.facility.checkoutTime}</p>
+		<p class="text-xs text-stone-600">{data.facility.prefecture}{#if data.facility.addressPublic} · {data.facility.addressPublic}{/if} · IN {data.facility.checkinTime} / OUT {data.facility.checkoutTime}</p>
 	</header>
-	<PrivateBookPriceNote view={data.privateBook} />
-	<!-- プランから探す／お部屋から探す（施設 → 客室一覧 → 客室詳細の入口・取引先ページの「お部屋とプラン」「お部屋」と同じ役割） -->
-	<nav class="mt-4 flex gap-2 border-b border-stone-200 text-sm" aria-label={m.plans_view_switch()}>
-		<span class="-mb-px border-b-2 border-brand-800 px-3 py-2 font-medium text-brand-900" aria-current="page">{m.plans_tab_plans()}</span>
-		<a href="{base}/rooms" class="-mb-px border-b-2 border-transparent px-3 py-2 text-stone-500 hover:text-brand-900">{m.plans_tab_rooms()}</a>
-	</nav>
 
+	<div class="mt-2 flex flex-wrap items-center justify-between gap-x-3 border-b border-stone-200">
+		<nav class="flex min-w-0 gap-1 text-sm" aria-label={m.plans_view_switch()}>
+			<span class="-mb-px inline-flex min-h-11 items-center border-b-2 border-brand-800 px-2 font-medium text-brand-900 sm:px-3" aria-current="page">{m.plans_tab_plans()}</span>
+			<a href="{base}/rooms" class="-mb-px inline-flex min-h-11 items-center border-b-2 border-transparent px-2 text-stone-600 hover:text-brand-900 sm:px-3">{m.plans_tab_rooms()}</a>
+		</nav>
+		<BackLink href={facilitiesHref} target={m.common_facility_list()} inline />
+	</div>
 
-	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={data.specialOnly} keepScroll />
+	<div id="plan-search" class="mt-3 scroll-mt-28">
+		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={data.specialOnly} keepScroll compact />
+		<PrivateBookPriceNote view={data.privateBook} compact />
 		{#if data.privateBook || data.meals.length > 1}
-			<div role="group" aria-label={m.plans_filters_label()} class="mt-4 divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-stone-50/80 px-3 sm:px-4">
+			<div role="group" aria-label={m.plans_filters_label()} class="mt-3 divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-stone-50/80 px-3 sm:px-4">
 				{#if data.privateBook}
 					<div class="flex min-w-0 items-center gap-2 py-2 sm:gap-3">
 						<span class="w-14 shrink-0 text-xs font-medium text-stone-600 sm:w-20">{m.plans_rate_filter_label()}</span>

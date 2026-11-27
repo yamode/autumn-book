@@ -25,6 +25,7 @@
     labels = STAY_SEARCH_LABELS.ja,
     keepOpen,
     mobileDateDialog = false,
+    compact = false,
     datePanel,
     facilityPanel,
     facilityValue = '',
@@ -46,6 +47,7 @@
     keepOpen?: () => boolean;
     /** 日付パネルの中身（close で閉じる） */
     mobileDateDialog?: boolean;
+    compact?: boolean;
     /** next はスマホのモーダルのときだけ渡す（日付の次のステップ＝人数・室数へ進む） */
     datePanel: Snippet<[{ close: () => void; modal?: boolean; next?: () => void }]>;
     /** 施設の区画のパネル。渡したときだけ先頭に「施設」の区画を出す（公開サイトで施設が決まっていないとき） */
@@ -103,7 +105,7 @@
     open = open === panel ? '' : panel;
   };
   const segment = (panel: 'date' | 'guests' | 'facility') =>
-    `flex min-w-0 flex-col justify-center rounded-full px-6 py-2.5 text-left transition ${open === panel ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
+    `flex min-w-0 flex-col justify-center rounded-full text-left transition ${compact ? 'min-h-12 px-4 py-1.5' : 'px-6 py-2.5'} ${open === panel ? 'bg-white shadow-[0_6px_20px_rgba(0,0,0,0.12)]' : 'hover:bg-stone-100'}`;
   const dateSummary = $derived.by(() => {
     if (!date) return labels.addDate;
     const checkin = formatDate(date, lang);
@@ -142,7 +144,7 @@
 
 <div bind:this={root} class="@container relative">
   <!-- PC: 1本の角丸バー -->
-  <div class={`hidden items-center rounded-full border border-stone-200 p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:flex ${open ? 'bg-stone-100' : 'bg-white'}`}>
+  <div class={`hidden items-center rounded-full border border-stone-200 @min-[900px]:flex ${compact ? 'p-1 shadow-sm' : 'p-1.5 shadow-[0_3px_12px_rgba(0,0,0,0.08)]'} ${open ? 'bg-stone-100' : 'bg-white'}`}>
     {#if facilityPanel}
       <button type="button" class={`${segment('facility')} flex-[1.2]`} onclick={() => toggle('facility')} aria-expanded={open === 'facility'}>
         {@render facilityText()}
@@ -153,17 +155,17 @@
       {@render dateText()}
     </button>
     <span class={`h-8 w-px bg-stone-200 ${open ? 'opacity-0' : ''}`} aria-hidden="true"></span>
-    <div class={`${segment('guests')} ${facilityPanel ? 'flex-[1.5]' : 'flex-1'} flex-row items-center justify-between gap-3 py-1.5 pr-1.5`}>
+    <div class={`${segment('guests')} ${facilityPanel ? 'flex-[1.5]' : 'flex-1'} flex-row items-center justify-between ${compact ? 'gap-2' : 'gap-3 py-1.5 pr-1.5'}`}>
       <button type="button" class="flex min-w-0 flex-1 flex-col text-left" onclick={() => toggle('guests')} aria-expanded={open === 'guests'}>
         <span class="text-xs font-bold tracking-wide text-brand-900">{labels.guests}</span>
         <span class="truncate text-base text-brand-900">{labels.guestsVal(guests, rooms)}</span>
       </button>
-      <button type="button" onclick={onSearch} class="shrink-0 rounded-full bg-[var(--pt-accent)] px-6 py-3 text-base font-bold text-white transition hover:brightness-110">{labels.search}</button>
+      <button type="button" onclick={onSearch} class="shrink-0 rounded-full bg-[var(--pt-accent)] font-bold text-white transition hover:brightness-110 {compact ? 'min-h-11 px-5 text-sm' : 'px-6 py-3 text-base'}">{labels.search}</button>
     </div>
   </div>
 
   <!-- スマホ: 縦に積んだカード -->
-  <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-[0_3px_12px_rgba(0,0,0,0.08)] @min-[900px]:hidden">
+  <div class="overflow-hidden rounded-2xl border border-stone-200 bg-white @min-[900px]:hidden {compact ? 'shadow-sm' : 'shadow-[0_3px_12px_rgba(0,0,0,0.08)]'} {compact && !facilityPanel ? 'grid grid-cols-2' : ''}">
     {#if facilityPanel}
       <button type="button" class="flex w-full items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 text-left" onclick={() => toggle('facility')} aria-expanded={open === 'facility'}>
         <span class="flex min-w-0 flex-col">
@@ -171,19 +173,19 @@
         </span>
       </button>
     {/if}
-    <button type="button" class="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" onclick={() => toggle('date')} aria-expanded={open === 'date'}>
+    <button type="button" class="flex min-w-0 w-full items-center justify-between text-left {compact ? 'min-h-11 px-3 py-1.5' : 'gap-3 px-4 py-3'}" onclick={() => toggle('date')} aria-expanded={open === 'date'}>
       <span class="flex min-w-0 flex-col">
         {@render dateText()}
       </span>
     </button>
-    <button type="button" class="flex w-full items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-left" onclick={() => toggle('guests')} aria-expanded={open === 'guests'}>
-      <span class="flex flex-col">
+    <button type="button" class="flex min-w-0 w-full items-center justify-between border-stone-200 text-left {compact && !facilityPanel ? 'min-h-11 border-l px-3 py-1.5' : 'gap-3 border-t px-4 py-3'}" onclick={() => toggle('guests')} aria-expanded={open === 'guests'}>
+      <span class="flex flex-col {compact ? 'min-w-0' : ''}">
         <span class="text-xs font-bold text-brand-900">{labels.guests}</span>
-        <span class="text-base text-brand-900">{labels.guestsVal(guests, rooms)}</span>
+        <span class="text-base text-brand-900 {compact ? 'truncate' : ''}">{labels.guestsVal(guests, rooms)}</span>
       </span>
     </button>
-    <div class="border-t border-stone-200 p-2">
-      <button type="button" onclick={onSearch} class="w-full rounded-xl bg-[var(--pt-accent)] py-3 text-base font-bold text-white">{labels.search}</button>
+    <div class="border-t border-stone-200 {compact ? 'col-span-full p-1.5' : 'p-2'}">
+      <button type="button" onclick={onSearch} class="w-full rounded-xl bg-[var(--pt-accent)] font-bold text-white {compact ? 'min-h-11 text-sm' : 'py-3 text-base'}">{labels.search}</button>
     </div>
   </div>
 
