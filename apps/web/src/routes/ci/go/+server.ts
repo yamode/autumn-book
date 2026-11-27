@@ -1,11 +1,12 @@
 import { redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-import { clearStayCookie, ensureStayCookie, resolvePrecheckin } from '$lib/server/precheckin';
+import { clearStayCookie, copyDemoAnswersToRoom, ensureStayCookie, resolvePrecheckin } from '$lib/server/precheckin';
 import { BROWSE_FACILITY_COOKIE, rememberBrowseFacility } from '$lib/server/inroom-browse';
 import { ROOM_COOKIE } from '$lib/server/intercom';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { ciGoPath, ciGoTarget } from '$lib/precheckin-p3';
 import { isDemoPrecheckinToken } from '$lib/precheckin';
+import { copyDemoBathToRoom } from '$lib/server/precheckin-demo-bath';
 import { PRECHECKIN_ROOM_PREVIEW } from '$lib/server/precheckin-room-preview';
 import type { RequestHandler } from './$types';
 
@@ -16,7 +17,10 @@ export const GET: RequestHandler = async (event) => {
 		const r = await resolvePrecheckin(event);
 		if (!('ctx' in r)) redirect(303, localizeHref('/ci'));
 		if (isDemoPrecheckinToken(r.token)) {
-			redirect(303, localizeHref(r.ctx.answeredAt ? PRECHECKIN_ROOM_PREVIEW : '/ci'));
+			if (!r.ctx.answeredAt) redirect(303, localizeHref('/ci'));
+			copyDemoAnswersToRoom(event.cookies);
+			copyDemoBathToRoom(event.cookies);
+			redirect(303, localizeHref(PRECHECKIN_ROOM_PREVIEW));
 		}
 		const { cookies } = event;
 		const { facility } = r.ctx;

@@ -5,6 +5,7 @@ import type { BathContext, BathUnit, BathReservation } from '$lib/server/private
 import { DATA_SOURCE } from '$lib/server/supabase';
 
 const COOKIE = 'ab_ci_demo_bath';
+const ROOM_PATH = '/r';
 const cookieOptions = { path: '/ci', httpOnly: true, sameSite: 'lax', maxAge: 4 * 3600 } as const;
 
 type Slot = { date: string; from: string; to: string; range_idx: number; closed: boolean; cancelable: boolean };
@@ -12,8 +13,13 @@ type Bath = { bath_id: string | null; bath_name: string; range_limit: number; sl
 type Schedule = { enabled: boolean; cutoff_min: number; cancel_min: number; price_yen: number; baths: Bath[] };
 type Stay = Pick<PcContext, 'facility' | 'checkIn' | 'checkOut'>;
 
+export function copyDemoBathToRoom(cookies: Cookies): void {
+	cookies.set(COOKIE, JSON.stringify([...readPicks(cookies)]), { ...cookieOptions, path: ROOM_PATH });
+}
+
 export function clearDemoBath(cookies: Cookies): void {
 	cookies.delete(COOKIE, { path: cookieOptions.path });
+	cookies.delete(COOKIE, { path: ROOM_PATH });
 }
 
 function readPicks(cookies: Cookies): Set<string> {

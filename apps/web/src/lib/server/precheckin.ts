@@ -69,6 +69,7 @@ const RATE_PREFIX = 'ci:';
 // 見本の回答はこのブラウザの /ci だけで持ち、実予約には保存しない。
 export const DEMO_ANSWERS_COOKIE = 'ab_ci_demo';
 const DEMO_ANSWERS_PATH = '/ci';
+const DEMO_ROOM_PATH = '/r';
 
 function readDemoAnswers(cookies: Cookies): PcAnswers {
   try {
@@ -86,14 +87,19 @@ function readDemoAnswers(cookies: Cookies): PcAnswers {
   }
 }
 
-function writeDemoAnswers(cookies: Cookies, answers: PcAnswers): void {
+function writeDemoAnswers(cookies: Cookies, answers: PcAnswers, path = DEMO_ANSWERS_PATH): void {
   const value = JSON.stringify(answers);
   const compact = encodeURIComponent(value).length <= 3500 ? value : JSON.stringify({ ...answers, questions: [] });
-  cookies.set(DEMO_ANSWERS_COOKIE, compact, { path: DEMO_ANSWERS_PATH, httpOnly: true, sameSite: 'lax', maxAge: 4 * 3600 });
+  cookies.set(DEMO_ANSWERS_COOKIE, compact, { path, httpOnly: true, sameSite: 'lax', maxAge: 4 * 3600 });
+}
+
+export function copyDemoAnswersToRoom(cookies: Cookies): void {
+  writeDemoAnswers(cookies, readDemoAnswers(cookies), DEMO_ROOM_PATH);
 }
 
 export function clearDemoAnswers(cookies: Cookies): void {
   cookies.delete(DEMO_ANSWERS_COOKIE, { path: DEMO_ANSWERS_PATH });
+  cookies.delete(DEMO_ANSWERS_COOKIE, { path: DEMO_ROOM_PATH });
 }
 
 // ---------------------------------------------------------------- フォーム（anon）
