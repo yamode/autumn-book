@@ -620,27 +620,33 @@ ${row(footer.map((l) => (/^https:\/\//.test(l) ? `<a href="${esc(l)}" style="col
 
 /** 見本のトークン（どのデータ源でも開ける。DB に触れない見本で、管理画面の「お客様フォームの見本」の入口） */
 export const DEMO_PRECHECKIN_TOKEN = 'demo-precheckin-000000000000000000000000000';
+export const DEMO_PRECHECKIN_GUEST_TOKEN = 'demo-precheckin-guest';
 
-/** 見本の中身（今日チェックイン・1 泊・1 室） */
+export function isDemoPrecheckinToken(token: string): boolean {
+	return token === DEMO_PRECHECKIN_TOKEN || token === DEMO_PRECHECKIN_GUEST_TOKEN;
+}
+
+/** 見本の中身（1 泊・1 室。非会員の見本は翌日の直販予約） */
 export const DEMO_PRECHECKIN_CODE = 'DEMO-0001';
 export const DEMO_PRECHECKIN_FACILITY_SLUG = 'yamado';
 
-export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date()): PcContext {
-	const today = new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
-	const tomorrow = new Date(now.getTime() + 33 * 3600_000).toISOString().slice(0, 10);
+export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date(), isGuest = false): PcContext {
+	const checkInJst = now.getTime() + (isGuest ? 33 : 9) * 3600_000;
+	const checkIn = new Date(checkInJst).toISOString().slice(0, 10);
+	const checkOut = new Date(checkInJst + 24 * 3600_000).toISOString().slice(0, 10);
 	const stayId = '00000000-0000-4000-8000-000000000001';
 	const pick = (type: PcMealType, date: string) =>
 		answers.meals?.find((m) => m.stay_id === stayId && m.type === type && m.date === date)?.time ?? null;
-	const until = editableUntilOf(today);
+	const until = editableUntilOf(checkIn);
 	return {
 		facility: { id: 'f-nishiwaga', slug: DEMO_PRECHECKIN_FACILITY_SLUG, name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
 		isOfficial: false,
-		isDirect: false,
-		bathEligible: true,
+		isDirect: isGuest,
+		bathEligible: !isGuest,
 		isPartner: false,
 		bookingCode: DEMO_PRECHECKIN_CODE,
-		checkIn: today,
-		checkOut: tomorrow,
+		checkIn,
+		checkOut,
 		nights: 1,
 		roomCount: 1,
 		adults: 2,
@@ -649,7 +655,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		editableUntil: until,
 		// 見本はいつでも入力できる（当日 12:00 を過ぎても閲覧のみにしない）
 		editable: true,
-		expiresAt: expiresAtOf(tomorrow),
+		expiresAt: expiresAtOf(checkOut),
 		answers,
 		answeredAt: answers.meals_saved_at ?? null,
 		rooms: [
@@ -659,17 +665,17 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 				label: '和室（見本）',
 				nights: [
 					{
-						nightDate: today,
+						nightDate: checkIn,
 						stayId,
-						dinner: { date: today, offered: true, time: pick('dinner', today) },
-						breakfast: { date: tomorrow, offered: true, time: pick('breakfast', tomorrow) }
+						dinner: { date: checkIn, offered: true, time: pick('dinner', checkIn) },
+						breakfast: { date: checkOut, offered: true, time: pick('breakfast', checkOut) }
 					}
 				]
 			}
 		],
 		slots: {
 			dinner: {
-				[today]: [
+				[checkIn]: [
 					{ time: '17:30', max: 4, remaining: 2 },
 					{ time: '18:00', max: null, remaining: 0, full: true },
 					{ time: '18:30', max: null, remaining: null },
@@ -677,7 +683,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 				]
 			},
 			breakfast: {
-				[tomorrow]: [
+				[checkOut]: [
 					{ time: '07:30', max: null, remaining: null },
 					{ time: '08:00', max: null, remaining: null },
 					{ time: '08:30', max: null, remaining: null }

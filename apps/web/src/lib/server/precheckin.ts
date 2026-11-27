@@ -20,7 +20,8 @@ import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/ser
 import { sendHtmlEmail } from '$lib/server/mailer';
 import type { BookClient } from '$lib/server/admin-app-data';
 import {
-	DEMO_PRECHECKIN_TOKEN,
+	DEMO_PRECHECKIN_GUEST_TOKEN,
+	isDemoPrecheckinToken,
 	buildPrecheckinMail,
 	precheckinMailFrom,
 	demoPrecheckinContext,
@@ -99,8 +100,8 @@ export function clearDemoAnswers(cookies: Cookies): void {
 
 /** トークンからフォームの中身を引く。開いた時刻も DB に残る */
 export async function pcContext(token: string, demoAnswers: PcAnswers = {}): Promise<PcContext | { error: PcError }> {
-	if (token === DEMO_PRECHECKIN_TOKEN) {
-		const ctx = demoPrecheckinContext(demoAnswers);
+	if (isDemoPrecheckinToken(token)) {
+		const ctx = demoPrecheckinContext(demoAnswers, new Date(), token === DEMO_PRECHECKIN_GUEST_TOKEN);
 		if (DATA_SOURCE !== 'supabase') return ctx;
 		const facilityId = FACILITY_UUID[ctx.facility.id];
 		const slots = await loadDemoMealSlots(facilityId, ctx.checkIn, ctx.checkOut).catch((error) => {
@@ -133,7 +134,7 @@ function rpcResult(data: unknown, error: { message: string } | null): PcSaveResu
 }
 
 export async function pcSaveAnswers(token: string, answers: PcAnswers, cookies: Cookies): Promise<PcSaveResult> {
-	if (token === DEMO_PRECHECKIN_TOKEN) {
+	if (isDemoPrecheckinToken(token)) {
 		writeDemoAnswers(cookies, {
 			...readDemoAnswers(cookies),
 			arrival_time: answers.arrival_time,
@@ -149,7 +150,7 @@ export async function pcSaveAnswers(token: string, answers: PcAnswers, cookies: 
 }
 
 export async function pcSaveMeals(token: string, meals: PcMealChoice[], cookies: Cookies): Promise<PcSaveResult> {
-	if (token === DEMO_PRECHECKIN_TOKEN) {
+	if (isDemoPrecheckinToken(token)) {
 		writeDemoAnswers(cookies, { ...readDemoAnswers(cookies), meals: meals.filter((m) => m.time), meals_saved_at: new Date().toISOString() });
 		return { ok: true };
 	}
@@ -168,7 +169,7 @@ export async function pcSaveMeals(token: string, meals: PcMealChoice[], cookies:
  * 失敗してもお客様の保存は失敗させない（ログだけ）。Cloudflare の waitUntil があれば応答の後ろへ回し、画面遷移を待たせない。
  */
 export function pcNotifyFacility(event: Pick<RequestEvent, 'platform' | 'url'>, token: string): Promise<void> {
-	if (token === DEMO_PRECHECKIN_TOKEN || DATA_SOURCE !== 'supabase') return Promise.resolve();
+	if (isDemoPrecheckinToken(token) || DATA_SOURCE !== 'supabase') return Promise.resolve();
 	const task = notifyFacilityTask(token, customerLinkOrigin(event.url)).catch((e) =>
 		dbg('notify error', e instanceof Error ? e.message : String(e))
 	);
@@ -222,7 +223,7 @@ export function clearStayCookie(cookies: Cookies): void {
  * 回答済み・チェックイン日 20:00 より前だけ（DB が判定・2026-11-23 ユーザー指示で 12:00 → 20:00。以後は部屋の QR・6 桁コードで客室案内に入る・2026-11-23 レビュー M-4）。見本（DATA_SOURCE=demo）は客室案内の見本が別にあるので出さない。
  */
 export async function pcStayToken(token: string): Promise<StayTokenResult> {
-	if (token === DEMO_PRECHECKIN_TOKEN || DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
+	if (isDemoPrecheckinToken(token) || DATA_SOURCE !== 'supabase') return { ok: false, error: 'not_eligible' };
 	const { data, error } = await supa().rpc('precheckin_stay_cookie', { p_token: token });
 	if (error) {
 		dbg('stay_token error', error.message);
@@ -251,7 +252,7 @@ export async function ensureStayCookie(cookies: Cookies, pcToken: string): Promi
  * 見本は見本の値。読めない（DB 適用前など）ときは空＝入力欄にする。
  */
 export async function pcGuestProfile(token: string): Promise<PcProfile> {
-	if (token === DEMO_PRECHECKIN_TOKEN)
+	if (isDemoPrecheckinToken(token))
 		return { zip_masked: '029-****', address_masked: '岩手県和賀郡 ***', birthdate_masked: '1980-**-**', has_address: true, has_birthdate: true, receipt_name: null, arrival_time: '15:00' };
 	if (DATA_SOURCE !== 'supabase') return {};
 	const { data, error } = await supa().rpc('precheckin_guest_profile', { p_token: token });
@@ -338,7 +339,7 @@ export async function resolvePrecheckin(
 	const key = RATE_PREFIX + rateLimitClientKey(event.getClientAddress());
 	const rl = await claimRateCheck(event.platform, key);
 	if (rl.locked) return { error: 'locked' };
-	const ctx = await pcContext(token, token === DEMO_PRECHECKIN_TOKEN && !fromLink ? readDemoAnswers(event.cookies) : {});
+	const ctx = await pcContext(token, isDemoPrecheckinToken(token) && !fromLink ? readDemoAnswers(event.cookies) : {});
 	if ('error' in ctx) {
 		if (ctx.error === 'invalid_token') await claimRecordFailure(event.platform, key);
 		// 使えなくなった Cookie は消す（古いリンクを開いただけのときは、手元の有効な Cookie を残す）
