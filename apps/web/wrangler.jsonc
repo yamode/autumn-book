@@ -26,8 +26,8 @@
 	//    REST API で使う。2026-10-01 まで本番に未登録で、取引先向けメールが一度も送られていなかった（送信不可は黙ってスキップする作り）。
 	//  - REPORT_EMAIL_FROM：差出人（yamado.app 配下。Email Sending 有効化済み）。
 	//  - 事前チェックインの SMS（NTT CPaaS・P4）は secret で登録する（ここに値を書かない）:
-	//    NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER / NTT_CPAAS_WEBHOOK_SECRET（Webhook の Basic 認証「ユーザー名:パスワード」）。
-	//    どれか欠けると SMS は送らず「SMS未設定」になる（メールは送れる）。
+	//    NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER_NISHIWAGA / NTT_CPAAS_SENDER_OGA。
+	//    会員向けの共通送信元は NTT_CPAAS_SENDER、Webhook の Basic 認証は NTT_CPAAS_WEBHOOK_SECRET。
 	//  - 会員サポート（support@yamado.app・docs/member-support.md・workers/support-inbound/README.md）は secret で登録する（ここに値を書かない）:
 	//    SUPPORT_INBOUND_SECRET … 受信用 Worker との署名の共有鍵（Worker 側にも同じ値）。無いと /api/support/inbound は 503
 	//    SUPPORT_NOTIFY_TO      … 新しい問い合わせの宿への通知先（任意・カンマ区切り可）。無ければ info@yamado.co.jp

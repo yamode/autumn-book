@@ -188,7 +188,7 @@
 	{/if}
 	{#if !data.smsReady}
 		<p class="mb-4 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2 text-xs text-stone-600">
-			SMS未設定: NTT CPaaS の接続情報（NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER）が登録されていないため、SMS は送れません。メールは送れます。
+			SMS未設定: NTT CPaaS の接続情報またはこの施設の送信元が登録されていないため、SMS は送れません。メールは送れます。
 		</p>
 	{/if}
 

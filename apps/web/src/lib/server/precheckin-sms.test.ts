@@ -8,6 +8,7 @@ const sendHtmlEmail = vi.fn(async () => ({ sent: true }));
 vi.mock('$lib/server/mailer', () => ({ sendHtmlEmail }));
 vi.mock('$lib/server/partners/mail', () => ({ partnerMailSender: vi.fn(async () => ({ fromName: 'x', replyTo: null })) }));
 
+const { FACILITY_UUID } = await import('$lib/server/supabase-data');
 const { runPrecheckinAutosend, handleNttWebhook } = await import('./precheckin-sms');
 
 type Call = { fn: string; args: Record<string, unknown> };
@@ -46,9 +47,13 @@ describe('cron 自動送信', () => {
 		expect(sendHtmlEmail).not.toHaveBeenCalled();
 	});
 
-	it('有効でも SMS 未設定なら、SMS の対象もメールで送る（NTT CPaaS の承認待ちの間・2026-11-26）', async () => {
+	it('施設の送信元が未設定なら、共通送信元があってもメールで送る', async () => {
+		env.NTT_CPAAS_BASE_URL = 'example1';
+		env.NTT_CPAAS_API_KEY = 'test-key';
+		env.NTT_CPAAS_SENDER = 'ServiceSMS';
+		env.PRECHECKIN_SMS = '1';
 		const { svc, calls } = fakeSvc({
-			precheckin_autosend_targets: () => targets,
+			precheckin_autosend_targets: () => targets.map((target) => ({ ...target, facility_id: FACILITY_UUID['f-oga'] })),
 			precheckin_autosend_begin: (a) => ({
 				ok: true,
 				dispatch_id: 'd1',
@@ -100,16 +105,22 @@ describe('cron 自動送信', () => {
 		expect(sendHtmlEmail).not.toHaveBeenCalled();
 	});
 
-	it('有効で SMS 設定ありなら NTT CPaaS へ送る（fetch はモック）', async () => {
+	it.each([
+		['f-nishiwaga', 'NISHIWAGA', 'TEST-WEST', '山人-yamado-', '0197-82-2222'],
+		['f-oga', 'OGA', 'TEST-OGA', '山人-oga-', '0185-47-7776']
+	])('%s の自動送信は施設の送信元で NTT CPaaS へ送る', async (key, suffix, sender, name, phone) => {
+		const facility = FACILITY_UUID[key];
 		env.NTT_CPAAS_BASE_URL = 'example1';
 		env.NTT_CPAAS_API_KEY = 'test-key';
 		env.NTT_CPAAS_SENDER = 'ServiceSMS';
+		env[`NTT_CPAAS_SENDER_${suffix}`] = sender;
+		env.PRECHECKIN_SMS = '1';
 		let n = 0;
 		const fetchMock = vi.fn(async () => Response.json({ messages: [{ messageId: ++n === 1 ? 'm-76' : 'm-77', status: { groupName: 'PENDING', name: 'PENDING_ACCEPTED' } }] }));
 		vi.stubGlobal('fetch', fetchMock);
 		try {
 			const { svc, calls } = fakeSvc({
-				precheckin_autosend_targets: () => [targets[0]],
+				precheckin_autosend_targets: () => [{ ...targets[0], facility_id: facility }],
 				precheckin_autosend_begin: () => ({
 					ok: true,
 					dispatch_id: 'd2',
@@ -118,8 +129,8 @@ describe('cron 自動送信', () => {
 					to: '819012345678',
 					to_masked: '*******5678',
 					check_in: '2026-10-29',
-					facility_id: '10000000-0000-0000-0000-000000000001',
-					facility_name: '山人-yamado-',
+					facility_id: facility,
+					facility_name: name,
 					facility_phone: null
 				}),
 				precheckin_dispatch_finish: () => null
@@ -131,12 +142,14 @@ describe('cron 自動送信', () => {
 			const textOf = (i: number) => {
 				const [u, init] = fetchMock.mock.calls[i] as unknown as [string, RequestInit];
 				expect(u).toBe('https://example1.ibapi.nttcpaas.com/sms/3/messages');
-				return JSON.parse(String(init.body)).messages[0].content.text as string;
+				const message = JSON.parse(String(init.body)).messages[0];
+				expect(message.sender).toBe(sender);
+				return message.content.text as string;
 			};
 			expect(textOf(0)).toContain('＜事前チェックインのご案内＞');
 			expect(textOf(0)).not.toContain('http');
 			expect(textOf(1)).toContain(`https://book.example/ci/${'T'.repeat(43)}`);
-			expect(textOf(1)).toContain('TEL 0197-82-2222'); // DB に電話が無いときはサイトの施設情報の電話
+			expect(textOf(1)).toContain(`TEL ${phone}`); // DB に電話が無いときはサイトの施設情報の電話
 			// 到達管理は 2 通目（URL）の messageId
 			expect(calls.find((c) => c.fn === 'precheckin_dispatch_finish')?.args).toMatchObject({ p_dispatch: 'd2', p_ok: true, p_message_id: 'm-77' });
 		} finally {

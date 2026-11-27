@@ -53,6 +53,7 @@ export const load: PageServerLoad = async (event) => {
 	const from = isDate(fromQ) ? fromQ : today;
 	const to = isDate(toQ) && toQ >= from ? toQ : from;
 	const filters = { from, to, today, tomorrow: addDays(today, 1) };
+	const facility = toFacilityUuidStrict(currentFacility.id);
 
 	if (!ADMIN_SUPABASE) {
 		return {
@@ -67,12 +68,11 @@ export const load: PageServerLoad = async (event) => {
 			overrides: {} as Record<string, boolean>,
 			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
-			smsReady: smsReady(),
+			smsReady: smsReady(facility),
 			error: null as string | null
 		};
 	}
 	const client = bookAdmin(event);
-	const facility = toFacilityUuidStrict(currentFacility.id);
 	const [list, caps, sms, minutes, questions, autosend, notify] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
@@ -105,7 +105,7 @@ export const load: PageServerLoad = async (event) => {
 		overrides,
 		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 		sms,
-		smsReady: smsReady(),
+		smsReady: smsReady(facility),
 		error: list.error
 	};
 };

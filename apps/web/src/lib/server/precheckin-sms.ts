@@ -9,7 +9,9 @@
 //     precheckin_dispatch_finish(...) / precheckin_dlr_apply(p_reports) / precheckin_sms_inbound_save(p_rows)
 //
 // 【環境変数（Cloudflare Pages の secret。値はリポジトリ・ログに出さない）】
-//   NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY / NTT_CPAAS_SENDER … どれか欠けると SMS は送らず「SMS未設定」を返す
+//   NTT_CPAAS_BASE_URL / NTT_CPAAS_API_KEY … 共通の接続情報
+//   NTT_CPAAS_SENDER_NISHIWAGA / NTT_CPAAS_SENDER_OGA … 事前チェックインの施設別送信元
+//   NTT_CPAAS_SENDER … 施設にひもづかない会員向け SMS の送信元
 //   NTT_CPAAS_WEBHOOK_SECRET … Webhook の Basic 認証（「ユーザー名:パスワード」）。未設定なら Webhook は 503
 //   PRECHECKIN_AUTOSEND … '1' のときだけ自動送信が実際に送る（未設定・'0' は dry-run）
 import { isDirectRoute } from '$lib/booking-channel';
@@ -39,17 +41,27 @@ import {
 } from '$lib/precheckin-sms';
 
 // 開発中はログを出す（リリース前に false）。宛先・本文・トークンは出さない
-const DEBUG = true;
+const DEBUG = false;
 function dbg(...args: unknown[]) {
 	if (DEBUG) console.log('[DBG precheckin-sms]', ...args);
 }
 
+const PRECHECKIN_SENDER_KEYS = new Map([
+	[FACILITY_UUID['f-nishiwaga'], 'NTT_CPAAS_SENDER_NISHIWAGA'],
+	[FACILITY_UUID['f-oga'], 'NTT_CPAAS_SENDER_OGA']
+]);
+
 export function nttConfig(): NttConfig | null {
-	return nttConfigFrom(privateEnv as Record<string, string | undefined>);
+	return nttConfigFrom(privateEnv);
+}
+
+function precheckinNttConfig(facility: string): NttConfig | null {
+	const senderKey = PRECHECKIN_SENDER_KEYS.get(facility);
+	return senderKey ? nttConfigFrom(privateEnv, senderKey) : null;
 }
 
 /** SMS を送れる設定があるか（管理画面のボタンの出し分け） */
-export const smsReady = () => nttConfig() !== null;
+export const smsReady = (facility: string) => precheckinNttConfig(facility) !== null;
 
 /** 施設の電話（core.facilities.phone が空なら、サイトの施設情報の電話） */
 function facilityPhone(facilityUuid: string, fromDb: string | null | undefined): string | null {
@@ -170,8 +182,8 @@ export async function sendPrecheckinSms(
 	/** 公式サイトの予約か（呼び出し側が stayIsDirect で読む）。貸切風呂の事前予約を文面に入れるか */
 	official: boolean
 ): Promise<ManualSmsResult> {
-	const cfg = nttConfig();
-	if (!cfg) return { sent: false, code: 'sms_not_configured', message: 'SMS未設定（NTT CPaaS の接続情報が登録されていません）。' };
+	const cfg = precheckinNttConfig(facility);
+	if (!cfg) return { sent: false, code: 'sms_not_configured', message: 'SMS未設定（NTT CPaaSの接続情報またはこの施設の送信元が未登録です）。' };
 	const { data, error } = await c.rpc('admin_precheckin_dispatch_begin', {
 		p_facility: facility,
 		p_stay_id: stayId,
@@ -251,8 +263,12 @@ export async function runPrecheckinAutosend(
 	if (error) throw error;
 	const rows = (data ?? []) as AutosendTarget[];
 	const plan = planAutosend(rows);
-	const cfg = nttConfig();
-	const base: AutosendResult = { dryRun: !opts.enabled, date: opts.date ?? rows[0]?.check_in_date ?? null, counts: plan.counts, smsConfigured: cfg !== null };
+	const base: AutosendResult = {
+		dryRun: !opts.enabled,
+		date: opts.date ?? rows[0]?.check_in_date ?? null,
+		counts: plan.counts,
+		smsConfigured: [...PRECHECKIN_SENDER_KEYS.keys()].some(smsReady)
+	};
 	if (!opts.enabled) return base;
 
 	let sent = 0;
@@ -260,8 +276,9 @@ export async function runPrecheckinAutosend(
 	const skipped: Record<string, number> = {};
 	const skip = (k: string) => (skipped[k] = (skipped[k] ?? 0) + 1);
 	for (const t of plan.send) {
-		// SMS を使わない間（NTT CPaaS の承認待ち・PRECHECKIN_SMS が '1' でない・設定なし）は、SMS の対象もメールで送る（2026-11-26）。
+		// SMS の自動送信が無効、または施設の送信元が未設定ならメールで送る。
 		// メールアドレスが無い予約は受付で no_email になり、送らずに数える
+		const cfg = precheckinNttConfig(t.facility_id);
 		const channel = autosendChannel(t.channel, cfg !== null && smsAutosendEnabled(privateEnv.PRECHECKIN_SMS));
 		try {
 			const begin = await db.rpc('precheckin_autosend_begin', { p_stay_id: t.stay_id, p_channel: channel });

@@ -105,10 +105,10 @@ export type NttConfig = { baseUrl: string; apiKey: string; sender: string };
  * 環境変数から接続情報を作る。どれか欠けていれば null（= SMS 未設定）。
  * NTT_CPAAS_BASE_URL は「マイページ → ディベロッパー」のベース URL（サブドメイン部分だけでも、https://… の全体でもよい）
  */
-export function nttConfigFrom(env: Record<string, string | undefined>): NttConfig | null {
+export function nttConfigFrom(env: Record<string, string | undefined>, senderKey = 'NTT_CPAAS_SENDER'): NttConfig | null {
 	const base = String(env.NTT_CPAAS_BASE_URL ?? '').trim();
 	const apiKey = String(env.NTT_CPAAS_API_KEY ?? '').trim();
-	const sender = String(env.NTT_CPAAS_SENDER ?? '').trim();
+	const sender = String(env[senderKey] ?? '').trim();
 	if (!base || !apiKey || !sender) return null;
 	const baseUrl = normalizeBaseUrl(base);
 	if (!baseUrl) return null;
