@@ -5,6 +5,8 @@ import { BROWSE_FACILITY_COOKIE, rememberBrowseFacility } from '$lib/server/inro
 import { ROOM_COOKIE } from '$lib/server/intercom';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
 import { ciGoPath, ciGoTarget } from '$lib/precheckin-p3';
+import { isDemoPrecheckinToken } from '$lib/precheckin';
+import { PRECHECKIN_ROOM_PREVIEW } from '$lib/server/precheckin-room-preview';
 import type { RequestHandler } from './$types';
 
 // 客室案内に移るときだけ、滞在トークンを Cookie（ab_stay）に入れる。
@@ -13,6 +15,9 @@ export const GET: RequestHandler = async (event) => {
 	if (to === 'inroom') {
 		const r = await resolvePrecheckin(event);
 		if (!('ctx' in r)) redirect(303, localizeHref('/ci'));
+		if (isDemoPrecheckinToken(r.token)) {
+			redirect(303, localizeHref(r.ctx.answeredAt ? PRECHECKIN_ROOM_PREVIEW : '/ci'));
+		}
 		const { cookies } = event;
 		const { facility } = r.ctx;
 		const storeId = Object.keys(FACILITY_UUID).find((id) => FACILITY_UUID[id] === facility.id);

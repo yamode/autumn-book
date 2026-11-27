@@ -9,6 +9,7 @@
 	//
 	// /r は (public) グループ外の独立ルート。検索エンジンには載せない（noindex）。
 	import { page } from '$app/state';
+	import { localizeHref } from '$lib/paraglide/runtime';
 	import { afterNavigate, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
@@ -30,7 +31,8 @@
 	const back = $derived(page.data.headerBack as string | undefined);
 	const path = $derived((pending?.url ?? page.url).pathname);
 	// 滞在が確定している画面（/r で claim 済み・/r/bath・案内の詳細）だけタブを2本出す。
-	const bathEnabled = $derived(Boolean(page.data.stay ?? page.data.ctx));
+	const precheckinPreview = $derived(page.url.searchParams.get('preview') === 'precheckin');
+	const bathEnabled = $derived(!precheckinPreview && Boolean(page.data.stay ?? page.data.ctx));
 
 	// アクセスログ（2026-10-17）。ページを表示するたびに1回だけ送る（自動の再読込 invalidateAll は数えない）。
 	// 滞在コードの紐づき（部屋）はサーバーが Cookie から判定する
@@ -48,13 +50,14 @@
 	}
 	afterNavigate(({ to }) => {
 		const path = to?.url.pathname;
-		if (path) sendLog({ path });
+		if (path && to?.url.searchParams.get('preview') !== 'precheckin') sendLog({ path });
 	});
 
 	// 外部リンクのクリック（2026-10-21）。客室案内の外へ出るリンク（他サイト・予約サイト側・電話・メール）を押したら1回送る。
 	// 案内本文・バナー・SNS・電話ボタンなど出どころが多いので、ページ全体のクリックで拾う。どれを残すかはサーバーが決める
 	onMount(() => {
 		const onClick = (e: MouseEvent) => {
+			if (precheckinPreview) return;
 			const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
 			if (!a) return;
 			const href = a.getAttribute('href') ?? '';
@@ -138,7 +141,7 @@
 			class="fixed bottom-0 z-30 mx-auto flex h-14 w-full max-w-md items-stretch border-t border-stone-200 bg-white"
 		>
 			<a
-				href="/r"
+				href={precheckinPreview ? localizeHref('/r?preview=precheckin') : '/r'}
 				class="flex flex-1 flex-col items-center justify-center gap-0.5 {path === '/r'
 					? 'text-stone-900'
 					: 'text-stone-400'}"

@@ -36,7 +36,7 @@
 </article>
 
 <div class="px-4 py-4">
-	<a href="/r" class="block rounded-lg bg-white py-3 text-center text-sm text-stone-600 shadow-card">
+	<a href={data.headerBack} class="block rounded-lg bg-white py-3 text-center text-sm text-stone-600 shadow-card">
 		{m.bath_back()}
 	</a>
 </div>

@@ -4,9 +4,13 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbResolveStay, sbListHouseGuides } from '$lib/server/supabase-data';
 import { sbBathContext } from '$lib/server/private-bath';
 import { PRECHECKIN_COOKIE } from '$lib/server/precheckin';
+import { precheckinRoomPreview } from '$lib/server/precheckin-room-preview';
+import { demoBathContext } from '$lib/server/precheckin-demo-bath';
+import { jstAt } from '$lib/precheckin';
+import type { StayInfo } from '$lib/types';
 import { demoStayMeals, sbStayMealTimes, type StayMeal } from '$lib/server/stay-meals';
 import { intercomStatusFor, intercomStatusForRoom, resolveRoomEntry, roomKeyParam, ROOM_COOKIE } from '$lib/server/intercom';
-import { getLocale } from '$lib/paraglide/runtime';
+import { getLocale, localizeHref } from '$lib/paraglide/runtime';
 import {
 	endedFacilityBySlug,
 	loadThanksBanners,
@@ -39,7 +43,8 @@ type BillSummary = { flags: BillFlags; dueTotal: number; isDemo: boolean };
 // 滞在セッション Cookie（claim 済みトークンを httpOnly で保持）
 const STAY_COOKIE = 'ab_stay';
 
-export const load: PageServerLoad = async ({ cookies, url }) => {
+export const load: PageServerLoad = async (event) => {
+	const { cookies, url } = event;
 	const locale = getLocale();
 	const frontPhoneFor = (settings: Awaited<ReturnType<typeof loadInroomSettings>>, slug: string) =>
 		settings.frontPhone || getFacilityById(`f-${slug}`, locale)?.phone || '';
@@ -111,6 +116,37 @@ export const load: PageServerLoad = async ({ cookies, url }) => {
 		const room = await resolveRoomEntry(roomKeyParam(cookies.get(ROOM_COOKIE)));
 		return room && room.facilitySlug === facilitySlug && room.roomCode ? room.roomCode : null;
 	};
+
+	if (url.searchParams.get('preview') === 'precheckin') {
+		const ctx = await precheckinRoomPreview(event);
+		if (!ctx) redirect(303, localizeHref('/ci'));
+		event.setHeaders({ 'cache-control': 'private, no-store' });
+		const [guides, baths] = await Promise.all([
+			(DATA_SOURCE === 'supabase' ? sbListHouseGuides(ctx.facility.id, locale) : Promise.resolve(listHouseGuidesFor(ctx.facility.id, locale))).catch(() => []),
+			ctx.bathEligible ? demoBathContext(ctx, cookies, true).catch(() => null) : Promise.resolve(null)
+		]);
+		const stay: StayInfo = {
+			tokenId: ctx.bookingCode,
+			roomCode: ctx.rooms[0]?.label ?? '',
+			guestName: ctx.guest.name,
+			validFrom: jstAt(ctx.checkIn, 9),
+			validTo: ctx.expiresAt,
+			facility: ctx.facility,
+			isDemo: true
+		};
+		const meals = (ctx.answers.meals ?? []).flatMap(({ date, time, type }): StayMeal[] =>
+			/^\d{1,2}:\d{2}$/.test(time) ? [{ date, time, type, status: 'confirmed' }] : []
+		);
+		return {
+			...noStay,
+			stay,
+			guides: guides.filter(browseVisibleGuide),
+			meals,
+			bathReservations: (baths?.mine ?? []).map(({ id, date, from, to }) => ({ id, date, from, to })),
+			precheckinPreview: true,
+			bathPreviewHref: ctx.bathEligible ? localizeHref('/ci/bath') : null
+		};
+	}
 
 	if (!token) {
 		// 未 claim: コード入力フォームを出す（チェックアウト後の QR ならサンクス表示）。

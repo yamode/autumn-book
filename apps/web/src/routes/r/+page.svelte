@@ -239,7 +239,7 @@
 			<section class="rounded-lg border border-stone-200 bg-white px-4 py-4 shadow-card" aria-labelledby="bath-reservations-title">
 				<div class="flex items-center justify-between gap-3">
 					<h2 id="bath-reservations-title" class="text-[15px] font-semibold text-stone-900">{m.bath_mine_title()}</h2>
-					<a href="/r/bath" class="shrink-0 text-xs font-medium text-stone-600 underline underline-offset-2">{m.inroom_bath_manage()}</a>
+					<a href={data.bathPreviewHref ?? '/r/bath'} class="shrink-0 text-xs font-medium text-stone-600 underline underline-offset-2">{m.inroom_bath_manage()}</a>
 				</div>
 				<div class="mt-3 divide-y divide-stone-100">
 					{#each bathDays as day, i (day.date)}
@@ -265,12 +265,16 @@
 		<!-- 中身は上から並べる（justify-start）。内線だけ2行目があるので、中央寄せだと貸切風呂などの文字の高さがずれる（2026-11-24） -->
 		<!-- 貸切風呂: コードなし（館内案内）で押すと、先にコード入力（/r/bath/code）→ 予約フォーム -->
 		<nav class="flex items-stretch rounded-lg bg-white shadow-card">
-			<a href="/r/bath" class="flex flex-1 flex-col items-center justify-start gap-1.5 py-4">
-				<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-					<path d={inroomIcon('onsen')} />
-				</svg>
-				<span class="text-xs text-stone-700">{m.bath_link()}</span>
-			</a>
+			{#if data.precheckinPreview && !data.bathPreviewHref}
+				<p class="px-4 py-4 text-sm text-stone-600">{m.bath_room_opens_on_arrival()}</p>
+			{:else}
+				<a href={data.bathPreviewHref ?? '/r/bath'} class="flex flex-1 flex-col items-center justify-start gap-1.5 py-4">
+					<svg viewBox="0 0 24 24" class="h-7 w-7 text-stone-800" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+						<path d={inroomIcon('onsen')} />
+					</svg>
+					<span class="text-xs text-stone-700">{m.bath_link()}</span>
+				</a>
+			{/if}
 			{#if intercom?.enabled}
 				<div class="my-3 w-px bg-stone-200"></div>
 				<button
@@ -336,7 +340,7 @@
 				{#each cards as g (g.id)}
 					{@const img = inroomCardImage(slug, g.section)}
 					<li class="overflow-hidden rounded-lg bg-white shadow-card">
-						<a href={`/r/g/${g.id}`} class="relative flex h-24 items-center justify-center px-3 text-center">
+						<a href={`/r/g/${g.id}${data.precheckinPreview ? '?preview=precheckin' : ''}`} class="relative flex h-24 items-center justify-center px-3 text-center">
 							{#if img}
 								<img src={img} alt="" class="absolute inset-0 h-full w-full object-cover" loading="lazy" />
 								<span class="absolute inset-0 bg-black/45"></span>

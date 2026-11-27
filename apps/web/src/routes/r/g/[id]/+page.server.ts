@@ -6,14 +6,26 @@ import { error, redirect } from '@sveltejs/kit';
 import { listHouseGuidesFor, resolveStay } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { sbListHouseGuides, sbResolveStay } from '$lib/server/supabase-data';
-import { getLocale } from '$lib/paraglide/runtime';
+import { getLocale, localizeHref } from '$lib/paraglide/runtime';
+import { PRECHECKIN_ROOM_PREVIEW, precheckinRoomPreview } from '$lib/server/precheckin-room-preview';
 import { browseFacility, browseVisibleGuide } from '$lib/server/inroom-browse';
 import type { PageServerLoad } from './$types';
 
 const STAY_COOKIE = 'ab_stay';
 
-export const load: PageServerLoad = async ({ cookies, params }) => {
+export const load: PageServerLoad = async (event) => {
+	const { cookies, params, url } = event;
 	const locale = getLocale();
+	if (url.searchParams.get('preview') === 'precheckin') {
+		const ctx = await precheckinRoomPreview(event);
+		if (!ctx) redirect(303, localizeHref('/ci'));
+		event.setHeaders({ 'cache-control': 'private, no-store' });
+		const guides = DATA_SOURCE === 'supabase' ? await sbListHouseGuides(ctx.facility.id, locale) : listHouseGuidesFor(ctx.facility.id, locale);
+		const guide = guides.find((item) => item.id === params.id && browseVisibleGuide(item));
+		const headerBack = localizeHref(PRECHECKIN_ROOM_PREVIEW);
+		if (!guide) redirect(303, headerBack);
+		return { stay: null, facilitySlug: ctx.facility.slug, guide, headerTitle: guide.title, headerBack };
+	}
 	const token = cookies.get(STAY_COOKIE);
 	const stay = token ? (DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, locale)) : null;
 	// 滞在が無くても、入口QRで覚えた施設（Cookie ab_facility）の案内は見られる（2026-10-10・inroom-browse.ts）。

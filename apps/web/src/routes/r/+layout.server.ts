@@ -6,7 +6,8 @@ import { getLocale } from '$lib/paraglide/runtime';
 import type { LayoutServerLoad } from './$types';
 
 // フッターの SNS ボタン用。滞在（Cookie の ab_stay）が確定している施設のぶんだけ返す。
-export const load: LayoutServerLoad = async ({ cookies }) => {
+export const load: LayoutServerLoad = async ({ cookies, url }) => {
+	if (url.searchParams.get('preview') === 'precheckin') return { snsLinks: {} };
 	const token = cookies.get('ab_stay');
 	if (!token) return { snsLinks: {} };
 	const stay = DATA_SOURCE === 'supabase' ? await sbResolveStay(token) : resolveStay(token, getLocale());
