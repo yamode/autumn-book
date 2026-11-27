@@ -35,7 +35,7 @@
 	let cart = $state<CartItem[]>([]);
 	// プライベートブックの状態では専用ページごとの保存キー（通常のかごと混ぜない・docs/private-book.md）
 	const cartKey = $derived(pbCartStorageKey(data.privateBookPartnerId));
-	let cartLoaded = $state(false);
+	let cartLoadedKey = $state<string | null>(null);
 	let cartMessage = $state('');
 	$effect(() => {
 		try {
@@ -43,11 +43,12 @@
 		} catch {
 			cart = [];
 		}
-		cartLoaded = true;
+		cartMessage = '';
+		cartLoadedKey = cartKey;
 	});
 	$effect(() => {
 		// 読み込む前に空で上書きしない
-		if (!cartLoaded) return;
+		if (cartLoadedKey !== cartKey) return;
 		try {
 			writeCart(sessionStorage, cart, cartKey);
 		} catch {
@@ -167,9 +168,9 @@
 
 	// ファーストビュー用の料金サマリ: 日付指定時は予約できる客室の最安、未指定はプラン基準料金（〜）
 	let cheapest = $derived.by(() => {
-		let best: { total: number } | null = null;
+		let best: { total: number; special: boolean } | null = null;
 		for (const r of data.rooms) {
-			if (r.quote && (!best || r.quote.total < best.total)) best = { total: r.quote.total };
+			if (r.quote && (!best || r.quote.total < best.total)) best = { total: r.quote.total, special: r.special };
 		}
 		return best;
 	});
@@ -184,6 +185,8 @@
 			(selectedRoom ? data.rooms.find((r) => r.room.slug === selectedRoom) : undefined) ??
 			(data.pickedRoom ? { room: data.pickedRoom, quote: null, remaining: null, fits: true, special: false } : undefined)
 	);
+	let mobileSummarySpecial = $derived(chosen?.special ?? (cheapest?.special ?? data.pbReferenceSpecial));
+	let summarySpecial = $derived(chosen?.special ?? (!picked && mobileSummarySpecial));
 	let otherRooms = $derived(picked ? data.rooms.filter((r) => r !== picked) : data.rooms);
 	let showOthers = $state(false);
 	// 複数室: 検索で 2 室以上を選んだときだけ「予約リストに追加」で部屋を集め、画面下のバーから全室まとめて予約する。
@@ -429,7 +432,12 @@
 	</div>
 {/snippet}
 
+{#snippet specialPriceBadge()}
+	<span class="mb-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-900">{m.hold_member_page_heading()}</span>
+{/snippet}
+
 {#snippet priceBlock()}
+	{#if summarySpecial}{@render specialPriceBadge()}{/if}
 	{#if chosen?.quote}
 		<!-- 選んで入ってきた客室の料金（最安ではなく、その部屋の額） -->
 		<p class="text-xs text-stone-500">{m.plan_detail_chosen_room()}</p>
@@ -620,6 +628,7 @@
 	<div inert={loadingRooms} class="fixed inset-x-0 bottom-0 z-40 border-t border-stone-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur md:hidden">
 		<div class="flex items-center gap-3">
 			<div class="min-w-0 flex-1 leading-tight">
+				{#if mobileSummarySpecial}{@render specialPriceBadge()}{/if}
 				{#if chosen?.quote}
 					<p class="truncate text-[11px] text-stone-500">{chosen.room.name}</p>
 					<p class="text-lg font-bold text-brand-900">

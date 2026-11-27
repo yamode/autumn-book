@@ -3,7 +3,7 @@ import { forumUnreadCount } from '$lib/server/forum-activity';
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { memberPagesFor } from '$lib/server/partners/store';
-import { PB_ENTRY_PATH } from '$lib/private-book';
+import { PB_ENTRY_PATH, PB_PRICE_DEPENDENCY } from '$lib/private-book';
 import type { LayoutServerLoad } from './$types';
 
 /**
@@ -19,6 +19,7 @@ async function hasPrivateBook(userId: string): Promise<boolean> {
 }
 
 export const load: LayoutServerLoad = async (event) => {
+	event.depends(PB_PRICE_DEPENDENCY);
 	event.depends('book:forum-notifications');
 	const user = event.locals.user;
 	const isMember = user?.role === 'member';

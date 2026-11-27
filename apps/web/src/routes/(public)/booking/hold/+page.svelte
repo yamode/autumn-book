@@ -6,9 +6,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import BookingSteps from '$lib/components/booking/BookingSteps.svelte';
-	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
 	import PartnerPerkList from '$lib/components/PartnerPerkList.svelte';
-	import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
 	import PriceBreakdown from '$lib/components/PriceBreakdown.svelte';
 	import BookingCancelTerms from '$lib/components/BookingCancelTerms.svelte';
 	import StripePayment from '$lib/components/payment/StripePayment.svelte';
@@ -515,6 +513,10 @@
 {/snippet}
 
 
+{#snippet specialRateBadge()}
+	<span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">{m.hold_member_page_heading()}</span>
+{/snippet}
+
 <svelte:head><title>{m.hold_title()}</title></svelte:head>
 
 <!-- 幅・列・枠・入力欄は取引先ページの予約入力と共通（lib/booking-layout.ts・app.css の .bk-*）。差し色は公式のアクセント色 -->
@@ -533,10 +535,6 @@
 			<a href="/search" class="mt-4 inline-block rounded-lg bg-brand-800 px-6 py-2 text-sm text-white hover:bg-brand-700">{m.hold_expired_search()}</a>
 		</div>
 	{:else}
-		{#if memberPage}
-			<!-- プライベートブック（特別会員の専用ページ）経由: B面のヘッダー下の帯と同じ言葉・形。公式の一般の予約では出さない -->
-			<div class="mb-3"><PrivateBookBand name={memberPage.memberName} releaseHoldId={data.hold.id} /></div>
-		{/if}
 		<!-- 戻る: 仮押さえを解放してから選び直しへ戻る（ただのリンクで戻ると期限まで部屋が在庫から減ったままになる）。
 		     見た目は他の子ページの「‹ 〇〇に戻る」（BackLink）にそろえる（2026-11-21: 上に戻るリンクと選び直しが重なっていた） -->
 		<form method="POST" action="?/release" class="-ml-2 mb-3 flex flex-wrap items-center gap-x-2">
@@ -556,38 +554,16 @@
 				プレビュー（スタッフ用）。このプランは販売中ではないため、予約は確定できません。仮押さえした部屋は期限まで在庫から減っています。確認が終わったら「選び直す」で戻してください。
 			</p>
 		{/if}
-		{#if memberPage}
-			<!-- 特別会員の専用ページ経由・専用料金。2026-11-27〜 専用ページの確認画面を通さずここへ来るので、
-			     確認画面で見せていた専用特典（1 段目）・会員特典（2 段目）をここで見せる（獲得予定ポイントは右の予約内容に） -->
-			<div class="mt-3 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm" style="--pt-accent: var(--color-accent-600)">
-				<div>
-					<p class="font-medium text-brand-900">{m.hold_member_page_heading()}</p>
-					<p class="mt-0.5 text-xs leading-5 text-stone-600">{m.hold_member_page_note()}</p>
-				</div>
-				{#if memberPage.perks.length || memberPage.benefits}
-					<div class="grid gap-3 md:grid-cols-2">
-						{#if memberPage.perks.length}
-							<section>
-								<p class="font-bold text-brand-900">{memberPage.memberName ? m.hold_member_page_perks_heading({ name: memberPage.memberName }) : m.member_page_perks()}</p>
-								<p class="text-xs text-stone-500">{m.hold_member_page_perks_note()}</p>
-								<div class="mt-2"><PartnerPerkList perks={memberPage.perks} variant="compact" showImages={false} /></div>
-							</section>
-						{/if}
-						{#if memberPage.benefits}
-							<MemberBenefitList rankLabel={memberPage.benefits.rankLabel} lines={memberPage.benefits.lines} cancelRules={memberPage.cancelRules} compact />
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/if}
-
 		{#if form?.message}
 			<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>
 		{/if}
 
 		<!-- モバイル: 予約内容の要約（明細の aside は長いフォームの下になるため、合計を先に見せる） -->
 		<div class="mt-4 rounded-xl border border-stone-200 bg-white p-3 text-sm lg:hidden">
-			<p class="font-medium text-brand-900">{data.facility.name}</p>
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				<p class="font-medium text-brand-900">{data.facility.name}</p>
+				{#if memberPage}{@render specialRateBadge()}{/if}
+			</div>
 			{#if multi}
 				{#each rooms as r (r.index)}
 					<p class="text-xs text-stone-500">{m.hold_room_n({ n: String(r.index) })} {r.roomName} ／ {r.planName} ／ {m.hold_room_adults({ adults: String(r.adults) })}</p>
@@ -604,6 +580,13 @@
 			</div>
 			<a href="#hold-summary" class="mt-1 block text-right text-xs text-accent-600 hover:underline">{m.hold_mobile_see_detail()} ↓</a>
 		</div>
+
+		{#if memberPage?.perks.length}
+			<section aria-labelledby="hold-special-perks" class="mt-4 space-y-2" style="--pt-accent: var(--color-accent-600)">
+				<h2 id="hold-special-perks" class="text-sm font-semibold text-brand-900">{m.member_page_perks()}</h2>
+				<PartnerPerkList perks={memberPage.perks} variant="compact" showImages={false} />
+			</section>
+		{/if}
 
 		<form
 			bind:this={formEl}
@@ -1181,7 +1164,10 @@
 					{#if data.room.photos[0]?.url}<img src={data.room.photos[0].url} alt="" class="h-[72px] w-[72px] shrink-0 rounded-lg object-cover" />{/if}
 					<div class="min-w-0">
 						<p class="text-lg font-bold leading-snug">{data.facility.name}</p>
-						<p class="mt-0.5 text-sm text-stone-500">{m.hold_summary_heading()}</p>
+						<div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+							<p class="text-sm text-stone-500">{m.hold_summary_heading()}</p>
+							{#if memberPage}{@render specialRateBadge()}{/if}
+						</div>
 					</div>
 				</div>
 				<dl class="mt-4 space-y-2.5 text-sm">

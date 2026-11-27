@@ -50,7 +50,7 @@ import {
 	privateBookPlanReferenceMin,
 	privateBookStayCalendar
 } from '$lib/server/private-book';
-import { mergePbOffers } from '$lib/private-book';
+import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
 import type { Actions, PageServerLoad } from './$types';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
@@ -64,6 +64,7 @@ async function staffPreviewPlan(event: Parameters<PageServerLoad>[0], facilityUu
 }
 
 export const load: PageServerLoad = async (event) => {
+	event.depends(PB_PRICE_DEPENDENCY);
 	const { params, url, locals, cookies } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（客室の行に「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);

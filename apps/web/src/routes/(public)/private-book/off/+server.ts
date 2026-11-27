@@ -8,7 +8,7 @@ import { clearPrivateBookCookie } from '$lib/server/private-book';
 import { pbSafeBack } from '$lib/private-book';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
+export const POST: RequestHandler = async ({ request, cookies, setHeaders }) => {
 	const form = await request.formData().catch(() => null);
 	const back = pbSafeBack(String(form?.get('back') ?? ''), '/');
 	const holdId = String(form?.get('holdId') ?? '');
@@ -21,5 +21,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			console.error('[private-book/off] release', e);
 		}
 	}
+	setHeaders({ 'cache-control': 'private, no-store' });
+	if (request.headers.get('accept') === 'application/json') return new Response(null, { status: 204 });
 	redirect(303, back);
 };

@@ -20,7 +20,7 @@ import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { alertConditions, validateAlertConditions } from '$lib/availability-alerts';
 import { alertErrorMessage } from '$lib/server/availability-alert-errors';
 import { privateBookFacility, privateBookOffers, privateBookReferencePrices, pbFacilityView } from '$lib/server/private-book';
-import { mergePbOffers } from '$lib/private-book';
+import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
 import type { Actions, PageServerLoad } from './$types';
 
 type RoomPlanPrice = {
@@ -104,6 +104,7 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 }
 
 export const load: PageServerLoad = async (event) => {
+	event.depends(PB_PRICE_DEPENDENCY);
 	const { params, url, locals } = event;
 	// 会員のお気に入りの部屋がある部屋タイプ（ブロックに「お気に入り」と出す）。会員でなければ空
 	const favoritesP = favoriteRoomTypeIds(event);
@@ -125,6 +126,7 @@ export const load: PageServerLoad = async (event) => {
 		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
 		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
 		const pbState = locals.privateBook ?? null;
+		const specialOnly = Boolean(pbState) && url.searchParams.get('specialOnly') === '1';
 		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
 		const [allPlans, allRooms, settings, datedOffers, referencePrices, pbFac] = await Promise.all([
 			sbListPlansMapped(facility.id),
@@ -173,16 +175,20 @@ export const load: PageServerLoad = async (event) => {
 		const prices: RoomPlanPrice[] = checkin
 			? offers.map((offer) => ({ ratePlanId: offer.ratePlanId, roomTypeId: offer.roomTypeId, total: offer.total, referencePrice: null, remaining: offer.remaining, special: isSpecial(offer) }))
 			: refs.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null, special: isSpecial(price) }));
+		const filteredPrices = specialOnly ? prices.filter((price) => price.special) : prices;
+		const roomResults = roomsWithPlans(allRooms, plans, filteredPrices, adults, roomCount);
 		return {
 			facility,
-			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
-			combos: combosFor(allRooms, plans, prices, adults, nights, roomCount),
+			rooms: specialOnly ? roomResults.filter((room) => room.plans.length > 0) : roomResults,
+			combos: combosFor(allRooms, plans, filteredPrices, adults, nights, roomCount),
+			specialOnly,
 			meals,
 			today,
 			referenceMode: !checkin,
 			favoriteRoomTypeIds: await favoritesP,
 			// プライベートブックの状態のとき、この施設が特別料金か（null＝状態でない）
 			privateBook: pbFacilityView(pbState, pbFac),
+			privateBookPartnerId: pbState?.partnerId ?? null,
 			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 		};
 	}
@@ -217,7 +223,9 @@ export const load: PageServerLoad = async (event) => {
 		today,
 		referenceMode: false,
 		favoriteRoomTypeIds: await favoritesP,
+		specialOnly: false,
 		privateBook: null as { special: boolean } | null,
+		privateBookPartnerId: null as string | null,
 		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 	};
 };

@@ -75,8 +75,9 @@
 	let privateBookEntry = $derived(
 		data.privateBookHref ? `${data.privateBookHref}?back=${encodeURIComponent(page.url.pathname + page.url.search)}` : null
 	);
-	let plansList = $derived(page.route.id === '/(public)/[brand]/[facility]/plans');
-	let bookingFlowBand = $derived(['/(public)/booking/hold', '/(public)/booking/complete'].some((r) => routeId.startsWith(r)));
+	let privateBookToggle = $derived(page.route.id === '/(public)/[brand]/[facility]/plans' || page.route.id === '/(public)/[brand]/[facility]/plans/[plan]');
+	let privateBookSwitching = $state(false);
+	let inBookingFlow = $derived(['/(public)/booking/hold', '/(public)/booking/complete', '/(public)/booking/pay'].some((r) => routeId.startsWith(r)));
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
 	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
 
@@ -167,7 +168,7 @@
 				{#if data.privateBook}
 					<!-- いまプライベートブックの状態（塗りつぶし）。押しても同じ（出口は帯の「ふつうのご予約に戻る」） -->
 					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
-				{:else if privateBookEntry}
+				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
 					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・docs/private-book.md）。押すと公式サイトのまま特別料金の状態に切り替わる -->
 					<a href={privateBookEntry} data-sveltekit-reload class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-[0.14em] text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">PRIVATE BOOK</a>
 				{/if}
@@ -230,7 +231,7 @@
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
 				<div id="header-search-panel" class="w-full {mobileSearchOpen ? '' : 'hidden md:block'}">
-					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={visibleParams.facility ?? ''} action={visibleParams.facility ? '/' + visibleParams.brand + '/' + visibleParams.facility + '/plans' : '/search'} />
+					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={visibleParams.facility ?? ''} specialOnly={privateBookToggle && Boolean(data.privateBook) && visibleUrl.searchParams.get('specialOnly') === '1'} action={visibleParams.facility ? '/' + visibleParams.brand + '/' + visibleParams.facility + '/plans' : '/search'} />
 				</div>
 			{/if}
 		</div>
@@ -246,7 +247,7 @@
 				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
 				{#if data.privateBook}
 					<span class="mt-1 self-start rounded-full bg-brand-900 px-3 py-1.5 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
-				{:else if privateBookEntry}
+				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
 					<a href={privateBookEntry} data-sveltekit-reload class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
 				{/if}
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
@@ -260,19 +261,20 @@
 		</div>
 	</header>
 
-	{#if !bookingFlowBand && (data.privateBook || (plansList && data.privateBookHref))}
+	{#if !inBookingFlow && (data.privateBook || (privateBookToggle && data.privateBookHref))}
 		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6">
 			<PrivateBookBand
 				name={data.privateBook?.memberName}
 				pages={data.privateBook?.pages}
 				currentPartnerId={data.privateBook?.partnerId}
-				showToggle={plansList}
+				showToggle={privateBookToggle}
+				bind:switching={privateBookSwitching}
 				active={Boolean(data.privateBook)}
 			/>
 		</div>
 	{/if}
 
-	<main class="flex-1">
+	<main class="flex-1" aria-busy={privateBookSwitching} inert={privateBookSwitching}>
 		<PageLoadingBoundary shell="public" padding="px-4 pt-7 pb-10 sm:px-6 sm:pt-10">{@render children()}</PageLoadingBoundary>
 	</main>
 

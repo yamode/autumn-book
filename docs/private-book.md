@@ -26,7 +26,7 @@ B面 `/p/[token]` は取引先（旅行会社・法人）専用に戻す。前�
 - 入口 `(public)/private-book/+server.ts`: `?page=` が無ければ `memberPagesFor`（store.ts）から本人→家族の順で選ぶ。クッキーを書いて元の画面（無ければ `/search`）へ。
 - 出口 `/private-book/off`（POST）: クッキーを消して同じ画面へ。hold の中からなら仮押さえを解放。
 - 施設ごと: `loadPartnerContextAt(db, partnerId, facilityId)` で `memberPageBookingOpen` が真の施設だけ特別料金。偽ならその施設はふつうの料金。
-- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、全画面に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte`）。プラン一覧では対象会員に ON/OFF を同じ位置に出す。切り替え後も施設・日程・人数は保持する（v0.360.1）。
+- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、予約手続き以外に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte`）。プラン一覧・詳細では対象会員に ON/OFF を同じ位置に出し、画面の再読み込みなしで料金を更新する。プラン一覧は通常料金も含めて表示し、「専用料金のプランのみ」で絞り込める。詳細の料金欄では適用時に「専用料金」を表示する（v0.360.3）。
 
 ## 画面ごとの差し替え
 
@@ -40,7 +40,7 @@ B面 `/p/[token]` は取引先（旅行会社・法人）専用に戻す。前�
 - hold: プラン詳細の `?/hold` で、状態が有効な施設なら `createHoldGroup` の代わりに特別会員の束（`create_member_page_hold_group`）を作る。
   `memberPageHold`（member-hold.ts）の中身を `member.userId` だけで呼べる `createMemberPageHoldCore` に切り出す。
   **hold の action ではクッキーを信じず `resolvePrivateBook` をやり直し、料金は `quoteMemberRooms` で計算し直す（画面の金額は受け取らない）**。
-- 予約入力〜完了: 既に特別会員の束なら専用特典・会員特典・帯が出る（v0.352.0）。complete の専用ページへのリンクは `/account/reservations/<code>` へ。
+- 予約入力: 予約内容に「専用料金」を表示し、専用特典があるときはその内容を表示する。ポイントは支払いと予約内容の欄、キャンセル条件はキャンセルポリシーの欄に表示する（v0.360.3）。完了画面のリンクは `/account/reservations/<code>` へ。
 - 確定・確認メール・PMS 連携は今のまま（特別会員の予約は公式の予約の束 `bookings.metadata.member_page` で、rms_partner_bookings は使わない）。
 
 ## マイページ（予約後）

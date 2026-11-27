@@ -12,13 +12,20 @@ import { clearPrivateBookCookie, setPrivateBookCookie, verifyPrivateBook } from 
 import { choosePrivateBookPage, pbSafeBack } from '$lib/private-book';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders }) => {
+export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders, request }) => {
 	setHeaders({ 'cache-control': 'private, no-store' });
+	const asyncSwitch = request.headers.get('accept') === 'application/json';
 	const back = pbSafeBack(url.searchParams.get('back'));
 	const user = locals.user;
-	if (user?.role !== 'member') redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
+	if (user?.role !== 'member') {
+		if (asyncSwitch) return new Response(null, { status: 401 });
+		redirect(303, `/auth/login?next=${encodeURIComponent(url.pathname + url.search)}`);
+	}
 	const sb = DATA_SOURCE === 'supabase' ? partnerServiceClient() : null;
-	if (!sb) redirect(303, back);
+	if (!sb) {
+		if (asyncSwitch) return new Response(null, { status: 503 });
+		redirect(303, back);
+	}
 	let partnerId: string | null = null;
 	try {
 		const page = choosePrivateBookPage(await memberPagesFor(sb, user.id), url.searchParams.get('page'));
@@ -29,5 +36,6 @@ export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders }) 
 	}
 	if (partnerId) setPrivateBookCookie(cookies, partnerId);
 	else clearPrivateBookCookie(cookies);
+	if (asyncSwitch) return new Response(null, { status: partnerId ? 204 : 403 });
 	redirect(303, back);
 };

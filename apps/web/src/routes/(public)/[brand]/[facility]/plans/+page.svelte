@@ -19,6 +19,7 @@
 	import { formatPrice } from '$lib/format';
 	import { goto } from '$app/navigation';
 	import { writeCart, type CartItem } from '$lib/multi-room';
+	import { pbCartStorageKey } from '$lib/private-book';
 	import { experimentVariant } from '$lib/experiments';
 	import * as m from '$lib/paraglide/messages';
 	import { getLocale } from '$lib/paraglide/runtime';
@@ -71,6 +72,15 @@
 	// このときは結果の欄ごと読み込み表示にせず、ボタンをすぐ切り替え、各部屋のプランの欄だけを薄くして、届いたらフェードインで入れ替える（2026-11-21 指示）
 	const pendingMeal = $derived(pendingParamOnly('meal'));
 	const activeMeal = $derived(pendingMeal ?? data.params.meal);
+	const pendingSpecialOnly = $derived(pendingParamOnly('specialOnly'));
+	const activeSpecialOnly = $derived(pendingSpecialOnly === null ? data.specialOnly : pendingSpecialOnly === '1');
+
+	function filterSpecialOnly(checked: boolean) {
+		const url = new URL(page.url);
+		if (checked) url.searchParams.set('specialOnly', '1');
+		else url.searchParams.delete('specialOnly');
+		void goto(url, { noScroll: true, keepFocus: true });
+	}
 
 	// お食事で絞り込む（プラン設定の「お食事」から自動で作る・lib/meal-filter.ts）。'' はすべて
 	function mealHref(key: string) {
@@ -152,7 +162,7 @@
 			}
 		}
 		try {
-			writeCart(sessionStorage, items);
+			writeCart(sessionStorage, items, pbCartStorageKey(data.privateBookPartnerId));
 		} catch {
 			/* 保存できない環境では、プラン詳細で入れ直してもらう */
 		}
@@ -311,7 +321,13 @@
 
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
-		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} keepScroll />
+		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={data.specialOnly} keepScroll />
+		{#if data.privateBook}
+			<label class="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 text-sm font-medium text-brand-900">
+				<input type="checkbox" class="h-4 w-4 accent-brand-900" checked={activeSpecialOnly} onchange={(event) => filterSpecialOnly(event.currentTarget.checked)} />
+				{m.private_book_filter_only()}
+			</label>
+		{/if}
 		{#if data.meals.length > 1}
 			<!-- お食事で絞り込む: 検索条件の続きとして検索欄の下に置く（「客室から探す」の下だと客室の絞り込みに見えるため・2026-11-19 指示） -->
 			<div class="mt-3 flex items-center gap-3">
@@ -370,7 +386,7 @@
 			{#each openRooms as item (item.room.id)}
 				<article animate:flip={{ duration: 300, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
 			{:else}
-				{#if !fullRooms.length}<p class="text-sm text-stone-500">{m.plans_no_results()}</p>{/if}
+				{#if !fullRooms.length && !data.combos.length}<p class="text-sm text-stone-500">{data.specialOnly ? m.private_book_filter_empty() : m.plans_no_results()}</p>{/if}
 			{/each}
 		</div>
 		{#if fullRooms.length}

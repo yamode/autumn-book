@@ -53,7 +53,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
 import { canUseFavoriteRooms } from '$lib/member-benefits';
 import { viewerOf } from '$lib/server/secret-plans';
-import { memberBenefitLines, rankLabelOf, type MemberPerkSnapshot } from '$lib/partner-member-page';
+import type { MemberPerkSnapshot } from '$lib/partner-member-page';
 
 function demoHoldFor(locals: App.Locals, id: string) {
 	const hold = getHold(id);
@@ -250,27 +250,9 @@ export const load: PageServerLoad = async (event) => {
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…（ログイン）」を控えめに出す
 			memberOnsiteHint: MEMBER_SUPABASE && groupMemberOnsiteHint(roomViews, isMember),
 			...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
-			// 特別会員の専用ページ経由の束（専用特典・会員特典・キャンセル方式）。公式の束は null
+			// 専用料金と、予約に含まれる専用特典を表示する。
 			memberPage: hold.memberPage
-				? {
-						via: hold.memberPage.via,
-						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref,
-						// 2026-11-27〜 専用ページの確認画面（/p/<token>/book）を通さずここへ来るので、確認画面で見せていた中身をここで見せる。
-						// 帯の「○○ 様のプライベートブック」（B面のヘッダーと同じくログイン中の会員の名前。取れなければ名前なし）
-						memberName: member?.name || null,
-						// このご予約に付く専用特典（全室の写しを重ねずに並べる・束に写した値）
-						perks: memberPagePerksOf(hold.rooms.map((r) => r.memberPerks ?? null)),
-						// 会員特典（還元率・キャンセル方式・ポイント利用可）。B面の MemberBenefitList と同じ行
-						benefits:
-							member && memberRank
-								? {
-										rankLabel: rankLabelOf(memberRank, null),
-										lines: memberBenefitLines(rankLabelOf(memberRank, null), member.rewardRate, hold.memberPage.cancelPolicyMode)
-									}
-								: null,
-						// 専用ページのキャンセル規定（「会員グレードの規定」の方式では使わないので null）
-						cancelRules: hold.memberPage.cancelPolicyMode === 'rank' ? null : hold.memberPage.cancelRules
-					}
+				? { perks: memberPagePerksOf(hold.rooms.map((r) => r.memberPerks ?? null)) }
 				: null
 		};
 	}
@@ -340,14 +322,7 @@ export const load: PageServerLoad = async (event) => {
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
-		memberPage: null as {
-			via: 'self' | 'family';
-			backHref: string;
-			memberName: string | null;
-			perks: { id: string; title: string; description: string; imageUrl: string }[];
-			benefits: { rankLabel: string; lines: string[] } | null;
-			cancelRules: import('$lib/partner-member-page').MemberCancelRule[] | null;
-		} | null,
+		memberPage: null as { perks: ReturnType<typeof memberPagePerksOf> } | null,
 		needsTurnstile: !viewerIsMember(locals),
 		member: member
 			? {
