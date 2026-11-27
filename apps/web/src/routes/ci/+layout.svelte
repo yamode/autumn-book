@@ -9,14 +9,16 @@
 	import { pendingPage } from '$lib/page-transition';
 	import * as m from '$lib/paraglide/messages';
 	import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
+	import { canBookBathInPrecheckin } from '$lib/precheckin-p3';
 
 	let { data, children } = $props();
 
 	const path = $derived(page.url.pathname.replace(/^\/(en|zh-TW)(?=\/|$)/, ''));
 	const pending = $derived(pendingPage('checkin'));
 	const route = $derived(pending?.route.id ?? path);
-	const step = $derived(route === '/ci/done' ? 4 : route === '/ci/bath' ? 3 : route === '/ci/meals' ? 2 : 1);
-	const steps = $derived([m.ci_step_basic(), m.ci_step_meals(), m.ci_step_bath(), m.ci_step_done()]);
+	const showBath = $derived(data.ctx ? canBookBathInPrecheckin(data.ctx) : false);
+	const steps = $derived([m.ci_step_basic(), m.ci_step_meals(), ...(showBath ? [m.ci_step_bath()] : []), m.ci_step_done()]);
+	const step = $derived(route === '/ci/done' ? steps.length : route === '/ci/bath' ? 3 : route === '/ci/meals' ? 2 : 1);
 	const errorText = $derived(
 		data.ciError === 'expired'
 			? m.ci_err_expired()

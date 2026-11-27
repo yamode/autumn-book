@@ -6,7 +6,7 @@
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { DEMO_PRECHECKIN_CODE, slashDate, type PcMealType } from '$lib/precheckin';
-	import { ciBathBeforeDay } from '$lib/precheckin-p3';
+	import { canBookBathInPrecheckin, ciBathBeforeDay } from '$lib/precheckin-p3';
 
 	let { data } = $props();
 	const ctx = $derived(data.ctx!);
@@ -53,7 +53,9 @@
 		</ul>
 	{:else}
 		<p class="mt-1 text-stone-500">
-			{#if ctx.bookingCode !== DEMO_PRECHECKIN_CODE && ciBathBeforeDay(ctx.checkIn)}
+			{#if !canBookBathInPrecheckin(ctx)}
+				{m.ci_bath_inroom_only()}
+			{:else if ctx.bookingCode !== DEMO_PRECHECKIN_CODE && ciBathBeforeDay(ctx.checkIn)}
 				<!-- 事前チェックインからの貸切風呂の予約は、チェックイン当日から（2026-11-23） -->
 				{m.ci_bath_before_day()}
 			{:else}

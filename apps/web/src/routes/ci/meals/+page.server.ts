@@ -1,10 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { localizeHref } from '$lib/paraglide/runtime';
 import { checkMealChoices, mealChoicesFromForm } from '$lib/precheckin';
+import { ciAfterMealsPath } from '$lib/precheckin-p3';
 import { pcNotifyFacility, pcSaveMeals, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions } from './$types';
 
-// ② 夕食・朝食の時間（送信後は ③ 貸切風呂へ）。承認なしで PMS の食事（pms.stay_meals.meal_time）に確定する（docs/pre-checkin.md §5.2）。
+// ② 夕食・朝食の時間（送信後は対象の予約のみ貸切風呂へ）。承認なしで PMS の食事（pms.stay_meals.meal_time）に確定する。
 // 受付上限はここでも見るが（分かりやすい文言のため）、最終判定は RPC book.precheckin_save_meals の中（同時送信を lock で防ぐ）。
 export const actions: Actions = {
 	save: async (event) => {
@@ -18,6 +19,6 @@ export const actions: Actions = {
 		if (!res.ok) return fail(400, { error: res.error, time: res.time ?? null });
 		// 回答の完了（初回）・修正を宿へ知らせる（通知メール・PMS の「確認待ち」。失敗しても保存は成功のまま）
 		await pcNotifyFacility(event, r.token);
-		redirect(303, localizeHref('/ci/bath'));
+		redirect(303, localizeHref(ciAfterMealsPath(r.ctx)));
 	}
 };

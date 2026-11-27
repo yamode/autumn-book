@@ -1,10 +1,11 @@
 <script lang="ts">
 	// ② 夕食・朝食の時間。連泊は泊ごと、複数室は部屋ごとに選ぶ。混み合っている時間（PMS で満席にした・受付上限）は「（選択不可）」で選べない（今の時間は残す）。
-	// 部屋名は出さない（部屋タイプは ① に出す）。複数室のときだけ「1室目」の見出し。次は ③ 貸切風呂なので、ボタンは「保存して次へ」（2026-11-14）。
+	// 部屋名は出さない（部屋タイプは ① に出す）。複数室のときだけ「1室目」の見出しを出す。
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { hasAnyMeal, slashDate, slotSelectable, type PcMealType } from '$lib/precheckin';
+	import { ciAfterMealsPath } from '$lib/precheckin-p3';
 
 	let { data, form } = $props();
 	const ctx = $derived(data.ctx!);
@@ -74,7 +75,7 @@
 	<div class="flex gap-3">
 		<a href={localizeHref('/ci')} class="flex-1 rounded-xl bg-white py-3 text-center text-sm text-stone-700 ring-1 ring-stone-300">{m.ci_back()}</a>
 		{#if ro}
-			<a href={localizeHref('/ci/bath')} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_next()}</a>
+			<a href={localizeHref(ciAfterMealsPath(ctx))} class="flex-[2] rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_next()}</a>
 		{:else}
 			<button type="submit" class="flex-[2] rounded-xl bg-stone-900 py-3 text-sm font-medium text-white">{m.ci_save_next()}</button>
 		{/if}

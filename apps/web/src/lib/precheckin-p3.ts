@@ -4,7 +4,7 @@
 // DB: autumn-shared 20261028223603_book_precheckin_p3_bath_banner.sql
 //   - precheckin_context の is_official / is_partner / facility.portal_slug → showOtaBanner / portalSlugOf
 //   - precheckin_stay_token(p_token) の戻り → normalizeStayTokenResult
-import type { PcContext } from '$lib/precheckin';
+import { DEMO_PRECHECKIN_CODE, type PcContext } from '$lib/precheckin';
 
 // ---------------------------------------------------------------- OTA 誘導バナー
 
@@ -87,8 +87,17 @@ export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/ci/bath' : '/r');
 
 export type CiBathState = 'not_answered' | 'closed' | 'before_day' | 'unavailable' | 'ready';
 
+/** 本予約は book._pc_is_direct に基づく。管理画面から開く見本は貸切風呂まで試せる。 */
+export function canBookBathInPrecheckin(ctx: Pick<PcContext, 'bookingCode' | 'isDirect' | 'isOfficial'>): boolean {
+	return ctx.bookingCode === DEMO_PRECHECKIN_CODE || (ctx.isDirect ?? ctx.isOfficial) === true;
+}
+
+export function ciAfterMealsPath(ctx: Pick<PcContext, 'bookingCode' | 'isDirect' | 'isOfficial'>): '/ci/bath' | '/ci/done' {
+	return canBookBathInPrecheckin(ctx) ? '/ci/bath' : '/ci/done';
+}
+
 /**
- * 事前チェックインからの貸切風呂の予約は、チェックイン当日から（予約の経路を問わない・OTA も可）。
+ * 直販扱いの予約は、事前チェックインからチェックイン当日以降に貸切風呂を予約できる。
  * 前もっての予約は会員がマイページから行う（2026-11-23）。DB（book._pb_bath_token）も同じ条件で断る。
  */
 export function ciBathState(input: { answered: boolean; editable: boolean; bathOpen: boolean; beforeDay?: boolean }): CiBathState {

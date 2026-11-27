@@ -1,4 +1,5 @@
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
+import { localizeHref } from '$lib/paraglide/runtime';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import {
 	PRECHECKIN_COOKIE,
@@ -11,7 +12,7 @@ import {
 import { sbBathCancel, sbBathContext, sbBathReserve, type BathContext } from '$lib/server/private-bath';
 import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
 import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
-import { ciBathBeforeDay, ciBathState, type CiBathState } from '$lib/precheckin-p3';
+import { canBookBathInPrecheckin, ciBathBeforeDay, ciBathState, type CiBathState } from '$lib/precheckin-p3';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
 // 回答済みの事前チェックインリンクで貸切風呂のRPCを呼ぶ。客室案内の開始時刻とは独立している。
@@ -21,9 +22,10 @@ export const load: PageServerLoad = async (event) => {
 	const { ctx } = await event.parent();
 	if (!ctx) return { bath: { state: 'unavailable', ctx: null } as BathView };
 	const answered = Boolean(ctx.answeredAt);
+	if (!canBookBathInPrecheckin(ctx)) redirect(303, localizeHref(answered ? '/ci/done' : '/ci/meals'));
 	const pcToken = event.cookies.get(PRECHECKIN_COOKIE);
 	let bath: BathContext | null = null;
-	// 事前チェックインからの貸切風呂の予約は、チェックイン当日から。予約の経路は問わない（OTA も可）。
+	// 直販扱いの予約は、事前チェックインからチェックイン当日以降に貸切風呂を予約できる。
 	// 前もっての予約は会員のマイページから（DB の _pb_bath_token も同じ条件で断る・2026-11-23）
 	const beforeDay = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? false : ciBathBeforeDay(ctx.checkIn);
 	if (answered && ctx.editable && !beforeDay) {
@@ -41,9 +43,10 @@ export const load: PageServerLoad = async (event) => {
 async function bathAccessFor(event: RequestEvent): Promise<string | null> {
 	const r = await resolvePrecheckin(event);
 	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
+	if (!canBookBathInPrecheckin(r.ctx)) return null;
 	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
 	if (DATA_SOURCE !== 'supabase') return null;
-	if (ciBathBeforeDay(r.ctx.checkIn)) return null; // チェックイン当日から（経路は問わない・2026-11-23）
+	if (ciBathBeforeDay(r.ctx.checkIn)) return null;
 	// RPC で事前チェックインの回答・有効期限を検証する。
 	return precheckinBathAccess(r.token);
 }
