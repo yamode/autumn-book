@@ -69,6 +69,11 @@
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input type="tel" name="phone" autocomplete="tel" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="09000000000" />
 			</label>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.register_invite_label()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="inviteCode" value={(form?.values as { inviteCode?: string } | undefined)?.inviteCode ?? data.prefill.invite} autocomplete="off" autocapitalize="characters" maxlength="12" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 font-mono uppercase tracking-wider" placeholder="ABCD2345" />
+				<span class="mt-1 block text-xs text-stone-400">{m.register_invite_hint()}</span>
+			</label>
 			<label class="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded-lg bg-amber-50 px-2 py-2.5 text-sm max-[359px]:-mx-3 max-[359px]:px-1 sm:px-3">
 				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />
 				<span class="font-medium text-amber-950">{m.register_mail_opt_in()}</span>
@@ -128,6 +133,11 @@
 			<label class="block text-sm">
 				<span class="text-stone-600">{m.register_phone()}</span>
 				<input type="tel" name="phone" autocomplete="tel" value={form?.values?.phone ?? ''} class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2" placeholder="09000000000" />
+			</label>
+			<label class="block text-sm">
+				<span class="text-stone-600">{m.register_invite_label()} <span class="text-xs text-stone-400">{m.name_optional()}</span></span>
+				<input name="inviteCode" value={(form?.values as { inviteCode?: string } | undefined)?.inviteCode ?? data.prefill.invite} autocomplete="off" autocapitalize="characters" maxlength="12" class="mt-1 w-full rounded-md border border-stone-300 px-3 py-2 font-mono uppercase tracking-wider" placeholder="ABCD2345" />
+				<span class="mt-1 block text-xs text-stone-400">{m.register_invite_hint()}</span>
 			</label>
 			<label class="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded-lg bg-amber-50 px-2 py-2.5 text-sm max-[359px]:-mx-3 max-[359px]:px-1 sm:px-3">
 				<input type="checkbox" name="mailOptIn" checked={form?.values?.mailOptIn ?? true} class="mt-0.5 h-4 w-4 shrink-0 accent-amber-900" />

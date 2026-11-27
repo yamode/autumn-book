@@ -46,6 +46,14 @@ import {
 	pointBalance,
 	pointLedger
 } from '$lib/server/store';
+import {
+	adminMemberAmbassador,
+	adminReissueAmbassadorCode,
+	adminSetAmbassador,
+	adminVoidReferral,
+	ambassadorErrorMessage,
+	type AdminMemberAmbassador
+} from '$lib/server/ambassador';
 import type { Actions, PageServerLoad } from './$types';
 
 type LedgerEntry = { id: string; delta: number; reason: string; createdAt: string };
@@ -85,6 +93,11 @@ export const load: PageServerLoad = async (event) => {
 				limit: 50
 			}).catch(() => [])
 		]);
+		// アンバサダー（docs/ambassador.md）。落ちても画面は開く
+		const ambassadorLoad = adminMemberAmbassador(client, id).catch((e) => {
+			console.error('[admin/members] admin_member_ambassador', e);
+			return null;
+		});
 		// 専用ページ（本人・家族）。取引先モジュールが使えない環境・権限なしは空
 		const memberPagesLoad = staffPartnerScope(event, 'view')
 			.then((scope) => memberPagesForAdmin(scope.db, scope.tenantId, id))
@@ -99,14 +112,16 @@ export const load: PageServerLoad = async (event) => {
 		}
 		if (!member) error(404, '会員が見つかりません');
 
-		const [[balance, otayori, ledger, coupons, devices, notifications, preferences, stays], memberPages, { facilities }] =
-			await Promise.all([detailLoad, memberPagesLoad, parentLoad]);
+		const [[balance, otayori, ledger, coupons, devices, notifications, preferences, stays], memberPages, { facilities }, ambassador] =
+			await Promise.all([detailLoad, memberPagesLoad, parentLoad, ambassadorLoad]);
 		// admin_list_bookings は実 UUID を返すので、対応表も UUID キーで作る
 		const facilityName = new Map(facilities.map((f) => [toFacilityUuidStrict(f.id), f.name]));
 
 		return {
 			live: true as const,
 			isAdmin,
+			ambassador,
+			origin: event.url.origin,
 			// この会員が対象の専用ページ（via=self）と家族のつながりで使えるページ（via=family）
 			memberPages,
 			// 「専用ページを作る」（管理者のみ・退会者には作らない）
@@ -153,6 +168,8 @@ export const load: PageServerLoad = async (event) => {
 	return {
 		live: false as const,
 		isAdmin,
+		ambassador: null as AdminMemberAmbassador | null,
+		origin: event.url.origin,
 		memberPages: [] as Awaited<ReturnType<typeof memberPagesForAdmin>>,
 		canCreateMemberPage: false,
 		m: {
@@ -204,6 +221,52 @@ export const load: PageServerLoad = async (event) => {
 };
 
 export const actions: Actions = {
+	// アンバサダー（docs/ambassador.md・管理者のみ。権限・監査ログは RPC の中）
+	ambassadorOn: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
+		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境ではアンバサダーを扱えません。' });
+		try {
+			await adminSetAmbassador(bookAdmin(event), event.params.id, true);
+		} catch (e) {
+			return fail(400, { message: ambassadorErrorMessage(e) });
+		}
+		return { ambassadorDone: 'アンバサダーにしました（招待コードを作りました・監査ログに記録）。' };
+	},
+	ambassadorOff: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
+		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境ではアンバサダーを扱えません。' });
+		try {
+			await adminSetAmbassador(bookAdmin(event), event.params.id, false);
+		} catch (e) {
+			return fail(400, { message: ambassadorErrorMessage(e) });
+		}
+		return { ambassadorDone: 'アンバサダーを外しました（監査ログに記録）。' };
+	},
+	ambassadorReissue: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
+		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境ではアンバサダーを扱えません。' });
+		try {
+			await adminReissueAmbassadorCode(bookAdmin(event), event.params.id);
+		} catch (e) {
+			return fail(400, { message: ambassadorErrorMessage(e) });
+		}
+		return { ambassadorDone: '招待コードを作り直しました。前のコードは使えません。' };
+	},
+	referralVoid: async (event) => {
+		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
+		if (!ADMIN_SUPABASE) return fail(400, { message: 'この環境ではアンバサダーを扱えません。' });
+		const form = await event.request.formData();
+		const referred = String(form.get('referred') ?? '');
+		const voidIt = form.get('void') === '1';
+		if (!referred) return fail(400, { message: '対象がありません' });
+		try {
+			await adminVoidReferral(bookAdmin(event), referred, voidIt);
+		} catch (e) {
+			return fail(400, { message: ambassadorErrorMessage(e) });
+		}
+		return { ambassadorDone: voidIt ? '招待を無効にしました（付けたポイントは戻していません）。' : '招待を有効にしました。' };
+	},
+
 	adjust: async (event) => {
 		if (event.locals.user?.role !== 'admin') return fail(403, { message: '権限がありません' });
 		const form = await event.request.formData();

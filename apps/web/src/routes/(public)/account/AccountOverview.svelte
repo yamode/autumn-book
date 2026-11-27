@@ -97,6 +97,16 @@
 	<p class="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
 		{#if Number(page.url.searchParams.get('bonus') ?? '0') > 0}{m.account_welcome({ points: Number(page.url.searchParams.get('bonus')).toLocaleString() })}{:else}{m.account_welcome_nobonus()}{/if}
 	</p>
+	<!-- アンバサダーの招待で入会したときの結果（docs/ambassador.md §4） -->
+	{#if page.url.searchParams.get('invite') === 'coupon'}
+		<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{m.account_invite_coupon()} <a href="/account/coupons" class="font-medium underline">{m.account_nav_coupons()}</a></p>
+	{:else if page.url.searchParams.get('invite') === 'linked'}
+		<p class="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{m.account_invite_linked()}</p>
+	{:else if page.url.searchParams.get('invite') === 'ineligible'}
+		<p class="mb-4 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">{m.account_invite_ineligible()}</p>
+	{:else if page.url.searchParams.get('invite') === 'invalid'}
+		<p class="mb-4 rounded-lg bg-stone-100 px-4 py-3 text-sm text-stone-700">{m.account_invite_invalid()}</p>
+	{/if}
 {/if}
 
 {#if !reservationsOnly && page.url.searchParams.get('migrated')}

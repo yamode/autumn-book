@@ -26,6 +26,8 @@
 		{ href: '/help', label: m.help_nav_label() }
 	]);
 	const bookingNav = $derived([
+		// アンバサダー（招待コード・紹介実績）。アンバサダーの会員だけ
+		...(data.isAmbassador ? [{ href: '/account/ambassador', label: m.account_nav_ambassador() }] : []),
 		// クーポン（配られたクーポンの一覧）。おたよりの記録はポイントの配下（/account/points/otayori・2026-11-24）
 		{ href: '/account/coupons', label: m.account_nav_coupons() },
 		{ href: '/account/favorites', label: m.account_nav_favorites() },
@@ -72,6 +74,11 @@
 				aria-label={`${rankName(rank)} · ${m.points_rank_progress()}`}>
 				<RankBadge {rank} />
 			</a>
+			{#if data.isAmbassador}
+				<a href="/account/ambassador" class="inline-flex min-h-11 items-center rounded-md">
+					<span class="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-900">{m.ambassador_badge()}</span>
+				</a>
+			{/if}
 			<a href="/account/points" class="inline-flex min-h-11 items-center rounded-md">
 				<span class="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-800">{data.balance.toLocaleString()} {m.common_point_unit()}</span>
 			</a>

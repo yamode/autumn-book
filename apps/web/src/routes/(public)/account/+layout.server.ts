@@ -3,6 +3,7 @@ import { memberById, pointBalance, avatarByMember } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { sbMyProfile, sbPointBalance } from '$lib/server/supabase-data';
 import { bookingMcpEnabled } from '$lib/server/booking-mcp/oauth';
+import { myAmbassador } from '$lib/server/ambassador';
 import { MEMBER_LOGIN_METHODS, memberMfaPath } from '$lib/server/member-login';
 import type { LayoutServerLoad } from './$types';
 
@@ -16,6 +17,10 @@ export const load: LayoutServerLoad = async (event) => {
 	if (MEMBER_SUPABASE) {
 		const client = createSupabaseServerClient(event);
 		const loadBalance = sbPointBalance(client).catch(() => 0);
+		// アンバサダーのバッジとメニュー（docs/ambassador.md §8）。落ちても出さないだけ
+		const loadAmbassador = myAmbassador(client)
+			.then((a) => a.isAmbassador)
+			.catch(() => false);
 		let p: Awaited<ReturnType<typeof sbMyProfile>>;
 		try {
 			p = await sbMyProfile(client);
@@ -25,8 +30,9 @@ export const load: LayoutServerLoad = async (event) => {
 			await client.auth.updateUser({ data: { member: false } }).catch(() => {});
 			redirect(303, '/auth/register');
 		}
-		const balance = await loadBalance;
+		const [balance, isAmbassador] = await Promise.all([loadBalance, loadAmbassador]);
 		return {
+			isAmbassador,
 			memberLoginMethods: MEMBER_LOGIN_METHODS,
 			bookingMcpEnabled: untrack(() => bookingMcpEnabled(url)),
 			member: {
@@ -53,6 +59,7 @@ export const load: LayoutServerLoad = async (event) => {
 	const member = memberById(locals.user.id);
 	if (!member) redirect(303, '/auth/login');
 	return {
+		isAmbassador: false,
 		memberLoginMethods: false,
 		bookingMcpEnabled: false,
 		member: { id: member.id, memberCode: member.memberCode, name: member.name, rank: member.rank, mailOptIn: member.mailOptIn, email: member.email, kana: member.kana, familyName: member.familyName, givenName: member.givenName, middleName: member.middleName ?? '', familyNameKana: member.familyNameKana ?? '', givenNameKana: member.givenNameKana ?? '', phone: member.phone, joinedAt: member.joinedAt, avatarUrl: avatarByMember.get(member.id) ?? null },

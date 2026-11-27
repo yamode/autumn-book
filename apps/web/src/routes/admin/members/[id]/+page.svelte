@@ -3,6 +3,7 @@
 	import RankBadge from '$lib/components/RankBadge.svelte';
 	import { formatDateJa } from '$lib/format';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import AmbassadorPanel from '$lib/components/admin/AmbassadorPanel.svelte';
 
 	let { data, form } = $props();
 </script>
@@ -18,6 +19,7 @@
 {#if form?.adjusted}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ポイントを調整しました（監査ログに記録）。</p>{/if}
 {#if form?.rankChanged}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">ランクを変更しました（監査ログに記録）。</p>{/if}
 {#if form?.otayoriGranted}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">おたよりの記録を直しました（足した分は1通につき1,000ポイントを付与・監査ログに記録）。</p>{/if}
+{#if form?.ambassadorDone}<p class="mb-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{form.ambassadorDone}</p>{/if}
 {#if form?.message}<p class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{form.message}</p>{/if}
 
 <div class="grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -54,6 +56,10 @@
 				{/if}
 			</dl>
 		</section>
+
+		{#if data.live}
+			<AmbassadorPanel amb={data.ambassador} isAdmin={data.isAdmin} withdrawn={!!data.m.withdrawnAt} origin={data.origin} />
+		{/if}
 
 		<section class="rounded-xl border border-stone-200 bg-white p-5">
 			<h2 class="mb-2 text-sm font-medium text-stone-700">予約履歴</h2>

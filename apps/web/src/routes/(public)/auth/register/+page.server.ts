@@ -14,6 +14,8 @@ import { clientIp, hashKeyPart, memberOtpSendAllowed, memberOtpVerifyLocked, mem
 import { checkTurnstile } from '$lib/server/turnstile';
 import { bookingConsentNext } from '$lib/server/booking-mcp/oauth';
 import { safeNext } from '$lib/safe-next';
+import { INVITE_COOKIE, INVITE_COOKIE_MAX_AGE, normalizeInviteCode } from '$lib/ambassador';
+import { applyInviteCode } from '$lib/server/ambassador';
 
 /**
  * 登録が済んだあとの戻り先。AI 予約の同意画面（bookingConsentNext）に加えて、予約入力画面（/booking/hold?id=…）から来たときは
@@ -42,7 +44,7 @@ function registrationPhone(form: FormData): string {
 	return String(form.get('phone') ?? '').trim().replace(/[-‐‑‒–—−－]/g, '');
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, cookies }) => {
 	// 既に会員ならマイページへ
 	const consentNext = returnNext(url);
 	if (locals.user?.role === 'member') redirect(303, consentNext ?? '/account');
@@ -50,9 +52,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const welcomeBonus = await welcomeBonusPoints();
 
 	// 予約完了画面からの導線：入力済み情報をプリフィル（設計書 §3.6）
+	// アンバサダーの招待コード（/invite/<コード> が入れたクッキー、または ?invite=）。メール確認の往復をまたいで残す
+	const queryInvite = normalizeInviteCode(url.searchParams.get('invite'));
+	if (queryInvite) {
+		cookies.set(INVITE_COOKIE, queryInvite, { path: '/', httpOnly: true, sameSite: 'lax', secure: url.protocol === 'https:', maxAge: INVITE_COOKIE_MAX_AGE });
+	}
 	const prefill = {
 		email: url.searchParams.get('email') ?? '',
-		name: url.searchParams.get('name') ?? ''
+		name: url.searchParams.get('name') ?? '',
+		invite: queryInvite ?? normalizeInviteCode(cookies.get(INVITE_COOKIE)) ?? ''
 	};
 
 	if (AUTH_MODE === 'supabase') {
@@ -191,7 +199,9 @@ export const actions: Actions = {
 			const name = combineName(familyName, givenName);
 			const kana = combineKana(familyNameKana, givenNameKana);
 			// email も持たせて demo フォームと values 型を揃える（プロフィール入力では email は編集不可）
-			const values = { familyName, givenName, middleName, familyNameKana, givenNameKana, phone, mailOptIn, email: got.user.email ?? '' };
+			const inviteRaw = String(form.get('inviteCode') ?? '').trim();
+			const inviteCode = normalizeInviteCode(inviteRaw);
+			const values = { familyName, givenName, middleName, familyNameKana, givenNameKana, phone, mailOptIn, email: got.user.email ?? '', inviteCode: inviteRaw };
 			const errors: Record<string, string> = {};
 			if (!familyName) errors.familyName = m.error_name_required();
 			if (!givenName) errors.givenName = m.error_name_required();
@@ -214,10 +224,18 @@ export const actions: Actions = {
 					return fail(400, { step: 'profile', email: got.user.email, errors: {}, values, message: m.auth_register_failed() });
 				}
 			}
+			// アンバサダーの招待（docs/ambassador.md §4）。登録の直後に1回だけ結ぶ。うまくいかなくても登録は済んでいる
+			let invite = '';
+			if (welcome && (inviteCode || inviteRaw)) {
+				const r = inviteCode ? await applyInviteCode(got.client, inviteCode) : { status: 'invalid' as const, coupon: null };
+				invite = r.status === 'linked' ? (r.coupon ? 'coupon' : 'linked') : r.status === 'ineligible' ? 'ineligible' : 'invalid';
+			}
+			cookies.delete(INVITE_COOKIE, { path: '/' });
 			// hooks が会員と解決できるよう user_metadata を同期
 			await got.client.auth.updateUser({ data: { name, member: true } }).catch(() => {});
 			const back = returnNext(event.url);
-			redirect(303, back ? withRegistered(back) : welcome ? `/account?welcome=1&bonus=${bonus}` : '/account');
+			const inviteQuery = invite ? `&invite=${invite}` : '';
+			redirect(303, back ? withRegistered(back) : welcome ? `/account?welcome=1&bonus=${bonus}${inviteQuery}` : '/account');
 		}
 
 		// demo: email + パスワード + プロフィールを一括登録
