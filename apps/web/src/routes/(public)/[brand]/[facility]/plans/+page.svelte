@@ -2,7 +2,7 @@
 	import { mealChipLabel } from '$lib/meal-label';
 	import BackLink from '$lib/components/BackLink.svelte';
 	import { enhance } from '$lib/enhance';
-	import { todayStr } from '$lib/format';
+	import { formatDateLong, todayStr } from '$lib/format';
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
 	import { page } from '$app/state';
@@ -301,7 +301,7 @@
 	<title>{m.plans_title({ name: data.facility.name })}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-6xl px-4 py-7 sm:py-10">
+<div class="mx-auto max-w-6xl px-4 py-6 sm:py-8">
 	<BackLink href={facilitiesHref} target={m.common_facility_list()} />
 
 	<!-- 施設名と一言だけ（紹介・写真はページ下部の「施設について」へ） -->
@@ -322,22 +322,27 @@
 
 	<div id="plan-search" class="mt-5 scroll-mt-28">
 		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={data.specialOnly} keepScroll />
-		{#if data.privateBook}
-			<label class="mt-3 inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border border-stone-200 bg-white px-3 text-sm font-medium text-brand-900">
-				<input type="checkbox" class="h-4 w-4 accent-brand-900" checked={activeSpecialOnly} onchange={(event) => filterSpecialOnly(event.currentTarget.checked)} />
-				{m.private_book_filter_only()}
-			</label>
-		{/if}
-		{#if data.meals.length > 1}
-			<!-- お食事で絞り込む: 検索条件の続きとして検索欄の下に置く（「客室から探す」の下だと客室の絞り込みに見えるため・2026-11-19 指示） -->
-			<div class="mt-3 flex items-center gap-3">
-				<span class="shrink-0 text-xs font-medium text-stone-500">{m.meal_filter_label()}</span>
-				<!-- スマホは横スクロール。スクロールバーは出さず、続きがある側の端を薄くぼかす（2026-11-19 指示） -->
-				<div bind:this={mealStrip} onscroll={updateMealEdges} style={mealMask} class="relative -mr-4 flex min-w-0 flex-1 gap-2 overflow-x-auto pr-4 [scrollbar-width:none] sm:mr-0 sm:flex-wrap sm:pr-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={m.meal_filter_label()}>
-					{#each [{ key: '', label: m.meal_filter_all() }, ...data.meals.map((option) => ({ key: option.key, label: mealLabel(option) }))] as item (item.key)}
-						<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={activeMeal === item.key ? 'true' : undefined} class="shrink-0 rounded-full border px-3 py-1.5 text-xs transition {activeMeal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-600 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
-					{/each}
-				</div>
+		{#if data.privateBook || data.meals.length > 1}
+			<div role="group" aria-label={m.plans_filters_label()} class="mt-4 divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-stone-50/80 px-3 sm:px-4">
+				{#if data.privateBook}
+					<div class="flex min-w-0 items-center gap-2 py-2 sm:gap-3">
+						<span class="w-14 shrink-0 text-xs font-medium text-stone-600 sm:w-20">{m.plans_rate_filter_label()}</span>
+						<label class="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs font-medium text-brand-900 transition-colors sm:text-sm {activeSpecialOnly ? 'border-brand-900/30 bg-brand-900/5' : 'border-transparent hover:bg-white'}">
+							<input type="checkbox" class="h-4 w-4 shrink-0 accent-brand-900" checked={activeSpecialOnly} onchange={(event) => filterSpecialOnly(event.currentTarget.checked)} />
+							{m.private_book_filter_only()}
+						</label>
+					</div>
+				{/if}
+				{#if data.meals.length > 1}
+					<div class="flex min-w-0 items-center gap-2 py-2 sm:gap-3">
+						<span class="w-14 shrink-0 text-xs font-medium text-stone-600 sm:w-20">{m.meal_filter_label()}</span>
+						<div bind:this={mealStrip} onscroll={updateMealEdges} style={mealMask} class="relative -mr-3 flex min-w-0 flex-1 gap-1.5 overflow-x-auto pr-3 [scrollbar-width:none] sm:mr-0 sm:flex-wrap sm:pr-0 [&::-webkit-scrollbar]:hidden" role="group" aria-label={m.meal_filter_label()}>
+							{#each [{ key: '', label: m.meal_filter_all() }, ...data.meals.map((option) => ({ key: option.key, label: mealLabel(option) }))] as item (item.key)}
+								<a href={mealHref(item.key)} data-sveltekit-noscroll aria-current={activeMeal === item.key ? 'true' : undefined} class="inline-flex min-h-9 shrink-0 items-center rounded-full border px-3 text-xs transition-colors {activeMeal === item.key ? 'border-brand-800 bg-brand-800 text-white' : 'border-stone-300 bg-white text-stone-700 hover:border-brand-800 hover:text-brand-800'}">{item.label}</a>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -363,18 +368,21 @@
 	{/if}
 
 	<section id="rooms" class="mt-6 scroll-mt-28">
-		<h2 class="font-display mb-3 text-xl text-brand-900">{headingVariant === 'b' ? m.plans_heading_alternative() : m.plans_heading()}</h2>
-		<div class="flex flex-wrap items-center justify-end gap-3">
-			<div class="flex shrink-0 gap-4 text-sm" role="group" aria-label="sort">
+		<div class="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+			<div class="min-w-0">
+				<h2 class="font-display text-xl leading-tight text-brand-900">{headingVariant === 'b' ? m.plans_heading_alternative() : m.plans_heading()}</h2>
+				{#if data.params.checkin}
+					<p class="mt-1 text-sm text-stone-600">{m.plans_date_info({ checkin: formatDateLong(data.params.checkin), nights: String(data.params.nights), adults: String(data.params.adults) })}</p>
+				{/if}
+			</div>
+			<div class="ml-auto inline-flex shrink-0 gap-0.5 rounded-full border border-stone-200 bg-stone-50 p-0.5 text-xs" role="group" aria-label={m.plans_sort_label()}>
 				{#each [['asc', m.plans_sort_asc()], ['desc', m.plans_sort_desc()]] as [value, label]}
-					<button type="button" aria-pressed={sort === value} onclick={() => (sort = value as 'asc' | 'desc')} class="border-b-2 pb-1 {sort === value ? 'border-brand-900 font-semibold text-brand-900' : 'border-transparent text-stone-500 hover:text-brand-800'}">{label}</button>
+					<button type="button" aria-pressed={sort === value} onclick={() => (sort = value as 'asc' | 'desc')} class="min-h-9 rounded-full px-3 {sort === value ? 'bg-white font-semibold text-brand-900 shadow-sm' : 'text-stone-600 hover:text-brand-800'}">{label}</button>
 				{/each}
 			</div>
 		</div>
 
-		{#if data.params.checkin}
-			<p class="mt-3 text-sm text-stone-600">{m.plans_date_info({ checkin: data.params.checkin, nights: String(data.params.nights), adults: String(data.params.adults) })}</p>
-		{:else}
+		{#if !data.params.checkin}
 			<p class="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
 				{data.referenceMode ? m.plans_no_date_reference({ adults: String(data.params.adults) }) : m.plans_no_date()}
 			</p>
