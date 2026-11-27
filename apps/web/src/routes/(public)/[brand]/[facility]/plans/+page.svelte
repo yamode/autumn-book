@@ -79,6 +79,24 @@
 	const roomFlip = $derived(prefersReducedMotion.current ? 0 : 300);
 	const activeSpecialOnly = $derived(pendingSpecialOnly === null ? data.specialOnly : pendingSpecialOnly === '1');
 
+	// 専用料金の切り替え後も同じプランが残るときは、新しい料金が届いてから行を短くフェードインする。
+	function animateRateMode(row: HTMLElement, partnerId: string | null) {
+		let animation: Animation | undefined;
+		return {
+			update(nextPartnerId: string | null) {
+				if (nextPartnerId === partnerId) return;
+				partnerId = nextPartnerId;
+				animation?.cancel();
+				if (prefersReducedMotion.current) return;
+				animation = row.animate(
+					[{ opacity: 0.4, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }],
+					{ duration: planSlide, easing: 'ease-out' }
+				);
+			},
+			destroy() { animation?.cancel(); }
+		};
+	}
+
 	function filterSpecialOnly(checked: boolean) {
 		const url = new URL(page.url);
 		if (checked) url.searchParams.set('specialOnly', '1');
@@ -219,7 +237,7 @@
 					<div id="plans-{item.room.id}" class="divide-y divide-stone-200">
 						{#each item.plans.slice(0, expandedRooms[item.room.id] ? item.plans.length : 2) as option (option.plan.id)}
 							<!-- 絞り込みや「プランをすべて見る」で増減するプランだけを開閉する -->
-							<div transition:slide={{ duration: planSlide, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
+							<div use:animateRateMode={data.privateBookPartnerId} transition:slide={{ duration: planSlide, easing: cubicOut }} class="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 sm:p-6">
 								<div class="min-w-0">
 									<div class="mb-2 flex flex-wrap gap-1.5 text-[11px]">
 										{#if option.plan.mealPlan}<span class="rounded bg-stone-100 px-2 py-1 text-stone-600">{mealChipLabel(option.plan)}</span>{/if}
@@ -357,7 +375,7 @@
 			<p class="mt-0.5 text-sm text-stone-600">{m.plans_combo_desc({ n: String(data.params.rooms) })}</p>
 			<ul class="mt-3 space-y-3">
 				{#each data.combos as combo (combo.planId)}
-					<li transition:slide={{ duration: planSlide, easing: cubicOut }} class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
+					<li use:animateRateMode={data.privateBookPartnerId} transition:slide={{ duration: planSlide, easing: cubicOut }} class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
 						<div class="min-w-0">
 							<p class="text-sm font-semibold text-brand-900">{combo.planName}</p>
 							<p class="mt-0.5 text-base text-brand-900">{combo.parts.map((part) => `${part.roomName} ×${part.rooms}`).join(" ＋ ")}<span class="ml-2 text-sm text-stone-500">{m.plans_combo_each({ n: String(data.params.adults) })}</span></p>
