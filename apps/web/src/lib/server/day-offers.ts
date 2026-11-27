@@ -6,6 +6,7 @@ import { getRatePlans, getRoomTypes, quoteFor, remainingRooms } from '$lib/serve
 import { demoPairs } from '$lib/server/stay-calendar';
 import type { Locale, RatePlan } from '$lib/types';
 import { matchesMeal } from '$lib/meal-filter';
+import { mergePbOffers, type PbOffer } from '$lib/private-book';
 
 export type DayOffer = {
 	room: { id: string; slug: string; name: string };
@@ -13,6 +14,8 @@ export type DayOffer = {
 	total: number;
 	perPersonNight: number;
 	remaining: number;
+	/** プライベートブックの特別料金で出している組 */
+	special?: boolean;
 };
 
 type OfferRow = { ratePlanId: string; roomTypeId: string; total: number; remaining: number };
@@ -24,7 +27,8 @@ export async function dayOffers(
 	checkin: string,
 	nights: number,
 	adults: number,
-	options: { roomTypeId?: string; meal?: string; locale: Locale }
+	// special: プライベートブックの特別料金の組（/api/private-book/day-offers が渡す）。同じ組は差し替え、無い組は足す
+	options: { roomTypeId?: string; meal?: string; locale: Locale; special?: PbOffer[] }
 ): Promise<DayOffer[]> {
 	let rows: OfferRow[];
 	let plans: PlanInfo[];
@@ -45,6 +49,12 @@ export async function dayOffers(
 			total: quoteFor(pair.planId, pair.roomTypeId, checkin, nights, adults, 0).total
 		}));
 	}
+	let specialKeys = new Set<string>();
+	if (options.special?.length) {
+		const merged = mergePbOffers(rows, options.special);
+		rows = merged.offers;
+		specialKeys = merged.specialKeys;
+	}
 	const planById = new Map(plans.map((plan) => [plan.id, plan]));
 	const roomById = new Map(rooms.map((room) => [room.id, room]));
 	const offers: DayOffer[] = [];
@@ -59,7 +69,8 @@ export async function dayOffers(
 			plan: { id: plan.id, slug: plan.slug, name: plan.name, mealPlan: plan.mealPlan },
 			total: row.total,
 			perPersonNight: Math.round(row.total / (adults * nights)),
-			remaining: row.remaining
+			remaining: row.remaining,
+			...(specialKeys.has(`${row.ratePlanId}|${row.roomTypeId}`) ? { special: true } : {})
 		});
 	}
 	return offers.sort((a, b) => a.total - b.total);

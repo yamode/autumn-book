@@ -28,6 +28,7 @@
 		nights: initialNights,
 		adults: initialAdults,
 		meal,
+		privateBook = false,
 		onRoomInfo
 	}: {
 		open?: boolean;
@@ -41,6 +42,8 @@
 		adults: number;
 		/** お食事の絞り込み（lib/meal-filter.ts のキー・'' = すべて） */
 		meal: string;
+		/** プライベートブックの特別料金の施設（料金を /api/private-book/* から取る・no-store） */
+		privateBook?: boolean;
 		onRoomInfo: (roomId: string) => void;
 	} = $props();
 
@@ -78,7 +81,7 @@
 		loader.reset();
 	});
 	$effect(() => {
-		if (open) loader.load({ facilityId, roomTypeId: roomId || undefined, months: MONTHS }, nights, adults);
+		if (open) loader.load({ facilityId, roomTypeId: roomId || undefined, months: MONTHS, privateBook }, nights, adults);
 	});
 	const current = $derived(loader.get(nights, adults));
 	const closedDates = $derived(new Set(current?.closed ?? []));
@@ -96,7 +99,7 @@
 		if (meal) query.set('meal', meal);
 		offersLoading = true;
 		offersFailed = false;
-		fetch(`/api/day-offers?${query}`, { signal: controller.signal })
+		fetch(`${privateBook ? '/api/private-book/day-offers' : '/api/day-offers'}?${query}`, { signal: controller.signal })
 			.then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
 			.then((result: { offers: DayOffer[] }) => {
 				if (offersController !== controller) return;

@@ -4,7 +4,6 @@ import { DATA_SOURCE } from '$lib/server/supabase';
 import { getLastBooking, sbFacilityByUuid, sbMyBookingFavoriteRooms, sbMyProfile, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import type { Booking } from '$lib/types';
-import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import * as m from '$lib/paraglide/messages';
 import type { PageServerLoad } from './$types';
 
@@ -72,7 +71,10 @@ export const load: PageServerLoad = async (event) => {
 			MEMBER_SUPABASE && locals.user?.role === 'member'
 				? await sbMyBookingFavoriteRooms(createSupabaseServerClient(event), raw.code).catch(() => [])
 				: [];
-		const memberPageUrl = raw.memberPage ? await memberPageHrefFor(raw.memberPage.partnerId, raw.code).catch(() => null) : null;
+		// 確認・変更・取消はマイページのご予約から（プライベートブック・docs/private-book.md「作る順番」3）。B面の専用ページへは送らない
+		const memberPageUrl = raw.memberPage ? `/account/reservations/${encodeURIComponent(raw.code)}` : null;
+		// 専用ページごとの予約かご（プライベートブックの ab_booking_cart_v1:pb:<partnerId>）を空にするため
+		const memberPagePartnerId = raw.memberPage?.partnerId ?? null;
 		// プライベートブックの帯の「○○ 様」（B面のヘッダーと同じくログイン中の会員の名前）。取れなければ名前なしの帯
 		const memberPageMemberName =
 			raw.memberPage && MEMBER_SUPABASE && locals.user?.role === 'member'
@@ -92,6 +94,7 @@ export const load: PageServerLoad = async (event) => {
 			chargeOn: raw.chargeOn ?? null,
 			isMember: locals.user?.role === 'member',
 			memberPageUrl,
+			memberPagePartnerId,
 			memberPageName: raw.memberPage?.pageName ?? null,
 			memberPageMemberName,
 			favoriteRooms
@@ -114,6 +117,7 @@ export const load: PageServerLoad = async (event) => {
 		chargeOn: null as string | null,
 		isMember: locals.user?.role === 'member',
 		memberPageUrl: null as string | null,
+		memberPagePartnerId: null as string | null,
 		memberPageName: null as string | null,
 		memberPageMemberName: null as string | null,
 		favoriteRooms: [] as { roomIndex: number; name: string; designated: boolean }[]

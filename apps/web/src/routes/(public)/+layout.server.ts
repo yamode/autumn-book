@@ -3,28 +3,40 @@ import { forumUnreadCount } from '$lib/server/forum-activity';
 import { FORUM_WRITE_ENABLED } from '$lib/server/forum-write-enabled';
 import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { memberPagesFor } from '$lib/server/partners/store';
-import { memberPageCalendarHrefOf } from '$lib/partner-member-page';
+import { PB_ENTRY_PATH } from '$lib/private-book';
 import type { LayoutServerLoad } from './$types';
 
 /**
- * プライベートブック（VIP＝特別会員の専用の予約・2026-11-27）の入口。メインメニューの「PRIVATE BOOK」の行き先。
- * 本人のページを先に、無ければご家族のご招待のページ。会員でない・ページが無い・読めないときは null（ボタンを出さない）
+ * プライベートブック（VIP＝特別会員と、ご招待のご家族・docs/private-book.md）の入口を出すか。
+ * メインメニューの「PRIVATE BOOK」は入口 /private-book（公式サイトの中で特別料金の状態に切り替える）。
+ * 会員でない・使えるページが無い・読めないときは false（ボタンを出さない）
  */
-async function privateBookHref(userId: string): Promise<string | null> {
+async function hasPrivateBook(userId: string): Promise<boolean> {
 	const sb = partnerServiceClient();
-	if (!sb) return null;
+	if (!sb) return false;
 	const pages = await memberPagesFor(sb, userId).catch(() => []);
-	const page = pages.find((p) => p.via === 'self') ?? pages[0];
-	return page?.urlToken ? memberPageCalendarHrefOf(page.urlToken) : null;
+	return pages.length > 0;
 }
 
 export const load: LayoutServerLoad = async (event) => {
 	event.depends('book:forum-notifications');
 	const user = event.locals.user;
 	const isMember = user?.role === 'member';
-	const [forumUnread, privateBook] = await Promise.all([
+	// 状態のとき（hooks の resolvePrivateBook が確かめ済み）はページがあるので数え直さない
+	const state = event.locals.privateBook ?? null;
+	const [forumUnread, available] = await Promise.all([
 		isMember && FORUM_WRITE_ENABLED ? forumUnreadCount(event).catch(() => 0) : Promise.resolve(0),
-		isMember && user?.id && DATA_SOURCE === 'supabase' ? privateBookHref(user.id).catch(() => null) : Promise.resolve(null)
+		state ? Promise.resolve(true) : isMember && user?.id && DATA_SOURCE === 'supabase' ? hasPrivateBook(user.id).catch(() => false) : Promise.resolve(false)
 	]);
-	return { user, demoData: DATA_SOURCE !== 'supabase', forumUnread, privateBookHref: privateBook };
+	return {
+		user,
+		demoData: DATA_SOURCE !== 'supabase',
+		forumUnread,
+		// 入口（押すと特別料金の状態に切り替わる・戻り先は画面側で ?back= を足す）。出さないときは null
+		privateBookHref: available ? PB_ENTRY_PATH : null,
+		// 状態（帯・ヘッダーの塗りつぶし・かごの保存キー）。状態でなければ null
+		privateBook: state
+			? { partnerId: state.partnerId, pageName: state.pageName, memberName: user?.name && user.name !== 'ゲスト' ? user.name : null, pages: state.pages }
+			: null
+	};
 };

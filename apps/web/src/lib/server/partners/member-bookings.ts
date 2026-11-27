@@ -22,7 +22,18 @@ import { partnerServiceClient } from './admin-client';
 import { quotePartnerBooking } from './booking';
 import { loadMemberPagePlans, memberPlanKey, quoteMemberRooms } from './member-hold';
 import { loadPartnerRates } from './rates';
-import { addDaysIso, addPartnerMember, createPartner, deletePartner, loadPartnerContext, memberPagesFor, type PartnerContext } from './store';
+import {
+  addDaysIso,
+  addPartnerMember,
+  bookFacilityMeta,
+  createPartner,
+  deletePartner,
+  loadPartnerContext,
+  memberPagesFor,
+  savePartnerFacility,
+  type PartnerContext
+} from './store';
+import { vipFacilitiesToAdd } from '$lib/private-book';
 import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
 import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
 
@@ -213,10 +224,60 @@ export async function createVipPage(
     await deletePartner(sb, partner).catch(() => undefined);
     throw e;
   }
+  // 全施設で販売する（プライベートブックはブランド内の全施設が対象・docs/private-book.md）。
+  // createPartner は作った施設だけオンにするので、残りの Book の施設も同じ設定でオンにする。失敗しても次の ensureVipPages で足す
+  await addVipPageFacilities(sb, [{ id: partner.id, tenant_id: v.tenantId }]).catch((e) =>
+    console.error('[vip-pages] 施設を足せませんでした', partner.id, e instanceof Error ? e.message : e)
+  );
+}
+
+const VIP_FACILITY_COLUMNS = 'partner_id, facility_id, enabled, booking_enabled, max_days_ahead, show_inventory, include_advance, facility_settings, sort_order';
+
+/**
+ * 専用ページ（kind='member'）に、施設設定の行がまだ無い Book の施設を足してオンにする（冪等）。
+ * 設定（予約受付・公開日数・残室の表示・施設ごとの予約設定）はそのページの既存の行（オンの行を優先）を写し、料金ルールは空（＝その施設はふつうの料金）。
+ * 行があってオフの施設は触らない（スタッフが止めた施設をオンに戻さない）。足した行の数を返す
+ */
+export async function addVipPageFacilities(sb: SupabaseClient, partners: readonly { id: string; tenant_id: string }[]): Promise<number> {
+  if (!partners.length) return 0;
+  const bookIds = (await bookFacilityMeta(sb)).map((f) => f.id);
+  if (!bookIds.length) return 0;
+  const { data, error } = await sb.from('rms_partner_facilities').select(VIP_FACILITY_COLUMNS).in('partner_id', partners.map((p) => p.id));
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  let added = 0;
+  for (const p of partners) {
+    const mine: (Record<string, unknown> & { facility_id: string })[] = rows
+      .filter((r) => String(r.partner_id) === p.id)
+      .map((r) => ({ ...r, facility_id: String(r.facility_id) }));
+    const add = vipFacilitiesToAdd(bookIds, mine);
+    if (!add.length) continue;
+    const tpl = mine.find((r) => r.enabled === true) ?? mine[0];
+    for (const facilityId of add) {
+      await savePartnerFacility(
+        sb,
+        p,
+        facilityId,
+        {
+          enabled: true,
+          booking_enabled: tpl ? tpl.booking_enabled !== false : true,
+          max_days_ahead: tpl ? Number(tpl.max_days_ahead) || 365 : 365,
+          show_inventory: tpl ? tpl.show_inventory !== false : true,
+          include_advance: tpl ? tpl.include_advance !== false : true,
+          pricing: DEFAULT_PARTNER_PRICING,
+          facility_settings: tpl && tpl.facility_settings && typeof tpl.facility_settings === 'object' ? (tpl.facility_settings as Record<string, unknown>) : {},
+          sort_order: bookIds.indexOf(facilityId)
+        },
+        null
+      );
+      added++;
+    }
+  }
+  return added;
 }
 
 /** 専用ページがまだ無い VIP の顧客すべてにページを作る（/api/cron/vip-pages・取引先・VIP の一覧を開いたとき）。作った数を返す */
-export async function ensureVipPages(sb: SupabaseClient): Promise<{ created: number; failed: number }> {
+export async function ensureVipPages(sb: SupabaseClient): Promise<{ created: number; failed: number; widened: number }> {
   const { data, error } = await sb.schema('book').rpc('vip_pages_needed');
   if (error) throw new Error(error.message);
   const rows = (Array.isArray(data) ? data : []) as {
@@ -238,7 +299,17 @@ export async function ensureVipPages(sb: SupabaseClient): Promise<{ created: num
       console.error('[vip-pages] 作成に失敗', r.guest_id, e instanceof Error ? e.message : e);
     }
   }
-  return { created, failed };
+  // 既にある専用ページで一部の施設しか行が無いものを全施設にする（冪等・行の無い施設だけ足す）
+  let widened = 0;
+  try {
+    const { data: pages, error: pageError } = await sb.from('rms_partners').select('id, tenant_id').eq('kind', 'member');
+    if (pageError) throw new Error(pageError.message);
+    widened = await addVipPageFacilities(sb, ((pages ?? []) as { id: string; tenant_id: string }[]).map((p) => ({ id: String(p.id), tenant_id: String(p.tenant_id) })));
+  } catch (e) {
+    failed++;
+    console.error('[vip-pages] 施設を足せませんでした', e instanceof Error ? e.message : e);
+  }
+  return { created, failed, widened };
 }
 
 /**

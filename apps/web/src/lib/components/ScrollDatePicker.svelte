@@ -38,7 +38,7 @@
 		/** days が何名で計算されたものか（既定は source.adults） */
 		daysAdults?: number;
 		/** 指定すると、泊数を変えたときに /api/stay-calendar からその泊数で予約できる日を取り直す */
-		source?: { facilityId: string; planId?: string; adults: number; months?: number; preview?: boolean };
+		source?: { facilityId: string; planId?: string; adults: number; months?: number; preview?: boolean; privateBook?: boolean };
 		/** 指定すると、カレンダーの上で人数（と室数）も選べる。人数を変えるとその人数の料金で日付を取り直す（プラン詳細・2026-11-02） */
 		guests?: { adults: number; maxAdults: number; rooms?: number; maxRooms?: number };
 		onSelect: (date: string, nights: number, adults?: number, rooms?: number) => void;

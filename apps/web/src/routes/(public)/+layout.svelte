@@ -9,6 +9,7 @@
 	import { isPlansListPath } from '$lib/booking-nav';
 	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
+	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
 	import { deLocalizeUrl, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -70,6 +71,11 @@
 		}
 		return null;
 	});
+	// プライベートブックの入口（戻り先＝いまの画面）。予約入力・完了の画面は帯を自分で出す（専用ページ経由の予約のとき）
+	let privateBookEntry = $derived(
+		data.privateBookHref ? `${data.privateBookHref}?back=${encodeURIComponent(page.url.pathname + page.url.search)}` : null
+	);
+	let bookingFlowBand = $derived(['/(public)/booking/hold', '/(public)/booking/complete'].some((r) => routeId.startsWith(r)));
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
 	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
 
@@ -157,9 +163,12 @@
 				<a href="/kitakaze" class="hover:text-brand-800">{m.radio_nav()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
-				{#if data.privateBookHref}
-					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・2026-11-27）。押すと特別料金の専用の予約へ切り替わる -->
-					<a href={data.privateBookHref} class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-[0.14em] text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">PRIVATE BOOK</a>
+				{#if data.privateBook}
+					<!-- いまプライベートブックの状態（塗りつぶし）。押しても同じ（出口は帯の「ふつうのご予約に戻る」） -->
+					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
+				{:else if privateBookEntry}
+					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・docs/private-book.md）。押すと公式サイトのまま特別料金の状態に切り替わる -->
+					<a href={privateBookEntry} data-sveltekit-reload class="rounded-full border border-stone-400 px-3 py-1 text-xs tracking-[0.14em] text-brand-900 transition hover:border-brand-800 hover:bg-stone-50">PRIVATE BOOK</a>
 				{/if}
 				{#if data.user?.role === 'member'}
 					<AccountMenu name={data.user.name} forumUnread={data.forumUnread} />
@@ -234,8 +243,10 @@
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="py-2.5 hover:text-brand-800">{m.radio_nav()}</a>
 				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
-				{#if data.privateBookHref}
-					<a href={data.privateBookHref} class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
+				{#if data.privateBook}
+					<span class="mt-1 self-start rounded-full bg-brand-900 px-3 py-1.5 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
+				{:else if privateBookEntry}
+					<a href={privateBookEntry} data-sveltekit-reload class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
 				{/if}
 				<div class="mt-1 flex items-center gap-3 border-t border-stone-100 pt-3">
 					{#if data.user?.role !== 'member'}
@@ -247,6 +258,13 @@
 			</nav>
 		</div>
 	</header>
+
+	{#if data.privateBook && !bookingFlowBand}
+		<!-- プライベートブックの状態: 全画面に帯（予約入力・完了の画面は自分で出すので出さない）。「ふつうのご予約に戻る」は出口へ -->
+		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6">
+			<PrivateBookBand name={data.privateBook.memberName} pages={data.privateBook.pages} currentPartnerId={data.privateBook.partnerId} />
+		</div>
+	{/if}
 
 	<main class="flex-1">
 		<PageLoadingBoundary shell="public" padding="px-4 pt-7 pb-10 sm:px-6 sm:pt-10">{@render children()}</PageLoadingBoundary>

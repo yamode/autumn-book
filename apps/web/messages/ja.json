@@ -1337,8 +1337,8 @@
   "private_book_band_back": "ふつうのご予約に戻る",
   "hold_member_page_perks_heading": "{name}様専用特典",
   "hold_member_page_perks_note": "このページからご予約いただいた場合に付きます。宿が当日ご用意します。",
-  "complete_member_page": "ご予約の確認・変更・取消は、特別会員ページのご予約一覧から行えます。",
-  "complete_member_page_link": "特別会員ページのご予約一覧へ",
+  "complete_member_page": "ご予約の確認・変更・取消は、マイページのご予約から行えます。",
+  "complete_member_page_link": "マイページでご予約を見る",
   "gcancel_member_page_h": "特別会員ページからお手続きください",
   "gcancel_member_page": "このご予約は特別会員ページからのご予約です。変更・取消は、会員ログインのうえ特別会員ページのご予約一覧から行えます。",
   "gcancel_member_page_link": "特別会員ページを開く",
@@ -2011,5 +2011,9 @@
   "account_bath_stay": "{from}〜{to} のご滞在",
   "account_bath_slot_mine": "予約済み",
   "account_bath_slot_limit": "上限",
-  "account_bath_new_heading": "空いている時間から予約する"
+  "account_bath_new_heading": "空いている時間から予約する",
+  "private_book_band_switch": "{name}に切り替える",
+  "private_book_special_price": "特別料金",
+  "private_book_special_note": "特別料金でご案内しています。「特別料金」の印のないプラン・日程はふつうの料金です。",
+  "private_book_normal_price": "この施設はふつうの料金です（プライベートブックの特別料金の対象外です）。"
 }

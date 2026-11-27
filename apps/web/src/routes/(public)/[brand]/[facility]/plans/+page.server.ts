@@ -19,6 +19,8 @@ import { favoriteRoomTypeIds } from '$lib/server/favorites';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import { alertConditions, validateAlertConditions } from '$lib/availability-alerts';
 import { alertErrorMessage } from '$lib/server/availability-alert-errors';
+import { privateBookFacility, privateBookOffers, privateBookReferencePrices, pbFacilityView } from '$lib/server/private-book';
+import { mergePbOffers } from '$lib/private-book';
 import type { Actions, PageServerLoad } from './$types';
 
 type RoomPlanPrice = {
@@ -27,6 +29,8 @@ type RoomPlanPrice = {
 	total: number | null;
 	referencePrice: number | null;
 	remaining: number | null;
+	/** プライベートブックの特別料金（専用ページの料金ルール）で出しているか */
+	special?: boolean;
 };
 
 /**
@@ -89,7 +93,7 @@ function roomsWithPlans(rooms: RoomType[], plans: RatePlan[], prices: RoomPlanPr
 			plans: (pricesByRoom.get(room.id) ?? [])
 				.map((price) => {
 					const plan = planById.get(price.ratePlanId);
-					return plan ? { plan, total: price.total, referencePrice: price.referencePrice, remaining: price.remaining } : null;
+					return plan ? { plan, total: price.total, referencePrice: price.referencePrice, remaining: price.remaining, special: price.special === true } : null;
 				})
 				.filter((item): item is NonNullable<typeof item> => item !== null)
 				// 室数を指定したときは、その室数に残室が足りない部屋タイプ・プランは一覧に出さない（組み合わせは別枠で出す）
@@ -119,12 +123,16 @@ export const load: PageServerLoad = async (event) => {
 		if (!facility || facility.brandSlug !== params.brand) error(404, m.error_facility_not_found());
 		// 空室カレンダーは開いたときに /api/stay-calendar で取る（ここでは取らない。使っていなかったうえ、
 		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
-		const [allPlans, allRooms, settings, datedOffers, referencePrices] = await Promise.all([
+		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
+		const pbState = locals.privateBook ?? null;
+		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
+		const [allPlans, allRooms, settings, datedOffers, referencePrices, pbFac] = await Promise.all([
 			sbListPlansMapped(facility.id),
 			sbListRoomTypesMapped(facility.id),
 			loadEarlyPrepaySettings(facility.id),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults) : Promise.resolve([]),
-			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults)
+			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
+			privateBookFacility(pbState, facility.id)
 		]);
 		// 対象の会員には会員限定プランも出す（列挙系 RPC は普通のプランだけを返すので、プランごとに料金を取る）
 		const memberPlans = await listedSecretPlans(facility.id, viewer);
@@ -147,9 +155,24 @@ export const load: PageServerLoad = async (event) => {
 			allPlans.filter((plan) => matchesMeal(plan, meal)).map((plan) => planForViewer(plan, isMember)),
 			settings
 		);
+		// 特別料金を出せる組は差し替える（出せない組・対象外のプランはふつうの料金のまま）
+		const specialKeys = new Set<string>();
+		let offers = datedOffers;
+		let refs = referencePrices;
+		if (pbFac?.special && checkin) {
+			const merged = mergePbOffers(datedOffers, await privateBookOffers(pbFac, facility.id, checkin, nights, adults));
+			offers = merged.offers;
+			for (const k of merged.specialKeys) specialKeys.add(k);
+		} else if (pbFac?.special) {
+			const special = await privateBookReferencePrices(pbFac, facility.id, adults);
+			const byKey = new Map(special.map((r) => [`${r.ratePlanId}|${r.roomTypeId}`, r]));
+			refs = [...referencePrices.filter((r) => !byKey.has(`${r.ratePlanId}|${r.roomTypeId}`)), ...special];
+			for (const k of byKey.keys()) specialKeys.add(k);
+		}
+		const isSpecial = (p: { ratePlanId: string; roomTypeId: string }) => specialKeys.has(`${p.ratePlanId}|${p.roomTypeId}`);
 		const prices: RoomPlanPrice[] = checkin
-			? datedOffers.map((offer) => ({ ratePlanId: offer.ratePlanId, roomTypeId: offer.roomTypeId, total: offer.total, referencePrice: null, remaining: offer.remaining }))
-			: referencePrices.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null }));
+			? offers.map((offer) => ({ ratePlanId: offer.ratePlanId, roomTypeId: offer.roomTypeId, total: offer.total, referencePrice: null, remaining: offer.remaining, special: isSpecial(offer) }))
+			: refs.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null, special: isSpecial(price) }));
 		return {
 			facility,
 			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
@@ -158,6 +181,8 @@ export const load: PageServerLoad = async (event) => {
 			today,
 			referenceMode: !checkin,
 			favoriteRoomTypeIds: await favoritesP,
+			// プライベートブックの状態のとき、この施設が特別料金か（null＝状態でない）
+			privateBook: pbFacilityView(pbState, pbFac),
 			params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 		};
 	}
@@ -192,6 +217,7 @@ export const load: PageServerLoad = async (event) => {
 		today,
 		referenceMode: false,
 		favoriteRoomTypeIds: await favoritesP,
+		privateBook: null as { special: boolean } | null,
 		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }
 	};
 };

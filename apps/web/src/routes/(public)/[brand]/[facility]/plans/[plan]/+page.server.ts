@@ -42,6 +42,15 @@ import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server
 import { isStaffViewer, planOrPreview, previewPlanForHold } from '$lib/server/plan-preview';
 import type { RoomType } from '$lib/types';
 import { favoriteRoomTypeIds } from '$lib/server/favorites';
+import {
+	pbFacilityView,
+	privateBookFacility,
+	privateBookHold,
+	privateBookOffers,
+	privateBookPlanReferenceMin,
+	privateBookStayCalendar
+} from '$lib/server/private-book';
+import { mergePbOffers } from '$lib/private-book';
 import type { Actions, PageServerLoad } from './$types';
 
 /** スタッフが ?preview=1 で開いたときだけ、公開前のプランを読む。スタッフでなければ undefined（通常どおり 404 になる） */
@@ -76,14 +85,18 @@ export const load: PageServerLoad = async (event) => {
 		//   現実に 1 往復 20〜60ms かかる。以前は 6〜7 段の直列だったので、その分そのままページが遅く、
 		//   同時アクセスが増えたときに 1 リクエストが DB を掴んでいる時間も伸びていた。
 		//   第1段（施設 ID さえあれば投げられるもの）: プラン・支払設定・紹介文テンプレート・客室一覧。
-		const [open, earlySettings, templates, rooms] = await Promise.all([
+		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
+		const pbState = locals.privateBook ?? null;
+		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
+		const [open, earlySettings, templates, rooms, pbFac] = await Promise.all([
 			sbPlanBySlug(facility.id, params.plan),
 			// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
 			loadEarlyPrepaySettings(facility.id),
 			loadPlanTemplates(facility.id),
 			// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
 			// 客室の一覧そのものはプランに依らないのでここで取る
-			sbListRoomTypesMapped(facility.id)
+			sbListRoomTypesMapped(facility.id),
+			privateBookFacility(pbState, facility.id)
 		]);
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
 		// それでも無ければ（販売停止中・販売表示期間の外・料金なし）、スタッフの ?preview=1 だけ販売ページの見た目で確かめる。
@@ -103,7 +116,9 @@ export const load: PageServerLoad = async (event) => {
 		const bookable = gate === 'ok';
 		// 第2段（プランが決まってから投げるもの）。規定が無いプランのキャンセル規定の既定値もここに混ぜる。
 		// 日付未指定は plan_offers が 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
-		const [cancellationFallback, referencePrices, calendar, offers] = await Promise.all([
+		// 特別料金はスタッフのプレビュー（販売中でないプラン）には当てない
+		const pbSpecial = pbFac?.special && !preview ? pbFac : null;
+		const [cancellationFallback, referencePrices, calendar, normalOffers, pbOffers, pbRefs] = await Promise.all([
 			plan.cancellationPolicy.rules.length ? Promise.resolve(null) : loadCancellationFallback(locals),
 			!checkin && bookable ? sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId) : Promise.resolve(null),
 			bookable
@@ -114,17 +129,24 @@ export const load: PageServerLoad = async (event) => {
 						return { days: [], through: '', closed: [] as string[] };
 					})
 				: Promise.resolve({ days: [], through: '', closed: [] }),
-			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([])
+			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
+			checkin && bookable && pbSpecial ? privateBookOffers(pbSpecial, facility.id, checkin, nights, adults, { ratePlanId: plan.id }) : Promise.resolve([]),
+			!checkin && bookable && pbSpecial ? privateBookPlanReferenceMin(pbSpecial, facility.id, adults, plan.id) : Promise.resolve(null)
 		]);
+		// 特別料金を出せる部屋は差し替える（出せない部屋・日程はふつうの料金のまま）
+		const merged = mergePbOffers(normalOffers, pbOffers);
+		const offers = merged.offers;
+		// 日付ピッカーの料金も特別料金に（出せない日はふつうの料金のまま）
+		const stayDays = bookable && pbSpecial ? await privateBookStayCalendar(pbSpecial, facility.id, nights, adults, calendar, { planId: plan.id }) : calendar;
 		if (cancellationFallback) plan = { ...plan, cancellationPolicy: cancellationFallback };
-		if (referencePrices) plan = { ...plan, basePrice: referencePrices.get(plan.id) ?? 0 };
+		if (referencePrices) plan = { ...plan, basePrice: pbRefs?.get(plan.id) ?? referencePrices.get(plan.id) ?? 0 };
 		const roomById = new Map(rooms.map((r) => [r.id, r]));
 		const roomRows = offers
 			.map((o) => {
 				const room = roomById.get(o.roomTypeId);
 				if (!room) return null;
 				// plan_offers は capacity_max >= adults の客室のみ返すため fits は常に true。
-				return { room, quote: offerToQuote(o), remaining: o.remaining, fits: true };
+				return { room, quote: offerToQuote(o), remaining: o.remaining, fits: true, special: merged.specialKeys.has(`${o.ratePlanId}|${o.roomTypeId}`) };
 			})
 			.filter((r): r is NonNullable<typeof r> => r !== null);
 		// 客室を選んで入ってきた（?room=）が、日付未指定・その日は満室で上の行に無いとき: 客室は選んだまま見せる（2026-11-01）
@@ -137,9 +159,13 @@ export const load: PageServerLoad = async (event) => {
 			rooms: roomRows,
 			pickedRoom,
 			favoriteRoomTypeIds: await favoritesP,
-			calendar: calendar.days,
-			calendarThrough: calendar.through,
-			calendarClosed: calendar.closed,
+			calendar: stayDays.days,
+			calendarThrough: stayDays.through,
+			calendarClosed: stayDays.closed,
+			// プライベートブックの状態のとき、この施設が特別料金か（null＝状態でない）。参考料金を特別料金で出したか
+			privateBook: pbFacilityView(pbState, pbFac),
+			privateBookPartnerId: pbState?.partnerId ?? null,
+			pbReferenceSpecial: !!pbRefs?.has(plan.id),
 			// 非会員は予約時決済のみ・会員なら現地払いも選べる →「会員の方は現地払いも…」を添える
 			memberOnsiteHint: MEMBER_SUPABASE && memberOnsiteHint(found.payment, isMember),
 			// 予約時決済の割引は会員だけ（非会員には「会員登録で最大〇%お得」を出す・2026-11-22）
@@ -174,14 +200,15 @@ export const load: PageServerLoad = async (event) => {
 		.map((id) => roomTypes.find((r) => r.id === id)!)
 		.map((room) => {
 			if (!checkin || room.capacity < adults) {
-				return { room, quote: null, remaining: checkin ? 0 : null, fits: room.capacity >= adults };
+				return { room, quote: null, remaining: checkin ? 0 : null, fits: room.capacity >= adults, special: false };
 			}
 			const remaining = Math.min(...eachNight(checkin, nights).map((d) => remainingRooms(room.id, d)));
 			return {
 				room,
 				quote: remaining > 0 ? quoteFor(plan.id, room.id, checkin, nights, adults, 0) : null,
 				remaining,
-				fits: true
+				fits: true,
+				special: false
 			};
 		});
 
@@ -196,6 +223,9 @@ export const load: PageServerLoad = async (event) => {
 		calendar: calendar.days,
 		calendarThrough: calendar.through,
 			calendarClosed: calendar.closed,
+		privateBook: null as { special: boolean } | null,
+		privateBookPartnerId: null as string | null,
+		pbReferenceSpecial: false,
 		memberOnsiteHint: memberOnsiteHint(found.payment, isMember),
 		isMember,
 		referenceMode: false,
@@ -284,6 +314,28 @@ export const actions: Actions = {
 				}
 				if (!payCompatible(plans.map((p) => planForViewer(p!, isMember).payment))) {
 					return fail(400, { message: m.cart_mixed_payment(), code: 'mixed_payment' as const });
+				}
+			}
+			// プライベートブック（docs/private-book.md）: 状態が有効で、この施設が特別料金なら特別会員の束を作る。
+			// クッキー・locals は信じず privateBookHold の中で状態を確かめ直し、料金もサーバで計算し直す（画面の金額は受け取らない）。
+			// 状態でない・特別料金で出せない部屋がある・スタッフのプレビューは、下のふつうの仮押さえ（見た目も動きも今までどおり）
+			if (!previewHold.previewPlanId && memberUserId) {
+				const pb = await privateBookHold({ event, facilityId: facility.id, rooms, checkIn: checkin, nights, sessionId: sid, clientKey: ip, locale: getLocale() });
+				if (pb.kind === 'member') {
+					const r = pb.result;
+					if (r.ok) {
+						rememberNav(r.groupId);
+						redirect(303, `/booking/hold?id=${r.groupId}`);
+					}
+					if (r.code === 'rate_limited' || r.code === 'too_many_holds') return fail(429, { message: holdRateLimitedMessage() });
+					if (r.code === 'too_many_rooms') return fail(400, { message: tooManyRoomsMessage(), code: 'too_many_rooms' as const });
+					if (r.code === 'mixed_payment') return fail(400, { message: m.cart_mixed_payment(), code: 'mixed_payment' as const });
+					if (r.code === 'sold_out') {
+						// 満室の部屋はコードで返ってくるので、かごの部屋タイプ（id）に直す
+						const soldOut = (r.soldOut ?? []).map((x) => ({ roomTypeId: pb.idOfCode(x.roomTypeId) ?? '', roomName: x.roomName }));
+						return fail(409, { message: m.plan_hold_sold_out(), soldOut });
+					}
+					return fail(r.status >= 400 && r.status < 500 ? r.status : 400, { message: r.message, code: 'invalid' as const });
 				}
 			}
 			const result = await createHoldGroup(sid, facility.id, checkin, nights, rooms, {

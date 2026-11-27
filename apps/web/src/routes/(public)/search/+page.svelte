@@ -9,6 +9,7 @@
 	import { areaLabel, searchQuery } from '$lib/components/guests';
 	import * as m from '$lib/paraglide/messages';
 	import RefreshingResults from '$lib/components/RefreshingResults.svelte';
+	import PrivateBookPriceNote from '$lib/components/booking/PrivateBookPriceNote.svelte';
 
 	let { data } = $props();
 
@@ -144,6 +145,8 @@
 							{#if r.facility.catchCopy}
 								<p class="mt-1.5 line-clamp-2 text-sm text-stone-600">{r.facility.catchCopy}</p>
 							{/if}
+							<!-- プライベートブックの状態のとき、この施設が特別料金かふつうの料金か -->
+							<PrivateBookPriceNote view={data.privateBook?.[r.facility.id] ?? null} compact />
 
 							<div class="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-stone-100 pt-3 md:mt-auto">
 								{#if !soldOut}

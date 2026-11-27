@@ -8,6 +8,7 @@
 	import { percentText } from '$lib/early-prepay';
 	import { writeCart, writeCartWith } from '$lib/multi-room';
 	import { MEMBER_CART_STORAGE_KEY } from '$lib/partner-member-page';
+	import { pbCartStorageKey } from '$lib/private-book';
 
 	let { data } = $props();
 	let b = $derived(data.booking);
@@ -26,6 +27,8 @@
 			writeCart(sessionStorage, []);
 			// 特別会員の専用ページのかご（ab_member_cart_v1）も空にする
 			if (data.memberPageUrl) writeCartWith(sessionStorage, MEMBER_CART_STORAGE_KEY, []);
+			// プライベートブック（公式サイトの中の特別料金）のかご（ab_booking_cart_v1:pb:<partnerId>）も空にする
+			if (data.memberPagePartnerId) writeCartWith(sessionStorage, pbCartStorageKey(data.memberPagePartnerId), []);
 		} catch {
 			/* 保存できない環境は何もしない */
 		}
