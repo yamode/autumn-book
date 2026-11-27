@@ -1,7 +1,9 @@
-import type { PageServerLoad } from './$types';
+import { fail } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { createSupabaseServerClient, ADMIN_SUPABASE } from '$lib/server/auth';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
-import type { Inquiry,DraftJob } from '$lib/server/inquiries';
+import { inquiry, type Inquiry,type DraftJob } from '$lib/server/inquiries';
+import { STATES } from '$lib/inquiries';
 export type InboxItem=Inquiry&{preview:string;inquiry_draft_jobs:DraftJob|null};
 export const load:PageServerLoad=async event=>{
  const {currentFacility}=await event.parent();
@@ -19,7 +21,7 @@ export const load:PageServerLoad=async event=>{
   query=origin==='history'?query.contains('profile',{history_account:'info@yamado.co.jp'}):query.is('profile->>history_account',null);
   return query;
  };
- let query=base('id,name,email,subject,status,assignee,updated_at,profile,draft_origin,draft_updated_at,inquiry_draft_jobs(state,error,updated_at),inquiry_messages(body,created_at)');
+ let query=base('id,name,email,subject,status,assignee,revision,updated_at,profile,draft_origin,draft_updated_at,inquiry_draft_jobs(state,error,updated_at),inquiry_messages(body,created_at)');
  if(status==='open')query=query.in('status',['new','working','waiting']);else if(status!=='all')query=query.eq('status',status);
  if(q)query=query.or('name.ilike.%'+q+'%,email.ilike.%'+q+'%,subject.ilike.%'+q+'%');
  const [rows,health,...stats]=await Promise.all([
@@ -30,4 +32,23 @@ export const load:PageServerLoad=async event=>{
  const counts=Object.fromEntries(['new','working','waiting','done','no_action'].map((state,i)=>[state,stats[i]?.count??0])) as typeof empty.counts;
  const items=(rows.data??[]).slice(0,50).map(row=>{const {inquiry_messages,...rest}=row as unknown as Record<string,unknown>;return {...rest,preview:((inquiry_messages as {body:string}[]|null)?.[0]?.body??'').replace(/\s+/g,' ').slice(0,130)};}) as InboxItem[];
  return {...empty,items,more:(rows.data?.length??0)>50,counts,health:health.data as {last_sync_at:string|null;last_error:string|null}|null,unavailable:rows.error?'お問い合わせを読み込めませんでした。時間をおいて再読み込みしてください。':null};
+};
+
+// 一覧から対応状況を変える（2026-11-27）。詳細画面の「状況」と同じ DB 関数（admin_inquiry_edit の status）で、
+// 状況と担当者だけを書き換える（下書き・本文には触らない）。担当者は今の値をそのまま渡す（空で送ると外れてしまう）。
+// 一覧を開いたあとに返信が届いた・ほかの担当者が変えた場合は revision が合わず止まるので、読み直してもらう。
+export const actions:Actions={
+ status:async event=>{
+  if(!ADMIN_SUPABASE||!['admin','staff'].includes(event.locals.user?.role??''))return fail(403,{message:'スタッフとしてログインしてください。'});
+  const form=await event.request.formData();
+  const id=String(form.get('id')??''),status=String(form.get('status')??''),revision=Number(form.get('revision'));
+  if(!STATES[status]||!/^[0-9a-f-]{36}$/i.test(id)||!Number.isInteger(revision))return fail(400,{message:'対応状況を変えられませんでした。再読み込みしてください。'});
+  const db=createSupabaseServerClient(event),item=await inquiry(db,id);
+  if(!item||item.facility_id!==FACILITY_UUID['f-nishiwaga'])return fail(404,{message:'お問い合わせが見つかりません。'});
+  if(item.revision!==revision)return fail(409,{id,message:'新しい返信または他の担当者の変更があったため、変えていません。一覧を読み直しました。'});
+  if(item.status===status)return {id,message:'対応状況は「'+STATES[status]+'」のままです。'};
+  const {error:e}=await db.schema('book').rpc('admin_inquiry_edit',{p_id:item.id,p_revision:revision,p_action:'status',p_status:status,p_assignee:item.assignee??''});
+  if(e)return fail(e.message.startsWith('conflict')?409:500,{id,message:e.message.startsWith('conflict')?'新しい返信または他の担当者の変更があったため、変えていません。一覧を読み直しました。':'対応状況を変えられませんでした。時間をおいてお試しください。'});
+  return {id,message:'「'+(item.subject||'お問い合わせ')+'」を「'+STATES[status]+'」にしました。'};
+ }
 };
