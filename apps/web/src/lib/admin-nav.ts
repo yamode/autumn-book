@@ -32,17 +32,7 @@ export const ADMIN_NAV: NavGroup[] = [
 			{ href: '/admin/staff-directory', label: 'スタッフマスタ', icon: 'users' },
 			{ href: '/admin/group-inquiries', label: '団体照会', icon: 'users', badge: 'groupInquiries' },
 			{ href: '/admin/upgrades', label: 'アップグレード提案', icon: 'upgrade' },
-			// 出張シェフ（hp-pchef の受付枠と予約・西和賀だけで受けるので施設の切り替えは関係させない・hp-pchef docs/design.md 5章）
-			{
-				href: '/admin/chef',
-				label: '出張シェフ',
-				icon: 'chef',
-				tenantWide: true,
-				children: [
-					{ href: '/admin/chef', label: '受付枠', tenantWide: true },
-					{ href: '/admin/chef/reservations', label: '予約一覧', tenantWide: true }
-				]
-			},
+			// 出張シェフ（/admin/chef）は Book では管理しないことにしたのでメニューから外した（2026-11-27 指示）。画面は残っている
 			{
 				href: '/admin/partners',
 				label: '取引先',
