@@ -673,7 +673,7 @@ end $$;
 公式 /booking/hold（代表者 1 回・部屋ごとの男女と質問・ポイント・支払 1 回）→ 確定 → 完了 → マイページ
 ```
 
-> **2026-11-27 追記（v0.355.0）**: この節の B面の予約の道（確認画面 `MemberBookConfirm`・かご `PartnerBookingCart`／`member-cart`・`/p/<token>/book` の member 版 POST・ご予約一覧と詳細の member 版）は、公式サイトの中の「プライベートブック」へ移した（`docs/private-book.md`）。特別会員が B面の URL を開くと公式サイトへ転送する（管理者の確認モードだけ B面に残る）。以下は当時の記録。
+> **2026-11-27 追記（v0.356.0）**: この節の B面の予約の道（確認画面 `MemberBookConfirm`・かご `PartnerBookingCart`／`member-cart`・`/p/<token>/book` の member 版 POST・ご予約一覧と詳細の member 版）は、公式サイトの中の「プライベートブック」へ移した（`docs/private-book.md`）。特別会員が B面の URL を開くと公式サイトへ転送する（管理者の確認モードだけ B面に残る）。以下は当時の記録。
 
 1. **`/p/[token]/book`（member 版 load）**: `requirePortalSession`（member）→ `memberPageBookingOpen(partner)` でなければ `/calendar` へ 303 → `?room&plan&name&date&nights&guests&rooms=N` を読み（取引先版 23〜38 行と同じ）→ `quotePartnerBooking(db, partner, { roomCode, planCode, planName, checkIn, nights, rooms: N × {adults: guests} }, { credit: false })` → 表示は「ご予約内容の確認（部屋ごとの専用料金・このプランの専用特典・会員特典・獲得予定ポイントの目安・キャンセル方式）」と「予約へ進む」（hidden `rooms` JSON・`checkin`・`nights`・`facility_id`）だけ。宿泊者・支払・ポイントの入力は**公式の確認画面に任せる**。確認モードはボタンを止める（`denyPreviewWrite`）。
 2. **かご**: 要素 `MemberCartItem = { key, partnerToken, facilityId, facilitySlug, checkin, nights, roomCode, roomName, planCode, planName, displayName, adults, total, pay: {onsite, prepay}, remaining }`。`pay` は `loadStayPage` が返すプランの支払方法（`planContents` の `payment_method`／非会員の設定は見ない＝会員）から。保存キー `ab_member_cart_v1`（公式の `ab_booking_cart_v1` とは別・同じタブで両方開いても混ざらない）。4 室目で公式と同じ注意文（`cart_full_notice`）。
