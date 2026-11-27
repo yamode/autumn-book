@@ -1,7 +1,8 @@
 <script lang="ts">
 	// 公式マイページの予約詳細。本体は lib/components/booking/ReservationDetail.svelte（特別会員の専用ページの予約詳細と共用）。
-	// 特別会員の専用ページ経由の予約（data.memberPage）は参照のみ（data.readOnly）: 取消・日程変更・オプションのボタンの代わりに
-	// 専用ページの予約詳細へのリンクを出す（docs/vip-member-page.md §13.4.4）。
+	// プライベートブック（専用ページ経由・data.memberPage）の予約もここから取消・日程変更・お部屋の変更・アレンジができる
+	// （docs/private-book.md「マイページ（予約後）」）。対象から外れた方（data.privateBookChange === false）は取消だけ。
+	import { PRIVATE_BOOK_CHANGE_CLOSED_MESSAGE } from '$lib/private-book-booking';
 	import BackLink from '$lib/components/BackLink.svelte';
 	import { page } from '$app/state';
 	import * as m from '$lib/paraglide/messages';
@@ -24,8 +25,9 @@
 	{form}
 	facility={data.facility}
 	hrefs={{ amend: `/account/reservations/${b.code}/amend`, options: `/account/reservations/${b.code}/options` }}
-	readOnly={data.readOnly}
-	memberPage={data.memberPage ? { pageName: data.memberPage.pageName, cancelMode: data.memberPage.cancelMode, href: data.memberPage.href } : null}
+	canAmend={data.canAmend}
+	changeNotice={data.privateBookChange === false ? PRIVATE_BOOK_CHANGE_CLOSED_MESSAGE : null}
+	memberPage={data.memberPage ? { pageName: data.memberPage.pageName, cancelMode: data.memberPage.cancelMode, badge: m.private_book_badge() } : null}
 />
 
 {#if b.guest.address}

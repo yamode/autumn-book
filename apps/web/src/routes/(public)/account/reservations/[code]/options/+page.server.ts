@@ -1,8 +1,9 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { bookings, facilityById, listOptionItems, addBookingOptions } from '$lib/server/store';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
-import { memberPageBookingMessage } from '$lib/server/member-reservation-detail';
-import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
+import { memberPageAddOptions } from '$lib/server/partners/member-bookings';
+import { privateBookChangeGate } from '$lib/server/private-book-bookings';
+import { PRIVATE_BOOK_FORBIDDEN_MESSAGE, privateBookRouteOf, type PrivateBookRoute } from '$lib/private-book-booking';
 import { sbMyReservations, sbListOptionItems, sbAddBookingOptions, sbRoomTypeByUuid } from '$lib/server/supabase-data';
 import { addDays } from '@autumn-book/core';
 import { canPersonalizeStay, isStayPersonalization, optionAllowedFor } from '$lib/member-benefits';
@@ -13,7 +14,7 @@ import type { OptionItem, Locale } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 // RPC/store の例外メッセージ → i18n 文言（部分一致で拾う）
-function optionErrorMessage(msg: string): string {
+function optionErrorMessage(msg: string, privateBook = false): string {
 	if (msg.includes('grade_stay_personalization')) return m.membership_personalize_options_notice();
 	if (msg.includes('option_already_ordered')) return m.membership_option_already_ordered();
 	if (msg.includes('past_deadline')) return m.options_err_past_deadline();
@@ -21,6 +22,8 @@ function optionErrorMessage(msg: string): string {
 	if (msg.includes('invalid_service_date')) return m.options_err_service_date();
 	if (msg.includes('invalid_quantity')) return m.options_err_quantity();
 	if (msg.includes('not_amendable')) return m.options_err_not_amendable();
+	// プライベートブック（専用ページ経由）の入口の本人確認（B面と同じ文言）
+	if (privateBook && (msg.includes('forbidden') || msg.includes('not_member_page_booking'))) return 'このご予約はお手続きいただけません。';
 	return m.options_add_failed();
 }
 
@@ -38,9 +41,13 @@ export const load: PageServerLoad = async (event) => {
 		const reservations = await sbMyReservations(client);
 		const r = reservations.find((x) => x.code === params.code);
 		if (!r) error(404, m.error_booking_not_found());
-		// 特別会員の専用ページ経由の予約は公式マイページではアレンジを付けない（専用ページのご予約一覧から・§13.4.4）
-		if (r.memberPage) redirect(303, `/account/reservations/${params.code}`);
 		if (r.status !== 'reserved') redirect(303, `/account/reservations/${params.code}`);
+		// プライベートブック（専用ページ経由）の予約: 今ページを使える方だけ（対象から外れた方は予約詳細へ戻す・案内は詳細に出る）
+		const route = privateBookRouteOf(r, locals.user?.id);
+		if (route.kind === 'deny') redirect(303, `/account/reservations/${params.code}`);
+		if (route.kind === 'private_book' && !(await privateBookChangeGate(route.who, r.facilityUuid)).ok) {
+			redirect(303, `/account/reservations/${params.code}`);
+		}
 		const items = await sbListOptionItems(r.facilityUuid, locale);
 		// 複数室の予約（M2）: どのお部屋のアレンジかを選ぶ（生きている部屋だけ）
 		const live = (r.rooms ?? []).filter((x) => !x.cancelled);
@@ -79,13 +86,17 @@ export const actions: Actions = {
 
 		// カタログを再取得して optionId/requiresServiceDate を確定（フォーム値を信用しない）
 		let catalog: OptionItem[];
+		let route: PrivateBookRoute = { kind: 'general' };
 		if (MEMBER_SUPABASE) {
 			const reservations = await sbMyReservations(createSupabaseServerClient(event));
 			const r = reservations.find((x) => x.code === params.code);
 			if (!r) return fail(404, { message: m.error_booking_not_found() });
-			if (r.memberPage) {
-				const href = await memberPageHrefFor(r.memberPage.partnerId, r.code).catch(() => null);
-				return fail(403, { code: 'member_page_booking' as const, message: memberPageBookingMessage(), href });
+			// プライベートブック（専用ページ経由）の予約: 専用ページの入口（今ページを使える方だけ・予約した本人を DB が確かめる）
+			route = privateBookRouteOf(r, locals.user?.id);
+			if (route.kind === 'deny') return fail(403, { message: PRIVATE_BOOK_FORBIDDEN_MESSAGE });
+			if (route.kind === 'private_book') {
+				const gate = await privateBookChangeGate(route.who, r.facilityUuid);
+				if (!gate.ok) return fail(403, { message: gate.message });
 			}
 			catalog = await sbListOptionItems(r.facilityUuid);
 		} else {
@@ -121,7 +132,12 @@ export const actions: Actions = {
 		const roomIndex = Number.isInteger(roomIndexRaw) && roomIndexRaw >= 1 ? roomIndexRaw : null;
 
 		try {
-			if (MEMBER_SUPABASE) {
+			if (MEMBER_SUPABASE && route.kind === 'private_book') {
+				await memberPageAddOptions(
+					route.who,
+					items.map((i) => ({ ...i, roomIndex }))
+				);
+			} else if (MEMBER_SUPABASE) {
 				await sbAddBookingOptions(
 					createSupabaseServerClient(event),
 					params.code,
@@ -131,7 +147,7 @@ export const actions: Actions = {
 				addBookingOptions(params.code, items, locals.user!.id);
 			}
 		} catch (e) {
-			return fail(400, { message: optionErrorMessage(e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e)) });
+			return fail(400, { message: optionErrorMessage(e instanceof Error ? e.message : String((e as { message?: unknown })?.message ?? e), route.kind === 'private_book') });
 		}
 
 		redirect(303, `/account/reservations/${params.code}`);
