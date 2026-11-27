@@ -2,6 +2,7 @@
 	// 事前チェックインの状況一覧（P2）。送信はメールの手動ボタンと、携帯番号のときの「SMSで送る／再送」（P4）。
 	import { enhance } from '$lib/enhance';
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
+	import PrecheckinSmsEstimate from '$lib/components/admin/PrecheckinSmsEstimate.svelte';
 	import { DEMO_PRECHECKIN_TOKEN } from '$lib/precheckin';
 	import { channelBadgeClass, channelLabel } from '$lib/booking-channel';
 	import { formatDateJa, addDays } from '$lib/format';
@@ -102,6 +103,10 @@
 	<a href="/ci/{DEMO_PRECHECKIN_TOKEN}" target="_blank" rel="noopener" class="text-stone-700 underline underline-offset-2">お客様フォームの見本を開く ↗</a>
 	<span class="text-xs text-stone-500">（SMS・メールのリンク先と同じ画面。見本の予約で、入力しても実際の予約・PMS には反映されません）</span>
 </p>
+
+{#if data.live}
+	<PrecheckinSmsEstimate estimate={data.smsMonth} today={data.filters.today} autosendOn={data.smsAutosendOn} />
+{/if}
 
 {#if data.live && data.autosend}
 	<section class="mb-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">

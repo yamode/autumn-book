@@ -23,10 +23,11 @@ import {
 	type PrecheckinCaps,
 	type PrecheckinListRow
 } from '$lib/server/precheckin';
-import { adminSmsStatus, sendPrecheckinSms, smsReady, stayIsDirect } from '$lib/server/precheckin-sms';
+import { adminMonthlySmsEstimate, adminSmsStatus, sendPrecheckinSms, smsReady, stayIsDirect } from '$lib/server/precheckin-sms';
+import { brands, facilities } from '$lib/server/store';
 
 import { customerLinkOrigin } from '$lib/server/public-origin';
-import { autosendEnabled, type AutosendSettings, type SmsStatusRow } from '$lib/precheckin-sms';
+import { autosendEnabled, smsAutosendEnabled, type AutosendSettings, type MonthlySmsEstimate, type SmsStatusRow } from '$lib/precheckin-sms';
 import { env as privateEnv } from '$env/dynamic/private';
 import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
@@ -69,10 +70,20 @@ export const load: PageServerLoad = async (event) => {
 			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
 			smsReady: smsReady(facility),
+			smsMonth: null as Promise<MonthlySmsEstimate | null> | null,
+			smsAutosendOn: false,
 			error: null as string | null
 		};
 	}
 	const client = bookAdmin(event);
+	const brandSlug = facilities.find((row) => row.id === currentFacility.id)?.brandSlug;
+	const brand = brands.find((row) => row.slug === brandSlug);
+	const brandFacilities = facilities
+		.filter((row) => row.brandSlug === brandSlug)
+		.map((row) => ({ id: toFacilityUuidStrict(row.id), name: row.name }));
+	const smsMonth = brand && brandFacilities.length
+		? adminMonthlySmsEstimate(client, brand.name, brandFacilities).catch(() => null)
+		: null;
 	const [list, caps, sms, minutes, questions, autosend, notify] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
@@ -106,6 +117,8 @@ export const load: PageServerLoad = async (event) => {
 		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 		sms,
 		smsReady: smsReady(facility),
+		smsMonth,
+		smsAutosendOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND) && smsAutosendEnabled(privateEnv.PRECHECKIN_SMS),
 		error: list.error
 	};
 };

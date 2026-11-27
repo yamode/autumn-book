@@ -23,6 +23,7 @@ import { sendHtmlEmail } from '$lib/server/mailer';
 import { nttFetch } from '$lib/server/ntt-fetch';
 import { facilities } from '$lib/server/store';
 import { FACILITY_UUID } from '$lib/server/supabase-data';
+import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
 import { buildPrecheckinMail, precheckinMailFrom } from '$lib/precheckin';
 import {
 	autosendChannel,
@@ -32,10 +33,12 @@ import {
 	normalizeDlr,
 	normalizeInbound,
 	nttConfigFrom,
+	nttSmsBillingUnits,
 	planAutosend,
 	sendSmsWith,
 	smsAutosendEnabled,
 	type AutosendTarget,
+	type MonthlySmsEstimate,
 	type NttConfig,
 	type SmsStatusRow
 } from '$lib/precheckin-sms';
@@ -213,6 +216,48 @@ export async function adminSmsStatus(c: BookClient, facility: string, from: stri
 	const { data, error } = await c.rpc('admin_precheckin_sms_status', { p_facility: facility, p_from: from, p_to: to });
 	if (error) throw error;
 	return (data ?? []) as SmsStatusRow[];
+}
+
+type MonthlySmsRow = {
+	facility_id: string;
+	facility_name: string;
+	facility_slug: string;
+	facility_phone: string | null;
+	sent_pairs: number;
+	sent_first_only: number;
+	scheduled: number;
+};
+
+export async function adminMonthlySmsEstimate(
+	c: BookClient,
+	brandName: string,
+	brandFacilities: { id: string; name: string }[]
+): Promise<MonthlySmsEstimate> {
+	const { data, error } = await c.rpc('admin_precheckin_sms_month', {
+		p_facilities: brandFacilities.map((facility) => facility.id)
+	});
+	if (error) throw error;
+	const byFacility = new Map((data as MonthlySmsRow[]).map((row) => [row.facility_id, row]));
+	const rows = brandFacilities.flatMap(({ id, name }) => {
+		const row = byFacility.get(id);
+		if (!row) return [];
+		// 現行の16文字のトークンと、長い方の案内文で概算する。
+		const pair = buildPrecheckinSmsPair({
+			facilityName: row.facility_name,
+			checkIn: '',
+			url: `${PRIMARY_ORIGIN}/ci/${'A'.repeat(16)}${splashHint(row.facility_slug)}`,
+			phone: facilityPhone(id, row.facility_phone)
+		});
+		const firstUnits = nttSmsBillingUnits(pair.message);
+		const pairUnits = firstUnits + nttSmsBillingUnits(pair.link);
+		return [{
+			id,
+			name,
+			sentUnits: row.sent_pairs * pairUnits + row.sent_first_only * firstUnits,
+			remainingUnits: row.scheduled * pairUnits
+		}];
+	});
+	return { brandName, completeBrand: rows.length === brandFacilities.length, facilities: rows };
 }
 
 export type SmsDispatchRow = {

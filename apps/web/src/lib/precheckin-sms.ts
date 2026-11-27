@@ -49,6 +49,20 @@ export function contactRoute(phone: string | null | undefined, email: string | n
 /** 日本語を含む SMS が 1 通（連結なし・UCS-2）に収まる字数 */
 export const SMS_SINGLE_CHARS = 70;
 
+export const NTT_SMS_UNIT_PRICE_YEN = 10;
+
+/** NTT CPaaS の国内SMS公開料金で換算するための通数。 */
+export function nttSmsBillingUnits(text: string): number {
+	const chars = Array.from(text).length;
+	return chars > SMS_SINGLE_CHARS ? Math.ceil(chars / 66) : Number(chars > 0);
+}
+
+export type MonthlySmsEstimate = {
+	brandName: string;
+	completeBrand: boolean;
+	facilities: { id: string; name: string; sentUnits: number; remainingUnits: number }[];
+};
+
 /** SMS の通数の目安（日本語を含む = UCS-2: 70 字 / 連結は 67 字ごと。英数字だけ = GSM: 160 / 153） */
 export function smsSegments(text: string): number {
 	const ucs2 = /[^\x00-\x7f]/.test(text);
