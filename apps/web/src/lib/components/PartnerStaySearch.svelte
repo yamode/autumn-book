@@ -21,8 +21,6 @@
   import { planSummary } from '$lib/plan-summary';
   import { streamed } from '$lib/streamed.svelte';
   import { CREDIT_UNIT_NOTE, creditMonthShort } from '$lib/partner-credit';
-  import MemberBenefitList from '$lib/components/MemberBenefitList.svelte';
-  import { memberCart } from '$lib/member-cart.svelte';
   import { crossTypeCombos, type RoomCombo } from '$lib/partner-room-combos';
   import { fadeIn } from '$lib/fade-in';
 
@@ -393,40 +391,8 @@
     const id = decodeURIComponent(location.hash.slice(1));
     if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }));
   });
-  // ---- 特別会員の専用ページ（docs/vip-member-page.md §13.4.2・§13.4.3）----
-  // 会員でログインしているときだけ「＋ もう 1 室追加」（かご）と会員特典の 2 段目を出す。確認モード（会員なし）は出さない
-  const memberMode = $derived(data.portal.kind === 'member' && !!data.portal.member);
-  $effect(() => {
-    if (memberMode) memberCart.limit = data.booking.maxRooms;
-  });
-  const payOf = (planCode: string, planName: string) =>
-    data.cartPlans.find((c) => c.planCode === planCode && c.planName === planName)?.pay ?? { onsite: true, prepay: true };
-  /** 1 室をかごへ（同じ日程・同じ人数の 1 室ぶん。金額は表示用・確定はサーバが計算し直す） */
-  function addToCart(r: Row, p: Params): boolean {
-    if (!p.date) return false;
-    const perRoom = r.total != null ? Math.round(r.total / Math.max(1, p.rooms)) : r.perPerson * p.guests * p.nights;
-    return memberCart.add(
-      {
-        facilityId: data.portal.facilityId,
-        facilitySlug: data.portal.facilitySlug,
-        checkin: p.date,
-        nights: p.nights,
-        roomCode: r.roomCode,
-        roomTypeId: r.roomCode,
-        roomName: r.roomName,
-        planCode: r.planCode,
-        planName: r.planName,
-        displayName: partnerPlanName(data.planNames, r.planCode, r.planName),
-        adults: p.guests,
-        total: perRoom,
-        pay: payOf(r.planCode, r.planName),
-        remaining: r.remaining
-      },
-      data.booking.maxRooms,
-      () => confirm('かごには別の日程・施設のお部屋が入っています。かごを空にして、このお部屋を入れますか？')
-    );
-  }
-  // 必要な室数を部屋タイプ横断で満たす組み合わせ。特別会員は予約かごに入れ、取引先は 1 つの予約として予約入力へ進む（mix=部屋タイプ）。
+  // 必要な室数を部屋タイプ横断で満たす組み合わせ。1 つの予約として予約入力へ進む（mix=部屋タイプ）。
+  // 特別会員のかご（＋ もう 1 室追加）は公式サイトのプライベートブックへ移した（v0.355.0・B面は確認モードだけ）。
   // 1 つの部屋タイプで足りるものは下の一覧に出るので、ここには「単独では足りないが、合わせれば足りる」プランだけを出す
   const combos = $derived.by((): RoomCombo[] => {
     if (!shown?.params.date || shown.params.rooms < 2 || !canBook) return [];
@@ -451,39 +417,6 @@
     });
     if (data.portal.facilityChoices.length >= 2 && data.portal.facilitySlug) q.set('f', data.portal.facilitySlug);
     return `/p/${token}/book?${q}`;
-  }
-  /** 組み合わせの各室（部屋タイプ・人数つき）をかごに入れる。かごの「予約へ進む」で全室をまとめて仮押さえする */
-  function addComboToCart(c: RoomCombo) {
-    if (!shown?.params.date) return;
-    const p = shown.params;
-    if (memberCart.items.length > 0 && !confirm('かごのお部屋を空にして、この組み合わせを入れますか？')) return;
-    memberCart.clear();
-    for (const part of c.parts) {
-      for (let i = 0; i < part.rooms; i++) {
-        const ok = memberCart.add(
-          {
-            facilityId: data.portal.facilityId,
-            facilitySlug: data.portal.facilitySlug,
-            checkin: p.date,
-            nights: p.nights,
-            roomCode: part.roomCode,
-            roomTypeId: part.roomCode,
-            roomName: part.roomName,
-            planCode: c.planCode,
-            planName: c.planName,
-            displayName: partnerPlanName(data.planNames, c.planCode, c.planName),
-            adults: p.guests,
-            total: part.totalPerPerson * p.guests,
-            pay: payOf(c.planCode, c.planName),
-            remaining: part.remaining
-          },
-          data.booking.maxRooms,
-          () => true
-        );
-        if (!ok) return;
-      }
-    }
-    memberCart.message = `${p.rooms}室の組み合わせをかごに入れました。画面下の「予約へ進む」からご予約ください。`;
   }
   const checkout = $derived(dated ? addDaysIsoClient(data.params.date, data.params.nights) : '');
   const guestText = $derived(`大人${data.params.guests}名${data.params.rooms > 1 ? ` × ${data.params.rooms}室` : ''}`);
@@ -533,10 +466,6 @@
     </p>
     {#if dated && canBook}
       <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
-      {#if memberMode}
-        <!-- 特別会員: 別のお部屋・プランと合わせて 1 回で予約するかご（最大 4 室） -->
-        <button type="button" onclick={() => addToCart(r, data.params)} class="rounded-md border border-green-600 px-3 py-1.5 text-sm font-bold text-green-700 hover:bg-green-50">＋ もう 1 室追加</button>
-      {/if}
     {:else if !dated}
       <button type="button" onclick={() => openDetail(r, content)} class="mt-1 rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">詳細・予約</button>
     {/if}
@@ -562,16 +491,6 @@
     onPickDate={pickDateForDetail}
     onUndated={undateDetail}
     onChangeGuests={() => reopenSearch('guests')}
-    memberBenefits={memberMode ? data.memberBenefits : null}
-    memberRankLabel={data.portal.member?.rankLabel ?? ''}
-    onAddToCart={memberMode
-      ? () => {
-          // かごに入れたら一覧へ戻ってかごを見せる
-          const ok = detailRow ? addToCart(detailRow, detailParams) : false;
-          if (ok) closeDetail();
-          return ok;
-        }
-      : null}
   />
 {:else}
 <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -592,12 +511,6 @@
     />
   </div>
   {#if below}{@render below()}{/if}
-  {#if memberMode && data.memberBenefits}
-    <!-- 特典の 2 段目（会員制度から自動で付くもの）。1 段目の専用特典はプランの「専用特典つき」・プラン詳細で -->
-    <div class="mt-6">
-      <MemberBenefitList rankLabel={data.portal.member?.rankLabel ?? ''} lines={data.memberBenefits} cancelRules={data.memberCancel?.mode === 'rank' ? null : (data.memberCancel?.rules ?? null)} />
-    </div>
-  {/if}
 
   <div class="mt-6 flex flex-wrap items-end justify-between gap-3">
     <div>
@@ -637,11 +550,7 @@
               <p class="mt-0.5 text-base text-brand-900">{c.parts.map((x) => `${x.roomName}${x.rooms}室`).join('＋')}<span class="ml-2 text-sm text-stone-500">各室 大人{data.params.guests}名</span></p>
               <p class="text-sm text-stone-600">{data.params.nights}泊 合計 <span class="text-lg font-bold tabular-nums text-brand-900">{num(c.total)}</span>円（税込）</p>
             </div>
-            {#if memberMode}
-              <button type="button" onclick={() => addComboToCart(c)} class="rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">この組み合わせで予約へ</button>
-            {:else}
-              <a href={comboHref(c)} class="rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">この組み合わせで予約へ</a>
-            {/if}
+            <a href={comboHref(c)} class="rounded-md bg-green-600 px-5 py-2.5 text-base font-bold text-white hover:bg-green-700">この組み合わせで予約へ</a>
           </li>
         {/each}
       </ul>

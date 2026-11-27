@@ -45,13 +45,13 @@
 	let blocked = $derived(
 		v.state === 'blocked' ? (REASON_TEXT[v.reason] ?? REASON_TEXT.not_found) : null
 	);
-	// 特別会員の専用ページの予約詳細（/p/<token>/bookings/<予約番号>）。会員ログインのうえで開く
+	// 特別会員（プライベートブック）の予約は、マイページの予約詳細（/account/reservations/<予約番号>）から。会員ログインのうえで開く
 	let memberPageUrl = $derived.by(() => {
 		const fromView = v.state === 'blocked' && 'memberPage' in v ? v.memberPage?.url : null;
 		const fromForm = form && 'memberPage' in form ? (form.memberPage as { url: string | null } | undefined)?.url : null;
 		const url = fromView ?? fromForm ?? null;
 		// 同じサイトの相対パスだけ（念のため）
-		return url && url.startsWith('/p/') ? url : null;
+		return url && url.startsWith('/account/reservations/') ? url : null;
 	});
 
 	function ruleLabel(daysBefore: number): string {

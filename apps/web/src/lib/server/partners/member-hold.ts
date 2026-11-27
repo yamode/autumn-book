@@ -1,7 +1,8 @@
 // 特別会員の専用ページ（kind='member'）の予約: 専用料金（料金ルール・quotePartnerBooking）で泊明細を作り、
 // 会員の公式予約の束（book.create_member_page_hold_group）として仮押さえする（docs/vip-member-page.md §13.4.3・§14）。
 //
-//   /p/<token>/book の POST（member のとき）→ memberPageHold → 303 /booking/hold?id=<束 id>（確認・確定・決済は公式の画面）
+//   公式サイトのプライベートブック（プラン詳細の ?/hold・$lib/server/private-book.ts の privateBookHold）→ createMemberPageHoldCore
+//   → 303 /booking/hold?id=<束 id>（確認・確定・決済は公式の画面）。B面の /p/<token>/book からの道は v0.355.0 で畳んだ
 //
 // 料金の正しさはサーバ（ここ）が持つ: 画面の金額は受け取らず、部屋タイプ・プランの組ごとに quotePartnerBooking を呼び直す。
 // RPC は泊明細の形だけを検査する（取引先予約 rms_partner_create_booking と同じ流儀）。対象者は TS（resolvePortal）と RPC の両方で確かめる。
@@ -12,7 +13,6 @@ import {
   memberMaxRooms,
   memberPageBookingOpen,
   memberPageInput,
-  parseMemberHoldRooms,
   perksSnapshotOf,
   toHoldLines,
   type MemberHoldRoom,
@@ -22,7 +22,7 @@ import { paymentMethodsOf } from '$lib/member-payment';
 import { payCompatible } from '$lib/multi-room';
 import { holdErrorKind } from '$lib/server/hold-rate-limit';
 import { quotePartnerBooking } from './booking';
-import { PartnerStoreError, todayJst, type PartnerContext, type PartnerSessionAccount } from './store';
+import { PartnerStoreError, todayJst, type PartnerContext } from './store';
 
 /** 専用ページで予約できるプラン（公式サイトで公開しているプランだけ）と支払方法（会員の支払方法） */
 export type MemberPagePlan = { ratePlanId: string; planCode: string; planLabel: string; pay: { onsite: boolean; prepay: boolean } };
@@ -116,47 +116,7 @@ export function memberCancelSetting(partner: Pick<PartnerContext, 'booking_setti
 }
 
 /**
- * 専用ページの「予約へ進む」（POST /p/<token>/book・member のとき）。
- * fd: rooms（JSON `[{roomCode, planCode, planName, adults}]`）か 1 タップのフィールド（room / plan / name / guests / rooms=N）・
- *     checkin（または date）・nights・facility_id（画面を開いたときの施設）
- * 成功: 束 id。呼び出し側が HOLD_NAV_COOKIE を書いて 303 /booking/hold?id=<束 id>
- */
-export async function memberPageHold(args: {
-  db: SupabaseClient;
-  /** 施設はフォームの施設で合成し直したもの（portalFacilityContext） */
-  partner: PartnerContext;
-  session: PartnerSessionAccount;
-  fd: FormData;
-  /** 公式と同じ仮押さえのセッション（cookie ab_book_sid・path /） */
-  sessionId: string;
-  clientKey: string;
-  locale?: string;
-}): Promise<MemberHoldResult> {
-  const { partner, session, fd } = args;
-  const member = session.member;
-  if (!member || session.preview) return fail(403, 'forbidden', 'ご招待の会員さまでログインしてください。');
-  if (!memberPageBookingOpen(partner)) return fail(400, 'closed', '現在ご予約を受け付けていません。');
-  const maxRooms = memberMaxRooms(partner.booking_settings);
-  const parsed = parseMemberHoldRooms((k) => fd.get(k), maxRooms);
-  if (!parsed.ok) {
-    if (parsed.code === 'too_many_rooms') return fail(400, 'too_many_rooms', TOO_MANY_ROOMS(maxRooms));
-    return fail(400, 'invalid', parsed.code === 'missing' ? 'お部屋・プランを選んでください。' : 'お部屋の選び方を確認してください。');
-  }
-  return createMemberPageHoldCore({
-    db: args.db,
-    partner,
-    memberUserId: member.userId,
-    rooms: parsed.rooms,
-    checkIn: String(fd.get('checkin') ?? fd.get('date') ?? ''),
-    nights: Math.round(Number(fd.get('nights') ?? 1)),
-    sessionId: args.sessionId,
-    clientKey: args.clientKey,
-    locale: args.locale
-  });
-}
-
-/**
- * 特別会員の束（book.create_member_page_hold_group）を作る中身。B面の memberPageHold と、
+ * 特別会員の束（book.create_member_page_hold_group）を作る中身。
  * A面のプライベートブック（プラン詳細の ?/hold・docs/private-book.md）の両方から呼ぶ。
  * 呼び出し側が「この会員がこのページを今使える」ことを確かめてから呼ぶ（B面は resolvePortal、A面は resolvePrivateBook）。
  * DB（RPC）も対象者を確かめ直す。料金は画面から受け取らず、ここで quoteMemberRooms で計算し直す
@@ -249,8 +209,3 @@ async function roomCodeOf(db: SupabaseClient, roomTypeId: string): Promise<strin
   return String((data as { code?: string } | null)?.code ?? '');
 }
 
-/** 「選び直す」で専用ページへ戻る先（料金カレンダー・同じ日程・人数・室数・施設） */
-export function memberHoldBack(token: string, partner: Pick<PartnerContext, 'facility_slug'>, checkIn: string, nights: number, rooms: readonly MemberHoldRoom[]): string {
-  const q = new URLSearchParams({ date: checkIn, nights: String(nights), guests: String(rooms[0]?.adults ?? 2), f: partner.facility_slug });
-  return `/p/${token}/calendar?${q.toString()}`;
-}

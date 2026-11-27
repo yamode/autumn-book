@@ -4,7 +4,7 @@
 	//   「予約へ進む」はかごの施設のプラン詳細の ?/hold に rooms JSON を送り、全室を一括で仮押さえする（成功は予約入力へ）。
 	//   失敗（満室・回数制限・支払方法）は理由をバーの上に出し、かごはそのまま残す。
 	//   4 室入っているときはバーの上に「1 回のご予約は 4 室まで…」を出す。
-	//   特別料金のかご（特別会員・PartnerBookingCart）も同じ部品で出す。そのときは送り先（action・payload・fields）・
+	//   特別料金のかご（プライベートブック・保存キーを分ける）も同じ部品で出す。そのときは送り先（action・payload・fields）・
 	//   上限（limit）・注記（note）・外す/空にするの保存（onremove/onclear）を props で渡す。どれも省けば公式のかごのまま。
 	import { enhance } from '$lib/enhance';
 	import { goto } from '$app/navigation';

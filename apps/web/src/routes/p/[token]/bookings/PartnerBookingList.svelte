@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先の予約一覧（2026-10-11 に +page.svelte から移した・中身は変えていない）。特別会員の専用ページは MemberBookingList.svelte（+page.svelte で切り替え）
+  // 取引先の予約一覧（2026-10-11 に +page.svelte から移した・中身は変えていない）
   import { partnerTitle } from '$lib/partner-title';
   import { enhance } from '$lib/enhance';
   import { page } from '$app/stores';

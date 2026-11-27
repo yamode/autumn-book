@@ -13,6 +13,12 @@ export const PB_COOKIE = 'ab_private_book';
 export const PB_ENTRY_PATH = '/private-book';
 export const PB_EXIT_PATH = '/private-book/off';
 
+/** 入口の URL（どのページを選ぶか ?page=<partnerId>）。partnerId が UUID でなければ ?page なし（本人 → 家族の順で選ぶ） */
+export function privateBookEntryHref(partnerId: string | null | undefined): string {
+  const id = parsePbCookie(partnerId);
+  return id ? `${PB_ENTRY_PATH}?page=${id}` : PB_ENTRY_PATH;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 使える専用ページ（memberPagesFor の要るところだけ） */
@@ -281,4 +287,56 @@ export function pbStayCalendarDays(
 export function vipFacilitiesToAdd(bookFacilityIds: readonly string[], existing: readonly { facility_id: string }[]): string[] {
   const have = new Set(existing.map((r) => r.facility_id));
   return bookFacilityIds.filter((id, i) => !have.has(id) && bookFacilityIds.indexOf(id) === i);
+}
+
+// ---------------------------------------------------------------------------
+// B面（/p/<token>）の特別会員の道を畳む（作る順番 5・v0.355.0）
+// ---------------------------------------------------------------------------
+
+/** 旧 B面の特別会員の URL を開いたときの行き先。redirect = 公式サイトへ転送、gone = 410（POST など・二重送信で予約を作らない） */
+export type MemberPortalForward = { kind: 'redirect'; location: string } | { kind: 'gone' };
+
+const BOOKING_CODE_RE = /^[A-Za-z0-9-]{1,40}$/;
+
+/**
+ * 特別会員の専用ページ（kind='member'）の B面の URL → 公式サイトの行き先（純関数）。確認モードでは呼ばない（B面のまま）。
+ *   sub は /p/<token> の後ろ（先頭 / つき・空は '/'）。
+ *   - GET / HEAD 以外 → gone
+ *   - /bookings → /account/reservations（マイページのご予約一覧）
+ *   - /bookings/<予約番号>[/amend | /amend/room/<n> | /options] → /account/reservations/<予約番号> の同じ形
+ *     （それ以外の下の階層・形の違う予約番号はご予約の詳細・一覧へ）
+ *   - それ以外（/・/calendar・/plans・/rooms・/rate-sheet・/book …）→ /private-book?page=<partnerId>
+ *     （入口が「会員ログイン・使えるページか」を確かめ、対象でなければクッキーを消して公式サイトへ戻す）
+ */
+export function memberPortalForward(sub: string, method: string, partnerId: string): MemberPortalForward {
+  const m = method.toUpperCase();
+  if (m !== 'GET' && m !== 'HEAD') return { kind: 'gone' };
+  const path = (sub || '/').replace(/\/+$/, '') || '/';
+  if (path === '/bookings') return { kind: 'redirect', location: '/account/reservations' };
+  const hit = /^\/bookings\/([^/]+)(\/.*)?$/.exec(path);
+  if (hit) {
+    let code = '';
+    try {
+      code = decodeURIComponent(hit[1]);
+    } catch {
+      code = '';
+    }
+    if (!BOOKING_CODE_RE.test(code)) return { kind: 'redirect', location: '/account/reservations' };
+    const base = `/account/reservations/${encodeURIComponent(code)}`;
+    const rest = hit[2] ?? '';
+    const keep = /^\/(?:amend(?:\/room\/\d{1,2})?|options)$/.test(rest) ? rest : '';
+    return { kind: 'redirect', location: `${base}${keep}` };
+  }
+  return { kind: 'redirect', location: privateBookEntryHref(partnerId) };
+}
+
+/**
+ * DB が作る専用ページの予約詳細の URL（/p/<token>/bookings/<予約番号>・確定メールやゲスト取消の照会の member_page_url）
+ * → マイページの予約詳細（/account/reservations/<予約番号>）。形が違えば null
+ */
+export function memberPageUrlToAccount(url: string | null | undefined): string | null {
+  const hit = /^\/p\/[A-Za-z0-9_-]+(\/bookings\/[^/?#]+)$/.exec(String(url ?? ''));
+  if (!hit) return null;
+  const to = memberPortalForward(hit[1], 'GET', '');
+  return to.kind === 'redirect' && to.location.startsWith('/account/reservations/') ? to.location : null;
 }

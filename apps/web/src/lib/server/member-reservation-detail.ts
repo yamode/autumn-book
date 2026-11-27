@@ -26,7 +26,6 @@ import {
 	sbMyReservations,
 	type MemberReservation
 } from '$lib/server/supabase-data';
-import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
 import { directPaymentForBooking, directRefundPreviewOf, prepayBonusPointsOf, type DirectPaymentInfo } from '$lib/server/direct-payments';
 import { CANCEL_POLICY_LABELS, type MemberPerkSnapshot } from '$lib/partner-member-page';
 import * as m from '$lib/paraglide/messages';
@@ -259,17 +258,7 @@ export async function reservationDetailOf(
 	};
 }
 
-/**
- * 公式マイページの操作（取消・日程変更・オプション）の前に呼ぶ: 特別会員の専用ページ経由の予約なら、案内（専用ページの予約詳細の URL）を返す。
- * そうでなければ null。DB のガード（book._member_page_guard）でも止まるが、案内の文言を出すためにここで先に断る（§13.4.4）
- */
-export async function memberPageBookingOf(client: SupabaseClient, code: string): Promise<{ href: string | null } | null> {
-	const r = (await sbMyReservations(client).catch(() => [] as MemberReservation[])).find((x) => x.code === code);
-	if (!r?.memberPage) return null;
-	return { href: await memberPageHrefFor(r.memberPage.partnerId, code).catch(() => null) };
-}
-
 /** 公式マイページで専用ページ経由の予約を操作しようとしたときの fail の中身 */
-export const MEMBER_PAGE_BOOKING_MESSAGE = 'このご予約の変更・取消は、特別会員ページのご予約一覧から行えます。';
+export const MEMBER_PAGE_BOOKING_MESSAGE = 'このご予約の変更・取消は、会員ログインのうえマイページのご予約から行えます。';
 /** 上の文言をリクエストの言語で返す（呼び出し元は順次こちらへ切り替える。定数は日本語のまま残す） */
 export const memberPageBookingMessage = (): string => m.member_page_booking_message();

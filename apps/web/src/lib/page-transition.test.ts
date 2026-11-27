@@ -15,7 +15,7 @@ const PARTNER_MENU_TOP = /^\/p\/\[token\]\/[^/]+$/;
 describe('loadingShape', () => {
 	it('A面・B面のページを見つけている', () => {
 		expect(routeIds).toContain('/(public)');
-		expect(routeIds).toContain('/p/[token]/bookings/[id]');
+		expect(routeIds).toContain('/p/[token]/group/[id]');
 	});
 	it('どのページも汎用の1行（plain）にならない', () => {
 		const plain = routeIds.filter((id) => !PARTNER_MENU_TOP.test(id) && loadingShape(id) === 'plain');
@@ -26,7 +26,7 @@ describe('loadingShape', () => {
 		expect(loadingShape('/(public)/[brand]/[facility]/plans/[plan]')).toBe('plan-detail');
 		expect(loadingShape('/(public)/account/reservations/[code]')).toBe('reservation-detail');
 		expect(loadingShape('/(public)/account/reservations/[code]/amend')).toBe('form');
-		expect(loadingShape('/p/[token]/bookings/[id]')).toBe('reservation-detail');
+		expect(loadingShape('/p/[token]/group/[id]')).toBe('reservation-detail');
 		expect(loadingShape('/p/[token]')).toBe('auth');
 	});
 });

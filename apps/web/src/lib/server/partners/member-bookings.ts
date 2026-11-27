@@ -5,7 +5,7 @@
 //   日程変更: 専用料金で計算し直す（生きている部屋ごとに quotePartnerBooking → 泊明細 → member_page_*_dates）
 //   部屋の変更（M3）: 変える部屋の専用料金と新しいプランの特典 → member_page_*_rooms
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { memberPageBookingsOf, memberPageCalendarHrefOf, memberPageHrefOf, perksSnapshotOf, type MemberAmendRoomLines, type MemberHoldRoom } from '$lib/partner-member-page';
+import { memberPageBookingsOf, perksSnapshotOf, type MemberAmendRoomLines, type MemberHoldRoom } from '$lib/partner-member-page';
 import { perksForPlan } from '$lib/partner-booking';
 import { amendRoomsPayload, type AmendRoomInput } from '$lib/multi-room';
 import {
@@ -33,7 +33,7 @@ import {
   savePartnerFacility,
   type PartnerContext
 } from './store';
-import { vipFacilitiesToAdd } from '$lib/private-book';
+import { privateBookEntryHref, vipFacilitiesToAdd } from '$lib/private-book';
 import { DEFAULT_PARTNER_PRICING } from '$lib/partner-pricing';
 import { DEFAULT_PARTNER_BOOKING_SETTINGS } from '$lib/partner-booking';
 
@@ -176,14 +176,6 @@ export async function memberPageAmendDates(w: Who, checkIn: string, nights: numb
   return data as AmendResult;
 }
 
-/** 専用ページの予約詳細の URL（限定 URL のトークンは service_role で引く）。引けなければ null */
-export async function memberPageHrefFor(partnerId: string, code: string): Promise<string | null> {
-  const sb = partnerServiceClient();
-  if (!sb) return null;
-  const { data } = await sb.from('rms_partners').select('url_token').eq('id', partnerId).maybeSingle();
-  const token = (data as { url_token?: string } | null)?.url_token;
-  return token ? memberPageHrefOf(token, code) : null;
-}
 
 /**
  * VIP（＝特別会員）の専用ページを1つ作り、PMS の顧客（member_guest_id）に結ぶ（2026-11-27）。
@@ -343,7 +335,8 @@ export async function listMemberPagesFor(memberUserId: string): Promise<{ name: 
   // 印のある会員はここで専用ページを用意してから一覧を出す（失敗してもマイページは出す）
   await ensureDesignatedMemberPage(sb, memberUserId).catch((e) => console.error('[member-page] 自動作成に失敗', e instanceof Error ? e.message : e));
   const pages = await memberPagesFor(sb, memberUserId).catch(() => []);
-  return pages.map((p) => ({ name: p.name, href: memberPageCalendarHrefOf(p.urlToken), facilityNames: p.facilityNames, via: p.via }));
+  // 押すと公式サイトのプライベートブックに入る（B面の専用ページは確認モードだけ・v0.355.0）
+  return pages.map((p) => ({ name: p.name, href: privateBookEntryHref(p.partnerId), facilityNames: p.facilityNames, via: p.via }));
 }
 
 // ---------------------------------------------------------------------------
