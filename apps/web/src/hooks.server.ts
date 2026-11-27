@@ -18,6 +18,7 @@ import { isFacilityScopedAdminPath } from '$lib/admin-facility-scope';
 import { assignedFacilities, canOperateFacility } from '$lib/server/admin-facility-access';
 import { currentBookFacility } from '$lib/server/partners/staff';
 import { PRIMARY_ORIGIN } from '$lib/server/public-origin';
+import { allowSearchIndexing, isPublicSearchPage, NOINDEX_META } from '$lib/server/search-indexing';
 import { isBookingMcpMachineUrl, TOKEN_PATH } from '$lib/server/booking-mcp/oauth';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { seedPreviewMember } from '$lib/server/store';
@@ -229,12 +230,23 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 		);
 	}
 
-	// Paraglide ミドルウェアでロケールを確定し、%lang% プレースホルダを置換する
-	return paraglideMiddleware(event.request, ({ locale }) =>
+	const publicSearchPage = event.url.origin === PRIMARY_ORIGIN && isPublicSearchPage(event.route.id);
+	const indexable = allowSearchIndexing(publicSearchPage, Date.now()) &&
+		!event.locals.user && !event.locals.staff && !event.locals.privateBook && !event.url.searchParams.has('preview');
+	// クローラーに返す HTML の段階で掲載可否を決める。
+	const response = await paraglideMiddleware(event.request, ({ locale }) =>
 		resolve(event, {
-			transformPageChunk: ({ html }) => html.replace('%lang%', locale)
+			transformPageChunk: ({ html }) => {
+				const localized = html.replace('%lang%', locale);
+				return indexable ? localized.replace(NOINDEX_META, '') : localized;
+			}
 		})
 	);
+	// 切り替え前の HTML を公開キャッシュに残さない。
+	if (publicSearchPage && !indexable && response.headers.get('content-type')?.startsWith('text/html')) {
+		response.headers.set('cache-control', 'private, no-store');
+	}
+	return response;
 };
 
 const NO_STORE_TEXT = { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' };
