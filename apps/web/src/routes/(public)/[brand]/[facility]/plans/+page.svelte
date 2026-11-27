@@ -5,7 +5,7 @@
 	import { formatDateLong, todayStr } from '$lib/format';
 	import { roomCapacityText } from '$lib/room-capacity';
 	import PlanAccessBadge from '$lib/components/PlanAccessBadge.svelte';
-	import { page } from '$app/state';
+	import { navigating, page } from '$app/state';
 	import { slide, fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { prefersReducedMotion } from 'svelte/motion';
@@ -360,7 +360,7 @@
 					<div class="flex min-w-0 items-center gap-2 py-2 sm:gap-3">
 						<span class="w-14 shrink-0 text-xs font-medium text-stone-600 sm:w-20">{m.plans_rate_filter_label()}</span>
 						<label class="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border px-2.5 text-xs font-medium text-brand-900 transition-colors sm:text-sm {activeSpecialOnly ? 'border-brand-900/30 bg-brand-900/5' : 'border-transparent hover:bg-white'}">
-							<input type="checkbox" class="h-4 w-4 shrink-0 accent-brand-900" checked={activeSpecialOnly} onchange={(event) => filterSpecialOnly(event.currentTarget.checked)} />
+							<input type="checkbox" class="h-4 w-4 shrink-0 accent-brand-900" checked={activeSpecialOnly} disabled={navigating.to !== null} onchange={(event) => filterSpecialOnly(event.currentTarget.checked)} />
 							{m.private_book_filter_only()}
 						</label>
 					</div>
