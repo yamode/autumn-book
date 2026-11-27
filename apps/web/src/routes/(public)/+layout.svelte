@@ -314,7 +314,7 @@
 			{#if showHeaderSearch}
 				<!-- 検索バー: デスクトップは常時表示、モバイルはサマリボタンで開閉 -->
 				<div id="header-search-panel" class="w-full {mobileSearchOpen ? '' : 'hidden md:block'}">
-					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={visibleParams.facility ?? ''} specialOnly={privateBookToggle && Boolean(data.privateBook) && visibleUrl.searchParams.get('specialOnly') === '1'} action={visibleParams.facility ? '/' + visibleParams.brand + '/' + visibleParams.facility + '/plans' : '/search'} />
+					<SiteSearchBar checkin={searchCheckin} nights={searchNights} adults={searchAdults} rooms={searchRooms} facility={visibleParams.facility ?? ''} specialOnly={privateBookToggle && Boolean(data.privateBook) && ((!pending ? page.state.privateBookSpecialOnly : undefined) ?? (visibleUrl.searchParams.get('specialOnly') === '1'))} action={visibleParams.facility ? '/' + visibleParams.brand + '/' + visibleParams.facility + '/plans' : '/search'} />
 				</div>
 			{/if}
 		</div>

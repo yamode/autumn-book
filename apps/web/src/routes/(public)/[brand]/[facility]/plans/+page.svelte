@@ -18,7 +18,7 @@
 	import { searchQuery } from '$lib/components/guests';
 	import { facilityThumbnailUrl } from '$lib/facility-thumbnail';
 	import { formatPrice } from '$lib/format';
-	import { goto } from '$app/navigation';
+	import { goto, pushState } from '$app/navigation';
 	import { writeCart, type CartItem } from '$lib/multi-room';
 	import { pbCartStorageKey } from '$lib/private-book';
 	import { experimentVariant } from '$lib/experiments';
@@ -54,9 +54,12 @@
 		if (b === null) return -1;
 		return sort === 'asc' ? a - b : b - a;
 	}
+	const activeSpecialOnly = $derived(Boolean(data.privateBook) && (page.state.privateBookSpecialOnly ?? (page.url.searchParams.get('specialOnly') === '1')));
+	const combos = $derived(activeSpecialOnly ? data.specialCombos : data.combos);
 	let rooms = $derived.by(() =>
 		data.rooms
-			.map((item) => ({ ...item, plans: [...item.plans].sort((a, b) => byPrice(perPersonNight(a), perPersonNight(b))) }))
+			.map((item) => ({ ...item, plans: (activeSpecialOnly ? item.plans.filter((plan) => plan.special) : [...item.plans]).sort((a, b) => byPrice(perPersonNight(a), perPersonNight(b))) }))
+			.filter((item) => !activeSpecialOnly || item.plans.length > 0)
 			.sort((a, b) => {
 				const priceA = a.plans.length ? perPersonNight(a.plans[0]) : null;
 				const priceB = b.plans.length ? perPersonNight(b.plans[0]) : null;
@@ -71,13 +74,11 @@
 
 	// お食事の絞り込みだけを変えている間の行き先（それ以外の移動中・止まっているときは null）。
 	// このときは結果の欄ごと読み込み表示にせず、ボタンをすぐ切り替え、各部屋のプランの欄だけを薄くして、届いたらフェードインで入れ替える（2026-11-21 指示）
-	const pendingMeal = $derived(pendingParamOnly('meal'));
+	const pendingMeal = $derived(pendingParamOnly('meal', listUrl()));
 	const activeMeal = $derived(pendingMeal ?? data.params.meal);
-	const pendingSpecialOnly = $derived(pendingParamOnly('specialOnly'));
-	const resultFade = $derived(prefersReducedMotion.current ? 0 : 180);
-	const planSlide = $derived(prefersReducedMotion.current ? 0 : 220);
+	const resultFade = $derived(prefersReducedMotion.current ? 0 : 140);
+	const planSlide = $derived(prefersReducedMotion.current ? 0 : 170);
 	const roomFlip = $derived(prefersReducedMotion.current ? 0 : 300);
-	const activeSpecialOnly = $derived(pendingSpecialOnly === null ? data.specialOnly : pendingSpecialOnly === '1');
 
 	// 専用料金の切り替え後も同じプランが残るときは、新しい料金が届いてから行を短くフェードインする。
 	function animateRateMode(row: HTMLElement, partnerId: string | null) {
@@ -97,16 +98,26 @@
 		};
 	}
 
-	function filterSpecialOnly(checked: boolean) {
+	function listQuery(specialOnly = activeSpecialOnly) {
+		const query = new URLSearchParams(page.url.searchParams);
+		if (specialOnly) query.set('specialOnly', '1');
+		else query.delete('specialOnly');
+		return query;
+	}
+
+	function listUrl(specialOnly = activeSpecialOnly) {
 		const url = new URL(page.url);
-		if (checked) url.searchParams.set('specialOnly', '1');
-		else url.searchParams.delete('specialOnly');
-		void goto(url, { noScroll: true, keepFocus: true });
+		url.search = listQuery(specialOnly).toString();
+		return url;
+	}
+
+	function filterSpecialOnly(checked: boolean) {
+		pushState(listUrl(checked), { ...page.state, privateBookSpecialOnly: checked });
 	}
 
 	// お食事で絞り込む（プラン設定の「お食事」から自動で作る・lib/meal-filter.ts）。'' はすべて
 	function mealHref(key: string) {
-		const query = new URLSearchParams(page.url.searchParams);
+		const query = listQuery();
 		query.delete('tag'); // 以前のタグ絞り込みの URL は捨てる
 		if (key) query.set('meal', key);
 		else query.delete('meal');
@@ -148,7 +159,7 @@
 	}
 
 	function planHref(slug: string, roomSlug: string) {
-		const query = new URLSearchParams(page.url.searchParams);
+		const query = listQuery();
 		query.delete('tag');
 		query.delete('meal');
 		query.set('room', roomSlug);
@@ -341,7 +352,7 @@
 	</div>
 
 	<div id="plan-search" class="mt-3 scroll-mt-28">
-		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={data.specialOnly} keepScroll compact />
+		<SiteSearchBar action="{base}/plans" facility={data.facility.slug} checkin={data.params.checkin} nights={data.params.nights} adults={data.params.adults} rooms={data.params.rooms} meal={data.params.meal} specialOnly={activeSpecialOnly} keepScroll compact />
 		<PrivateBookPriceNote view={data.privateBook} compact />
 		{#if data.privateBook || data.meals.length > 1}
 			<div role="group" aria-label={m.plans_filters_label()} class="mt-3 divide-y divide-stone-200 rounded-2xl border border-stone-200 bg-stone-50/80 px-3 sm:px-4">
@@ -368,13 +379,13 @@
 		{/if}
 	</div>
 
-	{#if data.combos.length}
+	{#if combos.length}
 		<!-- 部屋タイプ横断の組み合わせ: 1 つの部屋タイプでは室数に足りないとき -->
 		<section transition:fade={{ duration: resultFade }} class="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label={m.plans_combo_title({ n: String(data.params.rooms) })}>
 			<p class="text-base font-bold text-brand-900">{m.plans_combo_title({ n: String(data.params.rooms) })}</p>
 			<p class="mt-0.5 text-sm text-stone-600">{m.plans_combo_desc({ n: String(data.params.rooms) })}</p>
 			<ul class="mt-3 space-y-3">
-				{#each data.combos as combo (combo.planId)}
+				{#each combos as combo (combo.planId)}
 					<li use:animateRateMode={data.privateBookPartnerId} transition:slide={{ duration: planSlide, easing: cubicOut }} class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white px-4 py-3">
 						<div class="min-w-0">
 							<p class="text-sm font-semibold text-brand-900">{combo.planName}</p>
@@ -410,12 +421,12 @@
 		{/if}
 
 		<!-- 条件だけ変えたときは、この結果の欄だけを読み込み表示にする -->
-		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null || pendingSpecialOnly !== null}>
+		<RefreshingResults shape="plans-results" quiet={pendingMeal !== null}>
 		<div class="mt-4 space-y-5 sm:space-y-6">
 			{#each openRooms as item (item.room.id)}
 				<article transition:fade={{ duration: resultFade }} animate:flip={{ duration: roomFlip, easing: cubicOut }} class={ROOM_CARD}>{@render roomCard(item)}</article>
 			{:else}
-				{#if !fullRooms.length && !data.combos.length}<p in:fade={{ duration: resultFade }} class="text-sm text-stone-500">{data.specialOnly ? m.private_book_filter_empty() : m.plans_no_results()}</p>{/if}
+				{#if !fullRooms.length && !combos.length}<p in:fade={{ duration: resultFade }} class="text-sm text-stone-500">{activeSpecialOnly ? m.private_book_filter_empty() : m.plans_no_results()}</p>{/if}
 			{/each}
 		</div>
 		{#if fullRooms.length}

@@ -387,8 +387,12 @@ async function loadFacilityRows(db: SupabaseClient, partnerIds: readonly string[
 
 // 共通の行と施設設定の行から、施設名つきの束を作る。施設設定が1つも無ければ、既定の施設（primary → 旧 facility_id）を
 // 販売しない既定値で補う（N9: ログインはできるが料金・予約は案内文）。それも無ければ null。
-async function bundlesOf(db: SupabaseClient, commons: PartnerCommonRow[]): Promise<PartnerBundle[]> {
-  const rowsBy = await loadFacilityRows(db, commons.map((c) => c.id));
+async function bundlesOf(
+  db: SupabaseClient,
+  commons: PartnerCommonRow[],
+  sources?: { rows: Map<string, PartnerFacilityRow[]>; meta: Awaited<ReturnType<typeof facilityMeta>> }
+): Promise<PartnerBundle[]> {
+  const rowsBy = sources?.rows ?? await loadFacilityRows(db, commons.map((c) => c.id));
   const filled = commons.map((common) => {
     let rows = rowsBy.get(common.id) ?? [];
     if (!rows.length) {
@@ -397,7 +401,7 @@ async function bundlesOf(db: SupabaseClient, commons: PartnerCommonRow[]): Promi
     }
     return { common, rows };
   });
-  const meta = await facilityMeta(db, filled.flatMap((f) => f.rows.map((r) => r.facility_id)));
+  const meta = sources?.meta ?? await facilityMeta(db, filled.flatMap((f) => f.rows.map((r) => r.facility_id)));
   return filled.map(({ common, rows }) => ({
     common,
     facilities: rows
@@ -413,10 +417,17 @@ async function bundlesOf(db: SupabaseClient, commons: PartnerCommonRow[]): Promi
 
 async function loadBundle(db: SupabaseClient, by: { id: string } | { urlToken: string }): Promise<PartnerBundle | null> {
   const q = db.from('rms_partners').select(COMMON_COLUMNS);
-  const { data, error } = await ('id' in by ? q.eq('id', by.id) : q.eq('url_token', by.urlToken)).maybeSingle();
+  // ID が既知なら、共通設定の読み込みを待たずに施設別設定も読む。
+  const [partner, sources] = await Promise.all([
+    ('id' in by ? q.eq('id', by.id) : q.eq('url_token', by.urlToken)).maybeSingle(),
+    'id' in by
+      ? Promise.all([loadFacilityRows(db, [by.id]), facilityMeta(db, BOOK_FACILITY_ORDER)]).then(([rows, meta]) => ({ rows, meta }))
+      : undefined
+  ]);
+  const { data, error } = partner;
   if (error) raise(error, '取引先を読み込めませんでした。');
   if (!data) return null;
-  const [bundle] = await bundlesOf(db, [toCommon(data as Record<string, unknown>)]);
+  const [bundle] = await bundlesOf(db, [toCommon(data as Record<string, unknown>)], sources);
   return bundle ?? null;
 }
 

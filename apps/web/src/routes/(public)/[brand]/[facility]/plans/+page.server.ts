@@ -110,7 +110,7 @@ export const load: PageServerLoad = async (event) => {
 	const favoritesP = favoriteRoomTypeIds(event);
 	const isMember = viewerIsMember(locals);
 	// 会員限定のシークレットプランを一覧に足すかどうか（会員のグレードで決まる。URL 限定は一覧に出さない）
-	const viewer = await viewerOf(locals);
+	const viewer = viewerOf(locals);
 	const checkin = url.searchParams.get('checkin') || undefined;
 	const nights = Math.min(7, Math.max(1, Number(url.searchParams.get('nights') ?? 1)));
 	const adults = Math.min(6, Math.max(1, Number(url.searchParams.get('adults') ?? 2)));
@@ -126,7 +126,6 @@ export const load: PageServerLoad = async (event) => {
 		// 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた・2026-11-19）
 		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
 		const pbState = locals.privateBook ?? null;
-		const specialOnly = Boolean(pbState) && url.searchParams.get('specialOnly') === '1';
 		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
 		const privateFacility = privateBookFacility(pbState, facility.id);
 		const privateOffers = checkin
@@ -135,7 +134,16 @@ export const load: PageServerLoad = async (event) => {
 		const privateRefs = checkin
 			? Promise.resolve([])
 			: privateFacility.then((fac) => privateBookReferencePrices(fac, facility.id, adults));
-		const [allPlans, allRooms, settings, datedOffers, referencePrices, pbFac, specialOffers, specialRefs] = await Promise.all([
+		// 会員限定プランの料金も、通常プランや専用料金の取得と並行して進める。
+		const memberResults = viewer.then(async (currentViewer) => {
+			const plans = await listedSecretPlans(facility.id, currentViewer);
+			const prices = await Promise.all(plans.map((plan) => checkin
+				? sbPlanOffers(facility.id, checkin, nights, adults, plan.id).then((offers) => ({ offers, refs: [] })).catch(() => ({ offers: [], refs: [] }))
+				: sbRoomPlanReferencePrices(facility.id, adults, plan.id).then((refs) => ({ offers: [], refs })).catch(() => ({ offers: [], refs: [] }))
+			));
+			return { plans, prices };
+		});
+		const [publicPlans, allRooms, settings, publicOffers, publicRefs, pbFac, specialOffers, specialRefs, member] = await Promise.all([
 			sbListPlansMapped(facility.id),
 			sbListRoomTypesMapped(facility.id),
 			loadEarlyPrepaySettings(facility.id),
@@ -143,24 +151,12 @@ export const load: PageServerLoad = async (event) => {
 			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
 			privateFacility,
 			privateOffers,
-			privateRefs
+			privateRefs,
+			memberResults
 		]);
-		// 対象の会員には会員限定プランも出す（列挙系 RPC は普通のプランだけを返すので、プランごとに料金を取る）
-		const memberPlans = await listedSecretPlans(facility.id, viewer);
-		if (memberPlans.length > 0) {
-			const extra = await Promise.all(
-				memberPlans.map((plan) =>
-					checkin
-						? sbPlanOffers(facility.id, checkin, nights, adults, plan.id).then((rows) => ({ offers: rows, refs: [] as typeof referencePrices }))
-						: sbRoomPlanReferencePrices(facility.id, adults, plan.id).then((rows) => ({ offers: [] as typeof datedOffers, refs: rows }))
-				).map((p) => p.catch(() => ({ offers: [] as typeof datedOffers, refs: [] as typeof referencePrices })))
-			);
-			allPlans.push(...memberPlans);
-			for (const e of extra) {
-				datedOffers.push(...e.offers);
-				referencePrices.push(...e.refs);
-			}
-		}
+		const allPlans = [...publicPlans, ...member.plans];
+		const datedOffers = [...publicOffers, ...member.prices.flatMap((price) => price.offers)];
+		const referencePrices = [...publicRefs, ...member.prices.flatMap((price) => price.refs)];
 		const meals = mealOptions(allPlans);
 		const plans = withEarlyPrepayMax(
 			allPlans.filter((plan) => matchesMeal(plan, meal)).map((plan) => planForViewer(plan, isMember)),
@@ -183,13 +179,13 @@ export const load: PageServerLoad = async (event) => {
 		const prices: RoomPlanPrice[] = checkin
 			? offers.map((offer) => ({ ratePlanId: offer.ratePlanId, roomTypeId: offer.roomTypeId, total: offer.total, referencePrice: null, remaining: offer.remaining, special: isSpecial(offer) }))
 			: refs.map((price) => ({ ratePlanId: price.ratePlanId, roomTypeId: price.roomTypeId, total: null, referencePrice: price.minPerPerson, remaining: null, special: isSpecial(price) }));
-		const filteredPrices = specialOnly ? prices.filter((price) => price.special) : prices;
-		const roomResults = roomsWithPlans(allRooms, plans, filteredPrices, adults, roomCount);
 		return {
 			facility,
-			rooms: specialOnly ? roomResults.filter((room) => room.plans.length > 0) : roomResults,
-			combos: combosFor(allRooms, plans, filteredPrices, adults, nights, roomCount),
-			specialOnly,
+			rooms: roomsWithPlans(allRooms, plans, prices, adults, roomCount),
+			combos: combosFor(allRooms, plans, prices, adults, nights, roomCount),
+			specialCombos: pbFac?.special && roomCount > 1
+				? combosFor(allRooms, plans, prices.filter((price) => price.special), adults, nights, roomCount)
+				: [],
 			meals,
 			today,
 			referenceMode: !checkin,
@@ -204,7 +200,8 @@ export const load: PageServerLoad = async (event) => {
 	const locale = getLocale();
 	const facility = getFacilityBySlug(params.brand, params.facility, locale);
 	if (!facility) error(404, m.error_facility_not_found());
-	const allPlans = getRatePlans(facility.id, locale).filter((plan) => listPlanFor(plan.access, viewer));
+	const demoViewer = await viewer;
+	const allPlans = getRatePlans(facility.id, locale).filter((plan) => listPlanFor(plan.access, demoViewer));
 	const meals = mealOptions(allPlans);
 	const plans = withEarlyPrepayMax(
 		allPlans.filter((plan) => matchesMeal(plan, meal)).map((plan) => planForViewer(plan, isMember)),
@@ -231,7 +228,7 @@ export const load: PageServerLoad = async (event) => {
 		today,
 		referenceMode: false,
 		favoriteRoomTypeIds: await favoritesP,
-		specialOnly: false,
+		specialCombos: [],
 		privateBook: null as { special: boolean } | null,
 		privateBookPartnerId: null as string | null,
 		params: { checkin: checkin ?? '', nights, adults, rooms: roomCount, meal: meal ?? '' }

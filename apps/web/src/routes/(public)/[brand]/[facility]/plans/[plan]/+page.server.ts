@@ -88,15 +88,15 @@ export const load: PageServerLoad = async (event) => {
 		// プライベートブックの状態なら、この施設を特別料金で出すか（施設ごと・docs/private-book.md）。料金の表示は保存させない
 		const pbState = locals.privateBook ?? null;
 		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
-		const [open, earlySettings, templates, rooms, pbFac] = await Promise.all([
+		const privateFacility = privateBookFacility(pbState, facility.id);
+		const [open, earlySettings, templates, rooms] = await Promise.all([
 			sbPlanBySlug(facility.id, params.plan),
 			// 早期決済割の対象プランは「予約時決済で最大 N%お得」を出す
 			loadEarlyPrepaySettings(facility.id),
 			loadPlanTemplates(facility.id),
 			// 「このプランで泊まれる客室と料金」は plan_offers が返す（プラン⇄客室はデモの roomTypeIds ではなく実データ）。
 			// 客室の一覧そのものはプランに依らないのでここで取る
-			sbListRoomTypesMapped(facility.id),
-			privateBookFacility(pbState, facility.id)
+			sbListRoomTypesMapped(facility.id)
 		]);
 		// 普通のプランで見つからなければシークレットプラン（会員限定・URL 限定）から探す。URL 限定で URL を開いていなければ 404
 		// それでも無ければ（販売停止中・販売表示期間の外・料金なし）、スタッフの ?preview=1 だけ販売ページの見た目で確かめる。
@@ -117,13 +117,14 @@ export const load: PageServerLoad = async (event) => {
 		// 第2段（プランが決まってから投げるもの）。規定が無いプランのキャンセル規定の既定値もここに混ぜる。
 		// 日付未指定は plan_offers が 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		// 特別料金はスタッフのプレビュー（販売中でないプラン）には当てない
-		const pbSpecial = pbFac?.special && !preview ? pbFac : null;
-		const [cancellationFallback, referencePrices, normalOffers, pbOffers, pbRefs] = await Promise.all([
+		const pbSpecial = privateFacility.then((result) => result?.special && !preview ? result : null);
+		const [cancellationFallback, referencePrices, normalOffers, pbOffers, pbRefs, pbFac] = await Promise.all([
 			plan.cancellationPolicy.rules.length ? Promise.resolve(null) : loadCancellationFallback(locals),
 			!checkin && bookable ? sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId) : Promise.resolve(null),
 			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
-			checkin && bookable && pbSpecial ? privateBookOffers(pbSpecial, facility.id, checkin, nights, adults, { ratePlanId: plan.id }) : Promise.resolve([]),
-			!checkin && bookable && pbSpecial ? privateBookPlanReferenceMin(pbSpecial, facility.id, adults, plan.id) : Promise.resolve(null)
+			checkin && bookable ? pbSpecial.then((result) => privateBookOffers(result, facility.id, checkin, nights, adults, { ratePlanId: plan.id })) : Promise.resolve([]),
+			!checkin && bookable ? pbSpecial.then((result) => result ? privateBookPlanReferenceMin(result, facility.id, adults, plan.id) : null) : Promise.resolve(null),
+			privateFacility
 		]);
 		// 特別料金を出せる部屋は差し替える（出せない部屋・日程はふつうの料金のまま）
 		const merged = mergePbOffers(normalOffers, pbOffers);

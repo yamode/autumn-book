@@ -10,6 +10,9 @@ declare global {
 	const __APP_VERSION__: string;
 
 	namespace App {
+		interface PageState {
+			privateBookSpecialOnly?: boolean;
+		}
 		interface Locals {
 			user: SessionUser | null;
 			abExperiments: ExperimentAssignment[];
