@@ -10,6 +10,7 @@
 	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
+	import { PB_ENTRY_PATH, PB_EXIT_PATH, PB_PRICE_DEPENDENCY } from '$lib/private-book';
 	import { deLocalizeUrl, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -76,7 +77,36 @@
 		data.privateBookHref ? `${data.privateBookHref}?back=${encodeURIComponent(page.url.pathname + page.url.search)}` : null
 	);
 	let privateBookToggle = $derived(page.route.id === '/(public)/[brand]/[facility]/plans' || page.route.id === '/(public)/[brand]/[facility]/plans/[plan]');
-	let privateBookSwitching = $state(false);
+	let requestedPrivateBook = $state<boolean | null>(null);
+	let privateBookSwitchFailed = $state(false);
+	const privateBookSwitching = $derived(requestedPrivateBook !== null);
+	const serverPrivateBook = $derived(Boolean(data.privateBook));
+	const displayedPrivateBook = $derived(requestedPrivateBook ?? serverPrivateBook);
+	const hasAnotherPrivateBook = $derived(data.privateBook?.pages.some((p) => p.partnerId !== data.privateBook?.partnerId) ?? false);
+	const canSwitchPrivateBook = $derived(privateBookToggle && Boolean(data.privateBookHref));
+
+	async function switchPrivateBook(event: SubmitEvent) {
+		event.preventDefault();
+		if (privateBookSwitching) return;
+		const enable = !serverPrivateBook;
+		requestedPrivateBook = enable;
+		privateBookSwitchFailed = false;
+		try {
+			const response = await fetch(enable ? PB_ENTRY_PATH : PB_EXIT_PATH, {
+				method: enable ? 'GET' : 'POST',
+				body: enable ? undefined : new FormData(event.currentTarget as HTMLFormElement),
+				headers: { accept: 'application/json' },
+				cache: 'no-store'
+			});
+			if (response.status !== 204) throw new Error('private book switch failed');
+			await invalidate(PB_PRICE_DEPENDENCY);
+			if (serverPrivateBook !== enable) privateBookSwitchFailed = true;
+		} catch {
+			privateBookSwitchFailed = true;
+		} finally {
+			requestedPrivateBook = null;
+		}
+	}
 	let inBookingFlow = $derived(['/(public)/booking/hold', '/(public)/booking/complete', '/(public)/booking/pay'].some((r) => routeId.startsWith(r)));
 	let facilityLogo = $derived(facilityBrand ? (FACILITY_LOGOS[facilityBrand.slug] ?? null) : null);
 	let showFacilityLogo = $derived(Boolean(facilityBrand?.site && facilityLogo));
@@ -108,6 +138,35 @@
 		mobileMenuOpen = false;
 	});
 </script>
+
+{#snippet rateSwitch(desktop: boolean)}
+	<form
+		method={serverPrivateBook ? 'POST' : 'GET'}
+		action={serverPrivateBook ? PB_EXIT_PATH : PB_ENTRY_PATH}
+		class={desktop ? 'shrink-0' : 'w-full md:hidden'}
+		data-sveltekit-reload
+		onsubmit={switchPrivateBook}
+	>
+		<input type="hidden" name="back" value={page.url.pathname + page.url.search} />
+		<button
+			type="submit"
+			role="switch"
+			aria-checked={displayedPrivateBook}
+			aria-disabled={privateBookSwitching}
+			aria-busy={privateBookSwitching}
+			aria-label={m.hold_member_page_heading()}
+			class="inline-flex min-h-11 items-center gap-1.5 px-2.5 font-medium whitespace-nowrap text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-800 {desktop ? `rounded-full border text-xs ${displayedPrivateBook ? 'border-brand-900/20 bg-brand-900/5' : 'border-stone-200 bg-white hover:border-stone-400'}` : 'w-full rounded-lg text-sm'}"
+		>
+			<span class={desktop ? undefined : 'flex-1 text-start'}>{m.hold_member_page_heading()}</span>
+			<span aria-hidden="true" class="min-w-[2.1em] text-center tabular-nums">{displayedPrivateBook ? 'ON' : 'OFF'}</span>
+			<span aria-hidden="true" class="relative h-5 w-9 rounded-full transition-colors {displayedPrivateBook ? 'bg-brand-900' : 'bg-stone-500'}">
+				<span class="absolute left-0.5 top-0.5 grid h-4 w-4 place-items-center rounded-full bg-white shadow-sm transition-transform {displayedPrivateBook ? 'translate-x-4' : ''}">
+					{#if privateBookSwitching}<span class="h-2.5 w-2.5 animate-spin rounded-full border border-stone-300 border-t-brand-900 motion-reduce:animate-none"></span>{/if}
+				</span>
+			</span>
+		</button>
+	</form>
+{/snippet}
 
 <svelte:head>
 	<!-- hreflang alternates（設計書 §3） -->
@@ -165,7 +224,9 @@
 				<a href="/kitakaze" class="hover:text-brand-800">{m.radio_nav()}</a>
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
-				{#if data.privateBook}
+				{#if canSwitchPrivateBook}
+					{@render rateSwitch(true)}
+				{:else if data.privateBook}
 					<!-- いまプライベートブックの状態（塗りつぶし）。押しても同じ（出口は帯の「ふつうのご予約に戻る」） -->
 					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
 				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
@@ -245,7 +306,7 @@
 				<a href="/community" class="py-2.5 hover:text-brand-800">{m.forum_nav()}</a>
 				<a href="/kitakaze" class="py-2.5 hover:text-brand-800">{m.radio_nav()}</a>
 				<a href="/help" class="py-2.5 hover:text-brand-800">{m.help_nav_label()}</a>
-				{#if data.privateBook}
+				{#if data.privateBook && !canSwitchPrivateBook}
 					<span class="mt-1 self-start rounded-full bg-brand-900 px-3 py-1.5 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
 				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
 					<a href={privateBookEntry} data-sveltekit-reload class="mt-1 self-start rounded-full border border-stone-400 px-3 py-1.5 text-xs tracking-[0.14em] text-brand-900">PRIVATE BOOK</a>
@@ -261,18 +322,21 @@
 		</div>
 	</header>
 
-	{#if !inBookingFlow && (data.privateBook || (privateBookToggle && data.privateBookHref))}
-		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6">
-			<PrivateBookBand
-				name={data.privateBook?.memberName}
-				pages={data.privateBook?.pages}
-				currentPartnerId={data.privateBook?.partnerId}
-				showToggle={privateBookToggle}
-				bind:switching={privateBookSwitching}
-				active={Boolean(data.privateBook)}
-			/>
+	{#if !inBookingFlow && (data.privateBook || canSwitchPrivateBook)}
+		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6 {canSwitchPrivateBook && !hasAnotherPrivateBook ? 'md:hidden' : ''}">
+			{#if canSwitchPrivateBook}
+				<PrivateBookBand name={data.privateBook?.memberName} pages={data.privateBook?.pages} currentPartnerId={data.privateBook?.partnerId} active={displayedPrivateBook}>
+					{#snippet toggle()}{@render rateSwitch(false)}{/snippet}
+				</PrivateBookBand>
+			{:else}
+				<PrivateBookBand name={data.privateBook?.memberName} pages={data.privateBook?.pages} currentPartnerId={data.privateBook?.partnerId} />
+			{/if}
 		</div>
 	{/if}
+	{#if canSwitchPrivateBook && privateBookSwitchFailed}
+		<p class="mx-auto w-full max-w-6xl px-4 pt-2 text-sm text-red-700 sm:px-6" role="alert">{m.private_book_switch_failed()}</p>
+	{/if}
+	<span class="sr-only" role="status">{privateBookSwitching ? m.private_book_refreshing_prices() : ''}</span>
 
 	<main class="flex-1" aria-busy={privateBookSwitching} inert={privateBookSwitching}>
 		<PageLoadingBoundary shell="public" padding="px-4 pt-7 pb-10 sm:px-6 sm:pt-10">{@render children()}</PageLoadingBoundary>

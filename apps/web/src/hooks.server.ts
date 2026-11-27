@@ -203,7 +203,10 @@ const handleRequest: Handle = async ({ event, resolve }) => {
 	// 取引先ページ・機械向けの口では会員のセッションを解決しないので見ない（ここで消すと B面を開いただけで状態が外れる）
 	// 管理画面も見ない（運営のセッションで開くので、会員のクッキーを消さない）
 	event.locals.privateBook =
-		machineBookingMcp || isPartnerPath(event.url.pathname) || isAdminPath(event.url.pathname) ? null : await resolvePrivateBook(event);
+		machineBookingMcp || isPartnerPath(event.url.pathname) || isAdminPath(event.url.pathname) ||
+		event.route.id === '/(public)/private-book' || event.route.id === '/(public)/private-book/off'
+			? null
+			: await resolvePrivateBook(event);
 
 	// メンテナンスモード: 有効かつバイパス対象外なら 503 メンテナンスページを返す。
 	// （/admin 配下・運営ログイン中・プレビュートークン一致は isMaintenanceBypassed で通す）

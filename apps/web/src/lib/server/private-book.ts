@@ -33,6 +33,7 @@ import {
   privateBookVerdict,
   type PbCalendarDay,
   type PbOffer,
+  type PbPage,
   type PbPartnerGate,
   type PbRateDay,
   type PrivateBookState
@@ -72,12 +73,12 @@ async function partnerGate(sb: SupabaseClient, partnerId: string): Promise<PbPar
  * 会員 userId がページ partnerId を今使えるかを確かめて状態を返す（クッキーを使わない版・入口と hold で使う）。
  * 使えなければ null。読めないときは例外
  */
-export async function verifyPrivateBook(userId: string, partnerId: string): Promise<PrivateBookState | null> {
+export async function verifyPrivateBook(userId: string, partnerId: string, knownPages?: readonly PbPage[]): Promise<PrivateBookState | null> {
   const sb = service();
   if (!sb) return null;
   const id = parsePbCookie(partnerId);
   if (!id) return null;
-  const [pages, access, partner] = await Promise.all([memberPagesFor(sb, userId), memberPageAccess(sb, id, userId), partnerGate(sb, id)]);
+  const [pages, access, partner] = await Promise.all([knownPages ?? memberPagesFor(sb, userId), memberPageAccess(sb, id, userId), partnerGate(sb, id)]);
   return privateBookVerdict({ cookie: id, isMember: true, pages, access, partner, today: todayJst() });
 }
 

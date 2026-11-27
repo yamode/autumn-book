@@ -47,8 +47,7 @@ import {
 	privateBookFacility,
 	privateBookHold,
 	privateBookOffers,
-	privateBookPlanReferenceMin,
-	privateBookStayCalendar
+	privateBookPlanReferenceMin
 } from '$lib/server/private-book';
 import { mergePbOffers, PB_PRICE_DEPENDENCY } from '$lib/private-book';
 import type { Actions, PageServerLoad } from './$types';
@@ -119,17 +118,9 @@ export const load: PageServerLoad = async (event) => {
 		// 日付未指定は plan_offers が 0 行 → 客室リストは出さず「日付を選択してください」を表示する。
 		// 特別料金はスタッフのプレビュー（販売中でないプラン）には当てない
 		const pbSpecial = pbFac?.special && !preview ? pbFac : null;
-		const [cancellationFallback, referencePrices, calendar, normalOffers, pbOffers, pbRefs] = await Promise.all([
+		const [cancellationFallback, referencePrices, normalOffers, pbOffers, pbRefs] = await Promise.all([
 			plan.cancellationPolicy.rules.length ? Promise.resolve(null) : loadCancellationFallback(locals),
 			!checkin && bookable ? sbPlanReferenceMinPrices(facility.id, adults, plan.id, previewPlanId) : Promise.resolve(null),
-			bookable
-				? // 取れなくてもページは出す（日付パネルは開いたときに /api/stay-calendar で取り直す）。
-				  // 計算が初回だけ遅く anon の 3 秒の上限で打ち切られ、ページ全体が 500 になっていた（2026-11-19）
-				  stayCalendar(facility.id, nights, adults, { planId: plan.id, months: CALENDAR_MONTHS, previewPlanId }).catch((e) => {
-						console.error('[plan] stay calendar', e instanceof Error ? e.message : String(e));
-						return { days: [], through: '', closed: [] as string[] };
-					})
-				: Promise.resolve({ days: [], through: '', closed: [] }),
 			checkin && bookable ? sbPlanOffers(facility.id, checkin, nights, adults, plan.id, previewPlanId) : Promise.resolve([]),
 			checkin && bookable && pbSpecial ? privateBookOffers(pbSpecial, facility.id, checkin, nights, adults, { ratePlanId: plan.id }) : Promise.resolve([]),
 			!checkin && bookable && pbSpecial ? privateBookPlanReferenceMin(pbSpecial, facility.id, adults, plan.id) : Promise.resolve(null)
@@ -137,8 +128,6 @@ export const load: PageServerLoad = async (event) => {
 		// 特別料金を出せる部屋は差し替える（出せない部屋・日程はふつうの料金のまま）
 		const merged = mergePbOffers(normalOffers, pbOffers);
 		const offers = merged.offers;
-		// 日付ピッカーの料金も特別料金に（出せない日はふつうの料金のまま）
-		const stayDays = bookable && pbSpecial ? await privateBookStayCalendar(pbSpecial, facility.id, nights, adults, calendar, { planId: plan.id }) : calendar;
 		if (cancellationFallback) plan = { ...plan, cancellationPolicy: cancellationFallback };
 		if (referencePrices) plan = { ...plan, basePrice: pbRefs?.get(plan.id) ?? referencePrices.get(plan.id) ?? 0 };
 		const roomById = new Map(rooms.map((r) => [r.id, r]));
@@ -160,9 +149,10 @@ export const load: PageServerLoad = async (event) => {
 			rooms: roomRows,
 			pickedRoom,
 			favoriteRoomTypeIds: await favoritesP,
-			calendar: stayDays.days,
-			calendarThrough: stayDays.through,
-			calendarClosed: stayDays.closed,
+			// 日付パネルを開いたときに API から取得する。プラン表示や料金切り替えを待たせない。
+			calendar: undefined,
+			calendarThrough: undefined,
+			calendarClosed: undefined,
 			// プライベートブックの状態のとき、この施設が特別料金か（null＝状態でない）。参考料金を特別料金で出したか
 			privateBook: pbFacilityView(pbState, pbFac),
 			privateBookPartnerId: pbState?.partnerId ?? null,

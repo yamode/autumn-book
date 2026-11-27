@@ -28,8 +28,9 @@ export const GET: RequestHandler = async ({ url, locals, cookies, setHeaders, re
 	}
 	let partnerId: string | null = null;
 	try {
-		const page = choosePrivateBookPage(await memberPagesFor(sb, user.id), url.searchParams.get('page'));
-		const state = page ? await verifyPrivateBook(user.id, page.partnerId) : null;
+		const pages = await memberPagesFor(sb, user.id);
+		const page = choosePrivateBookPage(pages, url.searchParams.get('page'));
+		const state = page ? await verifyPrivateBook(user.id, page.partnerId, pages) : null;
 		partnerId = state?.partnerId ?? null;
 	} catch (e) {
 		console.error('[private-book] 入口でページを確かめられませんでした', e instanceof Error ? e.message : e);

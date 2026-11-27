@@ -2017,6 +2017,7 @@
   "account_bath_new_heading": "從空檔時段預約",
   "private_book_band_switch": "切換至{name}",
   "private_book_switch_failed": "無法切換價格，請再試一次。",
+  "private_book_refreshing_prices": "正在更新價格。",
   "private_book_filter_only": "僅顯示專屬價格方案",
   "private_book_filter_empty": "沒有符合此條件的專屬價格方案。",
   "private_book_special_price": "專屬價格",

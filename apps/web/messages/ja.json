@@ -2017,6 +2017,7 @@
   "account_bath_new_heading": "空いている時間から予約する",
   "private_book_band_switch": "{name}に切り替える",
   "private_book_switch_failed": "切り替えできませんでした。もう一度お試しください。",
+  "private_book_refreshing_prices": "料金を更新しています。",
   "private_book_filter_only": "専用料金のプランのみ",
   "private_book_filter_empty": "この条件で専用料金のプランはありません。",
   "private_book_special_price": "専用料金",

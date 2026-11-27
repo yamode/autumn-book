@@ -2017,6 +2017,7 @@
   "account_bath_new_heading": "Book an available time",
   "private_book_band_switch": "Switch to {name}",
   "private_book_switch_failed": "Could not switch rates. Please try again.",
+  "private_book_refreshing_prices": "Updating rates.",
   "private_book_filter_only": "Special-rate plans only",
   "private_book_filter_empty": "No special-rate plans match these conditions.",
   "private_book_special_price": "Special rate",

@@ -15,7 +15,7 @@
 		nights = 1,
 		minDate = todayStr(),
 		maxDate = addDays(minDate, 365),
-		days = [],
+		days,
 		availableThrough = '',
 		closed = [],
 		daysNights = nights,
@@ -46,7 +46,7 @@
 
 	// 泊数・人数を変えたら、その条件で予約できる日を取り直す（ページのデータや取得元が変わったら捨てる）
 	const loader = new StayDaysLoader();
-	let sourceKey = $derived(source ? `${source.facilityId}|${source.planId ?? ''}|${source.months ?? ''}` : '');
+	let sourceKey = $derived(source ? `${source.facilityId}|${source.planId ?? ''}|${source.months ?? ''}|${Boolean(source.preview)}|${Boolean(source.privateBook)}` : '');
 	$effect(() => {
 		void sourceKey;
 		void days;
@@ -76,9 +76,9 @@
 	});
 
 	// 表示中の泊数に対応する空き日（ページの days か、取り直した結果）。無ければ空（料金を出さず、選べる日も絞らない）
-	const isPageDays = $derived(selectedNights === daysNights && (!source || adultsForDays === (daysAdults ?? source.adults)));
+	const isPageDays = $derived(days !== undefined && selectedNights === daysNights && (!source || adultsForDays === (daysAdults ?? source.adults)));
 	const current = $derived<StayDays | null>(
-		isPageDays ? { days, through: availableThrough, closed } : source ? loader.get(selectedNights, adultsForDays) : null
+		isPageDays ? { days: days ?? [], through: availableThrough, closed } : source ? loader.get(selectedNights, adultsForDays) : null
 	);
 	const priceByDate = $derived(new Map((current?.days ?? []).map((day) => [day.date, day.price])));
 	const closedDates = $derived(new Set(current?.closed ?? []));

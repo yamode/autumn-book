@@ -26,7 +26,7 @@ B面 `/p/[token]` は取引先（旅行会社・法人）専用に戻す。前�
 - 入口 `(public)/private-book/+server.ts`: `?page=` が無ければ `memberPagesFor`（store.ts）から本人→家族の順で選ぶ。クッキーを書いて元の画面（無ければ `/search`）へ。
 - 出口 `/private-book/off`（POST）: クッキーを消して同じ画面へ。hold の中からなら仮押さえを解放。
 - 施設ごと: `loadPartnerContextAt(db, partnerId, facilityId)` で `memberPageBookingOpen` が真の施設だけ特別料金。偽ならその施設はふつうの料金。
-- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、予約手続き以外に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte`）。プラン一覧・詳細では対象会員に ON/OFF を同じ位置に出し、画面の再読み込みなしで料金を更新する。プラン一覧は通常料金も含めて表示し、「専用料金のプランのみ」で絞り込める。詳細の料金欄では適用時に「専用料金」を表示する（v0.360.3）。
+- 表示: `(public)/+layout.server.ts` の privateBookHref を入口 URL に替え、状態（pbActive・ページ名）を返す。状態のときヘッダーの `PRIVATE BOOK` を塗りつぶし、予約手続き以外に帯「○○様のプライベートブック　特別料金でご案内しています ｜ ふつうのご予約に戻る」（部品 `lib/components/booking/PrivateBookBand.svelte`）。プラン一覧・詳細では PC のマイページ左、スマートフォンのヘッダー下に「専用料金」の ON/OFF を出す。押すと表示が先に切り替わり、料金は画面の再読み込みなしで更新する。プラン詳細の料金カレンダーは開いたときに取得する。プラン一覧は通常料金も含めて表示し、「専用料金のプランのみ」で絞り込める。詳細の料金欄では適用時に「専用料金」を表示する（v0.360.3）。
 
 ## 画面ごとの差し替え
 

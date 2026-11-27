@@ -128,13 +128,22 @@ export const load: PageServerLoad = async (event) => {
 		const pbState = locals.privateBook ?? null;
 		const specialOnly = Boolean(pbState) && url.searchParams.get('specialOnly') === '1';
 		if (pbState) event.setHeaders({ 'cache-control': 'private, no-store' });
-		const [allPlans, allRooms, settings, datedOffers, referencePrices, pbFac] = await Promise.all([
+		const privateFacility = privateBookFacility(pbState, facility.id);
+		const privateOffers = checkin
+			? privateFacility.then((fac) => privateBookOffers(fac, facility.id, checkin, nights, adults))
+			: Promise.resolve([]);
+		const privateRefs = checkin
+			? Promise.resolve([])
+			: privateFacility.then((fac) => privateBookReferencePrices(fac, facility.id, adults));
+		const [allPlans, allRooms, settings, datedOffers, referencePrices, pbFac, specialOffers, specialRefs] = await Promise.all([
 			sbListPlansMapped(facility.id),
 			sbListRoomTypesMapped(facility.id),
 			loadEarlyPrepaySettings(facility.id),
 			checkin ? sbPlanOffers(facility.id, checkin, nights, adults) : Promise.resolve([]),
 			checkin ? Promise.resolve([]) : sbRoomPlanReferencePrices(facility.id, adults),
-			privateBookFacility(pbState, facility.id)
+			privateFacility,
+			privateOffers,
+			privateRefs
 		]);
 		// 対象の会員には会員限定プランも出す（列挙系 RPC は普通のプランだけを返すので、プランごとに料金を取る）
 		const memberPlans = await listedSecretPlans(facility.id, viewer);
@@ -162,13 +171,12 @@ export const load: PageServerLoad = async (event) => {
 		let offers = datedOffers;
 		let refs = referencePrices;
 		if (pbFac?.special && checkin) {
-			const merged = mergePbOffers(datedOffers, await privateBookOffers(pbFac, facility.id, checkin, nights, adults));
+			const merged = mergePbOffers(datedOffers, specialOffers);
 			offers = merged.offers;
 			for (const k of merged.specialKeys) specialKeys.add(k);
 		} else if (pbFac?.special) {
-			const special = await privateBookReferencePrices(pbFac, facility.id, adults);
-			const byKey = new Map(special.map((r) => [`${r.ratePlanId}|${r.roomTypeId}`, r]));
-			refs = [...referencePrices.filter((r) => !byKey.has(`${r.ratePlanId}|${r.roomTypeId}`)), ...special];
+			const byKey = new Map(specialRefs.map((r) => [`${r.ratePlanId}|${r.roomTypeId}`, r]));
+			refs = [...referencePrices.filter((r) => !byKey.has(`${r.ratePlanId}|${r.roomTypeId}`)), ...specialRefs];
 			for (const k of byKey.keys()) specialKeys.add(k);
 		}
 		const isSpecial = (p: { ratePlanId: string; roomTypeId: string }) => specialKeys.has(`${p.ratePlanId}|${p.roomTypeId}`);
