@@ -5,6 +5,7 @@
 	// 時間帯（日付×午前/午後）ごとに 1 枠ずつ選んで、1 回の「予約する」でまとめて取れる（2026-11-15。以前は 1 枠ずつ確定が要った）。
 	// 空き・上限・締切・料金・取消期限の正は RPC（/r/bath と同じ）。ここで外すのは画面の見た目だけ。
 	import { enhance } from '$lib/enhance';
+	import BathExtraQuota from '$lib/components/BathExtraQuota.svelte';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { slashDate } from '$lib/precheckin';
@@ -38,8 +39,10 @@
 			[false, true]
 				.map((morning) => {
 					const all = d.slots.filter((s) => isMorning(s.from) === morning);
-					const done = mine.some((r) => r.date === d.date && isMorning(r.from) === morning) || (all.length > 0 && all.every((s) => s.limit_reached === true));
-					return { key: `${d.date}|${morning ? 'am' : 'pm'}`, date: d.date, morning, done, any: all.length > 0, slots: all.filter(bookable) };
+					const done = all.every((s) => typeof s.limit_reached === 'boolean')
+						? all.every((s) => s.limit_reached)
+						: mine.some((r) => r.date === d.date && isMorning(r.from) === morning);
+					return { key: `${d.date}|${morning ? 'am' : 'pm'}`, date: d.date, morning, done, any: all.length > 0, all, slots: all.filter(bookable) };
 				})
 				// 取ってある時間帯は上の「ご予約済みの時間」に出ているので、ここには出さない
 				.filter((g) => g.any && !g.done)
@@ -143,7 +146,7 @@
 			{#if baths.length > 1}
 				<label class="block">
 					<span class="text-stone-600">{m.ci_bath_pick_bath()}</span>
-					<select class={selectCls} value={unit?.bath_id ?? ''} onchange={(e) => (pickedBath = e.currentTarget.value)}>
+					<select class={selectCls} value={unit?.bath_id ?? ''} onchange={(e) => { pickedBath = e.currentTarget.value; picks = {}; }}>
 						{#each baths as b (b.bath_id ?? '')}
 							<option value={b.bath_id ?? ''}>{b.bath_name}</option>
 						{/each}
@@ -164,6 +167,7 @@
 				{#each groups as g (g.key)}
 					<fieldset>
 						<legend class="font-medium text-stone-700">{dayLabel(g.date, g.morning)}</legend>
+						<BathExtraQuota slots={g.all} />
 						{#if g.slots.length === 0}
 							<p class="mt-1 text-xs text-stone-500">{m.ci_bath_no_slots()}</p>
 						{:else}

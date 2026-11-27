@@ -105,10 +105,12 @@
 
 	const dateHref = (d: string) => {
 		const p = new URLSearchParams($page.url.search);
+		p.delete('limitStay');
 		if (d) p.set('date', d);
 		else p.delete('date');
 		return `?${p.toString()}`;
 	};
+	const quotaQuery = (stayId: string) => new URLSearchParams({ limitStay: stayId, ...(data.date ? { date: data.date } : {}) });
 </script>
 
 <svelte:head><title>貸切風呂 ｜ 山人管理</title></svelte:head>
@@ -336,10 +338,9 @@
 	<!-- ============ QR コードのテスト ============ -->
 	<section class="mt-5 rounded-xl border border-stone-200 bg-white">
 		<header class="border-b border-stone-200 px-4 py-3">
-			<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="qr" class="h-4 w-4 shrink-0 text-stone-500" />QR コードのテスト</h2>
+			<h2 class="flex items-center gap-2 text-sm font-semibold text-stone-800"><AdminIcon name="qr" class="h-4 w-4 shrink-0 text-stone-500" />滞在予約ごとの設定</h2>
 			<p class="mt-1 text-xs text-stone-500">
-				実際のご予約の QR を出します。スマホで読むと、そのお部屋として予約フォームまで通せます。<br />
-				同じご予約なら何度押しても同じ QR です（館内図を刷り直しても紙が生き続けるのと同じ仕組み）。
+				日付を選び、対象のお部屋の貸切風呂の予約上限を変更したり、客室案内のQRを表示したりできます。
 			</p>
 		</header>
 
@@ -373,7 +374,8 @@
 							{#if s.token}
 								<span class="inline-flex items-center rounded-full bg-stone-50 px-2 py-0.5 text-[11px] font-medium text-stone-500 ring-1 ring-stone-200 ring-inset">発行済み</span>
 							{/if}
-							<form method="POST" action="?/issueQr" use:enhance class="ml-auto">
+							<a href={`?${quotaQuery(s.stay_id)}#bath-quota`} class="ml-auto inline-flex min-h-9 items-center rounded-lg border border-stone-300 px-3 py-1 text-xs text-stone-700 hover:bg-stone-50">予約上限を設定</a>
+							<form method="POST" action="?/issueQr" use:enhance>
 								<input type="hidden" name="stayId" value={s.stay_id} />
 								<input type="hidden" name="roomCode" value={s.room_code} />
 								<input type="hidden" name="guestName" value={s.guest_name} />
@@ -388,6 +390,44 @@
 						</li>
 					{/each}
 				</ul>
+			{/if}
+
+			{#if data.quotaStay}
+				<section id="bath-quota" class="mt-4 scroll-mt-6 rounded-xl border border-stone-200 bg-stone-50 p-4">
+					<h3 class="font-semibold">貸切風呂の予約上限</h3>
+					<p class="mt-1 text-sm text-stone-700">{data.quotaStay.room_code}　{data.quotaStay.guest_name}　{data.quotaStay.check_in_date}〜{data.quotaStay.check_out_date}</p>
+					<p class="mt-1 text-xs text-stone-500">時間帯ごとに追加する枠数を保存します。お客様は空いている時刻から選べます。</p>
+					{#if form?.quotaError || data.quotaLoadError}
+						<p role="alert" class="mt-2 text-sm text-rose-800">{form?.quotaError ?? data.quotaLoadError}</p>
+					{:else if form?.quotaSaved}
+						<p role="status" class="mt-2 text-sm text-emerald-800">予約上限を保存しました。</p>
+					{/if}
+					{#if !data.quotas.length && !data.quotaLoadError}
+						<p class="mt-3 text-sm text-stone-500">設定できる時間帯がありません。</p>
+					{/if}
+					{#each data.quotas as q (`${q.bath_id}|${q.bath_date}|${q.range_from}|${q.range_to}`)}
+						<form method="POST" action={`?/saveQuota&${quotaQuery(data.quotaStay.stay_id)}`} use:enhance class="mt-3 flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3 text-sm">
+							<input type="hidden" name="stayId" value={data.quotaStay.stay_id} />
+							<input type="hidden" name="bathId" value={q.bath_id ?? ''} />
+							<input type="hidden" name="bathDate" value={q.bath_date} />
+							<input type="hidden" name="rangeFrom" value={q.range_from} />
+							<input type="hidden" name="rangeTo" value={q.range_to} />
+							<div class="min-w-0 flex-1">
+								<span class="block font-medium">{q.bath_name}　{q.bath_date}　{q.range_from}〜{q.range_to}</span>
+								<span class="text-xs text-stone-600">通常 {q.base_limit}枠・現在の上限 {q.base_limit + q.extra}枠</span>
+							</div>
+							{#key q.extra}
+								<select name="extra" value={q.extra} aria-label={`${q.bath_name} ${q.bath_date} ${q.range_from}の追加枠`} class="min-h-10 rounded-lg border border-stone-300 bg-white px-2">
+									<option value={0}>追加なし</option>
+									{#each Array.from({ length: 10 }, (_, i) => i + 1) as n (n)}
+										<option value={n}>＋{n}枠</option>
+									{/each}
+								</select>
+							{/key}
+							<button type="submit" class="min-h-10 rounded-lg bg-stone-900 px-3 text-white hover:bg-stone-700">保存する</button>
+						</form>
+					{/each}
+				</section>
 			{/if}
 
 			{#if form?.qr}

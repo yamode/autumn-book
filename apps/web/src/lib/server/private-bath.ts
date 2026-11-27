@@ -23,10 +23,21 @@ export type BathSlot = {
 	 * 古い DB では来ないので、来ないときは画面側の推測（午前/午後）に任せる。
 	 */
 	limit_reached?: boolean;
+	extra_quota?: { from: string; to: string; limit: number; booked: number; remaining: number } | null;
 };
 
 export type BathDay = { date: string; slots: BathSlot[] };
 export type BathUnit = { bath_id: string | null; bath_name: string; days: BathDay[] };
+
+export type AdminBathQuota = {
+	bath_id: string | null;
+	bath_name: string;
+	bath_date: string;
+	range_from: string;
+	range_to: string;
+	base_limit: number;
+	extra: number;
+};
 
 export type BathReservation = {
 	id: string;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import BathExtraQuota from '$lib/components/BathExtraQuota.svelte';
 	// マイページの貸切風呂の事前予約（2026-11-22）。
 	// 館内向けの /r/bath（STEP1〜3 のフォーム）ではなく、マイページの見た目で
 	//   日付を選ぶ → 時間のボタンを押す → 「この時間で予約する」
@@ -210,6 +211,7 @@
 				<!-- 時間 -->
 				{#if day}
 					<div class="mt-4">
+						<BathExtraQuota slots={day.slots} />
 						<p class="text-xs text-stone-500">{m.bath_label_time()}</p>
 						<div class="mt-1.5 grid grid-cols-3 gap-2 sm:grid-cols-4" role="radiogroup" aria-label={m.bath_label_time()}>
 							{#each day.slots as s (s.from)}

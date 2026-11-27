@@ -11,6 +11,7 @@
 //   館内図に刷る前に、スマホで読んで /r/bath まで実際に通せる。
 //   発行は get-or-create なので、何度押しても同じ QR になる。
 import { fail } from '@sveltejs/kit';
+import { dev } from '$app/environment';
 import { facilities } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import { AUTH_MODE, createSupabaseServerClient } from '$lib/server/auth';
@@ -23,6 +24,7 @@ import {
 	sbGetOrIssueStayToken,
 	sbListBookableStays,
 	sbUploadBathPhoto,
+	type AdminBathQuota,
 	type BookableStay
 } from '$lib/server/private-bath';
 import {
@@ -53,6 +55,7 @@ const LANGS = ['ja', 'en', 'zh-TW'] as const;
 type Lang = (typeof LANGS)[number];
 
 const useSupabaseAdmin = DATA_SOURCE === 'supabase' && AUTH_MODE === 'supabase';
+const DEBUG = dev;
 const parseLang = (v: unknown): Lang =>
 	(LANGS as readonly string[]).includes(String(v ?? '')) ? (String(v) as Lang) : 'ja';
 
@@ -95,6 +98,8 @@ function messageOf(e: unknown): string {
 	const m = e instanceof Error ? e.message : String(e);
 	if (m.includes('forbidden')) return 'この施設を編集する権限がありません。';
 	if (m.includes('not_authenticated')) return 'ログインし直してください。';
+	if (m.includes('invalid_bath_period')) return 'この時間帯の設定が変わりました。画面を開き直してください。';
+	if (m.includes('stay_not_found')) return 'この施設で対象の予約が見つかりません。';
 	return m;
 }
 
@@ -126,6 +131,17 @@ export const load: PageServerLoad = async (event) => {
 		staysLoad,
 		pricingLoad
 	]);
+	const quotaStay = stays.find((stay) => stay.stay_id === event.url.searchParams.get('limitStay')) ?? null;
+	let quotas: AdminBathQuota[] = [];
+	let quotaLoadError: string | null = null;
+	if (client && quotaStay) {
+		const { data: rows, error: quotaError } = await client.schema('book').rpc('admin_private_bath_quotas', {
+			p_facility: facilityUuid,
+			p_stay: quotaStay.stay_id
+		});
+		if (quotaError) quotaLoadError = messageOf(quotaError.message);
+		else quotas = (rows ?? []) as AdminBathQuota[];
+	}
 
 	return {
 		pricing,
@@ -137,6 +153,9 @@ export const load: PageServerLoad = async (event) => {
 		loadError: error,
 		stays,
 		staysError,
+		quotaStay,
+		quotas,
+		quotaLoadError,
 		date,
 		live: useSupabaseAdmin,
 		facilityName: currentFacility.name
@@ -157,6 +176,39 @@ function contentFromForm(fd: FormData): BathContent {
 }
 
 export const actions: Actions = {
+	saveQuota: async (event) => {
+		const denied = denyIfNotStaff(event);
+		if (denied) return denied;
+		if (!useSupabaseAdmin) return fail(503, { quotaError: NOT_LIVE });
+
+		const fd = await event.request.formData();
+		const stayId = String(fd.get('stayId') ?? '');
+		const bathId = String(fd.get('bathId') ?? '');
+		const date = String(fd.get('bathDate') ?? '');
+		const from = String(fd.get('rangeFrom') ?? '');
+		const to = String(fd.get('rangeTo') ?? '');
+		const extra = String(fd.get('extra') ?? '');
+		const isUuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+		const isTime = /^\d{1,2}:\d{2}$/;
+		if (!isUuid.test(stayId) || (bathId && !isUuid.test(bathId)) || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+			|| !isTime.test(from) || !isTime.test(to) || !/^(?:[0-9]|10)$/.test(extra)) {
+			return fail(400, { quotaError: '予約・時間帯・追加枠数を確認してください。' });
+		}
+
+		const { error } = await createSupabaseServerClient(event).schema('book').rpc('admin_save_private_bath_quota', {
+			p_facility: facilityUuidOf(currentFacilityOf(event).id),
+			p_stay: stayId,
+			p_bath: bathId || null,
+			p_date: date,
+			p_from: from,
+			p_to: to,
+			p_extra: Number(extra)
+		});
+		if (DEBUG) console.info('[bath-quota]', { saved: !error, extra: Number(extra), errorCode: error?.code });
+		if (error) return fail(400, { quotaError: messageOf(error.message) });
+		return { quotaSaved: true };
+	},
+
 	// 料金設定（有料／無料・1枠の料金・無料にする経路）。
 	// 「無料」を選んだら料金0円で保存する（PMS と DB は 0円＝無料として扱う）。
 	// 経路の選択は残すので、有料に戻したときに選び直さなくてよい。

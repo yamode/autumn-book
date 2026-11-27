@@ -9,6 +9,7 @@
 	// ただし入力欄が無いと「部屋も名前も入れずに大丈夫？」と不安になるので、STEP1 の先頭に
 	// お名前・お部屋を表示専用で出しておく。
 	import { enhance } from '$lib/enhance';
+	import BathExtraQuota from '$lib/components/BathExtraQuota.svelte';
  import {tick, untrack} from 'svelte';
  import type {SubmitFunction} from '@sveltejs/kit';
 	import * as m from '$lib/paraglide/messages';
@@ -389,6 +390,7 @@
 						</select>
 					</label>
 
+					<BathExtraQuota slots={bath?.days.find((d) => d.date === date)?.slots ?? []} />
 					<label class="block">
 						<span class="text-xs text-stone-400">{m.bath_label_time()}</span>
 						<select
