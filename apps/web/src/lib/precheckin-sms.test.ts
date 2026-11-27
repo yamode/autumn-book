@@ -81,7 +81,7 @@ describe('SMS 本文', () => {
 	it.each([
 		['山人-yamado-', '0197-82-2222'],
 		['山人-oga-', '0185-47-7776']
-	])('%s: 1 通目は案内だけで完結し 1 通（70 字）以内、2 通目は URL と電話で英数字だけ（1 通）', (name, tel) => {
+	])('%s: 1 通目は案内だけで完結し 1 通（70 字）以内、2 通目は URL と電話・受付開始時刻', (name, tel) => {
 		const p = buildPrecheckinSmsPair({ facilityName: name, checkIn: '2026-11-14', url: URL_, phone: tel, now: NOW });
 		expect(p.message).toBe(`【${name}】\n＜事前チェックインのご案内＞\nご本人確認、食事時間、貸切風呂のお申込みが可能です。\nお手続きは下記URLから。`);
 		// 1 通の上限（70 字）に収まる（山人-yamado- で 68 字）
@@ -89,8 +89,8 @@ describe('SMS 本文', () => {
 		expect(smsSegments(p.message)).toBe(1);
 		expect(p.message).not.toContain('http');
 		// URL と電話番号の間は空白の行（くっついて見えないように）
-		expect(p.link).toBe(`${URL_}\n\nTEL ${tel}`);
-		expect(smsSegments(p.link)).toBe(1);
+		expect(p.link).toBe(`${URL_}\n\nTEL ${tel} (10:00〜)`);
+		expect(smsSegments(p.link)).toBe(2);
 	});
 	it('前日以前に送っても文面は同じ。電話が無ければ 2 通目は URL だけ', () => {
 		const p = buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-15', url: URL_, phone: null, now: NOW });

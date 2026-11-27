@@ -96,10 +96,10 @@ export type PrecheckinSmsInput = {
  *     お手続きは下記URLから。
  *     ※ 山人-yamado- で 68 字（改行も 1 字と数える）。上限の 70 字まで残り 2 字なので、文面を変えるときは数え直す。
  *       施設名が長い施設（70 字を超える）は、分かれて届く。
- *   2 通目（link）: URL と問い合わせの電話。英数字だけにして 1 通（160 字）に収める（日本語を混ぜると 70 字になり 2 通に割れる）
+ *   2 通目（link）: URL と問い合わせの電話。電話番号の後ろに受付開始時刻を付ける。波ダッシュを含むため連結SMSになる場合がある。
  *     https://book.yamado.app/ci/<token>
  *     （空白の行。URL と電話番号がくっついて見えないように・2026-11-15）
- *     TEL 0197-82-2222
+ *     TEL 0197-82-2222 (10:00〜)
  * 文面に日付の言葉（本日・当日）は入れないので、いつ送っても同じ文面（checkIn・now は使わない。呼び出し側のために受け取るだけ）。
  */
 export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string; link: string } {
@@ -107,7 +107,7 @@ export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string
 	const what = i.bath === false ? 'ご本人確認、食事時間' : 'ご本人確認、食事時間、貸切風呂';
 	const message = `【${i.facilityName.trim()}】\n＜事前チェックインのご案内＞\n${what}のお申込みが可能です。\nお手続きは下記URLから。`;
 	const tel = (i.phone ?? '').trim();
-	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel}` : ''}`;
+	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel} (10:00〜)` : ''}`;
 	return { message, link };
 }
 
