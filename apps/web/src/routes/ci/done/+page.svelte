@@ -41,28 +41,30 @@
 		</ul>
 	{/if}
 
-	<h3 class="mt-4 text-xs font-semibold text-stone-500">{m.ci_step_bath()}</h3>
-	{#if bathRows.length}
-		<ul class="mt-1 divide-y divide-stone-100">
-			{#each bathRows as r (r.key)}
-				<li class="flex items-center justify-between py-1.5">
-					<span>{slashDate(r.date)}{#if r.bathName}<span class="ml-1 text-stone-500">{r.bathName}</span>{/if}</span>
-					<span class="font-medium">{r.from}{r.to ? `–${r.to}` : ''}</span>
-				</li>
-			{/each}
-		</ul>
+	{#if !canBookBathInPrecheckin(ctx)}
+		<p class="mt-4 text-stone-500">{m.ci_bath_inroom_only()}</p>
 	{:else}
-		<p class="mt-1 text-stone-500">
-			{#if !canBookBathInPrecheckin(ctx)}
-				{m.ci_bath_inroom_only()}
-			{:else if ctx.bookingCode !== DEMO_PRECHECKIN_CODE && ciBathBeforeDay(ctx.checkIn)}
-				<!-- 事前チェックインからの貸切風呂の予約は、チェックイン当日から（2026-11-23） -->
-				{m.ci_bath_before_day()}
-			{:else}
-				{m.ci_meal_unset()}
-				<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
-			{/if}
-		</p>
+		<h3 class="mt-4 text-xs font-semibold text-stone-500">{m.ci_step_bath()}</h3>
+		{#if bathRows.length}
+			<ul class="mt-1 divide-y divide-stone-100">
+				{#each bathRows as r (r.key)}
+					<li class="flex items-center justify-between py-1.5">
+						<span>{slashDate(r.date)}{#if r.bathName}<span class="ml-1 text-stone-500">{r.bathName}</span>{/if}</span>
+						<span class="font-medium">{r.from}{r.to ? `–${r.to}` : ''}</span>
+					</li>
+				{/each}
+			</ul>
+		{:else}
+			<p class="mt-1 text-stone-500">
+				{#if ctx.bookingCode !== DEMO_PRECHECKIN_CODE && ciBathBeforeDay(ctx.checkIn)}
+					<!-- 事前チェックインからの貸切風呂の予約は、チェックイン当日から（2026-11-23） -->
+					{m.ci_bath_before_day()}
+				{:else}
+					{m.ci_meal_unset()}
+					<a href={localizeHref('/ci/bath')} class="ml-1 text-stone-700 underline">{m.ci_bath_reserve()}</a>
+				{/if}
+			</p>
+		{/if}
 	{/if}
 
 	{#if ctx.editable}
