@@ -1,5 +1,5 @@
 <script lang="ts">
-  // 取引先の予約入力（2026-10-11 に +page.svelte から移した・中身は変えていない）。特別会員の専用ページは MemberBookConfirm.svelte（+page.svelte で切り替え）
+  // 取引先の予約入力（2026-10-11 に +page.svelte から移した・中身は変えていない）。特別会員の専用ページには確認画面が無い（2026-11-27〜・プラン詳細から直接 /booking/hold へ）
   import { partnerTitle } from '$lib/partner-title';
   import { untrack } from 'svelte';
   import { adminFeeNotice } from '$lib/cancel-admin-fee';

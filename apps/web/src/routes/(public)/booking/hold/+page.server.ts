@@ -53,6 +53,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { appliedCancellationPolicy, loadCancellationFallback } from '$lib/server/booking-cancellation';
 import { canUseFavoriteRooms } from '$lib/member-benefits';
 import { viewerOf } from '$lib/server/secret-plans';
+import { memberBenefitLines, rankLabelOf, type MemberPerkSnapshot } from '$lib/partner-member-page';
 
 function demoHoldFor(locals: App.Locals, id: string) {
 	const hold = getHold(id);
@@ -89,6 +90,19 @@ const PREVIEW_CONFIRM_DENIED = 'プレビュー中のため、予約は確定で
 // 会員ランク別の還元率（book.member_ranks 相当。ポイント獲得見込みの表示に使用）
 // 特別会員（platinum）はゴールドと同じ還元率（2026-11-23）
 const REWARD_RATE: Record<string, number> = { standard: 0.01, silver: 0.02, gold: 0.03, platinum: 0.03 };
+
+/** 束の部屋ごとの専用特典を 1 つの並びにする（同じ特典は 1 回だけ・id が無ければ題名で見分ける） */
+function memberPagePerksOf(list: readonly (MemberPerkSnapshot[] | null)[]): { id: string; title: string; description: string; imageUrl: string }[] {
+	const seen = new Set<string>();
+	const out: { id: string; title: string; description: string; imageUrl: string }[] = [];
+	for (const p of list.flatMap((l) => l ?? [])) {
+		const key = p.id ?? `t:${p.title}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push({ id: key, title: p.title, description: p.description, imageUrl: '' });
+	}
+	return out;
+}
 
 export const load: PageServerLoad = async (event) => {
 	const { url, locals, cookies } = event;
@@ -238,7 +252,22 @@ export const load: PageServerLoad = async (event) => {
 				? {
 						pageName: hold.memberPage.pageName,
 						via: hold.memberPage.via,
-						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref
+						backHref: holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)).backHref,
+						// 2026-11-27〜 専用ページの確認画面（/p/<token>/book）を通さずここへ来るので、確認画面で見せていた中身をここで見せる。
+						// 帯の「○○ 様のプライベートブック」（B面のヘッダーと同じくログイン中の会員の名前。取れなければ名前なし）
+						memberName: member?.name || null,
+						// このご予約に付く専用特典（全室の写しを重ねずに並べる・束に写した値）
+						perks: memberPagePerksOf(hold.rooms.map((r) => r.memberPerks ?? null)),
+						// 会員特典（還元率・キャンセル方式・ポイント利用可）。B面の MemberBenefitList と同じ行
+						benefits:
+							member && memberRank
+								? {
+										rankLabel: rankLabelOf(memberRank, null),
+										lines: memberBenefitLines(rankLabelOf(memberRank, null), member.rewardRate, hold.memberPage.cancelPolicyMode)
+									}
+								: null,
+						// 専用ページのキャンセル規定（「会員グレードの規定」の方式では使わないので null）
+						cancelRules: hold.memberPage.cancelPolicyMode === 'rank' ? null : hold.memberPage.cancelRules
 					}
 				: null
 		};
@@ -309,7 +338,15 @@ export const load: PageServerLoad = async (event) => {
 		memberOnsiteHint: memberOnsiteHint(basePlan.payment, isMember),
 		...holdNav(cookies, hold.id, planHrefOf(facility, plan, hold)),
 		// デモ（store.ts）には特別会員の専用ページ経由の束は無い
-		memberPage: null as { pageName: string; via: 'self' | 'family'; backHref: string } | null,
+		memberPage: null as {
+			pageName: string;
+			via: 'self' | 'family';
+			backHref: string;
+			memberName: string | null;
+			perks: { id: string; title: string; description: string; imageUrl: string }[];
+			benefits: { rankLabel: string; lines: string[] } | null;
+			cancelRules: import('$lib/partner-member-page').MemberCancelRule[] | null;
+		} | null,
 		needsTurnstile: !viewerIsMember(locals),
 		member: member
 			? {

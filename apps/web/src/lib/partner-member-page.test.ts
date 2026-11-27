@@ -303,3 +303,24 @@ describe('memberPagePlansComingSoon', () => {
     expect(memberPagePlansComingSoon(page({ kind: 'agent' }), T)).toBe(false);
   });
 });
+
+import { memberBookRedirect } from './partner-member-page';
+describe('memberBookRedirect（確認画面の GET はプラン詳細を開いた料金カレンダーへ）', () => {
+  it('日程・人数・室数・施設とプラン詳細の印を引き継ぐ', () => {
+    const q = new URLSearchParams({ room: 'TW', plan: 'P1', name: '基本■2食', date: '2026-12-24', nights: '2', guests: '3', rooms: '2', f: 'oga', from: '/p/tok/plans' });
+    const u = new URL(memberBookRedirect('tok', q), 'https://x');
+    expect(u.pathname).toBe('/p/tok/calendar');
+    expect(u.searchParams.get('date')).toBe('2026-12-24');
+    expect(u.searchParams.get('nights')).toBe('2');
+    expect(u.searchParams.get('guests')).toBe('3');
+    expect(u.searchParams.get('rooms')).toBe('2');
+    expect(u.searchParams.get('f')).toBe('oga');
+    expect(u.searchParams.get('detail')).toBe('TW|P1|基本■2食');
+    expect(u.searchParams.has('from')).toBe(false);
+  });
+  it('形の合わない値は捨てる・何も無ければ料金カレンダーだけ', () => {
+    expect(memberBookRedirect('tok', new URLSearchParams())).toBe('/p/tok/calendar');
+    const u = new URL(memberBookRedirect('tok', new URLSearchParams({ date: 'x', nights: '0', guests: 'a', f: '../x', room: 'a b', plan: 'P' })), 'https://x');
+    expect([...u.searchParams.keys()]).toEqual([]);
+  });
+});

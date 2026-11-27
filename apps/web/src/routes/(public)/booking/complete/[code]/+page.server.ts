@@ -1,7 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { bookings, facilityById, planById, roomTypeById } from '$lib/server/store';
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { getLastBooking, sbFacilityByUuid, sbMyBookingFavoriteRooms, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
+import { getLastBooking, sbFacilityByUuid, sbMyBookingFavoriteRooms, sbMyProfile, sbRoomTypeByUuid, sbPlanByUuid } from '$lib/server/supabase-data';
 import { MEMBER_SUPABASE, createSupabaseServerClient } from '$lib/server/auth';
 import type { Booking } from '$lib/types';
 import { memberPageHrefFor } from '$lib/server/partners/member-bookings';
@@ -73,6 +73,11 @@ export const load: PageServerLoad = async (event) => {
 				? await sbMyBookingFavoriteRooms(createSupabaseServerClient(event), raw.code).catch(() => [])
 				: [];
 		const memberPageUrl = raw.memberPage ? await memberPageHrefFor(raw.memberPage.partnerId, raw.code).catch(() => null) : null;
+		// プライベートブックの帯の「○○ 様」（B面のヘッダーと同じくログイン中の会員の名前）。取れなければ名前なしの帯
+		const memberPageMemberName =
+			raw.memberPage && MEMBER_SUPABASE && locals.user?.role === 'member'
+				? await sbMyProfile(createSupabaseServerClient(event)).then((p) => p.name || null, () => null)
+				: null;
 		return {
 			booking,
 			facility,
@@ -88,6 +93,7 @@ export const load: PageServerLoad = async (event) => {
 			isMember: locals.user?.role === 'member',
 			memberPageUrl,
 			memberPageName: raw.memberPage?.pageName ?? null,
+			memberPageMemberName,
 			favoriteRooms
 		};
 	}
@@ -109,6 +115,7 @@ export const load: PageServerLoad = async (event) => {
 		isMember: locals.user?.role === 'member',
 		memberPageUrl: null as string | null,
 		memberPageName: null as string | null,
+		memberPageMemberName: null as string | null,
 		favoriteRooms: [] as { roomIndex: number; name: string; designated: boolean }[]
 	};
 };
