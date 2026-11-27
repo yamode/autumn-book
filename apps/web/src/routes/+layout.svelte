@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import DebugPanel from '$lib/components/DebugPanel.svelte';
 	import AnalyticsConsent from '$lib/components/AnalyticsConsent.svelte';
+	import LiveBeacon from '$lib/components/LiveBeacon.svelte';
 	import PageLoadingBoundary from '$lib/components/PageLoadingBoundary.svelte';
 	import { previewRankName } from '$lib/rank-name';
 	import { RANK_CODES } from '$lib/plan-access';
@@ -38,5 +39,6 @@
 <PageLoadingBoundary shell="root">{@render children()}</PageLoadingBoundary>
 {#if !page.data.memberPreview && !isPartnerPortal && !isBookingMcpConsent && !isLive}
 	<AnalyticsConsent />
+	<LiveBeacon />
 	<DebugPanel />
 {/if}

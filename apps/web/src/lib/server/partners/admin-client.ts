@@ -84,6 +84,8 @@ export function partnerServiceClient(): SupabaseClient | null {
 // 例外その16（2026-11-27・docs/autumn-live.md §4）: Autumn Live の入場の口（lib/server/live-session.ts・POST /live/session）。
 //   端末の表 book.live_devices / live_device_codes と book.live_device_* は service_role だけに grant している。
 //   端末の Ed25519 の署名・時刻を確かめた後に触る。業務 PC は Bearer の access_token を auth.getUser(jwt) で確かめ、admin / staff・停止なしのときだけ通す。
+//   人の流れ（routes/api/live/beacon・book.live_beacon）と Live の画面のデータ（routes/live/api/snapshot・book.live_snapshot_*）も同じ例外。
+//   信号は同意・Origin・運営・ボット・回数を確かめてから記録し、画面のデータは入場券（/live の関所）を確かめてから読む。
 // 例外その17（2026-11-27・docs/private-book.md）: プライベートブック（公式サイトの中の特別料金・lib/server/private-book.ts）。
 //   検証済みの会員セッションの id で rms_member_pages_for / rms_member_page_access を引き、そのページを今使えると確かめてから
 //   専用ページの料金・施設設定を読み、特別会員の束（create_member_page_hold_group・RPC でも対象者を確かめる）を作る。クッキーは信じない。

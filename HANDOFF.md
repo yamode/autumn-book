@@ -1,3 +1,17 @@
+## Autumn Live を実データにつなぐ（2026-11-27・v0.358.0）
+
+- 人の流れ: 公開画面から `POST /api/live/beacon`（`components/LiveBeacon.svelte`・根のレイアウトに 1 つ）。匿名の番号（タブごとの乱数）・段・施設・流入元だけ。計測の同意が granted のときだけ・運営のログイン中とボットは数えない。保存は `book.live_sessions`（70 日で消す）
+- 段と画面・流入元の決め方は `docs/autumn-live.md` §7.1（`lib/live-beacon.ts`）
+- Live の画面（`/live`）: 試作 v13 を実データに（`lib/live-screen/engine.ts`・`model.ts`）。`/live/api/snapshot` を 2.5 秒ごと。粒は実在の人（前回と比べて動かす・来た・離れた）
+- 数字: オンハンドは全チャネル（`core.stays`＋`pms.stay_nights` の室料＋食事）・比較は前年同月の実績（過去の予約の作成日が 2026-07 の取り込み日のため「前年の同じ日時点」は出せない）。予約・予約率・会員は Book のもの。いつもの幅は同じ曜日が 4 週たまるまで「集計中」
+- DB: autumn-shared `20261127012705_book_live_sessions.sql`（本番適用済み）
+
+### テストチェックリスト（Autumn Live の実データ）
+
+- [ ] Book の公開画面を開くと、Live の「いま見ている人」が 1 増え、粒が段を進む（メンテナンス中は通り抜けできる人だけ）
+- [ ] 画面を閉じると 3 分以内に粒が空へ上って消える
+- [ ] オンハンドの月の棒と前年の横線が出る・Book で予約すると金の輪と知らせ
+
 ## アンバサダー会員（招待コード・紹介実績・2026-11-27・v0.355.0／autumn-shared v13.61.0）
 
 - 設計と決定: `docs/ambassador.md`（`vip-member-page.md` §12 を置き換え）。特別会員（VIP）・会員ランクとは別の制度
