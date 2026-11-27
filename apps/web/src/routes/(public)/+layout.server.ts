@@ -37,7 +37,7 @@ export const load: LayoutServerLoad = async (event) => {
 		privateBookHref: available ? PB_ENTRY_PATH : null,
 		// 状態（帯・ヘッダーの塗りつぶし・かごの保存キー）。状態でなければ null
 		privateBook: state
-			? { partnerId: state.partnerId, pageName: state.pageName, memberName: user?.name && user.name !== 'ゲスト' ? user.name : null, pages: state.pages }
+			? { partnerId: state.partnerId, pageName: state.pageName, pages: state.pages }
 			: null
 	};
 };

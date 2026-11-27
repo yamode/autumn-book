@@ -9,8 +9,7 @@
 	import { isPlansListPath } from '$lib/booking-nav';
 	import AccountMenu from '$lib/components/AccountMenu.svelte';
 	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
-	import PrivateBookBand from '$lib/components/booking/PrivateBookBand.svelte';
-	import { PB_ENTRY_PATH, PB_EXIT_PATH, PB_PRICE_DEPENDENCY } from '$lib/private-book';
+	import { PB_ENTRY_PATH, PB_EXIT_PATH, PB_PRICE_DEPENDENCY, privateBookEntryHref } from '$lib/private-book';
 	import { deLocalizeUrl, localizeHref } from '$lib/paraglide/runtime';
 	import * as m from '$lib/paraglide/messages';
 
@@ -72,7 +71,7 @@
 		}
 		return null;
 	});
-	// プライベートブックの入口（戻り先＝いまの画面）。予約入力・完了の画面は帯を自分で出す（専用ページ経由の予約のとき）
+	// プライベートブックの入口（戻り先＝いまの画面）。
 	let privateBookEntry = $derived(
 		data.privateBookHref ? `${data.privateBookHref}?back=${encodeURIComponent(page.url.pathname + page.url.search)}` : null
 	);
@@ -82,25 +81,36 @@
 	const privateBookSwitching = $derived(requestedPrivateBook !== null);
 	const serverPrivateBook = $derived(Boolean(data.privateBook));
 	const displayedPrivateBook = $derived(requestedPrivateBook ?? serverPrivateBook);
-	const hasAnotherPrivateBook = $derived(data.privateBook?.pages.some((p) => p.partnerId !== data.privateBook?.partnerId) ?? false);
+	const selectableRatePages = $derived(data.privateBook && data.privateBook.pages.length > 1 ? data.privateBook.pages : []);
 	const canSwitchPrivateBook = $derived(privateBookToggle && Boolean(data.privateBookHref));
 
 	async function switchPrivateBook(event: SubmitEvent) {
 		event.preventDefault();
-		if (privateBookSwitching) return;
 		const enable = !serverPrivateBook;
+		await updatePrivateBook(enable, enable ? undefined : new FormData(event.currentTarget as HTMLFormElement));
+	}
+
+	async function selectRatePage(select: HTMLSelectElement) {
+		const selected = select.value;
+		await updatePrivateBook(true, undefined, selected);
+		select.value = data.privateBook?.partnerId ?? '';
+	}
+
+	async function updatePrivateBook(enable: boolean, body?: FormData, partnerId?: string) {
+		if (privateBookSwitching) return;
+		const entry = partnerId ? privateBookEntryHref(partnerId) : PB_ENTRY_PATH;
 		requestedPrivateBook = enable;
 		privateBookSwitchFailed = false;
 		try {
-			const response = await fetch(enable ? PB_ENTRY_PATH : PB_EXIT_PATH, {
+			const response = await fetch(enable ? entry : PB_EXIT_PATH, {
 				method: enable ? 'GET' : 'POST',
-				body: enable ? undefined : new FormData(event.currentTarget as HTMLFormElement),
+				body,
 				headers: { accept: 'application/json' },
 				cache: 'no-store'
 			});
 			if (response.status !== 204) throw new Error('private book switch failed');
 			await invalidate(PB_PRICE_DEPENDENCY);
-			if (serverPrivateBook !== enable) privateBookSwitchFailed = true;
+			if (serverPrivateBook !== enable || (partnerId && data.privateBook?.partnerId !== partnerId)) privateBookSwitchFailed = true;
 		} catch {
 			privateBookSwitchFailed = true;
 		} finally {
@@ -138,6 +148,18 @@
 		mobileMenuOpen = false;
 	});
 </script>
+
+{#snippet ratePagePicker()}
+	{#if selectableRatePages.length}
+		<select aria-label={m.private_book_rate_page()} value={data.privateBook?.partnerId} disabled={privateBookSwitching}
+			onchange={(event) => selectRatePage(event.currentTarget)}
+			class="min-h-11 min-w-0 max-w-56 rounded-lg border border-stone-200 bg-white px-2 text-xs text-brand-900">
+			{#each selectableRatePages as ratePage (ratePage.partnerId)}
+				<option value={ratePage.partnerId}>{ratePage.name}</option>
+			{/each}
+		</select>
+	{/if}
+{/snippet}
 
 {#snippet rateSwitch(desktop: boolean)}
 	<form
@@ -225,9 +247,9 @@
 			</nav>
 			<div class="ml-auto hidden items-center gap-3 text-sm md:flex">
 				{#if canSwitchPrivateBook}
+					{@render ratePagePicker()}
 					{@render rateSwitch(true)}
 				{:else if data.privateBook}
-					<!-- いまプライベートブックの状態（塗りつぶし）。押しても同じ（出口は帯の「ふつうのご予約に戻る」） -->
 					<span class="rounded-full bg-brand-900 px-3 py-1 text-xs tracking-[0.14em] text-white" aria-current="true">PRIVATE BOOK</span>
 				{:else if privateBookEntry && !privateBookToggle && !inBookingFlow}
 					<!-- プライベートブック（VIP＝特別会員と、ご招待のご家族だけ・docs/private-book.md）。押すと公式サイトのまま特別料金の状態に切り替わる -->
@@ -322,15 +344,10 @@
 		</div>
 	</header>
 
-	{#if !inBookingFlow && (data.privateBook || canSwitchPrivateBook)}
-		<div class="mx-auto w-full max-w-6xl px-4 pt-3 sm:px-6 {canSwitchPrivateBook && !hasAnotherPrivateBook ? 'md:hidden' : ''}">
-			{#if canSwitchPrivateBook}
-				<PrivateBookBand name={data.privateBook?.memberName} pages={data.privateBook?.pages} currentPartnerId={data.privateBook?.partnerId} active={displayedPrivateBook}>
-					{#snippet toggle()}{@render rateSwitch(false)}{/snippet}
-				</PrivateBookBand>
-			{:else}
-				<PrivateBookBand name={data.privateBook?.memberName} pages={data.privateBook?.pages} currentPartnerId={data.privateBook?.partnerId} />
-			{/if}
+	{#if canSwitchPrivateBook}
+		<div class="flex flex-wrap items-center gap-2 px-4 pt-2 md:hidden">
+			{@render rateSwitch(false)}
+			{@render ratePagePicker()}
 		</div>
 	{/if}
 	{#if canSwitchPrivateBook && privateBookSwitchFailed}

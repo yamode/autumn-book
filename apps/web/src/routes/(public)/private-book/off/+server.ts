@@ -1,4 +1,4 @@
-// POST /private-book/off — プライベートブックの出口（帯の「ふつうのご予約に戻る」・docs/private-book.md）。
+// POST /private-book/off — プライベートブックの出口（「専用料金」のスイッチ・docs/private-book.md）。
 // クッキーを消して同じ画面（back）へ戻る。予約入力（/booking/hold）の中からなら holdId の仮押さえを解放してから戻る
 // （ただのリンクだと期限まで在庫が減ったまま）。解放は本人のセッション（ab_book_sid）の束だけ（DB が確かめる）。
 import { redirect } from '@sveltejs/kit';

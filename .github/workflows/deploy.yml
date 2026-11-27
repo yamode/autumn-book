@@ -64,22 +64,44 @@ jobs:
       - name: Health check（本番反映の確認）
         run: |
           sleep 10
-          # 503 はメンテナンスモード有効時の正常応答として許容（正式公開前の lockdown 期間でも CI を通す）
-          for path in / /yamado/nishiwaga /yamado/oga /yamado/oga/onsen /search; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "https://book.yamado.app$path")
+          base=https://book.yamado.app
+          status_of() {
+            curl -sS --max-time 15 -o /dev/null -w "%{http_code}" "$1"
+          }
+          check_public() {
+            local path="$1" code
+            code=$(status_of "$base$path")
             echo "$code $path"
-            if [ "$code" != "200" ] && [ "$code" != "503" ]; then
-              echo "::error::Health check failed: $path returned $code"
-              exit 1
-            fi
-          done
+            # メンテナンスモード中の 503 は正常
+            case "$code" in
+              200|503) ;;
+              *) echo "::error::Health check failed: $path returned $code"; return 1 ;;
+            esac
+          }
+          check_facility_page() {
+            local path="$1" target="$2" response
+            response=$(curl -sS --max-time 15 -o /dev/null -w "%{http_code} %{redirect_url}" "$base$path")
+            echo "$path: $response"
+            # 施設ページが公開中は 200、非公開の間はその施設のプラン一覧への 302
+            case "$response" in
+              "200 "|"503 "|"302 $base$target") ;;
+              *) echo "::error::Health check failed: unexpected response for $path ($response)"; return 1 ;;
+            esac
+          }
+          check_public /
+          check_public /search
+          check_facility_page /yamado/nishiwaga /yamado/nishiwaga/plans
+          check_facility_page /yamado/oga /yamado/oga/plans
+          check_facility_page /yamado/oga/onsen /yamado/oga/plans
+          check_public /yamado/nishiwaga/plans
+          check_public /yamado/oga/plans
           # Autumn Live はブラウザからは入れない（入場券が無ければ 403）
-          code=$(curl -s -o /dev/null -w "%{http_code}" https://book.yamado.app/live)
+          code=$(status_of "$base/live")
           if [ "$code" != "403" ]; then
             echo "::error::/live must be 403 without a Live pass (returned $code)"
             exit 1
           fi
-          code=$(curl -s -o /dev/null -w "%{http_code}" https://autumn-book-member-preview.pages.dev/account)
+          code=$(status_of https://autumn-book-member-preview.pages.dev/account)
           if [ "$code" != "303" ]; then
             echo "::error::Member preview must redirect visitors without a preview session (returned $code)"
             exit 1
