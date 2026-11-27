@@ -11,6 +11,8 @@ declare global {
 
 	namespace App {
 		interface PageState {
+			planDetail?: string;
+			depth?: number;
 			privateBookSpecialOnly?: boolean;
 		}
 		interface Locals {

@@ -41,7 +41,7 @@ export function refreshingSamePage(): boolean {
  * 同じページのまま、URL のうち name の値だけが変わる移動中なら、移動先の値（無ければ ''）。それ以外は null。
  * プラン一覧のお食事の絞り込み（?meal=）で、結果の欄ごと読み込み表示にせず、プランの欄だけを入れ替えるのに使う。
  */
-export function pendingParamOnly(name: string, from = page.url): string | null {
+export function pendingParamOnly(name: string, from: URL = page.url): string | null {
 	const { to, type, willUnload } = navigating;
 	if (willUnload || !to || type === 'form') return null;
 	if (normalize(to.url.pathname) !== normalize(from.pathname)) return null;
