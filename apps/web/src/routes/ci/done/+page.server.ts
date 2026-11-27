@@ -1,5 +1,6 @@
 import { DATA_SOURCE } from '$lib/server/supabase';
-import { PRECHECKIN_COOKIE, demoBathContext, precheckinBathAccess } from '$lib/server/precheckin';
+import { PRECHECKIN_COOKIE, precheckinBathAccess } from '$lib/server/precheckin';
+import { demoBathContext } from '$lib/server/precheckin-demo-bath';
 import { sbBathContext } from '$lib/server/private-bath';
 import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
 import { canBookBathInPrecheckin, ciBathRows, type CiBathRow } from '$lib/precheckin-p3';
@@ -12,8 +13,8 @@ export const load: PageServerLoad = async (event) => {
 	const none = { bathRows: [] as CiBathRow[] };
 	if (!ctx || !ctx.answeredAt || !canBookBathInPrecheckin(ctx)) return none;
 	if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
-		const b = demoBathContext(ctx.checkIn);
-		return { bathRows: ciBathRows(b.mine, b.baths) };
+		const b = await demoBathContext(ctx, event.cookies, true);
+		return b ? { bathRows: ciBathRows(b.mine, b.baths) } : none;
 	}
 	const pcToken = event.cookies.get(PRECHECKIN_COOKIE) ?? '';
 	if (DATA_SOURCE !== 'supabase' || !pcToken) return none;

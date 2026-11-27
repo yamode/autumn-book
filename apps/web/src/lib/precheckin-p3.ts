@@ -4,7 +4,7 @@
 // DB: autumn-shared 20261028223603_book_precheckin_p3_bath_banner.sql
 //   - precheckin_context の is_official / is_partner / facility.portal_slug → showOtaBanner / portalSlugOf
 //   - precheckin_stay_token(p_token) の戻り → normalizeStayTokenResult
-import { DEMO_PRECHECKIN_CODE, type PcContext } from '$lib/precheckin';
+import { type PcContext } from '$lib/precheckin';
 
 // ---------------------------------------------------------------- OTA 誘導バナー
 
@@ -87,12 +87,12 @@ export const ciGoPath = (t: CiGoTarget) => (t === 'bath' ? '/ci/bath' : '/r');
 
 export type CiBathState = 'not_answered' | 'closed' | 'before_day' | 'unavailable' | 'ready';
 
-/** 本予約は book._pc_is_direct に基づく。管理画面から開く見本は貸切風呂まで試せる。 */
-export function canBookBathInPrecheckin(ctx: Pick<PcContext, 'bookingCode' | 'isDirect' | 'isOfficial'>): boolean {
-	return ctx.bookingCode === DEMO_PRECHECKIN_CODE || (ctx.isDirect ?? ctx.isOfficial) === true;
+/** 本予約は DB で直販・会員ランクを確認する。管理画面から開く見本は対象会員の流れを試せる。 */
+export function canBookBathInPrecheckin(ctx: Pick<PcContext, 'bathEligible'>): boolean {
+	return ctx.bathEligible;
 }
 
-export function ciAfterMealsPath(ctx: Pick<PcContext, 'bookingCode' | 'isDirect' | 'isOfficial'>): '/ci/bath' | '/ci/done' {
+export function ciAfterMealsPath(ctx: Pick<PcContext, 'bathEligible'>): '/ci/bath' | '/ci/done' {
 	return canBookBathInPrecheckin(ctx) ? '/ci/bath' : '/ci/done';
 }
 

@@ -18,7 +18,6 @@ import { loadDemoMealSlots } from '$lib/server/precheckin-demo-meals';
 import { rateLimitClientKey } from '$lib/server/client-key';
 import { claimRateCheck, claimRecordFailure, claimRecordSuccess } from '$lib/server/claim-rate-limit';
 import { sendHtmlEmail } from '$lib/server/mailer';
-import { createSupabaseServerClient } from '$lib/server/auth';
 import type { BookClient } from '$lib/server/admin-app-data';
 import {
 	DEMO_PRECHECKIN_TOKEN,
@@ -41,10 +40,9 @@ import {
 	type MealMinutes,
 	type StayTokenResult
 } from '$lib/precheckin-p3';
-import type { BathContext } from '$lib/server/private-bath';
 import { normalizeAutosendSettings, type AutosendSettings } from '$lib/precheckin-sms';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
-import { stayIsDirect } from '$lib/server/precheckin-sms';
+import { stayOffersPrecheckinBath } from '$lib/server/precheckin-sms';
 import { customerLinkOrigin } from '$lib/server/public-origin';
 import { waitUntilOf } from '$lib/server/access-log-core';
 import {
@@ -316,65 +314,6 @@ export async function pcMealMinutes(facilityId: string): Promise<MealMinutes> {
 	return normalizeMealMinutes(data);
 }
 
-// ---------------------------------------------------------------- 見本の貸切風呂（DB に触れない）
-
-// 見本（DEMO_PRECHECKIN_TOKEN）の ③ 貸切風呂で、予約・取消まで試せるようにする。プロセス内だけに持つ（再起動で消える）。
-let demoBathMine: { id: string; date: string; from: string; to: string }[] = [];
-
-const hm = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
-const isMorning = (from: string) => Number(from.slice(0, 2)) < 12;
-
-/** 見本の枠: チェックイン日は 15:00〜22:20、翌朝は 6:00〜9:20（40 分枠・10 分入れ替え）。午前・午後で 1 部屋 1 枠ずつ */
-function demoBathSlots(morning: boolean): { from: string; to: string }[] {
-	const out: { from: string; to: string }[] = [];
-	const [start, end] = morning ? [6 * 60, 10 * 60] : [15 * 60, 23 * 60];
-	for (let t = start; t + 40 <= end; t += 50) out.push({ from: hm(t), to: hm(t + 40) });
-	return out;
-}
-
-/** 見本の貸切風呂（private_bath_context と同じ形） */
-export function demoBathContext(checkIn: string): BathContext {
-	const next = new Date(Date.parse(`${checkIn}T00:00:00Z`) + 86400_000).toISOString().slice(0, 10);
-	const taken = new Set([`${checkIn} 16:40`, `${checkIn} 19:10`, `${next} 07:40`]); // 他のお客様が取った見本の枠
-	const day = (date: string, morning: boolean) => ({
-		date,
-		slots: demoBathSlots(morning).map((s) => {
-			const mine = demoBathMine.find((r) => r.date === date && r.from === s.from);
-			const limit = demoBathMine.some((r) => r.date === date && isMorning(r.from) === morning);
-			return { ...s, taken: taken.has(`${date} ${s.from}`) || !!mine, mine: !!mine, slot_id: mine?.id ?? null, closed: false, limit_reached: limit };
-		})
-	});
-	return {
-		ok: true,
-		enabled: true,
-		price_yen: 0,
-		per_room_per_range: 1,
-		cutoff_min: 30,
-		cancel_min: 60,
-		check_in_date: checkIn,
-		check_out_date: next,
-		baths: [{ bath_id: 'demo-bath', bath_name: '貸切風呂（見本）', days: [day(checkIn, false), day(next, true)] }],
-		mine: demoBathMine.map((r) => ({ id: r.id, date: r.date, from: r.from, to: r.to, bath_id: 'demo-bath', price_yen: 0, booked_via: 'guest', cancelable: true })),
-		group: { shared: false }
-	};
-}
-
-export function demoBathReserve(date: string, from: string): 'ok' | 'slot_taken' | 'per_room_limit' {
-	// どの日の枠かは日付で引く（見本はチェックイン日と翌朝の 2 日）
-	const ctx = demoBathContext(isMorning(from) ? new Date(Date.parse(`${date}T00:00:00Z`) - 86400_000).toISOString().slice(0, 10) : date);
-	const slot = ctx.baths?.[0].days.find((d) => d.date === date)?.slots.find((s) => s.from === from);
-	if (!slot || slot.taken) return 'slot_taken';
-	if (slot.limit_reached) return 'per_room_limit';
-	demoBathMine = [...demoBathMine, { id: `demo-${date}-${from}`, date, from, to: slot.to }];
-	return 'ok';
-}
-
-export function demoBathCancel(slotId: string): boolean {
-	const before = demoBathMine.length;
-	demoBathMine = demoBathMine.filter((r) => r.id !== slotId);
-	return demoBathMine.length < before;
-}
-
 // ---------------------------------------------------------------- Cookie とレート制限
 
 export function setPrecheckinCookie(cookies: Cookies, token: string, expiresAt: string) {
@@ -571,8 +510,7 @@ export async function sendPrecheckin(
 	const issued = await rpc<IssueResult>(c, 'admin_precheckin_issue', { p_facility: facility, p_stay_id: stayId });
 	// ?f=<施設の slug> は、リンクを開いた瞬間の読み込み中の画面に出すロゴの目印（$lib/precheckin-splash）
 	const url = `${event.url.origin}/ci/${issued.token}${splashHint(issued.facility_slug)}`;
-	// 貸切風呂の事前予約は公式サイトの予約だけ案内する（2026-11-21）
-	const official = await stayIsDirect(createSupabaseServerClient(event), stayId);
+	const bath = await stayOffersPrecheckinBath(stayId);
 	const mail = buildPrecheckinMail({
 		facilityName: issued.facility_name,
 		guestName: issued.guest_name,
@@ -582,7 +520,7 @@ export async function sendPrecheckin(
 		bookingCode: issued.booking_code,
 		url,
 		editableUntil: issued.editable_until,
-		bath: official,
+		bath,
 		facilitySlug: issued.facility_slug,
 		assetOrigin: event.url.origin
 	});

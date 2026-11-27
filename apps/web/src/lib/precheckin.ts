@@ -93,6 +93,8 @@ export type PcContext = {
 	 * DB（20261121205842）より前は null = 不明 → isOfficial で代用
 	 */
 	isDirect: boolean | null;
+	/** 直販予約で、滞在に紐付く会員がシルバー以上。 */
+	bathEligible: boolean;
 	/** 取引先経由か（rms_partner） */
 	isPartner: boolean;
 };
@@ -371,6 +373,7 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 		slots: { dinner: slotsOf(slots.dinner), breakfast: slotsOf(slots.breakfast) },
 		isOfficial: typeof r.is_official === 'boolean' ? r.is_official : null,
 		isDirect: typeof r.is_direct === 'boolean' ? r.is_direct : null,
+		bathEligible: r.bath_eligible === true,
 		isPartner: r.is_partner === true
 	};
 }
@@ -632,6 +635,7 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date())
 		facility: { id: 'f-nishiwaga', slug: 'yamado', name: '山人-yamado-（見本）', timezone: 'Asia/Tokyo', portalSlug: 'nishiwaga' },
 		isOfficial: false,
 		isDirect: false,
+		bathEligible: true,
 		isPartner: false,
 		bookingCode: DEMO_PRECHECKIN_CODE,
 		checkIn: today,

@@ -40,7 +40,7 @@
 				mobile,
 				sms: r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null,
 				state: base === 'no_contact' && mobile ? ('unsent' as const) : base,
-				// 公式扱い（公式サイト・tripla・直接予約・電話）か。貸切風呂の事前予約ができるのはこの予約だけ（送る文面も変わる・2026-11-22）
+				// 公式扱い（公式サイト・tripla・直接予約・電話）か。
 				official: isDirectRoute(r.source, r.channel_code)
 			};
 		})
@@ -197,7 +197,7 @@
 		</p>
 	{/if}
 
-	<!-- 予約経路の絞り込み。公式サイトの予約に送る案内には貸切風呂の事前予約が入り、それ以外には入らない -->
+	<!-- 予約経路の絞り込み -->
 	<div class="mb-2 flex flex-wrap items-center gap-2 text-xs">
 		<span class="text-stone-500">予約経路</span>
 		{#each ROUTE_FILTERS as f (f.key)}
@@ -208,7 +208,7 @@
 				class="rounded-full px-3 py-1 ring-1 {routeFilter === f.key ? 'bg-stone-900 text-white ring-stone-900' : 'bg-white text-stone-700 ring-stone-300'}"
 			>{f.label} {f.key === 'all' ? rows.length : rows.filter((r) => (f.key === 'official') === r.official).length}</button>
 		{/each}
-		<span class="text-stone-400">公式サイト・tripla・直接（電話含む）の予約だけ、案内に貸切風呂の事前予約が入ります</span>
+		<span class="text-stone-400">貸切風呂の事前予約は、直販でご予約のシルバー以上の会員に案内します。</span>
 	</div>
 	<div class="mb-3 flex flex-wrap gap-2 text-xs">
 		{#each counts as c (c.s)}
@@ -227,11 +227,6 @@
 							<span>{formatDateJa(r.check_in_date)}〜{formatDateJa(r.check_out_date)}（{r.nights}泊）</span>
 							<span>{r.room_count}室・大人{r.adults}名</span>
 							<span class="rounded px-1.5 py-0.5 {channelBadgeClass(r)}">{channelLabel(r)}</span>
-							{#if r.official}
-								<span class="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">貸切風呂の事前予約あり</span>
-							{:else}
-								<span class="rounded bg-stone-100 px-1.5 py-0.5 text-stone-500">貸切風呂は到着後</span>
-							{/if}
 							<span class="text-stone-400">{r.booking_code ?? ''}</span>
 						</div>
 						<div class="mt-1 flex flex-wrap gap-x-3 text-xs text-stone-500">

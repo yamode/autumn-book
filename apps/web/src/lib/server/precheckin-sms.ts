@@ -14,7 +14,7 @@
 //   NTT_CPAAS_SENDER … 施設にひもづかない会員向け SMS の送信元
 //   NTT_CPAAS_WEBHOOK_SECRET … Webhook の Basic 認証（「ユーザー名:パスワード」）。未設定なら Webhook は 503
 //   PRECHECKIN_AUTOSEND … '1' のときだけ自動送信が実際に送る（未設定・'0' は dry-run）
-import { isDirectRoute } from '$lib/booking-channel';
+import { partnerServiceClient } from '$lib/server/partners/admin-client';
 import { splashHint } from '$lib/precheckin-splash';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { env as privateEnv } from '$env/dynamic/private';
@@ -100,17 +100,12 @@ type BeginResult = BeginOk | BeginNg;
 
 type FinishArgs = { ok: boolean; messageId?: string; providerStatus?: string; error?: string; permanent?: boolean };
 
-/**
- * 公式扱いの予約か（公式サイト・tripla・直接予約・電話・isDirectRoute／DB の book._pc_is_direct と同じ判定・2026-11-22）。
- * 事前チェックインの文面で、貸切風呂の事前予約を案内するかに使う。
- * 読めないときは false（できないことを案内しない側に倒す）
- */
-export async function stayIsDirect(sb: SupabaseClient, stayId: string): Promise<boolean> {
+/** 事前チェックインで貸切風呂を案内できるか、画面と同じ規則で確認する。 */
+export async function stayOffersPrecheckinBath(stayId: string, db = partnerServiceClient()): Promise<boolean> {
+	if (!db) return false;
 	try {
-		const { data, error } = await sb.schema('core').from('stays').select('source, channel_code').eq('id', stayId).maybeSingle();
-		if (error || !data) return false;
-		const s = data as { source: string | null; channel_code: string | null };
-		return isDirectRoute(s.source, s.channel_code);
+		const { data, error } = await db.schema('book').rpc('_pc_bath_eligible', { p_stay_id: stayId });
+		return !error && data === true;
 	} catch {
 		return false;
 	}
@@ -182,7 +177,7 @@ export async function sendPrecheckinSms(
 	stayId: string,
 	force: boolean,
 	origin: string,
-	/** 公式サイトの予約か（呼び出し側が stayIsDirect で読む）。貸切風呂の事前予約を文面に入れるか */
+	/** 貸切風呂の事前予約を文面に入れるか */
 	official: boolean
 ): Promise<ManualSmsResult> {
 	const cfg = precheckinNttConfig(facility);
@@ -333,7 +328,7 @@ export async function runPrecheckinAutosend(
 				skip(b.error);
 				continue;
 			}
-			const r = await deliver(b, opts.origin, cfg, svc, await stayIsDirect(svc, b.stay_id));
+			const r = await deliver(b, opts.origin, cfg, svc, await stayOffersPrecheckinBath(b.stay_id, svc));
 			const fin = await db.rpc('precheckin_dispatch_finish', {
 				p_dispatch: b.dispatch_id,
 				p_ok: r.ok,

@@ -45,18 +45,21 @@
 							<label class="grid grid-cols-[5.5rem_1fr] items-center gap-3">
 								<span class="leading-tight text-stone-700">{typeLabel(t)}<span class="block text-xs text-stone-400">{slashDate(cell.date)}</span></span>
 								{#if cell.offered}
-									<select name="meal|{night.stayId}|{t}|{cell.date}" disabled={ro} class={selectCls}>
-										{#if !cell.time}<option value="" selected>{m.ci_meal_unset()}</option>{/if}
-										{#each ctx.slots[t]?.[cell.date] ?? [] as slot (slot.time)}
-											<option value={slot.time} selected={cell.time === slot.time} disabled={!slotSelectable(slot, cell.time)}>
-												{slot.time}{slotSelectable(slot, cell.time) ? '' : `（${m.ci_meal_unselectable()}）`}
-											</option>
-										{/each}
-										{#if cell.time && !(ctx.slots[t]?.[cell.date] ?? []).some((s) => s.time === cell.time)}
-											<!-- 宿が決めた時間が時間枠に無いとき（PMS で個別に入れた等）も、今の時間として出す -->
-											<option value={cell.time} selected>{cell.time}</option>
-										{/if}
-									</select>
+									<span class="min-w-0">
+										<select aria-describedby="meal-duration-{night.stayId}-{t}-{cell.date}" name="meal|{night.stayId}|{t}|{cell.date}" disabled={ro} class={selectCls}>
+											{#if !cell.time}<option value="" selected>{m.ci_meal_unset()}</option>{/if}
+											{#each ctx.slots[t]?.[cell.date] ?? [] as slot (slot.time)}
+												<option value={slot.time} selected={cell.time === slot.time} disabled={!slotSelectable(slot, cell.time)}>
+													{slot.time}{slotSelectable(slot, cell.time) ? '' : `（${m.ci_meal_unselectable()}）`}
+												</option>
+											{/each}
+											{#if cell.time && !(ctx.slots[t]?.[cell.date] ?? []).some((s) => s.time === cell.time)}
+												<!-- 宿が決めた時間が時間枠に無いとき（PMS で個別に入れた等）も、今の時間として出す -->
+												<option value={cell.time} selected>{cell.time}</option>
+											{/if}
+										</select>
+										<span id="meal-duration-{night.stayId}-{t}-{cell.date}" class="mt-1 block text-xs text-stone-600">{m.ci_meal_duration({ minutes: String(data.mealMinutes[t]) })}</span>
+									</span>
 								{:else}
 									<p class="rounded-lg bg-stone-50 px-3 py-2 text-stone-500">{m.ci_meal_none()}</p>
 								{/if}

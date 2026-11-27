@@ -3,15 +3,13 @@ import { localizeHref } from '$lib/paraglide/runtime';
 import { DATA_SOURCE } from '$lib/server/supabase';
 import {
 	PRECHECKIN_COOKIE,
-	demoBathCancel,
-	demoBathContext,
-	demoBathReserve,
 	precheckinBathAccess,
 	resolvePrecheckin
 } from '$lib/server/precheckin';
+import { demoBathCancel, demoBathContext, demoBathReserve } from '$lib/server/precheckin-demo-bath';
 import { sbBathCancel, sbBathContext, sbBathReserve, type BathContext } from '$lib/server/private-bath';
 import { bathPmsEnabled } from '$lib/server/bath-pms-switch';
-import { DEMO_PRECHECKIN_CODE } from '$lib/precheckin';
+import { DEMO_PRECHECKIN_CODE, type PcContext } from '$lib/precheckin';
 import { canBookBathInPrecheckin, ciBathBeforeDay, ciBathState, type CiBathState } from '$lib/precheckin-p3';
 import type { Actions, PageServerLoad, RequestEvent } from './$types';
 
@@ -30,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
 	const beforeDay = ctx.bookingCode === DEMO_PRECHECKIN_CODE ? false : ciBathBeforeDay(ctx.checkIn);
 	if (answered && ctx.editable && !beforeDay) {
 		if (ctx.bookingCode === DEMO_PRECHECKIN_CODE) {
-			bath = demoBathContext(ctx.checkIn);
+			bath = await demoBathContext(ctx, event.cookies);
 		} else if (DATA_SOURCE === 'supabase' && pcToken && bathPmsEnabled()) {
 			bath = await sbBathContext(precheckinBathAccess(pcToken)).catch(() => null);
 		}
@@ -39,12 +37,12 @@ export const load: PageServerLoad = async (event) => {
 	return { bath: { state, ctx: state === 'ready' ? bath : null } as BathView };
 };
 
-/** 予約・取消の前に、事前チェックインのトークンを確かめる（見本は 'demo'） */
-async function bathAccessFor(event: RequestEvent): Promise<string | null> {
+/** 予約・取消の前に、事前チェックインのトークンを確かめる（見本は仮の滞在情報を渡す） */
+async function bathAccessFor(event: RequestEvent): Promise<string | PcContext | null> {
 	const r = await resolvePrecheckin(event);
 	if (!('ctx' in r) || !r.ctx.answeredAt || !r.ctx.editable) return null;
 	if (!canBookBathInPrecheckin(r.ctx)) return null;
-	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return 'demo';
+	if (r.ctx.bookingCode === DEMO_PRECHECKIN_CODE) return r.ctx;
 	if (DATA_SOURCE !== 'supabase') return null;
 	if (ciBathBeforeDay(r.ctx.checkIn)) return null;
 	// RPC で事前チェックインの回答・有効期限を検証する。
@@ -64,11 +62,9 @@ export const actions: Actions = {
 		if (slots.length === 0 || slots.length > 8 || slots.some((x) => x === null)) return fail(400, { error: 'choose' as const });
 		const picked = slots as { date: string; from: string }[];
 
-		if (token === 'demo') {
-			for (const p of picked) {
-				const r = demoBathReserve(p.date, p.from);
-				if (r !== 'ok') return fail(409, { error: r });
-			}
+		if (typeof token !== 'string') {
+			const r = await demoBathReserve(token, event.cookies, bathId, picked);
+			if (r !== 'ok') return fail(409, { error: r });
 			return { reserved: picked };
 		}
 		if (!bathPmsEnabled()) return fail(503, { error: 'not_open' as const });
@@ -83,7 +79,9 @@ export const actions: Actions = {
 		if (!token) return fail(400, { error: 'not_open' as const });
 		const slotId = String((await event.request.formData()).get('slotId') ?? '').trim();
 		if (!slotId) return fail(400, { error: 'other' as const });
-		const ok = token === 'demo' ? demoBathCancel(slotId) : bathPmsEnabled() && (await sbBathCancel(token, slotId));
+		const ok = typeof token !== 'string'
+			? await demoBathCancel(token, event.cookies, slotId)
+			: bathPmsEnabled() && (await sbBathCancel(token, slotId));
 		return ok ? { canceled: true } : fail(400, { error: 'cancel_failed' as const });
 	}
 };

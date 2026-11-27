@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isRankCode, rankMeets } from '$lib/plan-access';
 	// 公式マイページの予約詳細。本体は lib/components/booking/ReservationDetail.svelte（特別会員の専用ページの予約詳細と共用）。
 	// プライベートブック（専用ページ経由・data.memberPage）の予約もここから取消・日程変更・お部屋の変更・アレンジができる
 	// （docs/private-book.md「マイページ（予約後）」）。対象から外れた方（data.privateBookChange === false）は取消だけ。
@@ -54,7 +55,7 @@
 	</section>
 {/if}
 
-{#if data.canPrebookBath}
+{#if data.canPrebookBath && isRankCode(data.member.rank) && rankMeets({ isMember: true, rank: data.member.rank }, 'silver')}
 	<a href={`/account/bath/${encodeURIComponent(b.code)}`} class="mt-4 inline-flex min-h-11 items-center rounded-lg border border-stone-300 px-4 text-sm font-medium text-brand-900 hover:bg-stone-50">
 		{m.membership_bath_title()}
 	</a>
