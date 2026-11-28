@@ -40,6 +40,15 @@
 		if (!f(a) || !f(b)) return '';
 		return f(a) === f(b) ? 'text-emerald-700' : 'font-medium text-red-700';
 	}
+	// カナは全角半角・カタカナ/ひらがな・空白の違いを無視して比べる
+	const hira = (s: string | null) =>
+		compact((s ?? '').normalize('NFKC')).replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+	const isKanaOnly = (s: string | null) => /^[ぁ-ゖァ-ヺーｦ-ﾟ\s　・ー]+$/.test((s ?? '').trim());
+	// 氏名: tripla の氏名がカナだけ（例: アダチ ヤストモ）なら、PMS のフリガナと比べる（漢字と比べて赤にしない・2026-11-28 指摘）
+	function nameTone(c: { name: string | null; kana: string | null }, item: { name: string | null }) {
+		if (isKanaOnly(item.name)) return tone(c.kana, item.name, hira);
+		return tone(c.name, item.name, compact);
+	}
 
 	const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleDateString('ja-JP') : '—');
 	const DONE_LABEL = {
@@ -151,8 +160,8 @@
 						<tbody>
 							{#each item.candidates as c (c.guest_id)}
 								<tr class="border-b border-stone-100 align-top last:border-0">
-									<td class="px-2 py-2 font-medium {tone(c.name, item.name, compact) || 'text-stone-800'}">{c.name ?? '—'}</td>
-									<td class="px-2 py-2 {tone(c.kana, item.kana, compact)}">{c.kana ?? '—'}</td>
+									<td class="px-2 py-2 font-medium {nameTone(c, item) || 'text-stone-800'}">{c.name ?? '—'}</td>
+									<td class="px-2 py-2 {tone(c.kana, item.kana, hira)}">{c.kana ?? '—'}</td>
 									<td class="px-2 py-2 {tone(c.phone, item.phone, digits)}">{c.phone ?? '—'}</td>
 									<td class="px-2 py-2 break-all {tone(c.email, item.email, lower)}">{c.email ?? '—'}</td>
 									<td class="px-2 py-2 text-right">{c.direct_visits.toLocaleString()} 回</td>
