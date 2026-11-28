@@ -14,6 +14,23 @@ export function createWeatherFx(ctx, reduce) {
 	const mix = (a, b, t) => { const A = hex(a), B = hex(b); return '#' + A.map((v, i) => Math.round(lerp(v, B[i], t)).toString(16).padStart(2, '0')).join(''); };
 	const rgba = (c, a) => { const A = hex(c); return `rgba(${A[0]},${A[1]},${A[2]},${a})`; };
 
+	// 雲・霧のぼかした塊は、色ごとに 1 回だけ小さな絵に描いておき、毎回は貼るだけにする（毎フレームのグラデーション作りをやめる）
+	const sprites = new Map();
+	function blob(col) {
+		const key = col;
+		let c = sprites.get(key);
+		if (!c) {
+			if (sprites.size > 24) sprites.clear();
+			c = document.createElement('canvas'); c.width = c.height = 64;
+			const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+			gr.addColorStop(0, rgba(col, 1)); gr.addColorStop(1, rgba(col, 0)); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+			sprites.set(key, c);
+		}
+		return c;
+	}
+	// 色は少しずつ変わるので、段階に丸めて作り直しを減らす
+	const q = (c) => { const A = hex(c).map((v) => Math.round(v / 12) * 12); return '#' + A.map((v) => Math.min(255, v).toString(16).padStart(2, '0')).join(''); };
+
 	let look = null, target = null;
 	// 雲: th（しきい値）が小さい雲から順に出る。雲の量が増えるほど数が増える
 	const clouds = [...Array(34)].map((_, i) => ({ x: Math.random(), y: 0.02 + Math.pow(Math.random(), 1.3) * 0.5, s: 0.06 + Math.random() * 0.14, v: 0.002 + Math.random() * 0.004, th: (i + Math.random()) / 34, sq: rnd(0.32, 0.48) }));
@@ -43,19 +60,21 @@ export function createWeatherFx(ctx, reduce) {
 		clouds(t, W, H, d) {
 			const l = look; if (!l) return;
 			const day = mix('#ffffff', '#646d79', l.dark), night = mix('#4a5270', '#1a1e2b', l.dark);
-			const col = mix(night, day, d), base = lerp(0.16, 0.3, d) + l.dark * 0.2;
+			const col = q(mix(night, day, d)), base = lerp(0.16, 0.3, d) + l.dark * 0.2;
 			const sp = 1 + l.wind * 5;
 			// 厚い雲は空の上半分をおおう
 			if (l.cloud > 0.6) { const g = ctx.createLinearGradient(0, 0, 0, H * 0.75); const a = smooth(0.6, 1, l.cloud) * (0.4 + l.dark * 0.35); g.addColorStop(0, rgba(col, a)); g.addColorStop(1, rgba(col, 0)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H * 0.75); }
+			const spr = blob(col);
 			for (const c of clouds) {
 				const w = smooth(c.th - 0.1, c.th + 0.02, l.cloud); if (w < 0.01) continue;
 				const cx = ((c.x + t * c.v * sp) % 1.4 - 0.2) * W, cy = c.y * H, r = c.s * W * (0.8 + l.cloud * 0.5);
+				ctx.globalAlpha = base * w;
 				for (let k = 0; k < 3; k++) {
 					const ox = cx + (k - 1) * r * 0.6, oy = cy + (k % 2) * r * 0.08, rr = r * (k === 1 ? 0.75 : 0.55);
-					const cg = ctx.createRadialGradient(ox, oy, 0, ox, oy, rr); cg.addColorStop(0, rgba(col, base * w)); cg.addColorStop(1, rgba(col, 0));
-					ctx.fillStyle = cg; ctx.save(); ctx.translate(ox, oy); ctx.scale(1, c.sq); ctx.translate(-ox, -oy); ctx.fillRect(ox - rr, oy - rr, rr * 2, rr * 2); ctx.restore();
+					ctx.drawImage(spr, ox - rr, oy - rr * c.sq, rr * 2, rr * 2 * c.sq);
 				}
 			}
+			ctx.globalAlpha = 1;
 		},
 		front(t, dt, W, H, d) {
 			const l = look; if (!l) return;
@@ -78,13 +97,16 @@ export function createWeatherFx(ctx, reduce) {
 			const ns = Math.round(clamp(l.snow * MAX_SNOW * area, 0, MAX_SNOW));
 			if (ns > 0) {
 				ctx.fillStyle = d > 0.5 ? 'rgba(255,255,255,0.85)' : 'rgba(232,238,252,0.75)';
+				// 奥・中・手前の 3 段に分けて、段ごとにまとめて 1 回で塗る
+				const paths = [new Path2D(), new Path2D(), new Path2D()];
 				for (let i = 0; i < ns; i++) {
 					const p = flakes[i], r = 0.8 + p.z * p.z * 2.4, vy = (22 + p.z * 50) * (1 + l.wind * 0.6), vx = l.wind * 220 * (0.6 + p.z * 0.6) + Math.sin(t * 0.8 + p.ph) * 14;
 					p.y += vy * dt / H; p.x += vx * dt / W;
 					if (p.y > 1.03) { p.y = -0.03; p.x = Math.random() * 1.2 - 0.1; }
 					if (p.x > 1.05) p.x -= 1.1; else if (p.x < -0.05) p.x += 1.1;
-					ctx.globalAlpha = 0.45 + p.z * 0.55; ctx.beginPath(); ctx.arc(p.x * W, p.y * H, r, 0, TAU); ctx.fill();
+					const P = paths[p.z < 0.4 ? 0 : p.z < 0.75 ? 1 : 2], x = p.x * W, y = p.y * H; P.moveTo(x + r, y); P.arc(x, y, r, 0, TAU);
 				}
+				paths.forEach((P, i) => { ctx.globalAlpha = [0.5, 0.75, 0.95][i]; ctx.fill(P); });
 				ctx.globalAlpha = 1;
 			}
 			// 霧: 下ほど濃く、ゆっくり流れる霧の塊
@@ -92,11 +114,12 @@ export function createWeatherFx(ctx, reduce) {
 				const c = mix('#1b2130', '#dde3e9', d);
 				const g = ctx.createLinearGradient(0, H * 0.2, 0, H); g.addColorStop(0, rgba(c, 0)); g.addColorStop(1, rgba(c, l.fog * 0.7)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 				ctx.fillStyle = rgba(c, l.fog * 0.18); ctx.fillRect(0, 0, W, H);
+				const fs = blob(q(c)); ctx.globalAlpha = l.fog * 0.28;
 				for (const b of banks) {
 					const bx = (((b.x + t * b.v * (1 + l.wind * 3)) % 1.6) + 1.6) % 1.6 * W - 0.3 * W, by = b.y * H, rr = b.s * W;
-					const bg = ctx.createRadialGradient(bx, by, 0, bx, by, rr); bg.addColorStop(0, rgba(c, l.fog * 0.28)); bg.addColorStop(1, rgba(c, 0));
-					ctx.save(); ctx.translate(bx, by); ctx.scale(1, 0.3); ctx.translate(-bx, -by); ctx.fillStyle = bg; ctx.fillRect(bx - rr, by - rr, rr * 2, rr * 2); ctx.restore();
+					ctx.drawImage(fs, bx - rr, by - rr * 0.3, rr * 2, rr * 0.6);
 				}
+				ctx.globalAlpha = 1;
 			}
 			// 稲光: 空がひかり、ときどき稲妻
 			if (flash > 0.01) {

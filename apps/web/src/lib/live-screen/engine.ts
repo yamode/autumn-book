@@ -338,7 +338,12 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	function drawSky(t, hr) {
 		const [top, hor] = skyCols(hr), d = dayLight(hr); const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, hor); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); fx.skyTint(W, H, d);
 		const na = 1 - smooth(5.2, 6.6, hr) * (1 - smooth(17.6, 19, hr));
-		const sv = fx.vis(); if (na * sv.stars > 0.02) for (const s of stars) { ctx.fillStyle = `rgba(255,250,235,${na * sv.stars * (0.4 + 0.4 * Math.sin(t * 1.2 + s.p))})`; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU); ctx.fill(); }
+		const sv = fx.vis(), sa = na * sv.stars;
+		if (sa > 0.02) { // 星はまたたきの明るさを 5 段に分け、段ごとにまとめて塗る（220 回→5 回）
+			const P = [0, 1, 2, 3, 4].map(() => new Path2D());
+			for (const s of stars) { const k = Math.min(4, Math.floor((0.5 + 0.5 * Math.sin(t * 1.2 + s.p)) * 5)), x = s.x * W, y = s.y * H; P[k].moveTo(x + s.r, y); P[k].arc(x, y, s.r, 0, TAU); }
+			ctx.fillStyle = 'rgb(255,250,235)'; P.forEach((p, k) => { ctx.globalAlpha = sa * (0.08 + k * 0.16); ctx.fill(p); }); ctx.globalAlpha = 1;
+		}
 		ctx.save(); ctx.globalAlpha = sv.sun; // 雲が厚いと太陽・月は隠れる
 		if (hr > 5.3 && hr < 18.7) { const u = clamp((hr - 5.6) / 12.8, 0, 1), sx = lerp(0.06, 0.94, u) * W, sy = H * (0.9 - Math.sin(u * Math.PI) * 0.8), warm = 1 - Math.sin(u * Math.PI), r = Math.min(W, H) * 0.3; const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); sg.addColorStop(0, `rgba(255,${Math.round(240 - 60 * warm)},${Math.round(200 - 90 * warm)},.5)`); sg.addColorStop(1, 'rgba(255,220,170,0)'); ctx.fillStyle = sg; ctx.fillRect(sx - r, sy - r, r * 2, r * 2); ctx.fillStyle = `rgba(255,${Math.round(248 - 50 * warm)},${Math.round(228 - 90 * warm)},.92)`; ctx.beginPath(); ctx.arc(sx, sy, Math.max(7, r * 0.05), 0, TAU); ctx.fill(); }
 		else { const mx = W * 0.82, my = H * 0.13, r = Math.min(W, H) * 0.16; const mg = ctx.createRadialGradient(mx, my, 0, mx, my, r); mg.addColorStop(0, 'rgba(230,232,255,.2)'); mg.addColorStop(1, 'rgba(230,232,255,0)'); ctx.fillStyle = mg; ctx.fillRect(mx - r, my - r, r * 2, r * 2); ctx.fillStyle = 'rgba(244,242,230,.92)'; ctx.beginPath(); ctx.arc(mx, my, Math.max(6, r * 0.08), 0, TAU); ctx.fill(); }
@@ -633,8 +638,11 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	let last = performance.now(), T = 0, acc = 0, raf = 0;
 	function frame(now) {
 		if (stopped) return;
-		let dt = Math.min(0.05, (now - last) / 1000); last = now;
-		if (reduce) { acc += dt; if (acc < 0.5) { raf = requestAnimationFrame(frame); return; } dt = Math.min(acc, 0.5); acc = 0; }
+		// 毎秒 30 回で描く（常時つけておく画面なので、60 回の半分の負荷にする）。動きを控える設定では毎秒 2 回
+		acc += Math.min(0.25, (now - last) / 1000); last = now;
+		const step = reduce ? 0.5 : 1 / 30 - 0.004;
+		if (acc < step) { raf = requestAnimationFrame(frame); return; }
+		const dt = Math.min(reduce ? 0.5 : 0.1, acc); acc = 0;
 		if (W) { T += dt; updateGrains(dt); draw(T, dt); const isDay = root.classList.contains('day'); if (isDay !== wasDay) { wasDay = isDay; drawMonths(); } }
 		raf = requestAnimationFrame(frame);
 	}
