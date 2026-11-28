@@ -328,7 +328,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	let goals = loadGoals();
 
 	// ── 形 ──
-	let G = null;
+	let G = null, headY = null;
 	function geo() {
 		const kp = $('kpis').getBoundingClientRect(), hd = root.querySelector('.top').getBoundingClientRect(), rb = root.getBoundingClientRect();
 		const top = hd.bottom - rb.top + 64, stripH = 40, bot = kp.top - rb.top - stripH - 50;
@@ -404,8 +404,15 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		G.n.src.forEach((r) => bar(G.xs[0], r, trunk, day ? 0.5 : 0.8)); bar(G.xs[1], G.n.visit, trunk, day ? 0.5 : 0.8); bar(G.xs[2], G.n.search, trunk, day ? 0.5 : 0.8);
 		const gold = day ? '#a87a1c' : '#e6c172';
 		for (const L of ['N', 'O']) G.n[L].forEach((r, i) => bar(G.xs[3 + i], r, i === 3 ? gold : LANES[L][md], 0.9));
-		STAGES.forEach((s, i) => halo(s, G.xs[i], G.top - 34, 12, 0.7, 'center'));
-		halo(fmt(D.visit), G.xs[1], G.top - 12, 22, 0.95, 'center', 700); halo(fmt(D.search), G.xs[2], G.top - 12, 22, 0.95, 'center', 700);
+		// 段の名前は、いちばん上にある帯・数のすぐ上に置く（画面の上端に離さない）。数が変わっても跳ねないよう、ゆっくり寄せる
+		{
+			const mid = (r) => (r[0] + r[1]) / 2;
+			const tops = [mid(G.n.src[0]) - 14, G.n.visit[0], G.n.search[0], ...[0, 1, 2].map((i) => G.n.N[i][0] - 25), mid(G.n.N[3]) - 14];
+			const want = Math.max(G.top - 12, Math.min(...tops) - 16);
+			headY = headY == null ? want : headY + (want - headY) * Math.min(1, dt * 2);
+		}
+		STAGES.forEach((s, i) => halo(s, G.xs[i], headY - 22, 12, 0.7, 'center'));
+		halo(fmt(D.visit), G.xs[1], headY, 22, 0.95, 'center', 700); halo(fmt(D.search), G.xs[2], headY, 22, 0.95, 'center', 700);
 		SOURCES.forEach((s, i) => { const r = G.n.src[i], y = (r[0] + r[1]) / 2; halo(s, G.xs[0] - 10, y - 1, 12, 0.85, 'right'); halo(fmt(D.src[i]), G.xs[0] - 10, y + 13, 11, 0.6, 'right'); });
 		for (const L of ['N', 'O']) G.n[L].forEach((r, i) => { const x = G.xs[3 + i]; if (i === 3) { halo(fmt(D[L][3]) + '件', x + 10, (r[0] + r[1]) / 2 + 7, 19, 0.95, 'left', 700, day ? '#7a5810' : '#f1d48c'); return; } const y = L === 'N' ? r[0] - 9 : r[1] + 19; halo((i === 0 ? LANES[L].name + '　' : '') + fmt(D[L][i]), x, y, 14, 0.95, 'center', 700); });
 		if (M.visit === 0) halo('今日はまだ Book への訪問がありません', (G.xs[1] + G.xs[5]) / 2, G.cy + 4, 14, 0.6, 'center');
