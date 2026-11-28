@@ -354,9 +354,15 @@ describe('自動送信の対象（経路で選ぶ・予約ごとに上書き）'
 		expect(normalizeAutosendSettings({ enabled: true, routes: ['ikkyu'], options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }, { name: 'x' }] })).toEqual({
 			enabled: true,
 			routes: ['ikkyu'],
-			options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }]
+			options: [{ code: 'ikkyu', name: '一休.com', category: 'net' }],
+			filters: {},
+			ranks: []
 		});
-		expect(normalizeAutosendSettings(null)).toEqual({ enabled: false, routes: [], options: [] });
+		expect(normalizeAutosendSettings(null)).toEqual({ enabled: false, routes: [], options: [], filters: {}, ranks: [] });
+		// 絞り込み（会員か・グレード・R 回数・2026-11-28）
+		expect(
+			normalizeAutosendSettings({ enabled: true, routes: [], options: [], filters: { member: 'member', ranks: ['gold'], r_min: 2, x: 1 }, ranks: [{ code: 'gold', name: 'ゴールド' }] })
+		).toMatchObject({ filters: { member: 'member', ranks: ['gold'], r_min: 2 }, ranks: [{ code: 'gold', name: 'ゴールド' }] });
 	});
 });
 

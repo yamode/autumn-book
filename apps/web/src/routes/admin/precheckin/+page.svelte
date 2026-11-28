@@ -22,6 +22,7 @@
 	} from '$lib/precheckin';
 	import { isDirectRoute } from '$lib/booking-channel';
 	import { DONE_MESSAGE_MAX, DONE_TITLE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
+	import { CONDITION_TRANSPORTS, describeConditions, type PcConditions } from '$lib/precheckin';
 	import { EMAIL_STATUS_LABEL, SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, liveLinkChannel, precheckinRoute, smsTarget, type EmailStatusRow, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
@@ -136,8 +137,11 @@
 	// 保存後の読み直しで入力中の欄を巻き戻さないよう、送った行には新しい id だけを付け、読み直した内容が前と同じなら触らない
 	// kind = 形式（自由記入・選択肢）、optionsText = 選択肢（1 行に 1 つ）、active = お客様に聞くか（オフでも消さずに残す・2026-11-28）
 	// note = 補足説明（質問文の下に小さく出す・任意）
-	type QRow = { key: string; id: string | null; question: string; note: string; kind: 'text' | 'choice'; optionsText: string; active: boolean };
-	const qRowOf = (q: { id: string; question: string; note?: string; kind?: 'text' | 'choice'; options?: string[]; active?: boolean }): QRow => ({
+	// conditions = 出し分けの条件（空なら全員に聞く・2026-11-28）。condOpen = 条件の欄を開いているか
+	type QRow = { key: string; id: string | null; question: string; note: string; kind: 'text' | 'choice'; optionsText: string; active: boolean; conditions: PcConditions; condOpen: boolean };
+	const qRowOf = (q: { id: string; question: string; note?: string; kind?: 'text' | 'choice'; options?: string[]; active?: boolean; conditions?: PcConditions }): QRow => ({
+		conditions: { ...(q.conditions ?? {}) },
+		condOpen: false,
 		key: q.id,
 		id: q.id,
 		question: q.question,
@@ -194,12 +198,36 @@
 		autoRoutes = autoRoutes.includes(code) ? autoRoutes.filter((c) => c !== code) : [...autoRoutes, code];
 	};
 	const DIRECT_CODES = ['autumn_booking'];
+	// 経路・グレードの表示名（出し分けの条件の説明に使う）
+	const routeName = (code: string) => (code === 'autumn_booking' ? 'Book 公式予約' : (data.autosend?.options.find((o) => o.code === code)?.name ?? code));
+	const rankName = (code: string) => data.autosend?.ranks.find((r) => r.code === code)?.name ?? code;
+	// 質問の条件の欄で、複数選べる項目をつけ外しする
+	const toggleIn = (list: string[] | undefined, v: string) => {
+		const cur = list ?? [];
+		return cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v];
+	};
+	// 自動送信の絞り込み（会員か・グレード・R 回数）
+	let autoMember = $state('');
+	let autoRanks = $state<string[]>([]);
+	$effect(() => {
+		autoMember = data.autosend?.filters.member ?? '';
+		autoRanks = [...(data.autosend?.filters.ranks ?? [])];
+	});
 	const autoOf = (r: { stay_id: string; source: string | null; channel_code: string | null }) => {
 		const ov = r.stay_id in (data.overrides ?? {}) ? data.overrides[r.stay_id] : null;
-		return { ov, ...autosendDecision(precheckinRoute(r.source, r.channel_code), data.autosend, ov) };
+		const filterOk = data.filterOk?.[r.stay_id] !== false;
+		return { ov, ...autosendDecision(precheckinRoute(r.source, r.channel_code), data.autosend, ov, filterOk) };
 	};
 	const autoLabel = (a: ReturnType<typeof autoOf>) =>
-		a.by === 'override' ? (a.send ? '自動送信する（個別）' : '自動送信しない（個別）') : a.send ? '自動送信する' : '自動送信しない';
+		a.by === 'override'
+			? a.send
+				? '自動送信する（個別）'
+				: '自動送信しない（個別）'
+			: a.by === 'filter'
+				? '自動送信しない（絞り込み）'
+				: a.send
+					? '自動送信する'
+					: '自動送信しない';
 	const confirmResend = (e: MouseEvent, resend: boolean) => {
 		if (resend && !confirm('新しいリンクでもう一度送ります。前に送ったメールのリンクは使えなくなります。よろしいですか？')) e.preventDefault();
 	};
@@ -259,6 +287,43 @@
 				</div>
 			</fieldset>
 			<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
+		</form>
+		<!-- 絞り込み（会員か・会員グレード・R 回数・2026-11-28）。選んだ経路のご予約のうち、当てはまるものだけに送る -->
+		<form method="POST" action="?/autosendFilters" use:autosave class="mt-4 space-y-3 border-t border-stone-100 pt-3" class:opacity-50={!autoEnabled}>
+			<p class="text-xs text-stone-500">さらに絞り込む（空のままなら絞りません）。R 回数は「今回が何回目のご利用か」（PMS の R 表示と同じ）。</p>
+			<div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+				<label class="flex items-center gap-1.5">
+					<span class="text-xs text-stone-600">会員</span>
+					<select name="member" bind:value={autoMember} class="rounded border border-stone-300 px-1.5 py-0.5 text-xs">
+						<option value="">会員・非会員とも</option>
+						<option value="member">会員だけ</option>
+						<option value="non_member">非会員だけ</option>
+					</select>
+				</label>
+				<label class="flex items-center gap-1.5 text-xs text-stone-600">
+					R 回数
+					<input name="r_min" type="number" min="1" max="999" inputmode="numeric" value={data.autosend.filters.r_min ?? ''} placeholder="下限" class="w-16 rounded border border-stone-300 px-1.5 py-0.5" />
+					〜
+					<input name="r_max" type="number" min="1" max="999" inputmode="numeric" value={data.autosend.filters.r_max ?? ''} placeholder="上限" class="w-16 rounded border border-stone-300 px-1.5 py-0.5" />
+				</label>
+			</div>
+			{#if data.autosend.ranks.length}
+				<fieldset class:opacity-50={autoMember === 'non_member'}>
+					<legend class="text-xs text-stone-500">会員グレード（選んだグレードの会員だけ。選ばなければ絞りません）</legend>
+					<div class="mt-1 flex flex-wrap gap-1.5">
+						{#each data.autosend.ranks as rk (rk.code)}
+							<label
+								class="flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-xs ring-1 {autoRanks.includes(rk.code)
+									? 'bg-stone-900 text-white ring-stone-900'
+									: 'bg-white text-stone-700 ring-stone-300'}"
+							>
+								<input type="checkbox" name="rank" value={rk.code} checked={autoRanks.includes(rk.code)} onchange={() => (autoRanks = toggleIn(autoRanks, rk.code))} class="sr-only" />
+								{rk.name}
+							</label>
+						{/each}
+					</div>
+				</fieldset>
+			{/if}
 		</form>
 	</section>
 {/if}
@@ -491,6 +556,72 @@
 								</select>
 							</label>
 						</div>
+						<!-- 出し分け（2026-11-28）。何も選ばなければ全員に聞く -->
+						<div class="ml-7 mt-2 text-xs">
+							<button type="button" onclick={() => (row.condOpen = !row.condOpen)} class="text-stone-600 underline underline-offset-2">
+								出し分け: {describeConditions(row.conditions, routeName) || '全員に聞く'}
+							</button>
+							<!-- 閉じているときも欄は残す（見えないだけ）。送る値は欄そのものが持つ -->
+								<div class="mt-2 space-y-2 rounded border border-stone-200 bg-stone-50 p-2 {row.condOpen ? '' : 'hidden'}">
+									<div class="flex flex-wrap items-center gap-1.5">
+										<span class="w-16 text-stone-500">交通手段</span>
+										{#each CONDITION_TRANSPORTS as t (t)}
+											<label class="flex items-center gap-1 rounded-full bg-white px-2 py-0.5 ring-1 ring-stone-300">
+												<input type="checkbox" name="qc_transport|{i}" value={t} checked={row.conditions.transport?.includes(t) ?? false} onchange={() => (row.conditions = { ...row.conditions, transport: toggleIn(row.conditions.transport, t) })} />
+												{t}
+											</label>
+										{/each}
+									</div>
+									<div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+										<label class="flex items-center gap-1.5">
+											<span class="w-16 text-stone-500">部屋数</span>
+											<select name="qc_group|{i}" value={row.conditions.group ?? ''} onchange={(e) => (row.conditions = { ...row.conditions, group: ((e.currentTarget as HTMLSelectElement).value || undefined) as never })} class="rounded border border-stone-300 px-1.5 py-0.5">
+												<option value="">指定なし</option>
+												<option value="multi">2室以上（グループ）</option>
+												<option value="single">1室</option>
+											</select>
+										</label>
+										<label class="flex items-center gap-1.5">
+											<span class="text-stone-500">泊数</span>
+											<select name="qc_nights|{i}" value={row.conditions.nights ?? ''} onchange={(e) => (row.conditions = { ...row.conditions, nights: ((e.currentTarget as HTMLSelectElement).value || undefined) as never })} class="rounded border border-stone-300 px-1.5 py-0.5">
+												<option value="">指定なし</option>
+												<option value="multi">連泊（2泊以上）</option>
+												<option value="single">1泊</option>
+											</select>
+										</label>
+										<label class="flex items-center gap-1.5">
+											<span class="text-stone-500">利用回数</span>
+											<select name="qc_visit|{i}" value={row.conditions.visit ?? ''} onchange={(e) => (row.conditions = { ...row.conditions, visit: ((e.currentTarget as HTMLSelectElement).value || undefined) as never })} class="rounded border border-stone-300 px-1.5 py-0.5">
+												<option value="">指定なし</option>
+												<option value="first">初めて（R1）</option>
+												<option value="repeat">2回目以上</option>
+											</select>
+										</label>
+									</div>
+									{#if data.autosend?.options.length}
+										<div class="flex flex-wrap items-center gap-1.5">
+											<span class="w-16 text-stone-500">予約経路</span>
+											{#each data.autosend.options as o (o.code)}
+												<label class="flex items-center gap-1 rounded-full bg-white px-2 py-0.5 ring-1 ring-stone-300">
+													<input type="checkbox" name="qc_routes|{i}" value={o.code} checked={row.conditions.routes?.includes(o.code) ?? false} onchange={() => (row.conditions = { ...row.conditions, routes: toggleIn(row.conditions.routes, o.code) })} />
+													{routeName(o.code)}
+												</label>
+											{/each}
+										</div>
+									{/if}
+									<p class="text-stone-500">選んだ項目をすべて満たすご予約にだけ聞きます（同じ項目の中で複数選んだら、どれかに当たれば聞きます）。交通手段は顧客マスタの値で見ます（空のご予約には出ません）。</p>
+									<button
+										type="button"
+										onclick={async (e) => {
+											const f = (e.currentTarget as HTMLButtonElement).form;
+											row.conditions = {};
+											await tick();
+											requestAutosave(f);
+										}}
+										class="rounded border border-stone-300 bg-white px-2 py-0.5 text-stone-600">条件を外す（全員に聞く）</button
+									>
+								</div>
+						</div>
 						{#if row.kind === 'choice'}
 							<label class="ml-7 mt-2 block text-xs">
 								<span class="text-stone-600">選択肢（1 行に 1 つ・2 つ以上）</span>
@@ -502,7 +633,7 @@
 					</div>
 				{/each}
 				<div class="flex items-center gap-2 pt-1">
-					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '', note: '', kind: 'text', optionsText: '', active: true }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
+					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '', note: '', kind: 'text', optionsText: '', active: true, conditions: {}, condOpen: false }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
 					<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 				</div>
 			</form>

@@ -520,7 +520,15 @@ export function precheckinRoute(source: string | null | undefined, channelCode: 
 
 export type AutosendOption = { code: string; name: string; category: string | null };
 /** 施設の自動送信の設定。enabled = 自動送信する、routes = 送る経路 */
-export type AutosendSettings = { enabled: boolean; routes: string[]; options: AutosendOption[] };
+export type AutosendSettings = {
+	enabled: boolean;
+	routes: string[];
+	options: AutosendOption[];
+	/** 絞り込み（会員か・会員グレード・R 回数。20261128072607）。空なら絞らない */
+	filters: { member?: 'member' | 'non_member'; ranks?: string[]; r_min?: number; r_max?: number };
+	/** 選べる会員グレード */
+	ranks: { code: string; name: string }[];
+};
 
 /** book.admin_precheckin_autosend の戻りを整える */
 export function normalizeAutosendSettings(raw: unknown): AutosendSettings {
@@ -530,7 +538,17 @@ export function normalizeAutosendSettings(raw: unknown): AutosendSettings {
 		.map((o) => (o ?? {}) as Record<string, unknown>)
 		.filter((o) => typeof o.code === 'string' && o.code)
 		.map((o) => ({ code: String(o.code), name: String(o.name ?? o.code), category: o.category ? String(o.category) : null }));
-	return { enabled: r.enabled === true, routes, options };
+	const f = (r.filters && typeof r.filters === 'object' ? r.filters : {}) as Record<string, unknown>;
+	const filters: AutosendSettings['filters'] = {};
+	if (f.member === 'member' || f.member === 'non_member') filters.member = f.member;
+	if (Array.isArray(f.ranks) && f.ranks.length) filters.ranks = f.ranks.map(String);
+	if (Number.isInteger(f.r_min) && (f.r_min as number) >= 1) filters.r_min = f.r_min as number;
+	if (Number.isInteger(f.r_max) && (f.r_max as number) >= 1) filters.r_max = f.r_max as number;
+	const ranks = (Array.isArray(r.ranks) ? r.ranks : [])
+		.map((o) => (o ?? {}) as Record<string, unknown>)
+		.filter((o) => typeof o.code === 'string' && o.code)
+		.map((o) => ({ code: String(o.code), name: String(o.name ?? o.code) }));
+	return { enabled: r.enabled === true, routes, options, filters, ranks };
 }
 
 /**
@@ -540,10 +558,14 @@ export function normalizeAutosendSettings(raw: unknown): AutosendSettings {
 export function autosendDecision(
 	route: string,
 	settings: Pick<AutosendSettings, 'enabled' | 'routes'> | null,
-	override: boolean | null
-): { send: boolean; by: 'override' | 'route' | 'off' } {
+	override: boolean | null,
+	/** 絞り込み（会員か・グレード・R 回数）に当てはまるか。分からなければ true（今までどおり） */
+	filterOk = true
+): { send: boolean; by: 'override' | 'route' | 'off' | 'filter' } {
 	if (override === true) return { send: true, by: 'override' };
 	if (override === false) return { send: false, by: 'override' };
 	if (!settings?.enabled) return { send: false, by: 'off' };
-	return { send: route !== 'rms_partner' && settings.routes.includes(route), by: 'route' };
+	const byRoute = route !== 'rms_partner' && settings.routes.includes(route);
+	if (byRoute && !filterOk) return { send: false, by: 'filter' };
+	return { send: byRoute, by: 'route' };
 }

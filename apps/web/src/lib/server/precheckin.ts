@@ -34,6 +34,8 @@ import {
 	type PcAdminQuestion,
 	type PcQuestionKind,
 	normalizeQuestion,
+	normalizeConditions,
+	type PcConditions,
 	type PcError,
 	type PcMealChoice
 } from '$lib/precheckin';
@@ -299,9 +301,15 @@ export async function pcGuestProfile(token: string): Promise<PcProfile> {
 export const DEMO_QUESTIONS: PcQuestion[] = [{ id: 'demo-q1', question: 'ご到着の交通手段（お車・電車など）を教えてください。' }];
 
 /** 施設の宿からの質問（有効なもの・表示順）。見本は DEMO_QUESTIONS。読めないときは空（質問なし） */
-export async function pcQuestions(facilityId: string, demo = false): Promise<PcQuestion[]> {
+export async function pcQuestions(facilityId: string, demo = false, token: string | null = null): Promise<PcQuestion[]> {
 	if (demo && DATA_SOURCE !== 'supabase') return DEMO_QUESTIONS;
 	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return [];
+	// 本予約: その予約に当てはまる質問だけ（出し分けの条件・20261128072607）。見本は施設の有効な質問を全部出す
+	if (token && !demo) {
+		const { data, error } = await supa().rpc('precheckin_questions_for', { p_token: token });
+		if (!error && Array.isArray(data)) return (data as unknown[]).map(normalizeQuestion);
+		if (error) dbg('questions_for error', error.message);
+	}
 	const { data, error } = await supa()
 		.from('precheckin_questions')
 		.select('id, question, note, kind, options')
@@ -462,11 +470,15 @@ export async function adminPrecheckinQuestions(c: BookClient, facility: string):
 	// オフの質問も含めて全件（20261128052707）。未適用なら有効な質問だけ読む（従来）
 	try {
 		const rows = await rpc<unknown[]>(c, 'admin_precheckin_questions', { p_facility: facility });
-		return (rows ?? []).map((x) => ({ ...normalizeQuestion(x), active: (x as { active?: unknown })?.active !== false }));
+		return (rows ?? []).map((x) => ({
+			...normalizeQuestion(x),
+			active: (x as { active?: unknown })?.active !== false,
+			conditions: normalizeConditions((x as { conditions?: unknown })?.conditions)
+		}));
 	} catch {
 		const { data, error } = await c.from('precheckin_questions').select('id, question').eq('facility_id', facility).order('sort_order');
 		if (error) throw error;
-		return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question, note: '', kind: 'text' as const, options: [], active: true }));
+		return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question, note: '', kind: 'text' as const, options: [], active: true, conditions: {} }));
 	}
 }
 
@@ -475,7 +487,7 @@ export async function adminPrecheckinQuestions(c: BookClient, facility: string):
 export const adminPrecheckinSaveQuestions = (
 	c: BookClient,
 	facility: string,
-	questions: { id: string | null; question: string; note: string; kind: PcQuestionKind; options: string[]; active: boolean }[]
+	questions: { id: string | null; question: string; note: string; kind: PcQuestionKind; options: string[]; active: boolean; conditions: PcConditions }[]
 ) => rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
 
 /** 自動送信の対象の設定（経路・有効か・選べる経路） */
@@ -484,6 +496,17 @@ export const adminPrecheckinAutosend = async (c: BookClient, facility: string): 
 
 export const adminPrecheckinSaveAutosend = (c: BookClient, facility: string, enabled: boolean, routes: string[]) =>
 	rpc<null>(c, 'admin_precheckin_save_autosend', { p_facility: facility, p_enabled: enabled, p_routes: routes });
+
+/** 自動送信の絞り込み（会員か・会員グレード・R 回数）を保存（20261128072607） */
+export const adminPrecheckinSaveAutosendFilters = (c: BookClient, facility: string, filters: PcConditions) =>
+	rpc<null>(c, 'admin_precheckin_save_autosend_filters', { p_facility: facility, p_filters: filters });
+
+/** 一覧の予約が、自動送信の絞り込みに当てはまるか（stay_id → true / false）。絞り込みが無ければ全部 true */
+export async function adminPrecheckinAutosendFilterOk(c: BookClient, facility: string, stayIds: string[]): Promise<Record<string, boolean>> {
+	if (!stayIds.length) return {};
+	const r = await rpc<Record<string, unknown>>(c, 'admin_precheckin_autosend_filter_ok', { p_facility: facility, p_stay_ids: stayIds });
+	return Object.fromEntries(Object.entries(r ?? {}).map(([k, v]) => [k, v !== false]));
+}
 
 /** 予約ごとの上書き。include = true 送る／false 送らない／null 経路の設定どおり */
 export const adminPrecheckinSetAutosend = (c: BookClient, facility: string, stayId: string, include: boolean | null) =>

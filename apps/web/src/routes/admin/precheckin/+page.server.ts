@@ -15,6 +15,8 @@ import {
 	adminPrecheckinNotify,
 	adminPrecheckinQuestions,
 	adminPrecheckinSaveAutosend,
+	adminPrecheckinSaveAutosendFilters,
+	adminPrecheckinAutosendFilterOk,
 	adminPrecheckinSaveCaps,
 	adminPrecheckinSaveDoneMessage,
 	adminPrecheckinSaveMinutes,
@@ -33,7 +35,7 @@ import { autosendEnabled, smsAutosendEnabled, type AutosendSettings, type EmailS
 import { env as privateEnv } from '$env/dynamic/private';
 import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
-import type { PcAdminQuestion } from '$lib/precheckin';
+import { normalizeConditions, type PcAdminQuestion, type PcConditions } from '$lib/precheckin';
 import { isNotifyEmail, type PrecheckinNotifySettings } from '$lib/precheckin-notify';
 import { DONE_MESSAGE_MAX, DONE_TITLE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 import { currentFacilityOf } from '$lib/server/admin-content-page';
@@ -71,6 +73,7 @@ export const load: PageServerLoad = async (event) => {
 			notify: null as PrecheckinNotifySettings | null,
 			doneMessage: null as DoneMessage | null,
 			overrides: {} as Record<string, boolean>,
+			filterOk: {} as Record<string, boolean>,
 			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
 			email: [] as EmailStatusRow[],
@@ -110,9 +113,16 @@ export const load: PageServerLoad = async (event) => {
 		// 完了画面の「施設からのご案内」（DB 未適用なら欄を出さない）
 		adminPrecheckinDoneMessage(client, facility).catch(() => null as DoneMessage | null)
 	]);
-	const overrides = autosend
-		? await adminPrecheckinAutosendOverrides(client, facility, list.rows.map((r) => r.stay_id)).catch(() => ({}) as Record<string, boolean>)
-		: ({} as Record<string, boolean>);
+	const stayIds = list.rows.map((r) => r.stay_id);
+	const [overrides, filterOk] = autosend
+		? await Promise.all([
+				adminPrecheckinAutosendOverrides(client, facility, stayIds).catch(() => ({}) as Record<string, boolean>),
+				// 自動送信の絞り込み（会員か・グレード・R 回数）に当てはまるか。絞り込みが無ければ全部 true
+				Object.keys(autosend.filters).length
+					? adminPrecheckinAutosendFilterOk(client, facility, stayIds).catch(() => ({}) as Record<string, boolean>)
+					: Promise.resolve({} as Record<string, boolean>)
+			])
+		: [{} as Record<string, boolean>, {} as Record<string, boolean>];
 	return {
 		live: true as const,
 		filters,
@@ -124,6 +134,7 @@ export const load: PageServerLoad = async (event) => {
 		notify,
 		doneMessage,
 		overrides,
+		filterOk,
 		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 		sms,
 		email,
@@ -197,7 +208,7 @@ export const actions: Actions = {
 		const facility = currentFacilityOf(event).uuid;
 		const form = await event.request.formData();
 		// 1 問ごとに: 質問文（q|n）・id（qid|n）・形式（qkind|n）・選択肢（qopt|n・1 行に 1 つ）・お客様に聞くか（qactive|n）
-		type Row = { n: number; id: string | null; question: string; note: string; kind: 'text' | 'choice'; options: string[]; active: boolean };
+		type Row = { n: number; id: string | null; question: string; note: string; kind: 'text' | 'choice'; options: string[]; active: boolean; conditions: PcConditions };
 		const rows: Row[] = [];
 		let pendingChoice = false;
 		for (const [k, v] of form.entries()) {
@@ -225,6 +236,14 @@ export const actions: Actions = {
 				id: /^[0-9a-f-]{36}$/.test(id) ? id : null,
 				question,
 				note,
+				// 出し分けの条件（qc_<項目>|n。交通手段・経路は複数、ほかは 1 つ）
+				conditions: normalizeConditions({
+					transport: form.getAll(`qc_transport|${m[1]}`).map(String),
+					group: String(form.get(`qc_group|${m[1]}`) ?? ''),
+					routes: form.getAll(`qc_routes|${m[1]}`).map(String),
+					nights: String(form.get(`qc_nights|${m[1]}`) ?? ''),
+					visit: String(form.get(`qc_visit|${m[1]}`) ?? '')
+				}),
 				kind,
 				options: kind === 'choice' ? options : [],
 				active: form.get(`qactive|${m[1]}`) === '1'
@@ -235,7 +254,7 @@ export const actions: Actions = {
 			await adminPrecheckinSaveQuestions(
 				bookAdmin(event),
 				facility,
-				rows.sort((a, b) => a.n - b.n).map(({ id, question, note, kind, options, active }) => ({ id, question, note, kind, options, active }))
+				rows.sort((a, b) => a.n - b.n).map(({ id, question, note, kind, options, active, conditions }) => ({ id, question, note, kind, options, active, conditions }))
 			);
 			return {
 				questionsSaved: true,
@@ -259,6 +278,32 @@ export const actions: Actions = {
 		}
 	},
 	// 予約ごとの上書き（mode = auto 経路どおり／on 送る／off 送らない）
+	// 自動送信の絞り込み: 会員か・会員グレード・R 回数（経路・有効の設定とは別に保存する）
+	autosendFilters: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { autosendError: 'この環境では保存できません。' });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const filters = normalizeConditions({
+			member: String(form.get('member') ?? ''),
+			ranks: form.getAll('rank').map(String),
+			r_min: String(form.get('r_min') ?? ''),
+			r_max: String(form.get('r_max') ?? '')
+		});
+		if (filters.r_min && filters.r_max && filters.r_min > filters.r_max) {
+			return fail(400, { autosendError: 'R 回数は「下限 ≦ 上限」で入れてください。' });
+		}
+		try {
+			await adminPrecheckinSaveAutosendFilters(bookAdmin(event), facility, {
+				member: filters.member,
+				ranks: filters.ranks,
+				r_min: filters.r_min,
+				r_max: filters.r_max
+			});
+			return { autosendSaved: true };
+		} catch (e) {
+			return fail(400, { autosendError: precheckinError(e) });
+		}
+	},
 	autosendRow: async (event) => {
 		if (!ADMIN_SUPABASE) return fail(400, { sendError: 'この環境では保存できません。', sentStay: null as string | null });
 		const facility = currentFacilityOf(event).uuid;

@@ -42,7 +42,76 @@ export type PcQuestionKind = 'text' | 'choice';
 /** kind = 'choice' のときは options から 1 つ選ぶ。note = 質問文の下に小さく出す補足説明（任意・2026-11-28） */
 export type PcQuestion = { id: string; question: string; note?: string; kind?: PcQuestionKind; options?: string[] };
 /** 管理画面用（オフの質問も含む） */
-export type PcAdminQuestion = PcQuestion & { note: string; kind: PcQuestionKind; options: string[]; active: boolean };
+export type PcAdminQuestion = PcQuestion & { note: string; kind: PcQuestionKind; options: string[]; active: boolean; conditions: PcConditions };
+
+/**
+ * 出し分けの条件（book.precheckin_questions.conditions / precheckin_autosend_settings.filters・20261128072607）。
+ * 書いていない項目は絞らない。書いた項目はすべて満たすときだけ当てはまる（配列はどれか 1 つに当たればよい）。
+ * 判定は DB（book._pc_conditions_match）。ここは形をそろえるだけ。
+ */
+export type PcConditions = {
+	/** 顧客マスタの交通手段（JR は電車・新幹線も同じに見る） */
+	transport?: string[];
+	/** multi = 2 室以上の予約／single = 1 室 */
+	group?: 'multi' | 'single';
+	/** 予約経路（自動送信の経路と同じキー） */
+	routes?: string[];
+	/** multi = 2 泊以上／single = 1 泊 */
+	nights?: 'multi' | 'single';
+	/** first = 初めての利用（R1）／repeat = 2 回目以上 */
+	visit?: 'first' | 'repeat';
+	/** member = 会員／non_member = 非会員 */
+	member?: 'member' | 'non_member';
+	/** 会員グレード（book.member_ranks.code） */
+	ranks?: string[];
+	/** R 回数（今回が何回目か）の下限・上限 */
+	r_min?: number;
+	r_max?: number;
+};
+
+export const CONDITION_TRANSPORTS = ['車', 'レンタカー', 'JR', 'タクシー'] as const;
+
+/** DB・フォームの値を条件の形にそろえる（知らない項目・空は捨てる） */
+export function normalizeConditions(x: unknown): PcConditions {
+	const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+	const list = (v: unknown, ok: (s: string) => boolean) =>
+		Array.isArray(v) ? [...new Set(v.filter((s): s is string => typeof s === 'string' && ok(s)))] : [];
+	const code = (s: string) => /^[a-z0-9_-]{1,40}$/.test(s);
+	const int = (v: unknown) => {
+		const n = typeof v === 'number' ? v : typeof v === 'string' && /^\d{1,3}$/.test(v.trim()) ? Number(v.trim()) : NaN;
+		return Number.isInteger(n) && n >= 1 ? n : undefined;
+	};
+	const out: PcConditions = {};
+	const transport = list(r.transport, (s) => (CONDITION_TRANSPORTS as readonly string[]).includes(s));
+	if (transport.length) out.transport = transport;
+	if (r.group === 'multi' || r.group === 'single') out.group = r.group;
+	const routes = list(r.routes, code);
+	if (routes.length) out.routes = routes;
+	if (r.nights === 'multi' || r.nights === 'single') out.nights = r.nights;
+	if (r.visit === 'first' || r.visit === 'repeat') out.visit = r.visit;
+	if (r.member === 'member' || r.member === 'non_member') out.member = r.member;
+	const ranks = list(r.ranks, code);
+	if (ranks.length) out.ranks = ranks;
+	const rMin = int(r.r_min);
+	const rMax = int(r.r_max);
+	if (rMin) out.r_min = rMin;
+	if (rMax) out.r_max = rMax;
+	return out;
+}
+
+/** 条件を短い日本語にする（管理画面の一覧・確認用）。条件が無ければ '' */
+export function describeConditions(c: PcConditions, routeName: (code: string) => string = (s) => s, rankName: (code: string) => string = (s) => s): string {
+	const parts: string[] = [];
+	if (c.transport?.length) parts.push(`交通手段: ${c.transport.join('・')}`);
+	if (c.group) parts.push(c.group === 'multi' ? '2室以上' : '1室');
+	if (c.routes?.length) parts.push(`経路: ${c.routes.map(routeName).join('・')}`);
+	if (c.nights) parts.push(c.nights === 'multi' ? '連泊' : '1泊');
+	if (c.visit) parts.push(c.visit === 'first' ? '初めての利用' : '2回目以上');
+	if (c.member) parts.push(c.member === 'member' ? '会員' : '非会員');
+	if (c.ranks?.length) parts.push(`グレード: ${c.ranks.map(rankName).join('・')}`);
+	if (c.r_min || c.r_max) parts.push(`R${c.r_min ?? 1}〜${c.r_max ? `R${c.r_max}` : ''}`);
+	return parts.join(' ／ ');
+}
 
 /** DB の行・RPC の値を質問の形にそろえる */
 export function normalizeQuestion(x: unknown): PcQuestion & { note: string; kind: PcQuestionKind; options: string[] } {

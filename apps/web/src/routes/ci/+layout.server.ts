@@ -18,8 +18,8 @@ export const load: LayoutServerLoad = async (event) => {
 	if ('ctx' in r) {
 		const [mealMinutes, questions] = await Promise.all([
 			pcMealMinutes(r.ctx.facility.id).catch(() => DEFAULT_MEAL_MINUTES),
-			// 宿からの質問（施設ごと・回答は必須）。① に出す
-			pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => [] as PcQuestion[])
+			// 宿からの質問（施設ごと・回答は任意）。その予約に当てはまるものだけ ① に出す（出し分け・2026-11-28）
+			pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE, r.token).catch(() => [] as PcQuestion[])
 		]);
 		return { ctx: r.ctx, ciError: null as PcError | null, mealMinutes, questions, entrance };
 	}
