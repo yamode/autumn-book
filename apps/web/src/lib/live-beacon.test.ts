@@ -64,6 +64,12 @@ describe('受け手の確かめ', () => {
 		expect(isLiveTrackedPath('/en/admin/x')).toBe(false);
 		expect(isLiveTrackedPath('/p/abc')).toBe(false);
 		expect(isLiveTrackedPath('/live')).toBe(false);
+		expect(isLiveTrackedPath('/ci')).toBe(false);
+		expect(isLiveTrackedPath('/ci/AbCdEfGh12345678')).toBe(false);
+		expect(isLiveTrackedPath('/en/ci/done')).toBe(false);
+		expect(isLiveTrackedPath('/mail/unsubscribe')).toBe(false);
+		expect(isLiveTrackedPath('/mcp')).toBe(false);
+		expect(isLiveTrackedPath('/city')).toBe(true);
 		expect(isLiveTrackedPath('/r/x')).toBe(false);
 	});
 	it('ボットの UA', () => {

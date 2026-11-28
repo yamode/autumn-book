@@ -12,10 +12,10 @@ export const LIVE_BEACON_PATH = '/api/live/beacon';
 export const LIVE_SOURCES: readonly LiveSource[] = ['nishiwaga_hp', 'oga_hp', 'search', 'sns', 'direct'];
 const SID = /^[A-Za-z0-9_-]{16,40}$/;
 
-/** 計測しない画面（管理画面・取引先・客室案内・Live 自身・MCP） */
+/** 計測しない画面（管理画面・取引先・客室案内・事前確認（/ci）・メールの配信停止・Live 自身・MCP）。予約を探しに来た人の流れだけを数える */
 export function isLiveTrackedPath(pathname: string): boolean {
 	const p = pathname.replace(/^\/(en|zh-TW|ko)(?=\/|$)/, '') || '/';
-	return !/^\/(admin|r|p|partner|live|booking-mcp|api)(\/|$)/.test(p);
+	return !/^\/(admin|r|p|partner|ci|mail|live|booking-mcp|mcp|api)(\/|$)/.test(p);
 }
 
 /** ルート（route.id）と URL の施設から段と施設を決める */
