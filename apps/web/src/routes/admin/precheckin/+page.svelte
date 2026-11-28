@@ -21,7 +21,7 @@
 		shortJst
 	} from '$lib/precheckin';
 	import { isDirectRoute } from '$lib/booking-channel';
-	import { DONE_MESSAGE_MAX } from '$lib/precheckin-done-message';
+	import { DONE_MESSAGE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 	import { EMAIL_STATUS_LABEL, SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, liveLinkChannel, precheckinRoute, smsTarget, type EmailStatusRow, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
@@ -77,6 +77,59 @@
 	const counts = $derived(
 		(['unsent', 'sent', 'opened', 'answered', 'failed', 'no_contact'] as const).map((s) => ({ s, n: shownRows.filter((r) => r.state === s).length }))
 	);
+	// 完了画面の「施設からのご案内」の編集欄（2026-11-28）。欄を離れると自動で保存する。
+	// 保存後の読み直しで入力中の欄を巻き戻さないよう、自分が送った内容と同じものが返ってきたときは触らない
+	// （施設を切り替えたときなど、送っていない内容が来たときだけ入れ替える）。
+	let dm = $state<DoneMessage>({ ja: '', en: '', zh: '' });
+	let dmSent = '';
+	let dmApplied = '';
+	const dmJson = (m: DoneMessage) => JSON.stringify({ ja: m.ja.trim(), en: m.en.trim(), zh: m.zh.trim() });
+	$effect(() => {
+		const server = data.doneMessage;
+		untrack(() => {
+			if (!server) return;
+			const json = dmJson(server);
+			if (json !== dmApplied && json !== dmSent) dm = { ...server };
+			dmApplied = json;
+		});
+	});
+	const doneMessageSubmit = () => {
+		dmSent = dmJson(dm);
+	};
+	// 「日本語から翻訳」: 日本語を英語・繁体中国語の下書きにして欄へ入れ、そのまま自動保存する（人が後から直せる）
+	let dmTranslating = $state(false);
+	let dmTranslateMsg = $state<{ ok: boolean; text: string } | null>(null);
+	async function translateDoneMessage(e: MouseEvent) {
+		const f = (e.currentTarget as HTMLButtonElement).form;
+		if (!dm.ja.trim()) {
+			dmTranslateMsg = { ok: false, text: '翻訳する日本語の文章がありません。先に日本語を入れてください。' };
+			return;
+		}
+		if ((dm.en.trim() || dm.zh.trim()) && !confirm('英語・繁体中国語の欄を、日本語からの翻訳で置き換えます。よろしいですか？')) return;
+		dmTranslating = true;
+		dmTranslateMsg = null;
+		try {
+			const res = await fetch('/admin/precheckin/translate', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ text: dm.ja })
+			});
+			const r = (await res.json().catch(() => null)) as { en?: string; zh?: string; error?: string } | null;
+			if (!res.ok || !r?.en || !r?.zh) {
+				dmTranslateMsg = { ok: false, text: r?.error ?? '翻訳できませんでした。時間をおいて再度お試しください。' };
+				return;
+			}
+			dm = { ...dm, en: r.en, zh: r.zh };
+			await tick();
+			requestAutosave(f);
+			dmTranslateMsg = { ok: true, text: '英語・繁体中国語に翻訳して保存しました。AI の下書きなので、内容を確かめて必要なら直してください。' };
+		} catch {
+			dmTranslateMsg = { ok: false, text: '翻訳できませんでした。接続をご確認ください。' };
+		} finally {
+			dmTranslating = false;
+		}
+	}
+
 	// 宿からの質問の編集欄。欄を離れると自動で保存する（$lib/autosave）。
 	// 保存後の読み直しで入力中の欄を巻き戻さないよう、送った行には新しい id だけを付け、読み直した内容が前と同じなら触らない
 	type QRow = { key: string; id: string | null; question: string };
@@ -487,27 +540,40 @@
 			{#if form && 'doneMessageError' in form && form.doneMessageError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.doneMessageError}</p>
 			{/if}
-			<form method="POST" action="?/doneMessage" use:autosave class="mt-3 space-y-3">
+			<form method="POST" action="?/doneMessage" use:autosave={doneMessageSubmit} class="mt-3 space-y-3">
 				<label class="block">
 					<span class="text-xs font-medium text-stone-600">日本語</span>
 					<textarea
 						name="ja"
 						rows="5"
 						maxlength={DONE_MESSAGE_MAX}
-						value={data.doneMessage.ja}
+						bind:value={dm.ja}
 						class="mt-1 w-full rounded border border-stone-300 px-2 py-1"
 						placeholder="例: ご到着の際は正面玄関のインターホンを押してください。"
 					></textarea>
 				</label>
 				<label class="block">
 					<span class="text-xs font-medium text-stone-600">英語（任意）</span>
-					<textarea name="en" rows="4" maxlength={DONE_MESSAGE_MAX} value={data.doneMessage.en} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+					<textarea name="en" rows="4" maxlength={DONE_MESSAGE_MAX} bind:value={dm.en} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
 				</label>
 				<label class="block">
 					<span class="text-xs font-medium text-stone-600">繁体中国語（任意）</span>
-					<textarea name="zh" rows="4" maxlength={DONE_MESSAGE_MAX} value={data.doneMessage.zh} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+					<textarea name="zh" rows="4" maxlength={DONE_MESSAGE_MAX} bind:value={dm.zh} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
 				</label>
-				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
+				{#if dmTranslateMsg}
+					<p class="rounded-lg px-3 py-2 text-sm {dmTranslateMsg.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}" role="status">{dmTranslateMsg.text}</p>
+				{/if}
+				<div class="flex flex-wrap items-center gap-3">
+					<button
+						type="button"
+						onclick={translateDoneMessage}
+						disabled={dmTranslating}
+						class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+					>
+						{dmTranslating ? '翻訳中…' : '日本語から翻訳（英語・繁体中国語）'}
+					</button>
+					<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
+				</div>
 			</form>
 		</section>
 	{/if}
