@@ -7,6 +7,7 @@
 	import { localizeHref } from '$lib/paraglide/runtime';
 	import { DEMO_PRECHECKIN_CODE, slashDate, type PcMealType } from '$lib/precheckin';
 	import { canBookBathInPrecheckin, ciBathBeforeDay } from '$lib/precheckin-p3';
+	import { linkifyParts } from '$lib/precheckin-done-message';
 
 	let { data } = $props();
 	const ctx = $derived(data.ctx!);
@@ -21,6 +22,8 @@
 		)
 	);
 	const bathRows = $derived(data.bathRows ?? []);
+	// 施設からのご案内（管理画面 /admin/precheckin で編集・2026-11-28）。文字として出し、URL だけリンクにする
+	const noticeParts = $derived(data.notice ? linkifyParts(data.notice) : []);
 </script>
 
 <section class="rounded-2xl bg-white p-5 text-sm shadow-sm">
@@ -71,6 +74,13 @@
 		<a href={localizeHref('/ci')} class="mt-4 inline-block text-sm text-stone-600 underline">{m.ci_done_edit()}</a>
 	{/if}
 </section>
+
+{#if noticeParts.length}
+	<section class="mt-4 rounded-2xl bg-white p-5 text-sm shadow-sm">
+		<h2 class="text-base font-semibold">{m.ci_done_notice()}</h2>
+		<p class="mt-2 whitespace-pre-line break-words leading-relaxed text-stone-700">{#each noticeParts as part, i (i)}{#if part.href}<a href={part.href} target="_blank" rel="noopener noreferrer" class="text-stone-900 underline">{part.text}</a>{:else}{part.text}{/if}{/each}</p>
+	</section>
+{/if}
 
 <a href={`${localizeHref('/ci/go')}?to=inroom`} data-sveltekit-reload class="mt-4 block w-full rounded-xl bg-stone-900 py-3 text-center text-sm font-medium text-white">{m.ci_done_inroom()}</a>
 

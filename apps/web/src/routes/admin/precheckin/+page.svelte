@@ -21,6 +21,7 @@
 		shortJst
 	} from '$lib/precheckin';
 	import { isDirectRoute } from '$lib/booking-channel';
+	import { DONE_MESSAGE_MAX } from '$lib/precheckin-done-message';
 	import { EMAIL_STATUS_LABEL, SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, liveLinkChannel, precheckinRoute, smsTarget, type EmailStatusRow, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
@@ -470,6 +471,42 @@
 				{#if !data.notify.email && !data.notify.defaultEmail}
 					<p class="text-xs text-amber-700">施設の代表アドレスが未設定のため、宛先を入れないとメールは送られません。</p>
 				{/if}
+				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
+			</form>
+		</section>
+	{/if}
+
+	{#if data.doneMessage}
+		<!-- 完了画面（/ci/done）の「施設からのご案内」（2026-11-28）。欄を離れると自動で保存する。 -->
+		<section class="mt-4 rounded-xl border border-stone-200 bg-white p-4 text-sm">
+			<h2 class="font-semibold">完了画面の「施設からのご案内」</h2>
+			<p class="mt-1 text-xs text-stone-500">
+				お客様が事前チェックインを終えたあとの完了画面に、ここに書いた文をそのまま出します（改行もそのまま。http から始まる URL はリンクになります）。
+				空欄なら案内の枠は出ません。英語・繁体中国語が空欄のときは、英語 → 日本語の順に代わりを出します。
+			</p>
+			{#if form && 'doneMessageError' in form && form.doneMessageError}
+				<p class="mt-2 text-sm text-red-700" role="alert">{form.doneMessageError}</p>
+			{/if}
+			<form method="POST" action="?/doneMessage" use:autosave class="mt-3 space-y-3">
+				<label class="block">
+					<span class="text-xs font-medium text-stone-600">日本語</span>
+					<textarea
+						name="ja"
+						rows="5"
+						maxlength={DONE_MESSAGE_MAX}
+						value={data.doneMessage.ja}
+						class="mt-1 w-full rounded border border-stone-300 px-2 py-1"
+						placeholder="例: ご到着の際は正面玄関のインターホンを押してください。"
+					></textarea>
+				</label>
+				<label class="block">
+					<span class="text-xs font-medium text-stone-600">英語（任意）</span>
+					<textarea name="en" rows="4" maxlength={DONE_MESSAGE_MAX} value={data.doneMessage.en} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+				</label>
+				<label class="block">
+					<span class="text-xs font-medium text-stone-600">繁体中国語（任意）</span>
+					<textarea name="zh" rows="4" maxlength={DONE_MESSAGE_MAX} value={data.doneMessage.zh} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+				</label>
 				<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 			</form>
 		</section>

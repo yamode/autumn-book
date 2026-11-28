@@ -42,6 +42,7 @@ import {
 	type StayTokenResult
 } from '$lib/precheckin-p3';
 import { normalizeAutosendSettings, type AutosendSettings } from '$lib/precheckin-sms';
+import { EMPTY_DONE_MESSAGE, normalizeDoneMessage, type DoneMessage } from '$lib/precheckin-done-message';
 import { stayCookieMaxAge } from '$lib/server/stay-cookie';
 import { stayOffersPrecheckinBath } from '$lib/server/precheckin-sms';
 import { customerLinkOrigin } from '$lib/server/public-origin';
@@ -486,6 +487,29 @@ export const adminPrecheckinNotify = async (c: BookClient, facility: string): Pr
 /** 通知メールの設定を保存（宛先は空欄なら代表アドレスへ。形が違えば例外 invalid_email） */
 export const adminPrecheckinSaveNotify = (c: BookClient, facility: string, email: string, enabled: boolean) =>
 	rpc<null>(c, 'admin_precheckin_save_notify', { p_facility: facility, p_email: email, p_enabled: enabled });
+
+// ---------------------------------------------------------------- 完了画面の「施設からのご案内」（20261128043600）
+
+const DONE_MESSAGE_COLS = 'done_message, done_message_en, done_message_zh';
+
+/** お客様の完了画面用（anon で読む）。見本・未設定・読めないときは空 */
+export async function pcDoneMessage(facilityId: string): Promise<DoneMessage> {
+	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return { ...EMPTY_DONE_MESSAGE };
+	const { data, error } = await supa().from('precheckin_settings').select(DONE_MESSAGE_COLS).eq('facility_id', facilityId).maybeSingle();
+	if (error) dbg('done message error', error.message);
+	return normalizeDoneMessage(data);
+}
+
+/** 管理画面用。DB が未適用なら例外（呼び出し側で欄を出さない） */
+export async function adminPrecheckinDoneMessage(c: BookClient, facility: string): Promise<DoneMessage> {
+	const { data, error } = await c.from('precheckin_settings').select(DONE_MESSAGE_COLS).eq('facility_id', facility).maybeSingle();
+	if (error) throw error;
+	return normalizeDoneMessage(data);
+}
+
+/** 保存（空欄は消す。2000 文字を超えると例外 invalid_params） */
+export const adminPrecheckinSaveDoneMessage = (c: BookClient, facility: string, m: DoneMessage) =>
+	rpc<null>(c, 'admin_precheckin_save_done_message', { p_facility: facility, p_ja: m.ja, p_en: m.en, p_zh: m.zh });
 
 type IssueResult = {
 	id: string;

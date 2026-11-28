@@ -9,12 +9,14 @@ import {
 	adminPrecheckinAutosend,
 	adminPrecheckinAutosendOverrides,
 	adminPrecheckinCaps,
+	adminPrecheckinDoneMessage,
 	adminPrecheckinList,
 	adminPrecheckinMinutes,
 	adminPrecheckinNotify,
 	adminPrecheckinQuestions,
 	adminPrecheckinSaveAutosend,
 	adminPrecheckinSaveCaps,
+	adminPrecheckinSaveDoneMessage,
 	adminPrecheckinSaveMinutes,
 	adminPrecheckinSaveNotify,
 	adminPrecheckinSaveQuestions,
@@ -33,6 +35,7 @@ import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
 import type { PcQuestion } from '$lib/precheckin';
 import { isNotifyEmail, type PrecheckinNotifySettings } from '$lib/precheckin-notify';
+import { DONE_MESSAGE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 import { currentFacilityOf } from '$lib/server/admin-content-page';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -66,6 +69,7 @@ export const load: PageServerLoad = async (event) => {
 			questions: null as PcQuestion[] | null,
 			autosend: null as AutosendSettings | null,
 			notify: null as PrecheckinNotifySettings | null,
+			doneMessage: null as DoneMessage | null,
 			overrides: {} as Record<string, boolean>,
 			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
@@ -85,7 +89,7 @@ export const load: PageServerLoad = async (event) => {
 	const smsMonth = brand && brandFacilities.length
 		? adminMonthlySmsEstimate(client, brand.name, brandFacilities).catch(() => null)
 		: null;
-	const [list, caps, sms, email, minutes, questions, autosend, notify] = await Promise.all([
+	const [list, caps, sms, email, minutes, questions, autosend, notify, doneMessage] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
 			(e) => ({ rows: [] as PrecheckinListRow[], error: precheckinError(e) })
@@ -102,7 +106,9 @@ export const load: PageServerLoad = async (event) => {
 		// 自動送信の対象（DB 未適用なら欄を出さない）
 		adminPrecheckinAutosend(client, facility).catch(() => null as AutosendSettings | null),
 		// 回答が届いたときの通知メール（DB 未適用なら欄を出さない）
-		adminPrecheckinNotify(client, facility).catch(() => null as PrecheckinNotifySettings | null)
+		adminPrecheckinNotify(client, facility).catch(() => null as PrecheckinNotifySettings | null),
+		// 完了画面の「施設からのご案内」（DB 未適用なら欄を出さない）
+		adminPrecheckinDoneMessage(client, facility).catch(() => null as DoneMessage | null)
 	]);
 	const overrides = autosend
 		? await adminPrecheckinAutosendOverrides(client, facility, list.rows.map((r) => r.stay_id)).catch(() => ({}) as Record<string, boolean>)
@@ -116,6 +122,7 @@ export const load: PageServerLoad = async (event) => {
 		questions,
 		autosend,
 		notify,
+		doneMessage,
 		overrides,
 		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 		sms,
@@ -249,6 +256,23 @@ export const actions: Actions = {
 			const msg = e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : '';
 			if (msg.includes('invalid_email')) return fail(400, { notifyError: '宛先のメールアドレスの形が正しくありません。' });
 			return fail(400, { notifyError: precheckinError(e) });
+		}
+	},
+	// 完了画面の「施設からのご案内」（日本語・英語・繁体中国語。空欄は出さない／他の言語へ落とす）
+	doneMessage: async (event) => {
+		if (!ADMIN_SUPABASE) return fail(400, { doneMessageError: 'この環境では保存できません。' });
+		const facility = currentFacilityOf(event).uuid;
+		const form = await event.request.formData();
+		const v = (k: string) => String(form.get(k) ?? '').trim();
+		const msg: DoneMessage = { ja: v('ja'), en: v('en'), zh: v('zh') };
+		if ([msg.ja, msg.en, msg.zh].some((t) => t.length > DONE_MESSAGE_MAX)) {
+			return fail(400, { doneMessageError: `案内文は ${DONE_MESSAGE_MAX} 文字までです。` });
+		}
+		try {
+			await adminPrecheckinSaveDoneMessage(bookAdmin(event), facility, msg);
+			return { doneMessageSaved: true, doneMessageError: null as string | null };
+		} catch (e) {
+			return fail(400, { doneMessageError: precheckinError(e) });
 		}
 	},
 	// 食事の所要時間の目安（分）。貸切風呂の時間を選ぶときの目安として、お客様の画面に出す
