@@ -41,8 +41,8 @@
 		{ key: 'phone', name: 'contact_phone', label: m.ci_field_phone(), shown: ctx.guest.phoneMasked, raw: '', type: 'tel', auto: 'tel', max: 100 },
 		{ key: 'email', name: 'contact_email', label: m.ci_field_email(), shown: ctx.guest.emailMasked, raw: '', type: 'email', auto: 'email', max: 254 },
 		{ key: 'zip', name: 'guest_zip', label: m.ci_guest_zip(), shown: p.zip ?? p.zip_masked ?? '', raw: p.zip ?? '', type: 'text', auto: 'postal-code', max: 20 },
-		{ key: 'address', name: 'guest_address', label: m.ci_guest_address(), shown: p.address ?? p.address_masked ?? '', raw: p.address ?? '', type: 'text', auto: 'street-address', max: 300, required: true },
-		{ key: 'birthdate', name: 'guest_birthdate', label: m.ci_guest_birthdate(), shown: p.birthdate ? slashDate(p.birthdate) : (p.birthdate_masked ?? '').replaceAll('-', '/'), raw: p.birthdate ?? '', type: 'date', auto: 'bday', max: 10, required: true },
+		{ key: 'address', name: 'guest_address', label: m.ci_guest_address(), shown: p.address ?? p.address_masked ?? '', raw: p.address ?? '', type: 'text', auto: 'street-address', max: 300 },
+		{ key: 'birthdate', name: 'guest_birthdate', label: m.ci_guest_birthdate(), shown: p.birthdate ? slashDate(p.birthdate) : (p.birthdate_masked ?? '').replaceAll('-', '/'), raw: p.birthdate ?? '', type: 'date', auto: 'bday', max: 10 },
 		{ key: 'receipt_name', name: 'guest_receipt_name', label: m.ci_guest_receipt(), shown: p.receipt_name ?? '', raw: p.receipt_name ?? '', type: 'text', auto: 'off', max: 100, placeholder: m.ci_guest_receipt_placeholder() }
 	]);
 	const savedOf = (k: Key): string =>
@@ -233,19 +233,19 @@
 						{@const bad = missingGuest === 'birthdate' ? 'border-red-400 ring-1 ring-red-300' : ''}
 						<input type="hidden" name={f.name} value={draft.birthdate ?? ''} />
 						<div class="mt-1 grid grid-cols-[2fr_1fr_1fr] gap-2">
-							<select id="ci-birthdate" bind:value={birth.y} required autocomplete="bday-year" aria-label={m.ci_bd_year()} class="{selectCls} {bad}">
+							<select id="ci-birthdate" bind:value={birth.y} autocomplete="bday-year" aria-label={m.ci_bd_year()} class="{selectCls} {bad}">
 								<option value="">{m.ci_bd_year()}</option>
 								{#each birthYears as y (y)}
 									<option value={String(y)}>{y}{withEra ? `（${eraYear(y)}）` : ''}</option>
 								{/each}
 							</select>
-							<select bind:value={birth.m} required autocomplete="bday-month" aria-label={m.ci_bd_month()} class="{selectCls} {bad}">
+							<select bind:value={birth.m} autocomplete="bday-month" aria-label={m.ci_bd_month()} class="{selectCls} {bad}">
 								<option value="">{m.ci_bd_month()}</option>
 								{#each Array.from({ length: 12 }, (_, i) => i + 1) as mo (mo)}
 									<option value={String(mo)}>{mo}</option>
 								{/each}
 							</select>
-							<select bind:value={birth.d} required autocomplete="bday-day" aria-label={m.ci_bd_day()} class="{selectCls} {bad}">
+							<select bind:value={birth.d} autocomplete="bday-day" aria-label={m.ci_bd_day()} class="{selectCls} {bad}">
 								<option value="">{m.ci_bd_day()}</option>
 								{#each Array.from({ length: birthDays }, (_, i) => i + 1) as d (d)}
 									<option value={String(d)}>{d}</option>
@@ -306,7 +306,6 @@
 	<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
 		<h2 class="font-semibold">
 			{m.ci_section_gender()}
-			<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-normal text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
 		</h2>
 		<p class="mt-1 text-xs text-stone-500">{m.ci_gender_lead()}</p>
 		<div class="mt-3 space-y-3">
@@ -330,7 +329,6 @@
 									const v = (e.currentTarget as HTMLSelectElement).value;
 									genderSel[r.stayId] = { male: v, female: v === '' ? '' : String(n - Number(v)) };
 								}}
-								required
 								disabled={ro}
 								class="{selectCls} {bad}"
 							>
@@ -346,15 +344,15 @@
 						<div class="mt-1 grid grid-cols-2 gap-2">
 							<label class="block">
 								<span class="text-stone-600">{m.ci_male()}</span>
-								<select name="g|{r.stayId}|male" value={sel.male} required disabled={ro} class="{selectCls} {bad}">
-									<option value="" disabled>{m.ci_choose()}</option>
+								<select name="g|{r.stayId}|male" value={sel.male} disabled={ro} class="{selectCls} {bad}">
+									<option value="">{m.ci_choose()}</option>
 									{#each headcounts as k (k)}<option value={String(k)}>{k}</option>{/each}
 								</select>
 							</label>
 							<label class="block">
 								<span class="text-stone-600">{m.ci_female()}</span>
-								<select name="g|{r.stayId}|female" value={sel.female} required disabled={ro} class="{selectCls} {bad}">
-									<option value="" disabled>{m.ci_choose()}</option>
+								<select name="g|{r.stayId}|female" value={sel.female} disabled={ro} class="{selectCls} {bad}">
+									<option value="">{m.ci_choose()}</option>
 									{#each headcounts as k (k)}<option value={String(k)}>{k}</option>{/each}
 								</select>
 							</label>
@@ -388,13 +386,12 @@
 						<fieldset class="block">
 							<legend>
 								<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
-								<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
 							</legend>
 							{#if q.note}<p class="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{q.note}</p>{/if}
 							<div class="mt-2 space-y-1.5 {missingId === q.id ? 'rounded-lg ring-1 ring-red-300' : ''}">
 								{#each q.options as opt (opt)}
 									<label class="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2">
-										<input type="radio" name="q|{q.id}" value={opt} checked={answerOf(q.id) === opt} required disabled={ro} class="h-4 w-4" />
+										<input type="radio" name="q|{q.id}" value={opt} checked={answerOf(q.id) === opt} disabled={ro} class="h-4 w-4" />
 										<span>{opt}</span>
 									</label>
 								{/each}
@@ -403,13 +400,11 @@
 					{:else}
 					<label class="block">
 						<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
-						<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
 						{#if q.note}<span class="mt-0.5 block whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{q.note}</span>{/if}
 						<textarea
 							name="q|{q.id}"
 							rows="2"
 							maxlength="1000"
-							required
 							disabled={ro}
 							aria-invalid={missingId === q.id}
 							class="{inputCls} {missingId === q.id ? 'border-red-400 ring-1 ring-red-300' : ''}">{answerOf(q.id)}</textarea

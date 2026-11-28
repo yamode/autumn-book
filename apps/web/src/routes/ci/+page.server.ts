@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGender, missingGuestField, missingQuestion, type PcProfile } from '$lib/precheckin';
-import { pcGuestProfile, pcNotifyFacility, pcQuestions, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
+import { answersFromForm, type PcProfile } from '$lib/precheckin';
+import { pcGuestProfile, pcNotifyFacility, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions, PageServerLoad } from './$types';
 
 // ① ご予約内容の確認・修正（連絡先・到着予定時刻・宿からの質問への回答）。
@@ -20,21 +20,8 @@ export const actions: Actions = {
 		if (!r.ctx.editable) return fail(400, { error: 'closed', field: null });
 		const form = await event.request.formData();
 		const answers = answersFromForm(form, getLocale());
-		// 住所・生年月日は必須（最終判定は RPC）
-		// 変更していない欄（送られてこない）は顧客マスタのとおり
-		const profile = await pcGuestProfile(r.token).catch((): PcProfile => ({}));
-		const missingGuest = missingGuestField(
-			{ address: answers.guest.address || profile.address, birthdate: answers.guest.birthdate || profile.birthdate },
-			{ address: profile.has_address, birthdate: profile.has_birthdate }
-		);
-		if (missingGuest) return fail(400, { error: 'guest_required', field: missingGuest as string | null });
-		// 男女人数（部屋ごと・必須。最終判定は RPC。2026-11-28）
-		const missingRoom = missingGender(r.ctx.rooms, answers.gender ?? []);
-		if (missingRoom) return fail(400, { error: 'gender_required', field: missingRoom as string | null });
-		// 宿からの質問は必須（最終判定は RPC。ここは分かりやすい文言のため・見本も同じ）
-		const questions = await pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => []);
-		const missing = missingQuestion(questions, answers.questions);
-		if (missing) return fail(400, { error: 'question_required', field: missing as string | null });
+		// 伺い項目（住所・生年月日・男女人数）はどれも任意（2026-11-28 指示）。形の確かめは RPC
+		// 宿からの質問もどれも任意（2026-11-28 指示）。選択肢形式の答えが選択肢にあるかは RPC が確かめる
 		const res = await pcSaveAnswers(r.token, answers, event.cookies);
 		// DB の男女人数の不足は field = 'gender' で返る。画面の文言は gender_required にそろえる
 		if (!res.ok) return fail(400, { error: res.field === 'gender' ? 'gender_required' : res.error, field: res.field ?? null });
