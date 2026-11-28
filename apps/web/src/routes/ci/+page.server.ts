@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { getLocale, localizeHref } from '$lib/paraglide/runtime';
-import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGuestField, missingQuestion, type PcProfile } from '$lib/precheckin';
+import { DEMO_PRECHECKIN_CODE, answersFromForm, missingGender, missingGuestField, missingQuestion, type PcProfile } from '$lib/precheckin';
 import { pcGuestProfile, pcNotifyFacility, pcQuestions, pcSaveAnswers, resolvePrecheckin } from '$lib/server/precheckin';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -28,12 +28,16 @@ export const actions: Actions = {
 			{ address: profile.has_address, birthdate: profile.has_birthdate }
 		);
 		if (missingGuest) return fail(400, { error: 'guest_required', field: missingGuest as string | null });
+		// 男女人数（部屋ごと・必須。最終判定は RPC。2026-11-28）
+		const missingRoom = missingGender(r.ctx.rooms, answers.gender ?? []);
+		if (missingRoom) return fail(400, { error: 'gender_required', field: missingRoom as string | null });
 		// 宿からの質問は必須（最終判定は RPC。ここは分かりやすい文言のため・見本も同じ）
 		const questions = await pcQuestions(r.ctx.facility.id, r.ctx.bookingCode === DEMO_PRECHECKIN_CODE).catch(() => []);
 		const missing = missingQuestion(questions, answers.questions);
 		if (missing) return fail(400, { error: 'question_required', field: missing as string | null });
 		const res = await pcSaveAnswers(r.token, answers, event.cookies);
-		if (!res.ok) return fail(400, { error: res.error, field: res.field ?? null });
+		// DB の男女人数の不足は field = 'gender' で返る。画面の文言は gender_required にそろえる
+		if (!res.ok) return fail(400, { error: res.field === 'gender' ? 'gender_required' : res.error, field: res.field ?? null });
 		// 回答済み（② まで送信済み）のあとの修正なら宿へ知らせる（未回答のうちは DB が何もしない・失敗しても保存は成功のまま）
 		await pcNotifyFacility(event, r.token);
 		redirect(303, localizeHref('/ci/meals'));

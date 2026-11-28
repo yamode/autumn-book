@@ -31,6 +31,9 @@ import {
 	type PcContext,
 	type PcProfile,
 	type PcQuestion,
+	type PcAdminQuestion,
+	type PcQuestionKind,
+	normalizeQuestion,
 	type PcError,
 	type PcMealChoice
 } from '$lib/precheckin';
@@ -146,6 +149,7 @@ export async function pcSaveAnswers(token: string, answers: PcAnswers, cookies: 
 			...readDemoAnswers(cookies),
 			arrival_time: answers.arrival_time,
 			questions: (answers.questions ?? []).map(({ id, answer }) => ({ id, answer })),
+			gender: answers.gender ?? [],
 			basic_saved_at: new Date().toISOString()
 		});
 		return { ok: true };
@@ -300,12 +304,17 @@ export async function pcQuestions(facilityId: string, demo = false): Promise<PcQ
 	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return [];
 	const { data, error } = await supa()
 		.from('precheckin_questions')
-		.select('id, question')
+		.select('id, question, kind, options')
 		.eq('facility_id', facilityId)
 		.eq('is_active', true)
 		.order('sort_order');
-	if (error) dbg('questions error', error.message);
-	return ((data ?? []) as { id: string; question: string }[]).map((q) => ({ id: q.id, question: q.question }));
+	if (error) {
+		// 形式・選択肢の列（20261128052707）が未適用なら、質問文だけで読み直す
+		dbg('questions error', error.message);
+		const old = await supa().from('precheckin_questions').select('id, question').eq('facility_id', facilityId).eq('is_active', true).order('sort_order');
+		return ((old.data ?? []) as unknown[]).map(normalizeQuestion);
+	}
+	return ((data ?? []) as unknown[]).map(normalizeQuestion);
 }
 
 // ---------------------------------------------------------------- 食事の所要時間の目安（book.precheckin_settings）
@@ -449,15 +458,25 @@ export async function adminPrecheckinMinutes(c: BookClient, facility: string): P
 }
 
 /** 宿からの質問（管理画面・表示順） */
-export async function adminPrecheckinQuestions(c: BookClient, facility: string): Promise<PcQuestion[]> {
-	const { data, error } = await c.from('precheckin_questions').select('id, question').eq('facility_id', facility).order('sort_order');
-	if (error) throw error;
-	return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question }));
+export async function adminPrecheckinQuestions(c: BookClient, facility: string): Promise<PcAdminQuestion[]> {
+	// オフの質問も含めて全件（20261128052707）。未適用なら有効な質問だけ読む（従来）
+	try {
+		const rows = await rpc<unknown[]>(c, 'admin_precheckin_questions', { p_facility: facility });
+		return (rows ?? []).map((x) => ({ ...normalizeQuestion(x), active: (x as { active?: unknown })?.active !== false }));
+	} catch {
+		const { data, error } = await c.from('precheckin_questions').select('id, question').eq('facility_id', facility).order('sort_order');
+		if (error) throw error;
+		return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question, kind: 'text' as const, options: [], active: true }));
+	}
 }
 
-/** 宿からの質問を丸ごと置き換える（並び順＝表示順・空欄は捨てる・一覧から消した質問は削除） */
-export const adminPrecheckinSaveQuestions = (c: BookClient, facility: string, questions: { id: string | null; question: string }[]) =>
-	rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
+/** 宿からの質問を丸ごと置き換える（並び順＝表示順・空欄は捨てる・一覧から消した質問は削除）。
+ *  選択肢が 2 つ未満などは例外 invalid_options */
+export const adminPrecheckinSaveQuestions = (
+	c: BookClient,
+	facility: string,
+	questions: { id: string | null; question: string; kind: PcQuestionKind; options: string[]; active: boolean }[]
+) => rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
 
 /** 自動送信の対象の設定（経路・有効か・選べる経路） */
 export const adminPrecheckinAutosend = async (c: BookClient, facility: string): Promise<AutosendSettings> =>

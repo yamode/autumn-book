@@ -33,7 +33,7 @@ import { autosendEnabled, smsAutosendEnabled, type AutosendSettings, type EmailS
 import { env as privateEnv } from '$env/dynamic/private';
 import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
-import type { PcQuestion } from '$lib/precheckin';
+import type { PcAdminQuestion } from '$lib/precheckin';
 import { isNotifyEmail, type PrecheckinNotifySettings } from '$lib/precheckin-notify';
 import { DONE_MESSAGE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 import { currentFacilityOf } from '$lib/server/admin-content-page';
@@ -66,7 +66,7 @@ export const load: PageServerLoad = async (event) => {
 			list: [] as PrecheckinListRow[],
 			caps: null as PrecheckinCaps | null,
 			minutes: null as MealMinutes | null,
-			questions: null as PcQuestion[] | null,
+			questions: null as PcAdminQuestion[] | null,
 			autosend: null as AutosendSettings | null,
 			notify: null as PrecheckinNotifySettings | null,
 			doneMessage: null as DoneMessage | null,
@@ -102,7 +102,7 @@ export const load: PageServerLoad = async (event) => {
 		// 食事の所要時間の目安（DB 未適用なら欄を出さない）
 		adminPrecheckinMinutes(client, facility).catch(() => null as MealMinutes | null),
 		// 宿からの質問（DB 未適用なら欄を出さない）
-		adminPrecheckinQuestions(client, facility).catch(() => null as PcQuestion[] | null),
+		adminPrecheckinQuestions(client, facility).catch(() => null as PcAdminQuestion[] | null),
 		// 自動送信の対象（DB 未適用なら欄を出さない）
 		adminPrecheckinAutosend(client, facility).catch(() => null as AutosendSettings | null),
 		// 回答が届いたときの通知メール（DB 未適用なら欄を出さない）
@@ -196,7 +196,10 @@ export const actions: Actions = {
 		if (!ADMIN_SUPABASE) return fail(400, { questionsError: 'この環境では保存できません。' });
 		const facility = currentFacilityOf(event).uuid;
 		const form = await event.request.formData();
-		const rows: { n: number; id: string | null; question: string }[] = [];
+		// 1 問ごとに: 質問文（q|n）・id（qid|n）・形式（qkind|n）・選択肢（qopt|n・1 行に 1 つ）・お客様に聞くか（qactive|n）
+		type Row = { n: number; id: string | null; question: string; kind: 'text' | 'choice'; options: string[]; active: boolean };
+		const rows: Row[] = [];
+		let pendingChoice = false;
 		for (const [k, v] of form.entries()) {
 			const m = /^q\|(\d{1,2})$/.exec(k);
 			if (!m) continue;
@@ -204,12 +207,36 @@ export const actions: Actions = {
 			if (!question) continue;
 			if (question.length > 300) return fail(400, { questionsError: '質問は 1 問 300 字までにしてください。' });
 			const id = String(form.get(`qid|${m[1]}`) ?? '').trim();
-			rows.push({ n: Number(m[1]), id: /^[0-9a-f-]{36}$/.test(id) ? id : null, question });
+			const options = [...new Set(String(form.get(`qopt|${m[1]}`) ?? '').split(/\r?\n/).map((o) => o.trim()).filter(Boolean))];
+			if (options.length > 20 || options.some((o) => o.length > 100)) {
+				return fail(400, { questionsError: '選択肢は 1 問 20 個まで・1 個 100 字までにしてください。' });
+			}
+			let kind: Row['kind'] = form.get(`qkind|${m[1]}`) === 'choice' ? 'choice' : 'text';
+			// 選択肢がまだ 2 つ未満なら、そろうまでは自由記入として保存する（質問を消さないため）
+			if (kind === 'choice' && options.length < 2) {
+				kind = 'text';
+				pendingChoice = true;
+			}
+			rows.push({
+				n: Number(m[1]),
+				id: /^[0-9a-f-]{36}$/.test(id) ? id : null,
+				question,
+				kind,
+				options: kind === 'choice' ? options : [],
+				active: form.get(`qactive|${m[1]}`) === '1'
+			});
 		}
 		if (rows.length > 20) return fail(400, { questionsError: '質問は 20 問までにしてください。' });
 		try {
-			await adminPrecheckinSaveQuestions(bookAdmin(event), facility, rows.sort((a, b) => a.n - b.n).map(({ id, question }) => ({ id, question })));
-			return { questionsSaved: true, questionsError: null as string | null };
+			await adminPrecheckinSaveQuestions(
+				bookAdmin(event),
+				facility,
+				rows.sort((a, b) => a.n - b.n).map(({ id, question, kind, options, active }) => ({ id, question, kind, options, active }))
+			);
+			return {
+				questionsSaved: true,
+				questionsError: pendingChoice ? '選択肢形式は、選択肢を 2 つ以上入れると切り替わります（それまでは自由記入でお客様に出ます）。' : (null as string | null)
+			};
 		} catch (e) {
 			return fail(400, { questionsError: precheckinError(e) });
 		}

@@ -128,6 +128,16 @@
 	const answerOf = (id: string) => a.questions?.find((x) => x.id === id)?.answer ?? '';
 	const missingId = $derived(form?.error === 'question_required' ? (form.field ?? null) : null);
 	const missingGuest = $derived(form?.error === 'guest_required' || form?.error === 'invalid_params' ? (form.field ?? null) : null);
+	// 男女人数（部屋ごと・必須・2026-11-28）。前に送った値 → いま PMS にある値 の順で最初から入れる。
+	// どちらも 0 人なら空欄（選んでもらう）。送信で PMS の泊へ書かれる
+	const genderMissing = $derived(form?.error === 'gender_required');
+	const genderOf = (r: { stayId: string; male?: number; female?: number }): { male: string; female: string } => {
+		const sent = a.gender?.find((g) => g.stay_id === r.stayId);
+		if (sent && sent.male + sent.female > 0) return { male: String(sent.male), female: String(sent.female) };
+		if ((r.male ?? 0) + (r.female ?? 0) > 0) return { male: String(r.male ?? 0), female: String(r.female ?? 0) };
+		return { male: '', female: '' };
+	};
+	const headcounts = Array.from({ length: 21 }, (_, i) => i);
 	// 部屋タイプ（複数室は「和室・洋室」、同じタイプが続けば「和室 ×2」）
 	const roomTypes = $derived.by(() => {
 		const counts = new Map<string, number>();
@@ -143,6 +153,8 @@
 					? m.ci_err_question()
 					: form.error === 'guest_required'
 						? m.ci_err_guest()
+					: form.error === 'gender_required'
+						? m.ci_err_gender()
 					: form.error === 'invalid_params'
 						? m.ci_err_field()
 						: m.ci_err_save()
@@ -272,6 +284,43 @@
 		</div>
 	</section>
 
+	<!-- 男女別の人数（部屋ごと・必須・2026-11-28）。送信の時点で PMS の泊へ書く -->
+	<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
+		<h2 class="font-semibold">
+			{m.ci_section_gender()}
+			<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-normal text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
+		</h2>
+		<p class="mt-1 text-xs text-stone-500">{m.ci_gender_lead()}</p>
+		<div class="mt-3 space-y-3">
+			{#each ctx.rooms as r (r.stayId)}
+				{@const g0 = genderOf(r)}
+				{@const bad = genderMissing && (form?.field === r.stayId || form?.field === 'gender') ? 'border-red-400 ring-1 ring-red-300' : ''}
+				<div>
+					<p class="font-medium">
+						{#if ctx.rooms.length > 1}{m.ci_room_n({ n: String(r.index) })}{#if r.label}<span class="ml-1 font-normal text-stone-500">{r.label}</span>{/if}{/if}
+						{#if r.partySize}<span class="ml-1 text-xs font-normal text-stone-500">{m.ci_gender_party({ n: String(r.partySize) })}</span>{/if}
+					</p>
+					<div class="mt-1 grid grid-cols-2 gap-2">
+						<label class="block">
+							<span class="text-stone-600">{m.ci_male()}</span>
+							<select name="g|{r.stayId}|male" value={g0.male} required disabled={ro} class="{selectCls} {bad}">
+								<option value="" disabled>{m.ci_choose()}</option>
+								{#each headcounts as n (n)}<option value={String(n)}>{n}</option>{/each}
+							</select>
+						</label>
+						<label class="block">
+							<span class="text-stone-600">{m.ci_female()}</span>
+							<select name="g|{r.stayId}|female" value={g0.female} required disabled={ro} class="{selectCls} {bad}">
+								<option value="" disabled>{m.ci_choose()}</option>
+								{#each headcounts as n (n)}<option value={String(n)}>{n}</option>{/each}
+							</select>
+						</label>
+					</div>
+				</div>
+			{/each}
+		</div>
+	</section>
+
 	<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
 		<h2 class="font-semibold">{m.ci_section_arrival()}</h2>
 		<label class="mt-3 block">
@@ -291,6 +340,23 @@
 			<h2 class="font-semibold">{m.ci_section_questions()}</h2>
 			<div class="mt-3 space-y-4">
 				{#each questions as q (q.id)}
+					{#if q.kind === 'choice' && q.options?.length}
+						<!-- 選択肢形式（2026-11-28）: 選択肢から 1 つ -->
+						<fieldset class="block">
+							<legend>
+								<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
+								<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
+							</legend>
+							<div class="mt-2 space-y-1.5 {missingId === q.id ? 'rounded-lg ring-1 ring-red-300' : ''}">
+								{#each q.options as opt (opt)}
+									<label class="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2">
+										<input type="radio" name="q|{q.id}" value={opt} checked={answerOf(q.id) === opt} required disabled={ro} class="h-4 w-4" />
+										<span>{opt}</span>
+									</label>
+								{/each}
+							</div>
+						</fieldset>
+					{:else}
 					<label class="block">
 						<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
 						<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
@@ -304,6 +370,7 @@
 							class="{inputCls} {missingId === q.id ? 'border-red-400 ring-1 ring-red-300' : ''}">{answerOf(q.id)}</textarea
 						>
 					</label>
+					{/if}
 				{/each}
 			</div>
 		</section>

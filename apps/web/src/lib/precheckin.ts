@@ -13,7 +13,10 @@ export const PC_MEAL_TYPES: readonly PcMealType[] = ['dinner', 'breakfast'];
 export type PcSlot = { time: string; max: number | null; remaining: number | null; full?: boolean };
 export type PcMealCell = { date: string; offered: boolean; time: string | null };
 export type PcNight = { nightDate: string; stayId: string; dinner: PcMealCell; breakfast: PcMealCell };
-export type PcRoom = { index: number; stayId: string; label: string; nights: PcNight[] };
+/** 部屋（partySize = 予約の人数・male / female = いま PMS にある男女人数。2026-11-28） */
+export type PcRoom = { index: number; stayId: string; label: string; nights: PcNight[]; partySize?: number; male?: number; female?: number };
+/** 男女人数（部屋ごと・伺い項目・必須。2026-11-28）。送信の時点で PMS の泊へ書く。prev_* は前の値（DB が付ける） */
+export type PcGender = { stay_id: string; male: number; female: number; room?: number; prev_male?: number; prev_female?: number };
 /** 姓・名に分けた欄（2026-11-15）。name / name_kana は 姓 と 名 を半角空白でつなげたもの（今までどおり持つ） */
 export type PcContact = {
 	name?: string;
@@ -35,7 +38,19 @@ export function splitName(full: string | null | undefined): { family: string; gi
 }
 export type PcMealChoice = { stay_id: string; type: PcMealType; date: string; time: string };
 /** 宿からの質問（book.precheckin_questions・施設ごと・回答は必須） */
-export type PcQuestion = { id: string; question: string };
+export type PcQuestionKind = 'text' | 'choice';
+/** kind = 'choice' のときは options から 1 つ選ぶ（2026-11-28） */
+export type PcQuestion = { id: string; question: string; kind?: PcQuestionKind; options?: string[] };
+/** 管理画面用（オフの質問も含む） */
+export type PcAdminQuestion = PcQuestion & { kind: PcQuestionKind; options: string[]; active: boolean };
+
+/** DB の行・RPC の値を質問の形にそろえる */
+export function normalizeQuestion(x: unknown): PcQuestion & { kind: PcQuestionKind; options: string[] } {
+	const r = (x ?? {}) as Record<string, unknown>;
+	const kind: PcQuestionKind = r.kind === 'choice' ? 'choice' : 'text';
+	const options = Array.isArray(r.options) ? r.options.filter((o): o is string => typeof o === 'string' && o.trim() !== '').map((o) => o.trim()) : [];
+	return { id: String(r.id ?? ''), question: String(r.question ?? ''), kind, options: kind === 'choice' ? options : [] };
+}
 /** 質問への回答（質問文はその時点の写し） */
 export type PcQuestionAnswer = { id: string; question?: string; answer: string };
 /** 伺い書の項目（① で聞く・住所と生年月日は必須） */
@@ -56,6 +71,7 @@ export type PcAnswers = {
 	contact?: PcContact;
 	guest?: PcGuestInfo;
 	questions?: PcQuestionAnswer[];
+	gender?: PcGender[];
 	arrival_time?: string | null;
 	/** お客様の備考（自由入力・任意・1000 字まで。2026-11-15） */
 	note?: string | null;
@@ -338,6 +354,9 @@ export function normalizePrecheckinContext(raw: unknown): PcContext | { error: P
 			index: num(room.index),
 			stayId: str(room.stay_id),
 			label: str(room.label),
+			partySize: num(room.party_size),
+			male: num(room.male),
+			female: num(room.female),
 			nights: (Array.isArray(room.nights) ? room.nights : []).map((n) => {
 				const night = (n ?? {}) as Record<string, unknown>;
 				return {
@@ -400,9 +419,18 @@ export function answersFromForm(form: FormData, locale: string): PcAnswers & { c
 		contact[full] = [f, g].filter(Boolean).join(' ');
 	}
 	const questions: PcQuestionAnswer[] = [];
+	// 男女人数（name = g|<stay_id>|male / female）。空欄は -1（＝未入力。必須の判定で止める）
+	const gender = new Map<string, PcGender>();
 	for (const [k, v] of form.entries()) {
 		const m = /^q\|([0-9a-z-]{1,64})$/i.exec(k);
 		if (m) questions.push({ id: m[1], answer: String(v ?? '').trim() });
+		const g = /^g\|([0-9a-z-]{1,64})\|(male|female)$/i.exec(k);
+		if (g) {
+			const row = gender.get(g[1]) ?? { stay_id: g[1], male: -1, female: -1 };
+			const n = String(v ?? '').trim();
+			row[g[2].toLowerCase() as 'male' | 'female'] = /^\d{1,2}$/.test(n) ? Number(n) : -1;
+			gender.set(g[1], row);
+		}
 	}
 	return {
 		contact,
@@ -413,6 +441,7 @@ export function answersFromForm(form: FormData, locale: string): PcAnswers & { c
 			receipt_name: t('guest_receipt_name') || null
 		},
 		questions,
+		gender: [...gender.values()],
 		arrival_time: t('arrival_time') || null,
 		note: t('note').slice(0, 1000) || null,
 		locale
@@ -435,6 +464,17 @@ export function missingQuestion(questions: PcQuestion[], answers: PcQuestionAnsw
 	for (const q of questions) {
 		const a = answers.find((x) => x.id === q.id)?.answer?.trim() ?? '';
 		if (!a) return q.id;
+		// 選択肢形式は選択肢のどれか（最終判定は RPC）
+		if (q.kind === 'choice' && q.options?.length && !q.options.includes(a)) return q.id;
+	}
+	return null;
+}
+
+/** 男女人数で足りない最初の部屋の stay_id（0〜50 人・合わせて 1 人以上）。足りていれば null */
+export function missingGender(rooms: Pick<PcRoom, 'stayId'>[], gender: PcGender[]): string | null {
+	for (const r of rooms) {
+		const g = gender.find((x) => x.stay_id === r.stayId);
+		if (!g || g.male < 0 || g.female < 0 || g.male > 50 || g.female > 50 || g.male + g.female === 0) return r.stayId;
 	}
 	return null;
 }
@@ -664,6 +704,9 @@ export function demoPrecheckinContext(answers: PcAnswers = {}, now = new Date(),
 				index: 1,
 				stayId,
 				label: '和室（見本）',
+				partySize: 2,
+				male: 0,
+				female: 0,
 				nights: [
 					{
 						nightDate: checkIn,

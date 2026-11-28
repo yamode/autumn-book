@@ -209,6 +209,7 @@ describe('フォームの値', () => {
 			contact: { phone: '090-0000-1111' },
 			guest: { zip: null, address: null, birthdate: null, receipt_name: null },
 			questions: [{ id: '1b2c3d4e-0000-4000-8000-000000000001', answer: 'お車です' }],
+			gender: [],
 			arrival_time: '15:30',
 			note: '記念日です',
 			locale: 'ja'
