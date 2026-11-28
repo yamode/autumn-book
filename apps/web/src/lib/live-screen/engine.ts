@@ -83,6 +83,13 @@ export function startLiveScreen(root: HTMLElement): () => void {
 				}
 				trees.sort((a, b) => (a.back === b.back ? a.h - b.h : a.back ? -1 : 1));
 				layerState.push({ trees, cache: null, cacheKey: '' });
+			} else if (L.type === 'imageRow') {
+				const items = [];
+				for (const row of [{ gap: [16, 26], h: [0.5, 0.78], back: true }, { gap: [26, 42], h: [0.8, 1.12], back: false }]) {
+					for (let x = -20; x < W + 40; x += rnd(row.gap[0], row.gap[1]) * L.spacing) items.push({ x: x + rnd(-5, 5), h: rnd(row.h[0], row.h[1]), back: row.back, url: pick(L.urls), flip: L.flip && Math.random() < 0.5 });
+				}
+				items.sort((a, b) => (a.back === b.back ? a.h - b.h : a.back ? -1 : 1));
+				layerState.push({ items, cache: null, cacheKey: '' });
 			} else if (L.type === 'xmasTree') {
 				layerState.push({ lights: [...Array(46)].map(() => ({ u: Math.random(), v: Math.pow(Math.random(), 0.7), col: pick(L.lights), ph: Math.random() * TAU, sp: rnd(0.6, 1.6) })) });
 			} else layerState.push({});
@@ -181,6 +188,37 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		if (!st.cache || st.cacheKey !== key) { renderLarches(st, L, d, reach, skyHor, sunOnRight); st.cacheKey = key; }
 		ctx.drawImage(st.cache, 0, 0, W, H);
 	}
+	// 画像の木の並び（imageRow）。奥の列は空の色に溶かし、夜は群青に沈める。描いた絵は使い回す
+	function drawImageRow(L, st, t, d, reach) {
+		const imgs = L.urls.map(imageOf), ready = imgs.filter(Boolean).length;
+		if (!ready) return;
+		const hr = skyHour(), skyHor = skyCols(hr)[1], night = 1 - d;
+		const key = `${W}x${H}:${Math.round(reach)}:${Math.round(d * 20)}:${skyHor}:${ready}`;
+		if (!st.cache || st.cacheKey !== key) {
+			const c = st.cache || (st.cache = document.createElement('canvas'));
+			c.width = Math.round(W * DPR); c.height = Math.round(H * DPR);
+			const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+			const row = document.createElement('canvas'); row.width = c.width; row.height = c.height;
+			const rg = row.getContext('2d');
+			for (const back of [true, false]) {
+				rg.setTransform(DPR, 0, 0, DPR, 0, 0); rg.globalCompositeOperation = 'source-over'; rg.globalAlpha = 1; rg.clearRect(0, 0, W, H);
+				for (const it of st.items) {
+					if (it.back !== back) continue;
+					const img = imageOf(it.url); if (!img) continue;
+					const h = reach * L.height * it.h * (back ? 0.82 : 1), w = h * img.naturalWidth / img.naturalHeight, y = H + 4 - h;
+					if (it.flip) { rg.save(); rg.translate(it.x, 0); rg.scale(-1, 1); rg.drawImage(img, -w / 2, y, w, h); rg.restore(); }
+					else rg.drawImage(img, it.x - w / 2, y, w, h);
+				}
+				rg.globalCompositeOperation = 'source-atop';
+				if (back && L.haze > 0) { rg.globalAlpha = L.haze; rg.fillStyle = skyHor; rg.fillRect(0, 0, W, H); }
+				if (night > 0.02) { rg.globalAlpha = night * 0.78; rg.fillStyle = '#1c2238'; rg.fillRect(0, 0, W, H); }
+				g.drawImage(row, 0, 0, W, H);
+			}
+			// 読み込み途中なら次の画面でもう一度描く（読めなかった画像は飛ばして確定する）
+			st.cacheKey = L.urls.every((u) => images.get(u)?.complete) ? key : '';
+		}
+		ctx.drawImage(st.cache, 0, 0, W, H);
+	}
 	// クリスマスツリー
 	function drawXmasTree(L, st, t, d, reach) {
 		const night = 1 - d;
@@ -230,6 +268,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 			try {
 				if (L.type === 'particles' && st.parts) drawParticles(L, st, dt, t, d);
 				else if (L.type === 'treeRow' && st.trees) drawTreeRow(L, st, t, d, reach);
+				else if (L.type === 'imageRow' && st.items) drawImageRow(L, st, t, d, reach);
 				else if (L.type === 'xmasTree' && st.lights) drawXmasTree(L, st, t, d, reach);
 				else if (L.type === 'image') drawImageLayer(L, t, d);
 				// 知らない種類の層は飛ばす（新しい種類はコードを足すまで出ない）

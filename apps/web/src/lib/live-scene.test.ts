@@ -55,6 +55,11 @@ describe('管理画面の入力', () => {
 		const ok = parseSceneConfig(JSON.stringify({ layers: [{ type: 'image', url: 'https://example.com/a.png', anchor: 'bottom-right' }] }));
 		expect(ok.ok).toBe(true);
 	});
+	it('画像の並び（imageRow）は https の画像だけ', () => {
+		expect(parseSceneConfig(JSON.stringify({ layers: [{ type: 'imageRow', urls: ['https://book.yamado.app/brand/live/larch-1.png'] }] })).ok).toBe(true);
+		expect(parseSceneConfig(JSON.stringify({ layers: [{ type: 'imageRow', urls: [] }] })).ok).toBe(false);
+		expect(parseSceneConfig(JSON.stringify({ layers: [{ type: 'imageRow', urls: ['http://x/a.png'] }] })).ok).toBe(false);
+	});
 	it('既定値が入る', () => {
 		const r = parseSceneConfig(JSON.stringify({ layers: [{ type: 'treeRow' }] }));
 		expect(r.ok && r.config.layers[0]).toMatchObject({ type: 'treeRow', preset: 'larch', height: 1, spacing: 1 });

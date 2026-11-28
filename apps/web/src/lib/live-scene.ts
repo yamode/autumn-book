@@ -43,6 +43,21 @@ const treeRow = z.object({
 	snowCap: z.boolean().default(false)
 });
 
+/** 画像の木などを画面の下に並べる（カラマツの絵など。絵を描き直したら画像を上げ直すだけで差し替わる） */
+const imageRow = z.object({
+	type: z.literal('imageRow'),
+	/** 並べる絵（背景が透明な PNG・WebP。根元が画像の下端）。複数なら混ぜて並べる */
+	urls: z.array(httpsUrl).min(1).max(6),
+	/** 高さの倍率（1＝カードの上端から少し上まで） */
+	height: z.number().min(0.2).max(3).default(1),
+	/** 間隔の倍率（小さいほど密） */
+	spacing: z.number().min(0.3).max(4).default(1),
+	/** 左右をときどき反転して単調にしない */
+	flip: z.boolean().default(true),
+	/** 奥の列を空の色に溶かす強さ（0〜1） */
+	haze: z.number().min(0).max(1).default(0.38)
+});
+
 /** クリスマスツリー */
 const xmasTree = z.object({
 	type: z.literal('xmasTree'),
@@ -69,7 +84,7 @@ const image = z.object({
 });
 
 /** 層。知らない種類は画面が飛ばすので、ここでは種類を限ってから受け付ける */
-export const liveLayer = z.discriminatedUnion('type', [particles, treeRow, xmasTree, image]);
+export const liveLayer = z.discriminatedUnion('type', [particles, treeRow, imageRow, xmasTree, image]);
 
 export const liveSceneConfig = z.object({
 	/** 昼の空に混ぜる色（上・地平線） */

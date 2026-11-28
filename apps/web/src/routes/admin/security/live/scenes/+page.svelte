@@ -117,10 +117,11 @@
 		<h2 class="text-sm font-semibold text-stone-800">設定の書き方</h2>
 		<ul class="mt-2 grid gap-1">
 			<li><code>skyTint</code>: 昼の空に混ぜる色（上・地平線）。例 <code>["#7fa9d2", "#e8eff5"]</code></li>
-			<li><code>layers</code>: 下から順に描く層。種類は 4 つ。
+			<li><code>layers</code>: 下から順に描く層。種類は 5 つ。
 				<ul class="ml-4 list-disc">
 					<li><code>particles</code>（降るもの）: <code>preset</code> = snow／petal／leaf／firefly／image。<code>density</code>（100 万画素あたりの数）・<code>size</code>・<code>speed</code>（毎秒の px）・<code>sway</code>（横の揺れ）・<code>opacity</code>・<code>colors</code>・<code>image</code>（image のとき）・<code>dayOpacity</code>（昼の見え方）</li>
 					<li><code>treeRow</code>（画面の下の木の並び）: <code>colors</code>・<code>height</code>（倍率）・<code>spacing</code>（間隔の倍率）・<code>snowCap</code>（雪をかぶせる）</li>
+					<li><code>imageRow</code>（上げた絵を画面の下に並べる）: <code>urls</code>（背景が透明な PNG・WebP を 1〜6 枚。根元が画像の下端）・<code>height</code>・<code>spacing</code>・<code>flip</code>（左右をときどき反転）・<code>haze</code>（奥の列を空に溶かす強さ）。カラマツの絵は Book に同梱の <code>https://book.yamado.app/brand/live/larch-1.png</code>〜<code>larch-3.png</code></li>
 					<li><code>xmasTree</code>（クリスマスツリー）: <code>side</code> = left／right・<code>scale</code>・<code>lights</code>（灯りの色）</li>
 					<li><code>image</code>（画像を置く）: <code>url</code>・<code>anchor</code>（bottom-left など）・<code>width</code>（画面の幅に対する割合）・<code>offset</code>・<code>opacity</code>・<code>nightOpacity</code>・<code>bob</code>（上下の揺れ px）</li>
 				</ul>
