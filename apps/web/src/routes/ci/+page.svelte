@@ -363,10 +363,9 @@
 				</div>
 			{/each}
 		</div>
-	</section>
 
-	<section class="rounded-2xl bg-white p-4 text-sm shadow-sm">
-		<h2 class="font-semibold">{m.ci_section_arrival()}</h2>
+		<!-- ご到着について（男女別の人数と同じ枠にまとめる・2026-11-28 指示） -->
+		<h2 class="mt-5 border-t border-stone-100 pt-4 font-semibold">{m.ci_section_arrival()}</h2>
 		<label class="mt-3 block">
 			<span class="text-stone-600">{m.ci_arrival()}</span>
 			<select name="arrival_time" value={arrival0} disabled={ro} class={selectCls}>
