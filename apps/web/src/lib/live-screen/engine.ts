@@ -76,12 +76,13 @@ export function startLiveScreen(root: HTMLElement): () => void {
 				const n = Math.round(clamp(L.density * (W * H) / 1e6 * (reduce ? 0.3 : 1), 0, 600));
 				layerState.push({ parts: [...Array(n)].map(() => newParticle(L, true)) });
 			} else if (L.type === 'treeRow') {
+				// カラマツの並び。木の形（枝・房）は高さに対する割合で作り置きし、描くときに大きさを掛ける
 				const trees = [];
-				for (const row of [{ gap: [13, 21], h: [0.55, 0.85], back: true }, { gap: [20, 34], h: [0.75, 1.15], back: false }]) {
-					for (let x = -10; x < W + 20; x += rnd(row.gap[0], row.gap[1]) * L.spacing) trees.push({ x: x + rnd(-4, 4), h: rnd(row.h[0], row.h[1]), back: row.back, col: pick(L.colors), tiers: 7 + Math.floor(Math.random() * 4), lean: rnd(-0.04, 0.04), ph: Math.random() * TAU });
+				for (const row of [{ gap: [12, 19], h: [0.5, 0.78], back: true }, { gap: [19, 30], h: [0.78, 1.12], back: false }]) {
+					for (let x = -12; x < W + 24; x += rnd(row.gap[0], row.gap[1]) * L.spacing) trees.push(makeLarch(x + rnd(-4, 4), rnd(row.h[0], row.h[1]), row.back, L.colors));
 				}
-				trees.sort((a, b) => (a.back === b.back ? 0 : a.back ? -1 : 1));
-				layerState.push({ trees });
+				trees.sort((a, b) => (a.back === b.back ? a.h - b.h : a.back ? -1 : 1));
+				layerState.push({ trees, cache: null, cacheKey: '' });
 			} else if (L.type === 'xmasTree') {
 				layerState.push({ lights: [...Array(46)].map(() => ({ u: Math.random(), v: Math.pow(Math.random(), 0.7), col: pick(L.lights), ph: Math.random() * TAU, sp: rnd(0.6, 1.6) })) });
 			} else layerState.push({});
@@ -105,23 +106,80 @@ export function startLiveScreen(root: HTMLElement): () => void {
 			else { ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.fillStyle = rgba(f.col, a * 0.85); ctx.beginPath(); ctx.ellipse(0, 0, f.r * 1.4, f.r * (L.preset === 'leaf' ? 0.55 : 0.7), 0, 0, TAU); ctx.fill(); ctx.restore(); }
 		}
 	}
-	// カラマツ型の木の並び（画面の下、カードの後ろから梢がのぞく）
-	function drawTreeRow(L, st, t, d, reach) {
-		const night = 1 - d;
-		for (const T of st.trees) {
-			const h = reach * L.height * T.h * (T.back ? 0.8 : 1), w = h * 0.3, x0 = T.x, base = H + 4, topY = base - h;
-			let col = mix(T.col, '#f3d36a', T.back ? 0.25 : 0);
-			if (T.back) col = mix(col, skyCols(skyHour())[1], 0.35);
-			col = mix(col, '#1c2238', night * 0.78);
-			const sway = Math.sin(t * 0.5 + T.ph) * 0.6;
-			ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x0 + sway + T.lean * h, topY);
-			const n = T.tiers, pts = [];
-			for (let i = 1; i <= n; i++) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 + hw + sway * (1 - i / n), yy); ctx.lineTo(x0 + hw * 0.55, yy - (h * 0.88) / n * 0.25); pts.push([yy, hw]); }
-			for (let i = n; i >= 1; i--) { const yy = topY + (h * 0.88) * (i / n), hw = (w / 2) * Math.pow(i / n, 0.85); ctx.lineTo(x0 - hw * 0.55, yy - (h * 0.88) / n * 0.25); ctx.lineTo(x0 - hw + sway * (1 - i / n), yy); }
-			ctx.closePath(); ctx.fill();
-			if (L.snowCap) { ctx.fillStyle = `rgba(255,255,255,${0.75 - night * 0.3})`; for (const [yy, hw] of pts) { ctx.fillRect(x0 - hw * 0.7, yy - 2, hw * 1.4, 2); } }
-			ctx.fillStyle = rgba(mix('#5d4a36', '#151a2a', night * 0.7), 0.55); ctx.fillRect(x0 - Math.max(1, w * 0.03), base - h * 0.08, Math.max(1.5, w * 0.06), h * 0.08);
+	// ── カラマツ（Larix kaempferi）──────────────────────────────
+	// 幹は根元から梢までまっすぐ 1 本。樹形はすき間の多い細めの円すい。枝は幹からほぼ水平に出て先が少し上を向き、
+	// 葉は短枝に束でつくので、遠目には枝に沿った「ふわっとした房」が並び、向こうの空が透ける。
+	// 色は黄金色、内側・下ほど橙。木は動かさない（揺らすと梢が曲がって見える）。
+	function makeLarch(x, hf, back, palette) {
+		const base = pick(palette);
+		const whorls = 10 + Math.floor(Math.random() * 5);
+		const branches = [];
+		for (let i = 0; i < whorls; i++) {
+			// 下（0）から上（1）へ。いちばん下の枝は高さの 12〜18% から
+			const y = 0.14 + (0.84 * i) / whorls + rnd(-0.01, 0.01);
+			const up = 1 - y; // 上ほど短い
+			const reach = 0.2 * Math.pow(up, 0.9) * rnd(0.82, 1.12) + 0.014;
+			for (const side of [-1, 1]) {
+				if (Math.random() < 0.08 && i < whorls - 2) continue; // ところどころ枝が抜ける（すき間）
+				const len = reach * rnd(0.85, 1.1);
+				const lift = rnd(0.008, 0.03); // 先が少し上を向く
+				const tufts = [];
+				const n = Math.max(2, Math.round(len * 70 * (back ? 0.6 : 1)));
+				for (let k = 0; k < n; k++) {
+					const t = 0.15 + 0.85 * (k / Math.max(1, n - 1)) + rnd(-0.04, 0.04);
+					tufts.push({ t, dy: rnd(-0.01, 0.014), r: rnd(0.013, 0.024) * (1 - t * 0.3), tone: Math.random(), inner: t < 0.45 });
+				}
+				branches.push({ y, side, len, lift, tufts });
+			}
 		}
+		// 梢: 主軸のまわりの小さな房
+		const top = [...Array(5)].map((_, k) => ({ y: 0.9 + k * 0.02, r: rnd(0.008, 0.013), dx: rnd(-0.006, 0.006), tone: Math.random() }));
+		return { x, h: hf, back, base, branches, top };
+	}
+	function renderLarches(st, L, d, reach, skyHor, sunOnRight) {
+		const night = 1 - d;
+		const c = st.cache || (st.cache = document.createElement('canvas'));
+		c.width = Math.round(W * DPR); c.height = Math.round(H * DPR);
+		const g = c.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); g.clearRect(0, 0, W, H);
+		const shade = (col, back) => { let k = col; if (back) k = mix(k, skyHor, 0.38); return mix(k, '#1c2238', night * 0.78); };
+		for (const T of st.trees) {
+			const h = reach * L.height * T.h * (T.back ? 0.82 : 1), base = H + 4, x0 = T.x;
+			const golden = T.base, orange = mix(T.base, '#c8741f', 0.45), light = mix(T.base, '#f6dc7a', 0.45);
+			// 幹（まっすぐ・梢まで）
+			const tw = Math.max(1, h * 0.012);
+			g.strokeStyle = shade(T.back ? '#8a7a68' : '#5b4a3a', T.back); g.lineWidth = tw; g.lineCap = 'round';
+			g.beginPath(); g.moveTo(x0, base); g.lineTo(x0, base - h); g.stroke();
+			for (const B of T.branches) {
+				const by = base - h * B.y, ex = x0 + B.side * h * B.len, ey = by - h * B.lift;
+				// 枝（細い線・ほぼ水平で先が少し上がる）
+				g.strokeStyle = shade(T.back ? '#9a8a76' : '#6b5846', T.back); g.globalAlpha = 0.55; g.lineWidth = Math.max(0.6, tw * 0.45);
+				g.beginPath(); g.moveTo(x0, by); g.quadraticCurveTo(x0 + B.side * h * B.len * 0.6, by, ex, ey); g.stroke(); g.globalAlpha = 1;
+				// 房（枝に沿って・小枝は少し垂れる）
+				for (const f of B.tufts) {
+					const fx = x0 + B.side * h * B.len * f.t, fy = by - h * B.lift * f.t * f.t + h * f.dy + h * 0.006 * f.t;
+					const sunny = (B.side > 0) === sunOnRight && !f.inner;
+					const col = f.inner ? mix(orange, golden, f.tone * 0.5) : sunny ? mix(golden, light, 0.5 + f.tone * 0.5) : mix(golden, orange, f.tone * 0.35);
+					g.fillStyle = shade(col, T.back); g.globalAlpha = T.back ? 0.8 : 0.92;
+					g.beginPath(); g.ellipse(fx, fy, h * f.r * 1.5, h * f.r, B.side * -0.12, 0, TAU); g.fill();
+				}
+				g.globalAlpha = 1;
+			}
+			for (const f of T.top) {
+				g.fillStyle = shade(mix(golden, light, f.tone * 0.5), T.back);
+				g.beginPath(); g.ellipse(x0 + h * f.dx, base - h * f.y, h * f.r * 1.1, h * f.r * 1.3, 0, 0, TAU); g.fill();
+			}
+			if (L.snowCap) {
+				g.fillStyle = `rgba(255,255,255,${0.7 - night * 0.3})`;
+				for (const B of T.branches) { const by = base - h * B.y; g.fillRect(Math.min(x0, x0 + B.side * h * B.len * 0.8), by - h * 0.012, Math.abs(h * B.len * 0.8), Math.max(1, h * 0.006)); }
+			}
+		}
+	}
+	function drawTreeRow(L, st, t, d, reach) {
+		const hr = skyHour(), skyHor = skyCols(hr)[1];
+		const sunOnRight = hr >= 12; // 午前は左（東）、午後は右（西）から日が当たる
+		const key = `${W}x${H}:${Math.round(reach)}:${Math.round(d * 20)}:${skyHor}:${sunOnRight}`;
+		if (!st.cache || st.cacheKey !== key) { renderLarches(st, L, d, reach, skyHor, sunOnRight); st.cacheKey = key; }
+		ctx.drawImage(st.cache, 0, 0, W, H);
 	}
 	// クリスマスツリー
 	function drawXmasTree(L, st, t, d, reach) {
