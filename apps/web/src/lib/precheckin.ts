@@ -39,17 +39,18 @@ export function splitName(full: string | null | undefined): { family: string; gi
 export type PcMealChoice = { stay_id: string; type: PcMealType; date: string; time: string };
 /** 宿からの質問（book.precheckin_questions・施設ごと・回答は必須） */
 export type PcQuestionKind = 'text' | 'choice';
-/** kind = 'choice' のときは options から 1 つ選ぶ（2026-11-28） */
-export type PcQuestion = { id: string; question: string; kind?: PcQuestionKind; options?: string[] };
+/** kind = 'choice' のときは options から 1 つ選ぶ。note = 質問文の下に小さく出す補足説明（任意・2026-11-28） */
+export type PcQuestion = { id: string; question: string; note?: string; kind?: PcQuestionKind; options?: string[] };
 /** 管理画面用（オフの質問も含む） */
-export type PcAdminQuestion = PcQuestion & { kind: PcQuestionKind; options: string[]; active: boolean };
+export type PcAdminQuestion = PcQuestion & { note: string; kind: PcQuestionKind; options: string[]; active: boolean };
 
 /** DB の行・RPC の値を質問の形にそろえる */
-export function normalizeQuestion(x: unknown): PcQuestion & { kind: PcQuestionKind; options: string[] } {
+export function normalizeQuestion(x: unknown): PcQuestion & { note: string; kind: PcQuestionKind; options: string[] } {
 	const r = (x ?? {}) as Record<string, unknown>;
 	const kind: PcQuestionKind = r.kind === 'choice' ? 'choice' : 'text';
 	const options = Array.isArray(r.options) ? r.options.filter((o): o is string => typeof o === 'string' && o.trim() !== '').map((o) => o.trim()) : [];
-	return { id: String(r.id ?? ''), question: String(r.question ?? ''), kind, options: kind === 'choice' ? options : [] };
+	const note = typeof r.note === 'string' ? r.note.trim() : '';
+	return { id: String(r.id ?? ''), question: String(r.question ?? ''), note, kind, options: kind === 'choice' ? options : [] };
 }
 /** 質問への回答（質問文はその時点の写し） */
 export type PcQuestionAnswer = { id: string; question?: string; answer: string };

@@ -197,7 +197,7 @@ export const actions: Actions = {
 		const facility = currentFacilityOf(event).uuid;
 		const form = await event.request.formData();
 		// 1 問ごとに: 質問文（q|n）・id（qid|n）・形式（qkind|n）・選択肢（qopt|n・1 行に 1 つ）・お客様に聞くか（qactive|n）
-		type Row = { n: number; id: string | null; question: string; kind: 'text' | 'choice'; options: string[]; active: boolean };
+		type Row = { n: number; id: string | null; question: string; note: string; kind: 'text' | 'choice'; options: string[]; active: boolean };
 		const rows: Row[] = [];
 		let pendingChoice = false;
 		for (const [k, v] of form.entries()) {
@@ -207,6 +207,9 @@ export const actions: Actions = {
 			if (!question) continue;
 			if (question.length > 300) return fail(400, { questionsError: '質問は 1 問 300 字までにしてください。' });
 			const id = String(form.get(`qid|${m[1]}`) ?? '').trim();
+			// 補足説明（質問文の下に小さく出す・任意）
+			const note = String(form.get(`qnote|${m[1]}`) ?? '').trim();
+			if (note.length > 300) return fail(400, { questionsError: '補足説明は 1 問 300 字までにしてください。' });
 			const options = [...new Set(String(form.get(`qopt|${m[1]}`) ?? '').split(/\r?\n/).map((o) => o.trim()).filter(Boolean))];
 			if (options.length > 20 || options.some((o) => o.length > 100)) {
 				return fail(400, { questionsError: '選択肢は 1 問 20 個まで・1 個 100 字までにしてください。' });
@@ -221,6 +224,7 @@ export const actions: Actions = {
 				n: Number(m[1]),
 				id: /^[0-9a-f-]{36}$/.test(id) ? id : null,
 				question,
+				note,
 				kind,
 				options: kind === 'choice' ? options : [],
 				active: form.get(`qactive|${m[1]}`) === '1'
@@ -231,7 +235,7 @@ export const actions: Actions = {
 			await adminPrecheckinSaveQuestions(
 				bookAdmin(event),
 				facility,
-				rows.sort((a, b) => a.n - b.n).map(({ id, question, kind, options, active }) => ({ id, question, kind, options, active }))
+				rows.sort((a, b) => a.n - b.n).map(({ id, question, note, kind, options, active }) => ({ id, question, note, kind, options, active }))
 			);
 			return {
 				questionsSaved: true,

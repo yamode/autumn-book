@@ -390,6 +390,7 @@
 								<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
 								<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
 							</legend>
+							{#if q.note}<p class="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{q.note}</p>{/if}
 							<div class="mt-2 space-y-1.5 {missingId === q.id ? 'rounded-lg ring-1 ring-red-300' : ''}">
 								{#each q.options as opt (opt)}
 									<label class="flex items-center gap-2 rounded-lg border border-stone-200 px-3 py-2">
@@ -403,6 +404,7 @@
 					<label class="block">
 						<span class="whitespace-pre-wrap leading-relaxed text-stone-800">{q.question}</span>
 						<span class="ml-1 rounded bg-red-50 px-1.5 py-0.5 text-[11px] text-red-700 ring-1 ring-red-200">{m.ci_required()}</span>
+						{#if q.note}<span class="mt-0.5 block whitespace-pre-wrap text-xs leading-relaxed text-stone-500">{q.note}</span>{/if}
 						<textarea
 							name="q|{q.id}"
 							rows="2"

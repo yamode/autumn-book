@@ -135,11 +135,13 @@
 	// 宿からの質問の編集欄。欄を離れると自動で保存する（$lib/autosave）。
 	// 保存後の読み直しで入力中の欄を巻き戻さないよう、送った行には新しい id だけを付け、読み直した内容が前と同じなら触らない
 	// kind = 形式（自由記入・選択肢）、optionsText = 選択肢（1 行に 1 つ）、active = お客様に聞くか（オフでも消さずに残す・2026-11-28）
-	type QRow = { key: string; id: string | null; question: string; kind: 'text' | 'choice'; optionsText: string; active: boolean };
-	const qRowOf = (q: { id: string; question: string; kind?: 'text' | 'choice'; options?: string[]; active?: boolean }): QRow => ({
+	// note = 補足説明（質問文の下に小さく出す・任意）
+	type QRow = { key: string; id: string | null; question: string; note: string; kind: 'text' | 'choice'; optionsText: string; active: boolean };
+	const qRowOf = (q: { id: string; question: string; note?: string; kind?: 'text' | 'choice'; options?: string[]; active?: boolean }): QRow => ({
 		key: q.id,
 		id: q.id,
 		question: q.question,
+		note: q.note ?? '',
 		kind: q.kind === 'choice' ? 'choice' : 'text',
 		optionsText: (q.options ?? []).join('\n'),
 		active: q.active !== false
@@ -472,6 +474,10 @@
 							<textarea name="q|{i}" rows="2" maxlength="300" bind:value={row.question} class="w-full rounded border border-stone-300 px-2 py-1 {row.active ? '' : 'text-stone-400'}" placeholder="例: ご到着の交通手段（お車・電車など）を教えてください。"></textarea>
 							<button type="button" onclick={(e) => removeQuestion(e, row.key)} class="mt-1 shrink-0 rounded border border-stone-300 px-2 py-1 text-xs text-stone-600">削除</button>
 						</div>
+						<label class="ml-7 mt-2 block text-xs">
+							<span class="text-stone-600">補足説明（任意・質問文の下に小さく出ます）</span>
+							<textarea name="qnote|{i}" rows="2" maxlength="300" bind:value={row.note} class="mt-1 w-full rounded border border-stone-300 px-2 py-1 text-sm {row.active ? '' : 'text-stone-400'}" placeholder="例: お車の場合は、ナンバーもお知らせください。"></textarea>
+						</label>
 						<div class="ml-7 mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
 							<label class="flex items-center gap-1.5 font-medium {row.active ? 'text-emerald-700' : 'text-stone-500'}">
 								<input type="checkbox" name="qactive|{i}" value="1" bind:checked={row.active} class="h-4 w-4" />
@@ -496,7 +502,7 @@
 					</div>
 				{/each}
 				<div class="flex items-center gap-2 pt-1">
-					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '', kind: 'text', optionsText: '', active: true }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
+					<button type="button" disabled={qRows.length >= 20} onclick={() => (qRows = [...qRows, { key: `n${Date.now()}`, id: null, question: '', note: '', kind: 'text', optionsText: '', active: true }])} class="rounded border border-stone-300 px-3 py-1.5 text-stone-700 disabled:opacity-40">＋ 質問を追加</button>
 					<button class="rounded-full px-2.5 py-0.5 text-xs text-stone-500 ring-1 ring-stone-200">変更は自動で保存します</button>
 				</div>
 			</form>

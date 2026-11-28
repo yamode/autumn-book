@@ -304,7 +304,7 @@ export async function pcQuestions(facilityId: string, demo = false): Promise<PcQ
 	if (DATA_SOURCE !== 'supabase' || !/^[0-9a-f-]{36}$/i.test(facilityId)) return [];
 	const { data, error } = await supa()
 		.from('precheckin_questions')
-		.select('id, question, kind, options')
+		.select('id, question, note, kind, options')
 		.eq('facility_id', facilityId)
 		.eq('is_active', true)
 		.order('sort_order');
@@ -466,7 +466,7 @@ export async function adminPrecheckinQuestions(c: BookClient, facility: string):
 	} catch {
 		const { data, error } = await c.from('precheckin_questions').select('id, question').eq('facility_id', facility).order('sort_order');
 		if (error) throw error;
-		return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question, kind: 'text' as const, options: [], active: true }));
+		return ((data ?? []) as PcQuestion[]).map((q) => ({ id: q.id, question: q.question, note: '', kind: 'text' as const, options: [], active: true }));
 	}
 }
 
@@ -475,7 +475,7 @@ export async function adminPrecheckinQuestions(c: BookClient, facility: string):
 export const adminPrecheckinSaveQuestions = (
 	c: BookClient,
 	facility: string,
-	questions: { id: string | null; question: string; kind: PcQuestionKind; options: string[]; active: boolean }[]
+	questions: { id: string | null; question: string; note: string; kind: PcQuestionKind; options: string[]; active: boolean }[]
 ) => rpc<null>(c, 'admin_precheckin_save_questions', { p_facility: facility, p_questions: questions });
 
 /** 自動送信の対象の設定（経路・有効か・選べる経路） */

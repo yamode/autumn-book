@@ -41,10 +41,13 @@ describe('宿からの質問の形式（2026-11-28）', () => {
 		expect(normalizeQuestion({ id: 'q', question: '交通手段', kind: 'choice', options: [' お車 ', '', '電車'] })).toEqual({
 			id: 'q',
 			question: '交通手段',
+			note: '',
 			kind: 'choice',
 			options: ['お車', '電車']
 		});
-		expect(normalizeQuestion({ id: 'q', question: '何か', options: ['x'] })).toEqual({ id: 'q', question: '何か', kind: 'text', options: [] });
+		expect(normalizeQuestion({ id: 'q', question: '何か', options: ['x'] })).toEqual({ id: 'q', question: '何か', note: '', kind: 'text', options: [] });
+		// 補足説明（質問文の下に小さく出す）
+		expect(normalizeQuestion({ id: 'q', question: '何か', note: ' 補足です ' }).note).toBe('補足です');
 	});
 	it('選択肢形式は選択肢にない答えを未回答として扱う', () => {
 		const qs = [{ id: 'q', question: '交通手段', kind: 'choice' as const, options: ['お車', '電車'] }];
