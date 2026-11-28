@@ -19,12 +19,13 @@
 		<header class="top">
 			<div class="id">
 				<div class="mark">Autumn Live<small>Autumn Book のいま · 西和賀・男鹿</small></div>
-				<div class="clock"><span data-id="hm">--:--</span><small data-id="date">&nbsp;</small></div>
+				<div class="clock"><span data-id="hm">--:--</span><small data-id="date">&nbsp;</small><small class="wx" data-id="wx">&nbsp;</small></div>
 				<div class="now"><b data-id="liveN">0</b><span>人が いま<br />Book を見ています<em data-id="liveVs"></em></span></div>
 			</div>
 			<div class="ctrl">
 				<span class="chip" data-id="chip"><i></i><span data-id="fresh">つないでいます</span></span>
 				<label><span class="vh">空の時刻</span><select data-id="skySel"><option value="">いまの空</option><option value="6.4">朝</option><option value="12">昼</option><option value="17.1">夕</option><option value="22">夜</option></select></label>
+				<label><span class="vh">天気</span><select data-id="wxSel"><option value="nishiwaga">いまの西和賀の天気</option><option value="oga">いまの男鹿の天気</option><option value="random">おまかせの天気</option></select></label>
 				<label><span class="vh">背景（季節）</span><select data-id="seasonSel"><option value="">いまの季節</option></select></label>
 				<button data-id="btnHelp" type="button" aria-expanded="false">見方</button>
 				<button data-id="btnGoal" type="button" aria-expanded="false">目標</button>
@@ -99,6 +100,7 @@
 			<dt>段の間の％</dt><dd>次の段へ進んだ割合。下の小さな数字は直近28日の値で、前の段を通った人が50人以上になると出ます。</dd>
 			<dt>24時間の線</dt><dd>今日の30分ごとの訪問。灰色の帯は直近8週の同じ曜日の真ん中半分で、4週たまると出ます。</dd>
 			<dt>オンハンド</dt><dd>全チャネルの、今月から12か月の宿泊分の室料＋食事。各月の横線は前年の同じ月の実績です。</dd>
+			<dt>空の天気</dt><dd>西和賀（アメダス湯田）か男鹿の、いまの天気です。10分ごとの観測と今日の予報から決めます。読めないときや「おまかせ」では、その月らしい天気が移り変わります。出典：気象庁（アメダス・天気予報）。</dd>
 			<dt>予約・予約率・会員</dt><dd>Book で入った予約と、Book の会員です。予約が入ると、施設・月・人数・泊数・金額だけを知らせます。</dd>
 		</dl>
 		<div class="actions"><button type="button" data-id="hpClose">閉じる</button></div>
@@ -149,6 +151,7 @@
 	.id { display: flex; align-items: flex-end; gap: clamp(16px, 2.6vw, 40px); flex-wrap: wrap; }
 	.mark { font-family: var(--f-display); font-weight: 700; font-size: clamp(20px, 1.9vw, 28px); letter-spacing: 0.04em; line-height: 1; }
 	.mark small, .clock small { display: block; font-family: var(--f-body); font-weight: 400; font-size: 11px; letter-spacing: 0.1em; color: var(--ink-dim); margin-top: 7px; }
+	.clock .wx { margin-top: 4px; }
 	.clock { font-family: var(--f-display); font-weight: 500; font-size: clamp(20px, 1.8vw, 28px); line-height: 1; font-variant-numeric: tabular-nums; }
 	.now { display: flex; align-items: baseline; gap: 10px; }
 	.now b { font-size: clamp(34px, 3.4vw, 52px); font-weight: 700; line-height: 0.9; font-variant-numeric: tabular-nums; }

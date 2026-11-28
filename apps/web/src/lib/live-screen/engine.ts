@@ -6,6 +6,8 @@
 import { cumulativeUntil, diffGrains, pctChange, rate28, usualFraction, yenShort } from './model';
 import { liveSceneConfig, pickScene } from '$lib/live-scene';
 import { skyClock, sunTimes } from './sun';
+import { createWeatherFx } from './weather-fx';
+import { WEATHER, isWeatherId, randomWeather } from '$lib/live-weather';
 
 export function startLiveScreen(root: HTMLElement): () => void {
 	const $ = (id) => root.querySelector(`[data-id="${id}"]`);
@@ -53,9 +55,40 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	function skyCols(h) { const se = activeScene()?.config?.skyTint || DEFAULT_TINT, d = dayLight(h); for (let i = 0; i < SKY.length - 1; i++) { const a = SKY[i], b = SKY[i + 1]; if (h >= a[0] && h <= b[0]) { const t = (h - a[0]) / (b[0] - a[0]); return [mix(mix(a[1], b[1], t), se[0], d * 0.6), mix(mix(a[2], b[2], t), se[1], d * 0.6)]; } } return [SKY[0][1], SKY[0][2]]; }
 
 	const cv = root.querySelector('canvas.scene'), ctx = cv.getContext('2d');
+	// ── 天気（docs/autumn-live.md §11）──
+	// 既定は西和賀のいまの天気（気象庁の観測を /live/api/weather から 10 分ごと）。読めないとき・「おまかせ」ではその月らしい天気を
+	// 10〜25 分ごとに選び直す。選択肢で 1 つの型を選ぶと、それを見本として出し続ける。
+	const fx = createWeatherFx(ctx, reduce);
+	let wxMode = 'nishiwaga', wxPlaces = [], wxRandom = null, wxRandomUntil = 0, wxShown = '';
+	function wxPick(now = false) {
+		let id = null, label = '';
+		if (isWeatherId(wxMode)) { id = wxMode; label = `見本：${WEATHER[id].name}`; }
+		else if (wxMode === 'nishiwaga' || wxMode === 'oga') {
+			const p = wxPlaces.find((x) => x.place === wxMode);
+			if (p && isWeatherId(p.id)) { id = p.id; label = `${p.name}　${WEATHER[id].name}${p.temp != null ? `　${p.temp.toFixed(1)}℃` : ''}`; }
+		}
+		if (!id) {
+			if (!wxRandom || Date.now() > wxRandomUntil) { wxRandom = randomWeather(jst().mo); wxRandomUntil = Date.now() + rnd(10, 25) * 60_000; }
+			id = wxRandom; label = `おまかせ：${WEATHER[id].name}`;
+		}
+		const first = !wxShown || now; // 最初と、選択肢で選び直したときはすぐ。観測が変わったときはゆっくり移す
+		if (`${id}|${label}` !== wxShown) { wxShown = `${id}|${label}`; fx.setTarget(WEATHER[id].look, first); const el = $('wx'); if (el) el.textContent = label; }
+	}
+	async function loadWeather() {
+		try {
+			const res = await fetch('/live/api/weather', { cache: 'no-store', credentials: 'same-origin' });
+			if (res.ok) { const j = await res.json(); wxPlaces = Array.isArray(j.places) ? j.places : []; }
+		} catch { /* 読めなければ、おまかせの天気 */ }
+		wxPick();
+	}
+	function fillWeatherSelect() {
+		const sel = $('wxSel'); if (!sel) return;
+		sel.insertAdjacentHTML('beforeend', '<optgroup label="天気の見本">' + Object.entries(WEATHER).map(([id, w]) => `<option value="${id}">${w.name}</option>`).join('') + '</optgroup>');
+		sel.value = wxMode;
+		sel.addEventListener('change', (e) => { wxMode = e.target.value; wxRandomUntil = 0; wxPick(true); });
+	}
 	let W = 0, H = 0, DPR = 1;
 	const stars = [...Array(220)].map(() => ({ x: Math.random(), y: Math.pow(Math.random(), 1.5) * 0.8, r: Math.random() * 1.1 + 0.25, p: Math.random() * TAU }));
-	const clouds = [...Array(6)].map(() => ({ x: Math.random(), y: 0.06 + Math.random() * 0.4, s: 0.07 + Math.random() * 0.12, v: 0.003 + Math.random() * 0.004 }));
 	// ── 層（降るもの・木の並び・クリスマスツリー・画像）──
 	// layerState[i] は i 番目の層の作り置き（粒・木・灯り）。シーンが変わる・大きさが変わると作り直す
 	let layerState = [];
@@ -274,7 +307,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		layers.forEach((L, i) => {
 			const st = layerState[i] || {};
 			try {
-				if (L.type === 'particles' && st.parts) drawParticles(L, st, dt, t, d);
+				if (L.type === 'particles' && st.parts) { if (L.preset !== 'snow' && fx.vis().precip < 0.12) drawParticles(L, st, dt, t, d); } // 雪は天気が受け持つ（シーンの雪は出さない）。花びら・ほたるなども雨・雪の間は休む
 				else if (L.type === 'treeRow' && st.trees) drawTreeRow(L, st, t, d, reach);
 				else if (L.type === 'imageRow' && st.items) drawImageRow(L, st, t, d, reach);
 				else if (L.type === 'xmasTree' && st.lights) drawXmasTree(L, st, t, d, reach);
@@ -303,12 +336,14 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		if (!sel.value) seasonOverride = null;
 	}
 	function drawSky(t, hr) {
-		const [top, hor] = skyCols(hr), d = dayLight(hr); const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, hor); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+		const [top, hor] = skyCols(hr), d = dayLight(hr); const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, top); g.addColorStop(1, hor); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); fx.skyTint(W, H, d);
 		const na = 1 - smooth(5.2, 6.6, hr) * (1 - smooth(17.6, 19, hr));
-		if (na > 0.02) for (const s of stars) { ctx.fillStyle = `rgba(255,250,235,${na * (0.4 + 0.4 * Math.sin(t * 1.2 + s.p))})`; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU); ctx.fill(); }
+		const sv = fx.vis(); if (na * sv.stars > 0.02) for (const s of stars) { ctx.fillStyle = `rgba(255,250,235,${na * sv.stars * (0.4 + 0.4 * Math.sin(t * 1.2 + s.p))})`; ctx.beginPath(); ctx.arc(s.x * W, s.y * H, s.r, 0, TAU); ctx.fill(); }
+		ctx.save(); ctx.globalAlpha = sv.sun; // 雲が厚いと太陽・月は隠れる
 		if (hr > 5.3 && hr < 18.7) { const u = clamp((hr - 5.6) / 12.8, 0, 1), sx = lerp(0.06, 0.94, u) * W, sy = H * (0.9 - Math.sin(u * Math.PI) * 0.8), warm = 1 - Math.sin(u * Math.PI), r = Math.min(W, H) * 0.3; const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, r); sg.addColorStop(0, `rgba(255,${Math.round(240 - 60 * warm)},${Math.round(200 - 90 * warm)},.5)`); sg.addColorStop(1, 'rgba(255,220,170,0)'); ctx.fillStyle = sg; ctx.fillRect(sx - r, sy - r, r * 2, r * 2); ctx.fillStyle = `rgba(255,${Math.round(248 - 50 * warm)},${Math.round(228 - 90 * warm)},.92)`; ctx.beginPath(); ctx.arc(sx, sy, Math.max(7, r * 0.05), 0, TAU); ctx.fill(); }
 		else { const mx = W * 0.82, my = H * 0.13, r = Math.min(W, H) * 0.16; const mg = ctx.createRadialGradient(mx, my, 0, mx, my, r); mg.addColorStop(0, 'rgba(230,232,255,.2)'); mg.addColorStop(1, 'rgba(230,232,255,0)'); ctx.fillStyle = mg; ctx.fillRect(mx - r, my - r, r * 2, r * 2); ctx.fillStyle = 'rgba(244,242,230,.92)'; ctx.beginPath(); ctx.arc(mx, my, Math.max(6, r * 0.08), 0, TAU); ctx.fill(); }
-		if (d > 0.05) for (const c of clouds) { const cx = ((c.x + t * c.v) % 1.3 - 0.15) * W, cy = c.y * H, r = c.s * W; for (let k = 0; k < 3; k++) { const ox = cx + (k - 1) * r * 0.6, oy = cy + (k % 2) * r * 0.08, rr = r * (k === 1 ? 0.75 : 0.55); const cg = ctx.createRadialGradient(ox, oy, 0, ox, oy, rr); cg.addColorStop(0, `rgba(255,255,255,${0.24 * d})`); cg.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = cg; ctx.save(); ctx.translate(ox, oy); ctx.scale(1, 0.42); ctx.translate(-ox, -oy); ctx.fillRect(ox - rr, oy - rr, rr * 2, rr * 2); ctx.restore(); } }
+		ctx.restore();
+		fx.clouds(t, W, H, d);
 		return d;
 	}
 	// ── 段・流入元 ──
@@ -401,6 +436,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 		// 木の高さ: カードの上端から少し上まで（カードの後ろから梢がのぞく）
 		const reach = Math.max(80, H - ($('kpis').getBoundingClientRect().top - root.getBoundingClientRect().top) + 46);
 		drawLayers(t, dt, d, reach);
+		fx.update(dt); fx.front(t, dt, W, H, d); // 雨・雪・霧・稲光は木より手前、帯や数字より奥
 		const md = day ? 'day' : 'night'; const ink = day ? '#17213a' : '#f0ece0';
 		const txt = (s, x, y, size, al, align, wt, col) => { ctx.font = `${wt || 500} ${size}px "Noto Sans JP Variable","Noto Sans JP",sans-serif`; ctx.textAlign = align || 'left'; ctx.fillStyle = rgba(col || ink, al); ctx.fillText(s, x, y); };
 		const halo = (s, x, y, size, al, align, wt, col) => { ctx.save(); ctx.shadowColor = day ? 'rgba(255,255,255,.85)' : 'rgba(5,8,20,.8)'; ctx.shadowBlur = 8; txt(s, x, y, size, al, align, wt, col); ctx.restore(); };
@@ -593,7 +629,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	function resize() { const r = root.getBoundingClientRect(); if (!r.width || !r.height) return; DPR = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); rebuildLayers(); drawMonths(); }
 	function tick() { const t = jst(); $('hm').textContent = `${String(t.h).padStart(2, '0')}:${String(t.mi).padStart(2, '0')}`; $('date').textContent = `${t.mo}月${t.d}日（${WD[t.wd]}）`; $('liveN').textContent = String(liveCount); setFresh(); }
 	const ro = new ResizeObserver(resize); ro.observe(root);
-	resize(); tick(); every(tick, 2000); void loadScenes(); every(() => void loadScenes(), 60_000); void poll(); every(() => void poll(), 2500); every(updateCards, 15000);
+	resize(); tick(); every(tick, 2000); void loadScenes(); every(() => void loadScenes(), 60_000); fillWeatherSelect(); void loadWeather(); every(() => void loadWeather(), 10 * 60_000); every(wxPick, 30_000); void poll(); every(() => void poll(), 2500); every(updateCards, 15000);
 	let last = performance.now(), T = 0, acc = 0, raf = 0;
 	function frame(now) {
 		if (stopped) return;
