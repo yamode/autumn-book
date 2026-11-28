@@ -35,7 +35,7 @@ import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
 import type { PcAdminQuestion } from '$lib/precheckin';
 import { isNotifyEmail, type PrecheckinNotifySettings } from '$lib/precheckin-notify';
-import { DONE_MESSAGE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
+import { DONE_MESSAGE_MAX, DONE_TITLE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 import { currentFacilityOf } from '$lib/server/admin-content-page';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -291,9 +291,12 @@ export const actions: Actions = {
 		const facility = currentFacilityOf(event).uuid;
 		const form = await event.request.formData();
 		const v = (k: string) => String(form.get(k) ?? '').trim();
-		const msg: DoneMessage = { ja: v('ja'), en: v('en'), zh: v('zh') };
+		const msg: DoneMessage = { ja: v('ja'), en: v('en'), zh: v('zh'), titleJa: v('title_ja'), titleEn: v('title_en'), titleZh: v('title_zh') };
 		if ([msg.ja, msg.en, msg.zh].some((t) => t.length > DONE_MESSAGE_MAX)) {
 			return fail(400, { doneMessageError: `案内文は ${DONE_MESSAGE_MAX} 文字までです。` });
+		}
+		if ([msg.titleJa, msg.titleEn, msg.titleZh].some((t) => t.length > DONE_TITLE_MAX)) {
+			return fail(400, { doneMessageError: `見出しは ${DONE_TITLE_MAX} 文字までです。` });
 		}
 		try {
 			await adminPrecheckinSaveDoneMessage(bookAdmin(event), facility, msg);

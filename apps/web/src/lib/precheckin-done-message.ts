@@ -1,12 +1,15 @@
 // 事前チェックイン完了画面（/ci/done）に出す「施設からのご案内」（2026-11-28）。
 // 保存先は book.precheckin_settings の done_message（日本語）/ done_message_en / done_message_zh（繁体中国語）。
+// 見出しは done_title / done_title_en / done_title_zh（20261128060127）。空なら見出しを出さず本文だけ。
 // 編集は管理画面（/admin/precheckin）。ここは純粋な部分（言語ごとの出し分け・URL のリンク化）だけを持つ。
 
-export type DoneMessage = { ja: string; en: string; zh: string };
+export type DoneMessage = { ja: string; en: string; zh: string; titleJa: string; titleEn: string; titleZh: string };
 
 export const DONE_MESSAGE_MAX = 2000;
 
-export const EMPTY_DONE_MESSAGE: DoneMessage = { ja: '', en: '', zh: '' };
+export const DONE_TITLE_MAX = 100;
+
+export const EMPTY_DONE_MESSAGE: DoneMessage = { ja: '', en: '', zh: '', titleJa: '', titleEn: '', titleZh: '' };
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
@@ -14,7 +17,14 @@ const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 export function normalizeDoneMessage(row: unknown): DoneMessage {
 	if (!row || typeof row !== 'object') return { ...EMPTY_DONE_MESSAGE };
 	const r = row as Record<string, unknown>;
-	return { ja: str(r.done_message), en: str(r.done_message_en), zh: str(r.done_message_zh) };
+	return {
+		ja: str(r.done_message),
+		en: str(r.done_message_en),
+		zh: str(r.done_message_zh),
+		titleJa: str(r.done_title),
+		titleEn: str(r.done_title_en),
+		titleZh: str(r.done_title_zh)
+	};
 }
 
 /**
@@ -25,6 +35,13 @@ export function doneMessageFor(msg: DoneMessage, locale: string): string {
 	if (locale === 'zh-TW') return msg.zh || msg.en || msg.ja;
 	if (locale === 'en') return msg.en || msg.ja;
 	return msg.ja;
+}
+
+/** お客様の言語で出す見出し（本文と同じ落とし方）。'' なら見出しを出さない */
+export function doneTitleFor(msg: DoneMessage, locale: string): string {
+	if (locale === 'zh-TW') return msg.titleZh || msg.titleEn || msg.titleJa;
+	if (locale === 'en') return msg.titleEn || msg.titleJa;
+	return msg.titleJa;
 }
 
 export type TextPart = { text: string; href?: string };

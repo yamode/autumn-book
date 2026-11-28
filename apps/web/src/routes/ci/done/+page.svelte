@@ -23,7 +23,7 @@
 	);
 	const bathRows = $derived(data.bathRows ?? []);
 	// 施設からのご案内（管理画面 /admin/precheckin で編集・2026-11-28）。文字として出し、URL だけリンクにする
-	const noticeParts = $derived(data.notice ? linkifyParts(data.notice) : []);
+	const noticeParts = $derived(data.notice?.body ? linkifyParts(data.notice.body) : []);
 </script>
 
 <section class="rounded-2xl bg-white p-5 text-sm shadow-sm">
@@ -77,8 +77,8 @@
 
 {#if noticeParts.length}
 	<section class="mt-4 rounded-2xl bg-white p-5 text-sm shadow-sm">
-		<h2 class="text-base font-semibold">{m.ci_done_notice()}</h2>
-		<p class="mt-2 whitespace-pre-line break-words leading-relaxed text-stone-700">{#each noticeParts as part, i (i)}{#if part.href}<a href={part.href} target="_blank" rel="noopener noreferrer" class="text-stone-900 underline">{part.text}</a>{:else}{part.text}{/if}{/each}</p>
+		{#if data.notice?.title}<h2 class="mb-2 text-base font-semibold">{data.notice.title}</h2>{/if}
+		<p class="whitespace-pre-line break-words leading-relaxed text-stone-700">{#each noticeParts as part, i (i)}{#if part.href}<a href={part.href} target="_blank" rel="noopener noreferrer" class="text-stone-900 underline">{part.text}</a>{:else}{part.text}{/if}{/each}</p>
 	</section>
 {/if}
 

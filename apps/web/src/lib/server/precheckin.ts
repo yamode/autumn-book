@@ -509,7 +509,7 @@ export const adminPrecheckinSaveNotify = (c: BookClient, facility: string, email
 
 // ---------------------------------------------------------------- 完了画面の「施設からのご案内」（20261128043600）
 
-const DONE_MESSAGE_COLS = 'done_message, done_message_en, done_message_zh';
+const DONE_MESSAGE_COLS = 'done_message, done_message_en, done_message_zh, done_title, done_title_en, done_title_zh';
 
 /** お客様の完了画面用（anon で読む）。見本・未設定・読めないときは空 */
 export async function pcDoneMessage(facilityId: string): Promise<DoneMessage> {
@@ -526,9 +526,17 @@ export async function adminPrecheckinDoneMessage(c: BookClient, facility: string
 	return normalizeDoneMessage(data);
 }
 
-/** 保存（空欄は消す。2000 文字を超えると例外 invalid_params） */
+/** 保存（空欄は消す。本文 2000 字・見出し 100 字を超えると例外 invalid_params） */
 export const adminPrecheckinSaveDoneMessage = (c: BookClient, facility: string, m: DoneMessage) =>
-	rpc<null>(c, 'admin_precheckin_save_done_message', { p_facility: facility, p_ja: m.ja, p_en: m.en, p_zh: m.zh });
+	rpc<null>(c, 'admin_precheckin_save_done_message', {
+		p_facility: facility,
+		p_ja: m.ja,
+		p_en: m.en,
+		p_zh: m.zh,
+		p_title_ja: m.titleJa,
+		p_title_en: m.titleEn,
+		p_title_zh: m.titleZh
+	});
 
 type IssueResult = {
 	id: string;

@@ -21,7 +21,7 @@
 		shortJst
 	} from '$lib/precheckin';
 	import { isDirectRoute } from '$lib/booking-channel';
-	import { DONE_MESSAGE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
+	import { DONE_MESSAGE_MAX, DONE_TITLE_MAX, type DoneMessage } from '$lib/precheckin-done-message';
 	import { EMAIL_STATUS_LABEL, SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, liveLinkChannel, precheckinRoute, smsTarget, type EmailStatusRow, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
@@ -80,10 +80,11 @@
 	// 完了画面の「施設からのご案内」の編集欄（2026-11-28）。欄を離れると自動で保存する。
 	// 保存後の読み直しで入力中の欄を巻き戻さないよう、自分が送った内容と同じものが返ってきたときは触らない
 	// （施設を切り替えたときなど、送っていない内容が来たときだけ入れ替える）。
-	let dm = $state<DoneMessage>({ ja: '', en: '', zh: '' });
+	let dm = $state<DoneMessage>({ ja: '', en: '', zh: '', titleJa: '', titleEn: '', titleZh: '' });
 	let dmSent = '';
 	let dmApplied = '';
-	const dmJson = (m: DoneMessage) => JSON.stringify({ ja: m.ja.trim(), en: m.en.trim(), zh: m.zh.trim() });
+	const dmJson = (m: DoneMessage) =>
+		JSON.stringify([m.ja, m.en, m.zh, m.titleJa, m.titleEn, m.titleZh].map((t) => t.trim()));
 	$effect(() => {
 		const server = data.doneMessage;
 		untrack(() => {
@@ -105,21 +106,22 @@
 			dmTranslateMsg = { ok: false, text: '翻訳する日本語の文章がありません。先に日本語を入れてください。' };
 			return;
 		}
-		if ((dm.en.trim() || dm.zh.trim()) && !confirm('英語・繁体中国語の欄を、日本語からの翻訳で置き換えます。よろしいですか？')) return;
+		if ((dm.en.trim() || dm.zh.trim() || dm.titleEn.trim() || dm.titleZh.trim()) && !confirm('英語・繁体中国語の欄を、日本語からの翻訳で置き換えます。よろしいですか？')) return;
 		dmTranslating = true;
 		dmTranslateMsg = null;
 		try {
 			const res = await fetch('/admin/precheckin/translate', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ text: dm.ja })
+				body: JSON.stringify({ text: dm.ja, title: dm.titleJa })
 			});
-			const r = (await res.json().catch(() => null)) as { en?: string; zh?: string; error?: string } | null;
+			const r = (await res.json().catch(() => null)) as { en?: string; zh?: string; titleEn?: string; titleZh?: string; error?: string } | null;
 			if (!res.ok || !r?.en || !r?.zh) {
 				dmTranslateMsg = { ok: false, text: r?.error ?? '翻訳できませんでした。時間をおいて再度お試しください。' };
 				return;
 			}
-			dm = { ...dm, en: r.en, zh: r.zh };
+			// 日本語の見出しが空なら、英語・繁中の見出しも空にする（本文だけ出す）
+			dm = { ...dm, en: r.en, zh: r.zh, titleEn: dm.titleJa.trim() ? (r.titleEn ?? '') : '', titleZh: dm.titleJa.trim() ? (r.titleZh ?? '') : '' };
 			await tick();
 			requestAutosave(f);
 			dmTranslateMsg = { ok: true, text: '英語・繁体中国語に翻訳して保存しました。AI の下書きなので、内容を確かめて必要なら直してください。' };
@@ -568,12 +570,16 @@
 			<h2 class="font-semibold">完了画面の「施設からのご案内」</h2>
 			<p class="mt-1 text-xs text-stone-500">
 				お客様が事前チェックインを終えたあとの完了画面に、ここに書いた文をそのまま出します（改行もそのまま。http から始まる URL はリンクになります）。
-				空欄なら案内の枠は出ません。英語・繁体中国語が空欄のときは、英語 → 日本語の順に代わりを出します。
+				本文が空欄なら案内の枠は出ません。見出しが空欄なら、見出しを出さず本文だけ出します。英語・繁体中国語が空欄のときは、英語 → 日本語の順に代わりを出します。
 			</p>
 			{#if form && 'doneMessageError' in form && form.doneMessageError}
 				<p class="mt-2 text-sm text-red-700" role="alert">{form.doneMessageError}</p>
 			{/if}
 			<form method="POST" action="?/doneMessage" use:autosave={doneMessageSubmit} class="mt-3 space-y-3">
+				<label class="block">
+					<span class="text-xs font-medium text-stone-600">見出し（日本語・空欄なら本文だけ）</span>
+					<input name="title_ja" maxlength={DONE_TITLE_MAX} bind:value={dm.titleJa} class="mt-1 w-full max-w-md rounded border border-stone-300 px-2 py-1" placeholder="例: 施設からのご案内" />
+				</label>
 				<label class="block">
 					<span class="text-xs font-medium text-stone-600">日本語</span>
 					<textarea
@@ -586,8 +592,16 @@
 					></textarea>
 				</label>
 				<label class="block">
+					<span class="text-xs font-medium text-stone-600">見出し（英語・任意）</span>
+					<input name="title_en" maxlength={DONE_TITLE_MAX} bind:value={dm.titleEn} class="mt-1 w-full max-w-md rounded border border-stone-300 px-2 py-1" />
+				</label>
+				<label class="block">
 					<span class="text-xs font-medium text-stone-600">英語（任意）</span>
 					<textarea name="en" rows="4" maxlength={DONE_MESSAGE_MAX} bind:value={dm.en} class="mt-1 w-full rounded border border-stone-300 px-2 py-1"></textarea>
+				</label>
+				<label class="block">
+					<span class="text-xs font-medium text-stone-600">見出し（繁体中国語・任意）</span>
+					<input name="title_zh" maxlength={DONE_TITLE_MAX} bind:value={dm.titleZh} class="mt-1 w-full max-w-md rounded border border-stone-300 px-2 py-1" />
 				</label>
 				<label class="block">
 					<span class="text-xs font-medium text-stone-600">繁体中国語（任意）</span>
