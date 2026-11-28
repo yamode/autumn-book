@@ -21,7 +21,7 @@
 		shortJst
 	} from '$lib/precheckin';
 	import { isDirectRoute } from '$lib/booking-channel';
-	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, precheckinRoute, smsTarget, type SmsStatusRow } from '$lib/precheckin-sms';
+	import { EMAIL_STATUS_LABEL, SMS_STATUS_CLASS, SMS_STATUS_LABEL, autosendDecision, liveLinkChannel, precheckinRoute, smsTarget, type EmailStatusRow, type SmsStatusRow } from '$lib/precheckin-sms';
 
 	let { data, form } = $props();
 
@@ -32,15 +32,25 @@
 	]);
 	const isPreset = (p: { from: string; to: string }) => p.from === data.filters.from && p.to === data.filters.to;
 	const smsOf = $derived(new Map<string, SmsStatusRow>((data.sms ?? []).map((x) => [x.precheckin_id, x])));
+	const emailOf = $derived(new Map<string, EmailStatusRow>((data.email ?? []).map((x) => [x.precheckin_id, x])));
 	// 携帯番号があれば SMS で送れるので「連絡先なし」にしない
 	const rows = $derived(
 		data.list.map((r) => {
 			const base = precheckinState(r);
 			const mobile = Boolean(smsTarget(r.phone));
+			const sms = r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null;
+			const mailSt = r.precheckin_id ? (emailOf.get(r.precheckin_id) ?? null) : null;
+			// URL の期限（チェックアウト日 11:00・DB の expires_at と同じ。まだ送っていなければ送ったときの期限）
+			const expiresAt = r.expires_at ?? expiresAtOf(r.check_out_date);
 			return {
 				...r,
 				mobile,
-				sms: r.precheckin_id ? (smsOf.get(r.precheckin_id) ?? null) : null,
+				sms,
+				mailSt,
+				live: liveLinkChannel(r, sms, mailSt),
+				attempted: Boolean(sms?.sms_at || mailSt?.email_at || r.sent_at || r.status === 'failed'),
+				expiresAt,
+				expired: !isBefore(expiresAt),
 				state: base === 'no_contact' && mobile ? ('unsent' as const) : base,
 				// 公式扱い（公式サイト・tripla・直接予約・電話）か。
 				official: isDirectRoute(r.source, r.channel_code)
@@ -130,7 +140,7 @@
 
 <PageHeader
 	title="事前チェックイン"
-	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメール、または携帯番号へ SMS で送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。「URLを開いた」はお客様がご案内のリンクを開いた印です（SMS・メールそのものを読んだかは分かりません）。"
+	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメール、または携帯番号へ SMS で送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。「URLを開いた」はお客様がご案内のリンクを開いた印です（SMS・メールそのものを読んだかは分かりません）。送るたびに新しいリンクになり、前に送ったリンク（SMS・メールとも）は使えなくなります。リンクはチェックアウト日の 11:00 まで有効です。"
 />
 
 <p class="mb-3 text-sm">
@@ -265,11 +275,22 @@
 							<span>メール: {r.email ? maskEmail(r.email) : 'なし'}</span>
 							<span>電話: {r.phone ? maskPhone(r.phone) : 'なし'}{#if isMobileJp(r.phone)}<span class="ml-1 rounded bg-stone-100 px-1">携帯</span>{/if}</span>
 						</div>
+						<div class="mt-1 flex flex-wrap gap-x-3 text-xs">
+							{#if r.live}
+								<span class="text-stone-700">使えるリンク: {r.live.channel === 'sms' ? 'SMS' : 'メール'}で {shortJst(r.live.at)} に送ったもの</span>
+							{:else if r.attempted}
+								<span class="text-red-700">使えるリンクなし（最後の送信が失敗しました。送り直してください）</span>
+							{/if}
+							<span class={r.expired ? 'text-red-700' : 'text-stone-500'}>URLの期限 {shortJst(r.expiresAt)}{r.expired ? '（期限切れ・開いても無効）' : 'まで'}</span>
+						</div>
 					</div>
 					<div class="flex shrink-0 flex-col items-end gap-1.5">
 						<span class="rounded-full px-2.5 py-0.5 text-xs ring-1 {PRECHECKIN_STATE_CLASS[r.state]}">{PRECHECKIN_STATE_LABEL[r.state]}</span>
 						{#if r.sms?.sms_status}
 							<span class="rounded-full px-2.5 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[r.sms.sms_status]}">{SMS_STATUS_LABEL[r.sms.sms_status]}</span>
+						{/if}
+						{#if r.mailSt?.email_status}
+							<span class="rounded-full px-2.5 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[r.mailSt.email_status]}">{EMAIL_STATUS_LABEL[r.mailSt.email_status]}</span>
 						{/if}
 						{#if r.sms && r.sms.inbound_count > 0}
 							<a href="/admin/precheckin/{r.stay_id}" class="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs text-violet-800 ring-1 ring-violet-200">返信あり {r.sms.inbound_count}</a>
@@ -315,13 +336,14 @@
 						</select>
 					</form>
 				{/if}
-				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error || r.sms?.sms_error}
+				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error || r.sms?.sms_error || r.mailSt?.email_error}
 					<div class="mt-2 flex flex-wrap gap-x-3 border-t border-stone-100 pt-2 text-xs text-stone-500">
 						{#if r.sent_at}<span>送信 {shortJst(r.sent_at)}（{r.send_count}回）</span>{/if}
 						{#if r.first_opened_at}<span>URLを開いた {shortJst(r.first_opened_at)}</span>{/if}
 						{#if r.answered_at}<span class="text-emerald-700">回答 {shortJst(r.answered_at)}</span>{/if}
 						{#if r.status === 'failed' && r.send_error}<span class="text-red-700">失敗: {r.send_error}</span>{/if}
 						{#if r.sms && (r.sms.sms_status === 'failed' || r.sms.sms_status === 'undeliverable') && r.sms.sms_error}<span class="text-red-700">SMS: {r.sms.sms_error}</span>{/if}
+						{#if r.mailSt && (r.mailSt.email_status === 'failed' || r.mailSt.email_status === 'undeliverable') && r.mailSt.email_error}<span class="text-red-700">メール: {r.mailSt.email_error}</span>{/if}
 					</div>
 				{/if}
 			</li>

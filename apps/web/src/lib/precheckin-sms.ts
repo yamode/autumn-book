@@ -463,6 +463,49 @@ export const SMS_STATUS_CLASS: Record<DispatchStatus, string> = {
 	undeliverable: 'bg-red-50 text-red-700 ring-red-200'
 };
 
+// メールの状態（book.admin_precheckin_email_status・20261128023021）。メールは送信の受付までしか分からない（届いたかの印は無い）
+export type EmailStatusRow = {
+	precheckin_id: string;
+	stay_id: string;
+	email_status: DispatchStatus | null;
+	email_at: string | null;
+	email_error: string | null;
+	email_count: number;
+};
+
+export const EMAIL_STATUS_LABEL: Record<DispatchStatus, string> = {
+	pending: 'メール 送信中',
+	sent: 'メール 送信済',
+	delivered: 'メール 到達',
+	failed: 'メール 失敗',
+	undeliverable: 'メール 未到達'
+};
+
+/**
+ * いま使えるリンクを送ったのはどちらか（2026-11-28 指示「SMS とメールのどちらを送ったか」）。
+ * 送るたびに新しいリンクを出し、前のリンクは使えなくなる（送信に失敗しても前のリンクは無効）。
+ * なので最後に送ろうとした手段のリンクだけが有効。その送信が失敗していれば有効なリンクは無い（null）。
+ * 20261128023021 より前の画面からのメール送信は記録が無いので、precheckins の最後の送信（sent_to が「SMS 」で始まらない）で補う。
+ */
+export function liveLinkChannel(
+	r: { sent_at: string | null; sent_to?: string | null; status: string | null },
+	sms: Pick<SmsStatusRow, 'sms_status' | 'sms_at'> | null,
+	email: Pick<EmailStatusRow, 'email_status' | 'email_at'> | null
+): { channel: 'sms' | 'email'; at: string } | null {
+	const legacyEmail =
+		!email?.email_at && r.sent_at && r.sent_to && !r.sent_to.startsWith('SMS ')
+			? { email_status: (r.status === 'failed' ? 'failed' : 'sent') as DispatchStatus, email_at: r.sent_at }
+			: null;
+	const e = email?.email_at ? email : legacyEmail;
+	const cands = [
+		sms?.sms_at ? { channel: 'sms' as const, at: sms.sms_at, ok: sms.sms_status !== 'failed' && sms.sms_status !== 'undeliverable' } : null,
+		e?.email_at ? { channel: 'email' as const, at: e.email_at, ok: e.email_status !== 'failed' && e.email_status !== 'undeliverable' } : null
+	].filter((x): x is { channel: 'sms' | 'email'; at: string; ok: boolean } => x !== null);
+	if (!cands.length) return null;
+	const last = cands.reduce((a, b) => (Date.parse(b.at) > Date.parse(a.at) ? b : a));
+	return last.ok ? { channel: last.channel, at: last.at } : null;
+}
+
 // ---------------------------------------------------------------- 自動送信の対象（管理画面で選ぶ・20261114134915）
 
 /**

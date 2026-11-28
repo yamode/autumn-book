@@ -40,7 +40,8 @@ import {
 	type AutosendTarget,
 	type MonthlySmsEstimate,
 	type NttConfig,
-	type SmsStatusRow
+	type SmsStatusRow,
+	type EmailStatusRow
 } from '$lib/precheckin-sms';
 
 // 開発中はログを出す（リリース前に false）。宛先・本文・トークンは出さない
@@ -205,6 +206,12 @@ export async function sendPrecheckinSms(
 	if (fin.error) dbg('finish error', fin.error.message);
 	if (!r.ok) return { sent: false, code: 'send_failed', message: `SMS を送れませんでした（${r.error ?? '不明'}）。一覧に失敗を残しました。` };
 	return { sent: true, toMasked: b.to_masked };
+}
+
+export async function adminEmailStatus(c: BookClient, facility: string, from: string, to: string): Promise<EmailStatusRow[]> {
+	const { data, error } = await c.rpc('admin_precheckin_email_status', { p_facility: facility, p_from: from, p_to: to });
+	if (error) throw error;
+	return (data ?? []) as EmailStatusRow[];
 }
 
 export async function adminSmsStatus(c: BookClient, facility: string, from: string, to: string): Promise<SmsStatusRow[]> {

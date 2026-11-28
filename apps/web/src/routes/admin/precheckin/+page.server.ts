@@ -23,11 +23,11 @@ import {
 	type PrecheckinCaps,
 	type PrecheckinListRow
 } from '$lib/server/precheckin';
-import { adminMonthlySmsEstimate, adminSmsStatus, sendPrecheckinSms, smsReady, stayOffersPrecheckinBath } from '$lib/server/precheckin-sms';
+import { adminEmailStatus, adminMonthlySmsEstimate, adminSmsStatus, sendPrecheckinSms, smsReady, stayOffersPrecheckinBath } from '$lib/server/precheckin-sms';
 import { brands, facilities } from '$lib/server/store';
 
 import { customerLinkOrigin } from '$lib/server/public-origin';
-import { autosendEnabled, smsAutosendEnabled, type AutosendSettings, type MonthlySmsEstimate, type SmsStatusRow } from '$lib/precheckin-sms';
+import { autosendEnabled, smsAutosendEnabled, type AutosendSettings, type EmailStatusRow, type MonthlySmsEstimate, type SmsStatusRow } from '$lib/precheckin-sms';
 import { env as privateEnv } from '$env/dynamic/private';
 import { addDays, todayStr } from '$lib/format';
 import type { MealMinutes } from '$lib/precheckin-p3';
@@ -69,6 +69,7 @@ export const load: PageServerLoad = async (event) => {
 			overrides: {} as Record<string, boolean>,
 			autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 			sms: [] as SmsStatusRow[],
+			email: [] as EmailStatusRow[],
 			smsReady: smsReady(facility),
 			smsMonth: null as Promise<MonthlySmsEstimate | null> | null,
 			smsAutosendOn: false,
@@ -84,7 +85,7 @@ export const load: PageServerLoad = async (event) => {
 	const smsMonth = brand && brandFacilities.length
 		? adminMonthlySmsEstimate(client, brand.name, brandFacilities).catch(() => null)
 		: null;
-	const [list, caps, sms, minutes, questions, autosend, notify] = await Promise.all([
+	const [list, caps, sms, email, minutes, questions, autosend, notify] = await Promise.all([
 		adminPrecheckinList(client, facility, from, to).then(
 			(rows) => ({ rows, error: null as string | null }),
 			(e) => ({ rows: [] as PrecheckinListRow[], error: precheckinError(e) })
@@ -92,6 +93,8 @@ export const load: PageServerLoad = async (event) => {
 		adminPrecheckinCaps(client, facility).catch(() => null as PrecheckinCaps | null),
 		// SMS の状態（P4 の DB が未適用なら空のまま一覧は出す）
 		adminSmsStatus(client, facility, from, to).catch(() => [] as SmsStatusRow[]),
+		// メールの状態（20261128023021 が未適用なら空。そのときは precheckins の最後の送信で補う）
+		adminEmailStatus(client, facility, from, to).catch(() => [] as EmailStatusRow[]),
 		// 食事の所要時間の目安（DB 未適用なら欄を出さない）
 		adminPrecheckinMinutes(client, facility).catch(() => null as MealMinutes | null),
 		// 宿からの質問（DB 未適用なら欄を出さない）
@@ -116,6 +119,7 @@ export const load: PageServerLoad = async (event) => {
 		overrides,
 		autosendSystemOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND),
 		sms,
+		email,
 		smsReady: smsReady(facility),
 		smsMonth,
 		smsAutosendOn: autosendEnabled(privateEnv.PRECHECKIN_AUTOSEND) && smsAutosendEnabled(privateEnv.PRECHECKIN_SMS),

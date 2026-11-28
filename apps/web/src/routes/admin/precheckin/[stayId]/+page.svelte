@@ -3,7 +3,7 @@
 	import PageHeader from '$lib/components/admin/PageHeader.svelte';
 	import { formatDateJa } from '$lib/format';
 	import { contactDiff, precheckinState, PRECHECKIN_STATE_CLASS, PRECHECKIN_STATE_LABEL, shortJst } from '$lib/precheckin';
-	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL } from '$lib/precheckin-sms';
+	import { SMS_STATUS_CLASS, SMS_STATUS_LABEL, EMAIL_STATUS_LABEL } from '$lib/precheckin-sms';
 
 	let { data } = $props();
 	const d = $derived(data.detail);
@@ -169,7 +169,7 @@
 								<td>{x.channel === 'sms' ? 'SMS' : 'メール'}</td>
 								<td class="text-xs text-stone-600">{x.to_masked ?? '—'}</td>
 								<td>
-									{#if x.status}<span class="rounded-full px-2 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[x.status]}">{x.channel === 'sms' ? SMS_STATUS_LABEL[x.status] : x.status}</span>{/if}
+									{#if x.status}<span class="rounded-full px-2 py-0.5 text-xs ring-1 {SMS_STATUS_CLASS[x.status]}">{x.channel === 'sms' ? SMS_STATUS_LABEL[x.status] : EMAIL_STATUS_LABEL[x.status]}</span>{/if}
 									{#if x.last_error && x.status !== 'delivered' && x.status !== 'sent'}<div class="mt-0.5 text-xs text-red-700">{x.last_error}</div>{/if}
 								</td>
 							</tr>

@@ -1,6 +1,7 @@
 // 事前チェックイン P4（SMS）の純関数のテスト。NTT CPaaS の実 API は呼ばない（fetch はモック）。
 import { describe, expect, it, vi } from 'vitest';
 import {
+	liveLinkChannel,
 	SMS_SINGLE_CHARS,
 	autosendEnabled,
 	autosendChannel,
@@ -370,5 +371,30 @@ describe('SMS を使えない間はメールで送る（2026-11-26）', () => {
 		expect(autosendChannel('sms', true)).toBe('sms');
 		expect(autosendChannel('email', false)).toBe('email');
 		expect(autosendChannel('email', true)).toBe('email');
+	});
+});
+
+describe('liveLinkChannel（いま使えるリンクを送ったのはどちらか）', () => {
+	const base = { sent_at: null, sent_to: null, status: null };
+	it('何も送っていなければ null', () => {
+		expect(liveLinkChannel(base, null, null)).toBeNull();
+	});
+	it('最後に送った手段のリンクだけが使える', () => {
+		const sms = { sms_status: 'delivered' as const, sms_at: '2026-11-28T00:00:00Z' };
+		const email = { email_status: 'sent' as const, email_at: '2026-11-28T01:00:00Z' };
+		expect(liveLinkChannel(base, sms, email)).toEqual({ channel: 'email', at: email.email_at });
+		expect(liveLinkChannel(base, { ...sms, sms_at: '2026-11-28T02:00:00Z' }, email)).toEqual({ channel: 'sms', at: '2026-11-28T02:00:00Z' });
+	});
+	it('最後の送信が失敗なら使えるリンクは無い（前のリンクはもう無効）', () => {
+		const sms = { sms_status: 'undeliverable' as const, sms_at: '2026-11-28T02:00:00Z' };
+		const email = { email_status: 'sent' as const, email_at: '2026-11-28T01:00:00Z' };
+		expect(liveLinkChannel(base, sms, email)).toBeNull();
+	});
+	it('記録の無い以前のメール送信は precheckins の最後の送信で補う', () => {
+		expect(liveLinkChannel({ sent_at: '2026-11-27T00:00:00Z', sent_to: 'guest@example.com', status: 'sent' }, null, null)).toEqual({
+			channel: 'email',
+			at: '2026-11-27T00:00:00Z'
+		});
+		expect(liveLinkChannel({ sent_at: '2026-11-27T00:00:00Z', sent_to: 'SMS 090-****-1234', status: 'sent' }, null, null)).toBeNull();
 	});
 });
