@@ -44,6 +44,10 @@
 
 <PageHeader title="旧会員の確認" description="旧会員（tripla）から移行した会員の紐づけを確認します。自動で紐づけたものも、ここで解除できます。" />
 
+<p class="mb-3 text-sm">
+	<a href="/admin/members/legacy/pre" class="text-accent-600 hover:underline">手続き前の旧会員（候補あり）を先に確かめる →</a>
+</p>
+
 <section class="mb-5 max-w-3xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
 	<p>
 		紐づけると、選んだ PMS の顧客のプロフィールと予約が、その会員のマイページに表示されます。別人に紐づけると他のお客様の情報が見えてしまうため、
@@ -179,9 +183,10 @@
 		<article class="rounded-xl border border-stone-200 bg-white p-4 text-sm">
 			{@render person(item)}
 			<p class="mt-3 text-xs text-emerald-700">
-				{item.reviewed_at ? `紐づけ済み（スタッフが紐づけました・${fmtDate(item.reviewed_at)}）` : '紐づけ済み（メール・氏名が一致したため自動で紐づけました。手続きで入れた電話は連絡先に追加）'}
+				{item.reviewed_at ? `紐づけ済み（スタッフが紐づけました。手続き前に決めたものを含む・${fmtDate(item.reviewed_at)}）` : '紐づけ済み（メール・氏名が一致したため自動で紐づけました。手続きで入れた電話は連絡先に追加）'}
 			</p>
-			{#each item.candidates as c (c.guest_id)}
+			<!-- 候補が複数ある旧会員（手続き前に職員が決めたもの等）は、実際の紐づけ先だけを出す -->
+			{#each item.candidates.filter((c) => !item.member_guest_id || c.guest_id === item.member_guest_id) as c (c.guest_id)}
 				<p class="mt-1 text-xs text-stone-500">紐づけ先：{c.name ?? '—'}・{c.phone ?? '—'}・公式・直販 {c.direct_visits.toLocaleString()} 回</p>
 			{/each}
 			{#if !(item.can_unlink ?? !!item.previous_guest_id)}
