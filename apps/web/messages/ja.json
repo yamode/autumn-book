@@ -1645,7 +1645,7 @@
   "ci_note_placeholder": "ご要望やご連絡があればご記入ください。",
   "ci_required": "必須",
   "ci_section_gender": "男女別の人数",
-  "ci_gender_lead": "お部屋ごとに、お泊まりになる男性・女性の人数をお知らせください。",
+  "ci_gender_lead": "お部屋ごとに、お泊まりになる男性・女性の人数をご確認ください。",
   "ci_male": "男性",
   "ci_female": "女性",
   "ci_gender_party": "ご予約の人数: {n}名",

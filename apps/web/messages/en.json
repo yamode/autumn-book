@@ -1645,7 +1645,7 @@
   "ci_note_placeholder": "Let us know any requests or messages.",
   "ci_required": "Required",
   "ci_section_gender": "Number of guests by gender",
-  "ci_gender_lead": "For each room, please tell us how many male and female guests will stay.",
+  "ci_gender_lead": "For each room, please confirm the number of male and female guests staying.",
   "ci_male": "Male",
   "ci_female": "Female",
   "ci_gender_party": "Guests in the booking: {n}",
