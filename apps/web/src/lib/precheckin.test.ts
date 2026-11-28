@@ -295,8 +295,8 @@ describe('ご案内メール', () => {
 		assetOrigin: 'https://book.example'
 	};
 	const mail = buildPrecheckinMail(base);
-	it('件名は「【施設名】事前チェックインのご案内」だけ。本文に予約番号・日程・リンク（日本語と英語）。締め切りは書かない', () => {
-		expect(mail.subject).toBe('【山人-yamado-】事前チェックインのご案内');
+	it('件名は「【施設名】ご到着前の事前確認サービスのご案内」だけ。本文に予約番号・日程・リンク（日本語と英語）。締め切りは書かない', () => {
+		expect(mail.subject).toBe('【山人-yamado-】ご到着前の事前確認サービスのご案内');
 		expect(mail.text).toContain('山人 <太郎> 様');
 		expect(mail.text).toContain('ご予約番号: AB12');
 		expect(mail.text).toContain('2026年11月1日（日）から2泊（チェックアウト 2026年11月3日（火））');
@@ -304,7 +304,7 @@ describe('ご案内メール', () => {
 		expect(mail.text).not.toContain('締め切り');
 		expect(mail.text).not.toContain('スタッフ一同');
 		expect(mail.text).not.toContain('公式サイトからのご予約がおすすめ');
-		expect(mail.text).toContain('事前チェックインの内容');
+		expect(mail.text).toContain('ご到着前の事前確認サービスの内容');
 		expect(mail.text).toContain('③ 貸切風呂のお時間のご予約');
 		expect(mail.text).not.toContain('ここでできること');
 		expect(mail.text).toContain('https://book.example/ci/TOKEN');
@@ -332,7 +332,7 @@ describe('ご案内メール', () => {
 		expect(buildPrecheckinMail({ ...base, facilitySlug: 'x' }).html).not.toContain('<img');
 	});
 	it('差出人は送信専用（noreply@yamado.app・名前は施設名＋事前チェックイン）', () => {
-		expect(precheckinMailFrom('山人-oga-')).toEqual({ address: 'noreply@yamado.app', name: '山人-oga- 事前チェックイン' });
+		expect(precheckinMailFrom('山人-oga-')).toEqual({ address: 'noreply@yamado.app', name: '山人-oga- ご到着前の事前確認サービス' });
 	});
 });
 

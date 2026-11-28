@@ -481,8 +481,8 @@ export const PRECHECKIN_MAIL_FACILITY: Record<string, { logo: string; logoW: num
 	oga: { logo: '/mail/logo-oga.png', logoW: 176, logoH: 92, phone: '0185-47-7776', address: '〒010-0531 秋田県男鹿市船川港台島字鵜ノ崎62-29', site: 'https://oga.yamado.co.jp/' }
 };
 
-/** 事前チェックインのご案内の差出人（送信専用・名前は「<施設名> 事前チェックイン」） */
-export const precheckinMailFrom = (facilityName: string) => ({ address: 'noreply@yamado.app', name: `${facilityName.trim() || 'YAMADO'} 事前チェックイン` });
+/** 事前チェックインのご案内の差出人（送信専用・名前は「<施設名> ご到着前の事前確認サービス」。お客様向けの名称・2026-11-28） */
+export const precheckinMailFrom = (facilityName: string) => ({ address: 'noreply@yamado.app', name: `${facilityName.trim() || 'YAMADO'} ご到着前の事前確認サービス` });
 
 const esc = (s: string) =>
 	s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
@@ -542,7 +542,7 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		}
 	})();
 	const logoSrc = fac && i.assetOrigin && /^https:\/\//.test(i.assetOrigin) ? `${i.assetOrigin.replace(/\/+$/, '')}${fac.logo}` : null;
-	const subject = `【${i.facilityName}】事前チェックインのご案内`;
+	const subject = `【${i.facilityName}】ご到着前の事前確認サービスのご案内`;
 	const stayJa = `${dateJa(i.checkIn)}から${i.nights}泊（チェックアウト ${dateJa(i.checkOut)}）`;
 	const stayEn = `${dateEn(i.checkIn)}, ${i.nights} night${i.nights === 1 ? '' : 's'} (check-out ${dateEn(i.checkOut)})`;
 	const choose = bath ? 'ご夕食・ご朝食・貸切風呂のお時間' : 'ご夕食・ご朝食のお時間';
@@ -560,17 +560,17 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		'',
 		`本日は${i.facilityName}をご予約いただき、ありがとうございます。`,
 		'',
-		'ご到着の前に、下記のリンクから事前チェックインのお手続きができます。',
+		'ご到着の前に、下記のリンクからご到着前の事前確認サービスのお手続きができます。',
 		`ご連絡先の確認と、${choose}をお選びいただけます。`,
 		'',
 		...(i.bookingCode ? [`ご予約番号: ${i.bookingCode}`] : []),
 		`ご宿泊: ${stayJa}`,
 		'',
-		'▼ 事前チェックイン',
+		'▼ ご到着前の事前確認サービス',
 		i.url,
 		...(host ? [`（リンク先は${i.facilityName}の公式予約サイト ${host} です）`] : []),
 		'',
-		'事前チェックインの内容',
+		'ご到着前の事前確認サービスの内容',
 		...steps,
 		'',
 		...notes.map((n) => `※ ${n}`),
@@ -580,7 +580,7 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 		`Dear ${i.guestName.trim() || 'Guest'},`,
 		'',
 		`Thank you for booking ${i.facilityName}.`,
-		`Before you arrive, you can complete the online pre-check-in from the link below. You can confirm your contact details and choose your dinner, breakfast${bath ? ' and private bath' : ''} times.`,
+		`Before you arrive, you can complete the pre-arrival confirmation from the link below. You can confirm your contact details and choose your dinner, breakfast${bath ? ' and private bath' : ''} times.`,
 		'',
 		...(i.bookingCode ? [`Booking number: ${i.bookingCode}`] : []),
 		`Stay: ${stayEn}`,
@@ -598,20 +598,20 @@ export function buildPrecheckinMail(i: PrecheckinMailInput): { subject: string; 
 	const row = (inner: string, pad = '0 32px') => `<tr><td style="padding:${pad};">${inner}</td></tr>`;
 	const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>${esc(subject)}</title></head>
 <body style="margin:0;padding:0;background:#efede8;">
-<div style="display:none;max-height:0;overflow:hidden;">${esc(`${stayJa}のご予約の事前チェックインのご案内です。`)}</div>
+<div style="display:none;max-height:0;overflow:hidden;">${esc(`${stayJa}のご予約のご到着前の事前確認サービスのご案内です。`)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#efede8;"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;color:#292524;${SANS}">
 ${logoSrc ? row(`<img src="${esc(logoSrc)}" width="${fac!.logoW}" height="${fac!.logoH}" alt="${esc(i.facilityName)}" style="display:block;margin:0 auto;border:0;width:${fac!.logoW}px;max-width:60%;height:auto;">`, '32px 32px 4px;text-align:center') : ''}
-${row(`<p style="margin:0 0 8px;font-size:12px;letter-spacing:0.2em;color:#8f6f2a;text-align:center;">ONLINE PRE-CHECK-IN</p><h1 style="margin:0;${SERIF}font-size:22px;line-height:1.6;font-weight:500;text-align:center;">事前チェックインのご案内</h1>`, `${logoSrc ? '12px' : '36px'} 32px 0`)}
-${row(`<p style="margin:0 0 14px;">${esc(name)} 様</p><p style="margin:0 0 14px;">本日は${esc(i.facilityName)}をご予約いただき、ありがとうございます。</p><p style="margin:0;">ご到着の前に、下記のボタンから事前チェックインのお手続きができます。<br>ご連絡先の確認と、${esc(choose)}をお選びいただけます。</p>`, '24px 32px 0;font-size:15px;line-height:1.9')}
+${row(`<p style="margin:0 0 8px;font-size:12px;letter-spacing:0.2em;color:#8f6f2a;text-align:center;">PRE-ARRIVAL CONFIRMATION</p><h1 style="margin:0;${SERIF}font-size:22px;line-height:1.6;font-weight:500;text-align:center;">ご到着前の事前確認サービスのご案内</h1>`, `${logoSrc ? '12px' : '36px'} 32px 0`)}
+${row(`<p style="margin:0 0 14px;">${esc(name)} 様</p><p style="margin:0 0 14px;">本日は${esc(i.facilityName)}をご予約いただき、ありがとうございます。</p><p style="margin:0;">ご到着の前に、下記のボタンからご到着前の事前確認サービスのお手続きができます。<br>ご連絡先の確認と、${esc(choose)}をお選びいただけます。</p>`, '24px 32px 0;font-size:15px;line-height:1.9')}
 ${row(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f6f2;font-size:14px;line-height:1.8;"><tr><td style="padding:14px 18px;">${i.bookingCode ? `<span style="color:#78716c;">ご予約番号</span>　${esc(i.bookingCode)}<br>` : ''}<span style="color:#78716c;">ご宿泊</span>　${esc(stayJa)}</td></tr></table>`, '20px 32px 0')}
-${row(`<a href="${esc(i.url)}" style="display:inline-block;background:#292524;color:#ffffff;padding:15px 36px;font-size:16px;font-weight:bold;text-decoration:none;letter-spacing:0.06em;">事前チェックインへ進む</a>`, '26px 32px 6px;text-align:center')}
+${row(`<a href="${esc(i.url)}" style="display:inline-block;background:#292524;color:#ffffff;padding:15px 36px;font-size:16px;font-weight:bold;text-decoration:none;letter-spacing:0.06em;">事前確認へ進む</a>`, '26px 32px 6px;text-align:center')}
 ${host ? row(`リンク先は${esc(i.facilityName)}の公式予約サイト（${esc(host)}）です`, '0 32px;font-size:12px;color:#78716c;text-align:center') : ''}
 ${row(`<span style="word-break:break-all;">${esc(i.url)}</span>`, '4px 32px 0;font-size:11px;color:#a8a29e;text-align:center')}
-${row(`<p style="margin:0 0 6px;font-weight:bold;color:#292524;">事前チェックインの内容</p><p style="margin:0;">${steps.map(esc).join('<br>')}</p>`, '24px 32px 0;font-size:13px;line-height:1.85;color:#44403c')}
+${row(`<p style="margin:0 0 6px;font-weight:bold;color:#292524;">ご到着前の事前確認サービスの内容</p><p style="margin:0;">${steps.map(esc).join('<br>')}</p>`, '24px 32px 0;font-size:13px;line-height:1.85;color:#44403c')}
 ${row(notes.map((n) => `※ ${esc(n)}`).join('<br>'), '20px 32px 0;font-size:12px;line-height:1.8;color:#78716c')}
 ${row('<div style="border-top:1px solid #eeeae2;"></div>', '28px 32px 0')}
-${row(`<p style="margin:0 0 10px;">Dear ${esc(i.guestName.trim() || 'Guest')},</p><p style="margin:0 0 10px;">Thank you for booking ${esc(i.facilityName)}. Before you arrive, you can complete the online pre-check-in. You can confirm your contact details and choose your dinner, breakfast${bath ? ' and private bath' : ''} times.</p><p style="margin:0 0 10px;">${i.bookingCode ? `Booking number: ${esc(i.bookingCode)}<br>` : ''}Stay: ${esc(stayEn)}</p><p style="margin:0;"><a href="${esc(i.url)}" style="color:#8f6f2a;">Start pre-check-in</a> — This link is for you only. Please do not forward it. This is a send-only address; please call us if you have any questions. We will never ask for your card number or password by email.</p>`, '20px 32px 0;font-size:13px;line-height:1.8;color:#57534e')}
+${row(`<p style="margin:0 0 10px;">Dear ${esc(i.guestName.trim() || 'Guest')},</p><p style="margin:0 0 10px;">Thank you for booking ${esc(i.facilityName)}. Before you arrive, you can complete the pre-arrival confirmation. You can confirm your contact details and choose your dinner, breakfast${bath ? ' and private bath' : ''} times.</p><p style="margin:0 0 10px;">${i.bookingCode ? `Booking number: ${esc(i.bookingCode)}<br>` : ''}Stay: ${esc(stayEn)}</p><p style="margin:0;"><a href="${esc(i.url)}" style="color:#8f6f2a;">Start pre-arrival confirmation</a> — This link is for you only. Please do not forward it. This is a send-only address; please call us if you have any questions. We will never ask for your card number or password by email.</p>`, '20px 32px 0;font-size:13px;line-height:1.8;color:#57534e')}
 ${row(footer.map((l) => (/^https:\/\//.test(l) ? `<a href="${esc(l)}" style="color:#a8a29e;">${esc(l)}</a>` : esc(l))).join('<br>'), '28px 32px 32px;font-size:12px;line-height:1.8;color:#a8a29e')}
 </table></td></tr></table></body></html>`;
 	return { subject, text, html };

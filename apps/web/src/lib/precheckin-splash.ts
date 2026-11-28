@@ -55,9 +55,9 @@ export function looksLikePrecheckinToken(token: string): boolean {
 
 export type SplashLocale = 'ja' | 'en' | 'zh-TW';
 const TEXT: Record<SplashLocale, { title: string; lead: string; link: string }> = {
-	ja: { title: '事前チェックイン', lead: 'ご案内を準備しています', link: '画面が変わらないときは、こちらを押してください' },
-	en: { title: 'Pre-check-in', lead: 'Preparing your page', link: 'Tap here if the page does not change' },
-	'zh-TW': { title: '事前入住登記', lead: '正在為您準備頁面', link: '若畫面沒有切換，請點此處' }
+	ja: { title: 'ご到着前の事前確認サービス', lead: 'ご案内を準備しています', link: '画面が変わらないときは、こちらを押してください' },
+	en: { title: 'Pre-arrival confirmation', lead: 'Preparing your page', link: 'Tap here if the page does not change' },
+	'zh-TW': { title: '抵達前事前確認服務', lead: '正在為您準備頁面', link: '若畫面沒有切換，請點此處' }
 };
 
 /** 読み込み中の画面の HTML（1 枚で完結・外部の読み込みなし） */
