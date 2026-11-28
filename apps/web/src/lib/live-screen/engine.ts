@@ -5,6 +5,7 @@
 //   - 予約が入ったら金の輪と知らせ。会員が増えたら銀の光が会員のカードへ
 import { cumulativeUntil, diffGrains, pctChange, rate28, usualFraction, yenShort } from './model';
 import { liveSceneConfig, pickScene } from '$lib/live-scene';
+import { skyClock, sunTimes } from './sun';
 
 export function startLiveScreen(root: HTMLElement): () => void {
 	const $ = (id) => root.querySelector(`[data-id="${id}"]`);
@@ -30,7 +31,14 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	const WD = '日月火水木金土';
 	const realHour = () => { const t = jst(); return t.h + t.mi / 60 + t.s / 3600; };
 	let skyOverride = null, seasonOverride = null; // seasonOverride はシーンの id（選んで見比べる）
-	const skyHour = () => skyOverride ?? realHour();
+	// 空はその日の日の出・日の入りに合わせる（冬は早く暮れる）。選んだ「朝・昼・夕・夜」は標準の一日の時刻のまま見せる
+	let sunDay = '', sun = null;
+	const skyHour = () => {
+		if (skyOverride != null) return skyOverride;
+		const t = jst(), key = `${t.mo}-${t.d}`;
+		if (key !== sunDay) { sunDay = key; sun = sunTimes(new Date()); }
+		return skyClock(realHour(), sun);
+	};
 
 	// ── 空と季節 ──
 	const SKY = [[0, '#060a19', '#141c38'], [4.6, '#0a0f24', '#232a4a'], [5.8, '#1e2852', '#7a5a72'], [6.6, '#3d5a92', '#f0b089'], [8, '#4f86c4', '#bfd8ee'], [12, '#3c7cc6', '#b4d4f0'], [15.5, '#4c80be', '#d9d4c0'], [16.9, '#33467e', '#f09a62'], [17.8, '#1d2652', '#a3607a'], [19, '#0d1430', '#2c2f55'], [24, '#060a19', '#141c38']];
@@ -331,7 +339,7 @@ export function startLiveScreen(root: HTMLElement): () => void {
 	let G = null, headY = null;
 	function geo() {
 		const kp = $('kpis').getBoundingClientRect(), hd = root.querySelector('.top').getBoundingClientRect(), rb = root.getBoundingClientRect();
-		const top = hd.bottom - rb.top + 64, stripH = 40, bot = kp.top - rb.top - stripH - 50;
+		const top = hd.bottom - rb.top + 64, stripH = 40, bot = kp.top - rb.top - stripH - 72; // 24 時間の線の目盛り（0時…）がカードにかからない高さ
 		const L = Math.max(120, W * 0.09), R = Math.max(90, W * 0.07);
 		const xs = [...Array(7)].map((_, i) => L + i * (W - L - R) / 6);
 		const rh = Math.max(120, bot - top), cy = top + rh * 0.5, total = Math.max(1, M.visit), k = rh * 0.6 / Math.max(total, 40), off = rh * 0.25, gap = Math.max(4, rh * 0.012);
