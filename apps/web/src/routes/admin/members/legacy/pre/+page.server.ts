@@ -46,7 +46,6 @@ const PRE_MESSAGES: [string, string][] = [
 	['not_decided', 'まだ決めていません（画面を読み直してください）。'],
 	['guest_not_candidate', '照合の候補ではない顧客には紐づけられません（画面を読み直してください）。'],
 	['guest_has_member', 'この顧客には別の会員が紐づいています。'],
-	['guest_has_legacy', 'この顧客には別の旧会員が紐づく予定です。'],
 	['guest_not_found', '選んだ顧客が見つかりません（統合・削除された可能性があります）。'],
 	['reason_required', '理由を入力してください（記録に残ります）。']
 ];

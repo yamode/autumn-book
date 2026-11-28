@@ -160,9 +160,13 @@
 									<td class="px-2 py-2">
 										{#if c.has_member}
 											<span class="text-stone-400">別の会員が紐づいています</span>
-										{:else if c.other_legacy}
-											<span class="text-stone-400">別の旧会員が紐づく予定です</span>
 										{:else}
+											{#if c.other_legacy}
+												<!-- tripla に同じ方が複数のメールで登録していることがある。どのメールで手続きしても紐づくよう、重ねて決めてよい -->
+												<p class="mb-1.5 w-56 text-[11px] leading-snug text-amber-700">
+													別の旧会員（別のメール）もこの顧客に紐づく予定です。同じ方なら、こちらも紐づけてください（先に手続きした方が紐づき、もう一方は確認待ちに回ります）。
+												</p>
+											{/if}
 											<form method="POST" action="?/prelink" use:enhance={confirmLink(c.name)} class="flex flex-col gap-1.5">
 												<input type="hidden" name="legacyId" value={item.id} />
 												<input type="hidden" name="guestId" value={c.guest_id} />
