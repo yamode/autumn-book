@@ -91,10 +91,10 @@ export type PrecheckinSmsInput = {
  * 事前チェックインの SMS を 2 通に分けて作る（2026-11-14 ユーザー指示）。
  *   1 通目（message）: 案内だけで完結する日本語の文。1 通（70 字）に収める（2026-11-15 に文面を変更・ユーザー指示）
  *     【山人-yamado-】
- *     ＜ご到着前の事前確認サービス＞
+ *     ＜ご到着前の事前確認＞
  *     ご本人確認、食事時間、貸切風呂のお申込みが可能です。
  *     お手続きは下記URLから。
- *     ※ 山人-yamado- で 69 字（改行も 1 字と数える・2026-11-28 に見出しを「ご到着前の事前確認サービス」へ）。上限の 70 字まで残り 1 字なので、文面を変えるときは数え直す。
+ *     ※ 山人-yamado- で 65 字（改行も 1 字と数える・2026-11-28 に見出しを「ご到着前の事前確認」へ）。上限の 70 字まで残り 5 字なので、文面を変えるときは数え直す。
  *       施設名が長い施設（70 字を超える）は、分かれて届く。
  *   2 通目（link）: URL と問い合わせの電話。電話番号の後ろに受付開始時刻を付ける。波ダッシュを含むため連結SMSになる場合がある。
  *     https://book.yamado.app/ci/<token>
@@ -105,7 +105,7 @@ export type PrecheckinSmsInput = {
 export function buildPrecheckinSmsPair(i: PrecheckinSmsInput): { message: string; link: string } {
 	// 公式サイト以外（OTA・旅行会社など）の予約には、貸切風呂を入れない（事前予約は公式サイト限定・2026-11-21）
 	const what = i.bath === false ? 'ご本人確認、食事時間' : 'ご本人確認、食事時間、貸切風呂';
-	const message = `【${i.facilityName.trim()}】\n＜ご到着前の事前確認サービス＞\n${what}のお申込みが可能です。\nお手続きは下記URLから。`;
+	const message = `【${i.facilityName.trim()}】\n＜ご到着前の事前確認＞\n${what}のお申込みが可能です。\nお手続きは下記URLから。`;
 	const tel = (i.phone ?? '').trim();
 	const link = `${i.url}${/^[\x20-\x7e]+$/.test(tel) ? `\n\nTEL ${tel} (10:00〜)` : ''}`;
 	return { message, link };

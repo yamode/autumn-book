@@ -146,7 +146,7 @@ describe('cron 自動送信', () => {
 				expect(message.sender).toBe(sender);
 				return message.content.text as string;
 			};
-			expect(textOf(0)).toContain('＜ご到着前の事前確認サービス＞');
+			expect(textOf(0)).toContain('＜ご到着前の事前確認＞');
 			expect(textOf(0)).not.toContain('http');
 			expect(textOf(1)).toContain(`https://book.example/ci/${'T'.repeat(43)}`);
 			expect(textOf(1)).toContain(`TEL ${phone}`); // DB に電話が無いときはサイトの施設情報の電話

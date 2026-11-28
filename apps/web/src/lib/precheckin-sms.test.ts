@@ -76,7 +76,7 @@ describe('SMS 本文', () => {
 	const NOW = new Date('2026-11-14T00:00:00Z');
 	it('公式サイト以外の予約（bath: false）には貸切風呂を入れない（事前予約は公式サイト限定・2026-11-21）', () => {
 		const p = buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-14', url: URL_, phone: '0197-82-2222', now: NOW, bath: false });
-		expect(p.message).toBe('【山人-yamado-】\n＜ご到着前の事前確認サービス＞\nご本人確認、食事時間のお申込みが可能です。\nお手続きは下記URLから。');
+		expect(p.message).toBe('【山人-yamado-】\n＜ご到着前の事前確認＞\nご本人確認、食事時間のお申込みが可能です。\nお手続きは下記URLから。');
 		expect(smsSegments(p.message)).toBe(1);
 	});
 	it.each([
@@ -84,7 +84,7 @@ describe('SMS 本文', () => {
 		['山人-oga-', '0185-47-7776']
 	])('%s: 1 通目は案内だけで完結し 1 通（70 字）以内、2 通目は URL と電話・受付開始時刻', (name, tel) => {
 		const p = buildPrecheckinSmsPair({ facilityName: name, checkIn: '2026-11-14', url: URL_, phone: tel, now: NOW });
-		expect(p.message).toBe(`【${name}】\n＜ご到着前の事前確認サービス＞\nご本人確認、食事時間、貸切風呂のお申込みが可能です。\nお手続きは下記URLから。`);
+		expect(p.message).toBe(`【${name}】\n＜ご到着前の事前確認＞\nご本人確認、食事時間、貸切風呂のお申込みが可能です。\nお手続きは下記URLから。`);
 		// 1 通の上限（70 字）に収まる（山人-yamado- で 68 字）
 		expect([...p.message].length).toBeLessThanOrEqual(SMS_SINGLE_CHARS);
 		expect(smsSegments(p.message)).toBe(1);
@@ -96,7 +96,7 @@ describe('SMS 本文', () => {
 	it('前日以前に送っても文面は同じ。電話が無ければ 2 通目は URL だけ', () => {
 		const p = buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-15', url: URL_, phone: null, now: NOW });
 		expect(p.message).toBe(buildPrecheckinSmsPair({ facilityName: '山人-yamado-', checkIn: '2026-11-14', url: URL_, phone: null, now: NOW }).message);
-		expect([...p.message].length).toBe(69); // 山人-yamado- で 69 字（上限 70 字まで残り 2 字）
+		expect([...p.message].length).toBe(65); // 山人-yamado- で 65 字（上限 70 字まで残り 5 字）
 		expect(p.link).toBe(URL_);
 	});
 	it('通数の目安', () => {
