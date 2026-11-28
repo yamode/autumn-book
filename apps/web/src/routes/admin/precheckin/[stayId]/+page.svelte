@@ -42,7 +42,7 @@
 			<dl class="mt-3 grid grid-cols-[7rem_1fr] gap-y-1 text-stone-700">
 				<dt class="text-stone-500">送信先</dt><dd>{p?.sent_to ?? '—'}</dd>
 				<dt class="text-stone-500">送信</dt><dd>{p?.sent_at ? `${shortJst(p.sent_at)}（${p.send_count}回）` : '—'}</dd>
-				<dt class="text-stone-500">開封</dt><dd>{p?.first_opened_at ? shortJst(p.first_opened_at) : '—'}{p?.last_opened_at && p.last_opened_at !== p.first_opened_at ? `（最後 ${shortJst(p.last_opened_at)}）` : ''}</dd>
+				<dt class="text-stone-500">URLを開いた</dt><dd>{p?.first_opened_at ? shortJst(p.first_opened_at) : '—'}{p?.last_opened_at && p.last_opened_at !== p.first_opened_at ? `（最後 ${shortJst(p.last_opened_at)}）` : ''}</dd>
 				<dt class="text-stone-500">回答</dt><dd>{p?.answered_at ? shortJst(p.answered_at) : '—'}</dd>
 				<dt class="text-stone-500">リンクの期限</dt><dd>{p?.expires_at ? shortJst(p.expires_at) : '—'}</dd>
 				{#if p?.status === 'failed'}<dt class="text-red-600">送信失敗</dt><dd class="text-red-700">{p.send_error}</dd>{/if}

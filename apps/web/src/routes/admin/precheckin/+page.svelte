@@ -130,7 +130,7 @@
 
 <PageHeader
 	title="事前チェックイン"
-	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメール、または携帯番号へ SMS で送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。"
+	description="チェックイン日のご予約に、事前チェックイン（連絡先の確認・夕食と朝食の時間）のご案内をメール、または携帯番号へ SMS で送ります。取引先経由・取消済みは出ません。複数室のご予約は代表者へ 1 通です。「URLを開いた」はお客様がご案内のリンクを開いた印です（SMS・メールそのものを読んだかは分かりません）。"
 />
 
 <p class="mb-3 text-sm">
@@ -318,7 +318,7 @@
 				{#if r.sent_at || r.first_opened_at || r.answered_at || r.send_error || r.sms?.sms_error}
 					<div class="mt-2 flex flex-wrap gap-x-3 border-t border-stone-100 pt-2 text-xs text-stone-500">
 						{#if r.sent_at}<span>送信 {shortJst(r.sent_at)}（{r.send_count}回）</span>{/if}
-						{#if r.first_opened_at}<span>開封 {shortJst(r.first_opened_at)}</span>{/if}
+						{#if r.first_opened_at}<span>URLを開いた {shortJst(r.first_opened_at)}</span>{/if}
 						{#if r.answered_at}<span class="text-emerald-700">回答 {shortJst(r.answered_at)}</span>{/if}
 						{#if r.status === 'failed' && r.send_error}<span class="text-red-700">失敗: {r.send_error}</span>{/if}
 						{#if r.sms && (r.sms.sms_status === 'failed' || r.sms.sms_status === 'undeliverable') && r.sms.sms_error}<span class="text-red-700">SMS: {r.sms.sms_error}</span>{/if}

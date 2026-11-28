@@ -171,7 +171,8 @@ export const PRECHECKIN_STATE_LABEL: Record<PrecheckinState, string> = {
 	no_contact: '連絡先なし（メールなし）',
 	unsent: '未送信',
 	sent: '送信済',
-	opened: '開封済',
+	// SMS・メールを読んだかではなく、お客様が事前チェックインの URL を開いたか（precheckin_context が first_opened_at を付ける）
+	opened: 'URLを開いた',
 	answered: '回答済',
 	failed: '送信失敗'
 };
@@ -194,7 +195,7 @@ export type PrecheckinListLike = {
 	answered_at: string | null;
 };
 
-/** 一覧の状態。回答 > 開封 > 送信失敗 > 送信済 > 連絡先なし > 未送信 */
+/** 一覧の状態。回答 > URLを開いた > 送信失敗 > 送信済 > 連絡先なし > 未送信 */
 export function precheckinState(r: PrecheckinListLike): PrecheckinState {
 	if (r.answered_at) return 'answered';
 	if (r.first_opened_at) return 'opened';
