@@ -42,7 +42,10 @@ export const GET: RequestHandler = async (event) => {
 		// 「いまリンクから入った」印（20 秒だけ）。/ci の最初の表示で、ゆっくり現れる演出を出すのに使う（+layout.server.ts が読んで消す）
 		event.cookies.set(PRECHECKIN_ENTRANCE_COOKIE, '1', { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 20 });
 	}
-	const location = localizeHref('ctx' in r ? '/ci' : `/ci?e=${r.error}`);
+	// 回答済み（② まで送信済み）のお客様は、① からではなく完了画面（④）へ入れる（2026-11-28）。
+	// 貸切風呂を取りに入り直したお客様が ① ② を同じ中身で送り直し、宿へ「修正」の通知が出ていたため。
+	// 直したいときは完了画面の「内容を直す」から ① へ戻れる。
+	const location = localizeHref('ctx' in r ? (r.ctx.answeredAt ? '/ci/done' : '/ci') : `/ci?e=${r.error}`);
 	if (event.url.searchParams.get('go') === '1' && event.request.headers.get('accept') === 'application/json') {
 		return json({ location }, { headers: { 'cache-control': 'no-store', vary: 'Accept' } });
 	}
