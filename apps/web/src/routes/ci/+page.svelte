@@ -6,6 +6,7 @@
 	// 直した欄だけ送る（disabled の欄はフォームに乗らない）。修正は book.precheckins.answers.contact に入り、PMS の顧客マスタは書き換えない。
 	// 同伴人数・アレルギー・ご要望は聞かない。代わりに宿からの質問（施設ごと・book.precheckin_questions）に必ず答えてもらう（2026-11-14）。
 	// 予約番号は OTA の番号（無ければ行ごと出さない）。泊数は PMS で連結した予約を通した数。部屋タイプは「ご宿泊」の次の行。
+	import { untrack } from 'svelte';
 	import { enhance } from '$lib/enhance';
 	import * as m from '$lib/paraglide/messages';
 	import { localizeHref } from '$lib/paraglide/runtime';
@@ -128,15 +129,32 @@
 	const answerOf = (id: string) => a.questions?.find((x) => x.id === id)?.answer ?? '';
 	const missingId = $derived(form?.error === 'question_required' ? (form.field ?? null) : null);
 	const missingGuest = $derived(form?.error === 'guest_required' || form?.error === 'invalid_params' ? (form.field ?? null) : null);
-	// 男女人数（部屋ごと・必須・2026-11-28）。前に送った値 → いま PMS にある値 の順で最初から入れる。
-	// どちらも 0 人なら空欄（選んでもらう）。送信で PMS の泊へ書かれる
+	// 男女人数（部屋ごと・必須・2026-11-28）。送信で PMS の泊へ書かれる。
+	// 入れ方は Book の予約フォーム（/booking/hold）と同じ: 「男女の内訳」を 1 つの選択欄で選ぶ
+	// （選択肢は「男性k名・女性(人数−k)名」。女性は部屋の人数から引いて隠し欄で送る）。
+	// 部屋の人数が分からない（0）ときだけ、男性・女性を別々に選ぶ。
 	const genderMissing = $derived(form?.error === 'gender_required');
-	const genderOf = (r: { stayId: string; male?: number; female?: number }): { male: string; female: string } => {
+	/** その部屋で選択肢を作る人数。予約の人数が無ければ 0 */
+	const genderTotal = (r: { partySize?: number }) => Math.max(0, Math.min(50, r.partySize ?? 0));
+	/** 最初に選んでおく男性の人数: 前に送った値 → いま PMS にある値。合計が部屋の人数と合わなければ空欄（選んでもらう） */
+	const genderInitial = (r: { stayId: string; partySize?: number; male?: number; female?: number }): { male: string; female: string } => {
+		const n = genderTotal(r);
 		const sent = a.gender?.find((g) => g.stay_id === r.stayId);
-		if (sent && sent.male + sent.female > 0) return { male: String(sent.male), female: String(sent.female) };
-		if ((r.male ?? 0) + (r.female ?? 0) > 0) return { male: String(r.male ?? 0), female: String(r.female ?? 0) };
+		const cands = [sent ? { m: sent.male, f: sent.female } : null, { m: r.male ?? 0, f: r.female ?? 0 }];
+		for (const c of cands) {
+			if (!c || c.m < 0 || c.f < 0 || c.m + c.f === 0) continue;
+			if (n === 0 || c.m + c.f === n) return { male: String(c.m), female: String(c.f) };
+		}
 		return { male: '', female: '' };
 	};
+	// 部屋ごとの選択（stay_id → 男性の人数・女性の人数）。最初の 1 回だけ初期値を入れる
+	let genderSel = $state<Record<string, { male: string; female: string }>>({});
+	$effect(() => {
+		const rooms = ctx.rooms;
+		untrack(() => {
+			for (const r of rooms) if (!genderSel[r.stayId]) genderSel[r.stayId] = genderInitial(r);
+		});
+	});
 	const headcounts = Array.from({ length: 21 }, (_, i) => i);
 	// 部屋タイプ（複数室は「和室・洋室」、同じタイプが続けば「和室 ×2」）
 	const roomTypes = $derived.by(() => {
@@ -293,29 +311,55 @@
 		<p class="mt-1 text-xs text-stone-500">{m.ci_gender_lead()}</p>
 		<div class="mt-3 space-y-3">
 			{#each ctx.rooms as r (r.stayId)}
-				{@const g0 = genderOf(r)}
+				{@const n = genderTotal(r)}
+				{@const sel = genderSel[r.stayId] ?? { male: '', female: '' }}
 				{@const bad = genderMissing && (form?.field === r.stayId || form?.field === 'gender') ? 'border-red-400 ring-1 ring-red-300' : ''}
 				<div>
 					<p class="font-medium">
 						{#if ctx.rooms.length > 1}{m.ci_room_n({ n: String(r.index) })}{#if r.label}<span class="ml-1 font-normal text-stone-500">{r.label}</span>{/if}{/if}
-						{#if r.partySize}<span class="ml-1 text-xs font-normal text-stone-500">{m.ci_gender_party({ n: String(r.partySize) })}</span>{/if}
+						{#if n}<span class="ml-1 text-xs font-normal text-stone-500">{m.ci_gender_party({ n: String(n) })}</span>{/if}
 					</p>
-					<div class="mt-1 grid grid-cols-2 gap-2">
-						<label class="block">
-							<span class="text-stone-600">{m.ci_male()}</span>
-							<select name="g|{r.stayId}|male" value={g0.male} required disabled={ro} class="{selectCls} {bad}">
-								<option value="" disabled>{m.ci_choose()}</option>
-								{#each headcounts as n (n)}<option value={String(n)}>{n}</option>{/each}
+					{#if n > 0}
+						<!-- Book の予約フォームと同じ: 「男女の内訳」を 1 つ選ぶ。女性は人数から引いて送る -->
+						<label class="mt-1 block sm:max-w-sm">
+							<span class="text-stone-600">{m.hold_gender_label()}</span>
+							<select
+								name="g|{r.stayId}|male"
+								value={sel.male}
+								onchange={(e) => {
+									const v = (e.currentTarget as HTMLSelectElement).value;
+									genderSel[r.stayId] = { male: v, female: v === '' ? '' : String(n - Number(v)) };
+								}}
+								required
+								disabled={ro}
+								class="{selectCls} {bad}"
+							>
+								<option value="">{m.hold_select_placeholder()}</option>
+								{#each Array.from({ length: n + 1 }, (_, k) => k) as k (k)}
+									<option value={String(k)}>{m.hold_gender_option({ male: String(k), female: String(n - k) })}</option>
+								{/each}
 							</select>
+							<input type="hidden" name="g|{r.stayId}|female" value={sel.male === '' ? '' : String(n - Number(sel.male))} disabled={ro} />
 						</label>
-						<label class="block">
-							<span class="text-stone-600">{m.ci_female()}</span>
-							<select name="g|{r.stayId}|female" value={g0.female} required disabled={ro} class="{selectCls} {bad}">
-								<option value="" disabled>{m.ci_choose()}</option>
-								{#each headcounts as n (n)}<option value={String(n)}>{n}</option>{/each}
-							</select>
-						</label>
-					</div>
+					{:else}
+						<!-- 部屋の人数が分からないときだけ、男性・女性を別々に選ぶ -->
+						<div class="mt-1 grid grid-cols-2 gap-2">
+							<label class="block">
+								<span class="text-stone-600">{m.ci_male()}</span>
+								<select name="g|{r.stayId}|male" value={sel.male} required disabled={ro} class="{selectCls} {bad}">
+									<option value="" disabled>{m.ci_choose()}</option>
+									{#each headcounts as k (k)}<option value={String(k)}>{k}</option>{/each}
+								</select>
+							</label>
+							<label class="block">
+								<span class="text-stone-600">{m.ci_female()}</span>
+								<select name="g|{r.stayId}|female" value={sel.female} required disabled={ro} class="{selectCls} {bad}">
+									<option value="" disabled>{m.ci_choose()}</option>
+									{#each headcounts as k (k)}<option value={String(k)}>{k}</option>{/each}
+								</select>
+							</label>
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
